@@ -62,7 +62,7 @@
           }
 
 #else
-  #define ScopedCpuProfileZoneDynamic(ctx, name)
+  #define ScopedCpuProfileZoneDynamic(name)
   #define ScopedGpuProfileZoneDynamicZ(ctx, name)
   #define TRACY_OBJECT_MEMORY_PROFILING
 #endif

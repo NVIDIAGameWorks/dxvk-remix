@@ -57,12 +57,16 @@ namespace dxvk {
     // the original material instead, similar to how getReplacementMaterial works.
     MaterialData* materialData;
     Matrix4 replacementToObject;
+    // If this replacement represents multiple instances of an object, then this will contain a
+    // list of transforms from the instance's space to Object space
+    // (use the drawcall's objectToWorld * instancesToObject[n] to get instance n's world transform).
+    std::vector<Matrix4> instancesToObject;
     Type type;
     bool includeOriginal = false;
 
     AssetReplacement(MeshReplacement* geometryData, MaterialData* materialData, Categorizer categoryFlags, const Matrix4& replacementToObject)
         : geometry(geometryData), materialData(materialData), categories(categoryFlags), replacementToObject(replacementToObject), type(eMesh) {}
-    AssetReplacement(const LightData& lightData) : lightData(lightData), type(eLight) {}
+    AssetReplacement(const LightData& lightData, const Matrix4& replacementToObject) : lightData(lightData), replacementToObject(replacementToObject), type(eLight) {}
   };
 
   struct SecretReplacement {
@@ -196,9 +200,11 @@ namespace dxvk {
     // returns true if the state of replacements has changed.
     bool checkForChanges(const Rc<DxvkContext>& context);
 
-    bool areReplacementsLoaded() const;
-    bool areReplacementsLoading() const;
-    const std::string& getReplacementStatus() const;
+
+    // Returns true if all replacement mods are in the loaded state, false otherwise.
+    bool areAllReplacementsLoaded() const;
+    // Gets the states of all the current replacement mods.
+    std::vector<Mod::State> getReplacementStates() const;
 
     const bool hasNewSecretReplacementInfo() const {
       return m_bSecretReplacementsUpdated;

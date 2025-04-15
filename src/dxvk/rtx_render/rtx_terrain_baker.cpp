@@ -143,11 +143,7 @@ namespace dxvk {
     // Ensures a texture stays in VidMem
     auto trackAndFinalizeTexture = [&](TextureRef& texture) {
       uint32_t unusedTextureIndex;
-      sceneManager.trackTexture(ctx, texture, unusedTextureIndex, hasTexcoords);
-      // Force the full resolution promotion
-      if (texture.isPromotable()) {
-        texture.finalizePendingPromotion();
-      }
+      sceneManager.trackTexture(texture, unusedTextureIndex, hasTexcoords);
     };
 
     // Track the source albedo opacity texture to keep it in VidMem as it's needed for baking
@@ -652,7 +648,7 @@ namespace dxvk {
       createTextureRef(ReplacementMaterialTextureType::Roughness),
       createTextureRef(ReplacementMaterialTextureType::Metallic),
       createTextureRef(ReplacementMaterialTextureType::Emissive),
-      TextureRef(), TextureRef(), TextureRef(), // SSS textures
+      TextureRef(), TextureRef(), TextureRef(), TextureRef(), // SSS textures
       Material::Properties::roughnessAnisotropy(),
       Material::Properties::emissiveIntensity(),
       Vector3(1, 1, 1), // AlbedoConstant - unused since the AlbedoOpacity texture must be always present for baking
@@ -679,11 +675,15 @@ namespace dxvk {
       0.0f,  // opaqueMaterialDefaults.subsurfaceMeasurementDistance
       Vector3(),  // opaqueMaterialDefaults.subsurfaceSingleScatteringAlbedo
       0.0f, // opaqueMaterialDefaults.subsurfaceVolumetricAnisotropy
+      false, // opaqueMaterialDefaults.subsurfaceDiffusionProfile
+      Vector3(),  // opaqueMaterialDefaults.subsurfaceRadius
+      0.0f, // opaqueMaterialDefaults.subsurfaceRadiusScale
+      0.0f, // opaqueMaterialDefaults.subsurfaceMaxSampleRadius
       // NOTE: The terrain defines it's own sampler, and these are the modes it uses.
       lss::Mdl::Filter::Linear,
       lss::Mdl::WrapMode::Clamp, // U
       lss::Mdl::WrapMode::Clamp  // V
-    ));  
+    ));
 
     m_hasInitializedMaterialDataThisFrame = true;
     m_needsMaterialDataUpdate = false;
@@ -714,7 +714,8 @@ namespace dxvk {
 
         if (texture.views.size() > 0) {
           for (Rc<DxvkImageView>& view : texture.views) {
-            textureManager.releaseTexture(TextureRef(view));
+            auto viewRef = TextureRef(view);
+            textureManager.releaseTexture(viewRef);
           }
         }
       }
@@ -765,10 +766,7 @@ namespace dxvk {
     constexpr ImGuiTreeNodeFlags collapsingHeaderFlags = collapsingHeaderClosedFlags | ImGuiTreeNodeFlags_DefaultOpen;
     constexpr ImGuiSliderFlags sliderFlags = ImGuiSliderFlags_AlwaysClamp;
 
-    if (ImGui::CollapsingHeader("Terrain System [Experimental]", collapsingHeaderClosedFlags)) {
-      ImGui::Indent();
-
-      ImGui::Checkbox("Enable Runtime Terrain Baking", &enableBakingObject());
+    {
       ImGui::Checkbox("Use Terrain Bounding Box", &cascadeMap.useTerrainBBOXObject());
       ImGui::Checkbox("Clear Terrain Textures Before Terrain Baking", &clearTerrainBeforeBakingObject());
 
@@ -837,8 +835,6 @@ namespace dxvk {
 
       ImGui::Checkbox("Debug: Disable Baking", &debugDisableBakingObject());
       ImGui::Checkbox("Debug: Disable Binding", &debugDisableBindingObject());
-
-      ImGui::Unindent();
     }
   }
 
@@ -915,7 +911,8 @@ namespace dxvk {
       
       if (texture.views.size() > 0) {
         for (Rc<DxvkImageView>& view : texture.views) {
-          textureManager.releaseTexture(TextureRef(view));
+          auto viewRef = TextureRef(view);
+          textureManager.releaseTexture(viewRef);
         }
       }
       texture.reset();

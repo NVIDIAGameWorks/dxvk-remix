@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -20,16 +20,23 @@
 * DEALINGS IN THE SOFTWARE.
 */
 
+//!variant gbuffer_miss.rmiss
+
+// NRC 
+
+//!variant gbuffer_nrc_miss.rmiss
+//!>       ENABLE_NRC=1
+
+//!end-variants
+
 #define RAY_TRACING_PRIMARY_RAY
 #define RAY_PIPELINE
 // Note: Opacity lighting approximation used in the GBuffer pass due to it being most visually
 // prominent on particles in primary rays and important in PSR.
 #define RESOLVE_OPACITY_LIGHTING_APPROXIMATION 1
-// Note: OPAQUE_MATERIAL_USE_THIN_FILM not used on miss as there is nothing to hit and thin film is usually not used on something
-// like particles. If this is desired behavior though then it should be defined here just like it is in the closest hit shader.
-// Note: Resolver volume attenuation still needed in miss shaders to account for infinite volumetric attenuation.
-// See respective closest hit shader for more details.
-#define RESOLVER_USE_VOLUMETRIC_ATTENUATION 1
+
+// Note: No RESOLVER_USE_VOLUMETRIC_ATTENUATION here - we will calculate attenuation for the primary vertex
+//       during composition.  This is so we can factor in heterogenous attenuation via the global volumetrics system.
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/common_bindings.slangh"

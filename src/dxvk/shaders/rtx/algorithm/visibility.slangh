@@ -26,6 +26,7 @@
 #include "rtx/concept/surface_material/surface_material.slangh"
 #include "rtx/utility/packing.slangh"
 #include "rtx/algorithm/resolve.slangh"
+#include "rtx/algorithm/volume_lighting.slangh"
 
 static const uint visibilityModeNone = 0;
 static const uint visibilityModeAccurateHitDistance = (1 << 0);        // Return the closest hit and not just any opaque hit
@@ -70,7 +71,7 @@ f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo ra
     surface.decalSortOrder = 0;
     surface.objectPickingValue = 0;
     surface.hashPacked = 0;
-    surface.texcoordGenerationMode = TexGenMode::None;
+    surface.texcoordGenerationMode = (uint8_t) TexGenMode::None;
 
     if (!usePreviousTLAS)
     {
@@ -104,7 +105,7 @@ f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo ra
     const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
       opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
 
-    const bool isSubsurface = (VisibilityMode & visibilityModeEnableSubsurfaceMaterials) && isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
+    const bool isThinOpaqueSubsurface = (VisibilityMode & visibilityModeEnableSubsurfaceMaterials) && isThinOpaqueSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
     const bool handleStochasticAlphaBlend =
       cb.enableStochasticAlphaBlend &&
@@ -115,7 +116,7 @@ f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo ra
     //   1. The surface doesn't have subsurface (do traditional alpha-blending)
     //   2. The surface has subsurface, but the surface point need to be discarded because it fails the alpha-test.
     //      This is necessary for subsurface material or the alpha-test will be ignored.
-    if (!isSubsurface || handleStochasticAlphaBlend || opaqueSurfaceMaterialInteraction.opacity <= cb.resolveTransparencyThreshold)
+    if (!isThinOpaqueSubsurface || handleStochasticAlphaBlend || opaqueSurfaceMaterialInteraction.opacity <= cb.resolveTransparencyThreshold)
     {
       return 1.0h - opaqueSurfaceMaterialInteraction.opacity;
     }
@@ -413,7 +414,7 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
       break;
     }
   }
-
+  
   return result;
 }
 
@@ -425,19 +426,19 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
   bool hasRayOriginatedFromViewModel = false,
   bool usePreviousTLAS = false,
   uint16_t primarySurfaceIndex = BINDING_INDEX_INVALID, float2 texCoords = f16vec2(0.0h),
-  bool isSubsurface = false, f16vec3 shadingNormal = f16vec3(0.0h), bool clearOpaqueHitAttenuation = true)
+  bool isThinOpaqueSubsurface = false,
+  f16vec3 shadingNormal = f16vec3(0.0h), bool clearOpaqueHitAttenuation = true)
 {
-  MinimalRayInteraction minimalRayInteraction = (MinimalRayInteraction)0;
+  MinimalRayInteraction minimalRayInteraction = (MinimalRayInteraction) 0;
   minimalRayInteraction.coneRadius = coneRadius;
   
-  Ray viewRay = (Ray)0;
+  Ray viewRay = (Ray) 0;
   viewRay.spreadAngle = spreadAngle;
 
   Ray visibilityRay;
-  if (!isSubsurface)
+  if (!isThinOpaqueSubsurface)
   {
-    visibilityRay = rayCreatePosition(
-      minimalRayInteraction, minimalSurfaceInteraction, viewRay, targetPosition, false);
+    visibilityRay = rayCreatePosition( minimalRayInteraction, minimalSurfaceInteraction, viewRay, targetPosition, false);
   }
   else
   {
@@ -509,6 +510,9 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
 #endif
 
   VisibilityResult result = traceVisibilityRay<VisibilityMode>(visibilityRay, rayMask, expectedRayPortalIndex, rayOriginPortalSpace, hasRayOriginatedFromViewModel, usePreviousTLAS, clearOpaqueHitAttenuation);
+
+  // We want to calculate the attenuation from the light to the surface - which is why we use targetPosition (light) and neg-direction (light to surface)
+  result.attenuation *= calcAtmosphereAttenuation(cb.volumeArgs, false, result.hitDistance, targetPosition, -visibilityRay.direction);
 
 #ifdef OPAQUE_MATERIAL_USE_POM
   result.attenuation = result.attenuation * pomAttenuation;

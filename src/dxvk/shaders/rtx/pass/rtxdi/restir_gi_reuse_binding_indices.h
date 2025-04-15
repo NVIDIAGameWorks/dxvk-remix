@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -23,11 +23,8 @@
 
 #include "rtx/pass/common_binding_indices.h"
 
-// Inputs / Outputs
-
-#define RESTIR_GI_REUSE_BINDING_RESERVOIR_INPUT_OUTPUT      20
-
 // Inputs
+
 #define RESTIR_GI_REUSE_BINDING_WORLD_SHADING_NORMAL_INPUT  21
 #define RESTIR_GI_REUSE_BINDING_PERCEPTUAL_ROUGHNESS_INPUT  22
 #define RESTIR_GI_REUSE_BINDING_HIT_DISTANCE_INPUT          23
@@ -36,7 +33,6 @@
 #define RESTIR_GI_REUSE_BINDING_WORLD_POSITION_INPUT        26
 #define RESTIR_GI_REUSE_BINDING_VIEW_DIRECTION_INPUT        27
 #define RESTIR_GI_REUSE_BINDING_CONE_RADIUS_INPUT           28
-#define RESTIR_GI_REUSE_BINDING_LAST_GBUFFER                29
 #define RESTIR_GI_REUSE_BINDING_MVEC_INPUT                  30
 #define RESTIR_GI_REUSE_BINDING_RADIANCE_INPUT              31
 #define RESTIR_GI_REUSE_BINDING_HIT_GEOMETRY_INPUT          32
@@ -45,9 +41,15 @@
 #define RESTIR_GI_REUSE_BINDING_PREV_WORLD_POSITION_INPUT   35
 #define RESTIR_GI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT  36
 #define RESTIR_GI_REUSE_BINDING_SUBSURFACE_DATA_INPUT       37
-#define RESTIR_GI_REUSE_BINDING_GRADIENTS_INPUT             38
+#define RESTIR_GI_REUSE_BINDING_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT 38
+#define RESTIR_GI_REUSE_BINDING_GRADIENTS_INPUT             39
 
-#define RESTIR_GI_REUSE_MIN_BINDING                           RESTIR_GI_REUSE_BINDING_RESERVOIR_INPUT_OUTPUT
+// Inputs / Outputs
+
+#define RESTIR_GI_REUSE_BINDING_LAST_GBUFFER_INPUT_OUTPUT   60
+#define RESTIR_GI_REUSE_BINDING_RESERVOIR_INPUT_OUTPUT      61
+
+#define RESTIR_GI_REUSE_MIN_BINDING                           RESTIR_GI_REUSE_BINDING_WORLD_SHADING_NORMAL_INPUT
 
 #if RESTIR_GI_REUSE_MIN_BINDING <= COMMON_MAX_BINDING
 #error "Increase the base index of ReSTIR GI bindings to avoid overlap with common bindings!"

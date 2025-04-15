@@ -300,6 +300,7 @@ namespace dxvk {
         ImGui::Text("Light Shaping: Not Supported");
       }
 
+      ImGui::Text("Volumetric Radiance Scale: %.2f", light.getVolumetricRadianceScale());
       ImGui::Text("Initial Hash: 0x%" PRIx64, light.getInitialHash());
       ImGui::Text("Instance Hash: 0x%" PRIx64, light.getInstanceHash());
       ImGui::Text("Transformed Hash: 0x%" PRIx64, light.getTransformedHash());

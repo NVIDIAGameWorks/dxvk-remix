@@ -867,13 +867,15 @@ namespace dxvk::hud {
       position.y += 16.0f;
     }
 
-    if (RtxOptions::Get()->getPresentThrottleDelay()) {
+    const auto presentThrottleDelay = m_device->config().presentThrottleDelay;
+
+    if (presentThrottleDelay > 0) {
       position.y += 8.0f;
 
       renderer.drawText(16.0f,
                         { position.x, position.y },
                         { 1.0f, 0.2f, 0.2f, 1.0f },
-                        "Present throttling enabled!");
+                        str::format("Present Throttling enabled! (Delay: ", presentThrottleDelay, " ms)"));
       position.y += 16.0f;
     }
 

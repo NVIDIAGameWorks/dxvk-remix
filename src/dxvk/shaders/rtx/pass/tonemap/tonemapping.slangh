@@ -24,6 +24,8 @@
 #include "rtx/pass/tonemap/tonemapping.h"
 #include "rtx/utility/color.slangh"
 
+#include "ACES.hlsl"
+
 static const uint kHistogramFixedPointScale = 0x100;
 
 float getExposure(RWTexture1D<float> ExposureTex, const bool enableAutoExposure, const float exposureFactor)
@@ -47,7 +49,9 @@ float histogramOffsetToNormalizedEV(float offset)
   return saturate((offset - 1) / float(EXPOSURE_HISTOGRAM_SIZE - 2));
 }
 
-float3 ACESFilm(float3 x)
+// Approximation of ACES
+// https://knarkowicz.wordpress.com/2016/01/06/aces-filmic-tone-mapping-curve/
+float3 ACESFilmApproximation(float3 x)
 {
   float a = 2.51f;
   float b = 0.03f;
@@ -55,4 +59,13 @@ float3 ACESFilm(float3 x)
   float d = 0.59f;
   float e = 0.14f;
   return saturate((x*(a*x+b))/(x*(c*x+d)+e));
+}
+
+float3 ACESFilm(float3 color, bool useLegacyACES, bool suppressBlackLevelClamp = false)
+{
+  if (useLegacyACES)
+  {
+    return ACESFilmApproximation(color);
+  }
+  return ACESFitted(color, suppressBlackLevelClamp);
 }

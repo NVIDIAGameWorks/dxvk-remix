@@ -24,13 +24,14 @@
 #include "rtx/concept/ray_portal/ray_portal.slangh"
 #include "rtx/utility/packing.slangh"
 #include "rtx/algorithm/resolve_expanded.slangh"
+#include "rtx/external/NRC.slangh"
 
 // RNG state is not carried via PathState from RayGen to Hit shader, 
 // but instead it is reconstructed using following explicit constants.
 // Hit shaders reuse the RNG state within its scope
 // Direction sample takes 3 samples - 1 for a lobe selection and 2 for a 2D uv sample
 static const uint kRNGOffsetSampleFirstBounceDirection = 0;
-// Russian roulette on first bounce takes the sampleOffset 3 (carried over as live RNG state)
+// Russian roulette on first bounce takes the sampleOffset 4 (carried over as live RNG state)
 // RNG state is not carried between Raygen and closest hit shaders (CHS), so RNG state is recreated
 // at CHS start with a following explicit offset
 static const uint kRNGOffsetSampleClosestHitShader = 4;
@@ -57,7 +58,7 @@ struct PathState : IBasePayloadState
   float _segmentHitDistance;
 
   f16vec3 throughput;
-  float16_t firstBounceHitDistance;  // Note: The total hit distance of the resolve for the first bounce.
+  float16_t firstBounceHitDistance; // Note: The total hit distance of the resolve for the first bounce.
   uint16_t neeCacheCellOffset;
   uint16_t mediumMaterialIndex;
   float16_t coneSpreadAngle; // unused (1b - sign bit)
@@ -78,8 +79,182 @@ struct PathState : IBasePayloadState
                  // indirectLightPortalID(uint:2b), 
                  // bounceIteration(uint:4b)
   uint8_t _roughness;
-  
-  // Property to get and set pixel coordinate
+    
+#if ENABLE_NRC
+
+  uint nrcData0;  // NrcQuery:
+                  //  uint packedPrefixThroughput
+                  // NrcUpdate:
+                  //  f16vec3 throughputFullPath.xy
+  uint nrcData1;  // NrcQuery:
+                  //  [0 - NRC_MAX_REQUIRED_BITS_IN_PATH_STATE_QUERY_BUFFER_INDEX] - uint queryBufferIndex  
+                  //  [30] - bool writeFinalPathInfo
+                  //  [31] - bool isNrcUpdate | !isNrcQuery
+                  // NrcUpdate:
+                  //  [0-15] f16vec3 throughputFullPath.z;
+                  //  [30] - bool writeFinalPathInfo
+                  //  [31] - bool isNrcUpdate | !isNrcQuery
+
+  NrcPackableFloat primarySpreadRadius; ///< Approximated as `d^2 / cos` at primary hit.
+  NrcPackableFloat cumulSpreadRadius; ///< Square root of the cumulative area spread at the current path vertex.
+
+  NrcPackableUint packedData; ///< The number of vertices processed, flags and termination reason
+  NrcPackableFloat brdfPdf;
+
+  // NRC resets path state's throughput on each bounce, but some parts of the PT
+  // require accrued throughput along the full path regardless
+  // Note: valid for isNrcUpdate == true
+  property f16vec3 throughputFullPath
+  {
+    get 
+    {
+      return f16vec3(
+        uint16BitsToHalf(nrcData0),
+        uint16BitsToHalf(nrcData0 >> 16),
+        uint16BitsToHalf(nrcData1));
+    }
+
+    set
+    {
+      nrcData0 = uint(float16BitsToUint16(newValue.x))
+               | (uint(float16BitsToUint16(newValue.y)) << 16);
+      nrcData1 = (nrcData1 & 0xFFFF0000) 
+               | uint(float16BitsToUint16(newValue.z));
+    }
+  }
+
+  // Note: valid for isNrcQuery == true
+  property uint packedPrefixThroughput
+  {
+    get { return nrcData0; }
+    set { nrcData0 = newValue; }
+  }
+
+  // Note: valid for isNrcQuery == true
+  property uint queryBufferIndex
+  {
+#if NRC_MAX_REQUIRED_BITS_IN_PATH_STATE_QUERY_BUFFER_INDEX == 26    
+    get { return nrcData1 & NRC_QUERY_BUFFER_INDEX_MASK; }
+    set { nrcData1 = (nrcData1 & ~NRC_QUERY_BUFFER_INDEX_MASK) | (newValue & NRC_QUERY_BUFFER_INDEX_MASK); }
+#else
+    Validate  bit utilization in nrcData1 and update the bit target in the if check
+#endif    
+  }
+
+  property bool writeFinalPathInfo
+  {
+    get { return packedFlagGet(nrcData1, 1 << 30); }
+    set { nrcData1 = packedFlagAssign(nrcData1, 1 << 30, newValue); }
+  }
+
+  // Returns whether the pixel is integrating a path for NrcUpdate 
+  property bool isNrcUpdate 
+  {
+    get { return packedFlagGet(nrcData1, 1 << 31); }
+    set { nrcData1 = packedFlagAssign(nrcData1, 1 << 31, newValue); }
+  }
+
+  // Returns whether the pixel is integrating a path for NrcQuery
+  property bool isNrcQuery 
+  {
+    get { return !isNrcUpdate; }
+    set { isNrcUpdate = !newValue; }
+  }
+
+  property NrcPathState nrcPathState 
+  {
+    get 
+    {
+      NrcPathState _nrcPathState;
+      
+      if (isNrcQuery)
+      {
+        _nrcPathState.queryBufferIndex = queryBufferIndex;
+        _nrcPathState.packedPrefixThroughput = packedPrefixThroughput;
+      }
+      else // isNrcUpdate
+      {
+        // Unused in NRC update
+        _nrcPathState.queryBufferIndex = 0;
+        _nrcPathState.packedPrefixThroughput = 0;
+      }
+
+      _nrcPathState.primarySpreadRadius = primarySpreadRadius; 
+      _nrcPathState.cumulSpreadRadius = cumulSpreadRadius;
+      _nrcPathState.packedData = packedData;
+      _nrcPathState.brdfPdf = brdfPdf;
+
+      return _nrcPathState;
+    }
+
+    set
+    {
+      if (isNrcQuery)
+      {
+        queryBufferIndex = newValue.queryBufferIndex;
+        packedPrefixThroughput = newValue.packedPrefixThroughput;
+      } 
+
+      primarySpreadRadius = newValue.primarySpreadRadius;
+      cumulSpreadRadius = newValue.cumulSpreadRadius;
+      packedData = newValue.packedData;
+      brdfPdf = newValue.brdfPdf;
+    }
+  }
+
+  // Property to get nrc pixel coordinate
+  // if isNrcUpdate == true => returns nrc update pixel coordinate
+  //  Note: this is different from gbuffer pixel coordinate for NRC update pixels. 
+  // if isNrcQuery == true => returns nrc query pixel coordinate
+  property u16vec2 pixelCoordinate 
+  {
+    get
+    {
+      if (isNrcQuery)
+      {
+        const u16vec2 nrcCombinedCoordinate = getDispatchRaysIndex().xy;
+        return u16vec2(nrcCombinedCoordinate.x, nrcCombinedCoordinate.y -  cb.nrcArgs.numRowsForUpdate);
+      }
+      else
+      {
+        return Nrc::calculateUpdatePixelCoordinateFromCombinedCoordinate(getDispatchRaysIndex().xy, cb);
+      }
+    }
+  }
+
+  property uint8_t pathMaxBounces
+  {
+    get
+    {
+      if (isNrcUpdate)
+      {
+        return cb.nrcArgs.updatePathMaxBounces;
+      }
+      else
+      {
+        return cb.pathMaxBounces;
+      }
+    }
+  }
+
+  property RussianRouletteMode russianRouletteMode
+  {
+    get
+    {
+      if (isNrcUpdate)
+      {
+        // Specular throughput biases NRC, so use throughput based mode unconditionally during update
+        return RussianRouletteMode::ThroughputBased;
+      }
+      else
+      {
+        return cb.russianRouletteMode;
+      }
+    }
+  }
+#else
+
+  // Property to get pixel coordinate
   property u16vec2 pixelCoordinate 
   {
     get 
@@ -87,6 +262,23 @@ struct PathState : IBasePayloadState
       return getDispatchRaysIndex().xy;
     }
   }
+
+  property uint8_t pathMaxBounces
+  {
+    get
+    {
+      return cb.pathMaxBounces;
+    }
+  }
+
+  property RussianRouletteMode russianRouletteMode
+  {
+    get
+    {
+      return cb.russianRouletteMode;
+    }
+  }
+#endif
 
   // Passthrough accessors
   property float3 origin 
@@ -225,7 +417,42 @@ struct PathState : IBasePayloadState
   static uint calculateRNGOffsetOnFirstBounce(uint sampleOffset) 
   {
     return sampleOffset;
-  } 
+  }
+
+  f16vec3 calculateFullThroughput() 
+  {
+#if ENABLE_NRC
+    if (isNrcUpdate)
+    {
+      return throughputFullPath * throughput;
+    }
+    else 
+    {
+      return throughput; 
+    }
+#else
+    return throughput;
+#endif  
+  }
+
+  // Note: pathState.bounceIteration >= pathState.pathMaxBounces case is not handled and expected to be handled by the caller
+  bool calculateUseRussianRoulette()
+  {
+    bool useRussianRoulette = 
+      cb.enableRussianRoulette && 
+      bounceIteration >= cb.pathMinBounces;
+
+#if ENABLE_NRC
+    useRussianRoulette = useRussianRoulette && NrcCanUseRussianRoulette(nrcPathState);
+
+    if (isNrcUpdate)
+    {
+      useRussianRoulette = useRussianRoulette && cb.nrcArgs.updateAllowRussianRoulette;
+    }
+#endif    
+
+    return useRussianRoulette;
+  }
 
   // Note: Using separate accumulation for particles and whatever else as while they should be visible in reflections
   // through indirect paths, they do not need to be evaluated with particularly high quality. This is only done for the
@@ -264,6 +491,11 @@ struct PathState : IBasePayloadState
     {
       addCoherenceHintAsLeastImportant1Bit(getSeparateUnorderedApproximationsActive(), coherenceHints, numCoherenceHints);
     }
+
+#if ENABLE_NRC
+    // Note: it is slightly more performant to have the NRC mode hint second
+    addCoherenceHintAsLeastImportant1Bit(isNrcUpdate, coherenceHints, numCoherenceHints);
+#endif
     return true;
   }
 

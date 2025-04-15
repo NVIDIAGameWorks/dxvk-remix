@@ -365,7 +365,9 @@ SubsurfaceMaterialInteraction subsurfaceMaterialInteractionCreate(
   f16vec4 subsurfaceMeasurementDistance;
   f16vec4 subsurfaceSingleScatteringAlbedo;
 
-  bool measurementDistanceLoaded = surfaceMaterialInteractionTextureReadHelper(subsurfaceMaterial.subsurfaceThicknessTextureIndex, samplerIndex, surfaceInteraction, subsurfaceMeasurementDistance);
+  bool isDiffusionProfile = subsurfaceMaterial.maxSampleRadius > 0.0f;
+
+  bool measurementDistanceLoaded = !isDiffusionProfile ? surfaceMaterialInteractionTextureReadHelper(subsurfaceMaterial.subsurfaceThicknessTextureIndex, samplerIndex, surfaceInteraction, subsurfaceMeasurementDistance) : false;
   bool transmittanceColorLoaded = surfaceMaterialInteractionTextureReadHelper(subsurfaceMaterial.subsurfaceTransmittanceTextureIndex, samplerIndex, surfaceInteraction, transmittanceColor);
   bool singleScatteringAlbedoLoaded = surfaceMaterialInteractionTextureReadHelper(subsurfaceMaterial.subsurfaceSingleScatteringAlbedoTextureIndex, samplerIndex, surfaceInteraction, subsurfaceSingleScatteringAlbedo);
 
@@ -383,23 +385,37 @@ SubsurfaceMaterialInteraction subsurfaceMaterialInteractionCreate(
   // volumetricAttenuationCoefficient must be read behind measurementDistance, because if using sss textures, the volumetricAttenuationCoefficient need to be calculated base on measurementDistance
   if (transmittanceColorLoaded)
   {
+    // Note: It's common to use diffuse albedo color as SSS transmission color, Remix assumes all textures are not using sRGB formats, so we follow the assumption here.
+    if (isDiffusionProfile)
+    {
+      transmittanceColor = gammaToLinear(transmittanceColor);
+    }
     subsurfaceMaterialInteraction.packedTransmittanceColor = colorToR5G6B5(transmittanceColor.rgb);
   }
   else
   {
-    subsurfaceMaterialInteraction.packedTransmittanceColor = colorToR5G6B5(evalBeerLambertAttenuation(subsurfaceMaterial.volumetricAttenuationCoefficient, subsurfaceMaterial.measurementDistance));
+    if (!isDiffusionProfile) // Thin Opaque
+    {
+      subsurfaceMaterialInteraction.packedTransmittanceColor = colorToR5G6B5(evalBeerLambertAttenuation(subsurfaceMaterial.volumetricAttenuationCoefficient, subsurfaceMaterial.measurementDistance));
+    }
+    else // SSS
+    {
+      subsurfaceMaterialInteraction.packedTransmittanceColor = colorToR5G6B5(subsurfaceMaterial.volumetricAttenuationCoefficient);
+    }
   }
 
   if (singleScatteringAlbedoLoaded)
   {
-    subsurfaceMaterialInteraction.packedSingleScatteringAlbedo = colorToR5G6B5(subsurfaceSingleScatteringAlbedo.rgb);
+    subsurfaceMaterialInteraction.singleScatteringAlbedo = subsurfaceSingleScatteringAlbedo.rgb;
   }
   else
   {
-    subsurfaceMaterialInteraction.packedSingleScatteringAlbedo = colorToR5G6B5(subsurfaceMaterial.singleScatteringAlbedo);
+    subsurfaceMaterialInteraction.singleScatteringAlbedo = subsurfaceMaterial.singleScatteringAlbedo;
   }
 
   subsurfaceMaterialInteraction.volumetricAnisotropy = f16ToSnorm8(subsurfaceMaterial.volumetricAnisotropy);
+
+  subsurfaceMaterialInteraction.maxSampleRadius = float16BitsToUint16(subsurfaceMaterial.maxSampleRadius);
 
   return subsurfaceMaterialInteraction;
 }
@@ -421,6 +437,32 @@ void storeColorOverlayedWithTextureResolutionCheckersInDebugView(vec3 colorValue
         cb.debugKnob.x,
         cb.debugKnob.y);
     storeInDebugView(getDispatchRaysIndex().xy, colorValue);
+  }
+}
+
+uint8_t calcMipLevelAccessedForSamplerFeedback(SurfaceInteraction surfaceInteraction)
+{
+  // assume fixed 4k size to report stable accessed mip for differently sized textures
+  const uint2 fullBoxSize = uint2(4096, 4096);
+
+  vec2 ddx_tex = surfaceInteraction.textureGradientX * cb.upscaleFactor;
+  vec2 ddy_tex = surfaceInteraction.textureGradientY * cb.upscaleFactor;
+  ddx_tex *= fullBoxSize;
+  ddy_tex *= fullBoxSize;
+  const float ddSq = max(dot(ddx_tex, ddx_tex), dot(ddy_tex, ddy_tex));
+
+  return uint8_t(clamp(log2(sqrt(ddSq)), 0, 255));
+}
+
+void storeSamplerFeedback(uint32_t samplerFeedbackStamp, SurfaceInteraction surfaceInteraction)
+{
+  if (samplerFeedbackStamp != SAMPLER_FEEDBACK_INVALID)
+  {
+    uint32_t oldvalue;
+    InterlockedMin(
+      SamplerFeedbackBuffer[samplerFeedbackStamp],
+      uint32_t(calcMipLevelAccessedForSamplerFeedback(surfaceInteraction)),
+      oldvalue);
   }
 }
 
@@ -558,6 +600,9 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   {
     storeColorOverlayedWithTextureResolutionCheckersInDebugView(albedo.xyz, opaqueSurfaceMaterial.albedoOpacityTextureIndex, surfaceInteraction);
   } 
+
+  storeSamplerFeedback(opaqueSurfaceMaterial.samplerFeedbackStamp, surfaceInteraction);
+
 #endif
 
   f16vec4 tFactor = 0.h;
@@ -675,10 +720,11 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
 
     if (secondNormalLoaded)
     {
-      const f16vec3 tangentNormal2 = unsignedOctahedralToHemisphereDirection(vec2(secondNormalSample.xy), cb.opaqueMaterialArgs.normalIntensity);
-      const f16vec3 normal2 = normalize(mul(tangentToWorld, tangentNormal2));
+      f16vec3 tangentNormal2 = unsignedOctahedralToHemisphereDirection(vec2(secondNormalSample.xy), cb.opaqueMaterialArgs.normalIntensity);
+      
+      tangentNormal2 = normalBlendRNM(tangentNormal2, tangentNormal);
+      normal = normalize(mul(tangentToWorld, tangentNormal2));
 
-      normal = normalBlendRNM(normal2, normal);
     }
   }
   
@@ -820,8 +866,9 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(Polymorp
   opaqueSurfaceMaterialInteraction.normalDetail = polymorphicSurfaceMaterialInteraction.fdata4;
   opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.measurementDistance = polymorphicSurfaceMaterialInteraction.fdata5;
   opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.volumetricAnisotropy = polymorphicSurfaceMaterialInteraction.bdata1;
+  opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.maxSampleRadius = polymorphicSurfaceMaterialInteraction.idata1;
   opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.packedTransmittanceColor = polymorphicSurfaceMaterialInteraction.idata0;
-  opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.packedSingleScatteringAlbedo = polymorphicSurfaceMaterialInteraction.idata1;
+  opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.singleScatteringAlbedo = polymorphicSurfaceMaterialInteraction.vdata2;
 
   opaqueSurfaceMaterialInteraction.flags = polymorphicSurfaceMaterialInteraction.bdata0;
 
@@ -906,7 +953,7 @@ bool opaqueSurfaceMaterialInteractionCalcLobeProbability(
   out float16_t opacityTransmissionProbability,
   out float16_t diffuseTransmissionProbability)
 {
-  const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
+  const bool isThinOpaqueSubsurface = isThinOpaqueSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
   // Calculate dot products used for evaluation
 
@@ -941,7 +988,7 @@ bool opaqueSurfaceMaterialInteractionCalcLobeProbability(
   diffuseReflectionProbability = diffuseReflectionAlbedoApprox;
   specularReflectionProbability = specularReflectionAlbedoApprox;
   opacityTransmissionProbability = opacityTransmissionAlbedoApprox;
-  diffuseTransmissionProbability = isSubsurface ? diffuseTransmissionAlbedoApprox : 0.0h;
+  diffuseTransmissionProbability = isThinOpaqueSubsurface ? diffuseTransmissionAlbedoApprox : 0.0h;
 
   // Todo: Pass raytraceArgs in in the future if accessing these constants poses a problem later.
   adjustProbabilityValue(
@@ -1097,11 +1144,11 @@ SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcDiffuseRefl
   // Calculate the throughput of the sample
 
   const SubsurfaceMaterial subsurfaceMaterial = subsurfaceMaterialCreate(opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction);
-  const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
+  const bool isThinOpaqueSubsurface = isThinOpaqueSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
   // If we have lambert diffuse transmission lobe, we are actually doing lambert sampling on the whole sphere, so the diffuse reflection weight should be weighted with 1/2pi for energy conservation.
   // The original hammon diffuse does sampling on hemisphere, so we can just normalize the weight again with 1/2.
-  const f16vec3 lambertTransmissionWeight = (isSubsurface && subsurfaceMaterial.measurementDistance <= 0.05f) ? 0.5h : 1.0h;
+  const f16vec3 lambertTransmissionWeight = (isThinOpaqueSubsurface && subsurfaceMaterial.measurementDistance <= 0.05f) ? 0.5h : 1.0h;
 
   const f16vec3 weight =
     evalHammonDiffuse(opaqueSurfaceMaterialInteraction.albedo, opaqueSurfaceMaterialInteraction.isotropicRoughness,
@@ -1726,10 +1773,11 @@ SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcApprox
 
   // Load Subsurface Material
   const SubsurfaceMaterial subsurfaceMaterial = subsurfaceMaterialCreate(opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction);
-  const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
+  const bool isThinOpaqueSubsurface = isThinOpaqueSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
+  const bool isSss = isSubsurfaceDiffusionProfileMaterial(opaqueSurfaceMaterialInteraction);
 
   f16vec3 diffuseTransmissionWeight = f16vec3(0.0, 0.0, 0.0);
-  if (isSubsurface)
+  if (isThinOpaqueSubsurface || isSss)
   {
     diffuseTransmissionWeight = subsurfaceMaterial.singleScatteringAlbedo;
   }
@@ -1743,7 +1791,16 @@ SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcApprox
 
     if (normalDotOutputDirection < 0.0h)
     {
-      splitWeight.diffuseTransmissionWeight = f16vec3(0.0, 0.0, 0.0);
+      if (!isSss)
+      {
+        splitWeight.diffuseTransmissionWeight = f16vec3(0.0, 0.0, 0.0);
+      }
+      else
+      {
+        // SSS Transmission could cause the angle between view direction (output) and backface normal larger than 90 degrees.
+        // In such case we use the inversed dot product result to estimate the transmission weight.
+        splitWeight.diffuseTransmissionWeight = diffuseTransmissionWeight * (-normalDotOutputDirection);
+      }
     }
     else
     {
@@ -1805,10 +1862,10 @@ SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcProjec
 
   // Load Subsurface Material
   const SubsurfaceMaterial subsurfaceMaterial = subsurfaceMaterialCreate(opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction);
-  const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
+  const bool isThinOpaqueSubsurface = isThinOpaqueSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
   f16vec3 diffuseTransmissionWeight = f16vec3(0.0h, 0.0h, 0.0h);
-  if (isSubsurface && normalDotOutputDirection > 0.0h) {
+  if (isThinOpaqueSubsurface && normalDotOutputDirection > 0.0h) {
     diffuseTransmissionWeight = evalHanrahanSingleScatteringDiffuseTransmission(
       opaqueSurfaceMaterialInteraction.baseReflectivity,
       subsurfaceMaterial.volumetricAttenuationCoefficient, subsurfaceMaterial.measurementDistance,

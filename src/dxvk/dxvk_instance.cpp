@@ -37,6 +37,7 @@
 #include <algorithm>
 
 // NV-DXVK start: regex-based filters for VL messages
+#include <array>
 #include <regex>
 
 #include "../util/util_env.h"
@@ -53,57 +54,57 @@
 namespace dxvk {
   bool filterErrorMessages(const char* message) {
     // validation errors that we are currently ignoring --- to fix!
-    static const std::vector<const char*> ignoredErrors = {
+    constexpr std::array ignoredErrors{
       // renderpass vs. FB/PSO incompatibilities
-      ".*? MessageID = 0x335edc9a .*?",
-      ".*? MessageID = 0x8cb637c2 .*?",
-      ".*? MessageID = 0x50685725 .*?",
+      "MessageID = 0x335edc9a",
+      "MessageID = 0x8cb637c2",
+      "MessageID = 0x50685725",
 
       // Depth comparison without the proper depth comparison bit set in image view
       // Expected behavior according to DXVK 2.1's own validation error bypassing logic
-      ".*? MessageID = 0x4b9d1597 .*?",
-      ".*? MessageID = 0x534c50ad .*?",
+      "MessageID = 0x4b9d1597",
+      "MessageID = 0x534c50ad",
 
-      "^.*?Validation Error: .*? You are adding vk.*? to VkCommandBuffer 0x[0-9a-fA-F]+.*? that is invalid because bound Vk[a-zA-Z0-9]+ 0x[0-9a-fA-F]+.*? was destroyed(.*?)?$",
+      "You are adding vk.*? to VkCommandBuffer 0x[0-9a-fA-F]+.*? that is invalid because bound Vk[a-zA-Z0-9]+ 0x[0-9a-fA-F]+.*? was destroyed",
 // NV-DXVK start:
       // NV SER Extension is not supported by VL
-      ".*?SPIR-V module not valid: Invalid capability operand: 5383$",
-      ".*?vkCreateShaderModule..: A SPIR-V Capability .Unhandled OpCapability. was declared that is not supported by Vulkan. The Vulkan spec states: pCode must not declare any capability that is not supported by the API, as described by the Capabilities section of the SPIR-V Environment appendix.*?",
-      ".*?SPV_NV_shader_invocation_reorder.*?",
+      "SPIR-V module not valid: Invalid capability operand: 5383",
+      "vkCreateShaderModule..: A SPIR-V Capability .Unhandled OpCapability. was declared that is not supported by Vulkan. The Vulkan spec states: pCode must not declare any capability that is not supported by the API, as described by the Capabilities section of the SPIR-V Environment appendix",
+      "SPV_NV_shader_invocation_reorder",
 
       // NV_low_latency extension not supported by VL
-      ".*? MessageID = 0x8fe45d78 .*?",
+      "MessageID = 0x8fe45d78",
 
       // Likely a VL bug, started to occur after VK SDK update
-      ".*? Timeout waiting for timeline semaphore state to update. This is most likely a validation bug. .*?$",
+      "Timeout waiting for timeline semaphore state to update\\. This is most likely a validation bug",
 
       // cmdResetQuery has reset commented out since it hits an AV on initial reset - need to update dxvk that handles resets differently
-      ".*? After query pool creation, each query must be reset before it is used. Queries must also be reset between uses.$",
+      "After query pool creation, each query must be reset before it is used\\. Queries must also be reset between uses",
 
       // VL bug: it thinks we're using VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT when we're not
-      ".*? MessageID = 0x769aa5a9 .*?",
-
-      // VL does not know about VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_OPTICAL_FLOW_FEATURES_NV
-      ".*? MessageID = 0x901f59ec .*?\\(1000464000\\).*?",
+      "MessageID = 0x769aa5a9",
 
       // REMIX-2772
-      ".*? vkCmdTraceRaysKHR\\(\\): .*? doesn't set up VK_DYNAMIC_STATE_VIEWPORT\\|VK_DYNAMIC_STATE_SCISSOR\\|VK_DYNAMIC_STATE_STENCIL_REFERENCE, "
+      "vkCmdTraceRaysKHR\\(\\): .*? doesn't set up VK_DYNAMIC_STATE_VIEWPORT\\|VK_DYNAMIC_STATE_SCISSOR\\|VK_DYNAMIC_STATE_STENCIL_REFERENCE, "
       "but it calls the related dynamic state setting commands\\. The Vulkan spec states: If a pipeline is bound to the pipeline bind point used by this command, "
       "there must not have been any calls to dynamic state setting commands for any state not specified as dynamic in the VkPipeline object bound to the pipeline "
-      "bind point used by this command, since that pipeline was bound.*?$",
+      "bind point used by this command, since that pipeline was bound",
 
       // REMIX-2771
-      ".*? vkCmdCopyImage\\(\\): srcImage.*? was created with VK_IMAGE_USAGE_TRANSFER_DST_BIT\\|VK_IMAGE_USAGE_SAMPLED_BIT\\|VK_IMAGE_USAGE_STORAGE_BIT "
+      "vkCmdCopyImage\\(\\): srcImage.*? was created with VK_IMAGE_USAGE_TRANSFER_DST_BIT\\|VK_IMAGE_USAGE_SAMPLED_BIT\\|VK_IMAGE_USAGE_STORAGE_BIT "
       "but requires VK_IMAGE_USAGE_TRANSFER_SRC_BIT\\. The Vulkan spec states: If the aspect member of any element of pRegions includes any flag other than "
       "VK_IMAGE_ASPECT_STENCIL_BIT or srcImage was not created with separate stencil usage, VK_IMAGE_USAGE_TRANSFER_SRC_BIT must have been included in the "
-      "VkImageCreateInfo::usage used to create srcImage.*?$",
+      "VkImageCreateInfo::usage used to create srcImage",
+
+      // VK_STRUCTURE_TYPE_SET_PRESENT_CONFIG_NV present metering usage not currently supported by VL
+      "pNext chain includes a structure with unknown VkStructureType \\(1000613000\\)",
 // NV-DXVK end
     };
 
-    for(auto& exp : ignoredErrors) {
+    for (auto& exp : ignoredErrors) {
       std::regex regex(exp);
       std::cmatch res;
-      if (std::regex_match(message, res, regex)) {
+      if (std::regex_search(message, res, regex)) {
         return true;
       }
     }
@@ -112,14 +113,14 @@ namespace dxvk {
   }
 
   bool filterPerfWarnings(const char* message) {
-    static const std::vector<const char*> validationWarningFilters = {
-      ".*? For optimal performance VkImage 0x[0-9a-fA-F]+.*? layout should be VK_IMAGE_LAYOUT_.*? instead of GENERAL.$",
+    constexpr std::array validationWarningFilters{
+      "For optimal performance VkImage 0x[0-9a-fA-F]+.*? layout should be VK_IMAGE_LAYOUT_.*? instead of GENERAL",
     };
 
-    for(auto& exp : validationWarningFilters) {
+    for (auto& exp : validationWarningFilters) {
       std::regex regex(exp);
       std::cmatch res;
-      if (std::regex_match(message, res, regex)) {
+      if (std::regex_search(message, res, regex)) {
         return true;
       }
     }
@@ -136,7 +137,7 @@ namespace dxvk {
   {
     const auto pMsg = pCallbackData->pMessage;
     const auto msgStr = str::format("[VK_DEBUG_REPORT] Code ", pCallbackData->messageIdNumber, ": ", pMsg);
-    
+
     if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
       if (!filterErrorMessages(pMsg)) {
         OutputDebugString(msgStr.c_str());

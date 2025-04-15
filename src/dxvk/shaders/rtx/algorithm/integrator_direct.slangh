@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -35,7 +35,9 @@
 #include "rtx/algorithm/lighting.slangh"
 #include "rtx/algorithm/resolve.slangh"
 #include "rtx/algorithm/visibility.slangh"
+#include "rtx/algorithm/rtxcr/rtxcr_material.slangh"
 #include "integrator.slangh"
+#include "rtx/pass/nrc/nrc_integrator_utilities.slangh"
 
 void evalNEEPrimary(
   vec3 throughput,
@@ -45,15 +47,16 @@ void evalNEEPrimary(
   out float hitDistance, 
   out bool hasOpaqueHit,
   out float illuminance,
-  LightSample lightSample, 
+  bool isValidLightSample,
+  LightSample lightSample,
   float invSelectionPdf, 
   uint8_t sampledTransportPortalIndex, 
   GeometryFlags geometryFlags, 
   Ray viewRay,
   MinimalRayInteraction minimalRayInteraction,
   MinimalSurfaceInteraction minimalSurfaceInteraction,
-  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction
-  )
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  inout RNG randomState)
 {
   // Setup and trace the visibility ray
 
@@ -61,21 +64,43 @@ void evalNEEPrimary(
   rayMask |= (cb.enableDirectTranslucentShadows) ? OBJECT_MASK_TRANSLUCENT : 0;
   rayMask |= (cb.enableDirectAlphaBlendShadows) ? OBJECT_MASK_ALPHA_BLEND : 0;
 
+  const bool isThinOpaqueSubsurface = isThinOpaqueSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
+  const bool isDiffusionProfileSss = (cb.sssArgs.enableDiffusionProfile && isSubsurfaceDiffusionProfileMaterial(opaqueSurfaceMaterialInteraction));
+
   // We can encounter a POM surface during resolving (as it's a shared function) but if direct lighting for POM
   //  is disabled, we must also handle that user choice gracefully.
   const bool pomOpaqueSurfaceEncountered = geometryFlags.pomOpaqueSurfaceEncountered && cb.pomEnableDirectLighting;
-  
-  const uint16_t primarySurfaceIndex = uint16_t(SharedSurfaceIndex[pixelCoordinate]);
 
-  const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
+  const uint16_t primarySurfaceIndex = (pomOpaqueSurfaceEncountered || isDiffusionProfileSss) ? uint16_t(SharedSurfaceIndex[pixelCoordinate]) : BINDING_INDEX_INVALID;
 
-  const VisibilityResult visibility = traceVisibilityRay<visibilityModeEnablePom | visibilityModeAccurateHitDistance | visibilityModeEnableTranslucentMaterials | visibilityModeEnableSubsurfaceMaterials>(
-    minimalSurfaceInteraction,
-    lightSample.position, rayMask,
-    sampledTransportPortalIndex, geometryFlags.portalSpace, pomOpaqueSurfaceEncountered,
-    minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, geometryFlags.isViewModel, false,
-    primarySurfaceIndex, SharedTextureCoord[pixelCoordinate],
-    isSubsurface, opaqueSurfaceMaterialInteraction.shadingNormal);
+  VisibilityResult occludedVisibility;
+  occludedVisibility.hasOpaqueHit = true;
+
+  VisibilityResult visibility = isValidLightSample ?
+    traceVisibilityRay<visibilityModeEnablePom | visibilityModeAccurateHitDistance | visibilityModeEnableTranslucentMaterials | visibilityModeEnableSubsurfaceMaterials>(
+      minimalSurfaceInteraction,
+      lightSample.position, rayMask,
+      sampledTransportPortalIndex, geometryFlags.portalSpace, pomOpaqueSurfaceEncountered,
+      minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, geometryFlags.isViewModel, false,
+      primarySurfaceIndex, SharedTextureCoord[pixelCoordinate],
+      isThinOpaqueSubsurface,
+      opaqueSurfaceMaterialInteraction.shadingNormal) :
+    occludedVisibility;
+
+  const bool hasNonSssOpaqueHit = visibility.hasOpaqueHit;
+
+  SssDiffusionProfileResult sssDiffusionProfileResult = createEmptySssDiffusionProfileResult();
+  if (isDiffusionProfileSss)
+  {
+    sssDiffusionProfileResult = evalSssDiffusionProfile(
+      opaqueSurfaceMaterialInteraction, minimalRayInteraction, minimalSurfaceInteraction,
+      rayMask, sampledTransportPortalIndex, geometryFlags, viewRay,
+      primarySurfaceIndex, pixelCoordinate,
+      PrimaryWorldShadingNormal,
+      randomState);
+
+    visibility.hasOpaqueHit = (hasNonSssOpaqueHit && sssDiffusionProfileResult.allSamplesHaveHit);
+  }
 
   hitDistance = visibility.hitDistance;
   hasOpaqueHit = visibility.hasOpaqueHit;
@@ -85,17 +110,25 @@ void evalNEEPrimary(
   {
     return;
   }
-
+  
   // Evaluate the material and accumulate throughput and hit distance
 
-  const SurfaceMaterialInteractionSplitWeight splitWeight = opaqueSurfaceMaterialInteractionCalcProjectedWeight(
-    opaqueSurfaceMaterialInteraction, minimalRayInteraction, visibility.rayDirection);
+  SurfaceMaterialInteractionSplitWeight emptyWeight;
+  emptyWeight.diffuseReflectionWeight   = f16vec3(0.0h, 0.0h, 0.0h);
+  emptyWeight.specularReflectionWeight  = f16vec3(0.0h, 0.0h, 0.0h);
+  emptyWeight.diffuseTransmissionWeight = f16vec3(0.0h, 0.0h, 0.0h);
 
-  const float lightSampleThroughput = invSelectionPdf / lightSample.solidAnglePdf;
+  SurfaceMaterialInteractionSplitWeight splitWeight =
+    !hasNonSssOpaqueHit ?
+    opaqueSurfaceMaterialInteractionCalcProjectedWeight(opaqueSurfaceMaterialInteraction, minimalRayInteraction, visibility.rayDirection) :
+    emptyWeight;
+
+  const float lightSampleThroughput = isValidLightSample ? invSelectionPdf / lightSample.solidAnglePdf : 0.0f;
 
   // Determine the weight for the lobes lobe
 
-  const f16vec3 diffuseLobeWeight = splitWeight.diffuseReflectionWeight;
+  // SSS is a generic version for diffuse, remove the diffuse lobe when SSS is enabled to avoid duplication.
+  const f16vec3 diffuseLobeWeight = !isDiffusionProfileSss ? splitWeight.diffuseReflectionWeight : f16vec3(0.0h, 0.0h, 0.0h);
   const f16vec3 specularLobeWeight = splitWeight.specularReflectionWeight;
   const f16vec3 diffuseTransmissionLobeWeight = splitWeight.diffuseTransmissionWeight;
 
@@ -107,15 +140,21 @@ void evalNEEPrimary(
   const vec3 diffuseLobeLightThroughput = vec3(diffuseLobeWeight) * commonLightThroughput;
   const vec3 specularLobeLightThroughput = vec3(specularLobeWeight) * commonLightThroughput;
   const vec3 diffuseTransmissionLobeLightThroughput = vec3(diffuseTransmissionLobeWeight) * commonLightThroughput;
+  // No need to multiply viz attenuation, it's has already been handled in the evalSssDiffusionProfile
+
   const vec3 diffuseAttenuatedRadiance = lightSample.radiance * diffuseLobeLightThroughput;
   const vec3 specularAttenuatedRadiance = lightSample.radiance * specularLobeLightThroughput;
   const vec3 diffuseTransmissionAttenuatedRadiance = lightSample.radiance * diffuseTransmissionLobeLightThroughput;
 
-  diffuseLobeRadiance += throughput * (diffuseAttenuatedRadiance + diffuseTransmissionAttenuatedRadiance);
+  // Accumulate SSS Radiance, we are not calculating the light throughput here because it's different for every SSS sample.
+  // So, we have already multiply the throughput in the sssDiffusionProfileResult.scatteringWeight
+  const vec3 subsurfaceScatteringAttenuatedRadiance = vec3(sssDiffusionProfileResult.scatteringWeight);
+
+  diffuseLobeRadiance += throughput * (diffuseAttenuatedRadiance + diffuseTransmissionAttenuatedRadiance + subsurfaceScatteringAttenuatedRadiance);
   specularLobeRadiance += throughput * specularAttenuatedRadiance;
 
   // Illuminance for RTXDI gradients: just light sample radiance and visibility over sampling PDF
-  illuminance = calcBt709Luminance(commonLightThroughput * lightSample.radiance);
+  illuminance = isValidLightSample ? calcBt709Luminance(commonLightThroughput * lightSample.radiance) : 0.0f;
 }
 
 void calculateRussianRouletteOnFirstBounce(
@@ -123,7 +162,12 @@ void calculateRussianRouletteOnFirstBounce(
   inout vec3 throughput,
   inout float16_t firstSampledSolidAnglePdf) 
 {
-  if (!(cb.enableRussianRoulette && cb.pathMinBounces == 0))
+  if (!(cb.enableRussianRoulette && cb.pathMinBounces == 0) ||
+    // Unbiased NRC training paths don't use RR, but for sake of simplicity
+    // and not having to specialize direct pass we disable RR for all NRC training and query paths.
+    // Also NRC paths should be shorter and it results in better IQ if they end up in the cache 
+    // rather than being terminated at bounce 0
+      cb.enableNrc)
   {
     return;
   }
@@ -351,16 +395,21 @@ void integrateDirectPath(
         lightSample, inverseSelectionPdf, lightIdx);
     }
 
+    const bool isDiffusionProfileSss = (cb.sssArgs.enableDiffusionProfile && isSubsurfaceDiffusionProfileMaterial(opaqueSurfaceMaterialInteraction));
+
     // Evaluate NEE
-    if (rtxdiLightSampleValid || risLightSampleValid)
+    if (rtxdiLightSampleValid || risLightSampleValid || isDiffusionProfileSss)
     {
       bool hasOpaqueHit = false;
+      const bool isValidLightSample = (rtxdiLightSampleValid || risLightSampleValid);
       evalNEEPrimary(
         throughput, pixelCoordinate,
         diffuseLobeRadiance, specularLobeRadiance, lightHitDistance, hasOpaqueHit, illuminance,
-        lightSample, inverseSelectionPdf, sampledTransportPortalIndex, geometryFlags,
+        isValidLightSample, lightSample,
+        inverseSelectionPdf, sampledTransportPortalIndex, geometryFlags,
         primaryRay, primaryMinimalRayInteraction, primarySurfaceInteraction,
-        opaqueSurfaceMaterialInteraction);
+        opaqueSurfaceMaterialInteraction,
+        randomState);
 
       if (rtxdiLightSampleValid && hasOpaqueHit && cb.enableRtxdiDiscardInvisibleSamples)
       {

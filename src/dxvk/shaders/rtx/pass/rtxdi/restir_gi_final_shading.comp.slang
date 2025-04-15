@@ -156,7 +156,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     // Deserialize the Surface Material Interaction
     polymorphicSurfaceMaterialInteraction = polymorphicSurfaceMaterialInteractionReadFromGBuffer(
       threadIndex, PrimaryWorldShadingNormal, PrimaryPerceptualRoughness, PrimaryAlbedo, PrimaryBaseReflectivity,
-      SharedMaterialData0, SharedMaterialData1, SharedSurfaceIndex, SharedSubsurfaceData);
+      SharedMaterialData0, SharedMaterialData1, SharedSurfaceIndex, SharedSubsurfaceData, SharedSubsurfaceDiffusionProfileData);
 
     spatialReservoir = RAB_LoadGIReservoir(threadIndex, ReSTIRGI_GetSpatialOutputPage());
   }
@@ -198,10 +198,11 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
         tMaxFactor = validSampleMaxRange;
       }
 
+      // TODO: Why ignore SSS here?
       VisibilityResult visibility = traceVisibilityRay<visibilityModeEnablePom | visibilityModeAccurateHitDistance>(minimalSurfaceInteraction,
         samplePosition, rayMask, portalID,
         geometryFlags.portalSpace, geometryFlags.pomOpaqueSurfaceEncountered, 0, coneSpreadAngle, tMaxFactor, geometryFlags.isViewModel, 
-        false, primarySurfaceIndex, SharedTextureCoord[threadIndex], /*isSubsurface*/ false, /*shadingNormal*/ f16vec3(0.0h), /*clearOpaqueHitAttenuation*/ !validateSamples);
+        false, primarySurfaceIndex, SharedTextureCoord[threadIndex], /*isThinOpaqueSubsurface*/ false, /*shadingNormal*/ f16vec3(0.0h), /*clearOpaqueHitAttenuation*/ !validateSamples);
 
       filterColor = visibility.attenuation;      
       if (validateSamples && !visibility.hasPOMHit)

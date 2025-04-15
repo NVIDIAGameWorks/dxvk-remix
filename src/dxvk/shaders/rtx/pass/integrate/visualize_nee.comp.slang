@@ -208,7 +208,7 @@ void getLightCandidateInfo(NEECell cell, int binIndex, RAB_Surface surface, f16v
   float16_t specularRatio = calcBt709Luminance(surface.opaqueSurfaceMaterialInteraction.baseReflectivity)
     / calcBt709Luminance(surface.opaqueSurfaceMaterialInteraction.albedo + surface.opaqueSurfaceMaterialInteraction.baseReflectivity);
 
-  const bool isSubsurface = isSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction);
+  const bool isThinOpaqueSubsurface = isThinOpaqueSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction);
 
    cell.calculateLightCandidateNormalizedWeight(binIndex,
      surface.minimalSurfaceInteraction.position,
@@ -216,7 +216,7 @@ void getLightCandidateInfo(NEECell cell, int binIndex, RAB_Surface surface, f16v
      surface.opaqueSurfaceMaterialInteraction.shadingNormal,
      specularRatio,
      surface.opaqueSurfaceMaterialInteraction.isotropicRoughness,
-     isSubsurface,
+     isThinOpaqueSubsurface,
      probability);
 
   MemoryPolymorphicLight memoryPolymorphicLight = lights[lightCandidate.getLightID()];
@@ -349,7 +349,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           canvas.drawForeground(vec3(0), 0.2);
         }
       }
-      storeInDebugView(ivec2(threadIndex), canvas.getFinalColor());
+      storeInDebugView(threadIndex, canvas.getFinalColor());
     }
     break;
   case DEBUG_VIEW_NEE_CACHE_TRIANGLE_CANDIDATE:
@@ -360,7 +360,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
       uint2 cursorPixel = args.mouseUV * resolution;
       if (isCrossPixel(threadIndex, cursorPixel))
       {
-        storeInDebugView(ivec2(threadIndex), vec3(1,1,0));
+        storeInDebugView(threadIndex, vec3(1,1,0));
       }
       else
       {
@@ -382,7 +382,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           triangleColor = lerp(vec4(1,0,0,0.5), vec4(1,1,0,0.5), lightSelectionPDF * 2.0);
         }
         vec3 resultColor = lerp(backgroundColor, triangleColor.rgb, triangleColor.a);
-        storeInDebugView(ivec2(threadIndex), resultColor);
+        storeInDebugView(threadIndex, resultColor);
       }
     }
     break;

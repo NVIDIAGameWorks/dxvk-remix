@@ -56,5 +56,4 @@ static const uint8_t surfaceMaterialTypeMask = uint8_t(0x3u);
 // If set, then the texture bound to transmittanceOrDiffuseTextureIndex is an albedo map for the diffuse layer
 #define TRANSLUCENT_SURFACE_MATERIAL_FLAG_USE_DIFFUSE_LAYER (1 << COMMON_MATERIAL_FLAG_TYPE_OFFSET(0))
 
-
 #endif // ifndef SHARED_CONSTANTS_H

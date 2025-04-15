@@ -45,6 +45,9 @@ Texture2D<uint> SharedSurfaceIndex;
 layout(rgba16ui, binding = RESTIR_GI_FINAL_SHADING_BINDING_SHARED_SUBSURFACE_DATA_INPUT)
 Texture2D<uint4> SharedSubsurfaceData;
 
+layout(r11f_g11f_b10f, binding = RESTIR_GI_FINAL_SHADING_BINDING_SHARED_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT)
+Texture2D<float3> SharedSubsurfaceDiffusionProfileData;
+
 // Primary Inputs
 
 layout(r32ui, binding = RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT)

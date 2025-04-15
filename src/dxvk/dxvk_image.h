@@ -7,6 +7,7 @@
 #include "dxvk_util.h"
 #include "../util/xxHash/xxhash.h"
 #include "dxvk_hash.h"
+#include "dxvk_memory_tracker.h"
 
 namespace dxvk {
 
@@ -402,10 +403,11 @@ namespace dxvk {
     // NV-DXVK end
     bool m_shared = false;
 
+    GpuMemoryTracker m_tracker;
+
     small_vector<VkFormat, 4> m_viewFormats;
     
     bool canShareImage(const VkImageCreateInfo&  createInfo, const DxvkSharedHandleInfo& sharingInfo) const;
-
   };
   
   

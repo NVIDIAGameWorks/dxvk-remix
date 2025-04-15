@@ -31,6 +31,7 @@
 #endif
 
 #include "rtx/pass/nrd_args.h"
+#include "rtx/pass/nrc_args.h"
 #include "rtx/pass/volume_args.h"
 #include "rtx/pass/material_args.h"
 #include "rtx/pass/view_distance_args.h"
@@ -98,6 +99,13 @@ struct DomeLightArgs {
   uint textureIndex;
 };
 
+struct SssArgs {
+  uint enableThinOpaque;
+  uint enableDiffusionProfile;
+  float diffusionProfileScale;
+  u16vec2 diffusionProfileDebuggingPixel;
+};
+
 #define OBJECT_PICKING_INVALID (cb.clearColorPicking)
 
 // Constant buffer
@@ -128,6 +136,8 @@ struct RaytraceArgs {
   TerrainArgs terrainArgs;
   NeeCacheArgs neeCacheArgs;
   DomeLightArgs domeLightArgs;
+  NrcArgs nrcArgs;
+  SssArgs sssArgs;
 
   Camera renderTargetCamera;
 
@@ -200,6 +210,8 @@ struct RaytraceArgs {
 
   float2 upscaleFactor;   // Displayed(upscaled) / RT resolution
 
+  float primaryDirectMissLinearViewZ;
+
   uint uniformRandomNumber;
   uint16_t opaqueDiffuseLobeSamplingProbabilityZeroThreshold;
   uint16_t minOpaqueDiffuseLobeSamplingProbability;
@@ -215,7 +227,7 @@ struct RaytraceArgs {
   uint16_t translucentTransmissionLobeSamplingProbabilityZeroThreshold;
   uint16_t minTranslucentTransmissionLobeSamplingProbability;
   float roughnessDemodulationOffset;
-  uint timeSinceStartMS;
+  float timeSinceStartSeconds;
   
   uint enableCalculateVirtualShadingNormals;
   uint enableDirectLighting;
@@ -329,7 +341,7 @@ struct RaytraceArgs {
   float resolveStochasticAlphaBlendThreshold;
   float translucentDecalAlbedoFactor;
 
-  float volumeClampedReprojectionConfidencePenalty;
+  float pad;
 
   float skyBrightness;
 
@@ -348,11 +360,23 @@ struct RaytraceArgs {
   uint pomEnableReSTIRGI;
   uint pomEnablePSR;
   uint pomMaxIterations;
-  uint enableThinOpaque;
+  uint enableSssTransmission;
+  uint enableSssTransmissionSingleScattering;
+  uint sssTransmissionBsdfSampleCount;
+  uint sssTransmissionSingleScatteringSampleCount;
+  uint enableTransmissionDiffusionProfileCorrection;
   float totalMipBias;
 
   uint forceFirstHitInGBufferPass;
 
   uint enableRaytracedRenderTarget;
+  // NRC enablement is controlled by global macros being defined.
+  // When macros are not used (i.e. in some passes) this variable controls the NRC enablement.
+  uint enableNrc;
+
+  // Debug override to disallow NRC training when it is enabled in the first place,
+  // hence why it is not named enableNrcTraining here
+  uint allowNrcTraining;
+
   // NOTE: Add structs to the top section of RaytraceArgs, not the bottom.
 };

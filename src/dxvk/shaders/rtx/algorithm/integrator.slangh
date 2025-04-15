@@ -36,6 +36,7 @@
 #include "rtx/algorithm/resolve.slangh"
 #include "rtx/algorithm/visibility.slangh"
 #include "rtx/algorithm/nee_cache.h"
+#include "rtx/algorithm/path_state.slangh"
 
 struct IndirectSampleData
 {
@@ -234,7 +235,7 @@ bool evalNEESecondary(
   rayMask |= (cb.enableIndirectTranslucentShadows) ? OBJECT_MASK_TRANSLUCENT : 0;
   rayMask |= (cb.enableIndirectAlphaBlendShadows) ? OBJECT_MASK_ALPHA_BLEND : 0;
 
-  const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
+  const bool isThinOpaqueSubsurface = isThinOpaqueSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
   // The visibility test function applies an offset to the surface position to avoid self
   // intersection, so the actual length is slightly different from the estimatedLength here.
@@ -252,14 +253,15 @@ bool evalNEESecondary(
     sampledTransportPortalIndex, portalSpace, pomOpaqueSurfaceEncountered,
     minimalRayInteraction.coneRadius, viewRay.spreadAngle, ratio, isViewModelSurface, false,
     surfaceIndex, texcoords,
-    isSubsurface, opaqueSurfaceMaterialInteraction.shadingNormal);
+    isThinOpaqueSubsurface,
+    opaqueSurfaceMaterialInteraction.shadingNormal);
 
   if (visibility.hasOpaqueHit)
   {
     diffuseLight = specularLight = 0;
     return false;
-  }
-
+  }  
+  
   // Accumulate throughput and hit distance
   const float lightSampleThroughput = lightSample.solidAnglePdf > 0 ? 1.0 / lightSample.solidAnglePdf : 0.0;
 
@@ -283,7 +285,7 @@ void evaluateUnshadowedLight(
   out vec3 specularLight)
 {
   if (dot(inputDirection, opaqueSurfaceMaterialInteraction.shadingNormal) < 0.0 &&
-      (!cb.enableThinOpaque || !isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction)))
+      (!cb.sssArgs.enableThinOpaque || !isThinOpaqueSubsurfaceMaterial(opaqueSurfaceMaterialInteraction)))
   {
     diffuseLight = specularLight = 0;
     return;
@@ -296,10 +298,17 @@ void evaluateUnshadowedLight(
   specularLight = lightSample.radiance * splitWeight.specularReflectionWeight;
 }
 
-float calculateRussianRouletteContinueProbability(float pathThroughput, bool isOpaqueMaterial, bool isSpecularLobe, float16_t isotropicRoughness, float16_t hitDistance)
+float calculateRussianRouletteContinueProbability(
+  PathState pathState,
+  bool isOpaqueMaterial,
+  bool isSpecularLobe,
+  float16_t isotropicRoughness,
+  float16_t hitDistance)
 {
-  if (cb.russianRouletteMode == RussianRouletteMode::ThroughputBased)
+  if (pathState.russianRouletteMode == RussianRouletteMode::ThroughputBased)
   {
+    const float pathThroughput = calcBt709Luminance(pathState.calculateFullThroughput());
+
     return min(pathThroughput, cb.russianRouletteMaxContinueProbability);
   }
   else

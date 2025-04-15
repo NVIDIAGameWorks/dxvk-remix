@@ -171,6 +171,9 @@ dxvk_src = files([
   'dxvk_util.cpp',
   'dxvk_util.h',
 
+  'dxvk_memory_tracker.cpp',
+  'dxvk_memory_tracker.h',
+
   'rtx_render/rtx.h',
   'rtx_render/rtx_accel_manager.cpp',
   'rtx_render/rtx_accel_manager.h',
@@ -256,10 +259,14 @@ dxvk_src = files([
   'rtx_render/rtx_mod_usd.h',
   'rtx_render/rtx_nee_cache.cpp',
   'rtx_render/rtx_nee_cache.h',
+  'rtx_render/rtx_neural_radiance_cache.cpp',
+  'rtx_render/rtx_neural_radiance_cache.h',
   'rtx_render/rtx_ngx_wrapper.cpp',
   'rtx_render/rtx_ngx_wrapper.h',
   'rtx_render/rtx_nis.cpp',
   'rtx_render/rtx_nis.h',
+  'rtx_render/rtx_nrc_context.cpp',
+  'rtx_render/rtx_nrc_context.h',
   'rtx_render/rtx_nrd_context.cpp',
   'rtx_render/rtx_nrd_context.h',
   'rtx_render/rtx_nrd_settings.cpp',
@@ -315,14 +322,10 @@ dxvk_src = files([
   'rtx_render/rtx_types.cpp',
   'rtx_render/rtx_types.h',
   'rtx_render/rtx_utils.h',
-  'rtx_render/rtx_volume_filter.cpp',
-  'rtx_render/rtx_volume_filter.h',
-  'rtx_render/rtx_volume_integrate.cpp',
-  'rtx_render/rtx_volume_integrate.h',
-  'rtx_render/rtx_volume_manager.cpp',
-  'rtx_render/rtx_volume_manager.h',
-  'rtx_render/rtx_volume_preintegrate.cpp',
-  'rtx_render/rtx_volume_preintegrate.h',
+  'rtx_render/rtx_global_volumetrics.cpp',
+  'rtx_render/rtx_global_volumetrics.h',
+  'rtx_render/rtx_dust_particles.cpp',
+  'rtx_render/rtx_dust_particles.h',
 
   'rtx_render/rtx_constants.h',
 
@@ -368,6 +371,11 @@ dxvk_src = files([
   'imgui/implot_items.cpp',
 ])
 
+nrc_include_dir = include_directories(join_paths('../../', 'submodules/nrc/include'))
+nrc_dep = declare_dependency(
+  include_directories : nrc_include_dir
+)
+
 thread_dep = dependency('threads')
 
 nrd_include_dir = include_directories(join_paths('../../', 'external/nrd/Include'))
@@ -390,26 +398,22 @@ dlss_dep = declare_dependency(
   include_directories : [ dlss_include_dir, dlfg_include_dir ]
 )
 
+nrc_include_path = include_directories(join_paths('../../', 'submodules/nrc/include'))
+nrc_dll_path = join_paths(meson.global_source_root(), 'submodules/nrc/bin/')
+nrc_lib_path = join_paths(meson.global_source_root(), 'submodules/nrc/lib/')
+nrc_lib = dxvk_compiler.find_library('NRC_Vulkan', dirs : nrc_lib_path, required : true)
+
+nrc_dep = declare_dependency(
+  dependencies : [ nrc_lib ],
+  include_directories : nrc_include_path
+)
+
 generated_dxvk_shaders = glsl_generator.process(dxvk_shaders)
-
-rtx_shaders_command = [ python_interpreter, shader_compile_script,
-    '-glslang', glsl_compiler,
-    '-slangc', slang_compiler,
-    '-input', '@CURRENT_SOURCE_DIR@/shaders/rtx',
-    '-include', '@CURRENT_SOURCE_DIR@/shaders',
-    '-include', rtxdi_include_path_string,
-    '-output', '@OUTDIR@/rtx_shaders',
-    '-parallel' ]
-
-if get_option('buildtype').startswith('debug')
-  rtx_shaders_command += [ '-debug' ]
-endif
-
 rtx_shaders = custom_target(
   'rtx_shaders',
   build_by_default: true,
   output: ['_built_shaders.txt'],
-  command: rtx_shaders_command
+  command: [ python_interpreter ] + rtx_shaders_command_arguments
 )
 
 dxvk_embedded_data_files = files([
@@ -419,7 +423,7 @@ dxvk_embedded_data_files = files([
 
 dxvk_generated_embedded_files = embedding_compiler.process(dxvk_embedded_data_files)
 
-dxvk_deps = [ thread_dep, vkcommon_dep, dxvk_extradep, usd_dep, lssUsd_dep, nrd_dep, dlss_dep, tracy_dep, tracy_dep_dynamic, aftermath_dep, nvapi_dep, reflex_dep ]
+dxvk_deps = [ thread_dep, vkcommon_dep, dxvk_extradep, usd_dep, lssUsd_dep, nrc_dep, nrd_dep, dlss_dep, tracy_dep, tracy_dep_dynamic, aftermath_dep, nvapi_dep, reflex_dep ]
 
 if enable_rtxio
   dxvk_deps += rtxio_dep
@@ -434,7 +438,7 @@ endif
 dxvk_lib = static_library('dxvk', dxvk_src, dxvk_version, [generated_dxvk_shaders, rtx_shaders, dxvk_generated_embedded_files],
   link_with           : [ util_lib, spirv_lib ], 
   dependencies        : [ dxvk_deps ],
-  include_directories : [ dxvk_include_path, dxvk_shader_include_path, rtxdi_include_path, remix_api_include_path ],
+  include_directories : [ dxvk_include_path, dxvk_shader_include_path, rtxdi_include_path, remix_api_include_path, rtxcr_include_path ],
   override_options    : ['cpp_std='+dxvk_cpp_std])
 
 dxvk_dep = declare_dependency(

@@ -150,6 +150,12 @@ public:
   bool isUnlinkedForGC() const { return m_isUnlinkedForGC; }
 private:
 
+  Matrix4 calcFirstInstanceObjectToWorld() {
+    if (surface.instancesToObject) {
+      return surface.objectToWorld * (*surface.instancesToObject)[0]; 
+    }
+    return surface.objectToWorld;
+  }
   void onTransformChanged();
   friend class InstanceManager;
 
@@ -207,9 +213,6 @@ private:
 public:
   bool isFrontFaceFlipped = false;
 
-  // Not really needed in this struct, just to store it somewhere for a batched build
-  std::vector<VkAccelerationStructureGeometryKHR> buildGeometries;
-  std::vector<VkAccelerationStructureBuildRangeInfoKHR> buildRanges;
   std::vector<uint32_t> billboardIndices;
   std::vector<uint32_t> indexOffsets;
 };
@@ -219,12 +222,12 @@ struct InstanceEventHandler {
   void* eventHandlerOwnerAddress;
 
   // Callback triggered whenever a new instance has been added to the database
-  std::function<void(const RtInstance&)> onInstanceAddedCallback;
+  std::function<void(RtInstance&)> onInstanceAddedCallback;
   // Callback triggered whenever instance metadata is updated - the boolean flags 
   //   signal if the transform and/or vertex positions have changed (respectively)
   std::function<void(RtInstance&, const RtSurfaceMaterial&, bool, bool)> onInstanceUpdatedCallback;
   // Callback triggered whenever an instance has been removed from the database
-  std::function<void(const RtInstance&)> onInstanceDestroyedCallback;
+  std::function<void(RtInstance&)> onInstanceDestroyedCallback;
 
   InstanceEventHandler() = delete;
   InstanceEventHandler(void* _eventHandlerOwnerAddress) : eventHandlerOwnerAddress(_eventHandlerOwnerAddress) { }
@@ -333,15 +336,14 @@ private:
   void mergeInstanceHeuristics(RtInstance& instanceToModify, const DrawCallState& drawCall, const RtSurfaceMaterial& material, const RtSurface::AlphaState& alphaState) const;
 
   // Finds the "closest" matching instance to a set of inputs, returns a pointer (can be null if not found) to closest instance
-  RtInstance* findSimilarInstance(const BlasEntry& blas, const RtSurfaceMaterial& material, const Matrix4& transform, CameraType::Enum cameraType, const RayPortalManager& rayPortalManager);
+  RtInstance* findSimilarInstance(BlasEntry& blas, const RtSurfaceMaterial& material, const Matrix4& firstInstanceObjectToWorld, CameraType::Enum cameraType, const RayPortalManager& rayPortalManager);
 
   RtInstance* addInstance(BlasEntry& blas);
   void processInstanceBuffers(const BlasEntry& blas, RtInstance& currentInstance) const;
 
   void updateInstance(
     RtInstance& currentInstance, const CameraManager& cameraManager,
-    const BlasEntry& blas, const DrawCallState& drawCall, const MaterialData& materialData, const RtSurfaceMaterial& material,
-    const Matrix4& transform, const Matrix4& worldToProjection);
+    const BlasEntry& blas, const DrawCallState& drawCall, const MaterialData& materialData, const RtSurfaceMaterial& material);
 
   void removeInstance(RtInstance* instance);
 

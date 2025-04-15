@@ -204,7 +204,7 @@ namespace dxvk {
                                   | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
                                   | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
 
-    m_buffers[Subresource] = m_device->GetDXVKDevice()->createBuffer(info, memType, DxvkMemoryStats::Category::AppBuffer);
+    m_buffers[Subresource] = m_device->GetDXVKDevice()->createBuffer(info, memType, DxvkMemoryStats::Category::AppBuffer, "d3d9 buffer");
     m_mappedSlices[Subresource] = m_buffers[Subresource]->getSliceHandle();
 
     return true;

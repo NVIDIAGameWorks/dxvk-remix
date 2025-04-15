@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -19,6 +19,7 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
+#include <random>
 #include "rtx_resources.h"
 #include "dxvk_device.h"
 #include "dxvk_context.h"
@@ -28,6 +29,7 @@
 #include "rtx/pass/gbuffer/gbuffer_binding_indices.h"
 #include "rtx/pass/integrate/integrate_indirect_binding_indices.h"
 #include "rtx/algorithm/nee_cache_data.h"
+#include "rtx/utility/procedural_noise.h"
 #include <assert.h>
 #include "rtx_options.h"
 #include "rtx/utility/gpu_printing.h"
@@ -81,7 +83,7 @@ namespace dxvk {
     desc.numLayers = numLayers;
     desc.mipLevels = mipLevels; 
     desc.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | extraUsageFlags;
-    desc.stages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
+    desc.stages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     desc.access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
     desc.tiling = VK_IMAGE_TILING_OPTIMAL;
     desc.layout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -108,8 +110,8 @@ namespace dxvk {
     return resource;
   }
 
-  Resources::SharedResource::SharedResource(Resources::Resource& _resource)
-    : resource(_resource) {
+  Resources::SharedResource::SharedResource(Resources::Resource&& _resource)
+    : resource(std::move(_resource)) {
   }
 
   Resources::AliasedResource::AliasedResource(Rc<DxvkContext>& ctx,
@@ -119,19 +121,24 @@ namespace dxvk {
                                               const bool allowCompatibleFormatAliasing,
                                               const uint32_t numLayers,
                                               const VkImageType imageType,
-                                              const VkImageViewType imageViewType)
+                                              const VkImageViewType imageViewType,
+                                              VkImageCreateFlags imageCreateFlags,
+                                              const VkImageUsageFlags extraUsageFlags,
+                                              const VkClearColorValue clearValue,
+                                              const uint32_t mipLevels)
 #ifdef REMIX_DEVELOPMENT
     : m_thisObjectAddress(std::make_shared<const Resources::AliasedResource*>(this))
     , m_name(name)
 #endif
   {
-    VkImageCreateFlags imageCreateFlags = 0;
 
-    if (allowCompatibleFormatAliasing)
+    if (allowCompatibleFormatAliasing) {
       imageCreateFlags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+    }
 
     m_device = ctx->getDevice().ptr();
-    m_sharedResource = new SharedResource(createImageResource(ctx, name, extent, format, numLayers, imageType, imageViewType, imageCreateFlags));
+    m_sharedResource = new SharedResource(createImageResource(ctx, name, extent, format, numLayers, imageType, imageViewType, 
+                                                              imageCreateFlags, extraUsageFlags, clearValue, mipLevels));
     m_view = m_sharedResource->resource.view;
   }
 
@@ -282,7 +289,7 @@ namespace dxvk {
   }
 
   void Resources::AliasedResource::takeOwnership() const {
-#ifdef REMIX_DEVELOPMENT     
+#ifdef REMIX_DEVELOPMENT
     m_sharedResource->owner = m_thisObjectAddress;
 #endif
   }
@@ -322,13 +329,15 @@ namespace dxvk {
     const VkExtent3D& downscaledExtent,
     const VkExtent3D& targetExtent,
     float frameTimeMilliseconds,
-    bool resetHistory) {
+    bool resetHistory,
+    bool isCameraCut) {
 
     FrameBeginContext frameBeginCtx;
     frameBeginCtx.downscaledExtent = downscaledExtent;
     frameBeginCtx.targetExtent = targetExtent;
     frameBeginCtx.frameTimeMilliseconds = frameTimeMilliseconds;
     frameBeginCtx.resetHistory = resetHistory;
+    frameBeginCtx.isCameraCut = isCameraCut;
 
     executeFrameBeginEventList(m_onFrameBegin, ctx, frameBeginCtx);
 
@@ -349,7 +358,7 @@ namespace dxvk {
         }
       }
     }
-    
+
     // Alias resources that alias to different resources frame to frame
     m_raytracingOutput.m_secondaryConeRadius = AliasedResource(m_raytracingOutput.getCurrentRtxdiConfidence(), ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "Secondary Cone Radius");
     m_raytracingOutput.m_sharedIntegrationSurfacePdf = AliasedResource(m_raytracingOutput.getCurrentRtxdiIlluminance(), ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "Shared Integration Surface PDF");
@@ -378,7 +387,7 @@ namespace dxvk {
     info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
     info.access = VK_ACCESS_TRANSFER_WRITE_BIT;
     info.size = sizeof(RaytraceArgs);
-    m_constants = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
+    m_constants = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "Common raytracing args constant buffer");
   }
 
   Rc<DxvkBuffer> Resources::getConstantsBuffer() {
@@ -431,6 +440,77 @@ namespace dxvk {
     viewInfo.minLayer = 0;
     viewInfo.numLayers = 64;
     m_blueNoiseTexView = m_device->createImageView(m_blueNoiseTex, viewInfo);
+  }
+
+  void Resources::createValueNoiseLut(dxvk::Rc<DxvkContext> ctx) {
+    const uint32_t kSize = VALUE_NOISE_RESOLUTION;
+    DxvkImageCreateInfo desc;
+    desc.type = VK_IMAGE_TYPE_2D;
+    desc.format = VK_FORMAT_R16G16B16A16_UNORM;
+    desc.flags = 0;
+    desc.sampleCount = VK_SAMPLE_COUNT_1_BIT;
+    desc.extent = VkExtent3D { kSize, kSize, 1 };
+    desc.numLayers = 1;
+    desc.mipLevels = 1;
+    desc.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    desc.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    desc.access = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+    desc.tiling = VK_IMAGE_TILING_OPTIMAL;
+    desc.layout = VK_IMAGE_LAYOUT_GENERAL;
+
+    m_valueNoiseLut = m_device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXMaterialTexture, "value noise LUT");
+
+    uint32_t rowPitch = desc.extent.width * sizeof(uint16_t) * 4;
+    uint32_t layerPitch = rowPitch * desc.extent.height;
+
+    std::vector<std::vector<float>> random(kSize, std::vector<float>(kSize));
+    std::default_random_engine generator;
+    std::uniform_real_distribution<float> dist(0.f, 1.f);
+    for (uint32_t x = 0; x < kSize; x++) {
+      for (uint32_t y = 0; y < kSize; y++) {
+        random[x][y] = fabs(dist(generator));
+      }
+    }
+
+    std::vector<uint64_t> data(kSize * kSize);
+    for (uint32_t x = 0; x < kSize; x++) {
+      for (uint32_t y = 0; y < kSize; y++) {
+        uint32_t x1 = (x - VALUE_NOISE_Z_OFFSET_X) % kSize;
+        uint32_t y1 = (y - VALUE_NOISE_Z_OFFSET_Y) % kSize;
+        uint32_t x2 = (x - VALUE_NOISE_W_OFFSET_X) % kSize;
+        uint32_t y2 = (y - VALUE_NOISE_W_OFFSET_Y) % kSize;
+        uint32_t x3 = (x1 - VALUE_NOISE_W_OFFSET_X) % kSize;
+        uint32_t y3 = (y1 - VALUE_NOISE_W_OFFSET_Y) % kSize;
+        uint64_t r = packUnorm<16, uint16_t>(random[x][y]);
+        uint64_t g = packUnorm<16, uint16_t>(random[x1][y1]);
+        uint64_t b = packUnorm<16, uint16_t>(random[x2][y2]);
+        uint64_t a = packUnorm<16, uint16_t>(random[x3][y3]);
+        data[y * kSize + x] = r | (g << 16) | (b << 32) | (a << 48);
+      }
+    }
+
+    ctx->updateImage(m_valueNoiseLut,
+                     VkImageSubresourceLayers { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, desc.numLayers },
+                     VkOffset3D { 0, 0, 0 },
+                     desc.extent,
+                     (void*) data.data(), rowPitch, layerPitch);
+
+    ctx->emitMemoryBarrier(0,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
+                           VK_ACCESS_SHADER_READ_BIT);
+
+    DxvkImageViewCreateInfo viewInfo;
+    viewInfo.type = VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.format = m_valueNoiseLut->info().format;
+    viewInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+    viewInfo.aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+    viewInfo.minLevel = 0;
+    viewInfo.numLevels = 1;
+    viewInfo.minLayer = 0;
+    viewInfo.numLayers = 1;
+    m_valueNoiseLutView = m_device->createImageView(m_valueNoiseLut, viewInfo);
   }
 
   Rc<DxvkSampler> dxvk::Resources::getSampler(
@@ -554,6 +634,16 @@ namespace dxvk {
     assert(m_blueNoiseTexView != nullptr);
 
     return m_blueNoiseTexView;
+  }
+
+  Rc<DxvkImageView> Resources::getValueNoiseLut(dxvk::Rc<DxvkContext> ctx) {
+    if (m_valueNoiseLut == nullptr) {
+      createValueNoiseLut(ctx);
+    }
+    assert(m_valueNoiseLut != nullptr);
+    assert(m_valueNoiseLutView != nullptr);
+
+    return m_valueNoiseLutView;
   }
 
   Resources::Resource Resources::getSkyMatte(Rc<DxvkContext> ctx, VkFormat format) {
@@ -743,31 +833,6 @@ namespace dxvk {
     // Changing it to false requires further changes below.
     const bool allowCompatibleFormatAliasing = true;
 
-    // Volumetrics
-    m_raytracingOutput.m_froxelVolumeExtent = util::computeBlockCount(m_downscaledExtent, VkExtent3D {
-      RtxOptions::Get()->getFroxelGridResolutionScale(),
-      RtxOptions::Get()->getFroxelGridResolutionScale(),
-      1
-    });
-    m_raytracingOutput.m_froxelVolumeExtent.depth = RtxOptions::Get()->getFroxelDepthSlices();
-    m_raytracingOutput.m_numFroxelVolumes = RtxOptions::Get()->enableVolumetricsInPortals() ? maxRayPortalCount + 1 : 1;
-
-    VkExtent3D froxelGridFullDimensions = m_raytracingOutput.m_froxelVolumeExtent;
-    // Note: preintegrated radiance is only computed for one (main) volume, not all of them
-    m_raytracingOutput.m_volumePreintegratedRadiance = createImageResource(ctx, "volume preintegrated radiance", froxelGridFullDimensions, VK_FORMAT_B10G11R11_UFLOAT_PACK32, 1, VK_IMAGE_TYPE_3D, VK_IMAGE_VIEW_TYPE_3D);
-
-    froxelGridFullDimensions.width *= m_raytracingOutput.m_numFroxelVolumes;
-
-    m_raytracingOutput.m_volumeReservoirs[0] = createImageResource(ctx, "volume reservoir 0", froxelGridFullDimensions, VK_FORMAT_R32G32B32A32_UINT, 1, VK_IMAGE_TYPE_3D, VK_IMAGE_VIEW_TYPE_3D);
-    m_raytracingOutput.m_volumeReservoirs[1] = createImageResource(ctx, "volume reservoir 1", froxelGridFullDimensions, VK_FORMAT_R32G32B32A32_UINT, 1, VK_IMAGE_TYPE_3D, VK_IMAGE_VIEW_TYPE_3D);
-    // Note: RGBA16 used here as R11G11B10 develops precision issues when accumulated over many frames. Luckily can make use of 16 bit alpha
-    // channel to store additional information however (such as the history age, previously we'd want this in its own texture so it could be
-    // sampled from exactly whereas the radiance would be interpolated, but interpolating the history age is likely a better estimation of the
-    // actual age anyways, though do note this is fairly wasteful as the history age only needs to be 8-ish bits).
-    m_raytracingOutput.m_volumeAccumulatedRadiance[0] = createImageResource(ctx, "volume accumulated radiance 0", froxelGridFullDimensions, VK_FORMAT_R16G16B16A16_SFLOAT, 1, VK_IMAGE_TYPE_3D, VK_IMAGE_VIEW_TYPE_3D);
-    m_raytracingOutput.m_volumeAccumulatedRadiance[1] = createImageResource(ctx, "volume accumulated radiance 1", froxelGridFullDimensions, VK_FORMAT_R16G16B16A16_SFLOAT, 1, VK_IMAGE_TYPE_3D, VK_IMAGE_VIEW_TYPE_3D);
-    m_raytracingOutput.m_volumeFilteredRadiance = createImageResource(ctx, "volume filtered radiance", froxelGridFullDimensions, VK_FORMAT_B10G11R11_UFLOAT_PACK32, 1, VK_IMAGE_TYPE_3D, VK_IMAGE_VIEW_TYPE_3D);
-
     // GBuffer (Primary/Secondary Surfaces)
     m_raytracingOutput.m_sharedFlags = createImageResource(ctx, "shared flags", m_downscaledExtent, VK_FORMAT_R16_UINT);
     // Note: Could be B10G11R11_UFLOAT_PACK32 potentially if the precision of that is acceptable for the shared radiance.
@@ -819,8 +884,9 @@ namespace dxvk {
 
     m_raytracingOutput.m_primaryRtxdiTemporalPosition = createImageResource(ctx, "primary rtxdi temporal position", m_downscaledExtent, VK_FORMAT_R32_UINT);
     m_raytracingOutput.m_primarySurfaceFlags = createImageResource(ctx, "primary surface flags", m_downscaledExtent, VK_FORMAT_R8_UINT);
-    m_raytracingOutput.m_primaryDisocclusionThresholdMix = createImageResource(ctx, "primary disocclusion threshold mix", m_downscaledExtent, VK_FORMAT_R8_UNORM);
+    m_raytracingOutput.m_primaryDisocclusionThresholdMix = createImageResource(ctx, "primary disocclusion threshold mix", m_downscaledExtent, VK_FORMAT_R16_SFLOAT);
     m_raytracingOutput.m_sharedSubsurfaceData = createImageResource(ctx, "primary subsurface material buffer", m_downscaledExtent, VK_FORMAT_R16G16B16A16_UINT);
+    m_raytracingOutput.m_sharedSubsurfaceDiffusionProfileData = createImageResource(ctx, "primary subsurface material diffusion profile data buffer", m_downscaledExtent, VK_FORMAT_B10G11R11_UFLOAT_PACK32);
 
     if (m_raytracingOutput.m_primaryObjectPicking.isValid()) {
       m_raytracingOutput.m_primaryObjectPicking = createImageResource(ctx, "primary object picking", m_downscaledExtent, VK_FORMAT_R32_UINT);
@@ -867,21 +933,15 @@ namespace dxvk {
     m_raytracingOutput.m_gbufferPSRData[5] = AliasedResource(m_raytracingOutput.m_secondaryCombinedDiffuseRadiance, ctx, m_downscaledExtent, VK_FORMAT_R32G32_UINT, "GBuffer PSR Data 5");
     m_raytracingOutput.m_gbufferPSRData[6] = AliasedResource(m_raytracingOutput.m_secondaryCombinedSpecularRadiance, ctx, m_downscaledExtent, VK_FORMAT_R32G32_UINT, "GBuffer PSR Data 6");
 
-    m_raytracingOutput.m_indirectRayOriginDirection = AliasedResource(
-      m_raytracingOutput.m_secondaryWorldPositionWorldTriangleNormal, ctx, m_downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT, "Indirect Ray Origin Direction");
-    m_raytracingOutput.m_indirectThroughputConeRadius = AliasedResource(
-      m_raytracingOutput.m_indirectRadianceHitDistance, ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Indirect Throughput Cone Radius", allowCompatibleFormatAliasing);
-    m_raytracingOutput.m_indirectFirstSampledLobeData = AliasedResource(
-      m_raytracingOutput.m_secondaryPositionError, ctx, m_downscaledExtent, VK_FORMAT_R32_UINT, "Indirect First Sampled Lobe Data");
-    m_raytracingOutput.m_indirectFirstHitPerceptualRoughness = AliasedResource(
-      m_raytracingOutput.m_secondaryPerceptualRoughness, ctx, m_downscaledExtent, VK_FORMAT_R8_UNORM, "Indirect First Hit Perceptual Roughness");
+    m_raytracingOutput.m_indirectRayOriginDirection = AliasedResource(m_raytracingOutput.m_secondaryWorldPositionWorldTriangleNormal, ctx, m_downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT, "Indirect Ray Origin Direction");
+    m_raytracingOutput.m_indirectThroughputConeRadius = AliasedResource(m_raytracingOutput.m_primaryIndirectDiffuseRadiance, ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Indirect Throughput Cone Radius", allowCompatibleFormatAliasing);
+    m_raytracingOutput.m_indirectFirstSampledLobeData = AliasedResource(m_raytracingOutput.m_secondaryPositionError, ctx, m_downscaledExtent, VK_FORMAT_R32_UINT, "Indirect First Sampled Lobe Data");
+    m_raytracingOutput.m_indirectFirstHitPerceptualRoughness = AliasedResource(m_raytracingOutput.m_secondaryPerceptualRoughness, ctx, m_downscaledExtent, VK_FORMAT_R8_UNORM, "Indirect First Hit Perceptual Roughness");
     m_raytracingOutput.m_bsdfFactor = createImageResource(ctx, "bsdf factor", m_downscaledExtent, VK_FORMAT_R16G16_SFLOAT);
-    m_raytracingOutput.m_bsdfFactor2 = createImageResource(ctx, "bsdf factor 2", m_downscaledExtent, VK_FORMAT_R16G16_SFLOAT);
 
     // Final Output
-    m_raytracingOutput.m_compositeOutput = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Composite Output");
+    m_raytracingOutput.m_compositeOutput = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Composite Output", allowCompatibleFormatAliasing);
     m_raytracingOutput.m_compositeOutputExtent = m_downscaledExtent;
-    m_raytracingOutput.m_lastCompositeOutput = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Last Composite Output");
 
     // RTXDI Data
     m_raytracingOutput.m_gbufferLast = createImageResource(ctx, "rtxdi gbuffer last", m_downscaledExtent, VK_FORMAT_R32G32_SFLOAT);
@@ -906,16 +966,16 @@ namespace dxvk {
     rtxdiBufferInfo.stages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
     rtxdiBufferInfo.access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
     rtxdiBufferInfo.size = reservoirBufferPixels * numReservoirBuffer * reservoirSize;
-    m_raytracingOutput.m_rtxdiReservoirBuffer = m_device->createBuffer(rtxdiBufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
+    m_raytracingOutput.m_rtxdiReservoirBuffer = m_device->createBuffer(rtxdiBufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "RTXDI reservoir buffer");
     
     DxvkBufferCreateInfo neeCacheInfo = rtxdiBufferInfo;
     int cellCount = NEE_CACHE_PROBE_RESOLUTION * NEE_CACHE_PROBE_RESOLUTION * NEE_CACHE_PROBE_RESOLUTION;
     neeCacheInfo.size = cellCount * NEE_CACHE_CELL_CANDIDATE_TOTAL_SIZE;
-    m_raytracingOutput.m_neeCache = m_device->createBuffer(neeCacheInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
+    m_raytracingOutput.m_neeCache = m_device->createBuffer(neeCacheInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "NEE Cache Buffer");
     neeCacheInfo.size = cellCount * NEE_CACHE_CELL_TASK_TOTAL_SIZE;
-    m_raytracingOutput.m_neeCacheTask = m_device->createBuffer(neeCacheInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
+    m_raytracingOutput.m_neeCacheTask = m_device->createBuffer(neeCacheInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "NRR Cache Task Buffer");
     neeCacheInfo.size = cellCount * NEE_CACHE_SAMPLES * sizeof(NeeCache_PackedSample);
-    m_raytracingOutput.m_neeCacheSample = m_device->createBuffer(neeCacheInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
+    m_raytracingOutput.m_neeCacheSample = m_device->createBuffer(neeCacheInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "NEE Cache Sample Buffer");
     m_raytracingOutput.m_neeCacheThreadTask = createImageResource(ctx, "radiance cache thread task", m_downscaledExtent, VK_FORMAT_R32G32_UINT);
 
     // Displacement
@@ -935,13 +995,50 @@ namespace dxvk {
       gpuPrintBufferInfo.access = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT;
       gpuPrintBufferInfo.size = bufferLength * sizeof(GpuPrintBufferElement);
       
-      m_raytracingOutput.m_gpuPrintBuffer = m_device->createBuffer(gpuPrintBufferInfo, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, DxvkMemoryStats::Category::RTXBuffer);
+      m_raytracingOutput.m_gpuPrintBuffer = m_device->createBuffer(gpuPrintBufferInfo, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, DxvkMemoryStats::Category::RTXBuffer, "GPU Print Buffer");
       GpuPrintBufferElement* gpuPrintElements = reinterpret_cast<GpuPrintBufferElement*>(m_raytracingOutput.m_gpuPrintBuffer->mapPtr(0));
      
       if (gpuPrintElements) {
         for (uint32_t i = 0; i < bufferLength; i++) {
           gpuPrintElements[i].invalidate();
         }
+      }
+    }
+
+    // Sampler feedback buffer for texture streaming
+    {
+      constexpr size_t sizeInBytes = SAMPLER_FEEDBACK_MAX_TEXTURE_COUNT * sizeof(uint32_t);
+      {
+        DxvkBufferCreateInfo feedInfo = {};
+        {
+          // Note: Transfer destination usage bit required for vkCmdFillBuffer to be used on this buffer (used for clearing sections of it),
+          // transfer source used to copy from this buffer to the readback buffers.
+          feedInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+          feedInfo.stages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR | VK_PIPELINE_STAGE_TRANSFER_BIT;
+          feedInfo.access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT;
+          feedInfo.size = sizeInBytes;
+        }
+        m_raytracingOutput.m_samplerFeedbackDevice = m_device->createBuffer(
+          feedInfo,
+          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+          DxvkMemoryStats::Category::RTXBuffer, "Sampler Feedback Buffer");
+      }
+      for (Rc<DxvkBuffer>& readbackBuf : m_raytracingOutput.m_samplerFeedbackReadback) {
+        DxvkBufferCreateInfo feedInfo = {};
+        {
+          feedInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+          feedInfo.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_HOST_BIT;
+          feedInfo.access = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_HOST_READ_BIT;
+          feedInfo.size = sizeInBytes;
+        }
+        readbackBuf = m_device->createBuffer(
+          feedInfo,
+          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+          DxvkMemoryStats::Category::RTXBuffer, "Sampler Feedback Readback Buffer");
+
+        // initial reset, as if all textures accessed last mip
+        // Note: Write UINT32_MAX here as this is effectively a uint32 buffer with how the texture manager reads it, but since memset only takes an 8 bit integer we do this instead by writing UINT8_MAX, rather than needing to use a copy.
+        std::memset(readbackBuf->mapPtr(0), UINT8_MAX, readbackBuf->info().size);
       }
     }
 
@@ -952,7 +1049,11 @@ namespace dxvk {
   void Resources::createTargetResources(Rc<DxvkContext>& ctx) {
     Logger::debug("Target resolution changed, recreating target resources");
 
-    m_raytracingOutput.m_finalOutput = createImageResource(ctx, "final output", m_targetExtent, VK_FORMAT_R16G16B16A16_SFLOAT);
+    // Explicit constant to make it clear where cross format aliasing occurs
+    const bool allowCompatibleFormatAliasing = true;
+
+    m_raytracingOutput.m_finalOutput = AliasedResource(ctx, m_targetExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "final output", allowCompatibleFormatAliasing, 1, VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, 0, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+    m_raytracingOutput.m_finalOutputExtent = m_targetExtent;
 
     // Post Effect intermediate textures
     m_raytracingOutput.m_postFxIntermediateTexture = createImageResource(ctx, "postfx intermediate texture", m_targetExtent, VK_FORMAT_R16G16B16A16_SFLOAT);

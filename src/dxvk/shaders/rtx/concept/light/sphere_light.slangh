@@ -83,7 +83,7 @@ vec3 sphereLightCalcPower(SphereLight sphereLight)
 
 // Note: This does not take shaping into account.
 float sphereLightCalcWeight(SphereLight sphereLight, MinimalSurfaceInteraction viewSurfaceInteraction,
-  const bool isSubSurface)
+  const bool isThinOpaqueSubsurface)
 {
   vec3 lightVector;
   const float positionalWeight = sphereLightCalcPositionalWeight(sphereLight, viewSurfaceInteraction.position, lightVector);
@@ -91,7 +91,7 @@ float sphereLightCalcWeight(SphereLight sphereLight, MinimalSurfaceInteraction v
 
   // Note: Ideally this if statement is re-ordered to avoid the calculation of the positional weight when the visibility test fails now that the logic has been abstracted
   // into functions.
-  if (visibilityWeight || isSubSurface) {
+  if (visibilityWeight || isThinOpaqueSubsurface) {
     return positionalWeight;
   } else {
     return 0.0f;

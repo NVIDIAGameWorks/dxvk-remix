@@ -32,12 +32,11 @@ static const uint froxelVolumeCount = 3;
 // Note: Ensure 16B alignment
 struct VolumeArgs {
   VolumeDefinitionCamera cameras[froxelVolumeCount];
+  VolumeDefinitionCamera restirCameras[froxelVolumeCount];
 
   uint2 froxelGridDimensions;
   vec2 inverseFroxelGridDimensions;
 
-  // Note: These parameters are currently currently unused but present due to being referenced in the also currently unused VolumeReSTIR_SpatialResampling and VolumeReSTIR_TemporalResampling functions.
-  // This comment should be removed once these parameters become properly set and the volume ReSTIR code is put into use. Do not use these parameters until then as they will not be set.
   uint2 restirFroxelGridDimensions;
   vec2 restirInverseFroxelGridDimensions;
 
@@ -49,27 +48,15 @@ struct VolumeArgs {
   float froxelDepthSliceDistributionExponent;
   float froxelMaxDistance;
   float froxelFireflyFilteringLuminanceThreshold;
-  float froxelFilterGaussianSigma;
-
+  uint16_t enableVolumeRISInitialVisibility;
+  uint16_t enableVolumeTemporalResampling;
   vec3 attenuationCoefficient;
-  uint enableVolumetricLighting;
+  uint16_t enable;
+  uint16_t enablevisibilityReuse;
 
   vec3 scatteringCoefficient;
-  uint8_t minReservoirSamples;
-  uint8_t maxReservoirSamples;
-  uint8_t minKernelRadius;
-  uint8_t maxKernelRadius;
-
-  // Note: The range of history values is [0, maxAccumulationFrames].
-  float minReservoirSamplesStabilityHistory;
-  float reservoirSamplesStabilityHistoryRange;
-  float minKernelRadiusStabilityHistory;
-  float kernelRadiusStabilityHistoryRange;
-
-  float reservoirSamplesStabilityHistoryPower;
-  float kernelRadiusStabilityHistoryPower;
-  uint enableVolumeRISInitialVisibility;
-  uint enableVolumeTemporalResampling;
+  uint16_t enableVolumeSpatialResampling;
+  uint16_t enableReferenceMode;
 
   // Note: Min/max filtered radiance U coordinate used to simulate clamp to edge behavior without artifacts
   // by clamping to the center of the first/last froxel on the U axis when dealing with the multiple side by
@@ -77,11 +64,32 @@ struct VolumeArgs {
   float minFilteredRadianceU;
   float maxFilteredRadianceU;
   float inverseNumFroxelVolumes;
-  float pad;
+  uint numSpatialSamples;
 
   // Note: This value is already converted into linear space so it is fine to directly add in as a contribution to the volumetrics.
   vec3 multiScatteringEstimate;
-  float pad1;
+  float spatialSamplingRadius;
+
+  uint restirFroxelDepthSlices;
+  float volumetricFogAnisotropy;
+  uint16_t enableNoiseFieldDensity;
+  uint16_t enableAtmosphere;
+  float noiseFieldSubStepSize;
+
+  float noiseFieldSpatialFrequency;
+  uint noiseFieldOctaves;
+  float noiseFieldDensityScale;
+  float depthOffset;
+
+  vec3 sceneUpDirection;
+  float atmosphereHeight;
+
+  vec3 planetCenter;
+  float atmosphereRadius;
+
+  vec2 pad;
+  float maxAttenuationDistanceForNoAtmosphere;
+  uint resetHistory;
 };
 
 #ifdef __cplusplus

@@ -51,6 +51,12 @@ struct TranslucentMaterialArgs {
   float transmittanceColorBias = 0.f;
   float normalIntensity = 1.f;
   uint enableDiffuseLayerOverride = 0;
+  vec2 animatedWaterPrimaryNormalMotion = vec2(0.f, 0.f);
+  vec2 animatedWaterSecondaryNormalMotion = vec2(0.f, 0.f);
+  float animatedWaterSecondaryNormalLodBias = 0.f;
+  uint animatedWaterEnable = 0;
+  uint pad0 = 0;
+  uint pad1 = 0;
 };
 
 #ifdef __cplusplus
@@ -60,6 +66,8 @@ static_assert((sizeof(TranslucentMaterialArgs) & 15) == 0);
 
 #include "rtx_option.h"
 #include "../util/util_macro.h"
+#include <algorithm>
+#include "../shaders/rtx/utility/shared_constants.h"
 
 namespace dxvk {
 
@@ -128,6 +136,19 @@ struct TranslucentMaterialOptions {
   RTX_OPTION("rtx.translucentMaterial", float, transmittanceColorBias, 0.0f, "A bias factor to add to all transmittance color values in the opaque material. Should only be used for debugging or development.");
   RTX_OPTION("rtx.translucentMaterial", float, normalIntensity, 1.0f, "An arbitrary strength scale factor to apply when decoding normals in the translucent material. Should only be used for debugging or development.");
 
+  // Animated Water
+  RTX_OPTION("rtx.translucentMaterial", Vector2, animatedWaterPrimaryNormalMotion, Vector2(0.05f, 0.05f),
+             "Velocity in UV space for the primary texture coordinate.\n"
+             "This relies on Remix animation time, which will not respect any time warping performed by the game (so pause, slow mo, etc will not change animation speed).");
+  RTX_OPTION("rtx.translucentMaterial", Vector2, animatedWaterSecondaryNormalMotion, Vector2(-0.03f, -0.06f),
+             "Velocity in UV space for the secondary texture coordinate.\n"
+             "This relies on Remix animation time, which will not respect any time warping performed by the game (so pause, slow mo, etc will not change animation speed).");
+  RTX_OPTION("rtx.translucentMaterial", float, animatedWaterSecondaryNormalLodBias, 1.0f,
+             "LoD bias to use when taking the second normal map sample.\n"
+             "Values greater than 0 will cause the secondary normal map to be blurred, resulting in lower frequency waves.");
+  RTX_OPTION("rtx.translucentMaterial", bool, animatedWaterEnable, true,
+             "If enabled, draw calls in the AnimatedWater category and a translucent material will have their primary texcoordinates animated, and will also take a second sample from the normal map.\n"
+             "Note that objects must be properly categorized as animated water to be rendered with this mode.");
   // Overrides
 
   RTX_OPTION("rtx.translucentMaterial", bool, enableDiffuseLayerOverride, false, "A flag to force the diffuse layer on the translucent material to be enabled. Should only be used for debugging or development.");
@@ -137,6 +158,10 @@ public:
     args.transmittanceColorScale = transmittanceColorScale();
     args.transmittanceColorBias = transmittanceColorBias();
     args.normalIntensity = normalIntensity();
+    args.animatedWaterPrimaryNormalMotion = animatedWaterPrimaryNormalMotion();
+    args.animatedWaterSecondaryNormalMotion = animatedWaterSecondaryNormalMotion();
+    args.animatedWaterSecondaryNormalLodBias = animatedWaterSecondaryNormalLodBias();
+    args.animatedWaterEnable = animatedWaterEnable();
     args.enableDiffuseLayerOverride = enableDiffuseLayerOverride();
   }
 };

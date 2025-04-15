@@ -109,7 +109,10 @@ namespace dxvk {
      * \param [in] shader Newly compiled shader
      */
     void registerShader(
-      const Rc<DxvkShader>&         shader);
+      const Rc<DxvkShader>&         shader,
+// NV-DXVK start
+      bool                          isRemixShader = false);
+// NV-DXVK end
 
     // NV-DXVK start: compile raytracing shaders on shader compilation threads
     /**
@@ -135,6 +138,10 @@ namespace dxvk {
      * \returns \c true if shaders are being compiled
      */
     bool isCompilingShaders() const;
+
+// NV-DXVK start
+    uint32_t remixShaderCompilationCount() const;
+// NV-DXVK end
 
     /**
      * \brief Stops async compiler threads

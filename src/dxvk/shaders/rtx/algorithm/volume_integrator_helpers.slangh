@@ -7,14 +7,8 @@
 
 // Note: Test light sample visibility from a specified volume interaction. Split out into this function to be consistent among volumetric code.
 VisibilityResult evalVolumeNEEVisibility(
-  LightSample lightSample, uint8_t sampledTransportPortalIndex,
-  Ray viewRay, MinimalRayInteraction minimalRayInteraction, VolumeInteraction volumeInteraction)
+  LightSample lightSample, uint8_t sampledTransportPortalIndex, Ray visibilityRay)
 {
-  // Create a Ray to the location sampled on the light
-
-  const Ray visibilityRay = rayCreatePosition(
-    minimalRayInteraction, volumeInteraction, viewRay, lightSample.position);
-
   // Associate the volume grid with the main space to minimize occlusion by geometry with per portal space visibility
   // in different portal spaces. Optimally we should skip objects with per-portal space visibility altogether since 
   // their occlusion can't be resolved in a pre-generated portal space shared volume grid. 

@@ -234,7 +234,7 @@ struct RasterGeometry {
     if (positionBuffer.vertexFormat() != VK_FORMAT_R32G32B32_SFLOAT && positionBuffer.vertexFormat() != VK_FORMAT_R32G32B32A32_SFLOAT)
       return false;
 
-    if (normalBuffer.defined() && (normalBuffer.vertexFormat() != VK_FORMAT_R32G32B32_SFLOAT && normalBuffer.vertexFormat() != VK_FORMAT_R32G32B32A32_SFLOAT))
+    if (normalBuffer.defined() && (normalBuffer.vertexFormat() != VK_FORMAT_R32G32B32_SFLOAT && normalBuffer.vertexFormat() != VK_FORMAT_R32G32B32A32_SFLOAT && normalBuffer.vertexFormat() != VK_FORMAT_R32_UINT))
       return false;
 
     if (texcoordBuffer.defined() && (texcoordBuffer.vertexFormat() != VK_FORMAT_R32G32_SFLOAT && texcoordBuffer.vertexFormat() != VK_FORMAT_R32G32B32_SFLOAT && texcoordBuffer.vertexFormat() != VK_FORMAT_R32G32B32A32_SFLOAT))
@@ -335,7 +335,7 @@ struct GeometryBufferData {
     }
 
     if (geometryData.normalBuffer.defined()) {
-      constexpr size_t normalSubElementSize = sizeof(float);
+      constexpr size_t normalSubElementSize = sizeof(std::uint32_t);
       normalStride = geometryData.normalBuffer.stride() / normalSubElementSize;
       normalData = (float*) geometryData.normalBuffer.mapPtr((size_t) geometryData.normalBuffer.offsetFromSlice());
     } else {
@@ -344,7 +344,7 @@ struct GeometryBufferData {
     }
 
     if (geometryData.color0Buffer.defined()) {
-      constexpr size_t colorSubElementSize = sizeof(uint32_t);
+      constexpr size_t colorSubElementSize = sizeof(std::uint32_t);
       vertexColorStride = geometryData.color0Buffer.stride() / colorSubElementSize;
       vertexColorData = (uint32_t*) geometryData.color0Buffer.mapPtr((size_t) geometryData.color0Buffer.offsetFromSlice());
     } else {
@@ -369,10 +369,6 @@ struct GeometryBufferData {
     return *(Vector2*) (texcoordData + index * texcoordStride);
   }
 
-  Vector3& getNormal(uint32_t index) const {
-    return *(Vector3*) (normalData + index * normalStride);
-  }
-
   uint32_t& getVertexColor(uint32_t index) const {
     return vertexColorData[index * vertexColorStride];
   }
@@ -388,11 +384,20 @@ struct DrawCallTransforms {
   bool enableClipPlane = false;
   Vector4 clipPlane{ 0.f };
   TexGenMode texgenMode = TexGenMode::None;
+  const std::vector<Matrix4>* instancesToObject = nullptr;
 
   void sanitize() {
     if (objectToWorld[3][3] == 0.f) objectToWorld[3][3] = 1.f;
     if (objectToView[3][3] == 0.f) objectToView[3][3] = 1.f;
     if (worldToView[3][3] == 0.f) worldToView[3][3] = 1.f;
+  }
+
+  Matrix4 calcFirstInstanceObjectToWorld() const {
+    if (instancesToObject && !instancesToObject->empty()) {
+      return objectToWorld * (*instancesToObject)[0];
+    } else {
+      return objectToWorld;
+    }
   }
 };
 
@@ -431,6 +436,7 @@ enum class InstanceCategories : uint32_t {
   ThirdPersonPlayerModel,
   ThirdPersonPlayerBody,
   IgnoreBakedLighting,
+  IgnoreTransparencyLayer,
 
   Count,
 };
@@ -527,7 +533,9 @@ private:
   void finalizeGeometryBoundingBox();
   void finalizeSkinningData(const RtCamera* pLastCamera);
 
+  // NOTE: 'setCategory' can only add a category, it will not unset a bit
   void setCategory(InstanceCategories category, bool set);
+  void removeCategory(InstanceCategories category);
 
   RasterGeometry geometryData;
 
@@ -588,7 +596,10 @@ struct BlasEntry {
 
   using InstanceMap = SpatialMap<RtInstance>;
 
-  Rc<PooledBlas> staticBlas;
+  Rc<PooledBlas> dynamicBlas = nullptr;
+
+  std::vector<VkAccelerationStructureGeometryKHR> buildGeometries;
+  std::vector<VkAccelerationStructureBuildRangeInfoKHR> buildRanges;
 
   BlasEntry() = default;
 
@@ -616,20 +627,20 @@ struct BlasEntry {
     m_materials.clear();
   }
 
-  void linkInstance(const RtInstance* instance) {
+  void linkInstance(RtInstance* instance) {
     m_linkedInstances.push_back(instance);
   }
 
-  void unlinkInstance(const RtInstance* instance);
+  void unlinkInstance(RtInstance* instance);
 
-  const std::vector<const RtInstance*>& getLinkedInstances() const { return m_linkedInstances; }
+  const std::vector<RtInstance*>& getLinkedInstances() const { return m_linkedInstances; }
   InstanceMap& getSpatialMap() { return m_spatialMap; }
   const InstanceMap& getSpatialMap() const { return m_spatialMap; }
 
   void rebuildSpatialMap();
 
 private:
-  std::vector<const RtInstance*> m_linkedInstances;
+  std::vector<RtInstance*> m_linkedInstances;
   InstanceMap m_spatialMap;
   std::unordered_map<XXH64_hash_t, LegacyMaterialData> m_materials;
 };

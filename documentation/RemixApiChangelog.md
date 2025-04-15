@@ -14,3 +14,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 ### Removed
+
+
+## [0.4.3]
+
+### Added
+- remixapi_MaterialInfoOpaqueSubsurfaceEXT.subsurfaceDiffusionProfile
+- remixapi_MaterialInfoOpaqueSubsurfaceEXT.subsurfaceRadius
+- remixapi_MaterialInfoOpaqueSubsurfaceEXT.subsurfaceRadiusScale
+- remixapi_MaterialInfoOpaqueSubsurfaceEXT.subsurfaceMaxSampleRadius
+
+### Changed
+
+### Fixed
+
+### Removed

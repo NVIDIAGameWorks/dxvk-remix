@@ -46,8 +46,8 @@
 #include "rtx_accel_manager.h"
 #include "rtx_ray_portal_manager.h"
 #include "rtx_bindless_resource_manager.h"
-#include "rtx_volume_manager.h"
 #include "rtx_objectpicking.h"
+#include "rtx_mod_manager.h"
 #include <d3d9types.h>
 
 namespace dxvk 
@@ -128,9 +128,8 @@ public:
   void submitDrawState(Rc<DxvkContext> ctx, const DrawCallState& input, const MaterialData* overrideMaterialData);
   void submitExternalDraw(Rc<DxvkContext> ctx, ExternalDrawState&& state);
   
-  bool areReplacementsLoaded() const;
-  bool areReplacementsLoading() const;
-  const std::string getReplacementStatus() const;
+  bool areAllReplacementsLoaded() const;
+  std::vector<Mod::State> getReplacementStates() const;
 
   uint64_t getGameTimeSinceStartMS();
 
@@ -155,8 +154,7 @@ public:
   const LightManager& getLightManager() const { return m_lightManager; }
   const RayPortalManager& getRayPortalManager() const { return m_rayPortalManager; }
   const BindlessResourceManager& getBindlessResourceManager() const { return m_bindlessResourceManager; }
-  const OpacityMicromapManager* getOpacityMicromapManager() const { return m_opacityMicromapManager.get(); }
-  const VolumeManager& getVolumeManager() const { return m_volumeManager; }
+  OpacityMicromapManager* getOpacityMicromapManager() const { return m_opacityMicromapManager.get(); }
   LightManager& getLightManager() { return m_lightManager; }
   std::unique_ptr<AssetReplacer>& getAssetReplacer() { return m_pReplacer; }
   TerrainBaker& getTerrainBaker() { return *m_terrainBaker.get(); }
@@ -202,7 +200,11 @@ public:
 
   using SamplerIndex = uint32_t;
 
-  void trackTexture(Rc<DxvkContext> ctx, TextureRef inputTexture, uint32_t& textureIndex, bool hasTexcoords, bool allowAsync = true);
+  void trackTexture(const TextureRef& inputTexture,
+                    uint32_t& textureIndex,
+                    bool hasTexcoords,
+                    bool async = true,
+                    uint16_t samplerFeedbackStamp = SAMPLER_FEEDBACK_INVALID);
   [[nodiscard]] SamplerIndex trackSampler(Rc<DxvkSampler> sampler);
 
   std::optional<XXH64_hash_t> findLegacyTextureHashByObjectPickingValue(uint32_t objectPickingValue);
@@ -213,6 +215,10 @@ public:
                                 const VkSamplerAddressMode addressModeV,
                                 const VkSamplerAddressMode addressModeW,
                                 const VkClearColorValue borderColor);
+
+  void requestTextureVramFree();
+  void requestVramCompaction();
+  void manageTextureVram();
 
 private:
   enum class ObjectCacheState
@@ -231,7 +237,8 @@ private:
 
   const RtSurfaceMaterial& createSurfaceMaterial( Rc<DxvkContext> ctx, 
                                                   const MaterialData& renderMaterialData,
-                                                  const DrawCallState& drawCallState);
+                                                  const DrawCallState& drawCallState,
+                                                  uint32_t* out_indexInCache = nullptr);
 
   // Updates ref counts for new buffers
   void updateBufferCache(RaytraceGeometry& newGeoData);
@@ -244,11 +251,11 @@ private:
   void onSceneObjectDestroyed(const BlasEntry& pBlas);
 
   // Called whenever a new instance has been added to the database
-  void onInstanceAdded(const RtInstance& instance);
+  void onInstanceAdded(RtInstance& instance);
   // Called whenever instance metadata is updated
   void onInstanceUpdated(RtInstance& instance, const RtSurfaceMaterial& material, const bool hasTransformChanged, const bool hasVerticesdChanged);
   // Called whenever an instance has been removed from the database
-  void onInstanceDestroyed(const RtInstance& instance);
+  void onInstanceDestroyed(RtInstance& instance);
 
   uint64_t drawReplacements(Rc<DxvkContext> ctx, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, const MaterialData* overrideMaterialData);
 
@@ -267,7 +274,6 @@ private:
   RayPortalManager m_rayPortalManager;
   BindlessResourceManager m_bindlessResourceManager;
   std::unique_ptr<OpacityMicromapManager> m_opacityMicromapManager;
-  VolumeManager m_volumeManager;
 
   DrawCallCache m_drawCallCache;
 
@@ -280,6 +286,7 @@ private:
   FogState m_fog;
   fast_unordered_cache<FogState> m_fogStates;
   uint32_t m_startInMediumMaterialIndex = BINDING_INDEX_INVALID;
+  uint32_t m_startInMediumMaterialIndex_inCache = UINT32_MAX;
 
   // TODO: Move the following resources and getters to RtResources class
   Rc<DxvkBuffer> m_surfaceMaterialBuffer;
@@ -307,6 +314,9 @@ private:
 
   // TODO: expand to many different
   Rc<DxvkSampler> m_externalSampler = nullptr;
+
+  std::atomic_bool m_forceFreeTextureMemory = false;
+  std::atomic_bool m_forceFreeUnusedDxvkAllocatorChunks = false;
 };
 
 }  // namespace nvvk

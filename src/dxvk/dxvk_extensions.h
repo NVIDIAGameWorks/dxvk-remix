@@ -357,9 +357,8 @@ namespace dxvk {
     DxvkExt khrExternalMemoryWin32            = { VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME,              DxvkExtMode::Optional };
     DxvkExt khrExternalSemaphore              = { VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME,                 DxvkExtMode::Optional };
     DxvkExt khrExternalSemaphoreWin32         = { VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME,           DxvkExtMode::Optional };
-    DxvkExt nvOpticalFlow                     = { VK_NV_OPTICAL_FLOW_EXTENSION_NAME,                        DxvkExtMode::Optional };
-
     DxvkExt extBufferDeviceAddress            = { VK_EXT_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,              DxvkExtMode::Optional };
+    DxvkExt nvPresentMetering                 = { VK_NV_PRESENT_METERING_EXTENSION_NAME,                    DxvkExtMode::Optional };
     // NV-DXVK end
 
     // NV-DXVK start:

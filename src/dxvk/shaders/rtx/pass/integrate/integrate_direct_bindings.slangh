@@ -47,6 +47,9 @@ Texture2D<uint> SharedSurfaceIndex;
 layout(rgba16ui, binding = INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DATA_INPUT)
 Texture2D<uint4> SharedSubsurfaceData;
 
+layout(r11f_g11f_b10f, binding = INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT)
+Texture2D<float3> SharedSubsurfaceDiffusionProfileData;
+
 // Shared Inputs/Outputs
 
 layout(r16ui, binding = INTEGRATE_DIRECT_BINDING_SHARED_FLAGS_INPUT_OUTPUT)

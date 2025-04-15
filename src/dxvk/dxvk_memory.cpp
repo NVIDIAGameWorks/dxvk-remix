@@ -38,6 +38,7 @@ DxvkMemoryStats& DxvkMemoryStats::operator=(const DxvkMemoryStats& other)
   rtxOpacityMicromaps = other.rtxOpacityMicromaps.load();
   rtxMaterialTextures = other.rtxMaterialTextures.load();
   rtxRenderTargets = other.rtxRenderTargets.load();
+  rtxReplacementGeometry = other.rtxReplacementGeometry.load();
 
   return *this;
 }
@@ -65,6 +66,9 @@ void DxvkMemoryStats::trackMemoryAssigned(Category category, VkDeviceSize size)
     break;
   case Category::RTXRenderTarget:
     rtxRenderTargets += size;
+    break;
+  case Category::RTXReplacementGeometry:
+    rtxReplacementGeometry += size;
     break;
         
   default:
@@ -98,6 +102,9 @@ void DxvkMemoryStats::trackMemoryReleased(Category category, VkDeviceSize size)
     break;
   case Category::RTXRenderTarget:
     rtxRenderTargets -= size;
+    break;
+  case Category::RTXReplacementGeometry:
+    rtxReplacementGeometry -= size;
     break;
 
   default:
@@ -145,6 +152,8 @@ VkDeviceSize DxvkMemoryStats::usedByCategory(Category category) const
     return rtxMaterialTextures;
   case Category::RTXRenderTarget:
     return rtxRenderTargets;
+  case Category::RTXReplacementGeometry:
+    return rtxReplacementGeometry;
   default:
     assert(!"unimplemented");
     return 0;
@@ -159,6 +168,7 @@ static const std::map<DxvkMemoryStats::Category, const char *> categoryStringMap
   { DxvkMemoryStats::Category::RTXOpacityMicromap, "RTXOpacityMicromap" },
   { DxvkMemoryStats::Category::RTXMaterialTexture, "RTXMaterialTexture" },
   { DxvkMemoryStats::Category::RTXRenderTarget, "RTXRenderTarget" },
+  { DxvkMemoryStats::Category::RTXReplacementGeometry, "RTXReplacementGeometry" },
 };
 
 const char* DxvkMemoryStats::categoryToString(Category category) {

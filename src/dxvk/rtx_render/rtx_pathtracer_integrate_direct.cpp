@@ -53,6 +53,7 @@ namespace dxvk {
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_TEXTURE_COORD_INPUT)
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_SURFACE_INDEX_INPUT)
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DATA_INPUT)
+        TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT)
 
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT)
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_INPUT)
@@ -99,16 +100,30 @@ namespace dxvk {
   }
 
   void DxvkPathtracerIntegrateDirect::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
+    ScopedCpuProfileZoneN("Direct Integrate Shader Prewarming");
 
     const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device);
 
-    for (int32_t ommEnabled = isOpacityMicromapSupported; ommEnabled > 0; ommEnabled--) {
-      pipelineManager.registerRaytracingShaders(getPipelineShaders(true, ommEnabled));
-    }
+    if (RtxOptions::Shader::prewarmAllVariants()) {
+      for (int32_t ommEnabled = isOpacityMicromapSupported; ommEnabled > 0; ommEnabled--) {
+        pipelineManager.registerRaytracingShaders(getPipelineShaders(true, ommEnabled));
+      }
 
-    DxvkComputePipelineShaders shaders;
-    shaders.cs = getComputeShader();
-    pipelineManager.createComputePipeline(shaders);
+      getComputeShader();
+    } else {
+      // Note: The getter for OMM enabled also checks if OMMs are supported, so we do not need to check for that manually.
+      const bool ommEnabled = RtxOptions::Get()->getEnableOpacityMicromap();
+
+      DxvkComputePipelineShaders shaders;
+      switch (RtxOptions::Get()->getRenderPassIntegrateDirectRaytraceMode()) {
+      case RaytraceMode::RayQuery:
+        getComputeShader();
+        break;
+      case RaytraceMode::RayQueryRayGen:
+        pipelineManager.registerRaytracingShaders(getPipelineShaders(true, ommEnabled));
+        break;
+      }
+    }
   }
 
   void DxvkPathtracerIntegrateDirect::dispatch(
@@ -133,6 +148,7 @@ namespace dxvk {
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_TEXTURE_COORD_INPUT, rtOutput.m_sharedTextureCoord.view, nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view, nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DATA_INPUT, rtOutput.m_sharedSubsurfaceData.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT, rtOutput.m_sharedSubsurfaceDiffusionProfileData.view, nullptr);
 
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_primaryWorldShadingNormal.view, nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_INPUT, rtOutput.m_primaryPerceptualRoughness.view, nullptr);

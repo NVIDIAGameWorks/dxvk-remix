@@ -65,6 +65,10 @@ assert(cpu_family != 'x86', 'dxvk-remix-nv can\'t be built in x86. Make sure you
 add_project_arguments('-DNOMINMAX', language : 'cpp')
 vs_project_defines = 'NOMINMAX;'
 
+add_project_arguments('-D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR', language : 'cpp')
+vs_project_defines += '_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR;'
+
+
 dxvk_compiler = meson.get_compiler('cpp')
 dxvk_is_msvc = dxvk_compiler.get_id() == 'msvc'
 dxvk_is_ninja = meson.backend() == 'ninja'
@@ -104,11 +108,8 @@ else
   vs_project_defines += 'BUILD_NINJA=0;'
 endif
 
-# Note: Runtime shader recompilation requires source paths based on the project root, so making a build-time define is the easiest way
-# to give it this information reliably for a local build (when distributing a build to others a manual source root must be specified in the runtime
-# configuration).
 add_global_arguments('/DBUILD_SOURCE_ROOT="' + global_src_root_norm + '/"', language : 'cpp')
-vs_project_defines += 'BUILD_SOURCE_ROOT=' + global_src_root_norm + '/"' + ';'
+vs_project_defines += 'BUILD_SOURCE_ROOT="' + global_src_root_norm + '/";'
 
 # c++17 was added in 15.3, older version needs c++latest
 if dxvk_is_msvc and dxvk_compiler.version().version_compare('<15.3')
@@ -168,7 +169,8 @@ add_global_arguments('/DREMIX_LIBRARY_EXPORTS=1', language : 'cpp')
 
 dxvk_include_dirs = [
   './include',
-  './include/vulkan/include'
+  './include/vulkan/include',
+  'submodules/nrc/include',
 ]
 
 dxvk_include_path = include_directories(dxvk_include_dirs)
@@ -245,27 +247,14 @@ if enable_rtxio == true
   dxvk_extradep += rtxio_lib
 endif
 
-exe_ext = ''
-dll_ext = ''
-
-if dxvk_is_msvc
-  res_ext = '.res'
-else
-  res_ext = '.o'
-endif
-
-def_spec_ext = '.def'
-
-# Shader compile tools
+# Shader Compile Tools
 glsl_compiler = find_program('external/glslangvalidator/glslangValidator')
 slang_compiler = find_program('external/slang/slangc')
 python_interpreter = find_program('python3', 'python')
 shader_compile_script = join_paths(global_src_root_norm, 'scripts-common/compile_shaders.py')
 
-# GLSL compiler...
+# GLSL Compiler
 
-# The ShaderManager::compileShaders() function also uses glslangValidator to compile shader source for debug purpose.
-# If the command here is changed, the command in that function should also be updated.
 glsl_args = [ '-V', '--vn', '@BASENAME@', '@INPUT@', '-o', '@OUTPUT@', '--target-env', 'vulkan1.2', '@EXTRA_ARGS@' ]
 
 if run_command(glsl_compiler, [ '--quiet', '--version' ], check: false).returncode() == 0
@@ -281,6 +270,82 @@ glsl_generator = generator(
   output    : [ '@BASENAME@.h' ],
   arguments : glsl_args
 )
+
+# RTX Shader Compilation Information
+
+# Note: These paths were previously '@CURRENT_SOURCE_DIR@/shaders', '@CURRENT_SOURCE_DIR@/shaders/rtx', and '@OUTDIR@/rtx_shaders'
+# when used in src/dxvk/meson.build. This logic has been moved here now to be able to pass these paths into defines. Additionally because
+# the CURRENT_SOURCE_DIR/OUTDIR variables wouldn't work in a raw string the path is computed manually based on the assumption that the
+# project's name is "dxvk". If this name ever changes these directories will have to change too to match it as this solution isn't
+# quite as automatic as those per-project variables were.
+shader_directory = join_paths(global_src_root_norm, 'src/dxvk/shaders')
+rtx_shader_source_directory = join_paths(global_src_root_norm, 'src/dxvk/shaders/rtx')
+# Note: The directory these temporary shader outputs are written to is fairly arbitrary, it could be a temporary directory or any other
+# directory, this is just the best way currently for organizing it into the respective project it is outputting data for.
+rtx_shader_output_directory = join_paths(current_build_dir_norm, 'src/dxvk/rtx_shaders')
+
+rtxdi_include_path = include_directories('submodules/rtxdi/rtxdi-sdk/include')
+# Need to use the include path as an argument to the shader build string,
+# and I couldn't find how to convert the IncludeDirs thing to a string... Meson.
+rtxdi_include_path_string = join_paths(global_src_root_norm, 'submodules/rtxdi/rtxdi-sdk/include')
+volumetrics_include_path_string = join_paths(global_src_root_norm, 'submodules/rtxdi/rtxdi-sdk/include/volumetrics')
+
+rtxcr_include_path = include_directories('submodules/rtxcr/shaders/include')
+rtxcr_include_path_string = join_paths(global_src_root_norm, 'submodules/rtxcr/shaders/include')
+
+rtx_shaders_command_arguments = [
+  shader_compile_script,
+  # Note: Meson annoyingly represents these "find_program" results as a special object which works fine when used in Meson functions, but
+  # not so fine when trying to convert to an argument string like we need for Remix's runtime shader compilation system. As such, we convert it
+  # to a path in advance (and ensure it's a POSIX path as Windows-style path slashes are not escaped currently) just so it works for both
+  # a Meson custom_target command, as well as an argument string.
+  # This can in theory cause problems since the special object Meson uses is actually used to reference the program as a dependency, but for
+  # this use case currently it works fine, and worst case this array can just be duplicated to have 2 sets of behavior if needed.
+  # See this for more info: https://mesonbuild.com/Reference-manual_returned_external_program.html#external_programfull_path
+  '-glslang', fs.as_posix(glsl_compiler.full_path()),
+  '-slangc', fs.as_posix(slang_compiler.full_path()),
+  '-input', rtx_shader_source_directory,
+  '-include', shader_directory,
+  '-include', rtxdi_include_path_string,
+  '-include', volumetrics_include_path_string,
+  '-include', rtxcr_include_path_string,
+  '-output', rtx_shader_output_directory,
+  '-parallel',
+]
+
+if get_option('buildtype').startswith('debug')
+  # Note: Append -debug to the argument list for debug-esque builds
+  rtx_shaders_command_arguments += [ '-debug' ]
+endif
+
+# Note: Make a copy of the command arguments up to this point for the runtime shader recompilation system as it requires a slightly
+# different set of arguments.
+# Note: Append -binary to the runtime shader command arguments to output SPIR-V in binary form rather than as C headers.
+rtx_shaders_runtime_command_arguments = rtx_shaders_command_arguments + [ '-binary' ]
+
+# Runtime Shader Recompilation Definitions
+# Note: Runtime shader recompilation requires various paths and script arguments as constant strings, so this information is generated
+# here and passed in via definitions.
+
+rtx_shaders_runtime_command_argument_string = ' '.join(rtx_shaders_runtime_command_arguments)
+
+add_global_arguments('/DRUNTIME_SHADER_RECOMPILATION_PYTHON_ARGUMENTS="' + rtx_shaders_runtime_command_argument_string + '"', language : 'cpp')
+vs_project_defines += 'RUNTIME_SHADER_RECOMPILATION_PYTHON_ARGUMENTS="' + rtx_shaders_runtime_command_argument_string + '";'
+add_global_arguments('/DRUNTIME_SHADER_RECOMPILATION_SHADER_SOURCE_PATH="' + rtx_shader_source_directory + '"', language : 'cpp')
+vs_project_defines += 'RUNTIME_SHADER_RECOMPILATION_SHADER_SOURCE_PATH="' + rtx_shader_source_directory + '";'
+add_global_arguments('/DRUNTIME_SHADER_RECOMPILATION_SPIRV_BINARY_OUTPUT_PATH="' + rtx_shader_output_directory + '"', language : 'cpp')
+vs_project_defines += 'RUNTIME_SHADER_RECOMPILATION_SPIRV_BINARY_OUTPUT_PATH="' + rtx_shader_output_directory + '";'
+
+exe_ext = ''
+dll_ext = ''
+
+if dxvk_is_msvc
+  res_ext = '.res'
+else
+  res_ext = '.o'
+endif
+
+def_spec_ext = '.def'
 
 if dxvk_is_msvc
   wrc_generator = generator(wrc,
@@ -404,11 +469,13 @@ boost_include_path = include_directories('external/nv_usd/include/boost-1_78/')
 usd_include_paths = [nv_usd_include_path, boost_include_path]
 
 vk_include_path = include_directories('./include/vulkan/include')
+# required for NV_present_metering
+add_project_arguments('-DVK_ENABLE_BETA_EXTENSIONS', language : 'cpp')
 
 lssusd_include_paths = [nv_usd_include_path, boost_include_path, vk_include_path]
 
-nvapi_include_paths = include_directories('external/nvapi')
-nvapi_lib_path = join_paths(global_src_root_norm, 'external/nvapi/amd64')
+nvapi_include_paths = include_directories('submodules/nvapi')
+nvapi_lib_path = join_paths(global_src_root_norm, 'submodules/nvapi/amd64')
 nvapi_lib = dxvk_compiler.find_library('nvapi64', dirs : nvapi_lib_path)
 
 # Cache lib locations
@@ -439,15 +506,13 @@ dlfg_root_path = 'external/ngx_sdk_dlfg'
 dlfg_lib_path = join_paths(global_src_root_norm, dlfg_root_path, 'lib/Windows_x86_64/rel/')
 external_dll_paths += dlfg_lib_path
 
+nrc_dll_name = 'NRC_Vulkan.dll'
+nrc_dll_path = join_paths(global_src_root_norm, 'submodules/nrc/bin/')
+
 nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Release/')
 if get_option('buildtype') == 'debug'  
   nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Debug/')
 endif
-
-rtxdi_include_path = include_directories('submodules/rtxdi/rtxdi-sdk/include')
-# Need to use the include path as an argument to the shader build string,
-# and I couldn't find how to convert the IncludeDirs thing to a string... Meson.
-rtxdi_include_path_string = join_paths(global_src_root_norm, 'submodules/rtxdi/rtxdi-sdk/include')
 
 if not dxvk_is_ninja
   # Copy dependencies that must be in same dir as executable to _output dir
@@ -478,6 +543,21 @@ if not dxvk_is_ninja
     output           : ['copy_tbbmalloc_dll'],
     build_by_default : true,
     command          : [copy_script_path, usd_lib_path, output_dir, tbbmalloc_dll_name] )
+
+  copy_nrc_dll_target = custom_target('copy_nrc_dll',
+    output           : ['copy_nrc_dll'],
+    build_by_default : true,
+    command          : [copy_script_path, nrc_dll_path, output_dir, nrc_dll_name] )
+
+  copy_nrc_cuda_deps_dll_target = custom_target('copy_nrc_cuda_deps_dll',
+    output           : ['copy_nrc_cuda_deps_dll'],
+    build_by_default : true,
+    command          : [copy_script_path, nrc_dll_path, output_dir, 'cudart64_12.dll'] )
+
+  copy_nrc_cuda_nv_deps_dll_target = custom_target('copy_nrc_cuda_nv_deps_dll',
+    output           : ['copy_nrc_cuda_nv_deps_dll'],
+    build_by_default : true,
+    command          : [copy_script_path, nrc_dll_path, output_dir, 'nvrtc*.dll'] )
 
   copy_nrd_dll_target = custom_target('copy_nrd_dll',
     output           : ['copy_nrd_dll'],
@@ -592,6 +672,8 @@ if dxvk_is_ninja
   # meson seems to force / as the path separator in custom_target
   # ... except in the case where the path separators are inconsistent, in which case it does nothing
   # force / as the path separator here to make sure it stays consistent
+  nrc_lib_path = join_paths(global_src_root_norm, 'submodules/nrc/Lib/')
+ 
   nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Release/')
   if get_option('buildtype') == 'debug'
     nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Debug/')
@@ -696,6 +778,27 @@ if dxvk_is_ninja
                           output_path,
                           tbbmalloc_dll_name] )
 
+    copy_nrc_dll = custom_target('copy_nrc_dll_' + target_suffix,
+      output           : ['copy_nrc_dll_' + target_suffix],
+      command          : [copy_script_path,
+                          nrc_dll_path,
+                          output_path,
+                          nrc_dll_name] )
+
+    copy_nrc_cuda_deps_dll = custom_target('copy_nrc_cuda_deps_dll_' + target_suffix,
+      output           : ['copy_nrc_cuda_deps_dll_' + target_suffix],
+      command          : [copy_script_path,
+                          nrc_dll_path,
+                          output_path,
+                          'cudart64_12.dll'] )
+
+    copy_nrc_cuda_nv_deps_dll = custom_target('copy_nrc_cuda_nv_deps_dll_' + target_suffix,
+      output           : ['copy_nrc_cuda_nv_deps_dll_' + target_suffix],
+      command          : [copy_script_path,
+                          nrc_dll_path,
+                          output_path,
+                          'nvrtc*.dll'] )
+
     copy_nrd_dll = custom_target('copy_nrd_dll_' + target_suffix,
       output           : ['copy_nrd_dll_' + target_suffix],
       command          : [copy_script_path,
@@ -744,12 +847,15 @@ if dxvk_is_ninja
                             copy_usd_dll,
                             copy_tbb_dll,
                             copy_tbbmalloc_dll,
+                            copy_nrc_dll,
+                            copy_nrc_cuda_deps_dll,
+                            copy_nrc_cuda_nv_deps_dll,
                             copy_nrd_dll,
                             copy_dlss_dll,
                             copy_dlfg_dll,
                             copy_aftermath_dll,
                             d3d9_dll ]
-                            
+
     copy_target_depends += copy_reflex_dll
 
     if enable_rtxio == true

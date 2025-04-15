@@ -100,9 +100,14 @@ namespace dxvk {
   
 
   void DxvkPipelineManager::registerShader(
-    const Rc<DxvkShader>&         shader) {
+    const Rc<DxvkShader>&         shader,
+// NV-DXVK start
+    bool                          isRemixShader) {
+// NV-DXVK end
     if (m_stateCache != nullptr)
-      m_stateCache->registerShader(shader);
+// NV-DXVK start
+      m_stateCache->registerShader(shader, isRemixShader);
+// NV-DXVK end
   }
 
   // NV-DXVK start: compile raytracing shaders on shader compilation threads
@@ -136,6 +141,12 @@ namespace dxvk {
     return m_stateCache != nullptr
         && m_stateCache->isCompilingShaders();
   }
+
+// NV-DXVK start
+  uint32_t DxvkPipelineManager::remixShaderCompilationCount() const {
+    return m_stateCache != nullptr ? m_stateCache->remixShaderCompilationCount() : 0;
+  }
+// NV-DXVK end
 
 
   void DxvkPipelineManager::stopWorkerThreads() const {

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -178,14 +178,14 @@ namespace dxvk
     return glm::fract(value + 0.5f) - 0.5f;
   }
 
-  Vector2 getCurrentPixelOffset(int currentFrame) {
+  Vector2 calculateHaltonJitter(uint32_t currentFrame, uint32_t jitterSequenceLength) {
     // Halton jitter
     Vector2 result(0.0f, 0.0f);
 
-    int frameIndex = (currentFrame) % 64;
+    uint32_t frameIndex = currentFrame % jitterSequenceLength;
 
-    constexpr int baseX = 2;
-    int Index = frameIndex + 1;
+    constexpr uint32_t baseX = 2;
+    uint32_t Index = frameIndex + 1;
     float invBase = 1.0f / baseX;
     float fraction = invBase;
     while (Index > 0) {
@@ -194,7 +194,7 @@ namespace dxvk
       fraction *= invBase;
     }
 
-    constexpr int baseY = 3;
+    constexpr uint32_t baseY = 3;
     Index = frameIndex + 1;
     invBase = 1.0f / baseY;
     fraction = invBase;
@@ -741,7 +741,7 @@ namespace dxvk
 
 #define USE_DLSS_DEMO_JITTER_PATTERN 1
 #if USE_DLSS_DEMO_JITTER_PATTERN
-    return getCurrentPixelOffset(jitterFrameIdx);
+    return calculateHaltonJitter(jitterFrameIdx, RtxOptions::cameraJitterSequenceLength());
 #else
     return m_halton.next();
 #endif
@@ -843,14 +843,24 @@ namespace dxvk
     return camera;
   }
 
-  VolumeDefinitionCamera RtCamera::getVolumeShaderConstants() const {
+  VolumeDefinitionCamera RtCamera::getVolumeShaderConstants(const float maxDistance, const float guardBand/* = 1.f*/) const {
     auto& translatedWorldToView = getTranslatedWorldToView();
     auto& viewToTranslatedWorld = getViewToTranslatedWorld();
-    auto& viewToProjection = getViewToProjection();
     auto& viewToWorld = getViewToWorld();
-    auto& projectionToView = getProjectionToView();
-    auto& viewToProjectionJittered = getViewToProjectionJittered();
-    auto& prevViewToProjection = getPreviousViewToProjection();
+
+    auto viewToProjection = getViewToProjection();
+    viewToProjection[0][0] /= guardBand;
+    viewToProjection[1][1] /= guardBand;
+
+    auto viewToProjectionJittered = getViewToProjectionJittered();
+    viewToProjectionJittered[0][0] /= guardBand;
+    viewToProjectionJittered[1][1] /= guardBand;
+
+    auto prevViewToProjection = getPreviousViewToProjection();
+    prevViewToProjection[0][0] /= guardBand;
+    prevViewToProjection[1][1] /= guardBand;
+
+    auto projectionToView = inverse(viewToProjection);
 
     bool isFreeCamera = isFreeCameraEnabled();
     auto& prevViewToWorld = isFreeCamera ? m_matCache[FreeCamPreviousViewToWorld] : m_matCache[UncorrectedPreviousViewToWorld];
@@ -869,6 +879,28 @@ namespace dxvk
     camera.previousTranslatedWorldOffset = Vector3{ prevViewToWorld[3].xyz() };
     camera.nearPlane = m_context.nearPlane;
     camera.flags = ((!m_context.isLHS) ? rightHandedFlag : 0);
+
+    // Note: Converted to floats to interface with MathLib. Ideally this should be a double still.
+    Matrix4 floatModifiedViewToProj { viewToProjection };
+
+    // Check size since struct padding can impact this memcpy
+    static_assert(sizeof(float4x4) == sizeof(floatModifiedViewToProj));
+
+    uint32_t flags;
+    float cameraParams[PROJ_NUM];
+    DecomposeProjection(NDC_D3D, NDC_D3D, *reinterpret_cast<float4x4*>(&floatModifiedViewToProj), &flags, cameraParams, nullptr, nullptr, nullptr, nullptr);
+
+    // Prevent user controls exceeding the far plane distance from original projection
+    const float minFarPlane = std::min(maxDistance, cameraParams[PROJ_ZFAR]);
+
+    float4x4 newProjection;
+    newProjection.SetupByAngles(cameraParams[PROJ_ANGLEMINX], cameraParams[PROJ_ANGLEMAXX], cameraParams[PROJ_ANGLEMINY], cameraParams[PROJ_ANGLEMAXY], cameraParams[PROJ_ZNEAR], minFarPlane, flags);
+
+    memcpy(&floatModifiedViewToProj, &newProjection, sizeof(float4x4));
+
+    Matrix4 worldToProjection = floatModifiedViewToProj * translatedWorldToView;
+
+    MvpToPlanes(NDC_D3D, *reinterpret_cast<const float4x4*>(&worldToProjection), &camera.worldPlanes[0]);
 
     return camera;
   }
@@ -1060,14 +1092,7 @@ namespace dxvk
   }
 
   void RtCameraSequence::showImguiSettings() {
-    const int maxLength = 1024;
-    static char codewordBuf[maxLength] = "";
-    std::string path = filePath();
-    memcpy(codewordBuf, path.data(), path.size() + 1);
-    ImGui::InputText("File Path", codewordBuf, IM_ARRAYSIZE(codewordBuf) - 1, ImGuiInputTextFlags_EnterReturnsTrue);
-    codewordBuf[maxLength-1] = '\0';
-    std::string newPath(codewordBuf);
-    filePathRef() = newPath;
+    ImGui::InputText("File Path", &filePathObject(), ImGuiInputTextFlags_EnterReturnsTrue);
 
     if (ImGui::Button("Load Sequence")) {
       load();

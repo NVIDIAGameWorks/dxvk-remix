@@ -25,3 +25,21 @@ Caveats/limitations:
 Future considerations / not supported (yet):
 - Material constants per input terrain replacement material.
 - Orthogonal surfaces (i.e. walls with floor) and separate multi-layer surfaces (i.e. baked road on a bridge over another baked road below). For these cases you can use the decal system. The benefit of the terrain system to the decal system is that the terrain baking exactly replicates original game's blending while the decal system only approximates the original blending. On the other hand, decal system supports blending in any direction and the input decal textures are sampled at the desired resolution at the time of ray hits the surface while the terrain system resamples original textures to a shared terrain texture. This can result in a of loss of image fidelity depending on the parametrization of the terrain system (see [rtx.terrainBaker.*](../RtxOptions.md)).
+
+
+## Terrain as decals
+
+If a game draws a terrain as: an opaque draw call and blending translucent draw calls on top, then potentially, a terrain can be emulated via decals, since there's an opaque termination surface.
+
+Such terrain-as-decals behaviour is set when the terrain baker 'Enable Runtime Terrain Baking' (`rtx.terrainBaker.enableBaking`) is disabled, so that the draw calls that are marked as 'Terrain' will be internally handled as a decal.
+
+Advantages of terrain-as-decals:
+- Lower VRAM consumption as there are no terrain baking render targets.
+- Lower CPU workload, as draw calls don't need be preprocessed.
+- Less GPU context switches caused by rasterization of each terrain piece and layer in a specific way.
+- Can handle orthogonal surfaces (e.g. a horizontal beach and vertical cliff can be handled).
+- Higher resolution texture blending compared to using terrain baker cascades.
+
+Disadvantages of terrain-as-decals:
+- The method is not applicable if terrain does NOT have an opaque surface draw call, as then decals won't have a termination point.
+- Potentially, higher GPU workload, as there are more rays to trace against the decals.

@@ -480,17 +480,17 @@ float evalGGXBoundedVisibleNormalDistributionSamplePdf(f16vec2 anisotropicRoughn
 }
 
 // Calculates Beer-Lambert attenuation at a specified distance through a medium with a specified attenuation coefficient.
-f16vec3 evalBeerLambertAttenuation(in const vec3 attenuationCoefficient, in const float16_t distance)
+float3 evalBeerLambertAttenuation(in const float3 attenuationCoefficient, in const float distance)
 {
   return exp(-attenuationCoefficient * distance);
 }
 
 // Calculates Beer-Lambert attenuation at an infinite distance through a medium with a specified attenuation coefficient.
-f16vec3 evalBeerLambertInfiniteAttenuation(in const vec3 attenuationCoefficient)
+float3 evalBeerLambertInfiniteAttenuation(in const float3 attenuationCoefficient)
 {
   // Note: Return a per-channel attenuation of 0 if any attenuation is desired due to infinite attenuation
   // distance, otherwise return 1.
-  return mix(f16vec3(0.0f), f16vec3(1.0f), attenuationCoefficient == vec3(0.0f, 0.0f, 0.0f));
+  return mix(float3(0.0f), float3(1.0f), attenuationCoefficient == float3(0.0f, 0.0f, 0.0f));
 }
 
 // Evaluates the distance of transmitted light through a thin surface based on the thickness and normal
@@ -704,6 +704,7 @@ float3 evalSpecularAlbedoGGXSchlick(in float3 baseReflectivity, in float isotrop
 }
 
 // Blends two normal vectors (which need not be normalized) together
+// Normals should be in tangent space - world space normals should just be averaged and normalized.
 // Reoriented Normal Mapping from: https://blog.selfshadow.com/publications/blending-in-detail/
 f16vec3 normalBlendRNM(in f16vec3 baseNormal, in f16vec3 detailNormal)
 {

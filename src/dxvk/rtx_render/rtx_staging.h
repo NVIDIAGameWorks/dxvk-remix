@@ -24,6 +24,7 @@ namespace dxvk {
   public:
 
     RtxStagingDataAlloc(const Rc<DxvkDevice>& device,
+                        const char* name,
                         const VkMemoryPropertyFlagBits memFlags = (VkMemoryPropertyFlagBits)(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
                         const VkBufferUsageFlags usageFlags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                         const VkPipelineStageFlags stages = VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -65,7 +66,9 @@ namespace dxvk {
     Rc<DxvkBuffer>  m_buffer;
     VkDeviceSize    m_offset = 0;
     VkDeviceSize    m_bufferRequiredAlignmentOverride = 1;
- 
+    
+    const char*     m_name = nullptr;
+
     std::queue<Rc<DxvkBuffer>> m_buffers;
 
     Rc<DxvkBuffer> createBuffer(VkDeviceSize size);

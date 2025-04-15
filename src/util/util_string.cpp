@@ -20,6 +20,7 @@
 * DEALINGS IN THE SOFTWARE.
 */
 #include "util_string.h"
+#include <iomanip>
 
 namespace dxvk::str {
   std::string fromws(const WCHAR *ws) {
@@ -80,5 +81,28 @@ namespace dxvk::str {
     std::string result = input;
     result.erase(std::remove_if(result.begin(), result.end(), isInvalidAscii), result.end());
     return result;
+  }
+
+  std::string formatBytes(size_t bytes) {
+    const double KB = 1024.0;
+    const double MB = KB * 1024.0;
+    const double GB = MB * 1024.0;
+    const double TB = GB * 1024.0;
+
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(2);
+
+    if (bytes < KB) {
+      oss << bytes << " B";
+    } else if (bytes < MB) {
+      oss << (static_cast<double>(bytes) / KB) << " KiB";
+    } else if (bytes < GB) {
+      oss << (static_cast<double>(bytes) / MB) << " MiB";
+    } else if (bytes < TB) {
+      oss << (static_cast<double>(bytes) / GB) << " GiB";
+    } else {
+      oss << (static_cast<double>(bytes) / TB) << " TiB";
+    }
+    return oss.str();
   }
 }

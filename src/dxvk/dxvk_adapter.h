@@ -78,7 +78,6 @@ namespace dxvk {
     uint32_t asyncCompute = VK_QUEUE_FAMILY_IGNORED;
     // NV-DXVK end
     // NV-DXVK start: DLFG integration
-    uint32_t opticalFlow = VK_QUEUE_FAMILY_IGNORED;
     uint32_t present = VK_QUEUE_FAMILY_IGNORED;
     // NV-DXVK end
   };
@@ -100,7 +99,6 @@ namespace dxvk {
     DxvkAdapterQueueInfo graphics{};
     DxvkAdapterQueueInfo transfer{};
     std::optional<DxvkAdapterQueueInfo> asyncCompute{};
-    std::optional<DxvkAdapterQueueInfo> opticalFlow{};
     std::optional<DxvkAdapterQueueInfo> present{};
   };
   // NV-DXVK end

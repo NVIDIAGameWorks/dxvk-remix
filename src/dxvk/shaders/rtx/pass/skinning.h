@@ -31,6 +31,9 @@ typedef Vector4 float4;
 #define toMatrix4(m) (*reinterpret_cast<const Matrix4*>(&m))
 #define mul(mat, vec) (mat * vec)
 
+#define abs(x) std::abs(x)
+#define max(x, y) std::max(x, y)
+
 #define WriteBuffer(T) T*
 #define ReadBuffer(T) const T*
 #define ReadByteBuffer const uint8_t*
@@ -38,6 +41,14 @@ typedef Vector4 float4;
 
 uint4 get(ReadByteBuffer buf, uint index) {
   return uint4(buf[index], buf[index+1], buf[index+2], buf[index+3]);
+}
+
+uint asuint(float f) {
+  return *reinterpret_cast<const uint*>(&f);
+}
+
+float asfloat(uint u) {
+  return *reinterpret_cast<const float*>(&u);
 }
 #else
 #define toMatrix4(x) x
@@ -59,6 +70,57 @@ uint4 get(ReadByteBuffer buf, uint index) {
   // return buf.Load4(index);
 }
 #endif
+// Todo: Share with GPU implementation by including here
+uint f32ToUnorm16(float x) {
+  const float scalar = (1 << 16) - 1;
+  const float conv = x * scalar + 0.5f;
+
+  return uint(conv);
+}
+float unorm16ToF32(uint x) {
+  const float scalar = (1 << 16) - 1;
+  const float conv = float(x & ((1 << 16) - 1)) / scalar;
+
+  return conv;
+}
+uint encodeNormal(float3 n) {
+  const float maxMag = abs(n.x) + abs(n.y) + abs(n.z);
+  const float inverseMag = maxMag == 0.0f ? 0.0f : (1.0f / maxMag);
+  float x = n.x * inverseMag;
+  float y = n.y * inverseMag;
+
+  if (n.z < 0.0f) {
+    const float originalXSign = x < 0.0f ? -1.0f : 1.0f;
+    const float originalYSign = y < 0.0f ? -1.0f : 1.0f;
+    const float inverseAbsX = 1.0f - abs(x);
+    const float inverseAbsY = 1.0f - abs(y);
+
+    x = inverseAbsY * originalXSign;
+    y = inverseAbsX * originalYSign;
+  }
+
+  // Signed->Unsigned octahedral
+  x = x * 0.5f + 0.5f;
+  y = y * 0.5f + 0.5f;
+
+  return f32ToUnorm16(x) | (f32ToUnorm16(y) << 16);
+}
+float3 decodeNormal(uint e) {
+  float x = unorm16ToF32(e);
+  float y = unorm16ToF32(e >> 16);
+
+  // Unsigned->Signed octahedral
+  x = x * 2.0f - 1.0f;
+  y = y * 2.0f - 1.0f;
+
+  float3 v = float3(x, y, 1.0f - abs(x) - abs(y));
+  const float t = max(-v.z, 0.0f);
+
+  v.x += (v.x >= 0.0f) ? -t : t;
+  v.y += (v.y >= 0.0f) ? -t : t;
+
+  return normalize(v);
+}
 
 void skinning(const uint32_t idx,
               WriteBuffer(float) dstPosition,
@@ -76,14 +138,25 @@ void skinning(const uint32_t idx,
     lastWeight -= srcBlendWeight[baseWeightsOffset + i];
   }
 
+  // Read position
   const uint baseSrcPositionOffset = (cb.srcPositionOffset + idx * cb.srcPositionStride) / 4;
   float4 position = float4(srcPosition[baseSrcPositionOffset + 0],
                            srcPosition[baseSrcPositionOffset + 1],
                            srcPosition[baseSrcPositionOffset + 2], 1.f);
+
+  // Read normal
   const uint baseSrcNormalOffset = (cb.srcNormalOffset + idx * cb.srcNormalStride) / 4;
-  float4 normal = float4(srcNormal[baseSrcNormalOffset + 0],
-                         srcNormal[baseSrcNormalOffset + 1],
-                         srcNormal[baseSrcNormalOffset + 2], 0.f);
+  float4 normal;
+  if (cb.useOctahedralNormals) {
+    const uint encodedNormal = asuint(srcNormal[baseSrcNormalOffset]);
+    const float3 decodedNormal = decodeNormal(encodedNormal);
+
+    normal = float4(decodedNormal.x, decodedNormal.y, decodedNormal.z, 0.f);
+  } else {
+    normal = float4(srcNormal[baseSrcNormalOffset + 0],
+                    srcNormal[baseSrcNormalOffset + 1],
+                    srcNormal[baseSrcNormalOffset + 2], 0.f);
+  }
 
   // Do the skinning
   float4 positionOut = float4(0.f);
@@ -129,9 +202,15 @@ void skinning(const uint32_t idx,
   dstPosition[baseDstPositionOffset + 2] = positionOut.z;
 
   const uint baseDstNormalOffset = (cb.dstNormalOffset + idx * cb.dstNormalStride) / 4;
-  dstNormal[baseDstNormalOffset + 0] = newNormal.x;
-  dstNormal[baseDstNormalOffset + 1] = newNormal.y;
-  dstNormal[baseDstNormalOffset + 2] = newNormal.z;
+  if (cb.useOctahedralNormals) {
+    const uint encodedNormal = encodeNormal(newNormal);
+
+    dstNormal[baseDstNormalOffset] = asfloat(encodedNormal);
+  } else {
+    dstNormal[baseDstNormalOffset + 0] = newNormal.x;
+    dstNormal[baseDstNormalOffset + 1] = newNormal.y;
+    dstNormal[baseDstNormalOffset + 2] = newNormal.z;
+  }
 }
 
 #ifdef __cplusplus
@@ -139,5 +218,7 @@ void skinning(const uint32_t idx,
 #undef ReadBuffer
 #undef toMatrix4
 #undef mul
+#undef max
+#undef abs
 } //dxvk
 #endif

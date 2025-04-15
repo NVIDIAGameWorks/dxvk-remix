@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2024-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -63,12 +63,14 @@ namespace dxvk {
         RW_TEXTURE2D(RAY_RECONSTRUCTION_PRIMARY_SPECULAR_ALBEDO_INPUT_OUTPUT)
         TEXTURE2D(RAY_RECONSTRUCTION_PRIMARY_ATTENUATION_INPUT)
         TEXTURE2D(RAY_RECONSTRUCTION_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT)
+        RW_TEXTURE2D(RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_THRESHOLD_MIX_INPUT_OUTPUT)
         // Secondary surface data
         TEXTURE2D(RAY_RECONSTRUCTION_SECONDARY_ALBEDO_INPUT)
         TEXTURE2D(RAY_RECONSTRUCTION_SECONDARY_SPECULAR_ALBEDO_INPUT)
         TEXTURE2D(RAY_RECONSTRUCTION_SECONDARY_ATTENUATION_INPUT)
         TEXTURE2D(RAY_RECONSTRUCTION_SECONDARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT)
-
+        TEXTURE2D(RAY_RECONSTRUCTION_PRIMARY_CONE_RADIUS_INPUT)
+        
         TEXTURE2D(RAY_RECONSTRUCTION_COMBINED_INPUT)
         TEXTURE2D(RAY_RECONSTRUCTION_SHARED_FLAGS_INPUT)
         RW_TEXTURE2D(RAY_RECONSTRUCTION_DEBUG_VIEW_OUTPUT)
@@ -79,17 +81,20 @@ namespace dxvk {
 
         END_PARAMETER()
     };
+    PREWARM_SHADER_PIPELINE(PrepareRayReconstructionShader);
   }
 
   DxvkRayReconstruction::DxvkRayReconstruction(DxvkDevice* device)
-    : DxvkDLSS(device) {
+    : DxvkDLSS(device)
+    , m_prevModel(model())
+    , m_prevEnableTransformerModelD(enableTransformerModelD()) {
 
     DxvkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
     info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
     info.access = VK_ACCESS_TRANSFER_WRITE_BIT;
     info.size = sizeof(RayReconstructionArgs);
-    m_constants = device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
+    m_constants = device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "DLSS-RR constant buffer");
   }
 
   bool DxvkRayReconstruction::supportsRayReconstruction() const {
@@ -128,8 +133,12 @@ namespace dxvk {
     }
 
     bool dlssAutoExposure = true;
-    mRecreate |= (mAutoExposure != dlssAutoExposure);
+    mRecreate |= (mAutoExposure != dlssAutoExposure)
+      || m_prevModel != model()
+      || m_prevEnableTransformerModelD != enableTransformerModelD();
     mAutoExposure = dlssAutoExposure;
+    m_prevModel = model();
+    m_prevEnableTransformerModelD = enableTransformerModelD();
 
     if (mRecreate) {
       initializeRayReconstruction(ctx);
@@ -182,11 +191,14 @@ namespace dxvk {
       ctx->bindResourceView(RAY_RECONSTRUCTION_PRIMARY_SPECULAR_ALBEDO_INPUT_OUTPUT, rtOutput.m_primarySpecularAlbedo.view(Resources::AccessType::ReadWrite), nullptr);
       ctx->bindResourceView(RAY_RECONSTRUCTION_PRIMARY_ATTENUATION_INPUT, rtOutput.m_primaryAttenuation.view, nullptr);
       ctx->bindResourceView(RAY_RECONSTRUCTION_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughness.view, nullptr);
+      ctx->bindResourceView(RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_THRESHOLD_MIX_INPUT_OUTPUT, rtOutput.m_primaryDisocclusionThresholdMix.view, nullptr);
+
       // Secondary data
       ctx->bindResourceView(RAY_RECONSTRUCTION_SECONDARY_ALBEDO_INPUT, rtOutput.m_secondaryAlbedo.view, nullptr);
       ctx->bindResourceView(RAY_RECONSTRUCTION_SECONDARY_SPECULAR_ALBEDO_INPUT, rtOutput.m_secondarySpecularAlbedo.view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(RAY_RECONSTRUCTION_SECONDARY_ATTENUATION_INPUT, rtOutput.m_secondaryAttenuation.view, nullptr);
       ctx->bindResourceView(RAY_RECONSTRUCTION_SECONDARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_secondaryVirtualWorldShadingNormalPerceptualRoughness.view, nullptr);
+      ctx->bindResourceView(RAY_RECONSTRUCTION_PRIMARY_CONE_RADIUS_INPUT, rtOutput.m_primaryConeRadius.view, nullptr);
 
       // DLSSRR data
       ctx->bindResourceView(RAY_RECONSTRUCTION_NORMALS_DLSSRR_INPUT, rtOutput.m_primaryWorldShadingNormalDLSSRR.view, nullptr);
@@ -230,12 +242,13 @@ namespace dxvk {
       };
 
       const DxvkAutoExposure& autoExposure = device()->getCommon()->metaAutoExposure();
-      if (!mAutoExposure)
+      if (!mAutoExposure) {
         pInputs.push_back(autoExposure.getExposureTexture().view);
+      }
 
       std::vector<Rc<DxvkImageView>> pOutputs = {
-        rtOutput.m_sharedBiasCurrentColorMask.view(Resources::AccessType::Read),
-        rtOutput.m_finalOutput.view
+        rtOutput.m_sharedBiasCurrentColorMask.view(Resources::AccessType::Write),
+        rtOutput.m_finalOutput.view(Resources::AccessType::Write)
       };
 
       for (auto input : pInputs) {
@@ -280,7 +293,7 @@ namespace dxvk {
       // Note: Add texture inputs added here to the pInputs array above to properly access the images.
       NGXRayReconstructionContext::NGXBuffers buffers;
       buffers.pUnresolvedColor = &rtOutput.m_compositeOutput.resource(Resources::AccessType::Read);
-      buffers.pResolvedColor = &rtOutput.m_finalOutput;
+      buffers.pResolvedColor = &rtOutput.m_finalOutput.resource(Resources::AccessType::Write);
       buffers.pMotionVectors = motionVectorInput;
       buffers.pDepth = depthInput;
       buffers.pDiffuseAlbedo = &rtOutput.m_primaryAlbedo;
@@ -292,6 +305,7 @@ namespace dxvk {
       buffers.pBiasCurrentColorMask = &rtOutput.m_sharedBiasCurrentColorMask.resource(Resources::AccessType::Read);
       buffers.pHitDistance = useSpecularHitDistance() ? &rtOutput.m_rayReconstructionHitDistance.resource(Resources::AccessType::Read) : nullptr;
       buffers.pInTransparencyLayer = getParticleBufferMode() == RayReconstructionParticleBufferMode::RayReconstructionUpscaling ? &rtOutput.m_rayReconstructionParticleBuffer : nullptr;
+      buffers.pDisocclusionMask = &rtOutput.m_primaryDisocclusionThresholdMix;
 
       NGXRayReconstructionContext::NGXSettings settings;
       settings.resetAccumulation = resetHistory;
@@ -348,6 +362,7 @@ namespace dxvk {
       ImGui::DragFloat("DLSS-RR Roughness Sensitivity", &upscalerRoughnessDemodulationOffsetObject(), 0.01f, 0.0f, 2.0f, "%.3f");
       ImGui::DragFloat("DLSS-RR Roughness Multiplier", &upscalerRoughnessDemodulationMultiplierObject(), 0.01f, 0.0f, 20.0f, "%.3f");
       ImGui::Checkbox("Composite Volumetric Light", &compositeVolumetricLightObject());
+      ImGui::Checkbox("Transformer Model D", &enableTransformerModelDObject());
     }
   }
 
@@ -435,9 +450,16 @@ namespace dxvk {
 
     if (m_rayReconstructionContext) {
 
+      // Model to use for DLSS-RR
+      NVSDK_NGX_RayReconstruction_Hint_Render_Preset dlssdModel = (model() == RayReconstructionModel::CNN)
+        ? /* CNN */ NVSDK_NGX_RayReconstruction_Hint_Render_Preset_A
+        : enableTransformerModelD()
+          ? /* Transformer D */ NVSDK_NGX_RayReconstruction_Hint_Render_Preset_D
+          : /* Transformer E - Truthful Shrimp */ NVSDK_NGX_RayReconstruction_Hint_Render_Preset_E;
+
       auto optimalSettings = m_rayReconstructionContext->queryOptimalSettings(mInputSize, perfQuality);
 
-      m_rayReconstructionContext->initialize(renderContext, mInputSize, mDLSSOutputSize, mIsHDR, mInverseDepth, mAutoExposure, false, perfQuality);
+      m_rayReconstructionContext->initialize(renderContext, mInputSize, mDLSSOutputSize, mIsHDR, mInverseDepth, mAutoExposure, false, dlssdModel, perfQuality);
     }
   }
 } // namespace dxvk

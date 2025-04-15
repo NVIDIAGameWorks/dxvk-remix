@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2022, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -317,7 +317,7 @@ namespace dxvk {
     desc.size = buffer.length();
 
     // Make the image where we'll copy the GPU resource to CPU accessible mem
-    Rc<DxvkBuffer> bufferDest = ctx->getDevice()->createBuffer(desc, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT, DxvkMemoryStats::Category::RTXBuffer);
+    Rc<DxvkBuffer> bufferDest = ctx->getDevice()->createBuffer(desc, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT, DxvkMemoryStats::Category::RTXBuffer, "Remix Data Export Buffer");
 
     ctx->copyBuffer(bufferDest, VkDeviceSize { 0 }, buffer.buffer(), buffer.offset(), desc.size);
 
@@ -346,7 +346,7 @@ namespace dxvk {
 
   void AssetExporter::generateSceneThumbnail(Rc<DxvkContext> ctx, const std::string& dir, const std::string& filename) {
     auto& resourceManager = ctx->getCommonObjects()->getResources();
-    auto finalOutput = resourceManager.getRaytracingOutput().m_finalOutput.image;
+    auto finalOutput = resourceManager.getRaytracingOutput().m_finalOutput.image(Resources::AccessType::Read);
 
     env::createDirectory(dir);
 

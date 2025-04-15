@@ -105,8 +105,9 @@ namespace lss {
   }
 
 
-  UsdMeshImporter::UsdMeshImporter(const UsdPrim& meshPrim)
-    : m_meshPrim(UsdGeomMesh(meshPrim)) {
+  UsdMeshImporter::UsdMeshImporter(const UsdPrim& meshPrim, const uint32_t limitedNumBonesPerVertex)
+    : m_meshPrim(UsdGeomMesh(meshPrim))
+    , m_limitedNumBonesPerVertex(limitedNumBonesPerVertex) {
     ZoneScoped;
     if (!meshPrim.IsA<UsdGeomMesh>()) {
       throw DxvkError(str::format("Tried to process mesh, but it doesnt appear to be a valid USD mesh, id=.", m_meshPrim.GetPath().GetString()));
@@ -182,7 +183,7 @@ namespace lss {
     m_vertexDecl.emplace_back(VertexDeclaration { Attributes::VertexPositions, offset, size });
     offset += size;
     if (ppMeshSamplers[Attributes::Normals]) {
-      const size_t size = sizeof(float) * 3;
+      const size_t size = sizeof(std::uint32_t);
       m_vertexDecl.emplace_back(VertexDeclaration { Attributes::Normals, offset, size });
       offset += size;
     }
@@ -197,12 +198,12 @@ namespace lss {
       offset += size;
     }
     if (ppMeshSamplers[Attributes::BlendWeights]) {
-      const size_t size = sizeof(float) * (m_numBonesPerVertex - 1);
+      const size_t size = sizeof(float) * (m_limitedNumBonesPerVertex - 1);
       m_vertexDecl.emplace_back(VertexDeclaration { Attributes::BlendWeights, offset, size });
       offset += size;
     }
     if (ppMeshSamplers[Attributes::BlendIndices]) {
-      const size_t size = dxvk::align(m_numBonesPerVertex, 4);
+      const size_t size = dxvk::align(m_limitedNumBonesPerVertex, 4);
       m_vertexDecl.emplace_back(VertexDeclaration { Attributes::BlendIndices, offset, size });
       offset += size;
     }
@@ -239,6 +240,7 @@ namespace lss {
       if (!addPrimvarFromAttributeName(kPoints, Attributes::VertexPositions, sizeof(float) * 3))
         throw DxvkError(str::format("Prim: ", m_meshPrim.GetPath().GetString(), ", has no points attribute."));
 
+    // Note: Currently normals are still encoded in the USD as 3xfloat32, unlike the 32 bit octahedral encoding used after processing.
     if (!addPrimvarFromAttribute(m_meshPrim.GetNormalsAttr(), Attributes::Normals, sizeof(float) * 3))
       addPrimvarFromAttributeName(kNormalsAttribute, Attributes::Normals, sizeof(float) * 3);
 
@@ -259,21 +261,27 @@ namespace lss {
       UsdGeomPrimvar jointIndicesPV = skelBinding.GetJointIndicesPrimvar();
       UsdGeomPrimvar jointWeightsPV = skelBinding.GetJointWeightsPrimvar();
       
-      m_numBonesPerVertex = jointIndicesPV.GetElementSize();
-      if (m_numBonesPerVertex > MaxSupportedNumBones) {
+      m_actualNumBonesPerVertex = jointIndicesPV.GetElementSize();
+      if (m_actualNumBonesPerVertex > MaxSupportedNumBones) {
         Logger::warn(str::format("Prim: ", m_meshPrim.GetPath().GetString(), ", uses more bones than is currently supported."));
-        m_numBonesPerVertex = MaxSupportedNumBones;
+        m_actualNumBonesPerVertex = MaxSupportedNumBones;
       }
+
+      if (m_actualNumBonesPerVertex > m_limitedNumBonesPerVertex) {
+        Logger::warn(str::format("Prim: ", m_meshPrim.GetPath().GetString(), ", uses more bone influences per vertex (", m_actualNumBonesPerVertex, ") than the config defined limit (rtx.limitedBonesPerVertex = ", m_limitedNumBonesPerVertex, ").  Reducing the number of bone influences automatically.  This may result in some skinned meshes not animating correctly.  We suggest optimizing this mesh to only use the minimum number of bone influences."));
+      }
+
+      m_limitedNumBonesPerVertex = std::min(m_limitedNumBonesPerVertex, m_actualNumBonesPerVertex);
 
       if (!jointWeightsPV.HasValue()) {
         throw DxvkError(str::format("Prim: ", m_meshPrim.GetPath().GetString(), ", has Skeleton API but no joint weights."));
       }
-      if (jointWeightsPV.GetElementSize() != m_numBonesPerVertex) {
+      if (jointWeightsPV.GetElementSize() != m_actualNumBonesPerVertex) {
         throw DxvkError(str::format("Prim: ", m_meshPrim.GetPath().GetString(), ", joint indices and joint weights must have matching element sizes."));
       }
 
-      primvars.emplace_back(PrimvarDescriptor { jointIndicesPV, Attributes::BlendIndices, sizeof(int)   * m_numBonesPerVertex });
-      primvars.emplace_back(PrimvarDescriptor { jointWeightsPV, Attributes::BlendWeights, sizeof(float) * m_numBonesPerVertex });
+      primvars.emplace_back(PrimvarDescriptor { jointIndicesPV, Attributes::BlendIndices, sizeof(int) * m_actualNumBonesPerVertex });
+      primvars.emplace_back(PrimvarDescriptor { jointWeightsPV, Attributes::BlendWeights, sizeof(float) * m_actualNumBonesPerVertex });
     }
 
     uint32_t numPoints = 0;
@@ -322,6 +330,71 @@ namespace lss {
     }
   }
 
+  float signNotZero(float x) {
+    return x < 0.0f ? -1.0f : 1.0f;
+  }
+
+  std::uint32_t f32ToUnorm16(float x) {
+    assert(x >= 0.0f && x <= 1.0);
+    const float scalar = (1 << 16) - 1;
+    const float conv = x * scalar + 0.5f;
+
+    return static_cast<std::uint32_t>(conv);
+  }
+  
+  // Helper function to limit bone influences with a variable number of influences per vertex
+  template<uint32_t MaxBones>
+  void limitBoneInfluences(const uint32_t* fullIndices,
+                           const float* fullWeights,
+                           uint32_t numInfluences,
+                           uint32_t desiredBoneCount,
+                           uint32_t* limitedIndices,
+                           float* limitedWeights) {
+    // Use a fixed-size array to store valid influences.
+    std::pair<uint32_t, float> influences[MaxBones];
+    uint32_t validCount = 0;
+
+    // Collect valid influences from the vertex
+    for (uint32_t i = 0; i < numInfluences; ++i) {
+      if (fullWeights[i] > 1e-4f) {  // Filter out negligible weights
+        influences[validCount++] = { fullIndices[i], fullWeights[i] };
+      }
+    }
+
+    // Sort the influences in descending order by weight
+    std::sort(influences, influences + validCount,
+              [](const std::pair<uint32_t, float>& a, const std::pair<uint32_t, float>& b) {
+                return a.second > b.second;
+              });
+
+    // Limit the number of influences to the desired maximum.
+    uint32_t countToKeep = validCount < desiredBoneCount ? validCount : desiredBoneCount;
+
+    // Renormalize the weights so they sum to 1
+    float totalWeight = 0.0f;
+    for (uint32_t i = 0; i < countToKeep; ++i) {
+      totalWeight += influences[i].second;
+    }
+    if (totalWeight > 0.0f) {
+      for (uint32_t i = 0; i < countToKeep; ++i) {
+        influences[i].second /= totalWeight;
+      }
+    }
+
+    // Write the limited influences into the output arrays
+    uint32_t i = 0;
+    for (; i < countToKeep; ++i) {
+      limitedIndices[i] = influences[i].first;
+      limitedWeights[i] = influences[i].second;
+    }
+
+    // Zero out the remaining entries, output array must remain at a fixed size
+    for (; i < numInfluences; ++i) {
+      limitedIndices[i] = 0;
+      limitedWeights[i] = 0.0f;
+    }
+  }
+
   void UsdMeshImporter::triangulate(const uint32_t numTriangles, 
                                     const uint32_t elementStride,
                                     const std::unique_ptr<GeomPrimvarSampler>* ppMeshSamplers,
@@ -336,9 +409,6 @@ namespace lss {
 
     fast_unordered_cache<uint32_t> uniqueVertexToIndex;
 
-    // Temp stack storage for blend weights/indices
-    uint32_t blendIndicesStorage[MaxSupportedNumBones];
-
     IndexRange currentFaceMapRange;
     uint32_t uniqueVertexIndex = 0;
     uint32_t prevFaceIdx = 0;
@@ -347,50 +417,118 @@ namespace lss {
       for (uint32_t vertIdx = 0; vertIdx < 3; vertIdx++) {
         const uint32_t idx = triIdx * 3 + vertIdx;
 
-        uint32_t vertexOffset = totalOffset;
+        const uint32_t vertexOffset = totalOffset;
 
         // Sample the vertex attributes to get all the data for this vertex.
         for (const VertexDeclaration& decl : m_vertexDecl) {
           switch (decl.attribute) {
-          case Attributes::BlendIndices: {
+          case Attributes::BlendWeights:
+            // Do nothing, we decode the blend weights and indices together below
+            break;
+          case Attributes::BlendIndices:
+          {
+            if (ppMeshSamplers[Attributes::BlendWeights] == nullptr) {
+              assert(0);
+            }
+            // Temporary storage for the full data.
+            uint32_t blendIndicesStorage[MaxSupportedNumBones];
+            float blendWeightsStorage[MaxSupportedNumBones];
+
+            // Sample full bone indices...
             ppMeshSamplers[Attributes::BlendIndices]->SampleBuffer(idx, &blendIndicesStorage[0]);
-            // Encode bone indices into compressed byte form
-            for (int j = 0; j < m_numBonesPerVertex; j += 4) {
-              uint32_t vertIndices = 0;
-              for (int k = 0; k < 4 && j + k < m_numBonesPerVertex; ++k) {
-                vertIndices |= blendIndicesStorage[j + k] << 8 * k;
+            // ... and the corresponding blend weights
+            ppMeshSamplers[Attributes::BlendWeights]->SampleBuffer(idx, &blendWeightsStorage[0]);
+
+            // Helper to write the blend data to our vertex buffer
+            const auto& writeBlendData = [&](uint32_t* blendIndices, float* blendWeights) {
+              // Encode the limited bone indices into compressed byte form
+              for (int j = 0; j < m_limitedNumBonesPerVertex; j += 4) {
+                uint32_t vertIndices = 0;
+                for (int k = 0; k < 4 && (j + k) < m_limitedNumBonesPerVertex; ++k) {
+                  vertIndices |= blendIndices[j + k] << (8 * k);
+                }
+                *(uint32_t*) (&m_vertexData[vertexOffset + decl.offset / 4 + j / 4]) = vertIndices;
               }
-              *(uint32_t*) &m_vertexData[vertexOffset + j/4] = vertIndices;
+
+              // Write the weights
+              const VertexDeclaration* blendWeightsDecl = nullptr;
+              for (const VertexDeclaration& decl : m_vertexDecl) {
+                if (decl.attribute == Attributes::BlendWeights) {
+                  blendWeightsDecl = &decl;
+                  break;
+                }
+              }
+              assert(blendWeightsDecl != nullptr);
+              memcpy(&m_vertexData[vertexOffset + blendWeightsDecl->offset / 4], &blendWeights[0], blendWeightsDecl->size);
+            };
+
+            // Limit the influences
+            if (m_actualNumBonesPerVertex != m_limitedNumBonesPerVertex) {
+              uint32_t limitedIndices[MaxSupportedNumBones];
+              float limitedWeights[MaxSupportedNumBones];
+              limitBoneInfluences<MaxSupportedNumBones>(blendIndicesStorage, blendWeightsStorage, m_actualNumBonesPerVertex, m_limitedNumBonesPerVertex, limitedIndices, limitedWeights);
+              writeBlendData(&limitedIndices[0], &limitedWeights[0]);
+            } else {
+              writeBlendData(&blendIndicesStorage[0], &blendWeightsStorage[0]);
             }
             break;
           }
-          case Attributes::Colors: {
+          case Attributes::Colors:
+          {
             GfVec3f color(1.0f); // default to white
             ppMeshSamplers[Attributes::Colors]->SampleBuffer(idx, &color);
-            const uint32_t enColor = D3DCOLOR_COLORVALUE(color[0], color[1], color[2], 1.f);
-            uint32_t& vertexColor = *(uint32_t*) &m_vertexData[vertexOffset];
+            const uint32_t enColor = D3DCOLOR_ARGB((DWORD) ((color[0]) * 255.f), (DWORD) ((color[1]) * 255.f), (DWORD) ((color[2]) * 255.f), 0xFF);
+            uint32_t& vertexColor = *(uint32_t*) &m_vertexData[vertexOffset + decl.offset / 4];
             vertexColor = (vertexColor & 0xFF000000) | (enColor & 0x00FFFFFF);
             break;
           }
-          case Attributes::Opacity: {
+          case Attributes::Opacity:
+          {
             float opacity = 1.0f; // default to opaque
             ppMeshSamplers[Attributes::Opacity]->SampleBuffer(idx, &opacity);
-            uint32_t& vertexColor = *(uint32_t*) &m_vertexData[vertexOffset];
+            uint32_t& vertexColor = *(uint32_t*) &m_vertexData[vertexOffset + decl.offset / 4];
             vertexColor = (vertexColor & 0x00FFFFFF) | (((uint32_t) (opacity * 255.f) & 0xFF) << 24);
             break;
           }
           case Attributes::Texcoords: {
-            ppMeshSamplers[decl.attribute]->SampleBuffer(idx, &m_vertexData[vertexOffset]);
+            ppMeshSamplers[decl.attribute]->SampleBuffer(idx, &m_vertexData[vertexOffset + decl.offset / 4]);
             // Invert texcoord.y for Remix
-            m_vertexData[vertexOffset + 1] = 1.f - m_vertexData[vertexOffset + 1];
+            m_vertexData[vertexOffset + decl.offset / 4 + 1] = 1.f - m_vertexData[vertexOffset + decl.offset / 4 + 1];
+            break;
+          }
+          case Attributes::Normals: {
+            GfVec3f normal(0.0f);
+            ppMeshSamplers[decl.attribute]->SampleBuffer(idx, &normal);
+            uint32_t& normalStorage = *reinterpret_cast<uint32_t*>(&m_vertexData[vertexOffset + decl.offset / 4]);
+
+            const float maxMag = std::abs(normal[0]) + std::abs(normal[1]) + std::abs(normal[2]);
+            const float inverseMag = maxMag == 0.0f ? 0.0f : (1.0f / maxMag);
+            float x = normal[0] * inverseMag;
+            float y = normal[1] * inverseMag;
+
+            if (normal[2] < 0.0f) {
+              const auto originalXSign = signNotZero(x);
+              const auto originalYSign = signNotZero(y);
+              const auto inverseAbsX = 1.0f - std::abs(x);
+              const auto inverseAbsY = 1.0f - std::abs(y);
+
+              x = inverseAbsY * originalXSign;
+              y = inverseAbsX * originalYSign;
+            }
+
+            // Signed->Unsigned octahedral
+            x = x * 0.5f + 0.5f;
+            y = y * 0.5f + 0.5f;
+
+            normalStorage = f32ToUnorm16(x) | (f32ToUnorm16(y) << 16);
+
             break;
           }
           default: {
-            ppMeshSamplers[decl.attribute]->SampleBuffer(idx, &m_vertexData[vertexOffset]);
+            ppMeshSamplers[decl.attribute]->SampleBuffer(idx, &m_vertexData[vertexOffset + decl.offset / 4]);
             break;
           }
           }
-          vertexOffset += decl.size / 4;
         }
 
         // If we've indexed this vertex before, no need to waste memory

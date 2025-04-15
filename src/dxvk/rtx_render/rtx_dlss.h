@@ -47,7 +47,7 @@ namespace dxvk {
 
   enum class PathTracerPreset : int {
     Default,
-    ReSTIR,
+    RayReconstruction,
   };
 
   const char* dlssProfileToString(DLSSProfile dlssProfile);

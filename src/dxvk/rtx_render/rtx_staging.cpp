@@ -5,6 +5,7 @@ namespace dxvk {
 
   RtxStagingDataAlloc::RtxStagingDataAlloc(
     const Rc<DxvkDevice>& device,
+    const char* name,
     const VkMemoryPropertyFlagBits memFlags,
     const VkBufferUsageFlags usageFlags,
     const VkPipelineStageFlags stages,
@@ -16,6 +17,7 @@ namespace dxvk {
     , m_stages(stages)
     , m_access(access)
     , m_bufferRequiredAlignmentOverride(bufferRequiredAlignmentOverride)
+    , m_name(name)
   {
 
   }
@@ -76,6 +78,6 @@ namespace dxvk {
     info.usage = m_usage;
     info.requiredAlignmentOverride = m_bufferRequiredAlignmentOverride;
 
-    return m_device->createBuffer(info, m_memoryFlags, DxvkMemoryStats::Category::AppBuffer);
+    return m_device->createBuffer(info, m_memoryFlags, DxvkMemoryStats::Category::AppBuffer, m_name);
   }
 }

@@ -13,12 +13,14 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define NRD_HEADER_ONLY
 
 // Note: should the below values change, modify the nrd::LibraryDesc check in NRDContext
-#define NRD_NORMAL_ENCODING 2
-#define NRD_ROUGHNESS_ENCODING 1
-#define NRD_USE_SQRT_LINEAR_ROUGHNESS 0
+#define NRD_NORMAL_ENCODING NRD_NORMAL_ENCODING_R10G10B10A2_UNORM
+#define NRD_ROUGHNESS_ENCODING NRD_ROUGHNESS_ENCODING_LINEAR
+
+// Just a single material id, since we don't use it but NRD requires it on inputs
+#define MATERIAL_ID_DEFAULT 0.f
 
 #include "../../../external/nrd/Shaders/Include/NRD.hlsli"
 
-#if NRD_USE_SQRT_LINEAR_ROUGHNESS != 0
+#if NRD_ROUGHNESS_ENCODING != NRD_ROUGHNESS_ENCODING_LINEAR
 #error Not supported NRD configs. Please update NRD.hlsli and ***RECOMPILE*** NRD library.
 #endif

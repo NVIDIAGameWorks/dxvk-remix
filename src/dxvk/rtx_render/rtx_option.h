@@ -199,6 +199,10 @@ namespace dxvk {
       *getValuePtr<T>(RtxOptionImpl::ValueType::DefaultValue) = v;
     }
 
+    void resetToDefault() const {
+      setValue(getDefaultValue());
+    }
+
     std::string getName() const {
       return pImpl->getFullName();
     }

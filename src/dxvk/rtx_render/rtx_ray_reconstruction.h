@@ -32,6 +32,11 @@ namespace dxvk {
       RayReconstructionUpscaling,
     };
 
+    enum class RayReconstructionModel : uint32_t {
+      CNN = 0,
+      Transformer,
+    };
+
     explicit DxvkRayReconstruction(DxvkDevice* device);
 
     bool supportsRayReconstruction() const;
@@ -63,7 +68,8 @@ namespace dxvk {
                RayReconstructionParticleBufferMode::RayReconstructionUpscaling,
                "Use a separate particle buffer to handle particles.\n");
     RTX_OPTION("rtx.rayreconstruction", bool, enableNRDForTraining, false, "Enable NRD. This option is only for training or debug purpose.\n");
-    RTX_OPTION("rtx.rayreconstruction", PathTracerPreset, pathTracerPreset, PathTracerPreset::ReSTIR, "Path tracer preset. The \"ReSTIR Finetuned\" preset is preferred when DLSS-RR is on.\n");
+    RTX_OPTION("rtx.rayreconstruction", PathTracerPreset, pathTracerPreset, PathTracerPreset::RayReconstruction, 
+               "Path tracer preset to use when Ray Reconstruction is enabled.");
     RTX_OPTION("rtx.rayreconstruction", bool, useSpecularHitDistance, true, "Use specular hit distance to reduce ghosting.\n");
     RTX_OPTION("rtx.rayreconstruction", bool, preserveSettingsInNativeMode, false, "Preserve settings when switched to native mode, otherwise the default preset will be applied.\n");
     RTX_OPTION("rtx.rayreconstruction", bool, combineSpecularAlbedo, true, "Combine primary and secondary specular albedo to improve DLSS-RR reflection quality.\n");
@@ -76,6 +82,8 @@ namespace dxvk {
     RTX_OPTION("rtx.rayreconstruction", bool, enableDLSSRRSurfaceReplacement, true, "Use DLSS-RR surface replacement. Translucent surfaces with significant refraction are excluded from surface replacement and its surface motion vector will be used.\n");
     RTX_OPTION("rtx.rayreconstruction", bool, preprocessSecondarySignal, true, "Denoise secondary signal before passing to DLSS-RR. This option improves reflection on translucent objects.\n");
     RTX_OPTION("rtx.rayreconstruction", bool, compositeVolumetricLight, true, "Composite volumetric light and then input the result to DLSS-RR, otherwise volumetric light is in a separate layer. Disabling it may introduce flickering artifacts.\n");
+    RW_RTX_OPTION_ENV("rtx.rayreconstruction", RayReconstructionModel, model, RayReconstructionModel::Transformer, "RTX_RAY_RECONSTRUCTION_MODEL", "Ray reconstruction model to use. 0: CNN, 1: Transformer (higher quality).");
+    RTX_OPTION("rtx.rayreconstruction", bool, enableTransformerModelD, false, "");
 
   private:
     void initializeRayReconstruction(Rc<DxvkContext> pRenderContext);
@@ -83,6 +91,8 @@ namespace dxvk {
     Resources::Resource         m_normals;
     bool                        m_useVirtualNormals = true;
     bool                        m_biasCurrentColorEnabled = true;
+    RayReconstructionModel      m_prevModel;
+    bool                        m_prevEnableTransformerModelD;
 
     Rc<DxvkBuffer> m_constants;
     std::unique_ptr<NGXRayReconstructionContext> m_rayReconstructionContext;

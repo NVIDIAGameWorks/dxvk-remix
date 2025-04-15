@@ -33,7 +33,7 @@
 #include "../util/util_env.h"
 #include "rtx_utils.h"
 #include "rtx/concept/ray_portal/ray_portal.h"
-#include "rtx_volume_integrate.h"
+#include "rtx_global_volumetrics.h"
 #include "rtx_pathtracer_gbuffer.h"
 #include "rtx_pathtracer_integrate_direct.h"
 #include "rtx_pathtracer_integrate_indirect.h"
@@ -54,7 +54,7 @@ typedef enum _NV_GPU_ARCH_IMPLEMENTATION_ID NV_GPU_ARCH_IMPLEMENTATION_ID;
 namespace dxvk {
   class DxvkDevice;
 
-  using RenderPassVolumeIntegrateRaytraceMode = DxvkVolumeIntegrate::RaytraceMode;
+  using RenderPassVolumeIntegrateRaytraceMode = RtxGlobalVolumetrics::RaytraceMode;
   using RenderPassGBufferRaytraceMode = DxvkPathtracerGbuffer::RaytraceMode;
   using RenderPassIntegrateDirectRaytraceMode = DxvkPathtracerIntegrateDirect::RaytraceMode;
   using RenderPassIntegrateIndirectRaytraceMode = DxvkPathtracerIntegrateIndirect::RaytraceMode;
@@ -97,7 +97,8 @@ namespace dxvk {
   };
 
   enum class TaauPreset : int {
-    Performance = 0,
+    UltraPerformance = 0,
+    Performance,
     Balanced,
     Quality,
     Fullscreen
@@ -149,15 +150,19 @@ namespace dxvk {
 
   enum class IntegrateIndirectMode : int {
     ImportanceSampled = 0,   // Importance sampled integration - provides the noisiest output and used primarily for reference comparisons
-    ReSTIRGI = 1             // Importance Sampled + ReSTIR GI integrations
+    ReSTIRGI = 1,            // Importance Sampled + ReSTIR GI integrations
+    NeuralRadianceCache = 2, // Implements a live trained neural network to provide a world space radiance cache and allow the pathtracer to terminate paths earlier into the cache.
+  
+    Count
   };
 
   class RtxOptions {
-    friend class ImGUI; // <-- we want to modify these values directly.
-    friend class ImGuiSplash; // <-- we want to modify these values directly.
-    friend class ImGuiCapture; // <-- we want to modify these values directly.
-    friend class RtxContext; // <-- we want to modify these values directly.
-    friend class RtxInitializer; // <-- we want to modify these values directly.
+    friend class ImGUI;
+    friend class ImGuiSplash;
+    friend class ImGuiCapture;
+    friend class NeuralRadianceCache;
+    friend class RtxContext;
+    friend class RtxInitializer;
 
     RW_RTX_OPTION("rtx", fast_unordered_set, lightmapTextures, {},
                   "Textures used for lightmapping (baked static lighting on surfaces) in older games.\n"
@@ -201,6 +206,10 @@ namespace dxvk {
                   "Typically objects marked as particles or objects using emissive blending will be rendered with a special method which allows re-orientation of the billboard geometry assumed to make up the draw call in indirect rays (reflections for example).\n"
                   "This method works fine for typical particles, but some (e.g. a laser beam) may not be well-represented with the typical billboard assumption of simply needing to rotate around its centroid to face the view direction.\n"
                   "To handle such cases a different beam mode is used to treat objects as more of a cylindrical beam and re-orient around its main spanning axis, allowing for better rendering of these beam-like effect objects.");
+    RW_RTX_OPTION("rtx", fast_unordered_set, ignoreTransparencyLayerTextures, {},
+                  "Textures on draw calls that should not be stored in the transparency layer, when DLSS-RR is on.\n"
+                  "The transparency layer stores noise-free transparent objects which bypasses DLSS-RR denoising, but it has lower anti-aliasing quality.\n"
+                  "Transparent objects that have aliasing/flickering issues, like laser beams, can be added to this list to achieve better anti-aliasing quality.");
     RW_RTX_OPTION("rtx", fast_unordered_set, decalTextures, {},
                   "Textures on draw calls used for static geometric decals or decals with complex topology.\n"
                   "These materials will be blended over the materials underneath them when decal material blending is enabled.\n"
@@ -281,10 +290,6 @@ namespace dxvk {
     RTX_OPTION("rtx", TaauPreset, taauPreset, TaauPreset::Balanced,  "Adjusts TAA-U scaling factor, trades quality for performance.");
     RTX_OPTION_ENV("rtx", GraphicsPreset, graphicsPreset, GraphicsPreset::Auto, "DXVK_GRAPHICS_PRESET_TYPE", "Overall rendering preset, higher presets result in higher image quality, lower presets result in better performance.");
     RTX_OPTION_ENV("rtx", RaytraceModePreset, raytraceModePreset, RaytraceModePreset::Auto, "DXVK_RAYTRACE_MODE_PRESET_TYPE", "");
-    RTX_OPTION_ENV("rtx", std::string, sourceRootPath, "", "RTX_SOURCE_ROOT", "A path pointing at the root folder of the project, used to override the path to the root of the project generated at build-time (as this path is only valid for the machine the project was originally compiled on). Used primarily for locating shader source files for runtime shader recompilation.");
-    RTX_OPTION("rtx", bool,  recompileShadersOnLaunch, false, "When set to true runtime shader recompilation will execute on the first frame after launch.");
-    RTX_OPTION_ENV("rtx", bool,  prewarmAllShaderVariants, false, "RTX_PREWARM_ALL_SHADER_VARIANTS", "When set to true, all variants of shaders will be pre compiled at launch.");
-    RTX_OPTION("rtx", bool, useLiveShaderEditMode, false, "When set to true shaders will be automatically recompiled when any shader file is updated (saved for instance) in addition to the usual manual recompilation trigger.");
     RTX_OPTION("rtx", float, emissiveIntensity, 1.0f, "A general scale factor on all emissive intensity values globally. Generally per-material emissive intensities should be used, but this option may be useful for debugging without needing to author materials.");
     RTX_OPTION("rtx", float, fireflyFilteringLuminanceThreshold, 1000.0f, "Maximum luminance threshold for the firefly filtering to clamp to.");
     RTX_OPTION("rtx", float, secondarySpecularFireflyFilteringThreshold, 1000.0f, "Firefly luminance clamping threshold for secondary specular signal.");
@@ -297,6 +302,48 @@ namespace dxvk {
                "Do note that on modern Windows full screen optimizations will likely be used regardless which in most cases results in performance similar to exclusive full screen even when it is not in use.");
     RTX_OPTION("rtx", std::string, baseGameModRegex, "", "Regex used to determine if the base game is running a mod, like a sourcemod.");
     RTX_OPTION("rtx", std::string, baseGameModPathRegex, "", "Regex used to redirect RTX Remix Runtime to another path for replacements and rtx.conf.");
+
+
+    // Shader Compilation
+    struct Shader {
+      friend class ShaderManager;
+
+      // Note: Shader recompilation is only useful with a development setup for the most part and is disabled when REMIX_DEVELOPMENT is not defined,
+      // so these options will not take effect in such builds. They are however still included rather than ifdeffed out to keep consistent options documentation
+      // across builds.
+      RTX_OPTION("rtx.shader", bool, asyncSpirVRecompilation, true,
+                 "When set to true runtime shader recompilation will recompile shaders to SPIR-V asynchronously rather than blocking until complete.\n"
+                 "Do note that despite setting this option the actual compilation of the shader from SPIR-V to the ISA will still be blocking as only the prewarming process can handle this step asynchronously for now.\n"
+                 "Generally this option should remain enabled, though disabling it may be useful for CI where deterministic behavior is needed, and may be useful to maximize performance at the cost of blocking (by not having application running while compiling to SPIR-V).\n"
+                 "This option is mainly meant for development use and should not be set for user-facing operation.");
+      RTX_OPTION("rtx.shader", bool, recompileOnLaunch, false,
+                 "When set to true runtime shader recompilation will execute on the first frame after launch.\n"
+                 "This option is mainly meant for development use and should not be set for user-facing operation. Also see rtx.useLiveShaderEditMode for a similar option which auto-detects shader changes instead.");
+      RTX_OPTION("rtx.shader", bool, useLiveEditMode, false,
+                 "When set to true shaders will be automatically recompiled when any shader file is updated (saved for instance) in addition to the usual manual recompilation trigger.\n"
+                 "This option is mainly meant for development use and should not be set for user-facing operation.");
+
+      RTX_OPTION_ENV("rtx.shader", bool, prewarmAllVariants, false, "RTX_PREWARM_ALL_VARIANTS",
+                     "When set to true, all variants of shaders will be prewarmed at launch. Only takes effect when rtx.initializer.asyncShaderPrewarming is set to true.\n"
+                     "By default Remix only prewarms shaders which may actually be used at runtime or are accessible by user-facing graphics menus rather than all shader variants accessible by changing options in the developer menu.\n"
+                     "This has the benefit of minimizing shader compilation cost for typical users, but may cause shader compilation stalls when changing various options in the developer menu. As such, this option is useful to enable during development to minimize these stalls.\n"
+                     "Do note however that enabling this option will have a significant performance impact whenever shaders are uncached (e.g. on first load) due to requiring many more shaders to be compiled. As such using the enviornment variable to set this option locally on a developer's machine is recommended over a configuration file change to ensure it is not accidently enabled for users.");
+      RTX_OPTION_ENV("rtx.shader", bool, enableAsyncCompilation, true, "RTX_ENABLE_ASYNC_COMPILATION",
+                 "When set to true shader compilation (especially that of prewarming) will be done asynchronously rather than blocking.\n"
+                 "Typically shader prewarming with async finalization is done to attempt to compile all required shader variants before they are used, often by overlapping this work with a startup sequence (e.g. a game's loading screen). Often times however this prewarming takes longer than the time available, or an application may not have a startup sequence to begin with and immediately begin using Remix shaders.\n"
+                 "To accomodate this, async shader compilation allows for this work to be done asynchronously to avoid blocking the application at the cost of being unable to render anything until the process is complete.\n"
+                 "This is typically better choice than blocking however and is recommended to be enabled as on Windows Remix blocking will cause the application to stop responding, making it seem as if the application has crashed if shader compilation takes a long time. Additionally, when combined with rtx.shader.enableAsyncCompilationUI the progress of the compilation process can be shown to the user as a UI, improving user experience.\n"
+                 "The main downside to this approach is that when blocking shader compilation is allowed to take up more of the CPU, whereas async shader compilation will have to compete with the application which can make compilation take slightly longer than it would otherwise (especially true if the application's framerate is uncapped).\n"
+                 "To mitigate this, Remix can optionally throttle the application during async compilation via rtx.shader.asyncCompilationThrottleMilliseconds to ensure enough time is available for compilation.\n"
+                 "Finally, a more minor downside is that when async shader compilation is in use Remix currently has no way of keeping the application in a startup sequence (e.g. keeping a game on its loading screen) while it waits for shaders to compile.\n"
+                 "This will mean for instance a game's menu may be active but not be able to render until the compilation is complete, rather than blocking on the loading screen and transitioning to the menu only once all shaders are loaded. Not blocking the application is typically better for user experience regardless though as long as some sort of progress UI is displayed to indicate what is happening.");
+      RTX_OPTION("rtx.shader", bool, enableAsyncCompilationUI, true,
+                 "Enables a UI message when async shader compilation is in progress to indicate the current compilation progress. Only takes effect when rtx.shader.enableAsyncCompilation is true.\n"
+                 "This should usually be enabled as providing information to the user about the current progress of compilation is useful. May be disabled however for automated testing purposes if the nondeterministic behavior of the UI's rendered text interferes with testing.");
+      RTX_OPTION("rtx.shader", std::uint32_t, asyncCompilationThrottleMilliseconds, 33,
+                 "Specifies a time in milliseconds to throttle each application frame when async shader compilation is in progress. Set to 0 to disable, and only takes effect when rtx.shader.enableAsyncCompilation is true.\n"
+                 "This generally should be set to a value low enough to not impact the application framerate significantly (especially if non-ray traced visuals are capable of being displayed by the application while loading, e.g. an intro video), but also high enough to get the desired shader compilation performance (especially relevant if the application is fairly heavy on the CPU during async shader compilation, or on CPUs with few hardware threads).");
+    } shader;
 
     struct RaytracedRenderTarget {
       RTX_OPTION("rtx.raytracedRenderTarget", bool, enable, true, "Enables or disables raytracing for render-to-texture effects.  The render target to be raytraced must be specified in the texture selection menu.");
@@ -342,8 +389,10 @@ namespace dxvk {
 
     RTX_OPTION("rtx", bool, resolvePreCombinedMatrices, true, "");
 
-    RTX_OPTION("rtx", uint32_t, minPrimsInStaticBLAS, 1000, "");
-    RTX_OPTION("rtx", uint32_t, maxPrimsInMergedBLAS, 50000, "");
+    RTX_OPTION("rtx", uint32_t, minPrimsInDynamicBLAS, 1000, "The minimum number of triangles required to promote a mesh to it's own BLAS, otherwise it lands in the merged BLAS with multiple other meshes.");
+    RTX_OPTION("rtx", uint32_t, maxPrimsInMergedBLAS, 50000, "The maximum number of triangles for a mesh that can be in the merged BLAS.  ");
+    RTX_OPTION_FLAG("rtx", bool, forceMergeAllMeshes, false, RtxOptionFlags::NoSave, "Force merges all meshes into as few BLAS as possible.  This is generally not desirable for performance, but can be a useful debugging tool.");
+    RTX_OPTION_FLAG("rtx", bool, minimizeBlasMerging, false, RtxOptionFlags::NoSave, "Minimize BLAS merging to the minimum possible, this option tries to give all meshes their own BLAS.  This is generally not desirable forperformance, but can be a useful debugging tool.");
 
     RTX_OPTION_ENV("rtx", bool, enableAlwaysCalculateAABB, false, "RTX_ALWAYS_CALCULATE_AABB", "Calculate an Axis Aligned Bounding Box for every draw call.\n This may improve instance tracking across frames for skinned and vertex shaded calls.");
 
@@ -382,16 +431,24 @@ namespace dxvk {
     RTX_OPTION_ENV("rtx", bool, useRTXDI, true, "DXVK_USE_RTXDI",
                    "A flag indicating if RTXDI should be used, true enables RTXDI, false disables it and falls back on simpler light sampling methods.\n"
                    "RTXDI provides improved direct light sampling quality over traditional methods and should generally be enabled for improved direct lighting quality at the cost of some performance.");
-    RTX_OPTION_ENV("rtx", IntegrateIndirectMode, integrateIndirectMode, IntegrateIndirectMode::ReSTIRGI, "RTX_INTEGRATE_INDIRECT_MODE",
+    RTX_OPTION_ENV("rtx", IntegrateIndirectMode, integrateIndirectMode, IntegrateIndirectMode::NeuralRadianceCache, "RTX_INTEGRATE_INDIRECT_MODE",
                    "Indirect integration mode:\n"
                    "0: Importance Sampled. Importance sampled mode uses typical GI sampling and it is not recommended for general use as it provides the noisiest output.\n"
                    "   It serves as a reference integration mode for validation of other indirect integration modes.\n"
-                   "1: ReSTIR GI. ReSTIR GI provides improved indirect path sampling over \"Importance Sampled\" mode with better indirect diffuse and specular GI quality at increased performance cost.\n");
+                   "1: ReSTIR GI. ReSTIR GI provides improved indirect path sampling over \"Importance Sampled\" mode \n"
+                   "   with better indirect diffuse and specular GI quality at increased performance cost.\n"
+                   "2: Neural Radiance Cache (NRC). NRC is an AI based world space radiance cache. It is live trained by the path tracer\n"
+                   "   and allows paths to terminate early by looking up the cached value and saving performance.\n"
+                   "   NRC supports infinite bounces and often provides results closer to that of reference than ReSTIR GI\n"
+                   "   while improving performance in scenarios where ray paths have 2 or more bounces on average.\n");
     RTX_OPTION_ENV("rtx", UpscalerType, upscalerType, UpscalerType::DLSS, "DXVK_UPSCALER_TYPE", "Upscaling boosts performance with varying degrees of image quality tradeoff depending on the type of upscaler and the quality mode/preset.");
     RTX_OPTION_ENV("rtx", bool, enableRayReconstruction, true, "DXVK_RAY_RECONSTRUCTION", "Enable ray reconstruction.");
 
+    RW_RTX_OPTION_FLAG("rtx", bool, lowMemoryGpu, false, RtxOptionFlags::NoSave, "Enables low memory mode, where we aggressively detune caches and streaming systems to accomodate the lower memory available.");
+
     RTX_OPTION("rtx", float, resolutionScale, 0.75f, "");
-    RTX_OPTION("rtx", bool, forceCameraJitter, false, "");
+    RTX_OPTION("rtx", bool, forceCameraJitter, false, "Force enables camera jitter frame to frame.");
+    RTX_OPTION("rtx", uint32_t, cameraJitterSequenceLength, 64, "Sets a camera jitter sequence length [number of frames]. It will loop around once the length is reached.");
     RTX_OPTION("rtx", bool, enableDirectLighting, true, "Enables direct lighting (lighting directly from lights on to a surface) on surfaces when set to true, otherwise disables it.");
     RTX_OPTION("rtx", bool, enableSecondaryBounces, true, "Enables indirect lighting (lighting from diffuse/specular bounces to one or more other surfaces) on surfaces when set to true, otherwise disables it.");
     RTX_OPTION("rtx", bool, zUp, false, "Indicates that the Z axis is the \"upward\" axis in the world when true, otherwise the Y axis when false.");
@@ -410,7 +467,7 @@ namespace dxvk {
   public:
     const VirtualKeys& remixMenuKeyBinds() const { return m_remixMenuKeyBinds; }
 
-    RTX_OPTION_ENV("rtx", DLSSProfile, qualityDLSS, DLSSProfile::Auto, "RTX_QUALITY_DLSS", "Adjusts internal DLSS scaling factor, trades quality for performance.");
+    RW_RTX_OPTION_ENV("rtx", DLSSProfile, qualityDLSS, DLSSProfile::Auto, "RTX_QUALITY_DLSS", "Adjusts internal DLSS scaling factor, trades quality for performance.");
     // Note: All ray tracing modes depend on the rtx.raytraceModePreset option as they may be overridden by automatic defaults for a specific vendor if the preset is set to Auto. Set
     // to Custom to ensure these settings are not overridden.
     //RenderPassVolumeIntegrateRaytraceMode renderPassVolumeIntegrateRaytraceMode = RenderPassVolumeIntegrateRaytraceMode::RayQuery;
@@ -439,13 +496,22 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, replaceDirectSpecularHitTWithIndirectSpecularHitT, true, "");
     RTX_OPTION("rtx", bool, adaptiveResolutionDenoising, true, "");
     RTX_OPTION_ENV("rtx", bool, adaptiveAccumulation, true, "DXVK_USE_ADAPTIVE_ACCUMULATION", "");
-
     RTX_OPTION("rtx", uint32_t, numFramesToKeepInstances, 1, "");
-    RTX_OPTION("rtx", uint32_t, numFramesToKeepBLAS, 4, "");
+    RTX_OPTION("rtx", uint32_t, numFramesToKeepBLAS, 1, "");
     RTX_OPTION("rtx", uint32_t, numFramesToKeepLights, 100, ""); // NOTE: This was the default we've had for a while, can probably be reduced...
-    RTX_OPTION("rtx", uint32_t, numFramesToKeepGeometryData, 5, "");
-    RTX_OPTION("rtx", uint32_t, numFramesToKeepMaterialTextures, 5, "");
-    RTX_OPTION("rtx", bool, enablePreviousTLAS, true, "");
+
+    static uint32_t numFramesToKeepGeometryData() {
+      return numFramesToKeepBLAS();
+    }
+
+    static uint32_t numFramesToKeepMaterialTextures() {
+      return numFramesToKeepBLAS();
+    }
+
+    static bool enablePreviousTLAS() {
+      return !isRayReconstructionEnabled() || useReSTIRGI();
+    }
+
     RTX_OPTION("rtx", float, sceneScale, 1, "Defines the ratio of rendering unit (1cm) to game unit, i.e. sceneScale = 1cm / GameUnit.");
 
     struct AntiCulling {
@@ -634,62 +700,6 @@ namespace dxvk {
                "Higher values generally increases the quality of RIS light sampling, but also has diminishing returns and higher performance cost past a point.\n"
                "Note that RIS is only used when RTXDI is disabled for direct lighting, or for light sampling in indirect rays, so the impact of this effect will vary.");
 
-    // Froxel Radiance Cache/Volumetric Lighting ptions
-    // Note: The effective froxel grid resolution (based on the resolution scale) and froxelDepthSlices when multiplied together give the number of froxel cells, and this should be greater than the maximum number of
-    // "concurrent" threads the GPU can execute at once to saturate execution and ensure maximal occupancy. This can be calculated by looking at how many warps per multiprocessor the GPU can have at once (This can
-    // be found in CUDA Tuning guides such as https://docs.nvidia.com/cuda/ampere-tuning-guide/index.html) and then multiplying it by the number of multiprocessors (SMs) on the GPU in question, and finally turning
-    // this into a thread count by mulitplying by how many threads per warp there are (typically 32).
-    // Example for a RTX 3090: 82 SMs * 64 warps per SM * 32 threads per warp = 167,936 froxels to saturate the GPU. It is fine to be a bit below this though as most gpus will have fewer SMs than this, and higher resolutions
-    // will also use more froxels due to how the grid is allocated with respect to the (downscaled when DLSS is in use) resolution, and we don't want the froxel passes to be too expensive (unless higher quality results are desired).
-    RTX_OPTION("rtx", uint32_t, froxelGridResolutionScale, 16, "The scale factor to divide the x and y render resolution by to determine the x and y dimensions of the froxel grid.");
-    RTX_OPTION("rtx", uint16_t, froxelDepthSlices, 48, "The z dimension of the froxel grid. Must be constant after initialization.");
-    RTX_OPTION("rtx", uint8_t, maxAccumulationFrames, 254,
-               "The number of frames to accumulate volume lighting samples over, maximum of 254.\n"
-               "Large values result in greater image stability at the cost of potentially more temporal lag."
-               "Should generally be set to as large a value as is viable as the froxel radiance cache is assumed to be fairly noise-free and stable which temporal accumulation helps with.");
-    RTX_OPTION("rtx", float, froxelDepthSliceDistributionExponent, 2.0f, "The exponent to use on depth values to nonlinearly distribute froxels away from the camera. Higher values bias more froxels closer to the camera with 1 being linear.");
-    RTX_OPTION("rtx", float, froxelMaxDistance, 2000.0f, "The maximum distance in world units to allocate the froxel grid out to. Should be less than the distance between the camera's near and far plane, as the froxel grid will clip to the far plane otherwise.");
-    RTX_OPTION("rtx", float, froxelFireflyFilteringLuminanceThreshold, 1000.0f, "Sets the maximum luminance threshold for the volumetric firefly filtering to clamp to.");
-    RTX_OPTION("rtx", float, froxelFilterGaussianSigma, 1.2f, "The sigma value of the gaussian function used to filter volumetric radiance values. Larger values cause a smoother filter to be used.");
-    RTX_OPTION("rtx", uint32_t, volumetricInitialRISSampleCount, 8,
-               "The number of RIS samples to select from the global pool of lights when constructing a Reservoir sample.\n"
-               "Higher values generally increases the quality of the selected light sample, though similar to the general RIS light sample count has diminishing returns.");
-    RTX_OPTION("rtx", bool, volumetricEnableInitialVisibility, true,
-               "Determines whether to trace a visibility ray for Reservoir samples.\n"
-               "Results in slightly higher quality froxel grid light samples at the cost of a ray per froxel cell each frame and should generally be enabled.");
-    RTX_OPTION("rtx", bool, volumetricEnableTemporalResampling, true,
-               "Indicates if temporal resampling should be used for volume integration.\n"
-               "Temporal resampling allows for reuse of temporal information when picking froxel grid light samples similar to how ReSTIR works, providing higher quality light samples.\n"
-               "This should generally be enabled but currently due to the lack of temporal bias correction this option will slightly bias the lighting result.");
-    RTX_OPTION("rtx", uint16_t, volumetricTemporalReuseMaxSampleCount, 200, "The number of samples to clamp temporal reservoirs to, should usually be around the value: desired_max_history_frames * average_reservoir_samples.");
-    RTX_OPTION("rtx", float, volumetricClampedReprojectionConfidencePenalty, 0.5f, "The penalty from [0, 1] to apply to the sample count of temporally reprojected reservoirs when reprojection is clamped to the fustrum (indicating lower quality reprojection).");
-    RTX_OPTION("rtx", uint8_t, froxelMinReservoirSamples, 1, "The minimum number of Reservoir samples to do for each froxel cell when stability is at its maximum, should be at least 1.");
-    RTX_OPTION("rtx", uint8_t, froxelMaxReservoirSamples, 6, "The maximum number of Reservoir samples to do for each froxel cell when stability is at its minimum, should be at least 1 and greater than or equal to the minimum.");
-    RTX_OPTION("rtx", uint8_t, froxelMinKernelRadius, 2, "The minimum filtering kernel radius to use when stability is at its maximum, should be at least 1.");
-    RTX_OPTION("rtx", uint8_t, froxelMaxKernelRadius, 4, "The maximum filtering kernel radius to use when stability is at its minimum, should be at least 1 and greater than or equal to the minimum.");
-    RTX_OPTION("rtx", uint8_t, froxelMinReservoirSamplesStabilityHistory, 1, "The minimum history to consider history at minimum stability for Reservoir samples.");
-    RTX_OPTION("rtx", uint8_t, froxelMaxReservoirSamplesStabilityHistory, 64, "The maximum history to consider history at maximum stability for Reservoir samples.");
-    RTX_OPTION("rtx", uint8_t, froxelMinKernelRadiusStabilityHistory, 1, "The minimum history to consider history at minimum stability for filtering.");
-    RTX_OPTION("rtx", uint8_t, froxelMaxKernelRadiusStabilityHistory, 64, "The maximum history to consider history at maximum stability for filtering.");
-    RTX_OPTION("rtx", float, froxelReservoirSamplesStabilityHistoryPower, 2.0f, "The power to apply to the Reservoir sample stability history weight.");
-    RTX_OPTION("rtx", float, froxelKernelRadiusStabilityHistoryPower, 2.0f, "The power to apply to the kernel radius stability history weight.");
-    RTX_OPTION("rtx", bool, enableVolumetricLighting, false,
-               "Enabling volumetric lighting provides higher quality ray traced physical volumetrics, disabling falls back to cheaper depth based fog.\n"
-               "Note that disabling this option does not disable the froxel radiance cache as a whole as it is still needed for other non-volumetric lighting approximations.");
-    RTX_OPTION("rtx", Vector3, volumetricTransmittanceColor, Vector3(0.953237f, 0.928790f, 0.903545f),
-               "The color to use for calculating transmittance measured at a specific distance.\n"
-               "Note that this color is assumed to be in sRGB space and gamma encoded as it will be converted to linear for use in volumetrics.");
-    RTX_OPTION("rtx", float, volumetricTransmittanceMeasurementDistance, 10000.0f, "The distance the specified transmittance color was measured at. Lower distances indicate a denser medium.");
-    RTX_OPTION("rtx", Vector3, volumetricSingleScatteringAlbedo, Vector3(0.9f, 0.9f, 0.9f),
-               "The single scattering albedo (otherwise known as the particle albedo) representing the ratio of scattering to absorption.\n"
-               "While color-like in many ways this value is assumed to be more of a mathematical albedo (unlike material albedo which is treated more as a color), and is therefore treated as linearly encoded data (not gamma).");
-    RTX_OPTION("rtx", float, volumetricAnisotropy, 0.0f, "The anisotropy of the scattering phase function (-1 being backscattering, 0 being isotropic, 1 being forward scattering).");
-    RTX_OPTION("rtx", bool, enableVolumetricsInPortals, true,
-               "Enables using extra frustum-aligned volumes for lighting in portals.\n"
-               "Note that enabling this option will require 3x the memory of the typical froxel grid as well as degrade performance in some cases.\n"
-               "This option should be enabled always in games using ray portals for proper looking volumetrics through them, but should be disabled on any game not using ray portals.\n"
-               "Additionally, this setting must be set at startup and changing it will not take effect at runtime.");
-
     // Subsurface Scattering
     struct SubsurfaceScattering {
       friend class RtxOptions;
@@ -698,46 +708,18 @@ namespace dxvk {
       RTX_OPTION("rtx.subsurface", bool, enableThinOpaque, true, "Enable thin opaque material. The materials withthin opaque properties will fallback to normal opaque material.");
       RTX_OPTION("rtx.subsurface", bool, enableTextureMaps, true, "Enable texture maps such as thickness map or scattering albedo map. The corresponding subsurface properties will fallback to per-material constants if this is disabled.");
       RTX_OPTION("rtx.subsurface", float, surfaceThicknessScale, 1.0f, "Scalar of the subsurface thickness.");
+      RTX_OPTION("rtx.subsurface", bool, enableDiffusionProfile, true, "Enable subsurface material. Solve subsurface rendering equation with (burley/SOTO) diffusion profile.");
+      RTX_OPTION("rtx.subsurface", float, diffusionProfileScale, 1.0f, "Scalar of the diffusion profile scale.");
+      RTX_OPTION("rtx.subsurface", bool, enableTransmission, true, "Enable subsurface transmission. Implement single scattering transmission for thin or curved SSS surface.");
+      RTX_OPTION("rtx.subsurface", bool, enableTransmissionSingleScattering, true, "Enable single scattering for subsurface transmission. If this option is disabled, then the refracted ray will not be scattered again inside of the volume.");
+      RTX_OPTION("rtx.subsurface", bool, enableTransmissionDiffusionProfileCorrection, false,
+        "Enable diffusion profile correction when enabling SSS Transmission.\n"
+        "Both burley's diffusion profile and SSS Transmission includes the single scattering energy.\n"
+        "The correction removes the single scattering part from diffusion profile to avoid double counting the single scattering energy.");
+      RTX_OPTION("rtx.subsurface", uint8_t, transmissionBsdfSampleCount, 1, "The sample count for transmission BSDF.(1spp as default)");
+      RTX_OPTION("rtx.subsurface", uint8_t, transmissionSingleScatteringSampleCount, 1, "The sample count for every single scattering on BSDF transmission (refracted) ray.(1spp as default)");
+      RTX_OPTION("rtx.subsurface", Vector2i, diffusionProfileDebugPixelPosition, Vector2i(INT32_MAX, INT32_MAX), "Pixel position where we show debugging sampling positions for diffusion profile. Requires set debug view to 'SSS Diffusion Profile Sampling'.");
     };
-
-    // Note: Options for remapping legacy D3D9 fixed function fog parameters to volumetric lighting parameters and overwriting the global volumetric parameters when fixed function fog is enabled.
-    // Useful for cases where dynamic fog parameters are used throughout a game (or very per-level) that cannot be captrued merely in a global set of volumetric parameters. To see remapped results
-    // volumetric lighting in general must be enabled otherwise these settings will have no effect.
-    RTX_OPTION("rtx", bool, enableFogRemap, false,
-               "A flag to enable or disable fixed function fog remapping. Only takes effect when volumetrics are enabled.\n"
-               "Typically many old games used fixed function fog for various effects and while sometimes this fog can be replaced with proper volumetrics globally, other times require some amount of dynamic behavior controlled by the game.\n"
-               "When enabled this option allows for remapping of fixed function fog parameters from the game to volumetric parameters to accomodate this dynamic need.");
-    RTX_OPTION("rtx", bool, enableFogColorRemap, false,
-               "A flag to enable or disable remapping fixed function fox's color. Only takes effect when fog remapping in general is enabled.\n"
-               "Enables or disables remapping functionality relating to the color parameter of fixed function fog with the exception of the multiscattering scale (as this scale can be set to 0 to disable it).\n"
-               "This allows dynamic changes to the game's fog color to be reflected somewhat in the volumetrics system. Overrides the specified volumetric transmittance color.");
-    RTX_OPTION("rtx", bool, enableFogMaxDistanceRemap, true,
-               "A flag to enable or disable remapping fixed function fox's max distance. Only takes effect when fog remapping in general is enabled.\n"
-               "Enables or disables remapping functionality relating to the max distance parameter of fixed function fog.\n"
-               "This allows dynamic changes to the game's fog max distance to be reflected somewhat in the volumetrics system. Overrides the specified volumetric transmittance measurement distance.");
-    RTX_OPTION("rtx", float, fogRemapMaxDistanceMin, 100.0f,
-               "A value controlling the \"max distance\" fixed function fog parameter's minimum remapping bound.\n"
-               "Note that fog remapping and fog max distance remapping must be enabled for this setting to have any effect.");
-    RTX_OPTION("rtx", float, fogRemapMaxDistanceMax, 4000.0f,
-               "A value controlling the \"max distance\" fixed function fog parameter's maximum remapping bound.\n"
-               "Note that fog remapping and fog max distance remapping must be enabled for this setting to have any effect.");
-    RTX_OPTION("rtx", float, fogRemapTransmittanceMeasurementDistanceMin, 2000.0f,
-               "A value representing the transmittance measurement distance's minimum remapping bound.\n"
-               "When the fixed function fog's \"max distance\" parameter is at or below its specified minimum the volumetric system's transmittance measurement distance will be set to this value and interpolated upwards.\n"
-               "Note that fog remapping and fog max distance remapping must be enabled for this setting to have any effect.");
-    RTX_OPTION("rtx", float, fogRemapTransmittanceMeasurementDistanceMax, 12000.0f,
-               "A value representing the transmittance measurement distance's maximum remapping bound.\n"
-               "When the fixed function fog's \"max distance\" parameter is at or above its specified maximum the volumetric system's transmittance measurement distance will be set to this value and interpolated upwards.\n"
-               "Note that fog remapping and fog max distance remapping must be enabled for this setting to have any effect.");
-    RTX_OPTION("rtx", float, fogRemapColorMultiscatteringScale, 1.0f,
-               "A value representing the scale of the fixed function fog's color in the multiscattering approximation.\n"
-               "This scaling factor is applied to the fixed function fog's color and becomes a multiscattering approximation in the volumetrics system.\n"
-               "Sometimes useful but this multiscattering approximation is very basic (just a simple ambient term for now essentially) and may not look very good depending on various conditions.");
-    RTX_OPTION("rtx", bool, fogIgnoreSky, false, "If true, sky draw calls will be skipped when searching for the D3D9 fog values.")
-
-    // Note: Cached values used to precompute quantities for options fetching to not have to needlessly recompute them.
-    uint8_t cachedFroxelReservoirSamplesStabilityHistoryRange;
-    uint8_t cachedFroxelKernelRadiusStabilityHistoryRange;
 
     // Alpha Test/Blend Options
     RTX_OPTION("rtx", bool, enableAlphaBlend, true, "Enable rendering alpha blended geometry, used for partial opacity and other blending effects on various surfaces in many games.");
@@ -818,7 +800,7 @@ namespace dxvk {
                "A flag to enable or disable present throttling, when set to true a sleep for a time specified by the throttle delay will be inserted into the DXVK presentation thread.\n"
                "Useful to manually reduce the framerate if the application is running too fast or to reduce GPU power usage during development to keep temperatures down.\n"
                "Should not be enabled in anything other than development situations.");
-    RTX_OPTION("rtx", int32_t, presentThrottleDelay, 16,
+    RTX_OPTION("rtx", std::uint32_t, presentThrottleDelay, 16U,
                "A time in milliseconds that the DXVK presentation thread should sleep for. Requires present throttling to be enabled to take effect.\n"
                "Note that the application may sleep for longer than the specified time as is expected with sleep functions in general.");
     RTX_OPTION_ENV("rtx", bool, validateCPUIndexData, false, "DXVK_VALIDATE_CPU_INDEX_DATA", "");
@@ -858,29 +840,38 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, enableReplacementMaterials, true,
                "Enables or disables enhanced material replacements.\n"
                "Requires replacement assets in general to be enabled to have any effect.");
-    RTX_OPTION("rtx", bool, forceHighResolutionReplacementTextures, false,
-               "A flag to enable or disable forcing high resolution replacement textures.\n"
-               "When enabled this mode overrides all other methods of mip calculation (adaptive resolution and the minimum mipmap level) and forces it to be 0 to always load in the highest quality of textures.\n"
-               "This generally should not be used other than for various forms of debugging or visual comparisons as this mode will ignore any constraints on CPU or GPU memory which may starve the system or Remix of memory.\n"
-               "Additionally, this setting must be set at startup and changing it will not take effect at runtime.");
-    RTX_OPTION("rtx", bool, enableAdaptiveResolutionReplacementTextures, true,
-               "A flag to enable or disable adaptive resolution replacement textures.\n"
-               "When enabled, this mode allows replacement textures to load in only up to an adaptive minimum mip level to cut down on memory usage, but only when force high resolution replacement textures is disabled.\n"
-               "This should generally always be enabled to ensure Remix does not starve the system of CPU or GPU memory while loading textures.\n"
-               "Additionally, this setting must be set at startup and changing it will not take effect at runtime.");
-    RTX_OPTION("rtx", uint, minReplacementTextureMipMapLevel, 0,
-               "A parameter controlling the minimum replacement texture mipmap level to use, higher values will lower texture quality, 0 for default behavior of effectively not enforcing a minimum.\n"
-               "This minimum will always be considered as long as force high resolution replacement textures is not enabled, meaning that with or without adaptive resolution replacement textures enabled this setting will always enforce a minimum mipmap restriction.\n"
-               "Generally this should be changed to reduce the texture quality globally if desired to reduce CPU and GPU memory usage and typically should be controlled by some sort of texture quality setting.\n"
-               "Additionally, this setting must be set at startup and changing it will not take effect at runtime.");
+    RTX_OPTION("rtx", bool, enableReplacementInstancerMeshRendering, true,
+               "Enables or disables rendering GeomPointInstancer meshes using an optimized path.\n"
+               "Requires reloading replacement assets.");
     RTX_OPTION("rtx", uint, adaptiveResolutionReservedGPUMemoryGiB, 2,
                "The amount of GPU memory in gibibytes to reserve away from consideration for adaptive resolution replacement textures.\n"
                "This value should only be changed to reflect the estimated amount of memory Remix itself consumes on the GPU (aside from texture loading, mostly from rendering-related buffers) and should not be changed otherwise.\n"
                "Only relevant when force high resolution replacement textures is disabled and adaptive resolution replacement textures is enabled. See asset estimated size parameter for more information.\n");
+    RTX_OPTION("rtx", uint, limitedBonesPerVertex, 4,
+               "Limit the number of bone influences per vertex for replacement geometry.  D3D9 games were limited to 4, which is the default.  In rare instances you may want to increase this based on your preference for replaced assets.  This config only takes affect when set on startup via the rtx.conf.");
+
+    struct TextureManager {
+      RTX_OPTION("rtx.texturemanager", int, budgetPercentageOfAvailableVram, 50,
+                 "The percentage of available VRAM we should use for material textures.  If material textures are required beyond "
+                 "this budget, then those textures will be loaded at lower quality.  Important note, it's impossible to perfectly "
+                 "match the budget while maintaining reasonable quality levels, so use this as more of a guideline.  If the "
+                 "replacements assets are simply too large for the target GPUs available vid mem, we may end up going overbudget "
+                 "regularly.  Defaults to 50% of the available VRAM.");
+      RTX_OPTION("rtx.texturemanager", bool, fixedBudgetEnable, false, "If true, rtx.texturemanager.fixedBudgetMiB is used instead of rtx.texturemanager.budgetPercentageOfAvailableVram.");
+      RTX_OPTION("rtx.texturemanager", int, fixedBudgetMiB, 2048, "Fixed-size VRAM budget for replacement textures. In mebibytes. To use, set rtx.texturemanager.fixedBudgetEnable to True.");
+      RTX_OPTION_ENV("rtx.texturemanager", bool, samplerFeedbackEnable, true, "DXVK_TEXTURES_SAMPLER_FEEDBACK_ENABLE",
+                 "Enable texture sampler feedback. If true, a texture prioritization logic considers the amount of mip-levels that was sampled by a GPU while rendering a scene."
+                 "(For example, if a texture is in the distance, it will have a lower priority compared to a texture rendered just in front of the camera).");
+      RTX_OPTION_FLAG_ENV("rtx.texturemanager", bool, neverDowngradeTextures, false, RtxOptionFlags::NoSave, "DXVK_TEXTURES_NEVER_DOWNGRADE", 
+                 "Debug option to forcibly prevent uploading lower resolution data, if the texture already has been promoted to a high resolution.");
+      RTX_OPTION("rtx.texturemanager", int, stagingBufferSizeMiB, 96,
+                 "Size of a pre-allocated staging (intermediate) buffer to use when sending a texture from a RAM to GPU VRAM. "
+                 "If a texture size exceeds this limit, it will not be considered for the texture streaming. In mebibytes.");
+    };
     RTX_OPTION("rtx", bool, reloadTextureWhenResolutionChanged, false, "Reload texture when resolution changed.");
-    RTX_OPTION_ENV("rtx", bool, enableAsyncTextureUpload, true, "DXVK_ASYNC_TEXTURE_UPLOAD", "");
-    RTX_OPTION_ENV("rtx", bool, alwaysWaitForAsyncTextures, false, "DXVK_WAIT_ASYNC_TEXTURES", "");
-    RTX_OPTION("rtx", int,  asyncTextureUploadPreloadMips, 8, "");
+    RTX_OPTION_FLAG_ENV("rtx", bool, alwaysWaitForAsyncTextures, false, RtxOptionFlags::NoSave, "DXVK_WAIT_ASYNC_TEXTURES", 
+               "Force CPU to wait for the texture upload. Do not use an asynchronous thread for textures. If true, a frame stutter should be expected.");
+    RTX_OPTION_FLAG_ENV("rtx.initializer", bool, asyncAssetLoading, true, RtxOptionFlags::NoSave, "DXVK_ASYNC_ASSET_LOADING", "If true, a separate thread is created to load USD assets asynchronously.");
     RTX_OPTION("rtx", bool, usePartialDdsLoader, true,
                "A flag controlling if the partial DDS loader should be used, true to enable, false to disable and use GLI instead.\n"
                "Generally this should be always enabled as it allows for simple parsing of DDS header information without loading the entire texture into memory like GLI does to retrieve similar information.\n"
@@ -891,6 +882,10 @@ namespace dxvk {
                "Global tonemapping tonemaps the image with respect to global parameters, usually based on statistics about the rendered image as a whole.\n"
                "Local tonemapping on the other hand uses more spatially-local parameters determined by regions of the rendered image rather than the whole image.\n"
                "Local tonemapping can result in better preservation of highlights and shadows in scenes with high amounts of dynamic range whereas global tonemapping may have to comprimise between over or underexposure.");
+    RTX_OPTION("rtx", bool, useLegacyACES, true,
+               "Use a luminance-only approximation of ACES that over-saturates the highlights. If false, use a refined ACES transform that converts between color spaces with more precision.");
+    RTX_OPTION("rtx", bool, showLegacyACESOption, false,
+               "Show \'rtx.useLegacyACES\' in the developer menu. Default is OFF, as the non-legacy ACES is currently experimental and the implementation is a subject to change.");
 
     // Capture Options
     //   General
@@ -932,6 +927,8 @@ namespace dxvk {
                "As such, this option should generally always be enabled when rendering with ray portals in the scene to have good denoising quality.");
     RTX_OPTION("rtx", bool, resetDenoiserHistoryOnSettingsChange, false, "");
 
+    RTX_OPTION("rtx", bool, fogIgnoreSky, false, "If true, sky draw calls will be skipped when searching for the D3D9 fog values.")
+
     RTX_OPTION("rtx", float, skyBrightness, 1.f, "");
     RTX_OPTION("rtx", bool, skyForceHDR, false, "By default sky will be rasterized in the color format used by the game. Set the checkbox to force sky to be rasterized in HDR intermediate format. This may be important when sky textures replaced with HDR textures.");
     RTX_OPTION("rtx", uint32_t, skyProbeSide, 1024, "Resolution of the skybox for indirect illumination (rough reflections, global illumination etc).");
@@ -965,6 +962,12 @@ namespace dxvk {
                "Removes the last texture bound to a draw call, when using fixed-function pipeline. Primary textures are untouched.\n"
                "Might be set to true, if a game applies a lightmap as last shading step, to omit the original lightmap data.");
 
+    RTX_OPTION("rtx.terrain", bool, terrainAsDecalsEnabledIfNoBaker, false, "If terrain baker is disabled, attempt to blend with the decals.");
+    RTX_OPTION("rtx.terrain", bool, terrainAsDecalsAllowOverModulate, false, "Set to true, if it's known that terrain layers with ModulateX2 / ModulateX4 flags do not contain a lighting info, but ModulateX2 / ModulateX4 are used only to blend layers.");
+
+    RTX_OPTION("rtx.userBrightness", int, userBrightness, 50, "How bright the final image should be. [0,100] range.");
+    RTX_OPTION("rtx.userBrightnessEVRange", float, userBrightnessEVRange, 3.f, "The exposure value (EV) range for \'rtx.userBrightness\' slider, i.e. how much of EV there is between 0 and 100 slider values.");
+
     // Automation Options
     struct Automation {
       RTX_OPTION_FLAG_ENV("rtx.automation", bool, disableBlockingDialogBoxes, false, RtxOptionFlags::NoSave, "RTX_AUTOMATION_DISABLE_BLOCKING_DIALOG_BOXES",
@@ -991,9 +994,10 @@ namespace dxvk {
     HashRule GeometryAssetHashRule = 0;
 
   private:
-    RTX_OPTION("rtx", float, effectLightIntensity, 1.f, "");
-    RTX_OPTION("rtx", float, effectLightRadius, 5.f, "");
-    RTX_OPTION("rtx", bool, effectLightPlasmaBall, false, "");
+    RTX_OPTION("rtx", Vector3, effectLightColor, Vector3(1, 1, 1), "Colour of the effect light, if not using plasma ball mode.  Effect lights can be attached to materials from the remix runtime menu, using the `Add Light to Texture` texture tag in game setup.");
+    RTX_OPTION("rtx", float, effectLightIntensity, 1.f, "The intensity of the effect light.  Effect lights can be attached to materials from the remix runtime menu, using the `Add Light to Texture` texture tag in game setup.");
+    RTX_OPTION("rtx", float, effectLightRadius, 5.f, "The sphere radius of the effect light.  Effect lights can be attached to materials from the remix runtime menu, using the `Add Light to Texture` texture tag in game setup.");
+    RTX_OPTION("rtx", bool, effectLightPlasmaBall, false, "Use plasma ball mode, in this mode the effect light color is ignored.  Effect lights can be attached to materials from the remix runtime menu, using the `Add Light to Texture` texture tag in game setup.");
 
     RTX_OPTION("rtx", bool, useObsoleteHashOnTextureUpload, false,
                "Whether or not to use slower XXH64 hash on texture upload.\n"
@@ -1006,22 +1010,9 @@ namespace dxvk {
     static std::unique_ptr<RtxOptions> pInstance;
     RtxOptions() { }
 
-    // Note: Should be called whenever the min/max stability history values are changed.
-    // Ideally would be done through a setter function but ImGui needs direct access to the original options with how we currently have it set up.
-    void updateCachedVolumetricOptions() {
-      assert(froxelMaxReservoirSamplesStabilityHistory() >= froxelMinReservoirSamplesStabilityHistory());
-      assert(froxelMaxKernelRadiusStabilityHistory() >= froxelMinKernelRadiusStabilityHistory());
-
-      cachedFroxelReservoirSamplesStabilityHistoryRange = froxelMaxReservoirSamplesStabilityHistory() - froxelMinReservoirSamplesStabilityHistory();
-      cachedFroxelKernelRadiusStabilityHistoryRange = froxelMaxKernelRadiusStabilityHistory() - froxelMinKernelRadiusStabilityHistory();
-    }
-
   public:
 
     RtxOptions(const Config& options) {
-      if (sourceRootPath() == "./")
-        sourceRootPathRef() = getCurrentDirectory() + "/";
-
       // Needs to be > 0
       RTX_OPTION_CLAMP_MIN(uniqueObjectDistance, FLT_MIN);
 
@@ -1080,63 +1071,6 @@ namespace dxvk {
 
       // Note: Clamped due to 16 bit usage on GPU.
       RTX_OPTION_CLAMP(risLightSampleCount, static_cast<uint16_t>(1), std::numeric_limits<uint16_t>::max());
-
-      // Volumetrics Options
-      RTX_OPTION_CLAMP_MIN(froxelGridResolutionScale, static_cast<uint32_t>(1));
-      RTX_OPTION_CLAMP(froxelDepthSlices, static_cast<uint16_t>(1), std::numeric_limits<uint16_t>::max());
-      RTX_OPTION_CLAMP(maxAccumulationFrames, static_cast<uint8_t>(1), std::numeric_limits<uint8_t>::max());
-      RTX_OPTION_CLAMP_MIN(froxelDepthSliceDistributionExponent, 1e-4f);
-      RTX_OPTION_CLAMP_MIN(froxelMaxDistance, 0.0f);
-      // Note: Clamp to positive values as negative luminance thresholds are not valid.
-      RTX_OPTION_CLAMP_MIN(froxelFireflyFilteringLuminanceThreshold, 0.0f);
-      RTX_OPTION_CLAMP_MIN(froxelFilterGaussianSigma, 0.0f);
-
-      RTX_OPTION_CLAMP_MIN(volumetricInitialRISSampleCount, static_cast<uint32_t>(1));
-      RTX_OPTION_CLAMP(volumetricTemporalReuseMaxSampleCount, static_cast<uint16_t>(1), std::numeric_limits<uint16_t>::max());
-      RTX_OPTION_CLAMP(volumetricClampedReprojectionConfidencePenalty, 0.0f, 1.0f);
-
-      RTX_OPTION_CLAMP(froxelMinReservoirSamples, static_cast<uint8_t>(1), std::numeric_limits<uint8_t>::max());
-      RTX_OPTION_CLAMP(froxelMaxReservoirSamples, static_cast<uint8_t>(1), std::numeric_limits<uint8_t>::max());
-      RTX_OPTION_CLAMP(froxelMinKernelRadius, static_cast<uint8_t>(1), std::numeric_limits<uint8_t>::max());
-      RTX_OPTION_CLAMP(froxelMaxKernelRadius, static_cast<uint8_t>(1), std::numeric_limits<uint8_t>::max());
-      RTX_OPTION_CLAMP(froxelMinReservoirSamplesStabilityHistory, static_cast<uint8_t>(1), std::numeric_limits<uint8_t>::max());
-      RTX_OPTION_CLAMP(froxelMaxReservoirSamplesStabilityHistory, static_cast<uint8_t>(1), std::numeric_limits<uint8_t>::max());
-      RTX_OPTION_CLAMP(froxelMinKernelRadiusStabilityHistory, static_cast<uint8_t>(1), std::numeric_limits<uint8_t>::max());
-      RTX_OPTION_CLAMP(froxelMaxKernelRadiusStabilityHistory, static_cast<uint8_t>(1), std::numeric_limits<uint8_t>::max());
-      RTX_OPTION_CLAMP_MIN(froxelReservoirSamplesStabilityHistoryPower, 0.0f);
-      RTX_OPTION_CLAMP_MIN(froxelKernelRadiusStabilityHistoryPower, 0.0f);
-
-      RTX_OPTION_CLAMP_MAX(froxelMinReservoirSamples, froxelMaxReservoirSamples());
-      RTX_OPTION_CLAMP_MIN(froxelMaxReservoirSamples, froxelMinReservoirSamples());
-      RTX_OPTION_CLAMP_MAX(froxelMinKernelRadius, froxelMaxKernelRadius());
-      RTX_OPTION_CLAMP_MIN(froxelMaxKernelRadius, froxelMinKernelRadius());
-      RTX_OPTION_CLAMP_MAX(froxelMinReservoirSamplesStabilityHistory, froxelMaxReservoirSamplesStabilityHistory());
-      RTX_OPTION_CLAMP_MIN(froxelMaxReservoirSamplesStabilityHistory, froxelMinReservoirSamplesStabilityHistory());
-      RTX_OPTION_CLAMP_MAX(froxelMinKernelRadiusStabilityHistory, froxelMaxKernelRadiusStabilityHistory());
-      RTX_OPTION_CLAMP_MIN(froxelMaxKernelRadiusStabilityHistory, froxelMinKernelRadiusStabilityHistory());
-
-      RTX_OPTION_CLAMP_MIN(volumetricTransmittanceMeasurementDistance, 0.0f);
-      RTX_OPTION_CLAMP(volumetricAnisotropy, -1.0f, 1.0f);
-
-      volumetricTransmittanceColorRef().x = std::clamp(volumetricTransmittanceColor().x, 0.0f, 1.0f);
-      volumetricTransmittanceColorRef().y = std::clamp(volumetricTransmittanceColor().y, 0.0f, 1.0f);
-      volumetricTransmittanceColorRef().z = std::clamp(volumetricTransmittanceColor().z, 0.0f, 1.0f);
-      volumetricSingleScatteringAlbedoRef().x = std::clamp(volumetricSingleScatteringAlbedo().x, 0.0f, 1.0f);
-      volumetricSingleScatteringAlbedoRef().y = std::clamp(volumetricSingleScatteringAlbedo().y, 0.0f, 1.0f);
-      volumetricSingleScatteringAlbedoRef().z = std::clamp(volumetricSingleScatteringAlbedo().z, 0.0f, 1.0f);
-
-      RTX_OPTION_CLAMP_MIN(fogRemapMaxDistanceMin, 0.0f);
-      RTX_OPTION_CLAMP_MIN(fogRemapMaxDistanceMax, 0.0f);
-      RTX_OPTION_CLAMP_MIN(fogRemapTransmittanceMeasurementDistanceMin, 0.0f);
-      RTX_OPTION_CLAMP_MIN(fogRemapTransmittanceMeasurementDistanceMax, 0.0f);
-      RTX_OPTION_CLAMP_MIN(fogRemapColorMultiscatteringScale, 0.0f);
-
-      fogRemapMaxDistanceMinRef() = std::min(fogRemapMaxDistanceMin(), fogRemapMaxDistanceMax());
-      fogRemapMaxDistanceMaxRef() = std::max(fogRemapMaxDistanceMin(), fogRemapMaxDistanceMax());
-      fogRemapTransmittanceMeasurementDistanceMinRef() = std::min(fogRemapTransmittanceMeasurementDistanceMin(), fogRemapTransmittanceMeasurementDistanceMax());
-      fogRemapTransmittanceMeasurementDistanceMaxRef() = std::max(fogRemapTransmittanceMeasurementDistanceMin(), fogRemapTransmittanceMeasurementDistanceMax());
-
-      updateCachedVolumetricOptions();
 
       // Alpha Test/Blend Options
 
@@ -1216,7 +1150,7 @@ namespace dxvk {
     void updatePresetFromUpscaler();
     NV_GPU_ARCHITECTURE_ID getNvidiaArch();
     NV_GPU_ARCH_IMPLEMENTATION_ID getNvidiaChipId();
-    void updateGraphicsPresets(const DxvkDevice* device);
+    void updateGraphicsPresets(DxvkDevice* device);
     void updateLightingSetting();
     void updatePathTracerPreset(PathTracerPreset preset);
     void updateRaytraceModePresets(const uint32_t vendorID, const VkDriverId driverID);
@@ -1255,7 +1189,7 @@ namespace dxvk {
       return true;
     }
 
-    bool useReSTIRGI() const {
+    static bool useReSTIRGI() {
       return integrateIndirectMode() == IntegrateIndirectMode::ReSTIRGI;
     }
 
@@ -1264,7 +1198,6 @@ namespace dxvk {
     }
 
     const ivec2 getDrawCallRange() const { Vector2i v = drawCallRange(); return ivec2{v.x, v.y}; }
-    uint32_t getMinPrimsInStaticBLAS() const { return minPrimsInStaticBLAS(); }
 
     // Camera
     CameraAnimationMode getCameraAnimationMode() { return cameraAnimationMode(); }
@@ -1277,7 +1210,7 @@ namespace dxvk {
     bool isPortalFadeInEffectEnabled() const { return enablePortalFadeInEffect(); }
     bool isUpscalerEnabled() const { return upscalerType() != UpscalerType::None; }
 
-    bool isRayReconstructionEnabled() const {
+    static bool isRayReconstructionEnabled() {
       return upscalerType() == UpscalerType::DLSS && enableRayReconstruction() && showRayReconstructionUI();
     }
 
@@ -1305,7 +1238,6 @@ namespace dxvk {
     }
     bool isAdaptiveResolutionDenoisingEnabled() const { return adaptiveResolutionDenoising(); }
     bool shouldCaptureDebugImage() const { return captureDebugImage(); }
-    bool isLiveShaderEditModeEnabled() const { return useLiveShaderEditMode(); }
     bool isZUp() const { return zUp(); }
     bool isLeftHandedCoordinateSystem() const { return leftHandedCoordinateSystem(); }
     float getUniqueObjectDistanceSqr() const { return uniqueObjectDistance() * uniqueObjectDistance(); }
@@ -1375,37 +1307,6 @@ namespace dxvk {
     // Light Selection/Sampling Options
     uint16_t getRISLightSampleCount() const { return risLightSampleCount(); }
 
-    // Volumetrics Options
-    uint32_t getFroxelGridResolutionScale() const { return froxelGridResolutionScale(); }
-    uint16_t getFroxelDepthSlices() const { return froxelDepthSlices(); }
-    uint8_t getMaxAccumulationFrames() const { return maxAccumulationFrames(); }
-    float getFroxelDepthSliceDistributionExponent() const { return froxelDepthSliceDistributionExponent(); }
-    float getFroxelMaxDistance() const { return froxelMaxDistance(); }
-    float getFroxelFireflyFilteringLuminanceThreshold() const { return froxelFireflyFilteringLuminanceThreshold(); }
-    float getFroxelFilterGaussianSigma() const { return froxelFilterGaussianSigma(); }
-    bool isVolumetricEnableInitialVisibilityEnabled() const { return volumetricEnableInitialVisibility(); }
-    bool isVolumetricEnableTemporalResamplingEnabled() const { return volumetricEnableTemporalResampling(); }
-    uint16_t getVolumetricTemporalReuseMaxSampleCount() const { return volumetricTemporalReuseMaxSampleCount(); }
-    float getVolumetricClampedReprojectionConfidencePenalty() const { return volumetricClampedReprojectionConfidencePenalty(); }
-    uint8_t getFroxelMinReservoirSamples() const { return froxelMinReservoirSamples(); }
-    uint8_t getFroxelMaxReservoirSamples() const { return froxelMaxReservoirSamples(); }
-    uint8_t getFroxelMinKernelRadius() const { return froxelMinKernelRadius(); }
-    uint8_t getFroxelMaxKernelRadius() const { return froxelMaxKernelRadius(); }
-    uint8_t getFroxelMinReservoirSamplesStabilityHistory() const { return froxelMinReservoirSamplesStabilityHistory(); }
-    uint8_t getFroxelReservoirSamplesStabilityHistoryRange() const { return cachedFroxelReservoirSamplesStabilityHistoryRange; }
-    uint8_t getFroxelMinKernelRadiusStabilityHistory() const { return froxelMinKernelRadiusStabilityHistory(); }
-    uint8_t getFroxelKernelRadiusStabilityHistoryRange() const { return cachedFroxelKernelRadiusStabilityHistoryRange; }
-    float getFroxelReservoirSamplesStabilityHistoryPower() const { return froxelReservoirSamplesStabilityHistoryPower(); }
-    float getFroxelKernelRadiusStabilityHistoryPower() const { return froxelKernelRadiusStabilityHistoryPower(); }
-    bool isVolumetricLightingEnabled() const { return enableVolumetricLighting(); }
-    Vector3 getVolumetricTransmittanceColor() const { return volumetricTransmittanceColor(); }
-    float getVolumetricTransmittanceMeasurementDistance() const { return volumetricTransmittanceMeasurementDistance(); };
-    Vector3 getVolumetricSingleScatteringAlbedo() const { return volumetricSingleScatteringAlbedo(); };
-    float getVolumetricAnisotropy() const { return volumetricAnisotropy(); }
-    float getFogRemapMaxDistanceMin() const { return fogRemapMaxDistanceMin(); }
-    float getFogRemapMaxDistanceMax() const { return fogRemapMaxDistanceMax(); }
-    float getFogRemapTransmittanceMeasurementDistanceMin() const { return fogRemapTransmittanceMeasurementDistanceMin(); }
-    float getFogRemapTransmittanceMeasurementDistanceMax() const { return fogRemapTransmittanceMeasurementDistanceMax(); }
     
     // Alpha Test/Blend Options
     bool isAlphaBlendEnabled() const { return enableAlphaBlend(); }
@@ -1477,7 +1378,7 @@ namespace dxvk {
     bool isUseVirtualShadingNormalsForDenoisingEnabled() const { return useVirtualShadingNormalsForDenoising(); }
     bool isResetDenoiserHistoryOnSettingsChangeEnabled() const { return resetDenoiserHistoryOnSettingsChange(); }
     
-    int32_t getPresentThrottleDelay() const { return enablePresentThrottle() ? presentThrottleDelay() : 0; }
+    std::uint32_t getPresentThrottleDelay() const { return enablePresentThrottle() ? presentThrottleDelay() : 0; }
     bool getValidateCPUIndexData() const { return validateCPUIndexData(); }
 
     float getEffectLightIntensity() const { return effectLightIntensity(); }
@@ -1486,5 +1387,10 @@ namespace dxvk {
     std::string getCurrentDirectory() const;
 
     bool shouldUseObsoleteHashOnTextureUpload() const { return useObsoleteHashOnTextureUpload(); }
+
+    static float calcUserEVBias() {
+      return (float(RtxOptions::userBrightness() - 50) / 100.f)
+        * RtxOptions::userBrightnessEVRange();
+    }
   };
 }

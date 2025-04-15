@@ -49,6 +49,7 @@ DecodedPolymorphicLight decodePolymorphicLight(MemoryPolymorphicLight memoryPoly
   const uint32_t data11 = memoryPolymorphicLight.data1.y;
   const uint32_t data12 = memoryPolymorphicLight.data1.z;
   const uint32_t data13 = memoryPolymorphicLight.data1.w;
+  const uint32_t volumetricRadianceScaleData = memoryPolymorphicLight.data3.z;
   const uint32_t flagData = memoryPolymorphicLight.data3.w;
 
   DecodedPolymorphicLight decodedPolymorphicLight;
@@ -64,6 +65,18 @@ DecodedPolymorphicLight decodePolymorphicLight(MemoryPolymorphicLight memoryPoly
   decodedPolymorphicLight.data0 = memoryPolymorphicLight.data0;
   decodedPolymorphicLight.data2 = memoryPolymorphicLight.data2;
   decodedPolymorphicLight.data3 = memoryPolymorphicLight.data3;
+
+#ifdef ENABLE_VOLUMETRIC_RADIANCE_SCALE
+  // Note: Scale the radiance by the volumetric radiance scale factor only when the volumetric radiance scale
+  // macro is defined. This allows for scaling the radiance of the light in only the volumetrics pass specifically
+  // without affecting radiance in other passes.
+  // Note: This logic is done here rather than when creating each light as for now at least this logic is common across
+  // all light types, so doing it here should reduce the amount of instructions needed.
+  // Note: This is using a full 32 bit float to avoid a conversion from 16->32 bit when multiplying by the radiance,
+  // as well as just to make CPU encoding simpler. This can easily be packed down to 16 bit however if 2 bytes are needed
+  // in the memory representation of one of the light types.
+  decodedPolymorphicLight.radiance *= uintBitsToFloat(volumetricRadianceScaleData);
+#endif
 
   return decodedPolymorphicLight;
 }
@@ -181,7 +194,7 @@ LightSample memoryPolymorphicLightSampleArea(
 float decodedPolymorphicLightCalcWeight(
   DecodedPolymorphicLight decodedPolymorphicLight,
   MinimalSurfaceInteraction viewSurfaceInteraction,
-  const bool isSubSurface)
+  const bool isThinOpaqueSubsurface)
 {
   switch (uint(decodedPolymorphicLight.polymorphicType))
   {
@@ -189,28 +202,28 @@ float decodedPolymorphicLightCalcWeight(
     case uint(lightTypeSphere):
       const SphereLight sphereLight = sphereLightCreate(decodedPolymorphicLight);
 
-      return sphereLightCalcWeight(sphereLight, viewSurfaceInteraction, isSubSurface);
+      return sphereLightCalcWeight(sphereLight, viewSurfaceInteraction, isThinOpaqueSubsurface);
 #endif
 
 #if ENABLE_RECT_LIGHTS
     case uint(lightTypeRect):
       const RectLight rectLight = rectLightCreate(decodedPolymorphicLight);
 
-      return rectLightCalcWeight(rectLight, viewSurfaceInteraction, isSubSurface);
+      return rectLightCalcWeight(rectLight, viewSurfaceInteraction, isThinOpaqueSubsurface);
 #endif
 
 #if ENABLE_DISK_LIGHTS
     case uint(lightTypeDisk):
       const DiskLight diskLight = diskLightCreate(decodedPolymorphicLight);
 
-      return diskLightCalcWeight(diskLight, viewSurfaceInteraction, isSubSurface);
+      return diskLightCalcWeight(diskLight, viewSurfaceInteraction, isThinOpaqueSubsurface);
 #endif
 
 #if ENABLE_CYLINDER_LIGHTS
     case uint(lightTypeCylinder):
       const CylinderLight cylinderLight = cylinderLightCreate(decodedPolymorphicLight);
 
-      return cylinderLightCalcWeight(cylinderLight, viewSurfaceInteraction, isSubSurface);
+      return cylinderLightCalcWeight(cylinderLight, viewSurfaceInteraction, isThinOpaqueSubsurface);
 #endif
 
 #if ENABLE_DISTANT_LIGHTS

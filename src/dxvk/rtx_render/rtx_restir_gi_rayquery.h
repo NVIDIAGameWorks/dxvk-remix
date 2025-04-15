@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -73,6 +73,8 @@ namespace dxvk {
 
     void bindIntegrateIndirectPathTracingResources(RtxContext& ctx);
     void bindIntegrateIndirectNeeResources(RtxContext& ctx);
+    const Resources::Resource& getBsdfFactor2() const;
+    const Resources::AliasedResource& getLastCompositeOutput() const;
 
     static void setToNRDPreset();
 
@@ -137,6 +139,10 @@ namespace dxvk {
 
     Resources::AliasedResource m_restirGIRadiance;
     Resources::Resource m_restirGIHitGeometry;
-    Rc<DxvkBuffer> m_restirGIReservoirBuffer;  
+    Rc<DxvkBuffer> m_restirGIReservoirBuffer;
+    Resources::Resource m_bsdfFactor2;
+
+    // Last composite output is not aliased right now, but created as such AliasedResource for ::matchesWriteFrameIdx() functionality
+    Resources::AliasedResource m_lastCompositeOutput;
   };
 }

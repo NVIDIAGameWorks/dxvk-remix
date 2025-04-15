@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -233,7 +233,7 @@ namespace dxvk {
     auto& output = rtOutput.m_finalOutput;
 
     VkExtent3D inputExtent = input.image->info().extent;
-    VkExtent3D outputExtent = output.image->info().extent;
+    VkExtent3D outputExtent = output.resource(Resources::AccessType::Write).image->info().extent;
 
     NISConfig nisConfig;
     NVScalerUpdateConfig(nisConfig,
@@ -250,7 +250,7 @@ namespace dxvk {
 
     ctx->bindResourceSampler(NIS_BINDING_SAMPLER_LINEAR_CLAMP, m_sampler);
     ctx->bindResourceView(NIS_BINDING_INPUT, input.view, nullptr);
-    ctx->bindResourceView(NIS_BINDING_OUTPUT, output.view, nullptr);
+    ctx->bindResourceView(NIS_BINDING_OUTPUT, output.view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(NIS_BINDING_COEF_SCALER, scalerTex.view, nullptr);
     ctx->bindResourceView(NIS_BINDING_COEF_USM, usmTex.view, nullptr);
 
