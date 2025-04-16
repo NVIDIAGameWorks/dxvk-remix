@@ -148,6 +148,8 @@ private:
 
   void buildParticleSurfaceMapping(std::vector<uint32_t>& surfaceIndexMapping);
 
+  bool validateUpdateMode(const VkAccelerationStructureBuildGeometryInfoKHR& oldInfo, const VkAccelerationStructureBuildGeometryInfoKHR& newInfo);
+
   std::vector<RtInstance*> m_reorderedSurfaces;
   std::vector<uint32_t> m_reorderedSurfacesFirstIndexOffset;
   std::vector<uint32_t> m_reorderedSurfacesPrimitiveIDPrefixSum;              // Exclusive prefix sum for this frame's surface primitive count array
