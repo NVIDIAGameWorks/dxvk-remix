@@ -566,6 +566,9 @@ struct PooledBlas : public RcObject {
   // Note: only used for tracking of OMMs for static BLASes
   XXH64_hash_t opacityMicromapSourceHash = kEmptyHash;
 
+  // Keep a copy of the build info so we can validate BLAS update compatibility
+  VkAccelerationStructureBuildGeometryInfoKHR buildInfo = {};
+
   explicit PooledBlas();
   ~PooledBlas();
 };
