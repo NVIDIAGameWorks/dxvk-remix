@@ -732,7 +732,7 @@ void geometryResolverVertexOutputDebugView(
   case DEBUG_VIEW_VALUE_NOISE:
     // Some test values to produce validation view
     float3 pos = surfaceInteraction.position * 0.1f;
-    float time = cb.timeSinceStartSeconds;
+    float time = cb.timeSinceStartMS * 0.001f;
     if(cb.debugKnob.x <= 1.f)
     {
       const float noise = valueNoise4D(float4(pos, time));

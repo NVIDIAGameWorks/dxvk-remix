@@ -30,7 +30,7 @@ bool rayPortalSurfaceMaterialInteractionSpriteSheetReadHelper(
   uint16_t samplerIndex,
   bool textureGammaCorrect,
   SurfaceInteraction surfaceInteraction,
-  float timeSinceStartSeconds,
+  uint32_t timeSinceStartMS,
   uint8_t spriteSheetRows,
   uint8_t spriteSheetCols,
   uint8_t spriteSheetFPS,
@@ -45,8 +45,10 @@ bool rayPortalSurfaceMaterialInteractionSpriteSheetReadHelper(
 
   // Note: No early out for spriteSheetFPS == 0 case because Ray Portals will commonly use animated textures.
 
+  const float timeSinceStartSecs = timeSinceStartMS * 0.001f;
+
   // Some constant to slow down, and a unique direction for opposing Portals
-  const float t = float(rotationSpeed) * timeSinceStartSeconds;
+  const float t = float(rotationSpeed) * timeSinceStartSecs;
   const float2x2 rot = float2x2(cos(t), -sin(t), sin(t), cos(t));
 
   vec2 originalCoord = surfaceInteraction.textureCoordinates;
@@ -58,7 +60,7 @@ bool rayPortalSurfaceMaterialInteractionSpriteSheetReadHelper(
   originalCoord = saturate(originalCoord);
 
   const uint numSprites = (spriteSheetCols * spriteSheetRows);
-  const float frameWithFraction = (timeSinceStartSeconds * spriteSheetFPS) % numSprites;
+  const float frameWithFraction = (timeSinceStartSecs * spriteSheetFPS) % numSprites;
   uint frame = floor(frameWithFraction);
   const float frameFraction = frac(frameWithFraction);
   const vec2 uvSize = vec2(1.0f / spriteSheetCols, 1.0f / spriteSheetRows);
@@ -111,7 +113,7 @@ RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteractionCreate(
     rayPortalSurfaceMaterial.samplerIndex,
     true,
     surfaceInteraction,
-    cb.timeSinceStartSeconds,
+    cb.timeSinceStartMS,
     surface.spriteSheetRows,
     surface.spriteSheetCols,
     surface.spriteSheetFPS,

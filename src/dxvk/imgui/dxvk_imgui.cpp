@@ -680,10 +680,9 @@ namespace dxvk {
           ImGui::SliderFloat("Roughness Bias", &opaqueMaterialOptions.roughnessBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
           ImGui::SliderFloat("Normal Strength##1", &opaqueMaterialOptions.normalIntensityObject(), -10.0f, 10.f, "%.3f", sliderFlags);
 
-          ImGui::Checkbox("Enable dual-layer animated water normal for Opaque", &opaqueMaterialOptions.layeredWaterNormalEnableObject());
+          ImGui::Checkbox("Enable dual-layer animated water normal", &opaqueMaterialOptions.layeredWaterNormalEnableObject());
 
           if (opaqueMaterialOptions.layeredWaterNormalEnable()) {
-            ImGui::TextWrapped("Animated water with Opaque material is dependent on the original draw call animating using a texture transform.");
             ImGui::SliderFloat2("Layered Motion Direction", &opaqueMaterialOptions.layeredWaterNormalMotionObject(), -1.0f, 1.0f, "%.3f", sliderFlags);
             ImGui::SliderFloat("Layered Motion Scale", &opaqueMaterialOptions.layeredWaterNormalMotionScaleObject(), -10.0f, 10.0f, "%.3f", sliderFlags);
             ImGui::SliderFloat("LOD bias", &opaqueMaterialOptions.layeredWaterNormalLodBiasObject(), 0.0f, 16.0f, "%.3f", sliderFlags);
@@ -700,14 +699,6 @@ namespace dxvk {
           ImGui::SliderFloat("Transmit. Color Bias", &translucentMaterialOptions.transmittanceColorBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
           ImGui::SliderFloat("Normal Strength##2", &translucentMaterialOptions.normalIntensityObject(), -10.0f, 10.f, "%.3f", sliderFlags);
 
-          ImGui::Checkbox("Enable dual-layer animated water normal for Translucent", &translucentMaterialOptions.animatedWaterEnableObject());
-          if (translucentMaterialOptions.animatedWaterEnable()) {
-            ImGui::TextWrapped("Animated water with Translucent materials will animate using Remix animation time.");
-
-            ImGui::SliderFloat2("Primary Texcoord Velocity", &translucentMaterialOptions.animatedWaterPrimaryNormalMotionObject(), -0.5f, 0.5f, "%.3f", sliderFlags);
-            ImGui::SliderFloat2("Secondary Normal Texcoord Velocity", &translucentMaterialOptions.animatedWaterSecondaryNormalMotionObject(), -0.5f, 0.5f, "%.3f", sliderFlags);
-            ImGui::SliderFloat("Secondary Normal LOD bias", &translucentMaterialOptions.animatedWaterSecondaryNormalLodBiasObject(), 0.0f, 16.0f, "%.3f", sliderFlags);
-          }
           ImGui::Unindent();
         }
 
