@@ -56,6 +56,7 @@ class AccelManager : public CommonDeviceObject {
     VkGeometryInstanceFlagsKHR instanceFlags = 0;
     bool usesUnorderedApproximations = false;
     uint32_t reorderedSurfacesOffset = UINT32_MAX;
+    bool hasOmmInstances = false;
     
     // Tries to add a geometry instance to the bucket. The addition is successful if either:
     //   a) the bucket is empty,

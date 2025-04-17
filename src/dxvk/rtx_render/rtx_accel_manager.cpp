@@ -99,6 +99,24 @@ namespace dxvk {
     --g_blasCount;
   }
 
+  // Keep a copy of the build info to validate it for potential updateability
+  static void copyAccelerationStructureBuildGeometryInfo(const VkAccelerationStructureBuildGeometryInfoKHR& srcInfo, VkAccelerationStructureBuildGeometryInfoKHR& dstInfo)
+  {
+    const VkAccelerationStructureGeometryKHR* pGeometries = dstInfo.pGeometries;
+    if (srcInfo.pGeometries) {
+      if (srcInfo.geometryCount != dstInfo.geometryCount) {
+        if (pGeometries) {
+          delete[] pGeometries;
+        }
+        pGeometries = new VkAccelerationStructureGeometryKHR[srcInfo.geometryCount];
+      }
+      std::memcpy((void*) pGeometries, srcInfo.pGeometries, srcInfo.geometryCount * sizeof(VkAccelerationStructureGeometryKHR));
+
+      dstInfo = srcInfo;
+      dstInfo.pGeometries = pGeometries;
+    }
+  }
+
   uint32_t AccelManager::getBlasCount() {
     // Should never be negative, but just in case...
     return uint32_t(std::max(g_blasCount, 0));
@@ -626,22 +644,6 @@ namespace dxvk {
         blasToBuild.push_back(buildInfo);
         blasRangesToBuild.push_back(&blasEntry->buildRanges[0]);
 
-        // Keep a copy of the build info to validate it for potential updateability
-        auto copyAccelerationStructureBuildGeometryInfo = [](const VkAccelerationStructureBuildGeometryInfoKHR& srcInfo, VkAccelerationStructureBuildGeometryInfoKHR& dstInfo) {
-          const VkAccelerationStructureGeometryKHR* pGeometries = dstInfo.pGeometries;
-          if (srcInfo.pGeometries) {
-            if (srcInfo.geometryCount != dstInfo.geometryCount) {
-              if (pGeometries) {
-                delete[] pGeometries;
-              }
-              pGeometries = new VkAccelerationStructureGeometryKHR[srcInfo.geometryCount];
-            }
-            std::memcpy((void*) pGeometries, srcInfo.pGeometries, srcInfo.geometryCount * sizeof(VkAccelerationStructureGeometryKHR));
-
-            dstInfo = srcInfo;
-            dstInfo.pGeometries = pGeometries;
-          }
-          };
         copyAccelerationStructureBuildGeometryInfo(buildInfo, selectedBlas->buildInfo);
       }
 
@@ -768,7 +770,7 @@ namespace dxvk {
       VkAccelerationStructureBuildGeometryInfoKHR buildInfo {};
       buildInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
       buildInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
-      buildInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR | additionalAccelerationStructureFlags();
+      buildInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR | additionalAccelerationStructureFlags();
       buildInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
       buildInfo.geometryCount = bucket->geometries.size();
       buildInfo.pGeometries = bucket->geometries.data();
@@ -792,6 +794,12 @@ namespace dxvk {
         }
       }
 
+      // Must ensure that if we are updating an existing blas, rather than rebuilding, the blas is compatible with our new build info
+      // Cannot update a blas that contains OMM instances, this leads to sporadic device lost errors
+      if (!bucket->hasOmmInstances && selectedBlas && validateUpdateMode(selectedBlas->buildInfo, buildInfo) && selectedBlas->primitiveCounts == bucket->primitiveCounts) {
+        buildInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR;
+      }
+
       // There is no such BLAS - create one and put it into the pool
       if (!selectedBlas) {
         auto newBlas = createPooledBlas(sizeInfo.accelerationStructureSize, "BLAS Merged");
@@ -805,6 +813,14 @@ namespace dxvk {
 
       // Use the selected BLAS for the build
       buildInfo.dstAccelerationStructure = selectedBlas->accelStructure->getAccelStructure();
+      
+      if (buildInfo.mode == VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR) {
+        // Set the src to the dst if we're updating
+        buildInfo.srcAccelerationStructure = buildInfo.dstAccelerationStructure;
+      }
+
+      copyAccelerationStructureBuildGeometryInfo(buildInfo, selectedBlas->buildInfo);
+      selectedBlas->primitiveCounts = bucket->primitiveCounts;
 
       // Allocate a scratch buffer slice
       const size_t requiredScratchAllocSize = align(sizeInfo.buildScratchSize + m_scratchAlignment, m_scratchAlignment);
@@ -1188,8 +1204,11 @@ namespace dxvk {
       // Bind opacity micromaps
       for (auto& blasBucket : blasBuckets) {
         for (uint32_t i = 0; i < blasBucket->geometries.size(); i++) {
-          opacityMicromapManager->tryBindOpacityMicromap(ctx, *blasBucket->originalInstances[i], blasBucket->instanceBillboardIndices[i],
+          auto ommSourceHash = opacityMicromapManager->tryBindOpacityMicromap(ctx, *blasBucket->originalInstances[i], blasBucket->instanceBillboardIndices[i],
                                                          blasBucket->geometries[i], instanceManager);
+          if (ommSourceHash != kEmptyHash) {
+            blasBucket->hasOmmInstances = true;
+          }
         }
       }
 
