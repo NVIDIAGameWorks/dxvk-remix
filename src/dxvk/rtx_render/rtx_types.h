@@ -568,6 +568,7 @@ struct PooledBlas : public RcObject {
 
   // Keep a copy of the build info so we can validate BLAS update compatibility
   VkAccelerationStructureBuildGeometryInfoKHR buildInfo = {};
+  std::vector<uint32_t> primitiveCounts {};
 
   explicit PooledBlas();
   ~PooledBlas();
