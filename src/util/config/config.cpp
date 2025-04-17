@@ -1338,18 +1338,25 @@ namespace dxvk {
     VirtualKeys virtKeys;
     while (std::getline(ss, s, ',')) {
       VirtualKey vk;
-      if(s.find("0x") != std::string::npos) {
-        VkValue vkVal = std::stoul(s, nullptr, 16);
-        vk.val = vkVal;
-      } else {
-        vk = KeyBind::getVk(s);
+      try {
+        if(s.find("0x") != std::string::npos) {
+          VkValue vkVal = std::stoul(s, nullptr, 16);
+          vk.val = vkVal;
+        } else {
+          vk = KeyBind::getVk(s);
+        }
+        if(!KeyBind::isValidVk(vk)) {
+          return false;
+        }
+        virtKeys.push_back(vk);
+        bFoundValidConfig = true;
+      } catch (const std::invalid_argument& e) {
+        Logger::err(str::format("Failed to parse virtual key hex code: '", s, "' - Invalid format."));
+        return false;
+      } catch (const std::out_of_range& e) {
+        Logger::err(str::format("Failed to parse virtual key hex code: '", s, "' - Value out of range."));
+        return false;
       }
-      if(!KeyBind::isValidVk(vk)) {
-        bFoundValidConfig = false;
-        break;
-      }
-      virtKeys.push_back(vk);
-      bFoundValidConfig = true;
     }
     if(bFoundValidConfig) {
       result = std::move(virtKeys);

@@ -91,19 +91,19 @@ namespace dxvk {
   ImGuiAbout::Credits::Credits()
     : m_sections({
       { "Github Contributors", // Sorted alphabetically by last name
-        { "Alexis 'Sortifal' Bruneteau",
+        { "Lorenzo 'King Vulpes' Acevedo IV",
+          "Alexis 'Sortifal' Bruneteau",
           "Ethan 'Xenthio' Cardwell",
           "Alexander 'xoxor4d' Engel",
           "James Horsley 'mmdanggg2'",
           "Leonardo Leotte",
+          "Jeffrey 'skurtyyskirts' Munoz",
           "Nico Rodrigues-McKenna",
           "Friedrich 'pixelcluster' Vock",
           "James 'jdswebb' Webb",
           "David 'King David' Wiltos",
           "Dayton 'watbulb'",
-          "Basil 'EliteCombineSoldier'",
-          "Lorenzo 'King Vulpes' Acevedo IV",
-      }},
+          "Basil 'EliteCombineSoldier'"}},
       { "Engineering",
         { "Riley Alston",
           "Xiangshun Bei",
