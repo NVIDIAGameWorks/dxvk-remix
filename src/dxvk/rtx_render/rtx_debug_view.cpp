@@ -422,9 +422,7 @@ namespace dxvk {
   }
 
   void DebugView::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
-    DxvkComputePipelineShaders shaders;
-    shaders.cs = getDebugViewShader();
-    pipelineManager.createComputePipeline(shaders);
+    getDebugViewShader();
   }
 
   bool DebugView::areDebugViewStatisticsSupported() const {

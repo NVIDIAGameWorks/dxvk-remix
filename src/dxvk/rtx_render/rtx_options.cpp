@@ -73,6 +73,9 @@ namespace dxvk {
 
   void RtxOptions::updateUpscalerFromTaauPreset() {
     switch (taauPreset()) {
+    case TaauPreset::UltraPerformance:
+      resolutionScaleRef() = 0.33f;
+      break;
     case TaauPreset::Performance:
       resolutionScaleRef() = 0.5f;
       break;
@@ -120,7 +123,9 @@ namespace dxvk {
       }
       case UpscalerType::TAAU: {
         const float taauResolutionScale = resolutionScale();
-        if (taauResolutionScale <= 0.5f) {
+        if (taauResolutionScale <= 0.33f) {
+          RtxOptions::Get()->taauPresetRef() = TaauPreset::UltraPerformance;
+        } else if (taauResolutionScale <= 0.5f) {
           RtxOptions::Get()->taauPresetRef() = TaauPreset::Performance;
         } else if (taauResolutionScale <= 0.66f) {
           RtxOptions::Get()->taauPresetRef() = TaauPreset::Balanced;
