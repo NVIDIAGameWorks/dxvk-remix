@@ -293,8 +293,22 @@ namespace dxvk {
     if (key.eq(g_nullShaderKey))
       return;
 
+    const auto shaderStage = shader->stage();
+    const auto isRayTracingShader = shaderStage > VK_SHADER_STAGE_COMPUTE_BIT;
+    const auto isComputeShader = shaderStage == VK_SHADER_STAGE_COMPUTE_BIT;
+
     // NV-DXVK start: compile raytracing shaders on shader compilation threads
-    if (shader->stage() > VK_SHADER_STAGE_COMPUTE_BIT) {
+    if (isRayTracingShader) {
+      // Note: Ensure the shader was actually a ray tracing shader type, as the current check
+      // for if something is a ray tracing shader or not is fairly basic and could have false positives.
+      assert(
+        shaderStage == VK_SHADER_STAGE_RAYGEN_BIT_KHR ||
+        shaderStage == VK_SHADER_STAGE_ANY_HIT_BIT_KHR ||
+        shaderStage == VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR ||
+        shaderStage == VK_SHADER_STAGE_MISS_BIT_KHR ||
+        shaderStage == VK_SHADER_STAGE_INTERSECTION_BIT_KHR
+      );
+
       return;
     }
     // NV-DXVK end
@@ -306,26 +320,10 @@ namespace dxvk {
     // Deferred lock, don't stall workers unless we have to
     std::unique_lock<dxvk::mutex> workerLock;
 
-    auto pipelines = m_pipelineMap.equal_range(key);
-
-    for (auto p = pipelines.first; p != pipelines.second; p++) {
-      WorkerItem item;
-
-      if (!getShaderByKey(p->second.vs,  item.gp.vs)
-       || !getShaderByKey(p->second.tcs, item.gp.tcs)
-       || !getShaderByKey(p->second.tes, item.gp.tes)
-       || !getShaderByKey(p->second.gs,  item.gp.gs)
-       || !getShaderByKey(p->second.fs,  item.gp.fs)
-       || !getShaderByKey(p->second.cs,  item.cp.cs))
-        continue;
-
-// NV-DXVK start
-      item.isRemixShader = isRemixShader;
-// NV-DXVK end
-      
+    const auto addWorkerItem = [&, this](const WorkerItem& item) {
       if (!workerLock)
         workerLock = std::unique_lock<dxvk::mutex>(m_workerLock);
-      
+
       // NV-DXVK start: do not compile same shader multiple times
       if (m_workerItemsInFlight.count(item.hash()) == 0) {
         if (item.isRemixShader) {
@@ -336,6 +334,38 @@ namespace dxvk {
         m_workerItemsInFlight.insert(item.hash());
       }
       // NV-DXVK end
+    };
+
+    // Add a worker item for either the shader or entire set of shaders in a pipeline associated with the shader
+    // Note: Remix compute shaders will be handled specially to bypass the usual pipeline state cache functionality
+    // to ensure shaders can be prewarmed on first launch without this cache populated.
+
+    if (isRemixShader && isComputeShader) {
+        WorkerItem item;
+
+        item.cp.cs = shader;
+        item.cp.forceNoSpecConstants = true;
+        item.isRemixShader = true;
+
+        addWorkerItem(item);
+    } else {
+      auto pipelines = m_pipelineMap.equal_range(key);
+
+      for (auto p = pipelines.first; p != pipelines.second; p++) {
+        WorkerItem item;
+
+        if (!getShaderByKey(p->second.vs, item.gp.vs)
+         || !getShaderByKey(p->second.tcs, item.gp.tcs)
+         || !getShaderByKey(p->second.tes, item.gp.tes)
+         || !getShaderByKey(p->second.gs, item.gp.gs)
+         || !getShaderByKey(p->second.fs, item.gp.fs)
+         || !getShaderByKey(p->second.cs, item.cp.cs))
+          continue;
+
+        item.isRemixShader = isRemixShader;
+
+        addWorkerItem(item);
+      }
     }
 
     if (workerLock)
@@ -429,13 +459,14 @@ namespace dxvk {
     key.fs  = getShaderKey(item.gp.fs);
     key.cs  = getShaderKey(item.cp.cs);
 
-    // NV-DXVK start: compile rt shaders on shader compilation threads
     if (!item.rt.groups.empty()) {
+      // Compile Ray Tracing Pipelines
+
       auto pipeline = m_pipeManager->createRaytracingPipeline(item.rt);
       pipeline->compilePipeline();
-    } else
-    // NV-DXVK end
-    if (item.cp.cs == nullptr) {
+    } else if (item.cp.cs == nullptr) {
+      // Compile Graphics Pipelines
+
       auto pipeline = m_pipeManager->createGraphicsPipeline(item.gp);
       auto entries = m_entryMap.equal_range(key);
 
@@ -446,12 +477,29 @@ namespace dxvk {
         pipeline->compilePipeline(entry.gpState, rp);
       }
     } else {
-      auto pipeline = m_pipeManager->createComputePipeline(item.cp);
-      auto entries = m_entryMap.equal_range(key);
+      // Compile Compute Pipelines
 
-      for (auto e = entries.first; e != entries.second; e++) {
-        const auto& entry = m_entries[e->second];
-        pipeline->compilePipeline(entry.cpState);
+      auto pipeline = m_pipeManager->createComputePipeline(item.cp);
+
+      // Note: No need to rely on any state cache entries when it is known the compute shader
+      // will not be using any spec constants, as these cache entries only provide such things.
+      // This allows the compute pipeline to be compiled without any cache entries present.
+      if (item.cp.forceNoSpecConstants) {
+        // Note: This should only be the case for Remix shaders currently.
+        assert(item.isRemixShader);
+
+        // Note: This state should not be ever read, so it is fine to leave default constructed to an empty state
+        // in this path.
+        DxvkComputePipelineStateInfo dummyState{};
+
+        pipeline->compilePipeline(dummyState);
+      } else {
+        auto entries = m_entryMap.equal_range(key);
+
+        for (auto e = entries.first; e != entries.second; e++) {
+          const auto& entry = m_entries[e->second];
+          pipeline->compilePipeline(entry.cpState);
+        }
       }
     }
   }

@@ -196,7 +196,7 @@ namespace dxvk {
     pushArgs.enableAutoExposure = autoExposureEnabled;
     pushArgs.toneCurveMinStops = toneCurveMinStops();
     pushArgs.toneCurveMaxStops = toneCurveMaxStops();
-    pushArgs.exposureFactor = exp2f(exposureBias());
+    pushArgs.exposureFactor = exp2f(exposureBias() + RtxOptions::calcUserEVBias());
 
     ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
 
@@ -259,7 +259,7 @@ namespace dxvk {
     pushArgs.performSRGBConversion = performSRGBConversion;
     pushArgs.shadowContrast = shadowContrast();
     pushArgs.shadowContrastEnd = shadowContrastEnd();
-    pushArgs.exposureFactor = exp2f(exposureBias()); // ev100
+    pushArgs.exposureFactor = exp2f(exposureBias() + RtxOptions::calcUserEVBias()); // ev100
     pushArgs.toneCurveMinStops = toneCurveMinStops();
     pushArgs.toneCurveMaxStops = toneCurveMaxStops();
     pushArgs.debugMode = tuningMode();

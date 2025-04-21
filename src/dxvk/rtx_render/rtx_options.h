@@ -97,7 +97,8 @@ namespace dxvk {
   };
 
   enum class TaauPreset : int {
-    Performance = 0,
+    UltraPerformance = 0,
+    Performance,
     Balanced,
     Quality,
     Fullscreen
@@ -956,6 +957,9 @@ namespace dxvk {
     RTX_OPTION("rtx.terrain", bool, terrainAsDecalsEnabledIfNoBaker, false, "If terrain baker is disabled, attempt to blend with the decals.");
     RTX_OPTION("rtx.terrain", bool, terrainAsDecalsAllowOverModulate, false, "Set to true, if it's known that terrain layers with ModulateX2 / ModulateX4 flags do not contain a lighting info, but ModulateX2 / ModulateX4 are used only to blend layers.");
 
+    RTX_OPTION("rtx.userBrightness", int, userBrightness, 50, "How bright the final image should be. [0,100] range.");
+    RTX_OPTION("rtx.userBrightnessEVRange", float, userBrightnessEVRange, 3.f, "The exposure value (EV) range for \'rtx.userBrightness\' slider, i.e. how much of EV there is between 0 and 100 slider values.");
+
     // Automation Options
     struct Automation {
       RTX_OPTION_FLAG_ENV("rtx.automation", bool, disableBlockingDialogBoxes, false, RtxOptionFlags::NoSave, "RTX_AUTOMATION_DISABLE_BLOCKING_DIALOG_BOXES",
@@ -1376,5 +1380,10 @@ namespace dxvk {
     std::string getCurrentDirectory() const;
 
     bool shouldUseObsoleteHashOnTextureUpload() const { return useObsoleteHashOnTextureUpload(); }
+
+    static float calcUserEVBias() {
+      return (float(RtxOptions::userBrightness() - 50) / 100.f)
+        * RtxOptions::userBrightnessEVRange();
+    }
   };
 }

@@ -997,6 +997,12 @@ namespace dxvk {
       const static ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_NoCloseWithMiddleMouseButton;
       const static ImGuiTabItemFlags tab_item_flags = ImGuiTabItemFlags_NoCloseWithMiddleMouseButton;
 
+      {
+        ImGui::TextSeparator("Display Settings");
+        ImGui::SliderInt("Brightness##user", &RtxOptions::userBrightnessObject(), 0, 100, "%d", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::Dummy({ 0.f, 4.f });
+      }
+
       if (ImGui::BeginTabBar("Settings Tabs", tab_bar_flags)) {
         if (ImGui::BeginTabItem("General", nullptr, tab_item_flags)) {
           showUserGeneralSettings(ctx, subItemWidth, subItemIndent);
@@ -1186,7 +1192,7 @@ namespace dxvk {
           break;
         }
         case UpscalerType::TAAU: {
-          m_userGraphicsSettingChanged |= ImGui::Combo("TAA-U Preset", &RtxOptions::Get()->taauPresetObject(), "Performance\0Balanced\0Quality\0Fullscreen\0");
+          m_userGraphicsSettingChanged |= ImGui::Combo("TAA-U Preset", &RtxOptions::Get()->taauPresetObject(), "Ultra Performance\0Performance\0Balanced\0Quality\0Fullscreen\0");
           RtxOptions::Get()->updateUpscalerFromTaauPreset();
 
           // Display TAA-U Upscaling Information
@@ -3217,6 +3223,9 @@ namespace dxvk {
 
       if (ImGui::CollapsingHeader("Tonemapping", collapsingHeaderClosedFlags))
       {
+        ImGui::SliderInt("User Brightness", &RtxOptions::userBrightnessObject(), 0, 100, "%d");
+        ImGui::DragFloat("User Brightness EV Range", &RtxOptions::userBrightnessEVRangeObject(), 0.5f, 0.f, 10.f, "%.1f");
+        ImGui::Separator();
         ImGui::Combo("Tonemapping Mode", &RtxOptions::Get()->tonemappingModeObject(), "Global\0Local\0");
         if (RtxOptions::Get()->tonemappingMode() == TonemappingMode::Global) {
           common->metaToneMapping().showImguiSettings();
