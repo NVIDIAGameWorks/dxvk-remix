@@ -1280,7 +1280,7 @@ SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcSpecularRef
     opaqueSurfaceMaterialInteraction.anisotropicRoughness,
     tangentDotOutputDirection, bitangentDotOutputDirection, normalDotOutputDirection,
     k);
-  const float16_t G2OverG1 = safePositiveDivide(G2, G1, materialEpsilon);
+  const float16_t G2OverG1 = saferPositiveDivide(G2, G1, materialEpsilon, materialMaximum);
 #else
   // Note: Algebraic simplification of height correlated G2/G1 to reduce evaluation cost. Could be simplified a bit further
   // I think however by calculating lambda for the input/output directions and evaluating (1 + L(O)) / (1 + L(O) + L(I)) as

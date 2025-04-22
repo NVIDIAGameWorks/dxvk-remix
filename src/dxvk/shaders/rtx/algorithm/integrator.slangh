@@ -151,16 +151,13 @@ Ray sampleDirection(
 
   // Combine sample throughput into the throughput
 
-  const vec3 directionSampleThroughput = surfaceMaterialInteractionSample.throughput / surfaceMaterialInteractionLobeSample.pdf;
-
-  if (isValidValue(directionSampleThroughput))
-  {
-    throughput *= directionSampleThroughput;
-  }
-  else
-  {
-    // REMIX-3706 - WAR for the math not being fully robust - invalidate the sample
-    throughput = 0;
+  // Note: The lobe sample PDF occasionally may be 0 to indicate no valid sample was taken, so this check must be here to avoid
+  // dividing by 0. When the love sample PDF is 0, the throughput should also be 0 to indicate no valid sample was taken (much
+  // like the Surface Material Interaction's sample throughput will be set to 0 to indicate no valid direction sample was taken).
+  if (surfaceMaterialInteractionLobeSample.pdf != 0.0f) {
+    throughput *= surfaceMaterialInteractionSample.throughput / surfaceMaterialInteractionLobeSample.pdf;
+  } else {
+    throughput = vec3(0.0f);
   }
 
   return sampledRay;
@@ -302,14 +299,26 @@ float calculateRussianRouletteContinueProbability(
   PathState pathState,
   bool isOpaqueMaterial,
   bool isSpecularLobe,
+  vec3 continuationThroughput,
   float16_t isotropicRoughness,
   float16_t hitDistance)
 {
   if (pathState.russianRouletteMode == RussianRouletteMode::ThroughputBased)
   {
-    const float pathThroughput = calcBt709Luminance(pathState.calculateFullThroughput());
+    // Note: Combine the continuation throughput with the path throughput into a combined throughput to use as the basis for russian
+    // roulette. This is done because the path throughput contains the throughput up to this vertex, and the continuation throughput
+    // represents the throughput of the current direction sample to be used to trace the next ray from this vertex.
+    // As such, the probability to consider when continuing the path should be based on the combination of these values as that is roughly the
+    // probability any light will be received from that next vertex.
+    // This usually doesn't need to be done, but since we don't multiply this throughput into the path state's throughput by this point, we
+    // have to do it manually like this. If that ever changes in the future this extra multiplication should be removed to not double-accumulate
+    // the continuation throughput.
+    const vec3 combinedThroughput = pathState.calculateFullThroughput() * continuationThroughput;
+    const float combinedThroughputLuminance = calcBt709Luminance(combinedThroughput);
 
-    return min(pathThroughput, cb.russianRouletteMaxContinueProbability);
+    // Note: Implicitly clamped into the 0-1 range by the fact that the luminance should be 0-inf and the min operation with the
+    // max continue probability which should be in the range 0-1.
+    return min(combinedThroughputLuminance, cb.russianRouletteMaxContinueProbability);
   }
   else
   {
