@@ -177,16 +177,15 @@ void calculateRussianRouletteOnFirstBounce(
   // paths which contribute little to the final image to be shorter while paths which are more important
   // are allowed to be longer.
 
-  float continueProbability =
+  const float continueProbability =
     clamp(calcBt709Luminance(throughput), 
           cb.russianRoulette1stBounceMinContinueProbability,
           cb.russianRoulette1stBounceMaxContinueProbability);
-
   const float continueSample = getNextSampleBlueNoise(randomState);
   
   // Note: <= used to ensure path never continues if the probability is 0 (and to avoid NaNs in the
   // throughput when the probability is divided into it).
-  bool terminate = continueProbability <= continueSample;
+  const bool terminate = continueProbability <= continueSample;
 
   if (terminate)
   {
@@ -246,6 +245,13 @@ void sampleIndirectRayForFirstBounce(
   const bool oldInsideMedium = insideMedium;
   
   // Sample a new direction
+  // Note: If this sample is invalid the throughput and solid angle pdf will be set to 0. Since this throughput is written right out
+  // into the throughput sent to the indirect integration pass though, no check needs to exist to handle this, as it will indicate that
+  // the path should terminate properly. This is in contrast to the indirect pass where the throughput from sampling a direction is not
+  // immediately accumulated into the path's throughput and requires more careful handling, especially since russian roulette plays more
+  // a role in setting the continuation flag there, whereas here it just modifies the throughput. This is because russian roulette may
+  // not be throughput based or may clamp the minimum probability like it does here in the direct integrator, so care must be taken to
+  // not have this dispatch rays on otherwise invalid direction samples.
   sampledRay = sampleDirection(randomState, insideMedium, throughput,
                                primaryRay, primaryMinimalRayInteraction, primaryMinimalSurfaceInteraction,
                                primaryPolymorphicSurfaceMaterialInteraction,
