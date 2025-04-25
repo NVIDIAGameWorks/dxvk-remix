@@ -45,8 +45,6 @@
 #include "rtx_render/rtx_dlss.h"
 #include "rtx_render/rtx_nis.h"
 #include "rtx_render/rtx_taa.h"
-#include "rtx_render/rtx_composite.h"
-#include "rtx_render/rtx_debug_view.h"
 #include "rtx_render/rtx_auto_exposure.h"
 #include "rtx_render/rtx_tone_mapping.h"
 #include "rtx_render/rtx_local_tone_mapping.h"

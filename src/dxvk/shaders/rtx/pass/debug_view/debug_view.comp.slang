@@ -49,6 +49,9 @@ float3 RAB_DecodeNormal(uint encodedNormal)
 
 // Inputs
 
+layout(binding = DEBUG_VIEW_BINDING_CONSTANTS_INPUT)
+ConstantBuffer<DebugViewArgs> cb;
+
 layout(rgba16f, binding = DEBUG_VIEW_BINDING_DENOISED_PRIMARY_DIRECT_DIFFUSE_RADIANCE_HIT_T_INPUT)
 Texture2D<float4> DenoisedPrimaryDirectDiffuseRadianceHitT;
 layout(rgba16f, binding = DEBUG_VIEW_BINDING_DENOISED_PRIMARY_DIRECT_SPECULAR_RADIANCE_HIT_T_INPUT)
@@ -75,14 +78,14 @@ layout(r32ui, binding = DEBUG_VIEW_BINDING_INSTRUMENTATION_INPUT)
 Texture2D<uint> Instrumentation;
 layout(rgba16f, binding = DEBUG_VIEW_BINDING_TERRAIN_INPUT)
 Texture2D<float4> TerrainTexture;
-layout(rgba32ui, binding = DEBUG_VIEW_BINDING_VOLUME_RESERVOIRS)
+layout(rgba32ui, binding = DEBUG_VIEW_BINDING_VOLUME_RESERVOIRS_INPUT)
 Texture3D<uint4> VolumeReservoirs;
 
-layout(binding = DEBUG_VIEW_BINDING_VOLUME_AGE)
+layout(binding = DEBUG_VIEW_BINDING_VOLUME_AGE_INPUT)
 Sampler3D<float> VolumeFilteredRadianceAge;
-layout(binding = DEBUG_VIEW_BINDING_VOLUME_RADIANCE_Y)
+layout(binding = DEBUG_VIEW_BINDING_VOLUME_RADIANCE_Y_INPUT)
 Sampler3D<float4> VolumeFilteredRadianceY;
-layout(binding = DEBUG_VIEW_BINDING_VOLUME_RADIANCE_COCG)
+layout(binding = DEBUG_VIEW_BINDING_VOLUME_RADIANCE_COCG_INPUT)
 Sampler3D<float2> VolumeFilteredRadianceCoCg;
 
 layout(binding = DEBUG_VIEW_BINDING_VALUE_NOISE_SAMPLER)
@@ -91,11 +94,14 @@ Sampler2D<float4> ValueNoiseSampler;
 layout(binding = DEBUG_VIEW_BINDING_BLUE_NOISE_TEXTURE)
 Texture2DArray BlueNoise;
 
-layout(rgba32f, binding = DEBUG_VIEW_BINDING_INPUT)
+layout(rgba32f, binding = DEBUG_VIEW_BINDING_DEBUG_VIEW_INPUT)
 Texture2D<float4> DebugView;
 
-layout(rgba8f, binding = DEBUG_VIEW_NRD_VALIDATION_LAYER_INPUT)
-Texture2D<float4> NrdValidatioNLayer;
+layout(rgba8f, binding = DEBUG_VIEW_BINDING_NRD_VALIDATION_LAYER_INPUT)
+Texture2D<float4> NrdValidationLayer;
+
+
+// Inputs / Outputs
 
 layout(r32ui, binding = DEBUG_VIEW_BINDING_HDR_WAVEFORM_RED_INPUT_OUTPUT)
 RWTexture2D<uint> HDRWaveformRedInputOutput;
@@ -107,26 +113,26 @@ RWTexture2D<uint> HDRWaveformBlueInputOutput;
 layout(rgba16f, binding = DEBUG_VIEW_BINDING_COMPOSITE_OUTPUT_INPUT_OUTPUT)
 RWTexture2D<float4> CompositeOutput;
 
-layout(rgba32f, binding = DEBUG_VIEW_BINDING_OUTPUT)
-RWTexture2D<float4> DebugViewOutput;
-
 layout(rgba32f, binding = DEBUG_VIEW_BINDING_PREVIOUS_FRAME_INPUT_OUTPUT)
 RWTexture2D<float4> PreviousFrameDebugView;
-
-layout(binding = DEBUG_VIEW_BINDING_NEAREST_SAMPLER)
-SamplerState NearestSampler;
-
-layout(binding = DEBUG_VIEW_BINDING_LINEAR_SAMPLER)
-SamplerState LinearSampler;
-
-layout(binding = DEBUG_VIEW_BINDING_CONSTANTS_INPUT)
-ConstantBuffer<DebugViewArgs> cb;
 
 // Outputs
 
 layout(binding = DEBUG_VIEW_BINDING_STATISTICS_BUFFER_OUTPUT)
 RWStructuredBuffer<float> DebugViewStatistics;
 
+layout(rgba32f, binding = DEBUG_VIEW_BINDING_OUTPUT)
+RWTexture2D<float4> DebugViewOutput;
+
+
+
+// Samplers
+
+layout(binding = DEBUG_VIEW_BINDING_NEAREST_SAMPLER)
+SamplerState NearestSampler;
+
+layout(binding = DEBUG_VIEW_BINDING_LINEAR_SAMPLER)
+SamplerState LinearSampler;
 #include "rtx/utility/common.slangh"
 #include "rtx/utility/color.slangh"
 #include "rtx/utility/packing.slangh"
@@ -463,6 +469,7 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
     break;
   case DEBUG_VIEW_NAN:
     bool isValid = DebugView[threadId].x != 0.0;
+
     // DEBUG_VIEW_VIRTUAL_SHADING_NORMAL
     isValid &= isValidValue(unormVectorToColor(PrimaryVirtualWorldNormalPerceptualRoughness[threadId].xyz));
     // DEBUG_VIEW_VIRTUAL_MOTION_VECTOR
@@ -499,18 +506,44 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
     isValid &= isValidValue(FinalShading[upscaledPixelCoordinate]);
     // DEBUG_VIEW_COMPOSITE_OUTPUT
     isValid &= isValidValue(CompositeOutput[threadId]);
+
+    // Skipped
+    // DEBUG_VIEW_VIEW_MODEL
+    // DEBUG_VIEW_PSR_PRIMARY_SECONDARY_SURFACE_MASK
+    // DEBUG_VIEW_TERRAIN_MAP
+    // DEBUG_VIEW_TERRAIN_MAP_OPACITY
+
+    // Skipped - since they read in data from DebugView
+    // DEBUG_VIEW_NRC_UPDATE_RADIANCE
+    // DEBUG_VIEW_NRC_UPDATE_THROUGHPUT
+    // DEBUG_VIEW_NRC_UPDATE_RADIANCE_MULTIPLIED_BY_THROUGHPUT
+    // DEBUG_VIEW_NRC_UPDATE_IS_UNBIASED
+    // DEBUG_VIEW_NRC_UPDATE_NUMBER_OF_BOUNCES
+    // DEBUG_VIEW_NRC_UPDATE_NUMBER_OF_PATH_SEGMENTS
+    // DEBUG_VIEW_NRC_UPDATE_NUMBER_OF_INDIRECT_PATH_SEGMENTS
+
+    // Skipped
+    // DEBUG_VIEW_EXPOSURE_HISTOGRAM
+
     // DEBUG_VIEW_INSTRUMENTATION_THREAD_DIVERGENCE
     isValid &= isValidValue(Instrumentation[threadId]);
     
+    // DEBUG_VIEW_RTXDI_CONFIDENCE
     if (cb.isRTXDIConfidenceValid) 
     {
-      // DEBUG_VIEW_RTXDI_CONFIDENCE
       isValid &= isValidValue(RtxdiConfidence[threadId].x);
     }
 
+    // Skipped
+    // DEBUG_VIEW_VOLUME_RESERVOIR_DEPTH_LAYERS
+    // DEBUG_VIEW_VOLUME_PREINTEGRATION
+    // DEBUG_VIEW_SCROLLING_LINE
+
     // If there is invalid number, output NaN to trigger NaN highlight effect 
     value = isValid ? 1.0 : 0.0 / 0.0;
+
     break;
+
   case DEBUG_VIEW_SSS_DIFFUSION_PROFILE_SAMPLING:
   {
     value = DebugView[threadId] + FinalShading[upscaledPixelCoordinate];
@@ -520,14 +553,15 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
   case DEBUG_VIEW_NRD_INSTANCE_1_VALIDATION_LAYER:
   case DEBUG_VIEW_NRD_INSTANCE_2_VALIDATION_LAYER:
   {
-    float4 validation = NrdValidatioNLayer[threadId];
+    float4 validation = NrdValidationLayer[threadId];
     value.xyz = lerp( FinalShading[upscaledPixelCoordinate].xyz, validation.xyz, validation.w );
 
     break;
   }
   default:
     value = DebugView[threadId];
-  };
+    break;
+  }
 
   // Quantize the input value to the requested step size if enabled
   // Note: This is done to allow for simulation of what the result roughly would look like if written to a quantized texture (e.g. to simulate 8 bits per channel,
@@ -567,7 +601,7 @@ void postprocess(inout RNG randomState, ivec2 threadId, inout vec4 outValue)
   { 
     bool nanDetected = false;
     bool infDetected = false;
-
+    
     // Detect nans and infs in pixel neighborhood
     if (cb.colorCodeRadius > 0) 
     {
@@ -713,7 +747,7 @@ void storeDebugViewOutputStatistics(vec4 value)
       INTERLOCKED_OP_VEC4(InterlockedAddFloat, DebugViewStatistics, value);
       break;
  };
-#endif 
+#endif
 }
 
 void storeToDebugView(uint2 threadId, vec4 value)

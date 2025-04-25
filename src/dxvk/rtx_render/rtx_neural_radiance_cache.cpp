@@ -31,6 +31,7 @@
 #include "rtx_nrc_context.h"
 #include <NRCStructures.h>
 #include "rtx_camera.h"
+#include "rtx_debug_view.h"
 
 #include "rtx/pass/gbuffer/gbuffer_binding_indices.h"
 #include "rtx/pass/integrate/integrate_indirect_binding_indices.h"

@@ -29,6 +29,7 @@
 #include <rtx_shaders/auto_exposure.h>
 #include <rtx_shaders/auto_exposure_histogram.h>
 #include "rtx_imgui.h"
+#include "rtx_render/rtx_debug_view.h"
 
 #include "rtx/utility/debug_view_indices.h"
 

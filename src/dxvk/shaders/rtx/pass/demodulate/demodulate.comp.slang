@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -535,6 +535,13 @@ void outputToDebugViewAtTheEnd(
     isValid &= isValidValue(secondaryCombinedDiffuseOutput.xyz);
     // DEBUG_VIEW_NOISY_DEMODULATED_SECONDARY_COMBINED_SPECULAR_RADIANCE
     isValid &= isValidValue(secondaryCombinedSpecularOutput.xyz);
+
+    // Skipped - since these represent combined values from above
+    // DEBUG_VIEW_NOISY_PRIMARY_DIRECT_RADIANCE
+    // DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_RADIANCE
+    // DEBUG_VIEW_NOISY_PRIMARY_RADIANCE
+    // DEBUG_VIEW_NOISY_SECONDARY_RADIANCE
+    // DEBUG_VIEW_NOISY_RADIANCE
     
     accumulateInDebugViewAnd(pixelCoordinate, isValid);
   }

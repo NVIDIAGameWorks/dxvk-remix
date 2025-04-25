@@ -29,6 +29,7 @@
 #include "rtx_option.h"
 #include "rtx_globals.h"
 #include "rtx_options.h"
+#include "rtx_debug_view.h"
 
 #include "../dxvk_device.h"
 #include "rtx_texture_manager.h"

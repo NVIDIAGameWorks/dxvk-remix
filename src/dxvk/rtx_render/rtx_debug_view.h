@@ -85,6 +85,7 @@ namespace dxvk {
     virtual void onFrameBegin(Rc<DxvkContext>& ctx, const FrameBeginContext& frameBeginCtx) override;
 
   private:
+    void initCompositeView(Rc<DxvkContext>& ctx);
     void processOutputStatistics(Rc<RtxContext>& ctx, const Resources::RaytracingOutput& rtOutput);
     void showOutputStatistics();
     bool shouldDebugViewDispatch() const;

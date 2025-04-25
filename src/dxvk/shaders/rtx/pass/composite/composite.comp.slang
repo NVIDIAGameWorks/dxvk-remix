@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -507,7 +507,7 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
   radianceOutput += sharedRadiance;
   
   // Add sky radiance
-  if(primaryMiss)
+  if (primaryMiss)
   {
     if (cb.domeLightArgs.active)
     {
@@ -571,7 +571,7 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
     // Output final composite result for NRD denoiser.
     finalOutput.xyz = attenuatedOutput * backgroundAlpha + alphaBlendOutput.xyz;
   }
-  
+
   imageStore(FinalOutput, thread_id.xy, finalOutput);
 
   postCompositeDebugView(thread_id, geometryFlags, particleLayerOutput);

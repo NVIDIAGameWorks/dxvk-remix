@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -456,8 +456,16 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   else if (cb.debugView == DEBUG_VIEW_NAN)
   {
     bool isValid = true;
+
+    // DEBUG_VIEW_RESTIR_GI_FINAL_SHADING
     isValid &= isValidValue(vec3(initialWeight, restirWeight, 0));
+
+    // DEBUG_VIEW_RESTIR_GI_VIRTUAL_HIT_T
     isValid &= isValidValue(spatialReservoir.getVirtualFraction());
+
+    // Skipped - as it's a simple bool state
+    // DEBUG_VIEW_RESTIR_GI_VISIBILITY_INVALID_SAMPLES
+
     accumulateInDebugViewAnd(threadIndex, isValid);
   }
 }

@@ -34,6 +34,7 @@
 #include "rtx_ngx_wrapper.h"
 #include "rtx_render/rtx_shader_manager.h"
 #include "rtx_imgui.h"
+#include "rtx_debug_view.h"
 
 #include "rtx_matrix_helpers.h"
 
