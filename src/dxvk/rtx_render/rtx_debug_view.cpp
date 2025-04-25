@@ -318,6 +318,21 @@ namespace dxvk {
     ImGui::ComboWithKey<CompositeDebugView>::ComboEntries { {
         {CompositeDebugView::FinalRenderWithMaterialProperties, "Final Render + Material Properties"},
         {CompositeDebugView::OpaqueMaterialTextureResolutionCheckers, "Opaque Material Texture Resolution Checkers", "Textures: Raw Albedo, Normal, Roughness" },
+        {CompositeDebugView::RuntimeValuesSet0, "Runtime Values Set 0",
+          "BARYCENTRICS, VIEW_DIRECTION, CONE_RADIUS, POSITION,\n"
+          "TEXCOORDS, VIRTUAL_MOTION_VECTOR, VIRTUAL_SHADING_NORMAL, VERTEX_COLOR,\n"
+          "SCREEN_SPACE_MOTION_VECTOR, PERCEPTUAL_ROUGHNESS, ANISOTROPY, ANISOTROPIC_ROUGHNESS,\n"
+          "OPACITY, VIRTUAL_HIT_DISTANCE, SURFACE_AREA, EMISSIVE_RADIANCE" },
+        {CompositeDebugView::RuntimeValuesSet1, "Runtime Values Set 1",
+          "VOLUME_PREINTEGRATION, TEXCOORDS_GRADIENT_X, TEXCOORDS_GRADIENT_Y, PSR_PRIMARY_SECONDARY_SURFACE_MASK,\n"
+          "PSR_SELECTED_INTEGRATION_SURFACE_PDF, PRIMARY_DECAL_ALBEDO, PRIMARY_SPECULAR_ALBEDO, SECONDARY_SPECULAR_ALBEDO,\n"
+          "STOCHASTIC_ALPHA_BLEND_COLOR, STOCHASTIC_ALPHA_BLEND_NORMAL, STOCHASTIC_ALPHA_BLEND_GEOMETRY_HASH, STOCHASTIC_ALPHA_BLEND_BACKGROUND_TRANSPARENCY,\n"
+          "RTXDI_GRADIENTS, RTXDI_CONFIDENCE, LOCAL_TONEMAPPER_LUMINANCE_OUTPUT, LOCAL_TONEMAPPER_EXPOSURE_OUTPUT" },
+        {CompositeDebugView::RuntimeValuesSet2, "Runtime Values Set 2",
+          "NOISY_PRIMARY_DIRECT_DIFFUSE_RADIANCE, NOISY_PRIMARY_DIRECT_SPECULAR_RADIANCE, NOISY_PRIMARY_DIRECT_DIFFUSE_HIT_T, NOISY_PRIMARY_DIRECT_SPECULAR_HIT_T,\n"
+          "NOISY_PRIMARY_INDIRECT_DIFFUSE_RADIANCE, NOISY_PRIMARY_INDIRECT_SPECULAR_RADIANCE, NOISY_PRIMARY_INDIRECT_DIFFUSE_HIT_T, NOISY_PRIMARY_INDIRECT_SPECULAR_HIT_T,\n"
+          "NOISY_SECONDARY_COMBINED_DIFFUSE_RADIANCE, NOISY_SECONDARY_COMBINED_SPECULAR_RADIANCE, NOISY_PATHRACED_RAW_INDIRECT_RADIANCE, NOISY_RADIANCE,\n"
+          "NRC_UPDATE_RADIANCE, NRC_UPDATE_THROUGHPUT, NRC_RESOLVED_RADIANCE, SSS_DIFFUSION_PROFILE_SAMPLING" },
     } });
 
   ImGui::ComboWithKey<DebugViewDisplayType> displayTypeCombo = ImGui::ComboWithKey<DebugViewDisplayType>(
@@ -359,6 +374,7 @@ namespace dxvk {
   namespace {
     class DebugViewShader : public ManagedShader {
       BEGIN_PARAMETER()
+        CONSTANT_BUFFER(DEBUG_VIEW_BINDING_CONSTANTS_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_DENOISED_PRIMARY_DIRECT_DIFFUSE_RADIANCE_HIT_T_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_DENOISED_PRIMARY_DIRECT_SPECULAR_RADIANCE_HIT_T_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_DENOISED_SECONDARY_COMBINED_DIFFUSE_RADIANCE_HIT_T_INPUT)
@@ -372,28 +388,26 @@ namespace dxvk {
         TEXTURE2D(DEBUG_VIEW_BINDING_FINAL_SHADING_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_INSTRUMENTATION_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_TERRAIN_INPUT)
-        TEXTURE3D(DEBUG_VIEW_BINDING_VOLUME_RESERVOIRS)
-        SAMPLER3D(DEBUG_VIEW_BINDING_VOLUME_AGE)
-        SAMPLER3D(DEBUG_VIEW_BINDING_VOLUME_RADIANCE_Y)
-        SAMPLER3D(DEBUG_VIEW_BINDING_VOLUME_RADIANCE_COCG)
+        TEXTURE3D(DEBUG_VIEW_BINDING_VOLUME_RESERVOIRS_INPUT)
+        SAMPLER3D(DEBUG_VIEW_BINDING_VOLUME_AGE_INPUT)
+        SAMPLER3D(DEBUG_VIEW_BINDING_VOLUME_RADIANCE_Y_INPUT)
+        SAMPLER3D(DEBUG_VIEW_BINDING_VOLUME_RADIANCE_COCG_INPUT)
         SAMPLER2D(DEBUG_VIEW_BINDING_VALUE_NOISE_SAMPLER)
         TEXTURE2DARRAY(DEBUG_VIEW_BINDING_BLUE_NOISE_TEXTURE)
-        TEXTURE2D(DEBUG_VIEW_BINDING_INPUT)
-        TEXTURE2D(DEBUG_VIEW_NRD_VALIDATION_LAYER_INPUT)
+        TEXTURE2D(DEBUG_VIEW_BINDING_DEBUG_VIEW_INPUT)
+        TEXTURE2D(DEBUG_VIEW_BINDING_NRD_VALIDATION_LAYER_INPUT)
+
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_HDR_WAVEFORM_RED_INPUT_OUTPUT)
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_HDR_WAVEFORM_GREEN_INPUT_OUTPUT)
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_HDR_WAVEFORM_BLUE_INPUT_OUTPUT)
-
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_COMPOSITE_OUTPUT_INPUT_OUTPUT)
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_PREVIOUS_FRAME_INPUT_OUTPUT)
 
-        SAMPLER(DEBUG_VIEW_BINDING_NEAREST_SAMPLER)
-        SAMPLER(DEBUG_VIEW_BINDING_LINEAR_SAMPLER)
-
-        CONSTANT_BUFFER(DEBUG_VIEW_BINDING_CONSTANTS_INPUT)
-
         RW_STRUCTURED_BUFFER(DEBUG_VIEW_BINDING_STATISTICS_BUFFER_OUTPUT)
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_OUTPUT)
+
+        SAMPLER(DEBUG_VIEW_BINDING_NEAREST_SAMPLER)
+        SAMPLER(DEBUG_VIEW_BINDING_LINEAR_SAMPLER)
       END_PARAMETER()
     };
 
@@ -401,11 +415,12 @@ namespace dxvk {
       SHADER_SOURCE(DebugViewWaveformRenderShader, VK_SHADER_STAGE_COMPUTE_BIT, debug_view_waveform_render)
 
       BEGIN_PARAMETER()
+        CONSTANT_BUFFER(DEBUG_VIEW_WAVEFORM_RENDER_BINDING_CONSTANTS_INPUT)
         TEXTURE2D(DEBUG_VIEW_WAVEFORM_RENDER_BINDING_HDR_WAVEFORM_RED_INPUT)
         TEXTURE2D(DEBUG_VIEW_WAVEFORM_RENDER_BINDING_HDR_WAVEFORM_GREEN_INPUT)
         TEXTURE2D(DEBUG_VIEW_WAVEFORM_RENDER_BINDING_HDR_WAVEFORM_BLUE_INPUT)
-        RW_TEXTURE2D(DEBUG_VIEW_WAVEFORM_RENDER_BINDING_INPUT_OUTPUT)
-        CONSTANT_BUFFER(DEBUG_VIEW_WAVEFORM_RENDER_BINDING_CONSTANTS_INPUT)
+
+        RW_TEXTURE2D(DEBUG_VIEW_WAVEFORM_RENDER_BINDING_OUTPUT)
       END_PARAMETER()
     };
 
@@ -524,7 +539,7 @@ namespace dxvk {
       if (m_prevNumberOfFramesToAccumulate > numberOfFramesToAccumulate() &&
           m_numFramesAccumulated >= numberOfFramesToAccumulate()) {
         resetNumAccumulatedFrames();
-      }
+  }
       m_prevNumberOfFramesToAccumulate = numberOfFramesToAccumulate();
 
       if (numberOfFramesToAccumulate() > 1) {
@@ -866,6 +881,58 @@ namespace dxvk {
     return m_debugViewConstants;
   }
 
+  void DebugView::initCompositeView(Rc<DxvkContext>& ctx) {
+    if (static_cast<CompositeDebugView>(Composite::compositeViewIdx()) == CompositeDebugView::Disabled) {
+      return;
+    }
+
+    switch (static_cast<CompositeDebugView>(Composite::compositeViewIdx())) {
+    case CompositeDebugView::FinalRenderWithMaterialProperties:
+      m_composite.debugViewIndices = std::vector<uint32_t> { DEBUG_VIEW_POST_TONEMAP_OUTPUT, DEBUG_VIEW_ALBEDO, DEBUG_VIEW_SHADING_NORMAL, DEBUG_VIEW_PERCEPTUAL_ROUGHNESS, DEBUG_VIEW_EMISSIVE_RADIANCE, DEBUG_VIEW_HEIGHT_MAP };
+      break;
+    case CompositeDebugView::OpaqueMaterialTextureResolutionCheckers:
+      m_composite.debugViewIndices = std::vector<uint32_t> { DEBUG_VIEW_OPAQUE_RAW_ALBEDO_RESOLUTION_CHECKERS, DEBUG_VIEW_OPAQUE_NORMAL_RESOLUTION_CHECKERS, DEBUG_VIEW_OPAQUE_ROUGHNESS_RESOLUTION_CHECKERS };
+      break;
+
+    case CompositeDebugView::RuntimeValuesSet0:
+      m_composite.debugViewIndices = std::vector<uint32_t> {
+        DEBUG_VIEW_BARYCENTRICS, DEBUG_VIEW_VIEW_DIRECTION, DEBUG_VIEW_CONE_RADIUS, DEBUG_VIEW_POSITION,
+        DEBUG_VIEW_TEXCOORDS, DEBUG_VIEW_VIRTUAL_MOTION_VECTOR, DEBUG_VIEW_VIRTUAL_SHADING_NORMAL, DEBUG_VIEW_VERTEX_COLOR,
+        DEBUG_VIEW_SCREEN_SPACE_MOTION_VECTOR, DEBUG_VIEW_PERCEPTUAL_ROUGHNESS, DEBUG_VIEW_ANISOTROPY, DEBUG_VIEW_ANISOTROPIC_ROUGHNESS,
+        DEBUG_VIEW_OPACITY, DEBUG_VIEW_VIRTUAL_HIT_DISTANCE, DEBUG_VIEW_SURFACE_AREA, DEBUG_VIEW_EMISSIVE_RADIANCE };
+      break;
+
+    case CompositeDebugView::RuntimeValuesSet1:
+      m_composite.debugViewIndices = std::vector<uint32_t> {
+        DEBUG_VIEW_VOLUME_PREINTEGRATION, DEBUG_VIEW_TEXCOORDS_GRADIENT_X, DEBUG_VIEW_TEXCOORDS_GRADIENT_Y, DEBUG_VIEW_PSR_PRIMARY_SECONDARY_SURFACE_MASK,
+        DEBUG_VIEW_PSR_SELECTED_INTEGRATION_SURFACE_PDF, DEBUG_VIEW_PRIMARY_DECAL_ALBEDO, DEBUG_VIEW_PRIMARY_SPECULAR_ALBEDO, DEBUG_VIEW_SECONDARY_SPECULAR_ALBEDO,
+        DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_COLOR, DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_NORMAL, DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_GEOMETRY_HASH, DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_BACKGROUND_TRANSPARENCY,
+        DEBUG_VIEW_RTXDI_GRADIENTS, DEBUG_VIEW_RTXDI_CONFIDENCE, DEBUG_VIEW_LOCAL_TONEMAPPER_LUMINANCE_OUTPUT, DEBUG_VIEW_LOCAL_TONEMAPPER_EXPOSURE_OUTPUT,
+      };
+      break;
+
+    case CompositeDebugView::RuntimeValuesSet2:
+      m_composite.debugViewIndices = std::vector<uint32_t> {
+        DEBUG_VIEW_NOISY_PRIMARY_DIRECT_DIFFUSE_RADIANCE, DEBUG_VIEW_NOISY_PRIMARY_DIRECT_SPECULAR_RADIANCE, DEBUG_VIEW_NOISY_PRIMARY_DIRECT_DIFFUSE_HIT_T, DEBUG_VIEW_NOISY_PRIMARY_DIRECT_SPECULAR_HIT_T,
+        DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_DIFFUSE_RADIANCE, DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_SPECULAR_RADIANCE, DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_DIFFUSE_HIT_T, DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_SPECULAR_HIT_T,
+        DEBUG_VIEW_NOISY_SECONDARY_COMBINED_DIFFUSE_RADIANCE, DEBUG_VIEW_NOISY_SECONDARY_COMBINED_SPECULAR_RADIANCE, DEBUG_VIEW_NOISY_PATHRACED_RAW_INDIRECT_RADIANCE, DEBUG_VIEW_NOISY_RADIANCE,
+        DEBUG_VIEW_NRC_UPDATE_RADIANCE, DEBUG_VIEW_NRC_UPDATE_THROUGHPUT, DEBUG_VIEW_NRC_RESOLVED_RADIANCE, DEBUG_VIEW_SSS_DIFFUSION_PROFILE_SAMPLING
+      };
+      break;
+
+    }
+
+    // Set active debug view index when composite view is active
+    if (static_cast<CompositeDebugView>(Composite::compositeViewIdx()) != CompositeDebugView::Disabled) {
+      if (!m_composite.debugViewIndices.empty()) {
+        uint32_t frameIndex = ctx->getDevice()->getCurrentFrameId();
+        debugViewIdxRef() = m_composite.debugViewIndices[frameIndex % m_composite.debugViewIndices.size()];
+      } else {
+        debugViewIdxRef() = DEBUG_VIEW_DISABLED;
+      }
+    }
+  }
+
   void DebugView::onFrameBegin(
     Rc<DxvkContext>& ctx,
     const FrameBeginContext& frameBeginCtx) {
@@ -873,33 +940,12 @@ namespace dxvk {
 
     RtxPass::onFrameBegin(ctx, frameBeginCtx);
 
-    // Initialize composite view
-    if (static_cast<CompositeDebugView>(Composite::compositeViewIdx()) != CompositeDebugView::Disabled) {
-      switch (static_cast<CompositeDebugView>(Composite::compositeViewIdx())) {
-      case CompositeDebugView::FinalRenderWithMaterialProperties:
-        m_composite.debugViewIndices = std::vector<uint32_t> { DEBUG_VIEW_POST_TONEMAP_OUTPUT, DEBUG_VIEW_ALBEDO, DEBUG_VIEW_SHADING_NORMAL, DEBUG_VIEW_PERCEPTUAL_ROUGHNESS, DEBUG_VIEW_EMISSIVE_RADIANCE, DEBUG_VIEW_HEIGHT_MAP };
-        break;
-      case CompositeDebugView::OpaqueMaterialTextureResolutionCheckers:
-        m_composite.debugViewIndices = std::vector<uint32_t> { DEBUG_VIEW_OPAQUE_RAW_ALBEDO_RESOLUTION_CHECKERS, DEBUG_VIEW_OPAQUE_NORMAL_RESOLUTION_CHECKERS, DEBUG_VIEW_OPAQUE_ROUGHNESS_RESOLUTION_CHECKERS };
-
-      default:
-        break;
-      }
-
-      // Set active debug view index when composite view is active
-      if (static_cast<CompositeDebugView>(Composite::compositeViewIdx()) != CompositeDebugView::Disabled) {
-        if (!m_composite.debugViewIndices.empty()) {
-          uint32_t frameIndex = ctx->getDevice()->getCurrentFrameId();
-          debugViewIdxRef() = m_composite.debugViewIndices[frameIndex % m_composite.debugViewIndices.size()];
-        } else {
-          debugViewIdxRef() = DEBUG_VIEW_DISABLED;
-        }
-      }
-    }
-
     if (!isActive()) {
       return;
     }
+
+    // Initialize composite view
+    initCompositeView(ctx);
 
     // Handle accumulation settings
     {
@@ -936,12 +982,6 @@ namespace dxvk {
       subRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 
       ctx->clearColorImage(m_debugView.image, clearColor, subRange);
-
-      const bool clearPreviousFramedDebugView = m_numFramesAccumulated == 0;
-
-      if (clearPreviousFramedDebugView) {
-        ctx->clearColorImage(m_previousFrameDebugView.image, clearColor, subRange);
-      }
 
       if (debugViewIdx() == DEBUG_VIEW_INSTRUMENTATION_THREAD_DIVERGENCE) {
         ctx->clearColorImage(m_instrumentation.image, clearColor, subRange);
@@ -1107,6 +1147,8 @@ namespace dxvk {
 
     // Inputs 
 
+    ctx->bindResourceBuffer(DEBUG_VIEW_BINDING_CONSTANTS_INPUT, DxvkBufferSlice(debugViewConstantBuffer, 0, debugViewConstantBuffer->info().size));
+
     const RtxGlobalVolumetrics& globalVolumetrics = ctx->getCommonObjects()->metaGlobalVolumetrics();
     ctx->bindResourceView(DEBUG_VIEW_BINDING_DENOISED_PRIMARY_DIRECT_DIFFUSE_RADIANCE_HIT_T_INPUT, rtOutput.m_primaryDirectDiffuseRadiance.view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(DEBUG_VIEW_BINDING_DENOISED_PRIMARY_DIRECT_SPECULAR_RADIANCE_HIT_T_INPUT, rtOutput.m_primaryDirectSpecularRadiance.view(Resources::AccessType::Read), nullptr);
@@ -1121,17 +1163,6 @@ namespace dxvk {
     const bool isFinalOutputReadInShader = !shouldRunDispatchPostCompositePass();
     ctx->bindResourceView(DEBUG_VIEW_BINDING_FINAL_SHADING_INPUT, rtOutput.m_finalOutput.view(Resources::AccessType::Read, isFinalOutputReadInShader), nullptr);
     ctx->bindResourceView(DEBUG_VIEW_BINDING_INSTRUMENTATION_INPUT, m_instrumentation.view, nullptr);
-    ctx->bindResourceView(DEBUG_VIEW_BINDING_VOLUME_RESERVOIRS, globalVolumetrics.getPreviousVolumeReservoirs().view, nullptr);
-    ctx->bindResourceView(DEBUG_VIEW_BINDING_VOLUME_AGE, globalVolumetrics.getCurrentVolumeAccumulatedRadianceAge().view, nullptr);
-    ctx->bindResourceSampler(DEBUG_VIEW_BINDING_VOLUME_AGE, linearSampler);
-    ctx->bindResourceView(DEBUG_VIEW_BINDING_VOLUME_RADIANCE_Y, globalVolumetrics.getCurrentVolumeAccumulatedRadianceY().view, nullptr);
-    ctx->bindResourceSampler(DEBUG_VIEW_BINDING_VOLUME_RADIANCE_Y, linearSampler);
-    ctx->bindResourceView(DEBUG_VIEW_BINDING_VOLUME_RADIANCE_COCG, globalVolumetrics.getCurrentVolumeAccumulatedRadianceCoCg().view, nullptr);
-    ctx->bindResourceSampler(DEBUG_VIEW_BINDING_VOLUME_RADIANCE_COCG, linearSampler);
-    ctx->bindResourceView(DEBUG_VIEW_BINDING_VALUE_NOISE_SAMPLER, common.getResources().getValueNoiseLut(ctx), nullptr);
-    Rc<DxvkSampler> valueNoiseSampler = common.getResources().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT);
-    ctx->bindResourceSampler(DEBUG_VIEW_BINDING_VALUE_NOISE_SAMPLER, valueNoiseSampler);
-    ctx->bindResourceView(DEBUG_VIEW_BINDING_BLUE_NOISE_TEXTURE, common.getResources().getBlueNoiseTexture(ctx), nullptr);
     
     const ReplacementMaterialTextureType::Enum terrainTextureType = static_cast<ReplacementMaterialTextureType::Enum>(
       clamp<uint32_t>(static_cast<uint32_t>(m_debugKnob.x),
@@ -1139,7 +1170,19 @@ namespace dxvk {
                       ReplacementMaterialTextureType::Count - 1));
     Resources::Resource terrain = common.getSceneManager().getTerrainBaker().getTerrainTexture(terrainTextureType);
     ctx->bindResourceView(DEBUG_VIEW_BINDING_TERRAIN_INPUT, terrain.view, nullptr);
-    ctx->bindResourceView(DEBUG_VIEW_BINDING_INPUT, m_debugView.view, nullptr);
+
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_VOLUME_RESERVOIRS_INPUT, globalVolumetrics.getPreviousVolumeReservoirs().view, nullptr);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_VOLUME_AGE_INPUT, globalVolumetrics.getCurrentVolumeAccumulatedRadianceAge().view, nullptr);
+    ctx->bindResourceSampler(DEBUG_VIEW_BINDING_VOLUME_AGE_INPUT, linearSampler);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_VOLUME_RADIANCE_Y_INPUT, globalVolumetrics.getCurrentVolumeAccumulatedRadianceY().view, nullptr);
+    ctx->bindResourceSampler(DEBUG_VIEW_BINDING_VOLUME_RADIANCE_Y_INPUT, linearSampler);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_VOLUME_RADIANCE_COCG_INPUT, globalVolumetrics.getCurrentVolumeAccumulatedRadianceCoCg().view, nullptr);
+    ctx->bindResourceSampler(DEBUG_VIEW_BINDING_VOLUME_RADIANCE_COCG_INPUT, linearSampler);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_VALUE_NOISE_SAMPLER, common.getResources().getValueNoiseLut(ctx), nullptr);
+    Rc<DxvkSampler> valueNoiseSampler = common.getResources().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT);
+    ctx->bindResourceSampler(DEBUG_VIEW_BINDING_VALUE_NOISE_SAMPLER, valueNoiseSampler);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_BLUE_NOISE_TEXTURE, common.getResources().getBlueNoiseTexture(ctx), nullptr);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_DEBUG_VIEW_INPUT, m_debugView.view, nullptr);
 
     // NRD Validation Layer bindings
     {
@@ -1151,16 +1194,16 @@ namespace dxvk {
 
       switch (debugViewIdx()) {
       case DEBUG_VIEW_NRD_INSTANCE_0_VALIDATION_LAYER:
-        ctx->bindResourceView(DEBUG_VIEW_NRD_VALIDATION_LAYER_INPUT, denoiser0.getNrdContext().getValidationTexture().view, nullptr);
+        ctx->bindResourceView(DEBUG_VIEW_BINDING_NRD_VALIDATION_LAYER_INPUT, denoiser0.getNrdContext().getValidationTexture().view, nullptr);
         break;
       case DEBUG_VIEW_NRD_INSTANCE_1_VALIDATION_LAYER:
-        ctx->bindResourceView(DEBUG_VIEW_NRD_VALIDATION_LAYER_INPUT, denoiser1.getNrdContext().getValidationTexture().view, nullptr);
+        ctx->bindResourceView(DEBUG_VIEW_BINDING_NRD_VALIDATION_LAYER_INPUT, denoiser1.getNrdContext().getValidationTexture().view, nullptr);
         break;
       case DEBUG_VIEW_NRD_INSTANCE_2_VALIDATION_LAYER:
-        ctx->bindResourceView(DEBUG_VIEW_NRD_VALIDATION_LAYER_INPUT, denoiser2.getNrdContext().getValidationTexture().view, nullptr);
+        ctx->bindResourceView(DEBUG_VIEW_BINDING_NRD_VALIDATION_LAYER_INPUT, denoiser2.getNrdContext().getValidationTexture().view, nullptr);
         break;
       default:
-        ctx->bindResourceView(DEBUG_VIEW_NRD_VALIDATION_LAYER_INPUT, m_debugView.view, nullptr);
+        ctx->bindResourceView(DEBUG_VIEW_BINDING_NRD_VALIDATION_LAYER_INPUT, m_debugView.view, nullptr);
         break;
       }
     }
@@ -1170,15 +1213,11 @@ namespace dxvk {
     ctx->bindResourceView(DEBUG_VIEW_BINDING_HDR_WAVEFORM_RED_INPUT_OUTPUT, m_hdrWaveformRed.view, nullptr);
     ctx->bindResourceView(DEBUG_VIEW_BINDING_HDR_WAVEFORM_GREEN_INPUT_OUTPUT, m_hdrWaveformGreen.view, nullptr);
     ctx->bindResourceView(DEBUG_VIEW_BINDING_HDR_WAVEFORM_BLUE_INPUT_OUTPUT, m_hdrWaveformBlue.view, nullptr);
-
+    
     assert(rtOutput.m_compositeOutput.ownsResource() && "Composite output is expected to be valid at this point by default");
     ctx->bindResourceView(DEBUG_VIEW_BINDING_COMPOSITE_OUTPUT_INPUT_OUTPUT, rtOutput.m_compositeOutput.view(Resources::AccessType::ReadWrite), nullptr);
 
     ctx->bindResourceView(DEBUG_VIEW_BINDING_PREVIOUS_FRAME_INPUT_OUTPUT, m_previousFrameDebugView.view, nullptr);
-    
-    ctx->bindResourceBuffer(DEBUG_VIEW_BINDING_CONSTANTS_INPUT, DxvkBufferSlice(debugViewConstantBuffer, 0, debugViewConstantBuffer->info().size));
-    ctx->bindResourceSampler(DEBUG_VIEW_BINDING_NEAREST_SAMPLER, nearestSampler);
-    ctx->bindResourceSampler(DEBUG_VIEW_BINDING_LINEAR_SAMPLER, linearSampler);
 
     // Outputs
 
@@ -1187,10 +1226,14 @@ namespace dxvk {
     ctx->bindResourceBuffer(DEBUG_VIEW_BINDING_STATISTICS_BUFFER_OUTPUT, DxvkBufferSlice(m_statisticsBuffer, statisticsBufferOffset, m_statisticsBuffer->info().size));
     ctx->bindResourceView(DEBUG_VIEW_BINDING_OUTPUT, m_postprocessedDebugView.view, nullptr);
 
+    // Samplers
+
+    ctx->bindResourceSampler(DEBUG_VIEW_BINDING_NEAREST_SAMPLER, nearestSampler);
+    ctx->bindResourceSampler(DEBUG_VIEW_BINDING_LINEAR_SAMPLER, linearSampler);
+
     ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getDebugViewShader());
 
     const VkExtent3D outputExtent = VkExtent3D { debugViewArgs.debugViewResolution.x, debugViewArgs.debugViewResolution.y, 1 };
-
     const VkExtent3D workgroups = util::computeBlockCount(outputExtent, VkExtent3D { 16, 8, 1 });
     ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
 
@@ -1225,9 +1268,8 @@ namespace dxvk {
       ctx->writeToBuffer(cb, 0, sizeof(DebugViewArgs), &debugViewArgs);
       ctx->getCommandList()->trackResource<DxvkAccess::Read>(cb);
 
+      // Clear HDR Waveform textures when in use before they are accumulated into
       if (displayType() == DebugViewDisplayType::HDRWaveform) {
-        // Clear HDR Waveform textures when in use before accumulated into
-
         VkClearColorValue clearColor;
         clearColor.uint32[0] = clearColor.uint32[1] = clearColor.uint32[2] = clearColor.uint32[3] = 0;
 
@@ -1248,15 +1290,23 @@ namespace dxvk {
       if (displayType() == DebugViewDisplayType::HDRWaveform) {
         ScopedGpuProfileZone(ctx, "HDR Waveform Render");
 
+        // Inputs
+
+        ctx->bindResourceBuffer(DEBUG_VIEW_WAVEFORM_RENDER_BINDING_CONSTANTS_INPUT, DxvkBufferSlice(cb, 0, cb->info().size));
         ctx->bindResourceView(DEBUG_VIEW_WAVEFORM_RENDER_BINDING_HDR_WAVEFORM_RED_INPUT, m_hdrWaveformRed.view, nullptr);
         ctx->bindResourceView(DEBUG_VIEW_WAVEFORM_RENDER_BINDING_HDR_WAVEFORM_GREEN_INPUT, m_hdrWaveformGreen.view, nullptr);
         ctx->bindResourceView(DEBUG_VIEW_WAVEFORM_RENDER_BINDING_HDR_WAVEFORM_BLUE_INPUT, m_hdrWaveformBlue.view, nullptr);
-        ctx->bindResourceView(DEBUG_VIEW_WAVEFORM_RENDER_BINDING_INPUT_OUTPUT, m_postprocessedDebugView.view, nullptr);
-        ctx->bindResourceBuffer(DEBUG_VIEW_WAVEFORM_RENDER_BINDING_CONSTANTS_INPUT, DxvkBufferSlice(cb, 0, cb->info().size));
+
+        // Outputs
+
+        ctx->bindResourceView(DEBUG_VIEW_WAVEFORM_RENDER_BINDING_OUTPUT, m_postprocessedDebugView.view, nullptr);
 
         ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, DebugViewWaveformRenderShader::getShader());
 
-        VkExtent3D waveformResolution = m_postprocessedDebugView.view->imageInfo().extent;
+        VkExtent3D waveformResolution = VkExtent3D {
+          debugViewArgs.debugViewResolution.x,
+          debugViewArgs.debugViewResolution.y,
+          1 };
 
         waveformResolution.width /= m_hdrWaveformResolutionScaleFactor;
         waveformResolution.height /= m_hdrWaveformResolutionScaleFactor;
@@ -1336,10 +1386,10 @@ namespace dxvk {
       }
 
       // Lookup src & dest image properties
-      DxvkImageCreateInfo srcDesc = m_postprocessedDebugView.image->info();
+      DxvkImageCreateInfo srcDesc = outputImage->info();
       DxvkImageCreateInfo dstDesc = m_composite.compositeView.image->info();
-      const VkExtent3D srcExtent = srcDesc.extent;
-      const VkExtent3D dstExtent = srcDesc.extent;
+      const VkExtent3D& srcExtent = srcDesc.extent;
+      const VkExtent3D& dstExtent = dstDesc.extent;
       const VkImageSubresourceLayers srcSubresourceLayers = { imageFormatInfo(srcDesc.format)->aspectMask, 0, 0, 1 };
       const VkImageSubresourceLayers dstSubresourceLayers = { imageFormatInfo(dstDesc.format)->aspectMask, 0, 0, 1 };
 
@@ -1391,8 +1441,9 @@ namespace dxvk {
 
       // Blit debug view image to the composite image
       // Using nearest filter as linear interpolation may produce invalid values for some debug view data (i.e. geometry hash)
-      ctx->blitImage(m_composite.compositeView.image, identityMap, m_postprocessedDebugView.image, identityMap, region, VK_FILTER_NEAREST);
+      ctx->blitImage(m_composite.compositeView.image, identityMap, outputImage, identityMap, region, VK_FILTER_NEAREST);
 
+      // Set the generated composite image as the output image
       outputImage = m_composite.compositeView.image;
 
     } else if (m_composite.compositeView.image.ptr()) {

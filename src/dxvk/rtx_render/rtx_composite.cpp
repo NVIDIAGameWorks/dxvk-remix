@@ -30,6 +30,7 @@
 #include "rtx_context.h"
 #include "rtx_options.h"
 #include "rtx_restir_gi_rayquery.h"
+#include "rtx_debug_view.h"
 
 #include <rtx_shaders/composite.h>
 #include <rtx_shaders/composite_alpha_blend.h>
@@ -129,7 +130,9 @@ namespace dxvk {
   }
 
   CompositePass::CompositePass(dxvk::DxvkDevice* device)
-    : m_vkd(device->vkd()), m_device(device) {
+    : RtxPass(device)
+    , m_vkd(device->vkd()),
+    m_device(device) {
   }
 
   CompositePass::~CompositePass() {
@@ -219,6 +222,11 @@ namespace dxvk {
     return m_compositeConstants;
   }
 
+  bool CompositePass::isEnabled() const {
+    // This pass is always enabled
+    return true;
+  }
+
   void CompositePass::dispatch(
     Rc<RtxContext> ctx,
     SceneManager& sceneManager,
@@ -230,12 +238,14 @@ namespace dxvk {
     CompositeArgs compositeArgs = {};
     compositeArgs.enableSeparatedDenoisers = rtOutput.m_raytraceArgs.enableSeparatedDenoisers;
 
+    // Inputs
+
     ctx->bindResourceView(COMPOSITE_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
     ctx->bindResourceView(COMPOSITE_SHARED_RADIANCE_RG_INPUT, rtOutput.m_sharedRadianceRG.view, nullptr);
     ctx->bindResourceView(COMPOSITE_SHARED_RADIANCE_B_INPUT, rtOutput.m_sharedRadianceB.view, nullptr);
     
     ctx->bindResourceView(COMPOSITE_PRIMARY_ATTENUATION_INPUT, rtOutput.m_primaryAttenuation.view, nullptr);
-    ctx->bindResourceView(COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT, rtOutput.m_primaryAlbedo.view, nullptr);
+    
     // Note: Texture contains Base Reflectivity here (due to being before the demodulate pass)
 
     ctx->bindResourceView(COMPOSITE_PRIMARY_SPECULAR_ALBEDO_INPUT, rtOutput.m_primarySpecularAlbedo.view(Resources::AccessType::Read), nullptr);
@@ -273,6 +283,12 @@ namespace dxvk {
     ctx->bindResourceView(COMPOSITE_VOLUME_FILTERED_RADIANCE_CO_CG_INPUT, globalVolumetrics.getCurrentVolumeAccumulatedRadianceCoCg().view, nullptr);
     ctx->bindResourceSampler(COMPOSITE_VOLUME_FILTERED_RADIANCE_CO_CG_INPUT, linearSampler);
 
+    // Inputs/Outputs
+
+    ctx->bindResourceView(COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT, rtOutput.m_primaryAlbedo.view, nullptr);
+
+    // Outputs
+
     ctx->bindResourceView(COMPOSITE_FINAL_OUTPUT, rtOutput.m_compositeOutput.view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(COMPOSITE_ALPHA_BLEND_RADIANCE_OUTPUT, rtOutput.m_alphaBlendRadiance.view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(COMPOSITE_LAST_FINAL_OUTPUT, restirGI.isActive() ? restirGI.getLastCompositeOutput().view(Resources::AccessType::Write) : nullptr, nullptr);
@@ -298,7 +314,7 @@ namespace dxvk {
       ctx->bindResourceView(COMPOSITE_SKY_LIGHT_TEXTURE, ctx->getResourceManager().getSkyMatte(ctx).view, nullptr);
     }
 
-    // Some camera paramters for primary ray reconstruction
+    // Some camera parameters for primary ray reconstruction
     Camera cameraConstants = sceneManager.getCamera().getShaderConstants();
     compositeArgs.camera = cameraConstants;
     compositeArgs.projectionToViewJittered = cameraConstants.projectionToViewJittered;

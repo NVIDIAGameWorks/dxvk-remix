@@ -27,6 +27,8 @@
 #include "rtx_render/rtx_neural_radiance_cache.h"
 #include "rtx_render/rtx_rtxdi_rayquery.h"
 #include "rtx_render/rtx_restir_gi_rayquery.h"
+#include "rtx_render/rtx_composite.h"
+#include "rtx_render/rtx_debug_view.h"
 
 
 namespace dxvk {

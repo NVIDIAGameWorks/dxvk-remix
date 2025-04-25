@@ -26,6 +26,7 @@
 #include "rtx_options.h"
 #include "rtx_neural_radiance_cache.h"
 #include "rtx_restir_gi_rayquery.h"
+#include "rtx_debug_view.h"
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/integrate/integrate_indirect_binding_indices.h"

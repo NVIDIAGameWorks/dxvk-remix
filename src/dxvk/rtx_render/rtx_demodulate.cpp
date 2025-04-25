@@ -32,6 +32,7 @@
 #include "rtx/pass/raytrace_args.h"
 #include "rtx_neural_radiance_cache.h"
 #include "rtx_render/rtx_restir_gi_rayquery.h"
+#include "rtx_debug_view.h"
 
 #include <rtx_shaders/demodulate.h>
 

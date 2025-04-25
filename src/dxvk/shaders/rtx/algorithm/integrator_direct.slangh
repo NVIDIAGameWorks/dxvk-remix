@@ -516,7 +516,7 @@ void integratorDirectPathOutputDebugView(
     break;
   case DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_SAMPLED_LOBE_PDF:
     indirectSampleData.load(pixelCoordinate, aliasedData2.IndirectFirstSampledLobeData);
-   storeInDebugView(pixelCoordinate, indirectSampleData.firstSampledLobePdf);
+    storeInDebugView(pixelCoordinate, indirectSampleData.firstSampledLobePdf);
     break;
   case DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_SAMPLED_SOLID_ANGLE_PDF:
     indirectSampleData.load(pixelCoordinate, aliasedData2.IndirectFirstSampledLobeData);
@@ -526,12 +526,27 @@ void integratorDirectPathOutputDebugView(
   {
     bool isValid = true;
     
+    // DEBUG_VIEW_NOISY_SECONDARY_DIRECT_DIFFUSE_RADIANCE
+    // DEBUG_VIEW_NOISY_SECONDARY_DIRECT_SPECULAR_RADIANCE
+    if (!geometryFlags.primarySelectedIntegrationSurface)  
+    {
+      isValid &= isValidValue(directPathTextures.SecondaryCombinedDiffuseLobeRadianceHitDistance[pixelCoordinate]);
+      isValid &= isValidValue(directPathTextures.SecondaryCombinedSpecularLobeRadianceHitDistance[pixelCoordinate]);
+    }
+
+    // DEBUG_VIEW_PERCEPTUAL_ROUGHNESS
     isValid &= isValidValue(directPathTextures.IndirectFirstHitPerceptualRoughness[pixelCoordinate]);
-    isValid &= isValidValue(directPathTextures.IndirectThroughputConeRadius[pixelCoordinate]);
+
+    // DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_RAY_THROUGHPUT
+    isValid &= isValidValue(directPathTextures.IndirectThroughputConeRadius[pixelCoordinate].xyz);  
 
     indirectSampleData.load(pixelCoordinate, aliasedData2.IndirectFirstSampledLobeData);
+
+    // DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_SAMPLED_LOBE_PDF
     isValid &= isValidValue(indirectSampleData.firstSampledLobePdf);
-    isValid &= isValidValue(indirectSampleData.firstSampledSolidAnglePdf);
+
+    // DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_SAMPLED_SOLID_ANGLE_PDF
+    isValid &= isValidValue(indirectSampleData.firstSampledLobePdf);
     
     accumulateInDebugViewAnd(pixelCoordinate, isValid);
     break;

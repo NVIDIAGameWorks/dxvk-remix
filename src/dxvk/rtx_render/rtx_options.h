@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -163,6 +163,7 @@ namespace dxvk {
     friend class NeuralRadianceCache;
     friend class RtxContext;
     friend class RtxInitializer;
+    friend class RtxComposite;
 
     RW_RTX_OPTION("rtx", fast_unordered_set, lightmapTextures, {},
                   "Textures used for lightmapping (baked static lighting on surfaces) in older games.\n"

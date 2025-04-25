@@ -26,6 +26,7 @@
 #include "rtx.h"
 #include "rtx/pass/tonemap/tonemapping.h"
 #include "rtx/pass/local_tonemap/local_tonemapping.h"
+#include "rtx_debug_view.h"
 
 #include <rtx_shaders/luminance.h>
 #include <rtx_shaders/exposure_weight.h>

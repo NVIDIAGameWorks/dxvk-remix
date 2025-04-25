@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -847,8 +847,23 @@ void geometryResolverVertexOutputDebugView(
   case DEBUG_VIEW_NAN:
     {
       bool isValid = true;
+      
+      // Skipped
+      // DEBUG_VIEW_PRIMITIVE_INDEX
+      // DEBUG_VIEW_CUSTOM_INDEX
+
       // DEBUG_VIEW_BARYCENTRICS
       isValid &= isValidValue(uintToBarycentrics(rayInteraction.barycentricCoordinates));
+      
+      // Skipped
+      // DEBUG_VIEW_IS_FRONT_HIT
+      // DEBUG_VIEW_IS_STATIC
+      // DEBUG_VIEW_IS_OPAQUE
+      // DEBUG_VIEW_IS_DIRECTION_ALTERED
+      // DEBUG_VIEW_IS_EMISSIVE_BLEND
+      // DEBUG_VIEW_IS_EMISSIVE
+      // DEBUG_VIEW_IS_PARTICLE
+      // DEBUG_VIEW_IS_RAY_PORTAL
       
       // DEBUG_VIEW_VIEW_DIRECTION
       isValid &= isValidValue(rayInteraction.viewDirection);
@@ -861,6 +876,15 @@ void geometryResolverVertexOutputDebugView(
 
       // DEBUG_VIEW_TEXCOORDS
       isValid &= isValidValue(surfaceInteraction.textureCoordinates);
+    
+      // DEBUG_VIEW_TEXCOORDS_GRADIENT_X
+      isValid &= isValidValue(surfaceInteraction.textureGradientX);
+
+      // DEBUG_VIEW_TEXCOORDS_GRADIENT_Y
+      isValid &= isValidValue(surfaceInteraction.textureGradientY);
+
+      // DEBUG_VIEW_TEXCOORD_GENERATION_MODE
+      isValid &= isValidValue(surface.texcoordGenerationMode);
 
       // DEBUG_VIEW_TRIANGLE_NORMAL
       isValid &= isValidValue(surfaceInteraction.triangleNormal);
@@ -882,18 +906,22 @@ void geometryResolverVertexOutputDebugView(
 
       // DEBUG_VIEW_SHADING_NORMAL
       f16vec3 shadingNormal = f16vec3(0.0f);
-    if (materialType == surfaceMaterialTypeOpaque)
-    {
-      shadingNormal = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction).shadingNormal;
-    }
-    else if (materialType == surfaceMaterialTypeTranslucent)
-    {
-      shadingNormal = translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction).shadingNormal;
-    }
+      if (materialType == surfaceMaterialTypeOpaque)
+      {
+        shadingNormal = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction).shadingNormal;
+      }
+      else if (materialType == surfaceMaterialTypeTranslucent)
+      {
+        shadingNormal = translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction).shadingNormal;
+      }
       isValid &= isValidValue(shadingNormal);
 
       // DEBUG_VIEW_VERTEX_COLOR
       isValid &= isValidValue(surfaceInteraction.vertexColor);
+
+      // Skipped
+      // DEBUG_VUEW_PORTAL_SPACE
+      // DEBUG_VIEW_MATERIAL_TYPE
 
       // DEBUG_VIEW_ALBEDO
       f16vec3 albedo = f16vec3(0.0f);
@@ -960,6 +988,38 @@ void geometryResolverVertexOutputDebugView(
       }
       isValid &= isValidValue(emissiveRadiance);
 
+      // DEBUG_VIEW_EMISSIVE_TRIANGLE_INTENSITY:
+      vec3 lightIntensity = f16vec3(0.0f);
+      if (materialType == surfaceMaterialTypeOpaque)
+      {
+        vec3 triangleCenter;
+        f16vec3 triangleNormal;
+        NEECacheUtils.calculateTriangleLightIntensity(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, triangleCenter, triangleNormal, lightIntensity);
+      } 
+      isValid &= isValidValue(lightIntensity);
+      
+      // DEBUG_VIEW_EMISSIVE_PARTICLE:
+      isValid &= isValidValue(SharedBiasCurrentColorMask[pixelCoordinate]);
+
+      // DEBUG_VIEW_NEE_CACHE_SAMPLE_RADIANCE:
+      vec3 sampleRadiance = f16vec3(0.0f);
+      if (materialType == surfaceMaterialTypeOpaque)
+      {
+        float lightObjectPdf = 1.0;
+        vec3 baryCentrics = uintToBarycentrics(rayInteraction.barycentricCoordinates);
+        float triangleAreaUnused;
+        LightSample lightSample = NEECacheUtils.calculateLightSampleFromTriangle(
+          rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, baryCentrics.yz, lightObjectPdf, cameraGetWorldPosition(cb.camera), rayInteraction.coneRadius, ray.spreadAngle, triangleAreaUnused);
+        sampleRadiance = lightSample.radiance;
+      }
+      isValid &= isValidValue(sampleRadiance);
+
+      // DEBUG_VIEW_NEE_CACHE_TRIANGLE_CANDIDATE:
+      isValid &= isValidValue(asfloat(uint4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, 0, 0)));
+
+      // DEBUG_VIEW_SURFACE_AREA
+      isValid &= isValidValue(surfaceInteraction.triangleArea);
+      
       // DEBUG_VIEW_THIN_FILM_THICKNESS
       float16_t thinFilmThickness = float16_t(0.0f);
       if (materialType == surfaceMaterialTypeOpaque)
@@ -971,6 +1031,9 @@ void geometryResolverVertexOutputDebugView(
       // DEBUG_VIEW_VIRTUAL_HIT_DISTANCE
       isValid &= isValidValue(virtualHitDistance);
 
+      // DEBUG_VIEW_PRIMARY_DEPTH
+      isValid &= isValidValue(PrimaryDepth[pixelCoordinate]);
+
       // DEBUG_VIEW_BLUE_NOISE
       RNG rng0 = createRNG(uvec2(pixelCoordinate), cb.frameIdx);
       const float noise = getNextSampleBlueNoise(rng0);
@@ -979,6 +1042,10 @@ void geometryResolverVertexOutputDebugView(
       // DEBUG_VIEW_PIXEL_CHECKERBOARD
       const float continueSample = float((pixelCoordinate.x & 1) ^ (pixelCoordinate.y & 1));
       isValid &= isValidValue(continueSample);
+
+      // Skipped
+      // DEBUG_VIEW_VALUE_NOISE
+      // DEBUG_VIEW_VOLUME_RADIANCE_DEPTH_LAYERS
 
       // DEBUG_VIEW_SURFACE_VOLUME_RADIANCE
       const VolumeArgs volumeArgs = cb.volumeArgs;
@@ -1001,12 +1068,15 @@ void geometryResolverVertexOutputDebugView(
             volumeRadiance = sh.getIrradiance();
           }
       isValid &= isValidValue(volumeRadiance);
-
-      //DEBUG_VIEW_PRIMARY_DEPTH
-      isValid &= isValidValue(PrimaryDepth[pixelCoordinate]);
       
       // DEBUG_VIEW_PSR_SELECTED_INTEGRATION_SURFACE_PDF: 
       isValid &= isValidValue(selectedIntegrationSurfacePdf);
+
+      // DEBUG_VIEW_PRIMARY_USE_ALTERNATE_DISOCCLUSION_THRESHOLD:
+      isValid &= isValidValue(useAlternateDisocclusionThreshold);
+
+      // DEBUG_VIEW_GEOMETRY_HASH:
+      isValid &= isValidValue(r5g6b5ToColor(surface.hashPacked)); // visualize directly as colour (note the hash is compressed into a 16bit using XOR)
 
       accumulateInDebugViewAnd(pixelCoordinate, isValid);
       break;

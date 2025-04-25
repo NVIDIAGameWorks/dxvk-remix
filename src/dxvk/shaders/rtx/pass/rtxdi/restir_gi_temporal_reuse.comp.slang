@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -352,8 +352,13 @@ void main(int2 thread_id : SV_DispatchThreadID)
   else if (cb.debugView == DEBUG_VIEW_NAN)
   {
     bool isValid = true;
+
     // DEBUG_VIEW_RESTIR_GI_INITIAL_SAMPLE
     isValid &= isValidValue(inputReservoir.radiance);
+
+    // Skipped as it's a true/false variable 
+    // DEBUG_VIEW_RESTIR_GI_TEMPORAL_REUSE
+    
     accumulateInDebugViewAnd(thread_id, isValid);
   }
 }

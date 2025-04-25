@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -34,7 +34,7 @@ namespace dxvk {
   class SceneManager;
   class DxvkDevice;
 
-  class CompositePass {
+  class CompositePass : public RtxPass {
 
   public:
     struct Settings {
@@ -66,6 +66,10 @@ namespace dxvk {
     void showDepthBasedFogImguiSettings();
 
   private:
+    Rc<DxvkBuffer> getCompositeConstantsBuffer();
+    void createConstantsBuffer();
+    virtual bool isEnabled() const override;
+
     dxvk::DxvkDevice* m_device;
     Rc<DxvkBuffer> m_compositeConstants;
     Rc<vk::DeviceFn> m_vkd;
@@ -109,8 +113,5 @@ namespace dxvk {
     RTX_OPTION("rtx", EnhancementMode, dlssEnhancementMode, EnhancementMode::NormalDifference,
       "The enhancement filter type. Valid values: <Normal Difference=1, Laplacian=0>. Normal difference mode provides more normal detail at the cost of some noise. Laplacian mode is less aggressive.");
     RTX_OPTION("rtx", float, pixelHighlightReuseStrength, 0.5, "The specular portion when we reuse last frame's pixel value.");
-
-    Rc<DxvkBuffer> getCompositeConstantsBuffer();
-    void createConstantsBuffer();
   };
 } // namespace dxvk

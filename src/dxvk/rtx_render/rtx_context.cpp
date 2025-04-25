@@ -39,6 +39,8 @@
 #include "rtx_neural_radiance_cache.h"
 #include "rtx_rtxdi_rayquery.h"
 #include "rtx_restir_gi_rayquery.h"
+#include "rtx_composite.h"
+#include "rtx_debug_view.h"
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/raytrace_args.h"
@@ -660,10 +662,12 @@ namespace dxvk {
         // Set up output src
         Rc<DxvkImage> srcImage = rtOutput.m_finalOutput.resource(Resources::AccessType::Read).image;
 
-        // Debug view overrides
+        // Debug view
         dispatchDebugView(srcImage, rtOutput, captureScreenImage);
 
         dispatchDLFG();
+
+        // Blit to the game target
         {
           ScopedGpuProfileZone(this, "Blit to Game");
 
