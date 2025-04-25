@@ -119,15 +119,31 @@ namespace detail
 		if(Texture.empty())
 			return false;
 
+		// NV-DXVK Begin:
+		std::vector<char> Memory;
+		bool const Result = save_dds(Texture, Memory);
+
+		// Workaround for REMIX-4014: fwrite() can cause problems for capture tests in CI depending on the CRT version, use Win32 instead
+#if defined( _WIN32 ) || defined( __WIN32__ ) || defined( _WIN64 )
+		HANDLE hFile = CreateFileA(Filename, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+		if (hFile == INVALID_HANDLE_VALUE) {
+			dxvk::Logger::err("Failed to open file: " + std::to_string(GetLastError()));
+			return false;
+		}
+
+		detail::safe_write_win(hFile, Memory.data(), Memory.size());
+
+		CloseHandle(hFile);
+#else
 		FILE* File = detail::open_file(Filename, "wb");
 		if(!File)
 			return false;
 
-		std::vector<char> Memory;
-		bool const Result = save_dds(Texture, Memory);
-
 		std::fwrite(&Memory[0], 1, Memory.size(), File);
+
 		std::fclose(File);
+#endif
+		// NV-DXVK End
 
 		return Result;
 	}
