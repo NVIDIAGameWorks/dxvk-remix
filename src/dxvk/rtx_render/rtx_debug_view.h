@@ -133,7 +133,6 @@ namespace dxvk {
 
       RTX_OPTION_ENV("rtx.debugView.composite", uint32_t, compositeViewIdx, CompositeDebugView::Disabled, "RTX_DEBUG_VIEW_COMPOSITE_VIEW_INDEX", "Index of a composite view to show when Composite Debug View is enabled. The index must be a a valid value from CompositeDebugView enumeration. Value of 0 disables Composite Debug View.");
     
-      std::vector<uint32_t> debugViewIndices;
       // Note: Used for preserving the debug view state only for ImGui purposes. Not to be used for anything else
       // and should not ever be set to the disabled debug view index.
       CompositeDebugView lastCompositeViewIdx = CompositeDebugView::FinalRenderWithMaterialProperties;

@@ -313,27 +313,143 @@ namespace dxvk {
         {DEBUG_VIEW_NRD_INSTANCE_2_VALIDATION_LAYER,      "NRD Instance 2 Validation Layer", "Requires NRD and \"NRD/Common Settings/Validation Layer\" enabled" },
     } };
 
+  // Note: this does a linear search through the debug view vector so do not use it in performance critical code
+  const char* getDebugViewName(uint32_t debugViewIdx) {
+    for (const auto& entry : debugViewEntries) {
+      if (entry.key == debugViewIdx)
+        return entry.name;
+    }
+    return "Unknown Debug View";
+  }
+
+  class CompositeDebugViewClass {
+  public:
+    CompositeDebugViewClass() = delete;
+    CompositeDebugViewClass(
+      const char* name,
+      uint32_t numColumns,
+      std::vector<uint32_t>& debugViewIndices)
+      : m_name(name)
+      , m_numColumns(numColumns)
+      , m_debugViewIndices(std::move(debugViewIndices)) {
+      
+      std::string description;
+
+      if (m_debugViewIndices.size() > 0) {
+        description = getDebugViewName(m_debugViewIndices[0]);
+
+        // Add the rest of the debug view names to the description.
+        // Split them into multiple rows based on the number of columns per row
+        for (uint32_t i = 1; i < m_debugViewIndices.size(); i++) {
+          const char* delimiter = ((i % m_numColumns) == 0) ? "\n" : ", ";
+
+          description.append(delimiter);
+          description.append(getDebugViewName(m_debugViewIndices[i]));
+        }
+      }
+
+      // Locally managed string memory to ensure the pointer stays valid across object copies that can occur
+      // due to CompositeDebugViewClass objects being stored in a map
+      m_description = new char[description.size() + 1];
+      std::strcpy(m_description, description.c_str());
+    }
+
+    ~CompositeDebugViewClass() {
+      if (m_description) {
+        delete[] m_description;
+        m_description = nullptr;
+      }
+    }
+
+    // Copy constructor
+    CompositeDebugViewClass(const CompositeDebugViewClass& other)
+      : m_name(other.m_name)
+      , m_numColumns(other.m_numColumns)
+      , m_debugViewIndices(other.m_debugViewIndices)
+      , m_description(other.m_description) {
+      // Unordered_map requires a copy constructor with a const reference,
+      // but we do need to invalidate other's pointer to avoid double free
+      const_cast<CompositeDebugViewClass&>(other).m_description = nullptr;
+    }
+
+    const char* getName() const {
+      return m_name;
+    }
+    
+    const char* getDescription() const {
+      return m_description;
+    }
+    
+    uint32_t getNumColumns() const {
+      return m_numColumns;
+    }
+    
+    const std::vector<uint32_t>& getDebugViewIndices() const {
+      return m_debugViewIndices;
+    }
+
+  private:
+    const char* m_name;
+    uint32_t m_numColumns;
+    std::vector<uint32_t> m_debugViewIndices;
+    char* m_description;
+  };
+
+  // Macro listing of all composite debug views.
+  // Format: CompositeDebugView enum, name, number of colums (debug views) per row, debug view indices
+  #define LIST_COMPOSITE_DEBUG_VIEWS(X) \
+    X(CompositeDebugView::FinalRenderWithMaterialProperties, "Final Render + Material Properties", 3, \
+      DEBUG_VIEW_POST_TONEMAP_OUTPUT, DEBUG_VIEW_ALBEDO, DEBUG_VIEW_SHADING_NORMAL, \
+      DEBUG_VIEW_PERCEPTUAL_ROUGHNESS, DEBUG_VIEW_EMISSIVE_RADIANCE, DEBUG_VIEW_HEIGHT_MAP) \
+    X(CompositeDebugView::OpaqueMaterialTextureResolutionCheckers, "Opaque Material Texture Resolution Checkers", 2, \
+      DEBUG_VIEW_OPAQUE_RAW_ALBEDO_RESOLUTION_CHECKERS, DEBUG_VIEW_OPAQUE_NORMAL_RESOLUTION_CHECKERS, \
+      DEBUG_VIEW_OPAQUE_ROUGHNESS_RESOLUTION_CHECKERS) \
+    X(CompositeDebugView::RuntimeValuesSet0, "Runtime Values Set 0", 4, \
+      DEBUG_VIEW_BARYCENTRICS, DEBUG_VIEW_VIEW_DIRECTION, DEBUG_VIEW_CONE_RADIUS, DEBUG_VIEW_POSITION, \
+      DEBUG_VIEW_TEXCOORDS, DEBUG_VIEW_VIRTUAL_MOTION_VECTOR, DEBUG_VIEW_VIRTUAL_SHADING_NORMAL, DEBUG_VIEW_VERTEX_COLOR, \
+      DEBUG_VIEW_SCREEN_SPACE_MOTION_VECTOR, DEBUG_VIEW_PERCEPTUAL_ROUGHNESS, DEBUG_VIEW_ANISOTROPY, DEBUG_VIEW_ANISOTROPIC_ROUGHNESS, \
+      DEBUG_VIEW_OPACITY, DEBUG_VIEW_VIRTUAL_HIT_DISTANCE, DEBUG_VIEW_SURFACE_AREA, DEBUG_VIEW_EMISSIVE_RADIANCE) \
+    X(CompositeDebugView::RuntimeValuesSet1, "Runtime Values Set 1", 4, \
+      DEBUG_VIEW_VOLUME_PREINTEGRATION, DEBUG_VIEW_TEXCOORDS_GRADIENT_X, DEBUG_VIEW_TEXCOORDS_GRADIENT_Y, DEBUG_VIEW_PSR_PRIMARY_SECONDARY_SURFACE_MASK, \
+      DEBUG_VIEW_PSR_SELECTED_INTEGRATION_SURFACE_PDF, DEBUG_VIEW_PRIMARY_DECAL_ALBEDO, DEBUG_VIEW_PRIMARY_SPECULAR_ALBEDO, DEBUG_VIEW_SECONDARY_SPECULAR_ALBEDO, \
+      DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_COLOR, DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_NORMAL, DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_GEOMETRY_HASH, DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_BACKGROUND_TRANSPARENCY, \
+      DEBUG_VIEW_RTXDI_GRADIENTS, DEBUG_VIEW_RTXDI_CONFIDENCE, DEBUG_VIEW_LOCAL_TONEMAPPER_LUMINANCE_OUTPUT, DEBUG_VIEW_LOCAL_TONEMAPPER_EXPOSURE_OUTPUT) \
+    X(CompositeDebugView::RuntimeValuesSet2, "Runtime Values Set 2", 4, \
+      DEBUG_VIEW_NOISY_PRIMARY_DIRECT_DIFFUSE_RADIANCE, DEBUG_VIEW_NOISY_PRIMARY_DIRECT_SPECULAR_RADIANCE, DEBUG_VIEW_NOISY_PRIMARY_DIRECT_DIFFUSE_HIT_T, DEBUG_VIEW_NOISY_PRIMARY_DIRECT_SPECULAR_HIT_T, \
+      DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_DIFFUSE_RADIANCE, DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_SPECULAR_RADIANCE, DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_DIFFUSE_HIT_T, DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_SPECULAR_HIT_T, \
+      DEBUG_VIEW_NOISY_SECONDARY_COMBINED_DIFFUSE_RADIANCE, DEBUG_VIEW_NOISY_SECONDARY_COMBINED_SPECULAR_RADIANCE, DEBUG_VIEW_NOISY_PATHRACED_RAW_INDIRECT_RADIANCE, DEBUG_VIEW_NOISY_RADIANCE, \
+      DEBUG_VIEW_NRC_UPDATE_RADIANCE, DEBUG_VIEW_NRC_UPDATE_THROUGHPUT, DEBUG_VIEW_NRC_RESOLVED_RADIANCE, DEBUG_VIEW_SSS_DIFFUSION_PROFILE_SAMPLING)
+
+  // Macro to create a map entry for composite debug views
+  #define MAP_ENTRY_COMPOSITE_DEBUG_VIEW(idx, name, numColumns, debugViewIndex0, /* remaining debug view indices */ ...) \
+    std::make_pair(static_cast<uint32_t>(idx), CompositeDebugViewClass(name, numColumns, std::vector<uint32_t>{debugViewIndex0, __VA_ARGS__ })),
+
+  // Macro to create a combo entry for composite debug views
+  #define COMBO_ENTRY_COMPOSITE_DEBUG_VIEW(idx, name, numColumns, debugViewIndex0, /* remaining debug view indices */ ...) \
+    { idx, name },
+
+  // Map of composite debug views
+  std::unordered_map<uint32_t /* CompositeDebugView::enum*/, CompositeDebugViewClass> s_compositeDebugViewsMap = {
+    LIST_COMPOSITE_DEBUG_VIEWS(MAP_ENTRY_COMPOSITE_DEBUG_VIEW)
+  };
+
+  // ComboBox entries for ImGui
   ImGui::ComboWithKey<CompositeDebugView> compositeDebugViewCombo = ImGui::ComboWithKey<CompositeDebugView>(
     "Composite Debug View",
     ImGui::ComboWithKey<CompositeDebugView>::ComboEntries { {
-        {CompositeDebugView::FinalRenderWithMaterialProperties, "Final Render + Material Properties"},
-        {CompositeDebugView::OpaqueMaterialTextureResolutionCheckers, "Opaque Material Texture Resolution Checkers", "Textures: Raw Albedo, Normal, Roughness" },
-        {CompositeDebugView::RuntimeValuesSet0, "Runtime Values Set 0",
-          "BARYCENTRICS, VIEW_DIRECTION, CONE_RADIUS, POSITION,\n"
-          "TEXCOORDS, VIRTUAL_MOTION_VECTOR, VIRTUAL_SHADING_NORMAL, VERTEX_COLOR,\n"
-          "SCREEN_SPACE_MOTION_VECTOR, PERCEPTUAL_ROUGHNESS, ANISOTROPY, ANISOTROPIC_ROUGHNESS,\n"
-          "OPACITY, VIRTUAL_HIT_DISTANCE, SURFACE_AREA, EMISSIVE_RADIANCE" },
-        {CompositeDebugView::RuntimeValuesSet1, "Runtime Values Set 1",
-          "VOLUME_PREINTEGRATION, TEXCOORDS_GRADIENT_X, TEXCOORDS_GRADIENT_Y, PSR_PRIMARY_SECONDARY_SURFACE_MASK,\n"
-          "PSR_SELECTED_INTEGRATION_SURFACE_PDF, PRIMARY_DECAL_ALBEDO, PRIMARY_SPECULAR_ALBEDO, SECONDARY_SPECULAR_ALBEDO,\n"
-          "STOCHASTIC_ALPHA_BLEND_COLOR, STOCHASTIC_ALPHA_BLEND_NORMAL, STOCHASTIC_ALPHA_BLEND_GEOMETRY_HASH, STOCHASTIC_ALPHA_BLEND_BACKGROUND_TRANSPARENCY,\n"
-          "RTXDI_GRADIENTS, RTXDI_CONFIDENCE, LOCAL_TONEMAPPER_LUMINANCE_OUTPUT, LOCAL_TONEMAPPER_EXPOSURE_OUTPUT" },
-        {CompositeDebugView::RuntimeValuesSet2, "Runtime Values Set 2",
-          "NOISY_PRIMARY_DIRECT_DIFFUSE_RADIANCE, NOISY_PRIMARY_DIRECT_SPECULAR_RADIANCE, NOISY_PRIMARY_DIRECT_DIFFUSE_HIT_T, NOISY_PRIMARY_DIRECT_SPECULAR_HIT_T,\n"
-          "NOISY_PRIMARY_INDIRECT_DIFFUSE_RADIANCE, NOISY_PRIMARY_INDIRECT_SPECULAR_RADIANCE, NOISY_PRIMARY_INDIRECT_DIFFUSE_HIT_T, NOISY_PRIMARY_INDIRECT_SPECULAR_HIT_T,\n"
-          "NOISY_SECONDARY_COMBINED_DIFFUSE_RADIANCE, NOISY_SECONDARY_COMBINED_SPECULAR_RADIANCE, NOISY_PATHRACED_RAW_INDIRECT_RADIANCE, NOISY_RADIANCE,\n"
-          "NRC_UPDATE_RADIANCE, NRC_UPDATE_THROUGHPUT, NRC_RESOLVED_RADIANCE, SSS_DIFFUSION_PROFILE_SAMPLING" },
+        LIST_COMPOSITE_DEBUG_VIEWS(COMBO_ENTRY_COMPOSITE_DEBUG_VIEW)
     } });
+
+  // Set the tooltip for the composite debug view combo box using the description from the map
+  // This is done in a separate function called after map of composite debug views,
+  // which contains the description of each composite debug view.
+  void initCompositeDebugViewComboTooltips() {
+    // Initialize tooltips for composite debug view combo entries
+    for (const auto& compositeDebugView : s_compositeDebugViewsMap) {
+      auto* comboEntry = compositeDebugViewCombo.getComboEntry(static_cast<CompositeDebugView>(compositeDebugView.first));
+      comboEntry->tooltip = compositeDebugView.second.getDescription();
+    }
+  }
 
   ImGui::ComboWithKey<DebugViewDisplayType> displayTypeCombo = ImGui::ComboWithKey<DebugViewDisplayType>(
   "Display Type",
@@ -434,6 +550,8 @@ namespace dxvk {
     , m_lastDebugViewIdx(DEBUG_VIEW_PRIMITIVE_INDEX)
     , m_startTime(std::chrono::system_clock::now()){
     initSettings(device->instance()->config());
+
+    initCompositeDebugViewComboTooltips();
   }
 
   void DebugView::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
@@ -886,47 +1004,20 @@ namespace dxvk {
       return;
     }
 
-    switch (static_cast<CompositeDebugView>(Composite::compositeViewIdx())) {
-    case CompositeDebugView::FinalRenderWithMaterialProperties:
-      m_composite.debugViewIndices = std::vector<uint32_t> { DEBUG_VIEW_POST_TONEMAP_OUTPUT, DEBUG_VIEW_ALBEDO, DEBUG_VIEW_SHADING_NORMAL, DEBUG_VIEW_PERCEPTUAL_ROUGHNESS, DEBUG_VIEW_EMISSIVE_RADIANCE, DEBUG_VIEW_HEIGHT_MAP };
-      break;
-    case CompositeDebugView::OpaqueMaterialTextureResolutionCheckers:
-      m_composite.debugViewIndices = std::vector<uint32_t> { DEBUG_VIEW_OPAQUE_RAW_ALBEDO_RESOLUTION_CHECKERS, DEBUG_VIEW_OPAQUE_NORMAL_RESOLUTION_CHECKERS, DEBUG_VIEW_OPAQUE_ROUGHNESS_RESOLUTION_CHECKERS };
-      break;
-
-    case CompositeDebugView::RuntimeValuesSet0:
-      m_composite.debugViewIndices = std::vector<uint32_t> {
-        DEBUG_VIEW_BARYCENTRICS, DEBUG_VIEW_VIEW_DIRECTION, DEBUG_VIEW_CONE_RADIUS, DEBUG_VIEW_POSITION,
-        DEBUG_VIEW_TEXCOORDS, DEBUG_VIEW_VIRTUAL_MOTION_VECTOR, DEBUG_VIEW_VIRTUAL_SHADING_NORMAL, DEBUG_VIEW_VERTEX_COLOR,
-        DEBUG_VIEW_SCREEN_SPACE_MOTION_VECTOR, DEBUG_VIEW_PERCEPTUAL_ROUGHNESS, DEBUG_VIEW_ANISOTROPY, DEBUG_VIEW_ANISOTROPIC_ROUGHNESS,
-        DEBUG_VIEW_OPACITY, DEBUG_VIEW_VIRTUAL_HIT_DISTANCE, DEBUG_VIEW_SURFACE_AREA, DEBUG_VIEW_EMISSIVE_RADIANCE };
-      break;
-
-    case CompositeDebugView::RuntimeValuesSet1:
-      m_composite.debugViewIndices = std::vector<uint32_t> {
-        DEBUG_VIEW_VOLUME_PREINTEGRATION, DEBUG_VIEW_TEXCOORDS_GRADIENT_X, DEBUG_VIEW_TEXCOORDS_GRADIENT_Y, DEBUG_VIEW_PSR_PRIMARY_SECONDARY_SURFACE_MASK,
-        DEBUG_VIEW_PSR_SELECTED_INTEGRATION_SURFACE_PDF, DEBUG_VIEW_PRIMARY_DECAL_ALBEDO, DEBUG_VIEW_PRIMARY_SPECULAR_ALBEDO, DEBUG_VIEW_SECONDARY_SPECULAR_ALBEDO,
-        DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_COLOR, DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_NORMAL, DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_GEOMETRY_HASH, DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_BACKGROUND_TRANSPARENCY,
-        DEBUG_VIEW_RTXDI_GRADIENTS, DEBUG_VIEW_RTXDI_CONFIDENCE, DEBUG_VIEW_LOCAL_TONEMAPPER_LUMINANCE_OUTPUT, DEBUG_VIEW_LOCAL_TONEMAPPER_EXPOSURE_OUTPUT,
-      };
-      break;
-
-    case CompositeDebugView::RuntimeValuesSet2:
-      m_composite.debugViewIndices = std::vector<uint32_t> {
-        DEBUG_VIEW_NOISY_PRIMARY_DIRECT_DIFFUSE_RADIANCE, DEBUG_VIEW_NOISY_PRIMARY_DIRECT_SPECULAR_RADIANCE, DEBUG_VIEW_NOISY_PRIMARY_DIRECT_DIFFUSE_HIT_T, DEBUG_VIEW_NOISY_PRIMARY_DIRECT_SPECULAR_HIT_T,
-        DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_DIFFUSE_RADIANCE, DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_SPECULAR_RADIANCE, DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_DIFFUSE_HIT_T, DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_SPECULAR_HIT_T,
-        DEBUG_VIEW_NOISY_SECONDARY_COMBINED_DIFFUSE_RADIANCE, DEBUG_VIEW_NOISY_SECONDARY_COMBINED_SPECULAR_RADIANCE, DEBUG_VIEW_NOISY_PATHRACED_RAW_INDIRECT_RADIANCE, DEBUG_VIEW_NOISY_RADIANCE,
-        DEBUG_VIEW_NRC_UPDATE_RADIANCE, DEBUG_VIEW_NRC_UPDATE_THROUGHPUT, DEBUG_VIEW_NRC_RESOLVED_RADIANCE, DEBUG_VIEW_SSS_DIFFUSION_PROFILE_SAMPLING
-      };
-      break;
-
-    }
-
     // Set active debug view index when composite view is active
     if (static_cast<CompositeDebugView>(Composite::compositeViewIdx()) != CompositeDebugView::Disabled) {
-      if (!m_composite.debugViewIndices.empty()) {
+
+      auto iter = s_compositeDebugViewsMap.find(Composite::compositeViewIdx());
+      if (iter == s_compositeDebugViewsMap.end()) {
+        ONCE(Logger::err(str::format("[RTX DebugView] Composite view index ", Composite::compositeViewIdx(), " not found")));
+        return;
+      }
+
+      const std::vector<uint32_t>& debugViewIndices = iter->second.getDebugViewIndices();
+
+      if (!debugViewIndices.empty()) {
         uint32_t frameIndex = ctx->getDevice()->getCurrentFrameId();
-        debugViewIdxRef() = m_composite.debugViewIndices[frameIndex % m_composite.debugViewIndices.size()];
+        debugViewIdxRef() = debugViewIndices[frameIndex % debugViewIndices.size()];
       } else {
         debugViewIdxRef() = DEBUG_VIEW_DISABLED;
       }
@@ -1374,8 +1465,7 @@ namespace dxvk {
     static CompositeDebugView sCompositeIdxUsedPreviousFrame = CompositeDebugView::Disabled;
 
     // Blit the debug view image into the composite image 
-    if (static_cast<CompositeDebugView>(Composite::compositeViewIdx()) != CompositeDebugView::Disabled &&
-        !m_composite.debugViewIndices.empty()) {
+    if (static_cast<CompositeDebugView>(Composite::compositeViewIdx()) != CompositeDebugView::Disabled) {
 
       // Ensure composite resource is valid
       if (!m_composite.compositeView.image.ptr() ||
@@ -1393,14 +1483,22 @@ namespace dxvk {
       const VkImageSubresourceLayers srcSubresourceLayers = { imageFormatInfo(srcDesc.format)->aspectMask, 0, 0, 1 };
       const VkImageSubresourceLayers dstSubresourceLayers = { imageFormatInfo(dstDesc.format)->aspectMask, 0, 0, 1 };
 
+      auto iter = s_compositeDebugViewsMap.find(Composite::compositeViewIdx());
+      if (iter == s_compositeDebugViewsMap.end()) {
+        ONCE(Logger::err(str::format("[RTX DebugView] Composite view index ", Composite::compositeViewIdx(), " not found")));
+        return;
+      }
+
+      CompositeDebugViewClass& compositeView = iter->second;
+
       // Calculate composite grid dimensions & current grid index 
-      const uint32_t numImages = m_composite.debugViewIndices.size();
+      const uint32_t numImages = compositeView.getDebugViewIndices().size();
       uvec2 compositeGridDims;
-      compositeGridDims.x = static_cast<uint32_t>(ceilf(sqrtf(static_cast<float>(numImages))));
+      compositeGridDims.x = compositeView.getNumColumns();
       compositeGridDims.y = static_cast<uint32_t>(ceilf(static_cast<float>(numImages) / compositeGridDims.x));
 
       uint32_t frameIndex = ctx->getDevice()->getCurrentFrameId();
-      uint32_t compositeIndex = frameIndex % m_composite.debugViewIndices.size();
+      uint32_t compositeIndex = frameIndex % compositeView.getDebugViewIndices().size();
       uvec2 compositeGridIndex;
       compositeGridIndex.y = compositeIndex / compositeGridDims.x;
       compositeGridIndex.x = compositeIndex - compositeGridIndex.y * compositeGridDims.x;
