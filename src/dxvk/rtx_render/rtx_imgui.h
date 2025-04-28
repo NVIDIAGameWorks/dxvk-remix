@@ -329,6 +329,18 @@ namespace ImGui {
       return IMGUI_ADD_TOOLTIP(getKey(&rtxOption->getValue()), rtxOption->getDescription());
     }
 
+    ComboEntry* getComboEntry(const T& key) {
+      auto it = m_keyToComboIdx.find(key);
+
+      if (it == m_keyToComboIdx.end()) {
+        return nullptr;
+      }
+
+      int comboIdx = it->second;
+
+      return &m_comboEntries[comboIdx];
+    }
+
     void removeComboEntry(const T& key) {
       auto it = m_keyToComboIdx.find(key);
 
