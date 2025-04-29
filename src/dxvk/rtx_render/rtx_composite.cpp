@@ -74,6 +74,7 @@ namespace dxvk {
         SAMPLER2D(COMPOSITE_VALUE_NOISE_SAMPLER)
 
         RW_TEXTURE2D(COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_ACCUMULATED_FINAL_OUTPUT_INPUT_OUTPUT)
 
         RW_TEXTURE2D(COMPOSITE_FINAL_OUTPUT)
         RW_TEXTURE2D(COMPOSITE_LAST_FINAL_OUTPUT)
@@ -117,6 +118,7 @@ namespace dxvk {
         SAMPLER2D(COMPOSITE_SKY_LIGHT_TEXTURE)
 
         RW_TEXTURE2D(COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_ACCUMULATED_FINAL_OUTPUT_INPUT_OUTPUT)
 
         RW_TEXTURE2D(COMPOSITE_FINAL_OUTPUT)
         RW_TEXTURE2D(COMPOSITE_LAST_FINAL_OUTPUT)
@@ -185,6 +187,13 @@ namespace dxvk {
     }
   }
 
+  void CompositePass::showAccumulationImguiSettings() {
+    m_accumulation.showImguiSettings(
+      RtxOptions::Accumulation::numberOfFramesToAccumulateObject(), 
+      RtxOptions::Accumulation::blendModeObject(), 
+      RtxOptions::Accumulation::resetOnCameraTransformChangeObject());
+  }
+
   void CompositePass::showDenoiseImguiSettings() {
     float bsdfPowers[2] = { dlssEnhancementDirectLightPower(), dlssEnhancementIndirectLightPower() };
     float bsdfMaxValues[2] = { dlssEnhancementDirectLightMaxValue(), dlssEnhancementIndirectLightMaxValue() };
@@ -221,10 +230,47 @@ namespace dxvk {
     assert(m_compositeConstants != nullptr);
     return m_compositeConstants;
   }
-
+  
   bool CompositePass::isEnabled() const {
     // This pass is always enabled
     return true;
+  }
+
+  bool CompositePass::enableAccumulation() const {
+    return RtxOptions::Get()->useDenoiserReferenceMode();
+  }
+
+  void CompositePass::onFrameBegin(
+  Rc<DxvkContext>& ctx,
+  const FrameBeginContext& frameBeginCtx) {
+
+    RtxPass::onFrameBegin(ctx, frameBeginCtx);
+
+    // Accumulation per-frame setup
+    {
+      const bool enableAccumulationChanged = m_enableAccumulation != enableAccumulation();
+
+      // Ensure consistent state during frame due to RTX_OPTIONs changing asynchronously
+      m_enableAccumulation = enableAccumulation();
+
+      RtxContext& rtxCtx = dynamic_cast<RtxContext&>(*ctx.ptr());
+      m_accumulation.onFrameBegin(
+        rtxCtx, m_enableAccumulation, RtxOptions::Accumulation::numberOfFramesToAccumulate(),
+        RtxOptions::Accumulation::resetOnCameraTransformChange());
+
+      // Create/release accumulation buffer when needed
+      if (enableAccumulationChanged) {
+        if (m_enableAccumulation) {
+          m_accumulatedFinalOutput = Resources::createImageResource(ctx, "accumulated final output", frameBeginCtx.downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT);
+        } else {
+          m_accumulatedFinalOutput.reset();
+        }
+      }
+    }
+  }
+
+  void CompositePass::createDownscaledResource(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent) {
+    m_accumulation.resetNumAccumulatedFrames();
   }
 
   void CompositePass::dispatch(
@@ -237,6 +283,13 @@ namespace dxvk {
 
     CompositeArgs compositeArgs = {};
     compositeArgs.enableSeparatedDenoisers = rtOutput.m_raytraceArgs.enableSeparatedDenoisers;
+
+    // Fill in accumulation args
+    if (m_enableAccumulation) {
+      m_accumulation.initAccumulationArgs(
+        RtxOptions::Accumulation::blendMode(),
+        compositeArgs.accumulationArgs);
+    }
 
     // Inputs
 
@@ -286,6 +339,7 @@ namespace dxvk {
     // Inputs/Outputs
 
     ctx->bindResourceView(COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT, rtOutput.m_primaryAlbedo.view, nullptr);
+    ctx->bindResourceView(COMPOSITE_ACCUMULATED_FINAL_OUTPUT_INPUT_OUTPUT, m_accumulatedFinalOutput.view, nullptr);
 
     // Outputs
 
@@ -441,5 +495,8 @@ namespace dxvk {
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, CompositeShader::getShader());
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
     }
+
+    // End frame from Composite Pass's perspective
+    m_accumulation.onFrameEnd();
   }
 } // namespace dxvk

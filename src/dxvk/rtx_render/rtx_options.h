@@ -31,6 +31,7 @@
 #include "../util/xxHash/xxhash.h"
 #include "../util/util_math.h"
 #include "../util/util_env.h"
+#include "rtx/algorithm/accumulate.h"
 #include "rtx_utils.h"
 #include "rtx/concept/ray_portal/ray_portal.h"
 #include "rtx_global_volumetrics.h"
@@ -493,6 +494,22 @@ namespace dxvk {
                    "or for more accurately comparing subtle effects of potentially biased rendering techniques\n"
                    "which may be hard to see through noise and filtering.\n"
                    "It is also useful for higher quality artistic renders of a scene beyond what is possible in real-time.");
+
+    struct Accumulation {
+      RTX_OPTION_ENV("rtx.accumulation", uint32_t, numberOfFramesToAccumulate, 1024, "RTX_ACCUMULATION_NUMBER_OF_FRAMES_TO_ACCUMULATE",
+                 "Number of frames to accumulate render output.\n"
+                 "This can be used for generating reference images smoothed over time.\n"
+                 "By default the accumulation stops once the limit is reached.\n"
+                 "When desired, continous accumulation can be enabled via enableContinuousAccumulation.");
+      RTX_OPTION_ENV("rtx.accumulation", AccumulationBlendMode, blendMode, AccumulationBlendMode::Average, "RTX_ACCUMULATION_BLEND_MODE",
+                     "The blend mode to use for accumulating debug view output.\n"
+                     "Supported modes are: 0 = Average, 1 = Min, 2 = Max.\n"
+                     "Average is the default mode and is the most common mode to use for accumulation.\n"
+                     "Min and Max are useful for visualizing the minimum or maximum value of a debug view output over time.");
+      RTX_OPTION_ENV("rtx.accumulation", bool, resetOnCameraTransformChange, true, "RTX_ACCUMULATION_RESET_ON_CAMERA_TRANFORM_CHANGE",
+                      "Resets the accumulated debug view output when the camera transform changes.");
+    } accumulation;
+
     RTX_OPTION_ENV("rtx", bool, denoiseDirectAndIndirectLightingSeparately, true, "DXVK_DENOISE_DIRECT_AND_INDIRECT_LIGHTING_SEPARATELY", "Denoising quality, high uses separate denoising of direct and indirect lighting for higher quality at the cost of performance.");
     RTX_OPTION("rtx", bool, replaceDirectSpecularHitTWithIndirectSpecularHitT, true, "");
     RTX_OPTION("rtx", bool, adaptiveResolutionDenoising, true, "");

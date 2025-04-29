@@ -24,6 +24,7 @@
 #include "rtx/utility/shader_types.h"
 #include "rtx/pass/volume_args.h"
 #include "rtx/pass/raytrace_args.h"
+#include "rtx/algorithm/accumulate.h"
 
 #define DENOISER_MODE_OFF 0
 #define DENOISER_MODE_RELAX 1
@@ -58,6 +59,7 @@ struct CompositeArgs {
   uint combineLightingChannels;
 
   VolumeArgs volumeArgs;
+  AccumulationArgs accumulationArgs;
 
   // One of DENOISER_MODE constants, affects signal conversion
   uint primaryDirectDenoiser;

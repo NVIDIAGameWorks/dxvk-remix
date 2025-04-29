@@ -3189,7 +3189,7 @@ namespace dxvk {
       ImGui::Checkbox("Reference Mode | Accumulation", &RtxOptions::Get()->useDenoiserReferenceModeObject());
 
       if (RtxOptions::Get()->useDenoiserReferenceMode()) {
-        common->metaDebugView().showAccumulationImguiSettings("Accumulation (Aliased with Debug View's Settings)");
+        common->metaComposite().showAccumulationImguiSettings();
       }
 
       ImGui::EndDisabled();

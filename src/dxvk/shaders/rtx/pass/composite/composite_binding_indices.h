@@ -59,6 +59,7 @@
 
 // Inputs/Outputs                                                   
 #define COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT                       30
+#define COMPOSITE_ACCUMULATED_FINAL_OUTPUT_INPUT_OUTPUT             31
 
 // Outputs                                                          
 
