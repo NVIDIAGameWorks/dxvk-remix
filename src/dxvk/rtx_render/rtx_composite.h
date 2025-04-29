@@ -26,6 +26,7 @@
 #include "rtx_types.h"
 #include "../dxvk_include.h"
 #include "rtx_options.h"
+#include "rtx_accumulation.h"
 
 struct RaytraceArgs;
 
@@ -61,6 +62,7 @@ namespace dxvk {
       const Settings& setting);
 
     void showImguiSettings();
+    void showAccumulationImguiSettings();
     void showDenoiseImguiSettings();
     void showStochasticAlphaBlendImguiSettings();
     void showDepthBasedFogImguiSettings();
@@ -69,10 +71,20 @@ namespace dxvk {
     Rc<DxvkBuffer> getCompositeConstantsBuffer();
     void createConstantsBuffer();
     virtual bool isEnabled() const override;
+    bool enableAccumulation() const;
+    virtual void onFrameBegin(Rc<DxvkContext>& ctx, const FrameBeginContext& frameBeginCtx) override;
+    virtual void createDownscaledResource(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent) override;
 
     dxvk::DxvkDevice* m_device;
     Rc<DxvkBuffer> m_compositeConstants;
     Rc<vk::DeviceFn> m_vkd;
+
+    RtxAccumulation m_accumulation;
+    bool m_enableAccumulation = false;
+
+    // Note: we need a separate resource for the accumulated output since last final output resource is aliased.
+    // On the up-side this resource is only allocated when needed
+    Resources::Resource m_accumulatedFinalOutput;
 
     RTX_OPTION("rtx", bool, enableFog, true, "");
     RTX_OPTION("rtx", float, fogColorScale, 0.25f, "");

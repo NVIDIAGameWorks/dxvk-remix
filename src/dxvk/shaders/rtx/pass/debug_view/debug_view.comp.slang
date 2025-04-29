@@ -28,6 +28,9 @@
 
 //!end-variants
 
+// Loads debug view inputs, applies any on-load transformations
+// and accumulates the result
+
 #include "rtx/pass/debug_view/debug_view_args.h"
 #include "rtx/pass/debug_view/debug_view_binding_indices.h"
 #include "rtx/utility/debug_view_indices.h"
@@ -36,6 +39,7 @@
 
 #include "rtxdi/Reservoir.slangh"
 #include "rtx/pass/nrc/nrc_utilities.slangh"
+#include "rtx/algorithm/accumulate.slangh"
 
 uint32_t RAB_EncodeNormal(float3 normal)
 {
@@ -72,8 +76,8 @@ layout(rg16, binding = DEBUG_VIEW_BINDING_PRIMARY_SCREEN_SPACE_MOTION_VECTOR_INP
 Texture2D<float2> PrimaryScreenSpaceMotionVector;
 layout(rgba16f, binding = DEBUG_VIEW_BINDING_RTXDI_CONFIDENCE_INPUT)
 Texture2D<float4> RtxdiConfidence;
-layout(rgba16f, binding = DEBUG_VIEW_BINDING_FINAL_SHADING_INPUT)
-Texture2D<float4> FinalShading;
+layout(rgba16f, binding = DEBUG_VIEW_BINDING_RENDER_OUTPUT_INPUT)
+Texture2D<float4> RenderOutput;
 layout(r32ui, binding = DEBUG_VIEW_BINDING_INSTRUMENTATION_INPUT)
 Texture2D<uint> Instrumentation;
 layout(rgba16f, binding = DEBUG_VIEW_BINDING_TERRAIN_INPUT)
@@ -100,30 +104,23 @@ Texture2D<float4> DebugView;
 layout(rgba8f, binding = DEBUG_VIEW_BINDING_NRD_VALIDATION_LAYER_INPUT)
 Texture2D<float4> NrdValidationLayer;
 
+layout(rgba16f, binding = DEBUG_VIEW_BINDING_COMPOSITE_INPUT)
+Texture2D<float4> Composite;
 
 // Inputs / Outputs
 
-layout(r32ui, binding = DEBUG_VIEW_BINDING_HDR_WAVEFORM_RED_INPUT_OUTPUT)
-RWTexture2D<uint> HDRWaveformRedInputOutput;
-layout(r32ui, binding = DEBUG_VIEW_BINDING_HDR_WAVEFORM_GREEN_INPUT_OUTPUT)
-RWTexture2D<uint> HDRWaveformGreenInputOutput;
-layout(r32ui, binding = DEBUG_VIEW_BINDING_HDR_WAVEFORM_BLUE_INPUT_OUTPUT)
-RWTexture2D<uint> HDRWaveformBlueInputOutput;
-
-layout(rgba16f, binding = DEBUG_VIEW_BINDING_COMPOSITE_OUTPUT_INPUT_OUTPUT)
-RWTexture2D<float4> CompositeOutput;
-
-layout(rgba32f, binding = DEBUG_VIEW_BINDING_PREVIOUS_FRAME_INPUT_OUTPUT)
-RWTexture2D<float4> PreviousFrameDebugView;
+layout(rgba32f, binding = DEBUG_VIEW_BINDING_ACCUMULATED_DEBUG_VIEW_INPUT_OUTPUT)
+RWTexture2D<float4> AccumulatedDebugView; 
 
 // Outputs
 
 layout(binding = DEBUG_VIEW_BINDING_STATISTICS_BUFFER_OUTPUT)
 RWStructuredBuffer<float> DebugViewStatistics;
 
-layout(rgba32f, binding = DEBUG_VIEW_BINDING_OUTPUT)
-RWTexture2D<float4> DebugViewOutput;
+// Samplers
 
+
+// Samplers
 
 
 // Samplers
@@ -133,6 +130,7 @@ SamplerState NearestSampler;
 
 layout(binding = DEBUG_VIEW_BINDING_LINEAR_SAMPLER)
 SamplerState LinearSampler;
+
 #include "rtx/utility/common.slangh"
 #include "rtx/utility/color.slangh"
 #include "rtx/utility/packing.slangh"
@@ -216,40 +214,6 @@ vec4 unormVectorToColor(vec3 unormVector)
   return vec4(unormVector * 2.0 - 1.0, 1.0); 
 }
 
-// Color codes a value into BGR, with only one channel being used to color code at a time
-// Black: 0 value
-// Red: values >= than max value
-// Blue/Green (0,1]: the remaining values, with blue representing the lower half of valid range and green the rest
-vec3 colorCodeIntoBGRexclusive(uint value, uint maxValue)
-{
-  if (value == 0)
-  {
-    return vec3(0);
-  }
-  else if (value >= maxValue)
-  {
-    return vec3(1, 0, 0);   
-  }
-
-  // Color code the rest, [1, maxValue-1], to a non-black BG color, one channel at a time
-
-  value -= 1;
-  const uint numValues = maxValue - 1;
-
-  const float numChannels = 2;
-  const uint ceilValuesPerChannel = ceil(numValues / numChannels);
-
-  vec3 color = 0;
-  const uint channel = value / ceilValuesPerChannel;
-  const uint numValuesInCurrentChannel = min(numValues - channel * ceilValuesPerChannel, ceilValuesPerChannel);
-
-  // Color code as (0,1]
-  color[channel] = (float(value % numValuesInCurrentChannel) + 1) / numValuesInCurrentChannel;
-
-  // Reswizzle to show lowest values in Blue and highest in Red
-  return color.bgr;
-}
-
 vec4 loadInput(inout RNG randomState, ivec2 threadId)
 {
   vec4 value = vec4(0);
@@ -264,7 +228,7 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
   // to something better (the debug view texture ideally should be at the full output resolution).
 
   uvec2 upscaledResolution;
-  FinalShading.GetDimensions(upscaledResolution.x, upscaledResolution.y);
+  RenderOutput.GetDimensions(upscaledResolution.x, upscaledResolution.y);
 
   const ivec2 upscaledPixelCoordinate = (threadId * upscaledResolution) / cb.debugViewResolution;
 
@@ -311,15 +275,15 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
   case DEBUG_VIEW_LOCAL_TONEMAPPER_LUMINANCE_OUTPUT:
   case DEBUG_VIEW_LOCAL_TONEMAPPER_EXPOSURE_OUTPUT:
   case DEBUG_VIEW_LOCAL_TONEMAPPER_BLEND_OUTPUT:
-    value = FinalShading[upscaledPixelCoordinate];
+    value = RenderOutput[upscaledPixelCoordinate];
     break;
   case DEBUG_VIEW_COMPOSITE_OUTPUT:
-    value = CompositeOutput[threadId];
+    value = Composite[threadId];
     break;
   case DEBUG_VIEW_VIEW_MODEL:
     if (geometryFlags.isViewModel)
     {
-      value = FinalShading[upscaledPixelCoordinate];
+      value = RenderOutput[upscaledPixelCoordinate];
     }
     else
     {
@@ -371,7 +335,7 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
     }
     else
     {
-      value = FinalShading[upscaledPixelCoordinate];
+      value = RenderOutput[upscaledPixelCoordinate];
     }
     break;
   case DEBUG_VIEW_INSTRUMENTATION_THREAD_DIVERGENCE:
@@ -383,7 +347,7 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
       const float confidence = saturate(1.0 - RtxdiConfidence[threadId].x);
       const float confidenceAlpha = pow(confidence, 0.5);
       const float3 confidenceColor = turboColormap(confidence);
-      const float3 sceneColor = FinalShading[upscaledPixelCoordinate].rgb;
+      const float3 sceneColor = RenderOutput[upscaledPixelCoordinate].rgb;
       value.rgb = lerp(sceneColor, confidenceColor, confidenceAlpha);
       value.a = 1.0;
     }
@@ -461,7 +425,7 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
     break;
   }
   case DEBUG_VIEW_SCROLLING_LINE:
-    value = FinalShading[upscaledPixelCoordinate];
+    value = RenderOutput[upscaledPixelCoordinate];
     if (threadId.x == (cb.frameIdx + 10) % cb.debugViewResolution.x)
     {
       value = float4(0, 1, 1, 1);
@@ -503,9 +467,9 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
     // DEBUG_VIEW_LOCAL_TONEMAPPER_LUMINANCE_OUTPUT
     // DEBUG_VIEW_LOCAL_TONEMAPPER_EXPOSURE_OUTPUT
     // DEBUG_VIEW_LOCAL_TONEMAPPER_BLEND_OUTPUT
-    isValid &= isValidValue(FinalShading[upscaledPixelCoordinate]);
+    isValid &= isValidValue(RenderOutput[upscaledPixelCoordinate]);
     // DEBUG_VIEW_COMPOSITE_OUTPUT
-    isValid &= isValidValue(CompositeOutput[threadId]);
+    isValid &= isValidValue(Composite[threadId]);
 
     // Skipped
     // DEBUG_VIEW_VIEW_MODEL
@@ -538,15 +502,16 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
     // DEBUG_VIEW_VOLUME_RESERVOIR_DEPTH_LAYERS
     // DEBUG_VIEW_VOLUME_PREINTEGRATION
     // DEBUG_VIEW_SCROLLING_LINE
-
-    // If there is invalid number, output NaN to trigger NaN highlight effect 
-    value = isValid ? 1.0 : 0.0 / 0.0;
+    
+    // Set value to true when it is invalid so that 0 represents valid value.
+    // This allows the overlay to print over the invalid pixels only.
+    value = isValid ? 0 : 1;
 
     break;
 
   case DEBUG_VIEW_SSS_DIFFUSION_PROFILE_SAMPLING:
   {
-    value = DebugView[threadId] + FinalShading[upscaledPixelCoordinate];
+    value = DebugView[threadId] + RenderOutput[upscaledPixelCoordinate];
     break;
   }
   case DEBUG_VIEW_NRD_INSTANCE_0_VALIDATION_LAYER:
@@ -554,7 +519,7 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
   case DEBUG_VIEW_NRD_INSTANCE_2_VALIDATION_LAYER:
   {
     float4 validation = NrdValidationLayer[threadId];
-    value.xyz = lerp( FinalShading[upscaledPixelCoordinate].xyz, validation.xyz, validation.w );
+    value.xyz = lerp( RenderOutput[upscaledPixelCoordinate].xyz, validation.xyz, validation.w );
 
     break;
   }
@@ -576,149 +541,6 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
   return value;
 }
 
-void hdrWaveformOutput(ivec2 threadId, RWTexture2D<uint> HDRWaveformInputOutput, float normalizedOutCoordinate)
-{
-  // Early out if the coordinate is out of range
-  // Note: Using >= 1 as the coordinate value is floored, meaning a value of 1 would be one pixel outside the output texture.
-
-  if (normalizedOutCoordinate >= 1.0f || normalizedOutCoordinate < 0.0f)
-  {
-    return;
-  }
-
-  const uvec2 outCoordinate = uvec2(
-    uint(threadId.x / cb.hdrWaveformResolutionScaleFactor),
-    uint(normalizedOutCoordinate * cb.hdrWaveformResolution.y));
-
-  uint dummyOldValue;
-  InterlockedAdd(HDRWaveformInputOutput[outCoordinate], 1, dummyOldValue);
-}
-
-void postprocess(inout RNG randomState, ivec2 threadId, inout vec4 outValue)
-{
-  // Color code inf, nan values
-  if (cb.enableInfNanViewFlag)
-  { 
-    bool nanDetected = false;
-    bool infDetected = false;
-    
-    // Detect nans and infs in pixel neighborhood
-    if (cb.colorCodeRadius > 0) 
-    {
-      int iRadius = cb.colorCodeRadius;
-      for (int y = threadId.y - iRadius; y <= threadId.y + iRadius; y++ ) {
-        for (int x = threadId.x - iRadius; x <= threadId.x + iRadius; x++ ) {
-          if (any(ivec2(x, y) >= cb.debugViewResolution) || any(ivec2(x, y) < 0)) continue;
-          const vec4 temp = loadInput(randomState, ivec2(x, y));
-
-          nanDetected |= any(isnan(temp));
-          infDetected |= any(isinf(temp));
-        }
-      }
-    }
-
-    if (nanDetected || infDetected)
-    {
-      // Note: Override usual warning colors when pseudo color mode is in use as its visualization will not
-      // display these properly.
-      const bool usePseudoColorWarningColors =
-        (cb.displayType == DebugViewDisplayType::Standard) &&
-        (cb.pseudoColorMode != PseudoColorMode::Disabled);
-      const vec3 kNanWarningColor = usePseudoColorWarningColors ? vec3(0, 0, 0) : vec3(1, 0, 0);
-      const vec3 kInfWarningColor = usePseudoColorWarningColors ? vec3(0, 0, 0) : vec3(0, 0, 1);
-      const vec3 kCombinedWarningColor =
-        select(nanDetected, kNanWarningColor, vec3(0, 0, 0)) +
-        select(infDetected, kInfWarningColor, vec3(0, 0, 0));
-
-      outValue = cb.animationTimeSec > 0 
-                ? vec4(sin(cb.animationTimeSec * 8) * kCombinedWarningColor, 1) // flash warning color
-                : vec4(kCombinedWarningColor, 1);
-      return;
-    }
-  }
-
-  // Switch between Display mode
-
-  if (cb.displayType == DebugViewDisplayType::Standard)
-  {
-    outValue *= cb.scale;
-    outValue = (outValue - vec4(cb.minValue)) / (vec4(cb.maxValue - cb.minValue));
-
-    if (!cb.enableAlphaChannelFlag)
-    {
-      outValue.a = 1;
-    }
-
-    if (cb.pseudoColorMode != PseudoColorMode::Disabled)
-    {
-      // Determine the input value to colormap based on the specified mode
-
-      float pseudoColorInput;
-
-      switch (cb.pseudoColorMode)
-      {
-      case PseudoColorMode::Luminance:
-        pseudoColorInput = calcBt709Luminance(outValue.rgb);
-        break;
-      case PseudoColorMode::Red:
-        pseudoColorInput = outValue.r;
-        break;
-      case PseudoColorMode::Green:
-        pseudoColorInput = outValue.g;
-        break;
-      case PseudoColorMode::Blue:
-        pseudoColorInput = outValue.b;
-        break;
-      case PseudoColorMode::Alpha:
-        pseudoColorInput = outValue.a;
-        break;
-      }
-
-      outValue.rgb = turboColormap(pseudoColorInput);
-    }
-
-    if (cb.enableGammaCorrectionFlag)
-    {
-      outValue.rgb = linearToGamma(outValue.rgb);
-    }
-  }
-  else if (cb.displayType == DebugViewDisplayType::BGRExclusiveColor)
-  {
-    outValue.rgb = colorCodeIntoBGRexclusive(outValue.r, cb.maxValue);
-  }
-  else if (cb.displayType == DebugViewDisplayType::EV100)
-  {
-    const float luminance = calcBt709Luminance(outValue.rgb);
-    const float ev100 = calcLuminanceEV100(luminance);
-    const float normalizedEV = float(ev100 - cb.evMinValue) / cb.evRange;
-
-    outValue = vec4(turboColormap(normalizedEV), 1.0f);
-  }
-  else if (cb.displayType == DebugViewDisplayType::HDRWaveform)
-  {
-    vec3 log10OutValue;
-
-    if (cb.enableLuminanceModeFlag)
-    {
-      log10OutValue = log10(calcBt709Luminance(outValue.rgb));
-    }
-    else
-    {
-      log10OutValue = log10(outValue.rgb);
-    }
-
-    const vec3 normalizedOutCoordinate = (log10OutValue - cb.log10MinValue) / cb.log10Range;
-
-    hdrWaveformOutput(threadId, HDRWaveformRedInputOutput, normalizedOutCoordinate.r);
-    hdrWaveformOutput(threadId, HDRWaveformGreenInputOutput, normalizedOutCoordinate.g);
-    hdrWaveformOutput(threadId, HDRWaveformBlueInputOutput, normalizedOutCoordinate.b);
-  }
-}
-
-f16vec4 lerpFp16(f16vec4 a, f16vec4 b, float16_t lerpFactor)
-{
-  return a * (1.h - lerpFactor) + b * lerpFactor;
-}
 
 void storeDebugViewOutputStatistics(vec4 value)
 {
@@ -750,47 +572,6 @@ void storeDebugViewOutputStatistics(vec4 value)
 #endif
 }
 
-void storeToDebugView(uint2 threadId, vec4 value)
-{
-  vec4 output;
-
-  switch (cb.accumulationMode)
-  {
-    case DebugViewAccumulationMode::WriteNewOutput:
-    default:
-      output = value;
-      break;
-    case DebugViewAccumulationMode::CarryOverPreviousOutput:
-      output = PreviousFrameDebugView[threadId];
-      break;
-    case DebugViewAccumulationMode::BlendNewAndPreviousOutputs:
-    {
-      const vec4 previousValue = PreviousFrameDebugView[threadId];
-
-      if (cb.enableFp16Accumulation)
-      {
-        output = lerpFp16(previousValue, value, cb.accumulationWeight);
-      }
-      else
-      {
-        output = lerp(previousValue, value, cb.accumulationWeight);
-      }
-      
-      break;
-    }
-  }
-
-  DebugViewOutput[threadId] = output;
-  PreviousFrameDebugView[threadId] = output;
-
-  if (cb.copyOutputToCompositeOutput)
-  {
-    CompositeOutput[threadId] = output;
-  }
-
-  storeDebugViewOutputStatistics(output);
-}
-
 [shader("compute")]
 [numthreads(16, 8, 1)]
 void main(uint2 threadId : SV_DispatchThreadID)
@@ -801,10 +582,10 @@ void main(uint2 threadId : SV_DispatchThreadID)
   }
 
   RNG randomState = createRNG(threadId, cb.frameIdx, 0);
-  vec4 outValue = loadInput(randomState, threadId);
+  vec4 value = loadInput(randomState, threadId);
 
-  // Post-processing and overrides if applicable
-  postprocess(randomState, threadId, outValue);
+  const bool storeInAccumulationBuffer = true;
+  value = accumulate(threadId, value, cb.accumulationArgs, storeInAccumulationBuffer, AccumulatedDebugView);
 
-  storeToDebugView(threadId, outValue);
+  storeDebugViewOutputStatistics(value);
 }

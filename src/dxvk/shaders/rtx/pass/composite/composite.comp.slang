@@ -37,6 +37,7 @@
 #include "rtx/utility/geometry_flags.slangh"
 
 #include "rtx/algorithm/volume_composite_helpers.slangh"
+#include "rtx/algorithm/accumulate.slangh"
 
 #define D3DFOG_NONE   0
 #define D3DFOG_EXP    1
@@ -572,6 +573,8 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
     finalOutput.xyz = attenuatedOutput * backgroundAlpha + alphaBlendOutput.xyz;
   }
 
+  finalOutput = accumulate(thread_id.xy, finalOutput, cb.accumulationArgs, true, AccumulatedFinalOutput);
+  
   imageStore(FinalOutput, thread_id.xy, finalOutput);
 
   postCompositeDebugView(thread_id, geometryFlags, particleLayerOutput);

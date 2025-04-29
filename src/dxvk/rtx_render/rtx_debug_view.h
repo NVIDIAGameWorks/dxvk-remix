@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -31,6 +31,7 @@
 #include "rtx_resources.h"
 #include "rtx_objectpicking.h"
 #include "rtx_options.h"
+#include "rtx_accumulation.h"
 
 struct DebugViewArgs;
 
@@ -52,9 +53,10 @@ namespace dxvk {
     void initSettings(const dxvk::Config& config);
     void prewarmShaders(DxvkPipelineManager& pipelineManager) const;
 
-    void showAccumulationImguiSettings(const char* tabName);
     void showImguiSettings();
     const vec4& debugKnob() const { return m_debugKnob; }
+
+    bool getOverlayOnTopOfRenderOutput() const;
 
     const Rc<DxvkImageView>& getDebugOutput() {
       return m_debugView.view;
@@ -63,7 +65,7 @@ namespace dxvk {
     const Rc<DxvkImageView>& getFinalDebugOutput() {
       return static_cast<CompositeDebugView>(m_composite.compositeViewIdx()) != CompositeDebugView::Disabled
         ? m_composite.compositeView.view
-        : m_postprocessedDebugView.view;
+        : m_debugView.view;
     }
 
     const Rc<DxvkImageView>& getInstrumentation() {
@@ -81,9 +83,6 @@ namespace dxvk {
       RTX_OPTION("rtx.debugView.gpuPrint", Vector2i, pixelIndex, Vector2i(INT32_MAX, INT32_MAX), "Pixel position to GPU print for. Requires useMousePosition to be turned off.");
     } gpuPrint;
 
-  protected:
-    virtual void onFrameBegin(Rc<DxvkContext>& ctx, const FrameBeginContext& frameBeginCtx) override;
-
   private:
     void initCompositeView(Rc<DxvkContext>& ctx);
     void processOutputStatistics(Rc<RtxContext>& ctx, const Resources::RaytracingOutput& rtOutput);
@@ -96,6 +95,7 @@ namespace dxvk {
     DebugViewArgs getCommonDebugViewArgs(RtxContext& ctx, const Resources::RaytracingOutput& rtOutput, DxvkObjects& common);
 
     void generateCompositeImage(Rc<DxvkContext> ctx, Rc<DxvkImage>& outputImage);
+    virtual void onFrameBegin(Rc<DxvkContext>& ctx, const FrameBeginContext& frameBeginCtx) override;
     virtual void createDownscaledResource(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent) override;
     virtual void releaseDownscaledResource() override;
 
@@ -105,8 +105,9 @@ namespace dxvk {
     uint32_t getActiveNumFramesToAccumulate() const;
 
     void dispatchDebugViewInternal(Rc<RtxContext> ctx, Rc<DxvkSampler> nearestSampler, Rc<DxvkSampler> linearSampler, DebugViewArgs& debugViewArgs, Rc<DxvkBuffer>& debugViewConstantBuffer, const Resources::RaytracingOutput& rtOutput, DxvkObjects& common);
+    void dispatchPostprocess(Rc<RtxContext> ctx, DebugViewArgs& debugViewArgs, Rc<DxvkBuffer>& debugViewConstantBuffer, const Resources::RaytracingOutput& rtOutput);
+    void dispatchRenderToOutput(Rc<RtxContext> ctx, DebugViewArgs& debugViewArgs, Rc<DxvkBuffer>& debugViewConstantBuffer, const Resources::RaytracingOutput& rtOutput);
     bool shouldRunDispatchPostCompositePass() const;
-    bool shouldEnableAccumulation() const;
     Rc<DxvkShader> getDebugViewShader() const;
 
     Rc<DxvkBuffer> m_debugViewConstants;
@@ -167,30 +168,33 @@ namespace dxvk {
 
     // EV100 Display
     RTX_OPTION_ENV("rtx.debugView", int32_t, evMinValue, -4, "DXVK_RTX_DEBUG_VIEW_EV_MIN_VALUE", "The minimum EV100 debug view input value to map to the bottom of the visualization range when EV100 debug display is in use. Values below this value in the input will be clamped to the bottom of the range.");
-    RTX_OPTION_ENV("rtx.debugView", int32_t, evMaxValue,  4, "DXVK_RTX_DEBUG_VIEW_EV_MAX_VALUE", "The maximum EV100 debug view input value to map to the top of the visualization range when EV100 debug display is in use. Values above this value in the input will be clamped to the top of the range.")
+    RTX_OPTION_ENV("rtx.debugView", int32_t, evMaxValue, 4, "DXVK_RTX_DEBUG_VIEW_EV_MAX_VALUE", "The maximum EV100 debug view input value to map to the top of the visualization range when EV100 debug display is in use. Values above this value in the input will be clamped to the top of the range.")
 
-    RTX_OPTION_ENV("rtx.debugView", bool, enableAccumulation, false, "RTX_DEBUG_VIEW_ENABLE_ACCUMULATION",
-                   "Enables accumulation of debug ouptput's result to emulate multiple samples per pixel or over time.");
-    RTX_OPTION("rtx.debugView", uint32_t, numberOfFramesToAccumulate, 1024,
-               "Number of frames to accumulate debug view's result over.\n"
-               "This can be used for generating reference images smoothed over time.\n"
-               "By default the accumulation stops once the limit is reached.\n"
-               "When desired, continous accumulation can be enabled via enableContinuousAccumulation.");
-    RTX_OPTION("rtx.debugView", bool, enableContinuousAccumulation, true,
-               "Enables continuous accumulation even after numberOfFramesToAccumulate frame count is reached.\n"
-               "Frame to frame accumulation weight remains limitted by numberOfFramesToAccumulate count.\n"
-               "This, however, skews the result as values contribute to the end result longer than numberOfFramesToAccumulate allows.\n");
-    RTX_OPTION("rtx.debugView", bool, enableFp16Accumulation, false,
-               "Accumulate using fp16 precision. Default is fp32.\n"
-               "Much of the renderer is limitted to fp16 formats so on one hand fp16 better emulates renderer's formats.\n"
-               "On the other hand, renderer also clamps and filters the signal in many places and thus is less prone\n"
-               "from very high values causing precision issues preventing very low values have any impact.\n"
-               "Therefore, to minimize precision issues the default accumulation mode is set to fp32.");    
+    struct Accumulation {
+      RTX_OPTION_ENV("rtx.debugView.accumulation", bool, enable, false, "RTX_DEBUG_VIEW_ACCUMULATION_ENABLE",
+                     "Enables accumulation of debug ouptput's result to emulate multiple samples per pixel or over time.");
+      RTX_OPTION("rtx.debugView.accumulation", uint32_t, numberOfFramesToAccumulate, 1024,
+                 "Number of frames to accumulate debug view's result over.\n"
+                 "This can be used for generating reference images smoothed over time.\n"
+                 "By default the accumulation stops once the limit is reached.\n"
+                 "When desired, continous accumulation can be enabled via enableContinuousAccumulation.");
+      RTX_OPTION_ENV("rtx.debugView.accumulation", AccumulationBlendMode, blendMode, AccumulationBlendMode::Average, "RTX_DEBUG_VIEW_ACCUMULATION_BLEND_MODE",
+                      "The blend mode to use for accumulating debug view output.\n"
+                      "Supported modes are: 0 = Average, 1 = Min, 2 = Max.\n"
+                      "Average is the default mode and is the most common mode to use for accumulation.\n"
+                      "Min and Max are useful for visualizing the minimum or maximum value of a debug view output over time.");
+      RTX_OPTION_ENV("rtx.debugView.accumulation", bool, resetOnCameraTransformChange, true, "RTX_DEBUG_VIEW_ACCUMULATION_RESET_ON_CAMERA_TRANFORM_CHANGE",
+                      "Resets the accumulated debug view output when the camera transform changes.");
+    } accumulation;
+
     RTX_OPTION_ENV("rtx.debugView", bool, replaceCompositeOutput, false, "RTX_DEBUG_VIEW_REPLACE_COMPOSITE_OUTPUT",
                "Replaces composite output with debug view output that is generated right after composition pass.\n"
                "Allows for debug view output to get the post composition pipeline applied to it, such as upscaling and postprocessing actions).\n"
                "Note any Debug Views having data set post Composite pass require this setting to be disabled to work.\n"
                "When disabled Debug View output is generated close to the end of RTX pipeline (after postprocessing and upscaling).");
+    RTX_OPTION_ENV("rtx.debugView", bool, overlayOnTopOfRenderOutput, false, "RTX_DEBUG_VIEW_OVERLAY_ON_TOP_OF_RENDER_OUTPUT",
+               "Enables the debug view to be overlayed directly on top of the rendered output.\n"
+               "Primarily used to overlay NaN/Inf debug view on top since it overlays pixels of 0 value on top of rendered output.");
 
     // HDR Waveform Display
     bool m_enableLuminanceMode = false;
@@ -208,16 +212,14 @@ namespace dxvk {
     bool m_showOutputStatistics = false;
     bool m_printOutputStatistics = false;
 
+    RtxAccumulation m_accumulation;
+
     Resources::Resource m_cachedImage;
     Resources::Resource m_debugView;
 
-    // Postprocess debug view is transformed input debug view from prior passes.
-    // It is a separate resource to support gather memory operations on the input buffer,
-    // while transforming it at per-pixel level
-    Resources::Resource m_postprocessedDebugView;    
-
-    // Some non-debug view passes directly write to m_debugView, hence we need a separate resource to retain accumulated result
-    Resources::Resource m_previousFrameDebugView;
+    // Non-debug view passes directly write to m_debugView, hence we need a separate resource to retain the accumulated result.
+    // In addition this lets postprocess pass do gather on this resource while modifying the original m_debugView.
+    Resources::Resource m_accumulatedFrameDebugView;
 
     // Statistics
     DebugViewOutputStatisticsMode m_outputStatisticsMode = DebugViewOutputStatisticsMode::Mean;
@@ -229,8 +231,6 @@ namespace dxvk {
     Resources::Resource m_hdrWaveformBlue;
     Resources::Resource m_instrumentation;
 
-    uint32_t m_numFramesAccumulated = 0;
-    uint32_t m_prevNumberOfFramesToAccumulate = UINT32_MAX;
   public:
     ObjectPicking ObjectPicking{};
     Highlighting Highlighting{};

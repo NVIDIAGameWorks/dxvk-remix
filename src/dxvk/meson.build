@@ -177,6 +177,8 @@ dxvk_src = files([
   'rtx_render/rtx.h',
   'rtx_render/rtx_accel_manager.cpp',
   'rtx_render/rtx_accel_manager.h',
+  'rtx_render/rtx_accumulation.cpp',
+  'rtx_render/rtx_accumulation.h',
   'rtx_render/rtx_asset_data.h',
   'rtx_render/rtx_asset_data_manager.cpp',
   'rtx_render/rtx_asset_data_manager.h',

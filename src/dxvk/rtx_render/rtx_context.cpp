@@ -670,12 +670,11 @@ namespace dxvk {
         // Blit to the game target
         {
           ScopedGpuProfileZone(this, "Blit to Game");
-
-          Rc<DxvkImage> dstImage = targetImage;
-
-          // Note: Nearest neighbor filtering used to give a precise view of debug buffer when DLSS is used. Otherwise the resolution should match 1:1 and
-          // this should be the same as using bilinear filtering.
-          blitImageHelper(this, srcImage, dstImage, VkFilter::VK_FILTER_NEAREST);
+          
+          // Note: the resolution between srcImage and dstImage always matches
+          // so we can use the same blit with nearest neighbor filtering
+          assert(srcImage->info().extent == targetImage->info().extent);
+          blitImageHelper(this, srcImage, targetImage, VkFilter::VK_FILTER_NEAREST);
         }
 
         // Log stats when an image is taken
@@ -1695,7 +1694,13 @@ namespace dxvk {
       srcImage, rtOutput, *m_common);
 
     if (captureScreenImage) {
-      takeScreenshot("rtxImageDebugView", debugView.getFinalDebugOutput()->image());
+      // For overlayed debug views, we preserve the post tonemapping naming since the post tonemapped image is a base image.
+      // The benefit is retention of most of the existing testing pipeline.
+      if (debugView.getOverlayOnTopOfRenderOutput()) {
+        takeScreenshot("rtxImagePostTonemapping", srcImage);
+      } else {
+        takeScreenshot("rtxImageDebugView", srcImage);
+      }
     }
   }
 

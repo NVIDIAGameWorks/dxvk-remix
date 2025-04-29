@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -34,6 +34,7 @@
 #include "rtx/pass/nrd_args.h"
 #include "rtx/pass/raytrace_args.h"
 #include "rtx/pass/nrc_args.h"
+#include "rtx/algorithm/accumulate.h"
 
 // Display Types
 enum class DebugViewDisplayType : uint32_t {
@@ -64,12 +65,6 @@ enum class DebugViewSamplerType : uint32_t {
   NormalizedLinear,
 
   Count
-};
-
-enum class DebugViewAccumulationMode : uint32_t {
-  WriteNewOutput,
-  BlendNewAndPreviousOutputs,
-  CarryOverPreviousOutput
 };
 
 enum class DebugViewOutputStatisticsMode : uint32_t {
@@ -116,6 +111,8 @@ struct DebugViewArgs {
   NrdArgs nrd;
   NrcArgs nrcArgs;
 
+  AccumulationArgs accumulationArgs;
+
   // Common Display enable flags
   uint enableInfNanViewFlag;
 
@@ -134,18 +131,19 @@ struct DebugViewArgs {
   // Gamma flag
   uint enableGammaCorrectionFlag;
 
+  uint overlayOnTopOfRenderOutput;
+
   // Quantization Options
   uint enableInputQuantization;
   float quantizationStepSize;
   float quantizationInverseStepSize;
-
-  float accumulationWeight;
-  uint enableFp16Accumulation;
-  uint copyOutputToCompositeOutput;
-  DebugViewAccumulationMode accumulationMode;
+  uint writeToCompositeOutput;
 
   uint calculateStatistics;
   DebugViewOutputStatisticsMode statisticsMode;
   float rcpNumOutputPixels;
   uint numActiveRayPortals;
+
+  uvec2 renderToOutputResolution;
+  vec2 renderToOutputToDebugViewResolution;
 };
