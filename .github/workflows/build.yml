@@ -32,7 +32,7 @@ jobs:
         submodules: recursive
 
     - name: Setup Meson
-      run: pip install meson==0.62.1
+      run: pip install meson==1.1.0
     
     - name: Build
       shell: pwsh
