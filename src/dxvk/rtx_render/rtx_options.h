@@ -298,6 +298,7 @@ namespace dxvk {
     RTX_OPTION("rtx", float, vertexColorStrength, 0.6f,
                "A scalar to apply to how strong vertex color influence should be on materials.\n"
                "A value of 1 indicates that it should be fully considered (though do note the texture operation and relevant parameters still control how much it should be blended with the actual albedo color), a value of 0 indicates that it should be fully ignored.");
+    RTX_OPTION("rtx", bool, vertexColorIsBakedLighting, true, "If true, brightness contribution will be removed from the vertex color by dividing each component by the largest component.");
     RTX_OPTION("rtx", bool, allowFSE, false,
                "A flag indicating if the application should be able to utilize exclusive full screen mode when set to true, otherwise force it to be disabled when set to false.\n"
                "Exclusive full screen may see performance benefits over other fullscreen modes at the cost of stability in some cases.\n"

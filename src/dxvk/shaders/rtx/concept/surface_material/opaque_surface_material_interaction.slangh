@@ -648,15 +648,17 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   // Apply vertex color via texture operations
   if (applyTextureOperations)
   {
-    // "Normalize" vertex color to remove lighting contribution in different vertices.
-    // We assume the diffuse term contributes most lighting. Therefore, vertex color = diffuseColor * (N*L).
-    // By dividing the vertex color by its largest component, the result is irrelavant to N*L, but proportional to the 
-    // original diffuse color, which is more desired.
-    // In practice, we add an adjustable blending factor to avoid extreme cases.
-    surfaceInteraction.vertexColor.rgb = max(surfaceInteraction.vertexColor.rgb, f16vec3(1.0 / 255.0));
-    float16_t maxColor = max(surfaceInteraction.vertexColor.r, max(surfaceInteraction.vertexColor.g, surfaceInteraction.vertexColor.b));
-    surfaceInteraction.vertexColor.rgb /= maxColor;
-    surfaceInteraction.vertexColor.rgb = mix(f16vec3(1), surfaceInteraction.vertexColor.rgb, float16_t(cb.vertexColorStrength));
+    if (cb.vertexColorIsBakedLighting) {
+      // "Normalize" vertex color to remove lighting contribution in different vertices.
+      // We assume the diffuse term contributes most lighting. Therefore, vertex color = diffuseColor * (N*L).
+      // By dividing the vertex color by its largest component, the result is irrelavant to N*L, but proportional to the 
+      // original diffuse color, which is more desired.
+      // In practice, we add an adjustable blending factor to avoid extreme cases.
+      surfaceInteraction.vertexColor.rgb = max(surfaceInteraction.vertexColor.rgb, f16vec3(1.0 / 255.0));
+      float16_t maxColor = max(surfaceInteraction.vertexColor.r, max(surfaceInteraction.vertexColor.g, surfaceInteraction.vertexColor.b));
+      surfaceInteraction.vertexColor.rgb /= maxColor;
+      surfaceInteraction.vertexColor.rgb = mix(f16vec3(1), surfaceInteraction.vertexColor.rgb, float16_t(cb.vertexColorStrength));
+    }
 
     // Note: Gamma correct vertex color input.
     surfaceInteraction.vertexColor.rgb = gammaToLinear(surfaceInteraction.vertexColor.rgb);

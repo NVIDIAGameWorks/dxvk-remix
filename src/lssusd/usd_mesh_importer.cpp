@@ -475,19 +475,21 @@ namespace lss {
           }
           case Attributes::Colors:
           {
-            GfVec3f color(1.0f); // default to white
-            ppMeshSamplers[Attributes::Colors]->SampleBuffer(idx, &color);
-            const uint32_t enColor = D3DCOLOR_ARGB((DWORD) ((color[0]) * 255.f), (DWORD) ((color[1]) * 255.f), (DWORD) ((color[2]) * 255.f), 0xFF);
             uint32_t& vertexColor = *(uint32_t*) &m_vertexData[vertexOffset + decl.offset / 4];
-            vertexColor = (vertexColor & 0xFF000000) | (enColor & 0x00FFFFFF);
+            float opacity = 1.0f;  // default to opaque
+            if (ppMeshSamplers[Attributes::Opacity]) {
+              ppMeshSamplers[Attributes::Opacity]->SampleBuffer(idx, &opacity);
+            }
+            GfVec3f color(1.0f); // default to white
+            if (ppMeshSamplers[Attributes::Colors]) {
+              ppMeshSamplers[Attributes::Colors]->SampleBuffer(idx, &color);
+            }
+            vertexColor = D3DCOLOR_ARGB(((DWORD) (opacity * 255.f)), (DWORD) ((color[0]) * 255.f), (DWORD) ((color[1]) * 255.f), (DWORD) ((color[2]) * 255.f));
             break;
           }
           case Attributes::Opacity:
           {
-            float opacity = 1.0f; // default to opaque
-            ppMeshSamplers[Attributes::Opacity]->SampleBuffer(idx, &opacity);
-            uint32_t& vertexColor = *(uint32_t*) &m_vertexData[vertexOffset + decl.offset / 4];
-            vertexColor = (vertexColor & 0x00FFFFFF) | (((uint32_t) (opacity * 255.f) & 0xFF) << 24);
+            assert(false); // This attribute should never be in the VertexDeclaration.  Presence in the USD leads to Attributes::Colors existing.
             break;
           }
           case Attributes::Texcoords: {
