@@ -778,6 +778,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.userBrightness.userBrightness|int|50|How bright the final image should be\. \[0,100\] range\.|
 |rtx.userBrightnessEVRange.userBrightnessEVRange|float|3|The exposure value \(EV\) range for 'rtx\.userBrightness' slider, i\.e\. how much of EV there is between 0 and 100 slider values\.|
 |rtx.validateCPUIndexData|bool|False||
+|rtx.vertexColorIsBakedLighting|bool|True|If true, brightness contribution will be removed from the vertex color by dividing each component by the largest component\.|
 |rtx.vertexColorStrength|float|0.6|A scalar to apply to how strong vertex color influence should be on materials\.<br>A value of 1 indicates that it should be fully considered \(though do note the texture operation and relevant parameters still control how much it should be blended with the actual albedo color\), a value of 0 indicates that it should be fully ignored\.|
 |rtx.viewDistance.distanceFadeMax|float|500|The view distance based on the result of the view distance function to end view distance noise fading at \(and effectively draw nothing past this point\), only used for the Coherent Noise view distance mode\.|
 |rtx.viewDistance.distanceFadeMin|float|400|The view distance based on the result of the view distance function to start view distance noise fading at, only used for the Coherent Noise view distance mode\.|

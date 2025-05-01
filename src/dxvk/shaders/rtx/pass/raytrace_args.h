@@ -197,7 +197,7 @@ struct RaytraceArgs {
   // Half the angle of the cone spawned by each pixel to use for ray cone texture filtering.
   float screenSpacePixelSpreadHalfAngle;
   uint debugView;
-  float vertexColorStrength;
+  float primaryDirectMissLinearViewZ;
 
 
   vec4 debugKnob;     // For temporary tuning in shaders, has a dedicated UI widget.
@@ -205,12 +205,12 @@ struct RaytraceArgs {
   // Values to use on a ray miss
   vec3 clearColorNormal;
   float clearColorDepth;
+
   uint32_t clearColorPicking;
   uint enableDLSSRR;
-
   float2 upscaleFactor;   // Displayed(upscaled) / RT resolution
 
-  float primaryDirectMissLinearViewZ;
+  // NOTE: Variables need to be in groups of 4x32 bits above this comment.
 
   uint uniformRandomNumber;
   uint16_t opaqueDiffuseLobeSamplingProbabilityZeroThreshold;
@@ -377,6 +377,9 @@ struct RaytraceArgs {
   // Debug override to disallow NRC training when it is enabled in the first place,
   // hence why it is not named enableNrcTraining here
   uint allowNrcTraining;
+
+  float vertexColorStrength;
+  bool vertexColorIsBakedLighting;
 
   // NOTE: Add structs to the top section of RaytraceArgs, not the bottom.
 };
