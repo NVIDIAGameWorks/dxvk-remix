@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="DebugOptimized|Win32">
+      <Configuration>DebugOptimized</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup>
+      <ReadOnlyProject>true</ReadOnlyProject>
+  </PropertyGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <ProjectGuid>{$test_project_guid}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">
+    <ConfigurationType>Makefile</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='DebugOptimized'" Label="Configuration">
+    <ConfigurationType>Makefile</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Release'" Label="Configuration">
+    <ConfigurationType>Makefile</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'">
+    <NMakePreprocessorDefinitions>_DEBUG;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
+    <NMakeBuildCommandLine>ninja -C ..\_compDebug_x86 $copy_target &amp; ninja -C ..\_compDebug_x86 $copy_target_launcher &amp; ninja -C ..\_compDebug_x64 $copy_target_server</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>ninja -C ..\_compDebug_x86 $copy_target &amp; ninja -C ..\_compDebug_x86 $copy_target_launcher &amp; ninja -C ..\_compDebug_x64 $copy_target_server</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine></NMakeCleanCommandLine>
+    <NMakeIncludeSearchPath>$(NMakeIncludeSearchPath)</NMakeIncludeSearchPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='DebugOptimized'">
+    <NMakePreprocessorDefinitions>_DEBUG;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
+    <NMakeBuildCommandLine>ninja -C ..\_compDebugOptimized_x86 $copy_target &amp; ninja -C ..\_compDebugOptimized_x86 $copy_target_launcher &amp; ninja -C ..\_compDebugOptimized_x64 $copy_target_server</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>ninja -C ..\_compDebugOptimized_x86 $copy_target &amp; ninja -C ..\_compDebugOptimized_x86 $copy_target_launcher &amp; ninja -C ..\_compDebugOptimized_x64 $copy_target_server</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine></NMakeCleanCommandLine>
+    <NMakeIncludeSearchPath>$(NMakeIncludeSearchPath)</NMakeIncludeSearchPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+    <NMakePreprocessorDefinitions>NDEBUG;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
+    <NMakeBuildCommandLine>ninja -C ..\_compRelease_x86 $copy_target &amp;  ninja -C ..\_compRelease_x86 $copy_target_launcher &amp; ninja -C ..\_compRelease_x64 $copy_target_server</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>ninja -C ..\_compRelease_x86 $copy_target &amp; ninja -C ..\_compRelease_x86 $copy_target_launcher &amp; ninja -C ..\_compRelease_x64 $copy_target_server </NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine></NMakeCleanCommandLine>
+    <NMakeIncludeSearchPath>$(NMakeIncludeSearchPath)</NMakeIncludeSearchPath>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="${bridge_project_name}.vcxproj">
+      <Project>{$bridge_project_guid}</Project>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

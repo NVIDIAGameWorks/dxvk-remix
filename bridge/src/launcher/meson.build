@@ -1,5 +1,5 @@
 #############################################################################
-# Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -20,22 +20,32 @@
 # DEALINGS IN THE SOFTWARE.
 #############################################################################
 
-[submodule "include/vulkan"]
-	path = include/vulkan
-	url = https://github.com/KhronosGroup/Vulkan-Headers
-[submodule "submodules/rtxdi"]
-	path = submodules/rtxdi
-	url = https://github.com/NVIDIA-RTX/RTXDI
-	branch = remix
-[submodule "submodules/rtxcr"]
-	path = submodules/rtxcr
-	url = https://github.com/NVIDIA-RTX/RTXCR-Material-Library.git
-[submodule "submodules/nrc"]
-	path = submodules/nrc
-	url = https://github.com/NVIDIAGameWorks/Neural-Radiance-Cache.git
-[submodule "submodules/nvapi/nvapi"]
-	path = submodules/nvapi
-	url = https://github.com/NVIDIA/nvapi.git
-[submodule "submodules/Detours"]
-	path = submodules/Detours
-	url = https://github.com/microsoft/Detours.git
+detours_include_path = include_directories('../../../submodules/Detours/src')
+
+launcher_src = files([
+  'launcher.cpp'
+])
+
+lib_shlwapi = bridge_compiler.find_library('shlwapi')
+
+launcher_name = 'NvRemixLauncher32'
+
+if cpu_family == 'x86_64'
+  launcher_name = 'NvRemixLauncher64'
+endif
+
+launcher_exe = executable(launcher_name, launcher_src,
+build_by_default    : (cpu_family == 'x86') ? true : false,
+dependencies        : [ lib_shlwapi, util_dep ],
+include_directories : [ detours_include_path, util_include_path ])
+
+
+if cpu_family == 'x86'
+if build_os == 'windows'
+  custom_target('copy_launcher_to_output',
+    output           : ['copy_launcher_to_output'],
+    build_by_default : true,
+    depends          : [ launcher_exe ],
+    command          : [copy_script_path, meson.current_build_dir(), output_dir, 'NvRemixLauncher*'] )
+endif
+endif
