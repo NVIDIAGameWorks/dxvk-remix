@@ -1,5 +1,5 @@
 #############################################################################
-# Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -20,22 +20,36 @@
 # DEALINGS IN THE SOFTWARE.
 #############################################################################
 
-[submodule "include/vulkan"]
-	path = include/vulkan
-	url = https://github.com/KhronosGroup/Vulkan-Headers
-[submodule "submodules/rtxdi"]
-	path = submodules/rtxdi
-	url = https://github.com/NVIDIA-RTX/RTXDI
-	branch = remix
-[submodule "submodules/rtxcr"]
-	path = submodules/rtxcr
-	url = https://github.com/NVIDIA-RTX/RTXCR-Material-Library.git
-[submodule "submodules/nrc"]
-	path = submodules/nrc
-	url = https://github.com/NVIDIAGameWorks/Neural-Radiance-Cache.git
-[submodule "submodules/nvapi/nvapi"]
-	path = submodules/nvapi
-	url = https://github.com/NVIDIA/nvapi.git
-[submodule "submodules/Detours"]
-	path = submodules/Detours
-	url = https://github.com/microsoft/Detours.git
+import os
+import sys
+
+from bridge_project import generate_bridge_project
+from testcase_project import generate_testcase_project
+from sln import generate_sln
+from vsutil import *
+
+# usage: generate_vs_project_files.py <bridge-cpp-defines> <output-path-1>,<executable-1.exe> <output-path-2>,<executable-2.exe> ...
+# <bridge-cpp-defines> is a list of CPP defs separated by semicolons: VAR1=abc;VAR2;VAR3=2
+# can be empty (or a single semicolon), but must be present
+
+vcxproj_output_dir = "../_vs"
+
+os.chdir(os.path.dirname(os.path.realpath(__file__)))
+
+if not os.path.exists(vcxproj_output_dir):
+    os.mkdir(vcxproj_output_dir)
+
+bridge_cpp_defines = sys.argv[1]
+test_case_projects = []
+
+games = load_game_targets()
+for g in games:
+    project = "Games/" + g
+    commandline = games[g]['commandline']
+    working_dir = games[g]['workingdir']
+    output_dir = games[g]['outputdir']
+    generate_testcase_project(vcxproj_output_dir, project, commandline, output_dir, working_dir)
+    test_case_projects.append(project)
+
+generate_bridge_project(vcxproj_output_dir, bridge_cpp_defines)
+generate_sln(vcxproj_output_dir, test_case_projects)

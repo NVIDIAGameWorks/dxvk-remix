@@ -1,5 +1,5 @@
-#############################################################################
-# Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+#
+# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -18,24 +18,36 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
-#############################################################################
+#
 
-[submodule "include/vulkan"]
-	path = include/vulkan
-	url = https://github.com/KhronosGroup/Vulkan-Headers
-[submodule "submodules/rtxdi"]
-	path = submodules/rtxdi
-	url = https://github.com/NVIDIA-RTX/RTXDI
-	branch = remix
-[submodule "submodules/rtxcr"]
-	path = submodules/rtxcr
-	url = https://github.com/NVIDIA-RTX/RTXCR-Material-Library.git
-[submodule "submodules/nrc"]
-	path = submodules/nrc
-	url = https://github.com/NVIDIAGameWorks/Neural-Radiance-Cache.git
-[submodule "submodules/nvapi/nvapi"]
-	path = submodules/nvapi
-	url = https://github.com/NVIDIA/nvapi.git
-[submodule "submodules/Detours"]
-	path = submodules/Detours
-	url = https://github.com/microsoft/Detours.git
+. ".\build_common.ps1"
+
+function Build {
+	param(
+		[Parameter(Mandatory)]
+		[string]
+		$Platform,
+
+		[string]
+		$Variant = "debugoptimized"
+	)
+
+	SetupVS -Platform $Platform
+
+	$flavorToSubDir = @{ "debug" = "Debug"; "debugoptimized" = "DebugOptimized"; "release" = "Release" }
+	$subdirNameComponent = $flavorToSubDir[$Variant]
+	$subDir = "_comp" + $subdirNameComponent + "_UnitTest_" + $Platform
+
+	PerformBuild -Backend ninja -Platform $Platform -BuildFlavour $Variant -BuildSubDir $subDir -BuildTarget unit_tests
+}
+
+# Don't execute below if
+If ($MyInvocation.InvocationName -ne ".") {
+	if ($args.count -eq 0) {
+		Write-Output "Must specify at least architecture: x86 or x64"
+	} elseif ($args.count -eq 1) {
+		Build $args[0]
+	} else {
+		Build $args[0] $args[1]
+	}
+}
