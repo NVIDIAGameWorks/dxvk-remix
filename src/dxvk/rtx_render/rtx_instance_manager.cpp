@@ -64,7 +64,7 @@ namespace dxvk {
     if (drawClockwise == worldToProjectionMirrored)
       flags |= VK_GEOMETRY_INSTANCE_TRIANGLE_FLIP_FACING_BIT_KHR;
     
-    if (!RtxOptions::Get()->enableCulling())
+    if (!RtxOptions::enableCulling())
       flags |= VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
 
     // This check can be overridden by replacement assets.
@@ -337,7 +337,7 @@ namespace dxvk {
 
   void InstanceManager::garbageCollection() {
     // Can be configured per game: 'rtx.numFramesToKeepInstances'
-    const uint32_t numFramesToKeepInstances = RtxOptions::Get()->getNumFramesToKeepInstances();
+    const uint32_t numFramesToKeepInstances = RtxOptions::numFramesToKeepInstances();
     
     // Remove instances past their lifetime or marked for GC explicitly
     const uint32_t currentFrame = m_device->getCurrentFrameId();
@@ -460,7 +460,7 @@ namespace dxvk {
     // otherwise derive the alpha test state from the drawcall (via its legacy material data).
     if (forceAlphaTest) {
       out.alphaTestType = AlphaTestType::kGreater;
-      out.alphaTestReferenceValue = static_cast<uint8_t>(RtxOptions::Get()->forceCutoutAlpha() * 255.0);
+      out.alphaTestReferenceValue = static_cast<uint8_t>(RtxOptions::forceCutoutAlpha() * 255.0);
     } else if (!useLegacyAlphaState) {
       const auto& opaqueMaterialData = materialData.getOpaqueMaterialData();
 
@@ -635,7 +635,7 @@ namespace dxvk {
     const uint32_t currentFrameIdx = m_device->getCurrentFrameId();
     const Vector3 worldPosition = blas.input.getGeometryData().boundingBox.getTransformedCentroid(firstInstanceObjectToWorld);
     
-    const float uniqueObjectDistanceSqr = RtxOptions::Get()->getUniqueObjectDistanceSqr();
+    const float uniqueObjectDistanceSqr = RtxOptions::getUniqueObjectDistanceSqr();
 
     RtInstance* pSimilar = nullptr;
     float nearestDistSqr = FLT_MAX;
@@ -665,7 +665,7 @@ namespace dxvk {
     // virtual version of the instance from previous frame.
     if (nearestDistSqr > 0.0f &&
         cameraType == CameraType::ViewModel && 
-        RtxOptions::Get()->isRayPortalVirtualInstanceMatchingEnabled() ) {
+        RtxOptions::useRayPortalVirtualInstanceMatching() ) {
       const Matrix4* teleportMatrix = nullptr;
       for (const RtInstance* instance : blas.getLinkedInstances()) {
         if (instance->m_frameLastUpdated != currentFrameIdx - 1 || 
@@ -790,14 +790,14 @@ namespace dxvk {
     }
 
     if ((
-      currentInstance.m_instanceVectorId >= RtxOptions::Get()->getInstanceOverrideInstanceIdx() &&
-      currentInstance.m_instanceVectorId < RtxOptions::Get()->getInstanceOverrideInstanceIdx() + RtxOptions::Get()->getInstanceOverrideInstanceIdxRange())) {
+      currentInstance.m_instanceVectorId >= RtxOptions::instanceOverrideInstanceIdx() &&
+      currentInstance.m_instanceVectorId < RtxOptions::instanceOverrideInstanceIdx() + RtxOptions::instanceOverrideInstanceIdxRange())) {
 
-      if (RtxOptions::Get()->getInstanceOverrideSelectedPrintMaterialHash())
+      if (RtxOptions::instanceOverrideSelectedInstancePrintMaterialHash())
         Logger::info(str::format("Draw Call Material Hash: ", drawCall.getMaterialData().getHash()));
 
       // Apply world offset
-      Vector3 worldOffset = RtxOptions::Get()->getOverrideWorldOffset();
+      Vector3 worldOffset = RtxOptions::instanceOverrideWorldOffset();
       currentInstance.teleportWithHistory(translationMatrix(worldOffset));
 
       return true;
@@ -958,7 +958,7 @@ namespace dxvk {
         // Hack for TREX-2272. In Portal, in the GLaDOS chamber, the monitors show a countdown timer with background, and the digits and background are coplanar.
         // We cannot reliably determine the digits material because it's a dynamic texture rendered by vgui that contains all kinds of UI things.
         // So instead of offsetting the digits or making them live in unordered TLAS (either of which would solve the problem), we offset the screen background backwards.
-        const float worldSpaceUiBackgroundOffset = RtxOptions::Get()->worldSpaceUiBackgroundOffset();
+        const float worldSpaceUiBackgroundOffset = RtxOptions::worldSpaceUiBackgroundOffset();
         if (worldSpaceUiBackgroundOffset != 0.f && currentInstance.testCategoryFlags(InstanceCategories::WorldMatte)) {
           objectToWorld[3] += objectToWorld[2] * worldSpaceUiBackgroundOffset;
         }
@@ -1086,7 +1086,7 @@ namespace dxvk {
         m_playerModelInstances.push_back(&currentInstance);
       } else {
         currentInstance.m_isPlayerModel = false;
-        if (currentInstance.m_isUnordered && RtxOptions::Get()->enableSeparateUnorderedApproximations()) {
+        if (currentInstance.m_isUnordered && RtxOptions::enableSeparateUnorderedApproximations()) {
           if (currentInstance.surface.alphaState.isDecal) {
             mask = OBJECT_MASK_UNORDERED_ALL_BLENDED;
           } else {
@@ -1130,7 +1130,7 @@ namespace dxvk {
     if (drawCall.cameraType == CameraType::ViewModel && !currentInstance.m_isHidden && isFirstUpdateThisFrame)
       m_viewModelCandidates.push_back(&currentInstance);
 
-    if (RtxOptions::Get()->enableSeparateUnorderedApproximations() &&
+    if (RtxOptions::enableSeparateUnorderedApproximations() &&
         (drawCall.cameraType == CameraType::Main || drawCall.cameraType == CameraType::ViewModel) &&
         currentInstance.m_isUnordered &&
         !currentInstance.m_isHidden &&
@@ -1147,7 +1147,7 @@ namespace dxvk {
 
     // Updates done only once a frame unless overriden due to an explicit state
     if (isFirstUpdateThisFrame || overridePreviousCameraUpdate ||
-        (billboardsGotGenerated && RtxOptions::Get()->getEnableOpacityMicromap())) {
+        (billboardsGotGenerated && RtxOptions::getEnableOpacityMicromap())) {
       // Inform the listeners
       for (auto& event : m_eventHandlers) {
         event.onInstanceUpdatedCallback(currentInstance, material, hasTransformChanged, hasPreviousPositions);
@@ -1243,7 +1243,7 @@ namespace dxvk {
       return;
 
     // If the first person player model is enabled, hide the view model.
-    if (RtxOptions::Get()->playerModel.enableInPrimarySpace()) {
+    if (RtxOptions::PlayerModel::enableInPrimarySpace()) {
       for (auto* candidateInstance : m_viewModelCandidates) {
         candidateInstance->m_vkInstance.mask = 0;
       }
@@ -1310,8 +1310,8 @@ namespace dxvk {
 
     // Distance thresholds determined experimentally to match the portal gun held in player's hands
     // but not match the gun on the pedestals.
-    const float maxHorizontalDistance = RtxOptions::Get()->playerModel.horizontalDetectionDistance();
-    const float maxVerticalDistance = RtxOptions::Get()->playerModel.verticalDetectionDistance();
+    const float maxHorizontalDistance = RtxOptions::PlayerModel::horizontalDetectionDistance();
+    const float maxVerticalDistance = RtxOptions::PlayerModel::verticalDetectionDistance();
 
     return (horizontalDistance <= maxHorizontalDistance) && (verticalDistance <= maxVerticalDistance);
   }
@@ -1400,7 +1400,7 @@ namespace dxvk {
       // This makes the detection of whether the player model is virtual more robust.
 
       Vector3 playerModelEyePosition = playerModelPosition;
-      playerModelEyePosition.z += RtxOptions::Get()->playerModel.eyeHeight();
+      playerModelEyePosition.z += RtxOptions::PlayerModel::eyeHeight();
 
       // Find the portal that is closest to the model
 
@@ -1427,8 +1427,8 @@ namespace dxvk {
         const Vector3 dirToPortalCentroid = rayPortal.entryPortalInfo.centroid - camPos;
 
         // Approximate the player collision model with this capsule-like shape
-        const float maximumNormalDistance = lerp(RtxOptions::Get()->playerModel.intersectionCapsuleRadius(),
-                                                 RtxOptions::Get()->playerModel.intersectionCapsuleHeight(),
+        const float maximumNormalDistance = lerp(RtxOptions::PlayerModel::intersectionCapsuleRadius(),
+                                                 RtxOptions::PlayerModel::intersectionCapsuleHeight(),
                                                  clamp(rayPortal.entryPortalInfo.planeNormal.z, 0.f, 1.f));
 
         // Test if that shape intersects with the portal and if the camera is in front of it
@@ -1510,9 +1510,9 @@ namespace dxvk {
     const uint32_t frameId = m_device->getCurrentFrameId();
 
     // Set up the math to offset the player model backwards if it's to be shown in primary space
-    float backwardOffset = RtxOptions::Get()->playerModel.backwardOffset();
+    float backwardOffset = RtxOptions::PlayerModel::backwardOffset();
 
-    const bool createVirtualInstances = RtxOptions::Get()->playerModel.enableVirtualInstances() && (nearPortalInfo != nullptr);
+    const bool createVirtualInstances = RtxOptions::PlayerModel::enableVirtualInstances() && (nearPortalInfo != nullptr);
 
     // The loop below creates virtual instances and applies the offset. Exit if neither is necessary.
     if (!createVirtualInstances && backwardOffset == 0.f)
@@ -1637,7 +1637,7 @@ namespace dxvk {
 
     const Vector3& camPos = cameraManager.getCamera(CameraType::Main).getPosition(/* freecam = */ false);
 
-    const float kMaxDistanceToPortal = RtxOptions::ViewModel::rangeMeters() * RtxOptions::Get()->getMeterToWorldUnitScale();
+    const float kMaxDistanceToPortal = RtxOptions::ViewModel::rangeMeters() * RtxOptions::getMeterToWorldUnitScale();
 
     // Find the closest valid portal to generate the instances for since we can generate 
     // virtual instances only for one of the portals due to instance mask bit allocation.
@@ -1985,7 +1985,7 @@ namespace dxvk {
       XXH64_hash_t antiCullingHash = XXH3_64bits_withSeed(&m_materialDataHash, sizeof(XXH64_hash_t), posHash);
 
       if (RtxOptions::AntiCulling::Object::hashInstanceWithBoundingBoxHash() &&
-          RtxOptions::Get()->needsMeshBoundingBox()) {
+          RtxOptions::needsMeshBoundingBox()) {
         const AxisAlignedBoundingBox& boundingBox = getBlas()->input.getGeometryData().boundingBox;
         const XXH64_hash_t bboxHash = boundingBox.calculateHash();
         antiCullingHash = XXH3_64bits_withSeed(&bboxHash, sizeof(antiCullingHash), antiCullingHash);

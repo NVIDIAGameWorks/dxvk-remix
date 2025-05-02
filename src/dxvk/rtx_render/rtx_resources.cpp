@@ -509,7 +509,7 @@ namespace dxvk {
     const float mipBias/* = 0*/,
     const bool useAnisotropy/* = false*/) {
     const VkPhysicalDeviceLimits& limits = m_device->properties().core.properties.limits;
-    const float maxAniso = std::min(limits.maxSamplerAnisotropy, RtxOptions::Get()->getMaxAnisotropySamples());
+    const float maxAniso = std::min(limits.maxSamplerAnisotropy, RtxOptions::maxAnisotropySamples());
 
     // Fill out the rest of the sample create info
     DxvkSamplerCreateInfo samplerInfo;
@@ -654,7 +654,7 @@ namespace dxvk {
       return m_skyProbe;
     }
 
-    const uint32_t skyProbeSide = RtxOptions::Get()->skyProbeSide();
+    const uint32_t skyProbeSide = RtxOptions::skyProbeSide();
 
     if (!m_skyProbe.isValid() || m_skyProbe.image->info().extent.width != skyProbeSide ||
         m_skyProbe.image->info().format != format) {
@@ -675,7 +675,7 @@ namespace dxvk {
     static uint32_t lastGCFrame = 0;
 
     const uint32_t currentFrame = m_device->getCurrentFrameId();
-    const uint32_t numFramesToKeepViews = RtxOptions::Get()->numFramesToKeepMaterialTextures();
+    const uint32_t numFramesToKeepViews = RtxOptions::numFramesToKeepMaterialTextures();
     if (currentFrame >= lastGCFrame + numFramesToKeepViews) {
       m_viewCache.erase_if(
         [currentFrame, numFramesToKeepViews](const auto& item) {

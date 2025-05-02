@@ -98,7 +98,7 @@ namespace dxvk
   }
 
   bool RtCamera::isCameraCut() const {
-    return lengthSqr(getViewToWorld()[3] - getPreviousViewToWorld()[3]) > RtxOptions::Get()->getUniqueObjectDistanceSqr();
+    return lengthSqr(getViewToWorld()[3] - getPreviousViewToWorld()[3]) > RtxOptions::getUniqueObjectDistanceSqr();
   }
 
   bool RtCamera::isFreeCameraEnabled() {
@@ -108,7 +108,7 @@ namespace dxvk
   Vector3 RtCamera::getHorizontalForwardDirection() const {
     const Vector3 forward = getDirection(false);
     const Vector3 up = getUp(false);
-    const bool isZUp = RtxOptions::Get()->isZUp();
+    const bool isZUp = RtxOptions::zUp();
 
     Vector3 direction = forward;
 
@@ -405,7 +405,7 @@ namespace dxvk
       float pitchDirection = freeCameraInvertY() ? -1.f : 1.f;
 
       if (isKeyAvailable) {
-        float speed = elapsedSec.count() * RtxOptions::Get()->getSceneScale() * freeCameraSpeed();
+        float speed = elapsedSec.count() * RtxOptions::sceneScale() * freeCameraSpeed();
         float angularSpeed = elapsedSec.count() * M_PI * freeCameraTurningSpeed();
         // Speed booster
         if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveFaster(), true)) {
@@ -481,8 +481,8 @@ namespace dxvk
     // Check if the up vector in view matrix is upside down
     const dxvk::Vector3d& up = m_matCache[MatrixType::ViewToWorld][1].xyz();
     bool isViewUpsideDown =
-      (!RtxOptions::Get()->isZUp() && up.y < 0.f) ||
-      (RtxOptions::Get()->isZUp() && up.z < 0.f);
+      (!RtxOptions::zUp() && up.y < 0.f) ||
+      (RtxOptions::zUp() && up.z < 0.f);
     const float upSign = isViewUpsideDown ? -1.f : 1.f;
 
     freeCamViewToWorld[3] = Vector4d(0.0);
@@ -547,7 +547,7 @@ namespace dxvk
     DecomposeProjection(NDC_D3D, NDC_D3D, *reinterpret_cast<float4x4*>(&floatModifiedViewToProj), &flags, cameraParams, nullptr, nullptr, nullptr, nullptr);
 
     // Prevent user controls exceeding the near plane distance from original projection
-    const float minNearPlane = std::min(RtxOptions::Get()->nearPlaneOverride(), cameraParams[PROJ_ZNEAR]);
+    const float minNearPlane = std::min(RtxOptions::nearPlaneOverride(), cameraParams[PROJ_ZNEAR]);
 
     float4x4 newProjection;
     newProjection.SetupByAngles(cameraParams[PROJ_ANGLEMINX], cameraParams[PROJ_ANGLEMAXX], cameraParams[PROJ_ANGLEMINY], cameraParams[PROJ_ANGLEMAXY], minNearPlane, cameraParams[PROJ_ZFAR], flags);
@@ -564,7 +564,7 @@ namespace dxvk
     freeCameraPitchRef() = setting.freeCameraPitch;
     freeCameraViewRelativeRef() = setting.freeCameraViewRelative;
 
-    RtxOptions::Get()->shakeCameraRef() = setting.isCameraShaking;
+    RtxOptions::shakeCameraRef() = setting.isCameraShaking;
 
     m_context = setting;
 
@@ -590,7 +590,7 @@ namespace dxvk
     m_previousArtificalWorldOffset = m_artificalWorldOffset;
     m_artificalWorldOffset = Vector3(0.f);
 
-    if (!RtxOptions::Get()->isCameraShaking()) {
+    if (!RtxOptions::shakeCamera()) {
       m_context.cameraShakeFrameCount = 0;
       m_context.cameraRotationFrameCount = 0;
     }
@@ -629,7 +629,7 @@ namespace dxvk
     updateAntiCulling(fov, aspectRatio, nearPlane, farPlane, isLHS);
 
     // Sometimes we want to modify the near plane for RT.  See DevSettings->Camera->Advanced
-    if(RtxOptions::Get()->enableNearPlaneOverride()) {
+    if(RtxOptions::enableNearPlaneOverride()) {
       modifiedViewToProj = overrideNearPlane(modifiedViewToProj);
     }
     
@@ -638,7 +638,7 @@ namespace dxvk
 
     // Apply free camera shaking
 
-    if (!enableFreeCamera() && RtxOptions::Get()->isCameraShaking()) {
+    if (!enableFreeCamera() && RtxOptions::shakeCamera()) {
       auto newViewToWorld = getShakenViewToWorldMatrix(m_matCache[MatrixType::ViewToWorld], flags);
       auto newViewToTranslatedWorld = newViewToWorld;
       newViewToTranslatedWorld[3] = Vector4d(0.0, 0.0, 0.0, newViewToTranslatedWorld[3].w);
@@ -666,7 +666,7 @@ namespace dxvk
 
     m_context.jitter[0] = m_jitter[0];
     m_context.jitter[1] = m_jitter[1];
-    m_context.isCameraShaking = RtxOptions::Get()->isCameraShaking();
+    m_context.isCameraShaking = RtxOptions::shakeCamera();
 
     m_matCache[MatrixType::PreviousViewToProjectionJittered] = m_matCache[MatrixType::ViewToProjectionJittered];
     m_matCache[MatrixType::PreviousProjectionToViewJittered] = m_matCache[MatrixType::ProjectionToViewJittered];
@@ -702,7 +702,7 @@ namespace dxvk
 
     auto freeCamViewToWorld = updateFreeCamera(flags);
 
-    if (RtxOptions::Get()->isCameraShaking()) {
+    if (RtxOptions::shakeCamera()) {
       freeCamViewToWorld = getShakenViewToWorldMatrix(freeCamViewToWorld, flags);
     }
 
@@ -733,9 +733,9 @@ namespace dxvk
 
   Vector2 RtCamera::calcPixelJitter(uint32_t jitterFrameIdx) {
     // Only apply jittering when DLSS/TAA is enabled, or if forced by settings
-    if (!RtxOptions::Get()->isDLSSOrRayReconstructionEnabled() &&
-        !RtxOptions::Get()->isTAAEnabled() &&
-        !RtxOptions::Get()->forceCameraJitter()) {
+    if (!RtxOptions::isDLSSOrRayReconstructionEnabled() &&
+        !RtxOptions::isTAAEnabled() &&
+        !RtxOptions::forceCameraJitter()) {
       return Vector2{ 0, 0 };
     }
 
@@ -947,10 +947,10 @@ namespace dxvk
     float shakeYaw = 0;
     float shakePitch = 0;
 
-    int period = RtxOptions::Get()->getCameraShakePeriod();
-    float sceneScale = RtxOptions::Get()->getSceneScale();
-    CameraAnimationMode animationMode = RtxOptions::Get()->getCameraAnimationMode();
-    float amplitude = RtxOptions::Get()->getCameraAnimationAmplitude();
+    int period = RtxOptions::cameraShakePeriod();
+    float sceneScale = RtxOptions::sceneScale();
+    CameraAnimationMode animationMode = RtxOptions::cameraAnimationMode();
+    float amplitude = RtxOptions::cameraAnimationAmplitude();
 
     float offset = sin(float(m_context.cameraShakeFrameCount) / (2 * period) * 2.0f * M_PI);
     switch (animationMode) {
@@ -1164,7 +1164,7 @@ namespace dxvk
     {
       if (ImGui::Button("Stop")) {
         modeRef() = Mode::None;
-        RtxOptions::Get()->shakeCameraRef() = false;
+        RtxOptions::shakeCameraRef() = false;
       }
     }
 

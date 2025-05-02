@@ -82,7 +82,7 @@ namespace dxvk {
         break;
       }
     }
-    reblurSettings.hitDistanceParameters.A *= RtxOptions::Get()->getMeterToWorldUnitScale();
+    reblurSettings.hitDistanceParameters.A *= RtxOptions::getMeterToWorldUnitScale();
     if (type != dxvk::DenoiserType::DirectLight) {
       reblurSettings.hitDistanceReconstructionMode = nrd::HitDistanceReconstructionMode::AREA_3X3;
     }
@@ -287,7 +287,7 @@ namespace dxvk {
     }
 
     m_resetHistory |= ImGui::Button("Reset History");
-    const bool resetHistoryOnSettingsChange = RtxOptions::Get()->isResetDenoiserHistoryOnSettingsChangeEnabled();
+    const bool resetHistoryOnSettingsChange = RtxOptions::resetDenoiserHistoryOnSettingsChange();
 
 #define ADVANCED if (m_showAdvancedSettings)
     ImGui::Checkbox("Advanced Settings", &m_showAdvancedSettings);
@@ -366,7 +366,7 @@ namespace dxvk {
           setReblurPresetSettings(m_reblurSettings, m_reblurSettingsPreset, m_type);
 
         {
-          if (!RtxOptions::Get()->adaptiveAccumulation()) {
+          if (!RtxOptions::adaptiveAccumulation()) {
             ImGui::SliderInt("History length [frames]", &m_reblurSettings.maxAccumulatedFrameNum, 0, nrd::REBLUR_MAX_HISTORY_FRAME_NUM);
           }
           else {
@@ -385,12 +385,12 @@ namespace dxvk {
           ADVANCED ImGui::SliderFloat("Hit distance parameters D", &m_reblurSettings.hitDistanceParameters.D, -100.0f, 0.0f, "%.2f");
 
           ImGui::Text("PRE-PASS:");
-          const float maxBlurRadius = RtxOptions::Get()->isAdaptiveResolutionDenoisingEnabled() ? 200.0f : 100.0f;
+          const float maxBlurRadius = RtxOptions::adaptiveResolutionDenoising() ? 200.0f : 100.0f;
           ImGui::SliderFloat("Diffuse preblur radius", &m_reblurInternalBlurRadius.diffusePrepassBlurRadius, 0.0f, maxBlurRadius, "%.1f");
           ImGui::SliderFloat("Specular preblur radius", &m_reblurInternalBlurRadius.specularPrepassBlurRadius, 0.0f, maxBlurRadius, "%.1f");
 
           ImGui::Text("SPATIAL FILTERING:");
-          ImGui::SliderFloat("Max blur radius [pixels]", &m_reblurInternalBlurRadius.maxBlurRadius, 0.0f, RtxOptions::Get()->isAdaptiveResolutionDenoisingEnabled() ? 120.0f : 60.0f, "%.1f");
+          ImGui::SliderFloat("Max blur radius [pixels]", &m_reblurInternalBlurRadius.maxBlurRadius, 0.0f, RtxOptions::adaptiveResolutionDenoising() ? 120.0f : 60.0f, "%.1f");
 
           ImGui::SliderInt("History fix frame Number", &m_reblurSettings.historyFixFrameNum, 0, nrd::REBLUR_MAX_HISTORY_FRAME_NUM);
           ImGui::SliderFloat("Min blur radius [pixels]", &m_reblurSettings.minBlurRadius, 0.0f, maxBlurRadius, "%.1f");
@@ -434,7 +434,7 @@ namespace dxvk {
           setRelaxPresetSettings(m_relaxSettings, m_relaxSettingsPreset, m_type);
 
         {
-          if (!RtxOptions::Get()->adaptiveAccumulation()) {
+          if (!RtxOptions::adaptiveAccumulation()) {
             ImGui::SliderInt("Diffuse history length [frames]", &m_relaxSettings.diffuseMaxAccumulatedFrameNum, 0, nrd::RELAX_MAX_HISTORY_FRAME_NUM);
             ImGui::SliderInt("Specular history length [frames]", &m_relaxSettings.specularMaxAccumulatedFrameNum, 0, nrd::RELAX_MAX_HISTORY_FRAME_NUM);
           } else {
@@ -448,7 +448,7 @@ namespace dxvk {
           relaxHitTReconstructionModeCombo.getKey(&m_relaxSettings.hitDistanceReconstructionMode);
 
           ImGui::Text("PRE-PASS:");
-          const float maxBlurRadius = RtxOptions::Get()->isAdaptiveResolutionDenoisingEnabled() ? 200.0f : 100.0f;
+          const float maxBlurRadius = RtxOptions::adaptiveResolutionDenoising() ? 200.0f : 100.0f;
           ImGui::SliderFloat("Diffuse preblur radius", &m_relaxInternalBlurRadius.diffusePrepassBlurRadius, 0.0f, maxBlurRadius, "%.1f");
           ImGui::SliderFloat("Specular preblur radius", &m_relaxInternalBlurRadius.specularPrepassBlurRadius, 0.0f, maxBlurRadius, "%.1f");
 

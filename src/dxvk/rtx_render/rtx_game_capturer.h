@@ -292,17 +292,17 @@ private:
   } m_options;
 
   static Options getOptions() {
-    return { RtxOptions::Get()->getCaptureShowMenuOnHotkey(),
+    return { RtxOptions::captureShowMenuOnHotkey(),
              RtxOptions::Get()->getCaptureInstances(),
-             RtxOptions::Get()->getCaptureInstanceStageName(),
-             RtxOptions::Get()->getCaptureEnableMultiframe(),
-             RtxOptions::Get()->getCaptureMaxFrames(),
-             RtxOptions::Get()->getCaptureFramesPerSecond(),
-             RtxOptions::Get()->getCaptureMeshPositionDelta(),
-             RtxOptions::Get()->getCaptureMeshNormalDelta(),
-             RtxOptions::Get()->getCaptureMeshTexcoordDelta(),
-             RtxOptions::Get()->getCaptureMeshColorDelta(),
-             RtxOptions::Get()->getCaptureMeshBlendWeightDelta() };
+             RtxOptions::captureInstanceStageName(),
+             RtxOptions::captureEnableMultiframe(),
+             RtxOptions::captureMaxFrames(),
+             RtxOptions::captureFramesPerSecond(),
+             RtxOptions::captureMeshPositionDelta(),
+             RtxOptions::captureMeshNormalDelta(),
+             RtxOptions::captureMeshTexcoordDelta(),
+             RtxOptions::captureMeshColorDelta(),
+             RtxOptions::captureMeshBlendWeightDelta() };
   }
 
   // State

@@ -110,12 +110,12 @@ namespace dxvk {
     };
     template<Tabs tab>
     void openTab() {
-      RtxOptions::Get()->m_showUI.getValue() = UIType::Advanced;
+      RtxOptions::m_showUI.getValue() = UIType::Advanced;
       triggerTab(tab);
     }
     template<Tabs tab>
     bool isTabOpen() const {
-      if(RtxOptions::Get()->m_showUI.getValue() != UIType::Advanced) {
+      if(RtxOptions::m_showUI.getValue() != UIType::Advanced) {
         return false;
       } else {
         return m_curTab == tab;

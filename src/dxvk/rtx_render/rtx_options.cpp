@@ -92,47 +92,47 @@ namespace dxvk {
   }
 
   void RtxOptions::updatePresetFromUpscaler() {
-    if (RtxOptions::Get()->upscalerType() == UpscalerType::None &&
+    if (RtxOptions::upscalerType() == UpscalerType::None &&
         reflexMode() == ReflexMode::None) {
-      RtxOptions::Get()->dlssPresetRef() = DlssPreset::Off;
-    } else if (RtxOptions::Get()->upscalerType() == UpscalerType::DLSS &&
+      RtxOptions::dlssPresetRef() = DlssPreset::Off;
+    } else if (RtxOptions::upscalerType() == UpscalerType::DLSS &&
                reflexMode() == ReflexMode::LowLatency) {
       if ((graphicsPreset() == GraphicsPreset::Ultra || graphicsPreset() == GraphicsPreset::High) &&
           qualityDLSS() == DLSSProfile::Auto) {
-        RtxOptions::Get()->dlssPresetRef() = DlssPreset::On;
+        RtxOptions::dlssPresetRef() = DlssPreset::On;
       } else {
-        RtxOptions::Get()->dlssPresetRef() = DlssPreset::Custom;
+        RtxOptions::dlssPresetRef() = DlssPreset::Custom;
       }
     } else {
-      RtxOptions::Get()->dlssPresetRef() = DlssPreset::Custom;
+      RtxOptions::dlssPresetRef() = DlssPreset::Custom;
     }
 
-    switch (RtxOptions::Get()->upscalerType()) {
+    switch (RtxOptions::upscalerType()) {
       case UpscalerType::NIS: {
         const float nisResolutionScale = resolutionScale();
         if (nisResolutionScale <= 0.5f) {
-          RtxOptions::Get()->nisPresetRef() = NisPreset::Performance;
+          RtxOptions::nisPresetRef() = NisPreset::Performance;
         } else if (nisResolutionScale <= 0.66f) {
-          RtxOptions::Get()->nisPresetRef() = NisPreset::Balanced;
+          RtxOptions::nisPresetRef() = NisPreset::Balanced;
         } else if (nisResolutionScale <= 0.75f) {
-          RtxOptions::Get()->nisPresetRef() = NisPreset::Quality;
+          RtxOptions::nisPresetRef() = NisPreset::Quality;
         } else {
-          RtxOptions::Get()->nisPresetRef() = NisPreset::Fullscreen;
+          RtxOptions::nisPresetRef() = NisPreset::Fullscreen;
         }
         break;
       }
       case UpscalerType::TAAU: {
         const float taauResolutionScale = resolutionScale();
         if (taauResolutionScale <= 0.33f) {
-          RtxOptions::Get()->taauPresetRef() = TaauPreset::UltraPerformance;
+          RtxOptions::taauPresetRef() = TaauPreset::UltraPerformance;
         } else if (taauResolutionScale <= 0.5f) {
-          RtxOptions::Get()->taauPresetRef() = TaauPreset::Performance;
+          RtxOptions::taauPresetRef() = TaauPreset::Performance;
         } else if (taauResolutionScale <= 0.66f) {
-          RtxOptions::Get()->taauPresetRef() = TaauPreset::Balanced;
+          RtxOptions::taauPresetRef() = TaauPreset::Balanced;
         } else if (taauResolutionScale <= 0.75f) {
-          RtxOptions::Get()->taauPresetRef() = TaauPreset::Quality;
+          RtxOptions::taauPresetRef() = TaauPreset::Quality;
         } else {
-          RtxOptions::Get()->taauPresetRef() = TaauPreset::Fullscreen;
+          RtxOptions::taauPresetRef() = TaauPreset::Fullscreen;
         }
         break;
       }
@@ -249,9 +249,9 @@ namespace dxvk {
   }
 
   void RtxOptions::updateLightingSetting() {
-    bool isRayReconstruction = RtxOptions::Get()->isRayReconstructionEnabled();
-    bool isDLSS = RtxOptions::Get()->isDLSSEnabled();
-    bool isNative = RtxOptions::Get()->upscalerType() == UpscalerType::None;
+    bool isRayReconstruction = RtxOptions::isRayReconstructionEnabled();
+    bool isDLSS = RtxOptions::isDLSSEnabled();
+    bool isNative = RtxOptions::upscalerType() == UpscalerType::None;
     if (isRayReconstruction) {
       updatePathTracerPreset(DxvkRayReconstruction::pathTracerPreset());
     } else if (isDLSS) {
@@ -266,7 +266,7 @@ namespace dxvk {
   void RtxOptions::updateGraphicsPresets(DxvkDevice* device) {
     // Handle Automatic Graphics Preset (From configuration/default)
 
-    if (RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Auto) {
+    if (RtxOptions::graphicsPreset() == GraphicsPreset::Auto) {
       const DxvkDeviceInfo& deviceInfo = device->adapter()->devicePropertiesExt();
       const uint32_t vendorID = deviceInfo.core.properties.vendorID;
       
@@ -307,14 +307,14 @@ namespace dxvk {
         preferredDefault = GraphicsPreset::Low;
 
         // Setup some other known good defaults for other IHVs.
-        RtxOptions::Get()->resolutionScaleRef() = 0.5f;
+        RtxOptions::resolutionScaleRef() = 0.5f;
         // Todo: Currently this code is needed to allow the the non-DLSS upscaling paths to reflect the
         // resolution scale setting otherwise the resolution scale may be automatically updated to match
         // some other preset whenever something like updateUpscalerFromTaauPreset is called. Ideally the
         // resolution scale and these presets would not be so disconnected like this (or maybe
         // updatePresetFromUpscaler just needs to be called in the right places).
-        RtxOptions::Get()->nisPresetRef() = NisPreset::Performance;
-        RtxOptions::Get()->taauPresetRef() = TaauPreset::Performance;
+        RtxOptions::nisPresetRef() = NisPreset::Performance;
+        RtxOptions::taauPresetRef() = TaauPreset::Performance;
       }
 
       // figure out how much vidmem we have
@@ -345,7 +345,7 @@ namespace dxvk {
     DxvkReSTIRGIRayQuery& restirGiRayQuery = common->metaReSTIRGIRayQuery();
 
     // Handle Graphics Presets
-    bool isRayReconstruction = RtxOptions::Get()->isRayReconstructionEnabled();
+    bool isRayReconstruction = RtxOptions::isRayReconstructionEnabled();
 
     auto lowGraphicsPresetCommonSettings = [&]() {
       pathMinBouncesRef() = 0;
@@ -365,10 +365,10 @@ namespace dxvk {
     auto enableNrcPreset = [&](NeuralRadianceCache::QualityPreset nrcPreset) {
       NeuralRadianceCache& nrc = device->getCommon()->metaNeuralRadianceCache();
       if (nrc.checkIsSupported(device)) {
-        RtxOptions::Get()->integrateIndirectModeRef() = IntegrateIndirectMode::NeuralRadianceCache;
+        RtxOptions::integrateIndirectModeRef() = IntegrateIndirectMode::NeuralRadianceCache;
         nrc.setQualityPreset(nrcPreset);
       } else {
-        RtxOptions::Get()->integrateIndirectModeRef() = IntegrateIndirectMode::ReSTIRGI;
+        RtxOptions::integrateIndirectModeRef() = IntegrateIndirectMode::ReSTIRGI;
       }
     };
 
@@ -455,7 +455,7 @@ namespace dxvk {
   void RtxOptions::updateRaytraceModePresets(const uint32_t vendorID, const VkDriverId driverID) {
     // Handle Automatic Raytrace Mode Preset (From configuration/default)
 
-    if (RtxOptions::Get()->raytraceModePreset() == RaytraceModePreset::Auto) {
+    if (RtxOptions::raytraceModePreset() == RaytraceModePreset::Auto) {
       Logger::info("Automatic Raytrace Mode Preset in use (Set rtx.raytraceModePreset to something other than Auto use a non-automatic preset)");
 
       // Note: Left undefined as these values are initialized in all paths.
@@ -482,18 +482,18 @@ namespace dxvk {
         preferredIntegrateIndirectRaytraceMode = DxvkPathtracerIntegrateIndirect::RaytraceMode::RayQuery;
       }
 
-      RtxOptions::Get()->renderPassGBufferRaytraceModeRef() = preferredGBufferRaytraceMode;
-      RtxOptions::Get()->renderPassIntegrateDirectRaytraceModeRef() = preferredIntegrateDirectRaytraceMode;
-      RtxOptions::Get()->renderPassIntegrateIndirectRaytraceModeRef() = preferredIntegrateIndirectRaytraceMode;
+      RtxOptions::renderPassGBufferRaytraceModeRef() = preferredGBufferRaytraceMode;
+      RtxOptions::renderPassIntegrateDirectRaytraceModeRef() = preferredIntegrateDirectRaytraceMode;
+      RtxOptions::renderPassIntegrateIndirectRaytraceModeRef() = preferredIntegrateIndirectRaytraceMode;
     }
   }
 
   void RtxOptions::resetUpscaler() {
-    RtxOptions::Get()->upscalerTypeRef() = UpscalerType::DLSS;
+    RtxOptions::upscalerTypeRef() = UpscalerType::DLSS;
     reflexModeRef() = ReflexMode::LowLatency;
   }
 
-  std::string RtxOptions::getCurrentDirectory() const {
+  std::string RtxOptions::getCurrentDirectory() {
     return std::filesystem::current_path().string();
   }
 

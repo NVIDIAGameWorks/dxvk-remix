@@ -63,7 +63,7 @@ namespace dxvk {
   void AccelManager::garbageCollection() {
     // Can be configured per game: 'rtx.numFramesToKeepBLAS'
     // Note: keep the BLAS for at least two frames so that they're alive for previous-frame TLAS access.
-    const uint32_t numFramesToKeepBLAS = std::max(RtxOptions::enablePreviousTLAS() ? 2u : 1u, RtxOptions::Get()->getNumFramesToKeepBLAS());
+    const uint32_t numFramesToKeepBLAS = std::max(RtxOptions::enablePreviousTLAS() ? 2u : 1u, RtxOptions::numFramesToKeepBLAS());
 
     // Remove instances past their lifetime or marked for GC explicitly
     const uint32_t currentFrame = m_device->getCurrentFrameId();
@@ -476,7 +476,7 @@ namespace dxvk {
       fillGeometryInfoFromBlasEntry(*blasEntry, *instance, opacityMicromapManager);
 
       const uint32_t minPrimsInDynamicBLAS = std::max(RtxOptions::minPrimsInDynamicBLAS(), 100u);
-      const uint32_t maxPrimsForMergedBLAS = RtxOptions::Get()->maxPrimsInMergedBLAS();
+      const uint32_t maxPrimsForMergedBLAS = RtxOptions::maxPrimsInMergedBLAS();
       const uint32_t blasPrims = blasEntry->modifiedGeometryData.calculatePrimitiveCount();
 
       // Figure out if this blas should be a dynamic one
@@ -744,7 +744,7 @@ namespace dxvk {
       blasInstance.flags ^= VK_GEOMETRY_INSTANCE_TRIANGLE_FLIP_FACING_BIT_KHR;
     }
 
-    if (instance->usesUnorderedApproximations() && RtxOptions::Get()->enableSeparateUnorderedApproximations()) {
+    if (instance->usesUnorderedApproximations() && RtxOptions::enableSeparateUnorderedApproximations()) {
       m_mergedInstances[Tlas::Unordered].push_back(blasInstance);
     } else {
       m_mergedInstances[Tlas::Opaque].push_back(blasInstance);
@@ -853,7 +853,7 @@ namespace dxvk {
         (bucket->reorderedSurfacesOffset & uint32_t(CUSTOM_INDEX_SURFACE_MASK));
       memcpy(static_cast<void*>(&instance.transform.matrix[0][0]), &identityTransform[0][0], sizeof(VkTransformMatrixKHR));
 
-      if (bucket->usesUnorderedApproximations && RtxOptions::Get()->enableSeparateUnorderedApproximations())
+      if (bucket->usesUnorderedApproximations && RtxOptions::enableSeparateUnorderedApproximations())
         m_mergedInstances[Tlas::Unordered].push_back(instance);
       else
         m_mergedInstances[Tlas::Opaque].push_back(instance);
@@ -880,7 +880,7 @@ namespace dxvk {
     uint32_t numActiveBillboards = 0;
 
     // Check the enablement here - because the instance manager needs to run the billboard analysis all the time
-    if (RtxOptions::Get()->enableBillboardOrientationCorrection()) {
+    if (RtxOptions::enableBillboardOrientationCorrection()) {
       memoryBillboards.resize(instanceManager.getBillboards().size());
       uint32_t index = 0;
 

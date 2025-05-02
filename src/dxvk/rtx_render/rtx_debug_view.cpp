@@ -1140,7 +1140,7 @@ namespace dxvk {
 
 
     // Todo: Add cases for secondary denoiser.
-    if (RtxOptions::Get()->isSeparatedDenoiserEnabled()) {
+    if (RtxOptions::denoiseDirectAndIndirectLightingSeparately()) {
       switch (debugViewIdx()) {
       case DEBUG_VIEW_DENOISED_PRIMARY_DIRECT_DIFFUSE_RADIANCE:
       case DEBUG_VIEW_DENOISED_PRIMARY_DIRECT_SPECULAR_RADIANCE:
@@ -1262,7 +1262,7 @@ namespace dxvk {
 
     // NRD Validation Layer bindings
     {
-      DxvkDenoise& denoiser0 = RtxOptions::Get()->isSeparatedDenoiserEnabled() 
+      DxvkDenoise& denoiser0 = RtxOptions::denoiseDirectAndIndirectLightingSeparately() 
         ? ctx->getCommonObjects()->metaPrimaryDirectLightDenoiser() 
         : ctx->getCommonObjects()->metaPrimaryCombinedLightDenoiser();
       DxvkDenoise& denoiser1 = ctx->getCommonObjects()->metaPrimaryIndirectLightDenoiser();

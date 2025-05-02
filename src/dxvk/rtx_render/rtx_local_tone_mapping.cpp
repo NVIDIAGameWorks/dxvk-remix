@@ -143,7 +143,7 @@ namespace dxvk {
   }
 
   bool DxvkLocalToneMapping::isEnabled() const {
-    return RtxOptions::Get()->tonemappingMode() == TonemappingMode::Local;
+    return RtxOptions::tonemappingMode() == TonemappingMode::Local;
   }
 
    void DxvkLocalToneMapping::dispatch(

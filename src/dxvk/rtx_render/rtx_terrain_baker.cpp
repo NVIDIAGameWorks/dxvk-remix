@@ -323,9 +323,9 @@ namespace dxvk {
       const float maxInputDisplacement = maxInputDepth + maxInputHeight;
 
       // The deepest the baked terrain can go.
-      const float maxBakedDepth = 2 * RtxOptions::Get()->getMeterToWorldUnitScale() * cascadeMap.levelHalfWidth() * m_prevFrameMaxDisplaceIn;
+      const float maxBakedDepth = 2 * RtxOptions::getMeterToWorldUnitScale() * cascadeMap.levelHalfWidth() * m_prevFrameMaxDisplaceIn;
       // The highest the baked terrain can go.
-      const float maxBakedHeight = 2 * RtxOptions::Get()->getMeterToWorldUnitScale() * cascadeMap.levelHalfWidth() * m_prevFrameMaxDisplaceOut;
+      const float maxBakedHeight = 2 * RtxOptions::getMeterToWorldUnitScale() * cascadeMap.levelHalfWidth() * m_prevFrameMaxDisplaceOut;
 
       const float maxBakedDisplacement = maxBakedDepth + maxBakedHeight;
 
@@ -967,7 +967,7 @@ namespace dxvk {
   }
 
   bool TerrainBaker::needsTerrainBaking() {
-    return enableBaking() && RtxOptions::Get()->terrainTextures().size() > 0;
+    return enableBaking() && RtxOptions::terrainTextures().size() > 0;
   }
 
   void TerrainBaker::onFrameBegin(Rc<RtxContext> ctx, const DxvkContextState& dxvkCtxState) {
@@ -1038,7 +1038,7 @@ namespace dxvk {
     Resources& resourceManager = ctx->getResourceManager();
     const RtCamera& camera = sceneManager.getCamera();
     const uint32_t currentFrameIndex = ctx->getDevice()->getCurrentFrameId();
-    const float metersToWorldUnitScale = RtxOptions::Get()->getMeterToWorldUnitScale();
+    const float metersToWorldUnitScale = RtxOptions::getMeterToWorldUnitScale();
 
     m_bakingParams.frameIndex = currentFrameIndex;
 

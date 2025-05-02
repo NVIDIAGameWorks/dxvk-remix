@@ -32,7 +32,7 @@
 namespace dxvk {
 
 std::vector<AssetReplacement>* AssetReplacer::getReplacementsForMesh(XXH64_hash_t hash) {
-  if (!RtxOptions::Get()->getEnableReplacementMeshes())
+  if (!RtxOptions::getEnableReplacementMeshes())
     return nullptr;
 
   auto variantInfo = m_variantInfos.find(hash);
@@ -51,7 +51,7 @@ std::vector<AssetReplacement>* AssetReplacer::getReplacementsForMesh(XXH64_hash_
 }
 
 std::vector<AssetReplacement>* AssetReplacer::getReplacementsForLight(XXH64_hash_t hash) {
-  if (!RtxOptions::Get()->getEnableReplacementLights())
+  if (!RtxOptions::getEnableReplacementLights())
     return nullptr;
 
   for (auto& mod : m_modManager.mods()) {
@@ -64,7 +64,7 @@ std::vector<AssetReplacement>* AssetReplacer::getReplacementsForLight(XXH64_hash
 }
 
 MaterialData* AssetReplacer::getReplacementMaterial(XXH64_hash_t hash) {
-  if (!RtxOptions::Get()->getEnableReplacementMaterials())
+  if (!RtxOptions::getEnableReplacementMaterials())
     return nullptr;
 
   for (auto& mod : m_modManager.mods()) {

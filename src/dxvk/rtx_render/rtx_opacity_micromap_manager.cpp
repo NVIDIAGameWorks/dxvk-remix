@@ -1041,11 +1041,11 @@ namespace dxvk {
         switch (surface.textureAlphaOperation) {
         case DxvkRtTextureOperation::SelectArg1:
           if (surface.textureAlphaArg1Source == RtTextureArgSource::TFactor)
-            useOpacityMicromap &= tFactorAlpha > RtxOptions::Get()->getResolveTransparencyThreshold();
+            useOpacityMicromap &= tFactorAlpha > RtxOptions::resolveTransparencyThreshold();
           break;
         case DxvkRtTextureOperation::SelectArg2:
           if (surface.textureAlphaArg2Source == RtTextureArgSource::TFactor)
-            useOpacityMicromap &= tFactorAlpha > RtxOptions::Get()->getResolveTransparencyThreshold();
+            useOpacityMicromap &= tFactorAlpha > RtxOptions::resolveTransparencyThreshold();
           break;
         }
       }
@@ -1743,8 +1743,8 @@ namespace dxvk {
       desc.conservativeEstimationMaxTexelTapsPerMicroTriangle = OpacityMicromapOptions::Building::ConservativeEstimation::maxTexelTapsPerMicroTriangle();
       desc.numTriangles = numTriangles;
       desc.triangleOffset = sourceData.triangleOffset;
-      desc.resolveTransparencyThreshold = RtxOptions::Get()->getResolveTransparencyThreshold();
-      desc.resolveOpaquenessThreshold = RtxOptions::Get()->getResolveOpaquenessThreshold();
+      desc.resolveTransparencyThreshold = RtxOptions::resolveTransparencyThreshold();
+      desc.resolveOpaquenessThreshold = RtxOptions::resolveOpaquenessThreshold();
       desc.costPerTexelTapPerMicroTriangleBudget = OpacityMicromapOptions::Building::costPerTexelTapPerMicroTriangleBudget();
 
       // Overrides

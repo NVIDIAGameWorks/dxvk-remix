@@ -117,7 +117,7 @@ namespace dxvk {
   }
 
   bool DxvkTemporalAA::isEnabled() const {
-    return RtxOptions::Get()->isTAAEnabled();
+    return RtxOptions::isTAAEnabled();
   }
 
   void DxvkTemporalAA::createTargetResource(Rc<DxvkContext>& ctx, const VkExtent3D& targetExtent) {

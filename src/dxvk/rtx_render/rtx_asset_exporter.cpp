@@ -364,7 +364,7 @@ namespace dxvk {
 
     auto latlong = resourceManager.createImageResource(ctx, "sky probe latlong", latlongExt, VK_FORMAT_R16G16B16A16_SFLOAT);
 
-    const auto transform = RtxOptions::Get()->isZUp() ? RtxImageUtils::LatLongTransform::ZUp2OpenEXR : RtxImageUtils::LatLongTransform::None;
+    const auto transform = RtxOptions::zUp() ? RtxImageUtils::LatLongTransform::ZUp2OpenEXR : RtxImageUtils::LatLongTransform::None;
 
     ctx->getCommonObjects()->metaImageUtils().cubemapToLatLong(ctx, skyprobeView.view, latlong.view, transform);
 

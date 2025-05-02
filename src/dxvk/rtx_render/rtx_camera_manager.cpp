@@ -51,7 +51,7 @@ namespace dxvk {
       return input.testCategoryFlags(InstanceCategories::Sky) ? CameraType::Sky : CameraType::Unknown;
     }
 
-    switch (RtxOptions::Get()->fusedWorldViewMode()) {
+    switch (RtxOptions::fusedWorldViewMode()) {
     case FusedWorldViewMode::None:
       if (input.getTransformData().objectToView == input.getTransformData().objectToWorld && !isIdentityExact(input.getTransformData().objectToView)) {
         return input.testCategoryFlags(InstanceCategories::Sky) ? CameraType::Sky : CameraType::Unknown;

@@ -26,7 +26,7 @@ namespace dxvk {
     bool shouldApply(const Rc<DxvkDevice>& device) {
       static int result = 0;
 
-      if (!RtxOptions::Get()->getEnableOpacityMicromap()) {
+      if (!RtxOptions::getEnableOpacityMicromap()) {
         // Disable the WAR when OMM is not enabled
         return false;
       }

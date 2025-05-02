@@ -108,7 +108,7 @@ namespace dxvk
     VkPhysicalDevice vkPhysicalDevice = adapter->handle();
     auto instance = m_device->instance();
     VkInstance vkInstance = instance->handle();
-    result = NVSDK_NGX_VULKAN_Init(RtxOptions::Get()->applicationId(), logFolder.c_str(), vkInstance, vkPhysicalDevice, vkDevice);
+    result = NVSDK_NGX_VULKAN_Init(RtxOptions::applicationId(), logFolder.c_str(), vkInstance, vkPhysicalDevice, vkDevice);
 
     if (NVSDK_NGX_FAILED(result)) {
       if (result == NVSDK_NGX_Result_FAIL_FeatureNotSupported || result == NVSDK_NGX_Result_FAIL_PlatformError) {
@@ -177,7 +177,7 @@ namespace dxvk
     di.SDKVersion = NVSDK_NGX_Version_API;
     di.FeatureID = NVSDK_NGX_Feature_RayReconstruction;
     di.Identifier.IdentifierType = NVSDK_NGX_Application_Identifier_Type_Application_Id;
-    di.Identifier.v.ApplicationId = (unsigned long long)RtxOptions::Get()->applicationId();
+    di.Identifier.v.ApplicationId = (unsigned long long)RtxOptions::applicationId();
     di.ApplicationDataPath = L".";
     di.FeatureInfo = &ci;
     NVSDK_NGX_FeatureRequirement fr = {};

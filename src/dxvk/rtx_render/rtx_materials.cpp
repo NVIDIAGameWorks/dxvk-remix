@@ -27,11 +27,11 @@
 namespace dxvk {
 
 bool getEnableDiffuseLayerOverrideHack() {
-  return RtxOptions::Get()->translucentMaterialOptions.enableDiffuseLayerOverride();
+  return TranslucentMaterialOptions::enableDiffuseLayerOverride();
 }
 
 float getEmissiveIntensity() {
-  return RtxOptions::Get()->emissiveIntensity();
+  return RtxOptions::emissiveIntensity();
 }
 
 float getDisplacementFactor() {

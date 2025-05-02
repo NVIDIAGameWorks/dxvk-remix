@@ -94,7 +94,7 @@ namespace dxvk {
   }
 
   bool DxvkDLSS::isEnabled() const {
-      return RtxOptions::Get()->isDLSSOrRayReconstructionEnabled();
+      return RtxOptions::isDLSSOrRayReconstructionEnabled();
   }
 
   DLSSProfile DxvkDLSS::getAutoProfile(uint32_t displayWidth, uint32_t displayHeight) {
@@ -112,10 +112,10 @@ namespace dxvk {
       desiredProfile = DLSSProfile::UltraPerf;
     }
 
-    if (RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Medium) {
+    if (RtxOptions::graphicsPreset() == GraphicsPreset::Medium) {
       // When using medium preset, bias DLSS more towards performance
       desiredProfile = (DLSSProfile)std::max(0, (int) desiredProfile - 1);
-    } else if (RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Low) {
+    } else if (RtxOptions::graphicsPreset() == GraphicsPreset::Low) {
       // When using low preset, give me all the perf I can get!!!
       desiredProfile = (DLSSProfile) std::max(0, (int) desiredProfile - 2);
     }

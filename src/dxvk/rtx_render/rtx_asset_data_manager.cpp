@@ -579,7 +579,7 @@ namespace dxvk {
       return nullptr;
     }
 
-    if (isDDS && RtxOptions::Get()->usePartialDdsLoader()) {
+    if (isDDS && RtxOptions::usePartialDdsLoader()) {
       Rc<DdsTextureData> dds = new DdsTextureData;
       if (dds->load(filename)) {
         return dds;

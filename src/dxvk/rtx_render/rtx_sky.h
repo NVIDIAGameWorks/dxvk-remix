@@ -153,7 +153,7 @@ dxvk::RtxContext::TryHandleSkyResult dxvk::RtxContext::tryHandleSky(const DrawPa
       m_skyRtColorFormat = m_state.om.renderTargets.color[0].view->image()->info().format;
       // Use sRGB (or linear for HDR formats) for image and sampling views -- to use in ray tracing
       m_skyColorFormat = TextureUtils::toSRGB(m_skyRtColorFormat);
-      if (RtxOptions::Get()->skyForceHDR()) {
+      if (RtxOptions::skyForceHDR()) {
         m_skyRtColorFormat = m_skyColorFormat = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
       }
 

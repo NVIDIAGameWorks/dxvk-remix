@@ -213,7 +213,7 @@ namespace dxvk {
     pushArgs.maxParticleSize = maxParticleSize();
     pushArgs.opacity = opacity();
     pushArgs.anisotropy = anisotropy();
-    pushArgs.cullDistanceFromCamera = RtxGlobalVolumetrics::froxelMaxDistanceMeters() * RtxOptions::Get()->getMeterToWorldUnitScale();
+    pushArgs.cullDistanceFromCamera = RtxGlobalVolumetrics::froxelMaxDistanceMeters() * RtxOptions::getMeterToWorldUnitScale();
     pushArgs.gravityForce = gravityForce();
     pushArgs.maxSpeed = maxSpeed();
     pushArgs.useTurbulence = useTurbulence();

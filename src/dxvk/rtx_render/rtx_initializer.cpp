@@ -62,19 +62,19 @@ namespace dxvk {
         env::getEnvVar("DXVK_GRAPHICS_PRESET_TYPE") != "0") {
       const DxvkDeviceInfo& deviceInfo = m_device->adapter()->devicePropertiesExt();
 
-      RtxOptions::Get()->updateUpscalerFromDlssPreset();
-      RtxOptions::Get()->updateGraphicsPresets(m_device);
-      RtxOptions::Get()->updateRaytraceModePresets(deviceInfo.core.properties.vendorID, deviceInfo.khrDeviceDriverProperties.driverID);
+      RtxOptions::updateUpscalerFromDlssPreset();
+      RtxOptions::updateGraphicsPresets(m_device);
+      RtxOptions::updateRaytraceModePresets(deviceInfo.core.properties.vendorID, deviceInfo.khrDeviceDriverProperties.driverID);
     } else {
       // Default, init to custom unless otherwise specified
-      if (RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Auto) {
-        RtxOptions::Get()->graphicsPresetRef() = GraphicsPreset::Custom;
+      if (RtxOptions::graphicsPreset() == GraphicsPreset::Auto) {
+        RtxOptions::graphicsPresetRef() = GraphicsPreset::Custom;
       }
 
       // Need to initialize DLSS-RR settings in test cases.
       // Warning: this will override multiple global options, including any values set by the test workflow.
       if (env::getEnvVar("DXVK_RAY_RECONSTRUCTION") != "0") {
-        RtxOptions::Get()->updateLightingSetting();
+        RtxOptions::updateLightingSetting();
       }
     }
 

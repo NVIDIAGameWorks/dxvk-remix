@@ -273,11 +273,11 @@ namespace dxvk {
     const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device);
     const bool isShaderExecutionReorderingSupported = 
       RtxContext::checkIsShaderExecutionReorderingSupported(*m_device) &&
-      RtxOptions::Get()->isShaderExecutionReorderingInPathtracerIntegrateIndirectEnabled();
+      RtxOptions::isShaderExecutionReorderingInPathtracerIntegrateIndirectEnabled();
     // Note: Portal enablement is controlled only via the configuration so unlike other things which can be enabled/disabled via
     // ImGui at runtime this is fine to use as a guide for which permutations need to be generated (much like if OMM or SER are
     // supported on a given platform, as this fact will not change during runtime either).
-    const bool portalsEnabled = RtxOptions::Get()->rayPortalModelTextureHashes().size() > 0;
+    const bool portalsEnabled = RtxOptions::rayPortalModelTextureHashes().size() > 0;
 
     if (RtxOptions::Shader::prewarmAllVariants()) {
       for (int32_t nrcEnabled = isNrcSupported ? 1 : 0; nrcEnabled >= 0; nrcEnabled--) {
@@ -299,16 +299,16 @@ namespace dxvk {
       }
     } else {
       // Note: The getters for these SER/OMM enabled flags also check if SER/OMMs are supported, so we do not need to check for that manually.
-      const bool serEnabled = RtxOptions::Get()->isShaderExecutionReorderingInPathtracerIntegrateIndirectEnabled();
-      const bool ommEnabled = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device) && RtxOptions::Get()->opacityMicromap.enable();
+      const bool serEnabled = RtxOptions::isShaderExecutionReorderingInPathtracerIntegrateIndirectEnabled();
+      const bool ommEnabled = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device) && RtxOptions::OpacityMicromap::enable();
       const bool useNeeCache = NeeCachePass::enable();
-      const bool nrcEnabled = RtxOptions::Get()->integrateIndirectMode() == IntegrateIndirectMode::NeuralRadianceCache;
+      const bool nrcEnabled = RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::NeuralRadianceCache;
 
       for (int32_t includesPortals = portalsEnabled; includesPortals >= 0; includesPortals--) {
         // Prewarm POM on and off, as that can change based on game content (if nothing in the frame has a height texture, then POM turns off)
         for (int32_t pomEnabled = 1; pomEnabled >= 0; pomEnabled--) {
           DxvkComputePipelineShaders shaders;
-          switch (RtxOptions::Get()->getRenderPassIntegrateIndirectRaytraceMode()) {
+          switch (RtxOptions::renderPassIntegrateIndirectRaytraceMode()) {
           case RaytraceMode::RayQuery:
             getComputeShader(useNeeCache, nrcEnabled);
             break;
@@ -441,9 +441,9 @@ namespace dxvk {
       ? nrc.getRaytracingResolution()
       : rtOutput.m_compositeOutputExtent;
 
-    const bool serEnabled = RtxOptions::Get()->isShaderExecutionReorderingInPathtracerIntegrateIndirectEnabled();
-    const bool ommEnabled = RtxOptions::Get()->getEnableOpacityMicromap();
-    const bool includePortals = RtxOptions::Get()->rayPortalModelTextureHashes().size() > 0 || rtOutput.m_raytraceArgs.numActiveRayPortals > 0;
+    const bool serEnabled = RtxOptions::isShaderExecutionReorderingInPathtracerIntegrateIndirectEnabled();
+    const bool ommEnabled = RtxOptions::getEnableOpacityMicromap();
+    const bool includePortals = RtxOptions::rayPortalModelTextureHashes().size() > 0 || rtOutput.m_raytraceArgs.numActiveRayPortals > 0;
     const bool pomEnabled = rtOutput.m_raytraceArgs.pomMode != DisplacementMode::Off && RtxOptions::Displacement::enableIndirectHit();
     const bool neeCacheEnabled = NeeCachePass::enable();
 
@@ -451,7 +451,7 @@ namespace dxvk {
     {
       ScopedGpuProfileZone(ctx, "Integrate Indirect Raytracing");
       const NeeCachePass& neeCache = ctx->getCommonObjects()->metaNeeCache();
-      switch (RtxOptions::Get()->getRenderPassIntegrateIndirectRaytraceMode()) {
+      switch (RtxOptions::renderPassIntegrateIndirectRaytraceMode()) {
       case RaytraceMode::RayQuery:
         VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 16, 8, 1 });
         ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getComputeShader(neeCacheEnabled, nrcEnabled));
