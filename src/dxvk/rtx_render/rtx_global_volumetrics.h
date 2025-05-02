@@ -65,23 +65,14 @@ namespace dxvk {
       float transmittanceMeasurementDistance;
       Vector3 singleScatteringAlbedo;
       float anisotropy;
-      bool enableHeterogeneousFog;
-      float noiseFieldSpatialFrequency;
-      uint32_t noiseFieldOctaves;
-      float noiseFieldDensityScale;
 
       // Constructor for easier initialization
       Preset(Vector3 transmittanceColor, float transmittanceDistance,
-        Vector3 scatteringAlbedo, float aniso, bool enableHeterogeneous,
-        float noiseFrequency, uint32_t noiseOctaves, float noiseDensityScale)
+        Vector3 scatteringAlbedo, float aniso)
         : transmittanceColor(transmittanceColor),
         transmittanceMeasurementDistance(transmittanceDistance),
         singleScatteringAlbedo(scatteringAlbedo),
-        anisotropy(aniso),
-        enableHeterogeneousFog(enableHeterogeneous),
-        noiseFieldSpatialFrequency(noiseFrequency),
-        noiseFieldOctaves(noiseOctaves),
-        noiseFieldDensityScale(noiseDensityScale) { }
+        anisotropy(aniso) { }
     };
 
     // Froxel Radiance Cache/Volumetric Lighting ptions
@@ -143,10 +134,18 @@ namespace dxvk {
                "Additionally, this setting must be set at startup and changing it will not take effect at runtime.");
     RTX_OPTION("rtx.volumetrics", bool, enableHeterogeneousFog, false, "Enables a noise-driven heterogeneous fog approximation.");
     RTX_OPTION("rtx.volumetrics", float, noiseFieldSubStepSizeMeters, 10.0f, "Maximum substep size in world space for sampling the heterogeneous fog noise volume. Units are meters, respects scene scale.");
-    RTX_OPTION("rtx.volumetrics", float, noiseFieldSpatialFrequency, 0.02f, "Visual Parameter: Frequency at which to sample the heterogeneous fog noise volume.");
-    RTX_OPTION("rtx.volumetrics", uint32_t, noiseFieldOctaves, 4.0f, "Visual Parameter: Controls how much detail is in the heterogeneous fog noise volume.  Detail will be fundamentally limited by the resolution of the froxel grid.");
-    RTX_OPTION("rtx.volumetrics", float, noiseFieldDensityScale, 1.0f, "A scale factor for the heterogeneous fog noise volume density.");
-    RTX_OPTION("rtx.volumetrics", float, depthOffset, .5f, "Depth offset to avoid volumetric light leaking.");
+    RTX_OPTION("rtx.volumetrics", float, noiseFieldTimeScale, 0.5f,
+               "A scale factor to apply to the time parameter of the noise field to use for heterogenous fog.\n"
+               "Higher values cause the field to modulate faster, whereas lower values cause the field to modulate slower. Setting this scale to 0 will stop temporal noise modulation entierly.");
+    RTX_OPTION("rtx.volumetrics", float, noiseFieldDensityScale, 1.0f, "A scale factor to apply to the noise field when mapping noise values to heterogeneous fog volume density. Higher values will make the fog more dense on average, whereas lower values will make the fog thinner on average.");
+    RTX_OPTION("rtx.volumetrics", float, noiseFieldDensityExponent, 2.0f, "A exponent factor to apply to the noise field when mapping noise values to heterogeneous fog volume density. A value of 1 will result in a linear mapping whereas higher exponents will make the noise field more contrastey by reducing the influence of lower noise values.");
+    RTX_OPTION("rtx.volumetrics", uint32_t, noiseFieldOctaves, 2.0f,
+               "Visual Parameter: Controls how much detail is in the heterogeneous fog noise volume. Detail will be fundamentally limited by the resolution of the froxel grid.\n"
+               "Values must be in the range [1, 8]. Higher values will become significantly costly and have diminishing returns in terms of visual fidelity.");
+    RTX_OPTION("rtx.volumetrics", float, noiseFieldInitialFrequencyPerMeter, 8.0f, "Visual Parameter: The initial frequency at which to sample the heterogeneous fog noise volume in terms of noise coordinate units per meter, respecting scene scale.");
+    RTX_OPTION("rtx.volumetrics", float, noiseFieldLacunarity, 2.0f, "Visual Parameter: A scale factor in the range (0, infinity) to apply to the noise frequency with each noise octave. Values above 1 increase the frequency with each octave and thus \"narrow\" the noise faster, whereas values below 1 reduce the frequency each octave.");
+    RTX_OPTION("rtx.volumetrics", float, noiseFieldGain, 0.5f, "Visual Parameter: A scale factor in the range (0, infinity) to apply to the noise amplitude with each noise octave. Larger values typically make the noise field more jagged whereas lower values make the noise field smoother.");
+    RTX_OPTION("rtx.volumetrics", float, depthOffset, 0.5f, "Depth offset to avoid volumetric light leaking.");
     RTX_OPTION("rtx.volumetrics", bool, enableAtmosphere, false,
                "Enables a finite atmosphere in the volumetrics system.\n"
                "When false, the volumetric volume is assumed to reach to infinity in every direction, when true the volumetric volume will be limited to that a finite atmosphere controlled by parameters describing atmosphere height and its curvature via a planetary radius.\n"

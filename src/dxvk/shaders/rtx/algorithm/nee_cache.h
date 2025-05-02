@@ -776,16 +776,16 @@ struct NEECache
                            | ((spatialHash.w & 0xFF) << 8)
                            | ((hashDir8Bit & 0xFF));
     uint2 hashKey2 = uint2(shadingKey0, shadingKey1);
-    uint hashKey = prospectorHash(hashKey2.x) ^ prospectorHash(hashKey2.y);
+    uint hashKey = uintHash(hashKey2.x) ^ uintHash(hashKey2.y);
     return hashKey & (NEE_CACHE_TOTAL_PROBE - 1);
   }
 
   static uint getHashValue(int3 positionI)
   {
     uint hash = 0;
-    hash ^= hashJenkins(positionI.x);
-    hash ^= hashJenkins(positionI.y);
-    hash ^= hashJenkins(positionI.z);
+    hash ^= uintHash(positionI.x);
+    hash ^= uintHash(positionI.y);
+    hash ^= uintHash(positionI.z);
     return hash & (NEE_CACHE_TOTAL_PROBE - 1);
   }
 

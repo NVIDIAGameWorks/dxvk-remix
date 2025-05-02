@@ -74,12 +74,19 @@ struct VolumeArgs {
   float volumetricFogAnisotropy;
   uint16_t enableNoiseFieldDensity;
   uint16_t enableAtmosphere;
-  float noiseFieldSubStepSize;
-
-  float noiseFieldSpatialFrequency;
-  uint noiseFieldOctaves;
-  float noiseFieldDensityScale;
   float depthOffset;
+
+  float noiseFieldSubStepSize;
+  uint noiseFieldOctaves;
+  // Note: When set to 0 this indicates that no time modulation of the noise field should be used.
+  // Otherwise, scales the time modulation in noise coordinates per second.
+  float noiseFieldTimeScale;
+  float noiseFieldDensityScale;
+
+  float noiseFieldDensityExponent;
+  float noiseFieldInitialFrequency;
+  float noiseFieldLacunarity;
+  float noiseFieldGain;
 
   vec3 sceneUpDirection;
   float atmosphereHeight;
@@ -87,7 +94,7 @@ struct VolumeArgs {
   vec3 planetCenter;
   float atmosphereRadius;
 
-  vec2 pad;
+  vec2 pad1;
   float maxAttenuationDistanceForNoAtmosphere;
   uint resetHistory;
 };

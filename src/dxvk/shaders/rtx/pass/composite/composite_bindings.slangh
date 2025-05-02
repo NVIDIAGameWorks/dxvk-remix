@@ -87,7 +87,7 @@ layout(binding = COMPOSITE_BLUE_NOISE_TEXTURE)
 Texture2DArray BlueNoise;
 
 layout(binding = COMPOSITE_VALUE_NOISE_SAMPLER)
-Sampler2D<float4> ValueNoiseSampler;
+Sampler3D<float4> ValueNoiseSampler;
 
 layout(binding = COMPOSITE_SKY_LIGHT_TEXTURE)
 Sampler2D<float3> SkyLight;

@@ -81,7 +81,7 @@
   CONSTANT_BUFFER(BINDING_CONSTANTS)                                \
   RW_TEXTURE2D(BINDING_DEBUG_VIEW_TEXTURE)                          \
   RW_STRUCTURED_BUFFER(BINDING_GPU_PRINT_BUFFER)                    \
-  SAMPLER2D(BINDING_VALUE_NOISE_SAMPLER)                            \
+  SAMPLER3D(BINDING_VALUE_NOISE_SAMPLER)                            \
   RW_STRUCTURED_BUFFER(BINDING_SAMPLER_READBACK_BUFFER)
   
 #endif

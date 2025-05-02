@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -22,10 +22,5 @@
 #pragma once
 
 // This is the resolution in both X and Y dimensions of the noise LUT
-#define VALUE_NOISE_RESOLUTION 512
+#define VALUE_NOISE_RESOLUTION 64
 
-// Offsets are prime numbers to try minimize repeating patterns
-#define VALUE_NOISE_Z_OFFSET_X 223
-#define VALUE_NOISE_Z_OFFSET_Y 131
-#define VALUE_NOISE_W_OFFSET_X 181
-#define VALUE_NOISE_W_OFFSET_Y 307

@@ -130,76 +130,49 @@ namespace dxvk {
           Vector3(0.999f, 0.999f, 0.999f),  // transmittanceColor
           200.0f,                         // transmittanceMeasurementDistance
           Vector3(0.999f, 0.999f, 0.999f),  // singleScatteringAlbedo
-          0.0f,                             // anisotropy
-          false,                            // enableHeterogeneousFog
-          0.01f,                            // noiseFieldSpatialFrequency
-          3,                                // noiseFieldOctaves
-          1.0f                              // noiseFieldDensityScale
+          0.0f                             // anisotropy
       ),
       RtxGlobalVolumetrics::Preset( // HeavyFog
           Vector3(0.85f, 0.85f, 0.85f),
           5.0f,
           Vector3(0.9f, 0.9f, 0.9f),
-          -0.2f,
-          false,
-          0.01f,
-          3,
-          2.0f
+          -0.2f
       ),
       RtxGlobalVolumetrics::Preset( // LightFog
           Vector3(0.93f, 0.93f, 0.93f),
           15.0f,
           Vector3(0.95f, 0.95f, 0.95f),
-          -0.1f,
-          false,
-          0.03f,
-          2,
-          1.0f
+          -0.1f
       ),
       RtxGlobalVolumetrics::Preset( // Mist
           Vector3(0.96f, 0.96f, 0.96f),
           50.0f,
           Vector3(0.98f, 0.98f, 0.98f),
-          0.1f,
-          false,
-          0.04f,
-          3,
-          0.5f
+          0.1f
       ),
       RtxGlobalVolumetrics::Preset( // Haze
           Vector3(0.9f, 0.85f, 0.75f),
           70.0f,
           Vector3(0.8f, 0.8f, 0.8f),
-          0.2f,
-          false,
-          0.02f,
-          2,
-          0.8f
+          0.2f
       ),
       RtxGlobalVolumetrics::Preset( // Dust
           Vector3(0.87f, 0.73f, 0.5f),
           60.0f,
           Vector3(0.85f, 0.75f, 0.65f),
-          0.3f,
-          false,
-          0.02f,
-          3,
-          1.5f
+          0.4f
       ),
       RtxGlobalVolumetrics::Preset( // Smoke
           Vector3(0.87f, 0.73f, 0.5f),
           20.0f,
           Vector3(0.85f, 0.75f, 0.65f),
-          0.5f,
-          false,
-          0.02f,
-          3,
-          1.5f
+          0.6f
       )
   };
 
   RtxGlobalVolumetrics::RtxGlobalVolumetrics(DxvkDevice* device) : CommonDeviceObject(device), RtxPass(device) {
     // Volumetrics Options
+
     RTX_OPTION_CLAMP_MIN(froxelGridResolutionScale, static_cast<uint32_t>(1));
     RTX_OPTION_CLAMP(froxelDepthSlices, static_cast<uint16_t>(1), std::numeric_limits<uint16_t>::max());
     RTX_OPTION_CLAMP(restirFroxelDepthSlices, static_cast<uint16_t>(1), std::numeric_limits<uint16_t>::max());
@@ -221,6 +194,15 @@ namespace dxvk {
     singleScatteringAlbedoRef().x = std::clamp(singleScatteringAlbedo().x, 0.0f, 1.0f);
     singleScatteringAlbedoRef().y = std::clamp(singleScatteringAlbedo().y, 0.0f, 1.0f);
     singleScatteringAlbedoRef().z = std::clamp(singleScatteringAlbedo().z, 0.0f, 1.0f);
+
+    RTX_OPTION_CLAMP_MIN(noiseFieldSubStepSizeMeters, 0.0f);
+    RTX_OPTION_CLAMP_MIN(noiseFieldTimeScale, 0.0f);
+    RTX_OPTION_CLAMP_MIN(noiseFieldDensityScale, 0.0f);
+    RTX_OPTION_CLAMP_MIN(noiseFieldDensityExponent, 0.0f);
+    RTX_OPTION_CLAMP(noiseFieldOctaves, static_cast<uint32_t>(1), static_cast<uint32_t>(8));
+    RTX_OPTION_CLAMP_MIN(noiseFieldInitialFrequencyPerMeter, 0.0f);
+    RTX_OPTION_CLAMP_MIN(noiseFieldLacunarity, 0.0f);
+    RTX_OPTION_CLAMP_MIN(noiseFieldGain, 0.0f);
 
     RTX_OPTION_CLAMP_MIN(fogRemapMaxDistanceMinMeters, 0.0f);
     RTX_OPTION_CLAMP_MIN(fogRemapMaxDistanceMaxMeters, 0.0f);
@@ -380,9 +362,13 @@ namespace dxvk {
 
           ImGui::BeginDisabled(!enableHeterogeneousFog());
           ImGui::DragFloat("Noise Field Substep Size", &noiseFieldSubStepSizeMetersObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloat("Noise Field Spatial Frequency", &noiseFieldSpatialFrequencyObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragInt("Noise Field Number of Octaves", &noiseFieldOctavesObject(), 1.f, 0, 10);
+          ImGui::DragInt("Noise Field Number of Octaves", &noiseFieldOctavesObject(), 0.05f, 1, 8);
+          ImGui::DragFloat("Noise Field Time Scale", &noiseFieldTimeScaleObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::DragFloat("Noise Field Density Scale", &noiseFieldDensityScaleObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::DragFloat("Noise Field Density Exponent", &noiseFieldDensityExponentObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::DragFloat("Noise Field Initial Frequency", &noiseFieldInitialFrequencyPerMeterObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::DragFloat("Noise Field Lacunarity", &noiseFieldLacunarityObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::DragFloat("Noise Field Gain", &noiseFieldGainObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::EndDisabled();
         }
 
@@ -466,10 +452,6 @@ namespace dxvk {
     transmittanceMeasurementDistanceMetersRef() = preset.transmittanceMeasurementDistance;
     singleScatteringAlbedoRef() = preset.singleScatteringAlbedo;
     anisotropyRef() = preset.anisotropy;
-    enableHeterogeneousFogRef() = preset.enableHeterogeneousFog;
-    noiseFieldSpatialFrequencyRef() = preset.noiseFieldSpatialFrequency;
-    noiseFieldOctavesRef() = preset.noiseFieldOctaves;
-    noiseFieldDensityScaleRef() = preset.noiseFieldDensityScale;
     enableFogRemapRef() = false;
   }
 
@@ -630,9 +612,14 @@ namespace dxvk {
 
     volumeArgs.enableNoiseFieldDensity = enableHeterogeneousFog();
     volumeArgs.noiseFieldSubStepSize = noiseFieldSubStepSizeMeters() * RtxOptions::Get()->getMeterToWorldUnitScale();
-    volumeArgs.noiseFieldSpatialFrequency = noiseFieldSpatialFrequency();
-    volumeArgs.noiseFieldOctaves = noiseFieldOctaves();
+    volumeArgs.noiseFieldTimeScale = noiseFieldTimeScale();
     volumeArgs.noiseFieldDensityScale = noiseFieldDensityScale();
+    volumeArgs.noiseFieldDensityExponent = noiseFieldDensityExponent();
+    volumeArgs.noiseFieldOctaves = noiseFieldOctaves();
+    volumeArgs.noiseFieldInitialFrequency = noiseFieldInitialFrequencyPerMeter() / RtxOptions::Get()->getMeterToWorldUnitScale();
+    volumeArgs.noiseFieldLacunarity = noiseFieldLacunarity();
+    volumeArgs.noiseFieldGain = noiseFieldGain();
+
     volumeArgs.depthOffset = depthOffset();
 
     const float invertedWorld = atmosphereInverted() ? -1.f : 1.f;

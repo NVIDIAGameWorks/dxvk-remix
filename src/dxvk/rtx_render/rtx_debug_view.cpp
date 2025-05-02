@@ -143,7 +143,13 @@ namespace dxvk {
                                     "Parameterize via:\n"
                                     "\tDebug Knob [0].xyz: {width, depth, height} of the Bounding Box"},
     
+        {DEBUG_VIEW_WHITE_NOISE, "White Noise"},
         {DEBUG_VIEW_BLUE_NOISE, "Blue Noise"},
+        {DEBUG_VIEW_VALUE_NOISE, "Value Noise"},
+        {DEBUG_VIEW_FRACTAL_VALUE_NOISE, "Fractal Value Noise"},
+        {DEBUG_VIEW_SIMPLEX_NOISE, "Simplex Noise"},
+        {DEBUG_VIEW_FRACTAL_SIMPLEX_NOISE, "Fractal Simplex Noise"},
+
         {DEBUG_VIEW_PIXEL_CHECKERBOARD, "Pixel Checkerboard"},
         {DEBUG_VIEW_VOLUME_RADIANCE_DEPTH_LAYERS, "Volume Radiance Depth Layers",
                                                     "Parameterize via:\n"
@@ -276,7 +282,6 @@ namespace dxvk {
         {DEBUG_VIEW_SCROLLING_LINE,                                        "Scrolling Line"},
         {DEBUG_VIEW_POM_ITERATIONS,                                        "POM Iterations"},
         {DEBUG_VIEW_POM_DIRECT_HIT_POS,                                    "POM Direct Hit Position (Tangent Space)"},
-        {DEBUG_VIEW_VALUE_NOISE,                                           "4D Value Noise"},
         {DEBUG_VIEW_HEIGHT_MAP,                                            "Height Map Value",
                                                                             "Valid values will be greyscale."
                                                                             "\nColored pixels indicate errors happened"
@@ -512,7 +517,7 @@ namespace dxvk {
         SAMPLER3D(DEBUG_VIEW_BINDING_VOLUME_AGE_INPUT)
         SAMPLER3D(DEBUG_VIEW_BINDING_VOLUME_RADIANCE_Y_INPUT)
         SAMPLER3D(DEBUG_VIEW_BINDING_VOLUME_RADIANCE_COCG_INPUT)
-        SAMPLER2D(DEBUG_VIEW_BINDING_VALUE_NOISE_SAMPLER)
+        SAMPLER3D(DEBUG_VIEW_BINDING_VALUE_NOISE_SAMPLER)
         TEXTURE2DARRAY(DEBUG_VIEW_BINDING_BLUE_NOISE_TEXTURE)
         TEXTURE2D(DEBUG_VIEW_BINDING_DEBUG_VIEW_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_NRD_VALIDATION_LAYER_INPUT)
@@ -657,7 +662,7 @@ namespace dxvk {
     const int indent = 50;
     ImGui::PushItemWidth(ImGui::GetWindowWidth() - indent);
     ImGui::PushID("Debug Views");
-    ImGui::ListBox("", &itemIndex, items.data(), items.size(), 4);
+    ImGui::ListBox("", &itemIndex, items.data(), items.size(), 8);
     ImGui::PopID();
     ImGui::PopItemWidth();
 
