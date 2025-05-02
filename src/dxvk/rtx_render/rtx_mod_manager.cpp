@@ -90,7 +90,7 @@ ModManager::Mods ModManager::enumerateAllMods() {
   
   const Path defaultModsDir = Path(modsPath).lexically_normal();
 
-  std::string baseGameModPath = getBaseGameModPath(RtxOptions::Get()->baseGameModRegex(), RtxOptions::Get()->baseGameModPathRegex());
+  std::string baseGameModPath = getBaseGameModPath(RtxOptions::baseGameModRegex(), RtxOptions::baseGameModPathRegex());
 
   std::vector<Path> vecModsDirs; // [TODO] = GetAddtlModsSearchDirs();
   if (baseGameModPath != "") {

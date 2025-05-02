@@ -490,7 +490,7 @@ namespace dxvk {
 
     // Note: Fall back to usual default in cases such as the "none" D3D fog mode, no fog remapping specified, or invalid values in the fog mode derivation
     // (such as dividing by zero).
-    float transmittanceMeasurementDistance = m_transmittanceMeasurementDistanceMeters * RtxOptions::Get()->getMeterToWorldUnitScale();
+    float transmittanceMeasurementDistance = m_transmittanceMeasurementDistanceMeters * RtxOptions::getMeterToWorldUnitScale();
     Vector3 multiScatteringEstimate = Vector3();
 
     // Todo: Make this configurable in the future as this threshold was created specifically for Portal RTX's underwater fixed function fog.
@@ -520,10 +520,10 @@ namespace dxvk {
         // Switch transmittance measurement distance derivation from D3D9 fog based on which fog mode is in use
 
         if (fogState.mode == D3DFOG_LINEAR) {
-          float fogRemapMaxDistanceMinMeters { m_fogRemapMaxDistanceMinMeters * RtxOptions::Get()->getMeterToWorldUnitScale() };
-          float fogRemapMaxDistanceMaxMeters { m_fogRemapMaxDistanceMaxMeters * RtxOptions::Get()->getMeterToWorldUnitScale() };
-          float fogRemapTransmittanceMeasurementDistanceMinMeters { m_fogRemapTransmittanceMeasurementDistanceMinMeters * RtxOptions::Get()->getMeterToWorldUnitScale() };
-          float fogRemapTransmittanceMeasurementDistanceMaxMeters { m_fogRemapTransmittanceMeasurementDistanceMaxMeters * RtxOptions::Get()->getMeterToWorldUnitScale() };
+          float fogRemapMaxDistanceMinMeters { m_fogRemapMaxDistanceMinMeters * RtxOptions::getMeterToWorldUnitScale() };
+          float fogRemapMaxDistanceMaxMeters { m_fogRemapMaxDistanceMaxMeters * RtxOptions::getMeterToWorldUnitScale() };
+          float fogRemapTransmittanceMeasurementDistanceMinMeters { m_fogRemapTransmittanceMeasurementDistanceMinMeters * RtxOptions::getMeterToWorldUnitScale() };
+          float fogRemapTransmittanceMeasurementDistanceMaxMeters { m_fogRemapTransmittanceMeasurementDistanceMaxMeters * RtxOptions::getMeterToWorldUnitScale() };
 
           // Note: Ensure the mins and maxes are consistent with eachother.
           fogRemapMaxDistanceMaxMeters = std::max(fogRemapMaxDistanceMaxMeters, fogRemapMaxDistanceMinMeters);
@@ -533,7 +533,7 @@ namespace dxvk {
           float const transmittanceMeasurementDistanceRange { fogRemapTransmittanceMeasurementDistanceMaxMeters - fogRemapTransmittanceMeasurementDistanceMinMeters };
           // Todo: Scene scale stuff ignored for now because scene scale stuff is not actually functioning properly. Add back in if it's ever fixed.
           // Note: Remap the end fog state distance into renderer units so that options can all be in renderer units (to be consistent with everything else).
-          // float const normalizedRange{ (fogState.end * getSceneScale() - fogRemapMaxDistanceMinMeters) / maxDistanceRange };
+          // float const normalizedRange{ (fogState.end * sceneScale() - fogRemapMaxDistanceMinMeters) / maxDistanceRange };
           float const normalizedRange { (fogState.end - fogRemapMaxDistanceMinMeters) / maxDistanceRange };
 
           transmittanceMeasurementDistance = normalizedRange * transmittanceMeasurementDistanceRange + fogRemapTransmittanceMeasurementDistanceMinMeters;
@@ -549,7 +549,7 @@ namespace dxvk {
             // Todo: Scene scale stuff ignored for now because scene scale stuff is not actually functioning properly. Add back in if it's ever fixed.
             // Note: Convert transmittance measurement distance into our engine's units (from game-specific world units due to being derived
             // from the D3D9 side of things). This in effect is the same as dividing the density by the scene scale.
-            // transmittanceMeasurementDistance *= getSceneScale();
+            // transmittanceMeasurementDistance *= sceneScale();
           }
         }
       }
@@ -588,7 +588,7 @@ namespace dxvk {
 
     volumeArgs.maxAccumulationFrames = static_cast<uint16_t>(maxAccumulationFrames());
     volumeArgs.froxelDepthSliceDistributionExponent = froxelDepthSliceDistributionExponent();
-    volumeArgs.froxelMaxDistance = froxelMaxDistanceMeters() * RtxOptions::Get()->getMeterToWorldUnitScale();
+    volumeArgs.froxelMaxDistance = froxelMaxDistanceMeters() * RtxOptions::getMeterToWorldUnitScale();
     volumeArgs.froxelFireflyFilteringLuminanceThreshold = froxelFireflyFilteringLuminanceThreshold();
     volumeArgs.attenuationCoefficient = volumetricAttenuationCoefficient;
     volumeArgs.enable = enable() && canUsePhysicalFog;
@@ -611,8 +611,8 @@ namespace dxvk {
     volumeArgs.volumetricFogAnisotropy = anisotropy();
 
     volumeArgs.enableNoiseFieldDensity = enableHeterogeneousFog();
-    volumeArgs.noiseFieldSubStepSize = noiseFieldSubStepSizeMeters() * RtxOptions::Get()->getMeterToWorldUnitScale();
-    volumeArgs.noiseFieldTimeScale = noiseFieldTimeScale();
+    volumeArgs.noiseFieldSubStepSize = noiseFieldSubStepSizeMeters() * RtxOptions::getMeterToWorldUnitScale();
+    volumeArgs.noiseFieldOctaves = noiseFieldOctaves();
     volumeArgs.noiseFieldDensityScale = noiseFieldDensityScale();
     volumeArgs.noiseFieldDensityExponent = noiseFieldDensityExponent();
     volumeArgs.noiseFieldOctaves = noiseFieldOctaves();
@@ -628,10 +628,10 @@ namespace dxvk {
 
     volumeArgs.enableAtmosphere = enableAtmosphere();
     volumeArgs.sceneUpDirection = sceneUpDirection;
-    volumeArgs.atmosphereHeight = atmosphereHeightMeters() * RtxOptions::Get()->getMeterToWorldUnitScale();
+    volumeArgs.atmosphereHeight = atmosphereHeightMeters() * RtxOptions::getMeterToWorldUnitScale();
     // Create a virtual planet center by projecting the camera position onto the plane defined by the origin and scene up direction.
-    volumeArgs.planetCenter = project(mainCamera.getPosition(), Vector3(), sceneUpDirection) - sceneUpDirection * atmospherePlanetRadiusMeters() * RtxOptions::Get()->getMeterToWorldUnitScale();
-    volumeArgs.atmosphereRadius = volumeArgs.atmosphereHeight + atmospherePlanetRadiusMeters() * RtxOptions::Get()->getMeterToWorldUnitScale();
+    volumeArgs.planetCenter = project(mainCamera.getPosition(), Vector3(), sceneUpDirection) - sceneUpDirection * atmospherePlanetRadiusMeters() * RtxOptions::getMeterToWorldUnitScale();
+    volumeArgs.atmosphereRadius = volumeArgs.atmosphereHeight + atmospherePlanetRadiusMeters() * RtxOptions::getMeterToWorldUnitScale();
     volumeArgs.maxAttenuationDistanceForNoAtmosphere = transmittanceMeasurementDistance * 5;
 
     volumeArgs.cameras[froxelVolumeMain] = mainCamera.getVolumeShaderConstants(volumeArgs.froxelMaxDistance);

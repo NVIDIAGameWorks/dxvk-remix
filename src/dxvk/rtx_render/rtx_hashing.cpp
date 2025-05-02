@@ -175,7 +175,7 @@ namespace dxvk {
 
     // Need to round the vertex positions to prevent floating point error from changing the hash.  In practice positions were found
     // to have value errors in the order of 1 mm, so this step value is chosen to be within an order of magnitude of 1 cm.
-    const float discreteStepSize = 0.01f * RtxOptions::Get()->getMeterToWorldUnitScale();
+    const float discreteStepSize = 0.01f * RtxOptions::getMeterToWorldUnitScale();
 
     const uint32_t dataToHash = query.size;
     const uint32_t kInitialHashVertexCount = 20;

@@ -303,7 +303,7 @@ namespace dxvk {
   }
 
   bool DxvkReSTIRGIRayQuery::isEnabled() const {
-    return RtxOptions::Get()->useReSTIRGI();
+    return RtxOptions::useReSTIRGI();
   }
 
   void DxvkReSTIRGIRayQuery::createDownscaledResource(

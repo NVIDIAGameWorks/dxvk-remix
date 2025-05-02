@@ -64,7 +64,7 @@
 * 
 *     A) Long-lived lights are those which haven't moved for 'getNumFramesToPutLightsToSleep' frames.
 * 
-*     B) A short-lived light is one which has not been seen for 'getNumFramesToKeepLights' frames, and before it can be put to sleep.
+*     B) A short-lived light is one which has not been seen for 'numFramesToKeepLights' frames, and before it can be put to sleep.
 * 
 *     C) Any light which moves, is defined as a dynamic light.
 */
@@ -100,8 +100,8 @@ namespace dxvk {
 
   void LightManager::garbageCollectionInternal() {
     const uint32_t currentFrame = m_device->getCurrentFrameId();
-    const uint32_t framesToKeep = RtxOptions::Get()->getNumFramesToKeepLights();
-    const uint32_t framesToSleep = RtxOptions::Get()->getNumFramesToPutLightsToSleep();
+    const uint32_t framesToKeep = RtxOptions::numFramesToKeepLights();
+    const uint32_t framesToSleep = RtxOptions::getNumFramesToPutLightsToSleep();
 
     const bool forceGarbageCollection = (m_lights.size() >= RtxOptions::AntiCulling::Light::numLightsToKeep());
     for (auto it = m_lights.begin(); it != m_lights.end();) {
@@ -142,7 +142,7 @@ namespace dxvk {
           break;
         case RtLightAntiCullingType::MeshReplacement:
           // Do Object-Anti-Culling if current light replaces original mesh
-          if (RtxOptions::Get()->needsMeshBoundingBox()) {
+          if (RtxOptions::needsMeshBoundingBox()) {
             const AxisAlignedBoundingBox& boundingBox = rtLight.getMeshReplacementBoundingBox();
             const Matrix4 objectToView = camera.getWorldToView(false) * rtLight.getMeshReplacementTransform();
             isLightInsideFrustum = boundingBoxIntersectsFrustumSAT((RtCamera&)camera, boundingBox.minPos, boundingBox.maxPos, objectToView, false);
@@ -596,7 +596,7 @@ namespace dxvk {
           const uint32_t isStaticCount = foundLightIt->second.isStaticCount;
 
           // If this light hasnt moved for N frames, put it to sleep.  This is a defeat device to stop games aggressively ramping up/down intensity as lights 
-          if (isStaticCount < RtxOptions::Get()->getNumFramesToPutLightsToSleep()) {
+          if (isStaticCount < RtxOptions::getNumFramesToPutLightsToSleep()) {
             uint16_t bufferIdx = foundLightIt->second.getBufferIdx();
             foundLightIt->second = rtLight;
             foundLightIt->second.setBufferIdx(bufferIdx);
@@ -623,7 +623,7 @@ namespace dxvk {
 
         // Update the cached light if it's similar.  This should catch minor perturbations in static lights (e.g. due to precision loss)
         const float kDistanceThresholdMeters = 0.02f;
-        const float kDistanceThresholdWorldUnits = kDistanceThresholdMeters * RtxOptions::Get()->getMeterToWorldUnitScale();
+        const float kDistanceThresholdWorldUnits = kDistanceThresholdMeters * RtxOptions::getMeterToWorldUnitScale();
         const float thisLightsSimilarity = isSimilar(light, rtLight, kDistanceThresholdWorldUnits);
 
         if (thisLightsSimilarity >= 0.f && thisLightsSimilarity > bestSimilarity) {

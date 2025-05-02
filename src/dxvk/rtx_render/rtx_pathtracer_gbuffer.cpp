@@ -187,8 +187,8 @@ namespace dxvk {
     const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device);
     const bool isShaderExecutionReorderingSupported = 
       RtxContext::checkIsShaderExecutionReorderingSupported(*m_device) && 
-      RtxOptions::Get()->isShaderExecutionReorderingInPathtracerGbufferEnabled();
-    const bool portalsEnabled = RtxOptions::Get()->rayPortalModelTextureHashes().size() > 0;
+      RtxOptions::isShaderExecutionReorderingInPathtracerGbufferEnabled();
+    const bool portalsEnabled = RtxOptions::rayPortalModelTextureHashes().size() > 0;
 
     if (RtxOptions::Shader::prewarmAllVariants()) {
       for (int32_t nrcEnabled = isNrcSupported; nrcEnabled >= 0; nrcEnabled--) {
@@ -208,15 +208,15 @@ namespace dxvk {
       }
     } else {
       // Note: The getters for these SER/OMM enabled flags also check if SER/OMMs are supported, so we do not need to check for that manually.
-      const bool serEnabled = RtxOptions::Get()->isShaderExecutionReorderingInPathtracerGbufferEnabled();
-      const bool ommEnabled = RtxOptions::Get()->getEnableOpacityMicromap();
-      const bool nrcEnabled = RtxOptions::Get()->integrateIndirectMode() == IntegrateIndirectMode::NeuralRadianceCache;
+      const bool serEnabled = RtxOptions::isShaderExecutionReorderingInPathtracerGbufferEnabled();
+      const bool ommEnabled = RtxOptions::getEnableOpacityMicromap();
+      const bool nrcEnabled = RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::NeuralRadianceCache;
 
       // Need both PSR and non-PSR passes.
       for (int32_t isPSRPass = 1; isPSRPass >= 0; isPSRPass--) {
         for (int32_t includePortals = portalsEnabled; includePortals >= 0; includePortals--) {
           DxvkComputePipelineShaders shaders;
-          switch (RtxOptions::Get()->getRenderPassGBufferRaytraceMode()) {
+          switch (RtxOptions::renderPassGBufferRaytraceMode()) {
           case RaytraceMode::RayQuery:
             getComputeShader(isPSRPass, nrcEnabled);
             break;
@@ -337,16 +337,16 @@ namespace dxvk {
     const VkExtent3D& rayDims = rtOutput.m_compositeOutputExtent;
 
     const bool nrcEnabled = nrc.isActive();
-    const bool serEnabled = RtxOptions::Get()->isShaderExecutionReorderingInPathtracerGbufferEnabled();
-    const bool ommEnabled = RtxOptions::Get()->getEnableOpacityMicromap();
-    const bool includePortals = RtxOptions::Get()->rayPortalModelTextureHashes().size() > 0 || rtOutput.m_raytraceArgs.numActiveRayPortals > 0;
+    const bool serEnabled = RtxOptions::isShaderExecutionReorderingInPathtracerGbufferEnabled();
+    const bool ommEnabled = RtxOptions::getEnableOpacityMicromap();
+    const bool includePortals = RtxOptions::rayPortalModelTextureHashes().size() > 0 || rtOutput.m_raytraceArgs.numActiveRayPortals > 0;
 
     GbufferPushConstants pushArgs = {};
     pushArgs.isTransmissionPSR = 0;
     ctx->setPushConstantBank(DxvkPushConstantBank::RTX);
     ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
 
-    switch (RtxOptions::Get()->getRenderPassGBufferRaytraceMode()) {
+    switch (RtxOptions::renderPassGBufferRaytraceMode()) {
     case RaytraceMode::RayQuery:
       VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 16, 8, 1 });
       {

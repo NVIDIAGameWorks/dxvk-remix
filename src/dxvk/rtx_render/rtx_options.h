@@ -1165,18 +1165,18 @@ namespace dxvk {
       }
     }
 
-    void updateUpscalerFromDlssPreset();
-    void updateUpscalerFromNisPreset();
-    void updateUpscalerFromTaauPreset();
-    void updatePresetFromUpscaler();
-    NV_GPU_ARCHITECTURE_ID getNvidiaArch();
-    NV_GPU_ARCH_IMPLEMENTATION_ID getNvidiaChipId();
-    void updateGraphicsPresets(DxvkDevice* device);
-    void updateLightingSetting();
-    void updatePathTracerPreset(PathTracerPreset preset);
-    void updateRaytraceModePresets(const uint32_t vendorID, const VkDriverId driverID);
+    static void updateUpscalerFromDlssPreset();
+    static void updateUpscalerFromNisPreset();
+    static void updateUpscalerFromTaauPreset();
+    static void updatePresetFromUpscaler();
+    static NV_GPU_ARCHITECTURE_ID getNvidiaArch();
+    static NV_GPU_ARCH_IMPLEMENTATION_ID getNvidiaChipId();
+    static void updateGraphicsPresets(DxvkDevice* device);
+    static void updateLightingSetting();
+    static void updatePathTracerPreset(PathTracerPreset preset);
+    static void updateRaytraceModePresets(const uint32_t vendorID, const VkDriverId driverID);
 
-    void resetUpscaler();
+    static void resetUpscaler();
 
     inline static const std::string kRtxConfigFilePath = "rtx.conf";
 
@@ -1198,7 +1198,7 @@ namespace dxvk {
 
     static std::unique_ptr<RtxOptions>& Get() { return pInstance; }
 
-    bool getRayPortalTextureIndex(const XXH64_hash_t& h, std::size_t& index) const {
+    static bool getRayPortalTextureIndex(const XXH64_hash_t& h, std::size_t& index) {
       const auto findResult = std::find(rayPortalModelTextureHashes().begin(), rayPortalModelTextureHashes().end(), h);
 
       if (findResult == rayPortalModelTextureHashes().end()) {
@@ -1214,166 +1214,56 @@ namespace dxvk {
       return integrateIndirectMode() == IntegrateIndirectMode::ReSTIRGI;
     }
 
-    bool shouldConvertToLight(const XXH64_hash_t& h) const {
+    static bool shouldConvertToLight(const XXH64_hash_t& h) {
       return lightConverter().find(h) != lightConverter().end();
     }
 
-    const ivec2 getDrawCallRange() const { Vector2i v = drawCallRange(); return ivec2{v.x, v.y}; }
-
-    // Camera
-    CameraAnimationMode getCameraAnimationMode() { return cameraAnimationMode(); }
-    bool isCameraShaking() { return shakeCamera(); }
-    int getCameraShakePeriod() { return cameraShakePeriod(); }
-    float getCameraAnimationAmplitude() { return cameraAnimationAmplitude(); }
-    bool getSkipObjectsWithUnknownCamera() const { return skipObjectsWithUnknownCamera(); }
-
-    bool isRayPortalVirtualInstanceMatchingEnabled() const { return useRayPortalVirtualInstanceMatching(); }
-    bool isPortalFadeInEffectEnabled() const { return enablePortalFadeInEffect(); }
-    bool isUpscalerEnabled() const { return upscalerType() != UpscalerType::None; }
 
     static bool isRayReconstructionEnabled() {
       return upscalerType() == UpscalerType::DLSS && enableRayReconstruction() && showRayReconstructionUI();
     }
 
-    bool showRayReconstructionOption() const {
-      return RtxOptions::Get()->upscalerType() == UpscalerType::DLSS && showRayReconstructionUI();
+    static bool showRayReconstructionOption() {
+      return RtxOptions::upscalerType() == UpscalerType::DLSS && showRayReconstructionUI();
     }
 
-    bool isDLSSEnabled() const {
+    static bool isDLSSEnabled() {
       return upscalerType() == UpscalerType::DLSS && !(enableRayReconstruction() && showRayReconstructionUI());
     }
 
-    bool isDLSSOrRayReconstructionEnabled() const {
+    static bool isDLSSOrRayReconstructionEnabled() {
       return upscalerType() == UpscalerType::DLSS;
     }
-
-    bool isNISEnabled() const { return upscalerType() == UpscalerType::NIS; }
-    bool isTAAEnabled() const { return upscalerType() == UpscalerType::TAAU; }
-    bool isDirectLightingEnabled() const { return enableDirectLighting(); }
-    bool isSecondaryBouncesEnabled() const { return enableSecondaryBounces(); }
-    bool isDenoiserEnabled() const { return useDenoiser(); }
-    bool isSeparatedDenoiserEnabled() const { return denoiseDirectAndIndirectLightingSeparately(); }
-    bool isReplaceDirectSpecularHitTWithIndirectSpecularHitTEnabled() const { return replaceDirectSpecularHitTWithIndirectSpecularHitT(); }
-    void setReplaceDirectSpecularHitTWithIndirectSpecularHitT(const bool enableReplaceDirectSpecularHitTWithIndirectSpecularHitT) {
+    static bool isNISEnabled() { return upscalerType() == UpscalerType::NIS; }
+    static bool isTAAEnabled() { return upscalerType() == UpscalerType::TAAU; }
+    static void setReplaceDirectSpecularHitTWithIndirectSpecularHitT(const bool enableReplaceDirectSpecularHitTWithIndirectSpecularHitT) {
       replaceDirectSpecularHitTWithIndirectSpecularHitTRef() = enableReplaceDirectSpecularHitTWithIndirectSpecularHitT;
     }
-    bool isAdaptiveResolutionDenoisingEnabled() const { return adaptiveResolutionDenoising(); }
-    bool shouldCaptureDebugImage() const { return captureDebugImage(); }
-    bool isZUp() const { return zUp(); }
-    bool isLeftHandedCoordinateSystem() const { return leftHandedCoordinateSystem(); }
-    float getUniqueObjectDistanceSqr() const { return uniqueObjectDistance() * uniqueObjectDistance(); }
-    float getResolutionScale() const { return resolutionScale(); }
-    DLSSProfile getDLSSQuality() const { return qualityDLSS(); }
-    uint32_t getNumFramesToKeepInstances() const { return numFramesToKeepInstances(); }
-    uint32_t getNumFramesToKeepBLAS() const { return numFramesToKeepBLAS(); }
-    uint32_t getNumFramesToKeepLights() const { return numFramesToKeepLights(); }
-    uint32_t getNumFramesToPutLightsToSleep() const { return numFramesToKeepLights() /2; }
-    float getMeterToWorldUnitScale() const { return 100.f * getSceneScale(); } // RTX Remix world unit is in 1cm 
-    float getSceneScale() const { return sceneScale(); }
-
-    // Render Pass Modes
-    //RenderPassVolumeIntegrateRaytraceMode getRenderPassVolumeIntegrateRaytraceMode() const { return renderPassVolumeIntegrateRaytraceMode; }
-    RenderPassGBufferRaytraceMode getRenderPassGBufferRaytraceMode() const { return renderPassGBufferRaytraceMode(); }
-    RenderPassIntegrateDirectRaytraceMode getRenderPassIntegrateDirectRaytraceMode() const { return renderPassIntegrateDirectRaytraceMode(); }
-    RenderPassIntegrateIndirectRaytraceMode getRenderPassIntegrateIndirectRaytraceMode() const { return renderPassIntegrateIndirectRaytraceMode(); }
-
-    // Resolve Options
-    uint8_t getPrimaryRayMaxInteractions() const { return primaryRayMaxInteractions(); }
-    uint8_t getPSRRayMaxInteractions() const { return psrRayMaxInteractions(); }
-    uint8_t getSecondaryRayMaxInteractions() const { return secondaryRayMaxInteractions(); }
-    float getResolveTransparencyThreshold() const { return resolveTransparencyThreshold(); }
-    float getResolveOpaquenessThreshold() const { return resolveOpaquenessThreshold(); }
     
+    static float getUniqueObjectDistanceSqr() { return uniqueObjectDistance() * uniqueObjectDistance(); }
+    static uint32_t getNumFramesToPutLightsToSleep() { return numFramesToKeepLights() /2; }
+    static float getMeterToWorldUnitScale() { return 100.f * sceneScale(); } // RTX Remix world unit is in 1cm 
+
     // Returns shared enablement composed of multiple enablement inputs
-    bool needsMeshBoundingBox();
-
-    // PSR Options
-    bool isPSRREnabled() const { return enablePSRR(); }
-    bool isPSTREnabled() const { return enablePSTR(); }
-    uint8_t getPSRRMaxBounces() const { return psrrMaxBounces(); }
-    uint8_t getPSTRMaxBounces() const { return pstrMaxBounces(); }
-    bool isPSTROutgoingSplitApproximationEnabled() const { return enablePSTROutgoingSplitApproximation(); }
-    bool isPSTRSecondaryIncidentSplitApproximationEnabled() const { return enablePSTRSecondaryIncidentSplitApproximation(); }
+    static bool needsMeshBoundingBox();
     
-    bool getIsShaderExecutionReorderingSupported() const { return isShaderExecutionReorderingSupported(); }
-    void setIsShaderExecutionReorderingSupported(bool enabled) { isShaderExecutionReorderingSupportedRef() = enabled; }
-    //bool isShaderExecutionReorderingInVolumeIntegrateEnabled() const { return enableShaderExecutionReorderingInVolumeIntegrate && isShaderExecutionReorderingSupported; }
-    bool isShaderExecutionReorderingInPathtracerGbufferEnabled() const { return enableShaderExecutionReorderingInPathtracerGbuffer() && isShaderExecutionReorderingSupported(); }
-    //bool isShaderExecutionReorderingInPathtracerIntegrateDirectEnabled() const { return enableShaderExecutionReorderingInPathtracerIntegrateDirect && isShaderExecutionReorderingSupported; }
-    bool isShaderExecutionReorderingInPathtracerIntegrateIndirectEnabled() const { return enableShaderExecutionReorderingInPathtracerIntegrateIndirect() && isShaderExecutionReorderingSupported(); }
-
-    // Path Options
-    bool isRussianRouletteEnabled() const { return enableRussianRoulette(); }
-    bool isFirstBounceLobeProbabilityDitheringEnabled() const { return enableFirstBounceLobeProbabilityDithering(); }
-    bool isUnorderedResolveInIndirectRaysEnabled() const { return enableUnorderedResolveInIndirectRays(); }
-    bool isDecalMaterialBlendingEnabled() const { return enableDecalMaterialBlending(); }
-    float getTranslucentDecalAlbedoFactor() const { return translucentDecalAlbedoFactor(); }
-    float getRussianRoulette1stBounceMinContinueProbability() const { return russianRoulette1stBounceMinContinueProbability(); }
-    float getRussianRoulette1stBounceMaxContinueProbability() const { return russianRoulette1stBounceMaxContinueProbability(); }
-    uint8_t getPathMinBounces() const { return pathMinBounces(); }
-    uint8_t getPathMaxBounces() const { return pathMaxBounces(); }
-    float getOpaqueDiffuseLobeSamplingProbabilityZeroThreshold() const { return opaqueDiffuseLobeSamplingProbabilityZeroThreshold(); }
-    float getMinOpaqueDiffuseLobeSamplingProbability() const { return minOpaqueDiffuseLobeSamplingProbability(); }
-    float getOpaqueSpecularLobeSamplingProbabilityZeroThreshold() const { return opaqueSpecularLobeSamplingProbabilityZeroThreshold(); }
-    float getMinOpaqueSpecularLobeSamplingProbability() const { return minOpaqueSpecularLobeSamplingProbability(); }
-    float getOpaqueOpacityTransmissionLobeSamplingProbabilityZeroThreshold() const { return opaqueOpacityTransmissionLobeSamplingProbabilityZeroThreshold(); }
-    float getMinOpaqueOpacityTransmissionLobeSamplingProbability() const { return minOpaqueOpacityTransmissionLobeSamplingProbability(); }
-    float getTranslucentSpecularLobeSamplingProbabilityZeroThreshold() const { return translucentSpecularLobeSamplingProbabilityZeroThreshold(); }
-    float getMinTranslucentSpecularLobeSamplingProbability() const { return minTranslucentSpecularLobeSamplingProbability(); }
-    float getTranslucentTransmissionLobeSamplingProbabilityZeroThreshold() const { return translucentTransmissionLobeSamplingProbabilityZeroThreshold(); }
-    float getMinTranslucentTransmissionLobeSamplingProbability() const { return minTranslucentTransmissionLobeSamplingProbability(); }
-    float getIndirectRaySpreadAngleFactor() const { return indirectRaySpreadAngleFactor(); }
-    bool getRngSeedWithFrameIndex() const { return rngSeedWithFrameIndex(); }
-
-    // Light Selection/Sampling Options
-    uint16_t getRISLightSampleCount() const { return risLightSampleCount(); }
-
-    
-    // Alpha Test/Blend Options
-    bool isAlphaBlendEnabled() const { return enableAlphaBlend(); }
-    bool isAlphaTestEnabled() const { return enableAlphaTest(); }
-    bool isEmissiveBlendEmissiveOverrideEnabled() const { return enableEmissiveBlendEmissiveOverride(); }
-    float getEmissiveBlendOverrideEmissiveIntensity() const { return emissiveBlendOverrideEmissiveIntensity(); }
-    float getParticleSoftnessFactor() const { return particleSoftnessFactor(); }
-
-    // Ray Portal Options
-    std::size_t getRayPortalPairCount() const { return rayPortalModelTextureHashes().size() / 2; }
-    Vector3 getRayPortalWidthAxis() const { return rayPortalModelWidthAxis(); }
-    Vector3 getRayPortalHeightAxis() const { return rayPortalModelHeightAxis(); }
-    float getRayPortalSamplingWeightMinDistance() const { return rayPortalSamplingWeightMinDistance(); }
-    float getRayPortalSamplingWeightMaxDistance() const { return rayPortalSamplingWeightMaxDistance(); }
-    bool getRayPortalCameraHistoryCorrection() const { return rayPortalCameraHistoryCorrection(); }
-    bool getRayPortalCameraInBetweenPortalsCorrection() const { return rayPortalCameraInBetweenPortalsCorrection(); }
-
-    bool getWhiteMaterialModeEnabled() const { return useWhiteMaterialMode(); }
-    bool getHighlightLegacyModeEnabled() const { return useHighlightLegacyMode(); }
-    bool getHighlightUnsafeAnchorModeEnabled() const { return useHighlightUnsafeAnchorMode(); }
-    bool getHighlightUnsafeReplacementModeEnabled() const { return useHighlightUnsafeReplacementMode(); }
-    float getNativeMipBias() const { return nativeMipBias(); }
-    bool getAnisotropicFilteringEnabled() const { return useAnisotropicFiltering(); }
-    float getMaxAnisotropySamples() const { return maxAnisotropySamples(); }
+    static void setIsShaderExecutionReorderingSupported(bool enabled) { isShaderExecutionReorderingSupportedRef() = enabled; }
+    static bool isShaderExecutionReorderingInPathtracerGbufferEnabled() { return enableShaderExecutionReorderingInPathtracerGbuffer() && isShaderExecutionReorderingSupported(); }
+    static bool isShaderExecutionReorderingInPathtracerIntegrateIndirectEnabled() { return enableShaderExecutionReorderingInPathtracerIntegrateIndirect() && isShaderExecutionReorderingSupported(); }
 
     // Developer Options
-    ivec2 getDrawCallRange() { Vector2i v = drawCallRange(); return ivec2{v.x, v.y}; };
-    Vector3 getOverrideWorldOffset() { return instanceOverrideWorldOffset(); }
-    uint getInstanceOverrideInstanceIdx() { return instanceOverrideInstanceIdx(); }
-    uint getInstanceOverrideInstanceIdxRange() { return instanceOverrideInstanceIdxRange(); }
-    bool getInstanceOverrideSelectedPrintMaterialHash() { return instanceOverrideSelectedInstancePrintMaterialHash(); }
-    
-    bool getIsOpacityMicromapSupported() const { return opacityMicromap.isSupported; }
-    void setIsOpacityMicromapSupported(bool enabled) { opacityMicromap.isSupported = enabled; }
-    bool getEnableOpacityMicromap() const { return opacityMicromap.enable() && opacityMicromap.isSupported; }
-    void setEnableOpacityMicromap(bool enabled) { opacityMicromap.enableRef() = enabled; }
+    static bool getIsOpacityMicromapSupported() { return Get()->opacityMicromap.isSupported; }
+    static void setIsOpacityMicromapSupported(bool enabled) { Get()->opacityMicromap.isSupported = enabled; }
+    static bool getEnableOpacityMicromap() { return Get()->opacityMicromap.enable() && Get()->opacityMicromap.isSupported; }
 
-    bool getEnableAnyReplacements() { return enableReplacementAssets() && (enableReplacementLights() || enableReplacementMeshes() || enableReplacementMaterials()); }
-    bool getEnableReplacementLights() { return enableReplacementAssets() && enableReplacementLights(); }
-    bool getEnableReplacementMeshes() { return enableReplacementAssets() && enableReplacementMeshes(); }
-    bool getEnableReplacementMaterials() { return enableReplacementAssets() && enableReplacementMaterials(); }
+    static bool getEnableAnyReplacements() { return enableReplacementAssets() && (enableReplacementLights() || enableReplacementMeshes() || enableReplacementMaterials()); }
+    static bool getEnableReplacementLights() { return enableReplacementAssets() && enableReplacementLights(); }
+    static bool getEnableReplacementMeshes() { return enableReplacementAssets() && enableReplacementMeshes(); }
+    static bool getEnableReplacementMaterials() { return enableReplacementAssets() && enableReplacementMaterials(); }
 
     // Capture Options
     //   General
-    bool getCaptureShowMenuOnHotkey() const { return m_captureShowMenuOnHotkey.getValue(); }
-    bool getCaptureInstances() const {
+    static bool getCaptureInstances() {
       if (m_captureNoInstance.getValue() != m_captureNoInstance.getDefaultValue()) {
         Logger::warn("rtx.captureNoInstance has been deprecated, but will still be respected for the time being, unless rtx.captureInstances is set.");
         if (m_captureInstances.getValue() != m_captureInstances.getDefaultValue()) {
@@ -1383,31 +1273,8 @@ namespace dxvk {
       }
       return m_captureInstances;
     }
-    std::string getCaptureInstanceStageName() const { return captureInstanceStageName(); }
-    //   Multiframe
-    bool getCaptureEnableMultiframe() const { return m_captureEnableMultiframe.getValue(); }
-    uint32_t getCaptureMaxFrames() const { return captureMaxFrames(); }
-    //   Advanced
-    uint32_t getCaptureFramesPerSecond() const { return captureFramesPerSecond(); }
-    //     Mesh
-    float getCaptureMeshPositionDelta() const { return captureMeshPositionDelta(); }
-    float getCaptureMeshNormalDelta() const { return captureMeshNormalDelta(); }
-    float getCaptureMeshTexcoordDelta() const { return captureMeshTexcoordDelta(); }
-    float getCaptureMeshColorDelta() const { return captureMeshColorDelta(); }
-    float getCaptureMeshBlendWeightDelta() const { return captureMeshBlendWeightDelta(); }
     
-    bool isUseVirtualShadingNormalsForDenoisingEnabled() const { return useVirtualShadingNormalsForDenoising(); }
-    bool isResetDenoiserHistoryOnSettingsChangeEnabled() const { return resetDenoiserHistoryOnSettingsChange(); }
-    
-    std::uint32_t getPresentThrottleDelay() const { return enablePresentThrottle() ? presentThrottleDelay() : 0; }
-    bool getValidateCPUIndexData() const { return validateCPUIndexData(); }
-
-    float getEffectLightIntensity() const { return effectLightIntensity(); }
-    float getEffectLightRadius() const { return effectLightRadius(); }
-    bool getEffectLightPlasmaBall() const { return effectLightPlasmaBall(); }
-    std::string getCurrentDirectory() const;
-
-    bool shouldUseObsoleteHashOnTextureUpload() const { return useObsoleteHashOnTextureUpload(); }
+    static std::string getCurrentDirectory();
 
     static float calcUserEVBias() {
       return (float(RtxOptions::userBrightness() - 50) / 100.f)

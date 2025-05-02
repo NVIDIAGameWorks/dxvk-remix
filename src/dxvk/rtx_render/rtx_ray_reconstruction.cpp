@@ -103,7 +103,7 @@ namespace dxvk {
   }
 
   DxvkRayReconstruction::RayReconstructionParticleBufferMode DxvkRayReconstruction::getParticleBufferMode() {
-    return RtxOptions::Get()->isRayReconstructionEnabled() ? particleBufferMode() : RayReconstructionParticleBufferMode::None;
+    return RtxOptions::isRayReconstructionEnabled() ? particleBufferMode() : RayReconstructionParticleBufferMode::None;
   }
 
   void DxvkRayReconstruction::release() {
@@ -118,7 +118,7 @@ namespace dxvk {
   }
 
   bool DxvkRayReconstruction::useRayReconstruction() {
-    return supportsRayReconstruction() && RtxOptions::Get()->isRayReconstructionEnabled();
+    return supportsRayReconstruction() && RtxOptions::isRayReconstructionEnabled();
   }
 
   void DxvkRayReconstruction::dispatch(
@@ -346,7 +346,7 @@ namespace dxvk {
     if (showAdvancedSettings) {
       bool presetChanged = ImGui::Combo("DLSS-RR Preset", &pathTracerPresetObject(), "Default\0ReSTIR Finetuned\0");
       if (presetChanged) {
-        RtxOptions::Get()->updatePathTracerPreset(pathTracerPreset());
+        RtxOptions::updatePathTracerPreset(pathTracerPreset());
       }
       
       ImGui::Checkbox("Use Virtual Normals", &m_useVirtualNormals);

@@ -112,10 +112,10 @@ namespace dxvk {
       getComputeShader();
     } else {
       // Note: The getter for OMM enabled also checks if OMMs are supported, so we do not need to check for that manually.
-      const bool ommEnabled = RtxOptions::Get()->getEnableOpacityMicromap();
+      const bool ommEnabled = RtxOptions::getEnableOpacityMicromap();
 
       DxvkComputePipelineShaders shaders;
-      switch (RtxOptions::Get()->getRenderPassIntegrateDirectRaytraceMode()) {
+      switch (RtxOptions::renderPassIntegrateDirectRaytraceMode()) {
       case RaytraceMode::RayQuery:
         getComputeShader();
         break;
@@ -195,9 +195,9 @@ namespace dxvk {
 
     const VkExtent3D& rayDims = rtOutput.m_compositeOutputExtent;
 
-    const bool ommEnabled = RtxOptions::Get()->getEnableOpacityMicromap();
+    const bool ommEnabled = RtxOptions::getEnableOpacityMicromap();
 
-    switch (RtxOptions::Get()->getRenderPassIntegrateDirectRaytraceMode()) {
+    switch (RtxOptions::renderPassIntegrateDirectRaytraceMode()) {
     case RaytraceMode::RayQuery:
       VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 16, 8, 1 });
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getComputeShader());

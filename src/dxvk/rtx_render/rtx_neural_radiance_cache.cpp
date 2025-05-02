@@ -506,7 +506,7 @@ namespace dxvk {
   }
 
   bool NeuralRadianceCache::isEnabled() const {
-    return RtxOptions::Get()->integrateIndirectMode() == IntegrateIndirectMode::NeuralRadianceCache;
+    return RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::NeuralRadianceCache;
   }
 
   void NeuralRadianceCache::onFrameBegin(
@@ -559,7 +559,7 @@ namespace dxvk {
       // Note: it would be preferable to fallback to ReSTIRGI, but that would require delaying that change to the beginning of the next frame
       // to ensure consistent mode state in the frame. That is something to consider in the future. For now this will do for the sake of simpler logic
       Logger::warn(str::format("[RTX Neural Radiance Cache] Neural Radiance Cache per frame setup failed. Switching to importance sampled indirect illumination mode."));
-      RtxOptions::Get()->integrateIndirectModeRef() = IntegrateIndirectMode::ImportanceSampled;
+      RtxOptions::integrateIndirectModeRef() = IntegrateIndirectMode::ImportanceSampled;
       
       return;
     }
@@ -609,7 +609,7 @@ namespace dxvk {
       m_nrcCtxSettings->maxPathVertices = NrcOptions::trainingMaxPathBounces();
       m_nrcCtxSettings->samplesPerPixel = 1;
       assert(m_nrcCtxSettings->samplesPerPixel <= NRC_MAX_SAMPLES_PER_PIXEL);
-      m_nrcCtxSettings->smallestResolvableFeatureSize = NrcOptions::smallestResolvableFeatureSizeMeters() *  RtxOptions::Get()->getMeterToWorldUnitScale();
+      m_nrcCtxSettings->smallestResolvableFeatureSize = NrcOptions::smallestResolvableFeatureSizeMeters() *  RtxOptions::getMeterToWorldUnitScale();
 
       // Set scene bounds
 
@@ -630,7 +630,7 @@ namespace dxvk {
           NrcOptions::sceneBoundsWidthMeters(),
           NrcOptions::sceneBoundsWidthMeters(),
           NrcOptions::sceneBoundsWidthMeters() }
-          * RtxOptions::Get()->getMeterToWorldUnitScale();
+          * RtxOptions::getMeterToWorldUnitScale();
 
         sceneAabb.minPos = cameraPos - halfRelativeBBOX;
         sceneAabb.maxPos = cameraPos + halfRelativeBBOX;
@@ -720,13 +720,13 @@ namespace dxvk {
 
     if (!checkIsSupported(ctx->getDevice().ptr())) {
       ONCE(Logger::warn("[RTX Neural Radiance Cache] Neural Radiance Cache is not supported. Switching to importance sampled indirect illumination mode."));
-      RtxOptions::Get()->integrateIndirectModeRef() = IntegrateIndirectMode::ImportanceSampled;
+      RtxOptions::integrateIndirectModeRef() = IntegrateIndirectMode::ImportanceSampled;
       return false;
     }
 
     if (!initialize(*ctx->getDevice())) {
       Logger::err("[RTX Neural Radiance Cache] Neural Radiance Cache failed to get initialized. Switching to importance sampled indirect illumination mode.");
-      RtxOptions::Get()->integrateIndirectModeRef() = IntegrateIndirectMode::ImportanceSampled;
+      RtxOptions::integrateIndirectModeRef() = IntegrateIndirectMode::ImportanceSampled;
       return false;
     }
 

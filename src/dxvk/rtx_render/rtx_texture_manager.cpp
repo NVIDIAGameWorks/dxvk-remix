@@ -1335,7 +1335,7 @@ namespace dxvk {
       // Reserve space for various non-texture GPU resources (buffers, etc)
 
       const auto adaptiveResolutionReservedGPUMemoryMiB =
-        static_cast<std::int32_t>(RtxOptions::Get()->adaptiveResolutionReservedGPUMemoryGiB() * MiBPerGiB);
+        static_cast<std::int32_t>(RtxOptions::adaptiveResolutionReservedGPUMemoryGiB() * MiBPerGiB);
 
       // Note: int32_t used for clamping behavior on underflow.
       availableMemorySizeMib = std::max(static_cast<std::int32_t>(availableMemorySizeMib) - adaptiveResolutionReservedGPUMemoryMiB, 0);

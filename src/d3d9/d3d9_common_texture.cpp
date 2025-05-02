@@ -672,7 +672,7 @@ namespace dxvk {
       return;
 
     const bool useObsoleteHashMethod = NeedsUpload(subresource) &&
-      RtxOptions::Get()->shouldUseObsoleteHashOnTextureUpload();
+      RtxOptions::useObsoleteHashOnTextureUpload();
 
     // Generate hash from CPU buffer
     XXH64_hash_t imageHash;

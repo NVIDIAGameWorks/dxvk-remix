@@ -257,7 +257,7 @@ namespace dxvk {
   void DxvkRtxdiRayQuery::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
     ScopedGpuProfileZone(ctx, "RTXDI");
 
-    if (!RtxOptions::Get()->useRTXDI()) {
+    if (!RtxOptions::useRTXDI()) {
       return;
     }
 
@@ -350,7 +350,7 @@ namespace dxvk {
 
   void DxvkRtxdiRayQuery::dispatchGradient(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
     
-    if (!RtxOptions::Get()->useRTXDI() || !enableDenoiserGradient()) {
+    if (!RtxOptions::useRTXDI() || !enableDenoiserGradient()) {
       return;
     }
 
@@ -415,7 +415,7 @@ namespace dxvk {
 
   void DxvkRtxdiRayQuery::dispatchConfidence(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
     
-    if (!RtxOptions::Get()->useRTXDI() ||
+    if (!RtxOptions::useRTXDI() ||
         !getEnableDenoiserConfidence(*ctx)) {
       return;
     }

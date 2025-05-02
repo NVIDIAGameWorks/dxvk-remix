@@ -221,7 +221,7 @@ namespace dxvk {
       const uint32_t numVertexBytes = ctx.stride * geoData.vertexCount;
 
       // Validating index data here, vertexCount and vertexIndexOffset accounts for the min/max indices
-      if (RtxOptions::Get()->getValidateCPUIndexData()) {
+      if (RtxOptions::validateCPUIndexData()) {
         if (ctx.mappedSlice.length < vertexOffset + numVertexBytes) {
           throw DxvkError("Invalid draw call");
         }
@@ -373,14 +373,14 @@ namespace dxvk {
     m_activeDrawCallState.isDrawingToRaytracedRenderTarget = false;
     m_activeDrawCallState.isUsingRaytracedRenderTarget = false;
 
-    if (m_drawCallID < (uint32_t)RtxOptions::Get()->getDrawCallRange().x ||
-        m_drawCallID > (uint32_t)RtxOptions::Get()->getDrawCallRange().y) {
+    if (m_drawCallID < (uint32_t)RtxOptions::drawCallRange().x ||
+        m_drawCallID > (uint32_t)RtxOptions::drawCallRange().y) {
       return { RtxGeometryStatus::Ignored, false };
     }
 
     // Raytraced Render Target Support
     // If the bound texture for this draw call is one that has been used as a render target then store its id
-    if (RtxOptions::Get()->raytracedRenderTarget.enable()) {
+    if (RtxOptions::RaytracedRenderTarget::enable()) {
       for (uint32_t i : bit::BitMask(m_parent->GetActiveRTTextures())) {
         D3D9CommonTexture* texture = GetCommonTexture(d3d9State().textures[i]);
         if (lookupHash(RtxOptions::raytracedRenderTargetTextures(), texture->GetImage()->getDescriptorHash())) {
@@ -405,12 +405,12 @@ namespace dxvk {
       return { RtxGeometryStatus::Ignored, false };
     }
 
-    if (!RtxOptions::Get()->isAlphaTestEnabled() && m_parent->IsAlphaTestEnabled()) {
+    if (!RtxOptions::enableAlphaTest() && m_parent->IsAlphaTestEnabled()) {
       ONCE(Logger::info(str::format("[RTX-Compatibility-Info] Raytracing an alpha-tested draw call when alpha-tested objects disabled in RT. Ignoring.")));
       return { RtxGeometryStatus::Ignored, false };
     }
 
-    if (!RtxOptions::Get()->isAlphaBlendEnabled() && d3d9State().renderStates[D3DRS_ALPHABLENDENABLE]) {
+    if (!RtxOptions::enableAlphaBlend() && d3d9State().renderStates[D3DRS_ALPHABLENDENABLE]) {
       ONCE(Logger::info(str::format("[RTX-Compatibility-Info] Raytracing an alpha-blended draw call when alpha-blended objects disabled in RT. Ignoring.")));
       return { RtxGeometryStatus::Ignored, false };
     }
@@ -452,7 +452,7 @@ namespace dxvk {
     // If this isn't the primary render target but we have used this render target before then 
     // store the current camera matrices in case this render target is intended to be used as 
     // a texture for some geometry later
-    if (RtxOptions::Get()->raytracedRenderTarget.enable()) {
+    if (RtxOptions::RaytracedRenderTarget::enable()) {
       D3D9CommonTexture* texture = GetCommonTexture(d3d9State().renderTargets[kRenderTargetIndex]->GetBaseTexture());
       if (texture && lookupHash(RtxOptions::raytracedRenderTargetTextures(), texture->GetImage()->getDescriptorHash())) {
         m_activeDrawCallState.isDrawingToRaytracedRenderTarget = true;
@@ -537,7 +537,7 @@ namespace dxvk {
 
     // RTX was injected => treat everything else as rasterized 
     if (m_rtxInjectTriggered) {
-      return RtxOptions::Get()->skipDrawCallsPostRTXInjection()
+      return RtxOptions::skipDrawCallsPostRTXInjection()
              ? PrepareDrawFlag::Ignore
              : PrepareDrawFlag::PreserveDrawCallAndItsState;
     }
@@ -545,7 +545,7 @@ namespace dxvk {
     const auto [status, triggerRtxInjection] = makeDrawCallType(drawContext);
 
     // When raytracing is enabled we want to completely remove the ignored drawcalls from further processing as early as possible
-    const PrepareDrawFlags prepareFlagsForIgnoredDraws = RtxOptions::Get()->enableRaytracing()
+    const PrepareDrawFlags prepareFlagsForIgnoredDraws = RtxOptions::enableRaytracing()
                                                          ? PrepareDrawFlag::Ignore
                                                          : PrepareDrawFlag::PreserveDrawCallAndItsState;
 
@@ -567,7 +567,7 @@ namespace dxvk {
       return PrepareDrawFlag::PreserveDrawCallAndItsState;
     }
 
-    m_forceGeometryCopy = RtxOptions::Get()->useBuffersDirectly() == false;
+    m_forceGeometryCopy = RtxOptions::useBuffersDirectly() == false;
     m_forceGeometryCopy |= m_parent->GetOptions()->allowDiscard == false;
 
     // The packet we'll send to RtxContext with information about geometry
@@ -607,7 +607,7 @@ namespace dxvk {
       return prepareFlagsForIgnoredDraws;
     }
 
-    if (RtxOptions::Get()->raytracedRenderTarget.enable()) {
+    if (RtxOptions::RaytracedRenderTarget::enable()) {
       // If this draw call has an RT texture bound
       if (m_activeDrawCallState.isUsingRaytracedRenderTarget) {
         // We validate this state below
@@ -913,7 +913,7 @@ namespace dxvk {
         // Note: If the tFactor is disabled for current texture (useStageTextureFactorBlending) then we should ignore the multiple stage tFactor blendings.
         bool isCurrentStageTextureFactorBlendingEnabled = false;
         if (useStageTextureFactorBlending &&
-            RtxOptions::Get()->enableMultiStageTextureFactorBlending() &&
+            RtxOptions::enableMultiStageTextureFactorBlending() &&
             stage != 0 &&
             isTextureFactorBlendingEnabled(d3d9State().textureStages[stage])) {
           isCurrentStageTextureFactorBlendingEnabled = true;
@@ -1067,7 +1067,7 @@ namespace dxvk {
   }
 
   PrepareDrawFlags D3D9Rtx::PrepareDrawGeometryForRT(const bool indexed, const DrawContext& context) {
-    if (!RtxOptions::Get()->enableRaytracing() || !m_enableDrawCallConversion) {
+    if (!RtxOptions::enableRaytracing() || !m_enableDrawCallConversion) {
       return PrepareDrawFlag::PreserveDrawCallAndItsState;
     }
 
@@ -1116,7 +1116,7 @@ namespace dxvk {
                                                        const uint32_t vertexSize,
                                                        const uint32_t vertexStride,
                                                        const DrawContext& drawContext) {
-    if (!RtxOptions::Get()->enableRaytracing() || !m_enableDrawCallConversion) {
+    if (!RtxOptions::enableRaytracing() || !m_enableDrawCallConversion) {
       return PrepareDrawFlag::PreserveDrawCallAndItsState;
     }
 

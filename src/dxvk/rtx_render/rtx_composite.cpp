@@ -237,7 +237,7 @@ namespace dxvk {
   }
 
   bool CompositePass::enableAccumulation() const {
-    return RtxOptions::Get()->useDenoiserReferenceMode();
+    return RtxOptions::useDenoiserReferenceMode();
   }
 
   void CompositePass::onFrameBegin(
@@ -384,11 +384,11 @@ namespace dxvk {
       compositeArgs.fogMode = fog.mode;
       compositeArgs.fogColor = { fog.color.x * colorScale, fog.color.y * colorScale, fog.color.z * colorScale };
       // Todo: Scene scale stuff ignored for now because scene scale stuff is not actually functioning properly. Add back in if it's ever fixed.
-      // compositeArgs.fogEnd = fog.end * RtxOptions::Get()->getSceneScale();
-      // compositeArgs.fogScale = fog.scale * RtxOptions::Get()->getSceneScale();
+      // compositeArgs.fogEnd = fog.end * RtxOptions::sceneScale();
+      // compositeArgs.fogScale = fog.scale * RtxOptions::sceneScale();
       // Note: Density can simply be divided by the scene scale factor to account for the fact that the distance in the exponent
       // will be in render units (scaled by the scene scale), not the original game's units it was targetted for.
-      // compositeArgs.fogDensity = fabsf(fog.density) / RtxOptions::Get()->getSceneScale();
+      // compositeArgs.fogDensity = fabsf(fog.density) / RtxOptions::sceneScale();
       compositeArgs.fogEnd = fog.end;
       compositeArgs.fogScale = fog.scale;
       compositeArgs.fogDensity = fabsf(fog.density);
@@ -397,20 +397,20 @@ namespace dxvk {
 
     // Combine the direct and indirect channels if the seperated denoiser is enabled, otherwise the channels will be combined
     // elsewhere before compositing.
-    compositeArgs.combineLightingChannels = RtxOptions::Get()->isSeparatedDenoiserEnabled();
+    compositeArgs.combineLightingChannels = RtxOptions::denoiseDirectAndIndirectLightingSeparately();
     compositeArgs.debugKnob = ctx->getCommonObjects()->metaDebugView().debugKnob();
     compositeArgs.demodulateRoughness = settings.demodulateRoughness;
     compositeArgs.roughnessDemodulationOffset = settings.roughnessDemodulationOffset;
     compositeArgs.usePostFilter = usePostFilter()
-      && (RtxOptions::Get()->isDenoiserEnabled() || RtxOptions::Get()->isRayReconstructionEnabled())
-      && !RtxOptions::Get()->useDenoiserReferenceMode()
-      && RtxOptions::Get()->useReSTIRGI();
+      && (RtxOptions::useDenoiser() || RtxOptions::isRayReconstructionEnabled())
+      && !RtxOptions::useDenoiserReferenceMode()
+      && RtxOptions::useReSTIRGI();
 
     auto& rayReconstruction = ctx->getCommonObjects()->metaRayReconstruction();
     compositeArgs.postFilterThreshold = postFilterThreshold();
     compositeArgs.pixelHighlightReuseStrength = 1.0 / pixelHighlightReuseStrength();
-    compositeArgs.enableRtxdi = RtxOptions::Get()->useRTXDI();
-    compositeArgs.enableReSTIRGI = RtxOptions::Get()->useReSTIRGI();
+    compositeArgs.enableRtxdi = RtxOptions::useRTXDI();
+    compositeArgs.enableReSTIRGI = RtxOptions::useReSTIRGI();
     compositeArgs.volumeArgs = rtOutput.m_raytraceArgs.volumeArgs;
     compositeArgs.outputParticleLayer = ctx->useRayReconstruction() && rayReconstruction.useParticleBuffer();
     compositeArgs.outputSecondarySignalToParticleLayer = ctx->useRayReconstruction() && rayReconstruction.preprocessSecondarySignal();
@@ -475,7 +475,7 @@ namespace dxvk {
     memcpy(&compositeArgs.rayPortalHitInfos[maxRayPortalCount], &portalData.previousRayPortalHitInfos, sizeof(portalData.previousRayPortalHitInfos));
 
     compositeArgs.domeLightArgs = domeLightArgs;
-    compositeArgs.skyBrightness = RtxOptions::Get()->skyBrightness();
+    compositeArgs.skyBrightness = RtxOptions::skyBrightness();
 
     Rc<DxvkBuffer> cb = getCompositeConstantsBuffer();
     ctx->writeToBuffer(cb, 0, sizeof(CompositeArgs), &compositeArgs);

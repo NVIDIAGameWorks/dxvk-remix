@@ -45,7 +45,7 @@ namespace dxvk {
     using namespace std::chrono;
 
     // Should we show the splash message?  Don't if hidden, or if UI already active
-    if (!m_hasStarted && !SplashSettings::hideSplashMessage() && RtxOptions::Get()->showUI() == UIType::None) {
+    if (!m_hasStarted && !SplashSettings::hideSplashMessage() && RtxOptions::showUI() == UIType::None) {
       // No need to start again
       m_hasStarted = true;
 

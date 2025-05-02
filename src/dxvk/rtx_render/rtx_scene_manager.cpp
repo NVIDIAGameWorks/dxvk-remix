@@ -116,21 +116,21 @@ namespace dxvk {
   }
 
   Vector3 SceneManager::getSceneUp() {
-    return RtxOptions::Get()->zUp() ? Vector3(0.f, 0.f, 1.f) : Vector3(0.f, 1.f, 0.f);
+    return RtxOptions::zUp() ? Vector3(0.f, 0.f, 1.f) : Vector3(0.f, 1.f, 0.f);
   }
 
   Vector3 SceneManager::getSceneForward() {
-    return RtxOptions::Get()->zUp() ? Vector3(0.f, 1.f, 0.f) : Vector3(0.f, 0.f, 1.f);
+    return RtxOptions::zUp() ? Vector3(0.f, 1.f, 0.f) : Vector3(0.f, 0.f, 1.f);
   }
 
   Vector3 SceneManager::calculateSceneRight() {
     const Vector3 up = SceneManager::getSceneUp();
     const Vector3 forward = SceneManager::getSceneForward();
-    return RtxOptions::Get()->isLeftHandedCoordinateSystem() ? cross(up, forward) : cross(forward, up);
+    return RtxOptions::leftHandedCoordinateSystem() ? cross(up, forward) : cross(forward, up);
   }
 
   Vector3 SceneManager::worldToSceneOrientedVector(const Vector3& worldVector) {
-    return RtxOptions::Get()->zUp() ? worldVector : Vector3(worldVector.x, worldVector.z, worldVector.y);
+    return RtxOptions::zUp() ? worldVector : Vector3(worldVector.x, worldVector.z, worldVector.y);
   }
 
   Vector3 SceneManager::sceneToWorldOrientedVector(const Vector3& sceneVector) {
@@ -141,9 +141,9 @@ namespace dxvk {
   float SceneManager::getTotalMipBias() {
     auto& resourceManager = m_device->getCommon()->getResources();
 
-    const bool temporalUpscaling = RtxOptions::Get()->isDLSSOrRayReconstructionEnabled() || RtxOptions::Get()->isTAAEnabled();
-    float totalUpscaleMipBias = temporalUpscaling ? (log2(resourceManager.getUpscaleRatio()) + RtxOptions::Get()->upscalingMipBias()) : 0.0f;
-    return totalUpscaleMipBias + RtxOptions::Get()->getNativeMipBias();
+    const bool temporalUpscaling = RtxOptions::isDLSSOrRayReconstructionEnabled() || RtxOptions::isTAAEnabled();
+    float totalUpscaleMipBias = temporalUpscaling ? (log2(resourceManager.getUpscaleRatio()) + RtxOptions::upscalingMipBias()) : 0.0f;
+    return totalUpscaleMipBias + RtxOptions::nativeMipBias();
   }
 
   void SceneManager::clear(Rc<DxvkContext> ctx, bool needWfi) {
@@ -181,7 +181,7 @@ namespace dxvk {
   void SceneManager::garbageCollection() {
     ScopedCpuProfileZone();
 
-    const size_t oldestFrame = m_device->getCurrentFrameId() - RtxOptions::Get()->numFramesToKeepGeometryData();
+    const size_t oldestFrame = m_device->getCurrentFrameId() - RtxOptions::numFramesToKeepGeometryData();
     auto blasEntryGarbageCollection = [&](auto& iter, auto& entries) -> void {
       if (iter->second.frameLastTouched < oldestFrame) {
         onSceneObjectDestroyed(iter->second);
@@ -197,7 +197,7 @@ namespace dxvk {
     // case the life of the instances will be extended and we need to keep the BLAS as well.
     if (!RtxOptions::AntiCulling::Object::enable()) {
       auto& entries = m_drawCallCache.getEntries();
-      if (m_device->getCurrentFrameId() > RtxOptions::Get()->numFramesToKeepGeometryData()) {
+      if (m_device->getCurrentFrameId() > RtxOptions::numFramesToKeepGeometryData()) {
         for (auto iter = entries.begin(); iter != entries.end(); ) {
           blasEntryGarbageCollection(iter, entries);
         }
@@ -213,7 +213,7 @@ namespace dxvk {
           const Matrix4 objectToView = getCamera().getWorldToView(false) * instance->getTransform();
 
           bool isInsideFrustum = true;
-          if (RtxOptions::Get()->needsMeshBoundingBox()) {
+          if (RtxOptions::needsMeshBoundingBox()) {
             const AxisAlignedBoundingBox& boundingBox = instance->getBlas()->input.getGeometryData().boundingBox;
             if (RtxOptions::AntiCulling::Object::enableHighPrecisionAntiCulling()) {
               isInsideFrustum = boundingBoxIntersectsFrustumSAT(
@@ -268,7 +268,7 @@ namespace dxvk {
 
         // If all instances in current BLAS are inside the frustum, then use original GC logic to recycle BLAS Objects
         if (isAllInstancesInCurrentBlasInsideFrustum &&
-            m_device->getCurrentFrameId() > RtxOptions::Get()->numFramesToKeepGeometryData()) {
+            m_device->getCurrentFrameId() > RtxOptions::numFramesToKeepGeometryData()) {
           blasEntryGarbageCollection(iter, entries);
         } else { // If any instances are outside of the frustum in current BLAS, we need to keep the entity
           ++iter;
@@ -551,7 +551,7 @@ namespace dxvk {
       if (!pReplacements) {
         const XXH64_hash_t legacyHash = input.getHashLegacy(rules::LegacyAssetHash0);
         pReplacements = m_pReplacer->getReplacementsForMesh(legacyHash);
-        if (RtxOptions::Get()->logLegacyHashReplacementMatches() && pReplacements && uniqueHashes.find(legacyHash) == uniqueHashes.end()) {
+        if (RtxOptions::logLegacyHashReplacementMatches() && pReplacements && uniqueHashes.find(legacyHash) == uniqueHashes.end()) {
           uniqueHashes.insert(legacyHash);
           Logger::info(str::format("[Legacy-Hash-Replacement] Found a mesh referenced from legacyHash0: ", std::hex, legacyHash, ", new hash: ", std::hex, activeReplacementHash));
         }
@@ -562,7 +562,7 @@ namespace dxvk {
       if (!pReplacements) {
         const XXH64_hash_t legacyHash = input.getHashLegacy(rules::LegacyAssetHash1);
         pReplacements = m_pReplacer->getReplacementsForMesh(legacyHash);
-        if (RtxOptions::Get()->logLegacyHashReplacementMatches() && pReplacements && uniqueHashes.find(legacyHash) == uniqueHashes.end()) {
+        if (RtxOptions::logLegacyHashReplacementMatches() && pReplacements && uniqueHashes.find(legacyHash) == uniqueHashes.end()) {
           uniqueHashes.insert(legacyHash);
           Logger::info(str::format("[Legacy-Hash-Replacement] Found a mesh referenced from legacyHash1: ", std::hex, legacyHash, ", new hash: ", std::hex, activeReplacementHash));
         }
@@ -573,7 +573,7 @@ namespace dxvk {
     std::optional<MaterialData> rayPortalMaterialData {};
     size_t rayPortalTextureIndex;
 
-    if (RtxOptions::Get()->getRayPortalTextureIndex(input.getMaterialData().getHash(), rayPortalTextureIndex)) {
+    if (RtxOptions::getRayPortalTextureIndex(input.getMaterialData().getHash(), rayPortalTextureIndex)) {
       assert(rayPortalTextureIndex < maxRayPortalCount);
       assert(rayPortalTextureIndex < std::numeric_limits<uint8_t>::max());
 
@@ -596,7 +596,7 @@ namespace dxvk {
 
     // Detect meshes that would have unstable hashes due to the vertex hash using vertex data from a shared vertex buffer.
     // TODO: Once the vertex hash only uses vertices referenced by the index buffer, this should be removed.
-    const bool highlightUnsafeAnchor = RtxOptions::Get()->getHighlightUnsafeAnchorModeEnabled() &&
+    const bool highlightUnsafeAnchor = RtxOptions::useHighlightUnsafeAnchorMode() &&
         input.getGeometryData().indexBuffer.defined() && input.getGeometryData().vertexCount > input.getGeometryData().indexCount;
     if (highlightUnsafeAnchor) {
       static MaterialData sHighlightMaterialData(OpaqueMaterialData(TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(),
@@ -614,7 +614,7 @@ namespace dxvk {
   }
 
   void SceneManager::createEffectLight(Rc<DxvkContext> ctx, const DrawCallState& input, const RtInstance* instance) {
-    const float effectLightIntensity = RtxOptions::Get()->getEffectLightIntensity();
+    const float effectLightIntensity = RtxOptions::effectLightIntensity();
     if (effectLightIntensity <= 0.f)
       return;
 
@@ -649,10 +649,10 @@ namespace dxvk {
 
     RtLightShaping shaping{};
 
-    float lightRadius = std::max(RtxOptions::Get()->getEffectLightRadius(), 1e-3f);
+    float lightRadius = std::max(RtxOptions::effectLightRadius(), 1e-3f);
     const Vector3 lightPosition { worldPos.x, worldPos.y, worldPos.z };
     Vector3 lightRadiance;
-    if (RtxOptions::Get()->getEffectLightPlasmaBall()) {
+    if (RtxOptions::effectLightPlasmaBall()) {
       // Todo: Make these options more configurable via config options.
       const double timeMilliseconds = static_cast<double>(getGameTimeSinceStartMS());
       const double animationPhase = sin(timeMilliseconds * 0.006) * 0.5 + 0.5;
@@ -676,7 +676,7 @@ namespace dxvk {
     uint64_t rootInstanceId = UINT64_MAX;
     // Detect replacements of meshes that would have unstable hashes due to the vertex hash using vertex data from a shared vertex buffer.
     // TODO: Once the vertex hash only uses vertices referenced by the index buffer, this should be removed.
-    const bool highlightUnsafeReplacement = RtxOptions::Get()->getHighlightUnsafeReplacementModeEnabled() &&
+    const bool highlightUnsafeReplacement = RtxOptions::useHighlightUnsafeReplacementMode() &&
         input->getGeometryData().indexBuffer.defined() && input->getGeometryData().vertexCount > input->getGeometryData().indexCount;
     if (!pReplacements->empty() && (*pReplacements)[0].includeOriginal) {
       DrawCallState newDrawCallState(*input);
@@ -916,7 +916,7 @@ namespace dxvk {
     RtInstance* instance = m_instanceManager.processSceneObject(m_cameraManager, m_rayPortalManager, *pBlas, drawCallState, renderMaterialData, surfaceMaterial);
 
     // Check if a light should be created for this Material
-    if (instance && RtxOptions::Get()->shouldConvertToLight(drawCallState.getMaterialData().getHash())) {
+    if (instance && RtxOptions::shouldConvertToLight(drawCallState.getMaterialData().getHash())) {
       createEffectLight(ctx, drawCallState, instance);
     }
 
@@ -1056,7 +1056,7 @@ namespace dxvk {
         emissiveColorConstant = defaults.emissiveColorConstant();
         enableEmissive = defaults.enableEmissive();
 
-        if (RtxOptions::Get()->getWhiteMaterialModeEnabled()) {
+        if (RtxOptions::useWhiteMaterialMode()) {
           albedoOpacityConstant = kWhiteModeAlbedo;
           metallicConstant = 0.f;
           roughnessConstant = 1.f;
@@ -1067,7 +1067,7 @@ namespace dxvk {
           }
         }
 
-        if (RtxOptions::Get()->getHighlightLegacyModeEnabled()) {
+        if (RtxOptions::useHighlightLegacyMode()) {
           enableEmissive = true;
           // Flash every 20 frames, bright
           emissiveIntensity = (sin((float) m_device->getCurrentFrameId()/20) + 1.f) * 2.f;
@@ -1086,7 +1086,7 @@ namespace dxvk {
       } else if (renderMaterialDataType == MaterialDataType::Opaque) {
         const auto& opaqueMaterialData = renderMaterialData.getOpaqueMaterialData();
 
-        if (RtxOptions::Get()->getWhiteMaterialModeEnabled()) {
+        if (RtxOptions::useWhiteMaterialMode()) {
           albedoOpacityConstant = kWhiteModeAlbedo;
           metallicConstant = 0.f;
           roughnessConstant = 1.f;
@@ -1340,7 +1340,7 @@ namespace dxvk {
       addressModeW,
       borderColor,
       getTotalMipBias(),
-      RtxOptions::Get()->getAnisotropicFilteringEnabled());
+      RtxOptions::useAnisotropicFiltering());
   }
 
   void SceneManager::addLight(const D3DLIGHT9& light) {
@@ -1436,7 +1436,7 @@ namespace dxvk {
     }
 
     // Initialize/remove opacity micromap manager
-    if (RtxOptions::Get()->getEnableOpacityMicromap()) {
+    if (RtxOptions::getEnableOpacityMicromap()) {
       if (!m_opacityMicromapManager.get() || 
           // Reset the manager on camera cuts
           m_enqueueDelayedClear) {

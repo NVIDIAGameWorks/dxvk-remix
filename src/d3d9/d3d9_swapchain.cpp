@@ -192,7 +192,7 @@ namespace dxvk {
       if (BridgeMessageChannel::get().init(getWinProcHwnd(), D3D9WindowProc)) {
         // Send the initial state messages
         auto& gui = getDxvkDevice()->getCommon()->getImgui();
-        gui.switchMenu(RtxOptions::Get()->showUI(), true);
+        gui.switchMenu(RtxOptions::showUI(), true);
       } else {
         Logger::err("Unable to init bridge message channel. FSE and input capture may not work!");
       }
@@ -331,9 +331,9 @@ namespace dxvk {
     m_window = m_presentParams.hDeviceWindow;
 
     // NV-DXVK start: DLFG integration
-    if (RtxOptions::Get()->enableVsync() == EnableVsync::WaitingForImplicitSwapchain) {
+    if (RtxOptions::enableVsync() == EnableVsync::WaitingForImplicitSwapchain) {
       // save the vsync state when the first swapchain is created, to act as the default
-      RtxOptions::Get()->enableVsyncRef() = m_presentParams.PresentationInterval ? EnableVsync::On : EnableVsync::Off;
+      RtxOptions::enableVsyncRef() = m_presentParams.PresentationInterval ? EnableVsync::On : EnableVsync::Off;
     }
     // NV-DXVK end
 
@@ -452,7 +452,7 @@ namespace dxvk {
       presentInterval = options->presentInterval;
 
     // NV-DXVK start: Reflex integration
-    switch (RtxOptions::Get()->enableVsync()) {
+    switch (RtxOptions::enableVsync()) {
     case EnableVsync::Off:
       presentInterval = 0;
       break;
@@ -1875,7 +1875,7 @@ namespace dxvk {
 
   VkFullScreenExclusiveEXT D3D9SwapChainEx::PickFullscreenMode() {
     // NV-DXVK start: App controlled FSE
-    if (!RtxOptions::Get()->allowFSE() || m_dialog || m_presentParams.Windowed)
+    if (!RtxOptions::allowFSE() || m_dialog || m_presentParams.Windowed)
       return VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT;
 
     if (env::isRemixBridgeActive()) {
