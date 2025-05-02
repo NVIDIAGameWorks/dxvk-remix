@@ -445,11 +445,11 @@ namespace dxvk {
   void Resources::createValueNoiseLut(dxvk::Rc<DxvkContext> ctx) {
     const uint32_t kSize = VALUE_NOISE_RESOLUTION;
     DxvkImageCreateInfo desc;
-    desc.type = VK_IMAGE_TYPE_2D;
+    desc.type = VK_IMAGE_TYPE_3D;
     desc.format = VK_FORMAT_R16G16B16A16_UNORM;
     desc.flags = 0;
     desc.sampleCount = VK_SAMPLE_COUNT_1_BIT;
-    desc.extent = VkExtent3D { kSize, kSize, 1 };
+    desc.extent = VkExtent3D { kSize, kSize, kSize };
     desc.numLayers = 1;
     desc.mipLevels = 1;
     desc.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
@@ -463,30 +463,16 @@ namespace dxvk {
     uint32_t rowPitch = desc.extent.width * sizeof(uint16_t) * 4;
     uint32_t layerPitch = rowPitch * desc.extent.height;
 
-    std::vector<std::vector<float>> random(kSize, std::vector<float>(kSize));
     std::default_random_engine generator;
     std::uniform_real_distribution<float> dist(0.f, 1.f);
-    for (uint32_t x = 0; x < kSize; x++) {
-      for (uint32_t y = 0; y < kSize; y++) {
-        random[x][y] = fabs(dist(generator));
-      }
-    }
 
-    std::vector<uint64_t> data(kSize * kSize);
-    for (uint32_t x = 0; x < kSize; x++) {
-      for (uint32_t y = 0; y < kSize; y++) {
-        uint32_t x1 = (x - VALUE_NOISE_Z_OFFSET_X) % kSize;
-        uint32_t y1 = (y - VALUE_NOISE_Z_OFFSET_Y) % kSize;
-        uint32_t x2 = (x - VALUE_NOISE_W_OFFSET_X) % kSize;
-        uint32_t y2 = (y - VALUE_NOISE_W_OFFSET_Y) % kSize;
-        uint32_t x3 = (x1 - VALUE_NOISE_W_OFFSET_X) % kSize;
-        uint32_t y3 = (y1 - VALUE_NOISE_W_OFFSET_Y) % kSize;
-        uint64_t r = packUnorm<16, uint16_t>(random[x][y]);
-        uint64_t g = packUnorm<16, uint16_t>(random[x1][y1]);
-        uint64_t b = packUnorm<16, uint16_t>(random[x2][y2]);
-        uint64_t a = packUnorm<16, uint16_t>(random[x3][y3]);
-        data[y * kSize + x] = r | (g << 16) | (b << 32) | (a << 48);
-      }
+    std::vector<uint64_t> data(kSize * kSize * kSize);
+    for (uint32_t i = 0; i < data.size(); i++) {
+        uint64_t r = packUnorm<16, uint16_t>(fabs(dist(generator)));
+        uint64_t g = packUnorm<16, uint16_t>(fabs(dist(generator)));
+        uint64_t b = packUnorm<16, uint16_t>(fabs(dist(generator)));
+        uint64_t a = packUnorm<16, uint16_t>(fabs(dist(generator)));
+        data[i] = r | (g << 16) | (b << 32) | (a << 48);
     }
 
     ctx->updateImage(m_valueNoiseLut,
@@ -502,7 +488,7 @@ namespace dxvk {
                            VK_ACCESS_SHADER_READ_BIT);
 
     DxvkImageViewCreateInfo viewInfo;
-    viewInfo.type = VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.type = VK_IMAGE_VIEW_TYPE_3D;
     viewInfo.format = m_valueNoiseLut->info().format;
     viewInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
     viewInfo.aspect = VK_IMAGE_ASPECT_COLOR_BIT;

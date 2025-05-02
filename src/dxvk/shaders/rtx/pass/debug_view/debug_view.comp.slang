@@ -35,6 +35,8 @@
 #include "rtx/pass/debug_view/debug_view_binding_indices.h"
 #include "rtx/utility/debug_view_indices.h"
 #include "rtx/utility/geometry_flags.slangh"
+#include "rtx/utility/noise.slangh"
+#include "rtx/utility/procedural_noise.slangh"
 #include "rtx/algorithm/volume_composite_helpers.slangh"
 
 #include "rtxdi/Reservoir.slangh"
@@ -93,7 +95,7 @@ layout(binding = DEBUG_VIEW_BINDING_VOLUME_RADIANCE_COCG_INPUT)
 Sampler3D<float2> VolumeFilteredRadianceCoCg;
 
 layout(binding = DEBUG_VIEW_BINDING_VALUE_NOISE_SAMPLER)
-Sampler2D<float4> ValueNoiseSampler;
+Sampler3D<float4> ValueNoiseSampler;
 
 layout(binding = DEBUG_VIEW_BINDING_BLUE_NOISE_TEXTURE)
 Texture2DArray BlueNoise;
@@ -232,6 +234,32 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
 
   const ivec2 upscaledPixelCoordinate = (threadId * upscaledResolution) / cb.debugViewResolution;
 
+  // Generate noise values
+  // Note: This is done here to avoid duplicating this logic for NaN/Inf checks. Compiler ideally should
+  // optimize to only evaluate this when one of those two debug views is in use, but the debug view isn't
+  // performance critical anyways so it's not a big deal if it doesn't.
+
+  const float whiteNoiseValue = randomFloat(uvec3(threadId, cb.frameIdx));
+  const float blueNoiseValue = getNextSampleBlueNoise(randomState);
+  const float valueNoiseValue = ValueNoiseSource<false>.evaluateSignedNoise(float4(threadId, cb.animationTimeSec, cb.animationTimeSec + 100.0f) / 10.0f);
+  const float fractalValueNoiseValue = fractalBrownianNoise<4, ValueNoiseSource<false>>(
+    float4(threadId, cb.animationTimeSec, cb.animationTimeSec + 100.0f),
+    3,
+    0.05f,
+    2.0f,
+    0.5f,
+    true
+  );
+  const float simplexNoiseValue = SimplexNoiseSource.evaluateSignedNoise(float3(threadId, cb.animationTimeSec) / 10.0f);
+  const float fractalSimplexNoiseValue = fractalBrownianNoise<3, SimplexNoiseSource>(
+    float3(threadId, cb.animationTimeSec * 5.0f),
+    3,
+    0.01f,
+    2.0f,
+    0.5f,
+    true
+  );
+
   // Get the respective input based on the debug index
 
   switch (cb.debugViewIdx)
@@ -244,6 +272,24 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
     break;
   case DEBUG_VIEW_SCREEN_SPACE_MOTION_VECTOR:
     value = vec4(abs(PrimaryScreenSpaceMotionVector[threadId].xy), 0, 1);
+    break;
+  case DEBUG_VIEW_WHITE_NOISE:
+    value = vec4(vec3(whiteNoiseValue), 1.0f);
+    break;
+  case DEBUG_VIEW_BLUE_NOISE:
+    value = vec4(vec3(blueNoiseValue), 1.0f);
+    break;
+  case DEBUG_VIEW_VALUE_NOISE:
+    value = vec4(vec3(snormF32ToUnormF32(valueNoiseValue)), 1.0f);
+    break;
+  case DEBUG_VIEW_FRACTAL_VALUE_NOISE:
+    value = vec4(vec3(fractalValueNoiseValue), 1.0f);
+    break;
+  case DEBUG_VIEW_SIMPLEX_NOISE:
+    value = vec4(vec3(snormF32ToUnormF32(simplexNoiseValue)), 1.0f);
+    break;
+  case DEBUG_VIEW_FRACTAL_SIMPLEX_NOISE:
+    value = vec4(vec3(fractalSimplexNoiseValue), 1.0f);
     break;
   case DEBUG_VIEW_DENOISED_PRIMARY_DIRECT_DIFFUSE_RADIANCE:
     value = vec4(DenoisedPrimaryDirectDiffuseRadianceHitT[threadId].xyz, 1);
@@ -440,6 +486,19 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
     isValid &= isValidValue(PrimaryVirtualMotionVector[threadId].xy);
     // DEBUG_VIEW_SCREEN_SPACE_MOTION_VECTOR
     isValid &= isValidValue(PrimaryScreenSpaceMotionVector[threadId].xy);
+
+    // DEBUG_VIEW_WHITE_NOISE
+    isValid &= isValidValue(whiteNoiseValue);
+    // DEBUG_VIEW_BLUE_NOISE
+    isValid &= isValidValue(blueNoiseValue);
+    // DEBUG_VIEW_FRACTAL_VALUE_NOISE
+    isValid &= isValidValue(fractalValueNoiseValue);
+    // DEBUG_VIEW_FRACTAL_SIMPLEX_NOISE
+    isValid &= isValidValue(fractalSimplexNoiseValue);
+    // Skipped (Should be covered by fractal noise valid value checks)
+    // DEBUG_VIEW_SIMPLEX_NOISE
+    // DEBUG_VIEW_VALUE_NOISE
+
     // DEBUG_VIEW_DENOISED_PRIMARY_DIRECT_DIFFUSE_RADIANCE
     isValid &= isValidValue(DenoisedPrimaryDirectDiffuseRadianceHitT[threadId].xyz);
     // DEBUG_VIEW_DENOISED_PRIMARY_DIRECT_SPECULAR_RADIANCE

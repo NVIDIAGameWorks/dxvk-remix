@@ -713,47 +713,12 @@ void geometryResolverVertexOutputDebugView(
     storeInDebugView(pixelCoordinate, PrimaryDepth[pixelCoordinate]);
 
     break;  
-  case DEBUG_VIEW_BLUE_NOISE:
-    // Note: For noise pattern debugging when noise may be temporally or spatially suspect.
-    RNG rng0 = createRNG(uvec2(pixelCoordinate), cb.frameIdx);
-    const float noise = getNextSampleBlueNoise(rng0);
-
-    storeInDebugView(pixelCoordinate, noise);
-
-    break;
   case DEBUG_VIEW_PIXEL_CHECKERBOARD:
     // Note: Creates a pixel-perfect checkerboard pattern. Useful for identifying incorrect scaling
     // or pixel sampling as this will create visibile Moire Patterns in the result.
     const float continueSample = float((pixelCoordinate.x & 1) ^ (pixelCoordinate.y & 1));
 
     storeInDebugView(pixelCoordinate, continueSample);
-
-    break;
-  case DEBUG_VIEW_VALUE_NOISE:
-    // Some test values to produce validation view
-    float3 pos = surfaceInteraction.position * 0.1f;
-    float time = cb.timeSinceStartSeconds;
-    if(cb.debugKnob.x <= 1.f)
-    {
-      const float noise = valueNoise4D(float4(pos, time));
-      storeInDebugView(pixelCoordinate, noise);
-    }
-    else if(cb.debugKnob.x <= 2.f)
-    {
-      const float fbmNoise = fractalBrownianValueNoise4D(pos, time, 4);
-      storeInDebugView(pixelCoordinate, fbmNoise);
-    }
-    else if(cb.debugKnob.x <= 3.f)
-    {
-      const float3 curlNoise = curlOfValueNoise(pos, time);
-      storeInDebugView(pixelCoordinate, curlNoise);
-    }
-    else
-    {
-      vec2 screenUV = cameraPixelCoordinateToScreenUV(cb.camera, pixelCoordinate);
-      const float4 rawNoiseLut = ValueNoiseSampler.SampleLevel(screenUV, 0);
-      storeInDebugView(pixelCoordinate, rawNoiseLut);
-    }
 
     break;
   case DEBUG_VIEW_VOLUME_RADIANCE_DEPTH_LAYERS: {
@@ -1034,17 +999,11 @@ void geometryResolverVertexOutputDebugView(
       // DEBUG_VIEW_PRIMARY_DEPTH
       isValid &= isValidValue(PrimaryDepth[pixelCoordinate]);
 
-      // DEBUG_VIEW_BLUE_NOISE
-      RNG rng0 = createRNG(uvec2(pixelCoordinate), cb.frameIdx);
-      const float noise = getNextSampleBlueNoise(rng0);
-      isValid &= isValidValue(noise);
-
       // DEBUG_VIEW_PIXEL_CHECKERBOARD
       const float continueSample = float((pixelCoordinate.x & 1) ^ (pixelCoordinate.y & 1));
       isValid &= isValidValue(continueSample);
 
       // Skipped
-      // DEBUG_VIEW_VALUE_NOISE
       // DEBUG_VIEW_VOLUME_RADIANCE_DEPTH_LAYERS
 
       // DEBUG_VIEW_SURFACE_VOLUME_RADIANCE

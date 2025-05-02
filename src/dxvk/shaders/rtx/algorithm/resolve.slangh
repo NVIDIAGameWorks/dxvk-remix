@@ -692,7 +692,7 @@ void findLowestBin(
   lowestRadianceAndAttenuation = selectColumn(binnedRadiancesAndAttenuation, lowestIndex);
 }
 
-static RNG resolveVertexUnorderedRng = createRngAnywhere(cb.frameIdx, 555);
+static RNG resolveVertexUnorderedRng = createRNGAnywhere(cb.frameIdx, 555);
 
 void conditionallyStoreDecal(
   inout MemoryDecalMaterialInteraction bins[numDecalResolveBins],
