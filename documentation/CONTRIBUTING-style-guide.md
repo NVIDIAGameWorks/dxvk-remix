@@ -204,12 +204,6 @@ This document outlines our project's C++ code formatting standards, commenting s
 - Be cautious of string formatting within descriptions so that it's compatible with both tooltips and .md output
 - Keep descriptions concise (since they appear as tooltips) but informative
 
-## Pull Requests
-
-- **Small, Focused Commits**: Each commit should represent a logically separate change.
-- **Pull Request Descriptions**: Provide context about what the changes do and why they should be made.
-- **Code Reviews**: Participate in code reviews to catch issues early and ensure quality.
-
 ## Testing
 
 - **Unit Tests**: Add unit tests for new core functionality.
