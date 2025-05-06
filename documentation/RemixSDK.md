@@ -6,7 +6,7 @@ The Remix SDK exposes an API that gives applications access to the renderer insi
 
 * **Direct3D 9 Translation Layer:**  This component intercepts the D3D9 API and uses information in the API calls to reconstruct the scene hierarchy, then passes that to Remix's path traced renderer to generate the final image. This means that even if an application was built using older graphics technology, it can still benefit from the advanced lighting and rendering features of the Remix renderer. The source code for this component is available at: https://github.com/nvidiagameworks/dxvk-remix
 
-* **Remix Bridge:** This optional component converts D3D9 calls from 32-bit to 64-bit, which is necessary for running 32-bit applications since the Remix renderer operates exclusively in a 64-bit environment. Native 64-bit applications do not require the Remix Bridge. Source code for this component is hosted at https://github.com/nvidiagameworks/bridge-remix
+* **Remix Bridge:** This optional component converts D3D9 calls from 32-bit to 64-bit, which is necessary for running 32-bit applications since the Remix renderer operates exclusively in a 64-bit environment. Native 64-bit applications do not require the Remix Bridge. Source code for this component is available in the `bridge` folder of this repository.
 
 # Remix SDK Design
 

@@ -1,10 +1,8 @@
 # NVIDIA RTX Remix Bridge
 
-[![Build Status](https://github.com/NVIDIAGameWorks/bridge-remix/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIAGameWorks/bridge-remix/actions/workflows/build.yml)
+This folder contains the NVIDIA RTX Remix Bridge client and server components.  These are required for enabling a 32-bit game to interact with the 64-bit Remix Runtime dll.
 
-The NVIDIA RTX Remix project allows bringing high quality pathtraced rendering, lighting, shadows etc. into classic games. This repo contains the NVIDIA RTX Remix Bridge client and server components required for enabling a 32-bit game to interact with the 64-bit Remix Runtime dll.
-
-> **NOTE:** To experience the full feature set of NVIDIA RTX Remix, binaries compiled from this repo need to be combined with the binaries from the `dxvk-remix` [repo on GitHub](https://github.com/NVIDIAGameWorks/dxvk-remix/). For additional details and explanation see below!
+> **NOTE:** To experience the full feature set of NVIDIA RTX Remix, binaries compiled from this folder need to be combined with the binaries from the top level folder of `dxvk-remix` [repo on GitHub](https://github.com/NVIDIAGameWorks/dxvk-remix/). For additional details and explanation see below!
 
 # Prerequisites
 
@@ -20,19 +18,19 @@ The NVIDIA RTX Remix project allows bringing high quality pathtraced rendering, 
 
 # How to build
 
-To generate the initial Visual Studio solutions and build, run `build_bridge_all.bat`, which will generate build directories for the debug/release configurations for both 32 and 64 bit platform.
+To generate the initial Visual Studio solutions and build, navigate to the `bridge/` folder and run `build_bridge_all.bat`, which will generate build directories for the debug/release configurations for both 32 and 64 bit platform.
 
-You can also open and rebuild the projects/solutions individually for different configurations from project files generated under the `_vs` subdirectory which will be added under the root directory.
+You can also open and rebuild the projects/solutions individually for different configurations from project files generated in the `bridge/_vs` subdirectory.
 
 > **NOTE:** To get a full Remix Bridge build you will need to open and compile both the x86 as well as the x64 solution, because the bridge client component is built by the x86 solution, and the bridge server component is built by the x64 solution.
 
-The build output from the x86 solution goes into a folder called `_output` which is located (and will be created if it doesn't exist) in the repo root.
+The build output from the x86 solution goes into a folder called `_output` which is located (and will be created if it doesn't exist) in the `bridge` folder.
 
-The build output from the x64 solution goes into a folder called `.trex` which is located inside the `_output` directory in the repo root.
+The build output from the x64 solution goes into a folder called `.trex` which is located inside the `_output` directory in the `bridge` folder.
 
-> **NOTE:** Technically the Remix Bridge can be used on a game by itself without the Remix Runtime components from the `dxvk-remix` repo, but when used that way it will fall back onto the x64 system DirectX9 runtime that is installed in Windows and not be capable of performing any raytracing or asset replacements.
+> **NOTE:** Technically the Remix Bridge can be used on a game by itself without the Remix Runtime components, but when used that way it will fall back onto the x64 system DirectX9 runtime that is installed in Windows and not be capable of performing any raytracing or asset replacements.
 
-> **NOTE:** Prior to building bridge it is recommended to delete any build directory that was previosly created with prefix `_comp..` and `_vs` directory under root directory especially if this is your first time building bridge with ninja backend build system. 
+> **NOTE:** Before building the bridge, it is recommended to delete any previously created build directories with prefix `_comp..` and `_vs` in the `bridge` directory, especially if this is your first time building bridge with ninja backend build system. 
 
 # How to run
 
@@ -53,11 +51,13 @@ An alternative approach to loading the Remix Bridge `d3d9.dll` into a game would
 Run the launcher without any parameters to see the list of available options that can be used.
 
 ## Deploy built binaries to a game 
-1. First time only: copy **gametargets.example.conf** to **gametargets.conf** in the project root
+1. First time only: copy **gametargets.example.conf** to **gametargets.conf** in the `bridge` folder
 
 2. Update paths in the **gametargets.conf** for your game. Follow example in the **gametargets.example.conf**. Make sure to remove "#" from the start of all three lines. Configurations for multiple games can be added at once.
 
 3. Open and re-save top-level **meson.build** file (i.e. via notepad) to update its time stamp, and rerun the build. This will trigger a full meson script run which will generate a project within the Visual Studio solution file and deploy built binaries into the games directories specified in **gametargets.conf**
+
+**NOTE:** The bridge's `gametargets.conf` is very similar to the dxvk-remix's `gametargets.conf`, but the output folder of dxvk-remix's `gametargets.conf` should end with `/.trex/`, while the bridge's output folder should be the directory that contains the `.trex` folder.  In the future, these config files may be unified.
 
 ## Visual Studio debugging
 
@@ -77,7 +77,7 @@ If you enter the game executable in the `Command` field and the game path as the
 
 Remix Bridge should work out of the box with many retail games as well, but depending on the game extra configuration steps may be required to make sure the game runs with the correct DirectX settings. For example `Portal` requires being launched with `-dxlevel 70` to work properly.
 
-Also, as mentioned above if you want to take advantage of the pathtracing capabilities of RTX Remix then you need to combine the Remix Bridge binaries with the Remix Runtime dll from the `dxvk-remix` [repo on GitHub](https://github.com/NVIDIAGameWorks/dxvk-remix/).
+Also, as mentioned above if you want to take advantage of the pathtracing capabilities of RTX Remix then you need to combine the Remix Bridge binaries with the Remix Runtime, which can be built from the top level folder of this repo.
 
 The easiest way to get a complete binary package is by downloading one of the releases from the `RTX Remix` [repo on GitHub]((https://github.com/NVIDIAGameWorks/rtx-remix/)).
 
@@ -100,4 +100,4 @@ The easiest way to get a complete binary package is by downloading one of the re
 - Some comments on code organization:
   - On the client side the implementation code is split over separate files matching the names of the D3D9 API interfaces, but all the headers are consolidated into a single file `d3d9_lss.h`.
   - On the server side almost all code is currently in `main.cpp` and may get refactored into separate files for each interface similar to the client at some point. It's a long file with a very long `switch` statement, but since a lot of the interface methods are very similar this also makes it easier to navigate back and forth between related functions without having to jump between multiple files. It probably makes most sense to reorganize once we have reached a certain amount of completeness and stability, so refactoring doesn't lead to a lot of merge conflicts with other changes being done in parallel.
-> **NOTE:** After each session, the tail end of the client log will contain previously recieved and processed d3d9 commands from both client and server side. In case of crash on the client side, we can find this information in the server logs.
+> **NOTE:** After each session, the tail end of the client log will contain previously received and processed d3d9 commands from both client and server side. In case of crash on the client side, we can find this information in the server logs.
