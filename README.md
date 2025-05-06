@@ -95,6 +95,7 @@ Alternatively, Remix API can be used to programmatically pass the game data to t
 ## Project Documentation
 
 - [Anti-Culling System](/documentation/AntiCullingSystem.md)
+- [Contributing Guide](/CONTRIBUTING.md)
 - [Foliage System](/documentation/FoliageSystem.md)
 - [GPU Print](/documentation/GpuPrint.md)
 - [Opacity Micromap](/documentation/OpacityMicromap.md)

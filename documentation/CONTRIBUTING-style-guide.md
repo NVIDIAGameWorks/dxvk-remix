@@ -1,6 +1,6 @@
 # C++ Coding Style Guide
 
-Welcome to dxvk-remix! We appreciate your interest in contributing. This document outlines our project's C++ code formatting standards, commenting styles, memory management practices, and other essential guidelines. Adhering to these will help maintain the quality and consistency of our codebase.  For shader code guidelines and information, please refer to [this](src/dxvk/shaders/rtx/README.md) specific document.
+This document outlines our project's C++ code formatting standards, commenting styles, memory management practices, and other essential guidelines. Adhering to these will help maintain the quality and consistency of our codebase.  For shader code guidelines and information, please refer to [this](src/dxvk/shaders/rtx/README.md) specific document.
 
 ## Code Formatting Guidelines
 
@@ -203,12 +203,6 @@ Welcome to dxvk-remix! We appreciate your interest in contributing. This documen
 - The value is helpful for values written in .md or in rtx.conf, since the string won't be read/wrote there
 - Be cautious of string formatting within descriptions so that it's compatible with both tooltips and .md output
 - Keep descriptions concise (since they appear as tooltips) but informative
-
-## Pull Requests
-
-- **Small, Focused Commits**: Each commit should represent a logically separate change.
-- **Pull Request Descriptions**: Provide context about what the changes do and why they should be made.
-- **Code Reviews**: Participate in code reviews to catch issues early and ensure quality.
 
 ## Testing
 
