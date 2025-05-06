@@ -630,6 +630,8 @@ namespace dxvk {
     volumeArgs.sceneUpDirection = sceneUpDirection;
     volumeArgs.atmosphereHeight = atmosphereHeightMeters() * RtxOptions::getMeterToWorldUnitScale();
     // Create a virtual planet center by projecting the camera position onto the plane defined by the origin and scene up direction.
+    // Todo: Consider pre-transforming this planet center into the various volume camera translated world spaces to avoid needing to do this translation on the GPU constantly. May be just as costly however
+    // to do an additional indexed lookup rather than a simple subtraction however, but depends on how well the compiler can optimize such things.
     volumeArgs.planetCenter = project(mainCamera.getPosition(), Vector3(), sceneUpDirection) - sceneUpDirection * atmospherePlanetRadiusMeters() * RtxOptions::getMeterToWorldUnitScale();
     volumeArgs.atmosphereRadius = volumeArgs.atmosphereHeight + atmospherePlanetRadiusMeters() * RtxOptions::getMeterToWorldUnitScale();
     volumeArgs.maxAttenuationDistanceForNoAtmosphere = transmittanceMeasurementDistance * 5;

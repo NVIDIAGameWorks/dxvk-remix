@@ -464,7 +464,7 @@ float RAB_GetLightSampleTargetPdfForVolume(RAB_LightSample lightSample, RAB_Volu
     const float3 lightDirection = normalize(volumeInteraction.volumeInteraction.position - lightSample.position);
     const float lightSampleDistance = distance(volumeInteraction.volumeInteraction.position, lightSample.position);
     
-    volumeAttenuation = calcAtmosphereAttenuation(cb.volumeArgs, false, lightSampleDistance, lightSample.position, lightDirection);
+    volumeAttenuation = calcAtmosphereAttenuation(cb.volumeArgs, none, false, lightSampleDistance, lightSample.position, lightDirection);
   }
 
   const float targetPdf = calcBt709Luminance(lightSample.radiance * volumeAttenuation) * phaseWeight * lightThroughput;
