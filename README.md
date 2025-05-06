@@ -8,6 +8,8 @@ Thanks to all the contributors to DXVK for creating this foundational piece of s
 
 While dxvk-remix is a fork of DXVK, please report bugs encountered with dxvk-remix to this repo rather than to the DXVK project.
 
+dxvk-remix also contains a subproject in the `bridge` folder, which enables 32 bit games to communicate with the 64 bit dxvk-remix runtime.
+
 ## Build instructions
 
 ### Requirements:
