@@ -1,0 +1,231 @@
+/*****************************************************************************
+*     Copyright 1986-2020 NVIDIA Corporation. All rights reserved.
+******************************************************************************
+
+ MDL MATERIALS ARE PROVIDED PURSUANT TO AN END USER LICENSE  AGREEMENT,
+ WHICH WAS ACCEPTED IN ORDER TO GAIN ACCESS TO THIS FILE.  IN PARTICULAR, 
+ THE MDL MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+ MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF 
+ COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL NVIDIA
+ CORPORATION BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, INCLUDING
+ ANY GENERAL, SPECIAL,  INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, 
+ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF 
+ THE USE OR INABILITY TO USE THE MDL MATERIALS OR FROM OTHER DEALINGS IN 
+ THE MDL MATERIALS. 
+*/
+
+mdl 1.4;
+import ::df::*;
+import ::state::*;
+import ::math::*;
+import ::base::*;
+import ::tex::*;
+import ::anno::*;
+
+import ::nvidia::baking::*;
+
+// Note: Ensure this enum matches the enum on the runtime side of things so that the values match as expected.
+export enum BlendType
+[[
+    anno::description("Alpha state blend type.")
+]]
+{
+    Alpha = 0 [[
+        anno::display_name("Alpha"),
+        anno::description("Opacity directly set to albedo alpha, no emissive intensity override influence.")
+    ]],
+
+    AlphaEmissive = 1 [[
+        anno::display_name("Alpha Emissive"),
+        anno::description("Opacity set to 0, emissive intensity override influence set to albedo alpha.")
+    ]],
+
+    ReverseAlphaEmissive = 2 [[
+        anno::display_name("Reverse Alpha Emissive"),
+        anno::description("Opacity set to 0, emissive intensity override influence set to 1 - albedo alpha.")
+    ]],
+
+    Color = 3 [[
+        anno::display_name("Color"),
+        anno::description("Opacity directly set to albedo luminance, no emissive intensity override influence.")
+    ]],
+
+    ColorEmissive = 4 [[
+        anno::display_name("Color Emissive"),
+        anno::description("Opacity set to 0, emissive intensity override influence set to albedo luminance.")
+    ]],
+
+    ReverseColorEmissive = 5 [[
+        anno::display_name("Reverse Color Emissive"),
+        anno::description("Opacity set to 0, emissive intensity override influence set to 1 - albedo luminance.")
+    ]],
+
+    Emissive = 6 [[
+        anno::display_name("Emissive"),
+        anno::description("Opacity set to 0, emissive intensity override influence set to 1.")
+    ]],
+
+    Multiplicative = 7 [[
+        anno::display_name("Multiplicative"),
+        anno::description("Opacity set to 1 - albedo luminance, no emissive intensity override influence.")
+    ]],
+
+    DoubleMultiplicative = 8 [[
+        anno::display_name("Double Multiplicative"),
+        anno::description("Opacity set to abs(1 - albedo luminance * 2), no emissive intensity override influence.")
+    ]]
+};
+
+// Note: Ensure this enum matches the enum on the runtime side of things so that the values match as expected.
+export enum AlphaTestType
+[[
+    anno::description("Alpha state alpha test type.")
+]]
+{
+    Always = 0 [[
+        anno::display_name("Always"),
+        anno::description("Always pass the alpha test.")
+    ]],
+
+    Never = 1 [[
+        anno::display_name("Never"),
+        anno::description("Never pass the alpha test.")
+    ]],
+
+    Less = 2 [[
+        anno::display_name("Less"),
+        anno::description("Pass the alpha test if the alpha value is less than the reference value.")
+    ]],
+
+    Equal = 3 [[
+        anno::display_name("Equal"),
+        anno::description("Pass the alpha test if the alpha value is equal to the reference value.")
+    ]],
+
+    LessOrEqual = 4 [[
+        anno::display_name("Less Or Equal"),
+        anno::description("Pass the alpha test if the alpha value is less or equal to the reference value.")
+    ]],
+
+    Greater = 5 [[
+        anno::display_name("Greater"),
+        anno::description("Pass the alpha test if the alpha value is greater to the reference value.")
+    ]],
+
+    NotEqual = 6 [[
+        anno::display_name("Not Equal"),
+        anno::description("Pass the alpha test if the alpha value is not equal to the reference value.")
+    ]],
+
+    GreaterOrEqual = 7 [[
+        anno::display_name("Greater Or Equal"),
+        anno::description("Pass the alpha test if the alpha value is greater or equal to the reference value.")
+    ]]
+};
+
+// Note: Ensure these enum values match VkFilter so that the runtime selects the expected setting.
+export enum FilterMode
+[[
+    anno::description("Texture filtering State.  See Vulkan's VkFilter docs for details.")
+]]
+{
+    Nearest = 0 [[
+        anno::display_name("Nearest"),
+        anno::description("Texture values will equal the nearest whole pixel.")
+    ]],
+
+    Linear = 1 [[
+        anno::display_name("Alpha Emissive"),
+        anno::description("Texture values will interpolate linear between the 4 nearest pixel values.")
+    ]]
+};
+
+color baseReflectivityToIoR(float incidentIoR, color baseReflectivity)
+{
+  // Note: Clamp the squared base reflectivity to 0.99 to prevent overflow issues or NaNs with near-1 physically implausible materials.
+  color baseReflectivitySqrt = math::min(math::sqrt(baseReflectivity), 0.99f);
+
+  return color(incidentIoR) / (color(2.0f) / (baseReflectivitySqrt + 1.0) - 1.0);
+}
+
+export material AperturePBR_Model(
+    color diffuse_color = color(0.2f)           [[ nvidia::baking::bake_to_texture("diffuse_texture", "diffuse_color_constant", "RGBA8_UNORM") ]],
+    float reflection_roughness = 0.5f           [[ nvidia::baking::bake_to_texture("reflectionroughness_texture", "reflection_roughness_constant", "R8_UNORM") ]],
+    float anisotropy = 0.0f                     [[ nvidia::baking::bake_to_texture("anisotropy_texture", "anisotropy_constant", "R8_SNORM") ]],
+    float metallic = 0.0f                       [[ nvidia::baking::bake_to_texture("metallic_texture", "metallic_constant", "R8_UNORM") ]],
+
+    uniform bool enable_emission = false,
+    color emissive_color = color(0.0, 0.0, 0.0) [[ nvidia::baking::bake_to_texture("emissive_mask_texture", "emissive_color_constant", "RGBA8_UNORM") ]],
+    float emissive_intensity = 0.f,
+
+    uniform bool enable_opacity = false,
+    float opacity = 1.f,
+
+    uniform bool enable_thin_film = false,
+    float thin_film_thickness = 0.f,      // thickness measured in nm
+
+    float3 normal = float3(0.0, 0.0, 0.0) [[ nvidia::baking::bake_to_texture("normalmap_texture", "", "RG8_UNORM", transform: "TANGENT_SPACE_NORMAL_HEMI_OCT_ENCODING") ]]
+)
+[[ nvidia::baking::target_material_model("AperturePBR_Opacity", "..::AperturePBR_Opacity") ]]
+ = let {
+  color emissive_radiance = enable_emission ? emissive_color * color(emissive_intensity) : color(0);
+
+  // BSDF Calculations
+
+  color adjusted_albedo = math::lerp(diffuse_color, color(0), metallic);
+  color base_reflectivity = math::lerp(color(0.04, 0.04, 0.04), diffuse_color, metallic);
+
+  float isotropic_roughness = reflection_roughness * reflection_roughness;
+  float roughness_u = isotropic_roughness * (1 + anisotropy);
+  float roughness_v = isotropic_roughness * (1 - anisotropy);
+
+  bsdf diffuse_bsdf = df::diffuse_reflection_bsdf(
+    tint: adjusted_albedo,
+    // Note: Ideally this would be non-zero for PBR diffuse, but for some reason when setting it to a non-constant value it breaks
+    // how the material renders in Omniverse (especially for 1 metallic 0 roughness).
+    roughness: 0.0f
+  );
+
+  bsdf ggx_smith_bsdf = df::microfacet_ggx_smith_bsdf(
+    roughness_u: roughness_u,
+    roughness_v: roughness_v,
+    tint: color(1.0, 1.0, 1.0),
+    mode: df::scatter_reflect
+  );
+
+  bsdf custom_fresnel_layer_bsdf = df::color_fresnel_layer(
+    ior: baseReflectivityToIoR(1.0, base_reflectivity),
+    weight: color(1.0),
+    layer: ggx_smith_bsdf,
+    base: diffuse_bsdf
+  );
+
+  // clamp thin film thickness to avoid problems when thickness == 0
+  float adjusted_thin_film_thickness = math::max(thin_film_thickness, 0.001);
+  bsdf final_bsdf = enable_thin_film ? 
+                      df::thin_film(thickness: adjusted_thin_film_thickness,
+                                    ior: color(1.5f),
+                                    base: custom_fresnel_layer_bsdf)
+                    : custom_fresnel_layer_bsdf;
+} in material(
+  // Note: Not actually a thin surface in this case, just used to get Kit to render both sides of the MDL correctly.
+  thin_walled: true,
+  surface: material_surface(
+    scattering: final_bsdf,
+    emission:  material_emission (
+      df::diffuse_edf(),
+      intensity: emissive_radiance
+    )
+  ),
+  backface: material_surface(
+    emission:  material_emission (
+      df::diffuse_edf(),
+      intensity: emissive_radiance
+    )
+  ),
+  geometry: material_geometry(
+    normal: normal,
+    cutout_opacity: enable_opacity ? opacity : 1.0
+  )
+);

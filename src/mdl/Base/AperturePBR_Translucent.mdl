@@ -1,0 +1,307 @@
+/*****************************************************************************
+*     Copyright 1986-2023 NVIDIA Corporation. All rights reserved.
+******************************************************************************
+
+ MDL MATERIALS ARE PROVIDED PURSUANT TO AN END USER LICENSE  AGREEMENT,
+ WHICH WAS ACCEPTED IN ORDER TO GAIN ACCESS TO THIS FILE.  IN PARTICULAR,
+ THE MDL MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+ MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF
+ COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL NVIDIA
+ CORPORATION BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, INCLUDING
+ ANY GENERAL, SPECIAL,  INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES,
+ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
+ THE USE OR INABILITY TO USE THE MDL MATERIALS OR FROM OTHER DEALINGS IN
+ THE MDL MATERIALS.
+*/
+
+mdl 1.4;
+
+import ::base::*;
+import ::anno::*;
+import ::df::*;
+import ::state::*;
+import ::tex::*;
+import ::math::*;
+
+import ::nvidia::core_definitions::file_texture;
+import ::nvidia::core_definitions::normalmap_texture;
+
+using AperturePBR_Model import *;
+import AperturePBR_Normal::*;
+import AperturePBR_SpriteSheet::*;
+
+// IMPORTANT: When updating defaults or hard ranges, the defaults and ranges in the associated runtime should
+// be updated as well so that the defaults are properly selected even when the USD does not include them (as
+// sometimes tools will not write out the MDL defaults for values not modified by the user), and so the clamping
+// logic is consistent. Additionally, proper hard ranges should be included for any newly added values to ensure
+// that it is not easy for users to specify incorrect data.
+
+export material AperturePBR_Translucent(
+  // -------------------- SPECULAR REFLECTION/TRANSMISSION ----------------------
+  uniform float ior_constant = 1.3f
+  [[
+    anno::display_name("Index of Refraction"),
+    anno::hard_range(1.0, 3.0),
+    anno::description("Index of Refraction of the material"),
+    anno::in_group("Specular")
+  ]],
+  uniform bool thin_walled = false
+  [[
+    anno::display_name("Thin-walled"),
+    anno::description("Whether the material is thin-walled, use when material is being applied to single triangle thick geometry."),
+    anno::in_group("Specular")
+  ]],
+  uniform float thin_wall_thickness = 1.0f
+  [[
+    anno::display_name("Thin-walled material thickness"),
+    anno::hard_range(0.001, 65504.0),
+    anno::soft_range(0.001, 1.0),
+    anno::description("Simulated thickness for thin-walled materials (0 disables thin-walled mode)"),
+    anno::in_group("Specular"),
+    anno::enable_if("thin_walled == true")
+  ]],
+
+  // -------------------- VOLUME ----------------------
+  uniform bool use_diffuse_layer = false
+  [[
+    anno::display_name("Use diffuse layer"),
+    anno::description("When set, simulates a diffuse layer on top of the material"),
+    anno::in_group("Volume")
+  ]],
+  // Note: The transmittance color/diffuse albedo texture should always be treated as sRGB.
+  uniform texture_2d transmittance_texture = texture_2d("", tex::gamma_srgb)
+  [[
+    anno::display_name("Transmittance Color/Diffuse Albedo Texture"),
+    anno::description("Texture map for either the transmittance color of the material, or the albedo color of the diffuse layer"),
+    anno::in_group("Volume")
+  ]],
+  uniform color transmittance_color = color(0.97f, 0.97f, 0.97f)
+  [[
+    anno::display_name("Transmittance Color"),
+    anno::description("Expected transmittance after the specified transmittance distance through the volume."),
+    anno::hard_range(color(0.0), color(1.0)),
+    anno::in_group("Volume")
+  ]],
+  uniform float transmittance_measurement_distance = 1.0f
+  [[
+    anno::display_name("Transmittance Measurement Distance"),
+    anno::hard_range(0.001, 65504.0),
+    anno::description("Distance to match the transmittance through the volume at."),
+    anno::in_group("Volume"),
+    anno::enable_if("thin_walled == false")
+  ]],
+
+  // -------------------- EMISSIVE ----------------------
+  uniform bool enable_emission = false
+  [[
+    anno::display_name("Enable Emission"),
+    anno::description("Enables the emission of light from the material"),
+    anno::in_group("Emission")
+  ]],
+  uniform color emissive_color = color(1.0, 0.1, 0.1)
+  [[
+    anno::enable_if("enable_emission == true"),
+    anno::display_name("Emissive Color"),
+    anno::description("The emission color"),
+    anno::hard_range(color(0.0), color(1.0)),
+    anno::in_group("Emission")
+  ]],
+  // Note: The emissive color texture should always be treated as sRGB.
+  uniform texture_2d emissive_mask_texture = texture_2d("", tex::gamma_srgb)
+  [[
+    anno::enable_if("enable_emission == true"),
+    anno::display_name("Emissive Color Texture"),
+    anno::description("The texture masking the emissive color"),
+    anno::in_group("Emission")
+  ]],
+  uniform float emissive_intensity = 40.f
+  [[
+    anno::enable_if("enable_emission == true"),
+    anno::display_name("Emissive Intensity"),
+    anno::hard_range(0.0, 65504.0),
+    anno::description("Intensity of the emission"),
+    anno::in_group("Emission")
+  ]],
+  // -------------------- SPRITE SHEET ----------------------
+  uniform int sprite_sheet_fps = 0
+  [[
+    anno::display_name("Sprite Sheet FPS"),
+    anno::hard_range(0, 255),
+    anno::description("Framerate in Frames Per Second to use for the spritesheet across all textures. Note that a value of 0 disables this functionality."),
+    anno::in_group("Animation")
+  ]],
+  uniform int sprite_sheet_cols = 1
+  [[
+    anno::display_name("Sprite Sheet Columns"),
+    anno::hard_range(1, 255),
+    anno::description("Number of columns the spritesheet across all textures is divided into."),
+    anno::in_group("Animation")
+  ]],
+  uniform int sprite_sheet_rows = 1
+  [[
+    anno::display_name("Sprite Sheet Rows"),
+    anno::hard_range(1, 255),
+    anno::description("Number of row the spritesheet across all textures is divided into."),
+    anno::in_group("Animation")
+  ]],
+  // -------------------- REMIX FLAGS ----------------------
+  uniform bool preload_textures = false
+  [[
+    anno::display_name("Preload Textures"),
+    anno::description("Use this option sparingly, this will consume video memory!  RTX Remix will load the textures associated with this material into GPU memory immediately without streaming at the highest quality possible.  Use this in situations where a material is fundamental for game play and yet is very transient.  For instance, we used this for Portal RTX on the Portals themselves."),
+    anno::in_group("Remix Flags"),
+    anno::unused()
+  ]],
+  uniform bool ignore_material = false
+  [[
+    anno::display_name("Ignore Material"),
+    anno::description("Runtime will not render any objects using an ignored material.  RTX Remix will render with a pink and black checkerboard."),
+    anno::in_group("Remix Flags")
+  ]],
+  // -------------------- FILTERING ----------------------
+  uniform FilterMode filter_mode = Linear
+  [[
+    anno::display_name("Texture Filtering Mode"),
+    anno::description("How texture coordinates between pixels are handled"),
+    anno::in_group("Filtering"),
+    anno::unused()
+  ]],
+  uniform tex::wrap_mode wrap_mode_u = tex::wrap_repeat
+  [[
+    anno::display_name("Wrap Mode U"),
+    anno::description("How horizontal texture coordinates outside of the 0-1 range are handled"),
+    anno::in_group("Filtering")
+  ]],
+  uniform tex::wrap_mode wrap_mode_v = tex::wrap_repeat
+  [[
+    anno::display_name("Wrap Mode V"),
+    anno::description("How vertical texture coordinates outside of the 0-1 range are handled"),
+    anno::in_group("Filtering")
+  ]],
+
+  // -------------------- NORMAL ----------------------
+  // Note: The normal map texture should always be treated as linear.
+  uniform texture_2d normalmap_texture = texture_2d("", tex::gamma_linear)
+  [[
+    anno::display_name("Normal Map"),
+    anno::in_group("Normal")
+  ]],
+  uniform AperturePBR_Normal::normalmap_encoding encoding = AperturePBR_Normal::octahedral
+  [[
+    anno::display_name("Normal Map Encoding"),
+    anno::description("Encoding type for the normal map.  Octahedral for 2 channel textures. tangent_space_dx for 3 channel normals, and tangent_space_ogl for 3 channel normals with an inverted (OpenGL style) G channel."),
+    anno::in_group("Normal"),
+    anno::hidden()
+  ]]
+)
+[[
+  anno::display_name("Aperture PBR Translucent"),
+  anno::description("Supports the translucent material model of the Aperture Renderer"),
+  anno::version( 1, 0, 0),
+  anno::author("NVIDIA CORPORATION"),
+  anno::key_words(string[]("aperture", "PBR", "translucent", "omniverse", "generic"))
+]]
+ = let {
+
+  base::texture_coordinate_info uvw = base::coordinate_source(
+                                            coordinate_system: base::texture_coordinate_uvw,
+                                            texture_space: 0);
+  varying float2 final_uv = AperturePBR_SpriteSheet::calculate_spritesheet_uv(
+    uvw:                 uvw,
+    sprite_sheet_fps:    sprite_sheet_fps,
+    sprite_sheet_cols:   sprite_sheet_cols,
+    sprite_sheet_rows:   sprite_sheet_rows,
+    enable_rotation:     false,
+    rotation_speed:      0.0);
+
+  float4 transmittance_or_diffuse_albedo = tex::lookup_float4(transmittance_texture, final_uv, wrap_mode_u, wrap_mode_v);
+
+  color checker_color = base::checker_texture(
+    color1: color(0.0, 0.0, 0.0),
+    color2: color(1.0, 0.41, 0.71), // Hot Pink
+    blur: 0.,
+    uvw: base::transform_coordinate(
+      transform: base::rotation_translation_scale(scaling: float3(10.0)),
+      coordinate: base::coordinate_source(coordinate_system: base::texture_coordinate_uvw)
+    )
+  ).tint;
+
+  color diffuse_lookup = ignore_material ?
+    checker_color :
+    (use_diffuse_layer && tex::texture_isvalid(transmittance_texture)) ?
+      color(transmittance_or_diffuse_albedo.x, transmittance_or_diffuse_albedo.y, transmittance_or_diffuse_albedo.z) :
+      color(0);
+  float diffuse_opacity = ignore_material ?
+    0.5f :
+    (use_diffuse_layer && tex::texture_isvalid(transmittance_texture)) ? transmittance_or_diffuse_albedo.w : 0.f;
+  color diffuse_attenuation = math::lerp(color(1.0), diffuse_lookup, diffuse_opacity);
+  // Note: This flag indicates if the diffuse layer is used either due to the use request or if the ignore material mode is set to true (since it uses the diffuse layer to
+  // show its checkerboard effect).
+  bool diffuse_layer_enabled = use_diffuse_layer || ignore_material;
+
+  bsdf diffuse_layer = df::diffuse_reflection_bsdf(
+    tint: diffuse_lookup,
+    roughness: 1.0
+  );
+
+  color transmittance_lookup = (!use_diffuse_layer && tex::texture_isvalid(transmittance_texture)) ?
+    color(transmittance_or_diffuse_albedo.x, transmittance_or_diffuse_albedo.y, transmittance_or_diffuse_albedo.z) :
+    transmittance_color;
+  float transmittance_lookup_alpha = (!use_diffuse_layer && tex::texture_isvalid(transmittance_texture)) ? transmittance_or_diffuse_albedo.w : 0.f;
+  color transmittance = tex::texture_isvalid(transmittance_texture) ? math::lerp(transmittance_color, transmittance_lookup, transmittance_lookup_alpha) : transmittance_color;
+
+  color volume_absorption_coefficient = -math::log(transmittance) / transmittance_measurement_distance;
+  // Hack to tint the BSDF to incorporate the thickness for thin-wall materials.
+  color material_transmittance = thin_walled ? math::exp(-volume_absorption_coefficient * thin_wall_thickness) : color(1.0);
+  color bsdf_transmittance = use_diffuse_layer ? material_transmittance * diffuse_attenuation : material_transmittance;
+
+  bsdf specular_layer = df::specular_bsdf(
+    tint: bsdf_transmittance,
+    mode: df::scatter_reflect_transmit
+  );
+
+  bsdf final_bsdf = diffuse_layer_enabled ?
+    df::weighted_layer(
+      weight: diffuse_opacity,
+      layer: diffuse_layer,
+      base: specular_layer) : specular_layer;
+
+  color emissive_mask = tex::texture_isvalid(emissive_mask_texture)
+              ? tex::lookup_color(emissive_mask_texture, final_uv, wrap_mode_u, wrap_mode_v)
+              : color(1.0);
+
+  // Normal calculations
+  float3 normal_lookup =  tex::texture_isvalid(normalmap_texture) ?
+              AperturePBR_Normal::enc_tangent_space_normal_texture(
+              texture:        normalmap_texture,
+              factor:         1.0,
+              uv:             final_uv,
+              tangent_u:      uvw.tangent_u,
+              tangent_v:      uvw.tangent_v,
+              flip_tangent_u: false,
+              flip_tangent_v: true,
+              wrap_u: wrap_mode_u,
+              wrap_v: wrap_mode_v,
+              encoding:       encoding
+              ) : state::normal();
+
+} in material(
+  thin_walled: thin_walled,
+  surface: material_surface(
+    scattering: final_bsdf,
+    emission:  material_emission (
+      df::diffuse_edf(),
+      intensity: enable_emission ? emissive_color * emissive_mask * color(emissive_intensity) : color(0)
+    )
+  ),
+  ior: color(ior_constant),
+  volume: material_volume(
+    scattering: df::anisotropic_vdf(),
+    absorption_coefficient: volume_absorption_coefficient,
+    scattering_coefficient: color(0.0f, 0.0f, 0.0f)
+  ),
+  geometry: material_geometry(
+    normal: normal_lookup
+  )
+);
