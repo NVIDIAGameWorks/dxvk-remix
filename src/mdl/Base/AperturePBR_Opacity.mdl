@@ -1,0 +1,496 @@
+/*****************************************************************************
+*     Copyright 1986-2023 NVIDIA Corporation. All rights reserved.
+******************************************************************************
+
+ MDL MATERIALS ARE PROVIDED PURSUANT TO AN END USER LICENSE  AGREEMENT,
+ WHICH WAS ACCEPTED IN ORDER TO GAIN ACCESS TO THIS FILE.  IN PARTICULAR,
+ THE MDL MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+ MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF
+ COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL NVIDIA
+ CORPORATION BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, INCLUDING
+ ANY GENERAL, SPECIAL,  INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES,
+ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
+ THE USE OR INABILITY TO USE THE MDL MATERIALS OR FROM OTHER DEALINGS IN
+ THE MDL MATERIALS.
+*/
+
+mdl 1.4;
+
+import ::base::*;
+import ::anno::*;
+import ::df::*;
+import ::state::*;
+import ::tex::*;
+import ::math::*;
+
+import ::nvidia::core_definitions::file_texture;
+import ::nvidia::core_definitions::normalmap_texture;
+
+using AperturePBR_Model import *;
+import AperturePBR_Normal::*;
+import AperturePBR_SpriteSheet::*;
+
+// IMPORTANT: When updating defaults or hard ranges, the defaults and ranges in the associated runtime should
+// be updated as well so that the defaults are properly selected even when the USD does not include them (as
+// sometimes tools will not write out the MDL defaults for values not modified by the user), and so the clamping
+// logic is consistent. Additionally, proper hard ranges should be included for any newly added values to ensure
+// that it is not easy for users to specify incorrect data.
+
+export material AperturePBR_Opacity(
+  // -------------------- DIFFUSE REFLECTION ----------------------
+  uniform color diffuse_color_constant = color(0.2f)
+  [[
+    anno::display_name("Albedo Color"),
+    anno::hard_range(color(0.0), color(1.0)),
+    anno::description("The base albedo color.  (Used if no texture is specified)"),
+    anno::in_group("Base Material")
+  ]],
+  uniform float opacity_constant = 1.f
+  [[
+    anno::hard_range(0.0, 1.0),
+    anno::display_name("Opacity Amount"),
+    anno::description("0 for completely transparent, 1 for completely opaque.  (Used if no texture is specified)"),
+    anno::in_group("Base Material")
+  ]],
+  // Note: The diffuse texture should always be treated as sRGB.
+  uniform texture_2d diffuse_texture = texture_2d("", tex::gamma_srgb)
+  [[
+    anno::display_name("Albedo/Opacity Map"),
+    anno::description("The texture specifying the albedo value and the optional opacity value to use in the alpha channel"),
+    anno::in_group("Base Material")
+  ]],
+  uniform bool enable_thin_film = false
+  [[
+    anno::display_name("Enable Iridescence"),
+    anno::description("Adds a thin film coating to the material"),
+    anno::in_group("Iridescence")
+  ]],
+  uniform bool thin_film_thickness_from_albedo_alpha = false
+  [[
+    anno::display_name("Use Opacity as Thickness"),
+    anno::description("Uses the alpha channel from albedo as source for the thin film thickness. Alpha value is scaled by 1500 and represents thickness in nanometers. Opacity becomes fully opaque in this case."),
+    anno::in_group("Iridescence")
+  ]],
+  uniform float thin_film_thickness_constant = 200.0f
+  [[
+    anno::display_name("Thickness"),
+    anno::hard_range(0.001, 1500.0),
+    anno::description("Thickness of the thin film in nanometers if not specified in albedo texture"),
+    anno::in_group("Iridescence"),
+    anno::enable_if("enable_thin_film == true && thin_film_thickness_from_albedo_alpha == false")
+  ]],
+
+  // -------------------- SPECULAR REFLECTION ----------------------
+  uniform float reflection_roughness_constant = 0.5f
+  [[
+    anno::display_name("Roughness Amount"),
+    anno::hard_range(0.0, 1.0),
+    anno::description("Higher roughness values lead to more blurry reflections, use 0 for perfectly smooth.  (Used if no texture is specified)."),
+    anno::in_group("Base Material")
+  ]],
+  // Note: The roughness texture should always be treated as linear.
+  uniform texture_2d reflectionroughness_texture = texture_2d("", tex::gamma_linear)
+  [[
+    anno::display_name("Roughness Map"),
+    anno::description("A single channel texture defining roughness per texel.  Higher roughness values lead to more blurry reflections."),
+    anno::in_group("Base Material")
+  ]],
+
+  uniform float anisotropy_constant = 0.0f
+  [[
+    anno::display_name("Anisotropy Amount"),
+    anno::hard_range(-1.0, 1.0),
+    anno::description("0 for isotropic, extents of -1 to 1 for anisotropy"),
+    anno::hidden(),
+    anno::in_group("Base Material")
+  ]],
+  // Note: The anisotropy texture should always be treated as linear.
+  uniform texture_2d anisotropy_texture = texture_2d("", tex::gamma_linear)
+  [[
+    anno::display_name("Anisotropy Map"),
+    anno::hidden(),
+    anno::in_group("Base Material")
+  ]],
+
+  uniform float metallic_constant = 0.f
+  [[
+    anno::display_name("Metallic Amount"),
+    anno::hard_range(0.0, 1.0),
+    anno::description("How metallic is this material, 0 for not at all, 1 for fully metallic. (Used if no texture is specified)."),
+    anno::in_group("Base Material")
+  ]],
+  // Note: The metallic texture should always be treated as linear.
+  uniform texture_2d metallic_texture = texture_2d("", tex::gamma_linear)
+  [[
+    anno::display_name("Metallic Map"),
+    anno::in_group("Base Material")
+  ]],
+
+  // -------------------- EMISSIVE ----------------------
+  uniform bool enable_emission = false
+  [[
+    anno::display_name("Enable Emission"),
+    anno::description("Enables the emission of light from the material"),
+    anno::in_group("Emission")
+  ]],
+  uniform color emissive_color_constant = color(1.0, 0.1, 0.1)
+  [[
+    anno::enable_if("enable_emission == true"),
+    anno::display_name("Emissive Color"),
+    anno::hard_range(color(0.0), color(1.0)),
+    anno::description("The emissive color when no emissive color texture is specified."),
+    anno::in_group("Emission")
+  ]],
+  // Note: The emissive color texture should always be treated as sRGB.
+  uniform texture_2d emissive_mask_texture = texture_2d("", tex::gamma_srgb)
+  [[
+    anno::enable_if("enable_emission == true"),
+    anno::display_name("Emissive Mask Map"),
+    anno::description("The texture masking the emissive color"),
+    anno::in_group("Emission")
+  ]],
+  uniform float emissive_intensity = 40.f
+  [[
+    anno::enable_if("enable_emission == true"),
+    anno::display_name("Emissive Intensity"),
+    anno::hard_range(0.0, 65504.0),
+    anno::description("Intensity of the emission"),
+    anno::in_group("Emission")
+  ]],
+
+  // -------------------- SPRITE SHEET ----------------------
+  uniform int sprite_sheet_fps = 0
+  [[
+    anno::display_name("Sprite Sheet FPS"),
+    anno::hard_range(0, 255),
+    anno::description("Framerate in Frames Per Second to use for the spritesheet across all textures. Note that a value of 0 disables this functionality."),
+    anno::in_group("Animation")
+  ]],
+  uniform int sprite_sheet_cols = 1
+  [[
+    anno::display_name("Sprite Sheet Columns"),
+    anno::hard_range(1, 255),
+    anno::description("Number of columns the spritesheet across all textures is divided into."),
+    anno::in_group("Animation")
+  ]],
+  uniform int sprite_sheet_rows = 1
+  [[
+    anno::display_name("Sprite Sheet Rows"),
+    anno::hard_range(1, 255),
+    anno::description("Number of row the spritesheet across all textures is divided into."),
+    anno::in_group("Animation")
+  ]],
+  // -------------------- REMIX FLAGS ----------------------
+  uniform bool preload_textures = false
+  [[
+    anno::display_name("Preload Textures"),
+    anno::description("Use this option sparingly, this will consume video memory!  RTX Remix will load the textures associated with this material into GPU memory immediately without streaming at the highest quality possible.  Use this in situations where a material is fundamental for game play and yet is very transient.  For instance, we used this for Portal RTX on the Portals themselves."),
+    anno::in_group("Remix Flags"),
+    anno::unused()
+  ]],
+  uniform bool ignore_material = false
+  [[
+    anno::display_name("Ignore Material"),
+    anno::description("Runtime will not render any objects using an ignored material.  RTX Remix will render with a pink and black checkerboard."),
+    anno::in_group("Remix Flags")
+  ]],
+  // -------------------- ALPHA BLEND ----------------------
+  uniform bool use_legacy_alpha_state = true
+  [[
+    anno::display_name("Use Legacy Alpha State"),
+    anno::description("Indicates if the alpha state should be driven by the game itself, or overridden by this material."),
+    anno::in_group("Alpha Blending")
+  ]],
+  uniform bool blend_enabled = false
+  [[
+    anno::enable_if("use_legacy_alpha_state == false"),
+    anno::display_name("Blend Enabled"),
+    anno::description("Indicates if alpha state blending should be enabled."),
+    anno::in_group("Alpha Blending")
+  ]],
+  uniform BlendType blend_type = Alpha
+  [[
+    anno::enable_if("use_legacy_alpha_state == false && blend_enabled == true"),
+    anno::display_name("Blend Type"),
+    anno::description("The alpha state blend type to use."),
+    anno::in_group("Alpha Blending"),
+    anno::unused()
+  ]],
+  uniform bool inverted_blend = false
+  [[
+    anno::enable_if("use_legacy_alpha_state == false && blend_enabled == true"),
+    anno::display_name("Inverted Blend"),
+    anno::description("Indicates if an inverted blend type should be used."),
+    anno::in_group("Alpha Blending"),
+    anno::unused()
+  ]],
+  uniform AlphaTestType alpha_test_type = Always
+  [[
+    anno::enable_if("use_legacy_alpha_state == false"),
+    anno::display_name("Alpha Test Type"),
+    anno::description("The alpha state alpha test type to use."),
+    anno::in_group("Alpha Blending"),
+    anno::unused()
+  ]],
+  uniform float alpha_test_reference_value = 0.0f
+  [[
+    anno::enable_if("use_legacy_alpha_state == false"),
+    anno::display_name("Alpha Test Reference Value"),
+    anno::description("The value to use for alpha testing against."),
+    anno::in_group("Alpha Blending"),
+    anno::unused()
+  ]],
+  // -------------------- FILTERING ----------------------
+  uniform FilterMode filter_mode = Linear
+  [[
+    anno::display_name("Texture Filtering Mode"),
+    anno::description("How texture coordinates between pixels are handled"),
+    anno::in_group("Filtering"),
+    anno::unused()
+  ]],
+  uniform tex::wrap_mode wrap_mode_u = tex::wrap_repeat
+  [[
+    anno::display_name("Wrap Mode U"),
+    anno::description("How horizontal texture coordinates outside of the 0-1 range are handled"),
+    anno::in_group("Filtering")
+  ]],
+  uniform tex::wrap_mode wrap_mode_v = tex::wrap_repeat
+  [[
+    anno::display_name("Wrap Mode V"),
+    anno::description("How vertical texture coordinates outside of the 0-1 range are handled"),
+    anno::in_group("Filtering")
+  ]],
+
+  // -------------------- NORMAL ----------------------
+  // Note: The normal map texture should always be treated as linear.
+  uniform texture_2d normalmap_texture = texture_2d("", tex::gamma_linear)
+  [[
+    anno::display_name("Normal Map"),
+    anno::in_group("Base Material")
+  ]],
+  uniform AperturePBR_Normal::normalmap_encoding encoding = AperturePBR_Normal::octahedral
+  [[
+    anno::display_name("Normal Map Encoding"),
+    anno::description("Encoding type for the normal map.  Octahedral for 2 channel textures. tangent_space_dx for 3 channel normals, and tangent_space_ogl for 3 channel normals with an inverted (OpenGL style) G channel."),
+    anno::hidden(),
+    anno::in_group("Base Material")
+  ]],
+
+  // -------------------- DISPLACEMENT ----------------------
+  // Note: The height texture should always be treated as linear.
+  uniform texture_2d height_texture = texture_2d("", tex::gamma_linear)
+  [[
+    anno::display_name("Height Map"),
+    anno::in_group("Displacement"),
+    anno::description("A pixel value of 0 is the lowest point.  A pixel value of 1 will be the highest point.  A pixel of value displace_in / (displace_in + displace_out) will be the original height of the triangle."),
+    anno::unused()
+  ]],
+  uniform float displace_in = 0.05f
+  [[
+    anno::display_name("Inwards Displacement"),
+    anno::hard_range(0.0, 0.2),
+    anno::description("Ratio of UV width to depth.  If the texture is displayed as 1 meter wide, then a value of 1 means it can be at most 1 meter deep.  A value of 0.1 means that same 1 meter wide quad can be at most 0.1 meters deep."),
+    anno::in_group("Displacement"),
+    anno::unused()
+  ]],
+  uniform float displace_out = 0.0f
+  [[
+    anno::display_name("Outwards Displacement"),
+    anno::hard_range(0.0, 0.2),
+    anno::description("Ratio of UV width to depth.  If the texture is displayed as 1 meter wide, then a value of 1 means it can be at most 1 meter high.  A value of 0.1 means that same 1 meter wide quad can be at most 0.1 meters high."),
+    anno::in_group("Displacement"),
+    anno::unused()
+  ]],
+
+  // -------------------- SUBSURFACE ----------------------
+  uniform color subsurface_transmittance_color = color(0.5f)
+  [[
+    anno::display_name("Transmittance Color"),
+    anno::hard_range(color(0.0), color(1.0)),
+    anno::description("The transmittance color of subsurface materials. This property can be easily considered as the light color after passing through volume. (Used if no texture is specified)."),
+    anno::in_group("Subsurface"),
+    anno::unused()
+  ]],
+  // Note: The subsurface transmittance color texture should always be treated as sRGB.
+  uniform texture_2d subsurface_transmittance_texture = texture_2d("", tex::gamma_srgb)
+  [[
+    anno::display_name("Transmittance Map"),
+    anno::description("The texture specifying the transmittance color of subsurface materials."),
+    anno::in_group("Subsurface"),
+    anno::unused()
+  ]],
+  uniform float subsurface_measurement_distance = 0.0f
+  [[
+    anno::display_name("Measurement Distance"),
+    anno::hard_range(0.0, 16.0),
+    anno::description("The distance between front and back surface of subsurface materials in millimeter, or the thickness of the surface. (Used if no texture is specified)."),
+    anno::in_group("Subsurface"),
+    anno::unused()
+  ]],
+  // Note: The subsurface thickness texture should always be treated as linear.
+  uniform texture_2d subsurface_thickness_texture = texture_2d("", tex::gamma_linear)
+  [[
+    anno::display_name("Measurement Distance Map"),
+    anno::description("The texture specifying the distance between front and back surface of subsurface materials in millimeter."),
+    anno::in_group("Subsurface"),
+    anno::unused()
+  ]],
+  uniform color subsurface_single_scattering_albedo = color(0.5f)
+  [[
+    anno::display_name("Single Scattering Albedo"),
+    anno::hard_range(color(0.0), color(1.0)),
+    anno::description("The color of light that most easily passes through the material after a single time scattering inside volume. (Used if no texture is specified)."),
+    anno::in_group("Subsurface"),
+    anno::unused()
+  ]],
+  // Note: The subsurface single scattering albedo texture should always be treated as sRGB.
+  uniform texture_2d subsurface_single_scattering_texture = texture_2d("", tex::gamma_srgb)
+  [[
+    anno::display_name("Single Scattering Map"),
+    anno::description("The texture specifying the scattering albedo of subsurface materials."),
+    anno::in_group("Subsurface"),
+    anno::unused()
+  ]],
+  uniform float subsurface_volumetric_anisotropy = 0.0f
+  [[
+    anno::display_name("Volumetric Anisotropy"),
+    anno::hard_range(-0.99, 0.99),
+    anno::description("The anisotropy of the scattering phase function. 0.99 = light mostly passes straight through (forward), 0 = light spreads a lot (diffuse), -0.99 = light mostly reflects (backward)."),
+    anno::in_group("Subsurface"),
+    anno::unused()
+  ]],
+  uniform bool subsurface_diffusion_profile = 0
+  [[
+    anno::display_name("Subsurface Scattering Diffusion Profile"),
+    anno::hard_range(0, 1),
+    anno::description("Enable Subsurface Scattering Diffusion Profile."),
+    anno::in_group("Subsurface"),
+    anno::unused()
+  ]],
+  uniform color subsurface_radius = color(0.5f)
+  [[
+    anno::display_name("Subsurface Scattering Radius"),
+    anno::hard_range(color(0.0), color(1.0)),
+    anno::description("The max distance light can scatter under a surface, defined per color channel. Also known as MFP or mean free path. (Only used if no scattering radius map texture is specified.)"),
+    anno::in_group("Subsurface"),
+    anno::unused()
+  ]],
+  uniform texture_2d subsurface_radius_texture = texture_2d("", tex::gamma_linear)
+  [[
+    anno::display_name("Subsurface Scattering Radius Map"),
+    anno::description("Subsurface Scattering Radius but defined as a texture."),
+    anno::in_group("Subsurface"),
+    anno::unused()
+  ]],
+  uniform float subsurface_radius_scale = 1.0f
+  [[
+    anno::display_name("Subsurface Scattering Scale"),
+    anno::hard_range(0, 1000),
+    anno::description("Scale of diffusion profile for subsurface scattering."),
+    anno::in_group("Subsurface"),
+    anno::unused()
+  ]],
+  uniform float subsurface_max_sample_radius = 16.0f
+  [[
+    anno::display_name("Subsurface Scattering Max Scale"),
+    anno::hard_range(0, 65504),
+    anno::description("Max sample distance of diffusion profile for subsurface scattering."),
+    anno::in_group("Subsurface"),
+    anno::unused()
+  ]]
+)
+[[
+  anno::display_name("Aperture PBR Opacity"),
+  anno::description("Supports the opaque/opacity material model of the Aperture Renderer"),
+  anno::version( 1, 0, 0),
+  anno::author("NVIDIA CORPORATION"),
+  anno::key_words(string[]("aperture", "PBR", "opaque", "opacity", "omniverse", "generic"))
+]]
+ = let {
+
+  base::texture_coordinate_info uvw = base::coordinate_source(
+                                            coordinate_system: base::texture_coordinate_uvw,
+                                            texture_space: 0);
+  varying float2 final_uv = AperturePBR_SpriteSheet::calculate_spritesheet_uv(
+    uvw:                 uvw,
+    sprite_sheet_fps:    sprite_sheet_fps,
+    sprite_sheet_cols:   sprite_sheet_cols,
+    sprite_sheet_rows:   sprite_sheet_rows,
+    enable_rotation:     false,
+    rotation_speed:      0.0);
+
+  color checker_color = base::checker_texture(
+    color1: color(0.0, 0.0, 0.0),
+    color2: color(1.0, 0.41, 0.71), // Hot Pink
+    blur: 0.,
+    uvw: base::transform_coordinate(
+      transform: base::rotation_translation_scale(scaling: float3(10.0)),
+      coordinate: base::coordinate_source(coordinate_system: base::texture_coordinate_uvw)
+    )
+  ).tint;
+
+  // Diffuse Color Lookup
+  float4 base_lookup = tex::lookup_float4(diffuse_texture, final_uv, wrap_mode_u, wrap_mode_v);
+
+  color diffuse_color = ignore_material ?
+    checker_color :
+    (tex::texture_isvalid(diffuse_texture) ? color(base_lookup.x, base_lookup.y, base_lookup.z) : diffuse_color_constant);
+  float opacity = ignore_material ?
+    0.5f :
+    (tex::texture_isvalid(diffuse_texture) && !enable_thin_film ? base_lookup.w : opacity_constant);
+  float thin_film_thickness = enable_thin_film ?
+                                (thin_film_thickness_from_albedo_alpha && tex::texture_isvalid(diffuse_texture) ?
+                                  base_lookup.w * 1500.0 :
+                                  thin_film_thickness_constant)
+                              : 0.0;
+
+  float reflection_roughness = tex::texture_isvalid(reflectionroughness_texture) ?
+    tex::lookup_float(reflectionroughness_texture, final_uv, wrap_mode_u, wrap_mode_v) :
+    reflection_roughness_constant;
+  float anisotropy = tex::texture_isvalid(anisotropy_texture) ?
+    (tex::lookup_float(anisotropy_texture, final_uv, wrap_mode_u, wrap_mode_v) * 2.0f - 1.0f) :
+    anisotropy_constant;
+  float metallic = tex::texture_isvalid(metallic_texture) ?
+    tex::lookup_float(metallic_texture, final_uv, wrap_mode_u, wrap_mode_v) :
+    metallic_constant;
+  color emissive_lookup = tex::texture_isvalid(emissive_mask_texture) ?
+    tex::lookup_color(emissive_mask_texture, final_uv, wrap_mode_u, wrap_mode_v) :
+    emissive_color_constant;
+
+  // Todo (TREX-2166): Match runtime-side logic for opacity and emissive derivations such that when not using a legacy alpha state
+  // Omniverse can actually render more similarly to our engine (still will not solve the fact that while information about the
+  // legacy alpha state is exported now it can't actually be used to preview how it looks in Omniverse unless the use legacy alpha
+  // state checkbox is unchecked as there no way to know if that data was exported our set by a user, potentially in the future
+  // there can be some sort of immutable "source alpha state" parameters which go along with the ability to override it for proper
+  // visualization, though this does not solve dynamic alpha state issues either).
+
+  // Normal calculations
+  float3 normal_lookup =  tex::texture_isvalid(normalmap_texture) ?
+              AperturePBR_Normal::enc_tangent_space_normal_texture(
+              texture:        normalmap_texture,
+              factor:         1.0,
+              uv:             final_uv,
+              tangent_u:      uvw.tangent_u,
+              tangent_v:      uvw.tangent_v,
+              flip_tangent_u: false,
+              flip_tangent_v: true,
+              wrap_u: wrap_mode_u,
+              wrap_v: wrap_mode_v,
+              encoding:       encoding
+              ) : state::normal();
+} in AperturePBR_Model(
+  diffuse_color: diffuse_color,
+  reflection_roughness: reflection_roughness,
+  anisotropy: anisotropy,
+  metallic: metallic,
+  enable_emission: enable_emission,
+  emissive_color: emissive_lookup,
+  emissive_intensity: emissive_intensity,
+  // Note: Force opacity to be enabled when the material is ignored so the constant opacity it is given to be somewhat seethrough works.
+  enable_opacity: ignore_material ? true : false,
+  opacity: opacity,
+  enable_thin_film: enable_thin_film,
+  thin_film_thickness: thin_film_thickness,
+  normal: normal_lookup
+);

@@ -1,0 +1,176 @@
+/*****************************************************************************
+*     Copyright 1986-2023 NVIDIA Corporation. All rights reserved.
+******************************************************************************
+
+ MDL MATERIALS ARE PROVIDED PURSUANT TO AN END USER LICENSE  AGREEMENT,
+ WHICH WAS ACCEPTED IN ORDER TO GAIN ACCESS TO THIS FILE.  IN PARTICULAR, 
+ THE MDL MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+ MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF 
+ COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL NVIDIA
+ CORPORATION BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, INCLUDING
+ ANY GENERAL, SPECIAL,  INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, 
+ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF 
+ THE USE OR INABILITY TO USE THE MDL MATERIALS OR FROM OTHER DEALINGS IN 
+ THE MDL MATERIALS.
+*/
+
+mdl 1.4;
+import ::df::*;
+import ::state::*;
+import ::math::*;
+import ::base::*;
+import ::tex::*;
+import ::anno::*;
+
+export enum normalmap_encoding
+[[
+    anno::description("Normal map encoding type.")
+]]
+{
+    octahedral = 0 [[ 
+        anno::display_name("Octahedral (2 channel)"),
+        anno::description("Texture encodes the normals using 2 color channels.  All normal maps will be converted to this on export.")
+    ]],
+
+    tangent_space_ogl = 1 [[ 
+        anno::display_name("Tangent Space (3 channel)"),
+        anno::description("Texture encodes the normals using 3 color channels, OpenGL style.")
+    ]],
+
+    tangent_space_dx = 2 [[ 
+        anno::display_name("Tangent Space (3 channel)"),
+        anno::description("Texture encodes the normals using 3 color channels, DirectX style.")
+    ]]
+};
+
+// Converts a snorm octahedral encoding (2 channels of [-1, 1] to a normalized hemispherical vector (positive z)
+float3 snormOctahedralToHemisphereDirection(float2 p)
+{
+  float2 t = float2(p.x + p.y, p.x - p.y) * 0.5f;
+  float3 v = float3(t.x, t.y, 1.0f - math::abs(t.x) - math::abs(t.y));
+
+  return math::normalize(v);
+}
+
+// Converts a unorm octahedral encoding (2 channels of [0, 1] to a normalized hemispherical vector (positive z)
+float3 unormOctahedralToHemisphereDirection(float2 p)
+{
+  float2 snormOctahedral = p * 2.0f - 1.0f;
+
+  return snormOctahedralToHemisphereDirection(snormOctahedral);
+}
+
+
+export float3 enc_tangent_space_normal_texture(
+    uniform texture_2d texture
+        [[
+            anno::description("The input texture"),
+            anno::usage("normal")
+        ]],
+    uniform float factor = 1.0f
+        [[ anno::description("Determines the degree of bumpiness") ]],
+    uniform bool flip_tangent_u = false
+        [[ anno::description("Can be used to fix mismatches between the object's tangent space and the normal map's tangent space") ]],
+    uniform bool flip_tangent_v = false
+        [[ anno::description("Can be used to fix mismatches between the object's tangent space and the normal map's tangent space") ]],
+    float2 uv = float2(0.0, 0.0),
+    float3 tangent_u = float3(0.0, 0.0, 0.0),
+    float3 tangent_v = float3(0.0, 0.0, 0.0),
+    uniform float2 crop_u = float2(0.0, 1.0)
+        [[ anno::description("Restricts the texture access to sub-domain of the texture in the u direction") ]],
+    uniform float2 crop_v = float2(0.0, 1.0)
+        [[ anno::description("Restricts the texture access to sub-domain of the texture in the v direction") ]],
+    uniform tex::wrap_mode wrap_u = tex::wrap_repeat
+        [[ anno::description("Wrapping mode in the u direction") ]],
+    uniform tex::wrap_mode wrap_v = tex::wrap_repeat
+        [[ anno::description("Wrapping mode in the v direction") ]],
+    uniform bool clip = false
+        [[
+            anno::description("deprecated, usewrap_mode=tex::wrap_clip. Defines wrap_clamp behavior. If true, lookup outside [0,1] results in no bump"),
+            anno::hidden()
+        ]],
+    uniform float scale = 1.
+        [[
+            anno::description("Scales the value red from the texture file. Can be used to adapt to different normal map formats"),
+            anno::unused()
+        ]],
+    uniform float offset = 0.
+        [[
+            anno::description("Offset applied to the value red from the texture file. Can be used to adapt to different normal map formats"),
+            anno::unused()
+        ]],
+    uniform normalmap_encoding encoding = octahedral
+        [[ anno::description("Encoding type for the normal map") ]]
+)
+[[
+    anno::description("Interprets the color values of a bitmap as a vector in tangent space"),
+    anno::noinline()
+]]
+{
+    if (tex::width(texture) == 0 || tex::height(texture) == 0 || // avoid division by zero in texremapu for invalid resource
+        factor == 0.0f)
+        return state::normal();
+    {
+        if (clip) {
+            if (wrap_u == tex::wrap_clamp && (uv.x < 0. || uv.x > 1.)) {
+                return state::normal();
+            }
+            if (wrap_v == tex::wrap_clamp && (uv.y < 0. || uv.y > 1.)) {
+                return state::normal();
+            }
+        }
+        if (wrap_u == tex::wrap_clip && (uv.x < 0. || uv.x > 1.)) {
+            return state::normal();
+        }
+        if (wrap_v == tex::wrap_clip && (uv.y < 0. || uv.y > 1.)) {
+            return state::normal();
+        }
+    }
+    bool pixel_flip_u = flip_tangent_u;
+    bool pixel_flip_v = flip_tangent_v;
+    //if we mirror repeat a tangent space texture, tangent space needs to be flipped for every other tile
+    if (wrap_u == tex::wrap_mirrored_repeat) {
+        if( uv.x > 0. && int(uv.x) % 2 == 1)
+            pixel_flip_u = ! pixel_flip_u;
+        else if( uv.x < 0. && int(uv.x) % 2 == 0)
+            pixel_flip_u = ! pixel_flip_u;
+    }
+    if (wrap_v == tex::wrap_mirrored_repeat) {
+        if( uv.y > 0. && int(uv.y) % 2 == 1)
+            pixel_flip_v = ! pixel_flip_v;
+        else if( uv.y < 0. && int(uv.y) % 2 == 0)
+            pixel_flip_v = ! pixel_flip_v;
+    }
+
+    float3 transformed_tangent_u = tangent_u;
+    float3 transformed_tangent_v = tangent_v;
+
+    if (pixel_flip_u)
+        transformed_tangent_u=-transformed_tangent_u;
+    if (pixel_flip_v)
+        transformed_tangent_v=-transformed_tangent_v;
+
+
+    float3 tangent_space_normal;
+    switch(encoding) {
+        case octahedral:
+            float2 enc_tangent_space_normal = tex::lookup_float2(texture, uv, wrap_u, wrap_v,  crop_u, crop_v);
+            tangent_space_normal = unormOctahedralToHemisphereDirection(enc_tangent_space_normal) * factor;
+            break;
+        case tangent_space_dx:
+            tangent_space_normal = tex::lookup_float3(texture, uv, wrap_u, wrap_v,  crop_u, crop_v) * factor;
+            tangent_space_normal = math::normalize(tangent_space_normal * 2.0 - 1.0);
+            break;
+        case tangent_space_ogl:
+            tangent_space_normal = tex::lookup_float3(texture, uv, wrap_u, wrap_v,  crop_u, crop_v) * factor;
+            tangent_space_normal = math::normalize(tangent_space_normal * 2.0 - 1.0);
+            tangent_space_normal = tangent_space_normal * float3(1.0, -1.0, 1.0);
+            break;
+    }
+
+    return math::normalize(
+        transformed_tangent_u * tangent_space_normal.x +
+        transformed_tangent_v * tangent_space_normal.y +
+        state::normal() * (tangent_space_normal.z + (1.0 - factor)));
+}

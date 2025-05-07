@@ -1,0 +1,2480 @@
+/***************************************************************************************************
+ * Copyright 2020 NVIDIA Corporation. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *  * Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *  * Neither the name of NVIDIA CORPORATION nor the names of its
+ *    contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ **************************************************************************************************/
+
+mdl 1.4;
+
+import ::anno::*;
+using .::core_definitions import texture_return; 
+module [[
+	anno::version( 1, 0, 0),
+	anno::hidden(),
+	anno::display_name("NVIDIA auxillary definitions")
+]];
+
+
+// Support functions to simplify conversions between vector types with swizzles
+// Supported argument types: float2, float3, float4, color, texture_return (as RGB and RGBA)
+// Supported return types: float, float2, float3 color
+
+//constructor wrappers
+
+export float construct_float(texture_return a) 
+[[
+    anno::display_name("Float from texture_return"),
+	anno::description("Construct a float."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(10000)
+]]{return a.mono;}
+export color construct_color(float a) 
+[[
+    anno::display_name("Color from float"),
+	anno::description("Construct a color."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(10001)
+]]{return color(a);}
+export color construct_color(float3 a) 
+[[
+    anno::display_name("Color from float3"),
+	anno::description("Construct a color."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(10002)
+]]{return color(a);}
+export color construct_color(float r, float g, float b) 
+[[
+    anno::display_name("Color from floats"),
+	anno::description("Construct a color."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(10003)
+]]{return color(r,g,b);}
+export color construct_color(texture_return a) 
+[[
+    anno::display_name("Color from texture_return"),
+	anno::description("Construct a color."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(10002)
+]]{return a.tint;}
+export float3 construct_float3(color a) 
+[[
+    anno::display_name("Float3 from color"),
+	anno::description("Construct a float3."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(10005)
+]]{return float3(a);}
+export float3 construct_float3(float x, float y, float z) 
+[[
+    anno::display_name("Float3 from floats"),
+	anno::description("Construct a float3."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(10006)
+]]{return float3(x,y,z);}
+export float3 construct_float3(int3 a) 
+[[
+    anno::display_name("Float3 from int3"),
+	anno::description("Construct a float3."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(10007)
+]]{return float3(a);}
+export float2 construct_float2(float a) 
+[[
+    anno::display_name("Float2 from float"),
+	anno::description("Construct a float2."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(10009)
+]]{return float2(a);}
+export float2 construct_float2(float x, float y) 
+[[
+    anno::display_name("Float2 from floats"),
+	anno::description("Construct a float2."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(10010)
+]]{return float2(x,y);}
+export float2 construct_float2(int2 a) 
+[[
+    anno::display_name("Float2 from int2"),
+	anno::description("Construct a float2."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(10011)
+]]{return float2(a);}
+export int3 construct_int3(int a) 
+[[
+    anno::display_name("Int3 from int"),
+	anno::description("Construct a int3."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(10013)
+]]{return int3(a);}
+export int2 construct_int2(int a) 
+[[
+    anno::display_name("Int2 from int"),
+	anno::description("Construct a int2."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(10014)
+]]{return int2(a);}
+
+// Swizzles with float return type
+export float x( float2 a) 
+[[
+    anno::display_name("X"),
+	anno::description("Returns x."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11000)
+]]{ return a.x; }
+export float y( float2 a) 
+[[
+    anno::display_name("Y"),
+	anno::description("Returns y."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11010)
+]]{ return a.y; }
+
+export float x( float3 a) 
+[[
+    anno::display_name("X"),
+	anno::description("Returns x."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11001)
+]]{ return a.x; }
+export float y( float3 a) 
+[[
+    anno::display_name("Y"),
+	anno::description("Returns y."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11011)
+]]{ return a.y; }
+export float z( float3 a) 
+[[
+    anno::display_name("Z"),
+	anno::description("Returns z."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11020)
+]]{ return a.z; }
+
+export float x( float4 a) 
+[[
+    anno::display_name("X"),
+	anno::description("Returns x."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11002)
+]]{ return a.x; }
+export float y( float4 a) 
+[[
+    anno::display_name("Y"),
+	anno::description("Returns y."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11012)
+]]{ return a.y; }
+export float z( float4 a) 
+[[
+    anno::display_name("Z"),
+	anno::description("Returns z."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11021)
+]]{ return a.z; }
+export float w( float4 a) 
+[[
+    anno::display_name("W"),
+	anno::description("Returns w."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11025)
+]]{ return a.w; }
+
+export float x( color a) 
+[[
+    anno::display_name("X"),
+	anno::description("Returns x."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11003)
+]]{ return x( float3(a)); }
+export float y( color a) 
+[[
+    anno::display_name("Y"),
+	anno::description("Returns y."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11013)
+]]{ return y( float3(a)); }
+export float z( color a) 
+[[
+    anno::display_name("Z"),
+	anno::description("Returns z."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11021)
+]]{ return z( float3(a)); }
+
+export float x( texture_return a) 
+[[
+    anno::display_name("X"),
+	anno::description("Returns x."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11004)
+]]{ return float3( a.tint).x; }
+export float y( texture_return a) 
+[[
+    anno::display_name("Y"),
+	anno::description("Returns y."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11014)
+]]{ return float3( a.tint).y; }
+export float z( texture_return a) 
+[[
+    anno::display_name("Z"),
+	anno::description("Returns z."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11022)
+]]{ return float3( a.tint).z; }
+export float w( texture_return a) 
+[[
+    anno::display_name("W"),
+	anno::description("Returns w."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11026)
+]]{ return a.mono; }
+/**-*/
+//conversions of texture_return
+export  float4 texture_return_float4(texture_return a) 
+[[
+    anno::display_name("Construct texture_return"),
+	anno::description("Construct a struct containing a color and a float."),
+    anno::author("NVIDIA Corporation"),
+	anno::hidden(),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(10108)
+]]{return float4(x(a),y(a),z(a),w(a));}
+export  float3 texture_return_float3(texture_return a) 
+[[
+    anno::display_name("Construct texture_return"),
+	anno::description("Construct a struct containing a color and a float."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(10109)
+]]{return float3(x(a),y(a),z(a));}
+export  color texture_return_color(texture_return a) 
+[[
+    anno::display_name("Construct texture_return"),
+	anno::description("Construct a struct containing a color and a float."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(10110)
+]]{return a.tint;}
+export  float texture_return_float(texture_return a) [[
+    anno::display_name("Construct texture_return"),
+	anno::description("Construct a struct containing a color and a float."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(10111)
+]]{return a.mono;}
+// Swizzles with float2 return type
+
+export float2 xx( float2 a) 
+[[
+    anno::display_name("XX"),
+	anno::description("Returns float2(x,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11030)
+]]{ return float2( a.x, a.x); } /*-**/
+export float2 xy( float2 a) 
+[[
+    anno::display_name("XY"),
+	anno::description("Returns float2(x,y)."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11040)
+]]{ return float2( a.x, a.y); }
+/**-*/export float2 yx( float2 a) [[
+    anno::display_name("YX"),
+	anno::description("Returns float2(y,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11050)
+]]{ return float2( a.y, a.x); }
+export float2 yy( float2 a) [[
+    anno::display_name("YY"),
+	anno::description("Returns float2(y,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11060)
+]]{ return float2( a.y, a.y); }
+
+export float2 xx( float3 a) [[
+    anno::display_name("XX"),
+	anno::description("Returns float2(x,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11031)
+]]{ return float2( a.x, a.x); }/*-**/
+export float2 xy( float3 a) 
+[[
+    anno::display_name("XY"),
+	anno::description("Returns float2(x,y)."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11041)
+]]{ return float2( a.x, a.y); }
+/**-*/export float2 xz( float3 a) [[
+    anno::display_name("XZ"),
+	anno::description("Returns float2(x,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11070)
+]]{ return float2( a.x, a.z); }
+export float2 yx( float3 a) 
+[[
+    anno::display_name("YX"),
+	anno::description("Returns float2(y,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11051)
+]]{ return float2( a.y, a.x); }
+export float2 yy( float3 a) [[
+    anno::display_name("YY"),
+	anno::description("Returns float2(y,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11061)
+]]{ return float2( a.y, a.y); }
+export float2 yz( float3 a) [[
+    anno::display_name("YZ"),
+	anno::description("Returns float2(y,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11080)
+]]{ return float2( a.y, a.z); }
+export float2 zx( float3 a) [[
+    anno::display_name("ZX"),
+	anno::description("Returns float2(z,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11090)
+]]{ return float2( a.z, a.x); }
+export float2 zy( float3 a) [[
+    anno::display_name("ZY"),
+	anno::description("Returns float2(z,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11100)
+]]{ return float2( a.z, a.y); }
+export float2 zz( float3 a) [[
+    anno::display_name("ZZ"),
+	anno::description("Returns float2(z,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11110)
+]]{ return float2( a.z, a.z); }
+
+export float2 xx( float4 a) [[
+    anno::display_name("XX"),
+	anno::description("Returns float2(x,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11032)
+]]{ return float2( a.x, a.x); }/*-**/
+export float2 xy( float4 a) [[
+    anno::display_name("XY"),
+	anno::description("Returns float2(x,y)."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11042)
+]]{ return float2( a.x, a.y); }
+/**-*/export float2 xz( float4 a) [[
+    anno::display_name("XZ"),
+	anno::description("Returns float2(x,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11071)
+]]{ return float2( a.x, a.z); }
+export float2 xw( float4 a) [[
+    anno::display_name("XW"),
+	anno::description("Returns float2(x,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11120)
+]]{ return float2( a.x, a.w); }
+export float2 yx( float4 a) [[
+    anno::display_name("YX"),
+	anno::description("Returns float2(y,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11052)
+]]{ return float2( a.y, a.x); }
+export float2 yy( float4 a) [[
+    anno::display_name("YY"),
+	anno::description("Returns float2(y,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11062)
+]]{ return float2( a.y, a.y); }
+export float2 yz( float4 a) [[
+    anno::display_name("YZ"),
+	anno::description("Returns float2(y,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11081)
+]]{ return float2( a.y, a.z); }
+export float2 yw( float4 a) [[
+    anno::display_name("YW"),
+	anno::description("Returns float2(y,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11125)
+]]{ return float2( a.y, a.w); }
+export float2 zx( float4 a) [[
+    anno::display_name("ZX"),
+	anno::description("Returns float2(z,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11091)
+]]{ return float2( a.z, a.x); }
+export float2 zy( float4 a) [[
+    anno::display_name("ZY"),
+	anno::description("Returns float2(z,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11101)
+]]{ return float2( a.z, a.y); }
+export float2 zz( float4 a) [[
+    anno::display_name("ZZ"),
+	anno::description("Returns float2(z,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11111)
+]]{ return float2( a.z, a.z); }
+export float2 zw( float4 a) [[
+    anno::display_name("ZW"),
+	anno::description("Returns float2(z,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11127)
+]]{ return float2( a.z, a.w); }
+export float2 wx( float4 a) [[
+    anno::display_name("WX"),
+	anno::description("Returns float2(w,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11129)
+]]{ return float2( a.w, a.x); }
+export float2 wy( float4 a) [[
+    anno::display_name("WY"),
+	anno::description("Returns float2(w,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11131)
+]]{ return float2( a.w, a.y); }
+export float2 wz( float4 a) [[
+    anno::display_name("WZ"),
+	anno::description("Returns float2(w,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11133)
+]]{ return float2( a.w, a.z); }
+export float2 ww( float4 a) [[
+    anno::display_name("WW"),
+	anno::description("Returns float2(w,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11135)
+]]{ return float2( a.w, a.w); }
+
+export float2 xx(  color a) [[
+    anno::display_name("XX"),
+	anno::description("Returns float2(x,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11033)
+]]{ return xx( float3(a)); }/*-**/
+export float2 xy(  color a) 
+[[
+    anno::display_name("XY"),
+	anno::description("Returns float2(x,y)."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11043)
+]]{ return xy( float3(a)); }
+/**-*/export float2 xz(  color a) [[
+    anno::display_name("XZ"),
+	anno::description("Returns float2(x,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11072)
+]]{ return xz( float3(a)); }
+export float2 yx(  color a) [[
+    anno::display_name("YX"),
+	anno::description("Returns float2(y,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11053)
+]]{ return yx( float3(a)); }
+export float2 yy(  color a) [[
+    anno::display_name("YY"),
+	anno::description("Returns float2(y,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11063)
+]]{ return yy( float3(a)); }
+export float2 yz(  color a) [[
+    anno::display_name("YZ"),
+	anno::description("Returns float2(y,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11082)
+]]{ return yz( float3(a)); }
+export float2 zx(  color a) [[
+    anno::display_name("ZX"),
+	anno::description("Returns float2(z,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11092)
+]]{ return zx( float3(a)); }
+export float2 zy(  color a) [[
+    anno::display_name("ZY"),
+	anno::description("Returns float2(z,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11102)
+]]{ return zy( float3(a)); }
+export float2 zz(  color a) [[
+    anno::display_name("ZZ"),
+	anno::description("Returns float2(z,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11112)
+]]{ return zz( float3(a)); }
+
+export float2 xx( texture_return a) [[
+    anno::display_name("XX"),
+	anno::description("Returns float2(x,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11034)
+]]{ return xx(texture_return_float4(a)); }/*-**/
+export float2 xy( texture_return a) 
+[[
+    anno::display_name("XY"),
+	anno::description("Returns float2(x,y)."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11044)
+]]{ return xy(texture_return_float4(a)); }
+/**-*/export float2 xz( texture_return a) [[
+    anno::display_name("XZ"),
+	anno::description("Returns float2(x,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11073)
+]]{ return xz(texture_return_float4(a)); }
+export float2 xw( texture_return a) [[
+    anno::display_name("XW"),
+	anno::description("Returns float2(x,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11121)
+]]{ return xw(texture_return_float4(a)); }
+export float2 yx( texture_return a) [[
+    anno::display_name("YX"),
+	anno::description("Returns float2(y,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11054)
+]]{ return yx(texture_return_float4(a)); }
+export float2 yy( texture_return a) [[
+    anno::display_name("YY"),
+	anno::description("Returns float2(y,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11064)
+]]{ return yy(texture_return_float4(a)); }
+export float2 yz( texture_return a) [[
+    anno::display_name("YZ"),
+	anno::description("Returns float2(y,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11083)
+]]{ return yz(texture_return_float4(a)); }
+export float2 yw( texture_return a) [[
+    anno::display_name("YW"),
+	anno::description("Returns float2(y,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11126)
+]]{ return yw(texture_return_float4(a)); }
+export float2 zx( texture_return a) [[
+    anno::display_name("ZX"),
+	anno::description("Returns float2(z,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11093)
+]]{ return zx(texture_return_float4(a)); }
+export float2 zy( texture_return a) [[
+    anno::display_name("ZY"),
+	anno::description("Returns float2(z,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11103)
+]]{ return zy(texture_return_float4(a)); }
+export float2 zz( texture_return a) [[
+    anno::display_name("ZZ"),
+	anno::description("Returns float2(z,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11113)
+]]{ return zz(texture_return_float4(a)); }
+export float2 zw( texture_return a) [[
+    anno::display_name("ZW"),
+	anno::description("Returns float2(z,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11128)
+]]{ return zw(texture_return_float4(a)); }
+export float2 wx( texture_return a) [[
+    anno::display_name("WX"),
+	anno::description("Returns float2(w,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11130)
+]]{ return wx(texture_return_float4(a)); }
+export float2 wy( texture_return a) [[
+    anno::display_name("WY"),
+	anno::description("Returns float2(w,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11132)
+]]{ return wy(texture_return_float4(a)); }
+export float2 wz( texture_return a) [[
+    anno::display_name("WZ"),
+	anno::description("Returns float2(w,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11134)
+]]{ return wz(texture_return_float4(a)); }
+export float2 ww( texture_return a) [[
+    anno::display_name("WW"),
+	anno::description("Returns float2(w,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11136)
+]]{ return ww(texture_return_float4(a)); }
+
+// Swizzles with float3 return type
+
+export float3 xxx( float2 a) [[
+    anno::display_name("XXX"),
+	anno::description("Returns float3(x,x,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11200)
+]]{ return float3( a.x, a.x, a.x); }
+export float3 xxy( float2 a) [[
+    anno::display_name("XXY"),
+	anno::description("Returns float3(x,x,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11210)
+]]{ return float3( a.x, a.x, a.y); }
+export float3 xyx( float2 a) [[
+    anno::display_name("XYX"),
+	anno::description("Returns float3(x,y,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11230)
+]]{ return float3( a.x, a.y, a.x); }
+export float3 xyy( float2 a) [[
+    anno::display_name("XYY"),
+	anno::description("Returns float3(x,y,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11240)
+]]{ return float3( a.x, a.y, a.y); }
+export float3 yxx( float2 a) [[
+    anno::display_name("YXX"),
+	anno::description("Returns float3(y,x,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11250)
+]]{ return float3( a.y, a.x, a.x); }
+export float3 yxy( float2 a) [[
+    anno::display_name("YXY"),
+	anno::description("Returns float3(y,x,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11260)
+]]{ return float3( a.y, a.x, a.y); }
+export float3 yyx( float2 a) [[
+    anno::display_name("YYX"),
+	anno::description("Returns float3(y,y,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11270)
+]]{ return float3( a.y, a.y, a.x); }
+export float3 yyy( float2 a) [[
+    anno::display_name("YYY"),
+	anno::description("Returns float3(y,y,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11280)
+]]{ return float3( a.y, a.y, a.y); }
+
+export float3 xxx( float3 a) [[
+    anno::display_name("XXX"),
+	anno::description("Returns float3(x,x,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11201)
+]]{ return float3( a.x, a.x, a.x); }
+export float3 xxy( float3 a) [[
+    anno::display_name("XXY"),
+	anno::description("Returns float3(x,x,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11211)
+]]{ return float3( a.x, a.x, a.y); }
+export float3 xxz( float3 a) [[
+    anno::display_name("XXZ"),
+	anno::description("Returns float3(x,x,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11220)
+]]{ return float3( a.x, a.x, a.z); }
+export float3 xyx( float3 a) [[
+    anno::display_name("XYX"),
+	anno::description("Returns float3(x,y,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11231)
+]]{ return float3( a.x, a.y, a.x); }
+export float3 xyy( float3 a) [[
+    anno::display_name("XYY"),
+	anno::description("Returns float3(x,y,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11241)
+]]{ return float3( a.x, a.y, a.y); }/*-**/
+export float3 xyz( float3 a) [[
+    anno::display_name("XYZ"),
+	anno::description("Returns float3(x,y,z)."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11290)
+]]{ return float3( a.x, a.y, a.z); }
+/**-*/export float3 xzx( float3 a) [[
+    anno::display_name("XZX"),
+	anno::description("Returns float3(x,z,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11300)
+]]{ return float3( a.x, a.z, a.x); }
+export float3 xzy( float3 a) [[
+    anno::display_name("XZY"),
+	anno::description("Returns float3(x,z,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11310)
+]]{ return float3( a.x, a.z, a.y); }
+export float3 xzz( float3 a) [[
+    anno::display_name("XZZ"),
+	anno::description("Returns float3(x,z,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11320)
+]]{ return float3( a.x, a.z, a.z); }
+export float3 yxx( float3 a) [[
+    anno::display_name("YXX"),
+	anno::description("Returns float3(y,x,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11251)
+]]{ return float3( a.y, a.x, a.x); }
+export float3 yxy( float3 a) [[
+    anno::display_name("YXY"),
+	anno::description("Returns float3(y,x,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11261)
+]]{ return float3( a.y, a.x, a.y); }
+export float3 yxz( float3 a) [[
+    anno::display_name("YXZ"),
+	anno::description("Returns float3(y,x,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11330)
+]]{ return float3( a.y, a.x, a.z); }
+export float3 yyx( float3 a) [[
+    anno::display_name("YYX"),
+	anno::description("Returns float3(y,y,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11271)
+]]{ return float3( a.y, a.y, a.x); }
+export float3 yyy( float3 a) [[
+    anno::display_name("YYY"),
+	anno::description("Returns float3(y,y,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11281)
+]]{ return float3( a.y, a.y, a.y); }
+export float3 yyz( float3 a) [[
+    anno::display_name("YYZ"),
+	anno::description("Returns float3(y,y,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11340)
+]]{ return float3( a.y, a.y, a.z); }
+export float3 yzx( float3 a) [[
+    anno::display_name("YZX"),
+	anno::description("Returns float3(y,z,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11350)
+]]{ return float3( a.y, a.z, a.x); }
+export float3 yzy( float3 a) [[
+    anno::display_name("YZY"),
+	anno::description("Returns float3(y,z,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11360)
+]]{ return float3( a.y, a.z, a.y); }
+export float3 yzz( float3 a) [[
+    anno::display_name("YZZ"),
+	anno::description("Returns float3(y,z,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11370)
+]]{ return float3( a.y, a.z, a.z); }
+export float3 zxx( float3 a) [[
+    anno::display_name("ZXX"),
+	anno::description("Returns float3(z,x,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11380)
+]]{ return float3( a.z, a.x, a.x); }
+export float3 zxy( float3 a) [[
+    anno::display_name("ZXY"),
+	anno::description("Returns float3(z,x,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11390)
+]]{ return float3( a.z, a.x, a.y); }
+export float3 zxz( float3 a) [[
+    anno::display_name("ZXZ"),
+	anno::description("Returns float3(z,x,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11400)
+]]{ return float3( a.z, a.x, a.z); }
+export float3 zyx( float3 a) [[
+    anno::display_name("ZYX"),
+	anno::description("Returns float3(z,y,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11410)
+]]{ return float3( a.z, a.y, a.x); }
+export float3 zyy( float3 a) [[
+    anno::display_name("ZYY"),
+	anno::description("Returns float3(z,y,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11420)
+]]{ return float3( a.z, a.y, a.y); }
+export float3 zyz( float3 a) [[
+    anno::display_name("ZYZ"),
+	anno::description("Returns float3(z,y,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11430)
+]]{ return float3( a.z, a.y, a.z); }
+export float3 zzx( float3 a) [[
+    anno::display_name("ZZX"),
+	anno::description("Returns float3(z,z,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11440)
+]]{ return float3( a.z, a.z, a.x); }
+export float3 zzy( float3 a) [[
+    anno::display_name("ZZY"),
+	anno::description("Returns float3(z,z,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11450)
+]]{ return float3( a.z, a.z, a.y); }
+export float3 zzz( float3 a) [[
+    anno::display_name("ZZZ"),
+	anno::description("Returns float3(z,z,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11460)
+]]{ return float3( a.z, a.z, a.z); }
+
+export float3 xxx( float4 a) [[
+    anno::display_name("XXX"),
+	anno::description("Returns float3(x,x,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11202)
+]]{ return float3( a.x, a.x, a.x); }
+export float3 xxy( float4 a) [[
+    anno::display_name("XXY"),
+	anno::description("Returns float3(x,x,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11212)
+]]{ return float3( a.x, a.x, a.y); }
+export float3 xxz( float4 a) [[
+    anno::display_name("XXZ"),
+	anno::description("Returns float3(x,x,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11222)
+]]{ return float3( a.x, a.x, a.z); }
+export float3 xxw( float4 a) [[
+    anno::display_name("XXW"),
+	anno::description("Returns float3(x,x,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11227)
+]]{ return float3( a.x, a.x, a.w); }
+export float3 xyx( float4 a) [[
+    anno::display_name("XYX"),
+	anno::description("Returns float3(x,y,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11232)
+]]{ return float3( a.x, a.y, a.x); }
+export float3 xyy( float4 a) [[
+    anno::display_name("XYY"),
+	anno::description("Returns float3(x,y,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11242)
+]]{ return float3( a.x, a.y, a.y); }/*-**/
+export float3 xyz( float4 a) [[
+    anno::display_name("XYZ"),
+	anno::description("Returns float3(x,y,z)."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11291)
+]]{ return float3( a.x, a.y, a.z); }
+/**-*/export float3 xyw( float4 a) [[
+    anno::display_name("XYW"),
+	anno::description("Returns float3(x,y,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11295)
+]]{ return float3( a.x, a.y, a.w); }
+export float3 xzx( float4 a) [[
+    anno::display_name("XZX"),
+	anno::description("Returns float3(x,z,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11301)
+]]{ return float3( a.x, a.z, a.x); }
+export float3 xzy( float4 a) [[
+    anno::display_name("XZY"),
+	anno::description("Returns float3(x,z,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11311)
+]]{ return float3( a.x, a.z, a.y); }
+export float3 xzz( float4 a) [[
+    anno::display_name("XZZ"),
+	anno::description("Returns float3(x,z,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11321)
+]]{ return float3( a.x, a.z, a.z); }
+export float3 xzw( float4 a) [[
+    anno::display_name("XZW"),
+	anno::description("Returns float3(x,z,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11600)
+]]{ return float3( a.x, a.z, a.w); }
+export float3 xwx( float4 a) [[
+    anno::display_name("XWX"),
+	anno::description("Returns float3(x,w,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11604)
+]]{ return float3( a.x, a.w, a.x); }
+export float3 xwy( float4 a) [[
+    anno::display_name("XWY"),
+	anno::description("Returns float3(x,w,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11608)
+]]{ return float3( a.x, a.w, a.y); }
+export float3 xwz( float4 a) [[
+    anno::display_name("XWZ"),
+	anno::description("Returns float3(x,w,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11612)
+]]{ return float3( a.x, a.w, a.z); }
+export float3 xww( float4 a) [[
+    anno::display_name("XWW"),
+	anno::description("Returns float3(x,w,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11616)
+]]{ return float3( a.x, a.w, a.w); }
+export float3 yxx( float4 a) [[
+    anno::display_name("YXX"),
+	anno::description("Returns float3(y,x,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11252)
+]]{ return float3( a.y, a.x, a.x); }
+export float3 yxy( float4 a) [[
+    anno::display_name("YXY"),
+	anno::hidden(),
+	anno::description("Returns float3(y,x,y)."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11262)
+]]{ return float3( a.y, a.x, a.y); }
+export float3 yxz( float4 a) [[
+    anno::display_name("YXZ"),
+	anno::description("Returns float3(y,x,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11331)
+]]{ return float3( a.y, a.x, a.z); }
+export float3 yxw( float4 a) [[
+    anno::display_name("YXW"),
+	anno::description("Returns float3(y,x,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11630)
+]]{ return float3( a.y, a.x, a.w); }
+export float3 yyx( float4 a) [[
+    anno::display_name("YYX"),
+	anno::description("Returns float3(y,y,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11272)
+]]{ return float3( a.y, a.y, a.x); }
+export float3 yyy( float4 a) [[
+    anno::display_name("YYY"),
+	anno::description("Returns float3(y,y,y)."),
+    anno::author("NVIDIA Corporation"),
+	anno::hidden(),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11282)
+]]{ return float3( a.y, a.y, a.y); }
+export float3 yyz( float4 a) [[
+    anno::display_name("YYZ"),
+	anno::description("Returns float3(y,y,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11341)
+]]{ return float3( a.y, a.y, a.z); }
+export float3 yyw( float4 a) [[
+    anno::display_name("YYW"),
+	anno::description("Returns float3(y,y,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11640)
+]]{ return float3( a.y, a.y, a.w); }
+export float3 yzx( float4 a) [[
+    anno::display_name("YZX"),
+	anno::description("Returns float3(y,z,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11351)
+]]{ return float3( a.y, a.z, a.x); }
+export float3 yzy( float4 a) [[
+    anno::display_name("YZY"),
+	anno::description("Returns float3(y,z,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11361)
+]]{ return float3( a.y, a.z, a.y); }
+export float3 yzz( float4 a) [[
+    anno::display_name("YZZ"),
+	anno::description("Returns float3(y,z,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11371)
+]]{ return float3( a.y, a.z, a.z); }
+export float3 yzw( float4 a) [[
+    anno::display_name("YZW"),
+	anno::description("Returns float3(y,z,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11650)
+]]{ return float3( a.y, a.z, a.w); }
+export float3 ywx( float4 a) [[
+    anno::display_name("YWX"),
+	anno::description("Returns float3(y,w,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11653)
+]]{ return float3( a.y, a.w, a.x); }
+export float3 ywy( float4 a) [[
+    anno::display_name("YWY"),
+	anno::description("Returns float3(y,w,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11656)
+]]{ return float3( a.y, a.w, a.y); }
+export float3 ywz( float4 a) [[
+    anno::display_name("YWZ"),
+	anno::description("Returns float3(y,w,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11658)
+]]{ return float3( a.y, a.w, a.z); }
+export float3 yww( float4 a) [[
+    anno::display_name("YWW"),
+	anno::description("Returns float3(y,w,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11661)
+]]{ return float3( a.y, a.w, a.w); }
+export float3 zxx( float4 a) [[
+    anno::display_name("ZXX"),
+	anno::description("Returns float3(z,x,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11381)
+]]{ return float3( a.z, a.x, a.x); }
+export float3 zxy( float4 a) [[
+    anno::display_name("ZXY"),
+	anno::description("Returns float3(z,x,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11391)
+]]{ return float3( a.z, a.x, a.y); }
+export float3 zxz( float4 a) [[
+    anno::display_name("ZXZ"),
+	anno::description("Returns float3(z,x,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11401)
+]]{ return float3( a.z, a.x, a.z); }
+export float3 zxw( float4 a) [[
+    anno::display_name("ZXW"),
+	anno::description("Returns float3(z,x,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11671)
+]]{ return float3( a.z, a.x, a.w); }
+export float3 zyx( float4 a) [[
+    anno::display_name("ZYX"),
+	anno::description("Returns float3(z,y,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11411)
+]]{ return float3( a.z, a.y, a.x); }
+export float3 zyy( float4 a) [[
+    anno::display_name("ZYY"),
+	anno::description("Returns float3(z,y,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11421)
+]]{ return float3( a.z, a.y, a.y); }
+export float3 zyz( float4 a) [[
+    anno::display_name("ZYZ"),
+	anno::description("Returns float3(z,y,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11431)
+]]{ return float3( a.z, a.y, a.z); }
+export float3 zyw( float4 a) [[
+    anno::display_name("ZYW"),
+	anno::description("Returns float3(z,y,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11432)
+]]{ return float3( a.z, a.y, a.w); }
+export float3 zzx( float4 a) [[
+    anno::display_name("ZYX"),
+	anno::description("Returns float3(z,y,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11441)
+]]{ return float3( a.z, a.z, a.x); }
+export float3 zzy( float4 a) [[
+    anno::display_name("ZZY"),
+	anno::description("Returns float3(z,z,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11451)
+]]{ return float3( a.z, a.z, a.y); }
+export float3 zzz( float4 a) [[
+    anno::display_name("ZZZ"),
+	anno::hidden(),
+	anno::description("Returns float3(z,z,z)."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11461)
+]]{ return float3( a.z, a.z, a.z); }
+export float3 zzw( float4 a) [[
+    anno::display_name("ZZW"),
+	anno::description("Returns float3(z,z,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11465)
+]]{ return float3( a.z, a.z, a.w); }
+export float3 zwx( float4 a) [[
+    anno::display_name("ZWX"),
+	anno::description("Returns float3(z,w,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11468)
+]]{ return float3( a.z, a.w, a.x); }
+export float3 zwy( float4 a) [[
+    anno::display_name("ZWY"),
+	anno::description("Returns float3(z,w,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11471)
+]]{ return float3( a.z, a.w, a.y); }
+export float3 zwz( float4 a) [[
+    anno::display_name("ZWZ"),
+	anno::description("Returns float3(z,w,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11475)
+]]{ return float3( a.z, a.w, a.z); }
+export float3 zww( float4 a) [[
+    anno::display_name("ZWW"),
+	anno::description("Returns float3(z,w,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11479)
+]]{ return float3( a.z, a.w, a.w); }
+export float3 wxx( float4 a) [[
+    anno::display_name("WXX"),
+	anno::description("Returns float3(w,x,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11483)
+]]{ return float3( a.w, a.x, a.x); }
+export float3 wxy( float4 a) [[
+    anno::display_name("WXY"),
+	anno::description("Returns float3(w,x,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11487)
+]]{ return float3( a.w, a.x, a.y); }
+export float3 wxz( float4 a) [[
+    anno::display_name("WXZ"),
+	anno::description("Returns float3(w,x,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11490)
+]]{ return float3( a.w, a.x, a.z); }
+export float3 wxw( float4 a) [[
+    anno::display_name("WXW"),
+	anno::description("Returns float3(w,x,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11496)
+]]{ return float3( a.w, a.x, a.w); }
+export float3 wyx( float4 a) [[
+    anno::display_name("WYX"),
+	anno::description("Returns float3(w,y,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11503)
+]]{ return float3( a.w, a.y, a.x); }
+export float3 wyy( float4 a) [[
+    anno::display_name("WYY"),
+	anno::description("Returns float3(w,y,y)."),
+    anno::author("NVIDIA Corporation"),
+	anno::hidden(),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11507)
+]]{ return float3( a.w, a.y, a.y); }
+export float3 wyz( float4 a) [[
+    anno::display_name("WYZ"),
+	anno::description("Returns float3(w,y,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11510)
+]]{ return float3( a.w, a.y, a.z); }
+export float3 wyw( float4 a) [[
+    anno::display_name("WYW"),
+	anno::description("Returns float3(w,y,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11514)
+]]{ return float3( a.w, a.y, a.w); }
+export float3 wzx( float4 a) [[
+    anno::display_name("WZX"),
+	anno::description("Returns float3(w,z,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11518)
+]]{ return float3( a.w, a.z, a.x); }
+export float3 wzy( float4 a) [[
+    anno::display_name("WZY"),
+	anno::description("Returns float3(w,z,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11521)
+]]{ return float3( a.w, a.z, a.y); }
+export float3 wzz( float4 a) [[
+    anno::display_name("WZZ"),
+	anno::description("Returns float3(w,z,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11524)
+]]{ return float3( a.w, a.z, a.z); }
+export float3 wzw( float4 a) [[
+    anno::display_name("WZW"),
+	anno::description("Returns float3(w,z,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11529)
+]]{ return float3( a.w, a.z, a.w); }
+export float3 wwx( float4 a) [[
+    anno::display_name("WWX"),
+	anno::description("Returns float3(w,w,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11533)
+]]{ return float3( a.w, a.w, a.x); }
+export float3 wwy( float4 a) [[
+    anno::display_name("WWY"),
+	anno::hidden(),
+	anno::description("Returns float3(w,w,y)."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11537)
+]]{ return float3( a.w, a.w, a.y); }
+export float3 wwz( float4 a) [[
+    anno::display_name("WWZ"),
+	anno::description("Returns float3(w,w,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11541)
+]]{ return float3( a.w, a.w, a.z); }
+export float3 www( float4 a) [[
+    anno::display_name("WWW"),
+	anno::description("Returns float3(w,w,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11544)
+]]{ return float3( a.w, a.w, a.w); }
+
+export float3 xxx(  color a) [[
+    anno::display_name("XXX"),
+	anno::description("Returns float3(x,x,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11203)
+]]{ return xxx( float3(a)); }
+export float3 xxy(  color a) [[
+    anno::display_name("XXY"),
+	anno::description("Returns float3(x,x,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11213)
+]]{ return xxy( float3(a)); }
+export float3 xxz(  color a) [[
+    anno::display_name("XXZ"),
+	anno::description("Returns float3(x,x,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11223)
+]]{ return xxz( float3(a)); }
+export float3 xyx(  color a) [[
+    anno::display_name("XYX"),
+	anno::description("Returns float3(x,y,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11233)
+]]{ return xyx( float3(a)); }
+export float3 xyy(  color a) [[
+    anno::display_name("XYY"),
+	anno::description("Returns float3(x,y,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11243)
+]]{ return xyy( float3(a)); }/*-**/
+export float3 xyz(  color a) [[
+    anno::display_name("XYZ"),
+	anno::description("Returns float3(x,y,z)."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11292)
+]]{ return xyz( float3(a)); }
+/**-*/export float3 xzx(  color a) [[
+    anno::display_name("XZX"),
+	anno::description("Returns float3(x,z,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11302)
+]]{ return xzx( float3(a)); }
+export float3 xzy(  color a) [[
+    anno::display_name("XZY"),
+	anno::description("Returns float3(x,z,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11312)
+]]{ return xzy( float3(a)); }
+export float3 xzz(  color a) [[
+    anno::display_name("XZZ"),
+	anno::description("Returns float3(x,z,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11323)
+]]{ return xzz( float3(a)); }
+export float3 yxx(  color a) [[
+    anno::display_name("YXX"),
+	anno::description("Returns float3(y,x,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11253)
+]]{ return yxx( float3(a)); }
+export float3 yxy(  color a) [[
+    anno::display_name("YXY"),
+	anno::description("Returns float3(y,x,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11263)
+]]{ return yxy( float3(a)); }
+export float3 yxz(  color a) [[
+    anno::display_name("YXZ"),
+	anno::description("Returns float3(y,x,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11332)
+]]{ return yxz( float3(a)); }
+export float3 yyx(  color a) [[
+    anno::display_name("YYX"),
+	anno::description("Returns float3(y,y,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11273)
+]]{ return yyx( float3(a)); }
+export float3 yyy(  color a) [[
+    anno::display_name("YYY"),
+	anno::description("Returns float3(y,y,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11283)
+]]{ return yyy( float3(a)); }
+export float3 yyz(  color a) [[
+    anno::display_name("YYZ"),
+	anno::description("Returns float3(y,y,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11342)
+]]{ return yyz( float3(a)); }
+export float3 yzx(  color a) [[
+    anno::display_name("YZX"),
+	anno::description("Returns float3(y,z,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11352)
+]]{ return yzx( float3(a)); }
+export float3 yzy(  color a) [[
+    anno::display_name("YZY"),
+	anno::description("Returns float3(y,z,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11362)
+]]{ return yzy( float3(a)); }
+export float3 yzz(  color a) [[
+    anno::display_name("YZZ"),
+	anno::description("Returns float3(y,z,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11372)
+]]{ return yzz( float3(a)); }
+export float3 zxx(  color a) [[
+    anno::display_name("ZXX"),
+	anno::description("Returns float3(z,x,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11382)
+]]{ return zxx( float3(a)); }
+export float3 zxy(  color a) [[
+    anno::display_name("ZXY"),
+	anno::description("Returns float3(z,x,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11392)
+]]{ return zxy( float3(a)); }
+export float3 zxz(  color a) [[
+    anno::display_name("ZXZ"),
+	anno::description("Returns float3(z,x,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11402)
+]]{ return zxz( float3(a)); }
+export float3 zyx(  color a) [[
+    anno::display_name("ZYX"),
+	anno::description("Returns float3(z,y,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11412)
+]]{ return zyx( float3(a)); }
+export float3 zyy(  color a) [[
+    anno::display_name("ZYY"),
+	anno::description("Returns float3(z,y,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11422)
+]]{ return zyy( float3(a)); }
+export float3 zyz(  color a) [[
+    anno::display_name("ZYZ"),
+	anno::description("Returns float3(z,y,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11432)
+]]{ return zyz( float3(a)); }
+export float3 zzx(  color a) [[
+    anno::display_name("ZZX"),
+	anno::description("Returns float3(z,z,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11442)
+]]{ return zzx( float3(a)); }
+export float3 zzy(  color a) [[
+    anno::display_name("ZZY"),
+	anno::description("Returns float3(z,z,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11452)
+]]{ return zzy( float3(a)); }
+export float3 zzz(  color a) [[
+    anno::display_name("ZZZ"),
+	anno::description("Returns float3(z,z,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11462)
+]]{ return zzz( float3(a)); }
+
+export float3 xxx( texture_return a) [[
+    anno::display_name("XXX"),
+	anno::description("Returns float3(x,x,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11204)
+]]{ return xxx(texture_return_float4(a)); }
+export float3 xxy( texture_return a) [[
+    anno::display_name("XXY"),
+	anno::description("Returns float3(x,x,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11214)
+]]{ return xxy(texture_return_float4(a)); }
+export float3 xxz( texture_return a) [[
+    anno::display_name("XXZ"),
+	anno::description("Returns float3(x,x,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11224)
+]]{ return xxz(texture_return_float4(a)); }
+export float3 xxw( texture_return a) [[
+    anno::display_name("XXW"),
+	anno::description("Returns float3(x,x,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11229)
+]]{ return xxw(texture_return_float4(a)); }
+export float3 xyx( texture_return a) [[
+    anno::display_name("XYX"),
+	anno::description("Returns float3(x,y,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11234)
+]]{ return xyx(texture_return_float4(a)); }
+export float3 xyy( texture_return a) [[
+    anno::display_name("XYY"),
+	anno::description("Returns float3(x,y,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11244)
+]]{ return xyy(texture_return_float4(a)); } /*-**/
+export float3 xyz( texture_return a) [[
+    anno::display_name("XYZ"),
+	anno::description("Returns float3(x,y,z)."),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11293)
+]]{ return xyz(texture_return_float4(a)); }
+/**-*/export float3 xyw( texture_return a) [[
+    anno::display_name("XYW"),
+	anno::description("Returns float3(x,y,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11296)
+]]{ return xyw(texture_return_float4(a)); }
+export float3 xzx( texture_return a) [[
+    anno::display_name("XZX"),
+	anno::description("Returns float3(x,z,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11303)
+]]{ return xzx(texture_return_float4(a)); }
+export float3 xzy( texture_return a) [[
+    anno::display_name("XZY"),
+	anno::description("Returns float3(x,z,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(1131)
+]]{ return xzy(texture_return_float4(a)); }
+export float3 xzz( texture_return a) [[
+    anno::display_name("XZZ"),
+	anno::description("Returns float3(x,z,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11321)
+]]{ return xzz(texture_return_float4(a)); }
+export float3 xzw( texture_return a) [[
+    anno::display_name("XZW"),
+	anno::description("Returns float3(x,z,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11601)
+]]{ return xzw(texture_return_float4(a)); }
+export float3 xwx( texture_return a) [[
+    anno::display_name("XWX"),
+	anno::description("Returns float3(x,w,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11605)
+]]{ return xwx(texture_return_float4(a)); }
+export float3 xwy( texture_return a) [[
+    anno::display_name("XWY"),
+	anno::description("Returns float3(x,w,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11609)
+]]{ return xwy(texture_return_float4(a)); }
+export float3 xwz( texture_return a) [[
+    anno::display_name("XWZ"),
+	anno::description("Returns float3(x,w,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11613)
+]]{ return xwz(texture_return_float4(a)); }
+export float3 xww( texture_return a) [[
+    anno::display_name("XWW"),
+	anno::description("Returns float3(x,w,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11617)
+]]{ return xww(texture_return_float4(a)); }
+export float3 yxx( texture_return a) [[
+    anno::display_name("YXX"),
+	anno::description("Returns float3(y,x,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11254)
+]]{ return yxx(texture_return_float4(a)); }
+export float3 yxy( texture_return a) [[
+    anno::display_name("YXY"),
+	anno::description("Returns float3(y,x,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11264)
+]]{ return yxy(texture_return_float4(a)); }
+export float3 yxz( texture_return a) [[
+    anno::display_name("YXZ"),
+	anno::description("Returns float3(y,x,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11333)
+]]{ return yxz(texture_return_float4(a)); }
+export float3 yxw( texture_return a) [[
+    anno::display_name("YXW"),
+	anno::description("Returns float3(y,x,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11631)
+]]{ return yxw(texture_return_float4(a)); }
+export float3 yyx( texture_return a) [[
+    anno::display_name("YYX"),
+	anno::description("Returns float3(y,y,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11274)
+]]{ return yyx(texture_return_float4(a)); }
+export float3 yyy( texture_return a) [[
+    anno::display_name("YYY"),
+	anno::description("Returns float3(y,y,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11284)
+]]{ return yyy(texture_return_float4(a)); }
+export float3 yyz( texture_return a) [[
+    anno::display_name("YYZ"),
+	anno::description("Returns float3(y,y,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11344)
+]]{ return yyz(texture_return_float4(a)); }
+export float3 yyw( texture_return a) [[
+    anno::display_name("YYW"),
+	anno::description("Returns float3(y,y,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11641)
+]]{ return yyw(texture_return_float4(a)); }
+export float3 yzx( texture_return a) [[
+    anno::display_name("YZX"),
+	anno::description("Returns float3(y,z,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11354)
+]]{ return yzx(texture_return_float4(a)); }
+export float3 yzy( texture_return a) [[
+    anno::display_name("YZY"),
+	anno::description("Returns float3(y,z,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11363)
+]]{ return yzy(texture_return_float4(a)); }
+export float3 yzz( texture_return a) [[
+    anno::display_name("YZZ"),
+	anno::description("Returns float3(y,z,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11373)
+]]{ return yzz(texture_return_float4(a)); }
+export float3 yzw( texture_return a) [[
+    anno::display_name("YZW"),
+	anno::description("Returns float3(y,z,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11651)
+]]{ return yzw(texture_return_float4(a)); }
+export float3 ywx( texture_return a) [[
+    anno::display_name("YWX"),
+	anno::description("Returns float3(y,w,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11654)
+]]{ return ywx(texture_return_float4(a)); }
+export float3 ywy( texture_return a) [[
+    anno::display_name("YWY"),
+	anno::description("Returns float3(y,w,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11657)
+]]{ return ywy(texture_return_float4(a)); }
+export float3 ywz( texture_return a) [[
+    anno::display_name("YWZ"),
+	anno::description("Returns float3(y,w,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11659)
+]]{ return ywz(texture_return_float4(a)); }
+export float3 yww( texture_return a) [[
+    anno::display_name("YWW"),
+	anno::description("Returns float3(y,w,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11662)
+]]{ return yww(texture_return_float4(a)); }
+export float3 zxx( texture_return a) [[
+    anno::display_name("ZXX"),
+	anno::description("Returns float3(z,x,x)."),
+    anno::author("NVIDIA Corporation"),
+	anno::hidden(),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11383)
+]]{ return zxx(texture_return_float4(a)); }
+export float3 zxy( texture_return a) [[
+    anno::display_name("ZXY"),
+	anno::description("Returns float3(z,x,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11394)
+]]{ return zxy(texture_return_float4(a)); }
+export float3 zxz( texture_return a) [[
+    anno::display_name("ZXZ"),
+	anno::description("Returns float3(z,x,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11403)
+]]{ return zxz(texture_return_float4(a)); }
+export float3 zxw( texture_return a) [[
+    anno::display_name("ZXW"),
+	anno::description("Returns float3(z,x,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11672)
+]]{ return zxw(texture_return_float4(a)); }
+export float3 zyx( texture_return a) [[
+    anno::display_name("ZYX"),
+	anno::description("Returns float3(z,y,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11413)
+]]{ return zyx(texture_return_float4(a)); }
+export float3 zyy( texture_return a) [[
+    anno::display_name("ZYY"),
+	anno::description("Returns float3(z,y,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11423)
+]]{ return zyy(texture_return_float4(a)); }
+export float3 zyz( texture_return a) [[
+    anno::display_name("ZYZ"),
+	anno::description("Returns float3(z,y,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11433)
+]]{ return zyz(texture_return_float4(a)); }
+export float3 zyw( texture_return a) [[
+    anno::display_name("ZYW"),
+	anno::description("Returns float3(z,y,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11433)
+]]{ return zyw(texture_return_float4(a)); }
+export float3 zzx( texture_return a) [[
+    anno::display_name("ZZX"),
+	anno::description("Returns float3(z,z,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11443)
+]]{ return zzx(texture_return_float4(a)); }
+export float3 zzy( texture_return a) [[
+    anno::display_name("ZZY"),
+	anno::description("Returns float3(z,z,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11453)
+]]{ return zzy(texture_return_float4(a)); }
+export float3 zzz( texture_return a) [[
+    anno::display_name("ZZZ"),
+	anno::description("Returns float3(z,z,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11463)
+]]{ return zzz(texture_return_float4(a)); }
+export float3 zzw( texture_return a) [[
+    anno::display_name("ZZW"),
+	anno::description("Returns float3(z,z,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11466)
+]]{ return zzw(texture_return_float4(a)); }
+export float3 zwx( texture_return a) [[
+    anno::display_name("ZWX"),
+	anno::description("Returns float3(z,w,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11468)
+]]{ return zwx(texture_return_float4(a)); }
+export float3 zwy( texture_return a) [[
+    anno::display_name("ZWY"),
+	anno::description("Returns float3(z,w,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11472)
+]]{ return zwy(texture_return_float4(a)); }
+export float3 zwz( texture_return a) [[
+    anno::display_name("ZWZ"),
+	anno::description("Returns float3(z,w,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11476)
+]]{ return zwz(texture_return_float4(a)); }
+export float3 zww( texture_return a) [[
+    anno::display_name("ZWW"),
+	anno::description("Returns float3(z,w,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11480)
+]]{ return zww(texture_return_float4(a)); }
+export float3 wxx( texture_return a) [[
+    anno::display_name("WXX"),
+	anno::description("Returns float3(w,x,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11484)
+]]{ return wxx(texture_return_float4(a)); }
+export float3 wxy( texture_return a) [[
+    anno::display_name("WXY"),
+	anno::description("Returns float3(w,x,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11488)
+]]{ return wxy(texture_return_float4(a)); }
+export float3 wxz( texture_return a) [[
+    anno::display_name("WXZ"),
+	anno::description("Returns float3(w,x,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11493)
+]]{ return wxz(texture_return_float4(a)); }
+export float3 wxw( texture_return a) [[
+    anno::display_name("WXW"),
+	anno::description("Returns float3(w,x,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11500)
+]]{ return wxw(texture_return_float4(a)); }
+export float3 wyx( texture_return a) [[
+    anno::display_name("WYX"),
+	anno::description("Returns float3(w,y,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(1150)
+]]{ return wyx(texture_return_float4(a)); }
+export float3 wyy( texture_return a) [[
+    anno::display_name("WYY"),
+	anno::description("Returns float3(w,y,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11508)
+]]{ return wyy(texture_return_float4(a)); }
+export float3 wyz( texture_return a) [[
+    anno::display_name("WYZ"),
+	anno::description("Returns float3(w,y,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11511)
+]]{ return wyz(texture_return_float4(a)); }
+export float3 wyw( texture_return a) [[
+    anno::display_name("WYW"),
+	anno::description("Returns float3(w,y,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11515)
+]]{ return wyw(texture_return_float4(a)); }
+export float3 wzx( texture_return a) [[
+    anno::display_name("WZX"),
+	anno::description("Returns float3(w,z,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11519)
+]]{ return wzx(texture_return_float4(a)); }
+export float3 wzy( texture_return a) [[
+    anno::display_name("WZY"),
+	anno::description("Returns float3(w,z,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11522)
+]]{ return wzy(texture_return_float4(a)); }
+export float3 wzz( texture_return a) [[
+    anno::display_name("WZZ"),
+	anno::description("Returns float3(w,z,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11525)
+]]{ return wzz(texture_return_float4(a)); }
+export float3 wzw( texture_return a) [[
+    anno::display_name("WZW"),
+	anno::description("Returns float3(w,z,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11530)
+]]{ return wzw(texture_return_float4(a)); }
+export float3 wwx( texture_return a) [[
+    anno::display_name("WWX"),
+	anno::description("Returns float3(w,w,x)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11533)
+]]{ return wwx(texture_return_float4(a)); }
+export float3 wwy( texture_return a) [[
+    anno::display_name("WWY"),
+	anno::description("Returns float3(w,w,y)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11538)
+]]{ return wwy(texture_return_float4(a)); }
+export float3 wwz( texture_return a) [[
+    anno::display_name("WWZ"),
+	anno::description("Returns float3(w,w,z)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11541)
+]]{ return wwz(texture_return_float4(a)); }
+export float3 www( texture_return a) [[
+    anno::display_name("WWW"),
+	anno::description("Returns float3(w,w,w)."),
+	anno::hidden(),
+    anno::author("NVIDIA Corporation"),
+	anno::in_group("Constructors, conversions and swizzles"),
+	anno::ui_order(11545)
+]]{ return www(texture_return_float4(a)); }/*-**/
+
+// Swizzles with color return type
+
+/*export color xxx( float2 a) { return color( a.x, a.x, a.x); }
+export color xxy( float2 a) { return color( a.x, a.x, a.y); }
+export color xyx( float2 a) { return color( a.x, a.y, a.x); }
+export color xyy( float2 a) { return color( a.x, a.y, a.y); }
+export color yxx( float2 a) { return color( a.y, a.x, a.x); }
+export color yxy( float2 a) { return color( a.y, a.x, a.y); }
+export color yyx( float2 a) { return color( a.y, a.y, a.x); }
+export color yyy( float2 a) { return color( a.y, a.y, a.y); }
+
+export color xxx( float3 a) { return color( a.x, a.x, a.x); }
+export color xxy( float3 a) { return color( a.x, a.x, a.y); }
+export color xxz( float3 a) { return color( a.x, a.x, a.z); }
+export color xyx( float3 a) { return color( a.x, a.y, a.x); }
+export color xyy( float3 a) { return color( a.x, a.y, a.y); }
+export color xyz( float3 a) { return color( a ); }
+export color xzx( float3 a) { return color( a.x, a.z, a.x); }
+export color xzy( float3 a) { return color( a.x, a.z, a.y); }
+export color xzz( float3 a) { return color( a.x, a.z, a.z); }
+export color yxx( float3 a) { return color( a.y, a.x, a.x); }
+export color yxy( float3 a) { return color( a.y, a.x, a.y); }
+export color yxz( float3 a) { return color( a.y, a.x, a.z); }
+export color yyx( float3 a) { return color( a.y, a.y, a.x); }
+export color yyy( float3 a) { return color( a.y, a.y, a.y); }
+export color yyz( float3 a) { return color( a.y, a.y, a.z); }
+export color yzx( float3 a) { return color( a.y, a.z, a.x); }
+export color yzy( float3 a) { return color( a.y, a.z, a.y); }
+export color yzz( float3 a) { return color( a.y, a.z, a.z); }
+export color zxx( float3 a) { return color( a.z, a.x, a.x); }
+export color zxy( float3 a) { return color( a.z, a.x, a.y); }
+export color zxz( float3 a) { return color( a.z, a.x, a.z); }
+export color zyx( float3 a) { return color( a.z, a.y, a.x); }
+export color zyy( float3 a) { return color( a.z, a.y, a.y); }
+export color zyz( float3 a) { return color( a.z, a.y, a.z); }
+export color zzx( float3 a) { return color( a.z, a.z, a.x); }
+export color zzy( float3 a) { return color( a.z, a.z, a.y); }
+export color zzz( float3 a) { return color( a.z, a.z, a.z); }
+
+export color xxx( float4 a) { return color( a.x, a.x, a.x); }
+export color xxy( float4 a) { return color( a.x, a.x, a.y); }
+export color xxz( float4 a) { return color( a.x, a.x, a.z); }
+export color xxw( float4 a) { return color( a.x, a.x, a.w); }
+export color xyx( float4 a) { return color( a.x, a.y, a.x); }
+export color xyy( float4 a) { return color( a.x, a.y, a.y); }
+export color xyz( float4 a) { return color( a.x, a.y, a.z); }
+export color xyw( float4 a) { return color( a.x, a.y, a.w); }
+export color xzx( float4 a) { return color( a.x, a.z, a.x); }
+export color xzy( float4 a) { return color( a.x, a.z, a.y); }
+export color xzz( float4 a) { return color( a.x, a.z, a.z); }
+export color xzw( float4 a) { return color( a.x, a.z, a.w); }
+export color xwx( float4 a) { return color( a.x, a.w, a.x); }
+export color xwy( float4 a) { return color( a.x, a.w, a.y); }
+export color xwz( float4 a) { return color( a.x, a.w, a.z); }
+export color xww( float4 a) { return color( a.x, a.w, a.w); }
+export color yxx( float4 a) { return color( a.y, a.x, a.x); }
+export color yxy( float4 a) { return color( a.y, a.x, a.y); }
+export color yxz( float4 a) { return color( a.y, a.x, a.z); }
+export color yxw( float4 a) { return color( a.y, a.x, a.w); }
+export color yyx( float4 a) { return color( a.y, a.y, a.x); }
+export color yyy( float4 a) { return color( a.y, a.y, a.y); }
+export color yyz( float4 a) { return color( a.y, a.y, a.z); }
+export color yyw( float4 a) { return color( a.y, a.y, a.w); }
+export color yzx( float4 a) { return color( a.y, a.z, a.x); }
+export color yzy( float4 a) { return color( a.y, a.z, a.y); }
+export color yzz( float4 a) { return color( a.y, a.z, a.z); }
+export color yzw( float4 a) { return color( a.y, a.z, a.w); }
+export color ywx( float4 a) { return color( a.y, a.w, a.x); }
+export color ywy( float4 a) { return color( a.y, a.w, a.y); }
+export color ywz( float4 a) { return color( a.y, a.w, a.z); }
+export color yww( float4 a) { return color( a.y, a.w, a.w); }
+export color zxx( float4 a) { return color( a.z, a.x, a.x); }
+export color zxy( float4 a) { return color( a.z, a.x, a.y); }
+export color zxz( float4 a) { return color( a.z, a.x, a.z); }
+export color zxw( float4 a) { return color( a.z, a.x, a.w); }
+export color zyx( float4 a) { return color( a.z, a.y, a.x); }
+export color zyy( float4 a) { return color( a.z, a.y, a.y); }
+export color zyz( float4 a) { return color( a.z, a.y, a.z); }
+export color zyw( float4 a) { return color( a.z, a.y, a.w); }
+export color zzx( float4 a) { return color( a.z, a.z, a.x); }
+export color zzy( float4 a) { return color( a.z, a.z, a.y); }
+export color zzz( float4 a) { return color( a.z, a.z, a.z); }
+export color zzw( float4 a) { return color( a.z, a.z, a.w); }
+export color zwx( float4 a) { return color( a.z, a.w, a.x); }
+export color zwy( float4 a) { return color( a.z, a.w, a.y); }
+export color zwz( float4 a) { return color( a.z, a.w, a.z); }
+export color zww( float4 a) { return color( a.z, a.w, a.w); }
+export color wxx( float4 a) { return color( a.w, a.x, a.x); }
+export color wxy( float4 a) { return color( a.w, a.x, a.y); }
+export color wxz( float4 a) { return color( a.w, a.x, a.z); }
+export color wxw( float4 a) { return color( a.w, a.x, a.w); }
+export color wyx( float4 a) { return color( a.w, a.y, a.x); }
+export color wyy( float4 a) { return color( a.w, a.y, a.y); }
+export color wyz( float4 a) { return color( a.w, a.y, a.z); }
+export color wyw( float4 a) { return color( a.w, a.y, a.w); }
+export color wzx( float4 a) { return color( a.w, a.z, a.x); }
+export color wzy( float4 a) { return color( a.w, a.z, a.y); }
+export color wzz( float4 a) { return color( a.w, a.z, a.z); }
+export color wzw( float4 a) { return color( a.w, a.z, a.w); }
+export color wwx( float4 a) { return color( a.w, a.w, a.x); }
+export color wwy( float4 a) { return color( a.w, a.w, a.y); }
+export color wwz( float4 a) { return color( a.w, a.w, a.z); }
+export color www( float4 a) { return color( a.w, a.w, a.w); }
+
+export color xxx(  color a) { return xxx( float3(a)); }
+export color xxy(  color a) { return xxy( float3(a)); }
+export color xxz(  color a) { return xxz( float3(a)); }
+export color xyx(  color a) { return xyx( float3(a)); }
+export color xyy(  color a) { return xyy( float3(a)); }
+export color xyz(  color a) { return xyz( float3(a)); }
+export color xzx(  color a) { return xzx( float3(a)); }
+export color xzy(  color a) { return xzy( float3(a)); }
+export color xzz(  color a) { return xzz( float3(a)); }
+export color yxx(  color a) { return yxx( float3(a)); }
+export color yxy(  color a) { return yxy( float3(a)); }
+export color yxz(  color a) { return yxz( float3(a)); }
+export color yyx(  color a) { return yyx( float3(a)); }
+export color yyy(  color a) { return yyy( float3(a)); }
+export color yyz(  color a) { return yyz( float3(a)); }
+export color yzx(  color a) { return yzx( float3(a)); }
+export color yzy(  color a) { return yzy( float3(a)); }
+export color yzz(  color a) { return yzz( float3(a)); }
+export color zxx(  color a) { return zxx( float3(a)); }
+export color zxy(  color a) { return zxy( float3(a)); }
+export color zxz(  color a) { return zxz( float3(a)); }
+export color zyx(  color a) { return zyx( float3(a)); }
+export color zyy(  color a) { return zyy( float3(a)); }
+export color zyz(  color a) { return zyz( float3(a)); }
+export color zzx(  color a) { return zzx( float3(a)); }
+export color zzy(  color a) { return zzy( float3(a)); }
+export color zzz(  color a) { return zzz( float3(a)); }
+
+export color xxx( texture_return a) { return xxx(texture_return_float4(a)); }
+export color xxy( texture_return a) { return xxy(texture_return_float4(a)); }
+export color xxz( texture_return a) { return xxz(texture_return_float4(a)); }
+export color xxw( texture_return a) { return xxw(texture_return_float4(a)); }
+export color xyx( texture_return a) { return xyx(texture_return_float4(a)); }
+export color xyy( texture_return a) { return xyy(texture_return_float4(a)); }
+export color xyz( texture_return a) { return a.tint; }
+export color xyw( texture_return a) { return xyw(texture_return_float4(a)); }
+export color xzx( texture_return a) { return xzx(texture_return_float4(a)); }
+export color xzy( texture_return a) { return xzy(texture_return_float4(a)); }
+export color xzz( texture_return a) { return xzz(texture_return_float4(a)); }
+export color xzw( texture_return a) { return xzw(texture_return_float4(a)); }
+export color xwx( texture_return a) { return xwx(texture_return_float4(a)); }
+export color xwy( texture_return a) { return xwy(texture_return_float4(a)); }
+export color xwz( texture_return a) { return xwz(texture_return_float4(a)); }
+export color xww( texture_return a) { return xww(texture_return_float4(a)); }
+export color yxx( texture_return a) { return yxx(texture_return_float4(a)); }
+export color yxy( texture_return a) { return yxy(texture_return_float4(a)); }
+export color yxz( texture_return a) { return yxz(texture_return_float4(a)); }
+export color yxw( texture_return a) { return yxw(texture_return_float4(a)); }
+export color yyx( texture_return a) { return yyx(texture_return_float4(a)); }
+export color yyy( texture_return a) { return yyy(texture_return_float4(a)); }
+export color yyz( texture_return a) { return yyz(texture_return_float4(a)); }
+export color yyw( texture_return a) { return yyw(texture_return_float4(a)); }
+export color yzx( texture_return a) { return yzx(texture_return_float4(a)); }
+export color yzy( texture_return a) { return yzy(texture_return_float4(a)); }
+export color yzz( texture_return a) { return yzz(texture_return_float4(a)); }
+export color yzw( texture_return a) { return yzw(texture_return_float4(a)); }
+export color ywx( texture_return a) { return ywx(texture_return_float4(a)); }
+export color ywy( texture_return a) { return ywy(texture_return_float4(a)); }
+export color ywz( texture_return a) { return ywz(texture_return_float4(a)); }
+export color yww( texture_return a) { return yww(texture_return_float4(a)); }
+export color zxx( texture_return a) { return zxx(texture_return_float4(a)); }
+export color zxy( texture_return a) { return zxy(texture_return_float4(a)); }
+export color zxz( texture_return a) { return zxz(texture_return_float4(a)); }
+export color zxw( texture_return a) { return zxw(texture_return_float4(a)); }
+export color zyx( texture_return a) { return zyx(texture_return_float4(a)); }
+export color zyy( texture_return a) { return zyy(texture_return_float4(a)); }
+export color zyz( texture_return a) { return zyz(texture_return_float4(a)); }
+export color zyw( texture_return a) { return zyw(texture_return_float4(a)); }
+export color zzx( texture_return a) { return zzx(texture_return_float4(a)); }
+export color zzy( texture_return a) { return zzy(texture_return_float4(a)); }
+export color zzz( texture_return a) { return zzz(texture_return_float4(a)); }
+export color zzw( texture_return a) { return zzw(texture_return_float4(a)); }
+export color zwx( texture_return a) { return zwx(texture_return_float4(a)); }
+export color zwy( texture_return a) { return zwy(texture_return_float4(a)); }
+export color zwz( texture_return a) { return zwz(texture_return_float4(a)); }
+export color zww( texture_return a) { return zww(texture_return_float4(a)); }
+export color wxx( texture_return a) { return wxx(texture_return_float4(a)); }
+export color wxy( texture_return a) { return wxy(texture_return_float4(a)); }
+export color wxz( texture_return a) { return wxz(texture_return_float4(a)); }
+export color wxw( texture_return a) { return wxw(texture_return_float4(a)); }
+export color wyx( texture_return a) { return wyx(texture_return_float4(a)); }
+export color wyy( texture_return a) { return wyy(texture_return_float4(a)); }
+export color wyz( texture_return a) { return wyz(texture_return_float4(a)); }
+export color wyw( texture_return a) { return wyw(texture_return_float4(a)); }
+export color wzx( texture_return a) { return wzx(texture_return_float4(a)); }
+export color wzy( texture_return a) { return wzy(texture_return_float4(a)); }
+export color wzz( texture_return a) { return wzz(texture_return_float4(a)); }
+export color wzw( texture_return a) { return wzw(texture_return_float4(a)); }
+export color wwx( texture_return a) { return wwx(texture_return_float4(a)); }
+export color wwy( texture_return a) { return wwy(texture_return_float4(a)); }
+export color wwz( texture_return a) { return wwz(texture_return_float4(a)); }
+export color www( texture_return a) { return www(texture_return_float4(a)); }
+*/

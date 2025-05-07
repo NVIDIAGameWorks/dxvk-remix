@@ -1,0 +1,69 @@
+/*****************************************************************************
+*     Copyright 1986-2023 NVIDIA Corporation. All rights reserved.
+******************************************************************************
+
+ MDL MATERIALS ARE PROVIDED PURSUANT TO AN END USER LICENSE  AGREEMENT,
+ WHICH WAS ACCEPTED IN ORDER TO GAIN ACCESS TO THIS FILE.  IN PARTICULAR, 
+ THE MDL MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+ MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF 
+ COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL NVIDIA
+ CORPORATION BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, INCLUDING
+ ANY GENERAL, SPECIAL,  INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, 
+ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF 
+ THE USE OR INABILITY TO USE THE MDL MATERIALS OR FROM OTHER DEALINGS IN 
+ THE MDL MATERIALS.
+*/
+
+mdl 1.4;
+import ::df::*;
+import ::state::*;
+import ::math::*;
+import ::base::*;
+import ::anno::*;
+
+// Calculates the UV coordinates given a set of UVW coordinate info with respect to animated spritesheet information.
+export float2 calculate_spritesheet_uv(
+  base::texture_coordinate_info uvw = base::texture_coordinate_info(),
+  uniform int sprite_sheet_fps = 0,
+  uniform int sprite_sheet_cols = 1,
+  uniform int sprite_sheet_rows = 1,
+  uniform bool enable_rotation = false,
+  uniform float rotation_speed = 0.0
+)
+[[
+    anno::description("Interprets the color values of a bitmap as a vector in tangent space")
+]]
+{
+  varying float2 base_uv = float2(uvw.position.x, uvw.position.y);
+
+  // Note: Early out if the sprite sheet framerate is 0 indicating that it is disabled, similar to how we do in Remix's shaders.
+  // It would be better to use a more explicit boolean flag here, but adding one now would be a bit problematic for older projects
+  // since it would default to false.
+  if (sprite_sheet_fps == 0) {
+    return base_uv;
+  }
+
+  varying float cos_rot = math::cos(rotation_speed * state::animation_time());
+  varying float sin_rot = math::sin(rotation_speed * state::animation_time());
+
+  float4x4 translate =
+      float4x4( 1.  ,  0.  ,  0. , 0.0,
+                0.  ,  1.  ,  0. , 0.0,
+                0.  ,  0.  ,  1. , 0.0,
+                -0.5,  -0.5, -0.5, 1.);
+  varying float4x4 rotate =
+      float4x4( cos_rot, -sin_rot, 0. , 0.0,
+                sin_rot,  cos_rot, 0. , 0.0,
+                0.     ,  0.     , 1. , 0.0,
+                0.5    ,  0.5    , 0.5, 1.);
+
+  varying float4 transformed_uvw = rotate * translate * float4(uvw.position.x, uvw.position.y, uvw.position.z, 1);
+  varying float2 transformed_uv = enable_rotation ? math::saturate(float2(transformed_uvw.x, transformed_uvw.y)) : base_uv;
+
+  int num_frames = sprite_sheet_rows * sprite_sheet_cols;
+  varying int frame_idx = int(state::animation_time() * sprite_sheet_fps) % num_frames;
+  varying float2 final_uv = (transformed_uv + float2(frame_idx % sprite_sheet_cols, 1.0 - (frame_idx / sprite_sheet_cols))) / float2(sprite_sheet_cols, sprite_sheet_rows);
+
+  return final_uv;
+}
