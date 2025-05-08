@@ -616,7 +616,7 @@ namespace dxvk {
     volumeArgs.noiseFieldDensityScale = noiseFieldDensityScale();
     volumeArgs.noiseFieldDensityExponent = noiseFieldDensityExponent();
     volumeArgs.noiseFieldOctaves = noiseFieldOctaves();
-    volumeArgs.noiseFieldInitialFrequency = noiseFieldInitialFrequencyPerMeter() / RtxOptions::Get()->getMeterToWorldUnitScale();
+    volumeArgs.noiseFieldInitialFrequency = noiseFieldInitialFrequencyPerMeter() / RtxOptions::getMeterToWorldUnitScale();
     volumeArgs.noiseFieldLacunarity = noiseFieldLacunarity();
     volumeArgs.noiseFieldGain = noiseFieldGain();
 

@@ -34,7 +34,7 @@
 #include "rtx_global_volumetrics.h"
 
 namespace dxvk {
-  std::unique_ptr<RtxOptions> RtxOptions::pInstance = nullptr;
+  std::unique_ptr<RtxOptions> RtxOptions::m_instance = nullptr;
 
   void RtxOptions::updateUpscalerFromDlssPreset() {
     if (RtxOptions::Automation::disableUpdateUpscaleFromDlssPreset()) {

@@ -125,6 +125,9 @@ namespace dxvk {
     // Config object holding start up settings
     static Config s_startupOptions;
     static Config s_customOptions;
+
+    // track if the configs have been loaded.
+    inline static bool s_isInitialized = false;
   };
 
   template <typename T>
@@ -184,10 +187,12 @@ namespace dxvk {
     }
 
     T& getValue() const {
+      assert(RtxOptionImpl::s_isInitialized && "Trying to access an RtxOption before the config files have been loaded."); 
       return *getValuePtr<T>(RtxOptionImpl::ValueType::Value);
     }
 
     void setValue(const T& v) const {
+      assert(RtxOptionImpl::s_isInitialized && "Trying to access an RtxOption before the config files have been loaded."); 
       *getValuePtr<T>(RtxOptionImpl::ValueType::Value) = v;
     }
 
@@ -339,7 +344,7 @@ namespace dxvk {
 #define RW_RTX_OPTION_FLAG_ENV(category, type, name, value, flags, environment, description) RW_RTX_OPTION_FULL(category, type, name, value, environment, static_cast<uint32_t>(flags), description)
 #define RW_RTX_OPTION(category, type, name, value, description) RW_RTX_OPTION_FULL(category, type, name, value, "", 0, description)
 
-#define RTX_OPTION_CLAMP(name, minValue, maxValue) name##Ref() = std::clamp(name(), minValue, maxValue);
-#define RTX_OPTION_CLAMP_MAX(name, maxValue) name##Ref() = std::min(name(), maxValue);
-#define RTX_OPTION_CLAMP_MIN(name, minValue) name##Ref() = std::max(name(), minValue);
+#define RTX_OPTION_CLAMP(name, minValue, maxValue) name##Object().setValue(std::clamp(name(), minValue, maxValue));
+#define RTX_OPTION_CLAMP_MAX(name, maxValue) name##Object().setValue(std::min(name(), maxValue));
+#define RTX_OPTION_CLAMP_MIN(name, minValue) name##Object().setValue(std::max(name(), minValue));
 }

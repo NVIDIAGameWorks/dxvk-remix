@@ -40,7 +40,7 @@ namespace {
 
 namespace dxvk {
   void ImGuiCapture::update(const Rc<DxvkContext>& ctx) {
-    const bool hotkey = ImGUI::checkHotkeyState(RtxOptions::m_captureHotKey);
+    const bool hotkey = ImGUI::checkHotkeyState(RtxOptions::captureHotKey());
     if(hotkey) {
       const bool showMenu = RtxOptions::captureShowMenuOnHotkey();
       const bool menuOpen = m_masterImGui->isTabOpen<ImGUI::Tabs::kTab_Enhancements>();
@@ -65,7 +65,7 @@ namespace dxvk {
       ImGui::Text(disableCapture ? "Disable enhanced assets to enable capturing." : "Ready to capture.");
       ImGui::BeginDisabled(disableCapture);
       showSceneCapture(ctx);
-      if(RtxOptions::m_captureEnableMultiframe) {
+      if(RtxOptions::captureEnableMultiframe()) {
         showTimedCapture(ctx);
         showContinuousCapture(ctx);
       }
@@ -91,7 +91,7 @@ namespace dxvk {
     static float commonButtonWidth = 0.f;
     if(ImGui::Button("Capture Scene", ImVec2(commonButtonWidth,0.f))) {
       if (this->m_stageNameInputBox.isStageNameValid()) {
-        RtxOptions::m_captureInstances.getValue() = true;
+        RtxOptions::captureInstancesRef() = true;
         ctx->getCommonObjects()->capturer()->triggerNewCapture();
         this->m_stageNameInputBox.m_isCaptureNameInvalid = false;
       }
@@ -105,7 +105,7 @@ namespace dxvk {
     ImGui::Dummy(ImVec2(nameX + inputX,0.f));
     ImGui::SameLine();
     if(ImGui::Button("Capture Assets Only", ImVec2(commonButtonWidth,0.f))) {
-      RtxOptions::m_captureInstances.getValue() = false;
+      RtxOptions::captureInstancesRef() = false;
       ctx->getCommonObjects()->capturer()->triggerNewCapture();
     }
     commonButtonWidth = std::max(firstButtonWidth, ImGui::GetItemRectSize().x);
@@ -116,16 +116,16 @@ namespace dxvk {
   void ImGuiCapture::showTimedCapture(const Rc<DxvkContext>& ctx) {
     if(ImGui::CollapsingHeader("Timed Capture", kCollapsingHeaderFlags)) {
       ImGui::Indent();
-      ImGui::InputInt("Max Frames", &RtxOptions::m_captureMaxFrames);
-      ImGui::InputInt("Frames Per Second", &RtxOptions::m_captureFramesPerSecond);
+      ImGui::InputInt("Max Frames", &RtxOptions::captureMaxFramesObject());
+      ImGui::InputInt("Frames Per Second", &RtxOptions::captureFramesPerSecondObject());
       if(ImGui::CollapsingHeader("Animation Compression", kCollapsingHeaderFlags)) {
         ImGui::Indent();
         ImGui::Text("Inter-frame Mesh Deltas");
-        ImGui::InputFloat("Position",&RtxOptions::m_captureMeshPositionDelta);
-        ImGui::InputFloat("Normal",&RtxOptions::m_captureMeshNormalDelta);
-        ImGui::InputFloat("Texcoord",&RtxOptions::m_captureMeshTexcoordDelta);
-        ImGui::InputFloat("Color",&RtxOptions::m_captureMeshColorDelta);
-        ImGui::InputFloat("Blend Weight",&RtxOptions::m_captureMeshBlendWeightDelta);
+        ImGui::InputFloat("Position",&RtxOptions::captureMeshPositionDeltaObject());
+        ImGui::InputFloat("Normal",&RtxOptions::captureMeshNormalDeltaObject());
+        ImGui::InputFloat("Texcoord",&RtxOptions::captureMeshTexcoordDeltaObject());
+        ImGui::InputFloat("Color",&RtxOptions::captureMeshColorDeltaObject());
+        ImGui::InputFloat("Blend Weight",&RtxOptions::captureMeshBlendWeightDeltaObject());
         ImGui::Unindent();
       }
       ImGui::Unindent();
@@ -138,15 +138,14 @@ namespace dxvk {
   }
 
   ImGuiCapture::StageNameInputBox::StageNameInputBox() {
-    auto& instanceStageName = RtxOptions::m_captureInstanceStageName;
+    auto& instanceStageName = RtxOptions::captureInstanceStageName();
     memset(&m_buf[0], '\0', kBufSize);
-    const char* const defaultVal = instanceStageName.getValue().c_str();
+    const char* const defaultVal = instanceStageName.c_str();
     strncpy(&m_buf[0], defaultVal, strlen(defaultVal));
   }
 
   void ImGuiCapture::StageNameInputBox::validateStageName() {
     if (m_isCaptureNameInvalid) {
-      auto& instanceStageNameRtxOpt = RtxOptions::m_captureInstanceStageName;
       std::string msg = "Invalid capture name detected. Please remove any invalid characters or use of any invalid keywords specified in the description as capture names to take capture.";
       ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 32, 0, 255));
       ImGui::TextWrapped(msg.c_str());
@@ -192,23 +191,21 @@ namespace dxvk {
   }
 
   void ImGuiCapture::StageNameInputBox::setValue() {
-    const auto& instanceStageNameRtxOpt = RtxOptions::m_captureInstanceStageName;
-    const auto& timestampReplacementStr =
-      RtxOptions::m_captureTimestampReplacement.getValue();
+    const auto& timestampReplacementStr = RtxOptions::captureTimestampReplacement();
     std::string bufStr(m_buf);
     // Avoid displaying error message when capture name is changed from previous capture
     if (m_isCaptureNameInvalid && m_previousCaptureName != bufStr) {
       m_isCaptureNameInvalid = false;
     }
     if (bufStr.empty()) {
-      instanceStageNameRtxOpt.getValue() = timestampReplacementStr + lss::ext::usd;
+      RtxOptions::captureInstanceStageNameRef() = timestampReplacementStr + lss::ext::usd;
     } else {    
       const auto usdExtPos =
         bufStr.find(lss::ext::usd, bufStr.length() - lss::ext::usda.length() - 1);
       const std::string ext = (usdExtPos == std::string::npos) ? lss::ext::usd : "";
-      instanceStageNameRtxOpt.getValue() = bufStr + ext;
+      RtxOptions::captureInstanceStageNameRef() = bufStr + ext;
     }
-    m_timestampPos = instanceStageNameRtxOpt.getValue().find(timestampReplacementStr);
+    m_timestampPos = RtxOptions::captureInstanceStageNameRef().find(timestampReplacementStr);
   }
   
   void ImGuiCapture::StageNameInputBox::replaceTimestampStr() {
@@ -220,25 +217,21 @@ namespace dxvk {
     static constexpr size_t kTimeStrLen = 19; // length of YYYY-MM-DD_HH-MM-SS
     const auto putTime = std::put_time(&locTime, "%Y-%m-%d_%H-%M-%S");
     
-    auto& instanceStageNameStr = RtxOptions::m_captureInstanceStageName.getValue();
-    const auto& timestampReplacementStr =
-      RtxOptions::m_captureTimestampReplacement.getValue();
     const auto endTimestampPos = (m_focused) ?
-      m_timestampPos + timestampReplacementStr.length() :
+      m_timestampPos + RtxOptions::captureTimestampReplacement().length() :
       m_timestampPos + kTimeStrLen;
       
     std::stringstream stageNameSS;
-    stageNameSS << instanceStageNameStr.substr(0, m_timestampPos);
+    stageNameSS << RtxOptions::captureInstanceStageName().substr(0, m_timestampPos);
     stageNameSS << putTime;
-    stageNameSS << instanceStageNameStr.substr(endTimestampPos);
-    instanceStageNameStr = stageNameSS.str();
+    stageNameSS << RtxOptions::captureInstanceStageName().substr(endTimestampPos);
+    RtxOptions::captureInstanceStageNameRef() = stageNameSS.str();
   }
   
   void ImGuiCapture::StageNameInputBox::show(const Rc<DxvkContext>& ctx) {
-    auto& instanceStageNameRtxOpt = RtxOptions::m_captureInstanceStageName;
     const auto toolTip = str::format(
-      instanceStageNameRtxOpt.getDescription(), '\n', '\n',
-      instanceStageNameRtxOpt.getValue(), '\n', '\n', 
+      RtxOptions::captureInstanceStageNameObject().getDescription(), '\n', '\n',
+      RtxOptions::captureInstanceStageName(), '\n', '\n', 
       "Invalid chars: ",  m_invalidChars, '\n', '\n',
       "Invalid keywords(case-insensitive): ", m_invalidKeywordDescription);
 
@@ -260,10 +253,9 @@ namespace dxvk {
         m_captureStageName = completedCapture.stageName;
         m_capturePath = completedCapture.stagePath;
         m_percent = 1.f;
-        const bool captureInstances = (RtxOptions::m_captureInstances.getValue());
-        m_output.push_back((captureInstances) ? "Scene captured to:" : "Assets captured to:");
+        m_output.push_back(RtxOptions::captureInstances() ? "Scene captured to:" : "Assets captured to:");
         const std::string destination =
-          (captureInstances) ? m_captureStageName : util::RtxFileSys::path(util::RtxFileSys::Captures).string();
+          RtxOptions::captureInstances() ? m_captureStageName : util::RtxFileSys::path(util::RtxFileSys::Captures).string();
         m_output.push_back(destination);
         return;
       }
@@ -278,7 +270,7 @@ namespace dxvk {
         m_output.push_back("Capturing...");
         return;
       }
-      auto capturedOutput = (RtxOptions::m_captureInstances.getValue()) ?
+      auto capturedOutput = RtxOptions::captureInstances() ?
         std::string("Scene captured!") : std::string("Assets captured!");
       m_output.push_back(capturedOutput.c_str());
       if (state.has<GameCapturer::State::PreppingExport>()) {
@@ -307,9 +299,8 @@ namespace dxvk {
     }
     if (m_prevState.has<GameCapturer::State::Complete>() &&
         ImGui::SmallButton("Copy Full Path")) {
-      const bool captureInstances = (RtxOptions::m_captureInstances.getValue());
       const std::string toCopy =
-        (captureInstances) ? m_capturePath : util::RtxFileSys::path(util::RtxFileSys::Captures).string();
+        RtxOptions::captureInstances() ? m_capturePath : util::RtxFileSys::path(util::RtxFileSys::Captures).string();
       ImGui::SetClipboardText(toCopy.c_str());
     }
     ImGui::PopTextWrapPos();

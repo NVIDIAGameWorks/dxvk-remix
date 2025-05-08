@@ -108,7 +108,7 @@ struct OpaqueMaterialOptions {
              "Should only be used for debugging or development.");
 
 public:
-  void fillShaderParams(OpaqueMaterialArgs& args) const {
+  static void fillShaderParams(OpaqueMaterialArgs& args) {
     args.albedoScale = albedoScale();
     args.albedoBias = albedoBias();
     args.roughnessScale = roughnessScale();

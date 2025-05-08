@@ -543,11 +543,11 @@ namespace dxvk {
       }
     }
 
-    const XXH64_hash_t activeReplacementHash = input.getHash(RtxOptions::Get()->GeometryAssetHashRule);
+    const XXH64_hash_t activeReplacementHash = input.getHash(RtxOptions::geometryAssetHashRule());
     std::vector<AssetReplacement>* pReplacements = m_pReplacer->getReplacementsForMesh(activeReplacementHash);
 
     // TODO (REMIX-656): Remove this once we can transition content to new hash
-    if ((RtxOptions::Get()->GeometryHashGenerationRule & rules::LegacyAssetHash0) == rules::LegacyAssetHash0) {
+    if ((RtxOptions::geometryHashGenerationRule() & rules::LegacyAssetHash0) == rules::LegacyAssetHash0) {
       if (!pReplacements) {
         const XXH64_hash_t legacyHash = input.getHashLegacy(rules::LegacyAssetHash0);
         pReplacements = m_pReplacer->getReplacementsForMesh(legacyHash);
@@ -558,7 +558,7 @@ namespace dxvk {
       }
     }
 
-    if ((RtxOptions::Get()->GeometryHashGenerationRule & rules::LegacyAssetHash1) == rules::LegacyAssetHash1) {
+    if ((RtxOptions::geometryHashGenerationRule() & rules::LegacyAssetHash1) == rules::LegacyAssetHash1) {
       if (!pReplacements) {
         const XXH64_hash_t legacyHash = input.getHashLegacy(rules::LegacyAssetHash1);
         pReplacements = m_pReplacer->getReplacementsForMesh(legacyHash);
@@ -730,7 +730,7 @@ namespace dxvk {
           // of the fully processed draw call, we can remove this requirement.
           Logger::err(str::format(
               "Light prims anchored to a mesh replacement must also include actual meshes.  mesh hash: ",
-              std::hex, input->getHash(RtxOptions::Get()->GeometryHashGenerationRule)
+              std::hex, input->getHash(RtxOptions::geometryHashGenerationRule())
           ));
           break;
         }
@@ -1045,23 +1045,22 @@ namespace dxvk {
 
         const auto& legacyMaterialData = renderMaterialData.getLegacyMaterialData();
 
-        const LegacyMaterialDefaults& defaults = RtxOptions::Get()->legacyMaterial;
-        anisotropy = defaults.anisotropy();
-        emissiveIntensity = defaults.emissiveIntensity();
-        albedoOpacityConstant = Vector4(defaults.albedoConstant(), defaults.opacityConstant());
-        roughnessConstant = defaults.roughnessConstant();
-        metallicConstant = defaults.metallicConstant();
+        anisotropy = LegacyMaterialDefaults::anisotropy();
+        emissiveIntensity = LegacyMaterialDefaults::emissiveIntensity();
+        albedoOpacityConstant = Vector4(LegacyMaterialDefaults::albedoConstant(), LegacyMaterialDefaults::opacityConstant());
+        roughnessConstant = LegacyMaterialDefaults::roughnessConstant();
+        metallicConstant = LegacyMaterialDefaults::metallicConstant();
 
         // Override these for legacy materials
-        emissiveColorConstant = defaults.emissiveColorConstant();
-        enableEmissive = defaults.enableEmissive();
+        emissiveColorConstant = LegacyMaterialDefaults::emissiveColorConstant();
+        enableEmissive = LegacyMaterialDefaults::enableEmissive();
 
         if (RtxOptions::useWhiteMaterialMode()) {
           albedoOpacityConstant = kWhiteModeAlbedo;
           metallicConstant = 0.f;
           roughnessConstant = 1.f;
         } else {
-          if (defaults.useAlbedoTextureIfPresent()) {
+          if (LegacyMaterialDefaults::useAlbedoTextureIfPresent()) {
             // NOTE: Do not patch original sampler to preserve filtering behavior of the legacy material
             trackTexture(legacyMaterialData.getColorTexture(), albedoOpacityTextureIndex, hasTexcoords);
           }
@@ -1077,12 +1076,12 @@ namespace dxvk {
         // emissiveColorTextureIndex != kSurfaceMaterialInvalidTextureIndex ? 100.0f
 
         if (!ignoreAlphaChannel) {
-          ignoreAlphaChannel = defaults.ignoreAlphaChannel();
+          ignoreAlphaChannel = LegacyMaterialDefaults::ignoreAlphaChannel();
         }
 
-        thinFilmEnable = defaults.enableThinFilm();
-        alphaIsThinFilmThickness = defaults.alphaIsThinFilmThickness();
-        thinFilmThicknessConstant = defaults.thinFilmThicknessConstant();
+        thinFilmEnable = LegacyMaterialDefaults::enableThinFilm();
+        alphaIsThinFilmThickness = LegacyMaterialDefaults::alphaIsThinFilmThickness();
+        thinFilmThicknessConstant = LegacyMaterialDefaults::thinFilmThicknessConstant();
       } else if (renderMaterialDataType == MaterialDataType::Opaque) {
         const auto& opaqueMaterialData = renderMaterialData.getOpaqueMaterialData();
 

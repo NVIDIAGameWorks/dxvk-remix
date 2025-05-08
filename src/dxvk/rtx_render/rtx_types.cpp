@@ -169,7 +169,7 @@ namespace dxvk {
   }
 
   void DrawCallState::setupCategoriesForGeometry() {
-    const XXH64_hash_t assetReplacementHash = getHash(RtxOptions::Get()->GeometryAssetHashRule);
+    const XXH64_hash_t assetReplacementHash = getHash(RtxOptions::geometryAssetHashRule());
     setCategory(InstanceCategories::Sky, lookupHash(RtxOptions::skyBoxGeometries(), assetReplacementHash));
   }
 
