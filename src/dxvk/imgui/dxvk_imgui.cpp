@@ -653,16 +653,15 @@ namespace dxvk {
       if (ImGui::CollapsingHeader("Legacy Material Defaults", collapsingHeaderFlags)) {
         ImGui::Indent();
 
-        LegacyMaterialDefaults& legacyMaterial = RtxOptions::Get()->legacyMaterial;
-        ImGui::Checkbox("Use Albedo/Opacity Texture (if present)", &legacyMaterial.useAlbedoTextureIfPresentObject());
-        ImGui::Checkbox("Ignore Texture Alpha Channel", &legacyMaterial.ignoreAlphaChannelObject());
-        ImGui::ColorEdit3("Albedo", &legacyMaterial.albedoConstantObject());
-        ImGui::DragFloat("Opacity", &legacyMaterial.opacityConstantObject(), 0.01f, 0.f, 1.f);
-        ImGui::ColorEdit3("Emissive Color", &legacyMaterial.emissiveColorConstantObject());
-        ImGui::DragFloat("Emissive Intensity", &legacyMaterial.emissiveIntensityObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
-        ImGui::DragFloat("Roughness", &legacyMaterial.roughnessConstantObject(), 0.01f, 0.02f, 1.f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Metallic", &legacyMaterial.metallicConstantObject(), 0.01f, 0.0f, 1.f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Anisotropy", &legacyMaterial.anisotropyObject(), 0.01f, -1.0f, 1.f, "%.3f", sliderFlags);
+        ImGui::Checkbox("Use Albedo/Opacity Texture (if present)", &LegacyMaterialDefaults::useAlbedoTextureIfPresentObject());
+        ImGui::Checkbox("Ignore Texture Alpha Channel", &LegacyMaterialDefaults::ignoreAlphaChannelObject());
+        ImGui::ColorEdit3("Albedo", &LegacyMaterialDefaults::albedoConstantObject());
+        ImGui::DragFloat("Opacity", &LegacyMaterialDefaults::opacityConstantObject(), 0.01f, 0.f, 1.f);
+        ImGui::ColorEdit3("Emissive Color", &LegacyMaterialDefaults::emissiveColorConstantObject());
+        ImGui::DragFloat("Emissive Intensity", &LegacyMaterialDefaults::emissiveIntensityObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
+        ImGui::DragFloat("Roughness", &LegacyMaterialDefaults::roughnessConstantObject(), 0.01f, 0.02f, 1.f, "%.3f", sliderFlags);
+        ImGui::DragFloat("Metallic", &LegacyMaterialDefaults::metallicConstantObject(), 0.01f, 0.0f, 1.f, "%.3f", sliderFlags);
+        ImGui::DragFloat("Anisotropy", &LegacyMaterialDefaults::anisotropyObject(), 0.01f, -1.0f, 1.f, "%.3f", sliderFlags);
 
         ImGui::Unindent();
       }
@@ -673,22 +672,21 @@ namespace dxvk {
         if (ImGui::CollapsingHeader("Opaque", collapsingHeaderFlags)) {
           ImGui::Indent();
 
-          OpaqueMaterialOptions& opaqueMaterialOptions = RtxOptions::Get()->opaqueMaterialOptions;
-          ImGui::SliderFloat("Albedo Scale", &opaqueMaterialOptions.albedoScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Albedo Bias", &opaqueMaterialOptions.albedoBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Metallic Scale", &opaqueMaterialOptions.metallicScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Metallic Bias", &opaqueMaterialOptions.metallicBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Roughness Scale", &opaqueMaterialOptions.roughnessScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Roughness Bias", &opaqueMaterialOptions.roughnessBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Normal Strength##1", &opaqueMaterialOptions.normalIntensityObject(), -10.0f, 10.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Albedo Scale", &OpaqueMaterialOptions::albedoScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Albedo Bias", &OpaqueMaterialOptions::albedoBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Metallic Scale", &OpaqueMaterialOptions::metallicScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Metallic Bias", &OpaqueMaterialOptions::metallicBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Roughness Scale", &OpaqueMaterialOptions::roughnessScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Roughness Bias", &OpaqueMaterialOptions::roughnessBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Normal Strength##1", &OpaqueMaterialOptions::normalIntensityObject(), -10.0f, 10.f, "%.3f", sliderFlags);
 
-          ImGui::Checkbox("Enable dual-layer animated water normal for Opaque", &opaqueMaterialOptions.layeredWaterNormalEnableObject());
+          ImGui::Checkbox("Enable dual-layer animated water normal for Opaque", &OpaqueMaterialOptions::layeredWaterNormalEnableObject());
 
-          if (opaqueMaterialOptions.layeredWaterNormalEnable()) {
+          if (OpaqueMaterialOptions::layeredWaterNormalEnable()) {
             ImGui::TextWrapped("Animated water with Opaque material is dependent on the original draw call animating using a texture transform.");
-            ImGui::SliderFloat2("Layered Motion Direction", &opaqueMaterialOptions.layeredWaterNormalMotionObject(), -1.0f, 1.0f, "%.3f", sliderFlags);
-            ImGui::SliderFloat("Layered Motion Scale", &opaqueMaterialOptions.layeredWaterNormalMotionScaleObject(), -10.0f, 10.0f, "%.3f", sliderFlags);
-            ImGui::SliderFloat("LOD bias", &opaqueMaterialOptions.layeredWaterNormalLodBiasObject(), 0.0f, 16.0f, "%.3f", sliderFlags);
+            ImGui::SliderFloat2("Layered Motion Direction", &OpaqueMaterialOptions::layeredWaterNormalMotionObject(), -1.0f, 1.0f, "%.3f", sliderFlags);
+            ImGui::SliderFloat("Layered Motion Scale", &OpaqueMaterialOptions::layeredWaterNormalMotionScaleObject(), -10.0f, 10.0f, "%.3f", sliderFlags);
+            ImGui::SliderFloat("LOD bias", &OpaqueMaterialOptions::layeredWaterNormalLodBiasObject(), 0.0f, 16.0f, "%.3f", sliderFlags);
           }
 
           ImGui::Unindent();
@@ -721,11 +719,10 @@ namespace dxvk {
         if (ImGui::CollapsingHeader("Opaque", collapsingHeaderFlags)) {
           ImGui::Indent();
 
-          OpaqueMaterialOptions& opaqueMaterialOptions = RtxOptions::Get()->opaqueMaterialOptions;
-          ImGui::Checkbox("Enable Thin-Film Layer", &opaqueMaterialOptions.enableThinFilmOverrideObject());
+          ImGui::Checkbox("Enable Thin-Film Layer", &OpaqueMaterialOptions::enableThinFilmOverrideObject());
 
-          if (opaqueMaterialOptions.enableThinFilmOverride()) {
-            ImGui::SliderFloat("Thin Film Thickness", &opaqueMaterialOptions.thinFilmThicknessOverrideObject(), 0.0f, OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS, "%.1f nm", sliderFlags);
+          if (OpaqueMaterialOptions::enableThinFilmOverride()) {
+            ImGui::SliderFloat("Thin Film Thickness", &OpaqueMaterialOptions::thinFilmThicknessOverrideObject(), 0.0f, OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS, "%.1f nm", sliderFlags);
           }
 
           ImGui::Unindent();
@@ -748,34 +745,31 @@ namespace dxvk {
 
   void ImGUI::processHotkeys() {
     auto& io = ImGui::GetIO();
-    auto& opts = *RtxOptions::Get();
 
-    if (checkHotkeyState(RtxOptions::Get()->remixMenuKeyBinds())) {
-      if(opts.defaultToAdvancedUI()) {
-        switchMenu(opts.showUI() != UIType::None ? UIType::None : UIType::Advanced);
+    if (checkHotkeyState(RtxOptions::remixMenuKeyBinds())) {
+      if(RtxOptions::defaultToAdvancedUI()) {
+        switchMenu(RtxOptions::showUI() != UIType::None ? UIType::None : UIType::Advanced);
       } else {
-        switchMenu(opts.showUI() != UIType::None ? UIType::None : UIType::Basic);
+        switchMenu(RtxOptions::showUI() != UIType::None ? UIType::None : UIType::Basic);
       }
     }
 
     // Toggle ImGUI mouse cursor. Alt-Del
     if (io.KeyAlt && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Delete))) {
-      opts.showUICursorRef() = !opts.showUICursor();
+      RtxOptions::showUICursorRef() = !RtxOptions::showUICursor();
 
-      io.MouseDrawCursor = opts.showUICursor() && opts.showUI() != UIType::None;
+      io.MouseDrawCursor = RtxOptions::showUICursor() && RtxOptions::showUI() != UIType::None;
     }
 
     // Toggle input blocking. Alt-Backspace
     if (io.KeyAlt && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Backspace))) {
-      opts.blockInputToGameInUIRef() = !opts.blockInputToGameInUI();
+      RtxOptions::blockInputToGameInUIRef() = !RtxOptions::blockInputToGameInUI();
       sendUIActivationMessage();
     }
   }
 
   void ImGUI::sendUIActivationMessage() {
-    auto& opts = *RtxOptions::Get();
-    const bool doBlock = opts.blockInputToGameInUI() &&
-      opts.showUI() != UIType::None;
+    const bool doBlock = RtxOptions::blockInputToGameInUI() && RtxOptions::showUI() != UIType::None;
 
     BridgeMessageChannel::get().send("UWM_REMIX_UIACTIVE_MSG",
                                      doBlock ? 1 : 0, 0);
@@ -949,13 +943,13 @@ namespace dxvk {
 
     ImGui::Checkbox("Save Changed Settings Only", &RtxOptions::serializeChangedOptionOnlyObject());
     if (ImGui::Button("Save Settings")) {
-      RtxOptions::Get()->serialize();
+      RtxOptions::serialize();
     }
     ImGui::SetTooltipToLastWidgetOnHover("This will save above settings in the rtx.conf file. Some may only take effect on next launch.");
 
     ImGui::SameLine();
     if (ImGui::Button("Reset Settings")) {
-      RtxOptions::Get()->reset();
+      RtxOptions::reset();
     }
 
     ImGui::SameLine();
@@ -1050,7 +1044,7 @@ namespace dxvk {
       ImGui::SameLine();
 
       if (ImGui::Button("Save Settings", ImVec2(buttonWidth, 0))) {
-        RtxOptions::Get()->serialize();
+        RtxOptions::serialize();
         m_userGraphicsSettingChanged = false;
       }
 
@@ -2813,32 +2807,6 @@ namespace dxvk {
     ImGui::End();
   }
 
-  namespace {
-    // Function is needed just to print megabytes as gigabytes,
-    // as ImGui doesn't have a custom formatting to convert e.g. '1234' to '1.234'
-    // Returns true if user modified the value. Overwrites value_megabytes.
-    bool dragFloatMB_showGB(const char* label,
-                            int* value_megabytes,
-                            float* storage_gigabytes,
-                            float vmin_gigabytes,
-                            float vmax_gigabytes,
-                            const char* description) {
-      *storage_gigabytes = std::clamp(float(*value_megabytes) / 1024.f, 0.1F, vmax_gigabytes);
-      // imgui for that float
-      bool hasChanged = IMGUI_ADD_TOOLTIP(
-        ImGui::DragFloat(label, storage_gigabytes, 0.5f, vmin_gigabytes, vmax_gigabytes, "%.1f GB", ImGuiSliderFlags_NoRoundToFormat),
-        description);
-      int megabytes = int(*storage_gigabytes * 1024);
-
-      // convert back to int megabytes, quantizing by 256mb
-      constexpr int Quantize = 256;
-      int quantizedMegabytes = (std::clamp(megabytes, Quantize, int(vmax_gigabytes * 1024)) / Quantize) * Quantize;
-
-      *value_megabytes = quantizedMegabytes;
-      return hasChanged;
-    }
-  } // namespace
-
   void ImGUI::showRenderingSettings(const Rc<DxvkContext>& ctx) {
     ImGui::PushItemWidth(200);
     auto common = ctx->getCommonObjects();
@@ -3329,15 +3297,12 @@ namespace dxvk {
       ImGui::BeginDisabled(!RtxOptions::TextureManager::samplerFeedbackEnable());
       {
         if (RtxOptions::TextureManager::fixedBudgetEnable() && RtxOptions::TextureManager::samplerFeedbackEnable()) {
-          static float s_gigbytes_helper = 0;
-          if (dragFloatMB_showGB("Texture Budget##1",
-                                 &RtxOptions::TextureManager::fixedBudgetMiBObject().getValue(),
-                                 &s_gigbytes_helper,
-                                 1.f,
-                                 32.f,
-                                 RtxOptions::TextureManager::fixedBudgetMiBObject().getDescription())) {
+          if (ImGui::DragFloatMB_showGB("Texture Budget##1",
+                                        &RtxOptions::TextureManager::fixedBudgetMiBObject(),
+                                        0.5f, 1.f, 32.f, "%.1f GB", ImGuiSliderFlags_NoRoundToFormat)) {
             ctx->getCommonObjects()->getSceneManager().requestVramCompaction();
           }
+          RTX_OPTION_CLAMP(RtxOptions::TextureManager::fixedBudgetMiB, 256, 1024 * 32);
         } else {
           // always disabled drag float just to show the available texture cache budget
           ImGui::BeginDisabled(true);
@@ -3485,21 +3450,21 @@ namespace dxvk {
     if (ImGui::CollapsingHeader("View Distance", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
 
-      viewDistanceModeCombo.getKey(&RtxOptions::Get()->viewDistanceOptions.distanceModeObject());
+      viewDistanceModeCombo.getKey(&ViewDistanceOptions::distanceModeObject());
 
-      if (RtxOptions::Get()->viewDistanceOptions.distanceMode() != ViewDistanceMode::None) {
-        viewDistanceFunctionCombo.getKey(&RtxOptions::Get()->viewDistanceOptions.distanceFunctionObject());
+      if (ViewDistanceOptions::distanceMode() != ViewDistanceMode::None) {
+        viewDistanceFunctionCombo.getKey(&ViewDistanceOptions::distanceFunctionObject());
 
-        if (RtxOptions::Get()->viewDistanceOptions.distanceMode() == ViewDistanceMode::HardCutoff) {
-          ImGui::DragFloat("Distance Threshold", &RtxOptions::Get()->viewDistanceOptions.distanceThresholdObject(), 0.1f, 0.0f, 0.0f, "%.2f", sliderFlags);
-        } else if (RtxOptions::Get()->viewDistanceOptions.distanceMode() == ViewDistanceMode::CoherentNoise) {
-          ImGui::DragFloat("Distance Fade Min", &RtxOptions::Get()->viewDistanceOptions.distanceFadeMinObject(), 0.1f, 0.0f, RtxOptions::Get()->viewDistanceOptions.distanceFadeMax(), "%.2f", sliderFlags);
-          ImGui::DragFloat("Distance Fade Max", &RtxOptions::Get()->viewDistanceOptions.distanceFadeMaxObject(), 0.1f, RtxOptions::Get()->viewDistanceOptions.distanceFadeMin(), 0.0f, "%.2f", sliderFlags);
-          ImGui::DragFloat("Noise Scale", &RtxOptions::Get()->viewDistanceOptions.noiseScaleObject(), 0.1f, 0.0f, 0.0f, "%.2f", sliderFlags);
+        if (ViewDistanceOptions::distanceMode() == ViewDistanceMode::HardCutoff) {
+          ImGui::DragFloat("Distance Threshold", &ViewDistanceOptions::distanceThresholdObject(), 0.1f, 0.0f, 0.0f, "%.2f", sliderFlags);
+        } else if (ViewDistanceOptions::distanceMode() == ViewDistanceMode::CoherentNoise) {
+          ImGui::DragFloat("Distance Fade Min", &ViewDistanceOptions::distanceFadeMinObject(), 0.1f, 0.0f, ViewDistanceOptions::distanceFadeMax(), "%.2f", sliderFlags);
+          ImGui::DragFloat("Distance Fade Max", &ViewDistanceOptions::distanceFadeMaxObject(), 0.1f, ViewDistanceOptions::distanceFadeMin(), 0.0f, "%.2f", sliderFlags);
+          ImGui::DragFloat("Noise Scale", &ViewDistanceOptions::noiseScaleObject(), 0.1f, 0.0f, 0.0f, "%.2f", sliderFlags);
 
           // Note: ImGui's limits do not apply for text entry for whatever reason so we need to clamp these options manually to ensure they do not trigger asserts.
-          RtxOptions::Get()->viewDistanceOptions.distanceFadeMinRef() = std::min(RtxOptions::Get()->viewDistanceOptions.distanceFadeMin(), RtxOptions::Get()->viewDistanceOptions.distanceFadeMax());
-          RtxOptions::Get()->viewDistanceOptions.distanceFadeMaxRef() = std::max(RtxOptions::Get()->viewDistanceOptions.distanceFadeMin(), RtxOptions::Get()->viewDistanceOptions.distanceFadeMax());
+          ViewDistanceOptions::distanceFadeMinRef() = std::min(ViewDistanceOptions::distanceFadeMin(), ViewDistanceOptions::distanceFadeMax());
+          ViewDistanceOptions::distanceFadeMaxRef() = std::max(ViewDistanceOptions::distanceFadeMin(), ViewDistanceOptions::distanceFadeMax());
         }
       }
 

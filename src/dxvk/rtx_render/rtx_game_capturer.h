@@ -293,7 +293,7 @@ private:
 
   static Options getOptions() {
     return { RtxOptions::captureShowMenuOnHotkey(),
-             RtxOptions::Get()->getCaptureInstances(),
+             RtxOptions::getCaptureInstances(),
              RtxOptions::captureInstanceStageName(),
              RtxOptions::captureEnableMultiframe(),
              RtxOptions::captureMaxFrames(),

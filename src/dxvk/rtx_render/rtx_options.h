@@ -465,10 +465,11 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, showUICursor, true, "");
     RTX_OPTION_FLAG("rtx", bool, blockInputToGameInUI, true, RtxOptionFlags::NoSave, "");
 
-  private:
-    VirtualKeys m_remixMenuKeyBinds;
-  public:
-    const VirtualKeys& remixMenuKeyBinds() const { return m_remixMenuKeyBinds; }
+    inline static const VirtualKeys kDefaultRemixMenuKeyBinds{ VirtualKey{VK_MENU},VirtualKey{'X'} };
+    RTX_OPTION("rtx", VirtualKeys, remixMenuKeyBinds, kDefaultRemixMenuKeyBinds,
+               "Hotkey to open the Remix menu.\n"
+               "example override: 'rtx.remixMenuKeyBinds = CTRL, SHIFT, Z'.\n"
+               "Full list of key names available in `src/util/util_keybind.h`.");
 
     RW_RTX_OPTION_ENV("rtx", DLSSProfile, qualityDLSS, DLSSProfile::Auto, "RTX_QUALITY_DLSS", "Adjusts internal DLSS scaling factor, trades quality for performance.");
     // Note: All ray tracing modes depend on the rtx.raytraceModePreset option as they may be overridden by automatic defaults for a specific vendor if the preset is set to Auto. Set
@@ -916,17 +917,18 @@ namespace dxvk {
     inline static const VirtualKeys kDefaultCaptureMenuKeyBinds{VirtualKey{VK_CONTROL},VirtualKey{VK_SHIFT},VirtualKey{'Q'}};
     RTX_OPTION("rtx", VirtualKeys, captureHotKey, kDefaultCaptureMenuKeyBinds,
                "Hotkey to trigger a capture without bringing up the menu.\n"
-               "example override: 'rtx.captureHotKey = CTRL, SHIFT, P'\n"
-               "Full list of key names available in src/util/util_keybind.h");
+               "example override: 'rtx.captureHotKey = CTRL, SHIFT, P'.\n"
+               "Full list of key names available in `src/util/util_keybind.h`.");
     RTX_OPTION("rtx", bool, captureInstances, true,
                "If true, an instanced snapshot of the game scene will be captured and exported to a USD stage, in addition to all meshes, textures, materials, etc.\n"
                "If false, only meshes, etc will be captured.");
     RTX_OPTION("rtx", bool, captureNoInstance, false, "Same as \'rtx.captureInstances\' except inverse. This is the original/old variant, and will be deprecated, however is still functional.");
     RTX_OPTION("rtx", std::string, captureTimestampReplacement, "{timestamp}",
-               "String that can be used for auto-replacing current time stamp in instance stage name");
-    RTX_OPTION("rtx", std::string, captureInstanceStageName,
-                (std::string("capture_") + m_captureTimestampReplacement.getValue() + std::string(".usd")),
-               "Name of the \'instance\' stage (see: \'rtx.captureInstances\')");
+               "String that can be used for auto-replacing current time stamp in instance stage name.\n"
+               "Note: Changing this value does not change the default value for rtx.captureInstanceStageName.");
+    // Note: default values are used before configs are loaded.  Cannot use the value of `captureTimestampReplacement` to set the default value of `captureInstanceStageName`.
+    RTX_OPTION("rtx", std::string, captureInstanceStageName, "capture_{timestamp}.usd",  
+               "Name of the \'instance\' stage (see: \'rtx.captureInstances\').");
     RTX_OPTION("rtx", bool, captureEnableMultiframe, false, "Enables multi-frame capturing. THIS HAS NOT BEEN MAINTAINED AND SHOULD BE USED WITH EXTREME CAUTION.");
     RTX_OPTION("rtx", uint32_t, captureMaxFrames, 1, "Max frames capturable when running a multi-frame capture. The capture can be toggled to completion manually.");
     RTX_OPTION("rtx", uint32_t, captureFramesPerSecond, 24,
@@ -1011,10 +1013,17 @@ namespace dxvk {
     TranslucentMaterialOptions translucentMaterialOptions;
     ViewDistanceOptions viewDistanceOptions;
 
-    HashRule GeometryHashGenerationRule = 0;
-    HashRule GeometryAssetHashRule = 0;
+    static const HashRule& geometryHashGenerationRule() {
+      return m_instance->m_geometryHashGenerationRule;
+    }
+    static const HashRule& geometryAssetHashRule() {
+      return m_instance->m_geometryAssetHashRule;
+    }
 
   private:
+    HashRule m_geometryHashGenerationRule = 0;
+    HashRule m_geometryAssetHashRule = 0;
+
     RTX_OPTION("rtx", Vector3, effectLightColor, Vector3(1, 1, 1), "Colour of the effect light, if not using plasma ball mode.  Effect lights can be attached to materials from the remix runtime menu, using the `Add Light to Texture` texture tag in game setup.");
     RTX_OPTION("rtx", float, effectLightIntensity, 1.f, "The intensity of the effect light.  Effect lights can be attached to materials from the remix runtime menu, using the `Add Light to Texture` texture tag in game setup.");
     RTX_OPTION("rtx", float, effectLightRadius, 5.f, "The sphere radius of the effect light.  Effect lights can be attached to materials from the remix runtime menu, using the `Add Light to Texture` texture tag in game setup.");
@@ -1028,12 +1037,16 @@ namespace dxvk {
 
     RTX_OPTION("rtx", uint32_t, applicationId, 102100511, "Used to uniquely identify the application to DLSS. Generally should not be changed without good reason.");
 
-    static std::unique_ptr<RtxOptions> pInstance;
+    static std::unique_ptr<RtxOptions> m_instance;
     RtxOptions() { }
 
   public:
 
     RtxOptions(const Config& options) {
+      // All of the CLAMP operations below rely on the fact that the options have already been initialized.
+      // The options are actually parsed just before RtxOptions is created, so this is safe to do here.
+      RtxOptionImpl::s_isInitialized = true;
+
       // Needs to be > 0
       RTX_OPTION_CLAMP_MIN(uniqueObjectDistance, FLT_MIN);
 
@@ -1139,11 +1152,8 @@ namespace dxvk {
         enableReplacementMaterialsRef() = false;
       }
 
-      const VirtualKeys& kDefaultRemixMenuKeyBinds { VirtualKey{VK_MENU},VirtualKey{'X'} };
-      m_remixMenuKeyBinds = options.getOption<VirtualKeys>("rtx.remixMenuKeyBinds", kDefaultRemixMenuKeyBinds);
-
-      GeometryHashGenerationRule = createRule("Geometry generation", geometryGenerationHashRuleString());
-      GeometryAssetHashRule = createRule("Geometry asset", geometryAssetHashRuleString());
+      m_geometryHashGenerationRule = createRule("Geometry generation", geometryGenerationHashRuleString());
+      m_geometryAssetHashRule = createRule("Geometry asset", geometryAssetHashRuleString());
 
       // We deprecated dynamicDecalTextures, singleOffsetDecalTextures, nonOffsetDecalTextures with this change
       //  and replaced all decal texture lists with just a single list.
@@ -1180,23 +1190,22 @@ namespace dxvk {
 
     inline static const std::string kRtxConfigFilePath = "rtx.conf";
 
-    void serialize() {
+    static void serialize() {
       Config newConfig;
       RtxOption<bool>::writeOptions(newConfig, serializeChangedOptionOnly());
       Config::serializeCustomConfig(newConfig, kRtxConfigFilePath, "rtx.");
     }
 
-    void reset() {
+    static void reset() {
       RtxOption<bool>::resetOptions();
     }
 
     static std::unique_ptr<RtxOptions>& Create(const Config& options) {
-      if (pInstance == nullptr)
-        pInstance = std::make_unique<RtxOptions>(options);
-      return pInstance;
+      if (m_instance == nullptr) {
+        m_instance = std::make_unique<RtxOptions>(options);
+      }
+      return m_instance;
     }
-
-    static std::unique_ptr<RtxOptions>& Get() { return pInstance; }
 
     static bool getRayPortalTextureIndex(const XXH64_hash_t& h, std::size_t& index) {
       const auto findResult = std::find(rayPortalModelTextureHashes().begin(), rayPortalModelTextureHashes().end(), h);
@@ -1252,9 +1261,9 @@ namespace dxvk {
     static bool isShaderExecutionReorderingInPathtracerIntegrateIndirectEnabled() { return enableShaderExecutionReorderingInPathtracerIntegrateIndirect() && isShaderExecutionReorderingSupported(); }
 
     // Developer Options
-    static bool getIsOpacityMicromapSupported() { return Get()->opacityMicromap.isSupported; }
-    static void setIsOpacityMicromapSupported(bool enabled) { Get()->opacityMicromap.isSupported = enabled; }
-    static bool getEnableOpacityMicromap() { return Get()->opacityMicromap.enable() && Get()->opacityMicromap.isSupported; }
+    static bool getIsOpacityMicromapSupported() { return m_instance->opacityMicromap.isSupported; }
+    static void setIsOpacityMicromapSupported(bool enabled) { m_instance->opacityMicromap.isSupported = enabled; }
+    static bool getEnableOpacityMicromap() { return m_instance->opacityMicromap.enable() && m_instance->opacityMicromap.isSupported; }
 
     static bool getEnableAnyReplacements() { return enableReplacementAssets() && (enableReplacementLights() || enableReplacementMeshes() || enableReplacementMaterials()); }
     static bool getEnableReplacementLights() { return enableReplacementAssets() && enableReplacementLights(); }

@@ -171,6 +171,26 @@ namespace ImGui {
     return IMGUI_ADD_TOOLTIP(SliderInt(label, &rtxOption->getValue(), std::forward<Args>(args)...), rtxOption->getDescription());
   }
 
+  
+  // Variant displaying megabytes as gigabytes,
+  // as ImGui doesn't have a custom formatting to convert e.g. '1234' to '1.234'
+  // Returns true if user modified the value.
+  template <typename ... Args>
+  IMGUI_API bool DragFloatMB_showGB(const char* label, dxvk::RtxOption<int>* rtxOption, Args&& ... args) {
+    float storage_gigabytes = float(rtxOption->getValue()) / 1024.f;
+    // imgui for that float
+    bool hasChanged = IMGUI_ADD_TOOLTIP(
+      ImGui::DragFloat(label, &storage_gigabytes, std::forward<Args>(args)...),
+      rtxOption->getDescription());
+
+    // convert back to int megabytes, quantizing by 256mb
+    constexpr int Quantize = 256;
+    int quantizedMegabytes = int(storage_gigabytes * 1024 / Quantize) * Quantize;
+
+    rtxOption->setValue(quantizedMegabytes);
+    return hasChanged;
+  }
+
   // Variant handling RtxOption as input
   template <typename ... Args>
   IMGUI_API bool DragFloat(const char* label, dxvk::RtxOption<float>* rtxOption, Args&& ... args) {

@@ -444,7 +444,7 @@ namespace dxvk {
     const BlasEntry* pBlas = rtInstance.getBlas();
     assert(pBlas != nullptr);
     const XXH64_hash_t matHash = rtInstance.getMaterialDataHash();
-    const XXH64_hash_t meshHash = pBlas->input.getHash(RtxOptions::Get()->GeometryAssetHashRule);
+    const XXH64_hash_t meshHash = pBlas->input.getHash(RtxOptions::geometryAssetHashRule());
     assert(meshHash != 0);
 
     const LegacyMaterialData& material = pBlas->getMaterialData(matHash);

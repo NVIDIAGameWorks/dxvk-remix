@@ -74,7 +74,7 @@ struct ViewDistanceOptions {
   RTX_OPTION("rtx.viewDistance", float, noiseScale, 3.0f, "The scale per meter value applied to ther world space position fed into the noise generation function for generating the fade in Coherent Noise view distance mode.");
 
 public:
-  void fillShaderParams(ViewDistanceArgs& args, float meterToWorldUnitScale) const {
+  static void fillShaderParams(ViewDistanceArgs& args, float meterToWorldUnitScale) {
     const auto cachedDistanceMode = distanceMode();
     const auto cachedDistanceFadeMax = distanceFadeMax();
     const auto cachedDistanceFadeMin = distanceFadeMin();

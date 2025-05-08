@@ -74,7 +74,7 @@ namespace dxvk {
                         DxvkBuffer* indexBufferRef, const HashQuery vertexRegions[VertexRegions::Count], GeometryHashes& hashesOut) {
     ScopedCpuProfileZone();
 
-    const HashRule& globalHashRule = RtxOptions::Get()->GeometryHashGenerationRule;
+    const HashRule& globalHashRule = RtxOptions::geometryHashGenerationRule();
 
     // TODO (REMIX-658): Improve this by reducing allocation overhead of vector
     std::vector<T> uniqueIndices(0);
@@ -158,7 +158,7 @@ namespace dxvk {
     // Assume the GPU changed the data via shaders, include the constant buffer data in hash
     XXH64_hash_t vertexShaderHash = kEmptyHash;
     if (m_parent->UseProgrammableVS() && useVertexCapture()) {
-      if (RtxOptions::Get()->GeometryHashGenerationRule.test(HashComponents::GeometryDescriptor)) {
+      if (RtxOptions::geometryHashGenerationRule().test(HashComponents::GeometryDescriptor)) {
         const D3D9ConstantSets& cb = m_parent->m_consts[DxsoProgramTypes::VertexShader];
         auto& shaderByteCode = d3d9State().vertexShader->GetCommonShader()->GetBytecode();
         vertexShaderHash = XXH3_64bits(shaderByteCode.data(), shaderByteCode.size());
@@ -170,7 +170,7 @@ namespace dxvk {
 
     // Calculate this based on the RasterGeometry input data
     XXH64_hash_t geometryDescriptorHash = kEmptyHash;
-    if (RtxOptions::Get()->GeometryHashGenerationRule.test(HashComponents::GeometryDescriptor)) {
+    if (RtxOptions::geometryHashGenerationRule().test(HashComponents::GeometryDescriptor)) {
       geometryDescriptorHash = hashGeometryDescriptor(geoData.indexCount, 
                                                       geoData.vertexCount, 
                                                       geoData.indexBuffer.indexType(), 
@@ -179,7 +179,7 @@ namespace dxvk {
 
     // Calculate this based on the RasterGeometry input data
     XXH64_hash_t vertexLayoutHash = kEmptyHash;
-    if (RtxOptions::Get()->GeometryHashGenerationRule.test(HashComponents::VertexLayout)) {
+    if (RtxOptions::geometryHashGenerationRule().test(HashComponents::VertexLayout)) {
       vertexLayoutHash = hashVertexLayout(geoData);
     }
 
@@ -220,7 +220,7 @@ namespace dxvk {
   Future<AxisAlignedBoundingBox> D3D9Rtx::computeAxisAlignedBoundingBox(const RasterGeometry& geoData) {
     ScopedCpuProfileZone();
 
-    if (!RtxOptions::Get()->needsMeshBoundingBox()) {
+    if (!RtxOptions::needsMeshBoundingBox()) {
       return Future<AxisAlignedBoundingBox>();
     }
 
