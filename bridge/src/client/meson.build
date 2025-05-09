@@ -117,10 +117,4 @@ custom_target('copy_d3d9_to_output',
     build_by_default : true,
     depends          : [ d3d9_dll ],
     command          : [copy_script_path, meson.current_build_dir(), output_dir, 'd3d9*'] )
-
-custom_target('copy_d3dx9_dll_to_output',
-    output           : ['copy_d3dx9_dll'],
-    build_by_default : true,
-    depends          : [ d3d9_dll ],
-    command          : [copy_script_path, ext_x86_path, output_dir, 'd3dx9_43.dll'] )
 endif
