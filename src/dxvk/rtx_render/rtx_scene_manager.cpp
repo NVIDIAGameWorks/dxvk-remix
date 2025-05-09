@@ -86,7 +86,7 @@ namespace dxvk {
   }
 
   // Returns wall time between start of app and current time.
-  uint64_t SceneManager::getGameTimeSinceStartMS() {
+  uint64_t SceneManager::getGameTimeSinceStartMS() const {
     // Used in testing
     if (m_useFixedFrameTime) {
       const double deltaTimeMS = 1000.0 / 60.0; // Assume 60 fps
@@ -95,6 +95,11 @@ namespace dxvk {
     }
 
     // TODO(TREX-1004) find a way to 'pause' this when a game is paused.
+    return getRealTimeSinceStartMS();
+  }
+
+  // Returns the actual time since the start of the app, with no mutations.  Should be used for metrics and 
+  uint64_t SceneManager::getRealTimeSinceStartMS() const {
     // Note: steady_clock used here rather than system_clock as on Windows at least it uses a higher precision time source
     // (QueryPerformanceCounter rather than GetSystemTimePreciseAsFileTime), and additionally it is monotonic which is better
     // for this sort of game-based timekeeping (we don't care about NTP adjustments or other things that'd cause discontinuities).

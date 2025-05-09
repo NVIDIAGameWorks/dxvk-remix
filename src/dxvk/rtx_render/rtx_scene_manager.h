@@ -131,7 +131,8 @@ public:
   bool areAllReplacementsLoaded() const;
   std::vector<Mod::State> getReplacementStates() const;
 
-  uint64_t getGameTimeSinceStartMS();
+  uint64_t getGameTimeSinceStartMS() const;
+  uint64_t getRealTimeSinceStartMS() const;
 
   RtxGlobals& getGlobals() { return m_globals; }
 

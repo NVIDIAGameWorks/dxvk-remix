@@ -751,8 +751,8 @@ namespace dxvk {
 
   void RtxContext::updateMetrics(const float frameTimeMilliseconds, const float gpuIdleTimeMilliseconds) const {
     ScopedCpuProfileZone();
-    Metrics::log(Metric::average_frame_time, frameTimeMilliseconds); // In milliseconds
-    Metrics::log(Metric::gpu_idle_ticks, gpuIdleTimeMilliseconds); // In milliseconds
+    Metrics::logRollingAverage(Metric::average_frame_time, frameTimeMilliseconds); // In milliseconds
+    Metrics::logRollingAverage(Metric::gpu_idle_ticks, gpuIdleTimeMilliseconds); // In milliseconds
     uint64_t vidUsageMib = 0;
     uint64_t sysUsageMib = 0;
     const VkPhysicalDeviceMemoryProperties memprops = m_device->adapter()->memoryProperties();
@@ -767,8 +767,10 @@ namespace dxvk {
         sysUsageMib += m_device->getMemoryStats(i).totalUsed() >> 20;
       }
     }
-    Metrics::log(Metric::vid_memory_usage, static_cast<float>(vidUsageMib)); // In MB
-    Metrics::log(Metric::sys_memory_usage, static_cast<float>(sysUsageMib)); // In MB
+    Metrics::logRollingAverage(Metric::vid_memory_usage, static_cast<float>(vidUsageMib)); // In MB
+    Metrics::logRollingAverage(Metric::sys_memory_usage, static_cast<float>(sysUsageMib)); // In MB
+    Metrics::logFloat(Metric::total_time, static_cast<float>(getCommonObjects()->getSceneManager().getRealTimeSinceStartMS()));
+    Metrics::logFloat(Metric::frame_count, static_cast<float>(m_device->getCurrentFrameId()));
   }
 
   void RtxContext::setConstantBuffers(const uint32_t vsFixedFunctionConstants, const uint32_t psSharedStateConstants, Rc<DxvkBuffer> vertexCaptureCB) {
