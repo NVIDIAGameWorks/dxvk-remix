@@ -84,7 +84,8 @@ namespace dxvk {
     } gpuPrint;
 
   private:
-    void initCompositeView(Rc<DxvkContext>& ctx);
+    void initCompositeDebugViews();
+    void updateCompositeView(Rc<DxvkContext>& ctx);
     void processOutputStatistics(Rc<RtxContext>& ctx, const Resources::RaytracingOutput& rtOutput);
     void showOutputStatistics();
     bool shouldDebugViewDispatch() const;
@@ -131,6 +132,8 @@ namespace dxvk {
     struct Composite {
       friend class ImGUI; // <-- we want to modify these values directly.
       friend class DebugView; // <-- we want to modify these values directly.
+
+      RTX_OPTION("rtx.debugView.composite", uint32_t, numColumnsInRuntimeValuesSets, 4, "Number of columns in the runtime values sets. This is used to determine how many values are displayed in the composite view.");
 
       RTX_OPTION_ENV("rtx.debugView.composite", uint32_t, compositeViewIdx, CompositeDebugView::Disabled, "RTX_DEBUG_VIEW_COMPOSITE_VIEW_INDEX", "Index of a composite view to show when Composite Debug View is enabled. The index must be a a valid value from CompositeDebugView enumeration. Value of 0 disables Composite Debug View.");
     

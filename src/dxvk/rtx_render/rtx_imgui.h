@@ -375,6 +375,12 @@ namespace ImGui {
       m_keyToComboIdx.erase(it);
     }
 
+    void addComboEntry(const ComboEntry& comboEntry) {
+      assert(m_keyToComboIdx.find(comboEntry.key) == m_keyToComboIdx.end() && "Duplicate key found");
+      m_comboEntries.push_back(comboEntry);
+      m_keyToComboIdx[comboEntry.key] = m_comboEntries.size() - 1;
+    }
+
   private:
     static bool getString(void* data, int entryIdx, const char** out_text, const char** out_tooltip) {
       const ComboEntries& v = *reinterpret_cast<const ComboEntries*>(data);

@@ -338,8 +338,7 @@ namespace dxvk {
       const char* name,
       uint32_t numColumns,
       std::vector<uint32_t>& debugViewIndices)
-      : m_name(name)
-      , m_numColumns(numColumns)
+      : m_numColumns(numColumns)
       , m_debugViewIndices(std::move(debugViewIndices)) {
       
       std::string description;
@@ -350,12 +349,15 @@ namespace dxvk {
         // Add the rest of the debug view names to the description.
         // Split them into multiple rows based on the number of columns per row
         for (uint32_t i = 1; i < m_debugViewIndices.size(); i++) {
-          const char* delimiter = ((i % m_numColumns) == 0) ? "\n" : ", ";
+          const char* delimiter = ((i % m_numColumns) == 0) ? "\n" : "  |  ";
 
           description.append(delimiter);
           description.append(getDebugViewName(m_debugViewIndices[i]));
         }
       }
+
+      m_name = new char[strlen(name) + 1];
+      std::strcpy(m_name, name);
 
       // Locally managed string memory to ensure the pointer stays valid across object copies that can occur
       // due to CompositeDebugViewClass objects being stored in a map
@@ -364,6 +366,10 @@ namespace dxvk {
     }
 
     ~CompositeDebugViewClass() {
+      if (m_name) {
+        delete[] m_name;
+        m_name = nullptr;
+      }
       if (m_description) {
         delete[] m_description;
         m_description = nullptr;
@@ -378,6 +384,7 @@ namespace dxvk {
       , m_description(other.m_description) {
       // Unordered_map requires a copy constructor with a const reference,
       // but we do need to invalidate other's pointer to avoid double free
+      const_cast<CompositeDebugViewClass&>(other).m_name = nullptr;
       const_cast<CompositeDebugViewClass&>(other).m_description = nullptr;
     }
 
@@ -392,13 +399,13 @@ namespace dxvk {
     uint32_t getNumColumns() const {
       return m_numColumns;
     }
-    
+
     const std::vector<uint32_t>& getDebugViewIndices() const {
       return m_debugViewIndices;
     }
 
   private:
-    const char* m_name;
+    char* m_name;
     uint32_t m_numColumns;
     std::vector<uint32_t> m_debugViewIndices;
     char* m_description;
@@ -406,54 +413,67 @@ namespace dxvk {
 
   // Macro listing of all composite debug views.
   // Format: CompositeDebugView enum, name, number of colums (debug views) per row, debug view indices
-  #define LIST_COMPOSITE_DEBUG_VIEWS(X) \
+  #define LIST_EXPLICIT_COMPOSITE_DEBUG_VIEWS(X) \
     X(CompositeDebugView::FinalRenderWithMaterialProperties, "Final Render + Material Properties", 3, \
       DEBUG_VIEW_POST_TONEMAP_OUTPUT, DEBUG_VIEW_ALBEDO, DEBUG_VIEW_SHADING_NORMAL, \
       DEBUG_VIEW_PERCEPTUAL_ROUGHNESS, DEBUG_VIEW_EMISSIVE_RADIANCE, DEBUG_VIEW_HEIGHT_MAP) \
     X(CompositeDebugView::OpaqueMaterialTextureResolutionCheckers, "Opaque Material Texture Resolution Checkers", 2, \
       DEBUG_VIEW_OPAQUE_RAW_ALBEDO_RESOLUTION_CHECKERS, DEBUG_VIEW_OPAQUE_NORMAL_RESOLUTION_CHECKERS, \
-      DEBUG_VIEW_OPAQUE_ROUGHNESS_RESOLUTION_CHECKERS) \
-    X(CompositeDebugView::RuntimeValuesSet0, "Runtime Values Set 0", 4, \
-      DEBUG_VIEW_BARYCENTRICS, DEBUG_VIEW_VIEW_DIRECTION, DEBUG_VIEW_CONE_RADIUS, DEBUG_VIEW_POSITION, \
-      DEBUG_VIEW_TEXCOORDS, DEBUG_VIEW_VIRTUAL_MOTION_VECTOR, DEBUG_VIEW_VIRTUAL_SHADING_NORMAL, DEBUG_VIEW_VERTEX_COLOR, \
-      DEBUG_VIEW_SCREEN_SPACE_MOTION_VECTOR, DEBUG_VIEW_PERCEPTUAL_ROUGHNESS, DEBUG_VIEW_ANISOTROPY, DEBUG_VIEW_ANISOTROPIC_ROUGHNESS, \
-      DEBUG_VIEW_OPACITY, DEBUG_VIEW_VIRTUAL_HIT_DISTANCE, DEBUG_VIEW_SURFACE_AREA, DEBUG_VIEW_EMISSIVE_RADIANCE) \
-    X(CompositeDebugView::RuntimeValuesSet1, "Runtime Values Set 1", 4, \
-      DEBUG_VIEW_VOLUME_PREINTEGRATION, DEBUG_VIEW_TEXCOORDS_GRADIENT_X, DEBUG_VIEW_TEXCOORDS_GRADIENT_Y, DEBUG_VIEW_PSR_PRIMARY_SECONDARY_SURFACE_MASK, \
-      DEBUG_VIEW_PSR_SELECTED_INTEGRATION_SURFACE_PDF, DEBUG_VIEW_PRIMARY_DECAL_ALBEDO, DEBUG_VIEW_PRIMARY_SPECULAR_ALBEDO, DEBUG_VIEW_SECONDARY_SPECULAR_ALBEDO, \
-      DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_COLOR, DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_NORMAL, DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_GEOMETRY_HASH, DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_BACKGROUND_TRANSPARENCY, \
-      DEBUG_VIEW_RTXDI_GRADIENTS, DEBUG_VIEW_RTXDI_CONFIDENCE, DEBUG_VIEW_LOCAL_TONEMAPPER_LUMINANCE_OUTPUT, DEBUG_VIEW_LOCAL_TONEMAPPER_EXPOSURE_OUTPUT) \
-    X(CompositeDebugView::RuntimeValuesSet2, "Runtime Values Set 2", 4, \
-      DEBUG_VIEW_NOISY_PRIMARY_DIRECT_DIFFUSE_RADIANCE, DEBUG_VIEW_NOISY_PRIMARY_DIRECT_SPECULAR_RADIANCE, DEBUG_VIEW_NOISY_PRIMARY_DIRECT_DIFFUSE_HIT_T, DEBUG_VIEW_NOISY_PRIMARY_DIRECT_SPECULAR_HIT_T, \
-      DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_DIFFUSE_RADIANCE, DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_SPECULAR_RADIANCE, DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_DIFFUSE_HIT_T, DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_SPECULAR_HIT_T, \
-      DEBUG_VIEW_NOISY_SECONDARY_COMBINED_DIFFUSE_RADIANCE, DEBUG_VIEW_NOISY_SECONDARY_COMBINED_SPECULAR_RADIANCE, DEBUG_VIEW_NOISY_PATHRACED_RAW_INDIRECT_RADIANCE, DEBUG_VIEW_NOISY_RADIANCE, \
-      DEBUG_VIEW_NRC_UPDATE_RADIANCE, DEBUG_VIEW_NRC_UPDATE_THROUGHPUT, DEBUG_VIEW_NRC_RESOLVED_RADIANCE, DEBUG_VIEW_SSS_DIFFUSION_PROFILE_SAMPLING)
+      DEBUG_VIEW_OPAQUE_ROUGHNESS_RESOLUTION_CHECKERS)
 
   // Macro to create a map entry for composite debug views
   #define MAP_ENTRY_COMPOSITE_DEBUG_VIEW(idx, name, numColumns, debugViewIndex0, /* remaining debug view indices */ ...) \
     std::make_pair(static_cast<uint32_t>(idx), CompositeDebugViewClass(name, numColumns, std::vector<uint32_t>{debugViewIndex0, __VA_ARGS__ })),
 
-  // Macro to create a combo entry for composite debug views
-  #define COMBO_ENTRY_COMPOSITE_DEBUG_VIEW(idx, name, numColumns, debugViewIndex0, /* remaining debug view indices */ ...) \
-    { idx, name },
-
   // Map of composite debug views
   std::unordered_map<uint32_t /* CompositeDebugView::enum*/, CompositeDebugViewClass> s_compositeDebugViewsMap = {
-    LIST_COMPOSITE_DEBUG_VIEWS(MAP_ENTRY_COMPOSITE_DEBUG_VIEW)
+    LIST_EXPLICIT_COMPOSITE_DEBUG_VIEWS(MAP_ENTRY_COMPOSITE_DEBUG_VIEW)
   };
 
   // ComboBox entries for ImGui
   ImGui::ComboWithKey<CompositeDebugView> compositeDebugViewCombo = ImGui::ComboWithKey<CompositeDebugView>(
     "Composite Debug View",
-    ImGui::ComboWithKey<CompositeDebugView>::ComboEntries { {
-        LIST_COMPOSITE_DEBUG_VIEWS(COMBO_ENTRY_COMPOSITE_DEBUG_VIEW)
-    } });
+    // Note: Combo entries are initialized in initCompositeDebugViews()
+    ImGui::ComboWithKey<CompositeDebugView>::ComboEntries {});
 
-  // Set the tooltip for the composite debug view combo box using the description from the map
-  // This is done in a separate function called after map of composite debug views,
-  // which contains the description of each composite debug view.
-  void initCompositeDebugViewComboTooltips() {
-    // Initialize tooltips for composite debug view combo entries
+  // Creates 4x4 composite debug views enumerating all debug views listed in debugViewEntries
+  void DebugView::initCompositeDebugViews() {
+
+    // Initialize implicit commposite debug views
+    {
+      const uint32_t kNumColumns = Composite::numColumnsInRuntimeValuesSets();
+      const uint32_t kNumDebugViewsPerCompositeView = kNumColumns * kNumColumns;
+
+      uint32_t debugViewIdx = 0;
+      uint32_t compositeDebugViewIdx = static_cast<uint32_t>(CompositeDebugView::RuntimeValuesSet0);
+
+      while (debugViewIdx < debugViewEntries.size()) {
+        std::string name = "Runtime Values Set " + std::to_string(debugViewIdx / kNumDebugViewsPerCompositeView);
+
+        // Create a composite debug view with the specified name and number of columns
+        std::vector<uint32_t> debugViewIndices;
+        for (uint32_t i = 0; i < kNumDebugViewsPerCompositeView && debugViewIdx < debugViewEntries.size(); ++i, ++debugViewIdx) {
+          debugViewIndices.push_back(debugViewEntries[debugViewIdx].key);
+        }
+
+        s_compositeDebugViewsMap.emplace(compositeDebugViewIdx, CompositeDebugViewClass(name.c_str(), kNumColumns, debugViewIndices));
+
+        compositeDebugViewIdx++;
+      }
+    }
+
+    // Populate compositeDebugViewCombo for ImGUI.
+    // Note: This has to be done after s_compositeDebugViewsMap is finalized above,
+    // since combos reference name objects in s_compositeDebugViewsMap
+    {
+      for (auto& compositeDebugView : s_compositeDebugViewsMap) {
+        ImGui::ComboWithKey<CompositeDebugView>::ComboEntry comboEntry = { static_cast<CompositeDebugView>(compositeDebugView.first), compositeDebugView.second.getName() };
+        compositeDebugViewCombo.addComboEntry(comboEntry);
+      }
+    }
+
+    // Initialize tooltips for composite debug view combo entries.
+    // Set the tooltip for the composite debug view combo box using the description from the map
     for (const auto& compositeDebugView : s_compositeDebugViewsMap) {
       auto* comboEntry = compositeDebugViewCombo.getComboEntry(static_cast<CompositeDebugView>(compositeDebugView.first));
       comboEntry->tooltip = compositeDebugView.second.getDescription();
@@ -585,7 +605,7 @@ namespace dxvk {
     , m_startTime(std::chrono::system_clock::now()){
     initSettings(device->instance()->config());
 
-    initCompositeDebugViewComboTooltips();
+    initCompositeDebugViews();
   }
 
   void DebugView::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
@@ -994,7 +1014,7 @@ namespace dxvk {
     return m_debugViewConstants;
   }
 
-  void DebugView::initCompositeView(Rc<DxvkContext>& ctx) {
+  void DebugView::updateCompositeView(Rc<DxvkContext>& ctx) {
     if (static_cast<CompositeDebugView>(Composite::compositeViewIdx()) == CompositeDebugView::Disabled) {
       return;
     }
@@ -1030,8 +1050,8 @@ namespace dxvk {
       return;
     }
 
-    // Initialize composite view
-    initCompositeView(ctx);
+    // Update composite view
+    updateCompositeView(ctx);
 
     // Accumulation per-frame setup
     {
@@ -1547,7 +1567,8 @@ namespace dxvk {
       // Calculate composite grid dimensions & current grid index 
       const uint32_t numImages = compositeView.getDebugViewIndices().size();
       uvec2 compositeGridDims;
-      compositeGridDims.x = compositeView.getNumColumns();
+      // Take the min so that if there isn't enough debug views to show they are shown larger
+      compositeGridDims.x = std::min(compositeView.getNumColumns(), numImages);
       compositeGridDims.y = static_cast<uint32_t>(ceilf(static_cast<float>(numImages) / compositeGridDims.x));
 
       uint32_t frameIndex = ctx->getDevice()->getCurrentFrameId();
