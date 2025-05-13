@@ -98,7 +98,7 @@ namespace dxvk {
     return getRealTimeSinceStartMS();
   }
 
-  // Returns the actual time since the start of the app, with no mutations.  Should be used for metrics and 
+  // Returns the actual time since the start of the app, with no mutations.  Should be used for metrics and performance logging.
   uint64_t SceneManager::getRealTimeSinceStartMS() const {
     // Note: steady_clock used here rather than system_clock as on Windows at least it uses a higher precision time source
     // (QueryPerformanceCounter rather than GetSystemTimePreciseAsFileTime), and additionally it is monotonic which is better
