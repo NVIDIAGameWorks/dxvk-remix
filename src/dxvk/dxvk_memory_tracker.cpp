@@ -1,5 +1,6 @@
 #pragma once
 #include "dxvk_memory_tracker.h"
+#include "rtx_render/rtx_imgui.h"
 #include "rtx_render/rtx_option.h"
 #include "imgui/imgui.h"
 
@@ -200,7 +201,7 @@ namespace dxvk {
       }
       ImGui::SameLine();
 
-      ImGui::Checkbox("Include Whole Frame", &MemoryTrackerSettings::includeWholeFrameRef());
+      ImGui::Checkbox("Include Whole Frame", &MemoryTrackerSettings::includeWholeFrameObject());
 
       // Options
       static ImGuiTableFlags flags =

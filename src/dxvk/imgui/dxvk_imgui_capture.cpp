@@ -70,7 +70,7 @@ namespace dxvk {
         showContinuousCapture(ctx);
       }
       ImGui::Separator();
-      ImGui::Checkbox("Correct baked world transforms", &capturer->correctBakedTransformsRef());
+      ImGui::Checkbox("Correct baked world transforms", &GameCapturer::correctBakedTransformsObject());
       ImGui::Checkbox("Show menu on capture hotkey", &RtxOptions::captureShowMenuOnHotkeyObject());
       if(RtxOptions::captureShowMenuOnHotkey()) {
         ImGui::PushTextWrapPos(ImGui::GetCurrentWindow()->Size.x);

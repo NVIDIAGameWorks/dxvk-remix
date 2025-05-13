@@ -403,7 +403,7 @@ namespace dxvk {
     bool rayReconstruction = RtxOptions::enableRayReconstruction();
     if (RtxOptions::showRayReconstructionOption()) {
       ImGui::BeginDisabled(!supportsRR);
-      ImGui::Checkbox("Ray Reconstruction", &RtxOptions::enableRayReconstructionRef());
+      ImGui::Checkbox("Ray Reconstruction", &RtxOptions::enableRayReconstructionObject());
 
       if (RtxOptions::enableRayReconstruction()) {
         rayReconstructionModelCombo.getKey(&DxvkRayReconstruction::modelObject());
@@ -2419,7 +2419,7 @@ namespace dxvk {
       ImGui::DragFloat("Scene Unit Scale", &RtxOptions::sceneScaleObject(), 0.00001f, 0.00001f, FLT_MAX, "%.5f", sliderFlags);
       ImGui::Checkbox("Scene Z-Up", &RtxOptions::zUpObject());
       ImGui::Checkbox("Scene Left-Handed Coordinate System", &RtxOptions::leftHandedCoordinateSystemObject());
-      fusedWorldViewModeCombo.getKey(&RtxOptions::fusedWorldViewModeRef());
+      fusedWorldViewModeCombo.getKey(&RtxOptions::fusedWorldViewModeObject());
       ImGui::Separator();
 
       ImGui::DragFloat("Unique Object Search Distance", &RtxOptions::uniqueObjectDistanceObject(), 0.01f, FLT_MIN, FLT_MAX, "%.3f", sliderFlags);
@@ -3031,7 +3031,7 @@ namespace dxvk {
         // Plasma ball has first priority
         ImGui::Checkbox("Plasma Ball Effect", &RtxOptions::effectLightPlasmaBallObject());
         ImGui::BeginDisabled(RtxOptions::effectLightPlasmaBall());
-        ImGui::ColorPicker3("Light Color", &(RtxOptions::effectLightColorRef().x));
+        ImGui::ColorPicker3("Light Color", &RtxOptions::effectLightColorObject());
         ImGui::EndDisabled();
         ImGui::Unindent();
       }

@@ -276,6 +276,12 @@ namespace ImGui {
   IMGUI_API bool SliderFloat4(const char* label, dxvk::RtxOption<dxvk::Vector4>* rtxOption, Args&& ... args) {
     return IMGUI_ADD_TOOLTIP(SliderFloat4(label, rtxOption->getValue().data, std::forward<Args>(args)...), rtxOption->getDescription());
   }
+  
+  // Variant handling RtxOption as input
+  template <typename ... Args>
+  IMGUI_API bool ColorPicker3(const char* label, dxvk::RtxOption<dxvk::Vector3>* rtxOption, Args&& ... args) {
+    return IMGUI_ADD_TOOLTIP(ColorPicker3(label, rtxOption->getValue().data, std::forward<Args>(args)...), rtxOption->getDescription());
+  }
 
   // Variant handling RtxOption as input
   template <typename ... Args>
