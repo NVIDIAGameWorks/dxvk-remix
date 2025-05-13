@@ -1,14 +1,16 @@
 #pragma once
 
 // Function to compute the percentage of a line segment that lies within a sphere
-float lineSegmentSphereIntersectionPercentage(float3 p0, float3 p1, float3 sphereCenter, float sphereRadius)
+// Note that the radius passed into this function must be squared, this is done as often a squared radius is already known
+// and does not need to be recomputed.
+float lineSegmentSphereIntersectionPercentage(float3 p0, float3 p1, float3 sphereCenter, float sphereRadiusSquared)
 {
   float3 d = p1 - p0;
   float3 m = p0 - sphereCenter;
 
   float a = dot(d, d);
   float b = 2.0 * dot(m, d);
-  float c = dot(m, m) - sphereRadius * sphereRadius;
+  float c = dot(m, m) - sphereRadiusSquared;
 
   // Compute the discriminant
   float discriminant = b * b - 4.0 * a * c;
@@ -82,7 +84,7 @@ float lineSegmentPlaneIntersectionPercentage(const float3  p1, const float3 p2, 
   return startsAbove ? 1.f - percentage : percentage;
 }
 
-float raySphereIntersect(float3 rayOrigin, float3 rayDir, float3 sphereCenter, float sphereRadius)
+float raySphereIntersect(float3 rayOrigin, float3 rayDir, float3 sphereCenter, float sphereRadiusSquared)
 {
   // Calculate vector from ray origin to sphere center
   float3 oc = rayOrigin - sphereCenter;
@@ -90,7 +92,7 @@ float raySphereIntersect(float3 rayOrigin, float3 rayDir, float3 sphereCenter, f
   // Calculate quadratic coefficients
   float a = dot(rayDir, rayDir);
   float b = 2.0f * dot(oc, rayDir);
-  float c = dot(oc, oc) - sphereRadius * sphereRadius;
+  float c = dot(oc, oc) - sphereRadiusSquared;
     
   // Calculate discriminant
   float discriminant = b * b - 4.0f * a * c;
@@ -120,7 +122,16 @@ float raySphereIntersect(float3 rayOrigin, float3 rayDir, float3 sphereCenter, f
   return t;
 }
 
-void raySphereIntersect(float3 rayOrigin, float3 rayDir, float3 sphereCenter, float sphereRadius, out float entryHitT, out float exitHitT)
+// Calculates the one or two intersections between a ray and a sphere.
+// In typical cases where a ray intersects a sphere from the outside, the entry and exit Hit T values will be positive values
+// representing the two locations where the ray intersects the sphere.
+// When the ray starts inside the sphere, the entry Hit T will be negative indicating the point behind the ray it would've
+// intersected as a line, whereas the exit Hit T will be positive and contain the actual hit distance.
+// Finally, when the line formed by the ray either misses the sphere entierly or both entry and exit points are behind the
+// ray, -1 is returned for both the entry and exit Hit T.
+// Note that the radius passed into this function must be squared, this is done as often a squared radius is already known
+// and does not need to be recomputed.
+void raySphereIntersect(float3 rayOrigin, float3 rayDir, float3 sphereCenter, float sphereRadiusSquared, out float entryHitT, out float exitHitT)
 {
   // Calculate vector from ray origin to sphere center
   float3 oc = rayOrigin - sphereCenter;
@@ -128,7 +139,7 @@ void raySphereIntersect(float3 rayOrigin, float3 rayDir, float3 sphereCenter, fl
   // Calculate quadratic coefficients
   float a = dot(rayDir, rayDir);
   float b = 2.0f * dot(oc, rayDir);
-  float c = dot(oc, oc) - sphereRadius * sphereRadius;
+  float c = dot(oc, oc) - sphereRadiusSquared;
     
   // Calculate discriminant
   float discriminant = b * b - 4.0f * a * c;

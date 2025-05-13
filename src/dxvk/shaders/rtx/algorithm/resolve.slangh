@@ -293,7 +293,7 @@ void resolveVertexFinalMiss<let overrideRayInteraction : bool, T : IBasePayloadS
   // Account for attenuation on miss
   // Note: This is important for any effects which apply after miss, such as potential future skybox effects.
 #ifdef RESOLVER_USE_VOLUMETRIC_ATTENUATION
-  radianceAttenuation *= evalVolumetricAttenuation(cb.volumeArgs, none, false, 0.0f, resolveVertexState.origin, resolveVertexState.direction);
+  radianceAttenuation *= calcVolumetricAttenuation(cb.volumeArgs, none, true, 0.0f, resolveVertexState.origin, resolveVertexState.direction);
 #else 
   unused(radianceAttenuation);
 #endif
@@ -360,7 +360,7 @@ void resolveVertex<T: IBasePayloadState>(
   // as e^x * e^y (where x/y are hit distances) is the same as e^(x + y).
 
 #ifdef RESOLVER_USE_VOLUMETRIC_ATTENUATION
-  radianceAttenuation *= evalVolumetricAttenuation(cb.volumeArgs, none, true, rayHitInfo.hitDistance, ray.origin, ray.direction);
+  radianceAttenuation *= calcVolumetricAttenuation(cb.volumeArgs, none, false, rayHitInfo.hitDistance, ray.origin, ray.direction);
 #endif
   
   // Create a Surface and Surface Interaction from the hit
@@ -1125,7 +1125,7 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
       // Note: Volume attenuation calculated only for the current ray start to the current hit surface, not accumulated
       // into the attenuation as this will be handled later by the ordered resolve logic (and we do not want to incorrectly
       // accumulate volume radiance multiple times for overlapping unordered segments).
-      const f16vec3 volumeAttenuation = evalVolumetricAttenuation(cb.volumeArgs, none, true, lowestDistance, ray.origin, ray.direction);
+      const f16vec3 volumeAttenuation = calcVolumetricAttenuation(cb.volumeArgs, none, false, lowestDistance, ray.origin, ray.direction);
 
       emissiveRadiance += lowestRadianceAndAttenuation.rgb * radianceAttenuation * volumeAttenuation;
       // Hack: This is done as a workaround for a compiler bug (REMIX-1551), should be revertex back to what it was originally to avoid
@@ -1191,7 +1191,7 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
     // Note: Volume attenuation calculated only for the current ray start to the current hit surface, not accumulated
     // into the attenuation as this will be handled later by the ordered resolve logic (and we do not want to incorrectly
     // accumulate volume radiance multiple times for overlapping unordered segments).
-    const f16vec3 volumeAttenuation = evalBeerLambertAttenuation(cb.volumeArgs.attenuationCoefficient, lowestDistance);
+    const f16vec3 volumeAttenuation = calcVolumetricAttenuation(cb.volumeArgs, none, false, lowestDistance, ray.origin, ray.direction);
 
     emissiveRadiance += lowestRadianceAndAttenuation.rgb * radianceAttenuation * volumeAttenuation;
     // Hack: This is done as a workaround for a compiler bug (REMIX-1551), should be revertex back to what it was originally to avoid

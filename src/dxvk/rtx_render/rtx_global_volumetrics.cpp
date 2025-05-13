@@ -486,7 +486,7 @@ namespace dxvk {
     // Calculate the volumetric parameters from options and the fixed function fog state
 
     // Note: Volumetric transmittance color option is in gamma space, so must be converted to linear for usage in the volumetric system.
-    Vector3 transmittanceColor { sRGBGammaToLinear(m_transmittanceColor) };
+    Vector3 transmittanceColor{ sRGBGammaToLinear(m_transmittanceColor) };
 
     // Note: Fall back to usual default in cases such as the "none" D3D fog mode, no fog remapping specified, or invalid values in the fog mode derivation
     // (such as dividing by zero).
@@ -560,12 +560,12 @@ namespace dxvk {
 
     // Calculate scattering and attenuation coefficients for the volume
 
-    Vector3 const volumetricAttenuationCoefficient {
+    Vector3 const volumetricAttenuationCoefficient{
       -log(transmittanceColor.x) / transmittanceMeasurementDistance,
       -log(transmittanceColor.y) / transmittanceMeasurementDistance,
       -log(transmittanceColor.z) / transmittanceMeasurementDistance
     };
-    Vector3 const volumetricScatteringCoefficient { volumetricAttenuationCoefficient * m_singleScatteringAlbedo };
+    Vector3 const volumetricScatteringCoefficient{ volumetricAttenuationCoefficient * m_singleScatteringAlbedo };
 
     const RtCamera& mainCamera = cameraManager.getMainCamera();
 
@@ -613,6 +613,7 @@ namespace dxvk {
     volumeArgs.enableNoiseFieldDensity = enableHeterogeneousFog();
     volumeArgs.noiseFieldSubStepSize = noiseFieldSubStepSizeMeters() * RtxOptions::getMeterToWorldUnitScale();
     volumeArgs.noiseFieldOctaves = noiseFieldOctaves();
+    volumeArgs.noiseFieldTimeScale = noiseFieldTimeScale();
     volumeArgs.noiseFieldDensityScale = noiseFieldDensityScale();
     volumeArgs.noiseFieldDensityExponent = noiseFieldDensityExponent();
     volumeArgs.noiseFieldOctaves = noiseFieldOctaves();
@@ -623,17 +624,21 @@ namespace dxvk {
     volumeArgs.depthOffset = depthOffset();
 
     const float invertedWorld = atmosphereInverted() ? -1.f : 1.f;
-
     const Vector3 sceneUpDirection = RtxOptions::zUp() ? Vector3(0, 0, invertedWorld) : Vector3(0, invertedWorld, 0);
 
-    volumeArgs.enableAtmosphere = enableAtmosphere();
-    volumeArgs.sceneUpDirection = sceneUpDirection;
-    volumeArgs.atmosphereHeight = atmosphereHeightMeters() * RtxOptions::getMeterToWorldUnitScale();
+    const float atmosphereHeight = atmosphereHeightMeters() * RtxOptions::getMeterToWorldUnitScale();
+    const float planetRadius = atmospherePlanetRadiusMeters() * RtxOptions::getMeterToWorldUnitScale();
     // Create a virtual planet center by projecting the camera position onto the plane defined by the origin and scene up direction.
     // Todo: Consider pre-transforming this planet center into the various volume camera translated world spaces to avoid needing to do this translation on the GPU constantly. May be just as costly however
     // to do an additional indexed lookup rather than a simple subtraction however, but depends on how well the compiler can optimize such things.
-    volumeArgs.planetCenter = project(mainCamera.getPosition(), Vector3(), sceneUpDirection) - sceneUpDirection * atmospherePlanetRadiusMeters() * RtxOptions::getMeterToWorldUnitScale();
-    volumeArgs.atmosphereRadius = volumeArgs.atmosphereHeight + atmospherePlanetRadiusMeters() * RtxOptions::getMeterToWorldUnitScale();
+    const Vector3 planetCenter = project(mainCamera.getPosition(), Vector3(), sceneUpDirection) - sceneUpDirection * planetRadius;
+    const float atmosphereRadius = atmosphereHeight + planetRadius;
+
+    volumeArgs.enableAtmosphere = enableAtmosphere();
+    volumeArgs.sceneUpDirection = sceneUpDirection;
+    volumeArgs.atmosphereHeight = atmosphereHeight;
+    volumeArgs.planetCenter = planetCenter;
+    volumeArgs.atmosphereRadiusSquared = atmosphereRadius * atmosphereRadius;
     volumeArgs.maxAttenuationDistanceForNoAtmosphere = transmittanceMeasurementDistance * 5;
 
     volumeArgs.cameras[froxelVolumeMain] = mainCamera.getVolumeShaderConstants(volumeArgs.froxelMaxDistance);

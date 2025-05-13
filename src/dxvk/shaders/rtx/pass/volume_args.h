@@ -92,11 +92,13 @@ struct VolumeArgs {
   float atmosphereHeight;
 
   vec3 planetCenter;
-  float atmosphereRadius;
+  // Note: Squared radius used as most functions involving atmospheric intersection use a squared radius
+  // in their math, simplifying the work that needs to be done on the GPU.
+  float atmosphereRadiusSquared;
 
-  vec2 pad1;
   float maxAttenuationDistanceForNoAtmosphere;
   uint resetHistory;
+  vec2 pad0;
 };
 
 #ifdef __cplusplus
