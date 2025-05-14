@@ -1273,14 +1273,14 @@ namespace dxvk {
     // Capture Options
     //   General
     static bool getCaptureInstances() {
-      if (m_captureNoInstance.getValue() != m_captureNoInstance.getDefaultValue()) {
+      if (captureNoInstance() != captureNoInstance.getDefaultValue()) {
         Logger::warn("rtx.captureNoInstance has been deprecated, but will still be respected for the time being, unless rtx.captureInstances is set.");
-        if (m_captureInstances.getValue() != m_captureInstances.getDefaultValue()) {
-          return m_captureInstances;
+        if (captureInstances() != captureInstances.getDefaultValue()) {
+          return captureInstances();
         }
-        return !m_captureNoInstance;
+        return !captureNoInstance();
       }
-      return m_captureInstances;
+      return captureInstances();
     }
     
     static std::string getCurrentDirectory();

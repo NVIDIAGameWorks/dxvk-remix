@@ -2336,7 +2336,7 @@ namespace dxvk {
         ImGui::SameLine();
         ImGui::Text("Texture Thumbnail Scale: %d%%", percentage);
         if (ImGui::IsItemHovered()) {
-          ImGui::SetTooltipUnformatted(RtxOptions::textureGridThumbnailScaleDescription());
+          ImGui::SetTooltipUnformatted(RtxOptions::textureGridThumbnailScale.getDescription());
         }
 
         RtxOptions::textureGridThumbnailScaleRef() = static_cast<float>(percentage) / 100.f;

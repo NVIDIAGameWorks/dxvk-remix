@@ -153,7 +153,6 @@ namespace dxvk {
         } else if (fallbackLightType() == FallbackLightType::Sphere) {
           lightSettingsDirty |= ImGui::DragFloat("Fallback Light Radius", &fallbackLightRadiusObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
           lightSettingsDirty |= ImGui::DragFloat3("Fallback Light Position Offset", &fallbackLightPositionOffsetObject(), 0.1f, 0.0f, 0.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::SetTooltipToLastWidgetOnHover(fallbackLightPositionOffsetDescription());
 
           lightSettingsDirty |= ImGui::Checkbox("Enable Fallback Light Shaping", &enableFallbackLightShapingObject());
 
@@ -161,7 +160,6 @@ namespace dxvk {
             ImGui::Indent();
 
             lightSettingsDirty |= ImGui::Checkbox("Fallback Light Match View Axis", &enableFallbackLightViewPrimaryAxisObject());
-            ImGui::SetTooltipToLastWidgetOnHover(enableFallbackLightViewPrimaryAxisDescription());
 
             if (!enableFallbackLightViewPrimaryAxis()) {
               lightSettingsDirty |= ImGui::DragFloat3("Fallback Light Primary Axis", &fallbackLightPrimaryAxisObject(), 0.1f, 0.0f, 0.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);

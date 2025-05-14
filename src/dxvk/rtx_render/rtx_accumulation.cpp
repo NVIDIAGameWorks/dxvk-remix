@@ -132,11 +132,11 @@ namespace dxvk {
       numFramesToAccumulate.getValue() = std::max(numFramesToAccumulate.getValue(), 1u);
 
       // Reset accumulation if the cap gets lowered and below the current count
-      if (m_prevNumFramesToAccumulate > numFramesToAccumulate &&
-          m_numAccumulatedFrames >= numFramesToAccumulate) {
+      if (m_prevNumFramesToAccumulate > numFramesToAccumulate() &&
+          m_numAccumulatedFrames >= numFramesToAccumulate()) {
         resetNumAccumulatedFrames();
       }
-      m_prevNumFramesToAccumulate = numFramesToAccumulate;
+      m_prevNumFramesToAccumulate = numFramesToAccumulate();
 
       // ImGUI runs async with frame execution, so always report at least 1 frame was generated to avoid showing 0
       // since renderer will always show a generated image

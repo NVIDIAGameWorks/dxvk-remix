@@ -619,12 +619,12 @@ namespace dxvk {
       OriginCalc originCalc;
       for (size_t idx = 0; idx < numVertices; ++idx) {
         pxr::GfVec3f pos = *reinterpret_cast<const pxr::GfVec3f*>(&pVkPosBuf[idx * positionStride]);
-        if(m_correctBakedTransforms) {
+        if(correctBakedTransforms()) {
           originCalc.compareAndSwap(pos);
         }
         positions.push_back(pos);
       }
-      if(m_correctBakedTransforms) {
+      if(correctBakedTransforms()) {
         pMesh->originCalc.compareAndSwap(originCalc);
       }
       assert(positions.size() > 0);
@@ -1054,13 +1054,13 @@ namespace dxvk {
       if (cap.materials.count(pMesh->matHash) > 0) {
         pMesh->lssData.matId = pMesh->matHash;
       }
-      if(m_correctBakedTransforms) {
+      if(correctBakedTransforms()) {
         pMesh->lssData.origin = pMesh->originCalc.calc();
         stageOriginCalc.compareAndSwap(pMesh->lssData.origin);
       }
       exportPrep.meshes[hash] = pMesh->lssData;
     }
-    if(m_correctBakedTransforms) {
+    if(correctBakedTransforms()) {
       exportPrep.stageOrigin = stageOriginCalc.calc();
     }
   }

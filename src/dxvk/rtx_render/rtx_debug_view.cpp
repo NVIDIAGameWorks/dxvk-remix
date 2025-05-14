@@ -884,7 +884,7 @@ namespace dxvk {
         maxValueRef() = std::max(1.00001f * minValue(), maxValue());
 
         // Color legend
-        if (pseudoColorModeObject() != PseudoColorMode::Disabled) {
+        if (pseudoColorMode() != PseudoColorMode::Disabled) {
           ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4 { 0.25f, 0.25f, 0.25f, 1.0f });
           ImGui::BeginChildFrame(ImGui::GetID("Pseudo Color Legend"), ImVec2(500, 20), ImGuiWindowFlags_NoScrollbar);
           ImGui::TextColored(ImVec4 { colormap0.x, colormap0.y, colormap0.z, 1.0f }, "%g", minValue());
@@ -1122,7 +1122,7 @@ namespace dxvk {
     debugViewArgs.volumeArgs = rtOutput.m_raytraceArgs.volumeArgs;
 
     if (displayType() == DebugViewDisplayType::Standard) {
-      debugViewArgs.pseudoColorMode = pseudoColorModeObject();
+      debugViewArgs.pseudoColorMode = pseudoColorMode();
       debugViewArgs.enableAlphaChannelFlag = m_enableAlphaChannel;
       debugViewArgs.enableGammaCorrectionFlag = enableGammaCorrection();
 
