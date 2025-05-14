@@ -186,6 +186,14 @@ namespace dxvk {
       }
     }
 
+    const T& operator()() const {
+      return getValue();
+    }
+
+    void set(const T& v) {
+      setValue(v);
+    }
+
     T& getValue() const {
       assert(RtxOptionImpl::s_isInitialized && "Trying to access an RtxOption before the config files have been loaded."); 
       return *getValuePtr<T>(RtxOptionImpl::ValueType::Value);
@@ -262,10 +270,6 @@ namespace dxvk {
       }
     }
 
-    operator T() const {
-      return getValue();
-    }
-
   private:
     bool allocateMemory(const char* category, const char* name, const char* environment, uint32_t flags, const char* description) {
       const std::string fullName = RtxOptionImpl::getFullName(category, name);
@@ -322,17 +326,14 @@ namespace dxvk {
 // The RTX_OPTION* macros provide a convenient way to declare a serializable option
 #define RTX_OPTION_FULL(category, type, name, value, environment, flags, description) \
   private: inline static RtxOption<type> m_##name = RtxOption<type>(category, #name, environment, type(value), static_cast<uint32_t>(flags), description); \
-  public: static RtxOption<type>& name##Object() { return m_##name; } \
-  public : static const type& name() { return m_##name.getValue(); } \
+  public: inline static const RtxOption<type>& name = m_##name; \
   private: static type& name##Ref() { return m_##name.getValue(); } \
-  public : static const char* name##Description() { return m_##name.getDescription(); }
+  public: static RtxOption<type>& name##Object() { return m_##name; }
 
 #define RW_RTX_OPTION_FULL(category, type, name, value, environment, flags, description) \
-  private: inline static RtxOption<type> m_##name = RtxOption<type>(category, #name, environment, type(value), static_cast<uint32_t>(flags), description); \
-  public : static RtxOption<type>& name##Object() { return m_##name; } \
-  public : static const type& name() { return m_##name.getValue(); } \
-  public : static type& name##Ref() { return m_##name.getValue(); } \
-  public : static const char* name##Description() { return m_##name.getDescription(); }
+  public: inline static RtxOption<type> name = RtxOption<type>(category, #name, environment, type(value), static_cast<uint32_t>(flags), description); \
+  public: static RtxOption<type>& name##Object() { return name; } \
+  public: static type& name##Ref() { return name.getValue(); }
 
 #define RTX_OPTION_ENV(category, type, name, value, environment, description) RTX_OPTION_FULL(category, type, name, value, environment, 0, description)
 #define RTX_OPTION_FLAG(category, type, name, value, flags, description) RTX_OPTION_FULL(category, type, name, value, "", static_cast<uint32_t>(flags), description)

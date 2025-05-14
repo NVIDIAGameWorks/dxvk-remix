@@ -486,11 +486,11 @@ namespace dxvk {
     // Calculate the volumetric parameters from options and the fixed function fog state
 
     // Note: Volumetric transmittance color option is in gamma space, so must be converted to linear for usage in the volumetric system.
-    Vector3 transmittanceColor{ sRGBGammaToLinear(m_transmittanceColor) };
+    Vector3 transmittanceColorLinear{ sRGBGammaToLinear(transmittanceColor()) };
 
     // Note: Fall back to usual default in cases such as the "none" D3D fog mode, no fog remapping specified, or invalid values in the fog mode derivation
     // (such as dividing by zero).
-    float transmittanceMeasurementDistance = m_transmittanceMeasurementDistanceMeters * RtxOptions::getMeterToWorldUnitScale();
+    float transmittanceMeasurementDistance = transmittanceMeasurementDistanceMeters() * RtxOptions::getMeterToWorldUnitScale();
     Vector3 multiScatteringEstimate = Vector3();
 
     // Todo: Make this configurable in the future as this threshold was created specifically for Portal RTX's underwater fixed function fog.
@@ -508,11 +508,11 @@ namespace dxvk {
       if (enableFogColorRemap()) {
         // Note: Legacy fixed function fog color is in gamma space as all the rendering in old games was typically in gamma space, same assumption we make
         // for textures/lights.
-        transmittanceColor = sRGBGammaToLinear(fogState.color);
+        transmittanceColorLinear = sRGBGammaToLinear(fogState.color);
       }
 
       // Clamp to avoid black color, which may cause NaN issue.
-      transmittanceColor = clamp(transmittanceColor, Vector3(MinTransmittanceValue), Vector3(MaxTransmittanceValue));
+      transmittanceColorLinear = clamp(transmittanceColorLinear, Vector3(MinTransmittanceValue), Vector3(MaxTransmittanceValue));
 
       // Handle Fog Max Distance remapping
 
@@ -520,30 +520,30 @@ namespace dxvk {
         // Switch transmittance measurement distance derivation from D3D9 fog based on which fog mode is in use
 
         if (fogState.mode == D3DFOG_LINEAR) {
-          float fogRemapMaxDistanceMinMeters { m_fogRemapMaxDistanceMinMeters * RtxOptions::getMeterToWorldUnitScale() };
-          float fogRemapMaxDistanceMaxMeters { m_fogRemapMaxDistanceMaxMeters * RtxOptions::getMeterToWorldUnitScale() };
-          float fogRemapTransmittanceMeasurementDistanceMinMeters { m_fogRemapTransmittanceMeasurementDistanceMinMeters * RtxOptions::getMeterToWorldUnitScale() };
-          float fogRemapTransmittanceMeasurementDistanceMaxMeters { m_fogRemapTransmittanceMeasurementDistanceMaxMeters * RtxOptions::getMeterToWorldUnitScale() };
+          float fogRemapMaxDistanceMin { fogRemapMaxDistanceMinMeters() * RtxOptions::getMeterToWorldUnitScale() };
+          float fogRemapMaxDistanceMax { fogRemapMaxDistanceMaxMeters() * RtxOptions::getMeterToWorldUnitScale() };
+          float fogRemapTransmittanceMeasurementDistanceMin { fogRemapTransmittanceMeasurementDistanceMinMeters() * RtxOptions::getMeterToWorldUnitScale() };
+          float fogRemapTransmittanceMeasurementDistanceMax { fogRemapTransmittanceMeasurementDistanceMaxMeters() * RtxOptions::getMeterToWorldUnitScale() };
 
           // Note: Ensure the mins and maxes are consistent with eachother.
-          fogRemapMaxDistanceMaxMeters = std::max(fogRemapMaxDistanceMaxMeters, fogRemapMaxDistanceMinMeters);
-          fogRemapTransmittanceMeasurementDistanceMaxMeters = std::max(fogRemapTransmittanceMeasurementDistanceMaxMeters, fogRemapTransmittanceMeasurementDistanceMinMeters);
+          fogRemapMaxDistanceMax = std::max(fogRemapMaxDistanceMax, fogRemapMaxDistanceMin);
+          fogRemapTransmittanceMeasurementDistanceMax = std::max(fogRemapTransmittanceMeasurementDistanceMax, fogRemapTransmittanceMeasurementDistanceMin);
 
-          float const maxDistanceRange { fogRemapMaxDistanceMaxMeters - fogRemapMaxDistanceMinMeters };
-          float const transmittanceMeasurementDistanceRange { fogRemapTransmittanceMeasurementDistanceMaxMeters - fogRemapTransmittanceMeasurementDistanceMinMeters };
+          float const maxDistanceRange { fogRemapMaxDistanceMax - fogRemapMaxDistanceMin };
+          float const transmittanceMeasurementDistanceRange { fogRemapTransmittanceMeasurementDistanceMax - fogRemapTransmittanceMeasurementDistanceMin };
           // Todo: Scene scale stuff ignored for now because scene scale stuff is not actually functioning properly. Add back in if it's ever fixed.
           // Note: Remap the end fog state distance into renderer units so that options can all be in renderer units (to be consistent with everything else).
-          // float const normalizedRange{ (fogState.end * sceneScale() - fogRemapMaxDistanceMinMeters) / maxDistanceRange };
-          float const normalizedRange { (fogState.end - fogRemapMaxDistanceMinMeters) / maxDistanceRange };
+          // float const normalizedRange{ (fogState.end * sceneScale() - fogRemapMaxDistanceMin) / maxDistanceRange };
+          float const normalizedRange { (fogState.end - fogRemapMaxDistanceMin) / maxDistanceRange };
 
-          transmittanceMeasurementDistance = normalizedRange * transmittanceMeasurementDistanceRange + fogRemapTransmittanceMeasurementDistanceMinMeters;
+          transmittanceMeasurementDistance = normalizedRange * transmittanceMeasurementDistanceRange + fogRemapTransmittanceMeasurementDistanceMin;
         } else if (fogState.mode == D3DFOG_EXP || fogState.mode == D3DFOG_EXP2) {
           // Note: Derived using the following, doesn't take fog color into account but that is fine for a rough estimate:
           // density = -ln(color) / measurement_distance (For exp)
           // density^2 = -ln(color) / measurement_distance (For exp2)
 
           if (fogState.density != 0.0f) {
-            float const transmittanceColorLuminance { sRGBLuminance(transmittanceColor) };
+            float const transmittanceColorLuminance { sRGBLuminance(transmittanceColorLinear) };
 
             transmittanceMeasurementDistance = -log(transmittanceColorLuminance) / fogState.density;
             // Todo: Scene scale stuff ignored for now because scene scale stuff is not actually functioning properly. Add back in if it's ever fixed.
@@ -561,11 +561,11 @@ namespace dxvk {
     // Calculate scattering and attenuation coefficients for the volume
 
     Vector3 const volumetricAttenuationCoefficient{
-      -log(transmittanceColor.x) / transmittanceMeasurementDistance,
-      -log(transmittanceColor.y) / transmittanceMeasurementDistance,
-      -log(transmittanceColor.z) / transmittanceMeasurementDistance
+      -log(transmittanceColorLinear.x) / transmittanceMeasurementDistance,
+      -log(transmittanceColorLinear.y) / transmittanceMeasurementDistance,
+      -log(transmittanceColorLinear.z) / transmittanceMeasurementDistance
     };
-    Vector3 const volumetricScatteringCoefficient{ volumetricAttenuationCoefficient * m_singleScatteringAlbedo };
+    Vector3 const volumetricScatteringCoefficient{ volumetricAttenuationCoefficient * singleScatteringAlbedo() };
 
     const RtCamera& mainCamera = cameraManager.getMainCamera();
 

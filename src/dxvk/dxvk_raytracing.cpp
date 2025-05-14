@@ -317,7 +317,7 @@ namespace dxvk {
 
     VkDeferredOperationKHR deferredOp = VK_NULL_HANDLE;
 
-    if (m_useDeferredOperations.getValue()) {
+    if (useDeferredOperations()) {
       VK_THROW_IF_FAILED(m_vkd->vkCreateDeferredOperationKHR(m_vkd->device(), VK_NULL_HANDLE, &deferredOp));
     }
 
