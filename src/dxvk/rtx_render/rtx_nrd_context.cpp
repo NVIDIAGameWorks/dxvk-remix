@@ -634,6 +634,7 @@ namespace dxvk {
     m_settings.m_resetHistory |= inputs.reset;
 
     ScopedGpuProfileZone(ctx, "NRD");
+    static_cast<RtxContext*>(ctx.ptr())->setFramePassStage(RtxFramePassStage::NRD);
 
     prepareResources(ctx, rtOutput);
 
@@ -789,6 +790,11 @@ namespace dxvk {
             imageView->imageInfo().layout, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, imageView->imageInfo().access,
             imageView->imageInfo().layout, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
             bStorage ? VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT : VK_ACCESS_SHADER_READ_BIT);
+
+#ifdef REMIX_DEVELOPMENT
+          // Cache NRD image views
+          static_cast<RtxContext*>(ctx.ptr())->cacheResourceAliasingImageView(imageView);
+#endif
         }
 
         barriers.recordCommands(ctx->getCommandList());

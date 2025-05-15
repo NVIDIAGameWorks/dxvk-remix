@@ -90,6 +90,7 @@ namespace dxvk {
     VkExtent3D workgroups = util::computeBlockCount(numRaysExtent, VkExtent3D{ 16, 8, 1 });
 
     ScopedGpuProfileZone(ctx, "Demodulate");
+    ctx->setFramePassStage(RtxFramePassStage::Demodulate);
 
     Rc<DxvkBuffer> constantsBuffer = ctx->getResourceManager().getConstantsBuffer();
     DebugView& debugView = ctx->getDevice()->getCommon()->metaDebugView();

@@ -414,6 +414,9 @@ namespace dxvk {
   // Hooked into D3D9 presentImage (same place HUD rendering is)
   void RtxContext::injectRTX(std::uint64_t cachedReflexFrameId, Rc<DxvkImage> targetImage) {
     ScopedCpuProfileZone();
+#ifdef REMIX_DEVELOPMENT
+    m_currentPassStage = RtxFramePassStage::FrameBegin;
+#endif
 
     if (RtxOptions::enableBreakIntoDebuggerOnPressingB() && ImGUI::checkHotkeyState({VirtualKey{ 'B' }}, true)) {
       while (!::IsDebuggerPresent()) {
@@ -711,6 +714,12 @@ namespace dxvk {
       // Fallback inject (is a no-op if already injected this frame, or no valid RT scene)
       injectRTX(cachedReflexFrameId, targetImage);
     }
+
+#ifdef REMIX_DEVELOPMENT
+    queryAvailableResourceAliasing();
+    analyzeResourceAliasing();
+    clearResourceAliasingCache();
+#endif
   }
 
   // Called right before D3D9 present
@@ -1285,6 +1294,16 @@ namespace dxvk {
     bindResourceBuffer(BINDING_SAMPLER_READBACK_BUFFER, DxvkBufferSlice(samplerFeedbackBuffer, 0, samplerFeedbackBuffer.ptr() ? samplerFeedbackBuffer->info().size : 0));
   }
 
+  void RtxContext::bindResourceView(const uint32_t slot, const Rc<DxvkImageView>& imageView, const Rc<DxvkBufferView>& bufferView)
+  {
+    DxvkContext::bindResourceView(slot, imageView, bufferView);
+
+#ifdef REMIX_DEVELOPMENT
+    // Cache resources for aliasing
+    cacheResourceAliasingImageView(imageView);
+#endif
+  }
+
   void RtxContext::checkOpacityMicromapSupport() {
     bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device);
 
@@ -1337,6 +1356,7 @@ namespace dxvk {
 
   void RtxContext::dispatchVolumetrics(const Resources::RaytracingOutput& rtOutput) {
     ScopedGpuProfileZone(this, "Volumetrics");
+    setFramePassStage(RtxFramePassStage::Volumetrics);
 
     // Volume Raytracing
     {
@@ -1356,6 +1376,7 @@ namespace dxvk {
     // Integrate indirect
     {
       ScopedGpuProfileZone(this, "Integrate Indirect Raytracing");
+      setFramePassStage(RtxFramePassStage::IndirectIntegration);
       
       m_common->metaPathtracerIntegrateIndirect().dispatch(this, rtOutput);
     }
@@ -1421,6 +1442,7 @@ namespace dxvk {
     }
 
     ScopedGpuProfileZone(this, "Denoising");
+    setFramePassStage(RtxFramePassStage::NRD);
 
     auto runDenoising = [&](DxvkDenoise& denoiser, DxvkDenoise& secondLobeReferenceDenoiser, DxvkDenoise::Input& denoiseInput, DxvkDenoise::Output& denoiseOutput) {
       // Since NRDContext doesn't use DxvkContext abstraction
@@ -1538,11 +1560,13 @@ namespace dxvk {
 
   void RtxContext::dispatchNIS(const Resources::RaytracingOutput& rtOutput) {
     ScopedGpuProfileZone(this, "NIS");
+    setFramePassStage(RtxFramePassStage::NIS);
     m_common->metaNIS().dispatch(this, rtOutput);
   }
 
   void RtxContext::dispatchTemporalAA(const Resources::RaytracingOutput& rtOutput) {
     ScopedGpuProfileZone(this, "TAA");
+    setFramePassStage(RtxFramePassStage::TAA);
 
     DxvkTemporalAA& taa = m_common->metaTAA();
     RtCamera& mainCamera = getSceneManager().getCamera();
@@ -1568,6 +1592,7 @@ namespace dxvk {
     }
 
     ScopedGpuProfileZone(this, "Composite");
+    setFramePassStage(RtxFramePassStage::Composition);
 
     bool isNRDPreCompositionDenoiserEnabled = RtxOptions::useDenoiser() && !RtxOptions::useDenoiserReferenceMode();
 
@@ -1608,7 +1633,8 @@ namespace dxvk {
     // We don't reset history for tonemapper on m_resetHistory for easier comparison when toggling raytracing modes.
     // The tone curve shouldn't be too different between raytracing modes, 
     // but the reset of denoised buffers causes wide tone curve differences
-    // until it converges and thus making comparison of raytracing mode outputs more difficult    
+    // until it converges and thus making comparison of raytracing mode outputs more difficult
+    setFramePassStage(RtxFramePassStage::ToneMapping);
     if (RtxOptions::tonemappingMode() == TonemappingMode::Global) {
       DxvkToneMapping& toneMapper = m_common->metaToneMapping();
       toneMapper.dispatch(this, 
@@ -2596,4 +2622,177 @@ namespace dxvk {
     }
   }
 
+#ifdef REMIX_DEVELOPMENT
+  void RtxContext::cacheResourceAliasingImageView(const Rc<DxvkImageView>& imageView) {
+    if (imageView.ptr()) {
+      // Determine the format compatibility category for the image view
+      const auto formatCategory = Resources::getFormatCompatibilityCategory(imageView->info().format);
+      const auto categoryIndex = static_cast<uint32_t>(formatCategory);
+      const auto& underlyingImage = imageView->image();
+
+      // Proceed only if the category is valid and the image view is tracked in the resource view map
+      if (formatCategory != RtxTextureFormatCompatibilityCategory::InvalidFormatCompatibilityCategory &&
+          Resources::s_resourcesViewMap.find(imageView.ptr()) != Resources::s_resourcesViewMap.end()) {
+        bool aliasingMatchFound = false;
+        // Search the cache for an existing aliased resource with the same underlying image
+        for (auto& compatibleResource : m_resourceCacheTable[categoryIndex]) {
+          if (compatibleResource.view->image() == underlyingImage) {
+            // Match found: update the begin and end pass stages to expand their range
+            compatibleResource.beginPassStage = std::min(compatibleResource.beginPassStage, m_currentPassStage);
+            compatibleResource.endPassStage = std::max(compatibleResource.endPassStage, m_currentPassStage);
+
+            // Add the current resource name to the set of names for this aliased group
+            compatibleResource.names.insert(Resources::s_resourcesViewMap[imageView.ptr()]);
+            aliasingMatchFound = true;
+            break;
+          }
+        }
+
+        if (!aliasingMatchFound) {
+          // No match found: cache this as a new aliased resource entry
+          m_resourceCacheTable[categoryIndex].push_back({ imageView, m_currentPassStage, m_currentPassStage, { Resources::s_resourcesViewMap[imageView.ptr()] } });
+        }
+      }
+    }
+  }
+
+  void RtxContext::queryAvailableResourceAliasing() {
+    // Check if aliasing query is enabled through user settings
+    if (Resources::s_queryAliasing) {
+      // Set the aliasing resource dimensions based on user options
+      const VkExtent3D extent = { RtxOptions::Aliasing::width(), RtxOptions::Aliasing::height(), RtxOptions::Aliasing::depth() };
+      // Get the start and end frame pass stages from user settings
+      const RtxFramePassStage beginPass = RtxOptions::Aliasing::beginPass();
+      const RtxFramePassStage endPass = RtxOptions::Aliasing::endPass();
+
+      std::string res;
+      // Check if the begin pass is before the end pass
+      if (beginPass > endPass) {
+        // Set an error message if the begin pass is invalid
+        Resources::s_resourceAliasingQueryText = "Begin Pass must be before the End Pass";
+        return;
+      }
+
+      // Lambda function to check if a resource matches the aliasing criteria
+      auto isResourceMatches = [&](const Rc<DxvkImageView>& view) {
+        const auto& imageInfo = view->image()->info();
+        const auto& viewInfo = view->info();
+        uint32_t aliasingWidth = RtxOptions::Aliasing::width();
+        uint32_t aliasingHeight = RtxOptions::Aliasing::height();
+
+        // Adjust dimensions if the aliasing extent type is DownScaledExtent or TargetExtent
+        if (RtxOptions::Aliasing::extentType() == RtxTextureExtentType::DownScaledExtent) {
+          aliasingWidth = getResourceManager().getDownscaleDimensions().width;
+          aliasingHeight = getResourceManager().getDownscaleDimensions().height;
+        } else if (RtxOptions::Aliasing::extentType() == RtxTextureExtentType::TargetExtent) {
+          aliasingWidth = getResourceManager().getTargetDimensions().width;
+          aliasingHeight = getResourceManager().getTargetDimensions().height;
+        }
+
+        // Check if the resource's dimensions and format match the aliasing query settings
+        return imageInfo.extent.width == aliasingWidth &&
+               imageInfo.extent.height == aliasingHeight &&
+               imageInfo.extent.depth == RtxOptions::Aliasing::depth() &&
+               imageInfo.numLayers == RtxOptions::Aliasing::layer() &&
+               imageInfo.type == RtxOptions::Aliasing::imageType() &&
+               viewInfo.type == RtxOptions::Aliasing::imageViewType();
+      };
+
+      std::string manualSolveResources;
+      uint32_t matchedIndex = 0;
+
+      bool aliasingMatchFound = false;
+      const auto category = RtxOptions::Aliasing::formatCategory();
+      if (category == RtxTextureFormatCompatibilityCategory::InvalidFormatCompatibilityCategory) {
+        // If the format category is invalid, no aliasing can be done
+        Resources::s_resourceAliasingQueryText = "Please select aliasing compatible texture format.";
+        return;
+      }
+
+      // Map category to index for cache lookup
+      const uint32_t index = static_cast<uint32_t>(category);
+
+      // Loop through the resource cache table for the corresponding format category
+      for (auto& compatibleResource : m_resourceCacheTable[index]) {
+        // Check if the resource is compatible with the aliasing query (based on pass stages and matching criteria)
+        if ((endPass < compatibleResource.beginPassStage || beginPass > compatibleResource.endPassStage ||
+              (beginPass != endPass && compatibleResource.beginPassStage != compatibleResource.endPassStage &&
+              (endPass == compatibleResource.beginPassStage || beginPass == compatibleResource.endPassStage))) &&
+            (isResourceMatches(compatibleResource.view))) {
+
+          // Loop through names of matching resources and prepare result string
+          for (const auto& name : compatibleResource.names) {
+            if (Resources::s_dynamicAliasingResourcesSet.find(compatibleResource.view.ptr()) == Resources::s_dynamicAliasingResourcesSet.end()) {
+              ++matchedIndex;
+              res += std::to_string(matchedIndex) + ". " + name + "\n";
+              if (matchedIndex > 10) {
+                break; // Limit to 10 results
+              }
+            } else {
+              if (manualSolveResources.empty()) {
+                // Give notification for users who want to do aliasing for dynamic resources
+                manualSolveResources = "[WARNING] Use caution when aliasing dynamic resources. Ensure aliasing is handled every frame in Resources::onFrameBegin.\n";
+              }
+              manualSolveResources += name + "\n";
+            }
+          }
+          aliasingMatchFound = true;
+        }
+      }
+
+      // Set the result of the aliasing query, either showing available resources or a no-match message
+      Resources::s_resourceAliasingQueryText =
+        aliasingMatchFound ? (res + manualSolveResources) : "No available resources that can be aliased, please create a new resource.";
+    }
+  }
+
+  void RtxContext::clearResourceAliasingCache() {
+    // Clean up caches
+    for (auto& resourceCaches : m_resourceCacheTable) {
+      resourceCaches.clear();
+    }
+    m_currentPassStage = RtxFramePassStage::FrameEnd;
+  }
+
+  void RtxContext::analyzeResourceAliasing() {
+    // Early exit if the aliasing analyzer option is not enabled
+    if (!Resources::s_startAliasingAnalyzer) {
+      return;
+    }
+
+    // Lambda to check if two image views are compatible for aliasing
+    auto isResourceCompatible = [](const Rc<DxvkImageView>& view, const Rc<DxvkImageView>& matchedView) {
+      const auto& imageInfo = view->image()->info();
+      const auto& matchedImageInfo = matchedView->image()->info();
+      const auto& viewInfo = view->info();
+      return imageInfo.extent == matchedImageInfo.extent &&
+             imageInfo.numLayers == matchedImageInfo.numLayers &&
+             imageInfo.type == matchedImageInfo.type;
+    };
+
+    std::string availableAliasingText;
+
+    // Iterate over all format compatibility categories
+    for (uint32_t index = 0; index < static_cast<uint32_t>(RtxTextureFormatCompatibilityCategory::Count); ++index) {
+      const std::vector<ResourceCache>& cacheList = m_resourceCacheTable[index];
+
+      // Compare each pair of resources within the same format category
+      for (size_t i = 0; i < cacheList.size(); ++i) {
+        for (size_t j = i + 1; j < cacheList.size(); ++j) {
+          // Check for non-overlapping lifetimes (safe for aliasing)
+          if ((cacheList[i].endPassStage < cacheList[j].beginPassStage || cacheList[i].beginPassStage > cacheList[j].endPassStage ||
+               (cacheList[i].beginPassStage != cacheList[i].endPassStage && cacheList[j].beginPassStage != cacheList[j].endPassStage &&
+                (cacheList[i].endPassStage == cacheList[j].beginPassStage || cacheList[i].beginPassStage == cacheList[j].endPassStage))) &&
+              isResourceCompatible(cacheList[i].view, cacheList[j].view)) {
+            // Add the resource names to the output text
+            availableAliasingText += *cacheList[i].names.begin() + " <-> " + *cacheList[j].names.begin() + "\n";
+          }
+        }
+      }
+    }
+
+    // Output the results to the GUI field
+    Resources::s_aliasingAnalyzerResultText = availableAliasingText;
+  }
+#endif
 } // namespace dxvk

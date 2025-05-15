@@ -236,6 +236,7 @@ namespace dxvk {
     RtxContext* ctx, 
     const Resources::RaytracingOutput& rtOutput) {
     ScopedGpuProfileZone(ctx, "Gbuffer Raytracing");
+    ctx->setFramePassStage(RtxFramePassStage::GBufferPrimaryRays);
 
     // Bind resources
 
@@ -359,12 +360,14 @@ namespace dxvk {
         // Warning: do not change the order of Reflection and Transmission PSR, that will break
         // PSR data dependencies due to resource aliasing.
         ScopedGpuProfileZone(ctx, "Reflection PSR");
+        ctx->setFramePassStage(RtxFramePassStage::ReflectionPSR);
         ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getComputeShader(true, nrcEnabled));
         ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
       }
 
       {
         ScopedGpuProfileZone(ctx, "Transmission PSR");
+        ctx->setFramePassStage(RtxFramePassStage::TransmissionPSR);
         pushArgs.isTransmissionPSR = 1;
         ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
         ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
@@ -382,12 +385,14 @@ namespace dxvk {
         // Warning: do not change the order of Reflection and Transmission PSR, that will break
         // PSR data dependencies due to resource aliasing.
         ScopedGpuProfileZone(ctx, "Reflection PSR");
+        ctx->setFramePassStage(RtxFramePassStage::ReflectionPSR);
         ctx->bindRaytracingPipelineShaders(getPipelineShaders(true, true, serEnabled, ommEnabled, includePortals, nrcEnabled));
         ctx->traceRays(rayDims.width, rayDims.height, rayDims.depth);
       }
 
       {
         ScopedGpuProfileZone(ctx, "Transmission PSR");
+        ctx->setFramePassStage(RtxFramePassStage::TransmissionPSR);
         pushArgs.isTransmissionPSR = 1;
         ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
         ctx->traceRays(rayDims.width, rayDims.height, rayDims.depth);
@@ -405,12 +410,14 @@ namespace dxvk {
         // Warning: do not change the order of Reflection and Transmission PSR, that will break
         // PSR data dependencies due to resource aliasing.
         ScopedGpuProfileZone(ctx, "Reflection PSR");
+        ctx->setFramePassStage(RtxFramePassStage::ReflectionPSR);
         ctx->bindRaytracingPipelineShaders(getPipelineShaders(true, false, serEnabled, ommEnabled, includePortals, nrcEnabled));
         ctx->traceRays(rayDims.width, rayDims.height, rayDims.depth);
       }
 
       {
         ScopedGpuProfileZone(ctx, "Transmission PSR");
+        ctx->setFramePassStage(RtxFramePassStage::TransmissionPSR);
         pushArgs.isTransmissionPSR = 1;
         ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
         ctx->traceRays(rayDims.width, rayDims.height, rayDims.depth);

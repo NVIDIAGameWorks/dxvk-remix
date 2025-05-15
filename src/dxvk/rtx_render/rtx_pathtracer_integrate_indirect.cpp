@@ -478,6 +478,7 @@ namespace dxvk {
     NeuralRadianceCache& nrc = ctx->getCommonObjects()->metaNeuralRadianceCache();
 
     ScopedGpuProfileZone(ctx, "Integrate NEE");
+    ctx->setFramePassStage(RtxFramePassStage::NEE_Integration);
     ctx->bindCommonRayTracingResources(rtOutput);
 
     // Inputs

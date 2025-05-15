@@ -97,6 +97,7 @@ namespace dxvk {
                            Rc<DxvkSampler> linearSampler, 
                            const Resources::Resource& inOutColorBuffer) {
     ScopedGpuProfileZone(ctx, "Bloom");
+    ctx->setFramePassStage(RtxFramePassStage::Bloom);
 
     ctx->setPushConstantBank(DxvkPushConstantBank::RTX);
 

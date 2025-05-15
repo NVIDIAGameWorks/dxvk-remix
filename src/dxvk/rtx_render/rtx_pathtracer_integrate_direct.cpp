@@ -130,6 +130,7 @@ namespace dxvk {
     RtxContext* ctx, 
     const Resources::RaytracingOutput& rtOutput) {
     ScopedGpuProfileZone(ctx, "Integrate Direct Raytracing");
+    ctx->setFramePassStage(RtxFramePassStage::DirectIntegration);
 
     // Bind resources
 

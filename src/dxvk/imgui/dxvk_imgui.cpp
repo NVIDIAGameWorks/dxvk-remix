@@ -368,6 +368,99 @@ namespace dxvk {
   } }
   };
 
+#ifdef REMIX_DEVELOPMENT
+  ImGui::ComboWithKey<dxvk::RtxFramePassStage>::ComboEntries aliasingPassComboEntries = { {
+      { RtxFramePassStage::FrameBegin, "FrameBegin" },
+      { RtxFramePassStage::Volumetrics, "Volumetrics" },
+      { RtxFramePassStage::VolumeIntegrateRestirInitial, "VolumeIntegrateRestirInitial" },
+      { RtxFramePassStage::VolumeIntegrateRestirVisible, "VolumeIntegrateRestirVisible" },
+      { RtxFramePassStage::VolumeIntegrateRestirTemporal, "VolumeIntegrateRestirTemporal" },
+      { RtxFramePassStage::VolumeIntegrateRestirSpatialResampling, "VolumeIntegrateRestirSpatialResampling" },
+      { RtxFramePassStage::VolumeIntegrateRaytracing, "VolumeIntegrateRaytracing" },
+      { RtxFramePassStage::GBufferPrimaryRays, "GBufferPrimaryRays" },
+      { RtxFramePassStage::ReflectionPSR, "ReflectionPSR" },
+      { RtxFramePassStage::TransmissionPSR, "TransmissionPSR" },
+      { RtxFramePassStage::RTXDI_InitialTemporalReuse, "RTXDI_InitialTemporalReuse" },
+      { RtxFramePassStage::RTXDI_SpatialReuse, "RTXDI_SpatialReuse" },
+      { RtxFramePassStage::NEE_Cache, "NEE_Cache" },
+      { RtxFramePassStage::DirectIntegration, "DirectIntegration" },
+      { RtxFramePassStage::RTXDI_ComputeGradients, "RTXDI_ComputeGradients" },
+      { RtxFramePassStage::IndirectIntegration, "IndirectIntegration" },
+      { RtxFramePassStage::NEE_Integration, "NEE_Integration" },
+      { RtxFramePassStage::NRC, "NRC" },
+      { RtxFramePassStage::RTXDI_FilterGradients, "RTXDI_FilterGradients" },
+      { RtxFramePassStage::RTXDI_ComputeConfidence, "RTXDI_ComputeConfidence" },
+      { RtxFramePassStage::ReSTIR_GI_TemporalReuse, "ReSTIR_GI_TemporalReuse" },
+      { RtxFramePassStage::ReSTIR_GI_SpatialReuse, "ReSTIR_GI_SpatialReuse" },
+      { RtxFramePassStage::ReSTIR_GI_FinalShading, "ReSTIR_GI_FinalShading" },
+      { RtxFramePassStage::Demodulate, "Demodulate" },
+      { RtxFramePassStage::NRD, "NRD" },
+      { RtxFramePassStage::CompositionAlphaBlend, "CompositionAlphaBlend" },
+      { RtxFramePassStage::Composition, "Composition" },
+      { RtxFramePassStage::DLSS, "DLSS" },
+      { RtxFramePassStage::DLSSRR, "DLSSRR" },
+      { RtxFramePassStage::NIS, "NIS" },
+      { RtxFramePassStage::TAA, "TAA" },
+      { RtxFramePassStage::DustParticles, "DustParticles" },
+      { RtxFramePassStage::Bloom, "Bloom" },
+      { RtxFramePassStage::PostFX, "PostFX" },
+      { RtxFramePassStage::AutoExposure_Histogram, "AutoExposure_Histogram" },
+      { RtxFramePassStage::AutoExposure_Exposure, "AutoExposure_Exposure" },
+      { RtxFramePassStage::ToneMapping, "ToneMapping" },
+      { RtxFramePassStage::FrameEnd, "FrameEnd" },
+  } };
+
+  static auto aliasingBeginPassCombo = ImGui::ComboWithKey<dxvk::RtxFramePassStage>(
+    "Aliasing Begin Pass", ImGui::ComboWithKey<dxvk::RtxFramePassStage>::ComboEntries{ aliasingPassComboEntries });
+
+  static auto aliasingEndPassCombo = ImGui::ComboWithKey<dxvk::RtxFramePassStage>(
+    "Aliasing End Pass", ImGui::ComboWithKey<dxvk::RtxFramePassStage>::ComboEntries { aliasingPassComboEntries });
+
+  static auto aliasingExtentCombo = ImGui::ComboWithKey<RtxTextureExtentType>(
+    "Aliasing Extent Type",
+    { {
+      { RtxTextureExtentType::DownScaledExtent, "DownScaledExtent" },
+      { RtxTextureExtentType::TargetExtent, "TargetExtent" },
+      { RtxTextureExtentType::Custom, "Custom" },
+  } } );
+
+  static auto aliasingFormatCombo = ImGui::ComboWithKey<RtxTextureFormatCompatibilityCategory>(
+     "Aliasing Format",
+     { {
+      { RtxTextureFormatCompatibilityCategory::Color_Format_8_Bits, "8 Bits Color Texture" },
+      { RtxTextureFormatCompatibilityCategory::Color_Format_16_Bits, "16 Bits Color Texture" },
+      { RtxTextureFormatCompatibilityCategory::Color_Format_32_Bits, "32 Bits Color Texture" },
+      { RtxTextureFormatCompatibilityCategory::Color_Format_64_Bits, "64 Bits Color Texture" },
+      { RtxTextureFormatCompatibilityCategory::Color_Format_128_Bits, "128 Bits Color Texture" },
+      { RtxTextureFormatCompatibilityCategory::Color_Format_256_Bits, "256 Bits Color Texture" },
+      // All other formats
+      { RtxTextureFormatCompatibilityCategory::InvalidFormatCompatibilityCategory, "Not Listed Format" },
+     } }
+  );
+
+  static auto aliasingImageTypeCombo = ImGui::ComboWithKey<VkImageType>(
+     "Aliasing Image Type",
+     { {
+      { VK_IMAGE_TYPE_1D, "VK_IMAGE_TYPE_1D" },
+      { VK_IMAGE_TYPE_2D, "VK_IMAGE_TYPE_2D" },
+      { VK_IMAGE_TYPE_3D, "VK_IMAGE_TYPE_3D" },
+     } }
+  );
+
+  static auto aliasingImageViewTypeCombo = ImGui::ComboWithKey<VkImageViewType>(
+     "Aliasing Image View Type",
+     { {
+      { VK_IMAGE_VIEW_TYPE_1D, "VK_IMAGE_VIEW_TYPE_1D" },
+      { VK_IMAGE_VIEW_TYPE_1D_ARRAY, "VK_IMAGE_VIEW_TYPE_1D_ARRAY" },
+      { VK_IMAGE_VIEW_TYPE_2D, "VK_IMAGE_VIEW_TYPE_2D" },
+      { VK_IMAGE_VIEW_TYPE_2D_ARRAY, "VK_IMAGE_VIEW_TYPE_2D_ARRAY" },
+      { VK_IMAGE_VIEW_TYPE_3D, "VK_IMAGE_VIEW_TYPE_3D" },
+      { VK_IMAGE_VIEW_TYPE_CUBE, "VK_IMAGE_VIEW_TYPE_CUBE" },
+      { VK_IMAGE_VIEW_TYPE_CUBE_ARRAY, "VK_IMAGE_VIEW_TYPE_CUBE_ARRAY" },
+     } }
+  );
+#endif
+
   enum class TerrainMode {
     None,
     TerrainBaker,
@@ -1771,6 +1864,60 @@ namespace dxvk {
       }
       ImGui::Checkbox("Hash Collision Detection", &HashCollisionDetectionOptions::enableObject());
       ImGui::Checkbox("Validate CPU index data", &RtxOptions::validateCPUIndexDataObject());
+
+#ifdef REMIX_DEVELOPMENT
+      if (ImGui::CollapsingHeader("Resource Aliasing Query", collapsingHeaderClosedFlags)) {
+        ImGui::Indent();
+        aliasingBeginPassCombo.getKey(&RtxOptions::Aliasing::beginPassObject());
+        aliasingEndPassCombo.getKey(&RtxOptions::Aliasing::endPassObject());
+        aliasingFormatCombo.getKey(&RtxOptions::Aliasing::formatCategoryObject());
+        aliasingExtentCombo.getKey(&RtxOptions::Aliasing::extentTypeObject());
+        const auto aliasingExtentType = RtxOptions::Aliasing::extentType();
+        if (aliasingExtentType == RtxTextureExtentType::Custom) {
+          ImGui::DragInt("Aliasing Width", &RtxOptions::Aliasing::widthObject());
+          ImGui::DragInt("Aliasing Height", &RtxOptions::Aliasing::heightObject());
+        }
+        if (RtxOptions::Aliasing::imageType() == VkImageType::VK_IMAGE_TYPE_3D)
+        {
+          ImGui::DragInt("Aliasing Depth", &RtxOptions::Aliasing::depthObject());
+        }
+        ImGui::DragInt("Aliasing Layer", &RtxOptions::Aliasing::layerObject());
+        aliasingImageTypeCombo.getKey(&RtxOptions::Aliasing::imageTypeObject());
+        aliasingImageViewTypeCombo.getKey(&RtxOptions::Aliasing::imageViewTypeObject());
+
+        if (IMGUI_ADD_TOOLTIP(ImGui::Button("Check aliasing for a new resource"),
+          "Make sure to check the resources can be aliased under all major settings. For example, DLSS-RR or NRD, NRC or ReSTIR-GI.")) {
+          Resources::s_queryAliasing = true;
+        } else {
+          Resources::s_queryAliasing = false;
+        }
+        std::string resourceAliasingQueryText = "Resource Aliasing Query Result: (";
+        if (RtxOptions::enableRayReconstruction()) {
+          resourceAliasingQueryText += "DLSS-RR, ";
+        } else {
+          resourceAliasingQueryText += "NRD, ";
+        }
+        if (RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::NeuralRadianceCache) {
+          resourceAliasingQueryText += "NRC)";
+        } else if (RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::ReSTIRGI) {
+          resourceAliasingQueryText += "ReSTIR-GI)";
+        } else {
+          resourceAliasingQueryText += "ImportanceSampled)";
+        }
+
+        ImGui::Text(resourceAliasingQueryText.c_str());
+        ImGui::Text("%s", Resources::s_resourceAliasingQueryText.c_str());
+
+        if (IMGUI_ADD_TOOLTIP(ImGui::Button("Check aliasing for current resources"), "Make sure the resources are being active when checking for aliasing.")) {
+          Resources::s_startAliasingAnalyzer = true;
+        } else {
+          Resources::s_startAliasingAnalyzer = false;
+        }
+        auto& str = Resources::s_aliasingAnalyzerResultText;
+        ImGui::Text("Available Aliasing:\n%s", Resources::s_aliasingAnalyzerResultText.c_str());
+        ImGui::Unindent();
+      }
+#endif
     }
 
     ImGui::PopItemWidth();

@@ -270,6 +270,7 @@ namespace dxvk {
     
     {
       ScopedGpuProfileZone(ctx, "RTXDI Initial & Temporal Reuse");
+      ctx->setFramePassStage(RtxFramePassStage::RTXDI_InitialTemporalReuse);
 
       // Inputs
      
@@ -309,7 +310,8 @@ namespace dxvk {
     }
 
     {
-      ScopedGpuProfileZone(ctx, "RTXDI Spatial Reuse"); 
+      ScopedGpuProfileZone(ctx, "RTXDI Spatial Reuse");
+      ctx->setFramePassStage(RtxFramePassStage::RTXDI_SpatialReuse);
 
       // Inputs
 
@@ -364,6 +366,7 @@ namespace dxvk {
 
     {
       ScopedGpuProfileZone(ctx, "Compute Gradients");
+      ctx->setFramePassStage(RtxFramePassStage::RTXDI_ComputeGradients);
       
       // Inputs
 
@@ -432,6 +435,7 @@ namespace dxvk {
 
     {
       ScopedGpuProfileZone(ctx, "Filter Gradients");
+      ctx->setFramePassStage(RtxFramePassStage::RTXDI_FilterGradients);
 
       ctx->bindResourceView(RTXDI_FILTER_GRADIENTS_BINDING_GRADIENTS_INPUT_OUTPUT, rtOutput.m_rtxdiGradients.view, nullptr);
 
@@ -454,6 +458,7 @@ namespace dxvk {
 
     {
       ScopedGpuProfileZone(ctx, "Compute Confidence");
+      ctx->setFramePassStage(RtxFramePassStage::RTXDI_ComputeConfidence);
       
       // Inputs
 

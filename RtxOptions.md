@@ -48,6 +48,16 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.adaptiveAccumulation|bool|True||
 |rtx.adaptiveResolutionDenoising|bool|True||
 |rtx.adaptiveResolutionReservedGPUMemoryGiB|int|2|The amount of GPU memory in gibibytes to reserve away from consideration for adaptive resolution replacement textures\.<br>This value should only be changed to reflect the estimated amount of memory Remix itself consumes on the GPU \(aside from texture loading, mostly from rendering\-related buffers\) and should not be changed otherwise\.<br>Only relevant when force high resolution replacement textures is disabled and adaptive resolution replacement textures is enabled\. See asset estimated size parameter for more information\.<br>|
+|rtx.aliasing.beginPass|int|0|The first render pass where the aliasing resource is bound in a frame\.|
+|rtx.aliasing.depth|int|1|The depth of the aliasing resource\. Required for 3D textures\.|
+|rtx.aliasing.endPass|int|37|The last render pass where the aliasing resource is bound in a frame\.|
+|rtx.aliasing.extentType|int|0|Specifies the resolution type for the aliasing resource\. If a 3D texture is used, depth must also be set\.|
+|rtx.aliasing.formatCategory|int|-1|Specifies the texture format compatibility category for the aliasing resource\.|
+|rtx.aliasing.height|int|720|The height of the aliasing resource in pixels\.|
+|rtx.aliasing.imageType|int|1|The image type of the aliasing resource \(e\.g\., 1D, 2D, or 3D\)\.|
+|rtx.aliasing.imageViewType|int|1|The image view type of the aliasing resource \(e\.g\., 1D, 2D, 3D, or cube\)\.|
+|rtx.aliasing.layer|int|1|The number of layers in the aliasing resource\.|
+|rtx.aliasing.width|int|1280|The width of the aliasing resource in pixels\.|
 |rtx.allowCubemaps|bool|False|When enabled, cubemaps from the game are processed through Remix, but they may not render correctly\.|
 |rtx.allowFSE|bool|False|A flag indicating if the application should be able to utilize exclusive full screen mode when set to true, otherwise force it to be disabled when set to false\.<br>Exclusive full screen may see performance benefits over other fullscreen modes at the cost of stability in some cases\.<br>Do note that on modern Windows full screen optimizations will likely be used regardless which in most cases results in performance similar to exclusive full screen even when it is not in use\.|
 |rtx.alwaysCopyDecalGeometries|bool|True|When set to True tells the geometry processor to always copy decals geometry\. This is an optimization flag to experiment with when rtx\.useBuffersDirectly is True\.|
@@ -124,6 +134,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.debugView.accumulation.numberOfFramesToAccumulate|int|1024|Number of frames to accumulate debug view's result over\.<br>This can be used for generating reference images smoothed over time\.<br>By default the accumulation stops once the limit is reached\.<br>When desired, continous accumulation can be enabled via enableContinuousAccumulation\.|
 |rtx.debugView.accumulation.resetOnCameraTransformChange|bool|True|Resets the accumulated debug view output when the camera transform changes\.|
 |rtx.debugView.composite.compositeViewIdx|int|0|Index of a composite view to show when Composite Debug View is enabled\. The index must be a a valid value from CompositeDebugView enumeration\. Value of 0 disables Composite Debug View\.|
+|rtx.debugView.composite.numColumnsInRuntimeValuesSets|int|4|Number of columns in the runtime values sets\. This is used to determine how many values are displayed in the composite view\.|
 |rtx.debugView.debugViewIdx|int|0|Index of a debug view to show when Debug View is enabled\. The index must be a valid value from DEBUG\_VIEW\_\* macro defined indices\. Value of 0 disables Debug View\.|
 |rtx.debugView.displayType|int|0|The display type to use for visualizing debug view input values\.<br>Supported display types are: 0 = Standard, 1 = BGR Exclusive Color, 2 = EV100, 3 = HDR Waveform<br>Each mode may be useful for a different kind of visualization, though Standard is typically the most common mode to use\.<br>Standard mode works for a simple direct, scaled or color mapped visualization, BGR exclusive for another type of color mapped visualization, and EV100 or the HDR Waveform for understanding HDR value magnitudes in the input on a log scale\.|
 |rtx.debugView.enableGammaCorrection|bool|False|Enables gamma correction of a debug view value\.|

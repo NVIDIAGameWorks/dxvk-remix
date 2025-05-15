@@ -259,6 +259,7 @@ namespace dxvk {
     }
 
     ScopedGpuProfileZone(ctx, "Dust Particles");
+    ctx->setFramePassStage(RtxFramePassStage::DustParticles);
 
     if(m_particles == nullptr || m_particles->info().size != sizeof(GpuParticle) * numberOfParticles()) {
       const Rc<DxvkDevice>& device = ctx->getDevice();

@@ -442,7 +442,7 @@ namespace dxvk {
       const auto& rtExt = d3d9State().renderTargets[kRenderTargetIndex]->GetSurfaceExtent();
       // If rt is a quad at least 4 times smaller than backbuffer and the format is invalid format, then it is likely a shadow mask
       if (rtExt.width == rtExt.height && rtExt.width < m_activePresentParams->BackBufferWidth / 4 &&
-          Resources::getFormatCompatibilityCategoryIndex(d3d9State().renderTargets[kRenderTargetIndex]->GetImageView(false)->imageInfo().format) == Resources::kInvalidFormatCompatibilityCategoryIndex) {
+          Resources::getFormatCompatibilityCategory(d3d9State().renderTargets[kRenderTargetIndex]->GetImageView(false)->imageInfo().format) == RtxTextureFormatCompatibilityCategory::InvalidFormatCompatibilityCategory) {
         ONCE(Logger::info("[RTX-Compatibility-Info] Skipped shadow mask drawcall."));
         return { RtxGeometryStatus::Ignored, false };
       }

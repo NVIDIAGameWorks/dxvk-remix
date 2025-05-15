@@ -136,6 +136,7 @@ namespace dxvk {
     Rc<DxvkBuffer> lastPrimitiveIDPrefixSumBuffer = ctx->getSceneManager().getLastFramePrimitiveIDPrefixSumBuffer();
 
     ScopedGpuProfileZone(ctx, "NEE Cache");
+    ctx->setFramePassStage(RtxFramePassStage::NEE_Cache);
 
     // Bind resources
     {

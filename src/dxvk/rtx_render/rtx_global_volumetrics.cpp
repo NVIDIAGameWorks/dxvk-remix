@@ -702,6 +702,7 @@ namespace dxvk {
     // Compute restir
     {
       ScopedGpuProfileZone(ctx, "Volume Integrate Restir Initial");
+      ctx->setFramePassStage(RtxFramePassStage::VolumeIntegrateRestirInitial);
       VkExtent3D workgroups = util::computeBlockCount(numRestirCellsExtent, VkExtent3D { 16, 8, 1 });
 
       ctx->bindResourceView(VOLUME_INTEGRATE_BINDING_VOLUME_RESERVOIRS_OUTPUT, getCurrentVolumeReservoirs().view, nullptr);
@@ -712,6 +713,7 @@ namespace dxvk {
 
     if(visibilityReuse()) {
       ScopedGpuProfileZone(ctx, "Volume Integrate Restir Visible");
+      ctx->setFramePassStage(RtxFramePassStage::VolumeIntegrateRestirVisible);
       VkExtent3D workgroups = util::computeBlockCount(numRestirCellsExtent, VkExtent3D { 16, 8, 1 });
 
       ctx->bindResourceView(VOLUME_INTEGRATE_BINDING_VOLUME_RESERVOIRS_OUTPUT, getCurrentVolumeReservoirs().view, nullptr);
@@ -722,6 +724,7 @@ namespace dxvk {
 
     {
       ScopedGpuProfileZone(ctx, "Volume Integrate Restir Temporal");
+      ctx->setFramePassStage(RtxFramePassStage::VolumeIntegrateRestirTemporal);
       VkExtent3D workgroups = util::computeBlockCount(numRestirCellsExtent, VkExtent3D { 16, 8, 1 });
 
       ctx->bindResourceView(VOLUME_INTEGRATE_BINDING_PREV_VOLUME_RESERVOIRS_INPUT, getPreviousVolumeReservoirs().view, nullptr);
@@ -733,6 +736,7 @@ namespace dxvk {
 
     {
       ScopedGpuProfileZone(ctx, "Volume Integrate Restir Spatial Resampling");
+      ctx->setFramePassStage(RtxFramePassStage::VolumeIntegrateRestirSpatialResampling);
       VkExtent3D workgroups = util::computeBlockCount(numRestirCellsExtent, VkExtent3D { 16, 8, 1 });
 
       ctx->bindResourceView(VOLUME_INTEGRATE_BINDING_PREV_VOLUME_RESERVOIRS_INPUT, getCurrentVolumeReservoirs().view, nullptr);
@@ -745,6 +749,7 @@ namespace dxvk {
     // Dispatch rays
     {
       ScopedGpuProfileZone(ctx, "Volume Integrate Raytracing");
+      ctx->setFramePassStage(RtxFramePassStage::VolumeIntegrateRaytracing);
       VkExtent3D workgroups = util::computeBlockCount(numRaysExtent, VkExtent3D { 16, 8, 1 });
 
       ctx->bindResourceView(VOLUME_INTEGRATE_BINDING_VOLUME_RESERVOIRS_OUTPUT, getPreviousVolumeReservoirs().view, nullptr);

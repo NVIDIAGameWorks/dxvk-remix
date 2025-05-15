@@ -356,6 +356,7 @@ namespace dxvk {
 
     {
       ScopedGpuProfileZone(ctx, "ReSTIR GI Temporal Reuse");
+      ctx->setFramePassStage(RtxFramePassStage::ReSTIR_GI_TemporalReuse);
 
       // Inputs
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_primaryWorldShadingNormal.view, nullptr);
@@ -387,6 +388,7 @@ namespace dxvk {
 
     {
       ScopedGpuProfileZone(ctx, "ReSTIR GI Spatial Reuse");
+      ctx->setFramePassStage(RtxFramePassStage::ReSTIR_GI_SpatialReuse);
 
       // Inputs
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_primaryWorldShadingNormal.view, nullptr);
@@ -419,6 +421,7 @@ namespace dxvk {
     workgroups = util::computeBlockCount(numRaysExtent, VkExtent3D { 8, 8, 1 });
     {
       ScopedGpuProfileZone(ctx, "ReSTIR GI Final Shading");
+      ctx->setFramePassStage(RtxFramePassStage::ReSTIR_GI_FinalShading);
       ctx->bindCommonRayTracingResources(rtOutput);
 
       ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);

@@ -249,6 +249,7 @@ namespace dxvk {
     }
 
     ScopedGpuProfileZone(ctx, "PostFx");
+    ctx->setFramePassStage(RtxFramePassStage::PostFX);
 
     // Simulate chromatic aberration offset scale by calculating the focal length differences of 3 Fraunhofer lines,
     // the wavelength of these lines are used for measuring chromatic aberrations

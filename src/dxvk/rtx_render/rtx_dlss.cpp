@@ -200,6 +200,7 @@ namespace dxvk {
     bool resetHistory)
   {
     ScopedGpuProfileZone(ctx, "DLSS");
+    ctx->setFramePassStage(RtxFramePassStage::DLSS);
 
     bool dlssAutoExposure = useDlssAutoExposure();
     mRecreate |= (mAutoExposure != dlssAutoExposure);

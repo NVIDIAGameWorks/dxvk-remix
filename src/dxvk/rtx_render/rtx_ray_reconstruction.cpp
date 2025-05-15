@@ -128,6 +128,7 @@ namespace dxvk {
       bool resetHistory,
       float frameTimeMilliseconds) {
     ScopedGpuProfileZone(ctx, "Ray Reconstruction");
+    ctx->setFramePassStage(RtxFramePassStage::DLSSRR);
 
     if (!useRayReconstruction()) {
       return;
@@ -266,6 +267,10 @@ namespace dxvk {
           input->imageInfo().layout,
           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
           VK_ACCESS_SHADER_READ_BIT);
+
+#ifdef REMIX_DEVELOPMENT
+        ctx->cacheResourceAliasingImageView(input);
+#endif
       }
 
       for (auto output : pOutputs) {
@@ -278,6 +283,10 @@ namespace dxvk {
           output->imageInfo().layout,
           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
           VK_ACCESS_SHADER_WRITE_BIT);
+
+#ifdef REMIX_DEVELOPMENT
+        ctx->cacheResourceAliasingImageView(output);
+#endif
       }
 
       barriers.recordCommands(ctx->getCommandList());

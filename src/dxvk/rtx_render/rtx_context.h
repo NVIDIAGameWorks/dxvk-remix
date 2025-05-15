@@ -126,6 +126,8 @@ namespace dxvk {
 
     void bindCommonRayTracingResources(const Resources::RaytracingOutput& rtOutput);
 
+    void bindResourceView(const uint32_t slot, const Rc<DxvkImageView>& imageView, const Rc<DxvkBufferView>& bufferView);
+
     void getDenoiseArgs(NrdArgs& outPrimaryDirectNrdArgs, NrdArgs& outPrimaryIndirectNrdArgs, NrdArgs& outSecondaryNrdArgs);
     void updateRaytraceArgsConstantBuffer(Resources::RaytracingOutput& rtOutput, float frameTimeMilliseconds,
                                           const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent);
@@ -140,6 +142,20 @@ namespace dxvk {
     void setSpecConstantsInfo(VkPipelineBindPoint pipeline, const DxvkScInfo& newSpecConstantInfo);
 
     bool useRayReconstruction() const;
+
+#ifdef REMIX_DEVELOPMENT
+    // Note: Cache image views for all resources that used by current frame, so we can do query for resource aliasing at the end of frame.
+    //       This is automatically called when binding resources for passes, RtxContext::bindCommonRayTracingResources
+    //       When we are not using the binding function in the passes such as DLSSRR, we need to manually cache the image views. Please reference the cache logic in DxvkRayReconstruction::dispatch
+    void cacheResourceAliasingImageView(const Rc<DxvkImageView>& imageView);
+#endif
+
+    inline void setFramePassStage(const RtxFramePassStage currentFramePassStage) {
+#ifdef REMIX_DEVELOPMENT
+      m_currentPassStage = currentFramePassStage;
+#endif
+    }
+
   protected:
     virtual void updateComputeShaderResources() override;
     virtual void updateRaytracingShaderResources() override;
@@ -250,5 +266,24 @@ namespace dxvk {
     } m_objectPickingReadback {};
 
     std::vector<DrawCallState> m_delayedRayTracedSky;
+
+#ifdef REMIX_DEVELOPMENT
+    void queryAvailableResourceAliasing();
+    void clearResourceAliasingCache();
+    void analyzeResourceAliasing();
+
+    struct ResourceCache {
+      Rc<DxvkImageView> view;
+      RtxFramePassStage beginPassStage = RtxFramePassStage::FrameBegin;
+      RtxFramePassStage endPassStage = RtxFramePassStage::FrameEnd;
+      std::unordered_set<std::string> names;
+    };
+
+    // We only have 5 types of format categories and we won't expect this will exceed 10 in near future. So we hard code the category to 10 types for better performance and easier development.
+    std::vector<ResourceCache> m_resourceCacheTable[static_cast<uint32_t>(RtxTextureFormatCompatibilityCategory::Count)];
+    std::unordered_map<const DxvkImageView*, std::string> m_viewMap;
+
+    RtxFramePassStage m_currentPassStage = RtxFramePassStage::FrameBegin;
+#endif
   };
 } // namespace dxvk

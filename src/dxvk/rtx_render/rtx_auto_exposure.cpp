@@ -243,6 +243,7 @@ namespace dxvk {
 
       {
         ScopedGpuProfileZone(ctx, "Histogram");
+        static_cast<RtxContext*>(ctx.ptr())->setFramePassStage(RtxFramePassStage::AutoExposure_Histogram);
         // Prepare shader arguments
         ToneMappingAutoExposureArgs pushArgs = {};
         pushArgs.numPixels = rtOutput.m_finalOutputExtent.width * rtOutput.m_finalOutputExtent.height;
@@ -269,6 +270,7 @@ namespace dxvk {
       // Calculate avg luminance
       {
         ScopedGpuProfileZone(ctx, "Exposure");
+        static_cast<RtxContext*>(ctx.ptr())->setFramePassStage(RtxFramePassStage::AutoExposure_Exposure);
         DebugView& debugView = ctx->getDevice()->getCommon()->metaDebugView();
 
         ctx->bindResourceView(AUTO_EXPOSURE_HISTOGRAM_INPUT_OUTPUT, m_exposureHistogram.view, nullptr);

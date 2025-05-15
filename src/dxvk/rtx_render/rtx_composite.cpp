@@ -486,12 +486,14 @@ namespace dxvk {
 
     if (enableStochasticAlphaBlend()) {
       ScopedGpuProfileZone(ctx, "Composite Alpha Blend");
+      ctx->setFramePassStage(RtxFramePassStage::CompositionAlphaBlend);
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, CompositeAlphaBlendShader::getShader());
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
     }
 
     {
       ScopedGpuProfileZone(ctx, "Composition");
+      ctx->setFramePassStage(RtxFramePassStage::Composition);
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, CompositeShader::getShader());
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
     }

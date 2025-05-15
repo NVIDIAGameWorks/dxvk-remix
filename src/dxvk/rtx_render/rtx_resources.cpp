@@ -39,6 +39,15 @@
 
 namespace dxvk {
 
+#ifdef REMIX_DEVELOPMENT
+  std::unordered_map<const DxvkImageView*, std::string> Resources::s_resourcesViewMap;
+  std::unordered_set<const DxvkImageView*> Resources::s_dynamicAliasingResourcesSet;
+  bool Resources::s_queryAliasing = false;
+  std::string Resources::s_resourceAliasingQueryText;
+  bool Resources::s_startAliasingAnalyzer = false;
+  std::string Resources::s_aliasingAnalyzerResultText;
+#endif
+
   Rc<DxvkImageView> Resources::createImageView(Rc<DxvkContext>& ctx,
                                                const Rc<DxvkImage>& image,
                                                const VkFormat format,
@@ -107,6 +116,12 @@ namespace dxvk {
     // Note: Initialize to zero, or we get corruption on resolution change
     ctx->clearColorImage(resource.image, clearValue, subRange);
 
+#ifdef REMIX_DEVELOPMENT
+    if (s_resourcesViewMap.find(resource.view.ptr()) == s_resourcesViewMap.end()) {
+      s_resourcesViewMap[resource.view.ptr()] = std::string(name);
+    }
+#endif
+
     return resource;
   }
 
@@ -140,6 +155,11 @@ namespace dxvk {
     m_sharedResource = new SharedResource(createImageResource(ctx, name, extent, format, numLayers, imageType, imageViewType, 
                                                               imageCreateFlags, extraUsageFlags, clearValue, mipLevels));
     m_view = m_sharedResource->resource.view;
+#ifdef REMIX_DEVELOPMENT
+    if (s_resourcesViewMap.find(m_view.ptr()) == s_resourcesViewMap.end()) {
+      s_resourcesViewMap[m_view.ptr()] = std::string(name);
+    }
+#endif
   }
 
   Resources::AliasedResource::AliasedResource(const Resources::AliasedResource& other,
@@ -181,6 +201,12 @@ namespace dxvk {
     } else {
       m_view = createImageView(ctx, m_sharedResource->resource.image, format, numLayers, imageViewType);
     }
+
+#ifdef REMIX_DEVELOPMENT
+    if (s_resourcesViewMap.find(m_view.ptr()) == s_resourcesViewMap.end()) {
+      s_resourcesViewMap[m_view.ptr()] = std::string(name);
+    }
+#endif
   }
 
   Resources::AliasedResource& Resources::AliasedResource::operator=(Resources::AliasedResource&& other) {
@@ -713,10 +739,10 @@ namespace dxvk {
     return compatibleView.first;
   }
 
-  uint32_t Resources::getFormatCompatibilityCategoryIndex(const VkFormat format) {
+  RtxTextureFormatCompatibilityCategory Resources::getFormatCompatibilityCategory(const VkFormat format) {
     //https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap46.html#formats-compatibility-classes
     switch (format) {
-    default: return kInvalidFormatCompatibilityCategoryIndex;
+    default: return RtxTextureFormatCompatibilityCategory::InvalidFormatCompatibilityCategory;
       break;
     case VK_FORMAT_R4G4_UNORM_PACK8:
     case VK_FORMAT_R8_UNORM:
@@ -725,8 +751,38 @@ namespace dxvk {
     case VK_FORMAT_R8_SSCALED:
     case VK_FORMAT_R8_UINT:
     case VK_FORMAT_R8_SINT:
+      [[fallthrough]];
     case VK_FORMAT_R8_SRGB:
-      return 0;
+      return RtxTextureFormatCompatibilityCategory::Color_Format_8_Bits;
+
+    case VK_FORMAT_A1B5G5R5_UNORM_PACK16:
+    case VK_FORMAT_R10X6_UNORM_PACK16:
+    case VK_FORMAT_R12X4_UNORM_PACK16:
+    case VK_FORMAT_A4R4G4B4_UNORM_PACK16:
+    case VK_FORMAT_A4B4G4R4_UNORM_PACK16:
+    case VK_FORMAT_R4G4B4A4_UNORM_PACK16:
+    case VK_FORMAT_B4G4R4A4_UNORM_PACK16:
+    case VK_FORMAT_R5G6B5_UNORM_PACK16:
+    case VK_FORMAT_B5G6R5_UNORM_PACK16:
+    case VK_FORMAT_R5G5B5A1_UNORM_PACK16:
+    case VK_FORMAT_B5G5R5A1_UNORM_PACK16:
+    case VK_FORMAT_A1R5G5B5_UNORM_PACK16:
+    case VK_FORMAT_R8G8_UNORM:
+    case VK_FORMAT_R8G8_SNORM:
+    case VK_FORMAT_R8G8_USCALED:
+    case VK_FORMAT_R8G8_SSCALED:
+    case VK_FORMAT_R8G8_UINT:
+    case VK_FORMAT_R8G8_SINT:
+    case VK_FORMAT_R8G8_SRGB:
+    case VK_FORMAT_R16_UNORM:
+    case VK_FORMAT_R16_SNORM:
+    case VK_FORMAT_R16_USCALED:
+    case VK_FORMAT_R16_SSCALED:
+    case VK_FORMAT_R16_UINT:
+    case VK_FORMAT_R16_SINT:
+      [[fallthrough]];
+    case VK_FORMAT_R16_SFLOAT:
+      return RtxTextureFormatCompatibilityCategory::Color_Format_16_Bits;
 
     case VK_FORMAT_R10X6G10X6_UNORM_2PACK16:
     case VK_FORMAT_R12X4G12X4_UNORM_2PACK16:
@@ -775,8 +831,9 @@ namespace dxvk {
     case VK_FORMAT_R32_SINT:
     case VK_FORMAT_R32_SFLOAT:
     case VK_FORMAT_B10G11R11_UFLOAT_PACK32:
+      [[fallthrough]];
     case VK_FORMAT_E5B9G9R9_UFLOAT_PACK32:
-      return 3;
+      return RtxTextureFormatCompatibilityCategory::Color_Format_32_Bits;
 
     case VK_FORMAT_R16G16B16A16_UNORM:
     case VK_FORMAT_R16G16B16A16_SNORM:
@@ -790,25 +847,32 @@ namespace dxvk {
     case VK_FORMAT_R32G32_SFLOAT:
     case VK_FORMAT_R64_UINT:
     case VK_FORMAT_R64_SINT:
+      [[fallthrough]];
     case VK_FORMAT_R64_SFLOAT:
-      return 5;
+      return RtxTextureFormatCompatibilityCategory::Color_Format_64_Bits;
 
     case VK_FORMAT_R32G32B32A32_UINT:
     case VK_FORMAT_R32G32B32A32_SINT:
     case VK_FORMAT_R32G32B32A32_SFLOAT:
     case VK_FORMAT_R64G64_UINT:
     case VK_FORMAT_R64G64_SINT:
+      [[fallthrough]];
     case VK_FORMAT_R64G64_SFLOAT:
-      return 7;
+      return RtxTextureFormatCompatibilityCategory::Color_Format_128_Bits;
+    case VK_FORMAT_R64G64B64A64_SFLOAT:
+    case VK_FORMAT_R64G64B64A64_SINT:
+      [[fallthrough]];
+    case VK_FORMAT_R64G64B64A64_UINT:
+      return RtxTextureFormatCompatibilityCategory::Color_Format_256_Bits;
     }
   }
 
-  bool Resources::areFormatsCompatible(const VkFormat format1, const VkFormat format2) { 
+  bool Resources::areFormatsCompatible(const VkFormat format1, const VkFormat format2) {
   
-    uint32_t categoryIndex1 = getFormatCompatibilityCategoryIndex(format1);
-    uint32_t categoryIndex2 = getFormatCompatibilityCategoryIndex(format2);
+    const auto categoryIndex1 = getFormatCompatibilityCategory(format1);
+    const auto categoryIndex2 = getFormatCompatibilityCategory(format2);
 
-    return categoryIndex1 != kInvalidFormatCompatibilityCategoryIndex && 
+    return categoryIndex1 != RtxTextureFormatCompatibilityCategory::InvalidFormatCompatibilityCategory &&
            categoryIndex1 == categoryIndex2;
   }
 
@@ -818,6 +882,10 @@ namespace dxvk {
     // Explicit constant to make it clear where cross format aliasing occurs. 
     // Changing it to false requires further changes below.
     const bool allowCompatibleFormatAliasing = true;
+
+#ifdef REMIX_DEVELOPMENT
+    Resources::s_resourcesViewMap.clear();
+#endif
 
     // GBuffer (Primary/Secondary Surfaces)
     m_raytracingOutput.m_sharedFlags = createImageResource(ctx, "shared flags", m_downscaledExtent, VK_FORMAT_R16_UINT);
@@ -840,8 +908,9 @@ namespace dxvk {
     m_raytracingOutput.m_primaryWorldInterpolatedNormal = createImageResource(ctx, "primary world interpolated normal", m_downscaledExtent, VK_FORMAT_R32_UINT);
     m_raytracingOutput.m_primaryPerceptualRoughness = createImageResource(ctx, "primary perceptual roughness", m_downscaledExtent, VK_FORMAT_R8_UNORM);
     m_raytracingOutput.m_primaryLinearViewZ = createImageResource(ctx, "primary linear view Z", m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
+    uint32_t primaryDepthIndex = 0;
     for (auto& i : m_raytracingOutput.m_primaryDepthQueue) {
-      i = createImageResource(ctx, "primary depth", m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
+      i = createImageResource(ctx, std::string("primary depth " + std::to_string(primaryDepthIndex++)).c_str(), m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
       if (!ctx->getCommonObjects()->metaNGXContext().supportsDLFG()) {
         break;
       }
@@ -1030,6 +1099,18 @@ namespace dxvk {
 
     // Let other systems know of the resize
     executeResizeEventList(m_onDownscaleResize, ctx, m_downscaledExtent);
+
+#ifdef REMIX_DEVELOPMENT
+    // Cache Dynamic Aliasing Resources, which are resources that alias to different resources frame to frame. Such aliasing needs to be manually figured out by users, so we separately collect them and send notifications to users in GUI
+    s_dynamicAliasingResourcesSet.clear();
+    // Note: We did a little bit hack here to just get the image view and WAR the check.
+    s_dynamicAliasingResourcesSet.insert(m_raytracingOutput.m_primaryWorldPositionWorldTriangleNormal[0].view(Resources::AccessType::Read, false).ptr());
+    s_dynamicAliasingResourcesSet.insert(m_raytracingOutput.m_primaryWorldPositionWorldTriangleNormal[1].view(Resources::AccessType::Read, false).ptr());
+    s_dynamicAliasingResourcesSet.insert(m_raytracingOutput.m_primaryRtxdiIlluminance[0].view(Resources::AccessType::Read, false).ptr());
+    s_dynamicAliasingResourcesSet.insert(m_raytracingOutput.m_primaryRtxdiIlluminance[1].view(Resources::AccessType::Read, false).ptr());
+    s_dynamicAliasingResourcesSet.insert(m_raytracingOutput.m_rtxdiConfidence[0].view(Resources::AccessType::Read, false).ptr());
+    s_dynamicAliasingResourcesSet.insert(m_raytracingOutput.m_rtxdiConfidence[1].view(Resources::AccessType::Read, false).ptr());
+#endif
   }
 
   void Resources::createTargetResources(Rc<DxvkContext>& ctx) {

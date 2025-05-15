@@ -675,4 +675,65 @@ struct DxvkRaytracingInstanceState {
   Rc<DxvkBuffer> vertexCaptureCB;
 };
 
+enum class RtxFramePassStage {
+  FrameBegin,
+  Volumetrics,
+  VolumeIntegrateRestirInitial,
+  VolumeIntegrateRestirVisible,
+  VolumeIntegrateRestirTemporal,
+  VolumeIntegrateRestirSpatialResampling,
+  VolumeIntegrateRaytracing,
+  GBufferPrimaryRays,
+  ReflectionPSR,
+  TransmissionPSR,
+  RTXDI_InitialTemporalReuse,
+  RTXDI_SpatialReuse,
+  NEE_Cache,
+  DirectIntegration,
+  RTXDI_ComputeGradients,
+  IndirectIntegration,
+  NEE_Integration,
+  NRC,
+  RTXDI_FilterGradients,
+  RTXDI_ComputeConfidence,
+  ReSTIR_GI_TemporalReuse,
+  ReSTIR_GI_SpatialReuse,
+  ReSTIR_GI_FinalShading,
+  Demodulate,
+  NRD,
+  CompositionAlphaBlend,
+  Composition,
+  DLSS,
+  DLSSRR,
+  NIS,
+  TAA,
+  DustParticles,
+  Bloom,
+  PostFX,
+  AutoExposure_Histogram,
+  AutoExposure_Exposure,
+  ToneMapping,
+  FrameEnd
+};
+
+enum class RtxTextureExtentType {
+  DownScaledExtent,
+  TargetExtent,
+  Custom
+};
+
+// Category of texture format base on the doc: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap46.html#formats-compatibility-classes
+// Note: We currently only categorize the uncompressed color textures
+enum class RtxTextureFormatCompatibilityCategory : uint32_t {
+  Color_Format_8_Bits,
+  Color_Format_16_Bits,
+  Color_Format_32_Bits,
+  Color_Format_64_Bits,
+  Color_Format_128_Bits,
+  Color_Format_256_Bits,
+
+  Count,
+  InvalidFormatCompatibilityCategory = UINT32_MAX
+};
+
 } // namespace dxvk
