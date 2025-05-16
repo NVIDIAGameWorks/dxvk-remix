@@ -107,7 +107,7 @@ namespace dxvk {
     for (auto it = m_lights.begin(); it != m_lights.end();) {
       const RtLight& light = it->second;
       const uint32_t frameLastTouched = light.getFrameLastTouched();
-      if (!RtxOptions::AntiCulling::Light::enable() || // It's always True if anti-culling is disabled
+      if (!RtxOptions::AntiCulling::isLightAntiCullingEnabled() || // It's always True if anti-culling is disabled
           (light.getIsInsideFrustum() ||
            frameLastTouched + RtxOptions::AntiCulling::Light::numFramesToExtendLightLifetime() <= currentFrame)) {
         if (light.isChildOfMesh() || light.isDynamic || suppressLightKeeping()) {
@@ -125,7 +125,7 @@ namespace dxvk {
   }
 
   void LightManager::garbageCollection(RtCamera& camera) {
-    if (RtxOptions::AntiCulling::Light::enable()) {
+    if (RtxOptions::AntiCulling::isLightAntiCullingEnabled()) {
       cFrustum& cameraLightAntiCullingFrustum = camera.getLightAntiCullingFrustum();
       for (auto& [lightHash, rtLight] : getLightTable()) {
         bool isLightInsideFrustum = true;
@@ -552,7 +552,7 @@ namespace dxvk {
       break;
     }
 
-    if (RtxOptions::AntiCulling::Light::enable() && type == D3DLIGHT_POINT) {
+    if (RtxOptions::AntiCulling::isLightAntiCullingEnabled() && type == D3DLIGHT_POINT) {
       // Cache the sphere light data into replacement properties so we can unify the game light and light replacement into a single case in LightManager::garbageCollection
       rtLight.cacheLightReplacementAntiCullingProperties(rtLight.getSphereLight());
 

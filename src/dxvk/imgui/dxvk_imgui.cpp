@@ -3635,7 +3635,8 @@ namespace dxvk {
       ImGui::Unindent();
     }
 
-    if (ImGui::CollapsingHeader("Anti-Culling", collapsingHeaderClosedFlags)) {
+    if (!RtCamera::enableFreeCamera() &&
+        ImGui::CollapsingHeader("Anti-Culling", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
 
       ImGui::Checkbox("Anti-Culling Objects", &RtxOptions::AntiCulling::Object::enableObject());

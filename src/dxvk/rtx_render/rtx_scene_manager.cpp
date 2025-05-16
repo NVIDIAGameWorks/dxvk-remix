@@ -200,7 +200,7 @@ namespace dxvk {
     //
     // When anti-culling is enabled, we need to check if any instances are outside frustum. Because in such
     // case the life of the instances will be extended and we need to keep the BLAS as well.
-    if (!RtxOptions::AntiCulling::Object::enable()) {
+    if (!RtxOptions::AntiCulling::isObjectAntiCullingEnabled()) {
       auto& entries = m_drawCallCache.getEntries();
       if (m_device->getCurrentFrameId() > RtxOptions::numFramesToKeepGeometryData()) {
         for (auto iter = entries.begin(); iter != entries.end(); ) {
@@ -1384,7 +1384,7 @@ namespace dxvk {
           const XXH64_hash_t replaceExistingLight = replacementLight.lightOverride() ? rtLight.getInstanceHash() : kEmptyHash;
 
           // Setup Light Replacement for Anti-Culling
-          if (RtxOptions::AntiCulling::Light::enable() && rtLight.getType() == RtLightType::Sphere) {
+          if (RtxOptions::AntiCulling::isLightAntiCullingEnabled() && rtLight.getType() == RtLightType::Sphere) {
             // Apply the light
             m_lightManager.addLight(rtReplacementLight, RtLightAntiCullingType::LightReplacement, replaceExistingLight);
           } else {

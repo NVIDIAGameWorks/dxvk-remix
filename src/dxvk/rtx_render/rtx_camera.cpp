@@ -508,7 +508,7 @@ namespace dxvk
 
   void RtCamera::updateAntiCulling(float fov, float aspectRatio, float nearPlane, float farPlane, bool isLHS) {
     // Create Anti-Culling frustum
-    if (RtxOptions::AntiCulling::Object::enable()) {
+    if (RtxOptions::AntiCulling::isObjectAntiCullingEnabled()) {
       const float fovScale = RtxOptions::AntiCulling::Object::fovScale();
       const float farPlaneScale = RtxOptions::AntiCulling::Object::farPlaneScale();
       float4x4 frustumMatrix;
@@ -522,7 +522,7 @@ namespace dxvk
       m_frustum.calculateFrustumGeometry(nearPlane, farPlane, fov, aspectRatio, isLHS);
     }
 
-    if (RtxOptions::AntiCulling::Light::enable()) {
+    if (RtxOptions::AntiCulling::isLightAntiCullingEnabled()) {
       const float fovScale = RtxOptions::AntiCulling::Light::fovScale();
       const float scaledHalfFov = std::min(fov * fovScale * 0.5f, 1.55f); // Clamp to half fov to 89 degrees
       const float projectionMatrixFovScale = std::tan(fov * 0.5f) / std::tan(scaledHalfFov);

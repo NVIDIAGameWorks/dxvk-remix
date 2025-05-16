@@ -558,6 +558,14 @@ namespace dxvk {
         RTX_OPTION("rtx.antiCulling.light", uint32_t, numFramesToExtendLightLifetime, 1000, "Maximum number of frames to keep  when Anti-Culling is enabled. Make sure not to set this too low (then the anti-culling won't work), nor too high (which will hurt the performance).");
         RTX_OPTION("rtx.antiCulling.light", float, fovScale, 1.0f, "Scalar of the FOV of lights Anti-Culling Frustum.");
       };
+
+      inline static bool isObjectAntiCullingEnabled() {
+        return RtxOptions::AntiCulling::Object::enable() && !RtCamera::enableFreeCamera();
+      }
+
+      inline static bool isLightAntiCullingEnabled() {
+        return RtxOptions::AntiCulling::Light::enable() && !RtCamera::enableFreeCamera();
+      }
     };
     // Resolve Options
     // Todo: Potentially document that after a number of resolver interactions is exhausted the next interaction will be treated as a hit regardless.

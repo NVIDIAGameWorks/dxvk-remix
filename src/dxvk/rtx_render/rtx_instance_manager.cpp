@@ -363,7 +363,7 @@ namespace dxvk {
       assert(pInstance != nullptr);
 
       const bool enableGarbageCollection =
-        !RtxOptions::AntiCulling::Object::enable() || // It's always True if anti-culling is disabled
+        !RtxOptions::AntiCulling::isObjectAntiCullingEnabled() || // It's always True if anti-culling is disabled
         (pInstance->m_isInsideFrustum) ||
         (pInstance->getBlas()->input.getSkinningState().numBones > 0) ||
         (pInstance->m_isAnimated) ||
@@ -896,7 +896,7 @@ namespace dxvk {
         // Note: Skip the spritesheet adjustment logic in the surface interaction when using Ray Portal materials as this logic
         // is done later in the Surface Material Interaction (and doing it in both places will just double up the animation).
         currentInstance.surface.skipSurfaceInteractionSpritesheetAdjustment = (materialData.getType() == MaterialDataType::RayPortal);
-        currentInstance.surface.isInsideFrustum = RtxOptions::AntiCulling::Object::enable() ? currentInstance.m_isInsideFrustum : true;
+        currentInstance.surface.isInsideFrustum = RtxOptions::AntiCulling::isObjectAntiCullingEnabled() ? currentInstance.m_isInsideFrustum : true;
 
         currentInstance.surface.srcColorBlendFactor = drawCall.getMaterialData().srcColorBlendFactor;
         currentInstance.surface.dstColorBlendFactor = drawCall.getMaterialData().dstColorBlendFactor;
@@ -1979,7 +1979,7 @@ namespace dxvk {
   }
 
   const XXH64_hash_t RtInstance::calculateAntiCullingHash() const {
-    if (RtxOptions::AntiCulling::Object::enable()) {
+    if (RtxOptions::AntiCulling::isObjectAntiCullingEnabled()) {
       const Vector3 pos = getWorldPosition();
       const XXH64_hash_t posHash = XXH3_64bits(&pos, sizeof(pos));
       XXH64_hash_t antiCullingHash = XXH3_64bits_withSeed(&m_materialDataHash, sizeof(XXH64_hash_t), posHash);
