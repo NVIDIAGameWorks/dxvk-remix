@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -53,7 +53,7 @@
 #define REMIXAPI_VERSION_GET_PATCH(version) (((uint64_t)(version)      ) & (uint64_t)0xFFFF)
 
 #define REMIXAPI_VERSION_MAJOR 0
-#define REMIXAPI_VERSION_MINOR 5
+#define REMIXAPI_VERSION_MINOR 6
 #define REMIXAPI_VERSION_PATCH 1
 
 
@@ -400,20 +400,20 @@ extern "C" {
     REMIXAPI_INSTANCE_CATEGORY_BIT_IGNORE_ANTI_CULLING       = 1 << 5,
     REMIXAPI_INSTANCE_CATEGORY_BIT_IGNORE_MOTION_BLUR        = 1 << 6,
     REMIXAPI_INSTANCE_CATEGORY_BIT_IGNORE_OPACITY_MICROMAP   = 1 << 7,
-    REMIXAPI_INSTANCE_CATEGORY_BIT_HIDDEN                    = 1 << 8,
-    REMIXAPI_INSTANCE_CATEGORY_BIT_PARTICLE                  = 1 << 9,
-    REMIXAPI_INSTANCE_CATEGORY_BIT_BEAM                      = 1 << 10,
-    REMIXAPI_INSTANCE_CATEGORY_BIT_DECAL_STATIC              = 1 << 11,
-    REMIXAPI_INSTANCE_CATEGORY_BIT_DECAL_DYNAMIC             = 1 << 12,
-    REMIXAPI_INSTANCE_CATEGORY_BIT_DECAL_SINGLE_OFFSET       = 1 << 13,
-    REMIXAPI_INSTANCE_CATEGORY_BIT_DECAL_NO_OFFSET           = 1 << 14,
-    REMIXAPI_INSTANCE_CATEGORY_BIT_ALPHA_BLEND_TO_CUTOUT     = 1 << 15,
-    REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN                   = 1 << 16,
-    REMIXAPI_INSTANCE_CATEGORY_BIT_ANIMATED_WATER            = 1 << 17,
-    REMIXAPI_INSTANCE_CATEGORY_BIT_THIRD_PERSON_PLAYER_MODEL = 1 << 18,
-    REMIXAPI_INSTANCE_CATEGORY_BIT_THIRD_PERSON_PLAYER_BODY  = 1 << 19,
-    REMIXAPI_INSTANCE_CATEGORY_BIT_IGNORE_BAKED_LIGHTING     = 1 << 20,
-    REMIXAPI_INSTANCE_CATEGORY_BIT_IGNORE_ALPHA_CHANNEL      = 1 << 21,
+    REMIXAPI_INSTANCE_CATEGORY_BIT_IGNORE_ALPHA_CHANNEL      = 1 << 8,
+    REMIXAPI_INSTANCE_CATEGORY_BIT_HIDDEN                    = 1 << 9,
+    REMIXAPI_INSTANCE_CATEGORY_BIT_PARTICLE                  = 1 << 10,
+    REMIXAPI_INSTANCE_CATEGORY_BIT_BEAM                      = 1 << 11,
+    REMIXAPI_INSTANCE_CATEGORY_BIT_DECAL_STATIC              = 1 << 12,
+    REMIXAPI_INSTANCE_CATEGORY_BIT_DECAL_DYNAMIC             = 1 << 13,
+    REMIXAPI_INSTANCE_CATEGORY_BIT_DECAL_SINGLE_OFFSET       = 1 << 14,
+    REMIXAPI_INSTANCE_CATEGORY_BIT_DECAL_NO_OFFSET           = 1 << 15,
+    REMIXAPI_INSTANCE_CATEGORY_BIT_ALPHA_BLEND_TO_CUTOUT     = 1 << 16,
+    REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN                   = 1 << 17,
+    REMIXAPI_INSTANCE_CATEGORY_BIT_ANIMATED_WATER            = 1 << 18,
+    REMIXAPI_INSTANCE_CATEGORY_BIT_THIRD_PERSON_PLAYER_MODEL = 1 << 19,
+    REMIXAPI_INSTANCE_CATEGORY_BIT_THIRD_PERSON_PLAYER_BODY  = 1 << 20,
+    REMIXAPI_INSTANCE_CATEGORY_BIT_IGNORE_BAKED_LIGHTING     = 1 << 21,
     REMIXAPI_INSTANCE_CATEGORY_BIT_IGNORE_TRANSPARENCY_LAYER = 1 << 22,
   } remixapi_InstanceCategoryBit;
 
@@ -562,6 +562,14 @@ extern "C" {
     const char*               key,
     const char*               value);
 
+  typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_AddTextureHash)(
+		const char* textureCategory,
+		const char* textureHash);
+
+  typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_RemoveTextureHash)(
+		const char* textureCategory,
+    const char* textureHash);
+
   typedef struct remixapi_PresentInfo {
     remixapi_StructType       sType;
     void*                     pNext;
@@ -642,6 +650,8 @@ extern "C" {
     PFN_remixapi_DestroyLight       DestroyLight;
     PFN_remixapi_DrawLightInstance  DrawLightInstance;
     PFN_remixapi_SetConfigVariable  SetConfigVariable;
+    PFN_remixapi_AddTextureHash     AddTextureHash;
+    PFN_remixapi_RemoveTextureHash  RemoveTextureHash;
 
     // DXVK interoperability
     PFN_remixapi_dxvk_CreateD3D9            dxvk_CreateD3D9;
