@@ -36,6 +36,7 @@
 #include "rtx_terrain_baker.h"
 #include "rtx_scene_manager.h"
 #include "rtx_texture_manager.h"
+#include "rtx_debug_view.h"
 
 namespace dxvk {
 
@@ -213,6 +214,9 @@ namespace dxvk {
     if (this != &other) {
       m_device = other.m_device;
       m_sharedResource = other.m_sharedResource;
+#ifdef REMIX_DEVELOPMENT
+      s_resourcesViewMap.erase(m_view.ptr());
+#endif
       m_view = other.m_view;
       m_writeFrameIdx = other.m_writeFrameIdx;
 #ifdef REMIX_DEVELOPMENT
@@ -254,6 +258,9 @@ namespace dxvk {
 
   void Resources::AliasedResource::reset() {
     m_sharedResource = nullptr;
+#ifdef REMIX_DEVELOPMENT
+    s_resourcesViewMap.erase(m_view.ptr());
+#endif
     m_view = nullptr;
 #ifdef REMIX_DEVELOPMENT
     m_thisObjectAddress = nullptr;
@@ -391,11 +398,42 @@ namespace dxvk {
     m_raytracingOutput.m_rayReconstructionHitDistance = AliasedResource(m_raytracingOutput.getCurrentRtxdiConfidence(), ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "DLSS-RR Hit Distance");
     m_raytracingOutput.m_gbufferPSRData[0] = AliasedResource(m_raytracingOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal(), ctx, m_downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT, "GBuffer PSR Data 0");
 
+    // Alias resources depends on RTX Denoising and GI Options
+    // TODO: We should automatically assign available resources at run-time instead of manually figure it out.
+    bool isConditionalAliasingsShareSameView = true;
+    static bool cachedIsRayReconstructionEnabled = RtxOptions::isRayReconstructionEnabled();
+    if (RtxOptions::isRayReconstructionEnabled()) {
+      // Reset aliasing for m_primaryRtxdiTemporalPosition only when the RR setting is toggled between enabled and disabled
+      if (cachedIsRayReconstructionEnabled != RtxOptions::isRayReconstructionEnabled() || m_raytracingOutput.m_primaryRtxdiTemporalPosition.empty()) {
+        m_raytracingOutput.m_primaryRtxdiTemporalPosition = AliasedResource(m_raytracingOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughnessDenoising, ctx, m_downscaledExtent, VK_FORMAT_R32_UINT, "primary rtxdi temporal position", true);
+      }
+
+      if (RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::NeuralRadianceCache && DebugView::debugViewIdx() == DEBUG_VIEW_DISABLED) {
+        m_raytracingOutput.m_indirectRadianceHitDistance = AliasedResource(m_raytracingOutput.m_primaryVirtualMotionVector, ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Indirect Radiance Hit Distance", true);
+
+        // m_primaryRtxdiTemporalPosition and m_primaryVirtualWorldShadingNormalPerceptualRoughnessDenoising has different format, so they have different image views
+        isConditionalAliasingsShareSameView = m_raytracingOutput.m_indirectRadianceHitDistance.sharesTheSameView(m_raytracingOutput.m_primaryVirtualMotionVector);
+      } else {
+        // Indirect Radiance HitT can't be aliased when using ReSTIR-GI and DLSS-RR is enabled, or debug view is enabled
+        m_raytracingOutput.m_indirectRadianceHitDistance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Indirect Radiance Hit Distance", true);
+      }
+    } else {
+      // Reset aliasing for m_primaryRtxdiTemporalPosition only when the RR setting is toggled between enabled and disabled
+      if (cachedIsRayReconstructionEnabled != RtxOptions::isRayReconstructionEnabled() || m_raytracingOutput.m_primaryRtxdiTemporalPosition.empty()) {
+        m_raytracingOutput.m_primaryRtxdiTemporalPosition = AliasedResource(m_raytracingOutput.m_primaryDepthDLSSRR, ctx, m_downscaledExtent, VK_FORMAT_R32_UINT, "primary rtxdi temporal position", true);
+      }
+      m_raytracingOutput.m_indirectRadianceHitDistance = AliasedResource(m_raytracingOutput.m_primaryWorldShadingNormalDLSSRR, ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Indirect Radiance Hit Distance", true);
+
+      isConditionalAliasingsShareSameView = m_raytracingOutput.m_indirectRadianceHitDistance.sharesTheSameView(m_raytracingOutput.m_primaryWorldShadingNormalDLSSRR);
+    }
+    cachedIsRayReconstructionEnabled = RtxOptions::isRayReconstructionEnabled();
+
     assert(
       m_raytracingOutput.m_secondaryConeRadius.sharesTheSameView(m_raytracingOutput.getCurrentRtxdiConfidence()) &&
       m_raytracingOutput.m_sharedIntegrationSurfacePdf.sharesTheSameView(m_raytracingOutput.getCurrentRtxdiIlluminance()) &&
       m_raytracingOutput.m_rayReconstructionHitDistance.sharesTheSameView(m_raytracingOutput.getCurrentRtxdiConfidence()) &&
       m_raytracingOutput.m_gbufferPSRData[0].sharesTheSameView(m_raytracingOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal()) &&
+      isConditionalAliasingsShareSameView &&
       "New view for an aliased resource was created on the fly. Avoid doing that or ensure it has no negative side effects.");
   }
 
@@ -918,7 +956,7 @@ namespace dxvk {
     m_raytracingOutput.m_primaryAlbedo = createImageResource(ctx, "primary albedo", m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32);
     m_raytracingOutput.m_primaryBaseReflectivity = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, "Primary Base Reflectivity");
     m_raytracingOutput.m_primarySpecularAlbedo = AliasedResource(m_raytracingOutput.m_primaryBaseReflectivity, ctx, m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, "Primary Specular Albedo");
-    m_raytracingOutput.m_primaryVirtualMotionVector = createImageResource(ctx, "primary virtual motion vector", m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT);
+    m_raytracingOutput.m_primaryVirtualMotionVector = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "primary virtual motion vector", allowCompatibleFormatAliasing);
     for (auto& i : m_raytracingOutput.m_primaryScreenSpaceMotionVectorQueue) {
       i = createImageResource(ctx, "primary screen space motion vector", m_downscaledExtent, VK_FORMAT_R16G16_SFLOAT);
       if (!ctx->getCommonObjects()->metaNGXContext().supportsDLFG()) {
@@ -926,7 +964,7 @@ namespace dxvk {
       }
     }
     m_raytracingOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughness = createImageResource(ctx, "primary virtual world shading normal perceptual roughness", m_downscaledExtent, VK_FORMAT_R16G16B16A16_UNORM);
-    m_raytracingOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughnessDenoising = createImageResource(ctx, "primary virtual world shading normal perceptual roughness denoising", m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32);
+    m_raytracingOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughnessDenoising = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, "primary virtual world shading normal perceptual roughness denoising", true);;
     m_raytracingOutput.m_primaryHitDistance = createImageResource(ctx, "primary hit distance", m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
     m_raytracingOutput.m_primaryViewDirection = createImageResource(ctx, "primary view direction", m_downscaledExtent, VK_FORMAT_R16G16_SNORM);
     m_raytracingOutput.m_primaryConeRadius = createImageResource(ctx, "primary cone radius", m_downscaledExtent, VK_FORMAT_R16_SFLOAT);
@@ -937,7 +975,6 @@ namespace dxvk {
     m_raytracingOutput.m_primaryRtxdiIlluminance[0] = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "Primary RTXDI Illuminance [0]");
     m_raytracingOutput.m_primaryRtxdiIlluminance[1] = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "Primary RTXDI Illuminance[1]");
 
-    m_raytracingOutput.m_primaryRtxdiTemporalPosition = createImageResource(ctx, "primary rtxdi temporal position", m_downscaledExtent, VK_FORMAT_R32_UINT);
     m_raytracingOutput.m_primarySurfaceFlags = createImageResource(ctx, "primary surface flags", m_downscaledExtent, VK_FORMAT_R8_UINT);
     m_raytracingOutput.m_primaryDisocclusionThresholdMix = createImageResource(ctx, "primary disocclusion threshold mix", m_downscaledExtent, VK_FORMAT_R16_SFLOAT);
     m_raytracingOutput.m_primaryDisocclusionMaskForRR = AliasedResource(m_raytracingOutput.m_sharedSurfaceIndex, ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "primary disocclusion mask for ray reconstruction", allowCompatibleFormatAliasing);
@@ -950,8 +987,8 @@ namespace dxvk {
     }
 
     // DLSSRR outputs (TODO: allocate only if used)
-    m_raytracingOutput.m_primaryDepthDLSSRR = createImageResource(ctx, "Primary Depth DLSSRR", m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
-    m_raytracingOutput.m_primaryWorldShadingNormalDLSSRR = createImageResource(ctx, "Primary Shading Normal DLSSRR", m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT);
+    m_raytracingOutput.m_primaryDepthDLSSRR = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R32_SFLOAT, "Primary Depth DLSSRR", allowCompatibleFormatAliasing);
+    m_raytracingOutput.m_primaryWorldShadingNormalDLSSRR = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Primary Shading Normal DLSSRR", allowCompatibleFormatAliasing);
     m_raytracingOutput.m_primaryScreenSpaceMotionVectorDLSSRR = createImageResource(ctx, "Primary Screen Space Motion Vector DLSSRR", m_downscaledExtent, VK_FORMAT_R16G16_SFLOAT);
 
     m_raytracingOutput.m_secondaryAttenuation = createImageResource(ctx, "secondary attenuation", m_downscaledExtent, VK_FORMAT_R32_UINT);
@@ -972,7 +1009,6 @@ namespace dxvk {
     m_raytracingOutput.m_alphaBlendGBuffer = createImageResource(ctx, "alpha blend gbuffer", m_downscaledExtent, VK_FORMAT_R32G32B32A32_UINT);
     m_raytracingOutput.m_alphaBlendRadiance = AliasedResource(m_raytracingOutput.m_secondaryVirtualMotionVector, ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Alpha Blend Radiance");
     m_raytracingOutput.m_rayReconstructionParticleBuffer = createImageResource(ctx, "DLSS-RR particle buffer", m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT);
-    m_raytracingOutput.m_indirectRadianceHitDistance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Indirect Radiance Hit Distance", allowCompatibleFormatAliasing);
 
     // Denoiser input and output (Primary/Secondary Surfaces with Direct/Indirect or Combined Radiance)
     // Note: A single texture is aliased for both the noisy output from the integration pass and the denoised result from NRD.

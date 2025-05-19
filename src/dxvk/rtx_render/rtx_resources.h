@@ -180,6 +180,10 @@ namespace dxvk
         return m_view->type();
       }
 
+      const bool empty() const {
+        return m_sharedResource == nullptr || m_view == nullptr;
+      }
+
     private:
       void takeOwnership() const;
 
@@ -248,18 +252,18 @@ namespace dxvk
       Resource m_primaryAlbedo;
       AliasedResource m_primaryBaseReflectivity;
       AliasedResource m_primarySpecularAlbedo;
-      Resource m_primaryVirtualMotionVector;
+      AliasedResource m_primaryVirtualMotionVector;
       ResourceQueue m_primaryScreenSpaceMotionVectorQueue;
       Resource m_primaryScreenSpaceMotionVector;
       Resource m_primaryVirtualWorldShadingNormalPerceptualRoughness;
-      Resource m_primaryVirtualWorldShadingNormalPerceptualRoughnessDenoising;
+      AliasedResource m_primaryVirtualWorldShadingNormalPerceptualRoughnessDenoising;
       Resource m_primaryHitDistance;
       Resource m_primaryViewDirection;
       Resource m_primaryConeRadius;
       AliasedResource m_primaryWorldPositionWorldTriangleNormal[2];
       Resource m_primaryPositionError;
       AliasedResource m_primaryRtxdiIlluminance[2];
-      Resource m_primaryRtxdiTemporalPosition;
+      AliasedResource m_primaryRtxdiTemporalPosition;
       Resource m_primarySurfaceFlags;
       Resource m_primaryDisocclusionThresholdMix;
       AliasedResource m_primaryDisocclusionMaskForRR;
@@ -303,8 +307,8 @@ namespace dxvk
       AliasedResource m_gbufferPSRData[7];
 
       // DLSSRR data
-      Resource m_primaryDepthDLSSRR;
-      Resource m_primaryWorldShadingNormalDLSSRR;
+      AliasedResource m_primaryDepthDLSSRR;
+      AliasedResource m_primaryWorldShadingNormalDLSSRR;
       Resource m_primaryScreenSpaceMotionVectorDLSSRR;
 
       Resource m_bsdfFactor;

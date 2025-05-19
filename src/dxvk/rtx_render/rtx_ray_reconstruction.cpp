@@ -157,7 +157,7 @@ namespace dxvk {
       rtOutput.m_primaryLinearViewZ.view->imageInfo().extent, VkExtent3D { 16, 16, 1 });
 
     auto motionVectorInput = enableDLSSRRSurfaceReplacement() ? &rtOutput.m_primaryScreenSpaceMotionVectorDLSSRR : &rtOutput.m_primaryScreenSpaceMotionVector;
-    auto depthInput = enableDLSSRRSurfaceReplacement() ? &rtOutput.m_primaryDepthDLSSRR : &rtOutput.m_primaryDepth;
+    auto depthInput = enableDLSSRRSurfaceReplacement() ? &rtOutput.m_primaryDepthDLSSRR.resource(Resources::AccessType::Read) : &rtOutput.m_primaryDepth;
     
     {
       ScopedGpuProfileZone(ctx, "Prepare DLSS");
@@ -210,7 +210,7 @@ namespace dxvk {
       ctx->bindResourceView(RAY_RECONSTRUCTION_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
       ctx->bindResourceView(RAY_RECONSTRUCTION_COMBINED_INPUT, rtOutput.m_compositeOutput.view(Resources::AccessType::Read), nullptr);
       // DLSSRR data
-      ctx->bindResourceView(RAY_RECONSTRUCTION_NORMALS_DLSSRR_INPUT, rtOutput.m_primaryWorldShadingNormalDLSSRR.view, nullptr);
+      ctx->bindResourceView(RAY_RECONSTRUCTION_NORMALS_DLSSRR_INPUT, rtOutput.m_primaryWorldShadingNormalDLSSRR.view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(RAY_RECONSTRUCTION_DEPTHS_INPUT, depthInput->view, nullptr);
       ctx->bindResourceView(RAY_RECONSTRUCTION_MOTION_VECTOR_INPUT, motionVectorInput->view, nullptr);
 
@@ -254,7 +254,7 @@ namespace dxvk {
         rtOutput.m_primaryPerceptualRoughness.view,
         rtOutput.m_rayReconstructionHitDistance.view(Resources::AccessType::Read),
         rtOutput.m_primaryScreenSpaceMotionVectorDLSSRR.view,
-        rtOutput.m_primaryDepthDLSSRR.view
+        rtOutput.m_primaryDepthDLSSRR.view(Resources::AccessType::Read)
       };
 
       const DxvkAutoExposure& autoExposure = device()->getCommon()->metaAutoExposure();
