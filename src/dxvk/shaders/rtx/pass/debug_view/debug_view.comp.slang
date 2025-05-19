@@ -109,6 +109,9 @@ Texture2D<float4> NrdValidationLayer;
 layout(rgba16f, binding = DEBUG_VIEW_BINDING_COMPOSITE_INPUT)
 Texture2D<float4> Composite;
 
+layout(r16f, binding = DEBUG_VIEW_BINDING_ALTERNATE_DISOCCLUSION_THRESHOLD_INPUT)
+Texture2D<float> PrimaryDisocclusionThreshold;
+
 // Inputs / Outputs
 
 layout(rgba32f, binding = DEBUG_VIEW_BINDING_ACCUMULATED_DEBUG_VIEW_INPUT_OUTPUT)
@@ -315,6 +318,9 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
   case DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_SPECULAR_HIT_T:
     value = nrdDenoisedHitTtoColor(threadId);
     break;
+  case DEBUG_VIEW_PRIMARY_ALTERNATE_DISOCCLUSION_THRESHOLD:
+    value = vec4(PrimaryDisocclusionThreshold[threadId].xxx, 1);
+    break;
   case DEBUG_VIEW_PRE_TONEMAP_OUTPUT:
   case DEBUG_VIEW_POST_TONEMAP_OUTPUT:
   case DEBUG_VIEW_LOCAL_TONEMAPPER_FINAL_COMBINE_OUTPUT:
@@ -519,6 +525,8 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
     // DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_DIFFUSE_HIT_T
     // DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_SPECULAR_HIT_T
     isValid &= isValidValue(nrdGetHitT(DebugView[threadId].w, 1.0, linearViewZ));
+    // DEBUG_VIEW_PRIMARY_ALTERNATE_DISOCCLUSION_THRESHOLD:
+    isValid &= isValidValue(PrimaryDisocclusionThreshold[threadId]);
     // DEBUG_VIEW_PRE_TONEMAP_OUTPUT
     // DEBUG_VIEW_POST_TONEMAP_OUTPUT
     // DEBUG_VIEW_VIEW_MODEL

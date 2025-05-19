@@ -23,12 +23,13 @@
 #include <filesystem>
 #include <nvapi.h>
 #include "rtx_terrain_baker.h"
-#include "rtx_render/rtx_nee_cache.h"
-#include "rtx_render/rtx_rtxdi_rayquery.h"
-#include "rtx_render/rtx_restir_gi_rayquery.h"
-#include "rtx_render/rtx_composite.h"
-#include "rtx_render/rtx_demodulate.h"
-#include "rtx_render/rtx_neural_radiance_cache.h"
+#include "rtx_nee_cache.h"
+#include "rtx_rtxdi_rayquery.h"
+#include "rtx_restir_gi_rayquery.h"
+#include "rtx_composite.h"
+#include "rtx_demodulate.h"
+#include "rtx_neural_radiance_cache.h"
+#include "rtx_ray_reconstruction.h"
 
 #include "dxvk_device.h"
 #include "rtx_global_volumetrics.h"

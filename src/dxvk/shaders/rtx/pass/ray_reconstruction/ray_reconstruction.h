@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -36,28 +36,29 @@
 #define RAY_RECONSTRUCTION_PRIMARY_INDIRECT_SPECULAR_INPUT    3
 #define RAY_RECONSTRUCTION_PRIMARY_ATTENUATION_INPUT          4
 #define RAY_RECONSTRUCTION_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT 5
+#define RAY_RECONSTRUCTION_PRIMARY_CONE_RADIUS_INPUT          6
+#define RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_MASK_INPUT    7
 
-#define RAY_RECONSTRUCTION_SECONDARY_ALBEDO_INPUT             6
-#define RAY_RECONSTRUCTION_SECONDARY_SPECULAR_ALBEDO_INPUT    7
-#define RAY_RECONSTRUCTION_SECONDARY_ATTENUATION_INPUT        8
-#define RAY_RECONSTRUCTION_SECONDARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT 9
-#define RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_THRESHOLD_MIX_INPUT_OUTPUT 10
+#define RAY_RECONSTRUCTION_SECONDARY_ALBEDO_INPUT             10
+#define RAY_RECONSTRUCTION_SECONDARY_SPECULAR_ALBEDO_INPUT    11
+#define RAY_RECONSTRUCTION_SECONDARY_ATTENUATION_INPUT        12
+#define RAY_RECONSTRUCTION_SECONDARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT 13
 
 #define RAY_RECONSTRUCTION_SHARED_FLAGS_INPUT                 20
 #define RAY_RECONSTRUCTION_COMBINED_INPUT                     21
 #define RAY_RECONSTRUCTION_NORMALS_DLSSRR_INPUT               22
 #define RAY_RECONSTRUCTION_DEPTHS_INPUT                       23
 #define RAY_RECONSTRUCTION_MOTION_VECTOR_INPUT                24
-#define RAY_RECONSTRUCTION_PRIMARY_CONE_RADIUS_INPUT          25
-
-// Outputs
-#define RAY_RECONSTRUCTION_NORMALS_OUTPUT                     30
-#define RAY_RECONSTRUCTION_HIT_DISTANCE_OUTPUT                31
-#define RAY_RECONSTRUCTION_DEBUG_VIEW_OUTPUT                  32
 
 // Input/Outputs
-#define RAY_RECONSTRUCTION_PRIMARY_ALBEDO_INPUT_OUTPUT        40
+#define RAY_RECONSTRUCTION_PRIMARY_ALBEDO_INPUT_OUTPUT          40
 #define RAY_RECONSTRUCTION_PRIMARY_SPECULAR_ALBEDO_INPUT_OUTPUT 41
+
+// Outputs
+#define RAY_RECONSTRUCTION_NORMALS_OUTPUT                       50
+#define RAY_RECONSTRUCTION_HIT_DISTANCE_OUTPUT                  51
+#define RAY_RECONSTRUCTION_DEBUG_VIEW_OUTPUT                    52
+#define RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_MASK_OUTPUT     53
 
 // Constant buffers
 struct RayReconstructionArgs {
@@ -78,5 +79,10 @@ struct RayReconstructionArgs {
   uint combineSpecularAlbedo;
   uint useExternalExposure;
   uint rayReconstructionUseVirtualNormals;
-  uint pad;
+  uint frameIdx;
+
+  uint enableDisocclusionMaskBlur;
+  uint disocclusionMaskBlurRadius;
+  float rcpSquaredDisocclusionMaskBlurGaussianWeightSigma; 
+  uint pad0;
 };

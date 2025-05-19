@@ -24,11 +24,12 @@
 #include "rtx/pass/composite/composite_binding_indices.h"
 #include "rtx/pass/composite/composite_args.h"
 #include "rtx/pass/raytrace_args.h"
-#include "rtx_render/rtx_shader_manager.h"
+#include "rtx_shader_manager.h"
 #include <dxvk_scoped_annotation.h>
 #include "rtx_imgui.h"
 #include "rtx_context.h"
 #include "rtx_options.h"
+#include "rtx_ray_reconstruction.h"
 #include "rtx_restir_gi_rayquery.h"
 #include "rtx_debug_view.h"
 
