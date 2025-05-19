@@ -157,6 +157,7 @@ TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreat
 
   // Transform to desired Translucent Material Interaction values
 
+  translucentSurfaceMaterialInteraction.isAnimatedWater = surface.isAnimatedWater;
   translucentSurfaceMaterialInteraction.shadingNormal = getBentNormal(surfaceInteraction.triangleNormal, normal, -minimalRayInteraction.viewDirection);
   translucentSurfaceMaterialInteraction.normalDetail = float16_t(1.0 - dot(float3(translucentSurfaceMaterialInteraction.shadingNormal), float3(surfaceInteraction.interpolatedNormal)));
   translucentSurfaceMaterialInteraction.baseReflectivity = translucentSurfaceMaterial.baseReflectivity;
@@ -190,7 +191,8 @@ TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreat
   // Note: Translucent type is known in advance
 
   TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction;
-
+  
+  translucentSurfaceMaterialInteraction.isAnimatedWater = polymorphicSurfaceMaterialInteraction.isAnimatedWater;
   translucentSurfaceMaterialInteraction.shadingNormal = polymorphicSurfaceMaterialInteraction.shadingNormal;
   translucentSurfaceMaterialInteraction.emissiveRadiance = polymorphicSurfaceMaterialInteraction.emissiveRadiance;
   translucentSurfaceMaterialInteraction.transmittanceColor = polymorphicSurfaceMaterialInteraction.vdata0;
@@ -851,7 +853,10 @@ SurfaceMaterialInteractionPSRSample translucentSurfaceMaterialInteractionCalcPSR
   SurfaceMaterialInteractionPSRSample materialPSRSample;
 
   materialPSRSample.performPSR = true;
-  materialPSRSample.useAlternateDisocclusionThreshold = translucentSurfaceMaterialInteraction.normalDetail > float16_t(cb.psrrNormalDetailThreshold);
+  materialPSRSample.useAlternateDisocclusionThreshold = 
+    cb.enableDLSSRR 
+    ? translucentSurfaceMaterialInteraction.isAnimatedWater
+    : translucentSurfaceMaterialInteraction.normalDetail > float16_t(cb.psrrNormalDetailThreshold);
   materialPSRSample.inputDirection = inputDirection;
   materialPSRSample.attenuation = attenuation;
   materialPSRSample.vectorTransform = getReflectionQuaternion(microfacetNormal);
@@ -1062,7 +1067,10 @@ SurfaceMaterialInteractionPSRSample translucentSurfaceMaterialInteractionCalcPSR
   SurfaceMaterialInteractionPSRSample materialPSRSample;
 
   materialPSRSample.performPSR = true;
-  materialPSRSample.useAlternateDisocclusionThreshold = translucentSurfaceMaterialInteraction.normalDetail > float16_t(cb.pstrNormalDetailThreshold);
+  materialPSRSample.useAlternateDisocclusionThreshold =
+    cb.enableDLSSRR 
+    ? translucentSurfaceMaterialInteraction.isAnimatedWater
+    : translucentSurfaceMaterialInteraction.normalDetail > float16_t(cb.pstrNormalDetailThreshold);
   materialPSRSample.inputDirection = inputDirection;
   materialPSRSample.attenuation = attenuation;
   materialPSRSample.vectorTransform = vectorTransform;

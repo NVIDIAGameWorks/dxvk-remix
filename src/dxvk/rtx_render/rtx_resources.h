@@ -234,7 +234,7 @@ namespace dxvk
       Resource m_sharedMaterialData1;
       Resource m_sharedMediumMaterialIndex;
       AliasedResource m_sharedBiasCurrentColorMask;
-      Resource m_sharedSurfaceIndex;
+      AliasedResource m_sharedSurfaceIndex;
       Resource m_sharedSubsurfaceData;
       Resource m_sharedSubsurfaceDiffusionProfileData;
 
@@ -261,7 +261,8 @@ namespace dxvk
       AliasedResource m_primaryRtxdiIlluminance[2];
       Resource m_primaryRtxdiTemporalPosition;
       Resource m_primarySurfaceFlags;
-      Resource m_primaryDisocclusionThresholdMix; // for NRD
+      Resource m_primaryDisocclusionThresholdMix;
+      AliasedResource m_primaryDisocclusionMaskForRR;
       Resource m_primaryObjectPicking;
 
       Resource m_secondaryAttenuation;

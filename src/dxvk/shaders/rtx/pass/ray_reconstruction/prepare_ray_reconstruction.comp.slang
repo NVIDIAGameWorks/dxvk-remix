@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -25,28 +25,26 @@
 #include "rtx/concept/camera/camera.slangh"
 #include "rtx/utility/debug_view_helpers.slangh"
 #include "rtx/utility/geometry_flags.slangh"
+#include "rtx/utility/common.slangh"
 
 // Inputs
 layout(binding = RAY_RECONSTRUCTION_CONSTANTS_INPUT)
 ConstantBuffer<RayReconstructionArgs> cb;
 
 layout(r32ui, binding = RAY_RECONSTRUCTION_NORMALS_INPUT)
-Texture2D<uint> InNormals;
+Texture2D<uint> Normals;
 
 layout(rgba16f, binding = RAY_RECONSTRUCTION_VIRTUAL_NORMALS_INPUT)
-Texture2D<float4> InVirtualNormals;
+Texture2D<float4> VirtualNormals;
 
 layout(rgba16f, binding = RAY_RECONSTRUCTION_PRIMARY_INDIRECT_SPECULAR_INPUT)
-Texture2D<float4> InPrimaryIndirectSpecular;
+Texture2D<float4> PrimaryIndirectSpecular;
 
 layout(binding = RAY_RECONSTRUCTION_PRIMARY_ATTENUATION_INPUT)
 Texture2D<uint> PrimaryAttenuation;
 
 layout(rgba16, binding = RAY_RECONSTRUCTION_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT)
 Texture2D<float4> PrimaryVirtualWorldNormalPerceptualRoughness;
-
-layout(r16f, binding = RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_THRESHOLD_MIX_INPUT_OUTPUT)
-RWTexture2D<float> PrimaryDisocclusionThresholdMix;
 
 layout(binding = RAY_RECONSTRUCTION_SECONDARY_ALBEDO_INPUT)
 Texture2D<float4> SecondaryAlbedo;
@@ -78,15 +76,8 @@ Texture2D<float4> InMotionVector;
 layout(r16f, binding = RAY_RECONSTRUCTION_PRIMARY_CONE_RADIUS_INPUT)
 Texture2D<float> PrimaryConeRadius;
 
-// Outputs
-layout(rgba16f, binding = RAY_RECONSTRUCTION_NORMALS_OUTPUT)
-RWTexture2D<float4> OutNormals;
-
-layout(r16f, binding = RAY_RECONSTRUCTION_HIT_DISTANCE_OUTPUT)
-RWTexture2D<float> OutHitDistance;
-
-layout(binding = RAY_RECONSTRUCTION_DEBUG_VIEW_OUTPUT)
-RWTexture2D<float4> DebugView;
+layout(r16f, binding = RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_MASK_INPUT)
+Texture2D<float> DisocclusionMask;
 
 // Input/Outputs
 layout(binding = RAY_RECONSTRUCTION_PRIMARY_ALBEDO_INPUT_OUTPUT)
@@ -95,12 +86,98 @@ RWTexture2D<float4> PrimaryAlbedo;
 layout(rgb10_a2, binding = RAY_RECONSTRUCTION_PRIMARY_SPECULAR_ALBEDO_INPUT_OUTPUT)
 RWTexture2D<float4> PrimarySpecularAlbedo;
 
+// Outputs
+layout(rgba16f, binding = RAY_RECONSTRUCTION_NORMALS_OUTPUT)
+RWTexture2D<float4> NormalsOutput;
+
+layout(r16f, binding = RAY_RECONSTRUCTION_HIT_DISTANCE_OUTPUT)
+RWTexture2D<float> HitDistanceOutput;
+
+layout(binding = RAY_RECONSTRUCTION_DEBUG_VIEW_OUTPUT)
+RWTexture2D<float4> DebugView;
+
+layout(r16f, binding = RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_MASK_OUTPUT)
+RWTexture2D<float> DisocclusionMaskOutput;
 
 float getRoughnessFactor(float roughness)
 {
   roughness = roughness + 0.1;
   float factor = cb.enableDemodulateRoughness ? cb.upscalerRoughnessDemodulationMultiplier * (pow(1.0 / roughness, cb.upscalerRoughnessDemodulationOffset)) : 1.0;
   return factor;
+}
+
+// Function to calculate Gaussian weight
+float calcGaussianWeight(float squaredDistance, float rcpSquaredSigma) {
+  return exp(-0.5 * squaredDistance * rcpSquaredSigma);
+}
+
+float convertBlurredDisocclusionMaskForRRUse(float disocclusionMask)
+{
+  // The disocclusion mask value is used with in a log() function in RR,
+  // but it is blurred post log() for smoother results. So revert that now.
+  return disocclusionMask > 0 ? exp(disocclusionMask) : 0;
+}
+
+// Blurs disocclusion mask using a spiral pattern
+void blurDisocclusionMask(uint2 threadId) 
+{
+  if (!cb.enableDisocclusionMaskBlur)
+  {
+    return;
+  }
+
+  const float2 centerPixel = threadId + 0.5f;
+  const int numSamples = 8; // Number of samples in the spiral blur
+  const float rcpNumSamples = 1.0f / numSamples;
+  const float twoPi = 2 * 3.14159265359f;
+  const float twoPiRcpNumSamples = twoPi * rcpNumSamples;
+  
+  const float numRotations = 2; // Number of rotations in the spiral
+  const float angleDeltaPerSample = numRotations * twoPiRcpNumSamples;
+  const float distanceDeltaPerSample = cb.disocclusionMaskBlurRadius * rcpNumSamples;
+   
+  // Introduce a frame-dependent offset to the starting angle
+  const float numFramesToCycle = 16;
+  const float baseAngleOffset = (cb.frameIdx % numFramesToCycle) / numFramesToCycle * twoPi;
+
+  float sum = 0.0;
+  float weightSum = 0.0;
+
+  // Spiral blur kernel
+  [unroll]
+  for (int i = 0; i < numSamples; ++i) 
+  {
+    // Start with the center sample
+    float2 offset = float2(0, 0);
+    float squaredNormalizedDistance = 0.f;
+    
+    if (i > 0)
+    {
+      // Calculate angle and distance for the current sample
+      float angle = i * angleDeltaPerSample + baseAngleOffset;
+      float distance = i * distanceDeltaPerSample;
+      float normalizedDistance = i * rcpNumSamples;
+      squaredNormalizedDistance = normalizedDistance * normalizedDistance;
+
+      // Compute sample offset in a spiral pattern
+      offset = float2(cos(angle), sin(angle)) * distance;
+    }
+
+    // Sample the texture at the offset position
+    float sample = DisocclusionMask[int2(centerPixel + offset)];
+
+    // Calculate Gaussian weight based on distance
+    float weight = calcGaussianWeight(squaredNormalizedDistance, cb.rcpSquaredDisocclusionMaskBlurGaussianWeightSigma);
+
+    sum += sample * weight;
+    weightSum += weight;
+  }
+
+  // Normalize the result
+  float blurredValue = sum / weightSum;
+
+  // Write the blurred value to the output
+  DisocclusionMaskOutput[threadId] = convertBlurredDisocclusionMaskForRRUse(blurredValue);
 }
 
 [shader("compute")]
@@ -131,16 +208,16 @@ void main(uint2 threadId : SV_DispatchThreadID)
       }
       else if (cb.rayReconstructionUseVirtualNormals)
       {
-        normal = texelFetch(InVirtualNormals, threadId, 0).xyz * 2.0 - 1.0;
+        normal = texelFetch(VirtualNormals, threadId, 0).xyz * 2.0 - 1.0;
       }
       else
       {
-        vec2 octNormal = snorm2x16ToFloat2x32(texelFetch(InNormals, threadId, 0));
+        vec2 octNormal = snorm2x16ToFloat2x32(texelFetch(Normals, threadId, 0));
         normal = signedOctahedralToSphereDirection(octNormal);
       }
     }
 
-    imageStore(OutNormals, threadId, float4(normal, 0.0));
+    imageStore(NormalsOutput, threadId, float4(normal, 0.0));
   }
 
   const float primaryPerceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[threadId].w;
@@ -185,10 +262,7 @@ void main(uint2 threadId : SV_DispatchThreadID)
     PrimarySpecularAlbedo[threadId] = primarySpecularAlbedo;
   }
 
-  const float disocclusion = PrimaryDisocclusionThresholdMix[threadId];
-  if (disocclusion > 0.f && disocclusion <= 1.01f) {
-    PrimaryDisocclusionThresholdMix[threadId] = 0.0f;
-  }
+  blurDisocclusionMask(threadId);
 
   // DLSS-RR doesn't expect hitT with holes, here a simple box filter is used to provide a dense hitT input.
   // The filter calculates average hitT in 3x3 area, excluding the minimum and the maximum ones.
@@ -196,7 +270,7 @@ void main(uint2 threadId : SV_DispatchThreadID)
 
   if (!isPrimaryGBufferMiss)
   {
-    hitDistance = InPrimaryIndirectSpecular[threadId].a;
+    hitDistance = PrimaryIndirectSpecular[threadId].a;
     
     if (cb.filterHitT)
     {
@@ -212,7 +286,7 @@ void main(uint2 threadId : SV_DispatchThreadID)
         const GeometryFlags neighborFlags = geometryFlagsReadFromGBuffer(threadId + offset, SharedFlags);
         if (neighborFlags.firstSampledLobeIsSpecular)
         {
-          float hitT = InPrimaryIndirectSpecular[threadId + offset].a;
+          float hitT = PrimaryIndirectSpecular[threadId + offset].a;
           totalHitT += hitT;
           totalWeight += 1;
           minHitT = min(minHitT, hitT);
@@ -237,12 +311,19 @@ void main(uint2 threadId : SV_DispatchThreadID)
     }
   }
 
-  OutHitDistance[threadId] = hitDistance;
+  HitDistanceOutput[threadId] = hitDistance;
 
   switch (cb.debugViewIdx)
   {
-  case DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_THRESHOLD_MIX:
-    storeInDebugView(threadId, PrimaryDisocclusionThresholdMix[threadId]);
+  case DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_MASK:
+    if (cb.enableDisocclusionMaskBlur)
+    {
+      storeInDebugView(threadId, DisocclusionMaskOutput[threadId]);
+    }
+    else 
+    {
+      storeInDebugView(threadId, DisocclusionMask[threadId]);
+    }
     break;
   case DEBUG_VIEW_RAY_RECONSTRUCTION_DIFFUSE_ALBEDO:
     storeInDebugView(threadId, PrimaryAlbedo[threadId]);
@@ -254,7 +335,7 @@ void main(uint2 threadId : SV_DispatchThreadID)
     storeInDebugView(threadId, hitDistance / 1000.0);
     break;
   case DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_WORLD_SHADING_NORMAL:
-    storeInDebugView(threadId, OutNormals[threadId]);
+    storeInDebugView(threadId, NormalsOutput[threadId]);
     break;
   case DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_DEPTH:
     storeInDebugView(threadId, InDepth[threadId].x);
@@ -262,5 +343,32 @@ void main(uint2 threadId : SV_DispatchThreadID)
   case DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_SCREEN_SPACE_MOTION_VECTOR:
     storeInDebugView(threadId, InMotionVector[threadId].xyz);
     break;
+  case DEBUG_VIEW_NAN:
+    bool isValid = true;
+
+    // DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_MASK
+    isValid &= cb.enableDisocclusionMaskBlur
+      ? isValidValue(DisocclusionMaskOutput[threadId])
+      : isValidValue(DisocclusionMask[threadId]);
+
+    // DEBUG_VIEW_RAY_RECONSTRUCTION_DIFFUSE_ALBEDO
+    isValid &= isValidValue(PrimaryAlbedo[threadId]);
+
+    // DEBUG_VIEW_RAY_RECONSTRUCTION_SPECULAR_ALBEDO
+    isValid &= isValidValue(PrimarySpecularAlbedo[threadId]);
+
+    // DEBUG_VIEW_RAY_RECONSTRUCTION_HIT_DISTANCE
+    isValid &= isValidValue(hitDistance);
+
+    // DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_WORLD_SHADING_NORMAL
+    isValid &= isValidValue(NormalsOutput[threadId]);
+
+    // DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_DEPTH
+    isValid &= isValidValue(InDepth[threadId].x);
+
+    // DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_SCREEN_SPACE_MOTION_VECTOR
+    isValid &= isValidValue(InMotionVector[threadId].xyz);
+    
+    accumulateInDebugViewAnd(threadId, isValid);
   }
 }

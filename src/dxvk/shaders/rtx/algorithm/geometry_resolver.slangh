@@ -192,13 +192,21 @@ void geometryResolverOutputSurface(
     imageStore(PrimaryLinearViewZ, pixelCoordinate, linearViewZ);
     imageStore(PrimaryHitDistance, pixelCoordinate, virtualHitDistance);
 
-    // Note: value of 10000.f is an arbitrary high value that forces RR to discard history for animated textures.
-    // See REMIX-3807 for context.
-    const float kDiscardRRHistory = 10000.f;
+    // Set value of 10000.f that forces RR to discard history.
+    // Set the log value of 10000.f since RR uses log scale. RR prepass will revert the log operation after blurring the values.
+    const float kDLSSRRDisocclusionThresholdValue = 
+      cb.setLogValueForDisocclusionMaskForDLSSRR 
+      ? 9.2103403719762 // == log(10000.f)
+      : 10000.f;
+    const float kDisocclusionThresholdValue = 
+      cb.enableDLSSRR 
+      ? kDLSSRRDisocclusionThresholdValue
+      : 1.f;
+    const bool discardRRHistory = surface.hasMaterialChanged || surface.isAnimatedWater;
 
     // Note: Fully use an alternate disocclusion threshold when specified, done by setting the mix value to 1.0 (this mixes
     // between the standard and alternate disocclusion threshold specified in the denoiser's settings).
-    const float disocclusionThresholdMix = surface.hasMaterialChanged ? kDiscardRRHistory : useAlternateDisocclusionThreshold ? 1.0f : 0.0f;
+    const float disocclusionThresholdMix = (discardRRHistory || useAlternateDisocclusionThreshold) ? kDisocclusionThresholdValue : 0.0f;
 
     // Note: May seem overkill to store a bool like this, but the denoiser expects an input unorm texture to lerp between the standard
     // and alternate disocclusion threshold so it must be expanded and stored to a texture like this at some point.
@@ -388,7 +396,6 @@ void geometryResolverVertexOutputDebugView(
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   float16_t selectedIntegrationSurfacePdf,
   bool directionAltered, PortalSpace2BitsType portalSpace, float virtualHitDistance,
-  bool useAlternateDisocclusionThreshold,
   const bool isRaytracedRenderTarget)
 {
   const uint8_t materialType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
@@ -803,9 +810,6 @@ void geometryResolverVertexOutputDebugView(
   case DEBUG_VIEW_PSR_SELECTED_INTEGRATION_SURFACE_PDF: 
     storeInDebugView(pixelCoordinate, selectedIntegrationSurfacePdf);
     break;
-  case DEBUG_VIEW_PRIMARY_USE_ALTERNATE_DISOCCLUSION_THRESHOLD:
-    storeInDebugView(pixelCoordinate, useAlternateDisocclusionThreshold ? vec3(0.0f, 1.0f, 0.0f) : vec3(1.0f, 0.0f, 0.0f));
-    break;
   case DEBUG_VIEW_GEOMETRY_HASH:
     storeInDebugView(pixelCoordinate, r5g6b5ToColor(surface.hashPacked)); // visualize directly as colour (note the hash is compressed into a 16bit using XOR)
     break;
@@ -1030,9 +1034,6 @@ void geometryResolverVertexOutputDebugView(
       
       // DEBUG_VIEW_PSR_SELECTED_INTEGRATION_SURFACE_PDF: 
       isValid &= isValidValue(selectedIntegrationSurfacePdf);
-
-      // DEBUG_VIEW_PRIMARY_USE_ALTERNATE_DISOCCLUSION_THRESHOLD:
-      isValid &= isValidValue(useAlternateDisocclusionThreshold);
 
       // DEBUG_VIEW_GEOMETRY_HASH:
       isValid &= isValidValue(r5g6b5ToColor(surface.hashPacked)); // visualize directly as colour (note the hash is compressed into a 16bit using XOR)
@@ -1767,6 +1768,10 @@ void geometryResolverVertex(
     PrimaryConeRadius[geometryResolverState.pixelCoordinate] = rayInteraction.coneRadius;
     PrimaryHitDistance[geometryResolverState.pixelCoordinate] = geometryResolverState.accumulatedHitDistance;
     SecondaryHitDistance[geometryResolverState.pixelCoordinate] = geometryResolverState.accumulatedHitDistance;
+
+    // The actual threshold value will be set when storing gbuffer data for the PSR resolved primary surface.
+    // Right now we just set the flag to carry over alternate threshold being set to the PSR pass.
+    PrimaryDisocclusionThresholdMix[geometryResolverState.pixelCoordinate] = geometryResolverState.useAlternateDisocclusionThreshold;
   }
   else
   {
@@ -1819,7 +1824,7 @@ void geometryResolverVertex(
     polymorphicSurfaceMaterialInteraction,
     selectedIntegrationSurfacePdf,
     geometryResolverState.directionAltered, geometryResolverState.portalSpace,
-    geometryResolverState.accumulatedHitDistance, geometryResolverState.useAlternateDisocclusionThreshold,
+    geometryResolverState.accumulatedHitDistance,
     isRaytracedRenderTarget);
 }
 

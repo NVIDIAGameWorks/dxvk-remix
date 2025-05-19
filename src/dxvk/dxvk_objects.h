@@ -54,7 +54,6 @@
 #include "rtx_render/rtx_postFx.h"
 #include "rtx_render/rtx_initializer.h"
 #include "rtx_render/rtx_scene_manager.h"
-#include "rtx_render/rtx_ray_reconstruction.h"
 #include "rtx_render/rtx_reflex.h"
 #include "rtx_render/rtx_game_capturer.h"
 #include "rtx_render/rtx_dust_particles.h"
@@ -67,6 +66,7 @@ namespace dxvk {
 
   class DxvkDevice;
   class DxvkDenoise;
+  class DxvkRayReconstruction;
   class DxvkRtxdiRayQuery;
   class DxvkReSTIRGIRayQuery;
   class DxvkToneMapping;

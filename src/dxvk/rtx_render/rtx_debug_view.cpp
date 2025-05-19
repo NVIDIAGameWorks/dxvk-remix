@@ -201,7 +201,7 @@ namespace dxvk {
         {DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_DEPTH, "DLSS-RR Depth"},
         {DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_WORLD_SHADING_NORMAL, "DLSS-RR Normal"},
         {DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_SCREEN_SPACE_MOTION_VECTOR, "DLSS-RR Motion Vector"},
-        {DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_THRESHOLD_MIX, "DLSS-RR Disocclusion Mask"},
+        {DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_MASK, "DLSS-RR Disocclusion Mask"},
 
         {DEBUG_VIEW_GEOMETRY_FLAGS_FIRST_SAMPLED_LOBE_IS_SPECULAR, "Geometry Flags: First Sampled Lobe Is Specular"},
         {DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_RAY_THROUGHPUT, "Indirect First Ray Throughput"},
@@ -221,7 +221,7 @@ namespace dxvk {
         {DEBUG_VIEW_PSR_PRIMARY_SECONDARY_SURFACE_MASK, "PSR Primary Secondary Surface Mask"},
         {DEBUG_VIEW_PSR_SELECTED_INTEGRATION_SURFACE_PDF, "PSR Selected Integration Surface PDF"},
 
-        {DEBUG_VIEW_PRIMARY_USE_ALTERNATE_DISOCCLUSION_THRESHOLD, "Primary Use Alternate Disocclusion Threshold"},
+        {DEBUG_VIEW_PRIMARY_ALTERNATE_DISOCCLUSION_THRESHOLD, "Primary Alternate Disocclusion Threshold"},
 
         {DEBUG_VIEW_PRIMARY_DECAL_ALBEDO,                  "Primary Decal Albedo" },
 
@@ -542,6 +542,7 @@ namespace dxvk {
         TEXTURE2D(DEBUG_VIEW_BINDING_DEBUG_VIEW_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_NRD_VALIDATION_LAYER_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_COMPOSITE_INPUT)
+        TEXTURE2D(DEBUG_VIEW_BINDING_ALTERNATE_DISOCCLUSION_THRESHOLD_INPUT)
 
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_ACCUMULATED_DEBUG_VIEW_INPUT_OUTPUT)
 
@@ -1305,6 +1306,7 @@ namespace dxvk {
     }
 
     ctx->bindResourceView(DEBUG_VIEW_BINDING_COMPOSITE_INPUT, rtOutput.m_compositeOutput.view(Resources::AccessType::Read), nullptr);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_ALTERNATE_DISOCCLUSION_THRESHOLD_INPUT, rtOutput.m_primaryDisocclusionThresholdMix.view, nullptr);
 
     // Inputs / Outputs
 

@@ -23,6 +23,7 @@
 #include "dxvk_instance.h"
 #include "rtx_render/rtx_context.h"
 #include "dxvk_scoped_annotation.h"
+#include "rtx_render/rtx_ray_reconstruction.h"
 #include "rtx_render/rtx_texture_manager.h"
 #include "rtx_render/rtx_neural_radiance_cache.h"
 #include "rtx_render/rtx_rtxdi_rayquery.h"

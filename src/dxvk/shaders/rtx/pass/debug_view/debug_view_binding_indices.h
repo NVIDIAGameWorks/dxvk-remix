@@ -56,6 +56,8 @@
 #define DEBUG_VIEW_BINDING_NRD_VALIDATION_LAYER_INPUT                                      30
 #define DEBUG_VIEW_BINDING_COMPOSITE_INPUT                                                 31
 
+#define DEBUG_VIEW_BINDING_ALTERNATE_DISOCCLUSION_THRESHOLD_INPUT                          32
+
 // Inputs / Outputs
 
 #define DEBUG_VIEW_BINDING_ACCUMULATED_DEBUG_VIEW_INPUT_OUTPUT                             60 

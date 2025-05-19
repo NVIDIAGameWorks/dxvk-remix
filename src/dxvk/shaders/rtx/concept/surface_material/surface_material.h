@@ -242,6 +242,8 @@ struct TranslucentSurfaceMaterialInteraction
   float16_t thicknessOrMeasurementDistance;
 
   uint8_t flags;
+
+  bool isAnimatedWater;
 };
 
 struct RayPortalSurfaceMaterialInteraction
@@ -290,4 +292,6 @@ struct PolymorphicSurfaceMaterialInteraction
   uint8_t bdata1;
 
   uint8_t type;
+
+  uint8_t isAnimatedWater;
 };
