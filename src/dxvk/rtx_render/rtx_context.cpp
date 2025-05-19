@@ -658,7 +658,7 @@ namespace dxvk {
           if (captureDebugImage) {
             takeScreenshot("albedo", rtOutput.m_primaryAlbedo.image);
             takeScreenshot("worldNormals", rtOutput.m_primaryWorldShadingNormal.image);
-            takeScreenshot("worldMotion", rtOutput.m_primaryVirtualMotionVector.image);
+            takeScreenshot("worldMotion", rtOutput.m_primaryVirtualMotionVector.image(Resources::AccessType::Read));
             takeScreenshot("linearZ", rtOutput.m_primaryLinearViewZ.image);
           }
         }
@@ -1483,9 +1483,9 @@ namespace dxvk {
       DxvkDenoise::Input denoiseInput = {};
       denoiseInput.diffuse_hitT = &rtOutput.m_primaryDirectDiffuseRadiance.resource(Resources::AccessType::Read);
       denoiseInput.specular_hitT = &rtOutput.m_primaryDirectSpecularRadiance.resource(Resources::AccessType::Read);
-      denoiseInput.normal_roughness = &rtOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughnessDenoising;
+      denoiseInput.normal_roughness = &rtOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughnessDenoising.resource(Resources::AccessType::Read);
       denoiseInput.linearViewZ = &rtOutput.m_primaryLinearViewZ;
-      denoiseInput.motionVector = &rtOutput.m_primaryVirtualMotionVector;
+      denoiseInput.motionVector = &rtOutput.m_primaryVirtualMotionVector.resource(Resources::AccessType::Read);
       denoiseInput.disocclusionThresholdMix = &rtOutput.m_primaryDisocclusionThresholdMix;
       denoiseInput.frameTimeMs = frameTimeMilliseconds;
       denoiseInput.reset = m_resetHistory;
@@ -1512,9 +1512,9 @@ namespace dxvk {
       DxvkDenoise::Input denoiseInput = {};
       denoiseInput.diffuse_hitT = &rtOutput.m_primaryIndirectDiffuseRadiance.resource(Resources::AccessType::Read);
       denoiseInput.specular_hitT = &rtOutput.m_primaryIndirectSpecularRadiance.resource(Resources::AccessType::Read);
-      denoiseInput.normal_roughness = &rtOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughnessDenoising;
+      denoiseInput.normal_roughness = &rtOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughnessDenoising.resource(Resources::AccessType::Read);
       denoiseInput.linearViewZ = &rtOutput.m_primaryLinearViewZ;
-      denoiseInput.motionVector = &rtOutput.m_primaryVirtualMotionVector;
+      denoiseInput.motionVector = &rtOutput.m_primaryVirtualMotionVector.resource(Resources::AccessType::Read);
       denoiseInput.disocclusionThresholdMix = &rtOutput.m_primaryDisocclusionThresholdMix;
       denoiseInput.frameTimeMs = frameTimeMilliseconds;
       denoiseInput.reset = m_resetHistory;
@@ -2660,92 +2660,94 @@ namespace dxvk {
 
   void RtxContext::queryAvailableResourceAliasing() {
     // Check if aliasing query is enabled through user settings
-    if (Resources::s_queryAliasing) {
-      // Set the aliasing resource dimensions based on user options
-      const VkExtent3D extent = { RtxOptions::Aliasing::width(), RtxOptions::Aliasing::height(), RtxOptions::Aliasing::depth() };
-      // Get the start and end frame pass stages from user settings
-      const RtxFramePassStage beginPass = RtxOptions::Aliasing::beginPass();
-      const RtxFramePassStage endPass = RtxOptions::Aliasing::endPass();
-
-      std::string res;
-      // Check if the begin pass is before the end pass
-      if (beginPass > endPass) {
-        // Set an error message if the begin pass is invalid
-        Resources::s_resourceAliasingQueryText = "Begin Pass must be before the End Pass";
-        return;
-      }
-
-      // Lambda function to check if a resource matches the aliasing criteria
-      auto isResourceMatches = [&](const Rc<DxvkImageView>& view) {
-        const auto& imageInfo = view->image()->info();
-        const auto& viewInfo = view->info();
-        uint32_t aliasingWidth = RtxOptions::Aliasing::width();
-        uint32_t aliasingHeight = RtxOptions::Aliasing::height();
-
-        // Adjust dimensions if the aliasing extent type is DownScaledExtent or TargetExtent
-        if (RtxOptions::Aliasing::extentType() == RtxTextureExtentType::DownScaledExtent) {
-          aliasingWidth = getResourceManager().getDownscaleDimensions().width;
-          aliasingHeight = getResourceManager().getDownscaleDimensions().height;
-        } else if (RtxOptions::Aliasing::extentType() == RtxTextureExtentType::TargetExtent) {
-          aliasingWidth = getResourceManager().getTargetDimensions().width;
-          aliasingHeight = getResourceManager().getTargetDimensions().height;
-        }
-
-        // Check if the resource's dimensions and format match the aliasing query settings
-        return imageInfo.extent.width == aliasingWidth &&
-               imageInfo.extent.height == aliasingHeight &&
-               imageInfo.extent.depth == RtxOptions::Aliasing::depth() &&
-               imageInfo.numLayers == RtxOptions::Aliasing::layer() &&
-               imageInfo.type == RtxOptions::Aliasing::imageType() &&
-               viewInfo.type == RtxOptions::Aliasing::imageViewType();
-      };
-
-      std::string manualSolveResources;
-      uint32_t matchedIndex = 0;
-
-      bool aliasingMatchFound = false;
-      const auto category = RtxOptions::Aliasing::formatCategory();
-      if (category == RtxTextureFormatCompatibilityCategory::InvalidFormatCompatibilityCategory) {
-        // If the format category is invalid, no aliasing can be done
-        Resources::s_resourceAliasingQueryText = "Please select aliasing compatible texture format.";
-        return;
-      }
-
-      // Map category to index for cache lookup
-      const uint32_t index = static_cast<uint32_t>(category);
-
-      // Loop through the resource cache table for the corresponding format category
-      for (auto& compatibleResource : m_resourceCacheTable[index]) {
-        // Check if the resource is compatible with the aliasing query (based on pass stages and matching criteria)
-        if ((endPass < compatibleResource.beginPassStage || beginPass > compatibleResource.endPassStage ||
-              (beginPass != endPass && compatibleResource.beginPassStage != compatibleResource.endPassStage &&
-              (endPass == compatibleResource.beginPassStage || beginPass == compatibleResource.endPassStage))) &&
-            (isResourceMatches(compatibleResource.view))) {
-
-          // Loop through names of matching resources and prepare result string
-          for (const auto& name : compatibleResource.names) {
-            if (Resources::s_dynamicAliasingResourcesSet.find(compatibleResource.view.ptr()) == Resources::s_dynamicAliasingResourcesSet.end()) {
-              ++matchedIndex;
-              res += std::to_string(matchedIndex) + ". " + name + "\n";
-              if (matchedIndex > 10) {
-                break; // Limit to 10 results
-              }
-            } else {
-              if (manualSolveResources.empty()) {
-                // Give notification for users who want to do aliasing for dynamic resources
-                manualSolveResources = "[WARNING] Use caution when aliasing dynamic resources. Ensure aliasing is handled every frame in Resources::onFrameBegin.\n";
-              }
-              manualSolveResources += name + "\n";
-            }
-          }
-          aliasingMatchFound = true;
-        }
-      }
-
-      // Set the result of the aliasing query, either showing available resources or a no-match message
-      Resources::s_resourceAliasingQueryText =
-        aliasingMatchFound ? (res + manualSolveResources) : "No available resources that can be aliased, please create a new resource.";
+    if (!Resources::s_queryAliasing) {
+      return;
     }
+
+    // Set the aliasing resource dimensions based on user options
+    const VkExtent3D extent = { RtxOptions::Aliasing::width(), RtxOptions::Aliasing::height(), RtxOptions::Aliasing::depth() };
+    // Get the start and end frame pass stages from user settings
+    const RtxFramePassStage beginPass = RtxOptions::Aliasing::beginPass();
+    const RtxFramePassStage endPass = RtxOptions::Aliasing::endPass();
+
+    std::string newResourceAliasingQueryResult;
+    // Check if the begin pass is before the end pass
+    if (beginPass > endPass) {
+      // Set an error message if the begin pass is invalid
+      Resources::s_resourceAliasingQueryText = "Begin Pass must be before the End Pass";
+      return;
+    }
+
+    // Lambda function to check if a resource matches the aliasing criteria
+    auto isResourceMatches = [&](const Rc<DxvkImageView>& view) {
+      const auto& imageInfo = view->image()->info();
+      const auto& viewInfo = view->info();
+      uint32_t aliasingWidth = RtxOptions::Aliasing::width();
+      uint32_t aliasingHeight = RtxOptions::Aliasing::height();
+
+      // Adjust dimensions if the aliasing extent type is DownScaledExtent or TargetExtent
+      if (RtxOptions::Aliasing::extentType() == RtxTextureExtentType::DownScaledExtent) {
+        aliasingWidth = getResourceManager().getDownscaleDimensions().width;
+        aliasingHeight = getResourceManager().getDownscaleDimensions().height;
+      } else if (RtxOptions::Aliasing::extentType() == RtxTextureExtentType::TargetExtent) {
+        aliasingWidth = getResourceManager().getTargetDimensions().width;
+        aliasingHeight = getResourceManager().getTargetDimensions().height;
+      }
+
+      // Check if the resource's dimensions and format match the aliasing query settings
+      return imageInfo.extent.width == aliasingWidth &&
+              imageInfo.extent.height == aliasingHeight &&
+              imageInfo.extent.depth == RtxOptions::Aliasing::depth() &&
+              imageInfo.numLayers == RtxOptions::Aliasing::layer() &&
+              imageInfo.type == RtxOptions::Aliasing::imageType() &&
+              viewInfo.type == RtxOptions::Aliasing::imageViewType();
+    };
+
+    std::string manualSolveResources;
+    uint32_t matchedIndex = 0;
+
+    bool aliasingMatchFound = false;
+    const auto category = RtxOptions::Aliasing::formatCategory();
+    if (category == RtxTextureFormatCompatibilityCategory::InvalidFormatCompatibilityCategory) {
+      // If the format category is invalid, no aliasing can be done
+      Resources::s_resourceAliasingQueryText = "Please select aliasing compatible texture format.";
+      return;
+    }
+
+    // Map category to index for cache lookup
+    const uint32_t index = static_cast<uint32_t>(category);
+
+    // Loop through the resource cache table for the corresponding format category
+    for (auto& compatibleResource : m_resourceCacheTable[index]) {
+      // Check if the resource is compatible with the aliasing query (based on pass stages and matching criteria)
+      if ((endPass < compatibleResource.beginPassStage || beginPass > compatibleResource.endPassStage ||
+            (beginPass != endPass && compatibleResource.beginPassStage != compatibleResource.endPassStage &&
+            (endPass == compatibleResource.beginPassStage || beginPass == compatibleResource.endPassStage))) &&
+          (isResourceMatches(compatibleResource.view))) {
+
+        // Loop through names of matching resources and prepare result string
+        for (const auto& name : compatibleResource.names) {
+          if (Resources::s_dynamicAliasingResourcesSet.find(compatibleResource.view.ptr()) == Resources::s_dynamicAliasingResourcesSet.end()) {
+            ++matchedIndex;
+            newResourceAliasingQueryResult += std::to_string(matchedIndex) + ". " + name + "\n";
+            if (matchedIndex > 10) {
+              break; // Limit to 10 results
+            }
+          } else {
+            if (manualSolveResources.empty()) {
+              // Give notification for users who want to do aliasing for dynamic resources
+              manualSolveResources = "[WARNING] Use caution when aliasing dynamic resources. Ensure aliasing is handled every frame in Resources::onFrameBegin.\n";
+            }
+            manualSolveResources += name + "\n";
+          }
+        }
+        aliasingMatchFound = true;
+      }
+    }
+
+    // Set the result of the aliasing query, either showing available resources or a no-match message
+    Resources::s_resourceAliasingQueryText =
+      aliasingMatchFound ? (newResourceAliasingQueryResult + manualSolveResources) : "No available resources that can be aliased, please create a new resource.";
   }
 
   void RtxContext::clearResourceAliasingCache() {
@@ -2794,7 +2796,7 @@ namespace dxvk {
     }
 
     // Output the results to the GUI field
-    Resources::s_aliasingAnalyzerResultText = availableAliasingText;
+    Resources::s_aliasingAnalyzerResultText = !availableAliasingText.empty() ? availableAliasingText : "Can't find any resources that can be aliased.\n";
   }
 #endif
 } // namespace dxvk
