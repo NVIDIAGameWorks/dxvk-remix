@@ -223,6 +223,17 @@ namespace dxvk {
     } }
   };
 
+  ImGui::ComboWithKey<GraphicsPreset> graphicsPresetCombo{
+    "Rendering Preset",
+    ImGui::ComboWithKey<GraphicsPreset>::ComboEntries{ {
+        {GraphicsPreset::Ultra, "Ultra"},
+        {GraphicsPreset::High, "High"},
+        {GraphicsPreset::Medium, "Medium"},
+        {GraphicsPreset::Low, "Low"},
+        {GraphicsPreset::Custom, "Custom"},
+    } }
+  };
+
   ImGui::ComboWithKey<int> minPathBouncesCombo {
     "Min Light Bounces",
     ImGui::ComboWithKey<int>::ComboEntries { {
@@ -329,6 +340,48 @@ namespace dxvk {
       {UpscalerType::TAAU, "TAA-U"},
   } });
 
+  ImGui::ComboWithKey<DlssPreset> dlssPresetCombo{
+    "DLSS Preset",
+    ImGui::ComboWithKey<DlssPreset>::ComboEntries{ {
+        {DlssPreset::Off, "Disabled"},
+        {DlssPreset::On, "Enabled"},
+        {DlssPreset::Custom, "Custom"},
+    } }
+  };
+
+  ImGui::ComboWithKey<DLSSProfile> dlssProfileCombo{
+    "DLSS Mode",
+    ImGui::ComboWithKey<DLSSProfile>::ComboEntries{ {
+        {DLSSProfile::UltraPerf, "Ultra Performance"},
+        {DLSSProfile::MaxPerf, "Performance"},
+        {DLSSProfile::Balanced, "Balanced"},
+        {DLSSProfile::MaxQuality, "Quality"},
+        {DLSSProfile::FullResolution, "Full Resolution"},
+        {DLSSProfile::Auto, "Auto"},
+    } }
+  };
+
+  ImGui::ComboWithKey<NisPreset> nisPresetCombo{
+    "NIS Preset",
+    ImGui::ComboWithKey<NisPreset>::ComboEntries{ {
+        {NisPreset::Performance, "Performance"},
+        {NisPreset::Balanced, "Balanced"},
+        {NisPreset::Quality, "Quality"},
+        {NisPreset::Fullscreen, "Fullscreen"},
+    } }
+  };
+
+  ImGui::ComboWithKey<TaauPreset> taauPresetCombo{
+    "TAA-U Preset",
+    ImGui::ComboWithKey<TaauPreset>::ComboEntries{ {
+        {TaauPreset::UltraPerformance, "Ultra Performance"},
+        {TaauPreset::Performance, "Performance"},
+        {TaauPreset::Balanced, "Balanced"},
+        {TaauPreset::Quality, "Quality"},
+        {TaauPreset::Fullscreen, "Fullscreen"},
+    } }
+  };
+
   ImGui::ComboWithKey<RussianRouletteMode> secondPlusBounceRussianRouletteModeCombo {
     "2nd+ Bounce Russian Roulette Mode",
     ImGui::ComboWithKey<RussianRouletteMode>::ComboEntries { {
@@ -361,12 +414,21 @@ namespace dxvk {
   } });
 
   ImGui::ComboWithKey<int> dlfgMfgModeCombo {
-  "DLSS Frame Generation Mode",
-  ImGui::ComboWithKey<int>::ComboEntries { {
-      {1, "2x"},
-      {2, "3x"},
-      {3, "4x"},
-  } }
+    "DLSS Frame Generation Mode",
+    ImGui::ComboWithKey<int>::ComboEntries { {
+        {1, "2x"},
+        {2, "3x"},
+        {3, "4x"},
+    } }
+  };
+
+  ImGui::ComboWithKey<ReflexMode> reflexModeCombo{
+    "Reflex",
+    ImGui::ComboWithKey<ReflexMode>::ComboEntries{ {
+        {ReflexMode::None, "Disabled"},
+        {ReflexMode::LowLatency, "Enabled"},
+        {ReflexMode::LowLatencyBoost, "Enabled + Boost"},
+    } }
   };
 
 #ifdef REMIX_DEVELOPMENT
@@ -1194,14 +1256,11 @@ namespace dxvk {
     // Preset Settings
 
     if (dlssSupported) {
-      const char* dlssPresetText = "DLSS Preset";
       const DlssPreset prevDlssPreset = RtxOptions::dlssPreset();
 
       ImGui::TextSeparator("Preset Settings");
 
-      {
-        m_userGraphicsSettingChanged |= ImGui::Combo(dlssPresetText, &RtxOptions::dlssPresetObject(), "Disabled\0Enabled\0Custom\0");
-      }
+      m_userGraphicsSettingChanged |= dlssPresetCombo.getKey(&RtxOptions::dlssPresetObject());
 
       // Revert back to default DLSS settings when switch from Off to Custom
       if (prevDlssPreset == DlssPreset::Off && RtxOptions::dlssPreset() == DlssPreset::Custom) {
@@ -1252,33 +1311,26 @@ namespace dxvk {
 
 
       switch (RtxOptions::upscalerType()) {
-        case UpscalerType::DLSS: 
-        if (RtxOptions::enableRayReconstruction() == false) {
-          m_userGraphicsSettingChanged |= ImGui::Combo("DLSS Mode", &RtxOptions::qualityDLSSObject(), "Ultra Performance\0Performance\0Balanced\0Quality\0Auto\0");
+        case UpscalerType::DLSS: {
+          m_userGraphicsSettingChanged |= dlssProfileCombo.getKey(&RtxOptions::qualityDLSSObject());
 
           // Display DLSS Upscaling Information
 
-          const auto currentDLSSProfile = dlss.getCurrentProfile();
+          const auto currentDLSSProfile = RtxOptions::enableRayReconstruction() ? rayReconstruction.getCurrentProfile() : dlss.getCurrentProfile();
           uint32_t dlssInputWidth, dlssInputHeight;
 
-          dlss.getInputSize(dlssInputWidth, dlssInputHeight);
+          if (RtxOptions::enableRayReconstruction()) {
+            rayReconstruction.getInputSize(dlssInputWidth, dlssInputHeight);
+          } else {
+            dlss.getInputSize(dlssInputWidth, dlssInputHeight);
+          }
 
           ImGui::TextWrapped(str::format("Computed DLSS Mode: ", dlssProfileToString(currentDLSSProfile), ", Render Resolution: ", dlssInputWidth, "x", dlssInputHeight).c_str());
-        } else {
-          m_userGraphicsSettingChanged |= ImGui::Combo("DLSS Mode", &RtxOptions::qualityDLSSObject(), "Ultra Performance\0Performance\0Balanced\0Quality\0Auto\0");
 
-          // Display DLSS Upscaling Information
-
-          const auto currentDLSSProfile = rayReconstruction.getCurrentProfile();
-          uint32_t dlssInputWidth, dlssInputHeight;
-
-          rayReconstruction.getInputSize(dlssInputWidth, dlssInputHeight);
-
-          ImGui::TextWrapped(str::format("Computed DLSS Mode: ", dlssProfileToString(currentDLSSProfile), ", Render Resolution: ", dlssInputWidth, "x", dlssInputHeight).c_str());
+          break;
         }
-        break;
         case UpscalerType::NIS: {
-          m_userGraphicsSettingChanged |= ImGui::Combo("NIS Preset", &RtxOptions::nisPresetObject(), "Performance\0Balanced\0Quality\0Fullscreen\0");
+          m_userGraphicsSettingChanged |= nisPresetCombo.getKey(&RtxOptions::nisPresetObject());
           RtxOptions::updateUpscalerFromNisPreset();
 
           // Display NIS Upscaling Information
@@ -1290,7 +1342,7 @@ namespace dxvk {
           break;
         }
         case UpscalerType::TAAU: {
-          m_userGraphicsSettingChanged |= ImGui::Combo("TAA-U Preset", &RtxOptions::taauPresetObject(), "Ultra Performance\0Performance\0Balanced\0Quality\0Fullscreen\0");
+          m_userGraphicsSettingChanged |= taauPresetCombo.getKey(&RtxOptions::taauPresetObject());
           RtxOptions::updateUpscalerFromTaauPreset();
 
           // Display TAA-U Upscaling Information
@@ -1351,9 +1403,7 @@ namespace dxvk {
 
     ImGui::TextSeparator("Preset Settings");
 
-    {
-      m_userGraphicsSettingChanged |= ImGui::Combo("Rendering Preset", &RtxOptions::graphicsPresetObject(), "Ultra\0High\0Medium\0Low\0Custom\0");
-    }
+    m_userGraphicsSettingChanged |= graphicsPresetCombo.getKey(&RtxOptions::graphicsPresetObject());
 
     // Map settings to indirect particle level
     int indirectLightParticlesLevel = 0;
@@ -2802,7 +2852,7 @@ namespace dxvk {
     {
       bool disableReflexUI = ctx->isDLFGEnabled();
       ImGui::BeginDisabled(disableReflexUI);
-      m_userGraphicsSettingChanged |= ImGui::Combo("Reflex", &RtxOptions::reflexModeObject(), "Disabled\0Enabled\0Enabled + Boost\0");
+      m_userGraphicsSettingChanged |= reflexModeCombo.getKey(&RtxOptions::reflexModeObject());
       ImGui::EndDisabled();
     }
 
@@ -3011,10 +3061,10 @@ namespace dxvk {
         RtxOptions::upscalerTypeRef() = UpscalerType::TAAU;
 
       if (RtxOptions::isRayReconstructionEnabled()) {
-        ImGui::Combo("DLSS mode", &RtxOptions::qualityDLSSObject(), "Ultra Performance\0Performance\0Balanced\0Quality\0Auto\0Full Resolution\0");
+        dlssProfileCombo.getKey(&RtxOptions::qualityDLSSObject());
         rayReconstruction.showRayReconstructionImguiSettings(false);
       } else if (RtxOptions::upscalerType() == UpscalerType::DLSS) {
-        ImGui::Combo("DLSS mode", &RtxOptions::qualityDLSSObject(), "Ultra Performance\0Performance\0Balanced\0Quality\0Auto\0Full Resolution\0");
+        dlssProfileCombo.getKey(&RtxOptions::qualityDLSSObject());
         dlss.showImguiSettings();
       } else if (RtxOptions::upscalerType() == UpscalerType::NIS) {
         ImGui::SliderFloat("Resolution scale", &RtxOptions::resolutionScaleObject(), 0.5f, 1.0f);
