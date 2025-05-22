@@ -110,14 +110,14 @@ namespace dxvk
   class RtCamera
   {
     RTX_OPTION_ENV("rtx.camera", bool, enableFreeCamera, false, "RTX_ENABLE_FREE_CAMERA", "Enables free camera.");
-    RW_RTX_OPTION_ENV("rtx.camera", Vector3, freeCameraPosition, Vector3(0.f, 0.f, 0.f), "RTX_FREE_CAMERA_POSITION", "Free camera's position.");
-    RW_RTX_OPTION_ENV("rtx.camera", float, freeCameraYaw, 0.f, "RTX_FREE_CAMERA_YAW", "Free camera's position.");
-    RW_RTX_OPTION_ENV("rtx.camera", float, freeCameraPitch, 0.f, "RTX_FREE_CAMERA_PITCH", "Free camera's pitch.");
-    RW_RTX_OPTION("rtx.camera", bool, lockFreeCamera, false, "Locks free camera.");
-    RW_RTX_OPTION("rtx.camera", bool, freeCameraViewRelative, true, "Free camera transform is relative to the view.");
-    RW_RTX_OPTION("rtx", float, freeCameraSpeed, 200, "Free camera speed [GameUnits/s].");
-    RW_RTX_OPTION("rtx", float, freeCameraTurningSpeed, 1, "Free camera turning speed (applies to keyboard, not mouse) [radians/s].");
-    RW_RTX_OPTION("rtx", bool, freeCameraInvertY, false, "Invert free camera pitch direction.");
+    RTX_OPTION_ENV("rtx.camera", Vector3, freeCameraPosition, Vector3(0.f, 0.f, 0.f), "RTX_FREE_CAMERA_POSITION", "Free camera's position.");
+    RTX_OPTION_ENV("rtx.camera", float, freeCameraYaw, 0.f, "RTX_FREE_CAMERA_YAW", "Free camera's position.");
+    RTX_OPTION_ENV("rtx.camera", float, freeCameraPitch, 0.f, "RTX_FREE_CAMERA_PITCH", "Free camera's pitch.");
+    RTX_OPTION("rtx.camera", bool, lockFreeCamera, false, "Locks free camera.");
+    RTX_OPTION("rtx.camera", bool, freeCameraViewRelative, true, "Free camera transform is relative to the view.");
+    RTX_OPTION("rtx", float, freeCameraSpeed, 200, "Free camera speed [GameUnits/s].");
+    RTX_OPTION("rtx", float, freeCameraTurningSpeed, 1, "Free camera turning speed (applies to keyboard, not mouse) [radians/s].");
+    RTX_OPTION("rtx", bool, freeCameraInvertY, false, "Invert free camera pitch direction.");
 
     long m_mouseX = 0, m_mouseY = 0;
     uint32_t m_renderResolution[2] = { 0, 0 };
@@ -350,7 +350,7 @@ namespace dxvk
     }
 
     void reset() {
-      currentFrameRef() = 0;
+      m_currentFrame = 0;
     }
 
     void startRecord();
@@ -384,8 +384,9 @@ namespace dxvk
 
     RTX_OPTION_ENV("rtx.cameraSequence", std::string, filePath, "", "DXVK_CAMERA_SEQUENCE_PATH", "File path.");
     RTX_OPTION_ENV("rtx.cameraSequence", bool, autoLoad, false, "DXVK_CAMERA_SEQUENCE_AUTO_LOAD", "Load camera sequence automatically.");
-    RTX_OPTION("rtx.cameraSequence", int, currentFrame, 0, "Current Frame.");
     RTX_OPTION_ENV("rtx.cameraSequence", Mode, mode, Mode::None, "DXVK_CAMERA_SEQUENCE_MODE", "Current mode.");
+    private: static inline int m_currentFrame = 0;
+    public: static int currentFrame() { return m_currentFrame; }
     
     std::vector<RtCamera::RtCameraSetting> m_settings;
     static RtCameraSequence* s_instance;

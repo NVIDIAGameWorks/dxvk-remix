@@ -208,10 +208,10 @@ namespace dxvk {
     ImGui::Checkbox("Use Post Filter", &usePostFilterObject());
     ImGui::DragFloat("Post Filter Threshold", &postFilterThresholdObject(), 0.01f, 0.0f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 
-    dlssEnhancementDirectLightPowerRef() = bsdfPowers[0];
-    dlssEnhancementIndirectLightPowerRef() = bsdfPowers[1];
-    dlssEnhancementDirectLightMaxValueRef() = bsdfMaxValues[0];
-    dlssEnhancementIndirectLightMaxValueRef() = bsdfMaxValues[1];
+    dlssEnhancementDirectLightPower.set(bsdfPowers[0]);
+    dlssEnhancementIndirectLightPower.set(bsdfPowers[1]);
+    dlssEnhancementDirectLightMaxValue.set(bsdfMaxValues[0]);
+    dlssEnhancementIndirectLightMaxValue.set(bsdfMaxValues[1]);
   }
 
   void CompositePass::createConstantsBuffer()

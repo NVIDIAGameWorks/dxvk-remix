@@ -47,7 +47,7 @@ namespace dxvk {
 
     RTX_OPTION("rtx.demodulate", bool, demodulateRoughness, true, "Demodulate roughness to improve specular details.");
     RTX_OPTION("rtx.demodulate", float, demodulateRoughnessOffset, 0.1f, "Strength of roughness demodulation, lower values are stronger.");
-    RW_RTX_OPTION("rtx.demodulate", bool, enableDirectLightBoilingFilter, true, "Boiling filter removing direct light sample when its luminance is too high.");
+    RTX_OPTION("rtx.demodulate", bool, enableDirectLightBoilingFilter, true, "Boiling filter removing direct light sample when its luminance is too high.");
     RTX_OPTION("rtx.demodulate", float, directLightBoilingThreshold, 5.f, "Remove direct light sample when its luminance is higher than the average one multiplied by this threshold .");
 
   private:

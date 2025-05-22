@@ -430,16 +430,16 @@ namespace dxvk
           moveDownUp -= speed;
         }
         if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyPitchDown(), true)) {
-          freeCameraPitchRef() += coordSystemScale * pitchDirection * angularSpeed;
+          freeCameraPitch.set( freeCameraPitch() + coordSystemScale * pitchDirection * angularSpeed);
         }
         if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyPitchUp(), true)) {
-          freeCameraPitchRef() -= coordSystemScale * pitchDirection * angularSpeed;
+          freeCameraPitch.set( freeCameraPitch() - coordSystemScale * pitchDirection * angularSpeed);
         }
         if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyYawLeft(), true)) {
-          freeCameraYawRef() +=coordSystemScale *  angularSpeed;
+          freeCameraYaw.set( freeCameraYaw() + coordSystemScale *  angularSpeed);
         }
         if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyYawRight(), true)) {
-          freeCameraYawRef() -= coordSystemScale * angularSpeed;
+          freeCameraYaw.set( freeCameraYaw() - coordSystemScale * angularSpeed);
         }
       }
 
@@ -448,8 +448,8 @@ namespace dxvk
       POINT p;
       if (GetCursorPos(&p)) {
         if (!lockFreeCamera() && ImGui::IsMouseDown(ImGuiMouseButton_Left) && ((m_mouseX != p.x) || (m_mouseY != p.y))) {
-          freeCameraYawRef() += coordSystemScale * (m_mouseX - p.x) * 0.1f * elapsedSec.count();
-          freeCameraPitchRef() += coordSystemScale * pitchDirection * (m_mouseY - p.y) * 0.2f * elapsedSec.count();
+          freeCameraYaw.set( freeCameraYaw() + coordSystemScale * (m_mouseX - p.x) * 0.1f * elapsedSec.count());
+          freeCameraPitch.set( freeCameraPitch() + coordSystemScale * pitchDirection * (m_mouseY - p.y) * 0.2f * elapsedSec.count());
         }
 
         m_mouseX = p.x;
@@ -458,12 +458,12 @@ namespace dxvk
 
       // Reset
       if (ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
-        freeCameraPositionRef() = Vector3(0.f);
+        freeCameraPosition.set(Vector3(0.f));
         moveLeftRight = 0;
         moveBackForward = 0;
         moveDownUp = 0;
-        freeCameraYawRef() = 0.0f;
-        freeCameraPitchRef() = 0.0f;
+        freeCameraYaw.set(0.0f);
+        freeCameraPitch.set(0.0f);
       }
     } else {
       // track mouse position when out of focus to avoid uncontrollable camera flips when we're back in focus
@@ -489,11 +489,12 @@ namespace dxvk
     freeCamViewToWorld *= getMatrixFromEulerAngles(upSign * freeCameraPitch(), freeCameraYaw());
 
     if (m_type == CameraType::Main && (flags & (uint32_t)UpdateFlag::UpdateFreeCamera)) {
-
-      freeCameraPositionRef() += moveLeftRight * Vector3(freeCamViewToWorld.data[0].xyz());
-      freeCameraPositionRef() += upSign * moveDownUp * Vector3(freeCamViewToWorld.data[1].xyz());
-      freeCameraPositionRef() -= moveBackForward * Vector3(freeCamViewToWorld.data[2].xyz());
-
+      Vector3 freeCameraPos = freeCameraPosition();
+      freeCameraPos += moveLeftRight * Vector3(freeCamViewToWorld.data[0].xyz());
+      freeCameraPos += upSign * moveDownUp * Vector3(freeCamViewToWorld.data[1].xyz());
+      freeCameraPos -= moveBackForward * Vector3(freeCamViewToWorld.data[2].xyz());
+      freeCameraPosition.set(freeCameraPos);
+      
       // save free camera context
       m_context.enableFreeCamera = enableFreeCamera();
       m_context.freeCameraPosition = freeCameraPosition();
@@ -558,13 +559,13 @@ namespace dxvk
 
 
   bool RtCamera::updateFromSetting(uint32_t frameIdx, const RtCameraSetting& setting, uint32_t flags) {
-    enableFreeCameraRef() = setting.enableFreeCamera;
-    freeCameraPositionRef() = setting.freeCameraPosition;
-    freeCameraYawRef() = setting.freeCameraYaw;
-    freeCameraPitchRef() = setting.freeCameraPitch;
-    freeCameraViewRelativeRef() = setting.freeCameraViewRelative;
+    enableFreeCamera.set(setting.enableFreeCamera);
+    freeCameraPosition.set(setting.freeCameraPosition);
+    freeCameraYaw.set(setting.freeCameraYaw);
+    freeCameraPitch.set(setting.freeCameraPitch);
+    freeCameraViewRelative.set(setting.freeCameraViewRelative);
 
-    RtxOptions::shakeCameraRef() = setting.isCameraShaking;
+    RtxOptions::shakeCamera.set(setting.isCameraShaking);
 
     m_context = setting;
 
@@ -1019,19 +1020,19 @@ namespace dxvk
   }
 
   void RtCameraSequence::startPlay() {
-    modeRef() = Mode::Playback;
-    currentFrameRef() = 0;
+    mode.set(Mode::Playback);
+    m_currentFrame = 0;
   }
 
   void RtCameraSequence::startRecord() {
-    modeRef() = Mode::Record;
-    currentFrameRef() = 0;
+    mode.set(Mode::Record);
+    m_currentFrame = 0;
     m_settings.clear();
   }
 
   void RtCameraSequence::addRecord(const RtCamera::RtCameraSetting& setting) {
     m_settings.push_back(setting);
-    currentFrameRef() = m_settings.size() - 1;
+    m_currentFrame = m_settings.size() - 1;
   }
 
   void RtCameraSequence::save() {
@@ -1085,10 +1086,10 @@ namespace dxvk
 
   void RtCameraSequence::goToNextFrame() {
     if (m_settings.size() == 0) {
-      currentFrameRef() = 0;
+      m_currentFrame = 0;
       return;
     }
-    currentFrameRef() = (currentFrame() + 1) % (int) m_settings.size();
+    m_currentFrame = (m_currentFrame + 1) % (int) m_settings.size();
   }
 
   void RtCameraSequence::showImguiSettings() {
@@ -1104,12 +1105,12 @@ namespace dxvk
       save();
     }
 
-    int oldFrame = currentFrame();
-    ImGui::SliderInt("Current Frame", &currentFrameObject(), 0, m_settings.size() -1, "%d", ImGuiSliderFlags_AlwaysClamp);
-    currentFrameRef() = std::min(currentFrame(), (int)m_settings.size());
+    int oldFrame = m_currentFrame;
+    IMGUI_ADD_TOOLTIP(ImGui::SliderInt("Current Frame", &m_currentFrame, 0, m_settings.size() -1, "%d", ImGuiSliderFlags_AlwaysClamp), "Current Frame.");
+    m_currentFrame = std::min(m_currentFrame, (int)m_settings.size());
 
-    if (oldFrame != currentFrame() && mode() == Mode::None) {
-      modeRef() = Mode::Browse;
+    if (oldFrame != m_currentFrame && mode() == Mode::None) {
+      mode.set(Mode::Browse);
     }
 
     bool isRecording = mode() == Mode::Record;
@@ -1163,8 +1164,8 @@ namespace dxvk
     // Stop Button
     {
       if (ImGui::Button("Stop")) {
-        modeRef() = Mode::None;
-        RtxOptions::shakeCameraRef() = false;
+        mode.set(Mode::None);
+        RtxOptions::shakeCamera.set(false);
       }
     }
 
@@ -1180,8 +1181,8 @@ namespace dxvk
       }
 
       if (ImGui::Button("Browse")) {
-        modeRef() = Mode::Browse;
-        currentFrameRef() = 0;
+        mode.set(Mode::Browse);
+        m_currentFrame = 0;
       }
 
       if (isBrowsing) {

@@ -1184,7 +1184,7 @@ namespace dxvk {
 
     if (!supportsPresentMetering()) {
       Logger::warn("NV_present_metering extension not supported");
-      enablePresentMeteringRef() = false;
+      enablePresentMetering.set(false);
     }
   }
 

@@ -78,6 +78,38 @@ namespace dxvk {
     }
     return ss.str();
   }
+  
+  RtxOptionImpl::~RtxOptionImpl() {
+    for (int i = 0; i < (int)ValueType::Count; i++) {
+      GenericValue& value = valueList[i];
+
+      switch (type) {
+      case OptionType::HashSet:
+        delete value.hashSet;
+        break;
+      case OptionType::HashVector:
+        delete value.hashVector;
+        break;
+      case OptionType::IntVector:
+        delete value.intVector;
+        break;
+      case OptionType::Vector2:
+        delete value.v2;
+        break;
+      case OptionType::Vector3:
+        delete value.v3;
+        break;
+      case OptionType::Vector2i:
+        delete value.v2i;
+        break;
+      case OptionType::String:
+        delete value.string;
+        break;
+      default:
+        break;
+      }
+    }
+  }
 
   const char* RtxOptionImpl::getTypeString() const {
     switch (type) {

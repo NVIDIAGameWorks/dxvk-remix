@@ -569,7 +569,7 @@ namespace dxvk {
 
     // Disable DLSS-RR if it's unsupported.
     if (!supportsRR) {
-      RtxOptions::enableRayReconstructionRef() = false;
+      RtxOptions::enableRayReconstruction.set(false);
     }
     changed = (rayReconstruction != RtxOptions::enableRayReconstruction());
     return changed;
@@ -790,7 +790,7 @@ namespace dxvk {
       onOpenMenus();
     }
 
-    RtxOptions::showUIRef() = type;
+    RtxOptions::showUI.set(type);
 
     if (RtxOptions::showUICursor()) {
       ImGui::GetIO().MouseDrawCursor = type != UIType::None;
@@ -912,14 +912,14 @@ namespace dxvk {
 
     // Toggle ImGUI mouse cursor. Alt-Del
     if (io.KeyAlt && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Delete))) {
-      RtxOptions::showUICursorRef() = !RtxOptions::showUICursor();
+      RtxOptions::showUICursor.set(!RtxOptions::showUICursor());
 
       io.MouseDrawCursor = RtxOptions::showUICursor() && RtxOptions::showUI() != UIType::None;
     }
 
     // Toggle input blocking. Alt-Backspace
     if (io.KeyAlt && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Backspace))) {
-      RtxOptions::blockInputToGameInUIRef() = !RtxOptions::blockInputToGameInUI();
+      RtxOptions::blockInputToGameInUI.set(!RtxOptions::blockInputToGameInUI());
       sendUIActivationMessage();
     }
   }
@@ -993,22 +993,22 @@ namespace dxvk {
 
       switch (sQuickAction) {
       case RtxQuickAction::kOriginal:
-        RtxOptions::enableRaytracingRef() = false;
-        RtxOptions::enableReplacementLightsRef() = false;
-        RtxOptions::enableReplacementMaterialsRef() = false;
-        RtxOptions::enableReplacementMeshesRef() = false;
+        RtxOptions::enableRaytracing.set(false);
+        RtxOptions::enableReplacementLights.set(false);
+        RtxOptions::enableReplacementMaterials.set(false);
+        RtxOptions::enableReplacementMeshes.set(false);
         break;
       case RtxQuickAction::kRtxOnEnhanced:
-        RtxOptions::enableRaytracingRef() = true;
-        RtxOptions::enableReplacementLightsRef() = true;
-        RtxOptions::enableReplacementMaterialsRef() = true;
-        RtxOptions::enableReplacementMeshesRef() = true;
+        RtxOptions::enableRaytracing.set(true);
+        RtxOptions::enableReplacementLights.set(true);
+        RtxOptions::enableReplacementMaterials.set(true);
+        RtxOptions::enableReplacementMeshes.set(true);
         break;
       case RtxQuickAction::kRtxOn:
-        RtxOptions::enableRaytracingRef() = true;
-        RtxOptions::enableReplacementLightsRef() = false;
-        RtxOptions::enableReplacementMaterialsRef() = false;
-        RtxOptions::enableReplacementMeshesRef() = false;
+        RtxOptions::enableRaytracing.set(true);
+        RtxOptions::enableReplacementLights.set(false);
+        RtxOptions::enableReplacementMaterials.set(false);
+        RtxOptions::enableReplacementMeshes.set(false);
         break;
       }
     }
@@ -1497,16 +1497,16 @@ namespace dxvk {
     if (RtxOptions::graphicsPreset() == GraphicsPreset::Custom) {
       switch (indirectLightParticlesLevel) {
       case 0:
-        RtxOptions::enableUnorderedEmissiveParticlesInIndirectRaysRef() = false;
-        RtxOptions::enableUnorderedResolveInIndirectRaysRef() = false;
+        RtxOptions::enableUnorderedEmissiveParticlesInIndirectRays.set(false);
+        RtxOptions::enableUnorderedResolveInIndirectRays.set(false);
         break;
       case 1:
-        RtxOptions::enableUnorderedEmissiveParticlesInIndirectRaysRef() = false;
-        RtxOptions::enableUnorderedResolveInIndirectRaysRef() = true;
+        RtxOptions::enableUnorderedEmissiveParticlesInIndirectRays.set(false);
+        RtxOptions::enableUnorderedResolveInIndirectRays.set(true);
         break;
       case 2:
-        RtxOptions::enableUnorderedEmissiveParticlesInIndirectRaysRef() = true;
-        RtxOptions::enableUnorderedResolveInIndirectRaysRef() = true;
+        RtxOptions::enableUnorderedEmissiveParticlesInIndirectRays.set(true);
+        RtxOptions::enableUnorderedResolveInIndirectRays.set(true);
         break;
       }
     }
@@ -2009,18 +2009,17 @@ namespace dxvk {
       return str.str();
     }
 
-    void toggleTextureSelection(XXH64_hash_t textureHash, const char* uniqueId, fast_unordered_set& textureSet) {
+    void toggleTextureSelection(XXH64_hash_t textureHash, const char* uniqueId, RtxOption<fast_unordered_set>* textureSet) {
       if (textureHash == kEmptyHash) {
         return;
       }
 
-      const auto textureIterator = textureSet.find(textureHash);
       const char* action;
-      if (textureIterator != textureSet.end()) {
-        textureSet.erase(textureIterator);
+      if (textureSet->containsHash(textureHash)) {
+        textureSet->removeHash(textureHash);
         action = "removed";
       } else {
-        textureSet.insert(textureHash);
+        textureSet->addHash(textureHash);
         action = "added";
       }
 
@@ -2029,11 +2028,11 @@ namespace dxvk {
       Logger::info(buffer);
     }
 
-    fast_unordered_set* findTextureSetByUniqueId(const char* uniqueId) {
+    RtxOption<fast_unordered_set>* findTextureSetByUniqueId(const char* uniqueId) {
       if (uniqueId) {
         for (RtxTextureOption& category : rtxTextureOptions) {
           if (strcmp(category.uniqueId, uniqueId) == 0) {
-            return &category.textureSetOption->getValue();
+            return category.textureSetOption;
           }
         }
       }
@@ -2065,7 +2064,7 @@ namespace dxvk {
           if (auto textureSet = findTextureSetByUniqueId(lastOpenCategoryId.c_str())) {
             toggleTextureSelection(g_holdingTexture.load(),
                                    lastOpenCategoryId.c_str(),
-                                   *textureSet);
+                                   textureSet);
           }
         } else {
           ImGui::OpenPopup(POPUP_NAME);
@@ -2112,13 +2111,13 @@ namespace dxvk {
               textureFeatureFlags = pair->second.textureFeatureFlags;
             }
             for (auto& rtxOption : rtxTextureOptions) {
-              rtxOption.bufferToggle = rtxOption.textureSetOption->getValue().count(texHash) > 0;
+              rtxOption.bufferToggle = rtxOption.textureSetOption->containsHash(texHash);
               if ((rtxOption.featureFlagMask & textureFeatureFlags) != rtxOption.featureFlagMask) {
                 // option requires a feature, but the texture doesn't have that feature.
                 continue;
               }
               if (IMGUI_ADD_TOOLTIP(ImGui::Checkbox(rtxOption.displayName, &rtxOption.bufferToggle), rtxOption.textureSetOption->getDescription())) {
-                toggleTextureSelection(texHash, rtxOption.uniqueId, rtxOption.textureSetOption->getValue());
+                toggleTextureSelection(texHash, rtxOption.uniqueId, rtxOption.textureSetOption);
               }
             }
             ImGui::EndPopup();
@@ -2211,8 +2210,8 @@ namespace dxvk {
       bool textureHasSelection = false;
 
       if (isListFiltered) {
-        auto& textureSet = listRtxOption.textureSetOption->getValue();
-        textureHasSelection = textureSet.find(texHash) != textureSet.end();
+        const auto& textureSet = listRtxOption.textureSetOption->get();
+        textureHasSelection = listRtxOption.textureSetOption->containsHash(texHash);
 
         if ((listRtxOption.featureFlagMask & texImgui.textureFeatureFlags) != listRtxOption.featureFlagMask) {
           // If the list needs to be filtered by texture feature, skip it for this category.
@@ -2220,8 +2219,7 @@ namespace dxvk {
         }
       } else {
         for (const auto rtxOption : rtxTextureOptions) {
-          auto& textureSet = rtxOption.textureSetOption->getValue();
-          textureHasSelection = textureSet.find(texHash) != textureSet.end();
+          textureHasSelection = rtxOption.textureSetOption->containsHash(texHash);
           if (textureHasSelection) {
             break;
           }
@@ -2306,7 +2304,7 @@ namespace dxvk {
           // show additional info
           std::string rtxTextureSelection;
           for (auto& rtxOption : rtxTextureOptions) {
-            if (rtxOption.textureSetOption->getValue().count(texHash) > 0) {
+            if (rtxOption.textureSetOption->containsHash(texHash)) {
               if (rtxTextureSelection.empty()) {
                 rtxTextureSelection = "\n";
               }
@@ -2451,7 +2449,7 @@ namespace dxvk {
         return HeightLimit;
       }
 
-      const fast_unordered_set* selected = nullptr;
+      const RtxOption<fast_unordered_set>* selected = nullptr;
       if (onlySelected) {
         const auto found = std::find_if(rtxTextureOptions.begin(), rtxTextureOptions.end(),
           [&](const RtxTextureOption& o) {
@@ -2461,14 +2459,14 @@ namespace dxvk {
           assert(0);
           return {};
         }
-        selected = &found->textureSetOption->getValue();
+        selected = found->textureSetOption;
       }
 
       float height = -1;
       uint32_t textureCount = 0;
       for (const auto& [texHash, texImgui] : g_imguiTextureMap) {
         if (selected) {
-          if (selected->find(texHash) == selected->end()) {
+          if (!selected->containsHash(texHash)) {
             continue;
           }
         }
@@ -2537,7 +2535,7 @@ namespace dxvk {
           ImGui::SetTooltipUnformatted(RtxOptions::textureGridThumbnailScale.getDescription());
         }
 
-        RtxOptions::textureGridThumbnailScaleRef() = static_cast<float>(percentage) / 100.f;
+        RtxOptions::textureGridThumbnailScale.set(static_cast<float>(percentage) / 100.f);
       }
 
       ImGui::Checkbox("Split Texture Category List", &showLegacyTextureGuiObject());
@@ -2691,7 +2689,7 @@ namespace dxvk {
           extIdx = std::clamp(bit::tzcnt(RtxOptions::skyProbeSide()), 8u, 13u) - 8;
 
           ImGui::Combo("Sky Probe Extent", &extIdx, exts, IM_ARRAYSIZE(exts));
-          RtxOptions::skyProbeSideRef() = 1 << (extIdx + 8);
+          RtxOptions::skyProbeSide.set(1 << (extIdx + 8));
 
           ImGui::Unindent();
         }
@@ -2790,7 +2788,7 @@ namespace dxvk {
 
     bool vsyncEnabled = RtxOptions::enableVsync() == EnableVsync::On;
     ImGui::Checkbox("Enable V-Sync", &vsyncEnabled);
-    RtxOptions::enableVsyncRef() = vsyncEnabled ? EnableVsync::On : EnableVsync::Off;
+    RtxOptions::enableVsync.set(vsyncEnabled ? EnableVsync::On : EnableVsync::Off);
 
     ImGui::BeginDisabled();
     ImGui::Indent();
@@ -2833,9 +2831,9 @@ namespace dxvk {
 
     // Force Reflex on when using G
     if (supportsDLFG && ctx->isDLFGEnabled()) {
-      RtxOptions::reflexModeRef() = ReflexMode::LowLatency;
+      RtxOptions::reflexMode.set(ReflexMode::LowLatency);
     } else {
-      DxvkDLFG::enableRef() = false;
+      DxvkDLFG::enable.set(false);
     }
   }
 
@@ -3058,7 +3056,7 @@ namespace dxvk {
       RtxOptions::updatePresetFromUpscaler();
 
       if (RtxOptions::upscalerType() == UpscalerType::DLSS && !ctx->getCommonObjects()->metaDLSS().supportsDLSS())
-        RtxOptions::upscalerTypeRef() = UpscalerType::TAAU;
+        RtxOptions::upscalerType.set(UpscalerType::TAAU);
 
       if (RtxOptions::isRayReconstructionEnabled()) {
         dlssProfileCombo.getKey(&RtxOptions::qualityDLSSObject());
@@ -3107,7 +3105,7 @@ namespace dxvk {
         ImGui::Checkbox("Track Particle Object", &RtxOptions::trackParticleObjectsObject());
 
         ImGui::SliderFloat("Resolve Transparency Threshold", &RtxOptions::resolveTransparencyThresholdObject(), 0.0f, 1.0f);
-        RtxOptions::resolveOpaquenessThresholdRef() = std::max(RtxOptions::resolveTransparencyThreshold(), RtxOptions::resolveOpaquenessThreshold());
+        RtxOptions::resolveOpaquenessThreshold.set(std::max(RtxOptions::resolveTransparencyThreshold(), RtxOptions::resolveOpaquenessThreshold()));
         ImGui::SliderFloat("Resolve Opaqueness Threshold", &RtxOptions::resolveOpaquenessThresholdObject(), 0.0f, 1.0f);
 
         ImGui::Unindent();
@@ -3578,18 +3576,18 @@ namespace dxvk {
 
         switch (mode) {
         case TerrainMode::None: {
-          TerrainBaker::enableBakingRef() = false;
-          RtxOptions::terrainAsDecalsEnabledIfNoBakerRef() = false;
+          TerrainBaker::enableBaking.set(false);
+          RtxOptions::terrainAsDecalsEnabledIfNoBaker.set(false);
           break;
         }
         case TerrainMode::TerrainBaker: {
-          TerrainBaker::enableBakingRef() = true;
-          RtxOptions::terrainAsDecalsEnabledIfNoBakerRef() = false;
+          TerrainBaker::enableBaking.set(true);
+          RtxOptions::terrainAsDecalsEnabledIfNoBaker.set(false);
           break;
         }
         case TerrainMode::AsDecals: {
-          TerrainBaker::enableBakingRef() = false;
-          RtxOptions::terrainAsDecalsEnabledIfNoBakerRef() = true;
+          TerrainBaker::enableBaking.set(false);
+          RtxOptions::terrainAsDecalsEnabledIfNoBaker.set(true);
           break;
         }
         default: break;
@@ -3661,8 +3659,8 @@ namespace dxvk {
           ImGui::DragFloat("Noise Scale", &ViewDistanceOptions::noiseScaleObject(), 0.1f, 0.0f, 0.0f, "%.2f", sliderFlags);
 
           // Note: ImGui's limits do not apply for text entry for whatever reason so we need to clamp these options manually to ensure they do not trigger asserts.
-          ViewDistanceOptions::distanceFadeMinRef() = std::min(ViewDistanceOptions::distanceFadeMin(), ViewDistanceOptions::distanceFadeMax());
-          ViewDistanceOptions::distanceFadeMaxRef() = std::max(ViewDistanceOptions::distanceFadeMin(), ViewDistanceOptions::distanceFadeMax());
+          ViewDistanceOptions::distanceFadeMin.set(std::min(ViewDistanceOptions::distanceFadeMin(), ViewDistanceOptions::distanceFadeMax()));
+          ViewDistanceOptions::distanceFadeMax.set(std::max(ViewDistanceOptions::distanceFadeMin(), ViewDistanceOptions::distanceFadeMax()));
         }
       }
 

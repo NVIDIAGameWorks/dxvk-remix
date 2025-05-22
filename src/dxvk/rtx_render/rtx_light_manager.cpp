@@ -78,9 +78,10 @@ namespace dxvk {
   LightManager::LightManager(DxvkDevice* device)
     : CommonDeviceObject(device) {
     // Legacy light translation Options
-    fallbackLightRadianceRef().x = std::max(fallbackLightRadiance().x, 0.0f);
-    fallbackLightRadianceRef().y = std::max(fallbackLightRadiance().y, 0.0f);
-    fallbackLightRadianceRef().z = std::max(fallbackLightRadiance().z, 0.0f);
+    fallbackLightRadiance.set(Vector3(
+      std::max(fallbackLightRadiance().x, 0.0f),
+      std::max(fallbackLightRadiance().y, 0.0f),
+      std::max(fallbackLightRadiance().z, 0.0f)));
     RTX_OPTION_CLAMP_MIN(fallbackLightAngle, 0.0f);
     RTX_OPTION_CLAMP_MIN(fallbackLightRadius, 0.0f);
     RTX_OPTION_CLAMP_MIN(fallbackLightConeAngle, 0.0f);

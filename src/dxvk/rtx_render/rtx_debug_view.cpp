@@ -628,7 +628,7 @@ namespace dxvk {
       m_composite.lastCompositeViewIdx = static_cast<CompositeDebugView>(Composite::compositeViewIdx());
     }
 
-    displayTypeRef() = static_cast<DebugViewDisplayType>(std::min(static_cast<uint32_t>(displayType()), static_cast<uint32_t>(DebugViewDisplayType::Count) - 1));
+    displayType.set(static_cast<DebugViewDisplayType>(std::min(static_cast<uint32_t>(displayType()), static_cast<uint32_t>(DebugViewDisplayType::Count) - 1)));
   
     const uint32_t bufferLength = kMaxFramesInFlight;
 
@@ -814,11 +814,11 @@ namespace dxvk {
           m_accumulation.resetNumAccumulatedFrames();  
         }
 
-        debugViewIdxRef() = m_lastDebugViewIdx;
+        debugViewIdx.set(m_lastDebugViewIdx);
       }
     } else {
-      debugViewIdxRef() = DEBUG_VIEW_DISABLED;
-      Composite::compositeViewIdxRef() = static_cast<uint32_t>(CompositeDebugView::Disabled);
+      debugViewIdx.set(DEBUG_VIEW_DISABLED);
+      Composite::compositeViewIdx.set(static_cast<uint32_t>(CompositeDebugView::Disabled));
       enableCompositeDebugView = false;
     }
 
@@ -826,9 +826,9 @@ namespace dxvk {
       // Note: Write to the last composite debug view index to prevent it from being overridden when disabled and re-enabled.
       compositeDebugViewCombo.getKey(&m_composite.lastCompositeViewIdx);
 
-      Composite::compositeViewIdxRef() = static_cast<uint32_t>(m_composite.lastCompositeViewIdx);
+      Composite::compositeViewIdx.set(static_cast<uint32_t>(m_composite.lastCompositeViewIdx));
     } else {
-      Composite::compositeViewIdxRef() = static_cast<uint32_t>(CompositeDebugView::Disabled);
+      Composite::compositeViewIdx.set(static_cast<uint32_t>(CompositeDebugView::Disabled));
     }
 
     showOutputStatistics();
@@ -869,7 +869,7 @@ namespace dxvk {
 
       if (enableInputQuantization()) {
         ImGui::InputFloat("Inverse Quantization Step Size", &inverseQuantizationStepSizeObject(), 0.1f, 1.0f);
-        ImGui::Text("Effective Quantized Step Size: 1.0 / %f", inverseQuantizationStepSizeObject());
+        ImGui::Text("Effective Quantized Step Size: 1.0 / %f", inverseQuantizationStepSize());
       }
 
       if (displayType() == DebugViewDisplayType::Standard) {
@@ -882,7 +882,7 @@ namespace dxvk {
         ImGui::DragFloat("Scale", &m_scale, 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
         ImGui::InputFloat("Min Value", &minValueObject(), std::max(0.01f, 0.02f * std::abs(minValue())), std::max(0.1f, 0.1f * std::abs(minValue())));
         ImGui::InputFloat("Max Value", &maxValueObject(), std::max(0.01f, 0.02f * std::abs(maxValue())), std::max(0.1f, 0.1f * std::abs(maxValue())));
-        maxValueRef() = std::max(1.00001f * minValue(), maxValue());
+        maxValue.set(std::max(1.00001f * minValue(), maxValue()));
 
         // Color legend
         if (pseudoColorMode() != PseudoColorMode::Disabled) {
@@ -910,7 +910,7 @@ namespace dxvk {
         ImGui::InputInt("Min Value (EV100)", &evMinValueObject());
         ImGui::InputInt("Max Value (EV100)", &evMaxValueObject());
 
-        evMaxValueRef() = std::max(evMaxValue(), evMinValue());
+        evMaxValue.set(std::max(evMaxValue(), evMinValue()));
 
         // Color legend
         {
@@ -1000,7 +1000,7 @@ namespace dxvk {
   }
 
   void DebugView::setDebugViewIndex(uint32_t debugViewIndex) {
-    debugViewIdxRef() = debugViewIndex;
+    debugViewIdx.set(debugViewIndex);
     if (debugViewIndex != DEBUG_VIEW_DISABLED) {
       m_lastDebugViewIdx = debugViewIndex;
     }
@@ -1033,9 +1033,9 @@ namespace dxvk {
 
       if (!debugViewIndices.empty()) {
         uint32_t frameIndex = ctx->getDevice()->getCurrentFrameId();
-        debugViewIdxRef() = debugViewIndices[frameIndex % debugViewIndices.size()];
+        debugViewIdx.set(debugViewIndices[frameIndex % debugViewIndices.size()]);
       } else {
-        debugViewIdxRef() = DEBUG_VIEW_DISABLED;
+        debugViewIdx.set(DEBUG_VIEW_DISABLED);
       }
     }
   }

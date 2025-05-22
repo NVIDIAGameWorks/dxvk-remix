@@ -91,7 +91,7 @@ namespace dxvk {
     static float commonButtonWidth = 0.f;
     if(ImGui::Button("Capture Scene", ImVec2(commonButtonWidth,0.f))) {
       if (this->m_stageNameInputBox.isStageNameValid()) {
-        RtxOptions::captureInstancesRef() = true;
+        RtxOptions::captureInstances.set(true);
         ctx->getCommonObjects()->capturer()->triggerNewCapture();
         this->m_stageNameInputBox.m_isCaptureNameInvalid = false;
       }
@@ -105,7 +105,7 @@ namespace dxvk {
     ImGui::Dummy(ImVec2(nameX + inputX,0.f));
     ImGui::SameLine();
     if(ImGui::Button("Capture Assets Only", ImVec2(commonButtonWidth,0.f))) {
-      RtxOptions::captureInstancesRef() = false;
+      RtxOptions::captureInstances.set(false);
       ctx->getCommonObjects()->capturer()->triggerNewCapture();
     }
     commonButtonWidth = std::max(firstButtonWidth, ImGui::GetItemRectSize().x);
@@ -198,14 +198,14 @@ namespace dxvk {
       m_isCaptureNameInvalid = false;
     }
     if (bufStr.empty()) {
-      RtxOptions::captureInstanceStageNameRef() = timestampReplacementStr + lss::ext::usd;
+      RtxOptions::captureInstanceStageName.set(timestampReplacementStr + lss::ext::usd);
     } else {    
       const auto usdExtPos =
         bufStr.find(lss::ext::usd, bufStr.length() - lss::ext::usda.length() - 1);
       const std::string ext = (usdExtPos == std::string::npos) ? lss::ext::usd : "";
-      RtxOptions::captureInstanceStageNameRef() = bufStr + ext;
+      RtxOptions::captureInstanceStageName.set(bufStr + ext);
     }
-    m_timestampPos = RtxOptions::captureInstanceStageNameRef().find(timestampReplacementStr);
+    m_timestampPos = RtxOptions::captureInstanceStageName().find(timestampReplacementStr);
   }
   
   void ImGuiCapture::StageNameInputBox::replaceTimestampStr() {
@@ -225,7 +225,7 @@ namespace dxvk {
     stageNameSS << RtxOptions::captureInstanceStageName().substr(0, m_timestampPos);
     stageNameSS << putTime;
     stageNameSS << RtxOptions::captureInstanceStageName().substr(endTimestampPos);
-    RtxOptions::captureInstanceStageNameRef() = stageNameSS.str();
+    RtxOptions::captureInstanceStageName.set(stageNameSS.str());
   }
   
   void ImGuiCapture::StageNameInputBox::show(const Rc<DxvkContext>& ctx) {

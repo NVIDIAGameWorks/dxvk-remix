@@ -108,7 +108,7 @@ struct LegacyMaterialData;
 class GameCapturer : public RcObject
 {
 public:
-  RW_RTX_OPTION("rtx.capture", bool, correctBakedTransforms, false,
+  RTX_OPTION("rtx.capture", bool, correctBakedTransforms, false,
                 "Some games bake world transforms into mesh vertices. If individually captured\n"
                 "meshes appear to be way off in the middle of nowhere OR instanced meshes appear\n"
                 "to all have identity xform matrices, enabling will attempt to correct this and\n"

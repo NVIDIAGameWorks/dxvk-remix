@@ -22,7 +22,12 @@ namespace ImGui {
   }
 
   bool Checkbox(const char* label, dxvk::RtxOption<bool>* rtxOption) {
-    return IMGUI_ADD_TOOLTIP(Checkbox(label, &rtxOption->getValue()), rtxOption->getDescription());
+    bool value = rtxOption->get();
+    bool changed = IMGUI_ADD_TOOLTIP(Checkbox(label, &value), rtxOption->getDescription());
+    if (changed) {
+      rtxOption->set(value);
+    }
+    return changed;
   }
 
   static bool Items_PairGetter(void* data, int idx, const char** out_text, const char** out_tooltip) {

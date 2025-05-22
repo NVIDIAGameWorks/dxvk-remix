@@ -82,7 +82,7 @@ namespace dxvk {
     RTX_OPTION("rtx.rayreconstruction", bool, enableDLSSRRSurfaceReplacement, true, "Use DLSS-RR surface replacement. Translucent surfaces with significant refraction are excluded from surface replacement and its surface motion vector will be used.\n");
     RTX_OPTION("rtx.rayreconstruction", bool, preprocessSecondarySignal, true, "Denoise secondary signal before passing to DLSS-RR. This option improves reflection on translucent objects.\n");
     RTX_OPTION("rtx.rayreconstruction", bool, compositeVolumetricLight, true, "Composite volumetric light and then input the result to DLSS-RR, otherwise volumetric light is in a separate layer. Disabling it may introduce flickering artifacts.\n");
-    RW_RTX_OPTION_ENV("rtx.rayreconstruction", RayReconstructionModel, model, RayReconstructionModel::Transformer, "RTX_RAY_RECONSTRUCTION_MODEL", "Ray reconstruction model to use. 0: CNN, 1: Transformer (higher quality).");
+    RTX_OPTION_ENV("rtx.rayreconstruction", RayReconstructionModel, model, RayReconstructionModel::Transformer, "RTX_RAY_RECONSTRUCTION_MODEL", "Ray reconstruction model to use. 0: CNN, 1: Transformer (higher quality).");
     RTX_OPTION("rtx.rayreconstruction", bool, enableDisocclusionMaskBlur, false, "Enables blurring of disocclusion mask to suppress instabilities due to abrupt mask value changes.");
     RTX_OPTION("rtx.rayreconstruction", uint, disocclusionMaskBlurRadius, 32, "Pixel radius to use for blurring disocclusion mask.");
     RTX_OPTION("rtx.rayreconstruction", float, disocclusionMaskBlurNormalizedGaussianWeightSigma, 0.5f,
