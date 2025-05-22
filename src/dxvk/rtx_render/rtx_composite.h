@@ -97,7 +97,7 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, compositeSecondaryCombinedDiffuse, true, "Enables combined direct and indirect lightning's diffuse signal for secondary surfaces in the final composite.");
     RTX_OPTION("rtx", bool, compositeSecondaryCombinedSpecular, true, "Enables combined direct and indirect lightning's specular signal for secondary surfaces in the final composite.");
 
-    RW_RTX_OPTION("rtx", bool, enableStochasticAlphaBlend, true, "Use stochastic alpha blend.");
+    RTX_OPTION("rtx", bool, enableStochasticAlphaBlend, true, "Use stochastic alpha blend.");
     RTX_OPTION("rtx", float, stochasticAlphaBlendOpacityThreshold, 0.95f, "Max opacity to use stochastic alpha blend.");
     RTX_OPTION("rtx", bool, stochasticAlphaBlendUseNeighborSearch, true, "Get radiance from neighbor opaque pixels.");
     RTX_OPTION("rtx", bool, stochasticAlphaBlendSearchTheSameObject, true, "Only use radiance samples from the same object.");
@@ -113,8 +113,8 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, stochasticAlphaBlendEnableFilter, true, "Filter samples to suppress noise.");
     RTX_OPTION("rtx", bool, stochasticAlphaBlendDiscardBlackPixel, false, "Discard black pixels.");
 
-    RW_RTX_OPTION("rtx", bool, usePostFilter, true, "Uses post filter to remove fireflies in the denoised result.");
-    RW_RTX_OPTION("rtx", float, postFilterThreshold, 3.0f, "Clamps a pixel when its luminance exceeds x times of the average.");
+    RTX_OPTION("rtx", bool, usePostFilter, true, "Uses post filter to remove fireflies in the denoised result.");
+    RTX_OPTION("rtx", float, postFilterThreshold, 3.0f, "Clamps a pixel when its luminance exceeds x times of the average.");
 
     RTX_OPTION("rtx", bool,  enableDLSSEnhancement, true, "Enhances lighting details when DLSS is on.");
     RTX_OPTION("rtx", float, dlssEnhancementDirectLightPower, 0.7f, "The overall strength of direct lighting enhancement.");

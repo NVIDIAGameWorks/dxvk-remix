@@ -287,9 +287,9 @@ namespace dxvk {
     // returns the currently configured number of interpolated frames
     uint32_t getInterpolatedFrameCount();
 
-    RW_RTX_OPTION_ENV("rtx.dlfg", bool, enable, true, "RTX_DLFG_ENABLE", "Enables DLSS 3.0 frame generation which generates interpolated frames to increase framerate at the cost of slightly more latency."); // note: always use DxvkDevice::isDLFGEnabled() to check if DLFG is enabled, not this option directly
-    RW_RTX_OPTION("rtx.dlfg", uint32_t, maxInterpolatedFrames, 2, "For DLSS 4.0 frame generation, controls the number of interpolated frames for each rendered frame. Ignored for DLSS 3.0.");
-    RW_RTX_OPTION("rtx.dlfg", bool, enablePresentMetering, true, "Use hardware present metering for DLSS 4.0 frame generation instead of CPU pacing.");
+    RTX_OPTION_ENV("rtx.dlfg", bool, enable, true, "RTX_DLFG_ENABLE", "Enables DLSS 3.0 frame generation which generates interpolated frames to increase framerate at the cost of slightly more latency."); // note: always use DxvkDevice::isDLFGEnabled() to check if DLFG is enabled, not this option directly
+    RTX_OPTION("rtx.dlfg", uint32_t, maxInterpolatedFrames, 2, "For DLSS 4.0 frame generation, controls the number of interpolated frames for each rendered frame. Ignored for DLSS 3.0.");
+    RTX_OPTION("rtx.dlfg", bool, enablePresentMetering, true, "Use hardware present metering for DLSS 4.0 frame generation instead of CPU pacing.");
 
   private:
     std::unique_ptr<NGXDLFGContext> m_dlfgContext = nullptr;

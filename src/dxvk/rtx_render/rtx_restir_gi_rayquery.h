@@ -107,7 +107,7 @@ namespace dxvk {
     RTX_OPTION("rtx.restirGI", float, virtualSampleMaxDistanceRatio, 0.0, "Clamp max virtual distance, measured by the proportion of distance to camera. 0 disables clamping.");
 
     RTX_OPTION("rtx.restirGI", bool, useTemporalBiasCorrection, true, "Corrects bias caused by temporal reprojection.");
-    RW_RTX_OPTION("rtx.restirGI", ReSTIRGIBiasCorrection, biasCorrectionMode, ReSTIRGIBiasCorrection::PairwiseRaytrace, "Bias correction mode to combine central with its neighbors in spatial reuse.");
+    RTX_OPTION("rtx.restirGI", ReSTIRGIBiasCorrection, biasCorrectionMode, ReSTIRGIBiasCorrection::PairwiseRaytrace, "Bias correction mode to combine central with its neighbors in spatial reuse.");
     RTX_OPTION("rtx.restirGI", float, pairwiseMISCentralWeight, 0.1, "The importance of central sample in pairwise bias correction modes.");
     
     RTX_OPTION("rtx.restirGI", bool, useDemodulatedTargetFunction, false, "Demodulates target function. This will improve the result in non-pairwise modes.");
@@ -120,7 +120,7 @@ namespace dxvk {
     RTX_OPTION("rtx.restirGI", bool, useDiscardEnlargedPixels, true, "Discards enlarged samples when the camera is moving towards an object.");
     RTX_OPTION("rtx.restirGI", float, historyDiscardStrength, 0.0, "The sensitivity of discarding history. Higher values discard more history.");
     RTX_OPTION("rtx.restirGI", bool, useTemporalJacobian, true, "Calculates Jacobian determinant in temporal reprojection.");
-    RW_RTX_OPTION("rtx.restirGI", bool, useReflectionReprojection, true, "Uses reflection reprojection for reflective objects to achieve stable result when the camera is moving.");
+    RTX_OPTION("rtx.restirGI", bool, useReflectionReprojection, true, "Uses reflection reprojection for reflective objects to achieve stable result when the camera is moving.");
     RTX_OPTION("rtx.restirGI", float, reflectionMinParallax, 3.0, "When the parallax between normal and reflection reprojection is greater than this threshold, randomly choose one reprojected position and reuse the sample on it. Otherwise, get a sample between the two positions.");
     RTX_OPTION("rtx.restirGI", bool, useBoilingFilter, true, "Enables boiling filter to suppress boiling artifacts.");
     RTX_OPTION("rtx.restirGI", float, boilingFilterMinThreshold, 10.0, "Boiling filter threshold when surface normal is perpendicular to view direction.");

@@ -271,7 +271,7 @@ namespace dxvk {
 
       } else if (debugView.getDebugViewIndex() != DEBUG_VIEW_NRC_RESOLVE) {
         // Disable debug resolve mode when debug view selection changes to another mode
-        NrcOptions::enableDebugResolveModeRef() = false;
+        NrcOptions::enableDebugResolveMode.set(false);
 
         // Update previous state too so that it does not trigger any action next frame
         m_prevEnableDebugResolveMode = NrcOptions::enableDebugResolveMode();
@@ -314,39 +314,39 @@ namespace dxvk {
   void NeuralRadianceCache::applyQualityPreset() {
     if (NrcOptions::qualityPreset() == QualityPreset::Ultra) {
       Logger::info("[RTX Neural Radiance Cache] Selected Ultra preset mode.");
-      NrcOptions::terminationHeuristicThresholdRef() = 0.1f;
-      NrcOptions::smallestResolvableFeatureSizeMetersRef() = 0.01f;
-      NrcOptions::targetNumTrainingIterationsRef() = 4;
+      NrcOptions::terminationHeuristicThreshold.set(0.1f);
+      NrcOptions::smallestResolvableFeatureSizeMeters.set(0.01f);
+      NrcOptions::targetNumTrainingIterations.set(4);
       // 9 and higher resulted in no scene illumination loss in Portal RTX
-      NrcOptions::trainingMaxPathBouncesRef() = 9;
+      NrcOptions::trainingMaxPathBounces.set(9);
 
     } else if (NrcOptions::qualityPreset() == QualityPreset::High) {
       Logger::info("[RTX Neural Radiance Cache] Selected High preset mode.");
-      NrcOptions::terminationHeuristicThresholdRef() = 0.03f;
-      NrcOptions::smallestResolvableFeatureSizeMetersRef() = 0.04f;
-      NrcOptions::targetNumTrainingIterationsRef() = 3;
+      NrcOptions::terminationHeuristicThreshold.set(0.03f);
+      NrcOptions::smallestResolvableFeatureSizeMeters.set(0.04f);
+      NrcOptions::targetNumTrainingIterations.set(3);
       // 7 results in tiny scene illumination decrease in comparison to 9
-      NrcOptions::trainingMaxPathBouncesRef() = 7;
+      NrcOptions::trainingMaxPathBounces.set(7);
 
     } else if (NrcOptions::qualityPreset() == QualityPreset::Medium) {
       Logger::info("[RTX Neural Radiance Cache] Selected Medium preset mode.");
-      NrcOptions::terminationHeuristicThresholdRef() = 0.001f;
+      NrcOptions::terminationHeuristicThreshold.set(0.001f);
 
       // Using a higher cache resolution to speed up NRC's Query and Train pass at a cost of some IQ fidelity. 
       // 0.01 -> 0.06 resolution results in in 0.2ms cost reduction
       // Values above 6cm start to produce considerably more pronounced IQ differences in specular reflections in Portal.
-      NrcOptions::smallestResolvableFeatureSizeMetersRef() = 0.06f;
+      NrcOptions::smallestResolvableFeatureSizeMeters.set(0.06f);
 
       // Using only 2 iterations vs default 4 can result in reduced responsiveness, but it saves 0.4ms from NRC and PT passes
-      NrcOptions::targetNumTrainingIterationsRef() = 2;
+      NrcOptions::targetNumTrainingIterations.set(2);
 
       // Longer training paths require more memory (~5-8+ MB per bounce) and have a slight performance impact (particularly when SER is disabled).
-      NrcOptions::trainingMaxPathBouncesRef() = 6;
+      NrcOptions::trainingMaxPathBounces.set(6);
     }
 
-    NrcOptions::trainingMaxPathBouncesRef() = std::max<uint8_t>(
+    NrcOptions::trainingMaxPathBounces.set(std::max<uint8_t>(
       NrcOptions::trainingMaxPathBounces() + NrcOptions::trainingMaxPathBouncesBiasInQualityPresets(),
-      0);
+      0));
   }
 
   uint32_t NeuralRadianceCache::calculateTargetNumTrainingRecords() const {
@@ -527,8 +527,8 @@ namespace dxvk {
       || frameBeginCtx.downscaledExtent.width != m_nrcCtxSettings->frameDimensions.x
       || frameBeginCtx.downscaledExtent.height != m_nrcCtxSettings->frameDimensions.y;
     
-    NrcCtxOptions::enableDebugBuffersRef() = m_delayedEnableDebugBuffers;
-    NrcCtxOptions::enableCustomNetworkConfigRef() = m_delayedEnableCustomNetworkConfig;
+    NrcCtxOptions::enableDebugBuffers.set(m_delayedEnableDebugBuffers);
+    NrcCtxOptions::enableCustomNetworkConfig.set(m_delayedEnableCustomNetworkConfig);
 
     if (reinitializeNrcContext) {
       m_nrcCtx = new NrcContext(*ctx->getDevice());
@@ -559,7 +559,7 @@ namespace dxvk {
       // Note: it would be preferable to fallback to ReSTIRGI, but that would require delaying that change to the beginning of the next frame
       // to ensure consistent mode state in the frame. That is something to consider in the future. For now this will do for the sake of simpler logic
       Logger::warn(str::format("[RTX Neural Radiance Cache] Neural Radiance Cache per frame setup failed. Switching to importance sampled indirect illumination mode."));
-      RtxOptions::integrateIndirectModeRef() = IntegrateIndirectMode::ImportanceSampled;
+      RtxOptions::integrateIndirectMode.set(IntegrateIndirectMode::ImportanceSampled);
       
       return;
     }
@@ -720,13 +720,13 @@ namespace dxvk {
 
     if (!checkIsSupported(ctx->getDevice().ptr())) {
       ONCE(Logger::warn("[RTX Neural Radiance Cache] Neural Radiance Cache is not supported. Switching to importance sampled indirect illumination mode."));
-      RtxOptions::integrateIndirectModeRef() = IntegrateIndirectMode::ImportanceSampled;
+      RtxOptions::integrateIndirectMode.set(IntegrateIndirectMode::ImportanceSampled);
       return false;
     }
 
     if (!initialize(*ctx->getDevice())) {
       Logger::err("[RTX Neural Radiance Cache] Neural Radiance Cache failed to get initialized. Switching to importance sampled indirect illumination mode.");
-      RtxOptions::integrateIndirectModeRef() = IntegrateIndirectMode::ImportanceSampled;
+      RtxOptions::integrateIndirectMode.set(IntegrateIndirectMode::ImportanceSampled);
       return false;
     }
 
@@ -920,7 +920,7 @@ namespace dxvk {
 
   void NeuralRadianceCache::setQualityPreset(QualityPreset nrcQualityPreset) {
     if (nrcQualityPreset != NrcOptions::qualityPreset()) {
-      NrcOptions::qualityPresetRef() = nrcQualityPreset;
+      NrcOptions::qualityPreset.set(nrcQualityPreset);
       applyQualityPreset();
     }
   }
@@ -1099,7 +1099,7 @@ namespace dxvk {
     }
 
     m_resetHistory = false;
-    NrcOptions::resetHistoryRef() = false;
+    NrcOptions::resetHistory.set(false);
 
     m_nrcCtx->endFrame();
   }

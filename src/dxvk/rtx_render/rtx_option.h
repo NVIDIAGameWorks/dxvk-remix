@@ -94,6 +94,8 @@ namespace dxvk {
       type(optionType), 
       flags(optionFlags),
       description(optionDescription) { }
+    
+    ~RtxOptionImpl();
 
     std::string getFullName() const {
       return getFullName(category, name);
@@ -133,60 +135,16 @@ namespace dxvk {
   template <typename T>
   class RtxOption {
   public:
-    // Constructor for basic types like int, float
-    template <typename BasicType, std::enable_if_t<std::is_pod_v<BasicType>, bool> = true>
-    RtxOption(const char* category, const char* name, const char* environment, BasicType value, uint32_t flags = 0, const char* description = "") {
-      if (allocateMemory(category, name, environment, flags, description)) {
-        for (int i = 0; i < (int)RtxOptionImpl::ValueType::Count; i++) {
-          pImpl->valueList[i].value = 0;
-          *reinterpret_cast<BasicType*>(&pImpl->valueList[i].value) = value;
-        }
-      }
-    }
-
-    // Constructor for structs and classes
-    template <typename ClassType, std::enable_if_t<!std::is_pod_v<ClassType>, bool> = true>
-    RtxOption(const char* category, const char* name, const char* environment, const ClassType& value, uint32_t flags = 0, const char* description = "") {
-      if (allocateMemory(category, name, environment, flags, description)) {
-        for (int i = 0; i < (int)RtxOptionImpl::ValueType::Count; i++) {
-          pImpl->valueList[i].pointer = new ClassType(value);
-        }
-      }
-    }
-
-    ~RtxOption() {
-      for (int i = 0; i < (int)RtxOptionImpl::ValueType::Count; i++) {
-        GenericValue& value = pImpl->valueList[i];
-
-        switch (pImpl->type) {
-        case OptionType::HashSet:
-          delete value.hashSet;
-          break;
-        case OptionType::HashVector:
-          delete value.hashVector;
-          break;
-        case OptionType::IntVector:
-          delete value.intVector;
-          break;
-        case OptionType::Vector2:
-          delete value.v2;
-          break;
-        case OptionType::Vector3:
-          delete value.v3;
-          break;
-        case OptionType::Vector2i:
-          delete value.v2i;
-          break;
-        case OptionType::String:
-          delete value.string;
-          break;
-        default:
-          break;
-        }
-      }
+    // Factory function.  Should never be called directly.  Use RTX_OPTION_FULL instead.
+    static RtxOption<T> privateMacroFactory(const char* category, const char* name, const char* environment, const T& value, uint32_t flags = 0, const char* description = "") {
+      return RtxOption<T>(category, name, environment, value, flags, description);
     }
 
     const T& operator()() const {
+      return getValue();
+    }
+
+    const T& get() const {
       return getValue();
     }
 
@@ -194,14 +152,19 @@ namespace dxvk {
       setValue(v);
     }
 
-    T& getValue() const {
-      assert(RtxOptionImpl::s_isInitialized && "Trying to access an RtxOption before the config files have been loaded."); 
-      return *getValuePtr<T>(RtxOptionImpl::ValueType::Value);
+    template<typename = std::enable_if_t<std::is_same_v<T, fast_unordered_set>>>
+    void addHash(const XXH64_hash_t& hash) {
+      getValue().insert(hash);
     }
 
-    void setValue(const T& v) const {
-      assert(RtxOptionImpl::s_isInitialized && "Trying to access an RtxOption before the config files have been loaded."); 
-      *getValuePtr<T>(RtxOptionImpl::ValueType::Value) = v;
+    template<typename = std::enable_if_t<std::is_same_v<T, fast_unordered_set>>>
+    void removeHash(const XXH64_hash_t& hash) {
+      getValue().erase(hash);
+    }
+
+    template<typename = std::enable_if_t<std::is_same_v<T, fast_unordered_set>>>
+    bool containsHash(const XXH64_hash_t& hash) const {
+      return getValue().count(hash) > 0;
     }
 
     T& getDefaultValue() const {
@@ -212,7 +175,7 @@ namespace dxvk {
       *getValuePtr<T>(RtxOptionImpl::ValueType::DefaultValue) = v;
     }
 
-    void resetToDefault() const {
+    void resetToDefault() {
       setValue(getDefaultValue());
     }
 
@@ -223,7 +186,7 @@ namespace dxvk {
       return pImpl->description;
     }
 
-    OptionType getOptionType() {
+    OptionType getOptionType() const {
       if constexpr (std::is_same_v<T, bool>) return OptionType::Bool;
       if constexpr (std::is_same_v<T, int8_t> || std::is_same_v<T, int16_t> || std::is_same_v<T, int32_t> ||
                     std::is_same_v<T, uint8_t> || std::is_same_v<T, uint16_t> || std::is_same_v<T, uint32_t> ||
@@ -271,6 +234,49 @@ namespace dxvk {
     }
 
   private:
+    // Prevent `new RtxOption` from being used.  Use the RTX_OPTION macro to create RtxOptions.
+    static void* operator new(size_t size) = delete;
+    static void operator delete(void* ptr) = delete;
+
+    // Prevent `new RtxOption[N]` from being used.  Use the RTX_OPTION macro to create RtxOptions.
+    static void* operator new[](size_t size) = delete;
+    static void operator delete[](void* ptr) = delete;
+
+    // Delete copy constructor and assignment operator to prevent accidental copying of RtxOption objects
+    RtxOption(const RtxOption&) = delete;
+    RtxOption& operator=(const RtxOption&) = delete;
+
+    // Constructor for basic types like int, float
+    template <typename BasicType, std::enable_if_t<std::is_pod_v<BasicType>, bool> = true>
+    RtxOption(const char* category, const char* name, const char* environment, BasicType value, uint32_t flags = 0, const char* description = "") {
+      if (allocateMemory(category, name, environment, flags, description)) {
+        for (int i = 0; i < (int)RtxOptionImpl::ValueType::Count; i++) {
+          pImpl->valueList[i].value = 0;
+          *reinterpret_cast<BasicType*>(&pImpl->valueList[i].value) = value;
+        }
+      }
+    }
+
+    // Constructor for structs and classes
+    template <typename ClassType, std::enable_if_t<!std::is_pod_v<ClassType>, bool> = true>
+    RtxOption(const char* category, const char* name, const char* environment, const ClassType& value, uint32_t flags = 0, const char* description = "") {
+      if (allocateMemory(category, name, environment, flags, description)) {
+        for (int i = 0; i < (int)RtxOptionImpl::ValueType::Count; i++) {
+          pImpl->valueList[i].pointer = new ClassType(value);
+        }
+      }
+    }
+
+    T& getValue() const {
+      assert(RtxOptionImpl::s_isInitialized && "Trying to access an RtxOption before the config files have been loaded."); 
+      return *getValuePtr<T>(RtxOptionImpl::ValueType::Value);
+    }
+
+    void setValue(const T& v) {
+      assert(RtxOptionImpl::s_isInitialized && "Trying to access an RtxOption before the config files have been loaded."); 
+      *getValuePtr<T>(RtxOptionImpl::ValueType::Value) = v;
+    }
+
     bool allocateMemory(const char* category, const char* name, const char* environment, uint32_t flags, const char* description) {
       const std::string fullName = RtxOptionImpl::getFullName(category, name);
       const XXH64_hash_t optionHash = StringToXXH64(fullName, 0);
@@ -325,27 +331,15 @@ namespace dxvk {
 
 // The RTX_OPTION* macros provide a convenient way to declare a serializable option
 #define RTX_OPTION_FULL(category, type, name, value, environment, flags, description) \
-  private: inline static RtxOption<type> m_##name = RtxOption<type>(category, #name, environment, type(value), static_cast<uint32_t>(flags), description); \
-  public: inline static const RtxOption<type>& name = m_##name; \
-  private: static type& name##Ref() { return m_##name.getValue(); } \
-  public: static RtxOption<type>& name##Object() { return m_##name; }
-
-#define RW_RTX_OPTION_FULL(category, type, name, value, environment, flags, description) \
-  public: inline static RtxOption<type> name = RtxOption<type>(category, #name, environment, type(value), static_cast<uint32_t>(flags), description); \
-  public: static RtxOption<type>& name##Object() { return name; } \
-  public: static type& name##Ref() { return name.getValue(); }
+  public: inline static RtxOption<type> name = RtxOption<type>::privateMacroFactory(category, #name, environment, type(value), static_cast<uint32_t>(flags), description); \
+  public: static RtxOption<type>& name##Object() { return name; }
 
 #define RTX_OPTION_ENV(category, type, name, value, environment, description) RTX_OPTION_FULL(category, type, name, value, environment, 0, description)
 #define RTX_OPTION_FLAG(category, type, name, value, flags, description) RTX_OPTION_FULL(category, type, name, value, "", static_cast<uint32_t>(flags), description)
 #define RTX_OPTION_FLAG_ENV(category, type, name, value, flags, environment, description) RTX_OPTION_FULL(category, type, name, value, environment, static_cast<uint32_t>(flags), description)
 #define RTX_OPTION(category, type, name, value, description) RTX_OPTION_FULL(category, type, name, value, "", 0, description)
 
-#define RW_RTX_OPTION_ENV(category, type, name, value, environment, description) RW_RTX_OPTION_FULL(category, type, name, value, environment, 0, description)
-#define RW_RTX_OPTION_FLAG(category, type, name, value, flags, description) RW_RTX_OPTION_FULL(category, type, name, value, "", static_cast<uint32_t>(flags), description)
-#define RW_RTX_OPTION_FLAG_ENV(category, type, name, value, flags, environment, description) RW_RTX_OPTION_FULL(category, type, name, value, environment, static_cast<uint32_t>(flags), description)
-#define RW_RTX_OPTION(category, type, name, value, description) RW_RTX_OPTION_FULL(category, type, name, value, "", 0, description)
-
-#define RTX_OPTION_CLAMP(name, minValue, maxValue) name##Object().setValue(std::clamp(name(), minValue, maxValue));
-#define RTX_OPTION_CLAMP_MAX(name, maxValue) name##Object().setValue(std::min(name(), maxValue));
-#define RTX_OPTION_CLAMP_MIN(name, minValue) name##Object().setValue(std::max(name(), minValue));
+#define RTX_OPTION_CLAMP(name, minValue, maxValue) name##Object().set(std::clamp(name(), minValue, maxValue));
+#define RTX_OPTION_CLAMP_MAX(name, maxValue) name##Object().set(std::min(name(), maxValue));
+#define RTX_OPTION_CLAMP_MIN(name, minValue) name##Object().set(std::max(name(), minValue));
 }

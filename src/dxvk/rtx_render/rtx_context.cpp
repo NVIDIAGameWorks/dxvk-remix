@@ -474,11 +474,11 @@ namespace dxvk {
     }
 
     if (RtxOptions::upscalerType() == UpscalerType::DLSS && !common->metaDLSS().supportsDLSS()) {
-      RtxOptions::upscalerTypeRef() = UpscalerType::TAAU;
+      RtxOptions::upscalerType.set(UpscalerType::TAAU);
     }
 
     if (DxvkDLFG::enable() && !common->metaDLFG().supportsDLFG()) {
-      DxvkDLFG::enableRef() = false;
+      DxvkDLFG::enable.set(false);
     }
     
 #ifdef REMIX_DEVELOPMENT
@@ -1352,7 +1352,7 @@ namespace dxvk {
 
       // Fallback to ReSTIRGI
       Logger::warn(str::format("[RTX] Neural Radiance Cache is not supported. Switching indirect illumination mode to ReSTIR GI."));
-      RtxOptions::integrateIndirectModeRef() = IntegrateIndirectMode::ReSTIRGI;
+      RtxOptions::integrateIndirectMode.set(IntegrateIndirectMode::ReSTIRGI);
     }
   }
 
@@ -2003,7 +2003,7 @@ namespace dxvk {
     }
 
     // force vsync off if DLFG is enabled, as we don't properly support FG + vsync
-    RtxOptions::enableVsyncRef() = EnableVsync::Off;
+    RtxOptions::enableVsync.set(EnableVsync::Off);
 
     Resources::RaytracingOutput& rtOutput = getResourceManager().getRaytracingOutput();
 

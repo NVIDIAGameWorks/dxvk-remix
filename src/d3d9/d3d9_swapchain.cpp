@@ -333,7 +333,7 @@ namespace dxvk {
     // NV-DXVK start: DLFG integration
     if (RtxOptions::enableVsync() == EnableVsync::WaitingForImplicitSwapchain) {
       // save the vsync state when the first swapchain is created, to act as the default
-      RtxOptions::enableVsyncRef() = m_presentParams.PresentationInterval ? EnableVsync::On : EnableVsync::Off;
+      RtxOptions::enableVsync.set(m_presentParams.PresentationInterval ? EnableVsync::On : EnableVsync::Off);
     }
     // NV-DXVK end
 

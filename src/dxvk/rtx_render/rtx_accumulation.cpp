@@ -129,7 +129,7 @@ namespace dxvk {
       }
 
       ImGui::InputInt("Number of Frames To Accumulate", &numFramesToAccumulate);
-      numFramesToAccumulate.getValue() = std::max(numFramesToAccumulate.getValue(), 1u);
+      numFramesToAccumulate.set(std::max(numFramesToAccumulate(), 1u));
 
       // Reset accumulation if the cap gets lowered and below the current count
       if (m_prevNumFramesToAccumulate > numFramesToAccumulate() &&
@@ -142,7 +142,7 @@ namespace dxvk {
       // since renderer will always show a generated image
       const uint32_t numFramesAccumulated = std::max(1u, m_numAccumulatedFrames);
 
-      const uint32_t maxNumFramesToAccumulate = std::max(1u, numFramesToAccumulate.getValue());
+      const uint32_t maxNumFramesToAccumulate = std::max(1u, numFramesToAccumulate());
       const float accumulatedPercentage = numFramesAccumulated / (0.01f * maxNumFramesToAccumulate);
       ImGui::Text("   Accumulated: %u (%.2f%%)", numFramesAccumulated, accumulatedPercentage);
 

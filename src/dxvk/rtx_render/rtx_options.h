@@ -165,64 +165,64 @@ namespace dxvk {
     friend class RtxInitializer;
     friend class RtxComposite;
 
-    RW_RTX_OPTION("rtx", fast_unordered_set, lightmapTextures, {},
+    RTX_OPTION("rtx", fast_unordered_set, lightmapTextures, {},
                   "Textures used for lightmapping (baked static lighting on surfaces) in older games.\n"
                   "These textures will be ignored when attempting to determine the desired textures from a draw to use for ray tracing.");
-    RW_RTX_OPTION("rtx", fast_unordered_set, skyBoxTextures, {},
+    RTX_OPTION("rtx", fast_unordered_set, skyBoxTextures, {},
                   "Textures on draw calls used for the sky or are otherwise intended to be very far away from the camera at all times (no parallax).\n"
                   "Any draw calls using a texture in this list will be treated as sky and rendered as such in a manner different from typical geometry.");    
-    RW_RTX_OPTION("rtx", fast_unordered_set, skyBoxGeometries, {},
+    RTX_OPTION("rtx", fast_unordered_set, skyBoxGeometries, {},
                   "Geometries from draw calls used for the sky or are otherwise intended to be very far away from the camera at all times (no parallax).\n"
                   "Any draw calls using a geometry hash in this list will be treated as sky and rendered as such in a manner different from typical geometry.\n"
                   "The geometry hash being used for sky detection is based off of the asset hash rule, see: \"rtx.geometryAssetHashRuleString\".");
-    RW_RTX_OPTION("rtx", fast_unordered_set, ignoreTextures, {},
+    RTX_OPTION("rtx", fast_unordered_set, ignoreTextures, {},
                   "Textures on draw calls that should be ignored.\n"
                   "Any draw call using an ignore texture will be skipped and not ray traced, useful for removing undesirable rasterized effects or geometry not suitable for ray tracing.");
-    RW_RTX_OPTION("rtx", fast_unordered_set, ignoreLights, {},
+    RTX_OPTION("rtx", fast_unordered_set, ignoreLights, {},
                   "Lights that should be ignored.\nAny matching light will be skipped and not added to be ray traced.");
-    RW_RTX_OPTION("rtx", fast_unordered_set, uiTextures, {},
+    RTX_OPTION("rtx", fast_unordered_set, uiTextures, {},
                   "Textures on draw calls that should be treated as screenspace UI elements.\n"
                   "All exclusively UI-related textures should be classified this way and doing so allows the UI to be rasterized on top of the ray traced scene like usual.\n"
                   "Note that currently the first UI texture encountered triggers RTX injection (though this may change in the future as this does cause issues with games that draw UI mid-frame).");
-    RW_RTX_OPTION("rtx", fast_unordered_set, worldSpaceUiTextures, {},
+    RTX_OPTION("rtx", fast_unordered_set, worldSpaceUiTextures, {},
                   "Textures on draw calls that should be treated as worldspace UI elements.\n"
                   "Unlike typical UI textures this option is useful for improved rendering of UI elements which appear as part of the scene (moving around in 3D space rather than as a screenspace element).");
-    RW_RTX_OPTION("rtx", fast_unordered_set, worldSpaceUiBackgroundTextures, {}, 
+    RTX_OPTION("rtx", fast_unordered_set, worldSpaceUiBackgroundTextures, {}, 
                   "Hack/workaround option for dynamic world space UI textures with a coplanar background.\n"
                   "Apply to backgrounds if the foreground material is a dynamic world texture rendered in UI that is unpredictable and rapidly changing.\n"
                   "This offsets the background texture backwards.");
-    RW_RTX_OPTION("rtx", fast_unordered_set, hideInstanceTextures, {},
+    RTX_OPTION("rtx", fast_unordered_set, hideInstanceTextures, {},
                   "Textures on draw calls that should be hidden from rendering, but not totally ignored.\n"
                   "This is similar to rtx.ignoreTextures but instead of completely ignoring such draw calls they are only hidden from rendering, allowing for the hidden objects to still appear in captures.\n"
                   "As such, this is mostly only a development tool to hide objects during development until they are properly replaced, otherwise the objects should be ignored with rtx.ignoreTextures instead for better performance.");
-    RW_RTX_OPTION("rtx", fast_unordered_set, playerModelTextures, {}, "");
-    RW_RTX_OPTION("rtx", fast_unordered_set, playerModelBodyTextures, {}, "");
-    RW_RTX_OPTION("rtx", fast_unordered_set, lightConverter, {}, "");
-    RW_RTX_OPTION("rtx", fast_unordered_set, particleTextures, {},
+    RTX_OPTION("rtx", fast_unordered_set, playerModelTextures, {}, "");
+    RTX_OPTION("rtx", fast_unordered_set, playerModelBodyTextures, {}, "");
+    RTX_OPTION("rtx", fast_unordered_set, lightConverter, {}, "");
+    RTX_OPTION("rtx", fast_unordered_set, particleTextures, {},
                   "Textures on draw calls that should be treated as particles.\n"
                   "When objects are marked as particles more approximate rendering methods are leveraged allowing for more effecient and typically better looking particle rendering.\n"
                   "Generally any billboard-like blended particle objects in the original application should be classified this way.");
-    RW_RTX_OPTION("rtx", fast_unordered_set, beamTextures, {},
+    RTX_OPTION("rtx", fast_unordered_set, beamTextures, {},
                   "Textures on draw calls that are already particles or emissively blended and have beam-like geometry.\n"
                   "Typically objects marked as particles or objects using emissive blending will be rendered with a special method which allows re-orientation of the billboard geometry assumed to make up the draw call in indirect rays (reflections for example).\n"
                   "This method works fine for typical particles, but some (e.g. a laser beam) may not be well-represented with the typical billboard assumption of simply needing to rotate around its centroid to face the view direction.\n"
                   "To handle such cases a different beam mode is used to treat objects as more of a cylindrical beam and re-orient around its main spanning axis, allowing for better rendering of these beam-like effect objects.");
-    RW_RTX_OPTION("rtx", fast_unordered_set, ignoreTransparencyLayerTextures, {},
+    RTX_OPTION("rtx", fast_unordered_set, ignoreTransparencyLayerTextures, {},
                   "Textures on draw calls that should not be stored in the transparency layer, when DLSS-RR is on.\n"
                   "The transparency layer stores noise-free transparent objects which bypasses DLSS-RR denoising, but it has lower anti-aliasing quality.\n"
                   "Transparent objects that have aliasing/flickering issues, like laser beams, can be added to this list to achieve better anti-aliasing quality.");
-    RW_RTX_OPTION("rtx", fast_unordered_set, decalTextures, {},
+    RTX_OPTION("rtx", fast_unordered_set, decalTextures, {},
                   "Textures on draw calls used for static geometric decals or decals with complex topology.\n"
                   "These materials will be blended over the materials underneath them when decal material blending is enabled.\n"
                   "A small configurable offset is applied to each flat/co-planar part of these decals to prevent coplanar geometric cases (which poses problems for ray tracing).");
     // Todo: Deprecation/aliasing macro here for dynamicDecalTextures/singleOffsetDecalTextures/nonOffsetDecalTextures to not have to manually handle their
     // aliasing to decalTextures, or the inclusion of the deprecation notice in their documentation.
-    RW_RTX_OPTION("rtx", fast_unordered_set, dynamicDecalTextures, {},
+    RTX_OPTION("rtx", fast_unordered_set, dynamicDecalTextures, {},
                   "Warning: This option is deprecated, please use rtx.decalTextures instead.\n"
                   "Textures on draw calls used for dynamically spawned geometric decals, such as bullet holes.\n"
                   "These materials will be blended over the materials underneath them when decal material blending is enabled.\n"
                   "A small configurable offset is applied to each quad part of these decals to prevent coplanar geometric cases (which poses problems for ray tracing).");
-    RW_RTX_OPTION("rtx", fast_unordered_set, singleOffsetDecalTextures, {},
+    RTX_OPTION("rtx", fast_unordered_set, singleOffsetDecalTextures, {},
                   "Warning: This option is deprecated, please use rtx.decalTextures instead.\n"
                   "Textures on draw calls used for geometric decals that don't inter-overlap for a given texture hash. Textures must be tagged as \"Decal Texture\" or \"Dynamic Decal Texture\" to apply.\n"
                   "Applies a single shared offset to all the batched decal geometry rendered in a given draw call, rather than increasing offset per decal within the batch (i.e. a quad in case of \"Dynamic Decal Texture\").\n"
@@ -230,19 +230,19 @@ namespace dxvk {
                   "The decal textures tagged this way must not inter-overlap within a batch / single draw call since the same offset is applied to all of them.\n"
                   "Applying a single offset is useful for stabilizing decal offsets when a game dynamically batches decals together.\n"
                   "In addition, it makes the global decal offset index grow slower and thus it minimizes a chance of hitting the \"rtx.decals.maxOffsetIndex limit\".");
-    RW_RTX_OPTION("rtx", fast_unordered_set, nonOffsetDecalTextures, {},
+    RTX_OPTION("rtx", fast_unordered_set, nonOffsetDecalTextures, {},
                   "Warning: This option is deprecated, please use rtx.decalTextures instead.\n"
                   "Textures on draw calls used for geometric decals with arbitrary topology that are already offset from the base geometry.\n"
                   "These materials will be blended over the materials underneath them when decal material blending is enabled.\n"
                   "Unlike typical decals however these decals have no offset applied to them due assuming the offset is already being done by whatever is passing data to Remix.");
-    RW_RTX_OPTION("rtx", fast_unordered_set, terrainTextures, {}, "Albedo textures that are baked blended together to form a unified terrain texture used during ray tracing.\n"
+    RTX_OPTION("rtx", fast_unordered_set, terrainTextures, {}, "Albedo textures that are baked blended together to form a unified terrain texture used during ray tracing.\n"
                                                                   "Put albedo textures into this category if the game renders terrain as a blend of multiple textures.");
-    RW_RTX_OPTION("rtx", fast_unordered_set, opacityMicromapIgnoreTextures, {}, "Textures to ignore when generating Opacity Micromaps. This generally does not have to be set and is only useful for black listing problematic cases for Opacity Micromap usage.");
-    RW_RTX_OPTION("rtx", fast_unordered_set, animatedWaterTextures, {},
+    RTX_OPTION("rtx", fast_unordered_set, opacityMicromapIgnoreTextures, {}, "Textures to ignore when generating Opacity Micromaps. This generally does not have to be set and is only useful for black listing problematic cases for Opacity Micromap usage.");
+    RTX_OPTION("rtx", fast_unordered_set, animatedWaterTextures, {},
                   "Textures on draw calls to be treated as \"animated water\".\n"
                   "Objects with this flag applied will animate their normals to fake a basic water effect based on the layered water material parameters, and only when rtx.opaqueMaterial.layeredWaterNormalEnable is set to true.\n"
                   "Should typically be used on static water planes that the original application may have relied on shaders to animate water on.");
-    RW_RTX_OPTION("rtx", fast_unordered_set, ignoreBakedLightingTextures, {},
+    RTX_OPTION("rtx", fast_unordered_set, ignoreBakedLightingTextures, {},
                   "Textures for which to ignore two types of baked lighting, Texture Factors and Vertex Color.\n\n"
                   "Texture Factor disablement:\n"
                   "Using this feature on selected textures will eliminate the texture factors.\n"
@@ -255,18 +255,18 @@ namespace dxvk {
                   "Using this feature on selected textures will eliminate the vertex colors.\n\n"
                   "Note, enabling this setting will automatically disable multiple-stage texture factor blendings for the selected textures.\n"
                   "Only use this option when necessary, as the Texture Factor and Vertex Color can be used for simulating various texture effects, tagging a texture with this option will unexpectedly eliminate these effects.");
-    RW_RTX_OPTION("rtx", fast_unordered_set, ignoreAlphaOnTextures, {}, 
+    RTX_OPTION("rtx", fast_unordered_set, ignoreAlphaOnTextures, {}, 
                   "Textures for which to ignore the alpha channel of the legacy colormap. Textures will be rendered fully opaque as a result.");
-    RW_RTX_OPTION("rtx.antiCulling", fast_unordered_set, antiCullingTextures, {},
+    RTX_OPTION("rtx.antiCulling", fast_unordered_set, antiCullingTextures, {},
                   "Textures that are forced to extend life length when anti-culling is enabled.\n"
                   "Some games use different culling methods we can't fully match, use this option to manually add textures to force extend their life when anti-culling fails.");
-    RW_RTX_OPTION("rtx.postfx", fast_unordered_set, motionBlurMaskOutTextures, {}, "Disable motion blur for meshes with specific texture.");
+    RTX_OPTION("rtx.postfx", fast_unordered_set, motionBlurMaskOutTextures, {}, "Disable motion blur for meshes with specific texture.");
 
-    RW_RTX_OPTION("rtx", std::string, geometryGenerationHashRuleString, "positions,indices,texcoords,geometrydescriptor,vertexlayout,vertexshader",
+    RTX_OPTION("rtx", std::string, geometryGenerationHashRuleString, "positions,indices,texcoords,geometrydescriptor,vertexlayout,vertexshader",
                   "Defines which asset hashes we need to generate via the geometry processing engine.");
-    RW_RTX_OPTION("rtx", std::string, geometryAssetHashRuleString, "positions,indices,geometrydescriptor",
+    RTX_OPTION("rtx", std::string, geometryAssetHashRuleString, "positions,indices,geometrydescriptor",
                   "Defines which hashes we need to include when sampling from replacements and doing USD capture.");
-    RW_RTX_OPTION("rtx", fast_unordered_set, raytracedRenderTargetTextures, {}, "DescriptorHashes for Render Targets. (Screens that should display the output of another camera).");
+    RTX_OPTION("rtx", fast_unordered_set, raytracedRenderTargetTextures, {}, "DescriptorHashes for Render Targets. (Screens that should display the output of another camera).");
     
   public:
     RTX_OPTION("rtx", bool, showRaytracingOption, true, "Enables or disables the option to toggle ray tracing in the UI. When set to false the ray tracing checkbox will not appear in the Remix UI.");
@@ -412,7 +412,7 @@ namespace dxvk {
       RTX_OPTION("rtx.freeCam", VirtualKeys, keyYawLeft,     {VirtualKey{'J'}}, "Yaw left in free camera mode.\nExample override: 'rtx.rtx.freeCam.keyYawLeft = P'");
       RTX_OPTION("rtx.freeCam", VirtualKeys, keyYawRight,    {VirtualKey{'L'}}, "Yaw right in free camera mode.\nExample override: 'rtx.rtx.freeCam.keyYawRight = P'");
     } freeCam;
-    RW_RTX_OPTION_ENV("rtx", bool, shakeCamera, false, "RTX_FREE_CAMERA_ENABLE_ANIMATION", "Enables animation of the free camera.");
+    RTX_OPTION_ENV("rtx", bool, shakeCamera, false, "RTX_FREE_CAMERA_ENABLE_ANIMATION", "Enables animation of the free camera.");
     RTX_OPTION_ENV("rtx", CameraAnimationMode, cameraAnimationMode, CameraAnimationMode::CameraShake_Pitch, "RTX_FREE_CAMERA_ANIMATION_MODE", "Free camera's animation mode.");
     RTX_OPTION_ENV("rtx", int, cameraShakePeriod, 20, "RTX_FREE_CAMERA_ANIMATION_PERIOD", "Period of the free camera's animation.");
     RTX_OPTION_ENV("rtx", float, cameraAnimationAmplitude, 2.0f, "RTX_FREE_CAMERA_ANIMATION_AMPLITUDE", "Amplitude of the free camera's animation.");
@@ -446,7 +446,7 @@ namespace dxvk {
     RTX_OPTION_ENV("rtx", UpscalerType, upscalerType, UpscalerType::DLSS, "DXVK_UPSCALER_TYPE", "Upscaling boosts performance with varying degrees of image quality tradeoff depending on the type of upscaler and the quality mode/preset.");
     RTX_OPTION_ENV("rtx", bool, enableRayReconstruction, true, "DXVK_RAY_RECONSTRUCTION", "Enable ray reconstruction.");
 
-    RW_RTX_OPTION_FLAG("rtx", bool, lowMemoryGpu, false, RtxOptionFlags::NoSave, "Enables low memory mode, where we aggressively detune caches and streaming systems to accomodate the lower memory available.");
+    RTX_OPTION_FLAG("rtx", bool, lowMemoryGpu, false, RtxOptionFlags::NoSave, "Enables low memory mode, where we aggressively detune caches and streaming systems to accomodate the lower memory available.");
 
     RTX_OPTION("rtx", float, resolutionScale, 0.75f, "");
     RTX_OPTION("rtx", bool, forceCameraJitter, false, "Force enables camera jitter frame to frame.");
@@ -470,7 +470,7 @@ namespace dxvk {
                "example override: 'rtx.remixMenuKeyBinds = CTRL, SHIFT, Z'.\n"
                "Full list of key names available in `src/util/util_keybind.h`.");
 
-    RW_RTX_OPTION_ENV("rtx", DLSSProfile, qualityDLSS, DLSSProfile::Auto, "RTX_QUALITY_DLSS", "Adjusts internal DLSS scaling factor, trades quality for performance.");
+    RTX_OPTION_ENV("rtx", DLSSProfile, qualityDLSS, DLSSProfile::Auto, "RTX_QUALITY_DLSS", "Adjusts internal DLSS scaling factor, trades quality for performance.");
     // Note: All ray tracing modes depend on the rtx.raytraceModePreset option as they may be overridden by automatic defaults for a specific vendor if the preset is set to Auto. Set
     // to Custom to ensure these settings are not overridden.
     //RenderPassVolumeIntegrateRaytraceMode renderPassVolumeIntegrateRaytraceMode = RenderPassVolumeIntegrateRaytraceMode::RayQuery;
@@ -870,7 +870,7 @@ namespace dxvk {
                     "Note that this option when set to false will prevent Reflex from even attempting to initialize, unlike setting the Reflex mode to \"None\" which simply tells an initialized Reflex not to take effect.\n"
                     "Additionally, this setting must be set at startup and changing it will not take effect at runtime.");
 
-    RW_RTX_OPTION_FLAG("rtx", EnableVsync, enableVsync, EnableVsync::WaitingForImplicitSwapchain, RtxOptionFlags::NoSave, "Controls the game's V-Sync setting. Native game's V-Sync settings are ignored.");
+    RTX_OPTION_FLAG("rtx", EnableVsync, enableVsync, EnableVsync::WaitingForImplicitSwapchain, RtxOptionFlags::NoSave, "Controls the game's V-Sync setting. Native game's V-Sync settings are ignored.");
 
     // Replacement options
     RTX_OPTION("rtx", bool, enableReplacementAssets, true, "Globally enables or disables all enhanced asset replacement (materials, meshes, lights) functionality.");
@@ -1082,17 +1082,17 @@ namespace dxvk {
       //  options.getOption<uint32_t>("rtx.renderPassVolumeIntegrateRaytraceMode", (uint32_t) renderPassVolumeIntegrateRaytraceMode, "DXVK_RENDER_PASS_VOLUME_INTEGRATE_RAYTRACE_MODE"),
       //  (uint32_t) (RenderPassVolumeIntegrateRaytraceMode::Count) -1);
 
-      renderPassGBufferRaytraceModeRef() = (RenderPassGBufferRaytraceMode) std::min(
+      renderPassGBufferRaytraceMode.set((RenderPassGBufferRaytraceMode) std::min(
         (uint32_t) renderPassGBufferRaytraceMode(),
-        (uint32_t) (RenderPassGBufferRaytraceMode::Count) -1);
+        (uint32_t) (RenderPassGBufferRaytraceMode::Count) -1));
 
-      renderPassIntegrateDirectRaytraceModeRef() = (RenderPassIntegrateDirectRaytraceMode) std::min(
+      renderPassIntegrateDirectRaytraceMode.set((RenderPassIntegrateDirectRaytraceMode) std::min(
         (uint32_t) renderPassIntegrateDirectRaytraceMode(),
-        (uint32_t) (RenderPassIntegrateDirectRaytraceMode::Count) - 1);
+        (uint32_t) (RenderPassIntegrateDirectRaytraceMode::Count) - 1));
       
-      renderPassIntegrateIndirectRaytraceModeRef() = (RenderPassIntegrateIndirectRaytraceMode) std::min(
+      renderPassIntegrateIndirectRaytraceMode.set((RenderPassIntegrateIndirectRaytraceMode) std::min(
         (uint32_t) renderPassIntegrateIndirectRaytraceMode(),
-        (uint32_t) (RenderPassIntegrateIndirectRaytraceMode::Count) - 1);
+        (uint32_t) (RenderPassIntegrateIndirectRaytraceMode::Count) - 1));
 
       // Pathtracing options
       //enableShaderExecutionReorderingInVolumeIntegrate =
@@ -1135,17 +1135,18 @@ namespace dxvk {
       
       // Ray Portal Options
       // Note: Ensure the Ray Portal texture hashes are always in pairs of 2
-      auto& rayPortalModelTextureHashes = rayPortalModelTextureHashesRef();
-      if (rayPortalModelTextureHashes.size() % 2 == 1) {
-        rayPortalModelTextureHashes.pop_back();
+      std::vector<XXH64_hash_t> rayPortalModelTextureHashesTrimmed = rayPortalModelTextureHashes();
+      if (rayPortalModelTextureHashesTrimmed.size() % 2 == 1) {
+        rayPortalModelTextureHashesTrimmed.pop_back();
       }
 
-      if (rayPortalModelTextureHashes.size() > maxRayPortalCount) {
-        rayPortalModelTextureHashes.erase(rayPortalModelTextureHashes.begin() + maxRayPortalCount, rayPortalModelTextureHashes.end());
+      if (rayPortalModelTextureHashesTrimmed.size() > maxRayPortalCount) {
+        rayPortalModelTextureHashesTrimmed.erase(rayPortalModelTextureHashesTrimmed.begin() + maxRayPortalCount, rayPortalModelTextureHashesTrimmed.end());
       }
+      rayPortalModelTextureHashes.set(rayPortalModelTextureHashesTrimmed);
 
-      assert(rayPortalModelTextureHashes.size() % 2 == 0);
-      assert(rayPortalModelTextureHashes.size() <= maxRayPortalCount);
+      assert(rayPortalModelTextureHashes().size() % 2 == 0);
+      assert(rayPortalModelTextureHashes().size() <= maxRayPortalCount);
 
       // Note: Ensure the portal sampling weight min and max distance are well defined
       RTX_OPTION_CLAMP_MIN(rayPortalSamplingWeightMinDistance, 0.0f);
@@ -1167,33 +1168,35 @@ namespace dxvk {
       // Replacement options
 
       if (env::getEnvVar("DXVK_DISABLE_ASSET_REPLACEMENT") == "1") {
-        enableReplacementAssetsRef() = false;
-        enableReplacementLightsRef() = false;
-        enableReplacementMeshesRef() = false;
-        enableReplacementMaterialsRef() = false;
+        enableReplacementAssets.set(false);
+        enableReplacementLights.set(false);
+        enableReplacementMeshes.set(false);
+        enableReplacementMaterials.set(false);
       }
 
       m_geometryHashGenerationRule = createRule("Geometry generation", geometryGenerationHashRuleString());
       m_geometryAssetHashRule = createRule("Geometry asset", geometryAssetHashRuleString());
 
+      auto mergedSet = decalTextures();
       // We deprecated dynamicDecalTextures, singleOffsetDecalTextures, nonOffsetDecalTextures with this change
       //  and replaced all decal texture lists with just a single list.
       // TODO(REMIX-2554): Design a general deprecation solution for configs that are no longer required.
       if (dynamicDecalTextures().size() > 0) {
-        decalTexturesRef().insert(dynamicDecalTextures().begin(), dynamicDecalTextures().end());
-        dynamicDecalTexturesRef().clear();
+        mergedSet.insert(dynamicDecalTextures().begin(), dynamicDecalTextures().end());
+        dynamicDecalTextures.set({});
         Logger::info("[Deprecated Config] rtx.dynamicDecalTextures has been deprecated, we have moved all your texture's from this list to rtx.decalTextures, no further action is required from you.  Please re-save your rtx config to get rid of this message.");
       }
       if (singleOffsetDecalTextures().size() > 0) {
-        decalTexturesRef().insert(singleOffsetDecalTextures().begin(), singleOffsetDecalTextures().end());
-        singleOffsetDecalTexturesRef().clear();
+        mergedSet.insert(singleOffsetDecalTextures().begin(), singleOffsetDecalTextures().end());
+        singleOffsetDecalTextures.set({});
         Logger::info("[Deprecated Config] rtx.singleOffsetDecalTextures has been deprecated, we have moved all your texture's from this list to rtx.decalTextures, no further action is required from you.  Please re-save your rtx config to get rid of this message.");
       }
       if (nonOffsetDecalTextures().size() > 0) {
-        decalTexturesRef().insert(nonOffsetDecalTextures().begin(), nonOffsetDecalTextures().end());
-        nonOffsetDecalTexturesRef().clear();
+        mergedSet.insert(nonOffsetDecalTextures().begin(), nonOffsetDecalTextures().end());
+        nonOffsetDecalTextures.set({});
         Logger::info("[Deprecated Config] rtx.nonOffsetDecalTextures has been deprecated, we have moved all your texture's from this list to rtx.decalTextures, no further action is required from you.  Please re-save your rtx config to get rid of this message.");
       }
+      decalTextures.set(mergedSet);
     }
 
     static void updateUpscalerFromDlssPreset();
@@ -1267,7 +1270,7 @@ namespace dxvk {
     static bool isNISEnabled() { return upscalerType() == UpscalerType::NIS; }
     static bool isTAAEnabled() { return upscalerType() == UpscalerType::TAAU; }
     static void setReplaceDirectSpecularHitTWithIndirectSpecularHitT(const bool enableReplaceDirectSpecularHitTWithIndirectSpecularHitT) {
-      replaceDirectSpecularHitTWithIndirectSpecularHitTRef() = enableReplaceDirectSpecularHitTWithIndirectSpecularHitT;
+      replaceDirectSpecularHitTWithIndirectSpecularHitT.set(enableReplaceDirectSpecularHitTWithIndirectSpecularHitT);
     }
     
     static float getUniqueObjectDistanceSqr() { return uniqueObjectDistance() * uniqueObjectDistance(); }
@@ -1277,7 +1280,7 @@ namespace dxvk {
     // Returns shared enablement composed of multiple enablement inputs
     static bool needsMeshBoundingBox();
     
-    static void setIsShaderExecutionReorderingSupported(bool enabled) { isShaderExecutionReorderingSupportedRef() = enabled; }
+    static void setIsShaderExecutionReorderingSupported(bool enabled) { isShaderExecutionReorderingSupported.set(enabled); }
     static bool isShaderExecutionReorderingInPathtracerGbufferEnabled() { return enableShaderExecutionReorderingInPathtracerGbuffer() && isShaderExecutionReorderingSupported(); }
     static bool isShaderExecutionReorderingInPathtracerIntegrateIndirectEnabled() { return enableShaderExecutionReorderingInPathtracerIntegrateIndirect() && isShaderExecutionReorderingSupported(); }
 

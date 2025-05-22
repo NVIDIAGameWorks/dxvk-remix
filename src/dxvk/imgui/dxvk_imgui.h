@@ -110,7 +110,7 @@ namespace dxvk {
     };
     template<Tabs tab>
     void openTab() {
-      RtxOptions::showUIRef() = UIType::Advanced;
+      RtxOptions::showUI.set(UIType::Advanced);
       triggerTab(tab);
     }
     template<Tabs tab>

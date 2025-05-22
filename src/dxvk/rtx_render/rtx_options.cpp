@@ -44,13 +44,13 @@ namespace dxvk {
 
     switch (dlssPreset()) {
       case DlssPreset::Off:
-        upscalerTypeRef() = UpscalerType::None;
-        reflexModeRef() = ReflexMode::None;
+        upscalerType.set(UpscalerType::None);
+        reflexMode.set(ReflexMode::None);
         break;
       case DlssPreset::On:
-        upscalerTypeRef() = UpscalerType::DLSS;
-        qualityDLSSRef() = DLSSProfile::Auto;
-        reflexModeRef() = ReflexMode::LowLatency; // Reflex uses ON under G (not Boost)
+        upscalerType.set(UpscalerType::DLSS);
+        qualityDLSS.set(DLSSProfile::Auto);
+        reflexMode.set(ReflexMode::LowLatency); // Reflex uses ON under G (not Boost)
         break;
     }
   }
@@ -58,16 +58,16 @@ namespace dxvk {
   void RtxOptions::updateUpscalerFromNisPreset() {
     switch (nisPreset()) {
     case NisPreset::Performance:
-      resolutionScaleRef() = 0.5f;
+      resolutionScale.set(0.5f);
       break;
     case NisPreset::Balanced:
-      resolutionScaleRef() = 0.66f;
+      resolutionScale.set(0.66f);
       break;
     case NisPreset::Quality:
-      resolutionScaleRef() = 0.75f;
+      resolutionScale.set(0.75f);
       break;
     case NisPreset::Fullscreen:
-      resolutionScaleRef() = 1.0f;
+      resolutionScale.set(1.0f);
       break;
     }
   }
@@ -75,19 +75,19 @@ namespace dxvk {
   void RtxOptions::updateUpscalerFromTaauPreset() {
     switch (taauPreset()) {
     case TaauPreset::UltraPerformance:
-      resolutionScaleRef() = 0.33f;
+      resolutionScale.set(0.33f);
       break;
     case TaauPreset::Performance:
-      resolutionScaleRef() = 0.5f;
+      resolutionScale.set(0.5f);
       break;
     case TaauPreset::Balanced:
-      resolutionScaleRef() = 0.66f;
+      resolutionScale.set(0.66f);
       break;
     case TaauPreset::Quality:
-      resolutionScaleRef() = 0.75f;
+      resolutionScale.set(0.75f);
       break;
     case TaauPreset::Fullscreen:
-      resolutionScaleRef() = 1.0f;
+      resolutionScale.set(1.0f);
       break;
     }
   }
@@ -95,45 +95,45 @@ namespace dxvk {
   void RtxOptions::updatePresetFromUpscaler() {
     if (RtxOptions::upscalerType() == UpscalerType::None &&
         reflexMode() == ReflexMode::None) {
-      RtxOptions::dlssPresetRef() = DlssPreset::Off;
+      RtxOptions::dlssPreset.set(DlssPreset::Off);
     } else if (RtxOptions::upscalerType() == UpscalerType::DLSS &&
                reflexMode() == ReflexMode::LowLatency) {
       if ((graphicsPreset() == GraphicsPreset::Ultra || graphicsPreset() == GraphicsPreset::High) &&
           qualityDLSS() == DLSSProfile::Auto) {
-        RtxOptions::dlssPresetRef() = DlssPreset::On;
+        RtxOptions::dlssPreset.set(DlssPreset::On);
       } else {
-        RtxOptions::dlssPresetRef() = DlssPreset::Custom;
+        RtxOptions::dlssPreset.set(DlssPreset::Custom);
       }
     } else {
-      RtxOptions::dlssPresetRef() = DlssPreset::Custom;
+      RtxOptions::dlssPreset.set(DlssPreset::Custom);
     }
 
     switch (RtxOptions::upscalerType()) {
       case UpscalerType::NIS: {
         const float nisResolutionScale = resolutionScale();
         if (nisResolutionScale <= 0.5f) {
-          RtxOptions::nisPresetRef() = NisPreset::Performance;
+          RtxOptions::nisPreset.set(NisPreset::Performance);
         } else if (nisResolutionScale <= 0.66f) {
-          RtxOptions::nisPresetRef() = NisPreset::Balanced;
+          RtxOptions::nisPreset.set(NisPreset::Balanced);
         } else if (nisResolutionScale <= 0.75f) {
-          RtxOptions::nisPresetRef() = NisPreset::Quality;
+          RtxOptions::nisPreset.set(NisPreset::Quality);
         } else {
-          RtxOptions::nisPresetRef() = NisPreset::Fullscreen;
+          RtxOptions::nisPreset.set(NisPreset::Fullscreen);
         }
         break;
       }
       case UpscalerType::TAAU: {
         const float taauResolutionScale = resolutionScale();
         if (taauResolutionScale <= 0.33f) {
-          RtxOptions::taauPresetRef() = TaauPreset::UltraPerformance;
+          RtxOptions::taauPreset.set(TaauPreset::UltraPerformance);
         } else if (taauResolutionScale <= 0.5f) {
-          RtxOptions::taauPresetRef() = TaauPreset::Performance;
+          RtxOptions::taauPreset.set(TaauPreset::Performance);
         } else if (taauResolutionScale <= 0.66f) {
-          RtxOptions::taauPresetRef() = TaauPreset::Balanced;
+          RtxOptions::taauPreset.set(TaauPreset::Balanced);
         } else if (taauResolutionScale <= 0.75f) {
-          RtxOptions::taauPresetRef() = TaauPreset::Quality;
+          RtxOptions::taauPreset.set(TaauPreset::Quality);
         } else {
-          RtxOptions::taauPresetRef() = TaauPreset::Fullscreen;
+          RtxOptions::taauPreset.set(TaauPreset::Fullscreen);
         }
         break;
       }
@@ -184,14 +184,14 @@ namespace dxvk {
   void RtxOptions::updatePathTracerPreset(PathTracerPreset preset) {
     if (preset == PathTracerPreset::RayReconstruction) {
       // RTXDI
-      DxvkRtxdiRayQuery::stealBoundaryPixelSamplesWhenOutsideOfScreenRef() = false;
-      DxvkRtxdiRayQuery::permutationSamplingNthFrameRef() = 1;
-      DxvkRtxdiRayQuery::enableDenoiserConfidenceRef() = false;
-      DxvkRtxdiRayQuery::enableBestLightSamplingRef() = false;
-      DxvkRtxdiRayQuery::initialSampleCountRef() = 3;
-      DxvkRtxdiRayQuery::spatialSamplesRef() = 2;
-      DxvkRtxdiRayQuery::disocclusionSamplesRef() = 2;
-      DxvkRtxdiRayQuery::enableSampleStealingRef() = false;
+      DxvkRtxdiRayQuery::stealBoundaryPixelSamplesWhenOutsideOfScreen.set(false);
+      DxvkRtxdiRayQuery::permutationSamplingNthFrame.set(1);
+      DxvkRtxdiRayQuery::enableDenoiserConfidence.set(false);
+      DxvkRtxdiRayQuery::enableBestLightSampling.set(false);
+      DxvkRtxdiRayQuery::initialSampleCount.set(3);
+      DxvkRtxdiRayQuery::spatialSamples.set(2);
+      DxvkRtxdiRayQuery::disocclusionSamples.set(2);
+      DxvkRtxdiRayQuery::enableSampleStealing.set(false);
 
       // ReSTIR GI
       if (RtxOptions::useReSTIRGI()) {
@@ -199,20 +199,20 @@ namespace dxvk {
       }
 
       // Integrator
-      minOpaqueDiffuseLobeSamplingProbabilityRef() = 0.05f;
-      minOpaqueSpecularLobeSamplingProbabilityRef() = 0.05f;
-      enableFirstBounceLobeProbabilityDitheringRef() = false;
-      russianRouletteModeRef() = RussianRouletteMode::SpecularBased;
+      minOpaqueDiffuseLobeSamplingProbability.set(0.05f);
+      minOpaqueSpecularLobeSamplingProbability.set(0.05f);
+      enableFirstBounceLobeProbabilityDithering.set(false);
+      russianRouletteMode.set(RussianRouletteMode::SpecularBased);
 
       // NEE Cache
-      NeeCachePass::enableModeAfterFirstBounceRef() = NeeEnableMode::All;
+      NeeCachePass::enableModeAfterFirstBounce.set(NeeEnableMode::All);
 
       // Demodulate
-      DemodulatePass::enableDirectLightBoilingFilterRef() = false;
+      DemodulatePass::enableDirectLightBoilingFilter.set(false);
 
       // Composite
-      CompositePass::postFilterThresholdRef() = 10.0f;
-      CompositePass::usePostFilterRef() = false;
+      CompositePass::postFilterThreshold.set(10.0f);
+      CompositePass::usePostFilter.set(false);
 
     } else if (preset == PathTracerPreset::Default) {
       // This is the default setting used by NRD
@@ -308,14 +308,14 @@ namespace dxvk {
         preferredDefault = GraphicsPreset::Low;
 
         // Setup some other known good defaults for other IHVs.
-        RtxOptions::resolutionScaleRef() = 0.5f;
+        RtxOptions::resolutionScale.set(0.5f);
         // Todo: Currently this code is needed to allow the the non-DLSS upscaling paths to reflect the
         // resolution scale setting otherwise the resolution scale may be automatically updated to match
         // some other preset whenever something like updateUpscalerFromTaauPreset is called. Ideally the
         // resolution scale and these presets would not be so disconnected like this (or maybe
         // updatePresetFromUpscaler just needs to be called in the right places).
-        RtxOptions::nisPresetRef() = NisPreset::Performance;
-        RtxOptions::taauPresetRef() = TaauPreset::Performance;
+        RtxOptions::nisPreset.set(NisPreset::Performance);
+        RtxOptions::taauPreset.set(TaauPreset::Performance);
       }
 
       // figure out how much vidmem we have
@@ -332,12 +332,12 @@ namespace dxvk {
       if (vidMemSize <= 8ull * 1024 * 1024 * 1024) {
         Logger::info("8GB GPU detected, lowering quality setting.");
         preferredDefault = (GraphicsPreset)std::clamp((int)preferredDefault + 1, (int) GraphicsPreset::Medium, (int) GraphicsPreset::Low);
-        RtxOptions::lowMemoryGpuRef() = true;
+        RtxOptions::lowMemoryGpu.set(true);
       } else {
-        RtxOptions::lowMemoryGpuRef() = false;
+        RtxOptions::lowMemoryGpu.set(false);
       }
 
-      RtxOptions::graphicsPresetRef() = preferredDefault;
+      RtxOptions::graphicsPreset.set(preferredDefault);
     }
 
     auto common = device->getCommon();
@@ -349,27 +349,27 @@ namespace dxvk {
     bool isRayReconstruction = RtxOptions::isRayReconstructionEnabled();
 
     auto lowGraphicsPresetCommonSettings = [&]() {
-      pathMinBouncesRef() = 0;
-      pathMaxBouncesRef() = 2;
-      enableTransmissionApproximationInIndirectRaysRef() = true;
-      enableUnorderedEmissiveParticlesInIndirectRaysRef() = false;
-      denoiseDirectAndIndirectLightingSeparatelyRef() = false;
-      enableUnorderedResolveInIndirectRaysRef() = false;
-      NeeCachePass::enableRef() = isRayReconstruction;
-      rtxdiRayQuery.enableRayTracedBiasCorrectionRef() = false;
-      restirGiRayQuery.biasCorrectionModeRef() = ReSTIRGIBiasCorrection::BRDF;
-      restirGiRayQuery.useReflectionReprojectionRef() = false;
-      common->metaComposite().enableStochasticAlphaBlendRef() = false;
-      postFx.enableRef() = false;
+      pathMinBounces.set(0);
+      pathMaxBounces.set(2);
+      enableTransmissionApproximationInIndirectRays.set(true);
+      enableUnorderedEmissiveParticlesInIndirectRays.set(false);
+      denoiseDirectAndIndirectLightingSeparately.set(false);
+      enableUnorderedResolveInIndirectRays.set(false);
+      NeeCachePass::enable.set(isRayReconstruction);
+      rtxdiRayQuery.enableRayTracedBiasCorrection.set(false);
+      restirGiRayQuery.biasCorrectionMode.set(ReSTIRGIBiasCorrection::BRDF);
+      restirGiRayQuery.useReflectionReprojection.set(false);
+      common->metaComposite().enableStochasticAlphaBlend.set(false);
+      postFx.enable.set(false);
     };
 
     auto enableNrcPreset = [&](NeuralRadianceCache::QualityPreset nrcPreset) {
       NeuralRadianceCache& nrc = device->getCommon()->metaNeuralRadianceCache();
       if (nrc.checkIsSupported(device)) {
-        RtxOptions::integrateIndirectModeRef() = IntegrateIndirectMode::NeuralRadianceCache;
+        RtxOptions::integrateIndirectMode.set(IntegrateIndirectMode::NeuralRadianceCache);
         nrc.setQualityPreset(nrcPreset);
       } else {
-        RtxOptions::integrateIndirectModeRef() = IntegrateIndirectMode::ReSTIRGI;
+        RtxOptions::integrateIndirectMode.set(IntegrateIndirectMode::ReSTIRGI);
       }
     };
 
@@ -378,75 +378,75 @@ namespace dxvk {
     RtxGlobalVolumetrics& volumetrics = device->getCommon()->metaGlobalVolumetrics();
 
     if (graphicsPreset() == GraphicsPreset::Ultra) {
-      pathMinBouncesRef() = 1;
-      pathMaxBouncesRef() = 4;
-      enableTransmissionApproximationInIndirectRaysRef() = false;
-      enableUnorderedEmissiveParticlesInIndirectRaysRef() = true;
-      denoiseDirectAndIndirectLightingSeparatelyRef() = true;
-      enableUnorderedResolveInIndirectRaysRef() = true;
-      NeeCachePass::enableRef() = true;
+      pathMinBounces.set(1);
+      pathMaxBounces.set(4);
+      enableTransmissionApproximationInIndirectRays.set(false);
+      enableUnorderedEmissiveParticlesInIndirectRays.set(true);
+      denoiseDirectAndIndirectLightingSeparately.set(true);
+      enableUnorderedResolveInIndirectRays.set(true);
+      NeeCachePass::enable.set(true);
 
-      russianRouletteMaxContinueProbabilityRef() = 0.9f;
-      russianRoulette1stBounceMinContinueProbabilityRef() = 0.6f;
+      russianRouletteMaxContinueProbability.set(0.9f);
+      russianRoulette1stBounceMinContinueProbability.set(0.6f);
 
-      rtxdiRayQuery.enableRayTracedBiasCorrectionRef() = true;
-      restirGiRayQuery.biasCorrectionModeRef() = ReSTIRGIBiasCorrection::PairwiseRaytrace;
-      restirGiRayQuery.useReflectionReprojectionRef() = true;
-      common->metaComposite().enableStochasticAlphaBlendRef() = true;
-      postFx.enableRef() = true;
+      rtxdiRayQuery.enableRayTracedBiasCorrection.set(true);
+      restirGiRayQuery.biasCorrectionMode.set(ReSTIRGIBiasCorrection::PairwiseRaytrace);
+      restirGiRayQuery.useReflectionReprojection.set(true);
+      common->metaComposite().enableStochasticAlphaBlend.set(true);
+      postFx.enable.set(true);
 
       volumetrics.setQualityLevel(RtxGlobalVolumetrics::Ultra);
       enableNrcPreset(NeuralRadianceCache::QualityPreset::Ultra);
 
-      DxvkRayReconstruction::modelRef() = DxvkRayReconstruction::RayReconstructionModel::Transformer;
+      DxvkRayReconstruction::model.set(DxvkRayReconstruction::RayReconstructionModel::Transformer);
     } else if (graphicsPreset() == GraphicsPreset::High) {
-      pathMinBouncesRef() = 0;
-      pathMaxBouncesRef() = 2;
-      enableTransmissionApproximationInIndirectRaysRef() = true;
-      enableUnorderedEmissiveParticlesInIndirectRaysRef() = false;
-      denoiseDirectAndIndirectLightingSeparatelyRef() = false;
-      enableUnorderedResolveInIndirectRaysRef() = true;
-      NeeCachePass::enableRef() = isRayReconstruction;
+      pathMinBounces.set(0);
+      pathMaxBounces.set(2);
+      enableTransmissionApproximationInIndirectRays.set(true);
+      enableUnorderedEmissiveParticlesInIndirectRays.set(false);
+      denoiseDirectAndIndirectLightingSeparately.set(false);
+      enableUnorderedResolveInIndirectRays.set(true);
+      NeeCachePass::enable.set(isRayReconstruction);
 
-      rtxdiRayQuery.enableRayTracedBiasCorrectionRef() = true;
-      restirGiRayQuery.biasCorrectionModeRef() = ReSTIRGIBiasCorrection::PairwiseRaytrace;
-      restirGiRayQuery.useReflectionReprojectionRef() = true;
-      common->metaComposite().enableStochasticAlphaBlendRef() = true;
-      postFx.enableRef() = true;
+      rtxdiRayQuery.enableRayTracedBiasCorrection.set(true);
+      restirGiRayQuery.biasCorrectionMode.set(ReSTIRGIBiasCorrection::PairwiseRaytrace);
+      restirGiRayQuery.useReflectionReprojection.set(true);
+      common->metaComposite().enableStochasticAlphaBlend.set(true);
+      postFx.enable.set(true);
 
-      russianRouletteMaxContinueProbabilityRef() = 0.9f;
-      russianRoulette1stBounceMinContinueProbabilityRef() = 0.6f;
+      russianRouletteMaxContinueProbability.set(0.9f);
+      russianRoulette1stBounceMinContinueProbability.set(0.6f);
 
       volumetrics.setQualityLevel(RtxGlobalVolumetrics::High);
       enableNrcPreset(NeuralRadianceCache::QualityPreset::High);
 
-      DxvkRayReconstruction::modelRef() = DxvkRayReconstruction::RayReconstructionModel::Transformer;
+      DxvkRayReconstruction::model.set(DxvkRayReconstruction::RayReconstructionModel::Transformer);
     } else if (graphicsPreset() == GraphicsPreset::Medium) {
       lowGraphicsPresetCommonSettings();
 
-      russianRouletteMaxContinueProbabilityRef() = 0.7f;
-      russianRoulette1stBounceMinContinueProbabilityRef() = 0.4f;
+      russianRouletteMaxContinueProbability.set(0.7f);
+      russianRoulette1stBounceMinContinueProbability.set(0.4f);
 
       volumetrics.setQualityLevel(RtxGlobalVolumetrics::Medium);
       enableNrcPreset(NeuralRadianceCache::QualityPreset::Medium);
 
-      DxvkRayReconstruction::modelRef() = DxvkRayReconstruction::RayReconstructionModel::CNN;
+      DxvkRayReconstruction::model.set(DxvkRayReconstruction::RayReconstructionModel::CNN);
     } else if (graphicsPreset() == GraphicsPreset::Low) {
       lowGraphicsPresetCommonSettings();
 
-      russianRouletteMaxContinueProbabilityRef() = 0.7f;
-      russianRoulette1stBounceMinContinueProbabilityRef() = 0.4f;
+      russianRouletteMaxContinueProbability.set(0.7f);
+      russianRoulette1stBounceMinContinueProbability.set(0.4f);
 
       volumetrics.setQualityLevel(RtxGlobalVolumetrics::Low);
       enableNrcPreset(NeuralRadianceCache::QualityPreset::Medium);
 
-      DxvkRayReconstruction::modelRef() = DxvkRayReconstruction::RayReconstructionModel::CNN;
+      DxvkRayReconstruction::model.set(DxvkRayReconstruction::RayReconstructionModel::CNN);
     }
 
     // Ensure we are using auto DLSS profile since we will be relying on quality downgrades for Medium/Low settings
     //  and if the user has specified a custom DLSS override, we should respect that.
     if (dlssPreset() != DlssPreset::Custom) {
-      qualityDLSSRef() = DLSSProfile::Auto;
+      qualityDLSS.set(DLSSProfile::Auto);
     }
 
     // else Graphics Preset == Custom
@@ -483,15 +483,15 @@ namespace dxvk {
         preferredIntegrateIndirectRaytraceMode = DxvkPathtracerIntegrateIndirect::RaytraceMode::RayQuery;
       }
 
-      RtxOptions::renderPassGBufferRaytraceModeRef() = preferredGBufferRaytraceMode;
-      RtxOptions::renderPassIntegrateDirectRaytraceModeRef() = preferredIntegrateDirectRaytraceMode;
-      RtxOptions::renderPassIntegrateIndirectRaytraceModeRef() = preferredIntegrateIndirectRaytraceMode;
+      RtxOptions::renderPassGBufferRaytraceMode.set(preferredGBufferRaytraceMode);
+      RtxOptions::renderPassIntegrateDirectRaytraceMode.set(preferredIntegrateDirectRaytraceMode);
+      RtxOptions::renderPassIntegrateIndirectRaytraceMode.set(preferredIntegrateIndirectRaytraceMode);
     }
   }
 
   void RtxOptions::resetUpscaler() {
-    RtxOptions::upscalerTypeRef() = UpscalerType::DLSS;
-    reflexModeRef() = ReflexMode::LowLatency;
+    RtxOptions::upscalerType.set(UpscalerType::DLSS);
+    reflexMode.set(ReflexMode::LowLatency);
   }
 
   std::string RtxOptions::getCurrentDirectory() {

@@ -7,7 +7,7 @@
 namespace dxvk {
   struct MemoryTrackerSettings {
     RTX_OPTION_FLAG("rtx.profiler.memory", bool, enable, false, RtxOptionFlags::NoSave, "Enables the memory profiler which allows users to inspect Remix resources using the profiler tool in the Dev Settings Remix window.  This option is disabled by default, and must be enabled from application launch to work correctly.");
-    RW_RTX_OPTION_FLAG("rtx.profiler.memory", bool, includeWholeFrame, false, RtxOptionFlags::NoSave, "Profiles memory across the entire frame when enabled.  When disabled we only see a snapshot of memory at the time of sampling.  This has some additional CPU performance overhead so is disabled by default.");
+    RTX_OPTION_FLAG("rtx.profiler.memory", bool, includeWholeFrame, false, RtxOptionFlags::NoSave, "Profiles memory across the entire frame when enabled.  When disabled we only see a snapshot of memory at the time of sampling.  This has some additional CPU performance overhead so is disabled by default.");
   };
 
   // If src is longer than (N-2), the last three characters of the copied
