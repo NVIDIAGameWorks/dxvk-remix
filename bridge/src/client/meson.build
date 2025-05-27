@@ -104,7 +104,6 @@ d3d9_dll = shared_library('d3d9', d3d9_header, d3d9_src, d3d9_res,
   sources             : [ bridge_version ],
   dependencies        : [ thread_dep, util_dep, lib_version, lib_version, lib_commCtrl, tracy_dep ],
   include_directories : [ bridge_include_path, util_include_path, detours_include_path, public_include_path ],
-  install             : true,
   vs_module_defs      : 'd3d9_lss.def')
 
 

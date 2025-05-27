@@ -55,12 +55,7 @@ tracy_public_include_dirs = include_directories('.')
 
 tracy = static_library('tracy', tracy_src, tracy_header_files,
 dependencies        : [ threads_dep ],
-include_directories : tracy_public_include_dirs,
-install             : true)
-
-install_headers(includes)
-install_headers(common_includes, subdir : 'common')
-install_headers(client_includes, subdir : 'client')
+include_directories : tracy_public_include_dirs)
 
 tracy_dep_compile_args = []
 

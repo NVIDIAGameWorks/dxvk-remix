@@ -7,7 +7,6 @@ cmd_history_exe = executable(
     'command_history',  files('test_cmd_queue.cpp'),
     include_directories : util_include_path,
     dependencies : util_dep,
-    install : true,
     win_subsystem : 'console')
 test('command_history', cmd_history_exe)
 tests += cmd_history_exe
@@ -25,7 +24,6 @@ tests += executable(
     write_exe,  files(write_name + '.cpp'),
     include_directories : [util_include_path, public_include_path ],
     dependencies : util_dep,
-    install : true,
     win_subsystem : 'console',)
 read_name = 'test_remix_api_read'
 read_exe = read_name + '_'  + name_suff
@@ -33,7 +31,6 @@ tests += executable(
     read_exe,  files(read_name + '.cpp'),
     include_directories : [util_include_path, public_include_path ],
     dependencies : util_dep,
-    install : true,
     win_subsystem : 'console')
 if (cpu_family == 'x86_64')
 python = find_program('python')
