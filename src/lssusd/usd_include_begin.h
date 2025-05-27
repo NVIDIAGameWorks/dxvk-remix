@@ -27,4 +27,8 @@
 #pragma warning(disable:4800) // int to bool
 #pragma warning(disable:4996) // call to std::copy with parameters that may be unsafe
 #pragma warning(disable:4251) // struct 'std::atomic<T *>' needs to have dll-interface to be used by clients of class 
+#pragma warning(disable:4201) // nonstandard extension used: nameless struct/union
+#pragma warning(disable:4100) // unreferenced formal parameter
+#pragma warning(disable:4127) // conditional expression is constant
+#pragma warning(disable:4267) // because of USD headers: conversion from 'size_t' to 'type', possible loss of data
 #endif

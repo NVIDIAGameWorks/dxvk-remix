@@ -879,6 +879,15 @@ if dxvk_is_ninja
     if t != '_output'
       apic_copy_targets += copy_target
     endif
+    if target_suffix == 'sdk'
+      remixsdk_target = custom_target('ct_copy_remixsdk',
+        output:  ['ct_copy_remixsdk'],
+        depends: copy_target_depends,
+        command: [copy_script_path,
+                  join_paths(current_build_dir_norm, 'src/d3d9'),
+                  output_path,
+                  'd3d9*'])
+    endif
   endforeach
 
   # xxxnsubtil: this one line replaces a bunch of python code used for the vscode build, but requires meson 0.61.3
@@ -902,3 +911,7 @@ if dxvk_is_ninja
     error('generate_vs_project_files failed')
   endif
 endif # dxvk_is_ninja
+
+if fs.is_dir('nv-private')
+  subdir('nv-private')
+endif

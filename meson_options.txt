@@ -50,3 +50,5 @@ option('tracy_fibers', type : 'boolean', value : false, description : 'Enable fi
 option('tracy_shared_libs', type : 'boolean', value : false, description : 'Builds Tracy as a shared object')
 
 option('enable_rtxio', type : 'boolean', value : true)
+
+option('remixsdk_local', type: 'string', value: '', description: 'Path to the local, prebuilt Remix SDK. Must contain the include and bin directories.')

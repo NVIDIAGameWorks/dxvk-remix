@@ -23,8 +23,10 @@
 #pragma once
 #include <unordered_map>
 #include <unordered_set>
+#ifndef DXVK_UTIL_FORCE_MINIMAL
 #include "xxHash/xxhash.h"
 #include "util_vector.h"
+#endif
 
 
 namespace dxvk {
@@ -35,7 +37,8 @@ namespace dxvk {
       return keyval;
     }
   };
-  
+
+#ifndef DXVK_UTIL_FORCE_MINIMAL
   // A passthrough hash class compatible with std c++ containers.
   struct Vector3i_hash_passthrough {
     [[nodiscard]] size_t operator()(const Vector3i& keyval) const noexcept {
@@ -58,6 +61,7 @@ namespace dxvk {
       return hash;
     }
   };
+#endif
 
   // A hash class compatible with std c++ containers.
   template<typename T>
@@ -95,6 +99,7 @@ namespace dxvk {
   // A fast set for use ONLY with already hashed keys.
   struct fast_unordered_set : public std::unordered_set<XXH64_hash_t, XXH64_hash_passthrough> { };
 
+#ifndef DXVK_UTIL_FORCE_MINIMAL
   // A fast caching structure for use ONLY with spatial data.
   template<class T>
   struct fast_spatial_cache : public std::unordered_map<Vector3i, T, Vector3i_hash_passthrough> {
@@ -109,8 +114,9 @@ namespace dxvk {
       }
     }
   };
+#endif
 
-  static bool lookupHash(const fast_unordered_set& hashList, const XXH64_hash_t& h) {
+  inline bool lookupHash(const fast_unordered_set& hashList, const XXH64_hash_t& h) {
     return hashList.find(h) != hashList.end();
   }
 }
