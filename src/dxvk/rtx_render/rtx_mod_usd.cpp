@@ -1125,8 +1125,18 @@ void UsdMod::Impl::addReplacementsSync(dxvk::Rc<dxvk::DxvkCommandList> cmdList, 
   // If the sync thread for this command list hasn't been created then create it now
   if (!m_cmdListSyncThreads[cmdList.ptr()].joinable()) {
     m_cmdListSyncThreads[cmdList.ptr()] = std::thread([this, cmdList]() {
-      // Wait for command list completion to ensure all host->device copies from staging buffers are done
-      cmdList->synchronize();
+      // Base on Vulkan Document: https://docs.vulkan.org/spec/latest/chapters/synchronization.html#synchronization-fences
+      // Host access to each member of pFences must be externally synchronized
+      // So, we must wait for the VkFence synchronization finished in queue submission thread. If we do synchronize here, it will cause VkFence multiple thread error.
+      {
+        constexpr uint64_t initialSignalValue = 0;
+        constexpr uint64_t waitSignalValue = 1;
+        auto replacementSyncSignal = new sync::Fence(initialSignalValue);
+
+        cmdList->queueSignal(replacementSyncSignal, waitSignalValue);
+        replacementSyncSignal->wait(waitSignalValue);
+      }
+
       // Add the replacements vector to the collection of replacements for this hash
       for (auto it : m_meshReplacementsToAdd[cmdList.ptr()]) {
         m_owner.m_replacements->set<AssetReplacement::eMesh>(it.first, std::move(it.second));

@@ -72,32 +72,11 @@ namespace dxvk {
       "vkCreateShaderModule..: A SPIR-V Capability .Unhandled OpCapability. was declared that is not supported by Vulkan. The Vulkan spec states: pCode must not declare any capability that is not supported by the API, as described by the Capabilities section of the SPIR-V Environment appendix",
       "SPV_NV_shader_invocation_reorder",
 
-      // NV_low_latency extension not supported by VL
-      "MessageID = 0x8fe45d78",
-
-      // Likely a VL bug, started to occur after VK SDK update
-      "Timeout waiting for timeline semaphore state to update\\. This is most likely a validation bug",
-
       // cmdResetQuery has reset commented out since it hits an AV on initial reset - need to update dxvk that handles resets differently
       "After query pool creation, each query must be reset before it is used\\. Queries must also be reset between uses",
 
-      // VL bug: it thinks we're using VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT when we're not
-      "MessageID = 0x769aa5a9",
-
-      // REMIX-2772
-      "vkCmdTraceRaysKHR\\(\\): .*? doesn't set up VK_DYNAMIC_STATE_VIEWPORT\\|VK_DYNAMIC_STATE_SCISSOR\\|VK_DYNAMIC_STATE_STENCIL_REFERENCE, "
-      "but it calls the related dynamic state setting commands\\. The Vulkan spec states: If a pipeline is bound to the pipeline bind point used by this command, "
-      "there must not have been any calls to dynamic state setting commands for any state not specified as dynamic in the VkPipeline object bound to the pipeline "
-      "bind point used by this command, since that pipeline was bound",
-
-      // REMIX-2771
-      "vkCmdCopyImage\\(\\): srcImage.*? was created with VK_IMAGE_USAGE_TRANSFER_DST_BIT\\|VK_IMAGE_USAGE_SAMPLED_BIT\\|VK_IMAGE_USAGE_STORAGE_BIT "
-      "but requires VK_IMAGE_USAGE_TRANSFER_SRC_BIT\\. The Vulkan spec states: If the aspect member of any element of pRegions includes any flag other than "
-      "VK_IMAGE_ASPECT_STENCIL_BIT or srcImage was not created with separate stencil usage, VK_IMAGE_USAGE_TRANSFER_SRC_BIT must have been included in the "
-      "VkImageCreateInfo::usage used to create srcImage",
-
-      // VK_STRUCTURE_TYPE_SET_PRESENT_CONFIG_NV present metering usage not currently supported by VL
-      "pNext chain includes a structure with unknown VkStructureType \\(1000613000\\)",
+      // createCuModuleNVX
+      "vkCreateCuModuleNVX: value of pCreateInfo->pNext must be NULL. This error is based on the Valid Usage documentation for version [0-9]+ of the Vulkan header.  It is possible that you are using a struct from a private extension or an extension that was added to a later version of the Vulkan header, in which case the use of pCreateInfo->pNext is undefined and may not work correctly with validation enabled The Vulkan spec states: pNext must be NULL",
 // NV-DXVK end
     };
 
