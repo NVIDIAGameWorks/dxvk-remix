@@ -692,14 +692,22 @@ namespace dxvk {
         layout, stageFlags, offset, size, pValues);
     }
 
-
+    // NV-DXVK start:
+    // Resets the query pool using InitBuffer. Upstream DXVK no longer performs this reset specifically in InitBuffer,
+    // so we should align with their updated logic for handling query resets when integrating future changes.
+    // NV-DXVK end
     void cmdResetQuery(
             VkQueryPool             queryPool,
             uint32_t                queryId,
             VkEvent                 event) {
       if (event == VK_NULL_HANDLE) {
-        // NV-DXVK start: commented out as it hits an AV. Need to update dxvk that handles resets differently
-        //m_vkd->vkResetQueryPoolEXT(m_vkd->device(), queryPool, queryId, 1);
+        // NV-DXVK: Previously used vkResetQueryPoolEXT here, but it caused access violations(AV).
+        // Now replaced with vkCmdResetQueryPool submitted via the init command buffer.
+        // This workaround can be removed once upstream logic is integrated and verified to work correctly.
+        m_cmdBuffersUsed.set(DxvkCmdBuffer::InitBuffer);
+
+        m_vkd->vkCmdResetQueryPool(
+          m_initBuffer, queryPool, queryId, 1);
         // NV-DXVK end
       } else {
         m_cmdBuffersUsed.set(DxvkCmdBuffer::InitBuffer);

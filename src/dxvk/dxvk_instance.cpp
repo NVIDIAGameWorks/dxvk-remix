@@ -72,9 +72,6 @@ namespace dxvk {
       "vkCreateShaderModule..: A SPIR-V Capability .Unhandled OpCapability. was declared that is not supported by Vulkan. The Vulkan spec states: pCode must not declare any capability that is not supported by the API, as described by the Capabilities section of the SPIR-V Environment appendix",
       "SPV_NV_shader_invocation_reorder",
 
-      // cmdResetQuery has reset commented out since it hits an AV on initial reset - need to update dxvk that handles resets differently
-      "After query pool creation, each query must be reset before it is used\\. Queries must also be reset between uses",
-
       // createCuModuleNVX
       "vkCreateCuModuleNVX: value of pCreateInfo->pNext must be NULL. This error is based on the Valid Usage documentation for version [0-9]+ of the Vulkan header.  It is possible that you are using a struct from a private extension or an extension that was added to a later version of the Vulkan header, in which case the use of pCreateInfo->pNext is undefined and may not work correctly with validation enabled The Vulkan spec states: pNext must be NULL",
 // NV-DXVK end
