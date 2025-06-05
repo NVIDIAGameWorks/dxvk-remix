@@ -379,7 +379,7 @@ namespace dxvk {
     // Call onFrameBegin callbacks for RtxPases
     // Note: this needs to be called after resetScreenResolution() call in a frame
     // since an RtxPass may alias some of its resources with the ones created in createRaytracingOutput()
-    getResourceManager().onFrameBegin(this, getCommonObjects()->getTextureManager(), downscaledExtent,
+    getResourceManager().onFrameBegin(this, getCommonObjects()->getTextureManager(), getSceneManager(), downscaledExtent,
                                       upscaledExtent, frameTimeMilliseconds, m_resetHistory, mainCamera.isCameraCut());
 
     // Force history reset on integrate indirect mode change to discard incompatible history 
@@ -580,6 +580,8 @@ namespace dxvk {
         
         if (captureScreenImage && captureDebugImage) {
           takeScreenshot("baseReflectivity", rtOutput.m_primaryBaseReflectivity.image(Resources::AccessType::Read));
+          takeScreenshot("sharedSubsurfaceData", rtOutput.m_sharedSubsurfaceData.image);
+          takeScreenshot("sharedSubsurfaceDiffusionProfileData", rtOutput.m_sharedSubsurfaceDiffusionProfileData.image);
         }
 
         // Demodulation

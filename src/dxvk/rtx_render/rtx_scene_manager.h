@@ -221,6 +221,9 @@ public:
   void requestVramCompaction();
   void manageTextureVram();
 
+  bool isThinOpaqueMaterialExist() const { return m_thinOpaqueMaterialExist; }
+  bool isSssMaterialExist() const { return m_sssMaterialExist; }
+
 private:
   enum class ObjectCacheState
   {
@@ -318,6 +321,9 @@ private:
 
   std::atomic_bool m_forceFreeTextureMemory = false;
   std::atomic_bool m_forceFreeUnusedDxvkAllocatorChunks = false;
+
+  bool m_thinOpaqueMaterialExist = false;
+  bool m_sssMaterialExist = false;
 };
 
 }  // namespace nvvk

@@ -171,11 +171,11 @@ struct SubsurfaceMaterial
 
 struct SubsurfaceMaterialInteraction
 {
-  uint16_t packedTransmittanceColor; // Pack with R5G6B5
+  uint32_t packedTransmittanceColor;
   float16_t measurementDistance;
-  f16vec3 singleScatteringAlbedo;
+  uint32_t packedSingleScatteringAlbedo;
   uint8_t volumetricAnisotropy;
-  uint16_t maxSampleRadius;
+  uint8_t maxSampleRadius;
 };
 
 struct OpaqueSurfaceMaterialInteraction
@@ -276,7 +276,6 @@ struct PolymorphicSurfaceMaterialInteraction
   f16vec3 emissiveRadiance;
   f16vec3 vdata0;
   f16vec3 vdata1;
-  f16vec3 vdata2;
 
   float16_t fdata0;
   float16_t fdata1;
@@ -288,8 +287,12 @@ struct PolymorphicSurfaceMaterialInteraction
   uint16_t idata0;
   uint16_t idata1;
 
+  uint32_t i32data0;
+  uint32_t i32data1;
+
   uint8_t bdata0;
   uint8_t bdata1;
+  uint8_t bdata2;
 
   uint8_t type;
 

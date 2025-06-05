@@ -56,17 +56,15 @@ SubsurfaceMaterial subsurfaceMaterialCreate(MemoryPolymorphicSurfaceMaterial mem
 SubsurfaceMaterial subsurfaceMaterialCreate(const SubsurfaceMaterialInteraction subsurfaceMaterialInteraction)
 {
   SubsurfaceMaterial subsurfaceMaterial;
-  // r5g6b5 compression could cast the transmittance color to 0 when the number is smaller than 0.03, because it only has 5 bits precision.
-  // This will cause NaN issue when map to attenuation coefficient and do log on the transmittance color.
-  // Give a small material epsilon to avoid this NaN issue so we can keep the r5g6b5 compression.
+
+  const f16vec3 transmittanceColor = r11g11b10ToColor(subsurfaceMaterialInteraction.packedTransmittanceColor);
   subsurfaceMaterial.volumetricAttenuationCoefficient = subsurfaceMaterialInteraction.maxSampleRadius == 0.0f ?
-    transmittanceToAttenuationCoefficient(
-      max(r5g6b5ToColor(subsurfaceMaterialInteraction.packedTransmittanceColor), materialEpsilon), subsurfaceMaterialInteraction.measurementDistance) :
-    r5g6b5ToColor(subsurfaceMaterialInteraction.packedTransmittanceColor);
+    transmittanceToAttenuationCoefficient(max(transmittanceColor, materialEpsilon), subsurfaceMaterialInteraction.measurementDistance) :
+    transmittanceColor;
   subsurfaceMaterial.measurementDistance = subsurfaceMaterialInteraction.measurementDistance;
-  subsurfaceMaterial.singleScatteringAlbedo = subsurfaceMaterialInteraction.singleScatteringAlbedo;
+  subsurfaceMaterial.singleScatteringAlbedo = r11g11b10ToColor(subsurfaceMaterialInteraction.packedSingleScatteringAlbedo);
   subsurfaceMaterial.volumetricAnisotropy = snorm8ToF16(subsurfaceMaterialInteraction.volumetricAnisotropy);
-  subsurfaceMaterial.maxSampleRadius = uint16BitsToHalf(subsurfaceMaterialInteraction.maxSampleRadius);
+  subsurfaceMaterial.maxSampleRadius = unorm8ToF16(subsurfaceMaterialInteraction.maxSampleRadius);
 
   return subsurfaceMaterial;
 }

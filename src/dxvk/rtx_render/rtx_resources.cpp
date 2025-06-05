@@ -359,6 +359,7 @@ namespace dxvk {
   void Resources::onFrameBegin(
     Rc<DxvkContext> ctx,
     RtxTextureManager& textureManager,
+    const SceneManager& sceneManager,
     const VkExtent3D& downscaledExtent,
     const VkExtent3D& targetExtent,
     float frameTimeMilliseconds,
@@ -436,6 +437,22 @@ namespace dxvk {
       m_raytracingOutput.m_gbufferPSRData[0].sharesTheSameView(m_raytracingOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal()) &&
       isConditionalAliasingsShareSameView &&
       "New view for an aliased resource was created on the fly. Avoid doing that or ensure it has no negative side effects.");
+
+    // Only create SSS Textures when there're SSS materials in the scene
+    {
+      if (sceneManager.isSssMaterialExist() || sceneManager.isThinOpaqueMaterialExist()) {
+        if (!m_raytracingOutput.m_sharedSubsurfaceData.isValid()) {
+          m_raytracingOutput.m_sharedSubsurfaceData = createImageResource(ctx, "primary subsurface material buffer", m_downscaledExtent, VK_FORMAT_R16G16_UINT);
+        }
+        if (!m_raytracingOutput.m_sharedSubsurfaceDiffusionProfileData.isValid()) {
+          // The single scattering is also stored in diffusion profile texture which is used in thin opaque. So we need to create this texture for thin opaque as well.
+          m_raytracingOutput.m_sharedSubsurfaceDiffusionProfileData = createImageResource(ctx, "primary subsurface material diffusion profile data buffer", m_downscaledExtent, VK_FORMAT_R32G32_UINT);
+        }
+      } else {
+        m_raytracingOutput.m_sharedSubsurfaceData.reset();
+        m_raytracingOutput.m_sharedSubsurfaceDiffusionProfileData.reset();
+      }
+    }
   }
 
   void Resources::onResize(Rc<DxvkContext> ctx, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent) {
@@ -979,9 +996,6 @@ namespace dxvk {
     m_raytracingOutput.m_primarySurfaceFlags = createImageResource(ctx, "primary surface flags", m_downscaledExtent, VK_FORMAT_R8_UINT);
     m_raytracingOutput.m_primaryDisocclusionThresholdMix = createImageResource(ctx, "primary disocclusion threshold mix", m_downscaledExtent, VK_FORMAT_R16_SFLOAT);
     m_raytracingOutput.m_primaryDisocclusionMaskForRR = AliasedResource(m_raytracingOutput.m_sharedSurfaceIndex, ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "primary disocclusion mask for ray reconstruction", allowCompatibleFormatAliasing);
-
-    m_raytracingOutput.m_sharedSubsurfaceData = createImageResource(ctx, "primary subsurface material buffer", m_downscaledExtent, VK_FORMAT_R16G16B16A16_UINT);
-    m_raytracingOutput.m_sharedSubsurfaceDiffusionProfileData = createImageResource(ctx, "primary subsurface material diffusion profile data buffer", m_downscaledExtent, VK_FORMAT_B10G11R11_UFLOAT_PACK32);
 
     if (m_raytracingOutput.m_primaryObjectPicking.isValid()) {
       m_raytracingOutput.m_primaryObjectPicking = createImageResource(ctx, "primary object picking", m_downscaledExtent, VK_FORMAT_R32_UINT);

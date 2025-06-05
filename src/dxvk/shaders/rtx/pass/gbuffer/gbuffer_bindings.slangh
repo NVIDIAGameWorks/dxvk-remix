@@ -199,11 +199,11 @@ RWTexture2D<float4> PrimaryWorldShadingNormalDLSSRR;
 layout(rg16f, binding = GBUFFER_BINDING_PRIMARY_SCREEN_SPACE_MOTION_DLSSRR_OUTPUT)
 RWTexture2D<float2> PrimaryScreenSpaceMotionVectorDLSSRR;
 
-layout(rgba16ui, binding = GBUFFER_BINDING_SHARED_SUBSURFACE_DATA_OUTPUT)
-RWTexture2D<uint4> SharedSubsurfaceData;
+layout(rg16ui, binding = GBUFFER_BINDING_SHARED_SUBSURFACE_DATA_OUTPUT)
+RWTexture2D<uint2> SharedSubsurfaceData;
 
-layout(r11f_g11f_b10f, binding = GBUFFER_BINDING_SHARED_SUBSURFACE_DIFFUSION_PROFILE_DATA_OUTPUT)
-RWTexture2D<float3> SharedSubsurfaceDiffusionProfileData;
+layout(rg32ui, binding = GBUFFER_BINDING_SHARED_SUBSURFACE_DIFFUSION_PROFILE_DATA_OUTPUT)
+RWTexture2D<uint2> SharedSubsurfaceDiffusionProfileData;
 
 layout(push_constant)
 ConstantBuffer<GbufferPushConstants> push;

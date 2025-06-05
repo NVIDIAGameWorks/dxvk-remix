@@ -490,6 +490,9 @@ namespace dxvk {
 
     // Not currently safe to cache these across frames (due to texture indices and rtx options potentially changing)
     m_preCreationSurfaceMaterialMap.clear();
+
+    m_thinOpaqueMaterialExist = false;
+    m_sssMaterialExist = false;
   }
 
   void SceneManager::onFrameEndNoRTX() {
@@ -1142,6 +1145,7 @@ namespace dxvk {
             subsurfaceRadiusScale = std::max(opaqueMaterialData.getSubsurfaceRadiusScale(), 1e-5f);
             assert(subsurfaceRadiusScale > 0);
 
+            m_sssMaterialExist = true;
           } else /* if thin opaque */ {
             assert(subsurfaceMeasurementDistance > 0);
 
@@ -1151,6 +1155,8 @@ namespace dxvk {
             assert(subsurfaceRadiusScale < 0);  // if < 0, then shaders assume that
                                                 // this material is not SubsurfaceScatter, but just SingleScatter
                                                 // same here, but <0.F
+
+            m_thinOpaqueMaterialExist = true;
           }
 
           if (RtxOptions::SubsurfaceScattering::enableTextureMaps()) {

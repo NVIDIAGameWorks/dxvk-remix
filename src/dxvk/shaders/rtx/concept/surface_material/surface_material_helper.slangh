@@ -135,11 +135,11 @@ SubsurfaceMaterialInteraction subSurfaceMaterialReadHelper(
   if ((!cb.sssArgs.enableThinOpaque && !cb.sssArgs.enableDiffusionProfile) || subsurfaceMaterialIndex == BINDING_INDEX_INVALID)
   {
     SubsurfaceMaterialInteraction subsurfaceMaterialInteraction;
-    subsurfaceMaterialInteraction.packedTransmittanceColor = uint16_t(0);
     subsurfaceMaterialInteraction.measurementDistance = 0.0h;
-    subsurfaceMaterialInteraction.singleScatteringAlbedo = 0.0h;
+    subsurfaceMaterialInteraction.packedTransmittanceColor = 0;
+    subsurfaceMaterialInteraction.packedSingleScatteringAlbedo = 0;
     subsurfaceMaterialInteraction.volumetricAnisotropy = uint8_t(0);
-    subsurfaceMaterialInteraction.maxSampleRadius = uint16_t(0);
+    subsurfaceMaterialInteraction.maxSampleRadius = uint8_t(0);
 
     return subsurfaceMaterialInteraction;
   }
@@ -150,14 +150,14 @@ SubsurfaceMaterialInteraction subSurfaceMaterialReadHelper(
 }
 
 SubsurfaceMaterialInteraction subSurfaceMaterialReadHelper(
-  const uint4 subsurfaceData,
-  const float3 subsurfaceDiffusionProfileData)
+  const uint2 subsurfaceData,
+  const uint2 subsurfaceDiffusionProfileData)
 {
   SubsurfaceMaterialInteraction subsurfaceMaterialInteraction;
-  subsurfaceMaterialInteraction.packedTransmittanceColor = uint16_t(subsurfaceData.x);
-  subsurfaceMaterialInteraction.measurementDistance = uint16BitsToHalf(uint16_t(subsurfaceData.y));
-  subsurfaceMaterialInteraction.singleScatteringAlbedo = subsurfaceDiffusionProfileData.xyz;
-  subsurfaceMaterialInteraction.volumetricAnisotropy = uint8_t(subsurfaceData.w);
-  subsurfaceMaterialInteraction.maxSampleRadius = uint16_t(subsurfaceData.z);
+  subsurfaceMaterialInteraction.measurementDistance = uint16BitsToHalf(uint16_t(subsurfaceData.x));
+  subsurfaceMaterialInteraction.packedTransmittanceColor = subsurfaceDiffusionProfileData.x;
+  subsurfaceMaterialInteraction.packedSingleScatteringAlbedo = subsurfaceDiffusionProfileData.y;
+  subsurfaceMaterialInteraction.volumetricAnisotropy = uint8_t(subsurfaceData.y & 0xFF);
+  subsurfaceMaterialInteraction.maxSampleRadius = uint8_t(subsurfaceData.y >> 8);
   return subsurfaceMaterialInteraction;
 }

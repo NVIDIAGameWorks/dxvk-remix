@@ -107,8 +107,8 @@ PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionReadF
   Texture2D<uint> data0Texture,
   Texture2D<uint> data1Texture,
   Texture2D<uint> surfaceIndexTexture,
-  Texture2D<uint4> subsurfaceData,
-  Texture2D<float3> subsurfaceDiffusionProfileData)
+  Texture2D<uint2> subsurfaceData,
+  Texture2D<uint2> subsurfaceDiffusionProfileData)
 {
   GBufferMemoryPolymorphicSurfaceMaterialInteraction memory;
 
@@ -127,17 +127,19 @@ PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionReadF
     const SubsurfaceMaterialInteraction subsurfaceMaterialInteraction = subSurfaceMaterialReadHelper(subsurfaceData[position], subsurfaceDiffusionProfileData[position]);
 
     polymorphicSurfaceMaterialInteraction.fdata5 = subsurfaceMaterialInteraction.measurementDistance;
-    polymorphicSurfaceMaterialInteraction.idata0 = subsurfaceMaterialInteraction.packedTransmittanceColor;
-    polymorphicSurfaceMaterialInteraction.idata1 = subsurfaceMaterialInteraction.maxSampleRadius;
-    polymorphicSurfaceMaterialInteraction.vdata2 = subsurfaceMaterialInteraction.singleScatteringAlbedo;
+    polymorphicSurfaceMaterialInteraction.i32data0 = subsurfaceMaterialInteraction.packedTransmittanceColor;
+    polymorphicSurfaceMaterialInteraction.i32data1 = subsurfaceMaterialInteraction.packedSingleScatteringAlbedo;
     polymorphicSurfaceMaterialInteraction.bdata1 = subsurfaceMaterialInteraction.volumetricAnisotropy;
+    polymorphicSurfaceMaterialInteraction.bdata2 = subsurfaceMaterialInteraction.maxSampleRadius;
   }
   else
   {
     polymorphicSurfaceMaterialInteraction.fdata5 = 0.0h;
     polymorphicSurfaceMaterialInteraction.idata0 = 0;
-    polymorphicSurfaceMaterialInteraction.idata1 = 0;
+    polymorphicSurfaceMaterialInteraction.i32data0 = 0;
+    polymorphicSurfaceMaterialInteraction.i32data1 = 0;
     polymorphicSurfaceMaterialInteraction.bdata1 = 0;
+    polymorphicSurfaceMaterialInteraction.bdata2 = 0;
   }
 
   return polymorphicSurfaceMaterialInteraction;
@@ -162,8 +164,8 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
   RWTexture2D<uint> data1Texture,
   RWTexture2D<float2> sharedTextureCoords,
   RWTexture2D<uint> surfaceIndexTexture,
-  RWTexture2D<uint4> subsurfaceDataTexture,
-  RWTexture2D<float3> subsurfaceDiffusionProfileDataTexture)
+  RWTexture2D<uint2> subsurfaceDataTexture,
+  RWTexture2D<uint2> subsurfaceDiffusionProfileDataTexture)
 {
   const GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteraction =
     gBufferMemoryPolymorphicSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
@@ -222,18 +224,17 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
 
     if (polymorphicSurfaceMaterialInteractionHasSubsurface(polymorphicSurfaceMaterialInteraction))
     {
-      subsurfaceDataTexture[position] = uint4(
-        polymorphicSurfaceMaterialInteraction.idata0,                      // transmittanceColor
+      subsurfaceDataTexture[position] = uint2(
         float16BitsToUint16(polymorphicSurfaceMaterialInteraction.fdata5), // measurementDistance
-        polymorphicSurfaceMaterialInteraction.idata1,                      // Max Radius
-        (uint16_t(polymorphicSurfaceMaterialInteraction.bdata1))           // volumetricAnisotropy
+        (uint16_t(polymorphicSurfaceMaterialInteraction.bdata1) | (uint16_t(polymorphicSurfaceMaterialInteraction.bdata2) << 8)) // volumetricAnisotropy | Max Radius
       );
-      subsurfaceDiffusionProfileDataTexture[position] = polymorphicSurfaceMaterialInteraction.vdata2;
+      subsurfaceDiffusionProfileDataTexture[position] = uint2(
+        polymorphicSurfaceMaterialInteraction.i32data0, polymorphicSurfaceMaterialInteraction.i32data1);
     }
     else
     {
-      subsurfaceDataTexture[position] = uint4(0, 0, 0, 0);
-      subsurfaceDiffusionProfileDataTexture[position] = float3(0, 0, 0);
+      subsurfaceDataTexture[position] = uint2(0, 0);
+      subsurfaceDiffusionProfileDataTexture[position] = uint2(0, 0);
     }
   }
 }

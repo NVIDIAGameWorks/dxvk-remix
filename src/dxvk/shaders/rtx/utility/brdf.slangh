@@ -38,6 +38,7 @@ static const float16_t materialIoRVacuum = float16_t(1.0);
 // Note: Set to mimic some sort of plastic-ey layer, not sure what an actual thin film's IoR is like but this works fine.
 static const float16_t materialIoRThinFilmLayer = float16_t(1.5);
 static const f16vec3 materialTangentSpaceNormal = f16vec3(0.0, 0.0, 1.0);
+static const float16_t materialSssEpsilon = 0.002h;
 
 // Surface/Volume Material Parameterization Helpers
 

@@ -361,9 +361,9 @@ SubsurfaceMaterialInteraction subsurfaceMaterialInteractionCreate(
   SurfaceInteraction surfaceInteraction,
   uint16_t samplerIndex)
 {
-  f16vec4 transmittanceColor;
-  f16vec4 subsurfaceMeasurementDistance;
-  f16vec4 subsurfaceSingleScatteringAlbedo;
+  f16vec4 transmittanceColor = 0.0h;
+  f16vec4 subsurfaceMeasurementDistance = 0.0h;
+  f16vec4 subsurfaceSingleScatteringAlbedo = 0.0h;
 
   bool isDiffusionProfile = subsurfaceMaterial.maxSampleRadius > 0.0f;
 
@@ -390,32 +390,32 @@ SubsurfaceMaterialInteraction subsurfaceMaterialInteractionCreate(
     {
       transmittanceColor = gammaToLinear(transmittanceColor);
     }
-    subsurfaceMaterialInteraction.packedTransmittanceColor = colorToR5G6B5(transmittanceColor.rgb);
   }
   else
   {
     if (!isDiffusionProfile) // Thin Opaque
     {
-      subsurfaceMaterialInteraction.packedTransmittanceColor = colorToR5G6B5(evalBeerLambertAttenuation(subsurfaceMaterial.volumetricAttenuationCoefficient, subsurfaceMaterial.measurementDistance));
+      transmittanceColor.rgb = evalBeerLambertAttenuation(subsurfaceMaterial.volumetricAttenuationCoefficient, subsurfaceMaterial.measurementDistance);
     }
     else // SSS
     {
-      subsurfaceMaterialInteraction.packedTransmittanceColor = colorToR5G6B5(subsurfaceMaterial.volumetricAttenuationCoefficient);
+      transmittanceColor.rgb = subsurfaceMaterial.volumetricAttenuationCoefficient;
     }
   }
+  subsurfaceMaterialInteraction.packedTransmittanceColor = colorToR11G11B10(transmittanceColor.rgb);
 
   if (singleScatteringAlbedoLoaded)
   {
-    subsurfaceMaterialInteraction.singleScatteringAlbedo = subsurfaceSingleScatteringAlbedo.rgb;
+    subsurfaceMaterialInteraction.packedSingleScatteringAlbedo = colorToR11G11B10(subsurfaceSingleScatteringAlbedo.rgb);
   }
   else
   {
-    subsurfaceMaterialInteraction.singleScatteringAlbedo = subsurfaceMaterial.singleScatteringAlbedo;
+    subsurfaceMaterialInteraction.packedSingleScatteringAlbedo = colorToR11G11B10(subsurfaceMaterial.singleScatteringAlbedo);
   }
 
   subsurfaceMaterialInteraction.volumetricAnisotropy = f16ToSnorm8(subsurfaceMaterial.volumetricAnisotropy);
 
-  subsurfaceMaterialInteraction.maxSampleRadius = float16BitsToUint16(subsurfaceMaterial.maxSampleRadius);
+  subsurfaceMaterialInteraction.maxSampleRadius = subsurfaceMaterial.maxSampleRadius != 0.0h ? f16ToUnorm8(max(subsurfaceMaterial.maxSampleRadius, materialSssEpsilon)) : 0;
 
   return subsurfaceMaterialInteraction;
 }
@@ -868,9 +868,9 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(Polymorp
   opaqueSurfaceMaterialInteraction.normalDetail = polymorphicSurfaceMaterialInteraction.fdata4;
   opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.measurementDistance = polymorphicSurfaceMaterialInteraction.fdata5;
   opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.volumetricAnisotropy = polymorphicSurfaceMaterialInteraction.bdata1;
-  opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.maxSampleRadius = polymorphicSurfaceMaterialInteraction.idata1;
-  opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.packedTransmittanceColor = polymorphicSurfaceMaterialInteraction.idata0;
-  opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.singleScatteringAlbedo = polymorphicSurfaceMaterialInteraction.vdata2;
+  opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.maxSampleRadius = polymorphicSurfaceMaterialInteraction.bdata2;
+  opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.packedTransmittanceColor = polymorphicSurfaceMaterialInteraction.i32data0;
+  opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.packedSingleScatteringAlbedo = polymorphicSurfaceMaterialInteraction.i32data1;
 
   opaqueSurfaceMaterialInteraction.flags = polymorphicSurfaceMaterialInteraction.bdata0;
 

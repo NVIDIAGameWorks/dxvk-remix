@@ -194,7 +194,7 @@ RAB_Surface RAB_EmptySurface()
   surface.opaqueSurfaceMaterialInteraction.anisotropicRoughness = f16vec2(1, 1);
   surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.packedTransmittanceColor = 0;
   surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.measurementDistance = 0.0h;
-  surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.singleScatteringAlbedo = 0.0h;
+  surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.packedSingleScatteringAlbedo = 0;
   surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.volumetricAnisotropy = 0.0h;
   surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.maxSampleRadius = 0.0h;
   surface.hitDistance = RAB_SURFACE_BACKGROUND_HIT_DISTANCE;
