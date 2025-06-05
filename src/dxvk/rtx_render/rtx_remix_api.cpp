@@ -1226,41 +1226,51 @@ namespace {
       }
     }
 
-    dxvk::Resources& resourceManager = remixDevice->GetDXVKDevice()->getCommon()->getResources();
-    const dxvk::Resources::RaytracingOutput& rtOutput = resourceManager.getRaytracingOutput();
-
 #pragma warning(push)
 #pragma warning(error : 4061) // all switch cases must be handled explicitly
 
-    dxvk::Rc<dxvk::DxvkImage> srcImage = nullptr;
     switch (type) {
     case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_FINAL_COLOR:
-      srcImage = rtOutput.m_finalOutput.resource(dxvk::Resources::AccessType::Read).image;
-      break;
     case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_DEPTH:
-      srcImage = rtOutput.m_primaryDepth.image;
-      break;
     case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_NORMALS:
-      srcImage = rtOutput.m_primaryWorldShadingNormal.image;
-      break;
     case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_OBJECT_PICKING:
-      srcImage = rtOutput.m_primaryObjectPicking.image;
       break;
     default:
-      break;
-    }
-
-#pragma warning(pop)
-
-    if (srcImage.ptr() == nullptr) {
       return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
 
     std::lock_guard lock { s_mutex };
-    remixDevice->EmitCs([cDest = destTexInfo->GetImage(), cSrc = srcImage](dxvk::DxvkContext* dxvkCtx) {
+    remixDevice->EmitCs([cDest = destTexInfo->GetImage(), type = type](dxvk::DxvkContext* dxvkCtx) {
       auto* ctx = static_cast<dxvk::RtxContext*>(dxvkCtx);
-      dxvk::RtxContext::blitImageHelper(ctx, cSrc, cDest, VkFilter::VK_FILTER_NEAREST);
+
+      dxvk::Resources& resourceManager = ctx->getCommonObjects()->getResources();
+      const dxvk::Resources::RaytracingOutput& rtOutput = resourceManager.getRaytracingOutput();
+
+      dxvk::Rc<dxvk::DxvkImage> srcImage = nullptr;
+      switch (type) {
+      case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_FINAL_COLOR:
+        srcImage = rtOutput.m_finalOutput.resource(dxvk::Resources::AccessType::Read).image;
+        break;
+      case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_DEPTH:
+        srcImage = rtOutput.m_primaryDepth.image;
+        break;
+      case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_NORMALS:
+        srcImage = rtOutput.m_primaryWorldShadingNormal.image;
+        break;
+      case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_OBJECT_PICKING:
+        srcImage = rtOutput.m_primaryObjectPicking.image;
+        break;
+      default:
+        assert(!"unexpected remixapi_dxvk_CopyRenderingOutputType value");
+        return;
+      }
+
+      assert(srcImage.ptr());
+      dxvk::RtxContext::blitImageHelper(ctx, srcImage, cDest, VkFilter::VK_FILTER_NEAREST);
     });
+
+#pragma warning(pop)
+
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
 
