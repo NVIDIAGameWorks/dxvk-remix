@@ -458,11 +458,21 @@ namespace dxvk {
     RTX_OPTION("rtx", float, uniqueObjectDistance, 300.f, "The distance (in game units) that an object can move in a single frame before it is no longer considered the same object.\n"
                     "If this is too low, fast moving objects may flicker and have bad lighting.  If it's too high, repeated objects may flicker.\n"
                     "This does not account for sceneScale.");
-    RTX_OPTION_FLAG_ENV("rtx", UIType, showUI, UIType::None, RtxOptionFlags::NoSave | RtxOptionFlags::NoReset, "RTX_GUI_DISPLAY_UI", "0 = Don't Show, 1 = Show Simple, 2 = Show Advanced.");
-    RTX_OPTION_FLAG("rtx", bool, defaultToAdvancedUI, false, RtxOptionFlags::NoReset, "");
+    
+    RTX_OPTION_ARGS("rtx", UIType, showUI, UIType::None, "0 = Don't Show, 1 = Show Simple, 2 = Show Advanced.", 
+                    args.environment = "RTX_GUI_DISPLAY_UI",
+                    args.flags = RtxOptionFlags::NoSave | RtxOptionFlags::NoReset);
+    RTX_OPTION_ARGS("rtx", bool, defaultToAdvancedUI, false, "", args.flags = RtxOptionFlags::NoReset);
     RTX_OPTION_FLAG("rtx", bool, showRayReconstructionUI, true, RtxOptionFlags::NoReset, "Show ray reconstruction UI.");
-    RTX_OPTION("rtx", bool, showUICursor, true, "");
-    RTX_OPTION_FLAG("rtx", bool, blockInputToGameInUI, true, RtxOptionFlags::NoSave, "");
+
+    public: static void showUICursorOnChange();
+    RTX_OPTION_ARGS("rtx", bool, showUICursor, true, "If true, the ImGUI mouse cursor will be shown when the UI is active.\n"
+                    "Can be toggled with Alt + Delete.", args.onChangeCallback = &showUICursorOnChange);
+    
+    public: static void blockInputToGameInUIOnChange();
+    RTX_OPTION_ARGS("rtx", bool, blockInputToGameInUI, true,
+                    "If true, input will not be passed to the game when the UI is active.\n"
+                    "Can be toggled with Alt + Backspace", args.onChangeCallback = &blockInputToGameInUIOnChange, args.flags = RtxOptionFlags::NoSave);
 
     inline static const VirtualKeys kDefaultRemixMenuKeyBinds{ VirtualKey{VK_MENU},VirtualKey{'X'} };
     RTX_OPTION("rtx", VirtualKeys, remixMenuKeyBinds, kDefaultRemixMenuKeyBinds,
@@ -628,7 +638,9 @@ namespace dxvk {
                "This is typically used to reduce flickering artifacts resulting from refraction on surfaces like glass leveraging normal maps as often the denoiser is too aggressive with disocclusion checks frame to frame when DLSS or other camera jittering is in use.");
 
     // Shader Execution Reordering Options
-    RTX_OPTION_ENV("rtx", bool, isShaderExecutionReorderingSupported, true, "DXVK_IS_SHADER_EXECUTION_REORDERING_SUPPORTED", "Enables support of Shader Execution Reordering (SER) if it is supported by the target HW and SW."); 
+    RTX_OPTION_ENV("rtx", bool, isShaderExecutionReorderingSupported, true, "DXVK_IS_SHADER_EXECUTION_REORDERING_SUPPORTED", "Enables Shader Execution Reordering (SER) if it is supported by the target HW and SW."); 
+    // True if `isShaderExecutionReorderingSupported` is true and the computer actually supports it.
+    public: static inline bool enableShaderExecutionReordering = true;
     RTX_OPTION("rtx", bool, enableShaderExecutionReorderingInPathtracerGbuffer, false, "(Note: Hard disabled in shader code) Enables Shader Execution Reordering (SER) in GBuffer Raytrace pass if SER is supported.");
     RTX_OPTION("rtx", bool, enableShaderExecutionReorderingInPathtracerIntegrateIndirect, true, "Enables Shader Execution Reordering (SER) in Integrate Indirect pass if SER is supported.");
 
@@ -870,7 +882,18 @@ namespace dxvk {
                     "Note that this option when set to false will prevent Reflex from even attempting to initialize, unlike setting the Reflex mode to \"None\" which simply tells an initialized Reflex not to take effect.\n"
                     "Additionally, this setting must be set at startup and changing it will not take effect at runtime.");
 
-    RTX_OPTION_FLAG("rtx", EnableVsync, enableVsync, EnableVsync::WaitingForImplicitSwapchain, RtxOptionFlags::NoSave, "Controls the game's V-Sync setting. Native game's V-Sync settings are ignored.");
+    // Store the computed value separately from the user preference.  This enables changing it immediately when needed,
+    // and lets us store the final value to be used by the game.
+    public: inline static EnableVsync enableVsyncState = EnableVsync::WaitingForImplicitSwapchain;
+    public: static void EnableVsyncOnChange() {
+      if (enableVsync() != EnableVsync::WaitingForImplicitSwapchain) {
+        enableVsyncState = enableVsync();
+      }
+      // If the option is changed to WaitingForImplicitSwapchain, just leave the computed state as it was.
+    }
+    RTX_OPTION_ARGS("rtx", EnableVsync, enableVsync, EnableVsync::WaitingForImplicitSwapchain, "Controls the game's V-Sync setting. Native game's V-Sync settings are ignored.", 
+                    args.flags = RtxOptionFlags::NoSave,
+                    args.onChangeCallback = &EnableVsyncOnChange);
 
     // Replacement options
     RTX_OPTION("rtx", bool, enableReplacementAssets, true, "Globally enables or disables all enhanced asset replacement (materials, meshes, lights) functionality.");
@@ -1064,8 +1087,7 @@ namespace dxvk {
   public:
 
     RtxOptions(const Config& options) {
-      // All of the CLAMP operations below rely on the fact that the options have already been initialized.
-      // The options are actually parsed just before RtxOptions is created, so this is safe to do here.
+      // Need to set this to true after conf files are parsed, but before any options are accessed.
       RtxOptionImpl::s_isInitialized = true;
 
       // Needs to be > 0
@@ -1197,6 +1219,9 @@ namespace dxvk {
         Logger::info("[Deprecated Config] rtx.nonOffsetDecalTextures has been deprecated, we have moved all your texture's from this list to rtx.decalTextures, no further action is required from you.  Please re-save your rtx config to get rid of this message.");
       }
       decalTextures.set(mergedSet);
+
+      // Ensure all of the above values are promoted before the first frame starts.
+      RtxOption<bool>::applyPendingValues();
     }
 
     static void updateUpscalerFromDlssPreset();
@@ -1225,8 +1250,12 @@ namespace dxvk {
     }
 
     static std::unique_ptr<RtxOptions>& Create(const Config& options) {
+
       if (m_instance == nullptr) {
         m_instance = std::make_unique<RtxOptions>(options);
+      } else {
+        // Create was called a second time, which means dxvk_instance was recreated.
+        RtxOptionImpl::s_isInitialized = true;
       }
       return m_instance;
     }
@@ -1269,9 +1298,6 @@ namespace dxvk {
     }
     static bool isNISEnabled() { return upscalerType() == UpscalerType::NIS; }
     static bool isTAAEnabled() { return upscalerType() == UpscalerType::TAAU; }
-    static void setReplaceDirectSpecularHitTWithIndirectSpecularHitT(const bool enableReplaceDirectSpecularHitTWithIndirectSpecularHitT) {
-      replaceDirectSpecularHitTWithIndirectSpecularHitT.set(enableReplaceDirectSpecularHitTWithIndirectSpecularHitT);
-    }
     
     static float getUniqueObjectDistanceSqr() { return uniqueObjectDistance() * uniqueObjectDistance(); }
     static uint32_t getNumFramesToPutLightsToSleep() { return numFramesToKeepLights() /2; }
@@ -1280,9 +1306,8 @@ namespace dxvk {
     // Returns shared enablement composed of multiple enablement inputs
     static bool needsMeshBoundingBox();
     
-    static void setIsShaderExecutionReorderingSupported(bool enabled) { isShaderExecutionReorderingSupported.set(enabled); }
-    static bool isShaderExecutionReorderingInPathtracerGbufferEnabled() { return enableShaderExecutionReorderingInPathtracerGbuffer() && isShaderExecutionReorderingSupported(); }
-    static bool isShaderExecutionReorderingInPathtracerIntegrateIndirectEnabled() { return enableShaderExecutionReorderingInPathtracerIntegrateIndirect() && isShaderExecutionReorderingSupported(); }
+    static bool isShaderExecutionReorderingInPathtracerGbufferEnabled() { return enableShaderExecutionReorderingInPathtracerGbuffer() && enableShaderExecutionReordering; }
+    static bool isShaderExecutionReorderingInPathtracerIntegrateIndirectEnabled() { return enableShaderExecutionReorderingInPathtracerIntegrateIndirect() && enableShaderExecutionReordering; }
 
     // Developer Options
     static bool getIsOpacityMicromapSupported() { return m_instance->opacityMicromap.isSupported; }

@@ -229,8 +229,6 @@ namespace dxvk {
 
     void processHotkeys();
 
-    void sendUIActivationMessage();
-
     void showMemoryStats() const;
     bool showRayReconstructionEnable(bool supportsRR);
 

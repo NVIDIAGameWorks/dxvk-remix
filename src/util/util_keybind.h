@@ -36,6 +36,10 @@ using VkValue = uint8_t;
 struct VirtualKey {
     VkValue val = kInvalidVal;
     static constexpr VkValue kInvalidVal = 0xFF;
+
+    bool operator==(const VirtualKey& other) const {
+        return val == other.val;
+    }
 };
 using VirtualKeys = std::vector<VirtualKey>;
 

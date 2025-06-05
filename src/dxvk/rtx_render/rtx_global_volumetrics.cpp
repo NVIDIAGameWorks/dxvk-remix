@@ -341,7 +341,7 @@ namespace dxvk {
         ImGui::ListBox("", &itemIndex, &volumericPresetName[0], (int) PresetType::PresetCount + 1, 3);
         ImGui::PopID();
         ImGui::PopItemWidth();
-        if (ImGui::Button("Apply") && indent > 0) {
+        if (ImGui::Button("Apply") && itemIndex > 0) {
           setPreset((PresetType) (itemIndex - 1));
           itemIndex = 0;
         }

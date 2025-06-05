@@ -1105,4 +1105,32 @@ namespace dxvk {
     assert(pFlattenedStage);
     Logger::info("[GameCapturer][" + exportPrep.debugId + "] USD capture flattened.");
   }
+
+  std::string GameCapturer::getCaptureInstanceStageNameWithTimestamp() {
+
+    const std::string& stageName = RtxOptions::captureInstanceStageName();
+    const auto timestampPos = stageName.find(RtxOptions::captureTimestampReplacement());
+    const auto usdExtPos =
+      stageName.find(lss::ext::usd, stageName.length() - lss::ext::usda.length() - 1);
+    std::string stageNameWithExt = stageName + ((usdExtPos == std::string::npos) ? lss::ext::usd : "");
+    
+    if (timestampPos == std::string::npos) {
+      return stageNameWithExt;
+    }
+    
+    const std::time_t curTime = std::time(nullptr);
+    std::tm locTime;
+    // The vanilla versions of localtime are not thread safe, see:
+    // https://en.cppreference.com/w/cpp/chrono/c/localtime
+    localtime_s(&locTime, &curTime);
+    static constexpr size_t kTimeStrLen = 19; // length of YYYY-MM-DD_HH-MM-SS
+    const auto putTime = std::put_time(&locTime, "%Y-%m-%d_%H-%M-%S");
+    
+    std::stringstream stageNameSS;
+    stageNameSS << stageNameWithExt.substr(0, timestampPos);
+    stageNameSS << putTime;
+    stageNameSS << stageNameWithExt.substr(timestampPos + RtxOptions::captureTimestampReplacement().length());
+
+    return stageNameSS.str();
+  }
 }

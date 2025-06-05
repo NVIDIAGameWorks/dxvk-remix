@@ -91,7 +91,8 @@ namespace dxvk {
     static float commonButtonWidth = 0.f;
     if(ImGui::Button("Capture Scene", ImVec2(commonButtonWidth,0.f))) {
       if (this->m_stageNameInputBox.isStageNameValid()) {
-        RtxOptions::captureInstances.set(true);
+        // TODO[REMIX-4105] need to make it so triggerNewCapture() respects this even if the option doesn't change immediately
+        RtxOptions::captureInstances.setImmediately(true);
         ctx->getCommonObjects()->capturer()->triggerNewCapture();
         this->m_stageNameInputBox.m_isCaptureNameInvalid = false;
       }
@@ -157,9 +158,6 @@ namespace dxvk {
     if(m_focused) {
       setValue();
     }
-    if(m_timestampPos != std::string::npos) {
-      replaceTimestampStr();
-    }
   }
   
   bool ImGuiCapture::StageNameInputBox::isInvalidKeywordUsed(std::string name) { 
@@ -199,39 +197,18 @@ namespace dxvk {
     }
     if (bufStr.empty()) {
       RtxOptions::captureInstanceStageName.set(timestampReplacementStr + lss::ext::usd);
-    } else {    
+    } else {
       const auto usdExtPos =
         bufStr.find(lss::ext::usd, bufStr.length() - lss::ext::usda.length() - 1);
       const std::string ext = (usdExtPos == std::string::npos) ? lss::ext::usd : "";
       RtxOptions::captureInstanceStageName.set(bufStr + ext);
     }
-    m_timestampPos = RtxOptions::captureInstanceStageName().find(timestampReplacementStr);
-  }
-  
-  void ImGuiCapture::StageNameInputBox::replaceTimestampStr() {
-    const std::time_t curTime = std::time(nullptr);
-    std::tm locTime;
-    // The vanilla versions of localtime are not thread safe, see:
-    // https://en.cppreference.com/w/cpp/chrono/c/localtime
-    localtime_s(&locTime, &curTime);
-    static constexpr size_t kTimeStrLen = 19; // length of YYYY-MM-DD_HH-MM-SS
-    const auto putTime = std::put_time(&locTime, "%Y-%m-%d_%H-%M-%S");
-    
-    const auto endTimestampPos = (m_focused) ?
-      m_timestampPos + RtxOptions::captureTimestampReplacement().length() :
-      m_timestampPos + kTimeStrLen;
-      
-    std::stringstream stageNameSS;
-    stageNameSS << RtxOptions::captureInstanceStageName().substr(0, m_timestampPos);
-    stageNameSS << putTime;
-    stageNameSS << RtxOptions::captureInstanceStageName().substr(endTimestampPos);
-    RtxOptions::captureInstanceStageName.set(stageNameSS.str());
   }
   
   void ImGuiCapture::StageNameInputBox::show(const Rc<DxvkContext>& ctx) {
     const auto toolTip = str::format(
       RtxOptions::captureInstanceStageNameObject().getDescription(), '\n', '\n',
-      RtxOptions::captureInstanceStageName(), '\n', '\n', 
+      GameCapturer::getCaptureInstanceStageNameWithTimestamp(), '\n', '\n', 
       "Invalid chars: ",  m_invalidChars, '\n', '\n',
       "Invalid keywords(case-insensitive): ", m_invalidKeywordDescription);
 

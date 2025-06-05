@@ -20,8 +20,11 @@
 * DEALINGS IN THE SOFTWARE.
 */
 #include "rtx_options.h"
+
 #include <filesystem>
 #include <nvapi.h>
+#include "../imgui/imgui.h"
+#include "rtx_bridge_message_channel.h"
 #include "rtx_terrain_baker.h"
 #include "rtx_nee_cache.h"
 #include "rtx_rtxdi_rayquery.h"
@@ -37,20 +40,35 @@
 namespace dxvk {
   std::unique_ptr<RtxOptions> RtxOptions::m_instance = nullptr;
 
+  void RtxOptions::showUICursorOnChange() {
+    if (ImGui::GetCurrentContext() != nullptr) {
+      auto& io = ImGui::GetIO();
+      io.MouseDrawCursor = RtxOptions::showUICursor() && RtxOptions::showUI() != UIType::None;
+    }
+  }
+
+  void RtxOptions::blockInputToGameInUIOnChange() {
+    const bool doBlock = RtxOptions::blockInputToGameInUI() && RtxOptions::showUI() != UIType::None;
+
+    BridgeMessageChannel::get().send("UWM_REMIX_UIACTIVE_MSG", doBlock ? 1 : 0, 0);
+  }
+
   void RtxOptions::updateUpscalerFromDlssPreset() {
     if (RtxOptions::Automation::disableUpdateUpscaleFromDlssPreset()) {
       return;
     }
 
     switch (dlssPreset()) {
+      // TODO[REMIX-4105] all of these are used right after being set, so this needs to be setImmediately.
+      // This should be addressed by REMIX-4109 if that is done before REMIX-4105 is fully cleaned up.
       case DlssPreset::Off:
-        upscalerType.set(UpscalerType::None);
-        reflexMode.set(ReflexMode::None);
+        upscalerType.setImmediately(UpscalerType::None);
+        reflexMode.setImmediately(ReflexMode::None);
         break;
       case DlssPreset::On:
-        upscalerType.set(UpscalerType::DLSS);
-        qualityDLSS.set(DLSSProfile::Auto);
-        reflexMode.set(ReflexMode::LowLatency); // Reflex uses ON under G (not Boost)
+        upscalerType.setImmediately(UpscalerType::DLSS);
+        qualityDLSS.setImmediately(DLSSProfile::Auto);
+        reflexMode.setImmediately(ReflexMode::LowLatency); // Reflex uses ON under G (not Boost)
         break;
     }
   }
@@ -337,7 +355,9 @@ namespace dxvk {
         RtxOptions::lowMemoryGpu.set(false);
       }
 
-      RtxOptions::graphicsPreset.set(preferredDefault);
+      // TODO[REMIX-4105] all of these are used right after being set, so this needs to be setImmediately.
+      // This should be addressed by REMIX-4109 if that is done before REMIX-4105 is fully cleaned up.
+      RtxOptions::graphicsPreset.setImmediately(preferredDefault);
     }
 
     auto common = device->getCommon();
@@ -365,11 +385,13 @@ namespace dxvk {
 
     auto enableNrcPreset = [&](NeuralRadianceCache::QualityPreset nrcPreset) {
       NeuralRadianceCache& nrc = device->getCommon()->metaNeuralRadianceCache();
+      // TODO[REMIX-4105] trying to use NRC for a frame when it isn't supported will cause a crash, so this needs to be setImmediately.
+      // Should refactor this to use a separate global for the final state, and indicate user preference with the option. 
       if (nrc.checkIsSupported(device)) {
-        RtxOptions::integrateIndirectMode.set(IntegrateIndirectMode::NeuralRadianceCache);
+        RtxOptions::integrateIndirectMode.setImmediately(IntegrateIndirectMode::NeuralRadianceCache);
         nrc.setQualityPreset(nrcPreset);
       } else {
-        RtxOptions::integrateIndirectMode.set(IntegrateIndirectMode::ReSTIRGI);
+        RtxOptions::integrateIndirectMode.setImmediately(IntegrateIndirectMode::ReSTIRGI);
       }
     };
 

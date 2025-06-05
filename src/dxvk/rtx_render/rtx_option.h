@@ -25,12 +25,19 @@
 #include <unordered_set>
 #include <cassert>
 #include <limits>
+#include <mutex>
 
 #include "../util/config/config.h"
 #include "../util/xxHash/xxhash.h"
 #include "../util/util_math.h"
 #include "../util/util_env.h"
+#include "../util/util_keybind.h"
 #include "rtx_utils.h"
+
+#ifndef RTX_OPTION_DEBUG_LOGGING
+// Set this to true to log any time a dirty value is accessed.
+#define RTX_OPTION_DEBUG_LOGGING false
+#endif
 
 namespace dxvk {
   // RtxOption refers to a serializable option, which can be of a basic type (i.e. int) or a class type (i.e. vector hash value)
@@ -66,6 +73,7 @@ namespace dxvk {
     fast_unordered_set* hashSet;
     std::vector<XXH64_hash_t>* hashVector;
     std::vector<int32_t>* intVector;
+    VirtualKeys* virtualKeys;
     std::string* string;
     int64_t value;
     void* pointer;
@@ -76,23 +84,25 @@ namespace dxvk {
     enum class ValueType {
       Value = 0,
       DefaultValue = 1,
-      Count = 2
+      PendingValue = 2,
+      Count = 3,
     };
 
+    XXH64_hash_t hash;
     const char* name;
     const char* category;
-    const char* environment;
+    const char* environment = nullptr;
     const char* description; // Description string for the option that will get included in documentation
     OptionType type;
     GenericValue valueList[(int)ValueType::Count];
-    uint32_t flags;
+    uint32_t flags = 0;
+    std::function<void()> onChangeCallback;
 
-    RtxOptionImpl(const char* optionName, const char* optionCategory, const char* optionEnvironment, OptionType optionType, uint32_t optionFlags, const char* optionDescription) :
+    RtxOptionImpl(XXH64_hash_t hash, const char* optionName, const char* optionCategory, OptionType optionType, const char* optionDescription) :
+      hash(hash),
       name(optionName), 
       category(optionCategory), 
-      environment(optionEnvironment), 
       type(optionType), 
-      flags(optionFlags),
       description(optionDescription) { }
     
     ~RtxOptionImpl();
@@ -103,13 +113,21 @@ namespace dxvk {
 
     const char* getTypeString() const;
     std::string genericValueToString(ValueType valueType) const;
+    void copyValue(ValueType source, ValueType target);
 
     void readOption(const Config& options, ValueType type);
     void writeOption(Config& options, bool changedOptionOnly);
 
     bool isDefault() const;
+    bool isEqual(ValueType a, ValueType b) const;
 
     void resetOption();
+
+    void markDirty() {
+      getDirtyRtxOptionMap()[hash] = this;
+    }
+
+    void invokeOnChangeCallback() const;
 
     static std::string getFullName(const std::string& category, const std::string& name) {
       return category + "." + name;
@@ -124,20 +142,35 @@ namespace dxvk {
     // Returns a global container holding all serializable options
     static RtxOptionMap& getGlobalRtxOptionMap();
 
+    // Returns a global container holding all dirty options
+    static fast_unordered_cache<RtxOptionImpl*>& getDirtyRtxOptionMap();
+
     // Config object holding start up settings
     static Config s_startupOptions;
     static Config s_customOptions;
 
     // track if the configs have been loaded.
     inline static bool s_isInitialized = false;
+
+    // Mutex to prevent race conditions when clearing dirty RtxOptions
+    inline static std::mutex s_updateMutex;
+  };
+
+  template <typename T>
+  struct RtxOptionArgs {
+    const char* environment = nullptr;
+    uint32_t flags = 0;
+
+    typedef void (*RtxOptionOnChangeCallback)();
+    RtxOptionOnChangeCallback onChangeCallback = nullptr;
   };
 
   template <typename T>
   class RtxOption {
   public:
     // Factory function.  Should never be called directly.  Use RTX_OPTION_FULL instead.
-    static RtxOption<T> privateMacroFactory(const char* category, const char* name, const char* environment, const T& value, uint32_t flags = 0, const char* description = "") {
-      return RtxOption<T>(category, name, environment, value, flags, description);
+    static RtxOption<T> privateMacroFactory(const char* category, const char* name, const T& value, const char* description = "", RtxOptionArgs<T> args = {}) {
+      return RtxOption<T>(category, name, value, description, args);
     }
 
     const T& operator()() const {
@@ -152,26 +185,45 @@ namespace dxvk {
       setValue(v);
     }
 
-    template<typename = std::enable_if_t<std::is_same_v<T, fast_unordered_set>>>
-    void addHash(const XXH64_hash_t& hash) {
-      getValue().insert(hash);
+    // TODO[REMIX-4105]: This is a hack to quickly fix set-then-read in the same frame.
+    // Remove this once the uses have been refactored.
+    void setImmediately(const T& v) {
+      assert(RtxOptionImpl::s_isInitialized && "Trying to access an RtxOption before the config files have been loaded."); 
+      std::lock_guard<std::mutex> lock(RtxOptionImpl::s_updateMutex);
+      // Set the pending value to invoke the onChange callback and avoid reverting the value at the end of the frame.
+      *getValuePtr<T>(RtxOptionImpl::ValueType::PendingValue) = v;
+      // Also set the current value, so that the value is immediately available.
+      *getValuePtr<T>(RtxOptionImpl::ValueType::Value) = v;
+      pImpl->markDirty();
     }
 
     template<typename = std::enable_if_t<std::is_same_v<T, fast_unordered_set>>>
-    void removeHash(const XXH64_hash_t& hash) {
-      getValue().erase(hash);
+    void addHash(const XXH64_hash_t& value) {
+      std::lock_guard<std::mutex> lock(RtxOptionImpl::s_updateMutex);
+      getValuePtr<fast_unordered_set>(RtxOptionImpl::ValueType::PendingValue)->insert(value);
+      pImpl->markDirty();
     }
 
     template<typename = std::enable_if_t<std::is_same_v<T, fast_unordered_set>>>
-    bool containsHash(const XXH64_hash_t& hash) const {
-      return getValue().count(hash) > 0;
+    void removeHash(const XXH64_hash_t& value) {
+      std::lock_guard<std::mutex> lock(RtxOptionImpl::s_updateMutex);
+      getValuePtr<fast_unordered_set>(RtxOptionImpl::ValueType::PendingValue)->erase(value);
+      pImpl->markDirty();
+    }
+
+    template<typename = std::enable_if_t<std::is_same_v<T, fast_unordered_set>>>
+    bool containsHash(const XXH64_hash_t& value) const {
+      std::lock_guard<std::mutex> lock(RtxOptionImpl::s_updateMutex);
+      return getValuePtr<fast_unordered_set>(RtxOptionImpl::ValueType::Value)->count(value) > 0;
     }
 
     T& getDefaultValue() const {
+      std::lock_guard<std::mutex> lock(RtxOptionImpl::s_updateMutex);
       return *getValuePtr<T>(RtxOptionImpl::ValueType::DefaultValue);
     }
 
     void setDefaultValue(const T& v) const {
+      std::lock_guard<std::mutex> lock(RtxOptionImpl::s_updateMutex);
       *getValuePtr<T>(RtxOptionImpl::ValueType::DefaultValue) = v;
     }
 
@@ -213,7 +265,11 @@ namespace dxvk {
     static void resetOptions() { RtxOptionImpl::resetOptions(); }
 
     // Update all RTX options after setStartupConfig() and setCustomConfig() have been called
-    static void updateRtxOptions() {
+    static void initializeRtxOptions() {
+      // This method is called every time a dxvk context is created, which may happen multiple times.
+      // Need to ensure RtxOption isn't invoking change callbacks during the intitialization step.
+      RtxOptionImpl::s_isInitialized = false;
+
       // WAR: DxvkInstance() and subsequently this is called twice making the doc being re-written 
       // with RtxOptions already updated from config files below
       static bool hasDocumentationBeenWritten = false;
@@ -232,6 +288,32 @@ namespace dxvk {
         rtxOption.readOption(RtxOptionImpl::s_customOptions, RtxOptionImpl::ValueType::Value);
       }
     }
+    
+    // This will apply all of the RtxOption::set() calls that have been made since the last time it was called.
+    // This should be called at the very end of the frame in the dxvk-cs thread.
+    // Before the first frame is rendered, it also needs to be called at least once during initialization.
+    // It's currently called twice during init, due to multiple sections that set many Options then immediately use them.
+    static void applyPendingValues() {
+      std::unique_lock<std::mutex> lock(RtxOptionImpl::s_updateMutex);
+      
+      auto& dirtyOptions = RtxOptionImpl::getDirtyRtxOptionMap();
+      // Need a second array so that we can invoke onChange callbacks after updating values and clearing the dirty list.
+      std::vector<RtxOptionImpl*> dirtyOptionsVector;
+      dirtyOptionsVector.reserve(dirtyOptions.size());
+      {
+        for (auto& rtxOption : dirtyOptions) {
+          rtxOption.second->copyValue(RtxOptionImpl::ValueType::PendingValue, RtxOptionImpl::ValueType::Value);
+          dirtyOptionsVector.push_back(rtxOption.second);
+        }
+      }
+      dirtyOptions.clear();
+      lock.unlock();
+
+      // Invoke onChange callbacks after promoting all the values, so that newly set values will be updated at the end of the next frame
+      for (RtxOptionImpl* rtxOption : dirtyOptionsVector) {
+        rtxOption->invokeOnChangeCallback();
+      }
+    }
 
   private:
     // Prevent `new RtxOption` from being used.  Use the RTX_OPTION macro to create RtxOptions.
@@ -246,10 +328,11 @@ namespace dxvk {
     RtxOption(const RtxOption&) = delete;
     RtxOption& operator=(const RtxOption&) = delete;
 
+    // Do not call these constructors directly. Use RTX_OPTION macro to declare and initialize RtxOption objects.
     // Constructor for basic types like int, float
     template <typename BasicType, std::enable_if_t<std::is_pod_v<BasicType>, bool> = true>
-    RtxOption(const char* category, const char* name, const char* environment, BasicType value, uint32_t flags = 0, const char* description = "") {
-      if (allocateMemory(category, name, environment, flags, description)) {
+    RtxOption(const char* category, const char* name, BasicType value, const char* description, RtxOptionArgs<T> args) {
+      if (allocateMemory(category, name, description, args)) {
         for (int i = 0; i < (int)RtxOptionImpl::ValueType::Count; i++) {
           pImpl->valueList[i].value = 0;
           *reinterpret_cast<BasicType*>(&pImpl->valueList[i].value) = value;
@@ -257,10 +340,11 @@ namespace dxvk {
       }
     }
 
+    // Do not call these constructors directly. Use RTX_OPTION macro to declare and initialize RtxOption objects.
     // Constructor for structs and classes
     template <typename ClassType, std::enable_if_t<!std::is_pod_v<ClassType>, bool> = true>
-    RtxOption(const char* category, const char* name, const char* environment, const ClassType& value, uint32_t flags = 0, const char* description = "") {
-      if (allocateMemory(category, name, environment, flags, description)) {
+    RtxOption(const char* category, const char* name, const ClassType& value, const char* description, RtxOptionArgs<T> args) {
+      if (allocateMemory(category, name, description, args)) {
         for (int i = 0; i < (int)RtxOptionImpl::ValueType::Count; i++) {
           pImpl->valueList[i].pointer = new ClassType(value);
         }
@@ -268,26 +352,53 @@ namespace dxvk {
     }
 
     T& getValue() const {
+      std::lock_guard<std::mutex> lock(RtxOptionImpl::s_updateMutex);
       assert(RtxOptionImpl::s_isInitialized && "Trying to access an RtxOption before the config files have been loaded."); 
+#if RTX_OPTION_DEBUG_LOGGING
+      // Print out a warning whenever a dirty value is accessed.
+      if (!pImpl->isEqual(RtxOptionImpl::ValueType::Value, RtxOptionImpl::ValueType::PendingValue)) {
+        Logger::warn(str::format("RtxOption retrieved a dirty value: ", pImpl->getFullName().c_str(),
+            " has value: ", pImpl->genericValueToString(RtxOptionImpl::ValueType::Value),
+            " and pending value: ", pImpl->genericValueToString(RtxOptionImpl::ValueType::PendingValue)));
+      }
+#endif
       return *getValuePtr<T>(RtxOptionImpl::ValueType::Value);
     }
 
-    void setValue(const T& v) {
+    template <typename BasicType, std::enable_if_t<std::is_pod_v<BasicType>, bool> = true>
+    void setValue(const BasicType& v) {
+      std::lock_guard<std::mutex> lock(RtxOptionImpl::s_updateMutex);
       assert(RtxOptionImpl::s_isInitialized && "Trying to access an RtxOption before the config files have been loaded."); 
-      *getValuePtr<T>(RtxOptionImpl::ValueType::Value) = v;
+      BasicType* valuePtr = getValuePtr<BasicType>(RtxOptionImpl::ValueType::PendingValue);
+      *valuePtr = v;
+      pImpl->markDirty();
     }
 
-    bool allocateMemory(const char* category, const char* name, const char* environment, uint32_t flags, const char* description) {
+    template <typename ClassType, std::enable_if_t<!std::is_pod_v<ClassType>, bool> = true>
+    void setValue(const ClassType& v) {
+      std::lock_guard<std::mutex> lock(RtxOptionImpl::s_updateMutex);
+      assert(RtxOptionImpl::s_isInitialized && "Trying to access an RtxOption before the config files have been loaded."); 
+      ClassType* valuePtr = getValuePtr<ClassType>(RtxOptionImpl::ValueType::PendingValue);
+      *valuePtr = v;
+      pImpl->markDirty();
+    }
+
+    bool allocateMemory(const char* category, const char* name, const char* description, RtxOptionArgs<T> args) {
       const std::string fullName = RtxOptionImpl::getFullName(category, name);
       const XXH64_hash_t optionHash = StringToXXH64(fullName, 0);
       auto& globalRtxOptions = RtxOptionImpl::getGlobalRtxOptionMap();
       auto pOption = globalRtxOptions.find(optionHash);
       if (pOption == globalRtxOptions.end()) {
         // Cannot find existing object, make a new one
-        pImpl = std::make_shared<RtxOptionImpl>(name, category, environment, getOptionType(), flags, description);
+        pImpl = std::make_shared<RtxOptionImpl>(optionHash, name, category, getOptionType(), description);
+        pImpl->environment = args.environment;
+        pImpl->flags = args.flags;
+        // Need to wrap this so we can cast it to the correct type
+        pImpl->onChangeCallback = args.onChangeCallback;
         globalRtxOptions[optionHash] = pImpl;
         return true;
       } else {
+        assert(false && str::format("RtxOption with the same name already exists: ", fullName).c_str());
         // If the variable already exists, use the existing object
         pImpl = pOption->second;
         return false;
@@ -310,6 +421,7 @@ namespace dxvk {
     std::shared_ptr<RtxOptionImpl> pImpl;
   };
 
+  // TODO[REMIX-4105] delete this after refactoring forceRebuildOMMs and hasEnableDebugResolveModeChanged to use an onChange listener instead.
   // Checks if value has changed from prevValue and updates prevValue if it did.
   // This can be used to check if an RtxOption value changed. 
   // PrevValue variable should be declared as a local/member variable rather than a static one due to:
@@ -330,14 +442,27 @@ namespace dxvk {
   extern "C" __declspec(dllexport) bool writeMarkdownDocumentation(const char* outputMarkdownFilePath);
 
 // The RTX_OPTION* macros provide a convenient way to declare a serializable option
-#define RTX_OPTION_FULL(category, type, name, value, environment, flags, description) \
-  public: inline static RtxOption<type> name = RtxOption<type>::privateMacroFactory(category, #name, environment, type(value), static_cast<uint32_t>(flags), description); \
-  public: static RtxOption<type>& name##Object() { return name; }
+// Example usage, presuming "optionName" is the name of the option:
+// optionName(); // Get the current value of the option
+// optionName.set(value); // Set the value of the option
+// ImGUI::Checkbox("Option Name", &optionName); // Draw the option in the UI
+#define RTX_OPTION_FULL(category, type, name, value, environment, flags, description, ...) \
+  public: inline static RtxOption<type> name = RtxOption<type>::privateMacroFactory(category, #name, type(value), description, [](){ \
+    RtxOptionArgs<type> args; \
+    __VA_ARGS__; \
+    return args; \
+  }()); \
+  public: static RtxOption<type>& name##Object() { return name; } 
 
-#define RTX_OPTION_ENV(category, type, name, value, environment, description) RTX_OPTION_FULL(category, type, name, value, environment, 0, description)
-#define RTX_OPTION_FLAG(category, type, name, value, flags, description) RTX_OPTION_FULL(category, type, name, value, "", static_cast<uint32_t>(flags), description)
-#define RTX_OPTION_FLAG_ENV(category, type, name, value, flags, environment, description) RTX_OPTION_FULL(category, type, name, value, environment, static_cast<uint32_t>(flags), description)
-#define RTX_OPTION(category, type, name, value, description) RTX_OPTION_FULL(category, type, name, value, "", 0, description)
+#define RTX_OPTION_ENV(category, type, name, value, environmentVar, description) RTX_OPTION_FULL(category, type, name, value, environment, 0, description, \
+    args.environment = environmentVar )
+#define RTX_OPTION_FLAG(category, type, name, value, flagsVar, description) RTX_OPTION_FULL(category, type, name, value, "", static_cast<uint32_t>(flags), description, \
+    args.flags = flagsVar )
+#define RTX_OPTION_FLAG_ENV(category, type, name, value, flagsVar, environmentVar, description) RTX_OPTION_FULL(category, type, name, value, environment, static_cast<uint32_t>(flags), description, \
+    args.environment = environmentVar, \
+    args.flags = flagsVar )
+#define RTX_OPTION(category, type, name, value, description) RTX_OPTION_FULL(category, type, name, value, "", 0, description, {})
+#define RTX_OPTION_ARGS(category, type, name, value, description, ...) RTX_OPTION_FULL(category, type, name, value, "", 0, description, __VA_ARGS__)
 
 #define RTX_OPTION_CLAMP(name, minValue, maxValue) name##Object().set(std::clamp(name(), minValue, maxValue));
 #define RTX_OPTION_CLAMP_MAX(name, maxValue) name##Object().set(std::min(name(), maxValue));

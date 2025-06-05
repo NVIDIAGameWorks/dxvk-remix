@@ -925,17 +925,17 @@ namespace dxvk
       ImGui::Checkbox("View Relative", &freeCameraViewRelativeObject());
 
       if (ImGui::CollapsingHeader("Show Camera Controls", collapsingHeaderClosedFlags)) {
-        ImGui::Text("MoveFaster:");  ImGui::SameLine(150); ImGui::Text("%s", buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveFaster()));
-        ImGui::Text("MoveForward:"); ImGui::SameLine(150); ImGui::Text("%s", buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveForward()));
-        ImGui::Text("MoveLeft:");    ImGui::SameLine(150); ImGui::Text("%s", buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveLeft()));
-        ImGui::Text("MoveBack:");    ImGui::SameLine(150); ImGui::Text("%s", buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveBack()));
-        ImGui::Text("MoveRight:");   ImGui::SameLine(150); ImGui::Text("%s", buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveRight()));
-        ImGui::Text("MoveUp:");      ImGui::SameLine(150); ImGui::Text("%s", buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveUp()));
-        ImGui::Text("MoveDown:");    ImGui::SameLine(150); ImGui::Text("%s", buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveDown()));
-        ImGui::Text("PitchDown:");   ImGui::SameLine(150); ImGui::Text("%s", buildKeyBindDescriptorString(RtxOptions::FreeCam::keyPitchDown()));
-        ImGui::Text("PitchUp:");     ImGui::SameLine(150); ImGui::Text("%s", buildKeyBindDescriptorString(RtxOptions::FreeCam::keyPitchUp()));
-        ImGui::Text("YawLeft:");     ImGui::SameLine(150); ImGui::Text("%s", buildKeyBindDescriptorString(RtxOptions::FreeCam::keyYawLeft()));
-        ImGui::Text("YawRight:");    ImGui::SameLine(150); ImGui::Text("%s", buildKeyBindDescriptorString(RtxOptions::FreeCam::keyYawRight()));
+        ImGui::TextUnformatted("MoveFaster:");  ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveFaster()).c_str());
+        ImGui::TextUnformatted("MoveForward:"); ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveForward()).c_str());
+        ImGui::TextUnformatted("MoveLeft:");    ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveLeft()).c_str());
+        ImGui::TextUnformatted("MoveBack:");    ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveBack()).c_str());
+        ImGui::TextUnformatted("MoveRight:");   ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveRight()).c_str());
+        ImGui::TextUnformatted("MoveUp:");      ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveUp()).c_str());
+        ImGui::TextUnformatted("MoveDown:");    ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveDown()).c_str());
+        ImGui::TextUnformatted("PitchDown:");   ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyPitchDown()).c_str());
+        ImGui::TextUnformatted("PitchUp:");     ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyPitchUp()).c_str());
+        ImGui::TextUnformatted("YawLeft:");     ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyYawLeft()).c_str());
+        ImGui::TextUnformatted("YawRight:");    ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyYawRight()).c_str());
       }
 
       ImGui::Unindent();
@@ -1109,14 +1109,16 @@ namespace dxvk
     IMGUI_ADD_TOOLTIP(ImGui::SliderInt("Current Frame", &m_currentFrame, 0, m_settings.size() -1, "%d", ImGuiSliderFlags_AlwaysClamp), "Current Frame.");
     m_currentFrame = std::min(m_currentFrame, (int)m_settings.size());
 
-    if (oldFrame != m_currentFrame && mode() == Mode::None) {
+    Mode currentMode = mode();
+    if (oldFrame != m_currentFrame && currentMode == Mode::None) {
       mode.set(Mode::Browse);
+      currentMode = Mode::Browse;
     }
 
-    bool isRecording = mode() == Mode::Record;
-    bool isPlaying = mode() == Mode::Playback;
-    bool isBrowsing = mode() == Mode::Browse;
-    bool isStopping = mode() == Mode::None;
+    bool isRecording = currentMode == Mode::Record;
+    bool isPlaying = currentMode == Mode::Playback;
+    bool isBrowsing = currentMode == Mode::Browse;
+    bool isStopping = currentMode == Mode::None;
 
     // Record Button
     {

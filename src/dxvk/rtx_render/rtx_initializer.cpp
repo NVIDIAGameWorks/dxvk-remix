@@ -83,6 +83,9 @@ namespace dxvk {
     ShaderManager::getInstance()->addGlobalExtraLayout(pCommon->getSceneManager().getBindlessResourceManager().getGlobalBindlessTableLayout(BindlessResourceManager::Textures));
     ShaderManager::getInstance()->addGlobalExtraLayout(pCommon->getSceneManager().getBindlessResourceManager().getGlobalBindlessTableLayout(BindlessResourceManager::Samplers));
 
+    // Need to promote all of the hardware support Options before prewarming shaders.
+    RtxOption<bool>::applyPendingValues();
+
     // Kick off shader prewarming
     startPrewarmShaders();
 

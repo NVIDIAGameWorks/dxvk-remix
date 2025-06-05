@@ -391,6 +391,12 @@ namespace ImGui {
 
     if (changed) {
       rtxOption->set(std::string(textBuffer.data()));
+    } else if (IsItemDeactivated()) {
+      // If the text box loses focus when `ImGuiInputTextFlags_EnterReturnsTrue` is set, the input value would be lost.
+      // This catches that case.
+      if (strcmp(textBuffer.data(), rtxOption->get().c_str()) != 0) {
+        rtxOption->set(std::string(textBuffer.data()));
+      }
     }
 
     return changed;

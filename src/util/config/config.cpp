@@ -26,6 +26,7 @@
 #include <regex>
 #include <utility>
 #include <filesystem>
+#include <algorithm>
 
 #include "config.h"
 
@@ -1339,6 +1340,9 @@ namespace dxvk {
     while (std::getline(ss, s, ',')) {
       VirtualKey vk;
       try {
+        // Strip whitespace from s
+        s.erase(std::remove_if(s.begin(), s.end(), isWhitespace), s.end());
+        
         if(s.find("0x") != std::string::npos) {
           VkValue vkVal = std::stoul(s, nullptr, 16);
           vk.val = vkVal;
@@ -1346,6 +1350,7 @@ namespace dxvk {
           vk = KeyBind::getVk(s);
         }
         if(!KeyBind::isValidVk(vk)) {
+          Logger::err(str::format("Failed to parse virtual key string: '", s, "' string does not map to valid Keybind."));
           return false;
         }
         virtKeys.push_back(vk);

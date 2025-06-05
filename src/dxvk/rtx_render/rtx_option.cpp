@@ -80,6 +80,7 @@ namespace dxvk {
   }
   
   RtxOptionImpl::~RtxOptionImpl() {
+    onChangeCallback = nullptr;
     for (int i = 0; i < (int)ValueType::Count; i++) {
       GenericValue& value = valueList[i];
 
@@ -92,6 +93,9 @@ namespace dxvk {
         break;
       case OptionType::IntVector:
         delete value.intVector;
+        break;
+      case OptionType::VirtualKeys:
+        delete value.virtualKeys;
         break;
       case OptionType::Vector2:
         delete value.v2;
@@ -119,6 +123,7 @@ namespace dxvk {
     case OptionType::HashSet: return "hash set"; 
     case OptionType::HashVector: return "hash vector";
     case OptionType::IntVector: return "int vector";
+    case OptionType::VirtualKeys: return "virtual keys";
     case OptionType::Vector2: return "float2";
     case OptionType::Vector3: return "float3";
     case OptionType::Vector2i: return "int2";
@@ -138,6 +143,7 @@ namespace dxvk {
     case OptionType::HashSet: return hashTableToString(*value.hashSet);
     case OptionType::HashVector: return hashVectorToString(*value.hashVector);
     case OptionType::IntVector: return vectorToString(*value.intVector);
+    case OptionType::VirtualKeys: return buildKeyBindDescriptorString(*value.virtualKeys);
     case OptionType::Vector2: return Config::generateOptionString(*value.v2);
     case OptionType::Vector3: return Config::generateOptionString(*value.v3);
     case OptionType::Vector2i: return Config::generateOptionString(*value.v2i);
@@ -171,6 +177,12 @@ namespace dxvk {
     }
   }
 
+  void RtxOptionImpl::invokeOnChangeCallback() const {
+    if (onChangeCallback) {
+      onChangeCallback();
+    }
+  }
+
   void RtxOptionImpl::readOption(const Config& options, RtxOptionImpl::ValueType valueType) {
     std::string fullName = getFullName();
     const char* env = environment == nullptr || strlen(environment) == 0 ? nullptr : environment;
@@ -195,6 +207,9 @@ namespace dxvk {
     case OptionType::IntVector:
       fillIntVector(options.getOption<std::vector<std::string>>(fullName.c_str()), *value.intVector);
       break;
+    case OptionType::VirtualKeys:
+      *value.virtualKeys = options.getOption<VirtualKeys>(fullName.c_str(), *value.virtualKeys);
+      break;
     case OptionType::Vector2:
       *value.v2 = options.getOption<Vector2>(fullName.c_str(), *value.v2, env);
       break;
@@ -209,6 +224,17 @@ namespace dxvk {
       break;
     default:
       break;
+    }
+    
+    if (valueType == ValueType::PendingValue) {
+      // If reading into the pending value, need to mark the option as dirty so it gets copied to the value at the end of the frame.
+      markDirty();
+    } else if (valueType == ValueType::Value) {
+      // If reading into the value, need to immediately copy to the pending value so they stay in sync.
+      copyValue(ValueType::Value, ValueType::PendingValue);
+
+      // Also mark the option dirty so the onChange callback is invoked at the normal time.
+      markDirty();
     }
   }
 
@@ -244,6 +270,9 @@ namespace dxvk {
     case OptionType::IntVector:
       options.setOption(fullName.c_str(), vectorToString(*value.intVector));
       break;
+    case OptionType::VirtualKeys:
+      options.setOption(fullName.c_str(), buildKeyBindDescriptorString(*value.virtualKeys));
+      break;
     case OptionType::Vector2:
       options.setOption(fullName.c_str(), *value.v2);
       break;
@@ -262,84 +291,105 @@ namespace dxvk {
   }
 
   bool RtxOptionImpl::isDefault() const {
-    auto& value = valueList[(int) ValueType::Value];
-    auto& defaultValue = valueList[(int) ValueType::DefaultValue];
+    return isEqual(ValueType::Value, ValueType::DefaultValue);
+  }
 
-    bool isDefault = false;
+  bool RtxOptionImpl::isEqual(ValueType a, ValueType b) const {
+    auto& aValue = valueList[(int) a];
+    auto& bValue = valueList[(int) b];
+
     switch (type) {
     case OptionType::Bool:
-      isDefault = (value.b == defaultValue.b);
+      return aValue.b == bValue.b;
       break;
     case OptionType::Int:
-      isDefault = (value.i == defaultValue.i);
+      return aValue.i == bValue.i;
       break;
     case OptionType::Float:
-      isDefault = (value.f == defaultValue.f);
+      return aValue.f == bValue.f;
       break;
     case OptionType::HashSet:
-      isDefault = (*value.hashSet == *defaultValue.hashSet);
+      return *aValue.hashSet == *bValue.hashSet;
       break;
     case OptionType::HashVector:
-      isDefault = (*value.hashVector == *defaultValue.hashVector);
+      return *aValue.hashVector == *bValue.hashVector;
       break;
     case OptionType::IntVector:
-      isDefault = (*value.intVector == *defaultValue.intVector);
+      return *aValue.intVector == *bValue.intVector;
+      break;
+    case OptionType::VirtualKeys:
+      return *aValue.virtualKeys == *bValue.virtualKeys;
       break;
     case OptionType::Vector2:
-      isDefault = (*value.v2 == *defaultValue.v2);
+      return *aValue.v2 == *bValue.v2;
       break;
     case OptionType::Vector3:
-      isDefault = (*value.v3 == *defaultValue.v3);
+      return *aValue.v3 == *bValue.v3;
       break;
     case OptionType::Vector2i:
-      isDefault = (*value.v2i == *defaultValue.v2i);
+      return *aValue.v2i == *bValue.v2i;
       break;
     case OptionType::String:
-      isDefault = (*value.string == *defaultValue.string);
-      break;
-    default:
+      return *aValue.string == *bValue.string;
       break;
     }      
-    return isDefault;
+    return false;
   }
 
   void RtxOptionImpl::resetOption() {
     if (flags & (uint32_t) RtxOptionFlags::NoReset)
       return;
     
-    auto& value = valueList[(int) ValueType::Value];
-    auto& defaultValue = valueList[(int) ValueType::DefaultValue];
+    // If value and defaultValue are equal, no need to to change the Value.
+    if (isEqual(ValueType::Value, ValueType::DefaultValue)) {
+      // Check if the option has a pending value, and if so reset that.
+      if (isEqual(ValueType::PendingValue, ValueType::DefaultValue)) {
+        copyValue(ValueType::DefaultValue, ValueType::PendingValue);
+      }
+      return;
+    }
 
+    copyValue(ValueType::DefaultValue, ValueType::PendingValue);
+    markDirty();
+  }
+
+  void RtxOptionImpl::copyValue(ValueType sourceLayer, ValueType targetLayer) {
+    const GenericValue& source = valueList[(int) sourceLayer];
+    GenericValue& value = valueList[(int) targetLayer];
+    
     switch (type) {
     case OptionType::Bool:
-      value.b = defaultValue.b;
+      value.b = source.b;
       break;
     case OptionType::Int:
-      value.i = defaultValue.i;
+      value.i = source.i;
       break;
     case OptionType::Float:
-      value.f = defaultValue.f;
+      value.f = source.f;
       break;
     case OptionType::HashSet:
-      *value.hashSet = *defaultValue.hashSet;
+      *value.hashSet = *source.hashSet;
       break;
     case OptionType::HashVector:
-      *value.hashVector = *defaultValue.hashVector;
+      *value.hashVector = *source.hashVector;
       break;
     case OptionType::IntVector:
-      *value.intVector = *defaultValue.intVector;
+      *value.intVector = *source.intVector;
+      break;
+    case OptionType::VirtualKeys:
+      *value.virtualKeys = *source.virtualKeys;
       break;
     case OptionType::Vector2:
-      *value.v2 = *defaultValue.v2;
+      *value.v2 = *source.v2;
       break;
     case OptionType::Vector3:
-      *value.v3 = *defaultValue.v3;
+      *value.v3 = *source.v3;
       break;
     case OptionType::Vector2i:
-      *value.v2i = *defaultValue.v2i;
+      *value.v2i = *source.v2i;
       break;
     case OptionType::String:
-      *value.string = *defaultValue.string;
+      *value.string = *source.string;
       break;
     default:
       break;
@@ -433,6 +483,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
           case OptionType::HashSet:
           case OptionType::HashVector:
           case OptionType::IntVector:
+          case OptionType::VirtualKeys:
           case OptionType::String:
             isLongEntryType = true;
             break;
@@ -527,7 +578,15 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
     return s_rtxOptions;
   }
 
-   bool writeMarkdownDocumentation(const char* outputMarkdownFilePath) {
+  fast_unordered_cache<RtxOptionImpl*>& RtxOptionImpl::getDirtyRtxOptionMap() {
+    // Since other static RtxOptions may try to access the global container on their intialization, 
+    // they have to access it via this helper method and the global container has to be defined 
+    // as static locally to ensure it is initialized on first use
+    static fast_unordered_cache<RtxOptionImpl*> s_dirtyOptions = fast_unordered_cache<RtxOptionImpl*>();
+    return s_dirtyOptions;
+  }
+
+  bool writeMarkdownDocumentation(const char* outputMarkdownFilePath) {
     return dxvk::RtxOptionImpl::writeMarkdownDocumentation(outputMarkdownFilePath);
   }
 }

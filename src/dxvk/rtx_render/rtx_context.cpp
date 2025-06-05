@@ -705,6 +705,9 @@ namespace dxvk {
     // Reset the fog state to get it re-discovered on the next frame
     getSceneManager().clearFogState();
 
+    // apply changes to RtxOptions after the frame has ended
+    RtxOption<bool>::applyPendingValues();
+
     // Update stats
     updateMetrics(frameTimeMilliseconds, gpuIdleTimeMilliseconds);
 
@@ -1317,9 +1320,7 @@ namespace dxvk {
   }
 
   bool RtxContext::checkIsShaderExecutionReorderingSupported(DxvkDevice& device) {
-    const bool allowSER = RtxOptions::isShaderExecutionReorderingSupported();
-
-    if (!allowSER) {
+    if (!RtxOptions::isShaderExecutionReorderingSupported()) {
       return false;
     }
 
@@ -1334,7 +1335,7 @@ namespace dxvk {
   void RtxContext::checkShaderExecutionReorderingSupport() {
     const bool isSERSupported = checkIsShaderExecutionReorderingSupported(*m_device);
     
-    RtxOptions::setIsShaderExecutionReorderingSupported(isSERSupported); 
+    RtxOptions::enableShaderExecutionReordering = isSERSupported;
 
     const VkPhysicalDeviceProperties& props = m_device->adapter()->deviceProperties();
     const NV_GPU_ARCHITECTURE_ID archId = RtxOptions::getNvidiaArch();
@@ -1354,7 +1355,9 @@ namespace dxvk {
 
       // Fallback to ReSTIRGI
       Logger::warn(str::format("[RTX] Neural Radiance Cache is not supported. Switching indirect illumination mode to ReSTIR GI."));
-      RtxOptions::integrateIndirectMode.set(IntegrateIndirectMode::ReSTIRGI);
+      // TODO[REMIX-4105] trying to use NRC for a frame when it isn't supported will cause a crash, so this needs to be setImmediately.
+      // Should refactor this to use a separate global for the final state, and indicate user preference with the option. 
+      RtxOptions::integrateIndirectMode.setImmediately(IntegrateIndirectMode::ReSTIRGI);
     }
   }
 
@@ -2005,7 +2008,10 @@ namespace dxvk {
     }
 
     // force vsync off if DLFG is enabled, as we don't properly support FG + vsync
-    RtxOptions::enableVsync.set(EnableVsync::Off);
+    if (RtxOptions::enableVsyncState != EnableVsync::Off) {
+      RtxOptions::enableVsync.set(EnableVsync::Off);
+      RtxOptions::enableVsyncState = EnableVsync::Off;
+    }
 
     Resources::RaytracingOutput& rtOutput = getResourceManager().getRaytracingOutput();
 
