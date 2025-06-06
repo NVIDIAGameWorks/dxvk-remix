@@ -363,7 +363,6 @@ export material AperturePBR_Opacity(
   uniform bool subsurface_diffusion_profile = 0
   [[
     anno::display_name("Subsurface Scattering Diffusion Profile"),
-    anno::hard_range(0, 1),
     anno::description("Enable Subsurface Scattering Diffusion Profile."),
     anno::in_group("Subsurface"),
     anno::unused()
