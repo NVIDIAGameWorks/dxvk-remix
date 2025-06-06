@@ -48,11 +48,15 @@ namespace dxvk {
 
   std::string hashTableToString(const fast_unordered_set& hashTable) {
     std::stringstream ss;
-    for (auto&& hash : hashTable) {
+    // Collect elements into a vector for sorting
+    std::vector<XXH64_hash_t> sortedHashes(hashTable.begin(), hashTable.end());
+    std::sort(sortedHashes.begin(), sortedHashes.end());
+    
+    for (auto&& hash : sortedHashes) {
       if (ss.tellp() != std::streampos(0))
         ss << ", ";
 
-      ss << "0x" << std::uppercase << std::setfill('0') << std::setw(4) << std::hex << hash;
+      ss << "0x" << std::uppercase << std::setfill('0') << std::setw(16) << std::hex << hash;
     }
     return ss.str();
   }
@@ -63,7 +67,7 @@ namespace dxvk {
       if (ss.tellp() != std::streampos(0))
         ss << ", ";
 
-      ss << "0x" << std::uppercase << std::setfill('0') << std::setw(4) << std::hex << hash;
+      ss << "0x" << std::uppercase << std::setfill('0') << std::setw(16) << std::hex << hash;
     }
     return ss.str();
   }
