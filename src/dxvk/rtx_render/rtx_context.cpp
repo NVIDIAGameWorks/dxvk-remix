@@ -474,11 +474,11 @@ namespace dxvk {
     }
 
     if (RtxOptions::upscalerType() == UpscalerType::DLSS && !common->metaDLSS().supportsDLSS()) {
-      RtxOptions::upscalerType.set(UpscalerType::TAAU);
+      RtxOptions::upscalerType.setDeferred(UpscalerType::TAAU);
     }
 
     if (DxvkDLFG::enable() && !common->metaDLFG().supportsDLFG()) {
-      DxvkDLFG::enable.set(false);
+      DxvkDLFG::enable.setDeferred(false);
     }
     
 #ifdef REMIX_DEVELOPMENT
@@ -2009,7 +2009,7 @@ namespace dxvk {
 
     // force vsync off if DLFG is enabled, as we don't properly support FG + vsync
     if (RtxOptions::enableVsyncState != EnableVsync::Off) {
-      RtxOptions::enableVsync.set(EnableVsync::Off);
+      RtxOptions::enableVsync.setDeferred(EnableVsync::Off);
       RtxOptions::enableVsyncState = EnableVsync::Off;
     }
 

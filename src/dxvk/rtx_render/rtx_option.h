@@ -181,7 +181,8 @@ namespace dxvk {
       return getValue();
     }
 
-    void set(const T& v) {
+    // Sets the pending value of this option, which will be promoted to the current value at the end of the frame.
+    void setDeferred(const T& v) {
       setValue(v);
     }
 
@@ -464,7 +465,7 @@ namespace dxvk {
 #define RTX_OPTION(category, type, name, value, description) RTX_OPTION_FULL(category, type, name, value, "", 0, description, {})
 #define RTX_OPTION_ARGS(category, type, name, value, description, ...) RTX_OPTION_FULL(category, type, name, value, "", 0, description, __VA_ARGS__)
 
-#define RTX_OPTION_CLAMP(name, minValue, maxValue) name##Object().set(std::clamp(name(), minValue, maxValue));
-#define RTX_OPTION_CLAMP_MAX(name, maxValue) name##Object().set(std::min(name(), maxValue));
-#define RTX_OPTION_CLAMP_MIN(name, minValue) name##Object().set(std::max(name(), minValue));
+#define RTX_OPTION_CLAMP(name, minValue, maxValue) name##Object().setDeferred(std::clamp(name(), minValue, maxValue));
+#define RTX_OPTION_CLAMP_MAX(name, maxValue) name##Object().setDeferred(std::min(name(), maxValue));
+#define RTX_OPTION_CLAMP_MIN(name, minValue) name##Object().setDeferred(std::max(name(), minValue));
 }

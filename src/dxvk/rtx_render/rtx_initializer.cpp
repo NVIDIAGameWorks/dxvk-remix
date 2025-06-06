@@ -68,7 +68,7 @@ namespace dxvk {
     } else {
       // Default, init to custom unless otherwise specified
       if (RtxOptions::graphicsPreset() == GraphicsPreset::Auto) {
-        RtxOptions::graphicsPreset.set(GraphicsPreset::Custom);
+        RtxOptions::graphicsPreset.setDeferred(GraphicsPreset::Custom);
       }
 
       // Need to initialize DLSS-RR settings in test cases.

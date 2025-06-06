@@ -159,7 +159,7 @@ namespace dxvk {
     // Disable the replace direct specular HitT with indirect specular HitT if we are using combined denoiser.
     // Because in combined denoiser the direct and indirect signals are denoised together,
     // in such case we will break the denoiser if replace the direct with indirect specular HitT.
-    RtxOptions::replaceDirectSpecularHitTWithIndirectSpecularHitT.set(RtxOptions::denoiseDirectAndIndirectLightingSeparately());
+    RtxOptions::replaceDirectSpecularHitTWithIndirectSpecularHitT.setDeferred(RtxOptions::denoiseDirectAndIndirectLightingSeparately());
   }
 
   NRDContext::~NRDContext() {

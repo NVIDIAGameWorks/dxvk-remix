@@ -118,7 +118,7 @@ namespace dxvk {
       if (!allocateShaderChangeNotification()) {
         // Disable live edit mode if any allocation error occurs
 
-        RtxOptions::Shader::useLiveEditMode.set(false);
+        RtxOptions::Shader::useLiveEditMode.setDeferred(false);
       }
 
       // Reload shaders if any shaders have changed on disk and if there is not a reload currently in progress
@@ -130,7 +130,7 @@ namespace dxvk {
 
         freeShaderChangeNotification();
 
-        RtxOptions::Shader::useLiveEditMode.set(false);
+        RtxOptions::Shader::useLiveEditMode.setDeferred(false);
       } else if (shadersChanged && getShaderReloadPhase() == ShaderReloadPhase::Idle) {
         requestReloadShaders();
       }

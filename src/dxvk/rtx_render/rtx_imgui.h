@@ -54,7 +54,7 @@ namespace ImGui {
     dxvk::Vector3 value = rtxOption->get();
     bool changed = IMGUI_ADD_TOOLTIP(ColorEdit3(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
-      rtxOption->set(value);
+      rtxOption->setDeferred(value);
     }
     return changed;
   }
@@ -87,7 +87,7 @@ namespace ImGui {
     T value = rtxOption->get();
     bool changed = IMGUI_ADD_TOOLTIP(Combo(label, &value, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
-      rtxOption->set(value);
+      rtxOption->setDeferred(value);
     }
     return changed;
   }
@@ -120,7 +120,7 @@ namespace ImGui {
     T value = rtxOption->get();
     bool changed = IMGUI_ADD_TOOLTIP(DragInt(label, &value, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
-      rtxOption->set(value);
+      rtxOption->setDeferred(value);
     }
     return changed;
   }
@@ -131,7 +131,7 @@ namespace ImGui {
     dxvk::Vector2i value = rtxOption->get();
     bool changed = IMGUI_ADD_TOOLTIP(DragInt2(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
-      rtxOption->set(value);
+      rtxOption->setDeferred(value);
     }
     return changed;
   }
@@ -164,7 +164,7 @@ namespace ImGui {
     T value = rtxOption->get();
     bool changed = IMGUI_ADD_TOOLTIP(InputInt(label, &value, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
-      rtxOption->set(value);
+      rtxOption->setDeferred(value);
     }
     return changed;
   }
@@ -197,7 +197,7 @@ namespace ImGui {
     T value = rtxOption->get();
     bool changed = IMGUI_ADD_TOOLTIP(SliderInt(label, &value, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
-      rtxOption->set(value);
+      rtxOption->setDeferred(value);
     }
     return changed;
   }
@@ -218,7 +218,7 @@ namespace ImGui {
     constexpr int Quantize = 256;
     int quantizedMegabytes = int(storage_gigabytes * 1024 / Quantize) * Quantize;
 
-    rtxOption->set(quantizedMegabytes);
+    rtxOption->setDeferred(quantizedMegabytes);
     return hasChanged;
   }
 
@@ -228,7 +228,7 @@ namespace ImGui {
     float value = rtxOption->get();
     bool changed = IMGUI_ADD_TOOLTIP(DragFloat(label, &value, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
-      rtxOption->set(value);
+      rtxOption->setDeferred(value);
     }
     return changed;
   }
@@ -257,7 +257,7 @@ namespace ImGui {
       }
     }
     if (changed) {
-      rtxOption->set(value);
+      rtxOption->setDeferred(value);
     }
     return changed;
   }
@@ -268,7 +268,7 @@ namespace ImGui {
     dxvk::Vector2 value = rtxOption->get();
     bool changed = IMGUI_ADD_TOOLTIP(DragFloat2(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
-      rtxOption->set(value);
+      rtxOption->setDeferred(value);
     }
     return changed;
   }
@@ -279,7 +279,7 @@ namespace ImGui {
     dxvk::Vector3 value = rtxOption->get();
     bool changed = IMGUI_ADD_TOOLTIP(DragFloat3(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
-      rtxOption->set(value);
+      rtxOption->setDeferred(value);
     }
     return changed;
   }
@@ -290,7 +290,7 @@ namespace ImGui {
     dxvk::Vector4 value = rtxOption->get();
     bool changed = IMGUI_ADD_TOOLTIP(DragFloat4(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
-      rtxOption->set(value);
+      rtxOption->setDeferred(value);
     }
     return changed;
   }
@@ -301,7 +301,7 @@ namespace ImGui {
     dxvk::Vector2i value = rtxOption->get();
     bool changed = IMGUI_ADD_TOOLTIP(DragIntRange2(label, &value.x, &value.y, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
-      rtxOption->set(value);
+      rtxOption->setDeferred(value);
     }
     return changed;
   }
@@ -312,7 +312,7 @@ namespace ImGui {
     float value = rtxOption->get();
     bool changed = IMGUI_ADD_TOOLTIP(InputFloat(label, &value, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
-      rtxOption->set(value);
+      rtxOption->setDeferred(value);
     }
     return changed;
   }
@@ -323,7 +323,7 @@ namespace ImGui {
     float value = rtxOption->get();
     bool changed = IMGUI_ADD_TOOLTIP(SliderFloat(label, &value, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
-      rtxOption->set(value);
+      rtxOption->setDeferred(value);
     }
     return changed;
   }
@@ -334,7 +334,7 @@ namespace ImGui {
     dxvk::Vector2 value = rtxOption->get();
     bool changed = IMGUI_ADD_TOOLTIP(SliderFloat2(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
-      rtxOption->set(value);
+      rtxOption->setDeferred(value);
     }
     return changed;
   }
@@ -345,7 +345,7 @@ namespace ImGui {
     dxvk::Vector3 value = rtxOption->get();
     bool changed = IMGUI_ADD_TOOLTIP(SliderFloat3(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
-      rtxOption->set(value);
+      rtxOption->setDeferred(value);
     }
     return changed;
   }
@@ -356,7 +356,7 @@ namespace ImGui {
     dxvk::Vector4 value = rtxOption->get();
     bool changed = IMGUI_ADD_TOOLTIP(SliderFloat4(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
-      rtxOption->set(value);
+      rtxOption->setDeferred(value);
     }
     return changed;
   }
@@ -367,7 +367,7 @@ namespace ImGui {
     dxvk::Vector3 value = rtxOption->get();
     bool changed = IMGUI_ADD_TOOLTIP(ColorPicker3(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
-      rtxOption->set(value);
+      rtxOption->setDeferred(value);
     }
     return changed;
   }
@@ -390,12 +390,12 @@ namespace ImGui {
     const auto changed = IMGUI_ADD_TOOLTIP(InputText(label, textBuffer.data(), textBuffer.size(), std::forward<Args>(args)...), rtxOption->getDescription());
 
     if (changed) {
-      rtxOption->set(std::string(textBuffer.data()));
+      rtxOption->setDeferred(std::string(textBuffer.data()));
     } else if (IsItemDeactivated()) {
       // If the text box loses focus when `ImGuiInputTextFlags_EnterReturnsTrue` is set, the input value would be lost.
       // This catches that case.
       if (strcmp(textBuffer.data(), rtxOption->get().c_str()) != 0) {
-        rtxOption->set(std::string(textBuffer.data()));
+        rtxOption->setDeferred(std::string(textBuffer.data()));
       }
     }
 
@@ -450,7 +450,7 @@ namespace ImGui {
       R value = rtxOption->get();
       bool changed = IMGUI_ADD_TOOLTIP(getKey(&value), rtxOption->getDescription());
       if (changed) {
-        rtxOption->set(value);
+        rtxOption->setDeferred(value);
       }
       return changed;
     }

@@ -865,7 +865,7 @@ namespace dxvk {
 
     if (m_calculatingDisplaceInFactor) {
       m_calculatingDisplaceInFactor = false;
-      Material::Properties::displaceInFactor.set(m_calculatedDisplaceInFactor);
+      Material::Properties::displaceInFactor.setDeferred(m_calculatedDisplaceInFactor);
     }
     m_calculatingDisplaceInFactor = m_calculateDisplaceInFactorNextFrame;
     m_calculateDisplaceInFactorNextFrame = false;

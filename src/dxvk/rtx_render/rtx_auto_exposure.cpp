@@ -157,7 +157,7 @@ namespace dxvk {
 
         if (m_isCurveChanged) {
           for (int i = 0; i < kNumPoints; i++) {
-            splineOptions[i]->set(splineValues[i]);
+            splineOptions[i]->setDeferred(splineValues[i]);
           }
           m_isCurveChanged = false;
         }
