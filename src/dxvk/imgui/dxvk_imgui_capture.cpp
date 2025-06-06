@@ -106,7 +106,7 @@ namespace dxvk {
     ImGui::Dummy(ImVec2(nameX + inputX,0.f));
     ImGui::SameLine();
     if(ImGui::Button("Capture Assets Only", ImVec2(commonButtonWidth,0.f))) {
-      RtxOptions::captureInstances.set(false);
+      RtxOptions::captureInstances.setDeferred(false);
       ctx->getCommonObjects()->capturer()->triggerNewCapture();
     }
     commonButtonWidth = std::max(firstButtonWidth, ImGui::GetItemRectSize().x);
@@ -196,12 +196,12 @@ namespace dxvk {
       m_isCaptureNameInvalid = false;
     }
     if (bufStr.empty()) {
-      RtxOptions::captureInstanceStageName.set(timestampReplacementStr + lss::ext::usd);
+      RtxOptions::captureInstanceStageName.setDeferred(timestampReplacementStr + lss::ext::usd);
     } else {
       const auto usdExtPos =
         bufStr.find(lss::ext::usd, bufStr.length() - lss::ext::usda.length() - 1);
       const std::string ext = (usdExtPos == std::string::npos) ? lss::ext::usd : "";
-      RtxOptions::captureInstanceStageName.set(bufStr + ext);
+      RtxOptions::captureInstanceStageName.setDeferred(bufStr + ext);
     }
   }
   

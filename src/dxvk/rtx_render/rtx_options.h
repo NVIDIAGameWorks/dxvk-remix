@@ -1104,15 +1104,15 @@ namespace dxvk {
       //  options.getOption<uint32_t>("rtx.renderPassVolumeIntegrateRaytraceMode", (uint32_t) renderPassVolumeIntegrateRaytraceMode, "DXVK_RENDER_PASS_VOLUME_INTEGRATE_RAYTRACE_MODE"),
       //  (uint32_t) (RenderPassVolumeIntegrateRaytraceMode::Count) -1);
 
-      renderPassGBufferRaytraceMode.set((RenderPassGBufferRaytraceMode) std::min(
+      renderPassGBufferRaytraceMode.setDeferred((RenderPassGBufferRaytraceMode) std::min(
         (uint32_t) renderPassGBufferRaytraceMode(),
         (uint32_t) (RenderPassGBufferRaytraceMode::Count) -1));
 
-      renderPassIntegrateDirectRaytraceMode.set((RenderPassIntegrateDirectRaytraceMode) std::min(
+      renderPassIntegrateDirectRaytraceMode.setDeferred((RenderPassIntegrateDirectRaytraceMode) std::min(
         (uint32_t) renderPassIntegrateDirectRaytraceMode(),
         (uint32_t) (RenderPassIntegrateDirectRaytraceMode::Count) - 1));
       
-      renderPassIntegrateIndirectRaytraceMode.set((RenderPassIntegrateIndirectRaytraceMode) std::min(
+      renderPassIntegrateIndirectRaytraceMode.setDeferred((RenderPassIntegrateIndirectRaytraceMode) std::min(
         (uint32_t) renderPassIntegrateIndirectRaytraceMode(),
         (uint32_t) (RenderPassIntegrateIndirectRaytraceMode::Count) - 1));
 
@@ -1165,7 +1165,7 @@ namespace dxvk {
       if (rayPortalModelTextureHashesTrimmed.size() > maxRayPortalCount) {
         rayPortalModelTextureHashesTrimmed.erase(rayPortalModelTextureHashesTrimmed.begin() + maxRayPortalCount, rayPortalModelTextureHashesTrimmed.end());
       }
-      rayPortalModelTextureHashes.set(rayPortalModelTextureHashesTrimmed);
+      rayPortalModelTextureHashes.setDeferred(rayPortalModelTextureHashesTrimmed);
 
       assert(rayPortalModelTextureHashes().size() % 2 == 0);
       assert(rayPortalModelTextureHashes().size() <= maxRayPortalCount);
@@ -1190,10 +1190,10 @@ namespace dxvk {
       // Replacement options
 
       if (env::getEnvVar("DXVK_DISABLE_ASSET_REPLACEMENT") == "1") {
-        enableReplacementAssets.set(false);
-        enableReplacementLights.set(false);
-        enableReplacementMeshes.set(false);
-        enableReplacementMaterials.set(false);
+        enableReplacementAssets.setDeferred(false);
+        enableReplacementLights.setDeferred(false);
+        enableReplacementMeshes.setDeferred(false);
+        enableReplacementMaterials.setDeferred(false);
       }
 
       m_geometryHashGenerationRule = createRule("Geometry generation", geometryGenerationHashRuleString());
@@ -1205,20 +1205,20 @@ namespace dxvk {
       // TODO(REMIX-2554): Design a general deprecation solution for configs that are no longer required.
       if (dynamicDecalTextures().size() > 0) {
         mergedSet.insert(dynamicDecalTextures().begin(), dynamicDecalTextures().end());
-        dynamicDecalTextures.set({});
+        dynamicDecalTextures.setDeferred({});
         Logger::info("[Deprecated Config] rtx.dynamicDecalTextures has been deprecated, we have moved all your texture's from this list to rtx.decalTextures, no further action is required from you.  Please re-save your rtx config to get rid of this message.");
       }
       if (singleOffsetDecalTextures().size() > 0) {
         mergedSet.insert(singleOffsetDecalTextures().begin(), singleOffsetDecalTextures().end());
-        singleOffsetDecalTextures.set({});
+        singleOffsetDecalTextures.setDeferred({});
         Logger::info("[Deprecated Config] rtx.singleOffsetDecalTextures has been deprecated, we have moved all your texture's from this list to rtx.decalTextures, no further action is required from you.  Please re-save your rtx config to get rid of this message.");
       }
       if (nonOffsetDecalTextures().size() > 0) {
         mergedSet.insert(nonOffsetDecalTextures().begin(), nonOffsetDecalTextures().end());
-        nonOffsetDecalTextures.set({});
+        nonOffsetDecalTextures.setDeferred({});
         Logger::info("[Deprecated Config] rtx.nonOffsetDecalTextures has been deprecated, we have moved all your texture's from this list to rtx.decalTextures, no further action is required from you.  Please re-save your rtx config to get rid of this message.");
       }
-      decalTextures.set(mergedSet);
+      decalTextures.setDeferred(mergedSet);
 
       // Ensure all of the above values are promoted before the first frame starts.
       RtxOption<bool>::applyPendingValues();

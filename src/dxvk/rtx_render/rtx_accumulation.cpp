@@ -129,7 +129,7 @@ namespace dxvk {
       }
 
       ImGui::InputInt("Number of Frames To Accumulate", &numFramesToAccumulate);
-      numFramesToAccumulate.set(std::max(numFramesToAccumulate(), 1u));
+      numFramesToAccumulate.setDeferred(std::max(numFramesToAccumulate(), 1u));
 
       // Reset accumulation if the cap gets lowered and below the current count
       if (m_prevNumFramesToAccumulate > numFramesToAccumulate() &&

@@ -25,7 +25,7 @@ namespace ImGui {
     bool value = rtxOption->get();
     bool changed = IMGUI_ADD_TOOLTIP(Checkbox(label, &value), rtxOption->getDescription());
     if (changed) {
-      rtxOption->set(value);
+      rtxOption->setDeferred(value);
     }
     return changed;
   }

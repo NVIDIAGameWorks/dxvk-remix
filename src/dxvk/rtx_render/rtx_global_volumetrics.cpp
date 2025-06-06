@@ -188,11 +188,11 @@ namespace dxvk {
     RTX_OPTION_CLAMP_MIN(transmittanceMeasurementDistanceMeters, 0.0f);
     RTX_OPTION_CLAMP(anisotropy, -1.0f, 1.0f);
 
-    transmittanceColor.set(Vector3(
+    transmittanceColor.setDeferred(Vector3(
       std::clamp(transmittanceColor().x, 0.0f, 1.0f),
       std::clamp(transmittanceColor().y, 0.0f, 1.0f),
       std::clamp(transmittanceColor().z, 0.0f, 1.0f)));
-    singleScatteringAlbedo.set(Vector3(
+    singleScatteringAlbedo.setDeferred(Vector3(
       std::clamp(singleScatteringAlbedo().x, 0.0f, 1.0f),
       std::clamp(singleScatteringAlbedo().y, 0.0f, 1.0f),
       std::clamp(singleScatteringAlbedo().z, 0.0f, 1.0f)));
@@ -212,10 +212,10 @@ namespace dxvk {
     RTX_OPTION_CLAMP_MIN(fogRemapTransmittanceMeasurementDistanceMaxMeters, 0.0f);
     RTX_OPTION_CLAMP_MIN(fogRemapColorMultiscatteringScale, 0.0f);
 
-    fogRemapMaxDistanceMinMeters.set(std::min(fogRemapMaxDistanceMinMeters(), fogRemapMaxDistanceMaxMeters()));
-    fogRemapMaxDistanceMaxMeters.set(std::max(fogRemapMaxDistanceMinMeters(), fogRemapMaxDistanceMaxMeters()));
-    fogRemapTransmittanceMeasurementDistanceMinMeters.set(std::min(fogRemapTransmittanceMeasurementDistanceMinMeters(), fogRemapTransmittanceMeasurementDistanceMaxMeters()));
-    fogRemapTransmittanceMeasurementDistanceMaxMeters.set(std::max(fogRemapTransmittanceMeasurementDistanceMinMeters(), fogRemapTransmittanceMeasurementDistanceMaxMeters()));
+    fogRemapMaxDistanceMinMeters.setDeferred(std::min(fogRemapMaxDistanceMinMeters(), fogRemapMaxDistanceMaxMeters()));
+    fogRemapMaxDistanceMaxMeters.setDeferred(std::max(fogRemapMaxDistanceMinMeters(), fogRemapMaxDistanceMaxMeters()));
+    fogRemapTransmittanceMeasurementDistanceMinMeters.setDeferred(std::min(fogRemapTransmittanceMeasurementDistanceMinMeters(), fogRemapTransmittanceMeasurementDistanceMaxMeters()));
+    fogRemapTransmittanceMeasurementDistanceMaxMeters.setDeferred(std::max(fogRemapTransmittanceMeasurementDistanceMinMeters(), fogRemapTransmittanceMeasurementDistanceMaxMeters()));
   }
 
   // Quality level presets, x component controls the froxelGridResolutionScale and the y component controls the froxelDepthSlices settings.
@@ -440,8 +440,8 @@ namespace dxvk {
       qualityPreset = qualityModes[desiredQualityLevel];
     }
 
-    froxelGridResolutionScale.set(qualityPreset.x);
-    froxelDepthSlices.set(qualityPreset.y);
+    froxelGridResolutionScale.setDeferred(qualityPreset.x);
+    froxelDepthSlices.setDeferred(qualityPreset.y);
 
     m_rebuildFroxels = true;
   }
@@ -450,11 +450,11 @@ namespace dxvk {
     const RtxGlobalVolumetrics::Preset& preset = Presets[presetType];
 
     // Set RTX options using the values from the preset
-    transmittanceColor.set(preset.transmittanceColor);
-    transmittanceMeasurementDistanceMeters.set(preset.transmittanceMeasurementDistance);
-    singleScatteringAlbedo.set(preset.singleScatteringAlbedo);
-    anisotropy.set(preset.anisotropy);
-    enableFogRemap.set(false);
+    transmittanceColor.setDeferred(preset.transmittanceColor);
+    transmittanceMeasurementDistanceMeters.setDeferred(preset.transmittanceMeasurementDistance);
+    singleScatteringAlbedo.setDeferred(preset.singleScatteringAlbedo);
+    anisotropy.setDeferred(preset.anisotropy);
+    enableFogRemap.setDeferred(false);
   }
 
   // This function checks the fog density to determine using physical fog or fix function fog.

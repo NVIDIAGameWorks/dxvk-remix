@@ -222,54 +222,54 @@ namespace dxvk {
 
   void DxvkReSTIRGIRayQuery::setToNRDPreset() {
     // Less aggressive boiling filter to keep more samples
-    boilingFilterMinThreshold.set(10.0f);
-    boilingFilterMaxThreshold.set(20.0f);
-    historyDiscardStrength.set(0.0f);
-    boilingFilterRemoveReservoirThreshold.set(62.f);
+    boilingFilterMinThreshold.setDeferred(10.0f);
+    boilingFilterMaxThreshold.setDeferred(20.0f);
+    historyDiscardStrength.setDeferred(0.0f);
+    boilingFilterRemoveReservoirThreshold.setDeferred(62.f);
 
     // Weaken specular light at corners to reduce noise
-    useVirtualSample.set(true);
-    virtualSampleMaxDistanceRatio.set(0.0f);
+    useVirtualSample.setDeferred(true);
+    virtualSampleMaxDistanceRatio.setDeferred(0.0f);
 
     // Improve performance when stealing samples
-    stealBoundaryPixelSamplesWhenOutsideOfScreen.set(true);
-    useSampleStealing.set(ReSTIRGISampleStealing::StealPixel);
-    sampleStealingJitter.set(0.0f);
+    stealBoundaryPixelSamplesWhenOutsideOfScreen.setDeferred(true);
+    useSampleStealing.setDeferred(ReSTIRGISampleStealing::StealPixel);
+    sampleStealingJitter.setDeferred(0.0f);
 
     // No special handling to object movement
-    validateVisibilityChange.set(false);
+    validateVisibilityChange.setDeferred(false);
 
     // Legacy temporal reprojection
-    useDLSSRRCompatibilityMode.set(false);
+    useDLSSRRCompatibilityMode.setDeferred(false);
   }
 
   void DxvkReSTIRGIRayQuery::setToRayReconstructionPreset() {
     // More aggressive boiling filter to reduce sample coherency
-    boilingFilterMinThreshold.set(15.0f);
-    boilingFilterMaxThreshold.set(20.0f);
-    historyDiscardStrength.set(10.0f);
-    boilingFilterRemoveReservoirThreshold.set(30.f);
+    boilingFilterMinThreshold.setDeferred(15.0f);
+    boilingFilterMaxThreshold.setDeferred(20.0f);
+    historyDiscardStrength.setDeferred(10.0f);
+    boilingFilterRemoveReservoirThreshold.setDeferred(30.f);
 
     // Preserve more specular light details at corners
-    useVirtualSample.set(false);
-    virtualSampleMaxDistanceRatio.set(0.5f);
+    useVirtualSample.setDeferred(false);
+    virtualSampleMaxDistanceRatio.setDeferred(0.5f);
 
     // Better specular light during camera movement
-    useReflectionReprojection.set(true);
+    useReflectionReprojection.setDeferred(true);
 
     // More stable signal
-    useAdaptiveTemporalHistory.set(false);
+    useAdaptiveTemporalHistory.setDeferred(false);
 
     // Reduce sample coherency and improve sample quality when stealing samples 
-    stealBoundaryPixelSamplesWhenOutsideOfScreen.set(true);
-    useSampleStealing.set(ReSTIRGISampleStealing::StealSample);
-    sampleStealingJitter.set(3.0);
+    stealBoundaryPixelSamplesWhenOutsideOfScreen.setDeferred(true);
+    useSampleStealing.setDeferred(ReSTIRGISampleStealing::StealSample);
+    sampleStealingJitter.setDeferred(3.0);
 
     // More responsive to object movement
-    validateVisibilityChange.set(true);
+    validateVisibilityChange.setDeferred(true);
 
     // Randomize temporal reprojection to reduce coherency
-    useDLSSRRCompatibilityMode.set(true);
+    useDLSSRRCompatibilityMode.setDeferred(true);
   }
 
   void DxvkReSTIRGIRayQuery::bindIntegrateIndirectPathTracingResources(RtxContext& ctx) {

@@ -628,7 +628,7 @@ namespace dxvk {
       m_composite.lastCompositeViewIdx = static_cast<CompositeDebugView>(Composite::compositeViewIdx());
     }
 
-    displayType.set(static_cast<DebugViewDisplayType>(std::min(static_cast<uint32_t>(displayType()), static_cast<uint32_t>(DebugViewDisplayType::Count) - 1)));
+    displayType.setDeferred(static_cast<DebugViewDisplayType>(std::min(static_cast<uint32_t>(displayType()), static_cast<uint32_t>(DebugViewDisplayType::Count) - 1)));
   
     const uint32_t bufferLength = kMaxFramesInFlight;
 
@@ -814,11 +814,11 @@ namespace dxvk {
           m_accumulation.resetNumAccumulatedFrames();  
         }
 
-        debugViewIdx.set(m_lastDebugViewIdx);
+        debugViewIdx.setDeferred(m_lastDebugViewIdx);
       }
     } else {
-      debugViewIdx.set(DEBUG_VIEW_DISABLED);
-      Composite::compositeViewIdx.set(static_cast<uint32_t>(CompositeDebugView::Disabled));
+      debugViewIdx.setDeferred(DEBUG_VIEW_DISABLED);
+      Composite::compositeViewIdx.setDeferred(static_cast<uint32_t>(CompositeDebugView::Disabled));
       enableCompositeDebugView = false;
     }
 
@@ -826,9 +826,9 @@ namespace dxvk {
       // Note: Write to the last composite debug view index to prevent it from being overridden when disabled and re-enabled.
       compositeDebugViewCombo.getKey(&m_composite.lastCompositeViewIdx);
 
-      Composite::compositeViewIdx.set(static_cast<uint32_t>(m_composite.lastCompositeViewIdx));
+      Composite::compositeViewIdx.setDeferred(static_cast<uint32_t>(m_composite.lastCompositeViewIdx));
     } else {
-      Composite::compositeViewIdx.set(static_cast<uint32_t>(CompositeDebugView::Disabled));
+      Composite::compositeViewIdx.setDeferred(static_cast<uint32_t>(CompositeDebugView::Disabled));
     }
 
     showOutputStatistics();
@@ -882,7 +882,7 @@ namespace dxvk {
         ImGui::DragFloat("Scale", &m_scale, 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
         ImGui::InputFloat("Min Value", &minValueObject(), std::max(0.01f, 0.02f * std::abs(minValue())), std::max(0.1f, 0.1f * std::abs(minValue())));
         ImGui::InputFloat("Max Value", &maxValueObject(), std::max(0.01f, 0.02f * std::abs(maxValue())), std::max(0.1f, 0.1f * std::abs(maxValue())));
-        maxValue.set(std::max(1.00001f * minValue(), maxValue()));
+        maxValue.setDeferred(std::max(1.00001f * minValue(), maxValue()));
 
         // Color legend
         if (pseudoColorMode() != PseudoColorMode::Disabled) {
@@ -910,7 +910,7 @@ namespace dxvk {
         ImGui::InputInt("Min Value (EV100)", &evMinValueObject());
         ImGui::InputInt("Max Value (EV100)", &evMaxValueObject());
 
-        evMaxValue.set(std::max(evMaxValue(), evMinValue()));
+        evMaxValue.setDeferred(std::max(evMaxValue(), evMinValue()));
 
         // Color legend
         {
@@ -1000,7 +1000,7 @@ namespace dxvk {
   }
 
   void DebugView::setDebugViewIndex(uint32_t debugViewIndex) {
-    debugViewIdx.set(debugViewIndex);
+    debugViewIdx.setDeferred(debugViewIndex);
     if (debugViewIndex != DEBUG_VIEW_DISABLED) {
       m_lastDebugViewIdx = debugViewIndex;
     }
@@ -1034,9 +1034,9 @@ namespace dxvk {
       if (!debugViewIndices.empty()) {
         // Set the index for the next frame, since the RtxOption won't be updated until the end of the current frame.
         uint32_t nextFrameIndex = ctx->getDevice()->getCurrentFrameId() + 1;
-        debugViewIdx.set(debugViewIndices[nextFrameIndex % debugViewIndices.size()]);
+        debugViewIdx.setDeferred(debugViewIndices[nextFrameIndex % debugViewIndices.size()]);
       } else {
-        debugViewIdx.set(DEBUG_VIEW_DISABLED);
+        debugViewIdx.setDeferred(DEBUG_VIEW_DISABLED);
       }
     }
   }
