@@ -2616,6 +2616,7 @@ namespace dxvk {
 
       ImGui::DragFloat("Vertex Color Strength", &RtxOptions::vertexColorStrengthObject(), 0.001f, 0.0f, 1.0f);
       ImGui::Checkbox("Vertex Color Is Baked Lighting", &RtxOptions::vertexColorIsBakedLightingObject());
+      ImGui::Checkbox("Ignore All Baked Lighting", &RtxOptions::ignoreAllVertexColorBakedLightingObject());
       ImGui::Separator();
 
       if (ImGui::CollapsingHeader("Heuristics", collapsingHeaderClosedFlags)) {
