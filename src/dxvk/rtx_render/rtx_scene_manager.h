@@ -224,6 +224,8 @@ public:
   bool isThinOpaqueMaterialExist() const { return m_thinOpaqueMaterialExist; }
   bool isSssMaterialExist() const { return m_sssMaterialExist; }
 
+  bool isAntiCullingSupported() const { return m_isAntiCullingSupported; }
+
 private:
   enum class ObjectCacheState
   {
@@ -324,6 +326,8 @@ private:
 
   bool m_thinOpaqueMaterialExist = false;
   bool m_sssMaterialExist = false;
+
+  bool m_isAntiCullingSupported = true;
 };
 
 }  // namespace nvvk

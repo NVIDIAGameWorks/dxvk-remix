@@ -218,22 +218,30 @@ namespace dxvk {
           const Matrix4 objectToView = getCamera().getWorldToView(false) * instance->getTransform();
 
           bool isInsideFrustum = true;
-          if (RtxOptions::needsMeshBoundingBox()) {
-            const AxisAlignedBoundingBox& boundingBox = instance->getBlas()->input.getGeometryData().boundingBox;
-            if (RtxOptions::AntiCulling::Object::enableHighPrecisionAntiCulling()) {
-              isInsideFrustum = boundingBoxIntersectsFrustumSAT(
-                getCamera(),
-                boundingBox.minPos,
-                boundingBox.maxPos,
-                objectToView,
-                RtxOptions::AntiCulling::Object::enableInfinityFarFrustum());
-            } else {
-              isInsideFrustum = boundingBoxIntersectsFrustum(getCamera().getFrustum(), boundingBox.minPos, boundingBox.maxPos, objectToView);
+          // Check for camera cut. Anti-Culling should NOT be enabled during a camera cut.
+          // In some cases, we can't reliably detect a camera cut (e.g., when the game doesn't set up the View Matrix),
+          // so we must disable Anti-Culling to prevent visual corruption.
+          if (!getCamera().isCameraCut() && m_isAntiCullingSupported) {
+            if (RtxOptions::needsMeshBoundingBox()) {
+              const AxisAlignedBoundingBox& boundingBox = instance->getBlas()->input.getGeometryData().boundingBox;
+              if (RtxOptions::AntiCulling::Object::enableHighPrecisionAntiCulling()) {
+                isInsideFrustum = boundingBoxIntersectsFrustumSAT(
+                  getCamera(),
+                  boundingBox.minPos,
+                  boundingBox.maxPos,
+                  objectToView,
+                  RtxOptions::AntiCulling::Object::enableInfinityFarFrustum());
+              } else {
+                isInsideFrustum = boundingBoxIntersectsFrustum(getCamera().getFrustum(), boundingBox.minPos, boundingBox.maxPos, objectToView);
+              }
             }
-          }
-          else {
-            // Fallback to check object center under view space
-            isInsideFrustum = getCamera().getFrustum().CheckSphere(float3(objectToView[3][0], objectToView[3][1], objectToView[3][2]), 0);
+            else {
+              // Fallback to check object center under view space
+              auto getViewSpacePosition = [](const Matrix4& objectToView) -> float3 {
+                return float3(objectToView[3][0], objectToView[3][1], objectToView[3][2]);
+              };
+              isInsideFrustum = getCamera().getFrustum().CheckSphere(getViewSpacePosition(objectToView), 0);
+            }
           }
 
           // Only GC the objects inside the frustum to anti-frustum culling, this could cause significant performance impact
@@ -1598,6 +1606,10 @@ namespace dxvk {
 
     // Clear the ray portal data before the next frame
     m_rayPortalManager.clear();
+
+    // Check Anti-Culling Support:
+    // When the game doesn't set up the View Matrix, we must disable Anti-Culling to prevent visual corruption.
+    m_isAntiCullingSupported = (getCamera().getViewToWorld() != Matrix4d());
   }
 
   static_assert(std::is_same_v< decltype(RtSurface::objectPickingValue), ObjectPickingValue>);
