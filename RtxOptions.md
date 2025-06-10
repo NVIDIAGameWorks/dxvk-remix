@@ -307,6 +307,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.gui.textureGridThumbnailScale|float|1|A float to set the scale of thumbnails while selecting textures\.<br>This will be scaled by the default value of 120 pixels\.<br>This value must always be greater than zero\.|
 |rtx.hashCollisionDetection.enable|bool|False|Enables hash collision detection\.|
 |rtx.hideSplashMessage|bool|False|A flag to disable the splash message indicating how to use Remix from appearing when the application starts\.<br>When set to true this message will be hidden, otherwise it will be displayed on every launch\.|
+|rtx.ignoreAllVertexColorBakedLighting|bool|False|If true, all baked lighting bound to all vertex colors will be ignored\.|
 |rtx.ignoreGameDirectionalLights|bool|False|Ignores any directional lights coming from the original game \(lights added via toolkit still work\)\.|
 |rtx.ignoreGamePointLights|bool|False|Ignores any point lights coming from the original game \(lights added via toolkit still work\)\.|
 |rtx.ignoreGameSpotLights|bool|False|Ignores any spot lights coming from the original game \(lights added via toolkit still work\)\.|

@@ -253,6 +253,7 @@ namespace dxvk {
         break;
       case D3DDECLUSAGE_COLOR:
         if (element.UsageIndex == 0 &&
+            !RtxOptions::ignoreAllVertexColorBakedLighting() &&
             !lookupHash(RtxOptions::ignoreBakedLightingTextures(), m_activeDrawCallState.materialData.colorTextures[0].getImageHash())) {
           targetBuffer = &geoData.color0Buffer;
         }
