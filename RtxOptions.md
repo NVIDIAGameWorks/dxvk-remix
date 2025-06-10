@@ -91,7 +91,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.automation.disableDisplayMemoryStatistics|bool|False|Disables display of memory statistics in the Remix window\.<br>This option is typically meant for automation of tests for which we don't want non\-deterministic runtime memory statistics to be shown in GUI that is included as part of test image output\.|
 |rtx.automation.disableUpdateUpscaleFromDlssPreset|bool|False|Disables updating upscaler from DLSS preset\.<br>This option is typically meant for automation of tests for which we don't want upscaler to be updated based on a DLSS preset\.|
 |rtx.automation.suppressAssetLoadingErrors|bool|False|Suppresses asset loading errors by turning them into warnings\.<br>This option is typically meant for automation of tests for which acceptable asset loading issues are known\.|
-|rtx.blockInputToGameInUI|bool|True||
+|rtx.blockInputToGameInUI|bool|True|If true, input will not be passed to the game when the UI is active\.<br>Can be toggled with Alt \+ Backspace|
 |rtx.bloom.burnIntensity|float|1|Amount of bloom to add to the final image\.|
 |rtx.bloom.enable|bool|True|Enable bloom \- glowing halos around intense, bright areas\.|
 |rtx.bloom.luminanceThreshold|float|0.25|Adjust the bloom threshold to suppress blooming of the dim areas\. Pixels with luminance lower than the threshold are multiplied by the weight value that smoothly transitions from 1\.0 \(at luminance=threshold\) to 0\.0 \(at luminance=0\)\.|
@@ -106,14 +106,12 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.cameraAnimationMode|int|3|Free camera's animation mode\.|
 |rtx.cameraJitterSequenceLength|int|64|Sets a camera jitter sequence length \[number of frames\]\. It will loop around once the length is reached\.|
 |rtx.cameraSequence.autoLoad|bool|False|Load camera sequence automatically\.|
-|rtx.cameraSequence.currentFrame|int|0|Current Frame\.|
 |rtx.cameraSequence.mode|int|0|Current mode\.|
 |rtx.cameraShakePeriod|int|20|Period of the free camera's animation\.|
 |rtx.capture.correctBakedTransforms|bool|False|Some games bake world transforms into mesh vertices\. If individually captured<br>meshes appear to be way off in the middle of nowhere OR instanced meshes appear<br>to all have identity xform matrices, enabling will attempt to correct this and<br>improve stage \+ mesh viewability in tools\.<br>Hashes are unaffected\.|
 |rtx.captureDebugImage|bool|False||
 |rtx.captureEnableMultiframe|bool|False|Enables multi\-frame capturing\. THIS HAS NOT BEEN MAINTAINED AND SHOULD BE USED WITH EXTREME CAUTION\.|
 |rtx.captureFramesPerSecond|int|24|Playback rate marked in the USD stage\.<br>Will eventually determine frequency with which game state is captured and written\. Currently every frame \-\- even those at higher frame rates \-\- are recorded\.|
-|rtx.captureHotKey|unknown type|unknown type|Hotkey to trigger a capture without bringing up the menu\.<br>example override: 'rtx\.captureHotKey = CTRL, SHIFT, P'\.<br>Full list of key names available in \`src/util/util\_keybind\.h\`\.|
 |rtx.captureInstances|bool|True|If true, an instanced snapshot of the game scene will be captured and exported to a USD stage, in addition to all meshes, textures, materials, etc\.<br>If false, only meshes, etc will be captured\.|
 |rtx.captureMaxFrames|int|1|Max frames capturable when running a multi\-frame capture\. The capture can be toggled to completion manually\.|
 |rtx.captureMeshBlendWeightDelta|float|0.01|Inter\-frame blend weight min delta warrants new time sample\.|
@@ -296,17 +294,6 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.forceCameraJitter|bool|False|Force enables camera jitter frame to frame\.|
 |rtx.forceCutoutAlpha|float|0.5|When an object is added to the cutout textures list it will have a cutout alpha mode forced on it, using this value for the alpha test\.<br>This is meant to improve the look of some legacy mode materials using low\-resolution textures and alpha blending instead of alpha cutout as this can cause blurry halos around edges due to the difficulty of handling this sort of blending in Remix\.<br>Such objects are generally better handled with actual replacement assets using fully opaque geometry replacements or alpha cutout with higher resolution textures, so this should only be relied on until proper replacements can be authored\.|
 |rtx.forceMergeAllMeshes|bool|False|Force merges all meshes into as few BLAS as possible\.  This is generally not desirable for performance, but can be a useful debugging tool\.|
-|rtx.freeCam.keyMoveBack|unknown type|unknown type|Move back in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveBack = P'|
-|rtx.freeCam.keyMoveDown|unknown type|unknown type|Move down in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveDown = P'|
-|rtx.freeCam.keyMoveFaster|unknown type|unknown type|Move faster in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveForward = RSHIFT'|
-|rtx.freeCam.keyMoveForward|unknown type|unknown type|Move forward in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveForward = P'|
-|rtx.freeCam.keyMoveLeft|unknown type|unknown type|Move left in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveLeft = P'|
-|rtx.freeCam.keyMoveRight|unknown type|unknown type|Move right in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveRight = P'|
-|rtx.freeCam.keyMoveUp|unknown type|unknown type|Move up in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveUp = P'|
-|rtx.freeCam.keyPitchDown|unknown type|unknown type|Pitch down in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyPitchDown = P'|
-|rtx.freeCam.keyPitchUp|unknown type|unknown type|Pitch up in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyPitchUp = P'|
-|rtx.freeCam.keyYawLeft|unknown type|unknown type|Yaw left in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyYawLeft = P'|
-|rtx.freeCam.keyYawRight|unknown type|unknown type|Yaw right in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyYawRight = P'|
 |rtx.freeCameraInvertY|bool|False|Invert free camera pitch direction\.|
 |rtx.freeCameraSpeed|float|200|Free camera speed \[GameUnits/s\]\.|
 |rtx.freeCameraTurningSpeed|float|1|Free camera turning speed \(applies to keyboard, not mouse\) \[radians/s\]\.|
@@ -320,6 +307,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.gui.textureGridThumbnailScale|float|1|A float to set the scale of thumbnails while selecting textures\.<br>This will be scaled by the default value of 120 pixels\.<br>This value must always be greater than zero\.|
 |rtx.hashCollisionDetection.enable|bool|False|Enables hash collision detection\.|
 |rtx.hideSplashMessage|bool|False|A flag to disable the splash message indicating how to use Remix from appearing when the application starts\.<br>When set to true this message will be hidden, otherwise it will be displayed on every launch\.|
+|rtx.ignoreAllVertexColorBakedLighting|bool|False|If true, all baked lighting bound to all vertex colors will be ignored\.|
 |rtx.ignoreGameDirectionalLights|bool|False|Ignores any directional lights coming from the original game \(lights added via toolkit still work\)\.|
 |rtx.ignoreGamePointLights|bool|False|Ignores any point lights coming from the original game \(lights added via toolkit still work\)\.|
 |rtx.ignoreGameSpotLights|bool|False|Ignores any spot lights coming from the original game \(lights added via toolkit still work\)\.|
@@ -338,7 +326,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.io.memoryBudgetMB|int|256||
 |rtx.io.useAsyncQueue|bool|True||
 |rtx.isReflexEnabled|bool|True|Enables or disables Reflex globally\.<br>Note that this option when set to false will prevent Reflex from even attempting to initialize, unlike setting the Reflex mode to "None" which simply tells an initialized Reflex not to take effect\.<br>Additionally, this setting must be set at startup and changing it will not take effect at runtime\.|
-|rtx.isShaderExecutionReorderingSupported|bool|True|Enables support of Shader Execution Reordering \(SER\) if it is supported by the target HW and SW\.|
+|rtx.isShaderExecutionReorderingSupported|bool|True|Enables Shader Execution Reordering \(SER\) if it is supported by the target HW and SW\.|
 |rtx.keepTexturesForTagging|bool|False|A flag to keep all textures in video memory, which can drastically increase VRAM consumption\. Intended to assist with tagging textures that are only used for a short period of time \(such as loading screens\)\. Use only when necessary\!|
 |rtx.leftHandedCoordinateSystem|bool|False|Indicates that the world space coordinate system is left\-handed when true, otherwise right\-handed when false\.|
 |rtx.legacyMaterial.albedoConstant|float3|1, 1, 1|The default albedo constant to use for non\-replaced "legacy" materials\. Should be a color in sRGB colorspace with gamma encoding\.|
@@ -565,8 +553,11 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.rayreconstruction.compositeVolumetricLight|bool|True|Composite volumetric light and then input the result to DLSS\-RR, otherwise volumetric light is in a separate layer\. Disabling it may introduce flickering artifacts\.<br>|
 |rtx.rayreconstruction.demodulateAttenuation|bool|True|Demodulate attenuation to reduce ghosting when an object is behind textured translucent objects\.<br>|
 |rtx.rayreconstruction.demodulateRoughness|bool|True|Demodulate roughness to enhance roughness details\.<br>|
+|rtx.rayreconstruction.disocclusionMaskBlurNormalizedGaussianWeightSigma|float|0.5|Normalized Gaussian weight sigma to use for blurring disocclusion mask\.<br>The sigma is applied to the normalized blur kernel radius extents \(i\.e\. \<0, 1\>\)\.|
+|rtx.rayreconstruction.disocclusionMaskBlurRadius|int|32|Pixel radius to use for blurring disocclusion mask\.|
 |rtx.rayreconstruction.enableDLSSRRSurfaceReplacement|bool|True|Use DLSS\-RR surface replacement\. Translucent surfaces with significant refraction are excluded from surface replacement and its surface motion vector will be used\.<br>|
 |rtx.rayreconstruction.enableDetailEnhancement|bool|True|Enable detail enhancement filter to enhance normal map details\.<br>|
+|rtx.rayreconstruction.enableDisocclusionMaskBlur|bool|False|Enables blurring of disocclusion mask to suppress instabilities due to abrupt mask value changes\.|
 |rtx.rayreconstruction.enableNRDForTraining|bool|False|Enable NRD\. This option is only for training or debug purpose\.<br>|
 |rtx.rayreconstruction.enableTransformerModelD|bool|False||
 |rtx.rayreconstruction.filterHitT|bool|True|Filter hit distance to improve specular reflection quality\.<br>|
@@ -582,7 +573,6 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.raytracedRenderTarget.enable|bool|True|Enables or disables raytracing for render\-to\-texture effects\.  The render target to be raytraced must be specified in the texture selection menu\.|
 |rtx.reflexMode|int|1|Reflex mode selection, enabling it helps minimize input latency, boost mode may further reduce latency by boosting GPU clocks in CPU\-bound cases\.<br>Supported enum values are 0 = None \(Disabled\), 1 = LowLatency \(Enabled\), 2 = LowLatencyBoost \(Enabled \+ Boost\)\.<br>Note that even when using the "None" Reflex mode Reflex will attempt to be initialized\. Use rtx\.isReflexEnabled to fully disable to skip this initialization if needed\.|
 |rtx.reloadTextureWhenResolutionChanged|bool|False|Reload texture when resolution changed\.|
-|rtx.remixMenuKeyBinds|unknown type|unknown type|Hotkey to open the Remix menu\.<br>example override: 'rtx\.remixMenuKeyBinds = CTRL, SHIFT, Z'\.<br>Full list of key names available in \`src/util/util\_keybind\.h\`\.|
 |rtx.renderPassGBufferRaytraceMode|int|0|The ray tracing mode to use for the G\-Buffer pass which resolves the initial primary and secondary surfaces to apply lighting to\.|
 |rtx.renderPassIntegrateDirectRaytraceMode|int|0|The ray tracing mode to use for the Direct Lighting pass which applies lighting to the primary/secondary surfaces\.|
 |rtx.renderPassIntegrateIndirectRaytraceMode|int|2|The ray tracing mode to use for the Indirect Lighting pass which applies lighting to the primary/secondary surfaces\.|
@@ -657,7 +647,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.showRayReconstructionUI|bool|True|Show ray reconstruction UI\.|
 |rtx.showRaytracingOption|bool|True|Enables or disables the option to toggle ray tracing in the UI\. When set to false the ray tracing checkbox will not appear in the Remix UI\.|
 |rtx.showUI|int|0|0 = Don't Show, 1 = Show Simple, 2 = Show Advanced\.|
-|rtx.showUICursor|bool|True||
+|rtx.showUICursor|bool|True|If true, the ImGUI mouse cursor will be shown when the UI is active\.<br>Can be toggled with Alt \+ Delete\.|
 |rtx.skipDrawCallsPostRTXInjection|bool|False|Ignores all draw calls recorded after RTX Injection, the location of which varies but is currently based on when tagged UI textures begin to draw\.|
 |rtx.skipObjectsWithUnknownCamera|bool|False||
 |rtx.skyAutoDetect|int|0|Automatically tag sky draw calls using various heuristics\.<br>0 = None<br>1 = CameraPosition \- assume the first seen camera position is a sky camera\.<br>2 = CameraPositionAndDepthFlags \- assume the first seen camera position is a sky camera, if its draw call's depth test is disabled\. If it's enabled, assume no sky camera\.<br>Note: if all draw calls are marked as sky, then assume that there's no sky camera at all\.|
@@ -863,10 +853,22 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.baseGameModRegex|string||Regex used to determine if the base game is running a mod, like a sourcemod\.|
 |rtx.beamTextures|hash set||Textures on draw calls that are already particles or emissively blended and have beam\-like geometry\.<br>Typically objects marked as particles or objects using emissive blending will be rendered with a special method which allows re\-orientation of the billboard geometry assumed to make up the draw call in indirect rays \(reflections for example\)\.<br>This method works fine for typical particles, but some \(e\.g\. a laser beam\) may not be well\-represented with the typical billboard assumption of simply needing to rotate around its centroid to face the view direction\.<br>To handle such cases a different beam mode is used to treat objects as more of a cylindrical beam and re\-orient around its main spanning axis, allowing for better rendering of these beam\-like effect objects\.|
 |rtx.cameraSequence.filePath|string||File path\.|
+|rtx.captureHotKey|virtual keys|CTRL + SHFT + Q|Hotkey to trigger a capture without bringing up the menu\.<br>example override: 'rtx\.captureHotKey = CTRL, SHIFT, P'\.<br>Full list of key names available in \`src/util/util\_keybind\.h\`\.|
 |rtx.captureInstanceStageName|string|capture_{timestamp}.usd|Name of the 'instance' stage \(see: 'rtx\.captureInstances'\)\.|
 |rtx.captureTimestampReplacement|string|{timestamp}|String that can be used for auto\-replacing current time stamp in instance stage name\.<br>Note: Changing this value does not change the default value for rtx\.captureInstanceStageName\.|
 |rtx.decalTextures|hash set||Textures on draw calls used for static geometric decals or decals with complex topology\.<br>These materials will be blended over the materials underneath them when decal material blending is enabled\.<br>A small configurable offset is applied to each flat/co\-planar part of these decals to prevent coplanar geometric cases \(which poses problems for ray tracing\)\.|
 |rtx.dynamicDecalTextures|hash set||Warning: This option is deprecated, please use rtx\.decalTextures instead\.<br>Textures on draw calls used for dynamically spawned geometric decals, such as bullet holes\.<br>These materials will be blended over the materials underneath them when decal material blending is enabled\.<br>A small configurable offset is applied to each quad part of these decals to prevent coplanar geometric cases \(which poses problems for ray tracing\)\.|
+|rtx.freeCam.keyMoveBack|virtual keys|S|Move back in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveBack = P'|
+|rtx.freeCam.keyMoveDown|virtual keys|Q|Move down in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveDown = P'|
+|rtx.freeCam.keyMoveFaster|virtual keys|LSHIFT|Move faster in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveForward = RSHIFT'|
+|rtx.freeCam.keyMoveForward|virtual keys|W|Move forward in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveForward = P'|
+|rtx.freeCam.keyMoveLeft|virtual keys|A|Move left in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveLeft = P'|
+|rtx.freeCam.keyMoveRight|virtual keys|D|Move right in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveRight = P'|
+|rtx.freeCam.keyMoveUp|virtual keys|E|Move up in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveUp = P'|
+|rtx.freeCam.keyPitchDown|virtual keys|I|Pitch down in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyPitchDown = P'|
+|rtx.freeCam.keyPitchUp|virtual keys|K|Pitch up in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyPitchUp = P'|
+|rtx.freeCam.keyYawLeft|virtual keys|J|Yaw left in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyYawLeft = P'|
+|rtx.freeCam.keyYawRight|virtual keys|L|Yaw right in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyYawRight = P'|
 |rtx.geometryAssetHashRuleString|string|positions,indices,geometrydescriptor|Defines which hashes we need to include when sampling from replacements and doing USD capture\.|
 |rtx.geometryGenerationHashRuleString|string|positions,indices,texcoords,geometrydescriptor,vertexlayout,vertexshader|Defines which asset hashes we need to generate via the geometry processing engine\.|
 |rtx.hideInstanceTextures|hash set||Textures on draw calls that should be hidden from rendering, but not totally ignored\.<br>This is similar to rtx\.ignoreTextures but instead of completely ignoring such draw calls they are only hidden from rendering, allowing for the hidden objects to still appear in captures\.<br>As such, this is mostly only a development tool to hide objects during development until they are properly replaced, otherwise the objects should be ignored with rtx\.ignoreTextures instead for better performance\.|
@@ -886,6 +888,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.postfx.motionBlurMaskOutTextures|hash set||Disable motion blur for meshes with specific texture\.|
 |rtx.rayPortalModelTextureHashes|hash vector||Texture hashes identifying ray portals\. Allowed number of hashes: \{0, 2\}\.|
 |rtx.raytracedRenderTargetTextures|hash set||DescriptorHashes for Render Targets\. \(Screens that should display the output of another camera\)\.|
+|rtx.remixMenuKeyBinds|virtual keys|ALT + X|Hotkey to open the Remix menu\.<br>example override: 'rtx\.remixMenuKeyBinds = CTRL, SHIFT, Z'\.<br>Full list of key names available in \`src/util/util\_keybind\.h\`\.|
 |rtx.singleOffsetDecalTextures|hash set||Warning: This option is deprecated, please use rtx\.decalTextures instead\.<br>Textures on draw calls used for geometric decals that don't inter\-overlap for a given texture hash\. Textures must be tagged as "Decal Texture" or "Dynamic Decal Texture" to apply\.<br>Applies a single shared offset to all the batched decal geometry rendered in a given draw call, rather than increasing offset per decal within the batch \(i\.e\. a quad in case of "Dynamic Decal Texture"\)\.<br>Note, the offset adds to the global offset among all decals drawn with different draw calls\.<br>The decal textures tagged this way must not inter\-overlap within a batch / single draw call since the same offset is applied to all of them\.<br>Applying a single offset is useful for stabilizing decal offsets when a game dynamically batches decals together\.<br>In addition, it makes the global decal offset index grow slower and thus it minimizes a chance of hitting the "rtx\.decals\.maxOffsetIndex limit"\.|
 |rtx.skyBoxGeometries|hash set||Geometries from draw calls used for the sky or are otherwise intended to be very far away from the camera at all times \(no parallax\)\.<br>Any draw calls using a geometry hash in this list will be treated as sky and rendered as such in a manner different from typical geometry\.<br>The geometry hash being used for sky detection is based off of the asset hash rule, see: "rtx\.geometryAssetHashRuleString"\.|
 |rtx.skyBoxTextures|hash set||Textures on draw calls used for the sky or are otherwise intended to be very far away from the camera at all times \(no parallax\)\.<br>Any draw calls using a texture in this list will be treated as sky and rendered as such in a manner different from typical geometry\.|
