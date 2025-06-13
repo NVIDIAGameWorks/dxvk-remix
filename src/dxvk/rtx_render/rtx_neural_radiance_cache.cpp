@@ -444,6 +444,8 @@ namespace dxvk {
         case NrcResolveMode::PrimaryVertexTrainingRadianceSmoothed:
         case NrcResolveMode::TrainingQueryIndex:
           return true;
+        default:
+          break;
       }
     }
 

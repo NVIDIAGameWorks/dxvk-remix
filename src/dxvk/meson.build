@@ -441,7 +441,9 @@ dxvk_lib = static_library('dxvk', dxvk_src, dxvk_version, [generated_dxvk_shader
   link_with           : [ util_lib, spirv_lib ], 
   dependencies        : [ dxvk_deps ],
   include_directories : [ dxvk_include_path, dxvk_shader_include_path, rtxdi_include_path, remix_api_include_path, rtxcr_include_path ],
-  override_options    : ['cpp_std='+dxvk_cpp_std])
+  override_options    : ['cpp_std='+dxvk_cpp_std],
+  # Force switch statements over enums to either cover all cases or have a default case.
+  cpp_args            : dxvk_is_msvc ? ['/we4062'] : ['-Wswitch'])
 
 dxvk_dep = declare_dependency(
   link_with           : [ dxvk_lib ],

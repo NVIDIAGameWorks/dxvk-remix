@@ -491,6 +491,8 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
           case OptionType::String:
             isLongEntryType = true;
             break;
+          default:
+            break;
           }
 
           if (isLongEntryType != processLongEntryTypes)

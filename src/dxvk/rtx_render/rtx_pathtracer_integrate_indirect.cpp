@@ -318,6 +318,9 @@ namespace dxvk {
           case RaytraceMode::TraceRay:
             pipelineManager.registerRaytracingShaders(getPipelineShaders(false, serEnabled, ommEnabled, useNeeCache, includesPortals, pomEnabled, nrcEnabled));
             break;
+          case RaytraceMode::Count:
+            assert(false && "Invalid RaytraceMode in DxvkPathtracerIntegrateIndirect::prewarmShaders");
+            break;
           }
         }
       }
@@ -464,6 +467,9 @@ namespace dxvk {
       case RaytraceMode::TraceRay:
         ctx->bindRaytracingPipelineShaders(getPipelineShaders(false, serEnabled, ommEnabled, neeCacheEnabled, includePortals, pomEnabled, nrcEnabled));
         ctx->traceRays(rayDims.width, rayDims.height, rayDims.depth);
+        break;
+      case RaytraceMode::Count:
+        assert(false && "Invalid RaytraceMode in DxvkPathtracerIntegrateIndirect::dispatch");
         break;
       }
     }

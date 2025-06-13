@@ -925,6 +925,9 @@ namespace dxvk {
           spriteSheetFPS = materialData.getRayPortalMaterialData().getSpriteSheetFPS();
 
           break;
+        case MaterialDataType::Legacy:
+          // Legacy material can't have spritesheet data.
+          break;
         }
 
         currentInstance.surface.spriteSheetRows = spriteSheetRows;
