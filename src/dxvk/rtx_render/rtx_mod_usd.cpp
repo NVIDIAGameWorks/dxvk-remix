@@ -55,6 +55,9 @@
 #include <pxr/usd/usdSkel/bindingAPI.h>
 #include <pxr/usd/usdShade/materialBindingAPI.h>
 #include <pxr/base/arch/fileSystem.h>
+#include <pxr/base/plug/registry.h>
+#include <pxr/base/plug/plugin.h>
+#include <src/usd-plugins/RemixParticleSystem/Prim.h>
 #include "../../lssusd/usd_include_end.h"
 #include "../util/util_watchdog.h"
 
@@ -72,6 +75,7 @@ namespace fs = std::filesystem;
 namespace dxvk {
 constexpr uint32_t kMaxU16Indices = 64 * 1024;
 const char* const kStatusKey = "remix_replacement_status";
+
 
 class UsdMod::Impl {
 public:
@@ -708,9 +712,13 @@ void UsdMod::Impl::processReplacementRecursive(Args& args, const pxr::UsdPrim& p
   } else if (prim.IsA<pxr::UsdGeomPointInstancer>()) {
     processPointInstancer(args, prim);
     return;  // meshes with pointInstancer parents don't render in USD Composer, so mimicing that behavior here.
+  } else if (prim.IsA<pxr::RemixParticleSystemPrim>()) {
+    Logger::err("Loaded a particle system, this has not been implemented yet!!");
+    throw;
   } else if (LightData::isSupportedUsdLight(prim) && (!isRoot || !explicitlyNoReferences(prim))) {
     processLight(args, prim, isRoot);
   }
+
   auto children = prim.GetFilteredChildren(pxr::UsdPrimIsActive);
   for (auto child : children) {
     processReplacementRecursive(args, child);
@@ -774,6 +782,18 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
   std::string replacementsUsdPath(m_owner.m_filePath.string());
 
   // Open the USD
+
+  static std::string pluginsDir;
+  auto dir = env::getDllDirectory();
+  if (!dir.empty()) {
+    // Append subdirs, letting std::filesystem handle separators
+    std::filesystem::path p(dir);
+    p /= "usd//plugins";
+    pluginsDir = p.string();
+    pxr::PlugRegistry::GetInstance().RegisterPlugins(pluginsDir);
+  } else {
+    Logger::warn("usd plugins were not loaded");
+  }
 
   m_owner.setState(ProgressState::OpeningUSD);
 
@@ -1289,6 +1309,39 @@ bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
 UsdMod::UsdMod(const Mod::Path& usdFilePath)
 : Mod(usdFilePath) {
   m_impl = std::make_unique<Impl>(*this);
+
+  // Load plugins
+  static std::string pluginsDir;
+  auto dir = env::getDllDirectory();
+  if (!dir.empty()) {
+    std::filesystem::path p(dir);
+    p /= "usd\\plugins";
+    pluginsDir = p.string();
+    const auto& plugins = pxr::PlugRegistry::GetInstance().RegisterPlugins(pluginsDir);
+
+    if (plugins.empty()) {
+      Logger::warn("usd plugins were not loaded");
+      return;
+    }
+
+    for (auto const& notice : plugins) {
+      if(!notice->IsLoaded() && !notice->Load()) {
+        Logger::warn(str::format("USD plugin, ", notice->GetName(), " failed to load!"));
+      } else {
+        Logger::info(str::format("USD plugin, ", notice->GetName(), " loaded!"));
+      }
+
+      const std::string& name = notice->GetName();
+      const std::string& libPath = notice->GetPath();
+      const std::string& resourcePath = notice->GetResourcePath();
+
+      Logger::info(str::format("Plugin Info: ", name, "\n"
+                                , "\tLibrary:       ", libPath, "\n"
+                                , "\tResourcePath:  ", resourcePath));
+    }
+  } else {
+    Logger::warn("usd plugins were not loaded");
+  }
 }
 
 UsdMod::~UsdMod() {

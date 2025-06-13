@@ -431,7 +431,7 @@ dxvk_embedded_data_files = files([
 
 dxvk_generated_embedded_files = embedding_compiler.process(dxvk_embedded_data_files)
 
-dxvk_deps = [ thread_dep, vkcommon_dep, dxvk_extradep, usd_dep, lssUsd_dep, nrc_dep, nrd_dep, dlss_dep, tracy_dep, tracy_dep_dynamic, aftermath_dep, nvapi_dep, reflex_dep ]
+dxvk_deps = [ thread_dep, vkcommon_dep, dxvk_extradep, usd_dep, lssUsd_dep, nrc_dep, nrd_dep, dlss_dep, tracy_dep, tracy_dep_dynamic, aftermath_dep, nvapi_dep, reflex_dep, usd_plugin_deps ]
 
 if enable_rtxio
   dxvk_deps += rtxio_dep
@@ -439,12 +439,16 @@ endif
 
 if not dxvk_is_msvc
 	ws2_32_dep = declare_dependency(
-		dependencies : [ lib_ws2_32 ])
+		dependencies : [ lib_ws2_32])
 	dxvk_deps += ws2_32_dep
 endif
 
+delayimp_dep = declare_dependency(
+	dependencies : [ lib_delayimp])
+dxvk_deps += delayimp_dep
+
 dxvk_lib = static_library('dxvk', dxvk_src, dxvk_version, [generated_dxvk_shaders, rtx_shaders, dxvk_generated_embedded_files],
-  link_with           : [ util_lib, spirv_lib ], 
+  link_with           : [ util_lib, spirv_lib, usd_plugins ], 
   dependencies        : [ dxvk_deps ],
   include_directories : [ dxvk_include_path, dxvk_shader_include_path, rtxdi_include_path, remix_api_include_path, rtxcr_include_path ],
   override_options    : ['cpp_std='+dxvk_cpp_std],

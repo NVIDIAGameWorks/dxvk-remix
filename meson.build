@@ -229,6 +229,7 @@ lib_d3dcompiler_43 = dxvk_compiler.find_library('d3dcompiler_43', dirs : dxvk_li
 if not dxvk_is_msvc
   lib_ws2_32 = dxvk_compiler.find_library('ws2_32', dirs : dxvk_library_path)
 endif
+lib_delayimp = dxvk_compiler.find_library('delayimp', dirs: [])
 
 if dxvk_is_msvc
   lib_d3dcompiler_47 = dxvk_compiler.find_library('d3dcompiler')
@@ -463,8 +464,12 @@ embedding_compiler = generator(xxd_exe,
 
 mdl_include_dir = include_directories('external/omni_core_materials')
 
-nv_usd_include_path = include_directories('external/nv_usd/include/')
-boost_include_path = include_directories('external/nv_usd/include/boost-1_78/')
+usd_debug_release_dir = 'external/nv_usd_' + usd_debug_or_release + '/'
+usd_lib_path = join_paths(global_src_root_norm, usd_debug_release_dir)
+
+# NOTE newer versions of meson prefer relative paths for include directories
+nv_usd_include_path = include_directories(join_paths(usd_debug_release_dir, 'include'))
+boost_include_path = include_directories(join_paths(usd_debug_release_dir, 'include', 'boost'), is_system: true)
 
 usd_include_paths = [nv_usd_include_path, boost_include_path]
 
@@ -474,19 +479,51 @@ add_project_arguments('-DVK_ENABLE_BETA_EXTENSIONS', language : 'cpp')
 
 lssusd_include_paths = [nv_usd_include_path, boost_include_path, vk_include_path]
 
+# This will be populated by the usd plugin builder
+usd_plugins = []
+usd_plugin_deps = []
+usd_plugin_delay_load_args = []
+
 nvapi_include_paths = include_directories('submodules/nvapi')
 nvapi_lib_path = join_paths(global_src_root_norm, 'submodules/nvapi/amd64')
 nvapi_lib = dxvk_compiler.find_library('nvapi64', dirs : nvapi_lib_path)
 
 # Cache lib locations
-usd_lib_path = join_paths(global_src_root_norm, 'external/nv_usd/' + usd_debug_or_release + '/')
 external_dll_paths += usd_lib_path
-usd_lib = dxvk_compiler.find_library('usd_ms', dirs : usd_lib_path)
-if get_option('buildtype') == 'debug'
-  tbb_lib = dxvk_compiler.find_library('tbb_debug', dirs : usd_lib_path)
-else
-  tbb_lib = dxvk_compiler.find_library('tbb', dirs : usd_lib_path)
-endif
+
+nvusd_deplibs = [
+  'ar',
+  'arch',
+  'js',
+  'gf',
+  'kind',
+  'sdf',
+  'sdr',
+  'ndr',
+  'pcp',
+  'tf',
+  'trace',
+  'usd',
+  'usdLux',
+  'usdGeom',
+  'usdRender',
+  'usdShade',
+  'usdSkel',
+  'work',
+  'vt',
+  'python310',
+  'plug',
+  'tbbmalloc',
+  get_option('buildtype') == 'debug' ? 'boost_python310-vc142-mt-gd-x64-1_76' :
+                                       'boost_python310-vc142-mt-x64-1_76',
+  get_option('buildtype') == 'debug' ? 'tbb_debug' :
+                                       'tbb',    # NOTE: remixsdk also depends on tbb.dll, assuming both USD / remixsdk use the same tbb version
+]
+
+usd_linklibs = []
+foreach ulib : nvusd_deplibs
+  usd_linklibs += dxvk_compiler.find_library(ulib, dirs: join_paths(usd_lib_path, 'lib'))
+endforeach
 
 reflex_include_path = include_directories( 'external/reflex/inc')
 reflex_lib_path = join_paths(global_src_root_norm, 'external/reflex/lib')
@@ -514,90 +551,9 @@ if get_option('buildtype') == 'debug'
   nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Debug/')
 endif
 
-if not dxvk_is_ninja
-  # Copy dependencies that must be in same dir as executable to _output dir
-  recursive_copy_usd_target = custom_target('recursive_copy_usd',
-    output           : ['recursive_copy_usd'],
-    build_by_default : true,
-    command          : [recursive_copy_path, join_paths(usd_lib_path, 'usd/'), join_paths(output_dir, 'usd/')] )
-
-  copy_usd_dll_target = custom_target('copy_usd_dll',
-    output           : ['copy_usd_dll'],
-    build_by_default : true,
-    command          : [copy_script_path, usd_lib_path, output_dir, 'usd_ms.dll'] )
-
-  if get_option('buildtype') == 'debug'
-    tbb_dll_name = 'tbb_debug.dll'
-    tbbmalloc_dll_name = 'tbbmalloc_debug.dll'
-  else
-    tbb_dll_name = 'tbb.dll'
-    tbbmalloc_dll_name = 'tbbmalloc.dll'
-  endif
-
-  copy_tbb_dll_target = custom_target('copy_tbb_dll',
-    output           : ['copy_tbb_dll'],
-    build_by_default : true,
-    command          : [copy_script_path, usd_lib_path, output_dir, tbb_dll_name] )
-
-  copy_tbbmalloc_dll_target = custom_target('copy_tbbmalloc_dll',
-    output           : ['copy_tbbmalloc_dll'],
-    build_by_default : true,
-    command          : [copy_script_path, usd_lib_path, output_dir, tbbmalloc_dll_name] )
-
-  copy_nrc_dll_target = custom_target('copy_nrc_dll',
-    output           : ['copy_nrc_dll'],
-    build_by_default : true,
-    command          : [copy_script_path, nrc_dll_path, output_dir, nrc_dll_name] )
-
-  copy_nrc_cuda_deps_dll_target = custom_target('copy_nrc_cuda_deps_dll',
-    output           : ['copy_nrc_cuda_deps_dll'],
-    build_by_default : true,
-    command          : [copy_script_path, nrc_dll_path, output_dir, 'cudart64_12.dll'] )
-
-  copy_nrc_cuda_nv_deps_dll_target = custom_target('copy_nrc_cuda_nv_deps_dll',
-    output           : ['copy_nrc_cuda_nv_deps_dll'],
-    build_by_default : true,
-    command          : [copy_script_path, nrc_dll_path, output_dir, 'nvrtc*.dll'] )
-
-  copy_nrd_dll_target = custom_target('copy_nrd_dll',
-    output           : ['copy_nrd_dll'],
-    build_by_default : true,
-    command          : [copy_script_path, nrd_lib_path, output_dir, 'NRD.dll'] )
-
-  copy_dlss_dll_target = custom_target('copy_dlss_dll',
-    output           : ['copy_dlss_dll'],
-    build_by_default : true,
-    command          : [copy_script_path, dlss_lib_path, output_dir, 'nvngx_*.*'] )
-
-  copy_dlfg_dll_target = custom_target('copy_dlfg_dll',
-    output           : ['copy_dlfg_dll'],
-    build_by_default : true,
-    command          : [copy_script_path, dlfg_lib_path, output_dir, 'nvngx_dlssg.dll'] )
-  
-  copy_reflex_dll_target = custom_target('copy_reflex_dll',
-  output           : ['copy_reflex_dll'],
-  build_by_default : true,
-  depends          : [],
-  command          : [copy_script_path, reflex_lib_path, output_dir, 'NvLowLatencyVk.dll'] )
-
-   copy_aftermath_dll_target = custom_target('copy_aftermath_dll',
-   output           : ['copy_aftermath_dll'],
-   build_by_default : true,
-   depends          : [],
-   command          : [copy_script_path, aftermath_lib_path, output_dir, 'GFSDK_Aftermath_Lib.x64.dll'] )
-
-  if enable_rtxio == true
-    copy_rtxio_target = custom_target('copy_rtxio',
-      output           : ['copy_rtxio'],
-      build_by_default : true,
-      depends          : [],
-      command          : [copy_script_path, rtxio_bin_path, output_dir, 'rtxio.*'] )
-  endif
-endif
-
 # Build meson dependency types
 usd_dep = declare_dependency(
-  dependencies : [ usd_lib, tbb_lib ],
+  dependencies : [ usd_linklibs ],
   # link_args : ['-L'+usd_lib_path],
   include_directories : usd_include_paths
 )
@@ -746,37 +702,51 @@ if dxvk_is_ninja
     copy_usd = custom_target('recursive_copy_usd_' + target_suffix,
       output           : ['recursive_copy_usd_' + target_suffix],
       command          : [recursive_copy_path,
-                          join_paths(usd_lib_path, 'usd/'),
+                          join_paths(usd_lib_path, 'lib/usd/'),
                           join_paths(output_path, 'usd/')] )
+	copy_usd_dll = []
+    foreach ulib : nvusd_deplibs
+      copy_usd_dll += custom_target('copy_usd_dll_' + ulib + '_' + target_suffix,
+                output           : ['copy_usd_dll_' + ulib + '_' + target_suffix],
+                command          : [copy_script_path,
+                                    join_paths(usd_lib_path, 'lib/'),
+                                    output_path,
+                                    ulib + '.dll'] )    
+    endforeach
+  
+    copy_usd_plugins_dlls = []
 
-    copy_usd_dll = custom_target('copy_usd_dll_' + target_suffix,
-      output           : ['copy_usd_dll_' + target_suffix],
-      command          : [copy_script_path,
-                          usd_lib_path,
-                          output_path,
-                          'usd_ms.dll'] )
+	copy_usd_plugins_dlls += custom_target('copy_usd_plugins_json_' + target_suffix,
+                    output           : ['copy_usd_plugins_json_' + target_suffix],
+                    command          : [copy_script_path,
+										join_paths(global_src_root_norm, 'src', 'usd-plugins'),
+                                        join_paths(output_path, 'usd/plugins'),
+                                        'plugInfo.json'] )
+    foreach usd_plugin : usd_plugins
+	  copy_usd_plugins_dlls += custom_target('copy_usd_plugins_' + usd_plugin.name() + '_dll_' + target_suffix,
+	                     depends          : [ usd_plugin ],
+                         output           : ['copy_usd_plugins_' + usd_plugin.name() + '_dll_' + target_suffix],
+                         command          : [copy_script_path,
+                                             fs.parent(usd_plugin.full_path()) ,
+                                             join_paths(output_path, 'usd/plugins', usd_plugin.name() + '/'),
+                                             usd_plugin.name() + '.dll'] )
 
-    if get_option('buildtype') == 'debug'
-      tbb_dll_name = 'tbb_debug.dll'
-      tbbmalloc_dll_name = 'tbbmalloc_debug.dll'
-    else
-      tbb_dll_name = 'tbb.dll'
-      tbbmalloc_dll_name = 'tbbmalloc.dll'
-    endif
+	  copy_usd_plugins_dlls += custom_target('copy_usd_plugins_' + usd_plugin.name() + '_json_' + target_suffix,
+	                     depends          : [ usd_plugin ],
+                         output           : ['copy_usd_plugins_' + usd_plugin.name() + '_json_' + target_suffix],
+                         command          : [copy_script_path,
+                                             fs.parent(usd_plugin.full_path()),
+                                             join_paths(output_path, 'usd/plugins', usd_plugin.name(), 'resources/'),
+                                             'plugInfo.json'] )
 
-    copy_tbb_dll = custom_target('copy_tbb_dll_' + target_suffix,
-      output           : ['copy_tbb_dll_' + target_suffix],
-      command          : [copy_script_path,
-                          usd_lib_path,
-                          output_path,
-                          tbb_dll_name] )
-
-    copy_tbbmalloc_dll = custom_target('copy_tbbmalloc_dll_' + target_suffix,
-      output           : ['copy_tbbmalloc_dll_' + target_suffix],
-      command          : [copy_script_path,
-                          usd_lib_path,
-                          output_path,
-                          tbbmalloc_dll_name] )
+	  copy_usd_plugins_dlls += custom_target('copy_usd_plugins_' + usd_plugin.name() + '_schema_' + target_suffix,
+	                     depends          : [ usd_plugin ],
+                         output           : ['copy_usd_plugins_' + usd_plugin.name() + '_schema_' + target_suffix],
+                         command          : [copy_script_path,
+                                             fs.parent(usd_plugin.full_path()),
+                                             join_paths(output_path, 'usd/plugins', usd_plugin.name() + '/'),
+                                             'generatedSchema.usda'] )
+	endforeach
 
     copy_nrc_dll = custom_target('copy_nrc_dll_' + target_suffix,
       output           : ['copy_nrc_dll_' + target_suffix],
@@ -845,8 +815,7 @@ if dxvk_is_ninja
     # as a workaround, we do the copy as part of the test_* target itself
     copy_target_depends = [ copy_usd,
                             copy_usd_dll,
-                            copy_tbb_dll,
-                            copy_tbbmalloc_dll,
+                            copy_usd_plugins_dlls,
                             copy_nrc_dll,
                             copy_nrc_cuda_deps_dll,
                             copy_nrc_cuda_nv_deps_dll,

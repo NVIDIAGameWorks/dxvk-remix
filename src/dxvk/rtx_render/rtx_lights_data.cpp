@@ -491,10 +491,10 @@ namespace dxvk {
   // authored before and after that change.
   const pxr::UsdAttribute LightData::getLightAttribute(const pxr::UsdPrim& prim, const pxr::TfToken& token, const pxr::TfToken& inputToken) {
     const pxr::UsdAttribute& attr = prim.GetAttribute(inputToken);
-    if (!attr.HasValue()) {
+    if (!attr.IsAuthored()) {
       const pxr::UsdAttribute& old_attr = prim.GetAttribute(token);
-      if (old_attr.HasValue()) {
-        ONCE(Logger::warn(str::format("Legacy light attribute detected: ", old_attr.GetPath())));
+      if (old_attr.IsAuthored()) {
+        Logger::warn(str::format("Legacy light attribute detected: ", old_attr.GetPath()));
       }
       return old_attr;
     }
