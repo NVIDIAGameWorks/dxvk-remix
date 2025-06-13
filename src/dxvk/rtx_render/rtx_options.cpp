@@ -70,6 +70,8 @@ namespace dxvk {
         qualityDLSS.setImmediately(DLSSProfile::Auto);
         reflexMode.setImmediately(ReflexMode::LowLatency); // Reflex uses ON under G (not Boost)
         break;
+      case DlssPreset::Custom:
+        break;
     }
   }
 
@@ -155,6 +157,8 @@ namespace dxvk {
         }
         break;
       }
+      default:
+        break;
     }
   }
 

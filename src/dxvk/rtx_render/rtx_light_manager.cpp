@@ -149,6 +149,8 @@ namespace dxvk {
             isLightInsideFrustum = boundingBoxIntersectsFrustumSAT((RtCamera&)camera, boundingBox.minPos, boundingBox.maxPos, objectToView, false);
           }
           break;
+        case RtLightAntiCullingType::Ignore:
+          break;
         }
 
         if (isLightInsideFrustum) {
@@ -550,6 +552,9 @@ namespace dxvk {
     case D3DLIGHT_SPOT:
       if (ignoreGameSpotLights())
         return;
+      break;
+    default:
+      assert(false && "Invalid option passed to addGameLight");
       break;
     }
 

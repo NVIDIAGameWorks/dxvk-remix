@@ -374,6 +374,8 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
     return &m_owner.m_replacements->storeObject(materialHash, MaterialData(TranslucentMaterialData::deserialize(getTextureFunctor, shader), shouldIgnore));
   case RtSurfaceMaterialType::RayPortal:
     return &m_owner.m_replacements->storeObject(materialHash, MaterialData(RayPortalMaterialData::deserialize(getTextureFunctor, shader)));
+  default:
+    assert(false && "Invalid materialType passed to getTextureFunctor");
   }
 
   return nullptr;
@@ -1224,6 +1226,9 @@ bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
       break;
     case lss::UsdMeshImporter::BlendIndices:
       geometryData.blendIndicesBuffer = RasterBuffer(vertexSlice, element.offset, processedMesh->GetVertexStride(), VK_FORMAT_R8G8B8A8_USCALED);
+      break;
+    default:
+      assert(false && "Invalid vertex attribute in UsdMod::Impl::processMesh");
       break;
     }
   }

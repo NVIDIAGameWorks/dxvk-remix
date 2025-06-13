@@ -429,6 +429,8 @@ namespace dxvk {
         output.previousPositionBuffer = RaytraceBuffer(DxvkBufferSlice(output.historyBuffer[1], 0, output.positionBuffer.length()), output.positionBuffer.offsetFromSlice(), output.positionBuffer.stride(), output.positionBuffer.vertexFormat());
         break;
       }
+      default:
+        break;
     }
 
     // Update color buffer in BVH with DrawCallState

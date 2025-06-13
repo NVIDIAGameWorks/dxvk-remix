@@ -45,6 +45,8 @@ namespace dxvk {
         return AssetType::Image2D;
       case gli::target::TARGET_3D:
         return AssetType::Image3D;
+      default:
+        break;
       }
 
       assert(0 && "Unsupported gli image target type!");
@@ -396,6 +398,8 @@ namespace dxvk {
         return AssetType::Image2D;
       case AssetPackage::AssetDesc::Type::IMAGE_3D:
         return AssetType::Image3D;
+      case AssetPackage::AssetDesc::Type::UNKNOWN:
+        break;
       }
 
       assert(0 && "Unknown asset type");

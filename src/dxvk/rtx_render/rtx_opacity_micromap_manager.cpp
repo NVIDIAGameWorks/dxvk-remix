@@ -1047,6 +1047,9 @@ namespace dxvk {
           if (surface.textureAlphaArg2Source == RtTextureArgSource::TFactor)
             useOpacityMicromap &= tFactorAlpha > RtxOptions::resolveTransparencyThreshold();
           break;
+        default:
+          // This code currently only optimizes a couple of common cases.
+          break;
         }
       }
     }
@@ -1445,6 +1448,8 @@ namespace dxvk {
       m_boundOMMs.push_back(ommCacheItem.blasOmmBuffers);
       break;
     }
+    case OpacityMicromapCacheState::eUnknown:
+      assert(false && "eUnknown OpacityMicromapCacheState in OpacityMicromapManager::bindOpacityMicromap");
     }
 
     if (ommCacheState == OpacityMicromapCacheState::eStep3_Built)

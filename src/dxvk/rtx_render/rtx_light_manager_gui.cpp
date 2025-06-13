@@ -282,6 +282,8 @@ namespace dxvk {
         ImGui::Text("\tLength: %.2f", light.getCylinderLight().getAxisLength());
         ImGui::Text("\tAxis: %.2f %.2f %.2f", light.getCylinderLight().getAxis().x, light.getCylinderLight().getAxis().y, light.getCylinderLight().getAxis().z);
         break;
+      case RtLightType::Distant:
+        break;
       }
 
       if (pShaping) {

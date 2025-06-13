@@ -81,6 +81,8 @@ namespace dxvk {
         }
         break;
       }
+      default:
+        break;
     }
     reblurSettings.hitDistanceParameters.A *= RtxOptions::getMeterToWorldUnitScale();
     if (type != dxvk::DenoiserType::DirectLight) {
@@ -178,6 +180,8 @@ namespace dxvk {
         }
         break;
       }
+      default:
+        break;
     }
     if (type != dxvk::DenoiserType::DirectLight) {
       relaxSettings.hitDistanceReconstructionMode = nrd::HitDistanceReconstructionMode::AREA_3X3;

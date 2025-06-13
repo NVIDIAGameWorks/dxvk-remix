@@ -114,6 +114,8 @@ namespace dxvk {
     case VK_DESCRIPTOR_TYPE_SAMPLER:
       m_tables[Table::Samplers][currentIdx()]->updateDescriptors(descWrites);
       break;
+    default:
+      break;
     }
   }
 

@@ -327,6 +327,9 @@ namespace dxvk {
       case decltype(mode)::RayQueryRayGen:
         Logger::info(str::format("RenderPass ", renderPassName, " Raytrace Mode: Ray Query (RGS)"));
         break;
+      default: 
+        assert(false && "invalid RaytraceMode in logRenderPassRaytraceModeRayQuery");
+        break;
       }
     };
 
@@ -338,6 +341,9 @@ namespace dxvk {
         break;
       case decltype(mode)::TraceRay:
         Logger::info(str::format("RenderPass ", renderPassName, " Raytrace Mode: Trace Ray (RGS)"));
+        break;
+      case decltype(mode)::Count:
+        assert(false && "invalid RaytraceMode in logRenderPassRaytraceMode");
         break;
       }
     };

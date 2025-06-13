@@ -85,6 +85,8 @@ namespace dxvk {
     case DLSSProfile::Balanced: perfQuality = NVSDK_NGX_PerfQuality_Value_Balanced; break;
     case DLSSProfile::MaxQuality: perfQuality = NVSDK_NGX_PerfQuality_Value_MaxQuality; break;
     case DLSSProfile::FullResolution: perfQuality = NVSDK_NGX_PerfQuality_Value_MaxQuality; break; // Need to set MaxQ as some modes dont support full res
+    case DLSSProfile::Auto: break; // Allowed case with no action needed.
+    case DLSSProfile::Invalid: assert(false && "DLSSProfile::Invalid passed to DxvkDLSS::profileToQuality"); break;
     }
     return perfQuality;
   }

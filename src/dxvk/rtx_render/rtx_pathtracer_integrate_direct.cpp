@@ -122,6 +122,9 @@ namespace dxvk {
       case RaytraceMode::RayQueryRayGen:
         pipelineManager.registerRaytracingShaders(getPipelineShaders(true, ommEnabled));
         break;
+      default:
+        assert(false && "Invalid renderPassIntegrateDirectRaytraceMode in DxvkPathtracerIntegrateDirect::prewarmShaders");
+        break;
       }
     }
   }
