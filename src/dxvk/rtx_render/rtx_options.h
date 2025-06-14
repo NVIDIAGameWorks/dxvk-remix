@@ -64,7 +64,8 @@ namespace dxvk {
     None = 0,
     DLSS,
     NIS,
-    TAAU
+    TAAU,
+    XeSS
   };
 
   enum class GraphicsPreset : int {
@@ -87,6 +88,18 @@ namespace dxvk {
     Off = 0,
     On,
     Custom
+  };
+
+  enum class XeSSProfile : int {
+    UltraPerf = 0,
+    Performance,
+    Balanced,
+    Quality,
+    UltraQuality,
+    UltraQualityPlus,
+    NativeAA,
+    Custom,
+    Invalid
   };
 
   enum class NisPreset : int {
@@ -290,6 +303,15 @@ namespace dxvk {
     RTX_OPTION_ENV("rtx", DlssPreset, dlssPreset, DlssPreset::On, "RTX_DLSS_PRESET", "Combined DLSS Preset for quickly controlling Upscaling, Frame Interpolation and Latency Reduction.");
     RTX_OPTION("rtx", NisPreset, nisPreset, NisPreset::Balanced, "Adjusts NIS scaling factor, trades quality for performance.");
     RTX_OPTION("rtx", TaauPreset, taauPreset, TaauPreset::Balanced,  "Adjusts TAA-U scaling factor, trades quality for performance.");
+    RTX_OPTION("rtx", XeSSProfile, xessProfile, XeSSProfile::Balanced, "Adjusts XeSS scaling factor, trades quality for performance.");
+
+    RTX_OPTION("rtx", float, xessJitterScale, 1.0f, "Multiplier for XeSS jitter intensity. Values > 1.0 increase jitter, < 1.0 reduce it. Can help reduce aliasing or temporal artifacts.");
+    RTX_OPTION("rtx", bool, xessUseOptimizedJitter, true, "Use XeSS-optimized jitter patterns and scaling. When disabled, uses the same jitter as other upscalers.");
+    RTX_OPTION("rtx", bool, xessUseRecommendedJitterSequenceLength, true, "Use XeSS 2.1 recommended jitter sequence length calculation based on scaling factor. When disabled, uses the global cameraJitterSequenceLength setting.");
+    RTX_OPTION("rtx", float, xessResponsivePixelMaskClampValue, 0.8f, "Maximum value to clamp responsive pixel mask to. XeSS 2.1 default is 0.8 to prevent aliasing artifacts.");
+    RTX_OPTION("rtx", float, xessScalingJitterDamping, 0.6f, "Additional jitter damping factor to reduce swimming artifacts. Lower values = less jitter.");
+    RTX_OPTION("rtx", bool, xessLogJitterSequenceLength, false, "Log the current jitter sequence length being used for XeSS. Useful for debugging swimming artifacts.");
+    RTX_OPTION("rtx", uint32_t, xessMinJitterSequenceLength, 8, "Minimum jitter sequence length for XeSS, even at low scaling factors.");
     RTX_OPTION_ENV("rtx", GraphicsPreset, graphicsPreset, GraphicsPreset::Auto, "DXVK_GRAPHICS_PRESET_TYPE", "Overall rendering preset, higher presets result in higher image quality, lower presets result in better performance.");
     RTX_OPTION_ENV("rtx", RaytraceModePreset, raytraceModePreset, RaytraceModePreset::Auto, "DXVK_RAYTRACE_MODE_PRESET_TYPE", "");
     RTX_OPTION("rtx", float, emissiveIntensity, 1.0f, "A general scale factor on all emissive intensity values globally. Generally per-material emissive intensities should be used, but this option may be useful for debugging without needing to author materials.");
@@ -1233,6 +1255,7 @@ namespace dxvk {
     static void updateUpscalerFromDlssPreset();
     static void updateUpscalerFromNisPreset();
     static void updateUpscalerFromTaauPreset();
+    static void updateUpscalerFromXeSSPreset();
     static void updatePresetFromUpscaler();
     static NV_GPU_ARCHITECTURE_ID getNvidiaArch();
     static NV_GPU_ARCH_IMPLEMENTATION_ID getNvidiaChipId();
@@ -1304,6 +1327,7 @@ namespace dxvk {
     }
     static bool isNISEnabled() { return upscalerType() == UpscalerType::NIS; }
     static bool isTAAEnabled() { return upscalerType() == UpscalerType::TAAU; }
+    static bool isXeSSEnabled() { return upscalerType() == UpscalerType::XeSS; }
     
     static float getUniqueObjectDistanceSqr() { return uniqueObjectDistance() * uniqueObjectDistance(); }
     static uint32_t getNumFramesToPutLightsToSleep() { return numFramesToKeepLights() /2; }

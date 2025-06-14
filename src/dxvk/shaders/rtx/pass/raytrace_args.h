@@ -383,6 +383,8 @@ struct RaytraceArgs {
   float vertexColorStrength;
   uint vertexColorIsBakedLighting;
 
+  uint3 pad_xess;
+
   // NOTE: Add structs to the top section of RaytraceArgs, not the bottom.
   // NOTE: bool does not work in debug builds, use uint instead.
 };
