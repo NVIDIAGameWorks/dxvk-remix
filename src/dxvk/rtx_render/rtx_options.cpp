@@ -112,6 +112,17 @@ namespace dxvk {
     }
   }
 
+  void RtxOptions::updateUpscalerFromXeSSPreset() {
+    // For Custom profile, we need to ensure the resolution scale is properly applied
+    if (RtxOptions::xessProfile() == XeSSProfile::Custom) {
+      // Force XeSS to recalculate with current resolution scale
+      // This will be handled by the XeSS setSetting method when called from the context
+      Logger::debug(str::format("XeSS Custom preset selected with resolution scale: ", RtxOptions::resolutionScale()));
+    }
+    // Note: Other XeSS profiles handle resolution scaling internally based on quality profile
+    // The XeSS profile is used directly in the XeSS implementation
+  }
+
   void RtxOptions::updatePresetFromUpscaler() {
     if (RtxOptions::upscalerType() == UpscalerType::None &&
         reflexMode() == ReflexMode::None) {
@@ -155,6 +166,11 @@ namespace dxvk {
         } else {
           RtxOptions::taauPreset.setDeferred(TaauPreset::Fullscreen);
         }
+        break;
+      }
+      case UpscalerType::XeSS: {
+        // XeSS preset is handled directly by the XeSS implementation
+        // No need to update resolution scale here
         break;
       }
       default:
