@@ -252,6 +252,9 @@ namespace dxvk {
       downscaleExtent.depth = 1;
     } else if (shouldUseXeSS()) {
       DxvkXeSS& xess = m_common->metaXeSS();
+      if (!xess.isEnabled()) {
+        xess.enable();
+      }
       uint32_t displaySize[2] = { upscaleExtent.width, upscaleExtent.height };
       uint32_t renderSize[2];
       xess.setSetting(displaySize, RtxOptions::xessProfile(), renderSize);
@@ -315,15 +318,20 @@ namespace dxvk {
       return InternalUpscaler::DLSS;
     } else if (shouldUseRayReconstruction() && m_common->metaRayReconstruction().isActive()) {
       return InternalUpscaler::DLSS_RR;
-    } else if (shouldUseXeSS() && m_common->metaXeSS().isEnabled()) {
-      return InternalUpscaler::XeSS;
+    } else if (shouldUseXeSS()) {
+      if (!m_common->metaXeSS().isEnabled()) {
+        m_common->metaXeSS().enable();
+      }
+      if (m_common->metaXeSS().isEnabled()) {
+        return InternalUpscaler::XeSS;
+      }
     } else if (shouldUseNIS()) {
       return InternalUpscaler::NIS;
     } else if (shouldUseTAA()) {
       return InternalUpscaler::TAAU;
-    } else {
-      return InternalUpscaler::None;
     }
+    
+    return InternalUpscaler::None;
   }
 
   VkExtent3D RtxContext::onFrameBegin(
@@ -415,7 +423,7 @@ namespace dxvk {
       // Need to wait before the previous frame is executed.
       getDevice()->waitForIdle();
 
-      // Release resources
+      // Release resources from previous upscaler
       if (m_previousUpscaler == InternalUpscaler::DLSS_RR) {
         DxvkRayReconstruction& rayReconstruction = m_common->metaRayReconstruction();
         rayReconstruction.release();
@@ -424,7 +432,11 @@ namespace dxvk {
         dlss.release();
       } else if (m_previousUpscaler == InternalUpscaler::XeSS) {
         DxvkXeSS& xess = m_common->metaXeSS();
-        xess.release();
+        xess.disable();
+      }
+      if (m_currentUpscaler == InternalUpscaler::XeSS) {
+        DxvkXeSS& xess = m_common->metaXeSS();
+        xess.enable();
       }
     }
 

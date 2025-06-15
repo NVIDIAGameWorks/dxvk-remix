@@ -124,6 +124,40 @@ namespace dxvk {
     m_initialized = false;
   }
 
+  void DxvkXeSS::enable() {
+    if (!m_device) {
+      Logger::warn("XeSS: Cannot enable - no device available");
+      return;
+    }
+    
+    // Check if XeSS is enabled in options
+    if (!RtxOptions::isXeSSEnabled()) {
+      Logger::info("XeSS: Cannot enable - upscaler type is not XeSS");
+      m_enabled = false;
+      return;
+    }
+    
+    // Check if XeSS is supported on this system
+    if (!validateXeSSSupport(m_device)) {
+      Logger::warn("XeSS: Cannot enable - system does not support XeSS");
+      m_enabled = false;
+      return;
+    }
+    
+    m_enabled = true;
+    m_recreate = true; // Force recreation of context
+    Logger::info("XeSS: Enabled for runtime upscaler switching");
+  }
+
+  void DxvkXeSS::disable() {
+    m_enabled = false;
+    if (m_xessContext) {
+      destroyXeSSContext();
+    }
+    m_initialized = false;
+    Logger::info("XeSS: Disabled");
+  }
+
   bool DxvkXeSS::isXeSSLibraryAvailable() {
     Logger::info("[RTX-XeSS] Checking XeSS library availability...");
     

@@ -58,6 +58,10 @@ namespace dxvk {
 
     bool isEnabled() const { return m_enabled; }
     bool isActive() const { return m_enabled && m_device != nullptr; }
+    
+    // Methods to enable/disable XeSS when switching upscalers at runtime
+    void enable();
+    void disable();
 
     void initialize(Rc<DxvkContext> renderContext, const VkExtent3D& targetExtent);
 
