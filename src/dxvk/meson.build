@@ -211,8 +211,10 @@ dxvk_src = files([
   'rtx_render/rtx_denoise_type.h',
   'rtx_render/rtx_dlfg.cpp',
   'rtx_render/rtx_dlfg.h',
-  'rtx_render/rtx_dlss.cpp', 
+    'rtx_render/rtx_dlss.cpp',
   'rtx_render/rtx_dlss.h',
+  'rtx_render/rtx_xess.cpp',
+  'rtx_render/rtx_xess.h',
   'rtx_render/rtx_draw_call_cache.cpp',
   'rtx_render/rtx_draw_call_cache.h',
   'rtx_render/rtx_env.cpp',
@@ -400,6 +402,11 @@ dlss_dep = declare_dependency(
   include_directories : [ dlss_include_dir, dlfg_include_dir ]
 )
 
+# XeSS dependency - using direct library path
+xess_lib_path = join_paths(global_src_root_norm, 'submodules/xess/lib')
+xess_lib = cc.find_library('libxess', dirs : xess_lib_path, required : false)
+xess_dep = declare_dependency(dependencies : [ xess_lib ])
+
 nrc_include_path = include_directories(join_paths('../../', 'submodules/nrc/include'))
 nrc_dll_path = join_paths(meson.global_source_root(), 'submodules/nrc/bin/')
 nrc_lib_path = join_paths(meson.global_source_root(), 'submodules/nrc/lib/')
@@ -425,7 +432,7 @@ dxvk_embedded_data_files = files([
 
 dxvk_generated_embedded_files = embedding_compiler.process(dxvk_embedded_data_files)
 
-dxvk_deps = [ thread_dep, vkcommon_dep, dxvk_extradep, usd_dep, lssUsd_dep, nrc_dep, nrd_dep, dlss_dep, tracy_dep, tracy_dep_dynamic, aftermath_dep, nvapi_dep, reflex_dep ]
+dxvk_deps = [ thread_dep, vkcommon_dep, dxvk_extradep, usd_dep, lssUsd_dep, nrc_dep, nrd_dep, dlss_dep, xess_dep, tracy_dep, tracy_dep_dynamic, aftermath_dep, nvapi_dep, reflex_dep ]
 
 if enable_rtxio
   dxvk_deps += rtxio_dep
