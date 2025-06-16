@@ -1411,7 +1411,11 @@ namespace dxvk {
     // Getting a default "App" Config doesn't require parsing a file.
     if constexpr(type == Type_App) {
       const auto exePath = env::getExePath();
-      return getAppConfig(exePath);
+      if (envVarPath.empty()) {
+        return getAppConfig(exePath);
+      } else {
+        return getAppConfig(envVarPath);
+      }
     // A previous conf file has explicitly stated a future conf file must be used...
     } else if(!configPath.empty()) {
       const std::string filePath = configPath + "/" + desc.confName;

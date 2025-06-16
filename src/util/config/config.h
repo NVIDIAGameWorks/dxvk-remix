@@ -412,7 +412,7 @@ namespace dxvk {
     // NV-DXVK start: Generic config parsing, reduce duped code
     static const inline std::array<Desc,Type_kSize> m_descs {
       Desc{"User","DXVK_CONFIG_FILE","dxvk.conf"},
-      Desc{"App","",""},
+      Desc{"App","DXVK_USE_CONF_FOR_EXE",""},
       Desc{"RtxUser","DXVK_RTX_CONFIG_FILE","rtx.conf"},
       Desc{"RtxMod","","rtx.conf"}
     };
