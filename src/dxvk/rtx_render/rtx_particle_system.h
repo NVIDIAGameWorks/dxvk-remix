@@ -51,9 +51,16 @@ namespace dxvk {
     };
 
     struct ParticleSystem {
-      ParticleSystem() = delete;
+    private:
+      Rc<DxvkBuffer> m_particles;
+      Rc<DxvkBuffer> m_spawnContextParticleMapBuffer;
+      Rc<DxvkBuffer> m_vb;
+      Rc<DxvkBuffer> m_ib;
 
-      const LegacyMaterialData materialData;
+      XXH64_hash_t m_cachedHash = kEmptyHash;
+
+    public:
+      const MaterialData materialData;
       const CategoryFlags categories;
 
       uint64_t lastSpawnTimeMs;
@@ -62,26 +69,33 @@ namespace dxvk {
 
       std::vector<uint16_t> spawnContextParticleMap;
 
-      std::default_random_engine generator;
+      std::mt19937 generator;
 
-      uint32_t particleWriteOffset = 0;
+      uint32_t particleWriteOffset = 0; 
       uint32_t generationIdx = 0;
 
-      Rc<DxvkBuffer> m_particles;
-      Rc<DxvkBuffer> m_spawnContextParticleMapBuffer;
-      Rc<DxvkBuffer> m_vb;
-      Rc<DxvkBuffer> m_ib;
-
-      ParticleSystem(const RtxParticleSystemDesc& desc, const LegacyMaterialData& matData, const CategoryFlags& cats)
+      ParticleSystem() = delete;
+      ParticleSystem(const RtxParticleSystemDesc& desc, const MaterialData& matData, const CategoryFlags& cats, const uint32_t seed)
         : context(desc)
         , materialData(matData)
         , categories(cats) {
-        // Seed the RNG using the particle system hash.
-        generator = std::default_random_engine(calcHash());
+        // Seed the RNG with a parameter from the manager, so we get unique random values for each particle system
+        generator = std::default_random_engine(seed);
+        // Store this hash since it cannot change now.
+        // NOTE: This material data hash is stable within a run, but since hash depends on VK handles, it is not reliable across runs.
+        m_cachedHash = materialData.getHash() ^ context.desc.calcHash();
       }
 
-      XXH64_hash_t calcHash() const {
-        return materialData.getHash() ^ context.desc.calcHash();
+      XXH64_hash_t getHash() const {
+        return m_cachedHash;
+      }
+
+      const Rc<DxvkBuffer>& getParticlesBuffer() const {
+        return m_particles;
+      }
+
+      const Rc<DxvkBuffer>& getSpawnContextMappingBuffer() const {
+        return m_spawnContextParticleMapBuffer;
       }
 
       const Rc<DxvkBuffer>& getVertexBuffer() const {
@@ -112,13 +126,16 @@ namespace dxvk {
     fast_unordered_cache<std::shared_ptr<ParticleSystem>> m_particleSystems;
     Rc<DxvkBuffer> m_spawnContextsBuffer;
 
+    // Monotonically increases as new particle systems are created.  Never decrements.
+    uint32_t m_particleSystemCounter = 0;
+
     std::vector<SpawnContext> m_spawnContexts;
     bool m_initialized = false;
 
     RTX_OPTION("rtx.particles", bool, enable, true, "Enables dust particle simulation and rendering.");
     RTX_OPTION("rtx.particles", float, timeScale, 1.f, "Time modifier, can be used to slow/speed up time.");
 
-    RTX_OPTION("rtx.particles.globalPreset", int, spawnRatePerCubicMeterPerSecond, 100, "Spawn rate per cubic meter per second of particles.");
+    RTX_OPTION("rtx.particles.globalPreset", int, spawnRatePerSecond, 100, "Number of particles (per system) to spawn per second on average.");
     RTX_OPTION("rtx.particles.globalPreset", int, numberOfParticlesPerMaterial, 1024 * 96, "Maximum number of particles to simulate per material simultaneously.  There is a performance consideration, lower numbers are more performant.  Ideal is to tune this number for your specific needs.");
     RTX_OPTION("rtx.particles.globalPreset", float, minParticleLife, 3.f, "Minimum lifetime (in seconds) to give to a particle when spawned.");
     RTX_OPTION("rtx.particles.globalPreset", float, maxParticleLife, 6.f, "Maximum lifetime (in seconds) to give to a particle when spawned.");
@@ -140,7 +157,7 @@ namespace dxvk {
 
     void prepareForNextFrame();
 
-    bool fetchParticleSystem(DxvkContext* ctx, const DrawCallState& drawCallState, const RtxParticleSystemDesc& desc, ParticleSystem** materialSystem);
+    bool fetchParticleSystem(DxvkContext* ctx, const DrawCallState& drawCallState, const RtxParticleSystemDesc& desc, const MaterialData* overrideMaterial, ParticleSystem** materialSystem);
 
     static uint32_t getNumberOfParticlesToSpawn(ParticleSystem* materialSystem, const DrawCallState& drawCallState);
 
@@ -165,12 +182,13 @@ namespace dxvk {
       * - Determines how many particles to spawn.
       * - Schedules the spawn (particles are actually allocated during simulation).
       *
-      * \param ctx            Command list to perform any potential allocation clears with.
-      * \param desc           Description for the particle system.
-      * \param instanceIdx    This is the index into the vector of instances held by instance manager.
-      * \param drawCallState  The current draw call state referencing material info.
+      * \param ctx              Command list to perform any potential allocation clears with.
+      * \param desc             Description for the particle system.
+      * \param instanceIdx      This is the index into the vector of instances held by instance manager.
+      * \param drawCallState    The current draw call state referencing material info.
+      * \param overrideMaterial The material preference to apply to particle system
       */
-    void spawnParticlesForMaterial(DxvkContext* ctx, const RtxParticleSystemDesc& desc, const uint32_t instanceIdx, const DrawCallState& drawCallState);
+    void spawnParticles(DxvkContext* ctx, const RtxParticleSystemDesc& desc, const uint32_t instanceIdx, const DrawCallState& drawCallState, const MaterialData* overrideMaterial);
 
     /**
       * Issues the draw state (vertex buffer, index buffer) for rendering particles

@@ -236,7 +236,7 @@ private:
   ObjectCacheState processGeometryInfo(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, RaytraceGeometry& modifiedGeometryData);
 
   // Consumes a draw call state and updates the scene state accordingly
-  uint64_t processDrawCallState(Rc<DxvkContext> ctx, const DrawCallState& blasInput, const MaterialData* replacementMaterialData);
+  RtInstance* processDrawCallState(Rc<DxvkContext> ctx, const DrawCallState& blasInput, const MaterialData* replacementMaterialData);
 
   const RtSurfaceMaterial& createSurfaceMaterial( Rc<DxvkContext> ctx, 
                                                   const MaterialData& renderMaterialData,
@@ -260,7 +260,7 @@ private:
   // Called whenever an instance has been removed from the database
   void onInstanceDestroyed(RtInstance& instance);
 
-  uint64_t drawReplacements(Rc<DxvkContext> ctx, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, const MaterialData* overrideMaterialData);
+  RtInstance* drawReplacements(Rc<DxvkContext> ctx, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, const MaterialData* overrideMaterialData);
 
   void createEffectLight(Rc<DxvkContext> ctx, const DrawCallState& input, const RtInstance* instance);
 

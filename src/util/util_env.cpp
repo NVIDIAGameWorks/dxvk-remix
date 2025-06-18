@@ -266,24 +266,15 @@ namespace dxvk::env {
   }
 
   std::string getDllDirectory() {
-    HMODULE hMod = nullptr;
-    if (!GetModuleHandleExA(
-      GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-      GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-      reinterpret_cast<LPCSTR>(&GetDllDirectory),
-      &hMod)) {
-      return {};
-    }
+    HMODULE hModule;
+    GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCSTR) &getDllDirectory, &hModule);
 
-    // Get full path to the DLL
-    char buf[MAX_PATH] = { 0 };
-    DWORD len = GetModuleFileNameA(hMod, buf, MAX_PATH);
-    if (len == 0 || len == MAX_PATH)
-      return {};
+    wchar_t modulePath[MAX_PATH];
+    GetModuleFileNameW(hModule, modulePath, MAX_PATH);
+    PathRemoveFileSpecW(modulePath);
 
-    // Strip off the filename to leave only the directory
-    std::filesystem::path p(buf);
-    return p.parent_path().string();
+    std::filesystem::path path(modulePath);
+    return path.string();
   }
   // NV-DXVK end
 

@@ -70,12 +70,19 @@ GpuParticle respawn(uint particleIdx, const GpuParticleSystem particleSystem)
     
     const uint baseSrcColorOffset = (spawnCtx.spawnMeshColorsOffset + index * spawnCtx.spawnMeshColorsStride) / 4;
     
-    // VK_FORMAT_B8G8R8A8_UNORM
-    const uint colorBits = floatBitsToUint(BUFFER_ARRAY(geometries, (uint)spawnCtx.spawnMeshColorsIdx, baseSrcColorOffset));
-    colors[i].x = unorm8ToF16(uint8_t(colorBits >> 16));
-    colors[i].y = unorm8ToF16(uint8_t(colorBits >> 8));
-    colors[i].z = unorm8ToF16(uint8_t(colorBits));
-    colors[i].w = unorm8ToF16(uint8_t(colorBits >> 24));
+    if(spawnCtx.spawnMeshColorsIdx != BINDING_INDEX_INVALID)
+    {
+      // VK_FORMAT_B8G8R8A8_UNORM
+      const uint colorBits = floatBitsToUint(BUFFER_ARRAY(geometries, (uint) spawnCtx.spawnMeshColorsIdx, baseSrcColorOffset));
+      colors[i].x = unorm8ToF16(uint8_t(colorBits >> 16));
+      colors[i].y = unorm8ToF16(uint8_t(colorBits >> 8));
+      colors[i].z = unorm8ToF16(uint8_t(colorBits));
+      colors[i].w = unorm8ToF16(uint8_t(colorBits >> 24));
+    }
+    else
+    {
+      colors[i] = 1.h.xxxx;
+    }
     
     const uint baseSrcTexcoordOffset = (spawnCtx.spawnMeshTexcoordsOffset + index * spawnCtx.spawnMeshTexcoordsStride) / 4;
     float2 texcoord = float2(BUFFER_ARRAY(geometries, (uint)spawnCtx.spawnMeshTexcoordsIdx, baseSrcTexcoordOffset + 0),
@@ -214,7 +221,7 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
     float2 offset = rotate2D(offsets[i], particle.rotation);
     vertex.position = particle.position + (offset.x* right + offset.y * up) * size;
     vertex.color = colorEnc;
-    vertex.texcoord = offsets[i] * (particle.uvMinMax.zw - particle.uvMinMax.xy) + particle.uvMinMax.xy;
+    vertex.texcoord = offsets[i] + 0.5.xx;
     
     Vertices[particleIdx * 4 + i] = vertex;
   }

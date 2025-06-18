@@ -110,6 +110,7 @@ private:
   bool processMesh(const pxr::UsdPrim& prim, Args& args);
   void processPrim(Args& args, const pxr::UsdPrim& prim);
   void processPointInstancer(Args& args, const pxr::UsdPrim& prim);
+  bool processParticleSystem(Args& args, const pxr::UsdPrim& prim);
 
   void processLight(Args& args, const pxr::UsdPrim& lightPrim, const bool isOverride);
   bool processReplacement(Args& args);
@@ -486,6 +487,135 @@ void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim, const
   }
 }
 
+inline float4 toFloat4(const pxr::GfVec4f& v) {
+  float4 f;
+  f.x = v[0];
+  f.y = v[1];
+  f.z = v[2];
+  f.w = v[3];
+  return f;
+}
+
+bool UsdMod::Impl::processParticleSystem(Args& args, const pxr::UsdPrim& prim) {
+  using namespace pxr;
+
+  const RemixParticleSystemPrim particleSystem(prim);
+
+  UsdRelationship emitterRel = particleSystem.GetEmitterMeshRel();
+  if (!emitterRel) {
+    return false;
+  }
+
+  // esolve targets (could be many; we take the first)
+  SdfPathVector targets;
+  emitterRel.GetTargets(&targets);
+  if (targets.empty()) {
+    return false;
+  }
+
+  // Lookup the prim at that path
+  UsdPrim meshPrim;
+  UsdStagePtr stage = prim.GetStage();
+  const SdfPath primPath = prim.GetPath();
+
+  for (const SdfPath& t : targets) {
+    // Resolve to an absolute path
+    SdfPath absPath;
+    if (t.IsAbsolutePath()) {
+      absPath = t;
+    } else {
+      // relative name like "Cube" or "Some/Child"
+      absPath = primPath.AppendPath(t);
+    }
+
+    meshPrim = stage->GetPrimAtPath(absPath);
+    if (meshPrim) {
+      break;
+    }
+  }
+
+  if (!meshPrim) {
+    Logger::warn(str::format("Emitter mesh target ", targets[0].GetText(), "' not found"));
+    return false;
+  }
+
+  const XXH64_hash_t usdOriginHash = getStrongestOpinionatedPathHash(meshPrim);
+  MeshReplacement* pTemp;
+  if (!m_owner.m_replacements->getObject(usdOriginHash, pTemp)) {
+    // First time seeing this mesh, then process it.
+    if (!processMesh(meshPrim, args)) {
+      return false;
+    }
+  }
+
+  MaterialData* materialData = processMaterialUser(args, prim);
+
+  RtxParticleSystemDesc particleDesc;
+
+  // Helper macro to read an attribute into a float or int field
+#define READ_ATTR(Type, attrName, field) \
+            if (UsdAttribute attr = particleSystem.Get##attrName##Attr()) { \
+                Type result; \
+                attr.Get<Type>(&result); \
+                particleDesc.field = (Type)result; \
+            } 
+#define READ_ATTR_CONV(Type, attrName, field, conversionFunc) \
+            if (UsdAttribute attr = particleSystem.Get##attrName##Attr()) { \
+                Type result; \
+                attr.Get<Type>(&result); \
+                particleDesc.field = conversionFunc(result); \
+            } 
+
+    // Read all simulation parameters
+  READ_ATTR(float, MinTtl, minTtl);
+  READ_ATTR(float, MaxTtl, maxTtl);
+  READ_ATTR(float, OpacityMultiplier, opacityMultiplier);
+  READ_ATTR(float, InitialVelocityFromNormal, initialVelocityFromNormal);
+  READ_ATTR(float, MinParticleSize, minParticleSize);
+  READ_ATTR(float, MaxParticleSize, maxParticleSize);
+  READ_ATTR(float, GravityForce, gravityForce);
+  READ_ATTR(float, MaxSpeed, maxSpeed);
+  READ_ATTR(float, TurbulenceFrequency, turbulenceFrequency);
+  READ_ATTR(float, TurbulenceAmplitude, turbulenceAmplitude);
+  READ_ATTR(int, MaxNumParticles, maxNumParticles);
+  READ_ATTR(bool, UseTurbulence, useTurbulence);
+  READ_ATTR_CONV(GfVec4f, MaxSpawnColor, maxSpawnColor, toFloat4);
+  READ_ATTR_CONV(GfVec4f, MinSpawnColor, minSpawnColor, toFloat4);
+
+#undef READ_ATTR
+#undef READ_ATTR_CONV
+
+  bool unused = false;
+  pxr::GfMatrix4f localToRoot = pxr::GfMatrix4f(args.xformCache.ComputeRelativeTransform(prim, args.rootPrim.GetParent(), &unused));
+  const auto& replacementToObjectAsArray = reinterpret_cast<const float(&)[4][4]>(localToRoot);
+  const Matrix4 replacementToObject(replacementToObjectAsArray);
+
+  std::vector<pxr::UsdGeomSubset> geomSubsets;
+  auto children = prim.GetFilteredChildren(pxr::UsdPrimIsActive);
+  for (auto child : children) {
+    if (child.IsA<pxr::UsdGeomSubset>()) {
+      geomSubsets.emplace_back(child);
+    }
+  }
+
+  if (geomSubsets.empty()) {
+    Categorizer categoryFlags = processCategoryFlags(prim);
+
+    MeshReplacement* pGeometryData;
+    if (m_owner.m_replacements->getObject(usdOriginHash, pGeometryData)) {
+      AssetReplacement newReplacementMesh(pGeometryData, materialData, categoryFlags, replacementToObject);
+      // Add the particle system descriptor
+      newReplacementMesh.particleSystem = particleDesc;
+      args.meshes.push_back(newReplacementMesh);
+    }
+  } else {
+    // todo: currently unsupported
+    throw;
+  }
+
+  return true;
+}
+
 void UsdMod::Impl::processPointInstancer(Args& args, const pxr::UsdPrim& prim) {
   const pxr::UsdGeomPointInstancer instancer(prim);
   // caching rootPrim, since we need to treat each prototype as having a different rootprim.
@@ -713,8 +843,7 @@ void UsdMod::Impl::processReplacementRecursive(Args& args, const pxr::UsdPrim& p
     processPointInstancer(args, prim);
     return;  // meshes with pointInstancer parents don't render in USD Composer, so mimicing that behavior here.
   } else if (prim.IsA<pxr::RemixParticleSystemPrim>()) {
-    Logger::err("Loaded a particle system, this has not been implemented yet!!");
-    throw;
+    processParticleSystem(args, prim);
   } else if (LightData::isSupportedUsdLight(prim) && (!isRoot || !explicitlyNoReferences(prim))) {
     processLight(args, prim, isRoot);
   }
@@ -782,18 +911,6 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
   std::string replacementsUsdPath(m_owner.m_filePath.string());
 
   // Open the USD
-
-  static std::string pluginsDir;
-  auto dir = env::getDllDirectory();
-  if (!dir.empty()) {
-    // Append subdirs, letting std::filesystem handle separators
-    std::filesystem::path p(dir);
-    p /= "usd//plugins";
-    pluginsDir = p.string();
-    pxr::PlugRegistry::GetInstance().RegisterPlugins(pluginsDir);
-  } else {
-    Logger::warn("usd plugins were not loaded");
-  }
 
   m_owner.setState(ProgressState::OpeningUSD);
 
@@ -1335,7 +1452,7 @@ UsdMod::UsdMod(const Mod::Path& usdFilePath)
       const std::string& libPath = notice->GetPath();
       const std::string& resourcePath = notice->GetResourcePath();
 
-      Logger::info(str::format("Plugin Info: ", name, "\n"
+      Logger::debug(str::format("Plugin Info: ", name, "\n"
                                 , "\tLibrary:       ", libPath, "\n"
                                 , "\tResourcePath:  ", resourcePath));
     }

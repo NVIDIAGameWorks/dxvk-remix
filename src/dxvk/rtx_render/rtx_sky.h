@@ -93,7 +93,7 @@ namespace dxvk {
   }
 
   static bool isSkyboxQuad(const DrawCallState& state) {
-    if (state.alphaBlendEnable) {
+    if (state.getMaterialData().alphaBlendEnabled) {
       return false;
     }
     if (state.getGeometryData().indexCount == 0) {

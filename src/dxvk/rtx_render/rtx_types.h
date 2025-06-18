@@ -150,13 +150,14 @@ struct AxisAlignedBoundingBox {
     return XXH3_64bits(this, sizeof(AxisAlignedBoundingBox));
   }
 
-  float getVolume(const Matrix4& transform) const {
+  float getVolume(const Matrix4& transform, float minimumThickness = 0.001f) const {
     const Vector3 minPosWorld = (transform * dxvk::Vector4(minPos, 1.0f)).xyz();
     const Vector3 maxPosWorld = (transform * dxvk::Vector4(maxPos, 1.0f)).xyz();
 
-    const Vector3 size = abs(maxPosWorld - minPosWorld);
+    // Assume some minimum thickness to work around the possibility of infinitely thin geometry
+    const Vector3 size = max(Vector3(minimumThickness), abs(maxPosWorld - minPosWorld));
 
-    return dot(size, Vector3(1.f));
+    return size.x * size.y * size.z;
   }
 };
 
@@ -516,7 +517,6 @@ struct DrawCallState {
   float maxZ = 1.0f;
 
   bool zWriteEnable = false;
-  bool alphaBlendEnable = false;
   bool zEnable = false;
 
   uint32_t drawCallID = 0;

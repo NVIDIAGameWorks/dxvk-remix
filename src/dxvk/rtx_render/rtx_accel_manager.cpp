@@ -440,6 +440,10 @@ namespace dxvk {
     std::unordered_map<BlasEntry*, std::vector<RtInstance*>> uniqueBlas;
 
     for (RtInstance* instance : instances) {
+      if (instance->isHidden()) {
+        continue;
+      }
+
       // If the instance has zero mask, do not build BLAS for it: no ray can intersect this instance.
       if (instance->getVkInstance().mask == 0) {
         

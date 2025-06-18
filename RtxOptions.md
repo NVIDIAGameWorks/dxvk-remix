@@ -507,7 +507,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.particles.globalPreset.minParticleSize|float|1|Minimum size \(in world units\) to give to a particle when spawned\.|
 |rtx.particles.globalPreset.numberOfParticlesPerMaterial|int|98304|Maximum number of particles to simulate per material simultaneously\.  There is a performance consideration, lower numbers are more performant\.  Ideal is to tune this number for your specific needs\.|
 |rtx.particles.globalPreset.opacityMultiplier|float|1|Multiplier for the opacity of a particle in relation to the opacity of the triangle spawning the particle\.|
-|rtx.particles.globalPreset.spawnRatePerCubicMeterPerSecond|int|100|Spawn rate per cubic meter per second of particles\.|
+|rtx.particles.globalPreset.spawnRatePerSecond|int|100|Number of particles \(per system\) to spawn per second on average\.|
 |rtx.particles.globalPreset.turbulenceAmplitude|float|5|How much turbulence influences the force of a particle\.|
 |rtx.particles.globalPreset.turbulenceFrequency|float|0.05|The rate of change of turbulence forces\.|
 |rtx.particles.globalPreset.useTurbulence|bool|True|Enable turbulence simulation\.|

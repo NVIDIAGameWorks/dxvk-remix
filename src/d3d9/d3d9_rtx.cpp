@@ -676,7 +676,6 @@ namespace dxvk {
     m_activeDrawCallState.maxZ = std::clamp(d3d9State().viewport.MaxZ, 0.0f, 1.0f);
 
     m_activeDrawCallState.zWriteEnable = d3d9State().renderStates[D3DRS_ZWRITEENABLE];
-    m_activeDrawCallState.alphaBlendEnable = d3d9State().renderStates[D3DRS_ALPHABLENDENABLE];
     m_activeDrawCallState.zEnable = d3d9State().renderStates[D3DRS_ZENABLE] == D3DZB_TRUE;
     
     // Now that the DrawCallState is complete, we can use heuristics for detection

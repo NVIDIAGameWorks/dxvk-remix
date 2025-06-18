@@ -47,6 +47,10 @@ struct GpuSpawnContext {
 };
 
 struct RtxParticleSystemDesc { 
+  float4 minSpawnColor;
+
+  float4 maxSpawnColor;
+
   float minTtl;
   float maxTtl;
   float opacityMultiplier;
@@ -55,17 +59,12 @@ struct RtxParticleSystemDesc {
   float minParticleSize;
   float maxParticleSize;
   float gravityForce;
-  float colorVariation;
+  uint useTurbulence;
 
   float maxSpeed;
   float turbulenceFrequency;
   float turbulenceAmplitude;
   uint maxNumParticles;
-
-  uint useTurbulence;
-  uint pad0;
-  uint pad1;
-  uint pad2;
 
 #ifdef __cplusplus
   RtxParticleSystemDesc() {
@@ -80,7 +79,7 @@ struct RtxParticleSystemDesc {
 };
 
 struct GpuParticleSystem { 
-  RtxParticleSystemDesc desc;
+  RtxParticleSystemDesc desc; // TODO: Can compress this further.
 
   // These members arent hashed
   uint spawnParticleOffset = 0;
@@ -90,9 +89,7 @@ struct GpuParticleSystem {
 
 #ifndef __cplusplus
   float16_t4 varyColor(float rand, float16_t4 color) {
-    rand *= desc.colorVariation;
-    color += float16_t4(rand * 2 - 1);
-    return saturate(color);
+    return float16_t4(saturate(lerp(desc.minSpawnColor, desc.maxSpawnColor, rand))) * color;
   }
 
   float16_t varySize(float rand, float16_t size) {

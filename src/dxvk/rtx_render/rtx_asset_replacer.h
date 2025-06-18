@@ -26,6 +26,7 @@
 #include "rtx_mod_manager.h"
 #include "rtx_utils.h"
 #include "rtx_lights_data.h"
+#include "rtx/pass/particles/particle_system_common.h"
 
 namespace dxvk {
   class DxvkContext;
@@ -45,17 +46,23 @@ namespace dxvk {
     RasterGeometry data;
   };
 
+  struct ParticleEmitter {
+    RasterGeometry data;
+    RtxParticleSystemDesc desc;
+  };
+
   struct AssetReplacement {
     enum Type {
       eMesh,
-      eLight
+      eLight,
     };
     Categorizer categories;
-    MeshReplacement* geometry;
+    MeshReplacement* geometry = nullptr;
+    std::optional<RtxParticleSystemDesc> particleSystem;
     std::optional<LightData> lightData;
     // Note: This is the material to use for this replacement, if any. Set to null if should use
     // the original material instead, similar to how getReplacementMaterial works.
-    MaterialData* materialData;
+    MaterialData* materialData = nullptr;
     Matrix4 replacementToObject;
     // If this replacement represents multiple instances of an object, then this will contain a
     // list of transforms from the instance's space to Object space
@@ -65,7 +72,7 @@ namespace dxvk {
     bool includeOriginal = false;
 
     AssetReplacement(MeshReplacement* geometryData, MaterialData* materialData, Categorizer categoryFlags, const Matrix4& replacementToObject)
-        : geometry(geometryData), materialData(materialData), categories(categoryFlags), replacementToObject(replacementToObject), type(eMesh) {}
+      : geometry(geometryData), materialData(materialData), categories(categoryFlags), replacementToObject(replacementToObject), type(eMesh) { }
     AssetReplacement(const LightData& lightData, const Matrix4& replacementToObject) : lightData(lightData), replacementToObject(replacementToObject), type(eLight) {}
   };
 
