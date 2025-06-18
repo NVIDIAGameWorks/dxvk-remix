@@ -192,6 +192,8 @@ namespace dxvk {
       std::lock_guard lock(s_listMutex);
 
       for (auto& shaderGetter : s_shaderGetters) {
+        // Note: This is not just a get operation, it will also create the shader if it does not already exist and schedule a pipeline for compilation
+        // which is why it can be used for prewarming like this.
         Rc<DxvkShader> shader = shaderGetter();
 
         // Currently automatic prewarm only applies to compute shaders
@@ -350,6 +352,8 @@ namespace dxvk {
     // or not, a success indicating that SPIR-V binaries should be ready to process. Returns true if the query succeeded, false otherwise. Note that neither
     // completed nor result will be written to if an error occured and false is returned.
     bool tryGetSpirVRecompilationResults(bool blockUntilCompletion, bool& completed, bool& result);
+    // Logs the standard output and error information from the SPIR-V compilation process.
+    void logSpirVRecompilationOutput() const;
     // Frees handles associated with the SPIR-V recompilation process. This must only be called when getShaderReloadPhase is in the SPIR-V recompilation phase,
     // and ideally only after the process has exited (or been terminated).
     void freeSpirVRecompilationHandles();
@@ -387,6 +391,8 @@ namespace dxvk {
     ShaderReloadPhase m_shaderReloadPhase{ ShaderReloadPhase::Idle };
     // The status of the last shader reload, if any. Will be set to unknown if no reload has occured or if one is in progress.
     ShaderReloadStatus m_lastShaderReloadStatus{ ShaderReloadStatus::Unknown };
+    HANDLE m_spirVRecompilationOutputReadPipe;
+    HANDLE m_spirVRecompilationOutputWritePipe;
     PROCESS_INFORMATION m_spirVRecompilationDispatchInformation;
 #endif
   };

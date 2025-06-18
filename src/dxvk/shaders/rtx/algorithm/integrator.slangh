@@ -152,7 +152,7 @@ Ray sampleDirection(
   // Combine sample throughput into the throughput
 
   // Note: The lobe sample PDF occasionally may be 0 to indicate no valid sample was taken, so this check must be here to avoid
-  // dividing by 0. When the love sample PDF is 0, the throughput should also be 0 to indicate no valid sample was taken (much
+  // dividing by 0. When the lobe sample PDF is 0, the throughput should also be 0 to indicate no valid sample was taken (much
   // like the Surface Material Interaction's sample throughput will be set to 0 to indicate no valid direction sample was taken).
   if (surfaceMaterialInteractionLobeSample.pdf != 0.0f) {
     throughput *= surfaceMaterialInteractionSample.throughput / surfaceMaterialInteractionLobeSample.pdf;

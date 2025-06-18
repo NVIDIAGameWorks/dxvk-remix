@@ -21,17 +21,16 @@
 */
 #pragma once
 
+#include <cstdint>
 #include <array>
 #include <fstream>
-#include <iostream>
 #include <string>
-#include "../util_once.h"
 
 #include "../thread.h"
 
 namespace dxvk {
   
-  enum class LogLevel : uint32_t {
+  enum class LogLevel : std::uint32_t {
     Trace = 0,
     Debug = 1,
     Info  = 2,
@@ -51,9 +50,9 @@ namespace dxvk {
   public:
 
     // NV-DXVK start: pass log level as param
-    Logger(const std::string& file_name, const LogLevel logLevel = getMinLogLevel());
+    Logger(const std::string& fileName, const LogLevel logLevel = getMinLogLevel());
     // NV-DXVK end
-    ~Logger();
+    ~Logger() = default;
     
     // NV-DXVK start: special init pathway for remix logs
     static void initRtxLog();
@@ -85,9 +84,7 @@ namespace dxvk {
     void emitMsg(LogLevel level, const std::string& message);
     
     static LogLevel getMinLogLevel();
-    
-    static std::string getFileName(
-      const std::string& base);
+    static std::string getFilePath(const std::string& fileName);
 
     Logger& operator=(Logger&& other);
 
