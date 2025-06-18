@@ -609,8 +609,7 @@ bool UsdMod::Impl::processParticleSystem(Args& args, const pxr::UsdPrim& prim) {
       args.meshes.push_back(newReplacementMesh);
     }
   } else {
-    // todo: currently unsupported
-    throw;
+    Logger::err(str::format("Using UsdGeomSubset as a particle emitter is currently unsupported, prim=", prim.GetPath().GetAsString()));
   }
 
   return true;

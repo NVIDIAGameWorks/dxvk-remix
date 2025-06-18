@@ -719,8 +719,8 @@ if dxvk_is_ninja
 	copy_usd_plugins_dlls += custom_target('copy_usd_plugins_json_' + target_suffix,
                     output           : ['copy_usd_plugins_json_' + target_suffix],
                     command          : [copy_script_path,
-										join_paths(global_src_root_norm, 'src', 'usd-plugins'),
-                                        join_paths(output_path, 'usd/plugins'),
+                                        join_paths(global_src_root_norm, 'src', 'usd-plugins'),
+                                        join_paths(output_path, 'usd/plugins/'),
                                         'plugInfo.json'] )
     foreach usd_plugin : usd_plugins
 	  copy_usd_plugins_dlls += custom_target('copy_usd_plugins_' + usd_plugin.name() + '_dll_' + target_suffix,
