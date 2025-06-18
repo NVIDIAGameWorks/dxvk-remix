@@ -109,7 +109,42 @@ namespace dxvk {
     ImGui::Checkbox("Tonemapping Enabled", &tonemappingEnabledObject());
     if (tonemappingEnabled()) {
       ImGui::Indent();
-      ImGui::Checkbox("Finalize With ACES", &finalizeWithACESObject());
+      
+      // Tone mapping operator selection
+      const char* operators[] = { "Standard", "ACES", "AgX" };
+      int currentOp = useAgX() ? 2 : (finalizeWithACES() ? 1 : 0);
+      if (ImGui::Combo("Tone Mapping Operator", &currentOp, operators, IM_ARRAYSIZE(operators))) {
+        finalizeWithACES.setDeferred(currentOp == 1);
+        useAgX.setDeferred(currentOp == 2);
+      }
+
+      // AgX-specific controls (only show when AgX is selected)
+      if (useAgX()) {
+        ImGui::Indent();
+        ImGui::Text("AgX Controls:");
+        ImGui::Separator();
+        
+        // Basic controls
+        ImGui::DragFloat("AgX Gamma", &agxGammaObject(), 0.01f, 0.5f, 3.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::DragFloat("AgX Saturation", &agxSaturationObject(), 0.01f, 0.5f, 2.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::DragFloat("AgX Exposure Offset", &agxExposureOffsetObject(), 0.01f, -2.0f, 2.0f, "%.3f EV", ImGuiSliderFlags_AlwaysClamp);
+        
+        ImGui::Separator();
+        
+        // Look selection
+        const char* looks[] = { "None", "Punchy", "Golden", "Greyscale" };
+        ImGui::Combo("AgX Look", &agxLookObject(), looks, IM_ARRAYSIZE(looks));
+        
+        ImGui::Separator();
+        
+        // Advanced controls
+        ImGui::Text("Advanced:");
+        ImGui::DragFloat("AgX Contrast", &agxContrastObject(), 0.01f, 0.5f, 2.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::DragFloat("AgX Slope", &agxSlopeObject(), 0.01f, 0.5f, 2.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::DragFloat("AgX Power", &agxPowerObject(), 0.01f, 0.5f, 2.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+        
+        ImGui::Unindent();
+      }
 
       ImGui::Combo("Dither Mode", &ditherModeObject(), "Disabled\0Spatial\0Spatial + Temporal\0");
 
@@ -254,7 +289,17 @@ namespace dxvk {
     pushArgs.colorGradingEnabled = colorGradingEnabled();
     pushArgs.enableAutoExposure = autoExposureEnabled;
     pushArgs.finalizeWithACES = finalizeWithACES();
+    pushArgs.useAgX = useAgX();
     pushArgs.useLegacyACES = RtxOptions::useLegacyACES();
+    
+    // AgX parameters
+    pushArgs.agxGamma = agxGamma();
+    pushArgs.agxSaturation = agxSaturation();
+    pushArgs.agxExposureOffset = agxExposureOffset();
+    pushArgs.agxLook = agxLook();
+    pushArgs.agxContrast = agxContrast();
+    pushArgs.agxSlope = agxSlope();
+    pushArgs.agxPower = agxPower();
 
     // Tonemap args
     pushArgs.performSRGBConversion = performSRGBConversion;
