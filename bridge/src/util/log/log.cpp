@@ -30,7 +30,7 @@
 #include <iostream>
 #include <iomanip>
 #include <sstream>
-#include <assert.h>
+#include <cassert>
 
 #ifndef _WIN32
 #include <sys/time.h>
@@ -42,7 +42,7 @@ namespace bridge_util {
   template<int N>
   static inline void getLocalTimeString(char (&timeString)[N]) {
     // [HH:MM:SS.MS]
-    static const char* format = "[%02d:%02d:%02d.%03d]";
+    static const char* format = "[%02d:%02d:%02d.%03d] ";
 
 #ifdef _WIN32
     SYSTEMTIME lt;
@@ -199,18 +199,20 @@ namespace bridge_util {
   std::stringstream Logger::formatMessage(const LogLevel level, const std::string& message) {
     std::stringstream unformattedStream(message);
     std::string       line;
-    static std::array<const char*, 5> s_prefixes = { { "trace: ",
-                                                        "debug: ",
-                                                        "info:  ",
-                                                        "warn:  ",
-                                                        "err:   " } };
-    const char* prefix = s_prefixes.at(static_cast<uint32_t>(level));
+    constexpr std::array<const char*, 5> s_prefixes = {
+      "trace: ",
+      "debug: ",
+      "info:  ",
+      "warn:  ",
+      "err:   ",
+    };
+    const char* prefix = s_prefixes[static_cast<uint32_t>(level)];
     char timeString[64];
     getLocalTimeString(timeString);
 
     std::stringstream formattedStream;
     while (std::getline(unformattedStream, line, '\n')) {
-      formattedStream << timeString << " " << prefix << line << "\n";
+      formattedStream << timeString << prefix << line << '\n';
     }
     return std::move(formattedStream);
   }

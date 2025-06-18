@@ -305,6 +305,53 @@ namespace dxvk {
 
     assert(recompileCommandArgumentsCopy.back() == L'\0');
 
+    // Create read/write pipes to direct the new process's stdout/stderr to
+
+    SECURITY_ATTRIBUTES pipeSecurityAttributes;
+
+    ZeroMemory(&pipeSecurityAttributes, sizeof(pipeSecurityAttributes));
+
+    pipeSecurityAttributes.nLength = sizeof(SECURITY_ATTRIBUTES);
+    // Note: Allow the handles to be inherited by the new child process once it's made. We only really want the write handle to be inherited however,
+    // so the read handle will have to have inheritance disabled afterwards.
+    pipeSecurityAttributes.bInheritHandle = TRUE;
+    pipeSecurityAttributes.lpSecurityDescriptor = NULL;
+
+    const auto createPipeResult{
+      CreatePipe(&m_spirVRecompilationOutputReadPipe, &m_spirVRecompilationOutputWritePipe, &pipeSecurityAttributes, 0)
+    };
+
+    if (createPipeResult == 0) {
+      const auto createPipeErrorCode{ GetLastError() };
+
+      Logger::err(str::format("Unable to create a output read/write pipe for the Python shader recompilation process. Error code: ", createPipeErrorCode));
+
+      return false;
+    }
+
+    // Disable inheritence on the output read pipe
+    // Note: This is done as the read pipe should not be inherited as it is to be used for reading from the output pipe once the child process writes
+    // to it.
+
+    const auto setHandleInformationResult{
+      SetHandleInformation(m_spirVRecompilationOutputReadPipe, HANDLE_FLAG_INHERIT, 0)
+    };
+
+    if (setHandleInformationResult == 0) {
+      // Free allocated resources
+
+      CloseHandle(m_spirVRecompilationOutputReadPipe);
+      CloseHandle(m_spirVRecompilationOutputWritePipe);
+
+      // Get error information
+
+      const auto setHandleInformationErrorCode{ GetLastError() };
+
+      Logger::err(str::format("Unable to disable inheritance on the output read pipe for the Python shader recompilation process. Error code: ", setHandleInformationErrorCode));
+
+      return false;
+    }
+
     // Invoke Python to run the compile script
 
     // Warning: Obviously, invoking Python can introduce potential security holes into Remix, so the data passed to CreateProcess needs to be
@@ -331,21 +378,42 @@ namespace dxvk {
     ZeroMemory(&m_spirVRecompilationDispatchInformation, sizeof(m_spirVRecompilationDispatchInformation));
 
     startupInformation.cb = sizeof(startupInformation);
+    startupInformation.hStdError = m_spirVRecompilationOutputWritePipe;
+    startupInformation.hStdOutput = m_spirVRecompilationOutputWritePipe;
+    startupInformation.dwFlags |= STARTF_USESTDHANDLES;
 
-    // Note: No stdout redirection needed, default settings like this for CreateProcess allow for stdout to share the terminal of the parent process which allows for the compilation
-    // progress messages to be written to the console as desired. They will not be written to the Remix log however, so if this functionality is desired in the future then stdout will
-    // have to be redirected into something this process can read and then output via the logging system.
+    // Note: bInheritHandles set to true here to tell CreateProcess to try and inherit and inheritable handles in Remix. This is required because the standard output/error write pipe handle
+    // must be inherited by the child process for it to write to this pipe properly, otherwise no data will be written to the pipe (and no error will be thrown either strangely enough).
     const auto createProcessResult{
-      CreateProcessW(pythonExecutablePath.data(), recompileCommandArgumentsCopy.data(), NULL, NULL, FALSE, 0, NULL, NULL, &startupInformation, &m_spirVRecompilationDispatchInformation)
+      CreateProcessW(pythonExecutablePath.data(), recompileCommandArgumentsCopy.data(), NULL, NULL, TRUE, 0, NULL, NULL, &startupInformation, &m_spirVRecompilationDispatchInformation)
     };
 
     if (createProcessResult == 0) {
+      // Free allocated resources
+
+      CloseHandle(m_spirVRecompilationOutputReadPipe);
+      CloseHandle(m_spirVRecompilationOutputWritePipe);
+
+      // Get error information
       const auto createProcessErrorCode{ GetLastError() };
 
       Logger::err(str::format("Unable create a Python shader recompilation process. Error code: ", createProcessErrorCode));
 
       return false;
     }
+
+    // Note: Not closing hProcess and hThread handles outputted to the process information structure passed to CreateProcess here as we do need the process handle at least to wait on the child
+    // process and get the return code later. Otherwise it is best to close these handles immediately as Windows will not fully destroy a created process until all handles to it have been
+    // closed (so leaving these open will only allow the child to be destroyed once the parent process ends). See this for more info: https://stackoverflow.com/a/38236860
+
+    // Note: Microsoft's documentation claims the output write pipe must be closed here for the child process's exit status to be detected:
+    // https://learn.microsoft.com/en-us/windows/win32/procthread/creating-a-child-process-with-redirected-input-and-output
+    // This however doesn't seem to be the case. Instead, the pipe seems to need to be emptied to allow the child process to finally exit, likely because the data in the pipe is keeping the process
+    // alive in some sort of zombie state until it is emptied and destroyed. Closing the output write pipe here still works fine of course, but it does cause a subsequent peek operation to the
+    // read pipe to result in a broken pipe error after all the data has been read from it. To avoid having to handle this error, we simply close the output write pipe later as this allows the
+    // peek operation to return 0 bytes left in the pipe and then the handles can be freed after. It is a bit weird though that by doing this no broken pipe error occurs as this seems to suggest
+    // the pipe isn't actually destroyed until we free both the read/write handles ourselves, but apparently having it empty is all it takes for the child process to exit rather than it being fully
+    // destroyed. If this behavior ever changes in the future then simply close the output write pipe here and handle the broken pipe error when peeking from the pipe as an expected case.
 
     // Set the reload phase to SPIR-V Recompilation now that the process has been started successfully
 
@@ -393,6 +461,70 @@ namespace dxvk {
     return true;
   }
 
+  void ShaderManager::logSpirVRecompilationOutput() const {
+    // Ensure the shader reloading is in the SPIR-V recompilation phase, indicating the output pipe is still valid
+
+    assert(getShaderReloadPhase() == ShaderReloadPhase::SPIRVRecompilation);
+
+    // Read information from the SPIR-V recompilation process's output pipe until none is left
+
+    std::string combinedOutputString;
+
+    combinedOutputString.reserve(4096);
+
+    for (;;) {
+      // Check if any bytes are available in the read side of the process's output pipe
+
+      DWORD bytesAvailable;
+
+      const auto peekNamedPipeResult{ PeekNamedPipe(m_spirVRecompilationOutputReadPipe, NULL, 0, NULL, &bytesAvailable, NULL) };
+
+      if (peekNamedPipeResult == FALSE) {
+        const auto peekNamedPipeErrorCode{ GetLastError() };
+
+        Logger::err(str::format("Unable peek from standard output/error pipe for the Python shader recompilation process. Error code: ", peekNamedPipeErrorCode));
+
+        break;
+      }
+
+      // Note: No bytes available means we shouldn't try a read as that may block forever if the pipe is empty.
+      if (bytesAvailable == 0) {
+        break;
+      }
+
+      // Read from the read side of the process's output pipe into a buffer
+      // Note: This is a synchronous read operation so care must be taken to not have it stall the game or block forever if the pipe never provides any data.
+
+      std::array<CHAR, 4096> readBuffer;
+      DWORD bytesRead;
+
+      const auto readFileResult{ ReadFile(m_spirVRecompilationOutputReadPipe, readBuffer.data(), readBuffer.size(), &bytesRead, NULL) };
+
+      if (readFileResult == FALSE) {
+        const auto readFileErrorCode{ GetLastError() };
+
+        Logger::err(str::format("Unable read from standard output/error pipe for the Python shader recompilation process. Error code: ", readFileErrorCode));
+
+        break;
+      }
+
+      // Note: If no bytes are read and no error has occured then this indicates all the data in the pipe up to this point has been read.
+      if (bytesRead == 0) {
+        break;
+      }
+
+      // Combine the read buffer of data into the combined output string
+
+      combinedOutputString += std::string(readBuffer.data(), bytesRead);
+    }
+
+    // Log the combined output from the SPIR-V recompilation process's output pipe if non-empty
+
+    if (!combinedOutputString.empty()) {
+      Logger::info(combinedOutputString);
+    }
+  }
+
   void ShaderManager::freeSpirVRecompilationHandles() {
     // Ensure the shader reloading is in the SPIR-V recompilation phase, indicating the handles have not yet been freed
 
@@ -402,6 +534,11 @@ namespace dxvk {
 
     CloseHandle(m_spirVRecompilationDispatchInformation.hProcess);
     CloseHandle(m_spirVRecompilationDispatchInformation.hThread);
+
+    // Free pipe handles
+
+    CloseHandle(m_spirVRecompilationOutputReadPipe);
+    CloseHandle(m_spirVRecompilationOutputWritePipe);
   }
 
   void ShaderManager::terminateSpirVRecompilation() {
@@ -471,6 +608,19 @@ namespace dxvk {
     // to complete or by checking if the results are available yet and then recreating shaders afterwards.
 
     assert(getShaderReloadPhase() == ShaderReloadPhase::SPIRVRecompilation);
+
+    // Log any SPIR-V recompilation output information
+    // Note: While this is called every update no data is actually put into the pipe the logging is done from until the child process is finished for
+    // whatever reason, so while in theory having this call here would allow for realtime output in practice it is all logged in one big batch. This is
+    // perhaps for the best though to prevent incomplete output from being logged and partially cut off.
+    // Previously simply letting the Python process share the console window allowed for this sort of "realtime" output, but as a comprimise to have this
+    // information actually written to the log it is simply done all at once at the end now. There is probably a way to get this sort of realtime stdout
+    // information but it is probably not simple to do.
+    // Finally, this function actually has to be called here as well as otherwise the SPIR-V recompilation process will never have its exit status signaled.
+    // This is likely because Windows only destroys a pipe once it is emptied, and if the pipe is non-empty the child process is kept alive as a zombie despite
+    // having finished to allow for the parent process to empty the pipe that is being shared between both processes.
+
+    logSpirVRecompilationOutput();
 
     // Attempt to get results from the SPIR-V compilation process
 

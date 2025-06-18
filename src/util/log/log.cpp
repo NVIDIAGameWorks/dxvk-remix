@@ -21,6 +21,8 @@
 */
 #include "log.h"
 
+#include <iostream>
+
 #include "../util_env.h"
 #include "../util_filesys.h"
 
@@ -58,14 +60,14 @@ namespace{
 
 namespace dxvk {
 
-  Logger::Logger(const std::string& file_name, const LogLevel logLevel)
+  Logger::Logger(const std::string& fileName, const LogLevel logLevel)
   : m_minLevel(logLevel)
   // NV-DXVK start: Don't double print every line
   , m_doublePrintToStdErr(getDoublePrintToStdErr())
   // NV-DXVK end
   {
     if (m_minLevel != LogLevel::None) {
-      auto path = getFileName(file_name);
+      const auto path = getFilePath(fileName);
 
       if (!path.empty()) {
         m_fileStream = std::ofstream(str::tows(path.c_str()).c_str());
@@ -77,50 +79,45 @@ namespace dxvk {
   void Logger::initRtxLog() {
     s_instance = std::move(Logger("remix-dxvk.log"));
   }
-  
-  Logger::~Logger() { }
-  
-  
+
   void Logger::trace(const std::string& message) {
     s_instance.emitMsg(LogLevel::Trace, message);
   }
   
-  
   void Logger::debug(const std::string& message) {
     s_instance.emitMsg(LogLevel::Debug, message);
   }
-  
 
   void Logger::info(const std::string& message) {
     s_instance.emitMsg(LogLevel::Info, message);
   }
-  
-  
+
   void Logger::warn(const std::string& message) {
     s_instance.emitMsg(LogLevel::Warn, message);
   }
-  
-  
+
   void Logger::err(const std::string& message) {
     s_instance.emitMsg(LogLevel::Error, message);
   }
-  
-  
+
   void Logger::log(LogLevel level, const std::string& message) {
     s_instance.emitMsg(level, message);
   }
-  
-  
+
   void Logger::emitMsg(LogLevel level, const std::string& message) {
     if (level >= m_minLevel) {
-      OutputDebugString(str::format(message, "\n\n").c_str());
+      OutputDebugString((message + '\n').c_str());
 
       std::lock_guard<dxvk::mutex> lock(m_mutex);
       
-      static std::array<const char*, 5> s_prefixes
-        = {{ "trace: ", "debug: ", "info:  ", "warn:  ", "err:   " }};
-      
-      const char* prefix = s_prefixes.at(static_cast<uint32_t>(level));
+      constexpr std::array<const char*, 5> s_prefixes{
+        "trace: ",
+        "debug: ",
+        "info:  ",
+        "warn:  ",
+        "err:   ",
+      };
+      const char* prefix = s_prefixes[static_cast<std::uint32_t>(level)];
 
       std::stringstream stream(message);
       std::string       line;
@@ -130,27 +127,28 @@ namespace dxvk {
 
       while (std::getline(stream, line, '\n')) {
         // NV-DXVK start: Don't double print every line
-        if(m_doublePrintToStdErr) {
+        if (m_doublePrintToStdErr) {
           std::cerr << timeString << prefix << line << std::endl;
         }
         // NV-DXVK end
 
-        if (m_fileStream)
+        if (m_fileStream) {
           m_fileStream << timeString << prefix << line << std::endl;
+        }
       }
     }
   }
   
   
   LogLevel Logger::getMinLogLevel() {
-    const std::array<std::pair<const char*, LogLevel>, 6> logLevels = {{
+    const std::array<std::pair<const char*, LogLevel>, 6> logLevels{ {
       { "trace", LogLevel::Trace },
       { "debug", LogLevel::Debug },
       { "info",  LogLevel::Info  },
       { "warn",  LogLevel::Warn  },
       { "error", LogLevel::Error },
       { "none",  LogLevel::None  },
-    }};
+    } };
     
     const std::string logLevelStr = env::getEnvVar("DXVK_LOG_LEVEL");
     
@@ -162,15 +160,19 @@ namespace dxvk {
     return LogLevel::Info;
   }
   
-  std::string Logger::getFileName(const std::string& base) {
+  std::string Logger::getFilePath(const std::string& fileName) {
     // NV-DXVK start: Use std::filesystem::path helpers + RtxFileSys
-    using fspath = std::filesystem::path;
-    fspath path = util::RtxFileSys::path(util::RtxFileSys::Logs);
-    if(path.empty()) {
-      return "";
+    auto path = util::RtxFileSys::path(util::RtxFileSys::Logs);
+
+    // Note: If no path is specified to store log files in, simply use the current directory by returning
+    // the specified log file name directly.
+    if (path.empty()) {
+      return fileName;
     }
-    path /= "remix-dxvk.log";
-    std::cout << path << std::endl;
+
+    // Append the specified log file name to the logging directory.
+    path /= fileName;
+
     return path.string();
     // NV-DXVK end
   }
