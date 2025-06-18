@@ -548,6 +548,7 @@ namespace dxvk {
     m_rayReconstruction(device),
     m_nis(device),
     m_taa(device),
+    m_xess(device),
     m_composite(device),
     m_debug_view(device),
     m_autoExposure(device),
@@ -579,6 +580,7 @@ namespace dxvk {
     m_referenceDenoiserSecondLobe2.get().onDestroy();
     m_rayReconstruction.get().onDestroy();
     m_dlss.get().onDestroy();
+    m_xess.get().onDestroy();
     m_dlfg.get().onDestroy();
   }
 }

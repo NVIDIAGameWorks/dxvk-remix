@@ -733,8 +733,9 @@ namespace dxvk
   }
 
   Vector2 RtCamera::calcPixelJitter(uint32_t jitterFrameIdx) {
-    // Only apply jittering when DLSS/TAA is enabled, or if forced by settings
+    // Only apply jittering when DLSS/XeSS/TAA is enabled, or if forced by settings
     if (!RtxOptions::isDLSSOrRayReconstructionEnabled() &&
+        !RtxOptions::isXeSSEnabled() &&
         !RtxOptions::isTAAEnabled() &&
         !RtxOptions::forceCameraJitter()) {
       return Vector2{ 0, 0 };
