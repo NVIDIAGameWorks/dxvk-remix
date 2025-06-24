@@ -131,9 +131,6 @@ public:
   bool areAllReplacementsLoaded() const;
   std::vector<Mod::State> getReplacementStates() const;
 
-  uint64_t getGameTimeSinceStartMS() const;
-  uint64_t getRealTimeSinceStartMS() const;
-
   RtxGlobals& getGlobals() { return m_globals; }
 
   Rc<DxvkBuffer> getSurfaceMaterialBuffer() { return m_surfaceMaterialBuffer; }
@@ -190,7 +187,7 @@ public:
   // ISceneManager but not really
   void clear(Rc<DxvkContext> ctx, bool needWfi);
   void garbageCollection();
-  void prepareSceneData(Rc<RtxContext> ctx, class DxvkBarrierSet& execBarriers, const float frameTimeMilliseconds);
+  void prepareSceneData(Rc<RtxContext> ctx, class DxvkBarrierSet& execBarriers);
 
   void onFrameEnd(Rc<DxvkContext> ctx);
   void onFrameEndNoRTX();
@@ -299,9 +296,6 @@ private:
   Rc<DxvkBuffer> m_surfaceMaterialExtensionBuffer;
   Rc<DxvkBuffer> m_volumeMaterialBuffer;
 
-  uint32_t m_currentFrameIdx = -1;
-  bool m_useFixedFrameTime = false;
-  std::chrono::time_point<std::chrono::steady_clock> m_startTime;
   uint32_t m_activePOMCount = 0;
   
   float m_uniqueObjectSearchDistance = 1.f;

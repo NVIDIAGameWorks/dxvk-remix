@@ -60,6 +60,6 @@ namespace dxvk {
     
     void showImguiSettings();
 
-    void simulateAndDraw(RtxContext* ctx, DxvkContextState& dxvkCtxState, const Resources::RaytracingOutput& rtOutput, const float frameTimeSecs);
+    void simulateAndDraw(RtxContext* ctx, DxvkContextState& dxvkCtxState, const Resources::RaytracingOutput& rtOutput);
   };
 }

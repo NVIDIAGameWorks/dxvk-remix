@@ -66,7 +66,6 @@ namespace dxvk {
     RtxContext(const Rc<DxvkDevice>& device);
     ~RtxContext();
 
-    float getWallTimeSinceLastCall();
     float getGpuIdleTimeSinceLastCall();
 
     /**
@@ -129,8 +128,7 @@ namespace dxvk {
     void bindResourceView(const uint32_t slot, const Rc<DxvkImageView>& imageView, const Rc<DxvkBufferView>& bufferView);
 
     void getDenoiseArgs(NrdArgs& outPrimaryDirectNrdArgs, NrdArgs& outPrimaryIndirectNrdArgs, NrdArgs& outSecondaryNrdArgs);
-    void updateRaytraceArgsConstantBuffer(Resources::RaytracingOutput& rtOutput, float frameTimeMilliseconds,
-                                          const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent);
+    void updateRaytraceArgsConstantBuffer(Resources::RaytracingOutput& rtOutput, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent);
 
     D3D9RtxVertexCaptureData& allocAndMapVertexCaptureConstantBuffer();
     D3D9FixedFunctionVS& allocAndMapFixedFunctionVSConstantBuffer();
@@ -181,27 +179,27 @@ namespace dxvk {
 
     VkExtent3D setDownscaleExtent(const VkExtent3D& upscaleExtent);
 
-    VkExtent3D onFrameBegin(const VkExtent3D& upscaleExtent, float frameTimeMilliseconds);
+    VkExtent3D onFrameBegin(const VkExtent3D& upscaleExtent);
 
     void dispatchVolumetrics(const Resources::RaytracingOutput& rtOutput);
     void dispatchIntegrate(const Resources::RaytracingOutput& rtOutput);
     void dispatchPathTracing(const Resources::RaytracingOutput& rtOutput);
     void dispatchDemodulate(const Resources::RaytracingOutput& rtOutput);
     void dispatchNeeCache(const Resources::RaytracingOutput& rtOutput);
-    void dispatchDLSS(const Resources::RaytracingOutput& rtOutput, float frameTimeMilliseconds);
-    void dispatchRayReconstruction(const Resources::RaytracingOutput& rtOutput, float frameTimeMilliseconds);
-    void dispatchDenoise(const Resources::RaytracingOutput& rtOutput, float frameTimeMilliseconds);
+    void dispatchDLSS(const Resources::RaytracingOutput& rtOutput);
+    void dispatchRayReconstruction(const Resources::RaytracingOutput& rtOutput);
+    void dispatchDenoise(const Resources::RaytracingOutput& rtOutput);
     void dispatchComposite(const Resources::RaytracingOutput& rtOutput);
     void dispatchReplaceCompositeWithDebugView(const Resources::RaytracingOutput& rtOutput);
     void dispatchNIS(const Resources::RaytracingOutput& rtOutput);
     void dispatchTemporalAA(const Resources::RaytracingOutput& rtOutput);
-    void dispatchToneMapping(const Resources::RaytracingOutput& rtOutput, bool performSRGBConversion, const float frameTimeMilliseconds);
+    void dispatchToneMapping(const Resources::RaytracingOutput& rtOutput, bool performSRGBConversion);
     void dispatchBloom(const Resources::RaytracingOutput& rtOutput);
     void dispatchPostFx(Resources::RaytracingOutput& rtOutput);
     void dispatchDebugView(Rc<DxvkImage>& srcImage, const Resources::RaytracingOutput& rtOutput, bool captureScreenImage);
     void dispatchObjectPicking(Resources::RaytracingOutput& rtOutput, const VkExtent3D& srcExtent, const VkExtent3D& targetExtent);
     void dispatchDLFG();
-    void updateMetrics(const float frameTimeMilliseconds, const float gpuIdleTimeMilliseconds) const;
+    void updateMetrics(const float gpuIdleTimeMilliseconds) const;
 
     void rasterizeToSkyMatte(const DrawParameters& params, const DrawCallState& drawCallState);
     void initSkyProbe();

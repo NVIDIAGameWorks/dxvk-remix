@@ -53,8 +53,6 @@ namespace dxvk {
       const Resources::Resource* reference;         // [RGBA16f+], radiance for reference mode
       const Resources::Resource* confidence;        // [R16f+], confidence for history shortening
       const Resources::Resource* disocclusionThresholdMix; // [R8], geometric test relaxation mask
-
-      float frameTimeMs;
       bool reset;
     };
 

@@ -26,6 +26,7 @@
 #include "rtx_options.h"
 #include "rtx/pass/nrd_args.h"
 #include "../../util/util_string.h"
+#include "../../util/util_globaltime.h"
 #include <Shlwapi.h>
 #include <filesystem>
 
@@ -845,7 +846,7 @@ namespace dxvk {
       }
 
       if (RtxOptions::adaptiveAccumulation()) {
-        m_settings.updateAdaptiveAccumulation(inputs.frameTimeMs);
+        m_settings.updateAdaptiveAccumulation(GlobalTime::get().deltaTimeMs());
       }
     }
 
@@ -902,9 +903,7 @@ namespace dxvk {
       commonSettings.cameraJitterPrev[1] = commonSettings.cameraJitter[1];
       commonSettings.cameraJitter[0] = jitterVec[0] / static_cast<float>(width);
       commonSettings.cameraJitter[1] = jitterVec[1] / static_cast<float>(height);
-      // Note: timeDeltaBetweenFrames is in milliseconds, as specified by NRD. If set to 0, NRD will track the time itself.
-      commonSettings.timeDeltaBetweenFrames = m_settings.m_groupedSettings.timeDeltaBetweenFrames != 0 
-        ? m_settings.m_groupedSettings.timeDeltaBetweenFrames : inputs.frameTimeMs;
+      commonSettings.timeDeltaBetweenFrames = GlobalTime::get().deltaTimeMs();
       commonSettings.frameIndex = device()->getCurrentFrameId();
       commonSettings.accumulationMode = m_settings.m_resetHistory ? nrd::AccumulationMode::CLEAR_AND_RESTART : nrd::AccumulationMode::CONTINUE;
 

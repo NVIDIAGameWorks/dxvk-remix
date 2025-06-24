@@ -37,6 +37,7 @@
 #include "rtx_scene_manager.h"
 #include "rtx_texture_manager.h"
 #include "rtx_debug_view.h"
+#include "../util/util_globaltime.h"
 
 namespace dxvk {
 
@@ -362,14 +363,13 @@ namespace dxvk {
     const SceneManager& sceneManager,
     const VkExtent3D& downscaledExtent,
     const VkExtent3D& targetExtent,
-    float frameTimeMilliseconds,
     bool resetHistory,
     bool isCameraCut) {
 
     FrameBeginContext frameBeginCtx;
     frameBeginCtx.downscaledExtent = downscaledExtent;
     frameBeginCtx.targetExtent = targetExtent;
-    frameBeginCtx.frameTimeMilliseconds = frameTimeMilliseconds;
+    frameBeginCtx.frameTimeMilliseconds = GlobalTime::get().deltaTimeMs();
     frameBeginCtx.resetHistory = resetHistory;
     frameBeginCtx.isCameraCut = isCameraCut;
 
