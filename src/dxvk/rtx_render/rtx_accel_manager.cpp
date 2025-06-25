@@ -388,8 +388,7 @@ namespace dxvk {
                                             const std::vector<TextureRef>& textures,
                                             const CameraManager& cameraManager,
                                             InstanceManager& instanceManager,
-                                            OpacityMicromapManager* opacityMicromapManager,
-                                            float frameTimeMilliseconds) {
+                                            OpacityMicromapManager* opacityMicromapManager) {
     ScopedGpuProfileZone(ctx, "buildBLAS");
 
     auto& instances = instanceManager.getInstanceTable();
@@ -721,7 +720,7 @@ namespace dxvk {
     }
 
     buildBlases(ctx, execBarriers, cameraManager, opacityMicromapManager, instanceManager, 
-                textures, instances, blasBuckets, blasToBuild, blasRangesToBuild, frameTimeMilliseconds, totalScratchMemory);
+                textures, instances, blasBuckets, blasToBuild, blasRangesToBuild, totalScratchMemory);
   }
 
   void AccelManager::addBlas(RtInstance* instance, BlasEntry* blasEntry, const Matrix4* instanceToObject) {
@@ -1191,7 +1190,6 @@ namespace dxvk {
                                  const std::vector<std::unique_ptr<BlasBucket>>& blasBuckets,
                                  std::vector<VkAccelerationStructureBuildGeometryInfoKHR>& blasToBuild,
                                  std::vector<VkAccelerationStructureBuildRangeInfoKHR*>& blasRangesToBuild,
-                                 float frameTimeMilliseconds,
                                  size_t& totalScratchMemory) {
     ScopedGpuProfileZone(ctx, "buildBLAS");
     // Upload surfaces before opacity micromap generation which reads the surface data on the GPU
@@ -1199,7 +1197,7 @@ namespace dxvk {
 
     // Build and bind opacity micromaps
     if (opacityMicromapManager && opacityMicromapManager->isActive()) {
-      opacityMicromapManager->buildOpacityMicromaps(ctx, textures, cameraManager.getLastCameraCutFrameId(), frameTimeMilliseconds);
+      opacityMicromapManager->buildOpacityMicromaps(ctx, textures, cameraManager.getLastCameraCutFrameId());
 
       // Bind opacity micromaps
       for (auto& blasBucket : blasBuckets) {

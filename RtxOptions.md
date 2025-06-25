@@ -157,7 +157,6 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.demodulate.enableDirectLightBoilingFilter|bool|True|Boiling filter removing direct light sample when its luminance is too high\.|
 |rtx.denoiseDirectAndIndirectLightingSeparately|bool|True|Denoising quality, high uses separate denoising of direct and indirect lighting for higher quality at the cost of performance\.|
 |rtx.denoiser.maxDirectHitTContribution|float|-1||
-|rtx.denoiser.nrd.timeDeltaBetweenFrames|float|0|Frame time in milliseconds to use for denoising\. Setting this to 0 will use actual frame time for a given frame\. Non\-zero value is primarily used for automation to ensure image output determinism\.|
 |rtx.denoiserIndirectMode|int|14||
 |rtx.denoiserMode|int|14||
 |rtx.di.confidenceGradientPower|float|8||

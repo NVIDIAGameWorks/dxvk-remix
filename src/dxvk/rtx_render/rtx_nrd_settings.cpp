@@ -247,11 +247,6 @@ namespace dxvk {
       break;
     }
 
-    if (getTimeDeltaBetweenFrames() > 0) {
-      m_groupedSettings.timeDeltaBetweenFrames = getTimeDeltaBetweenFrames();
-    }
-    m_groupedSettings.timeDeltaBetweenFrames = std::max(0.f, m_groupedSettings.timeDeltaBetweenFrames);
-
     if (maxDirectHitTContribution() > 0) {
       m_groupedSettings.maxDirectHitTContribution = maxDirectHitTContribution();
     }
@@ -329,7 +324,6 @@ namespace dxvk {
 
       bool settingsChanged = false;
 
-      settingsChanged |= ImGui::DragFloat("Frame Time Delta [ms]", &m_groupedSettings.timeDeltaBetweenFrames, 0.1f, 0.f, 1000.f, "%.1f", sliderFlags);
       // Note: the space after "Debug" in the widget name is intentional. "Debug" imgui widget 
       // triggers a different code path in imgui resulting in asserts. Because reasons...
       ImGui::DragFloat("Debug ", &m_commonSettings.debug, 0.001f, 0.0f, 1.f, "%.3f", sliderFlags);
@@ -501,10 +495,6 @@ namespace dxvk {
         }
       }
     }
-  }
-
-  float NrdSettings::getTimeDeltaBetweenFrames() {
-    return timeDeltaBetweenFrames();
   }
 
   void NrdSettings::updateAdaptiveAccumulation(float frameTimeMs) {

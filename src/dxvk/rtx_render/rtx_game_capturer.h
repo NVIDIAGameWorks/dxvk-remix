@@ -118,7 +118,7 @@ public:
   GameCapturer(DxvkDevice* const pDevice, SceneManager& sceneManager, AssetExporter& exporter);
   ~GameCapturer();
 
-  void step(const Rc<DxvkContext> ctx, const float frameTimeMilliseconds, const HWND hwnd);
+  void step(const Rc<DxvkContext> ctx, const HWND hwnd);
   void triggerNewCapture() {
     m_bTriggerCapture = true;
   }

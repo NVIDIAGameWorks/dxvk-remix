@@ -32,6 +32,7 @@
 #include <rtx_shaders/dust_particles_vertex.h>
 #include <rtx_shaders/dust_particles_fragment.h>
 #include "dxvk_context_state.h"
+#include "../util/util_globaltime.h"
 
 namespace dxvk {
 
@@ -253,7 +254,7 @@ namespace dxvk {
 
   static_assert(sizeof(GpuParticle) == 8 * 4, "Unexpected, please check perf");// be careful with performance when increasing this!
 
-  void RtxDustParticles::simulateAndDraw(RtxContext* ctx, DxvkContextState& dxvkCtxState, const Resources::RaytracingOutput& rtOutput, const float frameTimeSecs) {
+  void RtxDustParticles::simulateAndDraw(RtxContext* ctx, DxvkContextState& dxvkCtxState, const Resources::RaytracingOutput& rtOutput) {
     if (!enable()) { 
       return;
     }
@@ -303,7 +304,7 @@ namespace dxvk {
     ctx->setPushConstantBank(DxvkPushConstantBank::RTX);
 
     ParticleSystemConstants pushArgs;
-    setupConstants(ctx, frameTimeSecs, resourceManager, pushArgs);
+    setupConstants(ctx, GlobalTime::get().deltaTime(), resourceManager, pushArgs);
     ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
 
     ctx->draw(numberOfParticles(), 1, 0, 0);

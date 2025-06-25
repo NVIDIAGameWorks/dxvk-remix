@@ -389,7 +389,7 @@ namespace dxvk {
                                         VkAccelerationStructureGeometryKHR& targetGeometry, const InstanceManager& instanceManager);
 
     // Called once per frame to build pending Opacity Micromap items in Opacity Micromap Manager
-    void buildOpacityMicromaps(Rc<DxvkContext> ctx, const std::vector<TextureRef>& textures, uint32_t lastCameraCutFrameId, float frameTimeMilliseconds);
+    void buildOpacityMicromaps(Rc<DxvkContext> ctx, const std::vector<TextureRef>& textures, uint32_t lastCameraCutFrameId);
 
     // Called once per frame before any calls to Opacity Micromap Manager
     void onFrameStart(Rc<DxvkContext> ctx);

@@ -50,6 +50,8 @@
 #include "rtx_matrix_helpers.h"
 #include "rtx_lights.h"
 
+#include "../util/util_globaltime.h"
+
 #include <filesystem>
 
 #define BASE_DIR (util::RtxFileSys::path(util::RtxFileSys::Captures).string())
@@ -126,13 +128,13 @@ namespace dxvk {
   GameCapturer::~GameCapturer() {
   }
 
-  void GameCapturer::step(const Rc<DxvkContext> ctx, const float frameTimeMilliseconds, const HWND hwnd) {
+  void GameCapturer::step(const Rc<DxvkContext> ctx, const HWND hwnd) {
     trigger(ctx);
     if(m_state.has<State::Initializing>()) {
       initCapture(ctx, hwnd);
     }
     if (m_state.has<State::Capturing>()) {
-      capture(ctx, frameTimeMilliseconds);
+      capture(ctx, GlobalTime::get().deltaTimeMs());
     }
     if (m_state.has<State::BeginExport>()) {
       exportUsd(ctx);

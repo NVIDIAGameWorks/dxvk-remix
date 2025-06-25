@@ -59,7 +59,6 @@ namespace dxvk {
 
     struct SettingsImpactingDenoiserOutput {
       bool calculateDirectionPdf = true;
-      float timeDeltaBetweenFrames = 0; // 0 == use frame time delta
       float maxDirectHitTContribution = 0.5f;
     };
 
@@ -80,11 +79,9 @@ namespace dxvk {
     void initialize(const nrd::LibraryDesc& libraryDesc, const dxvk::Config& config, DenoiserType type);
     void showImguiSettings();
 
-    static float getTimeDeltaBetweenFrames();
     void updateAdaptiveAccumulation(float frameTimeMs);
 
   private:
-    RTX_OPTION_ENV("rtx.denoiser.nrd", float, timeDeltaBetweenFrames, 0.f, "DXVK_DENOISER_NRD_FRAME_TIME_MS", "Frame time in milliseconds to use for denoising. Setting this to 0 will use actual frame time for a given frame. Non-zero value is primarily used for automation to ensure image output determinism.");
     RTX_OPTION_ENV("rtx", nrd::Denoiser, denoiserMode, sDefaultDenoiser, "DXVK_DENOISER_NRD_MODE", "");
     RTX_OPTION_ENV("rtx", nrd::Denoiser, denoiserIndirectMode, sDefaultIndirectDenoiser, "DXVK_DENOISER_INDIRECT_NRD_MODE", "");
     RTX_OPTION("rtx.denoiser", float, maxDirectHitTContribution, -1.0f, "");

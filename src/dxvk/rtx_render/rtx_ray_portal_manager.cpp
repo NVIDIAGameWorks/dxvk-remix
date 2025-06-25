@@ -233,7 +233,7 @@ namespace dxvk {
   }
 
   // Prepare scene data is copying constants to a structure - which is then consumed by raytracing CB
-  void RayPortalManager::prepareSceneData(Rc<DxvkContext> /*ctx*/, const float /*frameTimeMilliseconds*/) {
+  void RayPortalManager::prepareSceneData(Rc<DxvkContext> /*ctx*/) {
     ScopedCpuProfileZone();
     // Save the previous frame data
     memcpy(m_sceneData.previousRayPortalHitInfos, m_sceneData.rayPortalHitInfos, sizeof(m_sceneData.previousRayPortalHitInfos));
