@@ -774,7 +774,7 @@ namespace dxvk {
     }
     Metrics::logRollingAverage(Metric::vid_memory_usage, static_cast<float>(vidUsageMib)); // In MB
     Metrics::logRollingAverage(Metric::sys_memory_usage, static_cast<float>(sysUsageMib)); // In MB
-    Metrics::logFloat(Metric::total_time, static_cast<float>(GlobalTime::get().absoluteTimeMs()));
+    Metrics::logFloat(Metric::total_time, static_cast<float>(GlobalTime::get().realTimeSinceStartMs()));
     Metrics::logFloat(Metric::frame_count, static_cast<float>(m_device->getCurrentFrameId()));
   }
 
