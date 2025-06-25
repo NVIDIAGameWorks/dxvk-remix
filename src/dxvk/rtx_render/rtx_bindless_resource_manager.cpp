@@ -200,7 +200,7 @@ namespace dxvk {
   void BindlessResourceManager::createGlobalBindlessDescPool() {
     // Create bindless descriptor pool
     static std::array<VkDescriptorPoolSize, Table::Count> pools = { {
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kMaxBindlessResources * kMaxFramesInFlight },
+        { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,          kMaxBindlessResources * kMaxFramesInFlight },
         { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         kMaxBindlessResources * kMaxFramesInFlight },
         { VK_DESCRIPTOR_TYPE_SAMPLER,                kMaxBindlessResources * kMaxFramesInFlight }
     } };

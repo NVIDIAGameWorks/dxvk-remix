@@ -87,7 +87,7 @@ RWTexture2D<float2> GBufferLast;
 
 // Outputs
 
-layout(r32f, binding = RTXDI_REUSE_BINDING_REPROJECTION_CONFIDENCE_OUTPUT)
+layout(r16f, binding = RTXDI_REUSE_BINDING_REPROJECTION_CONFIDENCE_OUTPUT)
 RWTexture2D<float> ReprojectionConfidence;
 
 layout(rg16f, binding = RTXDI_REUSE_BINDING_BSDF_FACTOR_OUTPUT)
