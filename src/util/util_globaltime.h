@@ -15,6 +15,9 @@ namespace dxvk {
     float                       m_timeDeltaBetweenFrames = 0.f;
     std::function<uint64_t()>   m_source;
 
+    // The time at which the application started. (really the first time GlobalTime::get() is called)
+    uint64_t                    m_startTimeUs = 0;
+
     // default steady_clock in microseconds
     static uint64_t defaultSource() {
       using namespace std::chrono;
@@ -33,6 +36,7 @@ namespace dxvk {
       : m_source(&GlobalTime::defaultSource) {
       m_lastUs = m_source();
       m_currentUs = m_lastUs;
+      m_startTimeUs = m_lastUs;
     }
 
   public:
@@ -74,6 +78,13 @@ namespace dxvk {
       return m_currentUs / 1000;
     }
 
+    // whole milliseconds since startup, ignoring deterministic time settings.
+    uint64_t realTimeSinceStartMs() const {
+      // Note: this returns the actual time since the application started.  This should be used for profiling and metrics.
+      return (defaultSource() - m_startTimeUs) / 1000;
+    }
+
+  private:
 
     // override underlying time source (for tests)
     void resetDeterministicTimeSource() {
