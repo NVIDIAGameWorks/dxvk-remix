@@ -419,7 +419,13 @@ namespace dxvk {
   }
 
   vk::Presenter* D3D9SwapChainEx::GetPresenter() const {
-    return m_presenter != nullptr ? m_presenter.ptr() : m_dlfgPresenter.ptr();
+    const auto presenter = m_presenter != nullptr ? m_presenter.ptr() : m_dlfgPresenter.ptr();
+
+    // Note: The returned presenter must be non-null as one of the two presenters must be non-null at all times,
+    // and because code will blindly dereference this returned pointer.
+    assert(presenter != nullptr);
+
+    return presenter;
   }
 
   HRESULT STDMETHODCALLTYPE D3D9SwapChainEx::Present(
