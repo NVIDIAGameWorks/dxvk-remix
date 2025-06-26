@@ -25,6 +25,7 @@
 #include "dxvk_openvr.h"
 #include "dxvk_openxr.h"
 #include "dxvk_platform_exts.h"
+#include "rtx_render/rtx_system_info.h"
 #include "rtx_render/rtx_options.h"
 #include "rtx_render/rtx_mod_manager.h"
 
@@ -215,6 +216,10 @@ namespace dxvk {
   DxvkInstance::DxvkInstance() {
     Logger::info(str::format("Game: ", env::getExeName()));
     Logger::info(str::format("DXVK_Remix: ", DXVK_VERSION));
+
+    // NV-DXVK start: Log System Info Report
+    RtxSystemInfo::logReport();
+    // NV-DXVK end 
 
     // NV-DXVK start: Decomposed growing config initialization
     // TODO[REMIX-4106] we need to avoid re-parsing the same config files when dxvk_instance is recreated.

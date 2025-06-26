@@ -83,26 +83,34 @@ namespace dxvk::str {
     return result;
   }
 
-  std::string formatBytes(size_t bytes) {
-    const double KB = 1024.0;
-    const double MB = KB * 1024.0;
-    const double GB = MB * 1024.0;
-    const double TB = GB * 1024.0;
+  std::string formatBytes(std::size_t bytes) {
+    // Note: 2^64 is 16 EiB, so no need to go beyond this for binary metric prefixes.
+    constexpr std::size_t KiB = 1024;
+    constexpr std::size_t MiB = KiB * 1024;
+    constexpr std::size_t GiB = MiB * 1024;
+    constexpr std::size_t TiB = GiB * 1024;
+    constexpr std::size_t PiB = TiB * 1024;
+    constexpr std::size_t EiB = PiB * 1024;
 
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(2);
 
-    if (bytes < KB) {
+    if (bytes < KiB) {
       oss << bytes << " B";
-    } else if (bytes < MB) {
-      oss << (static_cast<double>(bytes) / KB) << " KiB";
-    } else if (bytes < GB) {
-      oss << (static_cast<double>(bytes) / MB) << " MiB";
-    } else if (bytes < TB) {
-      oss << (static_cast<double>(bytes) / GB) << " GiB";
+    } else if (bytes < MiB) {
+      oss << (static_cast<double>(bytes) / static_cast<double>(KiB)) << " KiB";
+    } else if (bytes < GiB) {
+      oss << (static_cast<double>(bytes) / static_cast<double>(MiB)) << " MiB";
+    } else if (bytes < TiB) {
+      oss << (static_cast<double>(bytes) / static_cast<double>(GiB)) << " GiB";
+    } else if (bytes < PiB) {
+      oss << (static_cast<double>(bytes) / static_cast<double>(TiB)) << " TiB";
+    } else if (bytes < EiB) {
+      oss << (static_cast<double>(bytes) / static_cast<double>(PiB)) << " PiB";
     } else {
-      oss << (static_cast<double>(bytes) / TB) << " TiB";
+      oss << (static_cast<double>(bytes) / static_cast<double>(EiB)) << " EiB";
     }
+
     return oss.str();
   }
 }
