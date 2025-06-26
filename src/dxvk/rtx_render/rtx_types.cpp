@@ -166,6 +166,8 @@ namespace dxvk {
 
     setCategory(InstanceCategories::Terrain, lookupHash(RtxOptions::terrainTextures(), textureHash));
     setCategory(InstanceCategories::Sky, lookupHash(RtxOptions::skyBoxTextures(), textureHash));
+
+    setCategory(InstanceCategories::ParticleEmitter, lookupHash(RtxOptions::particleEmitterTextures(), textureHash));
   }
 
   void DrawCallState::setupCategoriesForGeometry() {
@@ -281,7 +283,7 @@ namespace dxvk {
         : makeCameraPosition(
             drawCallState.getTransformData().worldToView,
             drawCallState.zWriteEnable,
-            drawCallState.alphaBlendEnable,
+            drawCallState.getMaterialData().alphaBlendEnabled,
             hasSkinning);
 
     auto l_addIfUnique = [&seenCameraPositions](const std::optional<Vector3>& newCameraPos) {

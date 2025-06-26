@@ -509,6 +509,9 @@ namespace dxvk {
         takeScreenshot("orgImage", targetImage);
       }
 
+      RtxParticleSystemManager& particles = m_device->getCommon()->metaParticleSystem();
+      particles.submitDrawState(this);
+
       this->spillRenderPass(false);
 
       getCommonObjects()->getTextureManager().submitTexturesToDeviceLocal(this, m_execBarriers, m_execAcquires);

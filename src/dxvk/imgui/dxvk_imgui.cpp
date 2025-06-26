@@ -61,6 +61,7 @@
 #include "dxvk_scoped_annotation.h"
 #include "../../d3d9/d3d9_rtx.h"
 #include "dxvk_memory_tracker.h"
+#include "rtx_render/rtx_particle_system.h"
 
 
 namespace dxvk {
@@ -184,7 +185,8 @@ namespace dxvk {
     {"opacitymicromapignoretextures", "Opacity Micromap Ignore Texture (optional)", &RtxOptions::opacityMicromapIgnoreTexturesObject()},
     {"ignorebakedlightingtextures","Ignore Baked Lighting Textures (optional)", &RtxOptions::ignoreBakedLightingTexturesObject()},
     {"ignorealphaontextures","Ignore Alpha Channel of Textures (optional)", &RtxOptions::ignoreAlphaOnTexturesObject()},
-    {"raytracedRenderTargetTextures","Raytraced Render Target Textures (optional)", &RtxOptions::raytracedRenderTargetTexturesObject(), ImGUI::kTextureFlagsRenderTarget}
+    {"raytracedRenderTargetTextures","Raytraced Render Target Textures (optional)", &RtxOptions::raytracedRenderTargetTexturesObject(), ImGUI::kTextureFlagsRenderTarget},
+    {"particleemittertextures","Particle Emitters (optional)", &RtxOptions::particleEmitterTexturesObject()}
   };
 
   ImGui::ComboWithKey<RenderPassGBufferRaytraceMode> renderPassGBufferRaytraceModeCombo {
@@ -3304,6 +3306,8 @@ namespace dxvk {
 
       ImGui::Unindent();
     }
+
+    RtxParticleSystemManager::showImguiSettings();
 
     if (ImGui::CollapsingHeader("Global Volumetrics", collapsingHeaderClosedFlags)) {
       ImGui::Indent();

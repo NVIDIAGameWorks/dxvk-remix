@@ -23,8 +23,20 @@
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/utility/shader_types.h"
+#include "particle_system_common.h"
 
-struct ParticleSystemConstants {
+struct GpuDustParticle {
+  vec3 position;
+  uint color;
+
+  f16vec3 velocity;
+  half timeToLive;
+  f16vec2 texcoord;
+  half size;
+  half initialTimeToLive;
+};
+
+struct DustParticleSystemConstants {
   vec3 upDirection;
   float minTtl;
 
@@ -61,16 +73,6 @@ struct ParticleSystemConstants {
   float isCameraLhs;
   float anisotropy;
   uint pad2;
-};
-
-struct GpuParticle {
-  vec3 position;
-  vec3 velocity;
-
-  half timeToLive;
-  half size;
-  half initialTimeToLive;
-  half pad;
 };
 
 // Inputs

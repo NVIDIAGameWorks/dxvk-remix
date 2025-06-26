@@ -1,0 +1,90 @@
+#usda 1.0
+(
+    "This file describes the USD Shader schemata for code generation."
+    subLayers = [
+        @usdGeom/schema.usda@
+    ]
+) 
+
+over "GLOBAL" (
+    customData = {
+        string libraryName = "RemixParticleSystem"
+        string libraryPath = "."
+    }
+)  
+{
+}
+
+class RemixParticleSystem "RemixParticleSystem" (
+    inherits = </Xformable>
+
+    doc = """
+          Schema for creating a GPU driven particle system as a prim.
+          Carries all static simulation parameters plus material binding.
+          """
+
+    customData = {
+        string className = "Prim" 
+    }
+)
+{
+    float minTtl                  = 0.0  (
+        doc = "Minimum time to live for each particle (seconds)."
+    )
+
+    float maxTtl                  = 5.0  (
+        doc = "Maximum time to live for each particle (seconds)."
+    )
+
+    float opacityMultiplier       = 1.0  (
+        doc = "Global opacity multiplier applied to particle sprite."
+    )
+
+    float initialVelocityFromNormal = 0.0 (
+        doc = "Initial speed along emitter normal direction."
+    )
+
+    float minParticleSize         = 0.01 (
+        doc = "Smallest particle diameter in scene units."
+    )
+
+    float maxParticleSize         = 1.0  (
+        doc = "Largest particle diameter in scene units."
+    )
+
+    float gravityForce            = 9.8  (
+        doc = "Acceleration due to gravity (scene units/sec^2)."
+    )
+
+    float maxSpeed                = 100.0 (
+        doc = "Clamp speed, particles faster than this are slowed."
+    )
+
+    float turbulenceFrequency     = 1.0   (
+        doc = "Frequency of procedural turbulence noise."
+    )
+
+    float turbulenceAmplitude     = 0.0   (
+        doc = "Amplitude of procedural turbulence noise."
+    )
+
+    int   maxNumParticles         = 10000 (
+        doc = "Maximum total particles alive at once."
+    )
+
+    bool  useTurbulence           = false (
+        doc = "Enable per particle turbulence sampling."
+    )
+
+    color4f  minSpawnColor        = (1, 1, 1, 1) (
+        doc = "The minimum colour variation range to use for particles being spawned."
+    )
+
+    color4f  maxSpawnColor        = (1, 1, 1, 1) (
+        doc = "The maximum colour variation range to use for particles being spawned."
+    )
+
+    rel emitter:mesh  (
+        doc = "Path to an emitter mesh whose normals drive spawning."
+    )
+}

@@ -1,3 +1,4 @@
+subdir('usd-plugins')
 subdir('tracy')
 subdir('util')
 subdir('spirv')

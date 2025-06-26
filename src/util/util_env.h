@@ -137,6 +137,11 @@ namespace dxvk::env {
    * \returns true if the function succeeds
    */
   bool getAvailableSystemPhysicalMemory(uint64_t& availableSize);
+
+  /**
+   * \brief Gets full directory path to the current module
+   */
+  std::string getDllDirectory();
   // NV-DXVK end
 
   /**

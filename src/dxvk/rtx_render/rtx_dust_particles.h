@@ -52,7 +52,7 @@ namespace dxvk {
     RTX_OPTION("rtx.dust", float, turbulenceFrequency, .05f, "The rate of change of turbulence forces.");
     RTX_OPTION("rtx.dust", float, rotationSpeed, 5.f, "How quickly the particle is rotating (this primarily only affects light interaction).");
 
-    void setupConstants(RtxContext* ctx, const float frameTimeSecs, Resources& resourceManager, ParticleSystemConstants& constants);
+    void setupConstants(RtxContext* ctx, const float frameTimeSecs, Resources& resourceManager, DustParticleSystemConstants& constants);
 
   public:
     RtxDustParticles(DxvkDevice* device);

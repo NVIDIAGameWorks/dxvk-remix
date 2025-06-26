@@ -103,6 +103,20 @@ f16vec3 unorm3x8ToFloat3x16(uint32_t u)
   return f16vec3(unorm8ToF16(u >> 0), unorm8ToF16(u >> 8), unorm8ToF16(u >> 16));
 }
 
+uint32_t float4x16ToUnorm4x8(f16vec4 f)
+{
+  return 
+    uint32_t(f16ToUnorm8(f.x)) |
+    (uint32_t(f16ToUnorm8(f.y)) << 8)  |
+    (uint32_t(f16ToUnorm8(f.z)) << 16) |
+    (uint32_t(f16ToUnorm8(f.w)) << 24);
+}
+
+f16vec4 unorm4x8ToFloat4x16(uint32_t u)
+{
+  return f16vec4(unorm8ToF16(u >> 0), unorm8ToF16(u >> 8), unorm8ToF16(u >> 16), unorm8ToF16(u >> 24));
+}
+
 // General Color Packing
 
 // Converts a [0, 1] RGB color value to R5G6B5 encoding. Note this encoding favors the green channel as

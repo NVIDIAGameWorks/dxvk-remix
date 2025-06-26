@@ -497,6 +497,21 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.opaqueSpecularLobeSamplingProbabilityZeroThreshold|float|0.01|The threshold for which to zero opaque specular probability weight values\.|
 |rtx.orthographicIsUI|bool|True|When enabled, draw calls that are orthographic will be considered as UI\.|
 |rtx.particleSoftnessFactor|float|0.05|Multiplier for the view distance that is used to calculate the particle blending range\.|
+|rtx.particles.enable|bool|True|Enables dust particle simulation and rendering\.|
+|rtx.particles.globalPreset.gravityForce|float|-0.5|Net influence of gravity acting on each particle \(meters per second squared\)\.|
+|rtx.particles.globalPreset.initialVelocityFromNormal|float|10|Initial speed to apply on spawn \(units/sec\) along the normal vector of the spawning triangle\.|
+|rtx.particles.globalPreset.maxParticleLife|float|6|Maximum lifetime \(in seconds\) to give to a particle when spawned\.|
+|rtx.particles.globalPreset.maxParticleSize|float|3|Maximum size \(in world units\) to give to a particle when spawned\.|
+|rtx.particles.globalPreset.maxSpeed|float|3|Maximum speed of a particle in world space\.|
+|rtx.particles.globalPreset.minParticleLife|float|3|Minimum lifetime \(in seconds\) to give to a particle when spawned\.|
+|rtx.particles.globalPreset.minParticleSize|float|1|Minimum size \(in world units\) to give to a particle when spawned\.|
+|rtx.particles.globalPreset.numberOfParticlesPerMaterial|int|98304|Maximum number of particles to simulate per material simultaneously\.  There is a performance consideration, lower numbers are more performant\.  Ideal is to tune this number for your specific needs\.|
+|rtx.particles.globalPreset.opacityMultiplier|float|1|Multiplier for the opacity of a particle in relation to the opacity of the triangle spawning the particle\.|
+|rtx.particles.globalPreset.spawnRatePerSecond|int|100|Number of particles \(per system\) to spawn per second on average\.|
+|rtx.particles.globalPreset.turbulenceAmplitude|float|5|How much turbulence influences the force of a particle\.|
+|rtx.particles.globalPreset.turbulenceFrequency|float|0.05|The rate of change of turbulence forces\.|
+|rtx.particles.globalPreset.useTurbulence|bool|True|Enable turbulence simulation\.|
+|rtx.particles.timeScale|float|1|Time modifier, can be used to slow/speed up time\.|
 |rtx.pathMaxBounces|int|4|The maximum number of indirect bounces the path will be allowed to complete\. Must be \< 16\.<br>Higher values result in better indirect lighting quality due to biasing the signal less, lower values result in better performance\.<br>Very high values are not recommended however as while long paths may be technically needed for unbiased rendering, in practice the contributions from higher bounces have diminishing returns\.|
 |rtx.pathMinBounces|int|1|The minimum number of indirect bounces the path must complete before Russian Roulette can be used\. Must be \< 16\.<br>This value is recommended to stay fairly low \(1 for example\) as forcing longer paths when they carry little contribution quickly becomes detrimental to performance\.|
 |rtx.pipeline.useDeferredOperations|bool|True||
@@ -881,6 +896,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.neuralRadianceCache.cudaDllDepsDirectoryPath|string||Optional setting for specifying a custom directory path where the CUDA run\-time dll dependencies are located\.|
 |rtx.nonOffsetDecalTextures|hash set||Warning: This option is deprecated, please use rtx\.decalTextures instead\.<br>Textures on draw calls used for geometric decals with arbitrary topology that are already offset from the base geometry\.<br>These materials will be blended over the materials underneath them when decal material blending is enabled\.<br>Unlike typical decals however these decals have no offset applied to them due assuming the offset is already being done by whatever is passing data to Remix\.|
 |rtx.opacityMicromapIgnoreTextures|hash set||Textures to ignore when generating Opacity Micromaps\. This generally does not have to be set and is only useful for black listing problematic cases for Opacity Micromap usage\.|
+|rtx.particleEmitterTextures|hash set||Objects rendered with these textures will emit particles that inherit the material of the object itself\.|
 |rtx.particleTextures|hash set||Textures on draw calls that should be treated as particles\.<br>When objects are marked as particles more approximate rendering methods are leveraged allowing for more effecient and typically better looking particle rendering\.<br>Generally any billboard\-like blended particle objects in the original application should be classified this way\.|
 |rtx.playerModelBodyTextures|hash set|||
 |rtx.playerModelTextures|hash set|||

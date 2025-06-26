@@ -21,24 +21,27 @@
 */
 #pragma once
 
-#include "rtx/pass/particles/dust_particles_binding_indices.h"
+#include "rtx/pass/particles/particle_system_binding_indices.h"
 #include "rtx/pass/common_bindings.slangh"
 
 // Inputs
 
 layout(push_constant)
-ConstantBuffer<DustParticleSystemConstants> particleCb;
+ConstantBuffer<EvolveArgs> args;
 
-layout(binding = DUST_PARTICLES_BINDING_FILTERED_RADIANCE_Y_INPUT)
-Sampler3D<float4> FilteredAccumulatedRadianceY;
+layout(binding = PARTICLE_SYSTEM_BINDING_CONSTANTS)
+ConstantBuffer<ParticleSystemConstants> particleCb;
 
-layout(binding = DUST_PARTICLES_BINDING_FILTERED_RADIANCE_CO_CG_INPUT)
-Sampler3D<float2> FilteredAccumulatedRadianceCoCg;
+layout(binding = PARTICLE_SYSTEM_BINDING_SPAWN_CONTEXT_PARTICLE_MAPPING_INPUT)
+StructuredBuffer<uint16_t> SpawnContextParticleMapping;
 
-layout(binding = DUST_PARTICLES_BINDING_DEPTH_INPUT)
-Sampler2D<float> PrimaryDepth;
+layout(binding = PARTICLE_SYSTEM_BINDING_SPAWN_CONTEXTS_INPUT)
+StructuredBuffer<GpuSpawnContext> SpawnContexts;
 
 // Outputs
 
-layout(binding = DUST_PARTICLES_BINDING_PARTICLES_BUFFER_INOUT)
-RWStructuredBuffer<GpuDustParticle> Particles;
+layout(binding = PARTICLE_SYSTEM_BINDING_PARTICLES_BUFFER_INPUT_OUTPUT)
+RWStructuredBuffer<GpuParticle> Particles;
+
+layout(binding = PARTICLE_SYSTEM_BINDING_VERTEX_BUFFER_OUTPUT)
+RWStructuredBuffer<ParticleVertex> Vertices;
