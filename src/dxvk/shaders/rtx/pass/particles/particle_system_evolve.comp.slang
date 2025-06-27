@@ -26,6 +26,8 @@
 #include "rtx/utility/procedural_noise.slangh"
 #include "rtx/utility/brdf.slangh"
 #include "rtx/utility/packing.slangh"
+#include "rtx/utility/gbuffer_helpers.slangh"
+#include "rtx/utility/debug_view_helpers.slangh"
 #include "rtx/concept/camera/camera.slangh"
     
 uint getSpawnContextParticleMappingIdx(uint particleIdx, const GpuParticleSystem particleSystem)
@@ -36,6 +38,22 @@ uint getSpawnContextParticleMappingIdx(uint particleIdx, const GpuParticleSystem
 bool shouldRespawn(uint particleIdx, const GpuParticleSystem particleSystem)
 {
   return particleSystem.spawnParticleCount > 0 && getSpawnContextParticleMappingIdx(particleIdx, particleSystem) < particleSystem.spawnParticleCount;
+}
+
+f16vec3 sampleDirectionInCone(f16vec3 axis, float cosConeHalfAngle, float2 rndUV)
+{
+  float cosTheta = lerp(cosConeHalfAngle, 1.0f, rndUV.x);
+  float sinTheta = sqrt(1.0f - cosTheta * cosTheta);
+
+  float phi = rndUV.y * twoPi;
+  float sinPhi, cosPhi;
+  sincos(phi, sinPhi, cosPhi);
+
+  // build an arbitrary tangent basis
+  f16vec3 tangent, bitangent;
+  calcOrthonormalBasis(axis, tangent, bitangent);
+  
+  return sinTheta * cosPhi * tangent + sinTheta * sinPhi * bitangent + cosTheta * axis;
 }
 
 // Generate a new particle in-place with random properties
@@ -105,32 +123,31 @@ GpuParticle respawn(uint particleIdx, const GpuParticleSystem particleSystem)
   float3 random01 = float3(randomFloat(uint2(randomSeed++, particleCb.frameIdx)), randomFloat(uint2(randomSeed++, particleCb.frameIdx)), randomFloat(uint2(randomSeed++, particleCb.frameIdx)));
   float3 randomBary = saturate(random01 / dot(random01, 1..xxx));
   float3 worldPosition = interpolateHitAttribute(positions, randomBary);
-  float3 worldNormal = cross(normalize(positions[1] - positions[0]), normalize(positions[2] - positions[0]));
+  f16vec3 worldNormal = f16vec3(cross(normalize(positions[1] - positions[0]), normalize(positions[2] - positions[0])));
   float16_t4 color = interpolateHitAttribute(colors, randomBary);
-  float16_t size = 1.f;
-  
-  // Variation
-  
-  color = particleSystem.varyColor(randomFloat(uint2(randomSeed++, particleCb.frameIdx)), color);
-  size = particleSystem.varySize(randomFloat(uint2(randomSeed++, particleCb.frameIdx)), size);
   
   // Spawn a particle
   
   newParticle.position = worldPosition;
-  newParticle.velocity = worldNormal * particleSystem.desc.initialVelocityFromNormal;
   
-  newParticle.color = float4x16ToUnorm4x8(color);
-  newParticle.uvMinMax = float16_t4(uvMinMax);
+  float cosCone = cos(radians(particleSystem.desc.initialVelocityConeAngleDegrees));
+
+  f16vec3 dir = sampleDirectionInCone(worldNormal, cosCone, float2(randomFloat(uint2(randomSeed++, particleCb.frameIdx)), randomFloat(uint2(randomSeed++, particleCb.frameIdx))));
+  newParticle.velocity = dir * particleSystem.desc.initialVelocityFromNormal;
+  
+  newParticle.color = float4x16ToUnorm4x8(particleSystem.varyColor(randomFloat(uint2(randomSeed++, particleCb.frameIdx)), color));
+  newParticle.uvMinMax = particleSystem.desc.useSpawnTexcoords ? float16_t4(uvMinMax) : float16_t4(0..xx, 1..xx);
   newParticle.initialTimeToLive = newParticle.timeToLive = lerp(particleSystem.desc.minTtl, particleSystem.desc.maxTtl, randomFloat(uint2(randomSeed++, particleCb.frameIdx)));
-  newParticle.size = size;
+  newParticle.size = particleSystem.varySize(randomFloat(uint2(randomSeed++, particleCb.frameIdx)), 1.f); // Currently we just assume a starting size of 1, but this could be a property of the emitter triangles?
   newParticle.rotation = 0;
-  newParticle.rotationSpeed = lerp(0, pi, randomFloat(uint2(randomSeed++, particleCb.frameIdx)));
+  newParticle.rotationSpeed = particleSystem.varyRotationSpeed(randomFloat(uint2(randomSeed++, particleCb.frameIdx)));
   
   return newParticle;
 }
 
 void clearParticleVertices(uint particleIdx)
 {
+  [unroll]
   for (uint i=0 ; i<4 ; i++)
   {
     Vertices[particleIdx * 4 + i].position = 0..xxx;
@@ -146,14 +163,93 @@ float2 rotate2D(float2 inputVector, float radians)
   return float2(c * inputVector.x - s * inputVector.y, s * inputVector.x + c * inputVector.y);
 }
 
+float calculateParticleRotationFromPositions(float3 velocity, float4x4 worldToView)
+{
+  float3 v = velocity;
+  float len = length(v);
+  if (len < 1e-6f)
+      return 0.0f; // no motion --> no rotation
+
+  v /= len;
+
+  // extract camera right/up in world space
+  float3 right = worldToView[0].xyz;
+  float3  up   = worldToView[1].xyz;
+
+  // project velocity into that plane
+  float2 vel2D = float2(dot(v, right),  dot(v, up));
+
+  // atan2 gives angle from +X axis (right) towards +Y axis (up)
+  float angle = atan2(vel2D.y, vel2D.x);
+
+  // wrap
+  angle = fmod(angle + twoPi, twoPi);
+  return angle;
+}
+
+// small bias to avoid re-penetration
+static const float kCollisionBias = 1e-3f;
+
+void collideParticleWithScene(inout GpuParticle p)
+{
+  // Reproject current world-space pos into last frame's clip
+  float4 prevClip = mul(particleCb.prevWorldToProjection, float4(p.position, 1.0f));
+  float2 prevNdc  = prevClip.xy / prevClip.w;
+  float2 prevUv   = prevNdc * float2(0.5f, -0.5f) + float2(0.5f, 0.5f);
+
+  // early-out if outside [0,1] UV
+  if (prevUv.x < 0.0f || prevUv.x > 1.0f || prevUv.y < 0.0f || prevUv.y > 1.0f)
+  {
+    return;
+  }
+
+  // compute pixel coords in your depth/normal buffer
+  uint2 pixel = uint2(
+    prevUv.x * particleCb.renderingWidth  + 0.5f,
+    prevUv.y * particleCb.renderingHeight + 0.5f
+  );
+
+  // fetch the MinimalSurfaceInteraction from last frame
+  MinimalSurfaceInteraction si = minimalSurfaceInteractionReadFromGBuffer(pixel, PreviousWorldPosition_WorldTriangleNormal);
+
+  if(!si.isValid)
+  {
+    return;
+  }
+  
+  // unpack, normalize and flip normal
+  float3 n = normalize(float3(si.triangleNormal));
+  float3 viewDir = particleCb.viewToWorld[2].xyz;
+  if (dot(n, viewDir) < 0.0f)
+  {
+    n = -n;
+  }
+
+  // signed distance along that normal
+  float signedDist = dot(p.position - si.position, n);
+
+  // only collide if we’ve gone “inside” but not deeper than thickness
+  float thickness = particleCb.particleSystem.desc.collisionThickness;
+  if (signedDist < 0.0f && signedDist > -thickness)
+  {
+    // push the particle just outside the surface
+    float outDist = si.positionError + kCollisionBias;
+    p.position = si.position + n * outDist;
+
+    // reflect & apply restitution
+    float3 vRef = reflect(p.velocity, n);
+    p.velocity = vRef * particleCb.particleSystem.desc.collisionRestitution;
+  }
+}
+
+
 [shader("compute")]
 [numthreads(128, 1, 1)]
 void main(uint2 threadIdx : SV_DispatchThreadID)
 {
-  const uint particleSystemIdx = args.particleSystemIdx;
   const uint particleIdx = threadIdx.x;
   
-  const GpuParticleSystem particleSystem = particleCb.particleSystems[particleSystemIdx];
+  const GpuParticleSystem particleSystem = particleCb.particleSystem;
   
   if(particleIdx >= particleSystem.desc.maxNumParticles)
   {
@@ -185,8 +281,22 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
     particle.velocity = min(particleSystem.desc.maxSpeed, length(particle.velocity)) * normalize(particle.velocity); 
   }
   
+  if (particleSystem.desc.enableCollisionDetection)
+  {
+    collideParticleWithScene(particle);
+  }
+  
   particle.position += particle.velocity * particleCb.deltaTimeSecs;
-  particle.rotation = (particle.rotation + particle.rotationSpeed * particleCb.deltaTimeSecs) % twoPi;
+  
+  if(particleSystem.desc.alignParticlesToVelocity)
+  {
+    particle.rotation = calculateParticleRotationFromPositions(particle.velocity, particleCb.worldToView);
+  }
+  else
+  {
+    particle.rotation = (particle.rotation + particle.rotationSpeed * particleCb.deltaTimeSecs) % twoPi;
+  }
+  
   particle.timeToLive -= particleCb.deltaTimeSecs;
   
   Particles[particleIdx] = particle;
@@ -207,11 +317,13 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
                                 unorm8ToF16(uint8_t(particle.color >> 16)),
                                 unorm8ToF16(uint8_t(particle.color >> 24)));
   
-  color.w *= particleSystem.calculateOpacity(saturate(particle.timeToLive / particle.initialTimeToLive));
+  const float normalizedLifetime = saturate(particle.timeToLive / particle.initialTimeToLive);
+  
+  // TODO: Option?
+  color.w *= particleSystem.calculateOpacity(normalizedLifetime);
+  const float size = particle.size * normalizedLifetime;
   
   uint colorEnc = float4x16ToUnorm4x8(color.zyxw);
-  
-  float size = particle.size * saturate(particle.timeToLive/particle.initialTimeToLive);
   
   [unroll]
   for (uint i=0 ; i<4 ; i++)
@@ -221,7 +333,7 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
     float2 offset = rotate2D(offsets[i], particle.rotation);
     vertex.position = particle.position + (offset.x* right + offset.y * up) * size;
     vertex.color = colorEnc;
-    vertex.texcoord = offsets[i] + 0.5.xx;
+    vertex.texcoord = (offsets[i] + 0.5f) * (particle.uvMinMax.zw - particle.uvMinMax.xy) + particle.uvMinMax.xy;
     
     Vertices[particleIdx * 4 + i] = vertex;
   }

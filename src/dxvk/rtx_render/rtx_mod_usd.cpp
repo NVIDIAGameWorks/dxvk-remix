@@ -572,18 +572,26 @@ bool UsdMod::Impl::processParticleSystem(Args& args, const pxr::UsdPrim& prim) {
             } 
 
     // Read all simulation parameters
-  READ_ATTR(float, MinTtl, minTtl);
-  READ_ATTR(float, MaxTtl, maxTtl);
-  //READ_ATTR(float, OpacityMultiplier, opacityMultiplier);
+  READ_ATTR(float, MinTimeToLive, minTtl);
+  READ_ATTR(float, MaxTimeToLive, maxTtl);
   READ_ATTR(float, InitialVelocityFromNormal, initialVelocityFromNormal);
+  READ_ATTR(float, InitialVelocityConeAngleDegrees, initialVelocityConeAngleDegrees);
   READ_ATTR(float, MinParticleSize, minParticleSize);
   READ_ATTR(float, MaxParticleSize, maxParticleSize);
+  READ_ATTR(float, MinRotationSpeed, minRotationSpeed);
+  READ_ATTR(float, MaxRotationSpeed, maxRotationSpeed);
   READ_ATTR(float, GravityForce, gravityForce);
   READ_ATTR(float, MaxSpeed, maxSpeed);
   READ_ATTR(float, TurbulenceFrequency, turbulenceFrequency);
   READ_ATTR(float, TurbulenceAmplitude, turbulenceAmplitude);
+  READ_ATTR(float, CollisionThickness, collisionThickness);
+  READ_ATTR(float, CollisionRestitution, collisionRestitution);
   READ_ATTR(int, MaxNumParticles, maxNumParticles);
   READ_ATTR(bool, UseTurbulence, useTurbulence);
+  READ_ATTR(bool, UseSpawnTexcoords, useSpawnTexcoords);
+  READ_ATTR(bool, EnableCollisionDetection, enableCollisionDetection);
+  READ_ATTR(bool, AlignParticlesToVelocity, alignParticlesToVelocity);
+  READ_ATTR(bool, SpawnRatePerSecond, spawnRate);
   READ_ATTR_CONV(GfVec4f, MaxSpawnColor, maxSpawnColor, toFloat4);
   READ_ATTR_CONV(GfVec4f, MinSpawnColor, minSpawnColor, toFloat4);
 

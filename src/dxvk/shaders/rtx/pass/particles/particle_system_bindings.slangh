@@ -26,9 +26,6 @@
 
 // Inputs
 
-layout(push_constant)
-ConstantBuffer<EvolveArgs> args;
-
 layout(binding = PARTICLE_SYSTEM_BINDING_CONSTANTS)
 ConstantBuffer<ParticleSystemConstants> particleCb;
 
@@ -37,6 +34,9 @@ StructuredBuffer<uint16_t> SpawnContextParticleMapping;
 
 layout(binding = PARTICLE_SYSTEM_BINDING_SPAWN_CONTEXTS_INPUT)
 StructuredBuffer<GpuSpawnContext> SpawnContexts;
+
+layout(binding = PARTICLE_SYSTEM_BINDING_PREV_WORLD_POSITION_INPUT)
+Texture2D<float4> PreviousWorldPosition_WorldTriangleNormal;
 
 // Outputs
 

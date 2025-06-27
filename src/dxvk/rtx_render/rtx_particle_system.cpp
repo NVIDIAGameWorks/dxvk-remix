@@ -32,8 +32,9 @@
 #include "../util/util_globaltime.h"
 
 #include <rtx_shaders/particle_system_evolve.h>
+#include "math.h"
 
-namespace dxvk {
+namespace dxvk { 
 
   // Defined within an unnamed namespace to ensure unique definition across binary
   namespace {
@@ -41,8 +42,6 @@ namespace dxvk {
     class ParticleSystemEvolve : public ManagedShader {
       SHADER_SOURCE(ParticleSystemEvolve, VK_SHADER_STAGE_COMPUTE_BIT, particle_system_evolve)
       
-      PUSH_CONSTANTS(EvolveArgs)
-
       BINDLESS_ENABLED()
 
       BEGIN_PARAMETER()
@@ -50,9 +49,10 @@ namespace dxvk {
 
         CONSTANT_BUFFER(PARTICLE_SYSTEM_BINDING_CONSTANTS)
 
+        STRUCTURED_BUFFER(PARTICLE_SYSTEM_BINDING_SPAWN_CONTEXT_PARTICLE_MAPPING_INPUT)
         STRUCTURED_BUFFER(PARTICLE_SYSTEM_BINDING_SPAWN_CONTEXTS_INPUT)
 
-        STRUCTURED_BUFFER(PARTICLE_SYSTEM_BINDING_SPAWN_CONTEXT_PARTICLE_MAPPING_INPUT)
+        TEXTURE2D(PARTICLE_SYSTEM_BINDING_PREV_WORLD_POSITION_INPUT)
 
         RW_STRUCTURED_BUFFER(PARTICLE_SYSTEM_BINDING_PARTICLES_BUFFER_INPUT_OUTPUT)
         RW_STRUCTURED_BUFFER(PARTICLE_SYSTEM_BINDING_VERTEX_BUFFER_OUTPUT)
@@ -82,17 +82,31 @@ namespace dxvk {
 
         if (ImGui::CollapsingHeader("Spawn", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen)) {
           ImGui::DragInt("Spawn Rate Per Second", &spawnRatePerSecondObject(), 0.1f, 1, 10000, "%d", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::Checkbox("Use Spawn Texture Coordinates", &useSpawnTexcoordsObject());
+          ImGui::DragFloat("Initial Velocity From Normal", &initialVelocityFromNormalObject(), 0.01f, -500.f, 500.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::Separator();
           ImGui::DragFloat("Minimum Life", &minParticleLifeObject(), 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::DragFloat("Maximum Life", &maxParticleLifeObject(), 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::DragFloat("Minimum Size", &minParticleSizeObject(), 0.01f, 0.01f, 500.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::DragFloat("Maximum Size", &maxParticleSizeObject(), 0.01f, 0.01f, 500.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloat("Opacity Multiplier", &opacityMultiplierObject(), 0.01f, 0.f, 1.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloat("Initial Velocity From Normal", &initialVelocityFromNormalObject(), 0.01f, 0.f, 500.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::DragFloat("Minimum Rotation Speed", &minRotationSpeedObject(), 0.01f, 0.f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::DragFloat("Maximum Rotation Speed", &maxRotationSpeedObject(), 0.01f, 0.f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          const auto colourPickerOpts = ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoSidePreview | ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_Float | ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_DisplayRGB;
+          ImGui::ColorPicker4("Minimum Color Tint", &minSpawnColorObject(), colourPickerOpts);
+          ImGui::ColorPicker4("Maximum Color Tint", &maxSpawnColorObject(), colourPickerOpts);
         }
 
         if (ImGui::CollapsingHeader("Simulation", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen)) {
           ImGui::DragFloat("Gravity Force", &gravityForceObject(), 0.01f, -100.f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::DragFloat("Max Speed", &maxSpeedObject(), 0.01f, 0.f, 100000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+
+          ImGui::Checkbox("Align Particles with Velocity", &alignParticlesToVelocityObject());
+
+          ImGui::Checkbox("Enable Particle World Collisions", &enableCollisionDetectionObject());
+          ImGui::BeginDisabled(!enableCollisionDetection());
+          ImGui::DragFloat("Collision Restitution", &collisionRestitutionObject(), 0.01f, 0.f, 1.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::DragFloat("Collision Thickness", &collisionThicknessObject(), 0.01f, 0.f, 10000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::EndDisabled();
 
           ImGui::Checkbox("Simulate Turbulence", &useTurbulenceObject());
           ImGui::BeginDisabled(!useTurbulence());
@@ -109,7 +123,13 @@ namespace dxvk {
 
   void RtxParticleSystemManager::setupConstants(RtxContext* ctx, ParticleSystemConstants& constants) {
     ScopedCpuProfileZone();
-    constants.worldToView = ctx->getSceneManager().getCamera().getWorldToView(true);
+    const RtCamera& camera = ctx->getSceneManager().getCamera();
+    constants.worldToView = camera.getWorldToView();
+    constants.viewToWorld = camera.getViewToWorld();
+    constants.prevWorldToProjection = camera.getPreviousViewToProjection() * camera.getPreviousWorldToView();
+
+    constants.renderingWidth = ctx->getSceneManager().getCamera().m_renderResolution[0];
+    constants.renderingHeight = ctx->getSceneManager().getCamera().m_renderResolution[1];
 
     constants.frameIdx = device()->getCurrentFrameId();
 
@@ -118,12 +138,6 @@ namespace dxvk {
     constants.upDirection.z = ctx->getSceneManager().getSceneUp().z;
     constants.deltaTimeSecs = GlobalTime::get().deltaTime() * timeScale();
     constants.absoluteTimeSecs = GlobalTime::get().absoluteTimeMs() * 0.001f * timeScale();
-
-    uint32_t idx = 0;
-    for (auto keyPairIt = m_particleSystems.begin(); keyPairIt != m_particleSystems.end(); ++keyPairIt) {
-      const ParticleSystem& particleSystem = *keyPairIt->second.get();
-      constants.particleSystems[idx++] = particleSystem.context;
-    }
   }
 
   // Please re-profile performance if any of these structures change in size.  As a minimum performance requirement, always preserve a 16 byte alignment.
@@ -133,10 +147,11 @@ namespace dxvk {
   RtxParticleSystemDesc RtxParticleSystemManager::createGlobalParticleSystemDesc() {
     RtxParticleSystemDesc desc;
     desc.initialVelocityFromNormal = RtxParticleSystemManager::initialVelocityFromNormal();
-    desc.opacityMultiplier = RtxParticleSystemManager::opacityMultiplier();
+    desc.initialVelocityConeAngleDegrees = RtxParticleSystemManager::initialVelocityConeAngleDegrees();
+    desc.alignParticlesToVelocity = RtxParticleSystemManager::alignParticlesToVelocity();
     desc.gravityForce = RtxParticleSystemManager::gravityForce();
     desc.maxSpeed = RtxParticleSystemManager::maxSpeed();
-    desc.useTurbulence = RtxParticleSystemManager::useTurbulence() ? 0 : 1;
+    desc.useTurbulence = RtxParticleSystemManager::useTurbulence() ? 1 : 0;
     desc.turbulenceFrequency = RtxParticleSystemManager::turbulenceFrequency();
     desc.turbulenceAmplitude = RtxParticleSystemManager::turbulenceAmplitude();
     desc.minTtl = RtxParticleSystemManager::minParticleLife();
@@ -144,8 +159,15 @@ namespace dxvk {
     desc.minParticleSize = RtxParticleSystemManager::minParticleSize();
     desc.maxParticleSize = RtxParticleSystemManager::maxParticleSize();
     desc.maxNumParticles = RtxParticleSystemManager::numberOfParticlesPerMaterial();
-    desc.minSpawnColor = { 1, 1, 1, 1 };
-    desc.maxSpawnColor = { 1, 1, 1, 1 };
+    desc.minSpawnColor = RtxParticleSystemManager::minSpawnColor();
+    desc.maxSpawnColor = RtxParticleSystemManager::maxSpawnColor();
+    desc.minRotationSpeed = RtxParticleSystemManager::minRotationSpeed();
+    desc.maxRotationSpeed = RtxParticleSystemManager::maxRotationSpeed();
+    desc.useSpawnTexcoords = RtxParticleSystemManager::useSpawnTexcoords() ? 1 : 0;
+    desc.enableCollisionDetection = RtxParticleSystemManager::enableCollisionDetection() ? 1 : 0;
+    desc.alignParticlesToVelocity = RtxParticleSystemManager::alignParticlesToVelocity() ? 1 : 0;
+    desc.collisionRestitution = RtxParticleSystemManager::collisionRestitution();
+    desc.collisionThickness = RtxParticleSystemManager::collisionThickness();
     return desc;
   }
 
@@ -254,20 +276,22 @@ namespace dxvk {
       Rc<DxvkSampler> valueNoiseSampler = ctx->getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT);
       ctx->bindResourceSampler(BINDING_VALUE_NOISE_SAMPLER, valueNoiseSampler);
 
-      ctx->writeToBuffer(m_cb, 0, sizeof(ParticleSystemConstants), &constants);
-      ctx->bindResourceBuffer(PARTICLE_SYSTEM_BINDING_CONSTANTS, DxvkBufferSlice(m_cb));
 
       ctx->bindResourceBuffer(PARTICLE_SYSTEM_BINDING_SPAWN_CONTEXTS_INPUT, DxvkBufferSlice(m_spawnContextsBuffer));
 
-      // Evolve
-      EvolveArgs pushArgs;
-      pushArgs.particleSystemIdx = 0;
+
+      const auto& rtOutput = ctx->getResourceManager().getRaytracingOutput();
+      ctx->bindResourceView(PARTICLE_SYSTEM_BINDING_PREV_WORLD_POSITION_INPUT, 
+                            rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read, 
+                                                                                               rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().matchesWriteFrameIdx(constants.frameIdx - 1)), nullptr);
 
       for (auto& system : m_particleSystems) {
-
-        ctx->setPushConstantBank(DxvkPushConstantBank::RTX);
-
-        ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
+        // Update CB
+        constants.particleSystem = system.second->context;
+        const DxvkBufferSliceHandle cSlice = m_cb->allocSlice(); 
+        ctx->invalidateBuffer(m_cb, cSlice);
+        ctx->writeToBuffer(m_cb, 0, sizeof(ParticleSystemConstants), &constants);
+        ctx->bindResourceBuffer(PARTICLE_SYSTEM_BINDING_CONSTANTS, DxvkBufferSlice(m_cb));
 
         ctx->bindResourceBuffer(PARTICLE_SYSTEM_BINDING_SPAWN_CONTEXT_PARTICLE_MAPPING_INPUT, DxvkBufferSlice(system.second->getSpawnContextMappingBuffer()));
         ctx->bindResourceBuffer(PARTICLE_SYSTEM_BINDING_PARTICLES_BUFFER_INPUT_OUTPUT, DxvkBufferSlice(system.second->getParticlesBuffer()));
@@ -277,8 +301,6 @@ namespace dxvk {
 
         const VkExtent3D workgroups = util::computeBlockCount(VkExtent3D { (uint32_t) system.second->context.desc.maxNumParticles, 1, 1 }, VkExtent3D { 128, 1, 1 });
         ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
-
-        ++pushArgs.particleSystemIdx;
       }
     }
 
@@ -379,10 +401,11 @@ namespace dxvk {
       DrawCallState newDrawCallState;
       newDrawCallState.geometryData = particleGeometry; // Note: Geometry Data replaced
       newDrawCallState.categories = particleSystem.categories;
+      newDrawCallState.categories.set(InstanceCategories::Particle); // ?
       newDrawCallState.categories.clr(InstanceCategories::ParticleEmitter);
       newDrawCallState.categories.clr(InstanceCategories::Hidden);
       newDrawCallState.transformData.viewToProjection = camera.getViewToProjection();
-      newDrawCallState.transformData.worldToView = camera.getWorldToView(true);
+      newDrawCallState.transformData.worldToView = camera.getWorldToView();
       
       // If we have legacy material data, lets use it, otherwise default.
       if(particleSystem.materialData.getType() == MaterialDataType::Legacy) {
