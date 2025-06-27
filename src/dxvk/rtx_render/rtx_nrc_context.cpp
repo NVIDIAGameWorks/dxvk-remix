@@ -378,8 +378,38 @@ namespace dxvk {
   }
 
   void NrcContext::endFrame() {
-    VkQueue nativeCmdQueue = m_device->queues().graphics.queueHandle;
-    nrc::Status status = m_nrcContext->EndFrame(nativeCmdQueue);
+    const auto nativeCmdQueue = m_device->queues().graphics.queueHandle;
+
+    // Note: Unlike the rest of NRC's operations which submit to a DXVK command buffer we provide to it, the EndFrame call takes a Vulkan queue directly
+    // so that it can submit a fence to track the end of the frame on the CPU properly. This is a problem however as DXVK submits to queues on
+    // the dxvk-submit thread while this end frame call is done on the dxvk-cs thread, and Vulkan requires host access to queue submission to be
+    // externally synchronized, which this code was not doing previously. This caused the queue to be submitted to on multiple threads at once in
+    // rare cases causing potential issues.
+    //
+    // To fix this, we call DXVK's lockSubmissionUnsynchronized function which ensures only one thread is submitting to the queue at a time via a mutex.
+    // Do note that unlike the usual lockSubmission function this function variant does not synchronize the calling thread with previously queued submissions
+    // (done by lockSubmission by blocking until the dxvk-submit thread's own queue of work is empty). This is not ideal since the rest of NRC is using DXVK
+    // command buffers and it may be important to ensure that all this NRC work queued for submission is submitted to Vulkan before this EndFrame fence is
+    // inserted, as otherwise NRC may think the end of the frame is in the wrong location and potentially try to free a resource while it is in use. The main
+    // risk with synchronizing however is that the synchronize function also synchronizes with DLSS-FG which may cause performance issues, though a variant of that
+    // function could be made if simply synchronizing with dxvk-submit is desirable but not DLSS-FG. Additionally if the dxvk-submit thread takes significant
+    // amounts of time to submit work to Vulkan synchronizing with that thread in general may cause a performance impact due to stalling any work on the dxvk-cs
+    // thread. In practice though queue submission is generally fairly fast and the dxvk-submit thread is idle more often than not. In fact during Remix's end
+    // frame phase the dxvk-submit thread is typically not doing anything which is likely why this bug was so rare to begin with, as this submission only
+    // overlaps with actual work on the dxvk-submit thread very rarely.
+    //
+    // In conclusion:
+    // - Locking submission here ensures proper Vulkan host synchronization of vkQueueSubmit between NRC's EndFrame call and the DXVK's dxvk-submit thread.
+    // - An "unsynchronized" version of this locking function is used to avoid potential performance regressions with DLSS-FG, even though it is probably
+    //   proper to be ensuring this EndFrame queue submission is done after all work on the dxvk-submit thread has been processed, so this may need to be
+    //   changed in the future (this code should not add any new bugs though as it was never synchronized to begin with).
+    // - NRC should ideally change this API to avoid doing submissions internally to avoid the need for us to lock submissions or synchronize with the
+    //   dxvk-submit thread to begin with as this will never be ideal. If anything it should allow us to submit the fence ourselves on the dxvk-submit
+    //   thread and pass the fence in directly or something.
+    m_device->lockSubmissionUnsynchronized();
+    const nrc::Status status = m_nrcContext->EndFrame(nativeCmdQueue);
+    m_device->unlockSubmission();
+
     if (status != nrc::Status::OK) {
       ONCE(Logger::err(str::format("[RTX Neural Radiance Cache] EndFrame call failed. Reason: ", getNrcStatusErrorMessage(status))));
     }
