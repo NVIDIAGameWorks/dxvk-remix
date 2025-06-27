@@ -548,6 +548,19 @@ namespace dxvk {
       m_submissionQueue.synchronize();
       m_submissionQueue.lockDeviceQueue();
     }
+
+    /**
+     * \brief Locks submission queue without synchronization
+     * 
+     * This function behaves the same as lockSubmission but without a call to
+     * synchronize on the submission queue. This means submissions to the Vulkan queue
+     * will not wait for any queued up work to complete which may cause issues when
+     * mixing code using DXVK's submission queueing and and direct submission to Vulkan
+     * if some sort of order is desired.
+     */
+    void lockSubmissionUnsynchronized() {
+      m_submissionQueue.lockDeviceQueue();
+    }
     
     /**
      * \brief Unlocks submission queue
