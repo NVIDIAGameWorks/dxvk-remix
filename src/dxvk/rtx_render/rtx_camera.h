@@ -282,6 +282,8 @@ namespace dxvk
     Vector3 getUp(bool freecam = true) const;
     Vector3 getRight(bool freecam = true) const;
 
+    Vector3 getPreviousPosition(bool freecam = true) const;
+
     // Note: getNearPlane() / getFarPlane() return values
     // corresponding to the viewToProjection matrix passed into update(..),
     // and NOT to the viewToProjection in the m_matCache, because of 'enableNearPlaneOverride' option.

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -19,8 +19,7 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
-#ifndef VOLUME_ARGS_H
-#define VOLUME_ARGS_H
+#pragma once
 
 #include "rtx/utility/shader_types.h"
 
@@ -104,6 +103,4 @@ struct VolumeArgs {
 #ifdef __cplusplus
 // We're packing these into a constant buffer (see: raytrace_args.h), so need to remain aligned
 static_assert((sizeof(VolumeArgs) & 15) == 0);
-#endif
-
 #endif

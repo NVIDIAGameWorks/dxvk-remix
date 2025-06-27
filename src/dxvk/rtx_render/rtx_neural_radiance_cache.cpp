@@ -19,6 +19,7 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
+
 #include "rtx_neural_radiance_cache.h"
 #include "dxvk_device.h"
 #include "rtx.h"
@@ -29,7 +30,7 @@
 #include "rtx_imgui.h"
 #include "rtx/pass/raytrace_args.h"
 #include "rtx_nrc_context.h"
-#include <NRCStructures.h>
+#include <nrc\Include\NrcStructures.h>
 #include "rtx_camera.h"
 #include "rtx_debug_view.h"
 
@@ -176,6 +177,11 @@ namespace dxvk {
   }
 
   void NeuralRadianceCache::showImguiSettings(DxvkContext& ctx) {
+    // Ensure the NRC has been initialized since Imgui thread may call this before the initialization occus
+    if (!isActive()) {
+      return;
+    }
+
     constexpr ImGuiTreeNodeFlags collapsingHeaderClosedFlags = ImGuiTreeNodeFlags_CollapsingHeader;
     constexpr ImGuiTreeNodeFlags collapsingHeaderFlags = collapsingHeaderClosedFlags | ImGuiTreeNodeFlags_DefaultOpen;
 
@@ -475,11 +481,11 @@ namespace dxvk {
     }
   }
 
-  VkExtent3D NeuralRadianceCache::getRaytracingResolution() const {
+  VkExtent3D NeuralRadianceCache::calcRaytracingResolution() const {
     assert(isActive() && "This requires NRC to be enabled and onFrameStart() to have been called prior.");
     
     // NRC Query and Update pixels are executed in a single dispatch for performance.
-    // Calculate raytracing resolution to cover the both.
+    // Calculate raytracing resolution to cover both.
     // Update pixels are executed first / start at row 0 since they have longer path tails due to
     // them not using Russian Roulette. This along with using NRC update/query SER coherence hint makes it faster.
 

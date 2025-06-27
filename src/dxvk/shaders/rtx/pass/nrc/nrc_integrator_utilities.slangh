@@ -21,7 +21,7 @@
 */
 #pragma once
 
-// Defines NRC related utitilities for integrator's usage
+// Defines NRC related utilities for integrator's usage
 
 #include "rtx/external/NRC.slangh"
 #include "rtx/pass/nrc/nrc_utilities.slangh"
@@ -180,7 +180,7 @@ NrcProgressState updateNrcOnHit(
   float pathSegmentHitDistance,
   bool isPrimaryHit,
   NrcArgs nrcArgs,
-  inout f16vec3 throughput,
+  inout f16vec3 throughput, 
   inout vec3 radiance,
   inout NrcPathState nrcPathState)
 {

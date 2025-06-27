@@ -74,6 +74,10 @@ namespace dxvk
     return Vector3{ getViewToWorld(freecam)[0].xyz() };
   }
 
+  Vector3 RtCamera::getPreviousPosition(bool freecam) const {
+    return Vector3 { getPreviousViewToWorld(freecam)[3].xyz() };
+  }
+
   std::pair<float, float> RtCamera::calculateNearFarPlanes() const {
     // Note: Converted to floats to interface with MathLib. Ideally this should be a double still.
     Matrix4 floatViewToProj{ getViewToProjection() };
