@@ -441,7 +441,7 @@ namespace dxvk {
     const bool nrcEnabled = nrc.isActive();
 
     const VkExtent3D& rayDims = nrcEnabled
-      ? nrc.getRaytracingResolution()
+      ? nrc.calcRaytracingResolution()
       : rtOutput.m_compositeOutputExtent;
 
     const bool serEnabled = RtxOptions::isShaderExecutionReorderingInPathtracerIntegrateIndirectEnabled();

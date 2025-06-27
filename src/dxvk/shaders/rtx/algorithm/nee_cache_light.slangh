@@ -96,12 +96,12 @@ struct NEECacheUtils
     return surface.isEmissiveBlend || surface.isEmissive;
   }
 
-#define USE_SIMIPLIFIED_MODEL 1
+#define USE_SIMPLIFIED_MODEL 1
 
   static Surface getSurface(int surfaceIndex)
   {    
     Surface surface = surfaces[uint(surfaceIndex)]; 
-  #if USE_SIMIPLIFIED_MODEL
+  #if USE_SIMPLIFIED_MODEL
     // Don't override following settings because they may affect some emissive objects
     // surface.isEmissive = false;
     // surface.isEmissiveBlend = false;
@@ -138,7 +138,7 @@ struct NEECacheUtils
     surfaceInteraction.textureGradientX *= cb.neeCacheArgs.emissiveTextureSampleFootprintScale;
     surfaceInteraction.textureGradientY *= cb.neeCacheArgs.emissiveTextureSampleFootprintScale;
 
-  #if USE_SIMIPLIFIED_MODEL
+  #if USE_SIMPLIFIED_MODEL
     // surfaceInteraction.vertexColor = f16vec4(0);
     surfaceInteraction.positionError = 0;
     surfaceInteraction.motion = 0;
@@ -180,7 +180,7 @@ struct NEECacheUtils
     if (lightSample.solidAnglePdf > 0 && memoryPolymorphicSurfaceMaterial.isOpaque())
     {
       OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
-  #if USE_SIMIPLIFIED_MODEL
+  #if USE_SIMPLIFIED_MODEL
       // Don't override albedo textures because it may be used by some emissive objects
       // opaqueSurfaceMaterial.albedoOpacityTextureIndex = BINDING_INDEX_INVALID;
       opaqueSurfaceMaterial.normalTextureIndex = BINDING_INDEX_INVALID;

@@ -379,11 +379,6 @@ dxvk_src = files([
   'imgui/implot_items.cpp',
 ])
 
-nrc_include_dir = include_directories(join_paths('../../', 'submodules/nrc/include'))
-nrc_dep = declare_dependency(
-  include_directories : nrc_include_dir
-)
-
 thread_dep = dependency('threads')
 
 nrd_include_dir = include_directories(join_paths('../../', 'external/nrd/Include'))
@@ -406,14 +401,16 @@ dlss_dep = declare_dependency(
   include_directories : [ dlss_include_dir, dlfg_include_dir ]
 )
 
-nrc_include_path = include_directories(join_paths('../../', 'submodules/nrc/include'))
 nrc_dll_path = join_paths(meson.global_source_root(), 'submodules/nrc/bin/')
 nrc_lib_path = join_paths(meson.global_source_root(), 'submodules/nrc/lib/')
 nrc_lib = dxvk_compiler.find_library('NRC_Vulkan', dirs : nrc_lib_path, required : true)
 
 nrc_dep = declare_dependency(
-  dependencies : [ nrc_lib ],
-  include_directories : nrc_include_path
+  dependencies : [ nrc_lib ]
+)
+
+submodules_dep = declare_dependency(
+  include_directories : include_directories(join_paths(meson.global_source_root(), 'submodules'))
 )
 
 generated_dxvk_shaders = glsl_generator.process(dxvk_shaders)
@@ -431,7 +428,7 @@ dxvk_embedded_data_files = files([
 
 dxvk_generated_embedded_files = embedding_compiler.process(dxvk_embedded_data_files)
 
-dxvk_deps = [ thread_dep, vkcommon_dep, dxvk_extradep, usd_dep, lssUsd_dep, nrc_dep, nrd_dep, dlss_dep, tracy_dep, tracy_dep_dynamic, aftermath_dep, nvapi_dep, reflex_dep, usd_plugin_deps ]
+dxvk_deps = [ thread_dep, vkcommon_dep, dxvk_extradep, usd_dep, lssUsd_dep, nrc_dep, nrd_dep, dlss_dep, submodules_dep, tracy_dep, tracy_dep_dynamic, aftermath_dep, nvapi_dep, reflex_dep, usd_plugin_deps ]
 
 if enable_rtxio
   dxvk_deps += rtxio_dep
@@ -450,7 +447,7 @@ dxvk_deps += delayimp_dep
 dxvk_lib = static_library('dxvk', dxvk_src, dxvk_version, [generated_dxvk_shaders, rtx_shaders, dxvk_generated_embedded_files],
   link_with           : [ util_lib, spirv_lib, usd_plugins ], 
   dependencies        : [ dxvk_deps ],
-  include_directories : [ dxvk_include_path, dxvk_shader_include_path, rtxdi_include_path, remix_api_include_path, rtxcr_include_path ],
+  include_directories : [ dxvk_include_path, dxvk_shader_include_path, rtxdi_include_path, remix_api_include_path, rtxcr_include_path, submodules_include_path  ],
   override_options    : ['cpp_std='+dxvk_cpp_std],
   # Force switch statements over enums to either cover all cases or have a default case.
   cpp_args            : dxvk_is_msvc ? ['/we4062'] : ['-Wswitch'])

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2024-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -23,7 +23,8 @@
 
 #include "rtx/utility/shader_types.h"
 #include "rtx/external/NRC.h"
-#include "../../../../../submodules/nrc/include/NRCStructures.h"
+// WAR: Specify a relative path to this file since a file including this file doesn't resolve a relative path to global include paths specified in meson
+#include "../../../../../submodules/nrc/include/NrcStructures.h"
 #include "../shaders/rtx/concept/surface/surface_shared.h"
 
 // Note: Ensure 16B alignment

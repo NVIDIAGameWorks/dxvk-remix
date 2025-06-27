@@ -37,7 +37,6 @@
 #include "rtx/algorithm/visibility.slangh"
 #include "rtx/algorithm/rtxcr/rtxcr_material.slangh"
 #include "integrator.slangh"
-#include "rtx/pass/nrc/nrc_integrator_utilities.slangh"
 
 void evalNEEPrimary(
   vec3 throughput,

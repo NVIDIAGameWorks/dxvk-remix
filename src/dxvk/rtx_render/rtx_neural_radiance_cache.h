@@ -163,15 +163,12 @@ namespace dxvk {
     void showImguiSettings(DxvkContext& ctx);
 
     // Updates NRC constants in raytraceArgs. 
-    // This must be called after onFrameStart() in a frame
-    void setRaytraceArgs(RaytraceArgs& raytraceArgsy);
+    // This must be called after onFrameBegin() in a frame
+    void setRaytraceArgs(RaytraceArgs& constants);
 
     DxvkBufferSlice getBufferSlice(RtxContext& ctx, ResourceType resourceType);
 
-    VkExtent3D getRaytracingResolution() const;
-
-    // Note: this will modify the input parameter to fit NRC needs
-    void updateConstantsBufferForTraining(RtxContext& ctx, const RaytraceArgs& constants);
+    VkExtent3D calcRaytracingResolution() const;
 
     void bindGBufferPathTracingResources(RtxContext& ctx);
     void bindIntegrateIndirectPathTracingResources(RtxContext& ctx);
@@ -231,8 +228,6 @@ namespace dxvk {
 
     bool                   m_resetHistory = false;
     VkDeviceSize           m_nrcVideoMemoryUsage = 0;
-
-    std::default_random_engine m_randomGenerator;
 
     float                  m_trainingLoss = 0.f;
 

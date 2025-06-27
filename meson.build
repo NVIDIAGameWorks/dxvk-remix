@@ -1,5 +1,5 @@
 #############################################################################
-# Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -170,7 +170,6 @@ add_global_arguments('/DREMIX_LIBRARY_EXPORTS=1', language : 'cpp')
 dxvk_include_dirs = [
   './include',
   './include/vulkan/include',
-  'submodules/nrc/include',
 ]
 
 dxvk_include_path = include_directories(dxvk_include_dirs)
@@ -294,6 +293,9 @@ volumetrics_include_path_string = join_paths(global_src_root_norm, 'submodules/r
 rtxcr_include_path = include_directories('submodules/rtxcr/shaders/include')
 rtxcr_include_path_string = join_paths(global_src_root_norm, 'submodules/rtxcr/shaders/include')
 
+submodules_include_path = include_directories('submodules')
+submodules_include_path_string = join_paths(global_src_root_norm, 'submodules')
+
 rtx_shaders_command_arguments = [
   shader_compile_script,
   # Note: Meson annoyingly represents these "find_program" results as a special object which works fine when used in Meson functions, but
@@ -308,8 +310,9 @@ rtx_shaders_command_arguments = [
   '-input', rtx_shader_source_directory,
   '-include', shader_directory,
   '-include', rtxdi_include_path_string,
-  '-include', volumetrics_include_path_string,
   '-include', rtxcr_include_path_string,
+  '-include', submodules_include_path_string,
+  '-include', volumetrics_include_path_string,
   '-output', rtx_shader_output_directory,
   '-parallel',
 ]
