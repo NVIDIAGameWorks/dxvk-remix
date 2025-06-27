@@ -492,8 +492,8 @@ void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim, const
   }
 }
 
-inline float4 toFloat4(const pxr::GfVec4f& v) {
-  float4 f;
+inline Vector4 toFloat4(const pxr::GfVec4f& v) {
+  Vector4 f;
   f.x = v[0];
   f.y = v[1];
   f.z = v[2];
@@ -574,7 +574,7 @@ bool UsdMod::Impl::processParticleSystem(Args& args, const pxr::UsdPrim& prim) {
     // Read all simulation parameters
   READ_ATTR(float, MinTtl, minTtl);
   READ_ATTR(float, MaxTtl, maxTtl);
-  READ_ATTR(float, OpacityMultiplier, opacityMultiplier);
+  //READ_ATTR(float, OpacityMultiplier, opacityMultiplier);
   READ_ATTR(float, InitialVelocityFromNormal, initialVelocityFromNormal);
   READ_ATTR(float, MinParticleSize, minParticleSize);
   READ_ATTR(float, MaxParticleSize, maxParticleSize);
