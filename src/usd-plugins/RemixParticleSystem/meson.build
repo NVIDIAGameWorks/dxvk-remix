@@ -20,57 +20,43 @@ foreach class : plugin_classes
   generated_files += class + '.cpp'
 endforeach
 
-# Code-gen step: usdGenSchema
-gen = custom_target(
-  'gen_schema_' + plugin_name,
+schema_script = join_paths(global_src_root_norm, 'scripts-common', 'generate_and_patch_schema.py')
+
+gen_and_patch = custom_target(
+  'gen_and_patch_schema_' + plugin_name,
   input: [ schema_usda ],
-  output: [ 
-    #'generatedSchema.usda',
-    #'plugInfo.json',
+  output: [
+    'generatedSchema.usda',
+    'plugInfo.json',
     'api.h',
     'tokens.h',
     'tokens.cpp',
-    'wrapTokens.cpp',
-	generated_files
-  ],
+    'wrapTokens.cpp'
+  ] + generated_files,
   command: [
     usd_schema_plugins_python,
-    join_paths(usd_schema_plugins_nvusd_bindir, 'usdGenSchema'),
-    schema_usda, '@OUTDIR@',
+    schema_script,
+    '--schema-usda', schema_usda,
+    '--outdir', meson.current_build_dir(),
+    '--plugin-name', plugin_name
   ],
   build_by_default: true,
   env: {
-    'PYTHONPATH': usd_libpython_dir,
-    'PATH': orig_path + ';' + usd_schema_plugins_nvusd_libdir
+    # mirror what the script expects
+    'USD_SCHEMA_PYTHON':    usd_schema_plugins_python,
+    'USD_NVUSD_BINDIR':     usd_schema_plugins_nvusd_bindir,
+    'USD_LIBPYTHON_DIR':    usd_libpython_dir,
+    'ORIG_PATH':            orig_path,
+    'USD_NVUSD_LIBDIR':     usd_schema_plugins_nvusd_libdir,
   }
 )
 
-library_filename = plugin_name + '.dll'
-replace_script = join_paths(global_src_root_norm, 'scripts-common', 'replace_keywords.py')
-
-patched_pluginfo = custom_target(
-  'patch_plugInfo_' + plugin_name,
-  output: 'plugInfo.json',
-  depends: [ gen ],
-  command: [
-    usd_schema_plugins_python,
-    replace_script,
-    join_paths(meson.current_build_dir(), 'plugInfo.json'),
-    '@OUTPUT@',
-    'PLUG_INFO_LIBRARY_PATH=' + library_filename,
-    'PLUG_INFO_NAME=' + plugin_name,
-    'PLUG_INFO_RESOURCE_PATH=.',
-    'PLUG_INFO_ROOT=./../',
-  ],
-  build_by_default: true
-)
-
-dep = declare_dependency(sources: [ gen, patched_pluginfo ])
+dep = declare_dependency(sources: gen_and_patch)
 
 # Compile the plugin shared library
 plugin_lib = shared_library(
   plugin_name,
-  [ gen ],
+  [ gen_and_patch ],
   include_directories : [
     usd_schema_plugins_includes,
     '.'
