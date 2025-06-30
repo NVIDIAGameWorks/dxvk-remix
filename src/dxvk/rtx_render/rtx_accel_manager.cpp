@@ -603,7 +603,15 @@ namespace dxvk {
       // Try to reuse our dynamic BLAS if it exists
       Rc<PooledBlas>& selectedBlas = blasEntry->dynamicBlas;
 
-      const bool build = forceRebuild || !selectedBlas.ptr() || selectedBlas->accelStructure->info().size != sizeInfo.accelerationStructureSize;
+      bool build = forceRebuild || !selectedBlas.ptr() || selectedBlas->accelStructure->info().size != sizeInfo.accelerationStructureSize;
+
+      // Validate that the selected blas is compatible with the current build info for update purposes
+      bool update = blasEntry->frameLastUpdated == currentFrame;
+      if (update && !build && !validateUpdateMode(selectedBlas->buildInfo, buildInfo)) {
+        // If an update is requested but the BLAS is not compatible with the current build info then force a rebuild
+        update = false;
+        build = true;
+      }
 
       // There is no such BLAS - create one
       if (build) {
@@ -618,12 +626,6 @@ namespace dxvk {
       assert(selectedBlas.ptr());
       selectedBlas->frameLastTouched = currentFrame;
       blasEntry->dynamicBlas->opacityMicromapSourceHash = boundOpacityMicromapHash;
-
-      // Validate that the selected blas is compatible with the current build info for update purposes
-      bool update = blasEntry->frameLastUpdated == currentFrame;
-      if (update && !build && !validateUpdateMode(selectedBlas->buildInfo, buildInfo)) {
-        update = false;
-      }
 
       if (update || build) {
         if (update && !build) {
