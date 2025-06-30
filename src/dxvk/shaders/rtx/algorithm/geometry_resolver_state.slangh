@@ -222,6 +222,12 @@ struct GeometryPSRResolverState : IBasePayloadState
     }
   }
 
+  // Surfaces created from gbuffer may not be valid (i.e. if this pixel was a ray miss)
+  property bool isValid
+  {
+    get { return all(!isinf(origin)); }
+  }
+
   // Passthrough accessors
 
   property vec3 origin 

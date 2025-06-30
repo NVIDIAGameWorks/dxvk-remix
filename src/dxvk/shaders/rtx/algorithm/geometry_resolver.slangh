@@ -126,7 +126,7 @@ void geometryResolverOutputMiss(
       PrimaryVirtualMotionVector,
       PrimaryVirtualWorldShadingNormalPerceptualRoughness,
       PrimaryVirtualWorldShadingNormalPerceptualRoughnessDenoising,
-      PrimaryAlbedo, PrimaryBaseReflectivity);
+      PrimaryAlbedo, PrimaryBaseReflectivity, aliasedData0.PrimaryWorldPositionWorldTriangleNormal);
 
     if (cb.enableStochasticAlphaBlend)
     {
@@ -146,7 +146,7 @@ void geometryResolverOutputMiss(
       SecondaryVirtualMotionVector,
       SecondaryVirtualWorldShadingNormalPerceptualRoughness,
       SecondaryVirtualWorldShadingNormalPerceptualRoughnessDenoising,
-      SecondaryAlbedo, SecondaryBaseReflectivity);
+      SecondaryAlbedo, SecondaryBaseReflectivity, SecondaryWorldPositionWorldTriangleNormal);
   }
 }
 
@@ -2628,6 +2628,11 @@ void geometryPSRResolverPass(ivec2 pixelCoordinate) {
 
   unpackPSRData(psrData, geometryPSRResolverState);
 
+  if (!geometryPSRResolverState.isValid)
+  {
+    return;
+  }
+  
   if (push.isTransmissionPSR)
   {
     // Note: performPSTR == true implicitly in this path, always indicate that transmission PSR is the primary surface

@@ -596,6 +596,7 @@ void integratePathVertex(
           const float planeTolerance = 0.1;
           const float distanceTolerance = 0.01;
           isWithinGbuffer = dot(surfaceInteraction.interpolatedNormal, gbuffer.triangleNormal) > 0.8f &&   // sane normal difference?
+                            gbuffer.isValid && // was this pixel valid
                             (relativeLength < cameraDistance * distanceTolerance ||
                              abs(dot(relativePosition, surfaceInteraction.interpolatedNormal)) < planeTolerance * relativeLength);
         }
@@ -828,6 +829,7 @@ void integratePathVertex(
     
         isWithinGbuffer =
           dot(surfaceInteraction.triangleNormal, prevSurfaceInteraction.triangleNormal) > 0.8f &&
+          prevSurfaceInteraction.isValid &&
           (relativeLength < prevHitDistance * distanceTolerance ||
             abs(dot(prevSurfaceInteraction.triangleNormal, relativePosition)) < relativeLength * planeTolerance);
       }
@@ -1239,7 +1241,10 @@ void integrateIndirectPath(
       RAB_RandomSamplerState rtxdiRNG = RAB_InitRandomSampler(pathState.pixelCoordinate, cb.frameIdx, pathState.bounceIteration);
       uint jitter = sampleUniformIntRng(rtxdiRNG);
       MinimalSurfaceInteraction gbuffer = minimalSurfaceInteractionReadFromGBuffer(gbufferPixelCoordinate, indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal);
-      pathState.neeCacheCellOffset = NEECache.pointToOffset(rayOrigin, gbuffer.triangleNormal, jitter);
+      if(gbuffer.isValid)
+      {
+        pathState.neeCacheCellOffset = NEECache.pointToOffset(rayOrigin, gbuffer.triangleNormal, jitter);
+      }
     }
 
 #ifdef OPAQUE_MATERIAL_USE_POM

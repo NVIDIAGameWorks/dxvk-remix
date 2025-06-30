@@ -986,6 +986,7 @@ namespace dxvk {
     m_raytracingOutput.m_primaryHitDistance = createImageResource(ctx, "primary hit distance", m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
     m_raytracingOutput.m_primaryViewDirection = createImageResource(ctx, "primary view direction", m_downscaledExtent, VK_FORMAT_R16G16_SNORM);
     m_raytracingOutput.m_primaryConeRadius = createImageResource(ctx, "primary cone radius", m_downscaledExtent, VK_FORMAT_R16_SFLOAT);
+
     m_raytracingOutput.m_primaryWorldPositionWorldTriangleNormal[0] = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT, "primary world position world triangle normal 0");
     m_raytracingOutput.m_primaryWorldPositionWorldTriangleNormal[1] = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT, "primary world position world triangle normal 1");
     m_raytracingOutput.m_primaryPositionError = createImageResource(ctx, "primary position error", m_downscaledExtent, VK_FORMAT_R32_SFLOAT);

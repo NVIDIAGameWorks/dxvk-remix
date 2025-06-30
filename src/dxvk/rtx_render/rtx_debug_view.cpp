@@ -320,6 +320,13 @@ namespace dxvk {
         {DEBUG_VIEW_NRD_INSTANCE_0_VALIDATION_LAYER,      "NRD Instance 0 Validation Layer", "Requires NRD and \"NRD/Common Settings/Validation Layer\" enabled" },
         {DEBUG_VIEW_NRD_INSTANCE_1_VALIDATION_LAYER,      "NRD Instance 1 Validation Layer", "Requires NRD and \"NRD/Common Settings/Validation Layer\" enabled" },
         {DEBUG_VIEW_NRD_INSTANCE_2_VALIDATION_LAYER,      "NRD Instance 2 Validation Layer", "Requires NRD and \"NRD/Common Settings/Validation Layer\" enabled" },
+
+        {DEBUG_VIEW_PREV_WORLD_POSITION_AND_TBN,  "Encoded previous world position and TBN texture",
+                                                  "Parameterize via ROUND(Debug Knob [0]):\n"
+                                                  "  0: World Position\n"
+                                                  "  1: World Normal\n"
+                                                  "  2: World Tangent\n"
+                                                  "  3: World Bitangent" },
     } };
 
   // Note: this does a linear search through the debug view vector so do not use it in performance critical code
@@ -543,6 +550,7 @@ namespace dxvk {
         TEXTURE2D(DEBUG_VIEW_BINDING_NRD_VALIDATION_LAYER_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_COMPOSITE_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_ALTERNATE_DISOCCLUSION_THRESHOLD_INPUT)
+        TEXTURE2D(DEBUG_VIEW_BINDING_PREV_WORLD_POSITION_INPUT)
 
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_ACCUMULATED_DEBUG_VIEW_INPUT_OUTPUT)
 
@@ -1305,9 +1313,15 @@ namespace dxvk {
         break;
       }
     }
-
+    
+    const uint32_t frameIdx = ctx->getDevice()->getCurrentFrameId();
+    
     ctx->bindResourceView(DEBUG_VIEW_BINDING_COMPOSITE_INPUT, rtOutput.m_compositeOutput.view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(DEBUG_VIEW_BINDING_ALTERNATE_DISOCCLUSION_THRESHOLD_INPUT, rtOutput.m_primaryDisocclusionThresholdMix.view, nullptr);
+
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_PREV_WORLD_POSITION_INPUT,
+                           rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read,
+                                                                                              rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().matchesWriteFrameIdx(frameIdx - 1)), nullptr);
 
     // Inputs / Outputs
 
@@ -1315,7 +1329,6 @@ namespace dxvk {
 
     // Outputs
 
-    const uint32_t frameIdx = ctx->getDevice()->getCurrentFrameId();
     VkDeviceSize statisticsBufferOffset = (frameIdx % kMaxFramesInFlight) * sizeof(m_outputStatistics);
     ctx->bindResourceBuffer(DEBUG_VIEW_BINDING_STATISTICS_BUFFER_OUTPUT, DxvkBufferSlice(m_statisticsBuffer, statisticsBufferOffset, m_statisticsBuffer->info().size));
 
