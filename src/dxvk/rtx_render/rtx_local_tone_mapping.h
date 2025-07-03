@@ -75,6 +75,14 @@ namespace dxvk {
     RTX_OPTION("rtx.localtonemap", bool, boostLocalContrast, false, "Boosts contrast on local features.");
     RTX_OPTION("rtx.localtonemap", bool, useGaussian, true, "Uses gaussian kernel to generate tone map pyramid.");
     RTX_OPTION("rtx.localtonemap", bool, finalizeWithACES, true, "Applies ACES tone mapping on final result.");
+    RTX_OPTION("rtx.localtonemap", bool, useAgX, false, "Applies AgX tone mapping instead of ACES on final result.");
+    RTX_OPTION("rtx.localtonemap", float, agxGamma, 0.45f, "AgX gamma adjustment for contrast control. Lower values increase contrast. Range [0.5, 3.0].");
+    RTX_OPTION("rtx.localtonemap", float, agxSaturation, 1.0f, "AgX saturation multiplier. Higher values increase color saturation. Range [0.5, 2.0].");
+    RTX_OPTION("rtx.localtonemap", float, agxExposureOffset, 0.0f, "AgX exposure offset in EV stops. Positive values brighten the image. Range [-2.0, 2.0].");
+    RTX_OPTION("rtx.localtonemap", int, agxLook, 0, "AgX look selection: 0=None, 1=Punchy, 2=Golden, 3=Greyscale. Different aesthetic looks for AgX.");
+    RTX_OPTION("rtx.localtonemap", float, agxContrast, 0.8f, "AgX contrast adjustment. Higher values increase contrast. Range [0.5, 2.0].");
+    RTX_OPTION("rtx.localtonemap", float, agxSlope, 1.2f, "AgX slope adjustment for highlight rolloff. Range [0.5, 2.0].");
+    RTX_OPTION("rtx.localtonemap", float, agxPower, 1.0f, "AgX power adjustment for midtone response. Range [0.5, 2.0].");
     RTX_OPTION("rtx.localtonemap", float, exposure, 0.75, "Exposure factor applied on average exposure.");
     RTX_OPTION("rtx.localtonemap", float, shadows, 2.0, "Shadow area strength. Higher values cause brighter shadows.");
     RTX_OPTION("rtx.localtonemap", float, highlights, 4.0, "Highlight area strength. Higher values cause darker highlight.");
