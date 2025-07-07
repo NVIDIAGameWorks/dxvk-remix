@@ -524,9 +524,9 @@ namespace dxvk {
     out.setBufferIdx(in.getBufferIdx());  // We remapped this light.
   }
 
-  void LightManager::addLight(const RtLight& rtLight, const DrawCallState& drawCallState, const RtLightAntiCullingType antiCullingType) {
+  RtLight* LightManager::addLight(const RtLight& rtLight, const DrawCallState& drawCallState, const RtLightAntiCullingType antiCullingType) {
     if (drawCallState.getCategoryFlags().test(InstanceCategories::IgnoreLights))
-      return;
+      return nullptr;
 
     // Mesh->Lights Replacement
     if (antiCullingType == RtLightAntiCullingType::MeshReplacement) {
@@ -534,7 +534,7 @@ namespace dxvk {
         drawCallState.getTransformData().objectToWorld, drawCallState.getGeometryData().boundingBox);
     }
 
-    addLight(rtLight, antiCullingType);
+    return addLight(rtLight, antiCullingType);
   }
 
   void LightManager::addGameLight(const D3DLIGHTTYPE type, const RtLight& rtLight) {
@@ -568,13 +568,14 @@ namespace dxvk {
     }
   }
 
-  void LightManager::addLight(const RtLight& rtLight, const RtLightAntiCullingType antiCullingType, const XXH64_hash_t lightToReplace) {
+  RtLight* LightManager::addLight(const RtLight& rtLight, const RtLightAntiCullingType antiCullingType, const XXH64_hash_t lightToReplace) {
     // This light is "off". This includes negative valued lights which in D3D games originally would act as subtractive lighting.
     const Vector3 originalRadiance = rtLight.getRadiance();
     if (originalRadiance.x < 0 || originalRadiance.y < 0 || originalRadiance.z < 0
         || (originalRadiance.x <= 0 && originalRadiance.y <= 0 && originalRadiance.z <= 0))
-      return;
+      return nullptr;
 
+    RtLight* result = nullptr;
     rtLight.setLightAntiCullingType(antiCullingType);
 
     // Replacement lights can have a unique hash from game lights, and so, we need to remember and
@@ -619,13 +620,17 @@ namespace dxvk {
         // We saw this light so bump its frame counter.
         foundLightIt->second.setFrameLastTouched(m_device->getCurrentFrameId());
       }
-
+      result = &foundLightIt->second;
     } else {
       //  Try find a similar light
       std::optional<RtLight> similarLight;
       float bestSimilarity = kNotSimilar;
       for (auto&& pair : m_lights) {
         const RtLight& light = pair.second;
+        if (light.getReplacementInstance() != nullptr) {
+          // lights that are part of a replacement should not be considered.
+          continue;
+        }
 
         // Update the cached light if it's similar.  This should catch minor perturbations in static lights (e.g. due to precision loss)
         const float kDistanceThresholdMeters = 0.02f;
@@ -656,12 +661,15 @@ namespace dxvk {
       assert(addedSuccessfully);
 
       // Copy/interpolate any state we like from the similar light.
-      if (similarLight.has_value())
+      if (similarLight.has_value()) {
         updateLight(similarLight.value(), localLight);
+      }
 
       // Record we saw this light
       localLight.setFrameLastTouched(m_device->getCurrentFrameId());
+      result = &localLight;
     }
+    return result;
   }
 
   void LightManager::addExternalLight(remixapi_LightHandle handle, const RtLight& rtlight) {

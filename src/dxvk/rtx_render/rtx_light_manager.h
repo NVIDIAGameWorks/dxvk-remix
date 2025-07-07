@@ -86,8 +86,8 @@ public:
   void prepareSceneData(Rc<DxvkContext> ctx, CameraManager const& cameraManager);
 
   void addGameLight(D3DLIGHTTYPE type, const RtLight& light);
-  void addLight(const RtLight& light, const RtLightAntiCullingType antiCullingType, const XXH64_hash_t lightToReplace = kEmptyHash);
-  void addLight(const RtLight& light, const DrawCallState& drawCallState, const RtLightAntiCullingType antiCullingType);
+  RtLight* addLight(const RtLight& light, const RtLightAntiCullingType antiCullingType, const XXH64_hash_t lightToReplace = kEmptyHash);
+  RtLight* addLight(const RtLight& light, const DrawCallState& drawCallState, const RtLightAntiCullingType antiCullingType);
 
   void addExternalLight(remixapi_LightHandle handle, const RtLight& rtlight);
   void addExternalDomeLight(remixapi_LightHandle handle, const DomeLight& domeLight);

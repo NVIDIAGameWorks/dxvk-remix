@@ -452,7 +452,7 @@ bool hasExplicitTransform(const pxr::UsdPrim& prim) {
   return prim.HasAttribute(pxr::TfToken("xformOp:rotateZYX")) || prim.HasAttribute(pxr::TfToken("xformOp:scale")) || prim.HasAttribute(pxr::TfToken("xformOp:translate")) || prim.HasAttribute(pxr::TfToken("xformOpOrder"));
 }
 
-void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim, const bool isOverride) {
+void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim, const bool isRoot) {
   if (args.rootPrim.IsA<pxr::UsdGeomMesh>() && lightPrim.IsA<pxr::UsdLuxDistantLight>()) {
     Logger::err(str::format(
       "A Distant Light detected under ", args.rootPrim.GetName(),
@@ -481,8 +481,13 @@ void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim, const
   const auto& replacementToObjectAsArray = reinterpret_cast<const float(&)[4][4]>(lightTransform);
   const Matrix4 replacementToObject(replacementToObjectAsArray);
 
-  const std::optional<LightData> lightData = LightData::tryCreate(lightPrim, isTransformDefined ? &lightTransform : nullptr, isOverride, isParentTransformDefined);
+  std::optional<LightData> lightData = LightData::tryCreate(lightPrim, isTransformDefined ? &lightTransform : nullptr, isRoot, isParentTransformDefined);
   if (lightData.has_value()) {
+    if (isRoot && args.meshes.size() == 1) {
+      // Already created an empty replacement to indicate the root needs to be kept,
+      // but since we have actual override data for it, need to remove that placeholder.
+      args.meshes.clear();
+    }
     args.meshes.emplace_back(lightData.value(), replacementToObject);
   }
 }
@@ -820,19 +825,24 @@ bool explicitlyNoReferences(const pxr::UsdPrim& prim) {
 
 bool UsdMod::Impl::processReplacement(Args& args) {
   ScopedCpuProfileZone();
+  bool changesDrawCall = true;
+  
+  // Want the original draw call to occupy the first index in the replacements vector, so that the indices of the
+  // asset replacements line up with the indices of the Entities being drawn.
+  if (preserveGameObject(args.rootPrim)) {
+    args.meshes.push_back(AssetReplacement(nullptr, nullptr, Categorizer(), Matrix4()));
+    args.meshes[0].includeOriginal = true;
+    args.meshes[0].categories = processCategoryFlags(args.rootPrim);
+    changesDrawCall = false;
+  }
   processReplacementRecursive(args, args.rootPrim, true);
 
-  if (!args.meshes.empty()) {
-    args.meshes[0].includeOriginal = preserveGameObject(args.rootPrim);
-
-    // Read category flags if we include the original
-    if (args.meshes[0].includeOriginal) {
-      args.meshes[0].categories = processCategoryFlags(args.rootPrim);
-    }
-    return true;
-  } else {
-    return !preserveGameObject(args.rootPrim);
+  // Only return false if no changes were made to the draw call, including the original draw being preserved.
+  if (args.meshes.size() == 1 && args.meshes[0].includeOriginal) {
+    return false;
   }
+  return true;
+
 }
 
 void UsdMod::Impl::processReplacementRecursive(Args& args, const pxr::UsdPrim& prim, bool isRoot) {
