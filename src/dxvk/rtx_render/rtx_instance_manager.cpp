@@ -126,7 +126,9 @@ namespace dxvk {
     , m_geometryFlags(src.m_geometryFlags)
     , m_firstBillboard(src.m_firstBillboard)
     , m_billboardCount(src.m_billboardCount)
-    , m_categoryFlags(src.m_categoryFlags) {
+    , m_categoryFlags(src.m_categoryFlags)
+    , m_replacementInstance(src.m_replacementInstance)
+    , m_replacementIndex(src.m_replacementIndex) {
     // Members for which state carry over is intentionally skipped
     /*
        m_isMarkedForGC
@@ -149,7 +151,7 @@ namespace dxvk {
   namespace {
     template<int RtInstanceSize> struct CheckRtInstanceSize {
       // The second line of the build error should contain the new size of RtInstance in the template argument, i.e. `dxvk::CheckRtInstanceSize<newSize>`
-      static_assert(RtInstanceSize == 688, "RtInstance size has changed.  Fix the copy constructor above this message, then update the expected size.");
+      static_assert(RtInstanceSize == 696, "RtInstance size has changed.  Fix the copy constructor above this message, then update the expected size.");
     };
     CheckRtInstanceSize<sizeof(RtInstance)> _rtInstanceSizeTest;
   }
@@ -208,6 +210,16 @@ namespace dxvk {
     surface.normalObjectToWorld = transpose(inverse(Matrix3(surface.objectToWorld)));
     surface.prevObjectToWorld = oldToNew * surface.prevObjectToWorld;
     onTransformChanged();
+
+    if (m_replacementInstance && m_replacementInstance->root.getInstance() == this) {
+      // this is the root of a replacement - need to update the transform history for all the instances in the replacement.
+      for (size_t i = 0; i < m_replacementInstance->prims.size(); i++) {
+        RtInstance* instance = m_replacementInstance->prims[i].getInstance();
+        if (instance != nullptr && instance != this) {
+          instance->teleportWithHistory(oldToNew);
+        }
+      }
+    }
   }
   
   bool RtInstance::move(const Matrix4& objectToWorld) {
@@ -306,6 +318,21 @@ namespace dxvk {
     return m_vkInstance.mask & OBJECT_MASK_VIEWMODEL_VIRTUAL;
   }
 
+  void RtInstance::setReplacementInstance(ReplacementInstance* replacementInstance, uint32_t replacementIndex) {
+    if (m_replacementInstance &&
+        m_replacementIndex != ReplacementInstance::kInvalidReplacementIndex &&
+        m_replacementInstance->prims[m_replacementIndex].getInstance() == this) {
+      // clear up the old reference to this instance
+      m_replacementInstance->prims[m_replacementIndex] = PrimInstance();
+    }
+    m_replacementInstance = replacementInstance;
+    m_replacementIndex = replacementIndex;
+    if (m_replacementInstance && 
+        replacementIndex != ReplacementInstance::kInvalidReplacementIndex) {
+      m_replacementInstance->prims[replacementIndex] = PrimInstance(this);
+    }
+  }
+
   InstanceManager::InstanceManager(DxvkDevice* device, ResourceCache* pResourceCache)
     : CommonDeviceObject(device)
     , m_pResourceCache(pResourceCache) {
@@ -346,13 +373,7 @@ namespace dxvk {
     // This is a big hammer but it's fine, it's a debugging feature
     const bool isViewModelEnabled = RtxOptions::ViewModel::enable();
     if (isViewModelEnabled != m_previousViewModelState) {
-      for (auto* instance : m_instances) {
-        removeInstance(instance);
-        delete instance;
-      }
-      m_instances.clear();
-      m_viewModelCandidates.clear();
-      m_playerModelInstances.clear();
+      clear();
       m_previousViewModelState = isViewModelEnabled;
     }
 
@@ -401,14 +422,19 @@ namespace dxvk {
 
   RtInstance* InstanceManager::processSceneObject(
     const CameraManager& cameraManager, const RayPortalManager& rayPortalManager,
-    BlasEntry& blas, const DrawCallState& drawCall, const MaterialData& materialData, const RtSurfaceMaterial& material) {
+    BlasEntry& blas, const DrawCallState& drawCall, const MaterialData& materialData, const RtSurfaceMaterial& material, RtInstance* existingInstance, bool allowInstanceReuse) {
 
     // If the RtInstance represents multiple instances, use the full transform of the first copy for the spatial map.
     // this prevents a bad de-duplication when the same replacement asset is used in multiple GeomPointInstancer prims.
     Matrix4 firstInstanceObjectToWorld = drawCall.getTransformData().calcFirstInstanceObjectToWorld();
 
+    // If we already know which instance to use, just use that.
+    RtInstance* currentInstance = existingInstance;
+
     // Search for an existing instance matching our input
-    RtInstance* currentInstance = findSimilarInstance(blas, material, firstInstanceObjectToWorld, drawCall.cameraType, rayPortalManager);
+    if (currentInstance == nullptr && allowInstanceReuse) {
+      currentInstance = findSimilarInstance(blas, material, firstInstanceObjectToWorld, drawCall.cameraType, rayPortalManager);
+    }
 
     if (currentInstance == nullptr) {
       // No existing match - so need to create one

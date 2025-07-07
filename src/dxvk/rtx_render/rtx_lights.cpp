@@ -992,6 +992,15 @@ RtLight::~RtLight() {
     m_distantLight.~RtDistantLight();
     break;
   }
+
+  if (m_replacementInstance != nullptr) {
+    if (m_replacementInstance->root.getLight() == this) {
+      // if this instance is the root of the replacement instance, delete the replacement instance.
+      delete m_replacementInstance;
+    } else {
+      setReplacementInstance(nullptr, ReplacementInstance::kInvalidReplacementIndex);
+    }
+  }
 }
 
 void RtLight::applyTransform(const Matrix4& lightToWorld) {

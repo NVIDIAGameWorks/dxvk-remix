@@ -41,6 +41,7 @@ namespace dxvk
 {
 class RtCamera;
 class RtInstance;
+struct RtLight;
 struct D3D9FixedFunctionVS;
 struct D3D9FixedFunctionPS;
 
@@ -50,6 +51,72 @@ using RaytraceBuffer = GeometryBuffer<Raytrace>;
 // DLFG async compute overlap: max of 2 frames in flight
 // (set to 1 to serialize graphics and async compute queues)
 constexpr uint32_t kDLFGMaxGPUFramesInFlight = 2;
+
+// A container for the runtime instance that maps to a prim in a replacement heirarchy.
+class PrimInstance {
+public:
+  enum class Type : uint8_t {
+    Instance,
+    Light,
+    None
+  };
+  // set to 0 because the Id is based on a pointer value, so the id of an empty Entity is nullptr.
+  static constexpr uint64_t kEmptyId = 0;
+
+  // Use `Entity()` to create a nullptr Entity.
+  PrimInstance() {}
+
+  // Default copy/move/destructors are fine - this just contains typed weak pointers.
+  PrimInstance(const PrimInstance&) = default;
+  PrimInstance(PrimInstance&&) noexcept = default;
+  PrimInstance& operator=(const PrimInstance&) = default;
+  PrimInstance& operator=(PrimInstance&&) noexcept = default;
+  ~PrimInstance() = default;
+
+  // Instance constructor, getter
+  explicit PrimInstance(RtInstance* instance);
+  RtInstance* getInstance() const;
+
+  // Light constructor, getter
+  explicit PrimInstance(RtLight* light);
+  RtLight* getLight() const;
+
+  Type getType() const;
+
+private:
+  union EntityPtr {
+    void* untyped = nullptr;
+    RtInstance* instance;
+    RtLight* light;
+  } m_ptr;
+  Type m_type = Type::None;
+};
+std::ostream& operator << (std::ostream& os, PrimInstance::Type type);
+
+struct ReplacementInstance {
+  // Lifecycle note:
+  // Currently, ReplacementInstances are created the first time a given replaced draw call
+  // is rendered.  A single entity (a light or instance) is designated as the 'root'.
+  // When that entity is destroyed, the ReplacementInstance is destroyed.
+  // Unfortunately, lights and instances aren't always destroyed at the same time, or
+  // in the same order they were created.  To accomodate that, when non-root entities
+  // are deleted, they remove themselves from the `entities` vector.  Similarly, when
+  // the root is deleted, all entities remaining in the vector will have their pointer
+  // to the ReplacementInstance set to nullptr.
+  // TODO(REMIX-4226): In the future, draw calls should be tracked and destroyed based
+  // on the pre-replacement draw call, so that everything in a ReplacementInstance gets
+  // destroyed at the same time.  When that change is made, the original tracked draw
+  // call should own this ReplacementInstance.
+
+  static constexpr uint32_t kInvalidReplacementIndex = UINT32_MAX;
+
+  std::vector<PrimInstance> prims;
+  PrimInstance root;
+
+  ~ReplacementInstance();
+
+  void setup(PrimInstance newRoot, size_t numPrims);
+};
 
 // NOTE: Needed to move this here in order to avoid
 // circular includes.  This probably requires a 

@@ -25,9 +25,65 @@
 #include "rtx_options.h"
 #include "rtx_terrain_baker.h"
 #include "rtx_instance_manager.h"
+#include "rtx_light_manager.h"
 #include "dxvk_scoped_annotation.h"
 
 namespace dxvk {
+
+  // Instance constructor, getter, and assignment operator
+  PrimInstance::PrimInstance(RtInstance* instance) : m_type(Type::Instance) {
+    m_ptr.instance = instance;
+  }
+  RtInstance* PrimInstance::getInstance() const {
+    if (m_type != Type::Instance) {
+      return nullptr;
+    }
+    return m_ptr.instance;
+  }
+
+  // Light constructor, getter, and assignment operator
+  PrimInstance::PrimInstance(RtLight* light) : m_type(Type::Light) {
+    m_ptr.light = light;
+  }
+  RtLight* PrimInstance::getLight() const {
+    if (m_type != Type::Light) {
+      return nullptr;
+    }
+    return m_ptr.light;
+  }
+
+  PrimInstance::Type PrimInstance::getType() const {
+    if (m_ptr.untyped == nullptr) {
+      return Type::None;
+    }
+    return m_type;
+  }
+
+  std::ostream& operator << (std::ostream& os, PrimInstance::Type type) {
+    switch (type) {
+      ENUM_NAME(PrimInstance::Type::Instance);
+      ENUM_NAME(PrimInstance::Type::Light);
+      ENUM_NAME(PrimInstance::Type::None);
+    }
+    return os << static_cast<uint8_t>(type);
+  }
+
+  ReplacementInstance::~ReplacementInstance() {
+    // clear up all references to this ReplacementInstance.
+    for (size_t i = 0; i < prims.size(); i++) {
+      if (prims[i].getInstance() != nullptr) {
+        prims[i].getInstance()->setReplacementInstance(nullptr, kInvalidReplacementIndex);
+      } else if (prims[i].getLight() != nullptr) {
+        prims[i].getLight()->setReplacementInstance(nullptr, kInvalidReplacementIndex);
+      }
+    }
+  }
+
+  void ReplacementInstance::setup(PrimInstance newRoot, size_t numPrims) {
+    prims.resize(numPrims);
+    root = newRoot;
+  }
+
   uint32_t RasterGeometry::calculatePrimitiveCount() const {
     const uint32_t elementCount = usesIndices() ? indexCount : vertexCount;
     switch (topology) {
