@@ -818,7 +818,6 @@ if dxvk_is_ninja
     # as a workaround, we do the copy as part of the test_* target itself
     copy_target_depends = [ copy_usd,
                             copy_usd_dll,
-                            copy_usd_plugins_dlls,
                             copy_nrc_dll,
                             copy_nrc_cuda_deps_dll,
                             copy_nrc_cuda_nv_deps_dll,
@@ -826,7 +825,7 @@ if dxvk_is_ninja
                             copy_dlss_dll,
                             copy_dlfg_dll,
                             copy_aftermath_dll,
-                            d3d9_dll ]
+                            d3d9_dll ] + copy_usd_plugins_dlls
 
     copy_target_depends += copy_reflex_dll
 
