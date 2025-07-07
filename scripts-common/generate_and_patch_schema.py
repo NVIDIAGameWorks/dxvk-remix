@@ -15,13 +15,14 @@ Environment variables required:
     USD_SCHEMA_PYTHON                Path to the Python interpreter used by USD
     USD_NVUSD_BINDIR                 Directory containing the usdGenSchema binary
     USD_LIBPYTHON_DIR                Directory containing the pxr Python modules
-    USD_LIBPYTHON_DIR                Directory for USD Python modules
+    USD_NVUSD_LIBDIR                 Directory for USD native libs (optional)
 """
 import argparse
 import json
 import os
 import sys
 import runpy
+import logging
 
 def replace_in_obj(obj, repl):
     if isinstance(obj, dict):
@@ -32,36 +33,59 @@ def replace_in_obj(obj, repl):
         s = obj
         for key, val in repl.items():
             placeholder = f'@{key}@'
+            if placeholder in s:
+                logging.debug(f"Replacing placeholder {placeholder} with {val} in string {s}")
             s = s.replace(placeholder, val)
         return s
     else:
         return obj
 
 def main():
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='[%(asctime)s] %(levelname)s: %(message)s',
+        datefmt='%H:%M:%S',
+        stream=sys.stdout      # send logs to stdout
+    )
+    logging.info("Starting generate_and_patch_schema.py")
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--schema-usda',     required=True, help='Path to the .usda schema file')
     parser.add_argument('--outdir',          required=True, help='Directory to emit generated files')
     parser.add_argument('--plugin-name',     required=True, help='Name of your plugin (no extension)')
     parser.add_argument('--generated-file',  dest='generated_files', action='append', help='Additional generated files (optional)')
     args = parser.parse_args()
+    logging.debug(f"Parsed arguments: {args}")
 
     # Gather environment and paths
-    usd_py   = os.environ['USD_SCHEMA_PYTHON']
-    usd_bind = os.environ['USD_NVUSD_BINDIR']
-    libpy    = os.environ['USD_LIBPYTHON_DIR']
-    nvlib    = os.environ.get('USD_NVUSD_LIBDIR', '')
+    try:
+        usd_py   = os.environ['USD_SCHEMA_PYTHON']
+        usd_bind = os.environ['USD_NVUSD_BINDIR']
+        libpy    = os.environ['USD_LIBPYTHON_DIR']
+        nvlib    = os.environ.get('USD_NVUSD_LIBDIR', '')
+        logging.debug(f"USD_SCHEMA_PYTHON={usd_py}")
+        logging.debug(f"USD_NVUSD_BINDIR={usd_bind}")
+        logging.debug(f"USD_LIBPYTHON_DIR={libpy}")
+        logging.debug(f"USD_NVUSD_LIBDIR={nvlib}")
+    except KeyError as e:
+        logging.error(f"Missing required environment variable: {e}")
+        sys.exit(1)
 
-    # Ensure Python can locate USD Python modules without PYTHONPATH
+    # Prepare Python path and DLL search path
+    logging.info("Injecting USD Python modules into sys.path")
     sys.path.insert(0, libpy)
+    if nvlib:
+        logging.info(f"Adding native lib directory for DLLs: {nvlib}")
+        try:
+            os.add_dll_directory(nvlib)
+        except Exception as e:
+            logging.warning(f"Failed to add DLL directory {nvlib}: {e}")
 
-    # add DLL search directory so usdGenSchema native libs load
-    os.add_dll_directory(nvlib)
-
-    # Run the usdGenSchema script in-process via runpy
+    # Run the usdGenSchema script in-process
     usd_gen = os.path.join(usd_bind, 'usdGenSchema')
-    print(f"Running usdGenSchema: {usd_gen} {args.schema_usda} {args.outdir}")
+    logging.info(f"Running usdGenSchema script: {usd_gen}")
+    logging.debug(f"Command-line args for usdGenSchema: {args.schema_usda} {args.outdir}")
 
-    # Temporarily override sys.argv so the script sees the correct parameters
     old_argv = sys.argv
     sys.argv = [usd_gen, args.schema_usda, args.outdir]
     try:
@@ -71,15 +95,30 @@ def main():
             # make sure interpreter matches USD_SCHEMA_PYTHON
             '__loader__': None
         })
+        logging.info("usdGenSchema completed successfully")
+    except Exception as e:
+        logging.exception(f"Error running usdGenSchema: {e}")
+        sys.exit(1)
     finally:
         sys.argv = old_argv
 
     # patch plugInfo.json, stripping leading comments
     pluginfo = os.path.join(args.outdir, 'plugInfo.json')
-    with open(pluginfo, 'r', encoding='utf-8') as f:
-        lines = f.readlines()
-    start = next(i for i, l in enumerate(lines) if not l.lstrip().startswith('#'))
-    data = json.loads(''.join(lines[start:]))
+    logging.info(f"Patching plugInfo.json: {pluginfo}")
+    if not os.path.isfile(pluginfo):
+        logging.error(f"plugInfo.json not found at {pluginfo}")
+        sys.exit(1)
+
+    try:
+        with open(pluginfo, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        start = next(i for i, l in enumerate(lines) if not l.lstrip().startswith('#'))
+        raw_json = ''.join(lines[start:])
+        data = json.loads(raw_json)
+        logging.debug(f"Loaded JSON data with keys: {list(data.keys())}")
+    except Exception as e:
+        logging.exception(f"Failed to read or parse plugInfo.json: {e}")
+        sys.exit(1)
 
     repl = {
         'PLUG_INFO_LIBRARY_PATH': f"{args.plugin_name}.dll",
@@ -88,11 +127,18 @@ def main():
         'PLUG_INFO_ROOT':         './../'
     }
     patched = replace_in_obj(data, repl)
+    logging.debug("Applied placeholder replacements to JSON data")
 
-    with open(pluginfo, 'w', encoding='utf-8') as f:
-        json.dump(patched, f, indent=2, ensure_ascii=False)
-        f.write('\n')
+    try:
+        with open(pluginfo, 'w', encoding='utf-8') as f:
+            json.dump(patched, f, indent=2, ensure_ascii=False)
+            f.write('\n')
+        logging.info("Successfully wrote patched plugInfo.json")
+    except Exception as e:
+        logging.exception(f"Failed to write patched plugInfo.json: {e}")
+        sys.exit(1)
 
+    logging.info("generate_and_patch_schema.py completed")
     return 0
 
 if __name__ == '__main__':

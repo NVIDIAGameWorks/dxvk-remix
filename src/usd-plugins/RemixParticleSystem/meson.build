@@ -41,6 +41,7 @@ gen_and_patch = custom_target(
     '--plugin-name', plugin_name
   ],
   build_by_default: true,
+  console : true,    
   env: {
     # mirror what the script expects
     'USD_SCHEMA_PYTHON':    usd_schema_plugins_python,
