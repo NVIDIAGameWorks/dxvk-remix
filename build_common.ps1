@@ -101,7 +101,7 @@ function PerformBuild {
 	}
 
 	Push-Location $BuildDir
-		& meson compile $BuildTarget
+		& meson compile -v $BuildTarget
 	Pop-Location
 
 	if ( $LASTEXITCODE -ne 0 ) {
