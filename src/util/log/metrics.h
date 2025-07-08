@@ -32,12 +32,12 @@
 
 namespace dxvk {
   enum Metric {
-    average_frame_time = 0,  // In milliseconds
-    vid_memory_usage,        // In MB
-    sys_memory_usage,        // In MB
-    gpu_idle_ticks,          // In milliseconds
-    total_time,              // In milliseconds
-    frame_count,             // Count of rendered frames
+    dxvk_average_frame_time_ms = 0,  // In milliseconds
+    dxvk_vid_memory_usage_mb,        // In MB
+    dxvk_sys_memory_usage_mb,        // In MB
+    dxvk_gpu_idle_time_ms,           // In milliseconds
+    dxvk_total_time_ms,              // In milliseconds
+    dxvk_frame_count,                // Count of rendered frames
 
     kCount
   };
@@ -61,12 +61,12 @@ namespace dxvk {
 
   private:
     inline static const std::string m_metricNames[] = {
-      "average_frame_time",
-      "vid_memory_usage",
-      "sys_memory_usage",
-      "gpu_idle_ticks",
-      "total_time",
-      "frame_count",
+      "dxvk_average_frame_time_ms",
+      "dxvk_vid_memory_usage_mb",
+      "dxvk_sys_memory_usage_mb",
+      "dxvk_gpu_idle_time_ms",
+      "dxvk_total_time_ms",
+      "dxvk_frame_count",
     };
 
     static_assert(std::size(m_metricNames) == kCount, "m_metricNames must have an entry for every Metric enum value");
