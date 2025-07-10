@@ -82,8 +82,11 @@ namespace dxvk {
 
         if (ImGui::CollapsingHeader("Spawn", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen)) {
           ImGui::DragInt("Spawn Rate Per Second", &spawnRatePerSecondObject(), 0.1f, 1, 10000, "%d", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::Separator();
           ImGui::Checkbox("Use Spawn Texture Coordinates", &useSpawnTexcoordsObject());
+          ImGui::Separator();
           ImGui::DragFloat("Initial Velocity From Normal", &initialVelocityFromNormalObject(), 0.01f, -500.f, 500.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::DragFloat("Initial Velocity Cone Angle", &initialVelocityConeAngleDegreesObject(), 0.01f, -500.f, 500.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::Separator();
           ImGui::DragFloat("Minimum Life", &minParticleLifeObject(), 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::DragFloat("Maximum Life", &maxParticleLifeObject(), 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);

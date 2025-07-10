@@ -498,18 +498,27 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.orthographicIsUI|bool|True|When enabled, draw calls that are orthographic will be considered as UI\.|
 |rtx.particleSoftnessFactor|float|0.05|Multiplier for the view distance that is used to calculate the particle blending range\.|
 |rtx.particles.enable|bool|True|Enables dust particle simulation and rendering\.|
+|rtx.particles.globalPreset.alignParticlesToVelocity|bool|False|Rotates the particles such that they are always aligned with their direction of travel, in this mode we ignore rotation speed\.|
+|rtx.particles.globalPreset.collisionRestitution|float|0.5|The fraction of velocity retained after a collision with scene geometry\. 1\.0 = perfectly elastic \(no speed loss\), 0\.0 = completely inelastic \(velocity zeroed\)\. Values outside \[0,1\] will be clamped to this range\.|
+|rtx.particles.globalPreset.collisionThickness|float|5|The maximum penetration depth \(in world units\) at which a particle will still collide with geometry\.  Particles that penetrate deeper than this value are considered to have passed through thin objects and will not collide\.|
+|rtx.particles.globalPreset.enableCollisionDetection|bool|False|Enables particle collisions with the world\.|
 |rtx.particles.globalPreset.gravityForce|float|-0.5|Net influence of gravity acting on each particle \(meters per second squared\)\.|
+|rtx.particles.globalPreset.initialVelocityConeAngleDegrees|float|0|Specifies the half angle, in degrees, of the random emission cone  around the triangles surface normal when spawning a new particle\.  A value in the range of 0 to 180 degrees is expected\.|
 |rtx.particles.globalPreset.initialVelocityFromNormal|float|10|Initial speed to apply on spawn \(units/sec\) along the normal vector of the spawning triangle\.|
 |rtx.particles.globalPreset.maxParticleLife|float|6|Maximum lifetime \(in seconds\) to give to a particle when spawned\.|
 |rtx.particles.globalPreset.maxParticleSize|float|3|Maximum size \(in world units\) to give to a particle when spawned\.|
+|rtx.particles.globalPreset.maxRotationSpeed|float|1|Maximum rotation speed \(in revolutions per second\) to give to a particle when spawned\.|
+|rtx.particles.globalPreset.maxSpawnColor|float4|1, 1, 1, 1|Minimum range of the color to tint a particle with when spawned\.|
 |rtx.particles.globalPreset.maxSpeed|float|3|Maximum speed of a particle in world space\.|
 |rtx.particles.globalPreset.minParticleLife|float|3|Minimum lifetime \(in seconds\) to give to a particle when spawned\.|
 |rtx.particles.globalPreset.minParticleSize|float|1|Minimum size \(in world units\) to give to a particle when spawned\.|
+|rtx.particles.globalPreset.minRotationSpeed|float|0.1|Minimum rotation speed \(in revolutions per second\) to give to a particle when spawned\.|
+|rtx.particles.globalPreset.minSpawnColor|float4|1, 1, 1, 1|Minimum range of the color to tint a particle with when spawned\.|
 |rtx.particles.globalPreset.numberOfParticlesPerMaterial|int|98304|Maximum number of particles to simulate per material simultaneously\.  There is a performance consideration, lower numbers are more performant\.  Ideal is to tune this number for your specific needs\.|
-|rtx.particles.globalPreset.opacityMultiplier|float|1|Multiplier for the opacity of a particle in relation to the opacity of the triangle spawning the particle\.|
 |rtx.particles.globalPreset.spawnRatePerSecond|int|100|Number of particles \(per system\) to spawn per second on average\.|
 |rtx.particles.globalPreset.turbulenceAmplitude|float|5|How much turbulence influences the force of a particle\.|
 |rtx.particles.globalPreset.turbulenceFrequency|float|0.05|The rate of change of turbulence forces\.|
+|rtx.particles.globalPreset.useSpawnTexcoords|bool|False|Use the texcoords of the emitter mesh when spawning particles\.|
 |rtx.particles.globalPreset.useTurbulence|bool|True|Enable turbulence simulation\.|
 |rtx.particles.timeScale|float|1|Time modifier, can be used to slow/speed up time\.|
 |rtx.pathMaxBounces|int|4|The maximum number of indirect bounces the path will be allowed to complete\. Must be \< 16\.<br>Higher values result in better indirect lighting quality due to biasing the signal less, lower values result in better performance\.<br>Very high values are not recommended however as while long paths may be technically needed for unbiased rendering, in practice the contributions from higher bounces have diminishing returns\.|
