@@ -25,7 +25,7 @@ dxvk-remix also contains a subproject in the `bridge` folder, which enables 32 b
     - 1.1.0 has been tested
     - Follow [instructions](https://mesonbuild.com/SimpleStart.html#installing-meson) on how to install and reboot the PC before moving on (Meson will indicate as much)
 6. [Vulkan SDK](https://vulkan.lunarg.com/sdk/home#windows)
-    - 1.3.211.0 or newer
+    - 1.4.313.2 or newer
     - You may need to uninstall previous SDK if you have an old version
 7. [Python](https://www.python.org/downloads/)
     - 3.9 or newer
