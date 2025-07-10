@@ -74,6 +74,17 @@ namespace dxvk {
 
       // createCuModuleNVX
       "vkCreateCuModuleNVX: value of pCreateInfo->pNext must be NULL. This error is based on the Valid Usage documentation for version [0-9]+ of the Vulkan header.  It is possible that you are using a struct from a private extension or an extension that was added to a later version of the Vulkan header, in which case the use of pCreateInfo->pNext is undefined and may not work correctly with validation enabled The Vulkan spec states: pNext must be NULL",
+
+      // Vulkan 1.4.313.2 VL Errors
+      "vkCmdBeginRenderPass\\(\\): dependencyCount is incompatible between VkRenderPass 0x[0-9a-fA-F]+.* \\(from VkRenderPass 0x[0-9a-fA-F]+.*\\) and VkRenderPass 0x[0-9a-fA-F]+.* \\(from VkFramebuffer 0x[0-9a-fA-F]+.*\\), [0-9]+ != [0-9]+.",
+      "vkCmdDrawIndexed\\(\\): dependencyCount is incompatible between VkRenderPass 0x[0-9a-fA-F]+.* \\(from VkCommandBuffer 0x[0-9a-fA-F]+.*\\) and VkRenderPass 0x[0-9a-fA-F]+.* \\(from VkPipeline 0x[0-9a-fA-F]+.*\\), [0-9]+ != [0-9]+.",
+      "vkCmdDraw\\(\\): dependencyCount is incompatible between VkRenderPass 0x[0-9a-fA-F]+.* \\(from VkCommandBuffer 0x[0-9a-fA-F]+.*\\) and VkRenderPass 0x[0-9a-fA-F]+.* \\(from VkPipeline 0x[0-9a-fA-F]+.*\\), [0-9]+ != [0-9]+.",
+      "vkAcquireNextImageKHR\\(\\): Semaphore must not be currently signaled.",
+      "vkQueueSubmit\\(\\): pSubmits\\[[0-9]+\\].pWaitSemaphores\\[[0-9]+\\] queue \\(VkQueue 0x[0-9a-fA-F]+.*\\) is waiting on semaphore \\(VkSemaphore 0x[0-9a-fA-F]+.*\\[*\\]\\) that has no way to be signaled.",
+      "vkQueuePresentKHR\\(\\): pPresentInfo->pWaitSemaphores\\[[0-9]+\\] queue \\(VkQueue 0x[0-9a-fA-F]+.*\\) is waiting on semaphore \\(VkSemaphore 0x[0-9a-fA-F]+.*\\[Presenter: present semaphore\\]\\) that has no way to be signaled.",
+      "vkAcquireNextImageKHR\\(\\): Semaphore must not have any pending operations.",
+      "vkQueueSubmit\\(\\): pSubmits\\[[0-9]+\\].pCommandBuffers\\[[0-9]+\\] command buffer VkCommandBuffer 0x[0-9a-fA-F]+.* expects VkImage 0x[0-9a-fA-F]+.* \\(subresource: aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, mipLevel = [0-9]+, arrayLayer = [0-9]+\\) to be in layout VK_IMAGE_LAYOUT_PRESENT_SRC_KHR--instead, current layout is VK_IMAGE_LAYOUT_UNDEFINED.",
+      "vkDestroySemaphore\\(\\): can't be called on VkSemaphore 0x[0-9a-fA-F]+.*\\[*\\] that is currently in use by VkQueue 0x[0-9a-fA-F]+.*.",
 // NV-DXVK end
     };
 
@@ -403,7 +414,7 @@ namespace dxvk {
     // NV-DXVK end
     appInfo.engineVersion         = VK_MAKE_VERSION(1, 9, 4);
     // NV-DXVK start: Require Vulkan 1.3
-    appInfo.apiVersion            = VK_MAKE_VERSION(1, 3, 0);
+    appInfo.apiVersion            = VK_MAKE_VERSION(1, 4, 0);
     // NV-DXVK end
     
     VkInstanceCreateInfo info;
