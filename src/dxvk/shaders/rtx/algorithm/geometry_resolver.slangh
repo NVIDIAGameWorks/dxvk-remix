@@ -332,6 +332,8 @@ void geometryResolverOutputSurface(
     alphaBlendSurface.finalize(surface.hashPacked);
     AlphaBlendGBuffer[pixelCoordinate] = alphaBlendSurface.pack();
   }
+
+  geometryResolverOutputSurfaceDebugView(pixelCoordinate, virtualMotion);
 }
 
 void geometryResolverDLSSRROutputSurface(
@@ -387,6 +389,31 @@ void accumulateParticleBuffer(ivec2 pixelCoordinate, vec3 radiance)
   vec4 prevParticleEmissive = ParticleBuffer[pixelCoordinate];
   prevParticleEmissive.xyz += radiance;
   ParticleBuffer[pixelCoordinate] = prevParticleEmissive;
+}
+
+void geometryResolverOutputSurfaceDebugView(
+  uvec2 pixelCoordinate,
+  vec3 virtualMotion)
+ {
+  switch(cb.debugView)
+  {
+  default:
+  case DEBUG_VIEW_DISABLED:
+    break;
+  case DEBUG_VIEW_VIRTUAL_MOTION_VECTOR:
+    storeInDebugView(pixelCoordinate, virtualMotion);
+    break;
+   case DEBUG_VIEW_NAN:
+   {
+     bool isValid = true;
+      
+     // DEBUG_VIEW_VIRTUAL_MOTION_VECTOR
+     isValid &= isValidValue(virtualMotion);
+
+     accumulateInDebugViewAnd(pixelCoordinate, isValid);
+     break;
+   }
+  }
 }
 
 void geometryResolverVertexOutputDebugView(
