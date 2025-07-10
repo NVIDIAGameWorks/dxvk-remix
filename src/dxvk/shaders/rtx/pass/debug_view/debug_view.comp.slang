@@ -72,8 +72,6 @@ layout(r32f, binding = DEBUG_VIEW_BINDING_PRIMARY_LINEAR_VIEW_Z_INPUT)
 Texture2D<float> PrimaryLinearViewZ;
 layout(rgba16, binding = DEBUG_VIEW_BINDING_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_PERCEPTUAL_ROUGHNESS_INPUT)
 Texture2D<float4> PrimaryVirtualWorldNormalPerceptualRoughness;
-layout(rgba16, binding = DEBUG_VIEW_BINDING_PRIMARY_VIRTUAL_MOTION_VECTOR_INPUT)
-Texture2D<float4> PrimaryVirtualMotionVector;
 layout(rg16, binding = DEBUG_VIEW_BINDING_PRIMARY_SCREEN_SPACE_MOTION_VECTOR_INPUT)
 Texture2D<float2> PrimaryScreenSpaceMotionVector;
 layout(rgba16f, binding = DEBUG_VIEW_BINDING_RTXDI_CONFIDENCE_INPUT)
@@ -269,9 +267,6 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
   {
   case DEBUG_VIEW_VIRTUAL_SHADING_NORMAL:
     value = unormVectorToColor(PrimaryVirtualWorldNormalPerceptualRoughness[threadId].xyz);
-    break;
-  case DEBUG_VIEW_VIRTUAL_MOTION_VECTOR:
-    value = vec4(abs(PrimaryVirtualMotionVector[threadId].xyz), 1);
     break;
   case DEBUG_VIEW_SCREEN_SPACE_MOTION_VECTOR:
     value = vec4(abs(PrimaryScreenSpaceMotionVector[threadId].xy), 0, 1);
@@ -488,8 +483,6 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
 
     // DEBUG_VIEW_VIRTUAL_SHADING_NORMAL
     isValid &= isValidValue(unormVectorToColor(PrimaryVirtualWorldNormalPerceptualRoughness[threadId].xyz));
-    // DEBUG_VIEW_VIRTUAL_MOTION_VECTOR
-    isValid &= isValidValue(PrimaryVirtualMotionVector[threadId].xy);
     // DEBUG_VIEW_SCREEN_SPACE_MOTION_VECTOR
     isValid &= isValidValue(PrimaryScreenSpaceMotionVector[threadId].xy);
 
