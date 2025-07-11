@@ -38,6 +38,9 @@ StructuredBuffer<GpuSpawnContext> SpawnContexts;
 layout(binding = PARTICLE_SYSTEM_BINDING_PREV_WORLD_POSITION_INPUT)
 Texture2D<float4> PreviousWorldPosition_WorldTriangleNormal;
 
+layout(binding = PARTICLE_SYSTEM_BINDING_PREV_PRIMARY_SCREEN_SPACE_MOTION_INPUT)
+Texture2D<float2> PreviousPrimaryScreenSpaceMotionVector;
+
 // Outputs
 
 layout(binding = PARTICLE_SYSTEM_BINDING_PARTICLES_BUFFER_INPUT_OUTPUT)

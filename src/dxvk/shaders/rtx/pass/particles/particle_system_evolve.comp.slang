@@ -42,18 +42,15 @@ bool shouldRespawn(uint particleIdx, const GpuParticleSystem particleSystem)
 
 f16vec3 sampleDirectionInCone(f16vec3 axis, float cosConeHalfAngle, float2 rndUV)
 {
-  float cosTheta = lerp(cosConeHalfAngle, 1.0f, rndUV.x);
-  float sinTheta = sqrt(1.0f - cosTheta * cosTheta);
+  // Sample a direction in a cone about +Z, and get its PDF (we ignore PDF here)
+  float solidAnglePdf;
+  f16vec3 localDir = calcUniformConeDirectionSample(f16vec2(rndUV), cosConeHalfAngle, solidAnglePdf);
 
-  float phi = rndUV.y * twoPi;
-  float sinPhi, cosPhi;
-  sincos(phi, sinPhi, cosPhi);
-
-  // build an arbitrary tangent basis
   f16vec3 tangent, bitangent;
   calcOrthonormalBasis(axis, tangent, bitangent);
-  
-  return sinTheta * cosPhi * tangent + sinTheta * sinPhi * bitangent + cosTheta * axis;
+
+  // Rotate the local-Z sample into the world-axis frame
+  return localDir.x * tangent + localDir.y * bitangent + localDir.z * axis;
 }
 
 // Generate a new particle in-place with random properties
@@ -168,7 +165,9 @@ float calculateParticleRotationFromPositions(float3 velocity, float4x4 worldToVi
   float3 v = velocity;
   float len = length(v);
   if (len < 1e-6f)
-      return 0.0f; // no motion --> no rotation
+  {
+    return 0.0f; // no motion --> no rotation
+  }
 
   v /= len;
 
@@ -212,17 +211,29 @@ void collideParticleWithScene(inout GpuParticle p)
   // fetch the MinimalSurfaceInteraction from last frame
   MinimalSurfaceInteraction si = minimalSurfaceInteractionReadFromGBuffer(pixel, PreviousWorldPosition_WorldTriangleNormal);
 
-  if(!si.isValid)
+  if (!si.isValid)
   {
     return;
   }
   
-  // unpack, normalize and flip normal
+  // unpack, normalize
   float3 n = normalize(float3(si.triangleNormal));
-  float3 viewDir = particleCb.viewToWorld[2].xyz;
-  if (dot(n, viewDir) < 0.0f)
+  
+  float2 screenVelocity = PreviousPrimaryScreenSpaceMotionVector[pixel];
+  
+  // fetch the MinimalSurfaceInteraction from 2 frames ago
+  MinimalSurfaceInteraction si2 = minimalSurfaceInteractionReadFromGBuffer(pixel + screenVelocity, PreviousWorldPosition_WorldTriangleNormal);
+
+  float3 sceneVel = 0..xxx;
+  if (si2.isValid)
   {
-    n = -n;
+    sceneVel = (si.position - si2.position) / particleCb.deltaTimeSecs;
+  }
+  
+  float3 relVel = p.velocity - sceneVel;
+  if (dot(relVel, n) >= 0.0f)
+  {
+    return;
   }
 
   // signed distance along that normal
@@ -237,8 +248,8 @@ void collideParticleWithScene(inout GpuParticle p)
     p.position = si.position + n * outDist;
 
     // reflect & apply restitution
-    float3 vRef = reflect(p.velocity, n);
-    p.velocity = vRef * particleCb.particleSystem.desc.collisionRestitution;
+    float3 vRef = reflect(relVel, n);
+    p.velocity = vRef * particleCb.particleSystem.desc.collisionRestitution + sceneVel;
   }
 }
 
