@@ -105,6 +105,10 @@ namespace dxvk {
           ImGui::DragFloat("Max Speed", &maxSpeedObject(), 0.01f, 0.f, 100000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 
           ImGui::Checkbox("Align Particles with Velocity", &alignParticlesToVelocityObject());
+          ImGui::Checkbox("Enable Motion Trail", &enableMotionTrailObject());
+          ImGui::BeginDisabled(!enableMotionTrail());
+          ImGui::DragFloat("Motion Trail Length Multiplier", &motionTrailMultiplierObject(), 0.01f, 0.001f, 10000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::EndDisabled();
 
           ImGui::Checkbox("Enable Particle World Collisions", &enableCollisionDetectionObject());
           ImGui::BeginDisabled(!enableCollisionDetection());
@@ -141,6 +145,7 @@ namespace dxvk {
     constants.upDirection.y = ctx->getSceneManager().getSceneUp().y;
     constants.upDirection.z = ctx->getSceneManager().getSceneUp().z;
     constants.deltaTimeSecs = GlobalTime::get().deltaTime() * timeScale();
+    constants.invDeltaTimeSecs = 1.f / constants.deltaTimeSecs;
     constants.absoluteTimeSecs = GlobalTime::get().absoluteTimeMs() * 0.001f * timeScale();
   }
 
@@ -172,6 +177,8 @@ namespace dxvk {
     desc.alignParticlesToVelocity = RtxParticleSystemManager::alignParticlesToVelocity() ? 1 : 0;
     desc.collisionRestitution = RtxParticleSystemManager::collisionRestitution();
     desc.collisionThickness = RtxParticleSystemManager::collisionThickness();
+    desc.enableMotionTrail = RtxParticleSystemManager::enableMotionTrail() ? 1 : 0;
+    desc.motionTrailMultiplier = RtxParticleSystemManager::motionTrailMultiplier();
     return desc;
   }
 
@@ -198,7 +205,7 @@ namespace dxvk {
   uint32_t RtxParticleSystemManager::getNumberOfParticlesToSpawn(ParticleSystem* particleSystem, const DrawCallState& drawCallState) {
     ScopedCpuProfileZone();
 
-    float lambda = spawnRatePerSecond() * GlobalTime::get().deltaTime();
+    float lambda = particleSystem->context.desc.spawnRate * GlobalTime::get().deltaTime();
 
     // poisson dist wont work well with these values (inf loop)
     if (isnan(lambda) || lambda < 0.0f) {
@@ -423,6 +430,46 @@ namespace dxvk {
     }
   }
 
+  RtxParticleSystemManager::ParticleSystem::ParticleSystem(const RtxParticleSystemDesc& desc, const MaterialData& matData, const CategoryFlags& cats, const uint32_t seed) : context(desc)
+    , materialData(matData)
+    , categories(cats) {
+    // Seed the RNG with a parameter from the manager, so we get unique random values for each particle system
+    generator = std::default_random_engine(seed);
+    // Store this hash since it cannot change now.
+    // NOTE: This material data hash is stable within a run, but since hash depends on VK handles, it is not reliable across runs.
+    m_cachedHash = materialData.getHash() ^ context.desc.calcHash();
+    context.numVerticesPerParticle = getVerticesPerParticle();
+
+    // classic square billboard
+    static const float2 offsets[4] = {
+        float2(-0.5f,  0.5f),
+        float2(0.5f,  0.5f),
+        float2(-0.5f, -0.5f),
+        float2(0.5f, -0.5f)
+    };
+
+    // motion trail - first 4 are "head", last 4 are "tail"
+    static const float2 offsetsMotionTrail[8] = {
+      // TAIL quad (fixed)
+      float2(-0.5f, -0.5f),
+      float2(-0.5f,  0.0f),
+      float2( 0.5f, -0.5f),
+      float2( 0.5f,  0.0f),
+
+      // HEAD quad (stretched)
+      float2(-0.5f, 0.0f),
+      float2(-0.5f, 0.5f),
+      float2( 0.5f, 0.0f),
+      float2( 0.5f, 0.5f)
+    };
+
+    if (desc.enableMotionTrail) {
+      memcpy(&context.particleVertexOffsets[0], &offsetsMotionTrail[0], sizeof(offsetsMotionTrail));
+    } else {
+      memcpy(&context.particleVertexOffsets[0], &offsets[0], sizeof(offsets));
+    }
+  }
+
   void RtxParticleSystemManager::ParticleSystem::allocStaticBuffers(DxvkContext* ctx) {
     ScopedCpuProfileZone();
 
@@ -446,11 +493,11 @@ namespace dxvk {
       ctx->clearBuffer(m_particles, 0, info.size, 0);
     }
 
-    if (m_vb == nullptr || m_vb->info().size != sizeof(ParticleVertex) * context.desc.maxNumParticles * 4) {
+    if (m_vb == nullptr || m_vb->info().size != sizeof(ParticleVertex) * getVertexCount()) {
       const Rc<DxvkDevice>& device = ctx->getDevice();
 
       DxvkBufferCreateInfo info;
-      info.size = sizeof(ParticleVertex) * context.desc.maxNumParticles * 4;
+      info.size = sizeof(ParticleVertex) * getVertexCount();
       info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
         | VK_BUFFER_USAGE_TRANSFER_DST_BIT
         | VK_BUFFER_USAGE_TRANSFER_SRC_BIT
@@ -465,27 +512,48 @@ namespace dxvk {
       ctx->clearBuffer(m_vb, 0, info.size, 0);
     }
 
-    if (m_ib == nullptr || m_ib->info().size != sizeof(uint32_t) * context.desc.maxNumParticles * 6) {
+    if (m_ib == nullptr || m_ib->info().size != sizeof(uint32_t) * getIndexCount()) {
       const Rc<DxvkDevice>& device = ctx->getDevice();
 
       DxvkBufferCreateInfo info;
-      info.size = sizeof(uint32_t) * context.desc.maxNumParticles * 6;
+      info.size = sizeof(uint32_t) * getIndexCount();
       info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
-        | VK_BUFFER_USAGE_TRANSFER_DST_BIT
-        | VK_BUFFER_USAGE_TRANSFER_SRC_BIT
-        | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
+                 | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+                 | VK_BUFFER_USAGE_TRANSFER_SRC_BIT
+                 | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
       info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
       info.access = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT;
       m_ib = device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "RTX Particles - Index Buffer");
 
-      std::vector<uint32_t> indices(context.desc.maxNumParticles * 6);
+      std::vector<uint32_t> indices(getIndexCount());
       for (int i = 0; i < context.desc.maxNumParticles; i++) {
-        indices[i * 6 + 0] = i * 4 + 0;
-        indices[i * 6 + 1] = i * 4 + 1;
-        indices[i * 6 + 2] = i * 4 + 2;
-        indices[i * 6 + 3] = i * 4 + 2;
-        indices[i * 6 + 4] = i * 4 + 1;
-        indices[i * 6 + 5] = i * 4 + 3;
+        indices[i * getIndicesPerParticle() + 0] = i * getVerticesPerParticle() + 0;
+        indices[i * getIndicesPerParticle() + 1] = i * getVerticesPerParticle() + 1;
+        indices[i * getIndicesPerParticle() + 2] = i * getVerticesPerParticle() + 2;
+
+        indices[i * getIndicesPerParticle() + 3] = i * getVerticesPerParticle() + 2;
+        indices[i * getIndicesPerParticle() + 4] = i * getVerticesPerParticle() + 1;
+        indices[i * getIndicesPerParticle() + 5] = i * getVerticesPerParticle() + 3;
+      }
+
+      if (context.desc.enableMotionTrail) {
+        for (int i = 0; i < context.desc.maxNumParticles; i++) {
+          indices[i * getIndicesPerParticle() + 6]  = i * getVerticesPerParticle() + 1;
+          indices[i * getIndicesPerParticle() + 7]  = i * getVerticesPerParticle() + 4;
+          indices[i * getIndicesPerParticle() + 8]  = i * getVerticesPerParticle() + 3;
+
+          indices[i * getIndicesPerParticle() + 9]  = i * getVerticesPerParticle() + 3;
+          indices[i * getIndicesPerParticle() + 10] = i * getVerticesPerParticle() + 4;
+          indices[i * getIndicesPerParticle() + 11] = i * getVerticesPerParticle() + 6;
+
+          indices[i * getIndicesPerParticle() + 12] = i * getVerticesPerParticle() + 4;
+          indices[i * getIndicesPerParticle() + 13] = i * getVerticesPerParticle() + 5;
+          indices[i * getIndicesPerParticle() + 14] = i * getVerticesPerParticle() + 6;
+
+          indices[i * getIndicesPerParticle() + 15] = i * getVerticesPerParticle() + 6;
+          indices[i * getIndicesPerParticle() + 16] = i * getVerticesPerParticle() + 5;
+          indices[i * getIndicesPerParticle() + 17] = i * getVerticesPerParticle() + 7;
+        }
       }
 
       ctx->updateBuffer(m_ib, 0, info.size, indices.data());

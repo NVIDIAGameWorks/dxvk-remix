@@ -142,48 +142,31 @@ GpuParticle respawn(uint particleIdx, const GpuParticleSystem particleSystem)
   return newParticle;
 }
 
-void clearParticleVertices(uint particleIdx)
+void clearParticleVertices(uint particleIdx, const GpuParticleSystem particleSystem)
 {
   [unroll]
-  for (uint i=0 ; i<4 ; i++)
+  for (uint i=0 ; i<particleSystem.numVerticesPerParticle ; i++)
   {
-    Vertices[particleIdx * 4 + i].position = 0..xxx;
+    Vertices[particleIdx * particleSystem.numVerticesPerParticle + i].position = 0..xxx;
   }
 }
 
-float2 rotate2D(float2 inputVector, float radians)
+float2 calcBillboardSinCos(float3 velocity, float4x4 worldToView)
 {
-  float s, c;
-  sincos(radians, s, c);
-    
-  // Apply the rotation matrix
-  return float2(c * inputVector.x - s * inputVector.y, s * inputVector.x + c * inputVector.y);
-}
-
-float calculateParticleRotationFromPositions(float3 velocity, float4x4 worldToView)
-{
-  float3 v = velocity;
-  float len = length(v);
-  if (len < 1e-6f)
-  {
-    return 0.0f; // no motion --> no rotation
+  float len = length(velocity);
+  if (len < 1e-6f) {
+    return float2(0, 1);
   }
+  float3 v = velocity / len;
 
-  v /= len;
+  float3 camRight = worldToView[0].xyz;
+  float3 camUp    = worldToView[1].xyz;
 
-  // extract camera right/up in world space
-  float3 right = worldToView[0].xyz;
-  float3  up   = worldToView[1].xyz;
+  // screenspace velocity
+  float2 vel2D = float2(dot(v, camRight), -dot(v, camUp));
+  vel2D = normalize(vel2D);
 
-  // project velocity into that plane
-  float2 vel2D = float2(dot(v, right),  dot(v, up));
-
-  // atan2 gives angle from +X axis (right) towards +Y axis (up)
-  float angle = atan2(vel2D.y, vel2D.x);
-
-  // wrap
-  angle = fmod(angle + twoPi, twoPi);
-  return angle;
+  return vel2D;
 }
 
 // small bias to avoid re-penetration
@@ -227,7 +210,8 @@ void collideParticleWithScene(inout GpuParticle p)
   float3 sceneVel = 0..xxx;
   if (si2.isValid)
   {
-    sceneVel = (si.position - si2.position) / particleCb.deltaTimeSecs;
+    float3 relativePos = (si.position - si2.position);
+    sceneVel = relativePos;
   }
   
   float3 relVel = p.velocity - sceneVel;
@@ -239,14 +223,10 @@ void collideParticleWithScene(inout GpuParticle p)
   // signed distance along that normal
   float signedDist = dot(p.position - si.position, n);
 
-  // only collide if we’ve gone “inside” but not deeper than thickness
+  // only collide if we've gone inside but not deeper than thickness
   float thickness = particleCb.particleSystem.desc.collisionThickness;
   if (signedDist < 0.0f && signedDist > -thickness)
   {
-    // push the particle just outside the surface
-    float outDist = si.positionError + kCollisionBias;
-    p.position = si.position + n * outDist;
-
     // reflect & apply restitution
     float3 vRef = reflect(relVel, n);
     p.velocity = vRef * particleCb.particleSystem.desc.collisionRestitution + sceneVel;
@@ -276,36 +256,47 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
     
   if(particle.timeToLive <= 0.f)
   {
-    clearParticleVertices(particleIdx);
+    clearParticleVertices(particleIdx, particleSystem);
     return;
   }
   
   if (particleSystem.desc.useTurbulence)
   {
-    particle.velocity += curlOfValueNoise(particle.position * particleSystem.desc.turbulenceFrequency, particleCb.absoluteTimeSecs * particleSystem.desc.turbulenceFrequency) * particleSystem.desc.turbulenceAmplitude * particleCb.deltaTimeSecs;
+    particle.velocity += curlOfValueNoise(particle.position * particleSystem.desc.turbulenceFrequency, particleCb.absoluteTimeSecs * particleSystem.desc.turbulenceFrequency) * particleSystem.desc.turbulenceAmplitude;
   }
   
   particle.velocity += particleCb.upDirection * particleSystem.desc.gravityForce * particleCb.deltaTimeSecs;
-  
-  if (dot(particle.velocity, particle.velocity) > float16_t(0.f))
-  {
-    particle.velocity = min(particleSystem.desc.maxSpeed, length(particle.velocity)) * normalize(particle.velocity); 
-  }
   
   if (particleSystem.desc.enableCollisionDetection)
   {
     collideParticleWithScene(particle);
   }
   
+  if (dot(particle.velocity, particle.velocity) > float16_t(0.f))
+  {
+    particle.velocity = min(particleSystem.desc.maxSpeed, length(particle.velocity)) * normalize(particle.velocity); 
+  }
+  
   particle.position += particle.velocity * particleCb.deltaTimeSecs;
   
-  if(particleSystem.desc.alignParticlesToVelocity)
+  float2x2 rot2D = float2x2(1.f, 0.f, 0.f, 1.f);
+  if (!particleSystem.desc.enableMotionTrail)
   {
-    particle.rotation = calculateParticleRotationFromPositions(particle.velocity, particleCb.worldToView);
-  }
-  else
-  {
-    particle.rotation = (particle.rotation + particle.rotationSpeed * particleCb.deltaTimeSecs) % twoPi;
+    if (particleSystem.desc.alignParticlesToVelocity)
+    {
+      particle.rotation = 0.h;
+    
+      float2 sc = calcBillboardSinCos(particle.velocity, particleCb.worldToView);
+      rot2D = float2x2(sc.y, -sc.x, sc.x, sc.y);
+    }
+    else
+    {
+      particle.rotation = (particle.rotation + particle.rotationSpeed * particleCb.deltaTimeSecs) % twoPi;
+    
+      float s, c;
+      sincos(particle.rotation, s, c);
+      rot2D = float2x2(c, -s, s, c);
+    }
   }
   
   particle.timeToLive -= particleCb.deltaTimeSecs;
@@ -314,14 +305,6 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
   
   const float3 right = particleCb.worldToView[0].xyz;
   const float3 up = particleCb.worldToView[1].xyz;
-  
-  static const float2 offsets[4] =
-  {
-    float2(-0.5f, -0.5f),
-    float2(-0.5f,  0.5f),
-    float2( 0.5f, -0.5f),
-    float2( 0.5f,  0.5f)
-  };
   
   float16_t4 color = float16_t4(unorm8ToF16(uint8_t(particle.color)),
                                 unorm8ToF16(uint8_t(particle.color >> 8)),
@@ -336,16 +319,50 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
   
   uint colorEnc = float4x16ToUnorm4x8(color.zyxw);
   
+  
   [unroll]
-  for (uint i=0 ; i<4 ; i++)
+  for (uint i=0 ; i<particleSystem.numVerticesPerParticle ; i++)
   {
-    ParticleVertex vertex = Vertices[particleIdx * 4 + i];
+    ParticleVertex vertex;
     
-    float2 offset = rotate2D(offsets[i], particle.rotation);
-    vertex.position = particle.position + (offset.x* right + offset.y * up) * size;
+    float2 offset = particleSystem.particleVertexOffsets[i];
+
+    float3 worldOffset;
+    if (particleSystem.desc.enableMotionTrail)
+    {
+      // project velocity into billboard plane
+      float2 motionPlane = -float2(dot(particle.velocity, right), dot(particle.velocity, up));
+      float speed = length(motionPlane);
+
+      // forward axis & width axis
+      float2 motionDir = speed > 0 ? motionPlane / speed : float2(0, 1);
+      float2 orthoDir  = float2(-motionDir.y, motionDir.x);
+
+      float width = offset.x * size;
+
+      // indices 0..3 -> tail
+      // indices 4..7 -> head
+      float len = (i >= 4) ? (speed * particleSystem.desc.motionTrailMultiplier * particleCb.deltaTimeSecs) : 0;                                       
+      
+      float height = offset.y * size + len;
+      
+      // reconstruct world space offset
+      float2 planeOffset = width * orthoDir + height * motionDir;
+      worldOffset = planeOffset.x * right + planeOffset.y * up;
+    }
+    else
+    {
+      // rotate sprite in 2d
+      float2 localOffset = mul(rot2D, offset);
+      
+      // classic billboard
+      worldOffset = (localOffset.x * right + localOffset.y * up) * size;
+    }
+    
+    vertex.position = particle.position + worldOffset;
     vertex.color = colorEnc;
-    vertex.texcoord = (offsets[i] + 0.5f) * (particle.uvMinMax.zw - particle.uvMinMax.xy) + particle.uvMinMax.xy;
+    vertex.texcoord = (offset + 0.5f) * (particle.uvMinMax.zw - particle.uvMinMax.xy) + particle.uvMinMax.xy;
     
-    Vertices[particleIdx * 4 + i] = vertex;
+    Vertices[particleIdx * particleSystem.numVerticesPerParticle + i] = vertex;
   }
 }

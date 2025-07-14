@@ -75,16 +75,7 @@ namespace dxvk {
       uint32_t generationIdx = 0;
 
       ParticleSystem() = delete;
-      ParticleSystem(const RtxParticleSystemDesc& desc, const MaterialData& matData, const CategoryFlags& cats, const uint32_t seed)
-        : context(desc)
-        , materialData(matData)
-        , categories(cats) {
-        // Seed the RNG with a parameter from the manager, so we get unique random values for each particle system
-        generator = std::default_random_engine(seed);
-        // Store this hash since it cannot change now.
-        // NOTE: This material data hash is stable within a run, but since hash depends on VK handles, it is not reliable across runs.
-        m_cachedHash = materialData.getHash() ^ context.desc.calcHash();
-      }
+      ParticleSystem(const RtxParticleSystemDesc& desc, const MaterialData& matData, const CategoryFlags& cats, const uint32_t seed);
 
       XXH64_hash_t getHash() const {
         return m_cachedHash;
@@ -110,12 +101,20 @@ namespace dxvk {
         return generationIdx;
       }
 
+      uint32_t getVerticesPerParticle() const {
+        return context.desc.enableMotionTrail ? 8 : 4;
+      }
+
+      uint32_t getIndicesPerParticle() const {
+        return context.desc.enableMotionTrail ? 18 : 6;
+      }
+
       uint32_t getVertexCount() const {
-        return context.desc.maxNumParticles * 4;
+        return context.desc.maxNumParticles * getVerticesPerParticle();
       }
 
       uint32_t getIndexCount() const {
-        return context.desc.maxNumParticles * 6;
+        return context.desc.maxNumParticles * getIndicesPerParticle();
       }
 
       void allocStaticBuffers(DxvkContext* pCtx);
@@ -157,6 +156,8 @@ namespace dxvk {
     RTX_OPTION("rtx.particles.globalPreset", bool, useTurbulence, true, "Enable turbulence simulation.");
     RTX_OPTION("rtx.particles.globalPreset", float, turbulenceAmplitude, 5.f, "How much turbulence influences the force of a particle.");
     RTX_OPTION("rtx.particles.globalPreset", float, turbulenceFrequency, .05f, "The rate of change of turbulence forces.");
+    RTX_OPTION("rtx.particles.globalPreset", bool, enableMotionTrail, false, "Elongates the particle with respect to velocity, texture edges are preserved, with only the center being stretched which provides a motion blur like effect on the particles themselves.  This will automatically align particles rotation with their individual velocitys (similar to rtx.particles.globalPreset.alignParticlesToVelocity) and so rotation parameters are no longer taken into account when this setting is enabled.");
+    RTX_OPTION("rtx.particles.globalPreset", float, motionTrailMultiplier, 1.f, "When enableMotionTrail is set to enabled, this value can be used to increase (or decrease) the length of the tail artificially, which is determined by the velocity.  A value of 1 (the default) will ensure each particle is the exact size of the motion over the previous frame.  Values geater than 1 will increase that size linearly.  Likewise for smaller than 1.  0 and below is an invalid value.");
 
 
     void setupConstants(RtxContext* ctx, ParticleSystemConstants& constants);

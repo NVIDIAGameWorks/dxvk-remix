@@ -72,8 +72,8 @@ struct RtxParticleSystemDesc {
   uint8_t enableCollisionDetection;
 
   float collisionRestitution;
-  uint pad0;
-  uint pad1;
+  uint enableMotionTrail;
+  float motionTrailMultiplier;
   uint pad2;
 
 #ifdef __cplusplus
@@ -91,10 +91,12 @@ struct RtxParticleSystemDesc {
 struct GpuParticleSystem { 
   RtxParticleSystemDesc desc; // TODO: Can compress this further.
 
-  // These members arent hashed
+  // These members aren't hashed
+  float2 particleVertexOffsets[8];
+
   uint spawnParticleOffset = 0;
   uint spawnParticleCount = 0;
-  uint pad0;
+  uint numVerticesPerParticle = 4;
   uint pad1;
 
 #ifndef __cplusplus
@@ -138,6 +140,7 @@ struct ParticleSystemConstants {
   float deltaTimeSecs;
 
   float absoluteTimeSecs;
+  float invDeltaTimeSecs;
   uint frameIdx;
   uint16_t renderingWidth;
   uint16_t renderingHeight;

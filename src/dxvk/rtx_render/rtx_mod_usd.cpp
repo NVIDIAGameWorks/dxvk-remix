@@ -586,12 +586,14 @@ bool UsdMod::Impl::processParticleSystem(Args& args, const pxr::UsdPrim& prim) {
   READ_ATTR(float, TurbulenceAmplitude, turbulenceAmplitude);
   READ_ATTR(float, CollisionThickness, collisionThickness);
   READ_ATTR(float, CollisionRestitution, collisionRestitution);
+  READ_ATTR(float, MotionTrailMultiplier, motionTrailMultiplier);
   READ_ATTR(int, MaxNumParticles, maxNumParticles);
   READ_ATTR(bool, UseTurbulence, useTurbulence);
   READ_ATTR(bool, UseSpawnTexcoords, useSpawnTexcoords);
   READ_ATTR(bool, EnableCollisionDetection, enableCollisionDetection);
   READ_ATTR(bool, AlignParticlesToVelocity, alignParticlesToVelocity);
-  READ_ATTR(bool, SpawnRatePerSecond, spawnRate);
+  READ_ATTR(bool, EnableMotionTrail, enableMotionTrail);
+  READ_ATTR(float, SpawnRatePerSecond, spawnRate);
   READ_ATTR_CONV(GfVec4f, MaxSpawnColor, maxSpawnColor, toFloat4);
   READ_ATTR_CONV(GfVec4f, MinSpawnColor, minSpawnColor, toFloat4);
 
