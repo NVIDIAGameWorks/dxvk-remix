@@ -179,6 +179,7 @@ namespace dxvk {
     desc.collisionThickness = RtxParticleSystemManager::collisionThickness();
     desc.enableMotionTrail = RtxParticleSystemManager::enableMotionTrail() ? 1 : 0;
     desc.motionTrailMultiplier = RtxParticleSystemManager::motionTrailMultiplier();
+    desc.spawnRate = (float)RtxParticleSystemManager::spawnRatePerSecond();
     return desc;
   }
 
