@@ -627,7 +627,7 @@ namespace dxvk {
       float bestSimilarity = kNotSimilar;
       for (auto&& pair : m_lights) {
         const RtLight& light = pair.second;
-        if (light.getReplacementInstance() != nullptr) {
+        if (light.getPrimInstanceOwner().getReplacementInstance() != nullptr) {
           // lights that are part of a replacement should not be considered.
           continue;
         }

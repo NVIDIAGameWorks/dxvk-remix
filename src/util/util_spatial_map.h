@@ -95,7 +95,7 @@ namespace dxvk {
           }
           const float distSqr = lengthSqr(entry.centroid - centroid);
           if (distSqr <= maxDistSqr && distSqr < nearestDistSqr) {
-            nearestDistSqr = distSqr;
+              nearestDistSqr = distSqr;
             if (nearestDistSqr == 0.0f) {
               // Not going to find anything closer, so stop the iteration
               return entry.data;
@@ -109,9 +109,22 @@ namespace dxvk {
     
     XXH64_hash_t insert(const Vector3& centroid, const Matrix4& transform, const T* data) {
       XXH64_hash_t transformHash = XXH64(&transform, sizeof(transform), 0);
-      m_cache.emplace(std::piecewise_construct,
-                      std::forward_as_tuple(transformHash),
-                      std::forward_as_tuple(data, centroid, transformHash));
+      while(m_cache.find(transformHash) != m_cache.end()) {
+        // Note: This can happen if an instance is moved to the same position as another existing instance.
+        // It can cause a single frame of NaN, but shouldn't cause any crashes.
+        // TODO(REMIX-4134): Once spatial map is used on draw calls and not rtInstances, it should be safe to restore the assert() below.
+        ONCE(Logger::warn("Specified hash was already present in SpatialMap::insert(). May indicate a duplicated overlapping object."));
+        // assert(false);
+        transformHash++;
+      }
+      auto [iter, success] = m_cache.emplace(std::piecewise_construct,
+          std::forward_as_tuple(transformHash),
+          std::forward_as_tuple(data, centroid, transformHash));
+      if (!success) {
+        ONCE(Logger::err("Failed to add entry in SpatialMap::insert()."));
+        assert(false);
+        return transformHash;
+      }
       m_cells[getCellPos(centroid)].emplace_back(data, centroid, transformHash);
       return transformHash;
     }
@@ -122,8 +135,10 @@ namespace dxvk {
         eraseFromCell(pair->second.centroid, transformHash);
         m_cache.erase(pair);
       } else {
-        ONCE(Logger::err("Specified hash was missing in SpatialMap::erase()."));
-        assert(false);
+        // Note: This can happen if a duplicate hash is encountered in the insert() call.
+        // TODO(REMIX-4134): Once spatial map is used on draw calls and not rtInstances, it should be safe to restore the assert() below.
+        ONCE(Logger::warn("Specified hash was missing in SpatialMap::erase()."));
+        // assert(false);
       }
     }
 
@@ -142,6 +157,10 @@ namespace dxvk {
       for (auto pair : m_cache) {
         m_cells[getCellPos(pair.second.centroid)].emplace_back(pair.second);
       }
+    }
+
+    size_t size() const {
+      return m_cache.size();
     }
 
   private:

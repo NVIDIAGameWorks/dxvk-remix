@@ -127,8 +127,7 @@ namespace dxvk {
     , m_firstBillboard(src.m_firstBillboard)
     , m_billboardCount(src.m_billboardCount)
     , m_categoryFlags(src.m_categoryFlags)
-    , m_replacementInstance(src.m_replacementInstance)
-    , m_replacementIndex(src.m_replacementIndex) {
+    , m_primInstanceOwner(src.m_primInstanceOwner) {
     // Members for which state carry over is intentionally skipped
     /*
        m_isMarkedForGC
@@ -151,7 +150,7 @@ namespace dxvk {
   namespace {
     template<int RtInstanceSize> struct CheckRtInstanceSize {
       // The second line of the build error should contain the new size of RtInstance in the template argument, i.e. `dxvk::CheckRtInstanceSize<newSize>`
-      static_assert(RtInstanceSize == 696, "RtInstance size has changed.  Fix the copy constructor above this message, then update the expected size.");
+      static_assert(RtInstanceSize == 704, "RtInstance size has changed.  Fix the copy constructor above this message, then update the expected size.");
     };
     CheckRtInstanceSize<sizeof(RtInstance)> _rtInstanceSizeTest;
   }
@@ -211,10 +210,10 @@ namespace dxvk {
     surface.prevObjectToWorld = oldToNew * surface.prevObjectToWorld;
     onTransformChanged();
 
-    if (m_replacementInstance && m_replacementInstance->root.getInstance() == this) {
+    if (m_primInstanceOwner.isRoot(this)) {
       // this is the root of a replacement - need to update the transform history for all the instances in the replacement.
-      for (size_t i = 0; i < m_replacementInstance->prims.size(); i++) {
-        RtInstance* instance = m_replacementInstance->prims[i].getInstance();
+      for (size_t i = 0; i < m_primInstanceOwner.getReplacementInstance()->prims.size(); i++) {
+        RtInstance* instance = m_primInstanceOwner.getReplacementInstance()->prims[i].getInstance();
         if (instance != nullptr && instance != this) {
           instance->teleportWithHistory(oldToNew);
         }
@@ -318,21 +317,6 @@ namespace dxvk {
     return m_vkInstance.mask & OBJECT_MASK_VIEWMODEL_VIRTUAL;
   }
 
-  void RtInstance::setReplacementInstance(ReplacementInstance* replacementInstance, uint32_t replacementIndex) {
-    if (m_replacementInstance &&
-        m_replacementIndex != ReplacementInstance::kInvalidReplacementIndex &&
-        m_replacementInstance->prims[m_replacementIndex].getInstance() == this) {
-      // clear up the old reference to this instance
-      m_replacementInstance->prims[m_replacementIndex] = PrimInstance();
-    }
-    m_replacementInstance = replacementInstance;
-    m_replacementIndex = replacementIndex;
-    if (m_replacementInstance && 
-        replacementIndex != ReplacementInstance::kInvalidReplacementIndex) {
-      m_replacementInstance->prims[replacementIndex] = PrimInstance(this);
-    }
-  }
-
   InstanceManager::InstanceManager(DxvkDevice* device, ResourceCache* pResourceCache)
     : CommonDeviceObject(device)
     , m_pResourceCache(pResourceCache) {
@@ -422,7 +406,7 @@ namespace dxvk {
 
   RtInstance* InstanceManager::processSceneObject(
     const CameraManager& cameraManager, const RayPortalManager& rayPortalManager,
-    BlasEntry& blas, const DrawCallState& drawCall, const MaterialData& materialData, const RtSurfaceMaterial& material, RtInstance* existingInstance, bool allowInstanceReuse) {
+    BlasEntry& blas, const DrawCallState& drawCall, const MaterialData& materialData, const RtSurfaceMaterial& material, RtInstance* existingInstance) {
 
     // If the RtInstance represents multiple instances, use the full transform of the first copy for the spatial map.
     // this prevents a bad de-duplication when the same replacement asset is used in multiple GeomPointInstancer prims.
@@ -432,7 +416,7 @@ namespace dxvk {
     RtInstance* currentInstance = existingInstance;
 
     // Search for an existing instance matching our input
-    if (currentInstance == nullptr && allowInstanceReuse) {
+    if (currentInstance == nullptr) {
       currentInstance = findSimilarInstance(blas, material, firstInstanceObjectToWorld, drawCall.cameraType, rayPortalManager);
     }
 

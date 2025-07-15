@@ -44,6 +44,7 @@ class RtInstance;
 struct RtLight;
 struct D3D9FixedFunctionVS;
 struct D3D9FixedFunctionPS;
+struct ReplacementInstance;
 
 using RasterBuffer = GeometryBuffer<Raster>;
 using RaytraceBuffer = GeometryBuffer<Raytrace>;
@@ -81,7 +82,11 @@ public:
   explicit PrimInstance(RtLight* light);
   RtLight* getLight() const;
 
+  // Untyped utilities.
+  PrimInstance(void* owner, Type type);
   Type getType() const;
+  void* getUntyped() const;
+  void setReplacementInstance(ReplacementInstance* replacementInstance, size_t replacementIndex);
 
 private:
   union EntityPtr {
@@ -116,6 +121,18 @@ struct ReplacementInstance {
   ~ReplacementInstance();
 
   void setup(PrimInstance newRoot, size_t numPrims);
+};
+
+// Wrapper utility to share the code for handling replacementInstance ownership.
+class PrimInstanceOwner {
+public:
+  bool isRoot(void* owner) const;
+  void setReplacementInstance(ReplacementInstance* replacementInstance, size_t replacementIndex, void* owner, PrimInstance::Type type);
+  ReplacementInstance* getReplacementInstance() const { return m_replacementInstance; }
+  size_t getReplacementIndex() const { return m_replacementIndex; }
+private:
+  ReplacementInstance* m_replacementInstance = nullptr;
+  size_t m_replacementIndex = ReplacementInstance::kInvalidReplacementIndex;
 };
 
 // NOTE: Needed to move this here in order to avoid
