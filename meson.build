@@ -707,7 +707,7 @@ if dxvk_is_ninja
       command          : [recursive_copy_path,
                           join_paths(usd_lib_path, 'lib/usd/'),
                           join_paths(output_path, 'usd/')] )
-	copy_usd_dll = []
+    copy_usd_dll = []
     foreach ulib : nvusd_deplibs
       copy_usd_dll += custom_target('copy_usd_dll_' + ulib + '_' + target_suffix,
                 output           : ['copy_usd_dll_' + ulib + '_' + target_suffix],
@@ -719,37 +719,37 @@ if dxvk_is_ninja
   
     copy_usd_plugins_dlls = []
 
-	copy_usd_plugins_dlls += custom_target('copy_usd_plugins_json_' + target_suffix,
+    copy_usd_plugins_dlls += custom_target('copy_usd_plugins_json_' + target_suffix,
                     output           : ['copy_usd_plugins_json_' + target_suffix],
                     command          : [copy_script_path,
                                         join_paths(global_src_root_norm, 'src', 'usd-plugins'),
                                         join_paths(output_path, 'usd/plugins/'),
                                         'plugInfo.json'] )
     foreach usd_plugin : usd_plugins
-	  copy_usd_plugins_dlls += custom_target('copy_usd_plugins_' + usd_plugin.name() + '_dll_' + target_suffix,
-	                     depends          : [ usd_plugin ],
+      copy_usd_plugins_dlls += custom_target('copy_usd_plugins_' + usd_plugin.name() + '_dll_' + target_suffix,
+                         depends          : [ usd_plugin ],
                          output           : ['copy_usd_plugins_' + usd_plugin.name() + '_dll_' + target_suffix],
                          command          : [copy_script_path,
                                              fs.parent(usd_plugin.full_path()) ,
                                              join_paths(output_path, 'usd/plugins', usd_plugin.name() + '/'),
                                              usd_plugin.name() + '.dll'] )
 
-	  copy_usd_plugins_dlls += custom_target('copy_usd_plugins_' + usd_plugin.name() + '_json_' + target_suffix,
-	                     depends          : [ usd_plugin ],
+      copy_usd_plugins_dlls += custom_target('copy_usd_plugins_' + usd_plugin.name() + '_json_' + target_suffix,
+                         depends          : [ usd_plugin ],
                          output           : ['copy_usd_plugins_' + usd_plugin.name() + '_json_' + target_suffix],
                          command          : [copy_script_path,
                                              fs.parent(usd_plugin.full_path()),
                                              join_paths(output_path, 'usd/plugins', usd_plugin.name(), 'resources/'),
                                              'plugInfo.json'] )
 
-	  copy_usd_plugins_dlls += custom_target('copy_usd_plugins_' + usd_plugin.name() + '_schema_' + target_suffix,
-	                     depends          : [ usd_plugin ],
+      copy_usd_plugins_dlls += custom_target('copy_usd_plugins_' + usd_plugin.name() + '_schema_' + target_suffix,
+                         depends          : [ usd_plugin ],
                          output           : ['copy_usd_plugins_' + usd_plugin.name() + '_schema_' + target_suffix],
                          command          : [copy_script_path,
                                              fs.parent(usd_plugin.full_path()),
                                              join_paths(output_path, 'usd/plugins', usd_plugin.name() + '/'),
                                              'generatedSchema.usda'] )
-	endforeach
+    endforeach
 
     copy_nrc_dll = custom_target('copy_nrc_dll_' + target_suffix,
       output           : ['copy_nrc_dll_' + target_suffix],

@@ -480,6 +480,12 @@ struct MinimalSurfaceInteraction
   f16vec3 triangleNormal;
   f16vec3 triangleTangent;
   f16vec3 triangleBitangent;
+
+  // Surfaces created from gbuffer may not be valid (i.e. if this pixel was a ray miss)
+  property bool isValid
+  {
+    get { return all(!isinf(position)); }
+  }
 };
 
 struct SurfaceInteraction : MinimalSurfaceInteraction

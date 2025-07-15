@@ -374,6 +374,17 @@ namespace ImGui {
 
   // Variant handling RtxOption as input
   template <typename ... Args>
+  IMGUI_API bool ColorPicker4(const char* label, dxvk::RtxOption<dxvk::Vector4>* rtxOption, Args&& ... args) {
+    dxvk::Vector4 value = rtxOption->get();
+    bool changed = IMGUI_ADD_TOOLTIP(ColorPicker4(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
+    if (changed) {
+      rtxOption->setDeferred(value);
+    }
+    return changed;
+  }
+
+  // Variant handling RtxOption as input
+  template <typename ... Args>
   IMGUI_API bool InputText(const char* label, dxvk::RtxOption<std::string>* rtxOption, Args&& ... args) {
     // Note: Includes the null terminator, so the maximum length of text is only 1023 bytes.
     constexpr std::uint32_t maxTextBytes = 1024;

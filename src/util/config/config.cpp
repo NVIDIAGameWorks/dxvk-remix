@@ -1161,6 +1161,10 @@ namespace dxvk {
   void Config::setOption(const std::string& key, const Vector2& value) {
     setOption(key, generateOptionString(value));
   }
+
+  void Config::setOption(const std::string& key, const Vector4& value) {
+    setOption(key, generateOptionString(value));
+  }
   // NV-DXVK end
 
   void Config::setOption(const std::string& key, const Vector3& value) {
@@ -1293,6 +1297,27 @@ namespace dxvk {
     std::stringstream ss(value);
     std::string s;
     for (int i = 0; i < 2; ++i) {
+      if (!std::getline(ss, s, ',')) {
+        return false;
+      }
+
+      float value;
+      if (!parseOptionValue(s, value)) {
+        return false;
+      }
+
+      result[i] = value;
+    }
+
+    return true;
+  }
+
+  bool Config::parseOptionValue(
+    const std::string& value,
+    Vector4& result) {
+    std::stringstream ss(value);
+    std::string s;
+    for (int i = 0; i < 4; ++i) {
       if (!std::getline(ss, s, ',')) {
         return false;
       }

@@ -269,7 +269,8 @@ void writeMissToGBuffer(
   RWTexture2D<float4> worldShadingNormalPerceptualRoughnessTexture,
   RWTexture2D<float4> WorldShadingNormalPerceptualRoughnessDenoisingTexture,
   RWTexture2D<float4> albedoTexture,
-  RWTexture2D<float4> baseReflectivityTexture)
+  RWTexture2D<float4> baseReflectivityTexture,
+  RWTexture2D<float4> worldPositionWorldTriangleNormal)
 {
   const vec3 missNormal = cb.clearColorNormal;
   const float missPerceptualRoughness = 0.0f;
@@ -277,11 +278,13 @@ void writeMissToGBuffer(
   const vec4 missAlbedo = vec4(0.0f, 0.0f, 0.0f, 0.0f);
   const vec4 missBaseReflectivity = vec4(0.0f, 0.0f, 0.0f, 0.0f);
   const float missConeRadius = 0.0f;
+  const vec4 missPositionNormal = asfloat(0x7F800000).xxxx; // Structures that read from this data know how to interpret infinity.
 
   linearViewZTexture[position] = missLinearViewZ;
   worldMotionTexture[position] = vec4(missMotionVector, 0);
   worldShadingNormalPerceptualRoughnessTexture[position] = vec4(missNormal * 0.5 + 0.5, missPerceptualRoughness);
   WorldShadingNormalPerceptualRoughnessDenoisingTexture[position] = NRD_FrontEnd_PackNormalAndRoughness(missNormal, missPerceptualRoughness, MATERIAL_ID_DEFAULT);
+  worldPositionWorldTriangleNormal[position] = missPositionNormal;
 
   if (writeStochastic)
   {

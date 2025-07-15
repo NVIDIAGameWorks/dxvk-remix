@@ -60,7 +60,8 @@ namespace dxvk {
     Vector3,
     Vector2i,
     String,
-    VirtualKeys
+    VirtualKeys,
+    Vector4
   };
 
   union GenericValue {
@@ -69,6 +70,7 @@ namespace dxvk {
     float f;
     Vector2* v2;
     Vector3* v3;
+    Vector4* v4;
     Vector2i* v2i;
     fast_unordered_set* hashSet;
     std::vector<XXH64_hash_t>* hashVector;
@@ -249,6 +251,7 @@ namespace dxvk {
       if constexpr (std::is_same_v<T, fast_unordered_set>) return OptionType::HashSet;
       if constexpr (std::is_same_v<T, std::vector<XXH64_hash_t>>) return OptionType::HashVector;
       if constexpr (std::is_same_v<T, std::vector<int32_t>>) return OptionType::IntVector;
+      if constexpr (std::is_same_v<T, Vector4>) return OptionType::Vector4;
       if constexpr (std::is_same_v<T, Vector2>) return OptionType::Vector2;
       if constexpr (std::is_same_v<T, Vector3>) return OptionType::Vector3;
       if constexpr (std::is_same_v<T, Vector2i>) return OptionType::Vector2i;

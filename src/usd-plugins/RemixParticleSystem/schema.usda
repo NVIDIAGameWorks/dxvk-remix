@@ -28,23 +28,31 @@ class RemixParticleSystem "RemixParticleSystem" (
     }
 )
 {
-    float minTtl                  = 0.0  (
+    float minTimeToLive                      = 0.0  (
         doc = "Minimum time to live for each particle (seconds)."
     )
 
-    float maxTtl                  = 5.0  (
+    float maxTimeToLive                     = 5.0  (
         doc = "Maximum time to live for each particle (seconds)."
     )
 
-    float opacityMultiplier       = 1.0  (
-        doc = "Global opacity multiplier applied to particle sprite."
+    float minRotationSpeed                  = 0.0  (
+        doc = "Minimum rotation speed (in revolutions per second) to give to a particle when spawned."
+    )
+
+    float maxRotationSpeed                  = 0.0  (
+        doc = "Maximum rotation speed (in revolutions per second) to give to a particle when spawned."
     )
 
     float initialVelocityFromNormal = 0.0 (
         doc = "Initial speed along emitter normal direction."
     )
 
-    float minParticleSize         = 0.01 (
+    float initialVelocityConeAngleDegrees = 0.0 (
+        doc = "Specifies the half angle, in degrees, of the random emission cone  around the triangles surface normal when spawning a new particle.  A value in the range of 0 to 180 degrees is expected."
+    )
+
+    float minParticleSize         = 1.0 (
         doc = "Smallest particle diameter in scene units."
     )
 
@@ -56,7 +64,7 @@ class RemixParticleSystem "RemixParticleSystem" (
         doc = "Acceleration due to gravity (scene units/sec^2)."
     )
 
-    float maxSpeed                = 100.0 (
+    float maxSpeed                = 1000.0 (
         doc = "Clamp speed, particles faster than this are slowed."
     )
 
@@ -67,9 +75,40 @@ class RemixParticleSystem "RemixParticleSystem" (
     float turbulenceAmplitude     = 0.0   (
         doc = "Amplitude of procedural turbulence noise."
     )
-
+	
+    float spawnRatePerSecond     = 0.0   (
+        doc = "Number of particles (per system) to spawn per second on average."
+    )
     int   maxNumParticles         = 10000 (
         doc = "Maximum total particles alive at once."
+    )
+
+    bool  useSpawnTexcoords       = false (
+        doc = "Use the texture coordinatess of the emitter mesh when spawning particles."
+    )
+
+    bool  alignParticlesToVelocity  = false (
+        doc = "Rotates the particles such that they are always aligned with their direction of travel, in this mode we ignore rotation speed."
+    )
+
+    bool  enableMotionTrail         = false (
+        doc = "Elongates the particle with respect to velocity, texture edges are preserved, with only the center being stretched which provides a motion blur like effect on the particles themselves.  This will automatically align particles rotation with their individual velocitys (similar to alignParticlesToVelocity) and so rotation parameters are no longer taken into account when this setting is enabled."
+    )
+
+    float motionTrailMultiplier     = 1.0   (
+        doc = "When enableMotionTrail is set to enabled, this value can be used to increase (or decrease) the length of the tail artificially, which is determined by the velocity.  A value of 1 (the default) will ensure each particle is the exact size of the motion over the previous frame.  Values geater than 1 will increase that size linearly.  Likewise for smaller than 1.  0 and below is an invalid value."
+    )
+
+    bool  enableCollisionDetection       = false (
+        doc = "Enables particle collisions with the world."
+    )
+
+    float  collisionRestitution          = 0.6 (
+        doc = "Fraction of velocity retained after colliding with scene geometry (1 = perfect bounce, 0 = complete loss)."
+    )
+
+    float  collisionThickness            = 5.0 (
+        doc = "Maximum penetration depth (in world units) under which a particle still collides; deeper penetrations are ignored."
     )
 
     bool  useTurbulence           = false (

@@ -24,9 +24,6 @@
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/utility/shader_types.h"
 
-struct EvolveArgs {
-  uint particleSystemIdx;
-};
 
 struct GpuSpawnContext {
   mat4x3 spawnObjectToWorld;
@@ -47,24 +44,37 @@ struct GpuSpawnContext {
 };
 
 struct RtxParticleSystemDesc { 
-  float4 minSpawnColor;
+  vec4 minSpawnColor;
 
-  float4 maxSpawnColor;
+  vec4 maxSpawnColor;
 
   float minTtl;
   float maxTtl;
-  float opacityMultiplier;
   float initialVelocityFromNormal;
+  float initialVelocityConeAngleDegrees;
 
   float minParticleSize;
   float maxParticleSize;
   float gravityForce;
-  uint useTurbulence;
-
   float maxSpeed;
+
   float turbulenceFrequency;
   float turbulenceAmplitude;
   uint maxNumParticles;
+  float minRotationSpeed;
+
+  float maxRotationSpeed;
+  float spawnRate;
+  float collisionThickness;
+  uint8_t useTurbulence;
+  uint8_t alignParticlesToVelocity;
+  uint8_t useSpawnTexcoords;
+  uint8_t enableCollisionDetection;
+
+  float collisionRestitution;
+  uint enableMotionTrail;
+  float motionTrailMultiplier;
+  uint pad2;
 
 #ifdef __cplusplus
   RtxParticleSystemDesc() {
@@ -81,10 +91,12 @@ struct RtxParticleSystemDesc {
 struct GpuParticleSystem { 
   RtxParticleSystemDesc desc; // TODO: Can compress this further.
 
-  // These members arent hashed
+  // These members aren't hashed
+  float2 particleVertexOffsets[8];
+
   uint spawnParticleOffset = 0;
   uint spawnParticleCount = 0;
-  uint pad0;
+  uint numVerticesPerParticle = 4;
   uint pad1;
 
 #ifndef __cplusplus
@@ -97,10 +109,15 @@ struct GpuParticleSystem {
     return rand * size;
   }
 
+  float16_t varyRotationSpeed(float rand) {
+    return lerp(desc.minRotationSpeed, desc.maxRotationSpeed, rand) * twoPi;
+  }
+
   float calculateOpacity(float particleNormalizedLife) {
     float x = particleNormalizedLife * 2 - 1; // -1 to 1 based on lifetime
-    return smoothstep(0.f, 1.f, 1.f - abs(x)) * desc.opacityMultiplier;
+    return smoothstep(0.f, 1.f, 1.f - abs(x));
   }
+
 #else
   GpuParticleSystem() = default;
   GpuParticleSystem(const GpuParticleSystem& other) = default;
@@ -110,17 +127,21 @@ struct GpuParticleSystem {
 #endif
 };
 
-#define MAX_MATERIAL_SLOTS 128
-
 struct ParticleSystemConstants {
-  GpuParticleSystem particleSystems[MAX_MATERIAL_SLOTS];
+  GpuParticleSystem particleSystem;
 
   mat4 worldToView;
+
+  mat4 viewToWorld;
+
+  mat4 prevWorldToProjection;
 
   vec3 upDirection;
   float deltaTimeSecs;
 
   float absoluteTimeSecs;
+  float invDeltaTimeSecs;
   uint frameIdx;
-  uint pad1;
+  uint16_t renderingWidth;
+  uint16_t renderingHeight;
 };

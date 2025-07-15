@@ -107,6 +107,9 @@ namespace dxvk {
       case OptionType::Vector3:
         delete value.v3;
         break;
+      case OptionType::Vector4:
+        delete value.v4;
+        break;
       case OptionType::Vector2i:
         delete value.v2i;
         break;
@@ -131,6 +134,7 @@ namespace dxvk {
     case OptionType::Vector2: return "float2";
     case OptionType::Vector3: return "float3";
     case OptionType::Vector2i: return "int2";
+    case OptionType::Vector4: return "float4";
     case OptionType::String: return "string";
     default:
       return "unknown type";
@@ -151,6 +155,7 @@ namespace dxvk {
     case OptionType::Vector2: return Config::generateOptionString(*value.v2);
     case OptionType::Vector3: return Config::generateOptionString(*value.v3);
     case OptionType::Vector2i: return Config::generateOptionString(*value.v2i);
+    case OptionType::Vector4: return Config::generateOptionString(*value.v4);
     case OptionType::String: return *value.string;
     default:
       return "unknown type";
@@ -226,6 +231,9 @@ namespace dxvk {
     case OptionType::String:
       *value.string = options.getOption<std::string>(fullName.c_str(), *value.string, env);
       break;
+    case OptionType::Vector4:
+      *value.v4 = options.getOption<Vector4>(fullName.c_str(), *value.v4, env);
+      break;
     default:
       break;
     }
@@ -289,6 +297,9 @@ namespace dxvk {
     case OptionType::String:
       options.setOption(fullName.c_str(), *value.string);
       break;
+    case OptionType::Vector4:
+      options.setOption(fullName.c_str(), *value.v4);
+      break;
     default:
       break;
     }
@@ -335,6 +346,9 @@ namespace dxvk {
       break;
     case OptionType::String:
       return *aValue.string == *bValue.string;
+      break;
+    case OptionType::Vector4:
+      return *aValue.v4 == *bValue.v4;
       break;
     }      
     return false;
@@ -394,6 +408,9 @@ namespace dxvk {
       break;
     case OptionType::String:
       *value.string = *source.string;
+      break;
+    case OptionType::Vector4:
+      *value.v4 = *source.v4;
       break;
     default:
       break;

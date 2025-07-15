@@ -519,6 +519,12 @@ RAB_Surface RAB_GetSurfaceForTemporalBiasCorrection(RAB_Surface currentSurface, 
     if (cb.enablePreviousTLAS || all(virtualMotionVector == 0)) {
       const MinimalSurfaceInteraction temporalSurfaceInteraction = minimalSurfaceInteractionReadFromGBuffer(
         prevPixelID, PreviousWorldPosition_WorldTriangleNormal);
+      // Check the previous frames gbuffer data is valid.
+      if (!temporalSurfaceInteraction.isValid)
+      {
+        return temporalSurface;
+      }
+  
       temporalSurface.minimalSurfaceInteraction.position = temporalSurfaceInteraction.position;
       temporalSurface.minimalSurfaceInteraction.triangleNormal = temporalSurfaceInteraction.triangleNormal;
       temporalSurface.minimalSurfaceInteraction.triangleTangent = temporalSurfaceInteraction.triangleTangent;

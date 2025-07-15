@@ -75,16 +75,7 @@ namespace dxvk {
       uint32_t generationIdx = 0;
 
       ParticleSystem() = delete;
-      ParticleSystem(const RtxParticleSystemDesc& desc, const MaterialData& matData, const CategoryFlags& cats, const uint32_t seed)
-        : context(desc)
-        , materialData(matData)
-        , categories(cats) {
-        // Seed the RNG with a parameter from the manager, so we get unique random values for each particle system
-        generator = std::default_random_engine(seed);
-        // Store this hash since it cannot change now.
-        // NOTE: This material data hash is stable within a run, but since hash depends on VK handles, it is not reliable across runs.
-        m_cachedHash = materialData.getHash() ^ context.desc.calcHash();
-      }
+      ParticleSystem(const RtxParticleSystemDesc& desc, const MaterialData& matData, const CategoryFlags& cats, const uint32_t seed);
 
       XXH64_hash_t getHash() const {
         return m_cachedHash;
@@ -110,12 +101,20 @@ namespace dxvk {
         return generationIdx;
       }
 
+      uint32_t getVerticesPerParticle() const {
+        return context.desc.enableMotionTrail ? 8 : 4;
+      }
+
+      uint32_t getIndicesPerParticle() const {
+        return context.desc.enableMotionTrail ? 18 : 6;
+      }
+
       uint32_t getVertexCount() const {
-        return context.desc.maxNumParticles * 4;
+        return context.desc.maxNumParticles * getVerticesPerParticle();
       }
 
       uint32_t getIndexCount() const {
-        return context.desc.maxNumParticles * 6;
+        return context.desc.maxNumParticles * getIndicesPerParticle();
       }
 
       void allocStaticBuffers(DxvkContext* pCtx);
@@ -141,13 +140,24 @@ namespace dxvk {
     RTX_OPTION("rtx.particles.globalPreset", float, maxParticleLife, 6.f, "Maximum lifetime (in seconds) to give to a particle when spawned.");
     RTX_OPTION("rtx.particles.globalPreset", float, minParticleSize, 1.f, "Minimum size (in world units) to give to a particle when spawned.");
     RTX_OPTION("rtx.particles.globalPreset", float, maxParticleSize, 3.f, "Maximum size (in world units) to give to a particle when spawned.");
-    RTX_OPTION("rtx.particles.globalPreset", float, opacityMultiplier, 1.f, "Multiplier for the opacity of a particle in relation to the opacity of the triangle spawning the particle.");
+    RTX_OPTION("rtx.particles.globalPreset", float, minRotationSpeed, .1f, "Minimum rotation speed (in revolutions per second) to give to a particle when spawned.");
+    RTX_OPTION("rtx.particles.globalPreset", float, maxRotationSpeed, 1.f, "Maximum rotation speed (in revolutions per second) to give to a particle when spawned.");
+    RTX_OPTION("rtx.particles.globalPreset", Vector4, minSpawnColor, Vector4(1.f), "Minimum range of the color to tint a particle with when spawned.");
+    RTX_OPTION("rtx.particles.globalPreset", Vector4, maxSpawnColor, Vector4(1.f), "Minimum range of the color to tint a particle with when spawned.");
     RTX_OPTION("rtx.particles.globalPreset", float, initialVelocityFromNormal, 10.f, "Initial speed to apply on spawn (units/sec) along the normal vector of the spawning triangle.");
+    RTX_OPTION("rtx.particles.globalPreset", float, initialVelocityConeAngleDegrees, 0.f, "Specifies the half angle, in degrees, of the random emission cone  around the triangles surface normal when spawning a new particle.  A value in the range of 0 to 180 degrees is expected.");
     RTX_OPTION("rtx.particles.globalPreset", float, gravityForce, -.5f, "Net influence of gravity acting on each particle (meters per second squared).");
     RTX_OPTION("rtx.particles.globalPreset", float, maxSpeed, 3.f, "Maximum speed of a particle in world space.");
+    RTX_OPTION("rtx.particles.globalPreset", bool, useSpawnTexcoords, false, "Use the texcoords of the emitter mesh when spawning particles.");
+    RTX_OPTION("rtx.particles.globalPreset", bool, alignParticlesToVelocity, false, "Rotates the particles such that they are always aligned with their direction of travel, in this mode we ignore rotation speed.");
+    RTX_OPTION("rtx.particles.globalPreset", bool, enableCollisionDetection, false, "Enables particle collisions with the world.");
+    RTX_OPTION("rtx.particles.globalPreset", float, collisionRestitution, .5, "The fraction of velocity retained after a collision with scene geometry. 1.0 = perfectly elastic (no speed loss), 0.0 = completely inelastic (velocity zeroed). Values outside [0,1] will be clamped to this range.");
+    RTX_OPTION("rtx.particles.globalPreset", float, collisionThickness, 5.f, "The maximum penetration depth (in world units) at which a particle will still collide with geometry.  Particles that penetrate deeper than this value are considered to have passed through thin objects and will not collide.");
     RTX_OPTION("rtx.particles.globalPreset", bool, useTurbulence, true, "Enable turbulence simulation.");
     RTX_OPTION("rtx.particles.globalPreset", float, turbulenceAmplitude, 5.f, "How much turbulence influences the force of a particle.");
     RTX_OPTION("rtx.particles.globalPreset", float, turbulenceFrequency, .05f, "The rate of change of turbulence forces.");
+    RTX_OPTION("rtx.particles.globalPreset", bool, enableMotionTrail, false, "Elongates the particle with respect to velocity, texture edges are preserved, with only the center being stretched which provides a motion blur like effect on the particles themselves.  This will automatically align particles rotation with their individual velocitys (similar to rtx.particles.globalPreset.alignParticlesToVelocity) and so rotation parameters are no longer taken into account when this setting is enabled.");
+    RTX_OPTION("rtx.particles.globalPreset", float, motionTrailMultiplier, 1.f, "When enableMotionTrail is set to enabled, this value can be used to increase (or decrease) the length of the tail artificially, which is determined by the velocity.  A value of 1 (the default) will ensure each particle is the exact size of the motion over the previous frame.  Values geater than 1 will increase that size linearly.  Likewise for smaller than 1.  0 and below is an invalid value.");
 
 
     void setupConstants(RtxContext* ctx, ParticleSystemConstants& constants);

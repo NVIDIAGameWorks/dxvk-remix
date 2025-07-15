@@ -264,7 +264,7 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
   const vec3 bary = uintToBarycentrics(rayInteraction.barycentricCoordinates);
 
   SurfaceInteraction surfaceInteraction;
-
+  
   // Calculate vertex position in world space
   // Note: World space positions needed to compute the texture gradients, a bit expensive but probably easier than transforming
   // the ray direction into object space and worrying about how to transform its cone width appropriately (scales could affect it).

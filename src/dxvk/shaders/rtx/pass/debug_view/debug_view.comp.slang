@@ -43,6 +43,8 @@
 #include "rtx/pass/nrc/nrc_utilities.slangh"
 #include "rtx/algorithm/accumulate.slangh"
 
+#include "rtx/concept/surface/minimal_surface_interaction.slangh"
+
 uint32_t RAB_EncodeNormal(float3 normal)
 {
   return float2x32ToSnorm2x16(sphereDirectionToSignedOctahedral(normal));
@@ -109,6 +111,9 @@ Texture2D<float4> Composite;
 
 layout(r16f, binding = DEBUG_VIEW_BINDING_ALTERNATE_DISOCCLUSION_THRESHOLD_INPUT)
 Texture2D<float> PrimaryDisocclusionThreshold;
+
+layout(binding = DEBUG_VIEW_BINDING_PREV_WORLD_POSITION_INPUT)
+Texture2D<float4> PreviousWorldPosition_WorldTriangleNormal;
 
 // Inputs / Outputs
 
@@ -478,6 +483,32 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
       value = float4(0, 1, 1, 1);
     }
     break;
+  case DEBUG_VIEW_PREV_WORLD_POSITION_AND_TBN:
+    {
+      GBufferMemoryMinimalSurfaceInteraction memory;
+      memory.encodedWorldPositionWorldTriangleTBN = PreviousWorldPosition_WorldTriangleNormal[threadId];
+      memory.positionError = 0;
+
+      MinimalSurfaceInteraction si = minimalSurfaceInteractionCreate(memory);
+      
+      if(cb.debugKnob.x <= 1.f)
+      {
+        value.xyz = si.position;
+      }
+      else if(cb.debugKnob.x <= 2.f)
+      {
+        value.xyz = normalize(float3(si.triangleNormal));
+      }
+      else if(cb.debugKnob.x <= 3.f)
+      {
+        value.xyz = normalize(float3(si.triangleTangent));
+      }
+      else if(cb.debugKnob.x <= 4.f)
+      {
+        value.xyz = normalize(float3(si.triangleBitangent));
+      }
+      break;
+    }
   case DEBUG_VIEW_NAN:
     bool isValid = DebugView[threadId].x != 0.0;
 

@@ -21,6 +21,8 @@
 */
 #pragma once
 
+#include "rtx/concept/ray/ray_utilities.h"
+
 // Minimal Surface Interaction Functions
 
 MinimalSurfaceInteraction minimalSurfaceInteractionCreate(GBufferMemoryMinimalSurfaceInteraction gBufferMemoryMinimalSurfaceInteraction)
@@ -36,7 +38,6 @@ MinimalSurfaceInteraction minimalSurfaceInteractionCreate(GBufferMemoryMinimalSu
   minimalSurfaceInteraction.triangleTangent = quaternionToTangent(quaternion);
   minimalSurfaceInteraction.triangleBitangent = quaternionToBitangent(quaternion);
   minimalSurfaceInteraction.triangleNormal = quaternionToNormal(quaternion);
-
   return minimalSurfaceInteraction;
 }
 
