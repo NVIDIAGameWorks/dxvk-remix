@@ -22,6 +22,12 @@
 #ifndef RAY_H
 #define RAY_H
 
+// Disable Slang warning about deprecation of inheritance in favor of composition
+// struct Base { int a; };
+// struct Inherited : public Base { int b; }; <- no more this
+// struct Composed { Base base; int b; }; <- only this
+#pragma warning(disable:30816)
+
 #ifndef USE_32BIT_RAY_DIRECTION
 #define USE_32BIT_RAY_DIRECTION 0
 #endif
@@ -54,35 +60,35 @@ RayDesc rayToRayDesc(Ray ray)
 
 struct GBufferMemoryMinimalRay
 {
-  float16_t spreadAngle;
+  float16_t spreadAngle = 0.h;
 };
 
 struct MinimalRay
 {
-  float16_t spreadAngle;
+  float16_t spreadAngle = 0.h;
 };
 
 // Note: Minimal version of typical Ray Interaction for transmission across passes.
 struct MinimalRayInteraction
 {
   // Note: Cone radius at the hit point (after spreading over a distance from the view ray)
-  float16_t coneRadius;
+  float16_t coneRadius = 0.h;
   // Note: Do not use direction for anything highly precise (e.g. hit position derivation) as it is only
   // 16 bit and will lack enough precision to get highly accurate results. Generally acceptable for lighting
   // however unless significant artifacting is seen, in which case it may be justifiable to bump the precision
   // up (for primary rays mainly the concern exists).
-  f16vec3 viewDirection;
+  f16vec3 viewDirection = 0.h;
 };
 
 struct RayInteraction : MinimalRayInteraction
 {
-  float hitDistance;
-  uint barycentricCoordinates;
-  uint primitiveIndex;
-  uint customIndex;
-  uint16_t surfaceIndex;
-  uint8_t materialType;
-  uint8_t frontHit; // Todo: Pack this into some other value to not take up extra space
+  float hitDistance = 0.f;
+  uint barycentricCoordinates = 0u;
+  uint primitiveIndex = 0u;
+  uint customIndex = 0u;
+  uint16_t surfaceIndex = 0u;
+  uint8_t materialType = 0u;
+  uint8_t frontHit = 0u; // Todo: Pack this into some other value to not take up extra space
 };
 
 struct GBufferMemoryMinimalRayInteraction

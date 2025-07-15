@@ -296,7 +296,7 @@ struct NEECacheUtils
   static void calculateTriangleLightIntensity(int surfaceIndex, int primitiveIndex, out vec3 triangleCenter, out f16vec3 triangleNormal, out vec3 lightIntensity)
   {
     const Surface surface = surfaces[uint(surfaceIndex)]; 
-    RayInteraction rayInteracton = {};
+    RayInteraction rayInteracton = RayInteraction();
     rayInteracton.frontHit = true;
     rayInteracton.barycentricCoordinates = barycentricsToUint(uvToBarycentrics(vec2(1.0 / 3.0)));
     rayInteracton.primitiveIndex = primitiveIndex;
@@ -410,7 +410,7 @@ struct NEECacheUtils
       return 1.0;
     }
 
-    RayInteraction rayInteraction = {};
+    RayInteraction rayInteraction = RayInteraction();
     rayInteraction.coneRadius = 0;
     rayInteraction.viewDirection = viewDirection;
 

@@ -21,6 +21,15 @@
 */
 #pragma once
 
+// This disables the warning about uninitialized variables in the following 
+// pattern used in NRC
+// NrcStruct NrcCreateStruct()
+// {
+//    NrcStruct s;
+//    return s;
+// }
+#pragma warning(disable: 41016)
+
 // Includes NRC headers
 
 #include "rtx/external/NRC.h"

@@ -224,22 +224,27 @@ def createSlangTask(inputFile, variantSpec):
     if variantName != inputName:
         task.customName = f'{os.path.basename(inputFile)} ({variantName})'
 
-    variableName = '' if args.binary else f'--vn {variantName}'
+    variableArg = '' if args.binary else f'-source-embed-name {variantName} -source-embed-style u32'
 
-    command1 = f'{args.slangc} -entry main -target glsl -verbose-paths {includePaths} -o {glslFile} ' \
+    command1 = f'{args.slangc} -entry main -target spirv -zero-initialize -emit-spirv-directly -verbose-paths {includePaths} ' \
             + f'-depfile {depFile} {inputFile} -D__SLANG__ {variantDefines} ' \
-            + f'-matrix-layout-column-major -line-directive-mode none ' \
-            + f'-Wno-30081 -zero-initialize '
-            
+            + f'-matrix-layout-column-major ' \
+            + f'-Wno-30081 {variableArg} '
+
     # Force scalar block layout in shaders - buffers are required to be aligned as such by Neural Radiance Cache
-    command1 += f'-force-glsl-scalar-layout '
+    command1 += f'-fvk-use-scalar-layout '
 
     if generateSlangRepro:
       reproFile = os.path.join(args.output, variantName + ".slangRepro")
       command1 += f'-dump-repro {reproFile}'
 
-    command2 = f'{args.glslang} {glslangFlags} -I. -V {variableName} -o {destFile} {glslFile}'
+    command1 += f'-o {destFile}'
+
+    script_dir = os.path.dirname(os.path.realpath(__file__))
+    validate_shader_path = os.path.join(script_dir, 'validate_shader.py')
+    command2 = f'python {validate_shader_path} {destFile}'
     task.commands = [command1, command2]
+
     return task
 
 # Read the shader variant specifications from the source code.

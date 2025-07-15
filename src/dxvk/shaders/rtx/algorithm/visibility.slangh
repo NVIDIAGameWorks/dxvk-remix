@@ -226,7 +226,7 @@ float16_t getRayPortalTransparency(
       surface.spriteSheetCols = portal.spriteSheetCols;
       surface.spriteSheetFPS = portal.spriteSheetFPS;
 
-      SurfaceInteraction surfaceInteraction = (SurfaceInteraction)0;
+      SurfaceInteraction surfaceInteraction = SurfaceInteraction();
       surfaceInteraction.textureCoordinates = uv * 0.5f + 0.5f;
       surfaceInteraction.textureGradientX = vec2(0.0f);
       surfaceInteraction.textureGradientY = vec2(0.0f);

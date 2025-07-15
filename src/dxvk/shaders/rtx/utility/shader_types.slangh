@@ -86,32 +86,31 @@ typedef float32_t4x4 f32mat4;
 
 #define BUFFER_ARRAY(buffers, bufferIndex, elementIndex) buffers[NonUniformResourceIndex(bufferIndex)][elementIndex]
 
-T texelFetch<T>(Texture2D<T> tex, int2 loc, int mip)
+T texelFetch<T : ITexelElement>(Texture2D<T> tex, int2 loc, int mip)
 {
   return tex.Load(int3(loc, mip));
 }
 
-T texelFetch<T>(Texture2DArray<T> tex, int3 loc, int mip)
+T texelFetch<T : ITexelElement>(Texture2DArray<T> tex, int3 loc, int mip)
 {
   return tex.Load(int4(loc, mip));
 }
 
-T textureGrad<T>(Sampler2D<T> tex, float2 loc, float2 du, float2 dv)
+T textureGrad<T : ITexelElement>(Sampler2D<T> tex, float2 loc, float2 du, float2 dv)
 {
   return tex.SampleGrad(loc, du, dv);
 }
-
-T imageLoad<T>(RWTexture2D<T> tex, int2 loc)
+T imageLoad<T : ITexelElement>(RWTexture2D<T> tex, int2 loc)
 {
   return tex[loc];
 }
 
-void imageStore<T>(RWTexture2D<T> tex, int2 loc, T val)
+void imageStore<T : ITexelElement>(RWTexture2D<T> tex, int2 loc, T val)
 {
   tex[loc] = val;
 }
 
-uvec2 imageSize<T>(RWTexture2D<T> tex)
+uvec2 imageSize<T : ITexelElement>(RWTexture2D<T> tex)
 {
   uvec2 size;
   tex.GetDimensions(size.x, size.y);
@@ -132,35 +131,69 @@ T saturate(T x)
       (T(1)));
 }
 
-__target_intrinsic(glsl, "unpack16($0)")
-u16vec2 unpack16(uint x);
+u16vec2 unpack16(uint x) {
+    return u16vec2(uint16_t(x & 0xFFFF), uint16_t(x >> 16));
+}
 
-__target_intrinsic(glsl, "pack32($0)")
-uint pack32(u16vec2 x);
+uint pack32(u16vec2 x)
+{
+  return (uint32_t(x.x) & 0xFFFF) | (uint32_t(x.y) << 16);
+}
 
-__target_intrinsic(glsl, "uint16BitsToHalf($0)")
-float16_t uint16BitsToHalf(uint16_t u);
+float16_t uint16BitsToHalf(uint16_t u)
+{
+  return reinterpret<half>(u);
+}
 
-__target_intrinsic(glsl, "uint16BitsToHalf($0)")
-vector<float16_t, N> uint16BitsToHalf<let N: int>(vector<uint16_t, N> u);
+vector<float16_t, N> uint16BitsToHalf<let N : int>(vector<uint16_t, N> u)
+{
+  return reinterpret<vector<float16_t, N>>(u);
+}
 
-__target_intrinsic(glsl, "float16BitsToUint16($0)")
-uint16_t float16BitsToUint16(float16_t f);
+uint16_t float16BitsToUint16(float16_t f)
+{
+  return reinterpret<uint16_t>(f);
+}
 
-__target_intrinsic(glsl, "float16BitsToUint16($0)")
-vector<uint16_t, N> float16BitsToUint16<let N: int>(vector<float16_t, N> f);
+vector<uint16_t, N> float16BitsToUint16<let N : int>(vector<float16_t, N> f)
+{
+  return reinterpret<vector<uint16_t, N>>(f);
+}
 
-__target_intrinsic(glsl, "unpackFloat2x16($0)")
-float16_t2 unpackFloat2x16(uint32_t u);
+float16_t2 unpackFloat2x16(uint32_t u)
+{
+  uint16_t2 halves = uint16_t2(uint16_t(u & 0xFFFF), uint16_t(u >> 16));
+  return reinterpret<float16_t2>(halves);
+}
 
-__target_intrinsic(glsl, "packFloat2x16($0)")
-uint32_t packFloat2x16(float16_t2 f);
+uint32_t packFloat2x16(float16_t2 f)
+{
+  return (uint32_t(reinterpret<uint16_t>(f.y)) << 16) | uint32_t(reinterpret<uint16_t>(f.x));
+}
 
-__target_intrinsic(glsl, "unpackUnorm4x8($0)")
-float4 unpackUnorm4x8(uint32_t f);
+// For reference https://github.com/g-truc/glm/blob/2d4c4b4dd31fde06cfffad7915c2b3006402322f/glm/gtc/packing.hpp#L45
+float4 unpackUnorm4x8(uint32_t f)
+{
+  return float4(
+    float((f >> 0) & 0xFF) / 255.0,
+    float((f >> 8) & 0xFF) / 255.0,
+    float((f >> 16) & 0xFF) / 255.0,
+    float((f >> 24) & 0xFF) / 255.0);
+}
 
-__target_intrinsic(glsl, "unpackSnorm4x8($0)")
-float4 unpackSnorm4x8(uint32_t f);
+// For reference https://github.com/g-truc/glm/blob/2d4c4b4dd31fde06cfffad7915c2b3006402322f/glm/gtc/packing.hpp#L103
+float4 unpackSnorm4x8(uint32_t f)
+{
+  float4 unpacked = float4(
+    int((f >> 0) & 0xFF),
+    int((f >> 8) & 0xFF),
+    int((f >> 16) & 0xFF),
+    int((f >> 24) & 0xFF));
+
+  unpacked = unpacked - 256.0 * step(128.0, unpacked);
+
+  return clamp(unpacked / 127.0, -1.0, 1.0);
+}
 
 float16_t4 unpackFloat4x16(uint2 u)
 {
@@ -172,10 +205,16 @@ uint2 packFloat4x16(float16_t4 u)
   return uint2(packFloat2x16(u.xy), packFloat2x16(u.zw));
 }
 
-// Declare the float-typed InterlockedAdd intrinsic because Slang doesn't have it
-__glsl_extension(GL_EXT_shader_atomic_float)
-__target_intrinsic(glsl, "$atomicAdd($A, $1)")
-void InterlockedAddFloat(__ref float dest, float value);
+// Implement the float-typed InterlockedAdd in SPIRV assembly because Slang doesn't have it
+float InterlockedAddFloat(__ref float dest, float value)
+{
+  return spirv_asm
+  {
+      OpExtension "SPV_EXT_shader_atomic_float_add";
+      OpCapability AtomicFloat32AddEXT;
+      result:$$float = OpAtomicFAddEXT &dest Device None $value
+  };
+}
 
 #ifndef RAY_PIPELINE
 // This is used to get the thread ID anywhere in a compute shader.

@@ -231,8 +231,8 @@ void TraceRayCustom<payload_t : IBasePayloadState>(
     topLevelAS,                                                                           \
     flags, uint(payload.rayMask),                                                         \
     sbtRecordOffset, /* sbtRecordOffset */                                                \
-    0, /* sbtRecordStride */                                                              \
-    0, /* missIndex */                                                                    \
+    0u, /* sbtRecordStride */                                                             \
+    0u, /* missIndex */                                                                   \
     currentRay,                                                                           \
     payload                                                                               \
   );                                                                                      \
