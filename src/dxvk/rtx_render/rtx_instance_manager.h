@@ -150,10 +150,7 @@ uint32_t getFirstBillboardIndex() const { return m_firstBillboard; }
 
   bool isUnlinkedForGC() const { return m_isUnlinkedForGC; }
 
-  void setReplacementInstance(ReplacementInstance* replacementInstance, uint32_t replacementIndex);
-
-  ReplacementInstance* getReplacementInstance() const { return m_replacementInstance; }
-  uint32_t getReplacementIndex() const { return m_replacementIndex; }
+  PrimInstanceOwner& getPrimInstanceOwner() { return m_primInstanceOwner; }
 
 private:
 
@@ -219,8 +216,7 @@ private:
 
   // This can be used to access all lights and instances that originate from the same draw call.
   // Left as nullptr if the draw call does not have replacement data.
-  ReplacementInstance* m_replacementInstance = nullptr;
-  uint32_t m_replacementIndex = ReplacementInstance::kInvalidReplacementIndex;
+  PrimInstanceOwner m_primInstanceOwner;
 
 public:
   bool isFrontFaceFlipped = false;
@@ -298,7 +294,7 @@ public:
   // Takes a scene object entry (blas + drawcall) and generates/finds the instance data internally
   RtInstance* processSceneObject(
     const CameraManager& cameraManager, const RayPortalManager& rayPortalManager,
-    BlasEntry& blas, const DrawCallState& drawCall, const MaterialData& materialData, const RtSurfaceMaterial& material, RtInstance* existingInstance, bool allowInstanceReuse);
+    BlasEntry& blas, const DrawCallState& drawCall, const MaterialData& materialData, const RtSurfaceMaterial& material, RtInstance* existingInstance);
 
   // Creates a copy of a reference instance and adds it to the instance pool
   // Temporary single frame instances generated every frame should disable valid id generation to avoid overflowing it

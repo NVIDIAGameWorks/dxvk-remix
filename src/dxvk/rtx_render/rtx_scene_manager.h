@@ -236,7 +236,10 @@ private:
   ObjectCacheState processGeometryInfo(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, RaytraceGeometry& modifiedGeometryData);
 
   // Consumes a draw call state and updates the scene state accordingly
-  RtInstance* processDrawCallState(Rc<DxvkContext> ctx, const DrawCallState& blasInput, const MaterialData* replacementMaterialData, RtInstance* existingInstance = nullptr, bool allowInstanceReuse = true);
+  RtInstance* processDrawCallState(Rc<DxvkContext> ctx, 
+                                   const DrawCallState& blasInput, 
+                                   const MaterialData* replacementMaterialData, 
+                                   RtInstance* existingInstance = nullptr);
 
   const RtSurfaceMaterial& createSurfaceMaterial( Rc<DxvkContext> ctx, 
                                                   const MaterialData& renderMaterialData,

@@ -592,21 +592,13 @@ struct RtLight {
      m_rootInstanceId = rootInstanceId;
   }
 
-  void setReplacementInstance(ReplacementInstance* replacementInstance, uint32_t replacementIndex) {
-    if (m_replacementInstance && 
-        m_replacementIndex != ReplacementInstance::kInvalidReplacementIndex &&
-        m_replacementInstance->prims[m_replacementIndex].getLight() == this) {
-      // clear up the old reference to this light
-      m_replacementInstance->prims[m_replacementIndex] = PrimInstance();
-    }
-    m_replacementInstance = replacementInstance;
-    m_replacementIndex = replacementIndex;
-    if (m_replacementInstance && replacementIndex != ReplacementInstance::kInvalidReplacementIndex) {
-      m_replacementInstance->prims[replacementIndex] = PrimInstance(this);
-    }
+  PrimInstanceOwner& getPrimInstanceOwner() {
+    return m_primInstanceOwner;
   }
-  ReplacementInstance* getReplacementInstance() const { return m_replacementInstance; }
-  uint64_t getReplacementIndex() const { return m_replacementIndex; }
+
+  const PrimInstanceOwner& getPrimInstanceOwner() const {
+    return m_primInstanceOwner;
+  }
 
   void markAsInsideFrustum() const {
     m_isInsideFrustum = true;
@@ -670,8 +662,7 @@ private:
   uint64_t m_rootInstanceId = 0;
 
   // Used to associate parts of a replacement heirarchy.
-  ReplacementInstance* m_replacementInstance = nullptr;
-  uint32_t m_replacementIndex = UINT32_MAX;
+  PrimInstanceOwner m_primInstanceOwner;
 
   // Shared Light Information
   mutable uint32_t m_frameLastTouched = kInvalidFrameIndex;

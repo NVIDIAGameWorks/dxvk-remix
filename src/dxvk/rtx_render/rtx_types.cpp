@@ -59,6 +59,27 @@ namespace dxvk {
     return m_type;
   }
 
+  PrimInstance::PrimInstance(void* owner, Type type) : m_type(type) {
+    m_ptr.untyped = owner;
+  }
+
+  void* PrimInstance::getUntyped() const {
+    return m_ptr.untyped;
+  }
+
+  void PrimInstance::setReplacementInstance(ReplacementInstance* replacementInstance, size_t replacementIndex) {
+    PrimInstanceOwner* prim = nullptr;
+    if (m_type == Type::Instance) {
+      prim = &m_ptr.instance->getPrimInstanceOwner();
+    } else if (m_type == Type::Light) {
+      prim = &m_ptr.light->getPrimInstanceOwner();
+    }
+
+    if (prim) {
+      prim->setReplacementInstance(replacementInstance, replacementIndex, m_ptr.untyped, m_type);
+    }
+  }
+
   std::ostream& operator << (std::ostream& os, PrimInstance::Type type) {
     switch (type) {
       ENUM_NAME(PrimInstance::Type::Instance);
@@ -71,17 +92,83 @@ namespace dxvk {
   ReplacementInstance::~ReplacementInstance() {
     // clear up all references to this ReplacementInstance.
     for (size_t i = 0; i < prims.size(); i++) {
-      if (prims[i].getInstance() != nullptr) {
-        prims[i].getInstance()->setReplacementInstance(nullptr, kInvalidReplacementIndex);
-      } else if (prims[i].getLight() != nullptr) {
-        prims[i].getLight()->setReplacementInstance(nullptr, kInvalidReplacementIndex);
+      RtInstance* subInstance = prims[i].getInstance();
+      if (subInstance) {
+        subInstance->markForGarbageCollection();
       }
+      prims[i].setReplacementInstance(nullptr, kInvalidReplacementIndex);
     }
   }
 
   void ReplacementInstance::setup(PrimInstance newRoot, size_t numPrims) {
     prims.resize(numPrims);
     root = newRoot;
+  }
+  
+  bool PrimInstanceOwner::isRoot(void* owner) const {
+    return m_replacementInstance != nullptr
+      && m_replacementIndex != ReplacementInstance::kInvalidReplacementIndex
+      && m_replacementInstance->root.getUntyped() == owner;
+  }
+
+  void PrimInstanceOwner::setReplacementInstance(ReplacementInstance* replacementInstance, size_t replacementIndex, void* owner, PrimInstance::Type type) {
+    // Early out if this is just re-applying the same values.
+    if (m_replacementInstance == replacementInstance) {
+      assert(m_replacementIndex == replacementIndex && "single prim is being set to multiple replacement indices.");
+      return;
+    }
+
+    // Then check if the owner is already in a replacement:
+    if (m_replacementInstance && m_replacementIndex != ReplacementInstance::kInvalidReplacementIndex) {
+      
+      // Inside a replacement, check if it's the root:
+      if (isRoot(owner) && replacementInstance != nullptr) {
+        // This is the root of a replacement being deleted.
+        // Clear the root, and delete the replacementInstance.
+        // the ReplacementInstance destructor will call this function again, which will
+        // actually clear m_replacementInstance and m_replacementIndex.
+        m_replacementInstance->root = PrimInstance();
+        delete m_replacementInstance;
+        return;
+      }
+
+      // Next, remove the prim from the replacementInstance.
+      PrimInstance& prim = m_replacementInstance->prims[m_replacementIndex];
+      if (prim.getType() == type && prim.getUntyped() == owner) {
+        // clear up the old reference to this owner
+        prim = PrimInstance();
+      } else {
+        // The prim believed it was in a slot, but something else was actually there.
+        // This is a sign that something went wrong earlier, but shouldn't cause problems itself.
+        assert(false && "PrimInstance was not properly removed from its replacementInstance before something else took its place.");
+      }
+    }
+
+    // Set this owner to the new replacementInstance.
+    m_replacementInstance = replacementInstance;
+    m_replacementIndex = replacementIndex;
+
+    // Inform the replacementInstance that this owner is now in it.
+    if (m_replacementInstance && replacementIndex != ReplacementInstance::kInvalidReplacementIndex) {
+      PrimInstance& prim = m_replacementInstance->prims[replacementIndex];
+      if (prim.getType() != type && prim.getType() != PrimInstance::Type::None) {
+        // While specific pointers may change, the type of a slot should never change.
+        assert(false && "Trying to assign a primInstance to a replacementInstance slot that was not the same type.");
+        m_replacementInstance = nullptr;
+        m_replacementIndex = ReplacementInstance::kInvalidReplacementIndex;
+        return;
+      } else if (prim.getUntyped() != nullptr && prim.getUntyped() != owner) {
+        // Another owner is already in this spot.  Clean that up properly before overriding it.
+        if (m_replacementInstance->root.getUntyped() == prim.getUntyped()) {
+          // Replacing the old root.  Shouldn't happen, but if it does we would want to
+          // update the root before clearing the old root, to avoid triggering garbage collection.
+          m_replacementInstance->root = PrimInstance(owner, type);
+        }
+        prim.setReplacementInstance(nullptr, ReplacementInstance::kInvalidReplacementIndex);
+        assert(false && "PrimInstance was not properly cleaned up before being replaced.");
+      }
+      prim = PrimInstance(owner, type);
+    }
   }
 
   uint32_t RasterGeometry::calculatePrimitiveCount() const {

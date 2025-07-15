@@ -681,13 +681,13 @@ namespace dxvk {
       newDrawCallState.categories = (*pReplacements)[0].categories.applyCategoryFlags(newDrawCallState.categories);
       RtInstance* rootInstance = processDrawCallState(ctx, newDrawCallState, overrideMaterialData);
       if (rootInstance != nullptr) {
-        replacementInstance = rootInstance->getReplacementInstance();
+        replacementInstance = rootInstance->getPrimInstanceOwner().getReplacementInstance();
         if (replacementInstance == nullptr) {
           isFirstFrame = true;
-          // Deleted when `SceneManager::onInstanceDestroyed` is called on this instance
+          // Deleted when `PrimInstanceOwner::setReplacementInstance` is called on this instance with a nullptr.
           replacementInstance = new ReplacementInstance();
           replacementInstance->setup(PrimInstance(rootInstance), pReplacements->size());
-          rootInstance->setReplacementInstance(replacementInstance, 0);
+          rootInstance->getPrimInstanceOwner().setReplacementInstance(replacementInstance, 0, rootInstance, PrimInstance::Type::Instance);
         }
       }
     }
@@ -729,8 +729,7 @@ namespace dxvk {
 
         RtInstance* existingInstance = replacementInstance ? replacementInstance->prims[i].getInstance() : nullptr;
         // Only use findSimilarInstance if we're processing the root of a replacement - all others should just rely on the existingInstance.
-        const bool allowInstanceReuse = replacementInstance == nullptr;
-        RtInstance* instance = processDrawCallState(ctx, newDrawCallState, overrideMaterialData, existingInstance, allowInstanceReuse);
+        RtInstance* instance = processDrawCallState(ctx, newDrawCallState, overrideMaterialData, existingInstance);
 
         if (instance) {
           const bool isParticleSystem = replacement.particleSystem.has_value();
@@ -744,12 +743,12 @@ namespace dxvk {
           
           if (replacementInstance == nullptr) {
             // first mesh in this replacement, so it becomes the root.
-            replacementInstance = instance->getReplacementInstance();
+            replacementInstance = instance->getPrimInstanceOwner().getReplacementInstance();
 
             if (replacementInstance == nullptr) {
               // First time this draw call is replaced, need to create the replacementInstance
               isFirstFrame = true;
-              // Deleted when `SceneManager::onInstanceDestroyed` is called on this instance
+              // Deleted when `PrimInstanceOwner::setReplacementInstance` is called on this instance with a nullptr.
               replacementInstance = new ReplacementInstance();
               replacementInstance->setup(PrimInstance(instance), pReplacements->size());
             }
@@ -757,7 +756,7 @@ namespace dxvk {
           if (isFirstFrame) {
             // This is the first frame this draw call is being drawn,
             // so each replacement mesh needs to be registered with the replacementInstance.
-            instance->setReplacementInstance(replacementInstance, i);
+            instance->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, instance, PrimInstance::Type::Instance);
           }
         }
       }
@@ -788,7 +787,7 @@ namespace dxvk {
           if (newLight && isFirstFrame) {
             // This is the first frame this draw call is being drawn,
             // so each replacement light needs to be registered with the replacementInstance.
-            newLight->setReplacementInstance(replacementInstance, i);
+            newLight->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, newLight, PrimInstance::Type::Light);
           }
         }
       }
@@ -912,23 +911,7 @@ namespace dxvk {
     if (pBlas != nullptr && !instance.isUnlinkedForGC()) {
       pBlas->unlinkInstance(&instance);
     }
-
-    ReplacementInstance* replacementInstance = instance.getReplacementInstance();
-    if (replacementInstance != nullptr) {
-      if (replacementInstance->root.getInstance() == &instance) {
-        for (size_t i = 0; i < replacementInstance->prims.size(); i++) {
-          RtInstance* subInstance = replacementInstance->prims[i].getInstance();
-          if (subInstance) {
-            subInstance->markForGarbageCollection();
-            subInstance->setReplacementInstance(nullptr, ReplacementInstance::kInvalidReplacementIndex);
-          }
-        }
-        // if this instance is the root of the replacement instance, delete the replacement instance.
-        delete replacementInstance;
-      } else {
-        instance.setReplacementInstance(nullptr, ReplacementInstance::kInvalidReplacementIndex);
-      }
-    }
+    instance.getPrimInstanceOwner().setReplacementInstance(nullptr, ReplacementInstance::kInvalidReplacementIndex, &instance, PrimInstance::Type::Instance);
   }
 
   // Helper to populate the texture cache with this resource (and patch sampler if required for texture)
@@ -947,7 +930,7 @@ namespace dxvk {
     textureManager.addTexture(inputTexture, samplerFeedbackStamp, async, textureIndex);
   }
 
-  RtInstance* SceneManager::processDrawCallState(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, const MaterialData* overrideMaterialData, RtInstance* existingInstance, bool allowInstanceReuse) {
+  RtInstance* SceneManager::processDrawCallState(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, const MaterialData* overrideMaterialData, RtInstance* existingInstance) {
     ScopedCpuProfileZone();
     const bool usingOverrideMaterial = overrideMaterialData != nullptr;
     const MaterialData& renderMaterialData =
@@ -979,7 +962,7 @@ namespace dxvk {
     // Note: Use either the specified override Material Data or the original draw calls state's Material Data to create a Surface Material if no override is specified
     const auto renderMaterialDataType = renderMaterialData.getType();
     const RtSurfaceMaterial& surfaceMaterial = createSurfaceMaterial(ctx, renderMaterialData, drawCallState);
-    RtInstance* instance = m_instanceManager.processSceneObject(m_cameraManager, m_rayPortalManager, *pBlas, drawCallState, renderMaterialData, surfaceMaterial, existingInstance, allowInstanceReuse);
+    RtInstance* instance = m_instanceManager.processSceneObject(m_cameraManager, m_rayPortalManager, *pBlas, drawCallState, renderMaterialData, surfaceMaterial, existingInstance);
 
     // Check if a light should be created for this Material
     if (instance && RtxOptions::shouldConvertToLight(drawCallState.getMaterialData().getHash())) {
@@ -1470,10 +1453,11 @@ namespace dxvk {
           // Setup tracking for all the lights created for this replacement.
           if (newLight != nullptr && replacementInstance == nullptr) {
             // This is the first light created, so it should be the root.
-            replacementInstance = newLight->getReplacementInstance();
+            replacementInstance = newLight->getPrimInstanceOwner().getReplacementInstance();
             if (replacementInstance == nullptr) {
               // The root should only have a null replacementInstance on the first frame it is drawn - so set it up here.
               isFirstFrame = true;
+              // Deleted when `PrimInstanceOwner::setReplacementInstance` is called on this instance with a nullptr.
               replacementInstance = new ReplacementInstance();
               replacementInstance->setup(PrimInstance(newLight), pReplacements->size());
             }
@@ -1481,7 +1465,7 @@ namespace dxvk {
 
           if (isFirstFrame && newLight != nullptr) {
             // First frame these replacements are being drawn, so register each light with the replacementInstance.
-            newLight->setReplacementInstance(replacementInstance, i);
+            newLight->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, newLight, PrimInstance::Type::Light);
           }
         } else {
           assert(false); // We don't support meshes as children of lights yet.
