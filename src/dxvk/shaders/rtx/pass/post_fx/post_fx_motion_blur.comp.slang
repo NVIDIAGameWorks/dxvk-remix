@@ -24,30 +24,30 @@
 #include "rtx/utility/math.slangh"
 #include "rtx/utility/packing.slangh"
 
-layout(uint, binding = POST_FX_MOTION_BLUR_BLUE_NOISE_TEXTURE_INPUT)
+[[vk::binding(POST_FX_MOTION_BLUR_BLUE_NOISE_TEXTURE_INPUT)]]
 Texture2DArray BlueNoise;
 
 #include "rtx/utility/noise.slangh"
 
-layout(rg16f, binding = POST_FX_MOTION_BLUR_PRIMARY_SCREEN_SPACE_MOTION_INPUT)
+[[vk::binding(POST_FX_MOTION_BLUR_PRIMARY_SCREEN_SPACE_MOTION_INPUT)]]
 Texture2D<float2> PrimaryScreenSpaceMotionVector;
 
-layout(r8ui, binding = POST_FX_MOTION_BLUR_PRIMARY_SURFACE_FLAGS_INPUT)
+[[vk::binding(POST_FX_MOTION_BLUR_PRIMARY_SURFACE_FLAGS_INPUT)]]
 Texture2D<uint> PrimarySurfaceFlags;
 
-layout(r32f, binding = POST_FX_MOTION_BLUR_PRIMARY_LINEAR_VIEW_Z_INPUT)
+[[vk::binding(POST_FX_MOTION_BLUR_PRIMARY_LINEAR_VIEW_Z_INPUT)]]
 Texture2D<float> PrimaryLinearViewZ;
 
-layout(rgba16f, binding = POST_FX_MOTION_BLUR_INPUT)
+[[vk::binding(POST_FX_MOTION_BLUR_INPUT)]]
 Texture2D<float4> InColorTexture;
 
-layout(rgba16f, binding = POST_FX_MOTION_BLUR_OUTPUT)
+[[vk::binding(POST_FX_MOTION_BLUR_OUTPUT)]]
 RWTexture2D<float4> OutColorTexture;
 
-layout(binding = POST_FX_MOTION_BLUR_NEAREST_SAMPLER)
+[[vk::binding(POST_FX_MOTION_BLUR_NEAREST_SAMPLER)]]
 SamplerState NearestSampler;
 
-layout(binding = POST_FX_MOTION_BLUR_LINEAR_SAMPLER)
+[[vk::binding(POST_FX_MOTION_BLUR_LINEAR_SAMPLER)]]
 SamplerState LinearSampler;
 
 layout(push_constant)

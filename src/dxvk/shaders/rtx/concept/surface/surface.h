@@ -21,6 +21,12 @@
 */
 #pragma once
 
+// Disable Slang warning about deprecation of inheritance in favor of composition
+// struct Base { int a; };
+// struct Inherited : public Base { int b; }; <- no more this
+// struct Composed { Base base; int b; }; <- only this
+#pragma warning(disable:30816)
+
 #include "surface_shared.h"
 #include "rtx/utility/packing.slangh"
 
@@ -472,14 +478,14 @@ struct Surface
 // Note: Minimal version of typical Surface Interaction for transmission across passes.
 struct MinimalSurfaceInteraction
 {
-  vec3 position;
+  vec3 position = 0..xxx;
   // Floating-point error of position representation in object space or world space, whichever is larger.
   // Used for calculating ray offsets.
-  float positionError;
+  float positionError = 0.f;
   // TODO this could just be a `quaternion triangleTBN` 
-  f16vec3 triangleNormal;
-  f16vec3 triangleTangent;
-  f16vec3 triangleBitangent;
+  f16vec3 triangleNormal = 0.h;
+  f16vec3 triangleTangent = 0.h;
+  f16vec3 triangleBitangent = 0.h;
 
   // Surfaces created from gbuffer may not be valid (i.e. if this pixel was a ray miss)
   property bool isValid
@@ -490,19 +496,19 @@ struct MinimalSurfaceInteraction
 
 struct SurfaceInteraction : MinimalSurfaceInteraction
 {
-  vec3 motion;
-  vec2 textureCoordinates;
-  vec2 textureGradientX;
-  vec2 textureGradientY;
+  vec3 motion = 0..xxx;
+  vec2 textureCoordinates = 0..xx;
+  vec2 textureGradientX = 0..xx;
+  vec2 textureGradientY = 0..xx;
   // Note: All normal, tangent and bitangent vectors are in world space.
   // TODO this could just be a `quaternion interpolatedTBN` 
-  f16vec3 interpolatedNormal;
-  f16vec3 interpolatedTangent;
-  f16vec3 interpolatedBitangent;
-  f16vec3 rawTangent;
-  f16vec3 rawBitangent;
-  f16vec4 vertexColor;
-  float triangleArea;
+  f16vec3 interpolatedNormal = 0.h;
+  f16vec3 interpolatedTangent = 0.h;
+  f16vec3 interpolatedBitangent = 0.h;
+  f16vec3 rawTangent = 0.h;
+  f16vec3 rawBitangent = 0.h;
+  f16vec4 vertexColor = 0.h;
+  float triangleArea = 0.f;
 };
 
 struct GBufferMemoryMinimalSurfaceInteraction

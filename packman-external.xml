@@ -24,7 +24,7 @@
         <package name="rtx-remix-glslangvalidator" version="main-tot-2bfc7ca" />
     </dependency>
     <dependency name="slang" linkPath="external/slang">
-        <package name="rtx-remix-slang" version="slang-9542fd72-win64-remix" />
+        <package name="rtx-remix-slang" version="slang-2025.10.4-39-g496fab196-win64-remix" />
     </dependency>
     <dependency name="nv_xxd" linkPath="external/nv_xxd">
         <package name="rtx-remix-nv_xxd" version="1" />
@@ -38,4 +38,7 @@
 	<dependency name="nrd" linkPath="external/nrd">
 	    <package name="rtx-remix-nrd" version="4.13" />
 	</dependency>
+    <dependency name="spirv_tools" linkPath="external/spirv_tools">
+        <package name="rtx-remix-spirv_tools" version="spirv_tools-vulkan-sdk-1.4.313" />
+    </dependency>
 </project>

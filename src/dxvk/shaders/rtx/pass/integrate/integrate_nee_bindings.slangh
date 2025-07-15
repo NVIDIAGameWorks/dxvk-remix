@@ -91,7 +91,7 @@ RWTexture2D<float4> PrimaryBaseReflectivity;
 // Inputs / Outputs
 
 layout(binding = INTEGRATE_NEE_BINDING_NRC_TRAINING_PATH_VERTICES_INPUT_OUTPUT)
-RWStructuredBuffer<NrcPackedPathVertex> TrainingPathVertices;
+NRC_RW_STRUCTURED_BUFFER(NrcPackedPathVertex) TrainingPathVertices;
 
 
 // Outputs
