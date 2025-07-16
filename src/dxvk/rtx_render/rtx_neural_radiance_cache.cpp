@@ -132,6 +132,10 @@ namespace dxvk {
     PREWARM_SHADER_PIPELINE(NrcResolveShader);
   }
 
+  void NeuralRadianceCache::NrcOptions::onMaxNumTrainingIterationsChanged() {
+    targetNumTrainingIterations.setMaxValue(maxNumTrainingIterations());
+  }
+
   NeuralRadianceCache::NeuralRadianceCache(dxvk::DxvkDevice* device) : RtxPass(device) {
     m_nrcCtxSettings = std::make_unique<nrc::ContextSettings>();
     m_delayedEnableDebugBuffers = NrcCtxOptions::enableDebugBuffers();
@@ -230,7 +234,6 @@ namespace dxvk {
       
       ImGui::DragInt("Max Number of Training Iterations", &NrcOptions::maxNumTrainingIterationsObject(), 1.f, 1, 16, "%d", ImGuiSliderFlags_AlwaysClamp);
       ImGui::DragInt("Target Number of Training Iterations", &NrcOptions::targetNumTrainingIterationsObject(), 1.f, 1, 16, "%d", ImGuiSliderFlags_AlwaysClamp);
-      RTX_OPTION_CLAMP_MAX(NrcOptions::targetNumTrainingIterations, NrcOptions::maxNumTrainingIterations());
 
       ImGui::Checkbox("Adaptive Training Dimensions", &NrcOptions::enableAdaptiveTrainingDimensionsObject());
       ImGui::DragFloat("Average Number of Vertices Per Path", &NrcOptions::averageTrainingBouncesPerPathObject(), 0.01f, 0.5f, 8.f, "%.1f");

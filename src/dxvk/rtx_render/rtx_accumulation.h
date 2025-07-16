@@ -40,8 +40,6 @@ namespace dxvk {
     void resetNumAccumulatedFrames();
 
   private:
-    uint32_t getActiveNumFramesToAccumulate() const;
-    uint32_t getNumAccumulatedFrames() const;
 
     bool m_enableContinuousAccumulation = true;
     bool m_enableFp16Accumulation = false;

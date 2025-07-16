@@ -102,9 +102,6 @@ namespace dxvk {
 
     virtual bool isEnabled() const override;
 
-    void resetNumAccumulatedFrames();
-    uint32_t getActiveNumFramesToAccumulate() const;
-
     void dispatchDebugViewInternal(Rc<RtxContext> ctx, Rc<DxvkSampler> nearestSampler, Rc<DxvkSampler> linearSampler, DebugViewArgs& debugViewArgs, Rc<DxvkBuffer>& debugViewConstantBuffer, const Resources::RaytracingOutput& rtOutput, DxvkObjects& common);
     void dispatchPostprocess(Rc<RtxContext> ctx, DebugViewArgs& debugViewArgs, Rc<DxvkBuffer>& debugViewConstantBuffer, const Resources::RaytracingOutput& rtOutput);
     void dispatchRenderToOutput(Rc<RtxContext> ctx, DebugViewArgs& debugViewArgs, Rc<DxvkBuffer>& debugViewConstantBuffer, const Resources::RaytracingOutput& rtOutput);
@@ -166,8 +163,19 @@ namespace dxvk {
     RTX_OPTION_ENV("rtx.debugView", bool, enableGammaCorrection, false, "RTX_DEBUG_VIEW_ENABLE_GAMMA_CORRECTION", "Enables gamma correction of a debug view value.");
     bool m_enableAlphaChannel = false;
     float m_scale = 1.f;
-    RTX_OPTION_ENV("rtx.debugView", float, minValue, 0.f, "DXVK_RTX_DEBUG_VIEW_MIN_VALUE", "The minimum debug view input value to map to 0 in the output when the standard debug display is in use. Values below this value in the input will be clamped to 0 in the output.");
-    RTX_OPTION_ENV("rtx.debugView", float, maxValue, 1.f, "DXVK_RTX_DEBUG_VIEW_MAX_VALUE", "The maximum debug view input value to map to 1 in the output when the standard debug display is in use. Values above this value in the input will be clamped to 1 in the output.");
+
+    public: static void maxValueOnChange();
+    RTX_OPTION_ARGS("rtx.debugView", float, minValue, 0.f,
+      "The minimum debug view input value to map to 0 in the output when the standard debug display is in use. Values below this value in the input will be clamped to 0 in the output.",
+      args.environment = "DXVK_RTX_DEBUG_VIEW_MIN_VALUE",
+      args.onChangeCallback = &maxValueOnChange);
+      
+    public: static void minValueOnChange();
+    RTX_OPTION_ARGS("rtx.debugView", float, maxValue, 1.f,
+      "The maximum debug view input value to map to 1 in the output when the standard debug display is in use. Values above this value in the input will be clamped to 1 in the output.",
+      args.environment = "DXVK_RTX_DEBUG_VIEW_MAX_VALUE",
+      args.onChangeCallback = &minValueOnChange);
+
 
     // EV100 Display
     RTX_OPTION_ENV("rtx.debugView", int32_t, evMinValue, -4, "DXVK_RTX_DEBUG_VIEW_EV_MIN_VALUE", "The minimum EV100 debug view input value to map to the bottom of the visualization range when EV100 debug display is in use. Values below this value in the input will be clamped to the bottom of the range.");
@@ -176,11 +184,12 @@ namespace dxvk {
     struct Accumulation {
       RTX_OPTION_ENV("rtx.debugView.accumulation", bool, enable, false, "RTX_DEBUG_VIEW_ACCUMULATION_ENABLE",
                      "Enables accumulation of debug ouptput's result to emulate multiple samples per pixel or over time.");
-      RTX_OPTION("rtx.debugView.accumulation", uint32_t, numberOfFramesToAccumulate, 1024,
+      RTX_OPTION_ARGS("rtx.debugView.accumulation", uint32_t, numberOfFramesToAccumulate, 1024,
                  "Number of frames to accumulate debug view's result over.\n"
                  "This can be used for generating reference images smoothed over time.\n"
                  "By default the accumulation stops once the limit is reached.\n"
-                 "When desired, continous accumulation can be enabled via enableContinuousAccumulation.");
+                 "When desired, continous accumulation can be enabled via enableContinuousAccumulation.",
+                args.minValue = 1);
       RTX_OPTION_ENV("rtx.debugView.accumulation", AccumulationBlendMode, blendMode, AccumulationBlendMode::Average, "RTX_DEBUG_VIEW_ACCUMULATION_BLEND_MODE",
                       "The blend mode to use for accumulating debug view output.\n"
                       "Supported modes are: 0 = Average, 1 = Min, 2 = Max.\n"

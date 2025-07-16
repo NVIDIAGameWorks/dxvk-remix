@@ -59,7 +59,8 @@ namespace dxvk {
                  "Each training batch contains 16K training records derived from path segments\n"
                  "in the the NRC update path tracing pass. For example, 4 training iterations results in 64K training records.\n"
                  "Higher number results in more responsive NRC cache at the cost of increased workload.\n");
-      RTX_OPTION("rtx.neuralRadianceCache", uint32_t, maxNumTrainingIterations, 16,
+      public: static void onMaxNumTrainingIterationsChanged();
+      RTX_OPTION_ARGS("rtx.neuralRadianceCache", uint32_t, maxNumTrainingIterations, 16,
                  "This controls the max number of training iterations to perform in a frame.\n"
                  "When the pathtracer generates more training records than the ideal number of training records\n"
                  "based on \"targetNumTrainingIterations\", this parameter allows NRC SDK to use those records\n"
@@ -67,7 +68,8 @@ namespace dxvk {
                  "Generally the pathtracer will try to reach the ideal number training records,\n"
                  "but in cases when its calibrating the workload during \"numFramesToSmoothOutTrainingDimensions\" frames it can overshoot it.\n"
                  "This can happen when the cache resets on a level load or camera cut. In such cases it is preferrable to speed the training up\n"
-                 "to make the indirect lighting inference more accurate faster.");
+                 "to make the indirect lighting inference more accurate faster.",
+                args.onChangeCallback = &onMaxNumTrainingIterationsChanged);
       RTX_OPTION("rtx.neuralRadianceCache", float, averageTrainingBouncesPerPath, 2.15,
                  "Average number of bounces per path used to calculate max training dimensions.\n"
                  "Lower values result in higher max training dimensions and higher memory requirements by NRC.\n"

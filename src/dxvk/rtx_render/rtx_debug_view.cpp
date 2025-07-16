@@ -889,7 +889,6 @@ namespace dxvk {
         ImGui::DragFloat("Scale", &m_scale, 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
         ImGui::InputFloat("Min Value", &minValueObject(), std::max(0.01f, 0.02f * std::abs(minValue())), std::max(0.1f, 0.1f * std::abs(minValue())));
         ImGui::InputFloat("Max Value", &maxValueObject(), std::max(0.01f, 0.02f * std::abs(maxValue())), std::max(0.1f, 0.1f * std::abs(maxValue())));
-        maxValue.setDeferred(std::max(1.00001f * minValue(), maxValue()));
 
         // Color legend
         if (pseudoColorMode() != PseudoColorMode::Disabled) {
@@ -1671,5 +1670,17 @@ namespace dxvk {
       static_cast<CompositeDebugView>(m_composite.compositeViewIdx()) != CompositeDebugView::Disabled ||
       m_showCachedImage || m_cacheCurrentImage ||
       RtxOptions::useDenoiserReferenceMode();
+  }
+
+  void DebugView::maxValueOnChange() {
+    // If the max value is negative, we want the min value to be further away from 0.
+    const float factor = maxValue() > 0 ? 0.99999f : 1.00001f;
+    minValueObject().setMaxValue(maxValue() * factor);
+  }
+
+  void DebugView::minValueOnChange() {
+    // If the min value is negative, we want the max value to be closer to 0.
+    const float factor = minValue() > 0 ? 1.00001f : 0.99999f;
+    maxValueObject().setMinValue(minValue() * factor);
   }
 } // namespace dxvk
