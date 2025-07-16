@@ -3,6 +3,7 @@ import os
 import re
 import struct
 import subprocess
+import argparse
 
 remove_temp_file = False
 
@@ -47,15 +48,16 @@ def validate_shader(path_to_shaders, shader_file):
         if remove_temp_file:
             os.remove(spv_file)
 
-if len(sys.argv) != 2:
-    print(sys.argv[0] + ' <path to spv files>')
-    exit(1)
+parser = argparse.ArgumentParser(description='Validates SPIRV shaders.')
+parser.add_argument('-spirvval', required=True, type=str, dest='spirvval')
+parser.add_argument('-input', required=True, type=str, dest='input')
+args = parser.parse_args()
 
 # path to spirv-val provided by a build of spirv-tools in packman
-spirv_val_path = os.path.join('..', 'external', 'spirv_tools', 'spirv-val.exe')
+spirv_val_path = args.spirvval
 if not os.path.exists(spirv_val_path):
-    print('spirv-val not found at ' + spirv_val_path)
+    print('spirv-val not found at ' + args.spirvval)
     exit(1)
 
-if sys.argv[1].endswith('.h') or sys.argv[1].endswith('.spv'):
-    validate_shader('', sys.argv[1])
+if args.input.endswith('.h') or args.input.endswith('.spv'):
+    validate_shader('', args.input)
