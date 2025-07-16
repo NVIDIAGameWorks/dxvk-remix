@@ -25,6 +25,7 @@ signal.signal(signal.SIGINT, sigint_handler)
 parser = argparse.ArgumentParser(description='Compiles DXVK-RT shaders.')
 parser.add_argument('-glslang', required=True, type=str, dest='glslang')
 parser.add_argument('-slangc', required=True, type=str, dest='slangc')
+parser.add_argument('-spirvval', required=True, type=str, dest='spirvval')
 parser.add_argument('-input', required=False, type=str, dest='input', default='.')
 parser.add_argument('-I', '-include', action='append', type=str, dest='includes', default=[])
 parser.add_argument('-output', required=True, type=str, dest='output')
@@ -216,10 +217,9 @@ def createSlangTask(inputFile, variantSpec):
     variantName, variantType = os.path.splitext(variantSpec[0])
 
     variantDefines = ' '.join([f'-D{x}' for x in variantSpec[1:]])
-    glslFile = os.path.join(args.output, variantName + variantType)
     destFile = os.path.join(args.output, variantName + destExtension)
     depFile = os.path.join(args.output, variantName + ".d")
-    task = createBasicTask(inputFile, destFile, glslFile, depFile)
+    task = createBasicTask(inputFile, destFile, destFile, depFile)
 
     if variantName != inputName:
         task.customName = f'{os.path.basename(inputFile)} ({variantName})'
@@ -242,7 +242,7 @@ def createSlangTask(inputFile, variantSpec):
 
     script_dir = os.path.dirname(os.path.realpath(__file__))
     validate_shader_path = os.path.join(script_dir, 'validate_shader.py')
-    command2 = f'python {validate_shader_path} {destFile}'
+    command2 = f'python {validate_shader_path} -spirvval {args.spirvval} -input {destFile}'
     task.commands = [command1, command2]
 
     return task

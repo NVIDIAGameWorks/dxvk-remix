@@ -250,6 +250,7 @@ endif
 # Shader Compile Tools
 glsl_compiler = find_program('external/glslangvalidator/glslangValidator')
 slang_compiler = find_program('external/slang/slangc')
+spirv_val = find_program('external/spirv_tools/spirv-val')
 python_interpreter = find_program('python3', 'python')
 shader_compile_script = join_paths(global_src_root_norm, 'scripts-common/compile_shaders.py')
 
@@ -307,6 +308,7 @@ rtx_shaders_command_arguments = [
   # See this for more info: https://mesonbuild.com/Reference-manual_returned_external_program.html#external_programfull_path
   '-glslang', fs.as_posix(glsl_compiler.full_path()),
   '-slangc', fs.as_posix(slang_compiler.full_path()),
+  '-spirvval', fs.as_posix(spirv_val.full_path()),
   '-input', rtx_shader_source_directory,
   '-include', shader_directory,
   '-include', rtxdi_include_path_string,
