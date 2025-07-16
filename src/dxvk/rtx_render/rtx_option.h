@@ -97,6 +97,8 @@ namespace dxvk {
     const char* description; // Description string for the option that will get included in documentation
     OptionType type;
     GenericValue valueList[(int)ValueType::Count];
+    std::optional<GenericValue> minValue;
+    std::optional<GenericValue> maxValue;
     uint32_t flags = 0;
     std::function<void()> onChangeCallback;
 
@@ -115,6 +117,7 @@ namespace dxvk {
 
     const char* getTypeString() const;
     std::string genericValueToString(ValueType valueType) const;
+    std::string genericValueToString(const GenericValue& value) const;
     void copyValue(ValueType source, ValueType target);
 
     void readOption(const Config& options, ValueType type);
@@ -130,6 +133,9 @@ namespace dxvk {
     }
 
     void invokeOnChangeCallback() const;
+
+    // Returns true if the value was changed
+    bool clampValue(ValueType type);
 
     static std::string getFullName(const std::string& category, const std::string& name) {
       return category + "." + name;
@@ -163,12 +169,25 @@ namespace dxvk {
     const char* environment = nullptr;
     uint32_t flags = 0;
 
+    // TODO these need to be written into the docs
+    std::optional<T> minValue;
+    std::optional<T> maxValue;
+
     typedef void (*RtxOptionOnChangeCallback)();
     RtxOptionOnChangeCallback onChangeCallback = nullptr;
   };
 
   template <typename T>
   class RtxOption {
+  private:
+    // Helper function to check if a type is clampable
+    static constexpr bool isClampable() {
+      return std::is_same_v<T, int8_t> || std::is_same_v<T, int16_t> || std::is_same_v<T, int32_t> ||
+             std::is_same_v<T, uint8_t> || std::is_same_v<T, uint16_t> || std::is_same_v<T, uint32_t> ||
+             std::is_same_v<T, size_t> || std::is_same_v<T, char> || std::is_same_v<T, float> || 
+             std::is_same_v<T, Vector2> || std::is_same_v<T, Vector3> || std::is_same_v<T, Vector2i>;
+    }
+
   public:
     // Factory function.  Should never be called directly.  Use RTX_OPTION_FULL instead.
     static RtxOption<T> privateMacroFactory(const char* category, const char* name, const T& value, const char* description = "", RtxOptionArgs<T> args = {}) {
@@ -197,6 +216,10 @@ namespace dxvk {
       *getValuePtr<T>(RtxOptionImpl::ValueType::PendingValue) = v;
       // Also set the current value, so that the value is immediately available.
       *getValuePtr<T>(RtxOptionImpl::ValueType::Value) = v;
+      // This function sets the pending and immediate values separately, so they both need to be clamped.
+      pImpl->clampValue(RtxOptionImpl::ValueType::PendingValue);
+      pImpl->clampValue(RtxOptionImpl::ValueType::Value);
+      // Mark the option as dirty so that the onChange callback is invoked, even though the value already changed mid frame.
       pImpl->markDirty();
     }
 
@@ -228,6 +251,7 @@ namespace dxvk {
     void setDefaultValue(const T& v) const {
       std::lock_guard<std::mutex> lock(RtxOptionImpl::s_updateMutex);
       *getValuePtr<T>(RtxOptionImpl::ValueType::DefaultValue) = v;
+      pImpl->clampValue(RtxOptionImpl::ValueType::DefaultValue);
     }
 
     void resetToDefault() {
@@ -319,6 +343,38 @@ namespace dxvk {
       }
     }
 
+    template<typename = std::enable_if_t<isClampable()>>
+    void setMinValue(const T& v) {
+      std::lock_guard<std::mutex> lock(RtxOptionImpl::s_updateMutex);
+      setMinMaxValueHelper(v, pImpl->minValue);
+      bool changed = pImpl->clampValue(RtxOptionImpl::ValueType::PendingValue);
+      if (changed) {
+        pImpl->markDirty();
+      }
+    }
+
+    template<typename = std::enable_if_t<isClampable()>>
+    std::optional<T> getMinValue() const {
+      std::lock_guard<std::mutex> lock(RtxOptionImpl::s_updateMutex);
+      return getMinMaxValueHelper<T>(pImpl->minValue);
+    }
+    
+    template<typename = std::enable_if_t<isClampable()>>
+    void setMaxValue(const T& v) {
+      std::lock_guard<std::mutex> lock(RtxOptionImpl::s_updateMutex);
+      setMinMaxValueHelper(v, pImpl->maxValue);
+      bool changed = pImpl->clampValue(RtxOptionImpl::ValueType::PendingValue);
+      if (changed) {
+        pImpl->markDirty();
+      }
+    }
+
+    template<typename = std::enable_if_t<isClampable()>>
+    std::optional<T> getMaxValue() const {
+      std::lock_guard<std::mutex> lock(RtxOptionImpl::s_updateMutex);
+      return getMinMaxValueHelper<T>(pImpl->maxValue);
+    }
+
   private:
     // Prevent `new RtxOption` from being used.  Use the RTX_OPTION macro to create RtxOptions.
     static void* operator new(size_t size) = delete;
@@ -375,6 +431,7 @@ namespace dxvk {
       assert(RtxOptionImpl::s_isInitialized && "Trying to access an RtxOption before the config files have been loaded."); 
       BasicType* valuePtr = getValuePtr<BasicType>(RtxOptionImpl::ValueType::PendingValue);
       *valuePtr = v;
+      pImpl->clampValue(RtxOptionImpl::ValueType::PendingValue);
       pImpl->markDirty();
     }
 
@@ -384,6 +441,7 @@ namespace dxvk {
       assert(RtxOptionImpl::s_isInitialized && "Trying to access an RtxOption before the config files have been loaded."); 
       ClassType* valuePtr = getValuePtr<ClassType>(RtxOptionImpl::ValueType::PendingValue);
       *valuePtr = v;
+      pImpl->clampValue(RtxOptionImpl::ValueType::PendingValue);
       pImpl->markDirty();
     }
 
@@ -399,6 +457,17 @@ namespace dxvk {
         pImpl->flags = args.flags;
         // Need to wrap this so we can cast it to the correct type
         pImpl->onChangeCallback = args.onChangeCallback;
+        if constexpr (isClampable()) {
+          if (args.minValue.has_value()) {
+            setMinValue(args.minValue.value());
+          }
+          if (args.maxValue.has_value()) {
+            setMaxValue(args.maxValue.value());
+          }
+        } else if (args.minValue.has_value() || args.maxValue.has_value()) {
+          // If this happens on an option that should be clampable, the type probably needs to be added to isClampable(), and supported in the clampValue() method.
+          assert(false && "RtxOption - args.minValue and args.maxValue are not supported for types not included in isClampable().");
+        }
         globalRtxOptions[optionHash] = pImpl;
         return true;
       } else {
@@ -419,6 +488,49 @@ namespace dxvk {
     template <typename ClassType, std::enable_if_t<!std::is_pod_v<ClassType>, bool> = true>
     ClassType* getValuePtr(RtxOptionImpl::ValueType type) const {
       return reinterpret_cast<ClassType*>(pImpl->valueList[(int)type].pointer);
+    }
+
+    // Helper methods to reduce code duplication between numeric and vector types
+    void setMinMaxValueHelper(const T& v, std::optional<GenericValue>& targetValue) {
+      if constexpr (std::is_pod_v<T>) {
+        // For POD types (int, float, etc.), store directly in the value field
+        GenericValue gv;
+        if constexpr (std::is_same_v<T, float>) {
+          gv.f = v;
+        } else {
+          // For bool, int, and other POD types, use the value field
+          gv.value = static_cast<int64_t>(v);
+        }
+        targetValue = std::optional<GenericValue>(gv);
+      } else {
+        // For non-POD types (vectors, etc.), store as pointer
+        if (!targetValue.has_value()) {
+          targetValue = std::optional<GenericValue>();
+          // Note: This is a `new` with no matching `delete`. This is safe because the
+          // RtxOptionImpl object is never destroyed, and follows the pattern used in the constructor.
+          targetValue.value().pointer = new T();
+        }
+        *reinterpret_cast<T*>(targetValue.value().pointer) = v;
+      }
+    }
+
+    std::optional<T> getMinMaxValueHelper(const std::optional<GenericValue>& sourceValue) const {
+      if (!sourceValue.has_value()) {
+        return std::nullopt;
+      } 
+      if constexpr (std::is_pod_v<T>) {
+        // For POD types (int, float, etc.), retrieve from the appropriate union member
+        const GenericValue& gv = sourceValue.value();
+        if constexpr (std::is_same_v<T, float>) {
+          return std::optional<T>(gv.f);
+        } else {
+          // For bool, int, and other POD types, use the value field
+          return std::optional<T>(static_cast<T>(gv.value));
+        }
+      } else {
+        // For non-POD types (vectors, etc.), retrieve from pointer
+        return std::optional<T>(*reinterpret_cast<T*>(sourceValue.value().pointer));
+      }
     }
 
     // All data should be inside this object in order to be accessed globally and locally
@@ -468,6 +580,7 @@ namespace dxvk {
 #define RTX_OPTION(category, type, name, value, description) RTX_OPTION_FULL(category, type, name, value, "", 0, description, {})
 #define RTX_OPTION_ARGS(category, type, name, value, description, ...) RTX_OPTION_FULL(category, type, name, value, "", 0, description, __VA_ARGS__)
 
+// NOTE: these are deprecated.  Use args.minValue and args.maxValue as part of RTX_OPTION_ARGS instead.
 #define RTX_OPTION_CLAMP(name, minValue, maxValue) name##Object().setDeferred(std::clamp(name(), minValue, maxValue));
 #define RTX_OPTION_CLAMP_MAX(name, maxValue) name##Object().setDeferred(std::min(name(), maxValue));
 #define RTX_OPTION_CLAMP_MIN(name, minValue) name##Object().setDeferred(std::max(name(), minValue));

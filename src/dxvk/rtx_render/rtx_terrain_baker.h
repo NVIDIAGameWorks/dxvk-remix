@@ -122,8 +122,14 @@ namespace dxvk {
       RTX_OPTION("rtx.terrainBaker.cascadeMap", float, defaultHalfWidth, 1000.f, "Cascade map square's default half width around the camera [meters]. Used when the terrain's BBOX couldn't be estimated.");
       RTX_OPTION("rtx.terrainBaker.cascadeMap", float, defaultHeight, 1000.f, "Cascade map baker's camera default height above the in-game camera [meters]. Used when the terrain's BBOX couldn't be estimated.");
       RTX_OPTION("rtx.terrainBaker.cascadeMap", float, levelHalfWidth, 10.f, "First cascade level square's half width around the camera [meters].");
-      RTX_OPTION_ENV("rtx.terrainBaker.cascadeMap", uint32_t, maxLevels, 8, "RTX_TERRAIN_BAKER_MAX_CASCADE_LEVELS", "Max number of cascade levels.");
-      RTX_OPTION_ENV("rtx.terrainBaker.cascadeMap", uint32_t, levelResolution, 4096, "RTX_TERRAIN_BAKER_LEVEL_RESOLUTION", "Texture resolution per cascade level.");
+      RTX_OPTION_ARGS("rtx.terrainBaker.cascadeMap", uint32_t, maxLevels, 8, "Max number of cascade levels.",
+                      args.minValue = 1,
+                      args.maxValue = 16,
+                      args.environment = "RTX_TERRAIN_BAKER_MAX_CASCADE_LEVELS");
+      RTX_OPTION_ARGS("rtx.terrainBaker.cascadeMap", uint32_t, levelResolution, 4096, "Texture resolution per cascade level.",
+                      args.minValue = 1,
+                      args.maxValue = 32 * 1024,
+                      args.environment = "RTX_TERRAIN_BAKER_LEVEL_RESOLUTION");
       RTX_OPTION("rtx.terrainBaker.cascadeMap", bool, expandLastCascade, true, 
                  "Expands the last cascade's footprint to cover the whole cascade map.\n"
                  "This ensures whole terrain surface has valid baked texture data to sample from\n"

@@ -3517,7 +3517,6 @@ namespace dxvk {
                                         0.5f, 1.f, 32.f, "%.1f GB", ImGuiSliderFlags_NoRoundToFormat)) {
             ctx->getCommonObjects()->getSceneManager().requestVramCompaction();
           }
-          RTX_OPTION_CLAMP(RtxOptions::TextureManager::fixedBudgetMiB, 256, 1024 * 32);
         } else {
           // always disabled drag float just to show the available texture cache budget
           ImGui::BeginDisabled(true);
