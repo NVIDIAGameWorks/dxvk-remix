@@ -109,9 +109,11 @@ public:
   void setHidden(bool value) { m_isHidden = value; }
 
   bool usesUnorderedApproximations() const { return m_isUnordered; }
-  RtSurfaceMaterialType getMaterialType() const {
+  MaterialDataType getMaterialType() const {
     return m_materialType;
   }
+  bool isOpaque() const;
+
   uint32_t getAlbedoOpacityTextureIndex() const { return m_albedoOpacityTextureIndex; }
   uint32_t getSamplerIndex() const { return m_samplerIndex; }
   uint32_t getSecondaryOpacityTextureIndex() const { return m_secondaryOpacityTextureIndex; }
@@ -180,7 +182,7 @@ private:
 
   std::vector<CameraType::Enum> m_seenCameraTypes;  // Camera types with which the instance has been originally rendered with
 
-  RtSurfaceMaterialType m_materialType = RtSurfaceMaterialType::Count;
+  MaterialDataType m_materialType = MaterialDataType::Invalid;
   uint32_t m_albedoOpacityTextureIndex = kSurfaceMaterialInvalidTextureIndex;
   uint32_t m_samplerIndex = kSurfaceMaterialInvalidTextureIndex;
   uint32_t m_secondaryOpacityTextureIndex = kSurfaceMaterialInvalidTextureIndex;
@@ -236,7 +238,7 @@ struct InstanceEventHandler {
   std::function<void(RtInstance&)> onInstanceAddedCallback;
   // Callback triggered whenever instance metadata is updated - the boolean flags 
   //   signal if the transform and/or vertex positions have changed (respectively)
-  std::function<void(RtInstance&, const RtSurfaceMaterial&, bool, bool)> onInstanceUpdatedCallback;
+  std::function<void(RtInstance&, const DrawCallState& drawCall, const MaterialData&, bool, bool, bool)> onInstanceUpdatedCallback;
   // Callback triggered whenever an instance has been removed from the database
   std::function<void(RtInstance&)> onInstanceDestroyedCallback;
 
@@ -297,7 +299,10 @@ public:
   // Takes a scene object entry (blas + drawcall) and generates/finds the instance data internally
   RtInstance* processSceneObject(
     const CameraManager& cameraManager, const RayPortalManager& rayPortalManager,
-    BlasEntry& blas, const DrawCallState& drawCall, const MaterialData& materialData, const RtSurfaceMaterial& material, RtInstance* existingInstance);
+    BlasEntry& blas, const DrawCallState& drawCall, MaterialData& materialData, RtInstance* existingInstance);
+
+  // Binds a raytracing material to the specified instance.
+  void bindMaterial(RtInstance& instance, const RtSurfaceMaterial& material);
 
   // Creates a copy of a reference instance and adds it to the instance pool
   // Temporary single frame instances generated every frame should disable valid id generation to avoid overflowing it
@@ -345,21 +350,21 @@ private:
   std::vector<InstanceEventHandler> m_eventHandlers;
 
   // Handles the case of when two (or more) identical geometries+textures draw calls have been submitted in a single frame (typically used for two-pass rendering in FF)
-  void mergeInstanceHeuristics(RtInstance& instanceToModify, const DrawCallState& drawCall, const RtSurfaceMaterial& material, const RtSurface::AlphaState& alphaState) const;
+  void mergeInstanceHeuristics(RtInstance& instanceToModify, const DrawCallState& drawCall, const RtSurface::AlphaState& alphaState) const;
 
   // Finds the "closest" matching instance to a set of inputs, returns a pointer (can be null if not found) to closest instance
-  RtInstance* findSimilarInstance(BlasEntry& blas, const RtSurfaceMaterial& material, const Matrix4& firstInstanceObjectToWorld, CameraType::Enum cameraType, const RayPortalManager& rayPortalManager);
+  RtInstance* findSimilarInstance(BlasEntry& blas, const MaterialData& material, const Matrix4& firstInstanceObjectToWorld, CameraType::Enum cameraType, const RayPortalManager& rayPortalManager);
 
   RtInstance* addInstance(BlasEntry& blas);
   void processInstanceBuffers(const BlasEntry& blas, RtInstance& currentInstance) const;
 
   void updateInstance(
     RtInstance& currentInstance, const CameraManager& cameraManager,
-    const BlasEntry& blas, const DrawCallState& drawCall, const MaterialData& materialData, const RtSurfaceMaterial& material);
+    const BlasEntry& blas, const DrawCallState& drawCall, MaterialData& materialData);
 
   void removeInstance(RtInstance* instance);
 
-  static RtSurface::AlphaState calculateAlphaState(const DrawCallState& drawCall, const MaterialData& materialData, const RtSurfaceMaterial& material);
+  static RtSurface::AlphaState calculateAlphaState(const DrawCallState& drawCall, const MaterialData& materialData);
 
   // Modifies an instance given active developer options. Returns true if the instance was modified
   bool applyDeveloperOptions(RtInstance& currentInstance, const DrawCallState& drawCall);

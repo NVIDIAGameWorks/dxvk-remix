@@ -244,10 +244,9 @@ private:
                                    const MaterialData* replacementMaterialData, 
                                    RtInstance* existingInstance = nullptr);
 
-  const RtSurfaceMaterial& createSurfaceMaterial( Rc<DxvkContext> ctx, 
-                                                  const MaterialData& renderMaterialData,
-                                                  const DrawCallState& drawCallState,
-                                                  uint32_t* out_indexInCache = nullptr);
+  const RtSurfaceMaterial& createSurfaceMaterial(const MaterialData& renderMaterialData,
+                                                 const DrawCallState& drawCallState,
+                                                 uint32_t* out_indexInCache = nullptr);
 
   // Updates ref counts for new buffers
   void updateBufferCache(RaytraceGeometry& newGeoData);
@@ -262,7 +261,7 @@ private:
   // Called whenever a new instance has been added to the database
   void onInstanceAdded(RtInstance& instance);
   // Called whenever instance metadata is updated
-  void onInstanceUpdated(RtInstance& instance, const RtSurfaceMaterial& material, const bool hasTransformChanged, const bool hasVerticesdChanged);
+  void onInstanceUpdated(RtInstance& instance, const DrawCallState& drawCall, const MaterialData& material, const bool hasTransformChanged, const bool hasVerticesdChanged, const bool isFirstUpdateThisFrame);
   // Called whenever an instance has been removed from the database
   void onInstanceDestroyed(RtInstance& instance);
 

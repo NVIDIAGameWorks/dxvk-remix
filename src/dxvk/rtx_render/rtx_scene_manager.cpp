@@ -65,7 +65,7 @@ namespace dxvk {
     , m_uniqueObjectSearchDistance(RtxOptions::uniqueObjectDistance()) {
     InstanceEventHandler instanceEvents(this);
     instanceEvents.onInstanceAddedCallback = [this](RtInstance& instance) { onInstanceAdded(instance); };
-    instanceEvents.onInstanceUpdatedCallback = [this](RtInstance& instance, const RtSurfaceMaterial& material, bool hasTransformChanged, bool hasVerticesChanged) { onInstanceUpdated(instance, material, hasTransformChanged, hasVerticesChanged); };
+    instanceEvents.onInstanceUpdatedCallback = [this](RtInstance& instance, const DrawCallState& drawCall, const MaterialData& material, bool hasTransformChanged, bool hasVerticesChanged, bool isFirstUpdateThisFrame) { onInstanceUpdated(instance, drawCall, material, hasTransformChanged, hasVerticesChanged, isFirstUpdateThisFrame); };
     instanceEvents.onInstanceDestroyedCallback = [this](RtInstance& instance) { onInstanceDestroyed(instance); };
     m_instanceManager.addEventHandler(instanceEvents);
     
@@ -516,7 +516,7 @@ namespace dxvk {
             Logger::warn(str::format("Fog replacement materials must be translucent.  Ignoring material for ", std::hex, m_fog.getHash()));
           } else {
             uint32_t id = UINT32_MAX;
-            createSurfaceMaterial(ctx, *pFogReplacement, input, &id);
+            createSurfaceMaterial(*pFogReplacement, input, &id);
             assert(id != UINT32_MAX);
             m_startInMediumMaterialIndex_inCache = id;
           }
@@ -912,7 +912,7 @@ namespace dxvk {
     }
   }
 
-  void SceneManager::onInstanceUpdated(RtInstance& instance, const RtSurfaceMaterial& material, const bool hasTransformChanged, const bool hasVerticesChanged) {
+  void SceneManager::onInstanceUpdated(RtInstance& instance, const DrawCallState& drawCall, const MaterialData& material, const bool hasTransformChanged, const bool hasVerticesChanged, const bool isFirstUpdateThisFrame) {
     auto capturer = m_device->getCommon()->capturer();
     if (hasTransformChanged) {
       capturer->setInstanceUpdateFlag(instance, GameCapturer::InstFlag::XformUpdate);
@@ -923,10 +923,16 @@ namespace dxvk {
       capturer->setInstanceUpdateFlag(instance, GameCapturer::InstFlag::NormalsUpdate);
     }
 
-    // This is a ray portal!
-    if (material.getType() == RtSurfaceMaterialType::RayPortal) {
-      BlasEntry* pBlas = instance.getBlas();
-      m_rayPortalManager.processRayPortalData(instance, material);
+    // Create and bind the RT material
+    const RtSurfaceMaterial& surfaceMaterial = createSurfaceMaterial(material, drawCall);
+
+    if(isFirstUpdateThisFrame) {
+      m_instanceManager.bindMaterial(instance, surfaceMaterial);
+    }
+
+    // Update portal
+    if (surfaceMaterial.getType() == RtSurfaceMaterialType::RayPortal) {
+      m_rayPortalManager.processRayPortalData(instance, surfaceMaterial);
     }
   }
 
@@ -960,11 +966,15 @@ namespace dxvk {
   RtInstance* SceneManager::processDrawCallState(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, const MaterialData* overrideMaterialData, RtInstance* existingInstance) {
     ScopedCpuProfileZone();
     const bool usingOverrideMaterial = overrideMaterialData != nullptr;
-    const MaterialData& renderMaterialData =
-      usingOverrideMaterial ? *overrideMaterialData : drawCallState.getMaterialData();
+
+    // Make a copy, as we may modify the material in here.
+    MaterialData renderMaterialData = usingOverrideMaterial ? (*overrideMaterialData) : drawCallState.getMaterialData().as<OpaqueMaterialData>();
+    assert(renderMaterialData.getType() != MaterialDataType::Legacy); // Todo, just remove legacy materials from the material data struct...>?
+
     if (renderMaterialData.getIgnored()) {
       return nullptr;
     }
+
     ObjectCacheState result = ObjectCacheState::kInvalid;
     BlasEntry* pBlas = nullptr;
     if (m_drawCallCache.get(drawCallState, &pBlas) == DrawCallCache::CacheState::kExisted) {
@@ -986,10 +996,8 @@ namespace dxvk {
       pBlas->frameLastUpdated = pBlas->frameLastTouched;
     }
 
-    // Note: Use either the specified override Material Data or the original draw calls state's Material Data to create a Surface Material if no override is specified
-    const auto renderMaterialDataType = renderMaterialData.getType();
-    const RtSurfaceMaterial& surfaceMaterial = createSurfaceMaterial(ctx, renderMaterialData, drawCallState);
-    RtInstance* instance = m_instanceManager.processSceneObject(m_cameraManager, m_rayPortalManager, *pBlas, drawCallState, renderMaterialData, surfaceMaterial, existingInstance);
+    // Note: The material data can be modified in instance manager
+    RtInstance* instance = m_instanceManager.processSceneObject(m_cameraManager, m_rayPortalManager, *pBlas, drawCallState, renderMaterialData, existingInstance);
 
     // Check if a light should be created for this Material
     if (instance && RtxOptions::shouldConvertToLight(drawCallState.getMaterialData().getHash())) {
@@ -1030,10 +1038,9 @@ namespace dxvk {
     return instance; 
   }
 
-  const RtSurfaceMaterial& SceneManager::createSurfaceMaterial( Rc<DxvkContext> ctx, 
-                                                                const MaterialData& renderMaterialData,
-                                                                const DrawCallState& drawCallState,
-                                                                uint32_t* out_indexInCache) {
+  const RtSurfaceMaterial& SceneManager::createSurfaceMaterial(const MaterialData& renderMaterialData,
+                                                               const DrawCallState& drawCallState,
+                                                               uint32_t* out_indexInCache) {
     ScopedCpuProfileZone();
     const bool hasTexcoords = drawCallState.hasTextureCoordinates();
     const auto renderMaterialDataType = renderMaterialData.getType();
@@ -1042,12 +1049,12 @@ namespace dxvk {
     // Legacy and replacement materials should follow same filtering but due to lack of override capability per texture
     // legacy textures use original sampler to stay true to the original intent while replacements use more advanced filtering
     // for better quality by default.
-    const Rc<DxvkSampler>& originalSampler = drawCallState.getMaterialData().getSampler(); // convenience variable for debug
-    Rc<DxvkSampler> sampler = originalSampler;
-    // If the original sampler if valid and the new rendering material is not legacy type
+    const Rc<DxvkSampler>& samplerOverride = renderMaterialData.getSamplerOverride();
+    Rc<DxvkSampler> sampler = samplerOverride;
+    // If the original sampler if valid and there isnt an override sampler
     // go ahead with patching and maybe merging the sampler states
-    if (originalSampler != nullptr && renderMaterialDataType != MaterialDataType::Legacy) {
-      DxvkSamplerCreateInfo samplerInfo = originalSampler->info(); // Use sampler create info struct as convenience
+    if (samplerOverride == nullptr && drawCallState.getMaterialData().getSampler().ptr() != nullptr) {
+      DxvkSamplerCreateInfo samplerInfo = drawCallState.getMaterialData().getSampler()->info(); // Use sampler create info struct as convenience
       renderMaterialData.populateSamplerInfo(samplerInfo);
 
       sampler = patchSampler(samplerInfo.magFilter,
@@ -1107,9 +1114,6 @@ namespace dxvk {
       bool isUsingRaytracedRenderTarget = drawCallState.isUsingRaytracedRenderTarget;
       uint16_t samplerFeedbackStamp = SAMPLER_FEEDBACK_INVALID;
 
-      // Ignore colormap alpha of legacy texture if tagged as 'ignoreAlphaOnTextures' 
-      bool ignoreAlphaChannel = lookupHash(RtxOptions::ignoreAlphaOnTextures(), drawCallState.getMaterialData().getHash());
-
       Vector3 subsurfaceTransmittanceColor(0.0f, 0.0f, 0.0f);
       float subsurfaceMeasurementDistance = 0.0f;
       Vector3 subsurfaceSingleScatteringAlbedo(0.0f, 0.0f, 0.0f);
@@ -1118,51 +1122,12 @@ namespace dxvk {
       float subsurfaceRadiusScale = 0.0f;
       float subsurfaceMaxSampleRadius = 0.0f;
 
+      bool ignoreAlphaChannel = false;
+
       constexpr Vector4 kWhiteModeAlbedo = Vector4(0.7f, 0.7f, 0.7f, 1.0f);
 
       if (renderMaterialDataType == MaterialDataType::Legacy) {
-        // Todo: In the future this path will construct a LegacySurfaceMaterial, for now it simply uses
-        // the OpaqueSurfaceMaterial path until we have a more established legacy material model in place.
-
-        const auto& legacyMaterialData = renderMaterialData.getLegacyMaterialData();
-
-        anisotropy = LegacyMaterialDefaults::anisotropy();
-        emissiveIntensity = LegacyMaterialDefaults::emissiveIntensity();
-        albedoOpacityConstant = Vector4(LegacyMaterialDefaults::albedoConstant(), LegacyMaterialDefaults::opacityConstant());
-        roughnessConstant = LegacyMaterialDefaults::roughnessConstant();
-        metallicConstant = LegacyMaterialDefaults::metallicConstant();
-
-        // Override these for legacy materials
-        emissiveColorConstant = LegacyMaterialDefaults::emissiveColorConstant();
-        enableEmissive = LegacyMaterialDefaults::enableEmissive();
-
-        if (RtxOptions::useWhiteMaterialMode()) {
-          albedoOpacityConstant = kWhiteModeAlbedo;
-          metallicConstant = 0.f;
-          roughnessConstant = 1.f;
-        } else {
-          if (LegacyMaterialDefaults::useAlbedoTextureIfPresent()) {
-            // NOTE: Do not patch original sampler to preserve filtering behavior of the legacy material
-            trackTexture(legacyMaterialData.getColorTexture(), albedoOpacityTextureIndex, hasTexcoords);
-          }
-        }
-
-        if (RtxOptions::useHighlightLegacyMode()) {
-          enableEmissive = true;
-          // Flash every 20 frames, bright
-          emissiveIntensity = (sin((float) m_device->getCurrentFrameId()/20) + 1.f) * 2.f;
-          emissiveColorConstant = Vector3(1, 0, 0); // Red
-        }
-        // Todo: Incorporate this and the color texture into emissive conditionally
-        // emissiveColorTextureIndex != kSurfaceMaterialInvalidTextureIndex ? 100.0f
-
-        if (!ignoreAlphaChannel) {
-          ignoreAlphaChannel = LegacyMaterialDefaults::ignoreAlphaChannel();
-        }
-
-        thinFilmEnable = LegacyMaterialDefaults::enableThinFilm();
-        alphaIsThinFilmThickness = LegacyMaterialDefaults::alphaIsThinFilmThickness();
-        thinFilmThicknessConstant = LegacyMaterialDefaults::thinFilmThicknessConstant();
+        throw;
       } else if (renderMaterialDataType == MaterialDataType::Opaque) {
         const auto& opaqueMaterialData = renderMaterialData.getOpaqueMaterialData();
 
@@ -1190,7 +1155,7 @@ namespace dxvk {
         trackTexture(opaqueMaterialData.getHeightTexture(), heightTextureIndex, hasTexcoords, true, samplerFeedbackStamp);
         trackTexture(opaqueMaterialData.getEmissiveColorTexture(), emissiveColorTextureIndex, hasTexcoords, true, samplerFeedbackStamp);
 
-        emissiveIntensity = opaqueMaterialData.getEmissiveIntensity();
+        emissiveIntensity = opaqueMaterialData.getEmissiveIntensity();// todo * RtxOptions::emissiveIntensity();
         emissiveColorConstant = opaqueMaterialData.getEmissiveColorConstant();
         enableEmissive = opaqueMaterialData.getEnableEmission();
         anisotropy = opaqueMaterialData.getAnisotropyConstant();
@@ -1200,6 +1165,8 @@ namespace dxvk {
         thinFilmThicknessConstant = opaqueMaterialData.getThinFilmThicknessConstant();
         displaceIn = opaqueMaterialData.getDisplaceIn();
         displaceOut = opaqueMaterialData.getDisplaceOut();
+
+        ignoreAlphaChannel = opaqueMaterialData.getIgnoreAlphaChannel();
 
         subsurfaceMeasurementDistance = opaqueMaterialData.getSubsurfaceMeasurementDistance() * RtxOptions::SubsurfaceScattering::surfaceThicknessScale();
 
@@ -1294,7 +1261,7 @@ namespace dxvk {
       float transmittanceMeasureDistance = translucentMaterialData.getTransmittanceMeasurementDistance();
       Vector3 emissiveColorConstant = translucentMaterialData.getEmissiveColorConstant();
       bool enableEmissive = translucentMaterialData.getEnableEmission();
-      float emissiveIntensity = translucentMaterialData.getEmissiveIntensity();
+      float emissiveIntensity = translucentMaterialData.getEmissiveIntensity();// todo * RtxOptions::emissiveIntensity();
       bool isThinWalled = translucentMaterialData.getEnableThinWalled();
       float thinWallThickness = translucentMaterialData.getThinWallThickness();
       bool useDiffuseLayer = translucentMaterialData.getEnableDiffuseLayer();
@@ -1319,7 +1286,7 @@ namespace dxvk {
       uint8_t rayPortalIndex = rayPortalMaterialData.getRayPortalIndex();
       float rotationSpeed = rayPortalMaterialData.getRotationSpeed();
       bool enableEmissive = rayPortalMaterialData.getEnableEmission();
-      float emissiveIntensity = rayPortalMaterialData.getEmissiveIntensity();
+      float emissiveIntensity = rayPortalMaterialData.getEmissiveIntensity();// todo * RtxOptions::emissiveIntensity();
 
       const RtRayPortalSurfaceMaterial rayPortalSurfaceMaterial{
         maskTextureIndex, maskTextureIndex2, rayPortalIndex,

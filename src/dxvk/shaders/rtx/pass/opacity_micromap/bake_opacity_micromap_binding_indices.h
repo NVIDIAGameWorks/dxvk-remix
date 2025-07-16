@@ -54,9 +54,10 @@ struct BakeOpacityMicromapArgs {
   float resolveOpaquenessThreshold;    // Anything greater or equal is opaque
 
   uint useConservativeEstimation;
-  uint materialType;
   uint applyVertexAndTextureOperations;
   uint numMicroTrianglesPerThread;
+  uint16_t isOpaqueMaterial;
+  uint16_t isRayPortalMaterial;
 
   vec2 textureResolution;
   vec2 rcpTextureResolution;

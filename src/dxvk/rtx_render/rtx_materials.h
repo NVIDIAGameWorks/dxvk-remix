@@ -1490,10 +1490,13 @@ enum class MaterialDataType {
   Opaque,
   Translucent,
   RayPortal,
+  Invalid
 };
 
 // Note: For use with "Legacy" D3D9 material information
 struct LegacyMaterialData {
+  static OpaqueMaterialData createDefault();
+
   LegacyMaterialData()
   { }
 
@@ -1535,32 +1538,9 @@ struct LegacyMaterialData {
             (getColorTexture2().isValid() && !getColorTexture2().isImageEmpty()));
   }
 
-  operator OpaqueMaterialData() const {
-    OpaqueMaterialData opaqueMat;
-    opaqueMat.getAlbedoOpacityTexture() = getColorTexture();
-    opaqueMat.getFilterMode() = lss::Mdl::Filter::vkToMdl(getSampler()->info().magFilter);
-    opaqueMat.getWrapModeU() = lss::Mdl::WrapMode::vkToMdl(getSampler()->info().addressModeU);
-    opaqueMat.getWrapModeV() = lss::Mdl::WrapMode::vkToMdl(getSampler()->info().addressModeV);
-    return opaqueMat;
-  }
-
-  operator TranslucentMaterialData() const {
-    TranslucentMaterialData transluscentMat;
-    transluscentMat.getFilterMode() = lss::Mdl::Filter::vkToMdl(getSampler()->info().magFilter);
-    transluscentMat.getWrapModeU() = lss::Mdl::WrapMode::vkToMdl(getSampler()->info().addressModeU);
-    transluscentMat.getWrapModeV() = lss::Mdl::WrapMode::vkToMdl(getSampler()->info().addressModeV);
-    return transluscentMat;
-  }
-
-  operator RayPortalMaterialData() const {
-    RayPortalMaterialData portalMat;
-    portalMat.getMaskTexture() = getColorTexture();
-    portalMat.getMaskTexture2() = getColorTexture2();
-    portalMat.getFilterMode() = lss::Mdl::Filter::vkToMdl(getSampler()->info().magFilter);
-    portalMat.getWrapModeU() = lss::Mdl::WrapMode::vkToMdl(getSampler()->info().addressModeU);
-    portalMat.getWrapModeV() = lss::Mdl::WrapMode::vkToMdl(getSampler()->info().addressModeV);
-    return portalMat;
-  }
+  // A single place to define and handle conversions between legacy and raytraced materials
+  template<typename T>
+  T as() const;
 
   const void printDebugInfo(const char* name = "") const {
 #ifdef REMIX_DEVELOPMENT
@@ -1753,6 +1733,20 @@ struct MaterialData {
     }
   }
 
+  const Rc<DxvkSampler>& getSamplerOverride() const {
+    switch (m_type) {
+    default:
+    case MaterialDataType::Legacy:
+      throw;
+    case MaterialDataType::Opaque:
+      return m_opaqueMaterialData.getSamplerOverride();
+    case MaterialDataType::Translucent:
+      return m_translucentMaterialData.getSamplerOverride();
+    case MaterialDataType::RayPortal:
+      return m_rayPortalMaterialData.getSamplerOverride();
+    }
+  }
+
   MaterialDataType getType() const {
     return m_type;
   }
@@ -1793,14 +1787,41 @@ struct MaterialData {
       assert(false);
       [[fallthrough]];
     case MaterialDataType::Opaque:
-      m_opaqueMaterialData.merge(input);
+    {
+      OpaqueMaterialData opaqueMat;
+      opaqueMat.getAlbedoOpacityTexture() = input.getColorTexture();
+      if (input.getSampler().ptr()) {
+        opaqueMat.getFilterMode() = lss::Mdl::Filter::vkToMdl(input.getSampler()->info().magFilter);
+        opaqueMat.getWrapModeU() = lss::Mdl::WrapMode::vkToMdl(input.getSampler()->info().addressModeU);
+        opaqueMat.getWrapModeV() = lss::Mdl::WrapMode::vkToMdl(input.getSampler()->info().addressModeV);
+      }
+      m_opaqueMaterialData.merge(opaqueMat);
       break;
+    }
     case MaterialDataType::Translucent:
-      m_translucentMaterialData.merge(input);
+    {
+      TranslucentMaterialData transluscentMat;
+      if (input.getSampler().ptr()) {
+        transluscentMat.getFilterMode() = lss::Mdl::Filter::vkToMdl(input.getSampler()->info().magFilter);
+        transluscentMat.getWrapModeU() = lss::Mdl::WrapMode::vkToMdl(input.getSampler()->info().addressModeU);
+        transluscentMat.getWrapModeV() = lss::Mdl::WrapMode::vkToMdl(input.getSampler()->info().addressModeV);
+      }
+      m_translucentMaterialData.merge(transluscentMat);
       break;
+    }
     case MaterialDataType::RayPortal:
-      m_rayPortalMaterialData.merge(input);
+    {
+      RayPortalMaterialData portalMat;
+      portalMat.getMaskTexture() = input.getColorTexture();
+      portalMat.getMaskTexture2() = input.getColorTexture2();
+      if (input.getSampler().ptr()) {
+        portalMat.getFilterMode() = lss::Mdl::Filter::vkToMdl(input.getSampler()->info().magFilter);
+        portalMat.getWrapModeU() = lss::Mdl::WrapMode::vkToMdl(input.getSampler()->info().addressModeU);
+        portalMat.getWrapModeV() = lss::Mdl::WrapMode::vkToMdl(input.getSampler()->info().addressModeV);
+      }
+      m_rayPortalMaterialData.merge(portalMat);
       break;
+    }
     }
   }
 

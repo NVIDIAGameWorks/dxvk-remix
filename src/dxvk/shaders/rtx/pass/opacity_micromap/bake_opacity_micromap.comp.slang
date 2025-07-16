@@ -106,7 +106,7 @@ void loadVertexData(uint triIdx, Surface surface, out float2 vertexTexcoords[3],
 
 void applyVertexAndTextureOperationsToOpacity(inout float16_t opacity, f16vec3 albedo, float3 bary, Surface surface, float16_t vertexOpacities[3])
 {
-  if (cb.materialType == surfaceMaterialTypeOpaque)
+  if (cb.isOpaqueMaterial)
   {
     float16_t vertexInterpolatedOpacity = 1.h;
 
@@ -142,7 +142,7 @@ f16vec4 sampleColorOpacityRaw(float2 texcoords)
 {
   f16vec4 colorOpacity = sampleColorOpacityTexture(Opacity, texcoords);
 
-  if (cb.materialType == surfaceMaterialTypeRayPortal)
+  if (cb.isRayPortalMaterial)
   {
     // TODO: match RT resolve transparency calculation for portals, handle animation
     // For now take the max opacity from both textures

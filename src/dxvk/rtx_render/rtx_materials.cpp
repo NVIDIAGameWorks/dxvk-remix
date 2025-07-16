@@ -38,4 +38,67 @@ float getDisplacementFactor() {
   return RtxOptions::Displacement::displacementFactor();
 }
 
+dxvk::OpaqueMaterialData LegacyMaterialData::createDefault() {
+  OpaqueMaterialData opaqueMat;
+  opaqueMat.setAnisotropyConstant(LegacyMaterialDefaults::anisotropy());
+  opaqueMat.setEmissiveIntensity(LegacyMaterialDefaults::emissiveIntensity());
+  opaqueMat.setAlbedoConstant(LegacyMaterialDefaults::albedoConstant());
+  opaqueMat.setOpacityConstant(LegacyMaterialDefaults::opacityConstant());
+  opaqueMat.setRoughnessConstant(LegacyMaterialDefaults::roughnessConstant());
+  opaqueMat.setMetallicConstant(LegacyMaterialDefaults::metallicConstant());
+  opaqueMat.setEmissiveColorConstant(LegacyMaterialDefaults::emissiveColorConstant());
+  opaqueMat.setEnableEmission(LegacyMaterialDefaults::enableEmissive());
+  opaqueMat.setEnableThinFilm(LegacyMaterialDefaults::enableThinFilm());
+  opaqueMat.setAlphaIsThinFilmThickness(LegacyMaterialDefaults::alphaIsThinFilmThickness());
+  opaqueMat.setThinFilmThicknessConstant(LegacyMaterialDefaults::thinFilmThicknessConstant());
+  opaqueMat.setDisplaceIn(0.f);
+  return opaqueMat;
+}
+
+template<typename T>
+T LegacyMaterialData::as() const {
+  if constexpr (std::is_same_v<OpaqueMaterialData, T>) {
+    // Legacy materials have parameters that can directly carry over onto the opaque material.
+    const OpaqueMaterialData defaultLegacyOpaqueMaterial = createDefault();
+    // Copy off the defaults, and make dynamic adjustments for the remaining params from this legacy material
+    OpaqueMaterialData opaqueMat(defaultLegacyOpaqueMaterial);
+    if (LegacyMaterialDefaults::useAlbedoTextureIfPresent()) {
+      opaqueMat.setAlbedoOpacityTexture(getColorTexture());
+    }
+    // Indicate that we have an exact sampler to use on this material, directly from game
+    if (getSampler().ptr()) {
+      opaqueMat.setSamplerOverride(getSampler());
+    }
+    // Ignore colormap alpha of legacy texture if tagged as 'ignoreAlphaOnTextures' 
+    bool ignoreAlphaChannel = LegacyMaterialDefaults::ignoreAlphaChannel();
+    if (!ignoreAlphaChannel) {
+      ignoreAlphaChannel = lookupHash(RtxOptions::ignoreAlphaOnTextures(), getHash());
+    }
+    opaqueMat.setIgnoreAlphaChannel(ignoreAlphaChannel);
+    return opaqueMat;
+  } else if constexpr (std::is_same_v<TranslucentMaterialData, T>) {
+    TranslucentMaterialData transluscentMat;
+    if (getSampler().ptr()) {
+      transluscentMat.setSamplerOverride(getSampler());
+    }
+    return transluscentMat;
+  } else if constexpr (std::is_same_v<RayPortalMaterialData, T>) {
+    RayPortalMaterialData portalMat;
+    portalMat.getMaskTexture() = getColorTexture();
+    portalMat.getMaskTexture2() = getColorTexture2();
+    if (getSampler().ptr()) {
+      portalMat.setSamplerOverride(getSampler());
+    }
+    return portalMat;
+  } else {
+    static_assert("Not implemented.");
+    return T();
+  }
+}
+
+template OpaqueMaterialData LegacyMaterialData::as() const;
+template TranslucentMaterialData LegacyMaterialData::as() const;
+template RayPortalMaterialData LegacyMaterialData::as() const;
+
+
 } // namespace dxvk

@@ -668,7 +668,7 @@ namespace dxvk {
     InstanceEventHandler instanceEvents(this);
     instanceEvents.onInstanceAddedCallback = [this](const RtInstance& instance) { onInstanceAdded(instance); };
     instanceEvents.onInstanceAddedCallback = [this](const RtInstance& instance) { onInstanceAdded(instance); };
-    instanceEvents.onInstanceUpdatedCallback = [this](const RtInstance& instance, const RtSurfaceMaterial& material, bool hasTransformChanged, bool hasVerticesChanged) { onInstanceUpdated(instance, material, hasTransformChanged, hasVerticesChanged); };
+    instanceEvents.onInstanceUpdatedCallback = [this](const RtInstance& instance, const DrawCallState& drawCall, const MaterialData& material, bool hasTransformChanged, bool hasVerticesChanged, bool isFirstUpdateThisFrame) { onInstanceUpdated(instance, drawCall, material, hasTransformChanged, hasVerticesChanged, isFirstUpdateThisFrame); };
     instanceEvents.onInstanceDestroyedCallback = [this](const RtInstance& instance) { onInstanceDestroyed(instance); };
     return instanceEvents;
   }
@@ -715,9 +715,11 @@ namespace dxvk {
   }
 
   void OpacityMicromapManager::onInstanceUpdated(const RtInstance& instance,
-                                                 const RtSurfaceMaterial& material,
+                                                 const DrawCallState& /*drawCall*/,
+                                                 const MaterialData& /*material*/,
                                                  const bool hasTransformChanged,
-                                                 const bool hasVerticesChanged) {
+                                                 const bool hasVerticesChanged,
+                                                 const bool isFirstUpdateThisFrame) {
     ScopedCpuProfileZone();
 
     // Skip calculating data needed for new OMMs if there's not enough memory to build any OMM request
@@ -988,8 +990,9 @@ namespace dxvk {
       return false;
     }
 
-    if ((instance.getMaterialType() != RtSurfaceMaterialType::Opaque &&
-         instance.getMaterialType() != RtSurfaceMaterialType::RayPortal)) {
+    if ((instance.getMaterialType() != MaterialDataType::Opaque &&
+         instance.getMaterialType() != MaterialDataType::Legacy &&
+         instance.getMaterialType() != MaterialDataType::RayPortal)) {
       return false;
     }
 
@@ -1018,14 +1021,14 @@ namespace dxvk {
     if ((!alphaState.isFullyOpaque && alphaState.isParticle) || alphaState.emissiveBlend) {
       // Alpha-blended and emissive particles
       useOpacityMicromap = true;
-    } else if (instance.getMaterialType() == RtSurfaceMaterialType::Opaque && 
+    } else if (instance.isOpaque() &&
                !instance.surface.alphaState.isFullyOpaque && 
                instance.surface.alphaState.isBlendingDisabled) {
       // Alpha-tested geometry
       useOpacityMicromap = true;
-    } else if (instance.getMaterialType() == RtSurfaceMaterialType::Opaque && !alphaState.isFullyOpaque) {
+    } else if (instance.isOpaque() && !alphaState.isFullyOpaque) {
       useOpacityMicromap = true;
-    } else if (instance.getMaterialType() == RtSurfaceMaterialType::RayPortal) {
+    } else if (instance.getMaterialType() == MaterialDataType::RayPortal) {
       useOpacityMicromap = true;
     }
 
@@ -1085,7 +1088,7 @@ namespace dxvk {
       return false;
 
     // RayPortal materials use two opacity maps, see if the second one is already loaded
-    if (instance.getMaterialType() == RtSurfaceMaterialType::RayPortal &&
+    if (instance.getMaterialType() == MaterialDataType::RayPortal &&
         !isIndexOfFullyResidentTexture(instance.getSecondaryOpacityTextureIndex(), textures))
       return false;
 
