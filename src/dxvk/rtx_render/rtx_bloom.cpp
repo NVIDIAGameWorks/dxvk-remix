@@ -89,6 +89,7 @@ namespace dxvk {
     ImGui::Indent();
     ImGui::DragFloat("Intensity##bloom", &burnIntensityObject(), 0.05f, 0.f, 5.f, "%.2f");
     ImGui::DragFloat("Threshold##bloom", &luminanceThresholdObject(), 0.05f, 0.f, 100.f, "%.2f");
+    ImGui::SliderInt("Radius##bloom", &stepsObject(), 4, MaxBloomSteps);
     ImGui::Unindent();
     ImGui::Unindent();
   }
@@ -108,14 +109,19 @@ namespace dxvk {
       &m_bloomBuffer[2],
       &m_bloomBuffer[3],
       &m_bloomBuffer[4],
+      &m_bloomBuffer[5],
+      &m_bloomBuffer[6],
+      &m_bloomBuffer[7],
     };
-    assert(std::size(m_bloomBuffer) == std::size(res) - 1);
+    static_assert(MaxBloomSteps == std::size(res) - 1);
 
-    for (uint32_t i = 0; i < std::size(res) - 1; i++) {
+    const int bloomDepth = std::clamp(steps(), 1, MaxBloomSteps);
+
+    for (int i = 0; i < bloomDepth; i++) {
       dispatchDownsampleStep(ctx, linearSampler, *res[i], *res[i + 1], i == 0);
     }
 
-    for (uint32_t i = std::size(res) - 1; i > 1; i--) {
+    for (int i = bloomDepth; i > 1; i--) {
       dispatchUpsampleStep(ctx, linearSampler, *res[i], *res[i - 1]);
     }
 
