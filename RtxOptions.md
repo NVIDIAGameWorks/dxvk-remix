@@ -95,6 +95,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.bloom.burnIntensity|float|1|||Amount of bloom to add to the final image\.|
 |rtx.bloom.enable|bool|True|||Enable bloom \- glowing halos around intense, bright areas\.|
 |rtx.bloom.luminanceThreshold|float|0.25|||Adjust the bloom threshold to suppress blooming of the dim areas\. Pixels with luminance lower than the threshold are multiplied by the weight value that smoothly transitions from 1\.0 \(at luminance=threshold\) to 0\.0 \(at luminance=0\)\.|
+|rtx.bloom.steps|int|5|1|8|Number of downsampling steps to perform \[1\.\.8\]\. A higher value produces a wider blooming radius\.|
 |rtx.calculateLightIntensityUsingLeastSquares|bool|True|||Enable usage of least squares for approximating a light's falloff curve rather than a more basic single point approach\. This will generally result in more accurate matching of the original application's custom light attenuation curves, especially with non physically based linear\-style attenuation\.|
 |rtx.camera.enableFreeCamera|bool|False|||Enables free camera\.|
 |rtx.camera.freeCameraPitch|float|0|||Free camera's pitch\.|

@@ -74,11 +74,9 @@ namespace dxvk {
 
     Rc<vk::DeviceFn> m_vkd;
 
+    constexpr static int MaxBloomSteps = 8;
     // Each image is 1/2 resolution of the previous.
-    // Here, 5 steps are chosen: so the last image would be 1/(2^5) = 1/32 of the target resolution,
-    // and at 4K resolution, it's ~67 pixels height, which is fine enough -- as on other hand,
-    // we would like to keep the amount of steps as few as possible.
-    Resources::Resource m_bloomBuffer[5] = {};
+    Resources::Resource m_bloomBuffer[MaxBloomSteps] = {};
 
     RTX_OPTION_ENV("rtx.bloom", bool, enable, true, "RTX_BLOOM_ENABLE", "Enable bloom - glowing halos around intense, bright areas.");
     RTX_OPTION("rtx.bloom", float, burnIntensity, 1.0f, "Amount of bloom to add to the final image.");
@@ -86,6 +84,10 @@ namespace dxvk {
                "Adjust the bloom threshold to suppress blooming of the dim areas. "
                "Pixels with luminance lower than the threshold are multiplied by "
                "the weight value that smoothly transitions from 1.0 (at luminance=threshold) to 0.0 (at luminance=0).");
+    RTX_OPTION_ARGS("rtx.bloom", int, steps, 5,
+                    "Number of downsampling steps to perform [1..8]. A higher value produces a wider blooming radius.",
+                    args.minValue = 1,
+                    args.maxValue = MaxBloomSteps);
   };
   
 }
