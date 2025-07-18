@@ -78,6 +78,7 @@ public:
   const DomeLightArgs& getDomeLightArgs() const { return m_gpuDomeLightArgs; }
 
   void clear();
+  void clearFromUIThread();
 
   void garbageCollection(RtCamera& camera);
 
@@ -123,6 +124,10 @@ private:
   std::vector<RtLight*> m_linearizedLights{};
   std::vector<unsigned char> m_lightsGPUData{};
   std::vector<uint16_t> m_lightMappingData{};
+
+  // Mutex to prevent the debugging UI from accessing the light data after it's been deleted.
+  mutable std::mutex m_lightUIMutex;
+  std::unique_lock<std::mutex> m_lightDebugUILock = std::unique_lock<std::mutex>(m_lightUIMutex, std::defer_lock);
 
   bool getActiveDomeLight(DomeLight& lightOut);
 

@@ -180,11 +180,7 @@ namespace dxvk {
 
     // Clear the lights and fallback light if the settings are dirty to recreate the lights on the next frame.
     if (lightSettingsDirty) {
-      clear();
-
-      // Note: Fallback light reset here so that changes to its settings will take effect, does not need to be part
-      // of usual light clearing logic though.
-      m_fallbackLight.reset();
+      clearFromUIThread();
     }
   }
 
@@ -424,6 +420,7 @@ namespace dxvk {
     ImGui::SetNextWindowSize(viewport->Size);
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.f, 0.f, 0.f, 0.0f));
     if (ImGui::Begin("Light Debug View", nullptr, ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings)) {
+      std::lock_guard<std::mutex> lock(m_lightUIMutex);
       ImDrawList* drawList = ImGui::GetWindowDrawList();
       drawList->PushClipRectFullScreen();
       const RtCamera& camera = device()->getCommon()->getSceneManager().getCamera();
