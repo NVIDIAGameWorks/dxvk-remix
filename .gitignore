@@ -37,3 +37,4 @@
 **/_batch_output/**
 /public/bin/
 tests/rtx/dxvk_rt_testing/apics
+*.log

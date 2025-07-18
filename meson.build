@@ -43,17 +43,16 @@ current_build_dir_norm = meson.current_build_dir().replace('\\', '/')
 #     early outs if everything's already fetched, so the waste is negligible + forgiveable.
 get_dependencies_script_path = join_paths(global_src_root_norm, 'scripts-common/update-deps.cmd')
 message('Downloading dependencies...')
-packman_out = run_command(get_dependencies_script_path, check: true)
+packman_out = run_command(get_dependencies_script_path, 'packman-external.xml', 'update-deps.log', check: true)
 message(packman_out.stdout().strip())
 if packman_out.returncode() != 0
   message(packman_out.stderr().strip())
   error('Failed to get dependencies.')
 endif
 fetch_packman_target = custom_target('fetch_packman',
-  output           : ['fetch_packman'],
-  build_by_default : true,
-  depends          : [],
-  command          : [get_dependencies_script_path] )
+  input            : ['packman-external.xml', get_dependencies_script_path],
+  output           : 'update-deps.log',
+  command          : [get_dependencies_script_path, '@INPUT0@', '@OUTPUT0@' ] )
 
 fs = import('fs')
 
@@ -746,11 +745,13 @@ if dxvk_is_ninja
 
     if src_exe != ''
       # intentionally using two install jobs here so we can have unique tags
+      # the exe only allows test applications to be compiled and installed, without installing the runtime.  Such copy-less runtime testing scenarios exist in CI.
       meson.add_install_script(
         join_paths(global_src_root_norm, 'scripts-common/install_file_in_dir.bat'),
         src_exe, output_path,
         install_tag: target_suffix + '_exeonly'
-	  )
+      )
+      # the regular path allows the exe to be built and deployed along with a runtime.  Such scenarios exist during local development, when launching from VS for example.
       meson.add_install_script(
         join_paths(global_src_root_norm, 'scripts-common/install_file_in_dir.bat'),
         src_exe, output_path,
