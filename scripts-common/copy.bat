@@ -10,10 +10,10 @@ set DST=%2
 set FILES=%3
 
 rem echo ////////////////////////////////////////////////////
-echo  copy of:
-echo     %SRC:/=\%
-echo     to
-echo     %DST:/=\%
+rem echo  copy of:
+rem echo     %SRC:/=\%
+rem echo     to
+rem echo     %DST:/=\%
 
 rem robocopy seems to lock input files and ends up hanging sometimes (/w:1 helps, but doesn't solve the problem)
 rem robocopy /w:1 /njh /njs /nc /ns /np /ndl /is /it %1 %2 %3

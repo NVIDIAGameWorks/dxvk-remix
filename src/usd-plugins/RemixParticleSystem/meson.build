@@ -66,6 +66,7 @@ plugin_lib = shared_library(
   c_args:               [ '-D' + plugin_name.to_upper() + '_EXPORTS', usd_schema_plugins_defines, usd_schema_plugins_compilerflags ],
   dependencies:         [ dep, usd_schema_plugins_linklibs],
   override_options:     ['cpp_std=c++17'],   # USD 22.11 requires c++17,
+  install: true
 )
 
 usd_plugins += plugin_lib

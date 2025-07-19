@@ -410,7 +410,7 @@ nrc_dep = declare_dependency(
 )
 
 submodules_dep = declare_dependency(
-  include_directories : include_directories(join_paths(meson.global_source_root(), 'submodules'))
+  include_directories : include_directories('../../submodules')
 )
 
 generated_dxvk_shaders = glsl_generator.process(dxvk_shaders)

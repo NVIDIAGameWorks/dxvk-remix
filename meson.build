@@ -23,7 +23,7 @@
 project(
   'dxvk', ['c', 'cpp'],
   version : 'remix-main',
-  meson_version : '>= 0.58',
+  meson_version : '>= 0.60',
   default_options : ['werror=true', 'b_vscrt=from_buildtype']
 )
 
@@ -43,17 +43,16 @@ current_build_dir_norm = meson.current_build_dir().replace('\\', '/')
 #     early outs if everything's already fetched, so the waste is negligible + forgiveable.
 get_dependencies_script_path = join_paths(global_src_root_norm, 'scripts-common/update-deps.cmd')
 message('Downloading dependencies...')
-packman_out = run_command(get_dependencies_script_path, check: true)
+packman_out = run_command(get_dependencies_script_path, 'packman-external.xml', 'update-deps.log', check: true)
 message(packman_out.stdout().strip())
 if packman_out.returncode() != 0
   message(packman_out.stderr().strip())
   error('Failed to get dependencies.')
 endif
 fetch_packman_target = custom_target('fetch_packman',
-  output           : ['fetch_packman'],
-  build_by_default : true,
-  depends          : [],
-  command          : [get_dependencies_script_path] )
+  input            : ['packman-external.xml', get_dependencies_script_path],
+  output           : 'update-deps.log',
+  command          : [get_dependencies_script_path, '@INPUT0@', '@OUTPUT0@' ] )
 
 fs = import('fs')
 
@@ -599,11 +598,14 @@ if enable_tests
   subdir('tests')
 endif
 
+hdremix_outdir = join_paths(meson.current_source_dir(), 'nv-private', 'hdremix', 'bin', get_option('buildtype'))
+
 # dict of "output" targets --- key is an output path, value is an optional executable inside that path,
 # which is used to run that "output" from the IDE
 dxvkrt_output_targets = {
   '_output': '',
   '_sdk': '',
+  '_hdremix': '',
 }
 
 subdir('tests/rtx')
@@ -658,6 +660,11 @@ if dxvk_is_ninja
       target_suffix = 'sdk'
       output_path = join_paths(global_src_root_norm, 'public/bin/')
       src_exe = ''
+    elif t == '_hdremix'
+      # _hdremix target is special
+      target_suffix = 'hdremix'
+      output_path = hdremix_outdir
+      src_exe = ''
     else
       target_suffix = t.underscorify()
       output_path = dxvkrt_test_root + t
@@ -671,10 +678,10 @@ if dxvk_is_ninja
         vs_gen_cmdline += t + ',' + exe
       endif
     endif
-    
+
     dxvkrt_copy_targets += { t : { 'output_path': output_path, 'target_suffix': target_suffix, 'src_exe': src_exe } }
   endforeach
-
+  
   # add data from gametargets.conf to dxvkrt_copy_targets
   game_targets_run = run_command(python_interpreter,
                                  join_paths(global_src_root_norm, 'vsgen/get_game_target_list.py'),
@@ -699,173 +706,68 @@ if dxvk_is_ninja
     output_path = dxvkrt_copy_targets[key]['output_path']
     src_exe = dxvkrt_copy_targets[key]['src_exe']
 
-    # generate targets to copy DLLs to individual test dirs, with names of the form 'copy_Portal1_SingleFrame_A'
-    # these targets are not run by default, since we have a lot of tests: the intent is that we run this as a build task from the IDE before launching the test
-    # also, meson feature: we *can not* pass down paths using \ as arguments to the command in custom_target, they are forced to / somewhere,
-    # except if the path separators are inconsistent, where meson skips all munging
+    # using tagged install targets to get the files in the right place at install time (each project in VS knows which tag to use)
 
-    copy_usd = custom_target('recursive_copy_usd_' + target_suffix,
-      output           : ['recursive_copy_usd_' + target_suffix],
-      command          : [recursive_copy_path,
-                          join_paths(usd_lib_path, 'lib/usd/'),
-                          join_paths(output_path, 'usd/')] )
-    copy_usd_dll = []
+    install_subdir(join_paths(usd_lib_path, 'lib/usd/'), install_dir : output_path, install_tag: target_suffix)  
+    
     foreach ulib : nvusd_deplibs
-      copy_usd_dll += custom_target('copy_usd_dll_' + ulib + '_' + target_suffix,
-                output           : ['copy_usd_dll_' + ulib + '_' + target_suffix],
-                command          : [copy_script_path,
-                                    join_paths(usd_lib_path, 'lib/'),
-                                    output_path,
-                                    ulib + '.dll'] )    
+      install_data(join_paths(usd_lib_path, 'lib', ulib + '.dll'), install_dir : output_path, install_tag: target_suffix) 
     endforeach
   
-    copy_usd_plugins_dlls = []
+    install_data(join_paths(global_src_root_norm, 'src', 'usd-plugins', 'plugInfo.json'), install_dir : join_paths(output_path, 'usd', 'plugins'), install_tag: target_suffix) 
 
-    copy_usd_plugins_dlls += custom_target('copy_usd_plugins_json_' + target_suffix,
-                    output           : ['copy_usd_plugins_json_' + target_suffix],
-                    command          : [copy_script_path,
-                                        join_paths(global_src_root_norm, 'src', 'usd-plugins'),
-                                        join_paths(output_path, 'usd/plugins/'),
-                                        'plugInfo.json'] )
-    foreach usd_plugin : usd_plugins
-      copy_usd_plugins_dlls += custom_target('copy_usd_plugins_' + usd_plugin.name() + '_dll_' + target_suffix,
-                         depends          : [ usd_plugin ],
-                         output           : ['copy_usd_plugins_' + usd_plugin.name() + '_dll_' + target_suffix],
-                         command          : [copy_script_path,
-                                             fs.parent(usd_plugin.full_path()) ,
-                                             join_paths(output_path, 'usd/plugins', usd_plugin.name() + '/'),
-                                             usd_plugin.name() + '.dll'] )
+    # install USD plugins
+    meson.add_install_script(
+      join_paths(global_src_root_norm, 'scripts-common/install_usd_plugins.bat'),
+      output_path,
+      install_tag: target_suffix 
+    )
 
-      copy_usd_plugins_dlls += custom_target('copy_usd_plugins_' + usd_plugin.name() + '_json_' + target_suffix,
-                         depends          : [ usd_plugin ],
-                         output           : ['copy_usd_plugins_' + usd_plugin.name() + '_json_' + target_suffix],
-                         command          : [copy_script_path,
-                                             fs.parent(usd_plugin.full_path()),
-                                             join_paths(output_path, 'usd/plugins', usd_plugin.name(), 'resources/'),
-                                             'plugInfo.json'] )
+    install_data(join_paths(nrc_dll_path, nrc_dll_name), install_dir : output_path, install_tag: target_suffix) 
+    install_data(join_paths(nrc_dll_path, 'cudart64_12.dll'), install_dir : output_path, install_tag: target_suffix) 
+    install_data(join_paths(nrc_dll_path, 'nvrtc64_120_0.dll'), install_dir : output_path, install_tag: target_suffix) 
+    install_data(join_paths(nrc_dll_path, 'nvrtc-builtins64_125.dll'), install_dir : output_path, install_tag: target_suffix) 
 
-      copy_usd_plugins_dlls += custom_target('copy_usd_plugins_' + usd_plugin.name() + '_schema_' + target_suffix,
-                         depends          : [ usd_plugin ],
-                         output           : ['copy_usd_plugins_' + usd_plugin.name() + '_schema_' + target_suffix],
-                         command          : [copy_script_path,
-                                             fs.parent(usd_plugin.full_path()),
-                                             join_paths(output_path, 'usd/plugins', usd_plugin.name() + '/'),
-                                             'generatedSchema.usda'] )
-    endforeach
+    install_data(join_paths(nrd_lib_path, 'NRD.dll'), install_dir : output_path, install_tag: target_suffix) 
 
-    copy_nrc_dll = custom_target('copy_nrc_dll_' + target_suffix,
-      output           : ['copy_nrc_dll_' + target_suffix],
-      command          : [copy_script_path,
-                          nrc_dll_path,
-                          output_path,
-                          nrc_dll_name] )
+    install_data(join_paths(dlss_lib_path, 'nvngx_dlss.dll'), install_dir : output_path, install_tag: target_suffix) 
+    install_data(join_paths(dlss_lib_path, 'nvngx_dlssd.dll'), install_dir : output_path, install_tag: target_suffix) 
 
-    copy_nrc_cuda_deps_dll = custom_target('copy_nrc_cuda_deps_dll_' + target_suffix,
-      output           : ['copy_nrc_cuda_deps_dll_' + target_suffix],
-      command          : [copy_script_path,
-                          nrc_dll_path,
-                          output_path,
-                          'cudart64_12.dll'] )
+    install_data(join_paths(dlfg_lib_path, 'nvngx_dlssg.dll'), install_dir : output_path, install_tag: target_suffix) 
 
-    copy_nrc_cuda_nv_deps_dll = custom_target('copy_nrc_cuda_nv_deps_dll_' + target_suffix,
-      output           : ['copy_nrc_cuda_nv_deps_dll_' + target_suffix],
-      command          : [copy_script_path,
-                          nrc_dll_path,
-                          output_path,
-                          'nvrtc*.dll'] )
+    install_data(join_paths(reflex_lib_path, 'NvLowLatencyVk.dll'), install_dir : output_path, install_tag: target_suffix) 
 
-    copy_nrd_dll = custom_target('copy_nrd_dll_' + target_suffix,
-      output           : ['copy_nrd_dll_' + target_suffix],
-      command          : [copy_script_path,
-                          nrd_lib_path,
-                          output_path,
-                          'NRD.dll'] )
-
-    copy_dlss_dll = custom_target('copy_dlss_dll_' + target_suffix,
-      output           : ['copy_dlss_dll_' + target_suffix],
-      command          : [copy_script_path,
-                          dlss_lib_path, 
-                          output_path,
-                          'nvngx_*.*'] )
-
-    copy_dlfg_dll = custom_target('copy_dlfg_dll_' + target_suffix,
-      output           : ['copy_dlfg_dll_' + target_suffix],
-      command          : [copy_script_path,
-                          dlfg_lib_path, 
-                          output_path,
-                          'nvngx_dlssg.dll'] )
-
-    copy_reflex_dll = custom_target('copy_reflex_dll_' + target_suffix,
-      output           : ['copy_reflex_dll_' + target_suffix],
-      depends          : [],
-      command          : [copy_script_path,
-                          reflex_lib_path,
-                          output_path,
-                          'NvLowLatencyVk.dll'] )
-
-    copy_aftermath_dll = custom_target('copy_aftermath_dll_' + target_suffix,
-       output           : ['copy_aftermath_dll_' + target_suffix],
-       depends          : [],
-       command          : [copy_script_path, aftermath_lib_path, output_path, 'GFSDK_Aftermath_Lib.x64.dll'] )
+    install_data(join_paths(aftermath_lib_path, 'GFSDK_Aftermath_Lib.x64.dll'), install_dir : output_path, install_tag: target_suffix) 
 
     if enable_rtxio == true
-      copy_rtxio = custom_target('copy_rtxio_' + target_suffix,
-        output           : ['copy_rtxio_' + target_suffix],
-        depends          : [],
-        command          : [copy_script_path, rtxio_bin_path, output_path, 'rtxio.*'] )
-    endif
-
-    # the copy target is special
-    # if we use custom_target for the d3d9 DLL, meson generates a target that does nothing in ninja
-    # as a workaround, we do the copy as part of the test_* target itself
-    copy_target_depends = [ copy_usd,
-                            copy_usd_dll,
-                            copy_nrc_dll,
-                            copy_nrc_cuda_deps_dll,
-                            copy_nrc_cuda_nv_deps_dll,
-                            copy_nrd_dll,
-                            copy_dlss_dll,
-                            copy_dlfg_dll,
-                            copy_aftermath_dll,
-                            d3d9_dll ] + copy_usd_plugins_dlls
-
-    copy_target_depends += copy_reflex_dll
-
-    if enable_rtxio == true
-      copy_target_depends += copy_rtxio
+      install_data(join_paths(rtxio_bin_path, 'rtxio.dll'), install_dir : output_path, install_tag: target_suffix) 
     endif
 
     if src_exe != ''
-      copy_target_depends += custom_target('copy_exe_' + target_suffix,
-        output           : ['copy_exe_' + target_suffix],
-        depends          : [],
-        command          : [copy_script_path, fs.parent(src_exe) + '/', output_path + '/', fs.name(src_exe)] )
+      # intentionally using two install jobs here so we can have unique tags
+      # the exe only allows test applications to be compiled and installed, without installing the runtime.  Such copy-less runtime testing scenarios exist in CI.
+      meson.add_install_script(
+        join_paths(global_src_root_norm, 'scripts-common/install_file_in_dir.bat'),
+        src_exe, output_path,
+        install_tag: target_suffix + '_exeonly'
+      )
+      # the regular path allows the exe to be built and deployed along with a runtime.  Such scenarios exist during local development, when launching from VS for example.
+      meson.add_install_script(
+        join_paths(global_src_root_norm, 'scripts-common/install_file_in_dir.bat'),
+        src_exe, output_path,
+        install_tag: target_suffix
+      )
     endif
 
-    copy_target = run_target('copy_' + target_suffix.replace('apics_', ''),
-      depends: copy_target_depends,
-      command : [copy_script_path,
-                join_paths(current_build_dir_norm, 'src/d3d9'),
-                output_path,
-                'd3d9*'])
+    if t != '_output' or target_suffix == 'sdk'
+      meson.add_install_script(
+        join_paths(global_src_root_norm, 'scripts-common/install_file_in_dir.bat'),
+        join_paths(current_build_dir_norm, 'src/d3d9', 'd3d9.*'), output_path,
+        install_tag: target_suffix
+      )
+    endif
 
-    if t != '_output'
-      apic_copy_targets += copy_target
-    endif
-    if target_suffix == 'sdk'
-      remixsdk_target = custom_target('ct_copy_remixsdk',
-        output:  ['ct_copy_remixsdk'],
-        depends: copy_target_depends,
-        command: [copy_script_path,
-                  join_paths(current_build_dir_norm, 'src/d3d9'),
-                  output_path,
-                  'd3d9*'])
-    endif
   endforeach
-
-  # xxxnsubtil: this one line replaces a bunch of python code used for the vscode build, but requires meson 0.61.3
-  # (specifically, https://github.com/mesonbuild/meson/pull/9202)
-  # alias_target('copy_to_all_apics', apic_copy_targets)
 
   # generate VS project files for ninja
   # note: this writes to <source root>/_vs, which is outside the build directory

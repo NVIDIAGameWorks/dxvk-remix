@@ -33,12 +33,10 @@ def generate_testcase_project(vcxproj_output_path, test_case, command_line, outp
     if output_directory == None:
         output_directory = working_directory
 
-    copy_target = "copy_" + test_name.replace("-", "_").removeprefix("apics_")
-
     projt = Template(open("testcase_project.vcxproj.template").read())
     d = projt.safe_substitute(test_project_guid=test_project_guid, 
                               test_case_outputdir=output_directory,
-                              copy_target=copy_target,
+                              copy_target=test_name,
                               dxvk_remix_project_guid=dxvk_remix_project_guid)
 
     write_file_if_not_identical(vcxproj_output_path, vcxproj_target, d)
