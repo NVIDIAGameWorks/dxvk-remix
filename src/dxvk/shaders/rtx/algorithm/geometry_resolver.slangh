@@ -186,7 +186,10 @@ void geometryResolverOutputSurface(
   if (primarySurface)
   {
     const float4 projectionSpacePosition = mul(cb.camera.worldToProjectionJittered, float4(virtualHitPosition, 1.f));
-    const float depth = projectionSpacePosition.z/projectionSpacePosition.w;
+    // Note: This division will result in -infinity when the hit point is equal to the camera's position (z is negative assuming a non-zero near plane and w = 0).
+    // This is "fine" though as in theory things should be able to handle this value properly (as it's not a NaN, though it could be if the near plane was 0). If
+    // this causes problems in the future though, simply clamp this to some very negative value (e.g. negative float 16 or 32 max).
+    const float depth = projectionSpacePosition.z / projectionSpacePosition.w;
 
     imageStore(PrimaryDepth, pixelCoordinate, depth);
     imageStore(PrimaryLinearViewZ, pixelCoordinate, linearViewZ);
@@ -229,14 +232,26 @@ void geometryResolverOutputSurface(
   {
     imageStore(PrimaryVirtualMotionVector, ivec2(pixelCoordinate), vec4(virtualMotion, 0));
 
-    vec4 prevWorldPosition = vec4(virtualHitPosition + virtualMotion, 1);
-    vec4 prevNDC = mul(cb.camera.prevWorldToProjection, prevWorldPosition);
-    prevNDC /= prevNDC.w;
+    const vec4 prevWorldPosition = vec4(virtualHitPosition + virtualMotion, 1);
+    const vec4 prevClip = mul(cb.camera.prevWorldToProjection, prevWorldPosition);
+    vec2 prevNDC;
 
-    vec2 ndc = cameraPixelCoordinateToNDC(cb.camera, pixelCoordinate);
-    vec2 motionVectorNDC = prevNDC.xy - ndc.xy;
-    vec2 motionVectorUVOffset = motionVectorNDC * vec2(0.5, -0.5);
-    vec2 motionVectorPixel = motionVectorUVOffset * cb.camera.resolution;
+    if (prevClip.w == 0.0f) {
+      // Note: This is a bit of an odd case, when w = 0 the point is the same as the camera's position, and this is represented by a Z value of
+      // -infinity (as Z values are negative when behind the near plane at Z = 0 before wrapping to positive infinity for all w values less than 0).
+      // Since Z is not needed in this NDC value currently though we can just set the X/Y to be 0. This doesn't make a ton of sense as really the
+      // camera's central point should only be a single pixel on the screen rather than stretched across the whole thing, but floating point quantization
+      // will essentially cause much of the screen intersecting with geometry to map to a single point anyways, so this is probably fine.
+      prevNDC = vec2(0.0f, 0.0f);
+    } else {
+      // Note: Typical perspective divide.
+      prevNDC = prevClip.xy / prevClip.w;
+    }
+
+    const vec2 ndc = cameraPixelCoordinateToNDC(cb.camera, pixelCoordinate);
+    const vec2 motionVectorNDC = prevNDC - ndc;
+    const vec2 motionVectorUVOffset = motionVectorNDC * vec2(0.5, -0.5);
+    const vec2 motionVectorPixel = motionVectorUVOffset * cb.camera.resolution;
 
     // Write out screen-space motion.
     PrimaryScreenSpaceMotionVector[pixelCoordinate] = motionVectorPixel;

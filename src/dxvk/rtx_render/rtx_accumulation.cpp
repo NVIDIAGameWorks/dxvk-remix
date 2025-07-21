@@ -116,7 +116,8 @@ namespace dxvk {
     RtxOption<bool>& resetOnCameraTransformChange) {
     const ImGuiTreeNodeFlags collapsingHeaderFlags = ImGuiTreeNodeFlags_CollapsingHeader;
 
-    if (ImGui::CollapsingHeader("Accumulation", collapsingHeaderFlags)) {
+    // Note: Additional ID appended to this header to not conflict with the button itself.
+    if (ImGui::CollapsingHeader("Accumulation##Header", collapsingHeaderFlags)) {
       ImGui::Indent();
 
       if (ImGui::Button("Reset History")) {
