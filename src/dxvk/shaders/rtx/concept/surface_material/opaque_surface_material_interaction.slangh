@@ -1156,7 +1156,9 @@ SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcDiffuseRefl
     evalHammonDiffuse(opaqueSurfaceMaterialInteraction.albedo, opaqueSurfaceMaterialInteraction.isotropicRoughness,
       inputDirectionDotOutputDirection, normalDotInputDirection,
       normalDotOutputDirection, normalDotMicrofacetNormal) * lambertTransmissionWeight;
-  const f16vec3 throughput = safePositiveDivide(weight, f16vec3(cosineHemisphereSolidAnglePdf), materialEpsilon) * normalDotInputDirection;
+  const f16vec3 throughput =
+    saferPositiveDivide(weight, f16vec3(cosineHemisphereSolidAnglePdf), materialEpsilon, materialMaximum) *
+    normalDotInputDirection;
 
   // Return the material sample
 
