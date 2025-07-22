@@ -119,14 +119,18 @@ namespace dxvk {
       RTX_OPTION("rtx.neuralRadianceCache", float, selfTrainingAttenuation, 1.f, "");
       RTX_OPTION("rtx.neuralRadianceCache", bool, enableCalculateTrainingLoss, false, "Enables calculation of a training loss. Imposes a performance penalty.");
       RTX_OPTION("rtx.neuralRadianceCache", bool, enableAdaptiveTrainingDimensions, true, "Enables adaptive training dimensions that scale based off pathtracer's execution behavior on a given scene.");
-      RTX_OPTION_ENV("rtx.neuralRadianceCache", QualityPreset, qualityPreset, QualityPreset::Ultra, "RTX_NRC_QUALITY_PRESET",
-                 "Quality Preset: Medium (0), High (1), Ultra (2).\n"
-                 "Adjusts quality of Neural Radiance Cache (NRC):\n"
-                 "  - How quickly path-tracer terminates paths into NRC cache. It terminates quicker on lower presets.\n"
-                 "  - Granularity of the cache - i.e. the smallest resolvable feature size. The cache is less precise on lower presets.\n"
-                 "  - Responsiveness of the cache. The cache is more responsive to dynamic lighting changes on higher presets.\n"
-                 "Lower quality presets result in faster path-tracing with fewer bounces that may result in lower quality indirect lighting.\n"
-                 "Higher quality presets result in more responsive and detailed indirect lighting.");
+
+      static void onQualityPresetChanged();
+      RTX_OPTION_ARGS("rtx.neuralRadianceCache", QualityPreset, qualityPreset, QualityPreset::Ultra,
+                      "Quality Preset: Medium (0), High (1), Ultra (2).\n"
+                      "Adjusts quality of Neural Radiance Cache (NRC):\n"
+                      "  - How quickly path-tracer terminates paths into NRC cache. It terminates quicker on lower presets.\n"
+                      "  - Granularity of the cache - i.e. the smallest resolvable feature size. The cache is less precise on lower presets.\n"
+                      "  - Responsiveness of the cache. The cache is more responsive to dynamic lighting changes on higher presets.\n"
+                      "Lower quality presets result in faster path-tracing with fewer bounces that may result in lower quality indirect lighting.\n"
+                      "Higher quality presets result in more responsive and detailed indirect lighting.",
+                      args.environment = "RTX_NRC_QUALITY_PRESET",
+                      args.onChangeCallback = &onQualityPresetChanged);
 
       RTX_OPTION("rtx.neuralRadianceCache", float, luminanceClampMultiplier, 0.f,
                  "Luminance based clamp multiplier to use for clamping radiance passed to NRC during training.\n"
@@ -179,7 +183,6 @@ namespace dxvk {
     bool isUpdateResolveModeActive() const;
 
     void setQualityPreset(QualityPreset nrcQualityPreset);
-    void applyQualityPreset();
 
     bool isResettingHistory();
 
@@ -199,6 +202,7 @@ namespace dxvk {
     void readAndResetNumberOfTrainingRecords();
     void calculateActiveTrainingDimensions(float frameTimeMilliseconds, bool forceReset);
     uint32_t calculateNumTrainingIterations();
+    uint8_t calculateTrainingMaxPathBounces() const;
 
     uint32_t calculateTargetNumTrainingRecords() const;
 
