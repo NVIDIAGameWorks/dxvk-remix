@@ -167,7 +167,7 @@ namespace dxvk {
 
     void prepareForNextFrame();
 
-    bool fetchParticleSystem(DxvkContext* ctx, const DrawCallState& drawCallState, const RtxParticleSystemDesc& desc, const MaterialData* overrideMaterial, ParticleSystem** materialSystem);
+    bool fetchParticleSystem(DxvkContext* ctx, const DrawCallState& drawCallState, const RtxParticleSystemDesc& desc, const MaterialData& renderMaterialData, ParticleSystem** materialSystem);
 
     static uint32_t getNumberOfParticlesToSpawn(ParticleSystem* materialSystem, const DrawCallState& drawCallState);
 
@@ -192,13 +192,13 @@ namespace dxvk {
       * - Determines how many particles to spawn.
       * - Schedules the spawn (particles are actually allocated during simulation).
       *
-      * \param ctx              Command list to perform any potential allocation clears with.
-      * \param desc             Description for the particle system.
-      * \param instanceIdx      This is the index into the vector of instances held by instance manager.
-      * \param drawCallState    The current draw call state referencing material info.
-      * \param overrideMaterial The material preference to apply to particle system
+      * \param ctx                Command list to perform any potential allocation clears with.
+      * \param desc               Description for the particle system.
+      * \param instanceIdx        This is the index into the vector of instances held by instance manager.
+      * \param drawCallState      The current draw call state referencing material info.
+      * \param renderMaterialData The material preference to apply to particle system
       */
-    void spawnParticles(DxvkContext* ctx, const RtxParticleSystemDesc& desc, const uint32_t instanceIdx, const DrawCallState& drawCallState, const MaterialData* overrideMaterial);
+    void spawnParticles(DxvkContext* ctx, const RtxParticleSystemDesc& desc, const uint32_t instanceIdx, const DrawCallState& drawCallState, const MaterialData& overrideMaterial);
 
     /**
       * Issues the draw state (vertex buffer, index buffer) for rendering particles

@@ -301,12 +301,8 @@ namespace dxvk {
     return m_vkInstance.instanceCustomIndex & oneBitMask;
   }
 
-  static bool isOpaqueMaterial(const MaterialDataType& materialType) {
-    return (materialType == MaterialDataType::Legacy || materialType == MaterialDataType::Opaque);
-  }
-
   bool RtInstance::isOpaque() const {
-    return isOpaqueMaterial(getMaterialType());
+    return getMaterialType() == MaterialDataType::Opaque;
   }
 
   bool RtInstance::isViewModel() const {
@@ -576,24 +572,16 @@ namespace dxvk {
       out.isFullyOpaque = false;
 
       return out;
-    } else if (!isOpaqueMaterial(materialData.getType())) {
+    } else if (materialData.getType() != MaterialDataType::Opaque) {
       return out;
     }
-
-    assert(isOpaqueMaterial(materialData.getType()));
 
     // Determine if the Legacy Alpha State should be used based on the material data
     // Note: The Material Data may be either Legacy or Opaque here, both use the Opaque Surface Material.
 
-    bool useLegacyAlphaState = true;
+    const auto& opaqueMaterialData = materialData.getOpaqueMaterialData();
 
-    if (materialData.getType() == MaterialDataType::Opaque) {
-      const auto& opaqueMaterialData = materialData.getOpaqueMaterialData();
-
-      useLegacyAlphaState = opaqueMaterialData.getUseLegacyAlphaState();
-    } else {
-      assert(materialData.getType() == MaterialDataType::Legacy);
-    }
+    const bool useLegacyAlphaState = opaqueMaterialData.getUseLegacyAlphaState();
 
     // Handle Alpha Test State
 
@@ -607,8 +595,6 @@ namespace dxvk {
       out.alphaTestType = AlphaTestType::kGreater;
       out.alphaTestReferenceValue = static_cast<uint8_t>(RtxOptions::forceCutoutAlpha() * 255.0);
     } else if (!useLegacyAlphaState) {
-      const auto& opaqueMaterialData = materialData.getOpaqueMaterialData();
-
       out.alphaTestType = opaqueMaterialData.getAlphaTestType();
       out.alphaTestReferenceValue = opaqueMaterialData.getAlphaTestReferenceValue();
     } else if (alphaTestEnabled) {
@@ -627,8 +613,6 @@ namespace dxvk {
     if (forceAlphaTest) {
       blendEnabled = false;
     } else if (!useLegacyAlphaState) {
-      const auto& opaqueMaterialData = materialData.getOpaqueMaterialData();
-
       blendEnabled = opaqueMaterialData.getBlendEnabled();
       blendType = opaqueMaterialData.getBlendType();
       invertedBlend = opaqueMaterialData.getInvertedBlend();
@@ -1076,9 +1060,6 @@ namespace dxvk {
           spriteSheetCols = materialData.getRayPortalMaterialData().getSpriteSheetCols();
           spriteSheetFPS = materialData.getRayPortalMaterialData().getSpriteSheetFPS();
 
-          break;
-        case MaterialDataType::Legacy:
-          // Legacy material can't have spritesheet data.
           break;
         default:
           assert(0);

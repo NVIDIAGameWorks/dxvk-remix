@@ -991,7 +991,6 @@ namespace dxvk {
     }
 
     if ((instance.getMaterialType() != MaterialDataType::Opaque &&
-         instance.getMaterialType() != MaterialDataType::Legacy &&
          instance.getMaterialType() != MaterialDataType::RayPortal)) {
       return false;
     }

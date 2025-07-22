@@ -1486,7 +1486,6 @@ private:
 };
 
 enum class MaterialDataType {
-  Legacy,
   Opaque,
   Translucent,
   RayPortal,
@@ -1624,10 +1623,6 @@ private:
 };
 
 struct MaterialData {
-  MaterialData(const LegacyMaterialData& legacyMaterialData) :
-    m_type{ MaterialDataType::Legacy },
-    m_legacyMaterialData{ legacyMaterialData } {}
-
   MaterialData(const OpaqueMaterialData& opaqueMaterialData, bool ignored = false) :
     m_ignored {ignored},
     m_type{ MaterialDataType::Opaque},
@@ -1649,9 +1644,6 @@ struct MaterialData {
       assert(false);
 
       [[fallthrough]];
-    case MaterialDataType::Legacy:
-      new (&m_legacyMaterialData) LegacyMaterialData{ materialData.m_legacyMaterialData };
-      break;
     case MaterialDataType::Opaque:
       new (&m_opaqueMaterialData) OpaqueMaterialData{ materialData.m_opaqueMaterialData };
       break;
@@ -1670,9 +1662,6 @@ struct MaterialData {
       assert(false);
 
       [[fallthrough]];
-    case MaterialDataType::Legacy:
-      m_legacyMaterialData.~LegacyMaterialData();
-      break;
     case MaterialDataType::Opaque:
       m_opaqueMaterialData.~OpaqueMaterialData();
       break;
@@ -1694,9 +1683,6 @@ struct MaterialData {
         assert(false);
 
         [[fallthrough]];
-      case MaterialDataType::Legacy:
-        m_legacyMaterialData = materialData.m_legacyMaterialData;
-        break;
       case MaterialDataType::Opaque:
         m_opaqueMaterialData = materialData.m_opaqueMaterialData;
         break;
@@ -1722,8 +1708,6 @@ struct MaterialData {
       assert(false);
 
       [[fallthrough]];
-    case MaterialDataType::Legacy:
-      return m_legacyMaterialData.getHash();
     case MaterialDataType::Opaque:
       return m_opaqueMaterialData.getHash();
     case MaterialDataType::Translucent:
@@ -1736,8 +1720,6 @@ struct MaterialData {
   const Rc<DxvkSampler>& getSamplerOverride() const {
     switch (m_type) {
     default:
-    case MaterialDataType::Legacy:
-      throw;
     case MaterialDataType::Opaque:
       return m_opaqueMaterialData.getSamplerOverride();
     case MaterialDataType::Translucent:
@@ -1749,12 +1731,6 @@ struct MaterialData {
 
   MaterialDataType getType() const {
     return m_type;
-  }
-
-  const LegacyMaterialData& getLegacyMaterialData() const {
-    assert(m_type == MaterialDataType::Legacy);
-
-    return m_legacyMaterialData;
   }
 
   const OpaqueMaterialData& getOpaqueMaterialData() const {
@@ -1775,7 +1751,19 @@ struct MaterialData {
     return m_translucentMaterialData;
   }
 
+  TranslucentMaterialData& getTranslucentMaterialData() const {
+    assert(m_type == MaterialDataType::Translucent);
+
+    return m_translucentMaterialData;
+  }
+
   const RayPortalMaterialData& getRayPortalMaterialData() const {
+    assert(m_type == MaterialDataType::RayPortal);
+
+    return m_rayPortalMaterialData;
+  }
+
+  RayPortalMaterialData& getRayPortalMaterialData() const {
     assert(m_type == MaterialDataType::RayPortal);
 
     return m_rayPortalMaterialData;
@@ -1859,7 +1847,6 @@ private:
 
   MaterialDataType m_type;
   union {
-    LegacyMaterialData m_legacyMaterialData;
     OpaqueMaterialData m_opaqueMaterialData;
     TranslucentMaterialData m_translucentMaterialData;
     RayPortalMaterialData m_rayPortalMaterialData;

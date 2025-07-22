@@ -51,7 +51,6 @@ dxvk::OpaqueMaterialData LegacyMaterialData::createDefault() {
   opaqueMat.setEnableThinFilm(LegacyMaterialDefaults::enableThinFilm());
   opaqueMat.setAlphaIsThinFilmThickness(LegacyMaterialDefaults::alphaIsThinFilmThickness());
   opaqueMat.setThinFilmThicknessConstant(LegacyMaterialDefaults::thinFilmThicknessConstant());
-  opaqueMat.setDisplaceIn(0.f);
   return opaqueMat;
 }
 
@@ -86,6 +85,10 @@ T LegacyMaterialData::as() const {
     RayPortalMaterialData portalMat;
     portalMat.getMaskTexture() = getColorTexture();
     portalMat.getMaskTexture2() = getColorTexture2();
+    portalMat.setEnableEmission(true);
+    portalMat.setEmissiveIntensity(1.f);
+    portalMat.setSpriteSheetCols(1);
+    portalMat.setSpriteSheetRows(1);
     if (getSampler().ptr()) {
       portalMat.setSamplerOverride(getSampler());
     }

@@ -489,7 +489,7 @@ namespace dxvk {
     args.resolveTransparencyThreshold = desc.resolveTransparencyThreshold;
     args.resolveOpaquenessThreshold = desc.resolveOpaquenessThreshold;
     args.useConservativeEstimation = desc.useConservativeEstimation;
-    args.isOpaqueMaterial = desc.materialType == MaterialDataType::Opaque || desc.materialType == MaterialDataType::Legacy;
+    args.isOpaqueMaterial = desc.materialType == MaterialDataType::Opaque;
     args.isRayPortalMaterial = desc.materialType == MaterialDataType::RayPortal;
     args.applyVertexAndTextureOperations = desc.applyVertexAndTextureOperations;
     args.numMicroTrianglesPerThread = args.is2StateOMMFormat ? 8 : 4;
