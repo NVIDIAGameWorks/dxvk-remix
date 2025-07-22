@@ -140,8 +140,6 @@ namespace dxvk {
     m_nrcCtxSettings = std::make_unique<nrc::ContextSettings>();
     m_delayedEnableDebugBuffers = NrcCtxOptions::enableDebugBuffers();
     m_delayedEnableCustomNetworkConfig = NrcCtxOptions::enableCustomNetworkConfig();
-
-    applyQualityPreset();
   }
 
   NeuralRadianceCache::~NeuralRadianceCache() { }
@@ -218,9 +216,7 @@ namespace dxvk {
 
     ImGui::Text("Video Memory Usage: %u MiB", m_nrcCtx->getCurrentMemoryConsumption() >> 20);
 
-    if (nrcQualityPresetCombo.getKey(&NrcOptions::qualityPresetObject())) {
-      applyQualityPreset();
-    }
+    nrcQualityPresetCombo.getKey(&NrcOptions::qualityPresetObject());
 
     ImGui::Checkbox("Reset History", &NrcOptions::resetHistoryObject());
     ImGui::Checkbox("Train Cache", &NrcOptions::trainCacheObject());
@@ -320,43 +316,42 @@ namespace dxvk {
     return NrcContext::checkIsSupported(device);
   }
 
-  void NeuralRadianceCache::applyQualityPreset() {
-    uint8_t trainingMaxPathBounces = NrcOptions::trainingMaxPathBounces();
+  void NeuralRadianceCache::NrcOptions::onQualityPresetChanged() {
+    // Note: This function is called during onChange handler for quality preset option and 
+    // all the NRC calls have been issued, so it's safe to set the new settings using immediately.
+    // In addition, this ensures the settings being applied immediately on start, rather than being delayed to the next frame
+
     if (NrcOptions::qualityPreset() == QualityPreset::Ultra) {
       Logger::info("[RTX Neural Radiance Cache] Selected Ultra preset mode.");
-      NrcOptions::terminationHeuristicThreshold.setDeferred(0.1f);
-      NrcOptions::smallestResolvableFeatureSizeMeters.setDeferred(0.01f);
-      NrcOptions::targetNumTrainingIterations.setDeferred(4);
+      NrcOptions::terminationHeuristicThreshold.setImmediately(0.1f);
+      NrcOptions::smallestResolvableFeatureSizeMeters.setImmediately(0.01f);
+      NrcOptions::targetNumTrainingIterations.setImmediately(4);
       // 9 and higher resulted in no scene illumination loss in Portal RTX
-      trainingMaxPathBounces = 9;
+      trainingMaxPathBounces.setImmediately(9);
 
     } else if (NrcOptions::qualityPreset() == QualityPreset::High) {
       Logger::info("[RTX Neural Radiance Cache] Selected High preset mode.");
-      NrcOptions::terminationHeuristicThreshold.setDeferred(0.03f);
-      NrcOptions::smallestResolvableFeatureSizeMeters.setDeferred(0.04f);
-      NrcOptions::targetNumTrainingIterations.setDeferred(3);
+      NrcOptions::terminationHeuristicThreshold.setImmediately(0.03f);
+      NrcOptions::smallestResolvableFeatureSizeMeters.setImmediately(0.04f);
+      NrcOptions::targetNumTrainingIterations.setImmediately(3);
       // 7 results in tiny scene illumination decrease in comparison to 9
-      trainingMaxPathBounces = 7;
+      trainingMaxPathBounces.setImmediately(7);
 
     } else if (NrcOptions::qualityPreset() == QualityPreset::Medium) {
       Logger::info("[RTX Neural Radiance Cache] Selected Medium preset mode.");
-      NrcOptions::terminationHeuristicThreshold.setDeferred(0.001f);
+      NrcOptions::terminationHeuristicThreshold.setImmediately(0.001f);
 
       // Using a higher cache resolution to speed up NRC's Query and Train pass at a cost of some IQ fidelity. 
       // 0.01 -> 0.06 resolution results in in 0.2ms cost reduction
       // Values above 6cm start to produce considerably more pronounced IQ differences in specular reflections in Portal.
-      NrcOptions::smallestResolvableFeatureSizeMeters.setDeferred(0.06f);
+      NrcOptions::smallestResolvableFeatureSizeMeters.setImmediately(0.06f);
 
       // Using only 2 iterations vs default 4 can result in reduced responsiveness, but it saves 0.4ms from NRC and PT passes
-      NrcOptions::targetNumTrainingIterations.setDeferred(2);
+      NrcOptions::targetNumTrainingIterations.setImmediately(2);
 
       // Longer training paths require more memory (~5-8+ MB per bounce) and have a slight performance impact (particularly when SER is disabled).
-      trainingMaxPathBounces = 6;
+      trainingMaxPathBounces.setImmediately(6);
     }
-
-    NrcOptions::trainingMaxPathBounces.setDeferred(std::max<uint8_t>(
-      trainingMaxPathBounces + NrcOptions::trainingMaxPathBouncesBiasInQualityPresets(),
-      0));
   }
 
   uint32_t NeuralRadianceCache::calculateTargetNumTrainingRecords() const {
@@ -371,7 +366,7 @@ namespace dxvk {
     NrcArgs& nrcArgs = constants.nrcArgs;
     m_nrcCtx->populateShaderConstants(nrcArgs.nrcConstants);
 
-    nrcArgs.updatePathMaxBounces = NrcOptions::trainingMaxPathBounces();
+    nrcArgs.updatePathMaxBounces = calculateTrainingMaxPathBounces();
 
     // Russian roulette is disabled due to bias in NRC SDK when it is enabled
     nrcArgs.updateAllowRussianRoulette = false;
@@ -930,13 +925,14 @@ namespace dxvk {
     return std::min(numTrainingIterations, NrcOptions::maxNumTrainingIterations());
   }
 
+  uint8_t NeuralRadianceCache::calculateTrainingMaxPathBounces() const {
+    return static_cast<uint8_t>(
+      std::clamp(NrcOptions::trainingMaxPathBounces() + NrcOptions::trainingMaxPathBouncesBiasInQualityPresets(),
+                 1, 15));
+  }
+
   void NeuralRadianceCache::setQualityPreset(QualityPreset nrcQualityPreset) {
-    if (nrcQualityPreset != NrcOptions::qualityPreset()) {
-      // TODO[REMIX-4105]: this is read immediately after being set, so it needs to be setImmediately.
-      // This should be addressed by REMIX-4109 if that is done before REMIX-4105 is fully cleaned up.
-      NrcOptions::qualityPreset.setImmediately(nrcQualityPreset);
-      applyQualityPreset();
-    }
+    NrcOptions::qualityPreset.setDeferred(nrcQualityPreset);
   }
 
   // Resolves radiance for the queried paths during path tracing

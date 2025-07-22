@@ -1442,7 +1442,6 @@ namespace dxvk {
         ImGui::BeginDisabled(!enableNeuralRadianceCache);
         
         if (neuralRadianceCacheQualityPresetCombo.getKey(&NeuralRadianceCache::NrcOptions::qualityPresetObject())) {
-          nrc.applyQualityPreset();
           m_userGraphicsSettingChanged = true;
         }
 
