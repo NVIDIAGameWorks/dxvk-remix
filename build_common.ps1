@@ -85,7 +85,9 @@ function PerformBuild {
 
 		[string]$BuildTarget,
 
-		[string[]]$InstallTags
+		[string[]]$InstallTags,
+
+		[bool]$ConfigureOnly = $false
 	)
 
 	$CurrentDir = Get-Location
@@ -102,21 +104,23 @@ function PerformBuild {
 		exit $LASTEXITCODE
 	}
 
-	Push-Location $BuildDir
-		& meson compile -v 
+	if (!$ConfigureOnly) {
+		Push-Location $BuildDir
+			& meson compile -v 
 
-		if ($InstallTags -and $InstallTags.Count -gt 0) {
-			# join array into comma-separated list
-			$tagList = $InstallTags -join ','
-			& meson install --tags $tagList
-		}
-		else {
-			& meson install
-		}
-	Pop-Location
+			if ($InstallTags -and $InstallTags.Count -gt 0) {
+				# join array into comma-separated list
+				$tagList = $InstallTags -join ','
+				& meson install --tags $tagList
+			}
+			else {
+				& meson install
+			}
+		Pop-Location
 
-	if ( $LASTEXITCODE -ne 0 ) {
-		Write-Output "Failed to run build step"
-		exit $LASTEXITCODE
+		if ( $LASTEXITCODE -ne 0 ) {
+			Write-Output "Failed to run build step"
+			exit $LASTEXITCODE
+		}
 	}
 }
