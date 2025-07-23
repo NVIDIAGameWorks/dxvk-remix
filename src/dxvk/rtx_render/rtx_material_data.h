@@ -284,9 +284,9 @@ private:                                                                        
     constexpr Ranges ranges = {};                                                                    \
     X_CONSTANTS(WRITE_CONSTANT_SANITIZATION)                                                         \
     /* This matches the behavior of materials in toolkit */                                          \
-    /* if(m_dirty.test(DirtyFlags::k_EnableEmission)) {  */                                                 \
-    /*   m_dirty.set(DirtyFlags::k_EmissiveIntensity);   */                                                 \
-    /* }                                                 */                                                 \
+    if (m_dirty.test(DirtyFlags::k_EnableEmission)) {                                                \
+      m_dirty.set(DirtyFlags::k_EmissiveIntensity);                                                  \
+    }                                                                                                \
   }                                                                                                  \
                                                                                                      \
   void updateCachedHash() {                                                                          \
