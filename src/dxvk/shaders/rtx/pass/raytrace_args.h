@@ -210,7 +210,7 @@ struct RaytraceArgs {
   uint32_t clearColorPicking;
 
   uint enableDLSSRR;
-  bool setLogValueForDisocclusionMaskForDLSSRR;
+  uint setLogValueForDisocclusionMaskForDLSSRR;
 
   // NOTE: Variables need to be in groups of 4x32 bits above this comment.
 
