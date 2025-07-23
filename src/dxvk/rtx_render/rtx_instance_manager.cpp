@@ -1048,6 +1048,19 @@ namespace dxvk {
           spriteSheetCols = materialData.getOpaqueMaterialData().getSpriteSheetCols();
           spriteSheetFPS = materialData.getOpaqueMaterialData().getSpriteSheetFPS();
 
+          // For worldspace UI, we want to show the UI (unlit) in the world.  So configure the blend mode if blending is used accordingly.
+          if (currentInstance.m_isWorldSpaceUI) {
+            materialData.getOpaqueMaterialData().setEnableEmission(true);
+            materialData.getOpaqueMaterialData().setEmissiveIntensity(2.0f);
+            materialData.getOpaqueMaterialData().setEmissiveColorTexture(materialData.getOpaqueMaterialData().getAlbedoOpacityTexture());
+          }
+
+          if (currentInstance.surface.alphaState.emissiveBlend && RtxOptions::enableEmissiveBlendEmissiveOverride()) {
+            materialData.getOpaqueMaterialData().setEnableEmission(true);
+            materialData.getOpaqueMaterialData().setEmissiveIntensity(RtxOptions::emissiveBlendOverrideEmissiveIntensity());
+            materialData.getOpaqueMaterialData().setEmissiveColorTexture(materialData.getOpaqueMaterialData().getAlbedoOpacityTexture());
+          } 
+
           break;
         case MaterialDataType::Translucent:
           spriteSheetRows = materialData.getTranslucentMaterialData().getSpriteSheetRows();
@@ -1072,23 +1085,6 @@ namespace dxvk {
 
         currentInstance.m_isAnimated = currentInstance.surface.spriteSheetFPS != 0;
         currentInstance.surface.objectPickingValue = drawCall.drawCallID;
-
-        // For worldspace UI, we want to show the UI (unlit) in the world.  So configure the blend mode if blending is used accordingly.
-        if (currentInstance.m_isWorldSpaceUI) {
-          //materialData.getOpaqueMaterialData().setEnableEmission(true);
-          //materialData.getOpaqueMaterialData().setEmissiveIntensity(2.0f);
-          //materialData.getOpaqueMaterialData().setEmissiveColorTexture(materialData.getOpaqueMaterialData().getAlbedoOpacityTexture());
-
-          if (currentInstance.surface.alphaState.isBlendingDisabled) {
-            currentInstance.surface.isEmissive = true;
-              // 
-              //  derivedEmissiveColor = originalAlbedo;
-              //  derivedEmissiveIntensity = float16_t(2.0f); // Note: Arbitrary constant, should be set on the CPU side instead and controllable.
-
-          } else {
-            currentInstance.surface.alphaState.emissiveBlend = true;
-          }
-        }
       }
 
       // Update transform
