@@ -193,12 +193,13 @@ namespace dxvk {
 
     auto& materialSystemIt = m_particleSystems.find(particleSystemHash);
     if (materialSystemIt == m_particleSystems.end()) {
-      auto pNewParticleSystem = std::make_shared<ParticleSystem>(desc, renderMaterialData, drawCallState.getCategoryFlags(), m_particleSystemCounter++);
+      auto pNewParticleSystem = std::make_shared<ParticleSystem>(desc, renderMaterialData, drawCallState.getMaterialData(), drawCallState.getCategoryFlags(), m_particleSystemCounter++);
       pNewParticleSystem->allocStaticBuffers(ctx);
-      m_particleSystems.insert({ particleSystemHash, pNewParticleSystem });
+      auto insertResult = m_particleSystems.insert({ particleSystemHash, pNewParticleSystem });
+      materialSystemIt = insertResult.first;
     }
 
-    (*materialSystem) = m_particleSystems[particleSystemHash].get();
+    (*materialSystem) = materialSystemIt->second.get();
 
     return true;
   }
@@ -338,7 +339,11 @@ namespace dxvk {
         //   instance ID at draw time, and the instance list can change over the course of a frame.
         //   In the event it does happen, handle gracefully...dw
         memset(&gpuCtx, 0, sizeof(GpuSpawnContext));
-        m_particleSystems[spawnCtx.particleSystemHash]->context.spawnParticleCount = 0;
+        // zero out the spawn count, so we dont try to create any new particles here
+        auto& particleSystemIt = m_particleSystems.find(spawnCtx.particleSystemHash);
+        if (particleSystemIt != m_particleSystems.end()) {
+          particleSystemIt->second->context.spawnParticleCount = 0;
+        }
         continue;
       }
 
@@ -418,6 +423,7 @@ namespace dxvk {
       newDrawCallState.categories.clr(InstanceCategories::Hidden);
       newDrawCallState.transformData.viewToProjection = camera.getViewToProjection();
       newDrawCallState.transformData.worldToView = camera.getWorldToView();
+      newDrawCallState.materialData = particleSystem.legacyMaterialData;
 
       // We want to always have particles support vertex colour for now.
       newDrawCallState.materialData.textureColorArg2Source = RtTextureArgSource::VertexColor0;
@@ -426,8 +432,9 @@ namespace dxvk {
     }
   }
 
-  RtxParticleSystemManager::ParticleSystem::ParticleSystem(const RtxParticleSystemDesc& desc, const MaterialData& matData, const CategoryFlags& cats, const uint32_t seed) : context(desc)
+  RtxParticleSystemManager::ParticleSystem::ParticleSystem(const RtxParticleSystemDesc& desc, const MaterialData& matData, const LegacyMaterialData& legacyMatData, const CategoryFlags& cats, const uint32_t seed) : context(desc)
     , materialData(matData)
+    , legacyMaterialData(legacyMatData)
     , categories(cats) {
     // Seed the RNG with a parameter from the manager, so we get unique random values for each particle system
     generator = std::default_random_engine(seed);
