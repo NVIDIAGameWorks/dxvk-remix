@@ -123,7 +123,7 @@ namespace dxvk {
       static void onQualityPresetChanged();
       RTX_OPTION_ARGS("rtx.neuralRadianceCache", QualityPreset, qualityPreset, QualityPreset::Ultra,
                       "Quality Preset: Medium (0), High (1), Ultra (2).\n"
-                      "Adjusts quality of Neural Radiance Cache (NRC):\n"
+                      "Adjusts quality of RTX Neural Radiance Cache (NRC):\n"
                       "  - How quickly path-tracer terminates paths into NRC cache. It terminates quicker on lower presets.\n"
                       "  - Granularity of the cache - i.e. the smallest resolvable feature size. The cache is less precise on lower presets.\n"
                       "  - Responsiveness of the cache. The cache is more responsive to dynamic lighting changes on higher presets.\n"
