@@ -571,6 +571,10 @@ void geometryResolverVertexOutputDebugView(
     storeInDebugView(pixelCoordinate, surfaceInteraction.vertexColor);
 
     break;
+  case DEBUG_VIEW_VERTEX_ALPHA:
+    storeInDebugView(pixelCoordinate, surfaceInteraction.vertexColor.w);
+
+    break;
   case DEBUG_VIEW_PORTAL_SPACE:
   {
     f16vec3 typeColor = f16vec3(0.0f);
@@ -931,6 +935,7 @@ void geometryResolverVertexOutputDebugView(
       isValid &= isValidValue(surfaceInteraction.vertexColor);
 
       // Skipped
+      // DEBUG_VIEW_VERTEX_ALPHA (already checked in DEBUG_VIEW_VERTEX_COLOR)
       // DEBUG_VUEW_PORTAL_SPACE
       // DEBUG_VIEW_MATERIAL_TYPE
 

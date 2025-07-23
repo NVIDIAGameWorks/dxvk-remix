@@ -206,6 +206,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.dlssEnhancementMode|int|1|||The enhancement filter type\. Valid values: \<Normal Difference=1, Laplacian=0\>\. Normal difference mode provides more normal detail at the cost of some noise\. Laplacian mode is less aggressive\.|
 |rtx.dlssPreset|int|1|||Combined DLSS Preset for quickly controlling Upscaling, Frame Interpolation and Latency Reduction\.|
 |rtx.drawCallRange|int2|0, 2147483647||||
+|rtx.dumpAllInstancesOnFrame|int|-1|||If set, and running in a REMIX\_DEVELOPMENT build, this will dump all active instances to the log on the specified frame\.|
 |rtx.dust.anisotropy|float|0.5|||Anisotropy of the particles for lighting purposes\.|
 |rtx.dust.enable|bool|False|||Enables dust particle simulation and rendering\.|
 |rtx.dust.gravityForce|float|-0.5|||Net influence of gravity acting on each particle \(meters per second squared\)\.|

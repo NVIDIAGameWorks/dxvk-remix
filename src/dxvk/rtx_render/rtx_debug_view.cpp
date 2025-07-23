@@ -89,6 +89,7 @@ namespace dxvk {
         {DEBUG_VIEW_SHADING_NORMAL, "Shading Normal"},
         {DEBUG_VIEW_VIRTUAL_SHADING_NORMAL, "Virtual Shading Normal"},
         {DEBUG_VIEW_VERTEX_COLOR, "Vertex Color"},
+        {DEBUG_VIEW_VERTEX_ALPHA, "Vertex Alpha"},
         {DEBUG_VIEW_PORTAL_SPACE, "Portal Space"},
 
         {DEBUG_VIEW_MATERIAL_TYPE, "Material Type"},

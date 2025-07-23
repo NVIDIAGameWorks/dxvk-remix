@@ -616,6 +616,67 @@ struct DrawCallState {
   template<typename... InstanceCategories>
   bool testCategoryFlags(InstanceCategories... cat) const { return categories.any(cat...); }
 
+  void printDebugInfo(const char* name = "") const {
+#ifdef REMIX_DEVELOPMENT
+    Logger::warn(str::format(
+      "DrawCallState ", name, "\n",
+      "  address: ", this, "\n",
+      "  drawCallID: ", drawCallID, "\n",
+      "  cameraType: ", static_cast<int>(cameraType), "\n",
+      "  usesVertexShader: ", usesVertexShader, "\n",
+      "  usesPixelShader: ", usesPixelShader, "\n",
+      "  stencilEnabled: ", stencilEnabled, "\n",
+      "  zWriteEnable: ", zWriteEnable, "\n",
+      "  zEnable: ", zEnable, "\n",
+      "  minZ: ", minZ, "\n",
+      "  maxZ: ", maxZ, "\n",
+      "  isDrawingToRaytracedRenderTarget: ", isDrawingToRaytracedRenderTarget, "\n",
+      "  isUsingRaytracedRenderTarget: ", isUsingRaytracedRenderTarget, "\n",
+      "  categoryFlags: ", categories.raw(), "\n",
+      "  hasTextureCoordinates: ", hasTextureCoordinates(), "\n",
+      "  materialHash: 0x", std::hex, materialData.getHash(), std::dec));
+    
+    // Print geometry info
+    Logger::warn("=== Geometry Info ===");
+    Logger::warn(str::format(
+      "  vertexCount: ", geometryData.vertexCount, "\n",
+      "  indexCount: ", geometryData.indexCount, "\n",
+      "  numBonesPerVertex: ", geometryData.numBonesPerVertex, "\n",
+      "  topology: ", static_cast<int>(geometryData.topology), "\n",
+      "  cullMode: ", static_cast<int>(geometryData.cullMode), "\n",
+      "  frontFace: ", static_cast<int>(geometryData.frontFace), "\n",
+      "  forceCullBit: ", geometryData.forceCullBit, "\n",
+      "  externalMaterial: ", (geometryData.externalMaterial != nullptr ? "valid" : "null")));
+    
+    // Print transform info
+    Logger::warn("=== Transform Info ===");
+    Logger::warn(str::format(
+      "  enableClipPlane: ", transformData.enableClipPlane, "\n",
+      "  clipPlane: (", transformData.clipPlane.x, ", ", transformData.clipPlane.y, ", ", transformData.clipPlane.z, ", ", transformData.clipPlane.w, ")"));
+    
+    // Print skinning info
+    Logger::warn("=== Skinning Info ===");
+    Logger::warn(str::format(
+      "  numBones: ", skinningData.numBones, "\n",
+      "  numBonesPerVertex: ", skinningData.numBonesPerVertex, "\n",
+      "  minBoneIndex: ", skinningData.minBoneIndex, "\n",
+      "  boneHash: 0x", std::hex, skinningData.boneHash, std::dec));
+    
+    // Print fog info
+    Logger::warn("=== Fog Info ===");
+    Logger::warn(str::format(
+      "  fogMode: ", fogState.mode, "\n",
+      "  fogColor: (", fogState.color.x, ", ", fogState.color.y, ", ", fogState.color.z, ")\n",
+      "  fogScale: ", fogState.scale, "\n",
+      "  fogEnd: ", fogState.end, "\n",
+      "  fogDensity: ", fogState.density));
+    
+    // Print material info
+    Logger::warn("=== Material Info ===");
+    materialData.printDebugInfo("(from DrawCallState)");
+#endif
+  }
+
 private:
   friend class RtxContext;
   friend class SceneManager;
@@ -737,6 +798,37 @@ struct BlasEntry {
   const InstanceMap& getSpatialMap() const { return m_spatialMap; }
 
   void rebuildSpatialMap();
+
+  void printDebugInfo(const char* name = "") const {
+#ifdef REMIX_DEVELOPMENT
+    Logger::warn(str::format(
+      "BlasEntry ", name, "\n",
+      "  address: ", this, "\n",
+      "  frameCreated: ", frameCreated, "\n",
+      "  frameLastTouched: ", frameLastTouched, "\n",
+      "  frameLastUpdated: ", frameLastUpdated, "\n",
+      "  vertexCount: ", modifiedGeometryData.vertexCount, "\n",
+      "  indexCount: ", modifiedGeometryData.indexCount, "\n",
+      "  linkedInstances: ", m_linkedInstances.size(), "\n",
+      "  cachedMaterials: ", m_materials.size(), "\n",
+      "  buildGeometries: ", buildGeometries.size(), "\n",
+      "  buildRanges: ", buildRanges.size(), "\n",
+      "  dynamicBlas: ", (dynamicBlas != nullptr ? "valid" : "null")));
+    
+    // Print main material info
+    Logger::warn("=== Main Material Info ===");
+    input.getMaterialData().printDebugInfo("(main)");
+    
+    // Print cached materials info
+    if (!m_materials.empty()) {
+      Logger::warn("=== Cached Materials Info ===");
+      for (const auto& [hash, material] : m_materials) {
+        Logger::warn(str::format("Cached Material Hash: 0x", std::hex, hash, std::dec));
+        material.printDebugInfo("(cached)");
+      }
+    }
+#endif
+  }
 
 private:
   std::vector<RtInstance*> m_linkedInstances;
