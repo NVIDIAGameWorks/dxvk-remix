@@ -1480,6 +1480,13 @@ namespace dxvk {
   void SceneManager::prepareSceneData(Rc<RtxContext> ctx, DxvkBarrierSet& execBarriers) {
     ScopedGpuProfileZone(ctx, "Build Scene");
 
+  #ifdef REMIX_DEVELOPMENT
+    if (m_device->getCurrentFrameId() == RtxOptions::dumpAllInstancesOnFrame()) {
+      // Print all RtInstances for debugging
+      printAllRtInstances();
+    }
+  #endif
+
     // Needs to happen before garbageCollection to avoid destroying dynamic lights
     m_lightManager.dynamicLightMatching();
 
@@ -1769,6 +1776,26 @@ namespace dxvk {
       // DXVK doesnt free chunks for us by default (its high water mark) so force release some memory back to the system here.
       m_device->getCommon()->memoryManager().freeUnusedChunks();
     }
+  }
+
+  void SceneManager::printAllRtInstances() {
+  #ifdef REMIX_DEVELOPMENT
+    
+    const auto& instances = m_instanceManager.getInstanceTable();
+    Logger::info(str::format("=== Printing all RtInstances (", instances.size(), " total) ==="));
+    
+    for (size_t i = 0; i < instances.size(); ++i) {
+      const RtInstance* instance = instances[i];
+      if (instance != nullptr) {
+        Logger::info(str::format("Instance ", i, ":"));
+        instance->printDebugInfo();
+      } else {
+        Logger::warn(str::format("Instance ", i, ": nullptr"));
+      }
+    }
+    
+    Logger::info("=== End RtInstances Print ===");
+  #endif
   }
 
 }  // namespace nvvk

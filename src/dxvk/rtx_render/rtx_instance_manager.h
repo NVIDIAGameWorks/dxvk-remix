@@ -151,6 +151,8 @@ uint32_t getFirstBillboardIndex() const { return m_firstBillboard; }
   bool isUnlinkedForGC() const { return m_isUnlinkedForGC; }
 
   PrimInstanceOwner& getPrimInstanceOwner() { return m_primInstanceOwner; }
+  
+  void printDebugInfo() const;
 
 private:
 

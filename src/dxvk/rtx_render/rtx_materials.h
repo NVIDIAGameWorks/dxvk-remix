@@ -314,6 +314,92 @@ struct RtSurface {
         && firstIndex == surface.firstIndex;
   }
 
+  void printDebugInfo(const char* name = "") const {
+#ifdef REMIX_DEVELOPMENT
+    Logger::warn(str::format(
+      "RtSurface ", name, "\n",
+      "  address: ", this, "\n",
+      "  surfaceMaterialIndex: ", surfaceMaterialIndex, "\n",
+      "  associatedGeometryHash: 0x", std::hex, associatedGeometryHash, std::dec, "\n",
+      "  objectPickingValue: ", objectPickingValue, "\n",
+      "  decalSortOrder: ", decalSortOrder));
+    
+    // Print buffer info
+    Logger::warn("=== Buffer Info ===");
+    Logger::warn(str::format(
+      "  positionBufferIndex: ", positionBufferIndex, "\n",
+      "  positionOffset: ", positionOffset, "\n",
+      "  positionStride: ", positionStride, "\n",
+      "  previousPositionBufferIndex: ", previousPositionBufferIndex, "\n",
+      "  normalBufferIndex: ", normalBufferIndex, "\n",
+      "  normalOffset: ", normalOffset, "\n",
+      "  normalStride: ", normalStride, "\n",
+      "  normalFormat: ", static_cast<int>(normalFormat), "\n",
+      "  texcoordBufferIndex: ", texcoordBufferIndex, "\n",
+      "  texcoordOffset: ", texcoordOffset, "\n",
+      "  texcoordStride: ", texcoordStride, "\n",
+      "  indexBufferIndex: ", indexBufferIndex, "\n",
+      "  firstIndex: ", firstIndex, "\n",
+      "  indexStride: ", indexStride, "\n",
+      "  color0BufferIndex: ", color0BufferIndex, "\n",
+      "  color0Offset: ", color0Offset, "\n",
+      "  color0Stride: ", color0Stride));
+    
+    // Print boolean flags
+    Logger::warn("=== Boolean Flags ===");
+    Logger::warn(str::format(
+      "  isEmissive: ", isEmissive, "\n",
+      "  isMatte: ", isMatte, "\n",
+      "  isStatic: ", isStatic, "\n",
+      "  hasMaterialChanged: ", hasMaterialChanged, "\n",
+      "  isAnimatedWater: ", isAnimatedWater, "\n",
+      "  isClipPlaneEnabled: ", isClipPlaneEnabled, "\n",
+      "  isTextureFactorBlend: ", isTextureFactorBlend, "\n",
+      "  isMotionBlurMaskOut: ", isMotionBlurMaskOut, "\n",
+      "  skipSurfaceInteractionSpritesheetAdjustment: ", skipSurfaceInteractionSpritesheetAdjustment, "\n",
+      "  isInsideFrustum: ", isInsideFrustum, "\n",
+      "  ignoreTransparencyLayer: ", ignoreTransparencyLayer));
+    
+    // Print alpha state
+    Logger::warn("=== Alpha State ===");
+    Logger::warn(str::format(
+      "  isBlendingDisabled: ", alphaState.isBlendingDisabled, "\n",
+      "  isFullyOpaque: ", alphaState.isFullyOpaque, "\n",
+      "  alphaTestType: ", static_cast<int>(alphaState.alphaTestType), "\n",
+      "  alphaTestReferenceValue: ", static_cast<int>(alphaState.alphaTestReferenceValue), "\n",
+      "  blendType: ", static_cast<int>(alphaState.blendType), "\n",
+      "  invertedBlend: ", alphaState.invertedBlend, "\n",
+      "  emissiveBlend: ", alphaState.emissiveBlend, "\n",
+      "  isParticle: ", alphaState.isParticle, "\n",
+      "  isDecal: ", alphaState.isDecal));
+    
+    // Print texture operations
+    Logger::warn("=== Texture Operations ===");
+    Logger::warn(str::format(
+      "  textureColorArg1Source: ", static_cast<int>(textureColorArg1Source), "\n",
+      "  textureColorArg2Source: ", static_cast<int>(textureColorArg2Source), "\n",
+      "  textureColorOperation: ", static_cast<int>(textureColorOperation), "\n",
+      "  textureAlphaArg1Source: ", static_cast<int>(textureAlphaArg1Source), "\n",
+      "  textureAlphaArg2Source: ", static_cast<int>(textureAlphaArg2Source), "\n",
+      "  textureAlphaOperation: ", static_cast<int>(textureAlphaOperation), "\n",
+      "  texgenMode: ", static_cast<int>(texgenMode), "\n",
+      "  tFactor: 0x", std::hex, tFactor, std::dec));
+    
+    // Print spritesheet info
+    Logger::warn("=== Spritesheet Info ===");
+    Logger::warn(str::format(
+      "  spriteSheetRows: ", static_cast<int>(spriteSheetRows), "\n",
+      "  spriteSheetCols: ", static_cast<int>(spriteSheetCols), "\n",
+      "  spriteSheetFPS: ", static_cast<int>(spriteSheetFPS)));
+    
+    // Print instance info
+    Logger::warn("=== Instance Info ===");
+    Logger::warn(str::format(
+      "  instancesToObject: ", (instancesToObject != nullptr ? "valid" : "null"), "\n",
+      "  surfaceIndexOfFirstInstance: ", surfaceIndexOfFirstInstance));
+#endif
+  }
+
   // Used for calculating hashes, keep the members padded and default initialized
   struct AlphaState {
     bool isBlendingDisabled = true;
@@ -1479,30 +1565,30 @@ struct LegacyMaterialData {
   const void printDebugInfo(const char* name = "") const {
 #ifdef REMIX_DEVELOPMENT
     Logger::warn(str::format(
-      "LegacyMaterialData ", name,
-      " address: ", this,
-      " alphaTestEnabled: ", alphaTestEnabled,
-      " alphaTestReferenceValue: ", alphaTestReferenceValue,
-      " alphaTestCompareOp: ", alphaTestCompareOp,
-      " alphaBlendEnabled: ", alphaBlendEnabled,
-      " srcColorBlendFactor: ", srcColorBlendFactor,
-      " dstColorBlendFactor: ", dstColorBlendFactor,
-      " colorBlendOp: ", colorBlendOp,
-      // " textureColorArg1Source: ", textureColorArg1Source,
-      // " textureColorArg2Source: ", textureColorArg2Source,
-      // " textureColorOperation: ", textureColorOperation,
-      // " textureAlphaArg1Source: ", textureAlphaArg1Source,
-      // " textureAlphaArg2Source: ", textureAlphaArg2Source,
-      // " textureAlphaOperation: ", textureAlphaOperation,
-      " tFactor: ", tFactor,
-      // " m_d3dMaterial.Diffuse: ", m_d3dMaterial.Diffuse,
-      // " m_d3dMaterial.Ambient: ", m_d3dMaterial.Ambient,
-      // " m_d3dMaterial.Specular: ", m_d3dMaterial.Specular,
-      // " m_d3dMaterial.Emissive: ", m_d3dMaterial.Emissive,
-      // " m_d3dMaterial.Power: ", m_d3dMaterial.Power,
-      std::hex, " m_colorTexture: 0x", colorTextures[0].getImageHash(),
-      " m_colorTexture2: 0x", colorTextures[1].getImageHash(),
-      " m_cachedHash: 0x", m_cachedHash, std::dec));
+      "LegacyMaterialData ", name, "\n",
+      "  address: ", this, "\n",
+      "  alphaTestEnabled: ", alphaTestEnabled, "\n",
+      "  alphaTestReferenceValue: ", alphaTestReferenceValue, "\n",
+      "  alphaTestCompareOp: ", alphaTestCompareOp, "\n",
+      "  alphaBlendEnabled: ", alphaBlendEnabled, "\n",
+      "  srcColorBlendFactor: ", srcColorBlendFactor, "\n",
+      "  dstColorBlendFactor: ", dstColorBlendFactor, "\n",
+      "  colorBlendOp: ", colorBlendOp, "\n",
+      "  textureColorArg1Source: ", static_cast<int>(textureColorArg1Source), "\n",
+      "  textureColorArg2Source: ", static_cast<int>(textureColorArg2Source), "\n",
+      "  textureColorOperation: ", static_cast<int>(textureColorOperation), "\n",
+      "  textureAlphaArg1Source: ", static_cast<int>(textureAlphaArg1Source), "\n",
+      "  textureAlphaArg2Source: ", static_cast<int>(textureAlphaArg2Source), "\n",
+      "  textureAlphaOperation: ", static_cast<int>(textureAlphaOperation), "\n",
+      "  tFactor: ", tFactor, "\n",
+      // "  m_d3dMaterial.Diffuse: ", m_d3dMaterial.Diffuse, "\n",
+      // "  m_d3dMaterial.Ambient: ", m_d3dMaterial.Ambient, "\n",
+      // "  m_d3dMaterial.Specular: ", m_d3dMaterial.Specular, "\n",
+      // "  m_d3dMaterial.Emissive: ", m_d3dMaterial.Emissive, "\n",
+      // "  m_d3dMaterial.Power: ", m_d3dMaterial.Power, "\n",
+      std::hex, "  m_colorTexture: 0x", colorTextures[0].getImageHash(), "\n",
+      "  m_colorTexture2: 0x", colorTextures[1].getImageHash(), "\n",
+      "  m_cachedHash: 0x", m_cachedHash, std::dec));
 #endif
   }
 
