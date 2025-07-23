@@ -1044,24 +1044,27 @@ namespace dxvk {
         // not in the Surface Material like most material information.
         switch (materialData.getType()) {
         case MaterialDataType::Opaque:
+        {
           spriteSheetRows = materialData.getOpaqueMaterialData().getSpriteSheetRows();
           spriteSheetCols = materialData.getOpaqueMaterialData().getSpriteSheetCols();
           spriteSheetFPS = materialData.getOpaqueMaterialData().getSpriteSheetFPS();
 
-          // For worldspace UI, we want to show the UI (unlit) in the world.  So configure the blend mode if blending is used accordingly.
+          const bool useLegacyAlphaState = materialData.getOpaqueMaterialData().getUseLegacyAlphaState();
+
           if (currentInstance.m_isWorldSpaceUI) {
+            // For worldspace UI, we want to show the UI (unlit) in the world.  So configure the blend mode if blending is used accordingly.
             materialData.getOpaqueMaterialData().setEnableEmission(true);
             materialData.getOpaqueMaterialData().setEmissiveIntensity(2.0f);
             materialData.getOpaqueMaterialData().setEmissiveColorTexture(materialData.getOpaqueMaterialData().getAlbedoOpacityTexture());
-          }
-
-          if (currentInstance.surface.alphaState.emissiveBlend && RtxOptions::enableEmissiveBlendEmissiveOverride()) {
+          } else if (currentInstance.surface.alphaState.emissiveBlend && RtxOptions::enableEmissiveBlendEmissiveOverride() && useLegacyAlphaState) {
+            // If the user has decided to override the legacy alpha state, assume they know what they are doing and allow for explicit emission controls.
             materialData.getOpaqueMaterialData().setEnableEmission(true);
             materialData.getOpaqueMaterialData().setEmissiveIntensity(RtxOptions::emissiveBlendOverrideEmissiveIntensity());
             materialData.getOpaqueMaterialData().setEmissiveColorTexture(materialData.getOpaqueMaterialData().getAlbedoOpacityTexture());
           } 
 
           break;
+        }
         case MaterialDataType::Translucent:
           spriteSheetRows = materialData.getTranslucentMaterialData().getSpriteSheetRows();
           spriteSheetCols = materialData.getTranslucentMaterialData().getSpriteSheetCols();
