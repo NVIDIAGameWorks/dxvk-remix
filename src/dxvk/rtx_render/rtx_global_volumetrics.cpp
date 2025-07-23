@@ -239,29 +239,37 @@ namespace dxvk {
     int2(8,  48)
   };
 
+  void RtxGlobalVolumetrics::showPresetMenu() {
+    const char* volumericQualityLevelName[] = {
+      "Low",
+      "Medium",
+      "High",
+      "Ultra",
+      "Insane"
+    };
+    static_assert(sizeof(volumericQualityLevelName) / sizeof(volumericQualityLevelName[0]) == QualityLevel::QualityCount);
+
+    ImGui::Text("Set Quality Level Preset:");
+    for (uint32_t i = 0; i < QualityLevel::QualityCount; i++) {
+      if (ImGui::Button(volumericQualityLevelName[i])) {
+        setQualityLevel((QualityLevel) i);
+      }
+
+      if (i < QualityLevel::QualityCount - 1) {
+        ImGui::SameLine();
+      }
+    }
+  }
+
+  void RtxGlobalVolumetrics::showImguiUserSettings() {
+    showPresetMenu();
+  }
+
   void RtxGlobalVolumetrics::showImguiSettings() {
     if (ImGui::CollapsingHeader("Froxel Radiance Cache", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen)) {
       ImGui::Indent();
 
-      const char* volumericQualityLevelName[] = {
-        "Low",
-        "Medium",
-        "High",
-        "Ultra",
-        "Insane"
-      };
-      static_assert(sizeof(volumericQualityLevelName) / sizeof(volumericQualityLevelName[0]) == QualityLevel::QualityCount);
-
-      ImGui::Text("Set Quality Level Preset:");
-      for (uint32_t i = 0; i < QualityLevel::QualityCount; i++) {
-        if (ImGui::Button(volumericQualityLevelName[i])) {
-          setQualityLevel((QualityLevel) i);
-        }
-
-        if (i < QualityLevel::QualityCount - 1) {
-          ImGui::SameLine();
-        }
-      }
+      showPresetMenu();
 
       ImGui::Separator();
 

@@ -216,6 +216,8 @@ namespace dxvk {
     const Resources::Resource& getCurrentVolumeAccumulatedRadianceAge() const { return m_volumeAccumulatedRadianceAge[m_swapTextures]; }
     const Resources::Resource& getPreviousVolumeAccumulatedRadianceAge() const { return m_volumeAccumulatedRadianceAge[!m_swapTextures]; }
 
+    void showPresetMenu();
+    void showImguiUserSettings();
     void showImguiSettings();
 
     void setQualityLevel(const QualityLevel desiredQualityLevel);
