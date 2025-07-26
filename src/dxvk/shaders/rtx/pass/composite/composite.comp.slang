@@ -505,7 +505,7 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
   }
 
   // Note: Shared radiance should always be pre-attenuated so no need to factor that in here - it contains multiple layers of signal so each contribution must be attenuated inline.
-  radianceOutput += sharedRadiance;
+  radianceOutput += sharedRadiance * volumeAttenuation;
   
   // Add sky radiance
   if (primaryMiss)
