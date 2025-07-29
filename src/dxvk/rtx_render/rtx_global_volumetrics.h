@@ -192,6 +192,10 @@ namespace dxvk {
                "A value representing the scale of the fixed function fog's color in the multiscattering approximation.\n"
                "This scaling factor is applied to the fixed function fog's color and becomes a multiscattering approximation in the volumetrics system.\n"
                "Sometimes useful but this multiscattering approximation is very basic (just a simple ambient term for now essentially) and may not look very good depending on various conditions.");
+    RTX_OPTION("rtx.volumetrics", float, fogDensityThreshold, 0.065f,
+               "The fog density threshold for determining when to use physical volumetrics vs fixed function fog.\n"
+               "Values below this threshold will use physical volumetrics, while values above will fall back to fixed function fog.\n"
+               "This was originally set to 0.065f for Portal RTX's underwater fog compatibility.");
 
     enum class RaytraceMode {
       RayQuery = 0,
