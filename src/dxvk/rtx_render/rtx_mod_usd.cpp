@@ -65,6 +65,7 @@
 #include "../../lssusd/game_exporter_paths.h"
 #include "../../lssusd/usd_mesh_importer.h"
 #include "../../lssusd/usd_common.h"
+#include "graph/rtx_graph_usd_parser.h"
 
 #include "rtx_lights_data.h"
 #include <filesystem>
@@ -97,6 +98,7 @@ private:
 
     pxr::UsdPrim& rootPrim;
     std::vector<AssetReplacement>& meshes;
+    fast_unordered_cache<uint32_t> pathHashToIndexMap;
   };
 
   bool haveFilesChanged();
@@ -113,6 +115,7 @@ private:
   bool processParticleSystem(Args& args, const pxr::UsdPrim& prim);
 
   void processLight(Args& args, const pxr::UsdPrim& lightPrim, const bool isOverride);
+  void processGraph(Args& args, const uint32_t index);
   bool processReplacement(Args& args);
   void processReplacementRecursive(Args& args, const pxr::UsdPrim& prim, bool isRoot = false);
 
@@ -429,7 +432,7 @@ void UsdMod::Impl::processPrim(Args& args, const pxr::UsdPrim& prim) {
   if (geomSubsets.empty()) {
     MeshReplacement* pGeometryData;
     if (m_owner.m_replacements->getObject(usdOriginHash, pGeometryData)) {
-      AssetReplacement newReplacementMesh(pGeometryData, materialData, categoryFlags, replacementToObject);
+      AssetReplacement newReplacementMesh(prim.GetPrimPath().GetString(), pGeometryData, materialData, categoryFlags, replacementToObject);
       args.meshes.push_back(newReplacementMesh);
     }
   } else {
@@ -437,7 +440,7 @@ void UsdMod::Impl::processPrim(Args& args, const pxr::UsdPrim& prim) {
       const XXH64_hash_t usdChildOriginHash = getStrongestOpinionatedPathHash(subset.GetPrim());
       MeshReplacement* childGeometryData;
       if (m_owner.m_replacements->getObject(usdChildOriginHash, childGeometryData)) {
-        AssetReplacement newReplacementMesh(childGeometryData, materialData, categoryFlags, replacementToObject);
+        AssetReplacement newReplacementMesh(prim.GetPrimPath().GetString(), childGeometryData, materialData, categoryFlags, replacementToObject);
         MaterialData* mat = processMaterialUser(args, subset.GetPrim());
         if (mat) {
           newReplacementMesh.materialData = mat;
@@ -488,8 +491,13 @@ void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim, const
       // but since we have actual override data for it, need to remove that placeholder.
       args.meshes.clear();
     }
-    args.meshes.emplace_back(lightData.value(), replacementToObject);
+    args.meshes.emplace_back(lightPrim.GetPrimPath().GetString(), lightData.value(), replacementToObject);
   }
+}
+
+void UsdMod::Impl::processGraph(Args& args, const uint32_t meshIndex) {
+  pxr::UsdPrim graphPrim = args.rootPrim.GetStage()->GetPrimAtPath(pxr::SdfPath(args.meshes[meshIndex].primPath));
+  args.meshes[meshIndex].graphState.emplace(GraphUsdParser::parseGraph(*m_owner.m_replacements, graphPrim, args.pathHashToIndexMap));
 }
 
 inline Vector4 toFloat4(const pxr::GfVec4f& v) {
@@ -618,7 +626,7 @@ bool UsdMod::Impl::processParticleSystem(Args& args, const pxr::UsdPrim& prim) {
 
     MeshReplacement* pGeometryData;
     if (m_owner.m_replacements->getObject(usdOriginHash, pGeometryData)) {
-      AssetReplacement newReplacementMesh(pGeometryData, materialData, categoryFlags, replacementToObject);
+      AssetReplacement newReplacementMesh(prim.GetPrimPath().GetString(), pGeometryData, materialData, categoryFlags, replacementToObject);
       // Add the particle system descriptor
       newReplacementMesh.particleSystem = particleDesc;
       args.meshes.push_back(newReplacementMesh);
@@ -722,6 +730,13 @@ void UsdMod::Impl::processPointInstancer(Args& args, const pxr::UsdPrim& prim) {
       // After processing prim we more meshes - create copies and apply the instance transforms to the copies
       args.meshes.reserve(args.meshes.size() + ( numNewMeshes));
       for (size_t meshInd = originalStart; meshInd < originalEnd; ++meshInd) {
+        if (args.meshes[meshInd].type == AssetReplacement::eGraph) {
+          // TODO[REMIX-4405]: graphs inside pointInstancers are not supported yet.
+          // To support this, we need to make Prim Targets within the intial graphState
+          // point at the correct pointInstancer instance.
+          Logger::err(str::format("Graphs inside pointInstancers are not supported yet.  Prim: ", prim.GetPath().GetString()));
+          continue;
+        }
         if (
           (args.meshes[meshInd].type == AssetReplacement::eMesh && useFastPathForPointInstancerMeshes)
           || (args.meshes[meshInd].type == AssetReplacement::eLight && useFastPathForPointInstancerLights)
@@ -739,6 +754,7 @@ void UsdMod::Impl::processPointInstancer(Args& args, const pxr::UsdPrim& prim) {
           args.meshes[meshInd].replacementToObject = Matrix4();
         } else {
           // Slow path - this will just create a copy of the replacement asset for each instance.
+          args.meshes[meshInd].pointInstanceIndex = 0;
 
           Matrix4 replacementToInstance = args.meshes[meshInd].replacementToObject;
 
@@ -758,6 +774,11 @@ void UsdMod::Impl::processPointInstancer(Args& args, const pxr::UsdPrim& prim) {
             size_t index = args.meshes.size();
             // Create a new copy of the mesh for this instance.
             args.meshes.push_back(args.meshes[meshInd]);
+            // PointInstancer copies would have the same hash as the original prim, but we need to be able
+            // to uniquely address each instance. We'll assign a hash as:
+            // original usdPathHash + instance index.
+            args.meshes.back().usdPathHash = args.meshes[meshInd].usdPathHash + instanceInd;
+            args.meshes.back().pointInstanceIndex = instanceInd;
             // Append the meshToProtoRoot transform
             const Matrix4 composedReplacementToObject = instanceToObjectTransforms[instanceInd] * replacementToInstance;
             if (args.meshes[index].type == AssetReplacement::eMesh) {
@@ -835,17 +856,28 @@ bool explicitlyNoReferences(const pxr::UsdPrim& prim) {
 
 bool UsdMod::Impl::processReplacement(Args& args) {
   ScopedCpuProfileZone();
-  bool changesDrawCall = true;
   
   // Want the original draw call to occupy the first index in the replacements vector, so that the indices of the
   // asset replacements line up with the indices of the Entities being drawn.
   if (preserveGameObject(args.rootPrim)) {
-    args.meshes.push_back(AssetReplacement(nullptr, nullptr, Categorizer(), Matrix4()));
+    args.meshes.push_back(AssetReplacement(args.rootPrim.GetPrimPath().GetString()));
     args.meshes[0].includeOriginal = true;
     args.meshes[0].categories = processCategoryFlags(args.rootPrim);
-    changesDrawCall = false;
   }
   processReplacementRecursive(args, args.rootPrim, true);
+
+  // construct a map of the usdpathHash to the index within the replacements vector.
+  // This is used to let graphs reference the runtime instances that are created from specific prims.
+  for (size_t i = 0; i < args.meshes.size(); ++i) {
+    args.pathHashToIndexMap[args.meshes[i].usdPathHash] = i;
+  }
+
+  // Actually initialize the graphs - this must be done after the pathHashToIndexMap is populated.
+  for (size_t i = 0; i < args.meshes.size(); ++i) {
+    if (args.meshes[i].type == AssetReplacement::eGraph) {
+      processGraph(args, i);
+    }
+  }
 
   // Only return false if no changes were made to the draw call, including the original draw being preserved.
   if (args.meshes.size() == 1 && args.meshes[0].includeOriginal) {
@@ -856,6 +888,7 @@ bool UsdMod::Impl::processReplacement(Args& args) {
 }
 
 void UsdMod::Impl::processReplacementRecursive(Args& args, const pxr::UsdPrim& prim, bool isRoot) {
+  static const pxr::TfToken kGraphPrimType = pxr::TfToken("OmniGraph");
   if (prim.IsA<pxr::UsdGeomMesh>()) {
     processPrim(args, prim);
   } else if (prim.IsA<pxr::UsdGeomPointInstancer>()) {
@@ -865,6 +898,11 @@ void UsdMod::Impl::processReplacementRecursive(Args& args, const pxr::UsdPrim& p
     processParticleSystem(args, prim);
   } else if (LightData::isSupportedUsdLight(prim) && (!isRoot || !explicitlyNoReferences(prim))) {
     processLight(args, prim, isRoot);
+  } else if (prim.GetTypeName() == kGraphPrimType && !isRoot) {
+    // Need to initialize the graphs after the pathHashToIndexMap is populated.
+    // For now, just create empty placeholders that point to the source prim.
+    args.meshes.push_back(AssetReplacement(prim.GetPath().GetString()));
+    args.meshes.back().type = AssetReplacement::eGraph;
   }
 
   auto children = prim.GetFilteredChildren(pxr::UsdPrimIsActive);
@@ -1445,7 +1483,10 @@ bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
 UsdMod::UsdMod(const Mod::Path& usdFilePath)
 : Mod(usdFilePath) {
   m_impl = std::make_unique<Impl>(*this);
+  loadUsdPlugins();
+}
 
+void UsdMod::loadUsdPlugins() {
   // Load plugins
   static std::string pluginsDir;
   auto dir = env::getDllDirectory();

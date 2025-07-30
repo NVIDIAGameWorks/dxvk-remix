@@ -19,6 +19,13 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
+
+// If `_DEBUG` is defined but empty (which is how Tracy defines it), the USD headers have errors.
+// This breaks debug builds, but we can predefine TBB_USE_DEBUG to 1 to avoid this issue.
+#ifdef _DEBUG
+#define TBB_USE_DEBUG 1
+#endif
+
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable:4003) // not enough args function-like macro

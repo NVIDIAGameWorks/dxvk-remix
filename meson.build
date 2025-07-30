@@ -606,6 +606,7 @@ dxvkrt_output_targets = {
   '_output': '',
   '_sdk': '',
   '_hdremix': '',
+  'unit_test': '',
 }
 
 subdir('tests/rtx')
@@ -664,6 +665,11 @@ if dxvk_is_ninja
       # _hdremix target is special
       target_suffix = 'hdremix'
       output_path = hdremix_outdir
+      src_exe = ''
+    elif t == 'unit_test'
+      # unit_test target is special
+      target_suffix = 'unit'
+      output_path = join_paths(current_build_dir_norm, 'tests/rtx/unit/')
       src_exe = ''
     else
       target_suffix = t.underscorify()

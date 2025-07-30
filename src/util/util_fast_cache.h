@@ -96,6 +96,10 @@ namespace dxvk {
     }
   };
 
+  // Alias for fast_unordered_cache to provide alternative naming
+  template<class T>
+  using fast_unordered_map = fast_unordered_cache<T>;
+
   // A fast set for use ONLY with already hashed keys.
   struct fast_unordered_set : public std::unordered_set<XXH64_hash_t, XXH64_hash_passthrough> { };
 

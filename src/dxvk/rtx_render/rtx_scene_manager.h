@@ -48,6 +48,7 @@
 #include "rtx_bindless_resource_manager.h"
 #include "rtx_objectpicking.h"
 #include "rtx_mod_manager.h"
+#include "graph/rtx_graph_manager.h"
 #include <d3d9types.h>
 
 namespace dxvk 
@@ -150,10 +151,12 @@ public:
   const InstanceManager& getInstanceManager() const { return m_instanceManager; }
   const AccelManager& getAccelManager() const { return m_accelManager; }
   const LightManager& getLightManager() const { return m_lightManager; }
+  const GraphManager& getGraphManager() const { return m_graphManager; }
   const RayPortalManager& getRayPortalManager() const { return m_rayPortalManager; }
   const BindlessResourceManager& getBindlessResourceManager() const { return m_bindlessResourceManager; }
   OpacityMicromapManager* getOpacityMicromapManager() const { return m_opacityMicromapManager.get(); }
   LightManager& getLightManager() { return m_lightManager; }
+  GraphManager& getGraphManager() { return m_graphManager; }
   std::unique_ptr<AssetReplacer>& getAssetReplacer() { return m_pReplacer; }
   TerrainBaker& getTerrainBaker() { return *m_terrainBaker.get(); }
 
@@ -263,6 +266,11 @@ private:
   // Called whenever an instance has been removed from the database
   void onInstanceDestroyed(RtInstance& instance);
 
+  // Called to destroy a ReplacementInstance.
+  // This is used to clear up all references to the ReplacementInstance.
+  // Also responsible for removing any graphs from graphManager.
+  void destroyReplacementInstance(ReplacementInstance* replacementInstance);
+
   void drawReplacements(Rc<DxvkContext> ctx, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, const MaterialData* overrideMaterialData);
 
   void createEffectLight(Rc<DxvkContext> ctx, const DrawCallState& input, const RtInstance* instance);
@@ -280,6 +288,7 @@ private:
   InstanceManager m_instanceManager;
   AccelManager m_accelManager;
   LightManager m_lightManager;
+  GraphManager m_graphManager;
   RayPortalManager m_rayPortalManager;
   BindlessResourceManager m_bindlessResourceManager;
   std::unique_ptr<OpacityMicromapManager> m_opacityMicromapManager;
