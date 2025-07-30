@@ -26,6 +26,7 @@
 #include "rtx_terrain_baker.h"
 #include "rtx_instance_manager.h"
 #include "rtx_light_manager.h"
+#include "graph/rtx_graph_instance.h"
 #include "dxvk_scoped_annotation.h"
 
 namespace dxvk {
@@ -52,6 +53,17 @@ namespace dxvk {
     return m_ptr.light;
   }
 
+  // Graph constructor, getter, and assignment operator
+  PrimInstance::PrimInstance(GraphInstance* graph) : m_type(Type::Graph) {
+    m_ptr.graph = graph;
+  }
+  GraphInstance* PrimInstance::getGraph() const {
+    if (m_type != Type::Graph) {
+      return nullptr;
+    }
+    return m_ptr.graph;
+  }
+
   PrimInstance::Type PrimInstance::getType() const {
     if (m_ptr.untyped == nullptr) {
       return Type::None;
@@ -73,6 +85,8 @@ namespace dxvk {
       prim = &m_ptr.instance->getPrimInstanceOwner();
     } else if (m_type == Type::Light) {
       prim = &m_ptr.light->getPrimInstanceOwner();
+    } else if (m_type == Type::Graph) {
+      prim = &m_ptr.graph->getPrimInstanceOwner();
     }
 
     if (prim) {
@@ -84,6 +98,7 @@ namespace dxvk {
     switch (type) {
       ENUM_NAME(PrimInstance::Type::Instance);
       ENUM_NAME(PrimInstance::Type::Light);
+      ENUM_NAME(PrimInstance::Type::Graph);
       ENUM_NAME(PrimInstance::Type::None);
     }
     return os << static_cast<uint8_t>(type);
@@ -95,6 +110,10 @@ namespace dxvk {
       RtInstance* subInstance = prims[i].getInstance();
       if (subInstance) {
         subInstance->markForGarbageCollection();
+      }
+      GraphInstance* graphInstance = prims[i].getGraph();
+      if (graphInstance) {
+        graphInstance->removeInstance();
       }
       prims[i].setReplacementInstance(nullptr, kInvalidReplacementIndex);
     }

@@ -42,6 +42,7 @@ namespace dxvk
 class RtCamera;
 class RtInstance;
 struct RtLight;
+class GraphInstance;
 struct D3D9FixedFunctionVS;
 struct D3D9FixedFunctionPS;
 struct ReplacementInstance;
@@ -59,6 +60,7 @@ public:
   enum class Type : uint8_t {
     Instance,
     Light,
+    Graph,
     None
   };
   // set to 0 because the Id is based on a pointer value, so the id of an empty Entity is nullptr.
@@ -82,8 +84,13 @@ public:
   explicit PrimInstance(RtLight* light);
   RtLight* getLight() const;
 
+  // Graph constructor, getter
+  explicit PrimInstance(GraphInstance* graph);
+  GraphInstance* getGraph() const;
+
   // Untyped utilities.
   PrimInstance(void* owner, Type type);
+
   Type getType() const;
   void* getUntyped() const;
   void setReplacementInstance(ReplacementInstance* replacementInstance, size_t replacementIndex);
@@ -93,6 +100,7 @@ private:
     void* untyped = nullptr;
     RtInstance* instance;
     RtLight* light;
+    GraphInstance* graph;
   } m_ptr;
   Type m_type = Type::None;
 };
@@ -115,10 +123,10 @@ struct ReplacementInstance {
 
   static constexpr uint32_t kInvalidReplacementIndex = UINT32_MAX;
 
+  ~ReplacementInstance();
+
   std::vector<PrimInstance> prims;
   PrimInstance root;
-
-  ~ReplacementInstance();
 
   void setup(PrimInstance newRoot, size_t numPrims);
 };

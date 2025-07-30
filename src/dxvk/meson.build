@@ -335,6 +335,19 @@ dxvk_src = files([
   'rtx_render/rtx_particle_system.cpp',
   'rtx_render/rtx_particle_system.h',
 
+  'rtx_render/graph/rtx_component_list.h',
+  'rtx_render/graph/rtx_graph_batch.cpp',
+  'rtx_render/graph/rtx_graph_batch.h',
+  'rtx_render/graph/rtx_graph_component_macros.h',
+  'rtx_render/graph/rtx_graph_instance.cpp',
+  'rtx_render/graph/rtx_graph_instance.h',
+  'rtx_render/graph/rtx_graph_manager.h',
+  'rtx_render/graph/rtx_graph_types.cpp',
+  'rtx_render/graph/rtx_graph_types.h',
+  'rtx_render/graph/rtx_graph_usd_parser.cpp',
+  'rtx_render/graph/rtx_graph_usd_parser.h',
+  'rtx_render/graph/test_component.h',
+
   'rtx_render/rtx_constants.h',
 
   'platform/dxvk_win32_exts.cpp',

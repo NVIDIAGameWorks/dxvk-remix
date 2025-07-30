@@ -1,0 +1,47 @@
+#usda 1.0
+(
+    doc = "Blender v3.2.1"
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    matrix4d xformOp:transform = ( (10, 0, 0, 0), (0, -4.371138828673793e-8, -10, 0), (0, 10, -4.371138828673793e-8, 0), (0, 0, 0, 10) )
+    uniform token[] xformOpOrder = ["xformOp:transform"]
+
+    def OmniGraph "testGraph"
+    {
+        token evaluationMode = "Automatic"
+        token evaluator:type = "push"
+        token fabricCacheBacking = "Shared"
+        int2 fileFormatVersion = (1, 7)
+        token pipelineStage = "pipelineStageSimulation"
+
+        def OmniGraphNode "someName" (
+            prepend apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            custom token inputs:inputFloat = "3"
+            custom token inputs:inputBool = "1"
+            token node:type = "remix.test.all_types"
+            int node:typeVersion = 1
+            uniform token ui:nodegraph:node:expansionState = "open"
+            uniform float2 ui:nodegraph:node:pos = (227, 88)
+            custom token outputs:outputFloat
+        }
+        def OmniGraphNode "someName2" (
+            prepend apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            custom token inputs:inputFloat = "6"
+            prepend token inputs:inputFloat.connect = </World/testGraph/someName.outputs:outputFloat>
+            custom token inputs:inputBool = "1"
+            token node:type = "remix.test.all_types"
+            int node:typeVersion = 1
+            uniform token ui:nodegraph:node:expansionState = "open"
+            uniform float2 ui:nodegraph:node:pos = (227, 88)
+        }
+    }
+}
