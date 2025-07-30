@@ -1077,7 +1077,8 @@ namespace dxvk {
           spriteSheetFPS = materialData.getRayPortalMaterialData().getSpriteSheetFPS();
 
           break;
-        default:
+        case MaterialDataType::Count:
+        case MaterialDataType::Invalid:
           assert(0);
           break;
         }

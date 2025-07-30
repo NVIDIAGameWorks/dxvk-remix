@@ -54,54 +54,48 @@ dxvk::OpaqueMaterialData LegacyMaterialData::createDefault() {
   return opaqueMat;
 }
 
-template<typename T>
-T LegacyMaterialData::as() const {
-  if constexpr (std::is_same_v<OpaqueMaterialData, T>) {
-    // Legacy materials have parameters that can directly carry over onto the opaque material.
-    const OpaqueMaterialData defaultLegacyOpaqueMaterial = createDefault();
-    // Copy off the defaults, and make dynamic adjustments for the remaining params from this legacy material
-    OpaqueMaterialData opaqueMat(defaultLegacyOpaqueMaterial);
-    if (LegacyMaterialDefaults::useAlbedoTextureIfPresent()) {
-      opaqueMat.setAlbedoOpacityTexture(getColorTexture());
-    }
-    // Indicate that we have an exact sampler to use on this material, directly from game
-    if (getSampler().ptr()) {
-      opaqueMat.setSamplerOverride(getSampler());
-    }
-    // Ignore colormap alpha of legacy texture if tagged as 'ignoreAlphaOnTextures' 
-    bool ignoreAlphaChannel = LegacyMaterialDefaults::ignoreAlphaChannel();
-    if (!ignoreAlphaChannel) {
-      ignoreAlphaChannel = lookupHash(RtxOptions::ignoreAlphaOnTextures(), getHash());
-    }
-    opaqueMat.setIgnoreAlphaChannel(ignoreAlphaChannel);
-    return opaqueMat;
-  } else if constexpr (std::is_same_v<TranslucentMaterialData, T>) {
-    TranslucentMaterialData transluscentMat;
-    if (getSampler().ptr()) {
-      transluscentMat.setSamplerOverride(getSampler());
-    }
-    return transluscentMat;
-  } else if constexpr (std::is_same_v<RayPortalMaterialData, T>) {
-    RayPortalMaterialData portalMat;
-    portalMat.getMaskTexture() = getColorTexture();
-    portalMat.getMaskTexture2() = getColorTexture2();
-    portalMat.setEnableEmission(true);
-    portalMat.setEmissiveIntensity(1.f);
-    portalMat.setSpriteSheetCols(1);
-    portalMat.setSpriteSheetRows(1);
-    if (getSampler().ptr()) {
-      portalMat.setSamplerOverride(getSampler());
-    }
-    return portalMat;
-  } else {
-    static_assert("Not implemented.");
-    return T();
+template<> OpaqueMaterialData LegacyMaterialData::as() const {
+  // Legacy materials have parameters that can directly carry over onto the opaque material.
+  const OpaqueMaterialData defaultLegacyOpaqueMaterial = createDefault();
+  // Copy off the defaults, and make dynamic adjustments for the remaining params from this legacy material
+  OpaqueMaterialData opaqueMat(defaultLegacyOpaqueMaterial);
+  if (LegacyMaterialDefaults::useAlbedoTextureIfPresent()) {
+    opaqueMat.setAlbedoOpacityTexture(getColorTexture());
   }
+  // Indicate that we have an exact sampler to use on this material, directly from game
+  if (getSampler().ptr()) {
+    opaqueMat.setSamplerOverride(getSampler());
+  }
+  // Ignore colormap alpha of legacy texture if tagged as 'ignoreAlphaOnTextures' 
+  bool ignoreAlphaChannel = LegacyMaterialDefaults::ignoreAlphaChannel();
+  if (!ignoreAlphaChannel) {
+    ignoreAlphaChannel = lookupHash(RtxOptions::ignoreAlphaOnTextures(), getHash());
+  }
+  opaqueMat.setIgnoreAlphaChannel(ignoreAlphaChannel);
+  return opaqueMat;
 }
 
-template OpaqueMaterialData LegacyMaterialData::as() const;
-template TranslucentMaterialData LegacyMaterialData::as() const;
-template RayPortalMaterialData LegacyMaterialData::as() const;
+template<> TranslucentMaterialData LegacyMaterialData::as() const {
+  TranslucentMaterialData transluscentMat;
+  if (getSampler().ptr()) {
+    transluscentMat.setSamplerOverride(getSampler());
+  }
+  return transluscentMat;
+}
+
+template<> RayPortalMaterialData LegacyMaterialData::as() const {
+  RayPortalMaterialData portalMat;
+  portalMat.getMaskTexture() = getColorTexture();
+  portalMat.getMaskTexture2() = getColorTexture2();
+  portalMat.setEnableEmission(true);
+  portalMat.setEmissiveIntensity(1.f);
+  portalMat.setSpriteSheetCols(1);
+  portalMat.setSpriteSheetRows(1);
+  if (getSampler().ptr()) {
+    portalMat.setSamplerOverride(getSampler());
+  }
+  return portalMat;
+}
 
 
 } // namespace dxvk
