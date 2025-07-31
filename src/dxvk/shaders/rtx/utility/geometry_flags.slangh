@@ -110,7 +110,7 @@ struct GeometryFlags
 void geometryFlagsWriteToGBuffer(
   GeometryFlags geometryFlags,
   ivec2 position,
-  RWTexture2D<uint> sharedFlagsTexture)
+  RWTexture2D<uint16_t> sharedFlagsTexture)
 {
   sharedFlagsTexture[position] = geometryFlags._encodedFlags;
 }
@@ -129,14 +129,14 @@ uint16_t geometryFlagsEncode(GeometryFlags flags)
 
 GeometryFlags geometryFlagsReadFromGBuffer(
   ivec2 position,
-  Texture2D<uint> sharedFlagsTexture)
+  Texture2D<uint16_t> sharedFlagsTexture)
 {
   return geometryFlagsDecode(sharedFlagsTexture[position]);
 }
 
 GeometryFlags geometryFlagsReadFromGBuffer(
   ivec2 position,
-  RWTexture2D<uint> sharedFlagsTexture)
+  RWTexture2D<uint16_t> sharedFlagsTexture)
 {
   return geometryFlagsDecode(sharedFlagsTexture[position]);
 }

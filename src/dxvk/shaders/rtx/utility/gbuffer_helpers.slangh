@@ -106,7 +106,7 @@ PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionReadF
   RWTexture2D<float4> baseReflectivityTexture,
   Texture2D<uint> data0Texture,
   Texture2D<uint> data1Texture,
-  Texture2D<uint> surfaceIndexTexture,
+  Texture2D<uint16_t> surfaceIndexTexture,
   Texture2D<uint2> subsurfaceData,
   Texture2D<uint2> subsurfaceDiffusionProfileData)
 {
@@ -122,7 +122,7 @@ PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionReadF
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction = polymorphicSurfaceMaterialInteractionCreate(memory);
   if (cb.sssArgs.enableThinOpaque || cb.sssArgs.enableDiffusionProfile)
   {
-    const uint16_t primarySurfaceIndex = uint16_t(surfaceIndexTexture[position]);
+    const uint16_t primarySurfaceIndex = surfaceIndexTexture[position];
     const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surfaceMaterials[primarySurfaceIndex]);
     const SubsurfaceMaterialInteraction subsurfaceMaterialInteraction = subSurfaceMaterialReadHelper(subsurfaceData[position], subsurfaceDiffusionProfileData[position]);
 
@@ -151,7 +151,7 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
   bool writeStochastic,
   Surface surface,
   SurfaceInteraction surfaceInteraction,
-  uint surfaceIndex,
+  uint16_t surfaceIndex,
   bool directionAltered,
   f16vec4 accumulatedRotation,
   RWTexture2D<uint> worldShadingNormalTexture,
@@ -163,7 +163,7 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
   RWTexture2D<uint> data0Texture,
   RWTexture2D<uint> data1Texture,
   RWTexture2D<float2> sharedTextureCoords,
-  RWTexture2D<uint> surfaceIndexTexture,
+  RWTexture2D<uint16_t> surfaceIndexTexture,
   RWTexture2D<uint2> subsurfaceDataTexture,
   RWTexture2D<uint2> subsurfaceDiffusionProfileDataTexture)
 {
@@ -214,7 +214,7 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
     data0Texture[position] = gBufferMemoryPolymorphicSurfaceMaterialInteraction.data0;
     data1Texture[position] = gBufferMemoryPolymorphicSurfaceMaterialInteraction.data1;
 
-    surfaceIndexTexture[position] = uint32_t(surfaceIndex);
+    surfaceIndexTexture[position] = surfaceIndex;
 
     // Only write sharedTextureCoords if the material has a height texture, or the material has subsurface texture(s)
     if (polymorphicSurfaceMaterialInteractionHasHeightTexture(polymorphicSurfaceMaterialInteraction))

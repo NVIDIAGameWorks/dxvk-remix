@@ -29,7 +29,7 @@
 layout(r32ui, binding = RTXDI_REUSE_BINDING_WORLD_SHADING_NORMAL_INPUT)
 Texture2D<uint> PrimaryWorldShadingNormal;
 
-layout(r32ui, binding = RTXDI_REUSE_BINDING_PERCEPTUAL_ROUGHNESS_INPUT)
+layout(r8, binding = RTXDI_REUSE_BINDING_PERCEPTUAL_ROUGHNESS_INPUT)
 Texture2D<float> PrimaryPerceptualRoughness;
 
 layout(r32f, binding = RTXDI_REUSE_BINDING_HIT_DISTANCE_INPUT)
@@ -63,13 +63,13 @@ layout(r32f, binding = RTXDI_REUSE_BINDING_POSITION_ERROR_INPUT)
 Texture2D<float> PrimaryPositionError;
 
 layout(r16ui, binding = RTXDI_REUSE_BINDING_SHARED_FLAGS_INPUT)
-Texture2D<uint> SharedFlags;
+Texture2D<uint16_t> SharedFlags;
 
 layout(rg16ui, binding = RTXDI_REUSE_BINDING_BEST_LIGHTS_INPUT)
 Texture2D<uint2> RtxdiBestLights;
 
 layout(r16ui, binding = RTXDI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT)
-Texture2D<uint> SharedSurfaceIndex;
+Texture2D<uint16_t> SharedSurfaceIndex;
 
 layout(rg16ui, binding = RTXDI_REUSE_BINDING_SUBSURFACE_DATA_INPUT)
 Texture2D<uint2> SharedSubsurfaceData;

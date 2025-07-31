@@ -31,7 +31,7 @@ ConstantBuffer<RaytraceArgs> cb;
 // Inputs
 
 layout(r16ui, binding = DEMODULATE_BINDING_SHARED_FLAGS_INPUT)
-Texture2D<uint> SharedFlags;
+Texture2D<uint16_t> SharedFlags;
 
 layout(rgba16, binding = DEMODULATE_BINDING_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT)
 Texture2D<float4> PrimaryVirtualWorldNormalPerceptualRoughness;
@@ -51,7 +51,7 @@ Texture2D<float> SecondaryLinearViewZ;
 layout(rgb10_a2, binding = DEMODULATE_BINDING_SECONDARY_ALBEDO_INPUT)
 Texture2D<float4> SecondaryAlbedo;
 
-layout(rgba16, binding = DEMODULATE_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT)
+layout(rgba16f, binding = DEMODULATE_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT)
 Texture2D<float4> IndirectRadianceHitDistance;
 
 // Input/Outputs

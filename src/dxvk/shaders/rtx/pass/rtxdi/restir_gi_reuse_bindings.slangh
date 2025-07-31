@@ -64,13 +64,13 @@ layout(r32f, binding = RESTIR_GI_REUSE_BINDING_POSITION_ERROR_INPUT)
 Texture2D<float> PrimaryPositionError;
 
 layout(r16ui, binding = RESTIR_GI_REUSE_BINDING_SHARED_FLAGS_INPUT)
-Texture2D<uint> SharedFlags;
+Texture2D<uint16_t> SharedFlags;
 
 layout(rgba32f, binding = RESTIR_GI_REUSE_BINDING_PREV_WORLD_POSITION_INPUT)
 Texture2D<float4> PreviousWorldPosition_WorldTriangleNormal;
 
 layout(r16ui, binding = RESTIR_GI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT)
-Texture2D<uint> SharedSurfaceIndex;
+Texture2D<uint16_t> SharedSurfaceIndex;
 
 layout(rg16ui, binding = RESTIR_GI_REUSE_BINDING_SUBSURFACE_DATA_INPUT)
 Texture2D<uint2> SharedSubsurfaceData;

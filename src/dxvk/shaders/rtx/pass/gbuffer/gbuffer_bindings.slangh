@@ -49,7 +49,7 @@ SamplerCube<float3> SkyProbe;
 // geometry resolver.
 
 layout(r16ui, binding = GBUFFER_BINDING_SHARED_FLAGS_OUTPUT)
-RWTexture2D<uint> SharedFlags;
+RWTexture2D<uint16_t> SharedFlags;
 
 layout(rg16f, binding = GBUFFER_BINDING_SHARED_RADIANCE_RG_OUTPUT)
 RWTexture2D<float2> SharedRadianceRG;
@@ -67,7 +67,7 @@ layout(r32ui, binding = GBUFFER_BINDING_SHARED_MATERIAL_DATA1_OUTPUT)
 RWTexture2D<uint> SharedMaterialData1;
 
 layout(r16ui, binding = GBUFFER_BINDING_SHARED_MEDIUM_MATERIAL_INDEX_OUTPUT)
-RWTexture2D<uint> SharedMediumMaterialIndex;
+RWTexture2D<uint16_t> SharedMediumMaterialIndex;
 
 // Primary Surface Outputs (Coherent)
 
@@ -188,7 +188,7 @@ layout(rg32f, binding = GBUFFER_BINDING_SHARED_TEXTURE_COORD_OUTPUT)
 RWTexture2D<float2> SharedTextureCoord;
 
 layout(r16ui, binding = GBUFFER_BINDING_SHARED_SURFACE_INDEX_OUTPUT)
-RWTexture2D<uint> SharedSurfaceIndex;
+RWTexture2D<uint16_t> SharedSurfaceIndex;
 
 layout(r32f, binding = GBUFFER_BINDING_PRIMARY_DEPTH_DLSSRR_OUTPUT)
 RWTexture2D<float> PrimaryDepthDLSSRR;

@@ -28,7 +28,7 @@
 // Shared Inputs
 
 layout(r16ui, binding = RESTIR_GI_FINAL_SHADING_BINDING_SHARED_FLAGS_INPUT)
-Texture2D<uint> SharedFlags;
+Texture2D<uint16_t> SharedFlags;
 
 layout(r32ui, binding = RESTIR_GI_FINAL_SHADING_BINDING_SHARED_MATERIAL_DATA0_INPUT)
 Texture2D<uint> SharedMaterialData0;
@@ -40,7 +40,7 @@ layout(rg32f, binding = RESTIR_GI_FINAL_SHADING_BINDING_SHARED_TEXTURE_COORD_INP
 Texture2D<float2> SharedTextureCoord;
 
 layout(r16ui, binding = RESTIR_GI_FINAL_SHADING_BINDING_SHARED_SURFACE_INDEX_INPUT)
-Texture2D<uint> SharedSurfaceIndex;
+Texture2D<uint16_t> SharedSurfaceIndex;
 
 layout(rg16ui, binding = RESTIR_GI_FINAL_SHADING_BINDING_SHARED_SUBSURFACE_DATA_INPUT)
 Texture2D<uint2> SharedSubsurfaceData;

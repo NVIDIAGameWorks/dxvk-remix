@@ -511,8 +511,8 @@ struct PathState : IBasePayloadState
 
 struct DirectPathTextures
 {
-  RWTexture2D<uint> SharedFlags;
-  RWTexture2D<uint> SharedMediumMaterialIndex;
+  RWTexture2D<uint16_t> SharedFlags;
+  RWTexture2D<uint16_t> SharedMediumMaterialIndex;
   RWTexture2D<float4> PrimaryDirectDiffuseLobeRadianceHitDistance;
   RWTexture2D<float4> PrimaryDirectSpecularLobeRadianceHitDistance;
   RWTexture2D<float4> SecondaryCombinedDiffuseLobeRadianceHitDistance;
