@@ -324,7 +324,6 @@ namespace {
           src.getWrapModeV()
         } };
       }
-      case MaterialDataType::Legacy:
       default: assert(0); return materialWithoutPreload;
       }
     }
@@ -419,7 +418,7 @@ namespace {
       }
 
       assert(0);
-      return MaterialData { LegacyMaterialData {} };
+      return MaterialData { OpaqueMaterialData {} };
     }
 
     // --

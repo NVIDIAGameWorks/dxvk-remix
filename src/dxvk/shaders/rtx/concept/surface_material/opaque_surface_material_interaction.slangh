@@ -551,7 +551,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
 
   f16vec3 albedo = opaqueSurfaceMaterial.albedoOpacityConstant.rgb;
   float16_t opacity = opaqueSurfaceMaterial.albedoOpacityConstant.a;
-  float16_t emissiveBlendOverrideInfluence = float16_t(0.0f);
+  float16_t emissiveBlendOverrideInfluence = float16_t(1.0f);
   float16_t thinFilmThickness = float16_t(0.0f);
 
   // Baked terrain is the only surface using cascaded view positions, so key off of that
@@ -636,7 +636,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
 
   if (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_IGNORE_ALPHA_CHANNEL)
   {
-      opacity = 1.h;
+    opacity = 1.h;
   }
 
   // Note: Gamma correct albedo input (be it from a constant or a texture). Currently assuming all textures are not using sRGB formats which
@@ -644,6 +644,20 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   // This conversion is done *after* calcOpaqueSurfaceMaterialOpacity to correctly apply double multiplicative blending.
   // Todo: Disable this for when a sRGB texture is the source of the albedo.
   albedo = gammaToLinear(albedo);
+  
+  // Load Emissive Color
+
+  f16vec3 emissiveColor = opaqueSurfaceMaterial.emissiveColorConstant;
+
+  if (emissiveColorLoaded)
+  {
+    emissiveColor = emissiveColorSample.xyz;
+  }
+
+  // Note: Gamma correct emissive color input (be it from a constant or a texture). Currently assuming all textures are not using sRGB formats which
+  // automatically do this conversion.
+  // Todo: Disable this for when a sRGB texture is the source of the emissive color.
+  emissiveColor = gammaToLinear(emissiveColor);
 
   // Apply vertex color via texture operations
   if (applyTextureOperations)
@@ -670,6 +684,15 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     chooseTextureOperationColor(albedo, surface.textureColorOperation, textureArg1, textureArg2);
     if (surface.isTextureFactorBlend) {
       albedo *= tFactor.rgb;
+    }
+    
+
+    // Fixed function texture stage setting (emissive)
+    chooseTextureArgument(textureArg1, surface.textureColorArg1Source, emissiveColor, surfaceInteraction.vertexColor.rgb, tFactor.rgb, f16vec3(1.0));
+    chooseTextureArgument(textureArg2, surface.textureColorArg2Source, emissiveColor, surfaceInteraction.vertexColor.rgb, tFactor.rgb, f16vec3(1.0));
+    chooseTextureOperationColor(emissiveColor, surface.textureColorOperation, textureArg1, textureArg2);
+    if (surface.isTextureFactorBlend) {
+      emissiveColor *= tFactor.rgb;
     }
   }
 
@@ -769,25 +792,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     
   metallic = saturate(metallic * cb.opaqueMaterialArgs.metallicScale + cb.opaqueMaterialArgs.metallicBias);
 
-  // Load Emissive Color
-
-  f16vec3 emissiveColor = opaqueSurfaceMaterial.emissiveColorConstant;
-
-  if (emissiveColorLoaded)
-  {
-    emissiveColor = emissiveColorSample.xyz;
-  }
-
-  // Note: Gamma correct emissive color input (be it from a constant or a texture). Currently assuming all textures are not using sRGB formats which
-  // automatically do this conversion.
-  // Todo: Disable this for when a sRGB texture is the source of the emissive color.
-  emissiveColor = gammaToLinear(emissiveColor);
-
   // Transform to desired Opaque Material Interaction values
-
-  // Note: Store a copy of the original albedo value so that operations later can use it rather than working off of the adjusted albedo
-  // (which will not look correct on materials with weird blend modes that do things like invert alpha).
-  const f16vec3 originalAlbedo = albedo;
 
   opaqueSurfaceMaterialInteraction.shadingNormal = getBentNormal(surfaceInteraction.triangleNormal, normal, -minimalRayInteraction.viewDirection);
   opaqueSurfaceMaterialInteraction.normalDetail = normalDetail;
@@ -805,33 +810,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     opaqueSurfaceMaterialInteraction.isotropicRoughness,
     opaqueSurfaceMaterialInteraction.anisotropicRoughness);
 
-  f16vec3 derivedEmissiveColor;
-  float16_t derivedEmissiveIntensity;
-
-  // Note: "Fullbright", emissive blend modes and actual emissive color/intensity are mututally exclusive so this logic for selecting between them in this order is fine.
-  if (surface.isEmissive)
-  {
-    // Todo: Remove this hack when a proper legacy material model is created, or find some better solution to it (such as setting emissive information on the CPU side).
-    derivedEmissiveColor = originalAlbedo;
-    derivedEmissiveIntensity = float16_t(2.0f); // Note: Arbitrary constant, should be set on the CPU side instead and controllable.
-  }
-  else if (surface.isEmissiveBlend && cb.enableEmissiveBlendEmissiveOverride)
-  {
-    // Note: Interpret original material's albedo as emissive color and the emissive blend override influence combined with an arbitrary constant as emissive intensity.
-    // This is so that when "emissive" style blending is used it looks more correct in a physically based way based on the influence from the mode in question.
-    // Todo: Move this all once separate Surface Materials for D3D9 compatability and normal usage are created.
-    derivedEmissiveColor = originalAlbedo;
-    derivedEmissiveIntensity = emissiveBlendOverrideInfluence * uint16BitsToHalf(cb.emissiveBlendOverrideEmissiveIntensity);
-  }
-  else
-  {
-    derivedEmissiveColor = emissiveColor;
-    derivedEmissiveIntensity = opaqueSurfaceMaterial.emissiveIntensity;
-  }
-
-  derivedEmissiveIntensity *= uint16BitsToHalf(cb.emissiveIntensity); // Note: Global emissive intensity scalar on top of everything else.
-
-  opaqueSurfaceMaterialInteraction.emissiveRadiance = derivedEmissiveColor * derivedEmissiveIntensity;
+  opaqueSurfaceMaterialInteraction.emissiveRadiance = emissiveBlendOverrideInfluence * emissiveColor * opaqueSurfaceMaterial.emissiveIntensity;
 
   opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction =
     subSurfaceMaterialReadHelper(opaqueSurfaceMaterial.subsurfaceMaterialIndex, surfaceInteraction, opaqueSurfaceMaterial.samplerIndex);

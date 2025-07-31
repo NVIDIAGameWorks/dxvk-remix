@@ -127,6 +127,8 @@ public:
   void onDestroy();
 
   void submitDrawState(Rc<DxvkContext> ctx, const DrawCallState& input, const MaterialData* overrideMaterialData);
+
+
   void submitExternalDraw(Rc<DxvkContext> ctx, ExternalDrawState&& state);
   
   bool areAllReplacementsLoaded() const;
@@ -241,13 +243,12 @@ private:
   // Consumes a draw call state and updates the scene state accordingly
   RtInstance* processDrawCallState(Rc<DxvkContext> ctx, 
                                    const DrawCallState& blasInput, 
-                                   const MaterialData* replacementMaterialData, 
+                                   MaterialData& materialData, 
                                    RtInstance* existingInstance = nullptr);
 
-  const RtSurfaceMaterial& createSurfaceMaterial( Rc<DxvkContext> ctx, 
-                                                  const MaterialData& renderMaterialData,
-                                                  const DrawCallState& drawCallState,
-                                                  uint32_t* out_indexInCache = nullptr);
+  const RtSurfaceMaterial& createSurfaceMaterial(const MaterialData& renderMaterialData,
+                                                 const DrawCallState& drawCallState,
+                                                 uint32_t* out_indexInCache = nullptr);
 
   // Updates ref counts for new buffers
   void updateBufferCache(RaytraceGeometry& newGeoData);
@@ -262,7 +263,7 @@ private:
   // Called whenever a new instance has been added to the database
   void onInstanceAdded(RtInstance& instance);
   // Called whenever instance metadata is updated
-  void onInstanceUpdated(RtInstance& instance, const RtSurfaceMaterial& material, const bool hasTransformChanged, const bool hasVerticesdChanged);
+  void onInstanceUpdated(RtInstance& instance, const DrawCallState& drawCall, const MaterialData& material, const bool hasTransformChanged, const bool hasVerticesdChanged, const bool isFirstUpdateThisFrame);
   // Called whenever an instance has been removed from the database
   void onInstanceDestroyed(RtInstance& instance);
 
@@ -271,13 +272,15 @@ private:
   // Also responsible for removing any graphs from graphManager.
   void destroyReplacementInstance(ReplacementInstance* replacementInstance);
 
-  void drawReplacements(Rc<DxvkContext> ctx, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, const MaterialData* overrideMaterialData);
+  void drawReplacements(Rc<DxvkContext> ctx, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, MaterialData& renderMaterialData);
 
   void createEffectLight(Rc<DxvkContext> ctx, const DrawCallState& input, const RtInstance* instance);
 
   // Print all RtInstances for debugging
   void printAllRtInstances();
-
+  
+  MaterialData determineMaterialData(const MaterialData* overrideMaterialData, const DrawCallState& input);
+  
   uint32_t m_beginUsdExportFrameNum = -1;
   bool m_enqueueDelayedClear = false;
   bool m_previousFrameSceneAvailable = false;

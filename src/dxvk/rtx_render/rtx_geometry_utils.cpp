@@ -489,7 +489,8 @@ namespace dxvk {
     args.resolveTransparencyThreshold = desc.resolveTransparencyThreshold;
     args.resolveOpaquenessThreshold = desc.resolveOpaquenessThreshold;
     args.useConservativeEstimation = desc.useConservativeEstimation;
-    args.materialType = static_cast<uint32_t>(desc.materialType);
+    args.isOpaqueMaterial = desc.materialType == MaterialDataType::Opaque;
+    args.isRayPortalMaterial = desc.materialType == MaterialDataType::RayPortal;
     args.applyVertexAndTextureOperations = desc.applyVertexAndTextureOperations;
     args.numMicroTrianglesPerThread = args.is2StateOMMFormat ? 8 : 4;
     args.textureResolution = vec2 { static_cast<float>(opacityTextureResolution.width), static_cast<float>(opacityTextureResolution.height) };

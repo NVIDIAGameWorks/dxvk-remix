@@ -493,7 +493,7 @@ namespace dxvk {
     // Called whenever a new instance has been added to the database
     void onInstanceAdded(const RtInstance& instance);
     // Called whenever instance metadata is updated
-    void onInstanceUpdated(const RtInstance& instance, const RtSurfaceMaterial& material, const bool hasTransformChanged, const bool hasVerticesChanged);
+    void onInstanceUpdated(const RtInstance& instance, const DrawCallState& drawCall, const MaterialData& material, const bool hasTransformChanged, const bool hasVerticesChanged, const bool isFirstUpdateThisFrame);
     // Called whenever an instance has been removed from the database
     void onInstanceDestroyed(const RtInstance& instance);
 

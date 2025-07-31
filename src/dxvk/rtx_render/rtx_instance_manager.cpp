@@ -301,7 +301,11 @@ namespace dxvk {
     return m_vkInstance.instanceCustomIndex & oneBitMask;
   }
 
-  bool RtInstance::isViewModel() const { 
+  bool RtInstance::isOpaque() const {
+    return getMaterialType() == MaterialDataType::Opaque;
+  }
+
+  bool RtInstance::isViewModel() const {
     return getCustomIndexBit(CUSTOM_INDEX_IS_VIEW_MODEL);
   }
 
@@ -533,7 +537,7 @@ namespace dxvk {
 
   RtInstance* InstanceManager::processSceneObject(
     const CameraManager& cameraManager, const RayPortalManager& rayPortalManager,
-    BlasEntry& blas, const DrawCallState& drawCall, const MaterialData& materialData, const RtSurfaceMaterial& material, RtInstance* existingInstance) {
+    BlasEntry& blas, const DrawCallState& drawCall, MaterialData& materialData, RtInstance* existingInstance) {
 
     // If the RtInstance represents multiple instances, use the full transform of the first copy for the spatial map.
     // this prevents a bad de-duplication when the same replacement asset is used in multiple GeomPointInstancer prims.
@@ -544,7 +548,7 @@ namespace dxvk {
 
     // Search for an existing instance matching our input
     if (currentInstance == nullptr) {
-      currentInstance = findSimilarInstance(blas, material, firstInstanceObjectToWorld, drawCall.cameraType, rayPortalManager);
+      currentInstance = findSimilarInstance(blas, materialData, firstInstanceObjectToWorld, drawCall.cameraType, rayPortalManager);
     }
 
     if (currentInstance == nullptr) {
@@ -552,40 +556,32 @@ namespace dxvk {
       currentInstance = addInstance(blas);
     }
 
-    updateInstance(*currentInstance, cameraManager, blas, drawCall, materialData, material);
+    updateInstance(*currentInstance, cameraManager, blas, drawCall, materialData);
    
     return currentInstance;
   }
 
-  RtSurface::AlphaState InstanceManager::calculateAlphaState(const DrawCallState& drawCall, const MaterialData& materialData, const RtSurfaceMaterial& material) {
+  RtSurface::AlphaState InstanceManager::calculateAlphaState(const DrawCallState& drawCall, const MaterialData& materialData) {
     RtSurface::AlphaState out{};
 
     // Handle Alpha State for non-Opaque materials
 
-    if (material.getType() == RtSurfaceMaterialType::Translucent) {
+    if (materialData.getType() == MaterialDataType::Translucent) {
       // Note: Explicitly ensure translucent materials are not considered fully opaque (even though this is the
       // default in the alpha state).
       out.isFullyOpaque = false;
 
       return out;
-    } else if (material.getType() != RtSurfaceMaterialType::Opaque) {
+    } else if (materialData.getType() != MaterialDataType::Opaque) {
       return out;
     }
-
-    assert(material.getType() == RtSurfaceMaterialType::Opaque);
 
     // Determine if the Legacy Alpha State should be used based on the material data
     // Note: The Material Data may be either Legacy or Opaque here, both use the Opaque Surface Material.
 
-    bool useLegacyAlphaState = true;
+    const auto& opaqueMaterialData = materialData.getOpaqueMaterialData();
 
-    if (materialData.getType() == MaterialDataType::Opaque) {
-      const auto& opaqueMaterialData = materialData.getOpaqueMaterialData();
-
-      useLegacyAlphaState = opaqueMaterialData.getUseLegacyAlphaState();
-    } else {
-      assert(materialData.getType() == MaterialDataType::Legacy);
-    }
+    const bool useLegacyAlphaState = opaqueMaterialData.getUseLegacyAlphaState();
 
     // Handle Alpha Test State
 
@@ -599,8 +595,6 @@ namespace dxvk {
       out.alphaTestType = AlphaTestType::kGreater;
       out.alphaTestReferenceValue = static_cast<uint8_t>(RtxOptions::forceCutoutAlpha() * 255.0);
     } else if (!useLegacyAlphaState) {
-      const auto& opaqueMaterialData = materialData.getOpaqueMaterialData();
-
       out.alphaTestType = opaqueMaterialData.getAlphaTestType();
       out.alphaTestReferenceValue = opaqueMaterialData.getAlphaTestReferenceValue();
     } else if (alphaTestEnabled) {
@@ -619,8 +613,6 @@ namespace dxvk {
     if (forceAlphaTest) {
       blendEnabled = false;
     } else if (!useLegacyAlphaState) {
-      const auto& opaqueMaterialData = materialData.getOpaqueMaterialData();
-
       blendEnabled = opaqueMaterialData.getBlendEnabled();
       blendType = opaqueMaterialData.getBlendType();
       invertedBlend = opaqueMaterialData.getInvertedBlend();
@@ -747,7 +739,7 @@ namespace dxvk {
     return out;
   }
 
-  void InstanceManager::mergeInstanceHeuristics(RtInstance& instanceToModify, const DrawCallState& drawCall, const RtSurfaceMaterial& material, const RtSurface::AlphaState& alphaState) const {
+  void InstanceManager::mergeInstanceHeuristics(RtInstance& instanceToModify, const DrawCallState& drawCall, const RtSurface::AlphaState& alphaState) const {
     // "Opaqueness" takes priority!
     if (
       (alphaState.isFullyOpaque || alphaState.alphaTestType == AlphaTestType::kAlways) &&
@@ -759,7 +751,7 @@ namespace dxvk {
     // NOTE: In the future we could extend this with heuristics as needed...
   }
 
-  RtInstance* InstanceManager::findSimilarInstance(BlasEntry& blas, const RtSurfaceMaterial& material, const Matrix4& firstInstanceObjectToWorld, CameraType::Enum cameraType, const RayPortalManager& rayPortalManager) {
+  RtInstance* InstanceManager::findSimilarInstance(BlasEntry& blas, const MaterialData& material, const Matrix4& firstInstanceObjectToWorld, CameraType::Enum cameraType, const RayPortalManager& rayPortalManager) {
 
     // Disable temporal correlation between instances so that duplicate instances are not created
     // should a developer option change instance enough for it not to match anymore
@@ -943,6 +935,24 @@ namespace dxvk {
     return false;
   }
 
+  void InstanceManager::bindMaterial(RtInstance& instance, const RtSurfaceMaterial& material) {
+    if (material.getType() == RtSurfaceMaterialType::Opaque) {
+      instance.m_albedoOpacityTextureIndex = material.getOpaqueSurfaceMaterial().getAlbedoOpacityTextureIndex();
+      instance.m_samplerIndex = material.getOpaqueSurfaceMaterial().getSamplerIndex();
+    } else if (material.getType() == RtSurfaceMaterialType::RayPortal) {
+      instance.m_albedoOpacityTextureIndex = material.getRayPortalSurfaceMaterial().getMaskTextureIndex();
+      instance.m_samplerIndex = material.getRayPortalSurfaceMaterial().getSamplerIndex();
+      instance.m_secondaryOpacityTextureIndex = material.getRayPortalSurfaceMaterial().getMaskTextureIndex2();
+      instance.m_secondarySamplerIndex = material.getRayPortalSurfaceMaterial().getSamplerIndex2();
+    }
+
+    instance.m_vkInstance.instanceCustomIndex = (instance.m_vkInstance.instanceCustomIndex & ~(surfaceMaterialTypeMask << CUSTOM_INDEX_MATERIAL_TYPE_BIT));
+    instance.m_vkInstance.instanceCustomIndex |= ((uint32_t)material.getType() << CUSTOM_INDEX_MATERIAL_TYPE_BIT);
+
+    // Fetch the material from the cache
+    m_pResourceCache->find(material, instance.surface.surfaceMaterialIndex);
+  }
+
   // Updates the state of the instance with the draw call inputs
   // It handles multiple draw calls called for a same instance within a frame
   // To be called on every draw call
@@ -950,8 +960,7 @@ namespace dxvk {
                                        const CameraManager& cameraManager,
                                        const BlasEntry& blas,
                                        const DrawCallState& drawCall,
-                                       const MaterialData& materialData,
-                                       const RtSurfaceMaterial& material) {
+                                       MaterialData& materialData) {
     currentInstance.m_categoryFlags = drawCall.getCategoryFlags();
     currentInstance.surface.instancesToObject = drawCall.getTransformData().instancesToObject;
 
@@ -977,13 +986,14 @@ namespace dxvk {
        // Don't overwrite transform from when the instance was seen with the main camera
        !currentInstance.isCameraRegistered(CameraType::Main));
 
-    const RtSurface::AlphaState alphaState = calculateAlphaState(drawCall, materialData, material);
+    const RtSurface::AlphaState alphaState = calculateAlphaState(drawCall, materialData);
     bool hasTransformChanged = false;
     bool hasPreviousPositions = false;
 
-    if (!isFirstUpdateThisFrame)
+    if (!isFirstUpdateThisFrame) {
       // This is probably the same instance, being drawn twice!  Merge it
-      mergeInstanceHeuristics(currentInstance, drawCall, material, alphaState);
+      mergeInstanceHeuristics(currentInstance, drawCall, alphaState);
+    }
     
     // Updates done only once a frame unless overriden due to an explicit state
     if (isFirstUpdateThisFrame || overridePreviousCameraUpdate) {
@@ -991,24 +1001,13 @@ namespace dxvk {
       if (isFirstUpdateThisFrame) {
         processInstanceBuffers(blas, currentInstance);
 
-        currentInstance.m_materialType = material.getType();
+        currentInstance.m_materialType = materialData.getType();
 
-        if (material.getType() == RtSurfaceMaterialType::Opaque) {
-          currentInstance.m_albedoOpacityTextureIndex = material.getOpaqueSurfaceMaterial().getAlbedoOpacityTextureIndex();
-          currentInstance.m_samplerIndex = material.getOpaqueSurfaceMaterial().getSamplerIndex();
-        } else if (material.getType() == RtSurfaceMaterialType::RayPortal) {
-          currentInstance.m_albedoOpacityTextureIndex = material.getRayPortalSurfaceMaterial().getMaskTextureIndex();
-          currentInstance.m_samplerIndex = material.getRayPortalSurfaceMaterial().getSamplerIndex();
-          currentInstance.m_secondaryOpacityTextureIndex = material.getRayPortalSurfaceMaterial().getMaskTextureIndex2();
-          currentInstance.m_secondarySamplerIndex = material.getRayPortalSurfaceMaterial().getSamplerIndex2();
-        }
-
-        // Fetch the material from the cache
-        m_pResourceCache->find(material, currentInstance.surface.surfaceMaterialIndex);
-
+        const XXH64_hash_t materialInstanceHash = materialData.getHash();
         currentInstance.m_materialDataHash = drawCall.getMaterialData().getHash();
-        currentInstance.surface.hasMaterialChanged = currentInstance.m_materialHash != kEmptyHash && currentInstance.m_materialHash != material.getHash();
-        currentInstance.m_materialHash = material.getHash();
+        currentInstance.surface.hasMaterialChanged = currentInstance.m_materialHash != kEmptyHash && currentInstance.m_materialHash != materialInstanceHash;
+        currentInstance.m_materialHash = materialInstanceHash;
+
         currentInstance.m_texcoordHash = drawCall.getGeometryData().hashes[HashComponents::VertexTexcoord];
         currentInstance.m_indexHash = drawCall.getGeometryData().hashes[HashComponents::Indices];
 
@@ -1032,7 +1031,7 @@ namespace dxvk {
 
         // Note: Skip the spritesheet adjustment logic in the surface interaction when using Ray Portal materials as this logic
         // is done later in the Surface Material Interaction (and doing it in both places will just double up the animation).
-        currentInstance.surface.skipSurfaceInteractionSpritesheetAdjustment = (materialData.getType() == MaterialDataType::RayPortal);
+        currentInstance.surface.skipSurfaceInteractionSpritesheetAdjustment = (currentInstance.m_materialType == MaterialDataType::RayPortal);
         currentInstance.surface.isInsideFrustum = RtxOptions::AntiCulling::isObjectAntiCullingEnabled() ? currentInstance.m_isInsideFrustum : true;
 
         currentInstance.surface.srcColorBlendFactor = drawCall.getMaterialData().srcColorBlendFactor;
@@ -1045,11 +1044,27 @@ namespace dxvk {
         // not in the Surface Material like most material information.
         switch (materialData.getType()) {
         case MaterialDataType::Opaque:
+        {
           spriteSheetRows = materialData.getOpaqueMaterialData().getSpriteSheetRows();
           spriteSheetCols = materialData.getOpaqueMaterialData().getSpriteSheetCols();
           spriteSheetFPS = materialData.getOpaqueMaterialData().getSpriteSheetFPS();
 
+          const bool useLegacyAlphaState = materialData.getOpaqueMaterialData().getUseLegacyAlphaState();
+
+          if (currentInstance.m_isWorldSpaceUI) {
+            // For worldspace UI, we want to show the UI (unlit) in the world.  So configure the blend mode if blending is used accordingly.
+            materialData.getOpaqueMaterialData().setEnableEmission(true);
+            materialData.getOpaqueMaterialData().setEmissiveIntensity(2.0f);
+            materialData.getOpaqueMaterialData().setEmissiveColorTexture(materialData.getOpaqueMaterialData().getAlbedoOpacityTexture());
+          } else if (currentInstance.surface.alphaState.emissiveBlend && RtxOptions::enableEmissiveBlendEmissiveOverride() && useLegacyAlphaState) {
+            // If the user has decided to override the legacy alpha state, assume they know what they are doing and allow for explicit emission controls.
+            materialData.getOpaqueMaterialData().setEnableEmission(true);
+            materialData.getOpaqueMaterialData().setEmissiveIntensity(RtxOptions::emissiveBlendOverrideEmissiveIntensity());
+            materialData.getOpaqueMaterialData().setEmissiveColorTexture(materialData.getOpaqueMaterialData().getAlbedoOpacityTexture());
+          } 
+
           break;
+        }
         case MaterialDataType::Translucent:
           spriteSheetRows = materialData.getTranslucentMaterialData().getSpriteSheetRows();
           spriteSheetCols = materialData.getTranslucentMaterialData().getSpriteSheetCols();
@@ -1062,30 +1077,24 @@ namespace dxvk {
           spriteSheetFPS = materialData.getRayPortalMaterialData().getSpriteSheetFPS();
 
           break;
-        case MaterialDataType::Legacy:
-          // Legacy material can't have spritesheet data.
+        case MaterialDataType::Count:
+        case MaterialDataType::Invalid:
+          assert(0);
           break;
         }
 
         currentInstance.surface.spriteSheetRows = spriteSheetRows;
         currentInstance.surface.spriteSheetCols = spriteSheetCols;
         currentInstance.surface.spriteSheetFPS = spriteSheetFPS;
-        currentInstance.surface.objectPickingValue = drawCall.drawCallID;
 
-        // For worldspace UI, we want to show the UI (unlit) in the world.  So configure the blend mode if blending is used accordingly.
-        if (currentInstance.m_isWorldSpaceUI) {
-          if (currentInstance.surface.alphaState.isBlendingDisabled) {
-            currentInstance.surface.isEmissive = true;
-          } else {
-            currentInstance.surface.alphaState.emissiveBlend = true;
-          }
-        }
+        currentInstance.m_isAnimated = currentInstance.surface.spriteSheetFPS != 0;
+        currentInstance.surface.objectPickingValue = drawCall.drawCallID;
       }
 
       // Update transform
       {
         // Heuristic for MS5 - motion vectors on translucent surfaces cannot be trusted.  This will help with IQ, but need a longer term solution [TREX-634]
-        const bool isMotionUnstable = material.getType() == RtSurfaceMaterialType::Translucent 
+        const bool isMotionUnstable = currentInstance.m_materialType == MaterialDataType::Translucent
                                    || currentInstance.testCategoryFlags(InstanceCategories::Particle)
                                    || currentInstance.testCategoryFlags(InstanceCategories::WorldUI);
 
@@ -1114,7 +1123,7 @@ namespace dxvk {
 
         currentInstance.surface.textureTransform = drawCall.getTransformData().textureTransform;
 
-        currentInstance.surface.isStatic = !(hasTransformChanged || hasPreviousPositions) || material.getType() == RtSurfaceMaterialType::RayPortal;
+        currentInstance.surface.isStatic = !(hasTransformChanged || hasPreviousPositions) || currentInstance.m_materialType == MaterialDataType::RayPortal;
 
         currentInstance.surface.isClipPlaneEnabled = drawCall.getTransformData().enableClipPlane;
         currentInstance.surface.clipPlane = drawCall.getTransformData().clipPlane;
@@ -1145,7 +1154,7 @@ namespace dxvk {
     }
 
     // Update the geometry and instance flags
-    if (material.getType() == RtSurfaceMaterialType::Opaque && material.getOpaqueSurfaceMaterial().getIsRaytracedRenderTarget()) {
+    if (currentInstance.isOpaque() && drawCall.isUsingRaytracedRenderTarget) {
       // render target texture - need this to be in the opaque pass, even if alphaState.isFullyOpaque is false.
       currentInstance.m_geometryFlags = VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR;
     } else if (
@@ -1164,18 +1173,18 @@ namespace dxvk {
       // the opaque hits resolve via OMMs to be turned into any-hits.
       // Note: this has unexpected effect even with OMM off and results in minor visual changes in Portal MF A DLSS test
       currentInstance.m_vkInstance.flags |= VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR;
-    } else if (material.getType() == RtSurfaceMaterialType::Opaque && !currentInstance.surface.alphaState.isFullyOpaque && currentInstance.surface.alphaState.isBlendingDisabled) {
+    } else if (currentInstance.isOpaque() && !currentInstance.surface.alphaState.isFullyOpaque && currentInstance.surface.alphaState.isBlendingDisabled) {
       // Alpha-tested geometry goes to the primary TLAS as non-opaque geometry with potential duplicate hits.
       currentInstance.m_geometryFlags = 0;
-    } else if (material.getType() == RtSurfaceMaterialType::Opaque && !currentInstance.surface.alphaState.isFullyOpaque) {
+    } else if (currentInstance.isOpaque() && !currentInstance.surface.alphaState.isFullyOpaque) {
       // Alpha-blended geometry goes to the primary TLAS as non-opaque geometry with no duplicate hits.
       currentInstance.m_geometryFlags = VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR;
       // Treat all non-transparent hits as any-hits
       currentInstance.m_vkInstance.flags |= VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR;
-    } else if (material.getType() == RtSurfaceMaterialType::Translucent) {
+    } else if (currentInstance.m_materialType == MaterialDataType::Translucent) {
       // Translucent (e.g. glass) geometry goes to the primary TLAS as non-opaque geometry with no duplicate hits.
       currentInstance.m_geometryFlags = VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR;
-    } else if (material.getType() == RtSurfaceMaterialType::RayPortal) {
+    } else if (currentInstance.m_materialType == MaterialDataType::RayPortal) {
       // Portals go to the primary TLAS as opaque.
       currentInstance.m_geometryFlags = VK_GEOMETRY_OPAQUE_BIT_KHR;
     } else if (currentInstance.surface.isClipPlaneEnabled) {
@@ -1190,31 +1199,8 @@ namespace dxvk {
     }
     
     // Enable backface culling for Portals to avoid additional hits to the back of Portals
-    if (material.getType() == RtSurfaceMaterialType::RayPortal) {
+    if (currentInstance.m_materialType == MaterialDataType::RayPortal) {
       currentInstance.m_vkInstance.flags &= ~VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
-    }
-
-    currentInstance.m_vkInstance.instanceCustomIndex = (currentInstance.m_vkInstance.instanceCustomIndex & ~(surfaceMaterialTypeMask << CUSTOM_INDEX_MATERIAL_TYPE_BIT));
-
-    // Extra instance meta data needed for Opacity Micromap Manager 
-    {
-      switch (materialData.getType()) {
-      case MaterialDataType::Opaque:
-        currentInstance.m_isAnimated = materialData.getOpaqueMaterialData().getSpriteSheetFPS() != 0;
-        currentInstance.m_vkInstance.instanceCustomIndex |= (surfaceMaterialTypeOpaque << CUSTOM_INDEX_MATERIAL_TYPE_BIT);
-        break;
-      case MaterialDataType::Translucent:
-        currentInstance.m_isAnimated = materialData.getTranslucentMaterialData().getSpriteSheetFPS() != 0;
-        currentInstance.m_vkInstance.instanceCustomIndex |= (surfaceMaterialTypeTranslucent << CUSTOM_INDEX_MATERIAL_TYPE_BIT);
-        break;
-      case MaterialDataType::RayPortal:
-        currentInstance.m_isAnimated = materialData.getRayPortalMaterialData().getSpriteSheetFPS() != 0;
-        currentInstance.m_vkInstance.instanceCustomIndex |= (surfaceMaterialTypeRayPortal << CUSTOM_INDEX_MATERIAL_TYPE_BIT);
-        break;
-      default:
-        currentInstance.m_isAnimated = false;
-        break;
-      }
     }
 
     // Update mask
@@ -1238,10 +1224,10 @@ namespace dxvk {
           }
         }
         else {
-          if (material.getType() == RtSurfaceMaterialType::Translucent) {
+          if (currentInstance.m_materialType == MaterialDataType::Translucent) {
             // Translucent material
             mask |= OBJECT_MASK_TRANSLUCENT;
-          } else if (material.getType() == RtSurfaceMaterialType::RayPortal) {
+          } else if (currentInstance.m_materialType == MaterialDataType::RayPortal) {
             // Portal
             mask |= OBJECT_MASK_PORTAL;
           } else {
@@ -1290,7 +1276,7 @@ namespace dxvk {
         (billboardsGotGenerated && RtxOptions::getEnableOpacityMicromap())) {
       // Inform the listeners
       for (auto& event : m_eventHandlers) {
-        event.onInstanceUpdatedCallback(currentInstance, material, hasTransformChanged, hasPreviousPositions);
+        event.onInstanceUpdatedCallback(currentInstance, drawCall, materialData, hasTransformChanged, hasPreviousPositions, isFirstUpdateThisFrame);
       }
     }
   }
