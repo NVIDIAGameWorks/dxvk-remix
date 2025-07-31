@@ -1265,7 +1265,6 @@ namespace {
         return;
       }
 
-      assert(srcImage.ptr());
       if (srcImage.ptr()) {
         dxvk::RtxContext::blitImageHelper(ctx, srcImage, cDest, VkFilter::VK_FILTER_NEAREST);
       }

@@ -157,6 +157,10 @@ namespace dxvk {
     m_sharedResource = new SharedResource(createImageResource(ctx, name, extent, format, numLayers, imageType, imageViewType, 
                                                               imageCreateFlags, extraUsageFlags, clearValue, mipLevels));
     m_view = m_sharedResource->resource.view;
+    
+    // Register that we are the owner, since the createImageResource call will perform a surface clear with `clearValue`.
+    registerAccess(AccessType::Write);
+
 #ifdef REMIX_DEVELOPMENT
     if (s_resourcesViewMap.find(m_view.ptr()) == s_resourcesViewMap.end()) {
       s_resourcesViewMap[m_view.ptr()] = std::string(name);
@@ -214,7 +218,8 @@ namespace dxvk {
   Resources::AliasedResource& Resources::AliasedResource::operator=(Resources::AliasedResource&& other) {
     if (this != &other) {
       m_device = other.m_device;
-      m_sharedResource = other.m_sharedResource;
+      const bool takeOwnershipAfterMove = other.ownsResource();
+      m_sharedResource = std::move(other.m_sharedResource);
 #ifdef REMIX_DEVELOPMENT
       s_resourcesViewMap.erase(m_view.ptr());
 #endif
@@ -223,6 +228,9 @@ namespace dxvk {
 #ifdef REMIX_DEVELOPMENT
       m_thisObjectAddress = std::make_shared<const AliasedResource*>(this);
       m_name = other.m_name;
+      if (takeOwnershipAfterMove) {
+        takeOwnership();
+      }
 #endif
     }
 
