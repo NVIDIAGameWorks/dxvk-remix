@@ -126,8 +126,7 @@ namespace dxvk {
     , m_geometryFlags(src.m_geometryFlags)
     , m_firstBillboard(src.m_firstBillboard)
     , m_billboardCount(src.m_billboardCount)
-    , m_categoryFlags(src.m_categoryFlags)
-    , m_primInstanceOwner(src.m_primInstanceOwner) {
+    , m_categoryFlags(src.m_categoryFlags) {
     // Members for which state carry over is intentionally skipped
     /*
        m_isMarkedForGC
@@ -137,6 +136,7 @@ namespace dxvk {
        m_frameCreated
        m_isCreatedByRenderer
        m_spatialCacheHash
+       m_primInstanceOwner
        buildGeometries
        buildRanges
        billboardIndices
@@ -1296,6 +1296,11 @@ namespace dxvk {
   }
 
   void InstanceManager::removeInstance(RtInstance* instance) {
+    // Always clean up replacement instance references, even for renderer-created instances
+    // to avoid use-after-free bugs in ReplacementInstance.prims
+    instance->getPrimInstanceOwner().setReplacementInstance(nullptr, ReplacementInstance::kInvalidReplacementIndex, instance, PrimInstance::Type::Instance);
+    instance->removeFromSpatialCache();
+    
     // In these cases we skip calling onInstanceDestroyed:
     //   Some view model and player instances are created in the renderer and don't have onInstanceAdded called,
     //   so not call onInstanceDestroyed either.

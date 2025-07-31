@@ -939,7 +939,6 @@ namespace dxvk {
     if (pBlas != nullptr && !instance.isUnlinkedForGC()) {
       pBlas->unlinkInstance(&instance);
     }
-    instance.getPrimInstanceOwner().setReplacementInstance(nullptr, ReplacementInstance::kInvalidReplacementIndex, &instance, PrimInstance::Type::Instance);
   }
 
   // Helper to populate the texture cache with this resource (and patch sampler if required for texture)

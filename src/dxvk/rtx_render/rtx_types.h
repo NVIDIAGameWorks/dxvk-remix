@@ -134,6 +134,13 @@ struct ReplacementInstance {
 // Wrapper utility to share the code for handling replacementInstance ownership.
 class PrimInstanceOwner {
 public:
+  ~PrimInstanceOwner() {
+    // m_replacementInstance should always be properly cleaned up before the PrimInstanceOwner 
+    // is destroyed. If this is hit, then whatever deleted the object holding the
+    // primInstanceOwner needs to call setReplacementInstance(nullptr...) before doing that 
+    // deletion.  If not, there will probably be use-after-free bugs later on.
+    assert(m_replacementInstance == nullptr);
+  }
   bool isRoot(void* owner) const;
   void setReplacementInstance(ReplacementInstance* replacementInstance, size_t replacementIndex, void* owner, PrimInstance::Type type);
   ReplacementInstance* getReplacementInstance() const { return m_replacementInstance; }
