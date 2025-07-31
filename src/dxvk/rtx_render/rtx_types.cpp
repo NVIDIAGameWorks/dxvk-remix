@@ -141,7 +141,7 @@ namespace dxvk {
     if (m_replacementInstance && m_replacementIndex != ReplacementInstance::kInvalidReplacementIndex) {
       
       // Inside a replacement, check if it's the root:
-      if (isRoot(owner) && replacementInstance != nullptr) {
+      if (isRoot(owner)) {
         // This is the root of a replacement being deleted.
         // Clear the root, and delete the replacementInstance.
         // the ReplacementInstance destructor will call this function again, which will

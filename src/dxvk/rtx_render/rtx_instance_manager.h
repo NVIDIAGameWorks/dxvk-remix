@@ -66,11 +66,12 @@ public:
   Vector3 getWorldPosition() const { return Vector3{ m_vkInstance.transform.matrix[0][3], m_vkInstance.transform.matrix[1][3], m_vkInstance.transform.matrix[2][3] }; }
   const Vector3& getPrevWorldPosition() const { return surface.prevObjectToWorld.data[3].xyz(); }
 
-  void removeFromSpatialCache() const {
-    if (m_isCreatedByRenderer) {
+  void removeFromSpatialCache() {
+    if (m_isCreatedByRenderer || !m_linkedBlas || m_isUnlinkedForGC || m_spatialCacheHash == kEmptyHash) {
       return;
     }
     m_linkedBlas->getSpatialMap().erase(m_spatialCacheHash);
+    m_spatialCacheHash = kEmptyHash;
   }
 
   bool isCreatedThisFrame(uint32_t frameIndex) const { return frameIndex == m_frameCreated; }
@@ -214,7 +215,7 @@ private:
 
   CategoryFlags m_categoryFlags;
 
-  XXH64_hash_t m_spatialCacheHash = 0;
+  XXH64_hash_t m_spatialCacheHash = kEmptyHash;
 
   // This can be used to access all lights and instances that originate from the same draw call.
   // Left as nullptr if the draw call does not have replacement data.
@@ -324,7 +325,8 @@ public:
 private:
   ResourceCache* m_pResourceCache;
 
-  uint64_t m_nextInstanceId = 0;
+  // Start at 1 to avoid using 0 - makes it easier to detect a 0 initialized RtInstance (which is invalid)
+  uint64_t m_nextInstanceId = 1;
 
   std::vector<RtInstance*> m_instances; 
   std::vector<RtInstance*> m_viewModelCandidates;
