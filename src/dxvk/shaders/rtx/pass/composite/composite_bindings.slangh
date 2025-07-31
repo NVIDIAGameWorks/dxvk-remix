@@ -33,7 +33,7 @@ ConstantBuffer<CompositeArgs> cb;
 // Inputs
 
 layout(r16ui, binding = COMPOSITE_SHARED_FLAGS_INPUT)
-RWTexture2D<uint> SharedFlags;
+RWTexture2D<uint16_t> SharedFlags;
 layout(binding = COMPOSITE_SHARED_RADIANCE_RG_INPUT)
 Texture2D<float2> SharedRadianceRG;
 layout(binding = COMPOSITE_SHARED_RADIANCE_B_INPUT)

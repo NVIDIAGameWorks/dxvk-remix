@@ -59,7 +59,7 @@ layout(rgba16, binding = RAY_RECONSTRUCTION_SECONDARY_VIRTUAL_WORLD_SHADING_NORM
 Texture2D<float4> SecondaryVirtualWorldNormalPerceptualRoughness;
 
 layout(r16ui, binding = RAY_RECONSTRUCTION_SHARED_FLAGS_INPUT)
-Texture2D<uint> SharedFlags;
+Texture2D<uint16_t> SharedFlags;
 
 layout(binding = RAY_RECONSTRUCTION_COMBINED_INPUT)
 Texture2D<float4> CombinedInput;
@@ -70,8 +70,8 @@ Texture2D<float4> InNormalsDLSSRR;
 layout(r32f, binding = RAY_RECONSTRUCTION_DEPTHS_INPUT)
 Texture2D<float4> InDepth;
 
-layout(rgba16, binding = RAY_RECONSTRUCTION_MOTION_VECTOR_INPUT)
-Texture2D<float4> InMotionVector;
+layout(rg16f, binding = RAY_RECONSTRUCTION_MOTION_VECTOR_INPUT)
+Texture2D<float2> InMotionVector;
 
 layout(r16f, binding = RAY_RECONSTRUCTION_PRIMARY_CONE_RADIUS_INPUT)
 Texture2D<float> PrimaryConeRadius;
@@ -341,7 +341,7 @@ void main(uint2 threadId : SV_DispatchThreadID)
     storeInDebugView(threadId, InDepth[threadId].x);
     break;
   case DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_SCREEN_SPACE_MOTION_VECTOR:
-    storeInDebugView(threadId, InMotionVector[threadId].xyz);
+    storeInDebugView(threadId, InMotionVector[threadId]);
     break;
   case DEBUG_VIEW_NAN:
     bool isValid = true;
@@ -367,7 +367,7 @@ void main(uint2 threadId : SV_DispatchThreadID)
     isValid &= isValidValue(InDepth[threadId].x);
 
     // DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_SCREEN_SPACE_MOTION_VECTOR
-    isValid &= isValidValue(InMotionVector[threadId].xyz);
+    isValid &= isValidValue(InMotionVector[threadId]);
     
     accumulateInDebugViewAnd(threadId, isValid);
   }

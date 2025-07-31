@@ -402,7 +402,11 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
 
             const float transparencyBandwidth = 0.05;
             const float distanceWeight = 0.5;
-            float weight = exp(-abs(neighborSurface.backgroundTransparency - surface.backgroundTransparency) / transparencyBandwidth + -distanceWeight* dot(offset, offset));
+            float weight = exp(
+              -abs(neighborSurface.backgroundTransparency - surface.backgroundTransparency) / transparencyBandwidth +
+              // Note: Convert offset to float to avoid need for integer dot product Vulkan feature to be enabled.
+              -distanceWeight * dot(float2(offset), float2(offset))
+            );
 
             minHitT = min(minHitT, neighborSurface.hitT);
             maxHitT = max(maxHitT, neighborSurface.hitT);

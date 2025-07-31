@@ -90,17 +90,17 @@ Texture2D<float> PrimaryPositionError;
 layout(r32ui, binding = RTXDI_COMPUTE_GRADIENTS_BINDING_TEMPORAL_POSITION_INPUT)
 Texture2D<uint> TemporalPosition;
 
-layout(rg16f, binding = RTXDI_COMPUTE_GRADIENTS_BINDING_CURRENT_ILLUMINANCE_INPUT)
+layout(r16f, binding = RTXDI_COMPUTE_GRADIENTS_BINDING_CURRENT_ILLUMINANCE_INPUT)
 Texture2D<float> CurrentRtxdiIlluminance;
 
-layout(rg16f, binding = RTXDI_COMPUTE_GRADIENTS_BINDING_PREVIOUS_ILLUMINANCE_INPUT)
+layout(r16f, binding = RTXDI_COMPUTE_GRADIENTS_BINDING_PREVIOUS_ILLUMINANCE_INPUT)
 Texture2D<float> PreviousRtxdiIlluminance;
 
 layout(r32f, binding = RTXDI_COMPUTE_GRADIENTS_BINDING_HIT_DISTANCE_INPUT)
 Texture2D<float> PrimaryHitDistance;
 
 layout(r16ui, binding = RTXDI_COMPUTE_GRADIENTS_BINDING_SHARED_FLAGS_INPUT)
-Texture2D<uint> SharedFlags;
+Texture2D<uint16_t> SharedFlags;
 
 layout(rg16f, binding = RTXDI_COMPUTE_GRADIENTS_BINDING_GRADIENTS_OUTPUT)
 RWTexture2DArray<float2> RtxdiGradients;

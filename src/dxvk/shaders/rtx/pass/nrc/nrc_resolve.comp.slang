@@ -48,7 +48,7 @@ layout(binding = NRC_RESOLVE_BINDING_NRC_DEBUG_TRAINING_PATH_INFO_INPUT_OUTPUT)
 RWStructuredBuffer<NrcDebugTrainingPathInfo> DebugTrainingPathInfo;
 
 layout(r16ui, binding = NRC_RESOLVE_BINDING_SHARED_FLAGS_INPUT)
-Texture2D<uint> SharedFlags;
+Texture2D<uint16_t> SharedFlags;
 
 
 layout(binding = NRC_RESOLVE_BINDING_RAYTRACE_ARGS_INPUT)
