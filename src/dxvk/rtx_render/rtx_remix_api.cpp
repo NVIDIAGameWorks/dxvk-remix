@@ -131,6 +131,10 @@ namespace {
       return Vector3{ v.x, v.y, v.z };
     }
 
+    Vector4 tovec4(const remixapi_Float4D& v) {
+      return Vector4 { v.x, v.y, v.z, v.w };
+    }
+
     Vector3d tovec3d(const remixapi_Float3D& v) {
       return Vector3d{ v.x, v.y, v.z };
     }
@@ -610,6 +614,52 @@ namespace {
       return result;
     }
 
+    RtxParticleSystemDesc toRtParticleDesc(const remixapi_InstanceInfoParticleSystemEXT& info) {
+      RtxParticleSystemDesc desc {};
+
+      // Colors
+      desc.minSpawnColor = tovec4(info.minSpawnColor);
+      desc.maxSpawnColor = tovec4(info.maxSpawnColor);
+
+      // Lifetimes
+      desc.minTtl = info.minTimeToLive;
+      desc.maxTtl = info.maxTimeToLive;
+
+      // Initial velocity
+      desc.initialVelocityFromNormal = info.initialVelocityFromNormal;
+      desc.initialVelocityConeAngleDegrees = info.initialVelocityConeAngleDegrees;
+
+      // Size/physics
+      desc.minParticleSize = info.minParticleSize;
+      desc.maxParticleSize = info.maxParticleSize;
+      desc.gravityForce = info.gravityForce;
+      desc.maxSpeed = info.maxSpeed;
+      desc.motionTrailMultiplier = info.motionTrailMultiplier;
+
+      // Turbulence
+      desc.turbulenceFrequency = info.turbulenceFrequency;
+      desc.turbulenceAmplitude = info.turbulenceAmplitude;
+
+      // Spawn and rotation
+      desc.spawnRate = info.spawnRatePerSecond;
+      desc.minRotationSpeed = info.minRotationSpeed;
+      desc.maxRotationSpeed = info.maxRotationSpeed;
+
+      // Collision
+      desc.collisionThickness = info.collisionThickness;
+      desc.collisionRestitution = info.collisionRestitution;
+
+      // Counts/flags
+      desc.maxNumParticles = info.maxNumParticles;
+      desc.useTurbulence = static_cast<uint8_t>(info.useTurbulence);
+      desc.alignParticlesToVelocity = static_cast<uint8_t>(info.alignParticlesToVelocity);
+      desc.useSpawnTexcoords = static_cast<uint8_t>(info.useSpawnTexcoords);
+      desc.enableCollisionDetection = static_cast<uint8_t>(info.enableCollisionDetection);
+      desc.enableMotionTrail = static_cast<uint>(info.enableMotionTrail);
+
+      return desc;
+    }
+
     ExternalDrawState toRtDrawState(const remixapi_InstanceInfo& info) {
       return RemixAPIPrivateAccessor::toRtDrawState(info);
     }
@@ -664,12 +714,18 @@ dxvk::ExternalDrawState dxvk::RemixAPIPrivateAccessor::toRtDrawState(const remix
     prototype.materialData.isTextureFactorBlend = extBlend->isTextureFactorBlend;
   }
 
+  std::optional<RtxParticleSystemDesc> optParticles;
+  if (auto extParticles = pnext::find<remixapi_InstanceInfoParticleSystemEXT>(&info)) {
+    optParticles.emplace(convert::toRtParticleDesc(*extParticles));
+  }
+
   return ExternalDrawState {
     prototype,
     info.mesh,
     convert::categoryToCameraType(info.categoryFlags),
     convert::toRtCategories(info.categoryFlags),
-    convert::tobool(info.doubleSided)
+    convert::tobool(info.doubleSided),
+    optParticles
   };
 }
 

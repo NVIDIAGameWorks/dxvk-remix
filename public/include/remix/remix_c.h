@@ -88,10 +88,11 @@ extern "C" {
     REMIXAPI_STRUCT_TYPE_CAMERA_INFO_PARAMETERIZED_EXT        = 17,
     REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_SUBSURFACE_EXT  = 18,
     REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_OBJECT_PICKING_EXT     = 19,
-    REMIXAPI_STRUCT_TYPE_LIGHT_INFO_DOME_EXT                  = 20,
-    REMIXAPI_STRUCT_TYPE_LIGHT_INFO_USD_EXT                   = 21,
-    REMIXAPI_STRUCT_TYPE_STARTUP_INFO                         = 22,
-    REMIXAPI_STRUCT_TYPE_PRESENT_INFO                         = 23,
+    REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT    = 20,
+    REMIXAPI_STRUCT_TYPE_LIGHT_INFO_DOME_EXT                  = 21,
+    REMIXAPI_STRUCT_TYPE_LIGHT_INFO_USD_EXT                   = 22,
+    REMIXAPI_STRUCT_TYPE_STARTUP_INFO                         = 23,
+    REMIXAPI_STRUCT_TYPE_PRESENT_INFO                         = 24,
     // NOTE: if adding a new struct, register it in 'rtx_remix_specialization.inl'
   } remixapi_StructType;
 
@@ -418,6 +419,35 @@ extern "C" {
   } remixapi_InstanceCategoryBit;
 
   typedef uint32_t remixapi_InstanceCategoryFlags;
+
+  typedef struct remixapi_InstanceInfoParticleSystemEXT {
+    remixapi_StructType      sType;
+    void*                    pNext;
+    uint32_t         maxNumParticles;
+    remixapi_Bool    useTurbulence;
+    remixapi_Bool    alignParticlesToVelocity;
+    remixapi_Bool    useSpawnTexcoords;
+    remixapi_Bool    enableCollisionDetection;
+    remixapi_Bool    enableMotionTrail;
+    remixapi_Float4D minSpawnColor;
+    remixapi_Float4D maxSpawnColor;
+    float            minTimeToLive;
+    float            maxTimeToLive;
+    float            initialVelocityFromNormal;
+    float            initialVelocityConeAngleDegrees;
+    float            minParticleSize;
+    float            maxParticleSize;
+    float            gravityForce;
+    float            maxSpeed;
+    float            turbulenceFrequency;
+    float            turbulenceAmplitude;
+    float            minRotationSpeed;
+    float            maxRotationSpeed;
+    float            spawnRatePerSecond;
+    float            collisionThickness;
+    float            collisionRestitution;
+    float            motionTrailMultiplier;
+  } remixapi_InstanceInfoParticleSystemEXT;
 
   typedef struct remixapi_InstanceInfo {
     remixapi_StructType            sType;

@@ -730,6 +730,38 @@ namespace remix {
     }
   };
 
+  struct InstanceInfoParticleSystemEXT : remixapi_InstanceInfoParticleSystemEXT {
+    InstanceInfoParticleSystemEXT() {
+      sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT;
+      pNext = nullptr;
+      maxNumParticles = 10000;
+      spawnRatePerSecond = 0.f;
+      minTimeToLive = 3.0f;
+      maxTimeToLive = 6.0f;
+      minParticleSize = 1.0f;
+      maxParticleSize = 3.0f;
+      minRotationSpeed = 0.1f;
+      maxRotationSpeed = 1.0f;
+      minSpawnColor = {1, 1, 1, 1};
+      maxSpawnColor = {1, 1, 1, 1};
+      useSpawnTexcoords = false;
+      initialVelocityFromNormal = 10.0f;
+      initialVelocityConeAngleDegrees = 0.0f;
+      maxSpeed = 3.0f;
+      gravityForce = -0.5f;
+      useTurbulence = true;
+      turbulenceAmplitude = 5.0f;
+      turbulenceFrequency = 0.05f;
+      enableCollisionDetection = false;
+      collisionRestitution = 0.5f;
+      collisionThickness = 5.0f;
+      alignParticlesToVelocity = false;
+      enableMotionTrail = false;
+      motionTrailMultiplier = 1.0f;
+      static_assert(sizeof InstanceInfoParticleSystemEXT == 136);
+    }
+  };
+
   using InstanceCategoryBit = remixapi_InstanceCategoryBit;
   using InstanceCategoryFlags = remixapi_InstanceCategoryFlags;
 
