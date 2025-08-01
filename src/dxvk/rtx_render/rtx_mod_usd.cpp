@@ -57,7 +57,7 @@
 #include <pxr/base/arch/fileSystem.h>
 #include <pxr/base/plug/registry.h>
 #include <pxr/base/plug/plugin.h>
-#include <src/usd-plugins/RemixParticleSystem/Prim.h>
+#include <src/usd-plugins/RemixParticleSystem/ParticleSystemAPI.h>
 #include "../../lssusd/usd_include_end.h"
 #include "../util/util_watchdog.h"
 
@@ -112,7 +112,7 @@ private:
   bool processMesh(const pxr::UsdPrim& prim, Args& args);
   void processPrim(Args& args, const pxr::UsdPrim& prim);
   void processPointInstancer(Args& args, const pxr::UsdPrim& prim);
-  bool processParticleSystem(Args& args, const pxr::UsdPrim& prim);
+  std::optional<RtxParticleSystemDesc> processParticleSystem(Args& args, const pxr::UsdPrim& prim);
 
   void processLight(Args& args, const pxr::UsdPrim& lightPrim, const bool isOverride);
   void processGraph(Args& args, const uint32_t index);
@@ -403,7 +403,6 @@ void UsdMod::Impl::processPrim(Args& args, const pxr::UsdPrim& prim) {
 
   const XXH64_hash_t usdOriginHash = getStrongestOpinionatedPathHash(prim);
 
-
   MeshReplacement* pTemp;
   if (!m_owner.m_replacements->getObject(usdOriginHash, pTemp)) {
     // First time seeing this mesh, then process it.
@@ -429,10 +428,13 @@ void UsdMod::Impl::processPrim(Args& args, const pxr::UsdPrim& prim) {
 
   Categorizer categoryFlags = processCategoryFlags(prim);
 
+  std::optional<RtxParticleSystemDesc> particleSystem = processParticleSystem(args, prim);
+
   if (geomSubsets.empty()) {
     MeshReplacement* pGeometryData;
     if (m_owner.m_replacements->getObject(usdOriginHash, pGeometryData)) {
       AssetReplacement newReplacementMesh(prim.GetPrimPath().GetString(), pGeometryData, materialData, categoryFlags, replacementToObject);
+      newReplacementMesh.particleSystem = particleSystem;
       args.meshes.push_back(newReplacementMesh);
     }
   } else {
@@ -445,6 +447,7 @@ void UsdMod::Impl::processPrim(Args& args, const pxr::UsdPrim& prim) {
         if (mat) {
           newReplacementMesh.materialData = mat;
         }
+        newReplacementMesh.particleSystem = particleSystem;
         args.meshes.push_back(newReplacementMesh);
       }
     }
@@ -509,57 +512,13 @@ inline Vector4 toFloat4(const pxr::GfVec4f& v) {
   return f;
 }
 
-bool UsdMod::Impl::processParticleSystem(Args& args, const pxr::UsdPrim& prim) {
+std::optional<RtxParticleSystemDesc> UsdMod::Impl::processParticleSystem(Args& args, const pxr::UsdPrim& prim) {
   using namespace pxr;
 
-  const RemixParticleSystemPrim particleSystem(prim);
-
-  UsdRelationship emitterRel = particleSystem.GetEmitterMeshRel();
-  if (!emitterRel) {
-    return false;
+  if (!prim.HasAPI<RemixParticleSystemAPI>()) {
+    return std::nullopt;
   }
-
-  // esolve targets (could be many; we take the first)
-  SdfPathVector targets;
-  emitterRel.GetTargets(&targets);
-  if (targets.empty()) {
-    return false;
-  }
-
-  // Lookup the prim at that path
-  UsdPrim meshPrim;
-  UsdStagePtr stage = prim.GetStage();
-  const SdfPath primPath = prim.GetPath();
-
-  for (const SdfPath& t : targets) {
-    // Resolve to an absolute path
-    SdfPath absPath;
-    if (t.IsAbsolutePath()) {
-      absPath = t;
-    } else {
-      // relative name like "Cube" or "Some/Child"
-      absPath = primPath.AppendPath(t);
-    }
-
-    meshPrim = stage->GetPrimAtPath(absPath);
-    if (meshPrim) {
-      break;
-    }
-  }
-
-  if (!meshPrim) {
-    Logger::warn(str::format("Emitter mesh target ", targets[0].GetText(), "' not found"));
-    return false;
-  }
-
-  const XXH64_hash_t usdOriginHash = getStrongestOpinionatedPathHash(meshPrim);
-  MeshReplacement* pTemp;
-  if (!m_owner.m_replacements->getObject(usdOriginHash, pTemp)) {
-    // First time seeing this mesh, then process it.
-    if (!processMesh(meshPrim, args)) {
-      return false;
-    }
-  }
+  RemixParticleSystemAPI particleSystem(prim);
 
   MaterialData* materialData = processMaterialUser(args, prim);
 
@@ -567,13 +526,13 @@ bool UsdMod::Impl::processParticleSystem(Args& args, const pxr::UsdPrim& prim) {
 
   // Helper macro to read an attribute into a float or int field
 #define READ_ATTR(Type, attrName, field) \
-            if (UsdAttribute attr = particleSystem.Get##attrName##Attr()) { \
+            if (UsdAttribute attr = particleSystem.GetPrimvarsParticle##attrName##Attr()) { \
                 Type result; \
                 attr.Get<Type>(&result); \
                 particleDesc.field = (Type)result; \
             } 
 #define READ_ATTR_CONV(Type, attrName, field, conversionFunc) \
-            if (UsdAttribute attr = particleSystem.Get##attrName##Attr()) { \
+            if (UsdAttribute attr = particleSystem.GetPrimvarsParticle##attrName##Attr()) { \
                 Type result; \
                 attr.Get<Type>(&result); \
                 particleDesc.field = conversionFunc(result); \
@@ -608,34 +567,7 @@ bool UsdMod::Impl::processParticleSystem(Args& args, const pxr::UsdPrim& prim) {
 #undef READ_ATTR
 #undef READ_ATTR_CONV
 
-  bool unused = false;
-  pxr::GfMatrix4f localToRoot = pxr::GfMatrix4f(args.xformCache.ComputeRelativeTransform(prim, args.rootPrim.GetParent(), &unused));
-  const auto& replacementToObjectAsArray = reinterpret_cast<const float(&)[4][4]>(localToRoot);
-  const Matrix4 replacementToObject(replacementToObjectAsArray);
-
-  std::vector<pxr::UsdGeomSubset> geomSubsets;
-  auto children = prim.GetFilteredChildren(pxr::UsdPrimIsActive);
-  for (auto child : children) {
-    if (child.IsA<pxr::UsdGeomSubset>()) {
-      geomSubsets.emplace_back(child);
-    }
-  }
-
-  if (geomSubsets.empty()) {
-    Categorizer categoryFlags = processCategoryFlags(prim);
-
-    MeshReplacement* pGeometryData;
-    if (m_owner.m_replacements->getObject(usdOriginHash, pGeometryData)) {
-      AssetReplacement newReplacementMesh(prim.GetPrimPath().GetString(), pGeometryData, materialData, categoryFlags, replacementToObject);
-      // Add the particle system descriptor
-      newReplacementMesh.particleSystem = particleDesc;
-      args.meshes.push_back(newReplacementMesh);
-    }
-  } else {
-    Logger::err(str::format("Using UsdGeomSubset as a particle emitter is currently unsupported, prim=", prim.GetPath().GetAsString()));
-  }
-
-  return true;
+  return particleDesc;
 }
 
 void UsdMod::Impl::processPointInstancer(Args& args, const pxr::UsdPrim& prim) {
@@ -894,8 +826,6 @@ void UsdMod::Impl::processReplacementRecursive(Args& args, const pxr::UsdPrim& p
   } else if (prim.IsA<pxr::UsdGeomPointInstancer>()) {
     processPointInstancer(args, prim);
     return;  // meshes with pointInstancer parents don't render in USD Composer, so mimicing that behavior here.
-  } else if (prim.IsA<pxr::RemixParticleSystemPrim>()) {
-    processParticleSystem(args, prim);
   } else if (LightData::isSupportedUsdLight(prim) && (!isRoot || !explicitlyNoReferences(prim))) {
     processLight(args, prim, isRoot);
   } else if (prim.GetTypeName() == kGraphPrimType && !isRoot) {
