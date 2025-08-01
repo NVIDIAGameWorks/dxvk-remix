@@ -513,6 +513,44 @@ void InstanceInfoBlend::_dtor() {
 }
 
 
+#define InstanceInfoParticleSystemVars sType, \
+                                       maxNumParticles, \
+                                       useTurbulence, \
+                                       alignParticlesToVelocity, \
+                                       useSpawnTexcoords, \
+                                       enableCollisionDetection, \
+                                       enableMotionTrail, \
+                                       minSpawnColor, \
+                                       maxSpawnColor, \
+                                       minTimeToLive, \
+                                       maxTimeToLive, \
+                                       initialVelocityFromNormal, \
+                                       initialVelocityConeAngleDegrees, \
+                                       minParticleSize, \
+                                       maxParticleSize, \
+                                       gravityForce, \
+                                       maxSpeed, \
+                                       turbulenceFrequency, \
+                                       turbulenceAmplitude, \
+                                       minRotationSpeed, \
+                                       maxRotationSpeed, \
+                                       spawnRatePerSecond, \
+                                       collisionThickness, \
+                                       collisionRestitution, \
+                                       motionTrailMultiplier
+uint32_t InstanceInfoParticleSystem::_calcSize() const {
+  return fold_helper::calcSize(InstanceInfoParticleSystemVars);
+}
+void InstanceInfoParticleSystem::_serialize(void*& pSerialize) const {
+  fold_helper::serialize(pSerialize, InstanceInfoParticleSystemVars);
+}
+void InstanceInfoParticleSystem::_deserialize(void*& pDeserialize) {
+  pNext = nullptr;
+  fold_helper::deserialize(pDeserialize, InstanceInfoParticleSystemVars);
+}
+void InstanceInfoParticleSystem::_dtor() { }
+
+
 uint32_t InstanceInfoTransforms::_calcSize() const {
   uint32_t size = 0;
   size += sizeOf(sType);

@@ -88,12 +88,14 @@ extern "C" {
     REMIXAPI_STRUCT_TYPE_CAMERA_INFO_PARAMETERIZED_EXT        = 17,
     REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_SUBSURFACE_EXT  = 18,
     REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_OBJECT_PICKING_EXT     = 19,
-    REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT    = 20,
-    REMIXAPI_STRUCT_TYPE_LIGHT_INFO_DOME_EXT                  = 21,
-    REMIXAPI_STRUCT_TYPE_LIGHT_INFO_USD_EXT                   = 22,
-    REMIXAPI_STRUCT_TYPE_STARTUP_INFO                         = 23,
-    REMIXAPI_STRUCT_TYPE_PRESENT_INFO                         = 24,
+    REMIXAPI_STRUCT_TYPE_LIGHT_INFO_DOME_EXT                  = 20,
+    REMIXAPI_STRUCT_TYPE_LIGHT_INFO_USD_EXT                   = 21,
+    REMIXAPI_STRUCT_TYPE_STARTUP_INFO                         = 22,
+    REMIXAPI_STRUCT_TYPE_PRESENT_INFO                         = 23,
+    REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT    = 24,
     // NOTE: if adding a new struct, register it in 'rtx_remix_specialization.inl'
+    //       and only extend this enum by appending, never adjust the order of these 
+    //       as that will break backwards compatibility.
   } remixapi_StructType;
 
   typedef enum remixapi_ErrorCode {
