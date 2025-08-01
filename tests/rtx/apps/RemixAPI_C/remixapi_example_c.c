@@ -144,6 +144,7 @@ void render(uint32_t windowWidth, uint32_t windowHeight) {
       .sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT,
       .maxNumParticles = 1000,
       .spawnRatePerSecond = 10.f,
+      .hideEmitter = 0,
       .gravityForce = 1.f,
       .maxSpeed = 1.f,
       .minParticleSize = 1.f,

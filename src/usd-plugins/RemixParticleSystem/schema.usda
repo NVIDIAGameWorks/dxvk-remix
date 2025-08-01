@@ -90,6 +90,12 @@ class "ParticleSystemAPI" (
             displayName = "Maximum Spawn Color"
         )
 
+    bool primvars:particle:hideEmitter = false (
+            doc = "Hide or show the particle emitter in the rendered output."
+            displayGroup = "Spawn"
+            displayName = "Hide Emitter"
+        )
+
     bool primvars:particle:useSpawnTexcoords = false (
             doc = "Use the texture coordinates of the emitter mesh when sampling spawn positions or velocities."
             displayGroup = "Spawn"

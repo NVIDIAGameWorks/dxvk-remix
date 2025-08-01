@@ -733,11 +733,6 @@ namespace dxvk {
         RtInstance* instance = processDrawCallState(ctx, newDrawCallState, renderMaterialData, existingInstance, pParticleSystemDesc);
 
         if (instance) {
-          if (pParticleSystemDesc) {
-            // We dont draw the mesh emitters for particle systems
-            instance->setHidden(true);
-          }
-          
           if (replacementInstance == nullptr) {
             // first mesh in this replacement, so it becomes the root.
             replacementInstance = instance->getPrimInstanceOwner().getReplacementInstance();
@@ -1019,6 +1014,10 @@ namespace dxvk {
     if (instance && pParticleSystemDesc) {
       RtxParticleSystemManager& particleSystem = device()->getCommon()->metaParticleSystem();
       particleSystem.spawnParticles(ctx.ptr(), *pParticleSystemDesc, instance->getVectorIdx(), drawCallState, renderMaterialData);
+
+      if(pParticleSystemDesc->hideEmitter) {
+        instance->setHidden(true);
+      }
     }
 
     return instance; 

@@ -520,6 +520,7 @@ void InstanceInfoBlend::_dtor() {
                                        useSpawnTexcoords, \
                                        enableCollisionDetection, \
                                        enableMotionTrail, \
+                                       hideEmitter, \
                                        minSpawnColor, \
                                        maxSpawnColor, \
                                        minTimeToLive, \

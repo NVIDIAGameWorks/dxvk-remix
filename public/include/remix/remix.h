@@ -758,7 +758,8 @@ namespace remix {
       alignParticlesToVelocity = false;
       enableMotionTrail = false;
       motionTrailMultiplier = 1.0f;
-      static_assert(sizeof InstanceInfoParticleSystemEXT == 136);
+      hideEmitter = false;
+      static_assert(sizeof InstanceInfoParticleSystemEXT == 144);
     }
   };
 

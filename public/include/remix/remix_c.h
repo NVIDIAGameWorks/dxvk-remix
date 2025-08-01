@@ -431,6 +431,7 @@ extern "C" {
     remixapi_Bool    useSpawnTexcoords;
     remixapi_Bool    enableCollisionDetection;
     remixapi_Bool    enableMotionTrail;
+    remixapi_Bool    hideEmitter;
     remixapi_Float4D minSpawnColor;
     remixapi_Float4D maxSpawnColor;
     float            minTimeToLive;

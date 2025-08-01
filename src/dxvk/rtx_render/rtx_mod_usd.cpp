@@ -560,6 +560,7 @@ std::optional<RtxParticleSystemDesc> UsdMod::Impl::processParticleSystem(Args& a
   READ_ATTR(bool, EnableCollisionDetection, enableCollisionDetection);
   READ_ATTR(bool, AlignParticlesToVelocity, alignParticlesToVelocity);
   READ_ATTR(bool, EnableMotionTrail, enableMotionTrail);
+  READ_ATTR(bool, HideEmitter, hideEmitter);
   READ_ATTR(float, SpawnRatePerSecond, spawnRate);
   READ_ATTR_CONV(GfVec4f, MaxSpawnColor, maxSpawnColor, toFloat4);
   READ_ATTR_CONV(GfVec4f, MinSpawnColor, minSpawnColor, toFloat4);
