@@ -49,6 +49,7 @@
 #include "rtx_objectpicking.h"
 #include "rtx_mod_manager.h"
 #include "graph/rtx_graph_manager.h"
+#include "rtx_particle_system.h"
 #include <d3d9types.h>
 
 namespace dxvk 
@@ -107,6 +108,7 @@ struct ExternalDrawState {
   CameraType::Enum cameraType {};
   CategoryFlags categories {};
   bool doubleSided {};
+  const std::optional<RtxParticleSystemDesc> optionalParticleDesc {};
 };
 
 // Scene manager is a super manager, it's the interface between rendering and world state
@@ -127,8 +129,6 @@ public:
   void onDestroy();
 
   void submitDrawState(Rc<DxvkContext> ctx, const DrawCallState& input, const MaterialData* overrideMaterialData);
-
-
   void submitExternalDraw(Rc<DxvkContext> ctx, ExternalDrawState&& state);
   
   bool areAllReplacementsLoaded() const;
@@ -244,7 +244,8 @@ private:
   RtInstance* processDrawCallState(Rc<DxvkContext> ctx, 
                                    const DrawCallState& blasInput, 
                                    MaterialData& materialData, 
-                                   RtInstance* existingInstance = nullptr);
+                                   RtInstance* existingInstance = nullptr,
+                                   const RtxParticleSystemDesc* pParticleSystemDesc = nullptr);
 
   const RtSurfaceMaterial& createSurfaceMaterial(const MaterialData& renderMaterialData,
                                                  const DrawCallState& drawCallState,

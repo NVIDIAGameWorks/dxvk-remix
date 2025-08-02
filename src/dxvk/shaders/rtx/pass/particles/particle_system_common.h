@@ -74,7 +74,7 @@ struct RtxParticleSystemDesc {
   float collisionRestitution;
   uint enableMotionTrail;
   float motionTrailMultiplier;
-  uint pad2;
+  uint hideEmitter;
 
 #ifdef __cplusplus
   RtxParticleSystemDesc() {

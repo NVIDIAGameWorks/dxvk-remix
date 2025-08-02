@@ -45,7 +45,6 @@
 #include "dxvk_scoped_annotation.h"
 #include "rtx_lights_data.h"
 #include "rtx_light_utils.h"
-#include "rtx_particle_system.h"
 
 #include "../util/util_globaltime.h"
 
@@ -559,7 +558,8 @@ namespace dxvk {
     if (pReplacements != nullptr) {
       drawReplacements(ctx, &input, pReplacements, renderMaterialData);
     } else {
-      processDrawCallState(ctx, input, renderMaterialData);
+      const RtxParticleSystemDesc* pParticleDesc = input.categories.test(InstanceCategories::ParticleEmitter) ? &RtxParticleSystemManager::createGlobalParticleSystemDesc() : nullptr;
+      processDrawCallState(ctx, input, renderMaterialData, nullptr, pParticleDesc);
     }
   }
 
@@ -726,20 +726,13 @@ namespace dxvk {
           }
         }
 
+        const RtxParticleSystemDesc* pParticleSystemDesc = replacement.particleSystem.has_value() ? &replacement.particleSystem.value() : nullptr;
+
         RtInstance* existingInstance = replacementInstance ? replacementInstance->prims[i].getInstance() : nullptr;
         // Only use findSimilarInstance if we're processing the root of a replacement - all others should just rely on the existingInstance.
-        RtInstance* instance = processDrawCallState(ctx, newDrawCallState, renderMaterialData, existingInstance);
+        RtInstance* instance = processDrawCallState(ctx, newDrawCallState, renderMaterialData, existingInstance, pParticleSystemDesc);
 
         if (instance) {
-          const bool isParticleSystem = replacement.particleSystem.has_value();
-          if (isParticleSystem) {
-            // We dont draw the mesh emitters for particle systems
-            instance->setHidden(true);
-
-            RtxParticleSystemManager& particleSystem = device()->getCommon()->metaParticleSystem();
-            particleSystem.spawnParticles(ctx.ptr(), replacement.particleSystem.value(), instance->getVectorIdx(), newDrawCallState, renderMaterialData);
-          }
-          
           if (replacementInstance == nullptr) {
             // first mesh in this replacement, so it becomes the root.
             replacementInstance = instance->getPrimInstanceOwner().getReplacementInstance();
@@ -956,7 +949,7 @@ namespace dxvk {
     textureManager.addTexture(inputTexture, samplerFeedbackStamp, async, textureIndex);
   }
 
-  RtInstance* SceneManager::processDrawCallState(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, MaterialData& renderMaterialData, RtInstance* existingInstance) {
+  RtInstance* SceneManager::processDrawCallState(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, MaterialData& renderMaterialData, RtInstance* existingInstance, const RtxParticleSystemDesc* pParticleSystemDesc) {
     ScopedCpuProfileZone();
 
     if (renderMaterialData.getIgnored()) {
@@ -1018,9 +1011,13 @@ namespace dxvk {
       }
     }
 
-    if (instance && drawCallState.getCategoryFlags().test(InstanceCategories::ParticleEmitter)) {
+    if (instance && pParticleSystemDesc) {
       RtxParticleSystemManager& particleSystem = device()->getCommon()->metaParticleSystem();
-      particleSystem.spawnParticles(ctx.ptr(), RtxParticleSystemManager::createGlobalParticleSystemDesc(), instance->getVectorIdx(), drawCallState, renderMaterialData);
+      particleSystem.spawnParticles(ctx.ptr(), *pParticleSystemDesc, instance->getVectorIdx(), drawCallState, renderMaterialData);
+
+      if(pParticleSystemDesc->hideEmitter) {
+        instance->setHidden(true);
+      }
     }
 
     return instance; 
@@ -1706,8 +1703,11 @@ namespace dxvk {
         state.drawCall.materialData.setHashOverride(material->getHash());
       } 
 
-      static MaterialData defaultMaterial = LegacyMaterialData().as<OpaqueMaterialData>();
-      processDrawCallState(ctx, state.drawCall, material  != nullptr ? MaterialData(*material) : defaultMaterial);
+      const RtxParticleSystemDesc* pParticles = nullptr;
+      if(state.optionalParticleDesc.has_value()) {
+        pParticles = &state.optionalParticleDesc.value();
+      }
+      processDrawCallState(ctx, state.drawCall, material  != nullptr ? MaterialData(*material) : LegacyMaterialData().as<OpaqueMaterialData>(), nullptr, pParticles);
     }
   }
 

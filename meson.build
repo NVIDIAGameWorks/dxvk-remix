@@ -765,7 +765,15 @@ if dxvk_is_ninja
       )
     endif
 
-    if t != '_output' or target_suffix == 'sdk'
+    if t != '_output'
+      meson.add_install_script(
+        join_paths(global_src_root_norm, 'scripts-common/install_file_in_dir.bat'),
+        join_paths(current_build_dir_norm, 'src/d3d9', 'd3d9.dll'), output_path,
+        install_tag: target_suffix
+      )
+    endif
+
+    if target_suffix == 'sdk'
       meson.add_install_script(
         join_paths(global_src_root_norm, 'scripts-common/install_file_in_dir.bat'),
         join_paths(current_build_dir_norm, 'src/d3d9', 'd3d9.*'), output_path,

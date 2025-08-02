@@ -180,6 +180,7 @@ namespace dxvk {
     desc.enableMotionTrail = RtxParticleSystemManager::enableMotionTrail() ? 1 : 0;
     desc.motionTrailMultiplier = RtxParticleSystemManager::motionTrailMultiplier();
     desc.spawnRate = (float)RtxParticleSystemManager::spawnRatePerSecond();
+    desc.hideEmitter = 0;
     return desc;
   }
 

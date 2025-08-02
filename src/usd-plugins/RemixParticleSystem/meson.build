@@ -1,6 +1,6 @@
 # NOTE: This needs to be updated per plugin, based on the class names defined in the schema
 plugin_classes = [
-	'prim',
+	'ParticleSystemAPI',
 ]
 
 # Below here, things should remain the same plugin to plugin -
@@ -24,7 +24,7 @@ schema_script = join_paths(global_src_root_norm, 'scripts-common', 'generate_and
 
 gen_and_patch = custom_target(
   'gen_and_patch_schema_' + plugin_name,
-  input: [ schema_usda ],
+  input: [ schema_usda, usd_schema_plugins_python ],
   output: [
     'generatedSchema.usda',
     'plugInfo.json',
@@ -62,8 +62,8 @@ plugin_lib = shared_library(
     usd_schema_plugins_includes,
     '.'
   ],
-  cpp_args:             [ '-D' + plugin_name.to_upper() + '_EXPORTS', usd_schema_plugins_defines, usd_schema_plugins_compilerflags ],
-  c_args:               [ '-D' + plugin_name.to_upper() + '_EXPORTS', usd_schema_plugins_defines, usd_schema_plugins_compilerflags ],
+  cpp_args:             [ '-DREMIX_EXPORTS', usd_schema_plugins_defines, usd_schema_plugins_compilerflags ],
+  c_args:               [ '-DREMIX_EXPORTS', usd_schema_plugins_defines, usd_schema_plugins_compilerflags ],
   dependencies:         [ dep, usd_schema_plugins_linklibs],
   override_options:     ['cpp_std=c++17'],   # USD 22.11 requires c++17,
   install: true

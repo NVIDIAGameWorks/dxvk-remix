@@ -47,6 +47,7 @@ usd_schema_plugins_nvusd_deplibs = [
   'usd',
   'usdLux',
   'usdGeom',
+  'usdImaging',
   'usdVolImaging',
   'vt',
   'python310',
