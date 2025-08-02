@@ -34,7 +34,6 @@ struct Camera
   mat4 projectionToView;
   mat4 viewToProjectionJittered;
   mat4 projectionToViewJittered;
-  mat4 worldToProjection;
   mat4 worldToProjectionJittered;
   mat4 projectionToWorldJittered;
   mat4 translatedWorldToView;
@@ -63,7 +62,6 @@ struct VolumeDefinitionCamera
 {
   mat4 viewToProjection;
   mat4 translatedWorldToView;
-  mat4 translatedWorldToProjection;
   mat4 translatedWorldToProjectionJittered;
   mat4 projectionToTranslatedWorld;
   mat4 prevTranslatedWorldToView;
