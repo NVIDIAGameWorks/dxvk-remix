@@ -29,8 +29,8 @@
 #include "../util/rc/util_rc.h"
 #include "../util/rc/util_rc_ptr.h"
 
-#include "../../../external/xess/inc/xess/xess.h"
-#include "../../../external/xess/inc/xess/xess_vk.h"
+#include "../../../submodules/xess/inc/xess/xess.h"
+#include "../../../submodules/xess/inc/xess/xess_vk.h"
 
 namespace dxvk {
 

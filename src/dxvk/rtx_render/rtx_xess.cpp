@@ -41,9 +41,9 @@
 #pragma comment(lib, "libxess.lib")
 #endif
 
-#include "../../../external/xess/inc/xess/xess.h"
-#include "../../../external/xess/inc/xess/xess_vk.h"
-#include "../../../external/xess/inc/xess/xess_debug.h"
+#include "../../../submodules/xess/inc/xess/xess.h"
+#include "../../../submodules/xess/inc/xess/xess_vk.h"
+#include "../../../submodules/xess/inc/xess/xess_debug.h"
 
 namespace dxvk {
   const char* xessProfileToString(XeSSProfile xessProfile) {

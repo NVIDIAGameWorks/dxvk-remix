@@ -417,7 +417,7 @@ dlss_dep = declare_dependency(
 )
 
 # XeSS dependency - using direct library path
-xess_lib_path = join_paths(global_src_root_norm, 'external/xess/lib')
+xess_lib_path = join_paths(global_src_root_norm, 'submodules/xess/lib')
 xess_lib = cc.find_library('libxess', dirs : xess_lib_path, required : false)
 xess_dep = declare_dependency(dependencies : [ xess_lib ])
 

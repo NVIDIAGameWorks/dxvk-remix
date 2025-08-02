@@ -794,10 +794,8 @@ namespace dxvk
   }
   
   Vector2 RtCamera::calcPixelJitterWithXeSS(uint32_t jitterFrameIdx, uint32_t xessLength) {
-    // Only apply jittering when DLSS/XeSS/TAA is enabled, or if forced by settings
-    if (!RtxOptions::isDLSSOrRayReconstructionEnabled() &&
-        !RtxOptions::isXeSSEnabled() &&
-        !RtxOptions::isTAAEnabled() &&
+    // Only apply jittering when XeSS is enabled, or if forced by settings
+    if (!RtxOptions::isXeSSEnabled() &&
         !RtxOptions::forceCameraJitter()) {
       return Vector2{ 0, 0 };
     }
