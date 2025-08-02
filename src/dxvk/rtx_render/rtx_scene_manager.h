@@ -188,6 +188,7 @@ public:
   uint32_t getActivePOMCount() {return m_activePOMCount;}
 
   float getTotalMipBias();
+  float getCalculatedUpscalingMipBias();
 
   // ISceneManager but not really
   void clear(Rc<DxvkContext> ctx, bool needWfi);
