@@ -140,6 +140,8 @@ namespace dxvk {
     Rc<ImGuiSplash>       m_splash;
     Rc<ImGuiCapture>      m_capture;
     // Note: May be NULL until the font loads, needs to be checked before use.
+    ImFont*               m_regularFont = nullptr;
+    // Note: May be NULL until the font loads, needs to be checked before use.
     ImFont*               m_largeFont = nullptr;
 
     ImGuiContext*         m_context;
@@ -149,9 +151,9 @@ namespace dxvk {
     bool                  m_init = false;
 
     bool                  m_windowOnRight = true;
-    float                 m_windowWidth = 450.f;
+    float                 m_windowWidth = 492.f;
     float                 m_userWindowWidth = 600.f;
-    float                 m_userWindowHeight = 550.f;
+    float                 m_userWindowHeight = 720.f;
     const char*           m_userGraphicsWindowTitle = "User Graphics Settings";
     bool                  m_userGraphicsSettingChanged = false;
     bool m_hudMessageTimeReset = false;
@@ -224,7 +226,10 @@ namespace dxvk {
 
     void createFontsTexture(const Rc<DxvkContext>& ctx);
 
-    void setupStyle(ImGuiStyle* dst = NULL);      // custom style
+    void setupStyleBackgroundColor(const float& alpha);
+
+    // Custom style
+    void setupStyle(ImGuiStyle* dst = NULL);
     void showVsyncOptions(bool enableDLFGGuard);
 
     void processHotkeys();
@@ -237,7 +242,9 @@ namespace dxvk {
     RTX_OPTION("rtx.gui", std::uint32_t, hudMessageAnimatedDotDurationMilliseconds, 1000, "A duration in milliseconds between each dot in the animated dot sequence for HUD messages. Must be greater than 0.\nThese dots help indicate progress is happening to the user with a bit of animation which can be configured to animate at whatever speed is desired.");
     RTX_OPTION("rtx.gui", float, reflexStatRangeInterpolationRate, 0.05f, "A value controlling the interpolation rate applied to the Reflex stat graph ranges for smoother visualization.");
     RTX_OPTION("rtx.gui", float, reflexStatRangePaddingRatio, 0.05f, "A value specifying the amount of padding applied to the Reflex stat graph ranges as a ratio to the calculated range.");
-  
+    RTX_OPTION("rtx.gui", bool, compactGui, false, "A setting to toggle between compact and spacious GUI modes.");
+    RTX_OPTION("rtx.gui", float, backgroundAlpha, 0.90f, "A value controlling the alpha of the GUI background.");
+
     void onCloseMenus();
     void onOpenMenus();
     void freeUnusedMemory();
