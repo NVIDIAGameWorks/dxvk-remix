@@ -97,7 +97,6 @@ namespace dxvk {
       m_inputExtent{0, 0, 0},
       m_currentProfile(XeSSProfile::Balanced),
       m_isUsingInternalAutoExposure(false),
-      m_context(nullptr),
       m_profile(XeSSProfile::Balanced),
       m_actualProfile(XeSSProfile::Balanced),
       m_inputSize{0, 0},

@@ -114,7 +114,6 @@ namespace dxvk {
     bool m_isUsingInternalAutoExposure;
 
     // Additional member variables needed by implementation
-    xess_context_handle_t m_context;
     XeSSProfile m_profile;
     XeSSProfile m_actualProfile;
     VkExtent2D m_inputSize;
