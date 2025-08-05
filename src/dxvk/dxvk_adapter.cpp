@@ -417,7 +417,7 @@ namespace dxvk {
       Logger::err("Unable to find all required Vulkan GPU extensions for device creation.");
 
       // Note: Once macro used to ensure this message is only displayed to the user once when applications attempt to create multiple devices.
-      ONCE(messageBox("Your GPU doesn't support the required features to run RTX Remix.  See the 'rtx-remix/logs/remix-dxvk.log' for what features your GPU doesn't support.  The game will exit now.", "RTX Remix - GPU Feature Error!", MB_OK));
+      ONCE(messageBox("Your GPU driver doesn't support the required device extensions to run RTX Remix.\nSee the log file 'rtx-remix/logs/remix-dxvk.log' for which extensions are unsupported and try updating your driver.\nThe game will exit now.", "RTX Remix - Device Extension Error!", MB_OK));
       // NV-DXVK end
 
       // NV-DXVK start: Provide error code on exception
@@ -663,8 +663,8 @@ namespace dxvk {
           "Current NVIDIA Graphics Driver version (", currentDriverVersionString, ") is lower than the minimum required version (", minimumDriverVersionString, "). "
           "Please update your to the latest version for RTX Remix to function properly."));
 
-        const std::string minDriverCheckDialogMessage = str::format(
-          "Your GPU driver needs to be updated before running this game with RTX Remix. Please update the NVIDIA Graphics Driver to the latest version. The game will exit now.\n\n"
+        const auto minDriverCheckDialogMessage = str::format(
+          "Your GPU driver needs to be updated before running this game with RTX Remix. Please update the NVIDIA Graphics Driver to the latest version.\nThe game will exit now.\n\n"
           "\tCurrently installed: ", currentDriverVersionString, "\n",
           "\tRequired minimum: ", minimumDriverVersionString);
 
@@ -846,10 +846,19 @@ namespace dxvk {
       vr = m_vki->vkCreateDevice(m_handle, &info, nullptr, &device);
     }
 
-    if (vr != VK_SUCCESS)
+    if (vr != VK_SUCCESS) {
+      Logger::err(str::format("Unable to create a Vulkan device, error code: ", vr, "."));
+
+      const auto deviceCreationFailureDialogMessage = str::format(
+        "Vulkan Device creation failed with error code: ", vr, ".\nTry updating your driver and reporting this as a bug if the problem persists.\nThe game will exit now.");
+
+      // Note: Once macro used to ensure this message is only displayed to the user once in case multiple instances are created.
+      ONCE(messageBox(deviceCreationFailureDialogMessage.c_str(), "RTX Remix - Device Creation Error!", MB_OK));
+
       // NV-DXVK start: Provide error code on exception
-      throw DxvkErrorWithId(REMIXAPI_ERROR_CODE_HRESULT_VK_CREATE_DEVICE_FAIL, "DxvkAdapter: Failed to create device");
+      throw DxvkErrorWithId(REMIXAPI_ERROR_CODE_HRESULT_VK_CREATE_DEVICE_FAIL, "DxvkAdapter: Failed to create a Vulkan device");
       // NV-DXVK end
+    }
 
     Rc<DxvkDevice> result = new DxvkDevice(m_vki, instance, this,
       new vk::DeviceFn(true, m_vki->instance(), device),
