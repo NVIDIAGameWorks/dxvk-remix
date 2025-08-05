@@ -315,6 +315,8 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
   static const pxr::TfToken kPreloadTextures("inputs:preload_textures");  // Force textures to be loaded at highest mip
   static const pxr::TfToken kLegacyRayPortalIndexToken("rayPortalIndex");
 
+  std::optional<RtxParticleSystemDesc> particleSystem = processParticleSystem(args, matPrim);
+
   pxr::UsdPrim shader = matPrim.GetChild(kShaderToken);
   if (!shader.IsValid() || !shader.IsA<pxr::UsdShadeShader>()) {
     auto children = matPrim.GetFilteredChildren(pxr::UsdPrimIsActive);
@@ -325,12 +327,18 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
     }
   }
 
-  if (!shader.IsValid()) {
+  XXH64_hash_t materialHash = getMaterialHash(matPrim, shader);
+  if (materialHash == 0) {
     return nullptr;
   }
 
-  XXH64_hash_t materialHash = getMaterialHash(matPrim, shader);
-  if (materialHash == 0) {
+  if (!shader.IsValid()) {
+    // Special case to handle material overrides which have the particle system API, but no material parameter overrides.
+    // This is the case when adding a particle system API to an existing legacy material in game.
+    if (particleSystem.has_value()) {
+      // In this case just return an empty opaque material.
+      return &m_owner.m_replacements->storeObject(materialHash, MaterialData(OpaqueMaterialData::deserialize([](const pxr::UsdPrim& shader, const pxr::TfToken& name) { return TextureRef {}; }, shader), particleSystem));
+    }
     return nullptr;
   }
 
@@ -339,7 +347,6 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
   if (m_owner.m_replacements->getObject(materialHash, materialData)) {
     return materialData;
   }
-
 
   // Remix Flags:
   bool shouldIgnore = false;
@@ -372,10 +379,8 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
   }
 
   auto getTextureFunctor = [&](const pxr::UsdPrim& shader, const pxr::TfToken& name) {
-                             return getTexture(args, shader, name, preloadTextures);
-                           };
-
-  std::optional<RtxParticleSystemDesc> particleSystem = processParticleSystem(args, matPrim);
+    return getTexture(args, shader, name, preloadTextures);
+  };
 
   switch (materialType) {
   case RtSurfaceMaterialType::Opaque:
