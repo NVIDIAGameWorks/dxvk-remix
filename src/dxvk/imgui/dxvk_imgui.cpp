@@ -1918,10 +1918,6 @@ namespace dxvk {
       ImGui::DragFloat3("Instance World Offset", &RtxOptions::instanceOverrideWorldOffsetObject(), 0.1f, -100.f, 100.f, "%.3f", sliderFlags);
       ImGui::Checkbox("Instance - Print Hash", &RtxOptions::instanceOverrideSelectedInstancePrintMaterialHashObject());
 
-#ifdef REMIX_DEVELOPMENT
-      ImGui::Checkbox("Show DLSS-RR Options", &RtxOptions::showRayReconstructionUIObject());
-#endif
-
       ImGui::Unindent();
       ImGui::Checkbox("Throttle presents", &RtxOptions::enablePresentThrottleObject());
       if (RtxOptions::enablePresentThrottle()) {
@@ -3400,7 +3396,7 @@ namespace dxvk {
         ImGui::Unindent();
       }
       bool useDoubleDenoisers = RtxOptions::denoiseDirectAndIndirectLightingSeparately();
-      if (isRayReconstructionEnabled && RtxOptions::showRayReconstructionUI()) {
+      if (isRayReconstructionEnabled) {
         if (ImGui::CollapsingHeader("DLSS-RR", collapsingHeaderClosedFlags)) {
           ImGui::Indent();
           ImGui::PushID("DLSS-RR");

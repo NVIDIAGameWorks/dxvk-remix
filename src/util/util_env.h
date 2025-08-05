@@ -66,6 +66,17 @@ namespace dxvk::env {
   // NV-DXVK end
 
   /**
+   * \brief Sets environment variable
+   * 
+   * If setting the variable was successful true is returned,
+   * false otherwise.
+   * \param [in] name Name of the variable
+   * \param [in] value String to set the variable to
+   * \returns A boolean indicating if setting the environment variable succeeded.
+   */
+  bool setEnvVar(const char* name, const char* value);
+
+  /**
    * \brief Checks whether a file name has a given extension
    *
    * \param [in] name File name

@@ -655,7 +655,7 @@ namespace dxvk {
     bool isOpacityMicromapSupported = device.extensions().khrSynchronization2 &&
                                       device.extensions().extOpacityMicromap;
 
-    if (device.instance()->areVulkanValidationLayersEnabled() && isOpacityMicromapSupported) {
+    if (RtxOptions::areValidationLayersEnabled() && isOpacityMicromapSupported) {
       Logger::warn(str::format("[RTX] Opacity Micromap vendor extension is not compatible with VK Validation Layers. Disabling Opacity Micromap extension."));
       isOpacityMicromapSupported = false;
     }
