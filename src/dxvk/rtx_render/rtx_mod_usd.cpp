@@ -566,6 +566,8 @@ std::optional<RtxParticleSystemDesc> UsdMod::Impl::processParticleSystem(Args& a
   READ_ATTR(float, SpawnRatePerSecond, spawnRate);
   READ_ATTR_CONV(GfVec4f, MaxSpawnColor, maxSpawnColor, toFloat4);
   READ_ATTR_CONV(GfVec4f, MinSpawnColor, minSpawnColor, toFloat4);
+  // If this assert fails a new particle system parameter added, please update here.
+  assert(RemixParticleSystemAPI::GetSchemaAttributeNames(false).size() == 25);
 
 #undef READ_ATTR
 #undef READ_ATTR_CONV

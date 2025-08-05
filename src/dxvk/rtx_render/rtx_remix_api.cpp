@@ -45,6 +45,10 @@
 
 #include "../../d3d9/d3d9_swapchain.h"
 
+#include "../../lssusd/usd_include_begin.h"
+#include <src/usd-plugins/RemixParticleSystem/ParticleSystemAPI.h>
+#include "../../lssusd/usd_include_end.h"
+
 #include <windows.h>
 
 #include <optional>
@@ -656,6 +660,10 @@ namespace {
       desc.useSpawnTexcoords = static_cast<uint8_t>(info.useSpawnTexcoords);
       desc.enableCollisionDetection = static_cast<uint8_t>(info.enableCollisionDetection);
       desc.enableMotionTrail = static_cast<uint>(info.enableMotionTrail);
+      desc.hideEmitter = static_cast<uint>(info.hideEmitter);
+
+      // If this assert fails a new particle system parameter added, please update here.
+      assert(pxr::RemixParticleSystemAPI::GetSchemaAttributeNames(false).size() == 25);
 
       return desc;
     }
