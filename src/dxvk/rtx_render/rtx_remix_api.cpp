@@ -630,6 +630,7 @@ namespace {
 
       // Initial 
       desc.spawnRate = info.spawnRatePerSecond;
+      desc.initialVelocityFromMotion = info.initialVelocityFromMotion;
       desc.initialVelocityFromNormal = info.initialVelocityFromNormal;
       desc.initialVelocityConeAngleDegrees = info.initialVelocityConeAngleDegrees;
       desc.gravityForce = info.gravityForce;
@@ -670,7 +671,7 @@ namespace {
       desc.hideEmitter = static_cast<uint>(info.hideEmitter);
 
       // If this assert fails a new particle system parameter added, please update here.
-      assert(pxr::RemixParticleSystemAPI::GetSchemaAttributeNames(false).size() == 31);
+      assert(pxr::RemixParticleSystemAPI::GetSchemaAttributeNames(false).size() == 32);
 
       return desc;
     }

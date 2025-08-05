@@ -451,6 +451,7 @@ extern "C" {
     float            collisionThickness;
     float            collisionRestitution;
     float            motionTrailMultiplier;
+    float            initialVelocityFromMotion;
     float            minTargetSize;
     float            maxTargetSize;
     float            minTargetRotationSpeed;

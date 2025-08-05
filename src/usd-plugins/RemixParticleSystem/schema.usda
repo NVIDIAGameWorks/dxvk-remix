@@ -138,6 +138,12 @@ class "ParticleSystemAPI" (
             displayName = "Use Spawn Mesh's Texture Coordinates"
         )
 
+    float primvars:particle:initialVelocityFromMotion = 0.0 (
+            doc = "Multiplier for initial velocity applied at spawn time, based on the spawning objects current velocity."
+            displayGroup = "Spawn"
+            displayName = "Initial Velocity From Motion"
+        )
+
     float primvars:particle:initialVelocityFromNormal = 10.0 (
             doc = "Initial speed (units/sec) applied at spawn along the normal vector of the emitting triangle."
             displayGroup = "Spawn"

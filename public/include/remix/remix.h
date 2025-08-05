@@ -751,6 +751,7 @@ namespace remix {
       minTargetColor = { 1, 1, 1, 0 };
       maxTargetColor = { 1, 1, 1, 0 };
       useSpawnTexcoords = false;
+      initialVelocityFromMotion = 0.0f;
       initialVelocityFromNormal = 10.0f;
       initialVelocityConeAngleDegrees = 0.0f;
       maxSpeed = 3.0f;

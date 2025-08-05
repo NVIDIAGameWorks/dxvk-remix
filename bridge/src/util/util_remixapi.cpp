@@ -525,6 +525,7 @@ void InstanceInfoBlend::_dtor() {
                                        maxSpawnColor, \
                                        minTimeToLive, \
                                        maxTimeToLive, \
+                                       initialVelocityFromMotion, \
                                        initialVelocityFromNormal, \
                                        initialVelocityConeAngleDegrees, \
                                        minSpawnSize, \

@@ -155,6 +155,7 @@ namespace dxvk {
     RTX_OPTION("rtx.particles.globalPreset", Vector4, minTargetColor, Vector4(1.f, 1.f, 1.f, 0.f), "Minimum RGBA color picked from a range, to be used as the target animation state, at the end of the particles life.");
     RTX_OPTION("rtx.particles.globalPreset", Vector4, maxTargetColor, Vector4(1.f, 1.f, 1.f, 0.f), "Maximum RGBA ccolor picked from a range, to be used as the target animation state, at the end of the particles life.");
 
+    RTX_OPTION("rtx.particles.globalPreset", float, initialVelocityFromMotion, 0.f, "Multiplier for initial velocity applied at spawn time, based on the spawning objects current velocity.");
     RTX_OPTION("rtx.particles.globalPreset", float, initialVelocityFromNormal, 10.f, "Initial speed to apply on spawn (units/sec) along the normal vector of the spawning triangle.");
     RTX_OPTION("rtx.particles.globalPreset", float, initialVelocityConeAngleDegrees, 0.f, "Specifies the half angle, in degrees, of the random emission cone  around the triangles surface normal when spawning a new particle.  A value in the range of 0 to 180 degrees is expected.");
     RTX_OPTION("rtx.particles.globalPreset", float, gravityForce, -.5f, "Net influence of gravity acting on each particle (meters per second squared).");

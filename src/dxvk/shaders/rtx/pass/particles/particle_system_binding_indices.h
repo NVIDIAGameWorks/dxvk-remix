@@ -41,14 +41,14 @@ struct GpuParticle {
 
 #ifndef __cplusplus
   [mutating]
-  void reset(GpuParticleSystem system, float3 worldPosition, float16_t3 dir, float4 uvMinMax, float16_t4 color, float seed) {
+  void reset(GpuParticleSystem system, float3 worldPosition, float3 worldVelocity, f16vec4 _uvMinMax, f16vec4 color, float seed) {
     randSeed = seed;
     rotation = 0.h;
     timeToLive = initialTimeToLive(system);
     enBaseColor = float4x16ToUnorm4x8(color);
     position = worldPosition;
-    velocity = dir * system.desc.initialVelocityFromNormal;
-    uvMinMax = system.desc.useSpawnTexcoords ? float16_t4(uvMinMax) : float16_t4(0..xx, 1..xx);
+    velocity = worldVelocity;
+    uvMinMax = _uvMinMax;
   }
 
   half initialTimeToLive(GpuParticleSystem system) { 

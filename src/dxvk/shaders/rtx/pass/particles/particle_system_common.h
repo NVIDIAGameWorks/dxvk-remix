@@ -27,17 +27,20 @@
 
 struct GpuSpawnContext {
   mat4x3 spawnObjectToWorld;
+  mat4x3 spawnPrevObjectToWorld;
 
   uint spawnMeshPositionsOffset;
   uint spawnMeshColorsOffset;
   uint spawnMeshTexcoordsOffset;
-  uint numTriangles;
+  uint numTriangles : 31;
+  uint indices32bit : 1;
 
   uint16_t spawnMeshPositionsStride;
   uint16_t spawnMeshColorsStride;
   uint16_t spawnMeshTexcoordsStride;
-  uint16_t indices32bit;
   uint16_t spawnMeshPositionsIdx;
+
+  uint16_t spawnMeshPrevPositionsIdx;
   uint16_t spawnMeshColorsIdx;
   uint16_t spawnMeshIndexIdx;
   uint16_t spawnMeshTexcoordsIdx;
@@ -69,21 +72,23 @@ struct RtxParticleSystemDesc {
 
   float turbulenceFrequency;
   float turbulenceAmplitude;
-  uint maxNumParticles;
+  float motionTrailMultiplier;
   float minSpawnRotationSpeed;
 
   float maxSpawnRotationSpeed;
   float spawnRate;
   float collisionThickness;
+  float collisionRestitution;
+  
+
+  float initialVelocityFromMotion;
+  uint maxNumParticles;
+  uint16_t hideEmitter;
+  uint16_t enableMotionTrail;
   uint8_t useTurbulence;
   uint8_t alignParticlesToVelocity;
   uint8_t useSpawnTexcoords;
   uint8_t enableCollisionDetection;
-
-  float collisionRestitution;
-  uint enableMotionTrail;
-  float motionTrailMultiplier;
-  uint hideEmitter;
 
 #ifdef __cplusplus
   RtxParticleSystemDesc() {

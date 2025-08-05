@@ -545,6 +545,7 @@ std::optional<RtxParticleSystemDesc> UsdMod::Impl::processParticleSystem(Args& a
     // Read all simulation parameters
   READ_ATTR(float, MinTimeToLive, minTtl);
   READ_ATTR(float, MaxTimeToLive, maxTtl);
+  READ_ATTR(float, InitialVelocityFromMotion, initialVelocityFromMotion);
   READ_ATTR(float, InitialVelocityFromNormal, initialVelocityFromNormal);
   READ_ATTR(float, InitialVelocityConeAngleDegrees, initialVelocityConeAngleDegrees);
   READ_ATTR(float, MinSpawnSize, minSpawnSize);
@@ -575,7 +576,7 @@ std::optional<RtxParticleSystemDesc> UsdMod::Impl::processParticleSystem(Args& a
   READ_ATTR_CONV(GfVec4f, MaxTargetColor, maxTargetColor, toFloat4);
   READ_ATTR_CONV(GfVec4f, MinTargetColor, minTargetColor, toFloat4);
   // If this assert fails a new particle system parameter added, please update here.
-  assert(RemixParticleSystemAPI::GetSchemaAttributeNames(false).size() == 31);
+  assert(RemixParticleSystemAPI::GetSchemaAttributeNames(false).size() == 32);
 
 #undef READ_ATTR
 #undef READ_ATTR_CONV
