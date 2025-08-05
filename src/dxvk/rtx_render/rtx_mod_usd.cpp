@@ -347,7 +347,7 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
     shader.GetAttribute(kIgnore).Get(&shouldIgnore);
   }
   bool preloadTextures = false;
-  if (shader.HasAttribute(kPreloadTextures)) {
+  if (shader.HasAttribute(kPreloadTextures)) { 
     shader.GetAttribute(kPreloadTextures).Get(&preloadTextures);
   }
 
@@ -375,13 +375,15 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
                              return getTexture(args, shader, name, preloadTextures);
                            };
 
+  std::optional<RtxParticleSystemDesc> particleSystem = processParticleSystem(args, matPrim);
+
   switch (materialType) {
   case RtSurfaceMaterialType::Opaque:
-    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(OpaqueMaterialData::deserialize(getTextureFunctor, shader), shouldIgnore));
+    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(OpaqueMaterialData::deserialize(getTextureFunctor, shader), particleSystem, shouldIgnore));
   case RtSurfaceMaterialType::Translucent:
-    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(TranslucentMaterialData::deserialize(getTextureFunctor, shader), shouldIgnore));
+    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(TranslucentMaterialData::deserialize(getTextureFunctor, shader), particleSystem, shouldIgnore));
   case RtSurfaceMaterialType::RayPortal:
-    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(RayPortalMaterialData::deserialize(getTextureFunctor, shader)));
+    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(RayPortalMaterialData::deserialize(getTextureFunctor, shader), particleSystem));
   default:
     assert(false && "Invalid materialType passed to getTextureFunctor");
   }

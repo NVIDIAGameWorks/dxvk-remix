@@ -194,7 +194,10 @@ namespace dxvk {
 
     auto& materialSystemIt = m_particleSystems.find(particleSystemHash);
     if (materialSystemIt == m_particleSystems.end()) {
-      auto pNewParticleSystem = std::make_shared<ParticleSystem>(desc, renderMaterialData, drawCallState.getMaterialData(), drawCallState.getCategoryFlags(), m_particleSystemCounter++);
+      // Strip out any custom particle defined in the target material to avoid creating duplicated, nested systems.
+      MaterialData particleRenderMaterial(renderMaterialData);
+      particleRenderMaterial.m_particleSystem = std::nullopt;
+      auto pNewParticleSystem = std::make_shared<ParticleSystem>(desc, particleRenderMaterial, drawCallState.getMaterialData(), drawCallState.getCategoryFlags(), m_particleSystemCounter++);
       pNewParticleSystem->allocStaticBuffers(ctx);
       auto insertResult = m_particleSystems.insert({ particleSystemHash, pNewParticleSystem });
       materialSystemIt = insertResult.first;

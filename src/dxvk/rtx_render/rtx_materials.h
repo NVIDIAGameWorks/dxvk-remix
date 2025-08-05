@@ -31,6 +31,7 @@
 #include "../../dxso/dxso_util.h"
 #include "rtx_material_data.h"
 #include "../../lssusd/mdl_helpers.h"
+#include "rtx/pass/particles/particle_system_common.h"
 
 namespace dxvk {
 // Surfaces
@@ -1635,20 +1636,22 @@ struct MaterialData {
   // Using variants rather than a union here, due to the MaterialData containing nested members of Rc pointers.
   MaterialVariant m_data;
 
+  std::optional<RtxParticleSystemDesc> m_particleSystem;
+
   // Verify that the variant and enum stay in sync
   static_assert(std::variant_size_v<MaterialVariant> == (size_t)MaterialDataType::Count, "Enum is out of sync, please check your change.");
   static_assert(std::is_same_v<std::variant_alternative_t<(size_t)MaterialDataType::Opaque,      MaterialVariant>, OpaqueMaterialData>,      "MaterialVariant[Opaque] must be OpaqueMaterialData, please check your change.");
   static_assert(std::is_same_v<std::variant_alternative_t<(size_t)MaterialDataType::Translucent, MaterialVariant>, TranslucentMaterialData>, "MaterialVariant[Translucent] must be TranslucentMaterialData, please check your change.");
   static_assert(std::is_same_v<std::variant_alternative_t<(size_t)MaterialDataType::RayPortal,   MaterialVariant>, RayPortalMaterialData>,   "MaterialVariant[RayPortal] must be RayPortalMaterialData, please check your change.");
 
-  MaterialData(const OpaqueMaterialData& opaque, bool ignored = false)
-    : m_ignored { ignored }, m_data { opaque } {}
+  MaterialData(const OpaqueMaterialData& opaque, std::optional<RtxParticleSystemDesc> particleSystem = std::nullopt, bool ignored = false)
+    : m_ignored { ignored }, m_data { opaque }, m_particleSystem { particleSystem } {}
 
-  MaterialData(const TranslucentMaterialData& translucent, bool ignored = false)
-    : m_ignored { ignored }, m_data { translucent } {}
+  MaterialData(const TranslucentMaterialData& translucent, std::optional<RtxParticleSystemDesc> particleSystem = std::nullopt, bool ignored = false)
+    : m_ignored { ignored }, m_data { translucent }, m_particleSystem { particleSystem } {}
 
-  MaterialData(const RayPortalMaterialData& portal)
-    : m_data { portal } { }
+  MaterialData(const RayPortalMaterialData& portal, std::optional<RtxParticleSystemDesc> particleSystem = std::nullopt)
+    : m_data { portal }, m_particleSystem { particleSystem } { }
 
   bool getIgnored() const {
     return m_ignored;
@@ -1697,6 +1700,10 @@ struct MaterialData {
     return std::get<RayPortalMaterialData>(m_data);
   }
 
+  const RtxParticleSystemDesc* getParticleSystemDesc() const {
+    return m_particleSystem.has_value() ? &m_particleSystem.value() : nullptr;
+  }
+  
   void mergeLegacyMaterial(const LegacyMaterialData& input) {
     std::visit([&](auto& mat) {
       using T = std::decay_t<decltype(mat)>;

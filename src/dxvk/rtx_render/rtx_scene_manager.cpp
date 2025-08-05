@@ -558,8 +558,7 @@ namespace dxvk {
     if (pReplacements != nullptr) {
       drawReplacements(ctx, &input, pReplacements, renderMaterialData);
     } else {
-      const RtxParticleSystemDesc* pParticleDesc = input.categories.test(InstanceCategories::ParticleEmitter) ? &RtxParticleSystemManager::createGlobalParticleSystemDesc() : nullptr;
-      processDrawCallState(ctx, input, renderMaterialData, nullptr, pParticleDesc);
+      processDrawCallState(ctx, input, renderMaterialData, nullptr, nullptr);
     }
   }
 
@@ -1011,11 +1010,20 @@ namespace dxvk {
       }
     }
 
+    // Priority ordering for particle system descriptors is: Mesh, Material, Texture.  This matches the implementation in toolkit.
+    // By this point, pParticleSystemDesc will contain the information from a mesh replacement (if one exists), so we just handle
+    // materials replacements, and texture taggin categories below.
+    if (!pParticleSystemDesc) {
+      pParticleSystemDesc = renderMaterialData.getParticleSystemDesc();
+    }
+    if (!pParticleSystemDesc && drawCallState.categories.test(InstanceCategories::ParticleEmitter)) {
+      pParticleSystemDesc = &RtxParticleSystemManager::createGlobalParticleSystemDesc();
+    }
     if (instance && pParticleSystemDesc) {
       RtxParticleSystemManager& particleSystem = device()->getCommon()->metaParticleSystem();
       particleSystem.spawnParticles(ctx.ptr(), *pParticleSystemDesc, instance->getVectorIdx(), drawCallState, renderMaterialData);
 
-      if(pParticleSystemDesc->hideEmitter) {
+      if (pParticleSystemDesc->hideEmitter) {
         instance->setHidden(true);
       }
     }

@@ -27,7 +27,6 @@
 #include "rtx_mod_manager.h"
 #include "rtx_utils.h"
 #include "rtx_lights_data.h"
-#include "rtx/pass/particles/particle_system_common.h"
 
 namespace dxvk {
   class DxvkContext;
