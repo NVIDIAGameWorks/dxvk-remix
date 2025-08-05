@@ -123,22 +123,12 @@ GpuParticle respawn(uint particleIdx, const GpuParticleSystem particleSystem)
   f16vec3 worldNormal = f16vec3(cross(normalize(positions[1] - positions[0]), normalize(positions[2] - positions[0])));
   float16_t4 color = interpolateHitAttribute(colors, randomBary);
   
-  // Spawn a particle
-  
-  newParticle.position = worldPosition;
-  
   float cosCone = cos(radians(particleSystem.desc.initialVelocityConeAngleDegrees));
-
   f16vec3 dir = sampleDirectionInCone(worldNormal, cosCone, float2(randomFloat(uint2(randomSeed++, particleCb.frameIdx)), randomFloat(uint2(randomSeed++, particleCb.frameIdx))));
-  newParticle.velocity = dir * particleSystem.desc.initialVelocityFromNormal;
   
-  newParticle.color = float4x16ToUnorm4x8(particleSystem.varyColor(randomFloat(uint2(randomSeed++, particleCb.frameIdx)), color));
-  newParticle.uvMinMax = particleSystem.desc.useSpawnTexcoords ? float16_t4(uvMinMax) : float16_t4(0..xx, 1..xx);
-  newParticle.initialTimeToLive = newParticle.timeToLive = lerp(particleSystem.desc.minTtl, particleSystem.desc.maxTtl, randomFloat(uint2(randomSeed++, particleCb.frameIdx)));
-  newParticle.size = particleSystem.varySize(randomFloat(uint2(randomSeed++, particleCb.frameIdx)), 1.f); // Currently we just assume a starting size of 1, but this could be a property of the emitter triangles?
-  newParticle.rotation = 0;
-  newParticle.rotationSpeed = particleSystem.varyRotationSpeed(randomFloat(uint2(randomSeed++, particleCb.frameIdx)));
-  
+  // Spawn a particle
+  newParticle.reset(particleSystem, worldPosition, dir, uvMinMax, color, randomFloat(uint2(randomSeed++, particleCb.frameIdx)));
+
   return newParticle;
 }
 
@@ -291,7 +281,7 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
     }
     else
     {
-      particle.rotation = (particle.rotation + particle.rotationSpeed * particleCb.deltaTimeSecs) % twoPi;
+      particle.rotation = (particle.rotation + particle.rotationSpeed(particleSystem) * particleCb.deltaTimeSecs) % twoPi;
     
       float s, c;
       sincos(particle.rotation, s, c);
@@ -306,19 +296,9 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
   const float3 right = particleCb.worldToView[0].xyz;
   const float3 up = particleCb.worldToView[1].xyz;
   
-  float16_t4 color = float16_t4(unorm8ToF16(uint8_t(particle.color)),
-                                unorm8ToF16(uint8_t(particle.color >> 8)),
-                                unorm8ToF16(uint8_t(particle.color >> 16)),
-                                unorm8ToF16(uint8_t(particle.color >> 24)));
-  
-  const float normalizedLifetime = saturate(particle.timeToLive / particle.initialTimeToLive);
-  
-  // TODO: Option?
-  color.w *= particleSystem.calculateOpacity(normalizedLifetime);
-  const float size = particle.size * normalizedLifetime;
-  
-  uint colorEnc = float4x16ToUnorm4x8(color.zyxw);
-  
+  // precache some values
+  const float size = particle.size(particleSystem);
+  const uint colorEnc = float4x16ToUnorm4x8(particle.color(particleSystem).zyxw);
   
   [unroll]
   for (uint i=0 ; i<particleSystem.numVerticesPerParticle ; i++)

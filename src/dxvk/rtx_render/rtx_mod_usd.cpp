@@ -527,10 +527,7 @@ std::optional<RtxParticleSystemDesc> UsdMod::Impl::processParticleSystem(Args& a
   }
   RemixParticleSystemAPI particleSystem(prim);
 
-  MaterialData* materialData = processMaterialUser(args, prim);
-
   RtxParticleSystemDesc particleDesc;
-
   // Helper macro to read an attribute into a float or int field
 #define READ_ATTR(Type, attrName, field) \
             if (UsdAttribute attr = particleSystem.GetPrimvarsParticle##attrName##Attr()) { \
@@ -550,10 +547,14 @@ std::optional<RtxParticleSystemDesc> UsdMod::Impl::processParticleSystem(Args& a
   READ_ATTR(float, MaxTimeToLive, maxTtl);
   READ_ATTR(float, InitialVelocityFromNormal, initialVelocityFromNormal);
   READ_ATTR(float, InitialVelocityConeAngleDegrees, initialVelocityConeAngleDegrees);
-  READ_ATTR(float, MinParticleSize, minParticleSize);
-  READ_ATTR(float, MaxParticleSize, maxParticleSize);
-  READ_ATTR(float, MinRotationSpeed, minRotationSpeed);
-  READ_ATTR(float, MaxRotationSpeed, maxRotationSpeed);
+  READ_ATTR(float, MinSpawnSize, minSpawnSize);
+  READ_ATTR(float, MaxSpawnSize, maxSpawnSize);
+  READ_ATTR(float, MinSpawnRotationSpeed, minSpawnRotationSpeed);
+  READ_ATTR(float, MaxSpawnRotationSpeed, maxSpawnRotationSpeed);
+  READ_ATTR(float, MinTargetSize, minTargetSize);
+  READ_ATTR(float, MaxTargetSize, maxTargetSize);
+  READ_ATTR(float, MinTargetRotationSpeed, minTargetRotationSpeed);
+  READ_ATTR(float, MaxTargetRotationSpeed, maxTargetRotationSpeed);
   READ_ATTR(float, GravityForce, gravityForce);
   READ_ATTR(float, MaxSpeed, maxSpeed);
   READ_ATTR(float, TurbulenceFrequency, turbulenceFrequency);
@@ -571,8 +572,10 @@ std::optional<RtxParticleSystemDesc> UsdMod::Impl::processParticleSystem(Args& a
   READ_ATTR(float, SpawnRatePerSecond, spawnRate);
   READ_ATTR_CONV(GfVec4f, MaxSpawnColor, maxSpawnColor, toFloat4);
   READ_ATTR_CONV(GfVec4f, MinSpawnColor, minSpawnColor, toFloat4);
+  READ_ATTR_CONV(GfVec4f, MaxTargetColor, maxTargetColor, toFloat4);
+  READ_ATTR_CONV(GfVec4f, MinTargetColor, minTargetColor, toFloat4);
   // If this assert fails a new particle system parameter added, please update here.
-  assert(RemixParticleSystemAPI::GetSchemaAttributeNames(false).size() == 25);
+  assert(RemixParticleSystemAPI::GetSchemaAttributeNames(false).size() == 31);
 
 #undef READ_ATTR
 #undef READ_ATTR_CONV

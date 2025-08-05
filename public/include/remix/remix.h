@@ -738,12 +738,18 @@ namespace remix {
       spawnRatePerSecond = 0.f;
       minTimeToLive = 3.0f;
       maxTimeToLive = 6.0f;
-      minParticleSize = 1.0f;
-      maxParticleSize = 3.0f;
-      minRotationSpeed = 0.1f;
-      maxRotationSpeed = 1.0f;
+      minSpawnSize = 1.0f;
+      maxSpawnSize = 3.0f;
+      minSpawnRotationSpeed = 0.1f;
+      maxSpawnRotationSpeed = 1.0f;
       minSpawnColor = {1, 1, 1, 1};
       maxSpawnColor = {1, 1, 1, 1};
+      minTargetSize = 0.0f;
+      maxTargetSize = 0.0f;
+      minTargetRotationSpeed = 0.1f;
+      maxTargetRotationSpeed = 1.0f;
+      minTargetColor = { 1, 1, 1, 0 };
+      maxTargetColor = { 1, 1, 1, 0 };
       useSpawnTexcoords = false;
       initialVelocityFromNormal = 10.0f;
       initialVelocityConeAngleDegrees = 0.0f;
@@ -759,7 +765,7 @@ namespace remix {
       enableMotionTrail = false;
       motionTrailMultiplier = 1.0f;
       hideEmitter = false;
-      static_assert(sizeof InstanceInfoParticleSystemEXT == 144);
+      static_assert(sizeof InstanceInfoParticleSystemEXT == 192);
     }
   };
 

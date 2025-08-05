@@ -294,6 +294,24 @@ namespace ImGui {
     }
     return changed;
   }
+  
+  template <typename ... Args>
+  bool DragFloatRange(const char* label, std::array<dxvk::RtxOption<float>*, 2> options, Args&& ... args) {
+    ImGui::PushID(label);
+    ImGui::Text(label);
+    ImGui::SameLine();
+    ImGui::PushItemWidth(120);
+    ImGui::PushID("min");
+    bool changed = ImGui::DragFloat("", options[0], std::forward<Args>(args)...);
+    ImGui::PopID();
+    ImGui::SameLine();
+    ImGui::PushID("max");
+    changed = changed || ImGui::DragFloat("", options[1], std::forward<Args>(args)...);
+    ImGui::PopID();
+    ImGui::PopItemWidth();
+    ImGui::PopID();
+    return changed;
+  }
 
   // Variant handling RtxOption as input
   template <typename ... Args>

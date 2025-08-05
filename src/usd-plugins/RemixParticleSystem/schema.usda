@@ -54,25 +54,25 @@ class "ParticleSystemAPI" (
             displayName = "Maximum Time to Live"
         )
 
-    float primvars:particle:minParticleSize = 1.0 (
-            doc = "Minimum size (in world units) to give to a particle when spawned. All particles are clamped to be at least this large."
+    float primvars:particle:minSpawnSize = 1.0 (
+            doc = "Minimum size (in world units) to give to a particle when spawned."
             displayGroup = "Spawn"
             displayName = "Minimum Particle Size"
         )
 
-    float primvars:particle:maxParticleSize = 3.0 (
-            doc = "Maximum size (in world units) to give to a particle when spawned. All particles are clamped to be at most this large."
+    float primvars:particle:maxSpawnSize = 3.0 (
+            doc = "Maximum size (in world units) to give to a particle when spawned."
             displayGroup = "Spawn"
             displayName = "Maximum Particle Size"
         )
 
-    float primvars:particle:minRotationSpeed = 0.1 (
+    float primvars:particle:minSpawnRotationSpeed = 0.1 (
             doc = "Minimum rotation speed (in revolutions per second) to give to a particle when spawned. Only used if alignParticlesToVelocity is false."
             displayGroup = "Spawn"
             displayName = "Minimum Rotation Speed"
         )
 
-    float primvars:particle:maxRotationSpeed = 1.0 (
+    float primvars:particle:maxSpawnRotationSpeed = 1.0 (
             doc = "Maximum rotation speed (in revolutions per second) to give to a particle when spawned. Only used if alignParticlesToVelocity is false."
             displayGroup = "Spawn"
             displayName = "Maximum Rotation Speed"
@@ -88,6 +88,42 @@ class "ParticleSystemAPI" (
             doc = "Maximum RGBA color to tint each newly spawned particle. Each component is in [0,1]."
             displayGroup = "Spawn"
             displayName = "Maximum Spawn Color"
+        )
+
+    float primvars:particle:minTargetSize = 0.0 (
+            doc = "Minimum size (in world units) picked from a range, to be used as the target animation state, at the end of the particles life."
+            displayGroup = "Target"
+            displayName = "Minimum Particle Size"
+        )
+
+    float primvars:particle:maxTargetSize = 0.0 (
+            doc = "Maximum size (in world units) picked from a range, to be used as the target animation state, at the end of the particles life."
+            displayGroup = "Target"
+            displayName = "Maximum Particle Size"
+        )
+
+    float primvars:particle:minTargetRotationSpeed = 0.1 (
+            doc = "Minimum rotation speed (in revolutions per second) picked from a range, to be used as the target animation state, at the end of the particles life.  Only used if alignParticlesToVelocity is false."
+            displayGroup = "Target"
+            displayName = "Minimum Rotation Speed"
+        )
+
+    float primvars:particle:maxTargetRotationSpeed = 1.0 (
+            doc = "Maximum rotation speed (in revolutions per second) picked from a range, to be used as the target animation state, at the end of the particles life.  Only used if alignParticlesToVelocity is false."
+            displayGroup = "Target"
+            displayName = "Maximum Rotation Speed"
+        )
+
+    color4f primvars:particle:minTargetColor = (1, 1, 1, 0) (
+            doc = "Minimum RGBA color picked from a range, to be used as the target animation state, at the end of the particles life."
+            displayGroup = "Target"
+            displayName = "Minimum Target Color"
+        )
+
+    color4f primvars:particle:maxTargetColor = (1, 1, 1, 0) (
+            doc = "Maximum RGBA ccolor picked from a range, to be used as the target animation state, at the end of the particles life."
+            displayGroup = "Target"
+            displayName = "Maximum Target Color"
         )
 
     bool primvars:particle:hideEmitter = false (

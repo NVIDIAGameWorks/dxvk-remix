@@ -81,6 +81,7 @@ namespace dxvk {
 
         ImGui::DragInt("Number of Particles Per Material", &numberOfParticlesPerMaterialObject(), 0.1f, 1, 10000000, "%d", ImGuiSliderFlags_AlwaysClamp);
 
+        const auto colourPickerOpts = ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoSidePreview | ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_Float | ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_DisplayRGB;
         if (ImGui::CollapsingHeader("Spawn", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen)) {
           ImGui::DragInt("Spawn Rate Per Second", &spawnRatePerSecondObject(), 0.1f, 1, 10000, "%d", ImGuiSliderFlags_AlwaysClamp);
           ImGui::Separator();
@@ -89,15 +90,19 @@ namespace dxvk {
           ImGui::DragFloat("Initial Velocity From Normal", &initialVelocityFromNormalObject(), 0.01f, -500.f, 500.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::DragFloat("Initial Velocity Cone Angle", &initialVelocityConeAngleDegreesObject(), 0.01f, -500.f, 500.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::Separator();
-          ImGui::DragFloat("Minimum Life", &minParticleLifeObject(), 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloat("Maximum Life", &maxParticleLifeObject(), 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloat("Minimum Size", &minParticleSizeObject(), 0.01f, 0.01f, 500.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloat("Maximum Size", &maxParticleSizeObject(), 0.01f, 0.01f, 500.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloat("Minimum Rotation Speed", &minRotationSpeedObject(), 0.01f, 0.f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloat("Maximum Rotation Speed", &maxRotationSpeedObject(), 0.01f, 0.f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          const auto colourPickerOpts = ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoSidePreview | ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_Float | ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_DisplayRGB;
+          ImGui::DragFloatRange("Time to Live Range", { &minParticleLifeObject(), &maxParticleLifeObject() }, 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::Separator();
+          ImGui::DragFloatRange("Particle Size Range", { &minSpawnSizeObject(), &maxSpawnSizeObject() }, 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::DragFloatRange("Particle Rotation Speed Range", { &minSpawnRotationSpeedObject(), &maxSpawnRotationSpeedObject() }, 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::ColorPicker4("Minimum Color Tint", &minSpawnColorObject(), colourPickerOpts);
           ImGui::ColorPicker4("Maximum Color Tint", &maxSpawnColorObject(), colourPickerOpts);
+        }
+
+        if (ImGui::CollapsingHeader("Target", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen)) {
+          ImGui::DragFloatRange("Particle Size Range", { &minTargetSizeObject(), &maxTargetSizeObject() }, 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::DragFloatRange("Particle Rotation Speed Range", { &minTargetRotationSpeedObject(), &maxTargetRotationSpeedObject() }, 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::ColorPicker4("Minimum Color Tint", &minTargetColorObject(), colourPickerOpts);
+          ImGui::ColorPicker4("Maximum Color Tint", &maxTargetColorObject(), colourPickerOpts);
         }
 
         if (ImGui::CollapsingHeader("Simulation", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -165,13 +170,13 @@ namespace dxvk {
     desc.turbulenceAmplitude = RtxParticleSystemManager::turbulenceAmplitude();
     desc.minTtl = RtxParticleSystemManager::minParticleLife();
     desc.maxTtl = RtxParticleSystemManager::maxParticleLife();
-    desc.minParticleSize = RtxParticleSystemManager::minParticleSize();
-    desc.maxParticleSize = RtxParticleSystemManager::maxParticleSize();
+    desc.minSpawnSize = RtxParticleSystemManager::minSpawnSize();
+    desc.maxSpawnSize = RtxParticleSystemManager::maxSpawnSize();
     desc.maxNumParticles = RtxParticleSystemManager::numberOfParticlesPerMaterial();
     desc.minSpawnColor = RtxParticleSystemManager::minSpawnColor();
     desc.maxSpawnColor = RtxParticleSystemManager::maxSpawnColor();
-    desc.minRotationSpeed = RtxParticleSystemManager::minRotationSpeed();
-    desc.maxRotationSpeed = RtxParticleSystemManager::maxRotationSpeed();
+    desc.minSpawnRotationSpeed = RtxParticleSystemManager::minSpawnRotationSpeed();
+    desc.maxSpawnRotationSpeed = RtxParticleSystemManager::maxSpawnRotationSpeed();
     desc.useSpawnTexcoords = RtxParticleSystemManager::useSpawnTexcoords() ? 1 : 0;
     desc.enableCollisionDetection = RtxParticleSystemManager::enableCollisionDetection() ? 1 : 0;
     desc.alignParticlesToVelocity = RtxParticleSystemManager::alignParticlesToVelocity() ? 1 : 0;
@@ -180,6 +185,12 @@ namespace dxvk {
     desc.enableMotionTrail = RtxParticleSystemManager::enableMotionTrail() ? 1 : 0;
     desc.motionTrailMultiplier = RtxParticleSystemManager::motionTrailMultiplier();
     desc.spawnRate = (float)RtxParticleSystemManager::spawnRatePerSecond();
+    desc.minTargetSize = RtxParticleSystemManager::minTargetSize();
+    desc.maxTargetSize = RtxParticleSystemManager::maxTargetSize();
+    desc.minTargetRotationSpeed = RtxParticleSystemManager::minTargetRotationSpeed();
+    desc.maxTargetRotationSpeed = RtxParticleSystemManager::maxTargetRotationSpeed();
+    desc.minTargetColor = RtxParticleSystemManager::minTargetColor();
+    desc.maxTargetColor = RtxParticleSystemManager::maxTargetColor();
     desc.hideEmitter = 0;
     return desc;
   }
@@ -353,7 +364,7 @@ namespace dxvk {
 
       gpuCtx.spawnObjectToWorld = pTargetInstance->getTransform();
 
-      gpuCtx.indices32bit = pTargetInstance->getBlas()->modifiedGeometryData.indexBuffer.indexType() == VK_INDEX_TYPE_UINT32;
+      gpuCtx.indices32bit = pTargetInstance->getBlas()->modifiedGeometryData.indexBuffer.indexType() == VK_INDEX_TYPE_UINT32 ? 1 : 0;
       gpuCtx.numTriangles = pTargetInstance->getBlas()->modifiedGeometryData.indexCount / 3;
       gpuCtx.spawnMeshIndexIdx = pTargetInstance->surface.indexBufferIndex;
       gpuCtx.spawnMeshPositionsIdx = pTargetInstance->surface.positionBufferIndex;

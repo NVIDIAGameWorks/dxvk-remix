@@ -624,21 +624,14 @@ namespace {
     RtxParticleSystemDesc toRtParticleDesc(const remixapi_InstanceInfoParticleSystemEXT& info) {
       RtxParticleSystemDesc desc {};
 
-      // Colors
-      desc.minSpawnColor = tovec4(info.minSpawnColor);
-      desc.maxSpawnColor = tovec4(info.maxSpawnColor);
-
       // Lifetimes
       desc.minTtl = info.minTimeToLive;
       desc.maxTtl = info.maxTimeToLive;
 
-      // Initial velocity
+      // Initial 
+      desc.spawnRate = info.spawnRatePerSecond;
       desc.initialVelocityFromNormal = info.initialVelocityFromNormal;
       desc.initialVelocityConeAngleDegrees = info.initialVelocityConeAngleDegrees;
-
-      // Size/physics
-      desc.minParticleSize = info.minParticleSize;
-      desc.maxParticleSize = info.maxParticleSize;
       desc.gravityForce = info.gravityForce;
       desc.maxSpeed = info.maxSpeed;
       desc.motionTrailMultiplier = info.motionTrailMultiplier;
@@ -647,10 +640,21 @@ namespace {
       desc.turbulenceFrequency = info.turbulenceFrequency;
       desc.turbulenceAmplitude = info.turbulenceAmplitude;
 
-      // Spawn and rotation
-      desc.spawnRate = info.spawnRatePerSecond;
-      desc.minRotationSpeed = info.minRotationSpeed;
-      desc.maxRotationSpeed = info.maxRotationSpeed;
+      // Spawn
+      desc.minSpawnRotationSpeed = info.minSpawnRotationSpeed;
+      desc.maxSpawnRotationSpeed = info.maxSpawnRotationSpeed;
+      desc.minSpawnSize = info.minSpawnSize;
+      desc.maxSpawnSize = info.maxSpawnSize;
+      desc.minSpawnColor = tovec4(info.minSpawnColor);
+      desc.maxSpawnColor = tovec4(info.maxSpawnColor);
+
+      // Target
+      desc.minTargetRotationSpeed = info.minTargetRotationSpeed;
+      desc.maxTargetRotationSpeed = info.maxTargetRotationSpeed;
+      desc.minTargetSize = info.minTargetSize;
+      desc.maxTargetSize = info.maxTargetSize;
+      desc.minTargetColor = tovec4(info.minTargetColor);
+      desc.maxTargetColor = tovec4(info.maxTargetColor);
 
       // Collision
       desc.collisionThickness = info.collisionThickness;
@@ -666,7 +670,7 @@ namespace {
       desc.hideEmitter = static_cast<uint>(info.hideEmitter);
 
       // If this assert fails a new particle system parameter added, please update here.
-      assert(pxr::RemixParticleSystemAPI::GetSchemaAttributeNames(false).size() == 25);
+      assert(pxr::RemixParticleSystemAPI::GetSchemaAttributeNames(false).size() == 31);
 
       return desc;
     }

@@ -48,22 +48,31 @@ struct RtxParticleSystemDesc {
 
   vec4 maxSpawnColor;
 
+  vec4 minTargetColor;
+
+  vec4 maxTargetColor;
+
+  float minTargetSize;
+  float maxTargetSize;
+  float minTargetRotationSpeed;
+  float maxTargetRotationSpeed;
+
   float minTtl;
   float maxTtl;
   float initialVelocityFromNormal;
   float initialVelocityConeAngleDegrees;
 
-  float minParticleSize;
-  float maxParticleSize;
+  float minSpawnSize;
+  float maxSpawnSize;
   float gravityForce;
   float maxSpeed;
 
   float turbulenceFrequency;
   float turbulenceAmplitude;
   uint maxNumParticles;
-  float minRotationSpeed;
+  float minSpawnRotationSpeed;
 
-  float maxRotationSpeed;
+  float maxSpawnRotationSpeed;
   float spawnRate;
   float collisionThickness;
   uint8_t useTurbulence;
@@ -100,22 +109,32 @@ struct GpuParticleSystem {
   uint pad1;
 
 #ifndef __cplusplus
-  float16_t4 varyColor(float rand, float16_t4 color) {
-    return float16_t4(saturate(lerp(desc.minSpawnColor, desc.maxSpawnColor, rand))) * color;
+  float16_t varyTimeToLive(float rand) {
+    return lerp(desc.minTtl, desc.maxTtl, rand);
   }
 
-  float16_t varySize(float rand, float16_t size) {
-    float16_t rand = lerp(desc.minParticleSize, desc.maxParticleSize, rand);
-    return rand * size;
+  float16_t4 varySpawnColor(float rand) {
+    return float16_t4(lerp(desc.minSpawnColor, desc.maxSpawnColor, rand));
   }
 
-  float16_t varyRotationSpeed(float rand) {
-    return lerp(desc.minRotationSpeed, desc.maxRotationSpeed, rand) * twoPi;
+  float16_t varySpawnSize(float rand) {
+    return lerp(desc.minSpawnSize, desc.maxSpawnSize, rand);
   }
 
-  float calculateOpacity(float particleNormalizedLife) {
-    float x = particleNormalizedLife * 2 - 1; // -1 to 1 based on lifetime
-    return smoothstep(0.f, 1.f, 1.f - abs(x));
+  float16_t varySpawnRotationSpeed(float rand) {
+    return lerp(desc.minSpawnRotationSpeed, desc.maxSpawnRotationSpeed, rand) * twoPi;
+  }
+
+  float16_t4 varyTargetColor(float rand) {
+    return float16_t4(lerp(desc.minTargetColor, desc.maxTargetColor, rand));
+  }
+
+  float16_t varyTargetSize(float rand) {
+    return lerp(desc.minTargetSize, desc.maxTargetSize, rand);
+}
+
+  float16_t varyTargetRotationSpeed(float rand) {
+    return lerp(desc.minTargetRotationSpeed, desc.maxTargetRotationSpeed, rand) * twoPi;
   }
 
 #else
