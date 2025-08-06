@@ -32,6 +32,7 @@
 #include "../util/util_globaltime.h"
 
 #include <rtx_shaders/particle_system_evolve.h>
+#include <rtx_shaders/particle_system_generate_geometry.h>
 #include "math.h"
 
 namespace dxvk { 
@@ -56,8 +57,24 @@ namespace dxvk {
         TEXTURE2D(PARTICLE_SYSTEM_BINDING_PREV_PRIMARY_SCREEN_SPACE_MOTION_INPUT)
 
         RW_STRUCTURED_BUFFER(PARTICLE_SYSTEM_BINDING_PARTICLES_BUFFER_INPUT_OUTPUT)
-        RW_STRUCTURED_BUFFER(PARTICLE_SYSTEM_BINDING_VERTEX_BUFFER_OUTPUT)
       END_PARAMETER()
+    };
+
+    class ParticleSystemGenerateGeometry : public ManagedShader {
+      SHADER_SOURCE(ParticleSystemGenerateGeometry, VK_SHADER_STAGE_COMPUTE_BIT, particle_system_generate_geometry)
+
+        BINDLESS_ENABLED()
+
+        BEGIN_PARAMETER()
+        COMMON_RAYTRACING_BINDINGS
+
+        CONSTANT_BUFFER(PARTICLE_SYSTEM_BINDING_CONSTANTS)
+
+        STRUCTURED_BUFFER(PARTICLE_SYSTEM_BINDING_SPAWN_CONTEXTS_INPUT)
+        STRUCTURED_BUFFER(PARTICLE_SYSTEM_BINDING_PARTICLES_BUFFER_INPUT)
+
+        RW_STRUCTURED_BUFFER(PARTICLE_SYSTEM_BINDING_VERTEX_BUFFER_OUTPUT)
+        END_PARAMETER()
     };
   }
 
@@ -309,10 +326,7 @@ namespace dxvk {
       ctx->bindResourceView(BINDING_VALUE_NOISE_SAMPLER, ctx->getResourceManager().getValueNoiseLut(ctx), nullptr);
       Rc<DxvkSampler> valueNoiseSampler = ctx->getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT);
       ctx->bindResourceSampler(BINDING_VALUE_NOISE_SAMPLER, valueNoiseSampler);
-
-
       ctx->bindResourceBuffer(PARTICLE_SYSTEM_BINDING_SPAWN_CONTEXTS_INPUT, DxvkBufferSlice(m_spawnContextsBuffer));
-
 
       const auto& rtOutput = ctx->getResourceManager().getRaytracingOutput();
       ctx->bindResourceView(PARTICLE_SYSTEM_BINDING_PREV_WORLD_POSITION_INPUT, 
@@ -328,14 +342,34 @@ namespace dxvk {
         ctx->writeToBuffer(m_cb, 0, sizeof(ParticleSystemConstants), &constants);
         ctx->bindResourceBuffer(PARTICLE_SYSTEM_BINDING_CONSTANTS, DxvkBufferSlice(m_cb));
 
-        ctx->bindResourceBuffer(PARTICLE_SYSTEM_BINDING_SPAWN_CONTEXT_PARTICLE_MAPPING_INPUT, DxvkBufferSlice(system.second->getSpawnContextMappingBuffer()));
-        ctx->bindResourceBuffer(PARTICLE_SYSTEM_BINDING_PARTICLES_BUFFER_INPUT_OUTPUT, DxvkBufferSlice(system.second->getParticlesBuffer()));
-        ctx->bindResourceBuffer(PARTICLE_SYSTEM_BINDING_VERTEX_BUFFER_OUTPUT, DxvkBufferSlice(system.second->getVertexBuffer()));
-
-        ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, ParticleSystemEvolve::getShader());
+        // Disable barriers for write after writes - we ensure particle implementation complies with this optimization
+        DxvkBarrierControlFlags barrierControl;
+        barrierControl.set(DxvkBarrierControl::IgnoreWriteAfterWrite);
+        ctx->setBarrierControl(barrierControl);
 
         const VkExtent3D workgroups = util::computeBlockCount(VkExtent3D { (uint32_t) system.second->context.desc.maxNumParticles, 1, 1 }, VkExtent3D { 128, 1, 1 });
-        ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+
+        // Handle simulation updates
+        {
+          ctx->bindResourceBuffer(PARTICLE_SYSTEM_BINDING_SPAWN_CONTEXT_PARTICLE_MAPPING_INPUT, DxvkBufferSlice(system.second->getSpawnContextMappingBuffer()));
+          ctx->bindResourceBuffer(PARTICLE_SYSTEM_BINDING_PARTICLES_BUFFER_INPUT_OUTPUT, DxvkBufferSlice(system.second->getParticlesBuffer()));
+
+          ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, ParticleSystemEvolve::getShader());
+
+          ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+        }
+
+        // Handle geometry creation
+        {
+          ctx->bindResourceBuffer(PARTICLE_SYSTEM_BINDING_PARTICLES_BUFFER_INPUT, DxvkBufferSlice(system.second->getParticlesBuffer()));
+          ctx->bindResourceBuffer(PARTICLE_SYSTEM_BINDING_VERTEX_BUFFER_OUTPUT, DxvkBufferSlice(system.second->getVertexBuffer()));
+
+          ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, ParticleSystemGenerateGeometry::getShader());
+
+          ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+        }
+
+        ctx->setBarrierControl(DxvkBarrierControlFlags());
       }
     }
 
