@@ -444,7 +444,7 @@ extern "C" {
     float            gravityForce;
     float            maxSpeed;
     float            turbulenceFrequency;
-    float            turbulenceAmplitude;
+    float            turbulenceForce;
     float            minSpawnRotationSpeed;
     float            maxSpawnRotationSpeed;
     float            spawnRatePerSecond;

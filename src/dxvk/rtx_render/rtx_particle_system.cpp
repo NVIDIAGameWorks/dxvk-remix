@@ -95,7 +95,7 @@ namespace dxvk {
           ImGui::DragFloatRange("Time to Live Range", { &minParticleLifeObject(), &maxParticleLifeObject() }, 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::Separator();
           ImGui::DragFloatRange("Size Range", { &minSpawnSizeObject(), &maxSpawnSizeObject() }, 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloatRange("Rotation Speed Range", { &minSpawnRotationSpeedObject(), &maxSpawnRotationSpeedObject() }, 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);ImGui::
+          ImGui::DragFloatRange("Rotation Speed Range", { &minSpawnRotationSpeedObject(), &maxSpawnRotationSpeedObject() }, 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::ColorPicker4("Minimum Color Tint", &minSpawnColorObject(), colourPickerOpts);
           ImGui::ColorPicker4("Maximum Color Tint", &maxSpawnColorObject(), colourPickerOpts);
           ImGui::PopID();
@@ -128,7 +128,7 @@ namespace dxvk {
 
           ImGui::Checkbox("Simulate Turbulence", &useTurbulenceObject());
           ImGui::BeginDisabled(!useTurbulence());
-          ImGui::DragFloat("Turbulence Amplitude", &turbulenceAmplitudeObject(), 0.01f, 0.f, 10.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::DragFloat("Turbulence Force", &turbulenceForceObject(), 0.01f, 0.f, 10.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::DragFloat("Turbulence Frequency", &turbulenceFrequencyObject(), 0.01f, 0.f, 10.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::EndDisabled();
         }
@@ -173,7 +173,7 @@ namespace dxvk {
     desc.maxSpeed = RtxParticleSystemManager::maxSpeed();
     desc.useTurbulence = RtxParticleSystemManager::useTurbulence() ? 1 : 0;
     desc.turbulenceFrequency = RtxParticleSystemManager::turbulenceFrequency();
-    desc.turbulenceAmplitude = RtxParticleSystemManager::turbulenceAmplitude();
+    desc.turbulenceForce = RtxParticleSystemManager::turbulenceForce();
     desc.minTtl = RtxParticleSystemManager::minParticleLife();
     desc.maxTtl = RtxParticleSystemManager::maxParticleLife();
     desc.minSpawnSize = RtxParticleSystemManager::minSpawnSize();
@@ -322,6 +322,7 @@ namespace dxvk {
       for (auto& system : m_particleSystems) {
         // Update CB
         constants.particleSystem = system.second->context;
+        constants.particleSystem.desc.applySceneScale(RtxOptions::sceneScale());
         const DxvkBufferSliceHandle cSlice = m_cb->allocSlice(); 
         ctx->invalidateBuffer(m_cb, cSlice);
         ctx->writeToBuffer(m_cb, 0, sizeof(ParticleSystemConstants), &constants);

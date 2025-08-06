@@ -559,7 +559,7 @@ std::optional<RtxParticleSystemDesc> UsdMod::Impl::processParticleSystem(Args& a
   READ_ATTR(float, GravityForce, gravityForce);
   READ_ATTR(float, MaxSpeed, maxSpeed);
   READ_ATTR(float, TurbulenceFrequency, turbulenceFrequency);
-  READ_ATTR(float, TurbulenceAmplitude, turbulenceAmplitude);
+  READ_ATTR(float, TurbulenceForce, turbulenceForce);
   READ_ATTR(float, CollisionThickness, collisionThickness);
   READ_ATTR(float, CollisionRestitution, collisionRestitution);
   READ_ATTR(float, MotionTrailMultiplier, motionTrailMultiplier);

@@ -71,7 +71,7 @@ struct RtxParticleSystemDesc {
   float maxSpeed;
 
   float turbulenceFrequency;
-  float turbulenceAmplitude;
+  float turbulenceForce;
   float motionTrailMultiplier;
   float minSpawnRotationSpeed;
 
@@ -98,6 +98,20 @@ struct RtxParticleSystemDesc {
 
   XXH64_hash_t calcHash() const {
     return XXH3_64bits(this, sizeof(*this));
+  }
+
+  void applySceneScale(const float centimetersToUnits) {
+    // These params are in centimeters
+    minTargetSize *= centimetersToUnits;
+    maxTargetSize *= centimetersToUnits;
+    minSpawnSize *= centimetersToUnits;
+    maxSpawnSize *= centimetersToUnits;
+    collisionThickness *= centimetersToUnits;
+    gravityForce *= centimetersToUnits;
+    initialVelocityFromNormal *= centimetersToUnits;
+    maxSpeed *= centimetersToUnits;
+    turbulenceForce *= centimetersToUnits;
+    turbulenceFrequency *= centimetersToUnits;
   }
 #endif
 };

@@ -533,7 +533,7 @@ void InstanceInfoBlend::_dtor() {
                                        gravityForce, \
                                        maxSpeed, \
                                        turbulenceFrequency, \
-                                       turbulenceAmplitude, \
+                                       turbulenceForce, \
                                        minSpawnRotationSpeed, \
                                        maxSpawnRotationSpeed, \
                                        spawnRatePerSecond, \

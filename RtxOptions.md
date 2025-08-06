@@ -502,28 +502,35 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.particles.enable|bool|True|||Enables dust particle simulation and rendering\.|
 |rtx.particles.globalPreset.alignParticlesToVelocity|bool|False|||Rotates the particles such that they are always aligned with their direction of travel, in this mode we ignore rotation speed\.|
 |rtx.particles.globalPreset.collisionRestitution|float|0.5|||The fraction of velocity retained after a collision with scene geometry\. 1\.0 = perfectly elastic \(no speed loss\), 0\.0 = completely inelastic \(velocity zeroed\)\. Values outside \[0,1\] will be clamped to this range\.|
-|rtx.particles.globalPreset.collisionThickness|float|5|||The maximum penetration depth \(in world units\) at which a particle will still collide with geometry\.  Particles that penetrate deeper than this value are considered to have passed through thin objects and will not collide\.|
+|rtx.particles.globalPreset.collisionThickness|float|5|||The maximum penetration depth \(in centimeters\) at which a particle will still collide with geometry\.  Particles that penetrate deeper than this value are considered to have passed through thin objects and will not collide\.|
 |rtx.particles.globalPreset.enableCollisionDetection|bool|False|||Enables particle collisions with the world\.|
-|rtx.particles.globalPreset.enableMotionTrail|bool|False|||Elongates the particle with respect to velocity, texture edges are preserved, with only the center being stretched which provides a motion blur like effect on the particles themselves\.  This will automatically align particles rotation with their individual velocitys \(similar to rtx\.particles\.globalPreset\.alignParticlesToVelocity\) and so rotation parameters are no longer taken into account when this setting is enabled\.|
-|rtx.particles.globalPreset.gravityForce|float|-0.5|||Net influence of gravity acting on each particle \(meters per second squared\)\.|
+|rtx.particles.globalPreset.enableMotionTrail|bool|False|||Elongates the particle with respect to velocity, texture edges are preserved, with only the center being stretched which provides a motion blur like effect on the particles themselves\.  This will automatically align particles rotation with their individual velocity \(similar to rtx\.particles\.globalPreset\.alignParticlesToVelocity\) and so rotation parameters are no longer taken into account when this setting is enabled\.|
+|rtx.particles.globalPreset.gravityForce|float|-0.98|||Net influence of gravity acting on each particle \(centimeters per second squared\)\.|
 |rtx.particles.globalPreset.initialVelocityConeAngleDegrees|float|0|||Specifies the half angle, in degrees, of the random emission cone  around the triangles surface normal when spawning a new particle\.  A value in the range of 0 to 180 degrees is expected\.|
-|rtx.particles.globalPreset.initialVelocityFromNormal|float|10|||Initial speed to apply on spawn \(units/sec\) along the normal vector of the spawning triangle\.|
-|rtx.particles.globalPreset.maxParticleLife|float|6|||Maximum lifetime \(in seconds\) to give to a particle when spawned\.|
-|rtx.particles.globalPreset.maxParticleSize|float|3|||Maximum size \(in world units\) to give to a particle when spawned\.|
-|rtx.particles.globalPreset.maxRotationSpeed|float|1|||Maximum rotation speed \(in revolutions per second\) to give to a particle when spawned\.|
+|rtx.particles.globalPreset.initialVelocityFromMotion|float|0|||Multiplier for initial velocity applied at spawn time, based on the spawning objects current velocity\.|
+|rtx.particles.globalPreset.initialVelocityFromNormal|float|0|||Initial speed to apply on spawn \(centimeters per sec\) along the normal vector of the spawning triangle\.|
+|rtx.particles.globalPreset.maxParticleLife|float|1|||Maximum lifetime \(in seconds\) to give to a particle when spawned\.|
 |rtx.particles.globalPreset.maxSpawnColor|float4|1, 1, 1, 1|||Minimum range of the color to tint a particle with when spawned\.|
-|rtx.particles.globalPreset.maxSpeed|float|3|||Maximum speed of a particle in world space\.|
-|rtx.particles.globalPreset.minParticleLife|float|3|||Minimum lifetime \(in seconds\) to give to a particle when spawned\.|
-|rtx.particles.globalPreset.minParticleSize|float|1|||Minimum size \(in world units\) to give to a particle when spawned\.|
-|rtx.particles.globalPreset.minRotationSpeed|float|0.1|||Minimum rotation speed \(in revolutions per second\) to give to a particle when spawned\.|
+|rtx.particles.globalPreset.maxSpawnRotationSpeed|float|0|||Maximum rotation speed \(in revolutions per second\) to give to a particle when spawned\.|
+|rtx.particles.globalPreset.maxSpawnSize|float|10|||Maximum size \(in centimeters\) to give to a particle when spawned\.|
+|rtx.particles.globalPreset.maxSpeed|float|-1|||Maximum speed of a particle in world space \(in centimeters per second\)\.  Negative values imply unlimited\.|
+|rtx.particles.globalPreset.maxTargetColor|float4|1, 1, 1, 0|||Maximum RGBA color picked from a range, to be used as the target animation state, at the end of the particles life\.|
+|rtx.particles.globalPreset.maxTargetRotationSpeed|float|0|||Maximum rotation speed \(in revolutions per second\) picked from a range, to be used as the target animation state, at the end of the particles life\.  Only used if alignParticlesToVelocity is false\.|
+|rtx.particles.globalPreset.maxTargetSize|float|0|||Maximum size \(in centimeters\) picked from a range, to be used as the target animation state, at the end of the particles life\.|
+|rtx.particles.globalPreset.minParticleLife|float|1|||Minimum lifetime \(in seconds\) to give to a particle when spawned\.|
 |rtx.particles.globalPreset.minSpawnColor|float4|1, 1, 1, 1|||Minimum range of the color to tint a particle with when spawned\.|
-|rtx.particles.globalPreset.motionTrailMultiplier|float|1|||When enableMotionTrail is set to enabled, this value can be used to increase \(or decrease\) the length of the tail artificially, which is determined by the velocity\.  A value of 1 \(the default\) will ensure each particle is the exact size of the motion over the previous frame\.  Values geater than 1 will increase that size linearly\.  Likewise for smaller than 1\.  0 and below is an invalid value\.|
-|rtx.particles.globalPreset.numberOfParticlesPerMaterial|int|98304|||Maximum number of particles to simulate per material simultaneously\.  There is a performance consideration, lower numbers are more performant\.  Ideal is to tune this number for your specific needs\.|
+|rtx.particles.globalPreset.minSpawnRotationSpeed|float|0|||Minimum rotation speed \(in revolutions per second\) to give to a particle when spawned\.|
+|rtx.particles.globalPreset.minSpawnSize|float|10|||Minimum size \(in centimeters\) to give to a particle when spawned\.|
+|rtx.particles.globalPreset.minTargetColor|float4|1, 1, 1, 0|||Minimum RGBA color picked from a range, to be used as the target animation state, at the end of the particles life\.|
+|rtx.particles.globalPreset.minTargetRotationSpeed|float|0|||Minimum rotation speed \(in revolutions per second\) picked from a range, to be used as the target animation state, at the end of the particles life\.  Only used if alignParticlesToVelocity is false\.|
+|rtx.particles.globalPreset.minTargetSize|float|0|||Minimum size \(in centimeters\) picked from a range, to be used as the target animation state, at the end of the particles life\.|
+|rtx.particles.globalPreset.motionTrailMultiplier|float|1|||When enableMotionTrail is set to enabled, this value can be used to increase \(or decrease\) the length of the tail artificially, which is determined by the velocity\.  A value of 1 \(the default\) will ensure each particle is the exact size of the motion over the previous frame\.  Values greater than 1 will increase that size linearly\.  Likewise for smaller than 1\.  0 and below is an invalid value\.|
+|rtx.particles.globalPreset.numberOfParticlesPerMaterial|int|10000|||Maximum number of particles to simulate per material simultaneously\.  There is a performance consideration, lower numbers are more performant\.  Ideal is to tune this number for your specific needs\.|
 |rtx.particles.globalPreset.spawnRatePerSecond|int|100|||Number of particles \(per system\) to spawn per second on average\.|
-|rtx.particles.globalPreset.turbulenceAmplitude|float|5|||How much turbulence influences the force of a particle\.|
-|rtx.particles.globalPreset.turbulenceFrequency|float|0.05|||The rate of change of turbulence forces\.|
-|rtx.particles.globalPreset.useSpawnTexcoords|bool|False|||Use the texcoords of the emitter mesh when spawning particles\.|
-|rtx.particles.globalPreset.useTurbulence|bool|True|||Enable turbulence simulation\.|
+|rtx.particles.globalPreset.turbulenceForce|float|5|||How much turbulence influences the velocity of a particle as an external force \(represented in centimeters per second squared\)\.|
+|rtx.particles.globalPreset.turbulenceFrequency|float|0.05|||Frequency \(rate of change\) of the turbulence forces\. Lower values change slowly; higher values change rapidly\.  This is specified in centimeters\.|
+|rtx.particles.globalPreset.useSpawnTexcoords|bool|False|||Use the texture coordinates of the emitter mesh when spawning particles\.|
+|rtx.particles.globalPreset.useTurbulence|bool|False|||Enable turbulence simulation\.|
 |rtx.particles.timeScale|float|1|||Time modifier, can be used to slow/speed up time\.|
 |rtx.pathMaxBounces|int|4|||The maximum number of indirect bounces the path will be allowed to complete\. Must be \< 16\.<br>Higher values result in better indirect lighting quality due to biasing the signal less, lower values result in better performance\.<br>Very high values are not recommended however as while long paths may be technically needed for unbiased rendering, in practice the contributions from higher bounces have diminishing returns\.|
 |rtx.pathMinBounces|int|1|||The minimum number of indirect bounces the path must complete before Russian Roulette can be used\. Must be \< 16\.<br>This value is recommended to stay fairly low \(1 for example\) as forcing longer paths when they carry little contribution quickly becomes detrimental to performance\.|

@@ -639,7 +639,7 @@ namespace {
 
       // Turbulence
       desc.turbulenceFrequency = info.turbulenceFrequency;
-      desc.turbulenceAmplitude = info.turbulenceAmplitude;
+      desc.turbulenceForce = info.turbulenceForce;
 
       // Spawn
       desc.minSpawnRotationSpeed = info.minSpawnRotationSpeed;
