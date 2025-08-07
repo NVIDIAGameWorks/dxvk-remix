@@ -67,20 +67,20 @@ float2 calcBillboardSinCos(float3 velocity, float4x4 worldToView)
 [numthreads(128, 1, 1)]
 void main(uint2 threadIdx : SV_DispatchThreadID)
 {
-  const uint particleIdx = threadIdx.x;
-  
   const GpuParticleSystem particleSystem = particleCb.particleSystem;
   
-  if(particleIdx >= particleSystem.desc.maxNumParticles)
+  if(threadIdx.x >= particleSystem.particleCount)
   {
     return;
   }
   
+  const uint particleIdx = (threadIdx.x + particleSystem.particleTailOffset) % particleSystem.desc.maxNumParticles;
+  
   const GpuParticle particle = Particles[particleIdx];
   
-  if(particle.timeToLive <= 0.f)
+  if(particle.isDead() || particle.isSleeping())
   {
-    clearParticleVertices(particleIdx, particleSystem);
+    clearParticleVertices(threadIdx.x, particleSystem);
     return;
   }
   
@@ -99,6 +99,7 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
       rot2D = float2x2(c, -s, s, c);
     }
   }
+  
   const float3 right = particleCb.worldToView[0].xyz;
   const float3 up = particleCb.worldToView[1].xyz;
   
@@ -149,6 +150,7 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
     vertex.color = colorEnc;
     vertex.texcoord = (offset + 0.5f) * (particle.uvMinMax.zw - particle.uvMinMax.xy) + particle.uvMinMax.xy;
     
-    Vertices[particleIdx * particleSystem.numVerticesPerParticle + i] = vertex;
+    // Always keep active particle vertices in the 0 ~ N range of buffer (unlike particles themselves)
+    Vertices[threadIdx.x * particleSystem.numVerticesPerParticle + i] = vertex;
   }
 }

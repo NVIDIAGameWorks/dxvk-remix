@@ -125,7 +125,11 @@ struct GpuParticleSystem {
   uint spawnParticleOffset = 0;
   uint spawnParticleCount = 0;
   uint numVerticesPerParticle = 4;
-  uint pad1;
+  uint particleTailOffset = 0;
+
+  uint2 pad;
+  uint particleHeadOffset = 0;
+  uint particleCount = 0;
 
 #ifndef __cplusplus
   float16_t varyTimeToLive(float rand) {
@@ -182,4 +186,9 @@ struct ParticleSystemConstants {
   uint frameIdx;
   uint16_t renderingWidth;
   uint16_t renderingHeight;
+
+  float resolveTransparencyThreshold;
+  uint pad0;
+  uint pad1;
+  uint pad2;
 };
