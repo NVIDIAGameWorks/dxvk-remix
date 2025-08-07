@@ -320,7 +320,14 @@ namespace dxvk {
     // Note: This function is called during onChange handler for quality preset option and 
     // all the NRC calls have been issued, so it's safe to set the new settings using immediately.
     // In addition, this ensures the settings being applied immediately on start, rather than being delayed to the next frame
+    
+    // onChange handler is called everytime quality preset is set even if it's the same value, so early exit if a same value is set
+    if (NrcOptions::qualityPreset() == NrcOptions::s_prevQualityPreset) {
+      return;
+    }
 
+    NrcOptions::s_prevQualityPreset = NrcOptions::qualityPreset();
+    
     if (NrcOptions::qualityPreset() == QualityPreset::Ultra) {
       Logger::info("[RTX Neural Radiance Cache] Selected Ultra preset mode.");
       NrcOptions::terminationHeuristicThreshold.setImmediately(0.1f);
