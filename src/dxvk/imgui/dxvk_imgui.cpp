@@ -1405,7 +1405,9 @@ namespace dxvk {
 
     ImGui::TextSeparator("Preset Settings");
 
-    m_userGraphicsSettingChanged |= graphicsPresetCombo.getKey(&RtxOptions::graphicsPresetObject());
+    const auto graphicsPresetChanged = graphicsPresetCombo.getKey(&RtxOptions::graphicsPresetObject());
+
+    m_userGraphicsSettingChanged |= graphicsPresetChanged;
 
     // Map settings to indirect particle level
     int indirectLightParticlesLevel = 0;
@@ -1415,7 +1417,7 @@ namespace dxvk {
 
     // Map presets to options
 
-    if (m_userGraphicsSettingChanged) {
+    if (graphicsPresetChanged) {
       RtxOptions::updateGraphicsPresets(ctx->getDevice().ptr());
     }
 
