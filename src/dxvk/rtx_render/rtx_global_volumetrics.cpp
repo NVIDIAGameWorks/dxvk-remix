@@ -448,10 +448,24 @@ namespace dxvk {
       qualityPreset = qualityModes[desiredQualityLevel];
     }
 
-    froxelGridResolutionScale.setDeferred(qualityPreset.x);
-    froxelDepthSlices.setDeferred(qualityPreset.y);
+    // Set new values based on preset values and cache old values
 
-    m_rebuildFroxels = true;
+    const auto newFroxelGridResolutionScale = qualityPreset.x;
+    const auto newFroxelDepthSlices = qualityPreset.y;
+    const auto oldFroxelGridResolutionScale = froxelGridResolutionScale();
+    const auto oldFroxelDepthSlices = froxelDepthSlices();
+
+    froxelGridResolutionScale.setDeferred(newFroxelGridResolutionScale);
+    froxelDepthSlices.setDeferred(newFroxelDepthSlices);
+
+    // Indicate that the froxel resources should be rebuilt if any relevant values changed
+
+    if (
+      newFroxelGridResolutionScale != oldFroxelGridResolutionScale ||
+      newFroxelDepthSlices != oldFroxelDepthSlices
+    ) {
+      m_rebuildFroxels = true;
+    }
   }
 
   void RtxGlobalVolumetrics::setPreset(const PresetType presetType) {
