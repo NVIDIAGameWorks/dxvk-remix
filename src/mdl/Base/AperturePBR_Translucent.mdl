@@ -99,11 +99,11 @@ export material AperturePBR_Translucent(
     anno::description("Enables the emission of light from the material"),
     anno::in_group("Emission")
   ]],
-  uniform color emissive_color = color(1.0, 0.1, 0.1)
+  uniform color emissive_color_constant = color(1.0, 0.1, 0.1)
   [[
     anno::enable_if("enable_emission == true"),
     anno::display_name("Emissive Color"),
-    anno::description("The emission color"),
+    anno::description("The emission color when no Emissive Color Texture is set."),
     anno::hard_range(color(0.0), color(1.0)),
     anno::in_group("Emission")
   ]],
@@ -292,7 +292,7 @@ export material AperturePBR_Translucent(
     scattering: final_bsdf,
     emission:  material_emission (
       df::diffuse_edf(),
-      intensity: enable_emission ? emissive_color * emissive_mask * color(emissive_intensity) : color(0)
+      intensity: enable_emission ? emissive_color_constant * emissive_mask * color(emissive_intensity) : color(0)
     )
   ),
   ior: color(ior_constant),
