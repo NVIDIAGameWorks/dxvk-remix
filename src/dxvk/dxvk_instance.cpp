@@ -463,23 +463,21 @@ namespace dxvk {
     // Note: These variables are defined outside the validation layer enable scope as their pointers must remain valid until
     // instance creation.
     VkLayerSettingsCreateInfoEXT validationLayerSettingsCreateInfo;
+    constexpr auto khronosValidationLayerName{ "VK_LAYER_KHRONOS_validation" };
     const VkBool32 trueValidationLayerSetting{ VK_TRUE };
+    const std::array<VkLayerSettingEXT, 3> validationLayerSettings{ {
+      // Note: Enable validation settings disabled by default in the Khronos Validation Layer, currently synchronization
+      // validation, GPU assisted validation and best practices.
+      // See this documentation for more information: https://vulkan.lunarg.com/doc/view/latest/windows/khronos_validation_layer.html
+      { khronosValidationLayerName, "validate_sync", VK_LAYER_SETTING_TYPE_BOOL32_EXT, 1, &trueValidationLayerSetting },
+      { khronosValidationLayerName, "gpuav_enable", VK_LAYER_SETTING_TYPE_BOOL32_EXT, 1, &trueValidationLayerSetting },
+      { khronosValidationLayerName, "validate_best_practices", VK_LAYER_SETTING_TYPE_BOOL32_EXT, 1, &trueValidationLayerSetting },
+    } };
 
     if (areValidationLayersEnabled) {
-      constexpr auto khronosValidationLayerName{ "VK_LAYER_KHRONOS_validation" };
-
       // Configure validation layers if extended validation is desired
 
       if (enableValidationLayerExtendedValidation) {
-        const std::array<VkLayerSettingEXT, 3> validationLayerSettings{ {
-          // Note: Enable validation settings disabled by default in the Khronos Validation Layer, currently synchronization
-          // validation, GPU assisted validation and best practices.
-          // See this documentation for more information: https://vulkan.lunarg.com/doc/view/latest/windows/khronos_validation_layer.html
-          { khronosValidationLayerName, "validate_sync", VK_LAYER_SETTING_TYPE_BOOL32_EXT, 1, &trueValidationLayerSetting },
-          { khronosValidationLayerName, "gpuav_enable", VK_LAYER_SETTING_TYPE_BOOL32_EXT, 1, &trueValidationLayerSetting },
-          { khronosValidationLayerName, "validate_best_practices", VK_LAYER_SETTING_TYPE_BOOL32_EXT, 1, &trueValidationLayerSetting },
-        } };
-
         validationLayerSettingsCreateInfo.sType = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT;
         validationLayerSettingsCreateInfo.pNext = info.pNext;
         validationLayerSettingsCreateInfo.settingCount = static_cast<std::uint32_t>(validationLayerSettings.size());
