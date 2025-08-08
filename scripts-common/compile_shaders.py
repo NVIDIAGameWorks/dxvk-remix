@@ -39,7 +39,6 @@ args = parser.parse_args()
 generateSlangRepro = False
 
 includePaths = ' '.join([f'-I{path}' for path in args.includes])
-destExtension = '.spv' if args.binary else '.h'
 slangDll = os.path.join(os.path.dirname(args.slangc), 'slang.dll')
 
 tools = [args.glslang, args.slangc, slangDll, __file__]
@@ -202,6 +201,7 @@ def createBasicTask(inputFile, destFile, targetName, depFile):
 
 def createGlslangTask(inputFile):
     shaderName = getShaderName(inputFile)
+    destExtension = '.spv' if args.binary else '.h'
     destFile = os.path.join(args.output, shaderName + destExtension)
     depFile = os.path.join(args.output, shaderName + ".d")
     task = createBasicTask(inputFile, destFile, destFile, depFile)
@@ -213,23 +213,25 @@ def createGlslangTask(inputFile):
     return task
 
 def createSlangTask(inputFile, variantSpec):
+    # Ensure slang runs validation
+    os.environ['SLANG_RUN_SPIRV_VALIDATION'] = '1'
+
     inputName, inputType = os.path.splitext(getShaderName(inputFile))
     variantName, variantType = os.path.splitext(variantSpec[0])
 
     variantDefines = ' '.join([f'-D{x}' for x in variantSpec[1:]])
-    destFile = os.path.join(args.output, variantName + destExtension)
+    destFile = os.path.join(args.output, variantName + ".spv")
+    headerFile = os.path.join(args.output, variantName + ".h")
     depFile = os.path.join(args.output, variantName + ".d")
-    task = createBasicTask(inputFile, destFile, destFile, depFile)
+    task = createBasicTask(inputFile, destFile, headerFile, depFile)
 
     if variantName != inputName:
         task.customName = f'{os.path.basename(inputFile)} ({variantName})'
 
-    variableArg = '' if args.binary else f'-source-embed-name {variantName} -source-embed-style u32'
-
     command1 = f'{args.slangc} -entry main -target spirv -zero-initialize -emit-spirv-directly -verbose-paths {includePaths} ' \
             + f'-depfile {depFile} {inputFile} -D__SLANG__ {variantDefines} ' \
             + f'-matrix-layout-column-major ' \
-            + f'-Wno-30081 {variableArg} '
+            + f'-Wno-30081 '
 
     # Force scalar block layout in shaders - buffers are required to be aligned as such by Neural Radiance Cache
     command1 += f'-fvk-use-scalar-layout '
@@ -240,10 +242,16 @@ def createSlangTask(inputFile, variantSpec):
 
     command1 += f'-o {destFile}'
 
-    script_dir = os.path.dirname(os.path.realpath(__file__))
-    validate_shader_path = os.path.join(script_dir, 'validate_shader.py')
-    command2 = f'python {validate_shader_path} -spirvval {args.spirvval} -input {destFile}'
-    task.commands = [command1, command2]
+    # -binary switch just writes the SPV binary
+    if args.binary:
+        task.commands = [command1]
+    else:
+        # Command to convert SPV into c array header
+        script_dir = os.path.dirname(os.path.realpath(__file__))
+        shader_xxd = os.path.join(script_dir, 'shader_xxd.py')
+        command2 = f'{sys.executable} {shader_xxd} -i {destFile} -o {headerFile}'
+
+        task.commands = [command1, command2]
 
     return task
 
