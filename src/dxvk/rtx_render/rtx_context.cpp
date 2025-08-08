@@ -245,8 +245,6 @@ namespace dxvk {
     downscaleExtent.width = std::max(downscaleExtent.width, 1u);
     downscaleExtent.height = std::max(downscaleExtent.height, 1u);
 
-    m_common->metaDLFG().setDisplaySize(uint2(upscaleExtent.width, upscaleExtent.height));
-
     return downscaleExtent;
   }
 
