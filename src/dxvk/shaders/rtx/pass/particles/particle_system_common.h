@@ -188,7 +188,7 @@ struct ParticleSystemConstants {
   uint16_t renderingHeight;
 
   float resolveTransparencyThreshold;
-  uint pad0;
+  float minParticleSize;
   uint pad1;
   uint pad2;
 };

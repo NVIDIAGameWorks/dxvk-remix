@@ -175,7 +175,7 @@ namespace dxvk {
         const auto colourPickerOpts = ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoSidePreview | ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_Float | ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_DisplayRGB;
         if (ImGui::CollapsingHeader("Spawn", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen)) {
           ImGui::PushID("spawn");
-          ImGui::DragInt("Spawn Rate Per Second", &spawnRatePerSecondObject(), 0.1f, 1, 10000, "%d", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::DragInt("Spawn Rate Per Second", &spawnRatePerSecondObject(), 0.1f, 1, 100000, "%d", ImGuiSliderFlags_AlwaysClamp);
           ImGui::Separator();
           ImGui::Checkbox("Use Spawn Texture Coordinates", &useSpawnTexcoordsObject());
           ImGui::Separator();
@@ -250,6 +250,7 @@ namespace dxvk {
     constants.absoluteTimeSecs = GlobalTime::get().absoluteTimeMs() * 0.001f * timeScale();
 
     constants.resolveTransparencyThreshold = RtxOptions::resolveTransparencyThreshold();
+    constants.minParticleSize = 0.4f * RtxOptions::sceneScale(); // 4mm
   }
 
   // Please re-profile performance if any of these structures change in size.  As a minimum performance requirement, always preserve a 16 byte alignment.

@@ -63,6 +63,22 @@ float2 calcBillboardSinCos(float3 velocity, float4x4 worldToView)
   return vel2D;
 }
 
+vector<float, N> chopMantissaLSB<let N: int>(vector<float, N> value, int numLSB) 
+{
+  vector<uint, N> data = asuint(value);
+
+  // The mantissa occupies the lower 23 bits.
+  const uint32_t fraction_mask = 0x7FFFFF; 
+
+  uint clearMask = ~((1u << numLSB) - 1) & fraction_mask;
+
+  // Keep the original sign and exponent (upper N bits) intact,
+  // and chop the LSB bits of the fraction.
+  data = (data & ~fraction_mask) | ((data & fraction_mask) & clearMask);
+
+  return asfloat(data);
+}
+
 [shader("compute")]
 [numthreads(128, 1, 1)]
 void main(uint2 threadIdx : SV_DispatchThreadID)
@@ -78,7 +94,11 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
   
   const GpuParticle particle = Particles[particleIdx];
   
-  if(particle.isDead() || particle.isSleeping())
+  // precache some values
+  const float size = particle.size(particleSystem);
+  const float16_t4 color = particle.color(particleSystem);
+  
+  if(particle.isDead() || particle.isSleeping() || color.w < particleCb.resolveTransparencyThreshold || size <= particleCb.minParticleSize)
   {
     clearParticleVertices(threadIdx.x, particleSystem);
     return;
@@ -103,9 +123,7 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
   const float3 right = particleCb.worldToView[0].xyz;
   const float3 up = particleCb.worldToView[1].xyz;
   
-  // precache some values
-  const float size = particle.size(particleSystem);
-  const uint colorEnc = float4x16ToUnorm4x8(particle.color(particleSystem).zyxw);
+  const uint colorEnc = float4x16ToUnorm4x8(color.zyxw);
   
   [unroll]
   for (uint i=0 ; i<particleSystem.numVerticesPerParticle ; i++)
@@ -146,7 +164,7 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
       worldOffset = (localOffset.x * right + localOffset.y * up) * size;
     }
     
-    vertex.position = particle.position + worldOffset;
+    vertex.position = chopMantissaLSB(particle.position + worldOffset, 14); // lop off some LSB to get better compression;
     vertex.color = colorEnc;
     vertex.texcoord = (offset + 0.5f) * (particle.uvMinMax.zw - particle.uvMinMax.xy) + particle.uvMinMax.xy;
     
