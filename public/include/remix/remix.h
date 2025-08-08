@@ -736,21 +736,28 @@ namespace remix {
       pNext = nullptr;
       maxNumParticles = 10000;
       spawnRatePerSecond = 0.f;
-      minTimeToLive = 3.0f;
-      maxTimeToLive = 6.0f;
-      minParticleSize = 1.0f;
-      maxParticleSize = 3.0f;
-      minRotationSpeed = 0.1f;
-      maxRotationSpeed = 1.0f;
+      minTimeToLive = 1.0f;
+      maxTimeToLive = 1.0f;
+      minSpawnSize = 10.0f;
+      maxSpawnSize = 10.0f;
+      minSpawnRotationSpeed = 0.0f;
+      maxSpawnRotationSpeed = 0.0f;
       minSpawnColor = {1, 1, 1, 1};
       maxSpawnColor = {1, 1, 1, 1};
+      minTargetSize = 0.0f;
+      maxTargetSize = 0.0f;
+      minTargetRotationSpeed = 0.0f;
+      maxTargetRotationSpeed = 0.0f;
+      minTargetColor = { 1, 1, 1, 0 };
+      maxTargetColor = { 1, 1, 1, 0 };
       useSpawnTexcoords = false;
-      initialVelocityFromNormal = 10.0f;
+      initialVelocityFromMotion = 0.0f;
+      initialVelocityFromNormal = 0.0f;
       initialVelocityConeAngleDegrees = 0.0f;
-      maxSpeed = 3.0f;
-      gravityForce = -0.5f;
-      useTurbulence = true;
-      turbulenceAmplitude = 5.0f;
+      maxSpeed = -1.0f;
+      gravityForce = -0.98f;
+      useTurbulence = false;
+      turbulenceForce = 5.0f;
       turbulenceFrequency = 0.05f;
       enableCollisionDetection = false;
       collisionRestitution = 0.5f;
@@ -759,7 +766,7 @@ namespace remix {
       enableMotionTrail = false;
       motionTrailMultiplier = 1.0f;
       hideEmitter = false;
-      static_assert(sizeof InstanceInfoParticleSystemEXT == 144);
+      static_assert(sizeof InstanceInfoParticleSystemEXT == 192);
     }
   };
 

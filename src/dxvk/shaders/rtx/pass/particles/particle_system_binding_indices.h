@@ -27,17 +27,72 @@
 
 struct GpuParticle {
   vec3 position;
-  uint color;
+  uint enBaseColor;
 
   vec3 velocity;
-  half timeToLive;
-  half initialTimeToLive;
+  float randSeed;
 
   f16vec4 uvMinMax;
-  half size;
   half rotation;
-  half rotationSpeed;
+  half timeToLive;
   half pad0;
+  half pad1;
+
+
+#ifndef __cplusplus
+  [mutating]
+  void reset(GpuParticleSystem system, float3 worldPosition, float3 worldVelocity, f16vec4 _uvMinMax, f16vec4 color, float seed) {
+    randSeed = seed;
+    rotation = 0.h;
+    timeToLive = initialTimeToLive(system);
+    enBaseColor = float4x16ToUnorm4x8(color);
+    position = worldPosition;
+    velocity = worldVelocity;
+    uvMinMax = _uvMinMax;
+  }
+
+  half initialTimeToLive(GpuParticleSystem system) { 
+    return system.varyTimeToLive(randSeed);
+  }
+
+  f16vec4 color(GpuParticleSystem system) {
+    return unorm4x8ToFloat4x16(enBaseColor) * lerp(targetColor(system), spawnColor(system), normalizedLife(system));
+  }
+
+  half rotationSpeed(GpuParticleSystem system) {
+    return lerp(targetRotationSpeed(system), spawnRotationSpeed(system), normalizedLife(system));
+  }
+
+  half size(GpuParticleSystem system) {
+    return lerp(targetSize(system), spawnSize(system), normalizedLife(system));
+  }
+
+  half spawnRotationSpeed(GpuParticleSystem system) { 
+    return system.varySpawnRotationSpeed(randSeed);
+  }
+  half targetRotationSpeed(GpuParticleSystem system) { 
+    return system.varyTargetRotationSpeed(randSeed);
+  }
+  
+  half spawnSize(GpuParticleSystem system) {
+    return system.varySpawnSize(randSeed);
+  }
+  half targetSize(GpuParticleSystem system) {
+    return system.varyTargetSize(randSeed);
+  }
+
+  f16vec4 spawnColor(GpuParticleSystem system) {
+    return system.varySpawnColor(randSeed);
+  }
+  f16vec4 targetColor(GpuParticleSystem system) {
+    return system.varyTargetColor(randSeed);
+  }
+
+  // Gradually moves from 1 when born to 0 when dead over lifetime
+  half normalizedLife(GpuParticleSystem system) {
+    return timeToLive / initialTimeToLive(system);
+  }
+#endif
 };
 
 struct ParticleVertex {

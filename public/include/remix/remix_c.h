@@ -439,18 +439,25 @@ extern "C" {
     float            maxTimeToLive;
     float            initialVelocityFromNormal;
     float            initialVelocityConeAngleDegrees;
-    float            minParticleSize;
-    float            maxParticleSize;
+    float            minSpawnSize;
+    float            maxSpawnSize;
     float            gravityForce;
     float            maxSpeed;
     float            turbulenceFrequency;
-    float            turbulenceAmplitude;
-    float            minRotationSpeed;
-    float            maxRotationSpeed;
+    float            turbulenceForce;
+    float            minSpawnRotationSpeed;
+    float            maxSpawnRotationSpeed;
     float            spawnRatePerSecond;
     float            collisionThickness;
     float            collisionRestitution;
     float            motionTrailMultiplier;
+    float            initialVelocityFromMotion;
+    float            minTargetSize;
+    float            maxTargetSize;
+    float            minTargetRotationSpeed;
+    float            maxTargetRotationSpeed;
+    remixapi_Float4D minTargetColor;
+    remixapi_Float4D maxTargetColor;
   } remixapi_InstanceInfoParticleSystemEXT;
 
   typedef struct remixapi_InstanceInfo {

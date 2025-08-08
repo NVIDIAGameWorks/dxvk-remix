@@ -525,20 +525,27 @@ void InstanceInfoBlend::_dtor() {
                                        maxSpawnColor, \
                                        minTimeToLive, \
                                        maxTimeToLive, \
+                                       initialVelocityFromMotion, \
                                        initialVelocityFromNormal, \
                                        initialVelocityConeAngleDegrees, \
-                                       minParticleSize, \
-                                       maxParticleSize, \
+                                       minSpawnSize, \
+                                       maxSpawnSize, \
                                        gravityForce, \
                                        maxSpeed, \
                                        turbulenceFrequency, \
-                                       turbulenceAmplitude, \
-                                       minRotationSpeed, \
-                                       maxRotationSpeed, \
+                                       turbulenceForce, \
+                                       minSpawnRotationSpeed, \
+                                       maxSpawnRotationSpeed, \
                                        spawnRatePerSecond, \
                                        collisionThickness, \
                                        collisionRestitution, \
-                                       motionTrailMultiplier
+                                       motionTrailMultiplier, \
+                                       minTargetSize, \
+                                       maxTargetSize, \
+                                       minTargetRotationSpeed, \
+                                       maxTargetRotationSpeed, \
+                                       minTargetColor, \
+                                       maxTargetColor 
 uint32_t InstanceInfoParticleSystem::_calcSize() const {
   return fold_helper::calcSize(InstanceInfoParticleSystemVars);
 }

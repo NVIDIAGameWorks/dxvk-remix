@@ -42,37 +42,37 @@ class "ParticleSystemAPI" (
             displayName = "Particle Spawn Rate"
         )
 		
-    float primvars:particle:minTimeToLive = 3.0 (
+    float primvars:particle:minTimeToLive = 1.0 (
             doc = "Minimum lifetime (in seconds) to give to a particle when spawned. Particles older than this are immediately killed."
             displayGroup = "Spawn" 
             displayName = "Minimum Time to Live"
         )
 
-    float primvars:particle:maxTimeToLive = 6.0 (
+    float primvars:particle:maxTimeToLive = 1.0 (
             doc = "Maximum lifetime (in seconds) to give to a particle when spawned. After this time, particles are automatically removed."
             displayGroup = "Spawn" 
             displayName = "Maximum Time to Live"
         )
 
-    float primvars:particle:minParticleSize = 1.0 (
-            doc = "Minimum size (in world units) to give to a particle when spawned. All particles are clamped to be at least this large."
+    float primvars:particle:minSpawnSize = 10.0 (
+            doc = "Minimum size (in centimeters) to give to a particle when spawned."
             displayGroup = "Spawn"
             displayName = "Minimum Particle Size"
         )
 
-    float primvars:particle:maxParticleSize = 3.0 (
-            doc = "Maximum size (in world units) to give to a particle when spawned. All particles are clamped to be at most this large."
+    float primvars:particle:maxSpawnSize = 10.0 (
+            doc = "Maximum size (in centimeters) to give to a particle when spawned."
             displayGroup = "Spawn"
             displayName = "Maximum Particle Size"
         )
 
-    float primvars:particle:minRotationSpeed = 0.1 (
+    float primvars:particle:minSpawnRotationSpeed = 0.0 (
             doc = "Minimum rotation speed (in revolutions per second) to give to a particle when spawned. Only used if alignParticlesToVelocity is false."
             displayGroup = "Spawn"
             displayName = "Minimum Rotation Speed"
         )
 
-    float primvars:particle:maxRotationSpeed = 1.0 (
+    float primvars:particle:maxSpawnRotationSpeed = 0.0 (
             doc = "Maximum rotation speed (in revolutions per second) to give to a particle when spawned. Only used if alignParticlesToVelocity is false."
             displayGroup = "Spawn"
             displayName = "Maximum Rotation Speed"
@@ -90,6 +90,42 @@ class "ParticleSystemAPI" (
             displayName = "Maximum Spawn Color"
         )
 
+    float primvars:particle:minTargetSize = 0.0 (
+            doc = "Minimum size (in centimeters) picked from a range, to be used as the target animation state, at the end of the particles life."
+            displayGroup = "Target"
+            displayName = "Minimum Particle Size"
+        )
+
+    float primvars:particle:maxTargetSize = 0.0 (
+            doc = "Maximum size (in centimeters) picked from a range, to be used as the target animation state, at the end of the particles life."
+            displayGroup = "Target"
+            displayName = "Maximum Particle Size"
+        )
+
+    float primvars:particle:minTargetRotationSpeed = 0.0 (
+            doc = "Minimum rotation speed (in revolutions per second) picked from a range, to be used as the target animation state, at the end of the particles life.  Only used if alignParticlesToVelocity is false."
+            displayGroup = "Target"
+            displayName = "Minimum Rotation Speed"
+        )
+
+    float primvars:particle:maxTargetRotationSpeed = 0.0 (
+            doc = "Maximum rotation speed (in revolutions per second) picked from a range, to be used as the target animation state, at the end of the particles life.  Only used if alignParticlesToVelocity is false."
+            displayGroup = "Target"
+            displayName = "Maximum Rotation Speed"
+        )
+
+    color4f primvars:particle:minTargetColor = (1, 1, 1, 0) (
+            doc = "Minimum RGBA color picked from a range, to be used as the target animation state, at the end of the particles life."
+            displayGroup = "Target"
+            displayName = "Minimum Target Color"
+        )
+
+    color4f primvars:particle:maxTargetColor = (1, 1, 1, 0) (
+            doc = "Maximum RGBA color picked from a range, to be used as the target animation state, at the end of the particles life."
+            displayGroup = "Target"
+            displayName = "Maximum Target Color"
+        )
+
     bool primvars:particle:hideEmitter = false (
             doc = "Hide or show the particle emitter in the rendered output."
             displayGroup = "Spawn"
@@ -102,8 +138,14 @@ class "ParticleSystemAPI" (
             displayName = "Use Spawn Mesh's Texture Coordinates"
         )
 
-    float primvars:particle:initialVelocityFromNormal = 10.0 (
-            doc = "Initial speed (units/sec) applied at spawn along the normal vector of the emitting triangle."
+    float primvars:particle:initialVelocityFromMotion = 0.0 (
+            doc = "Multiplier for initial velocity applied at spawn time, based on the spawning objects current velocity."
+            displayGroup = "Spawn"
+            displayName = "Initial Velocity From Motion"
+        )
+        
+    float primvars:particle:initialVelocityFromNormal = 0.0 (
+            doc = "Initial speed (centimeters per sec) applied at spawn along the normal vector of the emitting triangle."
             displayGroup = "Spawn"
             displayName = "Initial Velocity From Normal"
         )
@@ -115,32 +157,32 @@ class "ParticleSystemAPI" (
         )
 
     # Simulation
-    float primvars:particle:maxSpeed = 3.0 (
-            doc = "Maximum speed (units/sec) of a particle in world space. Particles exceeding this are clamped."
+    float primvars:particle:maxSpeed = -1.0 (
+            doc = "Maximum speed (centimeters per sec) of a particle in world space. Particles exceeding this are clamped.  Negative values imply unlimited speed."
             displayGroup = "Simulation"
             displayName = "Max Speed Limit"
         )
 
-    float primvars:particle:gravityForce = -0.5 (
-            doc = "Net influence of gravity on each particle (meters per second squared). Negative values pull particles downward."
+    float primvars:particle:gravityForce = -0.98 (
+            doc = "Net influence of gravity on each particle (centimeters per second squared). Negative values pull particles downward."
             displayGroup = "Simulation"
             displayName = "Gravity Force"
         )
 
-    bool primvars:particle:useTurbulence = true (
+    bool primvars:particle:useTurbulence = false (
             doc = "Enable procedural turbulence forces on particles to create more chaotic motion."
             displayGroup = "Simulation"
             displayName = "Apply Velocity Turbulence"
         )
 
-    float primvars:particle:turbulenceAmplitude = 5.0 (
-            doc = "Strength of the turbulence force applied to particles. Higher values produce more dramatic perturbations."
+    float primvars:particle:turbulenceForce = 5.0 (
+            doc = "How much turbulence influences the velocity of a particle as an external force (represented in centimeters per second squared)."
             displayGroup = "Simulation"
-            displayName = "Turbulence Amplitude"
+            displayName = "Turbulence Force"
         )
 
     float primvars:particle:turbulenceFrequency = 0.05 (
-            doc = "Frequency (rate of change) of the turbulence forces. Lower values change slowly; higher values change rapidly."
+            doc = "Frequency (rate of change) of the turbulence forces. Lower values change slowly; higher values change rapidly.  This is specified in centimeters."
             displayGroup = "Simulation"
             displayName = "Turbulence Frequency"
         )
@@ -159,7 +201,7 @@ class "ParticleSystemAPI" (
         )
 
     float primvars:particle:collisionThickness = 5.0 (
-            doc = "Maximum penetration depth (in world units) at which a particle will still register a collision. Deeper penetrations are ignored."
+            doc = "Maximum penetration depth (in centimeters) at which a particle will still register a collision. Deeper penetrations are ignored."
             displayGroup = "Collision"
             displayName = "Thickness"
         )

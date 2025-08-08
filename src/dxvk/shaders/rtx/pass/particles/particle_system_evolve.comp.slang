@@ -65,10 +65,14 @@ GpuParticle respawn(uint particleIdx, const GpuParticleSystem particleSystem)
   // Get random triangle
   
   float3 positions[3]; 
-  float16_t4 colors[3];
-  float4 uvMinMax;
+  float3 prevPositions[3];
+  float16_t4 color = (spawnCtx.spawnMeshColorsIdx != BINDING_INDEX_INVALID) ? 0.h : 1.h;
+  float4 uvMinMax = float4(0..xx, 1..xx);
   
   uint randomSeed = particleIdx;
+    
+  float3 random01 = float3(randomFloat(uint2(randomSeed++, particleCb.frameIdx)), randomFloat(uint2(randomSeed++, particleCb.frameIdx)), randomFloat(uint2(randomSeed++, particleCb.frameIdx)));
+  float3 randomBary = saturate(random01 / dot(random01, 1..xxx));
   
   uint triIdx = randomFloat(uint2(randomSeed++, particleCb.frameIdx)) * spawnCtx.numTriangles;
   
@@ -81,64 +85,66 @@ GpuParticle respawn(uint particleIdx, const GpuParticleSystem particleSystem)
     positions[i] = float3(BUFFER_ARRAY(geometries, (uint)spawnCtx.spawnMeshPositionsIdx, baseSrcPositionOffset + 0),
                           BUFFER_ARRAY(geometries, (uint)spawnCtx.spawnMeshPositionsIdx, baseSrcPositionOffset + 1),
                           BUFFER_ARRAY(geometries, (uint)spawnCtx.spawnMeshPositionsIdx, baseSrcPositionOffset + 2));
-    positions[i] = mul(spawnCtx.spawnObjectToWorld, float4(positions[i], 1.f)).xyz;
     
-    const uint baseSrcColorOffset = (spawnCtx.spawnMeshColorsOffset + index * spawnCtx.spawnMeshColorsStride) / 4;
-    
-    if(spawnCtx.spawnMeshColorsIdx != BINDING_INDEX_INVALID)
+    if (spawnCtx.spawnMeshPrevPositionsIdx != BINDING_INDEX_INVALID)
     {
-      // VK_FORMAT_B8G8R8A8_UNORM
-      const uint colorBits = floatBitsToUint(BUFFER_ARRAY(geometries, (uint) spawnCtx.spawnMeshColorsIdx, baseSrcColorOffset));
-      colors[i].x = unorm8ToF16(uint8_t(colorBits >> 16));
-      colors[i].y = unorm8ToF16(uint8_t(colorBits >> 8));
-      colors[i].z = unorm8ToF16(uint8_t(colorBits));
-      colors[i].w = unorm8ToF16(uint8_t(colorBits >> 24));
+      prevPositions[i].x = BUFFER_ARRAY(geometries, (uint)spawnCtx.spawnMeshPrevPositionsIdx, baseSrcPositionOffset + 0);
+      prevPositions[i].y = BUFFER_ARRAY(geometries, (uint)spawnCtx.spawnMeshPrevPositionsIdx, baseSrcPositionOffset + 1);
+      prevPositions[i].z = BUFFER_ARRAY(geometries, (uint)spawnCtx.spawnMeshPrevPositionsIdx, baseSrcPositionOffset + 2);
     }
     else
     {
-      colors[i] = 1.h.xxxx;
+      prevPositions[i] = positions[i];
+    }
+    
+    if(spawnCtx.spawnMeshColorsIdx != BINDING_INDEX_INVALID)
+    {
+      const uint baseSrcColorOffset = (spawnCtx.spawnMeshColorsOffset + index * spawnCtx.spawnMeshColorsStride) / 4;
+      const uint colorBits = floatBitsToUint(BUFFER_ARRAY(geometries, (uint) spawnCtx.spawnMeshColorsIdx, baseSrcColorOffset));
+      // Format is B8G8R8A8_UNORM
+      color += unorm4x8ToFloat4x16(colorBits).zyxw * randomBary[i];
     }
     
     const uint baseSrcTexcoordOffset = (spawnCtx.spawnMeshTexcoordsOffset + index * spawnCtx.spawnMeshTexcoordsStride) / 4;
     float2 texcoord = float2(BUFFER_ARRAY(geometries, (uint)spawnCtx.spawnMeshTexcoordsIdx, baseSrcTexcoordOffset + 0),
                              BUFFER_ARRAY(geometries, (uint)spawnCtx.spawnMeshTexcoordsIdx, baseSrcTexcoordOffset + 1));
     
-    if(i==0)
+    if (particleSystem.desc.useSpawnTexcoords)
     {
-      uvMinMax.xy = texcoord;
-      uvMinMax.zw = texcoord;
-    }
-    else
-    {
-      uvMinMax.xy = min(uvMinMax.xy, texcoord);
-      uvMinMax.zw = max(uvMinMax.zw, texcoord);
+      if (i == 0)
+      {
+        uvMinMax.xy = texcoord;
+        uvMinMax.zw = texcoord;
+      }
+      else
+      {
+        uvMinMax.xy = min(uvMinMax.xy, texcoord);
+        uvMinMax.zw = max(uvMinMax.zw, texcoord);
+      }
     }
   }
   
   // Sample random point on triangle
+  const float randSeed = randomFloat(uint2(randomSeed++, particleCb.frameIdx));
+
+  float3 prevWorldPosition = mul(spawnCtx.spawnPrevObjectToWorld, float4(interpolateHitAttribute(prevPositions, randomBary), 1.f)).xyz;
+  float3 worldPosition = mul(spawnCtx.spawnObjectToWorld, float4(interpolateHitAttribute(positions, randomBary), 1.f));
   
-  float3 random01 = float3(randomFloat(uint2(randomSeed++, particleCb.frameIdx)), randomFloat(uint2(randomSeed++, particleCb.frameIdx)), randomFloat(uint2(randomSeed++, particleCb.frameIdx)));
-  float3 randomBary = saturate(random01 / dot(random01, 1..xxx));
-  float3 worldPosition = interpolateHitAttribute(positions, randomBary);
-  f16vec3 worldNormal = f16vec3(cross(normalize(positions[1] - positions[0]), normalize(positions[2] - positions[0])));
-  float16_t4 color = interpolateHitAttribute(colors, randomBary);
+  float3 worldSpawnVelocity = (worldPosition - prevWorldPosition) * particleCb.invDeltaTimeSecs;
   
-  // Spawn a particle
-  
-  newParticle.position = worldPosition;
+  float3 localNormal = cross(normalize(positions[1] - positions[0]), normalize(positions[2] - positions[0]));
+  float3 worldNormal = mul(spawnCtx.spawnObjectToWorld, float4(localNormal, 0.f));
   
   float cosCone = cos(radians(particleSystem.desc.initialVelocityConeAngleDegrees));
-
   f16vec3 dir = sampleDirectionInCone(worldNormal, cosCone, float2(randomFloat(uint2(randomSeed++, particleCb.frameIdx)), randomFloat(uint2(randomSeed++, particleCb.frameIdx))));
-  newParticle.velocity = dir * particleSystem.desc.initialVelocityFromNormal;
   
-  newParticle.color = float4x16ToUnorm4x8(particleSystem.varyColor(randomFloat(uint2(randomSeed++, particleCb.frameIdx)), color));
-  newParticle.uvMinMax = particleSystem.desc.useSpawnTexcoords ? float16_t4(uvMinMax) : float16_t4(0..xx, 1..xx);
-  newParticle.initialTimeToLive = newParticle.timeToLive = lerp(particleSystem.desc.minTtl, particleSystem.desc.maxTtl, randomFloat(uint2(randomSeed++, particleCb.frameIdx)));
-  newParticle.size = particleSystem.varySize(randomFloat(uint2(randomSeed++, particleCb.frameIdx)), 1.f); // Currently we just assume a starting size of 1, but this could be a property of the emitter triangles?
-  newParticle.rotation = 0;
-  newParticle.rotationSpeed = particleSystem.varyRotationSpeed(randomFloat(uint2(randomSeed++, particleCb.frameIdx)));
+  float3 initialVelocity = worldSpawnVelocity * particleSystem.desc.initialVelocityFromMotion + dir * particleSystem.desc.initialVelocityFromNormal;
   
+  float3 spawnPosition = lerp(worldPosition, prevWorldPosition, randSeed);
+  
+  // Spawn a particle
+  newParticle.reset(particleSystem, spawnPosition, initialVelocity, uvMinMax, color, randSeed);
+
   return newParticle;
 }
 
@@ -262,7 +268,7 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
   
   if (particleSystem.desc.useTurbulence)
   {
-    particle.velocity += curlOfValueNoise(particle.position * particleSystem.desc.turbulenceFrequency, particleCb.absoluteTimeSecs * particleSystem.desc.turbulenceFrequency) * particleSystem.desc.turbulenceAmplitude;
+    particle.velocity += curlOfValueNoise(particle.position * particleSystem.desc.turbulenceFrequency, particleCb.absoluteTimeSecs * particleSystem.desc.turbulenceFrequency) * particleSystem.desc.turbulenceForce * particleCb.deltaTimeSecs;
   }
   
   particle.velocity += particleCb.upDirection * particleSystem.desc.gravityForce * particleCb.deltaTimeSecs;
@@ -272,7 +278,7 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
     collideParticleWithScene(particle);
   }
   
-  if (dot(particle.velocity, particle.velocity) > float16_t(0.f))
+  if (dot(particle.velocity, particle.velocity) > float16_t(0.f) && particleSystem.desc.maxSpeed >= 0)
   {
     particle.velocity = min(particleSystem.desc.maxSpeed, length(particle.velocity)) * normalize(particle.velocity); 
   }
@@ -291,7 +297,7 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
     }
     else
     {
-      particle.rotation = (particle.rotation + particle.rotationSpeed * particleCb.deltaTimeSecs) % twoPi;
+      particle.rotation = (particle.rotation + particle.rotationSpeed(particleSystem) * particleCb.deltaTimeSecs) % twoPi;
     
       float s, c;
       sincos(particle.rotation, s, c);
@@ -306,19 +312,9 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
   const float3 right = particleCb.worldToView[0].xyz;
   const float3 up = particleCb.worldToView[1].xyz;
   
-  float16_t4 color = float16_t4(unorm8ToF16(uint8_t(particle.color)),
-                                unorm8ToF16(uint8_t(particle.color >> 8)),
-                                unorm8ToF16(uint8_t(particle.color >> 16)),
-                                unorm8ToF16(uint8_t(particle.color >> 24)));
-  
-  const float normalizedLifetime = saturate(particle.timeToLive / particle.initialTimeToLive);
-  
-  // TODO: Option?
-  color.w *= particleSystem.calculateOpacity(normalizedLifetime);
-  const float size = particle.size * normalizedLifetime;
-  
-  uint colorEnc = float4x16ToUnorm4x8(color.zyxw);
-  
+  // precache some values
+  const float size = particle.size(particleSystem);
+  const uint colorEnc = float4x16ToUnorm4x8(particle.color(particleSystem).zyxw);
   
   [unroll]
   for (uint i=0 ; i<particleSystem.numVerticesPerParticle ; i++)
