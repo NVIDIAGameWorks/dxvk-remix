@@ -145,6 +145,9 @@ namespace dxvk {
 
     m_presentThread.threadHandle = dxvk::thread([this]() { runPresentThread(); });
     m_pacerThread.threadHandle = dxvk::thread([this]() { runPacerThread(); });
+
+    // note: this is the size of the window client area, which isn't necessarily the same as the D3D9 swapchain size
+    device->getCommon()->metaDLFG().setDisplaySize(uint2(desc.imageExtent.width, desc.imageExtent.height));
   }
 
   DxvkDLFGPresenter::~DxvkDLFGPresenter() {
