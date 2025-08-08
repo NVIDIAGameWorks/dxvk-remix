@@ -548,6 +548,7 @@ namespace dxvk {
     m_rayReconstruction(device),
     m_nis(device),
     m_taa(device),
+    m_xess(device),
     m_composite(device),
     m_debug_view(device),
     m_autoExposure(device),
