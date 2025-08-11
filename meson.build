@@ -711,6 +711,7 @@ if dxvk_is_ninja
     target_suffix = dxvkrt_copy_targets[key]['target_suffix']
     output_path = dxvkrt_copy_targets[key]['output_path']
     src_exe = dxvkrt_copy_targets[key]['src_exe']
+	requires_pdb = target_suffix == 'sdk' or target_suffix == 'output'
 
     # using tagged install targets to get the files in the right place at install time (each project in VS knows which tag to use)
 
@@ -773,7 +774,8 @@ if dxvk_is_ninja
       )
     endif
 
-    if target_suffix == 'sdk'
+    if requires_pdb
+	  # ensure we copy everything to these special targets, the PDB is important!
       meson.add_install_script(
         join_paths(global_src_root_norm, 'scripts-common/install_file_in_dir.bat'),
         join_paths(current_build_dir_norm, 'src/d3d9', 'd3d9.*'), output_path,
