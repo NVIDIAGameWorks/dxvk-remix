@@ -26,6 +26,8 @@
 #include "../rtx_asset_replacer.h"
 #include "dxvk_context.h"
 #include "dxvk_scoped_annotation.h"
+#include "rtx_graph_ogn_writer.h"
+#include <mutex>
 
 
 namespace dxvk {
@@ -33,7 +35,23 @@ namespace dxvk {
 // The class responsible for managing graph lifetime and updates.
 class GraphManager {
 public:
-  GraphManager() {}
+  GraphManager() {
+    static std::once_flag schemaWriteFlag;
+    std::call_once(schemaWriteFlag, [this]() {
+      if (env::getEnvVar("RTX_GRAPH_WRITE_OGN_SCHEMA") == "1") {
+        std::string schemaPath = env::getEnvVar("RTX_GRAPH_SCHEMA_PATH");
+        if (schemaPath.empty()) {
+          schemaPath = "rtx-remix/schemas/";
+        }
+        std::string docsPath = env::getEnvVar("RTX_GRAPH_DOCS_PATH");
+        if (docsPath.empty()) {
+          docsPath = "rtx-remix/docs/";
+        }
+        writeAllOGNSchemas(schemaPath.c_str());
+        writeAllMarkdownDocs(docsPath.c_str());
+      }
+    });
+  }
 
   GraphInstance* addInstance(Rc<DxvkContext> context, const RtGraphState& graphState, ReplacementInstance* replacementInstance) {
     ScopedCpuProfileZone();

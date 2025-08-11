@@ -50,9 +50,7 @@ RtGraphState GraphUsdParser::parseGraph(AssetReplacements& replacements, const p
       // NOTE: This would be more efficient if we cached all of the TfTokens.  Unsure how to
       // do that without leaking pxr includes to the wider codebase.
       pxr::SdfPath propertyPath = child.GetPath().AppendProperty(pxr::TfToken(property.usdPropertyName));
-      if (property.type == RtComponentPropertyType::MeshInstance ||
-        property.type == RtComponentPropertyType::LightInstance ||
-        property.type == RtComponentPropertyType::GraphInstance) {
+      if (property.type == RtComponentPropertyType::Prim) {
         pxr::UsdRelationship rel = child.GetRelationshipAtPath(propertyPath);
         bool hasConnection = false;
         if (rel && rel.IsValid()) {
@@ -292,9 +290,7 @@ bool GraphUsdParser::versionCheck(const pxr::UsdPrim& nodePrim, const RtComponen
 }
 RtComponentPropertyValue GraphUsdParser::getPropertyValue(const pxr::UsdRelationship& rel, const RtComponentPropertySpec& spec, PathToOffsetMap& pathToOffsetMap) {
   static const pxr::TfToken kGraphPrimType = pxr::TfToken("OmniGraph");
-  if (spec.type != RtComponentPropertyType::MeshInstance &&
-    spec.type != RtComponentPropertyType::LightInstance &&
-    spec.type != RtComponentPropertyType::GraphInstance) {
+  if (spec.type != RtComponentPropertyType::Prim) {
     Logger::err(str::format("Incorrect type of USD property: ", spec.usdPropertyName, " should be an attribute, but was a Relationship."));
     return spec.defaultValue;
   }
@@ -317,23 +313,18 @@ RtComponentPropertyValue GraphUsdParser::getPropertyValue(const pxr::UsdRelation
         pxr::UsdPrim prim = rel.GetStage()->GetPrimAtPath(path);
         if (!prim.IsValid()) {
           Logger::err(str::format("Relationship path ", path.GetString(), " not found in replacement hierarchy."));
-        } else if (spec.type == RtComponentPropertyType::MeshInstance && prim.IsA<pxr::UsdGeomMesh>()) {
-          result = iter->second;
-        } else if (spec.type == RtComponentPropertyType::LightInstance && LightData::isSupportedUsdLight(prim)) {
-          result = iter->second;
-        } else if (spec.type == RtComponentPropertyType::GraphInstance && prim.GetTypeName() == kGraphPrimType) {
-          result = iter->second;
         } else {
-          Logger::err(str::format("Relationship path ", path.GetString(), " is not a ", spec.type, "."));
+          result = iter->second;
         }
       }
       return propertyValueForceType<uint32_t>(result);
     } else {
       Logger::err(str::format("Relationship ", rel.GetPath().GetString(), " has multiple targets, which is not supported."));
-      return spec.defaultValue;
     }
   }
-  return spec.defaultValue;
+  // Note: this intentionally ignores the default value - if the relationship isn't connected,
+  // we need to use kInvalidReplacementIndex.
+  return ReplacementInstance::kInvalidReplacementIndex;
 }
 
 RtComponentPropertyValue GraphUsdParser::getPropertyValue(const pxr::UsdAttribute& attr, const RtComponentPropertySpec& spec, PathToOffsetMap& pathToOffsetMap) {
@@ -359,9 +350,7 @@ RtComponentPropertyValue GraphUsdParser::getPropertyValue(const pxr::UsdAttribut
       return getPropertyValue<uint32_t>(value, spec);
     case RtComponentPropertyType::Uint64:
       return getPropertyValue<uint64_t>(value, spec);
-    case RtComponentPropertyType::MeshInstance:
-    case RtComponentPropertyType::LightInstance:
-    case RtComponentPropertyType::GraphInstance:
+    case RtComponentPropertyType::Prim:
       throw DxvkError(str::format("Prim target properties should be UsdRelationships, not UsdAttributes."));
       return spec.defaultValue;
     }

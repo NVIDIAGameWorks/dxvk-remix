@@ -1,0 +1,71 @@
+{
+  "lightspeed.trex.components.AnimatedFloat": {
+    "description": ["A single animated float value."],
+    "version": 1,
+    "uiName": "Animated Float",
+    "language": "python",
+    "categories": "animation",
+    "inputs": {
+      "enabled": {
+        "description": ["If true, the float will be animated."],
+        "uiName": "Enabled",
+        "type": "bool",
+        "default": true,
+        "optional": true
+      },
+      "initialValue": {
+        "description": ["The value at time t=0."],
+        "uiName": "Initial Value",
+        "type": "float",
+        "default": 0.000000
+      },
+      "finalValue": {
+        "description": ["The value at time t=duration."],
+        "uiName": "Final Value",
+        "type": "float",
+        "default": 1.000000
+      },
+      "duration": {
+        "description": ["How long it takes to animate from initial value to final value, in seconds."],
+        "uiName": "Duration",
+        "type": "float",
+        "default": 1.000000
+      },
+      "loopingType": {
+        "description": ["What happens when the float reaches the final value.\nAllowed values:  - Continue: The value will continue accumulating (a linear animation will preserve the velocity).\n  - Freeze: The value will freeze at the final value.\n  - Loop: The value will return to the initial value.\n  - PingPong: The value will play in reverse until it reaches the initial value, then loop.\n "],
+        "uiName": "Looping Type",
+        "type": "uint",
+        "default": 0,
+        "metadata": {
+          "allowedTokens": ["Continue", "Freeze", "Loop", "PingPong"]
+        }
+      },
+      "interpolation": {
+        "description": ["How the float will change over time.\nAllowed values:  - Bounce: Bouncy, playful motion.\n  - Cubic: The float will change in a cubic curve over time.\n  - EaseIn: The float will start slow, then accelerate.\n  - EaseInOut: The float will start slow, accelerate, then decelerate.\n  - EaseOut: The float will start fast, then decelerate.\n  - Elastic: Spring-like motion.\n  - Exponential: Dramatic acceleration effect.\n  - Linear: The float will have a constant velocity.\n  - Sine: Smooth, natural motion using sine wave.\n "],
+        "uiName": "Interpolation",
+        "type": "uint",
+        "default": 0,
+        "metadata": {
+          "allowedTokens": ["Bounce", "Cubic", "EaseIn", "EaseInOut", "EaseOut", "Elastic", "Exponential", "Linear", "Sine"]
+        },
+        "optional": true
+      }
+    },
+    "state": {
+      "accumulatedTime": {
+        "description": ["How much time has passed since the animation started."],
+        "uiName": "",
+        "type": "float",
+        "default": 0.000000
+      }
+    },
+    "outputs": {
+      "currentValue": {
+        "description": ["The animated float value."],
+        "uiName": "Current Value",
+        "type": "float",
+        "default": 0.000000
+      }
+    }
+  }
+}

@@ -94,8 +94,8 @@ private:
           // If the property has enum values, we need to look up the value in the enum values map.
           auto iter = spec.enumValues.find(value.Get<pxr::TfToken>().GetString());
           if (iter != spec.enumValues.end()) {
-            assert(std::holds_alternative<T>(iter->second) && "enumValue values must match the property type.");
-            return iter->second;
+            assert(std::holds_alternative<T>(iter->second.value) && "enumValue values must match the property type.");
+            return iter->second.value;
           }
         }
       }

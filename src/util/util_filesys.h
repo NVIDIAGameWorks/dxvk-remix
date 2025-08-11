@@ -27,12 +27,17 @@
 #include <filesystem>
 #include <cassert>
 #include <array>
+#include <optional>
+#include <fstream>
 
 namespace version {
   static constexpr uint64_t fileSysV = 1;
 }
 
 namespace dxvk::util {
+
+bool createDirectories(const std::filesystem::path& path);
+std::optional<std::ofstream> createDirectoriesAndOpenFile(const std::filesystem::path& filePath);
 
 class RtxFileSys {
 public:
@@ -71,7 +76,6 @@ public:
     return s_paths[id];
   }
   static void print();
-  static void mkDirs(const fspath& path);
 };
 
 }

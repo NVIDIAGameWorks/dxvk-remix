@@ -29,46 +29,90 @@
 
 #include "../util/util_enum.h"
 #include "../util/util_string.h"
+#include "rtx_graph_ogn_writer.h"
+#include "rtx_graph_md_writer.h"
 
 namespace dxvk {
 namespace {
   template<typename T>
   T parseVector(const std::string& input) {
-    // Skip opening parenthesis
+    if (input.empty()) {
+      Logger::err("parseVector: Empty input string");
+      return T(0.f);
+    }
+    
+    // Reasonable size limit to prevent DoS
+    constexpr size_t MAX_INPUT_SIZE = 1024;
+    if (input.length() > MAX_INPUT_SIZE) {
+      Logger::err(str::format("parseVector: Input string too long (", input.length(), " > ", MAX_INPUT_SIZE, ")"));
+      return T(0.f);
+    }
+    
+    // Validate vector type using template type checking
+    static_assert(
+      std::is_same_v<T, Vector2> || 
+      std::is_same_v<T, Vector3> || 
+      std::is_same_v<T, Vector4>,
+      "parseVector only supports Vector2, Vector3, Vector4 types"
+    );
+    
+    constexpr size_t expectedComponents = 
+      std::is_same_v<T, Vector2> ? 2 :
+      std::is_same_v<T, Vector3> ? 3 :
+      std::is_same_v<T, Vector4> ? 4 : 0;
+    
+    // Bounds checking for string operations
     size_t start = input.find('(');
     if (start == std::string::npos) {
       start = 0;
     } else {
       start++;
-    }
-
-    // Parse numbers directly
-    const char* ptr = input.c_str() + start;
-    T result = T(0.f);
-    size_t numComponents = sizeof(T) / sizeof(float);
-
-    for (size_t i = 0; i < numComponents; i++) {
-      char* endptr;
-      float value = std::strtof(ptr, &endptr);
-
-      // Check if strtof failed to parse a number
-      if (endptr == ptr) {
-        Logger::err(str::format("Failed to parse ", typeid(T).name(), " component ", i, " from string: `", input, "` starting from `", ptr, "`"));
+      if (start >= input.length()) {
+        Logger::err("parseVector: Invalid input format - empty after opening parenthesis");
         return T(0.f);
       }
+    }
 
+    // Safe pointer arithmetic with bounds checking
+    const char* inputEnd = input.c_str() + input.length();
+    const char* ptr = input.c_str() + start;
+    T result = T(0.f);
+
+    for (size_t i = 0; i < expectedComponents; i++) {
+      // Check bounds before parsing
+      if (ptr >= inputEnd) {
+        Logger::err(str::format("parseVector: Unexpected end of string while parsing component ", i, " from: ", input));
+        return T(0.f);
+      }
+      
+      // Use strtof with proper error checking
+      char* endptr;
+      errno = 0; // Reset errno before strtof
+      float value = std::strtof(ptr, &endptr);
+      
+      // Comprehensive error checking for strtof
+      if (endptr == ptr) {
+        Logger::err(str::format("parseVector: Failed to parse component ", i, " from string: `", input, "` starting from `", ptr, "`"));
+        return T(0.f);
+      }
+      
+      if (errno == ERANGE) {
+        Logger::err(str::format("parseVector: Value out of range for component ", i, " in: ", input));
+        return T(0.f);
+      }
+      
+      // Check bounds after parsing
+      if (endptr > inputEnd) {
+        Logger::err(str::format("parseVector: Parsing went beyond input bounds for component ", i));
+        return T(0.f);
+      }
+      
       result[i] = value;
       ptr = endptr;
 
-      // Skip whitespace (and stop if the character is the null terminator)
-      while (*ptr != '\0' && (std::isspace(*ptr) || *ptr == ',')) {
+      // Safe whitespace skipping with bounds checking
+      while (ptr < inputEnd && (std::isspace(*ptr) || *ptr == ',')) {
         ptr++;
-      }
-
-      // Check if we unexpectedly reached end of string
-      if (*ptr == '\0' && i < numComponents - 1) {
-        Logger::err(str::format("Unexpected end of string while parsing ", typeid(T).name(), " component ", i, " from string: ", input));
-        return T(0.f);
       }
     }
 
@@ -81,7 +125,7 @@ fast_unordered_map<const RtComponentSpec*>& getComponentSpecMap() {
   return s_componentSpecs;
 }
 
-static std::mutex& getComponentSpecMapMutex() {
+std::mutex& getComponentSpecMapMutex() {
   static std::mutex mtx;
   return mtx;
 }
@@ -123,29 +167,57 @@ const RtComponentSpec* getComponentSpec(const RtComponentType& componentType) {
   return iter->second;
 }
 
+bool writeAllOGNSchemas(const char* outputFolderPath) {
+  std::lock_guard<std::mutex> lock(getComponentSpecMapMutex());
+  const auto& map = getComponentSpecMap();
+  bool success = true;
+  for (const auto& pair : map) {
+    const RtComponentSpec* spec = pair.second;
+    success &= writeOGNSchema(spec, outputFolderPath);
+    success &= writePythonStub(spec, outputFolderPath);
+  }
+  return success;
+}
+
+bool writeAllMarkdownDocs(const char* outputFolderPath) {
+  std::lock_guard<std::mutex> lock(getComponentSpecMapMutex());
+  const auto& map = getComponentSpecMap();
+  bool success = true;
+  
+  std::vector<const RtComponentSpec*> specs;
+  specs.reserve(map.size());
+  
+  for (const auto& pair : map) {
+    const RtComponentSpec* spec = pair.second;
+    specs.push_back(spec);
+    success &= writeComponentMarkdown(spec, outputFolderPath);
+  }
+  
+  success &= writeMarkdownIndex(specs, outputFolderPath);
+  return success;
+}
+
 std::ostream& operator << (std::ostream& os, RtComponentPropertyType type) {
   switch (type) {
-    ENUM_NAME(RtComponentPropertyType::Bool);
-    ENUM_NAME(RtComponentPropertyType::Float);
-    ENUM_NAME(RtComponentPropertyType::Float2);
-    ENUM_NAME(RtComponentPropertyType::Float3);
-    ENUM_NAME(RtComponentPropertyType::Color3);
-    ENUM_NAME(RtComponentPropertyType::Color4);
-    ENUM_NAME(RtComponentPropertyType::Int32);
-    ENUM_NAME(RtComponentPropertyType::Uint32);
-    ENUM_NAME(RtComponentPropertyType::Uint64);
-    ENUM_NAME(RtComponentPropertyType::MeshInstance);
-    ENUM_NAME(RtComponentPropertyType::LightInstance);
-    ENUM_NAME(RtComponentPropertyType::GraphInstance);
+    case RtComponentPropertyType::Bool: return os << "Bool";
+    case RtComponentPropertyType::Float: return os << "Float";
+    case RtComponentPropertyType::Float2: return os << "Float2";
+    case RtComponentPropertyType::Float3: return os << "Float3";
+    case RtComponentPropertyType::Color3: return os << "Color3";
+    case RtComponentPropertyType::Color4: return os << "Color4";
+    case RtComponentPropertyType::Int32: return os << "Int32";
+    case RtComponentPropertyType::Uint32: return os << "Uint32";
+    case RtComponentPropertyType::Uint64: return os << "Uint64";
+    case RtComponentPropertyType::Prim: return os << "Prim";
   }
   return os << static_cast<int32_t>(type);
 }
 
 std::ostream& operator << (std::ostream& os, RtComponentPropertyIOType type) {
   switch (type) {
-    ENUM_NAME(RtComponentPropertyIOType::Input);
-    ENUM_NAME(RtComponentPropertyIOType::State);
-    ENUM_NAME(RtComponentPropertyIOType::Output);
+    case RtComponentPropertyIOType::Input: return os << "Input";
+    case RtComponentPropertyIOType::State: return os << "State";
+    case RtComponentPropertyIOType::Output: return os << "Output";
   }
   return os << static_cast<int32_t>(type);
 }
@@ -170,11 +242,7 @@ RtComponentPropertyValue propertyValueFromString(const std::string& str, const R
     return propertyValueForceType<uint32_t>(std::stoul(str));
   case RtComponentPropertyType::Uint64:
     return propertyValueForceType<uint64_t>(std::stoull(str));
-  case RtComponentPropertyType::MeshInstance:
-    return propertyValueForceType<uint32_t>(std::stoull(str));
-  case RtComponentPropertyType::LightInstance:
-    return propertyValueForceType<uint32_t>(std::stoull(str));
-  case RtComponentPropertyType::GraphInstance:
+  case RtComponentPropertyType::Prim:
     return propertyValueForceType<uint32_t>(std::stoull(str));
   }
   Logger::err(str::format("Unknown property type in propertyValueFromString.  type: ", type, ", string: ", str));
@@ -190,21 +258,28 @@ RtComponentPropertyValue propertyValueFromString(const std::string& str, const R
  */
 RtComponentPropertyVector propertyVectorFromType(const RtComponentPropertyType type) {
   switch (type) {
-  case RtComponentPropertyType::Bool:         return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Bool>>{};
-  case RtComponentPropertyType::Float:        return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Float>>{};
-  case RtComponentPropertyType::Float2:       return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Float2>>{};
-  case RtComponentPropertyType::Float3:       return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Float3>>{};
-  case RtComponentPropertyType::Color3:       return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Color3>>{};
-  case RtComponentPropertyType::Color4:       return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Color4>>{};
-  case RtComponentPropertyType::Int32:        return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Int32>>{};
-  case RtComponentPropertyType::Uint32:       return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Uint32>>{};
-  case RtComponentPropertyType::Uint64:       return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Uint64>>{};
-  case RtComponentPropertyType::MeshInstance: return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::MeshInstance>>{};
-  case RtComponentPropertyType::LightInstance: return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::LightInstance>>{};
-  case RtComponentPropertyType::GraphInstance: return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::GraphInstance>>{};
+  case RtComponentPropertyType::Bool:   return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Bool>>{};
+  case RtComponentPropertyType::Float:  return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Float>>{};
+  case RtComponentPropertyType::Float2: return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Float2>>{};
+  case RtComponentPropertyType::Float3: return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Float3>>{};
+  case RtComponentPropertyType::Color3: return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Color3>>{};
+  case RtComponentPropertyType::Color4: return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Color4>>{};
+  case RtComponentPropertyType::Int32:  return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Int32>>{};
+  case RtComponentPropertyType::Uint32: return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Uint32>>{};
+  case RtComponentPropertyType::Uint64: return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Uint64>>{};
+  case RtComponentPropertyType::Prim:   return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Prim>>{};
   }
   assert(false && "Unknown property type in propertyVectorFromType");
   return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Float>>{}; // fallback
 }
 
-} // namespace dxvk 
+} // namespace dxvk
+
+// Export functions for unit testing
+bool writeAllOGNSchemas(const char* outputFolderPath) {
+  return dxvk::writeAllOGNSchemas(outputFolderPath);
+}
+
+bool writeAllMarkdownDocs(const char* outputFolderPath) {
+  return dxvk::writeAllMarkdownDocs(outputFolderPath);
+} 
