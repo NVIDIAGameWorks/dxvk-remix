@@ -20,8 +20,20 @@
 * DEALINGS IN THE SOFTWARE.
 */
 
-// List all components in alphabetical order
-// TODO figure out how to include components without needing to include a header file in a list like this.
+#pragma once
+#include <variant>
+#include <vector>
+#include <string>
+#include <fstream>
+#include <iostream>
 
-#include "components/animated_float.h"
-#include "components/sphere_light_override.h"
+#include "rtx_graph_types.h"
+#include "../util/log/log.h"
+#include "../util/util_string.h"
+
+namespace dxvk {
+
+bool writeOGNSchema(const RtComponentSpec* spec, const char* outputFolderPath);
+bool writePythonStub(const RtComponentSpec* spec, const char* outputFolderPath);
+
+}  // namespace dxvk

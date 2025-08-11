@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <link href='https://fonts.googleapis.com/css?family=Open+Sans:400,300,700' rel='stylesheet' type='text/css' integrity='sha384-eQ5ltMCgVgMnb2Egd4TdBJVqownRiWMDeFMdAlDtjJgIyW1TyCTl/FZFEtifcuyl' crossorigin='anonymous'>
+    
+    <!-- Diff library -->
+    <script src="https://unpkg.com/diff@5.1.0/dist/diff.min.js" integrity="sha384-kfJm1UHujU89hXr0VHT0u0t4lqavqaoomP6wix8D9fhzTeFvC9DYyaT36//Qd144" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/diff2html@3.4.37/bundles/js/diff2html.min.js" integrity="sha384-bM3Br7Q/GYJNMs5sxjggIHu3Hb9/PEFf3xIn0ozbg+2jUw+EvqEw4zJ/yKyBQcc5" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://unpkg.com/diff2html@3.4.37/bundles/css/diff2html.min.css" integrity="sha384-iVjRXVMayJogg5+2r7jG61roCHHienVznZbchuRL3+V0quB74XKFuzZ7tgBhR73/" crossorigin="anonymous">
+    
+    <style>
+        /* -------------------------------- 
+        DocDiff Styles - Text Diff Interface
+        -------------------------------- */
+        
+        body {
+            margin: 0;
+            padding: 0;
+            font-size: 100%;
+            font-family: "Open Sans", sans-serif;
+            color: #ffffff;
+            background-color: #1e1e1e;
+        }
+
+        header {
+            position: relative;
+            line-height: 25px;
+            text-align: center;
+            padding: 20px;
+            background: #2d2d2d;
+            border-bottom: 1px solid #444;
+        }
+
+        header h1 {
+            font-size: 22px;
+            font-size: 1.375rem;
+            color: #ffffff;
+            font-weight: 30;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        header p {
+            color: #ffffff;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        #promote-section {
+            background-color: #1e1e1e;
+            margin: 20px;
+            padding: 20px;
+            border-radius: 8px;
+            color: #ffffff;
+            border-left: 4px solid #4CAF50;
+        }
+
+        #promote-section h2 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            color: #ffffff;
+        }
+
+        #promote-info {
+            margin-bottom: 20px;
+            color: #cccccc;
+        }
+
+        #promote-git-button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+
+        #promote-git-button:hover {
+            background-color: #45a049;
+        }
+
+        #promote-git-button:disabled {
+            background-color: #666666;
+            cursor: not-allowed;
+        }
+
+        #promote-status {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #2d2d2d;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        /* Main content layout */
+        #main-content {
+            display: flex;
+            height: calc(100vh - 200px);
+        }
+
+        /* File list sidebar */
+        #file-list-sidebar {
+            width: 300px;
+            resize: horizontal;
+            min-width: 200px;
+            max-width: 600px;
+            background: #2d2d2d;
+            border-right: 1px solid #444;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        #file-list-sidebar h2 {
+            margin-top: 0;
+            color: #fff;
+            border-bottom: 1px solid #444;
+            padding-bottom: 10px;
+        }
+
+        /* File items */
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+            cursor: default;
+            transition: background-color 0.2s;
+        }
+
+        .file-item.different {
+            background-color: #3d2d2d;
+            color: #ffffff;
+            border-left: 4px solid #ff6b6b;
+        }
+
+        .file-item.different:hover {
+            background-color: #4d3d3d;
+            cursor: pointer;
+        }
+
+        .file-item:hover {
+            border-color: #666 !important;
+        }
+
+        .file-item.selected {
+            border-color: #007acc !important;
+            background: #1e3a5f !important;
+        }
+
+        .file-name {
+            font-weight: bold;
+            flex: 2;
+        }
+
+        /* Diff container */
+        #diff-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            background-color: #1e1e1e;
+            color: #ffffff;
+        }
+
+        #file-info {
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #3d3d3d;
+        }
+
+        #file-info h3 {
+            margin: 0 0 5px 0;
+            color: #ffffff;
+        }
+
+        #file-type-indicator {
+            color: #888888;
+            font-size: 0.9em;
+        }
+
+        #text-diff-view {
+            background-color: #2d2d2d;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        #text-diff-content {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        /* Hidden elements */
+        .hidden {
+            display: none;
+        }
+
+        /* Override diff2html default styles to match our theme */
+        #text-diff-content .d2h-wrapper {
+            background-color: #2d2d2d !important;
+            color: #ffffff !important;
+        }
+
+        #text-diff-content .d2h-file-header {
+            background-color: #3d3d3d !important;
+            color: #ffffff !important;
+            border-bottom: 1px solid #4d4d4d !important;
+        }
+
+        #text-diff-content .d2h-files-diff {
+            background-color: #2d2d2d !important;
+        }
+
+        #text-diff-content .d2h-file-side-diff {
+            background-color: #2d2d2d !important;
+        }
+
+        #text-diff-content .d2h-code-line {
+            background-color: #2d2d2d !important;
+            color: #ffffff !important;
+        }
+
+        #text-diff-content .d2h-code-line del {
+            background-color: #3d1e1e !important;
+            color: #ff6b6b !important;
+        }
+
+        #text-diff-content .d2h-code-line ins {
+            background-color: #1e3d1e !important;
+            color: #4caf50 !important;
+        }
+
+        #text-diff-content .d2h-code-line-ctn {
+            background-color: transparent !important;
+        }
+
+        #text-diff-content .d2h-code-side-line {
+            background-color: #2d2d2d !important;
+            color: #ffffff !important;
+        }
+
+        #text-diff-content .d2h-code-side-line del {
+            background-color: #3d1e1e !important;
+            color: #ff6b6b !important;
+        }
+
+        #text-diff-content .d2h-code-side-line ins {
+            background-color: #1e3d1e !important;
+            color: #4caf50 !important;
+        }
+
+        /* Status message styles */
+        .status-loading {
+            text-align: center;
+            padding: 20px;
+            color: #888;
+        }
+
+        .status-error {
+            color: #ff6b6b;
+            padding: 20px;
+            text-align: center;
+            font-style: italic;
+        }
+
+        .status-info {
+            color: #888;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .status-no-files {
+            color: #888;
+            font-style: italic;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .status-processing {
+            color: blue;
+        }
+
+        .status-success {
+            color: green;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+
+        .status-success-item {
+            color: green;
+            margin-top: 5px;
+        }
+
+        .status-error-item {
+            color: red;
+        }
+
+        /* Fallback diff view styles */
+        .fallback-diff-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            font-family: monospace;
+        }
+
+        .fallback-diff-side h4 {
+            color: #ffffff;
+            margin-bottom: 10px;
+        }
+
+        .fallback-diff-side pre {
+            background: #2d2d2d;
+            padding: 10px;
+            color: #ffffff;
+            overflow: auto;
+            max-height: 400px;
+        }
+    </style>
+
+    <title>DXVK-RT Documentation Test Results</title>
+</head>
+<body>
+    <header>
+        <h1>Documentation Comparison Results</h1>
+        <p>Review differences between golden and modified documentation files</p>
+    </header>
+
+    <div id="promote-section" class="hidden">
+        <h2>Promote Modified Files to GitLab</h2>
+        <p id="promote-info">Click the button below to promote all modified .ogn, .py, and .md files to your GitLab branch.</p>
+        <button id="promote-git-button" onclick="promoteAllFiles()">Promote All Modified Files</button>
+        <div id="promote-status" class="hidden"></div>
+    </div>
+
+    <div id="main-content">
+        <!-- File list sidebar -->
+        <div id="file-list-sidebar">
+            <h2>Modified Files (<span id="file-count">0</span>)</h2>
+            <div id="file-list-content"></div>
+        </div>
+
+        <!-- Diff view area -->
+        <div id="diff-container">
+            <div id="file-info">
+                <h3 id="current-file-name">Select a file to view differences</h3>
+                <div id="file-type-indicator"></div>
+            </div>
+            
+            <!-- Text diff view -->
+            <div id="text-diff-view" class="hidden">
+                <div id="text-diff-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        // GitLab promotion variables (these are injected by C++ code via EMBEDDED_DATA_PLACEHOLDER)
+        let branchName = '';
+        let token = '';
+        let sourceProjectId = ''; // Source project ID (developer fork)
+        let ciServerHost = ''; // CI server host from environment variable
+
+        // EMBEDDED_DATA_PLACEHOLDER - This will be replaced by the C++ code
+        
+
+        // Use diff2html library for proper git-style diffs
+        function renderTextDiff(goldenText, modifiedText) {
+            const container = document.getElementById('text-diff-content');
+            
+            try {
+                // Check if diff library is available
+                if (typeof Diff === 'undefined') {
+                    throw new Error('Diff library not loaded');
+                }
+                
+                // Generate unified diff format
+                const diff = Diff.createTwoFilesPatch(
+                    'golden', 
+                    'modified', 
+                    goldenText, 
+                    modifiedText, 
+                    'golden', 
+                    'modified',
+                    { 
+                        context: 3,
+                        ignoreWhitespace: false,
+                        ignoreCase: false
+                    }
+                );
+                
+                // Convert to HTML using diff2html
+                const diffHtml = Diff2Html.html(diff, {
+                    drawFileList: false,
+                    matching: 'lines',
+                    outputFormat: 'side-by-side',
+                    renderNothingWhenEmpty: false,
+                    matchWordsThreshold: 0.25,
+                    matchingMaxComparisons: 2500
+                });
+                
+                container.innerHTML = diffHtml;
+                
+                // Apply custom styling to match our theme - these are handled by CSS now
+                // The diff2html library styles are overridden in the CSS
+            } catch (error) {
+                console.error('Error in renderTextDiff:', error);
+                // Fallback to simple side-by-side view
+                container.innerHTML = `
+                    <div class="fallback-diff-container">
+                        <div class="fallback-diff-side">
+                            <h4>Golden</h4>
+                            <pre>${goldenText}</pre>
+                        </div>
+                        <div class="fallback-diff-side">
+                            <h4>Modified</h4>
+                            <pre>${modifiedText}</pre>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        function loadFileContent(url) {
+            return fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to load file: ' + response.statusText);
+                    }
+                    return response.text();
+                });
+        }
+
+        function showFileDiff(fileData) {
+            // Update file info
+            document.getElementById('current-file-name').textContent = fileData.name;
+            document.getElementById('file-type-indicator').textContent = 'Type: ' + fileData.type + ' | Path: ' + (fileData.goldenGitPath || fileData.name);
+            
+            // Show loading state
+            document.getElementById('text-diff-view').classList.remove('hidden');
+            document.getElementById('text-diff-content').innerHTML = '<div class="status-loading">Loading diff...</div>';
+            
+            if (fileData.type === 'ogn' || fileData.type === 'markdown') {
+                // Load both files and show diff
+                Promise.all([
+                    loadFileContent(fileData.goldenPath),
+                    loadFileContent(fileData.modifiedPath)
+                ]).then(([goldenText, modifiedText]) => {
+                    renderTextDiff(goldenText, modifiedText);
+                }).catch(error => {
+                    console.error('Error loading files:', error);
+                    document.getElementById('text-diff-content').innerHTML = 
+                        '<div class="status-error">Error loading files: ' + error.message + '</div>';
+                });
+            } else {
+                document.getElementById('text-diff-content').innerHTML = 
+                    '<div class="status-info">Diff view not available for this file type</div>';
+            }
+        }
+
+        function createFileList() {
+            const container = document.getElementById('file-list-content');
+            container.innerHTML = '';
+            
+            let differentFilesCount = 0;
+            
+            if (typeof embeddedFileData !== 'undefined') {
+                // Filter to only show files that are different
+                const differentFiles = embeddedFileData.filter(fileData => fileData.different);
+                differentFilesCount = differentFiles.length;
+                
+                // Update the file count display
+                document.getElementById('file-count').textContent = differentFilesCount;
+                
+                if (differentFilesCount === 0) {
+                    container.innerHTML = '<div class="status-no-files">No modified files found</div>';
+                    return;
+                }
+                
+                differentFiles.forEach(fileData => {
+                    const fileItem = document.createElement('div');
+                    fileItem.className = 'file-item different';
+                    fileItem.addEventListener('mouseenter', () => {
+                        if (!fileItem.classList.contains('selected')) {
+                            fileItem.style.background = '#3d3d3d';
+                        }
+                    });
+                    fileItem.addEventListener('mouseleave', () => {
+                        if (!fileItem.classList.contains('selected')) {
+                            fileItem.style.background = '#2d2d2d';
+                        }
+                    });
+                    fileItem.addEventListener('click', () => {
+                        // Remove selection from all other items
+                        document.querySelectorAll('.file-item').forEach(item => {
+                            item.classList.remove('selected');
+                            item.style.background = '#2d2d2d';
+                        });
+                        // Select this item
+                        fileItem.classList.add('selected');
+                        fileItem.style.background = '#1e3a5f';
+                        showFileDiff(fileData);
+                    });
+                    
+                    const fileName = document.createElement('div');
+                    fileName.className = 'file-name';
+                    fileName.textContent = fileData.name;
+                    
+                    fileItem.appendChild(fileName);
+                    
+                    container.appendChild(fileItem);
+                });
+                
+                // Show promote section if there are different files
+                document.getElementById('promote-section').classList.remove('hidden');
+                
+                // Show the main content area
+                document.getElementById('main-content').style.display = 'flex';
+            }
+        }
+
+        async function createMultiFileCommit(actions, commitMessage, branch, sourceProjectId, token) {
+            return new Promise((resolve, reject) => {
+                const obj = {
+                    branch: branch,
+                    commit_message: commitMessage,
+                    actions: actions
+                };
+
+                const headers = {
+                    'PRIVATE-TOKEN': token,
+                    'Content-Type': 'application/json'
+                };
+
+                const projectIdentifier = sourceProjectId;
+                const baseUrl = ciServerHost || 'https://gitlab-master.nvidia.com';
+                const url = `${baseUrl}/api/v4/projects/${projectIdentifier}/repository/commits`;
+
+                // Debug logging
+                console.log('GitLab API Request:', {
+                    url: url,
+                    baseUrl: baseUrl,
+                    ciServerHost: ciServerHost,
+                    branch: branch,
+                    sourceProjectId: sourceProjectId,
+                    projectIdentifier: projectIdentifier,
+                    actionsCount: actions.length,
+                    firstAction: actions[0] ? {
+                        action: actions[0].action,
+                        file_path: actions[0].file_path,
+                        contentLength: actions[0].content ? actions[0].content.length : 0
+                    } : null
+                });
+
+                fetch(url, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify(obj, null, 2),
+                }).then(async function (response) {
+                    if (!response.ok) {
+                        // Try to get more detailed error information
+                        let errorMessage = response.statusText;
+                        try {
+                            const errorData = await response.text();
+                            console.error('GitLab API Error Response:', errorData);
+                            errorMessage = `${response.status} (${response.statusText}): ${errorData}`;
+                        } catch (e) {
+                            console.error('Could not read error response:', e);
+                        }
+                        throw Error(errorMessage);
+                    }
+                    return response.json();
+                }).then(
+                    function (value) { 
+                        console.log('GitLab API Success Response:', value);
+                        resolve(value); 
+                    },
+                    function (error) { 
+                        console.error('GitLab API Error:', error);
+                        reject(error); 
+                    }
+                );
+            });
+        }
+
+        async function promoteAllFiles() {
+            const button = document.getElementById('promote-git-button');
+            const statusDiv = document.getElementById('promote-status');
+            
+            button.disabled = true;
+            button.innerText = 'Processing...';
+            statusDiv.classList.remove('hidden');
+            statusDiv.innerHTML = '';
+            
+            try {
+                // Check if GitLab parameters are available (these are injected by C++ code)
+                console.log('GitLab Parameters:', {
+                    branchName: branchName,
+                    sourceProjectId: sourceProjectId,
+                    ciServerHost: ciServerHost,
+                    token: token ? '***' + token.slice(-4) : 'undefined'
+                });
+                
+                if (!branchName || !sourceProjectId || !token) {
+                    throw new Error(`Missing required GitLab parameters: branchName=${!!branchName}, sourceProjectId=${!!sourceProjectId}, token=${!!token}, ciServerHost=${!!ciServerHost}`);
+                }
+                
+                // Filter for files that are different and of the specified types
+                const filesToPromote = embeddedFileData.filter(fileData => 
+                    fileData.different && 
+                    (fileData.type === 'ogn' || fileData.type === 'py' || fileData.type === 'markdown')
+                );
+                
+                if (filesToPromote.length === 0) {
+                    throw new Error('No modified .ogn, .py, or .md files found to promote');
+                }
+                
+                // Check which files will be created vs updated and load their contents
+                statusDiv.innerHTML = '<div class="status-processing">Checking file status and loading contents...</div>';
+                
+                const actions = [];
+                const fileActions = [];
+                let loadedCount = 0;
+                
+                for (const fileData of filesToPromote) {
+                    try {
+                        // Load the modified file content
+                        const response = await fetch(fileData.modifiedPath);
+                        if (!response.ok) {
+                            throw new Error(`Failed to load ${fileData.name}: ${response.statusText}`);
+                        }
+                        const fileContent = await response.text();
+                        
+                        // Convert to base64
+                        const base64String = btoa(unescape(encodeURIComponent(fileContent)));
+                        
+                        // Determine if file exists in golden directory by checking if goldenPath is accessible
+                        let action = 'update'; // Default to update
+                        try {
+                            const goldenResponse = await fetch(fileData.goldenPath);
+                            if (!goldenResponse.ok) {
+                                // If golden file doesn't exist, use create action
+                                action = 'create';
+                            }
+                        } catch (error) {
+                            // If we can't access the golden file, assume it doesn't exist and use create
+                            action = 'create';
+                        }
+                        
+                        // Store the action for confirmation
+                        fileActions.push({
+                            name: fileData.name,
+                            action: action
+                        });
+                        
+                        // Add to actions array
+                        actions.push({
+                            action: action,
+                            file_path: fileData.goldenGitPath || fileData.name,
+                            content: base64String,
+                            encoding: 'base64'
+                        });
+                        
+                        loadedCount++;
+                        statusDiv.innerHTML = `<div class="status-processing">Processed ${loadedCount}/${filesToPromote.length} files...</div>`;
+                    } catch (error) {
+                        statusDiv.innerHTML += `<div class="status-error-item">✗ Failed to load ${fileData.name}: ${error.message}</div>`;
+                        console.error(`Error loading ${fileData.name}:`, error);
+                    }
+                }
+                
+                // Show confirmation with file actions
+                const createFiles = fileActions.filter(f => f.action === 'create').map(f => f.name);
+                const updateFiles = fileActions.filter(f => f.action === 'update').map(f => f.name);
+                
+                const message = prompt(
+                    `Do you want to promote ${filesToPromote.length} modified files to your branch?\n` +
+                    `branch=${branchName}\n` +
+                    `project=${sourceProjectId}\n` +
+                    `server=${ciServerHost || 'https://gitlab-master.nvidia.com'}\n` +
+                    `Files to create: ${createFiles.length > 0 ? createFiles.join(', ') : 'none'}\n` +
+                    `Files to update: ${updateFiles.length > 0 ? updateFiles.join(', ') : 'none'}\n` +
+                    `Commit message:`,
+                    `[skip-ci] Auto-update: ${filesToPromote.length} component documentation or schema files`
+                );
+                
+                if (!message || message.trim() === '') {
+                    button.innerText = 'Promote All Modified Files';
+                    button.disabled = false;
+                    return;
+                }
+                
+                // Validate actions array
+                console.log('Actions to commit:', actions.map(action => ({
+                    action: action.action,
+                    file_path: action.file_path,
+                    contentLength: action.content ? action.content.length : 0,
+                    encoding: action.encoding
+                })));
+                
+                // Log summary of actions
+                const createCount = actions.filter(a => a.action === 'create').length;
+                const updateCount = actions.filter(a => a.action === 'update').length;
+                console.log(`Action summary: ${createCount} create, ${updateCount} update`);
+                
+                // Create single commit with all files
+                statusDiv.innerHTML = '<div class="status-processing">Creating commit with all files...</div>';
+                
+                try {
+                    const result = await createMultiFileCommit(actions, message, branchName, sourceProjectId, token);
+                    
+                    button.innerText = 'Complete';
+                    const createCount = actions.filter(a => a.action === 'create').length;
+                    const updateCount = actions.filter(a => a.action === 'update').length;
+                    statusDiv.innerHTML = `
+                        <div class="status-success">
+                            Successfully created commit with ${actions.length} files!
+                        </div>
+                        <div class="status-success-item">
+                            Commit ID: ${result.id}
+                        </div>
+                        <div class="status-success-item">
+                            Files created: ${createCount}, Files updated: ${updateCount}
+                        </div>
+                        <div class="status-success-item">
+                            Files: ${filesToPromote.map(f => f.name).join(', ')}
+                        </div>
+                    `;
+                } catch (error) {
+                    button.innerText = 'Retry';
+                    button.disabled = false;
+                    statusDiv.innerHTML = `<div class="status-error-item">Error creating commit: ${error.message}</div>`;
+                    console.error('Error in createMultiFileCommit:', error);
+                }
+                
+            } catch (error) {
+                button.innerText = 'Retry';
+                button.disabled = false;
+                statusDiv.innerHTML = `<div class="status-error-item">Error: ${error.message}</div>`;
+                console.error('Error in promoteAllFiles:', error);
+            }
+        }
+
+        // Initialize the interface
+        document.addEventListener('DOMContentLoaded', function() {
+            createFileList();
+        });
+    </script>
+</body>
+</html> 

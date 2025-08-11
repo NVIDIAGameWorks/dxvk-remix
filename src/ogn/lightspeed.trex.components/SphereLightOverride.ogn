@@ -1,0 +1,30 @@
+{
+  "lightspeed.trex.components.SphereLightOverride": {
+    "description": ["Override the sphere light properties."],
+    "version": 1,
+    "uiName": "Sphere Light",
+    "language": "python",
+    "categories": "light",
+    "inputs": {
+      "enabled": {
+        "description": ["If true, the overrides will be applied"],
+        "uiName": "Enabled",
+        "type": "bool",
+        "default": true,
+        "optional": true
+      },
+      "radius": {
+        "description": ["The radius of the sphere light."],
+        "uiName": "Radius",
+        "type": "float",
+        "default": 0.000000,
+        "optional": true
+      },
+      "target": {
+        "description": ["The sphere light to override."],
+        "uiName": "Target",
+        "type": "target"
+      }
+    }
+  }
+}

@@ -57,6 +57,43 @@ std::string format(const Args&... args) {
   format1(stream, args...);
   return stream.str();
 }
+} // namespace
+
+bool createDirectories(const std::filesystem::path& path) {
+  if (path.empty()) {
+    return false;
+  }
+  if (!std::filesystem::exists(path)) {
+    Logger::debug(format("Creating directory: ", path));
+    try {
+      if (!std::filesystem::create_directories(path)) {
+        Logger::err(format("Failed to create directory: ", path));
+        return false;
+      }
+    } catch (const std::filesystem::filesystem_error& e) {
+      Logger::err(format("error when creating directory: `", path, "`: ", e.what()));
+      return false;
+    }
+  }
+  return true;
+}
+
+std::optional<std::ofstream> createDirectoriesAndOpenFile(const std::filesystem::path& filePath) {
+  if (filePath.empty()) {
+    return std::nullopt;
+  }
+  
+  if (!util::createDirectories(filePath.parent_path())) {
+    return std::nullopt;
+  }
+
+  // Open the output file for writing
+  std::ofstream outputFile(filePath);
+  if (!outputFile.is_open()) {
+    Logger::err(format("Failed to open file ", filePath, " for writing"));
+    return std::nullopt;
+  }
+  return outputFile;
 }
 
 bool RtxFileSys::s_bInit = false;
@@ -82,7 +119,7 @@ void RtxFileSys::init(const std::string rootPath) {
       path = pathStr;
       path /= ""; // Add ending slash
     }
-    mkDirs(path);
+    createDirectories(absolute(path));
   }
   s_bInit = true;
 }
@@ -91,18 +128,6 @@ void RtxFileSys::print() {
   Logger::debug(format("[RtxFileSys] Mods dir:    ", s_paths[Mods]));
   Logger::debug(format("[RtxFileSys] Capture dir: ", s_paths[Captures]));
   Logger::debug(format("[RtxFileSys] Logs dir:    ", s_paths[Logs]));
-}
-
-void RtxFileSys::mkDirs(const fspath& path) {
-  fspath ctorPath("");
-  for (const auto& part : path) {
-    ctorPath /= part;
-    ctorPath = absolute(ctorPath);
-    if(!std::filesystem::is_directory(ctorPath)) {
-      Logger::debug(format("Creating dir: ", ctorPath));
-      CreateDirectoryA(ctorPath.string().c_str(), nullptr);
-    }
-  }
 }
 
 }
