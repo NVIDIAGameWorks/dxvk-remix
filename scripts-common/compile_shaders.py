@@ -249,7 +249,7 @@ def createSlangTask(inputFile, variantSpec):
         # Command to convert SPV into c array header
         script_dir = os.path.dirname(os.path.realpath(__file__))
         shader_xxd = os.path.join(script_dir, 'shader_xxd.py')
-        command2 = f'{sys.executable} {shader_xxd} -i {destFile} -o {headerFile}'
+        command2 = f'"{sys.executable}" {shader_xxd} -i {destFile} -o {headerFile}'
 
         task.commands = [command1, command2]
 
