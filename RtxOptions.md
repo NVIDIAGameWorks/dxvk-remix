@@ -502,7 +502,8 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.opaqueSpecularLobeSamplingProbabilityZeroThreshold|float|0.01|||The threshold for which to zero opaque specular probability weight values\.|
 |rtx.orthographicIsUI|bool|True|||When enabled, draw calls that are orthographic will be considered as UI\.|
 |rtx.particleSoftnessFactor|float|0.05|||Multiplier for the view distance that is used to calculate the particle blending range\.|
-|rtx.particles.enable|bool|True|||Enables dust particle simulation and rendering\.|
+|rtx.particles.enable|bool|True|||Enables particle simulation and rendering\.|
+|rtx.particles.enableSpawning|bool|True|||Controls whether or not any particle system can currently spawn new particles\.|
 |rtx.particles.globalPreset.alignParticlesToVelocity|bool|False|||Rotates the particles such that they are always aligned with their direction of travel, in this mode we ignore rotation speed\.|
 |rtx.particles.globalPreset.collisionRestitution|float|0.5|||The fraction of velocity retained after a collision with scene geometry\. 1\.0 = perfectly elastic \(no speed loss\), 0\.0 = completely inelastic \(velocity zeroed\)\. Values outside \[0,1\] will be clamped to this range\.|
 |rtx.particles.globalPreset.collisionThickness|float|5|||The maximum penetration depth \(in centimeters\) at which a particle will still collide with geometry\.  Particles that penetrate deeper than this value are considered to have passed through thin objects and will not collide\.|
