@@ -668,30 +668,19 @@ namespace dxvk {
     // We also should be tracking and garbage collecting the entire draw call together,
     // rather than doing each instance separately.
     ReplacementInstance* replacementInstance = nullptr;
-    bool isFirstFrame = false;
 
     // Detect replacements of meshes that would have unstable hashes due to the vertex hash using vertex data from a shared vertex buffer.
     // TODO: Once the vertex hash only uses vertices referenced by the index buffer, this should be removed.
     const bool highlightUnsafeReplacement = RtxOptions::useHighlightUnsafeReplacementMode() &&
         input->getGeometryData().indexBuffer.defined() && input->getGeometryData().vertexCount > input->getGeometryData().indexCount;
-    if (!pReplacements->empty() && (*pReplacements)[0].includeOriginal) {
-      DrawCallState newDrawCallState(*input);
-      newDrawCallState.categories = (*pReplacements)[0].categories.applyCategoryFlags(newDrawCallState.categories);
-      RtInstance* rootInstance = processDrawCallState(ctx, newDrawCallState, renderMaterialData);
-      if (rootInstance != nullptr) {
-        replacementInstance = rootInstance->getPrimInstanceOwner().getReplacementInstance();
-        if (replacementInstance == nullptr) {
-          isFirstFrame = true;
-          // Deleted when `PrimInstanceOwner::setReplacementInstance` is called on this instance with a nullptr.
-          replacementInstance = new ReplacementInstance();
-          replacementInstance->setup(PrimInstance(rootInstance), pReplacements->size());
-          rootInstance->getPrimInstanceOwner().setReplacementInstance(replacementInstance, 0, rootInstance, PrimInstance::Type::Instance);
-        }
-      }
-    }
     for (size_t i = 0; i < pReplacements->size(); i++) {
       auto& replacement = (*pReplacements)[i];
-      if (replacement.type == AssetReplacement::eMesh && !replacement.includeOriginal) {
+      RtInstance* instance = nullptr;
+      if (replacement.includeOriginal) {
+        DrawCallState newDrawCallState(*input);
+        newDrawCallState.categories = replacement.categories.applyCategoryFlags(newDrawCallState.categories);
+        instance = processDrawCallState(ctx, newDrawCallState, renderMaterialData);
+      } else if (replacement.type == AssetReplacement::eMesh) {
         DrawCallTransforms transforms = input->getTransformData();
         
         transforms.objectToWorld = transforms.objectToWorld * replacement.replacementToObject;
@@ -729,26 +718,20 @@ namespace dxvk {
 
         RtInstance* existingInstance = replacementInstance ? replacementInstance->prims[i].getInstance() : nullptr;
         // Only use findSimilarInstance if we're processing the root of a replacement - all others should just rely on the existingInstance.
-        RtInstance* instance = processDrawCallState(ctx, newDrawCallState, renderMaterialData, existingInstance, pParticleSystemDesc);
-
-        if (instance) {
-          if (replacementInstance == nullptr) {
-            // first mesh in this replacement, so it becomes the root.
-            replacementInstance = instance->getPrimInstanceOwner().getReplacementInstance();
-
-            if (replacementInstance == nullptr) {
-              // First time this draw call is replaced, need to create the replacementInstance
-              isFirstFrame = true;
-              // Deleted when `PrimInstanceOwner::setReplacementInstance` is called on this instance with a nullptr.
-              replacementInstance = new ReplacementInstance();
-              replacementInstance->setup(PrimInstance(instance), pReplacements->size());
-            }
-          }
-          if (isFirstFrame) {
-            // This is the first frame this draw call is being drawn,
-            // so each replacement mesh needs to be registered with the replacementInstance.
-            instance->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, instance, PrimInstance::Type::Instance);
-          }
+        instance = processDrawCallState(ctx, newDrawCallState, renderMaterialData, existingInstance, pParticleSystemDesc);
+      }
+      
+      if (instance != nullptr) {
+        if (replacementInstance == nullptr) {
+          // first mesh in this replacement, so it becomes the root.
+          replacementInstance = instance->getPrimInstanceOwner().getOrCreateReplacementInstance(instance, PrimInstance::Type::Instance, i, pReplacements->size());
+        }
+        if (replacementInstance->prims[i].getUntyped() == nullptr) {
+          // First frame, need to set the replacement instance.
+          instance->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, instance, PrimInstance::Type::Instance);
+        } else if (replacementInstance->prims[i].getInstance() != instance) {
+          Logger::err(str::format("ReplacementInstance: instance returned by processDrawCallState is not the same as the one stored. index: ", i,"  mesh hash: ", std::hex, input->getHash(RtxOptions::geometryAssetHashRule())));
+          assert(false && "instance returned by processDrawCallState is not the same as the one stored.");
         }
       }
     }
@@ -775,7 +758,7 @@ namespace dxvk {
           localLight.applyTransform(input->getTransformData().objectToWorld);
           RtLight* newLight = m_lightManager.addLight(localLight, *input, RtLightAntiCullingType::MeshReplacement);
 
-          if (newLight && isFirstFrame) {
+          if (newLight && replacementInstance->prims[i].getUntyped() == nullptr) {
             // This is the first frame this draw call is being drawn,
             // so each replacement light needs to be registered with the replacementInstance.
             newLight->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, newLight, PrimInstance::Type::Light);
@@ -787,21 +770,19 @@ namespace dxvk {
     // Create graphs associated with this replacement, if they haven't already been created.
     // Graphs are cleaned up when the replacementInstance is destroyed, which happens when the 
     // root instance is destroyed.
-    if (isFirstFrame) {
-      for (size_t i = 0; i < pReplacements->size(); i++) {
-        auto&& replacement = (*pReplacements)[i];
-        if (replacement.type == AssetReplacement::eGraph) {
-          if (!replacement.graphState.has_value()) {
-            Logger::err(str::format(
-                "Graph prims missing graph state in mesh replacement.  mesh hash: ",
-                std::hex, input->getHash(RtxOptions::geometryAssetHashRule())
-            ));
-            break;
-          }
-          GraphInstance* graphInstance = m_graphManager.addInstance(ctx, replacement.graphState.value(), replacementInstance);
-          if (graphInstance) {
-            graphInstance->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, graphInstance, PrimInstance::Type::Graph);
-          }
+    for (size_t i = 0; i < pReplacements->size(); i++) {
+      auto&& replacement = (*pReplacements)[i];
+      if (replacement.type == AssetReplacement::eGraph && replacementInstance->prims[i].getGraph() == nullptr) {
+        if (!replacement.graphState.has_value()) {
+          Logger::err(str::format(
+              "Graph prims missing graph state in mesh replacement.  mesh hash: ",
+              std::hex, input->getHash(RtxOptions::geometryAssetHashRule())
+          ));
+          break;
+        }
+        GraphInstance* graphInstance = m_graphManager.addInstance(ctx, replacement.graphState.value(), replacementInstance);
+        if (graphInstance) {
+          graphInstance->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, graphInstance, PrimInstance::Type::Graph);
         }
       }
     }
@@ -1397,7 +1378,6 @@ namespace dxvk {
       const Matrix4 lightTransform = LightUtils::getLightTransform(light);
 
       ReplacementInstance* replacementInstance = nullptr;
-      bool isFirstFrame = false;
 
       // TODO(TREX-1091) to implement meshes as light replacements, replace the below loop with a call to drawReplacements.
       for (size_t i = 0; i < pReplacements->size(); i++) {
@@ -1431,21 +1411,19 @@ namespace dxvk {
           }
 
           // Setup tracking for all the lights created for this replacement.
-          if (newLight != nullptr && replacementInstance == nullptr) {
-            // This is the first light created, so it should be the root.
-            replacementInstance = newLight->getPrimInstanceOwner().getReplacementInstance();
+          if (newLight != nullptr) {
             if (replacementInstance == nullptr) {
-              // The root should only have a null replacementInstance on the first frame it is drawn - so set it up here.
-              isFirstFrame = true;
-              // Deleted when `PrimInstanceOwner::setReplacementInstance` is called on this instance with a nullptr.
-              replacementInstance = new ReplacementInstance();
-              replacementInstance->setup(PrimInstance(newLight), pReplacements->size());
+              // This is the first light created, so it should be the root.
+              replacementInstance = newLight->getPrimInstanceOwner().getOrCreateReplacementInstance(newLight, PrimInstance::Type::Light, i, pReplacements->size());
             }
-          }
 
-          if (isFirstFrame && newLight != nullptr) {
-            // First frame these replacements are being drawn, so register each light with the replacementInstance.
-            newLight->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, newLight, PrimInstance::Type::Light);
+            if (replacementInstance->prims[i].getUntyped() == nullptr) {
+              // First frame, need to set the replacement instance.
+              newLight->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, newLight, PrimInstance::Type::Light);
+            } else if (replacementInstance->prims[i].getLight() != newLight) {
+              Logger::err(str::format("ReplacementInstance: light returned by addLight is not the same as the one stored. index: ", i,"  light hash: ", std::hex, rtReplacementLight.getInstanceHash()));
+              assert(false && "light returned by addLight is not the same as the one stored.");
+            }
           }
         } else {
           assert(false); // We don't support meshes as children of lights yet.
