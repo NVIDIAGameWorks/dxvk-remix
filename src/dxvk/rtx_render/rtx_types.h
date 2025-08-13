@@ -125,6 +125,8 @@ struct ReplacementInstance {
 
   ~ReplacementInstance();
 
+  void clear();
+
   std::vector<PrimInstance> prims;
   PrimInstance root;
 
@@ -143,6 +145,7 @@ public:
   }
   bool isRoot(void* owner) const;
   void setReplacementInstance(ReplacementInstance* replacementInstance, size_t replacementIndex, void* owner, PrimInstance::Type type);
+  ReplacementInstance* getOrCreateReplacementInstance(void* owner, PrimInstance::Type type, size_t index, size_t numPrims);
   ReplacementInstance* getReplacementInstance() const { return m_replacementInstance; }
   size_t getReplacementIndex() const { return m_replacementIndex; }
 private:

@@ -104,7 +104,28 @@ namespace dxvk {
     return os << static_cast<uint8_t>(type);
   }
 
+  ReplacementInstance* PrimInstanceOwner::getOrCreateReplacementInstance(void* owner, PrimInstance::Type type, size_t index,size_t numPrims) {
+    if (m_replacementInstance == nullptr) {
+      ReplacementInstance* replacement = new ReplacementInstance();
+      replacement->setup(PrimInstance(owner, type), numPrims);
+      setReplacementInstance(replacement, index, owner, type);
+    } else if (m_replacementInstance->prims.size() != numPrims) {
+      // Number of prims changing generally means a new replacement asset has loaded in.
+      // Need to unlink the old instances, and either re-link them (if they are returned as 
+      // similar by findSimilarInstances) or create new ones.
+      ReplacementInstance* replacement = m_replacementInstance;
+      replacement->clear();
+      replacement->setup(PrimInstance(owner, type), numPrims);
+      setReplacementInstance(replacement, index, owner, type);
+    }
+    return m_replacementInstance;
+  }
+
   ReplacementInstance::~ReplacementInstance() {
+    clear();
+  }
+
+  void ReplacementInstance::clear() {
     // clear up all references to this ReplacementInstance.
     for (size_t i = 0; i < prims.size(); i++) {
       RtInstance* subInstance = prims[i].getInstance();
