@@ -716,10 +716,7 @@ dxvk::ExternalDrawState dxvk::RemixAPIPrivateAccessor::toRtDrawState(const remix
     prototype.materialData.alphaTestEnabled = extBlend->alphaTestEnabled;
     prototype.materialData.alphaTestReferenceValue = extBlend->alphaTestReferenceValue;
     prototype.materialData.alphaTestCompareOp = (VkCompareOp) extBlend->alphaTestCompareOp;
-    prototype.materialData.alphaBlendEnabled = extBlend->alphaBlendEnabled;
-    prototype.materialData.srcColorBlendFactor = (VkBlendFactor) extBlend->srcColorBlendFactor;
-    prototype.materialData.dstColorBlendFactor = (VkBlendFactor) extBlend->dstColorBlendFactor;
-    prototype.materialData.colorBlendOp = (VkBlendOp) extBlend->colorBlendOp;
+    prototype.materialData.blendMode.enableBlending = extBlend->alphaBlendEnabled;
     prototype.materialData.textureColorOperation = (DxvkRtTextureOperation) extBlend->textureColorOperation;
     prototype.materialData.textureColorArg1Source = (RtTextureArgSource) extBlend->textureColorArg1Source;
     prototype.materialData.textureColorArg2Source = (RtTextureArgSource) extBlend->textureColorArg2Source;
@@ -728,6 +725,13 @@ dxvk::ExternalDrawState dxvk::RemixAPIPrivateAccessor::toRtDrawState(const remix
     prototype.materialData.textureAlphaArg2Source = (RtTextureArgSource) extBlend->textureAlphaArg2Source;
     prototype.materialData.tFactor = extBlend->tFactor;
     prototype.materialData.isTextureFactorBlend = extBlend->isTextureFactorBlend;
+    prototype.materialData.blendMode.colorSrcFactor = (VkBlendFactor) extBlend->srcColorBlendFactor;
+    prototype.materialData.blendMode.colorDstFactor = (VkBlendFactor) extBlend->dstColorBlendFactor;
+    prototype.materialData.blendMode.colorBlendOp = (VkBlendOp) extBlend->colorBlendOp;
+    prototype.materialData.blendMode.alphaSrcFactor = (VkBlendFactor) extBlend->srcAlphaBlendFactor;
+    prototype.materialData.blendMode.alphaDstFactor = (VkBlendFactor) extBlend->dstAlphaBlendFactor;
+    prototype.materialData.blendMode.alphaBlendOp = (VkBlendOp) extBlend->alphaBlendOp;
+    prototype.materialData.blendMode.writeMask = (VkColorComponentFlags) extBlend->writeMask;
   }
 
   std::optional<RtxParticleSystemDesc> optParticles;

@@ -445,7 +445,7 @@ namespace dxvk {
         : makeCameraPosition(
             drawCallState.getTransformData().worldToView,
             drawCallState.zWriteEnable,
-            drawCallState.getMaterialData().alphaBlendEnabled,
+            drawCallState.getMaterialData().blendMode.enableBlending,
             hasSkinning);
 
     auto l_addIfUnique = [&seenCameraPositions](const std::optional<Vector3>& newCameraPos) {

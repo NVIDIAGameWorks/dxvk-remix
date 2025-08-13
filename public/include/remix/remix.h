@@ -710,6 +710,10 @@ namespace remix {
       srcColorBlendFactor = 1 /* VK_BLEND_FACTOR_ONE */;
       dstColorBlendFactor = 0 /* VK_BLEND_FACTOR_ZERO */;
       colorBlendOp = 0 /* VK_BLEND_OP_ADD */;
+      srcAlphaBlendFactor = 1 /* VK_BLEND_FACTOR_ONE */;
+      dstAlphaBlendFactor = 0 /* VK_BLEND_FACTOR_ZERO */;
+      alphaBlendOp = 0 /* VK_BLEND_OP_ADD */;
+      writeMask = 0xFFFFFFFF;
       textureColorArg1Source = 1 /* RtTextureArgSource::Texture */;
       textureColorArg2Source = 0 /* RtTextureArgSource::None */;
       textureColorOperation = 3 /* DxvkRtTextureOperation::Modulate */;
@@ -718,7 +722,7 @@ namespace remix {
       textureAlphaOperation = 1 /* DxvkRtTextureOperation::SelectArg1 */;
       tFactor = 0XFFFFFFFF;
       isTextureFactorBlend = false;
-      static_assert(sizeof remixapi_InstanceInfoBlendEXT == 80);
+      static_assert(sizeof remixapi_InstanceInfoBlendEXT == 96);
     }
   };
 
