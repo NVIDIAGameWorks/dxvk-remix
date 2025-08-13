@@ -385,6 +385,10 @@ extern "C" {
     uint32_t            textureAlphaOperation;
     uint32_t            tFactor;
     remixapi_Bool       isTextureFactorBlend;
+    uint32_t            srcAlphaBlendFactor;
+    uint32_t            dstAlphaBlendFactor;
+    uint32_t            alphaBlendOp;
+    uint32_t            writeMask;
   } remixapi_InstanceInfoBlendEXT;
 
   typedef struct remixapi_InstanceInfoObjectPickingEXT {

@@ -83,9 +83,13 @@ namespace dxvk {
       meta.alphaTestReferenceValue = rtInstance.surface.alphaState.alphaTestReferenceValue;
       meta.alphaTestCompareOp = (uint32_t) rtInstance.surface.alphaState.alphaTestType;
       meta.alphaBlendEnabled = !rtInstance.surface.alphaState.isBlendingDisabled;
-      meta.srcColorBlendFactor = (uint32_t) rtInstance.surface.srcColorBlendFactor;
-      meta.dstColorBlendFactor = (uint32_t) rtInstance.surface.dstColorBlendFactor;
-      meta.colorBlendOp = (uint32_t) rtInstance.surface.colorBlendOp;
+      meta.srcColorBlendFactor = (uint32_t) rtInstance.surface.blendModeState.colorSrcFactor;
+      meta.dstColorBlendFactor = (uint32_t) rtInstance.surface.blendModeState.colorDstFactor;
+      meta.colorBlendOp = (uint32_t) rtInstance.surface.blendModeState.colorBlendOp;
+      meta.srcAlphaBlendFactor = (uint32_t) rtInstance.surface.blendModeState.alphaSrcFactor;
+      meta.dstAlphaBlendFactor = (uint32_t) rtInstance.surface.blendModeState.alphaDstFactor;
+      meta.alphaBlendOp = (uint32_t) rtInstance.surface.blendModeState.alphaBlendOp;
+      meta.writeMask = (uint32_t) rtInstance.surface.blendModeState.writeMask;
       meta.textureColorArg1Source = (uint32_t) rtInstance.surface.textureColorArg1Source;
       meta.textureColorArg2Source = (uint32_t) rtInstance.surface.textureColorArg2Source;
       meta.textureColorOperation = (uint32_t) rtInstance.surface.textureColorOperation;

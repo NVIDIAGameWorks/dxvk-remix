@@ -498,7 +498,11 @@ void InstanceInfoObjectPicking::_dtor() {
                               textureAlphaArg2Source, \
                               textureAlphaOperation, \
                               tFactor, \
-                              isTextureFactorBlend
+                              isTextureFactorBlend, \
+                              srcAlphaBlendFactor, \
+                              dstAlphaBlendFactor, \
+                              alphaBlendOp, \
+                              writeMask
 uint32_t InstanceInfoBlend::_calcSize() const {
   return fold_helper::calcSize(InstanceInfoBlendVars);
 }

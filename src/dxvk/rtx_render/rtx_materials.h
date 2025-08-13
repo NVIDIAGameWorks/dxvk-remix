@@ -32,6 +32,7 @@
 #include "rtx_material_data.h"
 #include "../../lssusd/mdl_helpers.h"
 #include "rtx/pass/particles/particle_system_common.h"
+#include "dxvk_constant_state.h"
 
 namespace dxvk {
 // Surfaces
@@ -415,9 +416,7 @@ struct RtSurface {
   } alphaState;
 
   // Original draw call state
-  VkBlendFactor srcColorBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ONE;
-  VkBlendFactor dstColorBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ZERO;
-  VkBlendOp colorBlendOp = VkBlendOp::VK_BLEND_OP_ADD;
+  DxvkBlendMode blendModeState;
 
   // Static validation to detect any changes that require an alignment re-check
   static_assert(sizeof(AlphaState) == 9);
@@ -1551,10 +1550,14 @@ struct LegacyMaterialData {
       "  alphaTestEnabled: ", alphaTestEnabled, "\n",
       "  alphaTestReferenceValue: ", alphaTestReferenceValue, "\n",
       "  alphaTestCompareOp: ", alphaTestCompareOp, "\n",
-      "  alphaBlendEnabled: ", alphaBlendEnabled, "\n",
-      "  srcColorBlendFactor: ", srcColorBlendFactor, "\n",
-      "  dstColorBlendFactor: ", dstColorBlendFactor, "\n",
-      "  colorBlendOp: ", colorBlendOp, "\n",
+      "  alphaBlendEnabled: ", blendMode.enableBlending, "\n",
+      "  colorSrcFactor: ", blendMode.colorSrcFactor, "\n",
+      "  colorDstFactor: ", blendMode.colorDstFactor, "\n",
+      "  colorBlendOp: ", blendMode.colorBlendOp, "\n",
+      "  alphaSrcFactor: ", blendMode.alphaSrcFactor, "\n",
+      "  alphaDstFactor: ", blendMode.alphaDstFactor, "\n",
+      "  alphaBlendOp: ", blendMode.alphaBlendOp, "\n",
+      "  writeMask: ", blendMode.writeMask, "\n",
       "  textureColorArg1Source: ", static_cast<int>(textureColorArg1Source), "\n",
       "  textureColorArg2Source: ", static_cast<int>(textureColorArg2Source), "\n",
       "  textureColorOperation: ", static_cast<int>(textureColorOperation), "\n",
@@ -1580,10 +1583,9 @@ struct LegacyMaterialData {
   bool alphaTestEnabled = false;
   uint8_t alphaTestReferenceValue = 0;
   VkCompareOp alphaTestCompareOp = VkCompareOp::VK_COMPARE_OP_ALWAYS;
-  bool alphaBlendEnabled = false;
-  VkBlendFactor srcColorBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ONE;
-  VkBlendFactor dstColorBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ZERO;
-  VkBlendOp colorBlendOp = VkBlendOp::VK_BLEND_OP_ADD;
+
+  DxvkBlendMode blendMode;
+
   RtTextureArgSource diffuseColorSource= RtTextureArgSource::None;
   RtTextureArgSource specularColorSource = RtTextureArgSource::None;
   RtTextureArgSource textureColorArg1Source = RtTextureArgSource::Texture;

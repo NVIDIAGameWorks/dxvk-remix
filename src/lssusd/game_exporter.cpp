@@ -909,6 +909,10 @@ void GameExporter::exportInstances(const Export& exportData, ExportContext& ctx)
       _SetDrawMetadata(srcColorBlendFactor, UInt);
       _SetDrawMetadata(dstColorBlendFactor, UInt);
       _SetDrawMetadata(colorBlendOp, UInt);
+      _SetDrawMetadata(srcAlphaBlendFactor, UInt);
+      _SetDrawMetadata(dstAlphaBlendFactor, UInt);
+      _SetDrawMetadata(alphaBlendOp, UInt);
+      _SetDrawMetadata(writeMask, UInt);
       _SetDrawMetadata(textureColorArg1Source, UInt);
       _SetDrawMetadata(textureColorArg2Source, UInt);
       _SetDrawMetadata(textureColorOperation, UInt);

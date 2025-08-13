@@ -1715,7 +1715,8 @@ namespace dxvk {
       if(state.optionalParticleDesc.has_value()) {
         pParticles = &state.optionalParticleDesc.value();
       }
-      processDrawCallState(ctx, state.drawCall, material  != nullptr ? MaterialData(*material) : LegacyMaterialData().as<OpaqueMaterialData>(), nullptr, pParticles);
+
+      processDrawCallState(ctx, state.drawCall, material != nullptr ? MaterialData(*material) : LegacyMaterialData().as<OpaqueMaterialData>(), nullptr, pParticles);
     }
   }
 

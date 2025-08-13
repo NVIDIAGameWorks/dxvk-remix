@@ -154,6 +154,10 @@ struct RenderingMetaData {
   uint32_t srcColorBlendFactor;
   uint32_t dstColorBlendFactor;
   uint32_t colorBlendOp;
+  uint32_t srcAlphaBlendFactor;
+  uint32_t dstAlphaBlendFactor;
+  uint32_t alphaBlendOp;
+  uint32_t writeMask;
   uint32_t textureColorArg1Source;
   uint32_t textureColorArg2Source;
   uint32_t textureColorOperation;
