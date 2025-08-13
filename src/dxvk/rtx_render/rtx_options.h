@@ -1096,6 +1096,9 @@ namespace dxvk {
     RTX_OPTION("rtx", float, effectLightRadius, 5.f, "The sphere radius of the effect light.  Effect lights can be attached to materials from the remix runtime menu, using the `Add Light to Texture` texture tag in game setup.");
     RTX_OPTION("rtx", bool, effectLightPlasmaBall, false, "Use plasma ball mode, in this mode the effect light color is ignored.  Effect lights can be attached to materials from the remix runtime menu, using the `Add Light to Texture` texture tag in game setup.");
 
+    RTX_OPTION("rtx", bool, useUnusedRenderstates, false, "Enable usage of unused D3D renderstates to aid with special game scenarios whilst having game code access.\n"
+               "(RS 42) Setting the remix texture category for the next surface. (RS 150) Setting a user defined material hash for the next surface.");
+
     RTX_OPTION("rtx", bool, useObsoleteHashOnTextureUpload, false,
                "Whether or not to use slower XXH64 hash on texture upload.\n"
                "New projects should not enable this option as this solely exists for compatibility with older hashing schemes.");
