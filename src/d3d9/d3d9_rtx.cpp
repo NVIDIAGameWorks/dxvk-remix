@@ -1076,7 +1076,7 @@ namespace dxvk {
           DxvkRtTextureOperation& texop = m_activeDrawCallState.materialData.textureColorOperation;
           if (RtxOptions::terrainAsDecalsAllowOverModulate()) {
             if (texop == DxvkRtTextureOperation::Modulate2x || texop == DxvkRtTextureOperation::Modulate4x) {
-              texop = DxvkRtTextureOperation::Force_Modulate4x;
+              texop = DxvkRtTextureOperation::Force_Modulate2x;
             }
           }
         }
