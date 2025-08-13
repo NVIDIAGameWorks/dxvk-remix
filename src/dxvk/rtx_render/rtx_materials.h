@@ -236,7 +236,7 @@ struct RtSurface {
 
     assert((static_cast<uint32_t>(textureColorOperation) & 0x7) == static_cast<uint32_t>(textureColorOperation));
     assert((static_cast<uint32_t>(textureAlphaOperation) & 0x7) == static_cast<uint32_t>(textureAlphaOperation));
-    assert(textureAlphaOperation != DxvkRtTextureOperation::Force_Modulate4x);
+    assert(textureAlphaOperation != DxvkRtTextureOperation::Force_Modulate2x);
 
     textureFlags |= ((static_cast<uint32_t>(textureColorArg1Source) & 0x3));
     textureFlags |= ((static_cast<uint32_t>(textureColorArg2Source) & 0x3) << 2);

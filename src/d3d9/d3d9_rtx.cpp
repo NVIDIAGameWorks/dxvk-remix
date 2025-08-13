@@ -898,15 +898,42 @@ namespace dxvk {
     if constexpr (FixedFunction) {
       memset(&texcoordIndexToStage[0], kInvalidStage, sizeof(texcoordIndexToStage));
       for (uint32_t stage = 0; stage < caps::TextureStageCount; stage++) {
-        auto isTextureFactorBlendingEnabled = [](const auto& textureStageStates) -> bool {
-          const auto colorOp = textureStageStates[DXVK_TSS_COLOROP];
-          const auto alphaOp = textureStageStates[DXVK_TSS_ALPHAOP];
-          return (textureStageStates[DXVK_TSS_COLORARG1] == D3DTA_TFACTOR ||
-                  textureStageStates[DXVK_TSS_COLORARG2] == D3DTA_TFACTOR ||
-                  textureStageStates[DXVK_TSS_ALPHAARG1] == D3DTA_TFACTOR ||
-                  textureStageStates[DXVK_TSS_ALPHAARG2] == D3DTA_TFACTOR) &&
-                 (colorOp == D3DTOP_MODULATE || colorOp == D3DTOP_MODULATE2X || colorOp == D3DTOP_MODULATE4X ||
-                  alphaOp == D3DTOP_MODULATE || alphaOp == D3DTOP_MODULATE2X || alphaOp == D3DTOP_MODULATE4X);
+        auto isTextureFactorBlendingEnabled = [&](const auto& tss) -> bool {
+          const auto colorOp = tss[DXVK_TSS_COLOROP];
+          const auto alphaOp = tss[DXVK_TSS_ALPHAOP];
+
+          if (colorOp == D3DTOP_DISABLE && alphaOp == D3DTOP_DISABLE)
+            return false;
+
+          const auto a1c = tss[DXVK_TSS_COLORARG1] & D3DTA_SELECTMASK;
+          const auto a2c = tss[DXVK_TSS_COLORARG2] & D3DTA_SELECTMASK;
+          const auto a1a = tss[DXVK_TSS_ALPHAARG1] & D3DTA_SELECTMASK;
+          const auto a2a = tss[DXVK_TSS_ALPHAARG2] & D3DTA_SELECTMASK;
+
+          // If previous stage wrote to TEMP the prior result source this stage
+          // should read is D3DTA_TEMP otherwise its D3DTA_CURRENT.
+          DWORD prevResultSel = D3DTA_CURRENT;
+          if (stage != 0) {
+            const auto& prev = d3d9State().textureStages[stage - 1];
+            const auto resultArg = prev[DXVK_TSS_RESULTARG] & D3DTA_SELECTMASK;
+            prevResultSel = (resultArg == D3DTA_TEMP) ? D3DTA_TEMP : D3DTA_CURRENT;
+          }
+
+          auto isModulate = [](DWORD op) {
+            return op == D3DTOP_MODULATE || op == D3DTOP_MODULATE2X || op == D3DTOP_MODULATE4X;
+          };
+
+          const bool colorMul =
+            isModulate(colorOp) &&
+            ((a1c == D3DTA_TFACTOR && a2c == prevResultSel) ||
+             (a2c == D3DTA_TFACTOR && a1c == prevResultSel));
+
+          const bool alphaMul =
+            isModulate(alphaOp) &&
+            ((a1a == D3DTA_TFACTOR && a2a == prevResultSel) ||
+             (a2a == D3DTA_TFACTOR && a1a == prevResultSel));
+
+          return colorMul || alphaMul;
         };
 
         // Support texture factor blending besides the first stage. Currently, we only support 1 additional stage tFactor blending.
@@ -1049,7 +1076,7 @@ namespace dxvk {
           DxvkRtTextureOperation& texop = m_activeDrawCallState.materialData.textureColorOperation;
           if (RtxOptions::terrainAsDecalsAllowOverModulate()) {
             if (texop == DxvkRtTextureOperation::Modulate2x || texop == DxvkRtTextureOperation::Modulate4x) {
-              texop = DxvkRtTextureOperation::Force_Modulate4x;
+              texop = DxvkRtTextureOperation::Force_Modulate2x;
             }
           }
         }

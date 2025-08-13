@@ -201,7 +201,7 @@ void calcOpaqueSurfaceMaterialOpacity(
 // Choosing texture operation for color channel
 // When modulation option is used, we assume vertex color is used as a filter color and ignore any lighting contribution in it.
 // Therefore, we treat three modulate options equally.
-// If it's known that the modulation does not have a lighting info, then use Force_Modulate4x
+// If it's known that the modulation does not have a lighting info, then use Force_Modulate2x
 void chooseTextureOperationColor(inout f16vec3 target, uint8_t textureOperation, f16vec3 textureArg1, f16vec3 textureArg2)
 {
   switch (uint(textureOperation))
@@ -217,8 +217,8 @@ void chooseTextureOperationColor(inout f16vec3 target, uint8_t textureOperation,
   case uint(DxvkRtTextureOperation::Modulate2x):
   case uint(DxvkRtTextureOperation::Modulate4x):
     target = textureArg1 * textureArg2; break;
-  case uint(DxvkRtTextureOperation::Force_Modulate4x):
-    target = min(float16_t(1), textureArg1 * textureArg2 * float16_t(4.0)); break;
+  case uint(DxvkRtTextureOperation::Force_Modulate2x):
+    target = min(float16_t(1), textureArg1 * textureArg2 * float16_t(2.0)); break;
   case uint(DxvkRtTextureOperation::Add):
     target = textureArg1 + textureArg2; break;
   }
