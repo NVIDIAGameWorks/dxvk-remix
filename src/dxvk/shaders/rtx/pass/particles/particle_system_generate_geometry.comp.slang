@@ -164,7 +164,7 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
       worldOffset = (localOffset.x * right + localOffset.y * up) * size;
     }
     
-    vertex.position = chopMantissaLSB(particle.position + worldOffset, 14); // lop off some LSB to get better compression;
+    vertex.position = chopMantissaLSB(particle.position + worldOffset, 4); // lop off some LSB to get better compression;
     vertex.color = colorEnc;
     vertex.texcoord = (offset + 0.5f) * (particle.uvMinMax.zw - particle.uvMinMax.xy) + particle.uvMinMax.xy;
     
