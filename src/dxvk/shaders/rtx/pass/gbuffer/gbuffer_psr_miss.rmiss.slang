@@ -21,13 +21,13 @@
 */
 
 //!variant gbuffer_psr_miss.rmiss
-//!>       UNORDERED_RESOLVE_WBOIT=0
+
 
 // NRC 
 
 //!variant gbuffer_psr_nrc_miss.rmiss
 //!>       ENABLE_NRC=1
-//!>       UNORDERED_RESOLVE_WBOIT=0
+
 
 
 //!variant gbuffer_psr_miss_wboit.rmiss
