@@ -22,23 +22,23 @@
 
 //!variant integrate_indirect_miss.rmiss
 //!>       NEE_CACHE_ENABLE=0
-//!>       UNORDERED_RESOLVE_WBOIT=0
+
 
 //!variant integrate_indirect_miss_neeCache.rmiss
 //!>       NEE_CACHE_ENABLE=1
-//!>       UNORDERED_RESOLVE_WBOIT=0
+
 
 // NRC
 
 //!variant integrate_indirect_miss_nrc.rmiss
 //!>       ENABLE_NRC=1
 //!>       NEE_CACHE_ENABLE=0
-//!>       UNORDERED_RESOLVE_WBOIT=0
+
 
 //!variant integrate_indirect_miss_nrc_neeCache.rmiss
 //!>       ENABLE_NRC=1
 //!>       NEE_CACHE_ENABLE=1
-//!>       UNORDERED_RESOLVE_WBOIT=0
+
 
  // WBOIT
 
