@@ -23,19 +23,46 @@
 
 //!variant gbuffer_material_opaque_translucent_closestHit.rchit
 //!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+//!>       UNORDERED_RESOLVE_WBOIT=0
 
 //!variant gbuffer_material_rayportal_closestHit.rchit
 //!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+//!>       UNORDERED_RESOLVE_WBOIT=0
 
 // NRC
 
 //!variant gbuffer_nrc_material_opaque_translucent_closestHit.rchit
 //!>       ENABLE_NRC=1
 //!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+//!>       UNORDERED_RESOLVE_WBOIT=0
 
 //!variant gbuffer_nrc_material_rayportal_closestHit.rchit
 //!>       ENABLE_NRC=1
 //!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+//!>       UNORDERED_RESOLVE_WBOIT=0
+
+
+// WBOIT
+
+//!variant gbuffer_material_opaque_translucent_closestHit_wboit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant gbuffer_material_rayportal_closestHit_wboit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+//!>       UNORDERED_RESOLVE_WBOIT
+
+// NRC
+
+//!variant gbuffer_nrc_material_opaque_translucent_closestHit_wboit.rchit
+//!>       ENABLE_NRC=1
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant gbuffer_nrc_material_rayportal_closestHit_wboit.rchit
+//!>       ENABLE_NRC=1
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+//!>       UNORDERED_RESOLVE_WBOIT
 
 //!end-variants
 

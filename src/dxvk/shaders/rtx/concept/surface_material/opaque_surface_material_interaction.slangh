@@ -662,7 +662,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     
     // Ensure we perform these opacity calculations after the texture operations have been applied to abledo and alpha.
     calcOpaqueSurfaceMaterialOpacity(
-      albedo, opacity, surface, opacity, emissiveBlendOverrideInfluence);
+      albedo, opacity, surface, opacity, emissiveBlendOverrideInfluence, cb.wboitEnabled);
   }
 
   if (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_IGNORE_ALPHA_CHANNEL)

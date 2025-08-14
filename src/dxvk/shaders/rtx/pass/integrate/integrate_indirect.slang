@@ -24,37 +24,45 @@
 //!>       RT_TRACE_RAY
 //!>       RAY_PIPELINE
 //!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT=0
  
 //!variant integrate_indirect_raygen_ser_neeCache.rgen
 //!>       RT_TRACE_RAY
 //!>       RAY_PIPELINE
 //!>       RT_SHADER_EXECUTION_REORDERING
 //!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT=0
 
 //!variant integrate_indirect_rayquery_neeCache.comp
 //!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT=0
 
 //!variant integrate_indirect_rayquery_raygen_neeCache.rgen
 //!>       RAY_PIPELINE
 //!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT=0
 
 //!variant integrate_indirect_rayquery.comp
 //!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT=0
 
 //!variant integrate_indirect_rayquery_raygen.rgen
 //!>       RAY_PIPELINE
 //!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT=0
 
 //!variant integrate_indirect_raygen.rgen
 //!>       RT_TRACE_RAY
 //!>       RAY_PIPELINE
 //!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT=0
 
 //!variant integrate_indirect_raygen_ser.rgen
 //!>       RT_TRACE_RAY
 //!>       RAY_PIPELINE
 //!>       RT_SHADER_EXECUTION_REORDERING
 //!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT=0
 
 /* NRC */
 
@@ -63,6 +71,7 @@
 //!>       RAY_PIPELINE
 //!>       ENABLE_NRC=1
 //!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT=0
  
 //!variant integrate_indirect_raygen_ser_nrc_neeCache.rgen
 //!>       RT_TRACE_RAY
@@ -70,30 +79,36 @@
 //!>       RT_SHADER_EXECUTION_REORDERING
 //!>       ENABLE_NRC=1
 //!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT=0
 
 //!variant integrate_indirect_rayquery_nrc_neeCache.comp
 //!>       ENABLE_NRC=1
 //!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT=0
 
 //!variant integrate_indirect_rayquery_raygen_nrc_neeCache.rgen
 //!>       RAY_PIPELINE
 //!>       ENABLE_NRC=1
 //!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT=0
 
 //!variant integrate_indirect_rayquery_nrc.comp
 //!>       ENABLE_NRC=1
 //!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT=0
 
 //!variant integrate_indirect_rayquery_raygen_nrc.rgen
 //!>       RAY_PIPELINE
 //!>       ENABLE_NRC=1
 //!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT=0
 
 //!variant integrate_indirect_raygen_nrc.rgen
 //!>       RT_TRACE_RAY
 //!>       RAY_PIPELINE
 //!>       ENABLE_NRC=1
 //!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT=0
 
 //!variant integrate_indirect_raygen_ser_nrc.rgen
 //!>       RT_TRACE_RAY
@@ -101,6 +116,110 @@
 //!>       RT_SHADER_EXECUTION_REORDERING
 //!>       ENABLE_NRC=1
 //!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT=0
+
+
+// WBOIT
+
+
+//!variant integrate_indirect_raygen_neeCache_wboit.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+ 
+//!variant integrate_indirect_raygen_ser_neeCache_wboit.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_rayquery_neeCache_wboit.comp
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_rayquery_raygen_neeCache_wboit.rgen
+//!>       RAY_PIPELINE
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_rayquery_wboit.comp
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_rayquery_raygen_wboit.rgen
+//!>       RAY_PIPELINE
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_raygen_wboit.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_raygen_ser_wboit.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+/* NRC */
+
+//!variant integrate_indirect_raygen_nrc_neeCache_wboit.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+ 
+//!variant integrate_indirect_raygen_ser_nrc_neeCache_wboit.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_rayquery_nrc_neeCache_wboit.comp
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_rayquery_raygen_nrc_neeCache_wboit.rgen
+//!>       RAY_PIPELINE
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_rayquery_nrc_wboit.comp
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_rayquery_raygen_nrc_wboit.rgen
+//!>       RAY_PIPELINE
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_raygen_nrc_wboit.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_raygen_ser_nrc_wboit.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
 
 //!end-variants
 

@@ -1241,6 +1241,10 @@ namespace dxvk {
 
     constants.primaryDirectMissLinearViewZ = primaryDirectNrdArgs.missLinearViewZ;
 
+    constants.wboitEnergyLossCompensation = RtxOptions::wboitEnergyLossCompensation();
+    constants.wboitDepthWeightTuning = RtxOptions::wboitDepthWeightTuning();
+    constants.wboitEnabled = RtxOptions::wboitEnabled();
+
     // Upload the constants to the GPU
     {
       Rc<DxvkBuffer> cb = getResourceManager().getConstantsBuffer();

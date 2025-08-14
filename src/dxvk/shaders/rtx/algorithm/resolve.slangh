@@ -666,6 +666,7 @@ void resolveVertex<T: IBasePayloadState>(
   resolveVertexFinalHit(resolveVertexState);
 }
 
+#ifndef UNORDERED_RESOLVE_WBOIT
 // Finds the lowest bin in terms of distance and outputs its index as well as other associated information.
 void findLowestBin(
   f16mat4 binnedRadiancesAndAttenuation, f16vec4 binDistances,
@@ -691,6 +692,7 @@ void findLowestBin(
 
   lowestRadianceAndAttenuation = selectColumn(binnedRadiancesAndAttenuation, lowestIndex);
 }
+#endif
 
 static RNG resolveVertexUnorderedRng = createRNGAnywhere(cb.frameIdx, 555);
 
@@ -773,6 +775,15 @@ uint8_t convertPrimaryRayMaskToUnordered(uint8_t primaryRayMask, uint8_t unorder
   return (primaryRayMask & OBJECT_MASK_ALL_DYNAMIC) | unorderedRayMask;
 }
 
+// For handling blending between unordered interactions (i.e. particles), we will be using this technique: 
+//  https://casual-effects.blogspot.com/2014/03/weighted-blended-order-independent.html
+//  With a small addition to handle emissive interactions roughly correctly
+float oitDepthWeight(float hitT, float tMax)
+{
+  float z = saturate(hitT / tMax);
+  return exp(-cb.wboitDepthWeightTuning * z);
+}
+
 // Handles unordered Resolve operations within the resolve loop which do not depend on the typical ordered execution
 // for the resolve logic.
 void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
@@ -825,6 +836,11 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
   // Note: The number of actual relevant hits along the unordered traversal.
   numInteractions = 0;
 
+#ifdef UNORDERED_RESOLVE_WBOIT
+  float3 alphaColorSum = 0..xxx;
+  float alphaWeightSum = 0.0f;
+  float alphaTransProd = 1.0f;
+#else
   // Note: Initialize bins to completely transparent with no radiance to be added in at an impossibly low distance. This
   // ensures these filler items are pulled out first in sorted order, giving the incoming elements a few iterations to populate
   // the bins.
@@ -835,6 +851,7 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
     f16vec4(0.0f, 0.0f, 0.0f, 1.0f),
   );
   f16vec4 binDistances = f16vec4(-1.0f, -1.0f, -1.0f, -1.0f);
+#endif
 
 #ifdef RAY_TRACING_PRIMARY_RAY
   MemoryDecalMaterialInteraction binnedDecals[numDecalResolveBins];
@@ -842,7 +859,7 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
   uint maxSortOrder = 0;
   // TODO[REMIX-3080] Unusued for now, will be needed for normal blending
   // f16mat3 worldToDecalTangent = f16mat3(0);
-  const uint kMaxUnorderedResolveSteps = 64;
+  const uint kMaxUnorderedResolveSteps = 128;
 #else
   float minDecalSample = -1.f;
   uint maxOpaqueSortOrder = 0;
@@ -1093,7 +1110,7 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
         f16vec3(1.0f), currentRadianceAttenuation, currentEmissiveRadiance);
     }
 
-    if (!isTriangle || !surfaceIsDecal(surface))
+    if (!surfaceIsDecal(surface))
     {
       // Calculate a blend softening factor
       // Note: This is done to avoid raster particles handled by this seprated logic from clipping in ugly ways against geometry by
@@ -1110,8 +1127,24 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
         surfaceIndex = rayInteraction.surfaceIndex;
       }
 
-      // Find the lowest item in the bins
+#ifdef UNORDERED_RESOLVE_WBOIT
+      float3 volumeAttenuation = calcVolumetricAttenuation(cb.volumeArgs, none, false, rayHitInfo.hitDistance, ray.origin, ray.direction);
 
+      // depth weight for this hit
+      float w = oitDepthWeight(rayHitInfo.hitDistance, ray.tMax);
+
+      float3 src = currentEmissiveRadiance * float3(radianceAttenuation) * volumeAttenuation;
+
+      // Extinction-based alpha
+      float alphaVal = saturate(1.f - currentRadianceAttenuation);
+
+      // premultiplied color
+      float3 Ci = src * alphaVal;
+      alphaColorSum  += Ci * w;
+      alphaWeightSum += alphaVal * w;
+      alphaTransProd *= (1.f - alphaVal);
+#else
+     // Find the lowest item in the bins
       uint lowestIndex;
       float16_t lowestDistance;
       f16vec4 lowestRadianceAndAttenuation;
@@ -1119,8 +1152,6 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
       findLowestBin(
         binnedRadiancesAndAttenuation, binDistances,
         lowestIndex, lowestDistance, lowestRadianceAndAttenuation);
-
-      // Accumulate the lowest bin into the radiance and attenuation
 
       // Note: Volume attenuation calculated only for the current ray start to the current hit surface, not accumulated
       // into the attenuation as this will be handled later by the ordered resolve logic (and we do not want to incorrectly
@@ -1133,10 +1164,9 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
       radianceAttenuation = f16vec3(vec3(radianceAttenuation) * float(lowestRadianceAndAttenuation.a));
       // radianceAttenuation *= lowestRadianceAndAttenuation.a;
 
-      // Replace the lowest bin with the current iteration's information
-
       writeColumn(binnedRadiancesAndAttenuation, f16vec4(currentEmissiveRadiance, currentRadianceAttenuation), lowestIndex);
       writeComponent(binDistances, float16_t(rayHitInfo.hitDistance), lowestIndex);
+#endif
     }
     
     // Do picking (in non PSR primary rays) only, and also make sure to do it here to include decals
@@ -1170,7 +1200,17 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
     return;
   }
 
-  // Flush the bins by iterating through them and finding the lowest for each
+#ifdef UNORDERED_RESOLVE_WBOIT
+  if (alphaWeightSum > 0.f) 
+  {
+    float3 alphaAvg = alphaColorSum / alphaWeightSum;
+    float coverage = cb.wboitEnergyLossCompensation * saturate(1.0f - alphaTransProd);
+    emissiveRadiance += alphaAvg * coverage;
+  }
+
+  radianceAttenuation *= alphaTransProd;
+#else
+ // Flush the bins by iterating through them and finding the lowest for each
   // Note: This has to be done as there will be remaining items in the bins (up to 4) which need to be accumulated in most cases after
   // the main loop finishes.
 
@@ -1206,6 +1246,7 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
     writeColumn(binnedRadiancesAndAttenuation, f16vec4(0.0f, 0.0f, 0.0f, 1.0f), lowestIndex);
     writeComponent(binDistances, float16_t(float16Max), lowestIndex);
   }
+#endif
 
 #ifdef RAY_TRACING_PRIMARY_RAY
   if (decalEncountered)
