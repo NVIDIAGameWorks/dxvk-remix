@@ -193,7 +193,6 @@ def createBasicTask(inputFile, destFile, targetName, depFile):
     try:
         lines = open(depFile, 'r').readlines()
         task.inputs = depfile.parse(lines, targetName)
-        task.inputs = [inputFile] + task.inputs
     except:
         task.inputs = []
     task.outputs = [destFile, depFile]
@@ -223,7 +222,9 @@ def createSlangTask(inputFile, variantSpec):
     destFile = os.path.join(args.output, variantName + ".spv")
     headerFile = os.path.join(args.output, variantName + ".h")
     depFile = os.path.join(args.output, variantName + ".d")
-    task = createBasicTask(inputFile, destFile, headerFile, depFile)
+
+    # Create task to resolve dep file for the compiler output (.spv)
+    task = createBasicTask(inputFile, destFile, destFile, depFile)
 
     if variantName != inputName:
         task.customName = f'{os.path.basename(inputFile)} ({variantName})'
