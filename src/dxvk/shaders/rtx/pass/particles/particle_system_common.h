@@ -127,9 +127,10 @@ struct GpuParticleSystem {
   uint numVerticesPerParticle = 4;
   uint particleTailOffset = 0;
 
-  uint2 pad;
+  uint simulateParticleCount = 0;
   uint particleHeadOffset = 0;
   uint particleCount = 0;
+  uint pad = 0;
 
 #ifndef __cplusplus
   float16_t varyTimeToLive(float rand) {
