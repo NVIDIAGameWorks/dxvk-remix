@@ -611,7 +611,12 @@ namespace dxvk {
       newDrawCallState.materialData = particleSystem.legacyMaterialData;
 
       // We want to always have particles support vertex colour for now.
+      newDrawCallState.materialData.textureColorArg1Source = RtTextureArgSource::Texture;
       newDrawCallState.materialData.textureColorArg2Source = RtTextureArgSource::VertexColor0;
+      newDrawCallState.materialData.textureColorOperation = DxvkRtTextureOperation::Modulate;
+      newDrawCallState.materialData.textureAlphaArg1Source = RtTextureArgSource::Texture;
+      newDrawCallState.materialData.textureAlphaArg2Source = RtTextureArgSource::VertexColor0;
+      newDrawCallState.materialData.textureAlphaOperation = DxvkRtTextureOperation::Modulate;
 
       ctx->getSceneManager().submitDrawState(ctx, newDrawCallState, &particleSystem.materialData);
     }
