@@ -321,7 +321,7 @@ namespace dxvk {
 
   uint32_t RtxParticleSystemManager::getNumberOfParticlesToSpawn(ParticleSystem* particleSystem, const DrawCallState& drawCallState) {
     ScopedCpuProfileZone();
-
+    
     float lambda = particleSystem->context.desc.spawnRate * GlobalTime::get().deltaTime();
 
     // poisson dist wont work well with these values (inf loop)
@@ -357,12 +357,20 @@ namespace dxvk {
       return;
     }
 
-    const uint32_t numParticles = getNumberOfParticlesToSpawn(particleSystem, drawCallState);
+    uint32_t numParticles = 0;
+
+    const bool constantParticles = particleSystem->context.desc.spawnRate >= particleSystem->context.desc.maxNumParticles;
+    if (constantParticles) {
+      numParticles = particleSystem->context.desc.maxNumParticles - particleSystem->context.spawnParticleCount;
+    } else {
+      numParticles = getNumberOfParticlesToSpawn(particleSystem, drawCallState);
+    }
+
     if (numParticles == 0) {
       return;
     }
 
-    assert ((particleSystem->context.particleHeadOffset + numParticles) <= particleSystem->context.desc.maxNumParticles);
+    assert (constantParticles || (particleSystem->context.particleHeadOffset + numParticles) <= particleSystem->context.desc.maxNumParticles);
 
     // Register the spawn context data
     SpawnContext spawnCtx;
@@ -377,6 +385,7 @@ namespace dxvk {
 
     // Map the particles to a context for spawn
     particleSystem->spawnContextParticleMap.insert(particleSystem->spawnContextParticleMap.end(), spawnCtx.numberOfParticles, m_spawnContexts.size());
+    assert(particleSystem->spawnContextParticleMap.size() <= particleSystem->context.desc.maxNumParticles);
 
     // Mark the time 
     particleSystem->lastSpawnTimeMs = GlobalTime::get().absoluteTimeMs();
@@ -419,13 +428,25 @@ namespace dxvk {
 
         GpuParticleSystem& particleSystem = system.second->context;
 
-        // Update some constants on the system based on our counters
-        particleSystem.particleCount = conservativeCount->preSimulation(ctx, particleSystem.spawnParticleCount, frameIdx);
+        const bool constantParticles = particleSystem.desc.spawnRate >= particleSystem.desc.maxNumParticles;
 
-        const uint32_t max = particleSystem.desc.maxNumParticles;
-        const uint32_t head = particleSystem.particleHeadOffset;
+        if (constantParticles) {
+          particleSystem.simulateParticleCount = particleSystem.desc.maxNumParticles;
+          particleSystem.particleCount = particleSystem.desc.maxNumParticles;
+          particleSystem.spawnParticleCount = particleSystem.desc.maxNumParticles;
+          particleSystem.particleHeadOffset = particleSystem.desc.maxNumParticles;
+          particleSystem.particleTailOffset = 0;
+          particleSystem.spawnParticleOffset = 0;
+        } else {
+          // Update some constants on the system based on our counters
+          particleSystem.particleCount = conservativeCount->preSimulation(ctx, particleSystem.spawnParticleCount, frameIdx);
 
-        particleSystem.particleTailOffset = (head + max - particleSystem.particleCount) % max;
+          const uint32_t max = particleSystem.desc.maxNumParticles;
+          const uint32_t head = particleSystem.particleHeadOffset;
+
+          particleSystem.particleTailOffset = (head + max - particleSystem.particleCount) % max;
+          particleSystem.simulateParticleCount = (particleSystem.particleCount - particleSystem.spawnParticleCount);
+        }
 
         if (particleSystem.particleCount == 0) {
           continue;
@@ -434,6 +455,8 @@ namespace dxvk {
         // Finalize some constants to the GPU data
         constants.particleSystem = particleSystem;
         constants.particleSystem.desc.applySceneScale(RtxOptions::sceneScale());
+
+        assert(particleSystem.particleCount >= particleSystem.spawnParticleCount);
 
         // Update CB
         const DxvkBufferSliceHandle cSlice = m_cb->allocSlice();
@@ -446,7 +469,9 @@ namespace dxvk {
         // Disable barriers for write after writes - we ensure particle implementation complies with this optimization, 
         //  since we write to particle buffer from both the spawning and evolve kernels, but only ever to unique slots
         //  of the buffer.
-        barrierControl.set(DxvkBarrierControl::IgnoreWriteAfterWrite);
+        if (!constantParticles) {
+          barrierControl.set(DxvkBarrierControl::IgnoreWriteAfterWrite);
+        }
 
         ctx->setBarrierControl(barrierControl);
 
@@ -464,9 +489,8 @@ namespace dxvk {
         }
 
         // Handle simulation updates
-        assert(particleSystem.particleCount >= particleSystem.spawnParticleCount);
-        if (particleSystem.particleCount - particleSystem.spawnParticleCount > 0) {
-          const VkExtent3D workgroups = util::computeBlockCount(VkExtent3D { particleSystem.particleCount - particleSystem.spawnParticleCount, 1, 1 }, VkExtent3D { 128, 1, 1 });
+        if (particleSystem.simulateParticleCount > 0) {
+          const VkExtent3D workgroups = util::computeBlockCount(VkExtent3D { particleSystem.simulateParticleCount, 1, 1 }, VkExtent3D { 128, 1, 1 });
 
           ctx->bindResourceBuffer(PARTICLE_SYSTEM_BINDING_PARTICLES_BUFFER_INPUT_OUTPUT, DxvkBufferSlice(system.second->getParticlesBuffer()));
           ctx->bindResourceBuffer(PARTICLE_SYSTEM_BINDING_COUNTER_OUTPUT, DxvkBufferSlice(system.second->getCounter()->getGpuCountBuffer()));
@@ -490,7 +514,9 @@ namespace dxvk {
 
         ctx->setBarrierControl(DxvkBarrierControlFlags());
 
-        conservativeCount->postSimulation(ctx, ctx->getDevice()->getCurrentFrameId());
+        if (!constantParticles) {
+          conservativeCount->postSimulation(ctx, ctx->getDevice()->getCurrentFrameId());
+        }
       }
     }
 
@@ -749,7 +775,7 @@ namespace dxvk {
         }
       }
 
-      ctx->updateBuffer(m_ib, 0, info.size, indices.data());
+      ctx->writeToBuffer(m_ib, 0, info.size, indices.data());
     }
 
     if (m_spawnContextParticleMapBuffer == nullptr || m_spawnContextParticleMapBuffer->info().size != sizeof(uint16_t) * context.desc.maxNumParticles) {
