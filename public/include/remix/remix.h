@@ -770,7 +770,8 @@ namespace remix {
       enableMotionTrail = false;
       motionTrailMultiplier = 1.0f;
       hideEmitter = false;
-      static_assert(sizeof InstanceInfoParticleSystemEXT == 192);
+      billboardType = 0;
+      static_assert(sizeof InstanceInfoParticleSystemEXT == 200);
     }
   };
 

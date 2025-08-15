@@ -163,6 +163,9 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
   
   const uint particleIdx = (threadIdx.x + particleSystem.spawnParticleOffset) % particleSystem.desc.maxNumParticles;
   const uint spawnCtxIdx = SpawnContextParticleMapping[threadIdx.x];
-  
-  Particles[particleIdx] = respawn(particleIdx, spawnCtxIdx, particleSystem);
+  const bool shouldRespawn = Particles[particleIdx].isDead() || Particles[particleIdx].isSleeping();
+  if (shouldRespawn)
+  {
+    Particles[particleIdx] = respawn(particleIdx, spawnCtxIdx, particleSystem);
+  }
 }

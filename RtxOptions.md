@@ -505,6 +505,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.particles.enable|bool|True|||Enables particle simulation and rendering\.|
 |rtx.particles.enableSpawning|bool|True|||Controls whether or not any particle system can currently spawn new particles\.|
 |rtx.particles.globalPreset.alignParticlesToVelocity|bool|False|||Rotates the particles such that they are always aligned with their direction of travel, in this mode we ignore rotation speed\.|
+|rtx.particles.globalPreset.billboardType|int|0|||Billboard type to use for the global particle preset\.|
 |rtx.particles.globalPreset.collisionRestitution|float|0.5|||The fraction of velocity retained after a collision with scene geometry\. 1\.0 = perfectly elastic \(no speed loss\), 0\.0 = completely inelastic \(velocity zeroed\)\. Values outside \[0,1\] will be clamped to this range\.|
 |rtx.particles.globalPreset.collisionThickness|float|5|||The maximum penetration depth \(in centimeters\) at which a particle will still collide with geometry\.  Particles that penetrate deeper than this value are considered to have passed through thin objects and will not collide\.|
 |rtx.particles.globalPreset.enableCollisionDetection|bool|False|||Enables particle collisions with the world\.|

@@ -23,7 +23,7 @@
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/utility/shader_types.h"
-
+#include "particle_system_enums.h"
 
 struct GpuSpawnContext {
   mat4x3 spawnObjectToWorld;
@@ -80,15 +80,16 @@ struct RtxParticleSystemDesc {
   float collisionThickness;
   float collisionRestitution;
   
-
   float initialVelocityFromMotion;
   uint maxNumParticles;
-  uint16_t hideEmitter;
-  uint16_t enableMotionTrail;
+  ParticleBillboardType billboardType;
+  uint8_t hideEmitter;
+  uint8_t enableMotionTrail;
   uint8_t useTurbulence;
   uint8_t alignParticlesToVelocity;
   uint8_t useSpawnTexcoords;
   uint8_t enableCollisionDetection;
+  uint8_t pad;
 
 #ifdef __cplusplus
   RtxParticleSystemDesc() {
@@ -127,9 +128,10 @@ struct GpuParticleSystem {
   uint numVerticesPerParticle = 4;
   uint particleTailOffset = 0;
 
-  uint2 pad;
+  uint simulateParticleCount = 0;
   uint particleHeadOffset = 0;
   uint particleCount = 0;
+  uint pad = 0;
 
 #ifndef __cplusplus
   float16_t varyTimeToLive(float rand) {
@@ -171,8 +173,6 @@ struct GpuParticleSystem {
 
 struct ParticleSystemConstants {
   GpuParticleSystem particleSystem;
-
-  mat4 worldToView;
 
   mat4 viewToWorld;
 

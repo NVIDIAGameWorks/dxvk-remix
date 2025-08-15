@@ -149,8 +149,7 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
 {
   const GpuParticleSystem particleSystem = particleCb.particleSystem;
   
-  const uint numParticleToEvolve = (particleSystem.particleCount - particleSystem.spawnParticleCount);
-  if (threadIdx.x >= numParticleToEvolve)
+  if (threadIdx.x >= particleSystem.simulateParticleCount)
   {
     return;
   }
