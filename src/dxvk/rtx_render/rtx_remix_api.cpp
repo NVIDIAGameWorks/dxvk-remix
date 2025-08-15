@@ -669,9 +669,10 @@ namespace {
       desc.enableCollisionDetection = static_cast<uint8_t>(info.enableCollisionDetection);
       desc.enableMotionTrail = static_cast<uint>(info.enableMotionTrail);
       desc.hideEmitter = static_cast<uint>(info.hideEmitter);
+      desc.billboardType = static_cast<ParticleBillboardType>(info.billboardType);
 
       // If this assert fails a new particle system parameter added, please update here.
-      assert(pxr::RemixParticleSystemAPI::GetSchemaAttributeNames(false).size() == 32);
+      assert(pxr::RemixParticleSystemAPI::GetSchemaAttributeNames(false).size() == 33);
 
       return desc;
     }

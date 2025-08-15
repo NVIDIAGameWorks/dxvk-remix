@@ -462,6 +462,7 @@ extern "C" {
     float            maxTargetRotationSpeed;
     remixapi_Float4D minTargetColor;
     remixapi_Float4D maxTargetColor;
+    uint32_t         billboardType;
   } remixapi_InstanceInfoParticleSystemEXT;
 
   typedef struct remixapi_InstanceInfo {

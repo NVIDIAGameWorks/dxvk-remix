@@ -197,6 +197,7 @@ namespace dxvk {
     RTX_OPTION("rtx.particles.globalPreset", float, turbulenceFrequency, .05f, "Frequency (rate of change) of the turbulence forces. Lower values change slowly; higher values change rapidly.  This is specified in centimeters.");
     RTX_OPTION("rtx.particles.globalPreset", bool, enableMotionTrail, false, "Elongates the particle with respect to velocity, texture edges are preserved, with only the center being stretched which provides a motion blur like effect on the particles themselves.  This will automatically align particles rotation with their individual velocity (similar to rtx.particles.globalPreset.alignParticlesToVelocity) and so rotation parameters are no longer taken into account when this setting is enabled.");
     RTX_OPTION("rtx.particles.globalPreset", float, motionTrailMultiplier, 1.f, "When enableMotionTrail is set to enabled, this value can be used to increase (or decrease) the length of the tail artificially, which is determined by the velocity.  A value of 1 (the default) will ensure each particle is the exact size of the motion over the previous frame.  Values greater than 1 will increase that size linearly.  Likewise for smaller than 1.  0 and below is an invalid value.");
+    RTX_OPTION("rtx.particles.globalPreset", ParticleBillboardType, billboardType, ParticleBillboardType::FaceCamera_Spherical, "Billboard type to use for the global particle preset.");
 
 
     void setupConstants(RtxContext* ctx, ParticleSystemConstants& constants);

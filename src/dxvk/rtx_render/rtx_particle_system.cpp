@@ -186,7 +186,7 @@ namespace dxvk {
           ImGui::DragFloatRange("Time to Live Range", { &minParticleLifeObject(), &maxParticleLifeObject() }, 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::Separator();
           ImGui::DragFloatRange("Size Range", { &minSpawnSizeObject(), &maxSpawnSizeObject() }, 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloatRange("Rotation Speed Range", { &minSpawnRotationSpeedObject(), &maxSpawnRotationSpeedObject() }, 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::DragFloatRange("Rotation Speed Range", { &minSpawnRotationSpeedObject(), &maxSpawnRotationSpeedObject() }, 0.01f, -100.f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::ColorPicker4("Minimum Color Tint", &minSpawnColorObject(), colourPickerOpts);
           ImGui::ColorPicker4("Maximum Color Tint", &maxSpawnColorObject(), colourPickerOpts);
           ImGui::PopID();
@@ -195,7 +195,7 @@ namespace dxvk {
         if (ImGui::CollapsingHeader("Target", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen)) {
           ImGui::PushID("target");
           ImGui::DragFloatRange("Size Range", { &minTargetSizeObject(), &maxTargetSizeObject() }, 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloatRange("Rotation Speed Range", { &minTargetRotationSpeedObject(), &maxTargetRotationSpeedObject() }, 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::DragFloatRange("Rotation Speed Range", { &minTargetRotationSpeedObject(), &maxTargetRotationSpeedObject() }, 0.01f, -100.f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::ColorPicker4("Minimum Color Tint", &minTargetColorObject(), colourPickerOpts);
           ImGui::ColorPicker4("Maximum Color Tint", &maxTargetColorObject(), colourPickerOpts);
           ImGui::PopID();
@@ -204,12 +204,6 @@ namespace dxvk {
         if (ImGui::CollapsingHeader("Simulation", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen)) {
           ImGui::DragFloat("Gravity Force", &gravityForceObject(), 0.01f, -100.f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::DragFloat("Max Speed", &maxSpeedObject(), 0.01f, 0.f, 100000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-
-          ImGui::Checkbox("Align Particles with Velocity", &alignParticlesToVelocityObject());
-          ImGui::Checkbox("Enable Motion Trail", &enableMotionTrailObject());
-          ImGui::BeginDisabled(!enableMotionTrail());
-          ImGui::DragFloat("Motion Trail Length Multiplier", &motionTrailMultiplierObject(), 0.01f, 0.001f, 10000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::EndDisabled();
 
           ImGui::Checkbox("Enable Particle World Collisions", &enableCollisionDetectionObject());
           ImGui::BeginDisabled(!enableCollisionDetection());
@@ -223,6 +217,24 @@ namespace dxvk {
           ImGui::DragFloat("Turbulence Frequency", &turbulenceFrequencyObject(), 0.01f, 0.f, 10.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::EndDisabled();
         }
+
+        if (ImGui::CollapsingHeader("Visual", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen)) {
+          ImGui::Checkbox("Align Particles with Velocity", &alignParticlesToVelocityObject());
+          ImGui::Checkbox("Enable Motion Trail", &enableMotionTrailObject());
+          ImGui::BeginDisabled(!enableMotionTrail());
+          ImGui::DragFloat("Motion Trail Length Multiplier", &motionTrailMultiplierObject(), 0.01f, 0.001f, 10000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::EndDisabled();
+          static auto billboardTypeCombo = ImGui::ComboWithKey<ParticleBillboardType>(
+            "Sky Auto-Detect",
+            ImGui::ComboWithKey<ParticleBillboardType>::ComboEntries { {
+              {ParticleBillboardType::FaceCamera_Spherical, "Classic billboard"},
+              {ParticleBillboardType::FaceCamera_UpAxisLocked, "Cylindrical billboard (fix up axis)"},
+              {ParticleBillboardType::FaceWorldUp, "Horizontal plane (face up axis)"},
+              {ParticleBillboardType::FaceCamera_Position, "Face camera position"},
+          } });
+          billboardTypeCombo.getKey(&billboardTypeObject());
+
+        }
       }
       ImGui::Unindent();
       ImGui::EndDisabled();
@@ -233,7 +245,6 @@ namespace dxvk {
   void RtxParticleSystemManager::setupConstants(RtxContext* ctx, ParticleSystemConstants& constants) {
     ScopedCpuProfileZone();
     const RtCamera& camera = ctx->getSceneManager().getCamera();
-    constants.worldToView = camera.getWorldToView();
     constants.viewToWorld = camera.getViewToWorld();
     constants.prevWorldToProjection = camera.getPreviousViewToProjection() * camera.getPreviousWorldToView();
 
@@ -292,6 +303,7 @@ namespace dxvk {
     desc.minTargetColor = RtxParticleSystemManager::minTargetColor();
     desc.maxTargetColor = RtxParticleSystemManager::maxTargetColor();
     desc.hideEmitter = 0;
+    desc.billboardType = RtxParticleSystemManager::billboardType();
     return desc;
   }
 
@@ -359,8 +371,8 @@ namespace dxvk {
 
     uint32_t numParticles = 0;
 
-    const bool constantParticles = particleSystem->context.desc.spawnRate >= particleSystem->context.desc.maxNumParticles;
-    if (constantParticles) {
+    const bool isNumParticlesConstant = particleSystem->context.desc.spawnRate >= particleSystem->context.desc.maxNumParticles;
+    if (isNumParticlesConstant) {
       numParticles = particleSystem->context.desc.maxNumParticles - particleSystem->context.spawnParticleCount;
     } else {
       numParticles = getNumberOfParticlesToSpawn(particleSystem, drawCallState);
@@ -370,7 +382,7 @@ namespace dxvk {
       return;
     }
 
-    assert (constantParticles || (particleSystem->context.particleHeadOffset + numParticles) <= particleSystem->context.desc.maxNumParticles);
+    assert (isNumParticlesConstant || (particleSystem->context.particleHeadOffset + numParticles) <= particleSystem->context.desc.maxNumParticles);
 
     // Register the spawn context data
     SpawnContext spawnCtx;
@@ -428,9 +440,9 @@ namespace dxvk {
 
         GpuParticleSystem& particleSystem = system.second->context;
 
-        const bool constantParticles = particleSystem.desc.spawnRate >= particleSystem.desc.maxNumParticles;
+        const bool isNumParticlesConstant = particleSystem.desc.spawnRate >= particleSystem.desc.maxNumParticles;
 
-        if (constantParticles) {
+        if (isNumParticlesConstant) {
           particleSystem.simulateParticleCount = particleSystem.desc.maxNumParticles;
           particleSystem.particleCount = particleSystem.desc.maxNumParticles;
           particleSystem.spawnParticleCount = particleSystem.desc.maxNumParticles;
@@ -469,7 +481,7 @@ namespace dxvk {
         // Disable barriers for write after writes - we ensure particle implementation complies with this optimization, 
         //  since we write to particle buffer from both the spawning and evolve kernels, but only ever to unique slots
         //  of the buffer.
-        if (!constantParticles) {
+        if (!isNumParticlesConstant) {
           barrierControl.set(DxvkBarrierControl::IgnoreWriteAfterWrite);
         }
 
@@ -514,7 +526,7 @@ namespace dxvk {
 
         ctx->setBarrierControl(DxvkBarrierControlFlags());
 
-        if (!constantParticles) {
+        if (!isNumParticlesConstant) {
           conservativeCount->postSimulation(ctx, ctx->getDevice()->getCurrentFrameId());
         }
       }
