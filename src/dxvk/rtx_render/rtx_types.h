@@ -911,6 +911,7 @@ enum class RtxFramePassStage {
   DLSS,
   DLSSRR,
   NIS,
+  XeSS,
   TAA,
   DustParticles,
   Bloom,
