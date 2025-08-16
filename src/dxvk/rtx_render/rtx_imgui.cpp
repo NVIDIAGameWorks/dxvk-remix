@@ -3,9 +3,16 @@
 namespace ImGui {
 
   void ImGui::SetTooltipUnformatted(const char* text) {
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.26f, 0.31f, 0.31f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(0.99f, 0.96f, 0.78f, 0.920f));
     ImGui::BeginTooltipEx(ImGuiTooltipFlags_OverridePreviousTooltip, ImGuiWindowFlags_None);
     ImGui::TextUnformatted(text);
     ImGui::EndTooltip();
+    ImGui::PopStyleColor(2);
+  }
+
+  bool IsItemHoveredDelay(float delay_in_seconds) {
+    return ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) && GImGui->HoveredIdTimer > delay_in_seconds;
   }
 
   void SetTooltipToLastWidgetOnHover(const char* text) {
@@ -14,11 +21,27 @@ namespace ImGui {
       return;
     }
 
-    if (!ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+    if (!IsItemHoveredDelay(0.5f)) {
       return;
     }
 
     ImGui::SetTooltipUnformatted(text);
+  }
+
+  void TextCentered(const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    ImGui::SetCursorPosX((ImGui::GetWindowSize().x - ImGui::CalcTextSize(fmt).x) * 0.5f);
+    ImGui::TextV(fmt, args);
+    va_end(args);
+  }
+
+  void TextWrappedCentered(const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    ImGui::SetCursorPosX((ImGui::GetWindowSize().x - ImGui::CalcTextSize(fmt).x) * 0.5f);
+    ImGui::TextWrappedV(fmt, args);
+    va_end(args);
   }
 
   bool Checkbox(const char* label, dxvk::RtxOption<bool>* rtxOption) {
