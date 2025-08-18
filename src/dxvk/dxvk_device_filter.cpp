@@ -34,6 +34,15 @@ namespace dxvk {
       }
     }
 
+    // NV-DXVK start: Integrated GPU device filter
+    if (m_flags.test(DxvkDeviceFilterFlag::SkipIntegratedGPUDevices)) {
+      if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) {
+        Logger::warn(str::format("Skipping Integrated GPU adapter: ", properties.deviceName));
+        return false;
+      }
+    }
+    // NV-DXVK end
+
     return true;
   }
   

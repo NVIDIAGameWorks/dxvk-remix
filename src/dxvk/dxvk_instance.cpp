@@ -524,6 +524,8 @@ namespace dxvk {
   
   
   std::vector<Rc<DxvkAdapter>> DxvkInstance::queryAdapters() {
+    // Enumerate Physical Devices
+
     uint32_t numAdapters = 0;
     const auto enumeratePhysicalDeviceCountResult = m_vki->vkEnumeratePhysicalDevices(m_vki->instance(), &numAdapters, nullptr);
 
@@ -549,14 +551,30 @@ namespace dxvk {
       }
     }
 
+    // Filter Physical Devices
+
     std::vector<VkPhysicalDeviceProperties> deviceProperties(numAdapters);
     DxvkDeviceFilterFlags filterFlags = 0;
 
     for (uint32_t i = 0; i < numAdapters; i++) {
       m_vki->vkGetPhysicalDeviceProperties(adapters[i], &deviceProperties[i]);
 
-      if (deviceProperties[i].deviceType != VK_PHYSICAL_DEVICE_TYPE_CPU)
+      // Skip CPU or Integrated GPU devices if any other device type is present
+      // Note: Originally DXVK only did this for CPU devices, but Remix extends this logic to include
+      // Integrated GPUs too. This is because applications have little information about which device
+      // is best when exposed as adapters through DirectX and cannot be expected to make a good selection
+      // on their own. In the case of Remix, if a dedicated GPU is installed on a system it should almost
+      // always be prioritized over integrated GPUs, as some applications will attempt to select a
+      // non-default adapter and often times end up severely degrading performance by unknowingly selecting
+      // one corresponding to an integrated GPU.
+
+      if (deviceProperties[i].deviceType != VK_PHYSICAL_DEVICE_TYPE_CPU) {
         filterFlags.set(DxvkDeviceFilterFlag::SkipCpuDevices);
+      }
+
+      if (deviceProperties[i].deviceType != VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) {
+        filterFlags.set(DxvkDeviceFilterFlag::SkipIntegratedGPUDevices);
+      }
     }
 
     DxvkDeviceFilter filter(filterFlags);
@@ -566,10 +584,16 @@ namespace dxvk {
       if (filter.testAdapter(deviceProperties[i]))
         result.push_back(new DxvkAdapter(m_vki, adapters[i]));
     }
+
+    // Rank Physical Devices
+    // Note: Generally only the highest ranked adapter is relevant as it will be selected when applications use D3DADAPTER_DEFAULT
+    // which is reasonably common. Otherwise, the ranking isn't as important as applications only have a minor amount of information
+    // about the properties of each adapter when querying through DirectX and the order won't matter anyways usually if applications are
+    // doing their own sort of ranking system.
     
     std::stable_sort(result.begin(), result.end(),
       [] (const Rc<DxvkAdapter>& a, const Rc<DxvkAdapter>& b) -> bool {
-        static const std::array<VkPhysicalDeviceType, 3> deviceTypes = {{
+        constexpr std::array<VkPhysicalDeviceType, 3> deviceTypes{{
           VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU,
           VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU,
           VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU,
