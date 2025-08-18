@@ -131,11 +131,7 @@ namespace dxvk {
   void D3D9Rtx::prepareVertexCapture(const int vertexIndexOffset) {
     ScopedCpuProfileZone();
 
-    struct CapturedVertex {
-      Vector4 position;
-      Vector4 texcoord0;
-      Vector4 normal0;
-    };
+    static_assert(sizeof CapturedVertex == 48, "The injected shader code is expecting this exact structure size to work correctly, see emitVertexCaptureWrite in dxso_compiler.cpp");
 
     auto BoundShaderHas = [&](const D3D9CommonShader* shader, DxsoUsage usage, bool inOut)-> bool {
       if (shader == nullptr)
@@ -173,7 +169,7 @@ namespace dxvk {
     }
 
     // Check if we should/can get normals.  We don't see a lot of games sending normals to pixel shader, so we must capture from the IA output (or Vertex input)
-    if (BoundShaderHas(vertexShader, DxsoUsage::Normal, true) && useVertexCapturedNormals()) {
+    if ((BoundShaderHas(vertexShader, DxsoUsage::Normal, false) || BoundShaderHas(vertexShader, DxsoUsage::Normal, true)) && useVertexCapturedNormals()) {
       const uint32_t normalOffset = offsetof(CapturedVertex, normal0);
       geoData.normalBuffer = RasterBuffer(slice, normalOffset, stride, VK_FORMAT_R32G32B32_SFLOAT);
       assert(geoData.normalBuffer.offset() % 4 == 0);
@@ -181,15 +177,20 @@ namespace dxvk {
       geoData.normalBuffer = RasterBuffer();
     }
 
+    // Check if we should/can get colors
+    if (BoundShaderHas(vertexShader, DxsoUsage::Color, false) && d3d9State().pixelShader.ptr() == nullptr) {
+      const uint32_t colorOffset = offsetof(CapturedVertex, color0);
+      geoData.color0Buffer = RasterBuffer(slice, colorOffset, stride, VK_FORMAT_B8G8R8A8_UNORM);
+      assert(geoData.color0Buffer.offset() % 4 == 0);
+    }
+
     auto constants = m_vsVertexCaptureData->allocSlice();
 
-    // NOTE: May be better to move reverse transformation to end of frame, because this won't work if there hasnt been a FF draw this frame to scrape the matrix from...
-    const Matrix4& ObjectToProjection = m_activeDrawCallState.transformData.viewToProjection * m_activeDrawCallState.transformData.worldToView * m_activeDrawCallState.transformData.objectToWorld;
-
-    // Set constants required for vertex shader injection
-    D3D9RtxVertexCaptureData& data = *(D3D9RtxVertexCaptureData*) constants.mapPtr;
-    // Apply an inverse transform to get positions in object space (what renderer expects)
-    data.projectionToWorld = inverse(ObjectToProjection);
+    // Upload
+    auto& data = *reinterpret_cast<D3D9RtxVertexCaptureData*>(constants.mapPtr);
+    data.invProj = inverse(m_activeDrawCallState.transformData.viewToProjection);
+    data.viewToWorld = inverseAffine(m_activeDrawCallState.transformData.worldToView);
+    data.worldToObject = inverseAffine(m_activeDrawCallState.transformData.objectToWorld);
     data.normalTransform = m_activeDrawCallState.transformData.objectToWorld;
     data.baseVertex = (uint32_t)std::max(0, vertexIndexOffset);
 
