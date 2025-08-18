@@ -22,6 +22,7 @@
 #pragma once
 
 #include <optional>
+#include <limits>
 
 #include "rtx_utils.h"
 #include "rtx/utility/shader_types.h"
@@ -62,6 +63,8 @@ enum class RtLightAntiCullingType {
   LightReplacement,
   MeshReplacement
 };
+
+constexpr uint64_t kInvalidExternallyTrackedLightId = std::numeric_limits<uint64_t>::max();
 
 struct RtLightShaping {
 public:
@@ -476,9 +479,7 @@ struct RtLight {
 
   RtLight(const RtDistantLight& light);
 
-  // Note: Default copy satisfactory, do not implement a custom copy constructor without good reason
-  // as sometimes newly added members are forgotten to be added to a custom implementation.
-  RtLight(const RtLight& light) = default;
+  RtLight(const RtLight& light);
 
   ~RtLight();
 
@@ -486,10 +487,8 @@ struct RtLight {
 
   void writeGPUData(unsigned char* data, std::size_t& offset) const;
 
-  // Note: Default copy satisfactory, do not implement a custom copy assignment without good reason
-  // as sometimes newly added members are forgotten to be added to a custom implementation.
-  RtLight& operator=(const RtLight& rtLight) = default;
-
+  RtLight& operator=(const RtLight& rtLight);
+  
   bool operator==(const RtLight& rhs) const = delete;
 
   Vector4 getColorAndIntensity() const;
@@ -502,15 +501,7 @@ struct RtLight {
     return m_cachedInitialHash;
   }
 
-  XXH64_hash_t getInstanceHash() const {
-    return m_cachedInitialHash + m_rootInstanceId;
-  }
-
   XXH64_hash_t getTransformedHash() const;
-
-  bool isChildOfMesh() const {
-    return m_rootInstanceId != 0;
-  }
 
   Vector3 getRadiance() const;
 
@@ -588,10 +579,6 @@ struct RtLight {
     m_bufferIdx = idx;
   }
 
-  void setRootInstanceId(uint64_t rootInstanceId) {
-     m_rootInstanceId = rootInstanceId;
-  }
-
   PrimInstanceOwner& getPrimInstanceOwner() {
     return m_primInstanceOwner;
   }
@@ -640,6 +627,22 @@ struct RtLight {
     return 0.f;
   }
 
+  void markForGarbageCollection() {
+    m_isMarkedForGarbageCollection = true;
+  }
+
+  bool isMarkedForGarbageCollection() const {
+    return m_isMarkedForGarbageCollection;
+  }
+
+  uint64_t getExternallyTrackedLightId() const {
+    return m_externallyTrackedLightId;
+  }
+
+  void setExternallyTrackedLightId(const uint64_t id) {
+    m_externallyTrackedLightId = id;
+  }
+
   uint32_t isStaticCount = 0;
   bool isDynamic = false;
 
@@ -656,13 +659,11 @@ private:
   };
 
   XXH64_hash_t m_cachedInitialHash = 0;
-  // This is used for lights that are children of replaced meshes, and only needs to differentiate between 
-  // identical lights that are children of different instances of the same replacement asset.
-  // Defaults to 0 to avoid changing the hash of auto generated lights from draw calls.  
-  uint64_t m_rootInstanceId = 0;
 
   // Used to associate parts of a replacement heirarchy.
   PrimInstanceOwner m_primInstanceOwner;
+
+  uint64_t m_externallyTrackedLightId = kInvalidExternallyTrackedLightId;
 
   // Shared Light Information
   mutable uint32_t m_frameLastTouched = kInvalidFrameIndex;
@@ -670,6 +671,9 @@ private:
 
   // Anti-Culling Properties
   mutable bool m_isInsideFrustum = true;
+
+  // If set to true, the light will be removed at the end of the current frame.
+  bool m_isMarkedForGarbageCollection = false;
 
   mutable RtLightAntiCullingType m_anticullingType = RtLightAntiCullingType::Ignore;
   union {
@@ -685,6 +689,8 @@ private:
       mutable float m_originalLightRadius;
     };
   };
+
+  void copyFrom(const RtLight& light);
 };
 
 } // namespace dxvk

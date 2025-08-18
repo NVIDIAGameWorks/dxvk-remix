@@ -736,10 +736,6 @@ namespace dxvk {
       }
     }
 
-    uint64_t rootInstanceId = 0;
-    if (replacementInstance) {
-      rootInstanceId = replacementInstance->root.getInstance()->getId();
-    }
     for (size_t i = 0; i < pReplacements->size(); i++) {
       auto&& replacement = (*pReplacements)[i];
       if (replacement.type == AssetReplacement::eLight) {
@@ -754,13 +750,18 @@ namespace dxvk {
         }
         if (replacement.lightData.has_value()) {
           RtLight localLight = replacement.lightData->toRtLight();
-          localLight.setRootInstanceId(rootInstanceId);
           localLight.applyTransform(input->getTransformData().objectToWorld);
-          RtLight* newLight = m_lightManager.addLight(localLight, *input, RtLightAntiCullingType::MeshReplacement);
-
-          if (newLight && replacementInstance->prims[i].getUntyped() == nullptr) {
-            // This is the first frame this draw call is being drawn,
-            // so each replacement light needs to be registered with the replacementInstance.
+          
+          // Handle all non-root lights as externally tracked lights - they'll be cleaned up when the root is garbage collected.
+          // For mesh replacements, the root is always a mesh, so no need to handle root lights here.
+          RtLight* existingLight = replacementInstance->prims[i].getLight();
+          if (existingLight != nullptr) {
+            if (existingLight->getPrimInstanceOwner().getReplacementInstance() != replacementInstance) {
+              ONCE(assert(false && "light in a replacementInstance believes it is owned by a different replacementInstance."));
+            }
+            m_lightManager.updateExternallyTrackedLight(existingLight, localLight);
+          } else {
+            RtLight* newLight = m_lightManager.createExternallyTrackedLight(localLight);
             newLight->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, newLight, PrimInstance::Type::Light);
           }
         }
@@ -1396,33 +1397,32 @@ namespace dxvk {
             rtReplacementLight.applyTransform(lightTransform); // note: we dont need to consider the transform of parent replacement light in this scenario, this is detected on mod load and so absolute transform is used
           }
 
-          // We may need to remove this light from the existing pool if we replace it
-          const XXH64_hash_t replaceExistingLight = replacementLight.lightOverride() ? rtLight.getInstanceHash() : kEmptyHash;
+          if (replacementInstance == nullptr) {
+            // Handle the root light as a normal light.
+            RtLight* newLight;
 
-          RtLight* newLight;
-
-          // Setup Light Replacement for Anti-Culling
-          if (RtxOptions::AntiCulling::isLightAntiCullingEnabled() && rtLight.getType() == RtLightType::Sphere) {
-            // Apply the light
-            newLight = m_lightManager.addLight(rtReplacementLight, RtLightAntiCullingType::LightReplacement, replaceExistingLight);
-          } else {
-            // Apply the light
-            newLight = m_lightManager.addLight(rtReplacementLight, RtLightAntiCullingType::Ignore, replaceExistingLight);
-          }
-
-          // Setup tracking for all the lights created for this replacement.
-          if (newLight != nullptr) {
-            if (replacementInstance == nullptr) {
-              // This is the first light created, so it should be the root.
-              replacementInstance = newLight->getPrimInstanceOwner().getOrCreateReplacementInstance(newLight, PrimInstance::Type::Light, i, pReplacements->size());
+            // Setup Light Replacement for Anti-Culling
+            RtLightAntiCullingType antiCullingType = RtLightAntiCullingType::Ignore;
+            if (RtxOptions::AntiCulling::isLightAntiCullingEnabled() && rtLight.getType() == RtLightType::Sphere) {
+              antiCullingType = RtLightAntiCullingType::LightReplacement;
             }
 
-            if (replacementInstance->prims[i].getUntyped() == nullptr) {
-              // First frame, need to set the replacement instance.
+            // Apply the light
+            newLight = m_lightManager.addLight(rtReplacementLight, antiCullingType);
+
+            // Setup tracking for all the lights created for this replacement.
+            if (newLight != nullptr) {
+              // This is the first light created, so it will be the root.
+              replacementInstance = newLight->getPrimInstanceOwner().getOrCreateReplacementInstance(newLight, PrimInstance::Type::Light, i, pReplacements->size());
+            }
+          } else {
+            // Handle all non-root lights as externally tracked lights - they'll be cleaned up when the root is garbage collected.
+            RtLight* existingLight = replacementInstance->prims[i].getLight();
+            if (existingLight != nullptr) {
+              m_lightManager.updateExternallyTrackedLight(existingLight, rtReplacementLight);
+            } else {
+              RtLight* newLight = m_lightManager.createExternallyTrackedLight(rtReplacementLight);
               newLight->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, newLight, PrimInstance::Type::Light);
-            } else if (replacementInstance->prims[i].getLight() != newLight) {
-              Logger::err(str::format("ReplacementInstance: light returned by addLight is not the same as the one stored. index: ", i,"  light hash: ", std::hex, rtReplacementLight.getInstanceHash()));
-              assert(false && "light returned by addLight is not the same as the one stored.");
             }
           }
         } else {
