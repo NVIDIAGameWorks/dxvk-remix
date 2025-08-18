@@ -136,6 +136,12 @@ struct ReplacementInstance {
 // Wrapper utility to share the code for handling replacementInstance ownership.
 class PrimInstanceOwner {
 public:
+  PrimInstanceOwner() = default;
+  // NOTE: primInstanceOwner is not safe to copy - the RtInstance, RtLight, etc that holds the PrimInstanceOwner
+  //       would have a different address after copying, so the PrimInstanceOwner would point to the wrong object.
+  PrimInstanceOwner(const PrimInstanceOwner& other) = delete;
+  PrimInstanceOwner& operator=(const PrimInstanceOwner& other) = delete;
+
   ~PrimInstanceOwner() {
     // m_replacementInstance should always be properly cleaned up before the PrimInstanceOwner 
     // is destroyed. If this is hit, then whatever deleted the object holding the
@@ -143,7 +149,8 @@ public:
     // deletion.  If not, there will probably be use-after-free bugs later on.
     assert(m_replacementInstance == nullptr);
   }
-  bool isRoot(void* owner) const;
+
+  bool isRoot(const void* owner) const;
   void setReplacementInstance(ReplacementInstance* replacementInstance, size_t replacementIndex, void* owner, PrimInstance::Type type);
   ReplacementInstance* getOrCreateReplacementInstance(void* owner, PrimInstance::Type type, size_t index, size_t numPrims);
   ReplacementInstance* getReplacementInstance() const { return m_replacementInstance; }
