@@ -1286,9 +1286,14 @@ void UsdMod::Impl::addReplacementsSync(dxvk::Rc<dxvk::DxvkCommandList> cmdList, 
       {
         constexpr uint64_t initialSignalValue = 0;
         constexpr uint64_t waitSignalValue = 1;
-        auto replacementSyncSignal = new sync::Fence(initialSignalValue);
+        Rc<sync::Fence> replacementSyncSignal = new sync::Fence(initialSignalValue);
 
         cmdList->queueSignal(replacementSyncSignal, waitSignalValue);
+        // Note: May be possible that the command list's signal tracker can be reset before this wait call or before the signal is actually signaled, which may cause this
+        // wait to never complete. Unsure if this happens in practice, but previously a bug existed where a ref-counted pointer to the replacement signal wasn't used
+        // which resulted in a crash due to the object being freed before getting to this wait call, and the only way it would've been freed is if the command list's signal
+        // tracker was reset. it is possible that most/all the times this reset happens the signal has been properly signaled though and this may not be a concern, but
+        // something to watch out for regardless.
         replacementSyncSignal->wait(waitSignalValue);
       }
 

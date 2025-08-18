@@ -441,6 +441,7 @@ void geometryResolverVertexOutputDebugView(
   const bool isRaytracedRenderTarget)
 {
   const uint8_t materialType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+  const uint primitiveIndex = rayInteraction.primitiveIndex;
 
   switch(cb.debugView)
   {
@@ -448,11 +449,16 @@ void geometryResolverVertexOutputDebugView(
   case DEBUG_VIEW_DISABLED:
     break;
   case DEBUG_VIEW_PRIMITIVE_INDEX:
+    // Note: Only will visualize values up to 2^24 - 1 and then will wrap around.
+    storeInDebugView(pixelCoordinate, unorm3x8ToFloat3x16(primitiveIndex));
 
-    storeInDebugView(pixelCoordinate, vec3(
-      float(rayInteraction.primitiveIndex & 0xFF) / 256.f,
-      float((rayInteraction.primitiveIndex >> 8) & 0xFF) / 256.f,
-      float((rayInteraction.primitiveIndex >> 16) & 0xFF) / 256.f));
+    break;
+  case DEBUG_VIEW_PRIMITIVE_INDEX_HASH:
+    storeInDebugView(pixelCoordinate, r5g6b5ToColor(uint16_t(uintHash(primitiveIndex))));
+
+    break;
+  case DEBUG_VIEW_GEOMETRY_HASH:
+    storeInDebugView(pixelCoordinate, r5g6b5ToColor(surface.hashPacked)); // visualize directly as colour (note the hash is compressed into a 16bit using XOR)
 
     break;
   case DEBUG_VIEW_CUSTOM_INDEX:
@@ -855,9 +861,6 @@ void geometryResolverVertexOutputDebugView(
   }
   case DEBUG_VIEW_PSR_SELECTED_INTEGRATION_SURFACE_PDF: 
     storeInDebugView(pixelCoordinate, selectedIntegrationSurfacePdf);
-    break;
-  case DEBUG_VIEW_GEOMETRY_HASH:
-    storeInDebugView(pixelCoordinate, r5g6b5ToColor(surface.hashPacked)); // visualize directly as colour (note the hash is compressed into a 16bit using XOR)
     break;
   case DEBUG_VIEW_NAN:
     {

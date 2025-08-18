@@ -58,6 +58,7 @@ namespace dxvk {
 
   ImGui::ComboWithKey<uint32_t>::ComboEntries debugViewEntries = { {
         {DEBUG_VIEW_PRIMITIVE_INDEX, "Primitive Index"},
+        {DEBUG_VIEW_PRIMITIVE_INDEX_HASH, "Primitive Index Hash"},
         {DEBUG_VIEW_GEOMETRY_HASH, "Geometry Hash"},
         {DEBUG_VIEW_CUSTOM_INDEX, "Custom Index"},
         {DEBUG_VIEW_BARYCENTRICS, "Barycentric Coordinates"},
@@ -691,7 +692,7 @@ namespace dxvk {
     const int indent = 50;
     ImGui::PushItemWidth(ImGui::GetWindowWidth() - indent);
     ImGui::PushID("Debug Views");
-    ImGui::ListBox("", &itemIndex, items.data(), items.size(), 8);
+    ImGui::ListBox("", &itemIndex, items.data(), items.size(), 10);
     ImGui::PopID();
     ImGui::PopItemWidth();
 
@@ -812,7 +813,7 @@ namespace dxvk {
 
       if (!enableCompositeDebugView) {
         static char codewordBuf[32] = "";
-        ImGui::InputText("Search Debug View", codewordBuf, IM_ARRAYSIZE(codewordBuf)-1, ImGuiInputTextFlags_EnterReturnsTrue);
+        ImGui::InputText("Search Debug Views", codewordBuf, IM_ARRAYSIZE(codewordBuf)-1, ImGuiInputTextFlags_EnterReturnsTrue);
         codewordBuf[31] = '\0';
         std::string searchWord(codewordBuf);
         // Note: Write to the last debug view index to prevent from being overridden when disabled and re-enabled.

@@ -12,8 +12,11 @@ namespace dxvk {
    * If no flags are set, all devices pass the test.
    */
   enum class DxvkDeviceFilterFlag {
-    MatchDeviceName   = 0,
-    SkipCpuDevices    = 1,
+    MatchDeviceName          = 0,
+    SkipCpuDevices           = 1,
+    // NV-DXVK start: Integrated GPU device filter
+    SkipIntegratedGPUDevices = 2,
+    // NV-DXVK end
   };
   
   using DxvkDeviceFilterFlags = Flags<DxvkDeviceFilterFlag>;
