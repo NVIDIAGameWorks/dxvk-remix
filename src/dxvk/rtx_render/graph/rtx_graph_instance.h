@@ -34,6 +34,9 @@ public:
     : m_graphManager(graphManager), m_graphHash(graphHash), m_batchIndex(batchIndex), m_id(id) {
   }
 
+  GraphInstance(const GraphInstance& other) = delete;
+  GraphInstance& operator=(const GraphInstance& other) = delete;
+
   ~GraphInstance() {
     m_primInstanceOwner.setReplacementInstance(nullptr, ReplacementInstance::kInvalidReplacementIndex, this, PrimInstance::Type::Graph);
   }

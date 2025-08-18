@@ -105,6 +105,14 @@ namespace dxvk {
   }
 
   ReplacementInstance* PrimInstanceOwner::getOrCreateReplacementInstance(void* owner, PrimInstance::Type type, size_t index,size_t numPrims) {
+    if (m_replacementInstance != nullptr && !isRoot(owner)) {
+      // This Prim is already a non-root member of another replacementInstance, but SceneManager is trying to use it as the root of a new replacement.
+      ONCE(assert(false && "getOrCreateReplacementInstance should only be called on root prims"));
+      // Try to handle it gracefully anyways by removing this from the previous replacement and making it the root of a new replacement.
+      // This will cause m_replacmementInstance to be null, so it will enter the new ReplacementInstance case below.
+      setReplacementInstance(nullptr, ReplacementInstance::kInvalidReplacementIndex, owner, type);
+    }
+
     if (m_replacementInstance == nullptr) {
       ReplacementInstance* replacement = new ReplacementInstance();
       replacement->setup(PrimInstance(owner, type), numPrims);
@@ -114,7 +122,16 @@ namespace dxvk {
       // Need to unlink the old instances, and either re-link them (if they are returned as 
       // similar by findSimilarInstances) or create new ones.
       ReplacementInstance* replacement = m_replacementInstance;
+      
+      // Clear the root manually, so that `clear()` doesn't try to delete the replacement.
+      replacement->root = PrimInstance();
+      // Clear the link to this prim so that it doesn't get marked for GC.
+      setReplacementInstance(nullptr, ReplacementInstance::kInvalidReplacementIndex, owner, type);
+
+      // Wipe out all the links in the replacement, which will mark all of the old non-root replacements for cleanup.
       replacement->clear();
+      
+      // Redo replacement setup.
       replacement->setup(PrimInstance(owner, type), numPrims);
       setReplacementInstance(replacement, index, owner, type);
     }
@@ -122,6 +139,7 @@ namespace dxvk {
   }
 
   ReplacementInstance::~ReplacementInstance() {
+    root = PrimInstance();
     clear();
   }
 
@@ -136,6 +154,10 @@ namespace dxvk {
       if (graphInstance) {
         graphInstance->removeInstance();
       }
+      RtLight* light = prims[i].getLight();
+      if (light) {
+        light->markForGarbageCollection();
+      }
       prims[i].setReplacementInstance(nullptr, kInvalidReplacementIndex);
     }
   }
@@ -145,7 +167,7 @@ namespace dxvk {
     root = newRoot;
   }
   
-  bool PrimInstanceOwner::isRoot(void* owner) const {
+  bool PrimInstanceOwner::isRoot(const void* owner) const {
     return m_replacementInstance != nullptr
       && m_replacementIndex != ReplacementInstance::kInvalidReplacementIndex
       && m_replacementInstance->root.getUntyped() == owner;
@@ -153,8 +175,8 @@ namespace dxvk {
 
   void PrimInstanceOwner::setReplacementInstance(ReplacementInstance* replacementInstance, size_t replacementIndex, void* owner, PrimInstance::Type type) {
     // Early out if this is just re-applying the same values.
-    if (m_replacementInstance == replacementInstance) {
-      assert(m_replacementIndex == replacementIndex && "single prim is being set to multiple replacement indices.");
+    if (m_replacementInstance != nullptr && m_replacementInstance == replacementInstance) {
+      ONCE(assert(false && "single prim is being set to multiple replacement indices."));
       return;
     }
 
@@ -167,8 +189,9 @@ namespace dxvk {
         // Clear the root, and delete the replacementInstance.
         // the ReplacementInstance destructor will call this function again, which will
         // actually clear m_replacementInstance and m_replacementIndex.
-        m_replacementInstance->root = PrimInstance();
         delete m_replacementInstance;
+        m_replacementInstance = nullptr;
+        m_replacementIndex = ReplacementInstance::kInvalidReplacementIndex;
         return;
       }
 
@@ -180,7 +203,7 @@ namespace dxvk {
       } else {
         // The prim believed it was in a slot, but something else was actually there.
         // This is a sign that something went wrong earlier, but shouldn't cause problems itself.
-        assert(false && "PrimInstance was not properly removed from its replacementInstance before something else took its place.");
+        ONCE(assert(false && "PrimInstance was not properly removed from its replacementInstance before something else took its place."));
       }
     }
 
@@ -193,7 +216,7 @@ namespace dxvk {
       PrimInstance& prim = m_replacementInstance->prims[replacementIndex];
       if (prim.getType() != type && prim.getType() != PrimInstance::Type::None) {
         // While specific pointers may change, the type of a slot should never change.
-        assert(false && "Trying to assign a primInstance to a replacementInstance slot that was not the same type.");
+        ONCE(assert(false && "Trying to assign a primInstance to a replacementInstance slot that was not the same type."));
         m_replacementInstance = nullptr;
         m_replacementIndex = ReplacementInstance::kInvalidReplacementIndex;
         return;
@@ -205,7 +228,7 @@ namespace dxvk {
           m_replacementInstance->root = PrimInstance(owner, type);
         }
         prim.setReplacementInstance(nullptr, ReplacementInstance::kInvalidReplacementIndex);
-        assert(false && "PrimInstance was not properly cleaned up before being replaced.");
+        ONCE(assert(false && "PrimInstance was not properly cleaned up before being replaced."));
       }
       prim = PrimInstance(owner, type);
     }
