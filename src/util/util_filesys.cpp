@@ -96,6 +96,8 @@ std::optional<std::ofstream> createDirectoriesAndOpenFile(const std::filesystem:
   return outputFile;
 }
 
+
+
 bool RtxFileSys::s_bInit = false;
 RtxFileSys::PathArray RtxFileSys::s_paths;
 
