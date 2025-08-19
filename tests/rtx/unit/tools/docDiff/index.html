@@ -261,6 +261,44 @@
             color: #4caf50 !important;
         }
 
+        /* Force text wrapping for diff content */
+        #text-diff-content .d2h-code-line-ctn {
+            word-wrap: break-word !important;
+            word-break: break-all !important;
+            white-space: pre-wrap !important;
+            overflow-wrap: break-word !important;
+        }
+
+        #text-diff-content .d2h-code-side-line {
+            word-wrap: break-word !important;
+            word-break: break-all !important;
+            white-space: pre-wrap !important;
+            overflow-wrap: break-word !important;
+        }
+
+        #text-diff-content .d2h-code-line {
+            word-wrap: break-word !important;
+            word-break: break-all !important;
+            white-space: pre-wrap !important;
+            overflow-wrap: break-word !important;
+        }
+
+        /* Ensure the diff container itself doesn't overflow */
+        #text-diff-content .d2h-wrapper {
+            max-width: 100% !important;
+            overflow-x: auto !important;
+        }
+
+        #text-diff-content .d2h-files-diff {
+            max-width: 100% !important;
+            overflow-x: auto !important;
+        }
+
+        #text-diff-content .d2h-file-side-diff {
+            max-width: 100% !important;
+            overflow-x: auto !important;
+        }
+
         /* Status message styles */
         .status-loading {
             text-align: center;
@@ -374,6 +412,15 @@
 
         // EMBEDDED_DATA_PLACEHOLDER - This will be replaced by the C++ code
         
+        // Decode the base64-encoded token (same as imageDiff)
+        if (token) {
+            try {
+                token = atob(token);
+            } catch (error) {
+                console.error('Failed to decode token:', error);
+            }
+        }
+        
 
         // Use diff2html library for proper git-style diffs
         function renderTextDiff(goldenText, modifiedText) {
@@ -445,28 +492,23 @@
         function showFileDiff(fileData) {
             // Update file info
             document.getElementById('current-file-name').textContent = fileData.name;
-            document.getElementById('file-type-indicator').textContent = 'Type: ' + fileData.type + ' | Path: ' + (fileData.goldenGitPath || fileData.name);
+            document.getElementById('file-type-indicator').textContent = 'Path: ' + (fileData.goldenGitPath || fileData.name);
             
             // Show loading state
             document.getElementById('text-diff-view').classList.remove('hidden');
             document.getElementById('text-diff-content').innerHTML = '<div class="status-loading">Loading diff...</div>';
             
-            if (fileData.type === 'ogn' || fileData.type === 'markdown') {
-                // Load both files and show diff
-                Promise.all([
-                    loadFileContent(fileData.goldenPath),
-                    loadFileContent(fileData.modifiedPath)
-                ]).then(([goldenText, modifiedText]) => {
-                    renderTextDiff(goldenText, modifiedText);
-                }).catch(error => {
-                    console.error('Error loading files:', error);
-                    document.getElementById('text-diff-content').innerHTML = 
-                        '<div class="status-error">Error loading files: ' + error.message + '</div>';
-                });
-            } else {
+            // Load both files and show diff for all text files
+            Promise.all([
+                loadFileContent(fileData.goldenPath),
+                loadFileContent(fileData.modifiedPath)
+            ]).then(([goldenText, modifiedText]) => {
+                renderTextDiff(goldenText, modifiedText);
+            }).catch(error => {
+                console.error('Error loading files:', error);
                 document.getElementById('text-diff-content').innerHTML = 
-                    '<div class="status-info">Diff view not available for this file type</div>';
-            }
+                    '<div class="status-error">Error loading files: ' + error.message + '</div>';
+            });
         }
 
         function createFileList() {
@@ -616,14 +658,13 @@
                     throw new Error(`Missing required GitLab parameters: branchName=${!!branchName}, sourceProjectId=${!!sourceProjectId}, token=${!!token}, ciServerHost=${!!ciServerHost}`);
                 }
                 
-                // Filter for files that are different and of the specified types
+                // Filter for files that are different
                 const filesToPromote = embeddedFileData.filter(fileData => 
-                    fileData.different && 
-                    (fileData.type === 'ogn' || fileData.type === 'py' || fileData.type === 'markdown')
+                    fileData.different
                 );
                 
                 if (filesToPromote.length === 0) {
-                    throw new Error('No modified .ogn, .py, or .md files found to promote');
+                    throw new Error('No modified files found to promote');
                 }
                 
                 // Check which files will be created vs updated and load their contents
@@ -642,8 +683,10 @@
                         }
                         const fileContent = await response.text();
                         
-                        // Convert to base64
-                        const base64String = btoa(unescape(encodeURIComponent(fileContent)));
+                        // Convert to base64 (handle Unicode characters and preserve line endings)
+                        // First normalize line endings to LF, then encode
+                        const normalizedContent = fileContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+                        const base64String = btoa(unescape(encodeURIComponent(normalizedContent)));
                         
                         // Determine if file exists in golden directory by checking if goldenPath is accessible
                         let action = 'update'; // Default to update
