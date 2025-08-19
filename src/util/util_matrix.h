@@ -292,6 +292,45 @@ namespace dxvk {
     return (dot0.x + dot0.y) + (dot0.z + dot0.w);
   }
 
+  template<typename T>
+  inline Matrix4Base<T> inverseAffine(const Matrix4Base<T>& m) {
+    // If uniform/non-uniform scale present, we still do a robust 3x3 inverse in double.
+    double r00 = m[0][0], r01 = m[0][1], r02 = m[0][2];
+    double r10 = m[1][0], r11 = m[1][1], r12 = m[1][2];
+    double r20 = m[2][0], r21 = m[2][1], r22 = m[2][2];
+
+    double det = r00 * (r11 * r22 - r12 * r21) - r01 * (r10 * r22 - r12 * r20) + r02 * (r10 * r21 - r11 * r20);
+    // If det ~ 0, fall back to general inverse
+    if (fabs(det) < 1e-24)  {
+      return inverse(m);
+    }
+
+    double invDet = 1.0 / det;
+    Matrix4Base<T> inv;
+
+    // 3x3 inverse
+    inv[0][0] = T((r11 * r22 - r12 * r21) * invDet);
+    inv[0][1] = T((r02 * r21 - r01 * r22) * invDet);
+    inv[0][2] = T((r01 * r12 - r02 * r11) * invDet);
+    inv[1][0] = T((r12 * r20 - r10 * r22) * invDet);
+    inv[1][1] = T((r00 * r22 - r02 * r20) * invDet);
+    inv[1][2] = T((r02 * r10 - r00 * r12) * invDet);
+    inv[2][0] = T((r10 * r21 - r11 * r20) * invDet);
+    inv[2][1] = T((r01 * r20 - r00 * r21) * invDet);
+    inv[2][2] = T((r00 * r11 - r01 * r10) * invDet);
+
+    // translation
+    T tx = m[3][0], ty = m[3][1], tz = m[3][2];
+    inv[3][0] = -(inv[0][0] * tx + inv[1][0] * ty + inv[2][0] * tz);
+    inv[3][1] = -(inv[0][1] * tx + inv[1][1] * ty + inv[2][1] * tz);
+    inv[3][2] = -(inv[0][2] * tx + inv[1][2] * ty + inv[2][2] * tz);
+
+    // last row/col
+    inv[0][3] = inv[1][3] = inv[2][3] = 0.0f;
+    inv[3][3] = 1.0f;
+    return inv;
+  }
+
   // Note: From GLM
   template<typename T>
   Matrix4Base<T> inverse(const Matrix4Base<T>& m) {

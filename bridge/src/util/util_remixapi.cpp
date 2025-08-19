@@ -549,7 +549,8 @@ void InstanceInfoBlend::_dtor() {
                                        minTargetRotationSpeed, \
                                        maxTargetRotationSpeed, \
                                        minTargetColor, \
-                                       maxTargetColor 
+                                       maxTargetColor, \
+                                       billboardType
 uint32_t InstanceInfoParticleSystem::_calcSize() const {
   return fold_helper::calcSize(InstanceInfoParticleSystemVars);
 }

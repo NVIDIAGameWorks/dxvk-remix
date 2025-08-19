@@ -490,19 +490,23 @@ namespace dxvk {
     // Constant Buffer for vertex capture
     {
       uint32_t members[] = {
-        mat4Type,
-        mat4Type,
-        mat4Type,
-        uintType,
-        floatType,
-        floatType,
+        mat4Type, // normalTransform
+        mat4Type, // customWorldToProjection
+        mat4Type, // invProj
+        mat4Type, // viewToWorld
+        mat4Type, // worldToObject
+        uintType, // baseVertex
+        floatType,// jitterX
+        floatType,// jitterY
+        uintType  // padding
       };
-      static_assert(uint32_t(D3D9RtxVertexCaptureMembers::MemberCount) == std::size(members));
+
+      // NOTE: enum doesn't include 'padding', so +1 here
+      static_assert(uint32_t(D3D9RtxVertexCaptureMembers::MemberCount) + 1 == std::size(members), "Member count mismatch with D3D9RtxVertexCaptureData");
 
       const uint32_t structType = m_module.defStructType(std::size(members), members);
 
       m_module.decorateBlock(structType);
-
       m_module.setDebugName(structType, "D3D9RtxVertexCaptureData");
 
       uint32_t memberIdx = 0;
@@ -514,14 +518,18 @@ namespace dxvk {
           m_module.memberDecorate(structType, memberIdx, spv::DecorationRowMajor);
         }
         memberIdx++;
-
       };
-      SetMemberName("normal_transform", offsetof(D3D9RtxVertexCaptureData, normalTransform));
-      SetMemberName("proj_to_world", offsetof(D3D9RtxVertexCaptureData, projectionToWorld));
-      SetMemberName("custom_world_to_proj", offsetof(D3D9RtxVertexCaptureData, customWorldToProjection));
-      SetMemberName("base_vertex", offsetof(D3D9RtxVertexCaptureData, baseVertex));
-      SetMemberName("jitter_x", offsetof(D3D9RtxVertexCaptureData, jitterX));
-      SetMemberName("jitter_y", offsetof(D3D9RtxVertexCaptureData, jitterY));
+
+      // These names/offsets MUST match your CPU struct exactly
+      SetMemberName("normalTransform", offsetof(D3D9RtxVertexCaptureData, normalTransform));
+      SetMemberName("customWorldToProjection", offsetof(D3D9RtxVertexCaptureData, customWorldToProjection));
+      SetMemberName("invProj", offsetof(D3D9RtxVertexCaptureData, invProj));
+      SetMemberName("viewToWorld", offsetof(D3D9RtxVertexCaptureData, viewToWorld));
+      SetMemberName("worldToObject", offsetof(D3D9RtxVertexCaptureData, worldToObject));
+      SetMemberName("baseVertex", offsetof(D3D9RtxVertexCaptureData, baseVertex));
+      SetMemberName("jitterX",  offsetof(D3D9RtxVertexCaptureData, jitterX));
+      SetMemberName("jitterY", offsetof(D3D9RtxVertexCaptureData, jitterY));
+      SetMemberName("padding", offsetof(D3D9RtxVertexCaptureData, padding));
 
       m_vs.vertexCaptureConstants = m_module.newVar(
         m_module.defPointerType(structType, spv::StorageClassUniform),
@@ -545,50 +553,70 @@ namespace dxvk {
     }
 
     // Bind vertex out buffer
-    
-    uint32_t arrayType = m_module.defRuntimeArrayTypeUnique(vec4Type);
-    uint32_t structType = m_module.defStructTypeUnique(1, &arrayType);
-    uint32_t ptrType = m_module.defPointerType(structType, spv::StorageClassUniform);
+    {
+      // Types
+      const uint32_t floatType = m_module.defFloatType(32);
+      const uint32_t uintType = m_module.defIntType(32, false);
+      const uint32_t vec2Type = m_module.defVectorType(floatType, 2);
+      const uint32_t vec3Type = m_module.defVectorType(floatType, 3);
 
-    const uint32_t resourcePtrType = m_module.defPointerType(vec4Type, spv::StorageClassUniform);
-    const uint32_t varId = m_module.newVar(ptrType, spv::StorageClassUniform);
+      // struct CapturedVertex { vec3 pos; vec2 tex0; vec3 nrm0; uint color0; }
+      const uint32_t capMembers[4] = { vec3Type, vec2Type, vec3Type, uintType };
+      const uint32_t capturedVertexType = m_module.defStructType(std::size(capMembers), capMembers);
 
-    m_module.decorateArrayStride(arrayType, sizeof(float) * 4);
-    m_module.decorate(structType, spv::DecorationBufferBlock);
-    m_module.memberDecorateOffset(structType, 0, 0);
+      // Member offsets (std430, lean)
+      m_module.memberDecorateOffset(capturedVertexType, (uint32_t) CapturedVertexMembers::Position, offsetof(CapturedVertex, position));
+      m_module.memberDecorateOffset(capturedVertexType, (uint32_t) CapturedVertexMembers::Texcoord0, offsetof(CapturedVertex, texcoord0));
+      m_module.memberDecorateOffset(capturedVertexType, (uint32_t) CapturedVertexMembers::Normal0, offsetof(CapturedVertex, normal0));
+      m_module.memberDecorateOffset(capturedVertexType, (uint32_t) CapturedVertexMembers::Color0, offsetof(CapturedVertex, color0));
 
-    m_module.setDebugName(varId, "vertex_capture_out");
+      // Runtime array of CapturedVertex with 48B stride
+      const uint32_t capArrayType = m_module.defRuntimeArrayTypeUnique(capturedVertexType);
+      m_module.decorateArrayStride(capArrayType, sizeof CapturedVertex);
 
-    const uint32_t bindingId = getVertexCaptureBufferSlot();
+      // SSBO block: layout(std430) CapturedVertex data[];
+      const uint32_t capBlockType = m_module.defStructTypeUnique(1, &capArrayType);
 
-    m_module.decorateDescriptorSet(varId, 0);
-    m_module.decorateBinding(varId, bindingId);
-    m_module.decorate(varId, spv::DecorationNonReadable);
-    
-    const uint32_t specConstId = m_module.specConstBool(true);
-    m_module.decorateSpecId(specConstId, bindingId);
-    m_module.setDebugName(specConstId, str::format("vertex_capture_out_bound").c_str());
+      // Keep using the same decoration style you already have for SSBOs
+      m_module.memberDecorateOffset(capBlockType, 0, 0);
+      m_module.decorate(capBlockType, spv::DecorationBufferBlock);
 
-    DxsoUav uav;
-    uav.varId = varId;
-    uav.ctrId = 0;
-    uav.specId = specConstId;
-    uav.sampledType = DxsoScalarType::Float32;
-    uav.sampledTypeId = m_module.defFloatType(32);
-    uav.imageTypeId = resourcePtrType;
-    uav.structStride = 0;
-    uav.structAlign = 0;
+      const uint32_t capBlockPtr = m_module.defPointerType(capBlockType, spv::StorageClassUniform);
+      const uint32_t varId = m_module.newVar(capBlockPtr, spv::StorageClassUniform);
+      m_module.setDebugName(varId, "vertex_capture_out");
 
-    m_vs.vertexOutBuf = uav;
+      const uint32_t bindingId = getVertexCaptureBufferSlot();
+      m_module.decorateDescriptorSet(varId, 0);
+      m_module.decorateBinding(varId, bindingId);
+      m_module.decorate(varId, spv::DecorationNonReadable);
 
-    // Store descriptor info for the shader interface
-    DxvkResourceSlot resource;
-    resource.slot = bindingId;
-    resource.view = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
-    resource.access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-    resource.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+      const uint32_t specConstId = m_module.specConstBool(true);
+      m_module.decorateSpecId(specConstId, bindingId);
+      m_module.setDebugName(specConstId, str::format("vertex_capture_out_bound").c_str());
 
-    m_resourceSlots.push_back(resource);
+      DxsoUav uav {};
+      uav.varId = varId;
+      uav.ctrId = 0;
+      uav.specId = specConstId;
+      uav.sampledType = DxsoScalarType::Float32;
+      uav.sampledTypeId = floatType;
+      // NOTE: we won't use imageTypeId for member stores anymore, but keep it valid
+      uav.imageTypeId = m_module.defPointerType(capturedVertexType, spv::StorageClassUniform);
+      uav.structStride = sizeof CapturedVertex;
+      uav.structAlign = 16;
+      m_vs.vertexOutBuf = uav;
+
+      // Store descriptor info for the shader interface
+      DxvkResourceSlot resource {};
+      resource.slot = bindingId;
+      resource.view = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
+      resource.access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+      resource.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+      m_resourceSlots.push_back(resource);
+
+      // Cache the struct type so we can access members later
+      m_vs.capturedVertexStructType = capturedVertexType;
+    }
   }
   // NV-DXVK end
 
@@ -3682,9 +3710,20 @@ void DxsoCompiler::emitControlFlowGenericLoop(
   }
 
   // NV-DXVK start: vertex shader data capture implementation
-  void DxsoCompiler::emitVertexCaptureWrite(uint32_t writeAddress, const uint32_t dataId) {
-    uint32_t indices[2] = { m_module.constu32(0), writeAddress };
-    m_module.opStore(m_module.opAccessChain(m_vs.vertexOutBuf.imageTypeId, m_vs.vertexOutBuf.varId, 2, indices), dataId);
+  void DxsoCompiler::emitVertexCaptureWrite(uint32_t vertexIndex, CapturedVertexMembers memberIdx, uint32_t valueId, uint32_t valueType) {
+    const uint32_t zero = m_module.constu32(0);
+
+    // ptr to data[vertexIndex]
+    const uint32_t elemPtrType = m_module.defPointerType(m_vs.capturedVertexStructType, spv::StorageClassUniform);
+    const uint32_t idxs[2] = { zero, vertexIndex };
+    const uint32_t elemPtr =  m_module.opAccessChain(elemPtrType, m_vs.vertexOutBuf.varId, 2, idxs);
+
+    // ptr to data[vertexIndex].memberIdx
+    const uint32_t memPtrType = m_module.defPointerType(valueType, spv::StorageClassUniform);
+    const uint32_t memberIdxConst = m_module.constu32((uint32_t)memberIdx);
+    const uint32_t memPtr = m_module.opAccessChain(memPtrType, elemPtr, 1, &memberIdxConst);
+
+    m_module.opStore(memPtr, valueId);
   }
 
   void DxsoCompiler::emitVertexCaptureOp() {
@@ -3693,71 +3732,116 @@ void DxsoCompiler::emitControlFlowGenericLoop(
     vertexIdReg.type = { DxsoScalarType::Uint32, 1, 0 };
     vertexIdReg.sclass = spv::StorageClassInput;
 
-    auto LoadConstant = [&](const uint32_t type, const uint32_t idx) {
-      const uint32_t offset = m_module.constu32(idx);
-      const uint32_t typePtr = m_module.defPointerType(type, spv::StorageClassUniform);
-      return m_module.opLoad(type, m_module.opAccessChain(typePtr, m_vs.vertexCaptureConstants, 1, &offset));
+    // Types
+    const uint32_t uintType = getScalarTypeId(DxsoScalarType::Uint32);
+    const uint32_t floatType = getScalarTypeId(DxsoScalarType::Float32);
+    const uint32_t vec3TypeId = getVectorTypeId({ DxsoScalarType::Float32, 3 });
+    const uint32_t vec4TypeId = getVectorTypeId({ DxsoScalarType::Float32, 4 });
+    const uint32_t mat4TypeId = m_module.defMatrixType(vec4TypeId, 4);
+
+    // Helper: load a member from the vertex-capture UBO
+    auto LoadConstant = [&](uint32_t type, uint32_t memberIdx) -> uint32_t {
+      const uint32_t idxConst = m_module.constu32(memberIdx);
+      const uint32_t ptrType = m_module.defPointerType(type, spv::StorageClassUniform);
+      const uint32_t ptr = m_module.opAccessChain(ptrType, m_vs.vertexCaptureConstants, 1, &idxConst);
+      return m_module.opLoad(type, ptr);
     };
 
-    const uint32_t vertexId = emitNewBuiltinVariable(vertexIdReg, spv::BuiltInVertexIndex, "uVertexId", 0);
+    // Common literal ids
+    const uint32_t c0 = m_module.constu32(0);
+    const uint32_t c1 = m_module.constu32(1);
+    const uint32_t c2 = m_module.constu32(2);
+    const uint32_t c3 = m_module.constu32(3);
+    const uint32_t oneF = m_module.constf32(1.0f);
 
-    const uint32_t uintType = getScalarTypeId(DxsoScalarType::Uint32);
+    // Literal component selectors for Extract/Shuffle
+    uint32_t lit0 = 0, lit1 = 1, lit2 = 2, lit3 = 3;
+    uint32_t lit012[3] = { 0, 1, 2 };
 
-    const uint32_t uVertexIdVal = m_module.opLoad(uintType, vertexId);
-    const uint32_t baseVertexRefId = LoadConstant(uintType, (uint32_t)(D3D9RtxVertexCaptureMembers::BaseVertex));
+    // Useful index arrays for shuffles/constructs
+    uint32_t idx012[3] = { c0, c1, c2 };
 
-    const uint32_t offsetVertexIdVal = m_module.opISub(getScalarTypeId(DxsoScalarType::Uint32), uVertexIdVal, baseVertexRefId);
+    // Builtin vertex index and baseVertex
+    const uint32_t vertexIdVar = emitNewBuiltinVariable(vertexIdReg, spv::BuiltInVertexIndex, "uVertexId", 0);
+    const uint32_t uVertexId = m_module.opLoad(uintType, vertexIdVar);
+    const uint32_t baseVertex = LoadConstant(uintType, (uint32_t) D3D9RtxVertexCaptureMembers::BaseVertex);
 
-    uint32_t writeAddress = m_module.opIMul(getScalarTypeId(DxsoScalarType::Uint32), offsetVertexIdVal, m_module.constu32(3));
+    // Compute vertex index in the CapturedVertex array
+    const uint32_t vertexIndex = m_module.opISub(uintType, uVertexId, baseVertex);
 
-    // Get the post transform oPos and reverse to world space
-    const uint32_t vec4typeId = getVectorTypeId({ DxsoScalarType::Float32, 4 });
-    const uint32_t mat4type = m_module.defMatrixType(vec4typeId, 4);
-    const uint32_t projToWorldRefId = LoadConstant(mat4type, (uint32_t)(D3D9RtxVertexCaptureMembers::ProjectionToWorld));
+    // Load matrices we actually use for capture
+    const uint32_t invProj = LoadConstant(mat4TypeId, (uint32_t) D3D9RtxVertexCaptureMembers::InvProj);
+    const uint32_t viewToWorld = LoadConstant(mat4TypeId, (uint32_t) D3D9RtxVertexCaptureMembers::ViewToWorld);
+    const uint32_t worldToObject = LoadConstant(mat4TypeId, (uint32_t) D3D9RtxVertexCaptureMembers::WorldToObject);
 
-    // Get gl_Position
-    const uint32_t projPosId = m_module.opLoad(vec4typeId, m_vs.oPos.id);
+    // clip space (gl_Position)
+    const uint32_t clipPos = m_module.opLoad(vec4TypeId, m_vs.oPos.id);
 
-    // Perform clip space to world space
-    const uint32_t worldPosId = m_module.opVectorTimesMatrix(vec4typeId, projPosId, projToWorldRefId);
+    // clip -> view (homogeneous), then early perspective divide
+    const uint32_t viewH = m_module.opVectorTimesMatrix(vec4TypeId, clipPos, invProj);
+    const uint32_t wComp = m_module.opCompositeExtract(floatType, viewH, 1, &lit3);
+    const uint32_t invW = m_module.opFDiv(floatType, oneF, wComp);
 
-    // Write the data to buffer
-    SpirvImageOperands defaultOperands;
+    const uint32_t view3 = m_module.opVectorShuffle(vec3TypeId, viewH, viewH, 3, lit012);
 
-    emitVertexCaptureWrite(writeAddress, worldPosId);
+    const uint32_t vx = m_module.opCompositeExtract(floatType, view3, 1, &lit0);
+    const uint32_t vy = m_module.opCompositeExtract(floatType, view3, 1, &lit1);
+    const uint32_t vz = m_module.opCompositeExtract(floatType, view3, 1, &lit2);
+    uint32_t view4Comps[4] = { vx, vy, vz, oneF };
+    const uint32_t view4 = m_module.opCompositeConstruct(vec4TypeId, 4, view4Comps);
+
+    // view -> world (affine)
+    const uint32_t worldH = m_module.opVectorTimesMatrix(vec4TypeId, view4, viewToWorld);
+    const uint32_t world3 = m_module.opVectorShuffle(vec3TypeId, worldH, worldH, 3, lit012);
+
+    const uint32_t wx = m_module.opCompositeExtract(floatType, world3, 1, &lit0);
+    const uint32_t wy = m_module.opCompositeExtract(floatType, world3, 1, &lit1);
+    const uint32_t wz = m_module.opCompositeExtract(floatType, world3, 1, &lit2);
+    uint32_t world4Comps[4] = { wx, wy, wz, oneF };
+    const uint32_t world4 = m_module.opCompositeConstruct(vec4TypeId, 4, world4Comps);
+
+    // world -> object (affine)
+    const uint32_t objH = m_module.opVectorTimesMatrix(vec4TypeId, world4, worldToObject);
+    const uint32_t obj3 = m_module.opVectorShuffle(vec3TypeId, objH, objH, 3, lit012);
+    const uint32_t ox = m_module.opCompositeExtract(floatType, obj3, 1, &lit0);       
+    const uint32_t oy = m_module.opCompositeExtract(floatType, obj3, 1, &lit1);       
+    const uint32_t oz = m_module.opCompositeExtract(floatType, obj3, 1, &lit2);       
+    uint32_t outComps[4] = { ox, oy, oz, oneF };
+    const uint32_t worldPosId = m_module.opCompositeConstruct(vec4TypeId, 4, outComps);
+
+    emitVertexCaptureWrite(vertexIndex, CapturedVertexMembers::Position, obj3, vec3TypeId);
     
-    // Get the next slot
-    writeAddress = m_module.opIAdd(getScalarTypeId(DxsoScalarType::Uint32), writeAddress, m_module.constu32(1));
-
-    if (m_vs.oTex0.id > 0) {
-      // Get out_texcoord0
-      const uint32_t texcoord0 = m_module.opLoad(vec4typeId, m_vs.oTex0.id);
-
-      // Write texcoord
-      emitVertexCaptureWrite(writeAddress, texcoord0);
+    // Write texcoord
+    {
+      uint32_t tex2 = m_module.constvec2f32(0.0f, 0.0f);
+      if (m_vs.oTex0.id > 0) {
+        const uint32_t tex4 = m_module.opLoad(vec4TypeId, m_vs.oTex0.id);
+        const uint32_t lit01[2] = { 0, 1 };
+        const uint32_t vec2TypeId = getVectorTypeId({ DxsoScalarType::Float32, 2 });
+        tex2 = m_module.opVectorShuffle(vec2TypeId, tex4, tex4, 2, lit01);
+      }
+      // tex0.xy (vec2) @ member 1
+      emitVertexCaptureWrite(vertexIndex, CapturedVertexMembers::Texcoord0, tex2, getVectorTypeId({ DxsoScalarType::Float32, 2 }));
     }
-
-    // Get the next slot
-    writeAddress = m_module.opIAdd(getScalarTypeId(DxsoScalarType::Uint32), writeAddress, m_module.constu32(1));
 
     if (m_vs.oNormal0.id > 0) {
       // Load normal matrix from constants
       const uint32_t vec3typeId = getVectorTypeId({ DxsoScalarType::Float32, 3 });
       const uint32_t mat3typeId = m_module.defMatrixType(vec3typeId, 3);
-      uint32_t normalTransformId = LoadConstant(mat4type, (uint32_t) (D3D9RtxVertexCaptureMembers::NormalTransform));
+      uint32_t normalTransformId = LoadConstant(mat4TypeId, (uint32_t) (D3D9RtxVertexCaptureMembers::NormalTransform));
 
       // Convert to float3x3
       std::array<uint32_t, 4> indices = { 0, 1, 2, 3 };
       std::array<uint32_t, 3> mtxIndices;
       for (uint32_t i = 0; i < 3; i++) {
-        mtxIndices[i] = m_module.opCompositeExtract(vec4typeId, normalTransformId, 1, &i);
+        mtxIndices[i] = m_module.opCompositeExtract(vec4TypeId, normalTransformId, 1, &i);
         mtxIndices[i] = m_module.opVectorShuffle(vec3typeId, mtxIndices[i], mtxIndices[i], 3, indices.data());
       }
       normalTransformId = m_module.opCompositeConstruct(mat3typeId, mtxIndices.size(), mtxIndices.data());
 
       // Load normals from input assembler into float3
       const uint32_t floatTypeId = getScalarTypeId(DxsoScalarType::Float32);
-      uint32_t normal0 = m_module.opLoad(vec4typeId, m_vs.oNormal0.id);
+      uint32_t normal0 = m_module.opLoad(vec4TypeId, m_vs.oNormal0.id);
       {
         std::array<uint32_t, 3> normalIndices = {
           m_module.opCompositeExtract(floatTypeId, normal0, 1, &indices[0]),
@@ -3778,94 +3862,106 @@ void DxsoCompiler::emitControlFlowGenericLoop(
           m_module.opCompositeExtract(floatTypeId, normal0, 1, &indices[2]),
           m_module.opCompositeExtract(floatTypeId, normal0, 1, &indices[2]),
         };
-        normal0 = m_module.opCompositeConstruct(vec4typeId, normalIndices.size(), normalIndices.data());
+        normal0 = m_module.opCompositeConstruct(vec4TypeId, normalIndices.size(), normalIndices.data());
       }
 
-      // Write normal
-      emitVertexCaptureWrite(writeAddress, normal0);
+      // Ensure normal0 is vec3 here
+      emitVertexCaptureWrite(vertexIndex, CapturedVertexMembers::Normal0, normal0, getVectorTypeId({ DxsoScalarType::Float32, 3 }));
+    }
+
+    // COLOR0 packed to D3D9 ARGB 0xAARRGGBB @ member 3
+    {
+      const uint32_t floatTypeId = getScalarTypeId(DxsoScalarType::Float32);
+      uint32_t colorU32 = m_module.constu32(0xFFFFFFFFu); // default opaque white
+
+      if (m_vs.oColor0.id > 0) {
+        const uint32_t c4 = m_module.opLoad(vec4TypeId, m_vs.oColor0.id);
+
+        auto clamp01 = [&](uint32_t f) {
+          const uint32_t z = m_module.constf32(0.0f);
+          const uint32_t o = m_module.constf32(1.0f);
+          return m_module.opFMin(floatTypeId, m_module.opFMax(floatTypeId, f, z), o);
+        };
+
+        uint32_t r = clamp01(m_module.opCompositeExtract(floatTypeId, c4, 1, &lit0));
+        uint32_t g = clamp01(m_module.opCompositeExtract(floatTypeId, c4, 1, &lit1));
+        uint32_t b = clamp01(m_module.opCompositeExtract(floatTypeId, c4, 1, &lit2));
+        uint32_t a = clamp01(m_module.opCompositeExtract(floatTypeId, c4, 1, &lit3));
+
+        const uint32_t f255 = m_module.constf32(255.0f);
+        const uint32_t fHlf = m_module.constf32(0.5f);
+
+        auto toU8 = [&](uint32_t f /* float */) -> uint32_t {
+          // Clamp to [0,1], scale to [0,255], add 0.5 for round-to-nearest, then convert
+          const uint32_t zero = m_module.constf32(0.0f);
+          const uint32_t one = m_module.constf32(1.0f);
+          f = m_module.opFMin(floatTypeId, m_module.opFMax(floatTypeId, f, zero), one);
+
+          const uint32_t scaled = m_module.opFAdd(
+              floatTypeId,
+              m_module.opFMul(floatTypeId, f, m_module.constf32(255.0f)),
+              m_module.constf32(0.5f));
+
+          return m_module.opConvertFtoU(uintType, scaled);
+        };
+
+        uint32_t r8 = toU8(r);
+        uint32_t g8 = toU8(g);
+        uint32_t b8 = toU8(b);
+        uint32_t a8 = toU8(a);
+
+        auto shl = [&](uint32_t v, uint32_t s) { return m_module.opShiftLeftLogical(uintType, v, m_module.constu32(s)); };
+        auto bor = [&](uint32_t x, uint32_t y) { return m_module.opBitwiseOr(uintType, x, y); };
+
+        // ARGB packing: 0xAARRGGBB
+        colorU32 = bor(bor(shl(a8, 24), shl(r8, 16)), bor(shl(g8, 8), b8));
+      }
+
+      emitVertexCaptureWrite(vertexIndex, CapturedVertexMembers::Color0, colorU32, uintType);
     }
 
     // Apply custom vertex transform if it's enabled
     {
-      uint32_t labelIf = m_module.allocateId();
-      uint32_t labelEnd = m_module.allocateId();
+      const uint32_t oldPos = m_module.opLoad(vec4TypeId, m_vs.oPos.id);
 
-      // Prepare customVertexTransformEnabled condition
-      uint32_t customVertexTransformEnabledId = m_module.specConstBool(false);
-      m_module.setDebugName(customVertexTransformEnabledId, "custom_vertex_transform_enabled");
-      m_module.decorateSpecId(customVertexTransformEnabledId, getSpecId(D3D9SpecConstantId::CustomVertexTransformEnabled));
+      // Alternative (projected) position
+      const uint32_t customWorldToProjRefId =
+        LoadConstant(mat4TypeId, (uint32_t) D3D9RtxVertexCaptureMembers::CustomWorldToProjection);
+      const uint32_t projPosId =
+        m_module.opVectorTimesMatrix(vec4TypeId, worldPosId, customWorldToProjRefId);
 
-      // if (customVertexTransformEnabled) { ... }
-      m_module.opSelectionMerge(labelEnd, spv::SelectionControlMaskNone);
-      m_module.opBranchConditional(customVertexTransformEnabledId, labelIf, labelEnd);
-      {
-        m_module.opLabel(labelIf);
+      // Scalar spec-bool
+      const uint32_t useCustom = m_module.specConstBool(false);
+      m_module.setDebugName(useCustom, "custom_vertex_transform_enabled");
+      m_module.decorateSpecId(useCustom, getSpecId(D3D9SpecConstantId::CustomVertexTransformEnabled));
 
-        // Load the transform
-        const uint32_t customWorldToProjRefId = LoadConstant(mat4type, (uint32_t) (D3D9RtxVertexCaptureMembers::CustomWorldToProjection));
-
-        // Project the vertex in world space
-        const uint32_t projPosId = m_module.opVectorTimesMatrix(vec4typeId, worldPosId, customWorldToProjRefId);
-
-        // Update the projected position (gl_Position) with the new one
-        m_module.opStore(m_vs.oPos.id, projPosId);
-
-        m_module.opBranch(labelEnd);
-        m_module.opLabel(labelEnd);
-      }
+      // Explicit select (result vec4, scalar bool condition)
+      const uint32_t chosenPos = m_module.opSelect(vec4TypeId, useCustom, projPosId, oldPos);
+      m_module.opStore(m_vs.oPos.id, chosenPos);
     }
 
     {
-      const uint32_t float_t = getScalarTypeId(DxsoScalarType::Float32);
+      const uint32_t pos0 = m_module.opLoad(vec4TypeId, m_vs.oPos.id);
 
-      const uint32_t labelIf = m_module.allocateId();
-      const uint32_t labelEnd = m_module.allocateId();
+      // Build jittered position
+      const uint32_t jitterXId = LoadConstant(floatType, (uint32_t) D3D9RtxVertexCaptureMembers::JitterX);
+      const uint32_t jitterYId = LoadConstant(floatType, (uint32_t) D3D9RtxVertexCaptureMembers::JitterY);
+      const uint32_t jArgs[4] = { jitterXId, jitterYId, m_module.constf32(0), m_module.constf32(0) };
+      const uint32_t jitter = m_module.opCompositeConstruct(vec4TypeId, 4, jArgs);
 
-      const uint32_t clipSpaceJitterEnabledId = m_module.specConstBool(false);
-      m_module.setDebugName(clipSpaceJitterEnabledId, "clip_space_jitter_enabled");
-      m_module.decorateSpecId(clipSpaceJitterEnabledId, getSpecId(D3D9SpecConstantId::ClipSpaceJitterEnabled));
+      const uint32_t wIdx = 3;
+      const uint32_t posW = m_module.opCompositeExtract(floatType, pos0, 1, &wIdx);
+      const uint32_t jitterScaled = m_module.opVectorTimesScalar(vec4TypeId, jitter, posW);
+      const uint32_t jittered = m_module.opFAdd(vec4TypeId, pos0, jitterScaled);
 
-      // if (clipSpaceJitterEnabled) { ... }
-      m_module.opSelectionMerge(labelEnd, spv::SelectionControlMaskNone);
-      m_module.opBranchConditional(clipSpaceJitterEnabledId, labelIf, labelEnd);
-      {
-        m_module.opLabel(labelIf);
+      // Scalar spec-bool
+      const uint32_t jitterOn = m_module.specConstBool(false);
+      m_module.setDebugName(jitterOn, "clip_space_jitter_enabled");
+      m_module.decorateSpecId(jitterOn, getSpecId(D3D9SpecConstantId::ClipSpaceJitterEnabled));
 
-        // Load the final gl_Position
-        const uint32_t projPosFinalId = m_module.opLoad(vec4typeId, m_vs.oPos.id);
-
-        // Load X/Y jitter constants
-        const uint32_t jitterXId = LoadConstant(float_t, (uint32_t)(D3D9RtxVertexCaptureMembers::JitterX));
-        const uint32_t jitterYId = LoadConstant(float_t, (uint32_t)(D3D9RtxVertexCaptureMembers::JitterY));
-
-        // Make jitter vec4
-        const uint32_t jitterIndices[] = {
-          jitterXId,
-          jitterYId,
-          m_module.constf32(0),
-          m_module.constf32(0),
-        };
-        const uint32_t jitterVec4Id = m_module.opCompositeConstruct(vec4typeId, std::size(jitterIndices), jitterIndices);
-
-        // gl_Position.w
-        const uint32_t wIndex = 3;
-        const uint32_t posWId = m_module.opCompositeExtract(float_t, projPosFinalId, 1, &wIndex);
-
-        // jitter * gl_Position.w
-        const uint32_t multipliedJitterVec4Id = m_module.opVectorTimesScalar(vec4typeId, jitterVec4Id, posWId);
-
-        // gl_Position + multjitter
-        const uint32_t jitteredProjPosId = m_module.opFAdd(vec4typeId, projPosFinalId, multipliedJitterVec4Id);
-
-        // Store a jittered position to gl_Position
-        m_module.opStore(m_vs.oPos.id, jitteredProjPosId);
-      }
-      // else
-      {
-        // Pass
-        m_module.opBranch(labelEnd);
-        m_module.opLabel(labelEnd);
-      }
+      // Explicit select
+      const uint32_t finalPos = m_module.opSelect(vec4TypeId, jitterOn, jittered, pos0);
+      m_module.opStore(m_vs.oPos.id, finalPos);
     }
   }
   // NV-DXVK end
@@ -3914,6 +4010,11 @@ void DxsoCompiler::emitControlFlowGenericLoop(
         // NV-DXVK start: vertex shader data capture implementation
         if (elem.semantic.usage == DxsoUsage::Texcoord && elem.semantic.usageIndex == 0) {
           m_vs.oTex0 = outputPtr;
+        } else if (elem.semantic.usage == DxsoUsage::Color && elem.semantic.usageIndex == 0) {
+          m_vs.oColor0 = outputPtr;
+        } else if (elem.semantic.usage == DxsoUsage::Normal && elem.semantic.usageIndex == 0) {
+          // If this output sematic exists, replace the pointer, since output normals are preferred (will have undergone transforms)
+          m_vs.oNormal0 = outputPtr;
         }
         // NV-DXVK end
       }
