@@ -61,7 +61,7 @@ public:
       iter->second.Initialize(graphState.topology);
     }
     uint64_t instanceId = m_nextInstanceId++;
-    auto pair = m_graphInstances.emplace(instanceId, GraphInstance(this, graphState.topology.graphHash, 0, instanceId));
+    auto pair = m_graphInstances.try_emplace(instanceId, this, graphState.topology.graphHash, 0, instanceId);
     if (!pair.second) {
       Logger::err(str::format("GraphInstance already exists. Instance: ", instanceId));
       return nullptr;
