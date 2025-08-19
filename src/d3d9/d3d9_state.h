@@ -31,10 +31,32 @@ namespace dxvk {
   };
 
   // NV-DXVK start: vertex shader data capture implementation
+  // NOTE: Padding exists to ensure we get vectorized loads for these attributes
+  struct CapturedVertex {
+    Vector3 position;
+    uint32_t pad0;
+    Vector2 texcoord0;
+    uint32_t pad1;
+    uint32_t pad2;
+    Vector3 normal0;
+    uint32_t color0;
+  };
+
+  enum class CapturedVertexMembers {
+    Position = 0,
+    Texcoord0,
+    Normal0,
+    Color0,
+
+    MemberCount
+  };
+
   struct D3D9RtxVertexCaptureData {
     Matrix4 normalTransform;
-    Matrix4 projectionToWorld;
     Matrix4 customWorldToProjection;
+    Matrix4 invProj;
+    Matrix4 viewToWorld;
+    Matrix4 worldToObject;
     uint32_t baseVertex = 0;
     float jitterX;
     float jitterY;
@@ -43,8 +65,10 @@ namespace dxvk {
 
   enum class D3D9RtxVertexCaptureMembers {
     NormalTransform = 0,
-    ProjectionToWorld,
     CustomWorldToProjection,
+    InvProj,
+    ViewToWorld,
+    WorldToObject,
     BaseVertex,
     JitterX,
     JitterY,
