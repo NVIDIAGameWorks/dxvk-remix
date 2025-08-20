@@ -55,13 +55,14 @@ enum class RtComponentPropertyType {
   Int32,
   Uint32,
   Uint64,
+  String,
+  AssetPath,
 
   // Default Value is ignored for relationships. It's safe to just use 0.
   Prim,
 
   // TODO should we support lists of any of the above types.
   // TODO should Hash be a separate type? it's just uint64_t under the hood, but could be displayed differently.
-  // TODO should we support strings? asset paths?
   // TODO support generic types (i.e. number, or numbersAndVectors)
 
   // NOTE: Places to change when adding a new case:
@@ -70,6 +71,8 @@ enum class RtComponentPropertyType {
   //   `RtComponentPropertyTypeToCppType` in rtx_graph_types.h.
   //   `RtComponentPropertyValue` variant in rtx_graph_types.h,
   //   `RtComponentPropertyVector` variant in rtx_graph_types.h,
+  //   `GraphUsdParser::getPropertyValue` in rtx_graph_usd_parser.cpp
+  //   `TestComponent` in test_component.h, and the unit tests it is used in.
 };
 std::ostream& operator << (std::ostream& os, RtComponentPropertyType e);
 
@@ -87,6 +90,8 @@ template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::
 template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Uint32> { using Type = uint32_t; };
 template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Uint64> { using Type = uint64_t; };
 template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Prim> { using Type = uint32_t; };
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::String> { using Type = std::string; };
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::AssetPath> { using Type = std::string; };
 
 template< RtComponentPropertyType propertyType >
 using RtComponentPropertyTypeToCppType = typename RtComponentPropertyTypeToCppTypeImpl<propertyType>::Type;
@@ -106,7 +111,8 @@ using RtComponentPropertyValue = std::variant<
   Vector4,
   int32_t,
   uint32_t,
-  uint64_t
+  uint64_t,
+  std::string
 >;
 
 using RtComponentPropertyVector = std::variant<
@@ -118,7 +124,8 @@ using RtComponentPropertyVector = std::variant<
   std::vector<Vector4>,
   std::vector<int32_t>,
   std::vector<uint32_t>,
-  std::vector<uint64_t>
+  std::vector<uint64_t>,
+  std::vector<std::string>
 >;
 
 RtComponentPropertyValue propertyValueFromString(const std::string& str, const RtComponentPropertyType type);

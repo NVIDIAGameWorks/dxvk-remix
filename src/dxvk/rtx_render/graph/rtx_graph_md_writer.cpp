@@ -28,6 +28,33 @@
 
 namespace dxvk {
 namespace {
+
+// Helper function to escape markdown special characters
+std::string escapeMarkdown(const std::string& input) {
+  std::string output;
+  output.reserve(input.size());
+  for (char c : input) {
+    switch (c) {
+      case '*': output += "\\*"; break;
+      case '_': output += "\\_"; break;
+      case '`': output += "\\`"; break;
+      case '#': output += "\\#"; break;
+      case '+': output += "\\+"; break;
+      case '-': output += "\\-"; break;
+      case '.': output += "\\."; break;
+      case '!': output += "\\!"; break;
+      case '[': output += "\\["; break;
+      case ']': output += "\\]"; break;
+      case '(': output += "\\("; break;
+      case ')': output += "\\)"; break;
+      case '\n': output += "<br/>"; break;  // Convert newlines to HTML line breaks for table compatibility
+      case '\r': break;  // Skip carriage returns
+      default: output += c; break;
+    }
+  }
+  return output;
+}
+
 // Helper function to get default value as readable string
 std::string getDefaultValueAsString(const RtComponentPropertyValue& value, RtComponentPropertyType type) {
   switch (type) {
@@ -60,37 +87,16 @@ std::string getDefaultValueAsString(const RtComponentPropertyValue& value, RtCom
       return std::to_string(std::get<uint32_t>(value));
     case RtComponentPropertyType::Uint64:
       return std::to_string(std::get<uint64_t>(value));
+    case RtComponentPropertyType::String:
+      return "\"" + escapeMarkdown(std::get<std::string>(value)) + "\"";
+    case RtComponentPropertyType::AssetPath:
+      return "\"" + escapeMarkdown(std::get<std::string>(value)) + "\"";
     case RtComponentPropertyType::Prim:
       // Prim references don't use the default value field,
       // as it isn't really applicable.
       return "None";
   }
   return "None";
-}
-
-// Helper function to escape markdown special characters
-std::string escapeMarkdown(const std::string& input) {
-  std::string output;
-  for (char c : input) {
-    switch (c) {
-      case '*': output += "\\*"; break;
-      case '_': output += "\\_"; break;
-      case '`': output += "\\`"; break;
-      case '#': output += "\\#"; break;
-      case '+': output += "\\+"; break;
-      case '-': output += "\\-"; break;
-      case '.': output += "\\."; break;
-      case '!': output += "\\!"; break;
-      case '[': output += "\\["; break;
-      case ']': output += "\\]"; break;
-      case '(': output += "\\("; break;
-      case ')': output += "\\)"; break;
-      case '\n': output += "<br/>"; break;  // Convert newlines to HTML line breaks for table compatibility
-      case '\r': break;  // Skip carriage returns
-      default: output += c; break;
-    }
-  }
-  return output;
 }
 
 // Helper function to write a property table row

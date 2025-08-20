@@ -350,6 +350,10 @@ RtComponentPropertyValue GraphUsdParser::getPropertyValue(const pxr::UsdAttribut
       return getPropertyValue<uint32_t>(value, spec);
     case RtComponentPropertyType::Uint64:
       return getPropertyValue<uint64_t>(value, spec);
+    case RtComponentPropertyType::String:
+      return getPropertyValue<std::string>(value, spec);
+    case RtComponentPropertyType::AssetPath:
+      return getPropertyValue<std::string>(value, spec);
     case RtComponentPropertyType::Prim:
       throw DxvkError(str::format("Prim target properties should be UsdRelationships, not UsdAttributes."));
       return spec.defaultValue;

@@ -27,6 +27,25 @@
 
 namespace dxvk {
 namespace {
+// Helper function to escape JSON strings
+std::string escapeJsonString(const std::string& input) {
+  std::string output;
+  output.reserve(input.size());
+  for (char c : input) {
+    switch (c) {
+      case '"': output += "\\\""; break;
+      case '\\': output += "\\\\"; break;
+      case '\b': output += "\\b"; break;
+      case '\f': output += "\\f"; break;      
+      case '\n': output += "\\n"; break;
+      case '\r': output += "\\r"; break;
+      case '\t': output += "\\t"; break;
+      default: output += c; break;
+    }
+  }
+  return output;
+}
+
 // Helper function to convert RtComponentPropertyType to OGN type string
 std::string propertyTypeToOgnType(RtComponentPropertyType type) {
   switch (type) {
@@ -40,8 +59,10 @@ std::string propertyTypeToOgnType(RtComponentPropertyType type) {
     case RtComponentPropertyType::Uint32: return "uint";
     case RtComponentPropertyType::Uint64: return "uint64";
     case RtComponentPropertyType::Prim: return "target";  // USD Relationship to a prim
-    default: return "float"; // Default fallback
+    case RtComponentPropertyType::String: return "string";
+    case RtComponentPropertyType::AssetPath: return "asset";
   }
+  return "unknown";
 }
 
 // Helper function to get default value as JSON string
@@ -76,29 +97,15 @@ std::string getDefaultValueAsJson(const RtComponentPropertyValue& value, RtCompo
       return std::to_string(std::get<uint32_t>(value));
     case RtComponentPropertyType::Uint64:
       return std::to_string(std::get<uint64_t>(value));
+    case RtComponentPropertyType::String:
+      return "\"" + escapeJsonString(std::get<std::string>(value)) + "\"";
+    case RtComponentPropertyType::AssetPath:
+      return "\"" + escapeJsonString(std::get<std::string>(value)) + "\"";
     case RtComponentPropertyType::Prim:
       // Target relationships don't typically have default values in OGN
       return "null";
   }
   return "null";
-}
-
-// Helper function to escape JSON strings
-std::string escapeJsonString(const std::string& input) {
-  std::string output;
-  for (char c : input) {
-    switch (c) {
-      case '"': output += "\\\""; break;
-      case '\\': output += "\\\\"; break;
-      case '\b': output += "\\b"; break;
-      case '\f': output += "\\f"; break;      
-      case '\n': output += "\\n"; break;
-      case '\r': output += "\\r"; break;
-      case '\t': output += "\\t"; break;
-      default: output += c; break;
-    }
-  }
-  return output;
 }
 
 // Helper function to write a property to the OGN schema

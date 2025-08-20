@@ -88,9 +88,12 @@ private:
         return propertyValueForceType<uint8_t>(value.Get<T>());
       }
       return value.Get<T>();
+    } else if (constexpr (std::is_same_v<T, std::string>) && value.IsHolding<pxr::SdfAssetPath>()) {
+      return value.Get<pxr::SdfAssetPath>().GetAssetPath();
     } else if (value.IsHolding<pxr::TfToken>()) {
+      // Note: holds_alternative<bool> is a compiler error, so this constexpr check is needed.
       if constexpr (!std::is_same_v<T, bool>) {
-        if ( spec.enumValues.size() > 0) {
+        if (spec.enumValues.size() > 0) {
           // If the property has enum values, we need to look up the value in the enum values map.
           auto iter = spec.enumValues.find(value.Get<pxr::TfToken>().GetString());
           if (iter != spec.enumValues.end()) {
