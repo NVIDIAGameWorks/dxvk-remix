@@ -800,7 +800,11 @@ namespace dxvk {
       // (need to check a 2x2x2 patch of cells to account for positions close to a border)
       result = const_cast<RtInstance*>(blas.getSpatialMap().getNearestData(worldPosition, uniqueObjectDistanceSqr, nearestDistSqr,
         [&] (const RtInstance* instance) {
-          return instance->m_frameLastUpdated != currentFrameIdx && instance->m_materialHash == material.getHash();
+          // Filter out instances by returning false if the instance:
+          // - has already been updated this frame
+          // - doesn't use the same material
+          // - is a sub prim of a replacement instance
+          return instance->m_frameLastUpdated != currentFrameIdx && instance->m_materialHash == material.getHash() && !instance->m_primInstanceOwner.isSubPrim();
         }
       ));
       if (nearestDistSqr == 0.0f && result != nullptr) {
