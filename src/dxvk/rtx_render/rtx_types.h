@@ -155,6 +155,14 @@ public:
   ReplacementInstance* getOrCreateReplacementInstance(void* owner, PrimInstance::Type type, size_t index, size_t numPrims);
   ReplacementInstance* getReplacementInstance() const { return m_replacementInstance; }
   size_t getReplacementIndex() const { return m_replacementIndex; }
+  bool isSubPrim() const {
+    if (m_replacementInstance == nullptr) {
+      return false;
+    } else {
+      return m_replacementIndex != ReplacementInstance::kInvalidReplacementIndex &&
+        m_replacementInstance->root.getUntyped() != m_replacementInstance->prims[m_replacementIndex].getUntyped();
+    }
+  }
 private:
   ReplacementInstance* m_replacementInstance = nullptr;
   size_t m_replacementIndex = ReplacementInstance::kInvalidReplacementIndex;
