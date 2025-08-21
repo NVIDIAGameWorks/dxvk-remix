@@ -1341,13 +1341,14 @@ namespace dxvk {
       // to ensure pacer thread is idle
       m_dlfgPresenter->synchronize();
     }
+
+    // flush all pending CS work
+    // this ensures any work that relies on the FG presenter is submitted before we
+    // synchronize the submission queue + GPU below
+    m_parent->SynchronizeCsThread();
     // NV-DXVK end
 
     m_device->waitForIdle();
-
-    // NV-DXVK start: DLFG integration
-    m_device->synchronizePresenter();
-    // NV-DXVK end
 
     m_presenter = nullptr;
     m_presentStatus.result = VK_SUCCESS;
