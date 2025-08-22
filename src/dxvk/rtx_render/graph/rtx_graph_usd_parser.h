@@ -24,9 +24,11 @@
 #include "../../../lssusd/usd_include_begin.h"
 #include <pxr/usd/usd/attribute.h>
 #include <pxr/usd/usd/prim.h>
+#include <pxr/usd/usd/property.h>
 #include <pxr/usd/usd/stage.h>
 #include <pxr/usd/usdGeom/mesh.h>
 #include <pxr/usd/usdLux/lightAPI.h>
+#include <pxr/usd/sdf/layer.h>
 #include "../../../lssusd/usd_include_end.h"
 
 #include <algorithm>
@@ -62,7 +64,9 @@ private:
   static const RtComponentSpec* getComponentSpecForPrim(const pxr::UsdPrim& nodePrim);
 
   // If the `propertyPath` has been encountered before, return the original index.
-  // Otherwise, create a new index for the property and return tht.
+  // Otherwise, create a new index for the property and return that.
+  // Also adds all possible property paths (current name + all old names) to the map
+  // so that connected properties can find the correct index regardless of which name they use.
   static size_t getPropertyIndex(
       RtGraphTopology& topology,
       const pxr::SdfPath& propertyPath,
@@ -72,6 +76,9 @@ private:
 
   static RtComponentPropertyValue getPropertyValue(const pxr::UsdRelationship& rel, const RtComponentPropertySpec& spec, PathToOffsetMap& pathToOffsetMap);
   static RtComponentPropertyValue getPropertyValue(const pxr::UsdAttribute& attr, const RtComponentPropertySpec& spec, PathToOffsetMap& pathToOffsetMap);
+  
+  // Helper function to resolve the correct property path considering old property names and layer strength
+  static pxr::SdfPath resolvePropertyPath(const pxr::UsdPrim& nodePrim, const RtComponentPropertySpec& property);
   template<typename T>
   static RtComponentPropertyValue getPropertyValue(const pxr::VtValue& value, const RtComponentPropertySpec& spec) {
     // Value may be declared but have no contents - common for output values.

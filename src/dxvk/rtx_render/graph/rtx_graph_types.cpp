@@ -143,14 +143,25 @@ void registerComponentSpec(const RtComponentSpec* spec) {
 
   std::lock_guard<std::mutex> lock(getComponentSpecMapMutex());
 
-  // Check for duplicate registration
-  auto existing = getComponentSpecMap().find(spec->componentType);
-  if (existing != getComponentSpecMap().end()) {
-    Logger::err(str::format("Component spec for type ", spec->name, " already registered. Conflicting component spec: ", existing->second->name));
+  // Check for duplicate registration and insert
+  auto [iterator, wasInserted] = getComponentSpecMap().insert({spec->componentType, spec});
+  if (!wasInserted) {
+    Logger::err(str::format("Component spec for type ", spec->name, " already registered. Conflicting component spec: ", iterator->second->name));
     assert(false && "Multiple component specs mapped to a single ComponentType.");
   }
 
-  getComponentSpecMap()[spec->componentType] = spec;
+  if (!spec->oldNames.empty()) {
+    for (const auto& oldName : spec->oldNames) {
+      std::string fullOldName = RtComponentPropertySpec::kUsdNamePrefix + oldName;
+      RtComponentType oldType = XXH3_64bits(fullOldName.c_str(), fullOldName.size());
+      auto [oldIterator, oldWasInserted] = getComponentSpecMap().insert({oldType, spec});
+      if (!oldWasInserted) {
+        Logger::err(str::format("Component spec for legacy type name ", fullOldName, " already registered. Conflicting component spec: ", oldIterator->second->name));
+        assert(false && "Multiple component specs mapped to a single ComponentType.");
+      }
+    }
+  }
+
 }
 
 const RtComponentSpec* getComponentSpec(const RtComponentType& componentType) {

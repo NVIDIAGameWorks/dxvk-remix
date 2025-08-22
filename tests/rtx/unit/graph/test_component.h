@@ -33,7 +33,8 @@ enum class TestEnum : uint32_t {
 };
 
 #define LIST_INPUTS(X) \
-  X(RtComponentPropertyType::Bool, false, inputBool, "Input Bool", "test for Bool") \
+  X(RtComponentPropertyType::Bool, false, inputBool, "Input Bool", "test for Bool", \
+    property.oldUsdNames = {"oldInputBool2", "oldInputBool1"}) \
   X(RtComponentPropertyType::Float, 1.f, inputFloat, "Input Float", "test for Float") \
   X(RtComponentPropertyType::Float2, Vector2(1.f, 2.f), inputFloat2, "Input Float2", "test for Float2") \
   X(RtComponentPropertyType::Float3, Vector3(1.f, 2.f, 3.f), inputFloat3, "Input Float3", "test for Float3") \
@@ -65,7 +66,8 @@ enum class TestEnum : uint32_t {
     property.enumValues = { {"One", {TestEnum::One, "The first case"}}, {"Two", {TestEnum::Two, "The second case"}} })
 
 #define LIST_OUTPUTS(X) \
-  X(RtComponentPropertyType::Bool, false, outputBool, "Output Bool", "test for Bool") \
+  X(RtComponentPropertyType::Bool, false, outputBool, "Output Bool", "test for Bool", \
+    property.oldUsdNames = {"oldOutputBool2", "oldOutputBool1"}) \
   X(RtComponentPropertyType::Float, 3.f, outputFloat, "Output Float", "test for Float") \
   X(RtComponentPropertyType::Float2, Vector2(3.f, 4.f), outputFloat2, "Output Float2", "test for Float2") \
   X(RtComponentPropertyType::Float3, Vector3(3.f, 4.f, 5.f), outputFloat3, "Output Float3", "test for Float3") \
@@ -86,7 +88,7 @@ REMIX_COMPONENT( \
   /* the UI categories */  "test", \
   /* the doc string */     "this is a test component, do not use.", \
   /* the version number */ 1, \
-  LIST_INPUTS, LIST_STATES, LIST_OUTPUTS);
+  LIST_INPUTS, LIST_STATES, LIST_OUTPUTS, spec.oldNames = {"OriginalTestComponent"});
 
 #undef LIST_INPUTS
 #undef LIST_STATES

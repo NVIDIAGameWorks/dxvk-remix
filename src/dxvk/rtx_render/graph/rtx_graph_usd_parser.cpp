@@ -34,10 +34,10 @@ RtGraphState GraphUsdParser::parseGraph(AssetReplacements& replacements, const p
   std::vector<DAGNode> sortedNodes = getDAGSortedNodes(graphPrim);
   for (DAGNode& dagNode : sortedNodes) {
     const RtComponentSpec& componentSpec = *dagNode.spec;
-    pxr::UsdPrim child = graphPrim.GetStage()->GetPrimAtPath(dagNode.path);
+    pxr::UsdPrim child = graphPrim.GetPrimAtPath(dagNode.path);
 
     if (!versionCheck(child, componentSpec)) {
-      Logger::err(str::format("Version mismatch for componentSpec ", child.GetPath().GetString(), " . The runtime's version is: ", componentSpec.version, ".  Attempting to load anyway."));
+      Logger::err(str::format("Component not loaded: ", child.GetPath().GetString(), " failed the version check."));
       continue;
     }
 
@@ -49,7 +49,7 @@ RtGraphState GraphUsdParser::parseGraph(AssetReplacements& replacements, const p
     for (const RtComponentPropertySpec& property : componentSpec.properties) {
       // NOTE: This would be more efficient if we cached all of the TfTokens.  Unsure how to
       // do that without leaking pxr includes to the wider codebase.
-      pxr::SdfPath propertyPath = child.GetPath().AppendProperty(pxr::TfToken(property.usdPropertyName));
+      pxr::SdfPath propertyPath = resolvePropertyPath(child, property);
       if (property.type == RtComponentPropertyType::Prim) {
         pxr::UsdRelationship rel = child.GetRelationshipAtPath(propertyPath);
         bool hasConnection = false;
@@ -126,6 +126,9 @@ std::vector<GraphUsdParser::DAGNode> GraphUsdParser::getDAGSortedNodes(const pxr
     if (componentSpec == nullptr) {
       continue;
     }
+    if (!versionCheck(child, *componentSpec)) {
+      continue;
+    }
     pathToIndexMap[child.GetPath()] = nodes.size();
     nodes.push_back(DAGNode { child.GetPath(), componentSpec, 0, {} });
   }
@@ -134,10 +137,12 @@ std::vector<GraphUsdParser::DAGNode> GraphUsdParser::getDAGSortedNodes(const pxr
   for (size_t nodeIndex = 0; nodeIndex < nodes.size(); nodeIndex++) {
     DAGNode& node = nodes[nodeIndex];
     for (const RtComponentPropertySpec& property : node.spec->properties) {
-      // NOTE: This would be more efficient if we cached all of the TfTokens.  Unsure how to
-      // do that without leaking pxr includes to the wider codebase.
-      pxr::SdfPath propertyPath = node.path.AppendProperty(pxr::TfToken(property.usdPropertyName));
-      pxr::UsdAttribute attr = graphPrim.GetAttributeAtPath(propertyPath);
+      // Get the node prim to check for connections
+      pxr::UsdPrim nodePrim = graphPrim.GetPrimAtPath(node.path);
+      
+      // Check for connections on the resolved property path (current name or strongest old name)
+      pxr::SdfPath propertyPath = resolvePropertyPath(nodePrim, property);
+      pxr::UsdAttribute attr = nodePrim.GetAttributeAtPath(propertyPath);
       bool hasConnection = false;
       if (attr && attr.IsValid()) {
         pxr::SdfPathVector connections;
@@ -260,7 +265,9 @@ const RtComponentSpec* GraphUsdParser::getComponentSpecForPrim(const pxr::UsdPri
 }
 
 // If the `propertyPath` has been encountered before, return the original index.
-// Otherwise, create a new index for the property and return tht.
+// Otherwise, create a new index for the property and return that.
+// Also adds all possible property paths (current name + all old names) to the map
+// so that connected properties can find the correct index regardless of which name they use.
 size_t GraphUsdParser::getPropertyIndex(
     RtGraphTopology& topology,
     const pxr::SdfPath& propertyPath,
@@ -271,6 +278,14 @@ size_t GraphUsdParser::getPropertyIndex(
     size_t propertyIndex = topology.propertyTypes.size();
     topology.propertyTypes.push_back(property.type);
     topology.propertyPathHashToIndexMap[propertyPath.GetString()] = propertyIndex;
+    
+    // Add all possible property paths (current name + all old names) to the map
+    // so that connected properties can find the correct index regardless of which name they use
+    std::string nodePathStr = propertyPath.GetParentPath().GetString();
+    for (const std::string& oldName : property.oldUsdNames) {
+      topology.propertyPathHashToIndexMap[nodePathStr + "." + oldName] = propertyIndex;
+    }
+    
     return propertyIndex;
   }
   // This is a property that already exists.
@@ -283,9 +298,18 @@ bool GraphUsdParser::versionCheck(const pxr::UsdPrim& nodePrim, const RtComponen
   if (versionAttr && versionAttr.IsValid()) {
     pxr::VtValue value;
     versionAttr.Get(&value);
-    return value.Get<int>() == node.version;
+    int dataVersion = value.Get<int>();
+    if (dataVersion > node.version) {
+      Logger::err(str::format("Component: ", nodePrim.GetPath().GetString(), " is newer than this runtime can handle.  This means the graph was authored with a newer version of the runtime."));
+      return false;
+    } else {
+      if (dataVersion < node.version) {
+        Logger::warn(str::format("Component: ", nodePrim.GetPath().GetString(), " is old.  This means the graph was authored with an older version of the schema, and should be updated in the Toolkit."));
+      }
+      return true;
+    }
   }
-  Logger::err(str::format("Node ", nodePrim.GetPath().GetString(), " is missing a `node:typeVersion` attribute."));
+  Logger::err(str::format("Component:", nodePrim.GetPath().GetString(), " is missing a `node:typeVersion` attribute."));
   return false;
 }
 RtComponentPropertyValue GraphUsdParser::getPropertyValue(const pxr::UsdRelationship& rel, const RtComponentPropertySpec& spec, PathToOffsetMap& pathToOffsetMap) {
@@ -362,6 +386,47 @@ RtComponentPropertyValue GraphUsdParser::getPropertyValue(const pxr::UsdAttribut
     assert(false && "Unknown property type in getPropertyValue");
   }
   return spec.defaultValue;
+}
+
+// Helper function to resolve the correct property path considering old property names and layer strength
+pxr::SdfPath GraphUsdParser::resolvePropertyPath(const pxr::UsdPrim& nodePrim, const RtComponentPropertySpec& property) {
+  // Start with the current property path
+  pxr::SdfPath propertyPath = nodePrim.GetPath().AppendProperty(pxr::TfToken(property.usdPropertyName));
+  
+  // Check if we need to replace propertyPath with an old property path
+  if (!property.oldUsdNames.empty()) {
+    // This property has legacy names.
+    // We want to use the property with the strongest layer, not the one with the newest name.
+    
+    // Check if the current property path is valid and has authored values
+    pxr::UsdProperty propertyObj = nodePrim.GetPropertyAtPath(propertyPath);
+    std::vector<std::pair<pxr::SdfPropertySpecHandle, pxr::SdfLayerOffset>> bestPropertyStackWithOffsets;
+    
+    // If current property is valid, use it as the initial best choice
+    if (propertyObj && propertyObj.IsValid() && propertyObj.IsAuthored()) {
+      bestPropertyStackWithOffsets = propertyObj.GetPropertyStackWithLayerOffsets();
+    }
+    
+    // Check all old property names and find the one with the strongest layer
+    for (const std::string& oldName : property.oldUsdNames) {
+      pxr::SdfPath oldPropertyPath = nodePrim.GetPath().AppendProperty(pxr::TfToken(oldName));
+      pxr::UsdProperty oldPropertyObj = nodePrim.GetPropertyAtPath(oldPropertyPath);
+      
+      if (oldPropertyObj && oldPropertyObj.IsValid() && oldPropertyObj.IsAuthored()) {
+        std::vector<std::pair<pxr::SdfPropertySpecHandle, pxr::SdfLayerOffset>> oldPropertyStackWithOffsets = oldPropertyObj.GetPropertyStackWithLayerOffsets();
+        
+        // If this is the first valid property found, or if it's defined on a stronger layer
+        if (bestPropertyStackWithOffsets.empty() || 
+            (!oldPropertyStackWithOffsets.empty() && 
+             oldPropertyStackWithOffsets[0].second.GetOffset() > bestPropertyStackWithOffsets[0].second.GetOffset())) {
+          propertyPath = oldPropertyPath;
+          bestPropertyStackWithOffsets = oldPropertyStackWithOffsets;
+        }
+      }
+    }
+  }
+  
+  return propertyPath;
 }
 
 } // namespace dxvk

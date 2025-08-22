@@ -332,7 +332,8 @@ void testGetPropertyIndex() {
   Logger::info("Testing getPropertyIndex...");
   
   RtGraphTopology topology;
-  pxr::SdfPath propertyPath("/test/path");
+  pxr::SdfPath nodePath("/test/path");
+  pxr::SdfPath propertyPath(nodePath.AppendProperty(pxr::TfToken("testProperty")));
   RtComponentPropertySpec property;
   property.type = RtComponentPropertyType::Float;
   property.name = "testProperty";
@@ -341,38 +342,38 @@ void testGetPropertyIndex() {
   // Test creating new property index
   size_t index1 = GraphUsdParserTestApp::getPropertyIndex(topology, propertyPath, property);
   if (index1 != 0) {
-    throw DxvkError("testGetPropertyIndex: index1 should be 0");
+    throw DxvkError(str::format("testGetPropertyIndex: index1 should be 0, but is ", index1));
   }
   if (topology.propertyTypes.size() != 1) {
-    throw DxvkError("testGetPropertyIndex: propertyTypes size should be 1");
+    throw DxvkError(str::format("testGetPropertyIndex: propertyTypes size should be 1, but is ", topology.propertyTypes.size()));
   }
   if (topology.propertyTypes[0] != RtComponentPropertyType::Float) {
-    throw DxvkError("testGetPropertyIndex: propertyTypes[0] should be Float");
+    throw DxvkError(str::format("testGetPropertyIndex: propertyTypes[0] should be Float, but is ", topology.propertyTypes[0]));
   }
   if (topology.propertyPathHashToIndexMap.size() != 1) {
-    throw DxvkError("testGetPropertyIndex: propertyPathHashToIndexMap size should be 1");
+    throw DxvkError(str::format("testGetPropertyIndex: propertyPathHashToIndexMap size should be 1, but is ", topology.propertyPathHashToIndexMap.size()));
   }
   
   // Test getting existing property index
   size_t index2 = GraphUsdParserTestApp::getPropertyIndex(topology, propertyPath, property);
   if (index2 != 0) {
-    throw DxvkError("testGetPropertyIndex: index2 should be 0");
+    throw DxvkError(str::format("testGetPropertyIndex: index2 should be 0, but is ", index2));
   }
   if (index1 != index2) {
-    throw DxvkError("testGetPropertyIndex: index1 should equal index2");
+    throw DxvkError(str::format("testGetPropertyIndex: index1 should equal index2, but is ", index1, " and ", index2));
   }
   if (topology.propertyTypes.size() != 1) { // Should not add duplicate
-    throw DxvkError("testGetPropertyIndex: propertyTypes size should still be 1");
+    throw DxvkError(str::format("testGetPropertyIndex: propertyTypes size should still be 1, but is ", topology.propertyTypes.size()));
   }
   
   // Test with different property path
-  pxr::SdfPath propertyPath2("/test/path2");
+  pxr::SdfPath propertyPath2(nodePath.AppendProperty(pxr::TfToken("property2")));
   size_t index3 = GraphUsdParserTestApp::getPropertyIndex(topology, propertyPath2, property);
   if (index3 != 1) {
-    throw DxvkError("testGetPropertyIndex: index3 should be 1");
+    throw DxvkError(str::format("testGetPropertyIndex: index3 should be 1, but is ", index3));
   }
   if (topology.propertyTypes.size() != 2) {
-    throw DxvkError("testGetPropertyIndex: propertyTypes size should be 2");
+    throw DxvkError(str::format("testGetPropertyIndex: propertyTypes size should be 2, but is ", topology.propertyTypes.size()));
   }
   
   Logger::info("getPropertyIndex passed");
@@ -1194,6 +1195,271 @@ void testStringAndAssetPathTypes() {
   Logger::info("String and AssetPath types test passed");
 }
 
+void testOldPropertyNames() {
+  Logger::info("Testing old property names handling...");
+  
+  GraphUsdParserTest test;
+  
+  // Get the TestComponent component spec
+  const RtComponentSpec* testSpec = components::TestComponent::getStaticSpec();
+  if (testSpec == nullptr) {
+    throw DxvkError("testOldPropertyNames: testSpec is nullptr");
+  }
+  
+  // Build a map of property name to index for efficient lookup (static, so do it once)
+  std::unordered_map<std::string, size_t> propertyNameToIndex;
+  for (size_t i = 0; i < testSpec->properties.size(); i++) {
+    propertyNameToIndex[testSpec->properties[i].name] = i;
+  }
+  
+  // Find the inputBool property which has old names
+  const RtComponentPropertySpec* inputBoolSpec = nullptr;
+  for (const auto& prop : testSpec->properties) {
+    if (prop.usdPropertyName == "inputs:inputBool") {
+      inputBoolSpec = &prop;
+      break;
+    }
+  }
+  if (inputBoolSpec == nullptr) {
+    throw DxvkError("testOldPropertyNames:inputs:inputBool property not found");
+  }
+  if (inputBoolSpec->oldUsdNames.size() != 2) {
+    throw DxvkError(str::format("testOldPropertyNames: inputBool should have 2 old names, but has ", inputBoolSpec->oldUsdNames.size()));
+  }
+     if (inputBoolSpec->oldUsdNames[0] != "inputs:oldInputBool2" || inputBoolSpec->oldUsdNames[1] != "inputs:oldInputBool1") {
+     throw DxvkError(str::format("testOldPropertyNames: inputBool old names mismatch, ", inputBoolSpec->oldUsdNames[0], " and ", inputBoolSpec->oldUsdNames[1]));
+   }
+  
+  // Test Case 1: Current property name is valid, old names are not
+  Logger::info("Test Case 1: Current property name is valid, old names are not");
+  {
+    pxr::SdfPath graphPath("/World/testGraph1");
+    pxr::UsdPrim graphPrim = test.m_stage->DefinePrim(graphPath, pxr::TfToken("OmniGraph"));
+    pxr::UsdPrim nodePrim = test.createTestAllTypesNode(graphPath, "testNode");
+    
+    // Add the current property name with a value
+    test.addInputProperty(nodePrim, "inputBool", "1");
+    
+    // Parse the graph and verify the value is used
+    RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
+    
+    // Find the inputBool property index
+    size_t inputBoolIndex = propertyNameToIndex["inputBool"];
+    
+    // Get the value index for the inputBool property
+    size_t valueIndex = graphState.topology.propertyIndices[0][inputBoolIndex];
+    
+    // Verify the specific property has the expected value
+    if (!std::holds_alternative<uint8_t>(graphState.values[valueIndex])) {
+      throw DxvkError("testOldPropertyNames: inputBool value is not a uint8_t");
+    }
+    
+    uint8_t inputBoolValue = std::get<uint8_t>(graphState.values[valueIndex]);
+    if (inputBoolValue != 1) {
+      throw DxvkError(str::format("testOldPropertyNames: inputBool should be 1, but got ", static_cast<int>(inputBoolValue)));
+    }
+  }
+  
+  // Test Case 2: Current property name is not valid, but old name is
+  Logger::info("Test Case 2: Current property name is not valid, but old name is");
+  {
+    pxr::SdfPath graphPath("/World/testGraph2");
+    pxr::UsdPrim graphPrim = test.m_stage->DefinePrim(graphPath, pxr::TfToken("OmniGraph"));
+    pxr::UsdPrim nodePrim = test.createTestAllTypesNode(graphPath, "testNode");
+    
+    // Add an old property name with a value (don't add the current name)
+    test.addInputProperty(nodePrim, "oldInputBool1", "1");
+    
+    // Parse the graph and verify the old name value is used
+    RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
+    
+    // Find the inputBool property index
+    size_t inputBoolIndex = propertyNameToIndex["inputBool"];
+    
+    // Get the value index for the inputBool property
+    size_t valueIndex = graphState.topology.propertyIndices[0][inputBoolIndex];
+    
+    // Verify the specific property has the expected value
+    if (!std::holds_alternative<uint8_t>(graphState.values[valueIndex])) {
+      throw DxvkError("testOldPropertyNames: inputBool value is not a uint8_t");
+    }
+    
+    uint8_t inputBoolValue = std::get<uint8_t>(graphState.values[valueIndex]);
+    if (inputBoolValue != 1) {
+      throw DxvkError(str::format("testOldPropertyNames: old property name value should be 1, but got ", static_cast<int>(inputBoolValue)));
+    }
+  }
+  
+  // Test Case 3: Multiple old property names exist, test layer strength
+  Logger::info("Test Case 3: Multiple old property names exist, test layer strength");
+  {
+    // Create a stage with multiple layers to test layer strength
+    pxr::SdfLayerRefPtr rootLayer = pxr::SdfLayer::CreateNew("root.usda");
+    pxr::SdfLayerRefPtr weakerLayer = pxr::SdfLayer::CreateNew("weaker.usda");
+    pxr::SdfLayerRefPtr strongerLayer = pxr::SdfLayer::CreateNew("stronger.usda");
+    
+    // Create a stage with these layers
+    pxr::UsdStageRefPtr multiLayerStage = pxr::UsdStage::Open(rootLayer);
+    multiLayerStage->GetRootLayer()->InsertSubLayerPath(weakerLayer->GetIdentifier());
+    multiLayerStage->GetRootLayer()->InsertSubLayerPath(strongerLayer->GetIdentifier());
+    
+    // Create the graph structure in the root layer
+    pxr::SdfPath graphPath("/World/testGraph3");
+    pxr::UsdPrim graphPrim = multiLayerStage->DefinePrim(graphPath, pxr::TfToken("OmniGraph"));
+    pxr::UsdPrim nodePrim = multiLayerStage->DefinePrim(graphPath.AppendChild(pxr::TfToken("testNode")), pxr::TfToken("OmniGraphNode"));
+    
+    // Add required attributes in root layer
+    pxr::UsdAttribute typeAttr = nodePrim.CreateAttribute(pxr::TfToken("node:type"), pxr::SdfValueTypeNames->Token);
+    typeAttr.Set(pxr::TfToken("lightspeed.trex.components.TestComponent"));
+    pxr::UsdAttribute versionAttr = nodePrim.CreateAttribute(pxr::TfToken("node:typeVersion"), pxr::SdfValueTypeNames->Int);
+    versionAttr.Set(1);
+    
+    // Add old property name in weaker layer
+    pxr::UsdEditTarget weakerEditTarget(weakerLayer);
+    multiLayerStage->SetEditTarget(weakerEditTarget);
+    pxr::UsdAttribute weakerAttr = nodePrim.CreateAttribute(pxr::TfToken("inputs:oldInputBool1"), pxr::SdfValueTypeNames->Token);
+    weakerAttr.Set(pxr::TfToken("0")); // false
+    
+    // Add different old property name in stronger layer
+    pxr::UsdEditTarget strongerEditTarget(strongerLayer);
+    multiLayerStage->SetEditTarget(strongerEditTarget);
+    pxr::UsdAttribute strongerAttr = nodePrim.CreateAttribute(pxr::TfToken("inputs:oldInputBool2"), pxr::SdfValueTypeNames->Token);
+    strongerAttr.Set(pxr::TfToken("1")); // true
+    
+    // Switch back to root layer for parsing
+    multiLayerStage->SetEditTarget(multiLayerStage->GetEditTargetForLocalLayer(multiLayerStage->GetRootLayer()));
+    
+    // Parse the graph and verify the stronger layer wins
+    AssetReplacements replacements;
+    GraphUsdParser::PathToOffsetMap pathToOffsetMap;
+    RtGraphState graphState = GraphUsdParser::parseGraph(replacements, graphPrim, pathToOffsetMap);
+    
+    // Find the inputBool property index
+    size_t inputBoolIndex = propertyNameToIndex["inputBool"];
+    
+    // Get the value index for the inputBool property
+    size_t valueIndex = graphState.topology.propertyIndices[0][inputBoolIndex];
+    
+    // Verify the specific property has the expected value
+    if (!std::holds_alternative<uint8_t>(graphState.values[valueIndex])) {
+      throw DxvkError("testOldPropertyNames: inputBool value is not a uint8_t");
+    }
+    
+    uint8_t inputBoolValue = std::get<uint8_t>(graphState.values[valueIndex]);
+    if (inputBoolValue != 1) {
+      throw DxvkError(str::format("testOldPropertyNames: stronger layer should have won, but got value ", static_cast<int>(inputBoolValue)));
+    }
+  }
+  
+  // Test Case 4: Property connections with old property names
+  Logger::info("Test Case 4: Property connections with old property names");
+  {
+    pxr::SdfPath graphPath("/World/testGraph4");
+    pxr::UsdPrim graphPrim = test.m_stage->DefinePrim(graphPath, pxr::TfToken("OmniGraph"));
+    
+    // Create source node that uses the current property name
+    pxr::UsdPrim sourceNode = test.createTestAllTypesNode(graphPath, "sourceNode");
+    test.addOutputProperty(sourceNode, "outputBool");
+    
+    // Create target node that uses an old property name
+    pxr::UsdPrim targetNode = test.createTestAllTypesNode(graphPath, "targetNode");
+    test.addInputProperty(targetNode, "oldInputBool1", "0"); // Default value
+    
+    // Connect the nodes: sourceNode.outputBool -> targetNode.oldInputBool1
+    test.connectNodes(sourceNode, "outputBool", targetNode, "oldInputBool1");
+
+    // TODO: parseGraph below is not detecting the connection from outputBool to the legacy name for inputBool.
+    
+    // Parse the graph
+    RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
+    
+    // Verify we have the correct number of component specs
+    if (graphState.topology.componentSpecs.size() != 2) {
+      throw DxvkError("testOldPropertyNames: graphState.topology.componentSpecs should be size 2");
+    }
+    
+    // Verify property indices for both nodes
+    if (graphState.topology.propertyIndices[0].size() != components::TestComponent::getStaticSpec()->properties.size()) {
+      throw DxvkError("testOldPropertyNames: graphState.topology.propertyIndices[0] should be size of TestComponent properties");
+    }
+    if (graphState.topology.propertyIndices[1].size() != components::TestComponent::getStaticSpec()->properties.size()) {
+      throw DxvkError("testOldPropertyNames: graphState.topology.propertyIndices[1] should be size of TestComponent properties");
+    }
+    
+    // Test that connected properties share the same value index
+    // This verifies that the graph parser correctly identifies shared values between connected nodes
+    // even when one uses the current property name and the other uses an old property name
+    
+    // Find the outputBool and inputBool indices
+    size_t outputBoolIndex = propertyNameToIndex["outputBool"];
+    size_t inputBoolIndex = propertyNameToIndex["inputBool"];
+    
+    // Verify that connected properties share the same value index
+    if (graphState.topology.propertyIndices[0][outputBoolIndex] != graphState.topology.propertyIndices[1][inputBoolIndex]) {
+      throw DxvkError(str::format("testOldPropertyNames: outputBool and inputBool should share value index, but got ", 
+                                  graphState.topology.propertyIndices[0][outputBoolIndex], " and ", 
+                                  graphState.topology.propertyIndices[1][inputBoolIndex]));
+    }
+    
+    // Verify the total number of values
+    // We should have 33 properties per node, but 1 of them is shared (the connected one)
+    // So total = 33 + 33 - 1 = 65 values
+    size_t expectedValues = components::TestComponent::getStaticSpec()->properties.size() * 2 - 1;
+    if (graphState.values.size() != expectedValues) {
+      throw DxvkError(str::format("testOldPropertyNames: graphState.values should be size ", expectedValues, 
+                                  " (33 properties per node - 1 shared connection), but is ", graphState.values.size()));
+    }
+  }
+  
+  // Test Case 5: Property connections with multiple old property names
+  Logger::info("Test Case 5: Property connections with multiple old property names");
+  {
+    pxr::SdfPath graphPath("/World/testGraph5");
+    pxr::UsdPrim graphPrim = test.m_stage->DefinePrim(graphPath, pxr::TfToken("OmniGraph"));
+    
+    // Create source node that uses an old property name
+    pxr::UsdPrim sourceNode = test.createTestAllTypesNode(graphPath, "sourceNode");
+    test.addOutputProperty(sourceNode, "outputBool");
+    
+    // Create target node that uses a different old property name
+    pxr::UsdPrim targetNode = test.createTestAllTypesNode(graphPath, "targetNode");
+    test.addInputProperty(targetNode, "oldInputBool2", "0"); // Default value
+    
+    // Connect the nodes: sourceNode.outputBool -> targetNode.oldInputBool2
+    test.connectNodes(sourceNode, "outputBool", targetNode, "oldInputBool2");
+    
+    // Parse the graph
+    RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
+    
+    // Verify we have the correct number of component specs
+    if (graphState.topology.componentSpecs.size() != 2) {
+      throw DxvkError("testOldPropertyNames: graphState.topology.componentSpecs should be size 2");
+    }
+    
+    // Test that connected properties share the same value index
+    
+    // Find the outputBool and inputBool indices
+    size_t outputBoolIndex = propertyNameToIndex["outputBool"];
+    size_t inputBoolIndex = propertyNameToIndex["inputBool"];
+    
+    // Verify that connected properties share the same value index
+    if (graphState.topology.propertyIndices[0][outputBoolIndex] != graphState.topology.propertyIndices[1][inputBoolIndex]) {
+      throw DxvkError(str::format("testOldPropertyNames: outputBool and inputBool should share value index, but got ", 
+                                  graphState.topology.propertyIndices[0][outputBoolIndex], " and ", 
+                                  graphState.topology.propertyIndices[1][inputBoolIndex]));
+    }
+    
+    // Verify the total number of values
+    size_t expectedValues = components::TestComponent::getStaticSpec()->properties.size() * 2 - 1;
+    if (graphState.values.size() != expectedValues) {
+      throw DxvkError(str::format("testOldPropertyNames: graphState.values should be size ", expectedValues, 
+                                  " (33 properties per node - 1 shared connection), but is ", graphState.values.size()));
+    }
+  }
+  
+  Logger::info("testOldPropertyNames passed");
+}
+
 } // namespace dxvk
 
 int main() {
@@ -1215,6 +1481,7 @@ int main() {
     dxvk::testAllPropertyTypes();
     dxvk::testStringAndAssetPathTypes();
     dxvk::testGraphWithCycle();
+    dxvk::testOldPropertyNames();
     
     dxvk::Logger::info("\n All tests passed successfully!");
     return 0;
