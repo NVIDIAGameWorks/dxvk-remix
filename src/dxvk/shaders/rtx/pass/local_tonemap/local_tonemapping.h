@@ -106,6 +106,16 @@ struct FinalCombineArgs
   uint ditherMode;
   uint frameIndex;
   uint useLegacyACES;
+  uint useAgX;
+  
+  float agxGamma;
+  float agxSaturation;
+  float agxExposureOffset;
+  uint agxLook;
+  
+  float agxContrast;
+  float agxSlope;
+  float agxPower;
   uint pad2;
 };
 
