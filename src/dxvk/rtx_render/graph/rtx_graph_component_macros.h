@@ -82,6 +82,15 @@
   { \
     RtComponentPropertySpec& property = s_spec.properties[index]; \
     __VA_ARGS__; \
+    if (!property.oldUsdNames.empty()) { \
+      std::string prefix = "inputs:"; \
+      if (property.ioType == RtComponentPropertyIOType::Output) { \
+        prefix = "outputs:"; \
+      } \
+      for (std::string& oldName : property.oldUsdNames) { \
+        oldName = prefix + oldName; \
+      } \
+    } \
     index++; \
   } \
 
@@ -93,7 +102,7 @@
 
 #define REMIX_COMPONENT_WRITE_STATIC_SPEC(componentClass, uiName, categories, docString, versionNumber, X_INPUTS, X_STATES, X_OUTPUTS, ...) \
   static std::once_flag s_once_flag; \
-  static const std::string s_fullName = "lightspeed.trex.components." #componentClass; \
+  static const std::string s_fullName = RtComponentPropertySpec::kUsdNamePrefix + #componentClass; \
   static RtComponentSpec s_spec = { \
     { \
       X_INPUTS(REMIX_COMPONENT_WRITE_PROPERTY_SPEC_INPUT) \
