@@ -65,7 +65,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.antiCulling.light.enable|bool|False|||Enable Anti\-Culling for lights\.|
 |rtx.antiCulling.light.fovScale|float|1|||Scalar of the FOV of lights Anti\-Culling Frustum\.|
 |rtx.antiCulling.light.numFramesToExtendLightLifetime|int|1000|||Maximum number of frames to keep  when Anti\-Culling is enabled\. Make sure not to set this too low \(then the anti\-culling won't work\), nor too high \(which will hurt the performance\)\.|
-|rtx.antiCulling.light.numLightsToKeep|int|1000|||Maximum number of lights to keep when Anti\-Culling is enabled\.|
+|rtx.antiCulling.light.numLightsToKeep|int|1000|||\(DEPRECATED\)|
 |rtx.antiCulling.object.enable|bool|False|||Extends lifetime of objects that go outside the camera frustum \(anti\-culling frustum\)\.|
 |rtx.antiCulling.object.enableHighPrecisionAntiCulling|bool|True|||Use robust intersection check with Separate Axis Theorem\.<br>This method is slightly expensive but it effectively addresses object flickering issues that arise from corner cases in the fast intersection check method\.<br>Typically, it's advisable to enable this option unless it results in a notable performance drop; otherwise, the presence of flickering artifacts could significantly diminish the overall image quality\.|
 |rtx.antiCulling.object.enableInfinityFarFrustum|bool|False|||Enable infinity far plane frustum for anti\-culling\.|

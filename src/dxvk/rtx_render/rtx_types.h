@@ -63,9 +63,6 @@ public:
     Graph,
     None
   };
-  // set to 0 because the Id is based on a pointer value, so the id of an empty Entity is nullptr.
-  static constexpr uint64_t kEmptyId = 0;
-
   // Use `Entity()` to create a nullptr Entity.
   PrimInstance() {}
 

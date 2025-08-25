@@ -121,7 +121,6 @@ namespace dxvk {
     const uint32_t framesToKeep = RtxOptions::numFramesToKeepLights();
     const uint32_t framesToSleep = RtxOptions::getNumFramesToPutLightsToSleep();
 
-    const bool forceGarbageCollection = (m_lights.size() >= RtxOptions::AntiCulling::Light::numLightsToKeep());
     for (auto it = m_lights.begin(); it != m_lights.end();) {
       const RtLight& light = it->second;
       if (light.isMarkedForGarbageCollection()) {

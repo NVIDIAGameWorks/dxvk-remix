@@ -781,7 +781,7 @@ namespace dxvk {
           ));
           break;
         }
-        GraphInstance* graphInstance = m_graphManager.addInstance(ctx, replacement.graphState.value(), replacementInstance);
+        GraphInstance* graphInstance = m_graphManager.addInstance(ctx, replacement.graphState.value());
         if (graphInstance) {
           graphInstance->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, graphInstance, PrimInstance::Type::Graph);
         }
