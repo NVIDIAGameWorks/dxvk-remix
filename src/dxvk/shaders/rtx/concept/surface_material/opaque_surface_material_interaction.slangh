@@ -623,7 +623,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   if (applyTextureOperations) 
 #endif
   {
-    if (cb.vertexColorIsBakedLighting) {
+    if (surface.isVertexColorBakedLighting) {
       // "Normalize" vertex color to remove lighting contribution in different vertices.
       // We assume the diffuse term contributes most lighting. Therefore, vertex color = diffuseColor * (N*L).
       // By dividing the vertex color by its largest component, the result is irrelavant to N*L, but proportional to the 

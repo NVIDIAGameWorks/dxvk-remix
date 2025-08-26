@@ -921,6 +921,7 @@ void GameExporter::exportInstances(const Export& exportData, ExportContext& ctx)
       _SetDrawMetadata(textureAlphaOperation, UInt);
       _SetDrawMetadata(tFactor, UInt);
       _SetDrawMetadata(isTextureFactorBlend, Bool);
+      _SetDrawMetadata(isVertexColorBakedLighting, Bool);
 #undef _SetDrawMetadata
     }
 

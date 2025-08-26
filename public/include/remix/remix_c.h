@@ -389,6 +389,7 @@ extern "C" {
     uint32_t            dstAlphaBlendFactor;
     uint32_t            alphaBlendOp;
     uint32_t            writeMask;
+    remixapi_Bool       isVertexColorBakedLighting;
   } remixapi_InstanceInfoBlendEXT;
 
   typedef struct remixapi_InstanceInfoObjectPickingEXT {

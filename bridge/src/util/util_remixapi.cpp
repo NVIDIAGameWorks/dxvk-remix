@@ -502,7 +502,8 @@ void InstanceInfoObjectPicking::_dtor() {
                               srcAlphaBlendFactor, \
                               dstAlphaBlendFactor, \
                               alphaBlendOp, \
-                              writeMask
+                              writeMask, \
+                              isVertexColorBakedLighting
 uint32_t InstanceInfoBlend::_calcSize() const {
   return fold_helper::calcSize(InstanceInfoBlendVars);
 }
