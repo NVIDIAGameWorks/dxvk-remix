@@ -53,7 +53,7 @@ public:
     });
   }
 
-  GraphInstance* addInstance(Rc<DxvkContext> context, const RtGraphState& graphState, ReplacementInstance* replacementInstance) {
+  GraphInstance* addInstance(Rc<DxvkContext> context, const RtGraphState& graphState) {
     ScopedCpuProfileZone();
     auto iter = m_batches.find(graphState.topology.graphHash);
     if (iter == m_batches.end()) {
