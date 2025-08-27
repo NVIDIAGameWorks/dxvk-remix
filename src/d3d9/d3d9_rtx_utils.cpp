@@ -153,7 +153,7 @@ namespace dxvk {
     const bool hasPositionT = d3d9State.vertexDecl != nullptr && d3d9State.vertexDecl->TestFlag(D3D9VertexDeclFlag::HasPositionT);
     const bool hasColor0 = d3d9State.vertexDecl != nullptr && d3d9State.vertexDecl->TestFlag(D3D9VertexDeclFlag::HasColor0);
     const bool hasColor1 = d3d9State.vertexDecl != nullptr && d3d9State.vertexDecl->TestFlag(D3D9VertexDeclFlag::HasColor1);
-    const bool lighting = d3d9State.renderStates[D3DRS_LIGHTING] != 0 && !hasPositionT;
+    const bool lighting = d3d9State.renderStates[D3DRS_LIGHTING] != 0 && !hasPositionT; // FFP lighting on only if not positionT
 
     uint32_t diffuseSource = hasColor0 ? D3DMCS_COLOR1 : D3DMCS_MATERIAL;
     uint32_t specularSource = hasColor1 ? D3DMCS_COLOR2 : D3DMCS_MATERIAL;
@@ -218,7 +218,11 @@ namespace dxvk {
     m.alphaDstFactor = NormalizeFactor(m.alphaDstFactor);
 
     materialData.d3dMaterial = d3d9State.material;
+
+    // Allow the users to configure vertex color as baked lighting for legacy draw calls.
+    materialData.isVertexColorBakedLighting = RtxOptions::vertexColorIsBakedLighting();
   }
+
 
   void setFogState(D3D9DeviceEx* pDevice, FogState& fogState) {
     const Direct3DState9& d3d9State = *pDevice->GetRawState();
