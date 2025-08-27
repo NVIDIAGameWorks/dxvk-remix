@@ -98,6 +98,7 @@ namespace dxvk {
       meta.textureAlphaOperation = (uint32_t) rtInstance.surface.textureAlphaOperation;
       meta.tFactor = rtInstance.surface.tFactor;
       meta.isTextureFactorBlend = rtInstance.surface.isTextureFactorBlend;
+      meta.isVertexColorBakedLighting = rtInstance.surface.isVertexColorBakedLighting;
       return meta;
     }
 

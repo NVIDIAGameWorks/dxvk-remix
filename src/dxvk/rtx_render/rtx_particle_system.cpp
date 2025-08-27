@@ -655,6 +655,7 @@ namespace dxvk {
       newDrawCallState.materialData.textureAlphaArg1Source = RtTextureArgSource::Texture;
       newDrawCallState.materialData.textureAlphaArg2Source = RtTextureArgSource::VertexColor0;
       newDrawCallState.materialData.textureAlphaOperation = DxvkRtTextureOperation::Modulate;
+      newDrawCallState.materialData.isVertexColorBakedLighting = false;
 
       ctx->getSceneManager().submitDrawState(ctx, newDrawCallState, &particleSystem.materialData);
     }

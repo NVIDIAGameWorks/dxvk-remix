@@ -166,6 +166,7 @@ struct RenderingMetaData {
   uint32_t textureAlphaOperation;
   uint32_t tFactor;
   bool isTextureFactorBlend;
+  bool isVertexColorBakedLighting;
 };
 
 struct Mesh {

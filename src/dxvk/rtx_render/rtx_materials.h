@@ -99,10 +99,12 @@ struct RtSurface {
     writeGPUHelperExplicit<2>(data, offset, indexBufferIndex);
     writeGPUHelperExplicit<2>(data, offset, color0BufferIndex);
 
-    writeGPUHelperExplicit<1>(data, offset, normalFormat == VK_FORMAT_R32_UINT ? 1 : 0);
+    uint16_t flags0 = 0;
+    flags0 |= normalFormat == VK_FORMAT_R32_UINT ? 1 : 0;
+    flags0 |= isVertexColorBakedLighting ? (1 << 1) : 0;
+    // NOTE: Spare flags bits here
 
-    // 1 unused bytes here.
-    writeGPUPadding<1>(data, offset);
+    writeGPUHelper(data, offset, flags0);
 
     const uint16_t packedHash =
       (uint16_t) (associatedGeometryHash >> 48) ^
@@ -131,32 +133,32 @@ struct RtSurface {
     assert(static_cast<uint32_t>(alphaState.alphaTestReferenceValue) < (1 << 8));
     assert(static_cast<uint32_t>(alphaState.blendType) < (1 << 4));
 
-    uint32_t flags = 0;
+    uint32_t flags1 = 0;
 
-    flags |= isEmissive ? (1 << 0) : 0;
-    flags |= alphaState.isFullyOpaque ? (1 << 1) : 0;
-    flags |= isStatic ? (1 << 2) : 0;
-    flags |= static_cast<uint32_t>(alphaState.alphaTestType) << 3;
+    flags1 |= isEmissive ? (1 << 0) : 0;
+    flags1 |= alphaState.isFullyOpaque ? (1 << 1) : 0;
+    flags1 |= isStatic ? (1 << 2) : 0;
+    flags1 |= static_cast<uint32_t>(alphaState.alphaTestType) << 3;
     // Note: No mask needed as masking of this value to be 8 bit is done elsewhere.
-    flags |= static_cast<uint32_t>(alphaState.alphaTestReferenceValue) << 6;
-    flags |= static_cast<uint32_t>(alphaState.blendType) << 14;
-    flags |= alphaState.invertedBlend ?      (1 << 18) : 0;
-    flags |= alphaState.isBlendingDisabled ? (1 << 19) : 0;
-    flags |= alphaState.emissiveBlend ?      (1 << 20) : 0;
-    flags |= alphaState.isParticle ?         (1 << 21) : 0;
-    flags |= alphaState.isDecal ?            (1 << 22) : 0;
-    flags |= hasMaterialChanged ?            (1 << 23) : 0;
-    flags |= isAnimatedWater ?               (1 << 24) : 0;
-    flags |= isClipPlaneEnabled ?            (1 << 25) : 0;
-    flags |= isMatte ?                       (1 << 26) : 0;
-    flags |= isTextureFactorBlend ?          (1 << 27) : 0;
-    flags |= isMotionBlurMaskOut ?           (1 << 28) : 0;
-    flags |= skipSurfaceInteractionSpritesheetAdjustment ? (1 << 29) : 0;
-    flags |= ignoreTransparencyLayer ?       (1 << 30) : 0;
+    flags1 |= static_cast<uint32_t>(alphaState.alphaTestReferenceValue) << 6;
+    flags1 |= static_cast<uint32_t>(alphaState.blendType) << 14;
+    flags1 |= alphaState.invertedBlend ?      (1 << 18) : 0;
+    flags1 |= alphaState.isBlendingDisabled ? (1 << 19) : 0;
+    flags1 |= alphaState.emissiveBlend ?      (1 << 20) : 0;
+    flags1 |= alphaState.isParticle ?         (1 << 21) : 0;
+    flags1 |= alphaState.isDecal ?            (1 << 22) : 0;
+    flags1 |= hasMaterialChanged ?            (1 << 23) : 0;
+    flags1 |= isAnimatedWater ?               (1 << 24) : 0;
+    flags1 |= isClipPlaneEnabled ?            (1 << 25) : 0;
+    flags1 |= isMatte ?                       (1 << 26) : 0;
+    flags1 |= isTextureFactorBlend ?          (1 << 27) : 0;
+    flags1 |= isMotionBlurMaskOut ?           (1 << 28) : 0;
+    flags1 |= skipSurfaceInteractionSpritesheetAdjustment ? (1 << 29) : 0;
+    flags1 |= ignoreTransparencyLayer ?       (1 << 30) : 0;
     // Note: This flag is purely for debug view purpose. If we need to add more functional flags and running out of bits, we should move this flag to other place.
-    flags |= isInsideFrustum ?               (1 << 31) : 0;
+    flags1 |= isInsideFrustum ?               (1 << 31) : 0;
 
-    writeGPUHelper(data, offset, flags);
+    writeGPUHelper(data, offset, flags1);
 
     // Note: Matricies are stored on the cpu side in column-major order, the same as the GPU.
 
@@ -289,6 +291,7 @@ struct RtSurface {
   bool isAnimatedWater = false;
   bool isClipPlaneEnabled = false;
   bool isTextureFactorBlend = false;
+  bool isVertexColorBakedLighting = false;
   bool isMotionBlurMaskOut = false;
   bool skipSurfaceInteractionSpritesheetAdjustment = false;
   bool isInsideFrustum = false;
@@ -1597,6 +1600,7 @@ struct LegacyMaterialData {
   uint32_t tFactor = 0xffffffff;  // Value for D3DRS_TEXTUREFACTOR, default value of is opaque white
   D3DMATERIAL9 d3dMaterial = {};
   bool isTextureFactorBlend = false;
+  bool isVertexColorBakedLighting = false;
 
   void setHashOverride(XXH64_hash_t hash) {
     m_cachedHash = hash;

@@ -54,7 +54,7 @@
 
 #define REMIXAPI_VERSION_MAJOR 0
 #define REMIXAPI_VERSION_MINOR 5
-#define REMIXAPI_VERSION_PATCH 1
+#define REMIXAPI_VERSION_PATCH 2
 
 
 // External
@@ -389,6 +389,7 @@ extern "C" {
     uint32_t            dstAlphaBlendFactor;
     uint32_t            alphaBlendOp;
     uint32_t            writeMask;
+    remixapi_Bool       isVertexColorBakedLighting;
   } remixapi_InstanceInfoBlendEXT;
 
   typedef struct remixapi_InstanceInfoObjectPickingEXT {

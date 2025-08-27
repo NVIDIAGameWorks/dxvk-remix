@@ -290,9 +290,14 @@ struct Surface
 
   property bool normalsEncoded
   {
-    get { return (data0b.z & 1) != 0; }
-    // Todo
-    set { data0b.z = 0; }
+    get { return packedFlagGet(data0b.z, 1 << 0); }
+    set { data0b.z = newValue ? packedFlagSet(data0b.z, 1 << 0) : packedFlagUnset(data0b.z, 1 << 0); }
+  }
+
+  property bool isVertexColorBakedLighting
+  {
+    get { return packedFlagGet(data0b.z, 1 << 1); }
+    set { data0b.z = newValue ? packedFlagSet(data0b.z, 1 << 1) : packedFlagUnset(data0b.z, 1 << 1); }
   }
 
   property uint16_t hashPacked
