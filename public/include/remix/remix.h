@@ -722,7 +722,7 @@ namespace remix {
       textureAlphaOperation = 1 /* DxvkRtTextureOperation::SelectArg1 */;
       tFactor = 0XFFFFFFFF;
       isTextureFactorBlend = false;
-      isVertexColorBakedLighting = false;
+      isVertexColorBakedLighting = true;
       static_assert(sizeof remixapi_InstanceInfoBlendEXT == 96);
     }
   };
