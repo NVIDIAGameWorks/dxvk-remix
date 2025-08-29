@@ -291,7 +291,7 @@ struct RtSurface {
   bool isAnimatedWater = false;
   bool isClipPlaneEnabled = false;
   bool isTextureFactorBlend = false;
-  bool isVertexColorBakedLighting = false;
+  bool isVertexColorBakedLighting = true;
   bool isMotionBlurMaskOut = false;
   bool skipSurfaceInteractionSpritesheetAdjustment = false;
   bool isInsideFrustum = false;
@@ -1600,7 +1600,7 @@ struct LegacyMaterialData {
   uint32_t tFactor = 0xffffffff;  // Value for D3DRS_TEXTUREFACTOR, default value of is opaque white
   D3DMATERIAL9 d3dMaterial = {};
   bool isTextureFactorBlend = false;
-  bool isVertexColorBakedLighting = false;
+  bool isVertexColorBakedLighting = true;
 
   void setHashOverride(XXH64_hash_t hash) {
     m_cachedHash = hash;
