@@ -726,7 +726,7 @@ dxvk::ExternalDrawState dxvk::RemixAPIPrivateAccessor::toRtDrawState(const remix
     prototype.materialData.textureAlphaArg2Source = (RtTextureArgSource) extBlend->textureAlphaArg2Source;
     prototype.materialData.tFactor = extBlend->tFactor;
     prototype.materialData.isTextureFactorBlend = extBlend->isTextureFactorBlend;
-    prototype.materialData.isVertexColorBakedLighting = (s_apiVersion >= REMIXAPI_VERSION_MAKE(0, 5, 2)) ? extBlend->isVertexColorBakedLighting : false;
+    prototype.materialData.isVertexColorBakedLighting = (s_apiVersion >= REMIXAPI_VERSION_MAKE(0, 5, 2)) ? extBlend->isVertexColorBakedLighting : RtxOptions::vertexColorIsBakedLighting();
     prototype.materialData.blendMode.colorSrcFactor = (VkBlendFactor) extBlend->srcColorBlendFactor;
     prototype.materialData.blendMode.colorDstFactor = (VkBlendFactor) extBlend->dstColorBlendFactor;
     prototype.materialData.blendMode.colorBlendOp = (VkBlendOp) extBlend->colorBlendOp;
