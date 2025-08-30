@@ -970,11 +970,13 @@ namespace {
     if (!remixDevice) {
       return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
     }
-    std::lock_guard lock { s_mutex };
-    remixDevice->EmitCs([cRtDrawState = convert::toRtDrawState(*info)](dxvk::DxvkContext* dxvkCtx) mutable {
-      auto* ctx = static_cast<dxvk::RtxContext*>(dxvkCtx);
-      ctx->commitExternalGeometryToRT(std::move(cRtDrawState));
-    });
+    if (dxvk::RtxOptions::Get()->getEnableAnyReplacements()) {
+      std::lock_guard lock { s_mutex };
+      remixDevice->EmitCs([cRtDrawState = convert::toRtDrawState(*info)](dxvk::DxvkContext* dxvkCtx) mutable {
+        auto* ctx = static_cast<dxvk::RtxContext*>(dxvkCtx);
+        ctx->commitExternalGeometryToRT(std::move(cRtDrawState));
+      });
+    }
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
 
