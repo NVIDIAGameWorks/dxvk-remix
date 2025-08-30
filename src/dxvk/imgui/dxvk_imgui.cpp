@@ -166,6 +166,7 @@ namespace dxvk {
     {"uitextures", "UI Texture", &RtxOptions::uiTexturesObject()},
     {"worldspaceuitextures", "World Space UI Texture", &RtxOptions::worldSpaceUiTexturesObject()},
     {"worldspaceuibackgroundtextures", "World Space UI Background Texture", &RtxOptions::worldSpaceUiBackgroundTexturesObject()},
+    {"legacyemissivetextures", "Legacy Emissive Texture", &RtxOptions::legacyEmissiveTexturesObject()},
     {"skytextures", "Sky Texture", &RtxOptions::skyBoxTexturesObject()},
     {"ignoretextures", "Ignore Texture (optional)", &RtxOptions::ignoreTexturesObject()},
     {"hidetextures", "Hide Texture Instance (optional)", &RtxOptions::hideInstanceTexturesObject()},
@@ -2133,6 +2134,107 @@ namespace dxvk {
               if (IMGUI_ADD_TOOLTIP(ImGui::Checkbox(rtxOption.displayName, &rtxOption.bufferToggle), rtxOption.textureSetOption->getDescription())) {
                 toggleTextureSelection(texHash, rtxOption.uniqueId, rtxOption.textureSetOption);
               }
+              
+              // Show emissive strength control for Legacy Emissive Texture
+              if (strcmp(rtxOption.uniqueId, "legacyemissivetextures") == 0 && rtxOption.bufferToggle) {
+                ImGui::Indent();
+                
+                // Get current intensity for this specific texture
+                auto legacyEmissiveIntensities = RtxOptions::parseLegacyEmissiveIntensities(RtxOptions::legacyEmissiveIntensitiesString());
+                float currentIntensity = 2.0f; // Default intensity
+                auto intensityIt = legacyEmissiveIntensities.find(texHash);
+                if (intensityIt != legacyEmissiveIntensities.end()) {
+                  currentIntensity = intensityIt->second;
+                }
+                
+                ImGui::Text("Emissive Strength:");
+                ImGui::PushItemWidth(150.0f);
+                if (ImGui::DragFloat("##emissive_strength", &currentIntensity, 0.1f, 0.0f, 20.0f, "%.1f")) {
+                  // Update the intensity for this texture
+                  legacyEmissiveIntensities[texHash] = currentIntensity;
+                  std::string intensityString = RtxOptions::legacyEmissiveIntensitiesToString(legacyEmissiveIntensities);
+                  RtxOptions::legacyEmissiveIntensitiesStringObject().setDeferred(intensityString);
+                }
+                ImGui::PopItemWidth();
+                
+                if (ImGui::IsItemHovered()) {
+                  ImGui::SetTooltip("Controls the brightness of emissive glow for this texture (default: 2.0)");
+                }
+                
+                // Reset button
+                ImGui::SameLine();
+                if (ImGui::Button("Reset##emissive_reset")) {
+                  legacyEmissiveIntensities.erase(texHash);
+                  std::string intensityString = RtxOptions::legacyEmissiveIntensitiesToString(legacyEmissiveIntensities);
+                  RtxOptions::legacyEmissiveIntensitiesStringObject().setDeferred(intensityString);
+                }
+                if (ImGui::IsItemHovered()) {
+                  ImGui::SetTooltip("Reset to default intensity (2.0)");
+                }
+                
+                // Get current color tint for this specific texture
+                auto legacyEmissiveColors = RtxOptions::parseLegacyEmissiveColors(RtxOptions::legacyEmissiveColorsString());
+                Vector3 currentColor = Vector3(1.0f, 1.0f, 1.0f); // Default white
+                auto colorIt = legacyEmissiveColors.find(texHash);
+                if (colorIt != legacyEmissiveColors.end()) {
+                  currentColor = colorIt->second;
+                }
+                
+                // Convert Vector3 to float array for ImGui color picker
+                float colorArray[3] = { currentColor.x, currentColor.y, currentColor.z };
+                
+                ImGui::Text("Emissive Color Tint:");
+                ImGui::PushItemWidth(150.0f);
+                if (ImGui::ColorEdit3("##emissive_color", colorArray, ImGuiColorEditFlags_NoInputs)) {
+                  // Update the color map
+                  legacyEmissiveColors[texHash] = Vector3(colorArray[0], colorArray[1], colorArray[2]);
+                  
+                  // Convert back to string and save
+                  std::string colorString = RtxOptions::legacyEmissiveColorsToString(legacyEmissiveColors);
+                  RtxOptions::legacyEmissiveColorsStringObject().setDeferred(colorString);
+                  
+                  // DEBUG: Log the color string being saved
+                  char hashStr[32];
+                  sprintf_s(hashStr, "%016llX", texHash);
+                  Logger::info(str::format("DEBUG ImGui: Setting color tint for hash ", hashStr, " -> color string: ", colorString));
+                }
+                ImGui::PopItemWidth();
+                
+                if (ImGui::IsItemHovered()) {
+                  ImGui::SetTooltip("Tints the emissive glow color for this texture (default: white)");
+                }
+                
+                // Color reset button
+                ImGui::SameLine();
+                if (ImGui::Button("Reset##color_reset")) {
+                  legacyEmissiveColors.erase(texHash);
+                  std::string colorString = RtxOptions::legacyEmissiveColorsToString(legacyEmissiveColors);
+                  RtxOptions::legacyEmissiveColorsStringObject().setDeferred(colorString);
+                }
+                if (ImGui::IsItemHovered()) {
+                  ImGui::SetTooltip("Reset to default color (white)");
+                }
+                
+                // Alpha invert toggle for Legacy Emissive Texture
+                auto legacyEmissiveAlphaInvert = RtxOptions::parseLegacyEmissiveAlphaInvert(RtxOptions::legacyEmissiveAlphaInvertString());
+                bool currentAlphaInvert = legacyEmissiveAlphaInvert.find(texHash) != legacyEmissiveAlphaInvert.end();
+                
+                if (ImGui::Checkbox("Invert Alpha Mask", &currentAlphaInvert)) {
+                  // Update the alpha invert set
+                  if (currentAlphaInvert) {
+                    legacyEmissiveAlphaInvert.insert(texHash);
+                  } else {
+                    legacyEmissiveAlphaInvert.erase(texHash);
+                  }
+                  std::string invertString = RtxOptions::legacyEmissiveAlphaInvertToString(legacyEmissiveAlphaInvert);
+                  RtxOptions::legacyEmissiveAlphaInvertStringObject().setDeferred(invertString);
+                }
+                if (ImGui::IsItemHovered()) {
+                  ImGui::SetTooltip("When enabled: black alpha = full emission, white alpha = no emission\nWhen disabled: black alpha = no emission, white alpha = full emission");
+                }
+                
+                ImGui::Unindent();
+              }
             }
             ImGui::EndPopup();
             return texHash;
@@ -2653,6 +2755,7 @@ namespace dxvk {
         ImGui::Indent();
         ImGui::DragFloat("Force Cutout Alpha", &RtxOptions::forceCutoutAlphaObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
         ImGui::DragFloat("World Space UI Background Offset", &RtxOptions::worldSpaceUiBackgroundOffsetObject(), 0.01f, -FLT_MAX, FLT_MAX, "%.3f", sliderFlags);
+
         ImGui::Checkbox("Ignore last texture stage", &RtxOptions::ignoreLastTextureStageObject());
         ImGui::Checkbox("Enable Multiple Stage Texture Factor Blending", &RtxOptions::enableMultiStageTextureFactorBlendingObject());
         ImGui::Unindent();
