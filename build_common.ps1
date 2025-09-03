@@ -87,7 +87,9 @@ function PerformBuild {
 
 		[string[]]$InstallTags,
 
-		[bool]$ConfigureOnly = $false
+		[bool]$ConfigureOnly = $false,
+
+		[bool]$ShadersOnly = $false
 	)
 
 	$CurrentDir = Get-Location
@@ -96,11 +98,22 @@ function PerformBuild {
 
 	Push-Location $CurrentDir
 		$mesonArgs = "setup --buildtype `"$BuildFlavour`" --backend `"$Backend`" -Denable_tracy=`"$EnableTracy`" `"$BuildSubDir`""
+		if ( $ShadersOnly ) {
+			$mesonArgs = "$mesonArgs -Ddownload_apics=False"
+		}
 		Start-Process "meson" -NoNewWindow -ArgumentList $mesonArgs -wait
 	Pop-Location
 
 	if ( $LASTEXITCODE -ne 0 ) {
 		Write-Output "Failed to run meson setup"
+		exit $LASTEXITCODE
+	}
+
+	if ($ShadersOnly) {
+		Push-Location $BuildDir
+		$mesonArgs = "compile rtx_shaders"
+		Start-Process "meson" -NoNewWindow -ArgumentList $mesonArgs -wait
+		Pop-Location
 		exit $LASTEXITCODE
 	}
 
