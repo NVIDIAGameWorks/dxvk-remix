@@ -736,17 +736,79 @@ namespace dxvk
     jitter[1] = m_jitter[1];
   }
 
+  // Static variable to track the actual jitter sequence length being used
+  static uint32_t s_currentJitterSequenceLength = 64;
+  
+  // Static variable to track the current upscaling ratio for dynamic jitter calculation
+  static float s_currentUpscalingRatio = 1.0f;
+
   Vector2 RtCamera::calcPixelJitter(uint32_t jitterFrameIdx) {
-    // Only apply jittering when DLSS/TAA is enabled, or if forced by settings
+    // Only apply jittering when DLSS/XeSS/TAA is enabled, or if forced by settings
     if (!RtxOptions::isDLSSOrRayReconstructionEnabled() &&
+        !RtxOptions::isXeSSEnabled() &&
         !RtxOptions::isTAAEnabled() &&
+        !RtxOptions::forceCameraJitter()) {
+      s_currentJitterSequenceLength = 0; // No jitter being used
+      return Vector2{ 0, 0 };
+    }
+
+#define USE_DLSS_DEMO_JITTER_PATTERN 1
+#if USE_DLSS_DEMO_JITTER_PATTERN
+    uint32_t jitterSequenceLength = RtxOptions::cameraJitterSequenceLength();
+
+    if (RtxOptions::isXeSSEnabled() && RtxOptions::xessUseRecommendedJitterSequenceLength()) {
+      float scaleFactor = s_currentUpscalingRatio;
+      uint32_t xessLength = static_cast<uint32_t>(std::ceil(scaleFactor * scaleFactor * 8.0f));
+      
+      // Apply minimum jitter sequence length
+      uint32_t minLength = RtxOptions::xessMinJitterSequenceLength();
+      xessLength = std::max(xessLength, minLength);
+      
+      // Clamp to reasonable range
+      xessLength = std::clamp(xessLength, minLength, 1024u);
+      jitterSequenceLength = xessLength;
+    }
+    
+    // Track the actual jitter sequence length being used
+    s_currentJitterSequenceLength = jitterSequenceLength;
+    
+    return calculateHaltonJitter(jitterFrameIdx, jitterSequenceLength);
+#else
+    s_currentJitterSequenceLength = 1; // Halton sequence is effectively length 1
+    return m_halton.next();
+#endif
+  }
+
+  uint32_t RtCamera::getCurrentJitterSequenceLength() {
+    return s_currentJitterSequenceLength;
+  }
+  
+  void RtCamera::setCurrentUpscalingRatio(float upscalingRatio) {
+    if (s_currentUpscalingRatio != upscalingRatio) {
+      s_currentUpscalingRatio = upscalingRatio;
+    }
+  }
+  
+  float RtCamera::getCurrentUpscalingRatio() {
+    return s_currentUpscalingRatio;
+  }
+  
+  Vector2 RtCamera::calcPixelJitterWithXeSS(uint32_t jitterFrameIdx, uint32_t xessLength) {
+    // Only apply jittering when XeSS is enabled, or if forced by settings
+    if (!RtxOptions::isXeSSEnabled() &&
         !RtxOptions::forceCameraJitter()) {
       return Vector2{ 0, 0 };
     }
 
 #define USE_DLSS_DEMO_JITTER_PATTERN 1
 #if USE_DLSS_DEMO_JITTER_PATTERN
+  if (RtxOptions::isXeSSEnabled() && RtxOptions::xessUseRecommendedJitterSequenceLength() && xessLength > 0) {
+    // XeSS-specific: Use the recommended jitter sequence length
+    return calculateHaltonJitter(jitterFrameIdx, xessLength);
+  } else {
+    // Original behavior for DLSS, TAA, and other upscalers
     return calculateHaltonJitter(jitterFrameIdx, RtxOptions::cameraJitterSequenceLength());
+  }
 #else
     return m_halton.next();
 #endif
@@ -823,6 +885,7 @@ namespace dxvk
     camera.projectionToView = projectionToView;
     camera.viewToProjectionJittered = viewToProjectionJittered;
     camera.projectionToViewJittered = projectionToViewJittered;
+    camera.worldToProjection = viewToProjection * worldToView;
     camera.worldToProjectionJittered = viewToProjectionJittered * worldToView;
     camera.projectionToWorldJittered = viewToWorld * projectionToViewJittered;
     camera.translatedWorldToView = translatedWorldToView;
@@ -875,6 +938,7 @@ namespace dxvk
 
     camera.viewToProjection = viewToProjection;
     camera.translatedWorldToView = translatedWorldToView;
+    camera.translatedWorldToProjection = viewToProjection * translatedWorldToView;
     camera.translatedWorldToProjectionJittered = viewToProjectionJittered * translatedWorldToView;
     camera.projectionToTranslatedWorld = viewToTranslatedWorld * projectionToView;
     camera.prevTranslatedWorldToView = prevTranslatedWorldToView;
