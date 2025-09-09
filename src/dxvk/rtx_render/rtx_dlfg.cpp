@@ -145,6 +145,7 @@ namespace dxvk {
 
     m_presentThread.threadHandle = dxvk::thread([this]() { runPresentThread(); });
     m_pacerThread.threadHandle = dxvk::thread([this]() { runPacerThread(); });
+
   }
 
   DxvkDLFGPresenter::~DxvkDLFGPresenter() {
@@ -1178,7 +1179,8 @@ namespace dxvk {
     : CommonDeviceObject(device)
     // xxxnsubtil: use swapchain frame count here
     , m_dlfgEvalCommandLists(device, 1)
-    , m_dlfgFrameEndSemaphore(RtxSemaphore::createTimeline(device, "DLFG frame end")) {
+    , m_dlfgFrameEndSemaphore(RtxSemaphore::createTimeline(device, "DLFG frame end"))
+    , m_currentDisplaySize{0, 0} {
 
     m_queryPoolDLFG = new DxvkDLFGTimestampQueryPool(m_device, kMaxFramesInFlight);
 
@@ -1224,6 +1226,15 @@ namespace dxvk {
 
     if (!m_dlfgContext) {
       m_dlfgContext = m_device->getCommon()->metaNGXContext().createDLFGContext();
+      m_contextDirty = true;
+    }
+
+    // check if the output extents have changed
+    VkExtent3D outputExtent = outputImage->imageInfo().extent;
+    if (outputExtent.width != m_currentDisplaySize[0] ||
+        outputExtent.height != m_currentDisplaySize[1]) {
+      // note: this is the size of the window client area, which isn't necessarily the same as the D3D9 swapchain size
+      setDisplaySize(uint2(outputExtent.width, outputExtent.height));
       m_contextDirty = true;
     }
 

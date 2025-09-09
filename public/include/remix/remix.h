@@ -710,6 +710,10 @@ namespace remix {
       srcColorBlendFactor = 1 /* VK_BLEND_FACTOR_ONE */;
       dstColorBlendFactor = 0 /* VK_BLEND_FACTOR_ZERO */;
       colorBlendOp = 0 /* VK_BLEND_OP_ADD */;
+      srcAlphaBlendFactor = 1 /* VK_BLEND_FACTOR_ONE */;
+      dstAlphaBlendFactor = 0 /* VK_BLEND_FACTOR_ZERO */;
+      alphaBlendOp = 0 /* VK_BLEND_OP_ADD */;
+      writeMask = 0xFFFFFFFF;
       textureColorArg1Source = 1 /* RtTextureArgSource::Texture */;
       textureColorArg2Source = 0 /* RtTextureArgSource::None */;
       textureColorOperation = 3 /* DxvkRtTextureOperation::Modulate */;
@@ -718,7 +722,8 @@ namespace remix {
       textureAlphaOperation = 1 /* DxvkRtTextureOperation::SelectArg1 */;
       tFactor = 0XFFFFFFFF;
       isTextureFactorBlend = false;
-      static_assert(sizeof remixapi_InstanceInfoBlendEXT == 80);
+      isVertexColorBakedLighting = true;
+      static_assert(sizeof remixapi_InstanceInfoBlendEXT == 96);
     }
   };
 
@@ -736,21 +741,28 @@ namespace remix {
       pNext = nullptr;
       maxNumParticles = 10000;
       spawnRatePerSecond = 0.f;
-      minTimeToLive = 3.0f;
-      maxTimeToLive = 6.0f;
-      minParticleSize = 1.0f;
-      maxParticleSize = 3.0f;
-      minRotationSpeed = 0.1f;
-      maxRotationSpeed = 1.0f;
+      minTimeToLive = 1.0f;
+      maxTimeToLive = 1.0f;
+      minSpawnSize = 10.0f;
+      maxSpawnSize = 10.0f;
+      minSpawnRotationSpeed = 0.0f;
+      maxSpawnRotationSpeed = 0.0f;
       minSpawnColor = {1, 1, 1, 1};
       maxSpawnColor = {1, 1, 1, 1};
+      minTargetSize = 0.0f;
+      maxTargetSize = 0.0f;
+      minTargetRotationSpeed = 0.0f;
+      maxTargetRotationSpeed = 0.0f;
+      minTargetColor = { 1, 1, 1, 0 };
+      maxTargetColor = { 1, 1, 1, 0 };
       useSpawnTexcoords = false;
-      initialVelocityFromNormal = 10.0f;
+      initialVelocityFromMotion = 0.0f;
+      initialVelocityFromNormal = 0.0f;
       initialVelocityConeAngleDegrees = 0.0f;
-      maxSpeed = 3.0f;
-      gravityForce = -0.5f;
-      useTurbulence = true;
-      turbulenceAmplitude = 5.0f;
+      maxSpeed = -1.0f;
+      gravityForce = -0.98f;
+      useTurbulence = false;
+      turbulenceForce = 5.0f;
       turbulenceFrequency = 0.05f;
       enableCollisionDetection = false;
       collisionRestitution = 0.5f;
@@ -759,7 +771,8 @@ namespace remix {
       enableMotionTrail = false;
       motionTrailMultiplier = 1.0f;
       hideEmitter = false;
-      static_assert(sizeof InstanceInfoParticleSystemEXT == 144);
+      billboardType = 0;
+      static_assert(sizeof InstanceInfoParticleSystemEXT == 200);
     }
   };
 

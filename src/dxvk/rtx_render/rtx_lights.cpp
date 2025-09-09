@@ -970,6 +970,81 @@ RtLight::RtLight(const RtDistantLight& light) {
   m_cachedInitialHash = m_distantLight.getHash();
 }
 
+RtLight::RtLight(const RtLight& light) {
+  copyFrom(light);
+}
+
+void RtLight::copyFrom(const RtLight& light) {
+  isStaticCount = light.isStaticCount;
+  isDynamic = light.isDynamic;
+  m_type = light.m_type;
+  
+  // Copy only the active union member based on the light type
+  switch (light.m_type) {
+  case RtLightType::Sphere:
+    m_sphereLight = light.m_sphereLight;
+    break;
+  case RtLightType::Rect:
+    m_rectLight = light.m_rectLight;
+    break;
+  case RtLightType::Disk:
+    m_diskLight = light.m_diskLight;
+    break;
+  case RtLightType::Cylinder:
+    m_cylinderLight = light.m_cylinderLight;
+    break;
+  case RtLightType::Distant:
+    m_distantLight = light.m_distantLight;
+    break;
+  }
+  
+  m_cachedInitialHash = light.m_cachedInitialHash;
+  m_frameLastTouched = light.m_frameLastTouched;
+  m_isInsideFrustum = light.m_isInsideFrustum;
+  m_bufferIdx = light.m_bufferIdx;
+  m_isMarkedForGarbageCollection = light.m_isMarkedForGarbageCollection;
+  m_anticullingType = light.m_anticullingType;
+  
+  // Copy anti-culling union members safely based on the anti-culling type
+  switch (light.m_anticullingType) {
+  case RtLightAntiCullingType::GameLight:
+  case RtLightAntiCullingType::LightReplacement:
+    m_originalPosition = light.m_originalPosition;
+    m_originalLightRadius = light.m_originalLightRadius;
+    break;
+  case RtLightAntiCullingType::MeshReplacement:
+    m_originalMeshTransform = light.m_originalMeshTransform;
+    m_originalMeshBoundingBox = light.m_originalMeshBoundingBox;
+    break;
+  case RtLightAntiCullingType::Ignore:
+    break;
+  }
+  
+  // Members for which state carry over is intentionally skipped
+  /*
+     m_primInstanceOwner - contents depends on the address of the holding object
+  */
+}
+// Ensure copyFrom copies all needed members when size changes, and update the object size check.
+// Note: The object has a different size on Debug builds. 
+//       Checking the non-Debug flavors is good enough for the sake of convenience of tracking just a single size.
+#if defined(DEBUG_OPTIMIZED) || defined(NDEBUG)
+namespace {
+  template<int RtLightSize> struct CheckRtLightSize {
+    // The second line of the build error should contain the new size of RtLight in the template argument, i.e. `dxvk::CheckRtLightSize<newSize>`
+    static_assert(RtLightSize == 264, "RtLight size has changed.  Fix the copyFrom function above this message, then update the expected size.");
+  };
+  CheckRtLightSize<sizeof(RtLight)> _rtLightSizeTest;
+}
+#endif
+
+RtLight& RtLight::operator=(const RtLight& rtLight) {
+  if (this != &rtLight) {
+    copyFrom(rtLight);  // Reuse the same copy logic
+  }
+  return *this;
+}
+
 RtLight::~RtLight() {
   switch (m_type) {
   default:

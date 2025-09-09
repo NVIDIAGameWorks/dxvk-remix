@@ -31,6 +31,8 @@
 #include "../../dxso/dxso_util.h"
 #include "rtx_material_data.h"
 #include "../../lssusd/mdl_helpers.h"
+#include "rtx/pass/particles/particle_system_common.h"
+#include "dxvk_constant_state.h"
 
 namespace dxvk {
 // Surfaces
@@ -97,10 +99,12 @@ struct RtSurface {
     writeGPUHelperExplicit<2>(data, offset, indexBufferIndex);
     writeGPUHelperExplicit<2>(data, offset, color0BufferIndex);
 
-    writeGPUHelperExplicit<1>(data, offset, normalFormat == VK_FORMAT_R32_UINT ? 1 : 0);
+    uint16_t flags0 = 0;
+    flags0 |= normalFormat == VK_FORMAT_R32_UINT ? 1 : 0;
+    flags0 |= isVertexColorBakedLighting ? (1 << 1) : 0;
+    // NOTE: Spare flags bits here
 
-    // 1 unused bytes here.
-    writeGPUPadding<1>(data, offset);
+    writeGPUHelper(data, offset, flags0);
 
     const uint16_t packedHash =
       (uint16_t) (associatedGeometryHash >> 48) ^
@@ -129,32 +133,32 @@ struct RtSurface {
     assert(static_cast<uint32_t>(alphaState.alphaTestReferenceValue) < (1 << 8));
     assert(static_cast<uint32_t>(alphaState.blendType) < (1 << 4));
 
-    uint32_t flags = 0;
+    uint32_t flags1 = 0;
 
-    flags |= isEmissive ? (1 << 0) : 0;
-    flags |= alphaState.isFullyOpaque ? (1 << 1) : 0;
-    flags |= isStatic ? (1 << 2) : 0;
-    flags |= static_cast<uint32_t>(alphaState.alphaTestType) << 3;
+    flags1 |= isEmissive ? (1 << 0) : 0;
+    flags1 |= alphaState.isFullyOpaque ? (1 << 1) : 0;
+    flags1 |= isStatic ? (1 << 2) : 0;
+    flags1 |= static_cast<uint32_t>(alphaState.alphaTestType) << 3;
     // Note: No mask needed as masking of this value to be 8 bit is done elsewhere.
-    flags |= static_cast<uint32_t>(alphaState.alphaTestReferenceValue) << 6;
-    flags |= static_cast<uint32_t>(alphaState.blendType) << 14;
-    flags |= alphaState.invertedBlend ?      (1 << 18) : 0;
-    flags |= alphaState.isBlendingDisabled ? (1 << 19) : 0;
-    flags |= alphaState.emissiveBlend ?      (1 << 20) : 0;
-    flags |= alphaState.isParticle ?         (1 << 21) : 0;
-    flags |= alphaState.isDecal ?            (1 << 22) : 0;
-    flags |= hasMaterialChanged ?            (1 << 23) : 0;
-    flags |= isAnimatedWater ?               (1 << 24) : 0;
-    flags |= isClipPlaneEnabled ?            (1 << 25) : 0;
-    flags |= isMatte ?                       (1 << 26) : 0;
-    flags |= isTextureFactorBlend ?          (1 << 27) : 0;
-    flags |= isMotionBlurMaskOut ?           (1 << 28) : 0;
-    flags |= skipSurfaceInteractionSpritesheetAdjustment ? (1 << 29) : 0;
-    flags |= ignoreTransparencyLayer ?       (1 << 30) : 0;
+    flags1 |= static_cast<uint32_t>(alphaState.alphaTestReferenceValue) << 6;
+    flags1 |= static_cast<uint32_t>(alphaState.blendType) << 14;
+    flags1 |= alphaState.invertedBlend ?      (1 << 18) : 0;
+    flags1 |= alphaState.isBlendingDisabled ? (1 << 19) : 0;
+    flags1 |= alphaState.emissiveBlend ?      (1 << 20) : 0;
+    flags1 |= alphaState.isParticle ?         (1 << 21) : 0;
+    flags1 |= alphaState.isDecal ?            (1 << 22) : 0;
+    flags1 |= hasMaterialChanged ?            (1 << 23) : 0;
+    flags1 |= isAnimatedWater ?               (1 << 24) : 0;
+    flags1 |= isClipPlaneEnabled ?            (1 << 25) : 0;
+    flags1 |= isMatte ?                       (1 << 26) : 0;
+    flags1 |= isTextureFactorBlend ?          (1 << 27) : 0;
+    flags1 |= isMotionBlurMaskOut ?           (1 << 28) : 0;
+    flags1 |= skipSurfaceInteractionSpritesheetAdjustment ? (1 << 29) : 0;
+    flags1 |= ignoreTransparencyLayer ?       (1 << 30) : 0;
     // Note: This flag is purely for debug view purpose. If we need to add more functional flags and running out of bits, we should move this flag to other place.
-    flags |= isInsideFrustum ?               (1 << 31) : 0;
+    flags1 |= isInsideFrustum ?               (1 << 31) : 0;
 
-    writeGPUHelper(data, offset, flags);
+    writeGPUHelper(data, offset, flags1);
 
     // Note: Matricies are stored on the cpu side in column-major order, the same as the GPU.
 
@@ -234,7 +238,7 @@ struct RtSurface {
 
     assert((static_cast<uint32_t>(textureColorOperation) & 0x7) == static_cast<uint32_t>(textureColorOperation));
     assert((static_cast<uint32_t>(textureAlphaOperation) & 0x7) == static_cast<uint32_t>(textureAlphaOperation));
-    assert(textureAlphaOperation != DxvkRtTextureOperation::Force_Modulate4x);
+    assert(textureAlphaOperation != DxvkRtTextureOperation::Force_Modulate2x);
 
     textureFlags |= ((static_cast<uint32_t>(textureColorArg1Source) & 0x3));
     textureFlags |= ((static_cast<uint32_t>(textureColorArg2Source) & 0x3) << 2);
@@ -287,6 +291,7 @@ struct RtSurface {
   bool isAnimatedWater = false;
   bool isClipPlaneEnabled = false;
   bool isTextureFactorBlend = false;
+  bool isVertexColorBakedLighting = true;
   bool isMotionBlurMaskOut = false;
   bool skipSurfaceInteractionSpritesheetAdjustment = false;
   bool isInsideFrustum = false;
@@ -414,9 +419,7 @@ struct RtSurface {
   } alphaState;
 
   // Original draw call state
-  VkBlendFactor srcColorBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ONE;
-  VkBlendFactor dstColorBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ZERO;
-  VkBlendOp colorBlendOp = VkBlendOp::VK_BLEND_OP_ADD;
+  DxvkBlendMode blendModeState;
 
   // Static validation to detect any changes that require an alignment re-check
   static_assert(sizeof(AlphaState) == 9);
@@ -1550,10 +1553,14 @@ struct LegacyMaterialData {
       "  alphaTestEnabled: ", alphaTestEnabled, "\n",
       "  alphaTestReferenceValue: ", alphaTestReferenceValue, "\n",
       "  alphaTestCompareOp: ", alphaTestCompareOp, "\n",
-      "  alphaBlendEnabled: ", alphaBlendEnabled, "\n",
-      "  srcColorBlendFactor: ", srcColorBlendFactor, "\n",
-      "  dstColorBlendFactor: ", dstColorBlendFactor, "\n",
-      "  colorBlendOp: ", colorBlendOp, "\n",
+      "  alphaBlendEnabled: ", blendMode.enableBlending, "\n",
+      "  colorSrcFactor: ", blendMode.colorSrcFactor, "\n",
+      "  colorDstFactor: ", blendMode.colorDstFactor, "\n",
+      "  colorBlendOp: ", blendMode.colorBlendOp, "\n",
+      "  alphaSrcFactor: ", blendMode.alphaSrcFactor, "\n",
+      "  alphaDstFactor: ", blendMode.alphaDstFactor, "\n",
+      "  alphaBlendOp: ", blendMode.alphaBlendOp, "\n",
+      "  writeMask: ", blendMode.writeMask, "\n",
       "  textureColorArg1Source: ", static_cast<int>(textureColorArg1Source), "\n",
       "  textureColorArg2Source: ", static_cast<int>(textureColorArg2Source), "\n",
       "  textureColorOperation: ", static_cast<int>(textureColorOperation), "\n",
@@ -1579,10 +1586,9 @@ struct LegacyMaterialData {
   bool alphaTestEnabled = false;
   uint8_t alphaTestReferenceValue = 0;
   VkCompareOp alphaTestCompareOp = VkCompareOp::VK_COMPARE_OP_ALWAYS;
-  bool alphaBlendEnabled = false;
-  VkBlendFactor srcColorBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ONE;
-  VkBlendFactor dstColorBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ZERO;
-  VkBlendOp colorBlendOp = VkBlendOp::VK_BLEND_OP_ADD;
+
+  DxvkBlendMode blendMode;
+
   RtTextureArgSource diffuseColorSource= RtTextureArgSource::None;
   RtTextureArgSource specularColorSource = RtTextureArgSource::None;
   RtTextureArgSource textureColorArg1Source = RtTextureArgSource::Texture;
@@ -1594,6 +1600,7 @@ struct LegacyMaterialData {
   uint32_t tFactor = 0xffffffff;  // Value for D3DRS_TEXTUREFACTOR, default value of is opaque white
   D3DMATERIAL9 d3dMaterial = {};
   bool isTextureFactorBlend = false;
+  bool isVertexColorBakedLighting = true;
 
   void setHashOverride(XXH64_hash_t hash) {
     m_cachedHash = hash;
@@ -1635,20 +1642,22 @@ struct MaterialData {
   // Using variants rather than a union here, due to the MaterialData containing nested members of Rc pointers.
   MaterialVariant m_data;
 
+  std::optional<RtxParticleSystemDesc> m_particleSystem;
+
   // Verify that the variant and enum stay in sync
   static_assert(std::variant_size_v<MaterialVariant> == (size_t)MaterialDataType::Count, "Enum is out of sync, please check your change.");
   static_assert(std::is_same_v<std::variant_alternative_t<(size_t)MaterialDataType::Opaque,      MaterialVariant>, OpaqueMaterialData>,      "MaterialVariant[Opaque] must be OpaqueMaterialData, please check your change.");
   static_assert(std::is_same_v<std::variant_alternative_t<(size_t)MaterialDataType::Translucent, MaterialVariant>, TranslucentMaterialData>, "MaterialVariant[Translucent] must be TranslucentMaterialData, please check your change.");
   static_assert(std::is_same_v<std::variant_alternative_t<(size_t)MaterialDataType::RayPortal,   MaterialVariant>, RayPortalMaterialData>,   "MaterialVariant[RayPortal] must be RayPortalMaterialData, please check your change.");
 
-  MaterialData(const OpaqueMaterialData& opaque, bool ignored = false)
-    : m_ignored { ignored }, m_data { opaque } {}
+  MaterialData(const OpaqueMaterialData& opaque, std::optional<RtxParticleSystemDesc> particleSystem = std::nullopt, bool ignored = false)
+    : m_ignored { ignored }, m_data { opaque }, m_particleSystem { particleSystem } {}
 
-  MaterialData(const TranslucentMaterialData& translucent, bool ignored = false)
-    : m_ignored { ignored }, m_data { translucent } {}
+  MaterialData(const TranslucentMaterialData& translucent, std::optional<RtxParticleSystemDesc> particleSystem = std::nullopt, bool ignored = false)
+    : m_ignored { ignored }, m_data { translucent }, m_particleSystem { particleSystem } {}
 
-  MaterialData(const RayPortalMaterialData& portal)
-    : m_data { portal } { }
+  MaterialData(const RayPortalMaterialData& portal, std::optional<RtxParticleSystemDesc> particleSystem = std::nullopt)
+    : m_data { portal }, m_particleSystem { particleSystem } { }
 
   bool getIgnored() const {
     return m_ignored;
@@ -1697,6 +1706,10 @@ struct MaterialData {
     return std::get<RayPortalMaterialData>(m_data);
   }
 
+  const RtxParticleSystemDesc* getParticleSystemDesc() const {
+    return m_particleSystem.has_value() ? &m_particleSystem.value() : nullptr;
+  }
+  
   void mergeLegacyMaterial(const LegacyMaterialData& input) {
     std::visit([&](auto& mat) {
       using T = std::decay_t<decltype(mat)>;

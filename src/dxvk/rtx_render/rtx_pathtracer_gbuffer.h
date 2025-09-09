@@ -46,7 +46,7 @@ namespace dxvk {
     static const char* raytraceModeToString(RaytraceMode raytraceMode);
 
   private:
-    static DxvkRaytracingPipelineShaders getPipelineShaders(const bool isPSRPass, const bool useRayQuery, const bool serEnabled, const bool ommEnabled, const bool includePortals, const bool nrcEnabled);
-    Rc<DxvkShader> getComputeShader(const bool isPSRPass, const bool nrcEnabled) const;
+    static DxvkRaytracingPipelineShaders getPipelineShaders(const bool isPSRPass, const bool useRayQuery, const bool serEnabled, const bool ommEnabled, const bool includePortals, const bool nrcEnabled, const bool wboitEnabled);
+    Rc<DxvkShader> getComputeShader(const bool isPSRPass, const bool nrcEnabled, const bool wboitEnabled) const;
   };
 }

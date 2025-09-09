@@ -21,39 +21,71 @@
 */
 
 #pragma once
+#include <cmath>
 
 #include "../rtx_graph_component_macros.h"
 #include "../../../util/util_globaltime.h"
 
 namespace dxvk {
+namespace components {
 
 enum class AnimatedFloatLooping  : uint32_t{
-  Never = 0,
-  ByValue = 1,
-  ByTime = 2
+  Loop = 0,
+  PingPong = 1,
+  Continue = 2,
+  Freeze = 3,
+};
+
+enum class AnimatedFloatInterpolation  : uint32_t{
+  Linear = 0,
+  Cubic = 1,
+  EaseIn = 2,
+  EaseOut = 3,
+  EaseInOut = 4,
+  Sine = 5,
+  Exponential = 6,
+  Bounce = 7,
+  Elastic = 8,
 };
 
 #define LIST_INPUTS(X) \
-  X(RtComponentPropertyType::Bool, true, enabled, "If true, the float will be animated.") \
-  X(RtComponentPropertyType::Float, 0.0f, initialValue, "The input float.") \
-  X(RtComponentPropertyType::Float, 0.0f, speed, "The speed of the animation, per second.") \
-  X(RtComponentPropertyType::Uint32, static_cast<uint32_t>(AnimatedFloatLooping::Never), loopingType, "How the looping is controlled.", \
+  X(RtComponentPropertyType::Bool, true, enabled, "Enabled","If true, the float will be animated.", property.optional = true) \
+  X(RtComponentPropertyType::Float, 0.0f, initialValue, "Initial Value", "The value at time t=0.") \
+  X(RtComponentPropertyType::Float, 1.0f, finalValue, "Final Value", "The value at time t=duration.") \
+  X(RtComponentPropertyType::Float, 1.0f, duration, "Duration", "How long it takes to animate from initial value to final value, in seconds.", property.minValue = 0.000001f) \
+  X(RtComponentPropertyType::Uint32, static_cast<uint32_t>(AnimatedFloatLooping::Loop), loopingType, "Looping Type", \
+    "What happens when the float reaches the final value.", \
     property.enumValues = { \
-      {"Never", uint32_t(AnimatedFloatLooping::Never)}, \
-      {"Loop by value", uint32_t(AnimatedFloatLooping::ByValue)}, \
-      {"Loop by time", uint32_t(AnimatedFloatLooping::ByTime)} \
+      {"Loop", {AnimatedFloatLooping::Loop, "The value will return to the initial value."}}, \
+      {"PingPong", {AnimatedFloatLooping::PingPong, "The value will play in reverse until it reaches the initial value, then loop."}}, \
+      {"Continue", {AnimatedFloatLooping::Continue, "The value will continue accumulating (a linear animation will preserve the velocity)."}}, \
+      {"Freeze", {AnimatedFloatLooping::Freeze, "The value will freeze at the final value."}} \
     }) \
-  X(RtComponentPropertyType::Float, 0.0f, loopingValue, "The time or value at which to loop back to the initial value.  If looping by time, this is the time in seconds.  If looping by value, this is the value at which to loop.")
+  X(RtComponentPropertyType::Uint32, static_cast<uint32_t>(AnimatedFloatInterpolation::Linear), interpolation, "Interpolation", \
+    "How the float will change over time.", \
+    property.optional = true, \
+    property.enumValues = { \
+      {"Linear", {AnimatedFloatInterpolation::Linear, "The float will have a constant velocity."}}, \
+      {"Cubic", {AnimatedFloatInterpolation::Cubic, "The float will change in a cubic curve over time."}}, \
+      {"EaseIn", {AnimatedFloatInterpolation::EaseIn, "The float will start slow, then accelerate."}}, \
+      {"EaseOut", {AnimatedFloatInterpolation::EaseOut, "The float will start fast, then decelerate."}}, \
+      {"EaseInOut", {AnimatedFloatInterpolation::EaseInOut, "The float will start slow, accelerate, then decelerate."}}, \
+      {"Sine", {AnimatedFloatInterpolation::Sine, "Smooth, natural motion using sine wave."}}, \
+      {"Exponential", {AnimatedFloatInterpolation::Exponential, "Dramatic acceleration effect."}}, \
+      {"Bounce", {AnimatedFloatInterpolation::Bounce, "Bouncy, playful motion."}}, \
+      {"Elastic", {AnimatedFloatInterpolation::Elastic, "Spring-like motion."}} \
+    }) \
 
 #define LIST_STATES(X) \
-  X(RtComponentPropertyType::Float, 0.0f, state, "If looping by time, this is how much time has passed since the last time the animation looped.  If looping by value, this is abs(current value - initial value).")
+  X(RtComponentPropertyType::Float, 0.0f, accumulatedTime, "", "How much time has passed since the animation started.")
 
 #define LIST_OUTPUTS(X) \
-  X(RtComponentPropertyType::Float, 0.0f, currentValue, "The animated float value.")
+  X(RtComponentPropertyType::Float, 0.0f, currentValue, "Current Value", "The animated float value.")
 
 REMIX_COMPONENT( \
-  /* the C++ class name */ AnimatedFloatComponent, \
-  /* the USD name */       "remix.animated.float", \
+  /* the Component name */ AnimatedFloat, \
+  /* the UI name */        "Animated Float", \
+  /* the UI categories */  "animation", \
   /* the doc string */     "A single animated float value.", \
   /* the version number */ 1, \
   LIST_INPUTS, LIST_STATES, LIST_OUTPUTS);
@@ -62,36 +94,83 @@ REMIX_COMPONENT( \
 #undef LIST_STATES
 #undef LIST_OUTPUTS
 
-void AnimatedFloatComponent::updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
+float applyInterpolation(AnimatedFloatInterpolation interpolation, float time) {
+  switch(interpolation) {
+    case AnimatedFloatInterpolation::Linear:
+      return time;
+    case AnimatedFloatInterpolation::Cubic:
+      return time * time * time;
+    case AnimatedFloatInterpolation::EaseIn:
+      return time * time;
+    case AnimatedFloatInterpolation::EaseOut:
+      return 1.0f - (1.0f - time) * (1.0f - time);
+    case AnimatedFloatInterpolation::EaseInOut:
+      return time < 0.5f ? 2.0f * time * time : 1.0f - 2.0f * (1.0f - time) * (1.0f - time);
+    case AnimatedFloatInterpolation::Sine:
+      return sin(time * M_PI * 0.5f);
+    case AnimatedFloatInterpolation::Exponential:
+      return time == 0.0f ? 0.0f : pow(2.0f, 10.0f * (time - 1.0f));
+    case AnimatedFloatInterpolation::Bounce:
+      return 1.0f - pow(1.0f - time, 3.0f) * cos(time * M_PI * 3.0f);
+    case AnimatedFloatInterpolation::Elastic:
+      return pow(2.0f, -10.0f * time) * sin((time - 0.075f) * M_PI * 2.0f / 0.3f) + 1.0f;
+    default:
+      ONCE(Logger::err(str::format("AnimatedFloat: Unknown interpolation type: ", static_cast<uint32_t>(interpolation))));
+      return time; // fallback to linear
+  }
+}
+
+void AnimatedFloat::updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
   float deltaTime = GlobalTime::get().deltaTime();
   // simple example update function.
   for (size_t i = start; i < end; i++) {
     if (m_enabled[i]) {
+      if (m_duration[i] <= 0.0f) {
+        m_currentValue[i] = m_finalValue[i];
+        ONCE(Logger::err(str::format("AnimatedFloat: Duration must be positive. Setting current value to final value")));
+        continue;
+      }
+      m_accumulatedTime[i] += deltaTime;
+      float time = 0.0f;
+      AnimatedFloatInterpolation interpolation = static_cast<AnimatedFloatInterpolation>(m_interpolation[i]);
       switch(static_cast<AnimatedFloatLooping>(m_loopingType[i])) {
-        case AnimatedFloatLooping::Never:
-          m_state[i] += m_speed[i] * deltaTime;
-          m_currentValue[i] = m_state[i] + m_initialValue[i];
+        case AnimatedFloatLooping::Loop:
+          if (m_accumulatedTime[i] >= m_duration[i]) {
+            m_accumulatedTime[i] = fmod(m_accumulatedTime[i], m_duration[i]);
+          }
+          time = m_accumulatedTime[i] / m_duration[i];
+          m_currentValue[i] = lerp(m_initialValue[i], m_finalValue[i], applyInterpolation(interpolation, time));
           break;
-        case AnimatedFloatLooping::ByValue:
-          if (m_speed[i] * (m_loopingValue[i] - m_initialValue[i]) <= 0.f) {
-            // Speed is positive while looping value is lower than initial value, or vice versa.
-            // this means we're never going to reach the looping value, so just set to initial value.
-            m_currentValue[i] = m_initialValue[i];
+        case AnimatedFloatLooping::PingPong:
+          if (m_accumulatedTime[i] >= m_duration[i] * 2.0f) {
+            m_accumulatedTime[i] = fmod(m_accumulatedTime[i], m_duration[i] * 2.0f);
+          }
+          time = m_accumulatedTime[i];
+          if (time > m_duration[i]) {
+            time = m_duration[i] * 2.0f - time;
+          }
+          time = time / m_duration[i];
+          m_currentValue[i] = lerp(m_initialValue[i], m_finalValue[i], applyInterpolation(interpolation, time));
+          break;
+        case AnimatedFloatLooping::Continue:
+          time = fmod(m_accumulatedTime[i], m_duration[i]) / m_duration[i];
+          m_currentValue[i] = lerp(m_initialValue[i], m_finalValue[i], applyInterpolation(interpolation, time));
+          m_currentValue[i] += (m_finalValue[i] - m_initialValue[i]) * std::floor(m_accumulatedTime[i] / m_duration[i]);
+          break;
+        case AnimatedFloatLooping::Freeze:
+          if (m_accumulatedTime[i] >= m_duration[i]) {
+            m_currentValue[i] = m_finalValue[i];
           } else {
-            m_state[i] = fmod(m_state[i] + m_speed[i] * deltaTime, m_loopingValue[i] - m_initialValue[i]);
-            m_currentValue[i] = m_initialValue[i] - m_state[i];
+            m_currentValue[i] = lerp(m_initialValue[i], m_finalValue[i], applyInterpolation(interpolation, m_accumulatedTime[i] / m_duration[i]));
           }
           break;
-        case AnimatedFloatLooping::ByTime:
-          m_state[i] += deltaTime;
-          m_currentValue[i] = m_initialValue[i] + m_speed[i] * fmod(m_state[i], m_loopingValue[i]);
-          break;
         default:
-          ONCE(Logger::err(str::format("AnimatedFloatComponent: Unknown looping type: ", m_loopingType[i])));
+          ONCE(Logger::err(str::format("AnimatedFloat: Unknown looping type: ", static_cast<uint32_t>(m_loopingType[i]))));
           break;
       }
     }
   }
 }
 
+}  // namespace components
 }  // namespace dxvk

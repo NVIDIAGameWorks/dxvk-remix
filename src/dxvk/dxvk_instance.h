@@ -127,16 +127,6 @@ namespace dxvk {
       return m_extensions;
     }
 
-    // NV-DXVK start:
-    /**
-     * \brief Retrieves enablement state of Vulkan validation layers
-     * \returns Enablement state of Vulkan validation layers
-     */
-    bool areVulkanValidationLayersEnabled() const {
-      return m_validationLayersEnabled;
-    }
-    // NV-DXVK end
-
   private:
     Config              m_config;
     DxvkOptions         m_options;
@@ -148,7 +138,6 @@ namespace dxvk {
     Rc<vk::InstanceFn>      m_vki;
     DxvkInstanceExtensions  m_extensions;
     // NV-DXVK start: use EXT_debug_utils
-    bool                    m_validationLayersEnabled = false;
     VkDebugUtilsMessengerEXT m_debugUtilsMessenger = nullptr;
     // NV-DXVK end
 

@@ -52,3 +52,5 @@ option('tracy_shared_libs', type : 'boolean', value : false, description : 'Buil
 option('enable_rtxio', type : 'boolean', value : true)
 
 option('remixsdk_local', type: 'string', value: '', description: 'Path to the local, prebuilt Remix SDK. Must contain the include and bin directories.')
+
+option('download_apics', type : 'boolean', value : true, description : 'Download APICs for testing')

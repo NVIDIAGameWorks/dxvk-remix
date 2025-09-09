@@ -55,17 +55,15 @@ enum class RtComponentPropertyType {
   Int32,
   Uint32,
   Uint64,
+  String,
+  AssetPath,
 
-  // All paths to another instance must be part of the same replacement hierarchy.
-  // TODO unsure if these should be separate types or just combined:
-  // Use `ReplacementInstance::kInvalidReplacementIndex` as the default value for these types.
-  MeshInstance,
-  LightInstance,
-  GraphInstance,
+  // Default Value is ignored for relationships. It's safe to just use 0.
+  Prim,
 
   // TODO should we support lists of any of the above types.
   // TODO should Hash be a separate type? it's just uint64_t under the hood, but could be displayed differently.
-  // TODO should we support strings? asset paths?
+  // TODO support generic types (i.e. number, or numbersAndVectors)
 
   // NOTE: Places to change when adding a new case:
   //   RtComponentPropertyType's operator << function in rtx_graph_types.cpp,
@@ -73,6 +71,8 @@ enum class RtComponentPropertyType {
   //   `RtComponentPropertyTypeToCppType` in rtx_graph_types.h.
   //   `RtComponentPropertyValue` variant in rtx_graph_types.h,
   //   `RtComponentPropertyVector` variant in rtx_graph_types.h,
+  //   `GraphUsdParser::getPropertyValue` in rtx_graph_usd_parser.cpp
+  //   `TestComponent` in test_component.h, and the unit tests it is used in.
 };
 std::ostream& operator << (std::ostream& os, RtComponentPropertyType e);
 
@@ -89,9 +89,9 @@ template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::
 template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Int32> { using Type = int32_t; };
 template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Uint32> { using Type = uint32_t; };
 template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Uint64> { using Type = uint64_t; };
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::MeshInstance> { using Type = uint32_t; };
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::LightInstance> { using Type = uint32_t; };
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::GraphInstance> { using Type = uint32_t; };
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Prim> { using Type = uint32_t; };
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::String> { using Type = std::string; };
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::AssetPath> { using Type = std::string; };
 
 template< RtComponentPropertyType propertyType >
 using RtComponentPropertyTypeToCppType = typename RtComponentPropertyTypeToCppTypeImpl<propertyType>::Type;
@@ -111,7 +111,8 @@ using RtComponentPropertyValue = std::variant<
   Vector4,
   int32_t,
   uint32_t,
-  uint64_t
+  uint64_t,
+  std::string
 >;
 
 using RtComponentPropertyVector = std::variant<
@@ -123,7 +124,8 @@ using RtComponentPropertyVector = std::variant<
   std::vector<Vector4>,
   std::vector<int32_t>,
   std::vector<uint32_t>,
-  std::vector<uint64_t>
+  std::vector<uint64_t>,
+  std::vector<std::string>
 >;
 
 RtComponentPropertyValue propertyValueFromString(const std::string& str, const RtComponentPropertyType type);
@@ -137,32 +139,61 @@ RtComponentPropertyValue propertyValueForceType(const E& value) {
   return RtComponentPropertyValue(std::in_place_type<T>, static_cast<T>(value));
 }
 
+// Helper to determine the appropriate type for propertyValueForceType
+// For enums, use the underlying type; for non-enums, use the original type
+template<typename T>
+using PropertyValueType = std::conditional_t<
+  std::is_enum_v<T>,
+  std::underlying_type_t<T>,
+  T
+>;
+
 using RtComponentType = XXH64_hash_t;
 static const RtComponentType kInvalidComponentType = kEmptyHash;
 
 struct RtComponentPropertySpec {
+  static inline const std::string kUsdNamePrefix = "lightspeed.trex.components.";
+  
   RtComponentPropertyType type;
   RtComponentPropertyValue defaultValue;
   RtComponentPropertyIOType ioType;
 
   std::string name;
   std::string usdPropertyName;
+  std::string uiName;
   std::string docString;
 
   // Optional Values
   // To set optional values when using the macros, write them as a comma separated list after the docString. 
   // `property.<name> = <value>`, i.e. `property.minValue = 0.0f, property.maxValue = 1.0f`
 
+  // If this property has been renamed, list the old `usdPropertyName`s here for backwards compatibility.
+  // If multiple definitions for the same property exist, the property on the strongest USD layer will be used.
+  // If multiple definitions for the same property exist on a single layer, `name` will be used first,
+  // followed by the earliest name in `oldUsdNames`.  So the ideal order should be:
+  // property.oldUsdNames = { "thirdName", "secondName", "originalName" }
+  std::vector<std::string> oldUsdNames;
+
   // NOTE: These are currently unenforced on the c++ side, but should be used for OGN generation.
   // TODO: consider enforcing these on the c++ side (between component batch updates?)
   RtComponentPropertyValue minValue = false;
   RtComponentPropertyValue maxValue = false;
 
+
+  // Whether the component will function without this property being set.
+  // Runtime side all properties have a default value, so this is mostly a UI hint.
+  bool optional = false;
+
   // Optional property to display as an enum in the USD.
-  // specify as `property.enumValues = { {"DisplayName1", enumClass::Value1}, {"DisplayName2", enumClass::Value2}, ... }`
-  // TODO need to make sure this is actually supported in the OGN generation - properties with this set should
-  // show up as documented here: https://docs.omniverse.nvidia.com/kit/docs/omni.graph.docs/latest/dev/ogn/attribute_types.html#enum-attribute-type
-  std::unordered_map<std::string, RtComponentPropertyValue> enumValues;
+  // specify as `property.enumValues = { {"DisplayName1", {enumClass::Value1, "DocString1"}}, {"DisplayName2", {enumClass::Value2, "DocString2"}}, ... }`
+  struct EnumProperty {
+    template<typename T, typename = std::enable_if_t<std::is_enum_v<T>>>
+    EnumProperty(const T& value, const std::string& docString) : 
+      value(propertyValueForceType<std::underlying_type_t<T>>(value)), docString(docString) {}
+    RtComponentPropertyValue value;
+    std::string docString;
+  };
+  std::map<std::string,EnumProperty> enumValues;
 
   // Validation methods
   bool isValid() const {
@@ -181,6 +212,8 @@ struct RtComponentSpec {
   int version = 0;
 
   std::string name;
+  std::string uiName;
+  std::string categories;
   std::string docString;
 
   // Function to construct a batch of components from a graph topology and initial graph state.
@@ -189,6 +222,8 @@ struct RtComponentSpec {
   // Optional functions for component batches.  Set these by adding a lambda to the end of the component definition macro:
   // `spec.applySceneOverrides = [](...) { ... }`
 
+  // If this component has been renamed, list the old `name`s here for backwards compatibility.
+  std::vector<std::string> oldNames;
 
   // Optional function intended for applying values in the graph to renderable objects.  This is called near the top of SceneManager::prepareSceneData.
   std::function<void(const Rc<DxvkContext>& context, RtComponentBatch& batch, const size_t start, const size_t end)> applySceneOverrides;
@@ -215,10 +250,22 @@ struct RtComponentSpec {
 
     return true;
   }
+  
+  // `name` stores the full omniverse class name, including the namespace.
+  // This function returns just the class name.
+  std::string getClassName() const {
+    size_t lastPeriod = name.find_last_of('.');
+    if (lastPeriod == std::string::npos) {
+      return name; // Return the full name if no period found
+    }
+    return name.substr(lastPeriod + 1);
+  }
 };
 
 void registerComponentSpec(const RtComponentSpec* spec);
 const RtComponentSpec* getComponentSpec(const RtComponentType& componentType);
+bool writeAllOGNSchemas(const char* outputFolderPath);
+bool writeAllMarkdownDocs(const char* outputFolderPath);
 
 // Stores all of the information about what components the graph contains and how they are related.
 struct RtGraphTopology {
@@ -268,3 +315,12 @@ public:
 };
 
 }  // namespace dxvk
+
+// Export functions for unit testing
+#ifdef _WIN32
+extern "C" __declspec(dllexport) bool writeAllOGNSchemas(const char* outputFolderPath);
+extern "C" __declspec(dllexport) bool writeAllMarkdownDocs(const char* outputFolderPath);
+#else
+extern "C" __attribute__((visibility("default"))) bool writeAllOGNSchemas(const char* outputFolderPath);
+extern "C" __attribute__((visibility("default"))) bool writeAllMarkdownDocs(const char* outputFolderPath);
+#endif

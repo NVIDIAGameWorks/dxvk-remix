@@ -21,40 +21,19 @@
 */
 
 #pragma once
+#include <variant>
+#include <vector>
+#include <string>
+#include <fstream>
+#include <iostream>
 
-#include "rtx_graph_component_macros.h"
+#include "rtx_graph_types.h"
+#include "../util/log/log.h"
+#include "../util/util_string.h"
 
 namespace dxvk {
 
-#define LIST_INPUTS(X) \
-  X(RtComponentPropertyType::Float, 0.0f, inputFloat, "The input float.", property.minValue = 0.0f, property.maxValue = 1.0f) \
-  X(RtComponentPropertyType::Bool, false, inputBool, "The input bool.")
+bool writeComponentMarkdown(const RtComponentSpec* spec, const char* outputFolderPath);
+bool writeMarkdownIndex(const std::vector<const RtComponentSpec*>& specs, const char* outputFolderPath);
 
-#define LIST_STATES(X) \
-  X(RtComponentPropertyType::Float, 0.0f, state1, "The state float.")
-
-#define LIST_OUTPUTS(X) \
-  X(RtComponentPropertyType::Float, 0.0f, outputFloat, "The output float.")
-
-REMIX_COMPONENT( \
-  /* the C++ class name */ TestComponent, \
-  /* the USD name */       "remix.test.component", \
-  /* the doc string */     "this is a test component, do not use.", \
-  /* the version number */ 1, \
-  LIST_INPUTS, LIST_STATES, LIST_OUTPUTS);
-
-#undef LIST_INPUTS
-#undef LIST_STATES
-#undef LIST_OUTPUTS
-
-void TestComponent::updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
-  // simple example update function.
-  for (size_t i = start; i < end; i++) {
-    if (m_inputBool[i]) {
-      m_state1[i] = m_inputFloat[i];
-    }
-    m_outputFloat[i] = m_state1[i];
-  }
-}
-
-}  // namespace dxvk
+}  // namespace dxvk 

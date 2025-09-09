@@ -41,7 +41,9 @@ namespace dxvk {
     enum class QualityPreset : uint32_t {
       Medium = 0,
       High,
-      Ultra
+      Ultra,
+
+      Count
     };
 
     struct NrcOptions {
@@ -131,6 +133,7 @@ namespace dxvk {
                       "Higher quality presets result in more responsive and detailed indirect lighting.",
                       args.environment = "RTX_NRC_QUALITY_PRESET",
                       args.onChangeCallback = &onQualityPresetChanged);
+      inline static QualityPreset s_prevQualityPreset = QualityPreset::Count;
 
       RTX_OPTION("rtx.neuralRadianceCache", float, luminanceClampMultiplier, 0.f,
                  "Luminance based clamp multiplier to use for clamping radiance passed to NRC during training.\n"

@@ -589,8 +589,7 @@ namespace dxvk {
     if (pReplacements != nullptr) {
       drawReplacements(ctx, &input, pReplacements, renderMaterialData);
     } else {
-      const RtxParticleSystemDesc* pParticleDesc = input.categories.test(InstanceCategories::ParticleEmitter) ? &RtxParticleSystemManager::createGlobalParticleSystemDesc() : nullptr;
-      processDrawCallState(ctx, input, renderMaterialData, nullptr, pParticleDesc);
+      processDrawCallState(ctx, input, renderMaterialData, nullptr, nullptr);
     }
   }
 
@@ -700,30 +699,19 @@ namespace dxvk {
     // We also should be tracking and garbage collecting the entire draw call together,
     // rather than doing each instance separately.
     ReplacementInstance* replacementInstance = nullptr;
-    bool isFirstFrame = false;
 
     // Detect replacements of meshes that would have unstable hashes due to the vertex hash using vertex data from a shared vertex buffer.
     // TODO: Once the vertex hash only uses vertices referenced by the index buffer, this should be removed.
     const bool highlightUnsafeReplacement = RtxOptions::useHighlightUnsafeReplacementMode() &&
         input->getGeometryData().indexBuffer.defined() && input->getGeometryData().vertexCount > input->getGeometryData().indexCount;
-    if (!pReplacements->empty() && (*pReplacements)[0].includeOriginal) {
-      DrawCallState newDrawCallState(*input);
-      newDrawCallState.categories = (*pReplacements)[0].categories.applyCategoryFlags(newDrawCallState.categories);
-      RtInstance* rootInstance = processDrawCallState(ctx, newDrawCallState, renderMaterialData);
-      if (rootInstance != nullptr) {
-        replacementInstance = rootInstance->getPrimInstanceOwner().getReplacementInstance();
-        if (replacementInstance == nullptr) {
-          isFirstFrame = true;
-          // Deleted when `PrimInstanceOwner::setReplacementInstance` is called on this instance with a nullptr.
-          replacementInstance = new ReplacementInstance();
-          replacementInstance->setup(PrimInstance(rootInstance), pReplacements->size());
-          rootInstance->getPrimInstanceOwner().setReplacementInstance(replacementInstance, 0, rootInstance, PrimInstance::Type::Instance);
-        }
-      }
-    }
     for (size_t i = 0; i < pReplacements->size(); i++) {
       auto& replacement = (*pReplacements)[i];
-      if (replacement.type == AssetReplacement::eMesh && !replacement.includeOriginal) {
+      RtInstance* instance = nullptr;
+      if (replacement.includeOriginal) {
+        DrawCallState newDrawCallState(*input);
+        newDrawCallState.categories = replacement.categories.applyCategoryFlags(newDrawCallState.categories);
+        instance = processDrawCallState(ctx, newDrawCallState, renderMaterialData);
+      } else if (replacement.type == AssetReplacement::eMesh) {
         DrawCallTransforms transforms = input->getTransformData();
         
         transforms.objectToWorld = transforms.objectToWorld * replacement.replacementToObject;
@@ -761,34 +749,24 @@ namespace dxvk {
 
         RtInstance* existingInstance = replacementInstance ? replacementInstance->prims[i].getInstance() : nullptr;
         // Only use findSimilarInstance if we're processing the root of a replacement - all others should just rely on the existingInstance.
-        RtInstance* instance = processDrawCallState(ctx, newDrawCallState, renderMaterialData, existingInstance, pParticleSystemDesc);
-
-        if (instance) {
-          if (replacementInstance == nullptr) {
-            // first mesh in this replacement, so it becomes the root.
-            replacementInstance = instance->getPrimInstanceOwner().getReplacementInstance();
-
-            if (replacementInstance == nullptr) {
-              // First time this draw call is replaced, need to create the replacementInstance
-              isFirstFrame = true;
-              // Deleted when `PrimInstanceOwner::setReplacementInstance` is called on this instance with a nullptr.
-              replacementInstance = new ReplacementInstance();
-              replacementInstance->setup(PrimInstance(instance), pReplacements->size());
-            }
-          }
-          if (isFirstFrame) {
-            // This is the first frame this draw call is being drawn,
-            // so each replacement mesh needs to be registered with the replacementInstance.
-            instance->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, instance, PrimInstance::Type::Instance);
-          }
+        instance = processDrawCallState(ctx, newDrawCallState, renderMaterialData, existingInstance, pParticleSystemDesc);
+      }
+      
+      if (instance != nullptr) {
+        if (replacementInstance == nullptr) {
+          // first mesh in this replacement, so it becomes the root.
+          replacementInstance = instance->getPrimInstanceOwner().getOrCreateReplacementInstance(instance, PrimInstance::Type::Instance, i, pReplacements->size());
+        }
+        if (replacementInstance->prims[i].getUntyped() == nullptr) {
+          // First frame, need to set the replacement instance.
+          instance->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, instance, PrimInstance::Type::Instance);
+        } else if (replacementInstance->prims[i].getInstance() != instance) {
+          Logger::err(str::format("ReplacementInstance: instance returned by processDrawCallState is not the same as the one stored. index: ", i,"  mesh hash: ", std::hex, input->getHash(RtxOptions::geometryAssetHashRule())));
+          assert(false && "instance returned by processDrawCallState is not the same as the one stored.");
         }
       }
     }
 
-    uint64_t rootInstanceId = 0;
-    if (replacementInstance) {
-      rootInstanceId = replacementInstance->root.getInstance()->getId();
-    }
     for (size_t i = 0; i < pReplacements->size(); i++) {
       auto&& replacement = (*pReplacements)[i];
       if (replacement.type == AssetReplacement::eLight) {
@@ -803,13 +781,18 @@ namespace dxvk {
         }
         if (replacement.lightData.has_value()) {
           RtLight localLight = replacement.lightData->toRtLight();
-          localLight.setRootInstanceId(rootInstanceId);
           localLight.applyTransform(input->getTransformData().objectToWorld);
-          RtLight* newLight = m_lightManager.addLight(localLight, *input, RtLightAntiCullingType::MeshReplacement);
-
-          if (newLight && isFirstFrame) {
-            // This is the first frame this draw call is being drawn,
-            // so each replacement light needs to be registered with the replacementInstance.
+          
+          // Handle all non-root lights as externally tracked lights - they'll be cleaned up when the root is garbage collected.
+          // For mesh replacements, the root is always a mesh, so no need to handle root lights here.
+          RtLight* existingLight = replacementInstance->prims[i].getLight();
+          if (existingLight != nullptr) {
+            if (existingLight->getPrimInstanceOwner().getReplacementInstance() != replacementInstance) {
+              ONCE(assert(false && "light in a replacementInstance believes it is owned by a different replacementInstance."));
+            }
+            m_lightManager.updateExternallyTrackedLight(existingLight, localLight);
+          } else {
+            RtLight* newLight = m_lightManager.createExternallyTrackedLight(localLight);
             newLight->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, newLight, PrimInstance::Type::Light);
           }
         }
@@ -819,21 +802,19 @@ namespace dxvk {
     // Create graphs associated with this replacement, if they haven't already been created.
     // Graphs are cleaned up when the replacementInstance is destroyed, which happens when the 
     // root instance is destroyed.
-    if (isFirstFrame) {
-      for (size_t i = 0; i < pReplacements->size(); i++) {
-        auto&& replacement = (*pReplacements)[i];
-        if (replacement.type == AssetReplacement::eGraph) {
-          if (!replacement.graphState.has_value()) {
-            Logger::err(str::format(
-                "Graph prims missing graph state in mesh replacement.  mesh hash: ",
-                std::hex, input->getHash(RtxOptions::geometryAssetHashRule())
-            ));
-            break;
-          }
-          GraphInstance* graphInstance = m_graphManager.addInstance(ctx, replacement.graphState.value(), replacementInstance);
-          if (graphInstance) {
-            graphInstance->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, graphInstance, PrimInstance::Type::Graph);
-          }
+    for (size_t i = 0; i < pReplacements->size(); i++) {
+      auto&& replacement = (*pReplacements)[i];
+      if (replacement.type == AssetReplacement::eGraph && replacementInstance->prims[i].getGraph() == nullptr) {
+        if (!replacement.graphState.has_value()) {
+          Logger::err(str::format(
+              "Graph prims missing graph state in mesh replacement.  mesh hash: ",
+              std::hex, input->getHash(RtxOptions::geometryAssetHashRule())
+          ));
+          break;
+        }
+        GraphInstance* graphInstance = m_graphManager.addInstance(ctx, replacement.graphState.value());
+        if (graphInstance) {
+          graphInstance->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, graphInstance, PrimInstance::Type::Graph);
         }
       }
     }
@@ -1042,11 +1023,20 @@ namespace dxvk {
       }
     }
 
+    // Priority ordering for particle system descriptors is: Mesh, Material, Texture.  This matches the implementation in toolkit.
+    // By this point, pParticleSystemDesc will contain the information from a mesh replacement (if one exists), so we just handle
+    // materials replacements, and texture taggin categories below.
+    if (!pParticleSystemDesc) {
+      pParticleSystemDesc = renderMaterialData.getParticleSystemDesc();
+    }
+    if (!pParticleSystemDesc && drawCallState.categories.test(InstanceCategories::ParticleEmitter)) {
+      pParticleSystemDesc = &RtxParticleSystemManager::createGlobalParticleSystemDesc();
+    }
     if (instance && pParticleSystemDesc) {
       RtxParticleSystemManager& particleSystem = device()->getCommon()->metaParticleSystem();
       particleSystem.spawnParticles(ctx.ptr(), *pParticleSystemDesc, instance->getVectorIdx(), drawCallState, renderMaterialData);
 
-      if(pParticleSystemDesc->hideEmitter) {
+      if (pParticleSystemDesc->hideEmitter) {
         instance->setHidden(true);
       }
     }
@@ -1420,7 +1410,6 @@ namespace dxvk {
       const Matrix4 lightTransform = LightUtils::getLightTransform(light);
 
       ReplacementInstance* replacementInstance = nullptr;
-      bool isFirstFrame = false;
 
       // TODO(TREX-1091) to implement meshes as light replacements, replace the below loop with a call to drawReplacements.
       for (size_t i = 0; i < pReplacements->size(); i++) {
@@ -1439,36 +1428,33 @@ namespace dxvk {
             rtReplacementLight.applyTransform(lightTransform); // note: we dont need to consider the transform of parent replacement light in this scenario, this is detected on mod load and so absolute transform is used
           }
 
-          // We may need to remove this light from the existing pool if we replace it
-          const XXH64_hash_t replaceExistingLight = replacementLight.lightOverride() ? rtLight.getInstanceHash() : kEmptyHash;
+          if (replacementInstance == nullptr) {
+            // Handle the root light as a normal light.
+            RtLight* newLight;
 
-          RtLight* newLight;
-
-          // Setup Light Replacement for Anti-Culling
-          if (RtxOptions::AntiCulling::isLightAntiCullingEnabled() && rtLight.getType() == RtLightType::Sphere) {
-            // Apply the light
-            newLight = m_lightManager.addLight(rtReplacementLight, RtLightAntiCullingType::LightReplacement, replaceExistingLight);
-          } else {
-            // Apply the light
-            newLight = m_lightManager.addLight(rtReplacementLight, RtLightAntiCullingType::Ignore, replaceExistingLight);
-          }
-
-          // Setup tracking for all the lights created for this replacement.
-          if (newLight != nullptr && replacementInstance == nullptr) {
-            // This is the first light created, so it should be the root.
-            replacementInstance = newLight->getPrimInstanceOwner().getReplacementInstance();
-            if (replacementInstance == nullptr) {
-              // The root should only have a null replacementInstance on the first frame it is drawn - so set it up here.
-              isFirstFrame = true;
-              // Deleted when `PrimInstanceOwner::setReplacementInstance` is called on this instance with a nullptr.
-              replacementInstance = new ReplacementInstance();
-              replacementInstance->setup(PrimInstance(newLight), pReplacements->size());
+            // Setup Light Replacement for Anti-Culling
+            RtLightAntiCullingType antiCullingType = RtLightAntiCullingType::Ignore;
+            if (RtxOptions::AntiCulling::isLightAntiCullingEnabled() && rtLight.getType() == RtLightType::Sphere) {
+              antiCullingType = RtLightAntiCullingType::LightReplacement;
             }
-          }
 
-          if (isFirstFrame && newLight != nullptr) {
-            // First frame these replacements are being drawn, so register each light with the replacementInstance.
-            newLight->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, newLight, PrimInstance::Type::Light);
+            // Apply the light
+            newLight = m_lightManager.addLight(rtReplacementLight, antiCullingType);
+
+            // Setup tracking for all the lights created for this replacement.
+            if (newLight != nullptr) {
+              // This is the first light created, so it will be the root.
+              replacementInstance = newLight->getPrimInstanceOwner().getOrCreateReplacementInstance(newLight, PrimInstance::Type::Light, i, pReplacements->size());
+            }
+          } else {
+            // Handle all non-root lights as externally tracked lights - they'll be cleaned up when the root is garbage collected.
+            RtLight* existingLight = replacementInstance->prims[i].getLight();
+            if (existingLight != nullptr) {
+              m_lightManager.updateExternallyTrackedLight(existingLight, rtReplacementLight);
+            } else {
+              RtLight* newLight = m_lightManager.createExternallyTrackedLight(rtReplacementLight);
+              newLight->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, newLight, PrimInstance::Type::Light);
+            }
           }
         } else {
           assert(false); // We don't support meshes as children of lights yet.
@@ -1738,7 +1724,8 @@ namespace dxvk {
       if(state.optionalParticleDesc.has_value()) {
         pParticles = &state.optionalParticleDesc.value();
       }
-      processDrawCallState(ctx, state.drawCall, material  != nullptr ? MaterialData(*material) : LegacyMaterialData().as<OpaqueMaterialData>(), nullptr, pParticles);
+
+      processDrawCallState(ctx, state.drawCall, material != nullptr ? MaterialData(*material) : LegacyMaterialData().as<OpaqueMaterialData>(), nullptr, pParticles);
     }
   }
 

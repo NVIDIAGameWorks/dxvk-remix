@@ -344,11 +344,14 @@ dxvk_src = files([
   'rtx_render/graph/rtx_graph_instance.cpp',
   'rtx_render/graph/rtx_graph_instance.h',
   'rtx_render/graph/rtx_graph_manager.h',
+  'rtx_render/graph/rtx_graph_ogn_writer.cpp',
+  'rtx_render/graph/rtx_graph_ogn_writer.h',
+  'rtx_render/graph/rtx_graph_md_writer.cpp',
+  'rtx_render/graph/rtx_graph_md_writer.h',
   'rtx_render/graph/rtx_graph_types.cpp',
   'rtx_render/graph/rtx_graph_types.h',
   'rtx_render/graph/rtx_graph_usd_parser.cpp',
   'rtx_render/graph/rtx_graph_usd_parser.h',
-  'rtx_render/graph/test_component.h',
 
   'rtx_render/rtx_constants.h',
 

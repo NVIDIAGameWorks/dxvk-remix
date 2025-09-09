@@ -259,8 +259,6 @@ namespace dxvk {
     downscaleExtent.width = std::max(downscaleExtent.width, 1u);
     downscaleExtent.height = std::max(downscaleExtent.height, 1u);
 
-    m_common->metaDLFG().setDisplaySize(uint2(upscaleExtent.width, upscaleExtent.height));
-
     return downscaleExtent;
   }
 
@@ -1211,7 +1209,6 @@ namespace dxvk {
 
     constants.uniformRandomNumber = jenkinsHash(constants.frameIdx);
     constants.vertexColorStrength = RtxOptions::vertexColorStrength();
-    constants.vertexColorIsBakedLighting = RtxOptions::vertexColorIsBakedLighting();
     constants.viewModelRayTMax = RtxOptions::ViewModel::rangeMeters() * RtxOptions::getMeterToWorldUnitScale();
     constants.roughnessDemodulationOffset = m_common->metaDemodulate().demodulateRoughnessOffset();
     
@@ -1261,6 +1258,10 @@ namespace dxvk {
     getDenoiseArgs(primaryDirectNrdArgs, primaryIndirectNrdArgs, secondaryNrdArgs);
 
     constants.primaryDirectMissLinearViewZ = primaryDirectNrdArgs.missLinearViewZ;
+
+    constants.wboitEnergyLossCompensation = RtxOptions::wboitEnergyLossCompensation();
+    constants.wboitDepthWeightTuning = RtxOptions::wboitDepthWeightTuning();
+    constants.wboitEnabled = RtxOptions::wboitEnabled();
 
     // Upload the constants to the GPU
     {

@@ -131,11 +131,7 @@ namespace dxvk {
   void D3D9Rtx::prepareVertexCapture(const int vertexIndexOffset) {
     ScopedCpuProfileZone();
 
-    struct CapturedVertex {
-      Vector4 position;
-      Vector4 texcoord0;
-      Vector4 normal0;
-    };
+    static_assert(sizeof CapturedVertex == 48, "The injected shader code is expecting this exact structure size to work correctly, see emitVertexCaptureWrite in dxso_compiler.cpp");
 
     auto BoundShaderHas = [&](const D3D9CommonShader* shader, DxsoUsage usage, bool inOut)-> bool {
       if (shader == nullptr)
@@ -173,7 +169,7 @@ namespace dxvk {
     }
 
     // Check if we should/can get normals.  We don't see a lot of games sending normals to pixel shader, so we must capture from the IA output (or Vertex input)
-    if (BoundShaderHas(vertexShader, DxsoUsage::Normal, true) && useVertexCapturedNormals()) {
+    if ((BoundShaderHas(vertexShader, DxsoUsage::Normal, false) || BoundShaderHas(vertexShader, DxsoUsage::Normal, true)) && useVertexCapturedNormals()) {
       const uint32_t normalOffset = offsetof(CapturedVertex, normal0);
       geoData.normalBuffer = RasterBuffer(slice, normalOffset, stride, VK_FORMAT_R32G32B32_SFLOAT);
       assert(geoData.normalBuffer.offset() % 4 == 0);
@@ -181,15 +177,20 @@ namespace dxvk {
       geoData.normalBuffer = RasterBuffer();
     }
 
+    // Check if we should/can get colors
+    if (BoundShaderHas(vertexShader, DxsoUsage::Color, false) && d3d9State().pixelShader.ptr() == nullptr) {
+      const uint32_t colorOffset = offsetof(CapturedVertex, color0);
+      geoData.color0Buffer = RasterBuffer(slice, colorOffset, stride, VK_FORMAT_B8G8R8A8_UNORM);
+      assert(geoData.color0Buffer.offset() % 4 == 0);
+    }
+
     auto constants = m_vsVertexCaptureData->allocSlice();
 
-    // NOTE: May be better to move reverse transformation to end of frame, because this won't work if there hasnt been a FF draw this frame to scrape the matrix from...
-    const Matrix4& ObjectToProjection = m_activeDrawCallState.transformData.viewToProjection * m_activeDrawCallState.transformData.worldToView * m_activeDrawCallState.transformData.objectToWorld;
-
-    // Set constants required for vertex shader injection
-    D3D9RtxVertexCaptureData& data = *(D3D9RtxVertexCaptureData*) constants.mapPtr;
-    // Apply an inverse transform to get positions in object space (what renderer expects)
-    data.projectionToWorld = inverse(ObjectToProjection);
+    // Upload
+    auto& data = *reinterpret_cast<D3D9RtxVertexCaptureData*>(constants.mapPtr);
+    data.invProj = inverse(m_activeDrawCallState.transformData.viewToProjection);
+    data.viewToWorld = inverseAffine(m_activeDrawCallState.transformData.worldToView);
+    data.worldToObject = inverseAffine(m_activeDrawCallState.transformData.objectToWorld);
     data.normalTransform = m_activeDrawCallState.transformData.objectToWorld;
     data.baseVertex = (uint32_t)std::max(0, vertexIndexOffset);
 
@@ -898,15 +899,42 @@ namespace dxvk {
     if constexpr (FixedFunction) {
       memset(&texcoordIndexToStage[0], kInvalidStage, sizeof(texcoordIndexToStage));
       for (uint32_t stage = 0; stage < caps::TextureStageCount; stage++) {
-        auto isTextureFactorBlendingEnabled = [](const auto& textureStageStates) -> bool {
-          const auto colorOp = textureStageStates[DXVK_TSS_COLOROP];
-          const auto alphaOp = textureStageStates[DXVK_TSS_ALPHAOP];
-          return (textureStageStates[DXVK_TSS_COLORARG1] == D3DTA_TFACTOR ||
-                  textureStageStates[DXVK_TSS_COLORARG2] == D3DTA_TFACTOR ||
-                  textureStageStates[DXVK_TSS_ALPHAARG1] == D3DTA_TFACTOR ||
-                  textureStageStates[DXVK_TSS_ALPHAARG2] == D3DTA_TFACTOR) &&
-                 (colorOp == D3DTOP_MODULATE || colorOp == D3DTOP_MODULATE2X || colorOp == D3DTOP_MODULATE4X ||
-                  alphaOp == D3DTOP_MODULATE || alphaOp == D3DTOP_MODULATE2X || alphaOp == D3DTOP_MODULATE4X);
+        auto isTextureFactorBlendingEnabled = [&](const auto& tss) -> bool {
+          const auto colorOp = tss[DXVK_TSS_COLOROP];
+          const auto alphaOp = tss[DXVK_TSS_ALPHAOP];
+
+          if (colorOp == D3DTOP_DISABLE && alphaOp == D3DTOP_DISABLE)
+            return false;
+
+          const auto a1c = tss[DXVK_TSS_COLORARG1] & D3DTA_SELECTMASK;
+          const auto a2c = tss[DXVK_TSS_COLORARG2] & D3DTA_SELECTMASK;
+          const auto a1a = tss[DXVK_TSS_ALPHAARG1] & D3DTA_SELECTMASK;
+          const auto a2a = tss[DXVK_TSS_ALPHAARG2] & D3DTA_SELECTMASK;
+
+          // If previous stage wrote to TEMP the prior result source this stage
+          // should read is D3DTA_TEMP otherwise its D3DTA_CURRENT.
+          DWORD prevResultSel = D3DTA_CURRENT;
+          if (stage != 0) {
+            const auto& prev = d3d9State().textureStages[stage - 1];
+            const auto resultArg = prev[DXVK_TSS_RESULTARG] & D3DTA_SELECTMASK;
+            prevResultSel = (resultArg == D3DTA_TEMP) ? D3DTA_TEMP : D3DTA_CURRENT;
+          }
+
+          auto isModulate = [](DWORD op) {
+            return op == D3DTOP_MODULATE || op == D3DTOP_MODULATE2X || op == D3DTOP_MODULATE4X;
+          };
+
+          const bool colorMul =
+            isModulate(colorOp) &&
+            ((a1c == D3DTA_TFACTOR && a2c == prevResultSel) ||
+             (a2c == D3DTA_TFACTOR && a1c == prevResultSel));
+
+          const bool alphaMul =
+            isModulate(alphaOp) &&
+            ((a1a == D3DTA_TFACTOR && a2a == prevResultSel) ||
+             (a2a == D3DTA_TFACTOR && a1a == prevResultSel));
+
+          return colorMul || alphaMul;
         };
 
         // Support texture factor blending besides the first stage. Currently, we only support 1 additional stage tFactor blending.
@@ -1049,7 +1077,7 @@ namespace dxvk {
           DxvkRtTextureOperation& texop = m_activeDrawCallState.materialData.textureColorOperation;
           if (RtxOptions::terrainAsDecalsAllowOverModulate()) {
             if (texop == DxvkRtTextureOperation::Modulate2x || texop == DxvkRtTextureOperation::Modulate4x) {
-              texop = DxvkRtTextureOperation::Force_Modulate4x;
+              texop = DxvkRtTextureOperation::Force_Modulate2x;
             }
           }
         }

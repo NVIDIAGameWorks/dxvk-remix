@@ -6,6 +6,7 @@
 #include "dxso_isgn.h"
 #include "dxso_util.h"
 
+#include "../d3d9/d3d9_state.h"
 #include "../d3d9/d3d9_constant_layout.h"
 #include "../d3d9/d3d9_shader_permutations.h"
 #include "../spirv/spirv_module.h"
@@ -164,6 +165,7 @@ namespace dxvk {
     // NV-DXVK start: vertex shader data capture implementation
     // Special buffer for vertex streamout
     uint32_t vertexCaptureConstants;
+    uint32_t capturedVertexStructType;
     DxsoUav vertexOutBuf;
     // NV-DXVK end
 
@@ -179,6 +181,7 @@ namespace dxvk {
     // NV-DXVK start: vertex shader data capture implementation
     DxsoRegisterPointer oTex0;
     DxsoRegisterPointer oNormal0;
+    DxsoRegisterPointer oColor0;
     // NV-DXVK end
   };
 
@@ -722,7 +725,7 @@ namespace dxvk {
     // NV-DXVK start: vertex shader data capture implementation
     void emitVertexCaptureOp();
 
-    void emitVertexCaptureWrite(uint32_t writeAddress, const uint32_t worldPosId);
+    void emitVertexCaptureWrite(uint32_t vertexIndex, CapturedVertexMembers memberIdx, uint32_t valueId, uint32_t valueType);
 
     // NV-DXVK end
 

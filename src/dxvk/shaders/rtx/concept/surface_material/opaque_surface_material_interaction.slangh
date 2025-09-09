@@ -546,7 +546,16 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   const bool roughnessLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.roughnessTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, roughnessSample);
   const bool metallicLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.metallicTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, metallicSample);
   const bool emissiveColorLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.emissiveColorTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, emissiveColorSample);
+  
+  // Load Emissive Color
 
+  f16vec3 emissiveColor = opaqueSurfaceMaterial.emissiveColorConstant;
+
+  if (emissiveColorLoaded)
+  {
+    emissiveColor = emissiveColorSample.xyz;
+  }
+  
   // Load Albedo/Opacity
 
   f16vec3 albedo = opaqueSurfaceMaterial.albedoOpacityConstant.rgb;
@@ -605,7 +614,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
 
 #endif
 
-  f16vec4 tFactor = 0.h;
+  f16vec4 tFactor = unorm4x8ToFloat4x16(surface.tFactor).bgra;
 
   // WAR for REMIX-1573: texture ops for opacity should happen during baking and be skipped here for baked terrain,
   // but right now the opacity is not 1 in the baked texture where it is expected to be and thus texture ops
@@ -614,55 +623,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   if (applyTextureOperations) 
 #endif
   {
-    // Adjust opacity via texture operations.
-    // Fixed function texture stage state for alpha channel
-
-    float16_t textureAlphaArg1, textureAlphaArg2;
-
-    // Note: Custom decoding done here rather than using our usual unorm to f16 decoding functions to match encoding
-    // based on D3D9's texture factor encoding for a more exact representation.
-    tFactor.a = float16_t((surface.tFactor >> 24) & 0xff) / 255.0h;
-    tFactor.r = float16_t((surface.tFactor >> 16) & 0xff) / 255.0h;
-    tFactor.g = float16_t((surface.tFactor >> 8)  & 0xff) / 255.0h;
-    tFactor.b = float16_t((surface.tFactor)       & 0xff) / 255.0h;
-
-    chooseTextureArgument(textureAlphaArg1, surface.textureAlphaArg1Source, opacity, surfaceInteraction.vertexColor.a, tFactor.a, opacity);
-    chooseTextureArgument(textureAlphaArg2, surface.textureAlphaArg2Source, opacity, surfaceInteraction.vertexColor.a, tFactor.a, float16_t(1.0h));
-    chooseTextureOperationAlpha(opacity, surface.textureAlphaOperation, textureAlphaArg1, textureAlphaArg2);
-  
-    calcOpaqueSurfaceMaterialOpacity(
-      albedo, opacity, surface, opacity, emissiveBlendOverrideInfluence);
-  }
-
-  if (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_IGNORE_ALPHA_CHANNEL)
-  {
-    opacity = 1.h;
-  }
-
-  // Note: Gamma correct albedo input (be it from a constant or a texture). Currently assuming all textures are not using sRGB formats which
-  // automatically do this conversion.
-  // This conversion is done *after* calcOpaqueSurfaceMaterialOpacity to correctly apply double multiplicative blending.
-  // Todo: Disable this for when a sRGB texture is the source of the albedo.
-  albedo = gammaToLinear(albedo);
-  
-  // Load Emissive Color
-
-  f16vec3 emissiveColor = opaqueSurfaceMaterial.emissiveColorConstant;
-
-  if (emissiveColorLoaded)
-  {
-    emissiveColor = emissiveColorSample.xyz;
-  }
-
-  // Note: Gamma correct emissive color input (be it from a constant or a texture). Currently assuming all textures are not using sRGB formats which
-  // automatically do this conversion.
-  // Todo: Disable this for when a sRGB texture is the source of the emissive color.
-  emissiveColor = gammaToLinear(emissiveColor);
-
-  // Apply vertex color via texture operations
-  if (applyTextureOperations)
-  {
-    if (cb.vertexColorIsBakedLighting) {
+    if (surface.isVertexColorBakedLighting) {
       // "Normalize" vertex color to remove lighting contribution in different vertices.
       // We assume the diffuse term contributes most lighting. Therefore, vertex color = diffuseColor * (N*L).
       // By dividing the vertex color by its largest component, the result is irrelavant to N*L, but proportional to the 
@@ -674,9 +635,6 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
       surfaceInteraction.vertexColor.rgb = mix(f16vec3(1), surfaceInteraction.vertexColor.rgb, float16_t(cb.vertexColorStrength));
     }
 
-    // Note: Gamma correct vertex color input.
-    surfaceInteraction.vertexColor.rgb = gammaToLinear(surfaceInteraction.vertexColor.rgb);
-
     // Fixed function texture stage setting
     f16vec3 textureArg1 = f16vec3(1.0), textureArg2 = f16vec3(1.0);
     chooseTextureArgument(textureArg1, surface.textureColorArg1Source, albedo, surfaceInteraction.vertexColor.rgb, tFactor.rgb, f16vec3(1.0));
@@ -685,7 +643,6 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     if (surface.isTextureFactorBlend) {
       albedo *= tFactor.rgb;
     }
-    
 
     // Fixed function texture stage setting (emissive)
     chooseTextureArgument(textureArg1, surface.textureColorArg1Source, emissiveColor, surfaceInteraction.vertexColor.rgb, tFactor.rgb, f16vec3(1.0));
@@ -694,11 +651,38 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     if (surface.isTextureFactorBlend) {
       emissiveColor *= tFactor.rgb;
     }
+    
+    // Adjust opacity via texture operations.
+    // Fixed function texture stage state for alpha channel
+
+    float16_t textureAlphaArg1, textureAlphaArg2;
+    chooseTextureArgument(textureAlphaArg1, surface.textureAlphaArg1Source, opacity, surfaceInteraction.vertexColor.a, tFactor.a, opacity);
+    chooseTextureArgument(textureAlphaArg2, surface.textureAlphaArg2Source, opacity, surfaceInteraction.vertexColor.a, tFactor.a, float16_t(1.0h));
+    chooseTextureOperationAlpha(opacity, surface.textureAlphaOperation, textureAlphaArg1, textureAlphaArg2);
+    
+    // Ensure we perform these opacity calculations after the texture operations have been applied to abledo and alpha.
+    calcOpaqueSurfaceMaterialOpacity(
+      albedo, opacity, surface, opacity, emissiveBlendOverrideInfluence, cb.wboitEnabled);
   }
 
+  if (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_IGNORE_ALPHA_CHANNEL)
+  {
+    opacity = 1.h;
+  }
+  
+  // Note: Gamma correct albedo input (be it from a constant or a texture). Currently assuming all textures are not using sRGB formats which
+  // automatically do this conversion.
+  // Todo: Disable this for when a sRGB texture is the source of the albedo.
+  albedo = gammaToLinear(albedo);
+  
+  // Note: Gamma correct emissive color input (be it from a constant or a texture). Currently assuming all textures are not using sRGB formats which
+  // automatically do this conversion.
+  // Todo: Disable this for when a sRGB texture is the source of the emissive color.
+  emissiveColor = gammaToLinear(emissiveColor);
+  
   // Apply material modifiers/overrides
   albedo = saturate(albedo * cb.opaqueMaterialArgs.albedoScale + cb.opaqueMaterialArgs.albedoBias);
-
+  
   if (cb.opaqueMaterialArgs.enableThinFilmOverride)
   {
     // Note: Thickness override is already normalized to the proper 0-1 range by the CPU to match how the albedo texture alpha channel encodes thickness.

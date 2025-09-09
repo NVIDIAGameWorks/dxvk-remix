@@ -62,6 +62,12 @@ namespace dxvk::env {
     return result;
   }
   // NV-DXVK end
+
+  bool setEnvVar(const char* name, const char* value) {
+    const auto result = ::SetEnvironmentVariableW(str::tows(name).c_str(), str::tows(value).c_str());
+
+    return result != 0;
+  }
   
   DWORD getParentPID() {
     const DWORD pid = GetCurrentProcessId();
@@ -293,13 +299,11 @@ namespace dxvk::env {
     }
   }
 
-
   bool createDirectory(const std::string& path) {
     WCHAR widePath[MAX_PATH];
     str::tows(path.c_str(), widePath);
     return !!CreateDirectoryW(widePath, nullptr);
   }
-  
 
   void killProcess() {
     const DWORD pid = GetCurrentProcessId();

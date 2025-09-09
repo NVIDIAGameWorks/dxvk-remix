@@ -68,7 +68,7 @@ namespace dxvk {
       flags |= VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
 
     // This check can be overridden by replacement assets.
-    if (drawCall.getMaterialData().alphaBlendEnabled && !surface.alphaState.isDecal && !drawCall.getGeometryData().forceCullBit)
+    if (drawCall.getMaterialData().blendMode.enableBlending && !surface.alphaState.isDecal && !drawCall.getGeometryData().forceCullBit)
       flags |= VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
 
     switch (drawCall.getGeometryData().cullMode) {
@@ -150,7 +150,7 @@ namespace dxvk {
   namespace {
     template<int RtInstanceSize> struct CheckRtInstanceSize {
       // The second line of the build error should contain the new size of RtInstance in the template argument, i.e. `dxvk::CheckRtInstanceSize<newSize>`
-      static_assert(RtInstanceSize == 704, "RtInstance size has changed.  Fix the copy constructor above this message, then update the expected size.");
+      static_assert(RtInstanceSize == 728, "RtInstance size has changed.  Fix the copy constructor above this message, then update the expected size.");
     };
     CheckRtInstanceSize<sizeof(RtInstance)> _rtInstanceSizeTest;
   }
@@ -616,10 +616,10 @@ namespace dxvk {
       blendEnabled = opaqueMaterialData.getBlendEnabled();
       blendType = opaqueMaterialData.getBlendType();
       invertedBlend = opaqueMaterialData.getInvertedBlend();
-    } else if (drawCall.getMaterialData().alphaBlendEnabled) {
-      const auto srcColorBlendFactor = drawCall.getMaterialData().srcColorBlendFactor;
-      const auto dstColorBlendFactor = drawCall.getMaterialData().dstColorBlendFactor;
-      const auto colorBlendOp = drawCall.getMaterialData().colorBlendOp;
+    } else if (drawCall.getMaterialData().blendMode.enableBlending) {
+      const auto srcColorBlendFactor = drawCall.getMaterialData().blendMode.colorSrcFactor;
+      const auto dstColorBlendFactor = drawCall.getMaterialData().blendMode.colorDstFactor;
+      const auto colorBlendOp = drawCall.getMaterialData().blendMode.colorBlendOp;
 
       blendEnabled = true; // Note: Set to false later for cases which don't need it
 
@@ -648,9 +648,28 @@ namespace dxvk {
           blendType = RtxOptions::enableEmissiveBlendModeTranslation() ? BlendType::kReverseAlphaEmissive : BlendType::kReverseAlpha;
           invertedBlend = false;
         } else if (srcColorBlendFactor == VkBlendFactor::VK_BLEND_FACTOR_ONE && dstColorBlendFactor == VkBlendFactor::VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA) {
-          // Inverted Reverse Emissive Alpha Blending
-          blendType = RtxOptions::enableEmissiveBlendModeTranslation() ? BlendType::kReverseAlphaEmissive : BlendType::kReverseAlpha;
-          invertedBlend = true;
+          // Premultiplied Alpha vs Inverted Reverse Emissive Alpha Blending
+          const auto srcAlphaBlendFactor = drawCall.getMaterialData().blendMode.alphaSrcFactor;
+          const auto dstAlphaBlendFactor = drawCall.getMaterialData().blendMode.alphaDstFactor;
+          const auto alphaBlendOp = drawCall.getMaterialData().blendMode.alphaBlendOp;
+          const auto colorWriteMask = drawCall.getMaterialData().blendMode.writeMask;
+          const bool alphaWritesDisabled = (colorWriteMask & VK_COLOR_COMPONENT_A_BIT) == 0;
+
+          const bool looksPremultiplied =
+            (alphaBlendOp == VkBlendOp::VK_BLEND_OP_ADD &&
+             srcAlphaBlendFactor == VkBlendFactor::VK_BLEND_FACTOR_ONE &&
+             dstAlphaBlendFactor == VkBlendFactor::VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA) ||
+            alphaWritesDisabled;
+
+          if (looksPremultiplied) {
+            // Premultiplied Alpha (ONE, ONE_MINUS_SRC_ALPHA)
+            blendType = RtxOptions::enableEmissiveBlendModeTranslation() ? BlendType::kAlphaEmissive : BlendType::kAlpha;
+            invertedBlend = false;
+          } else {
+            // Inverted Reverse Emissive Alpha Blending
+            blendType = RtxOptions::enableEmissiveBlendModeTranslation() ? BlendType::kReverseAlphaEmissive : BlendType::kReverseAlpha;
+            invertedBlend = true;
+          }
         } else if (srcColorBlendFactor == VkBlendFactor::VK_BLEND_FACTOR_SRC_COLOR && dstColorBlendFactor == VkBlendFactor::VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR) {
           // Standard Color Blending
           blendType = BlendType::kColor;
@@ -781,7 +800,11 @@ namespace dxvk {
       // (need to check a 2x2x2 patch of cells to account for positions close to a border)
       result = const_cast<RtInstance*>(blas.getSpatialMap().getNearestData(worldPosition, uniqueObjectDistanceSqr, nearestDistSqr,
         [&] (const RtInstance* instance) {
-          return instance->m_frameLastUpdated != currentFrameIdx && instance->m_materialHash == material.getHash();
+          // Filter out instances by returning false if the instance:
+          // - has already been updated this frame
+          // - doesn't use the same material
+          // - is a sub prim of a replacement instance
+          return instance->m_frameLastUpdated != currentFrameIdx && instance->m_materialHash == material.getHash() && !instance->m_primInstanceOwner.isSubPrim();
         }
       ));
       if (nearestDistSqr == 0.0f && result != nullptr) {
@@ -1026,6 +1049,7 @@ namespace dxvk {
         currentInstance.surface.isAnimatedWater = currentInstance.testCategoryFlags(InstanceCategories::AnimatedWater);
         currentInstance.surface.associatedGeometryHash = drawCall.getHash(RtxOptions::geometryAssetHashRule());
         currentInstance.surface.isTextureFactorBlend = drawCall.getMaterialData().isTextureFactorBlend;
+        currentInstance.surface.isVertexColorBakedLighting = drawCall.getMaterialData().isVertexColorBakedLighting;
         currentInstance.surface.isMotionBlurMaskOut = currentInstance.testCategoryFlags(InstanceCategories::IgnoreMotionBlur);
         currentInstance.surface.ignoreTransparencyLayer = currentInstance.testCategoryFlags(InstanceCategories::IgnoreTransparencyLayer);
 
@@ -1034,9 +1058,7 @@ namespace dxvk {
         currentInstance.surface.skipSurfaceInteractionSpritesheetAdjustment = (currentInstance.m_materialType == MaterialDataType::RayPortal);
         currentInstance.surface.isInsideFrustum = RtxOptions::AntiCulling::isObjectAntiCullingEnabled() ? currentInstance.m_isInsideFrustum : true;
 
-        currentInstance.surface.srcColorBlendFactor = drawCall.getMaterialData().srcColorBlendFactor;
-        currentInstance.surface.dstColorBlendFactor = drawCall.getMaterialData().dstColorBlendFactor;
-        currentInstance.surface.colorBlendOp = drawCall.getMaterialData().colorBlendOp;
+        currentInstance.surface.blendModeState = drawCall.getMaterialData().blendMode;
 
         uint8_t spriteSheetRows = 0, spriteSheetCols = 0, spriteSheetFPS = 0;
 

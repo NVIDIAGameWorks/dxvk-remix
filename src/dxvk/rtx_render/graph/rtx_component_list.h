@@ -23,6 +23,5 @@
 // List all components in alphabetical order
 // TODO figure out how to include components without needing to include a header file in a list like this.
 
-#include "test_component.h"
 #include "components/animated_float.h"
 #include "components/sphere_light_override.h"

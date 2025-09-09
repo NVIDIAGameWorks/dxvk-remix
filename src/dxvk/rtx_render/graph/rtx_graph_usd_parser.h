@@ -24,9 +24,11 @@
 #include "../../../lssusd/usd_include_begin.h"
 #include <pxr/usd/usd/attribute.h>
 #include <pxr/usd/usd/prim.h>
+#include <pxr/usd/usd/property.h>
 #include <pxr/usd/usd/stage.h>
 #include <pxr/usd/usdGeom/mesh.h>
 #include <pxr/usd/usdLux/lightAPI.h>
+#include <pxr/usd/sdf/layer.h>
 #include "../../../lssusd/usd_include_end.h"
 
 #include <algorithm>
@@ -62,7 +64,9 @@ private:
   static const RtComponentSpec* getComponentSpecForPrim(const pxr::UsdPrim& nodePrim);
 
   // If the `propertyPath` has been encountered before, return the original index.
-  // Otherwise, create a new index for the property and return tht.
+  // Otherwise, create a new index for the property and return that.
+  // Also adds all possible property paths (current name + all old names) to the map
+  // so that connected properties can find the correct index regardless of which name they use.
   static size_t getPropertyIndex(
       RtGraphTopology& topology,
       const pxr::SdfPath& propertyPath,
@@ -72,6 +76,9 @@ private:
 
   static RtComponentPropertyValue getPropertyValue(const pxr::UsdRelationship& rel, const RtComponentPropertySpec& spec, PathToOffsetMap& pathToOffsetMap);
   static RtComponentPropertyValue getPropertyValue(const pxr::UsdAttribute& attr, const RtComponentPropertySpec& spec, PathToOffsetMap& pathToOffsetMap);
+  
+  // Helper function to resolve the correct property path considering old property names and layer strength
+  static pxr::SdfPath resolvePropertyPath(const pxr::UsdPrim& nodePrim, const RtComponentPropertySpec& property);
   template<typename T>
   static RtComponentPropertyValue getPropertyValue(const pxr::VtValue& value, const RtComponentPropertySpec& spec) {
     // Value may be declared but have no contents - common for output values.
@@ -88,14 +95,17 @@ private:
         return propertyValueForceType<uint8_t>(value.Get<T>());
       }
       return value.Get<T>();
+    } else if (constexpr (std::is_same_v<T, std::string>) && value.IsHolding<pxr::SdfAssetPath>()) {
+      return value.Get<pxr::SdfAssetPath>().GetAssetPath();
     } else if (value.IsHolding<pxr::TfToken>()) {
+      // Note: holds_alternative<bool> is a compiler error, so this constexpr check is needed.
       if constexpr (!std::is_same_v<T, bool>) {
-        if ( spec.enumValues.size() > 0) {
+        if (spec.enumValues.size() > 0) {
           // If the property has enum values, we need to look up the value in the enum values map.
           auto iter = spec.enumValues.find(value.Get<pxr::TfToken>().GetString());
           if (iter != spec.enumValues.end()) {
-            assert(std::holds_alternative<T>(iter->second) && "enumValue values must match the property type.");
-            return iter->second;
+            assert(std::holds_alternative<T>(iter->second.value) && "enumValue values must match the property type.");
+            return iter->second.value;
           }
         }
       }

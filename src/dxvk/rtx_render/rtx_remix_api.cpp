@@ -45,6 +45,10 @@
 
 #include "../../d3d9/d3d9_swapchain.h"
 
+#include "../../lssusd/usd_include_begin.h"
+#include <src/usd-plugins/RemixParticleSystem/ParticleSystemAPI.h>
+#include "../../lssusd/usd_include_end.h"
+
 #include <windows.h>
 
 #include <optional>
@@ -611,39 +615,47 @@ namespace {
       if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_THIRD_PERSON_PLAYER_BODY ){ result.set(InstanceCategories::ThirdPersonPlayerBody ); }
       if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_IGNORE_BAKED_LIGHTING    ){ result.set(InstanceCategories::IgnoreBakedLighting   ); }
       if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_IGNORE_TRANSPARENCY_LAYER){ result.set(InstanceCategories::IgnoreTransparencyLayer); }
+      if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_PARTICLE_EMITTER)         { result.set(InstanceCategories::ParticleEmitter); }
+      
+      static_assert((int)InstanceCategories::Count == 24, "Instance categories changed, please update Remix SDK");
       return result;
     }
 
     RtxParticleSystemDesc toRtParticleDesc(const remixapi_InstanceInfoParticleSystemEXT& info) {
       RtxParticleSystemDesc desc {};
 
-      // Colors
-      desc.minSpawnColor = tovec4(info.minSpawnColor);
-      desc.maxSpawnColor = tovec4(info.maxSpawnColor);
-
       // Lifetimes
       desc.minTtl = info.minTimeToLive;
       desc.maxTtl = info.maxTimeToLive;
 
-      // Initial velocity
+      // Initial 
+      desc.spawnRate = info.spawnRatePerSecond;
+      desc.initialVelocityFromMotion = info.initialVelocityFromMotion;
       desc.initialVelocityFromNormal = info.initialVelocityFromNormal;
       desc.initialVelocityConeAngleDegrees = info.initialVelocityConeAngleDegrees;
-
-      // Size/physics
-      desc.minParticleSize = info.minParticleSize;
-      desc.maxParticleSize = info.maxParticleSize;
       desc.gravityForce = info.gravityForce;
       desc.maxSpeed = info.maxSpeed;
       desc.motionTrailMultiplier = info.motionTrailMultiplier;
 
       // Turbulence
       desc.turbulenceFrequency = info.turbulenceFrequency;
-      desc.turbulenceAmplitude = info.turbulenceAmplitude;
+      desc.turbulenceForce = info.turbulenceForce;
 
-      // Spawn and rotation
-      desc.spawnRate = info.spawnRatePerSecond;
-      desc.minRotationSpeed = info.minRotationSpeed;
-      desc.maxRotationSpeed = info.maxRotationSpeed;
+      // Spawn
+      desc.minSpawnRotationSpeed = info.minSpawnRotationSpeed;
+      desc.maxSpawnRotationSpeed = info.maxSpawnRotationSpeed;
+      desc.minSpawnSize = info.minSpawnSize;
+      desc.maxSpawnSize = info.maxSpawnSize;
+      desc.minSpawnColor = tovec4(info.minSpawnColor);
+      desc.maxSpawnColor = tovec4(info.maxSpawnColor);
+
+      // Target
+      desc.minTargetRotationSpeed = info.minTargetRotationSpeed;
+      desc.maxTargetRotationSpeed = info.maxTargetRotationSpeed;
+      desc.minTargetSize = info.minTargetSize;
+      desc.maxTargetSize = info.maxTargetSize;
+      desc.minTargetColor = tovec4(info.minTargetColor);
+      desc.maxTargetColor = tovec4(info.maxTargetColor);
 
       // Collision
       desc.collisionThickness = info.collisionThickness;
@@ -656,6 +668,11 @@ namespace {
       desc.useSpawnTexcoords = static_cast<uint8_t>(info.useSpawnTexcoords);
       desc.enableCollisionDetection = static_cast<uint8_t>(info.enableCollisionDetection);
       desc.enableMotionTrail = static_cast<uint>(info.enableMotionTrail);
+      desc.hideEmitter = static_cast<uint>(info.hideEmitter);
+      desc.billboardType = static_cast<ParticleBillboardType>(info.billboardType);
+
+      // If this assert fails a new particle system parameter added, please update here.
+      assert(pxr::RemixParticleSystemAPI::GetSchemaAttributeNames(false).size() == 33);
 
       return desc;
     }
@@ -700,10 +717,7 @@ dxvk::ExternalDrawState dxvk::RemixAPIPrivateAccessor::toRtDrawState(const remix
     prototype.materialData.alphaTestEnabled = extBlend->alphaTestEnabled;
     prototype.materialData.alphaTestReferenceValue = extBlend->alphaTestReferenceValue;
     prototype.materialData.alphaTestCompareOp = (VkCompareOp) extBlend->alphaTestCompareOp;
-    prototype.materialData.alphaBlendEnabled = extBlend->alphaBlendEnabled;
-    prototype.materialData.srcColorBlendFactor = (VkBlendFactor) extBlend->srcColorBlendFactor;
-    prototype.materialData.dstColorBlendFactor = (VkBlendFactor) extBlend->dstColorBlendFactor;
-    prototype.materialData.colorBlendOp = (VkBlendOp) extBlend->colorBlendOp;
+    prototype.materialData.blendMode.enableBlending = extBlend->alphaBlendEnabled;
     prototype.materialData.textureColorOperation = (DxvkRtTextureOperation) extBlend->textureColorOperation;
     prototype.materialData.textureColorArg1Source = (RtTextureArgSource) extBlend->textureColorArg1Source;
     prototype.materialData.textureColorArg2Source = (RtTextureArgSource) extBlend->textureColorArg2Source;
@@ -712,6 +726,14 @@ dxvk::ExternalDrawState dxvk::RemixAPIPrivateAccessor::toRtDrawState(const remix
     prototype.materialData.textureAlphaArg2Source = (RtTextureArgSource) extBlend->textureAlphaArg2Source;
     prototype.materialData.tFactor = extBlend->tFactor;
     prototype.materialData.isTextureFactorBlend = extBlend->isTextureFactorBlend;
+    prototype.materialData.isVertexColorBakedLighting = (s_apiVersion >= REMIXAPI_VERSION_MAKE(0, 5, 2)) ? extBlend->isVertexColorBakedLighting : RtxOptions::vertexColorIsBakedLighting();
+    prototype.materialData.blendMode.colorSrcFactor = (VkBlendFactor) extBlend->srcColorBlendFactor;
+    prototype.materialData.blendMode.colorDstFactor = (VkBlendFactor) extBlend->dstColorBlendFactor;
+    prototype.materialData.blendMode.colorBlendOp = (VkBlendOp) extBlend->colorBlendOp;
+    prototype.materialData.blendMode.alphaSrcFactor = (VkBlendFactor) extBlend->srcAlphaBlendFactor;
+    prototype.materialData.blendMode.alphaDstFactor = (VkBlendFactor) extBlend->dstAlphaBlendFactor;
+    prototype.materialData.blendMode.alphaBlendOp = (VkBlendOp) extBlend->alphaBlendOp;
+    prototype.materialData.blendMode.writeMask = (VkColorComponentFlags) extBlend->writeMask;
   }
 
   std::optional<RtxParticleSystemDesc> optParticles;

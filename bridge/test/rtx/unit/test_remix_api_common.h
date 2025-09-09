@@ -424,7 +424,12 @@ bool InstanceInfoObjectPicking::compare(const RemixApiT& me, const RemixApiT& ot
                               textureAlphaArg2Source, \
                               textureAlphaOperation, \
                               tFactor, \
-                              isTextureFactorBlend
+                              isTextureFactorBlend, \
+                              srcAlphaBlendFactor, \
+                              dstAlphaBlendFactor, \
+                              alphaBlendOp, \
+                              writeMask, \
+                              isVertexColorBakedLighting
 using InstanceInfoBlend = Expected<remixapi_InstanceInfoBlendEXT>;
 void InstanceInfoBlend::init() {
   sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;

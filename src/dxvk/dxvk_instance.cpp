@@ -48,6 +48,7 @@
 // NV-DXVK start: RTXIO
 #include "rtx_render/rtx_io.h"
 // NV-DXVK end
+#include "rtx_render/rtx_env.h"
 
 // NV-DXVK start: Provide error code on exception
 #include <remix/remix_c.h>
@@ -210,20 +211,6 @@ namespace dxvk {
     *markerSize = strlen((const char*) pMarker);
   }
 
-  // NV-DXVK start: validation layer support
-  const std::vector<const char*> validationLayers = {
-    "VK_LAYER_KHRONOS_validation"
-  };
-
-  const bool enableGpuBasedValidationLayers = false;
-
-#ifndef _DEBUG
-  const bool enableValidationLayers = false;
-#else
-  const bool enableValidationLayers = true;
-#endif
-  // NV-DXVK end
-
   DxvkInstance::DxvkInstance() {
     Logger::info(str::format("Game: ", env::getExeName()));
     Logger::info(str::format("DXVK_Remix: ", DXVK_VERSION));
@@ -244,6 +231,32 @@ namespace dxvk {
     if (m_config.getOption<bool>("dxvk.waitForDebuggerToAttach", false, "DXVK_WAIT_FOR_DEBUGGER_TO_ATTACH"))
       while (!::IsDebuggerPresent())
         ::Sleep(100);
+    // NV-DXVK end 
+
+    // NV-DXVK start: Workaround hybrid AMD iGPU+Nvidia dGPU device enumeration issues
+    if (RtxOptions::disableAMDSwitchableGraphics()) {
+      // Note: The VK_LAYER_AMD_swichable_graphics layer in older AMD drivers is somewhat buggy and seems to filter away all non-AMD devices even if this means leaving
+      // an empty device list for Vulkan despite having a GPU on the machine. In turn this causes a subsequent call to vkEnumeratePhysicalDevices to return VK_INCOMPLETE
+      // for some reason (which previously was considered an error, not that Remix would be able to launch anyways though due to having no devices reported). This was
+      // reported many times by users using some sort of AMD iGPU and Nvidia dGPU setup (such as a laptop) combined with older AMD integrated graphics drivers (e.g. around
+      // early 2020).
+      //
+      // Disabling the switchable graphics layer works around this issue, though may in rare cases cause undesirable behavior if one actually wishes to use
+      // the layer to control which devices are exposed to an application, which is why Remix provides a way to disable this option. Generally though this should do the
+      // right thing as on systems with Nvidia GPUs Nvidia Optimus itself will already handle selecting an integrated or dedicated GPU for an application, and on systems
+      // with both an AMD iGPU and dGPU Remix will prefer the dedicated GPU which is the generally desired behavior (unless the user actually wants to run on the iGPU,
+      // in which case this workaround will need to be disabled).
+      //
+      // If this really becomes a problem, a better approach may be to only enable this override if enumerating devices results in 0 devices rather than setting it upfront,
+      // but other large projects set this upfront unconditionally as well, so for now it's probably fine as doing a retry would require re-creating the instance which is
+      // not super trivial to do with how Remix's code is set up currently.
+      //
+      // For more information, see:
+      // https://github.com/KhronosGroup/Vulkan-Loader/issues/552
+      // https://github.com/godotengine/godot/issues/57708
+      // https://nvidia.custhelp.com/app/answers/detail/a_id/5182/~/unable-to-launch-vulkan-apps%2Fgame-on-notebooks-with-amd-radeon-igpus
+      env::setEnvVar("DISABLE_LAYER_AMD_SWITCHABLE_GRAPHICS_1", "1");
+    }
     // NV-DXVK end 
 
     m_extProviders.push_back(&DxvkPlatformExts::s_instance);
@@ -301,17 +314,19 @@ namespace dxvk {
       // NV-DXVK end
     }
 
-    if (enableValidationLayers) {
+    if (RtxOptions::areValidationLayersEnabled()) {
       // NV-DXVK start: use EXT_debug_utils
       VkDebugUtilsMessengerCreateInfoEXT info = {};
       info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
       info.pNext = nullptr;
       info.flags = 0;
-      info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+      info.messageSeverity =
+        VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
         VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
         VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
         VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-      info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+      info.messageType =
+        VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
         VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
         VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
       info.pfnUserCallback = debugFunction;
@@ -363,6 +378,11 @@ namespace dxvk {
   }
 
   VkInstance DxvkInstance::createInstance() {
+    const auto areValidationLayersEnabled = RtxOptions::areValidationLayersEnabled();
+    const auto enableValidationLayerExtendedValidation = RtxOptions::enableValidationLayerExtendedValidation();
+
+    // Attempt to enable required Instance Extensions
+
     DxvkInstanceExtensions insExtensions;
 
     std::vector<DxvkExt*> insExtensionList = {{
@@ -373,24 +393,31 @@ namespace dxvk {
 
     // Hide VK_EXT_debug_utils behind an environment variable. This extension
     // adds additional overhead to winevulkan
-    if (enableValidationLayers || env::getEnvVar("DXVK_PERF_EVENTS") == "1") {
-        insExtensionList.push_back(&insExtensions.extDebugUtils);
+    if (areValidationLayersEnabled || env::getEnvVar("DXVK_PERF_EVENTS") == "1") {
+      insExtensionList.push_back(&insExtensions.extDebugUtils);
     }
 
     DxvkNameSet extensionsEnabled;
     DxvkNameSet extensionsAvailable = DxvkNameSet::enumInstanceExtensions(m_vkl);
     
     if (!extensionsAvailable.enableExtensions(
-          insExtensionList.size(),
-          insExtensionList.data(),
-          extensionsEnabled))
+        insExtensionList.size(),
+        insExtensionList.data(),
+        extensionsEnabled)) {
+      Logger::err("Unable to find all required Vulkan extensions for instance creation.");
+
+      // Note: Once macro used to ensure this message is only displayed to the user once in case multiple instances are created.
+      ONCE(messageBox("Your GPU driver doesn't support the required instance extensions to run RTX Remix.\nSee the log file 'rtx-remix/logs/remix-dxvk.log' for which extensions are unsupported and try updating your driver.\nThe game will exit now.", "RTX Remix - Instance Extension Error!", MB_OK));
+
       // NV-DXVK start: Provide error code on exception
-      throw DxvkErrorWithId(REMIXAPI_ERROR_CODE_HRESULT_DXVK_INSTANCE_EXTENSION_FAIL, "DxvkInstance: Failed to create instance");
+      throw DxvkErrorWithId(REMIXAPI_ERROR_CODE_HRESULT_DXVK_INSTANCE_EXTENSION_FAIL, "DxvkInstance: Failed to create instance, instance does not support all required extensions.");
       // NV-DXVK end
+    }
 
     m_extensions = insExtensions;
 
-    // Enable additional extensions if necessary
+    // Attempt to enable additional extensions if necessary
+
     for (const auto& provider : m_extProviders)
       extensionsEnabled.merge(provider->getInstanceExtensions());
 
@@ -407,7 +434,7 @@ namespace dxvk {
     Logger::info("Enabled instance extensions:");
     this->logNameList(extensionNameList);
 
-    std::string appName = env::getExeName();
+    const auto appName = env::getExeName();
     
     VkApplicationInfo appInfo;
     appInfo.sType                 = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -428,30 +455,42 @@ namespace dxvk {
     info.flags = 0;
     info.pApplicationInfo = &appInfo;
 
-    // NV-DXVK start: validation layer support/frameview WAR
+    // NV-DXVK start: Validation layer support
     std::vector<const char*> layerNames;
 
-    std::vector<VkValidationFeatureEnableEXT> validationFeatureEnables;
-    VkValidationFeaturesEXT validationFeatures = {};
+    // Add validation layers if enabled
 
-    if (enableValidationLayers) {
-      if (enableGpuBasedValidationLayers) {
-        validationFeatureEnables = { VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT };
+    // Note: These variables are defined outside the validation layer enable scope as their pointers must remain valid until
+    // instance creation.
+    VkLayerSettingsCreateInfoEXT validationLayerSettingsCreateInfo;
+    constexpr auto khronosValidationLayerName{ "VK_LAYER_KHRONOS_validation" };
+    const VkBool32 trueValidationLayerSetting{ VK_TRUE };
+    const std::array<VkLayerSettingEXT, 3> validationLayerSettings{ {
+      // Note: Enable validation settings disabled by default in the Khronos Validation Layer, currently synchronization
+      // validation, GPU assisted validation and best practices.
+      // See this documentation for more information: https://vulkan.lunarg.com/doc/view/latest/windows/khronos_validation_layer.html
+      { khronosValidationLayerName, "validate_sync", VK_LAYER_SETTING_TYPE_BOOL32_EXT, 1, &trueValidationLayerSetting },
+      { khronosValidationLayerName, "gpuav_enable", VK_LAYER_SETTING_TYPE_BOOL32_EXT, 1, &trueValidationLayerSetting },
+      { khronosValidationLayerName, "validate_best_practices", VK_LAYER_SETTING_TYPE_BOOL32_EXT, 1, &trueValidationLayerSetting },
+    } };
 
-        validationFeatures.sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT;
-        validationFeatures.pNext = info.pNext;
-        validationFeatures.enabledValidationFeatureCount = static_cast<uint32_t>(validationFeatureEnables.size());
-        validationFeatures.pEnabledValidationFeatures = validationFeatureEnables.data();
+    if (areValidationLayersEnabled) {
+      // Configure validation layers if extended validation is desired
 
-        info.pNext = &validationFeatures;
+      if (enableValidationLayerExtendedValidation) {
+        validationLayerSettingsCreateInfo.sType = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT;
+        validationLayerSettingsCreateInfo.pNext = info.pNext;
+        validationLayerSettingsCreateInfo.settingCount = static_cast<std::uint32_t>(validationLayerSettings.size());
+        validationLayerSettingsCreateInfo.pSettings = validationLayerSettings.data();
+
+        info.pNext = &validationLayerSettingsCreateInfo;
       }
 
-      for (auto& layer : validationLayers) {
-        layerNames.push_back(layer);
-      }
+      // Add desired validation layers to the array of layers to enable
 
-      m_validationLayersEnabled = true;
+      layerNames.push_back(khronosValidationLayerName);
     }
+
     info.enabledLayerCount = static_cast<uint32_t>(layerNames.size());
     info.ppEnabledLayerNames = layerNames.data();
     
@@ -466,23 +505,53 @@ namespace dxvk {
     VkInstance result = VK_NULL_HANDLE;
     VkResult status = m_vkl->vkCreateInstance(&info, nullptr, &result);
 
-    if (status != VK_SUCCESS)
+    if (status != VK_SUCCESS) {
+      Logger::err(str::format("Unable to create a Vulkan instance, error code: ", status, "."));
+
+      const auto instanceCreationFailureDialogMessage = str::format(
+        "Vulkan Instance creation failed with error code: ", status, ".\nTry updating your driver and reporting this as a bug if the problem persists.\nThe game will exit now.");
+
+      // Note: Once macro used to ensure this message is only displayed to the user once in case multiple instances are created.
+      ONCE(messageBox(instanceCreationFailureDialogMessage.c_str(), "RTX Remix - Instance Creation Error!", MB_OK));
+
       // NV-DXVK start: Provide error code on exception
-      throw DxvkErrorWithId(REMIXAPI_ERROR_CODE_HRESULT_VK_CREATE_INSTANCE_FAIL, "DxvkInstance::createInstance: Failed to create Vulkan 1.3 instance");
+      throw DxvkErrorWithId(REMIXAPI_ERROR_CODE_HRESULT_VK_CREATE_INSTANCE_FAIL, "DxvkInstance::createInstance: Failed to create a Vulkan 1.3 instance");
       // NV-DXVK end
+    }
 
     return result;
   }
   
   
   std::vector<Rc<DxvkAdapter>> DxvkInstance::queryAdapters() {
+    // Enumerate Physical Devices
+
     uint32_t numAdapters = 0;
-    if (m_vki->vkEnumeratePhysicalDevices(m_vki->instance(), &numAdapters, nullptr) != VK_SUCCESS)
-      throw DxvkError("DxvkInstance::enumAdapters: Failed to enumerate adapters");
+    const auto enumeratePhysicalDeviceCountResult = m_vki->vkEnumeratePhysicalDevices(m_vki->instance(), &numAdapters, nullptr);
+
+    if (enumeratePhysicalDeviceCountResult != VK_SUCCESS) {
+      // Note: No message box here as this case is not expected to happen in normal operation.
+
+      throw DxvkError("DxvkInstance::enumAdapters: Failed to enumerate physical device count");
+    }
     
     std::vector<VkPhysicalDevice> adapters(numAdapters);
-    if (m_vki->vkEnumeratePhysicalDevices(m_vki->instance(), &numAdapters, adapters.data()) != VK_SUCCESS)
-      throw DxvkError("DxvkInstance::enumAdapters: Failed to enumerate adapters");
+    const auto enumeratePhysicalDevicesResult = m_vki->vkEnumeratePhysicalDevices(m_vki->instance(), &numAdapters, adapters.data());
+
+    if (enumeratePhysicalDevicesResult != VK_SUCCESS) {
+      // Note: VK_INCOMPLETE can be returned potentially if the number of devices changed between calls, or occasionally in some implementations
+      // despite passing the correct queried value back into the function. Since Vulkan considers this code a success code technically, it is best
+      // to carry on and only warn that some devices may be missed rather than treating this as a hard error.
+      if (enumeratePhysicalDevicesResult == VK_INCOMPLETE) {
+        Logger::warn("Physical Device enumeration returned VK_INCOMPLETE, indicating that not all devices may have been enumerated. This usually shouldn't happen and may be indicative of a Vulkan driver issue.");
+      } else {
+        // Note: No message box here as this case is not expected to happen in normal operation.
+
+        throw DxvkError("DxvkInstance::enumAdapters: Failed to enumerate physical devices");
+      }
+    }
+
+    // Filter Physical Devices
 
     std::vector<VkPhysicalDeviceProperties> deviceProperties(numAdapters);
     DxvkDeviceFilterFlags filterFlags = 0;
@@ -490,8 +559,22 @@ namespace dxvk {
     for (uint32_t i = 0; i < numAdapters; i++) {
       m_vki->vkGetPhysicalDeviceProperties(adapters[i], &deviceProperties[i]);
 
-      if (deviceProperties[i].deviceType != VK_PHYSICAL_DEVICE_TYPE_CPU)
+      // Skip CPU or Integrated GPU devices if any other device type is present
+      // Note: Originally DXVK only did this for CPU devices, but Remix extends this logic to include
+      // Integrated GPUs too. This is because applications have little information about which device
+      // is best when exposed as adapters through DirectX and cannot be expected to make a good selection
+      // on their own. In the case of Remix, if a dedicated GPU is installed on a system it should almost
+      // always be prioritized over integrated GPUs, as some applications will attempt to select a
+      // non-default adapter and often times end up severely degrading performance by unknowingly selecting
+      // one corresponding to an integrated GPU.
+
+      if (deviceProperties[i].deviceType != VK_PHYSICAL_DEVICE_TYPE_CPU) {
         filterFlags.set(DxvkDeviceFilterFlag::SkipCpuDevices);
+      }
+
+      if (deviceProperties[i].deviceType != VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) {
+        filterFlags.set(DxvkDeviceFilterFlag::SkipIntegratedGPUDevices);
+      }
     }
 
     DxvkDeviceFilter filter(filterFlags);
@@ -501,10 +584,16 @@ namespace dxvk {
       if (filter.testAdapter(deviceProperties[i]))
         result.push_back(new DxvkAdapter(m_vki, adapters[i]));
     }
+
+    // Rank Physical Devices
+    // Note: Generally only the highest ranked adapter is relevant as it will be selected when applications use D3DADAPTER_DEFAULT
+    // which is reasonably common. Otherwise, the ranking isn't as important as applications only have a minor amount of information
+    // about the properties of each adapter when querying through DirectX and the order won't matter anyways usually if applications are
+    // doing their own sort of ranking system.
     
     std::stable_sort(result.begin(), result.end(),
       [] (const Rc<DxvkAdapter>& a, const Rc<DxvkAdapter>& b) -> bool {
-        static const std::array<VkPhysicalDeviceType, 3> deviceTypes = {{
+        constexpr std::array<VkPhysicalDeviceType, 3> deviceTypes{{
           VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU,
           VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU,
           VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU,

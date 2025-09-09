@@ -75,7 +75,7 @@ enum class DxvkRtTextureOperation : uint8_t {
   Modulate2x,
   Modulate4x,
   Add,
-  Force_Modulate4x,
+  Force_Modulate2x,
 };
 
 enum class TexGenMode : uint8_t {

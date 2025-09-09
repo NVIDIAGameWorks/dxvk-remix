@@ -381,7 +381,11 @@ struct RaytraceArgs {
   uint allowNrcTraining;
 
   float vertexColorStrength;
-  uint vertexColorIsBakedLighting;
+  uint pad0;
+
+  float wboitEnergyLossCompensation;
+  float wboitDepthWeightTuning;
+  uint wboitEnabled;
 
   // NOTE: Add structs to the top section of RaytraceArgs, not the bottom.
   // NOTE: bool does not work in debug builds, use uint instead.

@@ -28,23 +28,3 @@
 
 layout(binding = PARTICLE_SYSTEM_BINDING_CONSTANTS)
 ConstantBuffer<ParticleSystemConstants> particleCb;
-
-layout(binding = PARTICLE_SYSTEM_BINDING_SPAWN_CONTEXT_PARTICLE_MAPPING_INPUT)
-StructuredBuffer<uint16_t> SpawnContextParticleMapping;
-
-layout(binding = PARTICLE_SYSTEM_BINDING_SPAWN_CONTEXTS_INPUT)
-StructuredBuffer<GpuSpawnContext> SpawnContexts;
-
-layout(binding = PARTICLE_SYSTEM_BINDING_PREV_WORLD_POSITION_INPUT)
-Texture2D<float4> PreviousWorldPosition_WorldTriangleNormal;
-
-layout(binding = PARTICLE_SYSTEM_BINDING_PREV_PRIMARY_SCREEN_SPACE_MOTION_INPUT)
-Texture2D<float2> PreviousPrimaryScreenSpaceMotionVector;
-
-// Outputs
-
-layout(binding = PARTICLE_SYSTEM_BINDING_PARTICLES_BUFFER_INPUT_OUTPUT)
-RWStructuredBuffer<GpuParticle> Particles;
-
-layout(binding = PARTICLE_SYSTEM_BINDING_VERTEX_BUFFER_OUTPUT)
-RWStructuredBuffer<ParticleVertex> Vertices;

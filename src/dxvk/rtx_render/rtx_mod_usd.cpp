@@ -315,6 +315,8 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
   static const pxr::TfToken kPreloadTextures("inputs:preload_textures");  // Force textures to be loaded at highest mip
   static const pxr::TfToken kLegacyRayPortalIndexToken("rayPortalIndex");
 
+  std::optional<RtxParticleSystemDesc> particleSystem = processParticleSystem(args, matPrim);
+
   pxr::UsdPrim shader = matPrim.GetChild(kShaderToken);
   if (!shader.IsValid() || !shader.IsA<pxr::UsdShadeShader>()) {
     auto children = matPrim.GetFilteredChildren(pxr::UsdPrimIsActive);
@@ -325,12 +327,18 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
     }
   }
 
-  if (!shader.IsValid()) {
+  XXH64_hash_t materialHash = getMaterialHash(matPrim, shader);
+  if (materialHash == 0) {
     return nullptr;
   }
 
-  XXH64_hash_t materialHash = getMaterialHash(matPrim, shader);
-  if (materialHash == 0) {
+  if (!shader.IsValid()) {
+    // Special case to handle material overrides which have the particle system API, but no material parameter overrides.
+    // This is the case when adding a particle system API to an existing legacy material in game.
+    if (particleSystem.has_value()) {
+      // In this case just return an empty opaque material.
+      return &m_owner.m_replacements->storeObject(materialHash, MaterialData(OpaqueMaterialData::deserialize([](const pxr::UsdPrim& shader, const pxr::TfToken& name) { return TextureRef {}; }, shader), particleSystem));
+    }
     return nullptr;
   }
 
@@ -340,14 +348,13 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
     return materialData;
   }
 
-
   // Remix Flags:
   bool shouldIgnore = false;
   if (shader.HasAttribute(kIgnore)) {
     shader.GetAttribute(kIgnore).Get(&shouldIgnore);
   }
   bool preloadTextures = false;
-  if (shader.HasAttribute(kPreloadTextures)) {
+  if (shader.HasAttribute(kPreloadTextures)) { 
     shader.GetAttribute(kPreloadTextures).Get(&preloadTextures);
   }
 
@@ -372,16 +379,16 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
   }
 
   auto getTextureFunctor = [&](const pxr::UsdPrim& shader, const pxr::TfToken& name) {
-                             return getTexture(args, shader, name, preloadTextures);
-                           };
+    return getTexture(args, shader, name, preloadTextures);
+  };
 
   switch (materialType) {
   case RtSurfaceMaterialType::Opaque:
-    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(OpaqueMaterialData::deserialize(getTextureFunctor, shader), shouldIgnore));
+    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(OpaqueMaterialData::deserialize(getTextureFunctor, shader), particleSystem, shouldIgnore));
   case RtSurfaceMaterialType::Translucent:
-    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(TranslucentMaterialData::deserialize(getTextureFunctor, shader), shouldIgnore));
+    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(TranslucentMaterialData::deserialize(getTextureFunctor, shader), particleSystem, shouldIgnore));
   case RtSurfaceMaterialType::RayPortal:
-    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(RayPortalMaterialData::deserialize(getTextureFunctor, shader)));
+    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(RayPortalMaterialData::deserialize(getTextureFunctor, shader), particleSystem));
   default:
     assert(false && "Invalid materialType passed to getTextureFunctor");
   }
@@ -512,6 +519,20 @@ inline Vector4 toFloat4(const pxr::GfVec4f& v) {
   return f;
 }
 
+inline ParticleBillboardType toBillboardType(const pxr::TfToken& token) {
+  static pxr::RemixTokensType tokens;
+  if (token == tokens.faceCamera_UpAxisLocked) {
+    return FaceCamera_UpAxisLocked;
+  }
+  if (token == tokens.faceCamera_Position) {
+    return FaceCamera_Position;
+  }
+  if (token == tokens.faceWorldUp) {
+    return FaceWorldUp;
+  }
+  return FaceCamera_Spherical;
+}
+
 std::optional<RtxParticleSystemDesc> UsdMod::Impl::processParticleSystem(Args& args, const pxr::UsdPrim& prim) {
   using namespace pxr;
 
@@ -520,16 +541,13 @@ std::optional<RtxParticleSystemDesc> UsdMod::Impl::processParticleSystem(Args& a
   }
   RemixParticleSystemAPI particleSystem(prim);
 
-  MaterialData* materialData = processMaterialUser(args, prim);
-
   RtxParticleSystemDesc particleDesc;
-
   // Helper macro to read an attribute into a float or int field
 #define READ_ATTR(Type, attrName, field) \
             if (UsdAttribute attr = particleSystem.GetPrimvarsParticle##attrName##Attr()) { \
                 Type result; \
                 attr.Get<Type>(&result); \
-                particleDesc.field = (Type)result; \
+                particleDesc.field = result; \
             } 
 #define READ_ATTR_CONV(Type, attrName, field, conversionFunc) \
             if (UsdAttribute attr = particleSystem.GetPrimvarsParticle##attrName##Attr()) { \
@@ -541,16 +559,21 @@ std::optional<RtxParticleSystemDesc> UsdMod::Impl::processParticleSystem(Args& a
     // Read all simulation parameters
   READ_ATTR(float, MinTimeToLive, minTtl);
   READ_ATTR(float, MaxTimeToLive, maxTtl);
+  READ_ATTR(float, InitialVelocityFromMotion, initialVelocityFromMotion);
   READ_ATTR(float, InitialVelocityFromNormal, initialVelocityFromNormal);
   READ_ATTR(float, InitialVelocityConeAngleDegrees, initialVelocityConeAngleDegrees);
-  READ_ATTR(float, MinParticleSize, minParticleSize);
-  READ_ATTR(float, MaxParticleSize, maxParticleSize);
-  READ_ATTR(float, MinRotationSpeed, minRotationSpeed);
-  READ_ATTR(float, MaxRotationSpeed, maxRotationSpeed);
+  READ_ATTR(float, MinSpawnSize, minSpawnSize);
+  READ_ATTR(float, MaxSpawnSize, maxSpawnSize);
+  READ_ATTR(float, MinSpawnRotationSpeed, minSpawnRotationSpeed);
+  READ_ATTR(float, MaxSpawnRotationSpeed, maxSpawnRotationSpeed);
+  READ_ATTR(float, MinTargetSize, minTargetSize);
+  READ_ATTR(float, MaxTargetSize, maxTargetSize);
+  READ_ATTR(float, MinTargetRotationSpeed, minTargetRotationSpeed);
+  READ_ATTR(float, MaxTargetRotationSpeed, maxTargetRotationSpeed);
   READ_ATTR(float, GravityForce, gravityForce);
   READ_ATTR(float, MaxSpeed, maxSpeed);
   READ_ATTR(float, TurbulenceFrequency, turbulenceFrequency);
-  READ_ATTR(float, TurbulenceAmplitude, turbulenceAmplitude);
+  READ_ATTR(float, TurbulenceForce, turbulenceForce);
   READ_ATTR(float, CollisionThickness, collisionThickness);
   READ_ATTR(float, CollisionRestitution, collisionRestitution);
   READ_ATTR(float, MotionTrailMultiplier, motionTrailMultiplier);
@@ -562,8 +585,13 @@ std::optional<RtxParticleSystemDesc> UsdMod::Impl::processParticleSystem(Args& a
   READ_ATTR(bool, EnableMotionTrail, enableMotionTrail);
   READ_ATTR(bool, HideEmitter, hideEmitter);
   READ_ATTR(float, SpawnRatePerSecond, spawnRate);
+  READ_ATTR_CONV(TfToken, BillboardType, billboardType, toBillboardType);
   READ_ATTR_CONV(GfVec4f, MaxSpawnColor, maxSpawnColor, toFloat4);
   READ_ATTR_CONV(GfVec4f, MinSpawnColor, minSpawnColor, toFloat4);
+  READ_ATTR_CONV(GfVec4f, MaxTargetColor, maxTargetColor, toFloat4);
+  READ_ATTR_CONV(GfVec4f, MinTargetColor, minTargetColor, toFloat4);
+  // If this assert fails a new particle system parameter added, please update here.
+  assert(RemixParticleSystemAPI::GetSchemaAttributeNames(false).size() == 33);
 
 #undef READ_ATTR
 #undef READ_ATTR_CONV
@@ -1258,9 +1286,14 @@ void UsdMod::Impl::addReplacementsSync(dxvk::Rc<dxvk::DxvkCommandList> cmdList, 
       {
         constexpr uint64_t initialSignalValue = 0;
         constexpr uint64_t waitSignalValue = 1;
-        auto replacementSyncSignal = new sync::Fence(initialSignalValue);
+        Rc<sync::Fence> replacementSyncSignal = new sync::Fence(initialSignalValue);
 
         cmdList->queueSignal(replacementSyncSignal, waitSignalValue);
+        // Note: May be possible that the command list's signal tracker can be reset before this wait call or before the signal is actually signaled, which may cause this
+        // wait to never complete. Unsure if this happens in practice, but previously a bug existed where a ref-counted pointer to the replacement signal wasn't used
+        // which resulted in a crash due to the object being freed before getting to this wait call, and the only way it would've been freed is if the command list's signal
+        // tracker was reset. it is possible that most/all the times this reset happens the signal has been properly signaled though and this may not be a concern, but
+        // something to watch out for regardless.
         replacementSyncSignal->wait(waitSignalValue);
       }
 

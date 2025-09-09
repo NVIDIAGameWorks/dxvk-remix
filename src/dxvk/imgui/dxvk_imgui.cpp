@@ -1441,7 +1441,9 @@ namespace dxvk {
 
     ImGui::TextSeparator("Preset Settings");
 
-    m_userGraphicsSettingChanged |= graphicsPresetCombo.getKey(&RtxOptions::graphicsPresetObject());
+    const auto graphicsPresetChanged = graphicsPresetCombo.getKey(&RtxOptions::graphicsPresetObject());
+
+    m_userGraphicsSettingChanged |= graphicsPresetChanged;
 
     // Map settings to indirect particle level
     int indirectLightParticlesLevel = 0;
@@ -1451,7 +1453,7 @@ namespace dxvk {
 
     // Map presets to options
 
-    if (m_userGraphicsSettingChanged) {
+    if (graphicsPresetChanged) {
       RtxOptions::updateGraphicsPresets(ctx->getDevice().ptr());
     }
 
@@ -1953,10 +1955,6 @@ namespace dxvk {
       ImGui::InputInt("Instance Index Range", &RtxOptions::instanceOverrideInstanceIdxRangeObject());
       ImGui::DragFloat3("Instance World Offset", &RtxOptions::instanceOverrideWorldOffsetObject(), 0.1f, -100.f, 100.f, "%.3f", sliderFlags);
       ImGui::Checkbox("Instance - Print Hash", &RtxOptions::instanceOverrideSelectedInstancePrintMaterialHashObject());
-
-#ifdef REMIX_DEVELOPMENT
-      ImGui::Checkbox("Show DLSS-RR Options", &RtxOptions::showRayReconstructionUIObject());
-#endif
 
       ImGui::Unindent();
       ImGui::Checkbox("Throttle presents", &RtxOptions::enablePresentThrottleObject());
@@ -3421,7 +3419,14 @@ namespace dxvk {
 
       ImGui::Separator();
       ImGui::SliderFloat("Particle Softness", &RtxOptions::particleSoftnessFactorObject(), 0.f, 0.5f);
-
+      ImGui::Separator();
+      if (ImGui::CollapsingHeader("Weighted Blended OIT", collapsingHeaderClosedFlags)) {
+        ImGui::Checkbox("Enable", &RtxOptions::wboitEnabledObject());
+        ImGui::BeginDisabled(!RtxOptions::wboitEnabled());
+        ImGui::SliderFloat("Energy Compensation", &RtxOptions::wboitEnergyLossCompensationObject(), 1.f, 10.f);
+        ImGui::SliderFloat("Depth Weight Tuning", &RtxOptions::wboitDepthWeightTuningObject(), 0.01f, 10.f);
+        ImGui::EndDisabled();
+      }
       common->metaComposite().showStochasticAlphaBlendImguiSettings();
       ImGui::Unindent();
     }
@@ -3453,7 +3458,7 @@ namespace dxvk {
         ImGui::Unindent();
       }
       bool useDoubleDenoisers = RtxOptions::denoiseDirectAndIndirectLightingSeparately();
-      if (isRayReconstructionEnabled && RtxOptions::showRayReconstructionUI()) {
+      if (isRayReconstructionEnabled) {
         if (ImGui::CollapsingHeader("DLSS-RR", collapsingHeaderClosedFlags)) {
           ImGui::Indent();
           ImGui::PushID("DLSS-RR");

@@ -22,10 +22,23 @@
 
 //!variant gbuffer_miss.rmiss
 
+
 // NRC 
 
 //!variant gbuffer_nrc_miss.rmiss
 //!>       ENABLE_NRC=1
+
+
+// WBOIT
+
+//!variant gbuffer_miss_wboit.rmiss
+//!>       UNORDERED_RESOLVE_WBOIT
+
+// NRC 
+
+//!variant gbuffer_nrc_miss_wboit.rmiss
+//!>       ENABLE_NRC=1
+//!>       UNORDERED_RESOLVE_WBOIT
 
 //!end-variants
 
