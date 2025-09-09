@@ -594,6 +594,7 @@ void InstanceInfoTransforms::_dtor() {
 // LightInfo //
 ///////////////
 
+static_assert(sizeof(void*) != 8 || sizeof remixapi_LightInfo == 40, "recheck Bridge member list here");
 #define LightInfoVars sType, \
                       hash, \
                       radiance
@@ -611,6 +612,7 @@ void LightInfo::_dtor() {
 }
 
 
+static_assert(sizeof(void*) != 8 || sizeof remixapi_LightInfoLightShaping == 24, "recheck Bridge member list here");
 #define LightShapingVars shaping.direction, \
                          shaping.coneAngleDegrees, \
                          shaping.coneSoftness, \
@@ -629,11 +631,13 @@ void deserialize(void*& pDeserialize, remixapi_LightInfoLightShaping& shaping) {
 }
 
 
+static_assert(sizeof(void*) != 8 || sizeof remixapi_LightInfoSphereEXT == 64, "recheck Bridge member list here");
 #define LightInfoSphereVars sType, \
                             position, \
                             radius, \
                             shaping_hasvalue, \
-                            shaping_value
+                            shaping_value, \
+                            volumetricRadianceScale
 uint32_t LightInfoSphere::_calcSize() const {
   return fold_helper::calcSize(LightInfoSphereVars);
 }
@@ -648,6 +652,7 @@ void LightInfoSphere::_dtor() {
 }
 
 
+static_assert(sizeof(void*) != 8 || sizeof remixapi_LightInfoRectEXT == 104, "recheck Bridge member list here");
 #define LightInfoRectVars sType, \
                           position, \
                           xAxis, \
@@ -656,7 +661,8 @@ void LightInfoSphere::_dtor() {
                           ySize, \
                           direction, \
                           shaping_hasvalue, \
-                          shaping_value
+                          shaping_value, \
+                          volumetricRadianceScale
 uint32_t LightInfoRect::_calcSize() const {
   return fold_helper::calcSize(LightInfoRectVars);
 }
@@ -671,6 +677,7 @@ void LightInfoRect::_dtor() {
 }
 
 
+static_assert(sizeof(void*) != 8 || sizeof remixapi_LightInfoDiskEXT == 104, "recheck Bridge member list here");
 #define LightInfoDiskVars sType, \
                           position, \
                           xAxis, \
@@ -679,7 +686,8 @@ void LightInfoRect::_dtor() {
                           yRadius, \
                           direction, \
                           shaping_hasvalue, \
-                          shaping_value
+                          shaping_value, \
+                          volumetricRadianceScale
 uint32_t LightInfoDisk::_calcSize() const {
   return fold_helper::calcSize(LightInfoDiskVars);
 }
@@ -694,11 +702,13 @@ void LightInfoDisk::_dtor() {
 }
 
 
+static_assert(sizeof(void*) != 8 || sizeof remixapi_LightInfoCylinderEXT == 56, "recheck Bridge member list here");
 #define LightInfoCylinderVars sType, \
                               position, \
                               radius, \
                               axis, \
-                              axisLength
+                              axisLength, \
+                              volumetricRadianceScale
 uint32_t LightInfoCylinder::_calcSize() const {
   return fold_helper::calcSize(LightInfoCylinderVars);
 }
@@ -713,9 +723,11 @@ void LightInfoCylinder::_dtor() {
 }
 
 
+static_assert(sizeof(void*) != 8 || sizeof remixapi_LightInfoDistantEXT == 40, "recheck Bridge member list here");
 #define LightInfoDistantVars sType, \
                              direction, \
-                             angularDiameterDegrees
+                             angularDiameterDegrees, \
+                             volumetricRadianceScale
 uint32_t LightInfoDistant::_calcSize() const {
   return fold_helper::calcSize(LightInfoDistantVars);
 }
@@ -731,6 +743,7 @@ void LightInfoDistant::_dtor() {
 
 
 
+static_assert(sizeof(void*) != 8 || sizeof remixapi_LightInfoDomeEXT == 72, "recheck Bridge member list here");
 #define LightInfoDomeVars sType, \
                           transform, \
                           colorTexture
@@ -749,6 +762,7 @@ void LightInfoDome::_dtor() {
 }
 
 
+static_assert(sizeof(void*) != 8 || sizeof remixapi_LightInfoUSDEXT == 184, "recheck Bridge member list here");
 // remixapi_LightInfoUSDEXT uses a pattern wherein optional members
 // are determined by whether a given pointer is NULL or not, therefore
 // we have defined some helpers in an anonymous namespace to operate on
@@ -768,7 +782,8 @@ void LightInfoDome::_dtor() {
                                  pIntensity, \
                                  pConeAngleRadians, \
                                  pConeSoftness, \
-                                 pFocus
+                                 pFocus, \
+                                 pVolumetricRadianceScale
 // calcSize helpers
 namespace{
 template<typename T>
