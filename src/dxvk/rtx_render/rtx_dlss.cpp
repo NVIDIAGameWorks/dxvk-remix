@@ -84,8 +84,8 @@ namespace dxvk {
     case DLSSProfile::MaxPerf: perfQuality = NVSDK_NGX_PerfQuality_Value_MaxPerf; break;
     case DLSSProfile::Balanced: perfQuality = NVSDK_NGX_PerfQuality_Value_Balanced; break;
     case DLSSProfile::MaxQuality: perfQuality = NVSDK_NGX_PerfQuality_Value_MaxQuality; break;
-    case DLSSProfile::FullResolution: perfQuality = NVSDK_NGX_PerfQuality_Value_MaxQuality; break; // Need to set MaxQ as some modes dont support full res
-    case DLSSProfile::Auto: break; // Allowed case with no action needed.
+    case DLSSProfile::FullResolution: perfQuality = NVSDK_NGX_PerfQuality_Value_DLAA; break;
+    case DLSSProfile::Auto: assert(false && "DLSSProfile::Auto passed to DxvkDLSS::profileToQuality without being resolved first"); break;
     case DLSSProfile::Invalid: assert(false && "DLSSProfile::Invalid passed to DxvkDLSS::profileToQuality"); break;
     }
     return perfQuality;
@@ -122,6 +122,9 @@ namespace dxvk {
       desiredProfile = (DLSSProfile) std::max(0, (int) desiredProfile - 2);
     }
 
+    // Note: Ensure the resulting desired profile has been resolved to something non-auto.
+    assert(desiredProfile != DLSSProfile::Auto);
+
     return desiredProfile;
   }
 
@@ -148,27 +151,20 @@ namespace dxvk {
     // Update our requested profile
     mProfile = profile;
 
-    if (mProfile == DLSSProfile::FullResolution) {
-      mInputSize[0] = outRenderSize[0] = displaySize[0];
-      mInputSize[1] = outRenderSize[1] = displaySize[1];
-    } else {
-      NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality(mActualProfile);
-      if (!m_dlssContext) {
-        m_dlssContext = m_device->getCommon()->metaNGXContext().createDLSSContext();
-      }
-      auto optimalSettings = m_dlssContext->queryOptimalSettings(displaySize, perfQuality);
-
-      // DLSS-RR requires the resolution to be the multiple of 32 to avoid artifacts.
-      // Use the same resolution as DLSS-RR to avoid memory fragmentation.
-      const int step = 32;
-      optimalSettings.optimalRenderSize[0] = (optimalSettings.optimalRenderSize[0] + step - 1) / step * step;
-      optimalSettings.optimalRenderSize[1] = (optimalSettings.optimalRenderSize[1] + step - 1) / step * step;
-      mInputSize[0] = outRenderSize[0] = optimalSettings.optimalRenderSize[0];
-      mInputSize[1] = outRenderSize[1] = optimalSettings.optimalRenderSize[1];
+    const NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality(mActualProfile);
+    if (!m_dlssContext) {
+      m_dlssContext = m_device->getCommon()->metaNGXContext().createDLSSContext();
     }
+    const auto optimalSettings = m_dlssContext->queryOptimalSettings(displaySize, perfQuality);
+
+    mInputSize[0] = outRenderSize[0] = optimalSettings.optimalRenderSize[0];
+    mInputSize[1] = outRenderSize[1] = optimalSettings.optimalRenderSize[1];
 
     mDLSSOutputSize[0] = displaySize[0];
     mDLSSOutputSize[1] = displaySize[1];
+
+    // Note: Input size used for DLSS must be less than or equal to the desired output size. This is a requirement of the DLSS API currently.
+    assert(mInputSize[0] <= mDLSSOutputSize[0] && mInputSize[1] <= mDLSSOutputSize[1]);
   }
 
   DLSSProfile DxvkDLSS::getCurrentProfile() const {
@@ -297,7 +293,6 @@ namespace dxvk {
       NGXDLSSContext::NGXSettings settings;
       settings.resetAccumulation = resetHistory;
       settings.antiGhost = mBiasCurrentColorEnabled;
-      settings.sharpness = 0.f;
       settings.preExposure = mPreExposure;
       settings.jitterOffset[0] = jitterOffset[0];
       settings.jitterOffset[1] = jitterOffset[1];
@@ -338,9 +333,9 @@ namespace dxvk {
     }
     m_dlssContext->releaseNGXFeature();
 
-    NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality(mProfile);
-
-    auto optimalSettings = m_dlssContext->queryOptimalSettings(mInputSize, perfQuality);
+    // Note: Use "actual profile" here not the set profile as this value should have any auto profiles resolved to an actual DLSS profile which is
+    // required for initializing DLSS.
+    const NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality(mActualProfile);
 
     m_dlssContext->initialize(renderContext, mInputSize, mDLSSOutputSize, mIsHDR, mInverseDepth, mAutoExposure, false, perfQuality);
   }

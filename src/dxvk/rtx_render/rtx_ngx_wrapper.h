@@ -142,7 +142,6 @@ namespace dxvk {
   class NGXDLSSContext final : public NGXFeatureContext {
   public:
     struct OptimalSettings {
-      float sharpness;
       uint32_t optimalRenderSize[2];
       uint32_t minRenderSize[2];
       uint32_t maxRenderSize[2];
@@ -161,7 +160,6 @@ namespace dxvk {
     {
       bool resetAccumulation;
       bool antiGhost;
-      float sharpness;
       float preExposure;
       float jitterOffset[2];
       float motionVectorScale[2];
@@ -221,7 +219,6 @@ namespace dxvk {
   class NGXRayReconstructionContext final : public NGXFeatureContext {
   public:
     struct QuerySettings {
-      float sharpness;
       uint32_t optimalRenderSize[2];
       uint32_t minRenderSize[2];
       uint32_t maxRenderSize[2];
@@ -247,7 +244,6 @@ namespace dxvk {
     struct NGXSettings {
       bool resetAccumulation;
       bool antiGhost;
-      float sharpness;
       float preExposure;
       float jitterOffset[2];
       float motionVectorScale[2];

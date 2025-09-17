@@ -82,6 +82,13 @@ namespace dxvk
     }
   }
 
+  void NVSDK_CONV NVSDK_NGX_AppLogCallback(const char* message, NVSDK_NGX_Logging_Level loggingLevel, NVSDK_NGX_Feature sourceComponent) {
+    static_cast<void>(loggingLevel);
+    static_cast<void>(sourceComponent);
+
+    Logger::info(str::format("DLSS Message: ", message));
+  }
+
   bool NGXContext::initialize() {
     ScopedCpuProfileZone();
 
@@ -108,7 +115,27 @@ namespace dxvk
     VkPhysicalDevice vkPhysicalDevice = adapter->handle();
     auto instance = m_device->instance();
     VkInstance vkInstance = instance->handle();
-    result = NVSDK_NGX_VULKAN_Init(RtxOptions::applicationId(), logFolder.c_str(), vkInstance, vkPhysicalDevice, vkDevice);
+
+    // Note: Enable DLSS logging for debugging in debug mode. Note this will disable all other DLSS logging sinks to ensure all logging
+    // goes through the DXVK logging system.
+#ifndef NDEBUG
+    NVSDK_NGX_FeatureCommonInfo featureCommonInfo{};
+
+    featureCommonInfo.LoggingInfo.LoggingCallback = &NVSDK_NGX_AppLogCallback;
+    featureCommonInfo.LoggingInfo.MinimumLoggingLevel = NVSDK_NGX_LOGGING_LEVEL_ON;
+    featureCommonInfo.LoggingInfo.DisableOtherLoggingSinks = true;
+#endif
+
+    result = NVSDK_NGX_VULKAN_Init(
+      RtxOptions::applicationId(), logFolder.c_str(),
+      vkInstance, vkPhysicalDevice, vkDevice,
+      nullptr, nullptr,
+#ifndef NDEBUG
+      &featureCommonInfo
+#else
+      nullptr
+#endif
+    );
 
     if (NVSDK_NGX_FAILED(result)) {
       if (result == NVSDK_NGX_Result_FAIL_FeatureNotSupported || result == NVSDK_NGX_Result_FAIL_PlatformError) {
@@ -481,21 +508,20 @@ namespace dxvk
   {
     ScopedCpuProfileZone();
     OptimalSettings settings;
+    // Note: Deprecated, should not be used but still must be passed into the query function.
+    float dummySharpness;
 
     NVSDK_NGX_Result result = NGX_DLSS_GET_OPTIMAL_SETTINGS(m_parameters,
       displaySize[0], displaySize[1], perfQuality,
       &settings.optimalRenderSize[0], &settings.optimalRenderSize[1],
       &settings.maxRenderSize[0], &settings.maxRenderSize[1],
       &settings.minRenderSize[0], &settings.minRenderSize[1],
-      &settings.sharpness);
+      &dummySharpness);
 
     if (NVSDK_NGX_FAILED(result)) {
       Logger::err(str::format("Querying optimal settings failed: ", resultToString(result)));
       return settings;
     }
-
-    // Depending on what version of DLSS DLL is being used, a sharpness of > 1.f was possible.
-    settings.sharpness = clamp(settings.sharpness, 0.01f, 1.f);
 
     return settings;
   }
@@ -538,7 +564,8 @@ namespace dxvk
     evalParams.pInBiasCurrentColorMask = settings.antiGhost ? &biasCurrentColorMaskResource : nullptr;
     evalParams.InJitterOffsetX = settings.jitterOffset[0];
     evalParams.InJitterOffsetY = settings.jitterOffset[1];
-    evalParams.Feature.InSharpness = settings.sharpness;
+    // Note: Sharpness parameter is deprecated and is not read by newer versions of DLSS, so setting it to 0 is fine here.
+    evalParams.Feature.InSharpness = 0.0f;
     evalParams.InPreExposure = settings.preExposure;
     evalParams.InReset = settings.resetAccumulation ? 1 : 0;
     evalParams.InMVScaleX = settings.motionVectorScale[0];
@@ -648,21 +675,20 @@ namespace dxvk
   NGXRayReconstructionContext::QuerySettings NGXRayReconstructionContext::queryOptimalSettings(const uint32_t displaySize[2], NVSDK_NGX_PerfQuality_Value perfQuality) const {
     ScopedCpuProfileZone();
     QuerySettings settings;
+    // Note: Deprecated, should not be used but still must be passed into the query function.
+    float dummySharpness;
 
     NVSDK_NGX_Result result = NGX_DLSSD_GET_OPTIMAL_SETTINGS(m_parameters,
       displaySize[0], displaySize[1], perfQuality,
       &settings.optimalRenderSize[0], &settings.optimalRenderSize[1],
       &settings.maxRenderSize[0], &settings.maxRenderSize[1],
       &settings.minRenderSize[0], &settings.minRenderSize[1],
-      &settings.sharpness);
+      &dummySharpness);
 
     if (NVSDK_NGX_FAILED(result)) {
       Logger::err(str::format("Querying optimal settings failed: ", resultToString(result)));
       return settings;
     }
-
-    // Depending on what version of DLSS DLL is being used, a sharpness of > 1.f was possible.
-    settings.sharpness = clamp(settings.sharpness, 0.01f, 1.f);
 
     return settings;
   }
@@ -707,7 +733,8 @@ namespace dxvk
     evalParams.pInBiasCurrentColorMask = settings.antiGhost ? &biasCurrentColorMaskResource : nullptr;
     evalParams.InJitterOffsetX = settings.jitterOffset[0];
     evalParams.InJitterOffsetY = settings.jitterOffset[1];
-    evalParams.Feature.InSharpness = settings.sharpness;
+    // Note: Sharpness parameter is deprecated and is not read by newer versions of DLSS, so setting it to 0 is fine here.
+    evalParams.Feature.InSharpness = 0.0f;
     evalParams.InPreExposure = settings.preExposure;
     evalParams.InReset = settings.resetAccumulation ? 1 : 0;
     evalParams.InMVScaleX = settings.motionVectorScale[0];
