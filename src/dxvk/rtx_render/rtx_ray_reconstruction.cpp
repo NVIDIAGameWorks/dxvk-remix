@@ -336,7 +336,6 @@ namespace dxvk {
       NGXRayReconstructionContext::NGXSettings settings;
       settings.resetAccumulation = resetHistory;
       settings.antiGhost = m_biasCurrentColorEnabled;
-      settings.sharpness = 0.f;
       settings.preExposure = mPreExposure;
       settings.jitterOffset[0] = jitterOffset[0];
       settings.jitterOffset[1] = jitterOffset[1];
@@ -428,28 +427,23 @@ namespace dxvk {
     // Update our requested profile
     mProfile = profile;
 
-    if (mProfile == DLSSProfile::FullResolution) {
-      mInputSize[0] = outRenderSize[0] = displaySize[0];
-      mInputSize[1] = outRenderSize[1] = displaySize[1];
-    } else {
-      NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality(mActualProfile);
+    NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality(mActualProfile);
 
-      if (!m_rayReconstructionContext) {
-        m_rayReconstructionContext = m_device->getCommon()->metaNGXContext().createRayReconstructionContext();
-      }
-      if (m_rayReconstructionContext) {
-        auto optimalSettings = m_rayReconstructionContext->queryOptimalSettings(displaySize, perfQuality);
+    if (!m_rayReconstructionContext) {
+      m_rayReconstructionContext = m_device->getCommon()->metaNGXContext().createRayReconstructionContext();
+    }
+    if (m_rayReconstructionContext) {
+      const auto optimalSettings = m_rayReconstructionContext->queryOptimalSettings(displaySize, perfQuality);
 
-        const int step = 32;
-        optimalSettings.optimalRenderSize[0] = (optimalSettings.optimalRenderSize[0] + step - 1) / step * step;
-        optimalSettings.optimalRenderSize[1] = (optimalSettings.optimalRenderSize[1] + step - 1) / step * step;
-        mInputSize[0] = outRenderSize[0] = optimalSettings.optimalRenderSize[0];
-        mInputSize[1] = outRenderSize[1] = optimalSettings.optimalRenderSize[1];
-      }
+      mInputSize[0] = outRenderSize[0] = optimalSettings.optimalRenderSize[0];
+      mInputSize[1] = outRenderSize[1] = optimalSettings.optimalRenderSize[1];
     }
 
     mDLSSOutputSize[0] = displaySize[0];
     mDLSSOutputSize[1] = displaySize[1];
+
+    // Note: Input size used for DLSS must be less than or equal to the desired output size. This is a requirement of the DLSS API currently.
+    assert(mInputSize[0] <= mDLSSOutputSize[0] && mInputSize[1] <= mDLSSOutputSize[1]);
   }
 
   void DxvkRayReconstruction::initializeRayReconstruction(Rc<DxvkContext> renderContext) {
@@ -485,7 +479,7 @@ namespace dxvk {
       m_rayReconstructionContext = m_device->getCommon()->metaNGXContext().createRayReconstructionContext();
     }
 
-    NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality(mProfile);
+    NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality(mActualProfile);
 
     if (m_rayReconstructionContext) {
 
