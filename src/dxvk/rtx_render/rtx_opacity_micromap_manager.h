@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -53,8 +53,16 @@ namespace dxvk {
     struct Cache {
       friend class OpacityMicromapManager;
 
-      RTX_OPTION("rtx.opacityMicromap.cache", int, minFreeVidmemMBToNotAllocate, 2560, "Min Video Memory [MB] to keep free before allocating any for Opacity Micromaps.");
-      RTX_OPTION("rtx.opacityMicromap.cache", int, minBudgetSizeMB, 512, "Budget: Min Video Memory [MB] required.\n"
+      RTX_OPTION("rtx.opacityMicromap.cache", int, minFreeVidmemMBToNotAllocate, 512,
+                 "Min Video Memory [MB] to keep free before allocating any for Opacity Micromaps.");
+      RTX_OPTION("rtx.opacityMicromap.cache", int, freeVidmemMBBudgetBuffer, 384,
+                 "A buffer of free memory on top of \"minFreeVidmemMBToNotAllocate\" to not budget OMMs for when calculating a new memory budget for OMMs.\n"
+                 "Note, \"minFreeVidmemMBToNotAllocate\" + \"freeVidmemMBBudgetBuffer\" is left untouched when calculating a new memory budget.\n"
+                 "However, once budget has been assigned to OMMs, the budget will not decrease until the free VidMem drops below \"minFreeVidmemMBToNotAllocate\".\n"
+                 "Having this soft budget buffer protects OMM budget against runtime memory usage swings at high memory pressure\n"
+                 "and keep it stable rather than the budget being continously bumped and decreased in oscilating manner,\n"
+                 "which is detrimental since OMM build workloads are spread across multiple frames.");
+      RTX_OPTION("rtx.opacityMicromap.cache", int, minBudgetSizeMB, 128, "Budget: Min Video Memory [MB] required.\n"
                                                                          "If the min amount is not available, then the budget will be set to 0.");
       RTX_OPTION("rtx.opacityMicromap.cache", int, maxBudgetSizeMB, 1536, "Budget: Max Allowed Size [MB].");
       RTX_OPTION("rtx.opacityMicromap.cache", float, maxVidmemSizePercentage, 0.15, "Budget: Max Video Memory Size %.");
@@ -301,6 +309,7 @@ namespace dxvk {
     explicit OpacityMicromapMemoryManager(DxvkDevice* device);
 
     void onFrameStart();
+    void registerVidmemFreeSize();
     void updateMemoryBudget(Rc<DxvkContext> ctx);
 
     bool allocate(VkDeviceSize size);
@@ -309,6 +318,7 @@ namespace dxvk {
     void releaseAll();
 
     VkDeviceSize getBudget() const { return m_budget; }
+    VkDeviceSize getPrevBudget() const;
     VkDeviceSize getUsed() const { return m_used; }
     float calculateUsageRatio() const;
     VkDeviceSize calculatePendingAvailableSize() const;
@@ -316,8 +326,11 @@ namespace dxvk {
     VkDeviceSize getNextPendingReleasedSize() const;
 
   private:
+    static const VkDeviceSize kInvalidDeviceSize = -1;
     VkDeviceSize m_used = 0;
-    VkDeviceSize m_budget;
+    VkDeviceSize m_budget = 0;
+    VkDeviceSize m_prevBudget = 0;
+    VkDeviceSize m_vidmemFreeSize = kInvalidDeviceSize;
 
     VkPhysicalDeviceMemoryProperties  m_memoryProperties;
 
@@ -376,13 +389,16 @@ namespace dxvk {
                                         VkAccelerationStructureGeometryKHR& targetGeometry, const InstanceManager& instanceManager);
 
     // Called once per frame to build pending Opacity Micromap items in Opacity Micromap Manager
-    void buildOpacityMicromaps(Rc<DxvkContext> ctx, const std::vector<TextureRef>& textures, uint32_t lastCameraCutFrameId, float frameTimeMilliseconds);
+    void buildOpacityMicromaps(Rc<DxvkContext> ctx, const std::vector<TextureRef>& textures, uint32_t lastCameraCutFrameId);
 
     // Called once per frame before any calls to Opacity Micromap Manager
     void onFrameStart(Rc<DxvkContext> ctx);
 
     // Called once per frame after all calls to Opacity Micromap Manager
     void onFrameEnd();
+
+    // Called once per frame after acceleration structure calls have been submitted to command list
+    void onFinishedBuilding();
 
     // Returns whether the OMM manager has or can generate any new OMMs.
     // This can be used to skip any large for loops querying OMM manager, 
@@ -440,7 +456,6 @@ namespace dxvk {
 
     XXH64_hash_t bindOpacityMicromap(Rc<DxvkContext> ctx, const RtInstance& instance, uint32_t billboardIndex, VkAccelerationStructureGeometryKHR& targetGeometry, const InstanceManager& instanceManager);
 
-    void updateMemoryBudget();
     void generateInstanceOmmRequests(RtInstance& instance, const InstanceManager& instanceManager, std::vector<OmmRequest>& ommRequests);
 
     bool registerOmmRequestInternal(RtInstance& instance, const OmmRequest& ommRequest);
@@ -449,7 +464,7 @@ namespace dxvk {
     void deleteCachedSourceData(fast_unordered_cache<CachedSourceData>::iterator sourceDataIter, OpacityMicromapCacheState ommCacheState, bool destroyParentInstanceOmmRequestContainer);
     void deleteCachedSourceData(XXH64_hash_t ommSrcHash, OpacityMicromapCacheState ommCacheState, bool destroyParentInstanceOmmRequestContainer);
     bool insertToUnprocessedList(const OmmRequest& ommRequest, std::list<XXH64_hash_t>::iterator& cacheStateListIter);
-    void destroyOmmData(OpacityMicromapCache::iterator& ommCacheIterator, bool destroyParentInstanceOmmRequestContainer = true);
+    void destroyOmmData(OpacityMicromapCache::iterator ommCacheIterator, bool destroyParentInstanceOmmRequestContainer = true);
     void destroyOmmData(XXH64_hash_t ommSrcHash);
     static OpacityMicromapInstanceData& getOmmInstanceData(const RtInstance& instance);
 
@@ -457,6 +472,7 @@ namespace dxvk {
     void destroyInstance(const RtInstance& instance, bool forceDestroy = false);
     uint32_t calculateNumMicroTriangles(uint16_t subdivisionLevel);
 
+    Rc<DxvkBuffer> getScratchMemory(const size_t requiredScratchAllocSize);
 
     typedef std::vector<uint16_t> NumTexelsPerMicroTriangle;
     struct NumTexelsPerMicroTriangleCalculationData {
@@ -477,7 +493,7 @@ namespace dxvk {
     // Called whenever a new instance has been added to the database
     void onInstanceAdded(const RtInstance& instance);
     // Called whenever instance metadata is updated
-    void onInstanceUpdated(const RtInstance& instance, const RtSurfaceMaterial& material, const bool hasTransformChanged, const bool hasVerticesChanged);
+    void onInstanceUpdated(const RtInstance& instance, const DrawCallState& drawCall, const MaterialData& material, const bool hasTransformChanged, const bool hasVerticesChanged, const bool isFirstUpdateThisFrame);
     // Called whenever an instance has been removed from the database
     void onInstanceDestroyed(const RtInstance& instance);
 
@@ -537,7 +553,8 @@ namespace dxvk {
     VkDeviceSize m_amountOfMemoryMissing = 0;    // Records how much memory was missing in a frame
     OpacityMicromapMemoryManager m_memoryManager;
     bool m_hasEnoughMemoryToPotentiallyGenerateAnOmm = true; // A quick check to avoid unnecessary computations when there's not enough free budget to handle more OMMs
-    std::unique_ptr<RtxStagingDataAlloc> m_scratchAllocator;
+    Rc<DxvkBuffer> m_scratchBuffer;
+    size_t m_scratchMemoryUsedThisFrame = 0;
 
     // Prev RtxOption states
     bool m_prevConservativeEstimationEnable = OpacityMicromapOptions::Building::ConservativeEstimation::enable();

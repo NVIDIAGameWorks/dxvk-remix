@@ -32,7 +32,7 @@ jobs:
         submodules: recursive
 
     - name: Setup Meson
-      run: pip install meson==0.62.1
+      run: pip install meson==1.1.0
     
     - name: Build
       shell: pwsh
@@ -40,16 +40,52 @@ jobs:
         Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
         . .\build_common.ps1
         PerformBuild -BuildFlavour ${{matrix.build-flavour}} -BuildSubDir ${{matrix.output-subdir}} -Backend ninja -EnableTracy false copy_output
-    
+
     - name: Copy readme
       run: copy artifacts_readme.txt _output
     
-    - name: Upload binaries
+    - name: Upload x64 binaries
       uses: actions/upload-artifact@v4
       with:
-        name: dxvk-remix-${{env.GITHUB_SHA_SHORT}}-${{github.run_number}}-${{matrix.build-flavour}}
+        name: rtx-remix-for-x64-games-${{env.GITHUB_SHA_SHORT}}-${{github.run_number}}-${{matrix.build-flavour}}
         path: |
           _output\*.dll
           _output\*.pdb
           _output\*.txt
           _output\usd\*
+
+    - name: Move DXVK
+      shell: pwsh
+      run: |
+        mkdir _output\.trex
+        Move-Item -Path _output\*.dll -Destination _output\.trex\
+        Move-Item -Path _output\*.pdb -Destination _output\.trex\
+        Move-Item -Path _output\usd -Destination _output\.trex\usd
+    
+    - name: Build Bridge
+      shell: pwsh
+      run: |
+        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
+        pushd bridge
+        . .\build_bridge_${{matrix.build-flavour}}.bat
+        popd
+
+    - name: Copy Bridge
+      shell: pwsh
+      run: |
+        Copy-Item -Recurse -Path bridge\_output\* -Destination _output\ -Force
+
+    - name: Upload x86 binaries
+      uses: actions/upload-artifact@v4
+      with:
+        name: rtx-remix-for-x86-games-${{env.GITHUB_SHA_SHORT}}-${{github.run_number}}-${{matrix.build-flavour}}
+        include-hidden-files: true
+        path: |
+          _output\*.dll
+          _output\*.exe
+          _output\*.pdb
+          _output\*.txt
+          _output\.trex\*.dll
+          _output\.trex\*.exe
+          _output\.trex\*.pdb
+          _output\.trex\usd\*

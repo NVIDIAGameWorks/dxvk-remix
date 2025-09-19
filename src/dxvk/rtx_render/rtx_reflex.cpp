@@ -81,7 +81,7 @@ namespace dxvk {
 
     // Determine Reflex enablement
 
-    m_enabled = RtxOptions::Get()->isReflexEnabled();
+    m_enabled = RtxOptions::isReflexEnabled();
 
     // Note: Skip initializing Reflex if it is globally disabled at the time of construction.
     if (!reflexEnabled()) {
@@ -531,7 +531,7 @@ namespace dxvk {
 
     // Check the current Reflex Mode
 
-    const auto newMode = RtxOptions::Get()->reflexMode();
+    const auto newMode = RtxOptions::reflexMode();
 
     if (newMode == m_currentReflexMode) {
       return;

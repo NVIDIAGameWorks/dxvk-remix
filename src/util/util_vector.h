@@ -436,7 +436,13 @@ namespace dxvk {
   }
 
   template <typename T>
-  Vector3Base<T> min(const Vector3Base<T>& a, const Vector3Base<T>& b) {
+  Vector3Base<T> project(const Vector3Base<T>& p, const Vector3Base<T>& o, const Vector3Base<T>& n) {
+    return p - dot(p - o, n) * n;
+  }
+
+  template <typename T>
+  // Wrapping the function name in () to fix linter errors from min/max macros in windows headers.
+  Vector3Base<T> (min)(const Vector3Base<T>& a, const Vector3Base<T>& b) {
     return Vector3Base<T>(
       std::min(a.x, b.x),
       std::min(a.y, b.y),
@@ -445,7 +451,8 @@ namespace dxvk {
   }
 
   template <typename T>
-  Vector3Base<T> max(const Vector3Base<T>& a, const Vector3Base<T>& b) {
+  // Wrapping the function name in () to fix linter errors from min/max macros in windows headers.
+  Vector3Base<T> (max)(const Vector3Base<T>& a, const Vector3Base<T>& b) {
     return Vector3Base<T>(
       std::max(a.x, b.x),
       std::max(a.y, b.y),
@@ -630,7 +637,8 @@ namespace dxvk {
   }
 
   template <typename T>
-  Vector2Base<T> min(const Vector2Base<T>& a, const Vector2Base<T>& b) {
+  // Wrapping the function name in () to fix linter errors from min/max macros in windows headers.
+  Vector2Base<T> (min)(const Vector2Base<T>& a, const Vector2Base<T>& b) {
     return Vector2Base<T>(
       std::min(a.x, b.x),
       std::min(a.y, b.y)
@@ -638,7 +646,8 @@ namespace dxvk {
   }
 
   template <typename T>
-  Vector2Base<T> max(const Vector2Base<T>& a, const Vector2Base<T>& b) {
+  // Wrapping the function name in () to fix linter errors from min/max macros in windows headers.
+  Vector2Base<T> (max)(const Vector2Base<T>& a, const Vector2Base<T>& b) {
     return Vector2Base<T>(
       std::max(a.x, b.x),
       std::max(a.y, b.y)
@@ -787,10 +796,3 @@ namespace dxvk {
   }
 
 }
-
-template <>
-struct std::hash<dxvk::Vector3i> {
-  std::size_t operator()(const dxvk::Vector3i& key) const {
-    return XXH3_64bits(&key, sizeof(dxvk::Vector3i));
-  }
-};

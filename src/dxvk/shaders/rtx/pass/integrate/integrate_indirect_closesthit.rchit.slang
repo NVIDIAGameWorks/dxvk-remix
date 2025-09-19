@@ -25,37 +25,204 @@
 //!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
 //!>       NEE_CACHE_ENABLE=0
 
+
 //!variant integrate_indirect_neeCache_material_opaque_translucent_closestHit.rchit
 //!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
 //!>       NEE_CACHE_ENABLE=1
+
 
 //!variant integrate_indirect_material_rayportal_closestHit.rchit
 //!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
 //!>       NEE_CACHE_ENABLE=0
 
+
 //!variant integrate_indirect_neeCache_material_rayportal_closestHit.rchit
 //!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
 //!>       NEE_CACHE_ENABLE=1
+
+
 
 //!variant integrate_indirect_pom_material_opaque_translucent_closestHit.rchit
 //!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
 //!>       NEE_CACHE_ENABLE=0
 //!>       OPAQUE_MATERIAL_USE_POM=1
 
+
 //!variant integrate_indirect_neeCache_pom_material_opaque_translucent_closestHit.rchit
 //!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
 //!>       NEE_CACHE_ENABLE=1
 //!>       OPAQUE_MATERIAL_USE_POM=1
+
 
 //!variant integrate_indirect_pom_material_rayportal_closestHit.rchit
 //!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
 //!>       NEE_CACHE_ENABLE=0
 //!>       OPAQUE_MATERIAL_USE_POM=1
 
+
 //!variant integrate_indirect_neeCache_pom_material_rayportal_closestHit.rchit
 //!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
 //!>       NEE_CACHE_ENABLE=1
 //!>       OPAQUE_MATERIAL_USE_POM=1
+
+
+
+/* NRC */
+
+//!variant integrate_indirect_nrc_material_opaque_translucent_closestHit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=0
+
+
+//!variant integrate_indirect_nrc_neeCache_material_opaque_translucent_closestHit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=1
+
+
+//!variant integrate_indirect_nrc_material_rayportal_closestHit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=0
+
+
+//!variant integrate_indirect_nrc_neeCache_material_rayportal_closestHit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=1
+
+
+//!variant integrate_indirect_nrc_pom_material_opaque_translucent_closestHit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=0
+//!>       OPAQUE_MATERIAL_USE_POM=1
+
+
+//!variant integrate_indirect_nrc_neeCache_pom_material_opaque_translucent_closestHit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=1
+//!>       OPAQUE_MATERIAL_USE_POM=1
+
+
+//!variant integrate_indirect_nrc_pom_material_rayportal_closestHit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=0
+//!>       OPAQUE_MATERIAL_USE_POM=1
+
+
+//!variant integrate_indirect_nrc_neeCache_pom_material_rayportal_closestHit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=1
+//!>       OPAQUE_MATERIAL_USE_POM=1
+
+
+
+// WBOIT
+
+//!variant integrate_indirect_material_opaque_translucent_closestHit_wboit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_neeCache_material_opaque_translucent_closestHit_wboit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_material_rayportal_closestHit_wboit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_neeCache_material_rayportal_closestHit_wboit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+
+//!variant integrate_indirect_pom_material_opaque_translucent_closestHit_wboit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+//!>       NEE_CACHE_ENABLE=0
+//!>       OPAQUE_MATERIAL_USE_POM=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_neeCache_pom_material_opaque_translucent_closestHit_wboit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+//!>       NEE_CACHE_ENABLE=1
+//!>       OPAQUE_MATERIAL_USE_POM=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_pom_material_rayportal_closestHit_wboit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+//!>       NEE_CACHE_ENABLE=0
+//!>       OPAQUE_MATERIAL_USE_POM=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_neeCache_pom_material_rayportal_closestHit_wboit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+//!>       NEE_CACHE_ENABLE=1
+//!>       OPAQUE_MATERIAL_USE_POM=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+/* NRC */
+
+//!variant integrate_indirect_nrc_material_opaque_translucent_closestHit_wboit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_nrc_neeCache_material_opaque_translucent_closestHit_wboit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_nrc_material_rayportal_closestHit_wboit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_nrc_neeCache_material_rayportal_closestHit_wboit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+
+//!variant integrate_indirect_nrc_pom_material_opaque_translucent_closestHit_wboit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=0
+//!>       OPAQUE_MATERIAL_USE_POM=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_nrc_neeCache_pom_material_opaque_translucent_closestHit_wboit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=1
+//!>       OPAQUE_MATERIAL_USE_POM=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_nrc_pom_material_rayportal_closestHit_wboit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=0
+//!>       OPAQUE_MATERIAL_USE_POM=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_nrc_neeCache_pom_material_rayportal_closestHit_wboit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=1
+//!>       OPAQUE_MATERIAL_USE_POM=1
+//!>       UNORDERED_RESOLVE_WBOIT
 
 //!end-variants
 
@@ -63,10 +230,14 @@
 #define INTEGRATE_INDIRECT
 #define RAB_HAS_PREVIOUS_GBUFFER 1
 #define RAB_HAS_RTXDI_RESERVOIRS 1
+
+// Note: ReSTIR GI Reservoirs are not available with NRC enabled, but 
+// the usage of the reservoirs is gated on ReSTIR GI being enabled
 #define RAB_HAS_RESTIR_GI_RESERVOIRS 1
 // Note: Opacity lighting approximation used in the indirect integration pass due to particle lighting being somewhat
 // important in reflections off shiny surfaces (as without this it can make areas with many particles look weird in reflections).
 #define RESOLVE_OPACITY_LIGHTING_APPROXIMATION 1
+#define RESOLVER_USE_VOLUMETRIC_ATTENUATION 1
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/common_bindings.slangh"
@@ -89,9 +260,7 @@ void main(inout PathState rayPayload : SV_RayPayload, in float2 barycentricCoord
   IndirectPathTextures indirectPathTextures;
 
   indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal = PrimaryWorldPositionWorldTriangleNormal;
-  indirectPathTextures.IndirectRadianceHitDistance = aliasedData0.IndirectRadianceHitDistance;
-  indirectPathTextures.RestirGIRadiance = RestirGIRadiance;
-  indirectPathTextures.RestirGIHitGeometry = RestirGIHitGeometry;
+  indirectPathTextures.IndirectRadianceHitDistance = IndirectRadianceHitDistance;
 
   integratePathVertex(indirectPathTextures, rayHitInfo, rayPayload);
 }

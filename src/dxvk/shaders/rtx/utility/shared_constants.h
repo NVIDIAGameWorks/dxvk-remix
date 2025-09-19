@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -42,6 +42,9 @@ static const uint8_t surfaceMaterialTypeMask = uint8_t(0x3u);
 #define OPAQUE_SURFACE_MATERIAL_FLAG_USE_THIN_FILM_LAYER (1 << COMMON_MATERIAL_FLAG_TYPE_OFFSET(0))
 #define OPAQUE_SURFACE_MATERIAL_FLAG_ALPHA_IS_THIN_FILM_THICKNESS (1 << COMMON_MATERIAL_FLAG_TYPE_OFFSET(1))
 #define OPAQUE_SURFACE_MATERIAL_FLAG_IGNORE_ALPHA_CHANNEL (1 << COMMON_MATERIAL_FLAG_TYPE_OFFSET(2))
+#define OPAQUE_SURFACE_MATERIAL_FLAG_IS_RAYTRACED_RENDER_TARGET (1 << COMMON_MATERIAL_FLAG_TYPE_OFFSET(3))
+#define OPAQUE_SURFACE_MATERIAL_FLAG_HAS_DISPLACEMENT (1 << COMMON_MATERIAL_FLAG_TYPE_OFFSET(4))
+
 
 #define OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_HAS_HEIGHT_TEXTURE (1 << 0)
 #define OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_USE_THIN_FILM_LAYER (1 << 1)
@@ -52,11 +55,5 @@ static const uint8_t surfaceMaterialTypeMask = uint8_t(0x3u);
 // Note: Bits for flags field in TranslucentSurfaceMaterial and TranslucentSurfaceMaterialInteraction
 // If set, then the texture bound to transmittanceOrDiffuseTextureIndex is an albedo map for the diffuse layer
 #define TRANSLUCENT_SURFACE_MATERIAL_FLAG_USE_DIFFUSE_LAYER (1 << COMMON_MATERIAL_FLAG_TYPE_OFFSET(0))
-
-// bits for flags field in SubsurfaceMaterial
-#define SUBSURFACE_MATERIAL_FLAG_HAS_TRANSMITTANCE_TEXTURE            (1 << COMMON_MATERIAL_FLAG_TYPE_OFFSET(0))
-#define SUBSURFACE_MATERIAL_FLAG_HAS_THICKNESS_TEXTURE                (1 << COMMON_MATERIAL_FLAG_TYPE_OFFSET(1))
-#define SUBSURFACE_MATERIAL_FLAG_HAS_SINGLE_SCATTERING_ALBEDO_TEXTURE (1 << COMMON_MATERIAL_FLAG_TYPE_OFFSET(2))
-
 
 #endif // ifndef SHARED_CONSTANTS_H

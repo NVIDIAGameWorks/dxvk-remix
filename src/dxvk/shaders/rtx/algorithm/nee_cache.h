@@ -452,17 +452,17 @@ struct NEECell
   }
 #endif
 
-  float calculateLightCandidateWeight(NEELightCandidate candidate, vec3 cellCenter, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness, bool isSubsurface)
+  float calculateLightCandidateWeight(NEELightCandidate candidate, vec3 cellCenter, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness, bool isThinOpaqueSubsurface)
   {
     vec3 candidateOffset = candidate.getOffset();
     f16vec3 inputDirection = normalize(candidateOffset + cellCenter + normal * length(candidateOffset) * 0.01 - surfacePoint);
 
     // Use a simplified GGX model to calculate light contribution
     float16_t ndoti = dot(inputDirection, normal);
-    float16_t diffuseTerm = !isSubsurface ? (1.0 - specularRatio) / pi : (1.0 - specularRatio) / twoPi;
+    float16_t diffuseTerm = !isThinOpaqueSubsurface ? (1.0 - specularRatio) / pi : (1.0 - specularRatio) / twoPi;
     float specularTerm = 0.0f;
 
-    if (!isSubsurface || ndoti > 0.0h) {
+    if (!isThinOpaqueSubsurface || ndoti > 0.0h) {
       ndoti = saturate(ndoti);
 
       // The specular term consists of there parts: D, G, F
@@ -473,7 +473,7 @@ struct NEECell
       f16vec3 halfVector = normalize(inputDirection + viewDirection);
       float ndotm = saturate(dot(halfVector, normal));
       specularTerm = specularRatio * evalGGXNormalDistributionIsotropic(roughness, ndotm) * cb.neeCacheArgs.specularFactor * 0.25;
-    } else // isSubsurface && ndoti < 0
+    } else // isThinOpaqueSubsurface && ndoti < 0
     {
       ndoti = -ndoti;
     }
@@ -482,7 +482,7 @@ struct NEECell
     return radiance * (diffuseTerm + specularTerm) * ndoti;
   }
 
-  void calculateLightCandidateNormalizedWeight(int ithCandidate, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness, bool isSubsurface, out float pdf)
+  void calculateLightCandidateNormalizedWeight(int ithCandidate, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness, bool isThinOpaqueSubsurface, out float pdf)
   {
     int count = getLightCandidateCount();
     float totalWeight = 0;
@@ -492,7 +492,7 @@ struct NEECell
     for (int i = 0; i < count; ++i)
     {
       NEELightCandidate candidate = getLightCandidate(i);
-      float weight = calculateLightCandidateWeight(candidate, cellCenter, surfacePoint, viewDirection, normal, specularRatio, roughness, isSubsurface);
+      float weight = calculateLightCandidateWeight(candidate, cellCenter, surfacePoint, viewDirection, normal, specularRatio, roughness, isThinOpaqueSubsurface);
       totalWeight += weight;
       if (i == ithCandidate)
       {
@@ -502,7 +502,7 @@ struct NEECell
     pdf = chosenWeight / totalWeight;
   }
 
-  void sampleLightCandidate(inout RAB_RandomSamplerState rtxdiRNG, vec2 uniformRandomNumber, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness, bool isSubsurface, inout uint16_t lightIdx, out float invPdf)
+  void sampleLightCandidate(inout RAB_RandomSamplerState rtxdiRNG, vec2 uniformRandomNumber, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness, bool isThinOpaqueSubsurface, inout uint16_t lightIdx, out float invPdf)
   {
     int lightCount = cb.lightRanges[lightTypeCount-1].offset + cb.lightRanges[lightTypeCount-1].count;
     uint uniformLightIdx = clamp(uniformRandomNumber.y * lightCount, 0, lightCount-1);
@@ -517,7 +517,7 @@ struct NEECell
     for (int i = 0; i < count; ++i)
     {
       NEELightCandidate candidate = getLightCandidate(i);
-      float weight = calculateLightCandidateWeight(candidate, cellCenter, surfacePoint, viewDirection, normal, specularRatio, roughness, isSubsurface);
+      float weight = calculateLightCandidateWeight(candidate, cellCenter, surfacePoint, viewDirection, normal, specularRatio, roughness, isThinOpaqueSubsurface);
       totalWeight += weight;
       if (weight > totalWeight * RAB_GetNextRandom(rtxdiRNG))
       {
@@ -776,16 +776,16 @@ struct NEECache
                            | ((spatialHash.w & 0xFF) << 8)
                            | ((hashDir8Bit & 0xFF));
     uint2 hashKey2 = uint2(shadingKey0, shadingKey1);
-    uint hashKey = prospectorHash(hashKey2.x) ^ prospectorHash(hashKey2.y);
+    uint hashKey = uintHash(hashKey2.x) ^ uintHash(hashKey2.y);
     return hashKey & (NEE_CACHE_TOTAL_PROBE - 1);
   }
 
   static uint getHashValue(int3 positionI)
   {
     uint hash = 0;
-    hash ^= hashJenkins(positionI.x);
-    hash ^= hashJenkins(positionI.y);
-    hash ^= hashJenkins(positionI.z);
+    hash ^= uintHash(positionI.x);
+    hash ^= uintHash(positionI.y);
+    hash ^= uintHash(positionI.z);
     return hash & (NEE_CACHE_TOTAL_PROBE - 1);
   }
 

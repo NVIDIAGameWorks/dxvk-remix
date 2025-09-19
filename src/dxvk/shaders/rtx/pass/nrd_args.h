@@ -31,7 +31,4 @@ struct NrdArgs {
   uint pad;
 
   vec4 hitDistanceParams;
-
-  vec3 specularLobeTrimmingParams;
-  float pad3;
 };

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -30,6 +30,9 @@
 #include "rtx_context.h"
 #include "rtx_imgui.h"
 #include "rtx/pass/raytrace_args.h"
+#include "rtx_neural_radiance_cache.h"
+#include "rtx_render/rtx_restir_gi_rayquery.h"
+#include "rtx_debug_view.h"
 
 #include <rtx_shaders/demodulate.h>
 
@@ -87,6 +90,7 @@ namespace dxvk {
     VkExtent3D workgroups = util::computeBlockCount(numRaysExtent, VkExtent3D{ 16, 8, 1 });
 
     ScopedGpuProfileZone(ctx, "Demodulate");
+    ctx->setFramePassStage(RtxFramePassStage::Demodulate);
 
     Rc<DxvkBuffer> constantsBuffer = ctx->getResourceManager().getConstantsBuffer();
     DebugView& debugView = ctx->getDevice()->getCommon()->metaDebugView();
@@ -110,7 +114,7 @@ namespace dxvk {
     // For secondary surfaces pixels m_indirectRadianceHitDistance is still valid
     // Therefore we suppress the alias check for m_indirectRadianceHitDistance 
     // since m_primaryIndirectDiffuseRadiance already took ownership of the shared resource
-    const bool isPrimaryIndirectRadianceResourceRead = ctx->getCommonObjects()->metaReSTIRGIRayQuery().shouldDispatch();
+    const bool isPrimaryIndirectRadianceResourceRead = ctx->getCommonObjects()->metaReSTIRGIRayQuery().isActive();
     const bool suppressIndirectRadianceAliasCheck = isPrimaryIndirectRadianceResourceRead;
 
     ctx->bindResourceView(DEMODULATE_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT, rtOutput.m_indirectRadianceHitDistance.view(Resources::AccessType::Read, !suppressIndirectRadianceAliasCheck), nullptr);

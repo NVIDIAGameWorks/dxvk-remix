@@ -94,8 +94,14 @@ namespace dxvk {
       m_device->ChangeReportedMemory(m_size);
 
     // Release this texture from ImGUI 
-    if (m_image != nullptr && m_image->getHash() != 0)
-      ImGUI::ReleaseTexture(m_image->getHash());
+    if (m_image != nullptr) {
+      if (m_image->getHash() != 0) {
+        ImGUI::ReleaseTexture(m_image->getHash());
+      }
+      if (m_image->getDescriptorHash() != 0) {
+        ImGUI::ReleaseTexture(m_image->getDescriptorHash());
+      }
+    }
   }
 
 
@@ -198,7 +204,7 @@ namespace dxvk {
                                   | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
                                   | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
 
-    m_buffers[Subresource] = m_device->GetDXVKDevice()->createBuffer(info, memType, DxvkMemoryStats::Category::AppBuffer);
+    m_buffers[Subresource] = m_device->GetDXVKDevice()->createBuffer(info, memType, DxvkMemoryStats::Category::AppBuffer, "d3d9 buffer");
     m_mappedSlices[Subresource] = m_buffers[Subresource]->getSliceHandle();
 
     return true;
@@ -345,6 +351,12 @@ namespace dxvk {
       newHash = XXH3_64bits_withSeed(&renderTargetHashCounter, sizeof(uint32_t), newHash);
       ++renderTargetHashCounter;
       image->setHash(newHash);
+
+      // Generate descriptor hash from the image properties (not including actual pixel data)
+      XXH64_hash_t descriptorHash = m_desc.CalculateHash();
+
+      // save hash to dxvkImage
+      image->setDescriptorHash(descriptorHash);
     }
     return image;
     // NV-DXVK end
@@ -632,7 +644,8 @@ namespace dxvk {
     if (IsRenderTarget()) {
       // Assumption: All image hashes are created before creating sample view. Put assert here to track hash bugs.
       assert(m_image->getHash() != kEmptyHash);
-      ImGUI::AddTexture(m_image->getHash(), m_sampleView.Color);
+      ImGUI::AddTexture(m_image->getHash(), m_sampleView.Color, ImGUI::kTextureFlagsDefault);
+      ImGUI::AddTexture(m_image->getDescriptorHash(), m_sampleView.Color, ImGUI::kTextureFlagsRenderTarget);
     }
   }
 
@@ -659,7 +672,7 @@ namespace dxvk {
       return;
 
     const bool useObsoleteHashMethod = NeedsUpload(subresource) &&
-      RtxOptions::Get()->shouldUseObsoleteHashOnTextureUpload();
+      RtxOptions::useObsoleteHashOnTextureUpload();
 
     // Generate hash from CPU buffer
     XXH64_hash_t imageHash;
@@ -673,7 +686,14 @@ namespace dxvk {
     m_image->setHash(imageHash);
 
     // Let ImGUI know about this texture
-    ImGUI::AddTexture(imageHash, m_sampleView.Color);
+    ImGUI::AddTexture(imageHash, m_sampleView.Color, ImGUI::kTextureFlagsDefault);
+    if (IsRenderTarget()) {
+      // Generate descriptor hash from the image properties (not including actual pixel data)
+      XXH64_hash_t descriptorHash = m_desc.CalculateHash();
+      m_image->setDescriptorHash(descriptorHash);
+
+      ImGUI::AddTexture(descriptorHash, m_sampleView.Color, ImGUI::kTextureFlagsRenderTarget);
+    }
   }
 
   void D3D9CommonTexture::SetupForRtx() {

@@ -1,6 +1,14 @@
 #include "dxvk_device.h"
 #include "rtx_dlfg.h"
 
+namespace {
+  constexpr uint32_t kDLFGMaxInterpolatedFrames = 4;
+  constexpr uint64_t kPacerDoNotWait = uint64_t(-1);
+
+  // debugging flags
+  constexpr bool kSkipPacerSemaphoreWait = false;  // do not wait on pacer semaphore; this disables frame pacing, but still runs the pacer code
+};
+
 namespace dxvk {
   template<uint numBarriers>
   class DxvkDLFGImageBarrierSet {
@@ -103,6 +111,14 @@ namespace dxvk {
     m_signalFence = nullptr;
   }
 
+  inline void DxvkDLFGCommandList::reset() {
+    m_resources.reset();
+    m_numWaitSemaphores = 0;
+    m_numSignalSemaphores = 0;
+    m_signalFence = nullptr;
+    m_device->vkd()->vkResetCommandBuffer(m_cmdBuf, 0);
+  }
+
   DxvkDLFGPresenter::DxvkDLFGPresenter(Rc<DxvkDevice> device,
                                        Rc<DxvkContext> ctx,
                                        HWND window,
@@ -114,11 +130,9 @@ namespace dxvk {
     , m_device(device.ptr())
     , m_ctx(ctx)
     , m_backbufferIndex(0)
-    , m_blitCommandLists(device.ptr(), 2)
-    , m_presentPacingCommandLists(device.ptr(), 1)
-    , m_dlfgBarrierCommandLists(device.ptr(), 2)
-    , m_dlfgBeginSemaphore(RtxSemaphore::createBinary(device.ptr(), "DLFG begin"))
-    , m_syncSemaphore(RtxSemaphore::createBinary(device.ptr(), "DLFG Sync"))
+    , m_dlfgCommandLists(device.ptr(), 1 + kDLFGMaxInterpolatedFrames)
+    , m_blitCommandLists(device.ptr(), 1 + kDLFGMaxInterpolatedFrames)
+    , m_presentPacingCommandLists(device.ptr(), kDLFGMaxInterpolatedFrames)
     , m_dlfgFrameEndSemaphore(m_device->getCommon()->metaDLFG().getFrameEndSemaphore())
     , m_dlfgPacerSemaphore(RtxSemaphore::createTimeline(m_device, "DLFG pacer CPU semaphore"))
     , m_dlfgPacerToPresentSemaphore(RtxSemaphore::createBinary(m_device, "DLFG pacer present semaphore")) {
@@ -131,6 +145,7 @@ namespace dxvk {
 
     m_presentThread.threadHandle = dxvk::thread([this]() { runPresentThread(); });
     m_pacerThread.threadHandle = dxvk::thread([this]() { runPacerThread(); });
+
   }
 
   DxvkDLFGPresenter::~DxvkDLFGPresenter() {
@@ -163,7 +178,7 @@ namespace dxvk {
     return ret;
   }
 
-  VkResult DxvkDLFGPresenter::acquireNextImage(vk::PresenterSync& sync, uint32_t& index) {
+  VkResult DxvkDLFGPresenter::acquireNextImage(vk::PresenterSync& sync, uint32_t& index, bool) {
     ScopedCpuProfileZone();
 
     VkResult lastStatus = m_lastPresentStatus;
@@ -171,7 +186,7 @@ namespace dxvk {
       return lastStatus;
     }
 
-    m_backbufferIndex = (m_backbufferIndex + 1) % m_info.imageCount;
+    m_backbufferIndex = (m_backbufferIndex + 1) % m_appRequestedImageCount;
 
     // stall until the image is available
     {
@@ -189,7 +204,13 @@ namespace dxvk {
   VkResult DxvkDLFGPresenter::presentImage(std::atomic<VkResult>* status,
                                            const DxvkPresentInfo& presentInfo,
                                            const DxvkFrameInterpolationInfo& frameInterpolationInfo,
-                                           std::uint32_t acquiredImageIndex) {
+                                           std::uint32_t acquiredImageIndex,
+                                           bool isDlfgPresenting,
+                                           VkSetPresentConfigNV* presentMetering)
+{
+    // isDlfgPresenting flag must be false here: this method can only be called from the CS thread, which does not know about DLFG
+    assert(isDlfgPresenting == false);
+
     VkResult lastStatus = m_lastPresentStatus;
     if (lastStatus != VK_SUCCESS) {
       *status = lastStatus;
@@ -209,6 +230,9 @@ namespace dxvk {
       m_presentThread.condWorkAvailable.notify_all();
     }
 
+    // stash the number of frames we will present, so the HUD can calculate FPS
+    m_lastPresentFrameCount = frameInterpolationInfo.interpolatedFrameCount + 1;
+
     return VK_EVENT_SET;
   }
 
@@ -216,13 +240,28 @@ namespace dxvk {
     std::unique_lock<dxvk::mutex> lock(m_presentThread.mutex);
     synchronize(lock);
 
-    VkResult res = vk::Presenter::recreateSwapChain(desc);
+    m_appRequestedImageCount = desc.imageCount;
+
+    vk::PresenterDesc adjustedDesc = desc;
+    adjustedDesc.imageCount = m_ctx->dlfgMaxSupportedInterpolatedFrameCount() + 1;
+    
+    VkResult res = vk::Presenter::recreateSwapChain(adjustedDesc);
     if (res != VK_SUCCESS) {
       return res;
     }
+    
+    // Reset present status since we recreated the swapchain. This ensures we try to acquire
+    // during the next present instead of returning a stale error value.
+    m_lastPresentStatus = VK_SUCCESS;
 
     createBackbuffers();
     return res;
+  }
+
+  vk::PresenterInfo DxvkDLFGPresenter::info() const {
+    vk::PresenterInfo ret = vk::Presenter::info();
+    ret.imageCount = m_appRequestedImageCount;
+    return ret;
   }
 
   void DxvkDLFGPresenter::createBackbuffers() {
@@ -262,24 +301,24 @@ namespace dxvk {
     viewInfo.minLayer     = 0;
     viewInfo.numLayers    = 1;
 
-    m_backbufferImages.resize(m_info.imageCount);
-    m_backbufferViews.resize(m_info.imageCount);
-    m_backbufferAcquireSemaphores.resize(m_info.imageCount);
-    m_backbufferPresentSemaphores.resize(m_info.imageCount);
-    m_backbufferInFlight.resize(m_info.imageCount);
+    m_backbufferImages.resize(m_appRequestedImageCount);
+    m_backbufferViews.resize(m_appRequestedImageCount);
+    m_backbufferAcquireSemaphores.resize(m_appRequestedImageCount);
+    m_backbufferPresentSemaphores.resize(m_appRequestedImageCount);
+    m_backbufferInFlight.resize(m_appRequestedImageCount);
     
     Rc<DxvkDLFGCommandList> dummyCmdList = new DxvkDLFGCommandList(m_device);
     dummyCmdList->beginRecording();
     
-    for (uint32_t i = 0; i < m_info.imageCount; i++) {
+    for (std::uint32_t i = 0; i < m_appRequestedImageCount; i++) {
       m_backbufferImages[i] = m_device->createImage(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::RTXRenderTarget, "DLFG backbuffer");
       m_backbufferViews[i] = m_device->createImageView(m_backbufferImages[i], viewInfo);
 
       char buf[32];
-      snprintf(buf, sizeof(buf), "backbuffer acquire %d", i);
+      snprintf(buf, sizeof(buf), "backbuffer acquire %u", i);
       m_backbufferAcquireSemaphores[i] = RtxSemaphore::createBinary(m_device, buf);
 
-      snprintf(buf, sizeof(buf), "backbuffer present %d", i);
+      snprintf(buf, sizeof(buf), "backbuffer present %u", i);
       m_backbufferPresentSemaphores[i] = RtxSemaphore::createBinary(m_device, buf);
 
       m_backbufferInFlight[i] = false;
@@ -329,6 +368,154 @@ namespace dxvk {
     m_pacerThread.condWorkConsumed.wait(lock, [this] { return m_pacerQueue.empty(); });
   }
 
+  bool DxvkDLFGPresenter::swapchainAcquire(SwapchainImage& swapchainImage) {
+    m_lastPresentStatus = vk::Presenter::acquireNextImage(swapchainImage.sync, swapchainImage.index, true);
+    if (m_lastPresentStatus != VK_SUCCESS) {
+      // got an error, bail until it's handled
+      // xxxnsubtil: may need to signal the frame end semaphore here
+      return false;
+    }
+
+    assert(swapchainImage.index < m_blitCommandLists.size());
+    swapchainImage.image = vk::Presenter::getImage(swapchainImage.index);
+    return true;
+  }
+
+  bool DxvkDLFGPresenter::interpolateFrame(DxvkDLFGCommandList* commandList,
+                                           SwapchainImage& swapchainImage,
+                                           const PresentJob& present,
+                                           uint32_t interpolatedFrameIndex) {
+    DxvkDLFG& dlfg = m_device->getCommon()->metaDLFG();
+    DxvkDLFGImageBarrierSet<4> barriers;
+
+    {
+      ScopedGpuProfileZone_Present(m_device, commandList->getCmdBuffer(), "DLFG pre-eval barriers");
+
+      barriers.addBarrier(m_swapchainImages[swapchainImage.index]->handle(),
+                          VK_IMAGE_ASPECT_COLOR_BIT,
+                          VK_ACCESS_NONE,
+                          VK_ACCESS_SHADER_WRITE_BIT,
+                          m_swapchainImageLayouts[swapchainImage.index],
+                          VK_IMAGE_LAYOUT_GENERAL);
+
+      barriers.record(m_device, *commandList, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+    }
+
+    commandList->addWaitSemaphore(swapchainImage.sync.acquire);
+
+    // run DLFG to populate the swapchain image
+    dlfg.dispatch(m_ctx,
+                  commandList,
+                  present.frameInterpolation.camera,
+                  m_swapchainImageViews[swapchainImage.index],
+                  m_backbufferViews[present.acquiredImageIndex],
+                  present.frameInterpolation.motionVectors,
+                  present.frameInterpolation.depth,
+                  interpolatedFrameIndex,
+                  present.frameInterpolation.interpolatedFrameCount,
+                  false);
+
+    {
+      ScopedGpuProfileZone_Present(m_device, commandList->getCmdBuffer(), "DLFG post-eval barriers");
+
+      barriers.addBarrier(m_swapchainImages[swapchainImage.index]->handle(),
+                          VK_IMAGE_ASPECT_COLOR_BIT,
+                          VK_ACCESS_SHADER_WRITE_BIT,
+                          VK_ACCESS_MEMORY_READ_BIT,
+                          VK_IMAGE_LAYOUT_GENERAL,
+                          VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
+      barriers.record(m_device, *commandList, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+    }
+
+    m_swapchainImageLayouts[swapchainImage.index] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    return true;
+  }
+
+  void DxvkDLFGPresenter::blitRenderedFrame(DxvkDLFGCommandList* commandList,
+                                            SwapchainImage& renderedSwapchainImage,
+                                            const PresentJob& present, bool frameInterpolated) {
+  
+    ScopedGpuProfileZone_Present(m_device, commandList->getCmdBuffer(), "DLFG real frame blit");
+    DxvkDLFGImageBarrierSet<4> barriers;
+
+    barriers.addBarrier(m_backbufferImages[present.acquiredImageIndex]->handle(),
+              VK_IMAGE_ASPECT_COLOR_BIT,
+              VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+              VK_ACCESS_TRANSFER_READ_BIT,
+              // Note: If a frame was interpolated the backbuffer will be in the shader read only optimal layout rather than the
+              // present source optimal layout.
+              frameInterpolated ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+              VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+
+    barriers.addBarrier(renderedSwapchainImage.image.image,
+                        VK_IMAGE_ASPECT_COLOR_BIT,
+                        VK_ACCESS_MEMORY_READ_BIT,
+                        VK_ACCESS_TRANSFER_WRITE_BIT,
+                        m_swapchainImageLayouts[present.acquiredImageIndex],
+                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+    barriers.record(m_device, *commandList, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+    VkImageCopy copy = {
+      { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+      { 0, 0, 0 },
+      { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+      { 0, 0, 0 },
+      { m_info.imageExtent.width, m_info.imageExtent.height, 1 }
+    };
+
+    m_device->vkd()->vkCmdCopyImage(commandList->getCmdBuffer(),
+                                    m_backbufferImages[present.acquiredImageIndex]->handle(),
+                                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                    renderedSwapchainImage.image.image,
+                                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                    1, &copy);
+
+    barriers.addBarrier(m_backbufferImages[present.acquiredImageIndex]->handle(),
+                        VK_IMAGE_ASPECT_COLOR_BIT,
+                        VK_ACCESS_TRANSFER_READ_BIT,
+                        VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
+    barriers.addBarrier(renderedSwapchainImage.image.image,
+                        VK_IMAGE_ASPECT_COLOR_BIT,
+                        VK_ACCESS_TRANSFER_WRITE_BIT,
+                        VK_ACCESS_MEMORY_READ_BIT,
+                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
+    m_swapchainImageLayouts[present.acquiredImageIndex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    barriers.record(m_device, *commandList, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+
+    commandList->addWaitSemaphore(renderedSwapchainImage.sync.acquire);
+  }
+
+  bool DxvkDLFGPresenter::submitPresent(SwapchainImage& image, const PresentJob& present, uint64_t pacerSemaphoreWaitValue, VkSetPresentConfigNV* presentMetering) {
+    const auto& reflex = m_ctx->getCommonObjects()->metaReflex();
+
+    if (!kSkipPacerSemaphoreWait && pacerSemaphoreWaitValue != kPacerDoNotWait) {
+      assert(presentMetering == nullptr);
+
+      // inject a command list that waits on the pacer semaphore and signals the present semaphore
+      // this will cause the present below to wait on this timeline semaphore, which the pacer thread will signal from the CPU
+      DxvkDLFGCommandList* commandList = m_presentPacingCommandLists.nextCmdList();
+      commandList->endRecording();
+      commandList->addWaitSemaphore(m_dlfgPacerSemaphore->handle(), pacerSemaphoreWaitValue);
+      commandList->addSignalSemaphore(image.sync.present);
+      commandList->submit();
+    }
+
+    reflex.beginOutOfBandPresent(present.present.cachedReflexFrameId);
+    m_lastPresentStatus = vk::Presenter::presentImage(present.status, present.present, present.frameInterpolation, image.index, true, presentMetering);
+    reflex.endOutOfBandPresent(present.present.cachedReflexFrameId);
+
+    return m_lastPresentStatus == VK_SUCCESS;
+  }
+
   void DxvkDLFGPresenter::runPresentThread() {
     ScopedCpuProfileZone();
     env::setThreadName("dxvk-dlfg-present");
@@ -368,42 +555,27 @@ namespace dxvk {
         continue;
       }
 
-      PacerJob pacer;
-      
-      // acquire the next image from the VK swapchain
-      vk::PresenterImage swapchainImage;
-      vk::PresenterSync swapchainSync;
-      uint32_t swapchainIndex;
+      SwapchainImage renderedSwapchainImage;
 
-      m_lastPresentStatus = vk::Presenter::acquireNextImage(swapchainSync, swapchainIndex);
-      if (m_lastPresentStatus != VK_SUCCESS) {
-        // got an error, bail until it's handled
-        // xxxnsubtil: may need to signal the frame end semaphore here
-        continue;
-      }
-
-      assert(swapchainIndex < m_blitCommandLists.size());
-      swapchainImage = vk::Presenter::getImage(swapchainIndex);
-
-      DxvkDLFGCommandList* m_cmdList = nullptr;
+      DxvkDLFGCommandList* commandList = m_dlfgCommandLists.nextCmdList();
       DxvkDLFGImageBarrierSet<4> barriers;
 
       VkSemaphore backbufferWaitSemaphore = m_backbufferPresentSemaphores[present.acquiredImageIndex]->handle();
-
-      // if true, present only interpolated frames (for debugging)
-      constexpr bool kSkipRealFrames = false;
-      // if true, skip interpolated frames (debugging)
-      constexpr bool kSkipInterpolatedFrames = false;
-      // if true, disable the pacer semaphore wait
-      constexpr bool kSkipPacerSemaphoreWait = false;
+      VkSemaphore backbufferSignalSemaphore = m_backbufferAcquireSemaphores[present.acquiredImageIndex]->handle();
       
-      const auto& reflex = m_ctx->getCommonObjects()->metaReflex();
+      commandList->addWaitSemaphore(backbufferWaitSemaphore);
 
-      if (present.frameInterpolation.valid() && !kSkipInterpolatedFrames) {
+      if (present.frameInterpolation.valid()) {
         ScopedCpuProfileZoneN("DLFG queue: interpolate");
 
-        reflex.beginOutOfBandRendering(present.present.cachedReflexFrameId);
+        PacerJob pacer;
+
+        SwapchainImage interpolatedSwapchainImages[kDLFGMaxInterpolatedFrames];
         
+        const auto& reflex = m_ctx->getCommonObjects()->metaReflex();
+
+        reflex.beginOutOfBandRendering(present.present.cachedReflexFrameId);
+
         // pre-DLFG barriers
         // xxxnsubtil: missing queue transfers here
         //
@@ -422,16 +594,8 @@ namespace dxvk {
         //
         // for now, SHARING_MODE_EXCLUSIVE + no queue transfer barriers works fine
 
-        m_cmdList = m_dlfgBarrierCommandLists.nextCmdList();
         {
-          ScopedGpuProfileZone_Present(m_device, m_cmdList->getCmdBuffer(), "DLFG pre-eval barriers");
-
-          barriers.addBarrier(m_swapchainImages[swapchainIndex]->handle(),
-                              VK_IMAGE_ASPECT_COLOR_BIT,
-                              VK_ACCESS_NONE,
-                              VK_ACCESS_SHADER_WRITE_BIT,
-                              m_swapchainImageLayouts[swapchainIndex],
-                              VK_IMAGE_LAYOUT_GENERAL);
+          ScopedGpuProfileZone_Present(m_device, commandList->getCmdBuffer(), "DLFG pre-eval barriers");
 
           barriers.addBarrier(m_backbufferImages[present.acquiredImageIndex]->handle(),
                               VK_IMAGE_ASPECT_COLOR_BIT,
@@ -454,52 +618,36 @@ namespace dxvk {
                               present.frameInterpolation.depthLayout,
                               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-          barriers.record(m_device, *m_cmdList, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+          barriers.record(m_device, *commandList, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         }
-        
-        m_cmdList->endRecording();
-        m_cmdList->addWaitSemaphore(backbufferWaitSemaphore);
-        backbufferWaitSemaphore = nullptr;
-        m_cmdList->addWaitSemaphore(swapchainSync.acquire);
-        m_cmdList->addSignalSemaphore(m_dlfgBeginSemaphore->handle());
-        m_cmdList->submit();  // xxxnsubtil: skip this submit!
 
-        // run DLFG to populate the swapchain image
-        VkSemaphore dlfgCompleteSemaphore = dlfg.dispatch(m_ctx,
-                                                          present.frameInterpolation.camera,
-                                                          m_swapchainImageViews[swapchainIndex],
-                                                          m_dlfgBeginSemaphore->handle(),
-                                                          m_backbufferViews[present.acquiredImageIndex],
-                                                          present.frameInterpolation.motionVectors,
-                                                          present.frameInterpolation.depth,
-                                                          false);
+        for (uint32_t fgInterpolateIndex = 0; fgInterpolateIndex < present.frameInterpolation.interpolatedFrameCount; fgInterpolateIndex++) {
+          SwapchainImage& swapchainImage = interpolatedSwapchainImages[fgInterpolateIndex];
+          if (!swapchainAcquire(swapchainImage)) {
+            // got an error, bail until it's handled
+            commandList->reset();
+            continue;
+          }
 
-        // xxxnsubtil: get cmdlist from DLFG dispatch and reuse
-        m_cmdList = m_dlfgBarrierCommandLists.nextCmdList();
+          interpolateFrame(commandList, swapchainImage, present, fgInterpolateIndex);
+          if (fgInterpolateIndex == 0) {
+            // emit the timestamp query that the pacer will read
+            pacer.dlfgQueryIndex = queryPoolDLFG->writeTimestamp(commandList->getCmdBuffer(), VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+
+            // first interpolated frame presents immediately, so we signal the present semaphore here
+            commandList->addSignalSemaphore(swapchainImage.sync.present);
+          }
+        }
 
         {
-          ScopedGpuProfileZone_Present(m_device, m_cmdList->getCmdBuffer(), "DLFG post-eval barriers");
-
-          barriers.addBarrier(m_swapchainImages[swapchainIndex]->handle(),
-                              VK_IMAGE_ASPECT_COLOR_BIT,
-                              VK_ACCESS_SHADER_WRITE_BIT,
-                              VK_ACCESS_MEMORY_READ_BIT,
-                              VK_IMAGE_LAYOUT_GENERAL,
-                              VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-
-          barriers.addBarrier(m_backbufferImages[present.acquiredImageIndex]->handle(),
-                              VK_IMAGE_ASPECT_COLOR_BIT,
-                              VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                              VK_ACCESS_SHADER_WRITE_BIT,
-                              VK_IMAGE_LAYOUT_GENERAL,
-                              VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+          ScopedGpuProfileZone_Present(m_device, commandList->getCmdBuffer(), "DLFG post-interpolate barriers");
 
           barriers.addBarrier(present.frameInterpolation.motionVectors->image()->handle(),
-                              VK_IMAGE_ASPECT_COLOR_BIT,
-                              VK_ACCESS_SHADER_READ_BIT,
-                              VK_ACCESS_SHADER_WRITE_BIT,
-                              VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                              present.frameInterpolation.motionVectorsLayout);
+                    VK_IMAGE_ASPECT_COLOR_BIT,
+                    VK_ACCESS_SHADER_READ_BIT,
+                    VK_ACCESS_SHADER_WRITE_BIT,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    present.frameInterpolation.motionVectorsLayout);
 
           barriers.addBarrier(present.frameInterpolation.depth->image()->handle(),
                               VK_IMAGE_ASPECT_COLOR_BIT,
@@ -508,168 +656,56 @@ namespace dxvk {
                               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                               present.frameInterpolation.depthLayout);
 
-          barriers.record(m_device, *m_cmdList, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+          barriers.record(m_device, *commandList, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         }
 
-        pacer.dlfgQueryIndex = queryPoolDLFG->writeTimestamp(m_cmdList->getCmdBuffer(), VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+        // queue interpolated frame presents before doing the rendered frame, to avoid stalling on swapchain acquire at the bottom
 
-        m_cmdList->endRecording();
-        m_cmdList->addWaitSemaphore(dlfgCompleteSemaphore);
-        m_cmdList->addSignalSemaphore(swapchainSync.present);
-        if (kSkipRealFrames) {
-          // if we're skipping real frames, then signal the acquire and frame ID semaphores here
-          m_cmdList->addSignalSemaphore(m_backbufferAcquireSemaphores[present.acquiredImageIndex]->handle());
-
-          // skip signaling if the semaphore is already at the value we are signaling to, since the VK spec forbids this (yes, really)
-          // this happens after init where the value is already 0 on frame 0, and may also happen during wraparound
-          // (CS thread detects this and idles instead)
-          if (dlfg.frameEndSemaphoreValue() != uint64_t(present.frameInterpolation.frameId)) {
-            m_cmdList->addSignalSemaphore(m_dlfgFrameEndSemaphore->handle(), uint64_t(present.frameInterpolation.frameId));
-            dlfg.frameEndSemaphoreValue() = uint64_t(present.frameInterpolation.frameId);
-          }
-        }
-        
-        // pacer thread will do a CPU wait on this command list before signaling the semaphore below
-        pacer.lastCmdListFence = m_cmdList->getSignalFence();
-        m_cmdList->submit();
+        // pacer thread will do a CPU wait on this command list before signaling the semaphores below
+        pacer.lastCmdListFence = commandList->getSignalFence();
+        commandList->endRecording();
+        commandList->submit();
+        commandList = nullptr;
 
         reflex.endOutOfBandRendering(present.present.cachedReflexFrameId);
 
-        m_swapchainImageLayouts[swapchainIndex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        
-        //assert(m_device->vkd()->vkQueueWaitIdle(m_device->queues().__DLFG_QUEUE.queueHandle) == VK_SUCCESS);
-        
-        // present the interpolated frame
-        reflex.beginOutOfBandPresent(present.present.cachedReflexFrameId);
-        m_lastPresentStatus = vk::Presenter::presentImage(present.status, present.present, present.frameInterpolation, present.acquiredImageIndex);
-        reflex.endOutOfBandPresent(present.present.cachedReflexFrameId);
+        // try to use present metering if enabled, fall back to CPU metering if it fails
+        bool usePresentMetering = DxvkDLFG::enablePresentMetering();
+        uint64_t pacerSemaphoreValue = kPacerDoNotWait;
+        VkSetPresentConfigNV presentMetering;
 
-        if (m_lastPresentStatus != VK_SUCCESS) {
+        if (usePresentMetering) {
+          presentMetering.sType = VK_STRUCTURE_TYPE_SET_PRESENT_CONFIG_NV;
+          presentMetering.pNext = nullptr;
+          presentMetering.numFramesPerBatch = 1 + present.frameInterpolation.interpolatedFrameCount;
+          pacerSemaphoreValue = kPacerDoNotWait;
+        }
+
+        // present the first interpolated frame
+        // if we're using CPU pacing, this frame is presented immediately;
+        // if we're using hardware pacing, this present sends down the pacing info
+        if (!submitPresent(interpolatedSwapchainImages[0], present, kPacerDoNotWait, usePresentMetering ? &presentMetering : nullptr)) {
           // got an error, bail until it's handled
           continue;
         }
 
-        if (kSkipRealFrames) {
-          // if we're skipping real frames, restart the loop
-          continue;
+        if (usePresentMetering) {
+          // if we tried present metering and it failed, fall back to CPU pacing
+          if (presentMetering.presentConfigFeedback != 0) {
+            usePresentMetering = false;
+          }
         }
 
-        // now acquire again to present the real frame below
-        m_lastPresentStatus = vk::Presenter::acquireNextImage(swapchainSync, swapchainIndex);
-        if (m_lastPresentStatus != VK_SUCCESS) {
-          // got an error, bail until it's handled
-          continue;
-        }
+        if (!usePresentMetering) {
+          // if we are using CPU pacing, kick off the pacer job for this frame
+          // we have to do this before present, since VK overlays may assume
+          // it's safe to idle the queue during present, which would otherwise cause
+          // the GPU to get stuck waiting on the pacer job
+          pacerSemaphoreValue = m_dlfgPacerSemaphoreValue;
 
-        assert(swapchainIndex < m_blitCommandLists.size());
-        swapchainImage = vk::Presenter::getImage(swapchainIndex);
-      }
-
-      if (kSkipRealFrames) {
-        continue;
-      }
-
-      {
-        // set up pre-blit barriers
-        m_cmdList = m_blitCommandLists.nextCmdList();
-
-        {
-          ScopedGpuProfileZone_Present(m_device, m_cmdList->getCmdBuffer(), "DLFG real frame blit barriers");
-
-          barriers.addBarrier(m_backbufferImages[present.acquiredImageIndex]->handle(),
-                              VK_IMAGE_ASPECT_COLOR_BIT,
-                              VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                              VK_ACCESS_TRANSFER_READ_BIT,
-                              VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                              VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-
-          barriers.addBarrier(swapchainImage.image,
-                              VK_IMAGE_ASPECT_COLOR_BIT,
-                              VK_ACCESS_MEMORY_READ_BIT,
-                              VK_ACCESS_TRANSFER_WRITE_BIT,
-                              m_swapchainImageLayouts[present.acquiredImageIndex],
-                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-
-          barriers.record(m_device, *m_cmdList, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
-
-          VkImageCopy copy = {
-            { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
-            { 0, 0, 0 },
-            { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
-            { 0, 0, 0 },
-            { m_info.imageExtent.width, m_info.imageExtent.height, 1 }
-          };
-          
-          m_device->vkd()->vkCmdCopyImage(m_cmdList->getCmdBuffer(),
-                                          m_backbufferImages[present.acquiredImageIndex]->handle(),
-                                          VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                                          swapchainImage.image,
-                                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                          1, &copy);
-
-          barriers.addBarrier(m_backbufferImages[present.acquiredImageIndex]->handle(),
-                              VK_IMAGE_ASPECT_COLOR_BIT,
-                              VK_ACCESS_TRANSFER_READ_BIT,
-                              VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                              VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                              VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-
-          barriers.addBarrier(swapchainImage.image,
-                              VK_IMAGE_ASPECT_COLOR_BIT,
-                              VK_ACCESS_TRANSFER_WRITE_BIT,
-                              VK_ACCESS_MEMORY_READ_BIT,
-                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                              VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-
-          m_swapchainImageLayouts[present.acquiredImageIndex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-
-          barriers.record(m_device, *m_cmdList, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
-        }
-
-        m_cmdList->endRecording();
-
-        // blit needs to wait on:
-        //   * the present semaphore on the backbuffer we're reading, if we haven't waited on that before (app will signal)
-        //   * the VK swapchain acquire semaphore
-        // ... and must signal:
-        //   * the acquire semaphore on the backbuffer we're reading (app will wait on this on acquire)
-        //   * the VK swapchain present semaphore
-        //   * the frame end semaphore
-        m_cmdList->addWaitSemaphore(backbufferWaitSemaphore); // if we ran interpolation, this will be null (which is a no-op)
-        m_cmdList->addWaitSemaphore(swapchainSync.acquire);
-        m_cmdList->addSignalSemaphore(m_backbufferAcquireSemaphores[present.acquiredImageIndex]->handle());
-        if (!present.frameInterpolation.valid() || kSkipPacerSemaphoreWait) {
-          m_cmdList->addSignalSemaphore(swapchainSync.present);
-        }
-
-        // skip signaling if the semaphore is already at the value we are signaling to, since the VK spec forbids this (yes, really)
-        // this happens after init where the value is already 0 on frame 0, and may also happen during wraparound
-        // (CS thread detects this and idles instead)
-        if (present.frameInterpolation.valid() &&
-            dlfg.frameEndSemaphoreValue() != uint64_t(present.frameInterpolation.frameId)) {
-          m_cmdList->addSignalSemaphore(m_dlfgFrameEndSemaphore->handle(), uint64_t(present.frameInterpolation.frameId));
-          dlfg.frameEndSemaphoreValue() = uint64_t(present.frameInterpolation.frameId);
-        }
-
-        m_cmdList->submit();
-
-        if (present.frameInterpolation.valid() && !kSkipPacerSemaphoreWait) {
-          // inject a command list that waits on the pacer semaphore and signals the present semaphore
-          // this will cause the present below to wait on this timeline semaphore, which the pacer thread will signal from the CPU
-          m_cmdList = m_presentPacingCommandLists.nextCmdList();
-          m_cmdList->endRecording();
-          m_cmdList->addWaitSemaphore(m_dlfgPacerSemaphore->handle(), m_dlfgPacerSemaphoreValue + 1);
-          m_cmdList->addSignalSemaphore(swapchainSync.present);
-          m_cmdList->submit();
-        }
-
-        // kick off the pacer job for this frame
-        // we have to do this before present, since VK overlays may assume
-        // it's safe to idle the queue during present, which would otherwise cause
-        // the GPU to get stuck waiting on the pacer job
-        if (present.frameInterpolation.valid()) {
           assert(pacer.lastCmdListFence != nullptr);
-          pacer.semaphoreSignalValue = ++m_dlfgPacerSemaphoreValue;
+          pacer.semaphoreSignalValue = pacerSemaphoreValue;
+          pacer.interpolatedFrameCount = present.frameInterpolation.interpolatedFrameCount;
           {
             std::unique_lock<dxvk::mutex> lock(m_pacerThread.mutex);
             m_pacerQueue.push(pacer);
@@ -677,21 +713,69 @@ namespace dxvk {
           }
         }
 
-        // present the image (note: args unused)
-#if !__DLFG_REFLEX_WORKAROUND
-        reflex.beginPresentation(present.present.cachedReflexFrameId);
-#else
-        // this marker is a workaround based on feedback from driver/FrameView --- we mark both presents as OOB presents in this thread,
-        // and we mark the code that queues presents from the app to the present thread as the plain present
-        // see comments around __DLFG_REFLEX_WORKAROUND define in rtx_ngx_wrapper.h for more details
-        reflex.beginOutOfBandPresent(present.present.cachedReflexFrameId);
-#endif
-        m_lastPresentStatus = vk::Presenter::presentImage(present.status, present.present, present.frameInterpolation, present.acquiredImageIndex);
-#if !__DLFG_REFLEX_WORKAROUND
-        reflex.endPresentation(present.present.cachedReflexFrameId);
-#else
-        reflex.endOutOfBandPresent(present.present.cachedReflexFrameId);
-#endif
+        // subsequent interpolated frames are paced
+        // note that if we're using present metering, only the first frame gets the metering token
+        // (and in that case, pacerSemaphoreValue is the do-not-wait token for the CPU pacer)
+        for (uint32_t fgInterpolateIndex = 1; fgInterpolateIndex < present.frameInterpolation.interpolatedFrameCount; fgInterpolateIndex++) {
+          if (!submitPresent(interpolatedSwapchainImages[fgInterpolateIndex], present, pacerSemaphoreValue, nullptr)) {
+            // got an error, bail until it's handled
+            continue;
+          }
+
+          if (!usePresentMetering) {
+            pacerSemaphoreValue++;
+          }
+        }
+
+        // do the rendered frame blit into the swapchain
+        if (!swapchainAcquire(renderedSwapchainImage)) {
+          // got an error, bail until it's handled
+          continue;
+        }
+
+        commandList = m_dlfgCommandLists.nextCmdList();
+        blitRenderedFrame(commandList, renderedSwapchainImage, present, true);
+
+        commandList->addWaitSemaphore(renderedSwapchainImage.sync.acquire);
+        commandList->addSignalSemaphore(backbufferSignalSemaphore);
+        commandList->endRecording();
+        commandList->submit();
+        commandList = nullptr;
+
+        // rendered frame present
+        if (!submitPresent(renderedSwapchainImage, present, pacerSemaphoreValue, nullptr)) {
+          // got an error, bail until it's handled
+          continue;
+        }
+
+        pacerSemaphoreValue++;
+
+        if (!usePresentMetering) {
+          m_dlfgPacerSemaphoreValue += present.frameInterpolation.interpolatedFrameCount;
+          assert(pacerSemaphoreValue == m_dlfgPacerSemaphoreValue);
+        }
+      } else {
+        // FG was enabled but no interpolation info, present the backbuffer without FG
+
+        if (!swapchainAcquire(renderedSwapchainImage)) {
+          // got an error, bail until it's handled
+          commandList->reset();
+          continue;
+        }
+
+        blitRenderedFrame(commandList, renderedSwapchainImage, present, false);
+
+        commandList->addWaitSemaphore(renderedSwapchainImage.sync.acquire);
+        commandList->addSignalSemaphore(backbufferSignalSemaphore);
+        commandList->endRecording();
+        commandList->submit();
+        commandList = nullptr;
+
+        // rendered frame present
+        if (!submitPresent(renderedSwapchainImage, present, kPacerDoNotWait, nullptr)) {
+          // got an error, bail until it's handled
+          continue;
+        }
       }
     }
   }
@@ -770,6 +854,10 @@ namespace dxvk {
       return ns / 1000000.0;
     };
 
+    auto msToNs = [](double ms) -> double {
+      return ms * 1e6;
+    };
+
     auto gpuTicksToQpc = [&](uint64_t gpuTicks) -> int64_t {
       double deltaToReferenceNs;
       int64_t deltaToReferenceQpcTicks;
@@ -836,6 +924,8 @@ namespace dxvk {
         ProfilerPlotValue("DLFG pacer: frame-to-frame time (ms)", frameToFrame);
 
         // this determines the maximum amount of time we're willing to sleep, as a backstop in case something goes wrong
+        // this is based on the minimum input frame rate required for FG; our max sleep time is 2x that value to provide
+        // enough margin for variance in frame times
         constexpr double kMinOutputFPS = 20;
         constexpr double kMaxFrameTimeMs = 2000.0 / kMinOutputFPS;
 
@@ -843,24 +933,33 @@ namespace dxvk {
         if (frameToFrame > 0.0 && frameToFrame < kMaxFrameTimeMs) {
           // time the present to land at the halfway point between the two DLFG interpolated frames
           const uint64_t frameTimeGpuTicks = dlfgTimestamp - lastFrameDlfgEndGpuTicks;
-          uint64_t deltaGpuPresentTicks = frameTimeGpuTicks / 2;
-
-          // convert the GPU timestamp to a CPU timestamp
-          const int64_t targetQpcPresentTicks = gpuTicksToQpc(dlfgTimestamp + deltaGpuPresentTicks);
+          uint64_t deltaGpuPresentTicks = frameTimeGpuTicks / (1 + pacer.interpolatedFrameCount);
 
           const double deltaPresentNs = gpuTicksToNs(deltaGpuPresentTicks);
-          const double deltaPresentQpcNs = qpcTicksToNs(targetQpcPresentTicks - high_resolution_clock::getCounter());
+          const double deltaPresentQpcNs = qpcTicksToNs(gpuTicksToQpc(dlfgTimestamp + deltaGpuPresentTicks * pacer.interpolatedFrameCount) - high_resolution_clock::getCounter());
           ProfilerPlotValue("DLFG pacer: measured GPU sleep time (ms)", nsToMs(deltaPresentNs));
           ProfilerPlotValue("DLFG pacer: remaining CPU sleep time (ms)", nsToMs(deltaPresentQpcNs));
 
-          // ignore sleeps longer than kMaxFrameTimeMs in case something goes wrong with the math above
-          if (deltaPresentQpcNs < kMaxFrameTimeMs * 1e9) {
-            ScopedCpuProfileZoneN("DLFG pacer: sleep");
-            while (high_resolution_clock::getCounter() < targetQpcPresentTicks) {
-              _mm_pause();
+          for (uint32_t frameIndex = 0; frameIndex < pacer.interpolatedFrameCount; frameIndex++) {
+
+            // ignore sleeps longer than kMaxFrameTimeMs in case something goes wrong with the math above
+            if (deltaPresentQpcNs < msToNs(kMaxFrameTimeMs)) {
+              // convert the GPU timestamp to a CPU timestamp
+              const int64_t targetQpcPresentTicks = gpuTicksToQpc(dlfgTimestamp + deltaGpuPresentTicks * (frameIndex+1));
+
+              ScopedCpuProfileZoneN("DLFG pacer: sleep");
+              while (high_resolution_clock::getCounter() < targetQpcPresentTicks) {
+                _mm_pause();
+              }
+
+              // signal the present semaphore
+              {
+                ScopedCpuProfileZoneN("DLFG pacer: signal semaphore");
+                signalPresentSemaphore(pacer.semaphoreSignalValue + frameIndex);
+              }
+            } else {
+              pacerActive = false;
             }
-          } else {
-            pacerActive = false;
           }
 
           lastFrameDlfgEndGpuTicks = dlfgTimestamp;
@@ -873,10 +972,12 @@ namespace dxvk {
 
       ProfilerPlotValueI64("DLFG pacer: active", pacerActive ? 1 : 0);
 
-      // signal the present semaphore
-      {
-        ScopedCpuProfileZoneN("DLFG pacer: signal semaphore");
-        signalPresentSemaphore(pacer.semaphoreSignalValue);
+      // if the pacer was inactive, signal all semaphores here to ensure forward progress
+      if (!pacerActive) {
+        for (uint32_t frameIndex = 0; frameIndex < pacer.interpolatedFrameCount; frameIndex++) {
+          ScopedCpuProfileZoneN("DLFG pacer (inactive): signal semaphore");
+          signalPresentSemaphore(pacer.semaphoreSignalValue + frameIndex);
+        }
       }
 
       lock.lock();
@@ -889,7 +990,10 @@ namespace dxvk {
 
     while (m_pacerQueue.size()) {
       PacerJob pacer = std::move(m_pacerQueue.front());
-      signalPresentSemaphore(pacer.semaphoreSignalValue);
+
+      for (uint32_t frameIndex = 0; frameIndex < pacer.interpolatedFrameCount; frameIndex++) {
+        signalPresentSemaphore(pacer.semaphoreSignalValue + frameIndex);
+      }
 
       m_pacerQueue.pop();
       m_pacerThread.condWorkConsumed.notify_all();
@@ -998,7 +1102,7 @@ namespace dxvk {
     assert(fence);
     VkResult res = m_device->vkd()->vkWaitForFences(m_device->handle(), 1, &fence, VK_TRUE, 1'000'000'000ull);
     if (res != VK_SUCCESS) {
-      throw DxvkError("DxvkDLFGCommandListArray::nextCmdList: vkWaitForFences failed");
+      ONCE(Logger::err("DxvkDLFGCommandListArray::nextCmdList: vkWaitForFences failed"));
     }
 
     res = m_device->vkd()->vkResetFences(m_device->handle(), 1, &fence);
@@ -1071,61 +1175,19 @@ namespace dxvk {
     return true;
   }
 
-  void createTimelineSyncObjectsCallback(void* appContext,
-                                         void** syncObjSignal,        // N1
-                                         uint64_t syncObjSignalValue,
-                                         void** syncObjWait,          // N4
-                                         uint64_t syncObjWaitValue) {
-    DxvkDLFG* dlfg = (DxvkDLFG*) appContext;
-    dlfg->createTimelineSyncObjects(*reinterpret_cast<VkSemaphore*>(syncObjSignal), syncObjSignalValue,
-                                    *reinterpret_cast<VkSemaphore*>(syncObjWait), syncObjWaitValue);
-  }
-
-  void syncSignalCallback(void* appContext,
-                          void** cmdList,
-                          void* syncObjSignal, // N1
-                          uint64_t syncObjSignalValue) {
-    DxvkDLFG* dlfg = (DxvkDLFG*) appContext;
-    dlfg->syncSignal(*reinterpret_cast<VkCommandBuffer*>(cmdList),
-                     reinterpret_cast<VkSemaphore>(syncObjSignal), syncObjSignalValue);
-  }
-
-  void syncWaitCallback(void* appContext,
-                        void** cmdList,
-                        void* syncObjWait,  // N4
-                        uint64_t syncObjWaitValue,
-                        int waitCpu,
-                        void* __unused_syncObjSignal, // always null
-                        uint64_t syncObjSignalValue) {
-    DxvkDLFG* dlfg = (DxvkDLFG*) appContext;
-    dlfg->syncWait(*reinterpret_cast<VkCommandBuffer*>(cmdList), 
-                   reinterpret_cast<VkSemaphore>(syncObjWait), syncObjWaitValue, waitCpu, __unused_syncObjSignal, syncObjSignalValue);
-  }
-
-  void syncFlushCallback(void* appContext,
-                         void** cmdList,
-                         void* syncObjSignal,
-                         uint64_t syncObjSignalValue,
-                         int waitCpu) {
-    DxvkDLFG* dlfg = (DxvkDLFG*) appContext;
-    dlfg->syncFlush(*reinterpret_cast<VkCommandBuffer*>(cmdList),
-                    reinterpret_cast<VkSemaphore>(syncObjSignal), syncObjSignalValue, waitCpu);
-  }
-
   DxvkDLFG::DxvkDLFG(DxvkDevice* device)
     : CommonDeviceObject(device)
     // xxxnsubtil: use swapchain frame count here
     , m_dlfgEvalCommandLists(device, 1)
-    , m_dlfgInternalAsyncOFACommandLists(device, 1)
-    , m_dlfgInternalPostOFACommandLists(device, 1)
-    , m_dlfgDummyWaitOnSem2CommandLists(device, 2)
-    , m_dlfgDummyWaitOnSem4CommandLists(device, 2)
     , m_dlfgFrameEndSemaphore(RtxSemaphore::createTimeline(device, "DLFG frame end"))
-    , m_dlfgFinishedSemaphore(RtxSemaphore::createBinary(device, "DLFG finished")) {
+    , m_currentDisplaySize{0, 0} {
 
     m_queryPoolDLFG = new DxvkDLFGTimestampQueryPool(m_device, kMaxFramesInFlight);
-    m_dlfgSemaphores.s2 = RtxSemaphore::createBinary(device, "DLFG semaphore 2");
-    m_dlfgSemaphores.s3 = RtxSemaphore::createBinary(device, "DLFG semaphore 3");
+
+    if (!supportsPresentMetering()) {
+      Logger::warn("NV_present_metering extension not supported");
+      enablePresentMetering.setDeferred(false);
+    }
   }
 
   void DxvkDLFG::onDestroy() {
@@ -1149,71 +1211,70 @@ namespace dxvk {
     }
   }
 
-  VkSemaphore DxvkDLFG::dispatch(Rc<DxvkContext> ctx,
-                                 const RtCamera& camera,
-                                 Rc<DxvkImageView> outputImage,                       // VK_IMAGE_LAYOUT_GENERAL
-                                 VkSemaphore outputImageSemaphore,
-                                 Rc<DxvkImageView> colorBuffer,                       // VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                                 Rc<DxvkImageView> primaryScreenSpaceMotionVector,    // VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                                 Rc<DxvkImageView> primaryDepth,                      // VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                                 bool resetHistory) {
+  // note: we expect that the input semaphore is already waited on by commandList
+  void DxvkDLFG::dispatch(Rc<DxvkContext> ctx,
+                          DxvkDLFGCommandList* commandList,
+                          const RtCamera& camera,
+                          Rc<DxvkImageView> outputImage,                       // VK_IMAGE_LAYOUT_GENERAL
+                          Rc<DxvkImageView> colorBuffer,                       // VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                          Rc<DxvkImageView> primaryScreenSpaceMotionVector,    // VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                          Rc<DxvkImageView> primaryDepth,                      // VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                          uint32_t interpolatedFrameIndex,                     // starts at 0
+                          uint32_t interpolatedFrameCount,                     // total number of frames we will interpolate before the next rendered frame
+                          bool resetHistory) {
     ScopedCpuProfileZone();
 
     if (!m_dlfgContext) {
       m_dlfgContext = m_device->getCommon()->metaNGXContext().createDLFGContext();
       m_contextDirty = true;
     }
-    
-    if (m_contextDirty) {
-      if (m_device->vkd()->vkQueueWaitIdle(m_device->queues().__DLFG_QUEUE.queueHandle) != VK_SUCCESS) {
-        Logger::err("DxvkDLFG::dispatch: vkQueueWaitIdle failed");
-      }
-    }
 
-    m_outputImageSemaphore = outputImageSemaphore;
-    m_currentCommandList = m_dlfgEvalCommandLists.nextCmdList();
+    // check if the output extents have changed
+    VkExtent3D outputExtent = outputImage->imageInfo().extent;
+    if (outputExtent.width != m_currentDisplaySize[0] ||
+        outputExtent.height != m_currentDisplaySize[1]) {
+      // note: this is the size of the window client area, which isn't necessarily the same as the D3D9 swapchain size
+      setDisplaySize(uint2(outputExtent.width, outputExtent.height));
+      m_contextDirty = true;
+    }
 
     if (m_contextDirty) {
       assert(m_dlfgContext != nullptr);
 
+      if (m_device->vkd()->vkQueueWaitIdle(m_device->queues().__DLFG_QUEUE.queueHandle) != VK_SUCCESS) {
+        Logger::err("DxvkDLFG::dispatch: vkQueueWaitIdle failed");
+      }
+
       m_dlfgContext->releaseNGXFeature();
       m_dlfgContext->initialize(ctx,
-                                m_currentCommandList->getCmdBuffer(),
+                                commandList->getCmdBuffer(),
                                 m_currentDisplaySize,
-                                outputImage->info().format,
-                                createTimelineSyncObjectsCallback,
-                                syncSignalCallback,
-                                syncWaitCallback,
-                                syncFlushCallback,
-                                this);
+                                outputImage->info().format);
       m_contextDirty = false;
     }
 
-    m_dlfgSemaphores.s2SignaledThisFrame = false;
     NGXDLFGContext::EvaluateResult res;
 
-    m_currentCommandList->trackResource<DxvkAccess::Write>(outputImage);
-    m_currentCommandList->trackResource<DxvkAccess::Read>(colorBuffer);
-    m_currentCommandList->trackResource<DxvkAccess::Read>(primaryScreenSpaceMotionVector);
-    m_currentCommandList->trackResource<DxvkAccess::Read>(primaryDepth);
+    commandList->trackResource<DxvkAccess::Write>(outputImage);
+    commandList->trackResource<DxvkAccess::Read>(colorBuffer);
+    commandList->trackResource<DxvkAccess::Read>(primaryScreenSpaceMotionVector);
+    commandList->trackResource<DxvkAccess::Read>(primaryDepth);
 
-    // Conditionally wait for the command queue to be cleared.
-    // In some cases DLFG needs to wait for the command queue to be cleared before it proceeds.
-    // For example, the resolution is changed.
-    do {
-      // xxxnsubtil: can't do this because DLFG will submit cmdlists behind our back
-      //ScopedGpuProfileZone_Present(m_device, *m_currentCommandList, "DLFG evaluate");
+    {
+      ScopedGpuProfileZone_Present(m_device, commandList->getCmdBuffer(), "DLFG evaluate");
 
       assert(m_dlfgContext != nullptr);
 
       res = m_dlfgContext->evaluate(Rc<DxvkContext>(ctx.ptr()),
-                                                    m_currentCommandList->getCmdBuffer(),
+                                                    commandList->getCmdBuffer(),
                                                     outputImage,
                                                     colorBuffer,
                                                     primaryScreenSpaceMotionVector,
                                                     primaryDepth,
                                                     camera,
                                                     Vector2(1.0f, 1.0f),
+                                                    interpolatedFrameIndex,
+                                                    interpolatedFrameCount,
                                                     resetHistory);
 
       switch (res) {
@@ -1224,132 +1285,19 @@ namespace dxvk {
 
       case NGXDLFGContext::EvaluateResult::Success:
         break;
-
-      case NGXDLFGContext::EvaluateResult::NeedWaitIdle:
-        // DLFG wants WFI, go idle and prepare to call Evaluate again
-        {
-          //Logger::warn("DLFG wants to idle");
-          m_currentCommandList->endRecording();
-          m_currentCommandList->addWaitSemaphore(m_outputImageSemaphore);
-          m_currentCommandList->submit();
-          m_outputImageSemaphore = nullptr;
-
-          VkResult vkres;
-          vkres = m_device->vkd()->vkQueueWaitIdle(m_device->queues().__DLFG_QUEUE.queueHandle);
-          assert(vkres == VK_SUCCESS);
-
-          // we need to grab a new cmdList to make sure we have a fence associated with it (the submit above resets the fence)
-          m_currentCommandList = m_dlfgEvalCommandLists.nextCmdList();
-        }
-
-        break;
       }
-    } while (res == NGXDLFGContext::EvaluateResult::NeedWaitIdle);
-
-    // this is now CL3 (post-processing after OFA), must wait on N2
-
-    m_currentCommandList->endRecording();
-    if (m_dlfgSemaphores.s2SignaledThisFrame)
-      m_currentCommandList->addWaitSemaphore(m_dlfgSemaphores.s2->handle());
-    m_currentCommandList->addWaitSemaphore(m_outputImageSemaphore); // may be null if OFA is off
-    m_currentCommandList->addSignalSemaphore(m_dlfgFinishedSemaphore->handle());
-    m_currentCommandList->submit();
-
-    m_currentCommandList = nullptr;
-    m_outputImageSemaphore = nullptr;
-
-    return m_dlfgFinishedSemaphore->handle();
-  }
-
-  void DxvkDLFG::createTimelineSyncObjects(VkSemaphore& syncObjSignal,        // N1
-                                           uint64_t syncObjSignalValue,
-                                           VkSemaphore& syncObjWait,          // N4
-                                           uint64_t syncObjWaitValue) {
-    ScopedCpuProfileZone();
-
-    m_dlfgSemaphores.s1 = RtxSemaphore::createTimeline(m_device, "DLFG semaphore 1", syncObjSignalValue, true);
-    m_dlfgSemaphores.s1Value = syncObjSignalValue;
-    
-    m_dlfgSemaphores.s4 = RtxSemaphore::createTimeline(m_device, "DLFG semaphore 4", syncObjWaitValue, true);
-    m_dlfgSemaphores.s4Value = syncObjWaitValue;
-    
-    syncObjSignal = m_dlfgSemaphores.s1->handle();
-    syncObjWait = m_dlfgSemaphores.s4->handle();
-  }
-
-  void DxvkDLFG::syncSignal(VkCommandBuffer& cmdList,
-                            VkSemaphore syncObjSignal, // N1
-                            uint64_t syncObjSignalValue) {
-    ScopedCpuProfileZone();
-
-    VkSemaphore syncSem = syncObjSignal;
-    assert(syncSem == m_dlfgSemaphores.s1->handle());
-    assert(cmdList == m_currentCommandList->getCmdBuffer());
-    m_currentCommandList->endRecording();
-    // wait on N0, submit CL1, signal N1
-    m_currentCommandList->addWaitSemaphore(m_outputImageSemaphore);
-    m_currentCommandList->addSignalSemaphore(m_dlfgSemaphores.s1->handle(), syncObjSignalValue);
-    m_currentCommandList->submit();
-
-    m_outputImageSemaphore = nullptr;
-    m_dlfgSemaphores.s1Value = syncObjSignalValue;
-
-    m_currentCommandList = m_dlfgInternalAsyncOFACommandLists.nextCmdList();
-    cmdList = m_currentCommandList->getCmdBuffer();
-  }
-
-  void DxvkDLFG::syncWait(VkCommandBuffer& cmdList,
-                          VkSemaphore syncObjWait,  // N4
-                          uint64_t syncObjWaitValue,
-                          int waitCpu,
-                          void* __unused_syncObjSignal, // always null
-                          uint64_t /* syncObjSignalValue */) {
-    ScopedCpuProfileZone();
-
-    assert(waitCpu == 0);
-    assert(__unused_syncObjSignal == nullptr);
-    assert(syncObjWait);
-    assert(syncObjWait == m_dlfgSemaphores.s4->handle());
-    m_dlfgSemaphores.s4Value = syncObjWaitValue;
-
-    // wait on N1, execute CL2, signal N2
-    assert(cmdList == m_currentCommandList->getCmdBuffer());
-    m_currentCommandList->endRecording();
-
-    if (m_dlfgSemaphores.s2SignaledThisFrame) {
-      // xxxnsubtil: refactor DXVK submit interface to allow merging this into the next submit
-      DxvkDLFGCommandList* dummyCmdList = m_dlfgDummyWaitOnSem2CommandLists.nextCmdList();
-      dummyCmdList->endRecording();
-      dummyCmdList->addWaitSemaphore(m_dlfgSemaphores.s2->handle());
-      dummyCmdList->submit();
     }
-
-    m_currentCommandList->addWaitSemaphore(m_dlfgSemaphores.s1->handle(), m_dlfgSemaphores.s1Value);
-    m_currentCommandList->addSignalSemaphore(m_dlfgSemaphores.s2->handle());
-    m_currentCommandList->submit();
-    m_dlfgSemaphores.s2SignaledThisFrame = true;
-
-    // wait on N4
-    {
-      // xxxnsubtil: this can now be merged with the previous submit!
-      DxvkDLFGCommandList* dummyCmdList = m_dlfgDummyWaitOnSem4CommandLists.nextCmdList();
-      dummyCmdList->endRecording();
-
-      dummyCmdList->addWaitSemaphore(m_dlfgSemaphores.s4->handle(), syncObjWaitValue);
-      dummyCmdList->submit();
-    }
-
-    // return CL3
-    m_currentCommandList = m_dlfgInternalPostOFACommandLists.nextCmdList();
-    cmdList = m_currentCommandList->getCmdBuffer();
   }
 
+  bool DxvkDLFG::supportsPresentMetering() const {
+    return m_device->extensions().nvPresentMetering;
+  }
 
-  void DxvkDLFG::syncFlush(VkCommandBuffer& cmdList,
-                           VkSemaphore syncObjSignal,
-                           uint64_t syncObjSignalValue,
-                           int waitCpu) {
-    VkResult res = m_device->vkd()->vkQueueWaitIdle(m_device->queues().__DLFG_QUEUE.queueHandle);
-    assert(res == VK_SUCCESS);
+  uint32_t DxvkDLFG::getMaxSupportedInterpolatedFrameCount() {
+    return std::min(maxInterpolatedFrames(), m_device->getCommon()->metaNGXContext().dlfgMaxInterpolatedFrames());
+  }
+
+  uint32_t DxvkDLFG::getInterpolatedFrameCount() {
+    return std::min(maxInterpolatedFrames(), getMaxSupportedInterpolatedFrameCount());
   }
 } // namespace dxvk

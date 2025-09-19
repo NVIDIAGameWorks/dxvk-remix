@@ -25,24 +25,29 @@
 //!>       RT_TRACE_RAY
 //!>       RAY_PIPELINE
 
+
 //!variant gbuffer_raygen_ser.rgen
 //!>       RAY_TRACING_PRIMARY_RAY
 //!>       RT_TRACE_RAY
 //!>       RAY_PIPELINE
 //!>       RT_SHADER_EXECUTION_REORDERING
 
+
 //!variant gbuffer_rayquery.comp
 //!>       RAY_TRACING_PRIMARY_RAY
+
 
 //!variant gbuffer_rayquery_raygen.rgen
 //!>       RAY_TRACING_PRIMARY_RAY
 //!>       RAY_PIPELINE
+
 
 //!variant gbuffer_psr_raygen.rgen
 //!>       RAY_TRACING_PRIMARY_RAY
 //!>       RT_TRACE_RAY
 //!>       RAY_PIPELINE
 //!>       GBUFFER_PSR
+
 
 //!variant gbuffer_psr_raygen_ser.rgen
 //!>       RAY_TRACING_PRIMARY_RAY
@@ -51,14 +56,185 @@
 //!>       RT_SHADER_EXECUTION_REORDERING
 //!>       GBUFFER_PSR
 
+
 //!variant gbuffer_psr_rayquery.comp
 //!>       RAY_TRACING_PRIMARY_RAY
 //!>       GBUFFER_PSR
+
 
 //!variant gbuffer_psr_rayquery_raygen.rgen
 //!>       RAY_TRACING_PRIMARY_RAY
 //!>       RAY_PIPELINE
 //!>       GBUFFER_PSR
+
+
+/* NRC */
+
+//!variant gbuffer_raygen_nrc.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       ENABLE_NRC=1
+
+
+//!variant gbuffer_raygen_ser_nrc.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       ENABLE_NRC=1
+
+
+//!variant gbuffer_rayquery_nrc.comp
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       ENABLE_NRC=1
+
+
+//!variant gbuffer_rayquery_raygen_nrc.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RAY_PIPELINE
+//!>       ENABLE_NRC=1
+
+
+//!variant gbuffer_psr_raygen_nrc.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       GBUFFER_PSR
+//!>       ENABLE_NRC=1
+
+
+//!variant gbuffer_psr_raygen_ser_nrc.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       GBUFFER_PSR
+//!>       ENABLE_NRC=1
+
+
+//!variant gbuffer_psr_rayquery_nrc.comp
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       GBUFFER_PSR
+//!>       ENABLE_NRC=1
+
+
+//!variant gbuffer_psr_rayquery_raygen_nrc.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RAY_PIPELINE
+//!>       GBUFFER_PSR
+//!>       ENABLE_NRC=1
+
+
+
+// WBOIT
+
+//!variant gbuffer_raygen_wboit.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant gbuffer_raygen_ser_wboit.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant gbuffer_rayquery_wboit.comp
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant gbuffer_rayquery_raygen_wboit.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RAY_PIPELINE
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant gbuffer_psr_raygen_wboit.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       GBUFFER_PSR
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant gbuffer_psr_raygen_ser_wboit.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       GBUFFER_PSR
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant gbuffer_psr_rayquery_wboit.comp
+//!>       RAY_TRACING_PRIMARY_RAY 
+//!>       GBUFFER_PSR
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant gbuffer_psr_rayquery_raygen_wboit.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RAY_PIPELINE
+//!>       GBUFFER_PSR
+//!>       UNORDERED_RESOLVE_WBOIT
+
+/* NRC */
+
+//!variant gbuffer_raygen_nrc_wboit.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       ENABLE_NRC=1
+//!>       UNORDERED_RESOLVE_WBOIT 
+
+//!variant gbuffer_raygen_ser_nrc_wboit.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       ENABLE_NRC=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant gbuffer_rayquery_nrc_wboit.comp
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       ENABLE_NRC=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant gbuffer_rayquery_raygen_nrc_wboit.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RAY_PIPELINE
+//!>       ENABLE_NRC=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant gbuffer_psr_raygen_nrc_wboit.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       GBUFFER_PSR
+//!>       ENABLE_NRC=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant gbuffer_psr_raygen_ser_nrc_wboit.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       GBUFFER_PSR
+//!>       ENABLE_NRC=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant gbuffer_psr_rayquery_nrc_wboit.comp
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       GBUFFER_PSR
+//!>       ENABLE_NRC=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant gbuffer_psr_rayquery_raygen_nrc_wboit.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RAY_PIPELINE
+//!>       GBUFFER_PSR
+//!>       ENABLE_NRC=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
 
 //!end-variants
 
@@ -68,11 +244,14 @@
 // Note: Use thin film in the GBuffer pass for its usage in PSR on mirrorlike surfaces.
 #define OPAQUE_MATERIAL_USE_THIN_FILM 1
 #define OPAQUE_MATERIAL_USE_POM 1
+
+#ifdef GBUFFER_PSR
 // Note: This is done in primary rays only currently so that attenuation from volumetrics can be factored in
 // similar to how it was done previously when it was simply applied in compositing via the total virtual hit
 // distance, and ensuring that it does not attenuate secondary rays (since they do not receive inscattering and
 // attenuating them would cause large amounts of energy loss as a result).
 #define RESOLVER_USE_VOLUMETRIC_ATTENUATION 1
+#endif
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/common_bindings.slangh"

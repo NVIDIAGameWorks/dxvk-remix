@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -21,7 +21,20 @@
 */
 #pragma once
 
+#include "rtx/utility/shader_types.h"
+#ifdef __cplusplus
+#include "rtx/concept/camera/camera.h"
+#include "rtx/concept/ray_portal/ray_portal.h"
+#else
+#include "rtx/concept/camera/camera.slangh"
+#include "rtx/concept/ray_portal/ray_portal.slangh"
+#endif
+
+#include "rtx/pass/volume_args.h"
 #include "rtx/pass/nrd_args.h"
+#include "rtx/pass/raytrace_args.h"
+#include "rtx/pass/nrc_args.h"
+#include "rtx/algorithm/accumulate.h"
 
 // Display Types
 enum class DebugViewDisplayType : uint32_t {
@@ -54,12 +67,6 @@ enum class DebugViewSamplerType : uint32_t {
   Count
 };
 
-enum class DebugViewAccumulationMode : uint32_t {
-  WriteNewOutput,
-  BlendNewAndPreviousOutputs,
-  CarryOverPreviousOutput
-};
-
 enum class DebugViewOutputStatisticsMode : uint32_t {
   Mean = 0,
   Sum,
@@ -68,6 +75,9 @@ enum class DebugViewOutputStatisticsMode : uint32_t {
 };
 
 struct DebugViewArgs {
+  Camera camera;
+  RayPortalHitInfo rayPortalHitInfos[maxRayPortalCount * 2];
+  VolumeArgs volumeArgs;
   uint debugViewIdx;
   int colorCodeRadius;
   float animationTimeSec;
@@ -99,6 +109,9 @@ struct DebugViewArgs {
   vec4 debugKnob;
 
   NrdArgs nrd;
+  NrcArgs nrcArgs;
+
+  AccumulationArgs accumulationArgs;
 
   // Common Display enable flags
   uint enableInfNanViewFlag;
@@ -118,17 +131,19 @@ struct DebugViewArgs {
   // Gamma flag
   uint enableGammaCorrectionFlag;
 
+  uint overlayOnTopOfRenderOutput;
+
   // Quantization Options
   uint enableInputQuantization;
   float quantizationStepSize;
   float quantizationInverseStepSize;
-
-  float accumulationWeight;
-  uint enableFp16Accumulation;
-  uint copyOutputToCompositeOutput;
-  DebugViewAccumulationMode accumulationMode;
+  uint writeToCompositeOutput;
 
   uint calculateStatistics;
   DebugViewOutputStatisticsMode statisticsMode;
   float rcpNumOutputPixels;
+  uint numActiveRayPortals;
+
+  uvec2 renderToOutputResolution;
+  vec2 renderToOutputToDebugViewResolution;
 };

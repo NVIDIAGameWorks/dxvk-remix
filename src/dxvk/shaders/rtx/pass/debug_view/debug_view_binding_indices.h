@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -26,39 +26,49 @@
 // Bindings
 
 // Inputs
-#define DEBUG_VIEW_BINDING_DENOISED_PRIMARY_DIRECT_DIFFUSE_RADIANCE_HIT_T_INPUT            1
-#define DEBUG_VIEW_BINDING_DENOISED_PRIMARY_DIRECT_SPECULAR_RADIANCE_HIT_T_INPUT           2
 
+#define DEBUG_VIEW_BINDING_CONSTANTS_INPUT                                                 1
+
+#define DEBUG_VIEW_BINDING_DENOISED_PRIMARY_DIRECT_DIFFUSE_RADIANCE_HIT_T_INPUT            3
+#define DEBUG_VIEW_BINDING_DENOISED_PRIMARY_DIRECT_SPECULAR_RADIANCE_HIT_T_INPUT           4
 #define DEBUG_VIEW_BINDING_DENOISED_SECONDARY_COMBINED_DIFFUSE_RADIANCE_HIT_T_INPUT        5
 #define DEBUG_VIEW_BINDING_DENOISED_SECONDARY_COMBINED_SPECULAR_RADIANCE_HIT_T_INPUT       6
 #define DEBUG_VIEW_BINDING_SHARED_FLAGS_INPUT                                              7
 #define DEBUG_VIEW_BINDING_PRIMARY_LINEAR_VIEW_Z_INPUT                                     8
 #define DEBUG_VIEW_BINDING_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_PERCEPTUAL_ROUGHNESS_INPUT 9
-#define DEBUG_VIEW_BINDING_PRIMARY_VIRTUAL_MOTION_VECTOR_INPUT                             10
+
 #define DEBUG_VIEW_BINDING_PRIMARY_SCREEN_SPACE_MOTION_VECTOR_INPUT                        11
 #define DEBUG_VIEW_BINDING_RTXDI_CONFIDENCE_INPUT                                          12
-#define DEBUG_VIEW_BINDING_FINAL_SHADING_INPUT                                             13
+#define DEBUG_VIEW_BINDING_RENDER_OUTPUT_INPUT                                             13
 
 #define DEBUG_VIEW_BINDING_INSTRUMENTATION_INPUT                                           15
-#define DEBUG_VIEW_BINDING_CONSTANTS_INPUT                                                 16
 #define DEBUG_VIEW_BINDING_TERRAIN_INPUT                                                   17
-#define DEBUG_VIEW_BINDING_UPSCALED_RESOLVED_COLOR                                         18
 
-#define DEBUG_VIEW_BINDING_INPUT                                                           20
+#define DEBUG_VIEW_BINDING_VOLUME_RESERVOIRS_INPUT                                         19
+#define DEBUG_VIEW_BINDING_VOLUME_AGE_INPUT                                                20
+#define DEBUG_VIEW_BINDING_VOLUME_RADIANCE_Y_INPUT                                         21
+#define DEBUG_VIEW_BINDING_VOLUME_RADIANCE_COCG_INPUT                                      22
+#define DEBUG_VIEW_BINDING_VALUE_NOISE_SAMPLER                                             23
+#define DEBUG_VIEW_BINDING_BLUE_NOISE_TEXTURE                                              24
+
+#define DEBUG_VIEW_BINDING_DEBUG_VIEW_INPUT                                                28
+
+#define DEBUG_VIEW_BINDING_NRD_VALIDATION_LAYER_INPUT                                      30
+#define DEBUG_VIEW_BINDING_COMPOSITE_INPUT                                                 31
+
+#define DEBUG_VIEW_BINDING_ALTERNATE_DISOCCLUSION_THRESHOLD_INPUT                          32
+
+#define DEBUG_VIEW_BINDING_PREV_WORLD_POSITION_INPUT                                       33
 
 // Inputs / Outputs
-#define DEBUG_VIEW_BINDING_HDR_WAVEFORM_RED_INPUT_OUTPUT                                   50
-#define DEBUG_VIEW_BINDING_HDR_WAVEFORM_GREEN_INPUT_OUTPUT                                 51
-#define DEBUG_VIEW_BINDING_HDR_WAVEFORM_BLUE_INPUT_OUTPUT                                  52
 
-#define DEBUG_VIEW_BINDING_COMPOSITE_OUTPUT_INPUT_OUTPUT                                   60
-
-#define DEBUG_VIEW_BINDING_PREVIOUS_FRAME_INPUT_OUTPUT                                     71
-
-// Samplers
-#define DEBUG_VIEW_BINDING_NEAREST_SAMPLER                                                 80
-#define DEBUG_VIEW_BINDING_LINEAR_SAMPLER                                                  81
+#define DEBUG_VIEW_BINDING_ACCUMULATED_DEBUG_VIEW_INPUT_OUTPUT                             60 
 
 // Outputs
+
 #define DEBUG_VIEW_BINDING_STATISTICS_BUFFER_OUTPUT                                        90
-#define DEBUG_VIEW_BINDING_OUTPUT                                                          95
+
+// Samplers
+
+#define DEBUG_VIEW_BINDING_NEAREST_SAMPLER                                                 300
+#define DEBUG_VIEW_BINDING_LINEAR_SAMPLER                                                  301

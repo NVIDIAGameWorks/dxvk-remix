@@ -41,8 +41,11 @@ namespace dxvk
 {
 class RtCamera;
 class RtInstance;
+struct RtLight;
+class GraphInstance;
 struct D3D9FixedFunctionVS;
 struct D3D9FixedFunctionPS;
+struct ReplacementInstance;
 
 using RasterBuffer = GeometryBuffer<Raster>;
 using RaytraceBuffer = GeometryBuffer<Raytrace>;
@@ -50,6 +53,117 @@ using RaytraceBuffer = GeometryBuffer<Raytrace>;
 // DLFG async compute overlap: max of 2 frames in flight
 // (set to 1 to serialize graphics and async compute queues)
 constexpr uint32_t kDLFGMaxGPUFramesInFlight = 2;
+
+// A container for the runtime instance that maps to a prim in a replacement heirarchy.
+class PrimInstance {
+public:
+  enum class Type : uint8_t {
+    Instance,
+    Light,
+    Graph,
+    None
+  };
+  // Use `Entity()` to create a nullptr Entity.
+  PrimInstance() {}
+
+  // Default copy/move/destructors are fine - this just contains typed weak pointers.
+  PrimInstance(const PrimInstance&) = default;
+  PrimInstance(PrimInstance&&) noexcept = default;
+  PrimInstance& operator=(const PrimInstance&) = default;
+  PrimInstance& operator=(PrimInstance&&) noexcept = default;
+  ~PrimInstance() = default;
+
+  // Instance constructor, getter
+  explicit PrimInstance(RtInstance* instance);
+  RtInstance* getInstance() const;
+
+  // Light constructor, getter
+  explicit PrimInstance(RtLight* light);
+  RtLight* getLight() const;
+
+  // Graph constructor, getter
+  explicit PrimInstance(GraphInstance* graph);
+  GraphInstance* getGraph() const;
+
+  // Untyped utilities.
+  PrimInstance(void* owner, Type type);
+
+  Type getType() const;
+  void* getUntyped() const;
+  void setReplacementInstance(ReplacementInstance* replacementInstance, size_t replacementIndex);
+
+private:
+  union EntityPtr {
+    void* untyped = nullptr;
+    RtInstance* instance;
+    RtLight* light;
+    GraphInstance* graph;
+  } m_ptr;
+  Type m_type = Type::None;
+};
+std::ostream& operator << (std::ostream& os, PrimInstance::Type type);
+
+struct ReplacementInstance {
+  // Lifecycle note:
+  // Currently, ReplacementInstances are created the first time a given replaced draw call
+  // is rendered.  A single entity (a light or instance) is designated as the 'root'.
+  // When that entity is destroyed, the ReplacementInstance is destroyed.
+  // Unfortunately, lights and instances aren't always destroyed at the same time, or
+  // in the same order they were created.  To accomodate that, when non-root entities
+  // are deleted, they remove themselves from the `entities` vector.  Similarly, when
+  // the root is deleted, all entities remaining in the vector will have their pointer
+  // to the ReplacementInstance set to nullptr.
+  // TODO(REMIX-4226): In the future, draw calls should be tracked and destroyed based
+  // on the pre-replacement draw call, so that everything in a ReplacementInstance gets
+  // destroyed at the same time.  When that change is made, the original tracked draw
+  // call should own this ReplacementInstance.
+
+  static constexpr uint32_t kInvalidReplacementIndex = UINT32_MAX;
+
+  ~ReplacementInstance();
+
+  void clear();
+
+  std::vector<PrimInstance> prims;
+  PrimInstance root;
+
+  void setup(PrimInstance newRoot, size_t numPrims);
+};
+
+// Wrapper utility to share the code for handling replacementInstance ownership.
+class PrimInstanceOwner {
+public:
+  PrimInstanceOwner() = default;
+  // NOTE: primInstanceOwner is not safe to copy - the RtInstance, RtLight, etc that holds the PrimInstanceOwner
+  //       would have a different address after copying, so the PrimInstanceOwner would point to the wrong object.
+  PrimInstanceOwner(const PrimInstanceOwner& other) = delete;
+  PrimInstanceOwner& operator=(const PrimInstanceOwner& other) = delete;
+
+  ~PrimInstanceOwner() {
+    // m_replacementInstance should always be properly cleaned up before the PrimInstanceOwner 
+    // is destroyed. If this is hit, then whatever deleted the object holding the
+    // primInstanceOwner needs to call setReplacementInstance(nullptr...) before doing that 
+    // deletion.  If not, there will probably be use-after-free bugs later on.
+    assert(m_replacementInstance == nullptr);
+  }
+
+  bool isRoot(const void* owner) const;
+  void setReplacementInstance(ReplacementInstance* replacementInstance, size_t replacementIndex, void* owner, PrimInstance::Type type);
+  ReplacementInstance* getOrCreateReplacementInstance(void* owner, PrimInstance::Type type, size_t index, size_t numPrims);
+  ReplacementInstance* getReplacementInstance() const { return m_replacementInstance; }
+  size_t getReplacementIndex() const { return m_replacementIndex; }
+  bool isSubPrim() const {
+    if (m_replacementInstance == nullptr) {
+      return false;
+    } else {
+      return m_replacementIndex != ReplacementInstance::kInvalidReplacementIndex &&
+        m_replacementInstance->root.getUntyped() != m_replacementInstance->prims[m_replacementIndex].getUntyped();
+    }
+  }
+private:
+  ReplacementInstance* m_replacementInstance = nullptr;
+  size_t m_replacementIndex = ReplacementInstance::kInvalidReplacementIndex;
+};
 
 // NOTE: Needed to move this here in order to avoid
 // circular includes.  This probably requires a 
@@ -149,6 +263,16 @@ struct AxisAlignedBoundingBox {
   const XXH64_hash_t calculateHash() const {
     return XXH3_64bits(this, sizeof(AxisAlignedBoundingBox));
   }
+
+  float getVolume(const Matrix4& transform, float minimumThickness = 0.001f) const {
+    const Vector3 minPosWorld = (transform * dxvk::Vector4(minPos, 1.0f)).xyz();
+    const Vector3 maxPosWorld = (transform * dxvk::Vector4(maxPos, 1.0f)).xyz();
+
+    // Assume some minimum thickness to work around the possibility of infinitely thin geometry
+    const Vector3 size = max(Vector3(minimumThickness), abs(maxPosWorld - minPosWorld));
+
+    return size.x * size.y * size.z;
+  }
 };
 
 // Stores a snapshot of the geometry state for a draw call.
@@ -234,7 +358,7 @@ struct RasterGeometry {
     if (positionBuffer.vertexFormat() != VK_FORMAT_R32G32B32_SFLOAT && positionBuffer.vertexFormat() != VK_FORMAT_R32G32B32A32_SFLOAT)
       return false;
 
-    if (normalBuffer.defined() && (normalBuffer.vertexFormat() != VK_FORMAT_R32G32B32_SFLOAT && normalBuffer.vertexFormat() != VK_FORMAT_R32G32B32A32_SFLOAT))
+    if (normalBuffer.defined() && (normalBuffer.vertexFormat() != VK_FORMAT_R32G32B32_SFLOAT && normalBuffer.vertexFormat() != VK_FORMAT_R32G32B32A32_SFLOAT && normalBuffer.vertexFormat() != VK_FORMAT_R32_UINT))
       return false;
 
     if (texcoordBuffer.defined() && (texcoordBuffer.vertexFormat() != VK_FORMAT_R32G32_SFLOAT && texcoordBuffer.vertexFormat() != VK_FORMAT_R32G32B32_SFLOAT && texcoordBuffer.vertexFormat() != VK_FORMAT_R32G32B32A32_SFLOAT))
@@ -335,7 +459,7 @@ struct GeometryBufferData {
     }
 
     if (geometryData.normalBuffer.defined()) {
-      constexpr size_t normalSubElementSize = sizeof(float);
+      constexpr size_t normalSubElementSize = sizeof(std::uint32_t);
       normalStride = geometryData.normalBuffer.stride() / normalSubElementSize;
       normalData = (float*) geometryData.normalBuffer.mapPtr((size_t) geometryData.normalBuffer.offsetFromSlice());
     } else {
@@ -344,7 +468,7 @@ struct GeometryBufferData {
     }
 
     if (geometryData.color0Buffer.defined()) {
-      constexpr size_t colorSubElementSize = sizeof(uint32_t);
+      constexpr size_t colorSubElementSize = sizeof(std::uint32_t);
       vertexColorStride = geometryData.color0Buffer.stride() / colorSubElementSize;
       vertexColorData = (uint32_t*) geometryData.color0Buffer.mapPtr((size_t) geometryData.color0Buffer.offsetFromSlice());
     } else {
@@ -369,10 +493,6 @@ struct GeometryBufferData {
     return *(Vector2*) (texcoordData + index * texcoordStride);
   }
 
-  Vector3& getNormal(uint32_t index) const {
-    return *(Vector3*) (normalData + index * normalStride);
-  }
-
   uint32_t& getVertexColor(uint32_t index) const {
     return vertexColorData[index * vertexColorStride];
   }
@@ -388,11 +508,20 @@ struct DrawCallTransforms {
   bool enableClipPlane = false;
   Vector4 clipPlane{ 0.f };
   TexGenMode texgenMode = TexGenMode::None;
+  const std::vector<Matrix4>* instancesToObject = nullptr;
 
   void sanitize() {
     if (objectToWorld[3][3] == 0.f) objectToWorld[3][3] = 1.f;
     if (objectToView[3][3] == 0.f) objectToView[3][3] = 1.f;
     if (worldToView[3][3] == 0.f) worldToView[3][3] = 1.f;
+  }
+
+  Matrix4 calcFirstInstanceObjectToWorld() const {
+    if (instancesToObject && !instancesToObject->empty()) {
+      return objectToWorld * (*instancesToObject)[0];
+    } else {
+      return objectToWorld;
+    }
   }
 };
 
@@ -402,6 +531,10 @@ struct FogState {
   float scale = 0.f;
   float end = 0.f;
   float density = 0.f;
+
+  XXH64_hash_t getHash() const {
+    return XXH3_64bits(this, sizeof(FogState));
+  }
 };
 
 enum class InstanceCategories : uint32_t {
@@ -427,6 +560,8 @@ enum class InstanceCategories : uint32_t {
   ThirdPersonPlayerModel,
   ThirdPersonPlayerBody,
   IgnoreBakedLighting,
+  IgnoreTransparencyLayer,
+  ParticleEmitter,
 
   Count,
 };
@@ -496,10 +631,12 @@ struct DrawCallState {
   float maxZ = 1.0f;
 
   bool zWriteEnable = false;
-  bool alphaBlendEnable = false;
   bool zEnable = false;
 
   uint32_t drawCallID = 0;
+
+  bool isDrawingToRaytracedRenderTarget = false;
+  bool isUsingRaytracedRenderTarget = false;
 
   void setupCategoriesForTexture();
   void setupCategoriesForGeometry();
@@ -509,18 +646,82 @@ struct DrawCallState {
   template<typename... InstanceCategories>
   bool testCategoryFlags(InstanceCategories... cat) const { return categories.any(cat...); }
 
+  void printDebugInfo(const char* name = "") const {
+#ifdef REMIX_DEVELOPMENT
+    Logger::warn(str::format(
+      "DrawCallState ", name, "\n",
+      "  address: ", this, "\n",
+      "  drawCallID: ", drawCallID, "\n",
+      "  cameraType: ", static_cast<int>(cameraType), "\n",
+      "  usesVertexShader: ", usesVertexShader, "\n",
+      "  usesPixelShader: ", usesPixelShader, "\n",
+      "  stencilEnabled: ", stencilEnabled, "\n",
+      "  zWriteEnable: ", zWriteEnable, "\n",
+      "  zEnable: ", zEnable, "\n",
+      "  minZ: ", minZ, "\n",
+      "  maxZ: ", maxZ, "\n",
+      "  isDrawingToRaytracedRenderTarget: ", isDrawingToRaytracedRenderTarget, "\n",
+      "  isUsingRaytracedRenderTarget: ", isUsingRaytracedRenderTarget, "\n",
+      "  categoryFlags: ", categories.raw(), "\n",
+      "  hasTextureCoordinates: ", hasTextureCoordinates(), "\n",
+      "  materialHash: 0x", std::hex, materialData.getHash(), std::dec));
+    
+    // Print geometry info
+    Logger::warn("=== Geometry Info ===");
+    Logger::warn(str::format(
+      "  vertexCount: ", geometryData.vertexCount, "\n",
+      "  indexCount: ", geometryData.indexCount, "\n",
+      "  numBonesPerVertex: ", geometryData.numBonesPerVertex, "\n",
+      "  topology: ", static_cast<int>(geometryData.topology), "\n",
+      "  cullMode: ", static_cast<int>(geometryData.cullMode), "\n",
+      "  frontFace: ", static_cast<int>(geometryData.frontFace), "\n",
+      "  forceCullBit: ", geometryData.forceCullBit, "\n",
+      "  externalMaterial: ", (geometryData.externalMaterial != nullptr ? "valid" : "null")));
+    
+    // Print transform info
+    Logger::warn("=== Transform Info ===");
+    Logger::warn(str::format(
+      "  enableClipPlane: ", transformData.enableClipPlane, "\n",
+      "  clipPlane: (", transformData.clipPlane.x, ", ", transformData.clipPlane.y, ", ", transformData.clipPlane.z, ", ", transformData.clipPlane.w, ")"));
+    
+    // Print skinning info
+    Logger::warn("=== Skinning Info ===");
+    Logger::warn(str::format(
+      "  numBones: ", skinningData.numBones, "\n",
+      "  numBonesPerVertex: ", skinningData.numBonesPerVertex, "\n",
+      "  minBoneIndex: ", skinningData.minBoneIndex, "\n",
+      "  boneHash: 0x", std::hex, skinningData.boneHash, std::dec));
+    
+    // Print fog info
+    Logger::warn("=== Fog Info ===");
+    Logger::warn(str::format(
+      "  fogMode: ", fogState.mode, "\n",
+      "  fogColor: (", fogState.color.x, ", ", fogState.color.y, ", ", fogState.color.z, ")\n",
+      "  fogScale: ", fogState.scale, "\n",
+      "  fogEnd: ", fogState.end, "\n",
+      "  fogDensity: ", fogState.density));
+    
+    // Print material info
+    Logger::warn("=== Material Info ===");
+    materialData.printDebugInfo("(from DrawCallState)");
+#endif
+  }
+
 private:
   friend class RtxContext;
   friend class SceneManager;
   friend struct D3D9Rtx;
   friend class TerrainBaker;
   friend struct RemixAPIPrivateAccessor;
+  friend class RtxParticleSystemManager;
 
   bool finalizeGeometryHashes();
   void finalizeGeometryBoundingBox();
   void finalizeSkinningData(const RtCamera* pLastCamera);
 
+  // NOTE: 'setCategory' can only add a category, it will not unset a bit
   void setCategory(InstanceCategories category, bool set);
+  void removeCategory(InstanceCategories category);
 
   RasterGeometry geometryData;
 
@@ -551,6 +752,10 @@ struct PooledBlas : public RcObject {
   // Note: only used for tracking of OMMs for static BLASes
   XXH64_hash_t opacityMicromapSourceHash = kEmptyHash;
 
+  // Keep a copy of the build info so we can validate BLAS update compatibility
+  VkAccelerationStructureBuildGeometryInfoKHR buildInfo = {};
+  std::vector<uint32_t> primitiveCounts {};
+
   explicit PooledBlas();
   ~PooledBlas();
 };
@@ -579,9 +784,12 @@ struct BlasEntry {
   // Frame when the vertex data of this geometry was last updated, used to detect static geometries
   uint32_t frameLastUpdated = kInvalidFrameIndex;
 
-  using InstanceMap = SpatialMap<const RtInstance*>;
+  using InstanceMap = SpatialMap<RtInstance>;
 
-  Rc<PooledBlas> staticBlas;
+  Rc<PooledBlas> dynamicBlas = nullptr;
+
+  std::vector<VkAccelerationStructureGeometryKHR> buildGeometries;
+  std::vector<VkAccelerationStructureBuildRangeInfoKHR> buildRanges;
 
   BlasEntry() = default;
 
@@ -609,20 +817,51 @@ struct BlasEntry {
     m_materials.clear();
   }
 
-  void linkInstance(const RtInstance* instance) {
+  void linkInstance(RtInstance* instance) {
     m_linkedInstances.push_back(instance);
   }
 
-  void unlinkInstance(const RtInstance* instance);
+  void unlinkInstance(RtInstance* instance);
 
-  const std::vector<const RtInstance*>& getLinkedInstances() const { return m_linkedInstances; }
+  const std::vector<RtInstance*>& getLinkedInstances() const { return m_linkedInstances; }
   InstanceMap& getSpatialMap() { return m_spatialMap; }
   const InstanceMap& getSpatialMap() const { return m_spatialMap; }
 
   void rebuildSpatialMap();
 
+  void printDebugInfo(const char* name = "") const {
+#ifdef REMIX_DEVELOPMENT
+    Logger::warn(str::format(
+      "BlasEntry ", name, "\n",
+      "  address: ", this, "\n",
+      "  frameCreated: ", frameCreated, "\n",
+      "  frameLastTouched: ", frameLastTouched, "\n",
+      "  frameLastUpdated: ", frameLastUpdated, "\n",
+      "  vertexCount: ", modifiedGeometryData.vertexCount, "\n",
+      "  indexCount: ", modifiedGeometryData.indexCount, "\n",
+      "  linkedInstances: ", m_linkedInstances.size(), "\n",
+      "  cachedMaterials: ", m_materials.size(), "\n",
+      "  buildGeometries: ", buildGeometries.size(), "\n",
+      "  buildRanges: ", buildRanges.size(), "\n",
+      "  dynamicBlas: ", (dynamicBlas != nullptr ? "valid" : "null")));
+    
+    // Print main material info
+    Logger::warn("=== Main Material Info ===");
+    input.getMaterialData().printDebugInfo("(main)");
+    
+    // Print cached materials info
+    if (!m_materials.empty()) {
+      Logger::warn("=== Cached Materials Info ===");
+      for (const auto& [hash, material] : m_materials) {
+        Logger::warn(str::format("Cached Material Hash: 0x", std::hex, hash, std::dec));
+        material.printDebugInfo("(cached)");
+      }
+    }
+#endif
+  }
+
 private:
-  std::vector<const RtInstance*> m_linkedInstances;
+  std::vector<RtInstance*> m_linkedInstances;
   InstanceMap m_spatialMap;
   std::unordered_map<XXH64_hash_t, LegacyMaterialData> m_materials;
 };
@@ -651,6 +890,67 @@ struct DxvkRaytracingInstanceState {
   Rc<DxvkBuffer> vsFixedFunctionCB;
   Rc<DxvkBuffer> psSharedStateCB;
   Rc<DxvkBuffer> vertexCaptureCB;
+};
+
+enum class RtxFramePassStage {
+  FrameBegin,
+  Volumetrics,
+  VolumeIntegrateRestirInitial,
+  VolumeIntegrateRestirVisible,
+  VolumeIntegrateRestirTemporal,
+  VolumeIntegrateRestirSpatialResampling,
+  VolumeIntegrateRaytracing,
+  GBufferPrimaryRays,
+  ReflectionPSR,
+  TransmissionPSR,
+  RTXDI_InitialTemporalReuse,
+  RTXDI_SpatialReuse,
+  NEE_Cache,
+  DirectIntegration,
+  RTXDI_ComputeGradients,
+  IndirectIntegration,
+  NEE_Integration,
+  NRC,
+  RTXDI_FilterGradients,
+  RTXDI_ComputeConfidence,
+  ReSTIR_GI_TemporalReuse,
+  ReSTIR_GI_SpatialReuse,
+  ReSTIR_GI_FinalShading,
+  Demodulate,
+  NRD,
+  CompositionAlphaBlend,
+  Composition,
+  DLSS,
+  DLSSRR,
+  NIS,
+  TAA,
+  DustParticles,
+  Bloom,
+  PostFX,
+  AutoExposure_Histogram,
+  AutoExposure_Exposure,
+  ToneMapping,
+  FrameEnd
+};
+
+enum class RtxTextureExtentType {
+  DownScaledExtent,
+  TargetExtent,
+  Custom
+};
+
+// Category of texture format base on the doc: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap46.html#formats-compatibility-classes
+// Note: We currently only categorize the uncompressed color textures
+enum class RtxTextureFormatCompatibilityCategory : uint32_t {
+  Color_Format_8_Bits,
+  Color_Format_16_Bits,
+  Color_Format_32_Bits,
+  Color_Format_64_Bits,
+  Color_Format_128_Bits,
+  Color_Format_256_Bits,
+
+  Count,
+  InvalidFormatCompatibilityCategory = UINT32_MAX
 };
 
 } // namespace dxvk

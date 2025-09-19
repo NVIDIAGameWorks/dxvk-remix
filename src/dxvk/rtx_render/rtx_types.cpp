@@ -25,8 +25,215 @@
 #include "rtx_options.h"
 #include "rtx_terrain_baker.h"
 #include "rtx_instance_manager.h"
+#include "rtx_light_manager.h"
+#include "graph/rtx_graph_instance.h"
+#include "dxvk_scoped_annotation.h"
 
 namespace dxvk {
+
+  // Instance constructor, getter, and assignment operator
+  PrimInstance::PrimInstance(RtInstance* instance) : m_type(Type::Instance) {
+    m_ptr.instance = instance;
+  }
+  RtInstance* PrimInstance::getInstance() const {
+    if (m_type != Type::Instance) {
+      return nullptr;
+    }
+    return m_ptr.instance;
+  }
+
+  // Light constructor, getter, and assignment operator
+  PrimInstance::PrimInstance(RtLight* light) : m_type(Type::Light) {
+    m_ptr.light = light;
+  }
+  RtLight* PrimInstance::getLight() const {
+    if (m_type != Type::Light) {
+      return nullptr;
+    }
+    return m_ptr.light;
+  }
+
+  // Graph constructor, getter, and assignment operator
+  PrimInstance::PrimInstance(GraphInstance* graph) : m_type(Type::Graph) {
+    m_ptr.graph = graph;
+  }
+  GraphInstance* PrimInstance::getGraph() const {
+    if (m_type != Type::Graph) {
+      return nullptr;
+    }
+    return m_ptr.graph;
+  }
+
+  PrimInstance::Type PrimInstance::getType() const {
+    if (m_ptr.untyped == nullptr) {
+      return Type::None;
+    }
+    return m_type;
+  }
+
+  PrimInstance::PrimInstance(void* owner, Type type) : m_type(type) {
+    m_ptr.untyped = owner;
+  }
+
+  void* PrimInstance::getUntyped() const {
+    return m_ptr.untyped;
+  }
+
+  void PrimInstance::setReplacementInstance(ReplacementInstance* replacementInstance, size_t replacementIndex) {
+    PrimInstanceOwner* prim = nullptr;
+    if (m_type == Type::Instance) {
+      prim = &m_ptr.instance->getPrimInstanceOwner();
+    } else if (m_type == Type::Light) {
+      prim = &m_ptr.light->getPrimInstanceOwner();
+    } else if (m_type == Type::Graph) {
+      prim = &m_ptr.graph->getPrimInstanceOwner();
+    }
+
+    if (prim) {
+      prim->setReplacementInstance(replacementInstance, replacementIndex, m_ptr.untyped, m_type);
+    }
+  }
+
+  std::ostream& operator << (std::ostream& os, PrimInstance::Type type) {
+    switch (type) {
+      ENUM_NAME(PrimInstance::Type::Instance);
+      ENUM_NAME(PrimInstance::Type::Light);
+      ENUM_NAME(PrimInstance::Type::Graph);
+      ENUM_NAME(PrimInstance::Type::None);
+    }
+    return os << static_cast<uint8_t>(type);
+  }
+
+  ReplacementInstance* PrimInstanceOwner::getOrCreateReplacementInstance(void* owner, PrimInstance::Type type, size_t index,size_t numPrims) {
+    if (m_replacementInstance != nullptr && !isRoot(owner)) {
+      // This Prim is already a non-root member of another replacementInstance, but SceneManager is trying to use it as the root of a new replacement.
+      ONCE(assert(false && "getOrCreateReplacementInstance should only be called on root prims"));
+      // Try to handle it gracefully anyways by removing this from the previous replacement and making it the root of a new replacement.
+      // This will cause m_replacmementInstance to be null, so it will enter the new ReplacementInstance case below.
+      setReplacementInstance(nullptr, ReplacementInstance::kInvalidReplacementIndex, owner, type);
+    }
+
+    if (m_replacementInstance == nullptr) {
+      ReplacementInstance* replacement = new ReplacementInstance();
+      replacement->setup(PrimInstance(owner, type), numPrims);
+      setReplacementInstance(replacement, index, owner, type);
+    } else if (m_replacementInstance->prims.size() != numPrims) {
+      // Number of prims changing generally means a new replacement asset has loaded in.
+      // Need to unlink the old instances, and either re-link them (if they are returned as 
+      // similar by findSimilarInstances) or create new ones.
+      ReplacementInstance* replacement = m_replacementInstance;
+      
+      // Clear the root manually, so that `clear()` doesn't try to delete the replacement.
+      replacement->root = PrimInstance();
+      // Clear the link to this prim so that it doesn't get marked for GC.
+      setReplacementInstance(nullptr, ReplacementInstance::kInvalidReplacementIndex, owner, type);
+
+      // Wipe out all the links in the replacement, which will mark all of the old non-root replacements for cleanup.
+      replacement->clear();
+      
+      // Redo replacement setup.
+      replacement->setup(PrimInstance(owner, type), numPrims);
+      setReplacementInstance(replacement, index, owner, type);
+    }
+    return m_replacementInstance;
+  }
+
+  ReplacementInstance::~ReplacementInstance() {
+    root = PrimInstance();
+    clear();
+  }
+
+  void ReplacementInstance::clear() {
+    // clear up all references to this ReplacementInstance.
+    for (size_t i = 0; i < prims.size(); i++) {
+      RtInstance* subInstance = prims[i].getInstance();
+      if (subInstance) {
+        subInstance->markForGarbageCollection();
+      }
+      GraphInstance* graphInstance = prims[i].getGraph();
+      if (graphInstance) {
+        graphInstance->removeInstance();
+      }
+      RtLight* light = prims[i].getLight();
+      if (light) {
+        light->markForGarbageCollection();
+      }
+      prims[i].setReplacementInstance(nullptr, kInvalidReplacementIndex);
+    }
+  }
+
+  void ReplacementInstance::setup(PrimInstance newRoot, size_t numPrims) {
+    prims.resize(numPrims);
+    root = newRoot;
+  }
+  
+  bool PrimInstanceOwner::isRoot(const void* owner) const {
+    return m_replacementInstance != nullptr
+      && m_replacementIndex != ReplacementInstance::kInvalidReplacementIndex
+      && m_replacementInstance->root.getUntyped() == owner;
+  }
+
+  void PrimInstanceOwner::setReplacementInstance(ReplacementInstance* replacementInstance, size_t replacementIndex, void* owner, PrimInstance::Type type) {
+    // Early out if this is just re-applying the same values.
+    if (m_replacementInstance != nullptr && m_replacementInstance == replacementInstance) {
+      ONCE(assert(false && "single prim is being set to multiple replacement indices."));
+      return;
+    }
+
+    // Then check if the owner is already in a replacement:
+    if (m_replacementInstance && m_replacementIndex != ReplacementInstance::kInvalidReplacementIndex) {
+      
+      // Inside a replacement, check if it's the root:
+      if (isRoot(owner)) {
+        // This is the root of a replacement being deleted.
+        // Clear the root, and delete the replacementInstance.
+        // the ReplacementInstance destructor will call this function again, which will
+        // actually clear m_replacementInstance and m_replacementIndex.
+        delete m_replacementInstance;
+        m_replacementInstance = nullptr;
+        m_replacementIndex = ReplacementInstance::kInvalidReplacementIndex;
+        return;
+      }
+
+      // Next, remove the prim from the replacementInstance.
+      PrimInstance& prim = m_replacementInstance->prims[m_replacementIndex];
+      if (prim.getType() == type && prim.getUntyped() == owner) {
+        // clear up the old reference to this owner
+        prim = PrimInstance();
+      } else {
+        // The prim believed it was in a slot, but something else was actually there.
+        // This is a sign that something went wrong earlier, but shouldn't cause problems itself.
+        ONCE(assert(false && "PrimInstance was not properly removed from its replacementInstance before something else took its place."));
+      }
+    }
+
+    // Set this owner to the new replacementInstance.
+    m_replacementInstance = replacementInstance;
+    m_replacementIndex = replacementIndex;
+
+    // Inform the replacementInstance that this owner is now in it.
+    if (m_replacementInstance && replacementIndex != ReplacementInstance::kInvalidReplacementIndex) {
+      PrimInstance& prim = m_replacementInstance->prims[replacementIndex];
+      if (prim.getType() != type && prim.getType() != PrimInstance::Type::None) {
+        // While specific pointers may change, the type of a slot should never change.
+        ONCE(assert(false && "Trying to assign a primInstance to a replacementInstance slot that was not the same type."));
+        m_replacementInstance = nullptr;
+        m_replacementIndex = ReplacementInstance::kInvalidReplacementIndex;
+        return;
+      } else if (prim.getUntyped() != nullptr && prim.getUntyped() != owner) {
+        // Another owner is already in this spot.  Clean that up properly before overriding it.
+        if (m_replacementInstance->root.getUntyped() == prim.getUntyped()) {
+          // Replacing the old root.  Shouldn't happen, but if it does we would want to
+          // update the root before clearing the old root, to avoid triggering garbage collection.
+          m_replacementInstance->root = PrimInstance(owner, type);
+        }
+        prim.setReplacementInstance(nullptr, ReplacementInstance::kInvalidReplacementIndex);
+        ONCE(assert(false && "PrimInstance was not properly cleaned up before being replaced."));
+      }
+      prim = PrimInstance(owner, type);
+    }
+  }
+
   uint32_t RasterGeometry::calculatePrimitiveCount() const {
     const uint32_t elementCount = usesIndices() ? indexCount : vertexCount;
     switch (topology) {
@@ -46,6 +253,7 @@ namespace dxvk {
   }
 
   bool DrawCallState::finalizePendingFutures(const RtCamera* pLastCamera) {
+    ScopedCpuProfileZone();
     // Geometry hashes are vital, and cannot be disabled, so its important we get valid data (hence the return type)
     const bool valid = finalizeGeometryHashes();
     if (valid) {
@@ -65,13 +273,15 @@ namespace dxvk {
   }
 
   bool DrawCallState::finalizeGeometryHashes() {
-    if (!geometryData.futureGeometryHashes.valid())
+    if (!geometryData.futureGeometryHashes.valid()) {
       return false;
+    }
 
     geometryData.hashes = geometryData.futureGeometryHashes.get();
 
-    if (geometryData.hashes[HashComponents::VertexPosition] == kEmptyHash)
+    if (geometryData.hashes[HashComponents::VertexPosition] == kEmptyHash) {
       throw DxvkError("Position hash should never be empty");
+    }
 
     return true;
   }
@@ -89,7 +299,7 @@ namespace dxvk {
       assert(skinningData.numBonesPerVertex <= 4);
 
       if (pLastCamera != nullptr) {
-        const auto fusedMode = RtxOptions::Get()->fusedWorldViewMode();
+        const auto fusedMode = RtxOptions::fusedWorldViewMode();
         if (likely(fusedMode == FusedWorldViewMode::None)) {
           transformData.objectToView = transformData.worldToView;
           // Do not bother when transform is fused. Camera matrices are identity and so is worldToView.
@@ -124,6 +334,10 @@ namespace dxvk {
     }
   }
 
+  void DrawCallState::removeCategory(InstanceCategories category) {
+    categories.clr(category);
+  }
+
   void DrawCallState::setupCategoriesForTexture() {
     // TODO (REMIX-231): It would probably be much more efficient to use a map of texture hash to category flags, rather
     //                   than doing N lookups per texture hash for each category.
@@ -136,7 +350,7 @@ namespace dxvk {
     setCategory(InstanceCategories::IgnoreLights, lookupHash(RtxOptions::ignoreLights(), textureHash));
     setCategory(InstanceCategories::IgnoreAntiCulling, lookupHash(RtxOptions::antiCullingTextures(), textureHash));
     setCategory(InstanceCategories::IgnoreMotionBlur, lookupHash(RtxOptions::motionBlurMaskOutTextures(), textureHash));
-    setCategory(InstanceCategories::IgnoreOpacityMicromap, lookupHash(RtxOptions::opacityMicromapIgnoreTextures(), textureHash));
+    setCategory(InstanceCategories::IgnoreOpacityMicromap, lookupHash(RtxOptions::opacityMicromapIgnoreTextures(), textureHash) || isUsingRaytracedRenderTarget);
     setCategory(InstanceCategories::IgnoreAlphaChannel, lookupHash(RtxOptions::ignoreAlphaOnTextures(), textureHash));
     setCategory(InstanceCategories::IgnoreBakedLighting, lookupHash(RtxOptions::ignoreBakedLightingTextures(), textureHash));
 
@@ -144,6 +358,7 @@ namespace dxvk {
 
     setCategory(InstanceCategories::Particle, lookupHash(RtxOptions::particleTextures(), textureHash));
     setCategory(InstanceCategories::Beam, lookupHash(RtxOptions::beamTextures(), textureHash));
+    setCategory(InstanceCategories::IgnoreTransparencyLayer, lookupHash(RtxOptions::ignoreTransparencyLayerTextures(), textureHash));
 
     setCategory(InstanceCategories::DecalStatic, lookupHash(RtxOptions::decalTextures(), textureHash));
     setCategory(InstanceCategories::DecalDynamic, lookupHash(RtxOptions::dynamicDecalTextures(), textureHash));
@@ -157,10 +372,12 @@ namespace dxvk {
 
     setCategory(InstanceCategories::Terrain, lookupHash(RtxOptions::terrainTextures(), textureHash));
     setCategory(InstanceCategories::Sky, lookupHash(RtxOptions::skyBoxTextures(), textureHash));
+
+    setCategory(InstanceCategories::ParticleEmitter, lookupHash(RtxOptions::particleEmitterTextures(), textureHash));
   }
 
   void DrawCallState::setupCategoriesForGeometry() {
-    const XXH64_hash_t assetReplacementHash = getHash(RtxOptions::Get()->GeometryAssetHashRule);
+    const XXH64_hash_t assetReplacementHash = getHash(RtxOptions::geometryAssetHashRule());
     setCategory(InstanceCategories::Sky, lookupHash(RtxOptions::skyBoxGeometries(), assetReplacementHash));
   }
 
@@ -265,13 +482,15 @@ namespace dxvk {
   bool shouldBakeSky(const DrawCallState& drawCallState,
                      bool hasSkinning,
                      uint32_t prevFrameSeenCamerasCount,
-                     std::vector<Vector3>& seenCameraPositions) {
-
-    const auto drawCallCameraPos = makeCameraPosition(
-      drawCallState.getTransformData().worldToView,
-      drawCallState.zWriteEnable,
-      drawCallState.alphaBlendEnable,
-      hasSkinning);
+                     std::vector<Vector3>& seenCameraPositions) {           
+    const auto drawCallCameraPos =
+      drawCallState.isDrawingToRaytracedRenderTarget
+        ? std::optional<Vector3>{}
+        : makeCameraPosition(
+            drawCallState.getTransformData().worldToView,
+            drawCallState.zWriteEnable,
+            drawCallState.getMaterialData().blendMode.enableBlending,
+            hasSkinning);
 
     auto l_addIfUnique = [&seenCameraPositions](const std::optional<Vector3>& newCameraPos) {
       if (!newCameraPos) {
@@ -305,10 +524,13 @@ namespace dxvk {
       }
     }
 
+    // don't track camera positions for Raytraced Render Targets, as they are a different camera position from main view
+    const static auto renderTargetCameraPositions = std::vector<Vector3>{};
+
     if (checkSkyAutoDetect(drawCallState.zEnable,
                            drawCallCameraPos,
                            prevFrameSeenCamerasCount,
-                           seenCameraPositions)) {
+                           drawCallState.isDrawingToRaytracedRenderTarget ? renderTargetCameraPositions : seenCameraPositions)) {
       return true;
     }
 
@@ -338,7 +560,7 @@ namespace dxvk {
       }
     }
 
-  void BlasEntry::unlinkInstance(const RtInstance* instance) {
+  void BlasEntry::unlinkInstance(RtInstance* instance) {
     instance->removeFromSpatialCache();
     auto it = std::find(m_linkedInstances.begin(), m_linkedInstances.end(), instance);
     if (it != m_linkedInstances.end()) {
@@ -351,14 +573,7 @@ namespace dxvk {
   }
 
   void BlasEntry::rebuildSpatialMap() {
-    InstanceMap newMap(RtxOptions::uniqueObjectDistance() * 2.f);
-    
-    for (const auto& iter : m_spatialMap.getAll()){
-      for (const RtInstance* instance : iter.second) {
-        newMap.insert(instance->getSpatialCachePosition(), instance);
-      }
-    }
-    m_spatialMap = std::move(newMap);
+    m_spatialMap.rebuild(RtxOptions::uniqueObjectDistance() * 2.f);
   }
 
 } // namespace dxvk

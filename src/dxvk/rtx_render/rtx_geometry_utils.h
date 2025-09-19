@@ -85,7 +85,7 @@ namespace dxvk {
       uint32_t numMicroTrianglesPerTriangle;
       VkOpacityMicromapFormatEXT ommFormat;
       uint32_t surfaceIndex;
-      RtSurfaceMaterialType materialType;
+      MaterialDataType materialType;
       bool applyVertexAndTextureOperations;
       bool useConservativeEstimation;
       uint32_t conservativeEstimationMaxTexelTapsPerMicroTriangle;
@@ -133,6 +133,7 @@ namespace dxvk {
       Rc<DxvkImageView> sourceView = nullptr;
       TextureRef targetTexture;
       float scale = 1.f;
+      float offset = 0.f;
     };
 
     void decodeAndAddOpacity(

@@ -21,17 +21,16 @@
 */
 #pragma once
 
+#include <cstdint>
 #include <array>
 #include <fstream>
-#include <iostream>
 #include <string>
-#include "../util_once.h"
 
 #include "../thread.h"
 
 namespace dxvk {
   
-  enum class LogLevel : uint32_t {
+  enum class LogLevel : std::uint32_t {
     Trace = 0,
     Debug = 1,
     Info  = 2,
@@ -50,8 +49,14 @@ namespace dxvk {
     
   public:
 
-    Logger(const std::string& file_name);
-    ~Logger();
+    // NV-DXVK start: pass log level as param
+    Logger(const std::string& fileName, const LogLevel logLevel = getMinLogLevel());
+    // NV-DXVK end
+    ~Logger() = default;
+    
+    // NV-DXVK start: special init pathway for remix logs
+    static void initRtxLog();
+    // NV-DXVK end
     
     static void trace(const std::string& message);
     static void debug(const std::string& message);
@@ -68,9 +73,9 @@ namespace dxvk {
     
     static Logger s_instance;
     
-    const LogLevel m_minLevel;
+    LogLevel m_minLevel;
     // NV-DXVK start: Don't double print every line
-    const bool m_doublePrintToStdErr;
+    bool m_doublePrintToStdErr;
     // NV-DXVK end
     
     dxvk::mutex   m_mutex;
@@ -79,9 +84,9 @@ namespace dxvk {
     void emitMsg(LogLevel level, const std::string& message);
     
     static LogLevel getMinLogLevel();
-    
-    static std::string getFileName(
-      const std::string& base);
+    static std::string getFilePath(const std::string& fileName);
+
+    Logger& operator=(Logger&& other);
 
   };
   

@@ -196,6 +196,7 @@ RAB_Surface RAB_EmptySurface()
   surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.measurementDistance = 0.0h;
   surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.packedSingleScatteringAlbedo = 0;
   surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.volumetricAnisotropy = 0.0h;
+  surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.maxSampleRadius = 0.0h;
   surface.hitDistance = RAB_SURFACE_BACKGROUND_HIT_DISTANCE;
   surface.portalSpace = PORTAL_SPACE_NONE;
   surface.isViewModel = false;
@@ -295,9 +296,9 @@ RAB_Surface RAB_GetGBufferSurface(ivec2 pixel, bool previousFrame)
 
   const uint16_t primarySurfaceIndex = uint16_t(SharedSurfaceIndex[pixel]);
   uint16_t samplerIndex = 0;
-  const uint16_t subsurfaceMaterialIndex = getSubsurfaceMaterialIndex(surfaceMaterials[primarySurfaceIndex], samplerIndex);
 
-  surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction = subSurfaceMaterialReadHelper(SharedSubsurfaceData[pixel]);
+  const uint16_t subsurfaceMaterialIndex = getSubsurfaceMaterialIndex(surfaceMaterials[primarySurfaceIndex], samplerIndex);
+  surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction = subSurfaceMaterialReadHelper(SharedSubsurfaceData[pixel], SharedSubsurfaceDiffusionProfileData[pixel]);
 
   GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixel, SharedFlags);
   surface.portalSpace = geometryFlags.portalSpace;
@@ -356,7 +357,7 @@ float RAB_GetLightSampleTargetPdfForSurface(RAB_LightSample lightSample, RAB_Sur
 
   // Need to compute the transmission pdf if the ray interact with SSS surface
   if (dot(L, surface.minimalSurfaceInteraction.triangleNormal) <= float16_t(0) &&
-      (!cb.enableThinOpaque || !isSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction)))
+      (!cb.sssArgs.enableThinOpaque || !isThinOpaqueSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction)))
   {
     return 0;
   }
@@ -386,7 +387,7 @@ SurfaceMaterialInteractionSplitWeight RAB_CalculateBRDF(vec3 L, RAB_Surface surf
   weight.diffuseTransmissionWeight = f16vec3(0);
 
   if (dot(L, surface.minimalSurfaceInteraction.triangleNormal) <= float16_t(0) &&
-      (!cb.enableThinOpaque || !isSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction)))
+      (!cb.sssArgs.enableThinOpaque || !isThinOpaqueSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction)))
   {
     return weight;
   }
@@ -402,14 +403,14 @@ float RAB_GetGITargetPdfForSurface(vec3 radiance, vec3 position, RAB_Surface sur
 
   if ((dot(L, surface.minimalSurfaceInteraction.triangleNormal) <= float16_t(0) ||
        dot(L, surface.opaqueSurfaceMaterialInteraction.shadingNormal) <= float16_t(0)) &&
-      (!cb.enableThinOpaque || !isSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction)))
+      (!cb.sssArgs.enableThinOpaque || !isThinOpaqueSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction)))
   {
     return 0;
   }
 
   surface.opaqueSurfaceMaterialInteraction.isotropicRoughness = max(surface.opaqueSurfaceMaterialInteraction.isotropicRoughness, cb.reSTIRGIRoughnessClamp);
   surface.opaqueSurfaceMaterialInteraction.anisotropicRoughness = max(surface.opaqueSurfaceMaterialInteraction.anisotropicRoughness, cb.reSTIRGIRoughnessClamp);
-  if(cb.enableReSTIRGIDemodulatedTargetFunction)
+  if (cb.enableReSTIRGIDemodulatedTargetFunction)
   {
     float16_t originalBrightness = max(0.001,
       calcBt709Luminance(surface.opaqueSurfaceMaterialInteraction.albedo + surface.opaqueSurfaceMaterialInteraction.baseReflectivity));
@@ -458,12 +459,12 @@ float RAB_GetLightSampleTargetPdfForVolume(RAB_LightSample lightSample, RAB_Volu
   const float lightThroughput = 1.0f / lightSample.solidAnglePdf;
   vec3 volumeAttenuation = vec3(1.0f);
 
-  if (cb.volumeArgs.enableVolumetricLighting)
+  if (cb.volumeArgs.enable)
   {
+    const float3 lightDirection = normalize(volumeInteraction.volumeInteraction.position - lightSample.position);
     const float lightSampleDistance = distance(volumeInteraction.volumeInteraction.position, lightSample.position);
-
-    // Todo: Replace evalBeerLambertAttenuation here (and in other locations) with a specialized volumetric helper.
-    volumeAttenuation = evalBeerLambertAttenuation(cb.volumeArgs.attenuationCoefficient, min(float16Max, lightSampleDistance));
+    
+    volumeAttenuation = calcVolumetricAttenuation(cb.volumeArgs, none, false, lightSampleDistance, lightSample.position, lightDirection);
   }
 
   const float targetPdf = calcBt709Luminance(lightSample.radiance * volumeAttenuation) * phaseWeight * lightThroughput;
@@ -486,7 +487,7 @@ bool RAB_ShouldDiscardEnlargedPixel(inout RAB_RandomSamplerState rng, RAB_Surfac
     return false;
   
   f16vec3 triangleNormal = surface.minimalSurfaceInteraction.triangleNormal;
-  if(surface.portalSpace == PORTAL_SPACE_PORTAL_0 || surface.portalSpace == PORTAL_SPACE_PORTAL_1)
+  if (surface.portalSpace == PORTAL_SPACE_PORTAL_0 || surface.portalSpace == PORTAL_SPACE_PORTAL_1)
   {
     RayPortalHitInfo rayPortalHitInfo = cb.rayPortalHitInfos[(uint)getOpposingRayPortalIndex(surface.portalSpace)];
     if (rayPortalHitInfoIsActive(rayPortalHitInfo))
@@ -518,6 +519,12 @@ RAB_Surface RAB_GetSurfaceForTemporalBiasCorrection(RAB_Surface currentSurface, 
     if (cb.enablePreviousTLAS || all(virtualMotionVector == 0)) {
       const MinimalSurfaceInteraction temporalSurfaceInteraction = minimalSurfaceInteractionReadFromGBuffer(
         prevPixelID, PreviousWorldPosition_WorldTriangleNormal);
+      // Check the previous frames gbuffer data is valid.
+      if (!temporalSurfaceInteraction.isValid)
+      {
+        return temporalSurface;
+      }
+  
       temporalSurface.minimalSurfaceInteraction.position = temporalSurfaceInteraction.position;
       temporalSurface.minimalSurfaceInteraction.triangleNormal = temporalSurfaceInteraction.triangleNormal;
       temporalSurface.minimalSurfaceInteraction.triangleTangent = temporalSurfaceInteraction.triangleTangent;
@@ -582,6 +589,7 @@ DecodedPolymorphicLight RAB_GetDecodedPolymorphicLightWithTypeHint(uint lightID,
   return decodedPolymorphicLight;
 }
 
+// Note: Assumes lightID is valid (e.g. not the invalid light ID reservoirs use to indicate they are invalid).
 RAB_LightSample RAB_GetLightSample(uint lightID, float2 lightUV, MinimalSurfaceInteraction minimalSurfaceInteraction, bool usePreviousLights = false)
 {
   const MemoryPolymorphicLight memoryPolymorphicLight = RAB_GetMemoryPolymorphicLight(lightID, usePreviousLights);
@@ -710,9 +718,10 @@ bool RAB_TraceLightSampleVisibility(RAB_Surface surface, RAB_LightSample lightSa
   }
 
   uint8_t rayMask = OBJECT_MASK_OPAQUE | (surface.objectMask & OBJECT_MASK_ALL_DYNAMIC);
-  if (cb.enableDirectTranslucentShadows) rayMask |= OBJECT_MASK_TRANSLUCENT;
+  rayMask |= (cb.enableDirectTranslucentShadows) ? OBJECT_MASK_TRANSLUCENT : 0;
+  rayMask |= (cb.enableDirectAlphaBlendShadows) ? OBJECT_MASK_ALPHA_BLEND : 0;
 
-  const bool isSubsurface = isSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction);
+  const bool isThinOpaqueSubsurface = isThinOpaqueSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction);
 
   const VisibilityResult visibility = traceVisibilityRay<visibilityModeEnableSubsurfaceMaterials>(
     surface.minimalSurfaceInteraction, samplePos,
@@ -721,7 +730,8 @@ bool RAB_TraceLightSampleVisibility(RAB_Surface surface, RAB_LightSample lightSa
     surface.isViewModel,
     cb.enablePreviousTLAS && usePreviousTLAS,
     BINDING_INDEX_INVALID, f16vec2(0.0h),
-    isSubsurface, surface.opaqueSurfaceMaterialInteraction.shadingNormal);
+    isThinOpaqueSubsurface,
+    surface.opaqueSurfaceMaterialInteraction.shadingNormal);
 
   attenuation = visibility.attenuation;
 
@@ -731,9 +741,10 @@ bool RAB_TraceLightSampleVisibility(RAB_Surface surface, RAB_LightSample lightSa
 bool RAB_TraceGISampleVisibility(RAB_Surface surface, RAB_Surface neighborSurface, ReSTIRGI_Reservoir reservoir, int numPortals)
 {
   uint8_t portalID = ReSTIRGI_PortalID2BitTo8Bit(reservoir.getPortalID());
-  if(portalID == RTXDI_INVALID_PORTAL_INDEX || portalID < numPortals)
+  if (portalID == RTXDI_INVALID_PORTAL_INDEX || portalID < numPortals)
   {
-    const uint8_t rayMask = OBJECT_MASK_OPAQUE | (surface.objectMask & OBJECT_MASK_ALL_DYNAMIC);
+    uint8_t rayMask = OBJECT_MASK_OPAQUE | (surface.objectMask & OBJECT_MASK_ALL_DYNAMIC);
+    rayMask |= (cb.enableIndirectAlphaBlendShadows) ? OBJECT_MASK_ALPHA_BLEND : 0;
 
     const float3 dstPosition = reservoir.getVisibilityPoint(neighborSurface.minimalSurfaceInteraction.position);
 
@@ -756,10 +767,15 @@ bool RAB_VolumeReSTIR_TraceNEEVisibility(
   RAB_VolumeVisibilityContext volumeVisibilityContext, RAB_VolumeInteraction volumeInteraction,
   out float16_t3 attenuation)
 {
+  // Create a Ray to the location sampled on the light
+
+  const Ray visibilityRay = rayCreatePosition(
+    volumeVisibilityContext.minimalRayInteraction, volumeInteraction.volumeInteraction, volumeVisibilityContext.ray, lightSample.position);
+  
   const VisibilityResult visibility = evalVolumeNEEVisibility(
     lightSample,
     sampledTransportPortalIndex,
-    volumeVisibilityContext.ray, volumeVisibilityContext.minimalRayInteraction, volumeInteraction.volumeInteraction);
+    visibilityRay);
 
   attenuation = visibility.attenuation;
 

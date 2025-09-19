@@ -1,5 +1,5 @@
 #############################################################################
-# Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -23,7 +23,7 @@
 project(
   'dxvk', ['c', 'cpp'],
   version : 'remix-main',
-  meson_version : '>= 0.58',
+  meson_version : '>= 0.60',
   default_options : ['werror=true', 'b_vscrt=from_buildtype']
 )
 
@@ -43,17 +43,16 @@ current_build_dir_norm = meson.current_build_dir().replace('\\', '/')
 #     early outs if everything's already fetched, so the waste is negligible + forgiveable.
 get_dependencies_script_path = join_paths(global_src_root_norm, 'scripts-common/update-deps.cmd')
 message('Downloading dependencies...')
-packman_out = run_command(get_dependencies_script_path, check: true)
+packman_out = run_command(get_dependencies_script_path, 'packman-external.xml', 'update-deps.log', check: true)
 message(packman_out.stdout().strip())
 if packman_out.returncode() != 0
   message(packman_out.stderr().strip())
   error('Failed to get dependencies.')
 endif
 fetch_packman_target = custom_target('fetch_packman',
-  output           : ['fetch_packman'],
-  build_by_default : true,
-  depends          : [],
-  command          : [get_dependencies_script_path] )
+  input            : ['packman-external.xml', get_dependencies_script_path],
+  output           : 'update-deps.log',
+  command          : [get_dependencies_script_path, '@INPUT0@', '@OUTPUT0@' ] )
 
 fs = import('fs')
 
@@ -64,6 +63,10 @@ assert(cpu_family != 'x86', 'dxvk-remix-nv can\'t be built in x86. Make sure you
 
 add_project_arguments('-DNOMINMAX', language : 'cpp')
 vs_project_defines = 'NOMINMAX;'
+
+add_project_arguments('-D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR', language : 'cpp')
+vs_project_defines += '_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR;'
+
 
 dxvk_compiler = meson.get_compiler('cpp')
 dxvk_is_msvc = dxvk_compiler.get_id() == 'msvc'
@@ -104,11 +107,8 @@ else
   vs_project_defines += 'BUILD_NINJA=0;'
 endif
 
-# Note: Runtime shader recompilation requires source paths based on the project root, so making a build-time define is the easiest way
-# to give it this information reliably for a local build (when distributing a build to others a manual source root must be specified in the runtime
-# configuration).
 add_global_arguments('/DBUILD_SOURCE_ROOT="' + global_src_root_norm + '/"', language : 'cpp')
-vs_project_defines += 'BUILD_SOURCE_ROOT=' + global_src_root_norm + '/"' + ';'
+vs_project_defines += 'BUILD_SOURCE_ROOT="' + global_src_root_norm + '/";'
 
 # c++17 was added in 15.3, older version needs c++latest
 if dxvk_is_msvc and dxvk_compiler.version().version_compare('<15.3')
@@ -168,7 +168,7 @@ add_global_arguments('/DREMIX_LIBRARY_EXPORTS=1', language : 'cpp')
 
 dxvk_include_dirs = [
   './include',
-  './include/vulkan/include'
+  './include/vulkan/include',
 ]
 
 dxvk_include_path = include_directories(dxvk_include_dirs)
@@ -227,6 +227,7 @@ lib_d3dcompiler_43 = dxvk_compiler.find_library('d3dcompiler_43', dirs : dxvk_li
 if not dxvk_is_msvc
   lib_ws2_32 = dxvk_compiler.find_library('ws2_32', dirs : dxvk_library_path)
 endif
+lib_delayimp = dxvk_compiler.find_library('delayimp', dirs: [])
 
 if dxvk_is_msvc
   lib_d3dcompiler_47 = dxvk_compiler.find_library('d3dcompiler')
@@ -245,27 +246,15 @@ if enable_rtxio == true
   dxvk_extradep += rtxio_lib
 endif
 
-exe_ext = ''
-dll_ext = ''
-
-if dxvk_is_msvc
-  res_ext = '.res'
-else
-  res_ext = '.o'
-endif
-
-def_spec_ext = '.def'
-
-# Shader compile tools
+# Shader Compile Tools
 glsl_compiler = find_program('external/glslangvalidator/glslangValidator')
 slang_compiler = find_program('external/slang/slangc')
+spirv_val = find_program('external/spirv_tools/spirv-val')
 python_interpreter = find_program('python3', 'python')
 shader_compile_script = join_paths(global_src_root_norm, 'scripts-common/compile_shaders.py')
 
-# GLSL compiler...
+# GLSL Compiler
 
-# The ShaderManager::compileShaders() function also uses glslangValidator to compile shader source for debug purpose.
-# If the command here is changed, the command in that function should also be updated.
 glsl_args = [ '-V', '--vn', '@BASENAME@', '@INPUT@', '-o', '@OUTPUT@', '--target-env', 'vulkan1.2', '@EXTRA_ARGS@' ]
 
 if run_command(glsl_compiler, [ '--quiet', '--version' ], check: false).returncode() == 0
@@ -281,6 +270,87 @@ glsl_generator = generator(
   output    : [ '@BASENAME@.h' ],
   arguments : glsl_args
 )
+
+# RTX Shader Compilation Information
+
+# Note: These paths were previously '@CURRENT_SOURCE_DIR@/shaders', '@CURRENT_SOURCE_DIR@/shaders/rtx', and '@OUTDIR@/rtx_shaders'
+# when used in src/dxvk/meson.build. This logic has been moved here now to be able to pass these paths into defines. Additionally because
+# the CURRENT_SOURCE_DIR/OUTDIR variables wouldn't work in a raw string the path is computed manually based on the assumption that the
+# project's name is "dxvk". If this name ever changes these directories will have to change too to match it as this solution isn't
+# quite as automatic as those per-project variables were.
+shader_directory = join_paths(global_src_root_norm, 'src/dxvk/shaders')
+rtx_shader_source_directory = join_paths(global_src_root_norm, 'src/dxvk/shaders/rtx')
+# Note: The directory these temporary shader outputs are written to is fairly arbitrary, it could be a temporary directory or any other
+# directory, this is just the best way currently for organizing it into the respective project it is outputting data for.
+rtx_shader_output_directory = join_paths(current_build_dir_norm, 'src/dxvk/rtx_shaders')
+
+rtxdi_include_path = include_directories('submodules/rtxdi/rtxdi-sdk/include')
+# Need to use the include path as an argument to the shader build string,
+# and I couldn't find how to convert the IncludeDirs thing to a string... Meson.
+rtxdi_include_path_string = join_paths(global_src_root_norm, 'submodules/rtxdi/rtxdi-sdk/include')
+volumetrics_include_path_string = join_paths(global_src_root_norm, 'submodules/rtxdi/rtxdi-sdk/include/volumetrics')
+
+rtxcr_include_path = include_directories('submodules/rtxcr/shaders/include')
+rtxcr_include_path_string = join_paths(global_src_root_norm, 'submodules/rtxcr/shaders/include')
+
+submodules_include_path = include_directories('submodules')
+submodules_include_path_string = join_paths(global_src_root_norm, 'submodules')
+
+rtx_shaders_command_arguments = [
+  shader_compile_script,
+  # Note: Meson annoyingly represents these "find_program" results as a special object which works fine when used in Meson functions, but
+  # not so fine when trying to convert to an argument string like we need for Remix's runtime shader compilation system. As such, we convert it
+  # to a path in advance (and ensure it's a POSIX path as Windows-style path slashes are not escaped currently) just so it works for both
+  # a Meson custom_target command, as well as an argument string.
+  # This can in theory cause problems since the special object Meson uses is actually used to reference the program as a dependency, but for
+  # this use case currently it works fine, and worst case this array can just be duplicated to have 2 sets of behavior if needed.
+  # See this for more info: https://mesonbuild.com/Reference-manual_returned_external_program.html#external_programfull_path
+  '-glslang', fs.as_posix(glsl_compiler.full_path()),
+  '-slangc', fs.as_posix(slang_compiler.full_path()),
+  '-spirvval', fs.as_posix(spirv_val.full_path()),
+  '-input', rtx_shader_source_directory,
+  '-include', shader_directory,
+  '-include', rtxdi_include_path_string,
+  '-include', rtxcr_include_path_string,
+  '-include', submodules_include_path_string,
+  '-include', volumetrics_include_path_string,
+  '-output', rtx_shader_output_directory,
+  '-parallel',
+]
+
+if get_option('buildtype').startswith('debug')
+  # Note: Append -debug to the argument list for debug-esque builds
+  rtx_shaders_command_arguments += [ '-debug' ]
+endif
+
+# Note: Make a copy of the command arguments up to this point for the runtime shader recompilation system as it requires a slightly
+# different set of arguments.
+# Note: Append -binary to the runtime shader command arguments to output SPIR-V in binary form rather than as C headers.
+rtx_shaders_runtime_command_arguments = rtx_shaders_command_arguments + [ '-binary' ]
+
+# Runtime Shader Recompilation Definitions
+# Note: Runtime shader recompilation requires various paths and script arguments as constant strings, so this information is generated
+# here and passed in via definitions.
+
+rtx_shaders_runtime_command_argument_string = ' '.join(rtx_shaders_runtime_command_arguments)
+
+add_global_arguments('/DRUNTIME_SHADER_RECOMPILATION_PYTHON_ARGUMENTS="' + rtx_shaders_runtime_command_argument_string + '"', language : 'cpp')
+vs_project_defines += 'RUNTIME_SHADER_RECOMPILATION_PYTHON_ARGUMENTS="' + rtx_shaders_runtime_command_argument_string + '";'
+add_global_arguments('/DRUNTIME_SHADER_RECOMPILATION_SHADER_SOURCE_PATH="' + rtx_shader_source_directory + '"', language : 'cpp')
+vs_project_defines += 'RUNTIME_SHADER_RECOMPILATION_SHADER_SOURCE_PATH="' + rtx_shader_source_directory + '";'
+add_global_arguments('/DRUNTIME_SHADER_RECOMPILATION_SPIRV_BINARY_OUTPUT_PATH="' + rtx_shader_output_directory + '"', language : 'cpp')
+vs_project_defines += 'RUNTIME_SHADER_RECOMPILATION_SPIRV_BINARY_OUTPUT_PATH="' + rtx_shader_output_directory + '";'
+
+exe_ext = ''
+dll_ext = ''
+
+if dxvk_is_msvc
+  res_ext = '.res'
+else
+  res_ext = '.o'
+endif
+
+def_spec_ext = '.def'
 
 if dxvk_is_msvc
   wrc_generator = generator(wrc,
@@ -398,28 +468,66 @@ embedding_compiler = generator(xxd_exe,
 
 mdl_include_dir = include_directories('external/omni_core_materials')
 
-nv_usd_include_path = include_directories('external/nv_usd/include/')
-boost_include_path = include_directories('external/nv_usd/include/boost-1_78/')
+usd_debug_release_dir = 'external/nv_usd_' + usd_debug_or_release + '/'
+usd_lib_path = join_paths(global_src_root_norm, usd_debug_release_dir)
+
+# NOTE newer versions of meson prefer relative paths for include directories
+nv_usd_include_path = include_directories(join_paths(usd_debug_release_dir, 'include'))
+boost_include_path = include_directories(join_paths(usd_debug_release_dir, 'include', 'boost'), is_system: true)
 
 usd_include_paths = [nv_usd_include_path, boost_include_path]
 
 vk_include_path = include_directories('./include/vulkan/include')
+# required for NV_present_metering
+add_project_arguments('-DVK_ENABLE_BETA_EXTENSIONS', language : 'cpp')
 
 lssusd_include_paths = [nv_usd_include_path, boost_include_path, vk_include_path]
 
-nvapi_include_paths = include_directories('external/nvapi')
-nvapi_lib_path = join_paths(global_src_root_norm, 'external/nvapi/amd64')
+# This will be populated by the usd plugin builder
+usd_plugins = []
+usd_plugin_deps = []
+usd_plugin_delay_load_args = []
+
+nvapi_include_paths = include_directories('submodules/nvapi')
+nvapi_lib_path = join_paths(global_src_root_norm, 'submodules/nvapi/amd64')
 nvapi_lib = dxvk_compiler.find_library('nvapi64', dirs : nvapi_lib_path)
 
 # Cache lib locations
-usd_lib_path = join_paths(global_src_root_norm, 'external/nv_usd/' + usd_debug_or_release + '/')
 external_dll_paths += usd_lib_path
-usd_lib = dxvk_compiler.find_library('usd_ms', dirs : usd_lib_path)
-if get_option('buildtype') == 'debug'
-  tbb_lib = dxvk_compiler.find_library('tbb_debug', dirs : usd_lib_path)
-else
-  tbb_lib = dxvk_compiler.find_library('tbb', dirs : usd_lib_path)
-endif
+
+nvusd_deplibs = [
+  'ar',
+  'arch',
+  'js',
+  'gf',
+  'kind',
+  'sdf',
+  'sdr',
+  'ndr',
+  'pcp',
+  'tf',
+  'trace',
+  'usd',
+  'usdLux',
+  'usdGeom',
+  'usdRender',
+  'usdShade',
+  'usdSkel',
+  'work',
+  'vt',
+  'python310',
+  'plug',
+  'tbbmalloc',
+  get_option('buildtype') == 'debug' ? 'boost_python310-vc142-mt-gd-x64-1_76' :
+                                       'boost_python310-vc142-mt-x64-1_76',
+  get_option('buildtype') == 'debug' ? 'tbb_debug' :
+                                       'tbb',    # NOTE: remixsdk also depends on tbb.dll, assuming both USD / remixsdk use the same tbb version
+]
+
+usd_linklibs = []
+foreach ulib : nvusd_deplibs
+  usd_linklibs += dxvk_compiler.find_library(ulib, dirs: join_paths(usd_lib_path, 'lib'))
+endforeach
 
 reflex_include_path = include_directories( 'external/reflex/inc')
 reflex_lib_path = join_paths(global_src_root_norm, 'external/reflex/lib')
@@ -439,85 +547,17 @@ dlfg_root_path = 'external/ngx_sdk_dlfg'
 dlfg_lib_path = join_paths(global_src_root_norm, dlfg_root_path, 'lib/Windows_x86_64/rel/')
 external_dll_paths += dlfg_lib_path
 
+nrc_dll_name = 'NRC_Vulkan.dll'
+nrc_dll_path = join_paths(global_src_root_norm, 'submodules/nrc/bin/')
+
 nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Release/')
 if get_option('buildtype') == 'debug'  
   nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Debug/')
 endif
 
-rtxdi_include_path = include_directories('submodules/rtxdi/rtxdi-sdk/include')
-# Need to use the include path as an argument to the shader build string,
-# and I couldn't find how to convert the IncludeDirs thing to a string... Meson.
-rtxdi_include_path_string = join_paths(global_src_root_norm, 'submodules/rtxdi/rtxdi-sdk/include')
-
-if not dxvk_is_ninja
-  # Copy dependencies that must be in same dir as executable to _output dir
-  recursive_copy_usd_target = custom_target('recursive_copy_usd',
-    output           : ['recursive_copy_usd'],
-    build_by_default : true,
-    command          : [recursive_copy_path, join_paths(usd_lib_path, 'usd/'), join_paths(output_dir, 'usd/')] )
-
-  copy_usd_dll_target = custom_target('copy_usd_dll',
-    output           : ['copy_usd_dll'],
-    build_by_default : true,
-    command          : [copy_script_path, usd_lib_path, output_dir, 'usd_ms.dll'] )
-
-  if get_option('buildtype') == 'debug'
-    tbb_dll_name = 'tbb_debug.dll'
-    tbbmalloc_dll_name = 'tbbmalloc_debug.dll'
-  else
-    tbb_dll_name = 'tbb.dll'
-    tbbmalloc_dll_name = 'tbbmalloc.dll'
-  endif
-
-  copy_tbb_dll_target = custom_target('copy_tbb_dll',
-    output           : ['copy_tbb_dll'],
-    build_by_default : true,
-    command          : [copy_script_path, usd_lib_path, output_dir, tbb_dll_name] )
-
-  copy_tbbmalloc_dll_target = custom_target('copy_tbbmalloc_dll',
-    output           : ['copy_tbbmalloc_dll'],
-    build_by_default : true,
-    command          : [copy_script_path, usd_lib_path, output_dir, tbbmalloc_dll_name] )
-
-  copy_nrd_dll_target = custom_target('copy_nrd_dll',
-    output           : ['copy_nrd_dll'],
-    build_by_default : true,
-    command          : [copy_script_path, nrd_lib_path, output_dir, 'NRD.dll'] )
-
-  copy_dlss_dll_target = custom_target('copy_dlss_dll',
-    output           : ['copy_dlss_dll'],
-    build_by_default : true,
-    command          : [copy_script_path, dlss_lib_path, output_dir, 'nvngx_*.*'] )
-
-  copy_dlfg_dll_target = custom_target('copy_dlfg_dll',
-    output           : ['copy_dlfg_dll'],
-    build_by_default : true,
-    command          : [copy_script_path, dlfg_lib_path, output_dir, 'nvngx_dlssg.dll'] )
-  
-  copy_reflex_dll_target = custom_target('copy_reflex_dll',
-  output           : ['copy_reflex_dll'],
-  build_by_default : true,
-  depends          : [],
-  command          : [copy_script_path, reflex_lib_path, output_dir, 'NvLowLatencyVk.dll'] )
-
-   copy_aftermath_dll_target = custom_target('copy_aftermath_dll',
-   output           : ['copy_aftermath_dll'],
-   build_by_default : true,
-   depends          : [],
-   command          : [copy_script_path, aftermath_lib_path, output_dir, 'GFSDK_Aftermath_Lib.x64.dll'] )
-
-  if enable_rtxio == true
-    copy_rtxio_target = custom_target('copy_rtxio',
-      output           : ['copy_rtxio'],
-      build_by_default : true,
-      depends          : [],
-      command          : [copy_script_path, rtxio_bin_path, output_dir, 'rtxio.*'] )
-  endif
-endif
-
 # Build meson dependency types
 usd_dep = declare_dependency(
-  dependencies : [ usd_lib, tbb_lib ],
+  dependencies : [ usd_linklibs ],
   # link_args : ['-L'+usd_lib_path],
   include_directories : usd_include_paths
 )
@@ -558,11 +598,15 @@ if enable_tests
   subdir('tests')
 endif
 
+hdremix_outdir = join_paths(meson.current_source_dir(), 'nv-private', 'hdremix', 'bin', get_option('buildtype'))
+
 # dict of "output" targets --- key is an output path, value is an optional executable inside that path,
 # which is used to run that "output" from the IDE
 dxvkrt_output_targets = {
   '_output': '',
   '_sdk': '',
+  '_hdremix': '',
+  'unit_test': '',
 }
 
 subdir('tests/rtx')
@@ -592,6 +636,8 @@ if dxvk_is_ninja
   # meson seems to force / as the path separator in custom_target
   # ... except in the case where the path separators are inconsistent, in which case it does nothing
   # force / as the path separator here to make sure it stays consistent
+  nrc_lib_path = join_paths(global_src_root_norm, 'submodules/nrc/Lib/')
+ 
   nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Release/')
   if get_option('buildtype') == 'debug'
     nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Debug/')
@@ -615,6 +661,16 @@ if dxvk_is_ninja
       target_suffix = 'sdk'
       output_path = join_paths(global_src_root_norm, 'public/bin/')
       src_exe = ''
+    elif t == '_hdremix'
+      # _hdremix target is special
+      target_suffix = 'hdremix'
+      output_path = hdremix_outdir
+      src_exe = ''
+    elif t == 'unit_test'
+      # unit_test target is special
+      target_suffix = 'unit'
+      output_path = join_paths(current_build_dir_norm, 'tests/rtx/unit/')
+      src_exe = ''
     else
       target_suffix = t.underscorify()
       output_path = dxvkrt_test_root + t
@@ -628,10 +684,10 @@ if dxvk_is_ninja
         vs_gen_cmdline += t + ',' + exe
       endif
     endif
-    
+
     dxvkrt_copy_targets += { t : { 'output_path': output_path, 'target_suffix': target_suffix, 'src_exe': src_exe } }
   endforeach
-
+  
   # add data from gametargets.conf to dxvkrt_copy_targets
   game_targets_run = run_command(python_interpreter,
                                  join_paths(global_src_root_norm, 'vsgen/get_game_target_list.py'),
@@ -655,129 +711,79 @@ if dxvk_is_ninja
     target_suffix = dxvkrt_copy_targets[key]['target_suffix']
     output_path = dxvkrt_copy_targets[key]['output_path']
     src_exe = dxvkrt_copy_targets[key]['src_exe']
+	requires_pdb = target_suffix == 'sdk' or target_suffix == 'output'
 
-    # generate targets to copy DLLs to individual test dirs, with names of the form 'copy_Portal1_SingleFrame_A'
-    # these targets are not run by default, since we have a lot of tests: the intent is that we run this as a build task from the IDE before launching the test
-    # also, meson feature: we *can not* pass down paths using \ as arguments to the command in custom_target, they are forced to / somewhere,
-    # except if the path separators are inconsistent, where meson skips all munging
+    # using tagged install targets to get the files in the right place at install time (each project in VS knows which tag to use)
 
-    copy_usd = custom_target('recursive_copy_usd_' + target_suffix,
-      output           : ['recursive_copy_usd_' + target_suffix],
-      command          : [recursive_copy_path,
-                          join_paths(usd_lib_path, 'usd/'),
-                          join_paths(output_path, 'usd/')] )
+    install_subdir(join_paths(usd_lib_path, 'lib/usd/'), install_dir : output_path, install_tag: target_suffix)  
+    
+    foreach ulib : nvusd_deplibs
+      install_data(join_paths(usd_lib_path, 'lib', ulib + '.dll'), install_dir : output_path, install_tag: target_suffix) 
+    endforeach
+  
+    install_data(join_paths(global_src_root_norm, 'src', 'usd-plugins', 'plugInfo.json'), install_dir : join_paths(output_path, 'usd', 'plugins'), install_tag: target_suffix) 
 
-    copy_usd_dll = custom_target('copy_usd_dll_' + target_suffix,
-      output           : ['copy_usd_dll_' + target_suffix],
-      command          : [copy_script_path,
-                          usd_lib_path,
-                          output_path,
-                          'usd_ms.dll'] )
+    # install USD plugins
+    meson.add_install_script(
+      join_paths(global_src_root_norm, 'scripts-common/install_usd_plugins.bat'),
+      output_path,
+      install_tag: target_suffix 
+    )
 
-    if get_option('buildtype') == 'debug'
-      tbb_dll_name = 'tbb_debug.dll'
-      tbbmalloc_dll_name = 'tbbmalloc_debug.dll'
-    else
-      tbb_dll_name = 'tbb.dll'
-      tbbmalloc_dll_name = 'tbbmalloc.dll'
-    endif
+    install_data(join_paths(nrc_dll_path, nrc_dll_name), install_dir : output_path, install_tag: target_suffix) 
+    install_data(join_paths(nrc_dll_path, 'cudart64_12.dll'), install_dir : output_path, install_tag: target_suffix) 
+    install_data(join_paths(nrc_dll_path, 'nvrtc64_120_0.dll'), install_dir : output_path, install_tag: target_suffix) 
+    install_data(join_paths(nrc_dll_path, 'nvrtc-builtins64_125.dll'), install_dir : output_path, install_tag: target_suffix) 
 
-    copy_tbb_dll = custom_target('copy_tbb_dll_' + target_suffix,
-      output           : ['copy_tbb_dll_' + target_suffix],
-      command          : [copy_script_path,
-                          usd_lib_path,
-                          output_path,
-                          tbb_dll_name] )
+    install_data(join_paths(nrd_lib_path, 'NRD.dll'), install_dir : output_path, install_tag: target_suffix) 
 
-    copy_tbbmalloc_dll = custom_target('copy_tbbmalloc_dll_' + target_suffix,
-      output           : ['copy_tbbmalloc_dll_' + target_suffix],
-      command          : [copy_script_path,
-                          usd_lib_path,
-                          output_path,
-                          tbbmalloc_dll_name] )
+    install_data(join_paths(dlss_lib_path, 'nvngx_dlss.dll'), install_dir : output_path, install_tag: target_suffix) 
+    install_data(join_paths(dlss_lib_path, 'nvngx_dlssd.dll'), install_dir : output_path, install_tag: target_suffix) 
 
-    copy_nrd_dll = custom_target('copy_nrd_dll_' + target_suffix,
-      output           : ['copy_nrd_dll_' + target_suffix],
-      command          : [copy_script_path,
-                          nrd_lib_path,
-                          output_path,
-                          'NRD.dll'] )
+    install_data(join_paths(dlfg_lib_path, 'nvngx_dlssg.dll'), install_dir : output_path, install_tag: target_suffix) 
 
-    copy_dlss_dll = custom_target('copy_dlss_dll_' + target_suffix,
-      output           : ['copy_dlss_dll_' + target_suffix],
-      command          : [copy_script_path,
-                          dlss_lib_path, 
-                          output_path,
-                          'nvngx_*.*'] )
+    install_data(join_paths(reflex_lib_path, 'NvLowLatencyVk.dll'), install_dir : output_path, install_tag: target_suffix) 
 
-    copy_dlfg_dll = custom_target('copy_dlfg_dll_' + target_suffix,
-      output           : ['copy_dlfg_dll_' + target_suffix],
-      command          : [copy_script_path,
-                          dlfg_lib_path, 
-                          output_path,
-                          'nvngx_dlssg.dll'] )
-
-    copy_reflex_dll = custom_target('copy_reflex_dll_' + target_suffix,
-      output           : ['copy_reflex_dll_' + target_suffix],
-      depends          : [],
-      command          : [copy_script_path,
-                          reflex_lib_path,
-                          output_path,
-                          'NvLowLatencyVk.dll'] )
-
-    copy_aftermath_dll = custom_target('copy_aftermath_dll_' + target_suffix,
-       output           : ['copy_aftermath_dll_' + target_suffix],
-       depends          : [],
-       command          : [copy_script_path, aftermath_lib_path, output_path, 'GFSDK_Aftermath_Lib.x64.dll'] )
+    install_data(join_paths(aftermath_lib_path, 'GFSDK_Aftermath_Lib.x64.dll'), install_dir : output_path, install_tag: target_suffix) 
 
     if enable_rtxio == true
-      copy_rtxio = custom_target('copy_rtxio_' + target_suffix,
-        output           : ['copy_rtxio_' + target_suffix],
-        depends          : [],
-        command          : [copy_script_path, rtxio_bin_path, output_path, 'rtxio.*'] )
-    endif
-
-    # the copy target is special
-    # if we use custom_target for the d3d9 DLL, meson generates a target that does nothing in ninja
-    # as a workaround, we do the copy as part of the test_* target itself
-    copy_target_depends = [ copy_usd,
-                            copy_usd_dll,
-                            copy_tbb_dll,
-                            copy_tbbmalloc_dll,
-                            copy_nrd_dll,
-                            copy_dlss_dll,
-                            copy_dlfg_dll,
-                            copy_aftermath_dll,
-                            d3d9_dll ]
-                            
-    copy_target_depends += copy_reflex_dll
-
-    if enable_rtxio == true
-      copy_target_depends += copy_rtxio
+      install_data(join_paths(rtxio_bin_path, 'rtxio.dll'), install_dir : output_path, install_tag: target_suffix) 
     endif
 
     if src_exe != ''
-      copy_target_depends += custom_target('copy_exe_' + target_suffix,
-        output           : ['copy_exe_' + target_suffix],
-        depends          : [],
-        command          : [copy_script_path, fs.parent(src_exe) + '/', output_path + '/', fs.name(src_exe)] )
+      # intentionally using two install jobs here so we can have unique tags
+      # the exe only allows test applications to be compiled and installed, without installing the runtime.  Such copy-less runtime testing scenarios exist in CI.
+      meson.add_install_script(
+        join_paths(global_src_root_norm, 'scripts-common/install_file_in_dir.bat'),
+        src_exe, output_path,
+        install_tag: target_suffix + '_exeonly'
+      )
+      # the regular path allows the exe to be built and deployed along with a runtime.  Such scenarios exist during local development, when launching from VS for example.
+      meson.add_install_script(
+        join_paths(global_src_root_norm, 'scripts-common/install_file_in_dir.bat'),
+        src_exe, output_path,
+        install_tag: target_suffix
+      )
     endif
-
-    copy_target = run_target('copy_' + target_suffix.replace('apics_', ''),
-      depends: copy_target_depends,
-      command : [copy_script_path,
-                join_paths(current_build_dir_norm, 'src/d3d9'),
-                output_path,
-                'd3d9*'])
 
     if t != '_output'
-      apic_copy_targets += copy_target
+      meson.add_install_script(
+        join_paths(global_src_root_norm, 'scripts-common/install_file_in_dir.bat'),
+        join_paths(current_build_dir_norm, 'src/d3d9', 'd3d9.dll'), output_path,
+        install_tag: target_suffix
+      )
     endif
-  endforeach
 
-  # xxxnsubtil: this one line replaces a bunch of python code used for the vscode build, but requires meson 0.61.3
-  # (specifically, https://github.com/mesonbuild/meson/pull/9202)
-  # alias_target('copy_to_all_apics', apic_copy_targets)
+    if requires_pdb
+	  # ensure we copy everything to these special targets, the PDB is important!
+      meson.add_install_script(
+        join_paths(global_src_root_norm, 'scripts-common/install_file_in_dir.bat'),
+        join_paths(current_build_dir_norm, 'src/d3d9', 'd3d9.*'), output_path,
+        install_tag: target_suffix
+      )
+    endif
+
+  endforeach
 
   # generate VS project files for ninja
   # note: this writes to <source root>/_vs, which is outside the build directory
@@ -796,3 +802,7 @@ if dxvk_is_ninja
     error('generate_vs_project_files failed')
   endif
 endif # dxvk_is_ninja
+
+if fs.is_dir('nv-private')
+  subdir('nv-private')
+endif

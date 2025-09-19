@@ -7,6 +7,7 @@
 #include "dxvk_util.h"
 #include "../util/xxHash/xxhash.h"
 #include "dxvk_hash.h"
+#include "dxvk_memory_tracker.h"
 
 namespace dxvk {
 
@@ -346,6 +347,7 @@ namespace dxvk {
       return m_image.memory.length();
     }
 
+    // NV-DXVK start: Hashes to identify textures.
     void setHash(XXH64_hash_t hash) {
       m_hash = hash;
     }
@@ -353,6 +355,15 @@ namespace dxvk {
     XXH64_hash_t getHash() const {
       return m_hash;
     }
+
+    void setDescriptorHash(XXH64_hash_t hash) {
+      m_descriptorHash = hash;
+    }
+    
+    XXH64_hash_t getDescriptorHash() const {
+      return m_descriptorHash;
+    }
+    // NV-DXVK end
 
     VkDeviceMemory getMemory() const {
       return m_image.memory.memory();
@@ -386,13 +397,17 @@ namespace dxvk {
     DxvkImageCreateInfo   m_info;
     VkMemoryPropertyFlags m_memFlags;
     DxvkPhysicalImage     m_image;
+    // NV-DXVK start: Hashes to identify textures.
     XXH64_hash_t          m_hash = 0;
+    XXH64_hash_t          m_descriptorHash = 0;
+    // NV-DXVK end
     bool m_shared = false;
+
+    GpuMemoryTracker m_tracker;
 
     small_vector<VkFormat, 4> m_viewFormats;
     
     bool canShareImage(const VkImageCreateInfo&  createInfo, const DxvkSharedHandleInfo& sharingInfo) const;
-
   };
   
   

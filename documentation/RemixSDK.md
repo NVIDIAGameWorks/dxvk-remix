@@ -6,7 +6,7 @@ The Remix SDK exposes an API that gives applications access to the renderer insi
 
 * **Direct3D 9 Translation Layer:**  This component intercepts the D3D9 API and uses information in the API calls to reconstruct the scene hierarchy, then passes that to Remix's path traced renderer to generate the final image. This means that even if an application was built using older graphics technology, it can still benefit from the advanced lighting and rendering features of the Remix renderer. The source code for this component is available at: https://github.com/nvidiagameworks/dxvk-remix
 
-* **Remix Bridge:** This optional component converts D3D9 calls from 32-bit to 64-bit, which is necessary for running 32-bit applications since the Remix renderer operates exclusively in a 64-bit environment. Native 64-bit applications do not require the Remix Bridge. Source code for this component is hosted at https://github.com/nvidiagameworks/bridge-remix
+* **Remix Bridge:** This optional component converts D3D9 calls from 32-bit to 64-bit, which is necessary for running 32-bit applications since the Remix renderer operates exclusively in a 64-bit environment. Native 64-bit applications do not require the Remix Bridge. Source code for this component is available in the `bridge` folder of this repository.
 
 # Remix SDK Design
 
@@ -38,7 +38,7 @@ After a successful build, the necessary SDK files will be located in the public/
 As with other rendering engines, there are common steps of
 initialiazation, resource registration (meshes, materials, lights), and submitting the said resources to each frame to be rendered.
 
-[remixapi_example_c.c](RemixAPI_C/remixapi_example_c.c) contains a minimal example in C to render a path traced triangle using the Remix API.
+[remixapi_example_c.c](/tests/rtx/apps/RemixAPI_C/remixapi_example_c.c) contains a minimal example in C to render a path traced triangle using the Remix API.
 
 
 <details>
@@ -112,7 +112,7 @@ Material:
 * To register, call `remixapi_Interface::CreateMaterial` specifying `remixapi_MaterialInfo`, but `.pNext` must be a pointer to one of:
     * `remixapi_MaterialInfoOpaqueEXT` -- for a generic material
     * `remixapi_MaterialInfoTranslucentEXT` -- for a glass material
-* For the default values, corresponding default constructors can be examined in the C++ wrapper [remix.h](../../../public/include/remix/remix.h)
+* For the default values, corresponding default constructors can be examined in the C++ wrapper [remix.h](/public/include/remix/remix.h)
 * *Note: at the time of writing, the material API is still not refined to work with non-file image data, and overall structure just reflects the internal representation of materials, which might be not as simple to use. The primary subject to change.*
 
 Light:
@@ -144,7 +144,7 @@ Push a camera, mesh instances and lights to define a scene for the *current* fra
 
 *Note: to set `rtx.conf` options at runtime, use `remixapi_Interface::SetConfigVariable`*
 
-*Note: [remixapi_example_c.c](RemixAPI_C/remixapi_example_c.c) contains all the steps listed above, and should draw a triangle.*
+*Note: [remixapi_example_c.c](/tests/rtx/apps/RemixAPI_C/remixapi_example_c.c) contains all the steps listed above, and should draw a triangle.*
 
 
 

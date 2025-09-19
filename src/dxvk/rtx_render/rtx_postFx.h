@@ -63,10 +63,10 @@ namespace dxvk {
     inline bool isChromaticAberrationEnabled() const { return enable() && enableChromaticAberration() && chromaticAberrationAmount() > 0.0f; }
     inline bool isVignetteEnabled() const { return enable() && enableVignette() && vignetteIntensity() > 0.0f; }
 
-    RW_RTX_OPTION_ENV("rtx.postfx", bool, enable, true, "RTX_POST_FX_ENABLE", "Enables post-processing effects.");
-    RW_RTX_OPTION_ENV("rtx.postfx", bool, enableMotionBlur, true, "RTX_POST_FX_MOTION_BLUR_ENABLE", "Enables motion blur post-processing effect.");
-    RW_RTX_OPTION("rtx.postfx", bool, enableChromaticAberration, true, "Enables chromatic aberration post-processing effect.");
-    RW_RTX_OPTION("rtx.postfx", bool, enableVignette, true, "Enables vignette post-processing effect.");
+    RTX_OPTION_ENV("rtx.postfx", bool, enable, true, "RTX_POST_FX_ENABLE", "Enables post-processing effects.");
+    RTX_OPTION_ENV("rtx.postfx", bool, enableMotionBlur, true, "RTX_POST_FX_MOTION_BLUR_ENABLE", "Enables motion blur post-processing effect.");
+    RTX_OPTION("rtx.postfx", bool, enableChromaticAberration, true, "Enables chromatic aberration post-processing effect.");
+    RTX_OPTION("rtx.postfx", bool, enableVignette, true, "Enables vignette post-processing effect.");
     RTX_OPTION("rtx.postfx", bool, desaturateOthersOnHighlight, true, "If true, desaturare all objects that are not highlighted.");
 
   private:

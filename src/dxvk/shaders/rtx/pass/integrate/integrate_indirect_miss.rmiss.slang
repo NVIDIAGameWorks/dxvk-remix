@@ -23,8 +23,44 @@
 //!variant integrate_indirect_miss.rmiss
 //!>       NEE_CACHE_ENABLE=0
 
+
 //!variant integrate_indirect_miss_neeCache.rmiss
 //!>       NEE_CACHE_ENABLE=1
+
+
+// NRC
+
+//!variant integrate_indirect_miss_nrc.rmiss
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=0
+
+
+//!variant integrate_indirect_miss_nrc_neeCache.rmiss
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=1
+
+
+ // WBOIT
+
+//!variant integrate_indirect_miss_wboit.rmiss
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_miss_neeCache_wboit.rmiss
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+// NRC
+
+//!variant integrate_indirect_miss_nrc_wboit.rmiss
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_miss_nrc_neeCache_wboit.rmiss
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
 
 //!end-variants
 
@@ -36,6 +72,7 @@
 // Note: Opacity lighting approximation used in the indirect integration pass due to particle lighting being somewhat
 // important in reflections off shiny surfaces (as without this it can make areas with many particles look weird in reflections).
 #define RESOLVE_OPACITY_LIGHTING_APPROXIMATION 1
+#define RESOLVER_USE_VOLUMETRIC_ATTENUATION 1
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/common_bindings.slangh"
@@ -58,9 +95,7 @@ void main(inout PathState rayPayload : SV_RayPayload)
   IndirectPathTextures indirectPathTextures;
 
   indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal = PrimaryWorldPositionWorldTriangleNormal;
-  indirectPathTextures.IndirectRadianceHitDistance = aliasedData0.IndirectRadianceHitDistance;
-  indirectPathTextures.RestirGIRadiance = RestirGIRadiance;
-  indirectPathTextures.RestirGIHitGeometry = RestirGIHitGeometry;
+  indirectPathTextures.IndirectRadianceHitDistance = IndirectRadianceHitDistance;
 
   integratePathVertex(indirectPathTextures, rayHitInfo, rayPayload);
 }

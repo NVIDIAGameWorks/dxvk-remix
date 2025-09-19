@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -29,6 +29,7 @@
 #include <rtx_shaders/auto_exposure.h>
 #include <rtx_shaders/auto_exposure_histogram.h>
 #include "rtx_imgui.h"
+#include "rtx_render/rtx_debug_view.h"
 
 #include "rtx/utility/debug_view_indices.h"
 
@@ -112,8 +113,20 @@ namespace dxvk {
 
       if (useExposureCompensation()) {
         ImGui::Indent();
-
-        float* splinePoints[] = { &exposureWeightCurve0Ref(),&exposureWeightCurve1Ref(),&exposureWeightCurve2Ref(),&exposureWeightCurve3Ref(),&exposureWeightCurve4Ref() };
+        const uint32_t kNumPoints = 5;
+        dxvk::RtxOption<float>* splineOptions[] = {
+          &exposureWeightCurve0,
+          &exposureWeightCurve1,
+          &exposureWeightCurve2,
+          &exposureWeightCurve3,
+          &exposureWeightCurve4
+        };
+        float splineValues[kNumPoints];
+        float* splinePoints[kNumPoints];
+        for (int i = 0; i < kNumPoints; i++) {
+          splineValues[i] = splineOptions[i]->get();
+          splinePoints[i] = &splineValues[i];
+        }
         ImGui::PushID("AE-Spline-lines");
         ImGui::PlotLines("", &histogramWeight, splinePoints, EXPOSURE_HISTOGRAM_SIZE, 0, "", 0.0f, 1.0f, ImVec2(0, 150.0f));
         ImGui::PopID();
@@ -136,12 +149,17 @@ namespace dxvk {
         ImGui::Columns(1);
 
         if (ImGui::Button("Reset")) {
-          exposureWeightCurve0Ref() = 1.0f;
-          exposureWeightCurve1Ref() = 1.0f;
-          exposureWeightCurve2Ref() = 1.0f;
-          exposureWeightCurve3Ref() = 1.0f;
-          exposureWeightCurve4Ref() = 1.0f;
+          for (int i = 0; i < kNumPoints; i++) {
+            splineValues[i] = 1.f;
+          }
           m_isCurveChanged = true;
+        }
+
+        if (m_isCurveChanged) {
+          for (int i = 0; i < kNumPoints; i++) {
+            splineOptions[i]->setDeferred(splineValues[i]);
+          }
+          m_isCurveChanged = false;
         }
         ImGui::Unindent();
       }
@@ -224,7 +242,21 @@ namespace dxvk {
       if (useExposureCompensation() && m_isCurveChanged) {
         float data[EXPOSURE_HISTOGRAM_SIZE];
 
-        float* splinePoints[] = { &exposureWeightCurve0Ref(),&exposureWeightCurve1Ref(),&exposureWeightCurve2Ref(),&exposureWeightCurve3Ref(),&exposureWeightCurve4Ref() };
+        const uint32_t kNumPoints = 5;
+        dxvk::RtxOption<float>* splineOptions[] = {
+          &exposureWeightCurve0,
+          &exposureWeightCurve1,
+          &exposureWeightCurve2,
+          &exposureWeightCurve3,
+          &exposureWeightCurve4
+        };
+        float splineValues[kNumPoints];
+        float* splinePoints[kNumPoints];
+        for (int i = 0; i < kNumPoints; i++) {
+          splineValues[i] = splineOptions[i]->get();
+          splinePoints[i] = &splineValues[i];
+        }
+
         for (int i = 0; i < EXPOSURE_HISTOGRAM_SIZE; i++) {
           data[i] = histogramWeight(splinePoints, i);
         }
@@ -242,9 +274,10 @@ namespace dxvk {
 
       {
         ScopedGpuProfileZone(ctx, "Histogram");
+        static_cast<RtxContext*>(ctx.ptr())->setFramePassStage(RtxFramePassStage::AutoExposure_Histogram);
         // Prepare shader arguments
         ToneMappingAutoExposureArgs pushArgs = {};
-        pushArgs.numPixels = rtOutput.m_finalOutput.image->mipLevelExtent(0).width * rtOutput.m_finalOutput.image->mipLevelExtent(0).height;
+        pushArgs.numPixels = rtOutput.m_finalOutputExtent.width * rtOutput.m_finalOutputExtent.height;
         // Note: Autoexposure speed is in units per second, so convert from milliseconds to seconds here.
         pushArgs.autoExposureSpeed = autoExposureSpeed() * (0.001f * frameTimeMilliseconds);
         pushArgs.evMinValue = evMinValue();
@@ -258,16 +291,17 @@ namespace dxvk {
 
         // Calculate histogram
         ctx->bindResourceView(AUTO_EXPOSURE_HISTOGRAM_INPUT_OUTPUT, m_exposureHistogram.view, nullptr);
-        ctx->bindResourceView(AUTO_EXPOSURE_COLOR_INPUT, rtOutput.m_finalOutput.view, nullptr);
+        ctx->bindResourceView(AUTO_EXPOSURE_COLOR_INPUT, rtOutput.m_finalOutput.view(Resources::AccessType::Read), nullptr);
 
         ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, AutoExposureHistogramShader::getShader());
-        const VkExtent3D workgroups = util::computeBlockCount(rtOutput.m_finalOutput.view->imageInfo().extent, VkExtent3D { 16, 16, 1 });
+        const VkExtent3D workgroups = util::computeBlockCount(rtOutput.m_finalOutputExtent, VkExtent3D { 16, 16, 1 });
         ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
       }
 
       // Calculate avg luminance
       {
         ScopedGpuProfileZone(ctx, "Exposure");
+        static_cast<RtxContext*>(ctx.ptr())->setFramePassStage(RtxFramePassStage::AutoExposure_Exposure);
         DebugView& debugView = ctx->getDevice()->getCommon()->metaDebugView();
 
         ctx->bindResourceView(AUTO_EXPOSURE_HISTOGRAM_INPUT_OUTPUT, m_exposureHistogram.view, nullptr);

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -64,18 +64,26 @@ namespace dxvk {
     void showImguiSettings();
 
     int getTemporalHistoryLength(float frameTimeMs) {
-      if(useAdaptiveTemporalHistory())
+      if (useAdaptiveTemporalHistory()) {
         return static_cast<int>(std::max(temporalAdaptiveHistoryLengthMs() / frameTimeMs, 20.0f));
-      else
+      } else {
         return temporalFixedHistoryLength();
+      }
     }
+
+    void bindIntegrateIndirectPathTracingResources(RtxContext& ctx);
+    void bindIntegrateIndirectNeeResources(RtxContext& ctx);
+    const Resources::Resource& getBsdfFactor2() const;
+    const Resources::AliasedResource& getLastCompositeOutput() const;
 
     static void setToNRDPreset();
 
     static void setToRayReconstructionPreset();
 
   private:
-    virtual bool isActive() override { return RtxOptions::Get()->useReSTIRGI(); }
+    virtual bool isEnabled() const override;
+    virtual void releaseDownscaledResource() override;
+    virtual void createDownscaledResource(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent) override;
 
     RTX_OPTION("rtx.restirGI", bool, useTemporalReuse, true, "Enables temporal reuse.");
     RTX_OPTION("rtx.restirGI", bool, useSpatialReuse, true, "Enables spatial reuse.");
@@ -99,7 +107,7 @@ namespace dxvk {
     RTX_OPTION("rtx.restirGI", float, virtualSampleMaxDistanceRatio, 0.0, "Clamp max virtual distance, measured by the proportion of distance to camera. 0 disables clamping.");
 
     RTX_OPTION("rtx.restirGI", bool, useTemporalBiasCorrection, true, "Corrects bias caused by temporal reprojection.");
-    RW_RTX_OPTION("rtx.restirGI", ReSTIRGIBiasCorrection, biasCorrectionMode, ReSTIRGIBiasCorrection::PairwiseRaytrace, "Bias correction mode to combine central with its neighbors in spatial reuse.");
+    RTX_OPTION("rtx.restirGI", ReSTIRGIBiasCorrection, biasCorrectionMode, ReSTIRGIBiasCorrection::PairwiseRaytrace, "Bias correction mode to combine central with its neighbors in spatial reuse.");
     RTX_OPTION("rtx.restirGI", float, pairwiseMISCentralWeight, 0.1, "The importance of central sample in pairwise bias correction modes.");
     
     RTX_OPTION("rtx.restirGI", bool, useDemodulatedTargetFunction, false, "Demodulates target function. This will improve the result in non-pairwise modes.");
@@ -112,7 +120,7 @@ namespace dxvk {
     RTX_OPTION("rtx.restirGI", bool, useDiscardEnlargedPixels, true, "Discards enlarged samples when the camera is moving towards an object.");
     RTX_OPTION("rtx.restirGI", float, historyDiscardStrength, 0.0, "The sensitivity of discarding history. Higher values discard more history.");
     RTX_OPTION("rtx.restirGI", bool, useTemporalJacobian, true, "Calculates Jacobian determinant in temporal reprojection.");
-    RW_RTX_OPTION("rtx.restirGI", bool, useReflectionReprojection, true, "Uses reflection reprojection for reflective objects to achieve stable result when the camera is moving.");
+    RTX_OPTION("rtx.restirGI", bool, useReflectionReprojection, true, "Uses reflection reprojection for reflective objects to achieve stable result when the camera is moving.");
     RTX_OPTION("rtx.restirGI", float, reflectionMinParallax, 3.0, "When the parallax between normal and reflection reprojection is greater than this threshold, randomly choose one reprojected position and reuse the sample on it. Otherwise, get a sample between the two positions.");
     RTX_OPTION("rtx.restirGI", bool, useBoilingFilter, true, "Enables boiling filter to suppress boiling artifacts.");
     RTX_OPTION("rtx.restirGI", float, boilingFilterMinThreshold, 10.0, "Boiling filter threshold when surface normal is perpendicular to view direction.");
@@ -128,5 +136,13 @@ namespace dxvk {
     RTX_OPTION_ENV("rtx.restirGI", bool, validateVisibilityChange, false, "DXVK_RESTIR_GI_VISIBILITY_VALIDATION", "Remove samples when visibility has changed. This feature is automatically disabled when virtual sample is enabled.");
     RTX_OPTION_ENV("rtx.restirGI", float, lightingValidationThreshold, 0.5, "DXVK_RESTIR_GI_SAMPLE_VALIDATION_THRESHOLD", "Invalidate a sample when pixel change ratio is above this value.");
     RTX_OPTION("rtx.restirGI", float, visibilityValidationRange, 0.05, "Check actual hit distance of a shadow ray, invalidate a sample if hit length is longer than one plus this portion, compared to the distance from the surface to the sample.");
+
+    Resources::AliasedResource m_restirGIRadiance;
+    Resources::Resource m_restirGIHitGeometry;
+    Rc<DxvkBuffer> m_restirGIReservoirBuffer;
+    Resources::Resource m_bsdfFactor2;
+
+    // Last composite output is not aliased right now, but created as such AliasedResource for ::matchesWriteFrameIdx() functionality
+    Resources::AliasedResource m_lastCompositeOutput;
   };
 }

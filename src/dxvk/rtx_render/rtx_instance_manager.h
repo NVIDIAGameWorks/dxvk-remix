@@ -50,6 +50,7 @@ public:
   RtInstance(const RtInstance& src, uint64_t id, uint32_t instanceVectorId);
 
   uint64_t getId() const { return m_id; }
+  uint32_t getVectorIdx() const { return m_instanceVectorId; }
   const VkAccelerationStructureInstanceKHR& getVkInstance() const { return m_vkInstance; }
   VkAccelerationStructureInstanceKHR& getVkInstance() { return m_vkInstance; }
   bool isObjectToWorldMirrored() const { return m_isObjectToWorldMirrored; }
@@ -65,12 +66,12 @@ public:
   Vector3 getWorldPosition() const { return Vector3{ m_vkInstance.transform.matrix[0][3], m_vkInstance.transform.matrix[1][3], m_vkInstance.transform.matrix[2][3] }; }
   const Vector3& getPrevWorldPosition() const { return surface.prevObjectToWorld.data[3].xyz(); }
 
-  const Vector3& getSpatialCachePosition() const { return m_spatialCachePos; }
-  void removeFromSpatialCache() const {
-    if (m_isCreatedByRenderer) {
+  void removeFromSpatialCache() {
+    if (m_isCreatedByRenderer || !m_linkedBlas || m_isUnlinkedForGC || m_spatialCacheHash == kEmptyHash) {
       return;
     }
-    m_linkedBlas->getSpatialMap().erase(m_spatialCachePos, this);
+    m_linkedBlas->getSpatialMap().erase(m_spatialCacheHash);
+    m_spatialCacheHash = kEmptyHash;
   }
 
   bool isCreatedThisFrame(uint32_t frameIndex) const { return frameIndex == m_frameCreated; }
@@ -108,9 +109,11 @@ public:
   void setHidden(bool value) { m_isHidden = value; }
 
   bool usesUnorderedApproximations() const { return m_isUnordered; }
-  RtSurfaceMaterialType getMaterialType() const {
+  MaterialDataType getMaterialType() const {
     return m_materialType;
   }
+  bool isOpaque() const;
+
   uint32_t getAlbedoOpacityTextureIndex() const { return m_albedoOpacityTextureIndex; }
   uint32_t getSamplerIndex() const { return m_samplerIndex; }
   uint32_t getSecondaryOpacityTextureIndex() const { return m_secondaryOpacityTextureIndex; }
@@ -134,7 +137,7 @@ public:
   OpacityMicromapInstanceData& getOpacityMicromapInstanceData() { return m_opacityMicromapInstanceData; }
   const OpacityMicromapInstanceData& getOpacityMicromapInstanceData() const { return m_opacityMicromapInstanceData; }
 
-  uint32_t getFirstBillboardIndex() const { return m_firstBillboard; }
+uint32_t getFirstBillboardIndex() const { return m_firstBillboard; }
   uint32_t getBillboardCount() const { return m_billboardCount; }
 
   VkGeometryFlagsKHR getGeometryFlags() const { return m_geometryFlags; }
@@ -149,8 +152,19 @@ public:
   bool isViewModelVirtual() const;
 
   bool isUnlinkedForGC() const { return m_isUnlinkedForGC; }
+
+  PrimInstanceOwner& getPrimInstanceOwner() { return m_primInstanceOwner; }
+  
+  void printDebugInfo() const;
+
 private:
 
+  Matrix4 calcFirstInstanceObjectToWorld() {
+    if (surface.instancesToObject) {
+      return surface.objectToWorld * (*surface.instancesToObject)[0]; 
+    }
+    return surface.objectToWorld;
+  }
   void onTransformChanged();
   friend class InstanceManager;
 
@@ -168,7 +182,7 @@ private:
 
   std::vector<CameraType::Enum> m_seenCameraTypes;  // Camera types with which the instance has been originally rendered with
 
-  RtSurfaceMaterialType m_materialType = RtSurfaceMaterialType::Count;
+  MaterialDataType m_materialType = MaterialDataType::Invalid;
   uint32_t m_albedoOpacityTextureIndex = kSurfaceMaterialInvalidTextureIndex;
   uint32_t m_samplerIndex = kSurfaceMaterialInvalidTextureIndex;
   uint32_t m_secondaryOpacityTextureIndex = kSurfaceMaterialInvalidTextureIndex;
@@ -203,14 +217,15 @@ private:
 
   CategoryFlags m_categoryFlags;
 
-  Vector3 m_spatialCachePos = Vector3(0.f);
+  XXH64_hash_t m_spatialCacheHash = kEmptyHash;
+
+  // This can be used to access all lights and instances that originate from the same draw call.
+  // Left as nullptr if the draw call does not have replacement data.
+  PrimInstanceOwner m_primInstanceOwner;
 
 public:
   bool isFrontFaceFlipped = false;
 
-  // Not really needed in this struct, just to store it somewhere for a batched build
-  std::vector<VkAccelerationStructureGeometryKHR> buildGeometries;
-  std::vector<VkAccelerationStructureBuildRangeInfoKHR> buildRanges;
   std::vector<uint32_t> billboardIndices;
   std::vector<uint32_t> indexOffsets;
 };
@@ -220,12 +235,12 @@ struct InstanceEventHandler {
   void* eventHandlerOwnerAddress;
 
   // Callback triggered whenever a new instance has been added to the database
-  std::function<void(const RtInstance&)> onInstanceAddedCallback;
+  std::function<void(RtInstance&)> onInstanceAddedCallback;
   // Callback triggered whenever instance metadata is updated - the boolean flags 
   //   signal if the transform and/or vertex positions have changed (respectively)
-  std::function<void(RtInstance&, const RtSurfaceMaterial&, bool, bool)> onInstanceUpdatedCallback;
+  std::function<void(RtInstance&, const DrawCallState& drawCall, const MaterialData&, bool, bool, bool)> onInstanceUpdatedCallback;
   // Callback triggered whenever an instance has been removed from the database
-  std::function<void(const RtInstance&)> onInstanceDestroyedCallback;
+  std::function<void(RtInstance&)> onInstanceDestroyedCallback;
 
   InstanceEventHandler() = delete;
   InstanceEventHandler(void* _eventHandlerOwnerAddress) : eventHandlerOwnerAddress(_eventHandlerOwnerAddress) { }
@@ -284,7 +299,10 @@ public:
   // Takes a scene object entry (blas + drawcall) and generates/finds the instance data internally
   RtInstance* processSceneObject(
     const CameraManager& cameraManager, const RayPortalManager& rayPortalManager,
-    BlasEntry& blas, const DrawCallState& drawCall, const MaterialData& materialData, const RtSurfaceMaterial& material);
+    BlasEntry& blas, const DrawCallState& drawCall, MaterialData& materialData, RtInstance* existingInstance);
+
+  // Binds a raytracing material to the specified instance.
+  void bindMaterial(RtInstance& instance, const RtSurfaceMaterial& material);
 
   // Creates a copy of a reference instance and adds it to the instance pool
   // Temporary single frame instances generated every frame should disable valid id generation to avoid overflowing it
@@ -312,7 +330,8 @@ public:
 private:
   ResourceCache* m_pResourceCache;
 
-  uint64_t m_nextInstanceId = 0;
+  // Start at 1 to avoid using 0 - makes it easier to detect a 0 initialized RtInstance (which is invalid)
+  uint64_t m_nextInstanceId = 1;
 
   std::vector<RtInstance*> m_instances; 
   std::vector<RtInstance*> m_viewModelCandidates;
@@ -331,22 +350,21 @@ private:
   std::vector<InstanceEventHandler> m_eventHandlers;
 
   // Handles the case of when two (or more) identical geometries+textures draw calls have been submitted in a single frame (typically used for two-pass rendering in FF)
-  void mergeInstanceHeuristics(RtInstance& instanceToModify, const DrawCallState& drawCall, const RtSurfaceMaterial& material, const RtSurface::AlphaState& alphaState) const;
+  void mergeInstanceHeuristics(RtInstance& instanceToModify, const DrawCallState& drawCall, const RtSurface::AlphaState& alphaState) const;
 
   // Finds the "closest" matching instance to a set of inputs, returns a pointer (can be null if not found) to closest instance
-  RtInstance* findSimilarInstance(const BlasEntry& blas, const RtSurfaceMaterial& material, const Matrix4& transform, CameraType::Enum cameraType, const RayPortalManager& rayPortalManager);
+  RtInstance* findSimilarInstance(BlasEntry& blas, const MaterialData& material, const Matrix4& firstInstanceObjectToWorld, CameraType::Enum cameraType, const RayPortalManager& rayPortalManager);
 
   RtInstance* addInstance(BlasEntry& blas);
   void processInstanceBuffers(const BlasEntry& blas, RtInstance& currentInstance) const;
 
   void updateInstance(
     RtInstance& currentInstance, const CameraManager& cameraManager,
-    const BlasEntry& blas, const DrawCallState& drawCall, const MaterialData& materialData, const RtSurfaceMaterial& material,
-    const Matrix4& transform, const Matrix4& worldToProjection);
+    const BlasEntry& blas, const DrawCallState& drawCall, MaterialData& materialData);
 
   void removeInstance(RtInstance* instance);
 
-  static RtSurface::AlphaState calculateAlphaState(const DrawCallState& drawCall, const MaterialData& materialData, const RtSurfaceMaterial& material);
+  static RtSurface::AlphaState calculateAlphaState(const DrawCallState& drawCall, const MaterialData& materialData);
 
   // Modifies an instance given active developer options. Returns true if the instance was modified
   bool applyDeveloperOptions(RtInstance& currentInstance, const DrawCallState& drawCall);

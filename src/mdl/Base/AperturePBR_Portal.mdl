@@ -1,0 +1,139 @@
+/*****************************************************************************
+*     Copyright 1986-2023 NVIDIA Corporation. All rights reserved.
+******************************************************************************
+
+ MDL MATERIALS ARE PROVIDED PURSUANT TO AN END USER LICENSE  AGREEMENT,
+ WHICH WAS ACCEPTED IN ORDER TO GAIN ACCESS TO THIS FILE.  IN PARTICULAR, 
+ THE MDL MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+ MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF 
+ COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL NVIDIA
+ CORPORATION BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, INCLUDING
+ ANY GENERAL, SPECIAL,  INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, 
+ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF 
+ THE USE OR INABILITY TO USE THE MDL MATERIALS OR FROM OTHER DEALINGS IN 
+ THE MDL MATERIALS.
+*/
+
+mdl 1.4;
+
+import ::base::*;
+import ::anno::*;
+import ::df::*;
+import ::state::*;
+import ::tex::*;
+import ::math::*;
+
+import ::nvidia::core_definitions::file_texture;
+
+using AperturePBR_Model import *;
+import AperturePBR_SpriteSheet::*;
+
+// IMPORTANT: When updating defaults or hard ranges, the defaults and ranges in the associated runtime should
+// be updated as well so that the defaults are properly selected even when the USD does not include them (as
+// sometimes tools will not write out the MDL defaults for values not modified by the user), and so the clamping
+// logic is consistent. Additionally, proper hard ranges should be included for any newly added values to ensure
+// that it is not easy for users to specify incorrect data.
+
+export material AperturePBR_Portal(
+  uniform int portal_index = 0
+  [[
+    anno::display_name("Portal Index"),
+    anno::hard_range(0, 1),
+    anno::description("Which portal this represents"),
+    anno::unused()
+  ]],
+
+  // -------------------- EMISSIVE ----------------------
+  uniform bool enable_emission = false
+  [[
+    anno::display_name("Enable Emission"),
+    anno::description("Enables the emission of light from the material"),
+    anno::in_group("Emissive")
+  ]],
+  // Note: The emissive mask texture should always be treated as sRGB.
+  uniform texture_2d emissive_mask_texture = texture_2d("", tex::gamma_srgb)
+  [[
+    anno::enable_if("enable_emission == true"),
+    anno::display_name("Emissive Mask Map"),
+    anno::description("The texture masking the emissive color"),
+    anno::in_group("Emissive")
+  ]],
+  uniform float emissive_intensity = 40.f
+  [[
+    anno::enable_if("enable_emission == true"),
+    anno::display_name("Emissive Intensity"),
+    anno::hard_range(0.0, 65504.0),
+    anno::description("Intensity of the emission"),
+    anno::in_group("Emissive")
+  ]],
+
+  // -------------------- SPRITE SHEET ----------------------
+  uniform int sprite_sheet_fps = 0
+  [[
+    anno::display_name("Sprite Sheet FPS"),
+    anno::hard_range(0, 255),
+    anno::description("Framerate in Frames Per Second to use for the spritesheet across all textures. Note that a value of 0 disables this functionality."),
+    anno::in_group("Sprite Sheet")
+  ]],
+  uniform int sprite_sheet_cols = 1
+  [[
+    anno::display_name("Sprite Sheet Columns"),
+    anno::hard_range(1, 255),
+    anno::description("Number of columns the spritesheet across all textures is divided into."),
+    anno::in_group("Sprite Sheet")
+  ]],
+  uniform int sprite_sheet_rows = 1
+  [[
+    anno::display_name("Sprite Sheet Rows"),
+    anno::hard_range(1, 255),
+    anno::description("Number of row the spritesheet across all textures is divided into."),
+    anno::in_group("Sprite Sheet")
+  ]],
+  uniform float rotation_speed = 0.f
+  [[
+    anno::display_name("Rotation Speed"),
+    anno::soft_range(-10.0, 10.0),
+    anno::description("The rotation speed of the spritesheet."),
+    anno::in_group("Sprite Sheet")
+  ]],
+  // -------------------- REMIX FLAGS ----------------------
+  uniform bool preload_textures = false
+  [[
+    anno::display_name("Preload Textures"),
+    anno::description("Use this option sparingly, this will consume video memory!  RTX Remix will load the textures associated with this material into GPU memory immediately without streaming at the highest quality possible.  Use this in situations where a material is fundamental for game play and yet is very transient.  For instance, we used this for Portal RTX on the Portals themselves."),
+    anno::in_group("Remix Flags"),
+    anno::unused()
+  ]]
+)
+[[
+  anno::display_name("Aperture PBR Portal"),
+  anno::description("Supports the portal material model of the Aperture Renderer"),
+  anno::version( 1, 0, 0),
+  anno::author("NVIDIA CORPORATION"),
+  anno::key_words(string[]("aperture", "PBR", "portal", "omniverse", "generic"))
+]]
+ = let {
+
+  base::texture_coordinate_info uvw = base::coordinate_source(
+      coordinate_system: base::texture_coordinate_uvw,
+      texture_space: 0);
+  varying float2 final_uv = AperturePBR_SpriteSheet::calculate_spritesheet_uv(
+    uvw:                 uvw,
+    sprite_sheet_fps:    sprite_sheet_fps,
+    sprite_sheet_cols:   sprite_sheet_cols,
+    sprite_sheet_rows:   sprite_sheet_rows,
+    enable_rotation:     true,
+    rotation_speed:      rotation_speed);
+
+  float4 pixel = tex::lookup_float4(emissive_mask_texture, final_uv, tex::wrap_repeat, tex::wrap_repeat);
+  color emissive_lookup = color(pixel.x, pixel.y, pixel.z);
+  float opacity = pixel.w;
+  // Normal calculations
+} in AperturePBR_Model(
+  enable_emission: enable_emission,
+  emissive_color: emissive_lookup,
+  emissive_intensity: emissive_intensity,
+  enable_opacity: true,
+  opacity: opacity
+);

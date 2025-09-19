@@ -34,12 +34,16 @@ namespace dxvk {
     const DxvkBufferCreateInfo& createInfo,
           DxvkMemoryAllocator&  memAlloc,
           VkMemoryPropertyFlags memFlags,
-          DxvkMemoryStats::Category category)
+          DxvkMemoryStats::Category category,
+          const char* name)
   : m_device        (device),
     m_info          (createInfo),
     m_memAlloc      (&memAlloc),
     m_memFlags      (memFlags),
-    m_category      (category) {
+    m_category      (category),
+    // NV-DXVK start: Implement memory profiler
+    m_tracker(name, GpuMemoryTracker::Buffer, category, { 1, 1, 1 }, VK_FORMAT_UNDEFINED) {
+    // NV-DXVK end
     // Align slices so that we don't violate any alignment
     // requirements imposed by the Vulkan device/driver
     VkDeviceSize sliceAlignment = computeSliceAlignment();
@@ -65,6 +69,21 @@ namespace dxvk {
 
     m_physSlice = slice;
     m_lazyAlloc = m_physSliceCount > 1;
+
+    // NV-DXVK start: Implement memory profiler
+    m_tracker.finalize(m_physSliceStride, (m_buffer.memory.propertyFlags() & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0, (m_buffer.memory.propertyFlags() != memFlags));
+
+    // NV-DXVK start: add debug names to buffer objects
+    if (device->vkd()->vkSetDebugUtilsObjectNameEXT) {
+      VkDebugUtilsObjectNameInfoEXT nameInfo;
+      nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+      nameInfo.pNext = nullptr;
+      nameInfo.objectType = VK_OBJECT_TYPE_BUFFER;
+      nameInfo.objectHandle = (uint64_t) m_buffer.buffer;
+      nameInfo.pObjectName = name;
+      device->vkd()->vkSetDebugUtilsObjectNameEXT(device->vkd()->device(), &nameInfo);
+    }
+    // NV-DXVK end
   }
 
 
@@ -106,6 +125,17 @@ namespace dxvk {
     info.flags                 = 0;
     info.size                  = m_physSliceStride * sliceCount;
     info.usage                 = m_info.usage | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+
+    // NV-DXVK start: include external memory handle type flags if specified
+    VkExternalMemoryBufferCreateInfo extMemBufferCreateInfo = {};
+    if (m_info.sharing.mode != DxvkSharedHandleMode::None) {
+      extMemBufferCreateInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO;
+      extMemBufferCreateInfo.handleTypes = m_info.sharing.type;
+      extMemBufferCreateInfo.pNext = nullptr;
+      info.pNext = &extMemBufferCreateInfo;
+    }
+    // NV-DXVK end
+
 
     if (!isAccelerationStructure && m_device->features().vulkan12Features.bufferDeviceAddress)
     {
@@ -154,6 +184,21 @@ namespace dxvk {
 
     vkd->vkGetBufferMemoryRequirements2(
        vkd->device(), &memReqInfo, &memReq);
+
+    // NV-DXVK start: include external memory handle type flags if specified
+    VkExportMemoryAllocateInfo exportMemoryAllocateInfo = {};
+    if (m_info.sharing.mode == DxvkSharedHandleMode::Export) {
+      exportMemoryAllocateInfo.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
+      exportMemoryAllocateInfo.handleTypes = m_info.sharing.type;
+      exportMemoryAllocateInfo.pNext = VK_NULL_HANDLE;
+      dedMemoryAllocInfo.pNext = &exportMemoryAllocateInfo;
+      dedicatedRequirements.requiresDedicatedAllocation = VK_TRUE;
+      dedicatedRequirements.prefersDedicatedAllocation = VK_TRUE;
+    } else if (m_info.sharing.mode == DxvkSharedHandleMode::Import) {
+      // TODO: not yet implemented
+      assert(false);
+    }
+    // NV-DXVK end
 
     // NV-DXVK start: Increase memory requirement alignment based on override requirement.
     // Note: This increase in alignment is safe to do as long as the override alignment is less than or equal to the maximum alignment
@@ -209,6 +254,12 @@ namespace dxvk {
     if (m_info.usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
       result = std::max(result, devInfo.limits.minStorageBufferOffsetAlignment);
 
+    if (m_info.usage & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR)
+      result = std::max(result, (VkDeviceSize)m_device->properties().khrDeviceAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment);
+
+    if (m_info.usage & VK_BUFFER_USAGE_MICROMAP_BUILD_INPUT_READ_ONLY_BIT_EXT)
+      result = std::max(result, VkDeviceSize(256u)); // https://vulkan.lunarg.com/doc/view/1.4.304.1/windows/antora/spec/latest/chapters/VK_EXT_opacity_micromap/micromaps.html#VUID-vkCmdBuildMicromapsEXT-pInfos-07515
+    
     if (m_info.usage & (VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT)) {
       result = std::max(result, devInfo.limits.minTexelBufferOffsetAlignment);
       result = std::max(result, VkDeviceSize(16));
@@ -236,7 +287,7 @@ namespace dxvk {
       m_info     (parent.m_info),
       m_memAlloc (parent.m_memAlloc),
       m_memFlags (parent.m_memFlags),
-      m_category (parent.m_category) {
+      m_category (parent.m_category){
     m_buffer.buffer = parent.m_buffer.buffer;
 
     m_physSlice = parent.m_physSlice;
@@ -327,8 +378,9 @@ namespace dxvk {
   const DxvkBufferCreateInfo& createInfo,
         DxvkMemoryAllocator& memAlloc,
         VkMemoryPropertyFlags memFlags,
-        VkAccelerationStructureTypeKHR accelType)
-    : DxvkBuffer(device, createInfo, memAlloc, memFlags, DxvkMemoryStats::Category::RTXAccelerationStructure) {
+        VkAccelerationStructureTypeKHR accelType,
+  const char* name)
+    : DxvkBuffer(device, createInfo, memAlloc, memFlags, DxvkMemoryStats::Category::RTXAccelerationStructure, name) {
 
     VkAccelerationStructureCreateInfoKHR accelCreateInfo {};
     accelCreateInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;

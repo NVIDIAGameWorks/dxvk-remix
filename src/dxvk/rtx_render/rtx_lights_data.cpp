@@ -90,20 +90,20 @@ namespace dxvk {
       const auto radiusScale = std::max(std::max(m_xScale, m_yScale), m_zScale);
 
       if (!originalLight || originalLight->getType() != RtLightType::Sphere) {
-        return RtLight(RtSphereLight(m_position, calculateRadiance(), m_Radius * radiusScale, getLightShaping(m_zAxis), m_cachedHash));
+        return RtLight(RtSphereLight(m_position, calculateRadiance(), m_Radius * radiusScale, getLightShaping(m_zAxis), m_VolumetricRadianceScale, m_cachedHash));
       } else {
-        return RtLight(RtSphereLight(m_position, calculateRadiance(), m_Radius * radiusScale, getLightShaping(m_zAxis), m_cachedHash), originalLight->getSphereLight());
+        return RtLight(RtSphereLight(m_position, calculateRadiance(), m_Radius * radiusScale, getLightShaping(m_zAxis), m_VolumetricRadianceScale, m_cachedHash), originalLight->getSphereLight());
       }
     }
     case LightType::Rect:
     {
       const Vector2 dimensions(m_Width * m_xScale, m_Height * m_yScale);
-      return RtLight(RtRectLight(m_position, dimensions, m_xAxis, m_yAxis, m_zAxis, calculateRadiance(), getLightShaping(m_zAxis)));
+      return RtLight(RtRectLight(m_position, dimensions, m_xAxis, m_yAxis, m_zAxis, calculateRadiance(), getLightShaping(m_zAxis), m_VolumetricRadianceScale));
     }
     case LightType::Disk:
     {
       const Vector2 halfDimensions(m_Radius * m_xScale, m_Radius * m_yScale);
-      return RtLight(RtDiskLight(m_position, halfDimensions, m_xAxis, m_yAxis, m_zAxis, calculateRadiance(), getLightShaping(m_zAxis)));
+      return RtLight(RtDiskLight(m_position, halfDimensions, m_xAxis, m_yAxis, m_zAxis, calculateRadiance(), getLightShaping(m_zAxis), m_VolumetricRadianceScale));
     }
     case LightType::Cylinder:
     {
@@ -113,12 +113,12 @@ namespace dxvk {
       const auto radiusScale = std::max(m_yScale, m_zScale);
 
       // Note: Unlike light shaping the Cylinder light is based around the X axis for its directionality aspect, not the Z axis.
-      return RtLight(RtCylinderLight(m_position, m_Radius * radiusScale, m_xAxis, m_Length * m_xScale, calculateRadiance()));
+      return RtLight(RtCylinderLight(m_position, m_Radius * radiusScale, m_xAxis, m_Length * m_xScale, calculateRadiance(), m_VolumetricRadianceScale));
     }
     case LightType::Distant:
     {
       const float halfAngle = m_AngleRadians / 2.0f;
-      return RtLight(RtDistantLight(m_zAxis, halfAngle, calculateRadiance(), m_cachedHash));
+      return RtLight(RtDistantLight(m_zAxis, halfAngle, calculateRadiance(), m_VolumetricRadianceScale, m_cachedHash));
     }
     }
   }
@@ -491,10 +491,10 @@ namespace dxvk {
   // authored before and after that change.
   const pxr::UsdAttribute LightData::getLightAttribute(const pxr::UsdPrim& prim, const pxr::TfToken& token, const pxr::TfToken& inputToken) {
     const pxr::UsdAttribute& attr = prim.GetAttribute(inputToken);
-    if (!attr.HasValue()) {
+    if (!attr.IsAuthored()) {
       const pxr::UsdAttribute& old_attr = prim.GetAttribute(token);
-      if (old_attr.HasValue()) {
-        ONCE(Logger::warn(str::format("Legacy light attribute detected: ", old_attr.GetPath())));
+      if (old_attr.IsAuthored()) {
+        Logger::warn(str::format("Legacy light attribute detected: ", old_attr.GetPath()));
       }
       return old_attr;
     }

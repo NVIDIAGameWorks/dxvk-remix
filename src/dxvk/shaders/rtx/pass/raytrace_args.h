@@ -31,6 +31,7 @@
 #endif
 
 #include "rtx/pass/nrd_args.h"
+#include "rtx/pass/nrc_args.h"
 #include "rtx/pass/volume_args.h"
 #include "rtx/pass/material_args.h"
 #include "rtx/pass/view_distance_args.h"
@@ -54,7 +55,8 @@ struct TerrainArgs {
 
   uint maxCascadeLevel;
   float lastCascadeScale;
-  uint2 pad0;
+  float displaceIn;
+  uint pad0;
 };
 
 struct NeeCacheArgs {
@@ -97,11 +99,49 @@ struct DomeLightArgs {
   uint textureIndex;
 };
 
+struct SssArgs {
+  uint enableThinOpaque;
+  uint enableDiffusionProfile;
+  float diffusionProfileScale;
+  u16vec2 diffusionProfileDebuggingPixel;
+};
+
 #define OBJECT_PICKING_INVALID (cb.clearColorPicking)
 
 // Constant buffer
 struct RaytraceArgs {
+  // NOTE: this class should be kept as all structs, then all non-structs.  This is because the padding rules are different between C++ and shaders.
   Camera camera;
+
+  // Note: Primary combined variant used in place of the primary direct denoiser when seperated direct/indirect
+  // lighting is not used.
+  NrdArgs primaryDirectNrd;
+  NrdArgs primaryIndirectNrd;
+  NrdArgs secondaryCombinedNrd;
+
+  // Note: Not tightly packed, meaning these indices will align with the Ray Portal Index in the
+  // Surface Material. Do note however due to elements being potentially "empty" each Ray Portal Hit Info
+  // must be checked to be empty or not before usage. Additionally both Ray Portals in a pair will match
+  // in state, either being present or not.
+  // The first `maxRayPortalCount` portals are for this frame, the second `maxRayPortalCount` are for the previous frame.
+  RayPortalHitInfo rayPortalHitInfos[maxRayPortalCount * 2];
+
+  VolumeArgs volumeArgs;
+  OpaqueMaterialArgs opaqueMaterialArgs;
+  TranslucentMaterialArgs translucentMaterialArgs;
+  ViewDistanceArgs viewDistanceArgs;
+
+  LightRangeInfo lightRanges[lightTypeCount];
+
+  TerrainArgs terrainArgs;
+  NeeCacheArgs neeCacheArgs;
+  DomeLightArgs domeLightArgs;
+  NrcArgs nrcArgs;
+  SssArgs sssArgs;
+
+  Camera renderTargetCamera;
+
+  // ------------------------- Structs above this line, non structs below this line -----------------------------------
 
   uint frameIdx;
   float ambientIntensity;
@@ -157,41 +197,22 @@ struct RaytraceArgs {
   // Half the angle of the cone spawned by each pixel to use for ray cone texture filtering.
   float screenSpacePixelSpreadHalfAngle;
   uint debugView;
-  float vertexColorStrength;
+  float primaryDirectMissLinearViewZ;
 
-  // Note: Primary combined variant used in place of the primary direct denoiser when seperated direct/indirect
-  // lighting is not used.
-  NrdArgs primaryDirectNrd;
-  NrdArgs primaryIndirectNrd;
-  NrdArgs secondaryCombinedNrd;
 
   vec4 debugKnob;     // For temporary tuning in shaders, has a dedicated UI widget.
-
-  // Note: Not tightly packed, meaning these indices will align with the Ray Portal Index in the
-  // Surface Material. Do note however due to elements being potentially "empty" each Ray Portal Hit Info
-  // must be checked to be empty or not before usage. Additionally both Ray Portals in a pair will match
-  // in state, either being present or not.
-  // The first `maxRayPortalCount` portals are for this frame, the second `maxRayPortalCount` are for the previous frame.
-  RayPortalHitInfo rayPortalHitInfos[maxRayPortalCount * 2];
-
-  VolumeArgs volumeArgs;
-  OpaqueMaterialArgs opaqueMaterialArgs;
-  TranslucentMaterialArgs translucentMaterialArgs;
-  ViewDistanceArgs viewDistanceArgs;
-
-  LightRangeInfo lightRanges[lightTypeCount];
-
-  TerrainArgs terrainArgs;
-  NeeCacheArgs neeCacheArgs;
-  DomeLightArgs domeLightArgs;
 
   // Values to use on a ray miss
   vec3 clearColorNormal;
   float clearColorDepth;
-  uint32_t clearColorPicking;
-  uint enableDLSSRR;
 
   float2 upscaleFactor;   // Displayed(upscaled) / RT resolution
+  uint32_t clearColorPicking;
+
+  uint enableDLSSRR;
+  uint setLogValueForDisocclusionMaskForDLSSRR;
+
+  // NOTE: Variables need to be in groups of 4x32 bits above this comment.
 
   uint uniformRandomNumber;
   uint16_t opaqueDiffuseLobeSamplingProbabilityZeroThreshold;
@@ -208,7 +229,7 @@ struct RaytraceArgs {
   uint16_t translucentTransmissionLobeSamplingProbabilityZeroThreshold;
   uint16_t minTranslucentTransmissionLobeSamplingProbability;
   float roughnessDemodulationOffset;
-  uint timeSinceStartMS;
+  float timeSinceStartSeconds;
   
   uint enableCalculateVirtualShadingNormals;
   uint enableDirectLighting;
@@ -218,8 +239,10 @@ struct RaytraceArgs {
   uint enableSecondaryBounces;
   uint enableSeparateUnorderedApproximations;
   uint enableStochasticAlphaBlend;
-  uint enableDirectTranslucentShadows;
-  uint enableIndirectTranslucentShadows;
+  uint16_t enableDirectTranslucentShadows;
+  uint16_t enableDirectAlphaBlendShadows;
+  uint16_t enableIndirectTranslucentShadows;
+  uint16_t enableIndirectAlphaBlendShadows;
   uint enableFirstBounceLobeProbabilityDithering;
   uint enableUnorderedResolveInIndirectRays;
   uint enableProbabilisticUnorderedResolveInIndirectRays;
@@ -271,6 +294,7 @@ struct RaytraceArgs {
   float enhanceBSDFIndirectLightMaxValue;
   float enhanceBSDFIndirectLightMinRoughness;
 
+  uint startInMediumMaterialIndex;
   uint enableReSTIRGI;
   uint enableReSTIRGIFinalVisibility;
   uint enableReSTIRGIReflectionReprojection;
@@ -319,7 +343,7 @@ struct RaytraceArgs {
   float resolveStochasticAlphaBlendThreshold;
   float translucentDecalAlbedoFactor;
 
-  float volumeClampedReprojectionConfidencePenalty;
+  float pad;
 
   float skyBrightness;
 
@@ -338,8 +362,31 @@ struct RaytraceArgs {
   uint pomEnableReSTIRGI;
   uint pomEnablePSR;
   uint pomMaxIterations;
-  uint enableThinOpaque;
+  uint enableSssTransmission;
+  uint enableSssTransmissionSingleScattering;
+  uint sssTransmissionBsdfSampleCount;
+  uint sssTransmissionSingleScatteringSampleCount;
+  uint enableTransmissionDiffusionProfileCorrection;
   float totalMipBias;
 
   uint forceFirstHitInGBufferPass;
+
+  uint enableRaytracedRenderTarget;
+  // NRC enablement is controlled by global macros being defined.
+  // When macros are not used (i.e. in some passes) this variable controls the NRC enablement.
+  uint enableNrc;
+
+  // Debug override to disallow NRC training when it is enabled in the first place,
+  // hence why it is not named enableNrcTraining here
+  uint allowNrcTraining;
+
+  float vertexColorStrength;
+  uint pad0;
+
+  float wboitEnergyLossCompensation;
+  float wboitDepthWeightTuning;
+  uint wboitEnabled;
+
+  // NOTE: Add structs to the top section of RaytraceArgs, not the bottom.
+  // NOTE: bool does not work in debug builds, use uint instead.
 };

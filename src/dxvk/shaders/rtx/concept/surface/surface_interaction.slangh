@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -94,7 +94,9 @@ void computeAnisotropicEllipseAxes(
 bool isSurfaceClipped(Surface surface, MinimalSurfaceInteraction surfaceInteraction)
 {
   if (!surface.isClipPlaneEnabled)
+  {
     return false;
+  }
 
   const float clipDistance = dot(surface.clipPlane.xyz, surfaceInteraction.position) + surface.clipPlane.w;
 
@@ -150,7 +152,7 @@ void calcSpriteSheetAdjustment(
   inout vec2 textureCoordinates,
   inout vec2 textureGradientX,
   inout vec2 textureGradientY,
-  uint32_t timeSinceStartMS,
+  float timeSinceStartSeconds,
   uint8_t spriteSheetRows,
   uint8_t spriteSheetCols,
   uint8_t spriteSheetFPS)
@@ -160,17 +162,35 @@ void calcSpriteSheetAdjustment(
   {
     return;
   }
+  vec2 uvSize, uvBias;
+  calcSpritesheetValues(
+    timeSinceStartSeconds,
+    spriteSheetRows,
+    spriteSheetCols,
+    spriteSheetFPS,
+    uvSize,
+    uvBias);
 
-  const uint numSprites = spriteSheetCols * spriteSheetRows;
-  // Note: timeSinceStartMS is clamped to 2^24 - 1 on the CPU side so this multiplication shouldn't overflow.
-  const uint frame = ((timeSinceStartMS * spriteSheetFPS) / 1000) % numSprites;
-
-  const vec2 uvSize = vec2(1.0f / spriteSheetCols, 1.0f / spriteSheetRows);
-  const vec2 uvBias = vec2(frame % spriteSheetCols, frame / spriteSheetCols) * uvSize;
-
-  textureCoordinates = uvBias + textureCoordinates * uvSize;
+  textureCoordinates = uvBias + frac(textureCoordinates) * uvSize;
   textureGradientX *= uvSize;
   textureGradientY *= uvSize;
+}
+
+void calcSpritesheetValues(
+  float timeSinceStartSeconds,
+  uint8_t spriteSheetRows,
+  uint8_t spriteSheetCols,
+  uint8_t spriteSheetFPS,
+  inout vec2 uvSize,
+  inout vec2 uvBias
+)
+{
+  const uint numSprites = spriteSheetCols * spriteSheetRows;
+  // Note: timeSinceStartSeconds is clamped to (2^24 - 1) / 1000 on the CPU side so this multiplication shouldn't overflow.
+  const uint frame = (uint(timeSinceStartSeconds * spriteSheetFPS)) % numSprites;
+
+  uvSize = vec2(1.0f / spriteSheetCols, 1.0f / spriteSheetRows);
+  uvBias = vec2(frame % spriteSheetCols, frame / spriteSheetCols) * uvSize;
 }
 
 SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
@@ -189,10 +209,14 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
     {
       const uint indexBufferIndex = surface.indexBufferIndex;
 
-      if(surface.indexStride == 4)
+      if (surface.indexStride == 4)
+      {
         idx[i] = BUFFER_ARRAY(indices32, indexBufferIndex, indexIndex);
+      }
       else
+      {
         idx[i] = BUFFER_ARRAY(indices, indexBufferIndex, indexIndex);
+      }
     }
     else
     {
@@ -240,7 +264,7 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
   const vec3 bary = uintToBarycentrics(rayInteraction.barycentricCoordinates);
 
   SurfaceInteraction surfaceInteraction;
-
+  
   // Calculate vertex position in world space
   // Note: World space positions needed to compute the texture gradients, a bit expensive but probably easier than transforming
   // the ray direction into object space and worrying about how to transform its cone width appropriately (scales could affect it).
@@ -318,9 +342,22 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
       const uint normalBufferIndex = surface.normalBufferIndex;
       const uint normalElementIndex = (currentIndex * uint(surface.normalStride) + surface.normalOffset) / 4;
   
-      normals[i].x = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 0);
-      normals[i].y = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 1);
-      normals[i].z = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 2);
+      if (surface.normalsEncoded)
+      {
+        const uint encodedNormal = floatBitsToUint(BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex));
+        const vec3 decodedNormal = unsignedOctahedralToSphereDirection(vec2(
+          unorm16ToF32(uint16_t(encodedNormal >> 0)),
+          unorm16ToF32(uint16_t(encodedNormal >> 16))
+        ));
+
+        normals[i] = decodedNormal;
+      }
+      else
+      {
+        normals[i].x = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 0);
+        normals[i].y = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 1);
+        normals[i].z = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 2);
+      }
     }
   
     // Note: Fall back to the triangle normal when an interpolated normal cannot be derived. Note this will not produce a
@@ -473,7 +510,7 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
         const f16mat3 worldToTangent = f16mat3(surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent, surfaceInteraction.interpolatedNormal);
         const f16vec3 viewDirTangentSpace = normalize(mul(worldToTangent, rayInteraction.viewDirection));
         // viewDirection is hitPos to camera, so invert it before converting to a texcoord offset.
-        const vec2 maxPossiblePomOffset = viewDirTangentSpace.xy * (-1.f * surface.displaceIn / viewDirTangentSpace.z);
+        const vec2 maxPossiblePomOffset = viewDirTangentSpace.xy * (-1.f * cb.terrainArgs.displaceIn / viewDirTangentSpace.z);
 
         const vec2 textureCenterOffset = texcoordToOffsetFromTextureCenter(surfaceInteraction.textureCoordinates + maxPossiblePomOffset);
         const float maxTextureCenterOffset = length(textureCenterOffset);
@@ -491,14 +528,14 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
         convert1stCascadeTexCoordsToTargetCascadeLevel(cascadeLevel, surfaceInteraction.textureCoordinates, texcoords);
       }
 
-#if defined(RAY_TRACING_PRIMARY_RAY) && defined(RAY_PIPELINE)
+#if defined(RAY_TRACING_PRIMARY_RAY)
       if (cb.debugView == DEBUG_VIEW_CASCADE_LEVEL)
       {
-        storeInDebugView(DispatchRaysIndex().xy, cascadeLevel);
+        storeInDebugView(getDispatchRaysIndex().xy, cascadeLevel);
       }
       else if (cb.debugView == DEBUG_VIEW_IS_BAKED_TERRAIN)
       {
-        storeInDebugView(DispatchRaysIndex().xy, 1);
+        storeInDebugView(getDispatchRaysIndex().xy, 1);
       }
 #endif
     }
@@ -562,7 +599,7 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
       surfaceInteraction.textureCoordinates,
       surfaceInteraction.textureGradientX,
       surfaceInteraction.textureGradientY,
-      cb.timeSinceStartMS,
+      cb.timeSinceStartSeconds,
       surface.spriteSheetRows,
       surface.spriteSheetCols,
       surface.spriteSheetFPS);

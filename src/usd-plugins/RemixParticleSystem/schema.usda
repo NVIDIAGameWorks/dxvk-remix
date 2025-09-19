@@ -1,0 +1,252 @@
+#usda 1.0
+(
+    """API schema for driving GPU particle systems on existing Mesh or Material prims."""
+    subLayers = [
+        @usdGeom/schema.usda@,   # for UsdGeomMesh
+        @usdShade/schema.usda@   # for UsdShadeMaterial
+    ]
+)
+
+over "GLOBAL" (
+    customData = {
+        string libraryName = "Remix"
+        string libraryPath = "."
+    }
+)
+{
+}
+
+# Single apply API schema: can be applied to any prim (we'll 
+# conventionally use it on Mesh and Material prims).
+class "ParticleSystemAPI" (
+    inherits = </APISchemaBase>
+    customData = {
+        token apiSchemaType = "singleApply"
+    }
+    doc = """
+        Adds GPU-driven particle simulation parameters to an existing prim.
+        Apply to a Mesh to make it an emitter, or to a Material to mark it
+        as the particle-system's shading material.
+    """
+)
+{
+    int primvars:particle:maxNumParticles = 10000 (
+            doc = "Maximum number of particles to simulate per emitter (or material) simultaneously. Lower values are more performant - tune this to your needs."
+            displayGroup = "Spawn" 
+            displayName = "Max Number of Particles"
+        )
+
+    float primvars:particle:spawnRatePerSecond = 0.0 (
+            doc = "Number of particles to spawn per second on average from this emitter."
+            displayGroup = "Spawn" 
+            displayName = "Particle Spawn Rate"
+        )
+        
+    float primvars:particle:minTimeToLive = 1.0 (
+            doc = "Minimum lifetime (in seconds) to give to a particle when spawned. Particles older than this are immediately killed."
+            displayGroup = "Spawn" 
+            displayName = "Minimum Time to Live"
+        )
+
+    float primvars:particle:maxTimeToLive = 1.0 (
+            doc = "Maximum lifetime (in seconds) to give to a particle when spawned. After this time, particles are automatically removed."
+            displayGroup = "Spawn" 
+            displayName = "Maximum Time to Live"
+        )
+
+    float primvars:particle:minSpawnSize = 10.0 (
+            doc = "Minimum size (in centimeters) to give to a particle when spawned."
+            displayGroup = "Spawn"
+            displayName = "Minimum Particle Size"
+        )
+
+    float primvars:particle:maxSpawnSize = 10.0 (
+            doc = "Maximum size (in centimeters) to give to a particle when spawned."
+            displayGroup = "Spawn"
+            displayName = "Maximum Particle Size"
+        )
+
+    float primvars:particle:minSpawnRotationSpeed = 0.0 (
+            doc = "Minimum rotation speed (in revolutions per second) to give to a particle when spawned. Only used if alignParticlesToVelocity is false."
+            displayGroup = "Spawn"
+            displayName = "Minimum Rotation Speed"
+        )
+
+    float primvars:particle:maxSpawnRotationSpeed = 0.0 (
+            doc = "Maximum rotation speed (in revolutions per second) to give to a particle when spawned. Only used if alignParticlesToVelocity is false."
+            displayGroup = "Spawn"
+            displayName = "Maximum Rotation Speed"
+        )
+
+    color4f primvars:particle:minSpawnColor = (1, 1, 1, 1) (
+            doc = "Minimum RGBA color to tint each newly spawned particle. Each component is in [0,1]."
+            displayGroup = "Spawn"
+            displayName = "Minimum Spawn Color"
+        )
+
+    color4f primvars:particle:maxSpawnColor = (1, 1, 1, 1) (
+            doc = "Maximum RGBA color to tint each newly spawned particle. Each component is in [0,1]."
+            displayGroup = "Spawn"
+            displayName = "Maximum Spawn Color"
+        )
+
+    float primvars:particle:minTargetSize = 0.0 (
+            doc = "Minimum size (in centimeters) picked from a range, to be used as the target animation state, at the end of the particles life."
+            displayGroup = "Target"
+            displayName = "Minimum Particle Size"
+        )
+
+    float primvars:particle:maxTargetSize = 0.0 (
+            doc = "Maximum size (in centimeters) picked from a range, to be used as the target animation state, at the end of the particles life."
+            displayGroup = "Target"
+            displayName = "Maximum Particle Size"
+        )
+
+    float primvars:particle:minTargetRotationSpeed = 0.0 (
+            doc = "Minimum rotation speed (in revolutions per second) picked from a range, to be used as the target animation state, at the end of the particles life.  Only used if alignParticlesToVelocity is false."
+            displayGroup = "Target"
+            displayName = "Minimum Rotation Speed"
+        )
+
+    float primvars:particle:maxTargetRotationSpeed = 0.0 (
+            doc = "Maximum rotation speed (in revolutions per second) picked from a range, to be used as the target animation state, at the end of the particles life.  Only used if alignParticlesToVelocity is false."
+            displayGroup = "Target"
+            displayName = "Maximum Rotation Speed"
+        )
+
+    color4f primvars:particle:minTargetColor = (1, 1, 1, 0) (
+            doc = "Minimum RGBA color picked from a range, to be used as the target animation state, at the end of the particles life."
+            displayGroup = "Target"
+            displayName = "Minimum Target Color"
+        )
+
+    color4f primvars:particle:maxTargetColor = (1, 1, 1, 0) (
+            doc = "Maximum RGBA color picked from a range, to be used as the target animation state, at the end of the particles life."
+            displayGroup = "Target"
+            displayName = "Maximum Target Color"
+        )
+
+    bool primvars:particle:hideEmitter = false (
+            doc = "Hide or show the particle emitter in the rendered output."
+            displayGroup = "Spawn"
+            displayName = "Hide Emitter"
+        )
+
+    bool primvars:particle:useSpawnTexcoords = false (
+            doc = "Use the texture coordinates of the emitter mesh when sampling spawn positions or velocities."
+            displayGroup = "Spawn"
+            displayName = "Use Spawn Mesh's Texture Coordinates"
+        )
+
+    float primvars:particle:initialVelocityFromMotion = 0.0 (
+            doc = "Multiplier for initial velocity applied at spawn time, based on the spawning objects current velocity."
+            displayGroup = "Spawn"
+            displayName = "Initial Velocity From Motion"
+        )
+        
+    float primvars:particle:initialVelocityFromNormal = 0.0 (
+            doc = "Initial speed (centimeters per sec) applied at spawn along the normal vector of the emitting triangle."
+            displayGroup = "Spawn"
+            displayName = "Initial Velocity From Normal"
+        )
+
+    float primvars:particle:initialVelocityConeAngleDegrees = 0.0 (
+            doc = "Half-angle (in degrees) of the random emission cone around the triangle's surface normal when spawning. Value must be in [0,180]."
+            displayGroup = "Spawn"
+            displayName = "Initial Velocity Cone Angle"
+        )
+
+    # Simulation
+    float primvars:particle:maxSpeed = -1.0 (
+            doc = "Maximum speed (centimeters per sec) of a particle in world space. Particles exceeding this are clamped.  Negative values imply unlimited speed."
+            displayGroup = "Simulation"
+            displayName = "Max Speed Limit"
+        )
+
+    float primvars:particle:gravityForce = -0.98 (
+            doc = "Net influence of gravity on each particle (centimeters per second squared). Negative values pull particles downward."
+            displayGroup = "Simulation"
+            displayName = "Gravity Force"
+        )
+
+    bool primvars:particle:useTurbulence = false (
+            doc = "Enable procedural turbulence forces on particles to create more chaotic motion."
+            displayGroup = "Simulation"
+            displayName = "Apply Velocity Turbulence"
+        )
+
+    float primvars:particle:turbulenceForce = 5.0 (
+            doc = "How much turbulence influences the velocity of a particle as an external force (represented in centimeters per second squared)."
+            displayGroup = "Simulation"
+            displayName = "Turbulence Force"
+        )
+
+    float primvars:particle:turbulenceFrequency = 0.05 (
+            doc = "Frequency (rate of change) of the turbulence forces. Lower values change slowly; higher values change rapidly.  This is specified in centimeters."
+            displayGroup = "Simulation"
+            displayName = "Turbulence Frequency"
+        )
+
+    # Collision
+    bool primvars:particle:enableCollisionDetection = false (
+            doc = "Enables per-particle collision detection against scene geometry. Particles inside geometry will be pushed out and their velocities updated."
+            displayGroup = "Collision"
+            displayName = "Enable Collision Detection"
+        )
+
+    float primvars:particle:collisionRestitution = 0.5 (
+            doc = "Fraction of velocity retained after colliding with geometry. 1.0 = perfectly elastic (no speed loss); 0.0 = completely inelastic. Values outside [0,1] are clamped."
+            displayGroup = "Collision"
+            displayName = "Bounciness"
+        )
+
+    float primvars:particle:collisionThickness = 5.0 (
+            doc = "Maximum penetration depth (in centimeters) at which a particle will still register a collision. Deeper penetrations are ignored."
+            displayGroup = "Collision"
+            displayName = "Thickness"
+        )
+
+    # Visual
+    bool primvars:particle:alignParticlesToVelocity = false (
+            doc = "When enabled, rotates particles so their up axis always aligns with their direction of travel. Rotation speed settings are ignored."
+            displayGroup = "Visual"
+            displayName = "Align Particles to Motion"
+        )
+
+    bool primvars:particle:enableMotionTrail = false (
+            doc = "Elongates particles along their velocity vector to create a motion-blur tail. Edges preserve texture, only the center stretches. Automatically aligns particles to their velocity."
+            displayGroup = "Visual"
+            displayName = "Enable Motion Trail"
+        )
+
+    float primvars:particle:motionTrailMultiplier = 1.0 (
+            doc = "Multiplier for motion-trail length when enableMotionTrail is on. 1.0 = exact displacement over the last frame; >1 lengthens the trail, <1 shortens it. Values =0 are invalid."
+            displayGroup = "Visual"
+            displayName = "Motion Trail Multiplier"
+        )
+
+    uniform token primvars:particle:billboardType = "FaceCamera_Spherical" (
+            doc = """
+                Selects the geometric orientation mode used when rendering each particle sprite.
+
+                0 = Face Camera (Spherical)
+                    A fully camera-facing billboard. The particle quad always faces the camera, rotating freely in both axes.
+
+                1 = Face Camera - Up Axis Locked (Cylindrical)
+                    The particle quad faces the camera around the world up axis only. 
+                    Useful for tall vertical effects like smoke columns or fire, which should not lean with the camera.
+                
+                2 = Face Camera - Position
+                    The particle quad faces toward the camera position, but does not rotate 
+                    when the camera rolls.
+
+                3 = Face World Up (Horizontal Plane)
+                    The particle quad lies flat in a horizontal plane facing upDirection, 
+                    regardless of camera orientation. Suitable for ground dust, footprints, or water ripples.
+
+                """
+            displayGroup = "Visual"
+            displayName = "Billboard Type"
+            allowedTokens = ["FaceCamera_Spherical", "FaceCamera_UpAxisLocked", "FaceCamera_Position", "FaceWorldUp"]
+        )
+}

@@ -223,6 +223,7 @@ namespace dxvk {
   RtxGeometryUtils::RtxGeometryUtils(DxvkDevice* device) : CommonDeviceObject(device) {
     m_pCbData = std::make_unique<RtxStagingDataAlloc>(
       device,
+      "RtxStagingDataAlloc: Geometry Utils CB",
       (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT),
       VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
@@ -246,8 +247,12 @@ namespace dxvk {
 
     ScopedGpuProfileZone(ctx, "performSkinning");
 
+    const auto normalVertexFormat = drawCallState.getGeometryData().normalBuffer.vertexFormat();
+
     SkinningArgs params {};
 
+    // Note: VK_FORMAT_R32_UINT assumed to be 32 bit spherical octahedral normals.
+    assert(normalVertexFormat == VK_FORMAT_R32G32B32_SFLOAT || normalVertexFormat == VK_FORMAT_R32G32B32A32_SFLOAT || normalVertexFormat == VK_FORMAT_R32_UINT);
     assert(drawCallState.getGeometryData().blendWeightBuffer.defined());
 
     memcpy(&params.bones[0], &drawCallState.getSkinningState().pBoneMatrices[0], sizeof(Matrix4) * drawCallState.getSkinningState().numBones);
@@ -264,12 +269,16 @@ namespace dxvk {
 
     params.blendWeightStride = drawCallState.getGeometryData().blendWeightBuffer.stride();
     params.blendWeightOffset = drawCallState.getGeometryData().blendWeightBuffer.offsetFromSlice();
-
     params.blendIndicesStride = drawCallState.getGeometryData().blendIndicesBuffer.stride();
     params.blendIndicesOffset = drawCallState.getGeometryData().blendIndicesBuffer.offsetFromSlice();
+
     params.numVertices = geo.vertexCount;
     params.useIndices = drawCallState.getGeometryData().blendIndicesBuffer.defined() ? 1 : 0;
     params.numBones = drawCallState.getGeometryData().numBonesPerVertex;
+    params.useOctahedralNormals = normalVertexFormat == VK_FORMAT_R32_UINT ? 1 : 0;
+
+    // If we don't have a mappable vertex buffer then we need to do this on the GPU
+    bool mustUseGPU = drawCallState.getGeometryData().positionBuffer.mapPtr() == nullptr;
 
     // At some point, its more efficient to do these calculations on the GPU, this limit is somewhat arbitrary however, and might require better tuning...
     const uint32_t kNumVerticesToProcessOnCPU = 256;
@@ -280,7 +289,7 @@ namespace dxvk {
                                  drawCallState.getGeometryData().blendWeightBuffer.isPendingGpuWrite() ||
                                  (drawCallState.getGeometryData().blendIndicesBuffer.defined() && drawCallState.getGeometryData().blendIndicesBuffer.isPendingGpuWrite());
 
-    const bool useCPU = params.numVertices <= kNumVerticesToProcessOnCPU && !pendingGpuWrite;
+    const bool useCPU = params.numVertices <= kNumVerticesToProcessOnCPU && !pendingGpuWrite && !mustUseGPU;
 
     if (!useCPU) {
       // Setting alignment to device limit minUniformBufferOffsetAlignment because the offset value should be its multiple.
@@ -480,7 +489,8 @@ namespace dxvk {
     args.resolveTransparencyThreshold = desc.resolveTransparencyThreshold;
     args.resolveOpaquenessThreshold = desc.resolveOpaquenessThreshold;
     args.useConservativeEstimation = desc.useConservativeEstimation;
-    args.materialType = static_cast<uint32_t>(desc.materialType);
+    args.isOpaqueMaterial = desc.materialType == MaterialDataType::Opaque;
+    args.isRayPortalMaterial = desc.materialType == MaterialDataType::RayPortal;
     args.applyVertexAndTextureOperations = desc.applyVertexAndTextureOperations;
     args.numMicroTrianglesPerThread = args.is2StateOMMFormat ? 8 : 4;
     args.textureResolution = vec2 { static_cast<float>(opacityTextureResolution.width), static_cast<float>(opacityTextureResolution.height) };
@@ -617,6 +627,7 @@ namespace dxvk {
       args.rcpResolution = float2(1.f / extent.width, 1.f / extent.height);
       args.normalIntensity = OpaqueMaterialOptions::normalIntensity();
       args.scale = conversionInfo.scale;
+      args.offset = conversionInfo.offset;
 
       ctx->pushConstants(0, sizeof(args), &args);
 
@@ -686,7 +697,7 @@ namespace dxvk {
     ctx->getCommonObjects()->metaGeometryUtils().dispatchGenTriList(ctx, pushArgs, DxvkBufferSlice(output), pushArgs.useIndexBuffer ? &input.indexBuffer : nullptr);
 
     if (indexCount % 3 != 0) {
-      ONCE(Logger::err(str::format("Generating indices for a mesh which has non triangle topology: (indices%3) != 0, geometry hash = 0x", std::hex, input.getHashForRule(RtxOptions::Get()->GeometryAssetHashRule))));
+      ONCE(Logger::err(str::format("Generating indices for a mesh which has non triangle topology: (indices%3) != 0, geometry hash = 0x", std::hex, input.getHashForRule(RtxOptions::geometryAssetHashRule()))));
       return false;
     }
 
@@ -807,7 +818,7 @@ namespace dxvk {
     
     assert(output.buffer->info().size == align(output.stride * input.vertexCount, CACHE_LINE_SIZE));
 
-    bool pendingGpuWrites = input.positionBuffer.isPendingGpuWrite();
+    bool mustUseGPU = input.positionBuffer.isPendingGpuWrite() || input.positionBuffer.mapPtr() == nullptr;
 
     // Interleave vertex data
     InterleaveGeometryArgs args;
@@ -821,7 +832,7 @@ namespace dxvk {
     }
     args.hasNormals = input.normalBuffer.defined();
     if (args.hasNormals) {
-      pendingGpuWrites |= input.normalBuffer.isPendingGpuWrite();
+      mustUseGPU |= input.normalBuffer.isPendingGpuWrite() || input.normalBuffer.mapPtr() == nullptr;
       assert(input.normalBuffer.offsetFromSlice() % 4 == 0);
       args.normalOffset = input.normalBuffer.offsetFromSlice() / 4;
       args.normalStride = input.normalBuffer.stride() / 4;
@@ -832,7 +843,7 @@ namespace dxvk {
     }
     args.hasTexcoord = input.texcoordBuffer.defined();
     if (args.hasTexcoord) {
-      pendingGpuWrites |= input.texcoordBuffer.isPendingGpuWrite();
+      mustUseGPU |= input.texcoordBuffer.isPendingGpuWrite() || input.texcoordBuffer.mapPtr() == nullptr;
       assert(input.texcoordBuffer.offsetFromSlice() % 4 == 0);
       args.texcoordOffset = input.texcoordBuffer.offsetFromSlice() / 4;
       args.texcoordStride = input.texcoordBuffer.stride() / 4;
@@ -843,7 +854,7 @@ namespace dxvk {
     }
     args.hasColor0 = input.color0Buffer.defined();
     if (args.hasColor0) {
-      pendingGpuWrites |= input.color0Buffer.isPendingGpuWrite();
+      mustUseGPU |= input.color0Buffer.isPendingGpuWrite() || input.color0Buffer.mapPtr() == nullptr;
       assert(input.color0Buffer.offsetFromSlice() % 4 == 0);
       args.color0Offset = input.color0Buffer.offsetFromSlice() / 4;
       args.color0Stride = input.color0Buffer.stride() / 4;
@@ -859,7 +870,7 @@ namespace dxvk {
     args.vertexCount = input.vertexCount;
 
     const uint32_t kNumVerticesToProcessOnCPU = 1024;
-    const bool useGPU = input.vertexCount > kNumVerticesToProcessOnCPU || pendingGpuWrites;
+    const bool useGPU = input.vertexCount > kNumVerticesToProcessOnCPU || mustUseGPU;
 
     if (useGPU) {
       ctx->bindResourceBuffer(INTERLEAVE_GEOMETRY_BINDING_OUTPUT, DxvkBufferSlice(output.buffer));

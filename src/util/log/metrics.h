@@ -32,10 +32,12 @@
 
 namespace dxvk {
   enum Metric {
-    average_frame_time = 0,  // In milliseconds
-    vid_memory_usage,        // In MB
-    sys_memory_usage,        // In MB
-    gpu_idle_ticks,          // In milliseconds
+    dxvk_average_frame_time_ms = 0,  // In milliseconds
+    dxvk_vid_memory_usage_mb,        // In MB
+    dxvk_sys_memory_usage_mb,        // In MB
+    dxvk_gpu_idle_time_ms,           // In milliseconds
+    dxvk_total_time_ms,              // In milliseconds
+    dxvk_frame_count,                // Count of rendered frames
 
     kCount
   };
@@ -50,17 +52,24 @@ namespace dxvk {
   public:
     Metrics();
     ~Metrics();
-    
-    static void log(Metric metric, const float& value);
+
+    // Will log the rolling average of the past 30 frames when the app closes.
+    static void logRollingAverage(Metric metric, const float& value);
+    // Will log the passed in value when the app closes.
+    static void logFloat(Metric metric, const float& value);
     static void serialize();
 
   private:
-    inline static const std::string m_metricNames[kCount] = {
-      "average_frame_time",
-      "vid_memory_usage",
-      "sys_memory_usage",
-      "gpu_idle_ticks",
+    inline static const std::string m_metricNames[] = {
+      "dxvk_average_frame_time_ms",
+      "dxvk_vid_memory_usage_mb",
+      "dxvk_sys_memory_usage_mb",
+      "dxvk_gpu_idle_time_ms",
+      "dxvk_total_time_ms",
+      "dxvk_frame_count",
     };
+
+    static_assert(std::size(m_metricNames) == kCount, "m_metricNames must have an entry for every Metric enum value");
 
     std::array<float, Metric::kCount> m_data = {};
 

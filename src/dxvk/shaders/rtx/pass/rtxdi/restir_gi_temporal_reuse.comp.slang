@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -234,6 +234,8 @@ void main(int2 thread_id : SV_DispatchThreadID)
     // Calculate reflection hit T
     uint8_t backupPortalID = RTXDI_INVALID_PORTAL_INDEX;
     uint8_t rayMask = OBJECT_MASK_OPAQUE | (surface.objectMask & OBJECT_MASK_ALL_DYNAMIC);
+    rayMask |= (cb.enableIndirectAlphaBlendShadows) ? OBJECT_MASK_ALPHA_BLEND : 0;
+    
     const float infiniteHitT = 1e5;
     float3 dstPosition = worldPos + reflectionVector * infiniteHitT;
     VisibilityResult visibility = traceVisibilityRay<visibilityModeAccurateHitDistance>(surface.minimalSurfaceInteraction,
@@ -328,7 +330,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
 
   // Sample validation use rtxdi gradient to discard stale samples.
   // Although it can only verify samples inside the screen, it still helps in many cases.
-  if(cb.enableReSTIRGILightingValidation > 0 && !isInitialSample)
+  if (cb.enableReSTIRGILightingValidation > 0 && !isInitialSample)
   {
     validateSample(inputReservoir, resultReservoir, isGBufferSimilar);
   }
@@ -347,11 +349,16 @@ void main(int2 thread_id : SV_DispatchThreadID)
   {
     storeInDebugView(thread_id, isGBufferSimilar ? lerp(vec3(1, 0, 0), vec3(0, 1, 0), reflectionReprojectionWeight) : vec3(0));
   }
-  else if(cb.debugView == DEBUG_VIEW_NAN)
+  else if (cb.debugView == DEBUG_VIEW_NAN)
   {
     bool isValid = true;
+
     // DEBUG_VIEW_RESTIR_GI_INITIAL_SAMPLE
     isValid &= isValidValue(inputReservoir.radiance);
+
+    // Skipped as it's a true/false variable 
+    // DEBUG_VIEW_RESTIR_GI_TEMPORAL_REUSE
+    
     accumulateInDebugViewAnd(thread_id, isValid);
   }
 }

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -22,6 +22,7 @@
 #define RAB_HAS_CURRENT_GBUFFER 1
 #define RAB_HAS_RESTIR_GI_RESERVOIRS 1
 #define OPAQUE_MATERIAL_USE_POM 1
+#define ENABLE_NRC 1
 
 #include "rtx/pass/common_bindings.slangh"
 #include "rtx/pass/integrate/integrate_nee_bindings.slangh"
@@ -31,6 +32,8 @@
 #include "rtxdi/DlssEnhancementFilterFunctions.slangh"
 #include "rtx/algorithm/nee_cache.h"
 #include "rtx/algorithm/integrator.slangh"
+#include "rtx/pass/nrc/nrc_utilities.slangh"
+#include "rtx/pass/nrc/nrc_debug_view_utilities.slangh"
 
 float16_t getLobeAngleFromMaterial(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction)
 {
@@ -40,6 +43,33 @@ float16_t getLobeAngleFromMaterial(OpaqueSurfaceMaterialInteraction opaqueSurfac
                             / calcBt709Luminance(opaqueSurfaceMaterialInteraction.albedo + opaqueSurfaceMaterialInteraction.baseReflectivity);
   const float finalLobeAngleNorm = lerp(1.0, lobeAngleNorm, specularRatio);
   return pi * 0.25 * finalLobeAngleNorm;
+}
+
+void addRadianceToNrcTrainingPathVertex(
+  uvec2 pixelIndex,
+  uvec2 trainingPixelCoordinate,
+  uint bounceIndex,
+  vec3 radiance)
+{
+  const uint trainingPathVertexIndex = NrcCalculateTrainingPathVertexIndex(
+    cb.nrcArgs.nrcConstants.trainingDimensions,
+    trainingPixelCoordinate,
+    bounceIndex, 
+    cb.nrcArgs.nrcConstants.maxPathVertices);
+
+  // Sanitize the inputs since they occasionally have NaNs
+  f16vec3 dummyThroughput = f16vec3(1); 
+  Nrc::sanitizeNrcInputs(true, cb.nrcArgs, dummyThroughput, radiance);
+
+  // Combine with previous radiance
+  NrcPackedPathVertex nrcPackedPathVertex = TrainingPathVertices[trainingPathVertexIndex];
+  nrcPackedPathVertex.data[0] = NrcEncodeLogLuvHdr(radiance + NrcDecodeLogLuvHdr(nrcPackedPathVertex.data[0]));
+  
+  // Write the combined radiance out
+  TrainingPathVertices[trainingPathVertexIndex] = nrcPackedPathVertex;
+  
+  // Register radiance for a training path
+  Nrc::debugRegisterNrcRadiance(trainingPixelCoordinate, true, bounceIndex, radiance, dummyThroughput, cb.debugView);
 }
 
 [shader("compute")]
@@ -57,6 +87,10 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   // to output indirect lighting information
   if (gBufferMiss)
   {
+    // Make sure to clear out pixels we're skipping over since NRC resolve pass reads from all the output pixels after this pass
+    PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex] = vec4(vec3(0), kEmptyPixelHitDistance);
+    PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex] = vec4(vec3(0), kEmptyPixelHitDistance);
+
     return;
   }
 
@@ -110,10 +144,11 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   // Deserialize the Surface Material Interaction
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction = polymorphicSurfaceMaterialInteractionReadFromGBuffer(
     threadIndex, PrimaryWorldShadingNormal, PrimaryPerceptualRoughness, PrimaryAlbedo, PrimaryBaseReflectivity,
-    SharedMaterialData0, SharedMaterialData1, SharedSurfaceIndex, SharedSubsurfaceData);
+    SharedMaterialData0, SharedMaterialData1, SharedSurfaceIndex, SharedSubsurfaceData, SharedSubsurfaceDiffusionProfileData);
 
   // Perform next event estimation on cached emissive triangle list
   // Also add NEE sample to sample reservoir
+  // ToDo - calculate non-Restir GI portion to secondary signal as well
   ReSTIRGI_Reservoir resultReservoir = ReSTIRGI_Reservoir.createEmpty();
   if (cb.neeCacheArgs.enable && cb.neeCacheArgs.enableOnFirstBounce &&
       polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque)
@@ -152,16 +187,29 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           evaluateUnshadowedLight(lightSample, opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection, diffuseLight, specularLight);
 
           uint8_t rayMask = OBJECT_MASK_OPAQUE | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
+          rayMask |= (cb.enableIndirectAlphaBlendShadows) ? OBJECT_MASK_ALPHA_BLEND : 0;
+          
           bool pomOpaqueSurfaceEncountered = cb.pomEnableNEECache && opaqueSurfaceMaterialInteractionHasHeightTexture(opaqueSurfaceMaterialInteraction);
-          uint16_t surfaceIndex = pomOpaqueSurfaceEncountered ? uint16_t(SharedSurfaceIndex[threadIndex]) : BINDING_INDEX_INVALID;
           isVisible = evalNEESecondary(
             lightSample, invalidRayPortalIndex, surface.portalSpace, rayMask, pomOpaqueSurfaceEncountered,
             surface.isViewModel, primaryRay,
             minimalRayInteraction, minimalSurfaceInteraction, opaqueSurfaceMaterialInteraction,
-            diffuseLight, specularLight, surfaceIndex, SharedTextureCoord[threadIndex]);
+            diffuseLight, specularLight, SharedSurfaceIndex[threadIndex], SharedTextureCoord[threadIndex]);
+
+          // Coordinate of a training path in NRC training pixel coordinate space
+          uvec2 nrcTrainingPixelCoordinate;
+          bool hasNrcTrainingPath = false;
+
+          if (cb.enableNrc) 
+          {
+            hasNrcTrainingPath = Nrc::calculateIfPixelHasActiveNrcTrainingPath(threadIndex, cb.nrcArgs, nrcTrainingPixelCoordinate);
+          }
 
           // Skip some pixels to reduce memory traffic, especially when large screen area is occupied by a single cell.
-          if (any(diffuseLight + specularLight) > 0 && (threadIndex.x + threadIndex.y) % 4 == 0)
+          if (any(diffuseLight + specularLight) > 0
+            // Don't skip pixels with active NRC training paths. They are run at low(er) resolution anyway
+            && (hasNrcTrainingPath
+                || (threadIndex.x + threadIndex.y) % 4 == 0))
           {
             int prefixTask = NEECacheUtils.convertIDToPrefixSumID(candidate.getSurfaceID(), primitiveIndex, PrimitiveIDPrefixSum);
             if (cb.neeCacheArgs.enableSpatialReuse)
@@ -174,6 +222,14 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
 
           indirectDiffuseOutput.xyz += diffuseLight;
           indirectSpecularOutput.xyz += specularLight;
+
+          // Add the sampled NEE Cache light radiance to NRC training paths
+          if (hasNrcTrainingPath)
+          {
+            const uint bounceIndex = 0;
+            const vec3 neeRadiance = diffuseLight + specularLight;
+            addRadianceToNrcTrainingPathVertex(threadIndex, nrcTrainingPixelCoordinate, bounceIndex, neeRadiance);
+          }
         }
 
         if (cb.enableReSTIRGI && isVisible)
@@ -197,7 +253,11 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
       }
     }
   }
-  RAB_StoreGIReservoir(resultReservoir, threadIndex, ReSTIRGI_GetInitSamplePage());
+
+  if (cb.enableReSTIRGI)
+  {
+    RAB_StoreGIReservoir(resultReservoir, threadIndex, ReSTIRGI_GetInitSamplePage());
+  }
 
   PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex] = indirectDiffuseOutput;
   PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex] = indirectSpecularOutput;

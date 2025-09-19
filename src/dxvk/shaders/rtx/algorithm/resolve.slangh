@@ -157,15 +157,15 @@ bool evaluateOpaqueApproximations(
   {
     const uint froxelVolumeHint = portalSpaceToVolumeHint(portalSpace);
 
-    const vec3 accumulatedOutgoingRadiance = evalVolumetricNEE(VolumeFilteredRadiance, volumeArgs,
-      surfaceInteraction, froxelVolumeHint);
+    const vec3 accumulatedOutgoingRadiance = evalVolumetricNEE(VolumeFilteredRadianceY, VolumeFilteredRadianceCoCg, volumeArgs,
+      surfaceInteraction, opaqueSurfaceMaterialInteraction.shadingNormal, froxelVolumeHint);
 
     // Note: Volume radiance cache assumes isotropic scattering (no directionality), but we want something closer to a "diffuse" distribution for
     // the surface of a particle rather than a volumetric contribution, so we multiply it by 4 here (albedo * 4 * radiance / (4 * pi) = albedo / pi).
     // Secondly, in the future this should use spherical harmonics to convert to a diffuse (or perhaps some sort of directional HG phase function to allow
     // for some contribution from behind) distribution so more directionality is respected rather than this simple multiply by 4 hack (which is not super physically correct).
     // Finally, albedo has opacity baked into it already so it does not need to be multiplied in here.
-    emissiveRadiance += float16_t(4.0f) * opaqueSurfaceMaterialInteraction.albedo * accumulatedOutgoingRadiance * incomingRadianceAttenuation;
+    emissiveRadiance += opaqueSurfaceMaterialInteraction.albedo * accumulatedOutgoingRadiance * incomingRadianceAttenuation;
   }
 #else
   const bool opacityLightingApprox = false;
@@ -275,8 +275,6 @@ void resolveVertexFinalMiss<let overrideRayInteraction : bool, T : IBasePayloadS
   inout RayInteraction rayInteraction,
   inout f16vec3 radianceAttenuation)
 {
-  unused(radianceAttenuation);
-
   // Set the hit distance for this segment of the ray to a miss and indicate that resolving should be stopped
 
   resolveVertexState.segmentHitDistance = kMissHitDistance;
@@ -294,9 +292,10 @@ void resolveVertexFinalMiss<let overrideRayInteraction : bool, T : IBasePayloadS
 
   // Account for attenuation on miss
   // Note: This is important for any effects which apply after miss, such as potential future skybox effects.
-
 #ifdef RESOLVER_USE_VOLUMETRIC_ATTENUATION
-  radianceAttenuation *= evalVolumetricAttenuation(cb.volumeArgs, false, 0.0f);
+  radianceAttenuation *= calcVolumetricAttenuation(cb.volumeArgs, none, true, 0.0f, resolveVertexState.origin, resolveVertexState.direction);
+#else 
+  unused(radianceAttenuation);
 #endif
 }
 
@@ -317,15 +316,19 @@ void resolveVertex<T: IBasePayloadState>(
   inout bool isStochasticAlphaBlend,
   inout uint8_t firstRayPortal,
   inout bool pomOpaqueSurfaceEncountered,
+  inout bool isRaytracedRenderTarget,
   // Forces enablement of ray portal resolve path regardless of global resolve mask 
   // Needed for RayQuery paths for visibility rays from CHS as they don't run material specific hit groups
   // Visibility rays are expected not to start from RayPortal surfaces, and thus only RayPortal path is force enabled
   const bool forceEnableResolveRayPortal = false,
-  const bool useStochasticAlphaBlend = false) 
+  const bool useStochasticAlphaBlend = false)
 {
   const Camera camera = cb.camera;
   bool teleport = false;
   mat4 teleportMatrix = mat4(1, 0, 0, 0,  0, 1, 0, 0,  0, 0, 1, 0,  0, 0, 0, 1);
+
+  // Set the default value we want to use when nothing opaque is hit
+  pomOpaqueSurfaceEncountered = false;
 
   // Create a Ray and Ray Interaction from the hit
 
@@ -357,9 +360,9 @@ void resolveVertex<T: IBasePayloadState>(
   // as e^x * e^y (where x/y are hit distances) is the same as e^(x + y).
 
 #ifdef RESOLVER_USE_VOLUMETRIC_ATTENUATION
-  radianceAttenuation *= evalVolumetricAttenuation(cb.volumeArgs, true, rayHitInfo.hitDistance);
+  radianceAttenuation *= calcVolumetricAttenuation(cb.volumeArgs, none, false, rayHitInfo.hitDistance, ray.origin, ray.direction);
 #endif
-
+  
   // Create a Surface and Surface Interaction from the hit
 
   surface = surfaces[uint(rayInteraction.surfaceIndex)]; 
@@ -397,7 +400,7 @@ void resolveVertex<T: IBasePayloadState>(
   if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE &&
       polymorphicType == surfaceMaterialTypeOpaque)
   {
-    const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(uint(rayInteraction.surfaceIndex), memoryPolymorphicSurfaceMaterial);
+    const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
 
     OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
       opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
@@ -419,12 +422,28 @@ void resolveVertex<T: IBasePayloadState>(
     polymorphicSurfaceMaterialInteraction =
       polymorphicSurfaceMaterialInteractionCreateInternal(opaqueSurfaceMaterialInteraction);
 
+    // Raytraced Render Target
+    // If we hit a surface that has a render target texture bound then get the associated camera index and
+    // the texture coordinates of the surface we hit
+    if (cb.enableRaytracedRenderTarget && opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_IS_RAYTRACED_RENDER_TARGET)
+    {
+      isRaytracedRenderTarget = true;
+
+      resolveVertexFinalHit(resolveVertexState);
+
+      return;
+    }
+    else
+    {
+      isRaytracedRenderTarget = false;
+    }
+
     // Note: Fully opaque surfaces have no chance at needing further resolving (since they are gauranteed to have no opacity-related blending or translucency), so stopping here is fine.
     // Todo: Incorporate decals into this check so this can be moved above the decal logic for early outing sooner on most hits?
     if (surface.isFullyOpaque)
     {
       // Cache if this surface is a POM material for later use
-      pomOpaqueSurfaceEncountered = opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID && opaqueSurfaceMaterial.displaceIn > 0.h;
+      pomOpaqueSurfaceEncountered = opaqueSurfaceMaterial.hasValidDisplacement();
 
       resolveVertexFinalHit(resolveVertexState);
 
@@ -448,7 +467,7 @@ void resolveVertex<T: IBasePayloadState>(
     if (opacity >= cb.resolveOpaquenessThreshold)
     {
       // Cache if this surface is a POM material for later use
-      pomOpaqueSurfaceEncountered = opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID && opaqueSurfaceMaterial.displaceIn > 0.h;
+      pomOpaqueSurfaceEncountered = opaqueSurfaceMaterial.hasValidDisplacement();
 
       resolveVertexFinalHit(resolveVertexState);
       return;
@@ -503,7 +522,7 @@ void resolveVertex<T: IBasePayloadState>(
   else if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_TRANSLUCENT &&
            polymorphicType == surfaceMaterialTypeTranslucent)
   {
-    const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(uint(rayInteraction.surfaceIndex), memoryPolymorphicSurfaceMaterial);
+    const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
 
     TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction =
       translucentSurfaceMaterialInteractionCreate(translucentSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
@@ -561,7 +580,7 @@ void resolveVertex<T: IBasePayloadState>(
 
     // Render Portal outline
     {
-      const bool portalFadeInEffect = cb.enablePortalFadeInEffect;
+      const bool portalFadeInEffect = cb.enablePortalFadeInEffect && rayPortalSurfaceMaterial.maskTextureIndex != BINDING_INDEX_INVALID;
       const float16_t tFactor = portalFadeInEffect ? float16_t((surface.tFactor >> 24) & 0xff) / 255.0 : float16_t(0.0);
       const float16_t ringTransparency =
         saturate(float16_t(1) - rayPortalSurfaceMaterialInteraction.mask.a) *
@@ -647,6 +666,7 @@ void resolveVertex<T: IBasePayloadState>(
   resolveVertexFinalHit(resolveVertexState);
 }
 
+#ifndef UNORDERED_RESOLVE_WBOIT
 // Finds the lowest bin in terms of distance and outputs its index as well as other associated information.
 void findLowestBin(
   f16mat4 binnedRadiancesAndAttenuation, f16vec4 binDistances,
@@ -672,8 +692,9 @@ void findLowestBin(
 
   lowestRadianceAndAttenuation = selectColumn(binnedRadiancesAndAttenuation, lowestIndex);
 }
+#endif
 
-static RNG resolveVertexUnorderedRng = createRngAnywhere(cb.frameIdx, 555);
+static RNG resolveVertexUnorderedRng = createRNGAnywhere(cb.frameIdx, 555);
 
 void conditionallyStoreDecal(
   inout MemoryDecalMaterialInteraction bins[numDecalResolveBins],
@@ -754,6 +775,15 @@ uint8_t convertPrimaryRayMaskToUnordered(uint8_t primaryRayMask, uint8_t unorder
   return (primaryRayMask & OBJECT_MASK_ALL_DYNAMIC) | unorderedRayMask;
 }
 
+// For handling blending between unordered interactions (i.e. particles), we will be using this technique: 
+//  https://casual-effects.blogspot.com/2014/03/weighted-blended-order-independent.html
+//  With a small addition to handle emissive interactions roughly correctly
+float oitDepthWeight(float hitT, float tMax)
+{
+  float z = saturate(hitT / tMax);
+  return exp(-cb.wboitDepthWeightTuning * z);
+}
+
 // Handles unordered Resolve operations within the resolve loop which do not depend on the typical ordered execution
 // for the resolve logic.
 void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
@@ -806,6 +836,11 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
   // Note: The number of actual relevant hits along the unordered traversal.
   numInteractions = 0;
 
+#ifdef UNORDERED_RESOLVE_WBOIT
+  float3 alphaColorSum = 0..xxx;
+  float alphaWeightSum = 0.0f;
+  float alphaTransProd = 1.0f;
+#else
   // Note: Initialize bins to completely transparent with no radiance to be added in at an impossibly low distance. This
   // ensures these filler items are pulled out first in sorted order, giving the incoming elements a few iterations to populate
   // the bins.
@@ -816,6 +851,7 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
     f16vec4(0.0f, 0.0f, 0.0f, 1.0f),
   );
   f16vec4 binDistances = f16vec4(-1.0f, -1.0f, -1.0f, -1.0f);
+#endif
 
 #ifdef RAY_TRACING_PRIMARY_RAY
   MemoryDecalMaterialInteraction binnedDecals[numDecalResolveBins];
@@ -823,7 +859,7 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
   uint maxSortOrder = 0;
   // TODO[REMIX-3080] Unusued for now, will be needed for normal blending
   // f16mat3 worldToDecalTangent = f16mat3(0);
-  const uint kMaxUnorderedResolveSteps = 64;
+  const uint kMaxUnorderedResolveSteps = 128;
 #else
   float minDecalSample = -1.f;
   uint maxOpaqueSortOrder = 0;
@@ -831,7 +867,7 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
   const uint kMaxUnorderedResolveSteps = 32;
 #endif
 
-  for(uint step=0 ; step<kMaxUnorderedResolveSteps && rayQuery.Proceed() ; step++)
+  for (uint step=0 ; step<kMaxUnorderedResolveSteps && rayQuery.Proceed() ; step++)
   {
     RayHitInfo rayHitInfo;
     RayInteraction rayInteraction;
@@ -993,7 +1029,7 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
 
     if (polymorphicType == surfaceMaterialTypeOpaque)
     {
-      const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(uint(rayInteraction.surfaceIndex), memoryPolymorphicSurfaceMaterial);
+      const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
 
       const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
         opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
@@ -1061,7 +1097,7 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
     }
     else if (polymorphicType == surfaceMaterialTypeTranslucent)
     {
-      const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(uint(rayInteraction.surfaceIndex), memoryPolymorphicSurfaceMaterial);
+      const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
 
       const TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction =
         translucentSurfaceMaterialInteractionCreate(translucentSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
@@ -1074,7 +1110,7 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
         f16vec3(1.0f), currentRadianceAttenuation, currentEmissiveRadiance);
     }
 
-    if (!isTriangle || !surfaceIsDecal(surface))
+    if (!surfaceIsDecal(surface))
     {
       // Calculate a blend softening factor
       // Note: This is done to avoid raster particles handled by this seprated logic from clipping in ugly ways against geometry by
@@ -1091,8 +1127,24 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
         surfaceIndex = rayInteraction.surfaceIndex;
       }
 
-      // Find the lowest item in the bins
+#ifdef UNORDERED_RESOLVE_WBOIT
+      float3 volumeAttenuation = calcVolumetricAttenuation(cb.volumeArgs, none, false, rayHitInfo.hitDistance, ray.origin, ray.direction);
 
+      // depth weight for this hit
+      float w = oitDepthWeight(rayHitInfo.hitDistance, ray.tMax);
+
+      float3 src = currentEmissiveRadiance * float3(radianceAttenuation) * volumeAttenuation;
+
+      // Extinction-based alpha
+      float alphaVal = saturate(1.f - currentRadianceAttenuation);
+
+      // premultiplied color
+      float3 Ci = src * alphaVal;
+      alphaColorSum  += Ci * w;
+      alphaWeightSum += alphaVal * w;
+      alphaTransProd *= (1.f - alphaVal);
+#else
+     // Find the lowest item in the bins
       uint lowestIndex;
       float16_t lowestDistance;
       f16vec4 lowestRadianceAndAttenuation;
@@ -1101,17 +1153,10 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
         binnedRadiancesAndAttenuation, binDistances,
         lowestIndex, lowestDistance, lowestRadianceAndAttenuation);
 
-      // Accumulate the lowest bin into the radiance and attenuation
-
- #ifdef RESOLVER_USE_VOLUMETRIC_ATTENUATION
       // Note: Volume attenuation calculated only for the current ray start to the current hit surface, not accumulated
       // into the attenuation as this will be handled later by the ordered resolve logic (and we do not want to incorrectly
       // accumulate volume radiance multiple times for overlapping unordered segments).
-      const f16vec3 volumeAttenuation = evalVolumetricAttenuation(cb.volumeArgs, true, lowestDistance);
-#else
-      // Note: Set to 1 here rather than removing it from the emissive radiance statement to not have to duplicate that code.
-      const f16vec3 volumeAttenuation = f16vec3(1.0f, 1.0f, 1.0f);
-#endif
+      const f16vec3 volumeAttenuation = calcVolumetricAttenuation(cb.volumeArgs, none, false, lowestDistance, ray.origin, ray.direction);
 
       emissiveRadiance += lowestRadianceAndAttenuation.rgb * radianceAttenuation * volumeAttenuation;
       // Hack: This is done as a workaround for a compiler bug (REMIX-1551), should be revertex back to what it was originally to avoid
@@ -1119,10 +1164,9 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
       radianceAttenuation = f16vec3(vec3(radianceAttenuation) * float(lowestRadianceAndAttenuation.a));
       // radianceAttenuation *= lowestRadianceAndAttenuation.a;
 
-      // Replace the lowest bin with the current iteration's information
-
       writeColumn(binnedRadiancesAndAttenuation, f16vec4(currentEmissiveRadiance, currentRadianceAttenuation), lowestIndex);
       writeComponent(binDistances, float16_t(rayHitInfo.hitDistance), lowestIndex);
+#endif
     }
     
     // Do picking (in non PSR primary rays) only, and also make sure to do it here to include decals
@@ -1156,7 +1200,17 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
     return;
   }
 
-  // Flush the bins by iterating through them and finding the lowest for each
+#ifdef UNORDERED_RESOLVE_WBOIT
+  if (alphaWeightSum > 0.f) 
+  {
+    float3 alphaAvg = alphaColorSum / alphaWeightSum;
+    float coverage = cb.wboitEnergyLossCompensation * saturate(1.0f - alphaTransProd);
+    emissiveRadiance += alphaAvg * coverage;
+  }
+
+  radianceAttenuation *= alphaTransProd;
+#else
+ // Flush the bins by iterating through them and finding the lowest for each
   // Note: This has to be done as there will be remaining items in the bins (up to 4) which need to be accumulated in most cases after
   // the main loop finishes.
 
@@ -1177,7 +1231,7 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
     // Note: Volume attenuation calculated only for the current ray start to the current hit surface, not accumulated
     // into the attenuation as this will be handled later by the ordered resolve logic (and we do not want to incorrectly
     // accumulate volume radiance multiple times for overlapping unordered segments).
-    const f16vec3 volumeAttenuation = evalVolumetricAttenuation(cb.volumeArgs, true, lowestDistance);
+    const f16vec3 volumeAttenuation = calcVolumetricAttenuation(cb.volumeArgs, none, false, lowestDistance, ray.origin, ray.direction);
 
     emissiveRadiance += lowestRadianceAndAttenuation.rgb * radianceAttenuation * volumeAttenuation;
     // Hack: This is done as a workaround for a compiler bug (REMIX-1551), should be revertex back to what it was originally to avoid
@@ -1192,6 +1246,7 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
     writeColumn(binnedRadiancesAndAttenuation, f16vec4(0.0f, 0.0f, 0.0f, 1.0f), lowestIndex);
     writeComponent(binDistances, float16_t(float16Max), lowestIndex);
   }
+#endif
 
 #ifdef RAY_TRACING_PRIMARY_RAY
   if (decalEncountered)
@@ -1218,7 +1273,9 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
       if (i == 0)
       {
         decalMaterialInteractionComposited = decalMaterialInteractionUnpack(binnedDecals[lowBin]);
-      } else {
+      }
+      else
+      {
         DecalMaterialInteraction decalMaterialInteraction = decalMaterialInteractionUnpack(binnedDecals[lowBin]);
         // TODO[REMIX-3080] need to adapt the normal blending to not be transforming into and out of the tangent space with every blend.
         // instead, should get the lowest decal's normal in its tangent space, transform each normal into that tangent space, and only go back to world space at the end.

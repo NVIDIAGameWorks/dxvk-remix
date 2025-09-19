@@ -109,18 +109,25 @@ Ray rayCreatePrimary(Camera camera, vec2 screenUV, float16_t screenSpacePixelSpr
 }
 
 // Convenience function that creates a primary ray based on pixel index instead of UVs.
-Ray rayCreatePrimaryFromPixel(Camera camera, ivec2 pixelCoordinate, bool jitter)
+Ray rayCreatePrimaryFromPixel(Camera camera, ivec2 pixelCoordinate, bool jitter = true)
 {
   const vec2 inUV = cameraPixelCoordinateToScreenUV(camera, pixelCoordinate);
 
   return rayCreatePrimary(camera, inUV, float16_t(cb.screenSpacePixelSpreadHalfAngle), jitter);
 }
 
-// Overload for creating a primary ray from a pixel index, but with the assumption of using jittering (as this is
-// the most common use case).
-Ray rayCreatePrimaryFromPixel(Camera camera, ivec2 pixelCoordinate)
+// Create a ray that passes through a render target
+Ray rayCreateRenderTarget(Camera camera, vec2 screenUV, Ray viewRay)
 {
-  return rayCreatePrimaryFromPixel(camera, pixelCoordinate, true);
+  Ray ray;
+
+  ray.origin = cameraGetWorldPosition(camera);
+  ray.coneRadius = viewRay.coneRadius; // Note: Cone radius always 0 to start at the camera
+  ray.spreadAngle = viewRay.spreadAngle;
+  ray.direction = cameraScreenUVToDirection(camera, frac(screenUV), false).worldDirection;
+  ray.tMax = viewRay.tMax;
+
+  return ray;
 }
 
 // Todo: Ray create function for spatial/volume positions without being fired from the camera?
@@ -145,7 +152,11 @@ Ray rayCreatePosition(
   vec3 targetPosition, bool penetrateSurface)
 {
   const vec3 rayVector = targetPosition - minimalSurfaceInteraction.position;
-  const f16vec3 direction = f16vec3(normalize(rayVector));
+  // Note: safeNormalizeGetLength not used here as while it could be used to calculate tMax, the length that should be returned
+  // is a bit ambigious. If it's supposed to be the length of the input vector then this would fork fine as the length would be
+  // 0 for zero vectors, but if it's set to 1 to match the fallback vector then the ray will have an incorrect tMax. As such we
+  // just calculate the tMax manually for clarity and hope the compiler optimizes the redundant length calculations together.
+  const f16vec3 direction = f16vec3(safeNormalize(rayVector, vec3(0.0f, 0.0f, 1.0f)));
   const float tMax = length(rayVector);
 
   return rayCreateInternal(minimalRayInteraction, minimalSurfaceInteraction, viewRay, direction, tMax, penetrateSurface);
@@ -156,7 +167,7 @@ Ray rayCreatePosition(
   vec3 targetPosition)
 {
   const vec3 rayVector = targetPosition - volumeInteraction.position;
-  const f16vec3 direction = f16vec3(normalize(rayVector));
+  const f16vec3 direction = f16vec3(safeNormalize(rayVector, vec3(0.0f, 0.0f, 1.0f)));
   const float tMax = length(rayVector);
 
   return rayCreateInternal(minimalRayInteraction, volumeInteraction, viewRay, direction, tMax);
@@ -167,7 +178,7 @@ Ray rayCreatePositionSubsurface(
   vec3 targetPosition, vec3 shadingNormal)
 {
   const vec3 rayVector = targetPosition - minimalSurfaceInteraction.position;
-  const f16vec3 direction = f16vec3(normalize(rayVector));
+  const f16vec3 direction = f16vec3(safeNormalize(rayVector, vec3(0.0f, 0.0f, 1.0f)));
   const float tMax = length(rayVector);
 
   // If the new tracing ray is on the other side of SSS surface, treat the surface as penetrateSurface 

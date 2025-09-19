@@ -16,7 +16,7 @@ namespace dxvk {
           // NV-DXVK start: add debug names to VkImage objects
           const char *name)
           // NV-DXVK end
-  : m_vkd(device->vkd()), m_device(device), m_info(createInfo), m_memFlags(memFlags) {
+  : m_vkd(device->vkd()), m_device(device), m_info(createInfo), m_memFlags(memFlags), m_tracker(name, GpuMemoryTracker::Image, category, createInfo.extent, createInfo.format) {
 
     // Copy the compatible view formats to a persistent array
     m_viewFormats.resize(createInfo.viewFormatCount);
@@ -164,6 +164,10 @@ namespace dxvk {
     // Ask driver whether we should be using a dedicated allocation
     m_image.memory = memAlloc.alloc(&memReq.memoryRequirements,
       dedicatedRequirements, dedMemoryAllocInfo, memFlags, hints, category);
+    
+    // NV-DXVK start: Implement memory profiler
+    m_tracker.finalize(m_image.memory.length(), (m_image.memory.propertyFlags() & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0, (m_image.memory.propertyFlags() != memFlags));
+    // NV-DXVK end
     
     // Try to bind the allocated memory slice to the image
     if (m_vkd->vkBindImageMemory(m_vkd->device(), m_image.image,

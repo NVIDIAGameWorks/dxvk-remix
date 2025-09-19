@@ -30,21 +30,64 @@
 #include "rtx/concept/surface_material/surface_material.slangh"
 #include "rtx/algorithm/integrator_indirect.slangh"
 
+// Returns true if this is an active pixel
+// Returns false if the thread should terminate
+bool initPixelOnLaunch(inout uvec2 gbufferPixelCoordinate, out bool isNrcUpdate)
+{
+  isNrcUpdate = false;  
+
+#if ENABLE_NRC
+  // Identify which NRC mode this thread index corresponds to
+  const uvec2 combinedNrcCoordinate = gbufferPixelCoordinate;   
+  isNrcUpdate = Nrc::isUpdatePixel(combinedNrcCoordinate, cb);
+    
+  if (isNrcUpdate)
+  {
+    const uvec2 nrcUpdatePixelCoordinate = Nrc::calculateUpdatePixelCoordinateFromCombinedCoordinate(combinedNrcCoordinate, cb);
+
+    if (any(nrcUpdatePixelCoordinate >= cb.nrcArgs.activeTrainingDimensions))
+    {
+      return false;
+    }
+
+    gbufferPixelCoordinate = Nrc::calculateTrainingPixelCoordinateInQuerySpace(nrcUpdatePixelCoordinate, cb.nrcArgs);
+  }
+  else
+  {
+    gbufferPixelCoordinate.y -= cb.nrcArgs.numRowsForUpdate;
+  }
+#else
+  // Mark as unused since the parameter is not being written to
+  unused(gbufferPixelCoordinate);
+#endif
+
+  if (any(gbufferPixelCoordinate >= cb.camera.resolution))
+  {
+    return false;
+  }
+
+  return true;
+}
+
 void integrate_indirect_pass(ivec2 threadIndex)
-{ 
-  if (any(threadIndex >= cb.camera.resolution))
+{
+  uvec2 gbufferPixelCoordinate = threadIndex;
+
+  bool isNrcUpdate = false;
+
+  if (!initPixelOnLaunch(gbufferPixelCoordinate, isNrcUpdate))
   {
     return;
   }
 
   // Deserialize flags
 
-  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(threadIndex, SharedFlags);
+  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(gbufferPixelCoordinate, SharedFlags);
 
   // Check if the GBuffer was hit on the Primary and Secondary surfaces
 
-  const bool primaryGBufferMiss = isGBufferMiss(threadIndex, PrimaryConeRadius);
-  const bool secondaryGBufferMiss = isGBufferMiss(threadIndex, SecondaryConeRadius);
+  const bool primaryGBufferMiss = isGBufferMiss(gbufferPixelCoordinate, PrimaryConeRadius);
+  const bool secondaryGBufferMiss = isGBufferMiss(gbufferPixelCoordinate, SecondaryConeRadius);
 
   // Write out empty data
   // Note: This should hopefully prevent any weird undefined data from bleeding into pixels actually being denoised, but
@@ -58,48 +101,56 @@ void integrate_indirect_pass(ivec2 threadIndex)
   // Note: Early out if no more work on the active surface is needed.
   if (gbufferMissOfASelectedIntegrationSurface)
   {
-    aliasedData0.IndirectRadianceHitDistance[threadIndex] = vec4(vec3(0), kEmptyPixelHitDistance);
+    if (isNrcUpdate)
+    {
+      // IndirectRadianceHitDistance is not used for update pixels, so no need to write it out
+      return;
+    }
+
+    IndirectRadianceHitDistance[gbufferPixelCoordinate] = vec4(vec3(0), kEmptyPixelHitDistance);
 
     return;
   }
 
   // Read the medium material index
 
-  const uint16_t mediumMaterialIndex = SharedMediumMaterialIndex[threadIndex];
+  const uint16_t mediumMaterialIndex = SharedMediumMaterialIndex[gbufferPixelCoordinate];
 
   // Load state data carried over from the direct integration pass
 
-  const vec4 rayOriginDirection = RayOriginDirection[threadIndex];
-  const vec4 throughputConeRadius = aliasedData0.ThroughputConeRadius[threadIndex];
+  const vec4 rayOriginDirection = RayOriginDirection[gbufferPixelCoordinate];
+  const vec4 throughputConeRadius = ThroughputConeRadius[gbufferPixelCoordinate];
   IndirectSampleData indirectSampleData;
-  indirectSampleData.load(threadIndex, FirstSampledLobeData);
+  indirectSampleData.load(gbufferPixelCoordinate, FirstSampledLobeData);
 
   const vec3 rayOrigin = rayOriginDirection.xyz;
   const f16vec3 rayDirection = signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(floatBitsToUint(rayOriginDirection.w)));
   const f16vec3 throughput = throughputConeRadius.xyz;
   const float16_t coneRadius = throughputConeRadius.w;
-  const float16_t firstHitPerceptualRoughness = FirstHitPerceptualRoughness[threadIndex];
+  const float16_t firstHitPerceptualRoughness = FirstHitPerceptualRoughness[gbufferPixelCoordinate];
   const float16_t firstSampledLobePdf = indirectSampleData.firstSampledLobePdf;
   const float16_t firstSampledSolidAnglePdf = indirectSampleData.firstSampledSolidAnglePdf;
 
   float gbufferSurfaceHitDistance = 0;
   if (geometryFlags.primarySelectedIntegrationSurface)
-    gbufferSurfaceHitDistance = PrimaryHitDistance[threadIndex];
+  {
+    gbufferSurfaceHitDistance = PrimaryHitDistance[gbufferPixelCoordinate];
+  }
   else
-    gbufferSurfaceHitDistance = SecondaryHitDistance[threadIndex];
+  {
+    gbufferSurfaceHitDistance = SecondaryHitDistance[gbufferPixelCoordinate];
+  }
 
   // Integrate the Indirect portion of the Path
 
   IndirectPathTextures indirectPathTextures;
 
   indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal = PrimaryWorldPositionWorldTriangleNormal;
-  indirectPathTextures.IndirectRadianceHitDistance = aliasedData0.IndirectRadianceHitDistance;
-  indirectPathTextures.RestirGIRadiance = RestirGIRadiance;
-  indirectPathTextures.RestirGIHitGeometry = RestirGIHitGeometry;
-
+  indirectPathTextures.IndirectRadianceHitDistance = IndirectRadianceHitDistance;// aliasedData0.IndirectRadianceHitDistance;
+  
   integrateIndirectPath(
-    threadIndex, INTEGRATE_INDIRECT_SBT_OFFSET_STANDARD, indirectPathTextures,
+    gbufferPixelCoordinate, INTEGRATE_INDIRECT_SBT_OFFSET_STANDARD, indirectPathTextures,
     geometryFlags, mediumMaterialIndex, rayOrigin, rayDirection,
     throughput, coneRadius, firstHitPerceptualRoughness,
-    firstSampledLobePdf, firstSampledSolidAnglePdf, gbufferSurfaceHitDistance);
+    firstSampledLobePdf, firstSampledSolidAnglePdf, gbufferSurfaceHitDistance, isNrcUpdate);
 }

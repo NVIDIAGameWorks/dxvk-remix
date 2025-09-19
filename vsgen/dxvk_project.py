@@ -5,11 +5,57 @@ import sys
 from string import Template
 
 from vsutil import *
+import json
 
 header_exts = [ ".h" ]
 src_exts = [ ".cpp", ".c", ".build", ".conf" ]
 shader_exts = [ ".comp", ".rgen", ".rchit", ".rmiss", ".frag", ".vert", ".geom", ".slang", ".slangh" ]
 all_exts = header_exts + src_exts + shader_exts
+
+
+# Function to comply with vcxproj filters.
+# Needed for a corner case: if a there's a file 'a/b/c.txt'
+# but dir intermediate dirs are empty ('a' or 'b'),
+# then vcxproj.filters will reject 'c.txt', since 'a' or 'a/b' are not filters with guid.
+# So this function ensures that all intermediate dirs are present in 'tree'.
+def sanitize_tree(tree):
+    allfiles_plain = []
+    for dirpath in tree:
+        for filename in tree[dirpath]:
+            allfiles_plain.append(dirpath + "/" + filename)
+
+    # recursive function to build a tree structure
+    def build_file_tree(files):
+        tree = {}
+        for filepath in files:
+            parts = filepath.strip("/").split("/")
+            node = tree
+            for part in parts[:-1]:
+                node = node.setdefault(part, {})
+            node.setdefault("_files", []).append(parts[-1])
+        return tree
+
+    file_tree = build_file_tree(allfiles_plain)
+
+    def process_node(node, path, dst):
+        if path not in dst:
+            dst[path.strip("/")] = []
+        if "_files" in node:
+            for filename in node["_files"]:
+                # print(f"{path}/{filename}")
+                dst[path.strip("/")].append(filename)
+                pass
+            del node["_files"]
+        for key, value in node.items():
+            process_node(value, f"{path}/{key}", dst)
+    
+    new_tree = {}
+    process_node(file_tree, "", new_tree)
+
+    new_tree.pop("", None)
+    new_tree.pop("..", None)
+    return new_tree
+
 
 def generate_dxvk_project(output_root_path, dxvk_cpp_defines):
     tree = { }
@@ -18,6 +64,8 @@ def generate_dxvk_project(output_root_path, dxvk_cpp_defines):
             "../include": 1,
             "../include/vulkan/include": 1,
             "../public/include": 1,
+            "../submodules/Detours/src": 1,
+            "../submodules/nrc/Include": 1,
     }
 
     def add_file(dirpath, filename):
@@ -46,10 +94,13 @@ def generate_dxvk_project(output_root_path, dxvk_cpp_defines):
 
                 path, tail = os.path.split(path)
 
-    def process_tree(root, external):
+    def process_tree(root, external, ignoreddirs = []):
         for dirpath, dirnames, files in os.walk(root, followlinks=True):
             # project file is one dir above, adjust here so that relative paths point at the right place
             # dirpath = os.path.relpath(dirpath, "..")
+
+            if any(ignored in dirpath.split(os.path.sep) for ignored in ignoreddirs):
+                continue
 
             for f in files:
                 process_file(dirpath, f, external)
@@ -59,6 +110,12 @@ def generate_dxvk_project(output_root_path, dxvk_cpp_defines):
     process_tree("../external", True)
     # add_file("..", "meson.build")
     # add_file("..", "dxvk.conf")
+    process_tree("../nv-private", False, ["_external", "bin"])
+    process_tree("../public", False, ["bin"])
+    process_tree("../bridge", False, ["vsgen", "scripts-common"])
+    process_tree("../tests", False, ["dxvk_rt_testing"])
+
+    tree = sanitize_tree(tree)
 
     # generate vcxproj
 

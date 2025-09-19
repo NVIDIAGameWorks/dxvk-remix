@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -26,6 +26,7 @@
 #include "rtx.h"
 #include "rtx/pass/tonemap/tonemapping.h"
 #include "rtx/pass/local_tonemap/local_tonemapping.h"
+#include "rtx_debug_view.h"
 
 #include <rtx_shaders/luminance.h>
 #include <rtx_shaders/exposure_weight.h>
@@ -114,6 +115,11 @@ namespace dxvk {
       END_PARAMETER()
     };
     PREWARM_SHADER_PIPELINE(FinalCombineShader);
+
+
+    float safeEVLog2(float v) {
+      return log2f(std::max(1e-10f, v));
+    }
   }
   
   DxvkLocalToneMapping::DxvkLocalToneMapping(DxvkDevice* device)
@@ -136,6 +142,10 @@ namespace dxvk {
     ImGui::Combo("Dither Mode", &ditherModeObject(), "Disabled\0Spatial\0Spatial + Temporal\0");
   }
 
+  bool DxvkLocalToneMapping::isEnabled() const {
+    return RtxOptions::tonemappingMode() == TonemappingMode::Local;
+  }
+
    void DxvkLocalToneMapping::dispatch(
      Rc<RtxContext> ctx,
      Rc<DxvkSampler> linearSampler,
@@ -150,7 +160,7 @@ namespace dxvk {
       return;
     }
 
-    VkExtent3D finalResolution = rtOutput.m_finalOutput.view->imageInfo().extent;
+    VkExtent3D finalResolution = rtOutput.m_finalOutputExtent;
     VkExtent3D downscaledResolution = rtOutput.m_compositeOutputExtent;
 
     ScopedGpuProfileZone(ctx, "Local Tone Mapping");
@@ -169,13 +179,14 @@ namespace dxvk {
     {
       ScopedGpuProfileZone(ctx, "Luminance");
       LuminanceArgs pushArgs = {};
-      pushArgs.exposure = exposure();
+      pushArgs.exposure = exp2f(safeEVLog2(exposure()) + RtxOptions::calcUserEVBias());
       pushArgs.shadows = pow(2.f, shadows());
       pushArgs.highlights = pow(2.f, -highlights());
       pushArgs.debugView = debugView.debugViewIdx();
       pushArgs.enableAutoExposure = enableAutoExposure;
+      pushArgs.useLegacyACES = RtxOptions::useLegacyACES();
       ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
-      ctx->bindResourceView(LUMINANCE_ORIGINAL, rtOutput.m_finalOutput.view, nullptr);
+      ctx->bindResourceView(LUMINANCE_ORIGINAL, rtOutput.m_finalOutput.view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(LUMINANCE_OUTPUT, m_mips.views[0], nullptr);
       ctx->bindResourceView(LUMINANCE_DEBUG_VIEW_OUTPUT, debugView.getDebugOutput(), nullptr);
       ctx->bindResourceView(LUMINANCE_EXPOSURE, exposureView, nullptr);
@@ -260,12 +271,13 @@ namespace dxvk {
         1.0f / mipResolution.x,
         1.0f / mipResolution.y
       };
-      pushArgs.exposure = exposure();
+      pushArgs.exposure = exp2f(safeEVLog2(exposure()) + RtxOptions::calcUserEVBias());
       pushArgs.resolution = uvec2 { finalResolution.width, finalResolution.height };
       pushArgs.debugView = debugView.debugViewIdx();
       pushArgs.enableAutoExposure = enableAutoExposure;
       pushArgs.performSRGBConversion = performSRGBConversion;
       pushArgs.finalizeWithACES = finalizeWithACES();
+      pushArgs.useLegacyACES = RtxOptions::useLegacyACES();
       switch (ditherMode()) {
       case DitherMode::None: pushArgs.ditherMode = ditherModeNone; break;
       case DitherMode::Spatial: pushArgs.ditherMode = ditherModeSpatialOnly; break;
@@ -284,7 +296,7 @@ namespace dxvk {
       ctx->bindResourceSampler(FINAL_COMBINE_ORIGINAL_MIP, linearSampler);
       ctx->bindResourceSampler(FINAL_COMBINE_MIP_ASSEMBLE, linearSampler);
 
-      ctx->bindResourceView(FINAL_COMBINE_OUTPUT, rtOutput.m_finalOutput.view, nullptr);
+      ctx->bindResourceView(FINAL_COMBINE_OUTPUT, rtOutput.m_finalOutput.view(Resources::AccessType::Write), nullptr);
       ctx->bindResourceView(FINAL_COMBINE_DEBUG_VIEW_OUTPUT, debugView.getDebugOutput(), nullptr);
       ctx->bindResourceView(FINAL_COMBINE_EXPOSURE, exposureView, nullptr);
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, FinalCombineShader::getShader());

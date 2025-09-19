@@ -10,19 +10,19 @@ set DST=%2
 set FILES=%3
 
 rem echo ////////////////////////////////////////////////////
-@REM echo  copy of:
-@REM echo     %SRC:/=\%
-@REM echo     to
-@REM echo     %DST:/=\%
+rem echo  copy of:
+rem echo     %SRC:/=\%
+rem echo     to
+rem echo     %DST:/=\%
 
 rem robocopy seems to lock input files and ends up hanging sometimes (/w:1 helps, but doesn't solve the problem)
 rem robocopy /w:1 /njh /njs /nc /ns /np /ndl /is /it %1 %2 %3
 xcopy /Q /Y /I %SRC:/=\%\%FILES% %DST:/=\%
 
 if errorlevel 0 (
-    @REM echo  All files copied.
+    echo  All files copied.
 ) else if errorlevel 1 (
-    @REM echo  No files copied. No changes detected.
+    echo  No files copied. No changes detected.
 ) else (
     echo  Other thing happened while copying files.
     echo  Did you make sure there's an /_output dir?

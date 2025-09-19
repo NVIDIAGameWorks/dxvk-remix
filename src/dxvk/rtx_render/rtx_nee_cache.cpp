@@ -112,7 +112,7 @@ namespace dxvk {
     constants.neeCacheArgs.cullingThreshold = cullingThreshold();
     constants.neeCacheArgs.learningRate = learningRate();
     constants.neeCacheArgs.resolution = resolution();
-    constants.neeCacheArgs.minRange = minRange() * RtxOptions::Get()->sceneScale();
+    constants.neeCacheArgs.minRange = minRange() * RtxOptions::sceneScale();
     constants.neeCacheArgs.approximateParticleLighting = approximateParticleLighting();
     constants.neeCacheArgs.triangleExplorationRangeRatio = triangleExplorationRangeRatio();
     constants.neeCacheArgs.triangleExplorationAcceptRangeRatio = triangleExplorationAcceptRangeRatio();
@@ -136,6 +136,7 @@ namespace dxvk {
     Rc<DxvkBuffer> lastPrimitiveIDPrefixSumBuffer = ctx->getSceneManager().getLastFramePrimitiveIDPrefixSumBuffer();
 
     ScopedGpuProfileZone(ctx, "NEE Cache");
+    ctx->setFramePassStage(RtxFramePassStage::NEE_Cache);
 
     // Bind resources
     {

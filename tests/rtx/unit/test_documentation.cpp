@@ -24,7 +24,18 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <filesystem>
+#include <sstream>
+#include <algorithm>
+#include <windows.h>
 #include "../../test_utils.h"
+#include "../../../src/util/util_filesys.h"
+
+#ifndef BUILD_SOURCE_ROOT
+// Fallback for when BUILD_SOURCE_ROOT is not defined (e.g., during static analysis)
+#define BUILD_SOURCE_ROOT "./"
+#warning "BUILD_SOURCE_ROOT not defined, using current directory"
+#endif
 
 namespace dxvk {
   // Note: Logger needed by some shared code used in this Unit Test.
@@ -54,9 +65,12 @@ namespace test_documentation_app {
     return lines;
   }
 
+
+
   // Function to compare the files and print differences
   // Returns true if files are the same, false if difference detected
-  bool compareFiles(const std::string& filePath1, const std::string& filePath2) {
+  bool compareFiles(const std::string& filePath1, const std::string& filePath2, 
+                   const std::string& goldenDir = "", const std::string& modifiedDir = "") {
     bool differenceDetected = false;
     std::vector<std::string> file1Lines = readLinesFromFile(filePath1);
     std::vector<std::string> file2Lines = readLinesFromFile(filePath2);
@@ -79,6 +93,29 @@ namespace test_documentation_app {
       }
     }
 
+    // If files are different and directories are provided, copy files for web interface
+    if (differenceDetected && !goldenDir.empty() && !modifiedDir.empty()) {
+      std::filesystem::path filePath1Path(filePath1);
+      std::filesystem::path filePath2Path(filePath2);
+      std::string fileName = filePath1Path.filename().string();
+      
+      // For test_documentation, RtxOptions.md goes directly in the root
+      std::string goldenDestPath = (std::filesystem::path(goldenDir) / fileName).string();
+      std::string modifiedDestPath = (std::filesystem::path(modifiedDir) / fileName).string();
+      
+      try {
+        // Create destination directories if they don't exist
+        std::filesystem::create_directories(std::filesystem::path(goldenDestPath).parent_path());
+        std::filesystem::create_directories(std::filesystem::path(modifiedDestPath).parent_path());
+        
+        std::filesystem::copy_file(filePath1, goldenDestPath, std::filesystem::copy_options::overwrite_existing);
+        std::filesystem::copy_file(filePath2, modifiedDestPath, std::filesystem::copy_options::overwrite_existing);
+        std::cout << "Copied files to golden and modified directories for web interface." << std::endl;
+      } catch (const std::exception& e) {
+        std::cout << "Warning: Failed to copy files for web interface: " << e.what() << std::endl;
+      }
+    }
+
     return !differenceDetected;
   }
 
@@ -86,12 +123,18 @@ namespace test_documentation_app {
     const std::string& srcRtxOptionsMarkdownPath = BUILD_SOURCE_ROOT "RtxOptions.md";
     const std::string& dstRtxOptionsMarkdownPath = "RtxOptions.md";
 
-    HMODULE hD3D9 = LoadLibrary(d3d9Path);
+    // Create directories for web interface if needed
+    const std::string goldenDir = "rtx-remix/golden";
+    const std::string modifiedDir = "rtx-remix/modified";
+    std::filesystem::create_directories(goldenDir);
+    std::filesystem::create_directories(modifiedDir);
+
+    HMODULE hD3D9 = LoadLibraryA(d3d9Path);
     if (hD3D9 == NULL) {
       throw dxvk::DxvkError("Unable to load D3D9");
     }
     char path[MAX_PATH];
-    GetModuleFileName(hD3D9, path, sizeof(path));
+    GetModuleFileNameA(hD3D9, path, sizeof(path));
     std::cout << "Loaded D3D9 at: " << path << std::endl;
 
     dxvk::pfnWriteMarkdownDocumentation fnWriteMarkdownDocumentation = (dxvk::pfnWriteMarkdownDocumentation) GetProcAddress(hD3D9, "writeMarkdownDocumentation");
@@ -101,7 +144,7 @@ namespace test_documentation_app {
     std::cout << "Writing documentation to: " << dstRtxOptionsMarkdownPath << std::endl;
     fnWriteMarkdownDocumentation(dstRtxOptionsMarkdownPath.c_str());
 
-    if (!compareFiles(srcRtxOptionsMarkdownPath, dstRtxOptionsMarkdownPath)) {
+    if (!compareFiles(srcRtxOptionsMarkdownPath, dstRtxOptionsMarkdownPath, goldenDir, modifiedDir)) {
       throw dxvk::DxvkError("File difference detected.");
     }
   }

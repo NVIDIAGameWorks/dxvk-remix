@@ -34,6 +34,7 @@ PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionCreat
 
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction;
 
+  polymorphicSurfaceMaterialInteraction.isAnimatedWater = false;
   polymorphicSurfaceMaterialInteraction.shadingNormal = opaqueSurfaceMaterialInteraction.shadingNormal;
   polymorphicSurfaceMaterialInteraction.emissiveRadiance = opaqueSurfaceMaterialInteraction.emissiveRadiance;
   polymorphicSurfaceMaterialInteraction.vdata0 = opaqueSurfaceMaterialInteraction.albedo;
@@ -44,10 +45,11 @@ PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionCreat
   polymorphicSurfaceMaterialInteraction.fdata3 = opaqueSurfaceMaterialInteraction.anisotropicRoughness.y;
   polymorphicSurfaceMaterialInteraction.fdata4 = opaqueSurfaceMaterialInteraction.normalDetail;
   polymorphicSurfaceMaterialInteraction.fdata5 = opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.measurementDistance;
-  polymorphicSurfaceMaterialInteraction.idata0 = opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.packedTransmittanceColor;
-  polymorphicSurfaceMaterialInteraction.idata1 = opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.packedSingleScatteringAlbedo;
+  polymorphicSurfaceMaterialInteraction.i32data0 = opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.packedTransmittanceColor;
+  polymorphicSurfaceMaterialInteraction.i32data1 = opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.packedSingleScatteringAlbedo;
   polymorphicSurfaceMaterialInteraction.bdata0 = opaqueSurfaceMaterialInteraction.flags;
   polymorphicSurfaceMaterialInteraction.bdata1 = opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.volumetricAnisotropy;
+  polymorphicSurfaceMaterialInteraction.bdata2 = opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.maxSampleRadius;
 
   polymorphicSurfaceMaterialInteraction.type = surfaceMaterialTypeOpaque;
 
@@ -60,6 +62,7 @@ PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionCreat
 
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction;
 
+  polymorphicSurfaceMaterialInteraction.isAnimatedWater = translucentSurfaceMaterialInteraction.isAnimatedWater;
   polymorphicSurfaceMaterialInteraction.shadingNormal = translucentSurfaceMaterialInteraction.shadingNormal;
   polymorphicSurfaceMaterialInteraction.emissiveRadiance = translucentSurfaceMaterialInteraction.emissiveRadiance;
   polymorphicSurfaceMaterialInteraction.vdata0 = translucentSurfaceMaterialInteraction.transmittanceColor;
@@ -83,6 +86,7 @@ PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionCreat
 
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction;
 
+  polymorphicSurfaceMaterialInteraction.isAnimatedWater = false;
   polymorphicSurfaceMaterialInteraction.shadingNormal = 0;
   polymorphicSurfaceMaterialInteraction.emissiveRadiance = 0;
   polymorphicSurfaceMaterialInteraction.vdata0 = rayPortalSurfaceMaterialInteraction.mask.xyz;

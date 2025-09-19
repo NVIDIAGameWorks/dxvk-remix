@@ -91,25 +91,21 @@ d3d9_src = [
   'd3d9_swapchain_external.cpp',
 ]
 
+
 d3d9_dll = shared_library('d3d9', d3d9_src, dxvk_version, glsl_generator.process(d3d9_shaders), d3d9_res,
   name_prefix         : '',
+
   link_with           : [ util_lib ],
+  link_args           : [ usd_plugin_delay_load_args ],
   dependencies        : [ dxso_dep, dxvk_dep, util_dep ],
   include_directories : [ dxvk_include_path, dxvk_shader_include_path, usd_include_paths, remix_api_include_path ],
-  install             : true,
   objects             : not dxvk_is_msvc ? 'd3d9' + def_spec_ext : [],
   vs_module_defs      : 'd3d9'+def_spec_ext,
-  override_options    : ['cpp_std='+dxvk_cpp_std])
+  override_options    : ['cpp_std='+dxvk_cpp_std],
+  install: true
+  )
 
 d3d9_dep = declare_dependency(
   link_with           : [ d3d9_dll ],
   include_directories : [ dxvk_include_path ])
- # Get script paths
- if build_os == 'windows' and not dxvk_is_ninja
-   custom_target('copy_d3d9_to_output',
-     output           : ['copy_d3d9_to_output'],
-     build_by_default : true,
-     depends          : [ d3d9_dll ],
-     command          : [copy_script_path, meson.current_build_dir(), output_dir, 'd3d9*'] )
- endif
  

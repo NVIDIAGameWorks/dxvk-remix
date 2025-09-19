@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -166,12 +166,15 @@ f16vec3 calcUniformConeDirectionSample(f16vec2 rndSample, float cosThetaMax, ino
 }
 
 // [Heitz 2018, "Sampling the GGX Distribution of Visible Normals"]
+// Calculates a new direction based on the visible GGX normal distribution function for a given view direction using
+// the projective method (projecting a 2D sampled area on to the hemisphere). This method is slightly worse performance
+// wise than later methods (e.g. spherical cap based sampling).
 // Note: This function operates in tangent space so any vectors given to it or retreived from it should also be in
 // tangent space.
-f16vec3 calcGGXVisibleNormalDistributionSample(f16vec2 anisotropicRoughness, f16vec3 Ve, f16vec2 u)
+f16vec3 calcGGXVisibleNormalDistributionProjectedSample(f16vec2 anisotropicRoughness, f16vec3 Ve, f16vec2 u)
 {
   // Section 3.2: transforming the view direction to the hemisphere configuration
-  const f16vec3 Vh = normalize(f16vec3(anisotropicRoughness.x * Ve.x, anisotropicRoughness.y * Ve.y, Ve.z));
+  const f16vec3 Vh = normalize(f16vec3(anisotropicRoughness * Ve.xy, Ve.z));
 
   // Section 4.1: orthonormal basis
   // Note: This implementation deviates from the paper's by using Pixar's orthonormal basis function as this eliminates
@@ -193,9 +196,105 @@ f16vec3 calcGGXVisibleNormalDistributionSample(f16vec2 anisotropicRoughness, f16
   const f16vec3 Nh = t1 * T1 + t2 * T2 + sqrt(max(float16_t(0.0), float16_t(1.0 - (t1sq + t2sq)))) * Vh;
 
   // Section 3.4: transforming the normal back to the ellipsoid configuration
-  const f16vec3 Ne = normalize(f16vec3(anisotropicRoughness.x * Nh.x, anisotropicRoughness.y * Nh.y, max(float16_t(0.0), Nh.z)));
+  const f16vec3 Ne = normalize(f16vec3(anisotropicRoughness * Nh.xy, max(float16_t(0.0), Nh.z)));
 
   return Ne;
+}
+
+// [Dupuy 2023, "Sampling Visible GGX Normals with Spherical Caps"]
+// Calculates a new direction based on the visible GGX normal distribution function for a given view direction using
+// the spherical cap method. Lower bound scalar parameter should only be set to 1 in typical use cases, intended to be
+// set by different sampling methods using the general spherical cap method as a basis.
+// Note: This function operates in tangent space so any vectors given to it or retreived from it should also be in
+// tangent space.
+f16vec3 calcGGXVisibleNormalDistributionSphericalCapSample(f16vec2 anisotropicRoughness, f16vec3 outputDirection, f16vec2 u, float16_t k = 1.0h)
+{
+  // Unstretch the view direction back to a hemisphere
+  const f16vec3 unstretchedOutputDirection = normalize(f16vec3(
+    anisotropicRoughness * outputDirection.xy,
+    outputDirection.z
+  ));
+
+  // Note: This b is from Listing 1 in "Bounded VNDF Sampling for Smith-GGX Reflections" for use with bounded
+  // VNDF sampling. When k = 1 (default) this line is equal to unstretchedOutputDirection.z.
+  // Note: Probably could be >= 0 rather than > 0 to consider parallel view directions to the triangle as I do not think
+  // that would affect the math, but keeping it like this for now. If ever changed however, a similar condition exists
+  // in evalGGXShadowing which would also need to be updated.
+  const float16_t b = outputDirection.z > 0.0h ? k * unstretchedOutputDirection.z : unstretchedOutputDirection.z;
+
+  // Listing 3: Spherical cap sampling
+  const float16_t phi = float16_t(twoPi) * u.x;
+  const float16_t z = fma(1.0h - u.y, 1.0h + b, -b);
+  const float16_t sinTheta = sqrt(clamp(1.0h - z * z, 0.0f, 1.0f));
+  const float16_t x = sinTheta * cos(phi);
+  const float16_t y = sinTheta * sin(phi);
+  const f16vec3 c = f16vec3(x, y, z);
+  const f16vec3 unstretchedMicrofacetNormal = c + unstretchedOutputDirection;
+
+  // Stretch the microfacet normal back to the anisotropic ellipsoid
+  const f16vec3 microfacetNormal = normalize(f16vec3(
+    anisotropicRoughness * unstretchedMicrofacetNormal.xy,
+    unstretchedMicrofacetNormal.z
+  ));
+
+  return microfacetNormal;
+}
+
+// Note: This macro selects between different implementations of typical (non-bounded) VNDF sampling to validate
+// behavior and analyze performance. Current options are as follows:
+// 0 - Projected: Original method from 2018, used in Remix until late 2024.
+// 1 - Spherical Cap: Newer method from 2023, simpler implementation and better performance than projected.
+#define GGX_VNDF_SAMPLING_METHOD 1
+
+// Calculates a new direction based on the visible GGX normal distribution function for a given view direction using
+// the current selected method (via macro). All sampling methods this sampling function uses have the same PDF (which
+// can be calculated via evalGGXVisibleNormalDistributionSamplePdf).
+f16vec3 calcGGXVisibleNormalDistributionSample(f16vec2 anisotropicRoughness, f16vec3 outputDirection, f16vec2 u)
+{
+#if GGX_VNDF_SAMPLING_METHOD == 0
+  return calcGGXVisibleNormalDistributionProjectedSample(anisotropicRoughness, outputDirection, u);
+#elif GGX_VNDF_SAMPLING_METHOD == 1
+  return calcGGXVisibleNormalDistributionSphericalCapSample(anisotropicRoughness, outputDirection, u);
+#else
+  #error Invalid GGX VNDF sampling method.
+#endif
+}
+
+// [Eto 2023, "Bounded VNDF Sampling for Smith-GGX Reflections"]
+// Calculates the lower bound scaling constant to apply to bounded VNDF sampling, k, from Equation 5.
+float16_t calcBoundedVNDFLowerBoundScalar(f16vec2 anisotropicRoughness, f16vec3 outputDirection)
+{
+  const float16_t a = saturate(min(anisotropicRoughness.x, anisotropicRoughness.y));
+  // Note: Sign omitted from Equation 4 as this never applies when a <= 1 (which is always the case with our requirements on
+  // how roughness is parameterized).
+  const float16_t s = 1.0h + length(outputDirection.xy);
+  const float16_t a2 = square(a);
+  const float16_t s2 = square(s);
+  const float16_t k = (1.0h - a2) * s2 / (s2 + a2 * square(outputDirection.z));
+
+  return k;
+}
+
+// [Eto 2023, "Bounded VNDF Sampling for Smith-GGX Reflections"]
+// Calculates a new direction based on the visible GGX normal distribution function for a given view direction using
+// bounded VNDF sampling. Unlike normal VNDF sampling, this bounded approach eliminates many (not all) "invalid" microfacet
+// normals which when reflected across would result in a direction outside the visible hemisphere. This method should eliminate
+// most invalid samples for isotropic roughness, but depending on the output direction some samples will still be invalid, moreso
+// for anisotropic roughness where the lower bound is not the infimum with this approach (but still better than older approaches).
+// Do note that roughness values provided must be in the range [0, 1] due to assumptions made in some of the math. This can
+// be changed to allow unusual roughness values, but the lower bound is significantly worse if either roughness parameter is
+// greater than 1 anyways so it is not desirable.
+// Additionally, since this bounded VNDF sampling changes the sampled distribution, care must be taken to use the proper PDF
+// as the usual GGX VNDF PDF will not work for this.
+f16vec3 calcGGXBoundedVisibleNormalDistributionSample(f16vec2 anisotropicRoughness, f16vec3 outputDirection, f16vec2 u)
+{
+  // Calculate the lower bound scaling constant
+
+  const float16_t k = calcBoundedVNDFLowerBoundScalar(anisotropicRoughness, outputDirection);
+
+  // Sample the VNDF with a bounded spherical cap based on the scaling constant
+
+  return calcGGXVisibleNormalDistributionSphericalCapSample(anisotropicRoughness, outputDirection, u, k);
 }
 
 // Calculates the cosine of the angle CAB between spherical triangle points on the surface of a unit sphere A, B and C.
@@ -212,7 +311,8 @@ float sphericalTriangleCosineAngle(vec3 A, vec3 B, vec3 C)
   // Note: Handle cases when normalization may be NaN (in these cases two of the points
   // are colinear which can be interpreted as having an angle of 0 in the spherical triangle,
   // or in the case of the cosine of the angle, 1).
-  if (lengthCA == 0.0f || lengthBA == 0.0f) {
+  if (lengthCA == 0.0f || lengthBA == 0.0f)
+  {
     return 1.0f;
   }
 

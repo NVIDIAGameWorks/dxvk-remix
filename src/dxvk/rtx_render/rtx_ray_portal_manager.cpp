@@ -73,7 +73,7 @@ namespace dxvk {
 
   RayPortalManager::RayPortalManager(DxvkDevice* device, ResourceCache* pResourceCache)
     : CommonDeviceObject(device)
-    , kCameraDepthPenetrationThreshold(RtxOptions::Get()->rayPortalCameraInBetweenPortalsCorrectionThreshold() * RtxOptions::Get()->getMeterToWorldUnitScale())
+    , kCameraDepthPenetrationThreshold(RtxOptions::rayPortalCameraInBetweenPortalsCorrectionThreshold() * RtxOptions::getMeterToWorldUnitScale())
     , m_pResourceCache(pResourceCache) {
   }
 
@@ -233,7 +233,7 @@ namespace dxvk {
   }
 
   // Prepare scene data is copying constants to a structure - which is then consumed by raytracing CB
-  void RayPortalManager::prepareSceneData(Rc<DxvkContext> /*ctx*/, const float /*frameTimeMilliseconds*/) {
+  void RayPortalManager::prepareSceneData(Rc<DxvkContext> /*ctx*/) {
     ScopedCpuProfileZone();
     // Save the previous frame data
     memcpy(m_sceneData.previousRayPortalHitInfos, m_sceneData.rayPortalHitInfos, sizeof(m_sceneData.previousRayPortalHitInfos));
@@ -342,7 +342,7 @@ namespace dxvk {
   void RayPortalManager::fixCameraInBetweenPortals(RtCamera& camera) const {
     ScopedCpuProfileZone();
 
-    if (!RtxOptions::Get()->getRayPortalCameraInBetweenPortalsCorrection())
+    if (!RtxOptions::rayPortalCameraInBetweenPortalsCorrection())
       return;
 
     // Don't fix free camera
@@ -405,7 +405,7 @@ namespace dxvk {
   bool RayPortalManager::detectTeleportationAndCorrectCameraHistory(RtCamera& camera, RtCamera* viewmodelCamera) {
     m_cameraTeleportationRayPortalDirectionInfo = nullptr;
 
-    if (!RtxOptions::Get()->getRayPortalCameraHistoryCorrection())
+    if (!RtxOptions::rayPortalCameraHistoryCorrection())
       return false;
     
     // Safe guard: let temporal camera fix its t1, t0 frames history

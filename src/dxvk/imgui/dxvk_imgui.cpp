@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -22,6 +22,8 @@
 
 #include <cassert>
 #include <tuple>
+#include <string>
+#include <optional>
 #include <nvapi.h>
 #include <NVIDIASansMd.ttf.h>
 #include <RobotoMonoRg.ttf.h>
@@ -41,9 +43,16 @@
 #include "rtx_render/rtx_hash_collision_detection.h"
 #include "rtx_render/rtx_options.h"
 #include "rtx_render/rtx_terrain_baker.h"
+#include "rtx_render/rtx_neural_radiance_cache.h"
+#include "rtx_render/rtx_ray_reconstruction.h"
+#include "rtx_render/rtx_rtxdi_rayquery.h"
+#include "rtx_render/rtx_restir_gi_rayquery.h"
+#include "rtx_render/rtx_debug_view.h"
+#include "rtx_render/rtx_composite.h"
 #include "dxvk_image.h"
 #include "../util/rc/util_rc_ptr.h"
 #include "../util/util_math.h"
+#include "../util/util_globaltime.h"
 #include "rtx_render/rtx_opacity_micromap_manager.h"
 #include "rtx_render/rtx_bridge_message_channel.h"
 #include "dxvk_imgui_about.h"
@@ -51,6 +60,15 @@
 #include "dxvk_imgui_capture.h"
 #include "dxvk_scoped_annotation.h"
 #include "../../d3d9/d3d9_rtx.h"
+#include "dxvk_memory_tracker.h"
+#include "rtx_render/rtx_particle_system.h"
+
+
+namespace dxvk {
+  extern size_t g_streamedTextures_budgetBytes;
+  extern size_t g_streamedTextures_usedBytes;
+}
+
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 extern ImGuiKey ImGui_ImplWin32_VirtualKeyToImGuiKey(WPARAM wParam);
@@ -129,38 +147,46 @@ namespace dxvk {
   struct ImGuiTexture {
     Rc<DxvkImageView> imageView = VK_NULL_HANDLE;
     VkDescriptorSet texID = VK_NULL_HANDLE;
+    uint32_t textureFeatureFlags = 0;
   };
   std::unordered_map<XXH64_hash_t, ImGuiTexture> g_imguiTextureMap;
+  fast_unordered_cache<FogState> g_imguiFogMap;
+  XXH64_hash_t g_usedFogStateHash;
+  std::mutex g_imguiFogMapMutex; // protects g_imguiFogMap
 
   struct RtxTextureOption {
     const char* uniqueId;
     const char* displayName;
     RtxOption<fast_unordered_set>* textureSetOption;
+    uint32_t featureFlagMask = ImGUI::kTextureFlagsDefault;
     bool bufferToggle;
   };
 
   std::vector<RtxTextureOption> rtxTextureOptions = {
-    {"uitextures", "UI Texture", &RtxOptions::Get()->uiTexturesObject()},
-    {"worldspaceuitextures", "World Space UI Texture", &RtxOptions::Get()->worldSpaceUiTexturesObject()},
-    {"worldspaceuibackgroundtextures", "World Space UI Background Texture", &RtxOptions::Get()->worldSpaceUiBackgroundTexturesObject()},
-    {"skytextures", "Sky Texture", &RtxOptions::Get()->skyBoxTexturesObject()},
-    {"ignoretextures", "Ignore Texture (optional)", &RtxOptions::Get()->ignoreTexturesObject()},
-    {"hidetextures", "Hide Texture Instance (optional)", &RtxOptions::Get()->hideInstanceTexturesObject()},
-    {"lightmaptextures","Lightmap Textures (optional)", &RtxOptions::Get()->lightmapTexturesObject()},
-    {"ignorelights", "Ignore Lights (optional)", &RtxOptions::Get()->ignoreLightsObject()},
-    {"particletextures", "Particle Texture (optional)", &RtxOptions::Get()->particleTexturesObject()},
-    {"beamtextures", "Beam Texture (optional)", &RtxOptions::Get()->beamTexturesObject()},
-    {"lightconvertertextures", "Add Light to Textures (optional)", &RtxOptions::Get()->lightConverterObject()},
-    {"decaltextures", "Decal Texture (optional)", &RtxOptions::Get()->decalTexturesObject()},
-    {"terraintextures", "Terrain Texture", &RtxOptions::Get()->terrainTexturesObject()},
-    {"watertextures", "Water Texture (optional)", &RtxOptions::Get()->animatedWaterTexturesObject()},
-    {"antiCullingTextures", "Anti-Culling Texture (optional)", &RtxOptions::Get()->antiCullingTexturesObject()},
-    {"motionBlurMaskOutTextures", "Motion Blur Mask-Out Textures (optional)", &RtxOptions::Get()->motionBlurMaskOutTexturesObject()},
-    {"playermodeltextures", "Player Model Texture (optional)", &RtxOptions::Get()->playerModelTexturesObject()},
-    {"playermodelbodytextures", "Player Model Body Texture (optional)", &RtxOptions::Get()->playerModelBodyTexturesObject()},
-    {"opacitymicromapignoretextures", "Opacity Micromap Ignore Texture (optional)", &RtxOptions::Get()->opacityMicromapIgnoreTexturesObject()},
-    {"ignorebakedlightingtextures","Ignore Baked Lighting Textures (optional)", &RtxOptions::Get()->ignoreBakedLightingTexturesObject()},
-    {"ignorealphaontextures","Ignore Alpha Channel of Textures (optional)", &RtxOptions::Get()->ignoreAlphaOnTexturesObject()}
+    {"uitextures", "UI Texture", &RtxOptions::uiTexturesObject()},
+    {"worldspaceuitextures", "World Space UI Texture", &RtxOptions::worldSpaceUiTexturesObject()},
+    {"worldspaceuibackgroundtextures", "World Space UI Background Texture", &RtxOptions::worldSpaceUiBackgroundTexturesObject()},
+    {"skytextures", "Sky Texture", &RtxOptions::skyBoxTexturesObject()},
+    {"ignoretextures", "Ignore Texture (optional)", &RtxOptions::ignoreTexturesObject()},
+    {"hidetextures", "Hide Texture Instance (optional)", &RtxOptions::hideInstanceTexturesObject()},
+    {"lightmaptextures","Lightmap Textures (optional)", &RtxOptions::lightmapTexturesObject()},
+    {"ignorelights", "Ignore Lights (optional)", &RtxOptions::ignoreLightsObject()},
+    {"particletextures", "Particle Texture (optional)", &RtxOptions::particleTexturesObject()},
+    {"beamtextures", "Beam Texture (optional)", &RtxOptions::beamTexturesObject()},
+    {"ignoretransparencytextures", "Ignore Transparency Layer Texture (optional)", &RtxOptions::ignoreTransparencyLayerTexturesObject()},
+    {"lightconvertertextures", "Add Light to Textures (optional)", &RtxOptions::lightConverterObject()},
+    {"decaltextures", "Decal Texture (optional)", &RtxOptions::decalTexturesObject()},
+    {"terraintextures", "Terrain Texture", &RtxOptions::terrainTexturesObject()},
+    {"watertextures", "Water Texture (optional)", &RtxOptions::animatedWaterTexturesObject()},
+    {"antiCullingTextures", "Anti-Culling Texture (optional)", &RtxOptions::antiCullingTexturesObject()},
+    {"motionBlurMaskOutTextures", "Motion Blur Mask-Out Textures (optional)", &RtxOptions::motionBlurMaskOutTexturesObject()},
+    {"playermodeltextures", "Player Model Texture (optional)", &RtxOptions::playerModelTexturesObject()},
+    {"playermodelbodytextures", "Player Model Body Texture (optional)", &RtxOptions::playerModelBodyTexturesObject()},
+    {"opacitymicromapignoretextures", "Opacity Micromap Ignore Texture (optional)", &RtxOptions::opacityMicromapIgnoreTexturesObject()},
+    {"ignorebakedlightingtextures","Ignore Baked Lighting Textures (optional)", &RtxOptions::ignoreBakedLightingTexturesObject()},
+    {"ignorealphaontextures","Ignore Alpha Channel of Textures (optional)", &RtxOptions::ignoreAlphaOnTexturesObject()},
+    {"raytracedRenderTargetTextures","Raytraced Render Target Textures (optional)", &RtxOptions::raytracedRenderTargetTexturesObject(), ImGUI::kTextureFlagsRenderTarget},
+    {"particleemittertextures","Particle Emitters (optional)", &RtxOptions::particleEmitterTexturesObject()}
   };
 
   ImGui::ComboWithKey<RenderPassGBufferRaytraceMode> renderPassGBufferRaytraceModeCombo {
@@ -200,6 +226,17 @@ namespace dxvk {
     } }
   };
 
+  ImGui::ComboWithKey<GraphicsPreset> graphicsPresetCombo{
+    "Graphics Preset",
+    ImGui::ComboWithKey<GraphicsPreset>::ComboEntries{ {
+        {GraphicsPreset::Ultra, "Ultra"},
+        {GraphicsPreset::High, "High"},
+        {GraphicsPreset::Medium, "Medium"},
+        {GraphicsPreset::Low, "Low"},
+        {GraphicsPreset::Custom, "Custom"},
+    } }
+  };
+
   ImGui::ComboWithKey<int> minPathBouncesCombo {
     "Min Light Bounces",
     ImGui::ComboWithKey<int>::ComboEntries { {
@@ -228,6 +265,15 @@ namespace dxvk {
         {0, "None"},
         {1, "Low"},
         {2, "High"},
+    } }
+  };
+
+  ImGui::ComboWithKey<NeuralRadianceCache::QualityPreset> neuralRadianceCacheQualityPresetCombo {
+    "RTX Neural Radiance Cache Quality",
+    ImGui::ComboWithKey<NeuralRadianceCache::QualityPreset>::ComboEntries { {
+        {NeuralRadianceCache::QualityPreset::Ultra, "Ultra"},
+        {NeuralRadianceCache::QualityPreset::High, "High"},
+        {NeuralRadianceCache::QualityPreset::Medium, "Medium"}
     } }
   };
 
@@ -280,22 +326,6 @@ namespace dxvk {
       {SkyAutoDetectMode::CameraPositionAndDepthFlags, "By Camera Position and Depth Flags"}
   } });
 
-  static auto SkyScaleCalibrationModeCombo = ImGui::ComboWithKey<SkyScaleCalibrationMode>(
-    "3D Sky Scale Calibration",
-    ImGui::ComboWithKey<SkyScaleCalibrationMode>::ComboEntries { {
-      {SkyScaleCalibrationMode::Fixed, "Always Use Default Scale"},
-      {SkyScaleCalibrationMode::DeltaAutomatic, "Calculate From Delta (Main vs Sky)"},
-      {SkyScaleCalibrationMode::SourceEngineAutomatic, "Calculate From Source Engine Approximation"}
-  } });
-
-  static auto SkyScaleOffsetFormulaCombo = ImGui::ComboWithKey<SkyScaleOffsetFormula>(
-    "3D Sky Offset Formula",
-    ImGui::ComboWithKey<SkyScaleOffsetFormula>::ComboEntries { {
-      {SkyScaleOffsetFormula::Origin, "Origin Based"},
-      {SkyScaleOffsetFormula::Linear, "Linear Based"},
-      {SkyScaleOffsetFormula::SourceEngine, "Source Engined Based (Hyperbolic)"}
-  } });
-
   static auto upscalerNoDLSSCombo = ImGui::ComboWithKey<UpscalerType>(
     "Upscaler Type",
     { {
@@ -313,13 +343,202 @@ namespace dxvk {
       {UpscalerType::TAAU, "TAA-U"},
   } });
 
-  ImGui::ComboWithKey<RussianRouletteMode> secondPlusRussianRouletteModeCombo {
-    "2nd+ Russian Roulette Mode",
+  ImGui::ComboWithKey<DlssPreset> dlssPresetCombo{
+    "DLSS Preset",
+    ImGui::ComboWithKey<DlssPreset>::ComboEntries{ {
+        {DlssPreset::Off, "Disabled"},
+        {DlssPreset::On, "Enabled"},
+        {DlssPreset::Custom, "Custom"},
+    } }
+  };
+
+  ImGui::ComboWithKey<DLSSProfile> dlssProfileCombo{
+    "DLSS Mode",
+    ImGui::ComboWithKey<DLSSProfile>::ComboEntries{ {
+        {DLSSProfile::UltraPerf, "Ultra Performance"},
+        {DLSSProfile::MaxPerf, "Performance"},
+        {DLSSProfile::Balanced, "Balanced"},
+        {DLSSProfile::MaxQuality, "Quality"},
+        {DLSSProfile::FullResolution, "Full Resolution"},
+        {DLSSProfile::Auto, "Auto"},
+    } }
+  };
+
+  ImGui::ComboWithKey<NisPreset> nisPresetCombo{
+    "NIS Preset",
+    ImGui::ComboWithKey<NisPreset>::ComboEntries{ {
+        {NisPreset::Performance, "Performance"},
+        {NisPreset::Balanced, "Balanced"},
+        {NisPreset::Quality, "Quality"},
+        {NisPreset::Fullscreen, "Fullscreen"},
+    } }
+  };
+
+  ImGui::ComboWithKey<TaauPreset> taauPresetCombo{
+    "TAA-U Preset",
+    ImGui::ComboWithKey<TaauPreset>::ComboEntries{ {
+        {TaauPreset::UltraPerformance, "Ultra Performance"},
+        {TaauPreset::Performance, "Performance"},
+        {TaauPreset::Balanced, "Balanced"},
+        {TaauPreset::Quality, "Quality"},
+        {TaauPreset::Fullscreen, "Fullscreen"},
+    } }
+  };
+
+  ImGui::ComboWithKey<RussianRouletteMode> secondPlusBounceRussianRouletteModeCombo {
+    "2nd+ Bounce Russian Roulette Mode",
     ImGui::ComboWithKey<RussianRouletteMode>::ComboEntries { {
         {RussianRouletteMode::ThroughputBased, "Throughput Based"},
         {RussianRouletteMode::SpecularBased, "Specular Based"}
     } }
   };
+
+  ImGui::ComboWithKey<IntegrateIndirectMode> integrateIndirectModeCombo {
+    "Integrate Indirect Illumination Mode",
+    ImGui::ComboWithKey<IntegrateIndirectMode>::ComboEntries { {
+        {IntegrateIndirectMode::ImportanceSampled, "Importance Sampled",  
+          "Importance Sampled. Importance sampled mode uses typical GI sampling and it is not recommended for general use as it provides the noisiest output.\n"
+          "It serves as a reference integration mode for validation of other indirect integration modes." },
+        {IntegrateIndirectMode::ReSTIRGI, "ReSTIR GI", 
+          "ReSTIR GI provides improved indirect path sampling over \"Importance Sampled\" mode with better indirect diffuse and specular GI quality at increased performance cost."},
+        {IntegrateIndirectMode::NeuralRadianceCache, "RTX Neural Radiance Cache", 
+          "RTX Neural Radiance Cache (NRC). NRC is an AI based world space radiance cache. It is live trained by the path tracer\n"
+          "and allows paths to terminate early by looking up the cached value and saving performance.\n"
+          "NRC supports infinite bounces and often provides results closer to that of reference than ReSTIR GI\n"
+          "while increasing performance in scenarios where ray paths have 2 or more bounces on average."}
+    } }
+  };
+
+  static auto rayReconstructionModelCombo = ImGui::ComboWithKey<DxvkRayReconstruction::RayReconstructionModel>(
+    "Ray Reconstruction Model",
+    { {
+      {DxvkRayReconstruction::RayReconstructionModel::Transformer, "Transformer", "Ensures highest image quality. Can be more expensive than CNN in terms of memory and performance."},
+      {DxvkRayReconstruction::RayReconstructionModel::CNN, "CNN", "Ensures great image quality"},
+  } });
+
+  ImGui::ComboWithKey<int> dlfgMfgModeCombo {
+    "DLSS Frame Generation Mode",
+    ImGui::ComboWithKey<int>::ComboEntries { {
+        {1, "2x"},
+        {2, "3x"},
+        {3, "4x"},
+    } }
+  };
+
+  ImGui::ComboWithKey<ReflexMode> reflexModeCombo{
+    "Reflex",
+    ImGui::ComboWithKey<ReflexMode>::ComboEntries{ {
+        {ReflexMode::None, "Disabled"},
+        {ReflexMode::LowLatency, "Enabled"},
+        {ReflexMode::LowLatencyBoost, "Enabled + Boost"},
+    } }
+  };
+
+#ifdef REMIX_DEVELOPMENT
+  ImGui::ComboWithKey<dxvk::RtxFramePassStage>::ComboEntries aliasingPassComboEntries = { {
+      { RtxFramePassStage::FrameBegin, "FrameBegin" },
+      { RtxFramePassStage::Volumetrics, "Volumetrics" },
+      { RtxFramePassStage::VolumeIntegrateRestirInitial, "VolumeIntegrateRestirInitial" },
+      { RtxFramePassStage::VolumeIntegrateRestirVisible, "VolumeIntegrateRestirVisible" },
+      { RtxFramePassStage::VolumeIntegrateRestirTemporal, "VolumeIntegrateRestirTemporal" },
+      { RtxFramePassStage::VolumeIntegrateRestirSpatialResampling, "VolumeIntegrateRestirSpatialResampling" },
+      { RtxFramePassStage::VolumeIntegrateRaytracing, "VolumeIntegrateRaytracing" },
+      { RtxFramePassStage::GBufferPrimaryRays, "GBufferPrimaryRays" },
+      { RtxFramePassStage::ReflectionPSR, "ReflectionPSR" },
+      { RtxFramePassStage::TransmissionPSR, "TransmissionPSR" },
+      { RtxFramePassStage::RTXDI_InitialTemporalReuse, "RTXDI_InitialTemporalReuse" },
+      { RtxFramePassStage::RTXDI_SpatialReuse, "RTXDI_SpatialReuse" },
+      { RtxFramePassStage::NEE_Cache, "NEE_Cache" },
+      { RtxFramePassStage::DirectIntegration, "DirectIntegration" },
+      { RtxFramePassStage::RTXDI_ComputeGradients, "RTXDI_ComputeGradients" },
+      { RtxFramePassStage::IndirectIntegration, "IndirectIntegration" },
+      { RtxFramePassStage::NEE_Integration, "NEE_Integration" },
+      { RtxFramePassStage::NRC, "NRC" },
+      { RtxFramePassStage::RTXDI_FilterGradients, "RTXDI_FilterGradients" },
+      { RtxFramePassStage::RTXDI_ComputeConfidence, "RTXDI_ComputeConfidence" },
+      { RtxFramePassStage::ReSTIR_GI_TemporalReuse, "ReSTIR_GI_TemporalReuse" },
+      { RtxFramePassStage::ReSTIR_GI_SpatialReuse, "ReSTIR_GI_SpatialReuse" },
+      { RtxFramePassStage::ReSTIR_GI_FinalShading, "ReSTIR_GI_FinalShading" },
+      { RtxFramePassStage::Demodulate, "Demodulate" },
+      { RtxFramePassStage::NRD, "NRD" },
+      { RtxFramePassStage::CompositionAlphaBlend, "CompositionAlphaBlend" },
+      { RtxFramePassStage::Composition, "Composition" },
+      { RtxFramePassStage::DLSS, "DLSS" },
+      { RtxFramePassStage::DLSSRR, "DLSSRR" },
+      { RtxFramePassStage::NIS, "NIS" },
+      { RtxFramePassStage::TAA, "TAA" },
+      { RtxFramePassStage::DustParticles, "DustParticles" },
+      { RtxFramePassStage::Bloom, "Bloom" },
+      { RtxFramePassStage::PostFX, "PostFX" },
+      { RtxFramePassStage::AutoExposure_Histogram, "AutoExposure_Histogram" },
+      { RtxFramePassStage::AutoExposure_Exposure, "AutoExposure_Exposure" },
+      { RtxFramePassStage::ToneMapping, "ToneMapping" },
+      { RtxFramePassStage::FrameEnd, "FrameEnd" },
+  } };
+
+  static auto aliasingBeginPassCombo = ImGui::ComboWithKey<dxvk::RtxFramePassStage>(
+    "Aliasing Begin Pass", ImGui::ComboWithKey<dxvk::RtxFramePassStage>::ComboEntries{ aliasingPassComboEntries });
+
+  static auto aliasingEndPassCombo = ImGui::ComboWithKey<dxvk::RtxFramePassStage>(
+    "Aliasing End Pass", ImGui::ComboWithKey<dxvk::RtxFramePassStage>::ComboEntries { aliasingPassComboEntries });
+
+  static auto aliasingExtentCombo = ImGui::ComboWithKey<RtxTextureExtentType>(
+    "Aliasing Extent Type",
+    { {
+      { RtxTextureExtentType::DownScaledExtent, "DownScaledExtent" },
+      { RtxTextureExtentType::TargetExtent, "TargetExtent" },
+      { RtxTextureExtentType::Custom, "Custom" },
+  } } );
+
+  static auto aliasingFormatCombo = ImGui::ComboWithKey<RtxTextureFormatCompatibilityCategory>(
+     "Aliasing Format",
+     { {
+      { RtxTextureFormatCompatibilityCategory::Color_Format_8_Bits, "8 Bits Color Texture" },
+      { RtxTextureFormatCompatibilityCategory::Color_Format_16_Bits, "16 Bits Color Texture" },
+      { RtxTextureFormatCompatibilityCategory::Color_Format_32_Bits, "32 Bits Color Texture" },
+      { RtxTextureFormatCompatibilityCategory::Color_Format_64_Bits, "64 Bits Color Texture" },
+      { RtxTextureFormatCompatibilityCategory::Color_Format_128_Bits, "128 Bits Color Texture" },
+      { RtxTextureFormatCompatibilityCategory::Color_Format_256_Bits, "256 Bits Color Texture" },
+      // All other formats
+      { RtxTextureFormatCompatibilityCategory::InvalidFormatCompatibilityCategory, "Not Listed Format" },
+     } }
+  );
+
+  static auto aliasingImageTypeCombo = ImGui::ComboWithKey<VkImageType>(
+     "Aliasing Image Type",
+     { {
+      { VK_IMAGE_TYPE_1D, "VK_IMAGE_TYPE_1D" },
+      { VK_IMAGE_TYPE_2D, "VK_IMAGE_TYPE_2D" },
+      { VK_IMAGE_TYPE_3D, "VK_IMAGE_TYPE_3D" },
+     } }
+  );
+
+  static auto aliasingImageViewTypeCombo = ImGui::ComboWithKey<VkImageViewType>(
+     "Aliasing Image View Type",
+     { {
+      { VK_IMAGE_VIEW_TYPE_1D, "VK_IMAGE_VIEW_TYPE_1D" },
+      { VK_IMAGE_VIEW_TYPE_1D_ARRAY, "VK_IMAGE_VIEW_TYPE_1D_ARRAY" },
+      { VK_IMAGE_VIEW_TYPE_2D, "VK_IMAGE_VIEW_TYPE_2D" },
+      { VK_IMAGE_VIEW_TYPE_2D_ARRAY, "VK_IMAGE_VIEW_TYPE_2D_ARRAY" },
+      { VK_IMAGE_VIEW_TYPE_3D, "VK_IMAGE_VIEW_TYPE_3D" },
+      { VK_IMAGE_VIEW_TYPE_CUBE, "VK_IMAGE_VIEW_TYPE_CUBE" },
+      { VK_IMAGE_VIEW_TYPE_CUBE_ARRAY, "VK_IMAGE_VIEW_TYPE_CUBE_ARRAY" },
+     } }
+  );
+#endif
+
+  enum class TerrainMode {
+    None,
+    TerrainBaker,
+    AsDecals,
+  };
+  static auto terrainModeCombo = ImGui::ComboWithKey<TerrainMode>(
+    "Mode##terrain",
+    {
+      {        TerrainMode::None,              "None"},
+      {TerrainMode::TerrainBaker,     "Terrain Baker"},
+      {    TerrainMode::AsDecals, "Terrain-as-Decals"},
+  });
 
   // Styles 
   constexpr ImGuiSliderFlags sliderFlags = ImGuiSliderFlags_AlwaysClamp;
@@ -340,18 +559,22 @@ namespace dxvk {
   bool ImGUI::showRayReconstructionEnable(bool supportsRR) {
     // Only show DLSS-RR option if "showRayReconstructionOption" is set to true.
     bool changed = false;
-    bool rayReconstruction = RtxOptions::Get()->enableRayReconstruction();
-    if (RtxOptions::Get()->showRayReconstructionOption()) {
+    bool rayReconstruction = RtxOptions::enableRayReconstruction();
+    if (RtxOptions::showRayReconstructionOption()) {
       ImGui::BeginDisabled(!supportsRR);
-      ImGui::Checkbox("Ray Reconstruction", &RtxOptions::Get()->enableRayReconstructionRef());
+      changed = ImGui::Checkbox("Ray Reconstruction", &RtxOptions::enableRayReconstructionObject());
+
+      if (RtxOptions::enableRayReconstruction()) {
+        rayReconstructionModelCombo.getKey(&DxvkRayReconstruction::modelObject());
+      }
       ImGui::EndDisabled();
     }
 
     // Disable DLSS-RR if it's unsupported.
-    if (!supportsRR) {
-      RtxOptions::Get()->enableRayReconstructionRef() = false;
+    if (!supportsRR && RtxOptions::enableRayReconstruction()) {
+      RtxOptions::enableRayReconstruction.setDeferred(false);
+      changed = true;
     }
-    changed = (rayReconstruction != RtxOptions::Get()->enableRayReconstruction());
     return changed;
   }
 
@@ -412,6 +635,11 @@ namespace dxvk {
     pool_info.poolSizeCount = std::size(pool_sizes);
     pool_info.pPoolSizes = pool_sizes;
 
+    if (!NeuralRadianceCache::checkIsSupported(device)) {
+      // Remove unsupported option
+      integrateIndirectModeCombo.removeComboEntry(IntegrateIndirectMode::NeuralRadianceCache);
+    }
+
     m_device->vkd()->vkCreateDescriptorPool(m_device->handle(), &pool_info, nullptr, &m_imguiPool);
 
     // Initialize the core structures of ImGui and ImPlot
@@ -460,23 +688,30 @@ namespace dxvk {
     ImPlot::DestroyContext(m_plotContext);
     ImGui::DestroyContext(m_context);
   }
-
-  void ImGUI::AddTexture(const XXH64_hash_t hash, const Rc<DxvkImageView>& imageView) {
+  
+  void ImGUI::AddTexture(const XXH64_hash_t hash, const Rc<DxvkImageView>& imageView, uint32_t textureFeatureFlags) {
     if (g_imguiTextureMap.find(hash) == g_imguiTextureMap.end()) {
       ImGuiTexture texture;
       texture.imageView = imageView; // Hold a refcount
       texture.texID = VK_NULL_HANDLE;
+      texture.textureFeatureFlags = textureFeatureFlags;
       g_imguiTextureMap[hash] = texture;
     }
   }
 
   void ImGUI::ReleaseTexture(const XXH64_hash_t hash) {
-    if (RtxOptions::Get()->keepTexturesForTagging()) {
+    if (RtxOptions::keepTexturesForTagging()) {
       return;
     }
+    
+    // Note: Erase will do nothing if the hash does not exist in the map, and erase it if it is.
+    g_imguiTextureMap.erase(hash);
+  }
 
-    if (g_imguiTextureMap.find(hash) != g_imguiTextureMap.end())
-      g_imguiTextureMap.erase(hash);
+  void ImGUI::SetFogStates(const fast_unordered_cache<FogState>& fogStates, XXH64_hash_t usedFogHash) {
+    const std::lock_guard<std::mutex> lock(g_imguiFogMapMutex);
+    g_imguiFogMap = fogStates;
+    g_usedFogStateHash = usedFogHash;
   }
 
   void ImGUI::wndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -534,45 +769,42 @@ namespace dxvk {
     ImGui::ProgressBar(vidmemUsedSizeMB / vidmemTotalSizeMB);
     ImGui::PopStyleColor();
 
-    // Display a warning if free video memory is below a threshold
-
-    const bool lowVideoMemory = freeVidMemRatio < 0.125f;
-
-    if (lowVideoMemory) {
-      // Note: Use caution when editing this text, it must fit on one line to avoid flickering (due to reserving 1 line of space for it).
-      ImGui::TextColored(ImVec4{ 0.87f, 0.75f, 0.20f, 1.0f }, "Free video memory low! Consider lowering resolution/quality settings.");
-    } else {
-      // Note: Pad with a blank line when no warning is present to avoid menu flicking (since memory can bounce up and down on the threshold
-      // in a distracting manner).
-      ImGui::Text("");
-    }
-
+    ImGui::TextWrapped("RTX Remix dynamically uses available VRAM to maximize texture quality.");
+    
     ImGui::Dummy(ImVec2 { 4, 0 });
   }
 
   void ImGUI::switchMenu(UIType type, bool force) {
-    UIType oldType = RtxOptions::Get()->showUI();
+    UIType oldType = RtxOptions::showUI();
     if (oldType == type && !force) {
       return;
     }
     if (oldType == UIType::Basic) {
       ImGui::CloseCurrentPopup();
     }
+    
     if (type == UIType::Basic) {
       ImGui::OpenPopup(m_userGraphicsWindowTitle);
     }
-    RtxOptions::Get()->showUIRef() = type;
+    
+    if (type == UIType::None) {
+      onCloseMenus();
+    } else {
+      onOpenMenus();
+    }
 
-    if (RtxOptions::Get()->showUICursor()) {
+    RtxOptions::showUI.setDeferred(type);
+
+    if (RtxOptions::showUICursor()) {
       ImGui::GetIO().MouseDrawCursor = type != UIType::None;
     }
 
-    if (RtxOptions::Get()->blockInputToGameInUI()) {
+    if (RtxOptions::blockInputToGameInUI()) {
       BridgeMessageChannel::get().send("UWM_REMIX_UIACTIVE_MSG",
                                        type != UIType::None ? 1 : 0, 0);
     }
   }
-
+  
   void ImGUI::showMaterialOptions() {
     if (ImGui::CollapsingHeader("Material Options (optional)", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
@@ -580,16 +812,15 @@ namespace dxvk {
       if (ImGui::CollapsingHeader("Legacy Material Defaults", collapsingHeaderFlags)) {
         ImGui::Indent();
 
-        LegacyMaterialDefaults& legacyMaterial = RtxOptions::Get()->legacyMaterial;
-        ImGui::Checkbox("Use Albedo/Opacity Texture (if present)", &legacyMaterial.useAlbedoTextureIfPresentObject());
-        ImGui::Checkbox("Ignore Texture Alpha Channel", &legacyMaterial.ignoreAlphaChannelObject());
-        ImGui::ColorEdit3("Albedo", &legacyMaterial.albedoConstantObject());
-        ImGui::DragFloat("Opacity", &legacyMaterial.opacityConstantObject(), 0.01f, 0.f, 1.f);
-        ImGui::ColorEdit3("Emissive Color", &legacyMaterial.emissiveColorConstantObject());
-        ImGui::DragFloat("Emissive Intensity", &legacyMaterial.emissiveIntensityObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
-        ImGui::DragFloat("Roughness", &legacyMaterial.roughnessConstantObject(), 0.01f, 0.02f, 1.f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Metallic", &legacyMaterial.metallicConstantObject(), 0.01f, 0.0f, 1.f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Anisotropy", &legacyMaterial.anisotropyObject(), 0.01f, -1.0f, 1.f, "%.3f", sliderFlags);
+        ImGui::Checkbox("Use Albedo/Opacity Texture (if present)", &LegacyMaterialDefaults::useAlbedoTextureIfPresentObject());
+        ImGui::Checkbox("Ignore Texture Alpha Channel", &LegacyMaterialDefaults::ignoreAlphaChannelObject());
+        ImGui::ColorEdit3("Albedo", &LegacyMaterialDefaults::albedoConstantObject());
+        ImGui::DragFloat("Opacity", &LegacyMaterialDefaults::opacityConstantObject(), 0.01f, 0.f, 1.f);
+        ImGui::ColorEdit3("Emissive Color", &LegacyMaterialDefaults::emissiveColorConstantObject());
+        ImGui::DragFloat("Emissive Intensity", &LegacyMaterialDefaults::emissiveIntensityObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
+        ImGui::DragFloat("Roughness", &LegacyMaterialDefaults::roughnessConstantObject(), 0.01f, 0.02f, 1.f, "%.3f", sliderFlags);
+        ImGui::DragFloat("Metallic", &LegacyMaterialDefaults::metallicConstantObject(), 0.01f, 0.0f, 1.f, "%.3f", sliderFlags);
+        ImGui::DragFloat("Anisotropy", &LegacyMaterialDefaults::anisotropyObject(), 0.01f, -1.0f, 1.f, "%.3f", sliderFlags);
 
         ImGui::Unindent();
       }
@@ -600,21 +831,21 @@ namespace dxvk {
         if (ImGui::CollapsingHeader("Opaque", collapsingHeaderFlags)) {
           ImGui::Indent();
 
-          OpaqueMaterialOptions& opaqueMaterialOptions = RtxOptions::Get()->opaqueMaterialOptions;
-          ImGui::SliderFloat("Albedo Scale", &opaqueMaterialOptions.albedoScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Albedo Bias", &opaqueMaterialOptions.albedoBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Metallic Scale", &opaqueMaterialOptions.metallicScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Metallic Bias", &opaqueMaterialOptions.metallicBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Roughness Scale", &opaqueMaterialOptions.roughnessScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Roughness Bias", &opaqueMaterialOptions.roughnessBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Normal Strength##1", &opaqueMaterialOptions.normalIntensityObject(), -10.0f, 10.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Albedo Scale", &OpaqueMaterialOptions::albedoScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Albedo Bias", &OpaqueMaterialOptions::albedoBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Metallic Scale", &OpaqueMaterialOptions::metallicScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Metallic Bias", &OpaqueMaterialOptions::metallicBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Roughness Scale", &OpaqueMaterialOptions::roughnessScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Roughness Bias", &OpaqueMaterialOptions::roughnessBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Normal Strength##1", &OpaqueMaterialOptions::normalIntensityObject(), -10.0f, 10.f, "%.3f", sliderFlags);
 
-          ImGui::Checkbox("Enable dual-layer animated water normal", &opaqueMaterialOptions.layeredWaterNormalEnableObject());
+          ImGui::Checkbox("Enable dual-layer animated water normal for Opaque", &OpaqueMaterialOptions::layeredWaterNormalEnableObject());
 
-          if (opaqueMaterialOptions.layeredWaterNormalEnable()) {
-            ImGui::SliderFloat2("Layered Motion Direction", &opaqueMaterialOptions.layeredWaterNormalMotionObject(), -1.0f, 1.0f, "%.3f", sliderFlags);
-            ImGui::SliderFloat("Layered Motion Scale", &opaqueMaterialOptions.layeredWaterNormalMotionScaleObject(), -10.0f, 10.0f, "%.3f", sliderFlags);
-            ImGui::SliderFloat("LOD bias", &opaqueMaterialOptions.layeredWaterNormalLodBiasObject(), 0.0f, 16.0f, "%.3f", sliderFlags);
+          if (OpaqueMaterialOptions::layeredWaterNormalEnable()) {
+            ImGui::TextWrapped("Animated water with Opaque material is dependent on the original draw call animating using a texture transform.");
+            ImGui::SliderFloat2("Layered Motion Direction", &OpaqueMaterialOptions::layeredWaterNormalMotionObject(), -1.0f, 1.0f, "%.3f", sliderFlags);
+            ImGui::SliderFloat("Layered Motion Scale", &OpaqueMaterialOptions::layeredWaterNormalMotionScaleObject(), -10.0f, 10.0f, "%.3f", sliderFlags);
+            ImGui::SliderFloat("LOD bias", &OpaqueMaterialOptions::layeredWaterNormalLodBiasObject(), 0.0f, 16.0f, "%.3f", sliderFlags);
           }
 
           ImGui::Unindent();
@@ -623,11 +854,18 @@ namespace dxvk {
         if (ImGui::CollapsingHeader("Translucent", collapsingHeaderFlags)) {
           ImGui::Indent();
 
-          TranslucentMaterialOptions& translucentMaterialOptions = RtxOptions::Get()->translucentMaterialOptions;
-          ImGui::SliderFloat("Transmit. Color Scale", &translucentMaterialOptions.transmittanceColorScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Transmit. Color Bias", &translucentMaterialOptions.transmittanceColorBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Normal Strength##2", &translucentMaterialOptions.normalIntensityObject(), -10.0f, 10.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Transmit. Color Scale", &TranslucentMaterialOptions::transmittanceColorScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Transmit. Color Bias", &TranslucentMaterialOptions::transmittanceColorBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Normal Strength##2", &TranslucentMaterialOptions::normalIntensityObject(), -10.0f, 10.f, "%.3f", sliderFlags);
 
+          ImGui::Checkbox("Enable dual-layer animated water normal for Translucent", &TranslucentMaterialOptions::animatedWaterEnableObject());
+          if (TranslucentMaterialOptions::animatedWaterEnable()) {
+            ImGui::TextWrapped("Animated water with Translucent materials will animate using Remix animation time.");
+
+            ImGui::SliderFloat2("Primary Texcoord Velocity", &TranslucentMaterialOptions::animatedWaterPrimaryNormalMotionObject(), -0.5f, 0.5f, "%.3f", sliderFlags);
+            ImGui::SliderFloat2("Secondary Normal Texcoord Velocity", &TranslucentMaterialOptions::animatedWaterSecondaryNormalMotionObject(), -0.5f, 0.5f, "%.3f", sliderFlags);
+            ImGui::SliderFloat("Secondary Normal LOD bias", &TranslucentMaterialOptions::animatedWaterSecondaryNormalLodBiasObject(), 0.0f, 16.0f, "%.3f", sliderFlags);
+          }
           ImGui::Unindent();
         }
 
@@ -640,11 +878,10 @@ namespace dxvk {
         if (ImGui::CollapsingHeader("Opaque", collapsingHeaderFlags)) {
           ImGui::Indent();
 
-          OpaqueMaterialOptions& opaqueMaterialOptions = RtxOptions::Get()->opaqueMaterialOptions;
-          ImGui::Checkbox("Enable Thin-Film Layer", &opaqueMaterialOptions.enableThinFilmOverrideObject());
+          ImGui::Checkbox("Enable Thin-Film Layer", &OpaqueMaterialOptions::enableThinFilmOverrideObject());
 
-          if (opaqueMaterialOptions.enableThinFilmOverride()) {
-            ImGui::SliderFloat("Thin Film Thickness", &opaqueMaterialOptions.thinFilmThicknessOverrideObject(), 0.0f, OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS, "%.1f nm", sliderFlags);
+          if (OpaqueMaterialOptions::enableThinFilmOverride()) {
+            ImGui::SliderFloat("Thin Film Thickness", &OpaqueMaterialOptions::thinFilmThicknessOverrideObject(), 0.0f, OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS, "%.1f nm", sliderFlags);
           }
 
           ImGui::Unindent();
@@ -653,7 +890,7 @@ namespace dxvk {
         if (ImGui::CollapsingHeader("Translucent", collapsingHeaderFlags)) {
           ImGui::Indent();
 
-          ImGui::Checkbox("Enable Diffuse Layer", &RtxOptions::Get()->translucentMaterialOptions.enableDiffuseLayerOverrideObject());
+          ImGui::Checkbox("Enable Diffuse Layer", &TranslucentMaterialOptions::enableDiffuseLayerOverrideObject());
 
           ImGui::Unindent();
         }
@@ -667,37 +904,24 @@ namespace dxvk {
 
   void ImGUI::processHotkeys() {
     auto& io = ImGui::GetIO();
-    auto& opts = *RtxOptions::Get();
 
-    if (checkHotkeyState(RtxOptions::Get()->remixMenuKeyBinds())) {
-      if(opts.defaultToAdvancedUI()) {
-        switchMenu(opts.showUI() != UIType::None ? UIType::None : UIType::Advanced);
+    if (checkHotkeyState(RtxOptions::remixMenuKeyBinds())) {
+      if(RtxOptions::defaultToAdvancedUI()) {
+        switchMenu(RtxOptions::showUI() != UIType::None ? UIType::None : UIType::Advanced);
       } else {
-        switchMenu(opts.showUI() != UIType::None ? UIType::None : UIType::Basic);
+        switchMenu(RtxOptions::showUI() != UIType::None ? UIType::None : UIType::Basic);
       }
     }
 
     // Toggle ImGUI mouse cursor. Alt-Del
     if (io.KeyAlt && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Delete))) {
-      opts.showUICursorRef() = !opts.showUICursor();
-
-      io.MouseDrawCursor = opts.showUICursor() && opts.showUI() != UIType::None;
+      RtxOptions::showUICursor.setDeferred(!RtxOptions::showUICursor());
     }
 
     // Toggle input blocking. Alt-Backspace
     if (io.KeyAlt && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Backspace))) {
-      opts.blockInputToGameInUIRef() = !opts.blockInputToGameInUI();
-      sendUIActivationMessage();
+      RtxOptions::blockInputToGameInUI.setDeferred(!RtxOptions::blockInputToGameInUI());
     }
-  }
-
-  void ImGUI::sendUIActivationMessage() {
-    auto& opts = *RtxOptions::Get();
-    const bool doBlock = opts.blockInputToGameInUI() &&
-      opts.showUI() != UIType::None;
-
-    BridgeMessageChannel::get().send("UWM_REMIX_UIACTIVE_MSG",
-                                     doBlock ? 1 : 0, 0);
   }
 
   void ImGUI::update(const Rc<DxvkContext>& ctx) {
@@ -712,18 +936,18 @@ namespace dxvk {
     m_splash->update(m_largeFont);
 
     m_about->update(ctx);
-
+    
     m_capture->update(ctx);
 
     showDebugVisualizations(ctx);
 
-    const auto showUI = RtxOptions::Get()->showUI();
+    const auto showUI = RtxOptions::showUI();
 
     if (showUI == UIType::Advanced) {
       showMainMenu(ctx);
 
       // Uncomment to see the ImGUI demo, good reference!  Also, need to undefine IMGUI_DISABLE_DEMO_WINDOWS (in "imgui_demo.cpp")
-      // ImGui::ShowDemoWindow();
+      //ImGui::ShowDemoWindow();
     }
 
     if (showUI == UIType::Basic) {
@@ -736,7 +960,7 @@ namespace dxvk {
       showReflexLatencyStats();
     }
 
-    showErrorStatus(ctx);
+    showHudMessages(ctx);
 
     ImGui::Render();
   }
@@ -751,33 +975,36 @@ namespace dxvk {
     };
 
     auto common = ctx->getCommonObjects();
-    static RtxQuickAction sQuickAction = common->getSceneManager().areReplacementsLoaded() ? RtxQuickAction::kRtxOnEnhanced : RtxQuickAction::kRtxOn;
+    static RtxQuickAction sQuickAction = common->getSceneManager().areAllReplacementsLoaded() ? RtxQuickAction::kRtxOnEnhanced : RtxQuickAction::kRtxOn;
 
     if (ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_KeypadAdd))) {
       sQuickAction = (RtxQuickAction) ((sQuickAction + 1) % RtxQuickAction::kCount);
 
       // Skip over the enhancements quick option if no replacements are loaded
-      if(!common->getSceneManager().areReplacementsLoaded() && sQuickAction == RtxQuickAction::kRtxOnEnhanced)
+      if(!common->getSceneManager().areAllReplacementsLoaded() && sQuickAction == RtxQuickAction::kRtxOnEnhanced)
         sQuickAction = (RtxQuickAction) ((sQuickAction + 1) % RtxQuickAction::kCount);
 
       switch (sQuickAction) {
       case RtxQuickAction::kOriginal:
-        RtxOptions::Get()->enableRaytracingRef() = false;
-        RtxOptions::Get()->enableReplacementLightsRef() = false;
-        RtxOptions::Get()->enableReplacementMaterialsRef() = false;
-        RtxOptions::Get()->enableReplacementMeshesRef() = false;
+        RtxOptions::enableRaytracing.setDeferred(false);
+        RtxOptions::enableReplacementLights.setDeferred(false);
+        RtxOptions::enableReplacementMaterials.setDeferred(false);
+        RtxOptions::enableReplacementMeshes.setDeferred(false);
         break;
       case RtxQuickAction::kRtxOnEnhanced:
-        RtxOptions::Get()->enableRaytracingRef() = true;
-        RtxOptions::Get()->enableReplacementLightsRef() = true;
-        RtxOptions::Get()->enableReplacementMaterialsRef() = true;
-        RtxOptions::Get()->enableReplacementMeshesRef() = true;
+        RtxOptions::enableRaytracing.setDeferred(true);
+        RtxOptions::enableReplacementLights.setDeferred(true);
+        RtxOptions::enableReplacementMaterials.setDeferred(true);
+        RtxOptions::enableReplacementMeshes.setDeferred(true);
         break;
       case RtxQuickAction::kRtxOn:
-        RtxOptions::Get()->enableRaytracingRef() = true;
-        RtxOptions::Get()->enableReplacementLightsRef() = false;
-        RtxOptions::Get()->enableReplacementMaterialsRef() = false;
-        RtxOptions::Get()->enableReplacementMeshesRef() = false;
+        RtxOptions::enableRaytracing.setDeferred(true);
+        RtxOptions::enableReplacementLights.setDeferred(false);
+        RtxOptions::enableReplacementMaterials.setDeferred(false);
+        RtxOptions::enableReplacementMeshes.setDeferred(false);
+        break;
+      case RtxQuickAction::kCount:
+        assert(false && "invalid RtxQuickAction::kCount in ImGUI::updateQuickActions");
         break;
       }
     }
@@ -815,8 +1042,8 @@ namespace dxvk {
 
       ImGui::NextColumn();
 
-      ImGui::Checkbox("Always Developer Menu", &RtxOptions::Get()->defaultToAdvancedUIObject());
-
+      ImGui::Checkbox("Always Developer Menu", &RtxOptions::defaultToAdvancedUIObject());
+      
       ImGui::EndColumns();
 
       ImGui::Separator();
@@ -848,7 +1075,10 @@ namespace dxvk {
               m_about->show(ctx);
               break;
             case kTab_Development:
-              showAppConfig(ctx);
+              showDevelopmentSettings(ctx);
+              break;
+            case kTab_Count:
+              assert(false && "kTab_Count hit in ImGUI::showMainMenu");
               break;
             }
             m_curTab = tab;
@@ -866,15 +1096,15 @@ namespace dxvk {
       m_windowWidth = ImGui::GetWindowWidth();
     }
 
-    ImGui::Checkbox("Save Changed Settings Only", &RtxOptions::Get()->serializeChangedOptionOnlyObject());
+    ImGui::Checkbox("Save Changed Settings Only", &RtxOptions::serializeChangedOptionOnlyObject());
     if (ImGui::Button("Save Settings")) {
-      RtxOptions::Get()->serialize();
+      RtxOptions::serialize();
     }
     ImGui::SetTooltipToLastWidgetOnHover("This will save above settings in the rtx.conf file. Some may only take effect on next launch.");
 
     ImGui::SameLine();
     if (ImGui::Button("Reset Settings")) {
-      RtxOptions::Get()->reset();
+      RtxOptions::reset();
     }
 
     ImGui::SameLine();
@@ -897,11 +1127,7 @@ namespace dxvk {
 
     // Record the texture setting at the first frame it shows up
     static int lastFrameID = -1;
-    static unsigned int textureMipMapSetting = RtxOptions::Get()->minReplacementTextureMipMapLevel();
     int currentFrameID = ctx->getDevice()->getCurrentFrameId();
-    if (currentFrameID != lastFrameID + 1) {
-      textureMipMapSetting = RtxOptions::Get()->minReplacementTextureMipMapLevel();
-    }
 
     // Open popup if it's specified by user settings
     if (lastFrameID == -1) {
@@ -930,6 +1156,12 @@ namespace dxvk {
       const static ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_NoCloseWithMiddleMouseButton;
       const static ImGuiTabItemFlags tab_item_flags = ImGuiTabItemFlags_NoCloseWithMiddleMouseButton;
 
+      {
+        ImGui::TextSeparator("Display Settings");
+        ImGui::SliderInt("Brightness##user", &RtxOptions::userBrightnessObject(), 0, 100, "%d", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::Dummy({ 0.f, 4.f });
+      }
+
       if (ImGui::BeginTabBar("Settings Tabs", tab_bar_flags)) {
         if (ImGui::BeginTabItem("General", nullptr, tab_item_flags)) {
           showUserGeneralSettings(ctx, subItemWidth, subItemIndent);
@@ -937,7 +1169,7 @@ namespace dxvk {
           ImGui::EndTabItem();
         }
 
-        if (ImGui::BeginTabItem("Rendering", nullptr, tab_item_flags)) {
+        if (ImGui::BeginTabItem("Graphics", nullptr, tab_item_flags)) {
           showUserRenderingSettings(ctx, subItemWidth, subItemIndent);
 
           ImGui::EndTabItem();
@@ -967,11 +1199,7 @@ namespace dxvk {
       ImGui::SameLine();
 
       if (ImGui::Button("Save Settings", ImVec2(buttonWidth, 0))) {
-        RtxOptions::Get()->serialize();
-        if (textureMipMapSetting != RtxOptions::Get()->minReplacementTextureMipMapLevel()) {
-          ImGui::OpenPopup("Message");
-          textureMipMapSetting = RtxOptions::Get()->minReplacementTextureMipMapLevel();
-        }
+        RtxOptions::serialize();
         m_userGraphicsSettingChanged = false;
       }
 
@@ -985,15 +1213,6 @@ namespace dxvk {
 
       if (m_userGraphicsSettingChanged) {
         ImGui::TextWrapped("Settings have been changed, click 'Save Settings' to save them and persist on next launch");
-      }
-
-      if (ImGui::BeginPopupModal("Message", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::Text("The texture quality setting will take effect next time you start the app.");
-        ImGui::Indent(150);
-        if (ImGui::Button("OK", ImVec2(120, 0))) {
-          ImGui::CloseCurrentPopup();
-        }
-        ImGui::EndPopup();
       }
 
       ImGui::PopItemWidth();
@@ -1036,28 +1255,25 @@ namespace dxvk {
     // Preset Settings
 
     if (dlssSupported) {
-      const char* dlssPresetText = "DLSS Preset";
-      const DlssPreset prevDlssPreset = RtxOptions::Get()->dlssPreset();
+      const DlssPreset prevDlssPreset = RtxOptions::dlssPreset();
 
       ImGui::TextSeparator("Preset Settings");
 
-      {
-        m_userGraphicsSettingChanged |= ImGui::Combo(dlssPresetText, &RtxOptions::Get()->dlssPresetObject(), "Disabled\0Enabled\0Custom\0");
-      }
+      m_userGraphicsSettingChanged |= dlssPresetCombo.getKey(&RtxOptions::dlssPresetObject());
 
       // Revert back to default DLSS settings when switch from Off to Custom
-      if (prevDlssPreset == DlssPreset::Off && RtxOptions::Get()->dlssPreset() == DlssPreset::Custom) {
-        RtxOptions::Get()->resetUpscaler();
+      if (prevDlssPreset == DlssPreset::Off && RtxOptions::dlssPreset() == DlssPreset::Custom) {
+        RtxOptions::resetUpscaler();
       }
 
-      RtxOptions::Get()->updateUpscalerFromDlssPreset();
+      RtxOptions::updateUpscalerFromDlssPreset();
     }
 
     // Note: Disable all settings in this section beyond the preset when a non-Custom DLSS preset is in use,
     // but only when DLSS is actually supported.
     // Note: This is stored as a bool and applied in a SetDisabled per-section so that the section labels do not get disabled
     // (as this changes the color of the line and text which is undesirable).
-    const bool disableNonPresetSettings = RtxOptions::Get()->dlssPreset() != DlssPreset::Custom && dlssSupported;
+    const bool disableNonPresetSettings = RtxOptions::dlssPreset() != DlssPreset::Custom && dlssSupported;
 
     // Upscaling Settings
 
@@ -1069,13 +1285,13 @@ namespace dxvk {
       // Upscaler Type
 
       // Note: Use a different combo box without DLSS's upscaler listed if DLSS overall is unsupported.
-      auto oldUpscalerType = RtxOptions::Get()->upscalerType();
-      bool oldDLSSRREnabled = RtxOptions::Get()->enableRayReconstruction();
+      auto oldUpscalerType = RtxOptions::upscalerType();
+      bool oldDLSSRREnabled = RtxOptions::enableRayReconstruction();
 
       if (dlss.supportsDLSS()) {
-        m_userGraphicsSettingChanged |= getUpscalerCombo(dlss, rayReconstruction).getKey(&RtxOptions::Get()->upscalerTypeObject());
+        m_userGraphicsSettingChanged |= getUpscalerCombo(dlss, rayReconstruction).getKey(&RtxOptions::upscalerTypeObject());
       }
-
+      
       ImGui::PushItemWidth(static_cast<float>(subItemWidth));
       ImGui::Indent(static_cast<float>(subItemIndent));
 
@@ -1083,66 +1299,62 @@ namespace dxvk {
         m_userGraphicsSettingChanged |= showRayReconstructionEnable(dlssRRSupported);
 
         // If DLSS-RR is toggled, need to update some path tracer options accordingly to improve quality
-        if (oldUpscalerType != RtxOptions::Get()->upscalerType() || oldDLSSRREnabled != RtxOptions::Get()->enableRayReconstruction()) {
-          RtxOptions::Get()->updateLightingSetting();
+        if (oldUpscalerType != RtxOptions::upscalerType() || oldDLSSRREnabled != RtxOptions::enableRayReconstruction()) {
+          RtxOptions::updateLightingSetting();
         }
       } else {
-        m_userGraphicsSettingChanged |= getUpscalerCombo(dlss, rayReconstruction).getKey(&RtxOptions::Get()->upscalerTypeObject());
+        m_userGraphicsSettingChanged |= getUpscalerCombo(dlss, rayReconstruction).getKey(&RtxOptions::upscalerTypeObject());
       }
 
       // Upscaler Preset
 
 
-      switch (RtxOptions::Get()->upscalerType()) {
-      case UpscalerType::DLSS:
-        if (RtxOptions::Get()->enableRayReconstruction() == false) {
-          m_userGraphicsSettingChanged |= ImGui::Combo("DLSS Mode", &RtxOptions::Get()->qualityDLSSObject(), "Ultra Performance\0Performance\0Balanced\0Quality\0Auto\0");
+      switch (RtxOptions::upscalerType()) {
+        case UpscalerType::DLSS: {
+          m_userGraphicsSettingChanged |= dlssProfileCombo.getKey(&RtxOptions::qualityDLSSObject());
 
           // Display DLSS Upscaling Information
 
-          const auto currentDLSSProfile = dlss.getCurrentProfile();
+          const auto currentDLSSProfile = RtxOptions::enableRayReconstruction() ? rayReconstruction.getCurrentProfile() : dlss.getCurrentProfile();
           uint32_t dlssInputWidth, dlssInputHeight;
 
-          dlss.getInputSize(dlssInputWidth, dlssInputHeight);
+          if (RtxOptions::enableRayReconstruction()) {
+            rayReconstruction.getInputSize(dlssInputWidth, dlssInputHeight);
+          } else {
+            dlss.getInputSize(dlssInputWidth, dlssInputHeight);
+          }
 
           ImGui::TextWrapped(str::format("Computed DLSS Mode: ", dlssProfileToString(currentDLSSProfile), ", Render Resolution: ", dlssInputWidth, "x", dlssInputHeight).c_str());
-        } else {
-          m_userGraphicsSettingChanged |= ImGui::Combo("DLSS Mode", &RtxOptions::Get()->qualityDLSSObject(), "Ultra Performance\0Performance\0Balanced\0Quality\0Auto\0");
 
-          // Display DLSS Upscaling Information
-
-          const auto currentDLSSProfile = rayReconstruction.getCurrentProfile();
-          uint32_t dlssInputWidth, dlssInputHeight;
-
-          rayReconstruction.getInputSize(dlssInputWidth, dlssInputHeight);
-
-          ImGui::TextWrapped(str::format("Computed DLSS Mode: ", dlssProfileToString(currentDLSSProfile), ", Render Resolution: ", dlssInputWidth, "x", dlssInputHeight).c_str());
+          break;
         }
-        break;
         case UpscalerType::NIS: {
-        m_userGraphicsSettingChanged |= ImGui::Combo("NIS Preset", &RtxOptions::Get()->nisPresetObject(), "Performance\0Balanced\0Quality\0Fullscreen\0");
-        RtxOptions::Get()->updateUpscalerFromNisPreset();
+          m_userGraphicsSettingChanged |= nisPresetCombo.getKey(&RtxOptions::nisPresetObject());
+          RtxOptions::updateUpscalerFromNisPreset();
 
-        // Display NIS Upscaling Information
+          // Display NIS Upscaling Information
 
-        auto resolutionScale = RtxOptions::Get()->getResolutionScale();
+          auto resolutionScale = RtxOptions::resolutionScale();
 
-        ImGui::TextWrapped(str::format("NIS Resolution Scale: ", resolutionScale).c_str());
+          ImGui::TextWrapped(str::format("NIS Resolution Scale: ", resolutionScale).c_str());
 
-        break;
-      }
+          break;
+        }
         case UpscalerType::TAAU: {
-        m_userGraphicsSettingChanged |= ImGui::Combo("TAA-U Preset", &RtxOptions::Get()->taauPresetObject(), "Performance\0Balanced\0Quality\0Fullscreen\0");
-        RtxOptions::Get()->updateUpscalerFromTaauPreset();
+          m_userGraphicsSettingChanged |= taauPresetCombo.getKey(&RtxOptions::taauPresetObject());
+          RtxOptions::updateUpscalerFromTaauPreset();
 
-        // Display TAA-U Upscaling Information
+          // Display TAA-U Upscaling Information
 
-        auto resolutionScale = RtxOptions::Get()->getResolutionScale();
+          auto resolutionScale = RtxOptions::resolutionScale();
 
-        ImGui::TextWrapped(str::format("TAA-U Resolution Scale: ", resolutionScale).c_str());
+          ImGui::TextWrapped(str::format("TAA-U Resolution Scale: ", resolutionScale).c_str());
 
-        break;
-      }
+          break;
+        }
+        case UpscalerType::None:
+          // No custom UI here.
+          break;
       }
 
       ImGui::Unindent(static_cast<float>(subItemIndent));
@@ -1193,36 +1405,20 @@ namespace dxvk {
 
     ImGui::TextSeparator("Preset Settings");
 
-    {
-      m_userGraphicsSettingChanged |= ImGui::Combo("Rendering Preset", &RtxOptions::Get()->graphicsPresetObject(), "Ultra\0High\0Medium\0Low\0Custom\0");
-    }
+    const auto graphicsPresetChanged = graphicsPresetCombo.getKey(&RtxOptions::graphicsPresetObject());
+
+    m_userGraphicsSettingChanged |= graphicsPresetChanged;
 
     // Map settings to indirect particle level
     int indirectLightParticlesLevel = 0;
-    if (RtxOptions::Get()->enableUnorderedResolveInIndirectRays()) {
-      indirectLightParticlesLevel = RtxOptions::Get()->enableUnorderedEmissiveParticlesInIndirectRays() ? 2 : 1;
+    if (RtxOptions::enableUnorderedResolveInIndirectRays()) {
+      indirectLightParticlesLevel = RtxOptions::enableUnorderedEmissiveParticlesInIndirectRays() ? 2 : 1;
     }
 
     // Map presets to options
 
-    RtxOptions::Get()->updateGraphicsPresets(ctx->getDevice().ptr());
-
-    // Note: These settings aren't updated in updateGraphicsPresets since they are not in the RtxOptions class.
-    // Todo: Improve this preset override functionality and ideally move it into the updateGraphicsPresets section somehow [REMIX-1482]
-    if (RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Ultra ||
-        RtxOptions::Get()->graphicsPreset() == GraphicsPreset::High) {
-      rtxdiRayQuery.enableRayTracedBiasCorrectionRef() = true;
-      restirGiRayQuery.biasCorrectionModeRef() = ReSTIRGIBiasCorrection::PairwiseRaytrace;
-      restirGiRayQuery.useReflectionReprojectionRef() = true;
-      common->metaComposite().enableStochasticAlphaBlendRef() = true;
-      postFx.enableRef() = true;
-    } else if (RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Medium ||
-               RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Low) {
-      rtxdiRayQuery.enableRayTracedBiasCorrectionRef() = false;
-      restirGiRayQuery.biasCorrectionModeRef() = ReSTIRGIBiasCorrection::BRDF;
-      restirGiRayQuery.useReflectionReprojectionRef() = false;
-      common->metaComposite().enableStochasticAlphaBlendRef() = false;
-      postFx.enableRef() = false;
+    if (graphicsPresetChanged) {
+      RtxOptions::updateGraphicsPresets(ctx->getDevice().ptr());
     }
 
     // Path Tracing Settings
@@ -1231,25 +1427,47 @@ namespace dxvk {
 
     {
       // Note: Disabled flags should match preset mapping above to prevent changing settings when a preset overrides them.
-      ImGui::BeginDisabled(RtxOptions::Get()->graphicsPreset() != GraphicsPreset::Custom);
+      ImGui::BeginDisabled(RtxOptions::graphicsPreset() != GraphicsPreset::Custom);
 
-      m_userGraphicsSettingChanged |= minPathBouncesCombo.getKey(&RtxOptions::Get()->pathMinBouncesObject());
-      m_userGraphicsSettingChanged |= maxPathBouncesCombo.getKey(&RtxOptions::Get()->pathMaxBouncesObject());
-      m_userGraphicsSettingChanged |= ImGui::Checkbox("Enable Volumetric Lighting", &RtxOptions::Get()->enableVolumetricLightingObject());
-
-      {
-        // Disable NRD denoiser quality list when DLSS-RR is enabled.
-        bool useRayReconstruction = RtxOptions::Get()->isRayReconstructionEnabled();
-        ImGui::BeginDisabled(useRayReconstruction);
-        m_userGraphicsSettingChanged |= denoiserQualityCombo.getKey(&RtxOptions::Get()->denoiseDirectAndIndirectLightingSeparatelyObject());
-        ImGui::EndDisabled();
-      }
-
-      m_userGraphicsSettingChanged |= textureQualityCombo.getKey(&RtxOptions::Get()->minReplacementTextureMipMapLevelObject());
+      m_userGraphicsSettingChanged |= minPathBouncesCombo.getKey(&RtxOptions::pathMinBouncesObject());
+      m_userGraphicsSettingChanged |= maxPathBouncesCombo.getKey(&RtxOptions::pathMaxBouncesObject());
       m_userGraphicsSettingChanged |= indirectLightingParticlesCombo.getKey(&indirectLightParticlesLevel);
       ImGui::SetTooltipToLastWidgetOnHover("Controls the quality of particles in indirect (reflection/GI) rays.");
 
+      // NRC Quality Preset dropdown
+      NeuralRadianceCache& nrc = common->metaNeuralRadianceCache();
+      if (nrc.checkIsSupported(m_device)) {
+        bool enableNeuralRadianceCache = RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::NeuralRadianceCache;
+
+        // Disable NRC quality preset combo when NRC is not enabled.
+        ImGui::BeginDisabled(!enableNeuralRadianceCache);
+        
+        if (neuralRadianceCacheQualityPresetCombo.getKey(&NeuralRadianceCache::NrcOptions::qualityPresetObject())) {
+          m_userGraphicsSettingChanged = true;
+        }
+
+        ImGui::EndDisabled();
+      }
+
+      // Hide NRD denoiser quality list when DLSS-RR is enabled.
+      bool useRayReconstruction = RtxOptions::isRayReconstructionEnabled();
+      if (!useRayReconstruction) {
+        m_userGraphicsSettingChanged |= denoiserQualityCombo.getKey(&RtxOptions::denoiseDirectAndIndirectLightingSeparatelyObject());
+      }
+
       ImGui::EndDisabled();
+    }
+
+    // Volumetrics Settings
+
+    ImGui::TextSeparator("RTX Volumetrics Settings");
+    {
+      m_userGraphicsSettingChanged |= ImGui::Checkbox("Enable Volumetric Lighting", &RtxGlobalVolumetrics::enableObject());
+      ImGui::BeginDisabled(!RtxGlobalVolumetrics::enable());
+      ImGui::Indent(static_cast<float>(subItemIndent));
+      common->metaGlobalVolumetrics().showImguiUserSettings();
+      ImGui::EndDisabled();
+      ImGui::Unindent(static_cast<float>(subItemIndent));
     }
 
     // Post Effect Settings
@@ -1257,11 +1475,16 @@ namespace dxvk {
     ImGui::TextSeparator("Post Effect Settings");
 
     {
-      // Note: Disabled flags should match preset mapping above to prevent changing settings when a preset overrides them.
-      ImGui::BeginDisabled(RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Medium || RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Low);
+      {
+        // Note: All presets aside from Custom will overwrite this, so only enable for Custom.
+        ImGui::BeginDisabled(RtxOptions::graphicsPreset() != GraphicsPreset::Custom);
+        m_userGraphicsSettingChanged |= ImGui::Checkbox("Enable Post Effects", &postFx.enableObject());
+        ImGui::EndDisabled();
+      }
 
-      m_userGraphicsSettingChanged |= ImGui::Checkbox("Enable Post Effects", &postFx.enableObject());
-
+      // Note: Medium and Low presets disable all post effects, so no value in changing the individual settings.
+      // High and Ultra allow these to be changed without requiring Custom, so leave enabled for those.
+      ImGui::BeginDisabled(RtxOptions::graphicsPreset() == GraphicsPreset::Medium || RtxOptions::graphicsPreset() == GraphicsPreset::Low);
       {
         ImGui::PushItemWidth(static_cast<float>(subItemWidth));
         ImGui::Indent(static_cast<float>(subItemIndent));
@@ -1290,19 +1513,19 @@ namespace dxvk {
     }
 
     // Map indirect particle level back to settings
-    if (RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Custom) {
+    if (RtxOptions::graphicsPreset() == GraphicsPreset::Custom) {
       switch (indirectLightParticlesLevel) {
       case 0:
-        RtxOptions::Get()->enableUnorderedEmissiveParticlesInIndirectRaysRef() = false;
-        RtxOptions::Get()->enableUnorderedResolveInIndirectRaysRef() = false;
+        RtxOptions::enableUnorderedEmissiveParticlesInIndirectRays.setDeferred(false);
+        RtxOptions::enableUnorderedResolveInIndirectRays.setDeferred(false);
         break;
       case 1:
-        RtxOptions::Get()->enableUnorderedEmissiveParticlesInIndirectRaysRef() = false;
-        RtxOptions::Get()->enableUnorderedResolveInIndirectRaysRef() = true;
+        RtxOptions::enableUnorderedEmissiveParticlesInIndirectRays.setDeferred(false);
+        RtxOptions::enableUnorderedResolveInIndirectRays.setDeferred(true);
         break;
       case 2:
-        RtxOptions::Get()->enableUnorderedEmissiveParticlesInIndirectRaysRef() = true;
-        RtxOptions::Get()->enableUnorderedResolveInIndirectRaysRef() = true;
+        RtxOptions::enableUnorderedEmissiveParticlesInIndirectRays.setDeferred(true);
+        RtxOptions::enableUnorderedResolveInIndirectRays.setDeferred(true);
         break;
       }
     }
@@ -1322,19 +1545,19 @@ namespace dxvk {
 
     ImGui::Dummy(ImVec2(0.0f, 5.0f));
 
-    ImGui::BeginDisabled(!common->getSceneManager().areReplacementsLoaded());
+    ImGui::BeginDisabled(!common->getSceneManager().areAllReplacementsLoaded());
 
-    m_userGraphicsSettingChanged |= ImGui::Checkbox("Enable All Enhanced Assets", &RtxOptions::Get()->enableReplacementAssetsObject());
+    m_userGraphicsSettingChanged |= ImGui::Checkbox("Enable All Enhanced Assets", &RtxOptions::enableReplacementAssetsObject());
 
     {
       ImGui::PushItemWidth(static_cast<float>(subItemWidth));
       ImGui::Indent(static_cast<float>(subItemIndent));
 
-      ImGui::BeginDisabled(!RtxOptions::Get()->enableReplacementAssets());
+      ImGui::BeginDisabled(!RtxOptions::enableReplacementAssets());
 
-      m_userGraphicsSettingChanged |= ImGui::Checkbox("Enable Enhanced Materials", &RtxOptions::Get()->enableReplacementMaterialsObject());
-      m_userGraphicsSettingChanged |= ImGui::Checkbox("Enable Enhanced Meshes", &RtxOptions::Get()->enableReplacementMeshesObject());
-      m_userGraphicsSettingChanged |= ImGui::Checkbox("Enable Enhanced Lights", &RtxOptions::Get()->enableReplacementLightsObject());
+      m_userGraphicsSettingChanged |= ImGui::Checkbox("Enable Enhanced Materials", &RtxOptions::enableReplacementMaterialsObject());
+      m_userGraphicsSettingChanged |= ImGui::Checkbox("Enable Enhanced Meshes", &RtxOptions::enableReplacementMeshesObject());
+      m_userGraphicsSettingChanged |= ImGui::Checkbox("Enable Enhanced Lights", &RtxOptions::enableReplacementLightsObject());
 
       ImGui::EndDisabled();
 
@@ -1347,31 +1570,159 @@ namespace dxvk {
     ImGui::Dummy(ImVec2(0.0f, 5.0f));
   }
 
-  void ImGUI::showErrorStatus(const Rc<DxvkContext>& ctx) {
+  struct HudMessage {
+    HudMessage(const std::string& text, const std::optional<std::string>& subText) : text{ text }, subText{ subText } {}
+
+    std::string text;
+    std::optional<std::string> subText;
+  };
+
+  void ImGUI::showHudMessages(const Rc<DxvkContext>& ctx) {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     auto common = ctx->getCommonObjects();
-    std::vector<std::string> hudMessages;
+    const auto& pipelineManager = common->pipelineManager();
 
-    if(common->getSceneManager().areReplacementsLoading())
-      hudMessages.emplace_back("Loading enhancements...");
+    std::vector<HudMessage> hudMessages;
+
+    // Add Shader Compilation HUD messages
+
+    uint32_t asyncShaderCompilationCount = 0;
+    if (RtxOptions::Shader::enableAsyncCompilation()) {
+      asyncShaderCompilationCount = pipelineManager.remixShaderCompilationCount();
+    }
+
+    if (RtxOptions::Shader::enableAsyncCompilationUI() && asyncShaderCompilationCount > 0) {
+      const auto compilationText = str::format("Compiling shaders (", asyncShaderCompilationCount, " remaining)");
+
+      hudMessages.emplace_back(std::move(compilationText), "This may take some time if shaders are not cached yet.\nRemix will not render properly until compilation is finished.");
+    }
+
+    // Add Enhancement Loading HUD messages
+
+    const auto replacementStates = common->getSceneManager().getReplacementStates();
+    std::string replacementLoadingSubtext;
+    std::uint32_t loadingReplacementStateCount{ 0U };
+
+    for (std::size_t i{ 0U }; i < replacementStates.size(); ++i) {
+      auto&& replacementState = replacementStates[i];
+
+      // Add a newline when reporting on more than one mod in a loading state
+
+      if (loadingReplacementStateCount != 0) {
+        replacementLoadingSubtext += '\n';
+      }
+
+      // Hide individual mod progress messages beyond a requested amount
+      // Note: This ensures if for some reason there are a significant amount of mods in place that the screen will not be filled with progress hud messages.
+
+      constexpr std::size_t maxModProgressCount{ 4 };
+
+      if (loadingReplacementStateCount >= maxModProgressCount) {
+        replacementLoadingSubtext += str::format(replacementStates.size() - maxModProgressCount, " more hidden...");
+
+        break;
+      }
+
+      // Set the progress message if the mod is in a loading state and increment the number of currently loading mods
+
+      switch (replacementState.progressState) {
+      case Mod::ProgressState::OpeningUSD: replacementLoadingSubtext += str::format("Opening USD"); break;
+      case Mod::ProgressState::ProcessingMaterials: replacementLoadingSubtext += str::format("Processing Materials (", replacementState.progressCount, " processed)"); break;
+      case Mod::ProgressState::ProcessingMeshes: replacementLoadingSubtext += str::format("Processing Meshes (", replacementState.progressCount, " processed)"); break;
+      case Mod::ProgressState::ProcessingLights: replacementLoadingSubtext += str::format("Processing Lights (", replacementState.progressCount, " processed)"); break;
+      default: break;
+      }
+
+      if (
+        replacementState.progressState == Mod::ProgressState::OpeningUSD ||
+        replacementState.progressState == Mod::ProgressState::ProcessingMaterials ||
+        replacementState.progressState == Mod::ProgressState::ProcessingMeshes ||
+        replacementState.progressState == Mod::ProgressState::ProcessingLights
+      ) {
+        ++loadingReplacementStateCount;
+      }
+    }
+
+    assert((loadingReplacementStateCount == 0U) == replacementLoadingSubtext.empty());
+
+    if (loadingReplacementStateCount != 0U) {
+      hudMessages.emplace_back("Loading enhancements", replacementLoadingSubtext);
+    }
+
+    // Draw Hud Messages
 
     if (!hudMessages.empty()) {
+      // Reset Hud Message time if needed
+      // Note: This is done to minimize any potential precision issues if the game is left running for a long time.
+      // Not the best solution ever, ideally just accumulating time with delta time passed in would probably be better
+      // rather than querying the OS for timestamps, but getting delta time in the ImGui system is rather annoying, so
+      // this is fine for now as this code isn't performance-critical anyways.
+
+      const auto currentTime = std::chrono::steady_clock::now();
+
+      if (!m_hudMessageTimeReset) {
+        m_hudMessageStartTime = currentTime;
+        m_hudMessageTimeReset = true;
+      }
+
+      // Calculate the length of the animated dot sequence based on the current time
+
+      const auto hudMessageDisplayDuration{ currentTime - m_hudMessageStartTime };
+      const auto hudMessageDisplayMilliseconds{
+        std::chrono::duration_cast<std::chrono::milliseconds>(hudMessageDisplayDuration).count()
+      };
+      // Note: Generates a looping set of values in the range [1, 3] based on the time and the duration of each dot.
+      const auto dotSequenceLength{ (hudMessageDisplayMilliseconds / hudMessageAnimatedDotDurationMilliseconds()) % 3 + 1 };
+
       ImGui::SetNextWindowPos(ImVec2(0, viewport->Size.y), ImGuiCond_Always, ImVec2(0.0f, 1.0f));
+      // Note: 368 pixels chosen as a minimum width for the message box width to ensure the current length of text has enough space
+      // to render an animated dot sequence without causing the width of the window to change, as this is visually distracting.
+      // If longer message box text fields are ever desired than the current ones, this number will have to be updated.
+      // Hack: Currently ImGui does not properly respect the window size constraints when ImGuiWindowFlags_AlwaysAutoResize is set.
+      // This call should be using the size constraints (368, -1), (-1, -1) as -1 indicates "don't care" (and we only care about setting
+      // a minimum width), but for some reason that does not work as reported by this bug: https://github.com/ocornut/imgui/issues/2629
+      ImGui::SetNextWindowSizeConstraints(ImVec2(368.0f, 0.0f), ImVec2(1000.0f, 1000.0f));
       ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.5f, 0.2f, 0.2f, 0.35f));
 
-      ImGuiWindowFlags hud_flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
+      const ImGuiWindowFlags hud_flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
       if (ImGui::Begin("HUD", nullptr, hud_flags)) {
+        for (std::size_t i{ 0U }; i < hudMessages.size(); ++i) {
+          auto&& message{ hudMessages[i] };
 
-        for (auto&& message : hudMessages) {
-          ImGui::Text(message.c_str());
+          // Append the animated dot sequence to the message main text
+
+          constexpr auto dotSequence{ "..." };
+          std::string animatedMessageText{ message.text };
+
+          animatedMessageText.append(dotSequence, dotSequenceLength);
+
+          // Add a large main text and smaller sub text for each message
+
+          ImGui::PushFont(m_largeFont);
+          ImGui::Text(animatedMessageText.c_str());
+          ImGui::PopFont();
+
+          if (message.subText) {
+            ImGui::Text(message.subText->c_str());
+          }
+
+          // Add a seperator between messages
+
+          if (i != hudMessages.size() - 1) {
+            ImGui::Separator();
+          }
         }
       }
+
       ImGui::PopStyleColor();
       ImGui::End();
+    } else {
+      // Note: Indicate that the Hud Message time will need to be reset the next time it is used.
+      m_hudMessageTimeReset = false;
     }
   }
 
-  void ImGUI::showAppConfig(const Rc<DxvkContext>& ctx) {
+  void ImGUI::showDevelopmentSettings(const Rc<DxvkContext>& ctx) {
     ImGui::PushItemWidth(250);
     if (ImGui::Button("Take Screenshot")) {
       RtxContext::triggerScreenshot();
@@ -1380,40 +1731,86 @@ namespace dxvk {
     ImGui::SetTooltipToLastWidgetOnHover("Screenshot will be dumped to, '<exe-dir>/Screenshots'");
 
     ImGui::SameLine(200.f);
-    ImGui::Checkbox("Include G-Buffer", &RtxOptions::Get()->captureDebugImageObject());
+    ImGui::Checkbox("Include G-Buffer", &RtxOptions::captureDebugImageObject());
 
-    { // Recompile Shaders button and its status message
-      using namespace std::chrono;
-      static enum { None, OK, Error } shaderMessage = None;
-      static time_point<steady_clock> shaderMessageTimeout;
+    ImGui::Separator();
+        
+#ifdef REMIX_DEVELOPMENT
+    { // Recompile Shaders button and its status information (Only available for Development Remix builds)
+      const auto& shaderManager{ ShaderManager::getInstance() };
+      const auto shaderReloadPhase{ shaderManager->getShaderReloadPhase() };
+      const auto lastShaderReloadStatus{ shaderManager->getLastShaderReloadStatus() };
+
+      // Note: Only allow the Recompile Shaders button to function if a shader recompile is not currently in progress (be
+      // it one manually initiated by the user, or something automatic from the live shader edit mode).
+      ImGui::BeginDisabled(shaderReloadPhase != ShaderManager::ShaderReloadPhase::Idle);
 
       if (ImGui::Button("Recompile Shaders")) {
-        if (ShaderManager::getInstance()->reloadShaders())
-          shaderMessage = OK;
-        else
-          shaderMessage = Error;
-
-        // Set a 5 seconds timeout to hide the message later
-        shaderMessageTimeout = steady_clock::now() + seconds(5);
+        shaderManager->requestReloadShaders();
       }
 
-      if (shaderMessage != None) {
-        // Display the message: green OK if successful, red ERROR if not
-        ImGui::SameLine();
-        ImGui::PushStyleColor(ImGuiCol_Text, shaderMessage == OK ? 0xff40ff40 : 0xff4040ff);
-        ImGui::TextUnformatted(shaderMessage == OK ? "OK" : "ERROR");
-        ImGui::PopStyleColor();
+      ImGui::EndDisabled();
 
-        // Hide the message after a timeout
-        if (steady_clock::now() > shaderMessageTimeout) {
-          shaderMessage = None;
-        }
+      ImGui::SameLine(200.f);
+      ImGui::Checkbox("Live shader edit mode", &RtxOptions::Shader::useLiveEditModeObject());
+
+      const char* shaderReloadPhaseText;
+      const char* lastShaderReloadStatusText;
+      ImVec4 shaderReloadPhaseTextColor;
+      ImVec4 lastShaderReloadStatusTextColor;
+
+      switch (shaderReloadPhase) {
+      default: assert(false); [[fallthrough]];
+      case ShaderManager::ShaderReloadPhase::Idle:
+        shaderReloadPhaseText = "Idle";
+        shaderReloadPhaseTextColor = ImVec4(0.5f, 0.5f, 0.5f, 1.0f);
+        break;
+      case ShaderManager::ShaderReloadPhase::SPIRVRecompilation:
+        shaderReloadPhaseText = "Working (SPIR-V Recompilation)";
+        shaderReloadPhaseTextColor = ImVec4(0.73f, 0.87f, 0.54f, 1.0f);
+        break;
+      case ShaderManager::ShaderReloadPhase::ShaderRecreation:
+        shaderReloadPhaseText = "Working (Shader Recreation)";
+        shaderReloadPhaseTextColor = ImVec4(0.73f, 0.87f, 0.54f, 1.0f);
+        break;
       }
+
+      switch (lastShaderReloadStatus) {
+      default: assert(false); [[fallthrough]];
+      case ShaderManager::ShaderReloadStatus::Unknown:
+        lastShaderReloadStatusText = "N/A";
+        lastShaderReloadStatusTextColor = ImVec4(0.5f, 0.5f, 0.5f, 1.0f);
+        break;
+      case ShaderManager::ShaderReloadStatus::Failure:
+        lastShaderReloadStatusText = "Failure";
+        lastShaderReloadStatusTextColor = ImVec4(0.83f, 0.32f, 0.32f, 1.0f);
+        break;
+      case ShaderManager::ShaderReloadStatus::Success:
+        lastShaderReloadStatusText = "Success";
+        lastShaderReloadStatusTextColor = ImVec4(0.44f, 0.81f, 0.42f, 1.0f);
+        break;
+      }
+
+      ImGui::TextUnformatted("Shader Reload Phase:");
+      ImGui::SameLine();
+      ImGui::PushStyleColor(ImGuiCol_Text, shaderReloadPhaseTextColor);
+      ImGui::TextUnformatted(shaderReloadPhaseText);
+      ImGui::PopStyleColor();
+
+      ImGui::TextUnformatted("Last Shader Reload Status:");
+      ImGui::SameLine();
+      ImGui::PushStyleColor(ImGuiCol_Text, lastShaderReloadStatusTextColor);
+      ImGui::TextUnformatted(lastShaderReloadStatusText);
+      ImGui::PopStyleColor();
     }
-    ImGui::SameLine(200.f);
-    ImGui::Checkbox("Live shader edit mode", &RtxOptions::Get()->useLiveShaderEditModeObject());
+#endif
+
+    ImGui::Separator();
 
     showVsyncOptions(false);
+
+    // Render GUI for memory profiler here
+    GpuMemoryTracker::renderGui();
 
     if (ImGui::CollapsingHeader("Camera", collapsingHeaderFlags)) {
       ImGui::Indent();
@@ -1426,11 +1823,12 @@ namespace dxvk {
         if (ImGui::CollapsingHeader("Types", collapsingHeaderClosedFlags)) {
           ImGui::Indent();
           constexpr static std::pair<CameraType::Enum, const char*> cameras[] = {
-            { CameraType::Main,      "Main" },
-            { CameraType::ViewModel, "ViewModel" },
-            { CameraType::Portal0,   "Portal0" },
-            { CameraType::Portal1,   "Portal1" },
-            { CameraType::Sky,       "Sky" },
+            { CameraType::Main,             "Main" },
+            { CameraType::ViewModel,        "ViewModel" },
+            { CameraType::Portal0,          "Portal0" },
+            { CameraType::Portal1,          "Portal1" },
+            { CameraType::Sky,              "Sky" },
+            { CameraType::RenderToTexture,  "RenderToTexture" },
           };
           // C++20: should be static_assert with std::ranges::find_if
           assert(
@@ -1449,12 +1847,14 @@ namespace dxvk {
                 ImGui::Text("Direction: %.2f %.2f %.2f", c->getDirection().x, c->getDirection().y, c->getDirection().z);
                 ImGui::Text("Vertical FOV: %.1f", c->getFov() * kRadiansToDegrees);
                 ImGui::Text("Near / Far plane: %.1f / %.1f", c->getNearPlane(), c->getFarPlane());
-                ImGui::Text(c->isLHS() ? "Left-handed" : "Right-handed");
+                ImGui::Text("Projection Handedness: %s", c->isLHS() ? "Left-handed" : "Right-handed");
+                ImGui::Text("Overall Handedness: %s", c->isLHS() ^ isMirrorTransform(c->getViewToWorld(false))   ? "Left-handed" : "Right-handed");
               } else {
                 ImGui::Text("Position: -");
                 ImGui::Text("Direction: -");
                 ImGui::Text("Vertical FOV: -");
                 ImGui::Text("Near / Far plane: -");
+                ImGui::Text("-");
                 ImGui::Text("-");
               }
               ImGui::Unindent();
@@ -1470,30 +1870,30 @@ namespace dxvk {
       }
 
       if (ImGui::CollapsingHeader("Camera Animation", collapsingHeaderClosedFlags)) {
-        ImGui::Checkbox("Animate Camera", &RtxOptions::Get()->shakeCameraObject());
-        cameraAnimationModeCombo.getKey(&RtxOptions::Get()->cameraAnimationModeObject());
-        ImGui::DragFloat("Animation Amplitude", &RtxOptions::Get()->cameraAnimationAmplitudeObject(), 0.1f, 0.f, 1000.f, "%.2f", sliderFlags);
-        ImGui::DragInt("Shake Period", &RtxOptions::Get()->cameraShakePeriodObject(), 0.1f, 1, 100, "%d", sliderFlags);
+        ImGui::Checkbox("Animate Camera", &RtxOptions::shakeCameraObject());
+        cameraAnimationModeCombo.getKey(&RtxOptions::cameraAnimationModeObject());
+        ImGui::DragFloat("Animation Amplitude", &RtxOptions::cameraAnimationAmplitudeObject(), 0.1f, 0.f, 1000.f, "%.2f", sliderFlags);
+        ImGui::DragInt("Shake Period", &RtxOptions::cameraShakePeriodObject(), 0.1f, 1, 100, "%d", sliderFlags);
       }
 
       if (ImGui::CollapsingHeader("Advanced", collapsingHeaderClosedFlags)) {
 
-        ImGui::Checkbox("Portals: Camera History Correction", &RtxOptions::Get()->rayPortalCameraHistoryCorrectionObject());
-        ImGui::Checkbox("Portals: Camera In-Between Portals Correction", &RtxOptions::Get()->rayPortalCameraInBetweenPortalsCorrectionObject());
+        ImGui::Checkbox("Portals: Camera History Correction", &RtxOptions::rayPortalCameraHistoryCorrectionObject());
+        ImGui::Checkbox("Portals: Camera In-Between Portals Correction", &RtxOptions::rayPortalCameraInBetweenPortalsCorrectionObject());
 
-        if (RtxOptions::Get()->rayPortalCameraInBetweenPortalsCorrection()) {
+        if (RtxOptions::rayPortalCameraInBetweenPortalsCorrection()) {
           ImGui::Indent();
 
-          ImGui::DragFloat("Portals: Camera In-Between Portals Correction Threshold", &RtxOptions::Get()->rayPortalCameraInBetweenPortalsCorrectionThresholdObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
+          ImGui::DragFloat("Portals: Camera In-Between Portals Correction Threshold", &RtxOptions::rayPortalCameraInBetweenPortalsCorrectionThresholdObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
 
           ImGui::Unindent();
         }
 
-        ImGui::Checkbox("Skip Objects Rendered with Unknown Camera", &RtxOptions::Get()->skipObjectsWithUnknownCameraObject());
+        ImGui::Checkbox("Skip Objects Rendered with Unknown Camera", &RtxOptions::skipObjectsWithUnknownCameraObject());
 
-        ImGui::Checkbox("Override Near Plane (if less than original)", &RtxOptions::Get()->enableNearPlaneOverrideObject());
-        ImGui::BeginDisabled(!RtxOptions::Get()->enableNearPlaneOverride());
-        ImGui::DragFloat("Desired Near Plane Distance", &RtxOptions::Get()->nearPlaneOverrideObject(), 0.01f, 0.0001f, FLT_MAX, "%.3f");
+        ImGui::Checkbox("Override Near Plane (if less than original)", &RtxOptions::enableNearPlaneOverrideObject());
+        ImGui::BeginDisabled(!RtxOptions::enableNearPlaneOverride());
+        ImGui::DragFloat("Desired Near Plane Distance", &RtxOptions::nearPlaneOverrideObject(), 0.01f, 0.0001f, FLT_MAX, "%.3f");
         ImGui::EndDisabled();
       }
       ImGui::Unindent();
@@ -1508,30 +1908,81 @@ namespace dxvk {
     if (ImGui::CollapsingHeader("Developer Options", collapsingHeaderFlags)) {
       ImGui::Indent();
       ImGui::Checkbox("Enable Instance Debugging", &RtxOptions::enableInstanceDebuggingToolsObject());
-      ImGui::Checkbox("Disable Draw Calls Post RTX Injection", &RtxOptions::Get()->skipDrawCallsPostRTXInjectionObject());
-      if (ImGui::Checkbox("Block Input to Game in UI", &RtxOptions::Get()->blockInputToGameInUIObject())) {
-        sendUIActivationMessage();
-      }
-      ImGui::Checkbox("Force Camera Jitter", &RtxOptions::Get()->forceCameraJitterObject());
-      ImGui::DragIntRange2("Draw Call Range Filter", &RtxOptions::Get()->drawCallRangeObject(), 1.f, 0, INT32_MAX, nullptr, nullptr, ImGuiSliderFlags_AlwaysClamp);
-      ImGui::InputInt("Instance Index Start", &RtxOptions::Get()->instanceOverrideInstanceIdxObject());
-      ImGui::InputInt("Instance Index Range", &RtxOptions::Get()->instanceOverrideInstanceIdxRangeObject());
-      ImGui::DragFloat3("Instance World Offset", &RtxOptions::Get()->instanceOverrideWorldOffsetObject(), 0.1f, -100.f, 100.f, "%.3f", sliderFlags);
-      ImGui::Checkbox("Instance - Print Hash", &RtxOptions::Get()->instanceOverrideSelectedInstancePrintMaterialHashObject());
-
-#ifdef REMIX_DEVELOPMENT
-      ImGui::Checkbox("Show DLSS-RR Options", &RtxOptions::Get()->showRayReconstructionUIObject());
-#endif
+      ImGui::Checkbox("Disable Draw Calls Post RTX Injection", &RtxOptions::skipDrawCallsPostRTXInjectionObject());
+      ImGui::Checkbox("Break into Debugger On Press of Key 'B'", &RtxOptions::enableBreakIntoDebuggerOnPressingBObject());
+      ImGui::Checkbox("Block Input to Game in UI", &RtxOptions::blockInputToGameInUIObject());
+      ImGui::Checkbox("Force Camera Jitter", &RtxOptions::forceCameraJitterObject());
+      ImGui::DragInt("Camera Jitter Sequence Length", &RtxOptions::cameraJitterSequenceLengthObject());
+      
+      ImGui::DragIntRange2("Draw Call Range Filter", &RtxOptions::drawCallRangeObject(), 1.f, 0, INT32_MAX, nullptr, nullptr, ImGuiSliderFlags_AlwaysClamp);
+      ImGui::InputInt("Instance Index Start", &RtxOptions::instanceOverrideInstanceIdxObject());
+      ImGui::InputInt("Instance Index Range", &RtxOptions::instanceOverrideInstanceIdxRangeObject());
+      ImGui::DragFloat3("Instance World Offset", &RtxOptions::instanceOverrideWorldOffsetObject(), 0.1f, -100.f, 100.f, "%.3f", sliderFlags);
+      ImGui::Checkbox("Instance - Print Hash", &RtxOptions::instanceOverrideSelectedInstancePrintMaterialHashObject());
 
       ImGui::Unindent();
-      ImGui::Checkbox("Throttle presents", &RtxOptions::Get()->enablePresentThrottleObject());
-      if (RtxOptions::Get()->enablePresentThrottle()) {
+      ImGui::Checkbox("Throttle presents", &RtxOptions::enablePresentThrottleObject());
+      if (RtxOptions::enablePresentThrottle()) {
         ImGui::Indent();
-        ImGui::SliderInt("Present delay (ms)", &RtxOptions::Get()->presentThrottleDelayObject(), 1, 1000, "%d", sliderFlags);
+        ImGui::SliderInt("Present delay", &RtxOptions::presentThrottleDelayObject(), 1, 1000, "%d ms", sliderFlags);
         ImGui::Unindent();
       }
       ImGui::Checkbox("Hash Collision Detection", &HashCollisionDetectionOptions::enableObject());
-      ImGui::Checkbox("Validate CPU index data", &RtxOptions::Get()->validateCPUIndexDataObject());
+      ImGui::Checkbox("Validate CPU index data", &RtxOptions::validateCPUIndexDataObject());
+
+#ifdef REMIX_DEVELOPMENT
+      if (ImGui::CollapsingHeader("Resource Aliasing Query", collapsingHeaderClosedFlags)) {
+        ImGui::Indent();
+        aliasingBeginPassCombo.getKey(&RtxOptions::Aliasing::beginPassObject());
+        aliasingEndPassCombo.getKey(&RtxOptions::Aliasing::endPassObject());
+        aliasingFormatCombo.getKey(&RtxOptions::Aliasing::formatCategoryObject());
+        aliasingExtentCombo.getKey(&RtxOptions::Aliasing::extentTypeObject());
+        const auto aliasingExtentType = RtxOptions::Aliasing::extentType();
+        if (aliasingExtentType == RtxTextureExtentType::Custom) {
+          ImGui::DragInt("Aliasing Width", &RtxOptions::Aliasing::widthObject());
+          ImGui::DragInt("Aliasing Height", &RtxOptions::Aliasing::heightObject());
+        }
+        if (RtxOptions::Aliasing::imageType() == VkImageType::VK_IMAGE_TYPE_3D)
+        {
+          ImGui::DragInt("Aliasing Depth", &RtxOptions::Aliasing::depthObject());
+        }
+        ImGui::DragInt("Aliasing Layer", &RtxOptions::Aliasing::layerObject());
+        aliasingImageTypeCombo.getKey(&RtxOptions::Aliasing::imageTypeObject());
+        aliasingImageViewTypeCombo.getKey(&RtxOptions::Aliasing::imageViewTypeObject());
+
+        if (IMGUI_ADD_TOOLTIP(ImGui::Button("Check aliasing for a new resource"),
+          "Make sure to check the resources can be aliased under all major settings. For example, DLSS-RR or NRD, NRC or ReSTIR-GI.")) {
+          Resources::s_queryAliasing = true;
+        } else {
+          Resources::s_queryAliasing = false;
+        }
+        std::string resourceAliasingQueryText = "Resource Aliasing Query Result: (";
+        if (RtxOptions::enableRayReconstruction()) {
+          resourceAliasingQueryText += "DLSS-RR, ";
+        } else {
+          resourceAliasingQueryText += "NRD, ";
+        }
+        if (RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::NeuralRadianceCache) {
+          resourceAliasingQueryText += "NRC)";
+        } else if (RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::ReSTIRGI) {
+          resourceAliasingQueryText += "ReSTIR-GI)";
+        } else {
+          resourceAliasingQueryText += "ImportanceSampled)";
+        }
+
+        ImGui::Text(resourceAliasingQueryText.c_str());
+        ImGui::Text("%s", Resources::s_resourceAliasingQueryText.c_str());
+
+        if (IMGUI_ADD_TOOLTIP(ImGui::Button("Check aliasing for current resources"), "Make sure the resources are being active when checking for aliasing.")) {
+          Resources::s_startAliasingAnalyzer = true;
+        } else {
+          Resources::s_startAliasingAnalyzer = false;
+        }
+        auto& str = Resources::s_aliasingAnalyzerResultText;
+        ImGui::Text("Available Aliasing:\n%s", Resources::s_aliasingAnalyzerResultText.c_str());
+        ImGui::Unindent();
+      }
+#endif
     }
 
     ImGui::PopItemWidth();
@@ -1568,21 +2019,21 @@ namespace dxvk {
       str << (isRT ? "Render Target " : "Texture ") << imageInfo.extent.width << 'x' << imageInfo.extent.height << '\n';
       str << formatName << '\n';
       str << "Hash: " << hashToString(texHash) << '\n';
-
+      
       return str.str();
     }
 
-    void toggleTextureSelection(XXH64_hash_t textureHash, const char* uniqueId, fast_unordered_set& textureSet) {
+    void toggleTextureSelection(XXH64_hash_t textureHash, const char* uniqueId, RtxOption<fast_unordered_set>* textureSet) {
       if (textureHash == kEmptyHash) {
         return;
       }
 
       const char* action;
-      if (textureSet.find(textureHash) != textureSet.end()) {
-        textureSet.erase(textureHash);
+      if (textureSet->containsHash(textureHash)) {
+        textureSet->removeHash(textureHash);
         action = "removed";
       } else {
-        textureSet.insert(textureHash);
+        textureSet->addHash(textureHash);
         action = "added";
       }
 
@@ -1591,11 +2042,11 @@ namespace dxvk {
       Logger::info(buffer);
     }
 
-    fast_unordered_set* findTextureSetByUniqueId(const char* uniqueId) {
+    RtxOption<fast_unordered_set>* findTextureSetByUniqueId(const char* uniqueId) {
       if (uniqueId) {
         for (RtxTextureOption& category : rtxTextureOptions) {
           if (strcmp(category.uniqueId, uniqueId) == 0) {
-            return &category.textureSetOption->getValue();
+            return category.textureSetOption;
           }
         }
       }
@@ -1619,15 +2070,15 @@ namespace dxvk {
         // don't show popup window and toggle the list directly,
         // if was a left mouse click in the splitted lists
         bool toggleWithoutPopup = ImGUI::showLegacyTextureGui() &&
-          g_wasLeftClick &&
-          !lastOpenCategoryId.empty();
+                                  g_wasLeftClick &&
+                                  !lastOpenCategoryId.empty();
         g_wasLeftClick = false;
 
         if (toggleWithoutPopup) {
           if (auto textureSet = findTextureSetByUniqueId(lastOpenCategoryId.c_str())) {
             toggleTextureSelection(g_holdingTexture.load(),
                                    lastOpenCategoryId.c_str(),
-                                   *textureSet);
+                                   textureSet);
           }
         } else {
           ImGui::OpenPopup(POPUP_NAME);
@@ -1660,7 +2111,7 @@ namespace dxvk {
             g_openWhenAvailable = false;
           }
         }
-
+        
         if (ImGui::BeginPopup(POPUP_NAME)) {
           const XXH64_hash_t texHash = g_holdingTexture.load();
           if (texHash != kEmptyHash) {
@@ -1668,11 +2119,19 @@ namespace dxvk {
             if (ImGui::Button("Copy Texture hash##texture_popup")) {
               ImGui::SetClipboardText(hashToString(texHash).c_str());
             }
+            uint32_t textureFeatureFlags = 0;
+            const auto& pair = g_imguiTextureMap.find(texHash);
+            if (pair != g_imguiTextureMap.end()) {
+              textureFeatureFlags = pair->second.textureFeatureFlags;
+            }
             for (auto& rtxOption : rtxTextureOptions) {
-              rtxOption.bufferToggle = rtxOption.textureSetOption->getValue().count(texHash) > 0;
-
+              rtxOption.bufferToggle = rtxOption.textureSetOption->containsHash(texHash);
+              if ((rtxOption.featureFlagMask & textureFeatureFlags) != rtxOption.featureFlagMask) {
+                // option requires a feature, but the texture doesn't have that feature.
+                continue;
+              }
               if (IMGUI_ADD_TOOLTIP(ImGui::Checkbox(rtxOption.displayName, &rtxOption.bufferToggle), rtxOption.textureSetOption->getDescription())) {
-                toggleTextureSelection(texHash, rtxOption.uniqueId, rtxOption.textureSetOption->getValue());
+                toggleTextureSelection(texHash, rtxOption.uniqueId, rtxOption.textureSetOption);
               }
             }
             ImGui::EndPopup();
@@ -1749,7 +2208,7 @@ namespace dxvk {
 
     const ImVec2 availableSize = ImGui::GetContentRegionAvail();
     const float childWindowHeight = minChildHeight <= 600.0f ? minChildHeight
-      : availableSize.y < 600 ? 600.0f : availableSize.y;
+                                                             : availableSize.y < 600 ? 600.0f : availableSize.y;
     ImGuiWindowFlags window_flags = ImGuiWindowFlags_None;
     ImGui::BeginChild(str::format("Child", uniqueId).c_str(), ImVec2(availableSize.x, childWindowHeight), false, window_flags);
 
@@ -1765,12 +2224,16 @@ namespace dxvk {
       bool textureHasSelection = false;
 
       if (isListFiltered) {
-        auto& textureSet = listRtxOption.textureSetOption->getValue();
-        textureHasSelection = textureSet.find(texHash) != textureSet.end();
+        const auto& textureSet = listRtxOption.textureSetOption->get();
+        textureHasSelection = listRtxOption.textureSetOption->containsHash(texHash);
+
+        if ((listRtxOption.featureFlagMask & texImgui.textureFeatureFlags) != listRtxOption.featureFlagMask) {
+          // If the list needs to be filtered by texture feature, skip it for this category.
+          continue;
+        }
       } else {
         for (const auto rtxOption : rtxTextureOptions) {
-          auto& textureSet = rtxOption.textureSetOption->getValue();
-          textureHasSelection = textureSet.find(texHash) != textureSet.end();
+          textureHasSelection = rtxOption.textureSetOption->containsHash(texHash);
           if (textureHasSelection) {
             break;
           }
@@ -1794,7 +2257,7 @@ namespace dxvk {
         const auto nvidiaColor = ImVec4(0.462745f, 0.725490f, 0.f, 1.f);
 
         const auto color = (texHash == textureInPopup ? blueColor : nvidiaColor);
-        const float anim = animatedHighlightIntensity(common->getSceneManager().getGameTimeSinceStartMS());
+        const float anim = animatedHighlightIntensity(GlobalTime::get().absoluteTimeMs());
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(anim * color.x, anim * color.y, anim * color.z, 1.f));
       } else if (textureHasSelection) {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.996078f, 0.329412f, 0.f, 1.f));
@@ -1855,7 +2318,7 @@ namespace dxvk {
           // show additional info
           std::string rtxTextureSelection;
           for (auto& rtxOption : rtxTextureOptions) {
-            if (rtxOption.textureSetOption->getValue().count(texHash) > 0) {
+            if (rtxOption.textureSetOption->containsHash(texHash)) {
               if (rtxTextureSelection.empty()) {
                 rtxTextureSelection = "\n";
               }
@@ -1886,14 +2349,14 @@ namespace dxvk {
     // popup for texture selection from world / ui
     // Only the "active" category is allowed to control the texture popup and highlighting logic
     if (!showLegacyTextureGui() || uniqueId == texture_popup::lastOpenCategoryId) {
-      const bool wasUIClick =
-        !texture_popup::isOpened() &&
+      const bool wasUIClick = 
+        !texture_popup::isOpened() && 
         clickedOnTextureButton;
 
       const bool wasWorldClick =
         isWorldTextureSelectionAllowed() &&
         !texture_popup::isOpened() &&
-        !clickedOnTextureButton &&
+        !clickedOnTextureButton && 
         (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right));
 
       if (wasUIClick) {
@@ -1958,45 +2421,37 @@ namespace dxvk {
     ImGui::PushItemWidth(200);
 
     m_capture->show(ctx);
-
+    
     if(ImGui::CollapsingHeader("Enhancements", collapsingHeaderFlags | ImGuiTreeNodeFlags_DefaultOpen)) {
       ImGui::Indent();
       showEnhancementsTab(ctx);
       ImGui::Unindent();
     }
   }
-
+  
   void ImGUI::showEnhancementsTab(const Rc<DxvkContext>& ctx) {
-    if (!ctx->getCommonObjects()->getSceneManager().areReplacementsLoaded()) {
+    if (!ctx->getCommonObjects()->getSceneManager().areAllReplacementsLoaded()) {
       ImGui::Text("No USD enhancements detected, the following options have been disabled.  See documentation for how to use enhancements with Remix.");
     }
 
-    ImGui::BeginDisabled(!ctx->getCommonObjects()->getSceneManager().areReplacementsLoaded());
-    ImGui::Checkbox("Enable Enhanced Assets", &RtxOptions::Get()->enableReplacementAssetsObject());
+    ImGui::BeginDisabled(!ctx->getCommonObjects()->getSceneManager().areAllReplacementsLoaded());
+    ImGui::Checkbox("Enable Enhanced Assets", &RtxOptions::enableReplacementAssetsObject());
     {
       ImGui::Indent();
-      ImGui::BeginDisabled(!RtxOptions::Get()->enableReplacementAssets());
+      ImGui::BeginDisabled(!RtxOptions::enableReplacementAssets());
 
-      ImGui::Checkbox("Enable Enhanced Materials", &RtxOptions::Get()->enableReplacementMaterialsObject());
-      ImGui::Checkbox("Enable Enhanced Meshes", &RtxOptions::Get()->enableReplacementMeshesObject());
-      ImGui::Checkbox("Enable Enhanced Lights", &RtxOptions::Get()->enableReplacementLightsObject());
-
-      ImGui::Separator();
-
-      ImGui::Checkbox("Force High Resolution Textures", &RtxOptions::Get()->forceHighResolutionReplacementTexturesObject());
-      ImGui::Checkbox("Enable Adaptive Texture Resolution", &RtxOptions::Get()->enableAdaptiveResolutionReplacementTexturesObject());
-      ImGui::DragInt("Minimum Mip Map Level", &RtxOptions::Get()->minReplacementTextureMipMapLevelObject(), 0.1f, 0, 16, "%d", sliderFlags);
-
-      ImGui::Checkbox("Reload Texture When Resolution Changed", &RtxOptions::Get()->reloadTextureWhenResolutionChangedObject());
+      ImGui::Checkbox("Enable Enhanced Materials", &RtxOptions::enableReplacementMaterialsObject());
+      ImGui::Checkbox("Enable Enhanced Meshes", &RtxOptions::enableReplacementMeshesObject());
+      ImGui::Checkbox("Enable Enhanced Lights", &RtxOptions::enableReplacementLightsObject());
 
       ImGui::EndDisabled();
       ImGui::Unindent();
     }
     ImGui::EndDisabled();
     ImGui::Separator();
-    ImGui::Checkbox("Highlight Legacy Materials (flash red)", &RtxOptions::Get()->useHighlightLegacyModeObject());
-    ImGui::Checkbox("Highlight Legacy Meshes with Shared Vertex Buffers (dull purple)", &RtxOptions::Get()->useHighlightUnsafeAnchorModeObject());
-    ImGui::Checkbox("Highlight Replacements with Unstable Anchors (flash red)", &RtxOptions::Get()->useHighlightUnsafeReplacementModeObject());
+    ImGui::Checkbox("Highlight Legacy Materials (flash red)", &RtxOptions::useHighlightLegacyModeObject());
+    ImGui::Checkbox("Highlight Legacy Meshes with Shared Vertex Buffers (dull purple)", &RtxOptions::useHighlightUnsafeAnchorModeObject());
+    ImGui::Checkbox("Highlight Replacements with Unstable Anchors (flash red)", &RtxOptions::useHighlightUnsafeReplacementModeObject());
 
   }
 
@@ -2008,7 +2463,7 @@ namespace dxvk {
         return HeightLimit;
       }
 
-      const fast_unordered_set* selected = nullptr;
+      const RtxOption<fast_unordered_set>* selected = nullptr;
       if (onlySelected) {
         const auto found = std::find_if(rtxTextureOptions.begin(), rtxTextureOptions.end(),
           [&](const RtxTextureOption& o) {
@@ -2018,14 +2473,14 @@ namespace dxvk {
           assert(0);
           return {};
         }
-        selected = &found->textureSetOption->getValue();
+        selected = found->textureSetOption;
       }
 
       float height = -1;
       uint32_t textureCount = 0;
       for (const auto& [texHash, texImgui] : g_imguiTextureMap) {
         if (selected) {
-          if (selected->find(texHash) == selected->end()) {
+          if (!selected->containsHash(texHash)) {
             continue;
           }
         }
@@ -2072,7 +2527,7 @@ namespace dxvk {
 
     if (IMGUI_ADD_TOOLTIP(ImGui::BeginTabItem("Step 1: Categorize Textures", nullptr, tab_item_flags), "Select texture definitions for Remix")) {
       spacing();
-      ImGui::Checkbox("Preserve discarded textures", &RtxOptions::Get()->keepTexturesForTaggingObject());
+      ImGui::Checkbox("Preserve discarded textures", &RtxOptions::keepTexturesForTaggingObject());
       separator();
 
       // set thumbnail size
@@ -2091,10 +2546,10 @@ namespace dxvk {
         ImGui::SameLine();
         ImGui::Text("Texture Thumbnail Scale: %d%%", percentage);
         if (ImGui::IsItemHovered()) {
-          ImGui::SetTooltipUnformatted(RtxOptions::textureGridThumbnailScaleDescription());
+          ImGui::SetTooltipUnformatted(RtxOptions::textureGridThumbnailScale.getDescription());
         }
 
-        RtxOptions::textureGridThumbnailScaleRef() = static_cast<float>(percentage) / 100.f;
+        RtxOptions::textureGridThumbnailScale.setDeferred(static_cast<float>(percentage) / 100.f);
       }
 
       ImGui::Checkbox("Split Texture Category List", &showLegacyTextureGuiObject());
@@ -2171,30 +2626,33 @@ namespace dxvk {
 
     if (ImGui::BeginTabItem("Step 2: Parameter Tuning", nullptr, tab_item_flags)) {
       spacing();
-      ImGui::DragFloat("Scene Unit Scale", &RtxOptions::Get()->sceneScaleObject(), 0.00001f, 0.00001f, FLT_MAX, "%.5f", sliderFlags);
-      ImGui::Checkbox("Scene Z-Up", &RtxOptions::Get()->zUpObject());
-      ImGui::Checkbox("Scene Left-Handed Coordinate System", &RtxOptions::Get()->leftHandedCoordinateSystemObject());
-      fusedWorldViewModeCombo.getKey(&RtxOptions::Get()->fusedWorldViewModeRef());
+      ImGui::DragFloat("Scene Unit Scale", &RtxOptions::sceneScaleObject(), 0.00001f, 0.00001f, FLT_MAX, "%.5f", sliderFlags);
+      ImGui::Checkbox("Scene Z-Up", &RtxOptions::zUpObject());
+      ImGui::Checkbox("Scene Left-Handed Coordinate System", &RtxOptions::leftHandedCoordinateSystemObject());
+      fusedWorldViewModeCombo.getKey(&RtxOptions::fusedWorldViewModeObject());
       ImGui::Separator();
 
-      ImGui::DragFloat("Unique Object Search Distance", &RtxOptions::Get()->uniqueObjectDistanceObject(), 0.01f, FLT_MIN, FLT_MAX, "%.3f", sliderFlags);
+      ImGui::DragFloat("Unique Object Search Distance", &RtxOptions::uniqueObjectDistanceObject(), 0.01f, FLT_MIN, FLT_MAX, "%.3f", sliderFlags);
       ImGui::Separator();
 
-      ImGui::DragFloat("Vertex Color Strength", &RtxOptions::Get()->vertexColorStrengthObject(), 0.001f, 0.0f, 1.0f);
+      ImGui::DragFloat("Vertex Color Strength", &RtxOptions::vertexColorStrengthObject(), 0.001f, 0.0f, 1.0f);
+      ImGui::Checkbox("Vertex Color Is Baked Lighting", &RtxOptions::vertexColorIsBakedLightingObject());
+      ImGui::Checkbox("Ignore All Baked Lighting", &RtxOptions::ignoreAllVertexColorBakedLightingObject());
       ImGui::Separator();
 
       if (ImGui::CollapsingHeader("Heuristics", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
         ImGui::Checkbox("Orthographic Is UI", &D3D9Rtx::orthographicIsUIObject());
         ImGui::Checkbox("Allow Cubemaps", &D3D9Rtx::allowCubemapsObject());
-        ImGui::Checkbox("Always Calculate AABB (For Instance Matching)", &RtxOptions::Get()->enableAlwaysCalculateAABBObject());
+        ImGui::Checkbox("Always Calculate AABB (For Instance Matching)", &RtxOptions::enableAlwaysCalculateAABBObject());
+        ImGui::Checkbox("Skip Sky Fog Values", &RtxOptions::fogIgnoreSkyObject());
         ImGui::Unindent();
       }
 
       if (ImGui::CollapsingHeader("Texture Parameters", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
-        ImGui::DragFloat("Force Cutout Alpha", &RtxOptions::Get()->forceCutoutAlphaObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("World Space UI Background Offset", &RtxOptions::Get()->worldSpaceUiBackgroundOffsetObject(), 0.01f, -FLT_MAX, FLT_MAX, "%.3f", sliderFlags);
+        ImGui::DragFloat("Force Cutout Alpha", &RtxOptions::forceCutoutAlphaObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        ImGui::DragFloat("World Space UI Background Offset", &RtxOptions::worldSpaceUiBackgroundOffsetObject(), 0.01f, -FLT_MAX, FLT_MAX, "%.3f", sliderFlags);
         ImGui::Checkbox("Ignore last texture stage", &RtxOptions::ignoreLastTextureStageObject());
         ImGui::Checkbox("Enable Multiple Stage Texture Factor Blending", &RtxOptions::enableMultiStageTextureFactorBlendingObject());
         ImGui::Unindent();
@@ -2221,31 +2679,10 @@ namespace dxvk {
 
       if (ImGui::CollapsingHeader("Sky Tuning", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
-        ImGui::DragFloat("Sky Brightness", &RtxOptions::Get()->skyBrightnessObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
-        ImGui::InputInt("First N Untextured Draw Calls", &RtxOptions::Get()->skyDrawcallIdThresholdObject(), 1, 1, 0);
-        ImGui::SliderFloat("Sky Min Z Threshold", &RtxOptions::Get()->skyMinZThresholdObject(), 0.0f, 1.0f);
-        skyAutoDetectCombo.getKey(&RtxOptions::Get()->skyAutoDetectObject());
-
-        if (ImGui::CollapsingHeader("3D Skybox Settings [Experimental]", collapsingHeaderClosedFlags)) {
-          ImGui::Checkbox("Enable Shared Depth", &RtxOptions::skySharedDepthObject());
-          ImGui::Checkbox("Enable 3D Skybox Pathtracing ", &RtxOptions::skyBoxPathTracingObject());
-
-          if (RtxOptions::skyBoxPathTracing()) {
-            ImGui::InputInt("Default Scale", &RtxOptions::Get()->skyDefaultScaleObject(), 1, 1, 1);
-            SkyScaleCalibrationModeCombo.getKey(&RtxOptions::Get()->skyScaleCalibrationModeObject());
-            SkyScaleOffsetFormulaCombo.getKey(&RtxOptions::Get()->skyScaleOffsetFormulaObject());
-
-            ImGui::Separator();
-            auto& cameraManager = ctx->getCommonObjects()->getSceneManager().getCameraManager();
-            auto cam = cameraManager.isCameraValid(CameraType::Sky) ? &cameraManager.getCamera(CameraType::Sky) : nullptr;
-            if (cam){
-              ImGui::Text("Sky Offset: %.2f %.2f %.2f", cam->m_skyOffset.x, cam->m_skyOffset.y, cam->m_skyOffset.z);
-              ImGui::Text("Sky Scale: %i", cam->m_skyScale);
-            }
-            ImGui::Separator();
-          }
-
-        };
+        ImGui::DragFloat("Sky Brightness", &RtxOptions::skyBrightnessObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
+        ImGui::InputInt("First N Untextured Draw Calls", &RtxOptions::skyDrawcallIdThresholdObject(), 1, 1, 0);
+        ImGui::SliderFloat("Sky Min Z Threshold", &RtxOptions::skyMinZThresholdObject(), 0.0f, 1.0f);
+        skyAutoDetectCombo.getKey(&RtxOptions::skyAutoDetectObject());
 
         if (ImGui::CollapsingHeader("Advanced", collapsingHeaderClosedFlags)) {
           ImGui::Indent();
@@ -2256,22 +2693,21 @@ namespace dxvk {
             ImGui::DragFloat("Reprojected Sky Scale", &RtxOptions::skyReprojectScaleObject(), 1.0f, 0.1f, 1000.0f);
             ImGui::EndDisabled();
           }
-          ImGui::DragFloat("Sky Auto-Detect Unique Camera Search Distance", &RtxOptions::skyReprojectScaleObject(), 1.0f, 0.1f, 1000.0f);
+          ImGui::DragFloat("Sky Auto-Detect Unique Camera Search Distance", &RtxOptions::skyAutoDetectUniqueCameraDistanceObject(), 1.0f, 0.1f, 1000.0f);
 
-          ImGui::Checkbox("Force HDR sky", &RtxOptions::Get()->skyForceHDRObject());
+          ImGui::Checkbox("Force HDR sky", &RtxOptions::skyForceHDRObject());
 
           static const char* exts[] = { "256 (1.5MB vidmem)", "512 (6MB vidmem)", "1024 (24MB vidmem)",
             "2048 (96MB vidmem)", "4096 (384MB vidmem)", "8192 (1.5GB vidmem)" };
 
           static int extIdx;
-          extIdx = std::clamp(bit::tzcnt(RtxOptions::Get()->skyProbeSide()), 8u, 13u) - 8;
+          extIdx = std::clamp(bit::tzcnt(RtxOptions::skyProbeSide()), 8u, 13u) - 8;
 
           ImGui::Combo("Sky Probe Extent", &extIdx, exts, IM_ARRAYSIZE(exts));
-          RtxOptions::Get()->skyProbeSideRef() = 1 << (extIdx + 8);
+          RtxOptions::skyProbeSide.setDeferred(1 << (extIdx + 8));
 
           ImGui::Unindent();
         }
-
         ImGui::Unindent();
       }
 
@@ -2279,6 +2715,68 @@ namespace dxvk {
       common->getSceneManager().getLightManager().showImguiSettings();
 
       showMaterialOptions();
+
+      if (ImGui::CollapsingHeader("Fog Tuning", collapsingHeaderClosedFlags)) {
+        ImGui::Indent();
+        ImGui::PushID("FogInfos");
+        if (ImGui::CollapsingHeader("Explanation", collapsingHeaderClosedFlags)) {
+          ImGui::Indent();
+          ImGui::TextWrapped("In D3D9, every draw call comes with its own fog settings."
+            " In Remix pathtracing, all rays need to use the same fog setting."
+            " So Remix will choose the earliest valid non-sky fog to use."
+
+            "\n\nIn some games, fog can be used to indicate the player is inside some "
+            "translucent medium, like being underwater.  In path tracing this is "
+            "better represented as starting inside a translucent material.  To "
+            "support this, you can copy one or more of the fog hashes listed below, "
+            "and specify a translucent replacement material in your mod.usda."
+
+            "\n\nThis replacement material should share transmittance and ior properties"
+            " with your water material, but does not need any textures set."
+
+            "\n\nReplacing a given fog state with a translucent material will disable that "
+            "fog."
+          );
+          ImGui::Unindent();
+        }
+
+        constexpr static const char* fogModes[] = {
+          "D3DFOG_NONE",
+          "D3DFOG_EXP",
+          "D3DFOG_EXP2",
+          "D3DFOG_LINEAR",
+        };
+
+        {
+          const std::lock_guard<std::mutex> lock(g_imguiFogMapMutex);
+          for (const auto& pair : g_imguiFogMap) {
+            const std::string hashString = hashToString(pair.first);
+            const char* replaced = ctx->getCommonObjects()->getSceneManager().getAssetReplacer()->getReplacementMaterial(pair.first) ? 
+              " (Replaced)" : "";
+            const char* usedAsMain = (g_usedFogStateHash == pair.first) ? " (Used for Rendering)" : "";
+            ImGui::Text("Hash: %s%s%s", hashString.c_str(), replaced, usedAsMain);
+            const FogState& fog = pair.second;
+            ImGui::Indent();
+
+            if (ImGui::Button(str::format("Copy hash to clipboard##fog_list", hashString).c_str())) {
+              ImGui::SetClipboardText(hashString.c_str());
+            }
+            if (uint32_t(fog.mode) < 4) {
+              ImGui::Text("Mode: %s", fogModes[uint32_t(fog.mode)]);
+            } else {
+              ImGui::Text("Mode: unknown enum value: %u", uint32_t(fog.mode));
+            }
+            ImGui::Text("Color: %.2f %.2f %.2f", fog.color.r, fog.color.g, fog.color.b);
+            ImGui::Text("Scale: %.2f", fog.scale);
+            ImGui::Text("End: %.2f", fog.end);
+            ImGui::Text("Density: %.2f", fog.density);
+            
+            ImGui::Unindent();
+          }
+        }
+        ImGui::PopID();
+        ImGui::Unindent();
+      }
 
       separator();
       ImGui::EndTabItem();
@@ -2297,22 +2795,26 @@ namespace dxvk {
 
   void ImGUI::showVsyncOptions(bool enableDLFGGuard) {
     // we should never get here without a swapchain, so we must have latched the vsync value already
-    assert(RtxOptions::Get()->enableVsync() != EnableVsync::WaitingForImplicitSwapchain);
-
+    assert(RtxOptions::enableVsyncState != EnableVsync::WaitingForImplicitSwapchain);
+    
     if (enableDLFGGuard && DxvkDLFG::enable()) {
       ImGui::BeginDisabled();
     }
 
-    bool vsyncEnabled = RtxOptions::Get()->enableVsync() == EnableVsync::On;
-    ImGui::Checkbox("Enable V-Sync", &vsyncEnabled);
-    RtxOptions::Get()->enableVsyncRef() = vsyncEnabled ? EnableVsync::On : EnableVsync::Off;
+    bool vsyncEnabled = RtxOptions::enableVsyncState == EnableVsync::On;
+    bool changed = ImGui::Checkbox("Enable V-Sync", &vsyncEnabled);
+    if (changed) {
+      // option has been toggled manually, so we need to actually store the value in the option.
+      // RtxOptions::enableVsyncState will be changed by the onChange handler at the end of the frame.
+      RtxOptions::enableVsync.setDeferred(vsyncEnabled ? EnableVsync::On : EnableVsync::Off);
+    }
 
     ImGui::BeginDisabled();
     ImGui::Indent();
     ImGui::TextWrapped("This setting overrides the native game's V-Sync setting.");
     ImGui::Unindent();
     ImGui::EndDisabled();
-
+    
     if (enableDLFGGuard && DxvkDLFG::enable()) {
       ImGui::Indent();
       ImGui::TextWrapped("When Frame Generation is active, V-Sync is automatically disabled.");
@@ -2324,11 +2826,19 @@ namespace dxvk {
 
   void ImGUI::showDLFGOptions(const Rc<DxvkContext>& ctx) {
     const bool supportsDLFG = ctx->getCommonObjects()->metaNGXContext().supportsDLFG() && !ctx->getCommonObjects()->metaDLFG().hasDLFGFailed();
+    const uint32_t maxInterpolatedFrames = ctx->getCommonObjects()->metaNGXContext().dlfgMaxInterpolatedFrames();
+    const bool supportsMultiFrame = maxInterpolatedFrames > 1;
+
     if (!supportsDLFG) {
       ImGui::BeginDisabled();
     }
 
-    m_userGraphicsSettingChanged |= ImGui::Checkbox("Enable DLSS Frame Generation", &DxvkDLFG::enableObject());
+    bool dlfgChanged = ImGui::Checkbox("Enable DLSS Frame Generation", &DxvkDLFG::enableObject());
+    m_userGraphicsSettingChanged |= dlfgChanged;
+    if (supportsMultiFrame) {
+      dlfgMfgModeCombo.getKey(&DxvkDLFG::maxInterpolatedFramesObject());
+    }
+
     const auto& reason = ctx->getCommonObjects()->metaNGXContext().getDLFGNotSupportedReason();
     if (reason.size()) {
       ImGui::SetTooltipToLastWidgetOnHover(reason.c_str());
@@ -2339,12 +2849,16 @@ namespace dxvk {
       ImGui::EndDisabled();
     }
 
-    // Force Reflex on when using G
-    if (supportsDLFG && ctx->isDLFGEnabled()) {
-      RtxOptions::Get()->reflexModeRef() = ReflexMode::LowLatency;
-    } else {
-      DxvkDLFG::enableRef() = false;
+    // Need to change Reflex in sync with DLFG, not on the next frame.
+    if (dlfgChanged) {
+      if (!supportsDLFG) {
+        DxvkDLFG::enable.setDeferred(false);
+      } else if (!DxvkDLFG::enable()){
+        // DLFG was just enabled.  force Reflex to Low Latency.
+        RtxOptions::reflexMode.setDeferred(ReflexMode::LowLatency);
+      }
     }
+
   }
 
   void ImGUI::showReflexOptions(const Rc<DxvkContext>& ctx, bool displayStatsWindowToggle) {
@@ -2360,7 +2874,7 @@ namespace dxvk {
     {
       bool disableReflexUI = ctx->isDLFGEnabled();
       ImGui::BeginDisabled(disableReflexUI);
-      m_userGraphicsSettingChanged |= ImGui::Combo("Reflex", &RtxOptions::Get()->reflexModeObject(), "Disabled\0Enabled\0Enabled + Boost\0");
+      m_userGraphicsSettingChanged |= reflexModeCombo.getKey(&RtxOptions::reflexModeObject());
       ImGui::EndDisabled();
     }
 
@@ -2530,12 +3044,12 @@ namespace dxvk {
       auto& rayReconstruction = common->metaRayReconstruction();
       ImGui::Indent();
 
-      if (RtxOptions::Get()->showRaytracingOption()) {
-        ImGui::Checkbox("Raytracing Enabled", &RtxOptions::Get()->enableRaytracingObject());
+      if (RtxOptions::showRaytracingOption()) {
+        ImGui::Checkbox("Raytracing Enabled", &RtxOptions::enableRaytracingObject());
 
-        renderPassGBufferRaytraceModeCombo.getKey(&RtxOptions::Get()->renderPassGBufferRaytraceModeObject());
-        renderPassIntegrateDirectRaytraceModeCombo.getKey(&RtxOptions::Get()->renderPassIntegrateDirectRaytraceModeObject());
-        renderPassIntegrateIndirectRaytraceModeCombo.getKey(&RtxOptions::Get()->renderPassIntegrateIndirectRaytraceModeObject());
+        renderPassGBufferRaytraceModeCombo.getKey(&RtxOptions::renderPassGBufferRaytraceModeObject());
+        renderPassIntegrateDirectRaytraceModeCombo.getKey(&RtxOptions::renderPassIntegrateDirectRaytraceModeObject());
+        renderPassIntegrateIndirectRaytraceModeCombo.getKey(&RtxOptions::renderPassIntegrateIndirectRaytraceModeObject());
 
         ImGui::Separator();
       }
@@ -2550,41 +3064,42 @@ namespace dxvk {
 
       if (ctx->getCommonObjects()->metaDLSS().supportsDLSS()) {
         // Show upscaler and DLSS-RR option.
-        auto oldUpscalerType = RtxOptions::Get()->upscalerType();
-        bool oldDLSSRREnabled = RtxOptions::Get()->enableRayReconstruction();
-        getUpscalerCombo(dlss, rayReconstruction).getKey(&RtxOptions::Get()->upscalerTypeObject());
+        auto oldUpscalerType = RtxOptions::upscalerType();
+        bool oldDLSSRREnabled = RtxOptions::enableRayReconstruction();
+        getUpscalerCombo(dlss, rayReconstruction).getKey(&RtxOptions::upscalerTypeObject());
         showRayReconstructionEnable(rayReconstruction.supportsRayReconstruction());
 
         // Update path tracer settings when upscaler is changed or DLSS-RR is toggled.
-        if (oldUpscalerType != RtxOptions::Get()->upscalerType() || oldDLSSRREnabled != RtxOptions::Get()->enableRayReconstruction()) {
-          RtxOptions::Get()->updateLightingSetting();
+        if (oldUpscalerType != RtxOptions::upscalerType() || oldDLSSRREnabled != RtxOptions::enableRayReconstruction()) {
+          RtxOptions::updateLightingSetting();
         }
       } else {
-        getUpscalerCombo(dlss, rayReconstruction).getKey(&RtxOptions::Get()->upscalerTypeObject());
+        getUpscalerCombo(dlss, rayReconstruction).getKey(&RtxOptions::upscalerTypeObject());
       }
 
-      RtxOptions::Get()->updatePresetFromUpscaler();
+      RtxOptions::updatePresetFromUpscaler();
 
-      if (RtxOptions::Get()->upscalerType() == UpscalerType::DLSS && !ctx->getCommonObjects()->metaDLSS().supportsDLSS())
-        RtxOptions::Get()->upscalerTypeRef() = UpscalerType::TAAU;
+      if (RtxOptions::upscalerType() == UpscalerType::DLSS && !ctx->getCommonObjects()->metaDLSS().supportsDLSS()) {
+        RtxOptions::upscalerType.setDeferred(UpscalerType::TAAU);
+      }
 
-      if (RtxOptions::Get()->isRayReconstructionEnabled()) {
-        ImGui::Combo("DLSS mode", &RtxOptions::Get()->qualityDLSSObject(), "Ultra Performance\0Performance\0Balanced\0Quality\0Auto\0Full Resolution\0");
+      if (RtxOptions::isRayReconstructionEnabled()) {
+        dlssProfileCombo.getKey(&RtxOptions::qualityDLSSObject());
         rayReconstruction.showRayReconstructionImguiSettings(false);
-      } else if (RtxOptions::Get()->upscalerType() == UpscalerType::DLSS) {
-        ImGui::Combo("DLSS mode", &RtxOptions::Get()->qualityDLSSObject(), "Ultra Performance\0Performance\0Balanced\0Quality\0Auto\0Full Resolution\0");
+      } else if (RtxOptions::upscalerType() == UpscalerType::DLSS) {
+        dlssProfileCombo.getKey(&RtxOptions::qualityDLSSObject());
         dlss.showImguiSettings();
-      } else if (RtxOptions::Get()->upscalerType() == UpscalerType::NIS) {
-        ImGui::SliderFloat("Resolution scale", &RtxOptions::Get()->resolutionScaleObject(), 0.5f, 1.0f);
+      } else if (RtxOptions::upscalerType() == UpscalerType::NIS) {
+        ImGui::SliderFloat("Resolution scale", &RtxOptions::resolutionScaleObject(), 0.5f, 1.0f);
         ImGui::SliderFloat("Sharpness", &ctx->getCommonObjects()->metaNIS().m_sharpness, 0.1f, 1.0f);
         ImGui::Checkbox("Use FP16", &ctx->getCommonObjects()->metaNIS().m_useFp16);
-      } else if (RtxOptions::Get()->upscalerType() == UpscalerType::TAAU) {
-        ImGui::SliderFloat("Resolution scale", &RtxOptions::Get()->resolutionScaleObject(), 0.5f, 1.0f);
+      } else if (RtxOptions::upscalerType() == UpscalerType::TAAU) {
+        ImGui::SliderFloat("Resolution scale", &RtxOptions::resolutionScaleObject(), 0.5f, 1.0f);
       }
 
       ImGui::Separator();
 
-      ImGui::Checkbox("Allow Full Screen Exclusive?", &RtxOptions::Get()->allowFSEObject());
+      ImGui::Checkbox("Allow Full Screen Exclusive?", &RtxOptions::allowFSEObject());
 
       ImGui::Unindent();
     }
@@ -2592,29 +3107,31 @@ namespace dxvk {
     if (ImGui::CollapsingHeader("Pathtracing", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
 
-      ImGui::Checkbox("RNG: seed with frame index", &RtxOptions::Get()->rngSeedWithFrameIndexObject());
+      ImGui::Checkbox("RNG: seed with frame index", &RtxOptions::rngSeedWithFrameIndexObject());
 
       if (ImGui::CollapsingHeader("Resolver", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
 
-        ImGui::DragInt("Max Primary Interactions", &RtxOptions::Get()->primaryRayMaxInteractionsObject(), 1.0f, 1, 255, "%d", sliderFlags);
-        ImGui::DragInt("Max PSR Interactions", &RtxOptions::Get()->psrRayMaxInteractionsObject(), 1.0f, 1, 255, "%d", sliderFlags);
-        ImGui::DragInt("Max Secondary Interactions", &RtxOptions::Get()->secondaryRayMaxInteractionsObject(), 1.0f, 1, 255, "%d", sliderFlags);
-        ImGui::Checkbox("Separate Unordered Approximations", &RtxOptions::Get()->enableSeparateUnorderedApproximationsObject());
-        ImGui::Checkbox("Direct Translucent Shadows", &RtxOptions::Get()->enableDirectTranslucentShadowsObject());
-        ImGui::Checkbox("Indirect Translucent Shadows", &RtxOptions::Get()->enableIndirectTranslucentShadowsObject());
-        ImGui::Checkbox("Decal Material Blending", &RtxOptions::Get()->enableDecalMaterialBlendingObject());
-        ImGui::Checkbox("Billboard Orientation Correction", &RtxOptions::Get()->enableBillboardOrientationCorrectionObject());
-        if (RtxOptions::Get()->enableBillboardOrientationCorrection()) {
+        ImGui::DragInt("Max Primary Interactions", &RtxOptions::primaryRayMaxInteractionsObject(), 1.0f, 1, 255, "%d", sliderFlags);
+        ImGui::DragInt("Max PSR Interactions", &RtxOptions::psrRayMaxInteractionsObject(), 1.0f, 1, 255, "%d", sliderFlags);
+        ImGui::DragInt("Max Secondary Interactions", &RtxOptions::secondaryRayMaxInteractionsObject(), 1.0f, 1, 255, "%d", sliderFlags);
+        ImGui::Checkbox("Separate Unordered Approximations", &RtxOptions::enableSeparateUnorderedApproximationsObject());
+        ImGui::Checkbox("Direct Translucent Shadows", &RtxOptions::enableDirectTranslucentShadowsObject());
+        ImGui::Checkbox("Direct Alpha Blended Shadows", &RtxOptions::enableDirectAlphaBlendShadowsObject());
+        ImGui::Checkbox("Indirect Translucent Shadows", &RtxOptions::enableIndirectTranslucentShadowsObject());
+        ImGui::Checkbox("Indirect Alpha Blended Shadows", &RtxOptions::enableIndirectAlphaBlendShadowsObject());
+        ImGui::Checkbox("Decal Material Blending", &RtxOptions::enableDecalMaterialBlendingObject());
+        ImGui::Checkbox("Billboard Orientation Correction", &RtxOptions::enableBillboardOrientationCorrectionObject());
+        if (RtxOptions::enableBillboardOrientationCorrection()) {
           ImGui::Indent();
-          ImGui::Checkbox("Dev: Use i-prims on primary rays", &RtxOptions::Get()->useIntersectionBillboardsOnPrimaryRaysObject());
+          ImGui::Checkbox("Dev: Use i-prims on primary rays", &RtxOptions::useIntersectionBillboardsOnPrimaryRaysObject());
           ImGui::Unindent();
         }
-        ImGui::Checkbox("Track Particle Object", &RtxOptions::Get()->trackParticleObjectsObject());
+        ImGui::Checkbox("Track Particle Object", &RtxOptions::trackParticleObjectsObject());
 
-        ImGui::SliderFloat("Resolve Transparency Threshold", &RtxOptions::Get()->resolveTransparencyThresholdObject(), 0.0f, 1.0f);
-        RtxOptions::Get()->resolveOpaquenessThresholdRef() = std::max(RtxOptions::Get()->resolveTransparencyThreshold(), RtxOptions::Get()->resolveOpaquenessThreshold());
-        ImGui::SliderFloat("Resolve Opaqueness Threshold", &RtxOptions::Get()->resolveOpaquenessThresholdObject(), 0.0f, 1.0f);
+        ImGui::SliderFloat("Resolve Transparency Threshold", &RtxOptions::resolveTransparencyThresholdObject(), 0.0f, 1.0f);
+        RtxOptions::resolveOpaquenessThreshold.setDeferred(std::max(RtxOptions::resolveTransparencyThreshold(), RtxOptions::resolveOpaquenessThreshold()));
+        ImGui::SliderFloat("Resolve Opaqueness Threshold", &RtxOptions::resolveOpaquenessThresholdObject(), 0.0f, 1.0f);
 
         ImGui::Unindent();
       }
@@ -2622,16 +3139,16 @@ namespace dxvk {
       if (ImGui::CollapsingHeader("PSR", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
 
-        ImGui::Checkbox("Reflection PSR Enabled", &RtxOptions::Get()->enablePSRRObject());
-        ImGui::Checkbox("Transmission PSR Enabled", &RtxOptions::Get()->enablePSTRObject());
+        ImGui::Checkbox("Reflection PSR Enabled", &RtxOptions::enablePSRRObject());
+        ImGui::Checkbox("Transmission PSR Enabled", &RtxOptions::enablePSTRObject());
         // # bounces limitted by 8b allocation in payload
         // Note: value of 255 effectively means unlimited bounces, and we don't want to allow that
-        ImGui::DragInt("Max Reflection PSR Bounces", &RtxOptions::Get()->psrrMaxBouncesObject(), 1.0f, 1, 254, "%d", sliderFlags);
-        ImGui::DragInt("Max Transmission PSR Bounces", &RtxOptions::Get()->pstrMaxBouncesObject(), 1.0f, 1, 254, "%d", sliderFlags);
-        ImGui::Checkbox("Outgoing Transmission Approx Enabled", &RtxOptions::Get()->enablePSTROutgoingSplitApproximationObject());
-        ImGui::Checkbox("Incident Transmission Approx Enabled", &RtxOptions::Get()->enablePSTRSecondaryIncidentSplitApproximationObject());
-        ImGui::DragFloat("Reflection PSR Normal Detail Threshold", &RtxOptions::Get()->psrrNormalDetailThresholdObject(), 0.001f, 0.f, 1.f);
-        ImGui::DragFloat("Transmission PSR Normal Detail Threshold", &RtxOptions::Get()->pstrNormalDetailThresholdObject(), 0.001f, 0.f, 1.f);
+        ImGui::DragInt("Max Reflection PSR Bounces", &RtxOptions::psrrMaxBouncesObject(), 1.0f, 1, 254, "%d", sliderFlags);
+        ImGui::DragInt("Max Transmission PSR Bounces", &RtxOptions::pstrMaxBouncesObject(), 1.0f, 1, 254, "%d", sliderFlags);
+        ImGui::Checkbox("Outgoing Transmission Approx Enabled", &RtxOptions::enablePSTROutgoingSplitApproximationObject());
+        ImGui::Checkbox("Incident Transmission Approx Enabled", &RtxOptions::enablePSTRSecondaryIncidentSplitApproximationObject());
+        ImGui::DragFloat("Reflection PSR Normal Detail Threshold", &RtxOptions::psrrNormalDetailThresholdObject(), 0.001f, 0.f, 1.f);
+        ImGui::DragFloat("Transmission PSR Normal Detail Threshold", &RtxOptions::pstrNormalDetailThresholdObject(), 0.001f, 0.f, 1.f);
 
         ImGui::Unindent();
       }
@@ -2639,64 +3156,64 @@ namespace dxvk {
       if (ImGui::CollapsingHeader("Integrator", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
 
-        ImGui::Checkbox("Enable Secondary Bounces", &RtxOptions::Get()->enableSecondaryBouncesObject());
-        ImGui::Checkbox("Enable Russian Roulette", &RtxOptions::Get()->enableRussianRouletteObject());
-        ImGui::Checkbox("Enable Probability Dithering Filtering for Primary Bounce", &RtxOptions::Get()->enableFirstBounceLobeProbabilityDitheringObject());
+        ImGui::Checkbox("Enable Secondary Bounces", &RtxOptions::enableSecondaryBouncesObject());
+        ImGui::Checkbox("Enable Russian Roulette", &RtxOptions::enableRussianRouletteObject());
+        ImGui::Checkbox("Enable Probability Dithering Filtering for Primary Bounce", &RtxOptions::enableFirstBounceLobeProbabilityDitheringObject());
         ImGui::Checkbox("Unordered Resolve in Indirect Rays", &RtxOptions::enableUnorderedResolveInIndirectRaysObject());
         ImGui::BeginDisabled(!RtxOptions::enableUnorderedResolveInIndirectRays());
         ImGui::Checkbox("Probabilistic Unordered Resolve in Indirect Rays", &RtxOptions::enableProbabilisticUnorderedResolveInIndirectRaysObject());
         ImGui::EndDisabled();
-        ImGui::Checkbox("Unordered Emissive Particles in Indirect Rays", &RtxOptions::Get()->enableUnorderedEmissiveParticlesInIndirectRaysObject());
-        ImGui::Checkbox("Transmission Approximation in Indirect Rays", &RtxOptions::Get()->enableTransmissionApproximationInIndirectRaysObject());
+        ImGui::Checkbox("Unordered Emissive Particles in Indirect Rays", &RtxOptions::enableUnorderedEmissiveParticlesInIndirectRaysObject());
+        ImGui::Checkbox("Transmission Approximation in Indirect Rays", &RtxOptions::enableTransmissionApproximationInIndirectRaysObject());
         // # bounces limitted by 4b allocation in payload
         // Note: It's possible get up to 16 bounces => will require logic adjustment
-        ImGui::DragInt("Minimum Path Bounces", &RtxOptions::Get()->pathMinBouncesObject(), 1.0f, 0, 15, "%d", sliderFlags);
-        ImGui::DragInt("Maximum Path Bounces", &RtxOptions::Get()->pathMaxBouncesObject(), 1.0f, RtxOptions::Get()->pathMinBounces(), 15, "%d", sliderFlags);
-        ImGui::DragFloat("Firefly Filtering Luminance Threshold", &RtxOptions::Get()->fireflyFilteringLuminanceThresholdObject(), 0.1f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-        ImGui::DragFloat("Secondary Specular Firefly Filtering Threshold", &RtxOptions::Get()->secondarySpecularFireflyFilteringThresholdObject(), 0.1f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-        ImGui::DragFloat("Opaque Diffuse Lobe Probability Zero Threshold", &RtxOptions::Get()->opaqueDiffuseLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Min Opaque Diffuse Lobe Probability", &RtxOptions::Get()->minOpaqueDiffuseLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Opaque Specular Lobe Probability Zero Threshold", &RtxOptions::Get()->opaqueSpecularLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Min Opaque Specular Lobe Probability", &RtxOptions::Get()->minOpaqueSpecularLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Opaque Opacity Transmission Lobe Probability Zero Threshold", &RtxOptions::Get()->opaqueOpacityTransmissionLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Min Opaque Opacity Transmission Lobe Probability", &RtxOptions::Get()->minOpaqueOpacityTransmissionLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Diffuse Transmission Lobe Probability Zero Threshold", &RtxOptions::Get()->opaqueDiffuseTransmissionLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Min Diffuse Transmission Lobe Probability", &RtxOptions::Get()->minOpaqueDiffuseTransmissionLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Translucent Specular Lobe Probability Zero Threshold", &RtxOptions::Get()->translucentSpecularLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Min Translucent Specular Lobe Probability", &RtxOptions::Get()->minTranslucentSpecularLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Translucent Transmission Lobe Probability Zero Threshold", &RtxOptions::Get()->translucentTransmissionLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Min Translucent Transmission Lobe Probability", &RtxOptions::Get()->minTranslucentTransmissionLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Indirect Ray Spread Angle Factor", &RtxOptions::Get()->indirectRaySpreadAngleFactorObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        ImGui::DragInt("Minimum Path Bounces", &RtxOptions::pathMinBouncesObject(), 1.0f, 0, 15, "%d", sliderFlags);
+        ImGui::DragInt("Maximum Path Bounces", &RtxOptions::pathMaxBouncesObject(), 1.0f, RtxOptions::pathMinBounces(), 15, "%d", sliderFlags);
+        ImGui::DragFloat("Firefly Filtering Luminance Threshold", &RtxOptions::fireflyFilteringLuminanceThresholdObject(), 0.1f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
+        ImGui::DragFloat("Secondary Specular Firefly Filtering Threshold", &RtxOptions::secondarySpecularFireflyFilteringThresholdObject(), 0.1f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
+        ImGui::DragFloat("Opaque Diffuse Lobe Probability Zero Threshold", &RtxOptions::opaqueDiffuseLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        ImGui::DragFloat("Min Opaque Diffuse Lobe Probability", &RtxOptions::minOpaqueDiffuseLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        ImGui::DragFloat("Opaque Specular Lobe Probability Zero Threshold", &RtxOptions::opaqueSpecularLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        ImGui::DragFloat("Min Opaque Specular Lobe Probability", &RtxOptions::minOpaqueSpecularLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        ImGui::DragFloat("Opaque Opacity Transmission Lobe Probability Zero Threshold", &RtxOptions::opaqueOpacityTransmissionLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        ImGui::DragFloat("Min Opaque Opacity Transmission Lobe Probability", &RtxOptions::minOpaqueOpacityTransmissionLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        ImGui::DragFloat("Diffuse Transmission Lobe Probability Zero Threshold", &RtxOptions::opaqueDiffuseTransmissionLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        ImGui::DragFloat("Min Diffuse Transmission Lobe Probability", &RtxOptions::minOpaqueDiffuseTransmissionLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        ImGui::DragFloat("Translucent Specular Lobe Probability Zero Threshold", &RtxOptions::translucentSpecularLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        ImGui::DragFloat("Min Translucent Specular Lobe Probability", &RtxOptions::minTranslucentSpecularLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        ImGui::DragFloat("Translucent Transmission Lobe Probability Zero Threshold", &RtxOptions::translucentTransmissionLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        ImGui::DragFloat("Min Translucent Transmission Lobe Probability", &RtxOptions::minTranslucentTransmissionLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        ImGui::DragFloat("Indirect Ray Spread Angle Factor", &RtxOptions::indirectRaySpreadAngleFactorObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
 
-        if (RtxOptions::Get()->enableRussianRoulette() && ImGui::CollapsingHeader("Russian Roulette", collapsingHeaderClosedFlags)) {
+        if (RtxOptions::enableRussianRoulette() && ImGui::CollapsingHeader("Russian Roulette", collapsingHeaderClosedFlags)) {
           ImGui::Indent();
 
-          ImGui::DragFloat("1st bounce: Min Continue Probability", &RtxOptions::Get()->russianRoulette1stBounceMinContinueProbabilityObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
-          ImGui::DragFloat("1st bounce: Max Continue Probability", &RtxOptions::Get()->russianRoulette1stBounceMaxContinueProbabilityObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
-
-          secondPlusRussianRouletteModeCombo.getKey(&RtxOptions::Get()->russianRouletteModeObject());
-          if (RtxOptions::Get()->russianRouletteMode() == RussianRouletteMode::ThroughputBased)
+          ImGui::DragFloat("1st bounce: Min Continue Probability", &RtxOptions::russianRoulette1stBounceMinContinueProbabilityObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
+          ImGui::DragFloat("1st bounce: Max Continue Probability", &RtxOptions::russianRoulette1stBounceMaxContinueProbabilityObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
+          
+          secondPlusBounceRussianRouletteModeCombo.getKey(&RtxOptions::russianRouletteModeObject());
+          if (RtxOptions::russianRouletteMode() == RussianRouletteMode::ThroughputBased)
           {
-            ImGui::DragFloat("2nd+ bounce: Max Continue Probability", &RtxOptions::Get()->russianRouletteMaxContinueProbabilityObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
+            ImGui::DragFloat("2nd+ bounce: Max Continue Probability", &RtxOptions::russianRouletteMaxContinueProbabilityObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
           }
           else
           {
-            ImGui::DragFloat("2nd+ bounce: Diffuse Continue Probability", &RtxOptions::Get()->russianRouletteDiffuseContinueProbabilityObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
-            ImGui::DragFloat("2nd+ bounce: Specular Continue Probability", &RtxOptions::Get()->russianRouletteSpecularContinueProbabilityObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
-            ImGui::DragFloat("2nd+ bounce: Distance Factor", &RtxOptions::Get()->russianRouletteDistanceFactorObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
+            ImGui::DragFloat("2nd+ bounce: Diffuse Continue Probability", &RtxOptions::russianRouletteDiffuseContinueProbabilityObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
+            ImGui::DragFloat("2nd+ bounce: Specular Continue Probability", &RtxOptions::russianRouletteSpecularContinueProbabilityObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
+            ImGui::DragFloat("2nd+ bounce: Distance Factor", &RtxOptions::russianRouletteDistanceFactorObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
           }
-
+          
           ImGui::Unindent();
         }
         ImGui::Unindent();
       }
 
-      if (RtxOptions::Get()->getIsOpacityMicromapSupported() &&
+      if (RtxOptions::getIsOpacityMicromapSupported() && 
           ImGui::CollapsingHeader("Opacity Micromap", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
 
-        ImGui::Checkbox("Enable Opacity Micromap", &RtxOptions::Get()->opacityMicromap.enableObject());
-
+        ImGui::Checkbox("Enable Opacity Micromap", &RtxOptions::OpacityMicromap::enableObject());
+        
         if (common->getOpacityMicromapManager())
           common->getOpacityMicromapManager()->showImguiSettings();
 
@@ -2704,15 +3221,15 @@ namespace dxvk {
       }
 
       const VkPhysicalDeviceProperties& props = m_device->adapter()->deviceProperties();
-      const NV_GPU_ARCHITECTURE_ID archId = RtxOptions::Get()->getNvidiaArch();
+      const NV_GPU_ARCHITECTURE_ID archId = RtxOptions::getNvidiaArch();
 
       // Shader Execution Reordering
-      if (RtxOptions::Get()->isShaderExecutionReorderingSupported()) {
+      if (RtxOptions::isShaderExecutionReorderingSupported()) {
         if (ImGui::CollapsingHeader("Shader Execution Reordering", collapsingHeaderClosedFlags)) {
           ImGui::Indent();
 
-          if (RtxOptions::Get()->renderPassIntegrateIndirectRaytraceMode() == DxvkPathtracerIntegrateIndirect::RaytraceMode::TraceRay)
-            ImGui::Checkbox("Enable In Integrate Indirect Pass", &RtxOptions::Get()->enableShaderExecutionReorderingInPathtracerIntegrateIndirectObject());
+          if (RtxOptions::renderPassIntegrateIndirectRaytraceMode() == DxvkPathtracerIntegrateIndirect::RaytraceMode::TraceRay)
+            ImGui::Checkbox("Enable In Integrate Indirect Pass", &RtxOptions::enableShaderExecutionReorderingInPathtracerIntegrateIndirectObject());
 
           ImGui::Unindent();
         }
@@ -2725,44 +3242,64 @@ namespace dxvk {
 
       common->getSceneManager().getLightManager().showImguiLightOverview();
 
-      ImGui::Separator();
+      if (ImGui::CollapsingHeader("Effect Light", collapsingHeaderClosedFlags)) {
+        ImGui::Indent();
 
-      ImGui::DragFloat("Effect Light Intensity", &RtxOptions::Get()->effectLightIntensityObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-      ImGui::DragFloat("Effect Light Radius", &RtxOptions::Get()->effectLightRadiusObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
+        ImGui::TextWrapped("These settings control the effect lights, which are created by Remix, and attached to objects tagged using the rtx.lightConverter option (found in the texture tagging menu as 'Add Light to Texture').");
 
-      ImGui::DragFloat("Emissive Intensity", &RtxOptions::Get()->emissiveIntensityObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
+        ImGui::DragFloat("Light Intensity", &RtxOptions::effectLightIntensityObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
+        ImGui::DragFloat("Light Radius", &RtxOptions::effectLightRadiusObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
+        // Plasma ball has first priority
+        ImGui::Checkbox("Plasma Ball Effect", &RtxOptions::effectLightPlasmaBallObject());
+        ImGui::BeginDisabled(RtxOptions::effectLightPlasmaBall());
+        ImGui::ColorPicker3("Light Color", &RtxOptions::effectLightColorObject());
+        ImGui::EndDisabled();
+        ImGui::Unindent();
+      }
+
+      ImGui::DragFloat("Emissive Intensity", &RtxOptions::emissiveIntensityObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
       ImGui::Separator();
-      ImGui::SliderInt("RIS Light Sample Count", &RtxOptions::Get()->risLightSampleCountObject(), 0, 64);
+      ImGui::SliderInt("RIS Light Sample Count", &RtxOptions::risLightSampleCountObject(), 0, 64);
       ImGui::Separator();
-      ImGui::Checkbox("Direct Lighting Enabled", &RtxOptions::Get()->enableDirectLightingObject());
-      ImGui::Checkbox("Indirect Lighting Enabled", &RtxOptions::Get()->enableSecondaryBouncesObject());
+      ImGui::Checkbox("Direct Lighting Enabled", &RtxOptions::enableDirectLightingObject());
+      ImGui::Checkbox("Indirect Lighting Enabled", &RtxOptions::enableSecondaryBouncesObject());
 
       if (ImGui::CollapsingHeader("RTXDI", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
 
-        ImGui::Checkbox("Enable RTXDI", &RtxOptions::Get()->useRTXDIObject());
-        ImGui::Checkbox("Use Previous TLAS", &RtxOptions::Get()->enablePreviousTLASObject());
+        ImGui::Checkbox("Enable RTXDI", &RtxOptions::useRTXDIObject());
 
         auto& rtxdi = common->metaRtxdiRayQuery();
         rtxdi.showImguiSettings();
         ImGui::Unindent();
       }
 
-      if (ImGui::CollapsingHeader("ReSTIR GI", collapsingHeaderClosedFlags)) {
+      // Indirect Illumination Integration Mode
+      if (ImGui::CollapsingHeader("Indirect Illumination", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
+        integrateIndirectModeCombo.getKey(&RtxOptions::integrateIndirectModeObject());
 
-        ImGui::Checkbox("Enable ReSTIR GI", &RtxOptions::Get()->useReSTIRGIObject());
+        if (RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::ReSTIRGI) {
+          if (ImGui::CollapsingHeader("ReSTIR GI", collapsingHeaderClosedFlags)) {
+            ImGui::Indent();
+            ImGui::PushID("ReSTIR GI");
+            auto& restirGI = common->metaReSTIRGIRayQuery();
+            restirGI.showImguiSettings();
+            ImGui::PopID();
+            ImGui::Unindent();
+          }
+        } else if (RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::NeuralRadianceCache) {
+          if (ImGui::CollapsingHeader("RTX Neural Radiance Cache", collapsingHeaderClosedFlags)) {
 
-        ImGui::PushID("ReSTIR GI");
-        if (ImGui::CollapsingHeader("Settings", collapsingHeaderClosedFlags)) {
-          ImGui::Indent();
-
-          auto& restirGI = common->metaReSTIRGIRayQuery();
-          restirGI.showImguiSettings();
-
-          ImGui::Unindent();
+            ImGui::Indent();
+            ImGui::PushID("Neural Radiance Cache");
+            NeuralRadianceCache& nrc = common->metaNeuralRadianceCache();
+            nrc.showImguiSettings(*ctx);
+            ImGui::PopID();
+            ImGui::Unindent();
+          }
         }
-        ImGui::PopID();
+
         ImGui::Unindent();
       }
 
@@ -2774,106 +3311,18 @@ namespace dxvk {
         ImGui::PopID();
         ImGui::Unindent();
       }
+
       ImGui::Unindent();
     }
 
-    if (ImGui::CollapsingHeader("Froxel Radiance Cache/Volumetrics", collapsingHeaderClosedFlags)) {
+    RtxParticleSystemManager::showImguiSettings();
+
+    if (ImGui::CollapsingHeader("RTX Volumetrics (Global)", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
 
-      if (ImGui::CollapsingHeader("Froxel Radiance Cache", collapsingHeaderFlags)) {
-        ImGui::Indent();
+      common->metaGlobalVolumetrics().showImguiSettings();
 
-        ImGui::DragInt("Froxel Grid Resolution Scale", &RtxOptions::Get()->froxelGridResolutionScaleObject(), 0.1f, 1);
-        ImGui::DragInt("Froxel Depth Slices", &RtxOptions::Get()->froxelDepthSlicesObject(), 0.1f, 1, UINT16_MAX);
-        ImGui::DragInt("Max Accumulation Frames", &RtxOptions::Get()->maxAccumulationFramesObject(), 0.1f, 1, UINT8_MAX);
-        ImGui::DragFloat("Froxel Depth Slice Distribution Exponent", &RtxOptions::Get()->froxelDepthSliceDistributionExponentObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-        ImGui::DragFloat("Froxel Max Distance", &RtxOptions::Get()->froxelMaxDistanceObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-        ImGui::DragFloat("Froxel Firefly Filtering Luminance Threshold", &RtxOptions::Get()->froxelFireflyFilteringLuminanceThresholdObject(), 0.1f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-        ImGui::DragFloat("Froxel Filter Gaussian Sigma", &RtxOptions::Get()->froxelFilterGaussianSigmaObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-        ImGui::Checkbox("Per-Portal Volumes", &RtxOptions::Get()->enableVolumetricsInPortalsObject());
-
-        ImGui::Separator();
-
-        ImGui::DragInt("Initial RIS Sample Count", &RtxOptions::Get()->volumetricInitialRISSampleCountObject(), 0.05f, 1, UINT8_MAX);
-        ImGui::Checkbox("Enable Initial Visibility", &RtxOptions::Get()->volumetricEnableInitialVisibilityObject());
-        ImGui::Checkbox("Enable Temporal Resampling", &RtxOptions::Get()->volumetricEnableTemporalResamplingObject());
-        ImGui::DragInt("Temporal Reuse Max Sample Count", &RtxOptions::Get()->volumetricTemporalReuseMaxSampleCountObject(), 1.0f, 1, UINT16_MAX);
-        ImGui::DragFloat("Clamped Reprojection Confidence Pentalty", &RtxOptions::Get()->volumetricClampedReprojectionConfidencePenaltyObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
-
-        ImGui::Separator();
-
-        ImGui::DragInt("Min Reservoir Samples", &RtxOptions::Get()->froxelMinReservoirSamplesObject(), 0.05f, 1, UINT8_MAX);
-        ImGui::DragInt("Max Reservoir Samples", &RtxOptions::Get()->froxelMaxReservoirSamplesObject(), 0.05f, 1, UINT8_MAX);
-        ImGui::DragInt("Min Reservoir Samples Stability History", &RtxOptions::Get()->froxelMinReservoirSamplesStabilityHistoryObject(), 0.1f, 1, UINT8_MAX);
-        ImGui::DragInt("Max Reservoir Samples Stability History", &RtxOptions::Get()->froxelMaxReservoirSamplesStabilityHistoryObject(), 0.1f, 1, UINT8_MAX);
-        ImGui::DragFloat("Reservoir Samples Stability History Power", &RtxOptions::Get()->froxelReservoirSamplesStabilityHistoryPowerObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-
-        ImGui::DragInt("Min Kernel Radius", &RtxOptions::Get()->froxelMinKernelRadiusObject(), 0.05f, 1, UINT8_MAX);
-        ImGui::DragInt("Max Kernel Radius", &RtxOptions::Get()->froxelMaxKernelRadiusObject(), 0.05f, 1, UINT8_MAX);
-        ImGui::DragInt("Min Kernel Radius Stability History", &RtxOptions::Get()->froxelMinKernelRadiusStabilityHistoryObject(), 0.1f, 1, UINT8_MAX);
-        ImGui::DragInt("Max Kernel Radius Stability History", &RtxOptions::Get()->froxelMaxKernelRadiusStabilityHistoryObject(), 0.1f, 1, UINT8_MAX);
-        ImGui::DragFloat("Kernel Radius Stability History Power", &RtxOptions::Get()->froxelKernelRadiusStabilityHistoryPowerObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-
-        ImGui::Unindent();
-      }
-
-      if (ImGui::CollapsingHeader("Volumetric Lighting", collapsingHeaderFlags)) {
-        ImGui::Indent();
-
-        ImGui::Checkbox("Enable Volumetric Lighting", &RtxOptions::Get()->enableVolumetricLightingObject());
-        {
-          ImGui::Indent();
-          ImGui::BeginDisabled(!RtxOptions::Get()->enableVolumetricLighting());
-
-          ImGui::DragFloat3("Transmittance Color", &RtxOptions::Get()->volumetricTransmittanceColorObject(), 0.01f, 0.0f, VolumeManager::MaxTransmittanceValue, "%.3f");
-          ImGui::DragFloat("Transmittance Measurement Distance", &RtxOptions::Get()->volumetricTransmittanceMeasurementDistanceObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-          ImGui::DragFloat3("Single Scattering Albedo", &RtxOptions::Get()->volumetricSingleScatteringAlbedoObject(), 0.01f, 0.0f, 1.0f, "%.3f");
-          ImGui::DragFloat("Anisotropy", &RtxOptions::Get()->volumetricAnisotropyObject(), 0.01f, -1.0f, 1.0f, "%.3f", sliderFlags);
-
-          ImGui::Checkbox("Enable Legacy Fog Remapping", &RtxOptions::Get()->enableFogRemapObject());
-
-          ImGui::BeginDisabled(!RtxOptions::Get()->enableFogRemap());
-          {
-            ImGui::Indent();
-
-            ImGui::Checkbox("Enable Fog Color Remapping", &RtxOptions::Get()->enableFogColorRemapObject());
-
-            ImGui::Checkbox("Enable Fog Max Distance Remapping", &RtxOptions::Get()->enableFogMaxDistanceRemapObject());
-
-            ImGui::BeginDisabled(!RtxOptions::Get()->enableFogMaxDistanceRemap());
-            {
-              ImGui::DragFloat("Legacy Max Distance Min", &RtxOptions::Get()->fogRemapMaxDistanceMinObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-              ImGui::DragFloat("Legacy Max Distance Max", &RtxOptions::Get()->fogRemapMaxDistanceMaxObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-              ImGui::DragFloat("Remapped Transmittance Measurement Distance Min", &RtxOptions::Get()->fogRemapTransmittanceMeasurementDistanceMinObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-              ImGui::DragFloat("Remapped Transmittance Measurement Distance Max", &RtxOptions::Get()->fogRemapTransmittanceMeasurementDistanceMaxObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-            }
-            ImGui::EndDisabled();
-
-            ImGui::DragFloat("Color Multiscattering Scale", &RtxOptions::Get()->fogRemapColorMultiscatteringScaleObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-
-            ImGui::Unindent();
-          }
-          ImGui::EndDisabled();
-
-          ImGui::EndDisabled();
-          ImGui::Unindent();
-        }
-
-        ImGui::Separator();
-        ImGui::Dummy({ 0, 4 });
-        {
-          common->metaComposite().showDepthBasedFogImguiSettings();
-        }
-
-        ImGui::Separator();
-        ImGui::Dummy({ 0, 4 });
-        ImGui::Checkbox("Skip Sky Fog Values", &RtxOptions::fogIgnoreSkyObject());
-
-        ImGui::Unindent();
-      }
-
-      // Note: Must be called if the volumetrics options changed.
-      RtxOptions::Get()->updateCachedVolumetricOptions();
+      common->metaDustParticles().showImguiSettings();
 
       ImGui::Unindent();
     }
@@ -2882,14 +3331,23 @@ namespace dxvk {
       ImGui::Indent();
 
       ImGui::Checkbox("Enable Thin Opaque", &RtxOptions::SubsurfaceScattering::enableThinOpaqueObject());
+      ImGui::Checkbox("Enable Texture Maps", &RtxOptions::SubsurfaceScattering::enableTextureMapsObject());
 
-      if (RtxOptions::SubsurfaceScattering::enableThinOpaque()) {
-        ImGui::Indent();
+      ImGui::Checkbox("Enable Diffusion Profile SSS", &RtxOptions::SubsurfaceScattering::enableDiffusionProfileObject());
 
-        ImGui::Checkbox("Enable Texture Maps", &RtxOptions::SubsurfaceScattering::enableTextureMapsObject());
+      if (RtxOptions::SubsurfaceScattering::enableDiffusionProfile()) {
+        ImGui::SliderFloat("SSS Scale", &RtxOptions::SubsurfaceScattering::diffusionProfileScaleObject(), 0.0f, 100.0f);
 
-        ImGui::Unindent();
+        ImGui::Checkbox("Enable SSS Transmission", &RtxOptions::SubsurfaceScattering::enableTransmissionObject());
+        if (RtxOptions::SubsurfaceScattering::enableTransmission()) {
+          ImGui::Checkbox("Enable SSS Transmission Single Scattering", &RtxOptions::SubsurfaceScattering::enableTransmissionSingleScatteringObject());
+          ImGui::Checkbox("Enable Transmission Diffusion Profile Correction [Experimental]", &RtxOptions::SubsurfaceScattering::enableTransmissionDiffusionProfileCorrectionObject());
+          ImGui::DragInt("SSS Transmission BSDF Sample Count", &RtxOptions::SubsurfaceScattering::transmissionBsdfSampleCountObject(), 0.1f, 1, 64, "%d", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::DragInt("SSS Transmission Single Scattering Sample Count", &RtxOptions::SubsurfaceScattering::transmissionSingleScatteringSampleCountObject(), 0.1f, 1, 64, "%d", ImGuiSliderFlags_AlwaysClamp);
+        }
       }
+
+      ImGui::DragInt2("Diffusion Profile Sampling Debugging Pixel Position", &RtxOptions::SubsurfaceScattering::diffusionProfileDebugPixelPositionObject(), 0.1f, 0, INT32_MAX, "%d", ImGuiSliderFlags_AlwaysClamp);
 
       ImGui::Unindent();
     }
@@ -2897,8 +3355,8 @@ namespace dxvk {
     if (ImGui::CollapsingHeader("Alpha Test/Blending", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
 
-      ImGui::Checkbox("Render Alpha Blended", &RtxOptions::Get()->enableAlphaBlendObject());
-      ImGui::Checkbox("Render Alpha Tested", &RtxOptions::Get()->enableAlphaTestObject());
+      ImGui::Checkbox("Render Alpha Blended", &RtxOptions::enableAlphaBlendObject());
+      ImGui::Checkbox("Render Alpha Tested", &RtxOptions::enableAlphaTestObject());
       ImGui::Separator();
 
       ImGui::Checkbox("Emissive Blend Translation", &RtxOptions::enableEmissiveBlendModeTranslationObject());
@@ -2907,40 +3365,47 @@ namespace dxvk {
       ImGui::DragFloat("Emissive Blend Override Intensity", &RtxOptions::emissiveBlendOverrideEmissiveIntensityObject(), 0.001f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
 
       ImGui::Separator();
-      ImGui::SliderFloat("Particle Softness", &RtxOptions::Get()->particleSoftnessFactorObject(), 0.f, 0.5f);
-
+      ImGui::SliderFloat("Particle Softness", &RtxOptions::particleSoftnessFactorObject(), 0.f, 0.5f);
+      ImGui::Separator();
+      if (ImGui::CollapsingHeader("Weighted Blended OIT", collapsingHeaderClosedFlags)) {
+        ImGui::Checkbox("Enable", &RtxOptions::wboitEnabledObject());
+        ImGui::BeginDisabled(!RtxOptions::wboitEnabled());
+        ImGui::SliderFloat("Energy Compensation", &RtxOptions::wboitEnergyLossCompensationObject(), 1.f, 10.f);
+        ImGui::SliderFloat("Depth Weight Tuning", &RtxOptions::wboitDepthWeightTuningObject(), 0.01f, 10.f);
+        ImGui::EndDisabled();
+      }
       common->metaComposite().showStochasticAlphaBlendImguiSettings();
       ImGui::Unindent();
     }
 
     if (ImGui::CollapsingHeader("Denoising", collapsingHeaderClosedFlags)) {
-      bool isRayReconstructionEnabled = RtxOptions::Get()->isRayReconstructionEnabled();
+      bool isRayReconstructionEnabled = RtxOptions::isRayReconstructionEnabled();
       bool useNRD = !isRayReconstructionEnabled || common->metaRayReconstruction().enableNRDForTraining();
       ImGui::Indent();
       ImGui::BeginDisabled(!useNRD);
-      ImGui::Checkbox("Denoising Enabled", &RtxOptions::Get()->useDenoiserObject());
-      ImGui::Checkbox("Reference Mode | Accumulation", &RtxOptions::Get()->useDenoiserReferenceModeObject());
+      ImGui::Checkbox("Denoising Enabled", &RtxOptions::useDenoiserObject());
+      ImGui::Checkbox("Reference Mode | Accumulation", &RtxOptions::useDenoiserReferenceModeObject());
 
-      if (RtxOptions::Get()->useDenoiserReferenceMode()) {
-        common->metaDebugView().showAccumulationImguiSettings("Accumulation (Aliased with Debug View's Settings)");
+      if (RtxOptions::useDenoiserReferenceMode()) {
+        common->metaComposite().showAccumulationImguiSettings();
       }
 
       ImGui::EndDisabled();
 
       if(ImGui::CollapsingHeader("Settings", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
-        ImGui::Checkbox("Separate Primary Direct/Indirect Denoiser", &RtxOptions::Get()->denoiseDirectAndIndirectLightingSeparatelyObject());
-        ImGui::Checkbox("Reset History On Settings Change", &RtxOptions::Get()->resetDenoiserHistoryOnSettingsChangeObject());
-        ImGui::Checkbox("Replace Direct Specular HitT with Indirect Specular HitT", &RtxOptions::Get()->replaceDirectSpecularHitTWithIndirectSpecularHitTObject());
-        ImGui::Checkbox("Use Virtual Shading Normals", &RtxOptions::Get()->useVirtualShadingNormalsForDenoisingObject());
-        ImGui::Checkbox("Adaptive Resolution Denoising", &RtxOptions::Get()->adaptiveResolutionDenoisingObject());
-        ImGui::Checkbox("Adaptive Accumulation", &RtxOptions::Get()->adaptiveAccumulationObject());
+        ImGui::Checkbox("Separate Primary Direct/Indirect Denoiser", &RtxOptions::denoiseDirectAndIndirectLightingSeparatelyObject());
+        ImGui::Checkbox("Reset History On Settings Change", &RtxOptions::resetDenoiserHistoryOnSettingsChangeObject());
+        ImGui::Checkbox("Replace Direct Specular HitT with Indirect Specular HitT", &RtxOptions::replaceDirectSpecularHitTWithIndirectSpecularHitTObject());
+        ImGui::Checkbox("Use Virtual Shading Normals", &RtxOptions::useVirtualShadingNormalsForDenoisingObject());
+        ImGui::Checkbox("Adaptive Resolution Denoising", &RtxOptions::adaptiveResolutionDenoisingObject());
+        ImGui::Checkbox("Adaptive Accumulation", &RtxOptions::adaptiveAccumulationObject());
         common->metaDemodulate().showImguiSettings();
         common->metaComposite().showDenoiseImguiSettings();
         ImGui::Unindent();
       }
-      bool useDoubleDenoisers = RtxOptions::Get()->isSeparatedDenoiserEnabled();
-      if (isRayReconstructionEnabled && RtxOptions::showRayReconstructionUI()) {
+      bool useDoubleDenoisers = RtxOptions::denoiseDirectAndIndirectLightingSeparately();
+      if (isRayReconstructionEnabled) {
         if (ImGui::CollapsingHeader("DLSS-RR", collapsingHeaderClosedFlags)) {
           ImGui::Indent();
           ImGui::PushID("DLSS-RR");
@@ -2949,7 +3414,7 @@ namespace dxvk {
           ImGui::Unindent();
         }
       }
-
+      
       if (useNRD)
       {
         if (useDoubleDenoisers) {
@@ -2996,7 +3461,7 @@ namespace dxvk {
       if (ImGui::CollapsingHeader("Composition", collapsingHeaderClosedFlags))
         common->metaComposite().showImguiSettings();
 
-      if (RtxOptions::Get()->upscalerType() == UpscalerType::TAAU) {
+      if (RtxOptions::upscalerType() == UpscalerType::TAAU) {
         if (ImGui::CollapsingHeader("TAA-U", collapsingHeaderClosedFlags))
           common->metaTAA().showImguiSettings();
       }
@@ -3009,17 +3474,29 @@ namespace dxvk {
 
       if (ImGui::CollapsingHeader("Tonemapping", collapsingHeaderClosedFlags))
       {
-        ImGui::Combo("Tonemapping Mode", &RtxOptions::Get()->tonemappingModeObject(), "Global\0Local\0");
-        if (RtxOptions::Get()->tonemappingMode() == TonemappingMode::Global) {
+        ImGui::SliderInt("User Brightness", &RtxOptions::userBrightnessObject(), 0, 100, "%d");
+        ImGui::DragFloat("User Brightness EV Range", &RtxOptions::userBrightnessEVRangeObject(), 0.5f, 0.f, 10.f, "%.1f");
+        ImGui::Separator();
+        ImGui::Combo("Tonemapping Mode", &RtxOptions::tonemappingModeObject(), "Global\0Local\0");
+        if (RtxOptions::tonemappingMode() == TonemappingMode::Global) {
           common->metaToneMapping().showImguiSettings();
         } else {
           common->metaLocalToneMapping().showImguiSettings();
+        }
+        if (RtxOptions::showLegacyACESOption()) {
+          ImGui::Separator();
+          ImGui::Checkbox("Use Legacy ACES", &RtxOptions::useLegacyACESObject());
+          if (!RtxOptions::useLegacyACES()) {
+            ImGui::Indent();
+            ImGui::TextWrapped("WARNING: Non-legacy ACES is currently experimental and the implementation is a subject to change.");
+            ImGui::Unindent();
+          }
         }
       }
 
       if (ImGui::CollapsingHeader("Post FX", collapsingHeaderClosedFlags))
         common->metaPostFx().showImguiSettings();
-
+      
       ImGui::Unindent();
     }
 
@@ -3032,27 +3509,145 @@ namespace dxvk {
     if (ImGui::CollapsingHeader("Geometry", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
 
-      ImGui::Checkbox("Enable Triangle Culling (Globally)", &RtxOptions::Get()->enableCullingObject());
-      ImGui::Checkbox("Enable Triangle Culling (Override Secondary Rays)", &RtxOptions::Get()->enableCullingInSecondaryRaysObject());
+      ImGui::Checkbox("Enable Triangle Culling (Globally)", &RtxOptions::enableCullingObject());
+      ImGui::Checkbox("Enable Triangle Culling (Override Secondary Rays)", &RtxOptions::enableCullingInSecondaryRaysObject());
       ImGui::Separator();
-      ImGui::DragInt("Min Prims in Static BLAS", &RtxOptions::Get()->minPrimsInStaticBLASObject(), 1.f, 100, 0);
-      ImGui::Checkbox("Portals: Virtual Instance Matching", &RtxOptions::Get()->useRayPortalVirtualInstanceMatchingObject());
-      ImGui::Checkbox("Portals: Fade In Effect", &RtxOptions::Get()->enablePortalFadeInEffectObject());
+      ImGui::DragInt("Min Prims in Dynamic BLAS", &RtxOptions::minPrimsInDynamicBLASObject(), 1.f, 100, 0);
+      ImGui::DragInt("Max Prims in Merged BLAS", &RtxOptions::maxPrimsInMergedBLASObject(), 1.f, 100, 0);
+      ImGui::Checkbox("Force Merge All Meshes", &RtxOptions::forceMergeAllMeshesObject());
+      ImGui::Checkbox("Minimize BLAS Merging", &RtxOptions::minimizeBlasMergingObject());
+      ImGui::Separator();
+      ImGui::Checkbox("Portals: Virtual Instance Matching", &RtxOptions::useRayPortalVirtualInstanceMatchingObject());
+      ImGui::Checkbox("Portals: Fade In Effect", &RtxOptions::enablePortalFadeInEffectObject());
       ImGui::Unindent();
     }
 
-    common->getTerrainBaker().showImguiSettings();
+    if (ImGui::CollapsingHeader("Texture Streaming [Experimental]", collapsingHeaderClosedFlags)) {
+      ImGui::Indent();
+      ImGui::BeginDisabled(!RtxOptions::TextureManager::samplerFeedbackEnable());
+      {
+        if (RtxOptions::TextureManager::fixedBudgetEnable() && RtxOptions::TextureManager::samplerFeedbackEnable()) {
+          if (ImGui::DragFloatMB_showGB("Texture Budget##1",
+                                        &RtxOptions::TextureManager::fixedBudgetMiBObject(),
+                                        0.5f, 1.f, 32.f, "%.1f GB", ImGuiSliderFlags_NoRoundToFormat)) {
+            ctx->getCommonObjects()->getSceneManager().requestVramCompaction();
+          }
+        } else {
+          // always disabled drag float just to show the available texture cache budget
+          ImGui::BeginDisabled(true);
+          const char* formatstr = RtxOptions::TextureManager::samplerFeedbackEnable()
+            ? "%.1f GB"
+            : "UNB%0.0fUND";
+          static float s_dummy{};
+          s_dummy = RtxOptions::TextureManager::samplerFeedbackEnable()
+            ? float(g_streamedTextures_budgetBytes) / 1024.F / 1024.F / 1024.F
+            : 0.F;
+          ImGui::DragFloat("Texture Cache##2", &s_dummy, 0.5f, 1.f, 32.f, formatstr, ImGuiSliderFlags_NoRoundToFormat);
+          ImGui::EndDisabled();
+        }
+      }
+      {
+        ImGui::BeginDisabled(RtxOptions::TextureManager::fixedBudgetEnable());
+        if (ImGui::DragInt("of VRAM is dedicated to Textures",
+                            &RtxOptions::TextureManager::budgetPercentageOfAvailableVramObject(),
+                            10.F,
+                            10,
+                            100,
+                            "%d%%")) {
+          ctx->getCommonObjects()->getSceneManager().requestVramCompaction();
+        }
+        ImGui::EndDisabled();
+      }
+      if (ImGui::Checkbox("Force Fixed Texture Budget", &RtxOptions::TextureManager::fixedBudgetEnableObject())) {
+        // budgeting technique changed => ask DXVK to return unused VRAM chunks to OS to better represent consumption
+        ctx->getCommonObjects()->getSceneManager().requestVramCompaction();
+      }
+      ImGui::EndDisabled();
+
+      ImGui::Dummy({ 0, 2 });
+      if (ImGui::CollapsingHeader("Advanced##texstream", collapsingHeaderClosedFlags)) {
+        ImGui::Indent();
+        ImGui::Text("Streamed Texture VRAM usage: %.1f GB", float(g_streamedTextures_usedBytes) / 1024.F / 1024.F / 1024.F);
+        ImGui::Dummy({ 0, 2 });
+        ImGui::Separator();
+        ImGui::Dummy({ 0, 2 });
+        ImGui::TextUnformatted("Warning: toggling this option will enforce a full texture reload.");
+        if (ImGui::Checkbox("Sampler Feedback", &RtxOptions::TextureManager::samplerFeedbackEnableObject())) {
+          // sampler feedback ON/OFF changed => free all to refit textures in VRAM
+          ctx->getCommonObjects()->getSceneManager().requestTextureVramFree();
+        }
+        ImGui::Dummy({ 0, 2 });
+        ImGui::Separator();
+        ImGui::Dummy({ 0, 2 });
+        if (ImGui::Button("Demote All Textures")) {
+          ctx->getCommonObjects()->getSceneManager().requestTextureVramFree();
+        }
+        ImGui::Checkbox("Reload Textures on Window Resize", &RtxOptions::reloadTextureWhenResolutionChangedObject());
+        ImGui::Unindent();
+      }
+      ImGui::Unindent();
+    }
+
+    if (ImGui::CollapsingHeader("Terrain [Experimental]")) {
+      ImGui::Indent();
+
+      {
+        TerrainMode mode = TerrainMode::None;
+        if (TerrainBaker::enableBaking()) {
+          mode = TerrainMode::TerrainBaker;
+        } else {
+          if (RtxOptions::terrainAsDecalsEnabledIfNoBaker()) {
+            mode = TerrainMode::AsDecals;
+          }
+        }
+
+        IMGUI_ADD_TOOLTIP(
+          terrainModeCombo.getKey(&mode),
+          "\'Terrain Baker\': rasterize the draw calls marked as \'Terrain\' into a single mesh that would be used for ray tracing.\n"
+          "\n"
+          "\'Terrain-as-Decals\': draw calls marked as 'Terrain' are ray traced as decals.");
+
+        switch (mode) {
+        case TerrainMode::None: {
+          TerrainBaker::enableBaking.setDeferred(false);
+          RtxOptions::terrainAsDecalsEnabledIfNoBaker.setDeferred(false);
+          break;
+        }
+        case TerrainMode::TerrainBaker: {
+          TerrainBaker::enableBaking.setDeferred(true);
+          RtxOptions::terrainAsDecalsEnabledIfNoBaker.setDeferred(false);
+          break;
+        }
+        case TerrainMode::AsDecals: {
+          TerrainBaker::enableBaking.setDeferred(false);
+          RtxOptions::terrainAsDecalsEnabledIfNoBaker.setDeferred(true);
+          break;
+        }
+        default: break;
+        }
+      }
+
+      ImGui::Separator();
+
+      if (TerrainBaker::enableBaking()) {
+        common->getTerrainBaker().showImguiSettings();
+      } else if (RtxOptions::terrainAsDecalsEnabledIfNoBaker()) {
+        ImGui::Checkbox("Over-modulate Blending", &RtxOptions::terrainAsDecalsAllowOverModulateObject());
+      }
+
+      ImGui::Unindent();
+    }
 
     if (ImGui::CollapsingHeader("Player Model", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
-      ImGui::Checkbox("Primary Shadows", &RtxOptions::Get()->playerModel.enablePrimaryShadowsObject());
-      ImGui::Checkbox("Show in Primary Space", &RtxOptions::Get()->playerModel.enableInPrimarySpaceObject());
-      ImGui::Checkbox("Create Virtual Instances", &RtxOptions::Get()->playerModel.enableVirtualInstancesObject());
+      ImGui::Checkbox("Primary Shadows", &RtxOptions::PlayerModel::enablePrimaryShadowsObject());
+      ImGui::Checkbox("Show in Primary Space", &RtxOptions::PlayerModel::enableInPrimarySpaceObject());
+      ImGui::Checkbox("Create Virtual Instances", &RtxOptions::PlayerModel::enableVirtualInstancesObject());
       if (ImGui::CollapsingHeader("Calibration", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
-        ImGui::DragFloat("Backward Offset", &RtxOptions::Get()->playerModel.backwardOffsetObject(), 0.01f, 0.f, 100.f);
-        ImGui::DragFloat("Horizontal Detection Distance", &RtxOptions::Get()->playerModel.horizontalDetectionDistanceObject(), 0.01f, 0.f, 100.f);
-        ImGui::DragFloat("Vertical Detection Distance", &RtxOptions::Get()->playerModel.verticalDetectionDistanceObject(), 0.01f, 0.f, 100.f);
+        ImGui::DragFloat("Backward Offset", &RtxOptions::PlayerModel::backwardOffsetObject(), 0.01f, 0.f, 100.f);
+        ImGui::DragFloat("Horizontal Detection Distance", &RtxOptions::PlayerModel::horizontalDetectionDistanceObject(), 0.01f, 0.f, 100.f);
+        ImGui::DragFloat("Vertical Detection Distance", &RtxOptions::PlayerModel::verticalDetectionDistanceObject(), 0.01f, 0.f, 100.f);
         ImGui::Unindent();
       }
       ImGui::Unindent();
@@ -3073,24 +3668,32 @@ namespace dxvk {
       ImGui::Unindent();
     }
 
+    if (ImGui::CollapsingHeader("Raytraced Render Target [Experimental]", collapsingHeaderClosedFlags)) {
+      ImGui::Indent();
+      ImGui::TextWrapped("When a screen in-game is displaying the rasterized results of another camera, this can be used to raytrace that scene.\nNote that the render target texture containing the rasterized results needs to be set to `raytracedRenderTargetTextures` in the texture selection menu.");
+
+      ImGui::Checkbox("Enable Raytraced Render Targets", &RtxOptions::RaytracedRenderTarget::enableObject());
+      ImGui::Unindent();
+    }
+
     if (ImGui::CollapsingHeader("View Distance", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
 
-      viewDistanceModeCombo.getKey(&RtxOptions::Get()->viewDistanceOptions.distanceModeObject());
+      viewDistanceModeCombo.getKey(&ViewDistanceOptions::distanceModeObject());
 
-      if (RtxOptions::Get()->viewDistanceOptions.distanceMode() != ViewDistanceMode::None) {
-        viewDistanceFunctionCombo.getKey(&RtxOptions::Get()->viewDistanceOptions.distanceFunctionObject());
+      if (ViewDistanceOptions::distanceMode() != ViewDistanceMode::None) {
+        viewDistanceFunctionCombo.getKey(&ViewDistanceOptions::distanceFunctionObject());
 
-        if (RtxOptions::Get()->viewDistanceOptions.distanceMode() == ViewDistanceMode::HardCutoff) {
-          ImGui::DragFloat("Distance Threshold", &RtxOptions::Get()->viewDistanceOptions.distanceThresholdObject(), 0.1f, 0.0f, 0.0f, "%.2f", sliderFlags);
-        } else if (RtxOptions::Get()->viewDistanceOptions.distanceMode() == ViewDistanceMode::CoherentNoise) {
-          ImGui::DragFloat("Distance Fade Min", &RtxOptions::Get()->viewDistanceOptions.distanceFadeMinObject(), 0.1f, 0.0f, RtxOptions::Get()->viewDistanceOptions.distanceFadeMax(), "%.2f", sliderFlags);
-          ImGui::DragFloat("Distance Fade Max", &RtxOptions::Get()->viewDistanceOptions.distanceFadeMaxObject(), 0.1f, RtxOptions::Get()->viewDistanceOptions.distanceFadeMin(), 0.0f, "%.2f", sliderFlags);
-          ImGui::DragFloat("Noise Scale", &RtxOptions::Get()->viewDistanceOptions.noiseScaleObject(), 0.1f, 0.0f, 0.0f, "%.2f", sliderFlags);
+        if (ViewDistanceOptions::distanceMode() == ViewDistanceMode::HardCutoff) {
+          ImGui::DragFloat("Distance Threshold", &ViewDistanceOptions::distanceThresholdObject(), 0.1f, 0.0f, 0.0f, "%.2f", sliderFlags);
+        } else if (ViewDistanceOptions::distanceMode() == ViewDistanceMode::CoherentNoise) {
+          ImGui::DragFloat("Distance Fade Min", &ViewDistanceOptions::distanceFadeMinObject(), 0.1f, 0.0f, ViewDistanceOptions::distanceFadeMax(), "%.2f", sliderFlags);
+          ImGui::DragFloat("Distance Fade Max", &ViewDistanceOptions::distanceFadeMaxObject(), 0.1f, ViewDistanceOptions::distanceFadeMin(), 0.0f, "%.2f", sliderFlags);
+          ImGui::DragFloat("Noise Scale", &ViewDistanceOptions::noiseScaleObject(), 0.1f, 0.0f, 0.0f, "%.2f", sliderFlags);
 
           // Note: ImGui's limits do not apply for text entry for whatever reason so we need to clamp these options manually to ensure they do not trigger asserts.
-          RtxOptions::Get()->viewDistanceOptions.distanceFadeMinRef() = std::min(RtxOptions::Get()->viewDistanceOptions.distanceFadeMin(), RtxOptions::Get()->viewDistanceOptions.distanceFadeMax());
-          RtxOptions::Get()->viewDistanceOptions.distanceFadeMaxRef() = std::max(RtxOptions::Get()->viewDistanceOptions.distanceFadeMin(), RtxOptions::Get()->viewDistanceOptions.distanceFadeMax());
+          ViewDistanceOptions::distanceFadeMin.setDeferred(std::min(ViewDistanceOptions::distanceFadeMin(), ViewDistanceOptions::distanceFadeMax()));
+          ViewDistanceOptions::distanceFadeMax.setDeferred(std::max(ViewDistanceOptions::distanceFadeMin(), ViewDistanceOptions::distanceFadeMax()));
         }
       }
 
@@ -3100,40 +3703,46 @@ namespace dxvk {
     if (ImGui::CollapsingHeader("Material Filtering", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
 
-      ImGui::Checkbox("Use White Material Textures", &RtxOptions::Get()->useWhiteMaterialModeObject());
+      ImGui::Checkbox("Use White Material Textures", &RtxOptions::useWhiteMaterialModeObject());
       ImGui::Separator();
       const float kMipBiasRange = 32;
-      ImGui::DragFloat("Mip LOD Bias", &RtxOptions::Get()->nativeMipBiasObject(), 0.01f, -kMipBiasRange, kMipBiasRange, "%.2f", sliderFlags);
-      ImGui::DragFloat("Upscaling LOD Bias", &RtxOptions::Get()->upscalingMipBiasObject(), 0.01f, -kMipBiasRange, kMipBiasRange, "%.2f", sliderFlags);
+      ImGui::DragFloat("Mip LOD Bias", &RtxOptions::nativeMipBiasObject(), 0.01f, -kMipBiasRange, kMipBiasRange, "%.2f", sliderFlags);
+      ImGui::DragFloat("Upscaling LOD Bias", &RtxOptions::upscalingMipBiasObject(), 0.01f, -kMipBiasRange, kMipBiasRange, "%.2f", sliderFlags);
       ImGui::Separator();
-      ImGui::Checkbox("Use Anisotropic Filtering", &RtxOptions::Get()->useAnisotropicFilteringObject());
-      if (RtxOptions::Get()->useAnisotropicFiltering()) {
-        ImGui::DragFloat("Max Anisotropy Samples", &RtxOptions::Get()->maxAnisotropySamplesObject(), 0.5f, 1.0f, 16.f, "%.3f", sliderFlags);
+      ImGui::Checkbox("Use Anisotropic Filtering", &RtxOptions::useAnisotropicFilteringObject());
+      if (RtxOptions::useAnisotropicFiltering()) {
+        ImGui::DragFloat("Max Anisotropy Samples", &RtxOptions::maxAnisotropySamplesObject(), 0.5f, 1.0f, 16.f, "%.3f", sliderFlags);
       }
-      ImGui::DragFloat("Translucent Decal Albedo Factor", &RtxOptions::Get()->translucentDecalAlbedoFactorObject(), 0.01f);
+      ImGui::DragFloat("Translucent Decal Albedo Factor", &RtxOptions::translucentDecalAlbedoFactorObject(), 0.01f);
       ImGui::Unindent();
     }
 
-    if (ImGui::CollapsingHeader("Anti-Culling", collapsingHeaderClosedFlags)) {
+    if (!RtCamera::enableFreeCamera() &&
+        ImGui::CollapsingHeader("Anti-Culling", collapsingHeaderClosedFlags)) {
+
       ImGui::Indent();
 
-      ImGui::Checkbox("Anti-Culling Objects", &RtxOptions::AntiCulling::Object::enableObject());
-      if (RtxOptions::AntiCulling::Object::enable()) {
-        ImGui::Checkbox("High precision Anti-Culling", &RtxOptions::AntiCulling::Object::enableHighPrecisionAntiCullingObject());
-        if (RtxOptions::AntiCulling::Object::enableHighPrecisionAntiCulling()) {
-          ImGui::Checkbox("Infinity Far Frustum", &RtxOptions::AntiCulling::Object::enableInfinityFarFrustumObject());
+      if (ctx->getCommonObjects()->getSceneManager().isAntiCullingSupported()) {
+        ImGui::Checkbox("Anti-Culling Objects", &RtxOptions::AntiCulling::Object::enableObject());
+        if (RtxOptions::AntiCulling::Object::enable()) {
+          ImGui::Checkbox("High precision Anti-Culling", &RtxOptions::AntiCulling::Object::enableHighPrecisionAntiCullingObject());
+          if (RtxOptions::AntiCulling::Object::enableHighPrecisionAntiCulling()) {
+            ImGui::Checkbox("Infinity Far Frustum", &RtxOptions::AntiCulling::Object::enableInfinityFarFrustumObject());
+          }
+          ImGui::Checkbox("Enable Bounding Box Hash For Duplication Check", &RtxOptions::AntiCulling::Object::hashInstanceWithBoundingBoxHashObject());
+          ImGui::InputInt("Instance Max Size", &RtxOptions::AntiCulling::Object::numObjectsToKeepObject(), 1, 1, 0);
+          ImGui::DragFloat("Anti-Culling Fov Scale", &RtxOptions::AntiCulling::Object::fovScaleObject(), 0.01f, 0.1f, 2.0f);
+          ImGui::DragFloat("Anti-Culling Far Plane Scale", &RtxOptions::AntiCulling::Object::farPlaneScaleObject(), 0.1f, 0.1f, 10000.0f);
         }
-        ImGui::Checkbox("Enable Bounding Box Hash For Duplication Check", &RtxOptions::AntiCulling::Object::hashInstanceWithBoundingBoxHashObject());
-        ImGui::InputInt("Instance Max Size", &RtxOptions::AntiCulling::Object::numObjectsToKeepObject(), 1, 1, 0);
-        ImGui::DragFloat("Anti-Culling Fov Scale", &RtxOptions::AntiCulling::Object::fovScaleObject(), 0.01f, 0.1f, 2.0f);
-        ImGui::DragFloat("Anti-Culling Far Plane Scale", &RtxOptions::AntiCulling::Object::farPlaneScaleObject(), 0.1f, 0.1f, 10000.0f);
-      }
-      ImGui::Separator();
-      ImGui::Checkbox("Anti-Culling Lights", &RtxOptions::AntiCulling::Light::enableObject());
-      if (RtxOptions::AntiCulling::Light::enable()) {
-        ImGui::InputInt("Max Number Of Lights", &RtxOptions::AntiCulling::Light::numLightsToKeepObject(), 1, 1, 0);
-        ImGui::InputInt("Max Number of Frames to keep lights", &RtxOptions::AntiCulling::Light::numFramesToExtendLightLifetimeObject(), 1, 1, 0);
-        ImGui::DragFloat("Anti-Culling Lights Fov Scale", &RtxOptions::AntiCulling::Light::fovScaleObject(), 0.01f, 0.1f, 2.0f);
+        ImGui::Separator();
+        ImGui::Checkbox("Anti-Culling Lights", &RtxOptions::AntiCulling::Light::enableObject());
+        if (RtxOptions::AntiCulling::Light::enable()) {
+          ImGui::InputInt("Max Number Of Lights", &RtxOptions::AntiCulling::Light::numLightsToKeepObject(), 1, 1, 0);
+          ImGui::InputInt("Max Number of Frames to keep lights", &RtxOptions::AntiCulling::Light::numFramesToExtendLightLifetimeObject(), 1, 1, 0);
+          ImGui::DragFloat("Anti-Culling Lights Fov Scale", &RtxOptions::AntiCulling::Light::fovScaleObject(), 0.01f, 0.1f, 2.0f);
+        }
+      } else {
+        ImGui::Text("The game doesn't set up the View Matrix, \nAnti-Culling is disabled to prevent visual corruption.");
       }
 
       ImGui::Unindent();
@@ -3231,7 +3840,7 @@ namespace dxvk {
     ImGuiIO& io = ImGui::GetIO();
     ImGui_ImplVulkan_Data* bd = (ImGui_ImplVulkan_Data*)io.BackendRendererUserData;
     ImGui_ImplVulkan_InitInfo* v = &bd->VulkanInitInfo;
-
+    
     // Range of characters we want to use the primary font
     ImVector<ImWchar> characterRange;
     {
@@ -3368,6 +3977,28 @@ namespace dxvk {
       }
     }
     return result;
+  }
+
+  void ImGUI::onCloseMenus() {
+    // When closing the menus, try and free up some extra memory, just in case
+    //  the user has toggled a bunch of systems while in menus causing an artificial
+    //  inflation.
+    freeUnusedMemory();
+  }
+
+  void ImGUI::onOpenMenus() {
+    // Before opening the menus, try free some memory, the idea being the 
+    //  user may want to make some changes to various settings and so they
+    //  should have all available memory to do so.
+    freeUnusedMemory();
+  }
+
+  void ImGUI::freeUnusedMemory() {
+    if (!m_device) {
+      return;
+    }
+
+    m_device->getCommon()->getSceneManager().requestVramCompaction();
   }
 
 }

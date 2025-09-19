@@ -19,6 +19,13 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
+
+// If `_DEBUG` is defined but empty (which is how Tracy defines it), the USD headers have errors.
+// This breaks debug builds, but we can predefine TBB_USE_DEBUG to 1 to avoid this issue.
+#ifdef _DEBUG
+#define TBB_USE_DEBUG 1
+#endif
+
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable:4003) // not enough args function-like macro
@@ -27,4 +34,9 @@
 #pragma warning(disable:4800) // int to bool
 #pragma warning(disable:4996) // call to std::copy with parameters that may be unsafe
 #pragma warning(disable:4251) // struct 'std::atomic<T *>' needs to have dll-interface to be used by clients of class 
+#pragma warning(disable:4201) // nonstandard extension used: nameless struct/union
+#pragma warning(disable:4100) // unreferenced formal parameter
+#pragma warning(disable:4127) // conditional expression is constant
+#pragma warning(disable:4267) // because of USD headers: conversion from 'size_t' to 'type', possible loss of data
+#pragma warning(disable:4275) // boost warning
 #endif

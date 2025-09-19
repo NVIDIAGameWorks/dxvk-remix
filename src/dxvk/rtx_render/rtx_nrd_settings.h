@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -32,26 +32,23 @@ namespace dxvk {
     enum class ReblurSettingsPreset : uint32_t
     {
       Default,
-      Finetuned,
-      RTXDISample
+      Finetuned
     };
 
     enum class RelaxSettingsPreset : uint32_t {
       Default,
-      Finetuned,
-      FinetunedStable,
-      RTXDISample
+      Finetuned
     };
 
-    const static nrd::Method sDefaultMethod = nrd::Method::RELAX_DIFFUSE_SPECULAR;
-    const static nrd::Method sDefaultIndirectMethod = nrd::Method::RELAX_DIFFUSE_SPECULAR;
+    const static nrd::Denoiser sDefaultDenoiser = nrd::Denoiser::RELAX_DIFFUSE_SPECULAR;
+    const static nrd::Denoiser sDefaultIndirectDenoiser = nrd::Denoiser::RELAX_DIFFUSE_SPECULAR;
     nrd::LibraryDesc m_libraryDesc;
-    nrd::MethodDesc m_methodDesc = { nrd::Method::MAX_NUM, 0, 0 };
+    nrd::DenoiserDesc m_denoiserDesc = { UINT32_MAX, nrd::Denoiser::MAX_NUM };
     nrd::CommonSettings m_commonSettings;
-    nrd::RelaxDiffuseSpecularSettings m_relaxSettings;
+    nrd::RelaxSettings m_relaxSettings;
     nrd::ReblurSettings m_reblurSettings;
     ReblurSettingsPreset m_reblurSettingsPreset = ReblurSettingsPreset::Finetuned;
-    RelaxSettingsPreset m_relaxSettingsPreset = RelaxSettingsPreset::FinetunedStable;
+    RelaxSettingsPreset m_relaxSettingsPreset = RelaxSettingsPreset::Finetuned;
     nrd::ReferenceSettings m_referenceSettings;
     uint32_t m_adaptiveMinAccumulatedFrameNum = 15;
     float m_adaptiveAccumulationLengthMs = 500.f;
@@ -62,31 +59,16 @@ namespace dxvk {
 
     struct SettingsImpactingDenoiserOutput {
       bool calculateDirectionPdf = true;
-      float timeDeltaBetweenFrames = 0; // 0 == use frame time delta
       float maxDirectHitTContribution = 0.5f;
     };
 
     SettingsImpactingDenoiserOutput m_groupedSettings;
 
     struct InternalBlurRadius {
-      float blurRadius = 0.0f;
+      float maxBlurRadius = 0.0f;
       float diffusePrepassBlurRadius = 0.0f;
       float specularPrepassBlurRadius = 0.0f;
     };
-
-    // Copy from lagecy Reblur settings (which is removed in 5e283dba)
-    // Optional specular lobe trimming = A * smoothstep( B, C, roughness )
-    // Recommended settings if lobe trimming is needed = { 0.85f, 0.04f, 0.11f }
-    struct InternalSpecularLobeTrimmingParameters {
-      // [0; 1] - main level  (0 - GGX dominant direction, 1 - full lobe)
-      float A = 1.0f;
-
-      // [0; 1] - max trimming if roughness is less than this threshold
-      float B = 0.0f;
-
-      // [0; 1] - main level if roughness is greater than this threshold
-      float C = 0.0001f;
-    } m_specularLobeTrimmingParameters;
 
     InternalBlurRadius m_reblurInternalBlurRadius;
     InternalBlurRadius m_relaxInternalBlurRadius;
@@ -97,13 +79,11 @@ namespace dxvk {
     void initialize(const nrd::LibraryDesc& libraryDesc, const dxvk::Config& config, DenoiserType type);
     void showImguiSettings();
 
-    static float getTimeDeltaBetweenFrames();
     void updateAdaptiveAccumulation(float frameTimeMs);
 
   private:
-    RTX_OPTION_ENV("rtx.denoiser.nrd", float, timeDeltaBetweenFrames, 0.f, "DXVK_DENOISER_NRD_FRAME_TIME_MS", "Frame time in milliseconds to use for denoising. Setting this to 0 will use actual frame time for a given frame. Non-zero value is primarily used for automation to ensure image output determinism.");
-    RTX_OPTION_ENV("rtx", nrd::Method, denoiserMode, sDefaultMethod, "DXVK_DENOISER_NRD_MODE", "");
-    RTX_OPTION_ENV("rtx", nrd::Method, denoiserIndirectMode, sDefaultIndirectMethod, "DXVK_DENOISER_INDIRECT_NRD_MODE", "");
+    RTX_OPTION_ENV("rtx", nrd::Denoiser, denoiserMode, sDefaultDenoiser, "DXVK_DENOISER_NRD_MODE", "");
+    RTX_OPTION_ENV("rtx", nrd::Denoiser, denoiserIndirectMode, sDefaultIndirectDenoiser, "DXVK_DENOISER_INDIRECT_NRD_MODE", "");
     RTX_OPTION("rtx.denoiser", float, maxDirectHitTContribution, -1.0f, "");
   };
 } // namespace dxvk

@@ -26,6 +26,7 @@
 #include <regex>
 #include <utility>
 #include <filesystem>
+#include <algorithm>
 
 #include "config.h"
 
@@ -584,7 +585,6 @@ namespace dxvk {
         "EDDA43A7194B6597,"
         "11BDB0AEC66E413A,"
         "260EAE29EC4727F3,"
-        "A0EF42611EFCDBA5,"
         "6010A18E22F8CE34,"
         "A08B874535052615,"
         "8AA105C2149F4119,"
@@ -594,6 +594,12 @@ namespace dxvk {
         "068E64C3DB849782,"  // ugly textures used for plasma catchers for fake bloom
         "92e275beee2d2c12,"  // tanker detail texture
         "ace20008ae3a0a5b,"  // barrel detail texture
+        "504697625CCD3B45,"  // building detail texture
+      },
+      { "rtx.ignoreTransparencyLayerTextures",
+        // Light beams
+        "0x67801EDD7AA4E77A,"
+        "0xF116B8E9DA308EE8,"
       },
       { "rtx.ignoreLights",
         // Chell atlases - associated with a light (player light?)
@@ -615,7 +621,6 @@ namespace dxvk {
         "E53AE01AC1FF9E03,"  // Head
         "9FC25F8E3D685EA5,"  // Held portal gun
         "9DED9E2A03234E95,"  // Gun particles
-        "EEEF6F901EEE1164,"  // Gun particles
         "4DEEF5C779DDC88A,"  // Gun particles
         "3CD4F0E2A8AAD575,"  // Gun particles
         "F2A8C629EF1809C3,"  // Gun particles
@@ -800,7 +805,10 @@ namespace dxvk {
       },
       { "rtx.animatedWaterTextures",
         "522E5513DB9638B6,"
-      },        
+      },
+      { "rtx.raytracedRenderTargetTextures",
+        "0x3FB65838F2469C64,"
+      },
       { "rtx.zUp",                   "True" },
       { "rtx.uniqueObjectDistance",  "300.0" }, // Game is 1unit=1cm - picking up objects can move them very quickly, 3m should be sufficient.
       { "rtx.rayPortalModelTextureHashes",        "5EC61BC800744B26, DFDACB6DE1C7741E" }, // Orange and Blue Portal textures
@@ -816,17 +824,26 @@ namespace dxvk {
       { "rtx.viewModel.viewRelativeOffsetMeters", "0.005, -0.002, -0.055" },
       { "rtx.viewModel.scale",                    "0.4" },
       { "rtx.effectLightPlasmaBall",              "True" },
-      { "rtx.enableVolumetricLighting",           "True" },
       { "rtx.secondarySpecularFireflyFilteringThreshold",  "120.0" },
-      { "rtx.volumetricTransmittanceColor",       "0.953238, 0.948409, 0.943550" }, // Slight blue tint to act more like water vapor for now
-      { "rtx.volumetricTransmittanceMeasurementDistance", "20000.0" },
-      { "rtx.froxelGridResolutionScale",          "16" },
-      { "rtx.froxelDepthSlices",                  "48" },
-      { "rtx.enableFogRemap",                     "True" },
-      { "rtx.fogRemapMaxDistanceMin",             "100.0" },
-      { "rtx.fogRemapMaxDistanceMax",             "4000.0" },
-      { "rtx.fogRemapTransmittanceMeasurementDistanceMin", "2000.0" },
-      { "rtx.fogRemapTransmittanceMeasurementDistanceMax", "12000.0" },
+      { "rtx.volumetrics.enable",                 "True" },
+      { "rtx.volumetrics.transmittanceColor",     "0.953238, 0.948409, 0.943550" }, // Slight blue tint to act more like water vapor for now
+      { "rtx.volumetrics.transmittanceMeasurementDistance", "20000.0" },
+      { "rtx.volumetrics.froxelMaxDistanceMeters",              "35.0" }, // Raised to 35 over default to better accomodate long hallways and tall rooms in Portal RTX (testchmb_a_09, escape_02).
+      // Todo: Currently these non-ReSTIR froxel grid options are overridden by volumetric presets pending some sort of refactor of how volumetric presets should
+      // be data-driven by config files. These values are still used when using a custom graphics preset however, so they are kept as reasonable defaults.
+      { "rtx.volumetrics.froxelGridResolutionScale",            "16" },
+      { "rtx.volumetrics.froxelDepthSlices",                    "48" },
+      { "rtx.volumetrics.restirGridScale",                      "4" },
+      { "rtx.volumetrics.restirFroxelDepthSlices",              "96" },
+      // 16 chosen as Portal RTX does not have a huge number of lights in most scenes thus diminishing the benefit further of high initial RIS sample counts (still
+      // helps for lights in motion though). This may need to be overridden for other Source engine-based titles for higher quality volumetrics if many lights are
+      // in use.
+      { "rtx.volumetrics.initialRISSampleCount",                "16" },
+      { "rtx.volumetrics.enableFogRemap",                       "True" },
+      { "rtx.volumetrics.fogRemapMaxDistanceMin",               "100.0" },
+      { "rtx.volumetrics.fogRemapMaxDistanceMax",               "4000.0" },
+      { "rtx.volumetrics.fogRemapTransmittanceMeasurementDistanceMin", "2000.0" },
+      { "rtx.volumetrics.fogRemapTransmittanceMeasurementDistanceMax", "12000.0" },
       { "rtx.useObsoleteHashOnTextureUpload",                   "True" },
       { "rtx.temporalAA.maximumRadiance",                       "10000.0" },
       { "rtx.temporalAA.colorClampingFactor",                   "1.0"  },
@@ -848,17 +865,15 @@ namespace dxvk {
       { "rtx.upscalingMipBias",                                 "-0.4"  },
       { "rtx.legacyMaterial.roughnessConstant",                 "0.1"   },
       { "rtx.opacityMicromap.enable",                           "True"  },
+      { "rtx.terrain.terrainAsDecalsEnabledIfNoBaker",          "True"  },
       { "rtx.decals.maxOffsetIndex",                            "64" },
-      // TODO (REMIX-656): Remove this once we can transition content to new hash
       { "rtx.geometryGenerationHashRuleString", "positions,"
                                                 "indices,"
                                                 "texcoords,"
-                                                "legacypositions0,"
-                                                "legacypositions1,"
-                                                "legacyindices,"
                                                 "geometrydescriptor,"
                                                 "vertexlayout" },
         { "rtx.allowCubemaps",                  "True" },
+      { "rtx.showLegacyACESOption",                             "True"   },
     }} },
     /* Kohan II                                  */
     { R"(\\k2\.exe$)", {{
@@ -1146,6 +1161,10 @@ namespace dxvk {
   void Config::setOption(const std::string& key, const Vector2& value) {
     setOption(key, generateOptionString(value));
   }
+
+  void Config::setOption(const std::string& key, const Vector4& value) {
+    setOption(key, generateOptionString(value));
+  }
   // NV-DXVK end
 
   void Config::setOption(const std::string& key, const Vector3& value) {
@@ -1292,6 +1311,27 @@ namespace dxvk {
 
     return true;
   }
+
+  bool Config::parseOptionValue(
+    const std::string& value,
+    Vector4& result) {
+    std::stringstream ss(value);
+    std::string s;
+    for (int i = 0; i < 4; ++i) {
+      if (!std::getline(ss, s, ',')) {
+        return false;
+      }
+
+      float value;
+      if (!parseOptionValue(s, value)) {
+        return false;
+      }
+
+      result[i] = value;
+    }
+
+    return true;
+  }
   // NV-DXVK end
 
   bool Config::parseOptionValue(
@@ -1324,18 +1364,29 @@ namespace dxvk {
     VirtualKeys virtKeys;
     while (std::getline(ss, s, ',')) {
       VirtualKey vk;
-      if(s.find("0x") != std::string::npos) {
-        VkValue vkVal = std::stoul(s, nullptr, 16);
-        vk.val = vkVal;
-      } else {
-        vk = KeyBind::getVk(s);
+      try {
+        // Strip whitespace from s
+        s.erase(std::remove_if(s.begin(), s.end(), isWhitespace), s.end());
+        
+        if(s.find("0x") != std::string::npos) {
+          VkValue vkVal = std::stoul(s, nullptr, 16);
+          vk.val = vkVal;
+        } else {
+          vk = KeyBind::getVk(s);
+        }
+        if(!KeyBind::isValidVk(vk)) {
+          Logger::err(str::format("Failed to parse virtual key string: '", s, "' string does not map to valid Keybind."));
+          return false;
+        }
+        virtKeys.push_back(vk);
+        bFoundValidConfig = true;
+      } catch (const std::invalid_argument& e) {
+        Logger::err(str::format("Failed to parse virtual key hex code: '", s, "' - Invalid format."));
+        return false;
+      } catch (const std::out_of_range& e) {
+        Logger::err(str::format("Failed to parse virtual key hex code: '", s, "' - Value out of range."));
+        return false;
       }
-      if(!KeyBind::isValidVk(vk)) {
-        bFoundValidConfig = false;
-        break;
-      }
-      virtKeys.push_back(vk);
-      bFoundValidConfig = true;
     }
     if(bFoundValidConfig) {
       result = std::move(virtKeys);
@@ -1385,7 +1436,11 @@ namespace dxvk {
     // Getting a default "App" Config doesn't require parsing a file.
     if constexpr(type == Type_App) {
       const auto exePath = env::getExePath();
-      return getAppConfig(exePath);
+      if (envVarPath.empty()) {
+        return getAppConfig(exePath);
+      } else {
+        return getAppConfig(envVarPath);
+      }
     // A previous conf file has explicitly stated a future conf file must be used...
     } else if(!configPath.empty()) {
       const std::string filePath = configPath + "/" + desc.confName;

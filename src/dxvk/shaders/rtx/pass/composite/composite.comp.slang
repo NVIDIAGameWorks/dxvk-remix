@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -36,13 +36,20 @@
 #include "rtx/external/NRD.slangh"
 #include "rtx/utility/geometry_flags.slangh"
 
-#define VOLUME_LIGHTING_NO_NEE
-#include "rtx/algorithm/volume_lighting.slangh"
+#include "rtx/algorithm/volume_composite_helpers.slangh"
+#include "rtx/algorithm/accumulate.slangh"
 
 #define D3DFOG_NONE   0
 #define D3DFOG_EXP    1
 #define D3DFOG_EXP2   2
 #define D3DFOG_LINEAR 3
+
+float3 sampleDomeLightTexture(Sampler2D<float3> DomeLight, float3 worldDirection, float4x4 worldToDomeLightTransform)
+{
+  float3 domeSampleDirection = mul(worldToDomeLightTransform, float4(worldDirection, 0.0f)).xyz;
+  float2 sampleUV = cartesianDirectionToLatLongSphere(domeSampleDirection);
+  return DomeLight.SampleLevel(sampleUV, 0).xyz;
+}
 
 vec4 calculateFog(float viewDistance)
 {
@@ -132,12 +139,12 @@ void updateDebugViewAtStart(uint2 thread_id)
   case DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_DIFFUSE_RADIANCE:
   case DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_DIFFUSE_HIT_T:
     if (cb.enableSeparatedDenoisers)
-      storeInDebugView(ivec2(thread_id), PrimaryIndirectDiffuseRadianceHitDistance[thread_id]);
+      storeInDebugView(thread_id, PrimaryIndirectDiffuseRadianceHitDistance[thread_id]);
     break;
   case DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_SPECULAR_RADIANCE:
   case DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_SPECULAR_HIT_T:
     if (cb.enableSeparatedDenoisers)
-      storeInDebugView(ivec2(thread_id), PrimaryIndirectSpecularRadianceHitDistance[thread_id]);
+      storeInDebugView(thread_id, PrimaryIndirectSpecularRadianceHitDistance[thread_id]);
     break;
   }
 }
@@ -148,16 +155,16 @@ void updateAlphaBlendDebugView(uint2 thread_id, AlphaBlendSurface surface)
   switch(cb.debugViewIdx)
   {
   case DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_COLOR:
-    storeInDebugView(ivec2(thread_id), surface.isValid() ? surface.color.rgb : f16vec3(1,0,1));
+    storeInDebugView(thread_id, surface.isValid() ? surface.color.rgb : f16vec3(1,0,1));
     break;
   case DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_NORMAL:
-    storeInDebugView(ivec2(thread_id), surface.isValid() ? surface.normal : f16vec3(0));
+    storeInDebugView(thread_id, surface.isValid() ? surface.normal : f16vec3(0));
     break;
   case DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_GEOMETRY_HASH:
-    storeInDebugView(ivec2(thread_id), r5g6b5ToColor(surface.geometryHash));
+    storeInDebugView(thread_id, r5g6b5ToColor(surface.geometryHash));
     break;    
   case DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_BACKGROUND_TRANSPARENCY:
-    storeInDebugView(ivec2(thread_id), surface.backgroundTransparency);
+    storeInDebugView(thread_id, surface.backgroundTransparency);
     break;
   }
 }
@@ -168,13 +175,13 @@ void postCompositeDebugView(uint2 thread_id, GeometryFlags geometryFlags, vec4 p
   switch(cb.debugViewIdx)
   {
   case DEBUG_VIEW_GEOMETRY_FLAGS_FIRST_SAMPLED_LOBE_IS_SPECULAR:
-    storeInDebugView(ivec2(thread_id), geometryFlags.firstSampledLobeIsSpecular);
+    storeInDebugView(thread_id, geometryFlags.firstSampledLobeIsSpecular);
     break;
   case DEBUG_VIEW_RAY_RECONSTRUCTION_PARTICLE_LAYER:
-    storeInDebugView(ivec2(thread_id), particleLayer);
+    storeInDebugView(thread_id, particleLayer);
     break;
   case DEBUG_VIEW_RAY_RECONSTRUCTION_PARTICLE_LAYER_ALPHA:
-    storeInDebugView(ivec2(thread_id), 1.0 - particleLayer.w);
+    storeInDebugView(thread_id, 1.0 - particleLayer.w);
     break;
   }
 }
@@ -183,6 +190,9 @@ void postCompositeDebugView(uint2 thread_id, GeometryFlags geometryFlags, vec4 p
 [numthreads(16, 8, 1)]
 void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThreadID)
 {
+  // Override the default volume sampling RNG seed offset
+  setVolumeSamplingRngSeed(1);
+
   const VolumeArgs volumeArgs = cb.volumeArgs;
   // Note: Fake camera constructed due to Composite pass's lack of access to typical constant buffer members. A bit hacky
   // and may result in issues in the future if the Camera API is updated to use new members internally (not super likely)
@@ -203,6 +213,8 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
 
   updateDebugViewAtStart(thread_id);
 
+  RNG randomState = createRNG(thread_id, cb.frameIdx, 0);
+
   // Load GBuffer Information
 
   const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(thread_id, SharedFlags);
@@ -219,7 +231,9 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
   const float perceptualRoughness = primaryVirtualWorldNormalPerceptualRoughness.w;
   // Note: Relying on the same sentinel value outputted to the linear view Z which NRD relies on, so this is safe (and lets us not have to read
   // in the cone radius texture which typically contains the flag we use to determine this).
-  const bool primaryMiss = primaryLinearViewZ == cb.primaryDirectMissLinearViewZ;
+  const bool primaryMiss = primaryLinearViewZ == cb.primaryDirectMissLinearViewZ
+                           && !geometryFlags.performPSTR
+                           && !geometryFlags.performPSRR;  // must not be PSR
 
   const vec3 secondaryAttenuation = r11g11b10ToColor(imageLoad(SecondaryAttenuation, thread_id.xy));
   const vec3 secondaryAlbedo = texelFetch(SecondaryAlbedo, thread_id.xy, 0).xyz;
@@ -296,7 +310,7 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
 
   if (cb.enhanceAlbedo)
   {
-    PrimaryAlbedo[thread_id.xy] = vec4(primaryAlbedo * sqrt(bsdfFactor2.x), 1.0);
+    PrimaryAlbedo[thread_id.xy].xyz = primaryAlbedo * sqrt(bsdfFactor2.x);
   }
 
   if (cb.combineLightingChannels != 0) {
@@ -337,55 +351,13 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
     remodulatedTotalSecondaryRadiance *= secondaryAttenuation;
   }
 
+  vec3 radianceOutput = vec3(0.0f, 0.0f, 0.0f);
+  
   // Calculate volumetric radiance and attenuation if volumetric lighting is enabled
 
   vec3 volumetricPreintegratedRadiance = vec3(0.0f, 0.0f, 0.0f);
   vec3 volumeAttenuation = vec3(1.0f, 1.0f, 1.0f);
-  const vec2 screenUV = cameraPixelCoordinateToScreenUV(fakeCamera, thread_id);
-
-  // Note: This is only evaluated when volumetrics are enabled, no external check is needed.
-  // Todo: Using Primary linear view Z for now, not the best option as this does not work with PSR (among other effects like
-  // Portals and particles), but fine for initial testing.
-  evalVolumetricPreintegratedNEE(
-    VolumePreintegratedRadiance, volumeArgs,
-    screenUV, !primaryMiss, primaryLinearViewZ, viewDistance,
-    volumetricPreintegratedRadiance, volumeAttenuation);
-
-  // Calculate final combined radiance output
-  // Note: The primary hit accumulated radiance value is not affected by the throughput (rather takes attenuation into account
-  // while accumulating already), so it can be added in here without issue.
-
-  vec3 radianceOutput = remodulatedTotalPrimaryRadiance;
-
-  // DLSS-RR cannot handle multiple layers of noisy signals, so a separate layer is needed for secondary signals like glass
-  // reflection and particles.
-  vec4 particleLayerOutput = 0.0;
-  if (cb.outputParticleLayer)
-  {
-    particleLayerOutput.xyz = RayReconstructionParticleOutput[thread_id].xyz;
-  
-    if (cb.outputSecondarySignalToParticleLayer)
-    {
-      // Secondary signal and preintegrated signal have no noise
-      if (cb.compositeVolumetricLight)
-      {
-        particleLayerOutput.xyz += remodulatedTotalSecondaryRadiance;
-        radianceOutput += volumetricPreintegratedRadiance;
-      }
-      else
-      {
-        particleLayerOutput.xyz += remodulatedTotalSecondaryRadiance + volumetricPreintegratedRadiance;
-      }
-    }
-    else
-    {
-      radianceOutput += remodulatedTotalSecondaryRadiance + volumetricPreintegratedRadiance;
-    }
-  }
-  else
-  {
-    radianceOutput += remodulatedTotalSecondaryRadiance + volumetricPreintegratedRadiance;
-  }
+  float volumetricIntegrationOffset = 0.f;
   
   // Apply D3D9-style fog when volumetric lighting is disabled
 
@@ -402,14 +374,13 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
     if (!discardPixel && surface.isValid())
     {
       isAlphaBlend = true;
-      RNG randomState = createRNG(thread_id, cb.frameIdx, 5);
       surface.color = surface.color;
       vec3 particleNormal = surface.normal;
       backgroundAlpha = surface.backgroundTransparency;
 
       vec4 totalLight = vec4(centerLight.xyz, 1);
 
-      if(cb.stochasticAlphaBlendEnableFilter)
+      if (cb.stochasticAlphaBlendEnableFilter)
       {
         float minHitT = surface.hitT;
         float maxHitT = surface.hitT;
@@ -431,7 +402,11 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
 
             const float transparencyBandwidth = 0.05;
             const float distanceWeight = 0.5;
-            float weight = exp(-abs(neighborSurface.backgroundTransparency - surface.backgroundTransparency) / transparencyBandwidth + -distanceWeight* dot(offset, offset));
+            float weight = exp(
+              -abs(neighborSurface.backgroundTransparency - surface.backgroundTransparency) / transparencyBandwidth +
+              // Note: Convert offset to float to avoid need for integer dot product Vulkan feature to be enabled.
+              -distanceWeight * dot(float2(offset), float2(offset))
+            );
 
             minHitT = min(minHitT, neighborSurface.hitT);
             maxHitT = max(maxHitT, neighborSurface.hitT);
@@ -448,45 +423,110 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
       }
       alphaBlendOutput.xyz = totalLight.xyz;
 
-      if (volumeArgs.enableVolumetricLighting)
+      if (volumeArgs.enable)
       {
         float alphaBlendSurfaceLinearViewZ = surface.hitT * primaryRayDirections.viewDirection.z;
-        vec3 alphaBlendPreintegratedRadiance = vec3(0.0f, 0.0f, 0.0f);
-        vec3 alphaBlendAttenuation = vec3(1.0f, 1.0f, 1.0f);
-        evalVolumetricPreintegratedNEE(
-          VolumePreintegratedRadiance, volumeArgs,
-          screenUV, true, alphaBlendSurfaceLinearViewZ, surface.hitT,
-          alphaBlendPreintegratedRadiance, alphaBlendAttenuation);
-        alphaBlendOutput.xyz += alphaBlendPreintegratedRadiance * (1 - backgroundAlpha);
-      }
+        
+        volumetricIntegrationOffset = surface.hitT;
 
-      if (surface.hasEmissive)
-      {
-        alphaBlendOutput.xyz += sharedRadiance;
+        vec2 volumeUV = cameraPixelCoordinateToScreenUV(fakeCamera, thread_id);
+        volumeUV.x /= volumeArgs.numFroxelVolumes;
+        integrateVolumetricNEE(
+          randomState, VolumeFilteredRadianceAge, VolumeFilteredRadianceY, VolumeFilteredRadianceCoCg,
+          volumeArgs, cb.timeSinceStartMS, thread_id, volumeUV, false, cameraGetWorldPosition(fakeCamera), surface.hitT, primaryRayDirections.worldDirection,
+          volumetricPreintegratedRadiance, volumeAttenuation);
+
+        alphaBlendOutput.xyz *= volumeAttenuation * (1 - backgroundAlpha);
+        alphaBlendOutput.xyz += volumetricPreintegratedRadiance * (1 - backgroundAlpha);
       }
       else
-      {
-        radianceOutput += sharedRadiance;
-      }
-
-      if (!volumeArgs.enableVolumetricLighting)
       {
         const vec4 fogColor = calculateFog(surface.hitT);
         alphaBlendOutput.xyz = alphaBlendOutput.xyz * (1.0f - fogColor.a) + fogColor.rgb * fogColor.a;
         alphaBlendOutput.xyz *= (1 - backgroundAlpha);
+      }
+      
+      if (surface.hasEmissive)
+      {
+        alphaBlendOutput.xyz += sharedRadiance;
       }
     }
 
     updateAlphaBlendDebugView(thread_id.xy, surface);
   }
 
-  if (!isAlphaBlend)
+  // Note: This is only evaluated when volumetrics are enabled, no external check is needed.
+  // Todo: Using Primary linear view Z for now, not the best option as this does not work with PSR (among other effects like
+  // Portals and particles), but fine for initial testing.
+  
+  // Note here we apply an offset to the volume integration, this is so we can reuse the attenuation and radiance from earlier parts of the shader.
   {
-    radianceOutput += sharedRadiance;
+    const float3 volumeIntegrationOrigin = cameraGetWorldPosition(fakeCamera) + primaryRayDirections.worldDirection * volumetricIntegrationOffset;
+    const float volumeOpaqueIntegrationLength = max(0, viewDistance - volumetricIntegrationOffset);
+
+    vec2 volumeUV = cameraPixelCoordinateToScreenUV(fakeCamera, thread_id);
+    volumeUV.x /= volumeArgs.numFroxelVolumes;
+    integrateVolumetricNEE(
+      randomState, VolumeFilteredRadianceAge, VolumeFilteredRadianceY, VolumeFilteredRadianceCoCg,
+      volumeArgs, cb.timeSinceStartMS, thread_id, volumeUV, primaryMiss, volumeIntegrationOrigin, volumeOpaqueIntegrationLength, primaryRayDirections.worldDirection,
+      volumetricPreintegratedRadiance, volumeAttenuation);
   }
 
+  // Calculate final combined radiance output
+  // Note: The primary hit accumulated radiance value is not affected by the throughput (rather takes attenuation into account
+  // while accumulating already), so it can be added in here without issue.
+  radianceOutput += remodulatedTotalPrimaryRadiance * volumeAttenuation;
+  
+  // DLSS-RR cannot handle multiple layers of noisy signals, so a separate layer is needed for secondary signals like glass
+  // reflection and particles.
+  vec4 particleLayerOutput = 0.0;
+  if (cb.outputParticleLayer)
+  {
+    particleLayerOutput.xyz = RayReconstructionParticleOutput[thread_id].xyz;
+  
+    if (cb.outputSecondarySignalToParticleLayer)
+    {
+      // Secondary signal and preintegrated signal have no noise
+      if (cb.compositeVolumetricLight)
+      {
+        particleLayerOutput.xyz += remodulatedTotalSecondaryRadiance * volumeAttenuation;
+        radianceOutput += volumetricPreintegratedRadiance;
+      }
+      else
+      {
+        particleLayerOutput.xyz += remodulatedTotalSecondaryRadiance * volumeAttenuation;
+      }
+    }
+    else
+    {
+      radianceOutput += remodulatedTotalSecondaryRadiance * volumeAttenuation;
+    }
+  }
+  else
+  {
+    radianceOutput += volumetricPreintegratedRadiance;
+    radianceOutput += remodulatedTotalSecondaryRadiance * volumeAttenuation;
+  }
+
+  // Note: Shared radiance should always be pre-attenuated so no need to factor that in here - it contains multiple layers of signal so each contribution must be attenuated inline.
+  radianceOutput += sharedRadiance;
+  
+  // Add sky radiance
+  if (primaryMiss)
+  {
+    if (cb.domeLightArgs.active)
+    {
+      radianceOutput += cb.domeLightArgs.radiance * sampleDomeLightTexture(SkyLight, primaryRayDirections.worldDirection, cb.domeLightArgs.worldToLightTransform) * volumeAttenuation;
+    }
+    else
+    {
+      vec2 screenUV = cameraPixelCoordinateToScreenUV(cb.camera, thread_id);
+      radianceOutput += cb.skyBrightness * SkyLight.SampleLevel(screenUV, 0) * volumeAttenuation;
+    }
+  }
+  
   vec3 attenuatedOutput = radianceOutput;
-  if (!volumeArgs.enableVolumetricLighting)
+  if (!volumeArgs.enable)
   {
     // Todo: Using view distance is a bit of a hack here, the primary emissive contribution will not be fully weighted correctly
     // as emissive hits will be over-attenuated.
@@ -536,6 +576,8 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
     // Output final composite result for NRD denoiser.
     finalOutput.xyz = attenuatedOutput * backgroundAlpha + alphaBlendOutput.xyz;
   }
+
+  finalOutput = accumulate(thread_id.xy, finalOutput, cb.accumulationArgs, true, AccumulatedFinalOutput);
   
   imageStore(FinalOutput, thread_id.xy, finalOutput);
 

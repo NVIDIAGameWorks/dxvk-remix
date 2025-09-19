@@ -59,7 +59,17 @@ namespace dxvk {
     m_context->clearBuffer(
       Slice.buffer(),
       Slice.offset(),
-      Slice.length(),
+      // NV-DXVK start: Mitigation to fix validation errors
+      // Hack: Use alignDown here as the clear length must be divisible by 4 but also less than the buffer size. A typical
+      // align operation will align upwards which will make this length longer than the buffer's length, so alignDown is
+      // used instead. This does have the effect of leaving up to 3 bytes of the end of the buffer non-zeroed, but given
+      // D3D9 buffers are supposed to be initialized to undefined this is probably fine for the vast majority of games (only
+      // games that incorrectly expect the buffer to be cleared and are actually touching these last few bytes will be affected,
+      // which in practice shouldn't cause any problems).
+      // Do note this hack can be removed once updating to a newer DXVK, as this fix has been integrated as part of this GitHub
+      // issue: https://github.com/doitsujin/dxvk/issues/4641
+      alignDown(Slice.length(), sizeof(uint32_t)),
+      // NV-DXVK end
       0u);
 
     FlushImplicit();

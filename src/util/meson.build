@@ -29,6 +29,8 @@ util_src = files([
   'xxHash/xxhash.c',
   'xxHash/xxhash.h',
 
+  'util_memoization.h',
+
   'util_messagechannel.cpp',
   'util_messagechannel.h',
 
@@ -38,6 +40,9 @@ util_src = files([
   'util_fastops.h',
 
   'util_fast_cache.h',
+  
+  'util_filesys.h',
+  'util_filesys.cpp',
 
   'util_threadpool.h',
   'util_atomic_queue.h',
@@ -47,6 +52,8 @@ util_src = files([
   'util_version.h',
 
   'util_watchdog.h',
+
+  'util_globaltime.h',
 ])
 
 util_lib = static_library('util', util_src,

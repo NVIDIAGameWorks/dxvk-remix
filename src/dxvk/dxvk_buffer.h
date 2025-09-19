@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -29,6 +29,7 @@
 #include "dxvk_hash.h"
 #include "dxvk_memory.h"
 #include "dxvk_resource.h"
+#include "dxvk_memory_tracker.h"
 
 namespace dxvk {
 
@@ -62,6 +63,9 @@ namespace dxvk {
     /// by the specification.
     VkDeviceSize requiredAlignmentOverride = 1;
     // NV-DXVK end
+
+    // Shared handle info
+    DxvkSharedHandleInfo sharing;
   };
   
   
@@ -143,7 +147,8 @@ namespace dxvk {
       const DxvkBufferCreateInfo& createInfo,
             DxvkMemoryAllocator&  memAlloc,
             VkMemoryPropertyFlags memFlags,
-            DxvkMemoryStats::Category category);
+            DxvkMemoryStats::Category category,
+            const char* name);
     
     ~DxvkBuffer();
     
@@ -293,6 +298,10 @@ namespace dxvk {
 
           m_buffers.push_back(std::move(handle));
           m_physSliceCount = std::min(m_physSliceCount * 2, m_physSliceMaxCount);
+
+          // NV-DXVK start: Implement memory profiler
+          m_tracker.updateSize(256 * m_physSliceCount); // 256 is the byte size of a slice according to DxvkBuffer
+          // NV-DXVK end
         } else {
           for (uint32_t i = 1; i < m_physSliceCount; i++)
             pushSlice(m_buffer, i);
@@ -340,6 +349,13 @@ namespace dxvk {
     Rc<DxvkBuffer> clone();
     // NV-DXVK end
 
+
+    // NV-DXVK start: get access to VkDeviceMemory
+    const DxvkBufferHandle& getBufferHandle() { 
+      return m_buffer;
+    }
+    // NV-DXVK end
+
   protected:
     DxvkDevice*             m_device;
     DxvkBufferCreateInfo    m_info;
@@ -369,6 +385,7 @@ namespace dxvk {
     std::vector<DxvkBufferSliceHandle>  m_nextSlices;
 
     DxvkMemoryStats::Category m_category;
+    GpuMemoryTracker m_tracker;
 
     void pushSlice(const DxvkBufferHandle& handle, uint32_t index) {
       DxvkBufferSliceHandle slice;
@@ -739,7 +756,8 @@ namespace dxvk {
       const DxvkBufferCreateInfo& createInfo,
             DxvkMemoryAllocator& memAlloc,
             VkMemoryPropertyFlags memFlags,
-            VkAccelerationStructureTypeKHR accelType);
+            VkAccelerationStructureTypeKHR accelType,
+      const char* name);
 
     ~DxvkAccelStructure();
 

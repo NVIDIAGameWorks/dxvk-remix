@@ -1,0 +1,103 @@
+/*
+* Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+
+#include "accumulate.h"
+
+f16vec4 lerpFp16(f16vec4 a, f16vec4 b, float16_t lerpFactor)
+{
+  return a * (1.h - lerpFactor) + b * lerpFactor;
+}
+
+vec4 blendNewAndPreviousValue(vec4 previousValue, vec4 value, AccumulationArgs args)
+{
+  switch (args.accumulationBlendMode)
+  {
+  case AccumulationBlendMode::Average:
+    if (args.enableFp16Accumulation)
+    {
+      value = lerpFp16(previousValue, value, args.accumulationWeight);
+    }
+    else
+    {
+      value = lerp(previousValue, value, args.accumulationWeight);
+    }
+    break;
+  case AccumulationBlendMode::Min:
+    if (args.enableFp16Accumulation)
+    {
+      value = min(f16vec4(previousValue), f16vec4(value));
+    }
+    else
+    {
+      value = min(previousValue, value);
+    }
+    break;
+  case AccumulationBlendMode::Max:
+    if (args.enableFp16Accumulation)
+    {
+      value = max(f16vec4(previousValue), f16vec4(value));
+    }
+    else
+    {
+      value = max(previousValue, value);
+    }
+    break;
+  }
+
+  return value;
+}
+
+vec4 accumulate(
+  uint2 threadId,
+  vec4 value,
+  AccumulationArgs args,
+  bool storeInAccumulationBuffer,
+  RWTexture2D<float4> AccumulationBuffer)
+{
+  if (args.enableAccumulation)
+  {
+    switch (args.accumulationMode)
+    {
+      case AccumulationMode::WriteNewOutput:
+      default:
+        break;
+      case AccumulationMode::CarryOverPreviousOutput:
+        value = AccumulationBuffer[threadId];
+        break;
+      case AccumulationMode::BlendNewAndPreviousOutputs:
+      {
+        const vec4 previousValue = AccumulationBuffer[threadId];
+
+        value = blendNewAndPreviousValue(previousValue, value, args);
+      
+        break;
+      }
+    }
+  }
+
+  if (storeInAccumulationBuffer)
+  {
+    AccumulationBuffer[threadId] = value;
+  }
+
+  return value;
+}

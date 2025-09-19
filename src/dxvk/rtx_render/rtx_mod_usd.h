@@ -45,6 +45,8 @@ namespace dxvk {
 
     static const ModTypeInfo& getTypeInfo();
 
+    static void loadUsdPlugins();
+    
   private:
     friend struct UsdModTypeInfo;
     explicit UsdMod(const Mod::Path& usdFilePath);

@@ -8,6 +8,8 @@ Thanks to all the contributors to DXVK for creating this foundational piece of s
 
 While dxvk-remix is a fork of DXVK, please report bugs encountered with dxvk-remix to this repo rather than to the DXVK project.
 
+dxvk-remix also contains a subproject in the `bridge` folder, which enables 32 bit games to communicate with the 64 bit dxvk-remix runtime.
+
 ## Build instructions
 
 ### Requirements:
@@ -20,13 +22,14 @@ While dxvk-remix is a fork of DXVK, please report bugs encountered with dxvk-rem
 4. [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/sdk-archive/)
     - 10.0.19041.0 is tested
 5. [Meson](https://mesonbuild.com/)
-    - 0.61.4 has been tested
+    - 1.8.2 has been tested
     - Follow [instructions](https://mesonbuild.com/SimpleStart.html#installing-meson) on how to install and reboot the PC before moving on (Meson will indicate as much)
 6. [Vulkan SDK](https://vulkan.lunarg.com/sdk/home#windows)
-    - 1.3.211.0 or newer
+    - 1.4.313.2 or newer
     - You may need to uninstall previous SDK if you have an old version
 7. [Python](https://www.python.org/downloads/)
     - 3.9 or newer
+    - Ensure you are using python installed from the link above and not from the Microsoft Store
 8. [DirectX Runtime](https://www.microsoft.com/en-us/download/details.aspx?id=35)
     - Latest version should work.
     - This includes d3d9x*.dll which are required to run the game
@@ -90,14 +93,16 @@ To profile:
 ### Remix API
 
 If there's an intent to use the Remix Renderer in projects with *available* source code, Direct3D 9 API can be utilized, since Remix's `d3d9.dll` implements the Direct3D 9 API.
-Alternatively, Remix API can be used to programmatically pass the game data to the Remix Renderer, with *or* instead of Direct3D API. [Click for more info.](/tests/rtx/apps/README.md)
+Alternatively, Remix API can be used to programmatically pass the game data to the Remix Renderer, with *or* instead of Direct3D API. [Click for more info.](/documentation/RemixSDK.md)
 
 ## Project Documentation
 
-- [Rtx Options](/RtxOptions.md)
 - [Anti-Culling System](/documentation/AntiCullingSystem.md)
+- [Contributing Guide](/CONTRIBUTING.md)
 - [Foliage System](/documentation/FoliageSystem.md)
+- [GPU Print](/documentation/GpuPrint.md)
 - [Opacity Micromap](/documentation/OpacityMicromap.md)
-- [Remix API](/tests/rtx/apps/README.md)
+- [Remix API](/documentation/RemixSDK.md)
+- [Rtx Options](/RtxOptions.md)
 - [Terrain System](/documentation/TerrainSystem.md)
 - [Unit Test](/documentation/UnitTest.md)

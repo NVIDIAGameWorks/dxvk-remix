@@ -93,7 +93,7 @@ namespace dxvk {
   }
 
   static bool isSkyboxQuad(const DrawCallState& state) {
-    if (state.alphaBlendEnable) {
+    if (state.getMaterialData().blendMode.enableBlending) {
       return false;
     }
     if (state.getGeometryData().indexCount == 0) {
@@ -153,7 +153,7 @@ dxvk::RtxContext::TryHandleSkyResult dxvk::RtxContext::tryHandleSky(const DrawPa
       m_skyRtColorFormat = m_state.om.renderTargets.color[0].view->image()->info().format;
       // Use sRGB (or linear for HDR formats) for image and sampling views -- to use in ray tracing
       m_skyColorFormat = TextureUtils::toSRGB(m_skyRtColorFormat);
-      if (RtxOptions::Get()->skyForceHDR()) {
+      if (RtxOptions::skyForceHDR()) {
         m_skyRtColorFormat = m_skyColorFormat = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
       }
 
@@ -195,6 +195,11 @@ dxvk::RtxContext::TryHandleSkyResult dxvk::RtxContext::tryHandleSky(const DrawPa
 
   // 2. Submit ray traced sky geometry as a part of the main scene by reprojecting its transform
   const RtCamera& mainCam = getSceneManager().getCameraManager().getCamera(CameraType::Main);
+
+  if (mainCam.getLastUpdateFrame() != m_device->getCurrentFrameId()) {
+    // Skip, if the main camera hasn't been updated yet
+    return TryHandleSkyResult::Default;
+  }
 
   // Note: getNearPlane() / getFarPlane() do not return actual values in case if overrideNearPlane is enabled
   const auto [mainCamNearPlane, mainCamFarPlane] = mainCam.calculateNearFarPlanes();

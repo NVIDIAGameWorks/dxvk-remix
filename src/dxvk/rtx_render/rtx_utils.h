@@ -87,6 +87,10 @@ inline const std::string hashToString(XXH64_hash_t hash) {
   return ss.str();
 }
 
+inline const XXH64_hash_t StringToXXH64(const std::string& str, const XXH64_hash_t seed) {
+  return XXH64(str.c_str(), str.size(), seed);
+}
+
 enum BufferType {
   Raster = 0,
   Raytrace

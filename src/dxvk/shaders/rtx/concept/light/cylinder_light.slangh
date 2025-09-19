@@ -86,7 +86,7 @@ vec3 cylinderLightCalcPower(CylinderLight cylinderLight)
   return cylinderLightCalcSurfaceArea(cylinderLight) * pi * cylinderLight.radiance;
 }
 
-float cylinderLightCalcWeight(CylinderLight cylinderLight, MinimalSurfaceInteraction viewSurfaceInteraction, const bool isSubSurface)
+float cylinderLightCalcWeight(CylinderLight cylinderLight, MinimalSurfaceInteraction viewSurfaceInteraction, const bool isThinOpaqueSubsurface)
 {
   vec3 lightVector;
   vec3 edgeLightVector;
@@ -95,7 +95,7 @@ float cylinderLightCalcWeight(CylinderLight cylinderLight, MinimalSurfaceInterac
 
   // Note: Ideally this if statement is re-ordered to avoid the calculation of the positional weight when the visibility test fails now that the logic has been abstracted
   // into functions.
-  if (visibilityWeight || isSubSurface) {
+  if (visibilityWeight || isThinOpaqueSubsurface) {
     return positionalWeight;
   } else {
     return 0.0f;

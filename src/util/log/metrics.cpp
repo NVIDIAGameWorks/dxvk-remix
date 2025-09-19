@@ -35,12 +35,17 @@ namespace dxvk {
   
   Metrics::~Metrics() { }
 
-  void Metrics::log(Metric metric, const float& value) {
+  void Metrics::logRollingAverage(Metric metric, const float& value) {
     std::lock_guard<dxvk::mutex> lock(s_instance.m_mutex);
     const float& oldValue = s_instance.m_data[metric];
 
-    const uint32_t kRollingAvgWindow = 100;
+    const uint32_t kRollingAvgWindow = 30;
     s_instance.m_data[metric] = lerp(oldValue, value, 1.f / kRollingAvgWindow);
+  }
+
+  void Metrics::logFloat(Metric metric, const float& value) {
+    std::lock_guard<dxvk::mutex> lock(s_instance.m_mutex);
+    s_instance.m_data[metric] = value;
   }
   
   void Metrics::serialize() {

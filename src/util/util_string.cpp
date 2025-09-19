@@ -20,6 +20,7 @@
 * DEALINGS IN THE SOFTWARE.
 */
 #include "util_string.h"
+#include <iomanip>
 
 namespace dxvk::str {
   std::string fromws(const WCHAR *ws) {
@@ -80,5 +81,36 @@ namespace dxvk::str {
     std::string result = input;
     result.erase(std::remove_if(result.begin(), result.end(), isInvalidAscii), result.end());
     return result;
+  }
+
+  std::string formatBytes(std::size_t bytes) {
+    // Note: 2^64 is 16 EiB, so no need to go beyond this for binary metric prefixes.
+    constexpr std::size_t KiB = 1024;
+    constexpr std::size_t MiB = KiB * 1024;
+    constexpr std::size_t GiB = MiB * 1024;
+    constexpr std::size_t TiB = GiB * 1024;
+    constexpr std::size_t PiB = TiB * 1024;
+    constexpr std::size_t EiB = PiB * 1024;
+
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(2);
+
+    if (bytes < KiB) {
+      oss << bytes << " B";
+    } else if (bytes < MiB) {
+      oss << (static_cast<double>(bytes) / static_cast<double>(KiB)) << " KiB";
+    } else if (bytes < GiB) {
+      oss << (static_cast<double>(bytes) / static_cast<double>(MiB)) << " MiB";
+    } else if (bytes < TiB) {
+      oss << (static_cast<double>(bytes) / static_cast<double>(GiB)) << " GiB";
+    } else if (bytes < PiB) {
+      oss << (static_cast<double>(bytes) / static_cast<double>(TiB)) << " TiB";
+    } else if (bytes < EiB) {
+      oss << (static_cast<double>(bytes) / static_cast<double>(PiB)) << " PiB";
+    } else {
+      oss << (static_cast<double>(bytes) / static_cast<double>(EiB)) << " EiB";
+    }
+
+    return oss.str();
   }
 }

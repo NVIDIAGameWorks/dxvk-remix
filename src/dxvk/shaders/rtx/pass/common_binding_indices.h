@@ -45,13 +45,18 @@
 #define BINDING_CONSTANTS                        14
 #define BINDING_DEBUG_VIEW_TEXTURE               15
 #define BINDING_GPU_PRINT_BUFFER                 16
+#define BINDING_VALUE_NOISE_SAMPLER              17
+#define BINDING_SAMPLER_READBACK_BUFFER          18
 
-#define COMMON_MAX_BINDING                       BINDING_GPU_PRINT_BUFFER
+#define COMMON_MAX_BINDING                       BINDING_SAMPLER_READBACK_BUFFER
 #define COMMON_NUM_BINDINGS                      (COMMON_MAX_BINDING + 1)
 
 // Note: Used to represent a non-existent buffer and material index in the Surface,
 // as well as texture index in the Surface Material.
 #define BINDING_INDEX_INVALID uint16_t(0xFFFF)
+
+#define SAMPLER_FEEDBACK_INVALID           uint16_t(0xFFFF)
+#define SAMPLER_FEEDBACK_MAX_TEXTURE_COUNT uint16_t(0xFFFF)
 
 // Note: Light array may only be up to a size of 2^16-1, allowing the last index to be
 // used for an invalid index similar to the max binding index for materials.
@@ -75,6 +80,8 @@
   TEXTURE2DARRAY(BINDING_BLUE_NOISE_TEXTURE)                        \
   CONSTANT_BUFFER(BINDING_CONSTANTS)                                \
   RW_TEXTURE2D(BINDING_DEBUG_VIEW_TEXTURE)                          \
-  RW_STRUCTURED_BUFFER(BINDING_GPU_PRINT_BUFFER)
+  RW_STRUCTURED_BUFFER(BINDING_GPU_PRINT_BUFFER)                    \
+  SAMPLER3D(BINDING_VALUE_NOISE_SAMPLER)                            \
+  RW_STRUCTURED_BUFFER(BINDING_SAMPLER_READBACK_BUFFER)
   
 #endif

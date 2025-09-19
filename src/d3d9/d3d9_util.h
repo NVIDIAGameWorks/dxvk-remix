@@ -300,3 +300,16 @@ namespace dxvk {
   }
 
 }
+
+// NV-DXVK start: Adding a function from dxvk main without including its dependency (the dependency currently causes build failures)
+// function comes from: https://github.com/doitsujin/dxvk/commit/0cd4165658537405d84a43f3ab6180b770f30fe1
+// not included dependency: https://github.com/doitsujin/dxvk/commit/4b8e8bed6e7007144f803ec64485168c82273c6f
+inline bool operator == (const D3DDISPLAYMODEEX& a, const D3DDISPLAYMODEEX& b) {
+  return a.Size             == b.Size             &&
+         a.Width            == b.Width            &&
+         a.Height           == b.Height           &&
+         a.RefreshRate      == b.RefreshRate      &&
+         a.Format           == b.Format           &&
+         a.ScanLineOrdering == b.ScanLineOrdering;
+}
+// NV-DXVK end

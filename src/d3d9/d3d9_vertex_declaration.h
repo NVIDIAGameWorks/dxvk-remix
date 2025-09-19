@@ -14,7 +14,7 @@ namespace dxvk {
     HasPointSize,
     HasFog,
     HasBlendWeight,
-    HasBlendIndices
+    HasBlendIndices,
   };
   using D3D9VertexDeclFlags = Flags<D3D9VertexDeclFlag>;
 

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -23,12 +23,19 @@
 #include "dxvk_instance.h"
 #include "rtx_render/rtx_context.h"
 #include "dxvk_scoped_annotation.h"
+#include "rtx_render/rtx_ray_reconstruction.h"
 #include "rtx_render/rtx_texture_manager.h"
+#include "rtx_render/rtx_neural_radiance_cache.h"
+#include "rtx_render/rtx_rtxdi_rayquery.h"
+#include "rtx_render/rtx_restir_gi_rayquery.h"
+#include "rtx_render/rtx_composite.h"
+#include "rtx_render/rtx_debug_view.h"
 
 
 namespace dxvk {
   
   DxvkDevice::DxvkDevice(
+    const Rc<vk::InstanceFn>&       vki,
     const Rc<DxvkInstance>&         instance,
     const Rc<DxvkAdapter>&          adapter,
     const Rc<vk::DeviceFn>&         vkd,
@@ -93,7 +100,7 @@ namespace dxvk {
                                                           m_vkd->device(),
                                                           m_queues.graphics.queueHandle,
                                                           m_queues.graphics.tracyCmdList,
-                                                          m_vkd->vkGetPhysicalDeviceCalibrateableTimeDomainsEXT,
+                                                          vki->vkGetPhysicalDeviceCalibrateableTimeDomainsEXT,
                                                           m_vkd->vkGetCalibratedTimestampsEXT);
     TracyVkContextName(m_queues.graphics.tracyCtx, "Graphics Queue", strlen("Graphics Queue"));
 
@@ -112,7 +119,7 @@ namespace dxvk {
                                                            m_vkd->device(),
                                                            m_queues.present.queueHandle,
                                                            m_queues.present.tracyCmdList,
-                                                           m_vkd->vkGetPhysicalDeviceCalibrateableTimeDomainsEXT,
+                                                           vki->vkGetPhysicalDeviceCalibrateableTimeDomainsEXT,
                                                            m_vkd->vkGetCalibratedTimestampsEXT);
       TracyVkContextName(m_queues.present.tracyCtx, "Present Queue", strlen("Present Queue"));
     }
@@ -131,12 +138,21 @@ namespace dxvk {
     // NV-DXVK end
 
 #ifdef TRACY_ENABLE
-    TracyVkDestroy(m_queues.graphics.tracyCtx);
-    m_vkd->vkDestroyCommandPool(m_vkd->device(), m_queues.graphics.tracyPool, nullptr);
+    if (m_queues.graphics.tracyCtx) {
+      TracyVkDestroy(m_queues.graphics.tracyCtx);
+    }
+
+    if (m_queues.graphics.tracyPool) {
+      m_vkd->vkDestroyCommandPool(m_vkd->device(), m_queues.graphics.tracyPool, nullptr);
+    }
 
     if (m_queues.present.queueHandle) {
-      TracyVkDestroy(m_queues.present.tracyCtx);
-      m_vkd->vkDestroyCommandPool(m_vkd->device(), m_queues.present.tracyPool, nullptr);
+      if (m_queues.present.tracyCtx) {
+        TracyVkDestroy(m_queues.present.tracyCtx);
+      }
+      if (m_queues.present.tracyPool) {
+        m_vkd->vkDestroyCommandPool(m_vkd->device(), m_queues.present.tracyPool, nullptr);
+      }
     }
 #endif
     // Stop workers explicitly in order to prevent
@@ -236,8 +252,11 @@ namespace dxvk {
   Rc<DxvkBuffer> DxvkDevice::createBuffer(
     const DxvkBufferCreateInfo& createInfo,
           VkMemoryPropertyFlags memoryType,
-          DxvkMemoryStats::Category category) {
-    return new DxvkBuffer(this, createInfo, m_objects.memoryManager(), memoryType, category);
+          DxvkMemoryStats::Category category,
+// NV-DXVK start: add debug names to VkBuffer objects
+          const char* name) {
+    return new DxvkBuffer(this, createInfo, m_objects.memoryManager(), memoryType, category, name);
+// NV-DXVK end
   }
 
 
@@ -245,8 +264,9 @@ namespace dxvk {
   Rc<DxvkAccelStructure> DxvkDevice::createAccelStructure(
       const DxvkBufferCreateInfo& createInfo,
             VkMemoryPropertyFlags memoryType,
-            VkAccelerationStructureTypeKHR accelType) {
-    return new DxvkAccelStructure(this, createInfo, m_objects.memoryManager(), memoryType, accelType);
+            VkAccelerationStructureTypeKHR accelType,
+      const char* name) {
+    return new DxvkAccelStructure(this, createInfo, m_objects.memoryManager(), memoryType, accelType, name);
   }
   // NV-DXVK end
   
@@ -280,7 +300,7 @@ namespace dxvk {
     return new DxvkImageView(m_vkd, image, createInfo);
   }
   
-  
+
   Rc<DxvkSampler> DxvkDevice::createSampler(
     const DxvkSamplerCreateInfo&  createInfo) {
     return new DxvkSampler(this, createInfo);
@@ -337,9 +357,11 @@ namespace dxvk {
   }
 
 
-  void DxvkDevice::registerShader(const Rc<DxvkShader>& shader) {
-    m_objects.pipelineManager().registerShader(shader);
+// NV-DXVK start
+  void DxvkDevice::registerShader(const Rc<DxvkShader>& shader, bool isRemixShader) {
+    m_objects.pipelineManager().registerShader(shader, isRemixShader);
   }
+// NV-DXVK end
   
   
   void DxvkDevice::presentImage(
@@ -354,18 +376,6 @@ namespace dxvk {
     status->result = VK_NOT_READY;
 
     // NV-DXVK start: Integrate Reflex
-
-    // Note: End rendering now that presentation is desired to be queued up. This presentImage call is done on the
-    // same CS thread that rendering was started on so this should be consistent with when a frame starts versus ends.
-    // Additionally, it is possible that this could be called without a matching startRendering call for this frame due
-    // to all the early outs injectRtx does, but Reflex should be able to deal with missing markers on a given frame.
-    // If this becomes a problem in the future then we may need to handle adding in missing end markers in our own Reflex
-    // integration somehow.
-    // Finally do note that the actual queue submission for rendering operations happens on the submit thread and may happen
-    // after this call due to how threads behave. This is fine for the end Rendering marker though as Reflex seems to only
-    // use the end Present marker to deliminate frames (which is important in how it identifies which frame the render queue
-    // submission belongs to).
-    m_objects.metaReflex().endRendering(cachedReflexFrameId);
 
     DxvkPresentInfo presentInfo;
     presentInfo.presenter = presenter;
@@ -409,12 +419,16 @@ namespace dxvk {
   void DxvkDevice::submitCommandList(
     const Rc<DxvkCommandList>&      commandList,
           VkSemaphore               waitSync,
-          VkSemaphore               wakeSync) {
+          VkSemaphore               wakeSync,
+          bool                      insertReflexRenderMarkers /*= false*/,
+          uint64_t                  cachedReflexFrameId /*= 0*/) {
     ScopedCpuProfileZone();
     DxvkSubmitInfo submitInfo;
     submitInfo.cmdList  = commandList;
     submitInfo.waitSync = waitSync;
     submitInfo.wakeSync = wakeSync;
+    submitInfo.insertReflexRenderMarkers = insertReflexRenderMarkers;
+    submitInfo.cachedReflexFrameId = cachedReflexFrameId;
     m_submissionQueue.submit(submitInfo);
 
     std::lock_guard<sync::Spinlock> statLock(m_statLock);
@@ -512,9 +526,7 @@ namespace dxvk {
     m_textureManager { std::make_unique<RtxTextureManager>(device) },
     m_imgui(device),
     m_dummyResources(device),
-    m_volumeIntegrate(device),
-    m_volumeFilter(device),
-    m_volumePreintegrate(device),
+    m_globalVolumetrics(device),
     m_pathtracerGbuffer(device),
     m_rtxdiRayQuery(device),
     m_restirgiRayQuery(device),
@@ -522,6 +534,7 @@ namespace dxvk {
     m_pathtracerIntegrateIndirect(device),
     m_demodulate(device),
     m_neeCache(device),
+    m_neuralRadianceCache(device),
     m_primaryDirectLightDenoiser(device, DenoiserType::DirectLight),
     m_primaryIndirectLightDenoiser(device, DenoiserType::IndirectLight),
     m_primaryCombinedLightDenoiser(device, DenoiserType::DirectAndIndirectLight),
@@ -556,7 +569,6 @@ namespace dxvk {
 
     metaGeometryUtils().onDestroy();
     getSceneManager().onDestroy();
-    getTextureManager().onDestroy();
 
     m_primaryDirectLightDenoiser.get().onDestroy();
     m_primaryIndirectLightDenoiser.get().onDestroy();

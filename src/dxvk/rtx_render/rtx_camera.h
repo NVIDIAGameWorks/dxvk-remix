@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -35,15 +35,16 @@ namespace dxvk
 {
   namespace CameraType {
     enum Enum : uint32_t {
-      Main = 0,     // Main camera
-      ViewModel,    // Camera for view model rendering
-      Portal0,      // Camera associated with rendering portal 0
-      Portal1,      // Camera associated with rendering portal 1
-      Sky,          // Some renderers have separate world / sky cameras
-      Unknown,      // Unset camera state, used mainly for state tracking. Its camera object is aliased 
-                    // with the Main camera object, so on access it retrieves the Main camera
+      Main = 0,        // Main camera
+      ViewModel,       // Camera for view model rendering
+      Portal0,         // Camera associated with rendering portal 0
+      Portal1,         // Camera associated with rendering portal 1
+      Sky,             // Some renderers have separate world / sky cameras
+      RenderToTexture, // Camera used to replace a render target texture that is being raytraced.
+      Unknown,         // Unset camera state, used mainly for state tracking. Its camera object is aliased 
+                       // with the Main camera object, so on access it retrieves the Main camera
 
-                    Count
+      Count
     };
   }
 
@@ -65,6 +66,10 @@ namespace dxvk
     uint32_t mCurSample = 0;
     uint32_t mSampleCount = 0;
   };
+
+
+  // Returns a 2D <-0.5, 0.5> Halton jitter sample 
+  Vector2 calculateHaltonJitter(uint32_t currentFrame, uint32_t jitterSequenceLength);
 
   class RtFrustum final : public cFrustum
   {
@@ -105,12 +110,14 @@ namespace dxvk
   class RtCamera
   {
     RTX_OPTION_ENV("rtx.camera", bool, enableFreeCamera, false, "RTX_ENABLE_FREE_CAMERA", "Enables free camera.");
-    RW_RTX_OPTION_ENV("rtx.camera", Vector3, freeCameraPosition, Vector3(0.f, 0.f, 0.f), "RTX_FREE_CAMERA_POSITION", "Free camera's position.");
-    RW_RTX_OPTION_ENV("rtx.camera", float, freeCameraYaw, 0.f, "RTX_FREE_CAMERA_YAW", "Free camera's position.");
-    RW_RTX_OPTION_ENV("rtx.camera", float, freeCameraPitch, 0.f, "RTX_FREE_CAMERA_PITCH", "Free camera's pitch.");
-    RW_RTX_OPTION("rtx.camera", bool, lockFreeCamera, false, "Locks free camera.");
-    RW_RTX_OPTION("rtx.camera", bool, freeCameraViewRelative, true, "Free camera transform is relative to the view.");
-    RW_RTX_OPTION("rtx", float, freeCameraSpeed, 200, "Free camera speed [GameUnits/s].");
+    RTX_OPTION_ENV("rtx.camera", Vector3, freeCameraPosition, Vector3(0.f, 0.f, 0.f), "RTX_FREE_CAMERA_POSITION", "Free camera's position.");
+    RTX_OPTION_ENV("rtx.camera", float, freeCameraYaw, 0.f, "RTX_FREE_CAMERA_YAW", "Free camera's position.");
+    RTX_OPTION_ENV("rtx.camera", float, freeCameraPitch, 0.f, "RTX_FREE_CAMERA_PITCH", "Free camera's pitch.");
+    RTX_OPTION("rtx.camera", bool, lockFreeCamera, false, "Locks free camera.");
+    RTX_OPTION("rtx.camera", bool, freeCameraViewRelative, true, "Free camera transform is relative to the view.");
+    RTX_OPTION("rtx", float, freeCameraSpeed, 200, "Free camera speed [GameUnits/s].");
+    RTX_OPTION("rtx", float, freeCameraTurningSpeed, 1, "Free camera turning speed (applies to keyboard, not mouse) [radians/s].");
+    RTX_OPTION("rtx", bool, freeCameraInvertY, false, "Invert free camera pitch direction.");
 
     long m_mouseX = 0, m_mouseY = 0;
     uint32_t m_renderResolution[2] = { 0, 0 };
@@ -157,6 +164,8 @@ namespace dxvk
       FreeCamTranslatedWorldToView,
       FreeCamPreviousTranslatedWorldToView,
 
+      ViewToWorldToFreeCamViewToWorld,
+
       Count
     };
 
@@ -199,10 +208,6 @@ namespace dxvk
       uint32_t flags;
     };
 
-    uint32_t m_skyScale = 1;
-    uint32_t m_lastSkyScale = 1;
-    Vector3 m_skyOffset;
-
     // Note: All camera matricies stored as double precision. While this does not do much for some matricies (which were provided
     // by the application in floating point precision), it does help for preserving matrix stability on those which have been inverted,
     // as well as in code using these matrices which may do further inversions or combination operations. If such precision is not needed
@@ -224,28 +229,11 @@ namespace dxvk
   public:
     RtCamera() = default;
     ~RtCamera() = default;
-
-    RtCamera(const RtCamera& other) {
-      *this = other;
-    }
-
-    // Overload operator = to avoid copying RcObject's ref counter in RtCamera's copy constructor
-    RtCamera& operator=(const RtCamera& other) {
-      m_mouseX = other.m_mouseX;
-      m_mouseY = other.m_mouseY;
-      m_renderResolution[0] = other.m_renderResolution[0];
-      m_renderResolution[1] = other.m_renderResolution[1];
-      m_finalResolution[0] = other.m_finalResolution[0];
-      m_finalResolution[1] = other.m_finalResolution[1];
-      m_jitter[0] = other.m_jitter[0];
-      m_jitter[1] = other.m_jitter[1];
-      m_halton = other.m_halton;
-      m_firstUpdate = other.m_firstUpdate;
-
-      m_context = other.m_context;
-
-      return *this;
-    }
+    // Note: Copying functionality required for DLFG implementation (to store a copy of a camera used to render a frame for DLFG evaluation later).
+    // Avoid copies otherwise as this is a fairly large structure. If needed only the data required by DLFG could be copied and this copy functionality
+    // could be removed for slightly better performance.
+    RtCamera(const RtCamera& other) = default;
+    RtCamera& operator=(const RtCamera& other) = default;
 
     // Gets the Y axis (vertical) FoV of the camera's projection matrix in radians. Note this value will be positive always (even with strange camera types).
     float getFov() const { return m_context.fov; }
@@ -267,6 +255,8 @@ namespace dxvk
     const Matrix4d& getPreviousViewToProjection() const { return m_matCache[MatrixType::PreviousViewToProjection]; }
     const Matrix4d& getProjectionToView() const { return m_matCache[MatrixType::ProjectionToView]; }
     const Matrix4d& getPreviousProjectionToView() const { return m_matCache[MatrixType::PreviousProjectionToView]; }
+
+    const Matrix4d& getViewToWorldToFreeCamViewToWorld() const;
 
     const RtFrustum& getFrustum() const { return m_frustum; }
     RtFrustum& getFrustum() { return m_frustum; }
@@ -291,6 +281,8 @@ namespace dxvk
     Vector3 getDirection(bool freecam = true) const;
     Vector3 getUp(bool freecam = true) const;
     Vector3 getRight(bool freecam = true) const;
+
+    Vector3 getPreviousPosition(bool freecam = true) const;
 
     // Note: getNearPlane() / getFarPlane() return values
     // corresponding to the viewToProjection matrix passed into update(..),
@@ -327,21 +319,12 @@ namespace dxvk
     static void applyJitterTo(Matrix4& inoutProjection, uint32_t jitterFrameIdx, uint32_t renderResolutionX, uint32_t renderResolutionY);
     static void applyAndGetJitter(Matrix4d& inoutProjection, float (&outPixelJitter)[2], uint32_t jitterFrameIdx, uint32_t renderResolutionX, uint32_t renderResolutionY);
 
-    Camera getShaderConstants() const;
-    VolumeDefinitionCamera getVolumeShaderConstants() const;
+    Camera getShaderConstants(bool freecam = true) const;
+    VolumeDefinitionCamera getVolumeShaderConstants(const float maxDistance, const float guardBand = 1.f) const;
 
     static void showImguiSettings();
 
     const RtCameraSetting& getSetting();
-
-    void setSkyOffset(const Vector3& skyOffset) {
-      m_skyOffset = skyOffset;
-    };
-
-    void setSkyScale(int scale) {
-      m_lastSkyScale = m_skyScale;
-      m_skyScale = scale;
-    };
 
   private:
     Matrix4d getShakenViewToWorldMatrix(Matrix4d& viewToWorld, uint32_t flags);
@@ -369,7 +352,7 @@ namespace dxvk
     }
 
     void reset() {
-      currentFrameRef() = 0;
+      m_currentFrame = 0;
     }
 
     void startRecord();
@@ -403,9 +386,10 @@ namespace dxvk
 
     RTX_OPTION_ENV("rtx.cameraSequence", std::string, filePath, "", "DXVK_CAMERA_SEQUENCE_PATH", "File path.");
     RTX_OPTION_ENV("rtx.cameraSequence", bool, autoLoad, false, "DXVK_CAMERA_SEQUENCE_AUTO_LOAD", "Load camera sequence automatically.");
-    RTX_OPTION("rtx.cameraSequence", int, currentFrame, 0, "Current Frame.");
     RTX_OPTION_ENV("rtx.cameraSequence", Mode, mode, Mode::None, "DXVK_CAMERA_SEQUENCE_MODE", "Current mode.");
-
+    private: static inline int m_currentFrame = 0;
+    public: static int currentFrame() { return m_currentFrame; }
+    
     std::vector<RtCamera::RtCameraSetting> m_settings;
     static RtCameraSequence* s_instance;
   };

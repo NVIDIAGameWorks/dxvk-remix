@@ -1,0 +1,179 @@
+#pragma once
+
+// Function to compute the percentage of a line segment that lies within a sphere
+// Note that the radius passed into this function must be squared, this is done as often a squared radius is already known
+// and does not need to be recomputed.
+float lineSegmentSphereIntersectionPercentage(float3 p0, float3 p1, float3 sphereCenter, float sphereRadiusSquared)
+{
+  float3 d = p1 - p0;
+  float3 m = p0 - sphereCenter;
+
+  float a = dot(d, d);
+  float b = 2.0 * dot(m, d);
+  float c = dot(m, m) - sphereRadiusSquared;
+
+  // Compute the discriminant
+  float discriminant = b * b - 4.0 * a * c;
+
+  // No intersection if the discriminant is negative
+  if (discriminant < 0.0)
+  {
+      return 0.0;
+  }
+
+  // Compute the two points of intersection t0 and t1
+  float sqrtDiscriminant = sqrt(discriminant);
+  float t0 = (-b - sqrtDiscriminant) / (2.0 * a);
+  float t1 = (-b + sqrtDiscriminant) / (2.0 * a);
+
+  // Clamp t0 and t1 to the range [0, 1] to keep them within the segment
+  t0 = clamp(t0, 0.0, 1.0);
+  t1 = clamp(t1, 0.0, 1.0);
+
+  // If t0 is greater than t1, there's no valid segment within the sphere
+  if (t0 > t1)
+  {
+      return 0.0;
+  }
+
+  // Calculate the length of the segment within the sphere
+  float segmentLengthWithinSphere = length(d) * (t1 - t0);
+
+  // Calculate the total length of the segment
+  float totalSegmentLength = length(d);
+
+  // Calculate the percentage of the segment that lies within the sphere
+  return segmentLengthWithinSphere / totalSegmentLength;
+}
+
+// Calculate the percentage of a line segment below an axis-aligned plane
+float lineSegmentPlaneIntersectionPercentage(const float3  p1, const float3 p2, const float3 planeNormal, const float planeDistance)
+{
+  float3 lineDirection = p2 - p1;
+  float lineLength = length(lineDirection);
+  lineDirection /= lineLength; 
+    
+  float denominator = dot(lineDirection, planeNormal);
+    
+  // Check if the line is parallel with the plane
+  if (abs(denominator) < 1e-6)
+  {
+    // Line is parallel to the plane
+    float startDistance = dot(p1, planeNormal) - planeDistance;
+    // If start point is below the plane, entire line is below
+    return startDistance < 0 ? 1.f : 0.f;
+  }
+  
+  // No intersection case (both points on either side of plane)
+  float startDistance1 = dot(p1, planeNormal) - planeDistance;
+  float startDistance2 = dot(p2, planeNormal) - planeDistance;
+  if(sign(startDistance1) == sign(startDistance2))
+  {
+    return startDistance1 < 0 ? 1.f : 0.f;
+  }
+  
+  // Determine if line starts above or below the plane
+  bool startsAbove = startDistance1 >= 0;
+  
+  float t = (planeDistance - dot(p1, planeNormal)) / denominator;
+    
+  // Calculate percentage
+  float percentage = saturate(t / lineLength);
+    
+   // percentage of line below plane
+  return startsAbove ? 1.f - percentage : percentage;
+}
+
+float raySphereIntersect(float3 rayOrigin, float3 rayDir, float3 sphereCenter, float sphereRadiusSquared)
+{
+  // Calculate vector from ray origin to sphere center
+  float3 oc = rayOrigin - sphereCenter;
+    
+  // Calculate quadratic coefficients
+  float a = dot(rayDir, rayDir);
+  float b = 2.0f * dot(oc, rayDir);
+  float c = dot(oc, oc) - sphereRadiusSquared;
+    
+  // Calculate discriminant
+  float discriminant = b * b - 4.0f * a * c;
+    
+  // If discriminant is negative, ray misses sphere
+  if (discriminant < 0.0f)
+  {
+    return -1.f;
+  }
+    
+  // Calculate intersection distances
+  float sqrtDisc = sqrt(discriminant);
+  float t0 = (-b - sqrtDisc) / (2.0f * a);
+  float t1 = (-b + sqrtDisc) / (2.0f * a);
+    
+  // Get closest intersection point in front of ray
+  float t = t0;
+  if (t < 0.0f)
+  {
+    t = t1;
+    if (t < 0.0f)
+    {
+      return -1.f;
+    }
+  }
+    
+  return t;
+}
+
+// Calculates the one or two intersections between a ray and a sphere.
+// In typical cases where a ray intersects a sphere from the outside, the entry and exit Hit T values will be positive values
+// representing the two locations where the ray intersects the sphere.
+// When the ray starts inside the sphere, the entry Hit T will be negative indicating the point behind the ray it would've
+// intersected as a line, whereas the exit Hit T will be positive and contain the actual hit distance.
+// Finally, when the line formed by the ray either misses the sphere entierly or both entry and exit points are behind the
+// ray, -1 is returned for both the entry and exit Hit T.
+// Note that the radius passed into this function must be squared, this is done as often a squared radius is already known
+// and does not need to be recomputed.
+void raySphereIntersect(float3 rayOrigin, float3 rayDir, float3 sphereCenter, float sphereRadiusSquared, out float entryHitT, out float exitHitT)
+{
+  // Calculate vector from ray origin to sphere center
+  float3 oc = rayOrigin - sphereCenter;
+    
+  // Calculate quadratic coefficients
+  float a = dot(rayDir, rayDir);
+  float b = 2.0f * dot(oc, rayDir);
+  float c = dot(oc, oc) - sphereRadiusSquared;
+    
+  // Calculate discriminant
+  float discriminant = b * b - 4.0f * a * c;
+  
+  entryHitT = -1.f;
+  exitHitT = -1.f;
+  
+  // If discriminant is negative, ray misses sphere
+  if (discriminant < 0.0f)
+  {
+    return;
+  }
+    
+  // Calculate intersection distances
+  float sqrtDisc = sqrt(discriminant);
+  float t0 = (-b - sqrtDisc) / (2.0f * a);
+  float t1 = (-b + sqrtDisc) / (2.0f * a);
+    
+  // Sort intersections so t0 is closer than t1
+  if (t0 > t1)
+  {
+    float temp = t0;
+    t0 = t1;
+    t1 = temp;
+  }
+    
+  // Check if intersections are in front of ray
+  if (t1 < 0.0f)
+  {
+    return;
+  }
+    
+  // Store first valid intersection (entry point)
+  entryHitT = t0; 
+  // Store second intersection (exit point)
+  exitHitT = t1;
+}

@@ -1,0 +1,178 @@
+/*
+* Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "procedural_noise.h"
+
+#include "rtx/utility/noise.slangh"
+// Note: This include must be under the "noise.slangh" include as it depends on Remix noise algorithms.
+#include "rtx/external/simplex_noise.slangh"
+
+// Fractal Brownian Motion
+
+interface IFractalNoiseSource<TCoordinate>
+{
+  // Returns a noise value in the range [-1, 1] given a n-dimensional input coordinate depending on the interface type.
+  static float evaluateSignedNoise(TCoordinate p);
+}
+
+// Evaluates n-dimensional Fractal Noise using a provided n-dimensional noise source. Returns a normalized noise value in the range [0, 1].
+// Parameters are as follows:
+// octaves - [1, 8], describes the number of iterations of noise to apply, generally higher values add finer detail levels to the noise.
+//           Clamped to a maximum of 8 as octaves beyond this generally aren't too significant for most use cases, and having a finite maximum allows
+//           for potentially better loop unrolling.
+// initialFrequency - [0, inf], sets the initial frequency the noise will be evaluated at, useful for tuning the noise to the desired domain
+//                    (e.g. noise working on position values will need a lower frequency generally to look good rather than noise operating on [0, 1) UVs).
+// lacunarity - [0, inf], the multiplier to apply to the frequency with each iteration. 2 is usually a fine value for this, higher values make the noise
+//              higher frequency faster with each added octave.
+// gain - [0, inf], the multiplier to apply to the amplitude with each iteration. 0.5 is usually a fine value for this, higher values will make the noise
+//        more jagged whereas lower values will make the noise smoother.
+// turbulent - A boolean indicating if "turbulent"-style noise should be used or not. When true this creates more valley-like structures in the noise,
+//             whereas when false this creates a more "cloudy"-type typical fractal noise.
+float fractalBrownianNoise<let Dimension : int, TNoiseSource : IFractalNoiseSource<vector<float, Dimension>>>(
+  vector<float, Dimension> p,
+  uint octaves,
+  float initialFrequency,
+  float lacunarity,
+  float gain,
+  bool turbulent
+)
+{
+  float amplitude = 0.5f;
+  float frequency = initialFrequency;
+  float normalizationSum = 0.0;
+  float sum = 0.0f;
+
+  for (uint i = 0; i < clamp(octaves, 1, 8); ++i) {
+    const float rawNoise = TNoiseSource.evaluateSignedNoise(p * frequency);
+    const float remappedNoise = turbulent ? abs(rawNoise) : snormF32ToUnormF32(rawNoise);
+
+    normalizationSum += amplitude;
+    sum += amplitude * remappedNoise;
+    frequency *= lacunarity;
+    amplitude *= gain;
+  }
+
+  return sum / normalizationSum;
+}
+
+// Value Noise
+
+float4 valueNoiseLutSample<let useTricubicFiltering : bool>(float3 texelPosition)
+{
+  const float3 inverseValueNoiseResolution = float3(1.0f / VALUE_NOISE_RESOLUTION);
+
+  float4 s;
+
+  // Note: For some purposes trilinearly filtered value noise samples work fine, but for others not so much.
+  // For instance, aliasing artifacts appear when raymarching through the volumetric density field when using turbulent fractal
+  // noise sourced from trilinearly filtered value noise, but these artifacts do not appear when using tricubic filtering or non-turbulent
+  // noise (in this case simply using non-turbulent noise is the better solution due to the cost of tricubic filtering).
+  // Tricubic filtering is roughly 8x more expensive than trilinear filtering due to needing 8 trilinear samples (totaling to 64 point
+  // samples total), so keep this in mind when using value noise heavily, and perhaps consider using the trilinear version whenever possible
+  // to avoid performance issues.
+  if (useTricubicFiltering) {
+    s = TricubicSample(ValueNoiseSampler, texelPosition, inverseValueNoiseResolution);
+  } else {
+    s = ValueNoiseSampler.SampleLevel(texelPosition * inverseValueNoiseResolution, 0);
+  }
+
+  // Note: Convert unorm to snorm as is expected for signed value noise.
+  return unormF32ToSnormF32(s);
+}
+
+float valueNoise4D<let useTricubicFiltering : bool>(float4 x)
+{
+  float3 pos = x.xyz;
+  // wrap time so that 1 unit == one full cycle
+  float angle = frac(x.w) * twoPi;
+  float2 uv = float2(cos(angle), sin(angle)) * 0.5f + 0.5f;
+  
+  float4 n = valueNoiseLutSample<useTricubicFiltering>(pos);
+
+  float bottom = lerp(n.x, n.y, uv.x);
+  float top = lerp(n.z, n.w, uv.x);
+  return lerp(bottom, top, uv.y);
+}
+
+float3 noiseField(float4 p)
+{
+  // Offsets can be any large, "random" constants
+  // so that each component is decorrelated.
+  float3 F;
+  F.x = valueNoise4D<false>(p + float4(37.1,  17.2,  19.3, 101.1));
+  F.y = valueNoise4D<false>(p + float4(29.9,  11.4,   5.7,  45.6));
+  F.z = valueNoise4D<false>(p + float4(11.0,  59.5,  47.8,  13.2));
+  return F;
+}
+
+// Curl noise reference: https://petewerner.blogspot.com/2015/02/intro-to-curl-noise.html?m=1
+float3 curlOfValueNoise(float3 pos, float time = 0.f)
+{
+  float4 p = float4(pos, time);
+  
+  // Small step used for finite difference
+  // Adjust 'e' as needed for accuracy vs. performance
+  const float e = 0.01;
+
+  // Sample the vector field at positive/negative offsets in x, y, and z
+  float3 Fpx = noiseField(p + float4( e, 0, 0, 0));  // +x
+  float3 Fmx = noiseField(p - float4( e, 0, 0, 0));  // -x
+  float3 Fpy = noiseField(p + float4(0,  e, 0, 0));  // +y
+  float3 Fmy = noiseField(p - float4(0,  e, 0, 0));  // -y
+  float3 Fpz = noiseField(p + float4(0, 0,  e, 0));  // +z
+  float3 Fmz = noiseField(p - float4(0, 0,  e, 0));  // -z
+
+  // Compute partial derivatives of F with respect to x, y, and z
+  float3 dFdx = (Fpx - Fmx) * (0.5 / e);
+  float3 dFdy = (Fpy - Fmy) * (0.5 / e);
+  float3 dFdz = (Fpz - Fmz) * (0.5 / e);
+
+  // Curl of F = ( dFz/dy - dFy/dz, dFx/dz - dFz/dx, dFy/dx - dFx/dy )
+  float3 curl;
+  curl.x = dFdz.y - dFdy.z;
+  curl.y = dFdx.z - dFdz.x;
+  curl.z = dFdy.x - dFdx.y;
+
+  return curl;
+}
+
+struct ValueNoiseSource<let useTricubicFiltering : bool> : IFractalNoiseSource<float4>
+{
+  static float evaluateSignedNoise(float4 p)
+  {
+    return valueNoise4D<useTricubicFiltering>(p);
+  }
+}
+
+// Simplex Noise
+
+// Todo: Need a 4D Simplex noise implementation, currently only 3D as 4D
+// implementations are less common and a bit more tricky to do on the GPU cleanly
+// as they require 5 components rather than 4 and thus don't align to vectors nicely.
+struct SimplexNoiseSource : IFractalNoiseSource<float3>
+{
+  static float evaluateSignedNoise(float3 p)
+  {
+    return simplexNoise3D(p);
+  }
+}

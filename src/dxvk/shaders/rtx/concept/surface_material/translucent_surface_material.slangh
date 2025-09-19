@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -23,41 +23,11 @@
 
 // Translucent Surface Material Functions
 
-TranslucentSurfaceMaterial translucentSurfaceMaterialCreate(uint16_t surfaceMaterialIndex, MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial, const bool visibilityCheckOnly = false)
+TranslucentSurfaceMaterial translucentSurfaceMaterialCreate(MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial, const bool visibilityCheckOnly = false)
 {
-  // Decode the Translucent Surface Material from the packed memory representation
-  // Note: Translucent type is known in advance
-
-  TranslucentSurfaceMaterial translucentSurfaceMaterial;
-
-  const u16vec2 data00 = unpack16(memoryPolymorphicSurfaceMaterial.data0.x);
-  const u16vec2 data01 = unpack16(memoryPolymorphicSurfaceMaterial.data0.y);
-  const u16vec2 data02 = unpack16(memoryPolymorphicSurfaceMaterial.data0.z);
-  const u16vec2 data03 = unpack16(memoryPolymorphicSurfaceMaterial.data0.w);
-
-  translucentSurfaceMaterial.flags = uint8_t(data00.x);
-  // Note: This potentially is not needed if more space is desired in the material as it can be derived from the IoR. It is simply included
-  // here for performance as it can be precomputed on the CPU.
-  translucentSurfaceMaterial.baseReflectivity = unorm8ToF16(uint8_t(data00.x >> 8));
-
-  // Todo: This should not be encoded as 3 16 bit floats, as a color it can be 8 bit unorms (or at the very least 16 bit unorms to improve precision
-  // usage). No need to change this for now though, but if more bits are needed in the translucent material in the future this would be a good place
-  // to start as there are really 24 bits free here.
-  translucentSurfaceMaterial.transmittanceColor = uint16BitsToHalf(u16vec3(data00.y, data01.xy));
-
-  translucentSurfaceMaterial.samplerIndex = data02.x;
-  translucentSurfaceMaterial.transmittanceOrDiffuseTextureIndex = data02.y;
-
-  // Note: Sign bit here contains a flag which indicates if this is a thick or thin translucent material. This will break down however if the thickness
-  // or measruement distance is ever 0, as the comparisons we use cannot detect the sign of 0. No material should actually use such a value though as it
-  // makes no sense for a measurement distance and is debatably useless for a thin surface just the same (as it'd make it invisible).
-  translucentSurfaceMaterial.thicknessOrMeasurementDistance = uint16BitsToHalf(data03.x);
-
-  translucentSurfaceMaterial.sourceSurfaceMaterialIndex = surfaceMaterialIndex;
-    
-  // If we're just doing a visibility check, we dont need these parameters, only those for attenuation.
-  if(visibilityCheckOnly)
+  if (visibilityCheckOnly)
   {
+    TranslucentSurfaceMaterial translucentSurfaceMaterial = reinterpret<TranslucentSurfaceMaterial>(memoryPolymorphicSurfaceMaterial);
     translucentSurfaceMaterial.normalTextureIndex = BINDING_INDEX_INVALID;
     translucentSurfaceMaterial.emissiveColorTextureIndex = BINDING_INDEX_INVALID;
     translucentSurfaceMaterial.emissiveIntensity = 0.h;
@@ -65,21 +35,10 @@ TranslucentSurfaceMaterial translucentSurfaceMaterialCreate(uint16_t surfaceMate
     translucentSurfaceMaterial.emissiveColorConstant = 0.h;
     return translucentSurfaceMaterial;
   }
-
-  const u16vec2 data10 = unpack16(memoryPolymorphicSurfaceMaterial.data1.x);
-  const u16vec2 data11 = unpack16(memoryPolymorphicSurfaceMaterial.data1.y);
-
-  translucentSurfaceMaterial.normalTextureIndex = data03.y;
-  translucentSurfaceMaterial.emissiveColorTextureIndex = data10.x;
-
-  // Note: First 8 bits of data03.y free and used as padding here to not misalign subsequent reads.
-  translucentSurfaceMaterial.emissiveIntensity = uint16BitsToHalf(data10.y);
-
-  // Note: Normalized on a range of [1, 3] as almost all physical IoRs used in translucent materials are within this range.
-  translucentSurfaceMaterial.refractiveIndex = unorm8ToF16(uint8_t(data11.x)) * float16_t(2.0f) + float16_t(1.0f);
-  translucentSurfaceMaterial.emissiveColorConstant = f16vec3(unorm8ToF16(uint8_t(data11.x >> 8u)), unorm8ToF16(uint8_t(data11.y)), unorm8ToF16(uint8_t(data11.y >> 8u)));
-
-  return translucentSurfaceMaterial;
+  else
+  {
+    return reinterpret<TranslucentSurfaceMaterial>(memoryPolymorphicSurfaceMaterial);
+  }
 }
 
 // Note: This function should only be called on thick translucent surfaces and must be checked in advance.

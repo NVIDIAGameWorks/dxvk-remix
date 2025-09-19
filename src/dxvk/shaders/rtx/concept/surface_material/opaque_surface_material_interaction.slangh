@@ -33,6 +33,11 @@ static const f16vec3 baseReflectivityThreshold = f16vec3(1.0h / 256.0h);
 // Must be greater than materialMinimumRoughness in the BRDF helpers as all roughnesses will be clamped to at minimum this value.
 static const float16_t roughnessThreshold = float16_t(0.001h);
 
+// Note: When set to 1 this enables bounded VNDF sampling, when set to 0 this uses original unbounded VNDF sampling.
+// Generally bounded should be preferred as it has better performance (due to using spherical cap sampling) as well
+// as generating fewer invalid samples.
+#define OPAQUE_MATERIAL_USE_BOUNDED_VNDF_SAMPLING 1
+
 // Opaque Surface Material Interaction Helper Functions
 
 #ifdef OPAQUE_MATERIAL_USE_POM
@@ -82,7 +87,15 @@ float4 pomGetPatchCorners(Texture2D texture, SamplerState sampler, float2 boxCen
 }
 
 // cast a ray in tangent space.  return an intersection point in tangent point (or an exit point if z > 1.0f)
-float3 pomTraceRay(Texture2D texture, SamplerState sampler, float3 origin, float3 direction, float2 textureGradientX, float2 textureGradientY, inout uint iterations)
+float3 pomTraceRay(
+  Texture2D texture,
+  SamplerState sampler,
+  float3 origin,
+  float3 direction,
+  float2 textureGradientX,
+  float2 textureGradientY,
+  inout uint iterations,
+  float neutralHeight)
 {
   // Potential future improvements for outwards rays:
   // 1) calculate starting height the same way the box intersection code does instead of just sampling at a pixel.
@@ -95,6 +108,8 @@ float3 pomTraceRay(Texture2D texture, SamplerState sampler, float3 origin, float
   const float2 ddy_tex = textureGradientY * fullBoxSize;
   const float dd_max_sq = max(dot(ddx_tex, ddx_tex), dot(ddy_tex, ddy_tex));
   uint minMipLevel = max(0, min(numMipLevels, log2(sqrt(dd_max_sq)) + cb.totalMipBias));
+
+  origin.xy = origin.xy + (direction.xy * (1.f - neutralHeight)) / direction.z;
 
   // Starting halfway down the quadtree seems to generally lead to fewer iterations to resolve, especially for heights close to 1.
   // Outwards rays start at 0, since they will just descend to 0 if they start anywhere else.
@@ -148,7 +163,7 @@ float3 pomTraceRay(Texture2D texture, SamplerState sampler, float3 origin, float
         // causes smooth slops to turn jagged. It may be an improvement to use that approach only when the current
         // pixel is the largest or smallest of all the neighbors, but that seemed too complex to be worth pursuing.
         
-        // Calculate the point where  the ray entered this box:
+        // Calculate the point where the ray entered this box:
         const float2 boxNearCorner = boxCenter - forwardHalfStep * boxSize;
         const float2 boxEntranceDist = (boxNearCorner - origin.xy) / direction.xy;
         const float3 boxEntrance = origin + max(0.0f, max(boxEntranceDist.x, boxEntranceDist.y)) * direction;
@@ -210,10 +225,12 @@ float3 pomTraceRay(Texture2D texture, SamplerState sampler, float3 origin, float
   }
 
   // Outwards rays can go past the top of the POM surface, so limit it to there.
-  if (curPos.z > 1) {
+  if (curPos.z > 1)
+  {
     float distToOne = (1.0f - origin.z) / direction.z;
     return origin + distToOne * direction;
   }
+
   return curPos;
 }
 
@@ -223,10 +240,10 @@ float pomSampleHeight(uint16_t idx, uint16_t samplerIndex, float2 texcoord)
   return 1.0f - textures[nonuniformEXT(uint(idx))].SampleLevel(samplers[nonuniformEXT(uint(samplerIndex))], texcoord, 0).r;
 }
 
-float2 pomGetStep(float3 direction, float layerSize, float displaceIn)
+float2 pomGetStep(float3 direction, float layerSize, float totalHeight)
 {
   // convert tangent space direction to texcoord
-  return direction.xy / direction.z * displaceIn * layerSize;
+  return direction.xy / direction.z * totalHeight * layerSize;
 }
 
 float pomGetNumSamples(float3 direction)
@@ -244,18 +261,25 @@ float3 pomCalculateTexcoord(
   float3 viewDir,
   inout uint iterations)
 {
+  float totalHeight = opaqueSurfaceMaterial.displaceIn + opaqueSurfaceMaterial.displaceOut;
+  float neutralHeight = opaqueSurfaceMaterial.displaceIn / totalHeight;
+  // TODO if the ray origin is below the displaceOut height, bad results happen.
+  // need to account for that case.
+  float3 direction = -float3(viewDir.xy, viewDir.z / totalHeight);
   if (cb.pomMode == DisplacementMode::RaymarchPOM) {
     float numLayers = pomGetNumSamples(viewDir);
     float layerSize = rcp(numLayers);
-    float2 step = pomGetStep(viewDir, layerSize, opaqueSurfaceMaterial.displaceIn);
+    float2 step = pomGetStep(viewDir, layerSize, totalHeight);
 
     float2 currTexcoord = surfaceInteraction.textureCoordinates;
+
+    currTexcoord = currTexcoord + (step * numLayers * (1.f - neutralHeight));
     float currHeight = pomSampleHeight(opaqueSurfaceMaterial.heightTextureIndex, opaqueSurfaceMaterial.samplerIndex, currTexcoord);
 
     // raymarch to find intersection
     float currDepth = 0.0f, prevHeight = 0.0f;
     iterations = 0;
-    while(currDepth < currHeight)
+    while (currDepth < currHeight)
     {
       iterations++;
       currTexcoord -= step;
@@ -270,43 +294,44 @@ float3 pomCalculateTexcoord(
     float weight = saturate(depthN / (depthN - depthNminus1));
     return float3(currTexcoord + lerp(0..xx, step, weight), currHeight);
   } else if (cb.pomMode == DisplacementMode::QuadtreePOM) {
+
     return pomTraceRay(
         textures[nonuniformEXT(uint(opaqueSurfaceMaterial.heightTextureIndex))],
         samplers[nonuniformEXT(uint(opaqueSurfaceMaterial.samplerIndex))],
         float3(surfaceInteraction.textureCoordinates, 1.0f),
-        -float3(viewDir.xy, viewDir.z / opaqueSurfaceMaterial.displaceIn),
+        direction,
         surfaceInteraction.textureGradientX,
         surfaceInteraction.textureGradientY,
-        iterations);
+        iterations, neutralHeight);
   }
   return float3(surfaceInteraction.textureCoordinates, 1.f);
 }
 
 float pomSampleVisibility(
-    uint16_t heightTextureIdx,
-    uint16_t samplerIndex,
-    float2 texcoord,
-    float3 rayDirection,
-    float displaceIn)
+  OpaqueSurfaceMaterial opaqueSurfaceMaterial,
+  float2 texcoord,
+  float3 rayDirection)
 {
+  // Don't actually care about neutral height here - this function just checks if a ray from a texcoord successfully exits
+  // the geometry described by the heightmap.  Doesn't (currently) matter how high that geometry is relative to the original surface.
+  float totalHeight = opaqueSurfaceMaterial.displaceIn + opaqueSurfaceMaterial.displaceOut;
   // NOTE: pomTraceRay could be used here, but testing found it was more expensive and had worse artifacts when
   // doing visibility testing.
   float2 currTexcoord = texcoord;
-  float currHeight = pomSampleHeight(heightTextureIdx, samplerIndex, currTexcoord);
+  float currHeight = pomSampleHeight(opaqueSurfaceMaterial.heightTextureIndex, opaqueSurfaceMaterial.samplerIndex, currTexcoord);
   float currDepth = currHeight;
   float numLayers = pomGetNumSamples(rayDirection);
   float layerSize = rcp(numLayers);
-  float2 step = pomGetStep(rayDirection, layerSize, displaceIn);
-
+  float2 step = pomGetStep(rayDirection, layerSize, totalHeight);
 
   float visibility = 1.0f;
   while (currDepth > 0.0f)
   {
     currTexcoord += step;
-    currHeight = pomSampleHeight(heightTextureIdx, samplerIndex, currTexcoord);
+    currHeight = pomSampleHeight(opaqueSurfaceMaterial.heightTextureIndex, opaqueSurfaceMaterial.samplerIndex, currTexcoord);
     currDepth -= layerSize;
 
-    if(currHeight < currDepth)
+    if (currHeight < currDepth)
     {
       visibility -= (currDepth - currHeight) / layerSize;
     }
@@ -318,10 +343,8 @@ float pomSampleVisibility(
 float opaqueSurfaceMaterialInteractionCalcHeightThroughput(
   MinimalSurfaceInteraction minimalSurfaceInteraction,
   f16vec3 rayDirection,
-  uint16_t heightTextureIdx,
-  uint16_t samplerIndex,
-  float2 texcoord,
-  float displaceIn)
+  OpaqueSurfaceMaterial opaqueSurfaceMaterial,
+  float2 texcoord)
 {
   // rebuild tangent space
   const f16mat3 worldToTangent = f16mat3(
@@ -329,7 +352,7 @@ float opaqueSurfaceMaterialInteractionCalcHeightThroughput(
     minimalSurfaceInteraction.triangleBitangent,
     minimalSurfaceInteraction.triangleNormal);
   const f16vec3 lightDirTangentSpace = normalize(mul(worldToTangent, rayDirection));
-  return pomSampleVisibility(heightTextureIdx, samplerIndex, texcoord, lightDirTangentSpace, displaceIn);
+  return pomSampleVisibility(opaqueSurfaceMaterial, texcoord, lightDirTangentSpace);
 }
 #endif
 
@@ -338,11 +361,13 @@ SubsurfaceMaterialInteraction subsurfaceMaterialInteractionCreate(
   SurfaceInteraction surfaceInteraction,
   uint16_t samplerIndex)
 {
-  f16vec4 transmittanceColor;
-  f16vec4 subsurfaceMeasurementDistance;
-  f16vec4 subsurfaceSingleScatteringAlbedo;
+  f16vec4 transmittanceColor = 0.0h;
+  f16vec4 subsurfaceMeasurementDistance = 0.0h;
+  f16vec4 subsurfaceSingleScatteringAlbedo = 0.0h;
 
-  bool measurementDistanceLoaded = surfaceMaterialInteractionTextureReadHelper(subsurfaceMaterial.subsurfaceThicknessTextureIndex, samplerIndex, surfaceInteraction, subsurfaceMeasurementDistance);
+  bool isDiffusionProfile = subsurfaceMaterial.maxSampleRadius > 0.0f;
+
+  bool measurementDistanceLoaded = !isDiffusionProfile ? surfaceMaterialInteractionTextureReadHelper(subsurfaceMaterial.subsurfaceThicknessTextureIndex, samplerIndex, surfaceInteraction, subsurfaceMeasurementDistance) : false;
   bool transmittanceColorLoaded = surfaceMaterialInteractionTextureReadHelper(subsurfaceMaterial.subsurfaceTransmittanceTextureIndex, samplerIndex, surfaceInteraction, transmittanceColor);
   bool singleScatteringAlbedoLoaded = surfaceMaterialInteractionTextureReadHelper(subsurfaceMaterial.subsurfaceSingleScatteringAlbedoTextureIndex, samplerIndex, surfaceInteraction, subsurfaceSingleScatteringAlbedo);
 
@@ -360,23 +385,37 @@ SubsurfaceMaterialInteraction subsurfaceMaterialInteractionCreate(
   // volumetricAttenuationCoefficient must be read behind measurementDistance, because if using sss textures, the volumetricAttenuationCoefficient need to be calculated base on measurementDistance
   if (transmittanceColorLoaded)
   {
-    subsurfaceMaterialInteraction.packedTransmittanceColor = colorToR5G6B5(transmittanceColor.rgb);
+    // Note: It's common to use diffuse albedo color as SSS transmission color, Remix assumes all textures are not using sRGB formats, so we follow the assumption here.
+    if (isDiffusionProfile)
+    {
+      transmittanceColor = gammaToLinear(transmittanceColor);
+    }
   }
   else
   {
-    subsurfaceMaterialInteraction.packedTransmittanceColor = colorToR5G6B5(evalBeerLambertAttenuation(subsurfaceMaterial.volumetricAttenuationCoefficient, subsurfaceMaterial.measurementDistance));
+    if (!isDiffusionProfile) // Thin Opaque
+    {
+      transmittanceColor.rgb = evalBeerLambertAttenuation(subsurfaceMaterial.volumetricAttenuationCoefficient, subsurfaceMaterial.measurementDistance);
+    }
+    else // SSS
+    {
+      transmittanceColor.rgb = subsurfaceMaterial.volumetricAttenuationCoefficient;
+    }
   }
+  subsurfaceMaterialInteraction.packedTransmittanceColor = colorToR11G11B10(transmittanceColor.rgb);
 
   if (singleScatteringAlbedoLoaded)
   {
-    subsurfaceMaterialInteraction.packedSingleScatteringAlbedo = colorToR5G6B5(subsurfaceSingleScatteringAlbedo.rgb);
+    subsurfaceMaterialInteraction.packedSingleScatteringAlbedo = colorToR11G11B10(subsurfaceSingleScatteringAlbedo.rgb);
   }
   else
   {
-    subsurfaceMaterialInteraction.packedSingleScatteringAlbedo = colorToR5G6B5(subsurfaceMaterial.singleScatteringAlbedo);
+    subsurfaceMaterialInteraction.packedSingleScatteringAlbedo = colorToR11G11B10(subsurfaceMaterial.singleScatteringAlbedo);
   }
 
   subsurfaceMaterialInteraction.volumetricAnisotropy = f16ToSnorm8(subsurfaceMaterial.volumetricAnisotropy);
+
+  subsurfaceMaterialInteraction.maxSampleRadius = subsurfaceMaterial.maxSampleRadius != 0.0h ? f16ToUnorm8(max(subsurfaceMaterial.maxSampleRadius, materialSssEpsilon)) : 0;
 
   return subsurfaceMaterialInteraction;
 }
@@ -391,13 +430,39 @@ void storeColorOverlayedWithTextureResolutionCheckersInDebugView(vec3 colorValue
     colorValue = 
       tintColorValueWithTextureResolutionCheckers(
         colorValue,
-        surfaceInteraction.textureCoordinates, 
+        surfaceInteraction.textureCoordinates,
         surfaceInteraction.textureGradientX * cb.upscaleFactor,
         surfaceInteraction.textureGradientY * cb.upscaleFactor,
         texDims,
         cb.debugKnob.x,
         cb.debugKnob.y);
-    storeInDebugView(DispatchRaysIndex().xy, colorValue);
+    storeInDebugView(getDispatchRaysIndex().xy, colorValue);
+  }
+}
+
+uint8_t calcMipLevelAccessedForSamplerFeedback(SurfaceInteraction surfaceInteraction)
+{
+  // assume fixed 4k size to report stable accessed mip for differently sized textures
+  const uint2 fullBoxSize = uint2(4096, 4096);
+
+  vec2 ddx_tex = surfaceInteraction.textureGradientX * cb.upscaleFactor;
+  vec2 ddy_tex = surfaceInteraction.textureGradientY * cb.upscaleFactor;
+  ddx_tex *= fullBoxSize;
+  ddy_tex *= fullBoxSize;
+  const float ddSq = max(dot(ddx_tex, ddx_tex), dot(ddy_tex, ddy_tex));
+
+  return uint8_t(clamp(log2(sqrt(ddSq)), 0, 255));
+}
+
+void storeSamplerFeedback(uint32_t samplerFeedbackStamp, SurfaceInteraction surfaceInteraction)
+{
+  if (samplerFeedbackStamp != SAMPLER_FEEDBACK_INVALID)
+  {
+    uint32_t oldvalue;
+    InterlockedMin(
+      SamplerFeedbackBuffer[samplerFeedbackStamp],
+      uint32_t(calcMipLevelAccessedForSamplerFeedback(surfaceInteraction)),
+      oldvalue);
   }
 }
 
@@ -424,7 +489,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   opaqueSurfaceMaterialInteraction.flags |= thinFilmEnabled ? OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_USE_THIN_FILM_LAYER : 0;
 
 #ifdef OPAQUE_MATERIAL_USE_POM
-  if (cb.pomMode != DisplacementMode::Off && opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID && opaqueSurfaceMaterial.displaceIn > 0.0f)
+  if (cb.pomMode != DisplacementMode::Off && opaqueSurfaceMaterial.hasValidDisplacement())
   {
     const mat3 worldToTexture = inverse(transpose(mat3(surfaceInteraction.rawTangent, surfaceInteraction.rawBitangent, surfaceInteraction.interpolatedNormal)));
     // TextureGradient x might be along the same direction as the view ray?  make a debug view that shows the dot product between textureGradient.x and viewDirTangentSpace?
@@ -432,14 +497,18 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     f16vec3 viewDirTextureSpace = normalize(mul(worldToTexture, minimalRayInteraction.viewDirection));
     // Note: -1.f * TextureGradientX has the same x,y direction as viewDirTextureSpace, but calculating the correct z value is non-obvious.
     // Could potentially remove the need for the worldToTexture transform if a faster way to calculate that z value is found.
-
+    
     uint iterations = 0; // unused
-    surfaceInteraction.textureCoordinates = pomCalculateTexcoord(
+    const vec2 pomTextureCoordinates = pomCalculateTexcoord(
         opaqueSurfaceMaterial,
         surfaceInteraction,
         viewDirTextureSpace,
         iterations).xy;
-    opaqueSurfaceMaterialInteraction.flags |= opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID ? OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_HAS_HEIGHT_TEXTURE : 0;
+
+    // WAR for REMIX-3709 - POM sometimes produces NaNs.
+    surfaceInteraction.textureCoordinates = sanitize(pomTextureCoordinates, surfaceInteraction.textureCoordinates);
+
+    opaqueSurfaceMaterialInteraction.flags |= OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_HAS_HEIGHT_TEXTURE;
   }
 #endif
 
@@ -477,12 +546,21 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   const bool roughnessLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.roughnessTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, roughnessSample);
   const bool metallicLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.metallicTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, metallicSample);
   const bool emissiveColorLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.emissiveColorTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, emissiveColorSample);
+  
+  // Load Emissive Color
 
+  f16vec3 emissiveColor = opaqueSurfaceMaterial.emissiveColorConstant;
+
+  if (emissiveColorLoaded)
+  {
+    emissiveColor = emissiveColorSample.xyz;
+  }
+  
   // Load Albedo/Opacity
 
   f16vec3 albedo = opaqueSurfaceMaterial.albedoOpacityConstant.rgb;
   float16_t opacity = opaqueSurfaceMaterial.albedoOpacityConstant.a;
-  float16_t emissiveBlendOverrideInfluence = float16_t(0.0f);
+  float16_t emissiveBlendOverrideInfluence = float16_t(1.0f);
   float16_t thinFilmThickness = float16_t(0.0f);
 
   // Baked terrain is the only surface using cascaded view positions, so key off of that
@@ -521,19 +599,22 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     }
   }
 
-#if defined(RAY_TRACING_PRIMARY_RAY) && defined(RAY_PIPELINE)
+#if defined(RAY_TRACING_PRIMARY_RAY)
   if (cb.debugView == DEBUG_VIEW_RAW_ALBEDO) 
   {
-    storeInDebugView(DispatchRaysIndex().xy, albedo.xyz);
+    storeInDebugView(getDispatchRaysIndex().xy, albedo.xyz);
   }
 
   if (cb.debugView == DEBUG_VIEW_OPAQUE_RAW_ALBEDO_RESOLUTION_CHECKERS) 
   {
     storeColorOverlayedWithTextureResolutionCheckersInDebugView(albedo.xyz, opaqueSurfaceMaterial.albedoOpacityTextureIndex, surfaceInteraction);
   } 
+
+  storeSamplerFeedback(opaqueSurfaceMaterial.samplerFeedbackStamp, surfaceInteraction);
+
 #endif
 
-  f16vec4 tFactor = 0.h;
+  f16vec4 tFactor = unorm4x8ToFloat4x16(surface.tFactor).bgra;
 
   // WAR for REMIX-1573: texture ops for opacity should happen during baking and be skipped here for baked terrain,
   // but right now the opacity is not 1 in the baked texture where it is expected to be and thus texture ops
@@ -542,52 +623,17 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   if (applyTextureOperations) 
 #endif
   {
-    // Adjust opacity via texture operations.
-    // Fixed function texture stage state for alpha channel
-
-    float16_t textureAlphaArg1, textureAlphaArg2;
-
-    // Note: Custom decoding done here rather than using our usual unorm to f16 decoding functions to match encoding
-    // based on D3D9's texture factor encoding for a more exact representation.
-    tFactor.a = float16_t((surface.tFactor >> 24) & 0xff) / 255.0h;
-    tFactor.r = float16_t((surface.tFactor >> 16) & 0xff) / 255.0h;
-    tFactor.g = float16_t((surface.tFactor >> 8)  & 0xff) / 255.0h;
-    tFactor.b = float16_t((surface.tFactor)       & 0xff) / 255.0h;
-
-    chooseTextureArgument(textureAlphaArg1, surface.textureAlphaArg1Source, opacity, surfaceInteraction.vertexColor.a, tFactor.a, opacity);
-    chooseTextureArgument(textureAlphaArg2, surface.textureAlphaArg2Source, opacity, surfaceInteraction.vertexColor.a, tFactor.a, float16_t(1.0h));
-    chooseTextureOperationAlpha(opacity, surface.textureAlphaOperation, textureAlphaArg1, textureAlphaArg2);
-  
-    calcOpaqueSurfaceMaterialOpacity(
-      albedo, opacity, surface, opacity, emissiveBlendOverrideInfluence);
-  }
-
-  if (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_IGNORE_ALPHA_CHANNEL)
-  {
-      opacity = 1.h;
-  }
-
-  // Note: Gamma correct albedo input (be it from a constant or a texture). Currently assuming all textures are not using sRGB formats which
-  // automatically do this conversion.
-  // This conversion is done *after* calcOpaqueSurfaceMaterialOpacity to correctly apply double multiplicative blending.
-  // Todo: Disable this for when a sRGB texture is the source of the albedo.
-  albedo = gammaToLinear(albedo);
-
-  // Apply vertex color via texture operations
-  if (applyTextureOperations)
-  {
-    // "Normalize" vertex color to remove lighting contribution in different vertices.
-    // We assume the diffuse term contributes most lighting. Therefore, vertex color = diffuseColor * (N*L).
-    // By dividing the vertex color by its largest component, the result is irrelavant to N*L, but proportional to the 
-    // original diffuse color, which is more desired.
-    // In practice, we add an adjustable blending factor to avoid extreme cases.
-    surfaceInteraction.vertexColor.rgb = max(surfaceInteraction.vertexColor.rgb, f16vec3(1.0 / 255.0));
-    float16_t maxColor = max(surfaceInteraction.vertexColor.r, max(surfaceInteraction.vertexColor.g, surfaceInteraction.vertexColor.b));
-    surfaceInteraction.vertexColor.rgb /= maxColor;
-    surfaceInteraction.vertexColor.rgb = mix(f16vec3(1), surfaceInteraction.vertexColor.rgb, float16_t(cb.vertexColorStrength));
-
-    // Note: Gamma correct vertex color input.
-    surfaceInteraction.vertexColor.rgb = gammaToLinear(surfaceInteraction.vertexColor.rgb);
+    if (surface.isVertexColorBakedLighting) {
+      // "Normalize" vertex color to remove lighting contribution in different vertices.
+      // We assume the diffuse term contributes most lighting. Therefore, vertex color = diffuseColor * (N*L).
+      // By dividing the vertex color by its largest component, the result is irrelavant to N*L, but proportional to the 
+      // original diffuse color, which is more desired.
+      // In practice, we add an adjustable blending factor to avoid extreme cases.
+      surfaceInteraction.vertexColor.rgb = max(surfaceInteraction.vertexColor.rgb, f16vec3(1.0 / 255.0));
+      float16_t maxColor = max(surfaceInteraction.vertexColor.r, max(surfaceInteraction.vertexColor.g, surfaceInteraction.vertexColor.b));
+      surfaceInteraction.vertexColor.rgb /= maxColor;
+      surfaceInteraction.vertexColor.rgb = mix(f16vec3(1), surfaceInteraction.vertexColor.rgb, float16_t(cb.vertexColorStrength));
+    }
 
     // Fixed function texture stage setting
     f16vec3 textureArg1 = f16vec3(1.0), textureArg2 = f16vec3(1.0);
@@ -597,11 +643,46 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     if (surface.isTextureFactorBlend) {
       albedo *= tFactor.rgb;
     }
+
+    // Fixed function texture stage setting (emissive)
+    chooseTextureArgument(textureArg1, surface.textureColorArg1Source, emissiveColor, surfaceInteraction.vertexColor.rgb, tFactor.rgb, f16vec3(1.0));
+    chooseTextureArgument(textureArg2, surface.textureColorArg2Source, emissiveColor, surfaceInteraction.vertexColor.rgb, tFactor.rgb, f16vec3(1.0));
+    chooseTextureOperationColor(emissiveColor, surface.textureColorOperation, textureArg1, textureArg2);
+    if (surface.isTextureFactorBlend) {
+      emissiveColor *= tFactor.rgb;
+    }
+    
+    // Adjust opacity via texture operations.
+    // Fixed function texture stage state for alpha channel
+
+    float16_t textureAlphaArg1, textureAlphaArg2;
+    chooseTextureArgument(textureAlphaArg1, surface.textureAlphaArg1Source, opacity, surfaceInteraction.vertexColor.a, tFactor.a, opacity);
+    chooseTextureArgument(textureAlphaArg2, surface.textureAlphaArg2Source, opacity, surfaceInteraction.vertexColor.a, tFactor.a, float16_t(1.0h));
+    chooseTextureOperationAlpha(opacity, surface.textureAlphaOperation, textureAlphaArg1, textureAlphaArg2);
+    
+    // Ensure we perform these opacity calculations after the texture operations have been applied to abledo and alpha.
+    calcOpaqueSurfaceMaterialOpacity(
+      albedo, opacity, surface, opacity, emissiveBlendOverrideInfluence, cb.wboitEnabled);
   }
 
+  if (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_IGNORE_ALPHA_CHANNEL)
+  {
+    opacity = 1.h;
+  }
+  
+  // Note: Gamma correct albedo input (be it from a constant or a texture). Currently assuming all textures are not using sRGB formats which
+  // automatically do this conversion.
+  // Todo: Disable this for when a sRGB texture is the source of the albedo.
+  albedo = gammaToLinear(albedo);
+  
+  // Note: Gamma correct emissive color input (be it from a constant or a texture). Currently assuming all textures are not using sRGB formats which
+  // automatically do this conversion.
+  // Todo: Disable this for when a sRGB texture is the source of the emissive color.
+  emissiveColor = gammaToLinear(emissiveColor);
+  
   // Apply material modifiers/overrides
   albedo = saturate(albedo * cb.opaqueMaterialArgs.albedoScale + cb.opaqueMaterialArgs.albedoBias);
-
+  
   if (cb.opaqueMaterialArgs.enableThinFilmOverride)
   {
     // Note: Thickness override is already normalized to the proper 0-1 range by the CPU to match how the albedo texture alpha channel encodes thickness.
@@ -648,14 +729,15 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
 
     if (secondNormalLoaded)
     {
-      const f16vec3 tangentNormal2 = unsignedOctahedralToHemisphereDirection(vec2(secondNormalSample.xy), cb.opaqueMaterialArgs.normalIntensity);
-      const f16vec3 normal2 = normalize(mul(tangentToWorld, tangentNormal2));
+      f16vec3 tangentNormal2 = unsignedOctahedralToHemisphereDirection(vec2(secondNormalSample.xy), cb.opaqueMaterialArgs.normalIntensity);
+      
+      tangentNormal2 = normalBlendRNM(tangentNormal2, tangentNormal);
+      normal = normalize(mul(tangentToWorld, tangentNormal2));
 
-      normal = normalBlendRNM(normal2, normal);
     }
   }
   
-#if defined(RAY_TRACING_PRIMARY_RAY) && defined(RAY_PIPELINE)
+#if defined(RAY_TRACING_PRIMARY_RAY)
   if (cb.debugView == DEBUG_VIEW_OPAQUE_NORMAL_RESOLUTION_CHECKERS) 
   {
     storeColorOverlayedWithTextureResolutionCheckersInDebugView(normal, opaqueSurfaceMaterial.normalTextureIndex, surfaceInteraction);
@@ -674,7 +756,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     roughness = roughnessSample.x;
   }
 
-#if defined(RAY_TRACING_PRIMARY_RAY) && defined(RAY_PIPELINE)
+#if defined(RAY_TRACING_PRIMARY_RAY)
   if (cb.debugView == DEBUG_VIEW_OPAQUE_ROUGHNESS_RESOLUTION_CHECKERS) 
   {
     storeColorOverlayedWithTextureResolutionCheckersInDebugView(roughness.xxx, opaqueSurfaceMaterial.roughnessTextureIndex, surfaceInteraction);
@@ -694,25 +776,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     
   metallic = saturate(metallic * cb.opaqueMaterialArgs.metallicScale + cb.opaqueMaterialArgs.metallicBias);
 
-  // Load Emissive Color
-
-  f16vec3 emissiveColor = opaqueSurfaceMaterial.emissiveColorConstant;
-
-  if (emissiveColorLoaded)
-  {
-    emissiveColor = emissiveColorSample.xyz;
-  }
-
-  // Note: Gamma correct emissive color input (be it from a constant or a texture). Currently assuming all textures are not using sRGB formats which
-  // automatically do this conversion.
-  // Todo: Disable this for when a sRGB texture is the source of the emissive color.
-  emissiveColor = gammaToLinear(emissiveColor);
-
   // Transform to desired Opaque Material Interaction values
-
-  // Note: Store a copy of the original albedo value so that operations later can use it rather than working off of the adjusted albedo
-  // (which will not look correct on materials with weird blend modes that do things like invert alpha).
-  const f16vec3 originalAlbedo = albedo;
 
   opaqueSurfaceMaterialInteraction.shadingNormal = getBentNormal(surfaceInteraction.triangleNormal, normal, -minimalRayInteraction.viewDirection);
   opaqueSurfaceMaterialInteraction.normalDetail = normalDetail;
@@ -730,33 +794,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     opaqueSurfaceMaterialInteraction.isotropicRoughness,
     opaqueSurfaceMaterialInteraction.anisotropicRoughness);
 
-  f16vec3 derivedEmissiveColor;
-  float16_t derivedEmissiveIntensity;
-
-  // Note: "Fullbright", emissive blend modes and actual emissive color/intensity are mututally exclusive so this logic for selecting between them in this order is fine.
-  if (surface.isEmissive)
-  {
-    // Todo: Remove this hack when a proper legacy material model is created, or find some better solution to it (such as setting emissive information on the CPU side).
-    derivedEmissiveColor = originalAlbedo;
-    derivedEmissiveIntensity = float16_t(2.0f); // Note: Arbitrary constant, should be set on the CPU side instead and controllable.
-  }
-  else if (surface.isEmissiveBlend && cb.enableEmissiveBlendEmissiveOverride)
-  {
-    // Note: Interpret original material's albedo as emissive color and the emissive blend override influence combined with an arbitrary constant as emissive intensity.
-    // This is so that when "emissive" style blending is used it looks more correct in a physically based way based on the influence from the mode in question.
-    // Todo: Move this all once separate Surface Materials for D3D9 compatability and normal usage are created.
-    derivedEmissiveColor = originalAlbedo;
-    derivedEmissiveIntensity = emissiveBlendOverrideInfluence * uint16BitsToHalf(cb.emissiveBlendOverrideEmissiveIntensity);
-  }
-  else
-  {
-    derivedEmissiveColor = emissiveColor;
-    derivedEmissiveIntensity = opaqueSurfaceMaterial.emissiveIntensity;
-  }
-
-  derivedEmissiveIntensity *= uint16BitsToHalf(cb.emissiveIntensity); // Note: Global emissive intensity scalar on top of everything else.
-
-  opaqueSurfaceMaterialInteraction.emissiveRadiance = derivedEmissiveColor * derivedEmissiveIntensity;
+  opaqueSurfaceMaterialInteraction.emissiveRadiance = emissiveBlendOverrideInfluence * emissiveColor * opaqueSurfaceMaterial.emissiveIntensity;
 
   opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction =
     subSurfaceMaterialReadHelper(opaqueSurfaceMaterial.subsurfaceMaterialIndex, surfaceInteraction, opaqueSurfaceMaterial.samplerIndex);
@@ -793,8 +831,9 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(Polymorp
   opaqueSurfaceMaterialInteraction.normalDetail = polymorphicSurfaceMaterialInteraction.fdata4;
   opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.measurementDistance = polymorphicSurfaceMaterialInteraction.fdata5;
   opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.volumetricAnisotropy = polymorphicSurfaceMaterialInteraction.bdata1;
-  opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.packedTransmittanceColor = polymorphicSurfaceMaterialInteraction.idata0;
-  opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.packedSingleScatteringAlbedo = polymorphicSurfaceMaterialInteraction.idata1;
+  opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.maxSampleRadius = polymorphicSurfaceMaterialInteraction.bdata2;
+  opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.packedTransmittanceColor = polymorphicSurfaceMaterialInteraction.i32data0;
+  opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.packedSingleScatteringAlbedo = polymorphicSurfaceMaterialInteraction.i32data1;
 
   opaqueSurfaceMaterialInteraction.flags = polymorphicSurfaceMaterialInteraction.bdata0;
 
@@ -879,9 +918,9 @@ bool opaqueSurfaceMaterialInteractionCalcLobeProbability(
   out float16_t opacityTransmissionProbability,
   out float16_t diffuseTransmissionProbability)
 {
-  // Calculate dot products used for evaluation
+  const bool isThinOpaqueSubsurface = isThinOpaqueSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
-  const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
+  // Calculate dot products used for evaluation
 
   // Note: Normal dot output direction used as a "best" approximation in this case, usually aligned with the actual sampled
   // microfacet normal on surfaces with low roughness (identical at 0), but will become more and more potentially inaccurate
@@ -891,20 +930,30 @@ bool opaqueSurfaceMaterialInteractionCalcLobeProbability(
 
   // Compute material-related quantities
 
-  // Note: Albedo and Base Reflectivity already have opacity baked into them, though the fresnel contribution may still reach
-  // 1 at grazing angles despite the low base reflectivity at normal incidence. Perceptual luminance also used for albedo and
-  // base reflectivity to hopefully look better to the human eye than a simple average.
-  const float16_t albedoLuminance = calcBt709Luminance(opaqueSurfaceMaterialInteraction.albedo);
+  // Note: Albedo and Base Reflectivity already have opacity baked into them which is why opacity does not need to be specified
+  // in the albedo approximations below.
+  const f16vec3 albedo = opaqueSurfaceMaterialInteraction.albedo;
   const f16vec3 fresnel =
     evalOpaqueSchlickFresnel(opaqueSurfaceMaterialInteraction.baseReflectivity, normalDotOutputDirection);
-  const float16_t fresnelLuminance = calcBt709Luminance(fresnel);
+
+  // Note: I think these should be using a preintegrated albedo calculation (e.g. the EnvBRDF approximation for specular
+  // albedo), but I am not 100% sure if that is the intended "ideal" quantity to be using for a lobe's weight (when only the outgoing
+  // view direction is known, not the yet to be sampled input direction). For now, just using simplified albedo approximations as these
+  // at least directly cancel with terms in the BRDF which should help reduce variance a little.
+  // Note: Perceptual luminance also used to reduce tristimulus color to a single probability value to hopefully look better to
+  // the human eye than a simple average. This is done at the very end of calculations so that interactions between colors take
+  // effect rather than being reduced to a single value too soon.
+  const float16_t diffuseReflectionAlbedoApprox = calcBt709Luminance((f16vec3(1.0h) - fresnel) * albedo);
+  const float16_t specularReflectionAlbedoApprox = calcBt709Luminance(fresnel);
+  const float16_t opacityTransmissionAlbedoApprox = 1.0h - opaqueSurfaceMaterialInteraction.opacity;
+  const float16_t diffuseTransmissionAlbedoApprox = calcBt709Luminance(f16vec3(1.0h) - fresnel);
 
   // Calculate lobe probabilities
 
-  diffuseReflectionProbability = albedoLuminance;
-  specularReflectionProbability = fresnelLuminance;
-  opacityTransmissionProbability = 1.0h - opaqueSurfaceMaterialInteraction.opacity;
-  diffuseTransmissionProbability = isSubsurface ? 1.0h - fresnelLuminance : 0.0h;
+  diffuseReflectionProbability = diffuseReflectionAlbedoApprox;
+  specularReflectionProbability = specularReflectionAlbedoApprox;
+  opacityTransmissionProbability = opacityTransmissionAlbedoApprox;
+  diffuseTransmissionProbability = isThinOpaqueSubsurface ? diffuseTransmissionAlbedoApprox : 0.0h;
 
   // Todo: Pass raytraceArgs in in the future if accessing these constants poses a problem later.
   adjustProbabilityValue(
@@ -916,25 +965,32 @@ bool opaqueSurfaceMaterialInteractionCalcLobeProbability(
     uint16BitsToHalf(cb.opaqueSpecularLobeSamplingProbabilityZeroThreshold),
     uint16BitsToHalf(cb.minOpaqueSpecularLobeSamplingProbability));
   adjustProbabilityValue(
-      opacityTransmissionProbability,
-      uint16BitsToHalf(cb.opaqueOpacityTransmissionLobeSamplingProbabilityZeroThreshold),
-      uint16BitsToHalf(cb.minOpaqueOpacityTransmissionLobeSamplingProbability));
+    opacityTransmissionProbability,
+    uint16BitsToHalf(cb.opaqueOpacityTransmissionLobeSamplingProbabilityZeroThreshold),
+    uint16BitsToHalf(cb.minOpaqueOpacityTransmissionLobeSamplingProbability));
   adjustProbabilityValue(
-      diffuseTransmissionProbability,
-      uint16BitsToHalf(cb.opaqueDiffuseTransmissionLobeSamplingProbabilityZeroThreshold),
-      uint16BitsToHalf(cb.minOpaqueDiffuseTransmissionLobeSamplingProbability));
+    diffuseTransmissionProbability,
+    uint16BitsToHalf(cb.opaqueDiffuseTransmissionLobeSamplingProbabilityZeroThreshold),
+    uint16BitsToHalf(cb.minOpaqueDiffuseTransmissionLobeSamplingProbability));
 
   const float16_t lobeProbabilitySum =
-    opacityTransmissionProbability + diffuseTransmissionProbability + specularReflectionProbability + diffuseReflectionProbability;
+    opacityTransmissionProbability +
+    diffuseTransmissionProbability +
+    specularReflectionProbability +
+    diffuseReflectionProbability;
 
-  if (lobeProbabilitySum == float16_t(0.0f))
+  if (lobeProbabilitySum == 0.0h)
+  {
     return false;
+  }
 
-  float16_t lobeProbabilityNormalizationFactor = 1.h / lobeProbabilitySum;
+  const float16_t lobeProbabilityNormalizationFactor = 1.0h / lobeProbabilitySum;
+
   diffuseReflectionProbability *= lobeProbabilityNormalizationFactor;
   specularReflectionProbability *= lobeProbabilityNormalizationFactor;
   opacityTransmissionProbability *= lobeProbabilityNormalizationFactor;
   diffuseTransmissionProbability *= lobeProbabilityNormalizationFactor;
+
   return true;
 }
 
@@ -945,23 +1001,26 @@ SurfaceMaterialInteractionLobeSample opaqueSurfaceMaterialInteractionCalcLobeSam
   inout bool insideMedium)
 {
   unused(insideMedium);
-  
-  float16_t diffuseReflectionProbability = 0.0f;
-  float16_t specularReflectionProbability = 0.0f;
-  float16_t opacityTransmissionProbability = 0.0f;
-  float16_t diffuseTransmissionProbability = 0.0f;
-  bool isValid = opaqueSurfaceMaterialInteractionCalcLobeProbability(
+
+  float16_t diffuseReflectionProbability = 0.0h;
+  float16_t specularReflectionProbability = 0.0h;
+  float16_t opacityTransmissionProbability = 0.0h;
+  float16_t diffuseTransmissionProbability = 0.0h;
+
+  const bool isValid = opaqueSurfaceMaterialInteractionCalcLobeProbability(
     opaqueSurfaceMaterialInteraction, minimalRayInteraction.viewDirection,
     diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability, diffuseTransmissionProbability);
 
   SurfaceMaterialInteractionLobeSample surfaceMaterialInteractionLobeSample;
-  if(!isValid)
+
+  if (!isValid)
   {
     // Note: Default to sampling specular lobe when no lobe desires to be sampled from. Ideally this could just be skipped entirely as
     // a sample though, but we currently do not support that logic, so for now we pick specular since it will generate more coherent
     // rays ideally to minimize the performance impact.
     surfaceMaterialInteractionLobeSample.lobe = opaqueLobeTypeSpecularReflection;
-    surfaceMaterialInteractionLobeSample.pdf = float16_t(1.0f);
+    surfaceMaterialInteractionLobeSample.pdf = 0.0h;
+
     return surfaceMaterialInteractionLobeSample;
   }
 
@@ -994,10 +1053,6 @@ SurfaceMaterialInteractionLobeSample opaqueSurfaceMaterialInteractionCalcLobeSam
   return surfaceMaterialInteractionLobeSample;
 }
 
-
-// Note: Rejection sampling introduces bias which needs to be corrected before reenabling it
-#define USE_REJECTION_SAMPLING 0
-
 SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSample(
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
   inout RNG randomState,
@@ -1010,54 +1065,37 @@ SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcDiffuseRefl
 
   const f16vec3 outputDirection = quaternionTransformVector(worldToTangentSpaceQuaternion, minimalRayInteraction.viewDirection);
 
-  f16vec3 inputDirection;
+  // Sample a new input direction based on a cosine weighted hemisphere
+
+  const f16vec2 u = f16vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState));
   float cosineHemisphereSolidAnglePdf;
-  float16_t /* l.v */ inputDirectionDotOutputDirection;
-  float16_t /* n.l */ normalDotInputDirection;
-  float16_t /* n.v */ normalDotOutputDirection;
-  float16_t /* n.h */ normalDotMicrofacetNormal;
+  const f16vec3 inputDirection = calcCosineHemisphereDirectionSample(u, cosineHemisphereSolidAnglePdf);
 
-  // Random sampling may end up with an invalid sample, which will contribute 0 radiance to the output and bias the result to be darker
-  // Apply rejection sampling on top by taking a few random sample attempts to find a valid sample instead
-  // Max attempts set empirically, 2 attempts cleaned up 99%+ invalid samples, setting this to 5 was a safe upper bound to handle most dead samples
-  int32_t sampleAttemptsRemaining = 5; 
+  // Todo: Sanity check if inputDirection is facing the wrong direction (Into the surface), currently this does not have much
+  // effect and getting the triangle normal here requires a fairly high memory bandwidth cost, so for now it is not done
 
-#if USE_REJECTION_SAMPLING 
-  while (sampleAttemptsRemaining-- > 0)
-#else
-  sampleAttemptsRemaining = -1;   // Mark sample as invalid - it's updated below
-#endif
-  {
-    // Sample a new input direction based on a cosine weighted hemisphere
+  // Calculate the microfacet normal from the input and output directions
 
-    const f16vec2 u = f16vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState));
-    inputDirection = calcCosineHemisphereDirectionSample(u, cosineHemisphereSolidAnglePdf);
+  const f16vec3 microfacetNormal = normalize(outputDirection + inputDirection);
 
-    // Todo: Sanity check if inputDirection is facing the wrong direction (Into the surface), currently this does not have much
-    // effect and getting the triangle normal here requires a fairly high memory bandwidth cost, so for now it is not done
+  // Calculate dot products used for evaluation
+  // Note: Dot products against tangent space basis vectors are single components of the other vector
 
-    // Calculate the microfacet normal from the input and output directions
+  const float16_t /* l.v */ inputDirectionDotOutputDirection = dot(inputDirection, outputDirection);
+  const float16_t /* n.l */ normalDotInputDirection = inputDirection.z;
+  const float16_t /* n.v */ normalDotOutputDirection = outputDirection.z;
+  const float16_t /* n.h */ normalDotMicrofacetNormal = microfacetNormal.z;
 
-    const f16vec3 microfacetNormal = normalize(outputDirection + inputDirection);
+  // Check if the sampled direction is valid
+  // Note: Also checking the output direction here, in theory this should be valid with pure triangle normals, but normal maps
+  // allow for surfaces to be viewed from outside the actual normal's hemisphere, resulting in an invalid sample.
+  // Note: Input direction check here is currently not needed, diffuse sampling should always produce sampled directions valid within
+  // the normal's hemisphere, but just kept here in case the sampling changes some day.
 
-    // Calculate dot products used for evaluation
-    // Note: Dot products against tangent space basis vectors are single components of the other vector
-
-    /* l.v */ inputDirectionDotOutputDirection = dot(inputDirection, outputDirection);
-    /* n.l */ normalDotInputDirection = inputDirection.z;
-    /* n.v */ normalDotOutputDirection = outputDirection.z;
-    /* n.h */ normalDotMicrofacetNormal = microfacetNormal.z;
-
-    if (normalDotOutputDirection > 0.h && normalDotInputDirection > 0.h)
-#if USE_REJECTION_SAMPLING 
-      break;
-#else
-      sampleAttemptsRemaining = 1;
-#endif      
-  }
-  
-  // Failed to find a valid sample
-  if (sampleAttemptsRemaining == -1)
+  // Note: < used rather than <= as parallel vectors to the triangle normal can be considered in the hemisphere without colliding
+  // with the triangle. Convention can vary but in this case cosine sampling can produce parallel directions like this at times
+  // so it's better to not reject those samples.
+  if (normalDotOutputDirection < 0.0h || normalDotInputDirection < 0.0h)
   {
     SurfaceMaterialInteractionSample materialSample;
 
@@ -1071,17 +1109,18 @@ SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcDiffuseRefl
   // Calculate the throughput of the sample
 
   const SubsurfaceMaterial subsurfaceMaterial = subsurfaceMaterialCreate(opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction);
-  const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
+  const bool isThinOpaqueSubsurface = isThinOpaqueSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
   // If we have lambert diffuse transmission lobe, we are actually doing lambert sampling on the whole sphere, so the diffuse reflection weight should be weighted with 1/2pi for energy conservation.
   // The original hammon diffuse does sampling on hemisphere, so we can just normalize the weight again with 1/2.
-  const f16vec3 lambertTransmissionWeight = (isSubsurface && subsurfaceMaterial.measurementDistance <= 0.05f) ? 0.5h : 1.0h;
+  const f16vec3 lambertTransmissionWeight = (isThinOpaqueSubsurface && subsurfaceMaterial.measurementDistance <= 0.05f) ? 0.5h : 1.0h;
 
   const f16vec3 weight =
     evalHammonDiffuse(opaqueSurfaceMaterialInteraction.albedo, opaqueSurfaceMaterialInteraction.isotropicRoughness,
       inputDirectionDotOutputDirection, normalDotInputDirection,
       normalDotOutputDirection, normalDotMicrofacetNormal) * lambertTransmissionWeight;
-  f16vec3 throughput = safePositiveDivide(weight, f16vec3(cosineHemisphereSolidAnglePdf), materialEpsilon) *
+  const f16vec3 throughput =
+    saferPositiveDivide(weight, f16vec3(cosineHemisphereSolidAnglePdf), materialEpsilon, materialMaximum) *
     normalDotInputDirection;
 
   // Return the material sample
@@ -1093,12 +1132,6 @@ SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcDiffuseRefl
   materialSample.solidAnglePdf = cosineHemisphereSolidAnglePdf;
 
   return materialSample;
-}
-
-// A copy of NRD_GetTrimmingFactor - avoids having a dependency on NRD.hlsli in the material system.
-float calculateLobeTrimmingFactor(float roughness, float3 trimmingParams)
-{
-  return trimmingParams.x * smoothstep( trimmingParams.y, trimmingParams.z, roughness );
 }
 
 SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcSpecularReflectionSample(
@@ -1113,76 +1146,61 @@ SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcSpecularRef
 
   const f16vec3 outputDirection = quaternionTransformVector(worldToTangentSpaceQuaternion, minimalRayInteraction.viewDirection);
 
-  // Calculate the specular lobe trimming factor based on roughness and NRD parameters.
-  // Note: use the 'primaryIndirectNrd' parameter set because it is always controlled by the active indirect denoiser.
-  // TODO: ideally this lobe trimming should only happen at the primary vertex, but there's likely no big difference.
+  // Sample a new microfacet normal based on the distribution of visible normals
 
-  const float lobeTrimming = calculateLobeTrimmingFactor(
-    opaqueSurfaceMaterialInteraction.isotropicRoughness, cb.primaryIndirectNrd.specularLobeTrimmingParams);
+  const f16vec2 u = f16vec2(
+    getNextSampleBlueNoise(randomState),
+    getNextSampleBlueNoise(randomState));
 
-  f16vec3 inputDirection;
+#if OPAQUE_MATERIAL_USE_BOUNDED_VNDF_SAMPLING
+  // Note: Manually calculate the lower bound scaling constant rather than using the usual calcGGXBoundedVisibleNormalDistributionSample
+  // helper function. This is done so that this k value only needs to be computed once, as it is also needed for how the PDF is calculated
+  // later (which is worked into the throughput math here).
+  const float16_t k = calcBoundedVNDFLowerBoundScalar(opaqueSurfaceMaterialInteraction.anisotropicRoughness, outputDirection);
 
-  float16_t /* v.h */ outputDirectionDotMicrofacetNormal;
-  float16_t /* t.v */ tangentDotOutputDirection;
-  float16_t /* b.v */ bitangentDotOutputDirection;
-  float16_t /* n.v */ normalDotOutputDirection;
-  float16_t /* t.l */ tangentDotInputDirection;
-  float16_t /* b.l */ bitangentDotInputDirection;
-  float16_t /* n.l */ normalDotInputDirection;
-  float16_t /* t.h */ tangentDotMicrofacetNormal;
-  float16_t /* b.h */ bitangentDotMicrofacetNormal;
-  float16_t /* n.h */ normalDotMicrofacetNormal;
-  
-  // Random sampling may end up with an invalid sample, which will contribute 0 radiance to the output and bias the result to be darker
-  // Apply rejection sampling on top by taking a few random sample attempts to find a valid sample instead
-  // Max attempts set empirically, 3-4 attempts cleaned up 95%+ invalid samples
-  // After 10 attempts there were only a handful pixels left with invalid samples, setting this to 15 was a safe upper bound to handle most pixels
-  int32_t sampleAttemptsRemaining = 15; 
-
-#if USE_REJECTION_SAMPLING
-  while (sampleAttemptsRemaining-- > 0)
+  const f16vec3 microfacetNormal = calcGGXVisibleNormalDistributionSphericalCapSample(
+    opaqueSurfaceMaterialInteraction.anisotropicRoughness,
+    outputDirection,
+    u,
+    k);
 #else
-  sampleAttemptsRemaining = -1;   // Mark sample as invalid - it's updated below
+  const f16vec3 microfacetNormal = calcGGXVisibleNormalDistributionSample(
+    opaqueSurfaceMaterialInteraction.anisotropicRoughness,
+    outputDirection,
+    u);
 #endif
-  {
-    // Sample a new microfacet normal based on the distribution of visible normals
 
-    const f16vec2 u = f16vec2(
-      lobeTrimming * getNextSampleBlueNoise(randomState), 
-      getNextSampleBlueNoise(randomState));
-    const f16vec3 microfacetNormal = calcGGXVisibleNormalDistributionSample(opaqueSurfaceMaterialInteraction.anisotropicRoughness, outputDirection, u);
+  // Reflect the output direction across the microfacet normal to get the input direction
 
-    // Reflect the output direction across the microfacet normal to get the input direction
+  const f16vec3 inputDirection = reflect(-outputDirection, microfacetNormal);
 
-    inputDirection = reflect(-outputDirection, microfacetNormal);
+  // Todo: Sanity check if inputDirection is facing the wrong direction (Into the surface), currently this does not have much
+  // effect and getting the triangle normal here requires a fairly high memory bandwidth cost, so for now it is not done
 
-    // Todo: Sanity check if inputDirection is facing the wrong direction (Into the surface), currently this does not have much
-    // effect and getting the triangle normal here requires a fairly high memory bandwidth cost, so for now it is not done
+  // Calculate dot products used for evaluation
+  // Note: Dot products against tangent space basis vectors are single components of the other vector
 
-    // Calculate dot products used for evaluation
-    // Note: Dot products against tangent space basis vectors are single components of the other vector
+  const float16_t /* v.h */ outputDirectionDotMicrofacetNormal = dot(outputDirection, microfacetNormal);
+  const float16_t /* t.v */ tangentDotOutputDirection = outputDirection.x;
+  const float16_t /* b.v */ bitangentDotOutputDirection = outputDirection.y;
+  const float16_t /* n.v */ normalDotOutputDirection = outputDirection.z;
+  const float16_t /* t.l */ tangentDotInputDirection = inputDirection.x;
+  const float16_t /* b.l */ bitangentDotInputDirection = inputDirection.y;
+  const float16_t /* n.l */ normalDotInputDirection = inputDirection.z;
+  const float16_t /* t.h */ tangentDotMicrofacetNormal = microfacetNormal.x;
+  const float16_t /* b.h */ bitangentDotMicrofacetNormal = microfacetNormal.y;
+  const float16_t /* n.h */ normalDotMicrofacetNormal = microfacetNormal.z;
 
-    /* v.h */ outputDirectionDotMicrofacetNormal = dot(outputDirection, microfacetNormal);
-    /* t.v */ tangentDotOutputDirection = outputDirection.x;
-    /* b.v */ bitangentDotOutputDirection = outputDirection.y;
-    /* n.v */ normalDotOutputDirection = outputDirection.z;
-    /* t.l */ tangentDotInputDirection = inputDirection.x;
-    /* b.l */ bitangentDotInputDirection = inputDirection.y;
-    /* n.l */ normalDotInputDirection = inputDirection.z;
-    /* t.h */ tangentDotMicrofacetNormal = microfacetNormal.x;
-    /* b.h */ bitangentDotMicrofacetNormal = microfacetNormal.y;
-    /* n.h */ normalDotMicrofacetNormal = microfacetNormal.z;
+  // Check if the sampled direction is valid
+  // Note: Also checking the output direction here, in theory this should be valid with pure triangle normals, but normal maps
+  // allow for surfaces to be viewed from outside the actual normal's hemisphere, resulting in an invalid sample. Additionally,
+  // while bounded VNDF sampling does not produce any invalid directions outside the normal's hemisphere in normal cases, it
+  // is not tightly bounded in cases with anisotropy, so this check is still needed. If a tighter bound is found in the future
+  // which handles anisotropy as well though, the sampled reflected direction check may be able to be removed.
 
-    if (normalDotOutputDirection > 0.h && normalDotInputDirection > 0.h)
-#if USE_REJECTION_SAMPLING 
-      break;
-#else
-      sampleAttemptsRemaining = 1;
-#endif      
-  }
-   
-  // Failed to find a valid sample
-  if (sampleAttemptsRemaining == -1)
+  // Note: < used rather than <= as parallel vectors to the triangle normal can be considered in the hemisphere without colliding
+  // with the triangle. Convention can vary but using this here to be consistent with diffuse sampling.
+  if (normalDotOutputDirection < 0.0h || normalDotInputDirection < 0.0h)
   {
     SurfaceMaterialInteractionSample materialSample;
 
@@ -1216,30 +1234,66 @@ SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcSpecularRef
   const f16vec3 finalFresnel = fresnel;
 #endif
 
+#if OPAQUE_MATERIAL_USE_BOUNDED_VNDF_SAMPLING
+  // Note: More typical G2/G1 calculation with special bounded G1 using the bounded scalar k calculated earlier for sampling
+  // the bounded VNDF lobe. This must be done instead of the usual G2/G1 optimization as the bounding of G1 does not allow for
+  // the same mathematical optimization to be performed.
+  const float16_t G2 = evalHeightCorrelatedGGXShadowingMasking(
+    opaqueSurfaceMaterialInteraction.anisotropicRoughness,
+    tangentDotInputDirection, tangentDotOutputDirection,
+    bitangentDotInputDirection, bitangentDotOutputDirection,
+    normalDotInputDirection, normalDotOutputDirection);
+  const float16_t G1 = evalGGXShadowing(
+    opaqueSurfaceMaterialInteraction.anisotropicRoughness,
+    tangentDotOutputDirection, bitangentDotOutputDirection, normalDotOutputDirection,
+    k);
+  const float16_t G2OverG1 = saferPositiveDivide(G2, G1, materialEpsilon, materialMaximum);
+#else
+  // Note: Algebraic simplification of height correlated G2/G1 to reduce evaluation cost. Could be simplified a bit further
+  // I think however by calculating lambda for the input/output directions and evaluating (1 + L(O)) / (1 + L(O) + L(I)) as
+  // this would avoid a multiplication, but may not benefit from the somewhat simplified G1 form itself. Also note that the paper
+  // this is from uses w_i for the view direction (output direction in our case) and w_o for the light direction which can be a bit
+  // confusing since it is backwards from our notation.
+  // [Heitz 2015, "Implementing a Simple Anisotropic Rough Diffuse Material with Stochastic Evaluation"]
   const float16_t outputGGXShadowing = evalGGXShadowing(
     opaqueSurfaceMaterialInteraction.anisotropicRoughness,
     tangentDotOutputDirection, bitangentDotOutputDirection, normalDotOutputDirection);
   const float16_t inputGGXShadowing = evalGGXShadowing(
     opaqueSurfaceMaterialInteraction.anisotropicRoughness,
     tangentDotInputDirection, bitangentDotInputDirection, normalDotInputDirection);
-  // Note: Algebraic simplification of height correlated G2/G1 to reduce evaluation cost.
-  // [Heitz 2015, "Implementing a Simple Anisotropic Rough Diffuse Material with Stochastic Evaluation"]
   const float16_t G2OverG1 = safePositiveDivide(
     inputGGXShadowing,
     inputGGXShadowing + outputGGXShadowing - (inputGGXShadowing * outputGGXShadowing),
     materialEpsilon);
+#endif
   // Note: Simplified version of (weight / solidAnglePdf) * (n.l) when sampling from the distribution of
   // visible normals.
   // [Heitz 2014, "Importance sampling microfacet-based BSDFs using the distribution of visible normals"]
-  const f16vec3 throughput = finalFresnel * G2OverG1; 
+  const f16vec3 throughput = finalFresnel * G2OverG1;
 
   // Calculate the solid angle PDF of the sample
+  // Note: Ideally the PDF wouldn't be needed here as it's already been baked into the throughput for a simpler calculation
+  // but some logic needs the PDF so it is included here for those cases (whereas others can optimize this part out).
+  // Todo: Reuse the G1 calculation from earlier in this PDF rather than redundantly recalculating it (as G1
+  // is part of the VNDF PDF).
 
+#if OPAQUE_MATERIAL_USE_BOUNDED_VNDF_SAMPLING
+  // Note: Normal version instead of evalGGXBoundedVisibleNormalDistributionSamplePdf used here so that the shared k
+  // value computed from earlier can be used here to save some computation. Note that really the entire G1 function
+  // evaluation can be shared between the throughput calculation and the PDF here.
+  const float solidAnglePdf = evalGGXVisibleNormalDistributionSamplePdf(
+    opaqueSurfaceMaterialInteraction.anisotropicRoughness,
+    tangentDotOutputDirection, bitangentDotOutputDirection, normalDotOutputDirection,
+    tangentDotMicrofacetNormal, bitangentDotMicrofacetNormal, normalDotMicrofacetNormal,
+    outputDirectionDotMicrofacetNormal,
+    k);
+#else
   const float solidAnglePdf = evalGGXVisibleNormalDistributionSamplePdf(
     opaqueSurfaceMaterialInteraction.anisotropicRoughness,
     tangentDotOutputDirection, bitangentDotOutputDirection, normalDotOutputDirection,
     tangentDotMicrofacetNormal, bitangentDotMicrofacetNormal, normalDotMicrofacetNormal,
     outputDirectionDotMicrofacetNormal);
+#endif
 
   // Return the material sample
 
@@ -1466,7 +1520,7 @@ SurfaceMaterialInteractionPSRSample opaqueSurfaceMaterialInteractionCalcPSRRefle
   const float16_t /* n.v */ normalDotOutputDirection = outputDirectionDotMicrofacetNormal;
   const float16_t /* n.l */ normalDotInputDirection = dot(inputDirection, normal);
 
-  if (normalDotOutputDirection <= float16_t(0.0) || normalDotInputDirection <= float16_t(0.0))
+  if (normalDotOutputDirection < 0.0h || normalDotInputDirection < 0.0h)
   {
     SurfaceMaterialInteractionPSRSample materialPSRSample;
 
@@ -1571,8 +1625,8 @@ float opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(
   MinimalRayInteraction minimalRayInteraction,
   f16vec3 inputDirection)
 {
-  float cosTheta = dot(inputDirection, opaqueSurfaceMaterialInteraction.shadingNormal);
-  float solidAnglePdf = getCosineHemisphereSolidAnglePdf(saturate(cosTheta));
+  const float cosTheta = dot(inputDirection, opaqueSurfaceMaterialInteraction.shadingNormal);
+  const float solidAnglePdf = getCosineHemisphereSolidAnglePdf(saturate(cosTheta));
 
   return solidAnglePdf;
 }
@@ -1582,58 +1636,56 @@ float opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
   MinimalRayInteraction minimalRayInteraction,
   f16vec3 worldInputDirection)
 {
-
   const f16vec4 tangentToWorldSpaceQuaternion =
     quaternionCreateOrientation(materialTangentSpaceNormal, opaqueSurfaceMaterialInteraction.shadingNormal);
   const f16vec4 worldToTangentSpaceQuaternion = quaternionInverse(tangentToWorldSpaceQuaternion);
 
   // Set up relevant input vectors in tangent space
+
   const f16vec3 outputDirection = quaternionTransformVector(worldToTangentSpaceQuaternion, minimalRayInteraction.viewDirection);
   const f16vec3 inputDirection = quaternionTransformVector(worldToTangentSpaceQuaternion, worldInputDirection);
 
-  // Calculate the specular lobe trimming factor based on roughness and NRD parameters.
-  // Note: use the 'primaryIndirectNrd' parameter set because it is always controlled by the active indirect denoiser.
-  // TODO: ideally this lobe trimming should only happen at the primary vertex, but there's likely no big difference.
+  // Calculate the microfacet normal
 
-  float16_t /* v.h */ outputDirectionDotMicrofacetNormal;
-  float16_t /* t.v */ tangentDotOutputDirection;
-  float16_t /* b.v */ bitangentDotOutputDirection;
-  float16_t /* n.v */ normalDotOutputDirection;
-  float16_t /* t.l */ tangentDotInputDirection;
-  float16_t /* b.l */ bitangentDotInputDirection;
-  float16_t /* n.l */ normalDotInputDirection;
-  float16_t /* t.h */ tangentDotMicrofacetNormal;
-  float16_t /* b.h */ bitangentDotMicrofacetNormal;
-  float16_t /* n.h */ normalDotMicrofacetNormal;
-  
   const f16vec3 microfacetNormal = normalize(inputDirection + outputDirection);
-
-  // Todo: Sanity check if inputDirection is facing the wrong direction (Into the surface), currently this does not have much
-  // effect and getting the triangle normal here requires a fairly high memory bandwidth cost, so for now it is not done
 
   // Calculate dot products used for evaluation
   // Note: Dot products against tangent space basis vectors are single components of the other vector
 
-  /* v.h */ outputDirectionDotMicrofacetNormal = dot(outputDirection, microfacetNormal);
-  /* t.v */ tangentDotOutputDirection = outputDirection.x;
-  /* b.v */ bitangentDotOutputDirection = outputDirection.y;
-  /* n.v */ normalDotOutputDirection = outputDirection.z;
-  /* t.l */ tangentDotInputDirection = inputDirection.x;
-  /* b.l */ bitangentDotInputDirection = inputDirection.y;
-  /* n.l */ normalDotInputDirection = inputDirection.z;
-  /* t.h */ tangentDotMicrofacetNormal = microfacetNormal.x;
-  /* b.h */ bitangentDotMicrofacetNormal = microfacetNormal.y;
-  /* n.h */ normalDotMicrofacetNormal = microfacetNormal.z;
+  const float16_t /* v.h */ outputDirectionDotMicrofacetNormal = dot(outputDirection, microfacetNormal);
+  const float16_t /* t.v */ tangentDotOutputDirection = outputDirection.x;
+  const float16_t /* b.v */ bitangentDotOutputDirection = outputDirection.y;
+  const float16_t /* n.v */ normalDotOutputDirection = outputDirection.z;
+  const float16_t /* t.l */ tangentDotInputDirection = inputDirection.x;
+  const float16_t /* b.l */ bitangentDotInputDirection = inputDirection.y;
+  const float16_t /* n.l */ normalDotInputDirection = inputDirection.z;
+  const float16_t /* t.h */ tangentDotMicrofacetNormal = microfacetNormal.x;
+  const float16_t /* b.h */ bitangentDotMicrofacetNormal = microfacetNormal.y;
+  const float16_t /* n.h */ normalDotMicrofacetNormal = microfacetNormal.z;
 
-  if (normalDotOutputDirection <= 0.h || normalDotInputDirection <= 0.h)
-    return 0;
+  // Todo: Sanity check if inputDirection is facing the wrong direction (Into the surface), currently this does not have much
+  // effect and getting the triangle normal here requires a fairly high memory bandwidth cost, so for now it is not done
+
+  if (normalDotOutputDirection < 0.0h || normalDotInputDirection < 0.0h)
+  {
+    return 0.0f;
+  }
 
   // Calculate the solid angle PDF of the sample
+
+#if OPAQUE_MATERIAL_USE_BOUNDED_VNDF_SAMPLING
+  const float solidAnglePdf = evalGGXBoundedVisibleNormalDistributionSamplePdf(
+    opaqueSurfaceMaterialInteraction.anisotropicRoughness,
+    tangentDotOutputDirection, bitangentDotOutputDirection, normalDotOutputDirection,
+    tangentDotMicrofacetNormal, bitangentDotMicrofacetNormal, normalDotMicrofacetNormal,
+    outputDirectionDotMicrofacetNormal);
+#else
   const float solidAnglePdf = evalGGXVisibleNormalDistributionSamplePdf(
     opaqueSurfaceMaterialInteraction.anisotropicRoughness,
     tangentDotOutputDirection, bitangentDotOutputDirection, normalDotOutputDirection,
     tangentDotMicrofacetNormal, bitangentDotMicrofacetNormal, normalDotMicrofacetNormal,
     outputDirectionDotMicrofacetNormal);
+#endif
 
   return solidAnglePdf;
 }
@@ -1643,8 +1695,8 @@ float opaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSolidAnglePdf(
   MinimalRayInteraction minimalRayInteraction,
   f16vec3 inputDirection)
 {
-  float cosTheta = dot(-inputDirection, opaqueSurfaceMaterialInteraction.shadingNormal);
-  float solidAnglePdf = getCosineHemisphereSolidAnglePdf(saturate(cosTheta));
+  const float cosTheta = dot(-inputDirection, opaqueSurfaceMaterialInteraction.shadingNormal);
+  const float solidAnglePdf = getCosineHemisphereSolidAnglePdf(saturate(cosTheta));
 
   return solidAnglePdf;
 }
@@ -1661,13 +1713,13 @@ float opaqueSurfaceMaterialInteractionCalcSolidAnglePdf(
   float16_t specularReflectionProbability = 0.0f;
   float16_t opacityTransmissionProbability = 0.0f;
   float16_t diffuseTransmissionProbability = 0.0f;
-  bool isValid = opaqueSurfaceMaterialInteractionCalcLobeProbability(
+  const bool isValid = opaqueSurfaceMaterialInteractionCalcLobeProbability(
     opaqueSurfaceMaterialInteraction, minimalRayInteraction.viewDirection,
     diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability, diffuseTransmissionProbability);
 
-  float diffuseSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
-  float specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
-  float diffuseTransmissionSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+  const float diffuseSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+  const float specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+  const float diffuseTransmissionSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
 
   return diffuseSolidAnglePdf * diffuseReflectionProbability +
          specularSolidAnglePdf * specularReflectionProbability +
@@ -1688,24 +1740,34 @@ SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcApprox
 
   // Load Subsurface Material
   const SubsurfaceMaterial subsurfaceMaterial = subsurfaceMaterialCreate(opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction);
-  const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
+  const bool isThinOpaqueSubsurface = isThinOpaqueSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
+  const bool isSss = isSubsurfaceDiffusionProfileMaterial(opaqueSurfaceMaterialInteraction);
 
   f16vec3 diffuseTransmissionWeight = f16vec3(0.0, 0.0, 0.0);
-  if (isSubsurface)
+  if (isThinOpaqueSubsurface || isSss)
   {
     diffuseTransmissionWeight = subsurfaceMaterial.singleScatteringAlbedo;
   }
 
-  if (normalDotOutputDirection <= float16_t(0.0) || normalDotInputDirection <= float16_t(0.0))
+  if (normalDotOutputDirection < 0.0h || normalDotInputDirection < 0.0h)
   {
     SurfaceMaterialInteractionSplitWeight splitWeight;
 
     splitWeight.diffuseReflectionWeight = f16vec3(0.0, 0.0, 0.0);
     splitWeight.specularReflectionWeight = f16vec3(0.0, 0.0, 0.0);
 
-    if (normalDotOutputDirection <= float16_t(0.0))
+    if (normalDotOutputDirection < 0.0h)
     {
-      splitWeight.diffuseTransmissionWeight = f16vec3(0.0, 0.0, 0.0);
+      if (!isSss)
+      {
+        splitWeight.diffuseTransmissionWeight = f16vec3(0.0, 0.0, 0.0);
+      }
+      else
+      {
+        // SSS Transmission could cause the angle between view direction (output) and backface normal larger than 90 degrees.
+        // In such case we use the inversed dot product result to estimate the transmission weight.
+        splitWeight.diffuseTransmissionWeight = diffuseTransmissionWeight * (-normalDotOutputDirection);
+      }
     }
     else
     {
@@ -1767,10 +1829,10 @@ SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcProjec
 
   // Load Subsurface Material
   const SubsurfaceMaterial subsurfaceMaterial = subsurfaceMaterialCreate(opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction);
-  const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
+  const bool isThinOpaqueSubsurface = isThinOpaqueSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
   f16vec3 diffuseTransmissionWeight = f16vec3(0.0h, 0.0h, 0.0h);
-  if (isSubsurface && normalDotOutputDirection > 0.0h) {
+  if (isThinOpaqueSubsurface && normalDotOutputDirection > 0.0h) {
     diffuseTransmissionWeight = evalHanrahanSingleScatteringDiffuseTransmission(
       opaqueSurfaceMaterialInteraction.baseReflectivity,
       subsurfaceMaterial.volumetricAttenuationCoefficient, subsurfaceMaterial.measurementDistance,
@@ -1780,9 +1842,10 @@ SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcProjec
       inputDirectionDotOutputDirection);
   }
 
-  if (normalDotOutputDirection <= 0.0h || normalDotInputDirection <= 0.0h)
+  if (normalDotOutputDirection < 0.0h || normalDotInputDirection < 0.0h)
   {
     SurfaceMaterialInteractionSplitWeight splitWeight;
+
     splitWeight.diffuseReflectionWeight = f16vec3(0.0, 0.0, 0.0);
     splitWeight.specularReflectionWeight = f16vec3(0.0, 0.0, 0.0);
     splitWeight.diffuseTransmissionWeight = diffuseTransmissionWeight * transmissionNormalDotInputDirection;

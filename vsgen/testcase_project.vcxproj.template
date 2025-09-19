@@ -68,24 +68,24 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <NMakeOutput>$test_case_outputdir\d3d9.dll</NMakeOutput>
     <NMakePreprocessorDefinitions>_DEBUG;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
-    <NMakeBuildCommandLine>ninja -C ..\_Comp64Debug $copy_target</NMakeBuildCommandLine>
-    <NMakeReBuildCommandLine>ninja -C ..\_Comp64Debug $copy_target</NMakeReBuildCommandLine>
+    <NMakeBuildCommandLine>meson install -C ..\_Comp64Debug --tags $copy_target --only-changed</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>meson install -C ..\_Comp64Debug --tags $copy_target</NMakeReBuildCommandLine>
     <NMakeCleanCommandLine></NMakeCleanCommandLine>
     <NMakeIncludeSearchPath>$(NMakeIncludeSearchPath)</NMakeIncludeSearchPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugOptimized|x64'">
     <NMakeOutput>$test_case_outputdir\d3d9.dll</NMakeOutput>
     <NMakePreprocessorDefinitions>_DEBUG;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
-    <NMakeBuildCommandLine>ninja -C ..\_Comp64DebugOptimized $copy_target</NMakeBuildCommandLine>
-    <NMakeReBuildCommandLine>ninja -C ..\_Comp64DebugOptimized $copy_target</NMakeReBuildCommandLine>
+    <NMakeBuildCommandLine>meson install -C ..\_Comp64DebugOptimized --tags $copy_target --only-changed</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>meson install -C ..\_Comp64DebugOptimized --tags $copy_target</NMakeReBuildCommandLine>
     <NMakeCleanCommandLine></NMakeCleanCommandLine>
     <NMakeIncludeSearchPath>$(NMakeIncludeSearchPath)</NMakeIncludeSearchPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <NMakeOutput>$test_case_outputdir\d3d9.dll</NMakeOutput>
     <NMakePreprocessorDefinitions>NDEBUG;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
-    <NMakeBuildCommandLine>ninja -C ..\_Comp64Release $copy_target</NMakeBuildCommandLine>
-    <NMakeReBuildCommandLine>ninja -C ..\_Comp64Release $copy_target</NMakeReBuildCommandLine>
+    <NMakeBuildCommandLine>meson install -C ..\_Comp64Release --tags $copy_target --only-changed</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>meson install -C ..\_Comp64Release --tags $copy_target</NMakeReBuildCommandLine>
     <NMakeCleanCommandLine></NMakeCleanCommandLine>
     <NMakeIncludeSearchPath>$(NMakeIncludeSearchPath)</NMakeIncludeSearchPath>
   </PropertyGroup>

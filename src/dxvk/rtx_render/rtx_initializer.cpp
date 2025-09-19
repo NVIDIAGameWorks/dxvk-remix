@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -27,8 +27,10 @@
 #include "dxvk_context.h"
 #include "dxvk_device.h"
 #include "rtx_render/rtx_shader_manager.h"
+#include "rtx_render/rtx_texture_manager.h"
 #include "rtx_io.h"
 #include "dxvk_raytracing.h"
+#include "rtx_debug_view.h"
 
 namespace dxvk {
   RtxInitializer::RtxInitializer(DxvkDevice* device)
@@ -42,6 +44,9 @@ namespace dxvk {
     if (RtxIo::enabled()) {
       RtxIo::get().initialize(m_device);
     }
+    // start async before starting asset loading
+    DxvkObjects* pCommon = m_device->getCommon();
+    pCommon->getTextureManager().startAsync();
 #endif
 
     // Initialize RTX settings presets
@@ -57,31 +62,35 @@ namespace dxvk {
         env::getEnvVar("DXVK_GRAPHICS_PRESET_TYPE") != "0") {
       const DxvkDeviceInfo& deviceInfo = m_device->adapter()->devicePropertiesExt();
 
-      RtxOptions::Get()->updateUpscalerFromDlssPreset();
-      RtxOptions::Get()->updateGraphicsPresets(m_device);
-      RtxOptions::Get()->updateRaytraceModePresets(deviceInfo.core.properties.vendorID, deviceInfo.khrDeviceDriverProperties.driverID);
+      RtxOptions::updateUpscalerFromDlssPreset();
+      RtxOptions::updateGraphicsPresets(m_device);
+      RtxOptions::updateRaytraceModePresets(deviceInfo.core.properties.vendorID, deviceInfo.khrDeviceDriverProperties.driverID);
     } else {
       // Default, init to custom unless otherwise specified
-      if (RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Auto)
-        RtxOptions::Get()->graphicsPresetRef() = GraphicsPreset::Custom;
+      if (RtxOptions::graphicsPreset() == GraphicsPreset::Auto) {
+        RtxOptions::graphicsPreset.setDeferred(GraphicsPreset::Custom);
+      }
 
-      // Need to initialize DLSS-RR settings in test cases
+      // Need to initialize DLSS-RR settings in test cases.
+      // Warning: this will override multiple global options, including any values set by the test workflow.
       if (env::getEnvVar("DXVK_RAY_RECONSTRUCTION") != "0") {
-        RtxOptions::Get()->updateLightingSetting();
+        RtxOptions::updateLightingSetting();
       }
     }
 
     // Configure shader manager to understand bindless layouts
-    DxvkObjects* pCommon = m_device->getCommon();
     ShaderManager::getInstance()->addGlobalExtraLayout(pCommon->getSceneManager().getBindlessResourceManager().getGlobalBindlessTableLayout(BindlessResourceManager::Buffers));
     ShaderManager::getInstance()->addGlobalExtraLayout(pCommon->getSceneManager().getBindlessResourceManager().getGlobalBindlessTableLayout(BindlessResourceManager::Textures));
     ShaderManager::getInstance()->addGlobalExtraLayout(pCommon->getSceneManager().getBindlessResourceManager().getGlobalBindlessTableLayout(BindlessResourceManager::Samplers));
+
+    // Need to promote all of the hardware support Options before prewarming shaders.
+    RtxOption<bool>::applyPendingValues();
 
     // Kick off shader prewarming
     startPrewarmShaders();
 
     // Load assets (if any) as early as possible
-    if (m_asyncAssetLoading.getValue()) {
+    if (RtxOptions::asyncAssetLoading()) {
       // Async asset loading (USD)
       m_asyncAssetLoadThread = dxvk::thread([this] {
         env::setThreadName("rtx-initialize-assets");
@@ -93,14 +102,14 @@ namespace dxvk {
     pCommon->metaDLSS(); // Lazy allocator triggers init in ctor
     pCommon->metaDLFG();
 
-    if (!m_asyncShaderFinalizing.getValue()) {
+    if (!asyncShaderFinalizing()) {
       // Wait for all prewarming to complete before calling "RTX initialized"
       waitForShaderPrewarm();
     }
   }
 
   void RtxInitializer::release() {
-    if (m_asyncShaderFinalizing.getValue()) {
+    if (asyncShaderFinalizing()) {
       // Wait for all prewarming to complete 
       waitForShaderPrewarm();
     }
@@ -127,10 +136,13 @@ namespace dxvk {
   }
 
   void RtxInitializer::startPrewarmShaders() {
-    // If we want to run without async shader prewarm, then pipelines will be built inline with other GPU work (typically means stutter)
-    if (!m_asyncShaderPrewarming.getValue() 
-        || m_device->properties().core.properties.vendorID == static_cast<uint32_t>(DxvkGpuVendor::Amd)) // Apparantly causes deadlock on AMD
+    // If we want to run without shader prewarming, then pipelines will be built inline with other GPU work on first use (typically means
+    // long stutters whenever a yet to be compiled pipeline comes into use).
+    if (!asyncShaderPrewarming()
+        // WAR: Shader prewarming caused a deadlock on AMD in the past so it is forcibly disabled, should re-evaluate this at some point.
+        || m_device->properties().core.properties.vendorID == static_cast<uint32_t>(DxvkGpuVendor::Amd)) {
       return;
+    }
 
     DxvkObjects* pCommon = m_device->getCommon();
 
@@ -138,7 +150,6 @@ namespace dxvk {
     pCommon->metaPathtracerGbuffer().prewarmShaders(pCommon->pipelineManager());
     pCommon->metaPathtracerIntegrateDirect().prewarmShaders(pCommon->pipelineManager());
     pCommon->metaPathtracerIntegrateIndirect().prewarmShaders(pCommon->pipelineManager());
-
 
     pCommon->metaDebugView().prewarmShaders(pCommon->pipelineManager());
 

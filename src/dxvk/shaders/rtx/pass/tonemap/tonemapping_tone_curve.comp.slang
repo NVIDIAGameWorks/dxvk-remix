@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -48,12 +48,16 @@ float computeSharedSum(float val, const uint linearIndex) {
   g_localData[linearIndex] = val;
   GroupMemoryBarrierWithGroupSync();
 
-  for (uint k = kToneCurveSampleCount / 2; k >= WaveGetLaneCount(); k /= 2) {
-      if (linearIndex < k) {
-          g_localData[linearIndex] += g_localData[linearIndex + k];
-      }
-      GroupMemoryBarrierWithGroupSync();
+  for (uint k = kToneCurveSampleCount / 2; k >= WaveGetLaneCount(); k /= 2)
+  {
+    if (linearIndex < k)
+    {
+      g_localData[linearIndex] += g_localData[linearIndex + k];
+    }
+    
+    GroupMemoryBarrierWithGroupSync();
   }
+
   return g_localData[0];
 }
 
@@ -68,7 +72,7 @@ float computePrefixSum(float val, const uint linearIndex)
   g_localData[linearIndex] = val;
   GroupMemoryBarrierWithGroupSync();
 
-  for(uint k = WaveGetLaneCount(); k < EXPOSURE_HISTOGRAM_SIZE; k *= 2)
+  for (uint k = WaveGetLaneCount(); k < EXPOSURE_HISTOGRAM_SIZE; k *= 2)
   {
     uint blockIndex = linearIndex / k;
     // Propagate prefixSum to the next block for every other block so as to avoid 
@@ -95,7 +99,8 @@ float computeSlopes(
   const uint linearIndex) {
 
   // Compute local histogram for this section of the curve
-  if (linearIndex < minBin || linearIndex >= maxBinExclusive) {
+  if (linearIndex < minBin || linearIndex >= maxBinExclusive)
+  {
     hist = 0.0f;
   }
     
@@ -123,7 +128,8 @@ float computeSlopes(
   float sumRecip;
   float lenOmega = float(kToneCurveSampleCount);
   float threshPassed;
-  for (uint i = 0; i < 16; ++i) {
+  for (uint i = 0; i < 16; ++i)
+  {
     threshPassed = step(thresh, hist);
     lenOmega = computeSharedSum(threshPassed, linearIndex);
         
@@ -145,8 +151,9 @@ float computeSlopes(
 [numthreads(TONEMAPPING_TONE_CURVE_SAMPLE_COUNT, 1, 1)]
 void main(uint linearIndex : SV_GroupIndex)
 {
-  if (linearIndex >= kToneCurveSampleCount) {
-      return;
+  if (linearIndex >= kToneCurveSampleCount)
+  {
+    return;
   }
     
   // This is the log luminance of the histogram bin this thread is processing.
@@ -175,7 +182,7 @@ void main(uint linearIndex : SV_GroupIndex)
     
   if (linearIndex < kCrossover) 
   {
-      mySlope = max(mySlope, cb.shadowMinSlope);
+    mySlope = max(mySlope, cb.shadowMinSlope);
   }
     
   // Compute tone curve.
@@ -214,10 +221,12 @@ void main(uint linearIndex : SV_GroupIndex)
     
   // Temporal filtering
   {
-      const float myOldToneCurve = InOutToneCurve[linearIndex].r;
-      if (cb.needsReset == 0) {
-          myToneCurve = mix(myToneCurve, myOldToneCurve, exp(-0.07)); // Ad-hoc constant for interpolation
-      }
+    const float myOldToneCurve = InOutToneCurve[linearIndex].r;
+
+    if (cb.needsReset == 0)
+    {
+      myToneCurve = mix(myToneCurve, myOldToneCurve, exp(-0.07)); // Ad-hoc constant for interpolation
+    }
   }
     
   // Write to the output!

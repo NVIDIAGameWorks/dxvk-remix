@@ -117,9 +117,14 @@ void adjustProbabilityValue(inout float16_t value, float16_t zeroThreshold, floa
   value = max(value, minProbability);
 }
 
-bool isSubsurfaceMaterial(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction)
+bool isSubsurfaceDiffusionProfileMaterial(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction)
 {
-  return opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.measurementDistance > 0.0h;
+  return opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.maxSampleRadius > 0.0h;
+}
+
+bool isThinOpaqueSubsurfaceMaterial(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction)
+{
+  return opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.measurementDistance > 0.0h && !isSubsurfaceDiffusionProfileMaterial(opaqueSurfaceMaterialInteraction);
 }
 
 SubsurfaceMaterialInteraction subSurfaceMaterialReadHelper(
@@ -127,13 +132,14 @@ SubsurfaceMaterialInteraction subSurfaceMaterialReadHelper(
   SurfaceInteraction surfaceInteraction,
   uint16_t samplerIndex)
 {
-  if (!cb.enableThinOpaque || subsurfaceMaterialIndex == BINDING_INDEX_INVALID)
+  if ((!cb.sssArgs.enableThinOpaque && !cb.sssArgs.enableDiffusionProfile) || subsurfaceMaterialIndex == BINDING_INDEX_INVALID)
   {
     SubsurfaceMaterialInteraction subsurfaceMaterialInteraction;
-    subsurfaceMaterialInteraction.packedTransmittanceColor = uint16_t(0);
     subsurfaceMaterialInteraction.measurementDistance = 0.0h;
-    subsurfaceMaterialInteraction.packedSingleScatteringAlbedo = uint16_t(0);
+    subsurfaceMaterialInteraction.packedTransmittanceColor = 0;
+    subsurfaceMaterialInteraction.packedSingleScatteringAlbedo = 0;
     subsurfaceMaterialInteraction.volumetricAnisotropy = uint8_t(0);
+    subsurfaceMaterialInteraction.maxSampleRadius = uint8_t(0);
 
     return subsurfaceMaterialInteraction;
   }
@@ -143,12 +149,15 @@ SubsurfaceMaterialInteraction subSurfaceMaterialReadHelper(
   return subsurfaceMaterialInteractionCreate(subsurfaceMaterial, surfaceInteraction, samplerIndex);
 }
 
-SubsurfaceMaterialInteraction subSurfaceMaterialReadHelper(uint4 subsurfaceData)
+SubsurfaceMaterialInteraction subSurfaceMaterialReadHelper(
+  const uint2 subsurfaceData,
+  const uint2 subsurfaceDiffusionProfileData)
 {
   SubsurfaceMaterialInteraction subsurfaceMaterialInteraction;
-  subsurfaceMaterialInteraction.packedTransmittanceColor = uint16_t(subsurfaceData.x);
-  subsurfaceMaterialInteraction.measurementDistance = uint16BitsToHalf(uint16_t(subsurfaceData.y));
-  subsurfaceMaterialInteraction.packedSingleScatteringAlbedo = uint16_t(subsurfaceData.z);
-  subsurfaceMaterialInteraction.volumetricAnisotropy = uint8_t(subsurfaceData.w);
+  subsurfaceMaterialInteraction.measurementDistance = uint16BitsToHalf(uint16_t(subsurfaceData.x));
+  subsurfaceMaterialInteraction.packedTransmittanceColor = subsurfaceDiffusionProfileData.x;
+  subsurfaceMaterialInteraction.packedSingleScatteringAlbedo = subsurfaceDiffusionProfileData.y;
+  subsurfaceMaterialInteraction.volumetricAnisotropy = uint8_t(subsurfaceData.y & 0xFF);
+  subsurfaceMaterialInteraction.maxSampleRadius = uint8_t(subsurfaceData.y >> 8);
   return subsurfaceMaterialInteraction;
 }

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -26,6 +26,7 @@
 #include "rtx_types.h"
 #include "../dxvk_include.h"
 #include "rtx_options.h"
+#include "rtx_accumulation.h"
 
 struct RaytraceArgs;
 
@@ -34,7 +35,7 @@ namespace dxvk {
   class SceneManager;
   class DxvkDevice;
 
-  class CompositePass {
+  class CompositePass : public RtxPass {
 
   public:
     struct Settings {
@@ -61,14 +62,29 @@ namespace dxvk {
       const Settings& setting);
 
     void showImguiSettings();
+    void showAccumulationImguiSettings();
     void showDenoiseImguiSettings();
     void showStochasticAlphaBlendImguiSettings();
     void showDepthBasedFogImguiSettings();
 
   private:
+    Rc<DxvkBuffer> getCompositeConstantsBuffer();
+    void createConstantsBuffer();
+    virtual bool isEnabled() const override;
+    bool enableAccumulation() const;
+    virtual void onFrameBegin(Rc<DxvkContext>& ctx, const FrameBeginContext& frameBeginCtx) override;
+    virtual void createDownscaledResource(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent) override;
+
     dxvk::DxvkDevice* m_device;
     Rc<DxvkBuffer> m_compositeConstants;
     Rc<vk::DeviceFn> m_vkd;
+
+    RtxAccumulation m_accumulation;
+    bool m_enableAccumulation = false;
+
+    // Note: we need a separate resource for the accumulated output since last final output resource is aliased.
+    // On the up-side this resource is only allocated when needed
+    Resources::Resource m_accumulatedFinalOutput;
 
     RTX_OPTION("rtx", bool, enableFog, true, "");
     RTX_OPTION("rtx", float, fogColorScale, 0.25f, "");
@@ -81,7 +97,7 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, compositeSecondaryCombinedDiffuse, true, "Enables combined direct and indirect lightning's diffuse signal for secondary surfaces in the final composite.");
     RTX_OPTION("rtx", bool, compositeSecondaryCombinedSpecular, true, "Enables combined direct and indirect lightning's specular signal for secondary surfaces in the final composite.");
 
-    RW_RTX_OPTION("rtx", bool, enableStochasticAlphaBlend, true, "Use stochastic alpha blend.");
+    RTX_OPTION("rtx", bool, enableStochasticAlphaBlend, true, "Use stochastic alpha blend.");
     RTX_OPTION("rtx", float, stochasticAlphaBlendOpacityThreshold, 0.95f, "Max opacity to use stochastic alpha blend.");
     RTX_OPTION("rtx", bool, stochasticAlphaBlendUseNeighborSearch, true, "Get radiance from neighbor opaque pixels.");
     RTX_OPTION("rtx", bool, stochasticAlphaBlendSearchTheSameObject, true, "Only use radiance samples from the same object.");
@@ -97,8 +113,8 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, stochasticAlphaBlendEnableFilter, true, "Filter samples to suppress noise.");
     RTX_OPTION("rtx", bool, stochasticAlphaBlendDiscardBlackPixel, false, "Discard black pixels.");
 
-    RW_RTX_OPTION("rtx", bool, usePostFilter, true, "Uses post filter to remove fireflies in the denoised result.");
-    RW_RTX_OPTION("rtx", float, postFilterThreshold, 3.0f, "Clamps a pixel when its luminance exceeds x times of the average.");
+    RTX_OPTION("rtx", bool, usePostFilter, true, "Uses post filter to remove fireflies in the denoised result.");
+    RTX_OPTION("rtx", float, postFilterThreshold, 3.0f, "Clamps a pixel when its luminance exceeds x times of the average.");
 
     RTX_OPTION("rtx", bool,  enableDLSSEnhancement, true, "Enhances lighting details when DLSS is on.");
     RTX_OPTION("rtx", float, dlssEnhancementDirectLightPower, 0.7f, "The overall strength of direct lighting enhancement.");
@@ -109,8 +125,5 @@ namespace dxvk {
     RTX_OPTION("rtx", EnhancementMode, dlssEnhancementMode, EnhancementMode::NormalDifference,
       "The enhancement filter type. Valid values: <Normal Difference=1, Laplacian=0>. Normal difference mode provides more normal detail at the cost of some noise. Laplacian mode is less aggressive.");
     RTX_OPTION("rtx", float, pixelHighlightReuseStrength, 0.5, "The specular portion when we reuse last frame's pixel value.");
-
-    Rc<DxvkBuffer> getCompositeConstantsBuffer();
-    void createConstantsBuffer();
   };
 } // namespace dxvk

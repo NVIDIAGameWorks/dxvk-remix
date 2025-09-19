@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -45,6 +45,7 @@
 #include <nvsdk_ngx_helpers_vk.h>
 #include <nvsdk_ngx_dlssg.h>
 #include <nvsdk_ngx_dlssg_vk.h>
+#include <nvsdk_ngx_defs_dlssg.h>
 
 #include "rtx_resources.h"
 #include "rtx_semaphore.h"
@@ -81,19 +82,31 @@ namespace dxvk
     }
   }
 
+  void NVSDK_CONV NVSDK_NGX_AppLogCallback(const char* message, NVSDK_NGX_Logging_Level loggingLevel, NVSDK_NGX_Feature sourceComponent) {
+    static_cast<void>(loggingLevel);
+    static_cast<void>(sourceComponent);
+
+    Logger::info(str::format("DLSS Message: ", message));
+  }
+
   bool NGXContext::initialize() {
     ScopedCpuProfileZone();
-    m_initialized = false;
-    m_supportsDLSS = false;
-    m_supportsRayReconstruction = false;
+
+    // Early out if the NGX Context has already been initialized
 
     if (m_initialized) {
       return true;
     }
 
-    std::string exePath = env::getExePath();
-    std::string exeFolder = exePath.substr(0, exePath.find_last_of("\\/"));
-    auto logFolder = str::tows(exeFolder.c_str());
+    // Reset DLSS/DLSS-RR support flags
+    // Note: This is done here so that if initialization fails before feature checking the support will be false as expected.
+
+    m_supportsDLSS = false;
+    m_supportsRayReconstruction = false;
+
+    const std::string exePath = env::getExePath();
+    const std::string exeFolder = exePath.substr(0, exePath.find_last_of("\\/"));
+    const auto logFolder = str::tows(exeFolder.c_str());
     
     NVSDK_NGX_Result result = NVSDK_NGX_Result_Fail;
 
@@ -102,7 +115,27 @@ namespace dxvk
     VkPhysicalDevice vkPhysicalDevice = adapter->handle();
     auto instance = m_device->instance();
     VkInstance vkInstance = instance->handle();
-    result = NVSDK_NGX_VULKAN_Init(RtxOptions::Get()->applicationId(), logFolder.c_str(), vkInstance, vkPhysicalDevice, vkDevice);
+
+    // Note: Enable DLSS logging for debugging in debug mode. Note this will disable all other DLSS logging sinks to ensure all logging
+    // goes through the DXVK logging system.
+#ifndef NDEBUG
+    NVSDK_NGX_FeatureCommonInfo featureCommonInfo{};
+
+    featureCommonInfo.LoggingInfo.LoggingCallback = &NVSDK_NGX_AppLogCallback;
+    featureCommonInfo.LoggingInfo.MinimumLoggingLevel = NVSDK_NGX_LOGGING_LEVEL_ON;
+    featureCommonInfo.LoggingInfo.DisableOtherLoggingSinks = true;
+#endif
+
+    result = NVSDK_NGX_VULKAN_Init(
+      RtxOptions::applicationId(), logFolder.c_str(),
+      vkInstance, vkPhysicalDevice, vkDevice,
+      nullptr, nullptr,
+#ifndef NDEBUG
+      &featureCommonInfo
+#else
+      nullptr
+#endif
+    );
 
     if (NVSDK_NGX_FAILED(result)) {
       if (result == NVSDK_NGX_Result_FAIL_FeatureNotSupported || result == NVSDK_NGX_Result_FAIL_PlatformError) {
@@ -154,7 +187,7 @@ namespace dxvk
     }
 
     m_supportsDLSS = checkDLSSSupport(tempParams);
-    m_supportsDLFG = checkDLFGSupport(tempParams);
+    checkDLFGSupport(tempParams);
 
     // Check DLSS-RR Support
     NVSDK_NGX_FeatureCommonInfo ci = {};
@@ -171,7 +204,7 @@ namespace dxvk
     di.SDKVersion = NVSDK_NGX_Version_API;
     di.FeatureID = NVSDK_NGX_Feature_RayReconstruction;
     di.Identifier.IdentifierType = NVSDK_NGX_Application_Identifier_Type_Application_Id;
-    di.Identifier.v.ApplicationId = (unsigned long long)RtxOptions::Get()->applicationId();
+    di.Identifier.v.ApplicationId = (unsigned long long)RtxOptions::applicationId();
     di.ApplicationDataPath = L".";
     di.FeatureInfo = &ci;
     NVSDK_NGX_FeatureRequirement fr = {};
@@ -326,24 +359,27 @@ namespace dxvk
     return false;
   }
 
-  bool NGXContext::checkDLFGSupport(NVSDK_NGX_Parameter* params) {
+  void NGXContext::checkDLFGSupport(NVSDK_NGX_Parameter* params) {
     NVSDK_NGX_Result result;
+
+    m_supportsDLFG = false;
+    m_dlfgMaxInterpolatedFrames = 0;
 
     int dlfgAvailable = 0;
     result = params->Get(NVSDK_NGX_Parameter_FrameGeneration_Available, &dlfgAvailable);
     if (NVSDK_NGX_FAILED(result) || !dlfgAvailable) {
       Logger::info(str::format("NVIDIA DLSS Frame Generation not available on this hardware/platform: ", resultToString(result)));
-      return false;
+      return;
     }
 
     int needsUpdatedDriver = 0;
     if (NVSDK_NGX_FAILED(params->Get(NVSDK_NGX_Parameter_FrameGeneration_NeedsUpdatedDriver, &needsUpdatedDriver))) {
       Logger::warn("NVIDIA DLSS Frame generation failed to initialize");
-      return false;
+      return;
     }
 
     // check all the reasons to make sure we present everything to the user at once
-    bool ret = true;
+    m_supportsDLFG = true;
     
     if (needsUpdatedDriver) {
       std::string message = "NVIDIA DLSS Frame generation cannot be loaded due to outdated driver.";
@@ -355,7 +391,7 @@ namespace dxvk
       }
 
       m_dlfgNotSupportedReason = m_dlfgNotSupportedReason + message;
-      ret = false;
+      m_supportsDLFG = false;
     }
 
     bool hardwareSchedulingEnabled = checkHardwareSchedulingEnabled(m_device);
@@ -365,14 +401,18 @@ namespace dxvk
       }
 
       m_dlfgNotSupportedReason = m_dlfgNotSupportedReason + "NVIDIA DLSS Frame Generation requires GPU hardware scheduling. Please make sure you are running Windows 10 May 2020 update or later, and enable it in Settings -> System -> Display -> Graphics Settings.";
-      ret = false;
+      m_supportsDLFG = false;
+    }
+
+    // check for multi-frame support
+    if (NVSDK_NGX_FAILED(params->Get(NVSDK_NGX_DLSSG_Parameter_MultiFrameCountMax, (int*)&m_dlfgMaxInterpolatedFrames))) {
+      m_dlfgNotSupportedReason = m_dlfgNotSupportedReason + " NGX parameter query for MultiFrameCountMax failed.";
+      m_supportsDLFG = false;
     }
 
     if (m_dlfgNotSupportedReason.size()) {
       Logger::warn(m_dlfgNotSupportedReason);
     }
-
-    return ret;
   }
 
   NGXFeatureContext::~NGXFeatureContext() {
@@ -468,21 +508,20 @@ namespace dxvk
   {
     ScopedCpuProfileZone();
     OptimalSettings settings;
+    // Note: Deprecated, should not be used but still must be passed into the query function.
+    float dummySharpness;
 
     NVSDK_NGX_Result result = NGX_DLSS_GET_OPTIMAL_SETTINGS(m_parameters,
       displaySize[0], displaySize[1], perfQuality,
       &settings.optimalRenderSize[0], &settings.optimalRenderSize[1],
       &settings.maxRenderSize[0], &settings.maxRenderSize[1],
       &settings.minRenderSize[0], &settings.minRenderSize[1],
-      &settings.sharpness);
+      &dummySharpness);
 
     if (NVSDK_NGX_FAILED(result)) {
       Logger::err(str::format("Querying optimal settings failed: ", resultToString(result)));
       return settings;
     }
-
-    // Depending on what version of DLSS DLL is being used, a sharpness of > 1.f was possible.
-    settings.sharpness = clamp(settings.sharpness, 0.01f, 1.f);
 
     return settings;
   }
@@ -525,7 +564,8 @@ namespace dxvk
     evalParams.pInBiasCurrentColorMask = settings.antiGhost ? &biasCurrentColorMaskResource : nullptr;
     evalParams.InJitterOffsetX = settings.jitterOffset[0];
     evalParams.InJitterOffsetY = settings.jitterOffset[1];
-    evalParams.Feature.InSharpness = settings.sharpness;
+    // Note: Sharpness parameter is deprecated and is not read by newer versions of DLSS, so setting it to 0 is fine here.
+    evalParams.Feature.InSharpness = 0.0f;
     evalParams.InPreExposure = settings.preExposure;
     evalParams.InReset = settings.resetAccumulation ? 1 : 0;
     evalParams.InMVScaleX = settings.motionVectorScale[0];
@@ -556,8 +596,14 @@ namespace dxvk
                                   bool depthInverted,
                                   bool autoExposure,
                                   bool sharpening,
+                                  NVSDK_NGX_RayReconstruction_Hint_Render_Preset dlssdModel,
                                   NVSDK_NGX_PerfQuality_Value perfQuality) {
     ScopedCpuProfileZone();
+
+    if (m_featureRayReconstruction) {
+      renderContext->getDevice()->waitForIdle();
+      releaseNGXFeature();
+    }
 
     const unsigned int CreationNodeMask = 1;
     const unsigned int VisibilityNodeMask = 1;
@@ -595,10 +641,6 @@ namespace dxvk
     dlssdCreateParams.InFeatureCreateFlags = createFlags;
     dlssdCreateParams.InUseHWDepth = NVSDK_NGX_DLSS_Depth_Type_HW;
 
-    // There are two models in DLSS-RR:
-    // NVSDK_NGX_RayReconstruction_Hint_Render_Preset_A is the Juicy Penguin model
-    // NVSDK_NGX_RayReconstruction_Hint_Render_Preset_B is the Arboreal Hedgehog model
-    NVSDK_NGX_RayReconstruction_Hint_Render_Preset dlssdModel = NVSDK_NGX_RayReconstruction_Hint_Render_Preset_A;
     m_parameters->Set(NVSDK_NGX_Parameter_RayReconstruction_Hint_Render_Preset_DLAA, dlssdModel);
     m_parameters->Set(NVSDK_NGX_Parameter_RayReconstruction_Hint_Render_Preset_Quality, dlssdModel);
     m_parameters->Set(NVSDK_NGX_Parameter_RayReconstruction_Hint_Render_Preset_Balanced, dlssdModel);
@@ -633,21 +675,20 @@ namespace dxvk
   NGXRayReconstructionContext::QuerySettings NGXRayReconstructionContext::queryOptimalSettings(const uint32_t displaySize[2], NVSDK_NGX_PerfQuality_Value perfQuality) const {
     ScopedCpuProfileZone();
     QuerySettings settings;
+    // Note: Deprecated, should not be used but still must be passed into the query function.
+    float dummySharpness;
 
     NVSDK_NGX_Result result = NGX_DLSSD_GET_OPTIMAL_SETTINGS(m_parameters,
       displaySize[0], displaySize[1], perfQuality,
       &settings.optimalRenderSize[0], &settings.optimalRenderSize[1],
       &settings.maxRenderSize[0], &settings.maxRenderSize[1],
       &settings.minRenderSize[0], &settings.minRenderSize[1],
-      &settings.sharpness);
+      &dummySharpness);
 
     if (NVSDK_NGX_FAILED(result)) {
       Logger::err(str::format("Querying optimal settings failed: ", resultToString(result)));
       return settings;
     }
-
-    // Depending on what version of DLSS DLL is being used, a sharpness of > 1.f was possible.
-    settings.sharpness = clamp(settings.sharpness, 0.01f, 1.f);
 
     return settings;
   }
@@ -692,7 +733,8 @@ namespace dxvk
     evalParams.pInBiasCurrentColorMask = settings.antiGhost ? &biasCurrentColorMaskResource : nullptr;
     evalParams.InJitterOffsetX = settings.jitterOffset[0];
     evalParams.InJitterOffsetY = settings.jitterOffset[1];
-    evalParams.Feature.InSharpness = settings.sharpness;
+    // Note: Sharpness parameter is deprecated and is not read by newer versions of DLSS, so setting it to 0 is fine here.
+    evalParams.Feature.InSharpness = 0.0f;
     evalParams.InPreExposure = settings.preExposure;
     evalParams.InReset = settings.resetAccumulation ? 1 : 0;
     evalParams.InMVScaleX = settings.motionVectorScale[0];
@@ -705,6 +747,7 @@ namespace dxvk
     NVSDK_NGX_Resource_VK positionResource = TextureToResourceVK(buffers.pPosition, false);
     NVSDK_NGX_Resource_VK normalsResource = TextureToResourceVK(buffers.pNormals, false);
     NVSDK_NGX_Resource_VK roughnessResource = TextureToResourceVK(buffers.pRoughness, false);
+    NVSDK_NGX_Resource_VK disocclusionMask = TextureToResourceVK(buffers.pDisocclusionMask, false);
 
     NVSDK_NGX_VK_DLSSD_Eval_Params evalParams_DLDN = {};
     evalParams_DLDN.pInDiffuseAlbedo = &diffuseAlbedoResource;
@@ -731,6 +774,7 @@ namespace dxvk
     evalParams_DLDN.pInWorldToViewMatrix = (float*) m_worldToViewMatrix.data;
     evalParams_DLDN.pInViewToClipMatrix = (float*) m_viewToProjectionMatrix.data;
     evalParams_DLDN.pInSpecularHitDistance = buffers.pHitDistance ? &hitDistanceResource : nullptr;
+    evalParams_DLDN.pInDisocclusionMask = &disocclusionMask;
 
     result = NGX_VULKAN_EVALUATE_DLSSD_EXT(vkCommandbuffer, m_featureRayReconstruction, m_parameters, &evalParams_DLDN);
 
@@ -745,38 +789,17 @@ namespace dxvk
     : NGXFeatureContext(device) { }
 
   NGXDLFGContext::~NGXDLFGContext() {
-    if (m_ngxInternalCommandPool) {
-      m_device->vkd()->vkDestroyCommandPool(m_device->handle(), m_ngxInternalCommandPool, nullptr);
-      m_ngxInternalCommandPool = nullptr;
-    }
-
     releaseNGXFeature();
   }
 
   void NGXDLFGContext::initialize(Rc<DxvkContext> renderContext,
                                   VkCommandBuffer commandList,
                                   uint32_t displayOutSize[2],
-                                  VkFormat outputFormat,
-                                  AppCreateTimelineSyncObjectsCallback_t createTimelineSyncObjectsCallback,
-                                  AppSyncSignalCallback_t syncSignalCallback,
-                                  AppSyncWaitCallback_t syncWaitCallback,
-                                  AppSyncFlushCallback_t syncFlushCallback,
-                                  void* callbackData) {
+                                  VkFormat outputFormat) {
     NVSDK_NGX_DLSSG_Create_Params createParams = { };
-    createParams.CreateTimelineSyncObjectsCallbackData = callbackData;
-    createParams.CreateTimelineSyncObjectsCallback = createTimelineSyncObjectsCallback;
-    createParams.SyncSignalCallbackData = callbackData;
-    createParams.SyncSignalCallback = syncSignalCallback;
-    createParams.SyncWaitCallbackData = callbackData;
-    createParams.SyncWaitCallback = syncWaitCallback;
-    createParams.SyncFlushCallbackData = callbackData;
-    createParams.SyncFlushCallback = syncFlushCallback;
-    
     createParams.Width = displayOutSize[0];
     createParams.Height = displayOutSize[1];
     createParams.NativeBackbufferFormat = outputFormat;
-
-    m_parameters->Set(NVSDK_NGX_DLSSG_Parameter_VkOFAModeRequest, NVSDK_NGX_VK_OFA_MODE_REQUEST::NATIVE);
 
     NVSDK_NGX_Result result = NGX_VK_CREATE_DLSSG(commandList,
                                                   1, // InCreationNodeMask
@@ -795,16 +818,9 @@ namespace dxvk
     poolInfo.pNext = nullptr;
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     poolInfo.queueFamilyIndex = m_device->queues().__DLFG_QUEUE.queueFamily;
-
-    if (m_device->vkd()->vkCreateCommandPool(m_device->handle(), &poolInfo, nullptr, &m_ngxInternalCommandPool) != VK_SUCCESS) {
-      throw DxvkError("NGXDLFGContext::initialize: failed to create command pool");
-    }
   }
 
-  void toNGX(float (&ret)[4][4], const Matrix4& _mat) {
-    // NGX expects row-major matrices. Ours are column-major, so transpose first.
-    Matrix4 mat = transpose(_mat);
-
+  void toNGX(float (&ret)[4][4], const Matrix4& mat) {
     ret[0][0] = mat[0].x;
     ret[0][1] = mat[0].y;
     ret[0][2] = mat[0].z;
@@ -867,6 +883,8 @@ namespace dxvk
                                                           Rc<DxvkImageView> depth,
                                                           const RtCamera& camera,
                                                           Vector2 motionVectorScale,
+                                                          uint32_t interpolatedFrameIndex,
+                                                          uint32_t interpolatedFrameCount,
                                                           bool resetHistory) {
     ScopedCpuProfileZone();
     
@@ -920,23 +938,17 @@ namespace dxvk
     consts.motionVectorsDilated = false;
 
     m_parameters->Set(NVSDK_NGX_DLSSG_Parameter_CmdQueue, m_device->queues().__DLFG_QUEUE.queueHandle);
-    m_parameters->Set(NVSDK_NGX_DLSSG_Parameter_CmdAlloc, m_ngxInternalCommandPool);
     m_parameters->Set(NVSDK_NGX_DLSSG_Parameter_EnableInterp, 1);
     m_parameters->Set(NVSDK_NGX_DLSSG_Parameter_IsRecording, 1);
+    m_parameters->Set(NVSDK_NGX_DLSSG_Parameter_MultiFrameCount, interpolatedFrameCount);
+    m_parameters->Set(NVSDK_NGX_DLSSG_Parameter_MultiFrameIndex, interpolatedFrameIndex + 1);
 
     NVSDK_NGX_Result result;
     result = NGX_VK_EVALUATE_DLSSG(clientCommandList, m_feature, m_parameters, &evalParams, &consts);
     if (NVSDK_NGX_FAILED(result)) {
       Logger::err(str::format("NGX_VK_EVALUATE_DLSSG failed: ", resultToString(result)));
     }
-
-    int needWFI = 0;
-    m_parameters->Get(NVSDK_NGX_DLSSG_Parameter_FlushRequired, &needWFI);
-    if (needWFI) {
-      return EvaluateResult::NeedWaitIdle;
-    }
     
     return EvaluateResult::Success;
   }
-
 } // namespace dxvk

@@ -47,9 +47,9 @@ void main(uint2 threadId : SV_DispatchThreadID)
 
   // Tonemap three syntetic exposures and produce their luminances.
   vec3 inpColor = OriginalTexture[threadId].xyz * avgExposure;
-  float highlights = calcBt709Luminance(linearToGamma(ACESFilm(inpColor * cb.highlights)));
-  float midtones   = calcBt709Luminance(linearToGamma(ACESFilm(inpColor)));
-  float shadows    = calcBt709Luminance(linearToGamma(ACESFilm(inpColor * cb.shadows)));
+  float highlights = calcBt709Luminance(linearToGamma(ACESFilm(inpColor * cb.highlights, cb.useLegacyACES)));
+  float midtones   = calcBt709Luminance(linearToGamma(ACESFilm(inpColor                , cb.useLegacyACES)));
+  float shadows    = calcBt709Luminance(linearToGamma(ACESFilm(inpColor * cb.shadows   , cb.useLegacyACES)));
   vec3 cols = vec3(highlights, midtones, shadows);
 
   OutLuminanceTexture[threadId] = vec4(cols, 1.0);

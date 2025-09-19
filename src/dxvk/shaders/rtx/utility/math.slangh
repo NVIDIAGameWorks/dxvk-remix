@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -36,7 +36,8 @@ static const uint uintMax = 4294967295;
 
 // Clamps a value to the range [0, 1]
 #define GENERIC_SATURATE(type)       \
-type saturate(type x) {              \
+type saturate(type x)                \
+{                                    \
   return clamp(x, type(0), type(1)); \
 }
 
@@ -126,19 +127,33 @@ GENERIC_SAFER_POSITIVE_DIVIDE(float, float)
 GENERIC_SAFER_POSITIVE_DIVIDE(f16vec3, float16_t)
 GENERIC_SAFER_POSITIVE_DIVIDE(vec3, float)
 
-// Normalizes a vector "safely" by falling back to another vector in the case of
-// an inability to normalize (to avoid NaNs from normalization).
-#define GENERIC_SAFE_NORMALIZE(type, lengthType)     \
-type safeNormalize(type vector, type fallbackVector) \
-{                                                    \
-  const lengthType vectorLength = length(vector);    \
-                                                     \
-  if (vectorLength == lengthType(0.0f))              \
-  {                                                  \
-    return fallbackVector;                           \
-  }                                                  \
-                                                     \
-  return vector / vectorLength;                      \
+// Normalizes a vector "safely" by falling back to another (ideally normalized) vector in the case of
+// an inability to normalize (to avoid NaNs from normalization). Also calculates
+// and outputs the length of the input vector. If the vector is invalid (the zero vector)
+// then the length will be 0.
+#define GENERIC_SAFE_NORMALIZE_GET_LENGTH(type, lengthType)                                  \
+type safeNormalizeGetLength(type vector, type fallbackVector, inout lengthType vectorLength) \
+{                                                                                            \
+  vectorLength = length(vector);                                                             \
+                                                                                             \
+  if (vectorLength == lengthType(0.0f))                                                      \
+  {                                                                                          \
+    return fallbackVector;                                                                   \
+  }                                                                                          \
+                                                                                             \
+  return vector / vectorLength;                                                              \
+}
+
+GENERIC_SAFE_NORMALIZE_GET_LENGTH(f16vec3, float16_t)
+GENERIC_SAFE_NORMALIZE_GET_LENGTH(vec3, float)
+
+// Same as the get length variant of the safe normalize function, just without a length output.
+#define GENERIC_SAFE_NORMALIZE(type, lengthType)                      \
+type safeNormalize(type vector, type fallbackVector)                  \
+{                                                                     \
+  lengthType dummyLength;                                             \
+                                                                      \
+  return safeNormalizeGetLength(vector, fallbackVector, dummyLength); \
 }
 
 GENERIC_SAFE_NORMALIZE(f16vec3, float16_t)
@@ -282,7 +297,7 @@ f16vec3 quaternionTransformVector(f16vec4 q, f16vec3 v, bool signBitIsParity = f
   f16vec3 newVector = v + float16_t(2.0) * cross(q.xyz, cross(q.xyz, v) + q.w * v);
 
   // In cases where we encode the sign bit of the quaternion representing an improper rotation...
-  if(signBitIsParity)
+  if (signBitIsParity)
   {
     newVector = (isQuatRightHanded(q.w) ? -1.h : 1.h) * newVector;
   }
@@ -307,7 +322,7 @@ f16vec4 quaternionMultiply(f16vec4 q1, f16vec4 q2, bool signBitIsParity = false)
   q = isQuatRightHanded(q.w) ? -q : q;
 
   // In cases where we encode the sign bit of the quaternion representing an improper rotation...
-  if(signBitIsParity)
+  if (signBitIsParity)
   {
     return (isQuatRightHanded(q1) ? -1.h : 1.h) * (isQuatRightHanded(q2.w) ? -1.h : 1.h) * q;
   }
@@ -321,7 +336,7 @@ f16vec4 quaternionMultiply(f16vec4 q1, f16vec4 q2, bool signBitIsParity = false)
 // Calculates a tangent and bitangent vector in the direction of the U and V coordinates of a triangle orthonormal to a
 // specified normal (this may be a triangle normal or an interpolated normal depending on the use case).
 // Note that the vectors this function returns may form an improper rotation when converted to a transformation due to a swap of
-// handedness. No gaurantees for left or right handedness are made as it depends on the triangle's UV layout.
+// handedness. No guarantees for left or right handedness are made as it depends on the triangle's UV layout.
 void genTangSpace(vec2 uvs[3],
                   vec3 pos[3],
                   f16vec3 normal,
@@ -357,7 +372,7 @@ void genTangSpace(vec2 uvs[3],
     rawTangent = (duv12[1] * dp02 - duv02[1] * dp12) * invdet;
     rawBitangent = (-duv12[0] * dp02 + duv02[0] * dp12) * invdet;
   }
-  // rawTangent and rawBitangent are too large for fp16, but We need the non-uniform component of the scale for POM.
+  // rawTangent and rawBitangent are too large for fp16, but we need the non-uniform component of the scale for POM.
   // Here, we scale both down by the length of the larger vector.
   float largerRawLength = sqrt(max(squareLength(rawTangent), squareLength(rawBitangent)));
   
@@ -483,6 +498,104 @@ f16mat3 getIdentityMatrix()
   return f16mat3(1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f);
 }
 
+f16mat3 quaternionToRotMat3(f16vec4 q)
+{
+  return f16mat3(
+    quaternionToTangent(q),
+    quaternionToBitangent(q),
+    quaternionToNormal(q));
+}
+
+f16vec3 quaternionToTangent(f16vec4 q)
+{
+  return quaternionTransformVector(q, f16vec3(1,0,0));
+}
+
+f16vec3 quaternionToBitangent(f16vec4 q)
+{
+  if (isQuatRightHanded(q)) {
+    return quaternionTransformVector(q, f16vec3(0,1,0));
+  } else {
+    return quaternionTransformVector(q, f16vec3(0,-1,0));
+  }
+}
+
+f16vec3 quaternionToNormal(f16vec4 q)
+{
+  return quaternionTransformVector(q, f16vec3(0,0,1));
+}
+
+// Because quaternion == -quaternion, we can use the sign bit of the w
+// component of the quaternion to encode the handedness of the original TBN matrix.
+bool isQuatRightHanded(f16vec4 q) 
+{
+  return float16BitsToUint16(q.w) & 0x8000;
+}
+
+// This produces a quaternion with a positive w, then inverts the quaternion if the input
+// TBN was right handed.  As q == -q for rotation purposes, this is a safe way to store
+// an extra flag along with the quaternion.
+// `isQuatRightHanded` can be used to easily check if the input TBN was right handed.
+f16vec4 tbnFrameToQuaternion(f16vec3 tangent, f16vec3 biTangent, f16vec3 normal)
+{
+  const bool rightHanded = (dot(cross(tangent,biTangent), normal) >= 0.0);
+  if (!rightHanded)
+  {
+    biTangent = -biTangent;
+  }
+  f16mat3 rotationMatrix = { tangent, biTangent, normal };
+  rotationMatrix = transpose(rotationMatrix);
+
+  const float tr = rotationMatrix[0][0] + rotationMatrix[1][1] + rotationMatrix[2][2];
+  f16vec4 quaternion;
+  if (tr > 0)
+  {
+    float s = sqrt(tr + 1.0) * 2; // s=4*qw
+    quaternion.w = 0.25 * s;
+    quaternion.x = (rotationMatrix[2][1] - rotationMatrix[1][2]) / s;
+    quaternion.y = (rotationMatrix[0][2] - rotationMatrix[2][0]) / s;
+    quaternion.z = (rotationMatrix[1][0] - rotationMatrix[0][1]) / s;
+  }
+  else if ((rotationMatrix[0][0] > rotationMatrix[1][1]) && (rotationMatrix[0][0] > rotationMatrix[2][2]))
+  {
+    float s = sqrt(1.0 + rotationMatrix[0][0] - rotationMatrix[1][1] - rotationMatrix[2][2]) * 2; // s=4*qx
+    quaternion.w = (rotationMatrix[2][1] - rotationMatrix[1][2]) / s;
+    quaternion.x = 0.25 * s;
+    quaternion.y = (rotationMatrix[0][1] + rotationMatrix[1][0]) / s;
+    quaternion.z = (rotationMatrix[0][2] + rotationMatrix[2][0]) / s;
+  }
+  else if (rotationMatrix[1][1] > rotationMatrix[2][2])
+  {
+    float s = sqrt(1.0 + rotationMatrix[1][1] - rotationMatrix[0][0] - rotationMatrix[2][2]) * 2; // s=4*qy
+    quaternion.w = (rotationMatrix[0][2] - rotationMatrix[2][0]) / s;
+    quaternion.x = (rotationMatrix[0][1] + rotationMatrix[1][0]) / s;
+    quaternion.y = 0.25 * s;
+    quaternion.z = (rotationMatrix[1][2] + rotationMatrix[2][1]) / s;
+  }
+  else
+  {
+    float s = sqrt(1.0 + rotationMatrix[2][2] - rotationMatrix[0][0] - rotationMatrix[1][1]) * 2; // s=4*qz
+    quaternion.w = (rotationMatrix[1][0] - rotationMatrix[0][1]) / s;
+    quaternion.x = (rotationMatrix[0][2] + rotationMatrix[2][0]) / s;
+    quaternion.y = (rotationMatrix[1][2] + rotationMatrix[2][1]) / s;
+    quaternion.z = 0.25 * s;
+  }
+
+  // If sign bit of w is negative but the original TBN was right handed 
+  // (or vice versa) flip the quaternion.
+  if (isQuatRightHanded(quaternion) != rightHanded)
+  {
+    quaternion = uint16BitsToHalf(float16BitsToUint16(quaternion) ^ 0x8000);
+  }
+
+  return quaternion;
+}
+
+f16vec4 getIdentityQuaternion()
+{
+  return f16vec4(0.h, 0.h, 0.h, 1.h);
+}
+
 // Calculate a non-normalized gaussian weight for a sample position
 // Returns 1 if sigma is 0 (disabled weighting)
 float calcGaussianWeight(float3 targetPosition, float3 samplePosition, float sigma)
@@ -534,99 +647,104 @@ float3 BicubicSampleCatmullRom(Texture2D tex, SamplerState samp, float2 samplePo
   return max(0, result);
 }
 
-f16mat3 quaternionToRotMat3(f16vec4 q)
+float4 calcCubicWeight(float v)
 {
-  return f16mat3(
-    quaternionToTangent(q),
-    quaternionToBitangent(q),
-    quaternionToNormal(q));
+  float4 n = float4(1.0f, 2.0f, 3.0f, 4.0f) - v;
+  float4 s = n * n * n;
+  float x = s.x;
+  float y = s.y - 4.0f * s.x;
+  float z = s.z - 4.0f * s.y + 6.0f * s.x;
+  float w = 6.0f - x - y - z;
+  return float4(x, y, z, w) * (1.0f / 6.0f);
 }
 
-f16vec3 quaternionToTangent(f16vec4 q)
+// Samples a 2D texture with a fast bicubic filtering method using 4 hardware filtered bilinear samples (16 effective texels sampled).
+// Expects the sampler passed in to be using bilinear filtering otherwise this function will not work properly.
+// Expects a sample position in texel coordinates centered at where the sampling is desired, not UVs.
+// Additionally this function does not currently respect mipmaps and only will sample from lod 0.
+// From: https://web.archive.org/web/20180927181721/http://www.java-gaming.org/index.php?topic=35123.0
+float4 BicubicSample(Sampler2D tex, float2 samplePos, float2 invTextureSize)
 {
-  return quaternionTransformVector(q, f16vec3(1,0,0));
+  samplePos = samplePos - float2(0.5f);
+
+  const float2 fxy = frac(samplePos);
+  const float2 intCoords = samplePos - fxy;
+
+  const float4 xWeight = calcCubicWeight(fxy.x);
+  const float4 yWeight = calcCubicWeight(fxy.y);
+
+  const float4 c = intCoords.xxyy + float2(-0.5f, +1.5f).xyxy;
+  const float4 s = float4(xWeight.xz + xWeight.yw, yWeight.xz + yWeight.yw);
+
+  float4 offset = c + float4(xWeight.yw, yWeight.yw) / s;
+
+  offset *= invTextureSize.xxyy;
+
+  const float4 sample0 = tex.SampleLevel(offset.xz, 0);
+  const float4 sample1 = tex.SampleLevel(offset.yz, 0);
+  const float4 sample2 = tex.SampleLevel(offset.xw, 0);
+  const float4 sample3 = tex.SampleLevel(offset.yw, 0);
+
+  const float sx = s.x / (s.x + s.y);
+  const float sy = s.z / (s.z + s.w);
+
+  return lerp(
+    lerp(sample3, sample2, sx),
+    lerp(sample1, sample0, sx),
+    sy
+  );
 }
 
-f16vec3 quaternionToBitangent(f16vec4 q)
+// Samples a 3D texture with a fast tricubic filtering method using 8 hardware filtered trilinear samples (64 effective texels sampled).
+// Expects the sampler passed in to be using bilinear filtering otherwise this function will not work properly.
+// Expects a sample position in texel coordinates centered at where the sampling is desired, not UVs.
+// Additionally this function does not currently respect mipmaps and only will sample from lod 0.
+// From: https://gist.github.com/Fewes/59d2c831672040452aa77da6eaab2234
+float4 TricubicSample(Sampler3D tex, float3 samplePos, float3 invTextureSize)
 {
-  if (isQuatRightHanded(q)) {
-    return quaternionTransformVector(q, f16vec3(0,1,0));
-  } else {
-    return quaternionTransformVector(q, f16vec3(0,-1,0));
-  }
-}
+  samplePos = samplePos - float3(0.5f);
 
-f16vec3 quaternionToNormal(f16vec4 q)
-{
-  return quaternionTransformVector(q, f16vec3(0,0,1));
-}
+  const float3 fxyz = frac(samplePos);
+  const float3 intCoords = samplePos - fxyz;
 
-// Because quaternion == -quaternion, we can use the sign bit of the w
-// component of the quaternion to encode the handedness of the original TBN matrix.
-bool isQuatRightHanded(f16vec4 q) 
-{
-  return float16BitsToUint16(q.w) & 0x8000;
-}
+  const float4 xWeight = calcCubicWeight(fxyz.x);
+  const float4 yWeight = calcCubicWeight(fxyz.y);
+  const float4 zWeight = calcCubicWeight(fxyz.z);
 
-// This produces a quaternion with a positive w, then inverts the quaternion if the input
-// TBN was right handed.  As q == -q for rotation purposes, this is a safe way to store
-// an extra flag along with the quaternion.
-// `isQuatRightHanded` can be used to easily check if the input TBN was right handed.
-f16vec4 tbnFrameToQuaternion(f16vec3 tangent, f16vec3 biTangent, f16vec3 normal)
-{
-    const bool rightHanded = (dot(cross(tangent,biTangent), normal) >= 0.0);
-    if (!rightHanded)
-    {
-      biTangent = -biTangent;
-    }
-    f16mat3 rotationMatrix = { tangent, biTangent, normal };
-    rotationMatrix = transpose(rotationMatrix);
+  const float2 cx = intCoords.xx + float2(-0.5f, 1.5f);
+  const float2 cy = intCoords.yy + float2(-0.5f, 1.5f);
+  const float2 cz = intCoords.zz + float2(-0.5f, 1.5f);
+  const float2 sx = xWeight.xz + xWeight.yw;
+  const float2 sy = yWeight.xz + yWeight.yw;
+  const float2 sz = zWeight.xz + zWeight.yw;
 
-    const float tr = rotationMatrix[0][0] + rotationMatrix[1][1] + rotationMatrix[2][2];
-    f16vec4 quaternion;
-    if (tr > 0)
-    {
-        float s = sqrt(tr + 1.0) * 2; // s=4*qw
-        quaternion.w = 0.25 * s;
-        quaternion.x = (rotationMatrix[2][1] - rotationMatrix[1][2]) / s;
-        quaternion.y = (rotationMatrix[0][2] - rotationMatrix[2][0]) / s;
-        quaternion.z = (rotationMatrix[1][0] - rotationMatrix[0][1]) / s;
-    }
-    else if ((rotationMatrix[0][0] > rotationMatrix[1][1]) && (rotationMatrix[0][0] > rotationMatrix[2][2]))
-    {
-        float s = sqrt(1.0 + rotationMatrix[0][0] - rotationMatrix[1][1] - rotationMatrix[2][2]) * 2; // s=4*qx
-        quaternion.w = (rotationMatrix[2][1] - rotationMatrix[1][2]) / s;
-        quaternion.x = 0.25 * s;
-        quaternion.y = (rotationMatrix[0][1] + rotationMatrix[1][0]) / s;
-        quaternion.z = (rotationMatrix[0][2] + rotationMatrix[2][0]) / s;
-    }
-    else if (rotationMatrix[1][1] > rotationMatrix[2][2])
-    {
-        float s = sqrt(1.0 + rotationMatrix[1][1] - rotationMatrix[0][0] - rotationMatrix[2][2]) * 2; // s=4*qy
-        quaternion.w = (rotationMatrix[0][2] - rotationMatrix[2][0]) / s;
-        quaternion.x = (rotationMatrix[0][1] + rotationMatrix[1][0]) / s;
-        quaternion.y = 0.25 * s;
-        quaternion.z = (rotationMatrix[1][2] + rotationMatrix[2][1]) / s;
-    }
-    else
-    {
-        float s = sqrt(1.0 + rotationMatrix[2][2] - rotationMatrix[0][0] - rotationMatrix[1][1]) * 2; // s=4*qz
-        quaternion.w = (rotationMatrix[1][0] - rotationMatrix[0][1]) / s;
-        quaternion.x = (rotationMatrix[0][2] + rotationMatrix[2][0]) / s;
-        quaternion.y = (rotationMatrix[1][2] + rotationMatrix[2][1]) / s;
-        quaternion.z = 0.25 * s;
-    }
+  float2 offsetx = cx + xWeight.yw / sx;
+  float2 offsety = cy + yWeight.yw / sy;
+  float2 offsetz = cz + zWeight.yw / sz;
 
-    // If sign bit of w is negative but the original TBN was right handed 
-    // (or vice versa) flip the quaternion.
-    if (isQuatRightHanded(quaternion) != rightHanded) {
-      quaternion = uint16BitsToHalf(float16BitsToUint16(quaternion) ^ 0x8000);
-    }
+  offsetx *= invTextureSize.xx;
+  offsety *= invTextureSize.yy;
+  offsetz *= invTextureSize.zz;
 
-    return quaternion;
-}
+  const float4 sample0 = tex.SampleLevel(float3(offsetx.x, offsety.x, offsetz.x), 0);
+  const float4 sample1 = tex.SampleLevel(float3(offsetx.y, offsety.x, offsetz.x), 0);
+  const float4 sample2 = tex.SampleLevel(float3(offsetx.x, offsety.y, offsetz.x), 0);
+  const float4 sample3 = tex.SampleLevel(float3(offsetx.y, offsety.y, offsetz.x), 0);
+  const float4 sample4 = tex.SampleLevel(float3(offsetx.x, offsety.x, offsetz.y), 0);
+  const float4 sample5 = tex.SampleLevel(float3(offsetx.y, offsety.x, offsetz.y), 0);
+  const float4 sample6 = tex.SampleLevel(float3(offsetx.x, offsety.y, offsetz.y), 0);
+  const float4 sample7 = tex.SampleLevel(float3(offsetx.y, offsety.y, offsetz.y), 0);
 
-f16vec4 getIdentityQuaternion()
-{
-  return f16vec4(0.h, 0.h, 0.h, 1.h);
+  const float gx = sx.x / (sx.x + sx.y);
+  const float gy = sy.x / (sy.x + sy.y);
+  const float gz = sz.x / (sz.x + sz.y);
+
+  const float4 x0 = lerp(sample1, sample0, gx);
+  const float4 x1 = lerp(sample3, sample2, gx);
+  const float4 x2 = lerp(sample5, sample4, gx);
+  const float4 x3 = lerp(sample7, sample6, gx);
+  const float4 y0 = lerp(x1, x0, gy);
+  const float4 y1 = lerp(x3, x2, gy);
+
+  return lerp(y1, y0, gz);
 }

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -26,6 +26,7 @@
 #include "rtx/concept/surface_material/surface_material.slangh"
 #include "rtx/utility/packing.slangh"
 #include "rtx/algorithm/resolve.slangh"
+#include "rtx/algorithm/volume_lighting.slangh"
 
 static const uint visibilityModeNone = 0;
 static const uint visibilityModeAccurateHitDistance = (1 << 0);        // Return the closest hit and not just any opaque hit
@@ -46,15 +47,19 @@ f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo ra
   {
     // View model instances don't have an inter-frame mapping, assume they're transparent
     if (rayHitInfo.customIndex & CUSTOM_INDEX_IS_VIEW_MODEL)
+    {
       return 1.0;
+    }
 
     // Map the surface index from the previous frame to the current frame
     rayInteraction.surfaceIndex = surfaceMapping[rayInteraction.surfaceIndex];
 
     if (rayInteraction.surfaceIndex == BINDING_INDEX_INVALID)
+    {
       // Surface no longer exists - assume it was transparent, which is safer than
       // assuming an opaque surface, because that would introduce more bias in ReSTIR
       return 1.0;
+    }
   }
 
   Surface surface = surfaces[uint(rayInteraction.surfaceIndex)]; 
@@ -63,11 +68,10 @@ f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo ra
   //   initialize these values and  help the compiler generate more optimal code paths.
   const bool requiresNormalsAndTangents = VisibilityMode & (visibilityModeEnableSubsurfaceMaterials|visibilityModeEnableTranslucentMaterials);
   {
-    surface.displaceIn = 0.f;
     surface.decalSortOrder = 0;
     surface.objectPickingValue = 0;
     surface.hashPacked = 0;
-    surface.texcoordGenerationMode = TexGenMode::None;
+    surface.texcoordGenerationMode = (uint8_t) TexGenMode::None;
 
     if (!usePreviousTLAS)
     {
@@ -85,8 +89,10 @@ f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo ra
   SurfaceInteraction surfaceInteraction = surfaceInteractionCreate<requiresNormalsAndTangents ? SurfaceGenerateTangents : SurfaceIgnoreTangents>(surface, rayInteraction, ray, usePreviousTLAS);
 
   if (isSurfaceClipped(surface, surfaceInteraction))
+  {
     // Ignore parts of surfaces that are under clip planes
     return 1.0;
+  }
 
   const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[rayInteraction.surfaceIndex];
   
@@ -94,12 +100,12 @@ f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo ra
 
   if (polymorphicType == surfaceMaterialTypeOpaque)
   {
-    const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(rayInteraction.surfaceIndex, memoryPolymorphicSurfaceMaterial, true);
+    const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial, true);
 
     const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
       opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
 
-    const bool isSubsurface = (VisibilityMode & visibilityModeEnableSubsurfaceMaterials) && isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
+    const bool isThinOpaqueSubsurface = (VisibilityMode & visibilityModeEnableSubsurfaceMaterials) && isThinOpaqueSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
     const bool handleStochasticAlphaBlend =
       cb.enableStochasticAlphaBlend &&
@@ -110,12 +116,12 @@ f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo ra
     //   1. The surface doesn't have subsurface (do traditional alpha-blending)
     //   2. The surface has subsurface, but the surface point need to be discarded because it fails the alpha-test.
     //      This is necessary for subsurface material or the alpha-test will be ignored.
-    if (!isSubsurface || handleStochasticAlphaBlend || opaqueSurfaceMaterialInteraction.opacity <= cb.resolveTransparencyThreshold)
+    if (!isThinOpaqueSubsurface || handleStochasticAlphaBlend || opaqueSurfaceMaterialInteraction.opacity <= cb.resolveTransparencyThreshold)
     {
       return 1.0h - opaqueSurfaceMaterialInteraction.opacity;
     }
     
-    if(VisibilityMode & visibilityModeEnableSubsurfaceMaterials)
+    if (VisibilityMode & visibilityModeEnableSubsurfaceMaterials)
     {
       const float16_t normalDotOutputDirection = dot(-ray.direction, opaqueSurfaceMaterialInteraction.shadingNormal);
       if (normalDotOutputDirection < materialEpsilon)
@@ -148,7 +154,7 @@ f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo ra
   }
   else if ((VisibilityMode & visibilityModeEnableTranslucentMaterials) && polymorphicType == surfaceMaterialTypeTranslucent)
   {
-    const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(rayInteraction.surfaceIndex, memoryPolymorphicSurfaceMaterial, true);
+    const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial, true);
 
     // Extract the thin walled flag before evaluating the material interaction
     const bool isThinWalled = translucentSurfaceMaterial.thicknessOrMeasurementDistance < float16_t(0);
@@ -191,8 +197,11 @@ float16_t getRayPortalTransparency(
   // Treat rays coming from behind the portal as not intersecting with it.
   const float NdotD = dot(ray.direction, portal.normal);
   t = dot(portal.centroid - ray.origin, portal.normal) / NdotD;
-  if (isinf(t) || isnan(t)) t = -1.0;
-
+  if (isinf(t) || isnan(t))
+  {
+    t = -1.0;
+  }
+  
   if (0 <= t && t <= ray.tMax && NdotD < 0)
   {
     const vec3 p = ray.origin + ray.direction * t;
@@ -217,7 +226,7 @@ float16_t getRayPortalTransparency(
       surface.spriteSheetCols = portal.spriteSheetCols;
       surface.spriteSheetFPS = portal.spriteSheetFPS;
 
-      SurfaceInteraction surfaceInteraction = (SurfaceInteraction)0;
+      SurfaceInteraction surfaceInteraction = SurfaceInteraction();
       surfaceInteraction.textureCoordinates = uv * 0.5f + 0.5f;
       surfaceInteraction.textureGradientX = vec2(0.0f);
       surfaceInteraction.textureGradientY = vec2(0.0f);
@@ -308,13 +317,14 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
     : RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH;
 
   // Note: Enable culling of backfacing triangles only if culling is actually desired on this visibility ray.
-  if(cb.enableCullingSecondaryRays) {
+  if (cb.enableCullingSecondaryRays)
+  {
     rayFlags |= (VisibilityMode & visibilityModeDisableCulling)
       ? 0
       : RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
   }
 
-  while(true)
+  while (true)
   {
     RayQuery<0> rayQuery = RayQuery<0>();
 
@@ -352,7 +362,7 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
         if ((float16_t(1) - calcBt709Luminance(result.attenuation)) >= cb.resolveOpaquenessThreshold)
         {
           // If opaque hit is not considered in the attenuation term, need to recover previous attenuation.
-          if(!clearOpaqueHitAttenuation)
+          if (!clearOpaqueHitAttenuation)
           {
             result.attenuation = prevAttenuation;
           }
@@ -364,7 +374,7 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
 
     if (rayQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT)
     {
-      if(clearOpaqueHitAttenuation)
+      if (clearOpaqueHitAttenuation)
       {
         result.attenuation = f16vec3(0.0);
       }
@@ -404,7 +414,7 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
       break;
     }
   }
-
+  
   return result;
 }
 
@@ -416,19 +426,19 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
   bool hasRayOriginatedFromViewModel = false,
   bool usePreviousTLAS = false,
   uint16_t primarySurfaceIndex = BINDING_INDEX_INVALID, float2 texCoords = f16vec2(0.0h),
-  bool isSubsurface = false, f16vec3 shadingNormal = f16vec3(0.0h), bool clearOpaqueHitAttenuation = true)
+  bool isThinOpaqueSubsurface = false,
+  f16vec3 shadingNormal = f16vec3(0.0h), bool clearOpaqueHitAttenuation = true)
 {
-  MinimalRayInteraction minimalRayInteraction = (MinimalRayInteraction)0;
+  MinimalRayInteraction minimalRayInteraction = (MinimalRayInteraction) 0;
   minimalRayInteraction.coneRadius = coneRadius;
   
-  Ray viewRay = (Ray)0;
+  Ray viewRay = (Ray) 0;
   viewRay.spreadAngle = spreadAngle;
 
   Ray visibilityRay;
-  if (!isSubsurface)
+  if (!isThinOpaqueSubsurface)
   {
-    visibilityRay = rayCreatePosition(
-      minimalRayInteraction, minimalSurfaceInteraction, viewRay, targetPosition, false);
+    visibilityRay = rayCreatePosition( minimalRayInteraction, minimalSurfaceInteraction, viewRay, targetPosition, false);
   }
   else
   {
@@ -444,28 +454,65 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
   float pomAttenuation = 1.0f;
   if ((VisibilityMode & visibilityModeEnablePom) && cb.pomMode != DisplacementMode::Off && pomOpaqueSurfaceEncountered)
   {
-    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
-    OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(primarySurfaceIndex, memoryPolymorphicSurfaceMaterial);
-
-    pomAttenuation = opaqueSurfaceMaterialInteractionCalcHeightThroughput(
-      minimalSurfaceInteraction, visibilityRay.direction, opaqueSurfaceMaterial.heightTextureIndex,
-      opaqueSurfaceMaterial.samplerIndex, texCoords, opaqueSurfaceMaterial.displaceIn
-    );
-
-    if (pomAttenuation <= 0.001f)
+    if (cb.debugView == DEBUG_VIEW_HEIGHT_MAP)
     {
-      VisibilityResult result;
-      result.attenuation = pomAttenuation;
-      result.hasOpaqueHit = true;
-      result.rayDirection = visibilityRay.direction;
-      result.hitDistance = visibilityRay.tMax; // TODO should refactor POM code to return?
-      result.hasPOMHit = true;
-      return result;
+      if (primarySurfaceIndex != BINDING_INDEX_INVALID)
+      {
+        const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
+        if (memoryPolymorphicSurfaceMaterial.isOpaque())
+        {
+          OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial, true);
+          
+          if (!opaqueSurfaceMaterial.hasValidDisplacement())
+          {
+            storeInDebugView(getDispatchRaysIndex().xy, float3(0.0f, 1.f, 1.f));
+          }
+          else if (opaqueSurfaceMaterial.heightTextureIndex == BINDING_INDEX_INVALID)
+          {
+            storeInDebugView(getDispatchRaysIndex().xy, float3(0.0f, 1.f, 0.66f));
+          }
+        }
+        else
+        {
+          storeInDebugView(getDispatchRaysIndex().xy, float3(0.f, 1.f, 0.33f));
+        }
+      }
+      else
+      {
+        storeInDebugView(getDispatchRaysIndex().xy, float3(0.f, 1.f, 0.f));
+      }
+    }
+
+    if (primarySurfaceIndex != BINDING_INDEX_INVALID)
+    {
+      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
+      if (memoryPolymorphicSurfaceMaterial.hasValidDisplacement())
+      {
+        OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial, true);
+        
+        pomAttenuation = opaqueSurfaceMaterialInteractionCalcHeightThroughput(
+          minimalSurfaceInteraction, visibilityRay.direction, opaqueSurfaceMaterial, texCoords
+        );
+    
+        if (pomAttenuation <= 0.001f)
+        {
+          VisibilityResult result;
+          result.attenuation = pomAttenuation;
+          result.hasOpaqueHit = true;
+          result.rayDirection = visibilityRay.direction;
+          result.hitDistance = visibilityRay.tMax; // TODO should refactor POM code to return?
+          result.hasPOMHit = true;
+          return result;
+        }
+      }
     }
   }
 #endif
 
   VisibilityResult result = traceVisibilityRay<VisibilityMode>(visibilityRay, rayMask, expectedRayPortalIndex, rayOriginPortalSpace, hasRayOriginatedFromViewModel, usePreviousTLAS, clearOpaqueHitAttenuation);
+
+  // We want to calculate the attenuation from the light to the surface - which is why we use targetPosition (light) and neg-direction (light to surface)
+  result.attenuation *= calcVolumetricAttenuation(cb.volumeArgs, none, false, result.hitDistance, targetPosition, -visibilityRay.direction);
 
 #ifdef OPAQUE_MATERIAL_USE_POM
   result.attenuation = result.attenuation * pomAttenuation;

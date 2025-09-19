@@ -1,4 +1,18 @@
-# Use this file to bootstrap packman into your Python environment (3.7.x). Simply
+# Copyright 2021-2024 NVIDIA CORPORATION
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+
+#     http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Use this file to bootstrap packman into your Python environment. Simply
 # add the path by doing sys.insert to where packmanconf.py is located and then execute:
 #
 # >>> import packmanconf
@@ -84,7 +98,13 @@ def get_module_dir(conf_dir, packages_root: str, version: str) -> str:
         tf = tempfile.NamedTemporaryFile(delete=False)
         target_name = tf.name
         tf.close()
-        url = f"http://bootstrap.packman.nvidia.com/packman-common@{version}.zip"
+        # Using http here and not https is by design. Unfortunately SSL keeps getting revised
+        # which breaks old clients when servers are forced to upgrade to newer version of TLS
+        # and refuse to downgrade when asked. Instead of relying on SSL for transport security
+        # packman does SHA256 verification of the downloaded package in the `install_package`
+        # method. We therefore inform SonarQube to stop complaining about the line below.
+        # See issue #367 for more detail.
+        url = f"http://bootstrap.packman.nvidia.com/packman-common@{version}.zip"  # NOSONAR
         print(f"Downloading '{url}' ...")
         import urllib.request
 

@@ -137,17 +137,20 @@ void main(uvec2 threadID : SV_DispatchThreadID)
 - lowerCamelCase for constant, function, parameter and variable names.
 - UpperCamelCase for structure names and buffers.
 - UPPER\_SNAKE\_CASE for macro names.
-- Next-line braces for functions, conditionals, loops, etc.
+- Next-line braces for functions, conditionals (including single line then/else statements), loops, etc.
 - Additionally, braces should always be added, even when optional (no one-line conditionals/loops).
 - New lines should be used to separate code for better readability, for example after a block or after a comment or other significant logical code section.
 - Spaces should surround binary operators on both sides, but should not be added around parentheses (be it in an expression, function call or otherwise).
 - Delimiter commas (function calls or parameter lists) or semicolons (in for loops) should be followed by a space (or a new line if needed to split across lines).
 - Lines should be kept at a reasonable length (100-120 ish characters max typically). Excessively long lines should be split up with newlines.
 - Splitting across lines should be done ideally at delimiters or other logical points, for example after each item in a function call, after a bitwise or boolean and/or in a chain of expressions, or even at "important" binary math operators.
-
+- An empty space should be between if/for/while/switch and (.
+- Header files should be guarded with #pragma once.
 A combined example of these stylistic choices in use is as follows:
 
 ```glsl
+#pragma once
+
 struct Foo
 {
   uint fooBarBaz;
@@ -169,33 +172,37 @@ vec3 exampleHelper(Foo foo, bool test, inout bool specialFlag)
 
   // Do some calculations conditionally
 
-  if (foo.anotherFoo > someConstant)
+  int loopCounter = 2;
+  while (loopCounter-- > 0)
   {
-    switch (foo.anotherFoo)
+    if (foo.anotherFoo > someConstant)
     {
-    // Note: Fallthrough to Apple type.
-    default:
-    case anotherFooTypeApple:
-      someExcessivelyLongFunctionNameForDemonstrationPurposes(
-        foo.anotherBaz + 1.0h,
-        foo.anotherBaz / 2.0h,
-        foo.anotherBaz * 5.0h);
-
-      break;
-    case anotherFooTypeOrange:
-      if (
-        (foo.fooBarBaz == 26 && foo.anotherBaz == 2.0h) ||
-        foo.fooBarBaz == 5
-      )
+      switch (foo.anotherFoo)
       {
-        const uint someScalar = uint(foo.anotherFoo) * foo.fooBarBaz;
+      // Note: Fallthrough to Apple type.
+      default:
+      case anotherFooTypeApple:
+        someExcessivelyLongFunctionNameForDemonstrationPurposes(
+          foo.anotherBaz + 1.0h,
+          foo.anotherBaz / 2.0h,
+          foo.anotherBaz * 5.0h);
 
-        specialFlag = true;
+        break;
+      case anotherFooTypeOrange:
+        if (
+          (foo.fooBarBaz == 26 && foo.anotherBaz == 2.0h) ||
+          foo.fooBarBaz == 5
+        )
+        {
+          const uint someScalar = uint(foo.anotherFoo) * foo.fooBarBaz;
 
-        return vec3(float(someScalar));
+          specialFlag = true;
+
+          return vec3(float(someScalar));
+        }
+
+        break;
       }
-
-      break;
     }
   }
 

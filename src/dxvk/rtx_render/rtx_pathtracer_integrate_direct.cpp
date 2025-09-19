@@ -53,6 +53,7 @@ namespace dxvk {
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_TEXTURE_COORD_INPUT)
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_SURFACE_INDEX_INPUT)
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DATA_INPUT)
+        TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT)
 
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT)
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_INPUT)
@@ -99,21 +100,40 @@ namespace dxvk {
   }
 
   void DxvkPathtracerIntegrateDirect::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
+    ScopedCpuProfileZoneN("Direct Integrate Shader Prewarming");
 
     const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device);
 
-    for (int32_t ommEnabled = isOpacityMicromapSupported; ommEnabled > 0; ommEnabled--)
-      pipelineManager.registerRaytracingShaders(getPipelineShaders(true, ommEnabled));
+    if (RtxOptions::Shader::prewarmAllVariants()) {
+      for (int32_t ommEnabled = isOpacityMicromapSupported; ommEnabled > 0; ommEnabled--) {
+        pipelineManager.registerRaytracingShaders(getPipelineShaders(true, ommEnabled));
+      }
 
-    DxvkComputePipelineShaders shaders;
-    shaders.cs = getComputeShader();
-    pipelineManager.createComputePipeline(shaders);
+      getComputeShader();
+    } else {
+      // Note: The getter for OMM enabled also checks if OMMs are supported, so we do not need to check for that manually.
+      const bool ommEnabled = RtxOptions::getEnableOpacityMicromap();
+
+      DxvkComputePipelineShaders shaders;
+      switch (RtxOptions::renderPassIntegrateDirectRaytraceMode()) {
+      case RaytraceMode::RayQuery:
+        getComputeShader();
+        break;
+      case RaytraceMode::RayQueryRayGen:
+        pipelineManager.registerRaytracingShaders(getPipelineShaders(true, ommEnabled));
+        break;
+      default:
+        assert(false && "Invalid renderPassIntegrateDirectRaytraceMode in DxvkPathtracerIntegrateDirect::prewarmShaders");
+        break;
+      }
+    }
   }
 
   void DxvkPathtracerIntegrateDirect::dispatch(
     RtxContext* ctx, 
     const Resources::RaytracingOutput& rtOutput) {
     ScopedGpuProfileZone(ctx, "Integrate Direct Raytracing");
+    ctx->setFramePassStage(RtxFramePassStage::DirectIntegration);
 
     // Bind resources
 
@@ -130,8 +150,9 @@ namespace dxvk {
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_MATERIAL_DATA0_INPUT, rtOutput.m_sharedMaterialData0.view, nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_MATERIAL_DATA1_INPUT, rtOutput.m_sharedMaterialData1.view, nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_TEXTURE_COORD_INPUT, rtOutput.m_sharedTextureCoord.view, nullptr);
-    ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DATA_INPUT, rtOutput.m_sharedSubsurfaceData.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT, rtOutput.m_sharedSubsurfaceDiffusionProfileData.view, nullptr);
 
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_primaryWorldShadingNormal.view, nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_INPUT, rtOutput.m_primaryPerceptualRoughness.view, nullptr);
@@ -178,9 +199,9 @@ namespace dxvk {
 
     const VkExtent3D& rayDims = rtOutput.m_compositeOutputExtent;
 
-    const bool ommEnabled = RtxOptions::Get()->getEnableOpacityMicromap();
+    const bool ommEnabled = RtxOptions::getEnableOpacityMicromap();
 
-    switch (RtxOptions::Get()->getRenderPassIntegrateDirectRaytraceMode()) {
+    switch (RtxOptions::renderPassIntegrateDirectRaytraceMode()) {
     case RaytraceMode::RayQuery:
       VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 16, 8, 1 });
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getComputeShader());

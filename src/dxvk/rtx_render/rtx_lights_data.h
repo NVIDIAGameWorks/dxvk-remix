@@ -27,19 +27,20 @@
 
 #define LIST_LIGHT_CONSTANTS(X) \
   /*Parameter Name,   USD Token String,       Type,    Min Value,    Max Value,    Default Value */ \
-  X(Radius,           radius,                 float,   0.f,          FLOAT16_MAX,  0.f) \
-  X(Width,            width,                  float,   0.f,          FLT_MAX,      0.f) \
-  X(Height,           height,                 float,   0.f,          FLT_MAX,      0.f) \
-  X(Length,           length,                 float,   0.f,          FLT_MAX,      0.f) \
-  X(AngleRadians,     angle,                  float,   -FLT_MAX,     FLT_MAX,      0.f) \
-  X(EnableColorTemp,  enableColorTemperature, bool,    false,        true,         false) \
-  X(Color,            color,                  Vector3, Vector3(0.f), Vector3(1.f), Vector3(1.f)) \
-  X(ColorTemp,        colorTemperature,       float,   0.f,          FLT_MAX,      6500.f) \
-  X(Exposure,         exposure,               float,   -FLT_MAX,     FLT_MAX,      0.f) \
-  X(Intensity,        intensity,              float,   0.f,          FLT_MAX,      1.f) \
-  X(ConeAngleRadians, shaping:cone:angle,     float,   -FLT_MAX,     FLT_MAX,      180.f * kDegreesToRadians) \
-  X(ConeSoftness,     shaping:cone:softness,  float,   0.f,          FLOAT16_MAX,  0.f) \
-  X(Focus,            shaping:focus,          float,   0.f,          FLOAT16_MAX,  0.f) 
+  X(Radius,                  radius,                    float,   0.f,          FLOAT16_MAX,  0.f) \
+  X(Width,                   width,                     float,   0.f,          FLT_MAX,      0.f) \
+  X(Height,                  height,                    float,   0.f,          FLT_MAX,      0.f) \
+  X(Length,                  length,                    float,   0.f,          FLT_MAX,      0.f) \
+  X(AngleRadians,            angle,                     float,   -FLT_MAX,     FLT_MAX,      0.f) \
+  X(EnableColorTemp,         enableColorTemperature,    bool,    false,        true,         false) \
+  X(Color,                   color,                     Vector3, Vector3(0.f), Vector3(1.f), Vector3(1.f)) \
+  X(ColorTemp,               colorTemperature,          float,   0.f,          FLT_MAX,      6500.f) \
+  X(Exposure,                exposure,                  float,   -FLT_MAX,     FLT_MAX,      0.f) \
+  X(Intensity,               intensity,                 float,   0.f,          FLT_MAX,      1.f) \
+  X(ConeAngleRadians,        shaping:cone:angle,        float,   -FLT_MAX,     FLT_MAX,      180.f * kDegreesToRadians) \
+  X(ConeSoftness,            shaping:cone:softness,     float,   0.f,          FLOAT16_MAX,  0.f) \
+  X(Focus,                   shaping:focus,             float,   0.f,          FLOAT16_MAX,  0.f) \
+  X(VolumetricRadianceScale, volumetric_radiance_scale, float,   0.f,          FLOAT16_MAX,  1.f)
 
 #define WRITE_PARAMETER_MEMBERS(name, usd_attr, type, minVal, maxVal, defaultVal) \
       type m_##name = defaultVal;
@@ -67,6 +68,10 @@ namespace dxvk {
     // Are we overriding an existing game light?
     bool lightOverride() const { return m_isOverrideLight; }
 
+    void setTransform(const pxr::GfMatrix4f& localToObject) {
+      extractTransform(&localToObject);
+    }
+
   private:
     // Supported light data types
     enum LightType {
@@ -81,7 +86,6 @@ namespace dxvk {
     explicit LightData(LightType lightType, bool isOverrideLight = false, bool absoluteTransform = true);
 
     static LightData createFromDirectional(const D3DLIGHT9& light);
-
     static LightData createFromPointSpot(const D3DLIGHT9& light);
 
     void merge(const LightData& input);

@@ -108,7 +108,7 @@ struct LegacyMaterialData;
 class GameCapturer : public RcObject
 {
 public:
-  RW_RTX_OPTION("rtx.capture", bool, correctBakedTransforms, false,
+  RTX_OPTION("rtx.capture", bool, correctBakedTransforms, false,
                 "Some games bake world transforms into mesh vertices. If individually captured\n"
                 "meshes appear to be way off in the middle of nowhere OR instanced meshes appear\n"
                 "to all have identity xform matrices, enabling will attempt to correct this and\n"
@@ -118,7 +118,7 @@ public:
   GameCapturer(DxvkDevice* const pDevice, SceneManager& sceneManager, AssetExporter& exporter);
   ~GameCapturer();
 
-  void step(const Rc<DxvkContext> ctx, const float frameTimeMilliseconds, const HWND hwnd);
+  void step(const Rc<DxvkContext> ctx, const HWND hwnd);
   void triggerNewCapture() {
     m_bTriggerCapture = true;
   }
@@ -156,7 +156,7 @@ public:
     return m_completeCapture;
   }
 
-  static const std::string s_baseDir;
+  static std::string getCaptureInstanceStageNameWithTimestamp();
 
 private:
   GameCapturer() = delete;
@@ -294,17 +294,17 @@ private:
   } m_options;
 
   static Options getOptions() {
-    return { RtxOptions::Get()->getCaptureShowMenuOnHotkey(),
-             RtxOptions::Get()->getCaptureInstances(),
-             RtxOptions::Get()->getCaptureInstanceStageName(),
-             RtxOptions::Get()->getCaptureEnableMultiframe(),
-             RtxOptions::Get()->getCaptureMaxFrames(),
-             RtxOptions::Get()->getCaptureFramesPerSecond(),
-             RtxOptions::Get()->getCaptureMeshPositionDelta(),
-             RtxOptions::Get()->getCaptureMeshNormalDelta(),
-             RtxOptions::Get()->getCaptureMeshTexcoordDelta(),
-             RtxOptions::Get()->getCaptureMeshColorDelta(),
-             RtxOptions::Get()->getCaptureMeshBlendWeightDelta() };
+    return { RtxOptions::captureShowMenuOnHotkey(),
+             RtxOptions::getCaptureInstances(),
+             getCaptureInstanceStageNameWithTimestamp(),
+             RtxOptions::captureEnableMultiframe(),
+             RtxOptions::captureMaxFrames(),
+             RtxOptions::captureFramesPerSecond(),
+             RtxOptions::captureMeshPositionDelta(),
+             RtxOptions::captureMeshNormalDelta(),
+             RtxOptions::captureMeshTexcoordDelta(),
+             RtxOptions::captureMeshColorDelta(),
+             RtxOptions::captureMeshBlendWeightDelta() };
   }
 
   // State

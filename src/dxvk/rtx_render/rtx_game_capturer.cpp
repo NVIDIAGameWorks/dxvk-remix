@@ -21,7 +21,6 @@
 */
 
 #include "rtx_game_capturer.h"
-#include "rtx_game_capturer_paths.h"
 
 #include "rtx_context.h"
 #include "rtx_types.h"
@@ -36,6 +35,7 @@
 
 #include "../../util/log/log.h"
 #include "../../util/config/config.h"
+#include "../../util/util_filesys.h"
 #include "../../util/util_vector.h"
 #include "../../util/util_window.h"
 
@@ -50,33 +50,13 @@
 #include "rtx_matrix_helpers.h"
 #include "rtx_lights.h"
 
+#include "../util/util_globaltime.h"
+
 #include <filesystem>
 
-#define BASE_DIR (std::string(GameCapturer::s_baseDir))
+#define BASE_DIR (util::RtxFileSys::path(util::RtxFileSys::Captures).string())
 
 namespace dxvk {
-  const std::string GameCapturer::s_baseDir = []() {
-    std::string pathStr = env::getEnvVar("DXVK_CAPTURE_PATH");
-    if (!pathStr.empty()) {
-      if(*pathStr.rbegin() != '/') {
-        pathStr += '/';
-      }
-    } else {
-      pathStr = relPath::remixCaptureDir;
-    }
-    {
-      using namespace std::filesystem;
-      const path wholePath = path(pathStr);
-      path ctorPath(".");
-      for (const auto& part : wholePath) {
-        ctorPath /= part;
-        ctorPath = absolute(ctorPath);
-        env::createDirectory(ctorPath.string());
-      }
-    }
-    return pathStr;
-  }();
-
   namespace {
     static inline pxr::GfMatrix4d matrix4ToGfMatrix4d(const Matrix4& mat4) {
       const auto& float4x4 = reinterpret_cast<const float(&)[4][4]>(mat4);
@@ -103,9 +83,13 @@ namespace dxvk {
       meta.alphaTestReferenceValue = rtInstance.surface.alphaState.alphaTestReferenceValue;
       meta.alphaTestCompareOp = (uint32_t) rtInstance.surface.alphaState.alphaTestType;
       meta.alphaBlendEnabled = !rtInstance.surface.alphaState.isBlendingDisabled;
-      meta.srcColorBlendFactor = (uint32_t) rtInstance.surface.srcColorBlendFactor;
-      meta.dstColorBlendFactor = (uint32_t) rtInstance.surface.dstColorBlendFactor;
-      meta.colorBlendOp = (uint32_t) rtInstance.surface.colorBlendOp;
+      meta.srcColorBlendFactor = (uint32_t) rtInstance.surface.blendModeState.colorSrcFactor;
+      meta.dstColorBlendFactor = (uint32_t) rtInstance.surface.blendModeState.colorDstFactor;
+      meta.colorBlendOp = (uint32_t) rtInstance.surface.blendModeState.colorBlendOp;
+      meta.srcAlphaBlendFactor = (uint32_t) rtInstance.surface.blendModeState.alphaSrcFactor;
+      meta.dstAlphaBlendFactor = (uint32_t) rtInstance.surface.blendModeState.alphaDstFactor;
+      meta.alphaBlendOp = (uint32_t) rtInstance.surface.blendModeState.alphaBlendOp;
+      meta.writeMask = (uint32_t) rtInstance.surface.blendModeState.writeMask;
       meta.textureColorArg1Source = (uint32_t) rtInstance.surface.textureColorArg1Source;
       meta.textureColorArg2Source = (uint32_t) rtInstance.surface.textureColorArg2Source;
       meta.textureColorOperation = (uint32_t) rtInstance.surface.textureColorOperation;
@@ -114,11 +98,13 @@ namespace dxvk {
       meta.textureAlphaOperation = (uint32_t) rtInstance.surface.textureAlphaOperation;
       meta.tFactor = rtInstance.surface.tFactor;
       meta.isTextureFactorBlend = rtInstance.surface.isTextureFactorBlend;
+      meta.isVertexColorBakedLighting = rtInstance.surface.isVertexColorBakedLighting;
       return meta;
     }
 
     static std::string getBakedSkyProbeName(const std::string& captureName) {
-      return captureName + commonFileName::bakedSkyProbeSuffix;
+      const std::string bakedSkyProbeSuffix("_T_SkyProbe" + lss::ext::dds);
+      return captureName + bakedSkyProbeSuffix;
     }
   }
 
@@ -134,6 +120,7 @@ namespace dxvk {
     , m_sceneManager(sceneManager)
     , m_exporter(exporter)
     , m_options{ getOptions() } {
+
     if(!env::getEnvVar("DXVK_RTX_CAPTURE_ENABLE_ON_FRAME").empty()) {
       Logger::info(str::format("[GameCapturer] DXVK_RTX_CAPTURE_ENABLE_ON_FRAME: ", env::getEnvVar("DXVK_RTX_CAPTURE_ENABLE_ON_FRAME")));
     }
@@ -146,13 +133,13 @@ namespace dxvk {
   GameCapturer::~GameCapturer() {
   }
 
-  void GameCapturer::step(const Rc<DxvkContext> ctx, const float frameTimeMilliseconds, const HWND hwnd) {
+  void GameCapturer::step(const Rc<DxvkContext> ctx, const HWND hwnd) {
     trigger(ctx);
     if(m_state.has<State::Initializing>()) {
       initCapture(ctx, hwnd);
     }
     if (m_state.has<State::Capturing>()) {
-      capture(ctx, frameTimeMilliseconds);
+      capture(ctx, GlobalTime::get().deltaTimeMs());
     }
     if (m_state.has<State::BeginExport>()) {
       exportUsd(ctx);
@@ -170,7 +157,7 @@ namespace dxvk {
     if (m_bTriggerCapture) {
       m_bTriggerCapture = false;
       if(isIdle()) {
-        if (RtxOptions::Get()->getEnableAnyReplacements() && m_sceneManager.areReplacementsLoaded()) {
+        if (RtxOptions::getEnableAnyReplacements() && m_sceneManager.areAllReplacementsLoaded()) {
           Logger::warn("[GameCapturer] Cannot begin capture when replacement assets are enabled/loaded.");
         } else if (m_state.has<State::Capturing>()) {
           Logger::warn("[GameCapturer] Cannot begin new capture, one currently in progress.");
@@ -267,8 +254,8 @@ namespace dxvk {
       if (capCamera.proj.bInv) {
         // Check if the up vector in view matrix is upside down
         const auto& up = viewToWorld[1].xyz();
-        if ((!RtxOptions::Get()->isZUp() && dot(up, Vector3d(0.0, 1.0, 0.0)) < 0.0) ||
-            (RtxOptions::Get()->isZUp() && dot(up, Vector3d(0.0, 0.0, 1.0)) < 0.0)) {
+        if ((!RtxOptions::zUp() && dot(up, Vector3d(0.0, 1.0, 0.0)) < 0.0) ||
+            (RtxOptions::zUp() && dot(up, Vector3d(0.0, 0.0, 1.0)) < 0.0)) {
           capCamera.view.bInv = true;
         }
       }
@@ -464,7 +451,7 @@ namespace dxvk {
     const BlasEntry* pBlas = rtInstance.getBlas();
     assert(pBlas != nullptr);
     const XXH64_hash_t matHash = rtInstance.getMaterialDataHash();
-    const XXH64_hash_t meshHash = pBlas->input.getHash(RtxOptions::Get()->GeometryAssetHashRule);
+    const XXH64_hash_t meshHash = pBlas->input.getHash(RtxOptions::geometryAssetHashRule());
     assert(meshHash != 0);
 
     const LegacyMaterialData& material = pBlas->getMaterialData(matHash);
@@ -639,18 +626,18 @@ namespace dxvk {
       OriginCalc originCalc;
       for (size_t idx = 0; idx < numVertices; ++idx) {
         pxr::GfVec3f pos = *reinterpret_cast<const pxr::GfVec3f*>(&pVkPosBuf[idx * positionStride]);
-        if(m_correctBakedTransforms) {
+        if(correctBakedTransforms()) {
           originCalc.compareAndSwap(pos);
         }
         positions.push_back(pos);
       }
-      if(m_correctBakedTransforms) {
+      if(correctBakedTransforms()) {
         pMesh->originCalc.compareAndSwap(originCalc);
       }
       assert(positions.size() > 0);
       // Create comparison function that returns float
       static auto positionsDifferentEnough = [](const pxr::GfVec3f& a, const pxr::GfVec3f& b) {
-        const static float captureMeshPositionDelta = RtxOptions::Get()->getCaptureMeshPositionDelta();
+        const static float captureMeshPositionDelta = RtxOptions::captureMeshPositionDelta();
         const static float captureMeshPositionDeltaSq = captureMeshPositionDelta * captureMeshPositionDelta;
         return (a - b).GetLengthSq() > captureMeshPositionDeltaSq;
       };
@@ -689,7 +676,7 @@ namespace dxvk {
       assert(normals.size() > 0);
       // Create comparison function that returns float
       static auto normalsDifferentEnough = [](const pxr::GfVec3f& a, const pxr::GfVec3f& b) {
-        const static float captureMeshNormalDelta = RtxOptions::Get()->getCaptureMeshNormalDelta();
+        const static float captureMeshNormalDelta = RtxOptions::captureMeshNormalDelta();
         const static float captureMeshNormalDeltaSq = captureMeshNormalDelta * captureMeshNormalDelta;
         return (a - b).GetLengthSq() > captureMeshNormalDeltaSq;
       };
@@ -790,7 +777,7 @@ namespace dxvk {
       assert(texcoords.size() > 0);
       // Create comparison function that returns float
       static auto differentIndices = [](const pxr::GfVec2f& a, const pxr::GfVec2f& b) {
-        const static float captureMeshTexcoordDelta = RtxOptions::Get()->getCaptureMeshTexcoordDelta();
+        const static float captureMeshTexcoordDelta = RtxOptions::captureMeshTexcoordDelta();
         const static float captureMeshTexcoordDeltaSq = captureMeshTexcoordDelta * captureMeshTexcoordDelta;
         return (a - b).GetLengthSq() > captureMeshTexcoordDeltaSq;
       };
@@ -831,7 +818,7 @@ namespace dxvk {
       assert(colors.size() > 0);
       // Create comparison function that returns float
       static auto colorsDifferentEnough = [](const pxr::GfVec4f& a, const pxr::GfVec4f& b) {
-        const static float captureMeshColorDelta = RtxOptions::Get()->getCaptureMeshColorDelta();
+        const static float captureMeshColorDelta = RtxOptions::captureMeshColorDelta();
         const static float captureMeshColorDeltaSq = captureMeshColorDelta * captureMeshColorDelta;
         return (a - b).GetLengthSq() > captureMeshColorDeltaSq;
       };
@@ -882,7 +869,7 @@ namespace dxvk {
       assert(targetBuffer.size() > 0);
       // Create comparison function that returns float
       static auto weightsDifferentEnough = [](const float& a, const float& b) {
-        const static float delta = RtxOptions::Get()->getCaptureMeshBlendWeightDelta();
+        const static float delta = RtxOptions::captureMeshBlendWeightDelta();
         return std::abs(a - b) > delta;
       };
       // Cache buffer iff new buffer differs from previous buffer
@@ -1032,18 +1019,18 @@ namespace dxvk {
     exportPrep.meta.windowTitle = window::getWindowTitle(cap.hwnd);
     exportPrep.meta.exeName = env::getExeName();
     exportPrep.meta.iconPath = BASE_DIR + exportPrep.meta.exeName + "_icon.bmp";
-    exportPrep.meta.geometryHashRule = RtxOptions::Get()->geometryAssetHashRuleString();
-    exportPrep.meta.metersPerUnit = RtxOptions::Get()->getSceneScale();
+    exportPrep.meta.geometryHashRule = RtxOptions::geometryAssetHashRuleString();
+    exportPrep.meta.metersPerUnit = RtxOptions::sceneScale();
     exportPrep.meta.timeCodesPerSecond = framesPerSecond;
     exportPrep.meta.startTimeCode = 0.0;
     exportPrep.meta.endTimeCode = floor(static_cast<double>(cap.currentFrameNum));
     exportPrep.meta.numFramesCaptured = cap.numFramesCaptured;
     window::saveWindowIconToFile(exportPrep.meta.iconPath, cap.hwnd);
     exportPrep.meta.bReduceMeshBuffers = true;
-    exportPrep.meta.isZUp = RtxOptions::Get()->isZUp();
+    exportPrep.meta.isZUp = RtxOptions::zUp();
     if (s_captureRemixConfigs) {
       for (auto& pair : RtxOptionImpl::getGlobalRtxOptionMap()) {
-        exportPrep.meta.renderingSettingsDict[pair.first] = pair.second->genericValueToString(RtxOptionImpl::ValueType::Value);
+        exportPrep.meta.renderingSettingsDict[pair.second->getFullName()] = pair.second->genericValueToString(RtxOptionImpl::ValueType::Value);
       }
     }
     exportPrep.meta.bCorrectBakedTransforms = false;
@@ -1074,13 +1061,13 @@ namespace dxvk {
       if (cap.materials.count(pMesh->matHash) > 0) {
         pMesh->lssData.matId = pMesh->matHash;
       }
-      if(m_correctBakedTransforms) {
+      if(correctBakedTransforms()) {
         pMesh->lssData.origin = pMesh->originCalc.calc();
         stageOriginCalc.compareAndSwap(pMesh->lssData.origin);
       }
       exportPrep.meshes[hash] = pMesh->lssData;
     }
-    if(m_correctBakedTransforms) {
+    if(correctBakedTransforms()) {
       exportPrep.stageOrigin = stageOriginCalc.calc();
     }
   }
@@ -1124,5 +1111,33 @@ namespace dxvk {
     const auto pFlattenedStage = pStage->Export(flattenedStagePath, true);
     assert(pFlattenedStage);
     Logger::info("[GameCapturer][" + exportPrep.debugId + "] USD capture flattened.");
+  }
+
+  std::string GameCapturer::getCaptureInstanceStageNameWithTimestamp() {
+
+    const std::string& stageName = RtxOptions::captureInstanceStageName();
+    const auto timestampPos = stageName.find(RtxOptions::captureTimestampReplacement());
+    const auto usdExtPos =
+      stageName.find(lss::ext::usd, stageName.length() - lss::ext::usda.length() - 1);
+    std::string stageNameWithExt = stageName + ((usdExtPos == std::string::npos) ? lss::ext::usd : "");
+    
+    if (timestampPos == std::string::npos) {
+      return stageNameWithExt;
+    }
+    
+    const std::time_t curTime = std::time(nullptr);
+    std::tm locTime;
+    // The vanilla versions of localtime are not thread safe, see:
+    // https://en.cppreference.com/w/cpp/chrono/c/localtime
+    localtime_s(&locTime, &curTime);
+    static constexpr size_t kTimeStrLen = 19; // length of YYYY-MM-DD_HH-MM-SS
+    const auto putTime = std::put_time(&locTime, "%Y-%m-%d_%H-%M-%S");
+    
+    std::stringstream stageNameSS;
+    stageNameSS << stageNameWithExt.substr(0, timestampPos);
+    stageNameSS << putTime;
+    stageNameSS << stageNameWithExt.substr(timestampPos + RtxOptions::captureTimestampReplacement().length());
+
+    return stageNameSS.str();
   }
 }

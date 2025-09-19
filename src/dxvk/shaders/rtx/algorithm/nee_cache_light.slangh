@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -96,12 +96,12 @@ struct NEECacheUtils
     return surface.isEmissiveBlend || surface.isEmissive;
   }
 
-#define USE_SIMIPLIFIED_MODEL 1
+#define USE_SIMPLIFIED_MODEL 1
 
   static Surface getSurface(int surfaceIndex)
   {    
     Surface surface = surfaces[uint(surfaceIndex)]; 
-  #if USE_SIMIPLIFIED_MODEL
+  #if USE_SIMPLIFIED_MODEL
     // Don't override following settings because they may affect some emissive objects
     // surface.isEmissive = false;
     // surface.isEmissiveBlend = false;
@@ -138,7 +138,7 @@ struct NEECacheUtils
     surfaceInteraction.textureGradientX *= cb.neeCacheArgs.emissiveTextureSampleFootprintScale;
     surfaceInteraction.textureGradientY *= cb.neeCacheArgs.emissiveTextureSampleFootprintScale;
 
-  #if USE_SIMIPLIFIED_MODEL
+  #if USE_SIMPLIFIED_MODEL
     // surfaceInteraction.vertexColor = f16vec4(0);
     surfaceInteraction.positionError = 0;
     surfaceInteraction.motion = 0;
@@ -152,14 +152,13 @@ struct NEECacheUtils
   static LightSample calculateLightSample(Surface surface, SurfaceInteraction surfaceInteraction, RayInteraction rayInteracton, vec3 shadingPosition, float trianglePdf, out float triangleArea, bool useSolidAnglePdf, int footprintMode)
   {
     const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[uint(rayInteracton.surfaceIndex)];
-    const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
 
     LightSample lightSample = {};
     lightSample.position = surfaceInteraction.position;
     lightSample.normal = surfaceInteraction.interpolatedNormal;
     float lightPdf = trianglePdf;
     triangleArea = surfaceInteraction.triangleArea;
-    if(useSolidAnglePdf)
+    if (useSolidAnglePdf)
     {
       lightPdf *= calculateLightSamplingSolidAnglePDF(
         surfaceInteraction.triangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, shadingPosition);
@@ -178,10 +177,10 @@ struct NEECacheUtils
     }
 
     // The light sample and the shading point may be one the same triangle. In this case, solid angle PDF is 0.
-    if (lightSample.solidAnglePdf > 0 && polymorphicType == surfaceMaterialTypeOpaque)
+    if (lightSample.solidAnglePdf > 0 && memoryPolymorphicSurfaceMaterial.isOpaque())
     {
-      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(uint(rayInteracton.surfaceIndex), memoryPolymorphicSurfaceMaterial);
-  #if USE_SIMIPLIFIED_MODEL
+      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
+  #if USE_SIMPLIFIED_MODEL
       // Don't override albedo textures because it may be used by some emissive objects
       // opaqueSurfaceMaterial.albedoOpacityTextureIndex = BINDING_INDEX_INVALID;
       opaqueSurfaceMaterial.normalTextureIndex = BINDING_INDEX_INVALID;
@@ -297,7 +296,7 @@ struct NEECacheUtils
   static void calculateTriangleLightIntensity(int surfaceIndex, int primitiveIndex, out vec3 triangleCenter, out f16vec3 triangleNormal, out vec3 lightIntensity)
   {
     const Surface surface = surfaces[uint(surfaceIndex)]; 
-    RayInteraction rayInteracton = {};
+    RayInteraction rayInteracton = RayInteraction();
     rayInteracton.frontHit = true;
     rayInteracton.barycentricCoordinates = barycentricsToUint(uvToBarycentrics(vec2(1.0 / 3.0)));
     rayInteracton.primitiveIndex = primitiveIndex;
@@ -311,11 +310,10 @@ struct NEECacheUtils
     lightIntensity = vec3(0);
 
     const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surfaceIndex];
-    const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
 
-    if (polymorphicType == surfaceMaterialTypeOpaque)
+    if (memoryPolymorphicSurfaceMaterial.isOpaque())
     {
-      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surfaceIndex, memoryPolymorphicSurfaceMaterial);
+      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
       const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
         opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteracton);
 
@@ -412,7 +410,7 @@ struct NEECacheUtils
       return 1.0;
     }
 
-    RayInteraction rayInteraction = {};
+    RayInteraction rayInteraction = RayInteraction();
     rayInteraction.coneRadius = 0;
     rayInteraction.viewDirection = viewDirection;
 

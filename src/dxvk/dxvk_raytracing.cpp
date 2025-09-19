@@ -26,7 +26,7 @@ namespace dxvk {
     bool shouldApply(const Rc<DxvkDevice>& device) {
       static int result = 0;
 
-      if (!RtxOptions::Get()->getEnableOpacityMicromap()) {
+      if (!RtxOptions::getEnableOpacityMicromap()) {
         // Disable the WAR when OMM is not enabled
         return false;
       }
@@ -317,7 +317,7 @@ namespace dxvk {
 
     VkDeferredOperationKHR deferredOp = VK_NULL_HANDLE;
 
-    if (m_useDeferredOperations.getValue()) {
+    if (useDeferredOperations()) {
       VK_THROW_IF_FAILED(m_vkd->vkCreateDeferredOperationKHR(m_vkd->device(), VK_NULL_HANDLE, &deferredOp));
     }
 
@@ -416,7 +416,7 @@ namespace dxvk {
       info.access = VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_SHADER_READ_BIT;
       info.size = m_raygenShaderBindingTable.size + m_missShaderBindingTable.size +
         m_hitShaderBindingTable.size + m_callableShaderBindingTable.size;
-      m_shaderBindingTableBuffer = m_pipeMgr->m_device->createBuffer(info, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, DxvkMemoryStats::Category::RTXAccelerationStructure);
+      m_shaderBindingTableBuffer = m_pipeMgr->m_device->createBuffer(info, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, DxvkMemoryStats::Category::RTXAccelerationStructure, "SBT");
     }
 
     // Find the SBT addresses of each group.

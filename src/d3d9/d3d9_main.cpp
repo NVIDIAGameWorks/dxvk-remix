@@ -4,13 +4,19 @@
 #include "d3d9_shader_validator.h"
 #include "d3d9_device.h"
 
+// NV-DXVK start: RTX FileSystem management
+#include "../util/util_filesys.h"
+// NV-DXVK end
+
 #include <windows.h>
 
 class D3DFE_PROCESSVERTICES;
 using PSGPERRORID = UINT;
 
 namespace dxvk {
-  Logger Logger::s_instance("d3d9.log");
+// NV-DXVK start: pass log level as param
+  Logger Logger::s_instance("d3d9.log", LogLevel::None);
+// NV-DXVK end
 
   HRESULT CreateD3D9(
           bool           Extended,
@@ -22,6 +28,18 @@ namespace dxvk {
 // NV-DXVK end
     if (!ppDirect3D9Ex)
       return D3DERR_INVALIDCALL;
+      
+// NV-DXVK start: Set up rtx filesystem
+    // If Direct3DCreate9 is invoked more than once, we want our static
+    // state to remain.
+    ONCE(
+      const auto exePath = env::getExePath();
+      const auto exeDir = std::filesystem::path(exePath).parent_path();
+      util::RtxFileSys::init(exeDir.string());
+      Logger::initRtxLog();
+      util::RtxFileSys::print();
+    );
+// NV-DXVK end
 
 // NV-DXVK start: external API / provide error code on exception
     try {
@@ -127,6 +145,10 @@ extern "C" {
       {
         static constexpr uint64_t remixApiV = REMIXAPI_VERSION_MAKE(REMIXAPI_VERSION_MAJOR, REMIXAPI_VERSION_MINOR, REMIXAPI_VERSION_PATCH);
         return remixApiV;
+      }
+      case version::FileSys:
+      {
+        return version::fileSysV;
       }
       default:
       {

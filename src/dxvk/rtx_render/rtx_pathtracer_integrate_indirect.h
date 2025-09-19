@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -27,6 +27,7 @@
 namespace dxvk {
 
   class DxvkDevice;
+  enum class IntegrateIndirectMode;
 
   class DxvkPathtracerIntegrateIndirect : public CommonDeviceObject {
   public:
@@ -49,7 +50,10 @@ namespace dxvk {
     static const char* raytraceModeToString(RaytraceMode raytraceMode);
 
   private:
-    static DxvkRaytracingPipelineShaders getPipelineShaders(const bool useRayQuery, const bool serEnabled, const bool ommEnabled, const bool useNeeCache, const bool includePortals, const bool pomEnabled);
-    Rc<DxvkShader> getComputeShader(const bool useNeeCache) const;
+    static DxvkRaytracingPipelineShaders getPipelineShaders(const bool useRayQuery, const bool serEnabled, const bool ommEnabled, const bool useNeeCache, const bool includePortals, const bool pomEnabled, const bool nrcEnabled, const bool wboitEnbaled);
+    Rc<DxvkShader> getComputeShader(const bool useNeeCache, const bool nrcEnabled, const bool wboitEnabled) const;
+    void logIntegrateIndirectMode();
+    
+    IntegrateIndirectMode m_integrateIndirectMode;
   };
 }

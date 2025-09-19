@@ -24,5 +24,6 @@
   <PropertyGroup>
     <UseMultiToolTask>true</UseMultiToolTask>
     <EnforceProcessCountAcrossBuilds>true</EnforceProcessCountAcrossBuilds> 
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
   </PropertyGroup>
 </Project>

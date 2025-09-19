@@ -21,6 +21,9 @@
 */
 #include "dxvk_imgui_splash.h"
 
+#include <cstdint>
+#include <cassert>
+
 #include "imgui.h"
 #include "../rtx_render/rtx_options.h"
 #include "../rtx_render/rtx_bridge_message_channel.h"
@@ -32,6 +35,9 @@ namespace dxvk {
     RTX_OPTION_ENV("rtx", bool, hideSplashMessage, false, "RTX_HIDE_SPLASH_MESSAGE",
            "A flag to disable the splash message indicating how to use Remix from appearing when the application starts.\n"
            "When set to true this message will be hidden, otherwise it will be displayed on every launch.");
+    // Note: 20 chosen as a default here to allow the message to persist long enough to read in case the user focuses on other information on the screen first (e.g.
+    // shader compilation messages, text from the application itself in its startup sequence, etc).
+    RTX_OPTION("rtx", std::uint32_t, splashMessageDisplayTimeSeconds, 20, "The amount of time in seconds to display the Remix splash message for.");
     RTX_OPTION("rtx", std::string, welcomeMessage, "", "Display a message to the user on startup, leave empty if no message is to be displayed.");
   };
 
@@ -39,7 +45,7 @@ namespace dxvk {
     using namespace std::chrono;
 
     // Should we show the splash message?  Don't if hidden, or if UI already active
-    if (!m_hasStarted && !SplashSettings::hideSplashMessage() && RtxOptions::Get()->showUI() == UIType::None) {
+    if (!m_hasStarted && !SplashSettings::hideSplashMessage() && RtxOptions::showUI() == UIType::None) {
       // No need to start again
       m_hasStarted = true;
 
@@ -48,14 +54,16 @@ namespace dxvk {
     }
 
     const auto elapsedDuration = system_clock::now() - m_startTime;
-    const int elapsedMilliseconds = duration_cast<milliseconds>(elapsedDuration).count();
-    const int elapsedSeconds = duration_cast<seconds>(elapsedDuration).count();
+    const auto elapsedMilliseconds = duration_cast<milliseconds>(elapsedDuration).count();
+    const auto elapsedSeconds = duration_cast<seconds>(elapsedDuration).count();
 
-    if (elapsedSeconds <= m_timeToLiveSeconds) {  
+    assert(elapsedSeconds >= 0);
+
+    if (static_cast<std::uint32_t>(elapsedSeconds) <= SplashSettings::splashMessageDisplayTimeSeconds()) {
       // Show the user the time remaining
       // Note: Clamped to ensure the count does not go negative for a frame (as ImGui does not respond
       // to a close request from within an open popup on the same frame).
-      const int clampedSecondsRemaining = std::max(m_timeToLiveSeconds - elapsedSeconds, 0);
+      const auto clampedSecondsRemaining = std::max(SplashSettings::splashMessageDisplayTimeSeconds() - elapsedSeconds, 0ll);
 
       ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always, ImVec2(0.0f, 0.0f));
 
@@ -76,8 +84,8 @@ namespace dxvk {
       ));
 
       if (ImGui::Begin("Splash Message", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove)) {
-        const auto keyBindDescriptor = buildKeyBindDescriptorString(RtxOptions::Get()->remixMenuKeyBinds());
-        std::string message = str::format("Welcome to NVIDIA RTX Remix.  At any point during gameplay press : ", keyBindDescriptor, " to access the Remix Menu.  Closing in ", clampedSecondsRemaining);
+        const auto keyBindDescriptor = buildKeyBindDescriptorString(RtxOptions::remixMenuKeyBinds());
+        std::string message = str::format("Welcome to RTX Remix. Use ", keyBindDescriptor, " to access the RTX Remix Menu and change settings. Closing in ", clampedSecondsRemaining);
         ImGui::Text(message.c_str());
       }
       ImGui::End();

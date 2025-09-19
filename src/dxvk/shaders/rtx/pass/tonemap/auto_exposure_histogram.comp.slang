@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -39,8 +39,10 @@ uint inputToHistogramBucket(const float3 inputColor)
   // Count nearly black pixels in the 0th bucket
   const float kEpsilon = 0.00001f;
   if (inputLuminance < kEpsilon)
+  {
     return 0;
-  
+  }
+
   const float ev100 = calcLuminanceEV100(inputLuminance);
   
   const float normalizedEV = saturate((ev100 - cb.evMinValue) / cb.evRange);
@@ -51,8 +53,10 @@ uint inputToHistogramBucket(const float3 inputColor)
 
 float centerMeteringWeight(float2 screenUV, float aspect)
 {
-  if(!cb.enableCenterMetering)
+  if (!cb.enableCenterMetering)
+  {
     return 1.f;
+  }
 
   const float weight = saturate(length( (screenUV - vec2(0.5f)) / vec2(1.0f, aspect) ) / cb.centerMeteringSize);
   return lerp(1.0f, 0.0f, weight);
@@ -83,7 +87,8 @@ void main(uint2 threadId : SV_DispatchThreadID, uint linearIndex : SV_GroupIndex
   GroupMemoryBarrierWithGroupSync();
 
   uint localBinValue = g_localData[linearIndex];
-  if (localBinValue != 0) {
+  if (localBinValue != 0)
+  {
     InterlockedAdd(OutHistogram[linearIndex], localBinValue);
   }
 }

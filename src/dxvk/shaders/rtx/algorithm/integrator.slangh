@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -36,6 +36,7 @@
 #include "rtx/algorithm/resolve.slangh"
 #include "rtx/algorithm/visibility.slangh"
 #include "rtx/algorithm/nee_cache.h"
+#include "rtx/algorithm/path_state.slangh"
 
 struct IndirectSampleData
 {
@@ -150,9 +151,14 @@ Ray sampleDirection(
 
   // Combine sample throughput into the throughput
 
-  const vec3 directionSampleThroughput = surfaceMaterialInteractionSample.throughput / surfaceMaterialInteractionLobeSample.pdf;
-
-  throughput *= directionSampleThroughput;
+  // Note: The lobe sample PDF occasionally may be 0 to indicate no valid sample was taken, so this check must be here to avoid
+  // dividing by 0. When the lobe sample PDF is 0, the throughput should also be 0 to indicate no valid sample was taken (much
+  // like the Surface Material Interaction's sample throughput will be set to 0 to indicate no valid direction sample was taken).
+  if (surfaceMaterialInteractionLobeSample.pdf != 0.0f) {
+    throughput *= surfaceMaterialInteractionSample.throughput / surfaceMaterialInteractionLobeSample.pdf;
+  } else {
+    throughput = vec3(0.0f);
+  }
 
   return sampledRay;
 }
@@ -223,9 +229,10 @@ bool evalNEESecondary(
   // Setup and trace the visibility ray
 
   uint8_t rayMask = OBJECT_MASK_OPAQUE | (objectMask & OBJECT_MASK_ALL_DYNAMIC);
-  if (cb.enableIndirectTranslucentShadows) rayMask |= OBJECT_MASK_TRANSLUCENT;
+  rayMask |= (cb.enableIndirectTranslucentShadows) ? OBJECT_MASK_TRANSLUCENT : 0;
+  rayMask |= (cb.enableIndirectAlphaBlendShadows) ? OBJECT_MASK_ALPHA_BLEND : 0;
 
-  const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
+  const bool isThinOpaqueSubsurface = isThinOpaqueSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
   // The visibility test function applies an offset to the surface position to avoid self
   // intersection, so the actual length is slightly different from the estimatedLength here.
@@ -243,14 +250,15 @@ bool evalNEESecondary(
     sampledTransportPortalIndex, portalSpace, pomOpaqueSurfaceEncountered,
     minimalRayInteraction.coneRadius, viewRay.spreadAngle, ratio, isViewModelSurface, false,
     surfaceIndex, texcoords,
-    isSubsurface, opaqueSurfaceMaterialInteraction.shadingNormal);
+    isThinOpaqueSubsurface,
+    opaqueSurfaceMaterialInteraction.shadingNormal);
 
   if (visibility.hasOpaqueHit)
   {
     diffuseLight = specularLight = 0;
     return false;
-  }
-
+  }  
+  
   // Accumulate throughput and hit distance
   const float lightSampleThroughput = lightSample.solidAnglePdf > 0 ? 1.0 / lightSample.solidAnglePdf : 0.0;
 
@@ -274,7 +282,7 @@ void evaluateUnshadowedLight(
   out vec3 specularLight)
 {
   if (dot(inputDirection, opaqueSurfaceMaterialInteraction.shadingNormal) < 0.0 &&
-      (!cb.enableThinOpaque || !isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction)))
+      (!cb.sssArgs.enableThinOpaque || !isThinOpaqueSubsurfaceMaterial(opaqueSurfaceMaterialInteraction)))
   {
     diffuseLight = specularLight = 0;
     return;
@@ -287,11 +295,30 @@ void evaluateUnshadowedLight(
   specularLight = lightSample.radiance * splitWeight.specularReflectionWeight;
 }
 
-float calculateRussianRouletteContinueProbability(float pathThroughput, bool isOpaqueMaterial, bool isSpecularLobe, float16_t isotropicRoughness, float16_t hitDistance)
+float calculateRussianRouletteContinueProbability(
+  PathState pathState,
+  bool isOpaqueMaterial,
+  bool isSpecularLobe,
+  vec3 continuationThroughput,
+  float16_t isotropicRoughness,
+  float16_t hitDistance)
 {
-  if (cb.russianRouletteMode == RussianRouletteMode::ThroughputBased)
+  if (pathState.russianRouletteMode == RussianRouletteMode::ThroughputBased)
   {
-    return min(pathThroughput, cb.russianRouletteMaxContinueProbability);
+    // Note: Combine the continuation throughput with the path throughput into a combined throughput to use as the basis for russian
+    // roulette. This is done because the path throughput contains the throughput up to this vertex, and the continuation throughput
+    // represents the throughput of the current direction sample to be used to trace the next ray from this vertex.
+    // As such, the probability to consider when continuing the path should be based on the combination of these values as that is roughly the
+    // probability any light will be received from that next vertex.
+    // This usually doesn't need to be done, but since we don't multiply this throughput into the path state's throughput by this point, we
+    // have to do it manually like this. If that ever changes in the future this extra multiplication should be removed to not double-accumulate
+    // the continuation throughput.
+    const vec3 combinedThroughput = pathState.calculateFullThroughput() * continuationThroughput;
+    const float combinedThroughputLuminance = calcBt709Luminance(combinedThroughput);
+
+    // Note: Implicitly clamped into the 0-1 range by the fact that the luminance should be 0-inf and the min operation with the
+    // max continue probability which should be in the range 0-1.
+    return min(combinedThroughputLuminance, cb.russianRouletteMaxContinueProbability);
   }
   else
   {

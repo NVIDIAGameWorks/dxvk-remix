@@ -238,6 +238,16 @@ namespace dxvk {
     void setOption(
       const std::string& key,
       const Vector2& value);
+
+    /**
+     * \brief Sets an option
+     *
+     * \param [in] key Option name
+     * \param [in] value Option value
+     */
+    void setOption(
+      const std::string& key,
+      const Vector4& value);
     // NV-DXVK end
 
     /**
@@ -384,6 +394,10 @@ namespace dxvk {
 
     static bool parseOptionValue(
       const std::string& value,
+      Vector4& result);
+
+    static bool parseOptionValue(
+      const std::string& value,
       Vector3& result);
     // NV-DXVK end
 
@@ -412,7 +426,7 @@ namespace dxvk {
     // NV-DXVK start: Generic config parsing, reduce duped code
     static const inline std::array<Desc,Type_kSize> m_descs {
       Desc{"User","DXVK_CONFIG_FILE","dxvk.conf"},
-      Desc{"App","",""},
+      Desc{"App","DXVK_USE_CONF_FOR_EXE",""},
       Desc{"RtxUser","DXVK_RTX_CONFIG_FILE","rtx.conf"},
       Desc{"RtxMod","","rtx.conf"}
     };

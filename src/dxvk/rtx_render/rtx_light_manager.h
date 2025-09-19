@@ -78,6 +78,7 @@ public:
   const DomeLightArgs& getDomeLightArgs() const { return m_gpuDomeLightArgs; }
 
   void clear();
+  void clearFromUIThread();
 
   void garbageCollection(RtCamera& camera);
 
@@ -86,8 +87,15 @@ public:
   void prepareSceneData(Rc<DxvkContext> ctx, CameraManager const& cameraManager);
 
   void addGameLight(D3DLIGHTTYPE type, const RtLight& light);
-  void addLight(const RtLight& light, const RtLightAntiCullingType antiCullingType, const XXH64_hash_t lightToReplace = kEmptyHash);
-  void addLight(const RtLight& light, const DrawCallState& drawCallState, const RtLightAntiCullingType antiCullingType);
+  RtLight* addLight(const RtLight& light, const RtLightAntiCullingType antiCullingType);
+  RtLight* addLight(const RtLight& light, const DrawCallState& drawCallState, const RtLightAntiCullingType antiCullingType);
+
+  // Externally tracked lights are lights whose lifecycle (creation, update, removal) is managed externally, rather than the
+  // existing frame-to-frame tracking and anti-culling systems. These are kept separte to avoid any interference from anti culling
+  // and light matching.
+  RtLight* createExternallyTrackedLight(const RtLight& light);
+  void updateExternallyTrackedLight(RtLight* light, const RtLight& newLight);
+  void removeExternallyTrackedLight(RtLight* light);
 
   void addExternalLight(remixapi_LightHandle handle, const RtLight& rtlight);
   void addExternalDomeLight(remixapi_LightHandle handle, const DomeLight& domeLight);
@@ -101,6 +109,13 @@ public:
 
 private:
   std::unordered_map<XXH64_hash_t, RtLight> m_lights;
+  // Collection of lights whose lifecycle (creation, update, removal) is managed externally rather than by LightManager's
+  // frame-to-frame tracking and anti-culling systems. These are kept separte to avoid any interference from anti culling
+  // and light matching.
+  // NOTE: this is an unordered_map rather than an unordered_set because we need the iteration
+  // order to be deterministic in tests.
+  std::unordered_map<uint64_t, RtLight> m_externallyTrackedLights;
+  uint64_t m_nextExternallyTrackedLightId = 0;
   // Note: A fallback light tracked seperately and handled specially to not be mixed up with
   // lights provided from the application.
   std::optional<RtLight> m_fallbackLight{};
@@ -123,6 +138,10 @@ private:
   std::vector<RtLight*> m_linearizedLights{};
   std::vector<unsigned char> m_lightsGPUData{};
   std::vector<uint16_t> m_lightMappingData{};
+
+  // Mutex to prevent the debugging UI from accessing the light data after it's been deleted.
+  mutable std::mutex m_lightUIMutex;
+  std::unique_lock<std::mutex> m_lightDebugUILock = std::unique_lock<std::mutex>(m_lightUIMutex, std::defer_lock);
 
   bool getActiveDomeLight(DomeLight& lightOut);
 
@@ -170,6 +189,8 @@ private:
   RTX_OPTION("rtx", float, lightConversionSphereLightFixedRadius, 4.f, "The fixed radius in world units to use for legacy lights converted to sphere lights (currently point and spot lights will convert to sphere lights). Use caution with large light radii as many legacy lights will be placed close to geometry and intersect it, causing suboptimal light sampling performance or other visual artifacts (lights clipping through walls, etc).");
   RTX_OPTION("rtx", float, lightConversionDistantLightFixedIntensity, 1.0f, "The fixed intensity (in W/sr) to use for legacy lights converted to distant lights (currently directional lights will convert to distant lights).");
   RTX_OPTION("rtx", float, lightConversionDistantLightFixedAngle, 0.0349f, "The angular size in radians of the distant light source for legacy lights converted to distant lights. Set to ~2 degrees in radians by default. Should only be within the range [0, pi].");
+  RTX_OPTION("rtx", float, lightConversionMaxIntensity, FLT_MAX, "The highest intensity value a converted light can have.");
+  RTX_OPTION("rtx", float, lightConversionIntensityFactor, 1.f, "Scales the converted light intensities.");
 };
 
 }  // namespace dxvk

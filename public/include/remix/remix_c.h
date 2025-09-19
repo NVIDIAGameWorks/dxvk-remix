@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -26,8 +26,10 @@
 #include <stdint.h>
 #include <windows.h>
 
+#ifndef REMIX_ALLOW_X86
 #if _WIN64 != 1
   #error Remix API requires 64-bit for the ray tracing features.
+#endif
 #endif
 
 
@@ -51,8 +53,8 @@
 #define REMIXAPI_VERSION_GET_PATCH(version) (((uint64_t)(version)      ) & (uint64_t)0xFFFF)
 
 #define REMIXAPI_VERSION_MAJOR 0
-#define REMIXAPI_VERSION_MINOR 4
-#define REMIXAPI_VERSION_PATCH 1
+#define REMIXAPI_VERSION_MINOR 5
+#define REMIXAPI_VERSION_PATCH 2
 
 
 // External
@@ -90,7 +92,10 @@ extern "C" {
     REMIXAPI_STRUCT_TYPE_LIGHT_INFO_USD_EXT                   = 21,
     REMIXAPI_STRUCT_TYPE_STARTUP_INFO                         = 22,
     REMIXAPI_STRUCT_TYPE_PRESENT_INFO                         = 23,
+    REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT    = 24,
     // NOTE: if adding a new struct, register it in 'rtx_remix_specialization.inl'
+    //       and only extend this enum by appending, never adjust the order of these 
+    //       as that will break backwards compatibility.
   } remixapi_StructType;
 
   typedef enum remixapi_ErrorCode {
@@ -194,7 +199,7 @@ extern "C" {
     float               thinFilmThickness_value;
     remixapi_Bool       alphaIsThinFilmThickness;
     remixapi_Path       heightTexture;
-    float               heightTextureStrength;
+    float               displaceIn;
     // If true, InstanceInfoBlendEXT is used as a source for alpha state
     remixapi_Bool       useDrawCallAlphaState;
     remixapi_Bool       blendType_hasvalue;
@@ -202,6 +207,7 @@ extern "C" {
     remixapi_Bool       invertedBlend;
     int                 alphaTestType;
     uint8_t             alphaReferenceValue;
+    float               displaceOut;
   } remixapi_MaterialInfoOpaqueEXT;
 
   // Valid only if remixapi_MaterialInfo contains remixapi_MaterialInfoOpaqueEXT in pNext chain
@@ -215,6 +221,11 @@ extern "C" {
     float               subsurfaceMeasurementDistance;
     remixapi_Float3D    subsurfaceSingleScatteringAlbedo;
     float               subsurfaceVolumetricAnisotropy;
+    remixapi_Bool       subsurfaceDiffusionProfile;
+    remixapi_Float3D    subsurfaceRadius;
+    float               subsurfaceRadiusScale;
+    float               subsurfaceMaxSampleRadius;
+    remixapi_Path       subsurfaceRadiusTexture;
   } remixapi_MaterialInfoOpaqueSubsurfaceEXT;
 
   typedef struct remixapi_MaterialInfoTranslucentEXT {
@@ -374,6 +385,11 @@ extern "C" {
     uint32_t            textureAlphaOperation;
     uint32_t            tFactor;
     remixapi_Bool       isTextureFactorBlend;
+    uint32_t            srcAlphaBlendFactor;
+    uint32_t            dstAlphaBlendFactor;
+    uint32_t            alphaBlendOp;
+    uint32_t            writeMask;
+    remixapi_Bool       isVertexColorBakedLighting;
   } remixapi_InstanceInfoBlendEXT;
 
   typedef struct remixapi_InstanceInfoObjectPickingEXT {
@@ -406,9 +422,49 @@ extern "C" {
     REMIXAPI_INSTANCE_CATEGORY_BIT_THIRD_PERSON_PLAYER_BODY  = 1 << 19,
     REMIXAPI_INSTANCE_CATEGORY_BIT_IGNORE_BAKED_LIGHTING     = 1 << 20,
     REMIXAPI_INSTANCE_CATEGORY_BIT_IGNORE_ALPHA_CHANNEL      = 1 << 21,
+    REMIXAPI_INSTANCE_CATEGORY_BIT_IGNORE_TRANSPARENCY_LAYER = 1 << 22,
+    REMIXAPI_INSTANCE_CATEGORY_BIT_PARTICLE_EMITTER          = 1 << 23,
   } remixapi_InstanceCategoryBit;
 
   typedef uint32_t remixapi_InstanceCategoryFlags;
+
+  typedef struct remixapi_InstanceInfoParticleSystemEXT {
+    remixapi_StructType      sType;
+    void*                    pNext;
+    uint32_t         maxNumParticles;
+    remixapi_Bool    useTurbulence;
+    remixapi_Bool    alignParticlesToVelocity;
+    remixapi_Bool    useSpawnTexcoords;
+    remixapi_Bool    enableCollisionDetection;
+    remixapi_Bool    enableMotionTrail;
+    remixapi_Bool    hideEmitter;
+    remixapi_Float4D minSpawnColor;
+    remixapi_Float4D maxSpawnColor;
+    float            minTimeToLive;
+    float            maxTimeToLive;
+    float            initialVelocityFromNormal;
+    float            initialVelocityConeAngleDegrees;
+    float            minSpawnSize;
+    float            maxSpawnSize;
+    float            gravityForce;
+    float            maxSpeed;
+    float            turbulenceFrequency;
+    float            turbulenceForce;
+    float            minSpawnRotationSpeed;
+    float            maxSpawnRotationSpeed;
+    float            spawnRatePerSecond;
+    float            collisionThickness;
+    float            collisionRestitution;
+    float            motionTrailMultiplier;
+    float            initialVelocityFromMotion;
+    float            minTargetSize;
+    float            maxTargetSize;
+    float            minTargetRotationSpeed;
+    float            maxTargetRotationSpeed;
+    remixapi_Float4D minTargetColor;
+    remixapi_Float4D maxTargetColor;
+    uint32_t         billboardType;
+  } remixapi_InstanceInfoParticleSystemEXT;
 
   typedef struct remixapi_InstanceInfo {
     remixapi_StructType            sType;
@@ -439,6 +495,7 @@ extern "C" {
     float                          radius;
     remixapi_Bool                  shaping_hasvalue;
     remixapi_LightInfoLightShaping shaping_value;
+    float                          volumetricRadianceScale;
   } remixapi_LightInfoSphereEXT;
 
   typedef struct remixapi_LightInfoRectEXT {
@@ -456,6 +513,7 @@ extern "C" {
     remixapi_Float3D               direction;
     remixapi_Bool                  shaping_hasvalue;
     remixapi_LightInfoLightShaping shaping_value;
+    float                          volumetricRadianceScale;
   } remixapi_LightInfoRectEXT;
 
   typedef struct remixapi_LightInfoDiskEXT {
@@ -473,6 +531,7 @@ extern "C" {
     remixapi_Float3D               direction;
     remixapi_Bool                  shaping_hasvalue;
     remixapi_LightInfoLightShaping shaping_value;
+    float                          volumetricRadianceScale;
   } remixapi_LightInfoDiskEXT;
 
   typedef struct remixapi_LightInfoCylinderEXT {
@@ -483,6 +542,7 @@ extern "C" {
     // The "center" axis of the Cylinder Light. Must be normalized.
     remixapi_Float3D               axis;
     float                          axisLength;
+    float                          volumetricRadianceScale;
   } remixapi_LightInfoCylinderEXT;
 
   typedef struct remixapi_LightInfoDistantEXT {
@@ -491,6 +551,7 @@ extern "C" {
     // The direction the Distant Light is pointing in. Must be normalized.
     remixapi_Float3D                direction;
     float                           angularDiameterDegrees;
+    float                           volumetricRadianceScale;
   } remixapi_LightInfoDistantEXT;
 
   typedef struct remixapi_LightInfoDomeEXT {
@@ -509,19 +570,20 @@ extern "C" {
     void*                           pNext;
     remixapi_StructType             lightType;
     remixapi_Transform              transform;
-    const float*                    pRadius;            // "radius"
-    const float*                    pWidth;             // "width"
-    const float*                    pHeight;            // "height"
-    const float*                    pLength;            // "length"
-    const float*                    pAngleRadians;      // "angle"
-    const remixapi_Bool*            pEnableColorTemp;   // "enableColorTemperature"
-    const remixapi_Float3D*         pColor;             // "color"
-    const float*                    pColorTemp;         // "colorTemperature"
-    const float*                    pExposure;          // "exposure"
-    const float*                    pIntensity;         // "intensity"
-    const float*                    pConeAngleRadians;  // "shaping:cone:angle"
-    const float*                    pConeSoftness;      // "shaping:cone:softness"
-    const float*                    pFocus;             // "shaping:focus"
+    const float*                    pRadius;                  // "radius"
+    const float*                    pWidth;                   // "width"
+    const float*                    pHeight;                  // "height"
+    const float*                    pLength;                  // "length"
+    const float*                    pAngleRadians;            // "angle"
+    const remixapi_Bool*            pEnableColorTemp;         // "enableColorTemperature"
+    const remixapi_Float3D*         pColor;                   // "color"
+    const float*                    pColorTemp;               // "colorTemperature"
+    const float*                    pExposure;                // "exposure"
+    const float*                    pIntensity;               // "intensity"
+    const float*                    pConeAngleRadians;        // "shaping:cone:angle"
+    const float*                    pConeSoftness;            // "shaping:cone:softness"
+    const float*                    pFocus;                   // "shaping:focus"
+    const float*                    pVolumetricRadianceScale; // "volumetric_radiance_scale"
   } remixapi_LightInfoUSDEXT;
 
   typedef struct remixapi_LightInfo {

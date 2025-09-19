@@ -31,9 +31,9 @@ namespace dxvk {
   class RtxContext;
 
   class DxvkRtxdiRayQuery {
-    
+
   public:
-    
+
     DxvkRtxdiRayQuery(DxvkDevice* device);
     ~DxvkRtxdiRayQuery() = default;
 
@@ -43,27 +43,27 @@ namespace dxvk {
 
     void showImguiSettings();
     void setRaytraceArgs(Resources::RaytracingOutput& rtOutput) const;
-    bool getEnableDenoiserConfidence() const { return enableTemporalReuse() && enableDenoiserGradient() && enableDenoiserConfidence(); }
+    bool getEnableDenoiserConfidence(RtxContext& ctx) const;
     
     RTX_OPTION("rtx.di", bool, enableCrossPortalLight, true, "");
     RTX_OPTION("rtx.di", bool, enableInitialVisibility, true, "Whether to trace a visibility ray for the light sample selected in the initial sampling pass.");
     RTX_OPTION("rtx.di", bool, enableBestLightSampling, true, "Whether to include a single best light from the previous frame's pixel neighborhood into initial sampling.");
-    RW_RTX_OPTION("rtx.di", bool, enableRayTracedBiasCorrection, true, "Whether to use ray traced bias correction in the spatial reuse pass.");
+    RTX_OPTION("rtx.di", bool, enableRayTracedBiasCorrection, true, "Whether to use ray traced bias correction in the spatial reuse pass.");
     RTX_OPTION("rtx.di", bool, enableSampleStealing, true, "No visibile IQ gains, but exhibits considerable perf drop (8% in integrate pass).");
-    RW_RTX_OPTION("rtx.di", bool, stealBoundaryPixelSamplesWhenOutsideOfScreen, true, "Steal screen boundary samples when a hit point is outside the screen.");
+    RTX_OPTION("rtx.di", bool, stealBoundaryPixelSamplesWhenOutsideOfScreen, true, "Steal screen boundary samples when a hit point is outside the screen.");
     RTX_OPTION("rtx.di", bool, enableSpatialReuse, true, "Whether to apply spatial reuse.");
     RTX_OPTION("rtx.di", bool, enableTemporalBiasCorrection, true, "");
     RTX_OPTION("rtx.di", bool, enableTemporalReuse, true, "Whether to apply temporal reuse.");
     RTX_OPTION("rtx.di", bool, enableDiscardInvisibleSamples, true, "Whether to discard reservoirs that are determined to be invisible in final shading.");
     RTX_OPTION("rtx.di", bool, enableDiscardEnlargedPixels, true, "");
-    RW_RTX_OPTION("rtx.di", bool, enableDenoiserConfidence, true, "");
+    RTX_OPTION("rtx.di", bool, enableDenoiserConfidence, true, "");
     RTX_OPTION("rtx.di", bool, enableDenoiserGradient, true, "Enable gradient calculation, which is used by confidence calculation and GI sample validation.");
     RTX_OPTION("rtx.di", uint32_t, initialSampleCount, 4, "The number of lights randomly selected from the global pool to consider when selecting a light with RTXDI.");
     RTX_OPTION("rtx.di", uint32_t, spatialSamples, 2, "The number of spatial reuse samples in converged areas.");
     RTX_OPTION("rtx.di", uint32_t, disocclusionSamples, 4, "The number of spatial reuse samples in disocclusion areas.");
     RTX_OPTION("rtx.di", uint32_t, disocclusionFrames, 8, "");
     RTX_OPTION("rtx.di", uint32_t, gradientFilterPasses, 4, "");
-    RW_RTX_OPTION("rtx.di", uint32_t, permutationSamplingNthFrame, 0, "Apply permutation sampling when (frameIdx % this == 0), 0 means off.");
+    RTX_OPTION("rtx.di", uint32_t, permutationSamplingNthFrame, 0, "Apply permutation sampling when (frameIdx % this == 0), 0 means off.");
     RTX_OPTION("rtx.di", uint32_t, maxHistoryLength, 4, "Maximum age of reservoirs for temporal reuse.");
     RTX_OPTION("rtx.di", float, gradientHitDistanceSensitivity, 10.f, "");
     RTX_OPTION("rtx.di", float, confidenceHistoryLength, 8.f, "");

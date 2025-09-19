@@ -212,6 +212,17 @@ namespace pnext_test_app {
       throw dxvk::DxvkError { ERROR_INTRO "C++ wrapper test fail: pick_RequestObjectPicking doesn't call lambda callback" };
     }
   }
+
+  namespace test_apiVersionOrdering {
+    static_assert(REMIXAPI_VERSION_MAKE(0, 0, 0) < REMIXAPI_VERSION_MAKE(1, 0, 0));
+    static_assert(REMIXAPI_VERSION_MAKE(0, 0, 0) < REMIXAPI_VERSION_MAKE(0, 1, 0));
+    static_assert(REMIXAPI_VERSION_MAKE(0, 0, 0) < REMIXAPI_VERSION_MAKE(0, 0, 1));
+
+    static_assert(REMIXAPI_VERSION_MAKE(1, 0, 0) < REMIXAPI_VERSION_MAKE(1, 2, 3));
+    static_assert(REMIXAPI_VERSION_MAKE(1, 0, 1) < REMIXAPI_VERSION_MAKE(2, 0, 0));
+    static_assert(REMIXAPI_VERSION_MAKE(1, 2, 3) < REMIXAPI_VERSION_MAKE(2, 0, 0));
+    static_assert(REMIXAPI_VERSION_MAKE(0, 4, 1) < REMIXAPI_VERSION_MAKE(0, 4, 2));
+  }
 }
 
 int main() {

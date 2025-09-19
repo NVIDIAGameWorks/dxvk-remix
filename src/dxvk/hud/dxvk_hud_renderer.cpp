@@ -355,7 +355,7 @@ namespace dxvk::hud {
     return m_device->createBuffer(info,
       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-      VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, DxvkMemoryStats::Category::AppBuffer);
+      VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, DxvkMemoryStats::Category::AppBuffer, "HUD Vertex Buffer");
   }
   
   
@@ -369,7 +369,7 @@ namespace dxvk::hud {
 
     auto stagingBuffer = m_device->createBuffer(bufferInfo,
       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-      DxvkMemoryStats::Category::AppBuffer);
+      DxvkMemoryStats::Category::AppBuffer, "HUD Font Buffer");
     std::memcpy(stagingBuffer->mapPtr(0), g_hudFont.texture, bufferInfo.size);
 
     context->copyBufferToImage(m_fontImage,

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -30,8 +30,11 @@
 layout(binding = GBUFFER_BINDING_LINEAR_WRAP_SAMPLER)
 SamplerState LinearWrapSampler;
 
-layout(binding = GBUFFER_BINDING_VOLUME_FILTERED_RADIANCE_INPUT)
-Sampler3D<float3> VolumeFilteredRadiance;
+layout(binding = GBUFFER_BINDING_VOLUME_FILTERED_RADIANCE_Y_INPUT)
+Sampler3D<float4> VolumeFilteredRadianceY;
+
+layout(binding = GBUFFER_BINDING_VOLUME_FILTERED_RADIANCE_CO_CG_INPUT)
+Sampler3D<float2> VolumeFilteredRadianceCoCg;
 
 layout(binding = GBUFFER_BINDING_SKYMATTE)
 Sampler2D<float3> SkyMatte;
@@ -46,7 +49,7 @@ SamplerCube<float3> SkyProbe;
 // geometry resolver.
 
 layout(r16ui, binding = GBUFFER_BINDING_SHARED_FLAGS_OUTPUT)
-RWTexture2D<uint> SharedFlags;
+RWTexture2D<uint16_t> SharedFlags;
 
 layout(rg16f, binding = GBUFFER_BINDING_SHARED_RADIANCE_RG_OUTPUT)
 RWTexture2D<float2> SharedRadianceRG;
@@ -64,7 +67,7 @@ layout(r32ui, binding = GBUFFER_BINDING_SHARED_MATERIAL_DATA1_OUTPUT)
 RWTexture2D<uint> SharedMaterialData1;
 
 layout(r16ui, binding = GBUFFER_BINDING_SHARED_MEDIUM_MATERIAL_INDEX_OUTPUT)
-RWTexture2D<uint> SharedMediumMaterialIndex;
+RWTexture2D<uint16_t> SharedMediumMaterialIndex;
 
 // Primary Surface Outputs (Coherent)
 
@@ -166,7 +169,7 @@ RWTexture2D<float2> PrimaryScreenSpaceMotionVector;
 layout(r8ui, binding = GBUFFER_BINDING_PRIMARY_SURFACE_FLAGS_OUTPUT)
 RWTexture2D<uint> PrimarySurfaceFlags;
 
-layout(r8, binding = GBUFFER_BINDING_PRIMARY_DISOCCLUSION_THRESHOLD_MIX_OUTPUT)
+layout(r16f, binding = GBUFFER_BINDING_PRIMARY_DISOCCLUSION_THRESHOLD_MIX_OUTPUT)
 RWTexture2D<float> PrimaryDisocclusionThresholdMix;
 
 layout(r32f, binding = GBUFFER_BINDING_PRIMARY_DEPTH_OUTPUT)
@@ -185,7 +188,7 @@ layout(rg32f, binding = GBUFFER_BINDING_SHARED_TEXTURE_COORD_OUTPUT)
 RWTexture2D<float2> SharedTextureCoord;
 
 layout(r16ui, binding = GBUFFER_BINDING_SHARED_SURFACE_INDEX_OUTPUT)
-RWTexture2D<uint> SharedSurfaceIndex;
+RWTexture2D<uint16_t> SharedSurfaceIndex;
 
 layout(r32f, binding = GBUFFER_BINDING_PRIMARY_DEPTH_DLSSRR_OUTPUT)
 RWTexture2D<float> PrimaryDepthDLSSRR;
@@ -196,8 +199,11 @@ RWTexture2D<float4> PrimaryWorldShadingNormalDLSSRR;
 layout(rg16f, binding = GBUFFER_BINDING_PRIMARY_SCREEN_SPACE_MOTION_DLSSRR_OUTPUT)
 RWTexture2D<float2> PrimaryScreenSpaceMotionVectorDLSSRR;
 
-layout(rgba16ui, binding = GBUFFER_BINDING_SHARED_SUBSURFACE_DATA_OUTPUT)
-RWTexture2D<uint4> SharedSubsurfaceData;
+layout(rg16ui, binding = GBUFFER_BINDING_SHARED_SUBSURFACE_DATA_OUTPUT)
+RWTexture2D<uint2> SharedSubsurfaceData;
+
+layout(rg32ui, binding = GBUFFER_BINDING_SHARED_SUBSURFACE_DIFFUSION_PROFILE_DATA_OUTPUT)
+RWTexture2D<uint2> SharedSubsurfaceDiffusionProfileData;
 
 layout(push_constant)
 ConstantBuffer<GbufferPushConstants> push;
@@ -209,6 +215,8 @@ uniform struct AliasedData0
   RWTexture2D<float4> ReflectionPSRData0;                      // Output/Input
 } aliasedData0;
 
+// NOTE: these are split into 2x32 textures because they are all re-used for other data after the PSR pass is complete.
+// See rtx_resources.cpp's use of `m_gbufferPSRData` for details.
 layout(rg32ui, binding = GBUFFER_BINDING_REFLECTION_PSR_DATA_STORAGE_1)
 RWTexture2D<uint2> ReflectionPSRData1;     // Output/Input
 
@@ -229,3 +237,34 @@ RWTexture2D<uint2> TransmissionPSRData3;
 
 layout(r32ui, binding = GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT)
 RWTexture2D<uint> PrimaryObjectPicking;
+
+layout(binding = GBUFFER_BINDING_NRC_QUERY_PATH_INFO_OUTPUT)
+RWStructuredBuffer<NrcPackedQueryPathInfo> QueryPathInfo;
+
+layout(binding = GBUFFER_BINDING_NRC_TRAINING_PATH_INFO_OUTPUT)
+RWStructuredBuffer<NrcPackedTrainingPathInfo> TrainingPathInfo;
+
+layout(binding = GBUFFER_BINDING_NRC_TRAINING_PATH_VERTICES_OUTPUT)
+RWStructuredBuffer<NrcPackedPathVertex> TrainingPathVertices;
+
+layout(binding = GBUFFER_BINDING_NRC_QUERY_RADIANCE_PARAMS_OUTPUT)
+RWStructuredBuffer<NrcRadianceParams> QueryRadianceParams;
+
+layout(binding = GBUFFER_BINDING_NRC_COUNTERS_OUTPUT)
+RWStructuredBuffer<uint> CountersData;
+
+layout(rg32ui, binding = GBUFFER_BINDING_NRC_QUERY_PATH_DATA0_OUTPUT)
+RWTexture2D<uvec2> NrcQueryPathData0;
+
+layout(rgba16ui, binding = GBUFFER_BINDING_NRC_QUERY_PATH_DATA1_OUTPUT)
+RWTexture2D<uint4> NrcQueryPathData1;
+
+layout(rgba16ui, binding = GBUFFER_BINDING_NRC_TRAINING_PATH_DATA1_OUTPUT)
+RWTexture2D<uint4> NrcTrainingPathData1;
+
+layout(rg16f, binding = GBUFFER_BINDING_NRC_TRAINING_GBUFFER_SURFACE_RADIANCE_RG_OUTPUT)
+RWTexture2D<float2> NrcTrainingGBufferSurfaceRadianceRG;
+
+layout(r16f, binding = GBUFFER_BINDING_NRC_TRAINING_GBUFFER_SURFACE_RADIANCE_B_OUTPUT)
+RWTexture2D<float> NrcTrainingGBufferSurfaceRadianceB;
+

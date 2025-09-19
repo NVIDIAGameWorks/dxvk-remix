@@ -21,6 +21,7 @@
 */
 #pragma once
 
+#include "rtx/pass/nrc/nrc_integrator_utilities.slangh"
 #include "rtx/concept/ray_portal/ray_portal.slangh"
 #include "rtx/utility/packing.slangh"
 
@@ -52,11 +53,7 @@ struct GeometryResolverState : IBasePayloadState
   {
     get 
     {
-    #ifdef RAY_PIPELINE
-      return DispatchRaysIndex().xy;
-    #else
-      return gl_GlobalInvocationID.xy;
-    #endif
+      return getDispatchRaysIndex().xy;
     }
   }
 
@@ -221,12 +218,14 @@ struct GeometryPSRResolverState : IBasePayloadState
   {
     get 
     {
-    #ifdef RAY_PIPELINE
-      return DispatchRaysIndex().xy;
-    #else
-      return gl_GlobalInvocationID.xy;
-    #endif
+      return getDispatchRaysIndex().xy;
     }
+  }
+
+  // Surfaces created from gbuffer may not be valid (i.e. if this pixel was a ray miss)
+  property bool isValid
+  {
+    get { return all(!isinf(origin)); }
   }
 
   // Passthrough accessors

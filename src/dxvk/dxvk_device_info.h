@@ -61,10 +61,6 @@ namespace dxvk {
     // NV-DXVK start: opacity micromap
     VkPhysicalDeviceSynchronization2FeaturesKHR               khrSynchronization2;
     // NV-DXVK end
-
-    // NV-DXVK start: DLFG integration
-    VkPhysicalDeviceOpticalFlowFeaturesNV                     nvOpticalFlow;
-    // NV-DXVK end
   };
 
 }

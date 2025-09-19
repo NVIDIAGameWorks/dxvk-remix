@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -54,7 +54,7 @@ namespace dxvk {
 
   private:
 
-    virtual bool isActive() override { return RtxOptions::Get()->tonemappingMode() == TonemappingMode::Local; }
+    virtual bool isEnabled() const override;
 
     virtual void createTargetResource(Rc<DxvkContext>& ctx, const VkExtent3D& targetExtent) override;
     virtual void releaseTargetResource() override;

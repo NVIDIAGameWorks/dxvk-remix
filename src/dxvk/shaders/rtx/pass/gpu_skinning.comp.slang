@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -45,8 +45,12 @@ StructuredBuffer<float> srcNormal;
 
 [shader("compute")]
 [numthreads(128, 1, 1)]
-void main(uint idx : SV_DispatchThreadID) {
-    if (idx >= cb.numVertices) return;
+void main(uint idx : SV_DispatchThreadID)
+{
+  if (idx >= cb.numVertices)
+  {
+    return;
+  }
 
-    skinning(idx, dstPosition, dstNormal, srcPosition, srcBlendWeight, srcBlendIndices, srcNormal, cb);
+  skinning(idx, dstPosition, dstNormal, srcPosition, srcBlendWeight, srcBlendIndices, srcNormal, cb);
 }

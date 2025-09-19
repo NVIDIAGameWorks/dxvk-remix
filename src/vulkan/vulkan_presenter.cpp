@@ -69,25 +69,44 @@ namespace dxvk::vk {
   //  return m_semaphores.at(m_frameIndex).present;
   //}
 
-  VkResult Presenter::acquireNextImage(PresenterSync& sync, uint32_t& index) {
+  VkResult Presenter::acquireNextImage(PresenterSync& sync, uint32_t& index,
+                                       // NV-DXVK start: DLFG integration
+                                       bool isDlfgPresenting
+                                       // NV-DXVK end
+                                       ) {
     ScopedCpuProfileZone();
 
     sync = m_semaphores.at(m_frameIndex);
 
-    // Don't acquire more than one image at a time
-    if (m_acquireStatus == VK_NOT_READY) {
+    // NV-DXVK start: DLFG integration
+    if (isDlfgPresenting) {
+      // DLFG manages swapchain images directly and can have more than one acquire outstanding at a time
       m_acquireStatus = m_vkd->vkAcquireNextImageKHR(m_vkd->device(),
-        m_swapchain, std::numeric_limits<uint64_t>::max(),
-        sync.acquire, VK_NULL_HANDLE, &m_imageIndex);
+                                                     m_swapchain,
+                                                     std::numeric_limits<uint64_t>::max(),
+                                                     sync.acquire,
+                                                     VK_NULL_HANDLE,
+                                                     &index);
+      assert(m_acquireStatus != VK_NOT_READY);
+    } else {
+      // Don't acquire more than one image at a time
+      if (m_acquireStatus == VK_NOT_READY) {
+        m_acquireStatus = m_vkd->vkAcquireNextImageKHR(m_vkd->device(),
+          m_swapchain, std::numeric_limits<uint64_t>::max(),
+          sync.acquire, VK_NULL_HANDLE, &m_imageIndex);
+      }
     }
-    
+
     if (m_acquireStatus == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT)
       acquireFullscreenExclusive();
 
     if (m_acquireStatus != VK_SUCCESS && m_acquireStatus != VK_SUBOPTIMAL_KHR)
       return m_acquireStatus;
-    
-    index = m_imageIndex;
+
+    if (!isDlfgPresenting) {
+      index = m_imageIndex;
+    }
+
     return m_acquireStatus;
   }
 
@@ -96,20 +115,32 @@ namespace dxvk::vk {
     std::atomic<VkResult>*,
     const DxvkPresentInfo&,
     const DxvkFrameInterpolationInfo&,
-    std::uint32_t
+    std::uint32_t imageIndex,
+    bool isDlfgPresenting,
+    VkSetPresentConfigNV* presentMetering
     // NV-DXVK end
   ) {
     ScopedCpuProfileZone();
-    PresenterSync sync = m_semaphores.at(m_frameIndex);
+    // NV-DXVK start: DLFG integration
+    PresenterSync sync;
+    
+    sync = m_semaphores.at(m_frameIndex);
+    // NV-DXVK end
 
     VkPresentInfoKHR info;
     info.sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    info.pNext              = nullptr;
+    info.pNext              = presentMetering;
     info.waitSemaphoreCount = 1;
     info.pWaitSemaphores    = &sync.present;
     info.swapchainCount     = 1;
     info.pSwapchains        = &m_swapchain;
-    info.pImageIndices      = &m_imageIndex;
+    // NV-DXVK start: DLFG integration
+    if (isDlfgPresenting) {
+      info.pImageIndices = &imageIndex;
+    } else {
+      info.pImageIndices = &m_imageIndex;
+    }
+    // NV-DXVK end
     info.pResults           = nullptr;
 
     VkResult status = m_vkd->vkQueuePresentKHR(m_device.queue, &info);
@@ -122,16 +153,20 @@ namespace dxvk::vk {
       acquireFullscreenExclusive();
     // NV-DXVK end
 
-    // Try to acquire next image already, in order to hide
-    // potential delays from the application thread.
-    m_frameIndex += 1;
-    m_frameIndex %= m_semaphores.size();
+    // NV-DXVK start: DLFG integration
+    if (!isDlfgPresenting) {
+    // NV-DXVK end
+      // Try to acquire next image already, in order to hide
+      // potential delays from the application thread.
+      m_frameIndex += 1;
+      m_frameIndex %= m_semaphores.size();
 
-    sync = m_semaphores.at(m_frameIndex);
+      sync = m_semaphores.at(m_frameIndex);
 
-    m_acquireStatus = m_vkd->vkAcquireNextImageKHR(m_vkd->device(),
-      m_swapchain, std::numeric_limits<uint64_t>::max(),
-      sync.acquire, VK_NULL_HANDLE, &m_imageIndex);
+      m_acquireStatus = m_vkd->vkAcquireNextImageKHR(m_vkd->device(),
+        m_swapchain, std::numeric_limits<uint64_t>::max(),
+        sync.acquire, VK_NULL_HANDLE, &m_imageIndex);
+    }
 
     bool vsync = m_info.presentMode == VK_PRESENT_MODE_FIFO_KHR
               || m_info.presentMode == VK_PRESENT_MODE_FIFO_RELAXED_KHR;

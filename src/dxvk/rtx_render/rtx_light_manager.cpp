@@ -64,7 +64,7 @@
 * 
 *     A) Long-lived lights are those which haven't moved for 'getNumFramesToPutLightsToSleep' frames.
 * 
-*     B) A short-lived light is one which has not been seen for 'getNumFramesToKeepLights' frames, and before it can be put to sleep.
+*     B) A short-lived light is one which has not been seen for 'numFramesToKeepLights' frames, and before it can be put to sleep.
 * 
 *     C) Any light which moves, is defined as a dynamic light.
 */
@@ -78,9 +78,10 @@ namespace dxvk {
   LightManager::LightManager(DxvkDevice* device)
     : CommonDeviceObject(device) {
     // Legacy light translation Options
-    fallbackLightRadianceRef().x = std::max(fallbackLightRadiance().x, 0.0f);
-    fallbackLightRadianceRef().y = std::max(fallbackLightRadiance().y, 0.0f);
-    fallbackLightRadianceRef().z = std::max(fallbackLightRadiance().z, 0.0f);
+    fallbackLightRadiance.setDeferred(Vector3(
+      std::max(fallbackLightRadiance().x, 0.0f),
+      std::max(fallbackLightRadiance().y, 0.0f),
+      std::max(fallbackLightRadiance().z, 0.0f)));
     RTX_OPTION_CLAMP_MIN(fallbackLightAngle, 0.0f);
     RTX_OPTION_CLAMP_MIN(fallbackLightRadius, 0.0f);
     RTX_OPTION_CLAMP_MIN(fallbackLightConeAngle, 0.0f);
@@ -95,22 +96,42 @@ namespace dxvk {
   }
 
   void LightManager::clear() {
+    if (!m_lightDebugUILock.owns_lock()) {
+      m_lightDebugUILock.lock();
+    }
     m_lights.clear();
+    m_linearizedLights.clear();
+    m_lightDebugUILock.unlock();
+  }
+
+  void LightManager::clearFromUIThread() {
+    // This needs to wait for `m_lightDebugUILock` to be unlocked, so it doesn't
+    // cause crashes.
+    std::lock_guard<std::mutex> lock(m_lightUIMutex);
+    m_lights.clear();
+    m_linearizedLights.clear();
+
+    // Note: Fallback light reset here so that changes to its settings will take effect, does not need to be part
+    // of usual light clearing logic though.
+    m_fallbackLight.reset();
   }
 
   void LightManager::garbageCollectionInternal() {
     const uint32_t currentFrame = m_device->getCurrentFrameId();
-    const uint32_t framesToKeep = RtxOptions::Get()->getNumFramesToKeepLights();
-    const uint32_t framesToSleep = RtxOptions::Get()->getNumFramesToPutLightsToSleep();
+    const uint32_t framesToKeep = RtxOptions::numFramesToKeepLights();
+    const uint32_t framesToSleep = RtxOptions::getNumFramesToPutLightsToSleep();
 
-    const bool forceGarbageCollection = (m_lights.size() >= RtxOptions::AntiCulling::Light::numLightsToKeep());
     for (auto it = m_lights.begin(); it != m_lights.end();) {
       const RtLight& light = it->second;
+      if (light.isMarkedForGarbageCollection()) {
+        it = m_lights.erase(it);
+        continue;
+      }
       const uint32_t frameLastTouched = light.getFrameLastTouched();
-      if (!RtxOptions::AntiCulling::Light::enable() || // It's always True if anti-culling is disabled
+      if (!RtxOptions::AntiCulling::isLightAntiCullingEnabled() || // It's always True if anti-culling is disabled
           (light.getIsInsideFrustum() ||
            frameLastTouched + RtxOptions::AntiCulling::Light::numFramesToExtendLightLifetime() <= currentFrame)) {
-        if (light.isChildOfMesh() || light.isDynamic || suppressLightKeeping()) {
+        if (light.isDynamic || suppressLightKeeping()) {
           if (light.getFrameLastTouched() < currentFrame) {
             it = m_lights.erase(it);
             continue;
@@ -122,10 +143,22 @@ namespace dxvk {
       }
       ++it;
     }
+
+    for (auto it = m_externallyTrackedLights.begin(); it != m_externallyTrackedLights.end();) {
+      RtLight& light = it->second;
+      if (light.isMarkedForGarbageCollection()) {
+        it = m_externallyTrackedLights.erase(it);
+      } else {
+        ++it;
+      }
+    }
   }
 
   void LightManager::garbageCollection(RtCamera& camera) {
-    if (RtxOptions::AntiCulling::Light::enable()) {
+    if (!m_lightDebugUILock.owns_lock()) {
+      m_lightDebugUILock.lock();
+    }
+    if (RtxOptions::AntiCulling::isLightAntiCullingEnabled()) {
       cFrustum& cameraLightAntiCullingFrustum = camera.getLightAntiCullingFrustum();
       for (auto& [lightHash, rtLight] : getLightTable()) {
         bool isLightInsideFrustum = true;
@@ -142,11 +175,13 @@ namespace dxvk {
           break;
         case RtLightAntiCullingType::MeshReplacement:
           // Do Object-Anti-Culling if current light replaces original mesh
-          if (RtxOptions::Get()->needsMeshBoundingBox()) {
+          if (RtxOptions::needsMeshBoundingBox()) {
             const AxisAlignedBoundingBox& boundingBox = rtLight.getMeshReplacementBoundingBox();
             const Matrix4 objectToView = camera.getWorldToView(false) * rtLight.getMeshReplacementTransform();
             isLightInsideFrustum = boundingBoxIntersectsFrustumSAT((RtCamera&)camera, boundingBox.minPos, boundingBox.maxPos, objectToView, false);
           }
+          break;
+        case RtLightAntiCullingType::Ignore:
           break;
         }
 
@@ -159,6 +194,7 @@ namespace dxvk {
     }
 
     garbageCollectionInternal();
+    m_lightDebugUILock.unlock();
   }
 
   void LightManager::dynamicLightMatching() {
@@ -176,11 +212,6 @@ namespace dxvk {
         ++it;
         continue;
       }
-      // Not interested in static lights here.
-      if (light.isChildOfMesh()) {
-        ++it;
-        continue;
-      }
 
       float currentSimilarity = -1.f;
       // Note: Using an iterator for the found similar light is safe here because the m_lights map will not change between where
@@ -189,7 +220,7 @@ namespace dxvk {
       for (auto similarLightIterator = m_lights.begin(); similarLightIterator != m_lights.end(); ++similarLightIterator) {
         const RtLight& newLight = similarLightIterator->second;
         // Skip comparing to old lights, this check implicitly avoids comparing the exact same light.
-        if (newLight.getBufferIdx() != kNewLightIdx || newLight.isChildOfMesh())
+        if (newLight.getBufferIdx() != kNewLightIdx)
           continue;
 
         const float similarity = isSimilar(light, newLight, RtxOptions::uniqueObjectDistance());
@@ -226,9 +257,11 @@ namespace dxvk {
 
     const auto mode = fallbackLightMode();
 
+    const bool noLightsPresent = m_lights.empty() && m_externallyTrackedLights.empty() && m_externalActiveLightList.empty();
+
     if (
       mode == FallbackLightMode::Always ||
-      (mode == FallbackLightMode::NoLightsPresent && m_lights.empty() && m_externalActiveLightList.empty())
+      (mode == FallbackLightMode::NoLightsPresent && noLightsPresent)
     ) {
       auto const& mainCamera = cameraManager.getMainCamera();
       const auto oldFallbackLightPresent = m_fallbackLight.has_value();
@@ -295,7 +328,7 @@ namespace dxvk {
       }
     } else if (
       (mode == FallbackLightMode::Never) ||
-      (mode == FallbackLightMode::NoLightsPresent && !m_lights.empty())
+      (mode == FallbackLightMode::NoLightsPresent && !noLightsPresent)
     ) {
       if (m_fallbackLight.has_value()) {
         m_fallbackLight.reset();
@@ -313,7 +346,7 @@ namespace dxvk {
     // can be processed like all other lights without complex logic at the cost of potentially more computational
     // cost, but it might actually work out in favor of performance since unordered map traversal done redundantly
     // may be more expensive than simple vector traversal on the linearized list.
-
+    
     m_linearizedLights.clear();
 
     if (m_fallbackLight) {
@@ -326,11 +359,15 @@ namespace dxvk {
       m_linearizedLights.emplace_back(&light);
     }
 
+    for (auto&& pair : m_externallyTrackedLights) {
+      m_linearizedLights.emplace_back(&pair.second);
+    }
+
     for (auto& handle : m_externalActiveLightList) {
       auto found = m_externalLights.find(handle);
       if (found != m_externalLights.end()) {
         m_linearizedLights.emplace_back(&found->second);
-      }
+     }
     }
 
     // Count the active light of each type
@@ -426,12 +463,12 @@ namespace dxvk {
     // after the light buffer and previous light buffer are swapped, this code will allocate another buffer and the process will continue
     // fine swapping back and forth from that point onwards.
     if (info.size > 0 && (m_lightBuffer == nullptr || info.size > m_lightBuffer->info().size)) {
-      m_lightBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
+      m_lightBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "Light Buffer");
     }
 
     info.size = align(lightMappingBufferEntries * sizeof(uint16_t), kBufferAlignment);
     if (info.size > 0 && (m_lightMappingBuffer == nullptr || info.size > m_lightMappingBuffer->info().size)) {
-      m_lightMappingBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
+      m_lightMappingBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "Light Mapping Buffer");
     }
     
     if (!m_lightsGPUData.empty()) {
@@ -451,7 +488,7 @@ namespace dxvk {
     if (getActiveDomeLight(activeDomeLight)) {
       // Ensures a texture stays in VidMem
       SceneManager& sceneManager = device()->getCommon()->getSceneManager();
-      sceneManager.trackTexture(ctx, activeDomeLight.texture, m_gpuDomeLightArgs.textureIndex, true, false);
+      sceneManager.trackTexture(activeDomeLight.texture, m_gpuDomeLightArgs.textureIndex, true, false);
 
       m_gpuDomeLightArgs.active = true;
       m_gpuDomeLightArgs.radiance = activeDomeLight.radiance;
@@ -521,9 +558,9 @@ namespace dxvk {
     out.setBufferIdx(in.getBufferIdx());  // We remapped this light.
   }
 
-  void LightManager::addLight(const RtLight& rtLight, const DrawCallState& drawCallState, const RtLightAntiCullingType antiCullingType) {
+  RtLight* LightManager::addLight(const RtLight& rtLight, const DrawCallState& drawCallState, const RtLightAntiCullingType antiCullingType) {
     if (drawCallState.getCategoryFlags().test(InstanceCategories::IgnoreLights))
-      return;
+      return nullptr;
 
     // Mesh->Lights Replacement
     if (antiCullingType == RtLightAntiCullingType::MeshReplacement) {
@@ -531,7 +568,7 @@ namespace dxvk {
         drawCallState.getTransformData().objectToWorld, drawCallState.getGeometryData().boundingBox);
     }
 
-    addLight(rtLight, antiCullingType);
+    return addLight(rtLight, antiCullingType);
   }
 
   void LightManager::addGameLight(const D3DLIGHTTYPE type, const RtLight& rtLight) {
@@ -550,9 +587,12 @@ namespace dxvk {
       if (ignoreGameSpotLights())
         return;
       break;
+    default:
+      assert(false && "Invalid option passed to addGameLight");
+      break;
     }
 
-    if (RtxOptions::AntiCulling::Light::enable() && type == D3DLIGHT_POINT) {
+    if (RtxOptions::AntiCulling::isLightAntiCullingEnabled() && type == D3DLIGHT_POINT) {
       // Cache the sphere light data into replacement properties so we can unify the game light and light replacement into a single case in LightManager::garbageCollection
       rtLight.cacheLightReplacementAntiCullingProperties(rtLight.getSphereLight());
 
@@ -562,42 +602,32 @@ namespace dxvk {
     }
   }
 
-  void LightManager::addLight(const RtLight& rtLight, const RtLightAntiCullingType antiCullingType, const XXH64_hash_t lightToReplace) {
+  RtLight* LightManager::addLight(const RtLight& rtLight, const RtLightAntiCullingType antiCullingType) {
+    if (!m_lightDebugUILock.owns_lock()) {
+      // As addLight can actually erase old lights, we need to lock the mutex starting from the first call each frame.
+      m_lightDebugUILock.lock();
+    }
+
     // This light is "off". This includes negative valued lights which in D3D games originally would act as subtractive lighting.
     const Vector3 originalRadiance = rtLight.getRadiance();
     if (originalRadiance.x < 0 || originalRadiance.y < 0 || originalRadiance.z < 0
         || (originalRadiance.x <= 0 && originalRadiance.y <= 0 && originalRadiance.z <= 0))
-      return;
+      return nullptr;
 
+    RtLight* result = nullptr;
     rtLight.setLightAntiCullingType(antiCullingType);
 
-    // Replacement lights can have a unique hash from game lights, and so, we need to remember and
-    //  remove the light specified as a parameter.
-    if (lightToReplace != kEmptyHash && lightToReplace != rtLight.getInstanceHash()) {
-      const auto& lightToReplaceIt = m_lights.find(lightToReplace);
-      if (lightToReplaceIt != m_lights.end()) {
-        m_lights.erase(lightToReplaceIt);
-      }
-    }
-
-    const auto& foundLightIt = m_lights.find(rtLight.getInstanceHash());
+    const auto& foundLightIt = m_lights.find(rtLight.getTransformedHash());
     if (foundLightIt != m_lights.end()) {
       // Ignore changes in the same frame
       if (foundLightIt->second.getFrameLastTouched() != m_device->getCurrentFrameId()) {
-        if (rtLight.isChildOfMesh()) {
-          // If light transform changed, update it.
-          if (foundLightIt->second.getTransformedHash() != rtLight.getTransformedHash()) {
-            uint16_t bufferIdx = foundLightIt->second.getBufferIdx();
-            foundLightIt->second = rtLight;
-            foundLightIt->second.setBufferIdx(bufferIdx);
-          }
-        } else if (!rtLight.isDynamic && !suppressLightKeeping()) {
+        if (!rtLight.isDynamic && !suppressLightKeeping()) {
           // Update the light - its an exact hash match (meaning it's static)
           const uint32_t isStaticCount = foundLightIt->second.isStaticCount;
 
           // If this light hasnt moved for N frames, put it to sleep.  This is a defeat device to stop games aggressively ramping up/down intensity as lights 
-          if (isStaticCount < RtxOptions::Get()->getNumFramesToPutLightsToSleep()) {
-            uint16_t bufferIdx = foundLightIt->second.getBufferIdx();
+          if (isStaticCount < RtxOptions::getNumFramesToPutLightsToSleep()) {
+            uint32_t bufferIdx = foundLightIt->second.getBufferIdx();
             foundLightIt->second = rtLight;
             foundLightIt->second.setBufferIdx(bufferIdx);
           }
@@ -605,7 +635,7 @@ namespace dxvk {
           // Still static, so increment our counter.
           foundLightIt->second.isStaticCount = isStaticCount + 1;
         } else {
-          uint16_t bufferIdx = foundLightIt->second.getBufferIdx();
+          uint32_t bufferIdx = foundLightIt->second.getBufferIdx();
           foundLightIt->second = rtLight;
           foundLightIt->second.setBufferIdx(bufferIdx);
         }
@@ -613,33 +643,32 @@ namespace dxvk {
         // We saw this light so bump its frame counter.
         foundLightIt->second.setFrameLastTouched(m_device->getCurrentFrameId());
       }
-
+      result = &foundLightIt->second;
     } else {
       //  Try find a similar light
-      std::optional<RtLight> similarLight;
+      std::optional<decltype(m_lights)::iterator> similarLight;
       float bestSimilarity = kNotSimilar;
-      for (auto&& pair : m_lights) {
-        const RtLight& light = pair.second;
+      for (auto similarLightIterator = m_lights.begin(); similarLightIterator != m_lights.end(); ++similarLightIterator) {
+        const RtLight& light = similarLightIterator->second;
+        if (light.getPrimInstanceOwner().getReplacementInstance() != nullptr) {
+          // lights that are part of a replacement should not be considered.
+          continue;
+        }
 
         // Update the cached light if it's similar.  This should catch minor perturbations in static lights (e.g. due to precision loss)
         const float kDistanceThresholdMeters = 0.02f;
-        const float kDistanceThresholdWorldUnits = kDistanceThresholdMeters * RtxOptions::Get()->getMeterToWorldUnitScale();
+        const float kDistanceThresholdWorldUnits = kDistanceThresholdMeters * RtxOptions::getMeterToWorldUnitScale();
         const float thisLightsSimilarity = isSimilar(light, rtLight, kDistanceThresholdWorldUnits);
 
         if (thisLightsSimilarity >= 0.f && thisLightsSimilarity > bestSimilarity) {
           // Copy off light state.
-          similarLight = light;
+          similarLight = similarLightIterator;
           bestSimilarity = thisLightsSimilarity;
         } 
       }
 
-      if (similarLight.has_value()) {
-        // Remove it, since we want to re-add it with a (potentially) new hash
-        m_lights.erase(similarLight->getInstanceHash());
-      }
-
       // Add as a new light (with/out updated data depending on if a similar light was found)
-      const auto& [localLightIterator, addedSuccessfully] = m_lights.try_emplace(rtLight.getInstanceHash(), rtLight);
+      const auto& [localLightIterator, addedSuccessfully] = m_lights.try_emplace(rtLight.getTransformedHash(), rtLight);
       RtLight& localLight = localLightIterator->second;
 
       // Note: Ensure that the new light was added successfully (meaning that no existing light existed in the light map at the
@@ -649,13 +678,53 @@ namespace dxvk {
       // the desired behavior.
       assert(addedSuccessfully);
 
-      // Copy/interpolate any state we like from the similar light.
-      if (similarLight.has_value())
-        updateLight(similarLight.value(), localLight);
+      if (similarLight.has_value()) {
+        // Copy/interpolate any state we like from the similar light.
+        updateLight(similarLight.value()->second, localLight);
+
+        // Remove the similar light from the map
+        m_lights.erase(similarLight.value());
+      }
 
       // Record we saw this light
       localLight.setFrameLastTouched(m_device->getCurrentFrameId());
+      result = &localLight;
     }
+    return result;
+  }
+
+  // Creates a new externally tracked light. These lights have their lifecycle managed by external systems
+  // rather than LightManager's frame-to-frame tracking and anti-culling systems.
+  RtLight* LightManager::createExternallyTrackedLight(const RtLight& light) {
+    if (!m_lightDebugUILock.owns_lock()) {
+      m_lightDebugUILock.lock();
+    }
+    
+    auto [newLightIt, addedSuccessfully] = m_externallyTrackedLights.try_emplace(m_nextExternallyTrackedLightId, light);
+    assert(addedSuccessfully);
+    RtLight* newLight = &newLightIt->second;
+    newLight->setExternallyTrackedLightId(m_nextExternallyTrackedLightId);
+    m_nextExternallyTrackedLightId++;
+    return newLight;
+  }
+
+  // Updates an existing externally tracked light with new data. The light's lifecycle is managed by external systems
+  // rather than LightManager's frame-to-frame tracking and anti-culling systems.
+  void LightManager::updateExternallyTrackedLight(RtLight* light, const RtLight& newLight) {
+    if (!m_lightDebugUILock.owns_lock()) {
+      m_lightDebugUILock.lock();
+    }
+    assert(light->getExternallyTrackedLightId() != kInvalidExternallyTrackedLightId && " light passed to updateExternallyTrackedLight is not actually externally tracked.");
+    uint16_t bufferIdx = light->getBufferIdx();
+    *light = newLight;
+    light->setFrameLastTouched(m_device->getCurrentFrameId());
+    light->setBufferIdx(bufferIdx);
+  }
+
+  // Marks an externally tracked light for garbage collection. The light's lifecycle is managed by external systems
+  // rather than LightManager's frame-to-frame tracking and anti-culling systems.
+  void LightManager::removeExternallyTrackedLight(RtLight* light) {
+    light->markForGarbageCollection();
   }
 
   void LightManager::addExternalLight(remixapi_LightHandle handle, const RtLight& rtlight) {

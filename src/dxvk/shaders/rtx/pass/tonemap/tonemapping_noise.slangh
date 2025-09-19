@@ -43,7 +43,8 @@ float3 ditherTo8Bit(
 {
   // Early out if dithering is not enabled
 
-  if (!enableDithering) {
+  if (!enableDithering)
+  {
     return value;
   }
 

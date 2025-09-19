@@ -22,6 +22,7 @@
 #pragma once
 
 #include "rtx_types.h"
+#include "graph/rtx_graph_types.h"
 #include "rtx_lights.h"
 #include "rtx_mod_manager.h"
 #include "rtx_utils.h"
@@ -45,24 +46,71 @@ namespace dxvk {
     RasterGeometry data;
   };
 
+  struct ParticleEmitter {
+    RasterGeometry data;
+    RtxParticleSystemDesc desc;
+  };
+
+  constexpr uint32_t kInvalidPointInstanceIndex = std::numeric_limits<uint32_t>::max();
+
   struct AssetReplacement {
     enum Type {
       eMesh,
-      eLight
+      eLight,
+      eGraph,
+      eNone,
     };
     Categorizer categories;
-    MeshReplacement* geometry;
+    MeshReplacement* geometry = nullptr;
+    std::optional<RtxParticleSystemDesc> particleSystem;
     std::optional<LightData> lightData;
+    std::optional<RtGraphState> graphState;
     // Note: This is the material to use for this replacement, if any. Set to null if should use
     // the original material instead, similar to how getReplacementMaterial works.
-    MaterialData* materialData;
+    MaterialData* materialData = nullptr;
     Matrix4 replacementToObject;
+    // If this replacement represents multiple instances of an object, then this will contain a
+    // list of transforms from the instance's space to Object space
+    // (use the drawcall's objectToWorld * instancesToObject[n] to get instance n's world transform).
+    std::vector<Matrix4> instancesToObject;
+    // If this replacement represents a single instance from a pointInstancer, then this will 
+    // contain the index of the instance in the pointInstancer.
+    uint32_t pointInstanceIndex = kInvalidPointInstanceIndex; 
     Type type;
     bool includeOriginal = false;
 
-    AssetReplacement(MeshReplacement* geometryData, MaterialData* materialData, Categorizer categoryFlags, const Matrix4& replacementToObject)
-        : geometry(geometryData), materialData(materialData), categories(categoryFlags), replacementToObject(replacementToObject), type(eMesh) {}
-    AssetReplacement(const LightData& lightData) : lightData(lightData), type(eLight) {}
+    std::string primPath;
+    XXH64_hash_t usdPathHash = kEmptyHash;
+
+    AssetReplacement(const std::string& primPath) :
+      type(eNone),
+      primPath(primPath),
+      usdPathHash(XXH3_64bits(primPath.c_str(), primPath.size()))
+    {}
+    AssetReplacement(
+        const std::string& primPath, 
+        MeshReplacement* geometryData,
+        MaterialData* materialData,
+        Categorizer categoryFlags,
+        const Matrix4& replacementToObject) :
+      geometry(geometryData),
+      materialData(materialData),
+      categories(categoryFlags),
+      replacementToObject(replacementToObject),
+      type(eMesh),
+      primPath(primPath),
+      usdPathHash(XXH3_64bits(primPath.c_str(), primPath.size()))
+    {}
+    AssetReplacement(
+        const std::string& primPath,
+        const LightData& lightData,
+        const Matrix4& replacementToObject) :
+      lightData(lightData),
+      replacementToObject(replacementToObject),
+      type(eLight),
+      primPath(primPath),
+      usdPathHash(XXH3_64bits(primPath.c_str(), primPath.size()))
+    {}
   };
 
   struct SecretReplacement {
@@ -110,20 +158,21 @@ namespace dxvk {
     template<typename T>
     bool getObject(XXH64_hash_t hash, T*& obj) {
       std::lock_guard<sync::Spinlock> lock(m_spinlock);
+      fast_unordered_cache<T>* cache = nullptr;
       if constexpr (std::is_same_v<T, MaterialData>) {
-        auto it = m_materials.find(hash);
-        if (it != m_materials.end()) {
-          obj = &it->second;
-          return true;
-        }
-        return false;
+        cache = &m_materials;
       } else if constexpr (std::is_same_v<T, MeshReplacement>) {
-        auto it = m_geometries.find(hash);
-        if (it != m_geometries.end()) {
-          obj = &it->second;
-          return true;
-        }
+        cache = &m_geometries;
+      } else if constexpr (std::is_same_v<T, RtGraphTopology>) {
+        cache = &m_graphTopologies;
+      }
+      if (cache == nullptr) {
         return false;
+      }
+      auto it = cache->find(hash);
+      if (it != cache->end()) {
+        obj = &it->second;
+        return true;
       }
       return false;
     }
@@ -136,8 +185,12 @@ namespace dxvk {
         return m_materials.try_emplace(hash, std::move(obj)).first->second;
       } else if constexpr (std::is_same_v<T, MeshReplacement>) {
         return m_geometries.try_emplace(hash, std::move(obj)).first->second;
-      } else {
+      } else if constexpr (std::is_same_v<T, RtGraphTopology>) {
+        return m_graphTopologies.try_emplace(hash, std::move(obj)).first->second;
+      } else if constexpr (std::is_same_v<T, SecretReplacement>) {
         return m_secretReplacements[hash].emplace_back(obj);
+      } else {
+        static_assert(false, "Invalid type");
       }
     }
 
@@ -149,8 +202,12 @@ namespace dxvk {
         m_materials.erase(hash);
       } else if constexpr (std::is_same_v<T, MeshReplacement>) {
         m_geometries.erase(hash);
-      } else {
+      } else if constexpr (std::is_same_v<T, RtGraphTopology>) {
+        m_graphTopologies.erase(hash);
+      } else if constexpr (std::is_same_v<T, SecretReplacement>) {
         m_secretReplacements.erase(hash);
+      } else {
+        static_assert(false, "Invalid type");
       }
     }
 
@@ -161,6 +218,7 @@ namespace dxvk {
       m_lightReplacers.clear();
       m_materials.clear();
       m_geometries.clear();
+      m_graphTopologies.clear();
       m_secretReplacements.clear();
     }
 
@@ -181,6 +239,9 @@ namespace dxvk {
     // Replacement material storage
     fast_unordered_cache<MaterialData> m_materials;
 
+    // Replacement graph storage
+    fast_unordered_cache<RtGraphTopology> m_graphTopologies;
+
     // Secret replacements if any
     SecretReplacements m_secretReplacements;
   };
@@ -196,9 +257,11 @@ namespace dxvk {
     // returns true if the state of replacements has changed.
     bool checkForChanges(const Rc<DxvkContext>& context);
 
-    bool areReplacementsLoaded() const;
-    bool areReplacementsLoading() const;
-    const std::string& getReplacementStatus() const;
+
+    // Returns true if all replacement mods are in the loaded state, false otherwise.
+    bool areAllReplacementsLoaded() const;
+    // Gets the states of all the current replacement mods.
+    std::vector<Mod::State> getReplacementStates() const;
 
     const bool hasNewSecretReplacementInfo() const {
       return m_bSecretReplacementsUpdated;

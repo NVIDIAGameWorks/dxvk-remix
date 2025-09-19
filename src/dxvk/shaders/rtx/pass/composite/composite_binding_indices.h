@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -43,25 +43,29 @@
 #define COMPOSITE_SECONDARY_COMBINED_DIFFUSE_RADIANCE_HIT_DISTANCE_INPUT        14
 #define COMPOSITE_SECONDARY_COMBINED_SPECULAR_RADIANCE_HIT_DISTANCE_INPUT       15
 
-#define COMPOSITE_CONSTANTS_INPUT                                  16
+#define COMPOSITE_CONSTANTS_INPUT                                   16
 
-#define COMPOSITE_BSDF_FACTOR_INPUT                                17
-#define COMPOSITE_BSDF_FACTOR2_INPUT                               18
+#define COMPOSITE_BSDF_FACTOR_INPUT                                 17
+#define COMPOSITE_BSDF_FACTOR2_INPUT                                18
 
-#define COMPOSITE_VOLUME_PREINTEGRATED_RADIANCE_INPUT              19
-#define COMPOSITE_VOLUME_FILTERED_RADIANCE_INPUT                   20
-#define COMPOSITE_ALPHA_GBUFFER_INPUT                              21
+#define COMPOSITE_VOLUME_FILTERED_RADIANCE_AGE_INPUT                20
+#define COMPOSITE_VOLUME_FILTERED_RADIANCE_Y_INPUT                  21
+#define COMPOSITE_VOLUME_FILTERED_RADIANCE_CO_CG_INPUT              22
+#define COMPOSITE_ALPHA_GBUFFER_INPUT                               23
 
-#define COMPOSITE_BLUE_NOISE_TEXTURE                               22
+#define COMPOSITE_BLUE_NOISE_TEXTURE                                24
+#define COMPOSITE_VALUE_NOISE_SAMPLER                               25
+#define COMPOSITE_SKY_LIGHT_TEXTURE                                 26
 
-// Inputs/Outputs
-#define COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT                      23
+// Inputs/Outputs                                                   
+#define COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT                       30
+#define COMPOSITE_ACCUMULATED_FINAL_OUTPUT_INPUT_OUTPUT             31
 
-// Outputs
+// Outputs                                                          
 
-#define COMPOSITE_FINAL_OUTPUT                                     24
-#define COMPOSITE_LAST_FINAL_OUTPUT                                25
-#define COMPOSITE_ALPHA_BLEND_RADIANCE_OUTPUT                      26
+#define COMPOSITE_FINAL_OUTPUT                                      51
+#define COMPOSITE_LAST_FINAL_OUTPUT                                 52
+#define COMPOSITE_ALPHA_BLEND_RADIANCE_OUTPUT                       53
 
-#define COMPOSITE_RAY_RECONSTRUCTION_PARTICLE_BUFFER_OUTPUT        27
-#define COMPOSITE_DEBUG_VIEW_OUTPUT                                28
+#define COMPOSITE_RAY_RECONSTRUCTION_PARTICLE_BUFFER_OUTPUT         54
+#define COMPOSITE_DEBUG_VIEW_OUTPUT                                 55

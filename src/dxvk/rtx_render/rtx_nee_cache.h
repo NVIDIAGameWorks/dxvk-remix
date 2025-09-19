@@ -47,12 +47,12 @@ namespace dxvk {
 
     void setRaytraceArgs(RaytraceArgs& raytraceArgs, bool resetHistory) const;
 
-    RW_RTX_OPTION("rtx.neeCache", bool, enable, true, "[Experimental] Enable NEE cache. The integrator will perform NEE on emissive triangles, which usually have significant light contributions, stored in the cache.");
+    RTX_OPTION("rtx.neeCache", bool, enable, true, "Enable NEE cache. The integrator will perform NEE on emissive triangles, which usually have significant light contributions, stored in the cache.");
     RTX_OPTION("rtx.neeCache", bool, enableImportanceSampling, true, "Enable importance sampling.");
     RTX_OPTION("rtx.neeCache", bool, enableMIS, true, "Enable MIS.");
     RTX_OPTION("rtx.neeCache", bool, enableUpdate, true, "Enable Update.");
     RTX_OPTION("rtx.neeCache", bool, enableOnFirstBounce, true, "Enable NEE Cache on a first bounce.");
-    RW_RTX_OPTION("rtx.neeCache", NeeEnableMode, enableModeAfterFirstBounce, NeeEnableMode::SpecularOnly, "NEE Cache enable mode on a second and higher bounces. 0 means off, 1 means enabled for specular rays only, 2 means always enabled.");
+    RTX_OPTION("rtx.neeCache", NeeEnableMode, enableModeAfterFirstBounce, NeeEnableMode::SpecularOnly, "NEE Cache enable mode on a second and higher bounces. 0 means off, 1 means enabled for specular rays only, 2 means always enabled.");
     RTX_OPTION("rtx.neeCache", bool, enableAnalyticalLight, true, "Enable NEE Cache on analytical light.");
     RTX_OPTION("rtx.neeCache", float, specularFactor, 1.0, "Specular component factor.");
     RTX_OPTION("rtx.neeCache", float, learningRate, 0.02, "Learning rate. Higher values makes the cache adapt to lighting changes more quickly.");

@@ -164,12 +164,12 @@ vec3 translatedWorldPositionToFroxelUVW(
 // the translatedWorldPositionToFroxelUVW function.
 vec3 screenUVViewZToFroxelUVW(
   uint depthSlices, float depthSliceDistributionExponent, float maxDistance, float nearPlane,
-  vec2 screenUV, float viewZ, bool invertViewZ)
+  vec2 screenUV, float viewZ, bool invertViewZ, float depthOffset = 0.0)
 {
   const float depthSlice = viewZToDepthSlice(
     depthSlices, depthSliceDistributionExponent, maxDistance, nearPlane,
     viewZ, invertViewZ);
-  const float froxelW = depthSlice / depthSlices;
+  const float froxelW = (depthSlice - depthOffset) / depthSlices;
 
   return vec3(screenUV, froxelW);
 }
@@ -194,4 +194,63 @@ vec3 virtualFroxelUVWToPhysicalFroxelUVW(
   froxelUVW.x = (froxelUVW.x + float(froxelVolume)) * inverseNumFroxelVolumes;
 
   return froxelUVW;
+}
+
+struct VolumeLookup
+{
+  float3 uvw;
+  float3 worldPos;
+  float3 coordinate;
+  uint volumeIndex;
+};
+
+VolumeLookup froxelCoordinateToPrev(VolumeArgs volumeArgs, uint froxelDepthSlices, bool teleportationPortalIndex, float3 froxelCoordinate, uint froxelVolume, out bool previousVolumeExists, out bool reprojectionValid)
+{
+  // Figure out which volume we'll be pulling the previous data from.
+  // Usually it's the same volume, but in case of portal teleportation, that doesn't work.
+  uint previousFroxelVolume = froxelVolume;
+  previousVolumeExists = true;
+  if (teleportationPortalIndex)
+  {
+    if (froxelVolume == froxelVolumeMain)
+      previousFroxelVolume = teleportationPortalIndex;
+    else if (froxelVolume != teleportationPortalIndex)
+      previousFroxelVolume = froxelVolumeMain;
+    else
+      previousVolumeExists = false;
+  }
+  
+  const VolumeDefinitionCamera camera = cb.volumeArgs.cameras[froxelVolume];
+  const VolumeDefinitionCamera previousCamera = cb.volumeArgs.cameras[previousFroxelVolume];
+  
+  const vec3 previousLookupFroxelCoordinate = froxelCoordinate;
+  const vec3 previousLookupFroxelTranslatedWorldPosition = froxelCoordinateToTranslatedWorldPosition(
+    camera.projectionToTranslatedWorld, camera.viewToProjection, packedFlagGet(camera.flags, rightHandedFlag),
+    volumeArgs.inverseFroxelGridDimensions, froxelDepthSlices,
+    volumeArgs.froxelDepthSliceDistributionExponent, volumeArgs.froxelMaxDistance, camera.nearPlane,
+    previousLookupFroxelCoordinate);
+  // Note: Convert from the current frame's translated world space to the previous frame's translated world space so the look coordinate
+  // can be reprojected properly with respect to the previous frame.
+  // Also note: the current camera and the previous camera are not necessarily the same; they are different when portal teleportation happens.
+  // We need to convert from new camera's current translated world space into old camera's previous translated world space. 
+  const vec3 previousLookupFroxelPreviousTranslatedWorldPosition =
+    previousLookupFroxelTranslatedWorldPosition + (camera.translatedWorldOffset - previousCamera.previousTranslatedWorldOffset);
+  // Note: Current froxel depth slices, depth slice distribution exponent and max distance are used even though these may have changed
+  // between now and the previous frame, resulting in incorrect reprojection. This is not a huge issue though as these settings should not
+  // be changed dynamically in production and things should stabilize out when messing with them in development.
+  const vec3 previousFroxelUVW = translatedWorldPositionToFroxelUVW(
+    previousCamera.prevTranslatedWorldToView, previousCamera.prevTranslatedWorldToProjection, packedFlagGet(previousCamera.flags, rightHandedFlag),
+    froxelDepthSlices, volumeArgs.froxelDepthSliceDistributionExponent, volumeArgs.froxelMaxDistance, previousCamera.nearPlane,
+    previousLookupFroxelPreviousTranslatedWorldPosition);
+  
+  reprojectionValid = all(previousFroxelUVW > vec3(0.0f, 0.0f, 0.0f) && previousFroxelUVW < vec3(1.0f, 1.0f, 1.0f)) && !volumeArgs.resetHistory;
+  
+  // Note: The previous froxel coordinate/index are only valid if the Froxel UVW coordinate is valid (meaning successful reprojection).
+  const uvec3 froxelDimensions = uvec3(volumeArgs.froxelGridDimensions, froxelDepthSlices);
+  VolumeLookup lookup;
+  lookup.uvw = previousFroxelUVW;
+  lookup.worldPos = previousLookupFroxelTranslatedWorldPosition + previousCamera.previousTranslatedWorldOffset;
+  lookup.coordinate = froxelUVWToFroxelCoordinate(previousFroxelUVW, froxelDimensions);
+  lookup.volumeIndex = previousFroxelVolume;
+  return lookup;
 }

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -19,8 +19,7 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
-#ifndef SHADER_TYPES_H
-#define SHADER_TYPES_H
+#pragma once
 
 #ifdef __cplusplus
 
@@ -95,6 +94,8 @@ struct alignas(16) vec4 {
     return *this;
   }
 };
+
+typedef uint16_t half;
 
 struct f16vec2 {
   uint16_t x;
@@ -178,6 +179,29 @@ struct alignas(16) mat4 {
   }
 };
 
+struct alignas(16) mat4x3 {
+  vec3 m[4];
+
+  mat4x3() = default;
+
+  mat4x3(const dxvk::Matrix4& v) {
+    for (uint32_t i = 0; i < 4; i++) {
+      std::memcpy(&m[i], &v[i], sizeof(float) * 3);
+    }
+  }
+
+  mat4x3& operator=(dxvk::Matrix4& v) {
+    for (uint32_t i = 0; i < 4; i++) {
+      std::memcpy(&m[i], &v[i], sizeof(float) * 3);
+    }
+    return *this;
+  }
+
+  vec3& operator[](size_t index) {
+    return m[index];
+  }
+};
+
 // Functions
 
 inline float dot(vec2 a, vec2 b) {
@@ -213,5 +237,3 @@ inline int32_t floatBitsToInt(float x) {
 #include "rtx/utility/shader_types.slangh"
 
 #endif // __cplusplus
-
-#endif // SHADER_TYPES_H

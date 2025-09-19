@@ -106,10 +106,11 @@ namespace dxvk {
         RTX_OPTION("rtx.terrainBaker.material.properties", Vector3, emissiveColorConstant, Vector3(0.0f, 0.0f, 0.0f), "Emissive color constant. Should be a color in sRGB colorspace with gamma encoding.");
         RTX_OPTION("rtx.terrainBaker.material.properties", bool, enableEmission, false, "A flag to determine if emission is enabled.");
         RTX_OPTION("rtx.terrainBaker.material.properties", float, displaceInFactor, 1.f,
-                   "The max depth the baked terrain can support will be larger than the max depth \n"
+                   "The max depth and height the baked terrain can support will be larger than the max \n"
                    "of any incoming draw call, which results in a loss of detail. When this is \n"
                    "too low, the displacement will lack detail. When it is too high, the lowest \n"
-                   "parts of the POM will flatten out.");
+                   "and highest parts of the POM will flatten out.  This affects both displaceIn \n"
+                   "and displaceOut, despite the name.");
       };
     };
 
@@ -121,8 +122,14 @@ namespace dxvk {
       RTX_OPTION("rtx.terrainBaker.cascadeMap", float, defaultHalfWidth, 1000.f, "Cascade map square's default half width around the camera [meters]. Used when the terrain's BBOX couldn't be estimated.");
       RTX_OPTION("rtx.terrainBaker.cascadeMap", float, defaultHeight, 1000.f, "Cascade map baker's camera default height above the in-game camera [meters]. Used when the terrain's BBOX couldn't be estimated.");
       RTX_OPTION("rtx.terrainBaker.cascadeMap", float, levelHalfWidth, 10.f, "First cascade level square's half width around the camera [meters].");
-      RTX_OPTION_ENV("rtx.terrainBaker.cascadeMap", uint32_t, maxLevels, 8, "RTX_TERRAIN_BAKER_MAX_CASCADE_LEVELS", "Max number of cascade levels.");
-      RTX_OPTION_ENV("rtx.terrainBaker.cascadeMap", uint32_t, levelResolution, 4096, "RTX_TERRAIN_BAKER_LEVEL_RESOLUTION", "Texture resolution per cascade level.");
+      RTX_OPTION_ARGS("rtx.terrainBaker.cascadeMap", uint32_t, maxLevels, 8, "Max number of cascade levels.",
+                      args.minValue = 1,
+                      args.maxValue = 16,
+                      args.environment = "RTX_TERRAIN_BAKER_MAX_CASCADE_LEVELS");
+      RTX_OPTION_ARGS("rtx.terrainBaker.cascadeMap", uint32_t, levelResolution, 4096, "Texture resolution per cascade level.",
+                      args.minValue = 1,
+                      args.maxValue = 32 * 1024,
+                      args.environment = "RTX_TERRAIN_BAKER_LEVEL_RESOLUTION");
       RTX_OPTION("rtx.terrainBaker.cascadeMap", bool, expandLastCascade, true, 
                  "Expands the last cascade's footprint to cover the whole cascade map.\n"
                  "This ensures whole terrain surface has valid baked texture data to sample from\n"
@@ -158,6 +165,7 @@ namespace dxvk {
     const RtxMipmap::Resource& getTerrainTexture(Rc<DxvkContext> ctx, RtxTextureManager& textureManager, ReplacementMaterialTextureType::Enum textureType, uint32_t width, uint32_t height);
     void clearMaterialTexture(Rc<DxvkContext> ctx, ReplacementMaterialTextureType::Enum textureType);
     static bool isPSReplacementSupportEnabled(const DrawCallState& drawCallState);
+    VkClearColorValue getClearColor(ReplacementMaterialTextureType::Enum textureType);
 
     BakingParameters m_bakingParams;
 
@@ -207,6 +215,9 @@ namespace dxvk {
 
     float m_currFrameMaxDisplaceIn = 0.f;
     float m_prevFrameMaxDisplaceIn = 0.f;
+
+    float m_currFrameMaxDisplaceOut = 0.f;
+    float m_prevFrameMaxDisplaceOut = 0.f;
 
     // Set to true when m_materialData needs to be updated to reflect latest changes.
     bool m_needsMaterialDataUpdate = false;

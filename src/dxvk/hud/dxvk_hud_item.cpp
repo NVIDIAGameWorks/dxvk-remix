@@ -191,24 +191,24 @@ namespace dxvk::hud {
       { 0.25f, 0.5f, 0.25f, 1.0f },
       "Raytracing Mode: ");
     
-    if (RtxOptions::Get()->enableRaytracing()) {
+    if (RtxOptions::enableRaytracing()) {
       position.y += 16.0f;
       renderer.drawText(14.0f,
         { position.x, position.y },
         { 1.0f, 1.0f, 1.0f, 1.0f },
-        str::format("GBuffer [", DxvkPathtracerGbuffer::raytraceModeToString(RtxOptions::Get()->getRenderPassGBufferRaytraceMode()), "]"));
+        str::format("GBuffer [", DxvkPathtracerGbuffer::raytraceModeToString(RtxOptions::renderPassGBufferRaytraceMode()), "]"));
 
       position.y += 16.0f;
       renderer.drawText(14.0f,
         { position.x, position.y },
         { 1.0f, 1.0f, 1.0f, 1.0f },
-        str::format("Integrate Direct [", DxvkPathtracerIntegrateDirect::raytraceModeToString(RtxOptions::Get()->getRenderPassIntegrateDirectRaytraceMode()), "]"));
+        str::format("Integrate Direct [", DxvkPathtracerIntegrateDirect::raytraceModeToString(RtxOptions::renderPassIntegrateDirectRaytraceMode()), "]"));
 
       position.y += 16.0f;
       renderer.drawText(14.0f,
         { position.x, position.y },
         { 1.0f, 1.0f, 1.0f, 1.0f },
-        str::format("Integrate Indirect [", DxvkPathtracerIntegrateIndirect::raytraceModeToString(RtxOptions::Get()->getRenderPassIntegrateIndirectRaytraceMode()), "]"));
+        str::format("Integrate Indirect [", DxvkPathtracerIntegrateIndirect::raytraceModeToString(RtxOptions::renderPassIntegrateIndirectRaytraceMode()), "]"));
     } else {
       position.y += 16.0f;
       renderer.drawText(14.0f,
@@ -867,13 +867,15 @@ namespace dxvk::hud {
       position.y += 16.0f;
     }
 
-    if (RtxOptions::Get()->getPresentThrottleDelay()) {
+    const auto presentThrottleDelay = m_device->config().presentThrottleDelay;
+
+    if (presentThrottleDelay > 0) {
       position.y += 8.0f;
 
       renderer.drawText(16.0f,
                         { position.x, position.y },
                         { 1.0f, 0.2f, 0.2f, 1.0f },
-                        "Present throttling enabled!");
+                        str::format("Present Throttling enabled! (Delay: ", presentThrottleDelay, " ms)"));
       position.y += 16.0f;
     }
 

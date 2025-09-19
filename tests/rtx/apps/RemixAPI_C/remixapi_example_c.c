@@ -139,6 +139,23 @@ void render(uint32_t windowWidth, uint32_t windowHeight) {
       .doubleSided = 1,
     };
     g_remix.DrawInstance(&meshInstanceInfo);
+
+    remixapi_InstanceInfoParticleSystemEXT particleInfo = {
+      .sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT,
+      .maxNumParticles = 1000,
+      .spawnRatePerSecond = 10.f,
+      .hideEmitter = 0,
+      .gravityForce = 1.f,
+      .maxSpeed = 1.f,
+      .minSpawnSize = 1.f,
+      .maxSpawnSize = 2.f,
+      .minTimeToLive = 1.f,
+      .maxTimeToLive = 10.f,
+      .minSpawnColor = { 1.f, 1.f, 1.f, 1.f },
+      .maxSpawnColor = { 1.f, 1.f, 1.f, 1.f },
+    };
+    meshInstanceInfo.pNext = &particleInfo;
+    g_remix.DrawInstance(&meshInstanceInfo);
   }
   {
     g_remix.DrawLightInstance(g_scene_light);

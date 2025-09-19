@@ -55,11 +55,16 @@ If (Test-Path env:LIBPATH) {
   # Load VC vars
   Push-Location "${vsPath}\VC\Auxiliary\Build"
   cmd /c "vcvarsall.bat x64&set" |
-    ForEach-Object {
-      If ($_ -match "=") {
-        $v = $_.split("="); Set-Item -Force -Path "ENV:\$($v[0])" -Value "$($v[1])"
-      }
-    }
+	ForEach-Object {
+	  # Due to some odd behavior with how powershell core (pwsh) (powershell 5.X not tested) interprets a specific
+	  # predefined gitlab CI variable (in this case CI_MERGE_REQUEST_DESCRIPTION) with a value that includes ===  
+	  # The `Contains` method is used to ignore the string === to prevent pwsh from erroneously encountering an error.
+	  If ($_ -match "=") {
+		  If (-not ($_.Contains('==='))) {
+			  $v = $_.split("="); Set-Item -Force -Path "ENV:\$($v[0])" -Value "$($v[1])"
+		  }
+	  }
+	}
   Pop-Location
   Write-Host "Visual Studio Command Prompt variables set." -ForegroundColor Yellow
 }
@@ -78,7 +83,13 @@ function PerformBuild {
 		[Parameter(Mandatory)]
 		[string]$EnableTracy,
 
-		[string]$BuildTarget
+		[string]$BuildTarget,
+
+		[string[]]$InstallTags,
+
+		[bool]$ConfigureOnly = $false,
+
+		[bool]$ShadersOnly = $false
 	)
 
 	$CurrentDir = Get-Location
@@ -87,6 +98,9 @@ function PerformBuild {
 
 	Push-Location $CurrentDir
 		$mesonArgs = "setup --buildtype `"$BuildFlavour`" --backend `"$Backend`" -Denable_tracy=`"$EnableTracy`" `"$BuildSubDir`""
+		if ( $ShadersOnly ) {
+			$mesonArgs = "$mesonArgs -Ddownload_apics=False"
+		}
 		Start-Process "meson" -NoNewWindow -ArgumentList $mesonArgs -wait
 	Pop-Location
 
@@ -95,12 +109,31 @@ function PerformBuild {
 		exit $LASTEXITCODE
 	}
 
-	Push-Location $BuildDir
-		& meson compile $BuildTarget
-	Pop-Location
-
-	if ( $LASTEXITCODE -ne 0 ) {
-		Write-Output "Failed to run build step"
+	if ($ShadersOnly) {
+		Push-Location $BuildDir
+		$mesonArgs = "compile rtx_shaders"
+		Start-Process "meson" -NoNewWindow -ArgumentList $mesonArgs -wait
+		Pop-Location
 		exit $LASTEXITCODE
+	}
+
+	if (!$ConfigureOnly) {
+		Push-Location $BuildDir
+			& meson compile -v 
+
+			if ($InstallTags -and $InstallTags.Count -gt 0) {
+				# join array into comma-separated list
+				$tagList = $InstallTags -join ','
+				& meson install --tags $tagList
+			}
+			else {
+				& meson install
+			}
+		Pop-Location
+
+		if ( $LASTEXITCODE -ne 0 ) {
+			Write-Output "Failed to run build step"
+			exit $LASTEXITCODE
+		}
 	}
 }

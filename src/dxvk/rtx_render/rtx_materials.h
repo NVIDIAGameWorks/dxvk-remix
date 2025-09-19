@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -25,11 +25,14 @@
 #include "rtx_option.h"
 #include "../../util/util_color.h"
 #include "../../util/util_macro.h"
-#include "../shaders/rtx/utility/shared_constants.h"
-#include "../shaders/rtx/concept/surface/surface_shared.h"
+#include "rtx/utility/shared_constants.h"
+#include "rtx/concept/surface/surface_shared.h"
+#include "rtx/pass/common_binding_indices.h"
 #include "../../dxso/dxso_util.h"
 #include "rtx_material_data.h"
 #include "../../lssusd/mdl_helpers.h"
+#include "rtx/pass/particles/particle_system_common.h"
+#include "dxvk_constant_state.h"
 
 namespace dxvk {
 // Surfaces
@@ -82,7 +85,7 @@ struct RtSurface {
   RtSurface() {
   }
 
-  void writeGPUData(unsigned char* data, std::size_t& offset) const {
+  void writeGPUData(unsigned char* data, std::size_t& offset, size_t surfaceIndex = SIZE_MAX) const {
     [[maybe_unused]] const std::size_t oldOffset = offset;
 
     // Note: Position buffer and surface material index are required for proper
@@ -96,9 +99,12 @@ struct RtSurface {
     writeGPUHelperExplicit<2>(data, offset, indexBufferIndex);
     writeGPUHelperExplicit<2>(data, offset, color0BufferIndex);
 
-    float displaceInCombined = displaceIn * getDisplacementFactor();
-    assert(displaceInCombined <= FLOAT16_MAX);
-    writeGPUHelper(data, offset, glm::packHalf1x16(displaceInCombined));
+    uint16_t flags0 = 0;
+    flags0 |= normalFormat == VK_FORMAT_R32_UINT ? 1 : 0;
+    flags0 |= isVertexColorBakedLighting ? (1 << 1) : 0;
+    // NOTE: Spare flags bits here
+
+    writeGPUHelper(data, offset, flags0);
 
     const uint16_t packedHash =
       (uint16_t) (associatedGeometryHash >> 48) ^
@@ -127,65 +133,83 @@ struct RtSurface {
     assert(static_cast<uint32_t>(alphaState.alphaTestReferenceValue) < (1 << 8));
     assert(static_cast<uint32_t>(alphaState.blendType) < (1 << 4));
 
-    uint32_t flags = 0;
+    uint32_t flags1 = 0;
 
-    flags |= isEmissive ? (1 << 0) : 0;
-    flags |= alphaState.isFullyOpaque ? (1 << 1) : 0;
-    flags |= isStatic ? (1 << 2) : 0;
-    flags |= static_cast<uint32_t>(alphaState.alphaTestType) << 3;
+    flags1 |= isEmissive ? (1 << 0) : 0;
+    flags1 |= alphaState.isFullyOpaque ? (1 << 1) : 0;
+    flags1 |= isStatic ? (1 << 2) : 0;
+    flags1 |= static_cast<uint32_t>(alphaState.alphaTestType) << 3;
     // Note: No mask needed as masking of this value to be 8 bit is done elsewhere.
-    flags |= static_cast<uint32_t>(alphaState.alphaTestReferenceValue) << 6;
-    flags |= static_cast<uint32_t>(alphaState.blendType) << 14;
-    flags |= alphaState.invertedBlend ?      (1 << 18) : 0;
-    flags |= alphaState.isBlendingDisabled ? (1 << 19) : 0;
-    flags |= alphaState.emissiveBlend ?      (1 << 20) : 0;
-    flags |= alphaState.isParticle ?         (1 << 21) : 0;
-    flags |= alphaState.isDecal ?            (1 << 22) : 0;
-    // 23rd bit is available
-    flags |= isAnimatedWater ?               (1 << 24) : 0;
-    flags |= isClipPlaneEnabled ?            (1 << 25) : 0;
-    flags |= isMatte ?                       (1 << 26) : 0;
-    flags |= isTextureFactorBlend ?          (1 << 27) : 0;
-    flags |= isMotionBlurMaskOut ?           (1 << 28) : 0;
-    flags |= skipSurfaceInteractionSpritesheetAdjustment ? (1 << 29) : 0;
+    flags1 |= static_cast<uint32_t>(alphaState.alphaTestReferenceValue) << 6;
+    flags1 |= static_cast<uint32_t>(alphaState.blendType) << 14;
+    flags1 |= alphaState.invertedBlend ?      (1 << 18) : 0;
+    flags1 |= alphaState.isBlendingDisabled ? (1 << 19) : 0;
+    flags1 |= alphaState.emissiveBlend ?      (1 << 20) : 0;
+    flags1 |= alphaState.isParticle ?         (1 << 21) : 0;
+    flags1 |= alphaState.isDecal ?            (1 << 22) : 0;
+    flags1 |= hasMaterialChanged ?            (1 << 23) : 0;
+    flags1 |= isAnimatedWater ?               (1 << 24) : 0;
+    flags1 |= isClipPlaneEnabled ?            (1 << 25) : 0;
+    flags1 |= isMatte ?                       (1 << 26) : 0;
+    flags1 |= isTextureFactorBlend ?          (1 << 27) : 0;
+    flags1 |= isMotionBlurMaskOut ?           (1 << 28) : 0;
+    flags1 |= skipSurfaceInteractionSpritesheetAdjustment ? (1 << 29) : 0;
+    flags1 |= ignoreTransparencyLayer ?       (1 << 30) : 0;
     // Note: This flag is purely for debug view purpose. If we need to add more functional flags and running out of bits, we should move this flag to other place.
-    flags |= isInsideFrustum ?               (1 << 30) : 0;
+    flags1 |= isInsideFrustum ?               (1 << 31) : 0;
 
-    writeGPUHelper(data, offset, flags);
+    writeGPUHelper(data, offset, flags1);
 
     // Note: Matricies are stored on the cpu side in column-major order, the same as the GPU.
 
+    Matrix4 instanceToWorld = objectToWorld;
+    Matrix4 prevInstanceToWorld = prevObjectToWorld;
+    Matrix3 normalInstanceToWorld = normalObjectToWorld;
+
+    if (instancesToObject && surfaceIndexOfFirstInstance != SIZE_MAX && surfaceIndex != SIZE_MAX) {
+      const size_t instanceIndex = surfaceIndex - surfaceIndexOfFirstInstance;
+      if (instanceIndex >= instancesToObject->size()) {
+        // Note: This should never happen.
+        assert(false);
+        Logger::err("Error: invalid instance index in RtSurface::WriteGPUData.");
+      } else {
+        instanceToWorld = objectToWorld * (*instancesToObject)[instanceIndex];
+        prevInstanceToWorld = prevObjectToWorld * (*instancesToObject)[instanceIndex];
+        normalInstanceToWorld = transpose(inverse(Matrix3(instanceToWorld)));
+      }
+    }
+
     // Note: Last row of object to world matrix not needed as it does not encode any useful information
-    writeGPUHelper(data, offset, prevObjectToWorld.data[0].x);
-    writeGPUHelper(data, offset, prevObjectToWorld.data[0].y);
-    writeGPUHelper(data, offset, prevObjectToWorld.data[0].z);
-    writeGPUHelper(data, offset, prevObjectToWorld.data[1].x);
-    writeGPUHelper(data, offset, prevObjectToWorld.data[1].y);
-    writeGPUHelper(data, offset, prevObjectToWorld.data[1].z);
-    writeGPUHelper(data, offset, prevObjectToWorld.data[2].x);
-    writeGPUHelper(data, offset, prevObjectToWorld.data[2].y);
-    writeGPUHelper(data, offset, prevObjectToWorld.data[2].z);
-    writeGPUHelper(data, offset, prevObjectToWorld.data[3].x);
-    writeGPUHelper(data, offset, prevObjectToWorld.data[3].y);
-    writeGPUHelper(data, offset, prevObjectToWorld.data[3].z);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[0].x);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[0].y);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[0].z);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[1].x);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[1].y);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[1].z);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[2].x);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[2].y);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[2].z);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[3].x);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[3].y);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[3].z);
 
-    writeGPUHelper(data, offset, normalObjectToWorld.data[0]);
-    writeGPUHelper(data, offset, normalObjectToWorld.data[1]);
-    writeGPUHelper(data, offset, normalObjectToWorld.data[2].x);
-    writeGPUHelper(data, offset, normalObjectToWorld.data[2].y);
+    writeGPUHelper(data, offset, normalInstanceToWorld.data[0]);
+    writeGPUHelper(data, offset, normalInstanceToWorld.data[1]);
+    writeGPUHelper(data, offset, normalInstanceToWorld.data[2].x);
+    writeGPUHelper(data, offset, normalInstanceToWorld.data[2].y);
 
-    writeGPUHelper(data, offset, objectToWorld.data[0].x);
-    writeGPUHelper(data, offset, objectToWorld.data[0].y);
-    writeGPUHelper(data, offset, objectToWorld.data[0].z);
-    writeGPUHelper(data, offset, objectToWorld.data[1].x);
-    writeGPUHelper(data, offset, objectToWorld.data[1].y);
-    writeGPUHelper(data, offset, objectToWorld.data[1].z);
-    writeGPUHelper(data, offset, objectToWorld.data[2].x);
-    writeGPUHelper(data, offset, objectToWorld.data[2].y);
-    writeGPUHelper(data, offset, objectToWorld.data[2].z);
-    writeGPUHelper(data, offset, objectToWorld.data[3].x);
-    writeGPUHelper(data, offset, objectToWorld.data[3].y);
-    writeGPUHelper(data, offset, objectToWorld.data[3].z);
+    writeGPUHelper(data, offset, instanceToWorld.data[0].x);
+    writeGPUHelper(data, offset, instanceToWorld.data[0].y);
+    writeGPUHelper(data, offset, instanceToWorld.data[0].z);
+    writeGPUHelper(data, offset, instanceToWorld.data[1].x);
+    writeGPUHelper(data, offset, instanceToWorld.data[1].y);
+    writeGPUHelper(data, offset, instanceToWorld.data[1].z);
+    writeGPUHelper(data, offset, instanceToWorld.data[2].x);
+    writeGPUHelper(data, offset, instanceToWorld.data[2].y);
+    writeGPUHelper(data, offset, instanceToWorld.data[2].z);
+    writeGPUHelper(data, offset, instanceToWorld.data[3].x);
+    writeGPUHelper(data, offset, instanceToWorld.data[3].y);
+    writeGPUHelper(data, offset, instanceToWorld.data[3].z);
 
     // Note: Only 2 rows of texture transform written for now due to limit of 2 element restriction.
     writeGPUHelper(data, offset, textureTransform.data[0].x);
@@ -199,8 +223,9 @@ struct RtSurface {
 
     std::uint32_t textureSpritesheetData = 0;
 
-    textureSpritesheetData |= (static_cast<uint32_t>(spriteSheetRows) << 0);
-    textureSpritesheetData |= (static_cast<uint32_t>(spriteSheetCols) << 8);
+    // Clamp rows and cols to at least 1, to avoid divide by 0 errors.
+    textureSpritesheetData |= (static_cast<uint32_t>(std::max<uint8_t>(1, spriteSheetRows)) << 0);
+    textureSpritesheetData |= (static_cast<uint32_t>(std::max<uint8_t>(1, spriteSheetCols)) << 8);
     textureSpritesheetData |= (static_cast<uint32_t>(spriteSheetFPS) << 16);
     // pack decalSortOrder into data13.x's last 8 bits.
     textureSpritesheetData |= (static_cast<uint32_t>(decalSortOrder) << 24);
@@ -210,6 +235,10 @@ struct RtSurface {
     writeGPUHelper(data, offset, tFactor);
 
     std::uint32_t textureFlags = 0;
+
+    assert((static_cast<uint32_t>(textureColorOperation) & 0x7) == static_cast<uint32_t>(textureColorOperation));
+    assert((static_cast<uint32_t>(textureAlphaOperation) & 0x7) == static_cast<uint32_t>(textureAlphaOperation));
+    assert(textureAlphaOperation != DxvkRtTextureOperation::Force_Modulate2x);
 
     textureFlags |= ((static_cast<uint32_t>(textureColorArg1Source) & 0x3));
     textureFlags |= ((static_cast<uint32_t>(textureColorArg2Source) & 0x3) << 2);
@@ -224,7 +253,7 @@ struct RtSurface {
     writeGPUHelper(data, offset, textureFlags);
 
     // Note: This element of the normal object to world matrix is encoded to minimize padding
-    writeGPUHelper(data, offset, normalObjectToWorld.data[2].z);
+    writeGPUHelper(data, offset, normalInstanceToWorld.data[2].z);
 
     writeGPUHelper(data, offset, clipPlane);
 
@@ -239,6 +268,7 @@ struct RtSurface {
   uint32_t normalBufferIndex = kSurfaceInvalidBufferIndex;
   uint32_t normalOffset = 0;
   uint32_t normalStride = 0;
+  VkFormat normalFormat = VK_FORMAT_UNDEFINED;
 
   uint32_t texcoordBufferIndex = kSurfaceInvalidBufferIndex;
   uint32_t texcoordOffset = 0;
@@ -257,12 +287,15 @@ struct RtSurface {
   bool isEmissive = false;
   bool isMatte = false;
   bool isStatic = false;
+  bool hasMaterialChanged = false;
   bool isAnimatedWater = false;
   bool isClipPlaneEnabled = false;
   bool isTextureFactorBlend = false;
+  bool isVertexColorBakedLighting = true;
   bool isMotionBlurMaskOut = false;
   bool skipSurfaceInteractionSpritesheetAdjustment = false;
   bool isInsideFrustum = false;
+  bool ignoreTransparencyLayer = false;
 
   RtTextureArgSource textureColorArg1Source = RtTextureArgSource::Texture;
   RtTextureArgSource textureColorArg2Source = RtTextureArgSource::None;
@@ -286,6 +319,92 @@ struct RtSurface {
         && firstIndex == surface.firstIndex;
   }
 
+  void printDebugInfo(const char* name = "") const {
+#ifdef REMIX_DEVELOPMENT
+    Logger::warn(str::format(
+      "RtSurface ", name, "\n",
+      "  address: ", this, "\n",
+      "  surfaceMaterialIndex: ", surfaceMaterialIndex, "\n",
+      "  associatedGeometryHash: 0x", std::hex, associatedGeometryHash, std::dec, "\n",
+      "  objectPickingValue: ", objectPickingValue, "\n",
+      "  decalSortOrder: ", decalSortOrder));
+    
+    // Print buffer info
+    Logger::warn("=== Buffer Info ===");
+    Logger::warn(str::format(
+      "  positionBufferIndex: ", positionBufferIndex, "\n",
+      "  positionOffset: ", positionOffset, "\n",
+      "  positionStride: ", positionStride, "\n",
+      "  previousPositionBufferIndex: ", previousPositionBufferIndex, "\n",
+      "  normalBufferIndex: ", normalBufferIndex, "\n",
+      "  normalOffset: ", normalOffset, "\n",
+      "  normalStride: ", normalStride, "\n",
+      "  normalFormat: ", static_cast<int>(normalFormat), "\n",
+      "  texcoordBufferIndex: ", texcoordBufferIndex, "\n",
+      "  texcoordOffset: ", texcoordOffset, "\n",
+      "  texcoordStride: ", texcoordStride, "\n",
+      "  indexBufferIndex: ", indexBufferIndex, "\n",
+      "  firstIndex: ", firstIndex, "\n",
+      "  indexStride: ", indexStride, "\n",
+      "  color0BufferIndex: ", color0BufferIndex, "\n",
+      "  color0Offset: ", color0Offset, "\n",
+      "  color0Stride: ", color0Stride));
+    
+    // Print boolean flags
+    Logger::warn("=== Boolean Flags ===");
+    Logger::warn(str::format(
+      "  isEmissive: ", isEmissive, "\n",
+      "  isMatte: ", isMatte, "\n",
+      "  isStatic: ", isStatic, "\n",
+      "  hasMaterialChanged: ", hasMaterialChanged, "\n",
+      "  isAnimatedWater: ", isAnimatedWater, "\n",
+      "  isClipPlaneEnabled: ", isClipPlaneEnabled, "\n",
+      "  isTextureFactorBlend: ", isTextureFactorBlend, "\n",
+      "  isMotionBlurMaskOut: ", isMotionBlurMaskOut, "\n",
+      "  skipSurfaceInteractionSpritesheetAdjustment: ", skipSurfaceInteractionSpritesheetAdjustment, "\n",
+      "  isInsideFrustum: ", isInsideFrustum, "\n",
+      "  ignoreTransparencyLayer: ", ignoreTransparencyLayer));
+    
+    // Print alpha state
+    Logger::warn("=== Alpha State ===");
+    Logger::warn(str::format(
+      "  isBlendingDisabled: ", alphaState.isBlendingDisabled, "\n",
+      "  isFullyOpaque: ", alphaState.isFullyOpaque, "\n",
+      "  alphaTestType: ", static_cast<int>(alphaState.alphaTestType), "\n",
+      "  alphaTestReferenceValue: ", static_cast<int>(alphaState.alphaTestReferenceValue), "\n",
+      "  blendType: ", static_cast<int>(alphaState.blendType), "\n",
+      "  invertedBlend: ", alphaState.invertedBlend, "\n",
+      "  emissiveBlend: ", alphaState.emissiveBlend, "\n",
+      "  isParticle: ", alphaState.isParticle, "\n",
+      "  isDecal: ", alphaState.isDecal));
+    
+    // Print texture operations
+    Logger::warn("=== Texture Operations ===");
+    Logger::warn(str::format(
+      "  textureColorArg1Source: ", static_cast<int>(textureColorArg1Source), "\n",
+      "  textureColorArg2Source: ", static_cast<int>(textureColorArg2Source), "\n",
+      "  textureColorOperation: ", static_cast<int>(textureColorOperation), "\n",
+      "  textureAlphaArg1Source: ", static_cast<int>(textureAlphaArg1Source), "\n",
+      "  textureAlphaArg2Source: ", static_cast<int>(textureAlphaArg2Source), "\n",
+      "  textureAlphaOperation: ", static_cast<int>(textureAlphaOperation), "\n",
+      "  texgenMode: ", static_cast<int>(texgenMode), "\n",
+      "  tFactor: 0x", std::hex, tFactor, std::dec));
+    
+    // Print spritesheet info
+    Logger::warn("=== Spritesheet Info ===");
+    Logger::warn(str::format(
+      "  spriteSheetRows: ", static_cast<int>(spriteSheetRows), "\n",
+      "  spriteSheetCols: ", static_cast<int>(spriteSheetCols), "\n",
+      "  spriteSheetFPS: ", static_cast<int>(spriteSheetFPS)));
+    
+    // Print instance info
+    Logger::warn("=== Instance Info ===");
+    Logger::warn(str::format(
+      "  instancesToObject: ", (instancesToObject != nullptr ? "valid" : "null"), "\n",
+      "  surfaceIndexOfFirstInstance: ", surfaceIndexOfFirstInstance));
+#endif
+  }
+
   // Used for calculating hashes, keep the members padded and default initialized
   struct AlphaState {
     bool isBlendingDisabled = true;
@@ -300,9 +419,7 @@ struct RtSurface {
   } alphaState;
 
   // Original draw call state
-  VkBlendFactor srcColorBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ONE;
-  VkBlendFactor dstColorBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ZERO;
-  VkBlendOp colorBlendOp = VkBlendOp::VK_BLEND_OP_ADD;
+  DxvkBlendMode blendModeState;
 
   // Static validation to detect any changes that require an alignment re-check
   static_assert(sizeof(AlphaState) == 9);
@@ -321,7 +438,10 @@ struct RtSurface {
   uint32_t objectPickingValue = 0; // NOTE: a value to fill GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT
   uint32_t decalSortOrder = 0; // see: InstanceManager::m_decalSortOrderCounter
 
-  float displaceIn = 0.f;
+  // PointInstancer support - this surface may represent multiple instances, one for each transform in instancesToObject
+  const std::vector<Matrix4>* instancesToObject = nullptr;
+  // on the GPU, multiple copies of this surface with different transforms will exist.  They will be in a continuous block, starting at surfaceIndexOfFirstInstance.
+  size_t surfaceIndexOfFirstInstance = SIZE_MAX;
 };
 
 // Shared Material Defaults/Limits
@@ -348,8 +468,9 @@ struct LegacyMaterialDefaults {
 
 // Surface Materials
 
-// Todo: Compute size directly from sizeof of GPU structure (by including it), for now computed by sum of members manually
-constexpr std::size_t kSurfaceMaterialGPUSize = 2 * 4 * 4;
+// Todo: Compute size directly from sizeof of GPU structure (by including it), for now computed by sum of members manually.
+// Blocked on float16 support on the c++ side.
+constexpr std::size_t kSurfaceMaterialGPUSize = 4 * 4 * 4;
 // Note: 0xFFFF used for inactive texture index to indicate to the GPU that no texture is in use for a specific variable
 // (as some are optional). Also used for debugging to provide wildly out of range values in case one is not set.
 constexpr uint32_t kSurfaceMaterialInvalidTextureIndex = 0xFFFFu;
@@ -380,8 +501,10 @@ struct RtOpaqueSurfaceMaterial {
     float roughnessConstant, float metallicConstant,
     const Vector3& emissiveColorConstant, bool enableEmission,
     bool ignoreAlphaChannel, bool enableThinFilm, bool alphaIsThinFilmThickness, float thinFilmThicknessConstant,
-    uint32_t samplerIndex, float displaceIn,
-    uint32_t subsurfaceMaterialIndex) :
+    uint32_t samplerIndex, float displaceIn, float displaceOut,
+    uint32_t subsurfaceMaterialIndex, bool isRaytracedRenderTarget,
+    uint16_t samplerFeedbackStamp
+  ) :
     m_albedoOpacityTextureIndex{ albedoOpacityTextureIndex }, m_normalTextureIndex{ normalTextureIndex },
     m_tangentTextureIndex { tangentTextureIndex }, m_heightTextureIndex { heightTextureIndex }, m_roughnessTextureIndex{ roughnessTextureIndex },
     m_metallicTextureIndex{ metallicTextureIndex }, m_emissiveColorTextureIndex{ emissiveColorTextureIndex },
@@ -391,14 +514,20 @@ struct RtOpaqueSurfaceMaterial {
     m_emissiveColorConstant{ emissiveColorConstant }, m_enableEmission{ enableEmission },
     m_ignoreAlphaChannel { ignoreAlphaChannel }, m_enableThinFilm { enableThinFilm }, m_alphaIsThinFilmThickness { alphaIsThinFilmThickness },
     m_thinFilmThicknessConstant { thinFilmThicknessConstant }, m_samplerIndex{ samplerIndex }, m_displaceIn{ displaceIn },
-    m_subsurfaceMaterialIndex(subsurfaceMaterialIndex) {
+    m_displaceOut{ displaceOut }, m_subsurfaceMaterialIndex(subsurfaceMaterialIndex), m_isRaytracedRenderTarget(isRaytracedRenderTarget),
+    m_samplerFeedbackStamp{ samplerFeedbackStamp }
+  {
     updateCachedData();
     updateCachedHash();
   }
 
   void writeGPUData(unsigned char* data, std::size_t& offset) const {
     [[maybe_unused]] const std::size_t oldOffset = offset;
-    uint8_t flags = surfaceMaterialTypeOpaque;
+    uint16_t flags = surfaceMaterialTypeOpaque;
+
+    // For decode process, see surface_material.h
+    // this data is accessed from uint16_t data[32], so data[n] refers to a pair of bytes.
+
     if (m_enableThinFilm) {
       flags |= OPAQUE_SURFACE_MATERIAL_FLAG_USE_THIN_FILM_LAYER;
 
@@ -412,47 +541,69 @@ struct RtOpaqueSurfaceMaterial {
     if (m_ignoreAlphaChannel) {
       flags |= OPAQUE_SURFACE_MATERIAL_FLAG_IGNORE_ALPHA_CHANNEL;
     }
-
     // NOTE: We keep the most commonly used elements in the material close together near the beginning
     //       This hopefully reduces loads for cases like opacity detection.
-    
-    // Bytes 0-3
-    writeGPUHelper(data, offset, flags);
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_cachedThinFilmNormalizedThicknessConstant));
-    float displaceIn = m_displaceIn * getDisplacementFactor();
-    assert(displaceIn <= FLOAT16_MAX);
-    writeGPUHelper(data, offset, glm::packHalf1x16(displaceIn));
 
-    // Bytes 4-11
+    if (m_isRaytracedRenderTarget) {
+      flags |= OPAQUE_SURFACE_MATERIAL_FLAG_IS_RAYTRACED_RENDER_TARGET;
+    }
+
+    float displaceIn = m_displaceIn * getDisplacementFactor();
+    float displaceOut = m_displaceOut * getDisplacementFactor();
+    uint32_t heightTextureIndex = m_heightTextureIndex;
+    if (hasValidDisplacement()) {
+      flags |= OPAQUE_SURFACE_MATERIAL_FLAG_HAS_DISPLACEMENT;
+    } else {
+      // If any POM attribute would disable POM, just disable all POM attributes.
+      displaceIn = 0.f;
+      displaceOut = 0.f;
+      heightTextureIndex = BINDING_INDEX_INVALID;
+    }
+    assert(displaceIn <= FLOAT16_MAX);
+    assert(displaceOut <= FLOAT16_MAX);
+
+    // data[0 - 3]
+    writeGPUHelper(data, offset, flags);
     writeGPUHelperExplicit<2>(data, offset, m_samplerIndex);
     writeGPUHelperExplicit<2>(data, offset, m_albedoOpacityTextureIndex);
-    writeGPUHelperExplicit<2>(data, offset, m_heightTextureIndex);
     writeGPUHelperExplicit<2>(data, offset, m_subsurfaceMaterialIndex);
 
-    // Bytes 12-15
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.x));
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.y));
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.z));
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.w));
+    // data[4 - 7]
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_albedoOpacityConstant.x));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_albedoOpacityConstant.y));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_albedoOpacityConstant.z));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_albedoOpacityConstant.w));
 
-    // Bytes 16-19
+    // data[8 - 11]
+    writeGPUHelper(data, offset, glm::packHalf1x16(displaceIn));
+    writeGPUHelper(data, offset, glm::packHalf1x16(displaceOut));
+    writeGPUHelperExplicit<2>(data, offset, m_heightTextureIndex);
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedThinFilmNormalizedThicknessConstant));
+
+    // data[12 - 15]
     writeGPUHelperExplicit<2>(data, offset, m_emissiveColorTextureIndex);
     writeGPUHelperExplicit<2>(data, offset, m_roughnessTextureIndex);
     writeGPUHelperExplicit<2>(data, offset, m_metallicTextureIndex);
     writeGPUHelperExplicit<2>(data, offset, m_normalTextureIndex);
 
-    // Bytes 20-27
+    // data[16 - 19]
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_emissiveColorConstant.x));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_emissiveColorConstant.y));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_emissiveColorConstant.z));
     assert(m_cachedEmissiveIntensity <= FLOAT16_MAX);
     writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedEmissiveIntensity));
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.x));
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.y));
 
-    // Bytes 28-31
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.z));
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_roughnessConstant));
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_metallicConstant));
-    writeGPUHelper(data, offset, packSnorm<8, uint8_t>(m_anisotropy));
+    // data[20 - 23]
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_roughnessConstant));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_metallicConstant));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_anisotropy));
+    writeGPUHelperExplicit<2>(data, offset, m_tangentTextureIndex);
 
+    // data[24]
+    writeGPUHelperExplicit<2>(data, offset, m_samplerFeedbackStamp);
+
+    // data[25 - 31]
+    writeGPUPadding<14>(data, offset);
     assert(offset - oldOffset == kSurfaceMaterialGPUSize);
   }
 
@@ -466,6 +617,10 @@ struct RtOpaqueSurfaceMaterial {
                             m_emissiveColorTextureIndex != kSurfaceMaterialInvalidTextureIndex;
 
     return !hasTexture || m_samplerIndex != kSurfaceMaterialInvalidTextureIndex;
+  }
+
+  bool hasValidDisplacement() const {
+    return (m_displaceIn > 0.f || m_displaceOut > 0.f) && m_heightTextureIndex != BINDING_INDEX_INVALID;
   }
 
   bool operator==(const RtOpaqueSurfaceMaterial& r) const {
@@ -540,6 +695,10 @@ struct RtOpaqueSurfaceMaterial {
     return m_subsurfaceMaterialIndex;
   }
 
+  uint32_t getIsRaytracedRenderTarget() const {
+    return m_isRaytracedRenderTarget;
+  }
+
 private:
   void updateCachedHash() {
     XXH64_hash_t h = 0;
@@ -564,7 +723,10 @@ private:
     h = XXH64(&m_thinFilmThicknessConstant, sizeof(m_thinFilmThicknessConstant), h);
     h = XXH64(&m_samplerIndex, sizeof(m_samplerIndex), h);
     h = XXH64(&m_displaceIn, sizeof(m_displaceIn), h);
+    h = XXH64(&m_displaceOut, sizeof(m_displaceOut), h);
     h = XXH64(&m_subsurfaceMaterialIndex, sizeof(m_subsurfaceMaterialIndex), h);
+    h = XXH64(&m_isRaytracedRenderTarget, sizeof(m_isRaytracedRenderTarget), h);
+    h = XXH64(&m_samplerFeedbackStamp, sizeof(m_samplerFeedbackStamp), h);
 
     m_cachedHash = h;
   }
@@ -605,11 +767,15 @@ private:
   float m_thinFilmThicknessConstant;
 
   // How far inwards a height_texture value of 0 maps to.
-  // TODO: if we ever support a displacement algorithm that supports outwards displacements, we'll need
-  // to add a displaceOut parameter.  With POM, displaceOut is locked to 0.
   float m_displaceIn;
+  // How far outwards a height_texture value of 1 maps to.
+  float m_displaceOut;
 
   uint32_t m_subsurfaceMaterialIndex;
+
+  bool m_isRaytracedRenderTarget;
+
+  uint16_t m_samplerFeedbackStamp;
 
   XXH64_hash_t m_cachedHash;
 
@@ -639,53 +805,53 @@ struct RtTranslucentSurfaceMaterial {
     updateCachedHash();
   }
 
-  void writeGPUData(unsigned char* data, std::size_t& offset) const {
+  void writeGPUData(unsigned char* data, std::size_t& offset, uint16_t surfaceIndex) const {
     [[maybe_unused]] const std::size_t oldOffset = offset;
 
-    // For decode process, see translucent_surface_material.slangh
+    // For decode process, see surface_material.h
+    // this data is accessed from uint16_t data[32], so data[n] refers to a pair of bytes.
 
-    uint8_t flags = surfaceMaterialTypeTranslucent;
+    uint16_t flags = surfaceMaterialTypeTranslucent;
 
     // Note: Respect override flag here to let the GPU do less work in determining if the diffuse layer should be used or not.
     if (m_useDiffuseLayer || getEnableDiffuseLayerOverrideHack()) {
       flags |= TRANSLUCENT_SURFACE_MATERIAL_FLAG_USE_DIFFUSE_LAYER;
     }
 
-    // 2 Bytes
+    // data[0- 1]
     writeGPUHelper(data, offset, flags);
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_cachedBaseReflectivity));
-
-    // 6 Bytes
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedBaseReflectivity));
+    // data[2 - 4]
     writeGPUHelper(data, offset, glm::packHalf1x16(m_transmittanceColor.x));
     writeGPUHelper(data, offset, glm::packHalf1x16(m_transmittanceColor.y));
     writeGPUHelper(data, offset, glm::packHalf1x16(m_transmittanceColor.z));
-
-    // 4 bytes
+    // data[5 - 9]
     writeGPUHelperExplicit<2>(data, offset, m_samplerIndex);
     writeGPUHelperExplicit<2>(data, offset, m_transmittanceTextureIndex);
-
-    // 2 Bytes
     writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedTransmittanceMeasurementDistanceOrThickness));
-
-
-    // 4 Bytes
     writeGPUHelperExplicit<2>(data, offset, m_normalTextureIndex);
     writeGPUHelperExplicit<2>(data, offset, m_emissiveColorTextureIndex);
 
-    // 2 Bytes
+    // data[10]
     assert(m_cachedEmissiveIntensity <= FLOAT16_MAX);
     writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedEmissiveIntensity));
 
-    // 4 Bytes
+    // data[11]
     // Note: Ensure IoR falls in the range expected by the encoding/decoding logic for the GPU (this should also be
     // enforced in the MDL and relevant content pipeline to prevent this assert from being triggered).
     assert(m_refractiveIndex >= 1.0f && m_refractiveIndex <= 3.0f);
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>((m_refractiveIndex - 1.0f) / 2.0f)); // data01.y & 0xff00
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.x));
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.y));
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.z));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_refractiveIndex));
 
-    writeGPUPadding<8>(data, offset);
+    // data[12-14]
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_emissiveColorConstant.x));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_emissiveColorConstant.y));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_emissiveColorConstant.z));
+
+    // data[15]
+    writeGPUHelperExplicit<2>(data, offset, surfaceIndex);
+    
+    // data[16 - 31]
+    writeGPUPadding<32>(data, offset);
 
     assert(offset - oldOffset == kSurfaceMaterialGPUSize);
   }
@@ -782,22 +948,32 @@ struct RtRayPortalSurfaceMaterial {
   void writeGPUData(unsigned char* data, std::size_t& offset) const {
     [[maybe_unused]] const std::size_t oldOffset = offset;
 
-    uint8_t flags = surfaceMaterialTypeRayPortal;
-    writeGPUHelper(data, offset, flags);
-    writeGPUHelper(data, offset, m_rayPortalIndex);
+    // For decode process, see surface_material.h
+    // this data is accessed from uint16_t data[32], so data[n] refers to a pair of bytes.
 
+    uint16_t flags = surfaceMaterialTypeRayPortal;
+    // data[0]
+    writeGPUHelper(data, offset, flags);
+
+    // data[1]
+    writeGPUHelper(data, offset, uint16_t(m_rayPortalIndex));
+
+    // data[2 - 3]
     writeGPUHelperExplicit<2>(data, offset, m_maskTextureIndex);
     writeGPUHelperExplicit<2>(data, offset, m_maskTextureIndex2);
 
+    // data[4 - 5]
     assert(m_rotationSpeed < FLOAT16_MAX);
     writeGPUHelper(data, offset, glm::packHalf1x16(m_rotationSpeed));
     float emissiveIntensity = m_enableEmission ? m_emissiveIntensity : 1.0f;
     writeGPUHelper(data, offset, glm::packHalf1x16(emissiveIntensity));
+
+    // data[6 - 7]
     writeGPUHelperExplicit<2>(data, offset, m_samplerIndex);
     writeGPUHelperExplicit<2>(data, offset, m_samplerIndex2);
 
-    writeGPUPadding<18>(data, offset); // Note: Padding for unused space
-
+    // data[8 - 31]
+    writeGPUPadding<48>(data, offset); // Note: Padding for unused space
     assert(offset - oldOffset == kSurfaceMaterialGPUSize);
   }
 
@@ -891,8 +1067,13 @@ struct RtSubsurfaceMaterial {
     const uint32_t subsurfaceTransmittanceTextureIndex,
     const uint32_t subsurfaceThicknessTextureIndex,
     const uint32_t subsurfaceSingleScatteringAlbedoTextureIndex,
-    const Vector3& subsurfaceTransmittanceColor, const float subsurfaceMeasurementDistance,
-    const Vector3& subsurfaceSingleScatteringAlbedo, const float subsurfaceVolumetricAnisotropy) :
+    const Vector3& subsurfaceTransmittanceColor,
+    const float subsurfaceMeasurementDistance,
+    const Vector3& subsurfaceSingleScatteringAlbedo,
+    const float subsurfaceVolumetricAnisotropy,
+    const float subsurfaceRadiusScale,
+    const float subsurfaceMaxSampleRadius)
+    :
     m_subsurfaceTransmittanceTextureIndex(subsurfaceTransmittanceTextureIndex),
     m_subsurfaceThicknessTextureIndex(subsurfaceThicknessTextureIndex),
     m_subsurfaceSingleScatteringAlbedoTextureIndex(subsurfaceSingleScatteringAlbedoTextureIndex),
@@ -900,9 +1081,13 @@ struct RtSubsurfaceMaterial {
     m_subsurfaceMeasurementDistance { subsurfaceMeasurementDistance },
     m_subsurfaceSingleScatteringAlbedo { subsurfaceSingleScatteringAlbedo },
     m_subsurfaceVolumetricAnisotropy { subsurfaceVolumetricAnisotropy },
-    m_subsurfaceVolumetricAttenuationCoefficient { Vector3(-std::log(subsurfaceTransmittanceColor.x),
-                                                           -std::log(subsurfaceTransmittanceColor.y),
-                                                           -std::log(subsurfaceTransmittanceColor.z)) / subsurfaceMeasurementDistance }
+    // Because we do log on the transmittance color when mapping to attenuation coefficient, we need to clamp to a small epsilon value to avoid NaN issue.
+    m_subsurfaceVolumetricAttenuationCoefficient {
+      Vector3(-log(std::max(subsurfaceTransmittanceColor.x, FLT_EPSILON)),
+              -log(std::max(subsurfaceTransmittanceColor.y, FLT_EPSILON)),
+              -log(std::max(subsurfaceTransmittanceColor.z, FLT_EPSILON))) / std::max(subsurfaceMeasurementDistance, FLT_EPSILON) },
+    m_subsurfaceRadiusScale { subsurfaceRadiusScale },
+    m_subsurfaceMaxSampleRadius { subsurfaceMaxSampleRadius }
   {
     updateCachedHash();
   }
@@ -910,57 +1095,54 @@ struct RtSubsurfaceMaterial {
   void writeGPUData(unsigned char* data, std::size_t& offset) const {
     [[maybe_unused]] const std::size_t oldOffset = offset;
 
-    uint32_t flags = (1 << 31); // Set bit 31 to 1 for subsurface scattering type
+    // For decode process, see surface_material.h
+    // this data is accessed from uint16_t data[32], so data[n] refers to a pair of bytes.
 
-    // Bytes 0-1
-    if (m_subsurfaceTransmittanceTextureIndex != kSurfaceMaterialInvalidTextureIndex) {
-      writeGPUHelperExplicit<2>(data, offset, m_subsurfaceTransmittanceTextureIndex);
-      flags |= SUBSURFACE_MATERIAL_FLAG_HAS_TRANSMITTANCE_TEXTURE;
-    } else {
-      // Note: We currently have enough space in SSS material, so no need to compress transmittance from f16v3 to f8v3.
-      //       But it's an option if we run out of space in the future.
+    // Write an empty flags to stay consistent with the other materials.
+    uint16_t flags = 0;
 
-      writeGPUPadding<2>(data, offset); // Note: Padding for unused space
-    }
+    // data[0]
+    writeGPUHelperExplicit<2>(data, offset, flags);
 
-    // Bytes 2-3
-    if (m_subsurfaceThicknessTextureIndex != kSurfaceMaterialInvalidTextureIndex) {
-      writeGPUHelperExplicit<2>(data, offset, m_subsurfaceThicknessTextureIndex);
-      flags |= SUBSURFACE_MATERIAL_FLAG_HAS_THICKNESS_TEXTURE;
-    } else {
+    // data[1]
+    writeGPUHelperExplicit<2>(data, offset, m_subsurfaceTransmittanceTextureIndex);
+
+    // data[2]
+    writeGPUHelperExplicit<2>(data, offset, m_subsurfaceThicknessTextureIndex);
+
+    // data[3]
+    writeGPUHelperExplicit<2>(data, offset, m_subsurfaceSingleScatteringAlbedoTextureIndex);
+
+    // data[4]
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAnisotropy));
+
+    // data[5-8]
+    if (m_subsurfaceRadiusScale < 0.0f) { // Thin Opaque
+      writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.x));
+      writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.y));
+      writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.z));
+
       assert(m_subsurfaceMeasurementDistance <= FLOAT16_MAX);
       writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceMeasurementDistance));
+    } else { // SSS
+      writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceTransmittanceColor.x));
+      writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceTransmittanceColor.y));
+      writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceTransmittanceColor.z));
+
+      assert(m_subsurfaceRadiusScale <= FLOAT16_MAX);
+      writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceRadiusScale));
     }
 
-    // Bytes 4-5
-    if (m_subsurfaceSingleScatteringAlbedoTextureIndex != kSurfaceMaterialInvalidTextureIndex) {
-      writeGPUHelperExplicit<2>(data, offset, m_subsurfaceSingleScatteringAlbedoTextureIndex);
-      flags |= SUBSURFACE_MATERIAL_FLAG_HAS_SINGLE_SCATTERING_ALBEDO_TEXTURE;
-    } else {
-      // Note: We currently have enough space in SSS material, so no need to compress scattering-albedo from f16v3 to f8v3.
-      //       But it's an option if we run out of space in the future.
-
-      writeGPUPadding<2>(data, offset); // Note: Padding for unused space
-    }
-
-    // Bytes 6-11
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.x));
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.y));
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.z));
-
-    // Bytes 12-17
+    // data[9-11]
     writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceSingleScatteringAlbedo.x));
     writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceSingleScatteringAlbedo.y));
     writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceSingleScatteringAlbedo.z));
 
-    // Bytes 18-19
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAnisotropy));
+    // data[12]
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceMaxSampleRadius));
 
-    // 8 Bytes padding (20-27)
-    writeGPUPadding<8>(data, offset);
-
-    // Bytes 28-31
-    writeGPUHelper(data, offset, flags);
+    // data[13-31]
+    writeGPUPadding<38>(data, offset);
   }
 
   bool operator==(const RtSubsurfaceMaterial& r) const {
@@ -1003,6 +1185,14 @@ struct RtSubsurfaceMaterial {
     return m_subsurfaceVolumetricAttenuationCoefficient;
   }
 
+  float getSubsurfaceRadiusScale() const {
+    return m_subsurfaceRadiusScale;
+  }
+
+  float getSubsurfaceMaxRadius() const {
+    return m_subsurfaceMaxSampleRadius;
+  }
+
 private:
   struct HashStruct {
     uint32_t m_subsurfaceTransmittanceTextureIndex;
@@ -1013,9 +1203,11 @@ private:
     Vector3 m_subsurfaceSingleScatteringAlbedo;
     float m_subsurfaceVolumetricAnisotropy;
     Vector3 m_subsurfaceVolumetricAttenuationCoefficient;
+    float m_subsurfaceRadiusScale;
+    float m_subsurfaceMaxSampleRadius;
 
     XXH64_hash_t calculateHash() {
-      static_assert(sizeof(HashStruct) == sizeof(uint32_t) * 14);
+      static_assert(sizeof(HashStruct) == sizeof(uint32_t) * 16);
       return XXH3_64bits(this, sizeof(HashStruct));
     }
   };
@@ -1029,16 +1221,18 @@ private:
       m_subsurfaceMeasurementDistance,
       m_subsurfaceSingleScatteringAlbedo,
       m_subsurfaceVolumetricAnisotropy,
-      m_subsurfaceVolumetricAttenuationCoefficient };
+      m_subsurfaceVolumetricAttenuationCoefficient,
+      m_subsurfaceRadiusScale,
+      m_subsurfaceMaxSampleRadius };
     m_cachedHash = hashData.calculateHash();
   }
 
-  // Thin Opaque Textures Index
+  // Thin Opaque Textures Index (Shared with SSS)
   uint32_t m_subsurfaceTransmittanceTextureIndex;
   uint32_t m_subsurfaceThicknessTextureIndex;
   uint32_t m_subsurfaceSingleScatteringAlbedoTextureIndex;
 
-  // Thin Opaque Properties
+  // Thin Opaque Properties (Shared with SSS)
   Vector3 m_subsurfaceTransmittanceColor;
   float m_subsurfaceMeasurementDistance;
   Vector3 m_subsurfaceSingleScatteringAlbedo; // scatteringCoefficient / attenuationCoefficient
@@ -1048,7 +1242,9 @@ private:
   Vector3 m_subsurfaceVolumetricAttenuationCoefficient; // scatteringCoefficient + absorptionCoefficient
   // Currently no need to cache scattering and absorption coefficient for single scattering simulation
 
-  // Todo: SSS properties using Diffusion Profile
+  // SSS properties using Diffusion Profile
+  float m_subsurfaceRadiusScale;
+  float m_subsurfaceMaxSampleRadius;
 
   XXH64_hash_t m_cachedHash;
 };
@@ -1113,7 +1309,7 @@ struct RtSurfaceMaterial {
     }
   }
 
-  void writeGPUData(unsigned char* data, std::size_t& offset) const {
+  void writeGPUData(unsigned char* data, std::size_t& offset, uint16_t surfaceIndex) const {
     switch (m_type) {
     default:
       assert(false);
@@ -1123,7 +1319,7 @@ struct RtSurfaceMaterial {
       m_opaqueSurfaceMaterial.writeGPUData(data, offset);
       break;
     case RtSurfaceMaterialType::Translucent:
-      m_translucentSurfaceMaterial.writeGPUData(data, offset);
+      m_translucentSurfaceMaterial.writeGPUData(data, offset, surfaceIndex);
       break;
     case RtSurfaceMaterialType::RayPortal:
       m_rayPortalSurfaceMaterial.writeGPUData(data, offset);
@@ -1293,14 +1489,17 @@ private:
 };
 
 enum class MaterialDataType {
-  Legacy,
   Opaque,
   Translucent,
   RayPortal,
+  Count,
+  Invalid
 };
 
 // Note: For use with "Legacy" D3D9 material information
 struct LegacyMaterialData {
+  static OpaqueMaterialData createDefault();
+
   LegacyMaterialData()
   { }
 
@@ -1342,60 +1541,41 @@ struct LegacyMaterialData {
             (getColorTexture2().isValid() && !getColorTexture2().isImageEmpty()));
   }
 
-  operator OpaqueMaterialData() const {
-    OpaqueMaterialData opaqueMat;
-    opaqueMat.getAlbedoOpacityTexture() = getColorTexture();
-    opaqueMat.getFilterMode() = lss::Mdl::Filter::vkToMdl(getSampler()->info().magFilter);
-    opaqueMat.getWrapModeU() = lss::Mdl::WrapMode::vkToMdl(getSampler()->info().addressModeU);
-    opaqueMat.getWrapModeV() = lss::Mdl::WrapMode::vkToMdl(getSampler()->info().addressModeV);
-    return opaqueMat;
-  }
-
-  operator TranslucentMaterialData() const {
-    TranslucentMaterialData transluscentMat;
-    transluscentMat.getFilterMode() = lss::Mdl::Filter::vkToMdl(getSampler()->info().magFilter);
-    transluscentMat.getWrapModeU() = lss::Mdl::WrapMode::vkToMdl(getSampler()->info().addressModeU);
-    transluscentMat.getWrapModeV() = lss::Mdl::WrapMode::vkToMdl(getSampler()->info().addressModeV);
-    return transluscentMat;
-  }
-
-  operator RayPortalMaterialData() const {
-    RayPortalMaterialData portalMat;
-    portalMat.getMaskTexture() = getColorTexture();
-    portalMat.getMaskTexture2() = getColorTexture2();
-    portalMat.getFilterMode() = lss::Mdl::Filter::vkToMdl(getSampler()->info().magFilter);
-    portalMat.getWrapModeU() = lss::Mdl::WrapMode::vkToMdl(getSampler()->info().addressModeU);
-    portalMat.getWrapModeV() = lss::Mdl::WrapMode::vkToMdl(getSampler()->info().addressModeV);
-    return portalMat;
-  }
+  // A single place to define and handle conversions between legacy and raytraced materials
+  template<typename T>
+  T as() const;
 
   const void printDebugInfo(const char* name = "") const {
 #ifdef REMIX_DEVELOPMENT
     Logger::warn(str::format(
-      "LegacyMaterialData ", name,
-      " address: ", this,
-      " alphaTestEnabled: ", alphaTestEnabled,
-      " alphaTestReferenceValue: ", alphaTestReferenceValue,
-      " alphaTestCompareOp: ", alphaTestCompareOp,
-      " alphaBlendEnabled: ", alphaBlendEnabled,
-      " srcColorBlendFactor: ", srcColorBlendFactor,
-      " dstColorBlendFactor: ", dstColorBlendFactor,
-      " colorBlendOp: ", colorBlendOp,
-      // " textureColorArg1Source: ", textureColorArg1Source,
-      // " textureColorArg2Source: ", textureColorArg2Source,
-      // " textureColorOperation: ", textureColorOperation,
-      // " textureAlphaArg1Source: ", textureAlphaArg1Source,
-      // " textureAlphaArg2Source: ", textureAlphaArg2Source,
-      // " textureAlphaOperation: ", textureAlphaOperation,
-      " tFactor: ", tFactor,
-      // " m_d3dMaterial.Diffuse: ", m_d3dMaterial.Diffuse,
-      // " m_d3dMaterial.Ambient: ", m_d3dMaterial.Ambient,
-      // " m_d3dMaterial.Specular: ", m_d3dMaterial.Specular,
-      // " m_d3dMaterial.Emissive: ", m_d3dMaterial.Emissive,
-      // " m_d3dMaterial.Power: ", m_d3dMaterial.Power,
-      std::hex, " m_colorTexture: 0x", colorTextures[0].getImageHash(),
-      " m_colorTexture2: 0x", colorTextures[1].getImageHash(),
-      " m_cachedHash: 0x", m_cachedHash, std::dec));
+      "LegacyMaterialData ", name, "\n",
+      "  address: ", this, "\n",
+      "  alphaTestEnabled: ", alphaTestEnabled, "\n",
+      "  alphaTestReferenceValue: ", alphaTestReferenceValue, "\n",
+      "  alphaTestCompareOp: ", alphaTestCompareOp, "\n",
+      "  alphaBlendEnabled: ", blendMode.enableBlending, "\n",
+      "  colorSrcFactor: ", blendMode.colorSrcFactor, "\n",
+      "  colorDstFactor: ", blendMode.colorDstFactor, "\n",
+      "  colorBlendOp: ", blendMode.colorBlendOp, "\n",
+      "  alphaSrcFactor: ", blendMode.alphaSrcFactor, "\n",
+      "  alphaDstFactor: ", blendMode.alphaDstFactor, "\n",
+      "  alphaBlendOp: ", blendMode.alphaBlendOp, "\n",
+      "  writeMask: ", blendMode.writeMask, "\n",
+      "  textureColorArg1Source: ", static_cast<int>(textureColorArg1Source), "\n",
+      "  textureColorArg2Source: ", static_cast<int>(textureColorArg2Source), "\n",
+      "  textureColorOperation: ", static_cast<int>(textureColorOperation), "\n",
+      "  textureAlphaArg1Source: ", static_cast<int>(textureAlphaArg1Source), "\n",
+      "  textureAlphaArg2Source: ", static_cast<int>(textureAlphaArg2Source), "\n",
+      "  textureAlphaOperation: ", static_cast<int>(textureAlphaOperation), "\n",
+      "  tFactor: ", tFactor, "\n",
+      // "  m_d3dMaterial.Diffuse: ", m_d3dMaterial.Diffuse, "\n",
+      // "  m_d3dMaterial.Ambient: ", m_d3dMaterial.Ambient, "\n",
+      // "  m_d3dMaterial.Specular: ", m_d3dMaterial.Specular, "\n",
+      // "  m_d3dMaterial.Emissive: ", m_d3dMaterial.Emissive, "\n",
+      // "  m_d3dMaterial.Power: ", m_d3dMaterial.Power, "\n",
+      std::hex, "  m_colorTexture: 0x", colorTextures[0].getImageHash(), "\n",
+      "  m_colorTexture2: 0x", colorTextures[1].getImageHash(), "\n",
+      "  m_cachedHash: 0x", m_cachedHash, std::dec));
 #endif
   }
 
@@ -1406,10 +1586,9 @@ struct LegacyMaterialData {
   bool alphaTestEnabled = false;
   uint8_t alphaTestReferenceValue = 0;
   VkCompareOp alphaTestCompareOp = VkCompareOp::VK_COMPARE_OP_ALWAYS;
-  bool alphaBlendEnabled = false;
-  VkBlendFactor srcColorBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ONE;
-  VkBlendFactor dstColorBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ZERO;
-  VkBlendOp colorBlendOp = VkBlendOp::VK_BLEND_OP_ADD;
+
+  DxvkBlendMode blendMode;
+
   RtTextureArgSource diffuseColorSource= RtTextureArgSource::None;
   RtTextureArgSource specularColorSource = RtTextureArgSource::None;
   RtTextureArgSource textureColorArg1Source = RtTextureArgSource::Texture;
@@ -1421,6 +1600,7 @@ struct LegacyMaterialData {
   uint32_t tFactor = 0xffffffff;  // Value for D3DRS_TEXTUREFACTOR, default value of is opaque white
   D3DMATERIAL9 d3dMaterial = {};
   bool isTextureFactorBlend = false;
+  bool isVertexColorBakedLighting = true;
 
   void setHashOverride(XXH64_hash_t hash) {
     m_cachedHash = hash;
@@ -1451,164 +1631,117 @@ private:
 };
 
 struct MaterialData {
-  MaterialData(const LegacyMaterialData& legacyMaterialData) :
-    m_type{ MaterialDataType::Legacy },
-    m_legacyMaterialData{ legacyMaterialData } {}
+  bool m_ignored = false;
 
-  MaterialData(const OpaqueMaterialData& opaqueMaterialData, bool ignored = false) :
-    m_ignored {ignored},
-    m_type{ MaterialDataType::Opaque},
-    m_opaqueMaterialData{ opaqueMaterialData } {}
+  using MaterialVariant = std::variant<
+    OpaqueMaterialData,
+    TranslucentMaterialData,
+    RayPortalMaterialData
+  >;
 
-  MaterialData(const TranslucentMaterialData& translucentMaterialData, bool ignored = false) :
-    m_ignored {ignored},
-    m_type{ MaterialDataType::Translucent },
-    m_translucentMaterialData{ translucentMaterialData }{}
+  // Using variants rather than a union here, due to the MaterialData containing nested members of Rc pointers.
+  MaterialVariant m_data;
 
-  MaterialData(const RayPortalMaterialData& rayPortalMaterialData) :
-    m_type{ MaterialDataType::RayPortal },
-    m_rayPortalMaterialData{ rayPortalMaterialData } {}
+  std::optional<RtxParticleSystemDesc> m_particleSystem;
 
-  MaterialData(const MaterialData& materialData) :
-    m_type { materialData.m_type }, m_ignored { materialData.m_ignored } {
-    switch (m_type) {
-    default:
-      assert(false);
+  // Verify that the variant and enum stay in sync
+  static_assert(std::variant_size_v<MaterialVariant> == (size_t)MaterialDataType::Count, "Enum is out of sync, please check your change.");
+  static_assert(std::is_same_v<std::variant_alternative_t<(size_t)MaterialDataType::Opaque,      MaterialVariant>, OpaqueMaterialData>,      "MaterialVariant[Opaque] must be OpaqueMaterialData, please check your change.");
+  static_assert(std::is_same_v<std::variant_alternative_t<(size_t)MaterialDataType::Translucent, MaterialVariant>, TranslucentMaterialData>, "MaterialVariant[Translucent] must be TranslucentMaterialData, please check your change.");
+  static_assert(std::is_same_v<std::variant_alternative_t<(size_t)MaterialDataType::RayPortal,   MaterialVariant>, RayPortalMaterialData>,   "MaterialVariant[RayPortal] must be RayPortalMaterialData, please check your change.");
 
-      [[fallthrough]];
-    case MaterialDataType::Legacy:
-      new (&m_legacyMaterialData) LegacyMaterialData{ materialData.m_legacyMaterialData };
-      break;
-    case MaterialDataType::Opaque:
-      new (&m_opaqueMaterialData) OpaqueMaterialData{ materialData.m_opaqueMaterialData };
-      break;
-    case MaterialDataType::Translucent:
-      new (&m_translucentMaterialData) TranslucentMaterialData{ materialData.m_translucentMaterialData };
-      break;
-    case MaterialDataType::RayPortal:
-      new (&m_rayPortalMaterialData) RayPortalMaterialData{ materialData.m_rayPortalMaterialData };
-      break;
-    }
-  }
+  MaterialData(const OpaqueMaterialData& opaque, std::optional<RtxParticleSystemDesc> particleSystem = std::nullopt, bool ignored = false)
+    : m_ignored { ignored }, m_data { opaque }, m_particleSystem { particleSystem } {}
 
-  ~MaterialData() {
-    switch (m_type) {
-    default:
-      assert(false);
+  MaterialData(const TranslucentMaterialData& translucent, std::optional<RtxParticleSystemDesc> particleSystem = std::nullopt, bool ignored = false)
+    : m_ignored { ignored }, m_data { translucent }, m_particleSystem { particleSystem } {}
 
-      [[fallthrough]];
-    case MaterialDataType::Legacy:
-      m_legacyMaterialData.~LegacyMaterialData();
-      break;
-    case MaterialDataType::Opaque:
-      m_opaqueMaterialData.~OpaqueMaterialData();
-      break;
-    case MaterialDataType::Translucent:
-      m_translucentMaterialData.~TranslucentMaterialData();
-      break;
-    case MaterialDataType::RayPortal:
-      m_rayPortalMaterialData.~RayPortalMaterialData();
-      break;
-    }
-  }
+  MaterialData(const RayPortalMaterialData& portal, std::optional<RtxParticleSystemDesc> particleSystem = std::nullopt)
+    : m_data { portal }, m_particleSystem { particleSystem } { }
 
-  MaterialData& operator=(const MaterialData& materialData) {
-    if (this != &materialData) {
-      m_type = materialData.m_type;
-
-      switch (materialData.m_type) {
-      default:
-        assert(false);
-
-        [[fallthrough]];
-      case MaterialDataType::Legacy:
-        m_legacyMaterialData = materialData.m_legacyMaterialData;
-        break;
-      case MaterialDataType::Opaque:
-        m_opaqueMaterialData = materialData.m_opaqueMaterialData;
-        break;
-      case MaterialDataType::Translucent:
-        m_translucentMaterialData = materialData.m_translucentMaterialData;
-        break;
-      case MaterialDataType::RayPortal:
-        m_rayPortalMaterialData = materialData.m_rayPortalMaterialData;
-        break;
-      }
-    }
-
-    return *this;
-  }
-
-  const bool getIgnored() const {
+  bool getIgnored() const {
     return m_ignored;
   }
 
-  const XXH64_hash_t getHash() const {
-    switch (m_type) {
-    default:
-      assert(false);
-
-      [[fallthrough]];
-    case MaterialDataType::Legacy:
-      return m_legacyMaterialData.getHash();
-    case MaterialDataType::Opaque:
-      return m_opaqueMaterialData.getHash();
-    case MaterialDataType::Translucent:
-      return m_translucentMaterialData.getHash();
-    case MaterialDataType::RayPortal:
-      return m_rayPortalMaterialData.getHash();
-    }
-  }
-
   MaterialDataType getType() const {
-    return m_type;
+    // NOTE: relies on the variant index matching MaterialDataType
+    return static_cast<MaterialDataType>(m_data.index());
   }
 
-  const LegacyMaterialData& getLegacyMaterialData() const {
-    assert(m_type == MaterialDataType::Legacy);
+  XXH64_hash_t getHash() const {
+    return std::visit([](auto const& mat) { return mat.getHash(); }, m_data);
+  }
 
-    return m_legacyMaterialData;
+  const Rc<DxvkSampler>& getSamplerOverride() const {
+    return std::visit([](auto const& mat) -> const Rc<DxvkSampler>& { return mat.getSamplerOverride(); }, m_data);
   }
 
   const OpaqueMaterialData& getOpaqueMaterialData() const {
-    assert(m_type == MaterialDataType::Opaque);
-
-    return m_opaqueMaterialData;
+    assert(std::holds_alternative<OpaqueMaterialData>(m_data));
+    return std::get<OpaqueMaterialData>(m_data);
   }
 
   OpaqueMaterialData& getOpaqueMaterialData() {
-    assert(m_type == MaterialDataType::Opaque);
-
-    return m_opaqueMaterialData;
+    assert(std::holds_alternative<OpaqueMaterialData>(m_data));
+    return std::get<OpaqueMaterialData>(m_data);
   }
 
   const TranslucentMaterialData& getTranslucentMaterialData() const {
-    assert(m_type == MaterialDataType::Translucent);
+    assert(std::holds_alternative<TranslucentMaterialData>(m_data));
+    return std::get<TranslucentMaterialData>(m_data);
+  }
 
-    return m_translucentMaterialData;
+  TranslucentMaterialData& getTranslucentMaterialData() {
+    assert(std::holds_alternative<TranslucentMaterialData>(m_data));
+    return std::get<TranslucentMaterialData>(m_data);
   }
 
   const RayPortalMaterialData& getRayPortalMaterialData() const {
-    assert(m_type == MaterialDataType::RayPortal);
-
-    return m_rayPortalMaterialData;
+    assert(std::holds_alternative<RayPortalMaterialData>(m_data));
+    return std::get<RayPortalMaterialData>(m_data);
   }
 
+  RayPortalMaterialData& getRayPortalMaterialData() {
+    assert(std::holds_alternative<RayPortalMaterialData>(m_data));
+    return std::get<RayPortalMaterialData>(m_data);
+  }
+
+  const RtxParticleSystemDesc* getParticleSystemDesc() const {
+    return m_particleSystem.has_value() ? &m_particleSystem.value() : nullptr;
+  }
+  
   void mergeLegacyMaterial(const LegacyMaterialData& input) {
-    switch (m_type) {
-    default:
-      assert(false);
-      [[fallthrough]];
-    case MaterialDataType::Opaque:
-      m_opaqueMaterialData.merge(input);
-      break;
-    case MaterialDataType::Translucent:
-      m_translucentMaterialData.merge(input);
-      break;
-    case MaterialDataType::RayPortal:
-      m_rayPortalMaterialData.merge(input);
-      break;
-    }
+    std::visit([&](auto& mat) {
+      using T = std::decay_t<decltype(mat)>;
+      if constexpr (std::is_same_v<T, OpaqueMaterialData>) {
+        OpaqueMaterialData tmp;
+        tmp.getAlbedoOpacityTexture() = input.getColorTexture();
+        if (auto s = input.getSampler().ptr()) {
+          tmp.getFilterMode() = lss::Mdl::Filter::vkToMdl(s->info().magFilter);
+          tmp.getWrapModeU() = lss::Mdl::WrapMode::vkToMdl(s->info().addressModeU);
+          tmp.getWrapModeV() = lss::Mdl::WrapMode::vkToMdl(s->info().addressModeV);
+        }
+        mat.merge(tmp);
+      } else if constexpr (std::is_same_v<T, TranslucentMaterialData>) {
+        TranslucentMaterialData tmp;
+        if (auto s = input.getSampler().ptr()) {
+          tmp.getFilterMode() = lss::Mdl::Filter::vkToMdl(s->info().magFilter);
+          tmp.getWrapModeU() = lss::Mdl::WrapMode::vkToMdl(s->info().addressModeU);
+          tmp.getWrapModeV() = lss::Mdl::WrapMode::vkToMdl(s->info().addressModeV);
+        }
+        mat.merge(tmp);
+      } else { 
+        RayPortalMaterialData tmp;
+        tmp.getMaskTexture() = input.getColorTexture();
+        tmp.getMaskTexture2() = input.getColorTexture2();
+        if (auto s = input.getSampler().ptr()) {
+          tmp.getFilterMode() = lss::Mdl::Filter::vkToMdl(s->info().magFilter);
+          tmp.getWrapModeU() = lss::Mdl::WrapMode::vkToMdl(s->info().addressModeU);
+          tmp.getWrapModeV() = lss::Mdl::WrapMode::vkToMdl(s->info().addressModeV);
+        }
+        mat.merge(tmp);
+      }
+    }, m_data);
   }
 
 #define POPULATE_SAMPLER_INFO(info, material) \
@@ -1621,35 +1754,10 @@ struct MaterialData {
   info.addressModeV = \
     lss::Mdl::WrapMode::mdlToVk(material.getWrapModeV(), &info.borderColor);
 
-  const void populateSamplerInfo(DxvkSamplerCreateInfo& toPopulate) const {
-    switch (m_type) {
-    default:
-      assert(false);
-      [[fallthrough]];
-    case MaterialDataType::Opaque:
-      POPULATE_SAMPLER_INFO(toPopulate, m_opaqueMaterialData);
-      break;
-    case MaterialDataType::Translucent:
-      POPULATE_SAMPLER_INFO(toPopulate, m_translucentMaterialData);
-      break;
-    case MaterialDataType::RayPortal:
-      POPULATE_SAMPLER_INFO(toPopulate, m_rayPortalMaterialData);
-      break;
-    }
+  void populateSamplerInfo(DxvkSamplerCreateInfo& toPopulate) const {
+    std::visit([&](auto const& mat) { POPULATE_SAMPLER_INFO(toPopulate, mat); }, m_data);
   }
-#undef P_SAMPLER_INFO
-
-private:
-  // Type-specific Material Data Information
-  bool m_ignored = false;
-
-  MaterialDataType m_type;
-  union {
-    LegacyMaterialData m_legacyMaterialData;
-    OpaqueMaterialData m_opaqueMaterialData;
-    TranslucentMaterialData m_translucentMaterialData;
-    RayPortalMaterialData m_rayPortalMaterialData;
-  };
+#undef POPULATE_SAMPLER_INFO
 };
 
 } // namespace dxvk

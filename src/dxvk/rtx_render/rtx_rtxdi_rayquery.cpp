@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -21,7 +21,8 @@
 */
 #include "rtx_rtxdi_rayquery.h"
 #include "dxvk_device.h"
-#include "rtx_render/rtx_shader_manager.h"
+#include "rtx_shader_manager.h"
+#include "rtx_restir_gi_rayquery.h"
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/raytrace_args.h"
@@ -34,6 +35,8 @@
 #include "dxvk_context.h"
 #include "rtx_context.h"
 #include "rtx_imgui.h"
+#include "rtx_neural_radiance_cache.h"
+#include "rtx_ray_reconstruction.h"
 
 #include <rtx_shaders/rtxdi_temporal_reuse.h>
 #include <rtx_shaders/rtxdi_spatial_reuse.h>
@@ -54,9 +57,7 @@ namespace dxvk {
       BEGIN_PARAMETER()
         COMMON_RAYTRACING_BINDINGS
 
-        // RTXDI Data
-        RW_STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_RTXDI_RESERVOIR)
-        // GBuffer
+        // Inputs
         TEXTURE2D(RTXDI_REUSE_BINDING_WORLD_SHADING_NORMAL_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_PERCEPTUAL_ROUGHNESS_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_HIT_DISTANCE_INPUT)
@@ -71,12 +72,18 @@ namespace dxvk {
         TEXTURE2D(RTXDI_REUSE_BINDING_POSITION_ERROR_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_SUBSURFACE_DATA_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_SHARED_FLAGS_INPUT)
-        RW_TEXTURE2D(RTXDI_REUSE_BINDING_LAST_GBUFFER)
+        TEXTURE2D(RTXDI_REUSE_BINDING_BEST_LIGHTS_INPUT)
+        
+        // Inputs / Outputs
+        RW_STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_RTXDI_RESERVOIR_INPUT_OUTPUT)
+        RW_TEXTURE2D(RTXDI_REUSE_BINDING_LAST_GBUFFER_INPUT_OUTPUT)
+
+        // Outputs
         RW_TEXTURE2D(RTXDI_REUSE_BINDING_REPROJECTION_CONFIDENCE_OUTPUT)
         RW_TEXTURE2D(RTXDI_REUSE_BINDING_BSDF_FACTOR_OUTPUT)
         RW_TEXTURE2D(RTXDI_REUSE_BINDING_TEMPORAL_POSITION_OUTPUT)
-        TEXTURE2D(RTXDI_REUSE_BINDING_BEST_LIGHTS_INPUT)
       END_PARAMETER()
     };
 
@@ -90,9 +97,7 @@ namespace dxvk {
       BEGIN_PARAMETER()
         COMMON_RAYTRACING_BINDINGS
         
-        // RTXDI Data
-        RW_STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_RTXDI_RESERVOIR)
-        // GBuffer
+        // Inputs
         TEXTURE2D(RTXDI_REUSE_BINDING_WORLD_SHADING_NORMAL_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_PERCEPTUAL_ROUGHNESS_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_HIT_DISTANCE_INPUT)
@@ -107,12 +112,19 @@ namespace dxvk {
         TEXTURE2D(RTXDI_REUSE_BINDING_POSITION_ERROR_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_SUBSURFACE_DATA_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_SHARED_FLAGS_INPUT)
-        RW_TEXTURE2D(RTXDI_REUSE_BINDING_LAST_GBUFFER)
+        TEXTURE2D(RTXDI_REUSE_BINDING_BEST_LIGHTS_INPUT)
+
+        // Inputs / Outputs
+        RW_STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_RTXDI_RESERVOIR_INPUT_OUTPUT)
+        RW_TEXTURE2D(RTXDI_REUSE_BINDING_LAST_GBUFFER_INPUT_OUTPUT)
+
+        // Outputs
         RW_TEXTURE2D(RTXDI_REUSE_BINDING_REPROJECTION_CONFIDENCE_OUTPUT)
         RW_TEXTURE2D(RTXDI_REUSE_BINDING_BSDF_FACTOR_OUTPUT)
         RW_TEXTURE2D(RTXDI_REUSE_BINDING_TEMPORAL_POSITION_OUTPUT)
-        TEXTURE2D(RTXDI_REUSE_BINDING_BEST_LIGHTS_INPUT)
+        
       END_PARAMETER()
     };
 
@@ -229,11 +241,26 @@ namespace dxvk {
     // to derive the per-light-type sample counts
   }
 
+  bool DxvkRtxdiRayQuery::getEnableDenoiserConfidence(RtxContext& ctx) const {
+
+    DxvkRayReconstruction& rayReconstruction = ctx.getCommonObjects()->metaRayReconstruction();
+    DxvkReSTIRGIRayQuery& restirGI = ctx.getCommonObjects()->metaReSTIRGIRayQuery();
+
+    const bool isNrdAPrimaryDenoiser = RtxOptions::useDenoiser()
+      && !rayReconstruction.useRayReconstruction()
+      && !RtxOptions::useDenoiserReferenceMode();
+
+    // Confidence is only used when NRD is a primary denoiser and in ReSTIR GI 
+    return (isNrdAPrimaryDenoiser || restirGI.isActive())
+        && enableTemporalReuse() && enableDenoiserGradient() && enableDenoiserConfidence();
+  }
+
   void DxvkRtxdiRayQuery::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
     ScopedGpuProfileZone(ctx, "RTXDI");
 
-    if (!RtxOptions::Get()->useRTXDI())
+    if (!RtxOptions::useRTXDI()) {
       return;
+    }
 
     const uint32_t frameIdx = ctx->getDevice()->getCurrentFrameId();
 
@@ -244,12 +271,12 @@ namespace dxvk {
     
     {
       ScopedGpuProfileZone(ctx, "RTXDI Initial & Temporal Reuse");
+      ctx->setFramePassStage(RtxFramePassStage::RTXDI_InitialTemporalReuse);
 
       // Inputs
      
       // Note: Primary buffers bound as these exhibit coherency for RTXDI and denoising.
-      ctx->bindResourceBuffer(RTXDI_REUSE_BINDING_RTXDI_RESERVOIR, DxvkBufferSlice(rtOutput.m_rtxdiReservoirBuffer, 0, rtOutput.m_rtxdiReservoirBuffer->info().size));
-      ctx->bindResourceView(RTXDI_REUSE_BINDING_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_primaryWorldShadingNormal.view, nullptr);
+     ctx->bindResourceView(RTXDI_REUSE_BINDING_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_primaryWorldShadingNormal.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_PERCEPTUAL_ROUGHNESS_INPUT, rtOutput.m_primaryPerceptualRoughness.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_HIT_DISTANCE_INPUT, rtOutput.m_primaryHitDistance.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_ALBEDO_INPUT, rtOutput.m_primaryAlbedo.view, nullptr);
@@ -257,34 +284,39 @@ namespace dxvk {
       ctx->bindResourceView(RTXDI_REUSE_BINDING_BASE_REFLECTIVITY_INPUT, rtOutput.m_primaryBaseReflectivity.view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_WORLD_POSITION_INPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_PREV_WORLD_POSITION_INPUT, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().matchesWriteFrameIdx(frameIdx - 1)), nullptr);
-      ctx->bindResourceView(RTXDI_REUSE_BINDING_WS_MVEC_INPUT, rtOutput.m_primaryVirtualMotionVector.view, nullptr);
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_WS_MVEC_INPUT, rtOutput.m_primaryVirtualMotionVector.view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_SS_MVEC_INPUT, rtOutput.m_primaryScreenSpaceMotionVector.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_VIEW_DIRECTION_INPUT, rtOutput.m_primaryViewDirection.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_CONE_RADIUS_INPUT, rtOutput.m_primaryConeRadius.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_POSITION_ERROR_INPUT, rtOutput.m_primaryPositionError.view, nullptr);
-      ctx->bindResourceView(RTXDI_REUSE_BINDING_LAST_GBUFFER, rtOutput.m_gbufferLast.view, nullptr);
-      ctx->bindResourceView(RTXDI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view, nullptr);
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_SUBSURFACE_DATA_INPUT, rtOutput.m_sharedSubsurfaceData.view, nullptr);
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT, rtOutput.m_sharedSubsurfaceDiffusionProfileData.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_BEST_LIGHTS_INPUT, rtOutput.m_rtxdiBestLights.view(Resources::AccessType::Read, rtOutput.m_raytraceArgs.enableRtxdiBestLightSampling) , nullptr);
+
+      // Inputs / Outputs
+
+      ctx->bindResourceBuffer(RTXDI_REUSE_BINDING_RTXDI_RESERVOIR_INPUT_OUTPUT, DxvkBufferSlice(rtOutput.m_rtxdiReservoirBuffer, 0, rtOutput.m_rtxdiReservoirBuffer->info().size));
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_LAST_GBUFFER_INPUT_OUTPUT, rtOutput.m_gbufferLast.view, nullptr);
 
       // Outputs
 
       ctx->bindResourceView(RTXDI_REUSE_BINDING_REPROJECTION_CONFIDENCE_OUTPUT, rtOutput.m_reprojectionConfidence.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_BSDF_FACTOR_OUTPUT, rtOutput.m_bsdfFactor.view, nullptr);
-      ctx->bindResourceView(RTXDI_REUSE_BINDING_TEMPORAL_POSITION_OUTPUT, rtOutput.m_primaryRtxdiTemporalPosition.view, nullptr);
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_TEMPORAL_POSITION_OUTPUT, rtOutput.m_primaryRtxdiTemporalPosition.view(Resources::AccessType::Write), nullptr);
 
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, RTXDITemporalReuseShader::getShader());
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
     }
 
     {
-      ScopedGpuProfileZone(ctx, "RTXDI Spatial Reuse"); 
+      ScopedGpuProfileZone(ctx, "RTXDI Spatial Reuse");
+      ctx->setFramePassStage(RtxFramePassStage::RTXDI_SpatialReuse);
 
       // Inputs
 
       // Note: Primary buffers bound as these exhibit coherency for RTXDI and denoising.
-      ctx->bindResourceBuffer(RTXDI_REUSE_BINDING_RTXDI_RESERVOIR, DxvkBufferSlice(rtOutput.m_rtxdiReservoirBuffer, 0, rtOutput.m_rtxdiReservoirBuffer->info().size));
       ctx->bindResourceView(RTXDI_REUSE_BINDING_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_primaryWorldShadingNormal.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_PERCEPTUAL_ROUGHNESS_INPUT, rtOutput.m_primaryPerceptualRoughness.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_HIT_DISTANCE_INPUT, rtOutput.m_primaryHitDistance.view, nullptr);
@@ -292,21 +324,26 @@ namespace dxvk {
       ctx->bindResourceView(RTXDI_REUSE_BINDING_BASE_REFLECTIVITY_INPUT, rtOutput.m_primaryBaseReflectivity.view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_WORLD_POSITION_INPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_PREV_WORLD_POSITION_INPUT, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().matchesWriteFrameIdx(frameIdx - 1)), nullptr);
-      ctx->bindResourceView(RTXDI_REUSE_BINDING_WS_MVEC_INPUT, rtOutput.m_primaryVirtualMotionVector.view, nullptr);
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_WS_MVEC_INPUT, rtOutput.m_primaryVirtualMotionVector.view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_SS_MVEC_INPUT, rtOutput.m_primaryScreenSpaceMotionVector.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_VIEW_DIRECTION_INPUT, rtOutput.m_primaryViewDirection.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_CONE_RADIUS_INPUT, rtOutput.m_primaryConeRadius.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_POSITION_ERROR_INPUT, rtOutput.m_primaryPositionError.view, nullptr);
-      ctx->bindResourceView(RTXDI_REUSE_BINDING_LAST_GBUFFER, rtOutput.m_gbufferLast.view, nullptr);
-      ctx->bindResourceView(RTXDI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view, nullptr);
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_SUBSURFACE_DATA_INPUT, rtOutput.m_sharedSubsurfaceData.view, nullptr);
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT, rtOutput.m_sharedSubsurfaceDiffusionProfileData.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
+
+      // Inputs / Outputs
+
+      ctx->bindResourceBuffer(RTXDI_REUSE_BINDING_RTXDI_RESERVOIR_INPUT_OUTPUT, DxvkBufferSlice(rtOutput.m_rtxdiReservoirBuffer, 0, rtOutput.m_rtxdiReservoirBuffer->info().size));
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_LAST_GBUFFER_INPUT_OUTPUT, rtOutput.m_gbufferLast.view, nullptr);
 
       // Outputs
 
       ctx->bindResourceView(RTXDI_REUSE_BINDING_REPROJECTION_CONFIDENCE_OUTPUT, rtOutput.m_reprojectionConfidence.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_BSDF_FACTOR_OUTPUT, rtOutput.m_bsdfFactor.view, nullptr);
-      ctx->bindResourceView(RTXDI_REUSE_BINDING_TEMPORAL_POSITION_OUTPUT, rtOutput.m_primaryRtxdiTemporalPosition.view, nullptr);
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_TEMPORAL_POSITION_OUTPUT, rtOutput.m_primaryRtxdiTemporalPosition.view(Resources::AccessType::Write), nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_BEST_LIGHTS_INPUT, rtOutput.m_rtxdiBestLights.view(Resources::AccessType::Read, rtOutput.m_raytraceArgs.enableRtxdiBestLightSampling), nullptr);
 
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, RTXDISpatialReuseShader::getShader());
@@ -316,7 +353,7 @@ namespace dxvk {
 
   void DxvkRtxdiRayQuery::dispatchGradient(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
     
-    if (!RtxOptions::Get()->useRTXDI() || !enableDenoiserGradient()) {
+    if (!RtxOptions::useRTXDI() || !enableDenoiserGradient()) {
       return;
     }
 
@@ -330,6 +367,7 @@ namespace dxvk {
 
     {
       ScopedGpuProfileZone(ctx, "Compute Gradients");
+      ctx->setFramePassStage(RtxFramePassStage::RTXDI_ComputeGradients);
       
       // Inputs
 
@@ -337,9 +375,9 @@ namespace dxvk {
       ctx->bindResourceView(RTXDI_COMPUTE_GRADIENTS_BINDING_CURRENT_WORLD_POSITION_INPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(RTXDI_COMPUTE_GRADIENTS_BINDING_PREVIOUS_WORLD_POSITION_INPUT, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().matchesWriteFrameIdx(frameIdx - 1)), nullptr);
       ctx->bindResourceView(RTXDI_COMPUTE_GRADIENTS_BINDING_CONE_RADIUS_INPUT, rtOutput.m_primaryConeRadius.view, nullptr);
-      ctx->bindResourceView(RTXDI_COMPUTE_GRADIENTS_BINDING_MVEC_INPUT, rtOutput.m_primaryVirtualMotionVector.view, nullptr);
+      ctx->bindResourceView(RTXDI_COMPUTE_GRADIENTS_BINDING_MVEC_INPUT, rtOutput.m_primaryVirtualMotionVector.view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(RTXDI_COMPUTE_GRADIENTS_BINDING_POSITION_ERROR_INPUT, rtOutput.m_primaryPositionError.view, nullptr);
-      ctx->bindResourceView(RTXDI_COMPUTE_GRADIENTS_BINDING_TEMPORAL_POSITION_INPUT, rtOutput.m_primaryRtxdiTemporalPosition.view, nullptr);
+      ctx->bindResourceView(RTXDI_COMPUTE_GRADIENTS_BINDING_TEMPORAL_POSITION_INPUT, rtOutput.m_primaryRtxdiTemporalPosition.view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(RTXDI_COMPUTE_GRADIENTS_BINDING_CURRENT_ILLUMINANCE_INPUT, rtOutput.getCurrentRtxdiIlluminance().view(Resources::AccessType::Read), nullptr);
 
       const bool isPreviousIlluminanceValid = rtOutput.getPreviousRtxdiIlluminance().matchesWriteFrameIdx(frameIdx - 1);
@@ -358,6 +396,21 @@ namespace dxvk {
       ComputeGradientsArgs args {};
       args.darknessBias = 1e-4f;
       args.usePreviousIlluminance = isPreviousIlluminanceValid;
+
+      // Check if the gradients are actually used by the runtime.
+      // Otherwise only m_rtxdiBestLights needs to be filled out in the pass
+      {
+        DxvkRayReconstruction& rayReconstruction = ctx->getCommonObjects()->metaRayReconstruction();
+        DxvkReSTIRGIRayQuery& restirGI = ctx->getCommonObjects()->metaReSTIRGIRayQuery();
+
+        const bool isNrdAPrimaryDenoiser = RtxOptions::useDenoiser()
+          && !rayReconstruction.useRayReconstruction()
+          && !RtxOptions::useDenoiserReferenceMode();
+
+        // gradients are only used when NRD is a primary denoiser and/or ReSTIR GI is using it
+        args.computeGradients = isNrdAPrimaryDenoiser || (restirGI.isActive() && restirGI.validateLightingChange());
+      }
+
       ctx->pushConstants(0, sizeof(args), &args);
 
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
@@ -366,8 +419,8 @@ namespace dxvk {
 
   void DxvkRtxdiRayQuery::dispatchConfidence(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
     
-    if (!RtxOptions::Get()->useRTXDI() ||
-        !getEnableDenoiserConfidence()) {
+    if (!RtxOptions::useRTXDI() ||
+        !getEnableDenoiserConfidence(*ctx)) {
       return;
     }
 
@@ -383,6 +436,7 @@ namespace dxvk {
 
     {
       ScopedGpuProfileZone(ctx, "Filter Gradients");
+      ctx->setFramePassStage(RtxFramePassStage::RTXDI_FilterGradients);
 
       ctx->bindResourceView(RTXDI_FILTER_GRADIENTS_BINDING_GRADIENTS_INPUT_OUTPUT, rtOutput.m_rtxdiGradients.view, nullptr);
 
@@ -405,6 +459,7 @@ namespace dxvk {
 
     {
       ScopedGpuProfileZone(ctx, "Compute Confidence");
+      ctx->setFramePassStage(RtxFramePassStage::RTXDI_ComputeConfidence);
       
       // Inputs
 

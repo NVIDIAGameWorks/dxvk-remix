@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -74,6 +74,10 @@ namespace dxvk
     return Vector3{ getViewToWorld(freecam)[0].xyz() };
   }
 
+  Vector3 RtCamera::getPreviousPosition(bool freecam) const {
+    return Vector3 { getPreviousViewToWorld(freecam)[3].xyz() };
+  }
+
   std::pair<float, float> RtCamera::calculateNearFarPlanes() const {
     // Note: Converted to floats to interface with MathLib. Ideally this should be a double still.
     Matrix4 floatViewToProj{ getViewToProjection() };
@@ -98,7 +102,7 @@ namespace dxvk
   }
 
   bool RtCamera::isCameraCut() const {
-    return lengthSqr(getViewToWorld()[3] - getPreviousViewToWorld()[3]) > RtxOptions::Get()->getUniqueObjectDistanceSqr();
+    return lengthSqr(getViewToWorld()[3] - getPreviousViewToWorld()[3]) > RtxOptions::getUniqueObjectDistanceSqr();
   }
 
   bool RtCamera::isFreeCameraEnabled() {
@@ -108,7 +112,7 @@ namespace dxvk
   Vector3 RtCamera::getHorizontalForwardDirection() const {
     const Vector3 forward = getDirection(false);
     const Vector3 up = getUp(false);
-    const bool isZUp = RtxOptions::Get()->isZUp();
+    const bool isZUp = RtxOptions::zUp();
 
     Vector3 direction = forward;
 
@@ -178,14 +182,14 @@ namespace dxvk
     return glm::fract(value + 0.5f) - 0.5f;
   }
 
-  Vector2 getCurrentPixelOffset(int currentFrame) {
+  Vector2 calculateHaltonJitter(uint32_t currentFrame, uint32_t jitterSequenceLength) {
     // Halton jitter
     Vector2 result(0.0f, 0.0f);
 
-    int frameIndex = (currentFrame) % 64;
+    uint32_t frameIndex = currentFrame % jitterSequenceLength;
 
-    constexpr int baseX = 2;
-    int Index = frameIndex + 1;
+    constexpr uint32_t baseX = 2;
+    uint32_t Index = frameIndex + 1;
     float invBase = 1.0f / baseX;
     float fraction = invBase;
     while (Index > 0) {
@@ -194,7 +198,7 @@ namespace dxvk
       fraction *= invBase;
     }
 
-    constexpr int baseY = 3;
+    constexpr uint32_t baseY = 3;
     Index = frameIndex + 1;
     invBase = 1.0f / baseY;
     fraction = invBase;
@@ -209,8 +213,12 @@ namespace dxvk
     return result;
   }
 
-  void RtCamera::setResolution(const uint32_t renderResolution[2], const uint32_t finalResolution[2])
-  {
+  const Matrix4d& RtCamera::getViewToWorldToFreeCamViewToWorld() const {
+    assert(m_type == CameraType::Main && enableFreeCamera() && "Transform is only calculated for Main Camera when Free Camera is enabled");
+    return m_matCache[MatrixType::ViewToWorldToFreeCamViewToWorld];
+  }
+
+  void RtCamera::setResolution(const uint32_t renderResolution[2], const uint32_t finalResolution[2]) {
     if (finalResolution[0] != m_finalResolution[0] ||
         finalResolution[1] != m_finalResolution[1] ||
         renderResolution[0] != m_renderResolution[0] ||
@@ -288,12 +296,12 @@ namespace dxvk
   }
 
   void RtCamera::setPreviousWorldToView(const Matrix4d& worldToView, bool freecam) {
-    dxvk::Matrix4d viewToWorld = inverse(worldToView);
+    Matrix4d viewToWorld = inverse(worldToView);
 
     Matrix4d viewToTranslatedWorld = viewToWorld;
     viewToTranslatedWorld[3] = Vector4d(0.0, 0.0, 0.0, viewToTranslatedWorld[3].w);
 
-    dxvk::Matrix4d translatedWorldToView = inverse(viewToTranslatedWorld);
+    Matrix4d translatedWorldToView = inverse(viewToTranslatedWorld);
 
     if (freecam && isFreeCameraEnabled()) {
       m_matCache[MatrixType::FreeCamPreviousViewToWorld] = viewToWorld;
@@ -320,8 +328,8 @@ namespace dxvk
     Matrix4d viewToTranslatedWorld = viewToWorld;
     viewToTranslatedWorld[3] = Vector4d(0.0, 0.0, 0.0, viewToTranslatedWorld[3].w);
 
-    dxvk::Matrix4d worldToView = inverse(viewToWorld);
-    dxvk::Matrix4d translatedWorldToView = inverse(viewToTranslatedWorld);
+    Matrix4d worldToView = inverse(viewToWorld);
+    Matrix4d translatedWorldToView = inverse(viewToTranslatedWorld);
 
     if (freecam && isFreeCameraEnabled()) {
       m_matCache[MatrixType::FreeCamPreviousViewToWorld] = viewToWorld;
@@ -398,42 +406,44 @@ namespace dxvk
 
       float coordSystemScale = m_context.isLHS ? -1.f : 1.f;
 
+      float pitchDirection = freeCameraInvertY() ? -1.f : 1.f;
+
       if (isKeyAvailable) {
-        float speed = elapsedSec.count() * RtxOptions::Get()->getSceneScale() * freeCameraSpeed();
-        float angularSpeed = elapsedSec.count() * M_PI;
+        float speed = elapsedSec.count() * RtxOptions::sceneScale() * freeCameraSpeed();
+        float angularSpeed = elapsedSec.count() * M_PI * freeCameraTurningSpeed();
         // Speed booster
-        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveFaster(), true)) {
+        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveFaster(), true)) {
           speed *= 4;
         }
-        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveForward(), true)) {
+        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveForward(), true)) {
           moveBackForward += coordSystemScale * speed;
         }
-        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveLeft(), true)) {
+        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveLeft(), true)) {
           moveLeftRight -= speed;
         }
-        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveBack(), true)) {
+        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveBack(), true)) {
           moveBackForward -= coordSystemScale * speed;
         }
-        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveRight(), true)) {
+        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveRight(), true)) {
           moveLeftRight += speed;
         }
-        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveUp(), true)) {
+        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveUp(), true)) {
           moveDownUp += speed;
         }
-        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveDown(), true)) {
+        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveDown(), true)) {
           moveDownUp -= speed;
         }
-        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyPitchDown(), true)) {
-          freeCameraPitchRef() -= angularSpeed;
+        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyPitchDown(), true)) {
+          freeCameraPitch.setDeferred( freeCameraPitch() + coordSystemScale * pitchDirection * angularSpeed);
         }
-        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyPitchUp(), true)) {
-          freeCameraPitchRef() += angularSpeed;
+        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyPitchUp(), true)) {
+          freeCameraPitch.setDeferred( freeCameraPitch() - coordSystemScale * pitchDirection * angularSpeed);
         }
-        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyYawLeft(), true)) {
-          freeCameraYawRef() += angularSpeed;
+        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyYawLeft(), true)) {
+          freeCameraYaw.setDeferred( freeCameraYaw() + coordSystemScale *  angularSpeed);
         }
-        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyYawRight(), true)) {
-          freeCameraYawRef() -= angularSpeed;
+        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyYawRight(), true)) {
+          freeCameraYaw.setDeferred( freeCameraYaw() - coordSystemScale * angularSpeed);
         }
       }
 
@@ -442,8 +452,8 @@ namespace dxvk
       POINT p;
       if (GetCursorPos(&p)) {
         if (!lockFreeCamera() && ImGui::IsMouseDown(ImGuiMouseButton_Left) && ((m_mouseX != p.x) || (m_mouseY != p.y))) {
-          freeCameraYawRef() += coordSystemScale * (m_mouseX - p.x) * 0.1f * elapsedSec.count();
-          freeCameraPitchRef() += coordSystemScale * (m_mouseY - p.y) * 0.2f * elapsedSec.count();
+          freeCameraYaw.setDeferred( freeCameraYaw() + coordSystemScale * (m_mouseX - p.x) * 0.1f * elapsedSec.count());
+          freeCameraPitch.setDeferred( freeCameraPitch() + coordSystemScale * pitchDirection * (m_mouseY - p.y) * 0.2f * elapsedSec.count());
         }
 
         m_mouseX = p.x;
@@ -452,12 +462,12 @@ namespace dxvk
 
       // Reset
       if (ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
-        freeCameraPositionRef() = Vector3(0.f);
+        freeCameraPosition.setDeferred(Vector3(0.f));
         moveLeftRight = 0;
         moveBackForward = 0;
         moveDownUp = 0;
-        freeCameraYawRef() = 0.0f;
-        freeCameraPitchRef() = 0.0f;
+        freeCameraYaw.setDeferred(0.0f);
+        freeCameraPitch.setDeferred(0.0f);
       }
     } else {
       // track mouse position when out of focus to avoid uncontrollable camera flips when we're back in focus
@@ -470,16 +480,25 @@ namespace dxvk
 
     // Calculate Free Camera matrix information
 
-    auto freeCamViewToWorld(m_matCache[MatrixType::ViewToWorld]);
+    dxvk::Matrix4d freeCamViewToWorld(m_matCache[MatrixType::ViewToWorld]);
+
+    // Check if the up vector in view matrix is upside down
+    const dxvk::Vector3d& up = m_matCache[MatrixType::ViewToWorld][1].xyz();
+    bool isViewUpsideDown =
+      (!RtxOptions::zUp() && up.y < 0.f) ||
+      (RtxOptions::zUp() && up.z < 0.f);
+    const float upSign = isViewUpsideDown ? -1.f : 1.f;
 
     freeCamViewToWorld[3] = Vector4d(0.0);
-    freeCamViewToWorld *= getMatrixFromEulerAngles(freeCameraPitch(), freeCameraYaw());
+    freeCamViewToWorld *= getMatrixFromEulerAngles(upSign * freeCameraPitch(), freeCameraYaw());
 
     if (m_type == CameraType::Main && (flags & (uint32_t)UpdateFlag::UpdateFreeCamera)) {
-      freeCameraPositionRef() += moveLeftRight * Vector3(freeCamViewToWorld.data[0].xyz());
-      freeCameraPositionRef() += moveDownUp * Vector3(freeCamViewToWorld.data[1].xyz());
-      freeCameraPositionRef() -= moveBackForward * Vector3(freeCamViewToWorld.data[2].xyz());
-
+      Vector3 freeCameraPos = freeCameraPosition();
+      freeCameraPos += moveLeftRight * Vector3(freeCamViewToWorld.data[0].xyz());
+      freeCameraPos += upSign * moveDownUp * Vector3(freeCamViewToWorld.data[1].xyz());
+      freeCameraPos -= moveBackForward * Vector3(freeCamViewToWorld.data[2].xyz());
+      freeCameraPosition.setDeferred(freeCameraPos);
+      
       // save free camera context
       m_context.enableFreeCamera = enableFreeCamera();
       m_context.freeCameraPosition = freeCameraPosition();
@@ -494,7 +513,7 @@ namespace dxvk
 
   void RtCamera::updateAntiCulling(float fov, float aspectRatio, float nearPlane, float farPlane, bool isLHS) {
     // Create Anti-Culling frustum
-    if (RtxOptions::AntiCulling::Object::enable()) {
+    if (RtxOptions::AntiCulling::isObjectAntiCullingEnabled()) {
       const float fovScale = RtxOptions::AntiCulling::Object::fovScale();
       const float farPlaneScale = RtxOptions::AntiCulling::Object::farPlaneScale();
       float4x4 frustumMatrix;
@@ -508,7 +527,7 @@ namespace dxvk
       m_frustum.calculateFrustumGeometry(nearPlane, farPlane, fov, aspectRatio, isLHS);
     }
 
-    if (RtxOptions::AntiCulling::Light::enable()) {
+    if (RtxOptions::AntiCulling::isLightAntiCullingEnabled()) {
       const float fovScale = RtxOptions::AntiCulling::Light::fovScale();
       const float scaledHalfFov = std::min(fov * fovScale * 0.5f, 1.55f); // Clamp to half fov to 89 degrees
       const float projectionMatrixFovScale = std::tan(fov * 0.5f) / std::tan(scaledHalfFov);
@@ -533,7 +552,7 @@ namespace dxvk
     DecomposeProjection(NDC_D3D, NDC_D3D, *reinterpret_cast<float4x4*>(&floatModifiedViewToProj), &flags, cameraParams, nullptr, nullptr, nullptr, nullptr);
 
     // Prevent user controls exceeding the near plane distance from original projection
-    const float minNearPlane = std::min(RtxOptions::Get()->nearPlaneOverride(), cameraParams[PROJ_ZNEAR]);
+    const float minNearPlane = std::min(RtxOptions::nearPlaneOverride(), cameraParams[PROJ_ZNEAR]);
 
     float4x4 newProjection;
     newProjection.SetupByAngles(cameraParams[PROJ_ANGLEMINX], cameraParams[PROJ_ANGLEMAXX], cameraParams[PROJ_ANGLEMINY], cameraParams[PROJ_ANGLEMAXY], minNearPlane, cameraParams[PROJ_ZFAR], flags);
@@ -544,13 +563,13 @@ namespace dxvk
 
 
   bool RtCamera::updateFromSetting(uint32_t frameIdx, const RtCameraSetting& setting, uint32_t flags) {
-    enableFreeCameraRef() = setting.enableFreeCamera;
-    freeCameraPositionRef() = setting.freeCameraPosition;
-    freeCameraYawRef() = setting.freeCameraYaw;
-    freeCameraPitchRef() = setting.freeCameraPitch;
-    freeCameraViewRelativeRef() = setting.freeCameraViewRelative;
+    enableFreeCamera.setDeferred(setting.enableFreeCamera);
+    freeCameraPosition.setDeferred(setting.freeCameraPosition);
+    freeCameraYaw.setDeferred(setting.freeCameraYaw);
+    freeCameraPitch.setDeferred(setting.freeCameraPitch);
+    freeCameraViewRelative.setDeferred(setting.freeCameraViewRelative);
 
-    RtxOptions::Get()->shakeCameraRef() = setting.isCameraShaking;
+    RtxOptions::shakeCamera.setDeferred(setting.isCameraShaking);
 
     m_context = setting;
 
@@ -559,10 +578,10 @@ namespace dxvk
 
   bool RtCamera::update(
     uint32_t frameIdx, const Matrix4& newWorldToView, const Matrix4& newViewToProjection,
-    float fov, float aspectRatio, float nearPlane, float farPlane, bool isLHS, uint32_t flags
-  ) {
-    if (m_frameLastTouched == frameIdx)
+    float fov, float aspectRatio, float nearPlane, float farPlane, bool isLHS, uint32_t flags) {
+    if (m_frameLastTouched == frameIdx) {
       return false;
+    }
 
     m_context.worldToView = newWorldToView;
     m_context.viewToProjection = newViewToProjection;
@@ -576,7 +595,7 @@ namespace dxvk
     m_previousArtificalWorldOffset = m_artificalWorldOffset;
     m_artificalWorldOffset = Vector3(0.f);
 
-    if (!RtxOptions::Get()->isCameraShaking()) {
+    if (!RtxOptions::shakeCamera()) {
       m_context.cameraShakeFrameCount = 0;
       m_context.cameraRotationFrameCount = 0;
     }
@@ -615,7 +634,7 @@ namespace dxvk
     updateAntiCulling(fov, aspectRatio, nearPlane, farPlane, isLHS);
 
     // Sometimes we want to modify the near plane for RT.  See DevSettings->Camera->Advanced
-    if(RtxOptions::Get()->enableNearPlaneOverride()) {
+    if(RtxOptions::enableNearPlaneOverride()) {
       modifiedViewToProj = overrideNearPlane(modifiedViewToProj);
     }
     
@@ -624,7 +643,7 @@ namespace dxvk
 
     // Apply free camera shaking
 
-    if (!enableFreeCamera() && RtxOptions::Get()->isCameraShaking()) {
+    if (!enableFreeCamera() && RtxOptions::shakeCamera()) {
       auto newViewToWorld = getShakenViewToWorldMatrix(m_matCache[MatrixType::ViewToWorld], flags);
       auto newViewToTranslatedWorld = newViewToWorld;
       newViewToTranslatedWorld[3] = Vector4d(0.0, 0.0, 0.0, newViewToTranslatedWorld[3].w);
@@ -652,7 +671,7 @@ namespace dxvk
 
     m_context.jitter[0] = m_jitter[0];
     m_context.jitter[1] = m_jitter[1];
-    m_context.isCameraShaking = RtxOptions::Get()->isCameraShaking();
+    m_context.isCameraShaking = RtxOptions::shakeCamera();
 
     m_matCache[MatrixType::PreviousViewToProjectionJittered] = m_matCache[MatrixType::ViewToProjectionJittered];
     m_matCache[MatrixType::PreviousProjectionToViewJittered] = m_matCache[MatrixType::ProjectionToViewJittered];
@@ -682,12 +701,13 @@ namespace dxvk
     }
 
     // Only calculate free camera matrices for main camera
-    if (!enableFreeCamera() || m_type != CameraType::Main)
+    if (!enableFreeCamera() || m_type != CameraType::Main) {
       return isCameraCut();
+    }
 
     auto freeCamViewToWorld = updateFreeCamera(flags);
 
-    if (RtxOptions::Get()->isCameraShaking()) {
+    if (RtxOptions::shakeCamera()) {
       freeCamViewToWorld = getShakenViewToWorldMatrix(freeCamViewToWorld, flags);
     }
 
@@ -706,6 +726,8 @@ namespace dxvk
     m_matCache[MatrixType::FreeCamTranslatedWorldToView] = inverse(freeCamViewToTranslatedWorld);
     m_matCache[MatrixType::FreeCamViewToTranslatedWorld] = freeCamViewToTranslatedWorld;
 
+    m_matCache[MatrixType::ViewToWorldToFreeCamViewToWorld] = m_matCache[MatrixType::WorldToView] * m_matCache[MatrixType::FreeCamViewToWorld];
+
     return false; // If we are using the debug/free camera, never do camera cuts
   }
 
@@ -716,15 +738,15 @@ namespace dxvk
 
   Vector2 RtCamera::calcPixelJitter(uint32_t jitterFrameIdx) {
     // Only apply jittering when DLSS/TAA is enabled, or if forced by settings
-    if (!RtxOptions::Get()->isDLSSOrRayReconstructionEnabled() &&
-        !RtxOptions::Get()->isTAAEnabled() &&
-        !RtxOptions::Get()->forceCameraJitter()) {
+    if (!RtxOptions::isDLSSOrRayReconstructionEnabled() &&
+        !RtxOptions::isTAAEnabled() &&
+        !RtxOptions::forceCameraJitter()) {
       return Vector2{ 0, 0 };
     }
 
 #define USE_DLSS_DEMO_JITTER_PATTERN 1
 #if USE_DLSS_DEMO_JITTER_PATTERN
-    return getCurrentPixelOffset(jitterFrameIdx);
+    return calculateHaltonJitter(jitterFrameIdx, RtxOptions::cameraJitterSequenceLength());
 #else
     return m_halton.next();
 #endif
@@ -776,16 +798,16 @@ namespace dxvk
     inoutProjection[2][1] += clipSpaceJitter[1];
   }
 
-  Camera RtCamera::getShaderConstants() const {
-    auto& worldToView = getWorldToView();
-    auto& translatedWorldToView = getTranslatedWorldToView();
-    auto& viewToWorld = getViewToWorld();
-    auto& viewToTranslatedWorld = getViewToTranslatedWorld();
+  Camera RtCamera::getShaderConstants(bool freecam) const {
+    auto& worldToView = getWorldToView(freecam);
+    auto& translatedWorldToView = getTranslatedWorldToView(freecam);
+    auto& viewToWorld = getViewToWorld(freecam);
+    auto& viewToTranslatedWorld = getViewToTranslatedWorld(freecam);
     auto& viewToProjection = getViewToProjection();
     auto& projectionToView = getProjectionToView();
-    auto& prevWorldToView = getPreviousWorldToView();
-    auto& prevTranslatedWorldToView = getPreviousTranslatedWorldToView();
-    auto& prevViewToWorld = getPreviousViewToWorld();
+    auto& prevWorldToView = getPreviousWorldToView(freecam);
+    auto& prevTranslatedWorldToView = getPreviousTranslatedWorldToView(freecam);
+    auto& prevViewToWorld = getPreviousViewToWorld(freecam);
     auto& viewToProjectionJittered = getViewToProjectionJittered();
     auto& projectionToViewJittered = getProjectionToViewJittered();
     auto& prevViewToProjection = getPreviousViewToProjection();
@@ -826,14 +848,24 @@ namespace dxvk
     return camera;
   }
 
-  VolumeDefinitionCamera RtCamera::getVolumeShaderConstants() const {
+  VolumeDefinitionCamera RtCamera::getVolumeShaderConstants(const float maxDistance, const float guardBand/* = 1.f*/) const {
     auto& translatedWorldToView = getTranslatedWorldToView();
     auto& viewToTranslatedWorld = getViewToTranslatedWorld();
-    auto& viewToProjection = getViewToProjection();
     auto& viewToWorld = getViewToWorld();
-    auto& projectionToView = getProjectionToView();
-    auto& viewToProjectionJittered = getViewToProjectionJittered();
-    auto& prevViewToProjection = getPreviousViewToProjection();
+
+    auto viewToProjection = getViewToProjection();
+    viewToProjection[0][0] /= guardBand;
+    viewToProjection[1][1] /= guardBand;
+
+    auto viewToProjectionJittered = getViewToProjectionJittered();
+    viewToProjectionJittered[0][0] /= guardBand;
+    viewToProjectionJittered[1][1] /= guardBand;
+
+    auto prevViewToProjection = getPreviousViewToProjection();
+    prevViewToProjection[0][0] /= guardBand;
+    prevViewToProjection[1][1] /= guardBand;
+
+    auto projectionToView = inverse(viewToProjection);
 
     bool isFreeCamera = isFreeCameraEnabled();
     auto& prevViewToWorld = isFreeCamera ? m_matCache[FreeCamPreviousViewToWorld] : m_matCache[UncorrectedPreviousViewToWorld];
@@ -853,6 +885,28 @@ namespace dxvk
     camera.nearPlane = m_context.nearPlane;
     camera.flags = ((!m_context.isLHS) ? rightHandedFlag : 0);
 
+    // Note: Converted to floats to interface with MathLib. Ideally this should be a double still.
+    Matrix4 floatModifiedViewToProj { viewToProjection };
+
+    // Check size since struct padding can impact this memcpy
+    static_assert(sizeof(float4x4) == sizeof(floatModifiedViewToProj));
+
+    uint32_t flags;
+    float cameraParams[PROJ_NUM];
+    DecomposeProjection(NDC_D3D, NDC_D3D, *reinterpret_cast<float4x4*>(&floatModifiedViewToProj), &flags, cameraParams, nullptr, nullptr, nullptr, nullptr);
+
+    // Prevent user controls exceeding the far plane distance from original projection
+    const float minFarPlane = std::min(maxDistance, cameraParams[PROJ_ZFAR]);
+
+    float4x4 newProjection;
+    newProjection.SetupByAngles(cameraParams[PROJ_ANGLEMINX], cameraParams[PROJ_ANGLEMAXX], cameraParams[PROJ_ANGLEMINY], cameraParams[PROJ_ANGLEMAXY], cameraParams[PROJ_ZNEAR], minFarPlane, flags);
+
+    memcpy(&floatModifiedViewToProj, &newProjection, sizeof(float4x4));
+
+    Matrix4 worldToProjection = floatModifiedViewToProj * translatedWorldToView;
+
+    MvpToPlanes(NDC_D3D, *reinterpret_cast<const float4x4*>(&worldToProjection), &camera.worldPlanes[0]);
+
     return camera;
   }
 
@@ -870,7 +924,23 @@ namespace dxvk
       ImGui::DragFloat("Yaw", &freeCameraYawObject(), 0.1f, -Pi<float>(2), Pi<float>(2), "%.3f", sliderFlags);
       ImGui::DragFloat("Pitch", &freeCameraPitchObject(), 0.1f, -Pi<float>(2), Pi<float>(2), "%.3f", sliderFlags);
       ImGui::DragFloat("Speed", &freeCameraSpeedObject(), 0.1f, 0.f, 5000.0f, "%.3f");
+      ImGui::DragFloat("Turning Speed", &freeCameraTurningSpeedObject(), 0.01f, 0.f, 3.0f, "%.3f");
+      ImGui::Checkbox("Invert Y", &freeCameraInvertYObject());
       ImGui::Checkbox("View Relative", &freeCameraViewRelativeObject());
+
+      if (ImGui::CollapsingHeader("Show Camera Controls", collapsingHeaderClosedFlags)) {
+        ImGui::TextUnformatted("MoveFaster:");  ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveFaster()).c_str());
+        ImGui::TextUnformatted("MoveForward:"); ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveForward()).c_str());
+        ImGui::TextUnformatted("MoveLeft:");    ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveLeft()).c_str());
+        ImGui::TextUnformatted("MoveBack:");    ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveBack()).c_str());
+        ImGui::TextUnformatted("MoveRight:");   ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveRight()).c_str());
+        ImGui::TextUnformatted("MoveUp:");      ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveUp()).c_str());
+        ImGui::TextUnformatted("MoveDown:");    ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveDown()).c_str());
+        ImGui::TextUnformatted("PitchDown:");   ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyPitchDown()).c_str());
+        ImGui::TextUnformatted("PitchUp:");     ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyPitchUp()).c_str());
+        ImGui::TextUnformatted("YawLeft:");     ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyYawLeft()).c_str());
+        ImGui::TextUnformatted("YawRight:");    ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyYawRight()).c_str());
+      }
 
       ImGui::Unindent();
     }
@@ -882,10 +952,10 @@ namespace dxvk
     float shakeYaw = 0;
     float shakePitch = 0;
 
-    int period = RtxOptions::Get()->getCameraShakePeriod();
-    float sceneScale = RtxOptions::Get()->getSceneScale();
-    CameraAnimationMode animationMode = RtxOptions::Get()->getCameraAnimationMode();
-    float amplitude = RtxOptions::Get()->getCameraAnimationAmplitude();
+    int period = RtxOptions::cameraShakePeriod();
+    float sceneScale = RtxOptions::sceneScale();
+    CameraAnimationMode animationMode = RtxOptions::cameraAnimationMode();
+    float amplitude = RtxOptions::cameraAnimationAmplitude();
 
     float offset = sin(float(m_context.cameraShakeFrameCount) / (2 * period) * 2.0f * M_PI);
     switch (animationMode) {
@@ -954,19 +1024,19 @@ namespace dxvk
   }
 
   void RtCameraSequence::startPlay() {
-    modeRef() = Mode::Playback;
-    currentFrameRef() = 0;
+    mode.setDeferred(Mode::Playback);
+    m_currentFrame = 0;
   }
 
   void RtCameraSequence::startRecord() {
-    modeRef() = Mode::Record;
-    currentFrameRef() = 0;
+    mode.setDeferred(Mode::Record);
+    m_currentFrame = 0;
     m_settings.clear();
   }
 
   void RtCameraSequence::addRecord(const RtCamera::RtCameraSetting& setting) {
     m_settings.push_back(setting);
-    currentFrameRef() = m_settings.size() - 1;
+    m_currentFrame = m_settings.size() - 1;
   }
 
   void RtCameraSequence::save() {
@@ -1020,21 +1090,14 @@ namespace dxvk
 
   void RtCameraSequence::goToNextFrame() {
     if (m_settings.size() == 0) {
-      currentFrameRef() = 0;
+      m_currentFrame = 0;
       return;
     }
-    currentFrameRef() = (currentFrame() + 1) % (int) m_settings.size();
+    m_currentFrame = (m_currentFrame + 1) % (int) m_settings.size();
   }
 
   void RtCameraSequence::showImguiSettings() {
-    const int maxLength = 1024;
-    static char codewordBuf[maxLength] = "";
-    std::string path = filePath();
-    memcpy(codewordBuf, path.data(), path.size() + 1);
-    ImGui::InputText("File Path", codewordBuf, IM_ARRAYSIZE(codewordBuf) - 1, ImGuiInputTextFlags_EnterReturnsTrue);
-    codewordBuf[maxLength-1] = '\0';
-    std::string newPath(codewordBuf);
-    filePathRef() = newPath;
+    ImGui::InputText("File Path", &filePathObject(), ImGuiInputTextFlags_EnterReturnsTrue);
 
     if (ImGui::Button("Load Sequence")) {
       load();
@@ -1046,18 +1109,20 @@ namespace dxvk
       save();
     }
 
-    int oldFrame = currentFrame();
-    ImGui::SliderInt("Current Frame", &currentFrameObject(), 0, m_settings.size() -1, "%d", ImGuiSliderFlags_AlwaysClamp);
-    currentFrameRef() = std::min(currentFrame(), (int)m_settings.size());
+    int oldFrame = m_currentFrame;
+    IMGUI_ADD_TOOLTIP(ImGui::SliderInt("Current Frame", &m_currentFrame, 0, m_settings.size() -1, "%d", ImGuiSliderFlags_AlwaysClamp), "Current Frame.");
+    m_currentFrame = std::min(m_currentFrame, (int)m_settings.size());
 
-    if (oldFrame != currentFrame() && mode() == Mode::None) {
-      modeRef() = Mode::Browse;
+    Mode currentMode = mode();
+    if (oldFrame != m_currentFrame && currentMode == Mode::None) {
+      mode.setDeferred(Mode::Browse);
+      currentMode = Mode::Browse;
     }
 
-    bool isRecording = mode() == Mode::Record;
-    bool isPlaying = mode() == Mode::Playback;
-    bool isBrowsing = mode() == Mode::Browse;
-    bool isStopping = mode() == Mode::None;
+    bool isRecording = currentMode == Mode::Record;
+    bool isPlaying = currentMode == Mode::Playback;
+    bool isBrowsing = currentMode == Mode::Browse;
+    bool isStopping = currentMode == Mode::None;
 
     // Record Button
     {
@@ -1105,8 +1170,8 @@ namespace dxvk
     // Stop Button
     {
       if (ImGui::Button("Stop")) {
-        modeRef() = Mode::None;
-        RtxOptions::Get()->shakeCameraRef() = false;
+        mode.setDeferred(Mode::None);
+        RtxOptions::shakeCamera.setDeferred(false);
       }
     }
 
@@ -1122,8 +1187,8 @@ namespace dxvk
       }
 
       if (ImGui::Button("Browse")) {
-        modeRef() = Mode::Browse;
-        currentFrameRef() = 0;
+        mode.setDeferred(Mode::Browse);
+        m_currentFrame = 0;
       }
 
       if (isBrowsing) {

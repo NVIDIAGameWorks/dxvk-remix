@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -27,6 +27,7 @@
 
 #include "dxvk_device.h"
 #include "dxvk_instance.h"
+#include "../util/util_once.h"
 
 // NV-DXVK start: RTXIO
 #include "rtx_render/rtx_io.h"
@@ -165,15 +166,6 @@ namespace dxvk {
     // NV-DXVK end
 
     // NV-DXVK start: DLFG integration
-    uint32_t opticalFlowQueue = findQueueFamily(VK_QUEUE_OPTICAL_FLOW_BIT_NV, VK_QUEUE_OPTICAL_FLOW_BIT_NV);
-
-    if (opticalFlowQueue != VK_QUEUE_FAMILY_IGNORED &&
-        opticalFlowQueue != graphicsQueue &&
-        opticalFlowQueue != asyncComputeQueue &&
-        opticalFlowQueue != transferQueue) {
-      queues.opticalFlow = opticalFlowQueue;
-    }
-
     // xxxnsubtil: this doesn't actually check for present support, because we don't have a surface here!
     uint32_t presentQueue = findQueueFamily(VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT,
                                             VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT);
@@ -302,6 +294,10 @@ namespace dxvk {
                 || !required.vulkan11Features.shaderDrawParameters)
         && (m_deviceFeatures.vulkan12Features.hostQueryReset
                 || !required.vulkan12Features.hostQueryReset)
+        && (m_deviceFeatures.vulkan12Features.scalarBlockLayout
+                || !required.vulkan12Features.scalarBlockLayout)
+        && (m_deviceFeatures.vulkan12Features.uniformBufferStandardLayout
+                || !required.vulkan12Features.uniformBufferStandardLayout)
         && (m_deviceFeatures.ext4444Formats.formatA4R4G4B4
                 || !required.ext4444Formats.formatA4R4G4B4)
         && (m_deviceFeatures.ext4444Formats.formatA4B4G4R4
@@ -420,7 +416,8 @@ namespace dxvk {
       // NV-DXVK start: Check against extension requirements for DXVK and Remix to run
       Logger::err("Unable to find all required Vulkan GPU extensions for device creation.");
 
-      messageBox("Your GPU doesn't support the required features to run RTX Remix.  See the *_d3d9.log for what features your GPU doesn't support.  The game will exit now.", "RTX Remix - GPU Feature Error!", MB_OK);
+      // Note: Once macro used to ensure this message is only displayed to the user once when applications attempt to create multiple devices.
+      ONCE(messageBox("Your GPU driver doesn't support the required device extensions to run RTX Remix.\nSee the log file 'rtx-remix/logs/remix-dxvk.log' for which extensions are unsupported and try updating your driver.\nThe game will exit now.", "RTX Remix - Device Extension Error!", MB_OK));
       // NV-DXVK end
 
       // NV-DXVK start: Provide error code on exception
@@ -446,8 +443,8 @@ namespace dxvk {
     // enable DLFG extensions if available
     std::array devDlfgExtensions = {
       &devExtensions.khrMaintenance4,
-      &devExtensions.nvOpticalFlow,
       &devExtensions.extCalibratedTimestamps,
+      &devExtensions.nvPresentMetering,
     };
 
     m_deviceExtensions.enableExtensions(
@@ -490,7 +487,9 @@ namespace dxvk {
     enabledFeatures.khrAccelerationStructureFeatures.accelerationStructure = m_deviceFeatures.khrAccelerationStructureFeatures.accelerationStructure;
     enabledFeatures.khrRayQueryFeatures.rayQuery = m_deviceFeatures.khrRayQueryFeatures.rayQuery;
     enabledFeatures.khrDeviceRayTracingPipelineFeatures.rayTracingPipeline = m_deviceFeatures.khrDeviceRayTracingPipelineFeatures.rayTracingPipeline;
-
+    enabledFeatures.vulkan12Features.scalarBlockLayout = m_deviceFeatures.vulkan12Features.scalarBlockLayout;
+    enabledFeatures.vulkan12Features.uniformBufferStandardLayout = m_deviceFeatures.vulkan12Features.uniformBufferStandardLayout;
+    
     enabledFeatures.vulkan12Features.shaderInt8 = VK_TRUE;
     enabledFeatures.vulkan12Features.storageBuffer8BitAccess = VK_TRUE;
     enabledFeatures.vulkan12Features.uniformAndStorageBuffer8BitAccess = VK_TRUE;
@@ -615,14 +614,6 @@ namespace dxvk {
     }
     // NV-DXVK end
 
-    // NV-DXVK start: DLFG integration
-    if (devExtensions.nvOpticalFlow) {
-      enabledFeatures.nvOpticalFlow.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_OPTICAL_FLOW_FEATURES_NV;
-      enabledFeatures.nvOpticalFlow.pNext = std::exchange(enabledFeatures.core.pNext, &enabledFeatures.nvOpticalFlow);
-      enabledFeatures.nvOpticalFlow.opticalFlow = VK_TRUE;
-    }
-    // NV-DXVK end
-
     // NV-DXVK start: Moved logging to where it is on more recent DXVK to properly show enabled features, also added more information to be logged
     // (Still needs driver version from latest DXVK though at the time of writing this, but we can wait on that since it needs larger changes)
 
@@ -672,12 +663,13 @@ namespace dxvk {
           "Current NVIDIA Graphics Driver version (", currentDriverVersionString, ") is lower than the minimum required version (", minimumDriverVersionString, "). "
           "Please update your to the latest version for RTX Remix to function properly."));
 
-        const std::string minDriverCheckDialogMessage = str::format(
-          "Your GPU driver needs to be updated before running this game with RTX Remix. Please update the NVIDIA Graphics Driver to the latest version. The game will exit now.\n\n"
+        const auto minDriverCheckDialogMessage = str::format(
+          "Your GPU driver needs to be updated before running this game with RTX Remix. Please update the NVIDIA Graphics Driver to the latest version.\nThe game will exit now.\n\n"
           "\tCurrently installed: ", currentDriverVersionString, "\n",
           "\tRequired minimum: ", minimumDriverVersionString);
 
-        messageBox(minDriverCheckDialogMessage.c_str(), "RTX Remix - Driver Compatibility Error!", MB_OK);
+        // Note: Once macro used to ensure this message is only displayed to the user once when applications attempt to create multiple devices.
+        ONCE(messageBox(minDriverCheckDialogMessage.c_str(), "RTX Remix - Driver Compatibility Error!", MB_OK));
 
         // NV-DXVK start: Provide error code on exception
         throw DxvkErrorWithId(REMIXAPI_ERROR_CODE_HRESULT_DRIVER_VERSION_BELOW_MINIMUM, "DxvkAdapter: Failed to create device, driver version below minimum required.");
@@ -760,10 +752,6 @@ namespace dxvk {
 
     if (queueFamilies.asyncCompute != VK_QUEUE_FAMILY_IGNORED) {
       handleQueueFamily(queueFamilies.asyncCompute, queueInfos.asyncCompute);
-    }
-
-    if (queueFamilies.opticalFlow != VK_QUEUE_FAMILY_IGNORED) {
-      handleQueueFamily(queueFamilies.opticalFlow, queueInfos.opticalFlow);
     }
 
     if (queueFamilies.present != VK_QUEUE_FAMILY_IGNORED) {
@@ -858,12 +846,21 @@ namespace dxvk {
       vr = m_vki->vkCreateDevice(m_handle, &info, nullptr, &device);
     }
 
-    if (vr != VK_SUCCESS)
-      // NV-DXVK start: Provide error code on exception
-      throw DxvkErrorWithId(REMIXAPI_ERROR_CODE_HRESULT_VK_CREATE_DEVICE_FAIL, "DxvkAdapter: Failed to create device");
-      // NV-DXVK end
+    if (vr != VK_SUCCESS) {
+      Logger::err(str::format("Unable to create a Vulkan device, error code: ", vr, "."));
 
-    Rc<DxvkDevice> result = new DxvkDevice(instance, this,
+      const auto deviceCreationFailureDialogMessage = str::format(
+        "Vulkan Device creation failed with error code: ", vr, ".\nTry updating your driver and reporting this as a bug if the problem persists.\nThe game will exit now.");
+
+      // Note: Once macro used to ensure this message is only displayed to the user once in case multiple instances are created.
+      ONCE(messageBox(deviceCreationFailureDialogMessage.c_str(), "RTX Remix - Device Creation Error!", MB_OK));
+
+      // NV-DXVK start: Provide error code on exception
+      throw DxvkErrorWithId(REMIXAPI_ERROR_CODE_HRESULT_VK_CREATE_DEVICE_FAIL, "DxvkAdapter: Failed to create a Vulkan device");
+      // NV-DXVK end
+    }
+
+    Rc<DxvkDevice> result = new DxvkDevice(m_vki, instance, this,
       new vk::DeviceFn(true, m_vki->instance(), device),
       devExtensions, enabledFeatures, queueInfos);
     result->initResources();
@@ -1200,6 +1197,10 @@ namespace dxvk {
       "\n  shaderInt64                            : ", features.core.features.shaderInt64 ? "1" : "0",
       "\n  variableMultisampleRate                : ", features.core.features.variableMultisampleRate ? "1" : "0",
       "\n  hostQueryReset                         : ", features.vulkan12Features.hostQueryReset ? "1" : "0",
+      // NV-DXVK
+      "\n  scalarBlockLayout                      : ", features.vulkan12Features.scalarBlockLayout ? "1" : "0",
+      "\n  uniformBufferStandardLayout            : ", features.vulkan12Features.uniformBufferStandardLayout ? "1" : "0",
+      // NV-DXVK end
       "\n", VK_EXT_4444_FORMATS_EXTENSION_NAME,
       "\n  formatA4R4G4B4                         : ", features.ext4444Formats.formatA4R4G4B4 ? "1" : "0",
       "\n  formatA4B4G4R4                         : ", features.ext4444Formats.formatA4B4G4R4 ? "1" : "0",
@@ -1225,11 +1226,7 @@ namespace dxvk {
       "\n  vertexAttributeInstanceRateDivisor     : ", features.extVertexAttributeDivisor.vertexAttributeInstanceRateDivisor ? "1" : "0",
       "\n  vertexAttributeInstanceRateZeroDivisor : ", features.extVertexAttributeDivisor.vertexAttributeInstanceRateZeroDivisor ? "1" : "0",
       "\n", VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
-      "\n  bufferDeviceAddress                    : ", features.khrBufferDeviceAddress.bufferDeviceAddress,
-      // NV-DXVK begin: DLFG integration
-      "\n", VK_NV_OPTICAL_FLOW_EXTENSION_NAME,
-      "\n  nvOpticalFlow                            : ", features.nvOpticalFlow.opticalFlow));
-      // NV-DXVK end
+      "\n  bufferDeviceAddress                    : ", features.khrBufferDeviceAddress.bufferDeviceAddress));
   }
 
 
@@ -1243,10 +1240,6 @@ namespace dxvk {
     }
     // NV-DXVK end
     // NV-DXVK start: DLFG integration
-    if (queues.opticalFlow != VK_QUEUE_FAMILY_IGNORED) {
-      Logger::info(str::format("  Optical flow : ", queues.opticalFlow));
-    }
-
     if (queues.present != VK_QUEUE_FAMILY_IGNORED) {
       Logger::info(str::format("  Present : ", queues.present));
     }

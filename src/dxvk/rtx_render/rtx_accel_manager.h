@@ -56,6 +56,7 @@ class AccelManager : public CommonDeviceObject {
     VkGeometryInstanceFlagsKHR instanceFlags = 0;
     bool usesUnorderedApproximations = false;
     uint32_t reorderedSurfacesOffset = UINT32_MAX;
+    bool hasOmmInstances = false;
     
     // Tries to add a geometry instance to the bucket. The addition is successful if either:
     //   a) the bucket is empty,
@@ -68,11 +69,6 @@ public:
   AccelManager& operator=(AccelManager const&) = delete;
 
   explicit AccelManager(DxvkDevice* device);
-
-  // Release internal objects
-  void onDestroy() {
-    m_scratchAllocator = nullptr;
-  }
 
   // Returns a GPU buffer containing the surface data for active instances
   const Rc<DxvkBuffer> getSurfaceBuffer() const { return m_surfaceBuffer; }
@@ -105,7 +101,7 @@ public:
   // and some other BLAS will be dedicated to instances with static geometries.
   void mergeInstancesIntoBlas(Rc<DxvkContext> ctx, class DxvkBarrierSet& execBarriers,
                               const std::vector<TextureRef>& textures, const CameraManager& cameraManager, 
-                              InstanceManager& instanceManager, OpacityMicromapManager* opacityMicromapManager, float frameTimeMilliseconds);
+                              InstanceManager& instanceManager, OpacityMicromapManager* opacityMicromapManager);
 
   void buildTlas(Rc<DxvkContext> ctx);
 
@@ -117,9 +113,22 @@ public:
 
 private:
   struct SurfaceInfo {
-    XXH64_hash_t hash;
+    uint32_t surfaceMaterialIndex;
     Vector3 worldPosition;
   };
+
+  // Persistent containers to reduce frame to frame reallocations in ::buildParticleSurfaceMapping()
+  struct {
+    std::vector<AccelManager::SurfaceInfo> surfaceInfoLists[2];   // Two containers for subsequent frames, ping-pong framed to frame
+    uint32_t currIndex = 0;
+    uint32_t prevIndex = 1;
+  } buildParticleSurfaceMappingFuncState;
+
+  // Persistent containers to reduce frame to frame reallocations in ::uploadSurfaceData()
+  struct {
+    std::vector<unsigned char> surfacesGPUData;
+    std::vector<uint32_t> surfaceIndexMapping;
+  } uploadSurfaceDataFuncState;
 
   void buildBlases(Rc<DxvkContext> ctx, DxvkBarrierSet& execBarriers,
                    const CameraManager& cameraManager, OpacityMicromapManager* opacityMicromapManager, const InstanceManager& instanceManager,
@@ -127,15 +136,19 @@ private:
                    const std::vector<std::unique_ptr<BlasBucket>>& blasBuckets, 
                    std::vector<VkAccelerationStructureBuildGeometryInfoKHR>& blasToBuild,
                    std::vector<VkAccelerationStructureBuildRangeInfoKHR*>& blasRangesToBuild,
-                   float elapsedTime);
+                   size_t& currentScratchOffset);
+  void addBlas(RtInstance* instance, BlasEntry* blasEntry, const Matrix4* instanceToObject);
   void createBlasBuffersAndInstances(Rc<DxvkContext> ctx, 
                                      const std::vector<std::unique_ptr<BlasBucket>>& blasBuckets,
                                      std::vector<VkAccelerationStructureBuildGeometryInfoKHR>& blasToBuild,
-                                     std::vector<VkAccelerationStructureBuildRangeInfoKHR*>& blasRangesToBuild);
+                                     std::vector<VkAccelerationStructureBuildRangeInfoKHR*>& blasRangesToBuild,
+                                     size_t& currentScratchOffset);
   template<Tlas::Type type>
-  void internalBuildTlas(Rc<DxvkContext> ctx);
+  void internalBuildTlas(Rc<DxvkContext> ctx, size_t& totalScratchSize);
 
   void buildParticleSurfaceMapping(std::vector<uint32_t>& surfaceIndexMapping);
+
+  bool validateUpdateMode(const VkAccelerationStructureBuildGeometryInfoKHR& oldInfo, const VkAccelerationStructureBuildGeometryInfoKHR& newInfo);
 
   std::vector<RtInstance*> m_reorderedSurfaces;
   std::vector<uint32_t> m_reorderedSurfacesFirstIndexOffset;
@@ -151,19 +164,18 @@ private:
   Rc<DxvkBuffer> m_primitiveIDPrefixSumBuffer;
   Rc<DxvkBuffer> m_primitiveIDPrefixSumBufferLastFrame;
 
-  std::vector<SurfaceInfo> m_lastSurfaceInfoList;
-
   int getCurrentFramePrimitiveIDPrefixSumBufferID() const;
 
   Rc<PooledBlas> m_intersectionBlas;
   Rc<DxvkBuffer> m_aabbBuffer;
   Rc<DxvkBuffer> m_billboardsBuffer;
   void createAndBuildIntersectionBlas(Rc<DxvkContext> ctx, class DxvkBarrierSet& execBarriers);
-
-  Rc<PooledBlas> createPooledBlas(size_t bufferSize) const;
+  
+  Rc<DxvkBuffer> getScratchMemory(const size_t requiredScratchAllocSize);
+  Rc<PooledBlas> createPooledBlas(size_t bufferSize, const char* name) const;
 
   VkDeviceSize m_scratchAlignment;
-  std::unique_ptr<RtxStagingDataAlloc> m_scratchAllocator;
+  Rc<DxvkBuffer> m_scratchBuffer;
 };
 
 }  // namespace dxvk

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -156,7 +156,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     // Deserialize the Surface Material Interaction
     polymorphicSurfaceMaterialInteraction = polymorphicSurfaceMaterialInteractionReadFromGBuffer(
       threadIndex, PrimaryWorldShadingNormal, PrimaryPerceptualRoughness, PrimaryAlbedo, PrimaryBaseReflectivity,
-      SharedMaterialData0, SharedMaterialData1, SharedSurfaceIndex, SharedSubsurfaceData);
+      SharedMaterialData0, SharedMaterialData1, SharedSurfaceIndex, SharedSubsurfaceData, SharedSubsurfaceDiffusionProfileData);
 
     spatialReservoir = RAB_LoadGIReservoir(threadIndex, ReSTIRGI_GetSpatialOutputPage());
   }
@@ -167,12 +167,13 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   {
     filterColor = f16vec3(0);
   }
-  else if(cb.enableReSTIRGIFinalVisibility || cb.reSTIRGIBiasCorrectionMode == RTXDI_BIAS_CORRECTION_PAIRWISE_RAY_TRACED)
+  else if (cb.enableReSTIRGIFinalVisibility || cb.reSTIRGIBiasCorrectionMode == RTXDI_BIAS_CORRECTION_PAIRWISE_RAY_TRACED)
   {
     uint8_t portalID = ReSTIRGI_PortalID2BitTo8Bit(spatialReservoir.getPortalID());
-    if(portalID == invalidRayPortalIndex || portalID < cb.numActiveRayPortals)
+    if (portalID == invalidRayPortalIndex || portalID < cb.numActiveRayPortals)
     {
       uint8_t rayMask = OBJECT_MASK_OPAQUE | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
+      rayMask |= (cb.enableIndirectAlphaBlendShadows) ? OBJECT_MASK_ALPHA_BLEND : 0;
 
       // Use non-zero cone spread angle to reduce noise if there are alpha tested objects, like the fences in the portal game.
       // The value is based on experiment. If incorrect shadows are observed, a smaller value should be used.
@@ -197,10 +198,11 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
         tMaxFactor = validSampleMaxRange;
       }
 
+      // TODO: Why ignore SSS here?
       VisibilityResult visibility = traceVisibilityRay<visibilityModeEnablePom | visibilityModeAccurateHitDistance>(minimalSurfaceInteraction,
         samplePosition, rayMask, portalID,
         geometryFlags.portalSpace, geometryFlags.pomOpaqueSurfaceEncountered, 0, coneSpreadAngle, tMaxFactor, geometryFlags.isViewModel, 
-        false, primarySurfaceIndex, SharedTextureCoord[threadIndex], /*isSubsurface*/ false, /*shadingNormal*/ f16vec3(0.0h), /*clearOpaqueHitAttenuation*/ !validateSamples);
+        false, primarySurfaceIndex, SharedTextureCoord[threadIndex], /*isThinOpaqueSubsurface*/ false, /*shadingNormal*/ f16vec3(0.0h), /*clearOpaqueHitAttenuation*/ !validateSamples);
 
       filterColor = visibility.attenuation;      
       if (validateSamples && !visibility.hasPOMHit)
@@ -312,7 +314,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   // some gathering calculation.
   float boilingFilterMultiplier = lerp(cb.boilingFilterLowerThreshold, cb.boilingFilterHigherThreshold, VdotN);
   uint2 groupCornerThreadID = threadIndex & ~(RESTIR_GI_BOILING_FILTER_GROUP_SIZE - 1);
-  if(cb.enableReSTIRGIBoilingFilter && all(groupCornerThreadID + RESTIR_GI_BOILING_FILTER_GROUP_SIZE - 1 < cb.camera.resolution))
+  if (cb.enableReSTIRGIBoilingFilter && all(groupCornerThreadID + RESTIR_GI_BOILING_FILTER_GROUP_SIZE - 1 < cb.camera.resolution))
   {
     applyBoilingFilter(threadIndex, LocalIndex, boilingFilterMultiplier, diffuseLight, specularLight, spatialReservoir);
   }
@@ -336,8 +338,12 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     spatialReservoir.setFlag(RESTIR_GI_FLAG_OCCLUDED_SAMPLE);
 
     const bool removeOccludedSamples = false;
-    if(removeOccludedSamples)
+
+    if (removeOccludedSamples)
+    {
       spatialReservoir.M = 0;
+    }
+
     needToStoreReservoir = true;
   }
 
@@ -361,7 +367,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     vec4 specularOutput = sanitizeRadianceHitDistance(specularLight, hitDistance);
 
     const bool useDiffuseMIS = false;
-    if(cb.reSTIRGIMISMode != misDisabledMode)
+    if (cb.reSTIRGIMISMode != misDisabledMode)
     {
       vec4 initialDiffuseOutput = PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex];
       vec4 initialSpecularOutput = PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex];
@@ -385,7 +391,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
 
   // DLSS enhancement
   vec2 factor = vec2(1);
-  if(cb.enableEnhanceBSDFDetail && all(minimalSurfaceInteraction.position != spatialReservoir.position))
+  if (cb.enableEnhanceBSDFDetail && all(minimalSurfaceInteraction.position != spatialReservoir.position))
   {
     if (cb.enhanceBSDFIndirectMode == 0)
     {
@@ -419,7 +425,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
       factor = pow(factor, f16vec2(cb.enhanceBSDFIndirectLightPower));
       factor = clamp(factor, f16vec2(0.0), f16vec2(cb.enhanceBSDFIndirectLightMaxValue));
     }
-    else if(cb.enhanceBSDFIndirectMode == 1)
+    else if (cb.enhanceBSDFIndirectMode == 1)
     {
       const float3 interpolatedNormal = signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(PrimaryWorldInterpolatedNormal[threadIndex]));
       factor = ReSTIRGI_GetDlssEnhancementIndirectFactorNormalDifference(
@@ -447,11 +453,19 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   {
     storeInDebugView(threadIndex, staleSample);
   }
-  else if(cb.debugView == DEBUG_VIEW_NAN)
+  else if (cb.debugView == DEBUG_VIEW_NAN)
   {
     bool isValid = true;
+
+    // DEBUG_VIEW_RESTIR_GI_FINAL_SHADING
     isValid &= isValidValue(vec3(initialWeight, restirWeight, 0));
+
+    // DEBUG_VIEW_RESTIR_GI_VIRTUAL_HIT_T
     isValid &= isValidValue(spatialReservoir.getVirtualFraction());
+
+    // Skipped - as it's a simple bool state
+    // DEBUG_VIEW_RESTIR_GI_VISIBILITY_INVALID_SAMPLES
+
     accumulateInDebugViewAnd(threadIndex, isValid);
   }
 }

@@ -116,7 +116,7 @@ public:
   
   void clear();
   void garbageCollection();
-  void prepareSceneData(Rc<DxvkContext> ctx, const float frameTimeMilliseconds);
+  void prepareSceneData(Rc<DxvkContext> ctx);
   void createVirtualCameras(CameraManager& cameraManager) const;
 
   // Helpers

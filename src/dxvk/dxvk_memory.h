@@ -41,6 +41,7 @@ namespace dxvk {
       AppBuffer,
       AppTexture,
 
+      RTXReplacementGeometry,
       RTXBuffer,
       RTXAccelerationStructure,
       RTXOpacityMicromap,
@@ -86,6 +87,7 @@ namespace dxvk {
     std::atomic<VkDeviceSize> rtxOpacityMicromaps = 0;
     std::atomic<VkDeviceSize> rtxMaterialTextures = 0;
     std::atomic<VkDeviceSize> rtxRenderTargets = 0;
+    std::atomic<VkDeviceSize> rtxReplacementGeometry = 0;
   };
 
 
@@ -189,6 +191,15 @@ namespace dxvk {
     DxvkMemory& operator = (DxvkMemory&& other);
     ~DxvkMemory();
     
+    /**
+     * \brief Memory property flags
+     * 
+     * This information describes the memory aperture for this chunk
+     */
+    VkMemoryPropertyFlags propertyFlags() const {
+      return m_type->memType.propertyFlags;
+    }
+
     /**
      * \brief Memory object
      * 

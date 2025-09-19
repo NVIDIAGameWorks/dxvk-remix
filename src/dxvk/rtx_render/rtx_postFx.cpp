@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -32,6 +32,8 @@
 #include <rtx_shaders/post_fx_motion_blur_prefilter.h>
 #include <pxr/base/arch/math.h>
 #include "rtx_imgui.h"
+
+#include "../util/util_globaltime.h"
 
 namespace dxvk {
   std::array<uint8_t, 3> g_customHighlightColor = { 118, 185, 0 };
@@ -249,6 +251,7 @@ namespace dxvk {
     }
 
     ScopedGpuProfileZone(ctx, "PostFx");
+    ctx->setFramePassStage(RtxFramePassStage::PostFX);
 
     // Simulate chromatic aberration offset scale by calculating the focal length differences of 3 Fraunhofer lines,
     // the wavelength of these lines are used for measuring chromatic aberrations
@@ -270,7 +273,7 @@ namespace dxvk {
       return float2(scale.x * chromaticAberrationIntensity, scale.y * chromaticAberrationIntensity);
     };
 
-    const Resources::Resource& inOutColorTexture = rtOutput.m_finalOutput;
+    const Resources::Resource& inOutColorTexture = rtOutput.m_finalOutput.resource(Resources::AccessType::ReadWrite);
     const VkExtent3D& inputSize = inOutColorTexture.image->info().extent;
     const VkExtent3D workgroups = util::computeBlockCount(inputSize, VkExtent3D { POST_FX_TILE_SIZE , POST_FX_TILE_SIZE, 1 } );
 
@@ -288,9 +291,8 @@ namespace dxvk {
     postFxArgs.motionBlurMinimumVelocityThresholdInPixel = motionBlurMinimumVelocityThresholdInPixel();
     postFxArgs.motionBlurDynamicDeduction = motionBlurDynamicDeduction();
     postFxArgs.jitterStrength = motionBlurJitterStrength();
-    postFxArgs.motionBlurDlfgDeduction =
-      ctx->getCommonObjects()->metaNGXContext().supportsDLFG() && DxvkDLFG::enable() ?
-      1.0f / static_cast<float>(DxvkDLFGPresenter::getPresentFrameCount()) : 1.0f;
+    postFxArgs.motionBlurDlfgDeduction = ctx->isDLFGEnabled() ?
+      1.0f / static_cast<float>(ctx->dlfgInterpolatedFrameCount() + 1) : 1.0f;
     postFxArgs.chromaticCenterAttenuationAmount = chromaticCenterAttenuationAmount();
     postFxArgs.chromaticAberrationScale = calculateChromaticAberrationScale(isChromaticAberrationEnabled() ? chromaticAberrationAmount() : 0.0f);
     postFxArgs.vignetteIntensity = isVignetteEnabled() ? vignetteIntensity() : 0.0f;
@@ -379,7 +381,6 @@ namespace dxvk {
 
     const Resources::Resource& inOutColorTexture = rtOutput.m_compositeOutput.resource(Resources::AccessType::ReadWrite);
     const VkExtent3D& inputSize = inOutColorTexture.image->info().extent;
-    const float timeSinceStartMS = static_cast<float>(ctx->getSceneManager().getGameTimeSinceStartMS());
 
     const auto workgroups = util::computeBlockCount(inputSize, VkExtent3D { POST_FX_TILE_SIZE , POST_FX_TILE_SIZE, 1 });
 
@@ -416,7 +417,7 @@ namespace dxvk {
           info.access = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
           info.size = align(POST_FX_HIGHLIGHTING_MAX_VALUES * sizeof(ObjectPickingValue), kBufferAlignment);
         }
-        m_highlightingValues = ctx->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
+        m_highlightingValues = ctx->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "Highlight Buffer");
       }
 
       if (!sorted.empty()) {
@@ -428,7 +429,7 @@ namespace dxvk {
     {
       args.imageSize = { inputSize.width, inputSize.height };
       args.desaturateNonHighlighted = desaturateOthersOnHighlight() ? 1 : 0;
-      args.timeSinceStartMS = timeSinceStartMS;
+      args.timeSinceStartMS = (float)GlobalTime::get().absoluteTimeMs();
       args.pixel = pixelToHighlight ? int2 { pixelToHighlight->x, pixelToHighlight->y } : int2 { -1, -1 };
       args.highlightColorPacked =
         color == HighlightColor::World ? packColor(118, 185, 0) :

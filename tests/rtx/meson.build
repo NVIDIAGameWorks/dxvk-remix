@@ -7,10 +7,12 @@ endif
 
 subdir('apps/RemixAPI')
 subdir('apps/RemixAPI_C')
+subdir('apps/HydraTestRender')
 if dxvk_is_ninja
   # apps that are compiled as a part of dxvk-remix
   dxvkrt_output_targets += {
     'apics/RemixAPI'    : RemixAPI_exepath,
     'apics/RemixAPI_C'  : RemixAPI_C_exepath,
+    'apics/HydraTestRender'  : HydraTestRender_exepath,
   }
 endif

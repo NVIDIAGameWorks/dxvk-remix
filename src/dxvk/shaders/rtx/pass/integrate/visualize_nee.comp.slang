@@ -175,23 +175,23 @@ vec3 logarithmicColor(float value)
   {
     return vec3(1,0,0);
   }
-  else if(value < 100.0)
+  else if (value < 100.0)
   {
     return vec3(1,0.5,0);
   }
-  else if(value < 1000.0)
+  else if (value < 1000.0)
   {
     return vec3(1,1,0);
   }
-  else if(value < 10000.0)
+  else if (value < 10000.0)
   {
     return vec3(0,1,0);
   }
-  else if(value < 100000.0)
+  else if (value < 100000.0)
   {
     return vec3(0,1,1);
   }
-  else if(value < 1000000.0)
+  else if (value < 1000000.0)
   {
     return vec3(0,0,1);
   }
@@ -208,7 +208,7 @@ void getLightCandidateInfo(NEECell cell, int binIndex, RAB_Surface surface, f16v
   float16_t specularRatio = calcBt709Luminance(surface.opaqueSurfaceMaterialInteraction.baseReflectivity)
     / calcBt709Luminance(surface.opaqueSurfaceMaterialInteraction.albedo + surface.opaqueSurfaceMaterialInteraction.baseReflectivity);
 
-  const bool isSubsurface = isSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction);
+  const bool isThinOpaqueSubsurface = isThinOpaqueSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction);
 
    cell.calculateLightCandidateNormalizedWeight(binIndex,
      surface.minimalSurfaceInteraction.position,
@@ -216,7 +216,7 @@ void getLightCandidateInfo(NEECell cell, int binIndex, RAB_Surface surface, f16v
      surface.opaqueSurfaceMaterialInteraction.shadingNormal,
      specularRatio,
      surface.opaqueSurfaceMaterialInteraction.isotropicRoughness,
-     isSubsurface,
+     isThinOpaqueSubsurface,
      probability);
 
   MemoryPolymorphicLight memoryPolymorphicLight = lights[lightCandidate.getLightID()];
@@ -283,7 +283,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
       NEECell sampleCell = NEECache.getCell(NEECache.pointToOffset(sampleSurface.minimalSurfaceInteraction.position, f16vec3(0), jitter));
       if (sampleCell.isValid())
       {
-        if(!canvas.isPadding())
+        if (!canvas.isPadding())
         {
           // Get bin index
           int binIndex = canvas.getBin(NEECell.getMaxCandidateCount());
@@ -321,11 +321,11 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           }
 
           // Calculate histogram
-          if(canvas.isCross())
+          if (canvas.isCross())
           {
             canvas.drawForeground(vec3(1,0,0));
           }
-          if(canvas.isLegend(1))
+          if (canvas.isLegend(1))
           {
             // Show samples
             int binIndex = canvas.getBin(NEE_CACHE_SAMPLES);
@@ -334,11 +334,11 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
             float alpha = isLightHistogram ? (isBinValid ? 1.0 : 0.0) : 1.0;
             canvas.drawForeground(color, alpha);
           }
-          else if(canvas.isLegend(0))
+          else if (canvas.isLegend(0))
           {
             canvas.drawForeground(lightIntensity, isBinValid ? 1.0 : 0.0);
           }
-          else if(canvas.isHistogram() && canvas.isHistogramBar(probability))
+          else if (canvas.isHistogram() && canvas.isHistogramBar(probability))
           {
             // Histogram
             canvas.drawForeground(histogramColor, isBinValid ? 1.0 : 0.0);
@@ -349,7 +349,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           canvas.drawForeground(vec3(0), 0.2);
         }
       }
-      storeInDebugView(ivec2(threadIndex), canvas.getFinalColor());
+      storeInDebugView(threadIndex, canvas.getFinalColor());
     }
     break;
   case DEBUG_VIEW_NEE_CACHE_TRIANGLE_CANDIDATE:
@@ -360,7 +360,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
       uint2 cursorPixel = args.mouseUV * resolution;
       if (isCrossPixel(threadIndex, cursorPixel))
       {
-        storeInDebugView(ivec2(threadIndex), vec3(1,1,0));
+        storeInDebugView(threadIndex, vec3(1,1,0));
       }
       else
       {
@@ -373,7 +373,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
 
         vec3 backgroundColor = indirectLight * linearToGamma(cellColor);
         vec4 triangleColor = 0.0;
-        if(lightSelectionPDF > 0.5)
+        if (lightSelectionPDF > 0.5)
         {
           triangleColor = lerp(vec4(1,1,0,0.5), vec4(0,1,0,0.5), (lightSelectionPDF - 0.5) * 2.0);
         }
@@ -382,7 +382,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           triangleColor = lerp(vec4(1,0,0,0.5), vec4(1,1,0,0.5), lightSelectionPDF * 2.0);
         }
         vec3 resultColor = lerp(backgroundColor, triangleColor.rgb, triangleColor.a);
-        storeInDebugView(ivec2(threadIndex), resultColor);
+        storeInDebugView(threadIndex, resultColor);
       }
     }
     break;

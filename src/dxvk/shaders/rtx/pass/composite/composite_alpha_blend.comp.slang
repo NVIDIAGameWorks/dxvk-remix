@@ -35,6 +35,7 @@
 #include "rtx/concept/surface/alpha_blend_surface.slangh"
 #include "rtx/external/NRD.slangh"
 #include "rtx/utility/geometry_flags.slangh"
+#include "rtx/algorithm/volume_lighting.slangh"
 
 groupshared uint samplePixel[16 * 8];
 
@@ -153,7 +154,7 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
       }
       centerPixel = neighborPixel;
 
-      if(found)
+      if (found)
       {
         int2 neighborPixel = centerPixel;
         vec3 diffuseLight = 0;
@@ -183,50 +184,14 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
       }
     }
 
-    if(cb.stochasticAlphaBlendUseRadianceVolume && !found)
+    if (cb.stochasticAlphaBlendUseRadianceVolume && !found)
     {
       uint froxelVolumeHint = froxelVolumeMain;
 
-      bool volumeFound = false;
-      vec3 physicalFroxelUVW;
-
-      for (uint i = 0; i < volumeArgs.numActiveFroxelVolumes; ++i)
-      {
-        const uint froxelVolume = (i + froxelVolumeHint) % volumeArgs.numActiveFroxelVolumes;
-
-        // Note: use the CB directly because indexing the camera array that is passed through parameters is extremely slow.
-        const VolumeDefinitionCamera camera = cb.volumeArgs.cameras[froxelVolume];
-
-        const vec3 translatedWorldPosition = worldToTranslatedWorld(camera, surfacePosition);
-        // Note: Lookup lighting at the specified position in the volume radiance cache by calculating its UVW coordinates. Jittered matrix used
-        // here due to Surface Interaction assumptions stated in function documentation.
-        vec3 virtualFroxelUVW = translatedWorldPositionToFroxelUVW(
-          camera.translatedWorldToView, camera.translatedWorldToProjectionJittered, packedFlagGet(camera.flags, rightHandedFlag),
-          volumeArgs.froxelDepthSlices, volumeArgs.froxelDepthSliceDistributionExponent, volumeArgs.froxelMaxDistance, camera.nearPlane,
-          translatedWorldPosition);
-
-        virtualFroxelUVW = saturate(virtualFroxelUVW);
-        if (all(virtualFroxelUVW >= 0.0f) && all(virtualFroxelUVW <= 1.0f))
-        {
-          physicalFroxelUVW = virtualFroxelUVWToPhysicalFroxelUVW(
-            virtualFroxelUVW, froxelVolume,
-            volumeArgs.minFilteredRadianceU, volumeArgs.maxFilteredRadianceU, volumeArgs.inverseNumFroxelVolumes);
-          volumeFound = true;
-
-          break;
-        }
-      }
-
-      if (volumeFound)
-      {
-        const vec3 radiance = gammaToLinearFast(VolumeFilteredRadiance.SampleLevel(physicalFroxelUVW, 0));
-        surfaceLight = radiance* surface.color.xyz * fourPi * cb.stochasticAlphaBlendRadianceVolumeMultiplier;
-        found= true;
-      }
-    }
-    if(!found)
-    {
-       surfaceLight = 0;
+      MinimalSurfaceInteraction surfaceInteraction = (MinimalSurfaceInteraction)0;
+      surfaceInteraction.position = surfacePosition;
+      vec3 radiance = evalVolumetricNEE(VolumeFilteredRadianceY, VolumeFilteredRadianceCoCg, volumeArgs, surfaceInteraction, froxelVolumeHint);
+      surfaceLight = radiance * surface.color.xyz * cb.stochasticAlphaBlendRadianceVolumeMultiplier;
     }
   }
 

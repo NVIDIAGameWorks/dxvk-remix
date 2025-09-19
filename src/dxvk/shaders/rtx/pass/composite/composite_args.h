@@ -23,6 +23,8 @@
 
 #include "rtx/utility/shader_types.h"
 #include "rtx/pass/volume_args.h"
+#include "rtx/pass/raytrace_args.h"
+#include "rtx/algorithm/accumulate.h"
 
 #define DENOISER_MODE_OFF 0
 #define DENOISER_MODE_RELAX 1
@@ -30,6 +32,8 @@
 
 struct CompositeArgs {
   Camera camera;
+  DomeLightArgs domeLightArgs;
+  RayPortalHitInfo rayPortalHitInfos[maxRayPortalCount * 2];
 
   mat4 projectionToViewJittered;
   mat4 viewToWorld;
@@ -55,6 +59,7 @@ struct CompositeArgs {
   uint combineLightingChannels;
 
   VolumeArgs volumeArgs;
+  AccumulationArgs accumulationArgs;
 
   // One of DENOISER_MODE constants, affects signal conversion
   uint primaryDirectDenoiser;
@@ -73,7 +78,10 @@ struct CompositeArgs {
   uint8_t compositePrimaryIndirectSpecular;
   uint8_t compositeSecondaryCombinedDiffuse;
   uint8_t compositeSecondaryCombinedSpecular;
-  uint16_t pad0;
+  // The number of active Ray Portals (Used for Ray Portal sampling). Always <= RAY_PORTAL_MAX_COUNT
+  uint8_t numActiveRayPortals;
+  uint8_t pad;
+
   uint enableSeparatedDenoisers;
   uint frameIdx;
 
@@ -100,8 +108,8 @@ struct CompositeArgs {
   float stochasticAlphaBlendRadianceVolumeMultiplier;
   uint stochasticAlphaBlendDiscardBlackPixel;
   uint enhanceAlbedo;
-  uint pad1;
+  float skyBrightness;
 
   vec3 clearColorFinalColor;
-  uint pad2;
+  uint timeSinceStartMS;
 };

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -275,13 +275,14 @@ namespace remix {
       thinFilmThickness_value = 200.f;
       alphaIsThinFilmThickness = false;
       heightTexture = {};
-      heightTextureStrength = 0.0f;
+      displaceIn = 0.0f;
       useDrawCallAlphaState = true;
       blendType_hasvalue = false;
       blendType_value = 0;
       invertedBlend = false;
       alphaTestType = 7;
       alphaReferenceValue = 0;
+      displaceOut = 0.0f;
       static_assert(sizeof remixapi_MaterialInfoOpaqueEXT == 112);
     }
 
@@ -364,23 +365,30 @@ namespace remix {
       subsurfaceSingleScatteringAlbedoTexture = {};
       subsurfaceTransmittanceColor = { 0.5f, 0.5f, 0.5f };
       subsurfaceMeasurementDistance = 0.0f;
-      subsurfaceSingleScatteringAlbedo = { 0.5f, 0.5f, 0.5f };;
+      subsurfaceSingleScatteringAlbedo = { 0.5f, 0.5f, 0.5f };
       subsurfaceVolumetricAnisotropy = 0.0f;
-      static_assert(sizeof remixapi_MaterialInfoOpaqueSubsurfaceEXT == 72);
+      subsurfaceDiffusionProfile = false;
+      subsurfaceRadius = { 0.5f, 0.5f, 0.5f };
+      subsurfaceRadiusScale = 0.0f;
+      subsurfaceMaxSampleRadius = 0.0f;
+      subsurfaceRadiusTexture = {};
+      static_assert(sizeof remixapi_MaterialInfoOpaqueSubsurfaceEXT == 104);
     }
 
     MaterialInfoOpaqueSubsurfaceEXT(const MaterialInfoOpaqueSubsurfaceEXT& other)
       : remixapi_MaterialInfoOpaqueSubsurfaceEXT(other)
       , cpp_subsurfaceTransmittanceTexture(other.cpp_subsurfaceTransmittanceTexture)
       , cpp_subsurfaceThicknessTexture(other.cpp_subsurfaceThicknessTexture)
-      , cpp_subsurfaceSingleScatteringAlbedoTexture(other.cpp_subsurfaceSingleScatteringAlbedoTexture) {
+      , cpp_subsurfaceSingleScatteringAlbedoTexture(other.cpp_subsurfaceSingleScatteringAlbedoTexture)
+      , cpp_subsurfaceRadiusTexture(other.cpp_subsurfaceRadiusTexture) {
       cpp_fixPointers();
     }
     MaterialInfoOpaqueSubsurfaceEXT(MaterialInfoOpaqueSubsurfaceEXT&& other) noexcept
       : remixapi_MaterialInfoOpaqueSubsurfaceEXT(other)
       , cpp_subsurfaceTransmittanceTexture(std::move(other.cpp_subsurfaceTransmittanceTexture))
       , cpp_subsurfaceThicknessTexture(std::move(other.cpp_subsurfaceThicknessTexture))
-      , cpp_subsurfaceSingleScatteringAlbedoTexture(std::move(other.cpp_subsurfaceSingleScatteringAlbedoTexture)) {
+      , cpp_subsurfaceSingleScatteringAlbedoTexture(std::move(other.cpp_subsurfaceSingleScatteringAlbedoTexture))
+      , cpp_subsurfaceRadiusTexture(std::move(other.cpp_subsurfaceRadiusTexture)) {
       cpp_fixPointers();
     }
     MaterialInfoOpaqueSubsurfaceEXT& operator=(const MaterialInfoOpaqueSubsurfaceEXT& other) {
@@ -391,6 +399,7 @@ namespace remix {
       cpp_subsurfaceTransmittanceTexture          = other.cpp_subsurfaceTransmittanceTexture;
       cpp_subsurfaceThicknessTexture              = other.cpp_subsurfaceThicknessTexture;
       cpp_subsurfaceSingleScatteringAlbedoTexture = other.cpp_subsurfaceSingleScatteringAlbedoTexture;
+      cpp_subsurfaceRadiusTexture                 = other.cpp_subsurfaceRadiusTexture;
       cpp_fixPointers();
       return *this;
     }
@@ -402,6 +411,7 @@ namespace remix {
       cpp_subsurfaceTransmittanceTexture          = std::move(other.cpp_subsurfaceTransmittanceTexture);
       cpp_subsurfaceThicknessTexture              = std::move(other.cpp_subsurfaceThicknessTexture);
       cpp_subsurfaceSingleScatteringAlbedoTexture = std::move(other.cpp_subsurfaceSingleScatteringAlbedoTexture);
+      cpp_subsurfaceRadiusTexture                 = std::move(other.cpp_subsurfaceRadiusTexture);
       cpp_fixPointers();
       return *this;
     }
@@ -418,18 +428,24 @@ namespace remix {
       cpp_subsurfaceSingleScatteringAlbedoTexture = std::move(v);
       subsurfaceSingleScatteringAlbedoTexture = cpp_subsurfaceSingleScatteringAlbedoTexture.c_str();
     }
+    void set_subsurfaceRadiusTexture(std::filesystem::path v) {
+      cpp_subsurfaceRadiusTexture = std::move(v);
+      subsurfaceRadiusTexture = cpp_subsurfaceRadiusTexture.c_str();
+    }
 
   private:
     void cpp_fixPointers() {
       subsurfaceTransmittanceTexture = cpp_subsurfaceTransmittanceTexture.c_str();
       subsurfaceThicknessTexture = cpp_subsurfaceThicknessTexture.c_str();
       subsurfaceSingleScatteringAlbedoTexture = cpp_subsurfaceSingleScatteringAlbedoTexture.c_str();
-      static_assert(sizeof remixapi_MaterialInfoOpaqueSubsurfaceEXT == 72, "Recheck pointers");
+      subsurfaceRadiusTexture = cpp_subsurfaceRadiusTexture.c_str();
+      static_assert(sizeof remixapi_MaterialInfoOpaqueSubsurfaceEXT == 104, "Recheck pointers");
     }
 
     std::filesystem::path cpp_subsurfaceTransmittanceTexture {};
     std::filesystem::path cpp_subsurfaceThicknessTexture {};
     std::filesystem::path cpp_subsurfaceSingleScatteringAlbedoTexture {};
+    std::filesystem::path cpp_subsurfaceRadiusTexture{};
   };
 
   struct MaterialInfoTranslucentEXT : remixapi_MaterialInfoTranslucentEXT {
@@ -694,6 +710,10 @@ namespace remix {
       srcColorBlendFactor = 1 /* VK_BLEND_FACTOR_ONE */;
       dstColorBlendFactor = 0 /* VK_BLEND_FACTOR_ZERO */;
       colorBlendOp = 0 /* VK_BLEND_OP_ADD */;
+      srcAlphaBlendFactor = 1 /* VK_BLEND_FACTOR_ONE */;
+      dstAlphaBlendFactor = 0 /* VK_BLEND_FACTOR_ZERO */;
+      alphaBlendOp = 0 /* VK_BLEND_OP_ADD */;
+      writeMask = 0xFFFFFFFF;
       textureColorArg1Source = 1 /* RtTextureArgSource::Texture */;
       textureColorArg2Source = 0 /* RtTextureArgSource::None */;
       textureColorOperation = 3 /* DxvkRtTextureOperation::Modulate */;
@@ -702,7 +722,8 @@ namespace remix {
       textureAlphaOperation = 1 /* DxvkRtTextureOperation::SelectArg1 */;
       tFactor = 0XFFFFFFFF;
       isTextureFactorBlend = false;
-      static_assert(sizeof remixapi_InstanceInfoBlendEXT == 80);
+      isVertexColorBakedLighting = true;
+      static_assert(sizeof remixapi_InstanceInfoBlendEXT == 96);
     }
   };
 
@@ -711,6 +732,47 @@ namespace remix {
       sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_OBJECT_PICKING_EXT;
       pNext = nullptr;
       objectPickingValue = 0;
+    }
+  };
+
+  struct InstanceInfoParticleSystemEXT : remixapi_InstanceInfoParticleSystemEXT {
+    InstanceInfoParticleSystemEXT() {
+      sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT;
+      pNext = nullptr;
+      maxNumParticles = 10000;
+      spawnRatePerSecond = 0.f;
+      minTimeToLive = 1.0f;
+      maxTimeToLive = 1.0f;
+      minSpawnSize = 10.0f;
+      maxSpawnSize = 10.0f;
+      minSpawnRotationSpeed = 0.0f;
+      maxSpawnRotationSpeed = 0.0f;
+      minSpawnColor = {1, 1, 1, 1};
+      maxSpawnColor = {1, 1, 1, 1};
+      minTargetSize = 0.0f;
+      maxTargetSize = 0.0f;
+      minTargetRotationSpeed = 0.0f;
+      maxTargetRotationSpeed = 0.0f;
+      minTargetColor = { 1, 1, 1, 0 };
+      maxTargetColor = { 1, 1, 1, 0 };
+      useSpawnTexcoords = false;
+      initialVelocityFromMotion = 0.0f;
+      initialVelocityFromNormal = 0.0f;
+      initialVelocityConeAngleDegrees = 0.0f;
+      maxSpeed = -1.0f;
+      gravityForce = -0.98f;
+      useTurbulence = false;
+      turbulenceForce = 5.0f;
+      turbulenceFrequency = 0.05f;
+      enableCollisionDetection = false;
+      collisionRestitution = 0.5f;
+      collisionThickness = 5.0f;
+      alignParticlesToVelocity = false;
+      enableMotionTrail = false;
+      motionTrailMultiplier = 1.0f;
+      hideEmitter = false;
+      billboardType = 0;
+      static_assert(sizeof InstanceInfoParticleSystemEXT == 200);
     }
   };
 
@@ -758,6 +820,7 @@ namespace remix {
       radius = 0.05f;
       shaping_hasvalue = false;
       shaping_value = detail::defaultLightShaping();
+      volumetricRadianceScale = 1.0f;
       static_assert(sizeof remixapi_LightInfoSphereEXT == 64);
     }
 
@@ -778,6 +841,7 @@ namespace remix {
       direction = { 0.0f, 0.0f, 1.0f };
       shaping_hasvalue = false;
       shaping_value = detail::defaultLightShaping();
+      volumetricRadianceScale = 1.0f;
       static_assert(sizeof remixapi_LightInfoRectEXT == 104);
     }
 
@@ -798,6 +862,7 @@ namespace remix {
       direction = { 0.0f, 0.0f, 1.0f };
       shaping_hasvalue = false;
       shaping_value = detail::defaultLightShaping();
+      volumetricRadianceScale = 1.0f;
       static_assert(sizeof remixapi_LightInfoDiskEXT == 104);
     }
 
@@ -814,7 +879,8 @@ namespace remix {
       radius = 1.0f;
       axis = { 1.0f, 0.0f, 0.0f };
       axisLength = 1.0f;
-      static_assert(sizeof remixapi_LightInfoCylinderEXT == 48);
+      volumetricRadianceScale = 1.0f;
+      static_assert(sizeof remixapi_LightInfoCylinderEXT == 56);
     }
   };
 
@@ -824,7 +890,8 @@ namespace remix {
       pNext = nullptr;
       direction = { 0.0f, -1.0f, 0.0f };
       angularDiameterDegrees = 0.5f;
-      static_assert(sizeof remixapi_LightInfoDistantEXT == 32);
+      volumetricRadianceScale = 1.0f;
+      static_assert(sizeof remixapi_LightInfoDistantEXT == 40);
     }
   };
 

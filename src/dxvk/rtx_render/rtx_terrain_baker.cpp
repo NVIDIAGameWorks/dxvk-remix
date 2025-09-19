@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -37,6 +37,11 @@
 #include "../../dxso/dxso_util.h"
 #include "../../d3d9/d3d9_caps.h"
 
+namespace {
+  // By default, a value of 1.f will have 0 displacement.
+  const float kDefaultNeutralHeight = 1.f;
+}
+
 namespace dxvk {
 
   uint32_t getMipLevels(ReplacementMaterialTextureType::Enum textureType, const VkExtent3D& extent) {
@@ -48,19 +53,6 @@ namespace dxvk {
 
     default:
       return 1;
-      break;
-    }
-  }
-
-  VkClearColorValue getClearColor(ReplacementMaterialTextureType::Enum textureType) {
-    switch (textureType) {
-    case ReplacementMaterialTextureType::Height:
-      // height maps should be cleared to 1, which keeps the displaced surface identical to the original surface.
-      return { 1.f, 1.f, 1.f, 1.f };
-      break;
-
-    default:
-      return { 0.0f, 0.0f, 0.0f, 0.0f };
       break;
     }
   }
@@ -87,6 +79,22 @@ namespace dxvk {
     default:
       assert(0);
       return VK_FORMAT_UNDEFINED;
+      break;
+    }
+  }
+
+  VkClearColorValue TerrainBaker::getClearColor(ReplacementMaterialTextureType::Enum textureType) {
+    const float prevFrameTotalHeight = m_prevFrameMaxDisplaceIn + m_prevFrameMaxDisplaceOut;
+    float neutral_height = prevFrameTotalHeight != 0.f ? m_prevFrameMaxDisplaceIn / prevFrameTotalHeight : kDefaultNeutralHeight;
+    switch (textureType) {
+    case ReplacementMaterialTextureType::Height:
+      // height maps should be cleared to neutral_height, which keeps the displaced surface identical to the original surface.
+      // The height texture should be single channel, so only the first value actually matters.
+      return { neutral_height, neutral_height, neutral_height, neutral_height };
+      break;
+
+    default:
+      return { 0.0f, 0.0f, 0.0f, 0.0f };
       break;
     }
   }
@@ -135,11 +143,7 @@ namespace dxvk {
     // Ensures a texture stays in VidMem
     auto trackAndFinalizeTexture = [&](TextureRef& texture) {
       uint32_t unusedTextureIndex;
-      sceneManager.trackTexture(ctx, texture, unusedTextureIndex, hasTexcoords);
-      // Force the full resolution promotion
-      if (texture.isPromotable()) {
-        texture.finalizePendingPromotion();
-      }
+      sceneManager.trackTexture(texture, unusedTextureIndex, hasTexcoords);
     };
 
     // Track the source albedo opacity texture to keep it in VidMem as it's needed for baking
@@ -182,9 +186,15 @@ namespace dxvk {
       conversionInfo.sourceTexture = &texture;
       
       if (textureType == ReplacementMaterialTextureType::Height) {
-        // Normalize the displaceIn to the previous frame's max displaceIn.
-        conversionInfo.scale = m_prevFrameMaxDisplaceIn <= 0.f ? 0.f : replacementMaterial->getDisplaceIn() / m_prevFrameMaxDisplaceIn;
+        // Normalize the displaceIn and displaceOut to the previous frame's displacement range.
+        const float prevFrameTotalHeight = m_prevFrameMaxDisplaceIn + m_prevFrameMaxDisplaceOut;
+        const float materialTotalHeight = replacementMaterial->getDisplaceIn() + replacementMaterial->getDisplaceOut();
+
+        conversionInfo.scale = prevFrameTotalHeight <= 0.f ? 0.f : materialTotalHeight / prevFrameTotalHeight;
+        // We want to subtract the original neutral displacement, then scale the values, then add the new neutral displacement.
+        conversionInfo.offset = -1.f * (materialTotalHeight == 0.f ? kDefaultNeutralHeight : (replacementMaterial->getDisplaceIn() / materialTotalHeight));
         m_currFrameMaxDisplaceIn = std::max(m_currFrameMaxDisplaceIn, replacementMaterial->getDisplaceIn());
+        m_currFrameMaxDisplaceOut = std::max(m_currFrameMaxDisplaceOut, replacementMaterial->getDisplaceOut());
       }
 
       if (isPSReplacementSupportEnabled(drawCallState)) {
@@ -303,15 +313,24 @@ namespace dxvk {
       return isBaked;
     }
 
-    if (m_calculatingDisplaceInFactor && replacementMaterial->getDisplaceIn() > 0.f) {
+    if (m_calculatingDisplaceInFactor && replacementMaterial != nullptr && (replacementMaterial->getDisplaceIn() > 0.f || replacementMaterial->getDisplaceOut() > 0.f)) {
+      const float maxUvTileSize = RtxGeometryUtils::computeMaxUVTileSize(drawCallState.getGeometryData(), drawCallState.getTransformData().objectToWorld);
       // This is the deepest any part of this mesh can go.
-      float maxInputDepth = RtxGeometryUtils::computeMaxUVTileSize(drawCallState.getGeometryData(), drawCallState.getTransformData().objectToWorld) * replacementMaterial->getDisplaceIn();
+      const float maxInputDepth = maxUvTileSize * replacementMaterial->getDisplaceIn();
+      // Ths is the highest any part of the mesh can go
+      const float maxInputHeight = maxUvTileSize * replacementMaterial->getDisplaceOut();
+
+      const float maxInputDisplacement = maxInputDepth + maxInputHeight;
 
       // The deepest the baked terrain can go.
-      float maxBakedDepth = 2 * RtxOptions::Get()->getMeterToWorldUnitScale() * cascadeMap.levelHalfWidth() * m_prevFrameMaxDisplaceIn;
+      const float maxBakedDepth = 2 * RtxOptions::getMeterToWorldUnitScale() * cascadeMap.levelHalfWidth() * m_prevFrameMaxDisplaceIn;
+      // The highest the baked terrain can go.
+      const float maxBakedHeight = 2 * RtxOptions::getMeterToWorldUnitScale() * cascadeMap.levelHalfWidth() * m_prevFrameMaxDisplaceOut;
+
+      const float maxBakedDisplacement = maxBakedDepth + maxBakedHeight;
 
       // Optimal displaceInFactor for this mesh (multiply the pixel value, divide the baked drawcall's displaceIn)
-      float displaceInFactor = maxBakedDepth / maxInputDepth;
+      const float displaceInFactor = maxBakedDisplacement / maxInputDisplacement;
 
       // Need the largest value from any of the meshes, or else the bottom
       m_calculatedDisplaceInFactor = std::max(m_calculatedDisplaceInFactor, displaceInFactor);
@@ -387,11 +406,17 @@ namespace dxvk {
     bool bakingResult = false;
 
     ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::ReplacementTextureCategory, static_cast<uint32_t>(ReplacementMaterialTextureCategory::AlbedoOpacity));
+    
+    // The height value that corresponds to the original surface height.
+    const float prevFrameTotalHeight = m_prevFrameMaxDisplaceIn + m_prevFrameMaxDisplaceOut;
+    const float neutralDisplacement = prevFrameTotalHeight != 0.f ? m_prevFrameMaxDisplaceIn / prevFrameTotalHeight : kDefaultNeutralHeight;
+
 
     // Bake all material textures
     for (uint32_t iTexture = 0; iTexture < numTexturesToBake; iTexture++) {
       
       ReplacementMaterialTextureType::Enum textureType = ReplacementMaterialTextureType::AlbedoOpacity;
+      float texturePreOffset = 0.f;
       float textureScale = 1.f;
 
       // Bind a source replacement texture to bake, if available.
@@ -400,6 +425,7 @@ namespace dxvk {
         TextureRef& replacementTexture = replacementTextures[iTexture].targetTexture;
         textureType = replacementTextures[iTexture].type;
         textureScale = replacementTextures[iTexture].scale;
+        texturePreOffset = replacementTextures[iTexture].offset;
 
         ctx->bindResourceView(colorTextureSlot, replacementTexture.getImageView(), nullptr);
 
@@ -520,7 +546,12 @@ namespace dxvk {
         for (int i = 0; i < caps::TextureStageCount; ++i) {
           sharedState.Stages[i] = prevSharedState.Stages[i];
         }
+        // The neutral height value of the input image and the output map don't match.
+        // To account, first subtract the input's neutral value from the pixel,
+        // then apply all scale operations, then add the output neutral value.
+        sharedState.Stages[kTerrainBakerSecondaryTextureStage].texturePreOffset = texturePreOffset;
         sharedState.Stages[kTerrainBakerSecondaryTextureStage].textureScale = textureScale * cascadeUvDensity;
+        sharedState.Stages[kTerrainBakerSecondaryTextureStage].texturePostOffset = neutralDisplacement;
         
         // Programmable VS path
         if (drawCallState.usesVertexShader) {
@@ -598,9 +629,6 @@ namespace dxvk {
       Resources& resourceManager = ctx->getResourceManager();
       m_terrainSampler = resourceManager.getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
     }
-
-    // ToDo use TerrainBaker's material defaults
-    const LegacyMaterialDefaults& defaults = RtxOptions::Get()->legacyMaterial;
     
     auto createTextureRef = [&](ReplacementMaterialTextureType::Enum textureType) {
       return m_materialTextures[textureType].isBaked()
@@ -617,7 +645,7 @@ namespace dxvk {
       createTextureRef(ReplacementMaterialTextureType::Roughness),
       createTextureRef(ReplacementMaterialTextureType::Metallic),
       createTextureRef(ReplacementMaterialTextureType::Emissive),
-      TextureRef(), TextureRef(), TextureRef(), // SSS textures
+      TextureRef(), TextureRef(), TextureRef(), TextureRef(), // SSS textures
       Material::Properties::roughnessAnisotropy(),
       Material::Properties::emissiveIntensity(),
       Vector3(1, 1, 1), // AlbedoConstant - unused since the AlbedoOpacity texture must be always present for baking
@@ -628,26 +656,31 @@ namespace dxvk {
       Material::Properties::enableEmission(),
       // Setting expected constant values. Baked terrain should not need to have other values for the below material parameters set
       1, 1, 0, /* spriteSheet* */
-      false, // defaults.enableThinFilm(),
-      false, // defaults.alphaIsThinFilmThickness(),
+      false, // LegacyMaterialDefaults::enableThinFilm(),
+      false, // LegacyMaterialDefaults::alphaIsThinFilmThickness(),
       0.f,
       false, // Set to false for now, otherwise the baked terrain is not fully opaque - opaqueMaterialDefaults.UseLegacyAlphaState
-      false, // opaqueMaterialDefaults.BlendEnabled,
+      false, // OpaqueMaterialDefaults::BlendEnabled,
       BlendType::kAlpha,
-      false, // opaqueMaterialDefaults.InvertedBlend,
+      false, // OpaqueMaterialDefaults::InvertedBlend,
       AlphaTestType::kAlways,
-      0,//opaqueMaterialDefaults.AlphaReferenceValue;
-      // Using the previous frame's displaceIn because all current frame draw calls are normalized to the previous frame's max.
-      m_prevFrameMaxDisplaceIn / Material::Properties::displaceInFactor(),  // opaqueMaterialDefaults.DisplaceIn
-      Vector3(),  // opaqueMaterialDefaults.subsurfaceTransmittanceColor
-      0.0f,  // opaqueMaterialDefaults.subsurfaceMeasurementDistance
-      Vector3(),  // opaqueMaterialDefaults.subsurfaceSingleScatteringAlbedo
-      0.0f, // opaqueMaterialDefaults.subsurfaceVolumetricAnisotropy
+      0,//OpaqueMaterialDefaults::AlphaReferenceValue;
+      // Using the previous frame's displaceIn/Out because all current frame draw calls are normalized to the previous frame's max.
+      m_prevFrameMaxDisplaceIn / Material::Properties::displaceInFactor(),  // OpaqueMaterialDefaults::DisplaceIn
+      m_prevFrameMaxDisplaceOut / Material::Properties::displaceInFactor(),  // OpaqueMaterialDefaults::DisplaceOut
+      Vector3(),  // OpaqueMaterialDefaults::subsurfaceTransmittanceColor
+      0.0f,  // OpaqueMaterialDefaults::subsurfaceMeasurementDistance
+      Vector3(),  // OpaqueMaterialDefaults::subsurfaceSingleScatteringAlbedo
+      0.0f, // OpaqueMaterialDefaults::subsurfaceVolumetricAnisotropy
+      false, // OpaqueMaterialDefaults::subsurfaceDiffusionProfile
+      Vector3(),  // OpaqueMaterialDefaults::subsurfaceRadius
+      0.0f, // OpaqueMaterialDefaults::subsurfaceRadiusScale
+      0.0f, // OpaqueMaterialDefaults::subsurfaceMaxSampleRadius
       // NOTE: The terrain defines it's own sampler, and these are the modes it uses.
       lss::Mdl::Filter::Linear,
       lss::Mdl::WrapMode::Clamp, // U
       lss::Mdl::WrapMode::Clamp  // V
-    ));  
+    ));
 
     m_hasInitializedMaterialDataThisFrame = true;
     m_needsMaterialDataUpdate = false;
@@ -678,7 +711,8 @@ namespace dxvk {
 
         if (texture.views.size() > 0) {
           for (Rc<DxvkImageView>& view : texture.views) {
-            textureManager.releaseTexture(TextureRef(view));
+            auto viewRef = TextureRef(view);
+            textureManager.releaseTexture(viewRef);
           }
         }
       }
@@ -713,6 +747,11 @@ namespace dxvk {
     args.rcpCascadeMapSize.y = 1.f / args.cascadeMapSize.y;
 
     args.maxCascadeLevel = m_bakingParams.numCascades - 1;
+    if (m_materialData.has_value()) {
+      args.displaceIn = m_materialData->getOpaqueMaterialData().getDisplaceIn();
+    } else {
+      args.displaceIn = 0.0f;
+    }
     args.lastCascadeScale = m_bakingParams.lastCascadeScale;
 
     return args;
@@ -724,10 +763,7 @@ namespace dxvk {
     constexpr ImGuiTreeNodeFlags collapsingHeaderFlags = collapsingHeaderClosedFlags | ImGuiTreeNodeFlags_DefaultOpen;
     constexpr ImGuiSliderFlags sliderFlags = ImGuiSliderFlags_AlwaysClamp;
 
-    if (ImGui::CollapsingHeader("Terrain System [Experimental]", collapsingHeaderClosedFlags)) {
-      ImGui::Indent();
-
-      ImGui::Checkbox("Enable Runtime Terrain Baking", &enableBakingObject());
+    {
       ImGui::Checkbox("Use Terrain Bounding Box", &cascadeMap.useTerrainBBOXObject());
       ImGui::Checkbox("Clear Terrain Textures Before Terrain Baking", &clearTerrainBeforeBakingObject());
 
@@ -754,12 +790,12 @@ namespace dxvk {
           ImGui::DragFloat("Anisotropy", &Material::Properties::roughnessAnisotropyObject(), 0.01f, -1.0f, 1.f, "%.3f", sliderFlags);
           
           ImGui::Text("\nDisplacement Settings");
-          ImGui::DragFloat("Displace In Factor", &Material::Properties::displaceInFactorObject(), 0.01f, 0.01f, 100.f, "%.3f", sliderFlags);
-          ImGui::Text("Calculate the lowest safe Displace In Factor for the current \n"
+          ImGui::DragFloat("Displacement Factor", &Material::Properties::displaceInFactorObject(), 0.01f, 0.01f, 100.f, "%.3f", sliderFlags);
+          ImGui::Text("Calculate the lowest safe Displacement Factor for the current \n"
                       "scene.  Mod creators should run this in scenes across the \n"
-                      "game, and use the highest returned value.  See Displace In \n"
+                      "game, and use the highest returned value.  See Displacement \n"
                       "Factor's tooltip for more info.");
-          if (ImGui::Button("Calculate Scene's Optimal Displace In Factor")) {
+          if (ImGui::Button("Calculate Scene's Optimal Displacement Factor")) {
             m_calculateDisplaceInFactorNextFrame = true;
           }
 
@@ -776,9 +812,7 @@ namespace dxvk {
         ImGui::DragFloat("First Cascade Level's Half Width [meters]", &cascadeMap.levelHalfWidthObject(), 1.f, 0.1f, 10000.f);
 
         ImGui::DragInt("Max Cascade Levels", &cascadeMap.maxLevelsObject(), 1.f, 1, 16);
-        RTX_OPTION_CLAMP(cascadeMap.maxLevels, 1u, 16u);
         ImGui::DragInt("Texture Resolution Per Cascade Level", &cascadeMap.levelResolutionObject(), 8.f, 1, 32 * 1024);
-        RTX_OPTION_CLAMP(cascadeMap.levelResolution, 1u, 32 * 1024u);
         ImGui::Checkbox("Expand Last Cascade Level", &cascadeMap.expandLastCascadeObject());
 
         if (ImGui::CollapsingHeader("Statistics", collapsingHeaderClosedFlags)) {
@@ -796,8 +830,6 @@ namespace dxvk {
 
       ImGui::Checkbox("Debug: Disable Baking", &debugDisableBakingObject());
       ImGui::Checkbox("Debug: Disable Binding", &debugDisableBindingObject());
-
-      ImGui::Unindent();
     }
   }
 
@@ -831,13 +863,16 @@ namespace dxvk {
 
     if (m_calculatingDisplaceInFactor) {
       m_calculatingDisplaceInFactor = false;
-      Material::Properties::displaceInFactorRef() = m_calculatedDisplaceInFactor;
+      Material::Properties::displaceInFactor.setDeferred(m_calculatedDisplaceInFactor);
     }
     m_calculatingDisplaceInFactor = m_calculateDisplaceInFactorNextFrame;
     m_calculateDisplaceInFactorNextFrame = false;
 
     m_prevFrameMaxDisplaceIn = m_currFrameMaxDisplaceIn;
     m_currFrameMaxDisplaceIn = 0.f;
+
+    m_prevFrameMaxDisplaceOut = m_currFrameMaxDisplaceOut;
+    m_currFrameMaxDisplaceOut = 0.f;
 
     m_stagingTextureCache.clear();
 
@@ -871,7 +906,8 @@ namespace dxvk {
       
       if (texture.views.size() > 0) {
         for (Rc<DxvkImageView>& view : texture.views) {
-          textureManager.releaseTexture(TextureRef(view));
+          auto viewRef = TextureRef(view);
+          textureManager.releaseTexture(viewRef);
         }
       }
       texture.reset();
@@ -926,7 +962,7 @@ namespace dxvk {
   }
 
   bool TerrainBaker::needsTerrainBaking() {
-    return enableBaking() && RtxOptions::Get()->terrainTextures().size() > 0;
+    return enableBaking() && RtxOptions::terrainTextures().size() > 0;
   }
 
   void TerrainBaker::onFrameBegin(Rc<RtxContext> ctx, const DxvkContextState& dxvkCtxState) {
@@ -997,11 +1033,11 @@ namespace dxvk {
     Resources& resourceManager = ctx->getResourceManager();
     const RtCamera& camera = sceneManager.getCamera();
     const uint32_t currentFrameIndex = ctx->getDevice()->getCurrentFrameId();
-    const float metersToWorldUnitScale = RtxOptions::Get()->getMeterToWorldUnitScale();
+    const float metersToWorldUnitScale = RtxOptions::getMeterToWorldUnitScale();
 
     m_bakingParams.frameIndex = currentFrameIndex;
 
-    const bool terrainBBOXIsValid = m_terrainBBOXFrameIndex == currentFrameIndex - 1;
+    const bool terrainBBOXIsValid = m_bakedTerrainBBOX.isValid();
     const float epsilon = 0.01f;      // Epsilon to ensure distances are greater or equal
 
     const float terrainHeight =
@@ -1015,8 +1051,10 @@ namespace dxvk {
       : metersToWorldUnitScale * cascadeMap.defaultHeight() / 2; // Assume camera is in the middle of terrain's height span
 
     // Constants set to what makes generally should make sense
+    // Offset zFar by zNear to match the baking camera position being offset by it.
+    // Offset by 1.f in case terrainHeight is zero (i.e. it's planar)
     const float zNear = 0.01f;
-    const float zFar = terrainHeight * (1 + epsilon) + zNear; // Offset by zNear to match the baking camera position being offset by it 
+    const float zFar = (terrainHeight + 1.f) * (1 + epsilon) + zNear;
 
     // Compute the relative half width of the cascade map around the camera
     float cascadeMapHalfWidth = metersToWorldUnitScale * cascadeMap.defaultHalfWidth();

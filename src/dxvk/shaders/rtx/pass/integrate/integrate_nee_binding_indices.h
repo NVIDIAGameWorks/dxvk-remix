@@ -36,31 +36,30 @@ struct VisualizeNeeArgs
 #define INTEGRATE_NEE_BINDING_SHARED_TEXTURE_COORD_INPUT                                43
 #define INTEGRATE_NEE_BINDING_SHARED_SURFACE_INDEX_INPUT                                44
 #define INTEGRATE_NEE_BINDING_SHARED_SUBSURFACE_DATA_INPUT                              45
+#define INTEGRATE_NEE_BINDING_SHARED_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT            46
 
-#define INTEGRATE_NEE_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT                        46
-#define INTEGRATE_NEE_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_INPUT                        47
-#define INTEGRATE_NEE_BINDING_PRIMARY_ALBEDO_INPUT                                      48
-#define INTEGRATE_NEE_BINDING_PRIMARY_VIEW_DIRECTION_INPUT                              49
-#define INTEGRATE_NEE_BINDING_PRIMARY_CONE_RADIUS_INPUT                                 50
-#define INTEGRATE_NEE_BINDING_PRIMARY_WORLD_POSITION_INPUT                              51
+#define INTEGRATE_NEE_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT                        47
+#define INTEGRATE_NEE_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_INPUT                        48
+#define INTEGRATE_NEE_BINDING_PRIMARY_ALBEDO_INPUT                                      49
+#define INTEGRATE_NEE_BINDING_PRIMARY_VIEW_DIRECTION_INPUT                              50
+#define INTEGRATE_NEE_BINDING_PRIMARY_CONE_RADIUS_INPUT                                 51
+#define INTEGRATE_NEE_BINDING_PRIMARY_WORLD_POSITION_INPUT                              52
 
-#define INTEGRATE_NEE_BINDING_PRIMARY_POSITION_ERROR_INPUT                              52
-#define INTEGRATE_NEE_BINDING_PRIMARY_HIT_DISTANCE_INPUT                                53
-#define INTEGRATE_NEE_BINDING_PRIMARY_WORLD_INTERPOLATED_NORMAL_INPUT                   54
-#define INTEGRATE_NEE_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT                      55
+#define INTEGRATE_NEE_BINDING_PRIMARY_POSITION_ERROR_INPUT                              53
+#define INTEGRATE_NEE_BINDING_PRIMARY_HIT_DISTANCE_INPUT                                54
+#define INTEGRATE_NEE_BINDING_PRIMARY_WORLD_INTERPOLATED_NORMAL_INPUT                   55
+#define INTEGRATE_NEE_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT                      56
 
-#define INTEGRATE_NEE_BINDING_NEE_CACHE                                                 56
-#define INTEGRATE_NEE_BINDING_NEE_CACHE_TASK                                            57
-#define INTEGRATE_NEE_BINDING_NEE_CACHE_SAMPLE                                          58
-#define INTEGRATE_NEE_BINDING_NEE_CACHE_THREAD_TASK                                     59
-#define INTEGRATE_NEE_BINDING_PRIMITIVE_ID_PREFIX_SUM                                   60
-
-#define INTEGRATE_NEE_BINDING_RADIANCE_INPUT                                            61
-#define INTEGRATE_NEE_BINDING_HIT_GEOMETRY_INPUT                                        62
+#define INTEGRATE_NEE_BINDING_NEE_CACHE                                                 57
+#define INTEGRATE_NEE_BINDING_NEE_CACHE_TASK                                            58
+#define INTEGRATE_NEE_BINDING_NEE_CACHE_SAMPLE                                          59
+#define INTEGRATE_NEE_BINDING_NEE_CACHE_THREAD_TASK                                     60
+#define INTEGRATE_NEE_BINDING_PRIMITIVE_ID_PREFIX_SUM_INPUT                             61
 
 // Inputs/Outputs
 
 #define INTEGRATE_NEE_BINDING_PRIMARY_BASE_REFLECTIVITY_INPUT_OUTPUT                    70
+#define INTEGRATE_NEE_BINDING_NRC_TRAINING_PATH_VERTICES_INPUT_OUTPUT                   71
 
 // Outputs
 

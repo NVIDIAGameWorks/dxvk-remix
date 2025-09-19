@@ -16,5 +16,7 @@ These tests currently focus on the important SSE operations and math algorithms 
 
 ## Running Locally
 
-1. Open a powershell window in `dxvk-remix-nv/` and run `.\build_dxvk.ps1 -BuildFlavour release -BuildSubDir _Comp64UnitTest -Backend ninja -EnableTracy false unit_tests`
-2. Then run `.\_Comp64UnitTest\tests\rtx\unit\<test_name>.exe`
+1. Open a powershell window in `dxvk-remix-nv/` and run `.\build_dxvk.ps1 -BuildFlavour release -BuildSubDir _Comp64UnitTest -Backend ninja -EnableTracy false -BuildTarget unit_tests -InstallTags unit`
+2. Then change directory into `_Comp64UnitTest/` and run `meson test --verbose <test_name>`.  Leave off the test name to run all tests.
+
+Note: If the above steps don't work, check `tools/ci/gitlab/unit_test.yml` to see if the commands have changed.

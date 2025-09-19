@@ -43,7 +43,8 @@
   X(EmissiveColorTexture,                    emissive_mask_texture,                TextureRef, void, void, {}) \
   X(SubsurfaceTransmittanceTexture,          subsurface_transmittance_texture,     TextureRef, void, void, {}) \
   X(SubsurfaceThicknessTexture,              subsurface_thickness_texture,         TextureRef, void, void, {}) \
-  X(SubsurfaceSingleScatteringAlbedoTexture, subsurface_single_scattering_texture, TextureRef, void, void, {})
+  X(SubsurfaceSingleScatteringAlbedoTexture, subsurface_single_scattering_texture, TextureRef, void, void, {}) \
+  X(SubsurfaceRadiusTexture,                 subsurface_radius_texture,            TextureRef, void, void, {})
 
 
 #define LIST_OPAQUE_MATERIAL_CONSTANTS(X) \
@@ -74,10 +75,15 @@
   X(AlphaTestReferenceValue,          alpha_test_reference_value,             uint8_t,        0,                          255,                       0) \
   /* Note: Maximum clamped to float 16 max due to GPU encoding requirements. */ \
   X(DisplaceIn,                       displace_in,                            float,          0.f,                        65504.0f,                  0.05f) \
+  X(DisplaceOut,                      displace_out,                           float,          0.f,                        65504.0f,                  0.0f) \
   X(SubsurfaceTransmittanceColor,     subsurface_transmittance_color,         Vector3,        Vector3(0.f),               Vector3(1.f),              Vector3(0.5f, 0.5f, 0.5f)) \
   X(SubsurfaceMeasurementDistance,    subsurface_measurement_distance,        float,          0.f,                        65504.0f,                  0.f) \
   X(SubsurfaceSingleScatteringAlbedo, subsurface_single_scattering_albedo,    Vector3,        Vector3(0.f),               Vector3(1.f),              Vector3(0.5f, 0.5f, 0.5f)) \
   X(SubsurfaceVolumetricAnisotropy,   subsurface_volumetric_anisotropy,       float,          -1.f,                       1.f,                       0.f) \
+  X(SubsurfaceDiffusionProfile,       subsurface_diffusion_profile,           bool,           false,                      true,                      false) \
+  X(SubsurfaceRadius,                 subsurface_radius,                      Vector3,        Vector3(0.f),               Vector3(65504.f),          Vector3(0.5f, 0.5f, 0.5f)) \
+  X(SubsurfaceRadiusScale,            subsurface_radius_scale,                float,          0.f,                        65504.0f,                  1.f) \
+  X(SubsurfaceMaxSampleRadius,        subsurface_max_sample_radius,           float,          0.f,                        65504.0f,                  16.f) \
   /* Sampler State */ \
   X(FilterMode,                       filter_mode,                            uint8_t,        lss::Mdl::Filter::Nearest,  lss::Mdl::Filter::Linear,  lss::Mdl::Filter::Linear)  \
   X(WrapModeU,                        wrap_mode_u,                            uint8_t,        lss::Mdl::WrapMode::Clamp,  lss::Mdl::WrapMode::Clip,  lss::Mdl::WrapMode::Repeat) \
@@ -159,11 +165,13 @@
 #define WRITE_CONSTANT_MEMBER_FUNC(name, usd_attr, type, minVal, maxVal, defaultVal) \
       type& get##name() { return m_##name; } \
       const type& get##name() const { return m_##name; } \
+      void set##name(const type value) { m_##name = value; m_dirty.set(DirtyFlags::k_##name); sanitizeData(); updateCachedHash(); } \
       static pxr::TfToken get##name##Token() { return pxr::TfToken("inputs:"#usd_attr); }
 
 #define WRITE_TEXTURE_MEMBER_FUNC(name, usd_attr, type, minVal, maxVal, defaultVal) \
       type& get##name() { return m_##name; } \
       const type& get##name() const { return m_##name; } \
+      void set##name(const type value) { m_##name = value; m_dirty.set(DirtyFlags::k_##name); sanitizeData(); updateCachedHash(); } \
       static pxr::TfToken get##name##Token() { return pxr::TfToken("inputs:"#usd_attr); }
 
 #define WRITE_CONSTANT_DESERIALIZER(name, usd_attr, type, minVal, maxVal, defaultVal) \
@@ -196,7 +204,7 @@
       m_##name = clamp(m_##name, ranges.Min##name, ranges.Max##name);
 
 #define WRITE_TEXTURE_HASH(name, usd_attr, type, minVal, maxVal, defaultVal) \
-      h ^= m_##name.getImageHash();
+      h += m_##name.getImageHash();
 
 #define WRITE_CONSTANT_HASH(name, usd_attr, type, minVal, maxVal, defaultVal) \
       h = XXH64(&m_##name, sizeof(m_##name), h);
@@ -248,6 +256,22 @@ struct name##Data {                                                             
     return m_cachedHash;                                                                             \
   }                                                                                                  \
                                                                                                      \
+  void setSamplerOverride(const Rc<DxvkSampler>& sampler) {                                          \
+    m_samplerOverride = sampler;                                                                     \
+  }                                                                                                  \
+                                                                                                     \
+  const Rc<DxvkSampler>& getSamplerOverride() const {                                                \
+    return m_samplerOverride;                                                                        \
+  }                                                                                                  \
+                                                                                                     \
+  void setIgnoreAlphaChannel(const bool ignoreAlphaChannel) {                                        \
+    m_ignoreAlphaChannelOverride = ignoreAlphaChannel;                                               \
+  }                                                                                                  \
+                                                                                                     \
+  const bool getIgnoreAlphaChannel() const {                                                         \
+    return m_ignoreAlphaChannelOverride;                                                             \
+  }                                                                                                  \
+                                                                                                     \
 private:                                                                                             \
                                                                                                      \
   struct Ranges {                                                                                    \
@@ -259,6 +283,10 @@ private:                                                                        
   void sanitizeData() {                                                                              \
     constexpr Ranges ranges = {};                                                                    \
     X_CONSTANTS(WRITE_CONSTANT_SANITIZATION)                                                         \
+    /* This matches the behavior of materials in toolkit */                                          \
+    if (m_dirty.test(DirtyFlags::k_EnableEmission)) {                                                \
+      m_dirty.set(DirtyFlags::k_EmissiveIntensity);                                                  \
+    }                                                                                                \
   }                                                                                                  \
                                                                                                      \
   void updateCachedHash() {                                                                          \
@@ -276,6 +304,8 @@ private:                                                                        
                                                                                                      \
   Flags<DirtyFlags> m_dirty { 0 };                                                                   \
   XXH64_hash_t m_cachedHash { 0 };                                                                   \
+  Rc<DxvkSampler> m_samplerOverride = nullptr;                                                       \
+  bool m_ignoreAlphaChannelOverride = false;                                                         \
 };
 
 namespace dxvk {

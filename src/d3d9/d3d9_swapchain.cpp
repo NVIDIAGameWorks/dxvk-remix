@@ -27,6 +27,7 @@
 #include "../dxvk/dxvk_device.h"
 #include "../dxvk/dxvk_objects.h"
 #include "../util/util_env.h"
+#include "../util/util_once.h"
 #include "../util/util_string.h"
 #include "../dxvk/rtx_render/rtx_bridge_message_channel.h"
 #include "../dxvk/dxvk_scoped_annotation.h"
@@ -191,7 +192,7 @@ namespace dxvk {
       if (BridgeMessageChannel::get().init(getWinProcHwnd(), D3D9WindowProc)) {
         // Send the initial state messages
         auto& gui = getDxvkDevice()->getCommon()->getImgui();
-        gui.switchMenu(RtxOptions::Get()->showUI(), true);
+        gui.switchMenu(RtxOptions::showUI(), true);
       } else {
         Logger::err("Unable to init bridge message channel. FSE and input capture may not work!");
       }
@@ -216,25 +217,39 @@ namespace dxvk {
       ? windowData.unicode
       : IsWindowUnicode(window);
 
-    D3DPRESENT_PARAMETERS present_parms;
+    // NV-DXVK start: Handling stale Swapchains.
+    // Majority of NV-DXVK changes below are related to bSkipSwapchainActions
+
+    // Swapchain may be publicly dead, but is kept internally alive for some reason,
+    // so it wasn't removed from g_windowProcMap. Attempting to reference windowData.swapchain
+    // may result in referencing invalidated handles/values.
+    windowData.swapchain->AddRef();
+    const auto swapchainRefCnt = windowData.swapchain->Release();
+    const bool bSkipSwapchainActions = (swapchainRefCnt == 0);
+    if(bSkipSwapchainActions) {
+      ONCE(Logger::warn("[D3D9WindowProc] Swapchain handle is invalid, some of its values may not be correct."));
+    }
+
+    // It is potentially unsafe to access the swapchain in this function and may result in
+    // bad params given the above; however, this is currently dependent behavior. The param
+    // valuesbelow *should* stay consistent, but it's entirely possible that this thread yields
+    // at some point OR another thread invalidates via DTOR the parameter data below. The
+    // best we can do for now is cache the param data ASAP.
+    D3DDEVICE_CREATION_PARAMETERS create_parms; D3DPRESENT_PARAMETERS present_parms;
+    windowData.swapchain->GetDevice()->GetCreationParameters(&create_parms);
     windowData.swapchain->GetPresentParameters(&present_parms);
     
     if (!present_parms.Windowed && !(message == WM_NCCALCSIZE && wParam == TRUE)) {
       if (message == WM_DESTROY)
         ResetWindowProc(window);
       else if (message == WM_ACTIVATEAPP) {
-        D3DDEVICE_CREATION_PARAMETERS create_parms;
-        windowData.swapchain->GetDevice()->GetCreationParameters(&create_parms);
 
         if (!(create_parms.BehaviorFlags & D3DCREATE_NOWINDOWCHANGES)) {
           if (wParam) {
             // Heroes of Might and Magic V needs this to resume drawing after a focus loss
-            D3DPRESENT_PARAMETERS params;
             RECT rect;
-
             GetMonitorRect(GetDefaultMonitor(), &rect);
-            windowData.swapchain->GetPresentParameters(&params);
-            SetWindowPos(window, nullptr, rect.left, rect.top, params.BackBufferWidth, params.BackBufferHeight,
+            SetWindowPos(window, nullptr, rect.left, rect.top, present_parms.BackBufferWidth, present_parms.BackBufferHeight,
               SWP_NOACTIVATE | SWP_NOZORDER | SWP_ASYNCWINDOWPOS);
           }
           else {
@@ -246,26 +261,27 @@ namespace dxvk {
     }
     else if (message == WM_SIZE)
     {
-      D3DDEVICE_CREATION_PARAMETERS create_parms;
-      windowData.swapchain->GetDevice()->GetCreationParameters(&create_parms);
-
       if (!(create_parms.BehaviorFlags & D3DCREATE_NOWINDOWCHANGES) && !IsIconic(window))
         PostMessageW(window, WM_ACTIVATEAPP, 1, GetCurrentThreadId());
     }
 
+    // Safe from bSkipSwapchainActions as we're just getting a handle that shouldn't
+    // be invalidated
     auto& gui = windowData.swapchain->getDxvkDevice()->getCommon()->getImgui();
     if(gui.isInit()) {
       gui.wndProcHandler(window, message, wParam, lParam);
     }
 
-    if (!present_parms.Windowed && env::isRemixBridgeActive()) {
-      FSEState state = ProcessFullscreenExclusiveMessages(window, message, wParam, lParam);
+    if(!bSkipSwapchainActions) {
+      if (!present_parms.Windowed && env::isRemixBridgeActive()) {
+        FSEState state = ProcessFullscreenExclusiveMessages(window, message, wParam, lParam);
 
-      // Update FSE state
-      if (state == FSEState::Acquire) {
-        windowData.swapchain->AcquireFullscreenExclusive();
-      } else if (state == FSEState::Release) {
-        windowData.swapchain->ReleaseFullscreenExclusive();
+        // Update FSE state
+        if (state == FSEState::Acquire) {
+          windowData.swapchain->AcquireFullscreenExclusive();
+        } else if (state == FSEState::Release) {
+          windowData.swapchain->ReleaseFullscreenExclusive();
+        }
       }
     }
 
@@ -275,8 +291,10 @@ namespace dxvk {
           windowData.proc, window, message, wParam, lParam);
     }
 
-    // NV-DXVK start:
-    windowData.swapchain->onWindowMessageEvent(message, wParam);
+    if(!bSkipSwapchainActions) {
+      windowData.swapchain->onWindowMessageEvent(message, wParam);
+    }
+
     // NV-DXVK end
 
     return 0;
@@ -313,9 +331,9 @@ namespace dxvk {
     m_window = m_presentParams.hDeviceWindow;
 
     // NV-DXVK start: DLFG integration
-    if (RtxOptions::Get()->enableVsync() == EnableVsync::WaitingForImplicitSwapchain) {
+    if (RtxOptions::enableVsync() == EnableVsync::WaitingForImplicitSwapchain) {
       // save the vsync state when the first swapchain is created, to act as the default
-      RtxOptions::Get()->enableVsyncRef() = m_presentParams.PresentationInterval ? EnableVsync::On : EnableVsync::Off;
+      RtxOptions::enableVsyncState = m_presentParams.PresentationInterval ? EnableVsync::On : EnableVsync::Off;
     }
     // NV-DXVK end
 
@@ -401,7 +419,13 @@ namespace dxvk {
   }
 
   vk::Presenter* D3D9SwapChainEx::GetPresenter() const {
-    return m_presenter != nullptr ? m_presenter.ptr() : m_dlfgPresenter.ptr();
+    const auto presenter = m_presenter != nullptr ? m_presenter.ptr() : m_dlfgPresenter.ptr();
+
+    // Note: The returned presenter must be non-null as one of the two presenters must be non-null at all times,
+    // and because code will blindly dereference this returned pointer.
+    assert(presenter != nullptr);
+
+    return presenter;
   }
 
   HRESULT STDMETHODCALLTYPE D3D9SwapChainEx::Present(
@@ -434,7 +458,7 @@ namespace dxvk {
       presentInterval = options->presentInterval;
 
     // NV-DXVK start: Reflex integration
-    switch (RtxOptions::Get()->enableVsync()) {
+    switch (RtxOptions::enableVsyncState) {
     case EnableVsync::Off:
       presentInterval = 0;
       break;
@@ -1137,14 +1161,17 @@ namespace dxvk {
       // NV-DXVK start: DLFG integration
       VkResult status = presenter->acquireNextImage(sync, imageIndex);
       // NV-DXVK end
-      
-      while (status != VK_SUCCESS && status != VK_SUBOPTIMAL_KHR) {
-        RecreateSwapChain(m_vsync);
 
+      while (status != VK_SUCCESS) {
+        RecreateSwapChain(m_vsync);
+        
         // NV-DXVK start: DLFG integration
         info = presenter->info();
         status = presenter->acquireNextImage(sync, imageIndex);
         // NV-DXVK end
+
+        if (status == VK_SUBOPTIMAL_KHR)
+          break;
       }
 
       m_context->beginRecording(
@@ -1200,6 +1227,9 @@ namespace dxvk {
     // on the main thread after the Reflex sleep has completed to encompass this region.
     reflex.beginSimulation(d3d9Rtx.GetReflexFrameId());
     reflex.latencyPing(d3d9Rtx.GetReflexFrameId());
+
+    // Tell tracy its the end of the frame
+    FrameMark;
     // NV-DXVK end
   }
 
@@ -1292,14 +1322,6 @@ namespace dxvk {
     presenterDesc.numPresentModes = PickPresentModes(Vsync, presenterDesc.presentModes);
     presenterDesc.fullScreenExclusive = PickFullscreenMode();
 
-    // NV-DXVK start: DLFG integration
-    const bool dlfgEnabled = m_context->isDLFGEnabled();
-    if (dlfgEnabled && m_dlfgPresenter != nullptr) {
-      // DLFG presents 2 times (1 more frame) in each real frame,
-      // increase image count by 1 to avoid resource waiting.
-      presenterDesc.imageCount++;
-    }
-
     if (GetPresenter()->recreateSwapChain(presenterDesc) != VK_SUCCESS)
       throw DxvkError("D3D9SwapChainEx: Failed to recreate swap chain");
     // NV-DXVK end
@@ -1319,13 +1341,14 @@ namespace dxvk {
       // to ensure pacer thread is idle
       m_dlfgPresenter->synchronize();
     }
+
+    // flush all pending CS work
+    // this ensures any work that relies on the FG presenter is submitted before we
+    // synchronize the submission queue + GPU below
+    m_parent->SynchronizeCsThread();
     // NV-DXVK end
 
     m_device->waitForIdle();
-
-    // NV-DXVK start: DLFG integration
-    m_device->synchronizePresenter();
-    // NV-DXVK end
 
     m_presenter = nullptr;
     m_presentStatus.result = VK_SUCCESS;
@@ -1859,7 +1882,7 @@ namespace dxvk {
 
   VkFullScreenExclusiveEXT D3D9SwapChainEx::PickFullscreenMode() {
     // NV-DXVK start: App controlled FSE
-    if (!RtxOptions::Get()->allowFSE() || m_dialog || m_presentParams.Windowed)
+    if (!RtxOptions::allowFSE() || m_dialog || m_presentParams.Windowed)
       return VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT;
 
     if (env::isRemixBridgeActive()) {

@@ -26,14 +26,13 @@
 #include "dxvk_context.h"
 #include "rtx_context.h"
 #include "rtx_options.h"
-#include "rtx_game_capturer_paths.h"
 #include "rtx_utils.h"
 #include "rtx_asset_data_manager.h"
 
 namespace dxvk {
 
 std::vector<AssetReplacement>* AssetReplacer::getReplacementsForMesh(XXH64_hash_t hash) {
-  if (!RtxOptions::Get()->getEnableReplacementMeshes())
+  if (!RtxOptions::getEnableReplacementMeshes())
     return nullptr;
 
   auto variantInfo = m_variantInfos.find(hash);
@@ -52,7 +51,7 @@ std::vector<AssetReplacement>* AssetReplacer::getReplacementsForMesh(XXH64_hash_
 }
 
 std::vector<AssetReplacement>* AssetReplacer::getReplacementsForLight(XXH64_hash_t hash) {
-  if (!RtxOptions::Get()->getEnableReplacementLights())
+  if (!RtxOptions::getEnableReplacementLights())
     return nullptr;
 
   for (auto& mod : m_modManager.mods()) {
@@ -65,7 +64,7 @@ std::vector<AssetReplacement>* AssetReplacer::getReplacementsForLight(XXH64_hash
 }
 
 MaterialData* AssetReplacer::getReplacementMaterial(XXH64_hash_t hash) {
-  if (!RtxOptions::Get()->getEnableReplacementMaterials())
+  if (!RtxOptions::getEnableReplacementMaterials())
     return nullptr;
 
   for (auto& mod : m_modManager.mods()) {
@@ -98,29 +97,25 @@ bool AssetReplacer::checkForChanges(const Rc<DxvkContext>& context) {
   return changed;
 }
 
-bool AssetReplacer::areReplacementsLoaded() const {
-  bool loaded = false;
+bool AssetReplacer::areAllReplacementsLoaded() const {
   for (auto& mod : m_modManager.mods()) {
-    loaded |= mod->state() == Mod::State::Loaded;
+    if (mod->state().progressState != Mod::ProgressState::Loaded) {
+      return false;
+    }
   }
-  return loaded;
+
+  return true;
 }
 
-bool AssetReplacer::areReplacementsLoading() const {
-  bool loading = false;
-  for (auto& mod : m_modManager.mods()) {
-    loading |= mod->state() == Mod::State::Loading;
-  }
-  return loading;
-}
+std::vector<Mod::State> AssetReplacer::getReplacementStates() const {
+  const auto& mods = m_modManager.mods();
+  std::vector<Mod::State> modStates(mods.size());
 
-const std::string& AssetReplacer::getReplacementStatus() const {
-  // TODO: make an array?
-  for (auto& mod : m_modManager.mods()) {
-    return mod->status();
+  for (auto& mod : mods) {
+    modStates.emplace_back(mod->state());
   }
-  static const std::string noReplacements("no replacements");
-  return noReplacements;
+
+  return modStates;
 }
 
 void AssetReplacer::updateSecretReplacements() {
@@ -130,7 +125,7 @@ void AssetReplacer::updateSecretReplacements() {
   m_secretReplacements.clear();
 
   for (auto& mod : m_modManager.mods()) {
-    if (mod->state() != Mod::State::Loaded) {
+    if (mod->state().progressState != Mod::ProgressState::Loaded) {
       continue;
     }
 

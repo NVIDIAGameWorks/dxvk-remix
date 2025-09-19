@@ -40,5 +40,6 @@ struct DecodeAndAddOpacityArgs {
       
   float normalIntensity;
   float scale;
+  float offset;
   ReplacementMaterialTextureType::Enum textureType;
 };
