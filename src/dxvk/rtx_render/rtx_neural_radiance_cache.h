@@ -61,7 +61,7 @@ namespace dxvk {
                  "Each training batch contains 16K training records derived from path segments\n"
                  "in the the NRC update path tracing pass. For example, 4 training iterations results in 64K training records.\n"
                  "Higher number results in more responsive NRC cache at the cost of increased workload.\n");
-      public: static void onMaxNumTrainingIterationsChanged();
+      public: static void onMaxNumTrainingIterationsChanged(DxvkDevice* device);
       RTX_OPTION_ARGS("rtx.neuralRadianceCache", uint32_t, maxNumTrainingIterations, 16,
                  "This controls the max number of training iterations to perform in a frame.\n"
                  "When the pathtracer generates more training records than the ideal number of training records\n"
@@ -122,7 +122,7 @@ namespace dxvk {
       RTX_OPTION("rtx.neuralRadianceCache", bool, enableCalculateTrainingLoss, false, "Enables calculation of a training loss. Imposes a performance penalty.");
       RTX_OPTION("rtx.neuralRadianceCache", bool, enableAdaptiveTrainingDimensions, true, "Enables adaptive training dimensions that scale based off pathtracer's execution behavior on a given scene.");
 
-      static void onQualityPresetChanged();
+      static void onQualityPresetChanged(DxvkDevice* device);
       RTX_OPTION_ARGS("rtx.neuralRadianceCache", QualityPreset, qualityPreset, QualityPreset::Ultra,
                       "Quality Preset: Medium (0), High (1), Ultra (2).\n"
                       "Adjusts quality of RTX Neural Radiance Cache (NRC):\n"

@@ -132,7 +132,7 @@ namespace dxvk {
     PREWARM_SHADER_PIPELINE(NrcResolveShader);
   }
 
-  void NeuralRadianceCache::NrcOptions::onMaxNumTrainingIterationsChanged() {
+  void NeuralRadianceCache::NrcOptions::onMaxNumTrainingIterationsChanged(DxvkDevice* device) {
     targetNumTrainingIterations.setMaxValue(maxNumTrainingIterations());
   }
 
@@ -316,7 +316,7 @@ namespace dxvk {
     return NrcContext::checkIsSupported(device);
   }
 
-  void NeuralRadianceCache::NrcOptions::onQualityPresetChanged() {
+  void NeuralRadianceCache::NrcOptions::onQualityPresetChanged(DxvkDevice* device) {
     // Note: This function is called during onChange handler for quality preset option and 
     // all the NRC calls have been issued, so it's safe to set the new settings using immediately.
     // In addition, this ensures the settings being applied immediately on start, rather than being delayed to the next frame

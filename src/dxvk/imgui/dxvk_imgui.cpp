@@ -1405,20 +1405,12 @@ namespace dxvk {
 
     ImGui::TextSeparator("Preset Settings");
 
-    const auto graphicsPresetChanged = graphicsPresetCombo.getKey(&RtxOptions::graphicsPresetObject());
-
-    m_userGraphicsSettingChanged |= graphicsPresetChanged;
+    m_userGraphicsSettingChanged |= graphicsPresetCombo.getKey(&RtxOptions::graphicsPresetObject());
 
     // Map settings to indirect particle level
     int indirectLightParticlesLevel = 0;
     if (RtxOptions::enableUnorderedResolveInIndirectRays()) {
       indirectLightParticlesLevel = RtxOptions::enableUnorderedEmissiveParticlesInIndirectRays() ? 2 : 1;
-    }
-
-    // Map presets to options
-
-    if (graphicsPresetChanged) {
-      RtxOptions::updateGraphicsPresets(ctx->getDevice().ptr());
     }
 
     // Path Tracing Settings

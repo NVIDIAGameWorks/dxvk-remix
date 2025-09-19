@@ -164,13 +164,13 @@ namespace dxvk {
     bool m_enableAlphaChannel = false;
     float m_scale = 1.f;
 
-    public: static void maxValueOnChange();
+    public: static void maxValueOnChange(DxvkDevice* device);
     RTX_OPTION_ARGS("rtx.debugView", float, minValue, 0.f,
       "The minimum debug view input value to map to 0 in the output when the standard debug display is in use. Values below this value in the input will be clamped to 0 in the output.",
       args.environment = "DXVK_RTX_DEBUG_VIEW_MIN_VALUE",
       args.onChangeCallback = &maxValueOnChange);
       
-    public: static void minValueOnChange();
+    public: static void minValueOnChange(DxvkDevice* device);
     RTX_OPTION_ARGS("rtx.debugView", float, maxValue, 1.f,
       "The maximum debug view input value to map to 1 in the output when the standard debug display is in use. Values above this value in the input will be clamped to 1 in the output.",
       args.environment = "DXVK_RTX_DEBUG_VIEW_MAX_VALUE",

@@ -39,15 +39,29 @@
 
 namespace dxvk {
   std::unique_ptr<RtxOptions> RtxOptions::m_instance = nullptr;
+  
+  void RtxOptions::graphicsPresetOnChange(DxvkDevice* device) {
+    // device will be nullptr during initial config loading.
+    if (device == nullptr) {
+      return;
+    }
 
-  void RtxOptions::showUICursorOnChange() {
+    // TODO[REMIX-1482]: Currently tests expect to skip applying the graphics preset, so this needs to be skipped in test runs.
+    // When we fix tests to actually use the preset, the if statement should be removed.
+    if (env::getEnvVar("DXVK_TERMINATE_APP_FRAME") == "" ||
+        env::getEnvVar("DXVK_GRAPHICS_PRESET_TYPE") != "0") {
+      RtxOptions::updateGraphicsPresets(device);
+    }
+  }
+
+  void RtxOptions::showUICursorOnChange(DxvkDevice* device) {
     if (ImGui::GetCurrentContext() != nullptr) {
       auto& io = ImGui::GetIO();
       io.MouseDrawCursor = RtxOptions::showUICursor() && RtxOptions::showUI() != UIType::None;
     }
   }
 
-  void RtxOptions::blockInputToGameInUIOnChange() {
+  void RtxOptions::blockInputToGameInUIOnChange(DxvkDevice* device) {
     const bool doBlock = RtxOptions::blockInputToGameInUI() && RtxOptions::showUI() != UIType::None;
 
     BridgeMessageChannel::get().send("UWM_REMIX_UIACTIVE_MSG", doBlock ? 1 : 0, 0);
