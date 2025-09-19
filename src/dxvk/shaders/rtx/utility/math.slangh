@@ -98,7 +98,10 @@ GENERIC_INV_CLAMP_POW_5(float16_t)
 GENERIC_INV_CLAMP_POW_5(float)
 
 // Performs a "safe" division operation avoiding division by zero by clamping the denominator
-// to a specified epsilon. May still result in infinities due to overflow.
+// to a specified epsilon. May still result in infinities due to overflow use clampedMaximumPositiveDivide
+// or saferPositiveDivide to guard against infinities on overflow if desired.
+// Requirements:
+// Denominator must be greater than or equal to 0.
 #define GENERIC_SAFE_POSITIVE_DIVIDE(type, epsilonType)           \
 type safePositiveDivide(                                          \
   type numerator, type denominator, epsilonType epsilon)          \
@@ -111,21 +114,59 @@ GENERIC_SAFE_POSITIVE_DIVIDE(float, float)
 GENERIC_SAFE_POSITIVE_DIVIDE(f16vec3, float16_t)
 GENERIC_SAFE_POSITIVE_DIVIDE(vec3, float)
 
-// Performs a "safer" division operation than the safe division function by also clamping the numerator
-// based on the denominator and a specified maximum value to guard against overflows to infinity.
-#define GENERIC_SAFER_POSITIVE_DIVIDE(type, clampType)                    \
-type saferPositiveDivide(                                                 \
-  type numerator, type denominator, clampType epsilon, clampType maximum) \
-{                                                                         \
-  const type safeDenominator = max(denominator, epsilon);                 \
-                                                                          \
-  return min(numerator, safeDenominator * maximum) / safeDenominator;     \
+// Performs a division operation which clamps the result based on a specified maximum value to guard against overflows to infinity.
+// May still result in NaNs if divison by zero occurs, use saferPositiveDivide to guard against division by zero if desired.
+// Requirements:
+// Numerator must be greater than or equal to 0.
+// Denominator must be greater than 0.
+#define GENERIC_CLAMPED_MAXIMUM_POSITIVE_DIVIDE(type, clampType) \
+type clampedMaximumPositiveDivide(                               \
+  type numerator, type denominator, clampType maximum)           \
+{                                                                \
+  /* Note: Relying on proper infinity behavior with the minimum function such that overflowing divisions */ \
+  /* will properly be clamped to the maximum value. This should be gauranteed, but in case it is not on  */ \
+  /* some implementations, the old approach of min(numerator, denominator * maximum) / denominator can   */ \
+  /* be used to avoid the overflow in most typical cases (though it still has the possibility to).       */ \
+  return min(numerator, denominator * maximum) / denominator;    \
+}
+
+GENERIC_CLAMPED_MAXIMUM_POSITIVE_DIVIDE(float16_t, float16_t)
+GENERIC_CLAMPED_MAXIMUM_POSITIVE_DIVIDE(float, float)
+GENERIC_CLAMPED_MAXIMUM_POSITIVE_DIVIDE(f16vec3, float16_t)
+GENERIC_CLAMPED_MAXIMUM_POSITIVE_DIVIDE(vec3, float)
+
+// Performs a "safer" division operation than the safe division function by guarding
+// against both divisions by zero via a specified epsilon and most overflows to infinity
+// via a clamped maximum division.
+// Requirements:
+// Numerator and denominator must be greater than or equal to 0.
+#define GENERIC_SAFER_POSITIVE_DIVIDE(type, clampType)                      \
+type saferPositiveDivide(                                                   \
+  type numerator, type denominator, clampType epsilon, clampType maximum)   \
+{                                                                           \
+  const type safeDenominator = max(denominator, epsilon);                   \
+                                                                            \
+  return clampedMaximumPositiveDivide(numerator, safeDenominator, maximum); \
 }
 
 GENERIC_SAFER_POSITIVE_DIVIDE(float16_t, float16_t)
 GENERIC_SAFER_POSITIVE_DIVIDE(float, float)
 GENERIC_SAFER_POSITIVE_DIVIDE(f16vec3, float16_t)
 GENERIC_SAFER_POSITIVE_DIVIDE(vec3, float)
+
+// Performs a multiplication operation which clamps the result based on a specified maximum value to guard against overflows to infinity.
+// Requirements:
+// a and b must be greater than or equal to 0.
+#define GENERIC_CLAMPED_MAXIMUM_POSITIVE_MULTIPLY(type, clampType)     \
+type clampedMaximumPositiveMultiply(type a, type b, clampType maximum) \
+{                                                                      \
+  return min(a * b, type(maximum));                                    \
+}
+
+GENERIC_CLAMPED_MAXIMUM_POSITIVE_MULTIPLY(float16_t, float16_t)
+GENERIC_CLAMPED_MAXIMUM_POSITIVE_MULTIPLY(float, float)
+GENERIC_CLAMPED_MAXIMUM_POSITIVE_MULTIPLY(f16vec3, float16_t)
+GENERIC_CLAMPED_MAXIMUM_POSITIVE_MULTIPLY(vec3, float)
 
 // Normalizes a vector "safely" by falling back to another (ideally normalized) vector in the case of
 // an inability to normalize (to avoid NaNs from normalization). Also calculates

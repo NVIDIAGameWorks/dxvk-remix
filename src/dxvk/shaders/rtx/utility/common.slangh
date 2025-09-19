@@ -62,45 +62,37 @@ GENERIC_INTERPOLATE_HIT_ATTRIBUTE(f16vec4)
 GENERIC_INTERPOLATE_HIT_ATTRIBUTE(vec2)
 GENERIC_INTERPOLATE_HIT_ATTRIBUTE(vec3)
 
-bool isValidValue(float value)
-{
-  return !(isnan(value) || isinf(value));
+#define GENERIC_SCALAR_SANITIZE(type)          \
+bool isValidValue(type value)                  \
+{                                              \
+  return !(isnan(value) || isinf(value));      \
+}                                              \
+                                               \
+type sanitize(type val, type defaultVal)       \
+{                                              \
+  return isValidValue(val) ? val : defaultVal; \
 }
 
-bool isValidValue(vec2 value)
-{
-  return !(any(isnan(value)) || any(isinf(value)));
+GENERIC_SCALAR_SANITIZE(float)
+GENERIC_SCALAR_SANITIZE(float16_t)
+
+#define GENERIC_VECTOR_SANITIZE(type)               \
+bool isValidValue(type value)                       \
+{                                                   \
+  return !(any(isnan(value)) || any(isinf(value))); \
+}                                                   \
+                                                    \
+type sanitize(type val, type defaultVal)            \
+{                                                   \
+  return isValidValue(val) ? val : defaultVal;      \
 }
 
-bool isValidValue(vec3 value)
-{
-  return !(any(isnan(value)) || any(isinf(value)));
-}
-
-bool isValidValue(vec4 value)
-{
-  return !(any(isnan(value)) || any(isinf(value)));
-}
-
-float sanitize(float val, float defaultVal)
-{
-  return isValidValue(val) ? val : defaultVal;
-}
-
-vec2 sanitize(vec2 val, vec2 defaultVal)
-{
-  return isValidValue(val) ? val : defaultVal;
-}
-
-vec3 sanitize(vec3 val, vec3 defaultVal)
-{
-  return isValidValue(val) ? val : defaultVal;
-}
-
-vec4 sanitize(vec4 val, vec4 defaultVal)
-{
-  return isValidValue(val) ? val : defaultVal;
-}
+GENERIC_VECTOR_SANITIZE(vec2)
+GENERIC_VECTOR_SANITIZE(vec3)
+GENERIC_VECTOR_SANITIZE(vec4)
+GENERIC_VECTOR_SANITIZE(f16vec2)
+GENERIC_VECTOR_SANITIZE(f16vec3)
+GENERIC_VECTOR_SANITIZE(f16vec4)
 
 // Selects a component of a vector to avoid array indexing (which may cause spilling to local memory).
 #define GENERIC_SELECT_COMPONENT(componentType, vectorType)           \

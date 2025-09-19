@@ -155,7 +155,9 @@ Ray sampleDirection(
   // dividing by 0. When the lobe sample PDF is 0, the throughput should also be 0 to indicate no valid sample was taken (much
   // like the Surface Material Interaction's sample throughput will be set to 0 to indicate no valid direction sample was taken).
   if (surfaceMaterialInteractionLobeSample.pdf != 0.0f) {
-    throughput *= surfaceMaterialInteractionSample.throughput / surfaceMaterialInteractionLobeSample.pdf;
+    const vec3 materialSampleThroughput = vec3(surfaceMaterialInteractionSample.throughput / surfaceMaterialInteractionLobeSample.pdf);
+
+    throughput = clampedMaximumPositiveMultiply(throughput, materialSampleThroughput, kThroughputClampedDivisionMaximum);
   } else {
     throughput = vec3(0.0f);
   }

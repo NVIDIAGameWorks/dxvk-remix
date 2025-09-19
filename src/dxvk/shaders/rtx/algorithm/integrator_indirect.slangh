@@ -22,6 +22,7 @@
 #pragma once
 
 #include "rtx/algorithm/path_state.slangh"
+#include "rtx/utility/math.slangh"
 #include "rtx/utility/noise.slangh"
 #include "rtx/utility/color.slangh"
 #include "rtx/utility/packing.slangh"
@@ -79,13 +80,13 @@ PathState pathStateCreateEmpty(GeometryFlags geometryFlags)
 // Helper function to accumulate attenuation or other throughputs into the Path State throughput.
 void accumulateThroughput(inout PathState pathState, vec3 throughput)
 {
-  pathState.throughput *= throughput;
+  pathState.throughput = clampedMaximumPositiveMultiply(pathState.throughput, throughput, kThroughputClampedDivisionMaximum);
 }
 
 // Overload for accumulating throughput for single-channel values.
 void accumulateThroughput(inout PathState pathState, float throughput)
 {
-  pathState.throughput *= throughput;
+  accumulateThroughput(pathState, vec3(throughput));
 }
 
 // Helper function to accumulate radiance the Path State.
@@ -733,14 +734,14 @@ void integratePathVertex(
       pathState.continuePath = false;
       return;
     }
-    
+
     // Check for path termination
     // Note: Bounce iteration refers to the index of the current vertex in the path,
     // 0 = Primary Hit, 1 = 1st Indirect Hit (1 bounce), etc. The decision to terminate here
     // represents if the path should terminate at this current bounce iteration and not
     // cast another ray.
     pathState.continuePath = true;
-    
+
     if (pathState.bounceIteration >= pathState.pathMaxBounces)
     {
       // Note: Don't continue paths past the maximum number of requested bounces.
@@ -773,26 +774,29 @@ void integratePathVertex(
         continuationThroughput,
         opaqueSurfaceMaterialInteraction.isotropicRoughness,
         rayInteraction.hitDistance / pathState.accumulatedHitDistance);
-    
+
       const float continueSample = getNextSampleBlueNoise(randomState);
       // Note: <= used to ensure path never continues if the probability is 0 (and to avoid NaNs in the
       // throughput when the probability is divided into it).
       const bool terminate = continueProbability <= continueSample;
 
       if (terminate)
-      {    
+      {
         pathState.continuePath = false;
-      } 
+      }
       else
       {
         // Note: Factor the probability of continuing the path into the throughput. This causes odd brightness
         // in denoising when the continue probability is very low, but this math has been validated to be
         // correct as far as I can tell.
-        continuationThroughput /= continueProbability;
+        // Clamped division used here rather than saferPositiveDivide as this branch should never be taken if
+        // the continue probability is zero, meaning that only an overflow to infinity should be possible in
+        // normal circumstances if the continue probability is very small.
+        continuationThroughput = clampedMaximumPositiveDivide(continuationThroughput, continueProbability, kThroughputClampedDivisionMaximum);
       }
     }
 
-#if !ENABLE_NRC    
+#if !ENABLE_NRC
     // Steal samples from restir gi
     if (cb.enableReSTIRGI
       && cb.enableReSTIRGISampleStealing > 0

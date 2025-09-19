@@ -300,6 +300,11 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
   // is technically more precise as well.
 
   const vec3 hitPosition = interpolateHitAttribute(worldPositions, bary);
+  // Note: Much like normals and texture coordinates hit positions may be invalid and could be sanitized here after interpolation, but there is not as much reason to.
+  // Invalid positions will simply move a vertex far away or "delete" it entirely depending on how the hardware handles it which while will result in obvious visual
+  // glitches is pretty much the same as would happen if the value was sanitized to 0. As such there's not much improvement to the overall correctness of Remix to do so
+  // and it is better to avoid doing so to save performance. If invalid positions are causing invalid values to propagate into other buffers in the future though
+  // then sanitization may have to be done.
 
   surfaceInteraction.position = hitPosition;
 
@@ -359,19 +364,26 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
         normals[i].z = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 2);
       }
     }
-  
+
     // Note: Fall back to the triangle normal when an interpolated normal cannot be derived. Note this will not produce a
     // valid normal for cases where the positional data itself is NaN/Inf, but these cases likely indicate corruption in
     // the original data to begin with.
     const vec3 objectInterpolatedNormal = safeNormalize(interpolateHitAttribute(normals, bary), triangleNormal);
+    // Note: This is done due to input data from source applications potentially containing NaNs/Infs and thus needing to be sanitized before being
+    // used in Remix. This is done here rather than earlier when normals are read from the buffer to only sanitize once rather than for
+    // each of the 3 vertex normals. Do note however that keeping this as close to the interpolation step as possible is important to avoid
+    // hiding invalid values from other logic in Remix.
+    const f16vec3 sanitizedObjectInterpolatedNormal = sanitize(objectInterpolatedNormal, triangleNormal);
   
     // Note: Second normalization required as vector may be scaled through a normal transformation
-    const f16vec3 interpolatedNormal = f16vec3(normalize(mul(surface.normalObjectToWorld, objectInterpolatedNormal)));
+    const f16vec3 interpolatedNormal = f16vec3(normalize(mul(surface.normalObjectToWorld, sanitizedObjectInterpolatedNormal)));
     // Really the only reason to flip this normal is for double-sided geometry.  Do not flip based on view vector!
     const bool interpolatedNormalSameDirection = dot(interpolatedNormal, flippedTriangleNormal) >= float16_t(0.0);
     const f16vec3 flippedInterpolatedNormal = interpolatedNormalSameDirection ? interpolatedNormal : -interpolatedNormal;
 
-    surfaceInteraction.interpolatedNormal = getBentNormal(surfaceInteraction.triangleNormal, flippedInterpolatedNormal, ray.direction);
+    const f16vec3 bentInterpolatedNormal = getBentNormal(surfaceInteraction.triangleNormal, flippedInterpolatedNormal, ray.direction);
+
+    surfaceInteraction.interpolatedNormal = bentInterpolatedNormal;
   }
 
   // Compute motion
@@ -478,7 +490,14 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
       texcoords[i] = transformedTextureCoordinate;
     }
 
-    surfaceInteraction.textureCoordinates = interpolateHitAttribute(texcoords, bary);
+    const vec2 interpolatedTextureCoordinates = interpolateHitAttribute(texcoords, bary);
+    // Note: This is done due to input data from source applications potentially containing NaNs/Infs and thus needing to be sanitized before being
+    // used in Remix. This is done here rather than earlier when texture coordinates are read from the buffer to only sanitize once rather than for
+    // each of the 3 texture coordinate values. Do note however that keeping this as close to the interpolation step as possible is important to avoid
+    // hiding invalid values from other logic in Remix.
+    const vec2 sanitizedInterpolatedTextureCoordinates = sanitize(interpolatedTextureCoordinates, vec2(0.0f, 0.0f));
+
+    surfaceInteraction.textureCoordinates = sanitizedInterpolatedTextureCoordinates;
 
     if (GenerateTangents)
     {
