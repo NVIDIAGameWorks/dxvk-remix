@@ -85,17 +85,18 @@ GeometryResolverState geometryResolverStateCreateEmpty(u16vec2 pixelCoordinate)
 
 vec2 calcMotionVectorForRayMiss(const uvec2 pixelCoordinate)
 {
-   const float farPlane = cameraGetFarPlane(cb.camera);
+  // Note: Slightly incorrect to be using the current frame's camera for deriving the previous NDC values if the resolution changes between
+  // frames, but this case shouldn't really be a major concern.
+  const Ray previousCameraRay = rayCreatePrimaryFromPixel(cb.camera, pixelCoordinate, false);
+  // Note: 0 used for w component here to represent a pure direction quantity (as misses are purely directional).
+  vec4 prevNDC = mul(cb.camera.prevWorldToProjection, vec4(previousCameraRay.direction, 0.0f));
+  prevNDC /= prevNDC.w;
 
-   const Ray originalCameraRay = rayCreatePrimaryFromPixel(cb.camera, pixelCoordinate, false);
-   const vec3 virtualHitPosition = rayEvaluate(originalCameraRay, farPlane);
-   vec4 prevNDC = mul(cb.camera.prevWorldToProjection, vec4(virtualHitPosition, 1.0f));
-   prevNDC /= prevNDC.w;
+  const vec2 ndc = cameraPixelCoordinateToNDC(cb.camera, pixelCoordinate);
+  const vec2 motionVectorNDC = prevNDC.xy - ndc.xy;
+  const vec2 motionVectorUVOffset = motionVectorNDC * vec2(0.5, -0.5);
 
-   vec2 ndc = cameraPixelCoordinateToNDC(cb.camera, pixelCoordinate);
-   vec2 motionVectorNDC = prevNDC.xy - ndc.xy;
-   vec2 motionVectorUVOffset = motionVectorNDC * vec2(0.5, -0.5);
-   return motionVectorUVOffset * cb.camera.resolution;
+  return motionVectorUVOffset * cb.camera.resolution;
 }
 
 // Geometry Resolver Vertex Functions

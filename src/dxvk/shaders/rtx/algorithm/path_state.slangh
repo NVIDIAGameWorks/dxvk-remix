@@ -35,9 +35,12 @@ static const uint kRNGOffsetSampleFirstBounceDirection = 0;
 // RNG state is not carried between Raygen and closest hit shaders (CHS), so RNG state is recreated
 // at CHS start with a following explicit offset
 static const uint kRNGOffsetSampleClosestHitShader = 4;
-
 // Approximate number of rng samples per bounce
 static const uint kApproxRNGSamplesPerBounce = 16;
+// The maximum value to use in throughput-related division operations to prevent an overflow to infinity.
+// This effectively will clamp any throughput values higher than this value to this value during any division
+// operations as well. Set similarly to the materialMaximum value just below the limit of 16 bit floats.
+static const float16_t kThroughputClampedDivisionMaximum = float16_t(65000.0);
 
 #define NEE_CACHE_STATE_DISABLED 0
 #define NEE_CACHE_STATE_LAST_ENABLED 1

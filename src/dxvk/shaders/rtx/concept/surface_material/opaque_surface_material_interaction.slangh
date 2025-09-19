@@ -1780,7 +1780,8 @@ SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcApprox
   // Calculate the weight
   const f16vec3 fresnel = evalOpaqueSchlickFresnel(opaqueSurfaceMaterialInteraction.baseReflectivity, outputDirectionDotMicrofacetNormal);
   const float16_t normalDistributionFunction = evalGGXNormalDistributionIsotropic(opaqueSurfaceMaterialInteraction.isotropicRoughness, normalDotMicrofacetNormal);
-  const float16_t visibility = float16_t(1) / (float16_t(4) * normalDotInputDirection * normalDotOutputDirection);
+  // Note: Actual shadowing/masking (G) function omitted from visibility calculation for a cheaper approximation.
+  const float16_t visibility = safePositiveDivide(float16_t(1), float16_t(4) * normalDotInputDirection * normalDotOutputDirection, materialEpsilon);
   const f16vec3 diffuseReflectionWeight = opaqueSurfaceMaterialInteraction.albedo;
   const f16vec3 specularReflectionWeight = min(normalDistributionFunction * visibility * fresnel, f16vec3(float16Max));
 
