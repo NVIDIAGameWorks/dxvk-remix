@@ -1674,13 +1674,13 @@ namespace dxvk {
       RtxOptions::useDenoiserReferenceMode();
   }
 
-  void DebugView::maxValueOnChange() {
+  void DebugView::maxValueOnChange(DxvkDevice* device) {
     // If the max value is negative, we want the min value to be further away from 0.
     const float factor = maxValue() > 0 ? 0.99999f : 1.00001f;
     minValueObject().setMaxValue(maxValue() * factor);
   }
 
-  void DebugView::minValueOnChange() {
+  void DebugView::minValueOnChange(DxvkDevice* device) {
     // If the min value is negative, we want the max value to be closer to 0.
     const float factor = minValue() > 0 ? 1.00001f : 0.99999f;
     maxValueObject().setMinValue(minValue() * factor);

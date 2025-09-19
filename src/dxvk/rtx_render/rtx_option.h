@@ -40,6 +40,8 @@
 #endif
 
 namespace dxvk {
+  class DxvkDevice;
+  
   // RtxOption refers to a serializable option, which can be of a basic type (i.e. int) or a class type (i.e. vector hash value)
   // On initialization, it retrieves a value from a Config object and add itself to a global list so that all options can be serialized 
   // into a file when requested.
@@ -100,7 +102,7 @@ namespace dxvk {
     std::optional<GenericValue> minValue;
     std::optional<GenericValue> maxValue;
     uint32_t flags = 0;
-    std::function<void()> onChangeCallback;
+    std::function<void(DxvkDevice* device)> onChangeCallback;
 
     RtxOptionImpl(XXH64_hash_t hash, const char* optionName, const char* optionCategory, OptionType optionType, const char* optionDescription) :
       hash(hash),
@@ -132,7 +134,7 @@ namespace dxvk {
       getDirtyRtxOptionMap()[hash] = this;
     }
 
-    void invokeOnChangeCallback() const;
+    void invokeOnChangeCallback(DxvkDevice* device) const;
 
     // Returns true if the value was changed
     bool clampValue(ValueType type);
@@ -173,7 +175,9 @@ namespace dxvk {
     std::optional<T> minValue;
     std::optional<T> maxValue;
 
-    typedef void (*RtxOptionOnChangeCallback)();
+    // NOTE: onChange handlers can be invoked before the DxvkDevice is created,
+    // so these callbacks need to null check the device.
+    typedef void (*RtxOptionOnChangeCallback)(DxvkDevice* device);
     RtxOptionOnChangeCallback onChangeCallback = nullptr;
   };
 
@@ -321,7 +325,7 @@ namespace dxvk {
     // This should be called at the very end of the frame in the dxvk-cs thread.
     // Before the first frame is rendered, it also needs to be called at least once during initialization.
     // It's currently called twice during init, due to multiple sections that set many Options then immediately use them.
-    static void applyPendingValues() {
+    static void applyPendingValues(DxvkDevice* device) {
       std::unique_lock<std::mutex> lock(RtxOptionImpl::s_updateMutex);
       
       auto& dirtyOptions = RtxOptionImpl::getDirtyRtxOptionMap();
@@ -339,7 +343,7 @@ namespace dxvk {
 
       // Invoke onChange callbacks after promoting all the values, so that newly set values will be updated at the end of the next frame
       for (RtxOptionImpl* rtxOption : dirtyOptionsVector) {
-        rtxOption->invokeOnChangeCallback();
+        rtxOption->invokeOnChangeCallback(device);
       }
     }
 
@@ -397,6 +401,7 @@ namespace dxvk {
           pImpl->valueList[i].value = 0;
           *reinterpret_cast<BasicType*>(&pImpl->valueList[i].value) = value;
         }
+        initializeClamping(args);
       }
     }
 
@@ -408,6 +413,7 @@ namespace dxvk {
         for (int i = 0; i < (int)RtxOptionImpl::ValueType::Count; i++) {
           pImpl->valueList[i].pointer = new ClassType(value);
         }
+        initializeClamping(args);
       }
     }
 
@@ -457,17 +463,6 @@ namespace dxvk {
         pImpl->flags = args.flags;
         // Need to wrap this so we can cast it to the correct type
         pImpl->onChangeCallback = args.onChangeCallback;
-        if constexpr (isClampable()) {
-          if (args.minValue.has_value()) {
-            setMinValue(args.minValue.value());
-          }
-          if (args.maxValue.has_value()) {
-            setMaxValue(args.maxValue.value());
-          }
-        } else if (args.minValue.has_value() || args.maxValue.has_value()) {
-          // If this happens on an option that should be clampable, the type probably needs to be added to isClampable(), and supported in the clampValue() method.
-          assert(false && "RtxOption - args.minValue and args.maxValue are not supported for types not included in isClampable().");
-        }
         globalRtxOptions[optionHash] = pImpl;
         return true;
       } else {
@@ -475,6 +470,21 @@ namespace dxvk {
         // If the variable already exists, use the existing object
         pImpl = pOption->second;
         return false;
+      }
+    }
+
+    // This needs to be done after the valueList is initialized in the constructor.
+    void initializeClamping(RtxOptionArgs<T> args) {
+      if constexpr (isClampable()) {
+        if (args.minValue.has_value()) {
+          setMinValue(args.minValue.value());
+        }
+        if (args.maxValue.has_value()) {
+          setMaxValue(args.maxValue.value());
+        }
+      } else if (args.minValue.has_value() || args.maxValue.has_value()) {
+        // If this happens on an option that should be clampable, the type probably needs to be added to isClampable(), and supported in the clampValue() method.
+        assert(false && "RtxOption - args.minValue and args.maxValue are not supported for types not included in isClampable().");
       }
     }
 
@@ -505,7 +515,7 @@ namespace dxvk {
       } else {
         // For non-POD types (vectors, etc.), store as pointer
         if (!targetValue.has_value()) {
-          targetValue = std::optional<GenericValue>();
+          targetValue = std::optional<GenericValue>(GenericValue{});
           // Note: This is a `new` with no matching `delete`. This is safe because the
           // RtxOptionImpl object is never destroyed, and follows the pattern used in the constructor.
           targetValue.value().pointer = new T();

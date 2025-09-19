@@ -189,9 +189,9 @@ namespace dxvk {
     }
   }
 
-  void RtxOptionImpl::invokeOnChangeCallback() const {
+  void RtxOptionImpl::invokeOnChangeCallback(DxvkDevice* device) const {
     if (onChangeCallback) {
-      onChangeCallback();
+      onChangeCallback(device);
     }
   }
 
