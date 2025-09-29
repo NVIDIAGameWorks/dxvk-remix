@@ -1104,7 +1104,9 @@ namespace dxvk {
 
     ImGui::SameLine();
     if (ImGui::Button("Reset Settings")) {
-      RtxOptions::reset();
+      for (auto& optionLayer : RtxOptionImpl::getRtxOptionLayerMap()) {
+        optionLayer.setEnabled(false);
+      }
     }
 
     ImGui::SameLine();
@@ -1975,6 +1977,54 @@ namespace dxvk {
         ImGui::Unindent();
       }
 #endif
+
+      if (ImGui::CollapsingHeader("Option Layers")) {
+        ImGui::Indent();
+
+        if (ImGui::Button("Reset runtime settings")) {
+          // Remove all run-time changed settings
+          RtxOptionLayer::setResetSettings(true);
+        }
+
+        uint32_t optionLayerCounter = 1;
+        for (auto& optionLayer : RtxOptionImpl::getRtxOptionLayerMap()) {
+          // Runtime option layer priority is reserved for real-time user changes.
+          // These layers should not be modified through the GUI.
+          if (optionLayer.getPriority() != RtxOptionLayer::s_runtimeOptionLayerPriority) {
+            ImGui::Dummy(ImVec2(0.0f, 5.0f));
+            const std::string optionLayerText = std::to_string(optionLayerCounter++) + ". " + optionLayer.getName();
+            const std::string optionLayerStrengthText = optionLayer.getName() + " Strength";
+            if (ImGui::Checkbox(optionLayerText.c_str(), &optionLayer.isEnabledRef())) {
+              optionLayer.setDirty(true);
+            }
+
+            if (IMGUI_ADD_TOOLTIP(ImGui::SliderFloat(optionLayerStrengthText.c_str(), &optionLayer.getBlendStrengthRef(), 0.0f, 1.0f),
+                                  "Adjusts the blending strength of this option layer (0 = off, 1 = full effect).")) {
+              optionLayer.setBlendStrengthDirty(true);
+            }
+
+            if (ImGui::CollapsingHeader((optionLayer.getName() + " Details").c_str(), collapsingHeaderClosedFlags)) {
+              ImGui::Indent();
+              const std::string priorityText = "Priority: " + std::to_string(optionLayer.getPriority());
+              ImGui::Text(priorityText.c_str());
+              if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(
+                  "Layers are applied starting with the lowest priority layer, ending with the highest.\n"
+                  "Each layer overrides the values written before it.\n"
+                  "If a layer's blendWeight is not 1 and the option is a float or Vector type,\n"
+                  "then the values will be calculated as LERP(previousValue, layerValue, blendWeight).");
+              }
+              for (const auto& option : optionLayer.getConfig().getOptions()) {
+                const std::string optionText = option.first + "=" + option.second;
+                ImGui::TextWrapped(optionText.c_str());
+              }
+              ImGui::Unindent();
+            }
+          }
+        }
+
+        ImGui::Unindent();
+      }
     }
 
     ImGui::PopItemWidth();

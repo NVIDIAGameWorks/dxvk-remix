@@ -694,6 +694,7 @@ namespace dxvk {
     getSceneManager().clearFogState();
 
     // apply changes to RtxOptions after the frame has ended
+    RtxOption<bool>::applyPendingValuesOptionLayers();
     RtxOption<bool>::applyPendingValues(m_device.ptr());
 
     // Update stats

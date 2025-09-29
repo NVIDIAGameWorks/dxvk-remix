@@ -82,12 +82,141 @@ namespace dxvk {
     }
     return ss.str();
   }
-  
+
+  struct GenericValueWrapper {
+    GenericValueWrapper(OptionType optionType) : type(optionType) {
+      construct();
+
+      switch (type) {
+      case OptionType::HashSet:
+        data.hashSet = &storage.hashSet;
+        break;
+      case OptionType::HashVector:
+        data.hashVector = &storage.hashVector;
+        break;
+      case OptionType::IntVector:
+        data.intVector = &storage.intVector;
+        break;
+      case OptionType::VirtualKeys:
+        data.virtualKeys = &storage.virtualKeys;
+        break;
+      case OptionType::Vector2:
+        data.v2 = &storage.v2;
+        break;
+      case OptionType::Vector3:
+        data.v3 = &storage.v3;
+        break;
+      case OptionType::Vector2i:
+        data.v2i = &storage.v2i;
+        break;
+      case OptionType::String:
+        data.string = &storage.string;
+        break;
+      case OptionType::Vector4:
+        data.v4 = &storage.v4;
+        break;
+      default:
+        data.value = 0;
+        break;
+      }
+    }
+
+    ~GenericValueWrapper() {
+      destruct();
+    }
+
+    GenericValue data;
+  private:
+    OptionType type;
+
+    union Storage {
+      fast_unordered_set hashSet;
+      std::vector<XXH64_hash_t> hashVector;
+      std::vector<int32_t> intVector;
+      VirtualKeys virtualKeys;
+      std::string string;
+      Vector2 v2;
+      Vector3 v3;
+      Vector2i v2i;
+      Vector4 v4;
+
+      Storage() { }
+      ~Storage() { }
+    } storage;
+
+    void construct() {
+      switch (type) {
+      case OptionType::HashSet:      new (&storage.hashSet) fast_unordered_set(); break;
+      case OptionType::HashVector:   new (&storage.hashVector) std::vector<XXH64_hash_t>(); break;
+      case OptionType::IntVector:    new (&storage.intVector) std::vector<int32_t>(); break;
+      case OptionType::VirtualKeys:  new (&storage.virtualKeys) VirtualKeys(); break;
+      case OptionType::String:       new (&storage.string) std::string(); break;
+      case OptionType::Vector2:      new (&storage.v2) Vector2(); break;
+      case OptionType::Vector3:      new (&storage.v3) Vector3(); break;
+      case OptionType::Vector2i:     new (&storage.v2i) Vector2i(); break;
+      case OptionType::Vector4:      new (&storage.v4) Vector4(); break;
+      default: break;
+      }
+    }
+
+    void destruct() {
+      switch (type) {
+      case OptionType::HashSet:      storage.hashSet.~fast_unordered_set(); break;
+      case OptionType::HashVector:   storage.hashVector.~vector(); break;
+      case OptionType::IntVector:    storage.intVector.~vector(); break;
+      case OptionType::VirtualKeys:  storage.virtualKeys.~VirtualKeys(); break;
+      case OptionType::String:       storage.string.~basic_string(); break;
+      case OptionType::Vector2:      storage.v2.~Vector2(); break;
+      case OptionType::Vector3:      storage.v3.~Vector3(); break;
+      case OptionType::Vector2i:     storage.v2i.~Vector2i(); break;
+      case OptionType::Vector4:      storage.v4.~Vector4(); break;
+      default: break;
+      }
+    }
+  };
+
+  GenericValue createGenericValue(OptionType type) {
+    GenericValue value;
+    switch (type) {
+    case OptionType::HashSet:
+      value.hashSet = new fast_unordered_set();
+      break;
+    case OptionType::HashVector:
+      value.hashVector = new std::vector<XXH64_hash_t>();
+      break;
+    case OptionType::IntVector:
+      value.intVector = new std::vector<int32_t>();
+      break;
+    case OptionType::VirtualKeys:
+      value.virtualKeys = new VirtualKeys();
+      break;
+    case OptionType::Vector2:
+      value.v2 = new Vector2();
+      break;
+    case OptionType::Vector3:
+      value.v3 = new Vector3();
+      break;
+    case OptionType::Vector2i:
+      value.v2i = new Vector2i();
+      break;
+    case OptionType::String:
+      value.string = new std::string();
+      break;
+    case OptionType::Vector4:
+      value.v4 = new Vector4();
+      break;
+    default:
+      value.value = 0;
+      break;
+    }
+
+    return value;
+  }
+
   RtxOptionImpl::~RtxOptionImpl() {
     onChangeCallback = nullptr;
-    for (int i = 0; i < (int)ValueType::Count; i++) {
-      GenericValue& value = valueList[i];
 
+    auto releaseValue = [](GenericValue& value, const OptionType type) {
       switch (type) {
       case OptionType::HashSet:
         delete value.hashSet;
@@ -119,6 +248,15 @@ namespace dxvk {
       default:
         break;
       }
+    };
+
+    // Release option memory allocated for layers
+    for (auto& optionLayer : optionLayerValueQueue) {
+      releaseValue(optionLayer.second.value, type);
+    }
+
+    for (int i = 0; i < (int)ValueType::Count; i++) {
+      releaseValue(valueList[i], type);
     }
   }
 
@@ -261,10 +399,8 @@ namespace dxvk {
     return changed;
   }
 
-  void RtxOptionImpl::readOption(const Config& options, RtxOptionImpl::ValueType valueType) {
-    std::string fullName = getFullName();
+  void RtxOptionImpl::readValue(const Config& options, const std::string& fullName, GenericValue& value) {
     const char* env = environment == nullptr || strlen(environment) == 0 ? nullptr : environment;
-    auto& value = valueList[(int) valueType];
 
     switch (type) {
     case OptionType::Bool:
@@ -306,6 +442,12 @@ namespace dxvk {
     default:
       break;
     }
+  }
+
+  void RtxOptionImpl::readOption(const Config& options, RtxOptionImpl::ValueType valueType) {
+    const std::string fullName = getFullName();
+    auto& value = valueList[(int) valueType];
+    readValue(options, fullName, value);
 
     clampValue(valueType);
     
@@ -376,14 +518,96 @@ namespace dxvk {
     }
   }
 
+  void RtxOptionImpl::insertOptionLayerValue(const GenericValue& value, const uint32_t priority, const float blendStrength, const float blendStrengthThreshold) {
+    // Check if there's a same priority layer
+    for (const auto& optionLayerValue : optionLayerValueQueue) {
+      if (priority == optionLayerValue.second.priority) {
+        copyValue(value, optionLayerValue.second.value);
+        return;
+      }
+    }
+
+    // Only float or float based vectors are allowed to mix with other option layers
+    float layerBlendStrenth = blendStrength;
+    if (type != OptionType::Float && type != OptionType::Vector2 && type != OptionType::Vector3 && type != OptionType::Vector4) {
+      // For disallowed types, snap the strength to either 0.0f or 1.0f, based on whether it passes the strength threshold
+      if (blendStrength >= blendStrengthThreshold || priority == 0) {
+        layerBlendStrenth = 1.0f;
+      } else {
+        layerBlendStrenth = 0.0f;
+      }
+    }
+
+    GenericValue optionLayerValue = createGenericValue(type);
+    copyValue(value, optionLayerValue);
+
+    const PrioritizedValue newValue { optionLayerValue, priority, layerBlendStrenth };
+    auto [it, inserted] = optionLayerValueQueue.emplace(priority, newValue);
+    if (!inserted) {
+      Logger::warn("[RTX Option]: Duplicate priority " + std::to_string(priority) + " ignored (only first kept).");
+    }
+  }
+
+  void RtxOptionImpl::readOptionLayer(const RtxOptionLayer& optionLayer) {
+    GenericValueWrapper value(type);
+    const std::string fullName = getFullName();
+    // Only insert into queue when the option can be found in the config of option layer
+    if (optionLayer.getConfig().findOption(fullName.c_str())) {
+      readValue(optionLayer.getConfig(), fullName, value.data);
+      insertOptionLayerValue(value.data, optionLayer.getPriority(), optionLayer.getBlendStrength(), optionLayer.getBlendStrengthThreshold());
+      // When adding a new option layer, dirty current option
+      markDirty();
+    } else {
+      Logger::warn("[RTX Option] Attempted to read option that is not defined in the option layer.");
+    }
+  }
+
+  void RtxOptionImpl::disableLayerValue(const uint32_t priority) {
+    auto it = optionLayerValueQueue.find(priority);
+    if (it != optionLayerValueQueue.end()) {
+      // When removing a layer, dirty current option
+      markDirty();
+      optionLayerValueQueue.erase(it);
+    }
+  }
+
+  void RtxOptionImpl::disableTopLayer() {
+    if (!optionLayerValueQueue.empty()) {
+      optionLayerValueQueue.erase(optionLayerValueQueue.begin());
+    }
+  }
+
+  void RtxOptionImpl::updateLayerBlendStrength(const RtxOptionLayer& optionLayer) {
+    const std::string fullName = getFullName();
+    // Only update the strength when the option can be found in the config of option layer
+    if (optionLayer.getConfig().findOption(fullName.c_str())) {
+      // Find the option layer value that the strength needs to be updated (same priority)
+      for (auto& optionLayerValue : optionLayerValueQueue) {
+        if (optionLayer.getPriority() == optionLayerValue.second.priority) {
+          if (type == OptionType::Float || type == OptionType::Vector2 || type == OptionType::Vector3 || type == OptionType::Vector4) {
+            // Only float or float based vectors are allowed to mix with other option layers
+            optionLayerValue.second.blendStrength = optionLayer.getBlendStrength();
+          } else {
+            // For disallowed types, snap the strength to either 0.0f or 1.0f, based on whether it passes the strength threshold
+            if (optionLayer.getBlendStrength() >= optionLayer.getBlendStrengthThreshold()) {
+              optionLayerValue.second.blendStrength = 1.0f;
+            } else {
+              optionLayerValue.second.blendStrength = 0.0f;
+            }
+          }
+          return;
+        }
+      }
+    } else {
+      Logger::warn("[RTX Option] Attempted to update option that is not defined in the option layer.");
+    }
+  }
+
   bool RtxOptionImpl::isDefault() const {
     return isEqual(ValueType::Value, ValueType::DefaultValue);
   }
 
-  bool RtxOptionImpl::isEqual(ValueType a, ValueType b) const {
-    auto& aValue = valueList[(int) a];
-    auto& bValue = valueList[(int) b];
-
+  bool RtxOptionImpl::isEqual(const GenericValue& aValue, const GenericValue& bValue) const {
     switch (type) {
     case OptionType::Bool:
       return aValue.b == bValue.b;
@@ -421,8 +645,12 @@ namespace dxvk {
     case OptionType::Vector4:
       return *aValue.v4 == *bValue.v4;
       break;
-    }      
+    }
     return false;
+  }
+
+  bool RtxOptionImpl::isEqual(ValueType a, ValueType b) const {
+    return isEqual(valueList[(int) a], valueList[(int) b]);
   }
 
   void RtxOptionImpl::resetOption() {
@@ -442,57 +670,157 @@ namespace dxvk {
     markDirty();
   }
 
-  void RtxOptionImpl::copyValue(ValueType sourceLayer, ValueType targetLayer) {
-    const GenericValue& source = valueList[(int) sourceLayer];
-    GenericValue& value = valueList[(int) targetLayer];
-    
+  void RtxOptionImpl::copyValue(const GenericValue& source, GenericValue& target) {
     switch (type) {
     case OptionType::Bool:
-      value.b = source.b;
+      target.b = source.b;
       break;
     case OptionType::Int:
-      value.i = source.i;
+      target.i = source.i;
       break;
     case OptionType::Float:
-      value.f = source.f;
+      target.f = source.f;
       break;
     case OptionType::HashSet:
-      *value.hashSet = *source.hashSet;
+      *target.hashSet = *source.hashSet;
       break;
     case OptionType::HashVector:
-      *value.hashVector = *source.hashVector;
+      *target.hashVector = *source.hashVector;
       break;
     case OptionType::IntVector:
-      *value.intVector = *source.intVector;
+      *target.intVector = *source.intVector;
       break;
     case OptionType::VirtualKeys:
-      *value.virtualKeys = *source.virtualKeys;
+      *target.virtualKeys = *source.virtualKeys;
       break;
     case OptionType::Vector2:
-      *value.v2 = *source.v2;
+      *target.v2 = *source.v2;
       break;
     case OptionType::Vector3:
-      *value.v3 = *source.v3;
+      *target.v3 = *source.v3;
       break;
     case OptionType::Vector2i:
-      *value.v2i = *source.v2i;
+      *target.v2i = *source.v2i;
       break;
     case OptionType::String:
-      *value.string = *source.string;
+      *target.string = *source.string;
       break;
     case OptionType::Vector4:
-      *value.v4 = *source.v4;
+      *target.v4 = *source.v4;
       break;
     default:
       break;
     }
   }
 
+  void RtxOptionImpl::copyValue(ValueType source, ValueType target) {
+    copyValue(valueList[(int) source], valueList[(int) target]);
+  }
+
+  void RtxOptionImpl::addWeightedValue(const GenericValue& source, const float weight, GenericValue& target) {
+    switch (type) {
+    case OptionType::Float:
+      target.f += source.f * weight;
+      break;
+    case OptionType::Vector2:
+      *target.v2 += *source.v2 * weight;
+      break;
+    case OptionType::Vector3:
+      *target.v3 += *source.v3 * weight;
+      break;
+    case OptionType::Vector4:
+      *target.v4 += *source.v4 * weight;
+      break;
+    case OptionType::Bool:
+    case OptionType::Int:
+    case OptionType::HashSet:
+    case OptionType::HashVector:
+    case OptionType::IntVector:
+    case OptionType::VirtualKeys:
+    case OptionType::Vector2i:
+    case OptionType::String:
+      target = source;
+      break;
+    default:
+      break;
+    }
+  }
+
+  void RtxOptionImpl::copyValueToOptionLayer(ValueType source) {
+    const auto& sourceValue = valueList[(int) source];
+    // Ensure the top-most layer is the runtime layer, insert if missing.
+    if (optionLayerValueQueue.begin()->second.priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
+      // Insert runtime layer with full strength so runtime overrides win immediately.
+      insertOptionLayerValue(sourceValue, RtxOptionLayer::s_runtimeOptionLayerPriority, 1.0f, 1.0f);
+    } else {
+      // Runtime layer already present at top, update its value in-place.
+      copyValue(sourceValue, optionLayerValueQueue.begin()->second.value);
+    }
+  }
+
+  void RtxOptionImpl::copyOptionLayerToValue() {
+    GenericValue& optionValueTop = optionLayerValueQueue.begin()->second.value;
+    const auto& pendingValue = valueList[(int) RtxOptionImpl::ValueType::PendingValue];
+
+    if (optionLayerValueQueue.begin()->second.priority == RtxOptionLayer::s_runtimeOptionLayerPriority &&
+        !isEqual(pendingValue, optionValueTop)) {
+      // Sync the values that are changed at real-time to top option layer
+      copyValue(pendingValue, optionValueTop);
+#if RTX_OPTION_DEBUG_LOGGING
+      Logger::info(str::format("[RTX Option]: Different to pending option ", this->name,
+                               "\ntype: ", std::to_string((int) this->type),
+                               "\nbool: ", std::to_string(pendingValue.b), " ", std::to_string(optionValueTop.b),
+                               "\nint: ", std::to_string(pendingValue.i), " ", std::to_string(optionValueTop.i),
+                               "\nfloat: ", std::to_string(pendingValue.f), " ", std::to_string(optionValueTop.f)
+      ));
+#endif
+    }
+
+    /*
+      We use "throughput" here because blending (lerp) may happen across multiple layers.
+      The effective result is a nested lerp chain, e.g.: v = lerp(A, lerp(B, C))
+
+      Since we process layers from highest priority to lowest, we need throughput
+      to track how much weight remains for lower-priority layers.
+
+      Example (layers in priority order with blend strengths):
+          A: 0.2
+          B: 0.5
+          C: 1.0
+          D: 1.0
+
+      The naive evaluation is: v = lerp( lerp( lerp(D, C, 1.0), B, 0.5 ), A, 0.2 )
+
+      Because C has strength 1.0: lerp(D, C, 1.0) == C
+
+      So this simplifies to: v = lerp( lerp(C, B, 0.5), A, 0.2 )
+
+      Throughput ensures each layer's contribution is scaled correctly, and we can early-exit once a layer has blendStrength == 1.0
+      (since lower-priority layers won't affect the result).
+    */
+    GenericValueWrapper optionValue(type);
+    float throughput = 1.0f;
+    // Loop layers from highest priority to lowest to lerp the value across layers base on the blend strength of layers
+    for (const auto& optionLayer : optionLayerValueQueue) {
+      // Stop when the blend strength is larger than 1, because lerp(a, b, 1.0f) => b, we don't need to loop lower priority values
+      if (optionLayer.second.blendStrength >= 1.0f) {
+        addWeightedValue(optionLayer.second.value, throughput, optionValue.data);
+        break;
+      }
+
+      addWeightedValue(optionLayer.second.value, optionLayer.second.blendStrength * throughput, optionValue.data);
+      throughput *= (1.0f - optionLayer.second.blendStrength);
+    }
+
+    // Copy to valueList
+    copyValue(optionValue.data, valueList[(int) RtxOptionImpl::ValueType::Value]);
+  }
+
   bool RtxOptionImpl::writeMarkdownDocumentation(const char* outputMarkdownFilePath) {
     // Open the output file for writing
     std::ofstream outputFile(outputMarkdownFilePath);
     if (!outputFile.is_open()) {
-      Logger::err(str::format("[RTX info] RTX Option: Failed to open output file ", outputMarkdownFilePath, " for writing"));
+      Logger::err(str::format("[RTX Option]: Failed to open output file ", outputMarkdownFilePath, " for writing"));
       return false;
     }
 
@@ -684,7 +1012,48 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
     return s_dirtyOptions;
   }
 
+  RtxOptionImpl::RtxOptionLayerMap& RtxOptionImpl::getRtxOptionLayerMap() {
+    static RtxOptionLayerMap s_rtxOptionLayers = RtxOptionLayerMap();
+    return s_rtxOptionLayers;
+  }
+
   bool writeMarkdownDocumentation(const char* outputMarkdownFilePath) {
     return dxvk::RtxOptionImpl::writeMarkdownDocumentation(outputMarkdownFilePath);
   }
+
+  // Option Layer
+  bool RtxOptionLayer::s_resetRuntimeSettings = false;
+
+  RtxOptionLayer::RtxOptionLayer(const std::string& configPath, const uint32_t priority, const float blendStrength, const float blendThreshold)
+    : m_configName(configPath)
+    , m_enabled(true)
+    , m_dirty(false)
+    , m_priority(priority + s_userOptionLayerOffset)
+    , m_blendStrength(blendStrength)
+    , m_blendThreshold(blendThreshold)
+    , m_config(Config::getOptionLayerConfig(configPath)) {
+#if RTX_OPTION_DEBUG_LOGGING
+    Logger::info(str::format("[RTX Option]: Added user option layer: ", m_configName,
+                             "\nPriority: ", std::to_string(m_priority),
+                             "\nStrength: ", std::to_string(m_blendStrength)));
+#endif
+  }
+
+  RtxOptionLayer::RtxOptionLayer(const Config& config, const std::string& configName, const uint32_t priority, const float blendStrength, const float blendThreshold)
+    : m_configName(configName)
+    , m_enabled(true)
+    , m_dirty(false)
+    , m_config(config)
+    , m_priority(priority)
+    , m_blendStrength(blendStrength)
+    , m_blendThreshold(blendThreshold) {
+#if RTX_OPTION_DEBUG_LOGGING
+    Logger::info(str::format("[RTX Option]: Added app option layer: ", m_configName,
+                             "\nPriority: ", std::to_string(m_priority),
+                             "\nStrength: ", std::to_string(m_blendStrength)));
+#endif
+  }
+
+  RtxOptionLayer::~RtxOptionLayer() = default;
+
 }

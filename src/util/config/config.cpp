@@ -1468,6 +1468,11 @@ namespace dxvk {
   template Config Config::getConfig<Config::Type_App>(const std::string& adtlPath);
   template Config Config::getConfig<Config::Type_RtxUser>(const std::string& adtlPath);
   template Config Config::getConfig<Config::Type_RtxMod>(const std::string& adtlPath);
+
+  Config Config::getOptionLayerConfig(const std::string& configPath) {
+    Logger::info(str::format("Attempting to parse option layer: ", configPath, "..."));
+    return parseConfigFile(configPath);
+  }
   // NV-DXVK end 
 
   Config Config::getAppConfig(const std::string& appName) {
