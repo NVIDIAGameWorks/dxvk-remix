@@ -707,13 +707,13 @@ namespace dxvk {
       // Set config so that any rtx option initialized later will use the value in that config object
       // The start-up config contains the values from the code and dxvk.conf, only.
       RtxOption<bool>::setStartupConfig(m_config);
-      RtxOptionImpl::getRtxOptionLayerMap().insert(RtxOptionLayer(m_config, "dxvk.conf", 1, 1.0f, 1.0f));
+      RtxOptionImpl::addRtxOptionLayer(RtxOptionLayer(m_config, "dxvk.conf", 1, 1.0f, 1.0f));
       Logger::info("Set startup config.");
     } else if constexpr ((type == Config::Type_RtxUser) || (type == Config::Type_RtxMod)) {
       // Set custom config after the RTX user config has been merged into the config and
       // update the RTX options. Contains values from rtx.conf
       RtxOption<bool>::setCustomConfig(m_config);
-      RtxOptionImpl::getRtxOptionLayerMap().insert(RtxOptionLayer(m_config, "rtx.conf", 2, 1.0f, 1.0f));
+      RtxOptionImpl::addRtxOptionLayer(RtxOptionLayer(m_config, "rtx.conf", 2, 1.0f, 1.0f));
       Logger::info("Set custom config.");
     }
   }
