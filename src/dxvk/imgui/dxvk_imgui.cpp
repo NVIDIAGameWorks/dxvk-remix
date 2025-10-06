@@ -1994,12 +1994,18 @@ namespace dxvk {
             ImGui::Dummy(ImVec2(0.0f, 5.0f));
             const std::string optionLayerText = std::to_string(optionLayerCounter++) + ". " + optionLayer.getName();
             const std::string optionLayerStrengthText = optionLayer.getName() + " Strength";
+            const std::string optionLayerThresholdText = optionLayer.getName() + " Threshold";
             if (ImGui::Checkbox(optionLayerText.c_str(), &optionLayer.isEnabledRef())) {
               optionLayer.setDirty(true);
             }
 
             if (IMGUI_ADD_TOOLTIP(ImGui::SliderFloat(optionLayerStrengthText.c_str(), &optionLayer.getBlendStrengthRef(), 0.0f, 1.0f),
                                   "Adjusts the blending strength of this option layer (0 = off, 1 = full effect).")) {
+              optionLayer.setBlendStrengthDirty(true);
+            }
+
+            if (IMGUI_ADD_TOOLTIP(ImGui::SliderFloat(optionLayerThresholdText.c_str(), &optionLayer.getBlendThresholdRef(), 0.0f, 1.0f),
+                                  "Sets the blending strength threshold for this option layer. Only applicable to non-float variables. The option is applied only when the blend strength exceeds this threshold.")) {
               optionLayer.setBlendStrengthDirty(true);
             }
 
