@@ -114,21 +114,27 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentPropertySpec
   if (!prop.enumValues.empty()) {
     // For enum documentation, we need to combine everything into the property docstring.
     outputFile << "        \"description\": [\"" << escapeJsonString(prop.docString) << "\\n" << "Allowed values: ";
+    std::string defaultEnumValueString = "";
     for (const auto& enumValue : prop.enumValues) { 
       outputFile << " - " << enumValue.first << ": " << enumValue.second.docString << "\\n ";
+      if (enumValue.second.value == prop.defaultValue) {
+        defaultEnumValueString = enumValue.first;
+      }
     }
     outputFile << "\"]," << std::endl;
+    outputFile << "        \"type\": \"token\"," << std::endl;
+
+    outputFile << "        \"default\": \"" << defaultEnumValueString << "\"," << std::endl;
   } else {
     outputFile << "        \"description\": [\"" << escapeJsonString(prop.docString) << "\"]," << std::endl;
-  }
-  outputFile << "        \"uiName\": \"" << escapeJsonString(prop.uiName) << "\"," << std::endl;
-  outputFile << "        \"type\": \"" << propertyTypeToOgnType(prop.type) << "\"";
+    outputFile << "        \"type\": \"" << propertyTypeToOgnType(prop.type) << "\"," << std::endl;
 
-  // Target relationships don't have default values in OGN
-  if (prop.type != RtComponentPropertyType::Prim) {
-    outputFile << "," << std::endl;
-    outputFile << "        \"default\": " << getDefaultValueAsJson(prop.defaultValue, prop.type);
+    // Target relationships don't have default values in OGN
+    if (prop.type != RtComponentPropertyType::Prim) {
+      outputFile << "        \"default\": " << getDefaultValueAsJson(prop.defaultValue, prop.type) << "," << std::endl;
+    }
   }
+
 
   // Add metadata if available
   bool hasMetadata = false;
@@ -136,7 +142,6 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentPropertySpec
       prop.type == RtComponentPropertyType::Color3 ||
       prop.type == RtComponentPropertyType::Color4) {
     
-    outputFile << "," << std::endl;
     outputFile << "        \"metadata\": {" << std::endl;
     
     // Add uiType for color properties
@@ -161,16 +166,17 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentPropertySpec
     }
     
     outputFile << std::endl;
-    outputFile << "        }";
+    outputFile << "        }," << std::endl;
   }
 
   // Optional properties
   if (prop.optional) {
-    outputFile << "," << std::endl;
-    outputFile << "        \"optional\": true";
+    outputFile << "        \"optional\": true," << std::endl;
   }
 
-  outputFile << std::endl;
+  outputFile << "        \"uiName\": \"" << escapeJsonString(prop.uiName) << "\"" << std::endl;
+
+
   outputFile << "      }";
   if (!isLast) {
     outputFile << ",";
@@ -205,6 +211,7 @@ bool writeOGNSchema(const RtComponentSpec* spec, const char* outputFolderPath) {
   outputFile << "    \"version\": " << spec->version << "," << std::endl;
   outputFile << "    \"uiName\": \"" << escapeJsonString(spec->uiName) << "\"," << std::endl;
   outputFile << "    \"language\": \"python\"," << std::endl;
+  outputFile << "    \"categoryDefinitions\": \"config/CategoryDefinition.json\"," << std::endl;
   outputFile << "    \"categories\": \"" << escapeJsonString(spec->categories) << "\"," << std::endl;
 
   // Separate properties by IO type
@@ -236,18 +243,19 @@ bool writeOGNSchema(const RtComponentSpec* spec, const char* outputFolderPath) {
     outputFile << std::endl;
   }
   
+  // Disabled the state section - this shows up as editable properties in the Toolkit UI, and filtering them there is non-trivial.
   // Write state section
-  if (!states.empty()) {
-    outputFile << "    \"state\": {" << std::endl;
-    for (size_t i = 0; i < states.size(); ++i) {
-      writePropertyToOGN(outputFile, *states[i], i == states.size() - 1);
-    }
-    outputFile << "    }";
-    if (!outputs.empty()) {
-      outputFile << ",";
-    }
-    outputFile << std::endl;
-  }
+  // if (!states.empty()) {
+  //   outputFile << "    \"state\": {" << std::endl;
+  //   for (size_t i = 0; i < states.size(); ++i) {
+  //     writePropertyToOGN(outputFile, *states[i], i == states.size() - 1);
+  //   }
+  //   outputFile << "    }";
+  //   if (!outputs.empty()) {
+  //     outputFile << ",";
+  //   }
+  //   outputFile << std::endl;
+  // }
   
   // Write outputs section
   if (!outputs.empty()) {
@@ -282,9 +290,16 @@ bool writePythonStub(const RtComponentSpec* spec, const char* outputFolderPath) 
 
   std::ofstream& outputFile = *outputFileHolder;
 
-  outputFile << "from lightspeed.trex.omni.graph.ogn.OgnTemplateNodePyDatabase import OgnTemplateNodePyDatabase" << std::endl;
   outputFile << "# GENERATED FILE - DO NOT EDIT" << std::endl;
   outputFile << "# This file is a stub for OmniGraph editor compatibility, and is not used by the Remix Runtime." << std::endl;
+  outputFile << "from __future__ import annotations" << std::endl;
+  outputFile << std::endl;
+  outputFile << "from typing import TYPE_CHECKING" << std::endl;
+  outputFile << std::endl;
+  outputFile << "if TYPE_CHECKING:" << std::endl;
+  outputFile << "    from lightspeed.trex.components.ogn.ogn.OgnTemplateNodePyDatabase import OgnTemplateNodePyDatabase" << std::endl;
+  outputFile << std::endl;
+  outputFile << std::endl;
   outputFile << "class "<< escapeJsonString(spec->getClassName()) << ":" << std::endl;
   outputFile << "    @staticmethod" << std::endl;
   outputFile << "    def compute(db: OgnTemplateNodePyDatabase):" << std::endl;
