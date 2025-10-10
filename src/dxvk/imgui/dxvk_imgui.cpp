@@ -36,6 +36,7 @@
 #include "dxvk_imgui.h"
 #include "rtx_render/rtx_imgui.h"
 #include "dxvk_device.h"
+#include "rtx_render/graph/rtx_graph_gui.h"
 #include "rtx_render/rtx_utils.h"
 #include "rtx_render/rtx_shader_manager.h"
 #include "rtx_render/rtx_camera.h"
@@ -582,7 +583,8 @@ namespace dxvk {
   : m_device (device)
   , m_hwnd   (nullptr)
   , m_about  (new ImGuiAbout)
-  , m_splash  (new ImGuiSplash) {
+  , m_splash  (new ImGuiSplash)
+  , m_graphGUI  (new RtxGraphGUI) {
     // Clamp Option ranges
 
     RTX_OPTION_CLAMP(reflexStatRangeInterpolationRate, 0.0f, 1.0f);
@@ -2473,6 +2475,14 @@ namespace dxvk {
     if(ImGui::CollapsingHeader("Enhancements", collapsingHeaderFlags | ImGuiTreeNodeFlags_DefaultOpen)) {
       ImGui::Indent();
       showEnhancementsTab(ctx);
+      ImGui::Unindent();
+    }
+    
+    // Graph Visualization Section
+    ImGui::Separator();
+    if (ImGui::CollapsingHeader("Graph Visualization", ImGuiTreeNodeFlags_DefaultOpen)) {
+      ImGui::Indent();
+      m_graphGUI->showGraphVisualization(ctx);
       ImGui::Unindent();
     }
   }

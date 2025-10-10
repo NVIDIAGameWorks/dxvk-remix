@@ -193,7 +193,8 @@ struct RtComponentPropertySpec {
     RtComponentPropertyValue value;
     std::string docString;
   };
-  std::map<std::string,EnumProperty> enumValues;
+  using EnumPropertyMap = std::map<std::string,EnumProperty>;
+  EnumPropertyMap enumValues;
 
   // Validation methods
   bool isValid() const {
@@ -285,6 +286,7 @@ struct RtGraphTopology {
 struct RtGraphState {
   const RtGraphTopology& topology;
   std::vector<RtComponentPropertyValue> values;
+  std::string primPath;
 };
 
 class RtComponentBatch {

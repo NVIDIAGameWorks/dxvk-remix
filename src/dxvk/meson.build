@@ -339,6 +339,8 @@ dxvk_src = files([
   'rtx_render/graph/rtx_graph_batch.cpp',
   'rtx_render/graph/rtx_graph_batch.h',
   'rtx_render/graph/rtx_graph_component_macros.h',
+  'rtx_render/graph/rtx_graph_gui.cpp',
+  'rtx_render/graph/rtx_graph_gui.h',
   'rtx_render/graph/rtx_graph_instance.cpp',
   'rtx_render/graph/rtx_graph_instance.h',
   'rtx_render/graph/rtx_graph_manager.h',

@@ -61,7 +61,7 @@ public:
       iter->second.Initialize(graphState.topology);
     }
     uint64_t instanceId = m_nextInstanceId++;
-    auto pair = m_graphInstances.try_emplace(instanceId, this, graphState.topology.graphHash, 0, instanceId);
+    auto pair = m_graphInstances.try_emplace(instanceId, this, graphState.topology.graphHash, 0, instanceId, graphState);
     if (!pair.second) {
       Logger::err(str::format("GraphInstance already exists. Instance: ", instanceId));
       return nullptr;
@@ -103,6 +103,15 @@ public:
     for (auto& batch : m_batches) {
       batch.second.applySceneOverrides(context);
     }
+  }
+
+  // GUI access methods
+  const std::unordered_map<uint64_t, GraphInstance>& getGraphInstances() const {
+    return m_graphInstances;
+  }
+
+  const fast_unordered_cache<RtGraphBatch>& getBatches() const {
+    return m_batches;
   }
 
 private:

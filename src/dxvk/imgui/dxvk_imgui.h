@@ -47,6 +47,7 @@ namespace dxvk {
   class ImGuiCapture;
   class DxvkDevice;
   class DxvkContext;
+  class RtxGraphGUI;
 
   /**
    * \brief DXVK ImGUI
@@ -165,6 +166,7 @@ namespace dxvk {
     float m_reflexLatencyStatsWindowHeight = 650.f;
     bool m_reflexLatencyStatsOpen = false;
     bool m_lastRenderVsyncStatus = false;
+    std::unique_ptr<RtxGraphGUI> m_graphGUI;
 
     static constexpr const char* tabNames[] = { "Rendering", "Game Setup", "Enhancements", "About" , "Dev Settings"};
     Tabs m_curTab = kTab_Count;
@@ -241,6 +243,7 @@ namespace dxvk {
     void onCloseMenus();
     void onOpenMenus();
     void freeUnusedMemory();
+
   };
   
 }

@@ -93,6 +93,9 @@ void RtGraphBatch::Initialize(const RtGraphTopology& topology) {
     return;
   }
 
+  // Store pointer to topology for GUI access (safe because topology lives in stable asset storage)
+  m_topology = &topology;
+
   for (size_t i = 0; i < topology.propertyTypes.size(); i++) {
     m_properties.push_back(propertyVectorFromType(topology.propertyTypes[i]));
   }

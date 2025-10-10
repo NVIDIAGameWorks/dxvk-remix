@@ -25,6 +25,7 @@
 #include "rtx_graph_types.h"
 #include "rtx_graph_instance.h"
 #include "../../dxvk_context.h"
+#include <cassert>
 
 namespace dxvk {
 
@@ -82,8 +83,23 @@ public:
     return true;
   }
 
+  // GUI access methods
+  const std::vector<std::unique_ptr<RtComponentBatch>>& getComponentBatches() const {
+    return m_componentBatches;
+  }
+
+  const std::vector<RtComponentPropertyVector>& getProperties() const {
+    return m_properties;
+  }
+
+  const RtGraphTopology& getTopology() const {
+    assert(m_topology != nullptr && "Topology not initialized");
+    return *m_topology;
+  }
+
 private:
   XXH64_hash_t m_graphHash;
+  const RtGraphTopology* m_topology = nullptr;
   std::vector<std::unique_ptr<RtComponentBatch>> m_componentBatches;
   std::vector<uint32_t> m_batchesWithSceneOverrides;
   std::vector<RtComponentPropertyVector> m_properties;
