@@ -7,18 +7,18 @@ A single animated float value\.
 - **Name:** `AnimatedFloat`
 - **UI Name:** Animated Float
 - **Version:** 1
-- **Categories:** animation
+- **Categories:** Logic
 
 ## Input Properties
 
 | Property | Display Name | Type | IO Type | Default Value | Optional |
 |----------|--------------|------|---------|---------------|----------|
 | enabled | Enabled | Bool | Input | true | Yes | 
-| initialValue | Initial Value | Float | Input | 0\.000000 | No | 
-| finalValue | Final Value | Float | Input | 1\.000000 | No | 
-| duration | Duration | Float | Input | 1\.000000 | No | 
-| loopingType | Looping Type | Uint32 | Input | 0 | No | 
-| interpolation | Interpolation | Uint32 | Input | 0 | Yes | 
+| initialValue | Initial Value | Float | Input | 0\.0 | No | 
+| finalValue | Final Value | Float | Input | 1\.0 | No | 
+| duration | Duration | Float | Input | 1\.0 | No | 
+| loopingType | Looping Type | Uint32 | Input | Loop | No | 
+| interpolation | Interpolation | Uint32 | Input | Linear | Yes | 
 
 ### Enabled
 
@@ -40,6 +40,10 @@ The value at time t=duration\.
 How long it takes to animate from initial value to final value, in seconds\.
 
 
+**Value Constraints:**
+
+- **Minimum Value:** 0\.000001
+
 ### Looping Type
 
 What happens when the float reaches the final value\.
@@ -47,10 +51,10 @@ What happens when the float reaches the final value\.
 
 **Allowed Values:**
 
-- Continue: The value will continue accumulating \(a linear animation will preserve the velocity\)\.
-- Freeze: The value will freeze at the final value\.
-- Loop: The value will return to the initial value\.
-- PingPong: The value will play in reverse until it reaches the initial value, then loop\.
+- Loop: The value will wrap around from max to min\. *(default)*
+- PingPong: The value will bounce back and forth between min and max\.
+- None: The value will be unchanged\.
+- Clamp: The value will be clamped to the range\.
 
 ### Interpolation
 
@@ -59,21 +63,21 @@ How the float will change over time\.
 
 **Allowed Values:**
 
-- Bounce: Bouncy, playful motion\.
+- Linear: The float will have a constant velocity\. *(default)*
 - Cubic: The float will change in a cubic curve over time\.
 - EaseIn: The float will start slow, then accelerate\.
-- EaseInOut: The float will start slow, accelerate, then decelerate\.
 - EaseOut: The float will start fast, then decelerate\.
-- Elastic: Spring\-like motion\.
+- EaseInOut: The float will start slow, accelerate, then decelerate\.
+- Sine: Smooth, natural motion using a sine wave\.
 - Exponential: Dramatic acceleration effect\.
-- Linear: The float will have a constant velocity\.
-- Sine: Smooth, natural motion using sine wave\.
+- Bounce: Bouncy, playful motion\.
+- Elastic: Spring\-like motion\.
 
 ## State Properties
 
 | Property | Display Name | Type | IO Type | Default Value | Optional |
 |----------|--------------|------|---------|---------------|----------|
-| accumulatedTime |  | Float | State | 0\.000000 | No | 
+| accumulatedTime |  | Float | State | 0\.0 | No | 
 
 ### 
 
@@ -84,7 +88,7 @@ How much time has passed since the animation started\.
 
 | Property | Display Name | Type | IO Type | Default Value | Optional |
 |----------|--------------|------|---------|---------------|----------|
-| currentValue | Current Value | Float | Output | 0\.000000 | No | 
+| currentValue | Current Value | Float | Output | 0\.0 | No | 
 
 ### Current Value
 

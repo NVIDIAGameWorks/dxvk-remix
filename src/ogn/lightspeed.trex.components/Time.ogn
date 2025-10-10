@@ -1,0 +1,34 @@
+{
+  "lightspeed.trex.components.Time": {
+    "description": ["Outputs the time in seconds since the component was created. Can be paused and speed-adjusted."],
+    "version": 1,
+    "uiName": "Time",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Sense",
+    "inputs": {
+      "enabled": {
+        "description": ["If true, time accumulation continues. If false, time is paused."],
+        "type": "bool",
+        "default": true,
+        "optional": true,
+        "uiName": "Enabled"
+      },
+      "speedMultiplier": {
+        "description": ["Multiplier for time speed. 1.0 = normal speed, 2.0 = double speed, 0.5 = half speed."],
+        "type": "float",
+        "default": 1.000000,
+        "optional": true,
+        "uiName": "Speed Multiplier"
+      }
+    },
+    "outputs": {
+      "currentTime": {
+        "description": ["The time in seconds since component creation."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "Current Time"
+      }
+    }
+  }
+}
