@@ -176,8 +176,9 @@ struct RtComponentPropertySpec {
 
   // NOTE: These are currently unenforced on the c++ side, but should be used for OGN generation.
   // TODO: consider enforcing these on the c++ side (between component batch updates?)
-  RtComponentPropertyValue minValue = false;
-  RtComponentPropertyValue maxValue = false;
+  // Using uint8_t(0) to represent false due to the bool problem mentioned in RtComponentPropertyValue.
+  RtComponentPropertyValue minValue = uint8_t(0);
+  RtComponentPropertyValue maxValue = uint8_t(0);
 
 
   // Whether the component will function without this property being set.

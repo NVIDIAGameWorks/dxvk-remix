@@ -6,13 +6,21 @@ This documentation provides detailed information about all available components 
 
 ## Available Components
 
-### animation
+### Sense
+
+| Component | Description | Version |
+|-----------|-------------|---------|
+| [Time](Time.md) | Outputs the time in seconds since the component was created\. Can be paused and speed\-adjusted\. | 1 |
+
+### Logic
 
 | Component | Description | Version |
 |-----------|-------------|---------|
 | [Animated Float](AnimatedFloat.md) | A single animated float value\. | 1 |
+| [Interpolate Float](InterpolateFloat.md) | Interpolates a value from an input range to an output range with optional easing\. <br/>Combines normaliz\.\.\. | 1 |
+| [Loop Float](LoopFloat.md) | Applies looping behavior to a float value\.  Value is unchanged if it is inside the range\.<br/>Component \.\.\. | 1 |
 
-### light
+### Act
 
 | Component | Description | Version |
 |-----------|-------------|---------|
@@ -20,9 +28,9 @@ This documentation provides detailed information about all available components 
 
 ## Statistics
 
-- **Total Components:** 2
-- **Categorized Components:** 2
-- **Categories:** 2
+- **Total Components:** 5
+- **Categorized Components:** 5
+- **Categories:** 3
 
 ---
 *Generated automatically from component specifications*

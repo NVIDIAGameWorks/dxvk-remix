@@ -5,10 +5,10 @@
     "uiName": "Sphere Light",
     "language": "python",
     "categoryDefinitions": "config/CategoryDefinition.json",
-    "categories": "light",
+    "categories": "Act",
     "inputs": {
       "enabled": {
-        "description": ["If true, the overrides will be applied"],
+        "description": ["If true, the overrides will be applied."],
         "type": "bool",
         "default": true,
         "optional": true,

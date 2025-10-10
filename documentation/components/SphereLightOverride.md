@@ -7,19 +7,19 @@ Override the sphere light properties\.
 - **Name:** `SphereLightOverride`
 - **UI Name:** Sphere Light
 - **Version:** 1
-- **Categories:** light
+- **Categories:** Act
 
 ## Input Properties
 
 | Property | Display Name | Type | IO Type | Default Value | Optional |
 |----------|--------------|------|---------|---------------|----------|
 | enabled | Enabled | Bool | Input | true | Yes | 
-| radius | Radius | Float | Input | 0\.000000 | Yes | 
+| radius | Radius | Float | Input | 0\.0 | Yes | 
 | target | Target | Prim | Input | None | No | 
 
 ### Enabled
 
-If true, the overrides will be applied
+If true, the overrides will be applied\.
 
 
 ### Radius

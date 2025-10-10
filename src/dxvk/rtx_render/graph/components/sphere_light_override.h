@@ -32,7 +32,7 @@ namespace dxvk {
 namespace components {
 
 #define LIST_INPUTS(X) \
-  X(RtComponentPropertyType::Bool, true, enabled, "Enabled", "If true, the overrides will be applied", property.optional = true) \
+  X(RtComponentPropertyType::Bool, true, enabled, "Enabled", "If true, the overrides will be applied.", property.optional = true) \
   X(RtComponentPropertyType::Float, 0.0f, radius, "Radius", "The radius of the sphere light.", property.optional = true) \
   X(RtComponentPropertyType::Prim, 0, target, "Target", "The sphere light to override.")
 
@@ -49,7 +49,7 @@ public:
     REMIX_COMPONENT_WRITE_STATIC_SPEC( \
       /* the Component name */ SphereLightOverride, \
       /* the UI name */        "Sphere Light", \
-      /* the UI categories */  "light", \
+      /* the UI categories */  "Act", \
       /* the doc string */     "Override the sphere light properties.", \
       /* the version number */ 1, \
       LIST_INPUTS, LIST_STATES, LIST_OUTPUTS, \

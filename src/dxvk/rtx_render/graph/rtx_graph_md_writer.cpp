@@ -23,11 +23,48 @@
 #include "rtx_graph_md_writer.h"
 #include "../util/util_env.h"
 #include "../util/util_filesys.h"
+#include <cmath>
 #include <filesystem>
+#include <limits>
 #include <unordered_map>
 
 namespace dxvk {
 namespace {
+
+// Helper function to format float values nicely
+std::string formatFloat(float value) {
+  // Check for special float values
+  if (std::isnan(value)) {
+    return "NaN";
+  }
+  if (std::isinf(value)) {
+    return value > 0 ? "Infinity" : "-Infinity";
+  }
+  if (value == std::numeric_limits<float>::max()) {
+    return "FLT_MAX";
+  }
+  if (value == std::numeric_limits<float>::lowest()) {
+    return "FLT_MIN";
+  }
+  
+  // Check if the value is effectively an integer
+  if (std::floor(value) == value) {
+    // For integer-like values, format with minimal decimal
+    int intValue = static_cast<int>(value);
+    return std::to_string(intValue) + ".0";
+  }
+  // For non-integer values, use to_string and remove trailing zeros
+  std::string result = std::to_string(value);
+  // Remove trailing zeros after the decimal point
+  size_t dotPos = result.find('.');
+  if (dotPos != std::string::npos) {
+    size_t lastNonZero = result.find_last_not_of('0');
+    if (lastNonZero != std::string::npos && lastNonZero > dotPos) {
+      result.erase(lastNonZero + 1);
+    }
+  }
+  return result;
+}
 
 // Helper function to escape markdown special characters
 std::string escapeMarkdown(const std::string& input) {
@@ -55,31 +92,41 @@ std::string escapeMarkdown(const std::string& input) {
   return output;
 }
 
-// Helper function to get default value as readable string
-std::string getDefaultValueAsString(const RtComponentPropertyValue& value, RtComponentPropertyType type) {
-  switch (type) {
+// Helper function to get value as readable string
+std::string getValueAsString(const RtComponentPropertyValue& value, const RtComponentPropertySpec& prop) {
+  // For enum properties, look up the enum name
+  if (!prop.enumValues.empty()) {
+    for (const auto& [enumName, enumEntry] : prop.enumValues) {
+      if (value == enumEntry.value) {
+        return enumName;
+      }
+    }
+    // If not found, fall through to default formatting
+  }
+  
+  switch (prop.type) {
     case RtComponentPropertyType::Bool:
       return std::get<uint8_t>(value) ? "true" : "false";
     case RtComponentPropertyType::Float:
-      return std::to_string(std::get<float>(value));
+      return formatFloat(std::get<float>(value));
     case RtComponentPropertyType::Float2: {
       const auto& vec = std::get<Vector2>(value);
-      return str::format("[", std::to_string(vec.x), ", ",
-                         std::to_string(vec.y), "]");
+      return str::format("[", formatFloat(vec.x), ", ",
+                         formatFloat(vec.y), "]");
     }
     case RtComponentPropertyType::Float3:
     case RtComponentPropertyType::Color3: {
       const auto& vec = std::get<Vector3>(value);
-      return str::format("[", std::to_string(vec.x), ", ",
-                         std::to_string(vec.y), ", ",
-                         std::to_string(vec.z), "]");
+      return str::format("[", formatFloat(vec.x), ", ",
+                         formatFloat(vec.y), ", ",
+                         formatFloat(vec.z), "]");
     }
     case RtComponentPropertyType::Color4: {
       const auto& vec = std::get<Vector4>(value);
-      return str::format("[", std::to_string(vec.x), ", ",
-                         std::to_string(vec.y), ", ",
-                         std::to_string(vec.z), ", ",
-                         std::to_string(vec.w), "]");
+      return str::format("[", formatFloat(vec.x), ", ",
+                         formatFloat(vec.y), ", ",
+                         formatFloat(vec.z), ", ",
+                         formatFloat(vec.w), "]");
     }
     case RtComponentPropertyType::Int32:
       return std::to_string(std::get<int32_t>(value));
@@ -105,7 +152,7 @@ void writePropertyTableRow(std::ofstream& outputFile, const RtComponentPropertyS
   outputFile << escapeMarkdown(prop.uiName) << " | ";
   outputFile << prop.type << " | ";
   outputFile << prop.ioType << " | ";
-  outputFile << escapeMarkdown(getDefaultValueAsString(prop.defaultValue, prop.type)) << " | ";
+  outputFile << escapeMarkdown(getValueAsString(prop.defaultValue, prop)) << " | ";
   outputFile << (prop.optional ? "Yes" : "No") << " | " << std::endl;
 }
 
@@ -114,9 +161,48 @@ void writeEnumValues(std::ofstream& outputFile, const RtComponentPropertySpec& p
   if (!prop.enumValues.empty()) {
     outputFile << std::endl << "**Allowed Values:**" << std::endl << std::endl;
     
-    for (const auto& enumValue : prop.enumValues) {
-      outputFile << "- " << escapeMarkdown(enumValue.first) << ": "
-                 << escapeMarkdown(enumValue.second.docString) << std::endl;
+    // Convert to vector and sort by enum value
+    std::vector<std::pair<std::string, RtComponentPropertySpec::EnumProperty>> sortedEnums(
+      prop.enumValues.begin(), prop.enumValues.end());
+    
+    std::sort(sortedEnums.begin(), sortedEnums.end(),
+      [](const auto& a, const auto& b) {
+        return a.second.value < b.second.value;
+      });
+    
+    // Output each enum value, marking the default
+    for (const auto& [enumName, enumEntry] : sortedEnums) {
+      outputFile << "- " << escapeMarkdown(enumName) << ": "
+                 << escapeMarkdown(enumEntry.docString);
+      
+      // Mark if this is the default value
+      if (prop.defaultValue == enumEntry.value) {
+        outputFile << " *(default)*";
+      }
+      
+      outputFile << std::endl;
+    }
+  }
+}
+
+// Helper function to write min/max value constraints if they exist
+void writeMinMaxValues(std::ofstream& outputFile, const RtComponentPropertySpec& prop) {
+  // Check if minValue or maxValue are set (they default to false, which is a uint8_t with value 0)
+  const bool hasMinValue = !(std::holds_alternative<uint8_t>(prop.minValue) && std::get<uint8_t>(prop.minValue) == 0);
+  const bool hasMaxValue = !(std::holds_alternative<uint8_t>(prop.maxValue) && std::get<uint8_t>(prop.maxValue) == 0);
+  
+  if (hasMinValue || hasMaxValue) {
+    outputFile << std::endl << "**Value Constraints:**" << std::endl << std::endl;
+    
+    if (hasMinValue) {
+      outputFile << "- **Minimum Value:** " 
+                 << escapeMarkdown(getValueAsString(prop.minValue, prop)) 
+                 << std::endl;
+    }
+    if (hasMaxValue) {
+      outputFile << "- **Maximum Value:** " 
+                 << escapeMarkdown(getValueAsString(prop.maxValue, prop)) 
+                 << std::endl;
     }
   }
 }
@@ -143,6 +229,8 @@ void writePropertySection(std::ofstream& outputFile,
     outputFile << "### " << escapeMarkdown(prop->uiName) << std::endl << std::endl;
     outputFile << escapeMarkdown(prop->docString) << std::endl << std::endl;
     writeEnumValues(outputFile, *prop);
+    writeMinMaxValues(outputFile, *prop);
+    
     outputFile << std::endl;
   }
 }
