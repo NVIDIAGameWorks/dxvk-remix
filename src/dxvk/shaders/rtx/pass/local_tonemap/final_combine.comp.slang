@@ -105,9 +105,10 @@ void main(uint2 threadId : SV_DispatchThreadID)
     mix(1.0, finalMultiplier, (luminance / lerpToUnityThreshold) * (luminance / lerpToUnityThreshold));
 
   vec3 texelFinal = originalColor.xyz * finalMultiplier;
-  if (cb.finalizeWithACES)
+  if (cb.finalizeWithACES || cb.useAgX)
   {
-    texelFinal = ACESFilm(texelFinal, cb.useLegacyACES);
+    texelFinal = applyToneMapping(texelFinal, cb.useAgX, cb.useLegacyACES, cb.agxGamma, cb.agxSaturation, cb.agxExposureOffset,
+                                  cb.agxLook, cb.agxContrast, cb.agxSlope, cb.agxPower);
   }
   if (cb.performSRGBConversion)
   {
