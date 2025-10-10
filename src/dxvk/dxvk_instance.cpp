@@ -648,6 +648,9 @@ namespace dxvk {
 
     m_config.logOptions("Effective (combined)");
 
+    RtxOptionImpl::addRtxOptionLayer(RtxOptionLayer("user.conf", RtxOptionLayer::s_runtimeOptionLayerPriority, 1.0f, 1.0f));
+    Logger::info("Set user realtime configs.");
+
     // Output environment variable info
     // Todo: This being here is kinda not great as this results in the Environment variables being parsed 3 times
     // which is quite redundant. Unfortunately this logging can't go in Config::getOption as this function is called

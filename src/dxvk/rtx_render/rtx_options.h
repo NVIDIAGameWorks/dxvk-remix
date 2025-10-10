@@ -1269,12 +1269,18 @@ namespace dxvk {
 
     static void resetUpscaler();
 
-    inline static const std::string kRtxConfigFilePath = "rtx.conf";
+    inline static const std::string kRtxConfigFilePath = "user.conf";
 
     static void serialize() {
       Config newConfig;
       RtxOption<bool>::writeOptions(newConfig, serializeChangedOptionOnly());
       Config::serializeCustomConfig(newConfig, kRtxConfigFilePath, "rtx.");
+    }
+
+    static void serializeOptionLayer(const std::string& optionLayerName) {
+      Config newConfig;
+      RtxOption<bool>::writeOptions(newConfig, serializeChangedOptionOnly());
+      Config::serializeCustomConfig(newConfig, optionLayerName, "rtx.");
     }
 
     static void reset() {

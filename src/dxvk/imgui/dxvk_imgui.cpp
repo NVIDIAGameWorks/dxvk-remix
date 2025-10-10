@@ -1099,16 +1099,13 @@ namespace dxvk {
     }
 
     ImGui::Checkbox("Save Changed Settings Only", &RtxOptions::serializeChangedOptionOnlyObject());
-    if (ImGui::Button("Save Settings")) {
+    if (IMGUI_ADD_TOOLTIP(ImGui::Button("Save Settings"), "Changes are now saved to user.conf. Use the 'Save' button in the rtx.conf layer if you want to store them there for sharing.")) {
       RtxOptions::serialize();
     }
-    ImGui::SetTooltipToLastWidgetOnHover("This will save above settings in the rtx.conf file. Some may only take effect on next launch.");
 
     ImGui::SameLine();
-    if (ImGui::Button("Reset Settings")) {
-      for (auto& optionLayer : RtxOptionImpl::getRtxOptionLayerMap()) {
-        optionLayer.setEnabled(false);
-      }
+    if (IMGUI_ADD_TOOLTIP(ImGui::Button("Reset settings"), "Reset all real-time changed settings.")) {
+      RtxOptionLayer::setResetSettings(true);
     }
 
     ImGui::SameLine();
@@ -1983,9 +1980,17 @@ namespace dxvk {
       if (ImGui::CollapsingHeader("Option Layers")) {
         ImGui::Indent();
 
-        if (ImGui::Button("Reset runtime settings")) {
-          // Remove all run-time changed settings
-          RtxOptionLayer::setResetSettings(true);
+        if (IMGUI_ADD_TOOLTIP(ImGui::Button("Disable Layers"), "Reset all settings to Default.")) {
+          for (auto& optionLayer : RtxOptionImpl::getRtxOptionLayerMap()) {
+            optionLayer.setEnabled(false);
+          }
+        }
+
+        ImGui::SameLine();
+        if (IMGUI_ADD_TOOLTIP(ImGui::Button("Enable Layers"), "Enable all option layers.")) {
+          for (auto& optionLayer : RtxOptionImpl::getRtxOptionLayerMap()) {
+            optionLayer.setEnabled(true);
+          }
         }
 
         uint32_t optionLayerCounter = 1;
@@ -2009,6 +2014,11 @@ namespace dxvk {
             if (IMGUI_ADD_TOOLTIP(ImGui::SliderFloat(optionLayerThresholdText.c_str(), &optionLayer.getBlendThresholdRef(), 0.0f, 1.0f),
                                   "Sets the blending strength threshold for this option layer. Only applicable to non-float variables. The option is applied only when the blend strength exceeds this threshold.")) {
               optionLayer.setBlendStrengthDirty(true);
+            }
+
+            const std::string optionLayerSavingText = "Save realtime changes into layer " + optionLayer.getName();
+            if (ImGui::Button(optionLayerSavingText.c_str())) {
+              RtxOptions::serializeOptionLayer(optionLayer.getName());
             }
 
             if (ImGui::CollapsingHeader((optionLayer.getName() + " Details").c_str(), collapsingHeaderClosedFlags)) {

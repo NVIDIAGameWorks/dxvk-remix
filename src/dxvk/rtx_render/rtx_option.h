@@ -231,7 +231,7 @@ namespace dxvk {
     std::string genericValueToString(ValueType valueType) const;
     std::string genericValueToString(const GenericValue& value) const;
     void copyValue(const GenericValue& source, GenericValue& target);
-    void copyOptionLayerToValue();
+    void resolveValue(GenericValue& value, const bool ignoreChangedOption);
     void addWeightedValue(const GenericValue& source, const float weight, GenericValue& target);
 
     void readValue(const Config& options, const std::string& fullName, GenericValue& value);
@@ -350,12 +350,6 @@ namespace dxvk {
       pImpl->clampValue(RtxOptionImpl::ValueType::Value);
       // Mark the option as dirty so that the onChange callback is invoked, even though the value already changed mid frame.
       pImpl->markDirty();
-
-      // If the top layer is not already the runtime option layer, insert a new runtime option layer with maximum priority.
-      // Actual promotion to the active value occurs in applyPendingValuesOptionLayers().
-      if (pImpl->optionLayerValueQueue.begin()->second.priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
-        pImpl->insertOptionLayerValue(pImpl->resolvedValue, RtxOptionLayer::s_runtimeOptionLayerPriority, 1.0f, 1.0f);
-      }
     }
 
     template<typename = std::enable_if_t<std::is_same_v<T, fast_unordered_set>>>
@@ -532,7 +526,7 @@ namespace dxvk {
       dirtyOptionsVector.reserve(dirtyOptions.size());
       {
         for (auto& rtxOption : dirtyOptions) {
-          rtxOption.second->copyOptionLayerToValue();
+          rtxOption.second->resolveValue(rtxOption.second->resolvedValue, false);
           dirtyOptionsVector.push_back(rtxOption.second);
         }
       }
