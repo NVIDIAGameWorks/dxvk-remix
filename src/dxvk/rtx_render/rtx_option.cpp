@@ -490,8 +490,16 @@ namespace dxvk {
     auto& value = resolvedValue;
 
     if (changedOptionOnly) {
-      if (isDefault()) {
+      // Skip options that have no real-time changes, or the real-time value is the same as the original resolved value.
+      if (optionLayerValueQueue.begin()->second.priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
         return;
+      } else {
+        GenericValueWrapper originalValue(type);
+        resolveValue(originalValue.data, true);
+
+        if (isEqual(originalValue.data, getGenericValue(ValueType::PendingValue))) {
+          return;
+        }
       }
     }
 
@@ -742,24 +750,7 @@ namespace dxvk {
     }
   }
 
-  void RtxOptionImpl::copyOptionLayerToValue() {
-    GenericValue& optionValueTop = optionLayerValueQueue.begin()->second.value;
-    const auto& pendingValue = getGenericValue(RtxOptionImpl::ValueType::PendingValue);
-
-    if (optionLayerValueQueue.begin()->second.priority == RtxOptionLayer::s_runtimeOptionLayerPriority &&
-        !isEqual(pendingValue, optionValueTop)) {
-      // Sync the values that are changed at real-time to top option layer
-      copyValue(pendingValue, optionValueTop);
-#if RTX_OPTION_DEBUG_LOGGING
-      Logger::info(str::format("[RTX Option]: Different to pending option ", this->name,
-                               "\ntype: ", std::to_string((int) this->type),
-                               "\nbool: ", std::to_string(pendingValue.b), " ", std::to_string(optionValueTop.b),
-                               "\nint: ", std::to_string(pendingValue.i), " ", std::to_string(optionValueTop.i),
-                               "\nfloat: ", std::to_string(pendingValue.f), " ", std::to_string(optionValueTop.f)
-      ));
-#endif
-    }
-
+  void RtxOptionImpl::resolveValue(GenericValue& value, const bool ignoreChangedOption) {
     /*
       We use "throughput" here because blending (lerp) may happen across multiple layers.
       The effective result is a nested lerp chain, e.g.: v = lerp(A, lerp(B, C))
@@ -786,6 +777,11 @@ namespace dxvk {
     float throughput = 1.0f;
     // Loop layers from highest priority to lowest to lerp the value across layers base on the blend strength of layers
     for (const auto& optionLayer : optionLayerValueQueue) {
+      // Skip options with runtime priority when ignoreChangedOption is true
+      if (ignoreChangedOption && optionLayer.second.priority == RtxOptionLayer::s_runtimeOptionLayerPriority) {
+        continue;
+      }
+
       if (type == OptionType::Float || type == OptionType::Vector2 || type == OptionType::Vector3 || type == OptionType::Vector4) {
         // Stop when the blend strength is larger than 1, because lerp(a, b, 1.0f) => b, we don't need to loop lower priority values
         if (optionLayer.second.blendStrength >= 1.0f) {
@@ -804,7 +800,7 @@ namespace dxvk {
     }
 
     // Copy to resolvedValue
-    copyValue(optionValue.data, resolvedValue);
+    copyValue(optionValue.data, value);
   }
 
   bool RtxOptionImpl::writeMarkdownDocumentation(const char* outputMarkdownFilePath) {
@@ -1025,7 +1021,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
     : m_configName(configPath)
     , m_enabled(true)
     , m_dirty(false)
-    , m_priority(priority + s_userOptionLayerOffset)
+    , m_priority(priority)
     , m_blendStrength(blendStrength)
     , m_blendThreshold(blendThreshold)
     , m_config(Config::getOptionLayerConfig(configPath)) {
@@ -1034,6 +1030,9 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
                              "\nPriority: ", std::to_string(m_priority),
                              "\nStrength: ", std::to_string(m_blendStrength)));
 #endif
+    if (priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
+      m_priority += s_userOptionLayerOffset;
+    }
   }
 
   RtxOptionLayer::RtxOptionLayer(const Config& config, const std::string& configName, const uint32_t priority, const float blendStrength, const float blendThreshold)
