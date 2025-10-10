@@ -105,7 +105,7 @@ RtGraphState GraphUsdParser::parseGraph(AssetReplacements& replacements, const p
     topology.graphHash = XXH3_64bits_withSeed(&propertyIndices[0], sizeof(size_t) * propertyIndices.size(), topology.graphHash);
   }
 
-  return { replacements.storeObject(topology.graphHash, RtGraphTopology{topology}), initialValues };
+  return { replacements.storeObject(topology.graphHash, RtGraphTopology{topology}), initialValues, graphPrim.GetPath().GetString() };
 }
 
 std::vector<GraphUsdParser::DAGNode> GraphUsdParser::getDAGSortedNodes(const pxr::UsdPrim& graphPrim) {

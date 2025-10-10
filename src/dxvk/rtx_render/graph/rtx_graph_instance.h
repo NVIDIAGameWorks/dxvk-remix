@@ -30,8 +30,8 @@ class GraphManager;
 
 class GraphInstance {
 public:
-  GraphInstance(GraphManager* graphManager, const XXH64_hash_t graphHash, const size_t batchIndex, const uint64_t id)
-    : m_graphManager(graphManager), m_graphHash(graphHash), m_batchIndex(batchIndex), m_id(id) {
+  GraphInstance(GraphManager* graphManager, const XXH64_hash_t graphHash, const size_t batchIndex, const uint64_t id, const RtGraphState& initialGraphState)
+    : m_graphManager(graphManager), m_graphHash(graphHash), m_batchIndex(batchIndex), m_id(id), m_initialGraphState(&initialGraphState) {
   }
 
   GraphInstance(const GraphInstance& other) = delete;
@@ -64,9 +64,17 @@ public:
     return m_primInstanceOwner;
   }
 
+  const RtGraphState& getInitialGraphState() const {
+    assert(m_initialGraphState != nullptr && "Initial Graph State not initialized");
+    return *m_initialGraphState;
+  }
+
 private:
   GraphManager* m_graphManager;
   PrimInstanceOwner m_primInstanceOwner;
+  // RtGraphState is owned by ReplacementManager, and should only be invalidated when assets are reloaded,
+  // which should clear the scene and delete all graphs.
+  const RtGraphState* m_initialGraphState;
 
   // Hash of the batch this instance is in.
   const XXH64_hash_t m_graphHash;
