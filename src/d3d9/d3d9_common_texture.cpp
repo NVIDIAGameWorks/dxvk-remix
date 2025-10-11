@@ -658,9 +658,13 @@ namespace dxvk {
     if (m_type != D3DRTYPE_TEXTURE || (m_desc.Usage & D3DUSAGE_DEPTHSTENCIL))
       return;
 
+    const bool alwaysRecalculateHash = RtxOptions::alwaysRecalculateTextureHashes();
+
     if (m_image->getHash() != 0) {
-      // Already setup.
-      return;
+      if (!alwaysRecalculateHash) {
+        // Already setup.
+        return;
+      }
     }
 
     // Use subresource 0 for hashing
@@ -682,6 +686,14 @@ namespace dxvk {
     } else {
       imageHash = XXH3_64bits(buffer->mapPtr(0), buffer->info().size);
     }
+
+    if (alwaysRecalculateHash) {
+      // Release old texture if hash changed
+      if (m_image->getHash() != imageHash) {
+        ImGUI::ReleaseTexture(m_image->getHash());
+      }
+    }
+
     // save hash to dxvkImage
     m_image->setHash(imageHash);
 
