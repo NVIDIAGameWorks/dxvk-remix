@@ -1362,7 +1362,7 @@ namespace dxvk {
     std::string s;
     bool bFoundValidConfig = false;
     VirtualKeys virtKeys;
-    while (std::getline(ss, s, ',')) {
+    while (std::getline(ss, s, kVirtualKeyDelimiter)) {
       VirtualKey vk;
       try {
         // Strip whitespace from s
