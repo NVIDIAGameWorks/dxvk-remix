@@ -483,6 +483,12 @@ namespace dxvk {
     // execute graph updates after all garbage collection is complete (to avoid updating graphs that will just be deleted)
     // RtxOptions will still be pending, so any changes to them will apply next frame.
     m_graphManager.update(ctx);
+
+    // Clear material hashes before the next frame.  These are used by components, so must clear after graphManager updates.
+    clearFrameMaterialHashes();
+    
+    // Clear mesh hashes before the next frame.  These are used by components, so must clear after graphManager updates.
+    clearFrameMeshHashes();
   }
 
   void SceneManager::onFrameEndNoRTX() {
@@ -509,6 +515,8 @@ namespace dxvk {
 
         MaterialData* pFogReplacement = m_pReplacer->getReplacementMaterial(fogHash);
         if (pFogReplacement) {
+          // Track this material hash for texture hash checking
+          trackMaterialHash(fogHash);
           // Fog has been replaced by a translucent material to start the camera in,
           // meaning that it was being used to indicate 'underwater' or something similar.
           if (pFogReplacement->getType() != MaterialDataType::Translucent) {
@@ -528,12 +536,17 @@ namespace dxvk {
 
 
     const XXH64_hash_t activeReplacementHash = input.getHash(RtxOptions::geometryAssetHashRule());
+    
+    // Track this mesh hash for mesh hash checking
+    trackMeshHash(activeReplacementHash);
+    
     std::vector<AssetReplacement>* pReplacements = m_pReplacer->getReplacementsForMesh(activeReplacementHash);
 
     // TODO (REMIX-656): Remove this once we can transition content to new hash
     if ((RtxOptions::geometryHashGenerationRule() & rules::LegacyAssetHash0) == rules::LegacyAssetHash0) {
       if (!pReplacements) {
         const XXH64_hash_t legacyHash = input.getHashLegacy(rules::LegacyAssetHash0);
+        trackMeshHash(legacyHash);
         pReplacements = m_pReplacer->getReplacementsForMesh(legacyHash);
         if (RtxOptions::logLegacyHashReplacementMatches() && pReplacements && uniqueHashes.find(legacyHash) == uniqueHashes.end()) {
           uniqueHashes.insert(legacyHash);
@@ -545,6 +558,7 @@ namespace dxvk {
     if ((RtxOptions::geometryHashGenerationRule() & rules::LegacyAssetHash1) == rules::LegacyAssetHash1) {
       if (!pReplacements) {
         const XXH64_hash_t legacyHash = input.getHashLegacy(rules::LegacyAssetHash1);
+        trackMeshHash(legacyHash);
         pReplacements = m_pReplacer->getReplacementsForMesh(legacyHash);
         if (RtxOptions::logLegacyHashReplacementMatches() && pReplacements && uniqueHashes.find(legacyHash) == uniqueHashes.end()) {
           uniqueHashes.insert(legacyHash);
@@ -571,6 +585,8 @@ namespace dxvk {
     // test if any direct material replacements exist
     MaterialData* pReplacementMaterial = m_pReplacer->getReplacementMaterial(input.getMaterialData().getHash());
     if (pReplacementMaterial != nullptr) {
+      // Track this material hash for texture hash checking
+      trackMaterialHash(input.getMaterialData().getHash());
       // Make a copy - dont modify the replacement data.
       MaterialData renderMaterialData = *pReplacementMaterial;
       // merge in the input material from game
@@ -1761,6 +1777,44 @@ namespace dxvk {
     
     Logger::info("=== End RtInstances Print ===");
   #endif
+  }
+
+  void SceneManager::trackMaterialHash(XXH64_hash_t materialHash) {
+    if (materialHash != kEmptyHash) {
+      m_currentFrameMaterialHashes[materialHash]++;
+    }
+  }
+
+  bool SceneManager::isMaterialHashUsedThisFrame(XXH64_hash_t materialHash) const {
+    return m_currentFrameMaterialHashes.find(materialHash) != m_currentFrameMaterialHashes.end();
+  }
+
+  uint32_t SceneManager::getMaterialHashUsageCount(XXH64_hash_t materialHash) const {
+    auto it = m_currentFrameMaterialHashes.find(materialHash);
+    return (it != m_currentFrameMaterialHashes.end()) ? it->second : 0;
+  }
+
+  void SceneManager::clearFrameMaterialHashes() {
+    m_currentFrameMaterialHashes.clear();
+  }
+
+  void SceneManager::trackMeshHash(XXH64_hash_t meshHash) {
+    if (meshHash != kEmptyHash) {
+      m_currentFrameMeshHashes[meshHash]++;
+    }
+  }
+
+  bool SceneManager::isMeshHashUsedThisFrame(XXH64_hash_t meshHash) const {
+    return m_currentFrameMeshHashes.find(meshHash) != m_currentFrameMeshHashes.end();
+  }
+
+  uint32_t SceneManager::getMeshHashUsageCount(XXH64_hash_t meshHash) const {
+    auto it = m_currentFrameMeshHashes.find(meshHash);
+    return (it != m_currentFrameMeshHashes.end()) ? it->second : 0;
+  }
+
+  void SceneManager::clearFrameMeshHashes() {
+    m_currentFrameMeshHashes.clear();
   }
 
 }  // namespace nvvk

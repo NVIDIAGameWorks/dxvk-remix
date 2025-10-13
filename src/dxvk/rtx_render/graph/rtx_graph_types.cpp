@@ -236,34 +236,42 @@ std::ostream& operator << (std::ostream& os, RtComponentPropertyIOType type) {
 }
 
 RtComponentPropertyValue propertyValueFromString(const std::string& str, const RtComponentPropertyType type) {
-  switch (type) {
-  case RtComponentPropertyType::Bool:
-    return (str == "true" || str == "True" || str == "TRUE" || str == "1") ? uint8_t(1) : uint8_t(0);
-  case RtComponentPropertyType::Float:
-    return std::stof(str);
-  case RtComponentPropertyType::Float2:
-    return parseVector<Vector2>(str);
-  case RtComponentPropertyType::Float3:
-    return parseVector<Vector3>(str);
-  case RtComponentPropertyType::Color3:
-    return parseVector<Vector3>(str);
-  case RtComponentPropertyType::Color4:
-    return parseVector<Vector4>(str);
-  case RtComponentPropertyType::Int32:
-    return propertyValueForceType<int32_t>(std::stoi(str));
-  case RtComponentPropertyType::Uint32:
-    return propertyValueForceType<uint32_t>(std::stoul(str));
-  case RtComponentPropertyType::Uint64:
-    return propertyValueForceType<uint64_t>(std::stoull(str));
-  case RtComponentPropertyType::Prim:
-    return propertyValueForceType<uint32_t>(std::stoull(str));
-  case RtComponentPropertyType::String:
-  case RtComponentPropertyType::AssetPath:
-    return str;
+  try {
+    switch (type) {
+    case RtComponentPropertyType::Bool:
+      return (str == "true" || str == "True" || str == "TRUE" || str == "1") ? uint8_t(1) : uint8_t(0);
+    case RtComponentPropertyType::Float:
+      return std::stof(str);
+    case RtComponentPropertyType::Float2:
+      return parseVector<Vector2>(str);
+    case RtComponentPropertyType::Float3:
+      return parseVector<Vector3>(str);
+    case RtComponentPropertyType::Color3:
+      return parseVector<Vector3>(str);
+    case RtComponentPropertyType::Color4:
+      return parseVector<Vector4>(str);
+    case RtComponentPropertyType::Int32:
+      return propertyValueForceType<int32_t>(std::stoi(str));
+    case RtComponentPropertyType::Uint32:
+      return propertyValueForceType<uint32_t>(std::stoul(str));
+    case RtComponentPropertyType::Uint64:
+      // The `nullptr, 0` causes stoull to auto detect hex from `0x`
+      return propertyValueForceType<uint64_t>(std::stoull(str, nullptr, 0));
+    case RtComponentPropertyType::Prim:
+      // Should never be reached (prim properties should be UsdRelationships, so they shouldn't ever have a string value).  Just in case, return an invalid value.
+      return kInvalidRtComponentPropertyValue;
+    case RtComponentPropertyType::String:
+    case RtComponentPropertyType::AssetPath:
+      return str;
+    }
+    Logger::err(str::format("Unknown property type in propertyValueFromString.  type: ", type, ", string: ", str));
+  } catch (const std::invalid_argument& e) {
+    Logger::err(str::format("propertyValueFromString: Invalid argument for type ", type, " conversion: '", str, "' - ", e.what()));
+  } catch (const std::out_of_range& e) {
+    Logger::err(str::format("propertyValueFromString: Out of range for type ", type, " conversion: '", str, "' - ", e.what()));
   }
-  Logger::err(str::format("Unknown property type in propertyValueFromString.  type: ", type, ", string: ", str));
-  assert(false && "Unknown property type in propertyValueFromString");
-  return RtComponentPropertyValue();
+  assert(false && "Error parsing component property value in propertyValueFromString.");
+  return kInvalidRtComponentPropertyValue;
 }
 
 /**

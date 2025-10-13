@@ -115,6 +115,9 @@ using RtComponentPropertyValue = std::variant<
   std::string
 >;
 
+// as uint8_t is just representing a bool, this is an impossible value.
+inline const RtComponentPropertyValue kInvalidRtComponentPropertyValue{std::in_place_type<uint8_t>, 255};
+
 using RtComponentPropertyVector = std::variant<
   // NOTE: see comment on RtComponentPropertyValue for why bool is stored as uint8_t.
   std::vector<uint8_t>,

@@ -1,0 +1,38 @@
+{
+  "lightspeed.trex.components.KeyboardInput": {
+    "description": ["Checks the state of a keyboard key or key combination using the same format as RTX options."],
+    "version": 1,
+    "uiName": "Keyboard Input",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Sense",
+    "inputs": {
+      "keyString": {
+        "description": ["The key combination string (e.g., 'A', 'CTRL,A', 'SHIFT,SPACE'). Supports key names and combinations like RTX options."],
+        "type": "string",
+        "default": "A",
+        "uiName": "Key String"
+      }
+    },
+    "outputs": {
+      "isPressed": {
+        "description": ["True if the key combination is currently being pressed."],
+        "type": "bool",
+        "default": false,
+        "uiName": "Is Pressed"
+      },
+      "wasJustPressed": {
+        "description": ["True if the key combination was just pressed this frame."],
+        "type": "bool",
+        "default": false,
+        "uiName": "Was Just Pressed"
+      },
+      "wasClicked": {
+        "description": ["True for one frame after the key combination is released (press then release cycle)."],
+        "type": "bool",
+        "default": false,
+        "uiName": "Was Clicked"
+      }
+    }
+  }
+}

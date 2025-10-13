@@ -109,7 +109,11 @@ private:
           }
         }
       }
-      return propertyValueFromString(value.Get<pxr::TfToken>().GetString(), spec.type);
+      RtComponentPropertyValue result = propertyValueFromString(value.Get<pxr::TfToken>().GetString(), spec.type);
+      if (result == kInvalidRtComponentPropertyValue) {
+        return spec.defaultValue;
+      }
+      return result;
     } else if (constexpr (std::is_same_v<T, Vector2>) && value.IsHolding<pxr::GfVec2f>()) {
       return Vector2(value.Get<pxr::GfVec2f>().data());
     } else if (constexpr (std::is_same_v<T, Vector3>) && value.IsHolding<pxr::GfVec3f>()) {

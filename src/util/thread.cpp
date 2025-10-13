@@ -2,6 +2,8 @@
 
 #include "thread.h"
 #include "util_likely.h"
+#include "log/log.h"
+#include "util_string.h"
 
 #ifdef _WIN32
 
@@ -66,7 +68,11 @@ namespace dxvk {
 
     try {
       data->proc();
+    } catch (const std::exception& e) {
+      Logger::warn(str::format("Thread caught exception: ", e.what()));
+      exitCode = 1;
     } catch (...) {
+      Logger::warn("Thread caught unknown exception");
       exitCode = 1;
     }
 

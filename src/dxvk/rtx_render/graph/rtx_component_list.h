@@ -25,6 +25,9 @@
 
 #include "components/animated_float.h"
 #include "components/interpolate_float.h"
+#include "components/keyboard_input.h"
 #include "components/loop_float.h"
+#include "components/mesh_hash_checker.h"
 #include "components/sphere_light_override.h"
+#include "components/texture_hash_checker.h"
 #include "components/time.h"
