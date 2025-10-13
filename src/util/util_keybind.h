@@ -43,6 +43,8 @@ struct VirtualKey {
 };
 using VirtualKeys = std::vector<VirtualKey>;
 
+constexpr const char kVirtualKeyDelimiter = ',';
+
 class KeyBind {
 public:
     static std::string getName(const VirtualKey vk) {
@@ -346,7 +348,7 @@ static std::string buildKeyBindDescriptorString(const VirtualKeys& virtKeys) {
     bool bIsFirst = true;
     for(const auto& virtKey : virtKeys) {
         if(!bIsFirst) {
-            ss << " + ";
+            ss << kVirtualKeyDelimiter;
         }
         ss << KeyBind::getName(virtKey);
         bIsFirst = false;

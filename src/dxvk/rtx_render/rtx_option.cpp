@@ -775,11 +775,17 @@ namespace dxvk {
     */
     GenericValueWrapper optionValue(type);
     float throughput = 1.0f;
+    bool layerMatchingRuntimePriorityFound = false;
     // Loop layers from highest priority to lowest to lerp the value across layers base on the blend strength of layers
     for (const auto& optionLayer : optionLayerValueQueue) {
-      // Skip options with runtime priority when ignoreChangedOption is true
-      if (ignoreChangedOption && optionLayer.second.priority == RtxOptionLayer::s_runtimeOptionLayerPriority) {
-        continue;
+      if (optionLayer.second.priority == RtxOptionLayer::s_runtimeOptionLayerPriority) {
+        if (ignoreChangedOption) {
+          // Skip options with runtime priority when ignoreChangedOption is true
+          continue;
+        }
+
+        // Changing this flag must happen after checking ignoreChangedOption, or the real-time changes will be mistakenly removed.
+        layerMatchingRuntimePriorityFound = true;
       }
 
       if (type == OptionType::Float || type == OptionType::Vector2 || type == OptionType::Vector3 || type == OptionType::Vector4) {
@@ -796,6 +802,39 @@ namespace dxvk {
           addWeightedValue(optionLayer.second.value, throughput, optionValue.data);
           break;
         }
+      }
+    }
+
+    // If a runtime option layer exists, recompute the resolved value without it
+    // to check whether the layer actually changes the final result. If the recomputed value
+    // matches the current resolved value, it means the real-time layer is redundant,
+    // so we remove (disable) it to avoid unnecessary layers and redundant blending.
+    if (layerMatchingRuntimePriorityFound) {
+      GenericValueWrapper originalResolvedValue(type);
+      for (const auto& optionLayer : optionLayerValueQueue) {
+        if (optionLayer.second.priority == RtxOptionLayer::s_runtimeOptionLayerPriority) {
+          continue;
+        }
+
+        if (type == OptionType::Float || type == OptionType::Vector2 || type == OptionType::Vector3 || type == OptionType::Vector4) {
+          // Stop when the blend strength is larger than 1, because lerp(a, b, 1.0f) => b, we don't need to loop lower priority values
+          if (optionLayer.second.blendStrength >= 1.0f) {
+            addWeightedValue(optionLayer.second.value, throughput, originalResolvedValue.data);
+            break;
+          }
+
+          addWeightedValue(optionLayer.second.value, optionLayer.second.blendStrength * throughput, originalResolvedValue.data);
+          throughput *= (1.0f - optionLayer.second.blendStrength);
+        } else {
+          if (optionLayer.second.blendStrength >= optionLayer.second.blendThreshold || optionLayer.second.priority == 0) {
+            addWeightedValue(optionLayer.second.value, throughput, originalResolvedValue.data);
+            break;
+          }
+        }
+      }
+
+      if (isEqual(originalResolvedValue.data, optionValue.data)) {
+        disableTopLayer();
       }
     }
 
