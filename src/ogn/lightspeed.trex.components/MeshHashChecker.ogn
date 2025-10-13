@@ -1,0 +1,32 @@
+{
+  "lightspeed.trex.components.MeshHashChecker": {
+    "description": ["Checks if a specific mesh hash was processed in the current frame."],
+    "version": 1,
+    "uiName": "Mesh Hash Checker",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Sense",
+    "inputs": {
+      "meshHash": {
+        "description": ["The mesh hash to check for usage in the current frame."],
+        "type": "uint64",
+        "default": 0,
+        "uiName": "Mesh Hash"
+      }
+    },
+    "outputs": {
+      "isUsed": {
+        "description": ["True if the mesh hash was used in the current frame."],
+        "type": "bool",
+        "default": false,
+        "uiName": "Is Used"
+      },
+      "usageCount": {
+        "description": ["Number of times the mesh hash was used in the current frame."],
+        "type": "uint",
+        "default": 0,
+        "uiName": "Usage Count"
+      }
+    }
+  }
+}

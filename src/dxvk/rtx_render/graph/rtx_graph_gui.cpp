@@ -378,7 +378,9 @@ std::string RtxGraphGUI::formatPropertyValue(const RtComponentPropertyValue& val
     } else if constexpr (std::is_same_v<T, uint32_t>) {
       return std::to_string(v);
     } else if constexpr (std::is_same_v<T, uint64_t>) {
-      return std::to_string(v);
+      std::stringstream ss;
+      ss << "0x" << std::hex << std::uppercase << std::setw(16) << std::setfill('0') << v;
+      return ss.str();
     } else if constexpr (std::is_same_v<T, std::string>) {
       return "\"" + v + "\"";
     } else {
