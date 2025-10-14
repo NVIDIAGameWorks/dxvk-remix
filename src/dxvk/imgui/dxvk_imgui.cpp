@@ -1094,14 +1094,14 @@ namespace dxvk {
     ImGui::Checkbox("Save Changed Settings Only", &RtxOptions::serializeChangedOptionOnlyObject());
     const float buttonWidth = ImGui::GetContentRegionAvail().x / 3 - (ImGui::GetStyle().ItemSpacing.x);
 
-    if (IMGUI_ADD_TOOLTIP(ImGui::Button("Save Settings"), "Changes are now saved to user.conf. Use the 'Save' button in the rtx.conf layer if you want to store them there for sharing.", ImVec2(buttonWidth, 0))) {
+    if (IMGUI_ADD_TOOLTIP(ImGui::Button("Save Settings", ImVec2(buttonWidth, 0)), "Changes are now saved to user.conf. Use the 'Save' button in the rtx.conf layer if you want to store them there for sharing.")) {
 
 
       RtxOptions::serialize();
     }
 
     ImGui::SameLine();
-    if (IMGUI_ADD_TOOLTIP(ImGui::Button("Reset settings"), "Reset all real-time changed settings.", ImVec2(buttonWidth, 0))) {
+    if (IMGUI_ADD_TOOLTIP(ImGui::Button("Reset settings", ImVec2(buttonWidth, 0)), "Reset all real-time changed settings.")) {
       RtxOptionLayer::setResetSettings(true);
     }
 
@@ -1143,8 +1143,8 @@ namespace dxvk {
     // - Checking to ensure text including less visible instances from hover tooltips and etc do not take up more
     // lines such that empty text lines become ineffective (to prevent jittering when text changes).
     // - Updating Dummy elements as they currently are based on half the y padding for spacing consistency.
-    const float windowPaddingX = 74.0f;
-    const float windowPaddingHalfX = windowPaddingX * 0.5f;
+    constexpr float windowPaddingX = 74.0f;
+    constexpr float windowPaddingHalfX = windowPaddingX * 0.5f;
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(windowPaddingX, 10));
 
     // Use the same background color and alpha as other menus, PopupBg has alpha 1 because it's used for combobox popups etc. 
@@ -1160,7 +1160,7 @@ namespace dxvk {
       // Always display memory stats to user.
       showMemoryStats();
 
-      const int itemWidth = static_cast<int>(m_largeUIMode ? m_largeUserWindowWidgeWidth : m_regularUserWindowWidgeWidth);
+      const int itemWidth = static_cast<int>(m_largeUIMode ? m_largeUserWindowWidgeWidth : m_regularUserWindowWidgetWidth);
       const int subItemWidth = static_cast<int>(ImCeil(itemWidth * 0.86f));
       const int subItemIndent = (itemWidth > subItemWidth) ? (itemWidth - subItemWidth) : 0;
 
@@ -2137,13 +2137,13 @@ namespace dxvk {
         }
 
         {
-          const float indent = 60.0f;
+          constexpr float indent = 60.0f;
           ImGui::PushID("gui theme");
           ImGui::Dummy(ImVec2(0, 2));
           ImGui::Text("GUI Theme:");
           ImGui::PushItemWidth(ImGui::GetContentRegionMax().x - indent);
-          if (ImGui::ListBox("", (int*) &m_currTheme, &themeNames[0], Theme::kTheme_Count, 3)) {
-            themeGui.setDeferred(m_currTheme);
+          if (ImGui::ListBox("", (int*) &m_currTheme, &themeNames[0], static_cast<int>(Theme::Count), 3)) {
+            themeGui.setDeferred(static_cast<int>(m_currTheme));
             setupStyle();
           }
           ImGui::PopItemWidth();
@@ -2347,7 +2347,7 @@ namespace dxvk {
     // should be in sync with post_fx_highlight.comp.slang::highlightIntensity(),
     // so animation of post-effect highlight and UI are same
     float animatedHighlightIntensity(uint64_t timeSinceStartMS) {
-      const float ymax = 0.65f;
+      constexpr float ymax = 0.65f;
       float t10 = 1.0f - fract(static_cast<float>(timeSinceStartMS) / 1000.0f);
       return clamp(t10 > ymax ? t10 - (1.0f - ymax) : t10, 0.0f, 1.0f) / ymax;
     }
@@ -3197,29 +3197,29 @@ namespace dxvk {
     switch (m_currTheme)
     {
     default:
-    case kTheme_Toolkit:
+    case Theme::Toolkit:
       if (m_init) {
         m_backgroundAlpha = 0.9f;
       }
       setToolkitStyle(style);
       break;
 
-    case kTheme_Legacy:
+    case Theme::Legacy:
       if (m_init) {
         m_backgroundAlpha = 0.6f;
       }
       setLegacyStyle(style);
       break;
     
-    case kTheme_Nvidia:
+    case Theme::Nvidia:
       if (m_init) {
         m_backgroundAlpha = 0.8f;
       }
       setNvidiaStyle(style);
       break;
 
-    case kTheme_Count:
-      assert(false && "kTheme_Count hit in ImGUI::setupStyle");
+    case Theme::Count:
+      assert(false && "Theme::Count hit in ImGUI::setupStyle");
       break;
     }
   }
@@ -4136,7 +4136,7 @@ namespace dxvk {
 
       ImGui::Checkbox("Use White Material Textures", &RtxOptions::useWhiteMaterialModeObject());
       ImGui::Separator();
-      const float kMipBiasRange = 32;
+      constexpr float kMipBiasRange = 32;
       ImGui::DragFloat("Mip LOD Bias", &RtxOptions::nativeMipBiasObject(), 0.01f, -kMipBiasRange, kMipBiasRange, "%.2f", sliderFlags);
       ImGui::DragFloat("Upscaling LOD Bias", &RtxOptions::upscalingMipBiasObject(), 0.01f, -kMipBiasRange, kMipBiasRange, "%.2f", sliderFlags);
       ImGui::Separator();

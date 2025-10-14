@@ -341,13 +341,13 @@ namespace dxvk {
 
         const float indent = 60.0f;
         static int itemIndex = 0;
-        ImGui::PushItemWidth(ImGui::GetContentRegionMax().x - indent);
+        ImGui::PushItemWidth(ImMax(ImGui::GetContentRegionMax().x - indent, 1.0f));
         ImGui::PushID("volumetric visual preset");
         ImGui::ListBox("", &itemIndex, &volumericPresetName[0], (int) PresetType::PresetCount + 1, 3);
         ImGui::PopID();
         ImGui::PopItemWidth();
 
-        if (ImGui::Button("Apply", ImVec2(ImGui::GetContentRegionMax().x - indent, 0)) && itemIndex > 0) {
+        if (ImGui::Button("Apply", ImVec2(ImMax(ImGui::GetContentRegionMax().x - indent, 1.0f), 0)) && itemIndex > 0) {
           setPreset((PresetType) (itemIndex - 1));
           itemIndex = 0;
         }

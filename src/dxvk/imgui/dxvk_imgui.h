@@ -165,7 +165,7 @@ namespace dxvk {
     float                 m_regularUserWindowWidth = 600.f;
     float                 m_regularUserWindowHeight = 720.f;
     // Width of item+label widgets in regular mode (user menu)
-    float                 m_regularUserWindowWidgeWidth = 140.f;
+    float                 m_regularUserWindowWidgetWidth = 140.f;
 
     float                 m_largeUserWindowWidth = 776.0f;
     float                 m_largeUserWindowHeight = 926.0f;
@@ -178,13 +178,13 @@ namespace dxvk {
     bool                  m_pendingUIOptionsScroll = false;
 
     static constexpr const char* themeNames[] = { "Default Theme", "Legacy Theme", "NVIDIA Theme" };
-    enum Theme {
-      kTheme_Toolkit,
-      kTheme_Legacy,
-      kTheme_Nvidia,
-      kTheme_Count
+    enum class Theme {
+      Toolkit,
+      Legacy,
+      Nvidia,
+      Count
     };
-    Theme                 m_currTheme = kTheme_Toolkit;
+    Theme                 m_currTheme = Theme::Toolkit;
     float                 m_backgroundAlpha = 0.8f;
 
     float                 m_windowWidth = m_regularWindowWidth;
@@ -290,7 +290,7 @@ namespace dxvk {
     RTX_OPTION("rtx.gui", float, reflexStatRangePaddingRatio, 0.05f, "A value specifying the amount of padding applied to the Reflex stat graph ranges as a ratio to the calculated range.");
     RTX_OPTION("rtx.gui", bool, compactGui, false, "A setting to toggle between compact and spacious GUI modes.");
     RTX_OPTION("rtx.gui", float, backgroundAlpha, 0.90f, "A value controlling the alpha of the GUI background.");
-    RTX_OPTION("rtx.gui", int, themeGui, (int)Theme::kTheme_Toolkit, "A setting controlling the active GUI theme.");
+    RTX_OPTION("rtx.gui", int, themeGui, (int)Theme::Toolkit, "A setting controlling the active GUI theme.");
 
     void onCloseMenus();
     void onOpenMenus();
