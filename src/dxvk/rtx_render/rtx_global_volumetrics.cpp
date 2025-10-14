@@ -249,16 +249,13 @@ namespace dxvk {
     };
     static_assert(sizeof(volumericQualityLevelName) / sizeof(volumericQualityLevelName[0]) == QualityLevel::QualityCount);
 
-    ImGui::Text("Set Quality Level Preset:");
     for (uint32_t i = 0; i < QualityLevel::QualityCount; i++) {
       if (ImGui::Button(volumericQualityLevelName[i])) {
         setQualityLevel((QualityLevel) i);
       }
-
-      if (i < QualityLevel::QualityCount - 1) {
-        ImGui::SameLine();
-      }
+      ImGui::SameLine();
     }
+    ImGui::TextUnformatted("Quality Level Preset");
   }
 
   void RtxGlobalVolumetrics::showImguiUserSettings() {
@@ -340,16 +337,17 @@ namespace dxvk {
         };
         static_assert((sizeof(volumericPresetName) / sizeof(volumericPresetName[0]) - 1) == PresetType::PresetCount);
 
-        ImGui::Text("Set Quality Level Preset:");
+        ImGui::Text("Volumetric Visual Presets:");
 
-        const int indent = 200;
+        const float indent = 60.0f;
         static int itemIndex = 0;
-        ImGui::PushItemWidth(ImGui::GetWindowWidth() - indent);
+        ImGui::PushItemWidth(ImMax(ImGui::GetContentRegionMax().x - indent, 1.0f));
         ImGui::PushID("volumetric visual preset");
         ImGui::ListBox("", &itemIndex, &volumericPresetName[0], (int) PresetType::PresetCount + 1, 3);
         ImGui::PopID();
         ImGui::PopItemWidth();
-        if (ImGui::Button("Apply") && itemIndex > 0) {
+
+        if (ImGui::Button("Apply", ImVec2(ImMax(ImGui::GetContentRegionMax().x - indent, 1.0f), 0)) && itemIndex > 0) {
           setPreset((PresetType) (itemIndex - 1));
           itemIndex = 0;
         }
@@ -429,7 +427,9 @@ namespace dxvk {
       ImGui::Separator();
       ImGui::Dummy({ 0, 4 });
       {
+        ImGui::Indent();
         m_device->getCommon()->metaComposite().showDepthBasedFogImguiSettings();
+        ImGui::Unindent();
       }
 
       ImGui::Unindent();

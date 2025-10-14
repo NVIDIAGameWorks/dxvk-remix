@@ -129,7 +129,7 @@ namespace dxvk {
       Ok,
       Error
     };
-    
+
     DxvkDevice*           m_device;
     
     Rc<DxvkImage>         m_fontTexture;
@@ -141,6 +141,8 @@ namespace dxvk {
     Rc<ImGuiSplash>       m_splash;
     Rc<ImGuiCapture>      m_capture;
     // Note: May be NULL until the font loads, needs to be checked before use.
+    ImFont*               m_regularFont = nullptr;
+    // Note: May be NULL until the font loads, needs to be checked before use.
     ImFont*               m_largeFont = nullptr;
 
     ImGuiContext*         m_context;
@@ -149,10 +151,46 @@ namespace dxvk {
     HWND                  m_hwnd;
     bool                  m_init = false;
 
+
+    // Width of developer menu in regular mode
+    float                 m_regularWindowWidth = 450.0f;
+    // Width of item+label widgets in regular mode (developer menu)
+    float                 m_regularWindowWidgetWidth = 200.f;
+
+    // Width of developer menu in large mode
+    float                 m_largeWindowWidth = 670.0f;
+    // Width of item+label widgets in large mode (developer menu)
+    float                 m_largeWindowWidgetWidth = 364.0f;
+
+    float                 m_regularUserWindowWidth = 600.f;
+    float                 m_regularUserWindowHeight = 720.f;
+    // Width of item+label widgets in regular mode (user menu)
+    float                 m_regularUserWindowWidgetWidth = 140.f;
+
+    float                 m_largeUserWindowWidth = 776.0f;
+    float                 m_largeUserWindowHeight = 926.0f;
+    // Width of item+label widgets in large mode
+    float                 m_largeUserWindowWidgeWidth = 252.f;
+
     bool                  m_windowOnRight = true;
-    float                 m_windowWidth = 450.f;
-    float                 m_userWindowWidth = 600.f;
-    float                 m_userWindowHeight = 550.f;
+    bool                  m_compactUIMode = true;
+    bool                  m_largeUIMode = false;
+    bool                  m_pendingUIOptionsScroll = false;
+
+    static constexpr const char* themeNames[] = { "Default Theme", "Legacy Theme", "NVIDIA Theme" };
+    enum class Theme {
+      Toolkit,
+      Legacy,
+      Nvidia,
+      Count
+    };
+    Theme                 m_currTheme = Theme::Toolkit;
+    float                 m_backgroundAlpha = 0.8f;
+
+    float                 m_windowWidth = m_regularWindowWidth;
+    float                 m_userWindowWidth = m_regularUserWindowWidth;
+    float                 m_userWindowHeight = m_regularUserWindowHeight;
+
     const char*           m_userGraphicsWindowTitle = "User Graphics Settings";
     bool                  m_userGraphicsSettingChanged = false;
     bool m_hudMessageTimeReset = false;
@@ -226,9 +264,20 @@ namespace dxvk {
 
     void createFontsTexture(const Rc<DxvkContext>& ctx);
 
-    void setupStyle(ImGuiStyle* dst = NULL);      // custom style
-    void showVsyncOptions(bool enableDLFGGuard);
+    // Adjust Alpha of currently set background color
+    void adjustStyleBackgroundAlpha(const float& alpha, ImGuiStyle* dst = NULL);
+    // Adjusts window widths based on various UI settings
+    void updateWindowWidths();
+    // Sets default remix UI theme
+    void setLegacyStyle(ImGuiStyle* dst);
+    // Sets toolkit inspired UI theme
+    void setToolkitStyle(ImGuiStyle* dst);
+    // Sets Nvidia inspired UI theme
+    void setNvidiaStyle(ImGuiStyle* dst);
+    // Custom style
+    void setupStyle(ImGuiStyle* dst = NULL);
 
+    void showVsyncOptions(bool enableDLFGGuard);
     void processHotkeys();
 
     void showMemoryStats() const;
@@ -239,7 +288,10 @@ namespace dxvk {
     RTX_OPTION("rtx.gui", std::uint32_t, hudMessageAnimatedDotDurationMilliseconds, 1000, "A duration in milliseconds between each dot in the animated dot sequence for HUD messages. Must be greater than 0.\nThese dots help indicate progress is happening to the user with a bit of animation which can be configured to animate at whatever speed is desired.");
     RTX_OPTION("rtx.gui", float, reflexStatRangeInterpolationRate, 0.05f, "A value controlling the interpolation rate applied to the Reflex stat graph ranges for smoother visualization.");
     RTX_OPTION("rtx.gui", float, reflexStatRangePaddingRatio, 0.05f, "A value specifying the amount of padding applied to the Reflex stat graph ranges as a ratio to the calculated range.");
-  
+    RTX_OPTION("rtx.gui", bool, compactGui, false, "A setting to toggle between compact and spacious GUI modes.");
+    RTX_OPTION("rtx.gui", float, backgroundAlpha, 0.90f, "A value controlling the alpha of the GUI background.");
+    RTX_OPTION("rtx.gui", int, themeGui, (int)Theme::Toolkit, "A setting controlling the active GUI theme.");
+
     void onCloseMenus();
     void onOpenMenus();
     void freeUnusedMemory();

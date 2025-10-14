@@ -303,12 +303,15 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.freeCameraTurningSpeed|float|1|||Free camera turning speed \(applies to keyboard, not mouse\) \[radians/s\]\.|
 |rtx.fusedWorldViewMode|int|0|||Set if game uses a fused World\-View transform matrix\.|
 |rtx.graphicsPreset|int|5|||Overall rendering preset, higher presets result in higher image quality, lower presets result in better performance\.|
+|rtx.gui.backgroundAlpha|float|0.9|||A value controlling the alpha of the GUI background\.|
+|rtx.gui.compactGui|bool|False|||A setting to toggle between compact and spacious GUI modes\.|
 |rtx.gui.hudMessageAnimatedDotDurationMilliseconds|int|1000|||A duration in milliseconds between each dot in the animated dot sequence for HUD messages\. Must be greater than 0\.<br>These dots help indicate progress is happening to the user with a bit of animation which can be configured to animate at whatever speed is desired\.|
 |rtx.gui.legacyTextureGuiShowAssignedOnly|bool|False|||A setting to show only the textures in a category that are assigned to it \(Unassigned textures are found in the new "Uncategorized" list at the top\)\.<br>Requires: 'Split Texture Category List' option to be enabled\.|
 |rtx.gui.reflexStatRangeInterpolationRate|float|0.05|||A value controlling the interpolation rate applied to the Reflex stat graph ranges for smoother visualization\.|
 |rtx.gui.reflexStatRangePaddingRatio|float|0.05|||A value specifying the amount of padding applied to the Reflex stat graph ranges as a ratio to the calculated range\.|
 |rtx.gui.showLegacyTextureGui|bool|False|||A setting to toggle the old texture selection GUI, where each texture category is represented as its own list\.|
 |rtx.gui.textureGridThumbnailScale|float|1|||A float to set the scale of thumbnails while selecting textures\.<br>This will be scaled by the default value of 120 pixels\.<br>This value must always be greater than zero\.|
+|rtx.gui.themeGui|int|0|||A setting controlling the active GUI theme\.|
 |rtx.hashCollisionDetection.enable|bool|False|||Enables hash collision detection\.|
 |rtx.hideSplashMessage|bool|False|||A flag to disable the splash message indicating how to use Remix from appearing when the application starts\.<br>When set to true this message will be hidden, otherwise it will be displayed on every launch\.|
 |rtx.ignoreAllVertexColorBakedLighting|bool|False|||If true, all baked lighting bound to all vertex colors will be ignored\.|
