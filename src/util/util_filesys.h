@@ -60,7 +60,7 @@ private:
   };
   // EDIT RTX FILESYSTEM PATHS HERE
   static inline const std::array<PathSpec,kNumIds> s_pathSpecs = {
-    PathSpec{ Mods,     join(".", "rtx-remix", "mods"),     ""                  },
+    PathSpec{ Mods,     join(".", "rtx-remix", "mods"),     "DEFAULT_MODS_DIR"  },
     PathSpec{ Captures, join(".", "rtx-remix", "captures"), "DXVK_CAPTURE_PATH" },
     PathSpec{ Logs,     join(".", "rtx-remix", "logs"),     "DXVK_LOG_PATH"     }
   };
