@@ -52,7 +52,7 @@ namespace components {
 REMIX_COMPONENT( \
   /* the Component name */ AnimatedFloat, \
   /* the UI name */        "Animated Float", \
-  /* the UI categories */  "Logic", \
+  /* the UI categories */  "Transform", \
   /* the doc string */     "A single animated float value.", \
   /* the version number */ 1, \
   LIST_INPUTS, LIST_STATES, LIST_OUTPUTS);

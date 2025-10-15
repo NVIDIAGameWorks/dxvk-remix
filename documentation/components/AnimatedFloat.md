@@ -7,7 +7,7 @@ A single animated float value\.
 - **Name:** `AnimatedFloat`
 - **UI Name:** Animated Float
 - **Version:** 1
-- **Categories:** Logic
+- **Categories:** Transform
 
 ## Input Properties
 
@@ -48,30 +48,34 @@ How long it takes to animate from initial value to final value, in seconds\.
 
 What happens when the float reaches the final value\.
 
+Underlying Type: `Uint32`
+
 
 **Allowed Values:**
 
-- Loop: The value will wrap around from max to min\. *(default)*
-- PingPong: The value will bounce back and forth between min and max\.
-- None: The value will be unchanged\.
-- Clamp: The value will be clamped to the range\.
+- Loop (`Loop`): The value will wrap around from max to min\. *(default)*
+- PingPong (`PingPong`): The value will bounce back and forth between min and max\.
+- NoLoop (`NoLoop`): The value will be unchanged\.
+- Clamp (`Clamp`): The value will be clamped to the range\.
 
 ### Interpolation
 
 How the float will change over time\.
 
+Underlying Type: `Uint32`
+
 
 **Allowed Values:**
 
-- Linear: The float will have a constant velocity\. *(default)*
-- Cubic: The float will change in a cubic curve over time\.
-- EaseIn: The float will start slow, then accelerate\.
-- EaseOut: The float will start fast, then decelerate\.
-- EaseInOut: The float will start slow, accelerate, then decelerate\.
-- Sine: Smooth, natural motion using a sine wave\.
-- Exponential: Dramatic acceleration effect\.
-- Bounce: Bouncy, playful motion\.
-- Elastic: Spring\-like motion\.
+- Linear (`Linear`): The float will have a constant velocity\. *(default)*
+- Cubic (`Cubic`): The float will change in a cubic curve over time\.
+- EaseIn (`EaseIn`): The float will start slow, then accelerate\.
+- EaseOut (`EaseOut`): The float will start fast, then decelerate\.
+- EaseInOut (`EaseInOut`): The float will start slow, accelerate, then decelerate\.
+- Sine (`Sine`): Smooth, natural motion using a sine wave\.
+- Exponential (`Exponential`): Dramatic acceleration effect\.
+- Bounce (`Bounce`): Bouncy, playful motion\.
+- Elastic (`Elastic`): Spring\-like motion\.
 
 ## State Properties
 

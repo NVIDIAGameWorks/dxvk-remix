@@ -174,6 +174,24 @@ namespace lss {
     }
 
     m_isRightHanded = orientationAuthored && orientation == kRightHanded;
+
+    // Calculate bounding box using USD's built-in ComputeExtent function
+    pxr::VtVec3fArray points;
+    pxr::VtVec3fArray extent;
+    
+    if (m_meshPrim.GetPointsAttr().Get(&points)) {
+      if (UsdGeomMesh::ComputeExtent(points, &extent) && extent.size() == 2) {
+        // USD ComputeExtent returns [min, max] as VtVec3fArray
+        const pxr::GfVec3f& minExtent = extent[0];
+        const pxr::GfVec3f& maxExtent = extent[1];
+        
+        m_boundingBox = dxvk::AxisAlignedBoundingBox{
+            dxvk::Vector3(minExtent[0], minExtent[1], minExtent[2]),
+            dxvk::Vector3(maxExtent[0], maxExtent[1], maxExtent[2])};
+      } else {
+        Logger::warn(str::format("Could not compute bounding box for mesh: ", m_meshPrim.GetPath().GetString()));
+      }
+    }
   }
 
 

@@ -55,46 +55,83 @@ void RtxGraphGUI::showGraphVisualization(const Rc<DxvkContext>& ctx) {
 }
 
 void RtxGraphGUI::showGraphSelector(const SceneManager& sceneManager) {
-  ImGui::Text("Select Graph Instance:");
-  
-  // Get graph manager and available instances
-  const GraphManager& graphManager = sceneManager.getGraphManager();
-  const auto& graphInstances = graphManager.getGraphInstances();
-  
-  if (graphInstances.empty()) {
-    ImGui::Text("No graph instances available");
-    return;
-  }
-  
-  // Create dropdown with actual graph instances
-  static int selectedIndex = -1;
-  std::vector<std::string> instanceNames;
-  std::vector<uint64_t> instanceIds;
-  
-  for (const auto& [instanceId, graphInstance] : graphInstances) {
-    std::string instanceName = extractGraphInstanceName(graphManager, graphInstance);
-    instanceNames.push_back(instanceName);
-    instanceIds.push_back(instanceId);
-  }
-  
-  // Convert to const char* array for ImGui
-  std::vector<const char*> instanceNamesCStr;
-  for (const auto& name : instanceNames) {
-    instanceNamesCStr.push_back(name.c_str());
-  }
-  
-  // Clamp selectedIndex to prevent undefined behavior if instances were removed
-  selectedIndex = std::clamp(selectedIndex, -1, static_cast<int>(instanceNamesCStr.size()) - 1);
-  
-  if (ImGui::Combo("##GraphInstance", &selectedIndex, instanceNamesCStr.data(), static_cast<int>(instanceNamesCStr.size()))) {
-    if (selectedIndex >= 0 && selectedIndex < static_cast<int>(instanceIds.size())) {
-      m_selectedInstanceId = instanceIds[selectedIndex];
-      m_components.clear();
+  if (ImGui::CollapsingHeader("Select Graph Instance:", ImGuiTreeNodeFlags_DefaultOpen)) {
+    ImGui::Indent();
+    // Get graph manager and available instances
+    const GraphManager& graphManager = sceneManager.getGraphManager();
+    const auto& graphInstances = graphManager.getGraphInstances();
+    
+    if (graphInstances.empty()) {
+      ImGui::Text("No graph instances available");
+      ImGui::Unindent();
+
+      return;
     }
-  }
-  
-  if (selectedIndex < 0) {
-    ImGui::Text("No graph instance selected");
+    
+    // Filter input
+    ImGui::Text("Filter:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-1);
+    ImGui::InputText("##InstanceFilter", m_instanceFilter.data(), m_instanceFilter.size());
+    
+    // Build list of instances with names
+    std::vector<std::pair<std::string, uint64_t>> instanceList;
+    for (const auto& [instanceId, graphInstance] : graphInstances) {
+      std::string instanceName = extractGraphInstanceName(graphManager, graphInstance);
+      instanceList.push_back({instanceName, instanceId});
+    }
+    
+    // Filter instances based on filter string (case-insensitive)
+    std::vector<std::pair<std::string, uint64_t>> filteredInstances;
+    std::string filterLower(m_instanceFilter.data());
+    std::transform(filterLower.begin(), filterLower.end(), filterLower.begin(), 
+        [](unsigned char c) { return std::tolower(c); });
+    
+    for (const auto& [name, id] : instanceList) {
+      if (filterLower.empty()) {
+        // No filter - show all
+        filteredInstances.push_back({name, id});
+      } else {
+        // Check if name contains filter string (case-insensitive)
+        std::string nameLower = name;
+        std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), 
+            [](unsigned char c) { return std::tolower(c); });
+        if (nameLower.find(filterLower) != std::string::npos) {
+          filteredInstances.push_back({name, id});
+        }
+      }
+    }
+    
+    // Display filtered instances in a list box
+    ImGui::BeginChild("InstanceList", ImVec2(0, 200), true, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+    
+    if (filteredInstances.empty()) {
+      ImGui::Text("No matching instances");
+    } else {
+      for (const auto& [name, id] : filteredInstances) {
+        bool isSelected = (m_selectedInstanceId == id);
+        if (ImGui::Selectable(name.c_str(), isSelected)) {
+          m_selectedInstanceId = id;
+          m_components.clear();
+        }
+      }
+    }
+    
+    ImGui::EndChild();
+    
+    // Show current selection
+    if (m_selectedInstanceId == kInvalidInstanceId) {
+      ImGui::Text("No graph instance selected");
+    } else {
+      // Find and display the selected instance name
+      for (const auto& [name, id] : instanceList) {
+        if (id == m_selectedInstanceId) {
+          ImGui::Text("Selected: %s", name.c_str());
+          break;
+        }
+      }
+    }
+    ImGui::Unindent();
   }
 }
 
@@ -107,17 +144,14 @@ void RtxGraphGUI::showComponentList() {
     return;
   }
   
-  // Show components in a scrollable list
-  ImGui::BeginChild("ComponentList", ImVec2(0, 400), true);
+  // Show components in a scrollable list with resizable height
+  ImGui::BeginChild("ComponentList", ImVec2(0, m_componentListHeight), true, ImGuiWindowFlags_AlwaysVerticalScrollbar);
   
   for (size_t i = 0; i < m_components.size(); ++i) {
     const auto& component = m_components[i];
     
     // Component header with collapsible tree node
     std::string headerText = component.typeName;
-    if (!component.uiName.empty() && component.uiName != component.typeName) {
-      headerText += " (" + component.uiName + ")";
-    }
     
     if (ImGui::CollapsingHeader(headerText.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
       // Show component description as tooltip on header hover
@@ -174,6 +208,17 @@ void RtxGraphGUI::showComponentList() {
   }
   
   ImGui::EndChild();
+  
+  // Add a draggable splitter to resize the component list
+  ImGui::Button("##splitter", ImVec2(-1, 8.0f));
+  if (ImGui::IsItemActive()) {
+    m_componentListHeight += ImGui::GetIO().MouseDelta.y;
+    // Clamp to reasonable values
+    m_componentListHeight = std::clamp(m_componentListHeight, 100.0f, 1000.0f);
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+  }
 }
 
 void RtxGraphGUI::updateGraphData(const SceneManager& sceneManager) {
@@ -233,8 +278,7 @@ void RtxGraphGUI::updateGraphData(const SceneManager& sceneManager) {
     
     ComponentInfo component;
     component.name = spec->name;
-    component.typeName = spec->getClassName();
-    component.uiName = spec->uiName;
+    component.typeName = spec->uiName.empty() ? spec->getClassName() : spec->uiName;
     component.docString = spec->docString;
     
     // Get property indices for this component from topology

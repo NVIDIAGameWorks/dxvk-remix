@@ -5,7 +5,7 @@
     "uiName": "Animated Float",
     "language": "python",
     "categoryDefinitions": "config/CategoryDefinition.json",
-    "categories": "Logic",
+    "categories": "Transform",
     "inputs": {
       "enabled": {
         "description": ["If true, the float will be animated."],
@@ -33,11 +33,11 @@
         "uiName": "Duration"
       },
       "loopingType": {
-        "description": ["What happens when the float reaches the final value.\nAllowed values:  - Clamp: The value will be clamped to the range.\n  - Loop: The value will wrap around from max to min.\n  - None: The value will be unchanged.\n  - PingPong: The value will bounce back and forth between min and max.\n "],
+        "description": ["What happens when the float reaches the final value.\nAllowed values:  - Clamp: The value will be clamped to the range.\n  - Loop: The value will wrap around from max to min.\n  - NoLoop: The value will be unchanged.\n  - PingPong: The value will bounce back and forth between min and max.\n "],
         "type": "token",
         "default": "Loop",
         "metadata": {
-          "allowedTokens": ["Clamp", "Loop", "None", "PingPong"]
+          "allowedTokens": ["Clamp", "Loop", "NoLoop", "PingPong"]
         },
         "uiName": "Looping Type"
       },

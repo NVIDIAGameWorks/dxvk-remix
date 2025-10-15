@@ -5,7 +5,7 @@
     "uiName": "Loop Float",
     "language": "python",
     "categoryDefinitions": "config/CategoryDefinition.json",
-    "categories": "Logic",
+    "categories": "Transform",
     "inputs": {
       "value": {
         "description": ["The input float value to apply looping to."],
@@ -26,11 +26,11 @@
         "uiName": "Max Range"
       },
       "loopingType": {
-        "description": ["How the value should loop within the range.\nAllowed values:  - Clamp: The value will be clamped to the range.\n  - Loop: The value will wrap around from max to min.\n  - None: The value will be unchanged.\n  - PingPong: The value will bounce back and forth between min and max.\n "],
+        "description": ["How the value should loop within the range.\nAllowed values:  - Clamp: The value will be clamped to the range.\n  - Loop: The value will wrap around from max to min.\n  - NoLoop: The value will be unchanged.\n  - PingPong: The value will bounce back and forth between min and max.\n "],
         "type": "token",
         "default": "Loop",
         "metadata": {
-          "allowedTokens": ["Clamp", "Loop", "None", "PingPong"]
+          "allowedTokens": ["Clamp", "Loop", "NoLoop", "PingPong"]
         },
         "uiName": "Looping Type"
       }

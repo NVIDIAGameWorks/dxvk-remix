@@ -24,6 +24,8 @@
 // TODO figure out how to include components without needing to include a header file in a list like this.
 
 #include "components/animated_float.h"
+#include "components/box_proximity.h"
+#include "components/camera.h"
 #include "components/interpolate_float.h"
 #include "components/keyboard_input.h"
 #include "components/loop_float.h"

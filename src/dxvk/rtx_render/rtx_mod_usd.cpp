@@ -821,7 +821,9 @@ bool UsdMod::Impl::processReplacement(Args& args) {
   // Want the original draw call to occupy the first index in the replacements vector, so that the indices of the
   // asset replacements line up with the indices of the Entities being drawn.
   if (preserveGameObject(args.rootPrim)) {
-    args.meshes.push_back(AssetReplacement(args.rootPrim.GetPrimPath().GetString()));
+    // append the mesh token to the root path, to match with components that target the captured mesh.  Should match lss::gTokMesh.
+    static const pxr::TfToken kMeshToken("mesh");
+    args.meshes.push_back(AssetReplacement(args.rootPrim.GetPrimPath().AppendChild(kMeshToken).GetString()));
     args.meshes[0].includeOriginal = true;
     args.meshes[0].categories = processCategoryFlags(args.rootPrim);
   }
@@ -1402,6 +1404,9 @@ bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
   }
 
   geometryData.frontFace = processedMesh->IsRightHanded() ? VK_FRONT_FACE_CLOCKWISE : VK_FRONT_FACE_COUNTER_CLOCKWISE;
+
+  // Get bounding box from the USD mesh importer
+  geometryData.boundingBox = processedMesh->GetBoundingBox();
 
   for (const lss::UsdMeshImporter::SubMesh& submesh : processedMesh->GetSubMeshes()) {
     if (submesh.GetNumIndices() == 0) {

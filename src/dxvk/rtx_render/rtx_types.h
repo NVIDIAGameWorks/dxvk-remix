@@ -27,6 +27,7 @@
 #include "rtx_hashing.h"
 #include "rtx_camera.h"
 #include "vulkan/vulkan_core.h"
+#include "../../util/util_bounding_box.h"
 #include "../../util/util_threadpool.h"
 #include "../../util/util_spatial_map.h"
 
@@ -224,54 +225,6 @@ struct RaytraceGeometry {
 
   uint32_t calculatePrimitiveCount() const {
     return (usesIndices() ? indexCount : vertexCount) / 3;
-  }
-};
-
-struct AxisAlignedBoundingBox {
-  Vector3 minPos{ FLT_MAX, FLT_MAX, FLT_MAX };
-  Vector3 maxPos{ -FLT_MAX, -FLT_MAX, -FLT_MAX };
-
-  const bool isValid() const {
-    return minPos.x <= maxPos.x && minPos.y <= maxPos.y && minPos.z <= maxPos.z;
-  }
-
-  void invalidate() {
-    minPos = Vector3{ FLT_MAX, FLT_MAX, FLT_MAX };
-    maxPos = Vector3{ -FLT_MAX, -FLT_MAX, -FLT_MAX };
-  }
-
-  void unionWith(const AxisAlignedBoundingBox& other) {
-    for (uint32_t i = 0; i < 3; i++) {
-      minPos[i] = std::min(minPos[i], other.minPos[i]);
-      maxPos[i] = std::max(maxPos[i], other.maxPos[i]);
-    }
-  }
-
-  Vector3 getCentroid() const {
-    return (minPos + maxPos) * 0.5f;
-  }
-
-  // returns untransformed position if AABB is invalid
-  Vector3 getTransformedCentroid(const Matrix4& transform) const {
-    if (isValid()) {
-      return (transform * Vector4(getCentroid(), 1.0f)).xyz();
-    } else {
-      return transform[3].xyz();
-    }
-  }
-
-  const XXH64_hash_t calculateHash() const {
-    return XXH3_64bits(this, sizeof(AxisAlignedBoundingBox));
-  }
-
-  float getVolume(const Matrix4& transform, float minimumThickness = 0.001f) const {
-    const Vector3 minPosWorld = (transform * dxvk::Vector4(minPos, 1.0f)).xyz();
-    const Vector3 maxPosWorld = (transform * dxvk::Vector4(maxPos, 1.0f)).xyz();
-
-    // Assume some minimum thickness to work around the possibility of infinitely thin geometry
-    const Vector3 size = max(Vector3(minimumThickness), abs(maxPosWorld - minPosWorld));
-
-    return size.x * size.y * size.z;
   }
 };
 

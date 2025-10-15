@@ -115,6 +115,7 @@ namespace dxvk
     RTX_OPTION_ENV("rtx.camera", float, freeCameraPitch, 0.f, "RTX_FREE_CAMERA_PITCH", "Free camera's pitch.");
     RTX_OPTION("rtx.camera", bool, lockFreeCamera, false, "Locks free camera.");
     RTX_OPTION("rtx.camera", bool, freeCameraViewRelative, true, "Free camera transform is relative to the view.");
+    RTX_OPTION("rtx.camera", bool, useFreeCameraForComponents, true, "Use free camera for graph components when free camera is enabled.");
     RTX_OPTION("rtx", float, freeCameraSpeed, 200, "Free camera speed [GameUnits/s].");
     RTX_OPTION("rtx", float, freeCameraTurningSpeed, 1, "Free camera turning speed (applies to keyboard, not mouse) [radians/s].");
     RTX_OPTION("rtx", bool, freeCameraInvertY, false, "Invert free camera pitch direction.");

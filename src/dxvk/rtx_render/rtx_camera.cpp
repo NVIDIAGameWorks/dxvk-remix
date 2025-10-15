@@ -920,6 +920,7 @@ namespace dxvk
 
       ImGui::Checkbox("Enable Free Camera", &enableFreeCameraObject());
       ImGui::Checkbox("Lock Free Camera", &lockFreeCameraObject());
+      ImGui::Checkbox("Use Free Camera for Components", &useFreeCameraForComponentsObject());
       ImGui::DragFloat3("Position", &freeCameraPositionObject(), 0.1f, -1e5, -1e5, "%.3f", sliderFlags);
       ImGui::DragFloat("Yaw", &freeCameraYawObject(), 0.1f, -Pi<float>(2), Pi<float>(2), "%.3f", sliderFlags);
       ImGui::DragFloat("Pitch", &freeCameraPitchObject(), 0.1f, -Pi<float>(2), Pi<float>(2), "%.3f", sliderFlags);

@@ -36,7 +36,7 @@ namespace components {
 enum class LoopingType : uint32_t {
   Loop = 0,
   PingPong = 1,
-  None = 2,
+  NoLoop = 2,
   Clamp = 3,
 };
 
@@ -44,7 +44,7 @@ enum class LoopingType : uint32_t {
 inline const auto kLoopingTypeEnumValues = RtComponentPropertySpec::EnumPropertyMap{
   {"Loop", {LoopingType::Loop, "The value will wrap around from max to min."}},
   {"PingPong", {LoopingType::PingPong, "The value will bounce back and forth between min and max."}},
-  {"None", {LoopingType::None, "The value will be unchanged."}},
+  {"NoLoop", {LoopingType::NoLoop, "The value will be unchanged."}},
   {"Clamp", {LoopingType::Clamp, "The value will be clamped to the range."}}
 };
 
@@ -101,7 +101,7 @@ inline float applyInterpolation(InterpolationType interpolation, float time) {
 // Maps an arbitrary float value to a restricted range, based on min/max range and looping type
 // Returns the looped value and whether it's in reverse (for ping pong)
 inline std::pair<float, bool> applyLooping(float value, float minRange, float maxRange, LoopingType loopingType) {
-  if (unlikely(maxRange == minRange && loopingType != LoopingType::None)) {
+  if (unlikely(maxRange == minRange && loopingType != LoopingType::NoLoop)) {
     return {minRange, false}; // No range to loop in
   }
   
@@ -125,7 +125,7 @@ inline std::pair<float, bool> applyLooping(float value, float minRange, float ma
       }
       break;
     }
-    case LoopingType::None:
+    case LoopingType::NoLoop:
       // No modification - let the value continue beyond range
       return {value, false};
     case LoopingType::Clamp:
