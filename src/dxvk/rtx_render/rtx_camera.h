@@ -316,6 +316,10 @@ namespace dxvk
     bool isLHS() const { return m_context.isLHS; }
 
     static Vector2 calcPixelJitter(uint32_t jitterFrameIdx);
+    static Vector2 calcPixelJitterWithXeSS(uint32_t jitterFrameIdx, uint32_t xessLength);
+    static uint32_t getCurrentJitterSequenceLength();
+    static void setCurrentUpscalingRatio(float upscalingRatio);
+    static float getCurrentUpscalingRatio();
     static Vector2 calcClipSpaceJitter(Vector2 pixelJitter, uint32_t renderResolutionX, uint32_t renderResolutionY, float ratioX, float ratioY);
     static void applyJitterTo(Matrix4& inoutProjection, uint32_t jitterFrameIdx, uint32_t renderResolutionX, uint32_t renderResolutionY);
     static void applyAndGetJitter(Matrix4d& inoutProjection, float (&outPixelJitter)[2], uint32_t jitterFrameIdx, uint32_t renderResolutionX, uint32_t renderResolutionY);
