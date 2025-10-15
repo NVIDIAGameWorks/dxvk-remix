@@ -541,6 +541,14 @@ namespace dxvk {
       {    TerrainMode::AsDecals, "Terrain-as-Decals"},
   });
 
+  static auto themeCombo = ImGui::ComboWithKey<ImGUI::Theme>(
+    "Mode##theme",
+    {
+      {ImGUI::Theme::Toolkit,  "Default Theme"},
+      {ImGUI::Theme::Legacy,   "Legacy Theme"},
+      {ImGUI::Theme::Nvidia,   "NVIDIA Theme"},
+  });
+
   // Styles 
   constexpr ImGuiSliderFlags sliderFlags = ImGuiSliderFlags_AlwaysClamp;
   constexpr ImGuiTreeNodeFlags collapsingHeaderClosedFlags = ImGuiTreeNodeFlags_CollapsingHeader;
@@ -1160,7 +1168,7 @@ namespace dxvk {
       // Always display memory stats to user.
       showMemoryStats();
 
-      const int itemWidth = static_cast<int>(m_largeUIMode ? m_largeUserWindowWidgeWidth : m_regularUserWindowWidgetWidth);
+      const int itemWidth = static_cast<int>(largeUiMode() ? m_largeUserWindowWidgeWidth : m_regularUserWindowWidgetWidth);
       const int subItemWidth = static_cast<int>(ImCeil(itemWidth * 0.86f));
       const int subItemIndent = (itemWidth > subItemWidth) ? (itemWidth - subItemWidth) : 0;
 
@@ -1770,7 +1778,7 @@ namespace dxvk {
   }
 
   void ImGUI::showDevelopmentSettings(const Rc<DxvkContext>& ctx) {
-    ImGui::PushItemWidth((m_largeUIMode ? m_largeWindowWidgetWidth : m_regularWindowWidgetWidth) + 50.0f);
+    ImGui::PushItemWidth((largeUiMode() ? m_largeWindowWidgetWidth : m_regularWindowWidgetWidth) + 50.0f);
     if (ImGui::Button("Take Screenshot")) {
       RtxContext::triggerScreenshot();
     }
@@ -2107,10 +2115,7 @@ namespace dxvk {
         }
 
         {
-          if (ImGui::Checkbox("Compact UI", &m_compactUIMode)) {
-            compactGui.setDeferred(m_compactUIMode);
-            setupStyle();
-
+          if (ImGui::Checkbox("Compact UI", &compactGuiObject())) {
             // Scroll to UI Options on the next frame
             m_pendingUIOptionsScroll = true;
           }
@@ -2118,23 +2123,15 @@ namespace dxvk {
 
         ImGui::Checkbox("Always Developer Menu", &RtxOptions::defaultToAdvancedUIObject());
 
-        if (ImGui::SliderFloat("Background Alpha", &m_backgroundAlpha, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp)) {
-          backgroundAlpha.setDeferred(m_backgroundAlpha);
-          adjustStyleBackgroundAlpha(m_backgroundAlpha);
+        if (ImGui::SliderFloat("Background Alpha", &backgroundAlphaObject(), 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp)) {
+          adjustStyleBackgroundAlpha(backgroundAlpha());
         }
 
-        {
-          if (IMGUI_ADD_TOOLTIP(ImGui::Button(m_largeUIMode ? "Switch to Regular UI" : "Switch to Large UI", ImVec2(ImGui::CalcItemWidth(), 0)),
-                                "Toggles between Large and Regular GUI Scale Modes. This option will not be serialized and saved.")) {
-            m_largeUIMode = !m_largeUIMode;
-
-            ImGui::GetIO().FontDefault = m_largeUIMode ? m_largeFont : m_regularFont;
-            updateWindowWidths();
-
-            // Scroll to UI Options on the next frame
-            m_pendingUIOptionsScroll = true;
-          }
+        
+        if (ImGui::Checkbox("Use Large UI", &largeUiModeObject())) {
+          m_pendingUIOptionsScroll = true;
         }
+        
 
         {
           constexpr float indent = 60.0f;
@@ -2142,10 +2139,11 @@ namespace dxvk {
           ImGui::Dummy(ImVec2(0, 2));
           ImGui::Text("GUI Theme:");
           ImGui::PushItemWidth(ImGui::GetContentRegionMax().x - indent);
-          if (ImGui::ListBox("", (int*) &m_currTheme, &themeNames[0], static_cast<int>(Theme::Count), 3)) {
-            themeGui.setDeferred(static_cast<int>(m_currTheme));
-            setupStyle();
+
+          if (themeCombo.getKey(&themeGuiObject())) {
+            m_pendingUIOptionsScroll = true;
           }
+
           ImGui::PopItemWidth();
           ImGui::PopID();
         }
@@ -2587,7 +2585,7 @@ namespace dxvk {
   }
 
   void ImGUI::showEnhancementsWindow(const Rc<DxvkContext>& ctx) {
-    ImGui::PushItemWidth(m_largeUIMode ? m_largeWindowWidgetWidth : m_regularWindowWidgetWidth);
+    ImGui::PushItemWidth(largeUiMode() ? m_largeWindowWidgetWidth : m_regularWindowWidgetWidth);
 
     m_capture->show(ctx);
     
@@ -2692,7 +2690,7 @@ namespace dxvk {
     if (!ImGui::BeginTabBar("##showSetupWindow", tab_bar_flags)) {
       return;
     }
-    ImGui::PushItemWidth(m_largeUIMode ? m_largeWindowWidgetWidth : m_regularWindowWidgetWidth);
+    ImGui::PushItemWidth(largeUiMode() ? m_largeWindowWidgetWidth : m_regularWindowWidgetWidth);
 
     texture_popup::lastOpenCategoryActive = false;
 
@@ -2971,11 +2969,11 @@ namespace dxvk {
 
   void ImGUI::updateWindowWidths() {
     // Developer menu
-    m_windowWidth = m_largeUIMode ? m_largeWindowWidth : m_regularWindowWidth + (m_compactUIMode ? 0.0f : 42.0f);
+    m_windowWidth = largeUiMode() ? m_largeWindowWidth : m_regularWindowWidth + (compactGui() ? 0.0f : 42.0f);
 
     // User menu popup
-    m_userWindowWidth = m_largeUIMode ? m_largeUserWindowWidth : m_regularUserWindowWidth;
-    m_userWindowHeight = m_largeUIMode ? m_largeUserWindowHeight : m_regularUserWindowHeight;
+    m_userWindowWidth = largeUiMode() ? m_largeUserWindowWidth : m_regularUserWindowWidth;
+    m_userWindowHeight = largeUiMode() ? m_largeUserWindowHeight : m_regularUserWindowHeight;
   }
 
   void ImGUI::setToolkitStyle(ImGuiStyle* dst) {
@@ -2985,10 +2983,10 @@ namespace dxvk {
     style->DisabledAlpha = 0.5f;
 
     style->WindowPadding = ImVec2(8.0f, 10.0f);
-    style->FramePadding = m_compactUIMode ? ImVec2(4.0f, 3.0f) : ImVec2(7.0f, 5.0f);
+    style->FramePadding = compactGui() ? ImVec2(4.0f, 3.0f) : ImVec2(7.0f, 5.0f);
     style->CellPadding = ImVec2(5.0f, 4.0f);
-    style->ItemSpacing = m_compactUIMode ? ImVec2(8.0f, 4.0f) : ImVec2(3.0f, 5.0f);
-    style->ItemInnerSpacing = m_compactUIMode ? ImVec2(4.0f, 4.0f) : ImVec2(3.0f, 8.0f);
+    style->ItemSpacing = compactGui() ? ImVec2(8.0f, 4.0f) : ImVec2(3.0f, 5.0f);
+    style->ItemInnerSpacing = compactGui() ? ImVec2(4.0f, 4.0f) : ImVec2(3.0f, 8.0f);
     style->IndentSpacing = 10.0f;
     style->ColumnsMinSpacing = 10.0f;
     style->ScrollbarSize = 15.0f;
@@ -3017,7 +3015,7 @@ namespace dxvk {
     style->DisplaySafeAreaPadding = ImVec2(3, 3);
     style->MouseCursorScale = 1.0f;
 
-    style->Colors[ImGuiCol_WindowBg] = ImVec4(0.19f, 0.19f, 0.19f, m_backgroundAlpha);
+    style->Colors[ImGuiCol_WindowBg] = ImVec4(0.19f, 0.19f, 0.19f, backgroundAlpha());
     style->Colors[ImGuiCol_PopupBg] = ImVec4(0.19f, 0.19f, 0.19f, 1.00f);
     style->Colors[ImGuiCol_Text] = ImVec4(0.76f, 0.76f, 0.76f, 1.00f);
     style->Colors[ImGuiCol_TextDisabled] = ImVec4(0.44f, 0.44f, 0.44f, 1.00f);
@@ -3087,11 +3085,11 @@ namespace dxvk {
     style->ChildBorderSize = 1.0f;
     style->PopupRounding = 0.0f;
     style->PopupBorderSize = 1.0f;
-    style->FramePadding = m_compactUIMode ? ImVec2(4, 3) : ImVec2(7, 5);
+    style->FramePadding = compactGui() ? ImVec2(4, 3) : ImVec2(7, 5);
     style->FrameRounding = 0.0f;
     style->FrameBorderSize = 0.0f;
-    style->ItemSpacing = m_compactUIMode ? ImVec2(8, 4) : ImVec2(3, 5);
-    style->ItemInnerSpacing = m_compactUIMode ? ImVec2(4, 4) : ImVec2(3, 8);
+    style->ItemSpacing = compactGui() ? ImVec2(8, 4) : ImVec2(3, 5);
+    style->ItemInnerSpacing = compactGui() ? ImVec2(4, 4) : ImVec2(3, 8);
     style->CellPadding = ImVec2(4, 2);
     style->TouchExtraPadding = ImVec2(0, 0);
     style->IndentSpacing = 21.0f;
@@ -3118,7 +3116,7 @@ namespace dxvk {
     ImGui::StyleColorsDark(style);
 
     // Remix changes
-    style->Colors[ImGuiCol_WindowBg] = ImVec4(0.f, 0.f, 0.f, m_backgroundAlpha);
+    style->Colors[ImGuiCol_WindowBg] = ImVec4(0.f, 0.f, 0.f, backgroundAlpha());
     style->Colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.f, 0.f, 0.f, 0.4f);
     style->TabRounding = 1;
   }
@@ -3184,42 +3182,39 @@ namespace dxvk {
     style->Colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.00f, 0.00f, 0.00f, 0.56f);
   }
 
-  void ImGUI::setupStyle(ImGuiStyle* dst) {
-    if (!m_init) {
-      m_compactUIMode = compactGui.get();
-      m_backgroundAlpha = backgroundAlpha.get();
-      m_currTheme = (Theme)themeGui.get();
-    }
+  void ImGUI::onThemeChange(DxvkDevice* device) {
+    if (GImGui != nullptr) {
+      ImGUI& gui = device->getCommon()->getImgui();
+      gui.setupStyle();
 
+    }
+  }
+
+  void ImGUI::onBackgroundAlphaChange(DxvkDevice* device) {
+    if (GImGui != nullptr) {
+      ImGUI& gui = device->getCommon()->getImgui();
+      gui.adjustStyleBackgroundAlpha(backgroundAlpha());
+    }
+  }
+
+  void ImGUI::setupStyle(ImGuiStyle* dst) {
+    ImGui::GetIO().FontDefault = largeUiMode() ? m_largeFont : m_regularFont;
     updateWindowWidths();
    
     ImGuiStyle* style = dst ? dst : &ImGui::GetStyle();
-    switch (m_currTheme)
+    switch (themeGui())
     {
     default:
     case Theme::Toolkit:
-      if (m_init) {
-        m_backgroundAlpha = 0.9f;
-      }
       setToolkitStyle(style);
       break;
 
     case Theme::Legacy:
-      if (m_init) {
-        m_backgroundAlpha = 0.6f;
-      }
       setLegacyStyle(style);
       break;
     
     case Theme::Nvidia:
-      if (m_init) {
-        m_backgroundAlpha = 0.8f;
-      }
       setNvidiaStyle(style);
-      break;
-
-    case Theme::Count:
-      assert(false && "Theme::Count hit in ImGUI::setupStyle");
       break;
     }
   }
@@ -3459,7 +3454,7 @@ namespace dxvk {
   }
 
   void ImGUI::showRenderingSettings(const Rc<DxvkContext>& ctx) {
-    ImGui::PushItemWidth(m_largeUIMode ? m_largeWindowWidgetWidth : m_regularWindowWidgetWidth);
+    ImGui::PushItemWidth(largeUiMode() ? m_largeWindowWidgetWidth : m_regularWindowWidgetWidth);
     auto common = ctx->getCommonObjects();
 
     ImGui::Text("Disclaimer: The following settings are intended for developers,\nchanging them may introduce instability.");
