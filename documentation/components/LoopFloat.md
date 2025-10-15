@@ -7,7 +7,7 @@ Applies looping behavior to a float value\.  Value is unchanged if it is inside 
 - **Name:** `LoopFloat`
 - **UI Name:** Loop Float
 - **Version:** 1
-- **Categories:** Logic
+- **Categories:** Transform
 
 ## Input Properties
 
@@ -37,13 +37,15 @@ The maximum value of the looping range\.
 
 How the value should loop within the range\.
 
+Underlying Type: `Uint32`
+
 
 **Allowed Values:**
 
-- Loop: The value will wrap around from max to min\. *(default)*
-- PingPong: The value will bounce back and forth between min and max\.
-- None: The value will be unchanged\.
-- Clamp: The value will be clamped to the range\.
+- Loop (`Loop`): The value will wrap around from max to min\. *(default)*
+- PingPong (`PingPong`): The value will bounce back and forth between min and max\.
+- NoLoop (`NoLoop`): The value will be unchanged\.
+- Clamp (`Clamp`): The value will be clamped to the range\.
 
 ## Output Properties
 

@@ -28,6 +28,9 @@
 #include <pxr/usd/usdGeom/subset.h>
 #include "usd_include_end.h"
 
+#include "../util/util_bounding_box.h"
+#include "../util/util_vector.h"
+
 namespace lss {
   class UsdMeshUtil;
   class GeomPrimvarSampler;
@@ -105,6 +108,10 @@ namespace lss {
       return m_doubleSided;
     }
 
+    const dxvk::AxisAlignedBoundingBox& GetBoundingBox() const {
+      return m_boundingBox;
+    }
+
   private:
     inline static const uint32_t MaxSupportedNumBones = 256;
 
@@ -140,6 +147,8 @@ namespace lss {
 
     DoubleSidedState m_doubleSided = Inherit;
     bool m_isRightHanded = true; // By default USD is right handed
+
+    dxvk::AxisAlignedBoundingBox m_boundingBox;
 
     const pxr::UsdGeomMesh& m_meshPrim;
   };

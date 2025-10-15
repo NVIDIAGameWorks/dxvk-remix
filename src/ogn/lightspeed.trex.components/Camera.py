@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from lightspeed.trex.components.ogn.ogn.OgnTemplateNodePyDatabase import OgnTemplateNodePyDatabase
 
 
-class Time:
+class Camera:
     @staticmethod
     def compute(_db: OgnTemplateNodePyDatabase):
         return True

@@ -7,7 +7,7 @@ Interpolates a value from an input range to an output range with optional easing
 - **Name:** `InterpolateFloat`
 - **UI Name:** Interpolate Float
 - **Version:** 1
-- **Categories:** Logic
+- **Categories:** Transform
 
 ## Input Properties
 
@@ -46,18 +46,20 @@ If true, \`value\` will be clamped to the input range\.
 
 The type of easing to apply\.
 
+Underlying Type: `Uint32`
+
 
 **Allowed Values:**
 
-- Linear: The float will have a constant velocity\. *(default)*
-- Cubic: The float will change in a cubic curve over time\.
-- EaseIn: The float will start slow, then accelerate\.
-- EaseOut: The float will start fast, then decelerate\.
-- EaseInOut: The float will start slow, accelerate, then decelerate\.
-- Sine: Smooth, natural motion using a sine wave\.
-- Exponential: Dramatic acceleration effect\.
-- Bounce: Bouncy, playful motion\.
-- Elastic: Spring\-like motion\.
+- Linear (`Linear`): The float will have a constant velocity\. *(default)*
+- Cubic (`Cubic`): The float will change in a cubic curve over time\.
+- EaseIn (`EaseIn`): The float will start slow, then accelerate\.
+- EaseOut (`EaseOut`): The float will start fast, then decelerate\.
+- EaseInOut (`EaseInOut`): The float will start slow, accelerate, then decelerate\.
+- Sine (`Sine`): Smooth, natural motion using a sine wave\.
+- Exponential (`Exponential`): Dramatic acceleration effect\.
+- Bounce (`Bounce`): Bouncy, playful motion\.
+- Elastic (`Elastic`): Spring\-like motion\.
 
 ### Should Reverse
 

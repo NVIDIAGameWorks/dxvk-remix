@@ -5,7 +5,7 @@
     "uiName": "Interpolate Float",
     "language": "python",
     "categoryDefinitions": "config/CategoryDefinition.json",
-    "categories": "Logic",
+    "categories": "Transform",
     "inputs": {
       "value": {
         "description": ["The input value to interpolate."],

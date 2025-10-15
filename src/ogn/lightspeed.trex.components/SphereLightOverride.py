@@ -10,5 +10,5 @@ if TYPE_CHECKING:
 
 class SphereLightOverride:
     @staticmethod
-    def compute(db: OgnTemplateNodePyDatabase):
+    def compute(_db: OgnTemplateNodePyDatabase):
         return True

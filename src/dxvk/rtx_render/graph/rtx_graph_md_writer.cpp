@@ -159,6 +159,9 @@ void writePropertyTableRow(std::ofstream& outputFile, const RtComponentPropertyS
 // Helper function to write enum values if they exist
 void writeEnumValues(std::ofstream& outputFile, const RtComponentPropertySpec& prop) {
   if (!prop.enumValues.empty()) {
+    // Write the underlying type of the enum
+    outputFile << "Underlying Type: `" << prop.type << "`" << std::endl << std::endl;
+    
     outputFile << std::endl << "**Allowed Values:**" << std::endl << std::endl;
     
     // Convert to vector and sort by enum value
@@ -172,7 +175,8 @@ void writeEnumValues(std::ofstream& outputFile, const RtComponentPropertySpec& p
     
     // Output each enum value, marking the default
     for (const auto& [enumName, enumEntry] : sortedEnums) {
-      outputFile << "- " << escapeMarkdown(enumName) << ": "
+      outputFile << "- " << escapeMarkdown(enumName) << " (`" 
+                 << escapeMarkdown(getValueAsString(enumEntry.value, prop)) << "`): "
                  << escapeMarkdown(enumEntry.docString);
       
       // Mark if this is the default value
@@ -344,6 +348,21 @@ bool writeMarkdownIndex(const std::vector<const RtComponentSpec*>& specs, const 
       uncategorizedComponents.push_back(spec);
     }
   }
+  
+  // Sort components alphabetically by UI name within each category
+  for (auto& [category, components] : categorizedComponents) {
+    std::sort(components.begin(), components.end(),
+      [](const RtComponentSpec* a, const RtComponentSpec* b) {
+        return a->uiName < b->uiName;
+      });
+  }
+  
+  // Sort uncategorized components alphabetically by UI name
+  std::sort(uncategorizedComponents.begin(), uncategorizedComponents.end(),
+    [](const RtComponentSpec* a, const RtComponentSpec* b) {
+      return a->uiName < b->uiName;
+    });
+  
   static constexpr size_t kMaxDescriptionLength = 100;
   // Write categorized components
   for (const auto& [category, components] : categorizedComponents) {

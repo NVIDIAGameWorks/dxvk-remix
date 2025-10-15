@@ -48,7 +48,7 @@ namespace components {
 REMIX_COMPONENT( \
   /* the Component name */ InterpolateFloat, \
   /* the UI name */        "Interpolate Float", \
-  /* the UI categories */  "Logic", \
+  /* the UI categories */  "Transform", \
   /* the doc string */     "Interpolates a value from an input range to an output range with optional easing. " \
     "\nCombines normalization (reverse LERP), easing, and mapping (LERP) into a single component. " \
     "\n\nNote input values outside of input range are valid, and that easing can lead to the output value being " \

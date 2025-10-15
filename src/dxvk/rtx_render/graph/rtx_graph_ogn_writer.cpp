@@ -116,6 +116,7 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentPropertySpec
     outputFile << "        \"description\": [\"" << escapeJsonString(prop.docString) << "\\n" << "Allowed values: ";
     std::string defaultEnumValueString = "";
     for (const auto& enumValue : prop.enumValues) { 
+      assert(enumValue.first != "None" && "None enum values will cause python errors in the toolkit, and should be renamed.");
       outputFile << " - " << enumValue.first << ": " << enumValue.second.docString << "\\n ";
       if (enumValue.second.value == prop.defaultValue) {
         defaultEnumValueString = enumValue.first;
@@ -302,7 +303,7 @@ bool writePythonStub(const RtComponentSpec* spec, const char* outputFolderPath) 
   outputFile << std::endl;
   outputFile << "class "<< escapeJsonString(spec->getClassName()) << ":" << std::endl;
   outputFile << "    @staticmethod" << std::endl;
-  outputFile << "    def compute(db: OgnTemplateNodePyDatabase):" << std::endl;
+  outputFile << "    def compute(_db: OgnTemplateNodePyDatabase):" << std::endl;
   outputFile << "        return True" << std::endl;
 
   // Close the file

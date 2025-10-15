@@ -26,6 +26,7 @@
 #include <unordered_map>
 #include <vector>
 #include <string>
+#include <array>
 #include <limits>
 
 namespace dxvk {
@@ -55,15 +56,17 @@ private:
   struct ComponentInfo {
     std::string name;
     std::string typeName;
-    std::string uiName;
     std::string docString;
     std::vector<PropertyInfo> properties;
   };
 
   // Graph visualization state
   static constexpr uint64_t kInvalidInstanceId = std::numeric_limits<uint64_t>::max();
+  static constexpr float kDefaultComponentListHeight = 400.0f;
   uint64_t m_selectedInstanceId = kInvalidInstanceId;
   std::vector<ComponentInfo> m_components;
+  std::array<char, 256> m_instanceFilter = {};
+  float m_componentListHeight = kDefaultComponentListHeight;
 
   // Helper functions
   void showGraphSelector(const SceneManager& sceneManager);

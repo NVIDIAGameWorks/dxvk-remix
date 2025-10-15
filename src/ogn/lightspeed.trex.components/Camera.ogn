@@ -1,0 +1,66 @@
+{
+  "lightspeed.trex.components.Camera": {
+    "description": ["Outputs current camera properties including position, orientation vectors, and projection parameters. Uses free camera when both 'rtx.camera.useFreeCameraForComponents' and free camera are enabled."],
+    "version": 1,
+    "uiName": "Camera",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Sense",
+    "outputs": {
+      "position": {
+        "description": ["The current camera position in world space."],
+        "type": "float[3]",
+        "default": [0.000000, 0.000000, 0.000000],
+        "uiName": "Position"
+      },
+      "forward": {
+        "description": ["The camera's normalized forward direction vector in world space."],
+        "type": "float[3]",
+        "default": [0.000000, 0.000000, -1.000000],
+        "uiName": "Forward"
+      },
+      "right": {
+        "description": ["The camera's normalized right direction vector in world space."],
+        "type": "float[3]",
+        "default": [1.000000, 0.000000, 0.000000],
+        "uiName": "Right"
+      },
+      "up": {
+        "description": ["The camera's normalized up direction vector in world space."],
+        "type": "float[3]",
+        "default": [0.000000, 1.000000, 0.000000],
+        "uiName": "Up"
+      },
+      "fovRadians": {
+        "description": ["The Y axis (vertical) Field of View of the camera in radians. Note this value will always be positive."],
+        "type": "float",
+        "default": 1.047198,
+        "uiName": "FOV (radians)"
+      },
+      "fovDegrees": {
+        "description": ["The Y axis (vertical) Field of View of the camera in degrees. Note this value will always be positive."],
+        "type": "float",
+        "default": 60.000000,
+        "uiName": "FOV (degrees)"
+      },
+      "aspectRatio": {
+        "description": ["The camera's aspect ratio (width/height)."],
+        "type": "float",
+        "default": 1.000000,
+        "uiName": "Aspect Ratio"
+      },
+      "nearPlane": {
+        "description": ["The camera's near clipping plane distance."],
+        "type": "float",
+        "default": 0.100000,
+        "uiName": "Near Plane"
+      },
+      "farPlane": {
+        "description": ["The camera's far clipping plane distance."],
+        "type": "float",
+        "default": 1000.000000,
+        "uiName": "Far Plane"
+      }
+    }
+  }
+}

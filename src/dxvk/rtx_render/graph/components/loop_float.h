@@ -45,7 +45,7 @@ namespace components {
 REMIX_COMPONENT( \
   /* the Component name */ LoopFloat, \
   /* the UI name */        "Loop Float", \
-  /* the UI categories */  "Logic", \
+  /* the UI categories */  "Transform", \
   /* the doc string */     "Applies looping behavior to a float value.  Value is unchanged if it is inside the range.\n"\
     "Component outputs Min Range if Min Range == Max Range and looping type is not None.\n"\
     "Inverted ranges (max < min) are supported, but the results are undefined and may change without warning.", \

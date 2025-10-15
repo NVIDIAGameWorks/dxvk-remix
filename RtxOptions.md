@@ -103,6 +103,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.camera.freeCameraViewRelative|bool|True|||Free camera transform is relative to the view\.|
 |rtx.camera.freeCameraYaw|float|0|||Free camera's position\.|
 |rtx.camera.lockFreeCamera|bool|False|||Locks free camera\.|
+|rtx.camera.useFreeCameraForComponents|bool|True|||Use free camera for graph components when free camera is enabled\.|
 |rtx.cameraAnimationAmplitude|float|2|||Amplitude of the free camera's animation\.|
 |rtx.cameraAnimationMode|int|3|||Free camera's animation mode\.|
 |rtx.cameraJitterSequenceLength|int|64|||Sets a camera jitter sequence length \[number of frames\]\. It will loop around once the length is reached\.|
