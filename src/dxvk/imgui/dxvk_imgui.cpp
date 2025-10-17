@@ -2078,10 +2078,12 @@ namespace dxvk {
               optionLayer.setBlendStrengthDirty(true);
             }
 
-            const std::string optionLayerSavingText = "Save realtime changes into layer " + optionLayer.getName();
-            if (ImGui::Button(optionLayerSavingText.c_str())) {
-              RtxOptions::serializeOptionLayer(optionLayer.getName());
-            }
+            // Disabled because this blows away the existing settings and replaces it with the current runtime settings.
+            // TODO make this save out the combo of existing settings and runtime settings.
+            // const std::string optionLayerSavingText = "Save realtime changes into layer " + optionLayer.getName();
+            // if (ImGui::Button(optionLayerSavingText.c_str())) {
+            //   RtxOptions::serializeOptionLayer(optionLayer.getName());
+            // }
 
             if (ImGui::CollapsingHeader((optionLayer.getName() + " Details").c_str(), collapsingHeaderClosedFlags)) {
               ImGui::Indent();
