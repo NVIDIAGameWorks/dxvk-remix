@@ -259,20 +259,33 @@ namespace dxvk {
   }
 
   const GenericValue& RtxOptionImpl::getGenericValue(const ValueType valueType) const {
+    static const GenericValue dummyValue {};
     if (valueType == ValueType::DefaultValue) {
+      if (optionLayerValueQueue.size() == 0) {
+        Logger::err("Empty option layer queue. The default value of option: " + std::string(name) + " is NOT properly set.");
+        return dummyValue;
+      }
       return optionLayerValueQueue.at(0).value;
     } else if (valueType == ValueType::PendingValue) {
+      if (optionLayerValueQueue.size() > 0 && optionLayerValueQueue.begin()->second.priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
+        Logger::err("Failed to get runtime layer. The pending value of option: " + std::string(name) + " is missing.");
+        return dummyValue;
+      }
       return optionLayerValueQueue.begin()->second.value;
     } else if (valueType == ValueType::Value) {
       return resolvedValue;
     } else {
       Logger::warn("[RTX Option]: Unknown generic value type.");
-      static const GenericValue dummyValue {};
       return dummyValue;
     }
   }
 
   GenericValue& RtxOptionImpl::getGenericValue(const ValueType valueType) {
+    // Insert runtime layer if it's missing and user request runtime changes.
+    if (optionLayerValueQueue.size() > 0 && optionLayerValueQueue.begin()->second.priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
+      insertEmptyOptionLayer(RtxOptionLayer::s_runtimeOptionLayerPriority, 1.0f, 1.0f);
+    }
+
     // Reuse the const overload to avoid duplicating switch logic.
     // const_cast is safe here because we are returning a non-const reference
     // only when called on a non-const RtxOptionImpl instance.
@@ -471,8 +484,8 @@ namespace dxvk {
     clampValue(valueType);
     
     if (valueType == ValueType::PendingValue) {
-      // If reading into the pending value, need to mark the option as dirty so it gets copied to the value at the end of the frame.
-      // markDirty();
+      // If reading into the pending value, need to mark the option as dirty so it gets resolved to the value at the end of the frame.
+      markDirty();
     } else if (valueType == ValueType::Value) {
       // If reading into the value, need to immediately copy to the pending value so they stay in sync.
       copyValue(resolvedValue, getGenericValue(ValueType::PendingValue));
@@ -548,6 +561,7 @@ namespace dxvk {
   void RtxOptionImpl::insertEmptyOptionLayer(const uint32_t priority, const float blendStrength, const float blendStrengthThreshold) {
     GenericValue optionLayerValue = createGenericValue(type);
     const PrioritizedValue newValue(optionLayerValue, priority, blendStrength, blendStrengthThreshold);
+
     auto [it, inserted] = optionLayerValueQueue.emplace(priority, newValue);
     if (!inserted) {
       Logger::warn("[RTX Option]: Duplicate priority " + std::to_string(priority) + " ignored (only first kept).");
