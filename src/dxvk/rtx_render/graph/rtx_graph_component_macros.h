@@ -30,6 +30,7 @@
 
 // To set optional values, when using these macros, write them as a comma separated list of 
 // `property.<name> = <value>`, i.e. `property.minValue = 0.0f, property.maxValue = 1.0f`
+// Note: minValue and maxValue are automatically converted to match the property's declared type
 #define REMIX_COMPONENT_WRITE_INPUT_MEMBER(propertyType, defaultValue, name, uiName, docString, ...) \
   const std::vector<RtComponentPropertyTypeToCppType<propertyType>>& m_##name;
 
@@ -82,6 +83,17 @@
   { \
     RtComponentPropertySpec& property = s_spec.properties[index]; \
     __VA_ARGS__; \
+    /* Enforce type correctness for minValue and maxValue after they're set */ \
+    /* Check if minValue was set (not default) and convert to correct type */ \
+    if (property.minValue != kFalsePropertyValue) { \
+      using PropertyCppType = RtComponentPropertyTypeToCppType<propertyType>; \
+      property.minValue = convertPropertyValueToType<PropertyCppType>(property.minValue); \
+    } \
+    /* Check if maxValue was set (not default) and convert to correct type */ \
+    if (property.maxValue != kFalsePropertyValue) { \
+      using PropertyCppType = RtComponentPropertyTypeToCppType<propertyType>; \
+      property.maxValue = convertPropertyValueToType<PropertyCppType>(property.maxValue); \
+    } \
     if (!property.oldUsdNames.empty()) { \
       std::string prefix = "inputs:"; \
       if (property.ioType == RtComponentPropertyIOType::Output) { \

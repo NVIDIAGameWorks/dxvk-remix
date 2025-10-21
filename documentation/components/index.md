@@ -31,11 +31,17 @@ This documentation provides detailed information about all available components 
 | [Texture Hash Checker](TextureHashChecker.md) | Checks if a specific hash was used for material replacement in the current frame\. | 1 |
 | [Time](Time.md) | Outputs the time in seconds since the component was created\. Can be paused and speed\-adjusted\. | 1 |
 
+### Control
+
+| Component | Description | Version |
+|-----------|-------------|---------|
+| [Rtx Option Layer Action](RtxOptionLayerAction.md) | Controls an RtxOptionLayer by name, allowing dynamic enable/disable, strength adjustment, and thresh\.\.\. | 1 |
+
 ## Statistics
 
-- **Total Components:** 10
-- **Categorized Components:** 10
-- **Categories:** 3
+- **Total Components:** 11
+- **Categorized Components:** 11
+- **Categories:** 4
 
 ---
 *Generated automatically from component specifications*

@@ -239,7 +239,7 @@ RtComponentPropertyValue propertyValueFromString(const std::string& str, const R
   try {
     switch (type) {
     case RtComponentPropertyType::Bool:
-      return (str == "true" || str == "True" || str == "TRUE" || str == "1") ? uint8_t(1) : uint8_t(0);
+      return (str == "true" || str == "True" || str == "TRUE" || str == "1") ? kTruePropertyValue : kFalsePropertyValue;
     case RtComponentPropertyType::Float:
       return std::stof(str);
     case RtComponentPropertyType::Float2:

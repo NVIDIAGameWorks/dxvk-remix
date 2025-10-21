@@ -677,28 +677,49 @@
                 for (const fileData of filesToPromote) {
                     try {
                         // Load the modified file content
-                        const response = await fetch(fileData.modifiedPath);
-                        if (!response.ok) {
-                            throw new Error(`Failed to load ${fileData.name}: ${response.statusText}`);
+                        const modifiedResponse = await fetch(fileData.modifiedPath);
+                        if (!modifiedResponse.ok) {
+                            throw new Error(`Failed to load ${fileData.name}: ${modifiedResponse.statusText}`);
                         }
-                        const fileContent = await response.text();
+                        const fileContent = await modifiedResponse.text();
                         
-                        // Convert to base64 (handle Unicode characters and preserve line endings)
-                        // First normalize line endings to LF, then encode
-                        const normalizedContent = fileContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-                        const base64String = btoa(unescape(encodeURIComponent(normalizedContent)));
-                        
-                        // Determine if file exists in golden directory by checking if goldenPath is accessible
-                        let action = 'update'; // Default to update
+                        // Load golden file content to determine action
+                        let goldenContent = '';
+                        let goldenExists = false;
                         try {
                             const goldenResponse = await fetch(fileData.goldenPath);
-                            if (!goldenResponse.ok) {
-                                // If golden file doesn't exist, use create action
-                                action = 'create';
+                            if (goldenResponse.ok) {
+                                goldenContent = await goldenResponse.text();
+                                goldenExists = true;
                             }
                         } catch (error) {
-                            // If we can't access the golden file, assume it doesn't exist and use create
-                            action = 'create';
+                            // Golden file doesn't exist or can't be accessed
+                            goldenExists = false;
+                        }
+                        
+                        // Determine action based on file contents
+                        let action = 'update'; // Default to update
+                        const modifiedIsEmpty = fileContent.trim().length === 0;
+                        const goldenIsEmpty = goldenContent.trim().length === 0;
+                        
+                        if (modifiedIsEmpty) {
+                            // no new file content.
+                            if (!goldenExists || goldenIsEmpty) {
+                                // Neither file exists
+                                throw new Error(`Neither file exists for ${fileData.name}`);
+                            } else {
+                                // Golden file exists and is not empty, but modified file is empty.  Delete the golden.
+                                action = 'delete';
+                            }
+                        } else {
+                            // New file content exists.
+                            if (!goldenExists) {
+                                // Golden file doesn't exist.  Create the golden.
+                                action = 'create';
+                            } else {
+                                // Golden file exists and is not empty.  Update the golden.
+                                action = 'update';
+                            }
                         }
                         
                         // Store the action for confirmation
@@ -708,12 +729,25 @@
                         });
                         
                         // Add to actions array
-                        actions.push({
-                            action: action,
-                            file_path: fileData.goldenGitPath || fileData.name,
-                            content: base64String,
-                            encoding: 'base64'
-                        });
+                        if (action === 'delete') {
+                            // For delete action, no content is needed
+                            actions.push({
+                                action: 'delete',
+                                file_path: fileData.goldenGitPath || fileData.name
+                            });
+                        } else {
+                            // Convert to base64 (handle Unicode characters and preserve line endings)
+                            // First normalize line endings to LF, then encode
+                            const normalizedContent = fileContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+                            const base64String = btoa(unescape(encodeURIComponent(normalizedContent)));
+                            
+                            actions.push({
+                                action: action,
+                                file_path: fileData.goldenGitPath || fileData.name,
+                                content: base64String,
+                                encoding: 'base64'
+                            });
+                        }
                         
                         loadedCount++;
                         statusDiv.innerHTML = `<div class="status-processing">Processed ${loadedCount}/${filesToPromote.length} files...</div>`;
@@ -726,6 +760,7 @@
                 // Show confirmation with file actions
                 const createFiles = fileActions.filter(f => f.action === 'create').map(f => f.name);
                 const updateFiles = fileActions.filter(f => f.action === 'update').map(f => f.name);
+                const deleteFiles = fileActions.filter(f => f.action === 'delete').map(f => f.name);
                 
                 const message = prompt(
                     `Do you want to promote ${filesToPromote.length} modified files to your branch?\n` +
@@ -734,6 +769,7 @@
                     `server=${ciServerHost || 'https://gitlab-master.nvidia.com'}\n` +
                     `Files to create: ${createFiles.length > 0 ? createFiles.join(', ') : 'none'}\n` +
                     `Files to update: ${updateFiles.length > 0 ? updateFiles.join(', ') : 'none'}\n` +
+                    `Files to delete: ${deleteFiles.length > 0 ? deleteFiles.join(', ') : 'none'}\n` +
                     `Commit message:`,
                     `[skip-ci] Auto-update: ${filesToPromote.length} component documentation or schema files`
                 );
@@ -755,7 +791,8 @@
                 // Log summary of actions
                 const createCount = actions.filter(a => a.action === 'create').length;
                 const updateCount = actions.filter(a => a.action === 'update').length;
-                console.log(`Action summary: ${createCount} create, ${updateCount} update`);
+                const deleteCount = actions.filter(a => a.action === 'delete').length;
+                console.log(`Action summary: ${createCount} create, ${updateCount} update, ${deleteCount} delete`);
                 
                 // Create single commit with all files
                 statusDiv.innerHTML = '<div class="status-processing">Creating commit with all files...</div>';
@@ -764,8 +801,6 @@
                     const result = await createMultiFileCommit(actions, message, branchName, sourceProjectId, token);
                     
                     button.innerText = 'Complete';
-                    const createCount = actions.filter(a => a.action === 'create').length;
-                    const updateCount = actions.filter(a => a.action === 'update').length;
                     statusDiv.innerHTML = `
                         <div class="status-success">
                             Successfully created commit with ${actions.length} files!
@@ -774,7 +809,7 @@
                             Commit ID: ${result.id}
                         </div>
                         <div class="status-success-item">
-                            Files created: ${createCount}, Files updated: ${updateCount}
+                            Files created: ${createCount}, Files updated: ${updateCount}, Files deleted: ${deleteCount}
                         </div>
                         <div class="status-success-item">
                             Files: ${filesToPromote.map(f => f.name).join(', ')}

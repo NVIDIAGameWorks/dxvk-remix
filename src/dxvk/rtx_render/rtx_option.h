@@ -22,11 +22,12 @@
 #pragma once
 
 #include <algorithm>
-#include <set>
+#include <unordered_map>
 #include <unordered_set>
 #include <cassert>
 #include <limits>
 #include <mutex>
+#include <atomic>
 
 #include "../util/config/config.h"
 #include "../util/xxHash/xxhash.h"
@@ -84,23 +85,70 @@ namespace dxvk {
     void* pointer;
   };
 
+  // Forward declaration
+  class RtxOptionLayerManager;
+
   // Represents an RTX option layer that can override rendering settings.
   // Layers are prioritized and can be dynamically enabled/disabled at runtime.
   // Typical usage: stack multiple layers (default, app config, user config, runtime changes),
   // then resolve options based on priority and strength.
   class RtxOptionLayer {
+    friend struct RtxOptionImpl;
+    friend class RtxOptionLayerManager;
+
   public:
-    // Construct from a config file path.
-    RtxOptionLayer(const std::string& configPath, const uint32_t priority, const float blendStrength, const float blendThreshold);
-    // Construct directly from an existing App Config.
+    enum class EnabledRequest : int8_t {
+      NoRequest = -1,      // No request made this frame
+      RequestDisabled = 0, // At least one component requested disabled, none requested enabled
+      RequestEnabled = 1   // At least one component requested enabled (wins over disabled)
+    };
+
+    // Constructor for creating option layers
+    // Should not be called directly. Use RtxOptionLayerManager::acquireLayer instead.
     RtxOptionLayer(const Config& config, const std::string& configName, const uint32_t priority, const float blendStrength, const float blendThreshold);
 
     ~RtxOptionLayer();
 
-    void setEnabled(bool enabled) const {
-      m_enabled = enabled;
-      setDirty(true);
+    // Delete copy constructor and copy assignment - atomic members cannot be copied
+    RtxOptionLayer(const RtxOptionLayer&) = delete;
+    RtxOptionLayer& operator=(const RtxOptionLayer&) = delete;
+
+    // Delete move operations - atomic members make moves non-trivial, use construct-in-place instead
+    RtxOptionLayer(RtxOptionLayer&&) = delete;
+    RtxOptionLayer& operator=(RtxOptionLayer&&) = delete;
+
+    // Request to enable/disable this layer. Multiple components can call this per frame.
+    // The layer will be enabled if ANY component requests it to be enabled.
+    // Use this for components that share control of a layer.
+    void requestEnabled(bool enabled) {
+      if (enabled) {
+        m_pendingEnabledRequest = EnabledRequest::RequestEnabled;
+      } else if (m_pendingEnabledRequest == EnabledRequest::NoRequest) {
+        m_pendingEnabledRequest = EnabledRequest::RequestDisabled;
+      }
     }
+
+    // Request a blend strength. Multiple components can call this per frame.
+    // The final blend strength will be the MAX of all requests.
+    // Use this for components that share control of a layer.
+    void requestBlendStrength(float strength) {
+      if (strength > m_pendingMaxBlendStrength) {
+        m_pendingMaxBlendStrength = strength;
+      }
+    }
+
+    // Request a blend threshold. Multiple components can call this per frame.
+    // The final blend threshold will be the MIN of all requests.
+    // Use this for components that share control of a layer.
+    void requestBlendThreshold(float threshold) {
+      if (threshold < m_pendingMinBlendThreshold) {
+        m_pendingMinBlendThreshold = threshold;
+      }
+    }
+
+    // Resolve all pending requests accumulated during the frame.
+    // Should be called once per frame before option resolution.
+    void resolvePendingRequests();
 
     // Mark this layer as dirty (e.g., changed values need reprocessing).
     void setDirty(bool dirty) const { m_dirty = dirty; }
@@ -119,9 +167,29 @@ namespace dxvk {
     const bool isBlendStrengthDirty() const { return m_blendStrengthDirty; }
     const std::string& getName() const { return m_configName; }
 
-    bool& isEnabledRef() const { return m_enabled; }
-    float& getBlendStrengthRef() const { return m_blendStrength; }
-    float& getBlendThresholdRef() const { return m_blendThreshold; }
+    // Get the pending enabled state for UI display (returns current state if no pending request)
+    bool getPendingEnabled() const {
+      if (m_pendingEnabledRequest != EnabledRequest::NoRequest) {
+        return m_pendingEnabledRequest == EnabledRequest::RequestEnabled;
+      }
+      return m_enabled;
+    }
+
+    // Get the pending blend strength for UI display (returns current strength if no pending request)
+    float getPendingBlendStrength() const {
+      if (m_pendingMaxBlendStrength > kEmptyBlendStrengthRequest) {
+        return m_pendingMaxBlendStrength;
+      }
+      return m_blendStrength;
+    }
+
+    // Get the pending blend threshold for UI display (returns current threshold if no pending request)
+    float getPendingBlendThreshold() const {
+      if (m_pendingMinBlendThreshold < kEmptyBlendThresholdRequest) {
+        return m_pendingMinBlendThreshold;
+      }
+      return m_blendThreshold;
+    }
 
     // Comparison operator for priority ordering.
     // Higher priority values come first. Warn if two layers share the same priority, which is NOT allowed in current option layer queue.
@@ -137,17 +205,50 @@ namespace dxvk {
 
     // Reserved priority offset for user option layers.
     // Ensures built-in configs (like rtx.conf) always have lower priority.
-    static constexpr uint32_t s_userOptionLayerOffset = 10;
+    static constexpr uint32_t s_userOptionLayerOffset = 100;
 
     // Reserved highest priority for runtime modifications (e.g., GUI changes)
     static constexpr uint32_t s_runtimeOptionLayerPriority = 0xFFFFFFFF;
 
+    // Sentinel values for pending request tracking
+    // Blend strength uses MAX logic, so initialize below valid range [0.0, 1.0]
+    static constexpr float kEmptyBlendStrengthRequest = -1.0f;
+    // Blend threshold uses MIN logic, so initialize above valid range [0.0, 1.0]
+    static constexpr float kEmptyBlendThresholdRequest = 2.0f;
+
   private:
+    // Reference counting - only accessible by RtxOptionLayerManager
+    // Thread-safe read of the reference count.
+    // Uses acquire ordering to ensure any writes from other threads are visible.
+    const size_t getRefCount() const { return m_refCount.load(std::memory_order_acquire); }
+    
+    // Thread-safe increment of the reference count.
+    // Uses fetch_add with acq_rel ordering to atomically increment and synchronize with other threads.
+    void incrementRefCount() const { m_refCount.fetch_add(1, std::memory_order_acq_rel); }
+    
+    // Thread-safe decrement of the reference count with zero-check.
+    // Uses compare-exchange loop to atomically check if count > 0 and decrement if true.
+    // This prevents race conditions where multiple threads might decrement past zero.
+    // The loop handles spurious failures from compare_exchange_weak.
+    void decrementRefCount() const {
+      size_t expected = m_refCount.load(std::memory_order_acquire);
+      while (expected > 0) {
+        // Try to atomically decrement from expected to expected-1
+        if (m_refCount.compare_exchange_weak(expected, expected - 1, std::memory_order_acq_rel, std::memory_order_acquire)) {
+          // Successfully decremented
+          break;
+        }
+        // compare_exchange_weak failed (either spuriously or because another thread modified m_refCount)
+        // 'expected' is now updated with the current value, so we loop again with the new value
+      }
+    }
+
     std::string m_configName;
 
     mutable bool m_enabled;
     mutable bool m_dirty;
     mutable bool m_blendStrengthDirty;
+    mutable std::atomic<size_t> m_refCount = 0;
 
     Config m_config;
 
@@ -163,6 +264,17 @@ namespace dxvk {
 
     // Only used for non-float variables in a layer. These variables will be only enabled when strength larger than threshold.
     mutable float m_blendThreshold;
+
+    // Pending requests from multiple components during the current frame.
+    // These are accumulated and resolved once per frame before option resolution.
+    // If any component requests enabled=true, the enum will be RequestEnabled.
+    // If only false requests are made, it will be RequestDisabled.
+    // If no requests are made, it will be NoRequest (no change).
+    mutable EnabledRequest m_pendingEnabledRequest;
+    // Tracks the maximum requested blend strength for this frame.
+    mutable float m_pendingMaxBlendStrength;
+    // Tracks the minimum requested blend threshold for this frame.
+    mutable float m_pendingMinBlendThreshold;
 
     // Global static flag to indicate runtime settings need resetting.
     static bool s_resetRuntimeSettings;
@@ -204,10 +316,10 @@ namespace dxvk {
 
     // --- Containers for option layers ---
     // 
-    // Stores all RTX option layers, ordered by priority.
+    // Stores all RTX option layers, keyed by priority.
     // Each RtxOptionLayer can represent a source of settings
     // (default configs, app configs, user configs, runtime GUI, etc.).
-    using RtxOptionLayerMap = std::set<RtxOptionLayer>;
+    using RtxOptionLayerMap = std::unordered_map<uint32_t, RtxOptionLayer>;
     // Stores resolved option values across all layers, ordered by priority.
     std::map<uint32_t, PrioritizedValue, std::greater<uint32_t>> optionLayerValueQueue;
 
@@ -278,7 +390,12 @@ namespace dxvk {
     // Returns a global container holding all option layers
     static RtxOptionLayerMap& getRtxOptionLayerMap();
     // Add an option layer to global option layer map
-    static void addRtxOptionLayer(const RtxOptionLayer& layer);
+    // Returns a pointer to the newly created layer, or nullptr if the layer was invalid
+    // If config is provided, uses it directly; otherwise loads from configPath
+    static const RtxOptionLayer* addRtxOptionLayer(const std::string& configPath, const uint32_t priority, const float blendStrength, const float blendThreshold, const Config* config = nullptr);
+    // Remove an option layer from the global option layer map by pointer
+    // Returns true if the layer was found and removed
+    static bool removeRtxOptionLayer(const RtxOptionLayer* layer);
 
     // Config object holding start up settings
     static Config s_startupOptions;
@@ -477,8 +594,13 @@ namespace dxvk {
     static void applyPendingValuesOptionLayers() {
       std::unique_lock<std::mutex> lock(RtxOptionImpl::s_updateMutex);
 
-      // Apply dirty option layers (enable or disable).
-      for (auto& optionLayer : RtxOptionImpl::getRtxOptionLayerMap()) {
+      // First, resolve all pending requests from components for this frame
+      for (auto& [priority, optionLayer] : RtxOptionImpl::getRtxOptionLayerMap()) {
+        optionLayer.resolvePendingRequests();
+      }
+
+      // Then apply dirty option layers (enable or disable).
+      for (auto& [priority, optionLayer] : RtxOptionImpl::getRtxOptionLayerMap()) {
         if (optionLayer.isDirty()) {
           if (optionLayer.isEnabled()) {
             RtxOption<bool>::addRtxOptionLayer(optionLayer);

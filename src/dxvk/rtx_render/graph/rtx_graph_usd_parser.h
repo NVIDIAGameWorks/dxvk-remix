@@ -96,7 +96,11 @@ private:
       }
       return value.Get<T>();
     } else if (constexpr (std::is_same_v<T, std::string>) && value.IsHolding<pxr::SdfAssetPath>()) {
-      return value.Get<pxr::SdfAssetPath>().GetAssetPath();
+      const std::string resolvedPath = value.Get<pxr::SdfAssetPath>().GetResolvedPath();
+      if (resolvedPath.empty()) {
+        return value.Get<pxr::SdfAssetPath>().GetAssetPath();
+      }
+      return resolvedPath;
     } else if (value.IsHolding<pxr::TfToken>()) {
       // Note: holds_alternative<bool> is a compiler error, so this constexpr check is needed.
       if constexpr (!std::is_same_v<T, bool>) {

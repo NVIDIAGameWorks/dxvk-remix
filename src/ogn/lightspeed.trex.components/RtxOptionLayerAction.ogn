@@ -1,0 +1,46 @@
+{
+  "lightspeed.trex.components.RtxOptionLayerAction": {
+    "description": ["Controls an RtxOptionLayer by name, allowing dynamic enable/disable, strength adjustment, and threshold control. This can be used to activate configuration layers at runtime based on game state or other conditions. The layer is created if it doesn't exist, and managed with reference counting. Each layer requires a unique priority value - if multiple components specify the same priority, an error will occur."],
+    "version": 1,
+    "uiName": "Rtx Option Layer Action",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Control",
+    "inputs": {
+      "configPath": {
+        "description": ["The config file for the RtxOptionLayer to control."],
+        "type": "asset",
+        "default": "",
+        "uiName": "Config Path"
+      },
+      "enabled": {
+        "description": ["If true, the option layer is enabled and its settings are applied. If false, the layer is disabled. If multiple components control the same layer, it will be enabled if ANY of them request it."],
+        "type": "bool",
+        "default": true,
+        "optional": true,
+        "uiName": "Enabled"
+      },
+      "blendStrength": {
+        "description": ["The blend strength for the option layer (0.0 = no effect, 1.0 = full effect.)\n\nLowest priority layer uses LERP to blend with default value, then each higher priority layer uses LERP to blend with the previous layer's result.\n\nIf multiple components control the same layer, the MAX blend strength will be used."],
+        "type": "float",
+        "default": 1.000000,
+        "optional": true,
+        "uiName": "Blend Strength"
+      },
+      "blendThreshold": {
+        "description": ["The blend threshold for non-float options (0.0 to 1.0). Non-float options are only applied when blend strength exceeds this threshold. If multiple components control the same layer, the MINIMUM blend threshold will be used."],
+        "type": "float",
+        "default": 0.100000,
+        "optional": true,
+        "uiName": "Blend Threshold"
+      },
+      "priority": {
+        "description": ["The priority for the option layer. Higher values are blended onto lower values. Must be unique across all layers."],
+        "type": "uint",
+        "default": 100,
+        "optional": true,
+        "uiName": "Priority"
+      }
+    },
+  }
+}

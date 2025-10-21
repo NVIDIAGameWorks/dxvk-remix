@@ -21,8 +21,6 @@
 */
 
 // List all components in alphabetical order
-// TODO figure out how to include components without needing to include a header file in a list like this.
-
 #include "components/animated_float.h"
 #include "components/box_proximity.h"
 #include "components/camera.h"
@@ -30,6 +28,10 @@
 #include "components/keyboard_input.h"
 #include "components/loop_float.h"
 #include "components/mesh_hash_checker.h"
+#include "components/rtx_option_layer_action.h"
 #include "components/sphere_light_override.h"
 #include "components/texture_hash_checker.h"
 #include "components/time.h"
+
+// TODO figure out how to include components without needing to include a header file in a list like this.
+
