@@ -1057,10 +1057,63 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
     return s_rtxOptionLayers;
   }
 
-  void RtxOptionImpl::addRtxOptionLayer(const RtxOptionLayer& layer) {
-    if (layer.isValid()) {
-      getRtxOptionLayerMap().insert(layer);
+  const RtxOptionLayer* RtxOptionImpl::addRtxOptionLayer(const std::string& configPath, const uint32_t priority, const float blendStrength, const float blendThreshold, const Config* config) {
+    // Load config from path if not provided
+    const Config& layerConfig = config ? *config : Config::getOptionLayerConfig(configPath);
+    
+    // Apply priority offset for option layers only when loading from path (not for rtx.conf or dxvk.conf)
+    uint32_t adjustedPriority = priority;
+    if (!config && priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
+      adjustedPriority += RtxOptionLayer::s_userOptionLayerOffset;
     }
+    
+    // Construct the layer in-place in the map using emplace
+    auto result = getRtxOptionLayerMap().emplace(
+      std::piecewise_construct,
+      std::forward_as_tuple(adjustedPriority),
+      std::forward_as_tuple(layerConfig, configPath, adjustedPriority, blendStrength, blendThreshold)
+    );
+    
+    if (!result.second) {
+      // Layer with this priority already exists
+      Logger::warn(str::format("[RTX Option]: Layer with adjusted priority ", adjustedPriority, " already exists. Ignoring new layer. The original priority is ", priority, "."));
+      return nullptr;
+    }
+    
+    // Check if the newly constructed layer is valid
+    const RtxOptionLayer& layer = result.first->second;
+    if (!layer.isValid()) {
+      // Layer is invalid, remove it from the map
+      getRtxOptionLayerMap().erase(result.first);
+      Logger::warn(str::format("[RTX Option]: Failed to load valid config for layer '", configPath, "' with original priority ", priority, " and adjusted priority ", adjustedPriority, "."));
+      return nullptr;
+    }
+    
+    return &layer;
+  }
+
+  bool RtxOptionImpl::removeRtxOptionLayer(const RtxOptionLayer* layer) {
+    if (layer == nullptr) {
+      return false;
+    }
+
+    auto& layerMap = getRtxOptionLayerMap();
+    auto it = layerMap.find(layer->getPriority());
+    
+    if (it != layerMap.end()) {
+      // Remove the layer values from all RtxOptions
+      auto& globalRtxOptions = getGlobalRtxOptionMap();
+      for (auto& rtxOptionMapEntry : globalRtxOptions) {
+        RtxOptionImpl& rtxOption = *rtxOptionMapEntry.second.get();
+        rtxOption.disableLayerValue(layer->getPriority());
+      }
+      
+      // Remove from the global layer map
+      layerMap.erase(it);
+      return true;
+    }
+    
+    return false;
   }
 
   bool writeMarkdownDocumentation(const char* outputMarkdownFilePath) {
@@ -1070,24 +1123,6 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
   // Option Layer
   bool RtxOptionLayer::s_resetRuntimeSettings = false;
 
-  RtxOptionLayer::RtxOptionLayer(const std::string& configPath, const uint32_t priority, const float blendStrength, const float blendThreshold)
-    : m_configName(configPath)
-    , m_enabled(true)
-    , m_dirty(false)
-    , m_priority(priority)
-    , m_blendStrength(blendStrength)
-    , m_blendThreshold(blendThreshold)
-    , m_config(Config::getOptionLayerConfig(configPath)) {
-#if RTX_OPTION_DEBUG_LOGGING
-    Logger::info(str::format("[RTX Option]: Added user option layer: ", m_configName,
-                             "\nPriority: ", std::to_string(m_priority),
-                             "\nStrength: ", std::to_string(m_blendStrength)));
-#endif
-    if (priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
-      m_priority += s_userOptionLayerOffset;
-    }
-  }
-
   RtxOptionLayer::RtxOptionLayer(const Config& config, const std::string& configName, const uint32_t priority, const float blendStrength, const float blendThreshold)
     : m_configName(configName)
     , m_enabled(true)
@@ -1095,14 +1130,47 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
     , m_config(config)
     , m_priority(priority)
     , m_blendStrength(blendStrength)
-    , m_blendThreshold(blendThreshold) {
+    , m_blendThreshold(blendThreshold)
+    , m_pendingEnabledRequest(EnabledRequest::NoRequest)
+    , m_pendingMaxBlendStrength(kEmptyBlendStrengthRequest)
+    , m_pendingMinBlendThreshold(kEmptyBlendThresholdRequest) {
 #if RTX_OPTION_DEBUG_LOGGING
-    Logger::info(str::format("[RTX Option]: Added app option layer: ", m_configName,
+    Logger::info(str::format("[RTX Option]: Added option layer: ", m_configName,
                              "\nPriority: ", std::to_string(m_priority),
                              "\nStrength: ", std::to_string(m_blendStrength)));
 #endif
   }
 
   RtxOptionLayer::~RtxOptionLayer() = default;
+
+  void RtxOptionLayer::resolvePendingRequests() {
+    // Resolve enabled state if any component made a request
+    if (m_pendingEnabledRequest != EnabledRequest::NoRequest) {
+      bool newEnabledState = (m_pendingEnabledRequest == EnabledRequest::RequestEnabled);
+      if (m_enabled != newEnabledState) {
+        m_enabled = newEnabledState;
+        setDirty(true);
+      }
+      m_pendingEnabledRequest = EnabledRequest::NoRequest;
+    }
+    
+    // Resolve blend strength if any component made a request
+    if (m_pendingMaxBlendStrength > kEmptyBlendStrengthRequest) {
+      if (m_blendStrength != m_pendingMaxBlendStrength) {
+        m_blendStrength = m_pendingMaxBlendStrength;
+        setBlendStrengthDirty(true);
+      }
+      m_pendingMaxBlendStrength = kEmptyBlendStrengthRequest;
+    }
+    
+    // Resolve blend threshold if any component made a request
+    if (m_pendingMinBlendThreshold < kEmptyBlendThresholdRequest) {
+      if (m_blendThreshold != m_pendingMinBlendThreshold) {
+        m_blendThreshold = m_pendingMinBlendThreshold;
+        setDirty(true);
+      }
+      m_pendingMinBlendThreshold = kEmptyBlendThresholdRequest;
+    }
+  }
 
 }

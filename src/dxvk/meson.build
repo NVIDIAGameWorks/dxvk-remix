@@ -279,6 +279,8 @@ dxvk_src = files([
   'rtx_render/rtx_opacity_micromap_manager.h',
   'rtx_render/rtx_option.cpp',
   'rtx_render/rtx_option.h',
+  'rtx_render/rtx_option_layer_manager.cpp',
+  'rtx_render/rtx_option_layer_manager.h',
   'rtx_render/rtx_options.cpp',
   'rtx_render/rtx_options.h',
   'rtx_render/rtx_pathtracer_gbuffer.cpp',

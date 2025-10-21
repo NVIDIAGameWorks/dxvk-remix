@@ -160,7 +160,59 @@ namespace test_graph_documentation_app {
     return !differenceDetected;
   }
 
-
+  // Helper function to copy files to web interface directories for diff viewing
+  void copyToWebInterface(const std::string& fileName,
+                         const std::string& goldenFilePath,
+                         const std::string& modifiedFilePath,
+                         const std::string& goldenDir,
+                         const std::string& webGoldenDir,
+                         const std::string& webModifiedDir,
+                         bool createEmptyGolden,
+                         bool createEmptyModified) {
+    try {
+      // Calculate relative path from the source root to preserve folder structure
+      std::filesystem::path goldenSourceDir = std::filesystem::path(goldenFilePath).parent_path();
+      std::filesystem::path sourceRoot = BUILD_SOURCE_ROOT;
+      std::filesystem::path relativePath = std::filesystem::relative(goldenSourceDir, sourceRoot);
+      
+      // Build destination paths preserving folder structure
+      std::string goldenDestPath;
+      std::string modifiedDestPath;
+      
+      if (relativePath.empty() || relativePath == ".") {
+        goldenDestPath = (std::filesystem::path(webGoldenDir) / fileName).string();
+        modifiedDestPath = (std::filesystem::path(webModifiedDir) / fileName).string();
+      } else {
+        goldenDestPath = (std::filesystem::path(webGoldenDir) / relativePath / fileName).string();
+        modifiedDestPath = (std::filesystem::path(webModifiedDir) / relativePath / fileName).string();
+      }
+      
+      // Create destination directories if they don't exist
+      std::filesystem::create_directories(std::filesystem::path(goldenDestPath).parent_path());
+      std::filesystem::create_directories(std::filesystem::path(modifiedDestPath).parent_path());
+      
+      // Copy or create files
+      if (createEmptyGolden) {
+        std::ofstream goldenFile(goldenDestPath);
+        goldenFile.close();
+      } else {
+        std::filesystem::copy_file(goldenFilePath, goldenDestPath, std::filesystem::copy_options::overwrite_existing);
+      }
+      
+      if (createEmptyModified) {
+        std::ofstream modifiedFile(modifiedDestPath);
+        modifiedFile.close();
+      } else {
+        std::filesystem::copy_file(modifiedFilePath, modifiedDestPath, std::filesystem::copy_options::overwrite_existing);
+      }
+      
+      dxvk::Logger::info("Copied file to web interface directories.");
+      dxvk::Logger::info("goldenDestPath: " + goldenDestPath);
+      dxvk::Logger::info("modifiedDestPath: " + modifiedDestPath);
+    } catch (const std::exception& e) {
+      dxvk::Logger::err("Warning: Failed to copy file for web interface: " + std::string(e.what()));
+    }
+  }
 
   // Function to compare all files in a directory
   bool compareDirectories(const std::string& goldenDir, const std::string& modifiedDir, 
@@ -181,7 +233,7 @@ namespace test_graph_documentation_app {
     std::filesystem::path goldenPath(goldenDir);
     std::filesystem::path modifiedPath(modifiedDir);
 
-    // Iterate through golden directory
+    // Iterate through golden directory - check if all golden files exist and match in modified
     for (const auto& entry : std::filesystem::directory_iterator(goldenPath)) {
       if (entry.is_regular_file()) {
         std::string fileName = entry.path().filename().string();
@@ -192,13 +244,45 @@ namespace test_graph_documentation_app {
 
         if (!std::filesystem::exists(modifiedFilePath)) {
           dxvk::Logger::err("Modified file does not exist: " + modifiedFilePath);
+          dxvk::Logger::err("  This indicates a component was removed but golden files still exist.");
+          dxvk::Logger::err("  Golden file: " + goldenFilePath);
           allFilesMatch = false;
+          
+          // Copy files to web interface directories if provided
+          if (!webGoldenDir.empty() && !webModifiedDir.empty()) {
+            copyToWebInterface(fileName, goldenFilePath, modifiedFilePath, goldenDir,
+                             webGoldenDir, webModifiedDir, false, true);
+          }
+          
           continue;
         }
 
         if (!compareFiles(goldenFilePath, modifiedFilePath, webGoldenDir, webModifiedDir)) {
           dxvk::Logger::err("Files do not match: " + fileName);
           allFilesMatch = false;
+        }
+      }
+    }
+
+    // Iterate through modified directory - check for new files that don't exist in golden
+    dxvk::Logger::info("Checking for new files in modified directory...");
+    for (const auto& entry : std::filesystem::directory_iterator(modifiedPath)) {
+      if (entry.is_regular_file()) {
+        std::string fileName = entry.path().filename().string();
+        std::string goldenFilePath = (goldenPath / fileName).string();
+        std::string modifiedFilePath = (modifiedPath / fileName).string();
+
+        if (!std::filesystem::exists(goldenFilePath)) {
+          dxvk::Logger::err("New file in modified directory (missing in golden): " + fileName);
+          dxvk::Logger::err("  This indicates a new component was added without updating the golden files.");
+          dxvk::Logger::err("  Golden path expected: " + goldenFilePath);
+          allFilesMatch = false;
+          
+          // Copy files to web interface directories if provided
+          if (!webGoldenDir.empty() && !webModifiedDir.empty()) {
+            copyToWebInterface(fileName, goldenFilePath, modifiedFilePath, goldenDir,
+                             webGoldenDir, webModifiedDir, true, false);
+          }
         }
       }
     }

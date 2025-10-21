@@ -641,11 +641,11 @@ namespace dxvk {
     initConfig<Config::Type_RtxUser>();
     initConfig<Config::Type_RtxMod>();
 
-    RtxOptionImpl::addRtxOptionLayer(RtxOptionLayer("user.conf", RtxOptionLayer::s_runtimeOptionLayerPriority, 1.0f, 1.0f));
+    RtxOptionImpl::addRtxOptionLayer("user.conf", RtxOptionLayer::s_runtimeOptionLayerPriority, 1.0f, 1.0f);
     Logger::info("Set user realtime configs.");
 
     RtxOption<bool>::initializeRtxOptions();
-    for (const auto& optionLayer : RtxOptionImpl::getRtxOptionLayerMap()) {
+    for (const auto& [priority, optionLayer] : RtxOptionImpl::getRtxOptionLayerMap()) {
       RtxOption<bool>::addRtxOptionLayer(optionLayer);
     }
 
@@ -710,13 +710,13 @@ namespace dxvk {
       // Set config so that any rtx option initialized later will use the value in that config object
       // The start-up config contains the values from the code and dxvk.conf, only.
       RtxOption<bool>::setStartupConfig(m_config);
-      RtxOptionImpl::addRtxOptionLayer(RtxOptionLayer(m_config, "dxvk.conf", 1, 1.0f, 1.0f));
+      RtxOptionImpl::addRtxOptionLayer("dxvk.conf", 1, 1.0f, 1.0f, &m_config);
       Logger::info("Set startup config.");
     } else if constexpr ((type == Config::Type_RtxUser) || (type == Config::Type_RtxMod)) {
       // Set custom config after the RTX user config has been merged into the config and
       // update the RTX options. Contains values from rtx.conf
       RtxOption<bool>::setCustomConfig(m_config);
-      RtxOptionImpl::addRtxOptionLayer(RtxOptionLayer(m_config, "rtx.conf", 2, 1.0f, 1.0f));
+      RtxOptionImpl::addRtxOptionLayer("rtx.conf", 2, 1.0f, 1.0f, &m_config);
       Logger::info("Set custom config.");
     }
   }

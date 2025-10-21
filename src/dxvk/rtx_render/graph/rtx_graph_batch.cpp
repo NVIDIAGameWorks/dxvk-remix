@@ -152,7 +152,15 @@ void RtGraphBatch::addInstance(Rc<DxvkContext> context, const RtGraphState& init
   }
 
   // Update the new graph once, to fill in the initial values.
-  updateRange(context, m_graphInstances.size() - 1, m_graphInstances.size());
+  // for components with an initialize function, update the earlier components first to ensure the inputs are accurate, then initialize.
+  const size_t newInstanceIndex = m_graphInstances.size() - 1;
+  for (auto& batch : m_componentBatches) {
+    const auto* spec = batch->getSpec();
+    if (spec && spec->initialize) {
+      spec->initialize(context, *batch, newInstanceIndex);
+    }
+    batch->updateRange(context, newInstanceIndex, newInstanceIndex + 1);
+  }
 }
 
 void RtGraphBatch::removeInstance(GraphInstance* graphInstance) {
@@ -170,6 +178,14 @@ void RtGraphBatch::removeInstance(GraphInstance* graphInstance) {
     Logger::err(str::format("GraphInstance to remove has the wrong index.  Instance: ", graphInstance->getId()));
     assert(false && "GraphInstance to remove has the wrong index.");
     return;
+  }
+
+  // Call cleanup callbacks for the instance before removal
+  for (auto& batch : m_componentBatches) {
+    const auto* spec = batch->getSpec();
+    if (spec && spec->cleanup) {
+      spec->cleanup(*batch, index);
+    }
   }
 
   // Swap the instance to be removed to the back of the lists, and then pop it off.

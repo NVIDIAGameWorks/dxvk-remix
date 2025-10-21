@@ -118,6 +118,10 @@ using RtComponentPropertyValue = std::variant<
 // as uint8_t is just representing a bool, this is an impossible value.
 inline const RtComponentPropertyValue kInvalidRtComponentPropertyValue{std::in_place_type<uint8_t>, 255};
 
+// convenience constants for hardcoding bool values properly.
+inline const RtComponentPropertyValue kFalsePropertyValue{std::in_place_type<uint8_t>, 0};
+inline const RtComponentPropertyValue kTruePropertyValue{std::in_place_type<uint8_t>, 1};
+
 using RtComponentPropertyVector = std::variant<
   // NOTE: see comment on RtComponentPropertyValue for why bool is stored as uint8_t.
   std::vector<uint8_t>,
@@ -140,6 +144,31 @@ RtComponentPropertyVector propertyVectorFromType(const RtComponentPropertyType t
 template<typename T, typename E>
 RtComponentPropertyValue propertyValueForceType(const E& value) {
   return RtComponentPropertyValue(std::in_place_type<T>, static_cast<T>(value));
+}
+
+// Helper to convert a RtComponentPropertyValue to the correct type for a property.
+// This is used to ensure minValue/maxValue have the correct type even if the user
+// writes `property.minValue = 0` (which defaults to int32_t).
+// Only converts between numeric types; non-numeric types are left as-is.
+template<typename TargetType>
+RtComponentPropertyValue convertPropertyValueToType(const RtComponentPropertyValue& value) {
+  // Only convert if target type is arithmetic (numeric)
+  if constexpr (std::is_arithmetic_v<TargetType>) {
+    return std::visit([](auto&& val) -> RtComponentPropertyValue {
+      using SourceType = std::decay_t<decltype(val)>;
+      // Only convert if source is also arithmetic
+      if constexpr (std::is_arithmetic_v<SourceType>) {
+        // Explicitly convert source value to target type
+        return RtComponentPropertyValue(std::in_place_type<TargetType>, static_cast<TargetType>(val));
+      } else {
+        // Source is not numeric (e.g. string), return as-is
+        return RtComponentPropertyValue(val);
+      }
+    }, value);
+  } else {
+    // Target type is not numeric (e.g. Vector3, string), return as-is
+    return value;
+  }
 }
 
 // Helper to determine the appropriate type for propertyValueForceType
@@ -169,6 +198,7 @@ struct RtComponentPropertySpec {
   // Optional Values
   // To set optional values when using the macros, write them as a comma separated list after the docString. 
   // `property.<name> = <value>`, i.e. `property.minValue = 0.0f, property.maxValue = 1.0f`
+  // Note: minValue and maxValue are automatically converted to match the property's declared type
 
   // If this property has been renamed, list the old `usdPropertyName`s here for backwards compatibility.
   // If multiple definitions for the same property exist, the property on the strongest USD layer will be used.
@@ -179,9 +209,9 @@ struct RtComponentPropertySpec {
 
   // NOTE: These are currently unenforced on the c++ side, but should be used for OGN generation.
   // TODO: consider enforcing these on the c++ side (between component batch updates?)
-  // Using uint8_t(0) to represent false due to the bool problem mentioned in RtComponentPropertyValue.
-  RtComponentPropertyValue minValue = uint8_t(0);
-  RtComponentPropertyValue maxValue = uint8_t(0);
+  // Using kFalsePropertyValue to represent false due to the bool problem mentioned in RtComponentPropertyValue.
+  RtComponentPropertyValue minValue = kFalsePropertyValue;
+  RtComponentPropertyValue maxValue = kFalsePropertyValue;
 
 
   // Whether the component will function without this property being set.
@@ -232,6 +262,15 @@ struct RtComponentSpec {
 
   // Optional function intended for applying values in the graph to renderable objects.  This is called near the top of SceneManager::prepareSceneData.
   std::function<void(const Rc<DxvkContext>& context, RtComponentBatch& batch, const size_t start, const size_t end)> applySceneOverrides;
+
+  // Optional function called when component instances are created.
+  // Called after earlier components have been initialized and updated, but before the first time
+  // this component is updated.
+  std::function<void(const Rc<DxvkContext>& context, RtComponentBatch& batch, const size_t index)> initialize;
+
+  // Optional function called when component instances are about to be destroyed.
+  // Called before the instance is removed from the batch. No context is available during cleanup.
+  std::function<void(RtComponentBatch& batch, const size_t index)> cleanup;
 
   // Validation methods
   bool isValid() const {
