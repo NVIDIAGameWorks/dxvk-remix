@@ -7,7 +7,7 @@ Controls an RtxOptionLayer by name, allowing dynamic enable/disable, strength ad
 - **Name:** `RtxOptionLayerAction`
 - **UI Name:** Rtx Option Layer Action
 - **Version:** 1
-- **Categories:** Control
+- **Categories:** Act
 
 ## Input Properties
 

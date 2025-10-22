@@ -55,7 +55,7 @@ public:
     REMIX_COMPONENT_WRITE_STATIC_SPEC(
       /* the Component name */ RtxOptionLayerAction,
       /* the UI name */        "Rtx Option Layer Action",
-      /* the UI categories */  "Control",
+      /* the UI categories */  "Act",
       /* the doc string */     "Controls an RtxOptionLayer by name, allowing dynamic enable/disable, strength adjustment, and threshold control. "
         "This can be used to activate configuration layers at runtime based on game state or other conditions. "
         "The layer is created if it doesn't exist, and managed with reference counting. "
