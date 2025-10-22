@@ -5,7 +5,7 @@
     "uiName": "Rtx Option Layer Action",
     "language": "python",
     "categoryDefinitions": "config/CategoryDefinition.json",
-    "categories": "Control",
+    "categories": "Act",
     "inputs": {
       "configPath": {
         "description": ["The config file for the RtxOptionLayer to control."],
