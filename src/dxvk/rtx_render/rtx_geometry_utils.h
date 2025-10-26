@@ -139,7 +139,8 @@ namespace dxvk {
     void decodeAndAddOpacity(
       Rc<DxvkContext> ctx,
       const TextureRef& colorOpacityTexture,
-      const std::vector<TextureConversionInfo>& conversionInfos);
+      const std::vector<TextureConversionInfo>& conversionInfos,
+      float normalScale = 1.0f );
 
     struct InterleavedGeometryDescriptor {
       Rc<DxvkBuffer> buffer = nullptr;
