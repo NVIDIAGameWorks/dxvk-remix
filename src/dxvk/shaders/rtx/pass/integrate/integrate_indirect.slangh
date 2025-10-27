@@ -119,7 +119,7 @@ void integrate_indirect_pass(ivec2 threadIndex)
   // Load state data carried over from the direct integration pass
 
   const vec4 rayOriginDirection = RayOriginDirection[gbufferPixelCoordinate];
-  const vec4 throughputConeRadius = ThroughputConeRadius[gbufferPixelCoordinate];
+  const f16vec4 throughputConeRadius = ThroughputConeRadius[gbufferPixelCoordinate];
   IndirectSampleData indirectSampleData;
   indirectSampleData.load(gbufferPixelCoordinate, FirstSampledLobeData);
 
