@@ -507,7 +507,7 @@ struct RtOpaqueSurfaceMaterial {
     float normalScale
   ) :
     m_albedoOpacityTextureIndex{ albedoOpacityTextureIndex }, m_normalTextureIndex{ normalTextureIndex },
-    m_tangentTextureIndex { tangentTextureIndex }, m_heightTextureIndex { heightTextureIndex }, m_roughnessTextureIndex{ roughnessTextureIndex }
+    m_tangentTextureIndex { tangentTextureIndex }, m_heightTextureIndex { heightTextureIndex }, m_roughnessTextureIndex{ roughnessTextureIndex },
     m_metallicTextureIndex{ metallicTextureIndex }, m_emissiveColorTextureIndex{ emissiveColorTextureIndex },
     m_anisotropy{ anisotropy }, m_emissiveIntensity{ emissiveIntensity },
     m_albedoOpacityConstant{ albedoOpacityConstant },
