@@ -507,13 +507,13 @@ struct RtOpaqueSurfaceMaterial {
     float normalScale
   ) :
     m_albedoOpacityTextureIndex{ albedoOpacityTextureIndex }, m_normalTextureIndex{ normalTextureIndex },
-    m_tangentTextureIndex{ tangentTextureIndex }, m_heightTextureIndex{ heightTextureIndex }, m_roughnessTextureIndex{ roughnessTextureIndex },
+    m_tangentTextureIndex { tangentTextureIndex }, m_heightTextureIndex { heightTextureIndex }, m_roughnessTextureIndex{ roughnessTextureIndex }
     m_metallicTextureIndex{ metallicTextureIndex }, m_emissiveColorTextureIndex{ emissiveColorTextureIndex },
     m_anisotropy{ anisotropy }, m_emissiveIntensity{ emissiveIntensity },
     m_albedoOpacityConstant{ albedoOpacityConstant },
     m_roughnessConstant{ roughnessConstant }, m_metallicConstant{ metallicConstant },
     m_emissiveColorConstant{ emissiveColorConstant }, m_enableEmission{ enableEmission },
-    m_ignoreAlphaChannel{ ignoreAlphaChannel }, m_enableThinFilm{ enableThinFilm }, m_alphaIsThinFilmThickness{ alphaIsThinFilmThickness },
+    m_ignoreAlphaChannel { ignoreAlphaChannel }, m_enableThinFilm { enableThinFilm }, m_alphaIsThinFilmThickness { alphaIsThinFilmThickness },
     m_thinFilmThicknessConstant{ thinFilmThicknessConstant }, m_samplerIndex{ samplerIndex }, m_displaceIn{ displaceIn },
     m_displaceOut{ displaceOut }, m_subsurfaceMaterialIndex(subsurfaceMaterialIndex), m_isRaytracedRenderTarget(isRaytracedRenderTarget),
     m_samplerFeedbackStamp{ samplerFeedbackStamp },
