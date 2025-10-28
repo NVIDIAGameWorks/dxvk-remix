@@ -749,11 +749,23 @@ namespace dxvk {
     case OptionType::Vector4:
       *target.v4 += *source.v4 * weight;
       break;
+    case OptionType::HashSet:
+    {
+      target.hashSet->insert(source.hashSet->begin(), source.hashSet->end());
+      break;
+    }
+    case OptionType::HashVector:
+    {
+      target.hashVector->insert(target.hashVector->end(), source.hashVector->begin(), source.hashVector->end());
+      break;
+    }
+    case OptionType::IntVector:
+    {
+      target.intVector->insert(target.intVector->end(), source.intVector->begin(), source.intVector->end());
+      break;
+    }
     case OptionType::Bool:
     case OptionType::Int:
-    case OptionType::HashSet:
-    case OptionType::HashVector:
-    case OptionType::IntVector:
     case OptionType::VirtualKeys:
     case OptionType::Vector2i:
     case OptionType::String:
