@@ -23,12 +23,14 @@
 
 static const int16_t kInvalidThreadIndex = 32767; // ~ int16_t max
 
+// Note: ensure alignment for C++ and Slang to match
 struct GpuPrintBufferElement
-{
+{  
+  float4 writtenData;
+
   u16vec2 threadIndex;    // Thread index of the written data
   uint frameIndex;        // Frame index when the data was written
-  
-  float4 writtenData;
+  uint2 pad;
 
 #ifndef __cplusplus
   [mutating]
