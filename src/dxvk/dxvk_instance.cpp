@@ -641,7 +641,10 @@ namespace dxvk {
     initConfig<Config::Type_RtxUser>();
     initConfig<Config::Type_RtxMod>();
 
-    RtxOptionImpl::addRtxOptionLayer("user.conf", RtxOptionLayer::s_runtimeOptionLayerPriority, 1.0f, 1.0f);
+    RtxOptionImpl::addRtxOptionLayer("quality.conf", (uint32_t) RtxOptionLayer::SystemLayerPriority::Quality, true, 1.0f, 1.0f);
+    Logger::info("Set quality configs.");
+
+    RtxOptionImpl::addRtxOptionLayer("user.conf", (uint32_t) RtxOptionLayer::SystemLayerPriority::USER, true, 1.0f, 1.0f);
     Logger::info("Set user realtime configs.");
 
     RtxOption<bool>::initializeRtxOptions();
@@ -694,6 +697,7 @@ namespace dxvk {
       const auto baseGameModPath = ModManager::getBaseGameModPath(
         m_config.getOption<std::string>("rtx.baseGameModRegex", "", ""),
         m_config.getOption<std::string>("rtx.baseGameModPathRegex", "", ""));
+
       if (baseGameModPath.empty()) {
         // Skip RtxMod if not present, as it may just pick up a different rtx.mod path
         Logger::info("No base game mod path found. Skipping initialization.");
@@ -710,13 +714,13 @@ namespace dxvk {
       // Set config so that any rtx option initialized later will use the value in that config object
       // The start-up config contains the values from the code and dxvk.conf, only.
       RtxOption<bool>::setStartupConfig(m_config);
-      RtxOptionImpl::addRtxOptionLayer("dxvk.conf", 1, 1.0f, 1.0f, &m_config);
+      RtxOptionImpl::addRtxOptionLayer("dxvk.conf", (uint32_t)RtxOptionLayer::SystemLayerPriority::DxvkConf, true, 1.0f, 1.0f, &m_config);
       Logger::info("Set startup config.");
     } else if constexpr ((type == Config::Type_RtxUser) || (type == Config::Type_RtxMod)) {
       // Set custom config after the RTX user config has been merged into the config and
       // update the RTX options. Contains values from rtx.conf
       RtxOption<bool>::setCustomConfig(m_config);
-      RtxOptionImpl::addRtxOptionLayer("rtx.conf", 2, 1.0f, 1.0f, &m_config);
+      RtxOptionImpl::addRtxOptionLayer("rtx.conf", (uint32_t)RtxOptionLayer::SystemLayerPriority::RtxConf, true, 1.0f, 1.0f, nullptr);
       Logger::info("Set custom config.");
     }
   }

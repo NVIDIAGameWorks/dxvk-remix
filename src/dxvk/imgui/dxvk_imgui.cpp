@@ -541,6 +541,16 @@ namespace dxvk {
       {    TerrainMode::AsDecals, "Terrain-as-Decals"},
   });
 
+  ImGui::ComboWithKey<OptionLayerType>::ComboEntries optionSavingModeComboEntries = { {
+      { OptionLayerType::User, "User", "Runtime settings"},
+      { OptionLayerType::Rtx, "Rtx", "RTX settings"},
+      { OptionLayerType::Quality, "Quality", "Graphics quality preset settings"},
+      { OptionLayerType::None, "None", "No settings layer; used for testing or temporary development" },
+  } };
+
+  static auto optionSavingModeCombo = ImGui::ComboWithKey<OptionLayerType>(
+    "Type of setting to save##option", ImGui::ComboWithKey<OptionLayerType>::ComboEntries { optionSavingModeComboEntries });
+
   static auto themeCombo = ImGui::ComboWithKey<ImGUI::Theme>(
     "Mode##theme",
     {
@@ -1099,12 +1109,13 @@ namespace dxvk {
     ImGui::Separator();
     ImGui::Dummy(ImVec2(0, 2));
 
-    ImGui::Checkbox("Save Changed Settings Only", &RtxOptions::serializeChangedOptionOnlyObject());
+    IMGUI_ADD_TOOLTIP(optionSavingModeCombo.getKey(&RtxOptions::Option::optionSavingTypeObject()), "Setting saving mode");
+
+    ImGui::Checkbox("Save Changed Settings Only", &RtxOptions::Option::serializeChangedOptionOnlyObject());
+    ImGui::Checkbox("Override configs", &RtxOptions::Option::overwriteConfigObject());
+
     const float buttonWidth = ImGui::GetContentRegionAvail().x / 3 - (ImGui::GetStyle().ItemSpacing.x);
-
-    if (IMGUI_ADD_TOOLTIP(ImGui::Button("Save Settings", ImVec2(buttonWidth, 0)), "Changes are now saved to user.conf. Use the 'Save' button in the rtx.conf layer if you want to store them there for sharing.")) {
-
-
+    if (IMGUI_ADD_TOOLTIP(ImGui::Button("Save Settings", ImVec2(buttonWidth, 0)), "Changes are now saved to selected config file.")) {
       RtxOptions::serialize();
     }
 
@@ -2055,12 +2066,17 @@ namespace dxvk {
           }
         }
 
+        ImGui::Checkbox("Override configs", &RtxOptions::Option::overwriteConfigObject());
+
         uint32_t optionLayerCounter = 1;
         for (auto& [priority, optionLayer] : RtxOptionImpl::getRtxOptionLayerMap()) {
           // Runtime option layer priority is reserved for real-time user changes.
           // These layers should not be modified through the GUI.
           if (priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
             ImGui::Dummy(ImVec2(0.0f, 5.0f));
+            ImGui::Separator();
+            ImGui::Dummy(ImVec2(0.0f, 5.0f));
+
             const std::string optionLayerName = optionLayer.getName();
             
             // Process the display name
@@ -2081,8 +2097,8 @@ namespace dxvk {
             }
             
             const std::string optionLayerText = std::to_string(optionLayerCounter++) + ". " + displayName;
-            const std::string optionLayerStrengthText = " Strength";
-            const std::string optionLayerThresholdText = " Threshold";
+            const std::string optionLayerStrengthText = " Strength###Strength_" + displayName;
+            const std::string optionLayerThresholdText = " Threshold###Threshold_" + displayName;
             
             // Use pending values for UI display and send requests on change
             bool pendingEnabled = optionLayer.getPendingEnabled();
@@ -2102,11 +2118,22 @@ namespace dxvk {
               optionLayer.requestBlendThreshold(pendingThreshold);
             }
 
-            // Disabled because this blows away the existing settings and replaces it with the current runtime settings.
-            // TODO make this save out the combo of existing settings and runtime settings.
-            // const std::string optionLayerSavingText = "Save realtime changes into layer " + displayName;
-            // if (ImGui::Button(optionLayerSavingText.c_str())) {
-            //   RtxOptions::serializeOptionLayer(optionLayer.getName());
+            // TODO: We need to move these part into a separate saving session
+            // std::string layerType;
+            // if (optionLayerName == "rtx.conf") {
+            //   layerType = "RTX";
+            // } else if (optionLayerName == "quality.conf") {
+            //   layerType = "Quality";
+            // } else if (optionLayerName == "user.conf") {
+            //   layerType = "Runtime";
+            // } else {
+            //   layerType = optionLayerName;
+            // }
+            // const std::string optionLayerSavingText = RtxOptions::Option::saveToLayerConf() || displayName == "rtx.conf"?
+            //   "Save all settings from " + layerType + " layer to " + displayName :
+            //   "Save all settings from " + layerType + " layer to rtx.conf";
+            // if (IMGUI_ADD_TOOLTIP(ImGui::Button(optionLayerSavingText.c_str()), "Save layer to rtx.conf")) {
+            //   RtxOptions::serializeOptionLayer(optionLayer, RtxOptions::Option::saveToLayerConf());
             // }
 
             if (ImGui::CollapsingHeader(("Contents of " + displayName).c_str(), collapsingHeaderClosedFlags)) {

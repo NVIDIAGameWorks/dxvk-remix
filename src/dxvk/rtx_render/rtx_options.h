@@ -1106,7 +1106,15 @@ namespace dxvk {
                "Whether or not to use slower XXH64 hash on texture upload.\n"
                "New projects should not enable this option as this solely exists for compatibility with older hashing schemes.");
 
-    RTX_OPTION("rtx", bool, serializeChangedOptionOnly, true, "");
+    struct Option {
+      RTX_OPTION("rtx.option", bool, serializeChangedOptionOnly, true, "");
+      RTX_OPTION("rtx.option", bool, overwriteConfig, false, "This enables overwriting of the original config file when saving settings.\n"
+                  "Disable this option to merge the current settings with the preexisting settings in the config.");
+      RTX_OPTION("rtx.option", bool, saveToLayerConf, false, "Whether or not to save the layer to original config file.\n"
+                  "Disable this to save the layer into rtx.conf.\n"
+                  "Base on overwriteConfig, the config of the layer will be merged or override the rtx.conf.");
+      RTX_OPTION_FLAG("rtx.option", OptionLayerType, optionSavingType, OptionLayerType::User, RtxOptionFlags::NoSave, "Saving type of current runtime changes.");
+    } option;
 
     RTX_OPTION("rtx", uint32_t, applicationId, 102100511, "Used to uniquely identify the application to DLSS. Generally should not be changed without good reason.");
 
@@ -1271,16 +1279,94 @@ namespace dxvk {
 
     inline static const std::string kRtxConfigFilePath = "user.conf";
 
-    static void serialize() {
-      Config newConfig;
-      RtxOption<bool>::writeOptions(newConfig, serializeChangedOptionOnly());
-      Config::serializeCustomConfig(newConfig, kRtxConfigFilePath, "rtx.");
+    static std::string getRtxConfPath() {
+      const Config::Desc& desc = Config::getDesc(Config::Type::Type_RtxUser);
+      const std::string envVarName(desc.env);
+      const std::string envVarPath = !envVarName.empty() ? env::getEnvVar(envVarName.c_str()) : "";
+      return envVarPath.empty() ? "rtx.conf" : env::getEnvVar(desc.env.c_str()) + "\\rtx.conf";
     }
 
-    static void serializeOptionLayer(const std::string& optionLayerName) {
+    static void serialize() {
+      std::string configFilePath;
+      uint32_t optionSavingTypePriority = (uint32_t) RtxOptionLayer::SystemLayerPriority::Default;
+      switch (RtxOptions::Option::optionSavingType()) {
+        case OptionLayerType::Rtx:
+          configFilePath = getRtxConfPath();
+          optionSavingTypePriority = (uint32_t) RtxOptionLayer::SystemLayerPriority::RtxConf;
+          break;
+        case OptionLayerType::Quality:
+          configFilePath = "quality.conf";
+          optionSavingTypePriority = (uint32_t) RtxOptionLayer::SystemLayerPriority::Quality;
+          break;
+        case OptionLayerType::None:
+          configFilePath = "none.conf";
+          optionSavingTypePriority = (uint32_t) RtxOptionLayer::SystemLayerPriority::NONE;
+          break;
+        case OptionLayerType::User:
+        default:
+          configFilePath = kRtxConfigFilePath;
+          optionSavingTypePriority = (uint32_t) RtxOptionLayer::SystemLayerPriority::USER;
+          break;
+      }
+
+      // Merge the changed options with original options in config file
       Config newConfig;
-      RtxOption<bool>::writeOptions(newConfig, serializeChangedOptionOnly());
-      Config::serializeCustomConfig(newConfig, optionLayerName, "rtx.");
+      auto& optionLayerMap = RtxOptionImpl::getRtxOptionLayerMap();
+      if (!Option::overwriteConfig()) {
+        const auto& it = optionLayerMap.find(optionSavingTypePriority);
+        if (it != optionLayerMap.end()) {
+          // Get original option layer config
+          newConfig = it->second.getConfig();
+          // Get changed options
+          Config changedConfigs;
+          RtxOption<bool>::writeOptions(changedConfigs, Option::serializeChangedOptionOnly());
+          // Merge changed options into original option layer
+          newConfig.merge(changedConfigs);
+        }
+      } else {
+        RtxOption<bool>::writeOptions(newConfig, Option::serializeChangedOptionOnly());
+      }
+
+      // Update the config of corresponding layer, no need to do it for user/runtime layer b/c it's auto updated when any options in GUI are changed.
+      // And we also don't do anything for NONE, which are just experiment options that saved into none.conf.
+      if (RtxOptions::Option::optionSavingType() != OptionLayerType::User &&
+          RtxOptions::Option::optionSavingType() != OptionLayerType::None) {
+        if (optionLayerMap.find(optionSavingTypePriority) == optionLayerMap.end()){
+          RtxOptionImpl::addRtxOptionLayer(configFilePath, optionSavingTypePriority, true, 1.0f, 1.0f, &newConfig);
+        } else {
+          optionLayerMap.at(optionSavingTypePriority).setConfig(newConfig);
+        }
+        // Update option layers as well
+        optionLayerMap.at(optionSavingTypePriority).setDirty(true);
+      }
+
+      Config::serializeCustomConfig(newConfig, configFilePath, "rtx.");
+    }
+
+    static void serializeOptionLayer(const RtxOptionLayer& optionLayer, const bool saveToCurrentLayerConfigFile) {
+      auto& optionLayerMap = RtxOptionImpl::getRtxOptionLayerMap();
+      auto& rtxConfIt = optionLayerMap.find((uint32_t) RtxOptionLayer::SystemLayerPriority::RtxConf);
+      Config newConfig;
+      if (rtxConfIt == optionLayerMap.end()) {
+        RtxOptionImpl::addRtxOptionLayer("rtx.conf", (uint32_t) RtxOptionLayer::SystemLayerPriority::RtxConf, true, 1.0f, 1.0f, &newConfig);
+      }
+      auto& rtxConfLayer = optionLayerMap.find((uint32_t)RtxOptionLayer::SystemLayerPriority::RtxConf)->second;
+
+      const auto& it = optionLayerMap.find(optionLayer.getPriority());
+      if (it != optionLayerMap.end()) {
+        if (!Option::overwriteConfig()) {
+          newConfig = rtxConfLayer.getConfig();
+          newConfig.merge(it->second.getConfig());
+        } else {
+          newConfig = it->second.getConfig();
+        }
+      }
+
+      const std::string rtxConfigPath = getRtxConfPath();
+      Config::serializeCustomConfig(newConfig, saveToCurrentLayerConfigFile ? optionLayer.getName() : rtxConfigPath, "rtx.");
+
+      // Set dirty to update the option layers queue
+      rtxConfLayer.setDirty(true);
     }
 
     static void reset() {
