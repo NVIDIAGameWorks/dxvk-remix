@@ -54,7 +54,7 @@ const RtxOptionLayer* RtxOptionLayerManager::acquireLayer(const std::string& con
   }
   
   // Create new layer
-  const RtxOptionLayer* newLayer = RtxOptionImpl::addRtxOptionLayer(configPath, priority, blendStrength, blendThreshold);
+  const RtxOptionLayer* newLayer = RtxOptionImpl::addRtxOptionLayer(configPath, priority, false, blendStrength, blendThreshold);
   
   if (newLayer == nullptr) {
     Logger::err(str::format("RtxOptionLayerManager: Failed to create layer for '", configPath, "' with priority ", priority, "."));

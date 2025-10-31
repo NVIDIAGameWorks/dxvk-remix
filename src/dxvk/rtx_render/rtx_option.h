@@ -68,6 +68,13 @@ namespace dxvk {
     Vector4
   };
 
+  enum class OptionLayerType {
+    User,
+    Rtx,
+    Quality,
+    None
+  };
+
   union GenericValue {
     bool b;
     int i;
@@ -101,6 +108,16 @@ namespace dxvk {
       NoRequest = -1,      // No request made this frame
       RequestDisabled = 0, // At least one component requested disabled, none requested enabled
       RequestEnabled = 1   // At least one component requested enabled (wins over disabled)
+    };
+
+    enum class SystemLayerPriority : uint32_t {
+      Default = 0,
+      DxvkConf = 1,
+      RtxConf = 2,
+      Quality = 3,
+      Mod = 4,
+      NONE = 0xFFFFFFFE,
+      USER = 0xFFFFFFFF
     };
 
     // Constructor for creating option layers
@@ -155,6 +172,10 @@ namespace dxvk {
     void setBlendStrengthDirty(bool dirty) const {
       setDirty(dirty);
       m_blendStrengthDirty = dirty;
+    }
+
+    void setConfig(const Config& config) {
+      m_config = config;
     }
 
     const bool isValid() const { return m_config.getOptions().size() > 0; }
@@ -392,7 +413,9 @@ namespace dxvk {
     // Add an option layer to global option layer map
     // Returns a pointer to the newly created layer, or nullptr if the layer was invalid
     // If config is provided, uses it directly; otherwise loads from configPath
-    static const RtxOptionLayer* addRtxOptionLayer(const std::string& configPath, const uint32_t priority, const float blendStrength, const float blendThreshold, const Config* config = nullptr);
+    static const RtxOptionLayer* addRtxOptionLayer(
+      const std::string& configPath, const uint32_t priority, const bool isSystemOptionLayer,
+      const float blendStrength, const float blendThreshold, const Config* config = nullptr);
     // Remove an option layer from the global option layer map by pointer
     // Returns true if the layer was found and removed
     static bool removeRtxOptionLayer(const RtxOptionLayer* layer);
