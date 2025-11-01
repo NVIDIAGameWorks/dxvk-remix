@@ -554,6 +554,36 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   if (emissiveColorLoaded)
   {
     emissiveColor = emissiveColorSample.xyz;
+
+    // Apply alpha masking for Legacy Emissive materials
+    if (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_EMISSIVE_ALPHA_MASK)
+    {
+      // Use alpha channel to modulate emissive intensity
+      float16_t alphaMask = emissiveColorSample.a;
+      
+      // Apply alpha inversion if requested (flips the meaning: black alpha = full emission, white alpha = no emission)
+      if (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_EMISSIVE_ALPHA_INVERT)
+      {
+        alphaMask = float16_t(1.0) - alphaMask;
+      }
+      
+      // Apply masking with smart energy compensation to prevent reflectivity dominance
+      // Only apply minimum emissive strength in the "danger zone" where reflectivity would dominate
+      float16_t emissiveMask;
+      if (alphaMask < float16_t(0.05)) // Very low alpha - allow true zero emission
+      {
+        emissiveMask = float16_t(0.0);
+      }
+      else if (alphaMask < float16_t(0.3)) // Danger zone - apply minimum to prevent reflectivity dominance
+      {
+        emissiveMask = max(alphaMask, float16_t(0.15)); // Higher minimum in danger zone
+      }
+      else // High alpha - use original masking
+      {
+        emissiveMask = alphaMask;
+      }
+      emissiveColor *= emissiveMask;
+    }
   }
   
   // Load Albedo/Opacity
@@ -680,6 +710,9 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   // Todo: Disable this for when a sRGB texture is the source of the emissive color.
   emissiveColor = gammaToLinear(emissiveColor);
   
+  // Apply emissive color tint for Legacy Emissive materials (after texture operations)
+  emissiveColor *= opaqueSurfaceMaterial.emissiveColorTint;
+
   // Apply material modifiers/overrides
   albedo = saturate(albedo * cb.opaqueMaterialArgs.albedoScale + cb.opaqueMaterialArgs.albedoBias);
   
