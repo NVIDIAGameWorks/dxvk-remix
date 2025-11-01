@@ -30,6 +30,7 @@
 #include "rtx_render/rtx_restir_gi_rayquery.h"
 #include "rtx_render/rtx_composite.h"
 #include "rtx_render/rtx_debug_view.h"
+#include "rtx_render/rtx_xess.h"
 
 
 namespace dxvk {
@@ -548,6 +549,7 @@ namespace dxvk {
     m_rayReconstruction(device),
     m_nis(device),
     m_taa(device),
+    m_xess(device),
     m_composite(device),
     m_debug_view(device),
     m_autoExposure(device),
