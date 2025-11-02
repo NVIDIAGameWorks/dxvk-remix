@@ -550,6 +550,8 @@ external_dll_paths += dlfg_lib_path
 nrc_dll_name = 'NRC_Vulkan.dll'
 nrc_dll_path = join_paths(global_src_root_norm, 'submodules/nrc/bin/')
 
+xess_dll_path = join_paths(global_src_root_norm, 'submodules/xess/bin/')
+
 nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Release/')
 if get_option('buildtype') == 'debug'  
   nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Debug/')
@@ -736,6 +738,8 @@ if dxvk_is_ninja
     install_data(join_paths(nrc_dll_path, 'nvrtc-builtins64_125.dll'), install_dir : output_path, install_tag: target_suffix) 
 
     install_data(join_paths(nrd_lib_path, 'NRD.dll'), install_dir : output_path, install_tag: target_suffix) 
+    
+    install_data(join_paths(xess_dll_path, 'libxess.dll'), install_dir : output_path, install_tag: target_suffix)
 
     install_data(join_paths(dlss_lib_path, 'nvngx_dlss.dll'), install_dir : output_path, install_tag: target_suffix) 
     install_data(join_paths(dlss_lib_path, 'nvngx_dlssd.dll'), install_dir : output_path, install_tag: target_suffix) 
