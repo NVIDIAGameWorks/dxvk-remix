@@ -38,6 +38,7 @@
 #include "rtx_texture_manager.h"
 #include "rtx_neural_radiance_cache.h"
 #include "rtx_ray_reconstruction.h"
+#include "rtx_xess.h"
 #include "rtx_rtxdi_rayquery.h"
 #include "rtx_restir_gi_rayquery.h"
 #include "rtx_composite.h"
@@ -234,6 +235,20 @@ namespace dxvk {
       downscaleExtent.width = renderSize[0];
       downscaleExtent.height = renderSize[1];
       downscaleExtent.depth = 1;
+    } else if (shouldUseXeSS()) {
+      DxvkXeSS& xess = m_common->metaXeSS();
+      uint32_t displaySize[2] = { upscaleExtent.width, upscaleExtent.height };
+      uint32_t renderSize[2];
+      xess.setSetting(displaySize, DxvkXeSS::XessOptions::preset(), renderSize);
+      downscaleExtent.width = renderSize[0];
+      downscaleExtent.height = renderSize[1];
+      downscaleExtent.depth = 1;
+      
+      // XeSS: Apply recommended jitter sequence length if enabled
+      if (DxvkXeSS::XessOptions::useRecommendedJitterSequenceLength() && xess.isActive()) {
+        uint32_t recommendedJitterLength = xess.calcRecommendedJitterSequenceLength();
+        uint32_t currentJitterLength = RtxOptions::cameraJitterSequenceLength();
+      }
     } else if (shouldUseNIS() || shouldUseTAA()) {
       auto resolutionScale = RtxOptions::resolutionScale();
       downscaleExtent.width = uint32_t(std::roundf(upscaleExtent.width * resolutionScale));
@@ -289,6 +304,8 @@ namespace dxvk {
       return InternalUpscaler::DLSS;
     } else if (shouldUseRayReconstruction() && m_common->metaRayReconstruction().isActive()) {
       return InternalUpscaler::DLSS_RR;
+    } else if (shouldUseXeSS() && m_common->metaXeSS().isActive()) {
+      return InternalUpscaler::XeSS;
     } else if (shouldUseNIS()) {
       return InternalUpscaler::NIS;
     } else if (shouldUseTAA()) {
@@ -612,6 +629,9 @@ namespace dxvk {
         } else if (m_currentUpscaler == InternalUpscaler::DLSS_RR) {
           m_common->metaAutoExposure().createResources(this);
           dispatchRayReconstruction(rtOutput);
+        } else if (m_currentUpscaler == InternalUpscaler::XeSS) {
+          m_common->metaAutoExposure().createResources(this);
+          dispatchXeSS(rtOutput);
         } else if (m_currentUpscaler == InternalUpscaler::NIS) {
           dispatchNIS(rtOutput);
         } else if (m_currentUpscaler == InternalUpscaler::TAAU){
@@ -1563,6 +1583,13 @@ namespace dxvk {
     m_common->metaNIS().dispatch(this, rtOutput);
   }
 
+  void RtxContext::dispatchXeSS(const Resources::RaytracingOutput& rtOutput) {
+    ScopedGpuProfileZone(this, "XeSS");
+    setFramePassStage(RtxFramePassStage::XeSS);
+    DxvkXeSS& xess = m_common->metaXeSS();
+    xess.dispatch(this, m_execBarriers, rtOutput, m_resetHistory);
+  }
+
   void RtxContext::dispatchTemporalAA(const Resources::RaytracingOutput& rtOutput) {
     ScopedGpuProfileZone(this, "TAA");
     setFramePassStage(RtxFramePassStage::TAA);
@@ -2093,6 +2120,10 @@ namespace dxvk {
 
   bool RtxContext::shouldUseTAA() const {
     return RtxOptions::isTAAEnabled();
+  }
+
+  bool RtxContext::shouldUseXeSS() const {
+    return RtxOptions::upscalerType() == UpscalerType::XeSS;
   }
 
   D3D9RtxVertexCaptureData& RtxContext::allocAndMapVertexCaptureConstantBuffer() {

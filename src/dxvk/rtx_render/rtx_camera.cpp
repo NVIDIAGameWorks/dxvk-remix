@@ -29,6 +29,7 @@
 #include "rtx_options.h"
 #include "rtx_matrix_helpers.h"
 #include "rtx_imgui.h"
+#include "rtx_xess.h"
 
 /*
 *             Free/Debug Camera
@@ -736,18 +737,45 @@ namespace dxvk
     jitter[1] = m_jitter[1];
   }
 
+  // Static variable to track the actual jitter sequence length being used
+  static uint32_t s_currentJitterSequenceLength = 64;
+  
+  // Static variable to track the current upscaling ratio for dynamic jitter calculation
+  static float s_currentUpscalingRatio = 1.0f;
+
   Vector2 RtCamera::calcPixelJitter(uint32_t jitterFrameIdx) {
-    // Only apply jittering when DLSS/TAA is enabled, or if forced by settings
+    // Only apply jittering when DLSS/XeSS/TAA is enabled, or if forced by settings
     if (!RtxOptions::isDLSSOrRayReconstructionEnabled() &&
+        !RtxOptions::isXeSSEnabled() &&
         !RtxOptions::isTAAEnabled() &&
         !RtxOptions::forceCameraJitter()) {
+      s_currentJitterSequenceLength = 0; // No jitter being used
       return Vector2{ 0, 0 };
     }
 
 #define USE_DLSS_DEMO_JITTER_PATTERN 1
 #if USE_DLSS_DEMO_JITTER_PATTERN
-    return calculateHaltonJitter(jitterFrameIdx, RtxOptions::cameraJitterSequenceLength());
+    uint32_t jitterSequenceLength = RtxOptions::cameraJitterSequenceLength();
+
+    if (RtxOptions::isXeSSEnabled() && DxvkXeSS::XessOptions::useRecommendedJitterSequenceLength()) {
+      float scaleFactor = s_currentUpscalingRatio;
+      // XeSS 2.1 formula: ceil(upscale_factor^2 * 8)
+      // The 8.0 multiplier ensures sufficient temporal samples for higher upscaling factors
+      uint32_t xessLength = static_cast<uint32_t>(std::ceil(scaleFactor * scaleFactor * 8.0f));
+      
+      // Apply minimum jitter sequence length
+      uint32_t minLength = DxvkXeSS::XessOptions::minJitterSequenceLength();
+      xessLength = std::max(xessLength, minLength);
+      
+      jitterSequenceLength = xessLength;
+    }
+    
+    // Track the actual jitter sequence length being used
+    s_currentJitterSequenceLength = jitterSequenceLength;
+    
+    return calculateHaltonJitter(jitterFrameIdx, jitterSequenceLength);
 #else
+    s_currentJitterSequenceLength = 1; // Halton sequence is effectively length 1
     return m_halton.next();
 #endif
   }

@@ -46,6 +46,7 @@
 #include "rtx_render/rtx_terrain_baker.h"
 #include "rtx_render/rtx_neural_radiance_cache.h"
 #include "rtx_render/rtx_ray_reconstruction.h"
+#include "rtx_render/rtx_xess.h"
 #include "rtx_render/rtx_rtxdi_rayquery.h"
 #include "rtx_render/rtx_restir_gi_rayquery.h"
 #include "rtx_render/rtx_debug_view.h"
@@ -333,6 +334,7 @@ namespace dxvk {
       {UpscalerType::None, "None"},
       {UpscalerType::NIS, "NIS"},
       {UpscalerType::TAAU, "TAA-U"},
+      {UpscalerType::XeSS, "XeSS"},
   } });
 
   static auto upscalerDLSSCombo = ImGui::ComboWithKey<UpscalerType>(
@@ -342,6 +344,7 @@ namespace dxvk {
       {UpscalerType::DLSS, "DLSS"},
       {UpscalerType::NIS, "NIS"},
       {UpscalerType::TAAU, "TAA-U"},
+      {UpscalerType::XeSS, "XeSS"},
   } });
 
   ImGui::ComboWithKey<DlssPreset> dlssPresetCombo{
@@ -383,6 +386,20 @@ namespace dxvk {
         {TaauPreset::Balanced, "Balanced"},
         {TaauPreset::Quality, "Quality"},
         {TaauPreset::Fullscreen, "Fullscreen"},
+    } }
+  };
+
+  ImGui::ComboWithKey<XeSSPreset> xessPresetCombo{
+    "XeSS Preset",
+    ImGui::ComboWithKey<XeSSPreset>::ComboEntries{ {
+        {XeSSPreset::UltraPerf, "Ultra Performance"},
+        {XeSSPreset::Performance, "Performance"},
+        {XeSSPreset::Balanced, "Balanced"},
+        {XeSSPreset::Quality, "Quality"},
+        {XeSSPreset::UltraQuality, "Ultra Quality"},
+        {XeSSPreset::UltraQualityPlus, "Ultra Quality Plus"},
+        {XeSSPreset::NativeAA, "Native Anti-Aliasing"},
+        {XeSSPreset::Custom, "Custom"},
     } }
   };
 
@@ -467,6 +484,7 @@ namespace dxvk {
       { RtxFramePassStage::DLSS, "DLSS" },
       { RtxFramePassStage::DLSSRR, "DLSSRR" },
       { RtxFramePassStage::NIS, "NIS" },
+      { RtxFramePassStage::XeSS, "XeSS" },
       { RtxFramePassStage::TAA, "TAA" },
       { RtxFramePassStage::DustParticles, "DustParticles" },
       { RtxFramePassStage::Bloom, "Bloom" },
@@ -1420,9 +1438,28 @@ namespace dxvk {
 
           break;
         }
-        case UpscalerType::None:
+        case UpscalerType::XeSS: {
+          m_userGraphicsSettingChanged |= xessPresetCombo.getKey(&DxvkXeSS::XessOptions::presetObject());
+
+          // Show resolution slider only for Custom preset
+          if (DxvkXeSS::XessOptions::preset() == XeSSPreset::Custom) {
+            m_userGraphicsSettingChanged |= ImGui::SliderFloat("Resolution Scale", &RtxOptions::resolutionScaleObject(), 0.1f, 1.0f, "%.2f");
+          }
+
+          // Display XeSS internal resolution
+          auto& xess = ctx->getCommonObjects()->metaXeSS();
+
+          uint32_t inputWidth;
+          uint32_t inputHeight;
+          xess.getInputSize(inputWidth, inputHeight);
+          ImGui::TextWrapped(str::format("Render Resolution: ", inputWidth, "x", inputHeight).c_str());
+
+          break;
+        }
+        case UpscalerType::None: {
           // No custom UI here.
           break;
+        }
       }
 
       ImGui::Unindent(static_cast<float>(subItemIndent));
@@ -3572,7 +3609,22 @@ namespace dxvk {
         ImGui::SliderFloat("Resolution scale", &RtxOptions::resolutionScaleObject(), 0.5f, 1.0f);
         ImGui::SliderFloat("Sharpness", &ctx->getCommonObjects()->metaNIS().m_sharpness, 0.1f, 1.0f);
         ImGui::Checkbox("Use FP16", &ctx->getCommonObjects()->metaNIS().m_useFp16);
-      } else if (RtxOptions::upscalerType() == UpscalerType::TAAU) {
+      } else if (RtxOptions::upscalerType() == UpscalerType::XeSS) {
+          xessPresetCombo.getKey(&DxvkXeSS::XessOptions::presetObject());
+
+          // Show resolution slider only for Custom preset
+          if (DxvkXeSS::XessOptions::preset() == XeSSPreset::Custom) {
+            m_userGraphicsSettingChanged |= ImGui::SliderFloat("Resolution Scale", &RtxOptions::resolutionScaleObject(), 0.1f, 1.0f, "%.2f");
+          }
+
+          // Display XeSS internal resolution
+          auto& xess = ctx->getCommonObjects()->metaXeSS();
+
+          uint32_t inputWidth;
+          uint32_t inputHeight;
+          xess.getInputSize(inputWidth, inputHeight);
+          ImGui::TextWrapped(str::format("Render Resolution: ", inputWidth, "x", inputHeight).c_str());
+        } else if (RtxOptions::upscalerType() == UpscalerType::TAAU) {
         ImGui::SliderFloat("Resolution scale", &RtxOptions::resolutionScaleObject(), 0.5f, 1.0f);
       }
 
