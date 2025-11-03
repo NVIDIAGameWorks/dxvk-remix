@@ -164,22 +164,33 @@ namespace dxvk {
     bool m_enableAlphaChannel = false;
     float m_scale = 1.f;
 
-    public: static void maxValueOnChange(DxvkDevice* device);
+    public: static void minValueOnChange(DxvkDevice* device);
     RTX_OPTION_ARGS("rtx.debugView", float, minValue, 0.f,
       "The minimum debug view input value to map to 0 in the output when the standard debug display is in use. Values below this value in the input will be clamped to 0 in the output.",
       args.environment = "DXVK_RTX_DEBUG_VIEW_MIN_VALUE",
-      args.onChangeCallback = &maxValueOnChange);
+      args.onChangeCallback = &minValueOnChange);
       
-    public: static void minValueOnChange(DxvkDevice* device);
+    public: static void maxValueOnChange(DxvkDevice* device);
     RTX_OPTION_ARGS("rtx.debugView", float, maxValue, 1.f,
       "The maximum debug view input value to map to 1 in the output when the standard debug display is in use. Values above this value in the input will be clamped to 1 in the output.",
       args.environment = "DXVK_RTX_DEBUG_VIEW_MAX_VALUE",
-      args.onChangeCallback = &minValueOnChange);
+      args.onChangeCallback = &maxValueOnChange);
 
 
     // EV100 Display
-    RTX_OPTION_ENV("rtx.debugView", int32_t, evMinValue, -4, "DXVK_RTX_DEBUG_VIEW_EV_MIN_VALUE", "The minimum EV100 debug view input value to map to the bottom of the visualization range when EV100 debug display is in use. Values below this value in the input will be clamped to the bottom of the range.");
-    RTX_OPTION_ENV("rtx.debugView", int32_t, evMaxValue, 4, "DXVK_RTX_DEBUG_VIEW_EV_MAX_VALUE", "The maximum EV100 debug view input value to map to the top of the visualization range when EV100 debug display is in use. Values above this value in the input will be clamped to the top of the range.")
+    public: static void evMinValueOnChange(DxvkDevice* device);
+    RTX_OPTION_ARGS("rtx.debugView", int32_t, evMinValue, -4, 
+                    "The minimum EV100 debug view input value to map to the bottom of the visualization range when EV100 debug display is in use.\n"
+                    "Values below this value in the input will be clamped to the bottom of the range.",
+                    args.environment = "DXVK_RTX_DEBUG_VIEW_EV_MIN_VALUE",
+                    args.onChangeCallback = &evMinValueOnChange);
+
+    public: static void evMaxValueOnChange(DxvkDevice* device);
+    RTX_OPTION_ARGS("rtx.debugView", int32_t, evMaxValue, 4, 
+                    "The maximum EV100 debug view input value to map to the top of the visualization range when EV100 debug display is in use.\n"
+                    "Values above this value in the input will be clamped to the top of the range.",
+                    args.environment = "DXVK_RTX_DEBUG_VIEW_EV_MAX_VALUE",
+                    args.onChangeCallback = &evMaxValueOnChange);
 
     struct Accumulation {
       RTX_OPTION_ENV("rtx.debugView.accumulation", bool, enable, false, "RTX_DEBUG_VIEW_ACCUMULATION_ENABLE",
