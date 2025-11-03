@@ -918,8 +918,6 @@ namespace dxvk {
         ImGui::InputInt("Min Value (EV100)", &evMinValueObject());
         ImGui::InputInt("Max Value (EV100)", &evMaxValueObject());
 
-        evMaxValue.setDeferred(std::max(evMaxValue(), evMinValue()));
-
         // Color legend
         {
           ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4 { 0.25f, 0.25f, 0.25f, 1.0f });
@@ -1675,14 +1673,22 @@ namespace dxvk {
   }
 
   void DebugView::maxValueOnChange(DxvkDevice* device) {
-    // If the max value is negative, we want the min value to be further away from 0.
+    // If the max value is negative, we want the min value to be further away from 0 than the max value
     const float factor = maxValue() > 0 ? 0.99999f : 1.00001f;
     minValueObject().setMaxValue(maxValue() * factor);
   }
 
   void DebugView::minValueOnChange(DxvkDevice* device) {
-    // If the min value is negative, we want the max value to be closer to 0.
+    // If the min value is negative, we want the max value to be closer to 0 than the min value
     const float factor = minValue() > 0 ? 1.00001f : 0.99999f;
     maxValueObject().setMinValue(minValue() * factor);
   }
+
+  void DebugView::evMinValueOnChange(DxvkDevice* device) {
+    evMaxValueObject().setMinValue(evMaxValue());
+  }
+
+  void DebugView::evMaxValueOnChange(DxvkDevice* device) {
+    evMinValueObject().setMaxValue(evMinValue());
+  } 
 } // namespace dxvk
