@@ -80,11 +80,8 @@ namespace dxvk {
     void getInputSize(uint32_t& width, uint32_t& height) const;
     
     // XeSS 2.1 public helper methods
-    uint32_t calcRecommendedJitterSequenceLength() const { return calculateRecommendedJitterSequenceLength(); }
-    float calcRecommendedMipBias() const { return calculateRecommendedMipBias(); }
-    
-    // Public accessor for external components
-    bool isXeSSEnabled() const { return isEnabled(); }
+    uint32_t calcRecommendedJitterSequenceLength() const;
+    float calcRecommendedMipBias() const;
 
   protected:
 
@@ -94,19 +91,13 @@ namespace dxvk {
     virtual void onDeactivation() override;
 
   private:
-
-    // XeSS 2.1 helper functions
-    uint32_t calculateRecommendedJitterSequenceLength() const;
-    float calculateRecommendedMipBias() const;
-
+    float calcUpscaleFactor() const;
+    float getUpscaleFactor(xess_quality_settings_t quality) const;
     void createXeSSContext(const VkExtent3D& targetExtent);
     void destroyXeSSContext();
     bool validateXeSSSupport(DxvkDevice* device);
     
     // Additional methods needed by implementation
-    XeSSPreset getAutoPreset() const;
-    XeSSPreset getAutoPreset(uint32_t displayWidth, uint32_t displayHeight);
-    XeSSPreset getCurrentPreset() const;
     void setSetting(const char* name, const char* value);
     void getOutputSize(uint32_t& width, uint32_t& height) const;
     xess_quality_settings_t presetToQuality(XeSSPreset preset) const;
@@ -118,10 +109,7 @@ namespace dxvk {
     bool m_initialized;
     xess_context_handle_t m_xessContext;
     VkExtent3D m_targetExtent;
-    VkExtent3D m_inputExtent;
     XeSSPreset m_currentPreset;
-    
-    bool m_isUsingInternalAutoExposure;
 
     // Additional member variables needed by implementation
     XeSSPreset m_preset;

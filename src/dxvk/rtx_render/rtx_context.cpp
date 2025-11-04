@@ -2149,7 +2149,8 @@ namespace dxvk {
   void RtxContext::rasterizeToSkyMatte(const DrawParameters& params, const DrawCallState& drawCallState) {
     ScopedGpuProfileZone(this, "rasterizeToSkyMatte");
 
-    const uint32_t* renderResolution = getSceneManager().getCamera().m_renderResolution;
+    const RtCamera& camera = getSceneManager().getCamera();
+    const uint32_t* renderResolution = camera.m_renderResolution;
 
     union UnifiedCB {
       D3D9RtxVertexCaptureData programmablePipeline;
@@ -2205,12 +2206,11 @@ namespace dxvk {
         // so apply jitter directly on gl_Position
         float ratioX = Sign(drawCallState.getTransformData().viewToProjection[2][3]);
         float ratioY = -Sign(drawCallState.getTransformData().viewToProjection[2][3]);
-        Vector2 clipSpaceJitter = RtCamera::calcClipSpaceJitter(RtCamera::calcPixelJitter(m_device->getCurrentFrameId()),
-                                                                renderResolution[0], renderResolution[1],
-                                                                ratioX, ratioY);
+        Vector2 clipSpaceJitter = camera.calcClipSpaceJitter(camera.calcPixelJitter(m_device->getCurrentFrameId()), ratioX, ratioY);
         modified.jitterX = clipSpaceJitter.x;
         modified.jitterY = clipSpaceJitter.y;
       }
+
       // Ensure that memcpy can be used for fewer memory interactions
       static_assert(std::is_trivially_copyable_v<D3D9RtxVertexCaptureData>);
       allocAndMapVertexCaptureConstantBuffer() = modified;
@@ -2218,9 +2218,8 @@ namespace dxvk {
       D3D9FixedFunctionVS modified = prevCB.fixedFunction;
       {
         // Jittered projection for DLSS
-        RtCamera::applyJitterTo(modified.Projection,
-                                m_device->getCurrentFrameId(), 
-                                renderResolution[0], renderResolution[1]);
+        camera.applyJitterTo(modified.Projection,
+                             m_device->getCurrentFrameId());
       }
       // Ensure that memcpy can be used for fewer memory interactions
       static_assert(std::is_trivially_copyable_v<D3D9FixedFunctionVS>);

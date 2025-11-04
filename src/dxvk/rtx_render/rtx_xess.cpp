@@ -37,10 +37,6 @@
 #include "../util/util_string.h"
 #include "../util/log/log.h"
 
-#if defined(_WIN32) && !defined(DXVK_NATIVE)
-#pragma comment(lib, "libxess.lib")
-#endif
-
 #include "xess/inc/xess/xess.h"
 #include "xess/inc/xess/xess_vk.h"
 #include "xess/inc/xess/xess_debug.h"
@@ -94,9 +90,7 @@ namespace dxvk {
       m_initialized(false),
       m_xessContext(nullptr),
       m_targetExtent{0, 0, 0},
-      m_inputExtent{0, 0, 0},
       m_currentPreset(XeSSPreset::Balanced),
-      m_isUsingInternalAutoExposure(false),
       m_preset(XeSSPreset::Balanced),
       m_actualPreset(XeSSPreset::Balanced),
       m_inputSize{0, 0},
@@ -212,10 +206,10 @@ namespace dxvk {
     
     if (currentPreset == XeSSPreset::Custom) {
       // For Custom preset, use resolution scale directly
-      float scaleFactor = RtxOptions::resolutionScale();
+      const float downscaleFactor = RtxOptions::resolutionScale();
       VkExtent3D inputExtent;
-      inputExtent.width = std::max(1u, static_cast<uint32_t>(targetExtent.width * scaleFactor));
-      inputExtent.height = std::max(1u, static_cast<uint32_t>(targetExtent.height * scaleFactor));
+      inputExtent.width = std::max(1u, static_cast<uint32_t>(targetExtent.width * downscaleFactor));
+      inputExtent.height = std::max(1u, static_cast<uint32_t>(targetExtent.height * downscaleFactor));
       inputExtent.depth = targetExtent.depth;
       return inputExtent;
     } else {
@@ -245,20 +239,11 @@ namespace dxvk {
       } else {
         Logger::warn(str::format("XeSS 2.1: Failed to get optimal input resolution, using fallback: ", xessResultToString(result)));
         // Fallback to hardcoded values
-        float scaleFactor = 1.0f / 2.0f; // Default to balanced
-        switch (quality) {
-          case XESS_QUALITY_SETTING_ULTRA_PERFORMANCE: scaleFactor = 1.0f / 3.0f; break;
-          case XESS_QUALITY_SETTING_PERFORMANCE:       scaleFactor = 1.0f / 2.3f; break;
-          case XESS_QUALITY_SETTING_BALANCED:          scaleFactor = 1.0f / 2.0f; break;
-          case XESS_QUALITY_SETTING_QUALITY:           scaleFactor = 1.0f / 1.7f; break;
-          case XESS_QUALITY_SETTING_ULTRA_QUALITY:     scaleFactor = 1.0f / 1.5f; break;
-          case XESS_QUALITY_SETTING_ULTRA_QUALITY_PLUS: scaleFactor = 1.0f / 1.3f; break;
-          case XESS_QUALITY_SETTING_AA:                scaleFactor = 1.0f; break;
-        }
+        const float downscaleFactor = 1.f / calcUpscaleFactor();
         
         VkExtent3D inputExtent;
-        inputExtent.width = std::max(1u, static_cast<uint32_t>(targetExtent.width * scaleFactor));
-        inputExtent.height = std::max(1u, static_cast<uint32_t>(targetExtent.height * scaleFactor));
+        inputExtent.width = std::max(1u, static_cast<uint32_t>(targetExtent.width * downscaleFactor));
+        inputExtent.height = std::max(1u, static_cast<uint32_t>(targetExtent.height * downscaleFactor));
         inputExtent.depth = targetExtent.depth;
         return inputExtent;
       }
@@ -351,9 +336,6 @@ namespace dxvk {
 
     // Set initialization flags based on renderer state and user options
     initParams.initFlags = XESS_INIT_FLAG_NONE;
-
-    // Always use Remix's exposure texture - it works best
-    m_isUsingInternalAutoExposure = false;
     
     initParams.creationNodeMask = 1;
     initParams.visibleNodeMask = 1;
@@ -372,33 +354,15 @@ namespace dxvk {
     }
   }
 
-  uint32_t DxvkXeSS::calculateRecommendedJitterSequenceLength() const {
+  uint32_t DxvkXeSS::calcRecommendedJitterSequenceLength() const {
     if (!DxvkXeSS::XessOptions::useRecommendedJitterSequenceLength()) {
       return RtxOptions::cameraJitterSequenceLength(); // Use global setting
     }
     
     // XeSS 2.1 formula: ceil(upscale_factor^2 * 8)
     // For extreme scaling (e.g. 0.10x = 10x upscaling), this ensures sufficient temporal samples
-    float scaleFactor = 1.0f;
-    XeSSPreset currentPreset = XessOptions::preset();
-    
-    if (currentPreset == XeSSPreset::Custom) {
-      scaleFactor = 1.0f / RtxOptions::resolutionScale();
-    } else {
-      xess_quality_settings_t quality = presetToQuality(currentPreset);
-      switch (quality) {
-        case XESS_QUALITY_SETTING_ULTRA_PERFORMANCE: scaleFactor = 3.0f; break;
-        case XESS_QUALITY_SETTING_PERFORMANCE:       scaleFactor = 2.3f; break;
-        case XESS_QUALITY_SETTING_BALANCED:          scaleFactor = 2.0f; break;
-        case XESS_QUALITY_SETTING_QUALITY:           scaleFactor = 1.7f; break;
-        case XESS_QUALITY_SETTING_ULTRA_QUALITY:     scaleFactor = 1.5f; break;
-        case XESS_QUALITY_SETTING_ULTRA_QUALITY_PLUS: scaleFactor = 1.3f; break;
-        case XESS_QUALITY_SETTING_AA:                scaleFactor = 1.0f; break;
-        default:                                      scaleFactor = 2.0f; break;
-      }
-    }
-    
-    uint32_t recommendedLength = static_cast<uint32_t>(std::ceil(scaleFactor * scaleFactor * 8.0f));
+    const float upscaleFactor = calcUpscaleFactor();
+    uint32_t recommendedLength = static_cast<uint32_t>(std::ceil(upscaleFactor * upscaleFactor * 8.0f));
     
     // Expanded range: minimum of 8, maximum of 1024 for extreme scaling scenarios
     recommendedLength = std::clamp(recommendedLength, 8u, 1024u);
@@ -406,28 +370,32 @@ namespace dxvk {
     return recommendedLength;
   }
 
-  float DxvkXeSS::calculateRecommendedMipBias() const {
-    // XeSS 2.1 formula: -log2(upscale_factor)
-    float scaleFactor = 1.0f;
-    XeSSPreset currentPreset = XessOptions::preset();
-    
-    if (currentPreset == XeSSPreset::Custom) {
-      scaleFactor = 1.0f / RtxOptions::resolutionScale();
-    } else {
-      xess_quality_settings_t quality = presetToQuality(currentPreset);
-      switch (quality) {
-        case XESS_QUALITY_SETTING_ULTRA_PERFORMANCE: scaleFactor = 3.0f; break;
-        case XESS_QUALITY_SETTING_PERFORMANCE:       scaleFactor = 2.3f; break;
-        case XESS_QUALITY_SETTING_BALANCED:          scaleFactor = 2.0f; break;
-        case XESS_QUALITY_SETTING_QUALITY:           scaleFactor = 1.7f; break;
-        case XESS_QUALITY_SETTING_ULTRA_QUALITY:     scaleFactor = 1.5f; break;
-        case XESS_QUALITY_SETTING_ULTRA_QUALITY_PLUS: scaleFactor = 1.3f; break;
-        case XESS_QUALITY_SETTING_AA:                scaleFactor = 1.0f; break;
-        default:                                      scaleFactor = 2.0f; break;
-      }
+  float DxvkXeSS::getUpscaleFactor(xess_quality_settings_t quality) const {
+    switch (quality) {
+    case XESS_QUALITY_SETTING_ULTRA_PERFORMANCE: return 3.0f;
+    case XESS_QUALITY_SETTING_PERFORMANCE:       return 2.3f;
+    case XESS_QUALITY_SETTING_BALANCED:          return 2.0f;
+    case XESS_QUALITY_SETTING_QUALITY:           return 1.7f;
+    case XESS_QUALITY_SETTING_ULTRA_QUALITY:     return 1.5f;
+    case XESS_QUALITY_SETTING_ULTRA_QUALITY_PLUS: return 1.3f;
+    case XESS_QUALITY_SETTING_AA:                 return 1.0f;
+    default:                                      return 2.0f;
     }
-    
-    float mipBias = -std::log2(scaleFactor);
+  }
+
+  float DxvkXeSS::calcUpscaleFactor() const {
+    if (XessOptions::preset() == XeSSPreset::Custom) {
+      return 1.0f / RtxOptions::resolutionScale();
+    } else {
+      xess_quality_settings_t quality = presetToQuality(XessOptions::preset());
+      return getUpscaleFactor(quality);
+    }
+  }
+
+  float DxvkXeSS::calcRecommendedMipBias() const {
+    // XeSS 2.1 formula: -log2(upscale_factor)
+    float upscaleFactor = calcUpscaleFactor();
+    float mipBias = -std::log2(upscaleFactor);
 
     return mipBias;
   }
@@ -499,18 +467,19 @@ namespace dxvk {
     }
     
     // Set up image barriers for XeSS inputs and outputs
-    std::vector<Rc<DxvkImageView>> inputs = {
+    std::array<Rc<DxvkImageView>, 4> inputs = {
       rtOutput.m_compositeOutput.view(Resources::AccessType::Read),
       rtOutput.m_primaryScreenSpaceMotionVector.view,
-      rtOutput.m_primaryDepth.view
+      rtOutput.m_primaryDepth.view,
+      nullptr // Placeholder for auto-exposure texture
     };
 
     auto& autoExposure = device()->getCommon()->metaAutoExposure();
     if (autoExposure.enabled() && autoExposure.getExposureTexture().image != nullptr) {
-      inputs.push_back(autoExposure.getExposureTexture().view);
+      inputs[3] = autoExposure.getExposureTexture().view;
     }
 
-    std::vector<Rc<DxvkImageView>> outputs = {
+    std::array<Rc<DxvkImageView>, 1> outputs = {
       rtOutput.m_finalOutput.view(Resources::AccessType::Write)
     };
 
@@ -576,35 +545,18 @@ namespace dxvk {
     
     // Apply adaptive jitter scaling for extreme upscaling scenarios
     if (DxvkXeSS::XessOptions::useOptimizedJitter()) {
-      XeSSPreset profile = XessOptions::preset();
-      float scaleFactor = 1.0f;
-      
-      if (profile == XeSSPreset::Custom) {
-        scaleFactor = 1.0f / RtxOptions::resolutionScale();
-      } else {
-        xess_quality_settings_t quality = presetToQuality(m_actualPreset);
-        switch (quality) {
-        case XESS_QUALITY_SETTING_ULTRA_PERFORMANCE: scaleFactor = 3.0f; break;
-        case XESS_QUALITY_SETTING_PERFORMANCE: scaleFactor = 2.3f; break;
-        case XESS_QUALITY_SETTING_BALANCED: scaleFactor = 2.0f; break;
-        case XESS_QUALITY_SETTING_QUALITY: scaleFactor = 1.7f; break;
-        case XESS_QUALITY_SETTING_ULTRA_QUALITY: scaleFactor = 1.5f; break;
-        case XESS_QUALITY_SETTING_ULTRA_QUALITY_PLUS: scaleFactor = 1.3f; break;
-        case XESS_QUALITY_SETTING_AA: scaleFactor = 1.0f; break;
-        default: scaleFactor = 2.0f; break;
-        }
-      }
+      const float upscaleFactor = calcUpscaleFactor();
       
       // Adaptive jitter scaling to reduce swimming artifacts at extreme scaling
-      if (scaleFactor > 6.0f) {
+      if (upscaleFactor > 6.0f) {
         // Extreme scaling (e.g., 0.10x resolution = 10x upscaling): configurable jitter reduction
         float extremeDamping = DxvkXeSS::XessOptions::scalingJitterDamping();
         userJitterScale *= extremeDamping;
         // Extreme scaling detected - debug logging removed to avoid spam
-      } else if (scaleFactor > 4.0f) {
+      } else if (upscaleFactor > 4.0f) {
         // Very high scaling: moderate jitter reduction
         userJitterScale *= 0.75f;
-      } else if (scaleFactor > 2.5f) {
+      } else if (upscaleFactor > 2.5f) {
         // High scaling: light jitter reduction
         userJitterScale *= 0.85f;
       }
@@ -726,38 +678,13 @@ namespace dxvk {
     barriers.recordCommands(renderContext->getCommandList());
   }
 
-  XeSSPreset DxvkXeSS::getAutoPreset(uint32_t displayWidth, uint32_t displayHeight) {
-    XeSSPreset desiredPreset = XeSSPreset::UltraPerf;
-
-    // Standard display resolution based XeSS config
-    if (displayHeight <= 1080) {
-      desiredPreset = XeSSPreset::Quality;
-    } else if (displayHeight < 2160) {
-      desiredPreset = XeSSPreset::Balanced;
-    } else if (displayHeight < 4320) {
-      desiredPreset = XeSSPreset::Performance;
-    } else {
-      // For > 4k (e.g. 8k)
-      desiredPreset = XeSSPreset::UltraPerf;
-    }
-
-    if (RtxOptions::graphicsPreset() == GraphicsPreset::Medium) {
-      // When using medium preset, bias XeSS more towards performance
-      desiredPreset = (XeSSPreset)std::max(0, (int) desiredPreset - 1);
-    } else if (RtxOptions::graphicsPreset() == GraphicsPreset::Low) {
-      desiredPreset = (XeSSPreset) std::max(0, (int) desiredPreset - 2);
-    }
-
-    return desiredPreset;
-  }
-
-  void DxvkXeSS::setSetting(const uint32_t displaySize[2], const XeSSPreset profile, uint32_t outRenderSize[2]) {
+  void DxvkXeSS::setSetting(const uint32_t displaySize[2], const XeSSPreset preset, uint32_t outRenderSize[2]) {
     ScopedCpuProfileZone();
     
-    // Use the profile directly (Auto preset removed)
-    XeSSPreset actualPreset = profile;
+    // Use the preset directly
+    XeSSPreset actualPreset = preset;
 
-    // For Custom profile, also check if resolution scale has changed
+    // For Custom preset, also check if resolution scale has changed
     bool resolutionScaleChanged = false;
     if (actualPreset == XeSSPreset::Custom) {
       float currentScale = RtxOptions::resolutionScale();
@@ -777,15 +704,13 @@ namespace dxvk {
     
     m_actualPreset = actualPreset;
     m_recreate = true;
-    m_preset = profile;
+    m_preset = preset;
     
-
-
     if (m_preset == XeSSPreset::NativeAA) {
       m_inputSize.width = outRenderSize[0] = displaySize[0];
       m_inputSize.height = outRenderSize[1] = displaySize[1];
     } else if (m_preset == XeSSPreset::Custom) {
-      // Use resolution scale for custom profile
+      // Use resolution scale for custom preset
       float scale = RtxOptions::resolutionScale();
       m_inputSize.width = outRenderSize[0] = std::max(1u, (uint32_t)(displaySize[0] * scale));
       m_inputSize.height = outRenderSize[1] = std::max(1u, (uint32_t)(displaySize[1] * scale));
@@ -796,6 +721,8 @@ namespace dxvk {
       
       xess_quality_settings_t quality = presetToQuality(m_actualPreset);
       
+      bool useFallbackScaling = false;
+
       // Use XeSS SDK to get optimal input resolution
       if (m_xessContext) {
         xess_result_t result = xessGetOptimalInputResolution(m_xessContext, &outputRes, quality, &inputRes, nullptr, nullptr);
@@ -803,36 +730,17 @@ namespace dxvk {
           m_inputSize.width = outRenderSize[0] = inputRes.x;
           m_inputSize.height = outRenderSize[1] = inputRes.y;
         } else {
-          // Fallback to manual calculation using correct XeSS 1.3+ scaling factors
-          float scale = 1.0f;
-          switch (quality) {
-          case XESS_QUALITY_SETTING_ULTRA_PERFORMANCE: scale = 1.0f / 3.0f; break;   // 3.0x upscaling
-          case XESS_QUALITY_SETTING_PERFORMANCE: scale = 1.0f / 2.3f; break;        // 2.3x upscaling
-          case XESS_QUALITY_SETTING_BALANCED: scale = 1.0f / 2.0f; break;           // 2.0x upscaling
-          case XESS_QUALITY_SETTING_QUALITY: scale = 1.0f / 1.7f; break;            // 1.7x upscaling
-          case XESS_QUALITY_SETTING_ULTRA_QUALITY: scale = 1.0f / 1.5f; break;      // 1.5x upscaling
-          case XESS_QUALITY_SETTING_ULTRA_QUALITY_PLUS: scale = 1.0f / 1.3f; break; // 1.3x upscaling
-          case XESS_QUALITY_SETTING_AA: scale = 1.0f; break;                        // 1.0x (native)
-          default: scale = 1.0f / 2.0f; break;                                      // Default to balanced
-          }
-          m_inputSize.width = outRenderSize[0] = std::max(1u, (uint32_t)(displaySize[0] * scale));
-          m_inputSize.height = outRenderSize[1] = std::max(1u, (uint32_t)(displaySize[1] * scale));
+          useFallbackScaling = true;
         }
       } else {
-        // Fallback calculation when no context available yet using correct XeSS 1.3+ scaling factors
-        float scale = 1.0f;
-        switch (quality) {
-        case XESS_QUALITY_SETTING_ULTRA_PERFORMANCE: scale = 1.0f / 3.0f; break;   // 3.0x upscaling
-        case XESS_QUALITY_SETTING_PERFORMANCE: scale = 1.0f / 2.3f; break;        // 2.3x upscaling
-        case XESS_QUALITY_SETTING_BALANCED: scale = 1.0f / 2.0f; break;           // 2.0x upscaling
-        case XESS_QUALITY_SETTING_QUALITY: scale = 1.0f / 1.7f; break;            // 1.7x upscaling
-        case XESS_QUALITY_SETTING_ULTRA_QUALITY: scale = 1.0f / 1.5f; break;      // 1.5x upscaling
-        case XESS_QUALITY_SETTING_ULTRA_QUALITY_PLUS: scale = 1.0f / 1.3f; break; // 1.3x upscaling
-        case XESS_QUALITY_SETTING_AA: scale = 1.0f; break;                        // 1.0x (native)
-        default: scale = 1.0f / 2.0f; break;                                      // Default to balanced
-        }
-        m_inputSize.width = outRenderSize[0] = std::max(1u, (uint32_t)(displaySize[0] * scale));
-        m_inputSize.height = outRenderSize[1] = std::max(1u, (uint32_t)(displaySize[1] * scale));
+        useFallbackScaling = true;
+      }
+
+      // Fallback to manual calculation using correct XeSS 1.3+ scaling factors
+      if (useFallbackScaling) {
+        const float downscaleFactor = 1.f / calcUpscaleFactor();
+        m_inputSize.width = outRenderSize[0] = std::max(1u, (uint32_t) (displaySize[0] * downscaleFactor));
+        m_inputSize.height = outRenderSize[1] = std::max(1u, (uint32_t) (displaySize[1] * downscaleFactor));
       }
     }
 
@@ -843,10 +751,6 @@ namespace dxvk {
     float currentUpscalingRatio = (float)displaySize[0] / (float)m_inputSize.width;
   }
 
-  XeSSPreset DxvkXeSS::getCurrentPreset() const {
-    return m_actualPreset;
-  }
-
   void DxvkXeSS::getInputSize(uint32_t& width, uint32_t& height) const {
     width = m_inputSize.width;
     height = m_inputSize.height;
@@ -855,35 +759,5 @@ namespace dxvk {
   void DxvkXeSS::getOutputSize(uint32_t& width, uint32_t& height) const {
     width = m_xessOutputSize.width;
     height = m_xessOutputSize.height;
-  }
-
-  XeSSPreset DxvkXeSS::getAutoPreset() const {
-    // Use the resolution-based auto profile selection with current output size
-    uint32_t displayWidth = m_xessOutputSize.width > 0 ? m_xessOutputSize.width : 1920;
-    uint32_t displayHeight = m_xessOutputSize.height > 0 ? m_xessOutputSize.height : 1080;
-    
-    XeSSPreset desiredPreset = XeSSPreset::UltraPerf;
-
-    // Standard display resolution based XeSS config
-    if (displayHeight <= 1080) {
-      desiredPreset = XeSSPreset::Quality;
-    } else if (displayHeight < 2160) {
-      desiredPreset = XeSSPreset::Balanced;
-    } else if (displayHeight < 4320) {
-      desiredPreset = XeSSPreset::Performance;
-    } else {
-      // For > 4k (e.g. 8k)
-      desiredPreset = XeSSPreset::UltraPerf;
-    }
-
-    if (RtxOptions::graphicsPreset() == GraphicsPreset::Medium) {
-      // When using medium preset, bias XeSS more towards performance
-      desiredPreset = (XeSSPreset)std::max(0, (int) desiredPreset - 1);
-    } else if (RtxOptions::graphicsPreset() == GraphicsPreset::Low) {
-      // When using low preset, give me all the perf I can get!!!
-      desiredPreset = (XeSSPreset) std::max(0, (int) desiredPreset - 2);
-    }
-
-    return desiredPreset;
   }
 } 
