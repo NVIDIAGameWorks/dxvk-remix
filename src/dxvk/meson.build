@@ -355,6 +355,9 @@ dxvk_src = files([
   'rtx_render/graph/rtx_graph_usd_parser.cpp',
   'rtx_render/graph/rtx_graph_usd_parser.h',
 
+  'rtx_render/rtx_overlay_window.cpp',
+  'rtx_render/rtx_overlay_window.h',
+
   'rtx_render/rtx_constants.h',
 
   'platform/dxvk_win32_exts.cpp',
