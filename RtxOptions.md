@@ -813,6 +813,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.useHighlightUnsafeReplacementMode|bool|False||||
 |rtx.useIntersectionBillboardsOnPrimaryRays|bool|False||||
 |rtx.useLegacyACES|bool|True|||Use a luminance\-only approximation of ACES that over\-saturates the highlights\. If false, use a refined ACES transform that converts between color spaces with more precision\.|
+|rtx.useNewGuiInputMethod|bool|True|||Disables the previous method for getting mouse/keyboard input and enables a new method which should be more reliable\.  If successful the old method will be deprecated\.  This setting can't be changed at runtime, so it must be set in a \.conf file\.|
 |rtx.useObsoleteHashOnTextureUpload|bool|False|||Whether or not to use slower XXH64 hash on texture upload\.<br>New projects should not enable this option as this solely exists for compatibility with older hashing schemes\.|
 |rtx.usePartialDdsLoader|bool|True|||A flag controlling if the partial DDS loader should be used, true to enable, false to disable and use GLI instead\.<br>Generally this should be always enabled as it allows for simple parsing of DDS header information without loading the entire texture into memory like GLI does to retrieve similar information\.<br>Should only be set to false for debugging purposes if the partial DDS loader's logic is suspected to be incorrect to compare against GLI's implementation\.|
 |rtx.usePostFilter|bool|True|||Uses post filter to remove fireflies in the denoised result\.|

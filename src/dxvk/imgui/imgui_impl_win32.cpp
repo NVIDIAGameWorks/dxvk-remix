@@ -53,6 +53,7 @@
 typedef DWORD (WINAPI *PFN_XInputGetCapabilities)(DWORD, DWORD, XINPUT_CAPABILITIES*);
 typedef DWORD (WINAPI *PFN_XInputGetState)(DWORD, XINPUT_STATE*);
 #endif
+#include <memory>
 
 // CHANGELOG
 // (minor and older changes stripped away, please see git history for details)
@@ -535,6 +536,132 @@ IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARA
 
     switch (msg)
     {
+    case WM_INPUT:
+    {
+      UINT size = 0;
+      if (GetRawInputData((HRAWINPUT) lParam, RID_INPUT, nullptr, &size, sizeof(RAWINPUTHEADER)) != 0 || size == 0)
+        break;
+
+      // Small stack buffer for common cases; heap fallback for large HID packets.
+      BYTE stack_buf[256];
+      std::unique_ptr<BYTE[]> heap_buf;
+      BYTE* buf = size <= sizeof(stack_buf) ? stack_buf : (heap_buf.reset(new BYTE[size]), heap_buf.get());
+      if (GetRawInputData((HRAWINPUT) lParam, RID_INPUT, buf, &size, sizeof(RAWINPUTHEADER)) != size)
+        break;
+
+      RAWINPUT* ri = reinterpret_cast<RAWINPUT*>(buf);
+
+      if (ri->header.dwType == RIM_TYPEMOUSE) {
+        const RAWMOUSE& m = ri->data.mouse;
+
+        // Position: prefer absolute cursor (screen->client) if available, else use deltas.
+        if (m.usFlags & MOUSE_MOVE_ABSOLUTE) {
+          POINT p; GetCursorPos(&p);
+          // Convert to this window's client space (overlay/input window)
+          ScreenToClient(hwnd, &p);
+          io.AddMousePosEvent((float) p.x, (float) p.y);
+        } else if (m.lLastX || m.lLastY) {
+          // Relative movement: accumulate to last known position
+          // ImGui expects absolute (client) positions, so query current and add deltas.
+          POINT p; GetCursorPos(&p);
+          ScreenToClient(hwnd, &p);
+          p.x += (int) m.lLastX;
+          p.y += (int) m.lLastY;
+          io.AddMousePosEvent((float) p.x, (float) p.y);
+        }
+
+        auto push_button = [&](int imgui_button, bool down) {
+          io.AddMouseButtonEvent(imgui_button, down);
+        };
+        if (m.usButtonFlags & RI_MOUSE_LEFT_BUTTON_DOWN)  push_button(0, true);
+        if (m.usButtonFlags & RI_MOUSE_LEFT_BUTTON_UP)    push_button(0, false);
+        if (m.usButtonFlags & RI_MOUSE_RIGHT_BUTTON_DOWN) push_button(1, true);
+        if (m.usButtonFlags & RI_MOUSE_RIGHT_BUTTON_UP)   push_button(1, false);
+        if (m.usButtonFlags & RI_MOUSE_MIDDLE_BUTTON_DOWN)push_button(2, true);
+        if (m.usButtonFlags & RI_MOUSE_MIDDLE_BUTTON_UP)  push_button(2, false);
+        if (m.usButtonFlags & RI_MOUSE_BUTTON_4_DOWN)     push_button(3, true);
+        if (m.usButtonFlags & RI_MOUSE_BUTTON_4_UP)       push_button(3, false);
+        if (m.usButtonFlags & RI_MOUSE_BUTTON_5_DOWN)     push_button(4, true);
+        if (m.usButtonFlags & RI_MOUSE_BUTTON_5_UP)       push_button(4, false);
+
+        if (m.usButtonFlags & RI_MOUSE_WHEEL) {
+          const float dy = (short) m.usButtonData / (float) WHEEL_DELTA;
+          io.AddMouseWheelEvent(0.0f, dy);
+        }
+        if (m.usButtonFlags & RI_MOUSE_HWHEEL) {
+          const float dx = (short) m.usButtonData / (float) WHEEL_DELTA;
+          io.AddMouseWheelEvent(dx, 0.0f);
+        }
+
+        return 0;
+      }
+
+      if (ri->header.dwType == RIM_TYPEKEYBOARD) {
+        const RAWKEYBOARD& k = ri->data.keyboard;
+
+        // Filter fake events
+        if (k.VKey == 255)
+          return 0;
+
+        const bool is_down =
+          (k.Message == WM_KEYDOWN) || (k.Message == WM_SYSKEYDOWN);
+
+        // Virtual-key --> ImGui key
+        int vk = (int) k.VKey;
+        if (vk == VK_RETURN && (k.Flags & RI_KEY_E0)) // keypad enter remap (same as legacy path)
+          vk = IM_VK_KEYPAD_ENTER;
+
+        const ImGuiKey key = ImGui_ImplWin32_VirtualKeyToImGuiKey(vk);
+        const int scancode = (int) k.MakeCode; // Win32 scancode; backend uses scancode for workarounds
+        if (key != ImGuiKey_None)
+          ImGui_ImplWin32_AddKeyEvent(key, is_down, vk, scancode);
+
+        // Submit individual left/right modifier events
+        if (vk == VK_SHIFT)
+        {
+          // Important: Shift keys tend to get stuck when pressed together, missing key-up events are corrected in ImGui_ImplWin32_ProcessKeyEventsWorkarounds()
+          if (IsVkDown(VK_LSHIFT) == is_down) { ImGui_ImplWin32_AddKeyEvent(ImGuiKey_LeftShift, is_down, VK_LSHIFT, scancode); }
+          if (IsVkDown(VK_RSHIFT) == is_down) { ImGui_ImplWin32_AddKeyEvent(ImGuiKey_RightShift, is_down, VK_RSHIFT, scancode); }
+        }
+        else if (vk == VK_CONTROL)
+        {
+          if (IsVkDown(VK_LCONTROL) == is_down) {
+            ImGui_ImplWin32_AddKeyEvent(ImGuiKey_LeftCtrl, is_down, VK_LCONTROL, scancode);
+          }
+          if (IsVkDown(VK_RCONTROL) == is_down) {
+            ImGui_ImplWin32_AddKeyEvent(ImGuiKey_RightCtrl, is_down, VK_RCONTROL, scancode);
+          }
+        }
+        else if (vk == VK_MENU)
+        {
+          if (IsVkDown(VK_LMENU) == is_down) { ImGui_ImplWin32_AddKeyEvent(ImGuiKey_LeftAlt, is_down, VK_LMENU, scancode); }
+          if (IsVkDown(VK_RMENU) == is_down) { ImGui_ImplWin32_AddKeyEvent(ImGuiKey_RightAlt, is_down, VK_RMENU, scancode); }
+        }
+
+        // Modifiers (explicit L/R)
+        // Important: modifiers can miss key-up events; backend has a workaround but keep these in sync.
+        ImGui_ImplWin32_UpdateKeyModifiers();
+
+        // generate text input
+        if (is_down) {
+          BYTE keyboard_state[256] = {};
+          GetKeyboardState(keyboard_state);
+
+          // Map VK scan to Unicode for this layout
+          WCHAR wbuf[8];
+          HKL layout = GetKeyboardLayout(0);
+          int n = ToUnicodeEx((UINT) vk, (UINT) k.MakeCode, keyboard_state, wbuf, IM_ARRAYSIZE(wbuf), 0, layout);
+          if (n > 0) {
+            for (int i = 0; i < n; ++i)
+              io.AddInputCharacterUTF16((ImWchar) wbuf[i]);
+          }
+        }
+
+        return 0;
+      }
+
+      break;
+    }
     case WM_MOUSEMOVE:
         // We need to call TrackMouseEvent in order to receive WM_MOUSELEAVE events
         bd->MouseHwnd = hwnd;
