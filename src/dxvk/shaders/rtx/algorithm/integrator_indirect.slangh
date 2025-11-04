@@ -491,8 +491,13 @@ void integratePathVertex(
     return;
   }
 
+  // Exit on a miss
   if (!rayInteractionHasHit(rayInteraction))
   {
+    // Reduce the bounce iteration on miss so that when integrator loop exits and increments the variable one more time,
+    // the bounce iteration is + 1 since the last surface hit for both misses and hits
+    --pathState.bounceIteration;
+
     return;
   }
 
