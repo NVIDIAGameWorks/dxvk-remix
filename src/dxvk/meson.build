@@ -215,8 +215,6 @@ dxvk_src = files([
   'rtx_render/rtx_dlss.h',
   'rtx_render/rtx_draw_call_cache.cpp',
   'rtx_render/rtx_draw_call_cache.h',
-  'rtx_render/rtx_dust_particles.cpp',
-  'rtx_render/rtx_dust_particles.h',
   'rtx_render/rtx_env.cpp',
   'rtx_render/rtx_env.h',
   'rtx_render/rtx_game_capturer.cpp',
@@ -224,8 +222,6 @@ dxvk_src = files([
   'rtx_render/rtx_game_capturer_utils.h',
   'rtx_render/rtx_geometry_utils.cpp',
   'rtx_render/rtx_geometry_utils.h',
-  'rtx_render/rtx_global_volumetrics.cpp',
-  'rtx_render/rtx_global_volumetrics.h',
   'rtx_render/rtx_hashing.cpp',
   'rtx_render/rtx_hashing.h',
   'rtx_render/rtx_hash_collision_detection.cpp',
@@ -330,8 +326,10 @@ dxvk_src = files([
   'rtx_render/rtx_types.cpp',
   'rtx_render/rtx_types.h',
   'rtx_render/rtx_utils.h',
-  'rtx_render/rtx_xess.cpp',
-  'rtx_render/rtx_xess.h',
+  'rtx_render/rtx_global_volumetrics.cpp',
+  'rtx_render/rtx_global_volumetrics.h',
+  'rtx_render/rtx_dust_particles.cpp',
+  'rtx_render/rtx_dust_particles.h',
 
   'rtx_render/rtx_system_info.cpp',
   'rtx_render/rtx_system_info.h',
@@ -426,15 +424,6 @@ dlss_dep = declare_dependency(
   include_directories : [ dlss_include_dir, dlfg_include_dir ]
 )
 
-# XeSS dependency
-xess_lib_path = join_paths(global_src_root_norm, 'submodules/xess/lib')
-xess_include_dir = include_directories('../../submodules/xess/inc')
-xess_lib = dxvk_compiler.find_library('libxess', dirs : xess_lib_path, required : false)
-xess_dep = declare_dependency(
-  dependencies : [ xess_lib ],
-  include_directories : xess_include_dir
-)
-
 nrc_dll_path = join_paths(meson.global_source_root(), 'submodules/nrc/bin/')
 nrc_lib_path = join_paths(meson.global_source_root(), 'submodules/nrc/lib/')
 nrc_lib = dxvk_compiler.find_library('NRC_Vulkan', dirs : nrc_lib_path, required : true)
@@ -462,7 +451,7 @@ dxvk_embedded_data_files = files([
 
 dxvk_generated_embedded_files = embedding_compiler.process(dxvk_embedded_data_files)
 
-dxvk_deps = [ thread_dep, vkcommon_dep, dxvk_extradep, usd_dep, lssUsd_dep, nrc_dep, nrd_dep, dlss_dep, submodules_dep, xess_dep, tracy_dep, tracy_dep_dynamic, aftermath_dep, nvapi_dep, reflex_dep, usd_plugin_deps ]
+dxvk_deps = [ thread_dep, vkcommon_dep, dxvk_extradep, usd_dep, lssUsd_dep, nrc_dep, nrd_dep, dlss_dep, submodules_dep, tracy_dep, tracy_dep_dynamic, aftermath_dep, nvapi_dep, reflex_dep, usd_plugin_deps ]
 
 if enable_rtxio
   dxvk_deps += rtxio_dep

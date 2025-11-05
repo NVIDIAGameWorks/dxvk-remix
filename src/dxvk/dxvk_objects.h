@@ -80,7 +80,6 @@ namespace dxvk {
   class ImGUI;
   class RtxTextureManager;
   class NeuralRadianceCache;
-  class DxvkXeSS;
 
   class NGXContext;
 
@@ -220,10 +219,6 @@ namespace dxvk {
 
     DxvkTemporalAA& metaTAA() {
       return m_taa.get();
-    }
-
-    DxvkXeSS& metaXeSS() {
-      return m_xess.get();
     }
 
     CompositePass& metaComposite() {
@@ -373,7 +368,6 @@ namespace dxvk {
     Active<DxvkRayReconstruction>           m_rayReconstruction;
     Active<DxvkNIS>                         m_nis;
     Active<DxvkTemporalAA>                  m_taa;
-    Active<DxvkXeSS>                        m_xess;
     Active<CompositePass>                   m_composite;
     Active<DebugView>                       m_debug_view;
     Active<DxvkAutoExposure>                m_autoExposure;
