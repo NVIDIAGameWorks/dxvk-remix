@@ -315,10 +315,10 @@ namespace dxvk
     void getJittering(float jitter[2]) const;
     bool isLHS() const { return m_context.isLHS; }
 
-    static Vector2 calcPixelJitter(uint32_t jitterFrameIdx);
-    static Vector2 calcClipSpaceJitter(Vector2 pixelJitter, uint32_t renderResolutionX, uint32_t renderResolutionY, float ratioX, float ratioY);
-    static void applyJitterTo(Matrix4& inoutProjection, uint32_t jitterFrameIdx, uint32_t renderResolutionX, uint32_t renderResolutionY);
-    static void applyAndGetJitter(Matrix4d& inoutProjection, float (&outPixelJitter)[2], uint32_t jitterFrameIdx, uint32_t renderResolutionX, uint32_t renderResolutionY);
+    Vector2 calcPixelJitter(uint32_t jitterFrameIdx) const;
+    Vector2 calcClipSpaceJitter(const Vector2& pixelJitter, float ratioX, float ratioY) const;
+    void applyJitterTo(Matrix4& inoutProjection, uint32_t jitterFrameIdx) const;
+    void applyAndGetJitter(Matrix4d& inoutProjection, float (&outPixelJitter)[2], uint32_t jitterFrameIdx) const;
 
     Camera getShaderConstants(bool freecam = true) const;
     VolumeDefinitionCamera getVolumeShaderConstants(const float maxDistance, const float guardBand = 1.f) const;
