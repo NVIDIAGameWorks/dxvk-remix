@@ -241,9 +241,6 @@ namespace dxvk {
       return;
     }
 
-    constexpr ImGuiTreeNodeFlags collapsingHeaderClosedFlags = ImGuiTreeNodeFlags_CollapsingHeader;
-    constexpr ImGuiTreeNodeFlags collapsingHeaderFlags = collapsingHeaderClosedFlags | ImGuiTreeNodeFlags_DefaultOpen;
-
     // Display number of training records info
     {
       const ImVec4 kWhite = ImVec4(1.f, 1.f, 1.f, 1.f);
@@ -275,46 +272,46 @@ namespace dxvk {
 
     nrcQualityPresetCombo.getKey(&NrcOptions::qualityPresetObject());
 
-    ImGui::Checkbox("Reset History", &NrcOptions::resetHistoryObject());
-    ImGui::Checkbox("Train Cache", &NrcOptions::trainCacheObject());
-    ImGui::Checkbox("Use Custom Network Config \"CustomNetworkConfig.json\"", &m_delayedEnableCustomNetworkConfig);
+    RemixGui::Checkbox("Reset History", &NrcOptions::resetHistoryObject());
+    RemixGui::Checkbox("Train Cache", &NrcOptions::trainCacheObject());
+    RemixGui::Checkbox("Use Custom Network Config \"CustomNetworkConfig.json\"", &m_delayedEnableCustomNetworkConfig);
 
-    if (ImGui::CollapsingHeader("Training", collapsingHeaderFlags)) {
+    if (RemixGui::CollapsingHeader("Training", ImGuiTreeNodeFlags_DefaultOpen)) {
       ImGui::Indent();
 
-      ImGui::Checkbox("Learn Irradiance", &NrcOptions::learnIrradianceObject());
-      ImGui::Checkbox("Include Direct Lighting", &NrcOptions::includeDirectLightingObject());
+      RemixGui::Checkbox("Learn Irradiance", &NrcOptions::learnIrradianceObject());
+      RemixGui::Checkbox("Include Direct Lighting", &NrcOptions::includeDirectLightingObject());
       
       ImGui::DragInt("Max Number of Training Iterations", &NrcOptions::maxNumTrainingIterationsObject(), 1.f, 1, 16, "%d", ImGuiSliderFlags_AlwaysClamp);
       ImGui::DragInt("Target Number of Training Iterations", &NrcOptions::targetNumTrainingIterationsObject(), 1.f, 1, 16, "%d", ImGuiSliderFlags_AlwaysClamp);
 
-      ImGui::Checkbox("Adaptive Training Dimensions", &NrcOptions::enableAdaptiveTrainingDimensionsObject());
+      RemixGui::Checkbox("Adaptive Training Dimensions", &NrcOptions::enableAdaptiveTrainingDimensionsObject());
       ImGui::DragFloat("Average Number of Vertices Per Path", &NrcOptions::averageTrainingBouncesPerPathObject(), 0.01f, 0.5f, 8.f, "%.1f");
       ImGui::DragInt("Max Path Bounces", &NrcOptions::trainingMaxPathBouncesObject(), 0.1f, 0, 15, "%d", ImGuiSliderFlags_AlwaysClamp);
       ImGui::DragInt("Max Path Bounces Bias for Quality Presets", &NrcOptions::trainingMaxPathBouncesBiasInQualityPresetsObject(), 0.1f, -15, 15, "%d", ImGuiSliderFlags_AlwaysClamp);
 
       ImGui::DragInt("Jitter Sequence Length", &NrcOptions::jitterSequenceLengthObject());
-      ImGui::Checkbox("Allow Russian Roulette Usage", &NrcOptions::allowRussianRouletteOnUpdateObject());
+      RemixGui::Checkbox("Allow Russian Roulette Usage", &NrcOptions::allowRussianRouletteOnUpdateObject());
 
       ImGui::Unindent();
     }
 
-    ImGui::Checkbox("Clear Nrc Buffers On Frame Start", &NrcOptions::clearBuffersOnFrameStartObject());
+    RemixGui::Checkbox("Clear Nrc Buffers On Frame Start", &NrcOptions::clearBuffersOnFrameStartObject());
 
-    if (ImGui::CollapsingHeader("Scene Bounds", collapsingHeaderFlags)) {
+    if (RemixGui::CollapsingHeader("Scene Bounds", ImGuiTreeNodeFlags_DefaultOpen)) {
       ImGui::DragFloat("Scene Axis Aligned Bounding Box's Width [m]", &NrcOptions::sceneBoundsWidthMetersObject(), 1.f, 0.f, 100000.f, "%f");
-      ImGui::Checkbox("Reset the scene bounds on a camera cut", &NrcOptions::resetSceneBoundsOnCameraCutObject());
+      RemixGui::Checkbox("Reset the scene bounds on a camera cut", &NrcOptions::resetSceneBoundsOnCameraCutObject());
       if (ImGui::Button("Reset the scene bounds")) {
         m_initSceneBounds = true;
       }
     }
 
-    if (ImGui::CollapsingHeader("Resolve", collapsingHeaderClosedFlags)) {
+    if (RemixGui::CollapsingHeader("Resolve")) {
       ImGui::Indent();
-      ImGui::Checkbox("NRC Resolver", &NrcOptions::enableNrcResolverObject());
-      ImGui::Checkbox("Add Path Traced Radiance", &NrcOptions::resolveAddPathTracedRadianceObject());
-      ImGui::Checkbox("Add Nrc Queried Radiance", &NrcOptions::resolveAddNrcQueriedRadianceObject());
-      ImGui::Checkbox("Enable Debug Resolve Mode", &NrcOptions::enableDebugResolveModeObject());
+      RemixGui::Checkbox("NRC Resolver", &NrcOptions::enableNrcResolverObject());
+      RemixGui::Checkbox("Add Path Traced Radiance", &NrcOptions::resolveAddPathTracedRadianceObject());
+      RemixGui::Checkbox("Add Nrc Queried Radiance", &NrcOptions::resolveAddNrcQueriedRadianceObject());
+      RemixGui::Checkbox("Enable Debug Resolve Mode", &NrcOptions::enableDebugResolveModeObject());
 
       nrcDebugResolveModeCombo.getKey(&NrcOptions::debugResolveModeObject());
 
@@ -332,7 +329,7 @@ namespace dxvk {
 
     ImGui::DragFloat("Smallest Resolvable Feature Size [meters]", &NrcOptions::smallestResolvableFeatureSizeMetersObject(), 0.0001f, 0.f, 10.f, "%.4f");
     
-    ImGui::Checkbox("Skip Delta Vertices", &NrcOptions::skipDeltaVerticesObject());
+    RemixGui::Checkbox("Skip Delta Vertices", &NrcOptions::skipDeltaVerticesObject());
 
     ImGui::DragFloat("Termination Heuristic Threshold", &NrcOptions::terminationHeuristicThresholdObject(), 0.001f, 0.f, 1.f, "%.3f");
     ImGui::DragFloat("Training Termination Heuristic Threshold", &NrcOptions::trainingTerminationHeuristicThresholdObject(), 0.001f, 0.f, 1.f, "%.3f");
@@ -342,7 +339,7 @@ namespace dxvk {
     ImGui::DragFloat("Proportion Unbiased", &NrcOptions::proportionUnbiasedObject(), 0.001f, 0.f, 1.f, "%.3f");
     ImGui::DragFloat("Self Training Attenuation", &NrcOptions::selfTrainingAttenuationObject(), 0.001f, 0.f, 1.f, "%.3f");
 
-    ImGui::Checkbox("Calculate Training Loss", &NrcOptions::enableCalculateTrainingLossObject());
+    RemixGui::Checkbox("Calculate Training Loss", &NrcOptions::enableCalculateTrainingLossObject());
     if (!NrcOptions::enableCalculateTrainingLoss()) {
       ImGui::Text("Training Loss: ", m_trainingLoss);
     }

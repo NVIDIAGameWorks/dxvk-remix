@@ -85,7 +85,7 @@ namespace dxvk {
 
   void DxvkBloom::showImguiSettings() {
     ImGui::Indent();
-    ImGui::Checkbox("Bloom Enabled", &enableObject());
+    RemixGui::Checkbox("Bloom Enabled", &enableObject());
     ImGui::Indent();
     ImGui::DragFloat("Intensity##bloom", &burnIntensityObject(), 0.05f, 0.f, 5.f, "%.2f");
     ImGui::DragFloat("Threshold##bloom", &luminanceThresholdObject(), 0.05f, 0.f, 100.f, "%.2f");

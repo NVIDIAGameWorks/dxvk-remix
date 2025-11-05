@@ -28,15 +28,13 @@
 #include "dxvk_context.h"
 #include "dxvk_objects.h"
 #include "rtx_render/rtx_scene_manager.h"
+#include "rtx_render/rtx_imgui.h"
 
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 namespace dxvk {
-  constexpr ImGuiTreeNodeFlags collapsingHeaderClosedFlags = ImGuiTreeNodeFlags_CollapsingHeader;
-  constexpr ImGuiTreeNodeFlags collapsingHeaderFlags = collapsingHeaderClosedFlags | ImGuiTreeNodeFlags_DefaultOpen;
-
   void ImGuiAbout::update(const Rc<DxvkContext>& ctx) {
     m_secrets.update(ctx);
   }
@@ -70,18 +68,18 @@ namespace dxvk {
 
     // Remix Credits
 
-    if (ImGui::CollapsingHeader("Credits", collapsingHeaderFlags)) {
+    if (RemixGui::CollapsingHeader("Credits", ImGuiTreeNodeFlags_DefaultOpen)) {
       ImGui::TextUnformatted("Produced by NVIDIA Lightspeed Studios");
       ImGui::TextUnformatted("Based on the DXVK project");
 
-      ImGui::Separator();
+      RemixGui::Separator();
 
       m_credits.show();
     }
 
     // Secret Code Section
 
-    if (ImGui::CollapsingHeader("Secrets", collapsingHeaderClosedFlags)) {
+    if (RemixGui::CollapsingHeader("Secrets")) {
       m_secrets.show(ctx);
     }
 
@@ -245,10 +243,10 @@ namespace dxvk {
     for (auto& [header, secrets] : m_organizedSecrets) {
       if (m_visibleHeaders[header]) {
         ImGui::Indent();
-        if (ImGui::CollapsingHeader(header.c_str(), collapsingHeaderFlags)) {
+        if (RemixGui::CollapsingHeader(header.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
           for (auto& secret : secrets) {
             if (secret.bUnlocked) {
-              if(ImGui::Checkbox(secret.replacement.name.c_str(), &secret.bEnabled)) {
+              if(RemixGui::Checkbox(secret.replacement.name.c_str(), &secret.bEnabled)) {
                 if(secret.bEnabled && secret.replacement.bExclusiveReplacement) {
                   for(auto* const pOtherSecret : m_assetHashesToSecretPtrs[secret.replacement.assetHash]) {
                     pOtherSecret->bEnabled = (&secret == pOtherSecret);

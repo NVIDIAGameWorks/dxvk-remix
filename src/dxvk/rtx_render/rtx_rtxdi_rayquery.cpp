@@ -174,33 +174,33 @@ namespace dxvk {
 
   void DxvkRtxdiRayQuery::showImguiSettings() {
     ImGui::SliderInt("Initial Sample Count", &initialSampleCountObject(), 1, 64);
-    ImGui::Checkbox("Sample Best Lights", &enableBestLightSamplingObject());
-    ImGui::Checkbox("Initial Visibility", &enableInitialVisibilityObject());
-    ImGui::Separator();
-    ImGui::Checkbox("Temporal Reuse", &enableTemporalReuseObject());
+    RemixGui::Checkbox("Sample Best Lights", &enableBestLightSamplingObject());
+    RemixGui::Checkbox("Initial Visibility", &enableInitialVisibilityObject());
+    RemixGui::Separator();
+    RemixGui::Checkbox("Temporal Reuse", &enableTemporalReuseObject());
     if (enableTemporalReuse()) {
       ImGui::SliderInt("Max History Length", &maxHistoryLengthObject(), 1, 32);
       ImGui::SliderInt("Permutation Sampling on Nth Frame", &permutationSamplingNthFrameObject(), 0, 8);
-      ImGui::Checkbox("Temporal Bias Correction", &enableTemporalBiasCorrectionObject());
-      ImGui::Checkbox("Discard Enlarged Pixels", &enableDiscardEnlargedPixelsObject());
+      RemixGui::Checkbox("Temporal Bias Correction", &enableTemporalBiasCorrectionObject());
+      RemixGui::Checkbox("Discard Enlarged Pixels", &enableDiscardEnlargedPixelsObject());
     }
-    ImGui::Separator();
-    ImGui::Checkbox("Spatial Reuse", &enableSpatialReuseObject());
+    RemixGui::Separator();
+    RemixGui::Checkbox("Spatial Reuse", &enableSpatialReuseObject());
     if (enableSpatialReuse()) {
       ImGui::SliderInt("Spatial Sample Count", &spatialSamplesObject(), 1, 16);
       ImGui::SliderInt("Disocclusion Sample Count", &disocclusionSamplesObject(), 1, 16);
       ImGui::SliderInt("Disocclusion Frames", &disocclusionFramesObject(), 0, 16);
     }
-    ImGui::Checkbox("Ray Traced Bias Correction", &enableRayTracedBiasCorrectionObject());
-    ImGui::Separator();
-    ImGui::Checkbox("Discard Invisible Samples", &enableDiscardInvisibleSamplesObject());
-    ImGui::Checkbox("Indirect Sample Stealing", &enableSampleStealingObject());
-    ImGui::Checkbox("Steal Boundary Samples When Outside Of Screen", &stealBoundaryPixelSamplesWhenOutsideOfScreenObject());
-    ImGui::Checkbox("Cross Portal Light", &enableCrossPortalLightObject());
-    ImGui::Checkbox("Compute Denoiser Gradient", &enableDenoiserGradientObject());
-    ImGui::Checkbox("Compute Denoiser Confidence", &enableDenoiserConfidenceObject());
+    RemixGui::Checkbox("Ray Traced Bias Correction", &enableRayTracedBiasCorrectionObject());
+    RemixGui::Separator();
+    RemixGui::Checkbox("Discard Invisible Samples", &enableDiscardInvisibleSamplesObject());
+    RemixGui::Checkbox("Indirect Sample Stealing", &enableSampleStealingObject());
+    RemixGui::Checkbox("Steal Boundary Samples When Outside Of Screen", &stealBoundaryPixelSamplesWhenOutsideOfScreenObject());
+    RemixGui::Checkbox("Cross Portal Light", &enableCrossPortalLightObject());
+    RemixGui::Checkbox("Compute Denoiser Gradient", &enableDenoiserGradientObject());
+    RemixGui::Checkbox("Compute Denoiser Confidence", &enableDenoiserConfidenceObject());
 
-    if (enableDenoiserConfidence() && ImGui::CollapsingHeader("Confidence Settings", 0))
+    if (enableDenoiserConfidence() && RemixGui::CollapsingHeader("Confidence Settings"))
     {
       ImGui::Indent();
       ImGui::SliderFloat("History Length", &confidenceHistoryLengthObject(), 0.f, 16.f);

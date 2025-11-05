@@ -271,12 +271,10 @@ namespace dxvk {
   void NrdSettings::showImguiSettings() {
 
     const ImGuiSliderFlags sliderFlags = ImGuiSliderFlags_AlwaysClamp;
-    const ImGuiTreeNodeFlags collapsingHeaderFlagsOpen = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_CollapsingHeader;
-    const ImGuiTreeNodeFlags collapsingHeaderFlagsClosed = ImGuiTreeNodeFlags_CollapsingHeader;
 
     // New settings
     {
-      ImGui::Separator();
+      RemixGui::Separator();
       ImGui::Text("NRD v%u.%u.%u", m_libraryDesc.versionMajor, m_libraryDesc.versionMinor, m_libraryDesc.versionBuild);
       ImGui::PushItemWidth(160.f);
     }
@@ -289,14 +287,14 @@ namespace dxvk {
     const bool resetHistoryOnSettingsChange = RtxOptions::resetDenoiserHistoryOnSettingsChange();
 
 #define ADVANCED if (m_showAdvancedSettings)
-    ImGui::Checkbox("Advanced Settings", &m_showAdvancedSettings);
+    RemixGui::Checkbox("Advanced Settings", &m_showAdvancedSettings);
     SettingsImpactingDenoiserOutput prevGroupedSettings = m_groupedSettings;
 
     
-    if (m_type != DenoiserType::DirectLight && ImGui::CollapsingHeader("Integrator Settings", collapsingHeaderFlagsClosed)) {
+    if (m_type != DenoiserType::DirectLight && RemixGui::CollapsingHeader("Integrator Settings")) {
       ImGui::Indent();
 
-      if (m_type == DenoiserType::DirectAndIndirectLight && ImGui::CollapsingHeader("Diffuse", collapsingHeaderFlagsClosed)) {
+      if (m_type == DenoiserType::DirectAndIndirectLight && RemixGui::CollapsingHeader("Diffuse")) {
         ImGui::Indent();
         ImGui::PushID("Diffuse");
         ImGui::SliderFloat("Max Direct HitT %", &m_groupedSettings.maxDirectHitTContribution, 0.0f, 1.0f);
@@ -313,14 +311,14 @@ namespace dxvk {
       }
     }
 
-    if (m_denoiserDesc.denoiser != nrd::Denoiser::REFERENCE && ImGui::CollapsingHeader("Common Settings", collapsingHeaderFlagsClosed)) {
+    if (m_denoiserDesc.denoiser != nrd::Denoiser::REFERENCE && RemixGui::CollapsingHeader("Common Settings")) {
       ImGui::Indent();
 
       // Note: Set to match the range limit checked in rtx_nrd_context.cpp
       static_assert(nrd::CommonSettings{}.denoisingRange == 500000.0f, "NRD's default settings has changed, denoisingRange must be re-evaluated");
       constexpr float denoisingRangeLimit = nrd::CommonSettings{}.denoisingRange;
 
-      ImGui::Checkbox("Validation Layer", &m_commonSettings.enableValidation);
+      RemixGui::Checkbox("Validation Layer", &m_commonSettings.enableValidation);
 
       bool settingsChanged = false;
 
@@ -342,7 +340,7 @@ namespace dxvk {
 
     // Reference
     if (m_denoiserDesc.denoiser == nrd::Denoiser::REFERENCE) {
-      if (ImGui::CollapsingHeader("Reference Settings", collapsingHeaderFlagsClosed)) {
+      if (RemixGui::CollapsingHeader("Reference Settings")) {
         ImGui::Indent();
         ImGui::InputInt("Max Frames To Accumulate", &m_referenceSettings.maxAccumulatedFrameNum);
         ImGui::Unindent();
@@ -351,7 +349,7 @@ namespace dxvk {
 
     // Reblur
     if (m_denoiserDesc.denoiser == nrd::Denoiser::REBLUR_DIFFUSE_SPECULAR) {
-      if (ImGui::CollapsingHeader("Reblur Settings", collapsingHeaderFlagsClosed)) {
+      if (RemixGui::CollapsingHeader("Reblur Settings")) {
         ImGui::Indent();
 
         nrd::ReblurSettings prevReblurSettingsState;
@@ -371,9 +369,9 @@ namespace dxvk {
             ImGui::SliderFloat("History length [ms]", &m_adaptiveAccumulationLengthMs, 10.f, 1000.f, "%.1f");
             ImGui::SliderInt("Min history length [ms]", &m_adaptiveMinAccumulatedFrameNum, 0, nrd::REBLUR_MAX_HISTORY_FRAME_NUM);
           }
-          ImGui::Checkbox("Anti-firefly", &m_reblurSettings.enableAntiFirefly);
+          RemixGui::Checkbox("Anti-firefly", &m_reblurSettings.enableAntiFirefly);
           ImGui::SameLine();
-          ImGui::Checkbox("Performance mode", &m_reblurSettings.enablePerformanceMode);
+          RemixGui::Checkbox("Performance mode", &m_reblurSettings.enablePerformanceMode);
           ImGui::SameLine();
           reblurHitTReconstructionModeCombo.getKey(&m_reblurSettings.hitDistanceReconstructionMode);
 
@@ -399,7 +397,7 @@ namespace dxvk {
           ADVANCED ImGui::SliderFloat("Plane distance sensitivity [normalized %]", &m_reblurSettings.planeDistanceSensitivity, 0.0f, 1.0f, "%.2f");
           ADVANCED ImGui::SliderFloat2("Specular probability threshold for mvec modification", m_reblurSettings.specularProbabilityThresholdsForMvModification, 0.0f, 1.0f, "%.2f");
           ImGui::SliderFloat("Firefly suppressor min relative scale", &m_reblurSettings.fireflySuppressorMinRelativeScale, 1.0f, 3.0f, "%.2f");
-          ADVANCED ImGui::Checkbox("Enable Prepass Only For Specular Motion Estimation", &m_reblurSettings.usePrepassOnlyForSpecularMotionEstimation);
+          ADVANCED RemixGui::Checkbox("Enable Prepass Only For Specular Motion Estimation", &m_reblurSettings.usePrepassOnlyForSpecularMotionEstimation);
           
           ImGui::SetNextItemWidth(ImGui::CalcItemWidth() * 0.6f);
 
@@ -419,7 +417,7 @@ namespace dxvk {
     }
 
     if (m_denoiserDesc.denoiser == nrd::Denoiser::RELAX_DIFFUSE_SPECULAR) {
-      if (ImGui::CollapsingHeader("ReLAX Settings", collapsingHeaderFlagsClosed)) {
+      if (RemixGui::CollapsingHeader("ReLAX Settings")) {
         ImGui::Indent();
 
         nrd::RelaxSettings prevRelaxSettingsState;
@@ -441,8 +439,8 @@ namespace dxvk {
           }
           ImGui::SliderInt("Diffuse fast history length [frames]", &m_relaxSettings.diffuseMaxFastAccumulatedFrameNum, 0, nrd::RELAX_MAX_HISTORY_FRAME_NUM);
           ImGui::SliderInt("Specular fast history length [frames]", &m_relaxSettings.specularMaxFastAccumulatedFrameNum, 0, nrd::RELAX_MAX_HISTORY_FRAME_NUM);
-          ImGui::Checkbox("Anti-firefly", &m_relaxSettings.enableAntiFirefly);
-          ImGui::Checkbox("Roughness edge stopping", &m_relaxSettings.enableRoughnessEdgeStopping);
+          RemixGui::Checkbox("Anti-firefly", &m_relaxSettings.enableAntiFirefly);
+          RemixGui::Checkbox("Roughness edge stopping", &m_relaxSettings.enableRoughnessEdgeStopping);
           relaxHitTReconstructionModeCombo.getKey(&m_relaxSettings.hitDistanceReconstructionMode);
 
           ImGui::Text("PRE-PASS:");

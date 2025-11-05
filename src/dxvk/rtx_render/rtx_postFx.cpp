@@ -116,13 +116,13 @@ namespace dxvk {
 
   void DxvkPostFx::showImguiSettings()
   {
-    ImGui::Checkbox("Post Effect Enabled", &enableObject());
+    RemixGui::Checkbox("Post Effect Enabled", &enableObject());
     if (enable())
     {
-      ImGui::Checkbox("Motion Blur Enabled", &enableMotionBlurObject());
+      RemixGui::Checkbox("Motion Blur Enabled", &enableMotionBlurObject());
       if (enableMotionBlur()) {
-        ImGui::Checkbox("Motion Blur Noise Sample Enabled", &enableMotionBlurNoiseSampleObject());
-        ImGui::Checkbox("Motion Blur Emissive Surface Enabled", &enableMotionBlurEmissiveObject());
+        RemixGui::Checkbox("Motion Blur Noise Sample Enabled", &enableMotionBlurNoiseSampleObject());
+        RemixGui::Checkbox("Motion Blur Emissive Surface Enabled", &enableMotionBlurEmissiveObject());
         ImGui::DragInt("Motion Blur Sample Count", &motionBlurSampleCountObject(), 0.1f, 1, 10, "%d", ImGuiSliderFlags_AlwaysClamp);
         ImGui::DragFloat("Exposure Fraction", &exposureFractionObject(), 0.01f, 0.01f, 3.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
         ImGui::DragFloat("Blur Diameter Fraction", &blurDiameterFractionObject(), 0.001f, 0.001f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
@@ -131,13 +131,13 @@ namespace dxvk {
         ImGui::DragFloat("Motion Blur Jitter Strength", &motionBlurJitterStrengthObject(), 0.001f, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
       }
 
-      ImGui::Checkbox("Chromatic Aberration Enabled", &enableChromaticAberrationObject());
+      RemixGui::Checkbox("Chromatic Aberration Enabled", &enableChromaticAberrationObject());
       if (enableChromaticAberration()) {
         ImGui::DragFloat("Fringe Intensity", &chromaticAberrationAmountObject(), 0.01f, 0.0f, 5.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
         ImGui::DragFloat("Fringe Center Attenuation Amount", &chromaticCenterAttenuationAmountObject(), 0.001f, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
       }
 
-      ImGui::Checkbox("Vignette Enabled", &enableVignetteObject());
+      RemixGui::Checkbox("Vignette Enabled", &enableVignetteObject());
       if (enableVignette()) {
         ImGui::DragFloat("Vignette Intensity", &vignetteIntensityObject(), 0.01f, 0.0f, 5.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
         ImGui::DragFloat("Vignette Radius", &vignetteRadiusObject(), 0.001f, 0.0f, 1.4f, "%.3f", ImGuiSliderFlags_AlwaysClamp);

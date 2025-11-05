@@ -131,9 +131,9 @@ namespace dxvk {
   void DxvkLocalToneMapping::showImguiSettings() {
     ImGui::DragInt("Mip", &mipObject(), 0.06f, 0, 16);
     ImGui::DragInt("Display Mip", &displayMipObject(), 0.06f, 0, 16);
-    ImGui::Checkbox("Boost Local Contrast", &boostLocalContrastObject());
-    ImGui::Checkbox("Use Gaussian Kernel", &useGaussianObject());
-    ImGui::Checkbox("Finalize With ACES", &finalizeWithACESObject());
+    RemixGui::Checkbox("Boost Local Contrast", &boostLocalContrastObject());
+    RemixGui::Checkbox("Use Gaussian Kernel", &useGaussianObject());
+    RemixGui::Checkbox("Finalize With ACES", &finalizeWithACESObject());
     ImGui::DragFloat("Exposure Level", &exposureObject(), 0.01f, 0.f, 1000.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::DragFloat("Shadow Level", &shadowsObject(), 0.01f, -10.f, 10.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::DragFloat("Highlight Level", &highlightsObject(), 0.01f, -10.f, 10.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);

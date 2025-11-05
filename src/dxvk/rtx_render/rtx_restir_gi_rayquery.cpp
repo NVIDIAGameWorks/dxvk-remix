@@ -174,48 +174,48 @@ namespace dxvk {
   }
 
   void DxvkReSTIRGIRayQuery::showImguiSettings() {
-    ImGui::Checkbox("Temporal Reuse", &useTemporalReuseObject());
-    ImGui::Checkbox("Spatial Reuse", &useSpatialReuseObject());
+    RemixGui::Checkbox("Temporal Reuse", &useTemporalReuseObject());
+    RemixGui::Checkbox("Spatial Reuse", &useSpatialReuseObject());
     restirGIBiasCorrectionCombo.getKey(&biasCorrectionModeObject());
     ImGui::DragFloat("Pairwise MIS Central Weight", &pairwiseMISCentralWeightObject(), 0.01f, 0.01f, 2.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::Checkbox("Temporal Bias Correction", &useTemporalBiasCorrectionObject());
-    ImGui::Checkbox("Temporal Jacobian", &useTemporalJacobianObject());
+    RemixGui::Checkbox("Temporal Bias Correction", &useTemporalBiasCorrectionObject());
+    RemixGui::Checkbox("Temporal Jacobian", &useTemporalJacobianObject());
     ImGui::Combo("MIS", &misModeObject(), "None\0Roughness\0Parallax\0");
     ImGui::DragFloat("MIS Roughness Threshold", &misRoughnessObject(), 0.001f, 0.f, 1.f, "%.3f");
     ImGui::DragFloat("MIS Parallax Amount", &parallaxAmountObject(), 0.001f, 0.f, 1.f, "%.3f");
-    ImGui::Checkbox("Final Visibility", &useFinalVisibilityObject());
-    ImGui::Checkbox("Reflection Reprojection", &useReflectionReprojectionObject());
+    RemixGui::Checkbox("Final Visibility", &useFinalVisibilityObject());
+    RemixGui::Checkbox("Reflection Reprojection", &useReflectionReprojectionObject());
     ImGui::DragFloat("Reflection Min Parallax", &reflectionMinParallaxObject(), 0.1f, 0.f, 50.f, "%.3f");
-    ImGui::Checkbox("Virtual Sample", &useVirtualSampleObject());
+    RemixGui::Checkbox("Virtual Sample", &useVirtualSampleObject());
     ImGui::DragFloat("Virtual Sample Luminance Threshold", &virtualSampleLuminanceThresholdObject(), 0.01f, 0.0f, 1000.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::DragFloat("Virtual Sample Roughness Threshold", &virtualSampleRoughnessThresholdObject(), 0.01f, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::DragFloat("Virtual Sample Specular Threshold", &virtualSampleSpecularThresholdObject(), 0.01f, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::DragFloat("Virtual Sample Max Distance Ratio", &virtualSampleMaxDistanceRatioObject(), 0.01f, 0.0f, 100.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::Checkbox("Demodulate Target Function", &useDemodulatedTargetFunctionObject());
-    ImGui::Checkbox("Permutation Sampling", &usePermutationSamplingObject());
-    ImGui::Checkbox("DLSS-RR Compatibility Mode", &useDLSSRRCompatibilityModeObject());
+    RemixGui::Checkbox("Demodulate Target Function", &useDemodulatedTargetFunctionObject());
+    RemixGui::Checkbox("Permutation Sampling", &usePermutationSamplingObject());
+    RemixGui::Checkbox("DLSS-RR Compatibility Mode", &useDLSSRRCompatibilityModeObject());
     ImGui::DragInt("DLSS-RR Compatible Temporal Randomization Radius", &DLSSRRTemporalRandomizationRadiusObject(), 1.f, 1, 160, "%d", ImGuiSliderFlags_AlwaysClamp);
     ImGui::Combo("Light Stealing", &useSampleStealingObject(), "None\0Steal Sample\0Steal Pixel");
     ImGui::DragFloat("Light Stealing Jitter", &sampleStealingJitterObject(), 0.01f, 0.0f, 20.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::Checkbox("Steal Boundary Pixels When Outside Of Screen", &stealBoundaryPixelSamplesWhenOutsideOfScreenObject());
-    ImGui::Checkbox("Boiling Filter", &useBoilingFilterObject());
+    RemixGui::Checkbox("Steal Boundary Pixels When Outside Of Screen", &stealBoundaryPixelSamplesWhenOutsideOfScreenObject());
+    RemixGui::Checkbox("Boiling Filter", &useBoilingFilterObject());
     ImGui::DragFloat("Boiling Filter Min Threshold", &boilingFilterMinThresholdObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::DragFloat("Boiling Filter Max Threshold", &boilingFilterMaxThresholdObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::DragFloat("Boiling Filter Remove Reservoir Threshold", &boilingFilterRemoveReservoirThresholdObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::Checkbox("Use Adaptive Temporal History", &useAdaptiveTemporalHistoryObject());
+    RemixGui::Checkbox("Use Adaptive Temporal History", &useAdaptiveTemporalHistoryObject());
     if (useAdaptiveTemporalHistory()) {
       ImGui::DragInt("Temporal History Length (ms)", &temporalAdaptiveHistoryLengthMsObject(), 1.f, 1, 3000, "%d", ImGuiSliderFlags_AlwaysClamp);
     } else {
       ImGui::DragInt("Temporal History Length (frame)", &temporalFixedHistoryLengthObject(), 1.f, 1, 500, "%d", ImGuiSliderFlags_AlwaysClamp);
     }
     ImGui::DragInt("Permutation Sampling Size", &permutationSamplingSizeObject(), 0.1f, 1, 8, "%d", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::Checkbox("Discard Enlarged Pixels", &useDiscardEnlargedPixelsObject());
+    RemixGui::Checkbox("Discard Enlarged Pixels", &useDiscardEnlargedPixelsObject());
     ImGui::DragFloat("History Discard Strength", &historyDiscardStrengthObject(), 0.01f, 0.f, 50.f, "%.1f");
     ImGui::DragFloat("Firefly Threshold", &fireflyThresholdObject(), 0.01f, 1.f, 5000.f, "%.1f");
     ImGui::DragFloat("Roughness Clamp", &roughnessClampObject(), 0.001f, 0.f, 1.f, "%.3f");
-    ImGui::Checkbox("Validate Lighting Change", &validateLightingChangeObject());
+    RemixGui::Checkbox("Validate Lighting Change", &validateLightingChangeObject());
     ImGui::DragFloat("Lighting Change Threshold", &lightingValidationThresholdObject(), 0.001f, 0.f, 1.f, "%.3f");
-    ImGui::Checkbox("Validate Visibility Change", &validateVisibilityChangeObject());
+    RemixGui::Checkbox("Validate Visibility Change", &validateVisibilityChangeObject());
     ImGui::DragFloat("Visibility Length Threshold", &visibilityValidationRangeObject(), 0.001f, 0.f, 10.f, "%.3f");
   }
 

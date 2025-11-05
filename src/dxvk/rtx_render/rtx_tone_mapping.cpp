@@ -96,24 +96,24 @@ namespace dxvk {
 
     ImGui::DragFloat("Global Exposure", &exposureBiasObject(), 0.01f, -4.f, 4.f);
     
-    ImGui::Checkbox("Color Grading Enabled", &colorGradingEnabledObject());
+    RemixGui::Checkbox("Color Grading Enabled", &colorGradingEnabledObject());
     if (colorGradingEnabled()) {
       ImGui::Indent();
       ImGui::DragFloat("Contrast", &contrastObject(), 0.01f, 0.f, 1.f);
       ImGui::DragFloat("Saturation", &saturationObject(), 0.01f, 0.f, 1.f);
       ImGui::DragFloat3("Color Balance", &colorBalanceObject(), 0.01f, 0.f, 1.f);
-      ImGui::Separator();
+      RemixGui::Separator();
       ImGui::Unindent();
     }
 
-    ImGui::Checkbox("Tonemapping Enabled", &tonemappingEnabledObject());
+    RemixGui::Checkbox("Tonemapping Enabled", &tonemappingEnabledObject());
     if (tonemappingEnabled()) {
       ImGui::Indent();
-      ImGui::Checkbox("Finalize With ACES", &finalizeWithACESObject());
+      RemixGui::Checkbox("Finalize With ACES", &finalizeWithACESObject());
 
       ImGui::Combo("Dither Mode", &ditherModeObject(), "Disabled\0Spatial\0Spatial + Temporal\0");
 
-      ImGui::Checkbox("Tuning Mode", &tuningModeObject());
+      RemixGui::Checkbox("Tuning Mode", &tuningModeObject());
       if (tuningMode()) {
         ImGui::Indent();
 
@@ -129,7 +129,7 @@ namespace dxvk {
 
         ImGui::Unindent();
       }
-      ImGui::Separator();
+      RemixGui::Separator();
       ImGui::Unindent();
     }
   }
