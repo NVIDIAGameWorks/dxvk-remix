@@ -64,7 +64,8 @@ namespace dxvk {
     None = 0,
     DLSS,
     NIS,
-    TAAU
+    TAAU,
+    XeSS
   };
 
   enum class GraphicsPreset : int {
@@ -87,6 +88,18 @@ namespace dxvk {
     Off = 0,
     On,
     Custom
+  };
+
+  enum class XeSSPreset : int {
+    UltraPerf = 0,
+    Performance,
+    Balanced,
+    Quality,
+    UltraQuality,
+    UltraQualityPlus,
+    NativeAA,
+    Custom,
+    Invalid
   };
 
   enum class NisPreset : int {
@@ -1269,6 +1282,7 @@ namespace dxvk {
     static void updateUpscalerFromDlssPreset();
     static void updateUpscalerFromNisPreset();
     static void updateUpscalerFromTaauPreset();
+    static void updateUpscalerFromXeSSPreset();
     static void updatePresetFromUpscaler();
     static NV_GPU_ARCHITECTURE_ID getNvidiaArch();
     static NV_GPU_ARCH_IMPLEMENTATION_ID getNvidiaChipId();
@@ -1425,6 +1439,7 @@ namespace dxvk {
     }
     static bool isNISEnabled() { return upscalerType() == UpscalerType::NIS; }
     static bool isTAAEnabled() { return upscalerType() == UpscalerType::TAAU; }
+    static bool isXeSSEnabled() { return upscalerType() == UpscalerType::XeSS; }
     
     static float getUniqueObjectDistanceSqr() { return uniqueObjectDistance() * uniqueObjectDistance(); }
     static uint32_t getNumFramesToPutLightsToSleep() { return numFramesToKeepLights() /2; }
