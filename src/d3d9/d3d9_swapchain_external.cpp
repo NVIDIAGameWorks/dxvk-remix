@@ -39,8 +39,14 @@ namespace dxvk {
     m_frameResumeSemaphore = RtxSemaphore::createBinary(pDevice->GetDXVKDevice().ptr(), "ExternalPresenter::frameResume");
   }
 
-  HRESULT STDMETHODCALLTYPE D3D9SwapchainExternal::Present(const RECT*, const RECT*, HWND, const RGNDATA*,  DWORD) {
-    auto targetImage = m_backBuffers[0]->GetCommonTexture()->GetImage();
+
+  HRESULT STDMETHODCALLTYPE D3D9SwapchainExternal::Present(const RECT*, const RECT*, HWND hDestWindowOverride, const RGNDATA*,  DWORD) {
+    HWND hwnd = m_window;
+    if (hDestWindowOverride != nullptr) {
+      hwnd = hDestWindowOverride;
+    }
+
+    auto targetImage = m_context->getCommonObjects()->getResources().getRaytracingOutput().m_finalOutput.resource(dxvk::Resources::AccessType::ReadWrite).image;
 
     auto& imageInfo = targetImage->info();
 
@@ -52,32 +58,44 @@ namespace dxvk {
     m_context->beginRecording(m_device->createCommandList());
 
     // Retrieve the image and image view to present
-    auto swapImage = m_backBuffers[0]->GetCommonTexture()->GetImage();
-    auto swapImageView = m_backBuffers[0]->GetImageView(false);
+    DxvkImageViewCreateInfo viewInfo;
+    viewInfo.type = VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.format = imageInfo.format;
+    viewInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    viewInfo.aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+    viewInfo.minLevel = 0;
+    viewInfo.numLevels = 1;
+    viewInfo.minLayer = 0;
+    viewInfo.numLayers = 1;
+    auto swapImageView = new DxvkImageView(m_device->vkd(), targetImage, viewInfo);
 
-    VkSurfaceFormatKHR fmt;
-    fmt.format = imageInfo.format;
-    fmt.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+    DxvkRenderTargets renderTargets;
+    renderTargets.color[0].view = swapImageView;
+    renderTargets.color[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    m_context->bindRenderTargets(renderTargets);
 
-    if (m_hud != nullptr)
-      m_hud->render(m_context, fmt, { imageInfo.extent.width,imageInfo.extent.height });
+    if (m_hud != nullptr) {
+      VkSurfaceFormatKHR fmt;
+      fmt.format = imageInfo.format;
+      fmt.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
 
-    // TODO: Figure out if we want HUD rendering, and how to use it
-    //m_device->getCommon()->getImgui().render(m_window, m_context, fmt, { imageInfo.extent.width,imageInfo.extent.height }, m_vsync);
+      m_hud->render(m_context, fmt, { imageInfo.extent.width, imageInfo.extent.height });
+    }
+
+    m_device->getCommon()->getImgui().render(hwnd, m_context, { imageInfo.extent.width, imageInfo.extent.height }, m_vsync);
 
     m_parent->m_rtx.OnPresent(targetImage);
 
-    m_context->changeImageLayout(swapImage, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    m_context->changeImageLayout(targetImage, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     m_context->emitMemoryBarrier(VK_DEPENDENCY_DEVICE_GROUP_BIT,
                                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                                  VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
                                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                                  VK_ACCESS_SHADER_READ_BIT);
 
-    // signal to external that rendewring is done
+    // signal to external that rendering is done
     m_context->getCommandList()->addSignalSemaphore(m_frameEndSemaphore->handle(), 1);
     m_device->submitCommandList(m_context->endRecording(), VK_NULL_HANDLE, VK_NULL_HANDLE);
-
 
     m_parent->GetDXVKDevice()->incrementPresentCount();
 
