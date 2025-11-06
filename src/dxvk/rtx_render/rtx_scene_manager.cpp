@@ -516,8 +516,8 @@ namespace dxvk {
     // RtxOptions will still be pending, so any changes to them will apply next frame.
     m_graphManager.update(ctx);
 
-    // Clear material hashes before the next frame.  These are used by components, so must clear after graphManager updates.
-    clearFrameMaterialHashes();
+    // Clear replacement material hashes before the next frame.  These are used by components, so must clear after graphManager updates.
+    clearFrameReplacementMaterialHashes();
     
     // Clear mesh hashes before the next frame.  These are used by components, so must clear after graphManager updates.
     clearFrameMeshHashes();
@@ -547,8 +547,8 @@ namespace dxvk {
 
         MaterialData* pFogReplacement = m_pReplacer->getReplacementMaterial(fogHash);
         if (pFogReplacement) {
-          // Track this material hash for texture hash checking
-          trackMaterialHash(fogHash);
+          // Track this replacement material hash for hash checking
+          trackReplacementMaterialHash(fogHash);
           // Fog has been replaced by a translucent material to start the camera in,
           // meaning that it was being used to indicate 'underwater' or something similar.
           if (pFogReplacement->getType() != MaterialDataType::Translucent) {
@@ -617,8 +617,6 @@ namespace dxvk {
     // test if any direct material replacements exist
     MaterialData* pReplacementMaterial = m_pReplacer->getReplacementMaterial(input.getMaterialData().getHash());
     if (pReplacementMaterial != nullptr) {
-      // Track this material hash for texture hash checking
-      trackMaterialHash(input.getMaterialData().getHash());
       // Make a copy - dont modify the replacement data.
       MaterialData renderMaterialData = *pReplacementMaterial;
       // merge in the input material from game
@@ -1811,23 +1809,23 @@ namespace dxvk {
   #endif
   }
 
-  void SceneManager::trackMaterialHash(XXH64_hash_t materialHash) {
+  void SceneManager::trackReplacementMaterialHash(XXH64_hash_t materialHash) {
     if (materialHash != kEmptyHash) {
-      m_currentFrameMaterialHashes[materialHash]++;
+      m_currentFrameReplacementMaterialHashes[materialHash]++;
     }
   }
 
-  bool SceneManager::isMaterialHashUsedThisFrame(XXH64_hash_t materialHash) const {
-    return m_currentFrameMaterialHashes.find(materialHash) != m_currentFrameMaterialHashes.end();
+  bool SceneManager::isReplacementMaterialHashUsedThisFrame(XXH64_hash_t materialHash) const {
+    return m_currentFrameReplacementMaterialHashes.find(materialHash) != m_currentFrameReplacementMaterialHashes.end();
   }
 
-  uint32_t SceneManager::getMaterialHashUsageCount(XXH64_hash_t materialHash) const {
-    auto it = m_currentFrameMaterialHashes.find(materialHash);
-    return (it != m_currentFrameMaterialHashes.end()) ? it->second : 0;
+  uint32_t SceneManager::getReplacementMaterialHashUsageCount(XXH64_hash_t materialHash) const {
+    auto it = m_currentFrameReplacementMaterialHashes.find(materialHash);
+    return (it != m_currentFrameReplacementMaterialHashes.end()) ? it->second : 0;
   }
 
-  void SceneManager::clearFrameMaterialHashes() {
-    m_currentFrameMaterialHashes.clear();
+  void SceneManager::clearFrameReplacementMaterialHashes() {
+    m_currentFrameReplacementMaterialHashes.clear();
   }
 
   void SceneManager::trackMeshHash(XXH64_hash_t meshHash) {

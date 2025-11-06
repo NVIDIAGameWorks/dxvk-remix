@@ -53,7 +53,7 @@ REMIX_COMPONENT( \
     "\nCombines normalization (reverse LERP), easing, and mapping (LERP) into a single component. " \
     "\n\nNote input values outside of input range are valid, and that easing can lead to the output value being " \
     "outside of the output range even when input is inside the input range." \
-    "\n Inverted ranges (max < min) are supported, but the results are undefined and may change without warning.", \
+    "\nInverted input ranges (Input Max < Input Min) are supported - the min/max will be swapped and the normalized value inverted.", \
   /* the version number */ 1, \
   LIST_INPUTS, LIST_STATES, LIST_OUTPUTS);
 
@@ -65,14 +65,30 @@ void InterpolateFloat::updateRange(const Rc<DxvkContext>& context, const size_t 
   for (size_t i = start; i < end; i++) {
     // Step 1: Normalize input value to 0-1 range (reverse LERP / float_to_strength)
     float normalizedValue = m_value[i];
-    if (m_inputMax[i] == m_inputMin[i]) {
+    bool shouldInvert = false;
+    
+    // Check if the range is inverted
+    float minVal = m_inputMin[i];
+    float maxVal = m_inputMax[i];
+    if (minVal > maxVal) {
+      // Swap min and max
+      std::swap(minVal, maxVal);
+      shouldInvert = true;
+    }
+    
+    if (maxVal == minVal) {
       ONCE(Logger::err(str::format("InterpolateFloat: Input Min and Input Max are the same. Setting normalized value to 0.0f. Input Min: ", m_inputMin[i], " Input Max: ", m_inputMax[i])));
       normalizedValue = 0.0f; // Avoid division by zero
     } else {
       if (m_clampInput[i]) {
-        normalizedValue = clamp(normalizedValue, m_inputMin[i], m_inputMax[i]);
+        normalizedValue = clamp(normalizedValue, minVal, maxVal);
       }
-      normalizedValue = (normalizedValue - m_inputMin[i]) / (m_inputMax[i] - m_inputMin[i]);
+      normalizedValue = (normalizedValue - minVal) / (maxVal - minVal);
+      
+      // Invert normalized value if the range was inverted
+      if (shouldInvert) {
+        normalizedValue = 1.0f - normalizedValue;
+      }
     }
     
     // cache in a const value to avoid double branch
@@ -99,4 +115,3 @@ void InterpolateFloat::updateRange(const Rc<DxvkContext>& context, const size_t 
 
 }  // namespace components
 }  // namespace dxvk
-

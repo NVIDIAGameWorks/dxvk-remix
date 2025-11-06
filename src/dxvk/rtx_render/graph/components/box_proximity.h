@@ -48,14 +48,14 @@ namespace components {
 #define LIST_STATES(X)
 
 #define LIST_OUTPUTS(X) \
-  X(RtComponentPropertyType::Float, 0.0f, signedDistance, "Signed Distance", "Distance in object space to the nearest bounding box plane. Positive when inside, negative when outside.  Outputs -FLT_MAX when no valid bounding box is found.") \
+  X(RtComponentPropertyType::Float, 0.0f, signedDistance, "Signed Distance", "Distance in object space to the nearest bounding box plane. Positive when outside, negative when inside.  Outputs FLT_MAX when no valid bounding box is found.") \
   X(RtComponentPropertyType::Float, 0.0f, activationStrength, "Activation Strength", "Normalized 0-1 value: 0 when on bounding box surface, 1 when at max distance inside (with easing applied).")
 
 REMIX_COMPONENT( \
   /* the Component name */ BoxProximity, \
   /* the UI name */        "Box Proximity", \
   /* the UI categories */  "Sense", \
-  /* the doc string */     "Calculates the signed distance from a world position to a mesh's bounding box. Positive values indicate the point is inside the bounding box.  Note that the output is in object space.", \
+  /* the doc string */     "Calculates the signed distance from a world position to a mesh's bounding box. Positive values indicate the point is outside the bounding box.  Note that the output is in object space.", \
   /* the version number */ 1, \
   LIST_INPUTS, LIST_STATES, LIST_OUTPUTS);
 
@@ -64,7 +64,7 @@ REMIX_COMPONENT( \
 #undef LIST_OUTPUTS
 
 // Calculate signed distance from point to axis-aligned bounding box
-// Returns positive distance when inside the box, negative when outside
+// Returns positive distance when outside the box, negative when inside
 static float calculateSignedDistanceToAABB(const Vector3& point, const AxisAlignedBoundingBox& aabb) {
   // bounding box already validated in updateRange function
   
@@ -78,14 +78,14 @@ static float calculateSignedDistanceToAABB(const Vector3& point, const AxisAlign
   // If the point is inside the box, all distances are negative
   // The signed distance is the maximum (least negative) distance to any face
   if (distToFaces.x <= 0.0f && distToFaces.y <= 0.0f && distToFaces.z <= 0.0f) {
-    // Inside the box - return the distance to the nearest face (positive)
-    return -std::max(distToFaces.x, std::max(distToFaces.y, distToFaces.z));
+    // Inside the box - return the distance to the nearest face (negative)
+    return std::max(distToFaces.x, std::max(distToFaces.y, distToFaces.z));
   } else {
-    // Outside the box - return the distance to the nearest corner/edge/face (negative)
+    // Outside the box - return the distance to the nearest corner/edge/face (positive)
     // For points outside, we need the Euclidean distance to the nearest point on the box
     Vector3 clampedPoint = clamp(point, aabb.minPos, aabb.maxPos);
     Vector3 diff = point - clampedPoint;
-    return -length(diff);
+    return length(diff);
   }
 }
 
@@ -142,7 +142,7 @@ void BoxProximity::updateRange(const Rc<DxvkContext>& context, const size_t star
 
     if (unlikely(signedDistance == FLT_MAX)) {
       ONCE(Logger::err(str::format("BoxProximity: No valid bounding box found.")));
-      m_signedDistance[i] = -FLT_MAX;
+      m_signedDistance[i] = FLT_MAX;
       m_activationStrength[i] = 0.0f;
       continue;
     }

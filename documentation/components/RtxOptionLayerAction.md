@@ -17,7 +17,7 @@ Controls an RtxOptionLayer by name, allowing dynamic enable/disable, strength ad
 | enabled | Enabled | Bool | Input | true | Yes | 
 | blendStrength | Blend Strength | Float | Input | 1\.0 | Yes | 
 | blendThreshold | Blend Threshold | Float | Input | 0\.1 | Yes | 
-| priority | Priority | Uint32 | Input | 100 | Yes | 
+| priority | Priority | Uint32 | Input | 10000 | Yes | 
 
 ### Config Path
 
@@ -56,8 +56,8 @@ The priority for the option layer\. Higher values are blended onto lower values\
 
 **Value Constraints:**
 
-- **Minimum Value:** 0
-- **Maximum Value:** 4294967195
+- **Minimum Value:** 101
+- **Maximum Value:** 4294967294
 
 ## State Properties
 

@@ -63,7 +63,7 @@ const RtxOptionLayer* RtxOptionLayerManager::acquireLayer(const std::string& con
   
   // Initialize reference count and store in priority map
   newLayer->incrementRefCount();
-  s_priorityToLayer[priority] = newLayer;
+  s_priorityToLayer[newLayer->getPriority()] = newLayer;
   
   return newLayer;
 }

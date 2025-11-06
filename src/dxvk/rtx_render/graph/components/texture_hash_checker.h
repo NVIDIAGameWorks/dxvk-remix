@@ -41,7 +41,7 @@ REMIX_COMPONENT( \
   /* the Component name */ TextureHashChecker, \
   /* the UI name */        "Texture Hash Checker", \
   /* the UI categories */  "Sense", \
-  /* the doc string */     "Checks if a specific hash was used for material replacement in the current frame.", \
+  /* the doc string */     "Checks if a specific texture hash was used for material replacement in the current frame.  This includes textures in all categories, including ignored textures.", \
   /* the version number */ 1, \
   LIST_INPUTS, LIST_STATES, LIST_OUTPUTS);
 
@@ -58,7 +58,7 @@ void TextureHashChecker::updateRange(const Rc<DxvkContext>& context, const size_
     const uint64_t targetHash = m_textureHash[i];
     
     // Check if the texture hash was used for material replacement this frame
-    uint32_t count = sceneManager.getMaterialHashUsageCount(targetHash);
+    uint32_t count = sceneManager.getReplacementMaterialHashUsageCount(targetHash);
     bool isUsed = count > 0;
     
     m_isUsed[i] = isUsed;
