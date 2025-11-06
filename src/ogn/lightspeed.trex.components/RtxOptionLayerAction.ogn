@@ -9,7 +9,7 @@
     "inputs": {
       "configPath": {
         "description": ["The config file for the RtxOptionLayer to control."],
-        "type": "asset",
+        "type": "token",
         "default": "",
         "uiName": "Config Path"
       },
@@ -37,10 +37,10 @@
       "priority": {
         "description": ["The priority for the option layer. Higher values are blended onto lower values. Must be unique across all layers."],
         "type": "uint",
-        "default": 100,
+        "default": 10000,
         "optional": true,
         "uiName": "Priority"
       }
-    },
+    }
   }
 }

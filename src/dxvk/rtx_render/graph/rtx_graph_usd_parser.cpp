@@ -23,7 +23,55 @@
 #include "rtx_graph_usd_parser.h"
 #include "dxvk_scoped_annotation.h"
 
+#include <algorithm>
+
+#include "../../../lssusd/usd_include_begin.h"
+#include <pxr/usd/usd/stage.h>
+#include <pxr/usd/usdGeom/mesh.h>
+#include <pxr/usd/usdLux/lightAPI.h>
+#include <pxr/usd/sdf/attributeSpec.h>
+#include <pxr/usd/sdf/layer.h>
+#include <pxr/usd/ar/resolver.h>
+#include <pxr/usd/ar/resolvedPath.h>
+#include "../../../lssusd/usd_include_end.h"
+
 namespace dxvk {
+
+namespace {
+
+// Helper function to resolve asset paths relative to the attribute's authoring layer
+std::string resolveAssetPath(const pxr::UsdAttribute& attr, const std::string& pathStr) {
+  if (pathStr.empty()) {
+    return pathStr;
+  }
+  
+  // Get the layer where this attribute value is authored (strongest opinion)
+  auto propertyStack = attr.GetPropertyStack();
+  if (!propertyStack.empty()) {
+    pxr::SdfLayerHandle authoringLayer = propertyStack.front()->GetLayer();
+    if (authoringLayer) {
+      // Use ArResolver to properly resolve the asset path relative to the authoring layer
+      pxr::ArResolver& resolver = pxr::ArGetResolver();
+      
+      // Create an anchored identifier using the layer's path as the anchor
+      std::string identifier = resolver.CreateIdentifier(
+        pathStr, 
+        pxr::ArResolvedPath(authoringLayer->GetRealPath())
+      );
+      
+      // Resolve the identifier to get the final resolved path
+      pxr::ArResolvedPath resolvedPath = resolver.Resolve(identifier);
+      if (!resolvedPath.empty()) {
+        return resolvedPath.GetPathString();
+      }
+    }
+  }
+  
+  // If we couldn't resolve it, return the original path
+  return pathStr;
+}
+
+} // anonymous namespace
 
 RtGraphState GraphUsdParser::parseGraph(AssetReplacements& replacements, const pxr::UsdPrim& graphPrim, PathToOffsetMap& pathToOffsetMap) {
   ScopedCpuProfileZone();
@@ -335,7 +383,8 @@ RtComponentPropertyValue GraphUsdParser::getPropertyValue(const pxr::UsdRelation
         Logger::err(str::format("Relationship path ", path.GetString(), " not found in replacement hierarchy."));
       } else {
         pxr::UsdPrim prim = rel.GetStage()->GetPrimAtPath(path);
-        if (!prim.IsValid()) {
+        // if the offset is 0, it may be referring to the original mesh, which may not be a valid prim.
+        if (!prim.IsValid() && iter->second != 0) {
           Logger::err(str::format("Relationship path ", path.GetString(), " not found in replacement hierarchy."));
         } else {
           result = iter->second;
@@ -377,6 +426,15 @@ RtComponentPropertyValue GraphUsdParser::getPropertyValue(const pxr::UsdAttribut
     case RtComponentPropertyType::String:
       return getPropertyValue<std::string>(value, spec);
     case RtComponentPropertyType::AssetPath:
+      // Special handling for AssetPath when the value is a TfToken
+      // We need to resolve the path relative to the attribute's layer
+      if (value.IsHolding<pxr::TfToken>()) {
+        const std::string pathStr = value.Get<pxr::TfToken>().GetString();
+        if (!pathStr.empty()) {
+          return resolveAssetPath(attr, pathStr);
+        }
+        return spec.defaultValue;
+      }
       return getPropertyValue<std::string>(value, spec);
     case RtComponentPropertyType::Prim:
       throw DxvkError(str::format("Prim target properties should be UsdRelationships, not UsdAttributes."));

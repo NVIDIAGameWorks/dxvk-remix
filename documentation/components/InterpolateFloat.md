@@ -1,6 +1,6 @@
 # Interpolate Float
 
-Interpolates a value from an input range to an output range with optional easing\. <br/>Combines normalization \(reverse LERP\), easing, and mapping \(LERP\) into a single component\. <br/><br/>Note input values outside of input range are valid, and that easing can lead to the output value being outside of the output range even when input is inside the input range\.<br/> Inverted ranges \(max < min\) are supported, but the results are undefined and may change without warning\.
+Interpolates a value from an input range to an output range with optional easing\. <br/>Combines normalization \(reverse LERP\), easing, and mapping \(LERP\) into a single component\. <br/><br/>Note input values outside of input range are valid, and that easing can lead to the output value being outside of the output range even when input is inside the input range\.<br/>Inverted input ranges \(Input Max < Input Min\) are supported \- the min/max will be swapped and the normalized value inverted\.
 
 ## Component Information
 

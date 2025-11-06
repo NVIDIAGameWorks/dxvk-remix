@@ -25,13 +25,8 @@
 #include <pxr/usd/usd/attribute.h>
 #include <pxr/usd/usd/prim.h>
 #include <pxr/usd/usd/property.h>
-#include <pxr/usd/usd/stage.h>
-#include <pxr/usd/usdGeom/mesh.h>
-#include <pxr/usd/usdLux/lightAPI.h>
-#include <pxr/usd/sdf/layer.h>
 #include "../../../lssusd/usd_include_end.h"
 
-#include <algorithm>
 #include "rtx_graph_types.h"
 #include "../rtx_asset_replacer.h"
 #include "../util/log/log.h"
@@ -95,12 +90,6 @@ private:
         return propertyValueForceType<uint8_t>(value.Get<T>());
       }
       return value.Get<T>();
-    } else if (constexpr (std::is_same_v<T, std::string>) && value.IsHolding<pxr::SdfAssetPath>()) {
-      const std::string resolvedPath = value.Get<pxr::SdfAssetPath>().GetResolvedPath();
-      if (resolvedPath.empty()) {
-        return value.Get<pxr::SdfAssetPath>().GetAssetPath();
-      }
-      return resolvedPath;
     } else if (value.IsHolding<pxr::TfToken>()) {
       // Note: holds_alternative<bool> is a compiler error, so this constexpr check is needed.
       if constexpr (!std::is_same_v<T, bool>) {

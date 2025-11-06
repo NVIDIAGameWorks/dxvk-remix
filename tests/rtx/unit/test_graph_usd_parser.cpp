@@ -574,8 +574,8 @@ void testPropertyValueTypes() {
   
   // Test String property
   pxr::SdfPath stringPropertyPath = nodePath.AppendProperty(pxr::TfToken("stringProperty"));
-  pxr::UsdAttribute stringAttr = nodePrim.CreateAttribute(pxr::TfToken("stringProperty"), pxr::SdfValueTypeNames->String);
-  stringAttr.Set(std::string("Test String Value"));
+  pxr::UsdAttribute stringAttr = nodePrim.CreateAttribute(pxr::TfToken("stringProperty"), pxr::SdfValueTypeNames->Token);
+  stringAttr.Set(pxr::TfToken("Test String Value"));
   
   RtComponentPropertySpec stringSpec;
   stringSpec.type = RtComponentPropertyType::String;
@@ -591,8 +591,8 @@ void testPropertyValueTypes() {
   
   // Test AssetPath property
   pxr::SdfPath assetPathPropertyPath = nodePath.AppendProperty(pxr::TfToken("assetPathProperty"));
-  pxr::UsdAttribute assetPathAttr = nodePrim.CreateAttribute(pxr::TfToken("assetPathProperty"), pxr::SdfValueTypeNames->Asset);
-  assetPathAttr.Set(pxr::SdfAssetPath("/path/to/test/asset.usd"));
+  pxr::UsdAttribute assetPathAttr = nodePrim.CreateAttribute(pxr::TfToken("assetPathProperty"), pxr::SdfValueTypeNames->Token);
+  assetPathAttr.Set(pxr::TfToken("/path/to/test/asset.usd"));
   
   RtComponentPropertySpec assetPathSpec;
   assetPathSpec.type = RtComponentPropertyType::AssetPath;
@@ -982,11 +982,11 @@ void testAllPropertyTypes() {
   attr = nodePrim.CreateAttribute(pxr::TfToken("inputs:inputUint64"), pxr::SdfValueTypeNames->UInt64);
   attr.Set(uint64_t(456));
 
-  attr = nodePrim.CreateAttribute(pxr::TfToken("inputs:inputString"), pxr::SdfValueTypeNames->String);
-  attr.Set(std::string("test_string_value"));
+  attr = nodePrim.CreateAttribute(pxr::TfToken("inputs:inputString"), pxr::SdfValueTypeNames->Token);
+  attr.Set(pxr::TfToken("test_string_value"));
 
-  attr = nodePrim.CreateAttribute(pxr::TfToken("inputs:inputAssetPath"), pxr::SdfValueTypeNames->Asset);
-  attr.Set(pxr::SdfAssetPath("/path/to/test/asset.usd"));
+  attr = nodePrim.CreateAttribute(pxr::TfToken("inputs:inputAssetPath"), pxr::SdfValueTypeNames->Token);
+  attr.Set(pxr::TfToken("/path/to/test/asset.usd"));
 
   pxr::UsdRelationship rel = nodePrim.CreateRelationship(pxr::TfToken("inputs:inputPrim"));
   rel.SetTargets({meshPrim.GetPath()});
@@ -1142,8 +1142,8 @@ void testStringAndAssetPathTypes() {
   
   // Test String property
   pxr::SdfPath stringPropertyPath = nodePath.AppendProperty(pxr::TfToken("stringProperty"));
-  pxr::UsdAttribute stringAttr = nodePrim.CreateAttribute(pxr::TfToken("stringProperty"), pxr::SdfValueTypeNames->String);
-  stringAttr.Set(std::string("Hello, World!"));
+  pxr::UsdAttribute stringAttr = nodePrim.CreateAttribute(pxr::TfToken("stringProperty"), pxr::SdfValueTypeNames->Token);
+  stringAttr.Set(pxr::TfToken("Hello, World!"));
   
   RtComponentPropertySpec stringSpec;
   stringSpec.type = RtComponentPropertyType::String;
@@ -1159,8 +1159,8 @@ void testStringAndAssetPathTypes() {
   
   // Test AssetPath property
   pxr::SdfPath assetPathPropertyPath = nodePath.AppendProperty(pxr::TfToken("assetPathProperty"));
-  pxr::UsdAttribute assetPathAttr = nodePrim.CreateAttribute(pxr::TfToken("assetPathProperty"), pxr::SdfValueTypeNames->Asset);
-  assetPathAttr.Set(pxr::SdfAssetPath("/path/to/some/asset.usd"));
+  pxr::UsdAttribute assetPathAttr = nodePrim.CreateAttribute(pxr::TfToken("assetPathProperty"), pxr::SdfValueTypeNames->Token);
+  assetPathAttr.Set(pxr::TfToken("/path/to/some/asset.usd"));
   
   RtComponentPropertySpec assetPathSpec;
   assetPathSpec.type = RtComponentPropertyType::AssetPath;

@@ -1,6 +1,6 @@
 # Box Proximity
 
-Calculates the signed distance from a world position to a mesh's bounding box\. Positive values indicate the point is inside the bounding box\.  Note that the output is in object space\.
+Calculates the signed distance from a world position to a mesh's bounding box\. Positive values indicate the point is outside the bounding box\.  Note that the output is in object space\.
 
 ## Component Information
 
@@ -67,7 +67,7 @@ Underlying Type: `Uint32`
 
 ### Signed Distance
 
-Distance in object space to the nearest bounding box plane\. Positive when inside, negative when outside\.  Outputs \-FLT\_MAX when no valid bounding box is found\.
+Distance in object space to the nearest bounding box plane\. Positive when outside, negative when inside\.  Outputs FLT\_MAX when no valid bounding box is found\.
 
 
 ### Activation Strength

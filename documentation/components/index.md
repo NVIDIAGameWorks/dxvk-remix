@@ -29,7 +29,7 @@ This documentation provides detailed information about all available components 
 | [Camera](Camera.md) | Outputs current camera properties including position, orientation vectors, and projection parameters\.\.\. | 1 |
 | [Keyboard Input](KeyboardInput.md) | Checks the state of a keyboard key or key combination using the same format as RTX options\. | 1 |
 | [Mesh Hash Checker](MeshHashChecker.md) | Checks if a specific mesh hash was processed in the current frame\. | 1 |
-| [Texture Hash Checker](TextureHashChecker.md) | Checks if a specific hash was used for material replacement in the current frame\. | 1 |
+| [Texture Hash Checker](TextureHashChecker.md) | Checks if a specific texture hash was used for material replacement in the current frame\.  This incl\.\.\. | 1 |
 | [Time](Time.md) | Outputs the time in seconds since the component was created\. Can be paused and speed\-adjusted\. | 1 |
 
 ## Statistics

@@ -112,7 +112,6 @@ void RtxGraphGUI::showGraphSelector(const SceneManager& sceneManager) {
         bool isSelected = (m_selectedInstanceId == id);
         if (ImGui::Selectable(name.c_str(), isSelected)) {
           m_selectedInstanceId = id;
-          m_components.clear();
         }
       }
     }
@@ -371,6 +370,9 @@ std::string RtxGraphGUI::extractGraphInstanceName(const GraphManager& graphManag
   if (thirdSlash > 0 && thirdSlash < primPath.length()) {
     std::string fullName = primPath.substr(thirdSlash);
     
+    // Append instance ID
+    std::string instanceSuffix = " (" + std::to_string(graphInstance.getId()) + ")";
+    
     // Truncate if too long for ImGui tooltip (keep first 14 chars and end)
     const size_t maxLength = 60; // Adjust this value as needed
     if (fullName.length() > maxLength) {
@@ -380,11 +382,11 @@ std::string RtxGraphGUI::extractGraphInstanceName(const GraphManager& graphManag
       if (fullName.length() > prefixLength + suffixLength + 3) {
         std::string prefix = fullName.substr(0, prefixLength);
         std::string suffix = fullName.substr(fullName.length() - suffixLength);
-        return prefix + "..." + suffix;
+        return prefix + "..." + suffix + instanceSuffix;
       }
     }
     
-    return fullName;
+    return fullName + instanceSuffix;
   }
   
   // Fallback to old naming scheme

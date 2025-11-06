@@ -28,7 +28,9 @@
 namespace dxvk {
 namespace components {
 
-static constexpr uint32_t kMaxComponentRtxOptionLayerPriority = ::dxvk::RtxOptionLayer::s_runtimeOptionLayerPriority - ::dxvk::RtxOptionLayer::s_userOptionLayerOffset;
+static constexpr uint32_t kMaxComponentRtxOptionLayerPriority = dxvk::RtxOptionLayer::s_runtimeOptionLayerPriority - 1;
+static constexpr uint32_t kMinComponentRtxOptionLayerPriority = RtxOptionLayer::s_userOptionLayerOffset + 1;
+static constexpr uint32_t kDefaultComponentRtxOptionLayerPriority = 10000;
 
 
 #define LIST_INPUTS(X) \
@@ -38,7 +40,7 @@ static constexpr uint32_t kMaxComponentRtxOptionLayerPriority = ::dxvk::RtxOptio
       "\n\nLowest priority layer uses LERP to blend with default value, then each higher priority layer uses LERP to blend with the previous layer's result." \
       "\n\nIf multiple components control the same layer, the MAX blend strength will be used.", property.minValue = 0.0f, property.maxValue = 1.0f, property.optional = true) \
   X(RtComponentPropertyType::Float, 0.1f, blendThreshold, "Blend Threshold", "The blend threshold for non-float options (0.0 to 1.0). Non-float options are only applied when blend strength exceeds this threshold. If multiple components control the same layer, the MINIMUM blend threshold will be used.", property.minValue = 0.0f, property.maxValue = 1.0f, property.optional = true) \
-  X(RtComponentPropertyType::Uint32, 100, priority, "Priority", "The priority for the option layer. Higher values are blended onto lower values. Must be unique across all layers.", property.minValue = 0, property.maxValue = kMaxComponentRtxOptionLayerPriority, property.optional = true)
+  X(RtComponentPropertyType::Uint32, kDefaultComponentRtxOptionLayerPriority, priority, "Priority", "The priority for the option layer. Higher values are blended onto lower values. Must be unique across all layers.", property.minValue = RtxOptionLayer::s_userOptionLayerOffset + 1, property.maxValue = kMaxComponentRtxOptionLayerPriority, property.optional = true)
 
 #define LIST_STATES(X) \
   X(RtComponentPropertyType::Uint64, 0, cachedLayerPtr, "", "Cached pointer to the RtxOptionLayer (internal use).")
@@ -85,10 +87,15 @@ public:
 #undef LIST_OUTPUTS
 
 void RtxOptionLayerAction::initializeInstance(const Rc<DxvkContext>& context, const size_t index) {
+  uint32_t priority = m_priority[index];
+  clamp(priority, kMinComponentRtxOptionLayerPriority, kMaxComponentRtxOptionLayerPriority);
+
+  // TODO if the priority is left unset, we need to automatically assign a priority.
+
   // Acquire layer through the manager
   const ::dxvk::RtxOptionLayer* layer = dxvk::RtxOptionLayerManager::acquireLayer(
     m_configPath[index],
-    m_priority[index],
+    priority,
     1.0f,  // Default blend strength (will be updated in updateRange)
     0.1f   // Default blend threshold (will be updated in updateRange)
   );
@@ -123,21 +130,20 @@ void RtxOptionLayerAction::updateRange(const Rc<DxvkContext>& context, const siz
     // Request enabled state for this frame
     // If multiple components control this layer, it will be enabled if ANY of them request it
     cachedLayer->requestEnabled(m_enabled[i]);
-    
-    // Request blend strength for this frame
-    // If multiple components control this layer, the MAX blend strength will be used
-    const float targetStrength = std::clamp(m_blendStrength[i], 0.0f, 1.0f);
-    cachedLayer->requestBlendStrength(targetStrength);
-    
-    // Request blend threshold for this frame
-    // If multiple components control this layer, the MIN blend threshold will be used
-    const float targetThreshold = std::clamp(m_blendThreshold[i], 0.0f, 1.0f);
-    cachedLayer->requestBlendThreshold(targetThreshold);
+
+    if (m_enabled[i]) {
+      // Request blend strength for this frame
+      // If multiple components control this layer, the MAX blend strength will be used
+      const float targetStrength = std::clamp(m_blendStrength[i], 0.0f, 1.0f);
+      cachedLayer->requestBlendStrength(targetStrength);
+      
+      // Request blend threshold for this frame
+      // If multiple components control this layer, the MIN blend threshold will be used
+      const float targetThreshold = std::clamp(m_blendThreshold[i], 0.0f, 1.0f);
+      cachedLayer->requestBlendThreshold(targetThreshold);
+    }
   }
 }
 
 }  // namespace components
 }  // namespace dxvk
-
-
-

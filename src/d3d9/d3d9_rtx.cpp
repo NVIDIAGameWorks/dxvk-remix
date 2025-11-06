@@ -1062,6 +1062,15 @@ namespace dxvk {
     if (d3d9State().textures[firstStage]) {
       m_activeDrawCallState.setupCategoriesForTexture();
 
+      // Track the texture hash before checking if it should be ignored
+      // This ensures we track all textures sent by the game, not just the ones that are actually rendered.
+      const XXH64_hash_t textureHash = m_activeDrawCallState.materialData.getColorTexture().getImageHash();
+      if (textureHash != kEmptyHash) {
+        m_parent->EmitCs([textureHash](DxvkContext* ctx) {
+          static_cast<RtxContext*>(ctx)->getSceneManager().trackReplacementMaterialHash(textureHash);
+        });
+      }
+      
       // Check if an ignore texture is bound
       if (m_activeDrawCallState.getCategoryFlags().test(InstanceCategories::Ignore)) {
         return false;
