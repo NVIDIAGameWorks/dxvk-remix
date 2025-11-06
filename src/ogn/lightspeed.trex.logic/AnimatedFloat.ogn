@@ -1,5 +1,5 @@
 {
-  "lightspeed.trex.components.AnimatedFloat": {
+  "lightspeed.trex.logic.AnimatedFloat": {
     "description": ["A single animated float value."],
     "version": 1,
     "uiName": "Animated Float",

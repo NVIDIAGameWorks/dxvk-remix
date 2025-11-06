@@ -1,5 +1,5 @@
 {
-  "lightspeed.trex.components.MeshHashChecker": {
+  "lightspeed.trex.logic.MeshHashChecker": {
     "description": ["Checks if a specific mesh hash was processed in the current frame."],
     "version": 1,
     "uiName": "Mesh Hash Checker",

@@ -5,10 +5,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from lightspeed.trex.components.ogn.ogn.OgnTemplateNodePyDatabase import OgnTemplateNodePyDatabase
+    from lightspeed.trex.logic.ogn.ogn.OgnTemplateNodePyDatabase import OgnTemplateNodePyDatabase
 
 
-class LoopFloat:
+class BoxProximity:
     @staticmethod
     def compute(_db: OgnTemplateNodePyDatabase):
         return True

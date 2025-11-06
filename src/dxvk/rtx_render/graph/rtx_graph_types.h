@@ -184,7 +184,7 @@ using RtComponentType = XXH64_hash_t;
 static const RtComponentType kInvalidComponentType = kEmptyHash;
 
 struct RtComponentPropertySpec {
-  static inline const std::string kUsdNamePrefix = "lightspeed.trex.components.";
+  static inline const std::string kUsdNamePrefix = "lightspeed.trex.logic.";
   
   RtComponentPropertyType type;
   RtComponentPropertyValue defaultValue;

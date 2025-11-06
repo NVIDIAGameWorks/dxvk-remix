@@ -1,5 +1,5 @@
 {
-  "lightspeed.trex.components.TextureHashChecker": {
+  "lightspeed.trex.logic.TextureHashChecker": {
     "description": ["Checks if a specific texture hash was used for material replacement in the current frame.  This includes textures in all categories, including ignored textures."],
     "version": 1,
     "uiName": "Texture Hash Checker",

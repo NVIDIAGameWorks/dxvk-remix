@@ -1,5 +1,5 @@
 {
-  "lightspeed.trex.components.KeyboardInput": {
+  "lightspeed.trex.logic.KeyboardInput": {
     "description": ["Checks the state of a keyboard key or key combination using the same format as RTX options."],
     "version": 1,
     "uiName": "Keyboard Input",

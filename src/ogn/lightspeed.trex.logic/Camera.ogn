@@ -1,5 +1,5 @@
 {
-  "lightspeed.trex.components.Camera": {
+  "lightspeed.trex.logic.Camera": {
     "description": ["Outputs current camera properties including position, orientation vectors, and projection parameters. Uses free camera when both 'rtx.camera.useFreeCameraForComponents' and free camera are enabled."],
     "version": 1,
     "uiName": "Camera",

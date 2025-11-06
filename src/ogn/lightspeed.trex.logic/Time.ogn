@@ -1,5 +1,5 @@
 {
-  "lightspeed.trex.components.Time": {
+  "lightspeed.trex.logic.Time": {
     "description": ["Outputs the time in seconds since the component was created. Can be paused and speed-adjusted."],
     "version": 1,
     "uiName": "Time",

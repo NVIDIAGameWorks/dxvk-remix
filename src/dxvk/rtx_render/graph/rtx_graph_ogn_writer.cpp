@@ -300,7 +300,7 @@ bool writePythonStub(const RtComponentSpec* spec, const char* outputFolderPath) 
   outputFile << "from typing import TYPE_CHECKING" << std::endl;
   outputFile << std::endl;
   outputFile << "if TYPE_CHECKING:" << std::endl;
-  outputFile << "    from lightspeed.trex.components.ogn.ogn.OgnTemplateNodePyDatabase import OgnTemplateNodePyDatabase" << std::endl;
+  outputFile << "    from lightspeed.trex.logic.ogn.ogn.OgnTemplateNodePyDatabase import OgnTemplateNodePyDatabase" << std::endl;
   outputFile << std::endl;
   outputFile << std::endl;
   outputFile << "class "<< escapeJsonString(spec->getClassName()) << ":" << std::endl;

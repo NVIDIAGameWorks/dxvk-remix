@@ -42,7 +42,7 @@
 namespace {
 
   // Shared constants for directory paths
-  const std::string kGoldenOgnDir = BUILD_SOURCE_ROOT "src/ogn/lightspeed.trex.components/";
+  const std::string kGoldenOgnDir = BUILD_SOURCE_ROOT "src/ogn/lightspeed.trex.logic/";
   const std::string kGoldenMdDir = BUILD_SOURCE_ROOT "documentation/components/";
   
   const std::string kModifiedOgnDir = "rtx-remix/schemas/";
@@ -122,7 +122,7 @@ namespace test_graph_documentation_app {
       std::string fileName = filePath1Path.filename().string();
       
       // Calculate relative path from the source root to preserve folder structure
-      // For OGN files: from src/ogn/lightspeed.trex.components/ to rtx-remix/golden/src/ogn/lightspeed.trex.components/
+      // For OGN files: from src/ogn/lightspeed.trex.logic/ to rtx-remix/golden/src/ogn/lightspeed.trex.logic/
       // For MD files: from documentation/components/ to rtx-remix/golden/documentation/components/
       std::filesystem::path goldenSourceDir = std::filesystem::path(filePath1).parent_path();
       std::filesystem::path sourceRoot = BUILD_SOURCE_ROOT; // The repository root

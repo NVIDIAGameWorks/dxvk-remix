@@ -80,7 +80,7 @@ public:
     
     // Add node:type attribute
     pxr::UsdAttribute typeAttr = nodePrim.CreateAttribute(pxr::TfToken("node:type"), pxr::SdfValueTypeNames->Token);
-    typeAttr.Set(pxr::TfToken("lightspeed.trex.components.TestComponent"));
+    typeAttr.Set(pxr::TfToken("lightspeed.trex.logic.TestComponent"));
     
     // Add node:typeVersion attribute
     pxr::UsdAttribute versionAttr = nodePrim.CreateAttribute(pxr::TfToken("node:typeVersion"), pxr::SdfValueTypeNames->Int);
@@ -109,7 +109,7 @@ public:
     
     // Add required attributes
     pxr::UsdAttribute typeAttr = nodePrim.CreateAttribute(pxr::TfToken("node:type"), pxr::SdfValueTypeNames->Token);
-    typeAttr.Set(pxr::TfToken("lightspeed.trex.components.TestComponent"));
+    typeAttr.Set(pxr::TfToken("lightspeed.trex.logic.TestComponent"));
     
     pxr::UsdAttribute versionAttr = nodePrim.CreateAttribute(pxr::TfToken("node:typeVersion"), pxr::SdfValueTypeNames->Int);
     versionAttr.Set(1);
@@ -250,7 +250,7 @@ void testCreateTestGraph() {
   
   pxr::TfToken typeValue;
   typeAttr.Get(&typeValue);
-  if (typeValue.GetString() != "lightspeed.trex.components.TestComponent") {
+  if (typeValue.GetString() != "lightspeed.trex.logic.TestComponent") {
     throw DxvkError("testCreateTestGraph: typeValue is not 'remix.test.component'");
   }
   
@@ -317,7 +317,7 @@ void testVersionCheck() {
   pxr::SdfPath noVersionNodePath = graphPrim.GetPath().AppendChild(pxr::TfToken("noVersionNode"));
   pxr::UsdPrim noVersionNodePrim = test.m_stage->DefinePrim(noVersionNodePath);
   pxr::UsdAttribute typeAttr = noVersionNodePrim.CreateAttribute(pxr::TfToken("node:type"), pxr::SdfValueTypeNames->Token);
-  typeAttr.Set(pxr::TfToken("lightspeed.trex.components.TestComponent"));
+  typeAttr.Set(pxr::TfToken("lightspeed.trex.logic.TestComponent"));
   
   Logger::info("Expecting 'err:   Node /World/testGraph/noVersionNode is missing a `node:typeVersion` attribute.'");
   result = GraphUsdParserTestApp::versionCheck(noVersionNodePrim, *componentSpec);
@@ -464,7 +464,7 @@ void testSimpleGraph() {
   if (spec->componentType != testSpec->componentType) {
     throw DxvkError("testSimpleGraph: spec componentType mismatch");
   }
-  if (spec->name != "lightspeed.trex.components.TestComponent") {
+  if (spec->name != "lightspeed.trex.logic.TestComponent") {
     throw DxvkError("testSimpleGraph: spec name mismatch");
   }
   
@@ -1310,7 +1310,7 @@ void testOldPropertyNames() {
     
     // Add required attributes in root layer
     pxr::UsdAttribute typeAttr = nodePrim.CreateAttribute(pxr::TfToken("node:type"), pxr::SdfValueTypeNames->Token);
-    typeAttr.Set(pxr::TfToken("lightspeed.trex.components.TestComponent"));
+    typeAttr.Set(pxr::TfToken("lightspeed.trex.logic.TestComponent"));
     pxr::UsdAttribute versionAttr = nodePrim.CreateAttribute(pxr::TfToken("node:typeVersion"), pxr::SdfValueTypeNames->Int);
     versionAttr.Set(1);
     

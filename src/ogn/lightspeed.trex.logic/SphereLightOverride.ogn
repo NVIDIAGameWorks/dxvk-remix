@@ -1,5 +1,5 @@
 {
-  "lightspeed.trex.components.SphereLightOverride": {
+  "lightspeed.trex.logic.SphereLightOverride": {
     "description": ["Override the sphere light properties."],
     "version": 1,
     "uiName": "Sphere Light",
