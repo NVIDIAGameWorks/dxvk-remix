@@ -981,6 +981,7 @@ namespace dxvk {
 
     if (showUI == UIType::None) {
       ImGui::CloseCurrentPopup();
+      ImGui::GetIO().MouseDrawCursor = false;
     } else {
       if (RtxOptions::showUICursor()) {
         ImGui::GetIO().MouseDrawCursor = true;
