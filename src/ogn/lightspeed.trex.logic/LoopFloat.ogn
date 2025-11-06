@@ -1,5 +1,5 @@
 {
-  "lightspeed.trex.components.LoopFloat": {
+  "lightspeed.trex.logic.LoopFloat": {
     "description": ["Applies looping behavior to a float value.  Value is unchanged if it is inside the range.\nComponent outputs Min Range if Min Range == Max Range and looping type is not None.\nInverted ranges (max < min) are supported, but the results are undefined and may change without warning."],
     "version": 1,
     "uiName": "Loop Float",

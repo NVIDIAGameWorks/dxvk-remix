@@ -1,5 +1,5 @@
 {
-  "lightspeed.trex.components.InterpolateFloat": {
+  "lightspeed.trex.logic.InterpolateFloat": {
     "description": ["Interpolates a value from an input range to an output range with optional easing. \nCombines normalization (reverse LERP), easing, and mapping (LERP) into a single component. \n\nNote input values outside of input range are valid, and that easing can lead to the output value being outside of the output range even when input is inside the input range.\nInverted input ranges (Input Max < Input Min) are supported - the min/max will be swapped and the normalized value inverted."],
     "version": 1,
     "uiName": "Interpolate Float",
