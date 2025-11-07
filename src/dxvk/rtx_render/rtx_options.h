@@ -1338,6 +1338,8 @@ namespace dxvk {
           RtxOption<bool>::writeOptions(changedConfigs, Option::serializeChangedOptionOnly());
           // Merge changed options into original option layer
           newConfig.merge(changedConfigs);
+        } else {
+          RtxOption<bool>::writeOptions(newConfig, Option::serializeChangedOptionOnly());
         }
       } else {
         RtxOption<bool>::writeOptions(newConfig, Option::serializeChangedOptionOnly());
