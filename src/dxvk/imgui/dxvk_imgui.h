@@ -281,7 +281,8 @@ namespace dxvk {
                     args.minValue = 0.0f, args.maxValue = 1.0f);
     RTX_OPTION_ARGS("rtx.gui", float, reflexStatRangePaddingRatio, 0.05f, "A value specifying the amount of padding applied to the Reflex stat graph ranges as a ratio to the calculated range.",
                     args.minValue = 0.0f);
-
+    RTX_OPTION("rtx.gui", Vector4, subRect, Vector4(0.f, 0.f, 0.f, 0.f), "Used for toolkit.");
+    
     public: static void onThemeChange(DxvkDevice* device);
     public: static void onBackgroundAlphaChange(DxvkDevice* device);
     RTX_OPTION_ARGS("rtx.gui", bool, compactGui, false, "A setting to toggle between compact and spacious GUI modes.",
