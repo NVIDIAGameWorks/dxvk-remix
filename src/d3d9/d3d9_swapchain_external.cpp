@@ -46,28 +46,24 @@ namespace dxvk {
       hwnd = hDestWindowOverride;
     }
 
-    auto targetImage = m_context->getCommonObjects()->getResources().getRaytracingOutput().m_finalOutput.resource(dxvk::Resources::AccessType::ReadWrite).image;
+    auto srcImage = m_context->getCommonObjects()->getResources().getRaytracingOutput().m_finalOutput.resource(dxvk::Resources::AccessType::ReadWrite).image;
+
+    auto targetImage = m_backBuffers[0]->GetCommonTexture()->GetImage();
+    auto swapImageView = m_backBuffers[0]->GetImageView(false);
 
     auto& imageInfo = targetImage->info();
 
     m_parent->m_rtx.EndFrame(targetImage);
+
+    m_parent->EmitCs([this, cTargetImage = targetImage, cSrcImage = srcImage](DxvkContext* ctx) {
+      dxvk::RtxContext::blitImageHelper(ctx, cSrcImage, cTargetImage, VkFilter::VK_FILTER_NEAREST);
+    });
 
     m_parent->Flush();
     m_parent->SynchronizeCsThread();
 
     m_context->beginRecording(m_device->createCommandList());
 
-    // Retrieve the image and image view to present
-    DxvkImageViewCreateInfo viewInfo;
-    viewInfo.type = VK_IMAGE_VIEW_TYPE_2D;
-    viewInfo.format = imageInfo.format;
-    viewInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    viewInfo.aspect = VK_IMAGE_ASPECT_COLOR_BIT;
-    viewInfo.minLevel = 0;
-    viewInfo.numLevels = 1;
-    viewInfo.minLayer = 0;
-    viewInfo.numLayers = 1;
-    auto swapImageView = new DxvkImageView(m_device->vkd(), targetImage, viewInfo);
 
     DxvkRenderTargets renderTargets;
     renderTargets.color[0].view = swapImageView;

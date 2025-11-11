@@ -1469,7 +1469,13 @@ namespace {
     }
 
     std::lock_guard lock { s_mutex };
-    remixDevice->EmitCs([cDest = destTexInfo->GetImage(), type = type](dxvk::DxvkContext* dxvkCtx) {
+
+    // Pass in the backbuffer incase we need it
+    IDirect3DSurface9* pSurface = nullptr;
+    remixDevice->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pSurface);
+    dxvk::D3D9Surface* backBufferSurface = static_cast<dxvk::D3D9Surface*>(pSurface);
+
+    remixDevice->EmitCs([cDest = destTexInfo->GetImage(), type = type, cBackbuffer = backBufferSurface->GetCommonTexture()->GetImage()](dxvk::DxvkContext* dxvkCtx) {
       auto* ctx = static_cast<dxvk::RtxContext*>(dxvkCtx);
 
       dxvk::Resources& resourceManager = ctx->getCommonObjects()->getResources();
@@ -1478,7 +1484,7 @@ namespace {
       dxvk::Rc<dxvk::DxvkImage> srcImage = nullptr;
       switch (type) {
       case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_FINAL_COLOR:
-        srcImage = rtOutput.m_finalOutput.resource(dxvk::Resources::AccessType::Read).image;
+        srcImage = cBackbuffer;
         break;
       case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_DEPTH:
         srcImage = rtOutput.m_primaryDepth.image;
