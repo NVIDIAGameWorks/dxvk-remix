@@ -29,7 +29,7 @@ namespace dxvk {
 namespace components {
 
 #define LIST_INPUTS(X) \
-  X(RtComponentPropertyType::Uint64, 0, textureHash, "Texture Hash", "The texture hash to check for usage in the current frame.")
+  X(RtComponentPropertyType::Hash, 0x0, textureHash, "Texture Hash", "The texture hash to check for usage in the current frame.")
 
 #define LIST_STATES(X)
 

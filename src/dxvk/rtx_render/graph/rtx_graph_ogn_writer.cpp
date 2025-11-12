@@ -24,6 +24,8 @@
 #include "../util/util_env.h"
 #include "../util/util_filesys.h"
 #include <filesystem>
+#include <sstream>
+#include <iomanip>
 
 namespace dxvk {
 namespace {
@@ -58,9 +60,10 @@ std::string propertyTypeToOgnType(RtComponentPropertyType type) {
     case RtComponentPropertyType::Int32: return "int";
     case RtComponentPropertyType::Uint32: return "uint";
     case RtComponentPropertyType::Uint64: return "uint64";
-    case RtComponentPropertyType::Prim: return "target";  // USD Relationship to a prim
     case RtComponentPropertyType::String: return "token";
     case RtComponentPropertyType::AssetPath: return "token";
+    case RtComponentPropertyType::Hash: return "token";
+    case RtComponentPropertyType::Prim: return "target";  // USD Relationship to a prim
   }
   return "unknown";
 }
@@ -101,6 +104,12 @@ std::string getDefaultValueAsJson(const RtComponentPropertyValue& value, RtCompo
       return "\"" + escapeJsonString(std::get<std::string>(value)) + "\"";
     case RtComponentPropertyType::AssetPath:
       return "\"" + escapeJsonString(std::get<std::string>(value)) + "\"";
+    case RtComponentPropertyType::Hash: {
+      // Hash is stored as uint64_t but output as a hex string token in OGN
+      std::ostringstream ss;
+      ss << "\"0x" << std::hex << std::get<uint64_t>(value) << "\"";
+      return ss.str();
+    }
     case RtComponentPropertyType::Prim:
       // Target relationships don't typically have default values in OGN
       return "null";

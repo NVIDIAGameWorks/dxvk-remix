@@ -57,12 +57,12 @@ enum class RtComponentPropertyType {
   Uint64,
   String,
   AssetPath,
+  Hash,
 
   // Default Value is ignored for relationships. It's safe to just use 0.
   Prim,
 
   // TODO should we support lists of any of the above types.
-  // TODO should Hash be a separate type? it's just uint64_t under the hood, but could be displayed differently.
   // TODO support generic types (i.e. number, or numbersAndVectors)
 
   // NOTE: Places to change when adding a new case:
@@ -89,9 +89,10 @@ template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::
 template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Int32> { using Type = int32_t; };
 template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Uint32> { using Type = uint32_t; };
 template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Uint64> { using Type = uint64_t; };
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Prim> { using Type = uint32_t; };
 template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::String> { using Type = std::string; };
 template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::AssetPath> { using Type = std::string; };
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Hash> { using Type = uint64_t; };
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Prim> { using Type = uint32_t; };
 
 template< RtComponentPropertyType propertyType >
 using RtComponentPropertyTypeToCppType = typename RtComponentPropertyTypeToCppTypeImpl<propertyType>::Type;

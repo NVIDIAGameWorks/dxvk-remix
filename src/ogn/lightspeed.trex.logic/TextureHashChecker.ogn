@@ -9,8 +9,8 @@
     "inputs": {
       "textureHash": {
         "description": ["The texture hash to check for usage in the current frame."],
-        "type": "uint64",
-        "default": 0,
+        "type": "token",
+        "default": "0x0",
         "uiName": "Texture Hash"
       }
     },

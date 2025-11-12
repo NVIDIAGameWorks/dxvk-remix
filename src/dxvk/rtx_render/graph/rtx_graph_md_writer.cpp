@@ -26,6 +26,8 @@
 #include <cmath>
 #include <filesystem>
 #include <limits>
+#include <sstream>
+#include <iomanip>
 #include <unordered_map>
 
 namespace dxvk {
@@ -138,6 +140,12 @@ std::string getValueAsString(const RtComponentPropertyValue& value, const RtComp
       return "\"" + escapeMarkdown(std::get<std::string>(value)) + "\"";
     case RtComponentPropertyType::AssetPath:
       return "\"" + escapeMarkdown(std::get<std::string>(value)) + "\"";
+    case RtComponentPropertyType::Hash: {
+      // Format hash as hex string with 0x prefix
+      std::ostringstream ss;
+      ss << "0x" << std::hex << std::get<uint64_t>(value);
+      return ss.str();
+    }
     case RtComponentPropertyType::Prim:
       // Prim references don't use the default value field,
       // as it isn't really applicable.

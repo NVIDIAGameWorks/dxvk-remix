@@ -219,9 +219,10 @@ std::ostream& operator << (std::ostream& os, RtComponentPropertyType type) {
     case RtComponentPropertyType::Int32: return os << "Int32";
     case RtComponentPropertyType::Uint32: return os << "Uint32";
     case RtComponentPropertyType::Uint64: return os << "Uint64";
-    case RtComponentPropertyType::Prim: return os << "Prim";
     case RtComponentPropertyType::String: return os << "String";
     case RtComponentPropertyType::AssetPath: return os << "AssetPath";
+    case RtComponentPropertyType::Hash: return os << "Hash";
+    case RtComponentPropertyType::Prim: return os << "Prim";
   }
   return os << static_cast<int32_t>(type);
 }
@@ -257,12 +258,16 @@ RtComponentPropertyValue propertyValueFromString(const std::string& str, const R
     case RtComponentPropertyType::Uint64:
       // The `nullptr, 0` causes stoull to auto detect hex from `0x`
       return propertyValueForceType<uint64_t>(std::stoull(str, nullptr, 0));
-    case RtComponentPropertyType::Prim:
-      // Should never be reached (prim properties should be UsdRelationships, so they shouldn't ever have a string value).  Just in case, return an invalid value.
-      return kInvalidRtComponentPropertyValue;
     case RtComponentPropertyType::String:
     case RtComponentPropertyType::AssetPath:
       return str;
+    case RtComponentPropertyType::Hash:
+      // Hash is stored as uint64_t but represented as a token in USD/OGN
+      // Parse as hex (base 16) - works with or without 0x prefix
+      return propertyValueForceType<uint64_t>(std::stoull(str, nullptr, 16));
+    case RtComponentPropertyType::Prim:
+      // Should never be reached (prim properties should be UsdRelationships, so they shouldn't ever have a string value).  Just in case, return an invalid value.
+      return kInvalidRtComponentPropertyValue;
     }
     Logger::err(str::format("Unknown property type in propertyValueFromString.  type: ", type, ", string: ", str));
   } catch (const std::invalid_argument& e) {
@@ -291,9 +296,10 @@ RtComponentPropertyVector propertyVectorFromType(const RtComponentPropertyType t
   case RtComponentPropertyType::Int32:  return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Int32>>{};
   case RtComponentPropertyType::Uint32: return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Uint32>>{};
   case RtComponentPropertyType::Uint64: return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Uint64>>{};
-  case RtComponentPropertyType::Prim:   return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Prim>>{};
   case RtComponentPropertyType::String: return std::vector<std::string>{};
   case RtComponentPropertyType::AssetPath: return std::vector<std::string>{};
+  case RtComponentPropertyType::Hash:   return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Hash>>{};
+  case RtComponentPropertyType::Prim:   return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Prim>>{};
   }
   assert(false && "Unknown property type in propertyVectorFromType");
   return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Float>>{}; // fallback

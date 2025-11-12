@@ -13,7 +13,7 @@ Checks if a specific mesh hash was processed in the current frame\.
 
 | Property | Display Name | Type | IO Type | Default Value | Optional |
 |----------|--------------|------|---------|---------------|----------|
-| meshHash | Mesh Hash | Uint64 | Input | 0 | No | 
+| meshHash | Mesh Hash | Hash | Input | 0x0 | No | 
 
 ### Mesh Hash
 

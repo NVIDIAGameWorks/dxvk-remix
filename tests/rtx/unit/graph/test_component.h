@@ -43,9 +43,10 @@ enum class TestEnum : uint32_t {
   X(RtComponentPropertyType::Int32, 1, inputInt32, "Input Int32", "test for Int32") \
   X(RtComponentPropertyType::Uint32, 1, inputUint32, "Input Uint32", "test for Uint32") \
   X(RtComponentPropertyType::Uint64, 1, inputUint64, "Input Uint64", "test for Uint64") \
-  X(RtComponentPropertyType::Prim, 101, inputPrim, "Input Prim", "test for Prim") \
   X(RtComponentPropertyType::String, std::string("test_string"), inputString, "Input String", "test for String") \
   X(RtComponentPropertyType::AssetPath, std::string("/path/to/asset.usd"), inputAssetPath, "Input AssetPath", "test for AssetPath") \
+  X(RtComponentPropertyType::Hash, 0x123456789ABCDEF0, inputHash, "Input Hash", "test for Hash") \
+  X(RtComponentPropertyType::Prim, 101, inputPrim, "Input Prim", "test for Prim") \
   X(RtComponentPropertyType::Uint32, 1, inputUint32Enum, "Input Enum", "test for Uint32 as enum", \
     property.enumValues = { {"One", {TestEnum::One, "The first case"}}, {"Two", {TestEnum::Two, "The second case"}} })
 
@@ -59,9 +60,10 @@ enum class TestEnum : uint32_t {
   X(RtComponentPropertyType::Int32, 2, stateInt32, "", "test for Int32") \
   X(RtComponentPropertyType::Uint32, 2, stateUint32, "", "test for Uint32") \
   X(RtComponentPropertyType::Uint64, 2, stateUint64, "", "test for Uint64") \
-  X(RtComponentPropertyType::Prim, 102, statePrim, "", "test for Prim") \
   X(RtComponentPropertyType::String, std::string("state_string"), stateString, "", "test for String") \
   X(RtComponentPropertyType::AssetPath, std::string("/path/to/state/asset.usd"), stateAssetPath, "", "test for AssetPath") \
+  X(RtComponentPropertyType::Hash, 0xFEDCBA9876543210, stateHash, "", "test for Hash") \
+  X(RtComponentPropertyType::Prim, 102, statePrim, "", "test for Prim") \
   X(RtComponentPropertyType::Uint32, 2, stateUint32Enum, "", "test for Uint32 as enum", \
     property.enumValues = { {"One", {TestEnum::One, "The first case"}}, {"Two", {TestEnum::Two, "The second case"}} })
 
@@ -76,9 +78,10 @@ enum class TestEnum : uint32_t {
   X(RtComponentPropertyType::Int32, 3, outputInt32, "Output Int32", "test for Int32") \
   X(RtComponentPropertyType::Uint32, 3, outputUint32, "Output Uint32", "test for Uint32") \
   X(RtComponentPropertyType::Uint64, 3, outputUint64, "Output Uint64", "test for Uint64") \
-  X(RtComponentPropertyType::Prim, 103, outputPrim, "Output Prim", "test for Prim") \
   X(RtComponentPropertyType::String, std::string("output_string"), outputString, "Output String", "test for String") \
   X(RtComponentPropertyType::AssetPath, std::string("/path/to/output/asset.usd"), outputAssetPath, "Output AssetPath", "test for AssetPath") \
+  X(RtComponentPropertyType::Hash, 0xABCDEF0123456789, outputHash, "Output Hash", "test for Hash") \
+  X(RtComponentPropertyType::Prim, 103, outputPrim, "Output Prim", "test for Prim") \
   X(RtComponentPropertyType::Uint32, 3, outputUint32Enum, "Output Enum", "test for Uint32 as enum", \
     property.enumValues = { {"One", {TestEnum::One, "The first case"}}, {"Two", {TestEnum::Two, "The second case"}} })
 
@@ -107,9 +110,10 @@ void TestComponent::updateRange(const Rc<DxvkContext>& context, const size_t sta
       m_stateInt32[i] = m_inputInt32[i];
       m_stateUint32[i] = m_inputUint32[i];
       m_stateUint64[i] = m_inputUint64[i];
-      m_statePrim[i] = m_inputPrim[i];
       m_stateString[i] = m_inputString[i];
       m_stateAssetPath[i] = m_inputAssetPath[i];
+      m_stateHash[i] = m_inputHash[i];
+      m_statePrim[i] = m_inputPrim[i];
       m_stateUint32Enum[i] = m_inputUint32Enum[i];
     }
     m_outputBool[i] = m_stateBool[i];
@@ -121,9 +125,10 @@ void TestComponent::updateRange(const Rc<DxvkContext>& context, const size_t sta
     m_outputInt32[i] = m_stateInt32[i];
     m_outputUint32[i] = m_stateUint32[i];
     m_outputUint64[i] = m_stateUint64[i];
-    m_outputPrim[i] = m_statePrim[i];
     m_outputString[i] = m_stateString[i];
     m_outputAssetPath[i] = m_stateAssetPath[i];
+    m_outputHash[i] = m_stateHash[i];
+    m_outputPrim[i] = m_statePrim[i];
     m_outputUint32Enum[i] = m_stateUint32Enum[i];
   }
 }

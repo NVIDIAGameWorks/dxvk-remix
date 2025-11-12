@@ -13,7 +13,7 @@ Checks if a specific texture hash was used for material replacement in the curre
 
 | Property | Display Name | Type | IO Type | Default Value | Optional |
 |----------|--------------|------|---------|---------------|----------|
-| textureHash | Texture Hash | Uint64 | Input | 0 | No | 
+| textureHash | Texture Hash | Hash | Input | 0x0 | No | 
 
 ### Texture Hash
 

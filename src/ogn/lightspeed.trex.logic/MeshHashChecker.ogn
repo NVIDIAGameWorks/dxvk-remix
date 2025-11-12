@@ -9,8 +9,8 @@
     "inputs": {
       "meshHash": {
         "description": ["The mesh hash to check for usage in the current frame."],
-        "type": "uint64",
-        "default": 0,
+        "type": "token",
+        "default": "0x0",
         "uiName": "Mesh Hash"
       }
     },

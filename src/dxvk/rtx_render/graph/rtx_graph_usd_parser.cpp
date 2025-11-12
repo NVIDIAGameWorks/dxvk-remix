@@ -436,6 +436,9 @@ RtComponentPropertyValue GraphUsdParser::getPropertyValue(const pxr::UsdAttribut
         return spec.defaultValue;
       }
       return getPropertyValue<std::string>(value, spec);
+    case RtComponentPropertyType::Hash:
+      // Hash is stored as uint64_t but represented as a token in USD
+      return getPropertyValue<uint64_t>(value, spec);
     case RtComponentPropertyType::Prim:
       throw DxvkError(str::format("Prim target properties should be UsdRelationships, not UsdAttributes."));
       return spec.defaultValue;
