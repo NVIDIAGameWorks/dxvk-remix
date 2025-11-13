@@ -28,7 +28,9 @@
 #include "../dxvk/rtx_render/rtx_bridge_message_channel.h"
 #include "../dxvk/dxvk_scoped_annotation.h"
 
+
 namespace dxvk {
+  extern bool g_combineGuiInFinalColor = true;
 
   D3D9SwapchainExternal::D3D9SwapchainExternal(
         D3D9DeviceEx* pDevice,
@@ -41,10 +43,12 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9SwapchainExternal::Present(const RECT*, const RECT*, HWND hDestWindowOverride, const RGNDATA*,  DWORD) {
-    HWND hwnd = m_window;
     if (hDestWindowOverride != nullptr) {
-      hwnd = hDestWindowOverride;
+      m_window = hDestWindowOverride;
     }
+
+    // Update window handle with other systems
+    m_context->getCommonObjects()->setWindowHandle(m_window);
 
     auto srcImage = m_context->getCommonObjects()->getResources().getRaytracingOutput().m_finalOutput.resource(dxvk::Resources::AccessType::ReadWrite).image;
 
@@ -64,7 +68,6 @@ namespace dxvk {
 
     m_context->beginRecording(m_device->createCommandList());
 
-
     DxvkRenderTargets renderTargets;
     renderTargets.color[0].view = swapImageView;
     renderTargets.color[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -78,7 +81,9 @@ namespace dxvk {
       m_hud->render(m_context, fmt, { imageInfo.extent.width, imageInfo.extent.height });
     }
 
-    m_device->getCommon()->getImgui().render(hwnd, m_context, { imageInfo.extent.width, imageInfo.extent.height }, m_vsync);
+    if (g_combineGuiInFinalColor) {
+      m_device->getCommon()->getImgui().render(m_context, { imageInfo.extent.width, imageInfo.extent.height });
+    }
 
     m_parent->m_rtx.OnPresent(targetImage);
 

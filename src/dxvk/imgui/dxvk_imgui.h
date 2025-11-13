@@ -88,16 +88,10 @@ namespace dxvk {
      * \brief Render ImGUI
      * 
      * Renders the ImGUI to the given context.
-     * \param [in] hwnd Window currently being drawn into
      * \param [in] ctx Device context
      * \param [in] surfaceSize Image size, in pixels
-     * \param [in] vsync swapchain vsync enabled
      */
-    void render(
-            const HWND hwnd,
-            const Rc<DxvkContext>&  ctx,
-            VkExtent2D         surfaceSize,
-            bool               vsync);
+    void render(const Rc<DxvkContext>&  ctx,  VkExtent2D surfaceSize);
     
     static void AddTexture(const XXH64_hash_t hash, const Rc<DxvkImageView>& imageView, uint32_t textureFeatureFlags);
     static void ReleaseTexture(const XXH64_hash_t hash);
