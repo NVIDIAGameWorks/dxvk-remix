@@ -598,7 +598,8 @@ namespace dxvk {
   void RtxGeometryUtils::decodeAndAddOpacity(
       Rc<DxvkContext> ctx,
       const TextureRef& albedoOpacityTexture,
-      const std::vector<TextureConversionInfo>& conversionInfos) {
+      const std::vector<TextureConversionInfo>& conversionInfos,
+      float normalScale ) {
 
     ScopedGpuProfileZone(ctx, "Decode And Add Opacity");
 
@@ -625,7 +626,7 @@ namespace dxvk {
       const VkExtent3D& extent = conversionInfo.targetTexture.getImageView()->imageInfo().extent;
       args.resolution = uint2(extent.width, extent.height);
       args.rcpResolution = float2(1.f / extent.width, 1.f / extent.height);
-      args.normalIntensity = OpaqueMaterialOptions::normalIntensity();
+      args.normalIntensity = normalScale * OpaqueMaterialOptions::normalIntensity();
       args.scale = conversionInfo.scale;
       args.offset = conversionInfo.offset;
 
