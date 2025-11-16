@@ -130,16 +130,21 @@ namespace dxvk {
     const uint32_t geometryInstanceShaderBindingTableRecordOffset = instance->getVkInstance().instanceShaderBindingTableRecordOffset;
 
     if (!geometries.empty()) {
-      if (instanceMask != geometryInstanceMask)
+      if (instanceMask != geometryInstanceMask) {
         return false;
-      if (instanceShaderBindingTableRecordOffset != geometryInstanceShaderBindingTableRecordOffset)
+      }
+      if (instanceShaderBindingTableRecordOffset != geometryInstanceShaderBindingTableRecordOffset) {
         return false;
-      if (customIndexFlags != geometryCustomIndexFlags)
+      }
+      if (customIndexFlags != geometryCustomIndexFlags) {
         return false;
-      if (instanceFlags != geometryInstanceFlags)
+      }
+      if (instanceFlags != geometryInstanceFlags) {
         return false;
-      if (usesUnorderedApproximations != geometryUsesUnorderedApproximations)
+      }
+      if (usesUnorderedApproximations != geometryUsesUnorderedApproximations) {
         return false;
+      }
     }
 
     BlasEntry* blasEntry = instance->getBlas();
@@ -205,8 +210,7 @@ namespace dxvk {
         instance.billboardIndices.push_back(billboardIndex);
         instance.indexOffsets.push_back(billboardIndex * kNumIndicesPerBillboardQuad);
       }
-    }
-    else {
+    } else {
       VkAccelerationStructureGeometryKHR geometry = {};
 
       geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
@@ -251,8 +255,9 @@ namespace dxvk {
   }
 
   void AccelManager::createAndBuildIntersectionBlas(Rc<DxvkContext> ctx, DxvkBarrierSet& execBarriers) {
-    if (m_intersectionBlas.ptr())
+    if (m_intersectionBlas.ptr()) {
       return;
+    }
 
     VkAccelerationStructureGeometryKHR geometry {};
     geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
@@ -428,8 +433,9 @@ namespace dxvk {
       ONCE(Logger::err("DxvkRaytrace: instances size is greater than max supported custom index value"));
     }
 
-    if (opacityMicromapManager)
+    if (opacityMicromapManager) {
       opacityMicromapManager->onFrameStart(ctx);
+    }
 
     std::vector<std::unique_ptr<BlasBucket>> blasBuckets;
     blasBuckets.reserve(instances.size());
@@ -676,8 +682,9 @@ namespace dxvk {
     }
 
     // Copy the instance transform data to the device
-    if(instanceTransforms.size() > 0)
+    if (instanceTransforms.size() > 0) {
       ctx->writeToBuffer(m_transformBuffer, 0, instanceTransforms.size() * sizeof(VkTransformMatrixKHR), instanceTransforms.data());
+    }
 
     ctx->getCommandList()->trackResource<DxvkAccess::Write>(m_transformBuffer);
     ctx->getCommandList()->trackResource<DxvkAccess::Read>(m_transformBuffer);
@@ -793,8 +800,7 @@ namespace dxvk {
         uint32_t paddedLastTouched = blas->frameLastTouched + 1 + (RtxOptions::enablePreviousTLAS() ? 1u : 0u); /* note: +2 because frameLastTouched is unsigned and init'd with UINT32_MAX, and keep the BLAS'es for one extra frame for previous TLAS access */
         if (bufferSize >= sizeInfo.accelerationStructureSize &&
             (!selectedBlas || bufferSize < selectedBlas->accelStructure->info().size) &&
-            paddedLastTouched <= currentFrame)
-        {
+            paddedLastTouched <= currentFrame) {
           selectedBlas = blas.ptr();
         }
       }
@@ -818,7 +824,7 @@ namespace dxvk {
 
       // Use the selected BLAS for the build
       buildInfo.dstAccelerationStructure = selectedBlas->accelStructure->getAccelStructure();
-      
+
       if (buildInfo.mode == VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR) {
         // Set the src to the dst if we're updating
         buildInfo.srcAccelerationStructure = buildInfo.dstAccelerationStructure;
@@ -853,15 +859,16 @@ namespace dxvk {
       instance.flags = bucket->instanceFlags;
       instance.instanceShaderBindingTableRecordOffset = bucket->instanceShaderBindingTableRecordOffset;
       instance.mask = bucket->instanceMask;
-      instance.instanceCustomIndex = 
+      instance.instanceCustomIndex =
         (bucket->customIndexFlags & ~uint32_t(CUSTOM_INDEX_SURFACE_MASK)) |
         (bucket->reorderedSurfacesOffset & uint32_t(CUSTOM_INDEX_SURFACE_MASK));
       memcpy(static_cast<void*>(&instance.transform.matrix[0][0]), &identityTransform[0][0], sizeof(VkTransformMatrixKHR));
 
-      if (bucket->usesUnorderedApproximations && RtxOptions::enableSeparateUnorderedApproximations())
+      if (bucket->usesUnorderedApproximations && RtxOptions::enableSeparateUnorderedApproximations()) {
         m_mergedInstances[Tlas::Unordered].push_back(instance);
-      else
+      } else {
         m_mergedInstances[Tlas::Opaque].push_back(instance);
+      }
     }
   }
 
@@ -875,8 +882,9 @@ namespace dxvk {
       }
     }
 
-    if (!haveInstances && instanceManager.getBillboards().empty())
+    if (!haveInstances && instanceManager.getBillboards().empty()) {
       return;
+    }
 
     createAndBuildIntersectionBlas(ctx, execBarriers);
 
@@ -890,8 +898,9 @@ namespace dxvk {
       uint32_t index = 0;
 
       for (const auto& billboard : instanceManager.getBillboards()) {
-        if (billboard.instanceMask == 0 || !billboard.allowAsIntersectionPrimitive)
+        if (billboard.instanceMask == 0 || !billboard.allowAsIntersectionPrimitive) {
           continue;
+        }
 
         // Shader data
         MemoryBillboard& memory = memoryBillboards[index];
@@ -907,10 +916,12 @@ namespace dxvk {
         memory.centerUV = billboard.centerUV;
         memory.vertexColor = billboard.vertexColor;
         memory.flags = 0;
-        if (billboard.isBeam)
+        if (billboard.isBeam) {
           memory.flags |= billboardFlagIsBeam;
-        if (billboard.isCameraFacing)
+        }
+        if (billboard.isCameraFacing) {
           memory.flags |= billboardFlagIsCameraFacing;
+        }
 
         // TLAS instance
         VkAccelerationStructureInstanceKHR instance {};
@@ -1262,8 +1273,9 @@ namespace dxvk {
   }
 
   void AccelManager::buildTlas(Rc<DxvkContext> ctx) {
-    if (m_vkInstanceBuffer == nullptr)
+    if (m_vkInstanceBuffer == nullptr) {
       return;
+    }
 
     ScopedGpuProfileZone(ctx, "buildTLAS");
 
@@ -1339,8 +1351,9 @@ namespace dxvk {
     // Create TLAS
     Tlas& tlas = m_device->getCommon()->getResources().getTLAS(type);
 
-    if (type == Tlas::Opaque)
+    if (type == Tlas::Opaque) {
       std::swap(tlas.accelStructure, tlas.previousAccelStructure);
+    }
 
     if (tlas.accelStructure == nullptr || sizeInfo.accelerationStructureSize > tlas.accelStructure->info().size) {
       ScopedGpuProfileZone(ctx, "buildTLAS_createAccelStructure");

@@ -152,6 +152,7 @@ namespace dxvk {
     Rc<DxvkImageView>  imageView;
     Rc<DxvkBufferView> bufferView;
     DxvkBufferSlice    bufferSlice;
+    Rc<DxvkAccelStructure> accelStructure;
     VkAccelerationStructureKHR tlas = nullptr;
   };
   
