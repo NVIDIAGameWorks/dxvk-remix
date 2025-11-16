@@ -266,10 +266,14 @@ namespace dxvk {
     uint32_t              slot,
     const Rc<DxvkAccelStructure> accelStructure) {
     ScopedCpuProfileZone();
-    m_rc[slot].tlas = accelStructure->getAccelStructure();
+    m_rc[slot].accelStructure = accelStructure;
+    m_rc[slot].tlas = accelStructure != nullptr
+      ? accelStructure->getAccelStructure()
+      : VK_NULL_HANDLE;
     m_rcTracked.clr(slot);
 
-    m_cmd->trackResource<DxvkAccess::Read>(accelStructure);
+    if (accelStructure != nullptr)
+      m_cmd->trackResource<DxvkAccess::Read>(accelStructure);
 
     m_flags.set(
       DxvkContextFlag::CpDirtyResources,
@@ -4889,14 +4893,29 @@ namespace dxvk {
             bindMask.clr(i);
             descriptors[i].buffer = m_common->dummyResources().bufferDescriptor();
           } break;
-        
+
+       // NV-DXVK start: adding support for AS
         case VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR:
-          if (res.tlas != VK_NULL_HANDLE) {
+          if (res.accelStructure != nullptr && res.tlas != VK_NULL_HANDLE) {
             descriptors[i].accelerationStructure = res.tlas;
+
+            if (m_rcTracked.set(binding.slot))
+              // Keep the TLAS alive until this command list retires.
+              // When beginRecording starts a new command list, DXVK marks every descriptor slot "dirty"
+              // but leaves the cached resources (m_rc[...]) untouched. The next call to updateShaderResources
+              // therefore re emits whatever was previously stored in the slot including the old TLAS handle and 
+              // Vulkan requires that handle to remain valid until the new command list finishes execution.
+              // Without tracking the accelStructure here the slot only held a raw VkAccelerationStructureKHR, 
+              // so the resource managers Rc<DxvkAccelStructure> was the last owner.
+              // However, when that resource gets reallocated and overwrote that Rc, the object was destroyed immediately, 
+              // yet the command list still queued descriptor updates pointing at it, triggering the validation error
+              m_cmd->trackResource<DxvkAccess::Read>(res.accelStructure);
+
           } else {
             bindMask.clr(i);
             descriptors[i].accelerationStructure = VK_NULL_HANDLE;
           } break;
+        // NV-DXVK end
 
         default:
           Logger::err(str::format("DxvkContext: Unhandled descriptor type: ", binding.type));
