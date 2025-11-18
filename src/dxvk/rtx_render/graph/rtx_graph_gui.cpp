@@ -20,32 +20,37 @@
 * DEALINGS IN THE SOFTWARE.
 */
 
-#include "rtx_graph_gui.h"
-#include "../../imgui/imgui.h"
-#include "../rtx_scene_manager.h"
-#include "../rtx_context.h"
-#include "rtx_graph_instance.h"
+#include "imgui/imgui.h"
 #include "rtx_graph_batch.h"
-#include "../../util/util_string.h"
+#include "rtx_graph_gui.h"
+#include "rtx_graph_instance.h"
+#include "rtx_render/rtx_context.h"
+#include "rtx_render/rtx_imgui.h"
+#include "rtx_render/rtx_scene_manager.h"
+#include "../util/util_string.h"
 #include <algorithm>
-#include <sstream>
 #include <iomanip>
+#include <sstream>
 
 namespace dxvk {
 
 void RtxGraphGUI::showGraphVisualization(const Rc<DxvkContext>& ctx) {
   RtxContext* rtxContext = static_cast<RtxContext*>(ctx.ptr());
   const SceneManager& sceneManager = rtxContext->getSceneManager();
-
-  ImGui::Text("RTX Graph Visualization");
   ImGui::Separator();
+  ImGui::Checkbox("Enable", &GraphManager::enableObject());
+  ImGui::SameLine(0.0f, 20.f);
+  ImGui::Checkbox("Pause", &GraphManager::pauseGraphUpdatesObject());
+  ImGui::SameLine(0.0f, 20.f);
+  if (IMGUI_ADD_TOOLTIP(ImGui::Button("Reset Graph State"), "Destroys then recreates all graphs, clearing any stored state.")) {
+    const GraphManager& graphManager = sceneManager.getGraphManager();
+    graphManager.resetGraphState();
+  }
 
   // Graph selector
   showGraphSelector(sceneManager);
 
   if (m_selectedInstanceId != kInvalidInstanceId) {
-    ImGui::Separator();
-    
     // Update graph data
     updateGraphData(sceneManager);
     
@@ -126,6 +131,10 @@ void RtxGraphGUI::showGraphSelector(const SceneManager& sceneManager) {
       for (const auto& [name, id] : instanceList) {
         if (id == m_selectedInstanceId) {
           ImGui::Text("Selected: %s", name.c_str());
+          if (IMGUI_ADD_TOOLTIP(ImGui::Button("Reset Instance"), "Destroys then recreates this graph instance, clearing any stored state.")) {
+            graphManager.queueInstanceReset(m_selectedInstanceId);
+            m_selectedInstanceId = kInvalidInstanceId; // Clear selection since instance will be removed
+          }
           break;
         }
       }
@@ -135,75 +144,73 @@ void RtxGraphGUI::showGraphSelector(const SceneManager& sceneManager) {
 }
 
 void RtxGraphGUI::showComponentList() {
-  ImGui::Text("Components:");
-  ImGui::Separator();
-  
   if (m_components.empty()) {
     ImGui::Text("No components in selected graph instance");
     return;
   }
-  
-  // Show components in a scrollable list with resizable height
-  ImGui::BeginChild("ComponentList", ImVec2(0, m_componentListHeight), true, ImGuiWindowFlags_AlwaysVerticalScrollbar);
-  
-  for (size_t i = 0; i < m_components.size(); ++i) {
-    const auto& component = m_components[i];
+  if (ImGui::CollapsingHeader("Components:", ImGuiTreeNodeFlags_DefaultOpen)) {
+    // Show components in a scrollable list with resizable height
+    ImGui::BeginChild("ComponentList", ImVec2(0, m_componentListHeight), true, ImGuiWindowFlags_AlwaysVerticalScrollbar);
     
-    // Component header with collapsible tree node
-    std::string headerText = component.typeName;
-    
-    if (ImGui::CollapsingHeader(headerText.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
-      // Show component description as tooltip on header hover
-      if (ImGui::IsItemHovered() && !component.docString.empty()) {
-        ImGui::BeginTooltip();
-        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f); // Set wrap width
-        ImGui::TextWrapped("%s", component.docString.c_str());
-        ImGui::PopTextWrapPos();
-        ImGui::EndTooltip();
-      }
+    for (size_t i = 0; i < m_components.size(); ++i) {
+      const auto& component = m_components[i];
       
-      ImGui::Indent();
+      // Component header with collapsible tree node
+      std::string headerText = component.typeName;
       
-      // Show properties
-      ImGui::Text("Properties:");
-      for (const auto& prop : component.properties) {
-        // Display property with name, value, and index
-        std::string propText = " [" + std::to_string(prop.topologyIndex) + "] " + prop.name + ": " + prop.currentValue;
-        ImGui::Text("%s", propText.c_str());
-        
-        // Show tooltip with doc string and property paths on hover
-        if (ImGui::IsItemHovered() && (!prop.docString.empty() || !prop.propertyPaths.empty())) {
+      if (ImGui::CollapsingHeader(headerText.c_str())) {
+        // Show component description as tooltip on header hover
+        if (ImGui::IsItemHovered() && !component.docString.empty()) {
           ImGui::BeginTooltip();
           ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f); // Set wrap width
-          
-          // Show all property paths
-          if (!prop.propertyPaths.empty()) {
-            if (prop.propertyPaths.size() == 1) {
-              ImGui::Text("Path: %s", prop.propertyPaths[0].c_str());
-            } else {
-              ImGui::Text("Paths:");
-              for (const auto& path : prop.propertyPaths) {
-                ImGui::Text("  %s", path.c_str());
-              }
-            }
-            if (!prop.docString.empty()) {
-              ImGui::Separator();
-            }
-          }
-          
-          // Show description
-          if (!prop.docString.empty()) {
-            ImGui::TextWrapped("%s", prop.docString.c_str());
-          }
-          
+          ImGui::TextWrapped("%s", component.docString.c_str());
           ImGui::PopTextWrapPos();
           ImGui::EndTooltip();
         }
+        
+        ImGui::Indent();
+        
+        // Show properties
+        for (const auto& prop : component.properties) {
+          // Display property with name, value, and index
+          std::string propText = " [" + std::to_string(prop.topologyIndex) + "] " + prop.name + ": " + prop.currentValue;
+          ImGui::Text("%s", propText.c_str());
+          
+          // Show tooltip with doc string and property paths on hover
+          if (ImGui::IsItemHovered() && (!prop.docString.empty() || !prop.propertyPaths.empty())) {
+            ImGui::BeginTooltip();
+            ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f); // Set wrap width
+            
+            // Show all property paths
+            if (!prop.propertyPaths.empty()) {
+              if (prop.propertyPaths.size() == 1) {
+                ImGui::Text("Path: %s", prop.propertyPaths[0].c_str());
+              } else {
+                ImGui::Text("Paths:");
+                for (const auto& path : prop.propertyPaths) {
+                  ImGui::Text("  %s", path.c_str());
+                }
+              }
+              if (!prop.docString.empty()) {
+                ImGui::Separator();
+              }
+            }
+            
+            // Show description
+            if (!prop.docString.empty()) {
+              ImGui::TextWrapped("%s", prop.docString.c_str());
+            }
+            
+            ImGui::PopTextWrapPos();
+            ImGui::EndTooltip();
+          }
+        }
+        
+        ImGui::Unindent();
+        ImGui::Spacing();
       }
-      
-      ImGui::Unindent();
-      ImGui::Spacing();
     }
+
   }
   
   ImGui::EndChild();

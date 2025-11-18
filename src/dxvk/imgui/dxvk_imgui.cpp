@@ -2691,7 +2691,7 @@ namespace dxvk {
     
     // Graph Visualization Section
     ImGui::Separator();
-    if (ImGui::CollapsingHeader("Graph Visualization", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("Remix Logic", ImGuiTreeNodeFlags_DefaultOpen)) {
       ImGui::Indent();
       m_graphGUI->showGraphVisualization(ctx);
       ImGui::Unindent();

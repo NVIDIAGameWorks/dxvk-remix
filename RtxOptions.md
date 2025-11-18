@@ -303,6 +303,8 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.freeCameraSpeed|float|200|||Free camera speed \[GameUnits/s\]\.|
 |rtx.freeCameraTurningSpeed|float|1|||Free camera turning speed \(applies to keyboard, not mouse\) \[radians/s\]\.|
 |rtx.fusedWorldViewMode|int|0|||Set if game uses a fused World\-View transform matrix\.|
+|rtx.graph.enable|bool|True|||Enable graph loading\.  If disabled, all graphs will be unloaded, losing any state\.|
+|rtx.graph.pauseGraphUpdates|bool|False|||Pause graph updating\.  If enabled, graphs logic will not be updated, but graph state will be retained\.|
 |rtx.graphicsPreset|int|5|||Overall rendering preset, higher presets result in higher image quality, lower presets result in better performance\.|
 |rtx.gui.backgroundAlpha|float|0.9|0|1|A value controlling the alpha of the GUI background\.|
 |rtx.gui.compactGui|bool|False|||A setting to toggle between compact and spacious GUI modes\.|
