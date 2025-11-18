@@ -20,13 +20,15 @@
 * DEALINGS IN THE SOFTWARE.
 */
 
-#include "../util/util_fast_cache.h"
-#include "rtx_graph_batch.h"
-#include "rtx_graph_types.h"
-#include "../rtx_asset_replacer.h"
 #include "dxvk_context.h"
 #include "dxvk_scoped_annotation.h"
+#include "rtx_graph_batch.h"
 #include "rtx_graph_ogn_writer.h"
+#include "rtx_graph_types.h"
+#include "rtx_render/rtx_asset_replacer.h"
+#include "rtx_render/rtx_option.h"
+#include "../util/util_fast_cache.h"
+#include <atomic>
 #include <mutex>
 
 
@@ -35,6 +37,9 @@ namespace dxvk {
 // The class responsible for managing graph lifetime and updates.
 class GraphManager {
 public:
+  RTX_OPTION("rtx.graph", bool, enable, true, "Enable graph loading.  If disabled, all graphs will be unloaded, losing any state.");
+  RTX_OPTION("rtx.graph", bool, pauseGraphUpdates, false, "Pause graph updating.  If enabled, graphs logic will not be updated, but graph state will be retained.");
+
   GraphManager() {
     static std::once_flag schemaWriteFlag;
     std::call_once(schemaWriteFlag, [this]() {
@@ -55,6 +60,9 @@ public:
 
   GraphInstance* addInstance(Rc<DxvkContext> context, const RtGraphState& graphState) {
     ScopedCpuProfileZone();
+    if (!enable()) {
+      return nullptr;
+    }
     auto iter = m_batches.find(graphState.topology.graphHash);
     if (iter == m_batches.end()) {
       iter = m_batches.emplace(graphState.topology.graphHash, RtGraphBatch()).first;
@@ -86,6 +94,18 @@ public:
     m_graphInstances.erase(instanceId);
   }
 
+  // Queues the graph manager to wipe all graphs in the next update.
+  void resetGraphState() const {
+    std::lock_guard<std::mutex> lock(m_instanceResetMutex);
+    m_resetPending = true;
+  }
+
+  // Queues a specific graph instance to be reset in the next update.
+  void queueInstanceReset(const uint64_t instanceId) const {
+    std::lock_guard<std::mutex> lock(m_instanceResetMutex);
+    m_instanceResetQueue.push_back(instanceId);
+  }
+
   void clear() {
     m_batches.clear();
     m_graphInstances.clear();
@@ -93,6 +113,30 @@ public:
 
   void update(Rc<DxvkContext>& context) {
     ScopedCpuProfileZone();
+    
+    // Check if a reset was requested from another thread
+    {
+      std::lock_guard<std::mutex> lock(m_instanceResetMutex);
+      if (m_resetPending) {
+        clear();
+        m_instanceResetQueue.clear();
+        m_resetPending = false;
+      } else {
+        // Process queued instance resets
+        for (uint64_t instanceId : m_instanceResetQueue) {
+          removeInstance(instanceId);
+        }
+        m_instanceResetQueue.clear();
+      }
+    }
+    
+    if (!enable()) {
+      clear();
+      return;
+    }
+    if (pauseGraphUpdates()) {
+      return;
+    }
     for (auto& batch : m_batches) {
       batch.second.update(context);
     }
@@ -100,6 +144,9 @@ public:
 
   void applySceneOverrides(Rc<DxvkContext> context) {
     ScopedCpuProfileZone();
+    if (!enable() || pauseGraphUpdates()) {
+      return;
+    }
     for (auto& batch : m_batches) {
       batch.second.applySceneOverrides(context);
     }
@@ -122,6 +169,10 @@ private:
   std::unordered_map<uint64_t, GraphInstance> m_graphInstances;
 
   uint64_t m_nextInstanceId = 1;
+  
+  mutable std::mutex m_instanceResetMutex;
+  mutable bool m_resetPending = false;
+  mutable std::vector<uint64_t> m_instanceResetQueue;
 };
 
 }

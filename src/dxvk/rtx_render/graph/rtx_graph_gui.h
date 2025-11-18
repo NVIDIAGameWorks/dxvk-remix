@@ -62,7 +62,7 @@ private:
 
   // Graph visualization state
   static constexpr uint64_t kInvalidInstanceId = std::numeric_limits<uint64_t>::max();
-  static constexpr float kDefaultComponentListHeight = 400.0f;
+  static constexpr float kDefaultComponentListHeight = 800.0f;
   uint64_t m_selectedInstanceId = kInvalidInstanceId;
   std::vector<ComponentInfo> m_components;
   std::array<char, 256> m_instanceFilter = {};
