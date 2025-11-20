@@ -540,11 +540,12 @@ namespace dxvk {
       // when changing resolutions
       || frameBeginCtx.downscaledExtent.width != m_nrcCtxSettings->frameDimensions.x
       || frameBeginCtx.downscaledExtent.height != m_nrcCtxSettings->frameDimensions.y;
-    
-    NrcCtxOptions::enableDebugBuffers.setDeferred(m_delayedEnableDebugBuffers);
-    NrcCtxOptions::enableCustomNetworkConfig.setDeferred(m_delayedEnableCustomNetworkConfig);
 
     if (reinitializeNrcContext) {
+
+      NrcCtxOptions::enableDebugBuffers.setDeferred(m_delayedEnableDebugBuffers);
+      NrcCtxOptions::enableCustomNetworkConfig.setDeferred(m_delayedEnableCustomNetworkConfig);
+
       m_nrcCtx = new NrcContext(*ctx->getDevice());
 
       if (m_nrcCtx->initialize() != nrc::Status::OK) {
@@ -1115,8 +1116,10 @@ namespace dxvk {
       return;
     }
 
-    m_resetHistory = false;
-    NrcOptions::resetHistory.setDeferred(false);
+    if (m_resetHistory) {
+      NrcOptions::resetHistory.setDeferred(false);
+      m_resetHistory = false;
+    }
 
     m_nrcCtx->endFrame();
   }
