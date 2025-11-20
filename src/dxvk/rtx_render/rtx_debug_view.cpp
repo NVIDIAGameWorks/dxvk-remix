@@ -1685,10 +1685,12 @@ namespace dxvk {
   }
 
   void DebugView::evMinValueOnChange(DxvkDevice* device) {
-    evMaxValueObject().setMinValue(evMaxValue());
+    // Adjust valid range on evMax to prevent inverted values
+    evMaxValueObject().setMinValue(evMinValue());
   }
 
   void DebugView::evMaxValueOnChange(DxvkDevice* device) {
-    evMinValueObject().setMaxValue(evMinValue());
+    // Adjust valid range on evMin to prevent inverted values
+    evMinValueObject().setMaxValue(evMaxValue());
   } 
 } // namespace dxvk

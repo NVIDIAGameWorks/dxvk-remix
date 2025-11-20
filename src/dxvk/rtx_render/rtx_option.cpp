@@ -283,7 +283,7 @@ namespace dxvk {
   GenericValue& RtxOptionImpl::getGenericValue(const ValueType valueType) {
     // Insert runtime layer if it's missing and user request runtime changes.
     if (optionLayerValueQueue.size() > 0 && optionLayerValueQueue.begin()->second.priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
-      insertEmptyOptionLayer(RtxOptionLayer::s_runtimeOptionLayerPriority, 1.0f, 1.0f);
+      insertOptionLayerValue(optionLayerValueQueue[0].value, RtxOptionLayer::s_runtimeOptionLayerPriority, 1.0f, 1.0f);
     }
 
     // Reuse the const overload to avoid duplicating switch logic.
