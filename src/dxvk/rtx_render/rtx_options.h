@@ -1299,7 +1299,7 @@ namespace dxvk {
       const Config::Desc& desc = Config::getDesc(Config::Type::Type_RtxUser);
       const std::string envVarName(desc.env);
       const std::string envVarPath = !envVarName.empty() ? env::getEnvVar(envVarName.c_str()) : "";
-      return envVarPath.empty() ? "rtx.conf" : env::getEnvVar(desc.env.c_str()) + "\\rtx.conf";
+      return envVarPath.empty() ? "rtx.conf" : env::getEnvVar(desc.env.c_str());
     }
 
     static void serialize() {
