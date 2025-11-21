@@ -23,6 +23,7 @@
 #include "rtx_graph_ogn_writer.h"
 #include "../util/util_env.h"
 #include "../util/util_filesys.h"
+#include <algorithm>
 #include <filesystem>
 #include <sstream>
 #include <iomanip>
@@ -64,8 +65,76 @@ std::string propertyTypeToOgnType(RtComponentPropertyType type) {
     case RtComponentPropertyType::AssetPath: return "token";
     case RtComponentPropertyType::Hash: return "token";
     case RtComponentPropertyType::Prim: return "target";  // USD Relationship to a prim
+    case RtComponentPropertyType::Number: return "numeric_scalers";  // Flexible type
+    case RtComponentPropertyType::NumberOrVector: return "numeric_array_elements";  // Flexible type
   }
   return "unknown";
+}
+
+// Helper function to convert OGN type string to BaseDataType enum name for Python
+std::string ognTypeToBaseDataType(const std::string& ognType) {
+  if (ognType == "bool") return "BOOL";
+  if (ognType == "float") return "FLOAT";
+  if (ognType == "float[2]") return "FLOAT, 2";
+  if (ognType == "float[3]") return "FLOAT, 3";
+  if (ognType == "float[4]") return "FLOAT, 4";
+  if (ognType == "colorf[3]") return "FLOAT, 3";
+  if (ognType == "colorf[4]") return "FLOAT, 4";
+  if (ognType == "int") return "INT";
+  if (ognType == "uint") return "UINT";
+  if (ognType == "uint64") return "UINT64";
+  if (ognType == "double") return "DOUBLE";
+  if (ognType == "double[2]") return "DOUBLE, 2";
+  if (ognType == "double[3]") return "DOUBLE, 3";
+  if (ognType == "double[4]") return "DOUBLE, 4";
+  return "FLOAT";  // Default fallback
+}
+
+// Helper function to get all possible OGN types for a flexible property
+// Returns a JSON array string like ["float", "int", "float[2]", "float[3]", "colorf[3]"]
+std::string getFlexiblePropertyTypeUnion(const ComponentSpecVariantMap& variants, const std::string& propertyName) {
+  if (variants.empty()) {
+    return "";
+  }
+  
+  // Collect all unique types for this property across all variants
+  std::set<std::string> uniqueTypes;
+  for (const auto* variant : variants) {
+    if (variant->resolvedTypes.empty()) {
+      continue;  // Not a templated component
+    }
+    
+    auto it = variant->resolvedTypes.find(propertyName);
+    if (it != variant->resolvedTypes.end()) {
+      std::string ognType = propertyTypeToOgnType(it->second);
+      uniqueTypes.insert(ognType);
+    }
+  }
+  // Expand overlapping types (Float3 and Color3 use the same underlying type, so both should be listed)
+  if (uniqueTypes.count("float[3]") > 0) {
+    uniqueTypes.insert("colorf[3]");
+  }
+  if (uniqueTypes.count("colorf[3]") > 0) {
+    uniqueTypes.insert("float[3]");
+  }
+  
+  // Build JSON array string
+  if (uniqueTypes.empty()) {
+    return "";
+  }
+  
+  std::string result = "[";
+  bool first = true;
+  for (const auto& type : uniqueTypes) {
+    if (!first) {
+      result += ", ";
+    }
+    result += "\"" + type + "\"";
+    first = false;
+  }
+  result += "]";
+  
+  return result;
 }
 
 // Helper function to get default value as JSON string
@@ -113,12 +182,20 @@ std::string getDefaultValueAsJson(const RtComponentPropertyValue& value, RtCompo
     case RtComponentPropertyType::Prim:
       // Target relationships don't typically have default values in OGN
       return "null";
+    case RtComponentPropertyType::Number:
+    case RtComponentPropertyType::NumberOrVector:
+      // Flexible types should not have default values
+      return "null";
   }
   return "null";
 }
 
 // Helper function to write a property to the OGN schema
-void writePropertyToOGN(std::ofstream& outputFile, const RtComponentPropertySpec& prop, bool isLast) {
+void writePropertyToOGN(std::ofstream& outputFile, const RtComponentSpec& spec, const ComponentSpecVariantMap& variants, const RtComponentPropertySpec& prop, bool isLast) {
+  // Check if this is a flexible type property (needed throughout the function)
+  // If type != declaredType, it means a flexible type was resolved to a concrete type
+  bool isFlexibleType = (prop.type != prop.declaredType);
+  
   outputFile << "      \"" << escapeJsonString(prop.name) << "\": {" << std::endl;
   if (!prop.enumValues.empty()) {
     // For enum documentation, we need to combine everything into the property docstring.
@@ -137,10 +214,25 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentPropertySpec
     outputFile << "        \"default\": \"" << defaultEnumValueString << "\"," << std::endl;
   } else {
     outputFile << "        \"description\": [\"" << escapeJsonString(prop.docString) << "\"]," << std::endl;
-    outputFile << "        \"type\": \"" << propertyTypeToOgnType(prop.type) << "\"," << std::endl;
+    
+    // Check if this is a flexible type property
+    // If type != declaredType, it means a flexible type was resolved to a concrete type
+    if (isFlexibleType) {
+      // Output union type for flexible properties
+      std::string typeUnion = getFlexiblePropertyTypeUnion(variants, prop.name);
+      if (!typeUnion.empty()) {
+        outputFile << "        \"type\": " << typeUnion << "," << std::endl;
+      } else {
+        // Fallback to single type if enumeration fails
+        outputFile << "        \"type\": \"" << propertyTypeToOgnType(prop.type) << "\"," << std::endl;
+      }
+    } else {
+      // Regular property with concrete type
+      outputFile << "        \"type\": \"" << propertyTypeToOgnType(prop.type) << "\"," << std::endl;
+    }
 
-    // Target relationships don't have default values in OGN
-    if (prop.type != RtComponentPropertyType::Prim) {
+    // Target relationships and flexible types don't have default values in OGN
+    if (prop.type != RtComponentPropertyType::Prim && !isFlexibleType) {
       outputFile << "        \"default\": " << getDefaultValueAsJson(prop.defaultValue, prop.type) << "," << std::endl;
     }
   }
@@ -148,21 +240,24 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentPropertySpec
 
   // Add metadata if available
   bool hasMetadata = false;
-  if (!prop.enumValues.empty() || 
-      prop.type == RtComponentPropertyType::Color3 ||
-      prop.type == RtComponentPropertyType::Color4) {
+  // For flexible types, don't add color metadata (since they can resolve to any type)
+  bool isColorType = !isFlexibleType && (prop.type == RtComponentPropertyType::Color3 || prop.type == RtComponentPropertyType::Color4);
+  
+  if (!prop.enumValues.empty() || isColorType) {
     
     outputFile << "        \"metadata\": {" << std::endl;
     
     // Add uiType for color properties
-    if (prop.type == RtComponentPropertyType::Color3 || prop.type == RtComponentPropertyType::Color4) {
+    if (isColorType) {
       outputFile << "          \"uiType\": \"color\"";
       hasMetadata = true;
     }
     
     // Add allowedTokens for enum values
     if (!prop.enumValues.empty()) {
-      if (hasMetadata) outputFile << "," << std::endl;
+      if (hasMetadata) {
+        outputFile << "," << std::endl;
+      }
       outputFile << "          \"allowedTokens\": [";
       bool first = true;
       for (const auto& enumValue : prop.enumValues) {
@@ -197,7 +292,7 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentPropertySpec
 
 }  // namespace
 
-bool writeOGNSchema(const RtComponentSpec* spec, const char* outputFolderPath) {
+bool writeOGNSchema(const RtComponentSpec* spec, RtComponentType componentType, const ComponentSpecVariantMap& variants, const char* outputFolderPath) {
   // Create the directory structure if it doesn't exist
   std::filesystem::path parentDir(outputFolderPath);
   std::filesystem::path filePath = parentDir / (spec->getClassName() + ".ogn");
@@ -244,7 +339,7 @@ bool writeOGNSchema(const RtComponentSpec* spec, const char* outputFolderPath) {
   if (!inputs.empty()) {
     outputFile << "    \"inputs\": {" << std::endl;
     for (size_t i = 0; i < inputs.size(); ++i) {
-      writePropertyToOGN(outputFile, *inputs[i], i == inputs.size() - 1);
+      writePropertyToOGN(outputFile, *spec, variants, *inputs[i], i == inputs.size() - 1);
     }
     outputFile << "    }";
     // Note: if we ever add states back in, we need to restore the !states.empty() check.
@@ -259,7 +354,7 @@ bool writeOGNSchema(const RtComponentSpec* spec, const char* outputFolderPath) {
   // if (!states.empty()) {
   //   outputFile << "    \"state\": {" << std::endl;
   //   for (size_t i = 0; i < states.size(); ++i) {
-  //     writePropertyToOGN(outputFile, *states[i], i == states.size() - 1);
+  //     writePropertyToOGN(outputFile, *spec, variants, *states[i], i == states.size() - 1);
   //   }
   //   outputFile << "    }";
   //   if (!outputs.empty()) {
@@ -273,7 +368,7 @@ bool writeOGNSchema(const RtComponentSpec* spec, const char* outputFolderPath) {
   if (!outputs.empty()) {
     outputFile << "    \"outputs\": {" << std::endl;
     for (size_t i = 0; i < outputs.size(); ++i) {
-      writePropertyToOGN(outputFile, *outputs[i], i == outputs.size() - 1);
+      writePropertyToOGN(outputFile, *spec, variants, *outputs[i], i == outputs.size() - 1);
     }
     outputFile << "    }" << std::endl;
   }
@@ -289,7 +384,7 @@ bool writeOGNSchema(const RtComponentSpec* spec, const char* outputFolderPath) {
   return true;
 }
 
-bool writePythonStub(const RtComponentSpec* spec, const char* outputFolderPath) {
+bool writePythonStub(const RtComponentSpec* spec, RtComponentType componentType, const ComponentSpecVariantMap& variants, const char* outputFolderPath) {
   // Create the directory structure if it doesn't exist
   std::filesystem::path parentDir(outputFolderPath);
   std::filesystem::path filePath = parentDir / (spec->getClassName() + ".py");
@@ -302,20 +397,144 @@ bool writePythonStub(const RtComponentSpec* spec, const char* outputFolderPath) 
 
   std::ofstream& outputFile = *outputFileHolder;
 
+  std::string databaseClassName = "Ogn" + spec->getClassName() + "Database";
+  
   outputFile << "# GENERATED FILE - DO NOT EDIT" << std::endl;
   outputFile << "# This file is a stub for OmniGraph editor compatibility, and is not used by the Remix Runtime." << std::endl;
   outputFile << "from __future__ import annotations" << std::endl;
   outputFile << std::endl;
+  outputFile << "import omni.graph.core as og" << std::endl;
   outputFile << "from typing import TYPE_CHECKING" << std::endl;
   outputFile << std::endl;
   outputFile << "if TYPE_CHECKING:" << std::endl;
-  outputFile << "    from lightspeed.trex.logic.ogn.ogn.OgnTemplateNodePyDatabase import OgnTemplateNodePyDatabase" << std::endl;
+  outputFile << "    from lightspeed.trex.logic.ogn.ogn." << databaseClassName << " import " << databaseClassName << std::endl;
   outputFile << std::endl;
   outputFile << std::endl;
   outputFile << "class "<< escapeJsonString(spec->getClassName()) << ":" << std::endl;
   outputFile << "    @staticmethod" << std::endl;
-  outputFile << "    def compute(_db: OgnTemplateNodePyDatabase):" << std::endl;
+  outputFile << "    def compute(_db: " << databaseClassName << "):" << std::endl;
   outputFile << "        return True" << std::endl;
+  outputFile << std::endl;
+  
+  // If this component has flexible types, generate on_connection_type_resolve
+  if (!variants.empty() && !variants[0]->resolvedTypes.empty()) {
+    // Collect all combinations from the registered variants
+    std::vector<std::unordered_map<std::string, RtComponentPropertyType>> combinations;
+    for (const auto* variant : variants) {
+      if (!variant->resolvedTypes.empty()) {
+        combinations.push_back(variant->resolvedTypes);
+      }
+    }
+    
+    // Get property names in a consistent order (alphabetical)
+    std::vector<std::string> propNames;
+    if (!combinations.empty()) {
+      for (const auto& [propName, unused_propertyType] : combinations[0]) {
+        propNames.push_back(propName);
+      }
+      std::sort(propNames.begin(), propNames.end());
+      
+      // Sort combinations based on the enum order of their types
+      std::sort(combinations.begin(), combinations.end(),
+        [&propNames](const std::unordered_map<std::string, RtComponentPropertyType>& a,
+                     const std::unordered_map<std::string, RtComponentPropertyType>& b) {
+          for (const auto& propName : propNames) {
+            auto aType = static_cast<int>(a.at(propName));
+            auto bType = static_cast<int>(b.at(propName));
+            if (aType != bType) {
+              return aType < bType;
+            }
+          }
+          return false;
+        });
+    }
+    
+    outputFile << "    @staticmethod" << std::endl;
+    outputFile << "    def on_connection_type_resolve(node) -> None:" << std::endl;
+    outputFile << "        \"\"\"Resolve flexible types based on connected attribute types.\"\"\"" << std::endl;
+    outputFile << "        # Valid type combinations for this component:" << std::endl;
+    
+    // Generate a comment listing all valid combinations
+    for (size_t i = 0; i < combinations.size(); ++i) {
+      outputFile << "        # Combination " << (i + 1) << ": ";
+      bool first = true;
+      for (const auto& propName : propNames) {
+        if (!first) {
+          outputFile << ", ";
+        }
+        outputFile << propName << "=" << propertyTypeToOgnType(combinations[i].at(propName));
+        first = false;
+      }
+      outputFile << std::endl;
+    }
+    outputFile << std::endl;
+    
+    // Separate input and output flexible properties
+    std::vector<std::string> flexibleInputs, flexibleOutputs;
+    for (const auto& prop : spec->properties) {
+      if (prop.type != prop.declaredType) {  // It's a flexible type
+        if (prop.ioType == RtComponentPropertyIOType::Input || prop.ioType == RtComponentPropertyIOType::State) {
+          flexibleInputs.push_back(prop.name);
+        } else if (prop.ioType == RtComponentPropertyIOType::Output) {
+          flexibleOutputs.push_back(prop.name);
+        }
+      }
+    }
+    
+    // Generate type checking logic
+    if (!flexibleInputs.empty()) {
+      // Get attributes for all flexible properties
+      outputFile << "        # Get attributes" << std::endl;
+      for (const auto& propName : flexibleInputs) {
+        outputFile << "        input_" << propName << " = node.get_attribute(\"inputs:" << propName << "\")" << std::endl;
+      }
+      for (const auto& propName : flexibleOutputs) {
+        outputFile << "        output_" << propName << " = node.get_attribute(\"outputs:" << propName << "\")" << std::endl;
+      }
+      outputFile << std::endl;
+      
+      // Get current types
+      outputFile << "        # Get current types of connected attributes" << std::endl;
+      for (const auto& propName : flexibleInputs) {
+        outputFile << "        type_" << propName << " = input_" << propName << ".get_resolved_type()" << std::endl;
+      }
+      outputFile << std::endl;
+      
+      // Generate type checking logic for each combination
+      outputFile << "        # Check all valid type combinations and resolve output types" << std::endl;
+      for (size_t i = 0; i < combinations.size(); ++i) {
+        const auto& combo = combinations[i];
+        
+        // Build condition to check if inputs match this combination
+        if (i > 0) {
+          outputFile << "        el";
+        } else {
+          outputFile << "        ";
+        }
+        outputFile << "if ";
+        
+        for (size_t j = 0; j < flexibleInputs.size(); ++j) {
+          const auto& propName = flexibleInputs[j];
+          const auto& propertyType = combo.at(propName);
+          std::string ognType = propertyTypeToOgnType(propertyType);
+          
+          outputFile << "type_" << propName << " == og.Type(og.BaseDataType." << ognTypeToBaseDataType(ognType) << ")";
+          if (j < flexibleInputs.size() - 1) {
+            outputFile << " and ";
+          }
+        }
+        outputFile << ":" << std::endl;
+        
+        // Set output types for this combination
+        for (const auto& propName : flexibleOutputs) {
+          const auto& propertyType = combo.at(propName);
+          std::string ognType = propertyTypeToOgnType(propertyType);
+          outputFile << "            output_" << propName << ".set_resolved_type(og.Type(og.BaseDataType." << ognTypeToBaseDataType(ognType) << "))" << std::endl;
+        }
+      }
+      outputFile << std::endl;
+    }
+  }
 
   // Close the file
   outputFile.close();

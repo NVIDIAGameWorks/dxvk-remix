@@ -23,6 +23,7 @@
 #include "rtx_graph_md_writer.h"
 #include "../util/util_env.h"
 #include "../util/util_filesys.h"
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <limits>
@@ -150,6 +151,10 @@ std::string getValueAsString(const RtComponentPropertyValue& value, const RtComp
       // Prim references don't use the default value field,
       // as it isn't really applicable.
       return "None";
+    case RtComponentPropertyType::Number:
+    case RtComponentPropertyType::NumberOrVector:
+      // Flexible types should not have default values
+      return "None";
   }
   return "None";
 }
@@ -158,9 +163,18 @@ std::string getValueAsString(const RtComponentPropertyValue& value, const RtComp
 void writePropertyTableRow(std::ofstream& outputFile, const RtComponentPropertySpec& prop) {
   outputFile << "| " << escapeMarkdown(prop.name) << " | ";
   outputFile << escapeMarkdown(prop.uiName) << " | ";
-  outputFile << prop.type << " | ";
+  
+  // Use declaredType to show the original type declaration (e.g., NumberOrVector for flexible types)
+  outputFile << prop.declaredType << " | ";
+  
   outputFile << prop.ioType << " | ";
-  outputFile << escapeMarkdown(getValueAsString(prop.defaultValue, prop)) << " | ";
+  
+  // For flexible types, show a simple default value
+  std::string defaultValueStr = (prop.type != prop.declaredType) 
+    ? "0" 
+    : getValueAsString(prop.defaultValue, prop);
+  outputFile << escapeMarkdown(defaultValueStr) << " | ";
+  
   outputFile << (prop.optional ? "Yes" : "No") << " | " << std::endl;
 }
 
@@ -249,7 +263,7 @@ void writePropertySection(std::ofstream& outputFile,
 
 }  // namespace
 
-bool writeComponentMarkdown(const RtComponentSpec* spec, const char* outputFolderPath) {
+bool writeComponentMarkdown(const RtComponentSpec* spec, RtComponentType componentType, const ComponentSpecVariantMap& variants, const char* outputFolderPath) {
   // Create the directory structure if it doesn't exist
   std::filesystem::path parentDir(outputFolderPath);
   std::filesystem::path filePath = parentDir / (spec->getClassName() + ".md");
@@ -304,6 +318,91 @@ bool writeComponentMarkdown(const RtComponentSpec* spec, const char* outputFolde
   
   // Write outputs section
   writePropertySection(outputFile, outputs, "Output");
+  
+  // Write flexible type combinations if applicable
+  // First, check if the component actually has any flexible type properties
+  bool hasFlexibleTypes = false;
+  for (const auto& prop : spec->properties) {
+    if (prop.type != prop.declaredType) {
+      hasFlexibleTypes = true;
+      break;
+    }
+  }
+  
+  if (hasFlexibleTypes && !variants.empty()) {
+    // Collect all combinations from the registered variants
+    std::vector<std::unordered_map<std::string, RtComponentPropertyType>> combinations;
+    for (const auto* variant : variants) {
+      if (!variant->resolvedTypes.empty()) {
+        combinations.push_back(variant->resolvedTypes);
+      }
+    }
+    
+    if (!combinations.empty()) {
+      // Get property names in a consistent order (alphabetical for now)
+      std::vector<std::string> propNames;
+      for (const auto& [propName, unused_propertyType] : combinations[0]) {
+        propNames.push_back(propName);
+      }
+      std::sort(propNames.begin(), propNames.end());
+      
+      // Sort combinations based on the enum order of their types
+      // Compare lexicographically: first property type, then second, etc.
+      std::sort(combinations.begin(), combinations.end(),
+        [&propNames](const std::unordered_map<std::string, RtComponentPropertyType>& a,
+                     const std::unordered_map<std::string, RtComponentPropertyType>& b) {
+          // Compare each property in order
+          for (const auto& propName : propNames) {
+            auto aType = static_cast<int>(a.at(propName));
+            auto bType = static_cast<int>(b.at(propName));
+            if (aType != bType) {
+              return aType < bType;
+            }
+          }
+          return false; // All equal
+        });
+      
+      outputFile << "## Valid Type Combinations" << std::endl << std::endl;
+      outputFile << "This component supports flexible types. The following type combinations are valid:" << std::endl << std::endl;
+      
+      // Create a table of all valid combinations
+      outputFile << "| # | ";
+      bool firstCol = true;
+      for (const auto& propName : propNames) {
+        if (!firstCol) {
+          outputFile << " | ";
+        }
+        outputFile << escapeMarkdown(propName);
+        firstCol = false;
+      }
+      outputFile << " |" << std::endl;
+      
+      // Table separator
+      outputFile << "|---";
+      for (size_t i = 0; i < propNames.size(); ++i) {
+        outputFile << "|---";
+      }
+      outputFile << "|" << std::endl;
+      
+      // Write each combination as a row
+      for (size_t i = 0; i < combinations.size(); ++i) {
+        outputFile << "| " << (i + 1) << " | ";
+        bool firstProp = true;
+        for (const auto& propName : propNames) {
+          if (!firstProp) {
+            outputFile << " | ";
+          }
+          outputFile << combinations[i].at(propName);
+          firstProp = false;
+        }
+        outputFile << " |" << std::endl;
+      }
+      outputFile << std::endl;
+      
+      outputFile << "**Note:** Float3 and Color3 both use the same underlying type (3-component vector). "
+                 << "Color4 uses a 4-component vector." << std::endl << std::endl;
+    }
+  }
   
   // Write usage notes
   outputFile << "## Usage Notes" << std::endl << std::endl;

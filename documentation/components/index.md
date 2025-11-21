@@ -11,13 +11,14 @@ This documentation provides detailed information about all available components 
 | Component | Description | Version |
 |-----------|-------------|---------|
 | [Rtx Option Layer Action](RtxOptionLayerAction.md) | Controls an RtxOptionLayer by name, allowing dynamic enable/disable, strength adjustment, and thresh\.\.\. | 1 |
-| [Sphere Light](SphereLightOverride.md) | Override the sphere light properties\. | 1 |
+| [\[Non Functional\] Sphere Light](SphereLightOverride.md) | Override the sphere light properties\. | 1 |
 
 ### Transform
 
 | Component | Description | Version |
 |-----------|-------------|---------|
 | [Animated Float](AnimatedFloat.md) | A single animated float value\. | 1 |
+| [Interpolate](Interpolate.md) | Interpolates a value from an input range to an output range with optional easing\. <br/>Combines normaliz\.\.\. | 1 |
 | [Interpolate Float](InterpolateFloat.md) | Interpolates a value from an input range to an output range with optional easing\. <br/>Combines normaliz\.\.\. | 1 |
 | [Loop Float](LoopFloat.md) | Applies looping behavior to a float value\.  Value is unchanged if it is inside the range\.<br/>Component \.\.\. | 1 |
 
@@ -34,8 +35,8 @@ This documentation provides detailed information about all available components 
 
 ## Statistics
 
-- **Total Components:** 11
-- **Categorized Components:** 11
+- **Total Components:** 12
+- **Categorized Components:** 12
 - **Categories:** 3
 
 ---

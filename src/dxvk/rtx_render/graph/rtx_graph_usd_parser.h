@@ -74,6 +74,19 @@ private:
   
   // Helper function to resolve the correct property path considering old property names and layer strength
   static pxr::SdfPath resolvePropertyPath(const pxr::UsdPrim& nodePrim, const RtComponentPropertySpec& property);
+  
+  // Helper functions for flexible type resolution
+  static RtComponentPropertyType inferTypeFromTokenString(const std::string& tokenStr, const RtComponentPropertySpec& property);
+  static RtComponentPropertyType inferTypeFromConnections(
+      const pxr::UsdAttribute& attr,
+      const RtComponentPropertySpec& property,
+      const pxr::UsdPrim& graphPrim,
+      const pxr::SdfPath& propertyPath);
+  static RtComponentPropertyType resolveFlexibleTypeFromAttribute(
+      const pxr::UsdAttribute& attr,
+      const RtComponentPropertySpec& property,
+      const pxr::UsdPrim& graphPrim,
+      const pxr::SdfPath& propertyPath);
   template<typename T>
   static RtComponentPropertyValue getPropertyValue(const pxr::VtValue& value, const RtComponentPropertySpec& spec) {
     // Value may be declared but have no contents - common for output values.

@@ -39,32 +39,30 @@ namespace components {
 #define LIST_STATES(X)
 #define LIST_OUTPUTS(X)
 
-// Manually declaring the class here to allow for extra member functions.
+// Manually declaring the class to allow for custom applySceneOverrides method
 class SphereLightOverride : public RtRegisteredComponentBatch<SphereLightOverride> {
 private:
-  REMIX_COMPONENT_WRITE_CLASS_MEMBERS(LIST_INPUTS, LIST_STATES, LIST_OUTPUTS)
-public:
-  REMIX_COMPONENT_WRITE_CTOR(SphereLightOverride, LIST_INPUTS, LIST_STATES, LIST_OUTPUTS)
-  static const RtComponentSpec* getStaticSpec() {
-    REMIX_COMPONENT_WRITE_STATIC_SPEC( \
-      /* the Component name */ SphereLightOverride, \
-      /* the UI name */        "Sphere Light", \
-      /* the UI categories */  "Act", \
-      /* the doc string */     "Override the sphere light properties.", \
-      /* the version number */ 1, \
-      LIST_INPUTS, LIST_STATES, LIST_OUTPUTS, \
-      /* optional arguments: */ \
-      spec.applySceneOverrides = [](const Rc<DxvkContext>& context, RtComponentBatch& batch, const size_t start, const size_t end) { \
-        static_cast<SphereLightOverride&>(batch).applySceneOverrides(context, start, end); \
-      } \
-    )
-  }
+  REMIX_COMPONENT_GENERATE_PROP_TYPES(LIST_INPUTS, LIST_STATES, LIST_OUTPUTS)
+  REMIX_COMPONENT_BODY(
+    /* the Component class name */ SphereLightOverride,
+    /* the UI name */        "[Non Functional] Sphere Light",
+    /* the UI categories */  "Act",
+    /* the doc string */     "Override the sphere light properties.",
+    /* the version number */ 1,
+    LIST_INPUTS, LIST_STATES, LIST_OUTPUTS,
+    /* optional arguments: */
+    spec.applySceneOverrides = applySceneOverrides;
+  )
 
   // no-op: If this component contained any logical updates, they would go here.
   void updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) final {};
 
+  // Need to wrap the optional functions in static methods to cast the batch to the correct type.
+  static void applySceneOverrides(const Rc<DxvkContext>& context, RtComponentBatch& batch, const size_t start, const size_t end) {
+    static_cast<SphereLightOverride&>(batch).applySceneOverridesInstance(context, start, end);
+  }
   // Apply changes to render state here.
-  void applySceneOverrides(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
+  void applySceneOverridesInstance(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
     const std::vector<GraphInstance*>& instances = m_batch.getInstances();
     for (size_t i = start; i < end; i++) {
       if (!m_enabled[i] || instances[i] == nullptr) {

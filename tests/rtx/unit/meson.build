@@ -66,7 +66,8 @@ exe = executable('test_graph_documentation',  files('test_graph_documentation.cp
 test('test_graph_documentation', exe, env: test_env, priority : -50, args: d3d9_dll.full_path())
 tests += exe
 
-exe = executable('test_graph_usd_parser',  files('graph/test_component.h', 'test_graph_usd_parser.cpp'), include_directories : test_include_path, dependencies : [ test_unit_deps, d3d9_dep ], link_with: [ d3d9_dll, dxvk_lib ] , win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+exe = executable('test_graph_usd_parser',  files('graph/test_component.h', 'graph/test_flexible_component.h', 'graph/test_flexible_component.cpp', 'test_graph_usd_parser.cpp'), 
+  include_directories : test_include_path, dependencies : [ test_unit_deps, d3d9_dep ], link_with: [ d3d9_dll, dxvk_lib ] , win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
 test('test_graph_usd_parser', exe, env: test_env)
 tests += exe
 

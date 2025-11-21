@@ -1,11 +1,11 @@
-# Sphere Light
+# \[Non Functional\] Sphere Light
 
 Override the sphere light properties\.
 
 ## Component Information
 
 - **Name:** `SphereLightOverride`
-- **UI Name:** Sphere Light
+- **UI Name:** \[Non Functional\] Sphere Light
 - **Version:** 1
 - **Categories:** Act
 

@@ -25,6 +25,7 @@
 #include "components/box_proximity.h"
 #include "components/camera.h"
 #include "components/interpolate_float.h"
+#include "components/interpolate.h"
 #include "components/keyboard_input.h"
 #include "components/loop_float.h"
 #include "components/mesh_hash_checker.h"
@@ -33,5 +34,14 @@
 #include "components/texture_hash_checker.h"
 #include "components/time.h"
 
-// TODO figure out how to include components without needing to include a header file in a list like this.
+namespace dxvk {
+namespace components {
+// Call all type variant creation functions to ensure static initializers run
+inline void forceAllFlexibleComponentInstantiations() {
+  // Nothing here yet, will be populated once we have components using the flexible types macros.
+}
+}  // namespace components
+}  // namespace dxvk
+
+// TODO figure out how to include components without needing to include a header file and manual instantiation in a list like this.
 
