@@ -2,7 +2,7 @@
   "lightspeed.trex.logic.SphereLightOverride": {
     "description": ["Override the sphere light properties."],
     "version": 1,
-    "uiName": "Sphere Light",
+    "uiName": "[Non Functional] Sphere Light",
     "language": "python",
     "categoryDefinitions": "config/CategoryDefinition.json",
     "categories": "Act",

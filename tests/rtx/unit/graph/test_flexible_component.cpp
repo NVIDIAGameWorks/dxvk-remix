@@ -20,20 +20,18 @@
 * DEALINGS IN THE SOFTWARE.
 */
 
-#pragma once
-#include <variant>
-#include <vector>
-#include <string>
-#include <fstream>
-#include <iostream>
-
-#include "rtx_graph_types.h"
-#include "../util/log/log.h"
-#include "../util/util_string.h"
+#include "test_flexible_component.h"
+#include "rtx_render/graph/rtx_graph_flexible_types.h"
 
 namespace dxvk {
+namespace components {
 
-bool writeComponentMarkdown(const RtComponentSpec* spec, RtComponentType componentType, const ComponentSpecVariantMap& variants, const char* outputFolderPath);
-bool writeMarkdownIndex(const std::vector<const RtComponentSpec*>& specs, const char* outputFolderPath);
+// Use the comparison macro for TestFlexNumber (returns bool)
+DEFINE_COMPARISON_OP_COMPONENT_CPP(TestFlexNumber, (std::declval<A>() < std::declval<B>()), RtComponentPropertyNumber)
 
-}  // namespace dxvk 
+// Use the binary operation macro for TestFlexNumberOrVector (returns computed type)
+DEFINE_BINARY_OP_COMPONENT_CPP(TestFlexNumberOrVector, (std::declval<A>() + std::declval<B>()), RtComponentPropertyNumberOrVector)
+
+}  // namespace components
+}  // namespace dxvk
+

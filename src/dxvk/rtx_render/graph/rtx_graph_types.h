@@ -62,8 +62,11 @@ enum class RtComponentPropertyType {
   // Default Value is ignored for relationships. It's safe to just use 0.
   Prim,
 
+  // Flexible types
+  Number,
+  NumberOrVector,
+
   // TODO should we support lists of any of the above types.
-  // TODO support generic types (i.e. number, or numbersAndVectors)
 
   // NOTE: Places to change when adding a new case:
   //   RtComponentPropertyType's operator << function in rtx_graph_types.cpp,
@@ -76,26 +79,24 @@ enum class RtComponentPropertyType {
 };
 std::ostream& operator << (std::ostream& os, RtComponentPropertyType e);
 
-// Templates to resolve RtComponentPropertyType enum to its corresponding C++ type
-// This is used to map from the RtComponentPropertyType enum to the corresponding C++ type at compile time.
-template<RtComponentPropertyType T>
-struct RtComponentPropertyTypeToCppTypeImpl;
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Bool> { using Type = uint8_t; }; // NOTE: see comment on RtComponentPropertyValue for why bool is stored as uint8_t.
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Float> { using Type = float; };
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Float2> { using Type = Vector2; };
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Float3> { using Type = Vector3; };
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Color3> { using Type = Vector3; };
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Color4> { using Type = Vector4; };
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Int32> { using Type = int32_t; };
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Uint32> { using Type = uint32_t; };
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Uint64> { using Type = uint64_t; };
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::String> { using Type = std::string; };
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::AssetPath> { using Type = std::string; };
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Hash> { using Type = uint64_t; };
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Prim> { using Type = uint32_t; };
+// Specify what types are allowed for the Number flexible type.
+using RtComponentPropertyNumber = std::variant<
+  float,
+  int32_t,
+  uint32_t,
+  uint64_t
+>;
 
-template< RtComponentPropertyType propertyType >
-using RtComponentPropertyTypeToCppType = typename RtComponentPropertyTypeToCppTypeImpl<propertyType>::Type;
+// Specify what types are allowed for the NumberOrVector flexible type.
+using RtComponentPropertyNumberOrVector = std::variant<
+  float,
+  Vector2,
+  Vector3,
+  Vector4,
+  int32_t,
+  uint32_t,
+  uint64_t
+>;
 
 using RtComponentPropertyValue = std::variant<
   // NOTE: std::vector<bool> has a special implementation to use 1 bit per element.
@@ -136,6 +137,43 @@ using RtComponentPropertyVector = std::variant<
   std::vector<std::string>
 >;
 
+
+// Templates to resolve RtComponentPropertyType enum to its corresponding C++ type
+// This is used to map from the RtComponentPropertyType enum to the corresponding C++ type at compile time.
+template<RtComponentPropertyType T>
+struct RtComponentPropertyTypeToCppTypeImpl;
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Bool> { using Type = uint8_t; }; // NOTE: see comment on RtComponentPropertyValue for why bool is stored as uint8_t.
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Float> { using Type = float; };
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Float2> { using Type = Vector2; };
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Float3> { using Type = Vector3; };
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Color3> { using Type = Vector3; };
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Color4> { using Type = Vector4; };
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Int32> { using Type = int32_t; };
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Uint32> { using Type = uint32_t; };
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Uint64> { using Type = uint64_t; };
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::String> { using Type = std::string; };
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::AssetPath> { using Type = std::string; };
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Hash> { using Type = uint64_t; };
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Prim> { using Type = uint32_t; };
+
+template< RtComponentPropertyType propertyType >
+using RtComponentPropertyTypeToCppType = typename RtComponentPropertyTypeToCppTypeImpl<propertyType>::Type;
+
+// Reverse mapping: C++ type to RtComponentPropertyType enum
+// This is used for automatic type deduction in templated code
+// Note: Vector3 maps to Float3, Vector4 maps to Color4 as the "canonical" types.
+//       This is safe because these are used for instantiating templated classes.
+template<typename T> struct CppTypeToPropertyType;
+template<> struct CppTypeToPropertyType<uint8_t> { static constexpr RtComponentPropertyType value = RtComponentPropertyType::Bool; };
+template<> struct CppTypeToPropertyType<float> { static constexpr RtComponentPropertyType value = RtComponentPropertyType::Float; };
+template<> struct CppTypeToPropertyType<Vector2> { static constexpr RtComponentPropertyType value = RtComponentPropertyType::Float2; };
+template<> struct CppTypeToPropertyType<Vector3> { static constexpr RtComponentPropertyType value = RtComponentPropertyType::Float3; };
+template<> struct CppTypeToPropertyType<Vector4> { static constexpr RtComponentPropertyType value = RtComponentPropertyType::Color4; };
+template<> struct CppTypeToPropertyType<int32_t> { static constexpr RtComponentPropertyType value = RtComponentPropertyType::Int32; };
+template<> struct CppTypeToPropertyType<uint32_t> { static constexpr RtComponentPropertyType value = RtComponentPropertyType::Uint32; };
+template<> struct CppTypeToPropertyType<uint64_t> { static constexpr RtComponentPropertyType value = RtComponentPropertyType::Uint64; };
+template<> struct CppTypeToPropertyType<std::string> { static constexpr RtComponentPropertyType value = RtComponentPropertyType::String; };
+
 RtComponentPropertyValue propertyValueFromString(const std::string& str, const RtComponentPropertyType type);
 RtComponentPropertyVector propertyVectorFromType(const RtComponentPropertyType type);
 
@@ -144,7 +182,12 @@ RtComponentPropertyVector propertyVectorFromType(const RtComponentPropertyType t
 // RtComponentPropertyValue<int> instead.
 template<typename T, typename E>
 RtComponentPropertyValue propertyValueForceType(const E& value) {
-  return RtComponentPropertyValue(std::in_place_type<T>, static_cast<T>(value));
+  // We want to allow reasonable conversions here, like converting `0` to a float.
+  // To compile those, we need to disable the `narrowing conversion` warning.
+  #pragma warning(push)
+  #pragma warning(disable: 4244)
+  return RtComponentPropertyValue(std::in_place_type<T>, T(value));
+  #pragma warning(pop)
 }
 
 // Helper to convert a RtComponentPropertyValue to the correct type for a property.
@@ -187,7 +230,7 @@ static const RtComponentType kInvalidComponentType = kEmptyHash;
 struct RtComponentPropertySpec {
   static inline const std::string kUsdNamePrefix = "lightspeed.trex.logic.";
   
-  RtComponentPropertyType type;
+  RtComponentPropertyType type;  // For flexible types, this is the resolved concrete type (e.g., Float, Float2)
   RtComponentPropertyValue defaultValue;
   RtComponentPropertyIOType ioType;
 
@@ -195,8 +238,15 @@ struct RtComponentPropertySpec {
   std::string usdPropertyName;
   std::string uiName;
   std::string docString;
+  
+  // For flexible types (Number, NumberOrVector), stores the original declared type
+  // For non-flexible types, this is the same as `type`
+  RtComponentPropertyType declaredType;
 
-  // Optional Values
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // BEGINNING OF OPTIONAL VALUES FOR PROPERTY SPECS
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
   // To set optional values when using the macros, write them as a comma separated list after the docString. 
   // `property.<name> = <value>`, i.e. `property.minValue = 0.0f, property.maxValue = 1.0f`
   // Note: minValue and maxValue are automatically converted to match the property's declared type
@@ -231,6 +281,10 @@ struct RtComponentPropertySpec {
   using EnumPropertyMap = std::map<std::string,EnumProperty>;
   EnumPropertyMap enumValues;
 
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // END OF OPTIONAL VALUES FOR PROPERTY SPECS
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
   // Validation methods
   bool isValid() const {
     return !name.empty() && !usdPropertyName.empty();
@@ -251,12 +305,19 @@ struct RtComponentSpec {
   std::string uiName;
   std::string categories;
   std::string docString;
+  
+  // For templated components: maps property name to its resolved concrete type
+  // Empty for non-templated components
+  std::unordered_map<std::string, RtComponentPropertyType> resolvedTypes;
 
   // Function to construct a batch of components from a graph topology and initial graph state.
   std::function<std::unique_ptr<RtComponentBatch>(const RtGraphBatch& batch, std::vector<RtComponentPropertyVector>& values, const std::vector<size_t>& indices)> createComponentBatch;
 
-  // Optional functions for component batches.  Set these by adding a lambda to the end of the component definition macro:
-  // `spec.applySceneOverrides = [](...) { ... }`
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // BEGINNING OF OPTIONAL VALUES FOR COMPONENT SPECS
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Optional arguments for component batches.  Set these by adding a comma separated list at the end of
+  // the component definition macro, i.e.: `REMIX_COMPONENT(..., spec.applySceneOverrides = [](...) { ... })`
 
   // If this component has been renamed, list the old `name`s here for backwards compatibility.
   std::vector<std::string> oldNames;
@@ -272,6 +333,10 @@ struct RtComponentSpec {
   // Optional function called when component instances are about to be destroyed.
   // Called before the instance is removed from the batch. No context is available during cleanup.
   std::function<void(RtComponentBatch& batch, const size_t index)> cleanup;
+
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // END OF OPTIONAL VALUES FOR COMPONENT SPECS
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
   // Validation methods
   bool isValid() const {
@@ -309,6 +374,16 @@ struct RtComponentSpec {
 
 void registerComponentSpec(const RtComponentSpec* spec);
 const RtComponentSpec* getComponentSpec(const RtComponentType& componentType);
+
+// Returns a vector of ComponentSpec* for all registered variants of a component
+// Returns empty vector if component type not found
+using ComponentSpecVariantMap = std::vector<const RtComponentSpec*>;
+const ComponentSpecVariantMap& getAllComponentSpecVariants(const RtComponentType& componentType);
+
+// Returns any variant of a component for inspection purposes (to determine declared types, etc.)
+// Returns nullptr if component type not found
+const RtComponentSpec* getAnyComponentSpecVariant(const RtComponentType& componentType);
+
 bool writeAllOGNSchemas(const char* outputFolderPath);
 bool writeAllMarkdownDocs(const char* outputFolderPath);
 

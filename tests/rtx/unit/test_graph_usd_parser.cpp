@@ -35,8 +35,9 @@
 #include "../../../src/util/log/log.h"
 #include "../../../src/util/util_error.h"
 
-// Include the test component
+// Include the test components
 #include "graph/test_component.h"
+#include "graph/test_flexible_component.h"
 
 // USD includes for testing
 #include "../../../src/lssusd/usd_include_begin.h"
@@ -1525,11 +1526,549 @@ void testOldPropertyNames() {
     size_t expectedValues = components::TestComponent::getStaticSpec()->properties.size() * 2 - 1;
     if (graphState.values.size() != expectedValues) {
       throw DxvkError(str::format("testOldPropertyNames: graphState.values should be size ", expectedValues, 
-                                  " (33 properties per node - 1 shared connection), but is ", graphState.values.size()));
+                                  " (39 properties per node - 1 shared connection), but is ", graphState.values.size()));
     }
   }
   
   Logger::info("testOldPropertyNames passed");
+}
+
+// Tests for flexible type resolution using actual flexible components (Add, LessThan, etc.)
+
+void testNumberFlexibleTypeResolution() {
+  Logger::info("Testing Number flexible type resolution using TestFlexNumber component...");
+  
+  GraphUsdParserTest test;
+  
+  // Test Case 1: TestFlexNumber with Float inputs
+  Logger::info("Test Case 1: TestFlexNumber Number properties resolve to Float");
+  {
+    pxr::SdfPath graphPath("/World/testGraphTestFlexNumberFloat");
+    pxr::UsdPrim graphPrim = test.m_stage->DefinePrim(graphPath, pxr::TfToken("OmniGraph"));
+    
+    // Create a TestFlexNumber node
+    pxr::UsdPrim nodePrim = test.m_stage->DefinePrim(graphPath.AppendChild(pxr::TfToken("testFlexNumberNode")), pxr::TfToken("OmniGraphNode"));
+    nodePrim.CreateAttribute(pxr::TfToken("node:type"), pxr::SdfValueTypeNames->Token).Set(pxr::TfToken("lightspeed.trex.logic.TestFlexNumber"));
+    nodePrim.CreateAttribute(pxr::TfToken("node:typeVersion"), pxr::SdfValueTypeNames->Int).Set(1);
+    
+    // Add Float inputs (Number flexible type should resolve to Float)
+    pxr::UsdAttribute attrA = nodePrim.CreateAttribute(pxr::TfToken("inputs:inputA"), pxr::SdfValueTypeNames->Float);
+    attrA.Set(3.14f);
+    pxr::UsdAttribute attrB = nodePrim.CreateAttribute(pxr::TfToken("inputs:inputB"), pxr::SdfValueTypeNames->Float);
+    attrB.Set(2.71f);
+    
+    // Parse the graph
+    RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
+    
+    // Verify we have one component
+    if (graphState.topology.componentSpecs.size() != 1) {
+      throw DxvkError("testNumberFlexibleTypeResolution: should have 1 component");
+    }
+    
+    // Get the component spec for the TestFlexNumber<Float, Float> variant
+    RtComponentType testFlexNumberType = XXH3_64bits("lightspeed.trex.logic.TestFlexNumber", strlen("lightspeed.trex.logic.TestFlexNumber"));
+    const ComponentSpecVariantMap& variants = getAllComponentSpecVariants(testFlexNumberType);
+    
+    if (variants.empty()) {
+      throw DxvkError("testNumberFlexibleTypeResolution: no TestFlexNumber variants found");
+    }
+    
+    // Find the Float,Float variant
+    const RtComponentSpec* floatVariantSpec = nullptr;
+    for (const auto* spec : variants) {
+      auto aIt = spec->resolvedTypes.find("inputA");
+      auto bIt = spec->resolvedTypes.find("inputB");
+      if (aIt != spec->resolvedTypes.end() && bIt != spec->resolvedTypes.end() &&
+          aIt->second == RtComponentPropertyType::Float && bIt->second == RtComponentPropertyType::Float) {
+        floatVariantSpec = spec;
+        break;
+      }
+    }
+    
+    if (floatVariantSpec == nullptr) {
+      throw DxvkError("testNumberFlexibleTypeResolution: TestFlexNumber<Float, Float> variant not found");
+    }
+    
+    // Verify the parsed component is using the Float variant
+    if (graphState.topology.componentSpecs[0]->componentType != floatVariantSpec->componentType) {
+      throw DxvkError("testNumberFlexibleTypeResolution: component should use Float variant");
+    }
+    
+    Logger::info("  TestFlexNumber correctly resolved Number to Float");
+  }
+  
+  // Test Case 2: TestFlexNumber with Int32 inputs
+  Logger::info("Test Case 2: TestFlexNumber Number properties resolve to Int32");
+  {
+    pxr::SdfPath graphPath("/World/testGraphTestFlexNumberInt32");
+    pxr::UsdPrim graphPrim = test.m_stage->DefinePrim(graphPath, pxr::TfToken("OmniGraph"));
+    
+    // Create a TestFlexNumber node
+    pxr::UsdPrim nodePrim = test.m_stage->DefinePrim(graphPath.AppendChild(pxr::TfToken("testFlexNumberNode")), pxr::TfToken("OmniGraphNode"));
+    nodePrim.CreateAttribute(pxr::TfToken("node:type"), pxr::SdfValueTypeNames->Token).Set(pxr::TfToken("lightspeed.trex.logic.TestFlexNumber"));
+    nodePrim.CreateAttribute(pxr::TfToken("node:typeVersion"), pxr::SdfValueTypeNames->Int).Set(1);
+    
+    // Add Int32 inputs (Number flexible type should resolve to Int32)
+    pxr::UsdAttribute attrA = nodePrim.CreateAttribute(pxr::TfToken("inputs:inputA"), pxr::SdfValueTypeNames->Int);
+    attrA.Set(42);
+    pxr::UsdAttribute attrB = nodePrim.CreateAttribute(pxr::TfToken("inputs:inputB"), pxr::SdfValueTypeNames->Int);
+    attrB.Set(100);
+    
+    // Parse the graph
+    RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
+    
+    // Verify we have one component
+    if (graphState.topology.componentSpecs.size() != 1) {
+      throw DxvkError("testNumberFlexibleTypeResolution: should have 1 component");
+    }
+    
+    // Get the component spec for the TestFlexNumber<Int32, Int32> variant
+    RtComponentType testFlexNumberType = XXH3_64bits("lightspeed.trex.logic.TestFlexNumber", strlen("lightspeed.trex.logic.TestFlexNumber"));
+    const ComponentSpecVariantMap& variants = getAllComponentSpecVariants(testFlexNumberType);
+    
+    // Find the Int32,Int32 variant
+    const RtComponentSpec* int32VariantSpec = nullptr;
+    for (const auto* spec : variants) {
+      auto aIt = spec->resolvedTypes.find("inputA");
+      auto bIt = spec->resolvedTypes.find("inputB");
+      if (aIt != spec->resolvedTypes.end() && bIt != spec->resolvedTypes.end() &&
+          aIt->second == RtComponentPropertyType::Int32 && bIt->second == RtComponentPropertyType::Int32) {
+        int32VariantSpec = spec;
+        break;
+      }
+    }
+    
+    if (int32VariantSpec == nullptr) {
+      throw DxvkError("testNumberFlexibleTypeResolution: TestFlexNumber<Int32, Int32> variant not found");
+    }
+    
+    // Verify the parsed component is using the Int32 variant
+    if (graphState.topology.componentSpecs[0]->componentType != int32VariantSpec->componentType) {
+      throw DxvkError("testNumberFlexibleTypeResolution: component should use Int32 variant");
+    }
+    
+    Logger::info("  TestFlexNumber correctly resolved Number to Int32");
+  }
+  
+  Logger::info("testNumberFlexibleTypeResolution passed");
+}
+
+void testNumberOrVectorFlexibleTypeResolution() {
+  Logger::info("Testing NumberOrVector flexible type resolution using TestFlexNumberOrVector component...");
+  
+  GraphUsdParserTest test;
+  
+  // Test Case 1: TestFlexNumberOrVector with Float inputs
+  Logger::info("Test Case 1: TestFlexNumberOrVector NumberOrVector properties resolve to Float");
+  {
+    pxr::SdfPath graphPath("/World/testGraphTestFlexNumberOrVectorFloat");
+    pxr::UsdPrim graphPrim = test.m_stage->DefinePrim(graphPath, pxr::TfToken("OmniGraph"));
+    
+    // Create a TestFlexNumberOrVector node
+    pxr::UsdPrim nodePrim = test.m_stage->DefinePrim(graphPath.AppendChild(pxr::TfToken("testFlexNumberOrVectorNode")), pxr::TfToken("OmniGraphNode"));
+    nodePrim.CreateAttribute(pxr::TfToken("node:type"), pxr::SdfValueTypeNames->Token).Set(pxr::TfToken("lightspeed.trex.logic.TestFlexNumberOrVector"));
+    nodePrim.CreateAttribute(pxr::TfToken("node:typeVersion"), pxr::SdfValueTypeNames->Int).Set(1);
+    
+    // Add Float inputs (NumberOrVector flexible type should resolve to Float)
+    pxr::UsdAttribute attrA = nodePrim.CreateAttribute(pxr::TfToken("inputs:inputA"), pxr::SdfValueTypeNames->Float);
+    attrA.Set(1.5f);
+    pxr::UsdAttribute attrB = nodePrim.CreateAttribute(pxr::TfToken("inputs:inputB"), pxr::SdfValueTypeNames->Float);
+    attrB.Set(2.5f);
+    
+    // Parse the graph
+    RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
+    
+    // Verify we have one component
+    if (graphState.topology.componentSpecs.size() != 1) {
+      throw DxvkError("testNumberOrVectorFlexibleTypeResolution: should have 1 component");
+    }
+    
+    // Get the component spec for the TestFlexNumberOrVector<Float, Float, Float> variant
+    RtComponentType testFlexType = XXH3_64bits("lightspeed.trex.logic.TestFlexNumberOrVector", strlen("lightspeed.trex.logic.TestFlexNumberOrVector"));
+    const ComponentSpecVariantMap& variants = getAllComponentSpecVariants(testFlexType);
+    
+    if (variants.empty()) {
+      throw DxvkError("testNumberOrVectorFlexibleTypeResolution: no TestFlexNumberOrVector variants found");
+    }
+    
+    // Find the Float,Float,Float variant
+    const RtComponentSpec* floatVariantSpec = nullptr;
+    for (const auto* spec : variants) {
+      auto aIt = spec->resolvedTypes.find("inputA");
+      auto bIt = spec->resolvedTypes.find("inputB");
+      auto outIt = spec->resolvedTypes.find("output");
+      if (aIt != spec->resolvedTypes.end() && bIt != spec->resolvedTypes.end() && outIt != spec->resolvedTypes.end() &&
+          aIt->second == RtComponentPropertyType::Float && bIt->second == RtComponentPropertyType::Float &&
+          outIt->second == RtComponentPropertyType::Float) {
+        floatVariantSpec = spec;
+        break;
+      }
+    }
+    
+    if (floatVariantSpec == nullptr) {
+      throw DxvkError("testNumberOrVectorFlexibleTypeResolution: TestFlexNumberOrVector<Float, Float, Float> variant not found");
+    }
+    
+    // Verify the parsed component is using the Float variant
+    if (graphState.topology.componentSpecs[0]->componentType != floatVariantSpec->componentType) {
+      throw DxvkError("testNumberOrVectorFlexibleTypeResolution: component should use Float variant");
+    }
+    
+    Logger::info("  TestFlexNumberOrVector correctly resolved NumberOrVector to Float");
+  }
+  
+  // Test Case 2: TestFlexNumberOrVector with Vector3 inputs
+  Logger::info("Test Case 2: TestFlexNumberOrVector NumberOrVector properties resolve to Vector3 (Float3)");
+  {
+    pxr::SdfPath graphPath("/World/testGraphTestFlexNumberOrVectorVector3");
+    pxr::UsdPrim graphPrim = test.m_stage->DefinePrim(graphPath, pxr::TfToken("OmniGraph"));
+    
+    // Create a TestFlexNumberOrVector node
+    pxr::UsdPrim nodePrim = test.m_stage->DefinePrim(graphPath.AppendChild(pxr::TfToken("testFlexNumberOrVectorNode")), pxr::TfToken("OmniGraphNode"));
+    nodePrim.CreateAttribute(pxr::TfToken("node:type"), pxr::SdfValueTypeNames->Token).Set(pxr::TfToken("lightspeed.trex.logic.TestFlexNumberOrVector"));
+    nodePrim.CreateAttribute(pxr::TfToken("node:typeVersion"), pxr::SdfValueTypeNames->Int).Set(1);
+    
+    // Add Vector3 inputs (NumberOrVector flexible type should resolve to Float3)
+    pxr::UsdAttribute attrA = nodePrim.CreateAttribute(pxr::TfToken("inputs:inputA"), pxr::SdfValueTypeNames->Float3);
+    attrA.Set(pxr::GfVec3f(1.0f, 2.0f, 3.0f));
+    pxr::UsdAttribute attrB = nodePrim.CreateAttribute(pxr::TfToken("inputs:inputB"), pxr::SdfValueTypeNames->Float3);
+    attrB.Set(pxr::GfVec3f(4.0f, 5.0f, 6.0f));
+    
+    // Parse the graph
+    RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
+    
+    // Verify we have one component
+    if (graphState.topology.componentSpecs.size() != 1) {
+      throw DxvkError("testNumberOrVectorFlexibleTypeResolution: should have 1 component");
+    }
+    
+    // Get the component spec for the TestFlexNumberOrVector<Float3, Float3, Float3> variant
+    RtComponentType testFlexType = XXH3_64bits("lightspeed.trex.logic.TestFlexNumberOrVector", strlen("lightspeed.trex.logic.TestFlexNumberOrVector"));
+    const ComponentSpecVariantMap& variants = getAllComponentSpecVariants(testFlexType);
+    
+    // Find the Float3,Float3,Float3 variant
+    const RtComponentSpec* vec3VariantSpec = nullptr;
+    for (const auto* spec : variants) {
+      auto aIt = spec->resolvedTypes.find("inputA");
+      auto bIt = spec->resolvedTypes.find("inputB");
+      auto outIt = spec->resolvedTypes.find("output");
+      if (aIt != spec->resolvedTypes.end() && bIt != spec->resolvedTypes.end() && outIt != spec->resolvedTypes.end() &&
+          aIt->second == RtComponentPropertyType::Float3 && bIt->second == RtComponentPropertyType::Float3 &&
+          outIt->second == RtComponentPropertyType::Float3) {
+        vec3VariantSpec = spec;
+        break;
+      }
+    }
+    
+    if (vec3VariantSpec == nullptr) {
+      throw DxvkError("testNumberOrVectorFlexibleTypeResolution: TestFlexNumberOrVector<Float3, Float3, Float3> variant not found");
+    }
+    
+    // Verify the parsed component is using the Vector3 variant
+    if (graphState.topology.componentSpecs[0]->componentType != vec3VariantSpec->componentType) {
+      throw DxvkError("testNumberOrVectorFlexibleTypeResolution: component should use Float3 variant");
+    }
+    
+    Logger::info("  TestFlexNumberOrVector correctly resolved NumberOrVector to Float3");
+  }
+  
+  Logger::info("testNumberOrVectorFlexibleTypeResolution passed");
+}
+
+void testFlexibleTypeResolutionFromTokenStrings() {
+  Logger::info("Testing flexible type resolution from token strings...");
+  
+  GraphUsdParserTest test;
+  
+  // Test Case 1: Number resolves to Float from decimal token string
+  Logger::info("Test Case 1: Number resolves to Float from token string \"3.14\"");
+  {
+    pxr::SdfPath graphPath("/World/testGraphTokenFloat");
+    pxr::UsdPrim graphPrim = test.m_stage->DefinePrim(graphPath, pxr::TfToken("OmniGraph"));
+    
+    // Create a TestFlexNumber node
+    pxr::UsdPrim nodePrim = test.m_stage->DefinePrim(graphPath.AppendChild(pxr::TfToken("testFlexNumberNode")), pxr::TfToken("OmniGraphNode"));
+    nodePrim.CreateAttribute(pxr::TfToken("node:type"), pxr::SdfValueTypeNames->Token).Set(pxr::TfToken("lightspeed.trex.logic.TestFlexNumber"));
+    nodePrim.CreateAttribute(pxr::TfToken("node:typeVersion"), pxr::SdfValueTypeNames->Int).Set(1);
+    
+    // Use Token type with a float-like string value
+    pxr::UsdAttribute attrA = nodePrim.CreateAttribute(pxr::TfToken("inputs:inputA"), pxr::SdfValueTypeNames->Token);
+    attrA.Set(pxr::TfToken("3.14"));
+    pxr::UsdAttribute attrB = nodePrim.CreateAttribute(pxr::TfToken("inputs:inputB"), pxr::SdfValueTypeNames->Token);
+    attrB.Set(pxr::TfToken("2.718"));
+    
+    // Parse the graph
+    RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
+    
+    if (graphState.topology.componentSpecs.size() != 1) {
+      throw DxvkError("testFlexibleTypeResolutionFromTokenStrings: should have 1 component");
+    }
+    
+    // Verify it resolved to Float variant
+    RtComponentType testFlexNumberType = XXH3_64bits("lightspeed.trex.logic.TestFlexNumber", strlen("lightspeed.trex.logic.TestFlexNumber"));
+    const ComponentSpecVariantMap& variants = getAllComponentSpecVariants(testFlexNumberType);
+    
+    const RtComponentSpec* floatVariantSpec = nullptr;
+    for (const auto* spec : variants) {
+      auto aIt = spec->resolvedTypes.find("inputA");
+      auto bIt = spec->resolvedTypes.find("inputB");
+      if (aIt != spec->resolvedTypes.end() && bIt != spec->resolvedTypes.end() &&
+          aIt->second == RtComponentPropertyType::Float && bIt->second == RtComponentPropertyType::Float) {
+        floatVariantSpec = spec;
+        break;
+      }
+    }
+    
+    if (floatVariantSpec == nullptr) {
+      throw DxvkError("testFlexibleTypeResolutionFromTokenStrings: Float variant not found");
+    }
+    
+    if (graphState.topology.componentSpecs[0]->componentType != floatVariantSpec->componentType) {
+      throw DxvkError("testFlexibleTypeResolutionFromTokenStrings: should use Float variant");
+    }
+    
+    Logger::info("  Number correctly resolved to Float from token string");
+  }
+  
+  // Test Case 2: Number resolves to Int32 from integer token string
+  Logger::info("Test Case 2: Number resolves to Int32 from token string \"42\"");
+  {
+    pxr::SdfPath graphPath("/World/testGraphTokenInt32");
+    pxr::UsdPrim graphPrim = test.m_stage->DefinePrim(graphPath, pxr::TfToken("OmniGraph"));
+    
+    // Create a TestFlexNumber node
+    pxr::UsdPrim nodePrim = test.m_stage->DefinePrim(graphPath.AppendChild(pxr::TfToken("testFlexNumberNode")), pxr::TfToken("OmniGraphNode"));
+    nodePrim.CreateAttribute(pxr::TfToken("node:type"), pxr::SdfValueTypeNames->Token).Set(pxr::TfToken("lightspeed.trex.logic.TestFlexNumber"));
+    nodePrim.CreateAttribute(pxr::TfToken("node:typeVersion"), pxr::SdfValueTypeNames->Int).Set(1);
+    
+    // Use Token type with integer string values
+    pxr::UsdAttribute attrA = nodePrim.CreateAttribute(pxr::TfToken("inputs:inputA"), pxr::SdfValueTypeNames->Token);
+    attrA.Set(pxr::TfToken("42"));
+    pxr::UsdAttribute attrB = nodePrim.CreateAttribute(pxr::TfToken("inputs:inputB"), pxr::SdfValueTypeNames->Token);
+    attrB.Set(pxr::TfToken("-100"));
+    
+    // Parse the graph
+    RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
+    
+    if (graphState.topology.componentSpecs.size() != 1) {
+      throw DxvkError("testFlexibleTypeResolutionFromTokenStrings: should have 1 component");
+    }
+    
+    // Verify it resolved to Int32 variant
+    RtComponentType testFlexNumberType = XXH3_64bits("lightspeed.trex.logic.TestFlexNumber", strlen("lightspeed.trex.logic.TestFlexNumber"));
+    const ComponentSpecVariantMap& variants = getAllComponentSpecVariants(testFlexNumberType);
+    
+    const RtComponentSpec* int32VariantSpec = nullptr;
+    for (const auto* spec : variants) {
+      auto aIt = spec->resolvedTypes.find("inputA");
+      auto bIt = spec->resolvedTypes.find("inputB");
+      if (aIt != spec->resolvedTypes.end() && bIt != spec->resolvedTypes.end() &&
+          aIt->second == RtComponentPropertyType::Int32 && bIt->second == RtComponentPropertyType::Int32) {
+        int32VariantSpec = spec;
+        break;
+      }
+    }
+    
+    if (int32VariantSpec == nullptr) {
+      throw DxvkError("testFlexibleTypeResolutionFromTokenStrings: Int32 variant not found");
+    }
+    
+    if (graphState.topology.componentSpecs[0]->componentType != int32VariantSpec->componentType) {
+      throw DxvkError("testFlexibleTypeResolutionFromTokenStrings: should use Int32 variant");
+    }
+    
+    Logger::info("  Number correctly resolved to Int32 from token string");
+  }
+  
+  // Test Case 3: NumberOrVector resolves to Float3 from vector token string
+  Logger::info("Test Case 3: NumberOrVector resolves to Float3 from token string \"(1.0, 2.0, 3.0)\"");
+  {
+    pxr::SdfPath graphPath("/World/testGraphTokenVector3");
+    pxr::UsdPrim graphPrim = test.m_stage->DefinePrim(graphPath, pxr::TfToken("OmniGraph"));
+    
+    // Create a TestFlexNumberOrVector node
+    pxr::UsdPrim nodePrim = test.m_stage->DefinePrim(graphPath.AppendChild(pxr::TfToken("testFlexNumberOrVectorNode")), pxr::TfToken("OmniGraphNode"));
+    nodePrim.CreateAttribute(pxr::TfToken("node:type"), pxr::SdfValueTypeNames->Token).Set(pxr::TfToken("lightspeed.trex.logic.TestFlexNumberOrVector"));
+    nodePrim.CreateAttribute(pxr::TfToken("node:typeVersion"), pxr::SdfValueTypeNames->Int).Set(1);
+    
+    // Use Token type with vector string syntax
+    pxr::UsdAttribute attrA = nodePrim.CreateAttribute(pxr::TfToken("inputs:inputA"), pxr::SdfValueTypeNames->Token);
+    attrA.Set(pxr::TfToken("(1.0, 2.0, 3.0)"));
+    pxr::UsdAttribute attrB = nodePrim.CreateAttribute(pxr::TfToken("inputs:inputB"), pxr::SdfValueTypeNames->Token);
+    attrB.Set(pxr::TfToken("(4.0, 5.0, 6.0)"));
+    
+    // Parse the graph
+    RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
+    
+    if (graphState.topology.componentSpecs.size() != 1) {
+      throw DxvkError("testFlexibleTypeResolutionFromTokenStrings: should have 1 component");
+    }
+    
+    // Verify it resolved to Float3 variant
+    RtComponentType testFlexType = XXH3_64bits("lightspeed.trex.logic.TestFlexNumberOrVector", strlen("lightspeed.trex.logic.TestFlexNumberOrVector"));
+    const ComponentSpecVariantMap& variants = getAllComponentSpecVariants(testFlexType);
+    
+    // Flexibly typed components have multiple different specs, one for each valid type combination.
+    // This loop finds the specific RtComponentSpec that uses Float3 for all 3 flexible type fields
+    const RtComponentSpec* vec3VariantSpec = nullptr;
+    for (const auto* spec : variants) {
+      auto aIt = spec->resolvedTypes.find("inputA");
+      auto bIt = spec->resolvedTypes.find("inputB");
+      auto outIt = spec->resolvedTypes.find("output");
+      // TestFlexNumberOrVector mimics a simple addition component, so we expect float3 + float3 to output a float3.
+      if (aIt != spec->resolvedTypes.end() && bIt != spec->resolvedTypes.end() && outIt != spec->resolvedTypes.end() &&
+          aIt->second == RtComponentPropertyType::Float3 && bIt->second == RtComponentPropertyType::Float3 &&
+          outIt->second == RtComponentPropertyType::Float3) {
+        vec3VariantSpec = spec;
+        break;
+      }
+    }
+    
+    if (vec3VariantSpec == nullptr) {
+      throw DxvkError("testFlexibleTypeResolutionFromTokenStrings: Float3 variant not found");
+    }
+    
+    if (graphState.topology.componentSpecs[0]->componentType != vec3VariantSpec->componentType) {
+      throw DxvkError("testFlexibleTypeResolutionFromTokenStrings: should use Float3 variant");
+    }
+    
+    Logger::info("  NumberOrVector correctly resolved to Float3 from token string");
+  }
+  
+  // Test Case 4: NumberOrVector resolves to Float from scalar token string
+  Logger::info("Test Case 4: NumberOrVector resolves to Float from token string \"5.5\"");
+  {
+    pxr::SdfPath graphPath("/World/testGraphTokenScalar");
+    pxr::UsdPrim graphPrim = test.m_stage->DefinePrim(graphPath, pxr::TfToken("OmniGraph"));
+    
+    // Create a TestFlexNumberOrVector node
+    pxr::UsdPrim nodePrim = test.m_stage->DefinePrim(graphPath.AppendChild(pxr::TfToken("testFlexNumberOrVectorNode")), pxr::TfToken("OmniGraphNode"));
+    nodePrim.CreateAttribute(pxr::TfToken("node:type"), pxr::SdfValueTypeNames->Token).Set(pxr::TfToken("lightspeed.trex.logic.TestFlexNumberOrVector"));
+    nodePrim.CreateAttribute(pxr::TfToken("node:typeVersion"), pxr::SdfValueTypeNames->Int).Set(1);
+    
+    // Use Token type with scalar float strings
+    pxr::UsdAttribute attrA = nodePrim.CreateAttribute(pxr::TfToken("inputs:inputA"), pxr::SdfValueTypeNames->Token);
+    attrA.Set(pxr::TfToken("5.5"));
+    pxr::UsdAttribute attrB = nodePrim.CreateAttribute(pxr::TfToken("inputs:inputB"), pxr::SdfValueTypeNames->Token);
+    attrB.Set(pxr::TfToken("3.3"));
+    
+    // Parse the graph
+    RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
+    
+    if (graphState.topology.componentSpecs.size() != 1) {
+      throw DxvkError("testFlexibleTypeResolutionFromTokenStrings: should have 1 component");
+    }
+    
+    // Verify it resolved to Float variant
+    RtComponentType testFlexType = XXH3_64bits("lightspeed.trex.logic.TestFlexNumberOrVector", strlen("lightspeed.trex.logic.TestFlexNumberOrVector"));
+    const ComponentSpecVariantMap& variants = getAllComponentSpecVariants(testFlexType);
+    
+    // Flexibly typed components have multiple different specs, one for each valid type combination.
+    // This loop finds the specific RtComponentSpec that uses float for all 3 flexible type fields
+    const RtComponentSpec* floatVariantSpec = nullptr;
+    for (const auto* spec : variants) {
+      auto aIt = spec->resolvedTypes.find("inputA");
+      auto bIt = spec->resolvedTypes.find("inputB");
+      auto outIt = spec->resolvedTypes.find("output");
+      // TestFlexNumberOrVector mimics a simple addition component, so we expect float + float to output a float.
+      if (aIt != spec->resolvedTypes.end() && bIt != spec->resolvedTypes.end() && outIt != spec->resolvedTypes.end() &&
+          aIt->second == RtComponentPropertyType::Float && bIt->second == RtComponentPropertyType::Float &&
+          outIt->second == RtComponentPropertyType::Float) {
+        floatVariantSpec = spec;
+        break;
+      }
+    }
+    
+    if (floatVariantSpec == nullptr) {
+      throw DxvkError("testFlexibleTypeResolutionFromTokenStrings: Float variant not found");
+    }
+    
+    if (graphState.topology.componentSpecs[0]->componentType != floatVariantSpec->componentType) {
+      throw DxvkError("testFlexibleTypeResolutionFromTokenStrings: should use Float variant");
+    }
+    
+    Logger::info("  NumberOrVector correctly resolved to Float from token string");
+  }
+  
+  Logger::info("testFlexibleTypeResolutionFromTokenStrings passed");
+}
+
+void testFlexibleTypeResolutionViaConnections() {
+  Logger::info("Testing flexible type resolution via connections...");
+  
+  GraphUsdParserTest test;
+  
+  // Test Case: Connect TestComponent Float output to TestFlexNumber Number input
+  Logger::info("Test Case: TestComponent.outputFloat -> TestFlexNumber.inputA (Number resolves via connection)");
+  {
+    pxr::SdfPath graphPath("/World/testGraphFlexibleConnection");
+    pxr::UsdPrim graphPrim = test.m_stage->DefinePrim(graphPath, pxr::TfToken("OmniGraph"));
+    
+    // Create a TestComponent node with Float output
+    pxr::UsdPrim testNode = test.createTestAllTypesNode(graphPath, "testNode");
+    testNode.CreateAttribute(pxr::TfToken("outputs:outputFloat"), pxr::SdfValueTypeNames->Float).Set(5.0f);
+    
+    // Create a TestFlexNumber node (with Number flexible inputs)
+    pxr::UsdPrim testFlexNode = test.m_stage->DefinePrim(graphPath.AppendChild(pxr::TfToken("testFlexNumberNode")), pxr::TfToken("OmniGraphNode"));
+    testFlexNode.CreateAttribute(pxr::TfToken("node:type"), pxr::SdfValueTypeNames->Token).Set(pxr::TfToken("lightspeed.trex.logic.TestFlexNumber"));
+    testFlexNode.CreateAttribute(pxr::TfToken("node:typeVersion"), pxr::SdfValueTypeNames->Int).Set(1);
+    
+    // Set inputB directly as Float
+    testFlexNode.CreateAttribute(pxr::TfToken("inputs:inputB"), pxr::SdfValueTypeNames->Float).Set(10.0f);
+    
+    // Connect testNode.outputFloat -> testFlexNode.inputA
+    test.connectNodes(testNode, "outputFloat", testFlexNode, "inputA");
+    
+    // Parse the graph
+    RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
+    
+    // Verify we have two components (TestComponent and TestFlexNumber)
+    if (graphState.topology.componentSpecs.size() != 2) {
+      throw DxvkError(str::format("testFlexibleTypeResolutionViaConnections: should have 2 components, got ", graphState.topology.componentSpecs.size()));
+    }
+    
+    // Verify that TestFlexNumber resolved to Float,Float variant based on the connection
+    RtComponentType testFlexNumberType = XXH3_64bits("lightspeed.trex.logic.TestFlexNumber", strlen("lightspeed.trex.logic.TestFlexNumber"));
+    const ComponentSpecVariantMap& variants = getAllComponentSpecVariants(testFlexNumberType);
+    
+    // Find the Float,Float variant
+    const RtComponentSpec* floatVariantSpec = nullptr;
+    for (const auto* spec : variants) {
+      auto aIt = spec->resolvedTypes.find("inputA");
+      auto bIt = spec->resolvedTypes.find("inputB");
+      if (aIt != spec->resolvedTypes.end() && bIt != spec->resolvedTypes.end() &&
+          aIt->second == RtComponentPropertyType::Float && bIt->second == RtComponentPropertyType::Float) {
+        floatVariantSpec = spec;
+        break;
+      }
+    }
+    
+    if (floatVariantSpec == nullptr) {
+      throw DxvkError("testFlexibleTypeResolutionViaConnections: TestFlexNumber<Float, Float> variant not found");
+    }
+    
+    // Find which component is the TestFlexNumber
+    size_t flexNumberIndex = SIZE_MAX;
+    for (size_t i = 0; i < graphState.topology.componentSpecs.size(); i++) {
+      if (graphState.topology.componentSpecs[i]->name.find("TestFlexNumber") != std::string::npos) {
+        flexNumberIndex = i;
+        break;
+      }
+    }
+    
+    if (flexNumberIndex == SIZE_MAX) {
+      throw DxvkError("testFlexibleTypeResolutionViaConnections: TestFlexNumber component not found");
+    }
+    
+    // The TestFlexNumber component should be using the Float variant
+    if (graphState.topology.componentSpecs[flexNumberIndex]->componentType != floatVariantSpec->componentType) {
+      throw DxvkError("testFlexibleTypeResolutionViaConnections: TestFlexNumber should use Float variant based on connection");
+    }
+    
+    Logger::info("  Flexible type correctly resolved to Float via connection");
+  }
+  
+  Logger::info("testFlexibleTypeResolutionViaConnections passed");
 }
 
 } // namespace dxvk
@@ -1538,6 +2077,21 @@ int main() {
   dxvk::Logger::info("Starting test_graph_usd_parser...");
   dxvk::Logger::info("Expecting 'Coding Error: in _DefineCppType at line 969 of C:/g/122538378/USD/pxr/base/tf/type.cpp'");
   dxvk::UsdMod::loadUsdPlugins();
+  
+  // Register test flexible component variants using DEFINE_*_OP_COMPONENT_CPP macros
+  // These macros automatically instantiate all valid type combinations
+  {
+    using namespace dxvk;
+    using namespace dxvk::components;
+    
+    // Register TestFlexNumber variants (uses DEFINE_COMPARISON_OP_COMPONENT_CPP)
+    // This will create all valid Number type combinations for comparison operations
+    createTypeVariantsForTestFlexNumber();
+    
+    // Register TestFlexNumberOrVector variants (uses DEFINE_BINARY_OP_COMPONENT_CPP)
+    // This will create all valid NumberOrVector type combinations for addition
+    createTypeVariantsForTestFlexNumberOrVector();
+  }
   
   try {
     dxvk::testCreateTestGraph();
@@ -1555,6 +2109,10 @@ int main() {
     dxvk::testStringAndAssetPathTypes();
     dxvk::testGraphWithCycle();
     dxvk::testOldPropertyNames();
+    dxvk::testNumberFlexibleTypeResolution();
+    dxvk::testNumberOrVectorFlexibleTypeResolution();
+    dxvk::testFlexibleTypeResolutionFromTokenStrings();
+    dxvk::testFlexibleTypeResolutionViaConnections();
     
     dxvk::Logger::info("\n All tests passed successfully!");
     return 0;

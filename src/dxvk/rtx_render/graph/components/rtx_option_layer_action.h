@@ -47,38 +47,34 @@ static constexpr uint32_t kDefaultComponentRtxOptionLayerPriority = 10000;
 
 #define LIST_OUTPUTS(X)
 
-// Manually declaring the class to allow for cleanup method
+// Manually declaring the class to allow for custom initialize and cleanup methods
 class RtxOptionLayerAction : public RtRegisteredComponentBatch<RtxOptionLayerAction> {
 private:
-  REMIX_COMPONENT_WRITE_CLASS_MEMBERS(LIST_INPUTS, LIST_STATES, LIST_OUTPUTS)
-public:
-  REMIX_COMPONENT_WRITE_CTOR(RtxOptionLayerAction, LIST_INPUTS, LIST_STATES, LIST_OUTPUTS)
-  static const RtComponentSpec* getStaticSpec() {
-    REMIX_COMPONENT_WRITE_STATIC_SPEC(
-      /* the Component name */ RtxOptionLayerAction,
-      /* the UI name */        "Rtx Option Layer Action",
-      /* the UI categories */  "Act",
-      /* the doc string */     "Controls an RtxOptionLayer by name, allowing dynamic enable/disable, strength adjustment, and threshold control. "
-        "This can be used to activate configuration layers at runtime based on game state or other conditions. "
-        "The layer is created if it doesn't exist, and managed with reference counting. "
-        "Each layer requires a unique priority value - if multiple components specify the same priority, an error will occur.",
-      /* the version number */ 1,
-      LIST_INPUTS, LIST_STATES, LIST_OUTPUTS,
-      
-      // Initialize callback to create or find option layers
-      spec.initialize = [](const Rc<DxvkContext>& context, RtComponentBatch& batch, const size_t index) {
-        static_cast<RtxOptionLayerAction&>(batch).initializeInstance(context, index);
-      };
-      
-      // Cleanup callback to clear cached pointers when instances are destroyed
-      spec.cleanup = [](RtComponentBatch& batch, const size_t index) {
-        static_cast<RtxOptionLayerAction&>(batch).cleanupInstance(index);
-      };
-    )
-  }
-  
-  void initializeInstance(const Rc<DxvkContext>& context, const size_t index);
+  REMIX_COMPONENT_GENERATE_PROP_TYPES(LIST_INPUTS, LIST_STATES, LIST_OUTPUTS)
+  REMIX_COMPONENT_BODY(
+    /* the Component class name */ RtxOptionLayerAction,
+    /* the UI name */        "Rtx Option Layer Action",
+    /* the UI categories */  "Act",
+    /* the doc string */     "Controls an RtxOptionLayer by name, allowing dynamic enable/disable, strength adjustment, and threshold control. "
+      "This can be used to activate configuration layers at runtime based on game state or other conditions. "
+      "The layer is created if it doesn't exist, and managed with reference counting. "
+      "Each layer requires a unique priority value - if multiple components specify the same priority, an error will occur.",
+    /* the version number */ 1,
+    LIST_INPUTS, LIST_STATES, LIST_OUTPUTS,
+    /* optional arguments: */
+    spec.initialize = initialize; // Initialize callback to create or find option layers
+    spec.cleanup = cleanup; // Cleanup callback to clear cached pointers when instances are destroyed
+  )
   void updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) final;
+  
+  // Need to wrap the optional functions in static methods to cast the batch to the correct type.
+  static void initialize(const Rc<DxvkContext>& context, RtComponentBatch& batch, const size_t index) {
+    static_cast<RtxOptionLayerAction&>(batch).initializeInstance(context, index);
+  }
+  static void cleanup(RtComponentBatch& batch, const size_t index) {
+    static_cast<RtxOptionLayerAction&>(batch).cleanupInstance(index);
+  }
+  void initializeInstance(const Rc<DxvkContext>& context, const size_t index);
   void cleanupInstance(const size_t index);
 };
 

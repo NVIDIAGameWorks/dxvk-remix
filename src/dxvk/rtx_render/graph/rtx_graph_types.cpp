@@ -34,6 +34,22 @@
 
 namespace dxvk {
 namespace {
+
+  // Central registry storing all component specs.
+  // Key: base component type (same for all template variants)
+  // Value: vector of all variants for that component type
+  // Using function-local statics ensures safe initialization order (initialized on first use).
+  // Note: safe initialization order is needed to avoid a crash during static init for unit tests.
+  static fast_unordered_map<ComponentSpecVariantMap>& getComponentSpecMap() {
+    static fast_unordered_map<ComponentSpecVariantMap> s_componentSpecs;
+    return s_componentSpecs;
+  }
+  
+  static std::mutex& getComponentSpecMapMutex() {
+    static std::mutex s_mutex;
+    return s_mutex;
+  }
+
   template<typename T>
   T parseVector(const std::string& input) {
     if (input.empty()) {
@@ -120,16 +136,6 @@ namespace {
   }
 } // namespace
 
-fast_unordered_map<const RtComponentSpec*>& getComponentSpecMap() {
-  static fast_unordered_map<const RtComponentSpec*> s_componentSpecs;
-  return s_componentSpecs;
-}
-
-std::mutex& getComponentSpecMapMutex() {
-  static std::mutex mtx;
-  return mtx;
-}
-
 void registerComponentSpec(const RtComponentSpec* spec) {
   if (spec == nullptr) {
     Logger::err("Cannot register null component spec");
@@ -143,25 +149,60 @@ void registerComponentSpec(const RtComponentSpec* spec) {
 
   std::lock_guard<std::mutex> lock(getComponentSpecMapMutex());
 
-  // Check for duplicate registration and insert
-  auto [iterator, wasInserted] = getComponentSpecMap().insert({spec->componentType, spec});
-  if (!wasInserted) {
-    Logger::err(str::format("Component spec for type ", spec->name, " already registered. Conflicting component spec: ", iterator->second->name));
-    assert(false && "Multiple component specs mapped to a single ComponentType.");
+  // Get or create the variant vector for this base component type
+  ComponentSpecVariantMap& variantVec = getComponentSpecMap()[spec->componentType];
+  
+  // Check for duplicate registration by comparing resolvedTypes
+  for (const auto* existingSpec : variantVec) {
+    if (existingSpec->resolvedTypes == spec->resolvedTypes) {
+      // If it's the exact same spec pointer, this is idempotent - just return
+      if (existingSpec == spec) {
+        return;
+      }
+      // Different spec with same resolved types is an error
+      Logger::err(str::format("Component spec variant for type ", spec->name, 
+                             " already registered with different spec pointer. Conflicting component spec: ", existingSpec->name));
+      assert(false && "Duplicate component spec variant registration with different pointer.");
+      return;
+    }
   }
+  
+  // Add this variant to the vector
+  variantVec.push_back(spec);
 
+  // Register old names (they point to the same variant vector)
   if (!spec->oldNames.empty()) {
     for (const auto& oldName : spec->oldNames) {
       std::string fullOldName = RtComponentPropertySpec::kUsdNamePrefix + oldName;
       RtComponentType oldType = XXH3_64bits(fullOldName.c_str(), fullOldName.size());
-      auto [oldIterator, oldWasInserted] = getComponentSpecMap().insert({oldType, spec});
-      if (!oldWasInserted) {
-        Logger::err(str::format("Component spec for legacy type name ", fullOldName, " already registered. Conflicting component spec: ", oldIterator->second->name));
-        assert(false && "Multiple component specs mapped to a single ComponentType.");
+      
+      // Get or create the variant vector for this old name
+      ComponentSpecVariantMap& oldVariantVec = getComponentSpecMap()[oldType];
+      
+      // Check for duplicate registration of old name
+      bool alreadyRegistered = false;
+      for (const auto* existingSpec : oldVariantVec) {
+        if (existingSpec->resolvedTypes == spec->resolvedTypes) {
+          // If it's the exact same spec pointer, this is idempotent - skip adding again
+          if (existingSpec == spec) {
+            alreadyRegistered = true;
+            break;
+          }
+          // Different spec with same resolved types is an error
+          Logger::err(str::format("Component spec variant for legacy type name ", fullOldName, 
+                                 " already registered with different spec pointer. ",
+                                 "Conflicting component spec: ", existingSpec->name));
+          assert(false && "Duplicate component spec variant registration for old name with different pointer.");
+          return;
+        }
+      }
+      
+      // Add to old name variant vector (if not already present)
+      if (!alreadyRegistered) {
+        oldVariantVec.push_back(spec);
       }
     }
   }
-
 }
 
 const RtComponentSpec* getComponentSpec(const RtComponentType& componentType) {
@@ -171,21 +212,74 @@ const RtComponentSpec* getComponentSpec(const RtComponentType& componentType) {
   }
 
   std::lock_guard<std::mutex> lock(getComponentSpecMapMutex());
-  auto iter = getComponentSpecMap().find(componentType);
-  if (iter == getComponentSpecMap().end()) {
+  auto baseIter = getComponentSpecMap().find(componentType);
+  if (baseIter == getComponentSpecMap().end()) {
     return nullptr;
   }
-  return iter->second;
+  
+  const ComponentSpecVariantMap& variantVec = baseIter->second;
+  if (variantVec.empty()) {
+    return nullptr;
+  }
+  
+  // Return the first variant (for non-templated components, there's only one)
+  // For templated components, caller should use getAllComponentSpecVariants and search
+  return variantVec[0];
+}
+
+// Returns empty static vector if component type not found
+static const ComponentSpecVariantMap s_emptyVariantVec;
+
+const ComponentSpecVariantMap& getAllComponentSpecVariants(const RtComponentType& componentType) {
+  std::lock_guard<std::mutex> lock(getComponentSpecMapMutex());
+  auto baseIter = getComponentSpecMap().find(componentType);
+  if (baseIter == getComponentSpecMap().end()) {
+    return s_emptyVariantVec;
+  }
+  
+  return baseIter->second;
+}
+
+const RtComponentSpec* getAnyComponentSpecVariant(const RtComponentType& componentType) {
+  std::lock_guard<std::mutex> lock(getComponentSpecMapMutex());
+  auto baseIter = getComponentSpecMap().find(componentType);
+  if (baseIter == getComponentSpecMap().end()) {
+    return nullptr;
+  }
+  
+  const ComponentSpecVariantMap& variantVec = baseIter->second;
+  if (variantVec.empty()) {
+    return nullptr;
+  }
+  
+  // Return any variant (the first one)
+  return variantVec[0];
 }
 
 bool writeAllOGNSchemas(const char* outputFolderPath) {
   std::lock_guard<std::mutex> lock(getComponentSpecMapMutex());
   const auto& map = getComponentSpecMap();
   bool success = true;
-  for (const auto& pair : map) {
-    const RtComponentSpec* spec = pair.second;
-    success &= writeOGNSchema(spec, outputFolderPath);
-    success &= writePythonStub(spec, outputFolderPath);
+  
+  // Track which base components we've already written (to avoid duplicates from oldNames)
+  std::unordered_set<std::string> writtenBaseComponents;
+  
+  for (const auto& [componentType, variantVec] : map) {
+    // Get any variant (all variants have the same name)
+    const RtComponentSpec* spec = variantVec.empty() ? nullptr : variantVec[0];
+    
+    if (spec == nullptr) {
+      continue;
+    }
+    
+    // Skip if we've already written this base component (handles oldNames)
+    if (writtenBaseComponents.count(spec->name)) {
+      continue;
+    }
+    writtenBaseComponents.insert(spec->name);
+    
+    success &= writeOGNSchema(spec, componentType, variantVec, outputFolderPath);
+    success &= writePythonStub(spec, componentType, variantVec, outputFolderPath);
   }
   return success;
 }
@@ -196,12 +290,26 @@ bool writeAllMarkdownDocs(const char* outputFolderPath) {
   bool success = true;
   
   std::vector<const RtComponentSpec*> specs;
-  specs.reserve(map.size());
+  std::unordered_set<std::string> writtenBaseComponents;
   
-  for (const auto& pair : map) {
-    const RtComponentSpec* spec = pair.second;
+  for (const auto& [componentType, variantVec] : map) {
+    // Get any variant for the index
+    const RtComponentSpec* spec = variantVec.empty() ? nullptr : variantVec[0];
+    
+    if (spec == nullptr) {
+      continue;
+    }
+    
+    // Skip if we've already written this base component (handles oldNames)
+    if (writtenBaseComponents.count(spec->name)) {
+      continue;
+    }
+    writtenBaseComponents.insert(spec->name);
+    
     specs.push_back(spec);
-    success &= writeComponentMarkdown(spec, outputFolderPath);
+    
+    // Write documentation including all variants
+    success &= writeComponentMarkdown(spec, componentType, variantVec, outputFolderPath);
   }
   
   success &= writeMarkdownIndex(specs, outputFolderPath);
@@ -223,6 +331,8 @@ std::ostream& operator << (std::ostream& os, RtComponentPropertyType type) {
     case RtComponentPropertyType::AssetPath: return os << "AssetPath";
     case RtComponentPropertyType::Hash: return os << "Hash";
     case RtComponentPropertyType::Prim: return os << "Prim";
+    case RtComponentPropertyType::Number: return os << "Number";
+    case RtComponentPropertyType::NumberOrVector: return os << "NumberOrVector";
   }
   return os << static_cast<int32_t>(type);
 }
@@ -268,6 +378,11 @@ RtComponentPropertyValue propertyValueFromString(const std::string& str, const R
     case RtComponentPropertyType::Prim:
       // Should never be reached (prim properties should be UsdRelationships, so they shouldn't ever have a string value).  Just in case, return an invalid value.
       return kInvalidRtComponentPropertyValue;
+    case RtComponentPropertyType::Number:
+    case RtComponentPropertyType::NumberOrVector:
+      // Flexible types should not be parsed from strings directly
+      Logger::err(str::format("Flexible types (Number, NumberOrVector) cannot be parsed from strings directly. type: ", type, ", string: ", str));
+      return kInvalidRtComponentPropertyValue;
     }
     Logger::err(str::format("Unknown property type in propertyValueFromString.  type: ", type, ", string: ", str));
   } catch (const std::invalid_argument& e) {
@@ -300,6 +415,11 @@ RtComponentPropertyVector propertyVectorFromType(const RtComponentPropertyType t
   case RtComponentPropertyType::AssetPath: return std::vector<std::string>{};
   case RtComponentPropertyType::Hash:   return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Hash>>{};
   case RtComponentPropertyType::Prim:   return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Prim>>{};
+  case RtComponentPropertyType::Number:
+  case RtComponentPropertyType::NumberOrVector:
+    // Flexible types should not be used to create property vectors directly
+    Logger::err(str::format("Flexible types (Number, NumberOrVector) cannot be used to create property vectors directly. type: ", type));
+    return std::vector<float>{}; // fallback
   }
   assert(false && "Unknown property type in propertyVectorFromType");
   return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Float>>{}; // fallback
