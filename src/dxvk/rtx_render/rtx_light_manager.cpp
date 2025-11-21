@@ -270,18 +270,28 @@ namespace dxvk {
 
       if (type == FallbackLightType::Distant) {
         // Note: Distant light does not need to be dynamic, do not recreate every frame.
-        if (!oldFallbackLightPresent) {
+        if (!oldFallbackLightPresent || s_fallbackLightDirty) {
           // Create the Distant Fallback Light
+          const auto oldDirectionalLightBufferIndex = oldFallbackLightPresent ? m_fallbackLight->getBufferIdx() : 0;
 
+          s_fallbackLightDirty = false;
           m_fallbackLight.emplace(RtDistantLight(
             // Note: Distant light direction must be normalized, but a non-normalized direction is provided as an option.
             normalize(fallbackLightDirection()),
             fallbackLightAngle() * kDegreesToRadians / 2.0f,
             fallbackLightRadiance()
           ));
+
+          if (oldFallbackLightPresent) {
+            // Note: Carry buffer index over from previous frame if the fallback light was present on the last frame.
+            m_fallbackLight->setBufferIdx(oldDirectionalLightBufferIndex);
+          }
         }
       } else if (type == FallbackLightType::Sphere) {
         // Create the Sphere Fallback Light
+
+        // sphere light is always recreated every frame, so we can reset the dirty flag
+        s_fallbackLightDirty = false;
 
         const auto oldSphereLightBufferIndex = oldFallbackLightPresent ? m_fallbackLight->getBufferIdx() : 0;
 
