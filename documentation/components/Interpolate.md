@@ -17,7 +17,7 @@ Interpolates a value from an input range to an output range with optional easing
 | inputMin | Input Min | Float | Input | 0\.0 | No | 
 | inputMax | Input Max | Float | Input | 1\.0 | No | 
 | clampInput | Clamp Input | Bool | Input | false | Yes | 
-| easingType | Easing Type | Uint32 | Input | Linear | No | 
+| easingType | Easing Type | Enum | Input | Linear | No | 
 | shouldReverse | Should Reverse | Bool | Input | false | Yes | 
 | outputMin | Output Min | NumberOrVector | Input | 0 | No | 
 | outputMax | Output Max | NumberOrVector | Input | 0 | No | 
@@ -46,7 +46,7 @@ If true, \`value\` will be clamped to the input range\.
 
 The type of easing to apply\.
 
-Underlying Type: `Uint32`
+Underlying Type: `Enum`
 
 
 **Allowed Values:**
@@ -93,12 +93,10 @@ This component supports flexible types. The following type combinations are vali
 
 | # | clampInput | easingType | inputMax | inputMin | interpolatedValue | outputMax | outputMin | shouldReverse | value |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | Bool | Uint32 | Float | Float | Float | Float | Float | Bool | Float |
-| 2 | Bool | Uint32 | Float | Float | Float2 | Float2 | Float2 | Bool | Float |
-| 3 | Bool | Uint32 | Float | Float | Float3 | Float3 | Float3 | Bool | Float |
-| 4 | Bool | Uint32 | Float | Float | Color4 | Color4 | Color4 | Bool | Float |
-
-**Note:** Float3 and Color3 both use the same underlying type (3-component vector). Color4 uses a 4-component vector.
+| 1 | Bool | Enum | Float | Float | Float | Float | Float | Bool | Float |
+| 2 | Bool | Enum | Float | Float | Float2 | Float2 | Float2 | Bool | Float |
+| 3 | Bool | Enum | Float | Float | Float3 | Float3 | Float3 | Bool | Float |
+| 4 | Bool | Enum | Float | Float | Float4 | Float4 | Float4 | Bool | Float |
 
 ## Usage Notes
 

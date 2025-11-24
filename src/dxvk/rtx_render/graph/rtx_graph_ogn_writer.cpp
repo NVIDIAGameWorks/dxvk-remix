@@ -56,16 +56,13 @@ std::string propertyTypeToOgnType(RtComponentPropertyType type) {
     case RtComponentPropertyType::Float: return "float";
     case RtComponentPropertyType::Float2: return "float[2]";
     case RtComponentPropertyType::Float3: return "float[3]";
-    case RtComponentPropertyType::Color3: return "colorf[3]";
-    case RtComponentPropertyType::Color4: return "colorf[4]";
-    case RtComponentPropertyType::Int32: return "int";
-    case RtComponentPropertyType::Uint32: return "uint";
-    case RtComponentPropertyType::Uint64: return "uint64";
+    case RtComponentPropertyType::Float4: return "float[4]";
+    case RtComponentPropertyType::Enum: return "uint";
     case RtComponentPropertyType::String: return "token";
     case RtComponentPropertyType::AssetPath: return "token";
     case RtComponentPropertyType::Hash: return "token";
     case RtComponentPropertyType::Prim: return "target";  // USD Relationship to a prim
-    case RtComponentPropertyType::Number: return "numeric_scalers";  // Flexible type
+    case RtComponentPropertyType::Any: return "any";  // Flexible type
     case RtComponentPropertyType::NumberOrVector: return "numeric_array_elements";  // Flexible type
   }
   return "unknown";
@@ -110,13 +107,6 @@ std::string getFlexiblePropertyTypeUnion(const ComponentSpecVariantMap& variants
       uniqueTypes.insert(ognType);
     }
   }
-  // Expand overlapping types (Float3 and Color3 use the same underlying type, so both should be listed)
-  if (uniqueTypes.count("float[3]") > 0) {
-    uniqueTypes.insert("colorf[3]");
-  }
-  if (uniqueTypes.count("colorf[3]") > 0) {
-    uniqueTypes.insert("float[3]");
-  }
   
   // Build JSON array string
   if (uniqueTypes.empty()) {
@@ -141,7 +131,7 @@ std::string getFlexiblePropertyTypeUnion(const ComponentSpecVariantMap& variants
 std::string getDefaultValueAsJson(const RtComponentPropertyValue& value, RtComponentPropertyType type) {
   switch (type) {
     case RtComponentPropertyType::Bool:
-      return std::get<uint8_t>(value) ? "true" : "false";
+      return std::get<uint32_t>(value) ? "true" : "false";
     case RtComponentPropertyType::Float:
       return std::to_string(std::get<float>(value));
     case RtComponentPropertyType::Float2: {
@@ -149,26 +139,21 @@ std::string getDefaultValueAsJson(const RtComponentPropertyValue& value, RtCompo
       return str::format("[", std::to_string(vec.x), ", ",
                           std::to_string(vec.y), "]");
     }
-    case RtComponentPropertyType::Float3:
-    case RtComponentPropertyType::Color3: {
+    case RtComponentPropertyType::Float3: {
       const auto& vec = std::get<Vector3>(value);
       return str::format("[", std::to_string(vec.x), ", ",
                           std::to_string(vec.y), ", ",
                           std::to_string(vec.z), "]");
     }
-    case RtComponentPropertyType::Color4: {
+    case RtComponentPropertyType::Float4: {
       const auto& vec = std::get<Vector4>(value);
       return str::format("[", std::to_string(vec.x), ", ",
                           std::to_string(vec.y), ", ",
                           std::to_string(vec.z), ", ",
                           std::to_string(vec.w), "]");
     }
-    case RtComponentPropertyType::Int32:
-      return std::to_string(std::get<int32_t>(value));
-    case RtComponentPropertyType::Uint32:
+    case RtComponentPropertyType::Enum:
       return std::to_string(std::get<uint32_t>(value));
-    case RtComponentPropertyType::Uint64:
-      return std::to_string(std::get<uint64_t>(value));
     case RtComponentPropertyType::String:
       return "\"" + escapeJsonString(std::get<std::string>(value)) + "\"";
     case RtComponentPropertyType::AssetPath:
@@ -182,7 +167,7 @@ std::string getDefaultValueAsJson(const RtComponentPropertyValue& value, RtCompo
     case RtComponentPropertyType::Prim:
       // Target relationships don't typically have default values in OGN
       return "null";
-    case RtComponentPropertyType::Number:
+    case RtComponentPropertyType::Any:
     case RtComponentPropertyType::NumberOrVector:
       // Flexible types should not have default values
       return "null";
@@ -241,10 +226,10 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentSpec& spec, 
   // Add metadata if available
   bool hasMetadata = false;
   // For flexible types, don't add color metadata (since they can resolve to any type)
-  bool isColorType = !isFlexibleType && (prop.type == RtComponentPropertyType::Color3 || prop.type == RtComponentPropertyType::Color4);
+  bool isColorType = !isFlexibleType && prop.treatAsColor && 
+                     (prop.type == RtComponentPropertyType::Float3 || prop.type == RtComponentPropertyType::Float4);
   
   if (!prop.enumValues.empty() || isColorType) {
-    
     outputFile << "        \"metadata\": {" << std::endl;
     
     // Add uiType for color properties

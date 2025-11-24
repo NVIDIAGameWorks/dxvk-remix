@@ -23,8 +23,8 @@
       },
       "usageCount": {
         "description": ["Number of times the mesh hash was used in the current frame."],
-        "type": "uint",
-        "default": 0,
+        "type": "float",
+        "default": 0.000000,
         "uiName": "Usage Count"
       }
     }

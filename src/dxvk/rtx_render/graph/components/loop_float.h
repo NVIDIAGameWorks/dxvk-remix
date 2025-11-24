@@ -32,7 +32,7 @@ namespace components {
   X(RtComponentPropertyType::Float, 0.0f, value, "Value", "The input float value to apply looping to.") \
   X(RtComponentPropertyType::Float, 0.0f, minRange, "Min Range", "The minimum value of the looping range.") \
   X(RtComponentPropertyType::Float, 1.0f, maxRange, "Max Range", "The maximum value of the looping range.") \
-  X(RtComponentPropertyType::Uint32, static_cast<uint32_t>(LoopingType::Loop), loopingType, "Looping Type", \
+  X(RtComponentPropertyType::Enum, static_cast<uint32_t>(LoopingType::Loop), loopingType, "Looping Type", \
     "How the value should loop within the range.", \
     property.enumValues = kLoopingTypeEnumValues)
 

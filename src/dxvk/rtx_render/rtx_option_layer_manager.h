@@ -36,6 +36,9 @@ namespace dxvk {
 // - Each priority value is globally unique across ALL layers
 // - The same config can be loaded with different priorities, creating separate layers
 // - Priority is the true identifier of a layer, not the config path
+//
+// WARNING: the priority that is passed into RtxOptionLayerManager won't actually match the priority of the layer.
+// It is kept as it is passed in so that users can treat it as invarying.
 class RtxOptionLayerManager {
 public:
   // Acquire a layer by config path and priority. Creates the layer if it doesn't exist.
@@ -43,14 +46,13 @@ public:
   // Each acquire must be matched with a release.
   // Priority must be globally unique - if already in use (even for a different config), this will fail.
   static const RtxOptionLayer* acquireLayer(const std::string& configPath, uint32_t priority, float blendStrength, float blendThreshold);
+
+  // looks up a layer by config path and priority.  Does not increment the reference count.
+  static RtxOptionLayer* lookupLayer(const std::string& configPath, uint32_t priority);
   
   // Release a previously acquired layer. Decrements the reference count.
   // When the count reaches zero, the layer is removed from the system.
-  static void releaseLayer(const RtxOptionLayer* layer);
-  
-  // Find an existing layer by priority without changing its reference count.
-  // Returns nullptr if not found.
-  static const RtxOptionLayer* findLayerByPriority(uint32_t priority);
+  static void releaseLayer(const std::string& configPath, uint32_t priority);
   
   // Get the reference count for a layer (primarily for debugging).
   static size_t getReferenceCount(const RtxOptionLayer* layer);

@@ -21,7 +21,7 @@ class Interpolate:
         # Combination 1: clampInput=bool, easingType=uint, inputMax=float, inputMin=float, interpolatedValue=float, outputMax=float, outputMin=float, shouldReverse=bool, value=float
         # Combination 2: clampInput=bool, easingType=uint, inputMax=float, inputMin=float, interpolatedValue=float[2], outputMax=float[2], outputMin=float[2], shouldReverse=bool, value=float
         # Combination 3: clampInput=bool, easingType=uint, inputMax=float, inputMin=float, interpolatedValue=float[3], outputMax=float[3], outputMin=float[3], shouldReverse=bool, value=float
-        # Combination 4: clampInput=bool, easingType=uint, inputMax=float, inputMin=float, interpolatedValue=colorf[4], outputMax=colorf[4], outputMin=colorf[4], shouldReverse=bool, value=float
+        # Combination 4: clampInput=bool, easingType=uint, inputMax=float, inputMin=float, interpolatedValue=float[4], outputMax=float[4], outputMin=float[4], shouldReverse=bool, value=float
 
         # Get attributes
         input_outputMin = node.get_attribute("inputs:outputMin")

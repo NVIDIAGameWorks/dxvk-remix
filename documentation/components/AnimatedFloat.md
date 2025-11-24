@@ -17,8 +17,8 @@ A single animated float value\.
 | initialValue | Initial Value | Float | Input | 0\.0 | No | 
 | finalValue | Final Value | Float | Input | 1\.0 | No | 
 | duration | Duration | Float | Input | 1\.0 | No | 
-| loopingType | Looping Type | Uint32 | Input | Loop | No | 
-| interpolation | Interpolation | Uint32 | Input | Linear | Yes | 
+| loopingType | Looping Type | Enum | Input | Loop | No | 
+| interpolation | Interpolation | Enum | Input | Linear | Yes | 
 
 ### Enabled
 
@@ -48,7 +48,7 @@ How long it takes to animate from initial value to final value, in seconds\.
 
 What happens when the float reaches the final value\.
 
-Underlying Type: `Uint32`
+Underlying Type: `Enum`
 
 
 **Allowed Values:**
@@ -62,7 +62,7 @@ Underlying Type: `Uint32`
 
 How the float will change over time\.
 
-Underlying Type: `Uint32`
+Underlying Type: `Enum`
 
 
 **Allowed Values:**

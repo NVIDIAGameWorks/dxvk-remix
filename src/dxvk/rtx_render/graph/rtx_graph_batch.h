@@ -97,6 +97,26 @@ public:
     return *m_topology;
   }
 
+  // Look up a PrimInstance from the data a component can store / pass around.
+  // This is done instead of passing pointers directly, to avoid stale pointer problems.
+  PrimInstance* resolvePrimTarget(const Rc<DxvkContext>& context, size_t batchIndex, PrimTarget primTarget) const {
+    // context unused for now, but will probably be needed for fetching prim target from instanceId.
+    if (primTarget.replacementIndex != ReplacementInstance::kInvalidReplacementIndex) {
+      const std::vector<GraphInstance*>& instances = m_graphInstances;
+      if (instances[batchIndex] != nullptr) {
+        ReplacementInstance* replacementInstance = instances[batchIndex]->getPrimInstanceOwner().getReplacementInstance();
+        if (replacementInstance != nullptr) {
+          return &replacementInstance->prims[primTarget.replacementIndex];
+        }
+      }
+      return nullptr;
+    } else if (primTarget.instanceId != kInvalidInstanceId) {
+      Logger::err("components targetting prims in other draw calls is not supported yet.");
+      return nullptr;
+    }
+    return nullptr;
+  }
+
 private:
   XXH64_hash_t m_graphHash;
   const RtGraphTopology* m_topology = nullptr;

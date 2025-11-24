@@ -33,7 +33,7 @@ namespace components {
   X(RtComponentPropertyType::Float, 0.0f, inputMin, "Input Min", "If `Value` equals `Input Min`, the output will be `Output Min`.") \
   X(RtComponentPropertyType::Float, 1.0f, inputMax, "Input Max", "If `Value` equals `Input Max`, the output will be `Output Max`.") \
   X(RtComponentPropertyType::Bool, false, clampInput, "Clamp Input", "If true, `value` will be clamped to the input range.", property.optional = true) \
-  X(RtComponentPropertyType::Uint32, static_cast<uint32_t>(InterpolationType::Linear), easingType, "Easing Type", \
+  X(RtComponentPropertyType::Enum, static_cast<uint32_t>(InterpolationType::Linear), easingType, "Easing Type", \
     "The type of easing to apply.", \
     property.enumValues = kInterpolationTypeEnumValues) \
   X(RtComponentPropertyType::Bool, false, shouldReverse, "Should Reverse", "If true, the easing is applied backwards. If `Value` is coming from a loopFloat component that is using `pingpong`, hook this up to `isReversing` from that component.", property.optional = true) \
@@ -53,7 +53,7 @@ private:
   static constexpr RtComponentPropertyType inputMinPropertyType = RtComponentPropertyType::Float;
   static constexpr RtComponentPropertyType inputMaxPropertyType = RtComponentPropertyType::Float;
   static constexpr RtComponentPropertyType clampInputPropertyType = RtComponentPropertyType::Bool;
-  static constexpr RtComponentPropertyType easingTypePropertyType = RtComponentPropertyType::Uint32;
+  static constexpr RtComponentPropertyType easingTypePropertyType = RtComponentPropertyType::Enum;
   static constexpr RtComponentPropertyType shouldReversePropertyType = RtComponentPropertyType::Bool;
   static constexpr RtComponentPropertyType outputMinPropertyType = rangePropertyType;
   static constexpr RtComponentPropertyType outputMaxPropertyType = rangePropertyType;
@@ -117,7 +117,7 @@ namespace {
   template class Interpolate<RtComponentPropertyType::Float>;
   template class Interpolate<RtComponentPropertyType::Float2>;
   template class Interpolate<RtComponentPropertyType::Float3>;
-  template class Interpolate<RtComponentPropertyType::Color4>;
+  template class Interpolate<RtComponentPropertyType::Float4>;
 }  // namespace
 
 }  // namespace components

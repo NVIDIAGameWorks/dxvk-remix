@@ -16,7 +16,7 @@ Applies looping behavior to a float value\.  Value is unchanged if it is inside 
 | value | Value | Float | Input | 0\.0 | No | 
 | minRange | Min Range | Float | Input | 0\.0 | No | 
 | maxRange | Max Range | Float | Input | 1\.0 | No | 
-| loopingType | Looping Type | Uint32 | Input | Loop | No | 
+| loopingType | Looping Type | Enum | Input | Loop | No | 
 
 ### Value
 
@@ -37,7 +37,7 @@ The maximum value of the looping range\.
 
 How the value should loop within the range\.
 
-Underlying Type: `Uint32`
+Underlying Type: `Enum`
 
 
 **Allowed Values:**
