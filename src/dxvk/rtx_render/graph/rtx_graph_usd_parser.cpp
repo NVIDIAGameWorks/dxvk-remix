@@ -408,11 +408,30 @@ RtComponentPropertyType GraphUsdParser::inferTypeFromTokenString(const std::stri
       return RtComponentPropertyType::Float2;
     }
     if (dimension == 3) {
-      // Could be Float3 or Color3 - default to Float3
       return RtComponentPropertyType::Float3;
     }
     if (dimension == 4) {
-      return RtComponentPropertyType::Color4;
+      return RtComponentPropertyType::Float4;
+    }
+  }
+  
+  // Check for hexadecimal hash values (0x prefix with up to 16 hex digits for uint64_t)
+  if (tokenStr.length() >= 3 && (tokenStr[0] == '0' && (tokenStr[1] == 'x' || tokenStr[1] == 'X'))) {
+    // Verify all characters after "0x" are valid hex digits
+    bool isValidHex = true;
+    size_t hexDigitCount = 0;
+    for (size_t i = 2; i < tokenStr.length(); ++i) {
+      char c = tokenStr[i];
+      if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
+        isValidHex = false;
+        break;
+      }
+      hexDigitCount++;
+    }
+    
+    // If it's valid hex and fits in uint64_t (up to 16 hex digits), treat as Hash
+    if (isValidHex && hexDigitCount > 0 && hexDigitCount <= 16) {
+      return RtComponentPropertyType::Hash;
     }
   }
   
@@ -423,36 +442,22 @@ RtComponentPropertyType GraphUsdParser::inferTypeFromTokenString(const std::stri
     return RtComponentPropertyType::Float;
   }
   
-  // Check for negative sign to rule out unsigned types
-  bool isNegative = !tokenStr.empty() && tokenStr[0] == '-';
-  
-  // Try to parse as integer
-  try {
-    long long value = std::stoll(tokenStr);
-    
-    // If it's within int32 range
-    if (value >= INT32_MIN && value <= INT32_MAX) {
-      return RtComponentPropertyType::Int32;
-    }
-    
-    // If it's within uint32 range and not negative
-    if (!isNegative && value <= UINT32_MAX) {
-      return RtComponentPropertyType::Uint32;
-    }
-    
-    // Otherwise uint64 (or int64, but we don't have that type)
-    return RtComponentPropertyType::Uint64;
-  } catch (...) {
-    // Not a valid number
-  }
-  
   // Check for boolean values
   if (tokenStr == "true" || tokenStr == "false" || tokenStr == "True" || tokenStr == "False") {
     return RtComponentPropertyType::Bool;
   }
   
-  // Default to Float for all other types
-  return RtComponentPropertyType::Float;
+  // Check if it's a valid number (integer or float without decimal point)
+  // These should map to Float type
+  try {
+    [[maybe_unused]] double value = std::stod(tokenStr);  // Try to parse as a number
+    return RtComponentPropertyType::Float;
+  } catch (...) {
+    // Not a valid number
+  }
+  
+  // Default to String for all other types
+  return RtComponentPropertyType::String;
 }
 
 // Helper function to find a strict type requirement from connected properties
@@ -539,7 +544,7 @@ RtComponentPropertyType GraphUsdParser::resolveFlexibleTypeFromAttribute(
 
   // TODO simplify this to match OGN's behavior.
   
-  if (property.declaredType != RtComponentPropertyType::Number && 
+  if (property.declaredType != RtComponentPropertyType::Any && 
       property.declaredType != RtComponentPropertyType::NumberOrVector) {
     // Not a flexible type, return as-is
     return property.type;
@@ -579,8 +584,7 @@ RtComponentPropertyType GraphUsdParser::resolveFlexibleTypeFromAttribute(
         
         // If the token string is ambiguous (like "0"), check connections
         if ((tokenStr == "0" || tokenStr == "1") && 
-            (inferredType == RtComponentPropertyType::Int32 || 
-             inferredType == RtComponentPropertyType::Uint32)) {
+            (inferredType == RtComponentPropertyType::Enum)) {
           // This could be int32, uint32, uint64, or even float - check connections
           RtComponentPropertyType connectedType = inferTypeFromConnections(attr, property, graphPrim, propertyPath);
           if (connectedType != RtComponentPropertyType::Float) {
@@ -609,12 +613,10 @@ RtComponentPropertyType GraphUsdParser::resolveFlexibleTypeFromAttribute(
   if (typeStr == "bool") { return RtComponentPropertyType::Bool; }
   if (typeStr == "float" || typeStr == "double") { return RtComponentPropertyType::Float; }
   if (typeStr == "float2" || typeStr == "double2") { return RtComponentPropertyType::Float2; }
-  if (typeStr == "float3" || typeStr == "double3" || typeStr == "normal3f" || typeStr == "normal3d") { return RtComponentPropertyType::Float3; }
-  if (typeStr == "color3f" || typeStr == "color3d") { return RtComponentPropertyType::Color3; }
-  if (typeStr == "float4" || typeStr == "double4" || typeStr == "color4f" || typeStr == "color4d") { return RtComponentPropertyType::Color4; }
-  if (typeStr == "int") { return RtComponentPropertyType::Int32; }
-  if (typeStr == "uint") { return RtComponentPropertyType::Uint32; }
-  if (typeStr == "uint64") { return RtComponentPropertyType::Uint64; }
+  if (typeStr == "float3" || typeStr == "double3" || typeStr == "normal3f" || typeStr == "normal3d" || typeStr == "color3f" || typeStr == "color3d") { return RtComponentPropertyType::Float3; }
+  if (typeStr == "float4" || typeStr == "double4" || typeStr == "color4f" || typeStr == "color4d") { return RtComponentPropertyType::Float4; }
+  if (typeStr == "uint") { return RtComponentPropertyType::Enum; }
+  if (typeStr == "uint64") { return RtComponentPropertyType::Hash; }
   
   // Default to Float if we can't determine the type
   Logger::warn(str::format("Could not resolve flexible type for property ", property.name, 
@@ -684,7 +686,7 @@ RtComponentPropertyValue GraphUsdParser::getPropertyValue(const pxr::UsdRelation
       // to pathHash calculated here... but we don't want to re-parse the entire graph for each instance.
       XXH64_hash_t pathHash = XXH3_64bits(path.GetString().c_str(), path.GetString().size());
       auto iter = pathToOffsetMap.find(pathHash);
-      uint32_t result = ReplacementInstance::kInvalidReplacementIndex;
+      PrimTarget result = { ReplacementInstance::kInvalidReplacementIndex, kInvalidInstanceId };
       if (iter == pathToOffsetMap.end()) {
         Logger::err(str::format("Relationship path ", path.GetString(), " not found in replacement hierarchy."));
       } else {
@@ -693,10 +695,10 @@ RtComponentPropertyValue GraphUsdParser::getPropertyValue(const pxr::UsdRelation
         if (!prim.IsValid() && iter->second != 0) {
           Logger::err(str::format("Relationship path ", path.GetString(), " not found in replacement hierarchy."));
         } else {
-          result = iter->second;
+          result = { iter->second, kInvalidInstanceId };
         }
       }
-      return propertyValueForceType<uint32_t>(result);
+      return propertyValueForceType<PrimTarget>(result);
     } else {
       Logger::err(str::format("Relationship ", rel.GetPath().GetString(), " has multiple targets, which is not supported."));
     }
@@ -719,16 +721,10 @@ RtComponentPropertyValue GraphUsdParser::getPropertyValue(const pxr::UsdAttribut
       return getPropertyValue<Vector2>(value, spec);
     case RtComponentPropertyType::Float3:
       return getPropertyValue<Vector3>(value, spec);
-    case RtComponentPropertyType::Color3:
-      return getPropertyValue<Vector3>(value, spec);
-    case RtComponentPropertyType::Color4:
+    case RtComponentPropertyType::Float4:
       return getPropertyValue<Vector4>(value, spec);
-    case RtComponentPropertyType::Int32:
-      return getPropertyValue<int>(value, spec);
-    case RtComponentPropertyType::Uint32:
+    case RtComponentPropertyType::Enum:
       return getPropertyValue<uint32_t>(value, spec);
-    case RtComponentPropertyType::Uint64:
-      return getPropertyValue<uint64_t>(value, spec);
     case RtComponentPropertyType::String:
       return getPropertyValue<std::string>(value, spec);
     case RtComponentPropertyType::AssetPath:
@@ -748,9 +744,9 @@ RtComponentPropertyValue GraphUsdParser::getPropertyValue(const pxr::UsdAttribut
     case RtComponentPropertyType::Prim:
       throw DxvkError(str::format("Prim target properties should be UsdRelationships, not UsdAttributes."));
       return spec.defaultValue;
-    case RtComponentPropertyType::Number:
+    case RtComponentPropertyType::Any:
     case RtComponentPropertyType::NumberOrVector:
-      throw DxvkError(str::format("Flexible types (Number, NumberOrVector) should not be loaded from USD attributes."));
+      throw DxvkError(str::format("Flexible types (Any, NumberOrVector) should not be loaded from USD attributes."));
       return spec.defaultValue;
     }
     Logger::err(str::format("Unknown property type: ", spec.type));

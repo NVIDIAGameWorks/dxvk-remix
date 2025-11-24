@@ -45,16 +45,54 @@ enum class RtComponentPropertyIOType {
 };
 std::ostream& operator << (std::ostream& os, RtComponentPropertyIOType type);
 
+
+// Struct to allow for passing and storing references to a specific RtInstance or RtLight.
+// In USD, these are represented as relationships to a prim within the same mesh replacement.
+// TODO figure out rules for referencing lights from outside that light replacement.
+struct PrimTarget {
+  // NOTE: don't use this directly.  Pass it to `m_batch.resolvePrimTarget(context, i, m_target[i])` instead.
+  uint32_t replacementIndex = ReplacementInstance::kInvalidReplacementIndex; // The index of the prim within the replacement instance.
+  uint64_t instanceId = kInvalidInstanceId; // The ID of the instance in the replacement manager
+
+  bool operator==(const PrimTarget& other) const {
+    return replacementIndex == other.replacementIndex && instanceId == other.instanceId;
+  }
+
+  bool operator!=(const PrimTarget& other) const {
+    return !(*this == other);
+  }
+
+  // Note: The ordering operators below don't represent a semantic ordering of prim targets.
+  // They exist solely to satisfy std::variant comparison requirements, allowing PrimTarget
+  // to be stored in RtComponentPropertyValue. The ordering is arbitrary but consistent.
+  bool operator<(const PrimTarget& other) const {
+    if (instanceId != other.instanceId) {
+      return instanceId < other.instanceId;
+    }
+    return replacementIndex < other.replacementIndex;
+  }
+
+  bool operator<=(const PrimTarget& other) const {
+    return *this < other || *this == other;
+  }
+
+  bool operator>(const PrimTarget& other) const {
+    return !(*this <= other);
+  }
+
+  bool operator>=(const PrimTarget& other) const {
+    return !(*this < other);
+  }
+};
+static constexpr PrimTarget kInvalidPrimTarget = { ReplacementInstance::kInvalidReplacementIndex, kInvalidInstanceId };
+
 enum class RtComponentPropertyType {
   Bool,
   Float,
   Float2,
   Float3,
-  Color3,
-  Color4,
-  Int32,
-  Uint32,
-  Uint64,
+  Float4,
+  Enum,
   String,
   AssetPath,
   Hash,
@@ -63,7 +101,7 @@ enum class RtComponentPropertyType {
   Prim,
 
   // Flexible types
-  Number,
+  Any, // Can be any of the above types
   NumberOrVector,
 
   // TODO should we support lists of any of the above types.
@@ -79,31 +117,20 @@ enum class RtComponentPropertyType {
 };
 std::ostream& operator << (std::ostream& os, RtComponentPropertyType e);
 
-// Specify what types are allowed for the Number flexible type.
-using RtComponentPropertyNumber = std::variant<
-  float,
-  int32_t,
-  uint32_t,
-  uint64_t
->;
 
 // Specify what types are allowed for the NumberOrVector flexible type.
 using RtComponentPropertyNumberOrVector = std::variant<
   float,
   Vector2,
   Vector3,
-  Vector4,
-  int32_t,
-  uint32_t,
-  uint64_t
+  Vector4
 >;
 
 using RtComponentPropertyValue = std::variant<
   // NOTE: std::vector<bool> has a special implementation to use 1 bit per element.
   // unfortunately, when placing such a vector inside a std::Variant, this makes it
   // unsafe to get a stable reference to the vector (it returns a temporary object instead).
-  // To work around this, we store the bool as a uint8_t instead.
-  uint8_t,
+  // To work around this, we store the bool as a uint32_t instead.
   // TODO: Potential optimization: should test out memory footprint vs number of types in this variant.
   // Once there are heavy use cases for graphs, we could test removing uint8_t and / or uint32_t as types.
   // Higher memory footprint vs fewer branches when adding / removing components.
@@ -111,29 +138,31 @@ using RtComponentPropertyValue = std::variant<
   Vector2,
   Vector3,
   Vector4,
-  int32_t,
-  uint32_t,
-  uint64_t,
+  uint32_t, // For Bool and Enums
+  uint64_t, // For Hashes
+  PrimTarget,
   std::string
 >;
 
-// as uint8_t is just representing a bool, this is an impossible value.
-inline const RtComponentPropertyValue kInvalidRtComponentPropertyValue{std::in_place_type<uint8_t>, 255};
+// Specific what types are allowed for the Any flexible type.
+// Just reuse the RtComponentPropertyValue variant, since Any can be any of them.
+using RtComponentPropertyAny = RtComponentPropertyValue;
+
+// Use a default constructed PrimTarget as an invalid property.
+inline const RtComponentPropertyValue kInvalidRtComponentPropertyValue{std::in_place_type<PrimTarget>, PrimTarget()};
 
 // convenience constants for hardcoding bool values properly.
-inline const RtComponentPropertyValue kFalsePropertyValue{std::in_place_type<uint8_t>, 0};
-inline const RtComponentPropertyValue kTruePropertyValue{std::in_place_type<uint8_t>, 1};
+inline const RtComponentPropertyValue kFalsePropertyValue{std::in_place_type<uint32_t>, 0};
+inline const RtComponentPropertyValue kTruePropertyValue{std::in_place_type<uint32_t>, 1};
 
 using RtComponentPropertyVector = std::variant<
-  // NOTE: see comment on RtComponentPropertyValue for why bool is stored as uint8_t.
-  std::vector<uint8_t>,
   std::vector<float>,
   std::vector<Vector2>,
   std::vector<Vector3>,
   std::vector<Vector4>,
-  std::vector<int32_t>,
-  std::vector<uint32_t>,
-  std::vector<uint64_t>,
+  std::vector<uint32_t>,  // Bools and Enums
+  std::vector<uint64_t>,  // Hashes
+  std::vector<PrimTarget>,
   std::vector<std::string>
 >;
 
@@ -142,37 +171,32 @@ using RtComponentPropertyVector = std::variant<
 // This is used to map from the RtComponentPropertyType enum to the corresponding C++ type at compile time.
 template<RtComponentPropertyType T>
 struct RtComponentPropertyTypeToCppTypeImpl;
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Bool> { using Type = uint8_t; }; // NOTE: see comment on RtComponentPropertyValue for why bool is stored as uint8_t.
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Bool> { using Type = uint32_t; }; // NOTE: see comment on RtComponentPropertyValue for why bool is stored as uint32_t.
 template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Float> { using Type = float; };
 template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Float2> { using Type = Vector2; };
 template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Float3> { using Type = Vector3; };
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Color3> { using Type = Vector3; };
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Color4> { using Type = Vector4; };
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Int32> { using Type = int32_t; };
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Uint32> { using Type = uint32_t; };
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Uint64> { using Type = uint64_t; };
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Float4> { using Type = Vector4; };
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Enum> { using Type = uint32_t; };
 template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::String> { using Type = std::string; };
 template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::AssetPath> { using Type = std::string; };
 template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Hash> { using Type = uint64_t; };
-template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Prim> { using Type = uint32_t; };
+template<> struct RtComponentPropertyTypeToCppTypeImpl<RtComponentPropertyType::Prim> { using Type = PrimTarget; };
 
 template< RtComponentPropertyType propertyType >
 using RtComponentPropertyTypeToCppType = typename RtComponentPropertyTypeToCppTypeImpl<propertyType>::Type;
 
 // Reverse mapping: C++ type to RtComponentPropertyType enum
 // This is used for automatic type deduction in templated code
-// Note: Vector3 maps to Float3, Vector4 maps to Color4 as the "canonical" types.
-//       This is safe because these are used for instantiating templated classes.
+// Note: uint32_t could be Bool or Enum, but as this is just for instantiating templated classes, we don't actually need to distinguish.
 template<typename T> struct CppTypeToPropertyType;
-template<> struct CppTypeToPropertyType<uint8_t> { static constexpr RtComponentPropertyType value = RtComponentPropertyType::Bool; };
 template<> struct CppTypeToPropertyType<float> { static constexpr RtComponentPropertyType value = RtComponentPropertyType::Float; };
 template<> struct CppTypeToPropertyType<Vector2> { static constexpr RtComponentPropertyType value = RtComponentPropertyType::Float2; };
 template<> struct CppTypeToPropertyType<Vector3> { static constexpr RtComponentPropertyType value = RtComponentPropertyType::Float3; };
-template<> struct CppTypeToPropertyType<Vector4> { static constexpr RtComponentPropertyType value = RtComponentPropertyType::Color4; };
-template<> struct CppTypeToPropertyType<int32_t> { static constexpr RtComponentPropertyType value = RtComponentPropertyType::Int32; };
-template<> struct CppTypeToPropertyType<uint32_t> { static constexpr RtComponentPropertyType value = RtComponentPropertyType::Uint32; };
-template<> struct CppTypeToPropertyType<uint64_t> { static constexpr RtComponentPropertyType value = RtComponentPropertyType::Uint64; };
+template<> struct CppTypeToPropertyType<Vector4> { static constexpr RtComponentPropertyType value = RtComponentPropertyType::Float4; };
+template<> struct CppTypeToPropertyType<uint32_t> { static constexpr RtComponentPropertyType value = RtComponentPropertyType::Enum; };
+template<> struct CppTypeToPropertyType<PrimTarget> { static constexpr RtComponentPropertyType value = RtComponentPropertyType::Prim; };
 template<> struct CppTypeToPropertyType<std::string> { static constexpr RtComponentPropertyType value = RtComponentPropertyType::String; };
+template<> struct CppTypeToPropertyType<uint64_t> { static constexpr RtComponentPropertyType value = RtComponentPropertyType::Hash; };
 
 RtComponentPropertyValue propertyValueFromString(const std::string& str, const RtComponentPropertyType type);
 RtComponentPropertyVector propertyVectorFromType(const RtComponentPropertyType type);
@@ -182,12 +206,20 @@ RtComponentPropertyVector propertyVectorFromType(const RtComponentPropertyType t
 // RtComponentPropertyValue<int> instead.
 template<typename T, typename E>
 RtComponentPropertyValue propertyValueForceType(const E& value) {
-  // We want to allow reasonable conversions here, like converting `0` to a float.
-  // To compile those, we need to disable the `narrowing conversion` warning.
-  #pragma warning(push)
-  #pragma warning(disable: 4244)
-  return RtComponentPropertyValue(std::in_place_type<T>, T(value));
-  #pragma warning(pop)
+  // Check if T can be constructed from E
+  // If so, convert the value. Otherwise, use default construction.
+  if constexpr (std::is_constructible_v<T, E>) {
+    // We want to allow reasonable conversions here, like converting `0` to a float.
+    // To compile those, we need to disable the `narrowing conversion` warning.
+    #pragma warning(push)
+    #pragma warning(disable: 4244)
+    return RtComponentPropertyValue(std::in_place_type<T>, T(value));
+    #pragma warning(pop)
+  } else {
+    // T cannot be constructed from E (e.g., std::string from int, PrimTarget from int)
+    // Use default construction instead
+    return RtComponentPropertyValue(std::in_place_type<T>, T());
+  }
 }
 
 // Helper to convert a RtComponentPropertyValue to the correct type for a property.
@@ -239,7 +271,7 @@ struct RtComponentPropertySpec {
   std::string uiName;
   std::string docString;
   
-  // For flexible types (Number, NumberOrVector), stores the original declared type
+  // For flexible types (Any, NumberOrVector), stores the original declared type
   // For non-flexible types, this is the same as `type`
   RtComponentPropertyType declaredType;
 
@@ -274,12 +306,18 @@ struct RtComponentPropertySpec {
   struct EnumProperty {
     template<typename T, typename = std::enable_if_t<std::is_enum_v<T>>>
     EnumProperty(const T& value, const std::string& docString) : 
-      value(propertyValueForceType<std::underlying_type_t<T>>(value)), docString(docString) {}
+      value(static_cast<std::underlying_type_t<T>>(value)), docString(docString) {
+      static_assert(std::is_same_v<std::underlying_type_t<T>, uint32_t>, 
+                    "Enum underlying type must be uint32_t to match RtComponentPropertyType::Enum");
+    }
     RtComponentPropertyValue value;
     std::string docString;
   };
   using EnumPropertyMap = std::map<std::string,EnumProperty>;
   EnumPropertyMap enumValues;
+
+  // Whether to treat Float3/Float4 types as colors in UI/OGN generation (adds color metadata)
+  bool treatAsColor = false;
 
   ///////////////////////////////////////////////////////////////////////////////////////////////////////////
   // END OF OPTIONAL VALUES FOR PROPERTY SPECS

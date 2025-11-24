@@ -414,10 +414,15 @@ std::string RtxGraphGUI::formatPropertyValue(const RtComponentPropertyValue& val
     // If no match found, fall through to default formatting
   }
   
-  return std::visit([](const auto& v) -> std::string {
+  return std::visit([propSpec](const auto& v) -> std::string {
     using T = std::decay_t<decltype(v)>;
-    if constexpr (std::is_same_v<T, uint8_t>) {
-      return v ? "true" : "false"; // bool stored as uint8_t
+    if constexpr (std::is_same_v<T, uint32_t>) {
+      // uint32_t is used for both Bool and Enum types - check propSpec to differentiate
+      if (propSpec && propSpec->type == RtComponentPropertyType::Bool) {
+        return v ? "true" : "false";
+      } else {
+        return std::to_string(v);
+      }
     } else if constexpr (std::is_same_v<T, float>) {
       return std::to_string(v);
     } else if constexpr (std::is_same_v<T, Vector2>) {
@@ -426,10 +431,6 @@ std::string RtxGraphGUI::formatPropertyValue(const RtComponentPropertyValue& val
       return "(" + std::to_string(v.x) + ", " + std::to_string(v.y) + ", " + std::to_string(v.z) + ")";
     } else if constexpr (std::is_same_v<T, Vector4>) {
       return "(" + std::to_string(v.x) + ", " + std::to_string(v.y) + ", " + std::to_string(v.z) + ", " + std::to_string(v.w) + ")";
-    } else if constexpr (std::is_same_v<T, int32_t>) {
-      return std::to_string(v);
-    } else if constexpr (std::is_same_v<T, uint32_t>) {
-      return std::to_string(v);
     } else if constexpr (std::is_same_v<T, uint64_t>) {
       std::stringstream ss;
       ss << "0x" << std::hex << std::uppercase << std::setw(16) << std::setfill('0') << v;

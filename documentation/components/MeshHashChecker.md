@@ -25,7 +25,7 @@ The mesh hash to check for usage in the current frame\.
 | Property | Display Name | Type | IO Type | Default Value | Optional |
 |----------|--------------|------|---------|---------------|----------|
 | isUsed | Is Used | Bool | Output | false | No | 
-| usageCount | Usage Count | Uint32 | Output | 0 | No | 
+| usageCount | Usage Count | Float | Output | 0\.0 | No | 
 
 ### Is Used
 

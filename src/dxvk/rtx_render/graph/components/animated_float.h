@@ -35,10 +35,10 @@ namespace components {
   X(RtComponentPropertyType::Float, 0.0f, initialValue, "Initial Value", "The value at time t=0.") \
   X(RtComponentPropertyType::Float, 1.0f, finalValue, "Final Value", "The value at time t=duration.") \
   X(RtComponentPropertyType::Float, 1.0f, duration, "Duration", "How long it takes to animate from initial value to final value, in seconds.", property.minValue = 0.000001f) \
-  X(RtComponentPropertyType::Uint32, static_cast<uint32_t>(LoopingType::Loop), loopingType, "Looping Type", \
+  X(RtComponentPropertyType::Enum, static_cast<uint32_t>(LoopingType::Loop), loopingType, "Looping Type", \
     "What happens when the float reaches the final value.", \
     property.enumValues = kLoopingTypeEnumValues) \
-  X(RtComponentPropertyType::Uint32, static_cast<uint32_t>(InterpolationType::Linear), interpolation, "Interpolation", \
+  X(RtComponentPropertyType::Enum, static_cast<uint32_t>(InterpolationType::Linear), interpolation, "Interpolation", \
     "How the float will change over time.", \
     property.optional = true, \
     property.enumValues = kInterpolationTypeEnumValues) \

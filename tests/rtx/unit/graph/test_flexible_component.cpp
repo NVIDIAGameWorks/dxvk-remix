@@ -26,8 +26,8 @@
 namespace dxvk {
 namespace components {
 
-// Use the comparison macro for TestFlexNumber (returns bool)
-DEFINE_COMPARISON_OP_COMPONENT_CPP(TestFlexNumber, (std::declval<A>() < std::declval<B>()), RtComponentPropertyNumber)
+// Use the comparison macro for TestFlexAny (returns bool)
+DEFINE_COMPARISON_OP_COMPONENT_CPP(TestFlexAny, (std::declval<A>() == std::declval<B>()), RtComponentPropertyAny)
 
 // Use the binary operation macro for TestFlexNumberOrVector (returns computed type)
 DEFINE_BINARY_OP_COMPONENT_CPP(TestFlexNumberOrVector, (std::declval<A>() + std::declval<B>()), RtComponentPropertyNumberOrVector)

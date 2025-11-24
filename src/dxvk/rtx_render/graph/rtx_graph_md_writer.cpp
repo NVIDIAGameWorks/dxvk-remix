@@ -109,7 +109,7 @@ std::string getValueAsString(const RtComponentPropertyValue& value, const RtComp
   
   switch (prop.type) {
     case RtComponentPropertyType::Bool:
-      return std::get<uint8_t>(value) ? "true" : "false";
+      return std::get<uint32_t>(value) ? "true" : "false";
     case RtComponentPropertyType::Float:
       return formatFloat(std::get<float>(value));
     case RtComponentPropertyType::Float2: {
@@ -117,26 +117,21 @@ std::string getValueAsString(const RtComponentPropertyValue& value, const RtComp
       return str::format("[", formatFloat(vec.x), ", ",
                          formatFloat(vec.y), "]");
     }
-    case RtComponentPropertyType::Float3:
-    case RtComponentPropertyType::Color3: {
+    case RtComponentPropertyType::Float3: {
       const auto& vec = std::get<Vector3>(value);
       return str::format("[", formatFloat(vec.x), ", ",
                          formatFloat(vec.y), ", ",
                          formatFloat(vec.z), "]");
     }
-    case RtComponentPropertyType::Color4: {
+    case RtComponentPropertyType::Float4: {
       const auto& vec = std::get<Vector4>(value);
       return str::format("[", formatFloat(vec.x), ", ",
                          formatFloat(vec.y), ", ",
                          formatFloat(vec.z), ", ",
                          formatFloat(vec.w), "]");
     }
-    case RtComponentPropertyType::Int32:
-      return std::to_string(std::get<int32_t>(value));
-    case RtComponentPropertyType::Uint32:
+    case RtComponentPropertyType::Enum:
       return std::to_string(std::get<uint32_t>(value));
-    case RtComponentPropertyType::Uint64:
-      return std::to_string(std::get<uint64_t>(value));
     case RtComponentPropertyType::String:
       return "\"" + escapeMarkdown(std::get<std::string>(value)) + "\"";
     case RtComponentPropertyType::AssetPath:
@@ -151,7 +146,7 @@ std::string getValueAsString(const RtComponentPropertyValue& value, const RtComp
       // Prim references don't use the default value field,
       // as it isn't really applicable.
       return "None";
-    case RtComponentPropertyType::Number:
+    case RtComponentPropertyType::Any:
     case RtComponentPropertyType::NumberOrVector:
       // Flexible types should not have default values
       return "None";
@@ -213,9 +208,9 @@ void writeEnumValues(std::ofstream& outputFile, const RtComponentPropertySpec& p
 
 // Helper function to write min/max value constraints if they exist
 void writeMinMaxValues(std::ofstream& outputFile, const RtComponentPropertySpec& prop) {
-  // Check if minValue or maxValue are set (they default to false, which is a uint8_t with value 0)
-  const bool hasMinValue = !(std::holds_alternative<uint8_t>(prop.minValue) && std::get<uint8_t>(prop.minValue) == 0);
-  const bool hasMaxValue = !(std::holds_alternative<uint8_t>(prop.maxValue) && std::get<uint8_t>(prop.maxValue) == 0);
+  // Check if minValue or maxValue are set (they default to false, which is a uint32_t with value 0)
+  const bool hasMinValue = !(std::holds_alternative<uint32_t>(prop.minValue) && std::get<uint32_t>(prop.minValue) == 0);
+  const bool hasMaxValue = !(std::holds_alternative<uint32_t>(prop.maxValue) && std::get<uint32_t>(prop.maxValue) == 0);
   
   if (hasMinValue || hasMaxValue) {
     outputFile << std::endl << "**Value Constraints:**" << std::endl << std::endl;
@@ -398,9 +393,6 @@ bool writeComponentMarkdown(const RtComponentSpec* spec, RtComponentType compone
         outputFile << " |" << std::endl;
       }
       outputFile << std::endl;
-      
-      outputFile << "**Note:** Float3 and Color3 both use the same underlying type (3-component vector). "
-                 << "Color4 uses a 4-component vector." << std::endl << std::endl;
     }
   }
   

@@ -36,11 +36,11 @@ namespace dxvk {
 namespace components {
 
 #define LIST_INPUTS(X) \
-  X(RtComponentPropertyType::Prim, 0, target, "Target", "The mesh prim to get bounding box from. Must be a mesh prim.") \
+  X(RtComponentPropertyType::Prim, kInvalidPrimTarget, target, "Target", "The mesh prim to get bounding box from. Must be a mesh prim.") \
   X(RtComponentPropertyType::Float3, Vector3(0.0f, 0.0f, 0.0f), worldPosition, "World Position", "The world space position to test against the mesh bounding box.") \
-  X(RtComponentPropertyType::Float, 0.0f, inactiveDistance, "Inactive Distance", "The distance inside the bounding box that corresponds to a normalized value of 0.0.  Negative numbers represent values outside the AABB. ", property.optional = true) \
-  X(RtComponentPropertyType::Float, 1.0f, fullActivationDistance, "Full Activation Distance", "The distance inside the bounding box that corresponds to a normalized value of 1.0.  Negative numbers represent values outside the AABB. ", property.optional = true) \
-  X(RtComponentPropertyType::Uint32, static_cast<uint32_t>(InterpolationType::Linear), easingType, "Easing Type", \
+  X(RtComponentPropertyType::Float, 1.0f, inactiveDistance, "Inactive Distance", "The distance inside the bounding box that corresponds to a normalized value of 0.0.  Negative numbers represent values outside the AABB. ", property.optional = true) \
+  X(RtComponentPropertyType::Float, 0.0f, fullActivationDistance, "Full Activation Distance", "The distance inside the bounding box that corresponds to a normalized value of 1.0.  Negative numbers represent values outside the AABB. ", property.optional = true) \
+  X(RtComponentPropertyType::Enum, static_cast<uint32_t>(InterpolationType::Linear), easingType, "Easing Type", \
     "The type of easing to apply to the normalized output.", \
     property.optional = true, \
     property.enumValues = kInterpolationTypeEnumValues)
@@ -97,44 +97,34 @@ void BoxProximity::updateRange(const Rc<DxvkContext>& context, const size_t star
     
     // Default to "very far outside" if no valid mesh found
     float signedDistance = FLT_MAX;
-    
-    // Check if we have a valid graph instance
-    if (instances[i] != nullptr) {
-      ReplacementInstance* replacementInstance = instances[i]->getPrimInstanceOwner().getReplacementInstance();
+    const PrimInstance* meshPrim = m_batch.resolvePrimTarget(context, i, m_target[i]);
+
+    if (meshPrim != nullptr && meshPrim->getType() == PrimInstance::Type::Instance) {
+        
+      // Get the RtInstance from the PrimInstance
+      RtInstance* rtInstance = meshPrim->getInstance();
       
-      // Check if we have a valid replacement instance and target prim
-      if (replacementInstance != nullptr &&
-          replacementInstance->prims.size() > m_target[i] &&
-          replacementInstance->prims[m_target[i]].getType() == PrimInstance::Type::Instance) {
+      if (rtInstance != nullptr) {
+        // Get the BlasEntry from the RtInstance - this represents the mesh asset
+        BlasEntry* blasEntry = rtInstance->getBlas();
         
-        // Get the mesh prim instance
-        const PrimInstance& meshPrim = replacementInstance->prims[m_target[i]];
-        
-        // Get the RtInstance from the PrimInstance
-        RtInstance* rtInstance = meshPrim.getInstance();
-        
-        if (rtInstance != nullptr) {
-          // Get the BlasEntry from the RtInstance - this represents the mesh asset
-          BlasEntry* blasEntry = rtInstance->getBlas();
+        if (blasEntry != nullptr) {
+          // Get the bounding box from the BlasEntry's input geometry data (object space)
+          const AxisAlignedBoundingBox& objectSpaceBoundingBox = blasEntry->input.getGeometryData().boundingBox;
           
-          if (blasEntry != nullptr) {
-            // Get the bounding box from the BlasEntry's input geometry data (object space)
-            const AxisAlignedBoundingBox& objectSpaceBoundingBox = blasEntry->input.getGeometryData().boundingBox;
+          if (objectSpaceBoundingBox.isValid()) {
+            // Get the object-to-world transform from the RtInstance
+            const Matrix4 objectToWorld = rtInstance->getTransform();
             
-            if (objectSpaceBoundingBox.isValid()) {
-              // Get the object-to-world transform from the RtInstance
-              const Matrix4 objectToWorld = rtInstance->getTransform();
-              
-              // Transform the world space point to object space
-              // We need the inverse transform (world-to-object)
-              Matrix4 worldToObject = inverse(objectToWorld);
-              
-              // Transform the world space point to object space
-              Vector3 objectSpacePoint = (worldToObject * Vector4(testPoint, 1.0f)).xyz();
-              
-              // Calculate the signed distance in object space
-              signedDistance = calculateSignedDistanceToAABB(objectSpacePoint, objectSpaceBoundingBox);
-            }
+            // Transform the world space point to object space
+            // We need the inverse transform (world-to-object)
+            Matrix4 worldToObject = inverse(objectToWorld);
+            
+            // Transform the world space point to object space
+            Vector3 objectSpacePoint = (worldToObject * Vector4(testPoint, 1.0f)).xyz();
+            
+            // Calculate the signed distance in object space
+            signedDistance = calculateSignedDistanceToAABB(objectSpacePoint, objectSpaceBoundingBox);
           }
         }
       }

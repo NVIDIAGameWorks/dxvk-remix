@@ -63,12 +63,27 @@ const RtxOptionLayer* RtxOptionLayerManager::acquireLayer(const std::string& con
   
   // Initialize reference count and store in priority map
   newLayer->incrementRefCount();
-  s_priorityToLayer[newLayer->getPriority()] = newLayer;
+  s_priorityToLayer[priority] = newLayer;
   
   return newLayer;
 }
 
-void RtxOptionLayerManager::releaseLayer(const RtxOptionLayer* layer) {
+RtxOptionLayer* RtxOptionLayerManager::lookupLayer(const std::string& configPath, uint32_t priority) {
+  std::lock_guard<std::mutex> lock(s_mutex);
+  auto it = s_priorityToLayer.find(priority);
+  if (it != s_priorityToLayer.end()) {
+    const RtxOptionLayer* layer = it->second;
+    if (layer->getName() == configPath) {
+      return const_cast<RtxOptionLayer*>(layer);
+    } else {
+      Logger::warn(str::format("RtxOptionLayerManager: Tried to look up layer with mismatching config path.Layer '", layer->getName(), "' (priority: ", priority, ") does not match config path '", configPath, "'."));
+    }
+  }
+  return nullptr;
+}
+
+void RtxOptionLayerManager::releaseLayer(const std::string& configPath, uint32_t priority) {
+  RtxOptionLayer* layer = lookupLayer(configPath, priority);
   if (layer == nullptr) {
     return;
   }
@@ -76,14 +91,14 @@ void RtxOptionLayerManager::releaseLayer(const RtxOptionLayer* layer) {
   std::lock_guard<std::mutex> lock(s_mutex);
   
   // Verify this layer is in our map
-  auto priorityIt = s_priorityToLayer.find(layer->getPriority());
+  auto priorityIt = s_priorityToLayer.find(priority);
   if (priorityIt == s_priorityToLayer.end() || priorityIt->second != layer) {
     Logger::warn("RtxOptionLayerManager: Attempted to release unknown layer.");
     return;
   }
   
   if (layer->getRefCount() == 0) {
-    Logger::warn(str::format("RtxOptionLayerManager: Layer '", layer->getName(), "' (priority: ", layer->getPriority(), ") already has zero references."));
+    Logger::warn(str::format("RtxOptionLayerManager: Layer '", layer->getName(), "' (priority: ", priority, ") already has zero references."));
     return;
   }
   
@@ -91,11 +106,8 @@ void RtxOptionLayerManager::releaseLayer(const RtxOptionLayer* layer) {
   
   // If reference count reached zero, remove the layer
   if (layer->getRefCount() == 0) {
-    const uint32_t layerPriority = layer->getPriority();
-    const std::string configPath = layer->getName();
-    
     // Remove from priority map first
-    s_priorityToLayer.erase(layerPriority);
+    s_priorityToLayer.erase(priority);
     
     // Remove from RtxOption system
     bool removed = RtxOptionImpl::removeRtxOptionLayer(layer);
@@ -104,18 +116,6 @@ void RtxOptionLayerManager::releaseLayer(const RtxOptionLayer* layer) {
       Logger::warn(str::format("RtxOptionLayerManager: Failed to remove layer '", configPath, "' from RtxOption system."));
     }
   }
-}
-
-const RtxOptionLayer* RtxOptionLayerManager::findLayerByPriority(uint32_t priority) {
-  std::lock_guard<std::mutex> lock(s_mutex);
-  
-  auto it = s_priorityToLayer.find(priority);
-  
-  if (it != s_priorityToLayer.end()) {
-    return it->second;
-  }
-  
-  return nullptr;
 }
 
 size_t RtxOptionLayerManager::getReferenceCount(const RtxOptionLayer* layer) {

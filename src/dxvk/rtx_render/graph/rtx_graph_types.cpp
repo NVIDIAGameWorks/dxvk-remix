@@ -322,16 +322,13 @@ std::ostream& operator << (std::ostream& os, RtComponentPropertyType type) {
     case RtComponentPropertyType::Float: return os << "Float";
     case RtComponentPropertyType::Float2: return os << "Float2";
     case RtComponentPropertyType::Float3: return os << "Float3";
-    case RtComponentPropertyType::Color3: return os << "Color3";
-    case RtComponentPropertyType::Color4: return os << "Color4";
-    case RtComponentPropertyType::Int32: return os << "Int32";
-    case RtComponentPropertyType::Uint32: return os << "Uint32";
-    case RtComponentPropertyType::Uint64: return os << "Uint64";
+    case RtComponentPropertyType::Float4: return os << "Float4";
+    case RtComponentPropertyType::Enum: return os << "Enum";
     case RtComponentPropertyType::String: return os << "String";
     case RtComponentPropertyType::AssetPath: return os << "AssetPath";
     case RtComponentPropertyType::Hash: return os << "Hash";
     case RtComponentPropertyType::Prim: return os << "Prim";
-    case RtComponentPropertyType::Number: return os << "Number";
+    case RtComponentPropertyType::Any: return os << "Any";
     case RtComponentPropertyType::NumberOrVector: return os << "NumberOrVector";
   }
   return os << static_cast<int32_t>(type);
@@ -357,17 +354,10 @@ RtComponentPropertyValue propertyValueFromString(const std::string& str, const R
       return parseVector<Vector2>(str);
     case RtComponentPropertyType::Float3:
       return parseVector<Vector3>(str);
-    case RtComponentPropertyType::Color3:
-      return parseVector<Vector3>(str);
-    case RtComponentPropertyType::Color4:
+    case RtComponentPropertyType::Float4:
       return parseVector<Vector4>(str);
-    case RtComponentPropertyType::Int32:
-      return propertyValueForceType<int32_t>(std::stoi(str));
-    case RtComponentPropertyType::Uint32:
-      return propertyValueForceType<uint32_t>(std::stoul(str));
-    case RtComponentPropertyType::Uint64:
-      // The `nullptr, 0` causes stoull to auto detect hex from `0x`
-      return propertyValueForceType<uint64_t>(std::stoull(str, nullptr, 0));
+    case RtComponentPropertyType::Enum:
+      return propertyValueForceType<uint32_t>(std::stoul(str));\
     case RtComponentPropertyType::String:
     case RtComponentPropertyType::AssetPath:
       return str;
@@ -378,10 +368,10 @@ RtComponentPropertyValue propertyValueFromString(const std::string& str, const R
     case RtComponentPropertyType::Prim:
       // Should never be reached (prim properties should be UsdRelationships, so they shouldn't ever have a string value).  Just in case, return an invalid value.
       return kInvalidRtComponentPropertyValue;
-    case RtComponentPropertyType::Number:
+    case RtComponentPropertyType::Any:
     case RtComponentPropertyType::NumberOrVector:
       // Flexible types should not be parsed from strings directly
-      Logger::err(str::format("Flexible types (Number, NumberOrVector) cannot be parsed from strings directly. type: ", type, ", string: ", str));
+      Logger::err(str::format("Flexible types (Any, NumberOrVector) cannot be parsed from strings directly. type: ", type, ", string: ", str));
       return kInvalidRtComponentPropertyValue;
     }
     Logger::err(str::format("Unknown property type in propertyValueFromString.  type: ", type, ", string: ", str));
@@ -402,23 +392,20 @@ RtComponentPropertyValue propertyValueFromString(const std::string& str, const R
  */
 RtComponentPropertyVector propertyVectorFromType(const RtComponentPropertyType type) {
   switch (type) {
-  case RtComponentPropertyType::Bool:   return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Bool>>{};
-  case RtComponentPropertyType::Float:  return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Float>>{};
-  case RtComponentPropertyType::Float2: return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Float2>>{};
-  case RtComponentPropertyType::Float3: return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Float3>>{};
-  case RtComponentPropertyType::Color3: return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Color3>>{};
-  case RtComponentPropertyType::Color4: return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Color4>>{};
-  case RtComponentPropertyType::Int32:  return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Int32>>{};
-  case RtComponentPropertyType::Uint32: return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Uint32>>{};
-  case RtComponentPropertyType::Uint64: return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Uint64>>{};
-  case RtComponentPropertyType::String: return std::vector<std::string>{};
+  case RtComponentPropertyType::Bool:      return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Bool>>{};
+  case RtComponentPropertyType::Float:     return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Float>>{};
+  case RtComponentPropertyType::Float2:    return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Float2>>{};
+  case RtComponentPropertyType::Float3:    return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Float3>>{};
+  case RtComponentPropertyType::Float4:    return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Float4>>{};
+  case RtComponentPropertyType::Enum:      return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Enum>>{};
+  case RtComponentPropertyType::String:    return std::vector<std::string>{};
   case RtComponentPropertyType::AssetPath: return std::vector<std::string>{};
-  case RtComponentPropertyType::Hash:   return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Hash>>{};
-  case RtComponentPropertyType::Prim:   return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Prim>>{};
-  case RtComponentPropertyType::Number:
+  case RtComponentPropertyType::Hash:      return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Hash>>{};
+  case RtComponentPropertyType::Prim:      return std::vector<RtComponentPropertyTypeToCppType<RtComponentPropertyType::Prim>>{};
+  case RtComponentPropertyType::Any:
   case RtComponentPropertyType::NumberOrVector:
     // Flexible types should not be used to create property vectors directly
-    Logger::err(str::format("Flexible types (Number, NumberOrVector) cannot be used to create property vectors directly. type: ", type));
+    Logger::err(str::format("Flexible types (Any, NumberOrVector) cannot be used to create property vectors directly. type: ", type));
     return std::vector<float>{}; // fallback
   }
   assert(false && "Unknown property type in propertyVectorFromType");

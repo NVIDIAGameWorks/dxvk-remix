@@ -135,7 +135,7 @@ Then use it in your parameter definition:
 
 ```cpp
 #define LIST_INPUTS(X) \
-  X(RtComponentPropertyType::Uint32, 0, lightType, "Light Type", "The type of light to create", \
+  X(RtComponentPropertyType::Enum, 0, lightType, "Light Type", "The type of light to create", \
     property.enumValues = { \
       {"Point", {LightType::Point, "Omnidirectional point light"}}, \
       {"Spot", {LightType::Spot, "Directional spot light with falloff"}}, \

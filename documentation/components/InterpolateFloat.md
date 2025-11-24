@@ -17,7 +17,7 @@ Interpolates a value from an input range to an output range with optional easing
 | inputMin | Input Min | Float | Input | 0\.0 | No | 
 | inputMax | Input Max | Float | Input | 1\.0 | No | 
 | clampInput | Clamp Input | Bool | Input | false | Yes | 
-| easingType | Easing Type | Uint32 | Input | Linear | No | 
+| easingType | Easing Type | Enum | Input | Linear | No | 
 | shouldReverse | Should Reverse | Bool | Input | false | Yes | 
 | outputMin | Output Min | Float | Input | 0\.0 | No | 
 | outputMax | Output Max | Float | Input | 1\.0 | No | 
@@ -46,7 +46,7 @@ If true, \`value\` will be clamped to the input range\.
 
 The type of easing to apply\.
 
-Underlying Type: `Uint32`
+Underlying Type: `Enum`
 
 
 **Allowed Values:**

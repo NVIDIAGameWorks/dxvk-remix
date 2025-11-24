@@ -37,34 +37,26 @@ enum class TestEnum : uint32_t {
     property.oldUsdNames = {"oldInputBool2", "oldInputBool1"}) \
   X(RtComponentPropertyType::Float, 1.f, inputFloat, "Input Float", "test for Float") \
   X(RtComponentPropertyType::Float2, Vector2(1.f, 2.f), inputFloat2, "Input Float2", "test for Float2") \
-  X(RtComponentPropertyType::Float3, Vector3(1.f, 2.f, 3.f), inputFloat3, "Input Float3", "test for Float3") \
-  X(RtComponentPropertyType::Color3, Vector3(1.f, 2.f, 3.f), inputColor3, "Input Color3", "test for Color3") \
-  X(RtComponentPropertyType::Color4, Vector4(1.f, 2.f, 3.f, 4.f), inputColor4, "Input Color4", "test for Color4") \
-  X(RtComponentPropertyType::Int32, 1, inputInt32, "Input Int32", "test for Int32") \
-  X(RtComponentPropertyType::Uint32, 1, inputUint32, "Input Uint32", "test for Uint32") \
-  X(RtComponentPropertyType::Uint64, 1, inputUint64, "Input Uint64", "test for Uint64") \
+  X(RtComponentPropertyType::Float3, Vector3(1.f, 2.f, 3.f), inputFloat3, "Input Float3", "test for Float3", property.treatAsColor = true) \
+  X(RtComponentPropertyType::Float4, Vector4(1.f, 2.f, 3.f, 4.f), inputFloat4, "Input Float4", "test for Float4", property.treatAsColor = true) \
   X(RtComponentPropertyType::String, std::string("test_string"), inputString, "Input String", "test for String") \
   X(RtComponentPropertyType::AssetPath, std::string("/path/to/asset.usd"), inputAssetPath, "Input AssetPath", "test for AssetPath") \
   X(RtComponentPropertyType::Hash, 0x123456789ABCDEF0, inputHash, "Input Hash", "test for Hash") \
-  X(RtComponentPropertyType::Prim, 101, inputPrim, "Input Prim", "test for Prim") \
-  X(RtComponentPropertyType::Uint32, 1, inputUint32Enum, "Input Enum", "test for Uint32 as enum", \
+  X(RtComponentPropertyType::Prim, kInvalidPrimTarget, inputPrim, "Input Prim", "test for Prim") \
+  X(RtComponentPropertyType::Enum, 1, inputUint32Enum, "Input Enum", "test for Uint32 as enum", \
     property.enumValues = { {"One", {TestEnum::One, "The first case"}}, {"Two", {TestEnum::Two, "The second case"}} })
 
 #define LIST_STATES(X) \
   X(RtComponentPropertyType::Bool, false, stateBool, "", "test for Bool") \
   X(RtComponentPropertyType::Float, 2.f, stateFloat, "", "test for Float") \
   X(RtComponentPropertyType::Float2, Vector2(2.f, 3.f), stateFloat2, "", "test for Float2") \
-  X(RtComponentPropertyType::Float3, Vector3(2.f, 3.f, 4.f), stateFloat3, "", "test for Float3") \
-  X(RtComponentPropertyType::Color3, Vector3(2.f, 3.f, 4.f), stateColor3, "", "test for Color3") \
-  X(RtComponentPropertyType::Color4, Vector4(2.f, 3.f, 4.f, 5.f), stateColor4, "", "test for Color4") \
-  X(RtComponentPropertyType::Int32, 2, stateInt32, "", "test for Int32") \
-  X(RtComponentPropertyType::Uint32, 2, stateUint32, "", "test for Uint32") \
-  X(RtComponentPropertyType::Uint64, 2, stateUint64, "", "test for Uint64") \
+  X(RtComponentPropertyType::Float3, Vector3(2.f, 3.f, 4.f), stateFloat3, "", "test for Float3", property.treatAsColor = true) \
+  X(RtComponentPropertyType::Float4, Vector4(2.f, 3.f, 4.f, 5.f), stateFloat4, "", "test for Float4", property.treatAsColor = true) \
   X(RtComponentPropertyType::String, std::string("state_string"), stateString, "", "test for String") \
   X(RtComponentPropertyType::AssetPath, std::string("/path/to/state/asset.usd"), stateAssetPath, "", "test for AssetPath") \
   X(RtComponentPropertyType::Hash, 0xFEDCBA9876543210, stateHash, "", "test for Hash") \
-  X(RtComponentPropertyType::Prim, 102, statePrim, "", "test for Prim") \
-  X(RtComponentPropertyType::Uint32, 2, stateUint32Enum, "", "test for Uint32 as enum", \
+  X(RtComponentPropertyType::Prim, kInvalidPrimTarget, statePrim, "", "test for Prim") \
+  X(RtComponentPropertyType::Enum, 2, stateUint32Enum, "", "test for Uint32 as enum", \
     property.enumValues = { {"One", {TestEnum::One, "The first case"}}, {"Two", {TestEnum::Two, "The second case"}} })
 
 #define LIST_OUTPUTS(X) \
@@ -72,17 +64,13 @@ enum class TestEnum : uint32_t {
     property.oldUsdNames = {"oldOutputBool2", "oldOutputBool1"}) \
   X(RtComponentPropertyType::Float, 3.f, outputFloat, "Output Float", "test for Float") \
   X(RtComponentPropertyType::Float2, Vector2(3.f, 4.f), outputFloat2, "Output Float2", "test for Float2") \
-  X(RtComponentPropertyType::Float3, Vector3(3.f, 4.f, 5.f), outputFloat3, "Output Float3", "test for Float3") \
-  X(RtComponentPropertyType::Color3, Vector3(3.f, 4.f, 5.f), outputColor3, "Output Color3", "test for Color3") \
-  X(RtComponentPropertyType::Color4, Vector4(3.f, 4.f, 5.f, 6.f), outputColor4, "Output Color4", "test for Color4") \
-  X(RtComponentPropertyType::Int32, 3, outputInt32, "Output Int32", "test for Int32") \
-  X(RtComponentPropertyType::Uint32, 3, outputUint32, "Output Uint32", "test for Uint32") \
-  X(RtComponentPropertyType::Uint64, 3, outputUint64, "Output Uint64", "test for Uint64") \
+  X(RtComponentPropertyType::Float3, Vector3(3.f, 4.f, 5.f), outputFloat3, "Output Float3", "test for Float3", property.treatAsColor = true) \
+  X(RtComponentPropertyType::Float4, Vector4(3.f, 4.f, 5.f, 6.f), outputFloat4, "Output Float4", "test for Float4", property.treatAsColor = true) \
   X(RtComponentPropertyType::String, std::string("output_string"), outputString, "Output String", "test for String") \
   X(RtComponentPropertyType::AssetPath, std::string("/path/to/output/asset.usd"), outputAssetPath, "Output AssetPath", "test for AssetPath") \
   X(RtComponentPropertyType::Hash, 0xABCDEF0123456789, outputHash, "Output Hash", "test for Hash") \
-  X(RtComponentPropertyType::Prim, 103, outputPrim, "Output Prim", "test for Prim") \
-  X(RtComponentPropertyType::Uint32, 3, outputUint32Enum, "Output Enum", "test for Uint32 as enum", \
+  X(RtComponentPropertyType::Prim, kInvalidPrimTarget, outputPrim, "Output Prim", "test for Prim") \
+  X(RtComponentPropertyType::Enum, 3, outputUint32Enum, "Output Enum", "test for Uint32 as enum", \
     property.enumValues = { {"One", {TestEnum::One, "The first case"}}, {"Two", {TestEnum::Two, "The second case"}} })
 
 REMIX_COMPONENT( \
@@ -105,11 +93,7 @@ void TestComponent::updateRange(const Rc<DxvkContext>& context, const size_t sta
       m_stateFloat[i] = m_inputFloat[i];
       m_stateFloat2[i] = m_inputFloat2[i];
       m_stateFloat3[i] = m_inputFloat3[i];
-      m_stateColor3[i] = m_inputColor3[i];
-      m_stateColor4[i] = m_inputColor4[i];
-      m_stateInt32[i] = m_inputInt32[i];
-      m_stateUint32[i] = m_inputUint32[i];
-      m_stateUint64[i] = m_inputUint64[i];
+      m_stateFloat4[i] = m_inputFloat4[i];
       m_stateString[i] = m_inputString[i];
       m_stateAssetPath[i] = m_inputAssetPath[i];
       m_stateHash[i] = m_inputHash[i];
@@ -120,11 +104,7 @@ void TestComponent::updateRange(const Rc<DxvkContext>& context, const size_t sta
     m_outputFloat[i] = m_stateFloat[i];
     m_outputFloat2[i] = m_stateFloat2[i];
     m_outputFloat3[i] = m_stateFloat3[i];
-    m_outputColor3[i] = m_stateColor3[i];
-    m_outputColor4[i] = m_stateColor4[i];
-    m_outputInt32[i] = m_stateInt32[i];
-    m_outputUint32[i] = m_stateUint32[i];
-    m_outputUint64[i] = m_stateUint64[i];
+    m_outputFloat4[i] = m_stateFloat4[i];
     m_outputString[i] = m_stateString[i];
     m_outputAssetPath[i] = m_stateAssetPath[i];
     m_outputHash[i] = m_stateHash[i];

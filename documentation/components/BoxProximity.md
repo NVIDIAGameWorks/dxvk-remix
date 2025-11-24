@@ -15,9 +15,9 @@ Calculates the signed distance from a world position to a mesh's bounding box\. 
 |----------|--------------|------|---------|---------------|----------|
 | target | Target | Prim | Input | None | No | 
 | worldPosition | World Position | Float3 | Input | \[0\.0, 0\.0, 0\.0\] | No | 
-| inactiveDistance | Inactive Distance | Float | Input | 0\.0 | Yes | 
-| fullActivationDistance | Full Activation Distance | Float | Input | 1\.0 | Yes | 
-| easingType | Easing Type | Uint32 | Input | Linear | Yes | 
+| inactiveDistance | Inactive Distance | Float | Input | 1\.0 | Yes | 
+| fullActivationDistance | Full Activation Distance | Float | Input | 0\.0 | Yes | 
+| easingType | Easing Type | Enum | Input | Linear | Yes | 
 
 ### Target
 
@@ -43,7 +43,7 @@ The distance inside the bounding box that corresponds to a normalized value of 1
 
 The type of easing to apply to the normalized output\.
 
-Underlying Type: `Uint32`
+Underlying Type: `Enum`
 
 
 **Allowed Values:**

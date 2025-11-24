@@ -50,19 +50,19 @@
       },
       "outputMin": {
         "description": ["What a `Value` of `Input Min` maps to."],
-        "type": ["colorf[3]", "colorf[4]", "float", "float[2]", "float[3]"],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
         "uiName": "Output Min"
       },
       "outputMax": {
         "description": ["What a `Value` of `Input Max` maps to."],
-        "type": ["colorf[3]", "colorf[4]", "float", "float[2]", "float[3]"],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
         "uiName": "Output Max"
       }
     },
     "outputs": {
       "interpolatedValue": {
         "description": ["The final interpolated value after applying input normalization, easing, and output mapping."],
-        "type": ["colorf[3]", "colorf[4]", "float", "float[2]", "float[3]"],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
         "uiName": "Interpolated Value"
       }
     }
