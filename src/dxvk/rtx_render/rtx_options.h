@@ -1276,7 +1276,7 @@ namespace dxvk {
 
       // Ensure all of the above values are promoted before the first frame starts.
       // DxvkDevice hasn't been created yet, so pass nullptr here.
-      RtxOption<bool>::applyPendingValues(nullptr);
+      RtxOptionManager::applyPendingValues(nullptr);
     }
 
     static void updateUpscalerFromDlssPreset();
@@ -1335,14 +1335,14 @@ namespace dxvk {
           newConfig = it->second.getConfig();
           // Get changed options
           Config changedConfigs;
-          RtxOption<bool>::writeOptions(changedConfigs, Option::serializeChangedOptionOnly());
+          RtxOptionManager::writeOptions(changedConfigs, Option::serializeChangedOptionOnly());
           // Merge changed options into original option layer
           newConfig.merge(changedConfigs);
         } else {
-          RtxOption<bool>::writeOptions(newConfig, Option::serializeChangedOptionOnly());
+          RtxOptionManager::writeOptions(newConfig, Option::serializeChangedOptionOnly());
         }
       } else {
-        RtxOption<bool>::writeOptions(newConfig, Option::serializeChangedOptionOnly());
+        RtxOptionManager::writeOptions(newConfig, Option::serializeChangedOptionOnly());
       }
 
       // Update the config of corresponding layer, no need to do it for user/runtime layer b/c it's auto updated when any options in GUI are changed.
@@ -1388,7 +1388,7 @@ namespace dxvk {
     }
 
     static void reset() {
-      RtxOption<bool>::resetOptions();
+      RtxOptionManager::resetOptions();
     }
 
     static std::unique_ptr<RtxOptions>& Create(const Config& options) {
