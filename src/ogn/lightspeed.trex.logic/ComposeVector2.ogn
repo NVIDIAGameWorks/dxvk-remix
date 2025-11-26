@@ -1,0 +1,32 @@
+{
+  "lightspeed.trex.logic.ComposeVector2": {
+    "description": ["Combines two separate numbers into a single Vector2."],
+    "version": 1,
+    "uiName": "Compose Vector2",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "x": {
+        "description": ["The X component of the vector."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "X"
+      },
+      "y": {
+        "description": ["The Y component of the vector."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "Y"
+      }
+    },
+    "outputs": {
+      "vector": {
+        "description": ["The composed vector."],
+        "type": "float[2]",
+        "default": [0.000000, 0.000000],
+        "uiName": "Vector"
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "lightspeed.trex.logic.RtxOptionReadNumber": {
+    "description": ["Reads the current value of a numeric RTX option.\n\nOutputs the current value of a given RTX option. Supports both float and int types. The option name should be the full name including category (e.g., 'rtx.pathTracing.enableReSTIRGI')."],
+    "version": 1,
+    "uiName": "Rtx Option Read Number",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Sense",
+    "inputs": {
+      "optionName": {
+        "description": ["The full name of the RTX option to read (e.g., 'rtx.someOption')."],
+        "type": "token",
+        "default": "",
+        "uiName": "Option Name"
+      }
+    },
+    "outputs": {
+      "value": {
+        "description": ["The current value of the RTX option as a float. Returns 0 if the option is not found or is not a numeric type."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "Value"
+      }
+    }
+  }
+}

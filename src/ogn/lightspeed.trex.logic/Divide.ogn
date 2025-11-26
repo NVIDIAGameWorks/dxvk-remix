@@ -1,0 +1,29 @@
+{
+  "lightspeed.trex.logic.Divide": {
+    "description": ["Divides one number or vector by another.\n\nVector / Number will divide all components of the vector by the number. Vector / vector will divide each piece separately, to create (a.x / b.x, a.y / b.y, ...). Vector / Vector will error if the vectors aren't the same size.\n\nNote: Division by zero will produce infinity or NaN."],
+    "version": 1,
+    "uiName": "Divide",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "a": {
+        "description": ["The dividend (value to be divided)."],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "A"
+      },
+      "b": {
+        "description": ["The divisor (value to divide by)."],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "B"
+      }
+    },
+    "outputs": {
+      "quotient": {
+        "description": ["A / B"],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "Quotient"
+      }
+    }
+  }
+}

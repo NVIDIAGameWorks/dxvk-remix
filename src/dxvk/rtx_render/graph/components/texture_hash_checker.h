@@ -41,7 +41,8 @@ REMIX_COMPONENT( \
   /* the Component name */ TextureHashChecker, \
   /* the UI name */        "Texture Hash Checker", \
   /* the UI categories */  "Sense", \
-  /* the doc string */     "Checks if a specific texture hash was used for material replacement in the current frame.  This includes textures in all categories, including ignored textures.", \
+  /* the doc string */     "Detects if a specific texture is being used in the current frame.\n\n" \
+    "Checks if a specific texture hash was used for material replacement in the current frame. This includes textures in all categories, including ignored textures.", \
   /* the version number */ 1, \
   LIST_INPUTS, LIST_STATES, LIST_OUTPUTS);
 

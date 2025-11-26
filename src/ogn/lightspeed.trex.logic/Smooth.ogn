@@ -1,0 +1,31 @@
+{
+  "lightspeed.trex.logic.Smooth": {
+    "description": ["Applies exponential smoothing to a value over time.\n\nUses a moving average filter to smooth out rapid changes in the input value. The smoothing factor controls how much smoothing is applied: 0 means output never changes. Larger values = faster changes. \n"],
+    "version": 1,
+    "uiName": "Smooth",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "input": {
+        "description": ["The value to smooth."],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "Input"
+      },
+      "smoothingFactor": {
+        "description": ["The smoothing factor (0-1000). 0 means output never changes. Larger values = faster changes.\n\nTime for output to be within 1% of input for different factors:\n- 1: 6.6 seconds\n- 10: 0.66 seconds\n- 100: 0.066 seconds\n- 1000: 0.0066 seconds\n\nFormula: output = lerp(input, previousOutput, exp2(-smoothingFactor*deltaTime))"],
+        "type": "float",
+        "default": 0.100000,
+        "optional": true,
+        "uiName": "Smoothing Factor"
+      }
+    },
+    "outputs": {
+      "output": {
+        "description": ["The smoothed output value."],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "Output"
+      }
+    }
+  }
+}

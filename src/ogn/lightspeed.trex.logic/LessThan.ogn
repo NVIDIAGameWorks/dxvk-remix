@@ -1,0 +1,32 @@
+{
+  "lightspeed.trex.logic.LessThan": {
+    "description": ["Returns true if A is less than B, false otherwise."],
+    "version": 1,
+    "uiName": "Less Than",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "a": {
+        "description": ["The first value to compare."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "A"
+      },
+      "b": {
+        "description": ["The second value to compare."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "B"
+      }
+    },
+    "outputs": {
+      "result": {
+        "description": ["True if A < B, false otherwise"],
+        "type": "bool",
+        "default": false,
+        "uiName": "Result"
+      }
+    }
+  }
+}

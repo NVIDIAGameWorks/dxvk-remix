@@ -1,0 +1,29 @@
+{
+  "lightspeed.trex.logic.Subtract": {
+    "description": ["Subtracts one number or vector from another.\n\nVector - Number will subtract the number from all components of the vector. Vector - Vector will error if the vectors aren't the same size."],
+    "version": 1,
+    "uiName": "Subtract",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "a": {
+        "description": ["The value to subtract from."],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "A"
+      },
+      "b": {
+        "description": ["The value to subtract."],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "B"
+      }
+    },
+    "outputs": {
+      "difference": {
+        "description": ["A - B"],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "Difference"
+      }
+    }
+  }
+}

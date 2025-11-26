@@ -1,0 +1,24 @@
+{
+  "lightspeed.trex.logic.PreviousFrameValue": {
+    "description": ["Outputs the value from the previous frame.\n\nStores the input value and outputs it on the next frame. Useful for detecting changes between frames or implementing delay effects."],
+    "version": 1,
+    "uiName": "Previous Frame Value",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "input": {
+        "description": ["The value to store for the next frame."],
+        "type": ["bool", "float", "float[2]", "float[3]", "float[4]", "target", "token", "uint"],
+        "uiName": "Input"
+      }
+    },
+    "outputs": {
+      "output": {
+        "description": ["The value from the previous frame."],
+        "type": ["bool", "float", "float[2]", "float[3]", "float[4]", "target", "token", "uint"],
+        "uiName": "Output"
+      }
+    }
+  }
+}

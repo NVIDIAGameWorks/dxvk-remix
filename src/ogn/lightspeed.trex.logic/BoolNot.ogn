@@ -1,0 +1,26 @@
+{
+  "lightspeed.trex.logic.BoolNot": {
+    "description": ["Flips a true/false value to its opposite."],
+    "version": 1,
+    "uiName": "Bool NOT",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "input": {
+        "description": ["Boolean input value."],
+        "type": "bool",
+        "default": false,
+        "uiName": "Input"
+      }
+    },
+    "outputs": {
+      "result": {
+        "description": ["The logical NOT of the input (inverted boolean value)."],
+        "type": "bool",
+        "default": true,
+        "uiName": "Result"
+      }
+    }
+  }
+}

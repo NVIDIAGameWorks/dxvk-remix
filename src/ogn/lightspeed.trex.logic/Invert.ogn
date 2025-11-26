@@ -1,0 +1,24 @@
+{
+  "lightspeed.trex.logic.Invert": {
+    "description": ["Outputs 1 minus the input value.\n\nCalculates 1 - input. Useful for inverting normalized values (e.g., turning 0.2 into 0.8)."],
+    "version": 1,
+    "uiName": "Invert",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "input": {
+        "description": ["The value to invert."],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "Input"
+      }
+    },
+    "outputs": {
+      "output": {
+        "description": ["1 - input"],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "Output"
+      }
+    }
+  }
+}

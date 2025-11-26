@@ -31,7 +31,9 @@ namespace dxvk {
 namespace components {
 
 #define LIST_INPUTS(X) \
-  X(RtComponentPropertyType::String, std::string("A"), keyString, "Key String", "The key combination string (e.g., 'A', 'CTRL,A', 'SHIFT,SPACE'). Supports key names and combinations like RTX options.")
+  X(RtComponentPropertyType::String, std::string("A"), keyString, "Key String", "The key combination string to detect.\n" \
+    "Examples: 'A', 'CTRL, A', 'SHIFT, SPACE'.\n" \
+    "Full list of key names available in `src/util/util_keybind.h`.")
 
 #define LIST_STATES(X) \
   X(RtComponentPropertyType::Bool, false, wasPressedLastFrame, "", "Internal state to track if the key was pressed in the previous frame.")
@@ -45,7 +47,8 @@ REMIX_COMPONENT( \
   /* the Component name */ KeyboardInput, \
   /* the UI name */        "Keyboard Input", \
   /* the UI categories */  "Sense", \
-  /* the doc string */     "Checks the state of a keyboard key or key combination using the same format as RTX options.", \
+  /* the doc string */     "Detects when keyboard keys are pressed, held, or released.\n\n" \
+    "Checks the state of a keyboard key or key combination using the same format as RTX options.", \
   /* the version number */ 1, \
   LIST_INPUTS, LIST_STATES, LIST_OUTPUTS);
 

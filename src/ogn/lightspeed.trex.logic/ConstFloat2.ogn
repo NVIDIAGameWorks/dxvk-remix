@@ -1,0 +1,21 @@
+{
+  "lightspeed.trex.logic.ConstFloat2": {
+    "description": ["Provides a constant 2D vector (two numbers: X and Y) that you can set.\n\nUse this for fixed 2D coordinates, texture coordinates, or any pair of values."],
+    "version": 1,
+    "uiName": "Constant Float2",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Constants",
+    "inputs": {
+      "value": {
+        "description": ["The constant 2D vector (X, Y)."],
+        "type": "float[2]",
+        "default": [0.000000, 0.000000],
+        "metadata": {
+          "outputOnly": "1"
+        },
+        "uiName": "Value"
+      }
+    }
+  }
+}

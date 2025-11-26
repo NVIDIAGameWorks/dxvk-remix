@@ -31,7 +31,7 @@
 namespace dxvk {
 namespace {
 // Helper function to escape JSON strings
-std::string escapeJsonString(const std::string& input) {
+std::string escapeJsonString(std::string_view input) {
   std::string output;
   output.reserve(input.size());
   for (char c : input) {
@@ -84,6 +84,9 @@ std::string ognTypeToBaseDataType(const std::string& ognType) {
   if (ognType == "double[2]") return "DOUBLE, 2";
   if (ognType == "double[3]") return "DOUBLE, 3";
   if (ognType == "double[4]") return "DOUBLE, 4";
+  if (ognType == "token") return "TOKEN";
+  if (ognType == "target") return "RELATIONSHIP";
+  if (ognType == "unknown") return "FLOAT";  // Fallback for unknown types
   return "FLOAT";  // Default fallback
 }
 
@@ -184,7 +187,7 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentSpec& spec, 
   outputFile << "      \"" << escapeJsonString(prop.name) << "\": {" << std::endl;
   if (!prop.enumValues.empty()) {
     // For enum documentation, we need to combine everything into the property docstring.
-    outputFile << "        \"description\": [\"" << escapeJsonString(prop.docString) << "\\n" << "Allowed values: ";
+    outputFile << "        \"description\": [\"" << escapeJsonString(prop.docString) << "\\n" << "Allowed values:\\n";
     std::string defaultEnumValueString = "";
     for (const auto& enumValue : prop.enumValues) { 
       assert(enumValue.first != "None" && "None enum values will cause python errors in the toolkit, and should be renamed.");
@@ -229,7 +232,8 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentSpec& spec, 
   bool isColorType = !isFlexibleType && prop.treatAsColor && 
                      (prop.type == RtComponentPropertyType::Float3 || prop.type == RtComponentPropertyType::Float4);
   
-  if (!prop.enumValues.empty() || isColorType) {
+  if (!prop.enumValues.empty() || isColorType || prop.isSettableOutput || !prop.allowedPrimTypes.empty()) {
+    
     outputFile << "        \"metadata\": {" << std::endl;
     
     // Add uiType for color properties
@@ -253,6 +257,35 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentSpec& spec, 
         first = false;
       }
       outputFile << "]";
+      hasMetadata = true;
+    }
+    
+    // Add outputOnly for settable output properties
+    if (prop.isSettableOutput) {
+      if (hasMetadata) {
+        outputFile << "," << std::endl;
+      }
+      outputFile << "          \"outputOnly\": \"1\"";
+      hasMetadata = true;
+    }
+    
+    // Add filterPrimTypes for Prim properties with allowed prim types
+    if (!prop.allowedPrimTypes.empty()) {
+      if (hasMetadata) {
+        outputFile << "," << std::endl;
+      }
+      outputFile << "          \"filterPrimTypes\": [";
+      bool first = true;
+      for (const auto& primType : prop.allowedPrimTypes) {
+        if (!first) {
+          outputFile << ", ";
+        }
+        std::string primTypeName = primTypeToString(primType);
+        outputFile << "\"" << escapeJsonString(primTypeName) << "\"";
+        first = false;
+      }
+      outputFile << "]";
+      hasMetadata = true;
     }
     
     outputFile << std::endl;
@@ -382,15 +415,20 @@ bool writePythonStub(const RtComponentSpec* spec, RtComponentType componentType,
 
   std::ofstream& outputFile = *outputFileHolder;
 
-  std::string databaseClassName = "Ogn" + spec->getClassName() + "Database";
+  std::string databaseClassName = spec->getClassName() + "Database";
+
+  bool hasFlexibleTypes = !variants.empty() && !variants[0]->resolvedTypes.empty();
   
   outputFile << "# GENERATED FILE - DO NOT EDIT" << std::endl;
   outputFile << "# This file is a stub for OmniGraph editor compatibility, and is not used by the Remix Runtime." << std::endl;
   outputFile << "from __future__ import annotations" << std::endl;
   outputFile << std::endl;
-  outputFile << "import omni.graph.core as og" << std::endl;
   outputFile << "from typing import TYPE_CHECKING" << std::endl;
   outputFile << std::endl;
+  if (hasFlexibleTypes) {
+    outputFile << "import omni.graph.core as og" << std::endl;
+    outputFile << std::endl;
+  }
   outputFile << "if TYPE_CHECKING:" << std::endl;
   outputFile << "    from lightspeed.trex.logic.ogn.ogn." << databaseClassName << " import " << databaseClassName << std::endl;
   outputFile << std::endl;
@@ -402,7 +440,7 @@ bool writePythonStub(const RtComponentSpec* spec, RtComponentType componentType,
   outputFile << std::endl;
   
   // If this component has flexible types, generate on_connection_type_resolve
-  if (!variants.empty() && !variants[0]->resolvedTypes.empty()) {
+  if (hasFlexibleTypes) {
     // Collect all combinations from the registered variants
     std::vector<std::unordered_map<std::string, RtComponentPropertyType>> combinations;
     for (const auto* variant : variants) {
@@ -432,6 +470,30 @@ bool writePythonStub(const RtComponentSpec* spec, RtComponentType componentType,
           }
           return false;
         });
+      
+      // Deduplicate combinations based on their OGN type signatures
+      // (String, AssetPath, and Hash all map to "token", so we need to remove duplicates)
+      std::vector<std::unordered_map<std::string, RtComponentPropertyType>> uniqueCombinations;
+      std::set<std::string> seenSignatures;
+      
+      for (const auto& combo : combinations) {
+        // Build a signature string from the OGN types of all properties
+        std::string signature;
+        for (const auto& propName : propNames) {
+          if (!signature.empty()) {
+            signature += "|";
+          }
+          signature += propName + ":" + propertyTypeToOgnType(combo.at(propName));
+        }
+        
+        // Only add this combination if we haven't seen this signature before
+        if (seenSignatures.insert(signature).second) {
+          uniqueCombinations.push_back(combo);
+        }
+      }
+      
+      // Replace combinations with deduplicated list
+      combinations = std::move(uniqueCombinations);
     }
     
     outputFile << "    @staticmethod" << std::endl;
@@ -452,7 +514,6 @@ bool writePythonStub(const RtComponentSpec* spec, RtComponentType componentType,
       }
       outputFile << std::endl;
     }
-    outputFile << std::endl;
     
     // Separate input and output flexible properties
     std::vector<std::string> flexibleInputs, flexibleOutputs;
@@ -467,7 +528,8 @@ bool writePythonStub(const RtComponentSpec* spec, RtComponentType componentType,
     }
     
     // Generate type checking logic
-    if (!flexibleInputs.empty()) {
+    if (!flexibleInputs.empty() && !flexibleOutputs.empty()) {
+      outputFile << std::endl;
       // Get attributes for all flexible properties
       outputFile << "        # Get attributes" << std::endl;
       for (const auto& propName : flexibleInputs) {
@@ -496,7 +558,7 @@ bool writePythonStub(const RtComponentSpec* spec, RtComponentType componentType,
         } else {
           outputFile << "        ";
         }
-        outputFile << "if ";
+        outputFile << "if (";
         
         for (size_t j = 0; j < flexibleInputs.size(); ++j) {
           const auto& propName = flexibleInputs[j];
@@ -505,10 +567,10 @@ bool writePythonStub(const RtComponentSpec* spec, RtComponentType componentType,
           
           outputFile << "type_" << propName << " == og.Type(og.BaseDataType." << ognTypeToBaseDataType(ognType) << ")";
           if (j < flexibleInputs.size() - 1) {
-            outputFile << " and ";
+            outputFile << " and " << std::endl << "            ";
           }
         }
-        outputFile << ":" << std::endl;
+        outputFile << "):" << std::endl;
         
         // Set output types for this combination
         for (const auto& propName : flexibleOutputs) {
@@ -517,7 +579,6 @@ bool writePythonStub(const RtComponentSpec* spec, RtComponentType componentType,
           outputFile << "            output_" << propName << ".set_resolved_type(og.Type(og.BaseDataType." << ognTypeToBaseDataType(ognType) << "))" << std::endl;
         }
       }
-      outputFile << std::endl;
     }
   }
 

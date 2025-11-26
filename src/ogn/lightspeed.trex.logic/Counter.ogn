@@ -1,0 +1,33 @@
+{
+  "lightspeed.trex.logic.Counter": {
+    "description": ["Counts up by a value every frame when a condition is true.\n\nIncrements a counter by a specified value every frame that the input bool is true. Useful for tracking how many frames a condition has been active."],
+    "version": 1,
+    "uiName": "Counter",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "increment": {
+        "description": ["When true, the counter increments by the increment value each frame."],
+        "type": "bool",
+        "default": false,
+        "uiName": "Increment"
+      },
+      "incrementValue": {
+        "description": ["The value to add to the counter each frame when increment is true."],
+        "type": "float",
+        "default": 1.000000,
+        "optional": true,
+        "uiName": "Increment Value"
+      }
+    },
+    "outputs": {
+      "value": {
+        "description": ["The current counter value."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "Value"
+      }
+    }
+  }
+}

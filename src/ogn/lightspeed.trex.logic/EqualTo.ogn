@@ -1,0 +1,30 @@
+{
+  "lightspeed.trex.logic.EqualTo": {
+    "description": ["Returns true if A is equal to B, false otherwise.\n\nFor floating point values, this performs exact equality comparison. Vector == Vector compares all components."],
+    "version": 1,
+    "uiName": "Equal To",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "a": {
+        "description": ["The first value to compare."],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "A"
+      },
+      "b": {
+        "description": ["The second value to compare."],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "B"
+      }
+    },
+    "outputs": {
+      "result": {
+        "description": ["True if A == B, false otherwise"],
+        "type": "bool",
+        "default": false,
+        "uiName": "Result"
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 # Camera
 
-Outputs current camera properties including position, orientation vectors, and projection parameters\. Uses free camera when both 'rtx\.camera\.useFreeCameraForComponents' and free camera are enabled\.
+Provides information about the camera's position, direction, and field of view\.<br/><br/>Outputs current camera properties including position, orientation vectors, and projection parameters\.<br/><br/>Uses free camera when both 'rtx\.camera\.useFreeCameraForComponents' and free camera are enabled\.
 
 ## Component Information
 

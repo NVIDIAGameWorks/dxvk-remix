@@ -1,6 +1,6 @@
 {
   "lightspeed.trex.logic.Time": {
-    "description": ["Outputs the time in seconds since the component was created. Can be paused and speed-adjusted."],
+    "description": ["Provides a continuously increasing time value for creating animations and time-based effects.\n\nOutputs the time in seconds since the component was created. Can be paused and speed-adjusted."],
     "version": 1,
     "uiName": "Time",
     "language": "python",
@@ -13,6 +13,13 @@
         "default": true,
         "optional": true,
         "uiName": "Enabled"
+      },
+      "resetWhenDisabled": {
+        "description": ["If true and `enabled` is false, the accumulated time is reset to 0."],
+        "type": "bool",
+        "default": true,
+        "optional": true,
+        "uiName": "Reset When Disabled"
       },
       "speedMultiplier": {
         "description": ["Multiplier for time speed. 1.0 = normal speed, 2.0 = double speed, 0.5 = half speed."],
