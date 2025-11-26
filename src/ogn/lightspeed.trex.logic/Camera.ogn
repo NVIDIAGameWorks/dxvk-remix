@@ -1,6 +1,6 @@
 {
   "lightspeed.trex.logic.Camera": {
-    "description": ["Outputs current camera properties including position, orientation vectors, and projection parameters. Uses free camera when both 'rtx.camera.useFreeCameraForComponents' and free camera are enabled."],
+    "description": ["Provides information about the camera's position, direction, and field of view.\n\nOutputs current camera properties including position, orientation vectors, and projection parameters.\n\nUses free camera when both 'rtx.camera.useFreeCameraForComponents' and free camera are enabled."],
     "version": 1,
     "uiName": "Camera",
     "language": "python",

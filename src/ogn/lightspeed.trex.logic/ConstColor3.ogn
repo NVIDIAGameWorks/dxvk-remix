@@ -1,0 +1,21 @@
+{
+  "lightspeed.trex.logic.ConstColor3": {
+    "description": ["Provides a constant RGB color (Red, Green, Blue) that you can set.\n\nUse this to provide fixed colors to materials, lights, or other components. Each channel ranges from 0.0 to 1.0."],
+    "version": 1,
+    "uiName": "Constant Color3",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Constants",
+    "inputs": {
+      "value": {
+        "description": ["The constant RGB color (Red, Green, Blue)."],
+        "type": "float[3]",
+        "default": [0.000000, 0.000000, 0.000000],
+        "metadata": {
+          "outputOnly": "1"
+        },
+        "uiName": "Value"
+      }
+    }
+  }
+}

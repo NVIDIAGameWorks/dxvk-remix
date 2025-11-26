@@ -125,6 +125,14 @@ public: \
     X_STATES(REMIX_COMPONENT_GENERATE_CTOR_ARGS_WITH_COUNTER) \
     X_OUTPUTS(REMIX_COMPONENT_GENERATE_CTOR_ARGS_WITH_COUNTER) \
     m_batch(batch) {} \
+  /* Static factory function to replace lambda for createComponentBatch */ \
+  static std::unique_ptr<RtComponentBatch> createBatch( \
+      const RtGraphBatch& batch, \
+      std::vector<RtComponentPropertyVector>& values, \
+      const std::vector<size_t>& indices) { \
+    size_t ctorIndex = 0; \
+    return std::make_unique<componentClass>(batch, values, indices, ctorIndex); \
+  } \
   static const RtComponentSpec* getStaticSpec() { \
     static std::once_flag s_once_flag; \
     static const std::string s_fullName = RtComponentPropertySpec::kUsdNamePrefix + #componentClass; \
@@ -145,12 +153,7 @@ public: \
         X_STATES(REMIX_COMPONENT_GENERATE_RESOLVED_TYPE) \
         X_OUTPUTS(REMIX_COMPONENT_GENERATE_RESOLVED_TYPE) \
       }, /* resolvedTypes */ \
-      [](const RtGraphBatch& batch, \
-          std::vector<RtComponentPropertyVector>& values, \
-          const std::vector<size_t>& indices) { \
-        size_t ctorIndex = 0; \
-        return std::make_unique<componentClass>(batch, values, indices, ctorIndex); \
-      } \
+      &componentClass::createBatch \
     }; \
     std::call_once(s_once_flag, [&]() { \
       if (!s_spec.properties.empty()) { \

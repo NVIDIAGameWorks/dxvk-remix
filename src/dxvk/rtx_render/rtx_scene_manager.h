@@ -179,6 +179,7 @@ public:
   const RtCamera& getCamera() const { return m_cameraManager.getMainCamera(); }
   RtCamera& getCamera() { return m_cameraManager.getMainCamera(); }
 
+  const FogState& getFogState() const { return m_fog; }
   FogState& getFogState() { return m_fog; }
   const fast_unordered_cache<FogState>& getFogStates() const { return m_fogStates; }
   void clearFogState();

@@ -72,6 +72,42 @@ std::string resolveAssetPath(const pxr::UsdAttribute& attr, const std::string& p
   return pathStr;
 }
 
+// Get the last valid connection from a USD attribute.
+// Some connections may be old or invalid, so we iterate in reverse to find the most recent valid one.
+// A connection is considered valid if the prim it references actually exists in the USD stage.
+// Returns true if a valid connection was found, false otherwise.
+bool getLastValidConnection(
+    const pxr::UsdAttribute& attr,
+    pxr::SdfPath& outConnection) {
+  if (!attr || !attr.IsValid()) {
+    return false;
+  }
+  
+  pxr::SdfPathVector connections;
+  attr.GetConnections(&connections);
+  
+  if (connections.empty()) {
+    return false;
+  }
+  
+  pxr::UsdStageRefPtr stage = attr.GetPrim().GetStage();
+  if (!stage) {
+    return false;
+  }
+  
+  // Iterate in reverse to find the last valid connection
+  for (auto it = connections.rbegin(); it != connections.rend(); ++it) {
+    // Check if the connected prim actually exists in the stage
+    pxr::UsdPrim connectedPrim = stage->GetPrimAtPath(it->GetPrimPath());
+    if (connectedPrim && connectedPrim.IsValid()) {
+      outConnection = *it;
+      return true;
+    }
+  }
+  
+  return false;
+}
+
 } // anonymous namespace
 
 RtGraphState GraphUsdParser::parseGraph(AssetReplacements& replacements, const pxr::UsdPrim& graphPrim, PathToOffsetMap& pathToOffsetMap) {
@@ -109,15 +145,12 @@ RtGraphState GraphUsdParser::parseGraph(AssetReplacements& replacements, const p
       // Start with the declared type (flexible type) not the default resolved type
       RtComponentPropertyType resolvedType = property.declaredType;
       
-      if (attr && attr.IsValid()) {
-        pxr::SdfPathVector connections;
-        attr.GetConnections(&connections);
-        if (connections.size() > 0) {
-          std::string connectionPath = connections[0].GetString();
-          auto iter = topology.propertyPathHashToIndexMap.find(connectionPath);
-          if (iter != topology.propertyPathHashToIndexMap.end()) {
-            resolvedType = topology.propertyTypes[iter->second];
-          }
+      pxr::SdfPath connection;
+      if (getLastValidConnection(attr, connection)) {
+        std::string connectionPath = connection.GetString();
+        auto iter = topology.propertyPathHashToIndexMap.find(connectionPath);
+        if (iter != topology.propertyPathHashToIndexMap.end()) {
+          resolvedType = topology.propertyTypes[iter->second];
         }
       }
       
@@ -190,18 +223,15 @@ RtGraphState GraphUsdParser::parseGraph(AssetReplacements& replacements, const p
       } else {
         pxr::UsdAttribute attr = child.GetAttributeAtPath(propertyPath);
         bool hasConnection = false;
-        if (attr && attr.IsValid()) {
-          pxr::SdfPathVector connections;
-          attr.GetConnections(&connections);
-          if (connections.size() > 0) {
-            std::string connectionPath = connections[0].GetString();
-            auto iter = topology.propertyPathHashToIndexMap.find(connectionPath);
-            if (iter == topology.propertyPathHashToIndexMap.end()) {
-              Logger::err(str::format("Property ", propertyPath.GetString(), " has a connection to property ", connectionPath, " that has not been loaded yet.  This may be because that prim failed to load, or it may indicate an error in the topological sort."));
-            } else {
-              propertyIndices.push_back(iter->second);
-              hasConnection = true;
-            }
+        pxr::SdfPath connection;
+        if (getLastValidConnection(attr, connection)) {
+          std::string connectionPath = connection.GetString();
+          auto iter = topology.propertyPathHashToIndexMap.find(connectionPath);
+          if (iter == topology.propertyPathHashToIndexMap.end()) {
+            Logger::err(str::format("Property ", propertyPath.GetString(), " has a connection to property ", connectionPath, " that has not been loaded yet.  This may be because that prim failed to load, or it may indicate an error in the topological sort."));
+          } else {
+            propertyIndices.push_back(iter->second);
+            hasConnection = true;
           }
         }
         if (!hasConnection) {
@@ -268,27 +298,19 @@ std::vector<GraphUsdParser::DAGNode> GraphUsdParser::getDAGSortedNodes(const pxr
       // Check for connections on the resolved property path (current name or strongest old name)
       pxr::SdfPath propertyPath = resolvePropertyPath(nodePrim, property);
       pxr::UsdAttribute attr = nodePrim.GetAttributeAtPath(propertyPath);
-      bool hasConnection = false;
-      if (attr && attr.IsValid()) {
-        pxr::SdfPathVector connections;
-        attr.GetConnections(&connections);
-        if (connections.size() == 1) {
-          auto iter = pathToIndexMap.find(connections[0].GetPrimPath());
-          if (iter == pathToIndexMap.end()) {
-            Logger::err(str::format("Node ", node.path.GetString(), " has a connection to a node that does not exist (may have failed to load earlier in the process): ", connections[0].GetPrimPath().GetString()));
-            continue;
-          }
-          size_t dependentIndex = iter->second;
-          // Note: multiple properties can link the same node, so we need to avoid adding duplicate edges.
-          if (node.dependents.find(dependentIndex) == node.dependents.end()) {
-            nodes[dependentIndex].dependencyCount++;
-            node.dependents.insert(dependentIndex);
-          }
-        } else if (connections.size() > 1) {
-          // NOTE: unclear what the behavior should be here.  There are some attributes that
-          // can take multiple connections to combine into a list, but we don't currently support those.
-          assert(false && "Node has multiple connections to the same property.");
-          Logger::err(str::format("Node ", node.path.GetString(), " has multiple connections to the same property: ", property.usdPropertyName));
+      
+      pxr::SdfPath connection;
+      if (getLastValidConnection(attr, connection)) {
+        auto iter = pathToIndexMap.find(connection.GetPrimPath());
+        if (iter == pathToIndexMap.end()) {
+          Logger::err(str::format("Node ", node.path.GetString(), " has a connection to a prim that exists but was not loaded (may have failed to load earlier in the process): ", connection.GetPrimPath().GetString()));
+          continue;
+        }
+        size_t dependentIndex = iter->second;
+        // Note: multiple properties can link the same node, so we need to avoid adding duplicate edges.
+        if (node.dependents.find(dependentIndex) == node.dependents.end()) {
+          nodes[dependentIndex].dependencyCount++;
+          node.dependents.insert(dependentIndex);
         }
       }
     }
@@ -504,12 +526,10 @@ RtComponentPropertyType GraphUsdParser::inferTypeFromConnections(
   }
   
   // Check if this is an input - look for the output that connects to it
-  if (property.ioType == RtComponentPropertyIOType::Input && attr && attr.IsValid()) {
-    pxr::SdfPathVector connections;
-    attr.GetConnections(&connections);
-    if (!connections.empty()) {
+  if (property.ioType == RtComponentPropertyIOType::Input) {
+    pxr::SdfPath sourcePath;
+    if (getLastValidConnection(attr, sourcePath)) {
       // Get the source property
-      pxr::SdfPath sourcePath = connections[0];
       pxr::UsdPrim sourcePrim = graphPrim.GetPrimAtPath(sourcePath.GetPrimPath());
       if (sourcePrim) {
         const RtComponentSpec* sourceSpec = getComponentSpecForPrim(sourcePrim);

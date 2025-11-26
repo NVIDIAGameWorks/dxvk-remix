@@ -34,7 +34,8 @@ namespace components {
 #define LIST_INPUTS(X) \
   X(RtComponentPropertyType::Bool, true, enabled, "Enabled", "If true, the overrides will be applied.", property.optional = true) \
   X(RtComponentPropertyType::Float, 0.0f, radius, "Radius", "The radius of the sphere light.", property.optional = true) \
-  X(RtComponentPropertyType::Prim, kInvalidPrimTarget, target, "Target", "The sphere light to override.")
+  X(RtComponentPropertyType::Prim, kInvalidPrimTarget, target, "Target", "The sphere light to override.", \
+    property.allowedPrimTypes = {PrimType::UsdLuxSphereLight})
 
 #define LIST_STATES(X)
 #define LIST_OUTPUTS(X)
@@ -46,8 +47,9 @@ private:
   REMIX_COMPONENT_BODY(
     /* the Component class name */ SphereLightOverride,
     /* the UI name */        "[Non Functional] Sphere Light",
-    /* the UI categories */  "Act",
-    /* the doc string */     "Override the sphere light properties.",
+    /* the UI categories */  "TODO", // TODO: once this component is functional, move it to the "Act" category. 
+    /* the doc string */     "Modifies properties of a sphere light, such as its radius.\n\n" \
+      "Note: This component is currently non-functional and should not be used.",
     /* the version number */ 1,
     LIST_INPUTS, LIST_STATES, LIST_OUTPUTS,
     /* optional arguments: */

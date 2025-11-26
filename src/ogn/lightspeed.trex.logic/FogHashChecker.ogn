@@ -1,0 +1,26 @@
+{
+  "lightspeed.trex.logic.FogHashChecker": {
+    "description": ["Detects if a specific fog state is currently active in the scene.\n\nChecks if a given fog hash matches the current frame's fog hash."],
+    "version": 1,
+    "uiName": "Fog Hash Checker",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Sense",
+    "inputs": {
+      "fogHash": {
+        "description": ["The fog hash to check against the current frame's fog hash."],
+        "type": "token",
+        "default": "0x0",
+        "uiName": "Fog Hash"
+      }
+    },
+    "outputs": {
+      "isMatch": {
+        "description": ["True if the given fog hash matches the current frame's fog hash."],
+        "type": "bool",
+        "default": false,
+        "uiName": "Is Match"
+      }
+    }
+  }
+}

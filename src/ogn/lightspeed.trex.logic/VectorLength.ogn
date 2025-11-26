@@ -1,0 +1,25 @@
+{
+  "lightspeed.trex.logic.VectorLength": {
+    "description": ["Calculates the length (magnitude) of a vector.\n\nComputes the Euclidean length of the vector using the formula: sqrt(x² + y² + z² + ...)."],
+    "version": 1,
+    "uiName": "Vector Length",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "input": {
+        "description": ["The value to measure. For vectors, returns length."],
+        "type": ["float[2]", "float[3]", "float[4]"],
+        "uiName": "Input"
+      }
+    },
+    "outputs": {
+      "length": {
+        "description": ["The length (magnitude) of the input vector."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "Length"
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 {
   "lightspeed.trex.logic.InterpolateFloat": {
-    "description": ["Interpolates a value from an input range to an output range with optional easing. \nCombines normalization (reverse LERP), easing, and mapping (LERP) into a single component. \n\nNote input values outside of input range are valid, and that easing can lead to the output value being outside of the output range even when input is inside the input range.\nInverted input ranges (Input Max < Input Min) are supported - the min/max will be swapped and the normalized value inverted."],
+    "description": ["Smoothly maps a value from one range to another range with customizable easing curves.\n\nInterpolates a value from an input range to an output range with optional easing. Values will be normalized (mapped from input range to 0-1), eased (changed from linear to some curve), then mapped (0-1 value to output range).\n\nNote: Input values outside of input range are valid, and easing can lead to the output value being outside of the output range even when input is inside the input range.\n\nInverted ranges (max < min) are supported, but the results are undefined and may change without warning."],
     "version": 1,
     "uiName": "Interpolate Float",
     "language": "python",
@@ -33,7 +33,7 @@
         "uiName": "Clamp Input"
       },
       "easingType": {
-        "description": ["The type of easing to apply.\nAllowed values:  - Bounce: Bouncy, playful motion.\n  - Cubic: The float will change in a cubic curve over time.\n  - EaseIn: The float will start slow, then accelerate.\n  - EaseInOut: The float will start slow, accelerate, then decelerate.\n  - EaseOut: The float will start fast, then decelerate.\n  - Elastic: Spring-like motion.\n  - Exponential: Dramatic acceleration effect.\n  - Linear: The float will have a constant velocity.\n  - Sine: Smooth, natural motion using a sine wave.\n "],
+        "description": ["The type of easing to apply.\nAllowed values:\n - Bounce: Bouncy, playful motion.\n  - Cubic: The float will change in a cubic curve over time.\n  - EaseIn: The float will start slow, then accelerate.\n  - EaseInOut: The float will start slow, accelerate, then decelerate.\n  - EaseOut: The float will start fast, then decelerate.\n  - Elastic: Spring-like motion.\n  - Exponential: Dramatic acceleration effect.\n  - Linear: The float will have a constant velocity.\n  - Sine: Smooth, natural motion using a sine wave.\n "],
         "type": "token",
         "default": "Linear",
         "metadata": {
@@ -42,7 +42,7 @@
         "uiName": "Easing Type"
       },
       "shouldReverse": {
-        "description": ["If true, the easing is applied backwards. If `Value` is coming from a loopFloat component that is using `pingpong`, hook this up to `isReversing` from that component."],
+        "description": ["If true, the easing is applied backwards. If `Value` is coming from a Loop component that is using `pingpong`, hook this up to `isReversing` from that component."],
         "type": "bool",
         "default": false,
         "optional": true,
@@ -62,11 +62,11 @@
       }
     },
     "outputs": {
-      "interpolatedValue": {
+      "output": {
         "description": ["The final interpolated value after applying input normalization, easing, and output mapping."],
         "type": "float",
         "default": 0.000000,
-        "uiName": "Interpolated Value"
+        "uiName": "Output"
       }
     }
   }

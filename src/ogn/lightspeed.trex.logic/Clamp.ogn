@@ -1,0 +1,36 @@
+{
+  "lightspeed.trex.logic.Clamp": {
+    "description": ["Constrains a value to a specified range.\n\nIf the value is less than Min Value, returns Min Value. If the value is greater than Max Value, returns Max Value. Otherwise, returns the value unchanged. Applies to each component of a vector individually."],
+    "version": 1,
+    "uiName": "Clamp",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "value": {
+        "description": ["The value to clamp."],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "Value"
+      },
+      "minValue": {
+        "description": ["The minimum allowed value."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "Min Value"
+      },
+      "maxValue": {
+        "description": ["The maximum allowed value."],
+        "type": "float",
+        "default": 1.000000,
+        "uiName": "Max Value"
+      }
+    },
+    "outputs": {
+      "result": {
+        "description": ["The clamped value, constrained to [Min Value, Max Value]."],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "Result"
+      }
+    }
+  }
+}

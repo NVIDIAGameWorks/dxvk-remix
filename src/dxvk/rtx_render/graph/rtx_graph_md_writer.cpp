@@ -70,7 +70,7 @@ std::string formatFloat(float value) {
 }
 
 // Helper function to escape markdown special characters
-std::string escapeMarkdown(const std::string& input) {
+std::string escapeMarkdown(std::string_view input) {
   std::string output;
   output.reserve(input.size());
   for (char c : input) {
@@ -442,7 +442,7 @@ bool writeMarkdownIndex(const std::vector<const RtComponentSpec*>& specs, const 
   
   for (const auto& spec : specs) {
     if (!spec->categories.empty()) {
-      categorizedComponents[spec->categories].push_back(spec);
+      categorizedComponents[std::string(spec->categories)].push_back(spec);
     } else {
       uncategorizedComponents.push_back(spec);
     }
@@ -471,10 +471,10 @@ bool writeMarkdownIndex(const std::vector<const RtComponentSpec*>& specs, const 
     
     for (const auto& spec : components) {
       outputFile << "| [" << escapeMarkdown(spec->uiName) << "](" << spec->getClassName() << ".md) | ";
-      outputFile << escapeMarkdown(spec->docString.empty() ? "No description available" :
-                                   spec->docString.substr(0, kMaxDescriptionLength) +
-                                   (spec->docString.length() > kMaxDescriptionLength ? "..." : ""))
-                 << " | ";
+      std::string description = spec->docString.empty() ? "No description available" :
+                                std::string(spec->docString.substr(0, kMaxDescriptionLength)) +
+                                (spec->docString.length() > kMaxDescriptionLength ? "..." : "");
+      outputFile << escapeMarkdown(description) << " | ";
       outputFile << spec->version << " |" << std::endl;
     }
     outputFile << std::endl;
@@ -488,10 +488,10 @@ bool writeMarkdownIndex(const std::vector<const RtComponentSpec*>& specs, const 
     
     for (const auto& spec : uncategorizedComponents) {
       outputFile << "| [" << escapeMarkdown(spec->uiName) << "](" << spec->getClassName() << ".md) | ";
-      outputFile << escapeMarkdown(spec->docString.empty() ? "No description available" :
-                                   spec->docString.substr(0, kMaxDescriptionLength) +
-                                   (spec->docString.length() > kMaxDescriptionLength ? "..." : ""))
-                 << " | ";
+      std::string description = spec->docString.empty() ? "No description available" :
+                                std::string(spec->docString.substr(0, kMaxDescriptionLength)) +
+                                (spec->docString.length() > kMaxDescriptionLength ? "..." : "");
+      outputFile << escapeMarkdown(description) << " | ";
       outputFile << spec->version << " |" << std::endl;
     }
     outputFile << std::endl;

@@ -1,0 +1,29 @@
+{
+  "lightspeed.trex.logic.RtxOptionReadColor4": {
+    "description": ["Reads the current value of a Color4 (RGBA) RTX option.\n\nOutputs the current value of a given RTX option as a Color4. Internally, Color4 is stored as Vector4. The option name should be the full name including category."],
+    "version": 1,
+    "uiName": "Rtx Option Read Color4",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Sense",
+    "inputs": {
+      "optionName": {
+        "description": ["The full name of the RTX option to read (e.g., 'rtx.someOption')."],
+        "type": "token",
+        "default": "",
+        "uiName": "Option Name"
+      }
+    },
+    "outputs": {
+      "value": {
+        "description": ["The current value of the RTX option as a Color4 (RGBA). Returns black with full alpha (0,0,0,1) if the option is not found or is not a Vector4 type."],
+        "type": "float[4]",
+        "default": [0.000000, 0.000000, 0.000000, 1.000000],
+        "metadata": {
+          "uiType": "color"
+        },
+        "uiName": "Value"
+      }
+    }
+  }
+}

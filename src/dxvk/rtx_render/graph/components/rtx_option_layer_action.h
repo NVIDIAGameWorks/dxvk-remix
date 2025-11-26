@@ -24,13 +24,10 @@
 
 #include "../rtx_graph_component_macros.h"
 #include "../../rtx_option_layer_manager.h"
+#include "rtx_option_layer_constants.h"
 
 namespace dxvk {
 namespace components {
-
-static constexpr uint32_t kMaxComponentRtxOptionLayerPriority = RtxOptionLayer::s_runtimeOptionLayerPriority - 1;
-static constexpr uint32_t kMinComponentRtxOptionLayerPriority = RtxOptionLayer::s_userOptionLayerOffset + 1;
-static constexpr uint32_t kDefaultComponentRtxOptionLayerPriority = 10000;
 
 
 #define LIST_INPUTS(X) \
@@ -40,7 +37,7 @@ static constexpr uint32_t kDefaultComponentRtxOptionLayerPriority = 10000;
       "\n\nLowest priority layer uses LERP to blend with default value, then each higher priority layer uses LERP to blend with the previous layer's result." \
       "\n\nIf multiple components control the same layer, the MAX blend strength will be used.", property.minValue = 0.0f, property.maxValue = 1.0f, property.optional = true) \
   X(RtComponentPropertyType::Float, 0.1f, blendThreshold, "Blend Threshold", "The blend threshold for non-float options (0.0 to 1.0). Non-float options are only applied when blend strength exceeds this threshold. If multiple components control the same layer, the MINIMUM blend threshold will be used.", property.minValue = 0.0f, property.maxValue = 1.0f, property.optional = true) \
-  X(RtComponentPropertyType::Enum, kDefaultComponentRtxOptionLayerPriority, priority, "Priority", "The priority for the option layer. Higher values are blended onto lower values. Must be unique across all layers.", property.minValue = RtxOptionLayer::s_userOptionLayerOffset + 1, property.maxValue = kMaxComponentRtxOptionLayerPriority, property.optional = true)
+  X(RtComponentPropertyType::Float, kDefaultComponentRtxOptionLayerPriority, priority, "Priority", "The priority for the option layer. Numbers are rounded to the nearest positive integer. Higher values are blended on top of lower values. Must be unique across all layers.", property.minValue = RtxOptionLayer::s_userOptionLayerOffset + 1, property.maxValue = kMaxComponentRtxOptionLayerPriority, property.optional = true)
 
 #define LIST_STATES(X) \
   X(RtComponentPropertyType::Bool, false, holdsReference, "", "True if the component is holding a reference to the RtxOptionLayer.")
@@ -55,8 +52,9 @@ private:
     /* the Component class name */ RtxOptionLayerAction,
     /* the UI name */        "Rtx Option Layer Action",
     /* the UI categories */  "Act",
-    /* the doc string */     "Controls an RtxOptionLayer by name, allowing dynamic enable/disable, strength adjustment, and threshold control. "
-      "This can be used to activate configuration layers at runtime based on game state or other conditions. "
+    /* the doc string */     "Activates and controls configuration layers at runtime based on game conditions.\n\n"
+      "Controls an RtxOptionLayer by name, allowing dynamic enable/disable, strength adjustment, and threshold control. "
+      "This can be used to activate configuration layers at runtime based on game state or other conditions.\n\n"
       "The layer is created if it doesn't exist, and managed with reference counting. "
       "Each layer requires a unique priority value - if multiple components specify the same priority, an error will occur.",
     /* the version number */ 1,
@@ -76,6 +74,11 @@ private:
   }
   void initializeInstance(const Rc<DxvkContext>& context, const size_t index);
   void cleanupInstance(const size_t index);
+
+  uint32_t getPriority(const size_t index) const {
+    // TODO if the priority is left unset, we need to automatically assign a priority.
+    return getRtxOptionLayerComponentClampedPriority(m_priority[index]);
+  }
 };
 
 #undef LIST_INPUTS
@@ -83,15 +86,12 @@ private:
 #undef LIST_OUTPUTS
 
 void RtxOptionLayerAction::initializeInstance(const Rc<DxvkContext>& context, const size_t index) {
-  uint32_t priority = m_priority[index];
-  clamp(priority, kMinComponentRtxOptionLayerPriority, kMaxComponentRtxOptionLayerPriority);
 
-  // TODO if the priority is left unset, we need to automatically assign a priority.
 
   // Acquire layer through the manager
   const RtxOptionLayer* layer = RtxOptionLayerManager::acquireLayer(
     m_configPath[index],
-    priority,
+    getPriority(index),
     1.0f,  // Default blend strength (will be updated in updateRange)
     0.1f   // Default blend threshold (will be updated in updateRange)
   );
@@ -108,7 +108,7 @@ void RtxOptionLayerAction::cleanupInstance(const size_t index) {
     return;
   }
   // Release the layer through the manager
-  RtxOptionLayerManager::releaseLayer(m_configPath[index], m_priority[index]);
+  RtxOptionLayerManager::releaseLayer(m_configPath[index], getPriority(index));
   m_holdsReference[index] = false;
 }
 
@@ -119,7 +119,7 @@ void RtxOptionLayerAction::updateRange(const Rc<DxvkContext>& context, const siz
     }
 
     // Get cached layer pointer
-    RtxOptionLayer* layer = RtxOptionLayerManager::lookupLayer(m_configPath[i], m_priority[i]);
+    RtxOptionLayer* layer = RtxOptionLayerManager::lookupLayer(m_configPath[i], getPriority(i));
     
     // Skip if no layer (empty config name or failed creation)
     if (layer == nullptr) {

@@ -1,0 +1,40 @@
+{
+  "lightspeed.trex.logic.ReadTransform": {
+    "description": ["Reads the transform (position, rotation, scale) of a mesh or light in world space.\n\nExtracts the transform information from a given mesh or light prim. Outputs position, rotation (as quaternion), and scale in world space."],
+    "version": 1,
+    "uiName": "Read Transform",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Sense",
+    "inputs": {
+      "target": {
+        "description": ["The mesh or light prim to read the transform from."],
+        "type": "target",
+        "metadata": {
+          "filterPrimTypes": ["UsdGeomMesh", "UsdLuxSphereLight", "UsdLuxCylinderLight", "UsdLuxDiskLight", "UsdLuxDistantLight", "UsdLuxRectLight"]
+        },
+        "uiName": "Target"
+      }
+    },
+    "outputs": {
+      "position": {
+        "description": ["The world space position of the target."],
+        "type": "float[3]",
+        "default": [0.000000, 0.000000, 0.000000],
+        "uiName": "Position"
+      },
+      "rotation": {
+        "description": ["The world space rotation of the target as a quaternion (x, y, z, w)."],
+        "type": "float[4]",
+        "default": [0.000000, 0.000000, 0.000000, 1.000000],
+        "uiName": "Rotation"
+      },
+      "scale": {
+        "description": ["The world space scale of the target."],
+        "type": "float[3]",
+        "default": [1.000000, 1.000000, 1.000000],
+        "uiName": "Scale"
+      }
+    }
+  }
+}

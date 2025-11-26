@@ -1,0 +1,26 @@
+{
+  "lightspeed.trex.logic.Ceil": {
+    "description": ["Rounds a value up to the next integer.\n\nReturns the smallest integer greater than or equal to the input. For example: 1.1 becomes 2.0, 1.9 becomes 2.0, -1.1 becomes -1.0."],
+    "version": 1,
+    "uiName": "Ceil",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "input": {
+        "description": ["The value to round up."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "Input"
+      }
+    },
+    "outputs": {
+      "result": {
+        "description": ["The input value rounded up to the next integer."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "Result"
+      }
+    }
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "lightspeed.trex.logic.RtxOptionLayerSensor": {
+    "description": ["Reads the state of a configuration layer.\n\nOutputs whether a given RtxOptionLayer is enabled, along with its blend strength and threshold values. This can be used to create logic that responds to the state of configuration layers."],
+    "version": 1,
+    "uiName": "Rtx Option Layer Sensor",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Sense",
+    "inputs": {
+      "configPath": {
+        "description": ["The config file for the RtxOptionLayer to read."],
+        "type": "token",
+        "default": "",
+        "uiName": "Config Path"
+      },
+      "priority": {
+        "description": ["The priority for the option layer. Numbers are rounded to the nearest positive integer. Higher values are blended on top of lower values. Must be unique across all layers."],
+        "type": "float",
+        "default": 10000.000000,
+        "optional": true,
+        "uiName": "Priority"
+      }
+    },
+    "outputs": {
+      "isEnabled": {
+        "description": ["True if the option layer is currently enabled."],
+        "type": "bool",
+        "default": false,
+        "uiName": "Is Enabled"
+      },
+      "blendStrength": {
+        "description": ["The current blend strength of the option layer (0.0 = no effect, 1.0 = full effect)."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "Blend Strength"
+      },
+      "blendThreshold": {
+        "description": ["The current blend threshold for non-float options (0.0 to 1.0)."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "Blend Threshold"
+      }
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "lightspeed.trex.logic.BoolAnd": {
+    "description": ["Returns true only if both A and B are true."],
+    "version": 1,
+    "uiName": "Bool AND",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "a": {
+        "description": ["First boolean input."],
+        "type": "bool",
+        "default": false,
+        "uiName": "A"
+      },
+      "b": {
+        "description": ["Second boolean input."],
+        "type": "bool",
+        "default": false,
+        "uiName": "B"
+      }
+    },
+    "outputs": {
+      "result": {
+        "description": ["The logical AND of A and B (true if both A and B are true)."],
+        "type": "bool",
+        "default": false,
+        "uiName": "Result"
+      }
+    }
+  }
+}

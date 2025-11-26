@@ -1,0 +1,21 @@
+{
+  "lightspeed.trex.logic.ConstHash": {
+    "description": ["Provides a constant hash value that you can set.\n\nUse this to provide fixed hash identifiers for meshes, textures, or other resources. Hash values are typically displayed in hexadecimal format (e.g., 0x1A2B3C4D)."],
+    "version": 1,
+    "uiName": "Constant Hash",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Constants",
+    "inputs": {
+      "value": {
+        "description": ["The constant hash value."],
+        "type": "token",
+        "default": "0x0",
+        "metadata": {
+          "outputOnly": "1"
+        },
+        "uiName": "Value"
+      }
+    }
+  }
+}

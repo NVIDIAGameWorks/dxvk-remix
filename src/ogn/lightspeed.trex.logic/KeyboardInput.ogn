@@ -1,6 +1,6 @@
 {
   "lightspeed.trex.logic.KeyboardInput": {
-    "description": ["Checks the state of a keyboard key or key combination using the same format as RTX options."],
+    "description": ["Detects when keyboard keys are pressed, held, or released.\n\nChecks the state of a keyboard key or key combination using the same format as RTX options."],
     "version": 1,
     "uiName": "Keyboard Input",
     "language": "python",
@@ -8,7 +8,7 @@
     "categories": "Sense",
     "inputs": {
       "keyString": {
-        "description": ["The key combination string (e.g., 'A', 'CTRL,A', 'SHIFT,SPACE'). Supports key names and combinations like RTX options."],
+        "description": ["The key combination string to detect.\nExamples: 'A', 'CTRL, A', 'SHIFT, SPACE'.\nFull list of key names available in `src/util/util_keybind.h`."],
         "type": "token",
         "default": "A",
         "uiName": "Key String"

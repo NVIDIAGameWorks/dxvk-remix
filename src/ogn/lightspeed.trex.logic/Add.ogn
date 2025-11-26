@@ -1,0 +1,29 @@
+{
+  "lightspeed.trex.logic.Add": {
+    "description": ["Adds two numbers or vectors together.\n\nVector + Number will add the number to all components of the vector. Vector + Vector will add each piece separately, to create (a.x + b.x, a.y + b.y, ...). Vector + Vector will error if the vectors aren't the same size."],
+    "version": 1,
+    "uiName": "Add",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "a": {
+        "description": ["The first value to be added."],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "A"
+      },
+      "b": {
+        "description": ["The second value to be added."],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "B"
+      }
+    },
+    "outputs": {
+      "sum": {
+        "description": ["A + B"],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "Sum"
+      }
+    }
+  }
+}

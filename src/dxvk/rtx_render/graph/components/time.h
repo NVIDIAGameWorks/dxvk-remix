@@ -30,6 +30,7 @@ namespace components {
 
 #define LIST_INPUTS(X) \
   X(RtComponentPropertyType::Bool, true, enabled, "Enabled", "If true, time accumulation continues. If false, time is paused.", property.optional = true) \
+  X(RtComponentPropertyType::Bool, true, resetWhenDisabled, "Reset When Disabled", "If true and `enabled` is false, the accumulated time is reset to 0.", property.optional = true) \
   X(RtComponentPropertyType::Float, 1.0f, speedMultiplier, "Speed Multiplier", "Multiplier for time speed. 1.0 = normal speed, 2.0 = double speed, 0.5 = half speed.", property.minValue = 0.0f, property.optional = true)
 
 #define LIST_STATES(X) \
@@ -42,7 +43,8 @@ REMIX_COMPONENT( \
   /* the Component name */ Time, \
   /* the UI name */        "Time", \
   /* the UI categories */  "Sense", \
-  /* the doc string */     "Outputs the time in seconds since the component was created. Can be paused and speed-adjusted.", \
+  /* the doc string */     "Provides a continuously increasing time value for creating animations and time-based effects.\n\n" \
+    "Outputs the time in seconds since the component was created. Can be paused and speed-adjusted.", \
   /* the version number */ 1, \
   LIST_INPUTS, LIST_STATES, LIST_OUTPUTS);
 
@@ -57,6 +59,8 @@ void Time::updateRange(const Rc<DxvkContext>& context, const size_t start, const
     // Only accumulate time if enabled, and apply speed multiplier
     if (m_enabled[i]) {
       m_accumulatedTime[i] += deltaTime * std::max(0.0f, m_speedMultiplier[i]);
+    } else if (m_resetWhenDisabled[i]) {
+      m_accumulatedTime[i] = 0.0f;
     }
     
     // Output the accumulated time

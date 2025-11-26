@@ -1,0 +1,32 @@
+{
+  "lightspeed.trex.logic.Toggle": {
+    "description": ["A switch that alternates between on (true) and off (false) states.\n\nThink of this like a light switch: each frame `Trigger Toggle` is true, the switch flips to the opposite position. Use `Starting State` to choose whether the switch begins in the on or off position."],
+    "version": 1,
+    "uiName": "Toggle",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "triggerToggle": {
+        "description": ["When this is true, the toggle switches to its opposite state (on becomes off, or off becomes on). Set this to true each time you want to flip the switch."],
+        "type": "bool",
+        "default": false,
+        "uiName": "Trigger Toggle"
+      },
+      "defaultState": {
+        "description": ["The initial state of the toggle when the component is created. Set to true to start in the 'on' state, or false to start in the 'off' state."],
+        "type": "bool",
+        "default": false,
+        "uiName": "Starting State"
+      }
+    },
+    "outputs": {
+      "isOn": {
+        "description": ["The current state of the toggle: true means 'on', false means 'off'. This starts at the `Starting State` value and changes each time `Trigger Toggle` becomes true."],
+        "type": "bool",
+        "default": false,
+        "uiName": "Is On"
+      }
+    }
+  }
+}

@@ -41,7 +41,8 @@ REMIX_COMPONENT( \
   /* the Component name */ MeshHashChecker, \
   /* the UI name */        "Mesh Hash Checker", \
   /* the UI categories */  "Sense", \
-  /* the doc string */     "Checks if a specific mesh hash was processed in the current frame.", \
+  /* the doc string */     "Detects if a specific mesh is currently being drawn in the scene.\n\n" \
+    "Checks if a specific mesh hash was processed in the current frame.", \
   /* the version number */ 1, \
   LIST_INPUTS, LIST_STATES, LIST_OUTPUTS);
 

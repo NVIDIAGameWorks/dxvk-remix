@@ -1,0 +1,26 @@
+{
+  "lightspeed.trex.logic.RtxOptionReadBool": {
+    "description": ["Reads the current value of a boolean RTX option.\n\nOutputs the current value of a given RTX option bool. The option name should be the full name including category (e.g., 'rtx.enableRaytracing')."],
+    "version": 1,
+    "uiName": "Rtx Option Read Bool",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Sense",
+    "inputs": {
+      "optionName": {
+        "description": ["The full name of the RTX option to read (e.g., 'rtx.someOption')."],
+        "type": "token",
+        "default": "",
+        "uiName": "Option Name"
+      }
+    },
+    "outputs": {
+      "value": {
+        "description": ["The current value of the RTX option as a bool. Returns false if the option is not found or is not a bool type."],
+        "type": "bool",
+        "default": false,
+        "uiName": "Value"
+      }
+    }
+  }
+}

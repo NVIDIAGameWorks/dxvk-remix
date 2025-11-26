@@ -546,4 +546,66 @@ namespace dxvk {
 
   std::ostream& operator<<(std::ostream& os, const Matrix3& m);
 
+  // Helper function to decompose a 4x4 transformation matrix into position, rotation (quaternion), and scale
+  inline void decomposeMatrix(const Matrix4& transform, Vector3& position, Vector4& rotation, Vector3& scale) {
+    // Extract position (translation component)
+    position = Vector3(transform[3][0], transform[3][1], transform[3][2]);
+    
+    // Extract scale
+    Vector3 col0(transform[0][0], transform[0][1], transform[0][2]);
+    Vector3 col1(transform[1][0], transform[1][1], transform[1][2]);
+    Vector3 col2(transform[2][0], transform[2][1], transform[2][2]);
+    
+    scale.x = length(col0);
+    scale.y = length(col1);
+    scale.z = length(col2);
+    
+    // Remove scale from the rotation matrix
+    Matrix3 rotationMatrix;
+    if (scale.x > 0.0f) {
+      rotationMatrix[0] = col0 / scale.x;
+    } else {
+      rotationMatrix[0] = Vector3(1.0f, 0.0f, 0.0f);
+    }
+    if (scale.y > 0.0f) {
+      rotationMatrix[1] = col1 / scale.y;
+    } else {
+      rotationMatrix[1] = Vector3(0.0f, 1.0f, 0.0f);
+    }
+    if (scale.z > 0.0f) {
+      rotationMatrix[2] = col2 / scale.z;
+    } else {
+      rotationMatrix[2] = Vector3(0.0f, 0.0f, 1.0f);
+    }
+    
+    // Convert rotation matrix to quaternion
+    float trace = rotationMatrix[0][0] + rotationMatrix[1][1] + rotationMatrix[2][2];
+    
+    if (trace > 0.0f) {
+      float s = sqrt(trace + 1.0f) * 2.0f; // s = 4 * qw
+      rotation.w = 0.25f * s;
+      rotation.x = (rotationMatrix[2][1] - rotationMatrix[1][2]) / s;
+      rotation.y = (rotationMatrix[0][2] - rotationMatrix[2][0]) / s;
+      rotation.z = (rotationMatrix[1][0] - rotationMatrix[0][1]) / s;
+    } else if ((rotationMatrix[0][0] > rotationMatrix[1][1]) && (rotationMatrix[0][0] > rotationMatrix[2][2])) {
+      float s = sqrt(1.0f + rotationMatrix[0][0] - rotationMatrix[1][1] - rotationMatrix[2][2]) * 2.0f; // s = 4 * qx
+      rotation.w = (rotationMatrix[2][1] - rotationMatrix[1][2]) / s;
+      rotation.x = 0.25f * s;
+      rotation.y = (rotationMatrix[0][1] + rotationMatrix[1][0]) / s;
+      rotation.z = (rotationMatrix[0][2] + rotationMatrix[2][0]) / s;
+    } else if (rotationMatrix[1][1] > rotationMatrix[2][2]) {
+      float s = sqrt(1.0f + rotationMatrix[1][1] - rotationMatrix[0][0] - rotationMatrix[2][2]) * 2.0f; // s = 4 * qy
+      rotation.w = (rotationMatrix[0][2] - rotationMatrix[2][0]) / s;
+      rotation.x = (rotationMatrix[0][1] + rotationMatrix[1][0]) / s;
+      rotation.y = 0.25f * s;
+      rotation.z = (rotationMatrix[1][2] + rotationMatrix[2][1]) / s;
+    } else {
+      float s = sqrt(1.0f + rotationMatrix[2][2] - rotationMatrix[0][0] - rotationMatrix[1][1]) * 2.0f; // s = 4 * qz
+      rotation.w = (rotationMatrix[1][0] - rotationMatrix[0][1]) / s;
+      rotation.x = (rotationMatrix[0][2] + rotationMatrix[2][0]) / s;
+      rotation.y = (rotationMatrix[1][2] + rotationMatrix[2][1]) / s;
+      rotation.z = 0.25f * s;
+    }
+  }
+
 }

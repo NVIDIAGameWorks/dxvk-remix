@@ -1,0 +1,35 @@
+{
+  "lightspeed.trex.logic.Select": {
+    "description": ["Selects between two values based on a boolean condition.\n\nIf the condition is true, outputs Input A. If the condition is false, outputs Input B. Acts like a ternary operator or if-else statement."],
+    "version": 1,
+    "uiName": "Select",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "condition": {
+        "description": ["If true, output A. If false, output B."],
+        "type": "bool",
+        "default": false,
+        "uiName": "Condition"
+      },
+      "inputA": {
+        "description": ["The value to output when condition is true."],
+        "type": ["bool", "float", "float[2]", "float[3]", "float[4]", "target", "token", "uint"],
+        "uiName": "Input A"
+      },
+      "inputB": {
+        "description": ["The value to output when condition is false."],
+        "type": ["bool", "float", "float[2]", "float[3]", "float[4]", "target", "token", "uint"],
+        "uiName": "Input B"
+      }
+    },
+    "outputs": {
+      "output": {
+        "description": ["The selected value based on the condition."],
+        "type": ["bool", "float", "float[2]", "float[3]", "float[4]", "target", "token", "uint"],
+        "uiName": "Output"
+      }
+    }
+  }
+}

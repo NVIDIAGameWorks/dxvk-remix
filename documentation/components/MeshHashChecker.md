@@ -1,6 +1,6 @@
 # Mesh Hash Checker
 
-Checks if a specific mesh hash was processed in the current frame\.
+Detects if a specific mesh is currently being drawn in the scene\.<br/><br/>Checks if a specific mesh hash was processed in the current frame\.
 
 ## Component Information
 

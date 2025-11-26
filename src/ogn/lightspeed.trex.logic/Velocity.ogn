@@ -1,0 +1,24 @@
+{
+  "lightspeed.trex.logic.Velocity": {
+    "description": ["Detects the rate of change of a value from frame to frame.\n\nCalculates the difference between the current value and the previous frame's value. Outputs the change per frame (velocity = (current - previous) / deltaTime)."],
+    "version": 1,
+    "uiName": "Velocity",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "input": {
+        "description": ["The value to detect changes from."],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "Input"
+      }
+    },
+    "outputs": {
+      "velocity": {
+        "description": ["The change in value from the previous frame (current - previous) / deltaTime."],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "Velocity"
+      }
+    }
+  }
+}

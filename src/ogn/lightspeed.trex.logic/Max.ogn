@@ -1,0 +1,29 @@
+{
+  "lightspeed.trex.logic.Max": {
+    "description": ["Returns the larger of two values.\n\nOutputs the maximum value between A and B."],
+    "version": 1,
+    "uiName": "Max",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "a": {
+        "description": ["The first value."],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "A"
+      },
+      "b": {
+        "description": ["The second value."],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "B"
+      }
+    },
+    "outputs": {
+      "result": {
+        "description": ["The maximum of A and B."],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "Result"
+      }
+    }
+  }
+}

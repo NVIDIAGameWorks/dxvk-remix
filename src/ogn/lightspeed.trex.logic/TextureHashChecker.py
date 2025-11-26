@@ -2,16 +2,17 @@
 # This file is a stub for OmniGraph editor compatibility, and is not used by the Remix Runtime.
 from __future__ import annotations
 
-import omni.graph.core as og
 from typing import TYPE_CHECKING
 
+import omni.graph.core as og
+
 if TYPE_CHECKING:
-    from lightspeed.trex.logic.ogn.ogn.OgnTextureHashCheckerDatabase import OgnTextureHashCheckerDatabase
+    from lightspeed.trex.logic.ogn.ogn.TextureHashCheckerDatabase import TextureHashCheckerDatabase
 
 
 class TextureHashChecker:
     @staticmethod
-    def compute(_db: OgnTextureHashCheckerDatabase):
+    def compute(_db: TextureHashCheckerDatabase):
         return True
 
     @staticmethod
@@ -19,4 +20,3 @@ class TextureHashChecker:
         """Resolve flexible types based on connected attribute types."""
         # Valid type combinations for this component:
         # Combination 1: isUsed=bool, textureHash=token, usageCount=float
-

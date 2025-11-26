@@ -24,6 +24,7 @@
 #include <variant>
 #include <vector>
 #include <string>
+#include <string_view>
 
 #include "dxvk_context.h"
 #include "../util/util_fast_cache.h"
@@ -259,6 +260,31 @@ using PropertyValueType = std::conditional_t<
 using RtComponentType = XXH64_hash_t;
 static const RtComponentType kInvalidComponentType = kEmptyHash;
 
+// Enum for USD prim types that can be targeted by Prim properties
+enum class PrimType : uint32_t {
+  UsdGeomMesh = 0,
+  UsdLuxSphereLight = 1,
+  UsdLuxCylinderLight = 2,
+  UsdLuxDiskLight = 3,
+  UsdLuxDistantLight = 4,
+  UsdLuxRectLight = 5,
+  OmniGraph = 6,
+};
+
+// Convert PrimType enum to USD type name string
+inline std::string primTypeToString(PrimType type) {
+  switch (type) {
+    case PrimType::UsdGeomMesh: return "UsdGeomMesh";
+    case PrimType::UsdLuxSphereLight: return "UsdLuxSphereLight";
+    case PrimType::UsdLuxCylinderLight: return "UsdLuxCylinderLight";
+    case PrimType::UsdLuxDiskLight: return "UsdLuxDiskLight";
+    case PrimType::UsdLuxDistantLight: return "UsdLuxDistantLight";
+    case PrimType::UsdLuxRectLight: return "UsdLuxRectLight";
+    case PrimType::OmniGraph: return "OmniGraph";
+    default: return "";
+  }
+}
+
 struct RtComponentPropertySpec {
   static inline const std::string kUsdNamePrefix = "lightspeed.trex.logic.";
   
@@ -268,8 +294,8 @@ struct RtComponentPropertySpec {
 
   std::string name;
   std::string usdPropertyName;
-  std::string uiName;
-  std::string docString;
+  std::string_view uiName;
+  std::string_view docString;
   
   // For flexible types (Any, NumberOrVector), stores the original declared type
   // For non-flexible types, this is the same as `type`
@@ -301,6 +327,12 @@ struct RtComponentPropertySpec {
   // Runtime side all properties have a default value, so this is mostly a UI hint.
   bool optional = false;
 
+  // Whether this input property can be both set by the user and read by other components as an output.
+  // This is useful for constant value components where the input value itself acts as an output.
+  // When true, the OGN writer will add "outputOnly": "1" metadata.
+  // Note that properties with this set to true cannot accept inputs from other components.
+  bool isSettableOutput = false;
+
   // Optional property to display as an enum in the USD.
   // specify as `property.enumValues = { {"DisplayName1", {enumClass::Value1, "DocString1"}}, {"DisplayName2", {enumClass::Value2, "DocString2"}}, ... }`
   struct EnumProperty {
@@ -319,6 +351,12 @@ struct RtComponentPropertySpec {
   // Whether to treat Float3/Float4 types as colors in UI/OGN generation (adds color metadata)
   bool treatAsColor = false;
 
+  // For Prim properties, specify the allowed prim types as a vector of PrimType enum values.
+  // Example: property.allowedPrimTypes = {PrimType::UsdGeomMesh}
+  // or: property.allowedPrimTypes = {PrimType::UsdGeomMesh, PrimType::OmniGraph}
+  // When set, the OGN writer will add "filterPrimTypes" metadata for target prim validation.
+  std::vector<PrimType> allowedPrimTypes;
+
   ///////////////////////////////////////////////////////////////////////////////////////////////////////////
   // END OF OPTIONAL VALUES FOR PROPERTY SPECS
   ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -334,22 +372,28 @@ struct RtComponentPropertySpec {
 class RtComponentBatch;
 class RtGraphBatch;
 
+// Function pointer types for component spec callbacks (using pointers instead of std::function to reduce binary size)
+using CreateComponentBatchFunc = std::unique_ptr<RtComponentBatch>(*)(const RtGraphBatch& batch, std::vector<RtComponentPropertyVector>& values, const std::vector<size_t>& indices);
+using ApplySceneOverridesFunc = void(*)(const Rc<DxvkContext>& context, RtComponentBatch& batch, const size_t start, const size_t end);
+using InitializeFunc = void(*)(const Rc<DxvkContext>& context, RtComponentBatch& batch, const size_t index);
+using CleanupFunc = void(*)(RtComponentBatch& batch, const size_t index);
+
 struct RtComponentSpec {
   std::vector<RtComponentPropertySpec> properties;
   RtComponentType componentType = kInvalidComponentType;
   int version = 0;
 
   std::string name;
-  std::string uiName;
-  std::string categories;
-  std::string docString;
+  std::string_view uiName;
+  std::string_view categories;
+  std::string_view docString;
   
   // For templated components: maps property name to its resolved concrete type
   // Empty for non-templated components
   std::unordered_map<std::string, RtComponentPropertyType> resolvedTypes;
 
   // Function to construct a batch of components from a graph topology and initial graph state.
-  std::function<std::unique_ptr<RtComponentBatch>(const RtGraphBatch& batch, std::vector<RtComponentPropertyVector>& values, const std::vector<size_t>& indices)> createComponentBatch;
+  CreateComponentBatchFunc createComponentBatch = nullptr;
 
   ///////////////////////////////////////////////////////////////////////////////////////////////////////////
   // BEGINNING OF OPTIONAL VALUES FOR COMPONENT SPECS
@@ -361,16 +405,16 @@ struct RtComponentSpec {
   std::vector<std::string> oldNames;
 
   // Optional function intended for applying values in the graph to renderable objects.  This is called near the top of SceneManager::prepareSceneData.
-  std::function<void(const Rc<DxvkContext>& context, RtComponentBatch& batch, const size_t start, const size_t end)> applySceneOverrides;
+  ApplySceneOverridesFunc applySceneOverrides = nullptr;
 
   // Optional function called when component instances are created.
   // Called after earlier components have been initialized and updated, but before the first time
   // this component is updated.
-  std::function<void(const Rc<DxvkContext>& context, RtComponentBatch& batch, const size_t index)> initialize;
+  InitializeFunc initialize = nullptr;
 
   // Optional function called when component instances are about to be destroyed.
   // Called before the instance is removed from the batch. No context is available during cleanup.
-  std::function<void(RtComponentBatch& batch, const size_t index)> cleanup;
+  CleanupFunc cleanup = nullptr;
 
   ///////////////////////////////////////////////////////////////////////////////////////////////////////////
   // END OF OPTIONAL VALUES FOR COMPONENT SPECS

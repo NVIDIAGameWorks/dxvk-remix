@@ -1,0 +1,50 @@
+{
+  "lightspeed.trex.logic.RayMeshIntersection": {
+    "description": ["Tests if a ray intersects with a mesh.\n\nPerforms a ray-mesh intersection test. Currently supports bounding box intersection tests. Returns true if the ray intersects the mesh's bounding box."],
+    "version": 1,
+    "uiName": "Ray Mesh Intersection",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "rayOrigin": {
+        "description": ["The origin point of the ray in world space."],
+        "type": "float[3]",
+        "default": [0.000000, 0.000000, 0.000000],
+        "uiName": "Ray Origin"
+      },
+      "rayDirection": {
+        "description": ["The direction of the ray in world space. Should be normalized."],
+        "type": "float[3]",
+        "default": [0.000000, 0.000000, 1.000000],
+        "uiName": "Ray Direction"
+      },
+      "target": {
+        "description": ["The mesh prim to test intersection against. Must be a mesh prim."],
+        "type": "target",
+        "metadata": {
+          "filterPrimTypes": ["UsdGeomMesh"]
+        },
+        "uiName": "Target"
+      },
+      "intersectionType": {
+        "description": ["The type of intersection test to perform.\nAllowed values:\n - Bounding Box: Test intersection against the mesh's axis-aligned bounding box.\n "],
+        "type": "token",
+        "default": "Bounding Box",
+        "metadata": {
+          "allowedTokens": ["Bounding Box"]
+        },
+        "optional": true,
+        "uiName": "Intersection Type"
+      }
+    },
+    "outputs": {
+      "intersects": {
+        "description": ["True if the ray intersects the mesh (based on the selected intersection type)."],
+        "type": "bool",
+        "default": false,
+        "uiName": "Intersects"
+      }
+    }
+  }
+}
