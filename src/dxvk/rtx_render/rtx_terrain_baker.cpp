@@ -654,6 +654,9 @@ namespace dxvk {
       Material::Properties::metallicConstant(),
       Material::Properties::emissiveColorConstant(),
       Material::Properties::enableEmission(),
+      false, // EmissiveAlphaMask - not used for terrain baking
+      false, // EmissiveAlphaInvert - not used for terrain baking
+      Vector3(1.0f, 1.0f, 1.0f), // EmissiveColorTint - white default for terrain baking
       // Setting expected constant values. Baked terrain should not need to have other values for the below material parameters set
       1, 1, 0, /* spriteSheet* */
       false, // LegacyMaterialDefaults::enableThinFilm(),
