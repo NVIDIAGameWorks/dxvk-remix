@@ -503,7 +503,8 @@ struct RtOpaqueSurfaceMaterial {
     bool ignoreAlphaChannel, bool enableThinFilm, bool alphaIsThinFilmThickness, float thinFilmThicknessConstant,
     uint32_t samplerIndex, float displaceIn, float displaceOut,
     uint32_t subsurfaceMaterialIndex, bool isRaytracedRenderTarget,
-    uint16_t samplerFeedbackStamp
+    uint16_t samplerFeedbackStamp,
+    float normalScale
   ) :
     m_albedoOpacityTextureIndex{ albedoOpacityTextureIndex }, m_normalTextureIndex{ normalTextureIndex },
     m_tangentTextureIndex { tangentTextureIndex }, m_heightTextureIndex { heightTextureIndex }, m_roughnessTextureIndex{ roughnessTextureIndex },
@@ -513,9 +514,10 @@ struct RtOpaqueSurfaceMaterial {
     m_roughnessConstant{ roughnessConstant }, m_metallicConstant{ metallicConstant },
     m_emissiveColorConstant{ emissiveColorConstant }, m_enableEmission{ enableEmission },
     m_ignoreAlphaChannel { ignoreAlphaChannel }, m_enableThinFilm { enableThinFilm }, m_alphaIsThinFilmThickness { alphaIsThinFilmThickness },
-    m_thinFilmThicknessConstant { thinFilmThicknessConstant }, m_samplerIndex{ samplerIndex }, m_displaceIn{ displaceIn },
+    m_thinFilmThicknessConstant{ thinFilmThicknessConstant }, m_samplerIndex{ samplerIndex }, m_displaceIn{ displaceIn },
     m_displaceOut{ displaceOut }, m_subsurfaceMaterialIndex(subsurfaceMaterialIndex), m_isRaytracedRenderTarget(isRaytracedRenderTarget),
-    m_samplerFeedbackStamp{ samplerFeedbackStamp }
+    m_samplerFeedbackStamp{ samplerFeedbackStamp },
+    m_normalScale{ normalScale }
   {
     updateCachedData();
     updateCachedHash();
@@ -602,8 +604,11 @@ struct RtOpaqueSurfaceMaterial {
     // data[24]
     writeGPUHelperExplicit<2>(data, offset, m_samplerFeedbackStamp);
 
-    // data[25 - 31]
-    writeGPUPadding<14>(data, offset);
+    // data[25]
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_normalScale));
+
+    // data[26 - 31]
+    writeGPUPadding<12>(data, offset);
     assert(offset - oldOffset == kSurfaceMaterialGPUSize);
   }
 
@@ -683,6 +688,10 @@ struct RtOpaqueSurfaceMaterial {
     return m_metallicConstant;
   }
 
+  float getNormalScale() const {
+    return m_normalScale;
+  }
+
   Vector3 getEmissiveColorConstant() const {
     return m_emissiveColorConstant;
   }
@@ -727,6 +736,7 @@ private:
     h = XXH64(&m_subsurfaceMaterialIndex, sizeof(m_subsurfaceMaterialIndex), h);
     h = XXH64(&m_isRaytracedRenderTarget, sizeof(m_isRaytracedRenderTarget), h);
     h = XXH64(&m_samplerFeedbackStamp, sizeof(m_samplerFeedbackStamp), h);
+    h = XXH64(&m_normalScale, sizeof(m_normalScale), h);
 
     m_cachedHash = h;
   }
@@ -778,6 +788,8 @@ private:
   uint16_t m_samplerFeedbackStamp;
 
   XXH64_hash_t m_cachedHash;
+
+  float m_normalScale;
 
   // Note: Cached values are not involved in the hash as they are derived from the input data
   float m_cachedEmissiveIntensity;
