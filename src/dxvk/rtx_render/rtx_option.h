@@ -390,6 +390,9 @@ namespace dxvk {
     void invokeOnChangeCallback(DxvkDevice* device) const;
 
     // Returns true if the value was changed
+    bool clampValue(GenericValue& value);
+
+    // Returns true if the value was changed
     bool clampValue(ValueType type);
 
     static std::string getFullName(const std::string& category, const std::string& name) {
@@ -450,11 +453,21 @@ namespace dxvk {
   // Use this for static operations that don't depend on a specific option type
   class RtxOptionManager {
   public:
-    static void setStartupConfig(const Config& options) { RtxOptionImpl::setStartupConfig(options); }
-    static void setCustomConfig(const Config& options) { RtxOptionImpl::setCustomConfig(options); }
-    static void readOptions(const Config& options) { RtxOptionImpl::readOptions(options); }
-    static void writeOptions(Config& options, bool changedOptionsOnly) { RtxOptionImpl::writeOptions(options, changedOptionsOnly); }
-    static void resetOptions() { RtxOptionImpl::resetOptions(); }
+    static void setStartupConfig(const Config& options) {
+      RtxOptionImpl::setStartupConfig(options);
+    }
+    static void setCustomConfig(const Config& options) {
+      RtxOptionImpl::setCustomConfig(options);
+    }
+    static void readOptions(const Config& options) {
+      RtxOptionImpl::readOptions(options);
+    }
+    static void writeOptions(Config& options, bool changedOptionsOnly) {
+      RtxOptionImpl::writeOptions(options, changedOptionsOnly);
+    }
+    static void resetOptions() {
+      RtxOptionImpl::resetOptions();
+    }
 
     // Update all RTX options after setStartupConfig() and setCustomConfig() have been called
     static void initializeRtxOptions() {
@@ -465,7 +478,7 @@ namespace dxvk {
       // WAR: DxvkInstance() and subsequently this is called twice making the doc being re-written 
       // with RtxOptions already updated from config files below
       static bool hasDocumentationBeenWritten = false;
-     
+
       // Write out to the markdown file before the RtxOptions defaults are updated
       // with those from configs
       if (!hasDocumentationBeenWritten && env::getEnvVar("DXVK_DOCUMENTATION_WRITE_RTX_OPTIONS_MD") == "1") {
@@ -547,7 +560,7 @@ namespace dxvk {
         for (auto& rtxOptionMapEntry : globalRtxOptions) {
           RtxOptionImpl& rtxOption = *rtxOptionMapEntry.second.get();
           if (rtxOption.optionLayerValueQueue.begin()->second.priority == RtxOptionLayer::s_runtimeOptionLayerPriority &&
-              ((rtxOption.flags & (uint32_t)RtxOptionFlags::NoReset) == 0)) {
+              ((rtxOption.flags & (uint32_t) RtxOptionFlags::NoReset) == 0)) {
             // Erase runtime option, so we can enable option layer configs
             rtxOption.disableTopLayer();
             rtxOption.markDirty();
@@ -564,25 +577,56 @@ namespace dxvk {
     // Before the first frame is rendered, it also needs to be called at least once during initialization.
     // It's currently called twice during init, due to multiple sections that set many Options then immediately use them.
     static void applyPendingValues(DxvkDevice* device) {
-      std::unique_lock<std::mutex> lock(RtxOptionImpl::s_updateMutex);
-      
-      auto& dirtyOptions = RtxOptionImpl::getDirtyRtxOptionMap();
-      // Need a second array so that we can invoke onChange callbacks after updating values and clearing the dirty list.
-      std::vector<RtxOptionImpl*> dirtyOptionsVector;
-      dirtyOptionsVector.reserve(dirtyOptions.size());
-      {
-        for (auto& rtxOption : dirtyOptions) {
-          rtxOption.second->resolveValue(rtxOption.second->resolvedValue, false);
-          dirtyOptionsVector.push_back(rtxOption.second);
+
+      constexpr static int32_t maxResolves = 4;
+      int32_t numResolves = 0;
+
+      // Iteratively resolve the dirty options, invoke callbacks, rinse and repeat until until no 
+      // dirty options are left. 
+      while (numResolves < maxResolves) {
+        std::unique_lock<std::mutex> lock(RtxOptionImpl::s_updateMutex);
+
+        auto& dirtyOptions = RtxOptionImpl::getDirtyRtxOptionMap();
+
+        // Need a second array so that we can invoke onChange callbacks after updating values and clearing the dirty list.
+        std::vector<RtxOptionImpl*> dirtyOptionsVector;
+        dirtyOptionsVector.reserve(dirtyOptions.size());
+        {
+          for (auto& rtxOption : dirtyOptions) {
+            rtxOption.second->resolveValue(rtxOption.second->resolvedValue, false);
+            dirtyOptionsVector.push_back(rtxOption.second);
+          }
+        }
+        dirtyOptions.clear();
+        lock.unlock();
+
+        // Invoke onChange callbacks after promoting all the values
+        for (RtxOptionImpl* rtxOption : dirtyOptionsVector) {
+          rtxOption->invokeOnChangeCallback(device);
+        }
+
+        numResolves++;
+
+        // If the callbacks didn't generate any dirtied options, bail
+        if (dirtyOptions.empty()) {
+          break;
         }
       }
-      dirtyOptions.clear();
-      lock.unlock();
 
-      // Invoke onChange callbacks after promoting all the values, so that newly set values will be updated at the end of the next frame
-      for (RtxOptionImpl* rtxOption : dirtyOptionsVector) {
-        rtxOption->invokeOnChangeCallback(device);
+#if RTX_OPTION_DEBUG_LOGGING
+      const bool unresolvedChanges = numResolves == maxResolves && !dirtyOptions.empty();
+      if (unresolvedChanges) {
+        auto& dirtyOptions = RtxOptionImpl::getDirtyRtxOptionMap();
+
+        Logger::warn(str::format("Dirty RtxOptions remaining after ", maxResolves, " passes of resolving callbacks, suggesting a cyclic dependency."));
+        for (auto& rtxOption : dirtyOptions) {
+          Logger::warn(str::format("- Abandoned resolve of option ", rtxOption.second->name));
+        }
       }
+#endif
+
+      // Don't let dirty options persist across frames and explode the dirty option processing in the case of circular dependencies
+      RtxOptionImpl::getDirtyRtxOptionMap().clear();
     }
   };
 
@@ -717,8 +761,8 @@ namespace dxvk {
     template<typename = std::enable_if_t<isClampable()>>
     void setMinValue(const T& v) {
       std::lock_guard<std::mutex> lock(RtxOptionImpl::s_updateMutex);
-      setMinMaxValueHelper(v, pImpl->minValue);
-      bool changed = pImpl->clampValue(RtxOptionImpl::ValueType::PendingValue);
+      
+      bool changed = setMinMaxValueHelper(v, pImpl->minValue);
       if (changed) {
         pImpl->markDirty();
       }
@@ -733,8 +777,7 @@ namespace dxvk {
     template<typename = std::enable_if_t<isClampable()>>
     void setMaxValue(const T& v) {
       std::lock_guard<std::mutex> lock(RtxOptionImpl::s_updateMutex);
-      setMinMaxValueHelper(v, pImpl->maxValue);
-      bool changed = pImpl->clampValue(RtxOptionImpl::ValueType::PendingValue);
+      bool changed = setMinMaxValueHelper(v, pImpl->maxValue);
       if (changed) {
         pImpl->markDirty();
       }
@@ -806,7 +849,7 @@ namespace dxvk {
       assert(RtxOptionImpl::s_isInitialized && "Trying to access an RtxOption before the config files have been loaded."); 
       BasicType* valuePtr = getValuePtr<BasicType>(RtxOptionImpl::ValueType::PendingValue);
       *valuePtr = v;
-      pImpl->clampValue(RtxOptionImpl::ValueType::PendingValue);
+
       pImpl->markDirty();
     }
 
@@ -816,7 +859,7 @@ namespace dxvk {
       assert(RtxOptionImpl::s_isInitialized && "Trying to access an RtxOption before the config files have been loaded."); 
       ClassType* valuePtr = getValuePtr<ClassType>(RtxOptionImpl::ValueType::PendingValue);
       *valuePtr = v;
-      pImpl->clampValue(RtxOptionImpl::ValueType::PendingValue);
+
       pImpl->markDirty();
     }
 
@@ -906,17 +949,24 @@ namespace dxvk {
     }
 
     // Helper methods to reduce code duplication between numeric and vector types
-    void setMinMaxValueHelper(const T& v, std::optional<GenericValue>& targetValue) {
+    bool setMinMaxValueHelper(const T& v, std::optional<GenericValue>& targetValue) {
+      bool changed = false;
+
       if constexpr (std::is_pod_v<T>) {
         // For POD types (int, float, etc.), store directly in the value field
         GenericValue gv;
         if constexpr (std::is_same_v<T, float>) {
+          changed = targetValue.has_value() ? targetValue.value().f != v : true;
           gv.f = v;
         } else {
           // For bool, int, and other POD types, use the value field
-          gv.value = static_cast<int64_t>(v);
+          uint64_t value = static_cast<uint64_t>(v);
+          changed = targetValue.has_value() ? targetValue.value().value != value : true;
+          gv.value = value;
         }
+
         targetValue = std::optional<GenericValue>(gv);
+
       } else {
         // For non-POD types (vectors, etc.), store as pointer
         if (!targetValue.has_value()) {
@@ -925,8 +975,13 @@ namespace dxvk {
           // RtxOptionImpl object is never destroyed, and follows the pattern used in the constructor.
           targetValue.value().pointer = new T();
         }
-        *reinterpret_cast<T*>(targetValue.value().pointer) = v;
+
+        T* valuePtr { reinterpret_cast<T*>(targetValue.value().pointer) };
+        changed = *valuePtr != v;
+        *valuePtr = v;
       }
+
+      return changed;
     }
 
     std::optional<T> getMinMaxValueHelper(const std::optional<GenericValue>& sourceValue) const {

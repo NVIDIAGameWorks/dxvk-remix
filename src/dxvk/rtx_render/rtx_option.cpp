@@ -365,8 +365,7 @@ namespace dxvk {
     }
   }
 
-  bool RtxOptionImpl::clampValue(ValueType valueType) {
-    auto& value = getGenericValue(valueType);
+  bool RtxOptionImpl::clampValue(GenericValue& value) {
     bool changed = false;
     
     switch (type) {
@@ -431,6 +430,11 @@ namespace dxvk {
     return changed;
   }
 
+  bool RtxOptionImpl::clampValue(ValueType valueType) {
+    auto& value = const_cast<GenericValue&>(getGenericValue(valueType));
+    return clampValue(value);
+  }
+
   void RtxOptionImpl::readValue(const Config& options, const std::string& fullName, GenericValue& value) {
     const char* env = environment == nullptr || strlen(environment) == 0 ? nullptr : environment;
 
@@ -481,8 +485,6 @@ namespace dxvk {
     auto& value = getGenericValue(valueType);
     readValue(options, fullName, value);
 
-    clampValue(valueType);
-    
     if (valueType == ValueType::PendingValue) {
       // If reading into the pending value, need to mark the option as dirty so it gets resolved to the value at the end of the frame.
       markDirty();
@@ -831,6 +833,9 @@ namespace dxvk {
       }
     }
 
+    // Clamp the resolved value. There is no need to check if the clamp changed the value because we are already in the middle of changing the value
+    clampValue(optionValue.data);
+
     // If a runtime option layer exists, recompute the resolved value without it
     // to check whether the layer actually changes the final result. If the recomputed value
     // matches the current resolved value, it means the real-time layer is redundant,
@@ -858,6 +863,8 @@ namespace dxvk {
           }
         }
       }
+
+      clampValue(originalResolvedValue.data);
 
       if (isEqual(originalResolvedValue.data, optionValue.data)) {
         disableTopLayer();
