@@ -181,18 +181,18 @@ void integrate_direct_pass(ivec2 threadIndex)
 
   // Integrate the Direct portion of the Path
 
-  DirectPathTextures directPathTextures;
-
-  directPathTextures.SharedFlags = SharedFlags;
-  directPathTextures.SharedMediumMaterialIndex = SharedMediumMaterialIndex;
-  directPathTextures.PrimaryDirectDiffuseLobeRadianceHitDistance = PrimaryDirectDiffuseLobeRadianceHitDistance;
-  directPathTextures.PrimaryDirectSpecularLobeRadianceHitDistance = PrimaryDirectSpecularLobeRadianceHitDistance;
-  directPathTextures.SecondaryCombinedDiffuseLobeRadianceHitDistance = SecondaryCombinedDiffuseLobeRadianceHitDistance;
-  directPathTextures.SecondaryCombinedSpecularLobeRadianceHitDistance = SecondaryCombinedSpecularLobeRadianceHitDistance;
-  directPathTextures.IndirectRayOriginDirection = aliasedData0.IndirectRayOriginDirection;
-  directPathTextures.IndirectThroughputConeRadius = IndirectThroughputConeRadius;
-  directPathTextures.IndirectFirstHitPerceptualRoughness = aliasedData1.IndirectFirstHitPerceptualRoughness;
-  directPathTextures.PrimaryRtxdiIlluminance = PrimaryRtxdiIlluminance;
+  DirectPathTextures directPathTextures = {
+    SharedFlags,
+    SharedMediumMaterialIndex,
+    PrimaryDirectDiffuseLobeRadianceHitDistance,
+    PrimaryDirectSpecularLobeRadianceHitDistance,
+    SecondaryCombinedDiffuseLobeRadianceHitDistance,
+    SecondaryCombinedSpecularLobeRadianceHitDistance,
+    aliasedData0.IndirectRayOriginDirection,
+    IndirectThroughputConeRadius,
+    aliasedData1.IndirectFirstHitPerceptualRoughness,
+    PrimaryRtxdiIlluminance
+  };
 
   integrateDirectPath(
     rng, threadIndex, directPathTextures,

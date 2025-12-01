@@ -143,10 +143,10 @@ void integrate_indirect_pass(ivec2 threadIndex)
 
   // Integrate the Indirect portion of the Path
 
-  IndirectPathTextures indirectPathTextures;
-
-  indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal = PrimaryWorldPositionWorldTriangleNormal;
-  indirectPathTextures.IndirectRadianceHitDistance = IndirectRadianceHitDistance;// aliasedData0.IndirectRadianceHitDistance;
+  IndirectPathTextures indirectPathTextures = {
+    PrimaryWorldPositionWorldTriangleNormal,
+    IndirectRadianceHitDistance // aliasedData0.IndirectRadianceHitDistance
+  };
   
   integrateIndirectPath(
     gbufferPixelCoordinate, INTEGRATE_INDIRECT_SBT_OFFSET_STANDARD, indirectPathTextures,

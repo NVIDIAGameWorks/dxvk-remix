@@ -92,10 +92,10 @@ void main(inout PathState rayPayload : SV_RayPayload)
 
   // Invoke the Integrate Path Vertex function and handle the payload
 
-  IndirectPathTextures indirectPathTextures;
-
-  indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal = PrimaryWorldPositionWorldTriangleNormal;
-  indirectPathTextures.IndirectRadianceHitDistance = IndirectRadianceHitDistance;
+  IndirectPathTextures indirectPathTextures = {
+    PrimaryWorldPositionWorldTriangleNormal,
+    IndirectRadianceHitDistance
+  };
 
   integratePathVertex(indirectPathTextures, rayHitInfo, rayPayload);
 }
