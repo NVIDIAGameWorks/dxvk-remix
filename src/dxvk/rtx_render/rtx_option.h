@@ -212,20 +212,12 @@ namespace dxvk {
       return m_blendThreshold;
     }
 
-    // Comparison operator for priority ordering.
-    // Higher priority values come first. Warn if two layers share the same priority, which is NOT allowed in current option layer queue.
-    bool operator<(const RtxOptionLayer& other) const {
-      if (getPriority() == other.getPriority()) {
-        Logger::warn(str::format("[RTX Option]: Added layer with same priority: ", std::to_string(getPriority()), ". The layer will be ignored."));
-      }
-      return getPriority() > other.getPriority();
-    }
-
     static bool shouldResetSettings() { return s_resetRuntimeSettings; }
     static void setResetSettings(bool reset) { s_resetRuntimeSettings = reset; }
 
-    // Reserved priority offset for user option layers.
-    // Ensures built-in configs (like rtx.conf) always have lower priority.
+    // Minimum priority value for user option layers.
+    // System layers use priorities 0-99, user layers use 100+.
+    // Ensures built-in configs (like rtx.conf) always have lower priority than user configs.
     static constexpr uint32_t s_userOptionLayerOffset = 100;
 
     // Reserved highest priority for runtime modifications (e.g., GUI changes)
@@ -276,6 +268,7 @@ namespace dxvk {
     // Layer priority used to order blending.
     // Higher priority layers blend on top of lower ones,
     // using m_blendStrength as the blend factor (like lerp(low, high, m_blendStrength)).
+    // Multiple layers can share the same priority; they are ordered alphabetically by name.
     uint32_t m_priority;
 
     // Blend weight for this layer in the [0,1] range.
@@ -311,14 +304,12 @@ namespace dxvk {
 
     // Represents a single option value along with its priority and blend strength.
     // Used in the option layer system to resolve final settings when multiple layers are active.
+    // The actual priority is stored in the optionLayerValueQueue key for this value.
     struct PrioritizedValue {
-      PrioritizedValue() : priority(0) { }
-      PrioritizedValue(const uint32_t p) : priority(p) { }
-      PrioritizedValue(const GenericValue& v, const uint32_t p, const float b, const float threshold) : value(v), priority(p), blendStrength(b), blendThreshold(threshold) { }
+      PrioritizedValue() { }
+      PrioritizedValue(const GenericValue& v, const float b, const float threshold) : value(v), blendStrength(b), blendThreshold(threshold) { }
 
       mutable GenericValue value; // The actual option value
-      const uint32_t priority; // Immutable priority level for this value. Priority must remain constant once constructed.
-                               // Higher priority values take precedence over lower ones.
       mutable float blendStrength = 1.0f; // Blend weight, which allows smooth interpolation between overlapping option layers.
       mutable float blendThreshold = 0.5; // Blending strength threshold for this option layer. Only applicable to non-float variables. The option is enabled only when the blend strength exceeds this threshold.
     };
@@ -337,12 +328,29 @@ namespace dxvk {
 
     // --- Containers for option layers ---
     // 
-    // Stores all RTX option layers, keyed by priority.
+    // Key type for layer maps: (priority, config name view)
+    // Multiple layers can share the same priority value and are ordered alphabetically.
+    // The string_view points to the layer's owned name string.
+    struct LayerKey {
+      uint32_t priority;
+      std::string_view configName;
+      
+      // Comparison operator for map ordering
+      bool operator<(const LayerKey& other) const {
+        if (priority != other.priority) {
+          return priority > other.priority;
+        }
+        return configName < other.configName;
+      }
+    };
+    
+    // Stores all RTX option layers, keyed by (priority, config name).
+    // Layers are stored as unique_ptr so the key's string_view can safely point to the layer's name.
     // Each RtxOptionLayer can represent a source of settings
     // (default configs, app configs, user configs, runtime GUI, etc.).
-    using RtxOptionLayerMap = std::unordered_map<uint32_t, RtxOptionLayer>;
-    // Stores resolved option values across all layers, ordered by priority.
-    std::map<uint32_t, PrioritizedValue, std::greater<uint32_t>> optionLayerValueQueue;
+    using RtxOptionLayerMap = std::map<LayerKey, std::unique_ptr<RtxOptionLayer>>;
+    
+    std::map<LayerKey, PrioritizedValue> optionLayerValueQueue;
 
     RtxOptionImpl(XXH64_hash_t hash, const char* optionName, const char* optionCategory, OptionType optionType, const char* optionDescription) :
       hash(hash),
@@ -371,10 +379,10 @@ namespace dxvk {
     void readOption(const Config& options, ValueType type);
     void writeOption(Config& options, bool changedOptionOnly);
 
-    void insertEmptyOptionLayer(const uint32_t priority, const float blendStrength, const float blendStrengthThreshold);
-    void insertOptionLayerValue(const GenericValue& value, const uint32_t priority, const float blendStrength, const float blendStrengthThreshold);
+    void insertEmptyOptionLayer(const RtxOptionLayer* layer);
+    void insertOptionLayerValue(const GenericValue& value, const RtxOptionLayer* layer);
     void readOptionLayer(const RtxOptionLayer& optionLayer);
-    void disableLayerValue(const uint32_t priority);
+    void disableLayerValue(const RtxOptionLayer* layer);
     void disableTopLayer();
     void updateLayerBlendStrength(const RtxOptionLayer& optionLayer);
 
@@ -413,6 +421,9 @@ namespace dxvk {
 
     // Returns a global container holding all option layers
     static RtxOptionLayerMap& getRtxOptionLayerMap();
+    // Get an option layer from the global map by priority and config name
+    // Returns a pointer to the layer, or nullptr if not found
+    static RtxOptionLayer* getRtxOptionLayer(const uint32_t priority, const std::string_view configName);
     // Add an option layer to global option layer map
     // Returns a pointer to the newly created layer, or nullptr if the layer was invalid
     // If config is provided, uses it directly; otherwise loads from configPath
@@ -422,6 +433,10 @@ namespace dxvk {
     // Remove an option layer from the global option layer map by pointer
     // Returns true if the layer was found and removed
     static bool removeRtxOptionLayer(const RtxOptionLayer* layer);
+    // Get or create the runtime layer (for dynamic UI changes)
+    static const RtxOptionLayer* getRuntimeLayer();
+    // Get or create the default layer (for in-code default values)
+    static const RtxOptionLayer* getDefaultLayer();
 
     // Config object holding start up settings
     static Config s_startupOptions;
@@ -514,7 +529,7 @@ namespace dxvk {
       auto& globalRtxOptions = RtxOptionImpl::getGlobalRtxOptionMap();
       for (auto& rtxOptionMapEntry : globalRtxOptions) {
         RtxOptionImpl& rtxOption = *rtxOptionMapEntry.second.get();
-        rtxOption.disableLayerValue(optionLayer.getPriority());
+        rtxOption.disableLayerValue(&optionLayer);
       }
     }
 
@@ -532,12 +547,13 @@ namespace dxvk {
       std::unique_lock<std::mutex> lock(RtxOptionImpl::s_updateMutex);
 
       // First, resolve all pending requests from components for this frame
-      for (auto& [priority, optionLayer] : RtxOptionImpl::getRtxOptionLayerMap()) {
-        optionLayer.resolvePendingRequests();
+      for (auto& [layerKey, optionLayerPtr] : RtxOptionImpl::getRtxOptionLayerMap()) {
+        optionLayerPtr->resolvePendingRequests();
       }
 
       // Then apply dirty option layers (enable or disable).
-      for (auto& [priority, optionLayer] : RtxOptionImpl::getRtxOptionLayerMap()) {
+      for (auto& [layerKey, optionLayerPtr] : RtxOptionImpl::getRtxOptionLayerMap()) {
+        RtxOptionLayer& optionLayer = *optionLayerPtr;
         if (optionLayer.isDirty()) {
           if (optionLayer.isEnabled()) {
             RtxOptionManager::addRtxOptionLayer(optionLayer);
@@ -559,7 +575,7 @@ namespace dxvk {
         auto& globalRtxOptions = RtxOptionImpl::getGlobalRtxOptionMap();
         for (auto& rtxOptionMapEntry : globalRtxOptions) {
           RtxOptionImpl& rtxOption = *rtxOptionMapEntry.second.get();
-          if (rtxOption.optionLayerValueQueue.begin()->second.priority == RtxOptionLayer::s_runtimeOptionLayerPriority &&
+          if (rtxOption.optionLayerValueQueue.begin()->first.priority == RtxOptionLayer::s_runtimeOptionLayerPriority &&
               ((rtxOption.flags & (uint32_t) RtxOptionFlags::NoReset) == 0)) {
             // Erase runtime option, so we can enable option layer configs
             rtxOption.disableTopLayer();
@@ -810,7 +826,10 @@ namespace dxvk {
         pImpl->resolvedValue.value = 0;
         *reinterpret_cast<BasicType*>(&pImpl->resolvedValue.value) = value;
         // Push default value to option layer priority queue
-        pImpl->insertOptionLayerValue(pImpl->resolvedValue, 0, 1.0f, 1.0f);
+        const RtxOptionLayer* defaultLayer = RtxOptionImpl::getDefaultLayer();
+        if (defaultLayer) {
+          pImpl->insertOptionLayerValue(pImpl->resolvedValue, defaultLayer);
+        }
 
         initializeClamping(args);
       }
@@ -823,7 +842,10 @@ namespace dxvk {
       if (allocateMemory(category, name, description, args)) {
         pImpl->resolvedValue.pointer = new ClassType(value);
         // Push default value to option layer priority queue
-        pImpl->insertOptionLayerValue(pImpl->resolvedValue, 0, 1.0f, 1.0f);
+        const RtxOptionLayer* defaultLayer = RtxOptionImpl::getDefaultLayer();
+        if (defaultLayer) {
+          pImpl->insertOptionLayerValue(pImpl->resolvedValue, defaultLayer);
+        }
 
         initializeClamping(args);
       }
@@ -900,52 +922,49 @@ namespace dxvk {
       }
     }
 
-    // Get pointer to basic types
-    template <typename BasicType, std::enable_if_t<std::is_pod_v<BasicType>, bool> = true>
-    BasicType* getValuePtr(RtxOptionImpl::ValueType type) const {
+    // Helper function to get the appropriate GenericValue based on ValueType
+    GenericValue* getGenericValuePtr(RtxOptionImpl::ValueType type) const {
       switch (type) {
       case RtxOptionImpl::ValueType::Value: {
-        return reinterpret_cast<BasicType*>(&pImpl->resolvedValue);
+        return &pImpl->resolvedValue;
       }
       case RtxOptionImpl::ValueType::PendingValue: {
-        if (pImpl->optionLayerValueQueue.begin()->second.priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
-          pImpl->insertEmptyOptionLayer(RtxOptionLayer::s_runtimeOptionLayerPriority, 1.0f, 1.0f);
+        if (pImpl->optionLayerValueQueue.empty() || 
+            pImpl->optionLayerValueQueue.begin()->first.priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
+          const RtxOptionLayer* runtimeLayer = RtxOptionImpl::getRuntimeLayer();
+          if (runtimeLayer) {
+            pImpl->insertEmptyOptionLayer(runtimeLayer);
+          }
         }
-        return reinterpret_cast<BasicType*>(&pImpl->optionLayerValueQueue.begin()->second.value);
+        if (pImpl->optionLayerValueQueue.empty()) {
+          return nullptr;
+        }
+        return &pImpl->optionLayerValueQueue.begin()->second.value;
       }
       case RtxOptionImpl::ValueType::DefaultValue: {
         if (pImpl->optionLayerValueQueue.empty()) {
           return nullptr;
         }
-        return reinterpret_cast<BasicType*>(&pImpl->optionLayerValueQueue[0].value);
+        // Get the lowest priority value (last element in descending priority order)
+        return &pImpl->optionLayerValueQueue.rbegin()->second.value;
       }
       default:
         return nullptr;
-      };
+      }
+    }
+
+    // Get pointer to basic types
+    template <typename BasicType, std::enable_if_t<std::is_pod_v<BasicType>, bool> = true>
+    BasicType* getValuePtr(RtxOptionImpl::ValueType type) const {
+      GenericValue* genericValue = getGenericValuePtr(type);
+      return genericValue ? reinterpret_cast<BasicType*>(genericValue) : nullptr;
     }
 
     // Get pointer to structs and classes
     template <typename ClassType, std::enable_if_t<!std::is_pod_v<ClassType>, bool> = true>
     ClassType* getValuePtr(RtxOptionImpl::ValueType type) const {
-      switch (type) {
-      case RtxOptionImpl::ValueType::Value: {
-        return reinterpret_cast<ClassType*>(pImpl->resolvedValue.pointer);
-      }
-      case RtxOptionImpl::ValueType::PendingValue: {
-        if (pImpl->optionLayerValueQueue.begin()->second.priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
-          pImpl->insertEmptyOptionLayer(RtxOptionLayer::s_runtimeOptionLayerPriority, 1.0f, 1.0f);
-        }
-        return reinterpret_cast<ClassType*>(pImpl->optionLayerValueQueue.begin()->second.value.pointer);
-      }
-      case RtxOptionImpl::ValueType::DefaultValue: {
-        if (pImpl->optionLayerValueQueue.empty()) {
-          return nullptr;
-        }
-        return reinterpret_cast<ClassType*>(pImpl->optionLayerValueQueue[0].value.pointer);
-      }
-      default:
-        return nullptr;
-      };
+      GenericValue* genericValue = getGenericValuePtr(type);
+      return genericValue ? reinterpret_cast<ClassType*>(genericValue->pointer) : nullptr;
     }
 
     // Helper methods to reduce code duplication between numeric and vector types

@@ -1,11 +1,11 @@
-# Constant Float
+# Constant Number
 
 Provides a constant decimal number that you can set\.<br/><br/>Use this to provide fixed values like 0\.5, 3\.14, or 100\.0 to other components\.
 
 ## Component Information
 
 - **Name:** `ConstFloat`
-- **UI Name:** Constant Float
+- **UI Name:** Constant Number
 - **Version:** 1
 - **Categories:** Constants
 

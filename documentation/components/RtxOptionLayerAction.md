@@ -1,6 +1,6 @@
 # Rtx Option Layer Action
 
-Activates and controls configuration layers at runtime based on game conditions\.<br/><br/>Controls an RtxOptionLayer by name, allowing dynamic enable/disable, strength adjustment, and threshold control\. This can be used to activate configuration layers at runtime based on game state or other conditions\.<br/><br/>The layer is created if it doesn't exist, and managed with reference counting\. Each layer requires a unique priority value \- if multiple components specify the same priority, an error will occur\.
+Activates and controls configuration layers at runtime based on game conditions\.<br/><br/>Controls an RtxOptionLayer by name, allowing dynamic enable/disable, strength adjustment, and threshold control\. This can be used to activate configuration layers at runtime based on game state or other conditions\.<br/><br/>The layer is created if it doesn't exist, and managed with reference counting\.<br/>If two components specify the same priority and config path, they will both control the same layer \(for enabled components, uses the MAX of the blend strengths and the MIN of the blend thresholds\)\.<br/>If two components specify the same priority but different config paths, the layers will be prioritized alphabetically \(a\.conf will override values from z\.conf\)\.
 
 ## Component Information
 
@@ -51,7 +51,7 @@ The blend threshold for non\-float options \(0\.0 to 1\.0\)\. Non\-float options
 
 ### Priority
 
-The priority for the option layer\. Numbers are rounded to the nearest positive integer\. Higher values are blended on top of lower values\. Must be unique across all layers\.
+The priority for the option layer\. Numbers are rounded to the nearest positive integer\. Higher values are blended on top of lower values\. If two components specify the same priority but different config paths, the layers will be prioritized alphabetically \(a\.conf will override values from z\.conf\)\.
 
 
 **Value Constraints:**

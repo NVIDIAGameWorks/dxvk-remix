@@ -22,14 +22,14 @@
         "uiName": "World Position"
       },
       "inactiveDistance": {
-        "description": ["The distance inside the bounding box that corresponds to a normalized value of 0.0.  Negative numbers represent values outside the AABB. "],
+        "description": ["The distance inside the bounding box that corresponds to a normalized value of 0.0.  Positive numbers represent values outside the AABB. "],
         "type": "float",
         "default": 1.000000,
         "optional": true,
         "uiName": "Inactive Distance"
       },
       "fullActivationDistance": {
-        "description": ["The distance inside the bounding box that corresponds to a normalized value of 1.0.  Negative numbers represent values outside the AABB. "],
+        "description": ["The distance inside the bounding box that corresponds to a normalized value of 1.0.  Positive numbers represent values outside the AABB. "],
         "type": "float",
         "default": 0.000000,
         "optional": true,

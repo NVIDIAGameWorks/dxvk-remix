@@ -33,21 +33,20 @@ namespace dxvk {
 // Layers are automatically removed when their reference count reaches zero.
 //
 // Key invariants:
-// - Each priority value is globally unique across ALL layers
-// - The same config can be loaded with different priorities, creating separate layers
-// - Priority is the true identifier of a layer, not the config path
-//
-// WARNING: the priority that is passed into RtxOptionLayerManager won't actually match the priority of the layer.
-// It is kept as it is passed in so that users can treat it as invarying.
+// - Multiple layers can share the same priority value
+// - Layers with the same priority are ordered alphabetically by config path
+// - The combination of config path and priority uniquely identifies a layer
+// - System layers use priorities 0-99, user layers use 100+ (clamped automatically)
+// - priorities cannot be changed after a layer is created
 class RtxOptionLayerManager {
 public:
   // Acquire a layer by config path and priority. Creates the layer if it doesn't exist.
   // Returns a pointer to the layer, or nullptr on failure.
   // Each acquire must be matched with a release.
-  // Priority must be globally unique - if already in use (even for a different config), this will fail.
+  // Multiple layers can share the same priority; they are ordered alphabetically.
   static const RtxOptionLayer* acquireLayer(const std::string& configPath, uint32_t priority, float blendStrength, float blendThreshold);
 
-  // looks up a layer by config path and priority.  Does not increment the reference count.
+  // looks up a layer by config path and priority. Does not increment the reference count.
   static RtxOptionLayer* lookupLayer(const std::string& configPath, uint32_t priority);
   
   // Release a previously acquired layer. Decrements the reference count.
@@ -59,7 +58,6 @@ public:
 
 private:
   static std::mutex s_mutex;
-  static std::unordered_map<uint32_t, const RtxOptionLayer*> s_priorityToLayer;
 };
 
 }  // namespace dxvk

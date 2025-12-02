@@ -36,7 +36,7 @@ namespace components {
   X(RtComponentPropertyType::Bool, true, prevFrameValue, "", "The value of the boolean from the previous frame.")
 
 #define LIST_OUTPUTS(X) \
-  X(RtComponentPropertyType::Float, 0.0f, count, "Count as Float", "The current count value as a float.")
+  X(RtComponentPropertyType::Float, 0.0f, count, "Count", "The current count value.")
 
 
 REMIX_COMPONENT( \

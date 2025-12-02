@@ -265,9 +265,10 @@ namespace dxvk {
         Logger::err("Empty option layer queue. The default value of option: " + std::string(name) + " is NOT properly set.");
         return dummyValue;
       }
-      return optionLayerValueQueue.at(0).value;
+      // Return the lowest priority value (last element in the map ordered by descending priority)
+      return optionLayerValueQueue.rbegin()->second.value;
     } else if (valueType == ValueType::PendingValue) {
-      if (optionLayerValueQueue.size() > 0 && optionLayerValueQueue.begin()->second.priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
+      if (optionLayerValueQueue.size() > 0 && optionLayerValueQueue.begin()->first.priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
         Logger::err("Failed to get runtime layer. The pending value of option: " + std::string(name) + " is missing.");
         return dummyValue;
       }
@@ -282,8 +283,11 @@ namespace dxvk {
 
   GenericValue& RtxOptionImpl::getGenericValue(const ValueType valueType) {
     // Insert runtime layer if it's missing and user request runtime changes.
-    if (optionLayerValueQueue.size() > 0 && optionLayerValueQueue.begin()->second.priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
-      insertOptionLayerValue(optionLayerValueQueue[0].value, RtxOptionLayer::s_runtimeOptionLayerPriority, 1.0f, 1.0f);
+    if (optionLayerValueQueue.size() > 0 && optionLayerValueQueue.begin()->first.priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
+      const RtxOptionLayer* runtimeLayer = getRuntimeLayer();
+      if (runtimeLayer) {
+        insertOptionLayerValue(optionLayerValueQueue.begin()->second.value, runtimeLayer);
+      }
     }
 
     // Reuse the const overload to avoid duplicating switch logic.
@@ -506,7 +510,7 @@ namespace dxvk {
 
     if (changedOptionOnly) {
       // Skip options that have no real-time changes, or the real-time value is the same as the original resolved value.
-      if (optionLayerValueQueue.begin()->second.priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
+      if (optionLayerValueQueue.begin()->first.priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
         return;
       } else {
         GenericValueWrapper originalValue(type);
@@ -560,32 +564,41 @@ namespace dxvk {
     }
   }
 
-  void RtxOptionImpl::insertEmptyOptionLayer(const uint32_t priority, const float blendStrength, const float blendStrengthThreshold) {
+  void RtxOptionImpl::insertEmptyOptionLayer(const RtxOptionLayer* layer) {
     GenericValue optionLayerValue = createGenericValue(type);
-    const PrioritizedValue newValue(optionLayerValue, priority, blendStrength, blendStrengthThreshold);
-
-    auto [it, inserted] = optionLayerValueQueue.emplace(priority, newValue);
+    const PrioritizedValue newValue(optionLayerValue, layer->getBlendStrength(), layer->getBlendStrengthThreshold());
+    
+    LayerKey key = {layer->getPriority(), layer->getName()};
+    auto [it, inserted] = optionLayerValueQueue.emplace(key, newValue);
     if (!inserted) {
-      Logger::warn("[RTX Option]: Duplicate priority " + std::to_string(priority) + " ignored (only first kept).");
+      Logger::warn("[RTX Option]: Duplicate layer '" + std::string(layer->getName()) + "' with priority " + std::to_string(layer->getPriority()) + " ignored (only first kept).");
     }
   }
 
-  void RtxOptionImpl::insertOptionLayerValue(const GenericValue& value, const uint32_t priority, const float blendStrength, const float blendStrengthThreshold) {
-    // Check if there's a same priority layer
-    for (const auto& optionLayerValue : optionLayerValueQueue) {
-      if (priority == optionLayerValue.second.priority) {
-        copyValue(value, optionLayerValue.second.value);
-        return;
-      }
+  void RtxOptionImpl::insertOptionLayerValue(const GenericValue& value, const RtxOptionLayer* layer) {
+    if (layer == nullptr) {
+      Logger::warn("[RTX Option]: Cannot insert layer value with null layer pointer.");
+      return;
+    }
+    
+    LayerKey key = {layer->getPriority(), layer->getName()};
+    
+    // Check if this exact layer already exists
+    auto existingIt = optionLayerValueQueue.find(key);
+    if (existingIt != optionLayerValueQueue.end()) {
+      // Update existing value
+      copyValue(value, existingIt->second.value);
+      return;
     }
 
+    // Create new value and copy from source
     GenericValue optionLayerValue = createGenericValue(type);
     copyValue(value, optionLayerValue);
 
-    const PrioritizedValue newValue(optionLayerValue, priority, blendStrength, blendStrengthThreshold);
-    auto [it, inserted] = optionLayerValueQueue.emplace(priority, newValue);
+    const PrioritizedValue newValue(optionLayerValue, layer->getBlendStrength(), layer->getBlendStrengthThreshold());
+    auto [it, inserted] = optionLayerValueQueue.emplace(key, newValue);
     if (!inserted) {
-      Logger::warn("[RTX Option]: Duplicate priority " + std::to_string(priority) + " ignored (only first kept).");
+      Logger::warn("[RTX Option]: Duplicate layer '" + std::string(layer->getName()) + "' with priority " + std::to_string(layer->getPriority()) + " ignored (only first kept).");
     }
   }
 
@@ -595,14 +608,20 @@ namespace dxvk {
     // Only insert into queue when the option can be found in the config of option layer
     if (optionLayer.getConfig().findOption(fullName.c_str())) {
       readValue(optionLayer.getConfig(), fullName, value.data);
-      insertOptionLayerValue(value.data, optionLayer.getPriority(), optionLayer.getBlendStrength(), optionLayer.getBlendStrengthThreshold());
+      // All layer properties (priority, blend strength, threshold) are read from the layer itself
+      insertOptionLayerValue(value.data, &optionLayer);
       // When adding a new option layer, dirty current option
       markDirty();
     }
   }
 
-  void RtxOptionImpl::disableLayerValue(const uint32_t priority) {
-    auto it = optionLayerValueQueue.find(priority);
+  void RtxOptionImpl::disableLayerValue(const RtxOptionLayer* layer) {
+    if (layer == nullptr) {
+      return;
+    }
+    
+    LayerKey key = {layer->getPriority(), layer->getName()};
+    auto it = optionLayerValueQueue.find(key);
     if (it != optionLayerValueQueue.end()) {
       // When removing a layer, dirty current option
       markDirty();
@@ -620,13 +639,12 @@ namespace dxvk {
     const std::string fullName = getFullName();
     // Only update the strength when the option can be found in the config of option layer
     if (optionLayer.getConfig().findOption(fullName.c_str())) {
-      // Find the option layer value that the strength needs to be updated (same priority)
-      for (auto& optionLayerValue : optionLayerValueQueue) {
-        if (optionLayer.getPriority() == optionLayerValue.second.priority) {
-          optionLayerValue.second.blendStrength = optionLayer.getBlendStrength();
-          optionLayerValue.second.blendThreshold = optionLayer.getBlendStrengthThreshold();
-          return;
-        }
+      // Find the option layer value by exact layer match
+      LayerKey key = {optionLayer.getPriority(), optionLayer.getName()};
+      auto optionLayerIter = optionLayerValueQueue.find(key);
+      if (optionLayerIter != optionLayerValueQueue.end()) {
+        optionLayerIter->second.blendStrength = optionLayer.getBlendStrength();
+        optionLayerIter->second.blendThreshold = optionLayer.getBlendStrengthThreshold();
       }
     }
   }
@@ -806,7 +824,7 @@ namespace dxvk {
     bool layerMatchingRuntimePriorityFound = false;
     // Loop layers from highest priority to lowest to lerp the value across layers base on the blend strength of layers
     for (const auto& optionLayer : optionLayerValueQueue) {
-      if (optionLayer.second.priority == RtxOptionLayer::s_runtimeOptionLayerPriority) {
+      if (optionLayer.first.priority == RtxOptionLayer::s_runtimeOptionLayerPriority) {
         if (ignoreChangedOption) {
           // Skip options with runtime priority when ignoreChangedOption is true
           continue;
@@ -826,7 +844,7 @@ namespace dxvk {
         addWeightedValue(optionLayer.second.value, optionLayer.second.blendStrength * throughput, optionValue.data);
         throughput *= (1.0f - optionLayer.second.blendStrength);
       } else {
-        if (optionLayer.second.blendStrength >= optionLayer.second.blendThreshold || optionLayer.second.priority == 0) {
+        if (optionLayer.second.blendStrength >= optionLayer.second.blendThreshold || optionLayer.first.priority == 0) {
           addWeightedValue(optionLayer.second.value, throughput, optionValue.data);
           break;
         }
@@ -843,7 +861,7 @@ namespace dxvk {
     if (layerMatchingRuntimePriorityFound) {
       GenericValueWrapper originalResolvedValue(type);
       for (const auto& optionLayer : optionLayerValueQueue) {
-        if (optionLayer.second.priority == RtxOptionLayer::s_runtimeOptionLayerPriority) {
+        if (optionLayer.first.priority == RtxOptionLayer::s_runtimeOptionLayerPriority) {
           continue;
         }
 
@@ -857,7 +875,7 @@ namespace dxvk {
           addWeightedValue(optionLayer.second.value, optionLayer.second.blendStrength * throughput, originalResolvedValue.data);
           throughput *= (1.0f - optionLayer.second.blendStrength);
         } else {
-          if (optionLayer.second.blendStrength >= optionLayer.second.blendThreshold || optionLayer.second.priority == 0) {
+          if (optionLayer.second.blendStrength >= optionLayer.second.blendThreshold || optionLayer.first.priority == 0) {
             addWeightedValue(optionLayer.second.value, throughput, originalResolvedValue.data);
             break;
           }
@@ -1076,6 +1094,16 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
     return s_rtxOptionLayers;
   }
 
+  RtxOptionLayer* RtxOptionImpl::getRtxOptionLayer(const uint32_t priority, const std::string_view configName) {
+    LayerKey key = {priority, configName};
+    auto& layerMap = getRtxOptionLayerMap();
+    auto it = layerMap.find(key);
+    if (it != layerMap.end()) {
+      return it->second.get();
+    }
+    return nullptr;
+  }
+
   const RtxOptionLayer* RtxOptionImpl::addRtxOptionLayer(
     const std::string& configPath, const uint32_t priority, const bool isSystemOptionLayer,
     const float blendStrength, const float blendThreshold, const Config* config) {
@@ -1085,35 +1113,47 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
     // Load config from path if not provided
     const Config& layerConfig = config ? *config : Config::getOptionLayerConfig(adjustedConfigPath);
     
-    // Apply priority offset for option layers only when loading from path (not for rtx.conf or dxvk.conf)
-    uint32_t adjustedPriority = priority;
-    if (!isSystemOptionLayer && !config && priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
-      adjustedPriority += RtxOptionLayer::s_userOptionLayerOffset;
+    // Clamp priority to valid range
+    // System layers can use 0-99, user layers 100+, runtime layer uses max value
+    uint32_t clampedPriority = priority;
+    if (!isSystemOptionLayer) {
+      // User layers: clamp to [s_userOptionLayerOffset, s_runtimeOptionLayerPriority-1]
+      if (priority < RtxOptionLayer::s_userOptionLayerOffset && priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
+        clampedPriority = RtxOptionLayer::s_userOptionLayerOffset;
+        Logger::warn(str::format("[RTX Option]: Priority ", priority, " for '", configPath, "' is below minimum. Clamping to ", clampedPriority, "."));
+      }
+    } else if (priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
+      // System layers: clamp to [0, s_userOptionLayerOffset-1]
+      if (priority >= RtxOptionLayer::s_userOptionLayerOffset) {
+        clampedPriority = RtxOptionLayer::s_userOptionLayerOffset - 1;
+        Logger::warn(str::format("[RTX Option]: Priority ", priority, " for '", configPath, "' is above maximum for system layers. Clamping to ", clampedPriority, "."));
+      }
     }
 
-    // Construct the layer in-place in the map using emplace
-    auto result = getRtxOptionLayerMap().emplace(
-      std::piecewise_construct,
-      std::forward_as_tuple(adjustedPriority),
-      std::forward_as_tuple(layerConfig, configPath, adjustedPriority, blendStrength, blendThreshold)
-    );
-    
-    if (!result.second) {
-      // Layer with this priority already exists
-      Logger::warn(str::format("[RTX Option]: Layer with adjusted priority ", adjustedPriority, " already exists. Ignoring new layer. The original priority is ", priority, "."));
-      return nullptr;
-    }
+    // Create the layer first
+    auto layer = std::make_unique<RtxOptionLayer>(layerConfig, configPath, clampedPriority, blendStrength, blendThreshold);
     
     // Check if the newly constructed layer is valid
-    const RtxOptionLayer& layer = result.first->second;
-    if (!layer.isValid()) {
-      // Layer is invalid, remove it from the map
-      getRtxOptionLayerMap().erase(result.first);
-      Logger::warn(str::format("[RTX Option]: Failed to load valid config for layer '", adjustedConfigPath, "' with original priority ", priority, " and adjusted priority ", adjustedPriority, "."));
+    if (!layer->isValid()) {
+      Logger::warn(str::format("[RTX Option]: Failed to load valid config for layer '", adjustedConfigPath, "' with priority ", clampedPriority, "."));
       return nullptr;
     }
     
-    return &layer;
+    auto& layerMap = getRtxOptionLayerMap();
+    
+    // Now create key using string_view to the layer's owned name
+    LayerKey layerKey = {clampedPriority, layer->getName()};
+    
+    // Insert into map
+    auto [it, inserted] = layerMap.emplace(layerKey, std::move(layer));
+    
+    if (!inserted) {
+      // Layer with this (priority, config) combination already exists
+      Logger::warn(str::format("[RTX Option]: Layer '", configPath, "' with priority ", clampedPriority, " already exists."));
+      return nullptr;
+    }
+    
+    return it->second.get();
   }
 
   bool RtxOptionImpl::removeRtxOptionLayer(const RtxOptionLayer* layer) {
@@ -1122,14 +1162,15 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
     }
 
     auto& layerMap = getRtxOptionLayerMap();
-    auto it = layerMap.find(layer->getPriority());
+    LayerKey layerKey = {layer->getPriority(), layer->getName()};
+    auto it = layerMap.find(layerKey);
     
     if (it != layerMap.end()) {
       // Remove the layer values from all RtxOptions
       auto& globalRtxOptions = getGlobalRtxOptionMap();
       for (auto& rtxOptionMapEntry : globalRtxOptions) {
         RtxOptionImpl& rtxOption = *rtxOptionMapEntry.second.get();
-        rtxOption.disableLayerValue(layer->getPriority());
+        rtxOption.disableLayerValue(layer);
       }
       
       // Remove from the global layer map
@@ -1138,6 +1179,54 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
     }
     
     return false;
+  }
+
+  const RtxOptionLayer* RtxOptionImpl::getRuntimeLayer() {
+    auto& layerMap = getRtxOptionLayerMap();
+    LayerKey layerKey = {RtxOptionLayer::s_runtimeOptionLayerPriority, "user.conf"};
+    auto it = layerMap.find(layerKey);
+    
+    if (it != layerMap.end()) {
+      return it->second.get();
+    }
+    
+    // Create runtime layer with empty config - does not load any config file
+    Config emptyConfig;
+    auto layer = std::make_unique<RtxOptionLayer>(emptyConfig, "user.conf", RtxOptionLayer::s_runtimeOptionLayerPriority, 1.0f, 0.1f);
+    
+    // Insert into map
+    auto [insertIt, inserted] = layerMap.emplace(layerKey, std::move(layer));
+    
+    if (!inserted) {
+      Logger::warn("[RTX Option]: Failed to create runtime layer (unexpected insertion failure).");
+      return nullptr;
+    }
+    
+    return insertIt->second.get();
+  }
+
+  const RtxOptionLayer* RtxOptionImpl::getDefaultLayer() {
+    auto& layerMap = getRtxOptionLayerMap();
+    LayerKey layerKey = {(uint32_t)RtxOptionLayer::SystemLayerPriority::Default, "default"};
+    auto it = layerMap.find(layerKey);
+    
+    if (it != layerMap.end()) {
+      return it->second.get();
+    }
+    
+    // Create default layer with empty config - does not load any config file, holds in-code default values
+    Config emptyConfig;
+    auto layer = std::make_unique<RtxOptionLayer>(emptyConfig, "default", (uint32_t)RtxOptionLayer::SystemLayerPriority::Default, 1.0f, 0.1f);
+    
+    // Insert into map
+    auto [insertIt, inserted] = layerMap.emplace(layerKey, std::move(layer));
+    
+    if (!inserted) {
+      Logger::warn("[RTX Option]: Failed to create default layer (unexpected insertion failure).");
+      return nullptr;
+    }
+    
+    return insertIt->second.get();
   }
 
   bool writeMarkdownDocumentation(const char* outputMarkdownFilePath) {

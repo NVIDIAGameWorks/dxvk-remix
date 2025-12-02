@@ -22,10 +22,10 @@
     },
     "outputs": {
       "count": {
-        "description": ["The current count value as a float."],
+        "description": ["The current count value."],
         "type": "float",
         "default": 0.000000,
-        "uiName": "Count as Float"
+        "uiName": "Count"
       }
     }
   }

@@ -86,11 +86,11 @@ This documentation provides detailed information about all available components 
 | [Constant Bool](ConstBool.md) | Provides a constant true or false value that you can set\.<br/><br/>Use this to provide fixed on/off, yes/no,\.\.\. | 1 |
 | [Constant Color3](ConstColor3.md) | Provides a constant RGB color \(Red, Green, Blue\) that you can set\.<br/><br/>Use this to provide fixed colors\.\.\. | 1 |
 | [Constant Color4](ConstColor4.md) | Provides a constant RGBA color \(Red, Green, Blue, Alpha\) that you can set\.<br/><br/>Use this for fixed color\.\.\. | 1 |
-| [Constant Float](ConstFloat.md) | Provides a constant decimal number that you can set\.<br/><br/>Use this to provide fixed values like 0\.5, 3\.1\.\.\. | 1 |
 | [Constant Float2](ConstFloat2.md) | Provides a constant 2D vector \(two numbers: X and Y\) that you can set\.<br/><br/>Use this for fixed 2D coordi\.\.\. | 1 |
 | [Constant Float3](ConstFloat3.md) | Provides a constant 3D vector \(three numbers: X, Y, Z\) that you can set\.<br/><br/>Use this for fixed 3D posi\.\.\. | 1 |
 | [Constant Float4](ConstFloat4.md) | Provides a constant 4D vector \(four numbers: X, Y, Z, W\) that you can set\. | 1 |
 | [Constant Hash](ConstHash.md) | Provides a constant hash value that you can set\.<br/><br/>Use this to provide fixed hash identifiers for mes\.\.\. | 1 |
+| [Constant Number](ConstFloat.md) | Provides a constant decimal number that you can set\.<br/><br/>Use this to provide fixed values like 0\.5, 3\.1\.\.\. | 1 |
 | [Constant Prim](ConstPrim.md) | Provides a constant reference to a scene object \(prim\) that you can set\.<br/><br/>Use this to provide fixed \.\.\. | 1 |
 | [Constant String](ConstString.md) | Provides a constant text string that you can set\.<br/><br/>Use this to provide fixed text values, labels, or\.\.\. | 1 |
 
