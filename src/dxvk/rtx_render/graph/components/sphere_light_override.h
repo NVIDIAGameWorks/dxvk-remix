@@ -34,51 +34,50 @@ namespace components {
 #define LIST_INPUTS(X) \
   X(RtComponentPropertyType::Bool, true, enabled, "Enabled", "If true, the overrides will be applied.", property.optional = true) \
   X(RtComponentPropertyType::Float, 0.0f, radius, "Radius", "The radius of the sphere light.", property.optional = true) \
-  X(RtComponentPropertyType::Prim, 0, target, "Target", "The sphere light to override.")
+  X(RtComponentPropertyType::Prim, kInvalidPrimTarget, target, "Target", "The sphere light to override.", \
+    property.allowedPrimTypes = {PrimType::UsdLuxSphereLight})
 
 #define LIST_STATES(X)
 #define LIST_OUTPUTS(X)
 
-// Manually declaring the class here to allow for extra member functions.
+// Manually declaring the class to allow for custom applySceneOverrides method
 class SphereLightOverride : public RtRegisteredComponentBatch<SphereLightOverride> {
 private:
-  REMIX_COMPONENT_WRITE_CLASS_MEMBERS(LIST_INPUTS, LIST_STATES, LIST_OUTPUTS)
-public:
-  REMIX_COMPONENT_WRITE_CTOR(SphereLightOverride, LIST_INPUTS, LIST_STATES, LIST_OUTPUTS)
-  static const RtComponentSpec* getStaticSpec() {
-    REMIX_COMPONENT_WRITE_STATIC_SPEC( \
-      /* the Component name */ SphereLightOverride, \
-      /* the UI name */        "Sphere Light", \
-      /* the UI categories */  "Act", \
-      /* the doc string */     "Override the sphere light properties.", \
-      /* the version number */ 1, \
-      LIST_INPUTS, LIST_STATES, LIST_OUTPUTS, \
-      /* optional arguments: */ \
-      spec.applySceneOverrides = [](const Rc<DxvkContext>& context, RtComponentBatch& batch, const size_t start, const size_t end) { \
-        static_cast<SphereLightOverride&>(batch).applySceneOverrides(context, start, end); \
-      } \
-    )
-  }
+  REMIX_COMPONENT_GENERATE_PROP_TYPES(LIST_INPUTS, LIST_STATES, LIST_OUTPUTS)
+  REMIX_COMPONENT_BODY(
+    /* the Component class name */ SphereLightOverride,
+    /* the UI name */        "[Non Functional] Sphere Light",
+    /* the UI categories */  "TODO", // TODO: once this component is functional, move it to the "Act" category. 
+    /* the doc string */     "Modifies properties of a sphere light, such as its radius.\n\n" \
+      "Note: This component is currently non-functional and should not be used.",
+    /* the version number */ 1,
+    LIST_INPUTS, LIST_STATES, LIST_OUTPUTS,
+    /* optional arguments: */
+    spec.applySceneOverrides = applySceneOverrides;
+  )
 
   // no-op: If this component contained any logical updates, they would go here.
   void updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) final {};
 
+  // Need to wrap the optional functions in static methods to cast the batch to the correct type.
+  static void applySceneOverrides(const Rc<DxvkContext>& context, RtComponentBatch& batch, const size_t start, const size_t end) {
+    static_cast<SphereLightOverride&>(batch).applySceneOverridesInstance(context, start, end);
+  }
   // Apply changes to render state here.
-  void applySceneOverrides(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
+  void applySceneOverridesInstance(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
     const std::vector<GraphInstance*>& instances = m_batch.getInstances();
     for (size_t i = start; i < end; i++) {
       if (!m_enabled[i] || instances[i] == nullptr) {
         continue;
       }
-      ReplacementInstance* replacementInstance = instances[i]->getPrimInstanceOwner().getReplacementInstance();
-      if (replacementInstance != nullptr && 
-          replacementInstance->prims.size() > m_target[i] &&
-          replacementInstance->prims[m_target[i]].getType() == PrimInstance::Type::Light) {
+      const PrimInstance* primInstance = m_batch.resolvePrimTarget(context, i, m_target[i]);
+      
+      if (primInstance != nullptr && primInstance->getType() == PrimInstance::Type::Light) {
         // NOTE: light doesn't expose a non-const getter for sphere lights,
         // so we can't actually do this without a hack.
         // TODO: implement a better way for components to alter renderable objects.
         
-        // RtLight* light = replacementInstance->prims[m_target[i]].getLight();
+        // RtLight* light = primInstance->getLight();
   
         // if (light != nullptr && light->getType() == RtLightType::Sphere) {
         //   light->getSphereLight().setRadius(m_radius[i]);

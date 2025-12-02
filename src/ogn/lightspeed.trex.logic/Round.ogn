@@ -1,0 +1,26 @@
+{
+  "lightspeed.trex.logic.Round": {
+    "description": ["Rounds a value to the nearest integer.\n\nRounds to the nearest whole number. For example: 1.4 becomes 1.0, 1.5 becomes 2.0, 1.6 becomes 2.0."],
+    "version": 1,
+    "uiName": "Round",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "input": {
+        "description": ["The value to round."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "Input"
+      }
+    },
+    "outputs": {
+      "result": {
+        "description": ["The input value rounded to the nearest integer."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "Result"
+      }
+    }
+  }
+}

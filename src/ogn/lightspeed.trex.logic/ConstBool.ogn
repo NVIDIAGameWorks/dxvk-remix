@@ -1,0 +1,21 @@
+{
+  "lightspeed.trex.logic.ConstBool": {
+    "description": ["Provides a constant true or false value that you can set.\n\nUse this to provide fixed on/off, yes/no, or enabled/disabled values to other components."],
+    "version": 1,
+    "uiName": "Constant Bool",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Constants",
+    "inputs": {
+      "value": {
+        "description": ["The constant true/false value."],
+        "type": "bool",
+        "default": false,
+        "metadata": {
+          "outputOnly": "1"
+        },
+        "uiName": "Value"
+      }
+    }
+  }
+}

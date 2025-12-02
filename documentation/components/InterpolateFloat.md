@@ -1,6 +1,6 @@
 # Interpolate Float
 
-Interpolates a value from an input range to an output range with optional easing\. <br/>Combines normalization \(reverse LERP\), easing, and mapping \(LERP\) into a single component\. <br/><br/>Note input values outside of input range are valid, and that easing can lead to the output value being outside of the output range even when input is inside the input range\.<br/>Inverted input ranges \(Input Max < Input Min\) are supported \- the min/max will be swapped and the normalized value inverted\.
+Smoothly maps a value from one range to another range with customizable easing curves\.<br/><br/>Interpolates a value from an input range to an output range with optional easing\. Values will be normalized \(mapped from input range to 0\-1\), eased \(changed from linear to some curve\), then mapped \(0\-1 value to output range\)\.<br/><br/>Note: Input values outside of input range are valid, and easing can lead to the output value being outside of the output range even when input is inside the input range\.<br/><br/>Inverted ranges \(max < min\) are supported, but the results are undefined and may change without warning\.
 
 ## Component Information
 
@@ -17,7 +17,7 @@ Interpolates a value from an input range to an output range with optional easing
 | inputMin | Input Min | Float | Input | 0\.0 | No | 
 | inputMax | Input Max | Float | Input | 1\.0 | No | 
 | clampInput | Clamp Input | Bool | Input | false | Yes | 
-| easingType | Easing Type | Uint32 | Input | Linear | No | 
+| easingType | Easing Type | Enum | Input | Linear | No | 
 | shouldReverse | Should Reverse | Bool | Input | false | Yes | 
 | outputMin | Output Min | Float | Input | 0\.0 | No | 
 | outputMax | Output Max | Float | Input | 1\.0 | No | 
@@ -46,7 +46,7 @@ If true, \`value\` will be clamped to the input range\.
 
 The type of easing to apply\.
 
-Underlying Type: `Uint32`
+Underlying Type: `Enum`
 
 
 **Allowed Values:**
@@ -63,7 +63,7 @@ Underlying Type: `Uint32`
 
 ### Should Reverse
 
-If true, the easing is applied backwards\. If \`Value\` is coming from a loopFloat component that is using \`pingpong\`, hook this up to \`isReversing\` from that component\.
+If true, the easing is applied backwards\. If \`Value\` is coming from a Loop component that is using \`pingpong\`, hook this up to \`isReversing\` from that component\.
 
 
 ### Output Min
@@ -80,9 +80,9 @@ What a \`Value\` of \`Input Max\` maps to\.
 
 | Property | Display Name | Type | IO Type | Default Value | Optional |
 |----------|--------------|------|---------|---------------|----------|
-| interpolatedValue | Interpolated Value | Float | Output | 0\.0 | No | 
+| output | Output | Float | Output | 0\.0 | No | 
 
-### Interpolated Value
+### Output
 
 The final interpolated value after applying input normalization, easing, and output mapping\.
 

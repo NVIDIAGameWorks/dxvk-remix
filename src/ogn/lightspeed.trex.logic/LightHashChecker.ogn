@@ -1,0 +1,26 @@
+{
+  "lightspeed.trex.logic.LightHashChecker": {
+    "description": ["Detects if a specific light is currently active in the scene.\n\nChecks if a specific light hash is present in the current frame's light table."],
+    "version": 1,
+    "uiName": "Light Hash Checker",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Sense",
+    "inputs": {
+      "lightHash": {
+        "description": ["The light hash to check for usage in the current frame."],
+        "type": "token",
+        "default": "0x0",
+        "uiName": "Light Hash"
+      }
+    },
+    "outputs": {
+      "isUsed": {
+        "description": ["True if the light hash was used in the current frame."],
+        "type": "bool",
+        "default": false,
+        "uiName": "Is Used"
+      }
+    }
+  }
+}

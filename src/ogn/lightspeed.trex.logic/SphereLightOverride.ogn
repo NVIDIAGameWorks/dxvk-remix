@@ -1,11 +1,11 @@
 {
   "lightspeed.trex.logic.SphereLightOverride": {
-    "description": ["Override the sphere light properties."],
+    "description": ["Modifies properties of a sphere light, such as its radius.\n\nNote: This component is currently non-functional and should not be used."],
     "version": 1,
-    "uiName": "Sphere Light",
+    "uiName": "[Non Functional] Sphere Light",
     "language": "python",
     "categoryDefinitions": "config/CategoryDefinition.json",
-    "categories": "Act",
+    "categories": "TODO",
     "inputs": {
       "enabled": {
         "description": ["If true, the overrides will be applied."],
@@ -24,6 +24,9 @@
       "target": {
         "description": ["The sphere light to override."],
         "type": "target",
+        "metadata": {
+          "filterPrimTypes": ["UsdLuxSphereLight"]
+        },
         "uiName": "Target"
       }
     }

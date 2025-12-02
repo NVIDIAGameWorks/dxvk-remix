@@ -23,6 +23,7 @@
 #include "rtx_graph_md_writer.h"
 #include "../util/util_env.h"
 #include "../util/util_filesys.h"
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <limits>
@@ -69,7 +70,7 @@ std::string formatFloat(float value) {
 }
 
 // Helper function to escape markdown special characters
-std::string escapeMarkdown(const std::string& input) {
+std::string escapeMarkdown(std::string_view input) {
   std::string output;
   output.reserve(input.size());
   for (char c : input) {
@@ -108,7 +109,7 @@ std::string getValueAsString(const RtComponentPropertyValue& value, const RtComp
   
   switch (prop.type) {
     case RtComponentPropertyType::Bool:
-      return std::get<uint8_t>(value) ? "true" : "false";
+      return std::get<uint32_t>(value) ? "true" : "false";
     case RtComponentPropertyType::Float:
       return formatFloat(std::get<float>(value));
     case RtComponentPropertyType::Float2: {
@@ -116,26 +117,21 @@ std::string getValueAsString(const RtComponentPropertyValue& value, const RtComp
       return str::format("[", formatFloat(vec.x), ", ",
                          formatFloat(vec.y), "]");
     }
-    case RtComponentPropertyType::Float3:
-    case RtComponentPropertyType::Color3: {
+    case RtComponentPropertyType::Float3: {
       const auto& vec = std::get<Vector3>(value);
       return str::format("[", formatFloat(vec.x), ", ",
                          formatFloat(vec.y), ", ",
                          formatFloat(vec.z), "]");
     }
-    case RtComponentPropertyType::Color4: {
+    case RtComponentPropertyType::Float4: {
       const auto& vec = std::get<Vector4>(value);
       return str::format("[", formatFloat(vec.x), ", ",
                          formatFloat(vec.y), ", ",
                          formatFloat(vec.z), ", ",
                          formatFloat(vec.w), "]");
     }
-    case RtComponentPropertyType::Int32:
-      return std::to_string(std::get<int32_t>(value));
-    case RtComponentPropertyType::Uint32:
+    case RtComponentPropertyType::Enum:
       return std::to_string(std::get<uint32_t>(value));
-    case RtComponentPropertyType::Uint64:
-      return std::to_string(std::get<uint64_t>(value));
     case RtComponentPropertyType::String:
       return "\"" + escapeMarkdown(std::get<std::string>(value)) + "\"";
     case RtComponentPropertyType::AssetPath:
@@ -150,6 +146,10 @@ std::string getValueAsString(const RtComponentPropertyValue& value, const RtComp
       // Prim references don't use the default value field,
       // as it isn't really applicable.
       return "None";
+    case RtComponentPropertyType::Any:
+    case RtComponentPropertyType::NumberOrVector:
+      // Flexible types should not have default values
+      return "None";
   }
   return "None";
 }
@@ -158,9 +158,18 @@ std::string getValueAsString(const RtComponentPropertyValue& value, const RtComp
 void writePropertyTableRow(std::ofstream& outputFile, const RtComponentPropertySpec& prop) {
   outputFile << "| " << escapeMarkdown(prop.name) << " | ";
   outputFile << escapeMarkdown(prop.uiName) << " | ";
-  outputFile << prop.type << " | ";
+  
+  // Use declaredType to show the original type declaration (e.g., NumberOrVector for flexible types)
+  outputFile << prop.declaredType << " | ";
+  
   outputFile << prop.ioType << " | ";
-  outputFile << escapeMarkdown(getValueAsString(prop.defaultValue, prop)) << " | ";
+  
+  // For flexible types, show a simple default value
+  std::string defaultValueStr = (prop.type != prop.declaredType) 
+    ? "0" 
+    : getValueAsString(prop.defaultValue, prop);
+  outputFile << escapeMarkdown(defaultValueStr) << " | ";
+  
   outputFile << (prop.optional ? "Yes" : "No") << " | " << std::endl;
 }
 
@@ -199,9 +208,9 @@ void writeEnumValues(std::ofstream& outputFile, const RtComponentPropertySpec& p
 
 // Helper function to write min/max value constraints if they exist
 void writeMinMaxValues(std::ofstream& outputFile, const RtComponentPropertySpec& prop) {
-  // Check if minValue or maxValue are set (they default to false, which is a uint8_t with value 0)
-  const bool hasMinValue = !(std::holds_alternative<uint8_t>(prop.minValue) && std::get<uint8_t>(prop.minValue) == 0);
-  const bool hasMaxValue = !(std::holds_alternative<uint8_t>(prop.maxValue) && std::get<uint8_t>(prop.maxValue) == 0);
+  // Check if minValue or maxValue are set (they default to false, which is a uint32_t with value 0)
+  const bool hasMinValue = !(std::holds_alternative<uint32_t>(prop.minValue) && std::get<uint32_t>(prop.minValue) == 0);
+  const bool hasMaxValue = !(std::holds_alternative<uint32_t>(prop.maxValue) && std::get<uint32_t>(prop.maxValue) == 0);
   
   if (hasMinValue || hasMaxValue) {
     outputFile << std::endl << "**Value Constraints:**" << std::endl << std::endl;
@@ -249,7 +258,7 @@ void writePropertySection(std::ofstream& outputFile,
 
 }  // namespace
 
-bool writeComponentMarkdown(const RtComponentSpec* spec, const char* outputFolderPath) {
+bool writeComponentMarkdown(const RtComponentSpec* spec, RtComponentType componentType, const ComponentSpecVariantMap& variants, const char* outputFolderPath) {
   // Create the directory structure if it doesn't exist
   std::filesystem::path parentDir(outputFolderPath);
   std::filesystem::path filePath = parentDir / (spec->getClassName() + ".md");
@@ -305,6 +314,88 @@ bool writeComponentMarkdown(const RtComponentSpec* spec, const char* outputFolde
   // Write outputs section
   writePropertySection(outputFile, outputs, "Output");
   
+  // Write flexible type combinations if applicable
+  // First, check if the component actually has any flexible type properties
+  bool hasFlexibleTypes = false;
+  for (const auto& prop : spec->properties) {
+    if (prop.type != prop.declaredType) {
+      hasFlexibleTypes = true;
+      break;
+    }
+  }
+  
+  if (hasFlexibleTypes && !variants.empty()) {
+    // Collect all combinations from the registered variants
+    std::vector<std::unordered_map<std::string, RtComponentPropertyType>> combinations;
+    for (const auto* variant : variants) {
+      if (!variant->resolvedTypes.empty()) {
+        combinations.push_back(variant->resolvedTypes);
+      }
+    }
+    
+    if (!combinations.empty()) {
+      // Get property names in a consistent order (alphabetical for now)
+      std::vector<std::string> propNames;
+      for (const auto& [propName, unused_propertyType] : combinations[0]) {
+        propNames.push_back(propName);
+      }
+      std::sort(propNames.begin(), propNames.end());
+      
+      // Sort combinations based on the enum order of their types
+      // Compare lexicographically: first property type, then second, etc.
+      std::sort(combinations.begin(), combinations.end(),
+        [&propNames](const std::unordered_map<std::string, RtComponentPropertyType>& a,
+                     const std::unordered_map<std::string, RtComponentPropertyType>& b) {
+          // Compare each property in order
+          for (const auto& propName : propNames) {
+            auto aType = static_cast<int>(a.at(propName));
+            auto bType = static_cast<int>(b.at(propName));
+            if (aType != bType) {
+              return aType < bType;
+            }
+          }
+          return false; // All equal
+        });
+      
+      outputFile << "## Valid Type Combinations" << std::endl << std::endl;
+      outputFile << "This component supports flexible types. The following type combinations are valid:" << std::endl << std::endl;
+      
+      // Create a table of all valid combinations
+      outputFile << "| # | ";
+      bool firstCol = true;
+      for (const auto& propName : propNames) {
+        if (!firstCol) {
+          outputFile << " | ";
+        }
+        outputFile << escapeMarkdown(propName);
+        firstCol = false;
+      }
+      outputFile << " |" << std::endl;
+      
+      // Table separator
+      outputFile << "|---";
+      for (size_t i = 0; i < propNames.size(); ++i) {
+        outputFile << "|---";
+      }
+      outputFile << "|" << std::endl;
+      
+      // Write each combination as a row
+      for (size_t i = 0; i < combinations.size(); ++i) {
+        outputFile << "| " << (i + 1) << " | ";
+        bool firstProp = true;
+        for (const auto& propName : propNames) {
+          if (!firstProp) {
+            outputFile << " | ";
+          }
+          outputFile << combinations[i].at(propName);
+          firstProp = false;
+        }
+        outputFile << " |" << std::endl;
+      }
+      outputFile << std::endl;
+    }
+  }
+  
   // Write usage notes
   outputFile << "## Usage Notes" << std::endl << std::endl;
   outputFile << "This component is part of the RTX Remix graph system. "
@@ -351,7 +442,7 @@ bool writeMarkdownIndex(const std::vector<const RtComponentSpec*>& specs, const 
   
   for (const auto& spec : specs) {
     if (!spec->categories.empty()) {
-      categorizedComponents[spec->categories].push_back(spec);
+      categorizedComponents[std::string(spec->categories)].push_back(spec);
     } else {
       uncategorizedComponents.push_back(spec);
     }
@@ -380,10 +471,10 @@ bool writeMarkdownIndex(const std::vector<const RtComponentSpec*>& specs, const 
     
     for (const auto& spec : components) {
       outputFile << "| [" << escapeMarkdown(spec->uiName) << "](" << spec->getClassName() << ".md) | ";
-      outputFile << escapeMarkdown(spec->docString.empty() ? "No description available" :
-                                   spec->docString.substr(0, kMaxDescriptionLength) +
-                                   (spec->docString.length() > kMaxDescriptionLength ? "..." : ""))
-                 << " | ";
+      std::string description = spec->docString.empty() ? "No description available" :
+                                std::string(spec->docString.substr(0, kMaxDescriptionLength)) +
+                                (spec->docString.length() > kMaxDescriptionLength ? "..." : "");
+      outputFile << escapeMarkdown(description) << " | ";
       outputFile << spec->version << " |" << std::endl;
     }
     outputFile << std::endl;
@@ -397,10 +488,10 @@ bool writeMarkdownIndex(const std::vector<const RtComponentSpec*>& specs, const 
     
     for (const auto& spec : uncategorizedComponents) {
       outputFile << "| [" << escapeMarkdown(spec->uiName) << "](" << spec->getClassName() << ".md) | ";
-      outputFile << escapeMarkdown(spec->docString.empty() ? "No description available" :
-                                   spec->docString.substr(0, kMaxDescriptionLength) +
-                                   (spec->docString.length() > kMaxDescriptionLength ? "..." : ""))
-                 << " | ";
+      std::string description = spec->docString.empty() ? "No description available" :
+                                std::string(spec->docString.substr(0, kMaxDescriptionLength)) +
+                                (spec->docString.length() > kMaxDescriptionLength ? "..." : "");
+      outputFile << escapeMarkdown(description) << " | ";
       outputFile << spec->version << " |" << std::endl;
     }
     outputFile << std::endl;

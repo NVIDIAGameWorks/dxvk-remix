@@ -26,7 +26,6 @@
 namespace dxvk {
 
 std::mutex RtxOptionLayerManager::s_mutex;
-std::unordered_map<uint32_t, const RtxOptionLayer*> RtxOptionLayerManager::s_priorityToLayer;
 
 const RtxOptionLayer* RtxOptionLayerManager::acquireLayer(const std::string& configPath, uint32_t priority, float blendStrength, float blendThreshold) {
   if (configPath.empty()) {
@@ -35,19 +34,9 @@ const RtxOptionLayer* RtxOptionLayerManager::acquireLayer(const std::string& con
   
   std::lock_guard<std::mutex> lock(s_mutex);
   
-  
-  // Check if a layer with this priority already exists
-  auto priorityIt = s_priorityToLayer.find(priority);
-  if (priorityIt != s_priorityToLayer.end()) {
-    const RtxOptionLayer* existingLayer = priorityIt->second;
-    
-    // Verify it's for the same config path
-    if (existingLayer->getName() != configPath) {
-      Logger::err(str::format("RtxOptionLayerManager: Priority ", priority, " is already in use by '", 
-                              existingLayer->getName(), "'. Cannot create layer for '", configPath, "'."));
-      return nullptr;
-    }
-    
+  // Check if a layer with this priority and config path already exists
+  RtxOptionLayer* existingLayer = RtxOptionImpl::getRtxOptionLayer(priority, configPath);
+  if (existingLayer != nullptr) {
     // Same config and priority - increment reference count
     existingLayer->incrementRefCount();
     return existingLayer;
@@ -61,29 +50,28 @@ const RtxOptionLayer* RtxOptionLayerManager::acquireLayer(const std::string& con
     return nullptr;
   }
   
-  // Initialize reference count and store in priority map
+  // Initialize reference count
   newLayer->incrementRefCount();
-  s_priorityToLayer[newLayer->getPriority()] = newLayer;
   
   return newLayer;
 }
 
-void RtxOptionLayerManager::releaseLayer(const RtxOptionLayer* layer) {
-  if (layer == nullptr) {
-    return;
-  }
-  
+RtxOptionLayer* RtxOptionLayerManager::lookupLayer(const std::string& configPath, uint32_t priority) {
+  std::lock_guard<std::mutex> lock(s_mutex);
+  return RtxOptionImpl::getRtxOptionLayer(priority, configPath);
+}
+
+void RtxOptionLayerManager::releaseLayer(const std::string& configPath, uint32_t priority) {
   std::lock_guard<std::mutex> lock(s_mutex);
   
-  // Verify this layer is in our map
-  auto priorityIt = s_priorityToLayer.find(layer->getPriority());
-  if (priorityIt == s_priorityToLayer.end() || priorityIt->second != layer) {
-    Logger::warn("RtxOptionLayerManager: Attempted to release unknown layer.");
+  RtxOptionLayer* layer = RtxOptionImpl::getRtxOptionLayer(priority, configPath);
+  if (layer == nullptr) {
+    Logger::warn(str::format("RtxOptionLayerManager: Attempted to release unknown layer '", configPath, "' with priority ", priority, "."));
     return;
   }
   
   if (layer->getRefCount() == 0) {
-    Logger::warn(str::format("RtxOptionLayerManager: Layer '", layer->getName(), "' (priority: ", layer->getPriority(), ") already has zero references."));
+    Logger::warn(str::format("RtxOptionLayerManager: Layer '", layer->getName(), "' (priority: ", priority, ") already has zero references."));
     return;
   }
   
@@ -91,31 +79,13 @@ void RtxOptionLayerManager::releaseLayer(const RtxOptionLayer* layer) {
   
   // If reference count reached zero, remove the layer
   if (layer->getRefCount() == 0) {
-    const uint32_t layerPriority = layer->getPriority();
-    const std::string configPath = layer->getName();
-    
-    // Remove from priority map first
-    s_priorityToLayer.erase(layerPriority);
-    
-    // Remove from RtxOption system
+    // Remove from RtxOption system (this also removes from the global map)
     bool removed = RtxOptionImpl::removeRtxOptionLayer(layer);
     
     if (!removed) {
       Logger::warn(str::format("RtxOptionLayerManager: Failed to remove layer '", configPath, "' from RtxOption system."));
     }
   }
-}
-
-const RtxOptionLayer* RtxOptionLayerManager::findLayerByPriority(uint32_t priority) {
-  std::lock_guard<std::mutex> lock(s_mutex);
-  
-  auto it = s_priorityToLayer.find(priority);
-  
-  if (it != s_priorityToLayer.end()) {
-    return it->second;
-  }
-  
-  return nullptr;
 }
 
 size_t RtxOptionLayerManager::getReferenceCount(const RtxOptionLayer* layer) {

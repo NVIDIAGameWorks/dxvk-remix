@@ -713,8 +713,8 @@
                             }
                         } else {
                             // New file content exists.
-                            if (!goldenExists) {
-                                // Golden file doesn't exist.  Create the golden.
+                            if (!goldenExists || goldenIsEmpty) {
+                                // Golden file doesn't exist or is empty.  Create the golden.
                                 action = 'create';
                             } else {
                                 // Golden file exists and is not empty.  Update the golden.

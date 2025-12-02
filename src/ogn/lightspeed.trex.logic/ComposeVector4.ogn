@@ -1,0 +1,44 @@
+{
+  "lightspeed.trex.logic.ComposeVector4": {
+    "description": ["Combines four separate numbers into a single Vector4."],
+    "version": 1,
+    "uiName": "Compose Vector4",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "x": {
+        "description": ["The X component of the vector (Red channel)."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "X"
+      },
+      "y": {
+        "description": ["The Y component of the vector (Green channel)."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "Y"
+      },
+      "z": {
+        "description": ["The Z component of the vector (Blue channel)."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "Z"
+      },
+      "w": {
+        "description": ["The W component of the vector (Alpha channel)."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "W"
+      }
+    },
+    "outputs": {
+      "vector": {
+        "description": ["The composed vector."],
+        "type": "float[4]",
+        "default": [0.000000, 0.000000, 0.000000, 0.000000],
+        "uiName": "Vector"
+      }
+    }
+  }
+}

@@ -35,13 +35,14 @@ namespace components {
 
 #define LIST_OUTPUTS(X) \
   X(RtComponentPropertyType::Bool, false, isUsed, "Is Used", "True if the texture hash was used in the current frame.") \
-  X(RtComponentPropertyType::Uint32, 0, usageCount, "Usage Count", "Number of times the texture hash was used in the current frame.")
+  X(RtComponentPropertyType::Float, 0.0f, usageCount, "Usage Count", "Number of times the texture hash was used in the current frame.")
 
 REMIX_COMPONENT( \
   /* the Component name */ TextureHashChecker, \
   /* the UI name */        "Texture Hash Checker", \
   /* the UI categories */  "Sense", \
-  /* the doc string */     "Checks if a specific texture hash was used for material replacement in the current frame.  This includes textures in all categories, including ignored textures.", \
+  /* the doc string */     "Detects if a specific texture is being used in the current frame.\n\n" \
+    "Checks if a specific texture hash was used for material replacement in the current frame. This includes textures in all categories, including ignored textures.", \
   /* the version number */ 1, \
   LIST_INPUTS, LIST_STATES, LIST_OUTPUTS);
 
@@ -62,7 +63,7 @@ void TextureHashChecker::updateRange(const Rc<DxvkContext>& context, const size_
     bool isUsed = count > 0;
     
     m_isUsed[i] = isUsed;
-    m_usageCount[i] = count;
+    m_usageCount[i] = float(count);
   }
 }
 

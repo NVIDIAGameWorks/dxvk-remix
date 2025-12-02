@@ -1,0 +1,38 @@
+{
+  "lightspeed.trex.logic.Between": {
+    "description": ["Tests if a value is within a range (inclusive).\n\nReturns true if the value is >= Min Value AND <= Max Value. Combines greater-than-or-equal, less-than-or-equal, and boolean AND into a single component."],
+    "version": 1,
+    "uiName": "Between",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "value": {
+        "description": ["The value to test."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "Value"
+      },
+      "minValue": {
+        "description": ["The minimum value of the range (inclusive)."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "Min Value"
+      },
+      "maxValue": {
+        "description": ["The maximum value of the range (inclusive)."],
+        "type": "float",
+        "default": 1.000000,
+        "uiName": "Max Value"
+      }
+    },
+    "outputs": {
+      "result": {
+        "description": ["True if value is greater than or equal to Min Value AND less than or equal to Max Value."],
+        "type": "bool",
+        "default": false,
+        "uiName": "Result"
+      }
+    }
+  }
+}

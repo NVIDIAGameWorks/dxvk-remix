@@ -1,0 +1,26 @@
+{
+  "lightspeed.trex.logic.RtxOptionReadVector2": {
+    "description": ["Reads the current value of a Vector2 RTX option.\n\nOutputs the current value of a given RTX option Vector2. The option name should be the full name including category (e.g., 'rtx.someVector2Option')."],
+    "version": 1,
+    "uiName": "Rtx Option Read Vector2",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Sense",
+    "inputs": {
+      "optionName": {
+        "description": ["The full name of the RTX option to read (e.g., 'rtx.someOption')."],
+        "type": "token",
+        "default": "",
+        "uiName": "Option Name"
+      }
+    },
+    "outputs": {
+      "value": {
+        "description": ["The current value of the RTX option as a Vector2. Returns (0,0) if the option is not found or is not a Vector2 type."],
+        "type": "float[2]",
+        "default": [0.000000, 0.000000],
+        "uiName": "Value"
+      }
+    }
+  }
+}

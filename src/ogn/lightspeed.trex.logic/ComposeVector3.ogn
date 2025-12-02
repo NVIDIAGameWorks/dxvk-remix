@@ -1,0 +1,38 @@
+{
+  "lightspeed.trex.logic.ComposeVector3": {
+    "description": ["Combines three separate numbers into a single Vector3."],
+    "version": 1,
+    "uiName": "Compose Vector3",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "x": {
+        "description": ["The X component of the vector (Red channel)."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "X"
+      },
+      "y": {
+        "description": ["The Y component of the vector (Green channel)."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "Y"
+      },
+      "z": {
+        "description": ["The Z component of the vector (Blue channel)."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "Z"
+      }
+    },
+    "outputs": {
+      "vector": {
+        "description": ["The composed vector."],
+        "type": "float[3]",
+        "default": [0.000000, 0.000000, 0.000000],
+        "uiName": "Vector"
+      }
+    }
+  }
+}

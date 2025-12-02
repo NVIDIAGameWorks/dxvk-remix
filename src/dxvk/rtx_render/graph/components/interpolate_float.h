@@ -33,27 +33,28 @@ namespace components {
   X(RtComponentPropertyType::Float, 0.0f, inputMin, "Input Min", "If `Value` equals `Input Min`, the output will be `Output Min`.") \
   X(RtComponentPropertyType::Float, 1.0f, inputMax, "Input Max", "If `Value` equals `Input Max`, the output will be `Output Max`.") \
   X(RtComponentPropertyType::Bool, false, clampInput, "Clamp Input", "If true, `value` will be clamped to the input range.", property.optional = true) \
-  X(RtComponentPropertyType::Uint32, static_cast<uint32_t>(InterpolationType::Linear), easingType, "Easing Type", \
+  X(RtComponentPropertyType::Enum, static_cast<uint32_t>(InterpolationType::Linear), easingType, "Easing Type", \
     "The type of easing to apply.", \
     property.enumValues = kInterpolationTypeEnumValues) \
-  X(RtComponentPropertyType::Bool, false, shouldReverse, "Should Reverse", "If true, the easing is applied backwards. If `Value` is coming from a loopFloat component that is using `pingpong`, hook this up to `isReversing` from that component.", property.optional = true) \
+  X(RtComponentPropertyType::Bool, false, shouldReverse, "Should Reverse", "If true, the easing is applied backwards. If `Value` is coming from a Loop component that is using `pingpong`, hook this up to `isReversing` from that component.", property.optional = true) \
   X(RtComponentPropertyType::Float, 0.0f, outputMin, "Output Min", "What a `Value` of `Input Min` maps to.") \
   X(RtComponentPropertyType::Float, 1.0f, outputMax, "Output Max", "What a `Value` of `Input Max` maps to.")
 
 #define LIST_STATES(X)
 
 #define LIST_OUTPUTS(X) \
-  X(RtComponentPropertyType::Float, 0.0f, interpolatedValue, "Interpolated Value", "The final interpolated value after applying input normalization, easing, and output mapping.")
+  X(RtComponentPropertyType::Float, 0.0f, output, "Output", "The final interpolated value after applying input normalization, easing, and output mapping.")
 
 REMIX_COMPONENT( \
   /* the Component name */ InterpolateFloat, \
   /* the UI name */        "Interpolate Float", \
   /* the UI categories */  "Transform", \
-  /* the doc string */     "Interpolates a value from an input range to an output range with optional easing. " \
-    "\nCombines normalization (reverse LERP), easing, and mapping (LERP) into a single component. " \
-    "\n\nNote input values outside of input range are valid, and that easing can lead to the output value being " \
-    "outside of the output range even when input is inside the input range." \
-    "\nInverted input ranges (Input Max < Input Min) are supported - the min/max will be swapped and the normalized value inverted.", \
+  /* the doc string */     "Smoothly maps a value from one range to another range with customizable easing curves.\n\n" \
+    "Interpolates a value from an input range to an output range with optional easing. " \
+    "Values will be normalized (mapped from input range to 0-1), eased (changed from linear to some curve), then mapped (0-1 value to output range).\n\n" \
+    "Note: Input values outside of input range are valid, and easing can lead to the output value being " \
+    "outside of the output range even when input is inside the input range.\n\n" \
+    "Inverted ranges (max < min) are supported, but the results are undefined and may change without warning.",
   /* the version number */ 1, \
   LIST_INPUTS, LIST_STATES, LIST_OUTPUTS);
 
@@ -109,7 +110,7 @@ void InterpolateFloat::updateRange(const Rc<DxvkContext>& context, const size_t 
     }
     
     // Step 3: Map eased value to output range (LERP / strength_to_float)
-    m_interpolatedValue[i] = lerp(m_outputMin[i], m_outputMax[i], easedValue);
+    m_output[i] = lerp(m_outputMin[i], m_outputMax[i], easedValue);
   }
 }
 

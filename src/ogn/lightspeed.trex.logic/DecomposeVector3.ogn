@@ -1,0 +1,38 @@
+{
+  "lightspeed.trex.logic.DecomposeVector3": {
+    "description": ["Splits a Vector3 into three separate numbers."],
+    "version": 1,
+    "uiName": "Decompose Vector3",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "vector": {
+        "description": ["The vector to decompose."],
+        "type": "float[3]",
+        "default": [0.000000, 0.000000, 0.000000],
+        "uiName": "Vector"
+      }
+    },
+    "outputs": {
+      "x": {
+        "description": ["The X component of the vector (Red channel)."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "X"
+      },
+      "y": {
+        "description": ["The Y component of the vector (Green channel)."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "Y"
+      },
+      "z": {
+        "description": ["The Z component of the vector (Blue channel)."],
+        "type": "float",
+        "default": 0.000000,
+        "uiName": "Z"
+      }
+    }
+  }
+}

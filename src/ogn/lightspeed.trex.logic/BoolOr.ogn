@@ -1,0 +1,32 @@
+{
+  "lightspeed.trex.logic.BoolOr": {
+    "description": ["Returns true if either A or B (or both) are true."],
+    "version": 1,
+    "uiName": "Bool OR",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "a": {
+        "description": ["First boolean input."],
+        "type": "bool",
+        "default": false,
+        "uiName": "A"
+      },
+      "b": {
+        "description": ["Second boolean input."],
+        "type": "bool",
+        "default": false,
+        "uiName": "B"
+      }
+    },
+    "outputs": {
+      "result": {
+        "description": ["The logical OR of A and B (true if either A or B is true)."],
+        "type": "bool",
+        "default": false,
+        "uiName": "Result"
+      }
+    }
+  }
+}

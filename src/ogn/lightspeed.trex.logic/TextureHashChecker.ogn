@@ -1,6 +1,6 @@
 {
   "lightspeed.trex.logic.TextureHashChecker": {
-    "description": ["Checks if a specific texture hash was used for material replacement in the current frame.  This includes textures in all categories, including ignored textures."],
+    "description": ["Detects if a specific texture is being used in the current frame.\n\nChecks if a specific texture hash was used for material replacement in the current frame. This includes textures in all categories, including ignored textures."],
     "version": 1,
     "uiName": "Texture Hash Checker",
     "language": "python",
@@ -23,8 +23,8 @@
       },
       "usageCount": {
         "description": ["Number of times the texture hash was used in the current frame."],
-        "type": "uint",
-        "default": 0,
+        "type": "float",
+        "default": 0.000000,
         "uiName": "Usage Count"
       }
     }

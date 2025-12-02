@@ -1,0 +1,29 @@
+{
+  "lightspeed.trex.logic.Multiply": {
+    "description": ["Multiplies two values together.\n\nVector * Number will multiply all components of the vector by the number. Vector * Vector will multiply each piece separately, to create (a.x * b.x, a.y * b.y, ...). Vector * Vector will error if the vectors aren't the same size."],
+    "version": 1,
+    "uiName": "Multiply",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "a": {
+        "description": ["The first value to be multiplied."],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "A"
+      },
+      "b": {
+        "description": ["The second value to be multiplied."],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "B"
+      }
+    },
+    "outputs": {
+      "product": {
+        "description": ["A * B"],
+        "type": ["float", "float[2]", "float[3]", "float[4]"],
+        "uiName": "Product"
+      }
+    }
+  }
+}

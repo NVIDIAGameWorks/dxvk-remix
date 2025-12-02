@@ -1,6 +1,6 @@
 # Rtx Option Layer Action
 
-Controls an RtxOptionLayer by name, allowing dynamic enable/disable, strength adjustment, and threshold control\. This can be used to activate configuration layers at runtime based on game state or other conditions\. The layer is created if it doesn't exist, and managed with reference counting\. Each layer requires a unique priority value \- if multiple components specify the same priority, an error will occur\.
+Activates and controls configuration layers at runtime based on game conditions\.<br/><br/>Controls an RtxOptionLayer by name, allowing dynamic enable/disable, strength adjustment, and threshold control\. This can be used to activate configuration layers at runtime based on game state or other conditions\.<br/><br/>The layer is created if it doesn't exist, and managed with reference counting\.<br/>If two components specify the same priority and config path, they will both control the same layer \(for enabled components, uses the MAX of the blend strengths and the MIN of the blend thresholds\)\.<br/>If two components specify the same priority but different config paths, the layers will be prioritized alphabetically \(a\.conf will override values from z\.conf\)\.
 
 ## Component Information
 
@@ -17,7 +17,7 @@ Controls an RtxOptionLayer by name, allowing dynamic enable/disable, strength ad
 | enabled | Enabled | Bool | Input | true | Yes | 
 | blendStrength | Blend Strength | Float | Input | 1\.0 | Yes | 
 | blendThreshold | Blend Threshold | Float | Input | 0\.1 | Yes | 
-| priority | Priority | Uint32 | Input | 10000 | Yes | 
+| priority | Priority | Float | Input | 10000\.0 | Yes | 
 
 ### Config Path
 
@@ -51,23 +51,23 @@ The blend threshold for non\-float options \(0\.0 to 1\.0\)\. Non\-float options
 
 ### Priority
 
-The priority for the option layer\. Higher values are blended onto lower values\. Must be unique across all layers\.
+The priority for the option layer\. Numbers are rounded to the nearest positive integer\. Higher values are blended on top of lower values\. If two components specify the same priority but different config paths, the layers will be prioritized alphabetically \(a\.conf will override values from z\.conf\)\.
 
 
 **Value Constraints:**
 
-- **Minimum Value:** 101
-- **Maximum Value:** 4294967294
+- **Minimum Value:** 101\.0
+- **Maximum Value:** \-2147483648\.0
 
 ## State Properties
 
 | Property | Display Name | Type | IO Type | Default Value | Optional |
 |----------|--------------|------|---------|---------------|----------|
-| cachedLayerPtr |  | Uint64 | State | 0 | No | 
+| holdsReference |  | Bool | State | false | No | 
 
 ### 
 
-Cached pointer to the RtxOptionLayer \(internal use\)\.
+True if the component is holding a reference to the RtxOptionLayer\.
 
 
 ## Usage Notes

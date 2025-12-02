@@ -1,13 +1,13 @@
-# Sphere Light
+# \[Non Functional\] Sphere Light
 
-Override the sphere light properties\.
+Modifies properties of a sphere light, such as its radius\.<br/><br/>Note: This component is currently non\-functional and should not be used\.
 
 ## Component Information
 
 - **Name:** `SphereLightOverride`
-- **UI Name:** Sphere Light
+- **UI Name:** \[Non Functional\] Sphere Light
 - **Version:** 1
-- **Categories:** Act
+- **Categories:** TODO
 
 ## Input Properties
 

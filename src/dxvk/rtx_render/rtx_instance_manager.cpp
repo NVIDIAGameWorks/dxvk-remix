@@ -908,7 +908,7 @@ namespace dxvk {
 
     const uint32_t instanceIdx = m_instances.size();
 
-    uint64_t id = generateValidID ? m_nextInstanceId++ : UINT64_MAX;
+    uint64_t id = generateValidID ? m_nextInstanceId++ : kInvalidInstanceId;
     RtInstance* newInstance = new RtInstance(reference, id, instanceIdx);
     newInstance->m_isCreatedByRenderer = true;
     m_instances.push_back(newInstance);

@@ -25,6 +25,8 @@
 namespace dxvk {
   static constexpr uint32_t kInvalidFrameIndex = UINT32_MAX;
 
+  static constexpr uint64_t kInvalidInstanceId = UINT64_MAX;
+
   // Sentinel value representing a null hash
   static constexpr XXH64_hash_t kEmptyHash = 0;
 

@@ -1,0 +1,30 @@
+{
+  "lightspeed.trex.logic.ConditionallyStore": {
+    "description": ["Stores a value when a condition is true, otherwise keeps the previous value.\n\nIf the store input is true, captures the input value and stores it. If the store input is false, continues outputting the previously stored value. Useful for sample-and-hold behavior."],
+    "version": 1,
+    "uiName": "Conditionally Store",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "store": {
+        "description": ["If true, write the input value to state. If false, keep the previous stored value."],
+        "type": "bool",
+        "default": false,
+        "uiName": "Store"
+      },
+      "input": {
+        "description": ["The value to store when store is true."],
+        "type": ["bool", "float", "float[2]", "float[3]", "float[4]", "target", "token", "uint"],
+        "uiName": "Input"
+      }
+    },
+    "outputs": {
+      "output": {
+        "description": ["The currently stored value."],
+        "type": ["bool", "float", "float[2]", "float[3]", "float[4]", "target", "token", "uint"],
+        "uiName": "Output"
+      }
+    }
+  }
+}

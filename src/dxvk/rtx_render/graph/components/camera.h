@@ -49,7 +49,9 @@ REMIX_COMPONENT( \
   /* the Component name */ Camera, \
   /* the UI name */        "Camera", \
   /* the UI categories */  "Sense", \
-  /* the doc string */     "Outputs current camera properties including position, orientation vectors, and projection parameters. Uses free camera when both 'rtx.camera.useFreeCameraForComponents' and free camera are enabled.", \
+  /* the doc string */     "Provides information about the camera's position, direction, and field of view.\n\n" \
+    "Outputs current camera properties including position, orientation vectors, and projection parameters.\n\n" \
+    "Uses free camera when both 'rtx.camera.useFreeCameraForComponents' and free camera are enabled.", \
   /* the version number */ 1, \
   LIST_INPUTS, LIST_STATES, LIST_OUTPUTS);
 

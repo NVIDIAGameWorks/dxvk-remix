@@ -340,6 +340,12 @@ dxvk_src = files([
   'rtx_render/rtx_particle_system.h',
 
   'rtx_render/graph/rtx_component_list.h',
+  'rtx_render/graph/rtx_component_list.cpp',
+  'rtx_render/graph/components/add.cpp',
+  'rtx_render/graph/components/divide.cpp',
+  'rtx_render/graph/components/equal_to.cpp',
+  'rtx_render/graph/components/multiply.cpp',
+  'rtx_render/graph/components/subtract.cpp',
   'rtx_render/graph/rtx_graph_batch.cpp',
   'rtx_render/graph/rtx_graph_batch.h',
   'rtx_render/graph/rtx_graph_component_macros.h',

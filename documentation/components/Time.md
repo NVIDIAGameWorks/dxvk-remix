@@ -1,6 +1,6 @@
 # Time
 
-Outputs the time in seconds since the component was created\. Can be paused and speed\-adjusted\.
+Provides a continuously increasing time value for creating animations and time\-based effects\.<br/><br/>Outputs the time in seconds since the component was created\. Can be paused and speed\-adjusted\.
 
 ## Component Information
 
@@ -14,11 +14,17 @@ Outputs the time in seconds since the component was created\. Can be paused and 
 | Property | Display Name | Type | IO Type | Default Value | Optional |
 |----------|--------------|------|---------|---------------|----------|
 | enabled | Enabled | Bool | Input | true | Yes | 
+| resetWhenDisabled | Reset When Disabled | Bool | Input | true | Yes | 
 | speedMultiplier | Speed Multiplier | Float | Input | 1\.0 | Yes | 
 
 ### Enabled
 
 If true, time accumulation continues\. If false, time is paused\.
+
+
+### Reset When Disabled
+
+If true and \`enabled\` is false, the accumulated time is reset to 0\.
 
 
 ### Speed Multiplier

@@ -33,7 +33,7 @@
 
 namespace dxvk {
 
-bool writeOGNSchema(const RtComponentSpec* spec, const char* outputFolderPath);
-bool writePythonStub(const RtComponentSpec* spec, const char* outputFolderPath);
+bool writeOGNSchema(const RtComponentSpec* spec, RtComponentType componentType, const ComponentSpecVariantMap& variants, const char* outputFolderPath);
+bool writePythonStub(const RtComponentSpec* spec, RtComponentType componentType, const ComponentSpecVariantMap& variants, const char* outputFolderPath);
 
 }  // namespace dxvk

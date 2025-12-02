@@ -1,0 +1,21 @@
+{
+  "lightspeed.trex.logic.ConstPrim": {
+    "description": ["Provides a constant reference to a scene object (prim) that you can set.\n\nUse this to provide fixed references to meshes, lights, cameras, or other scene elements."],
+    "version": 1,
+    "uiName": "Constant Prim",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Constants",
+    "inputs": {
+      "value": {
+        "description": ["The constant prim reference."],
+        "type": "target",
+        "metadata": {
+          "outputOnly": "1",
+          "filterPrimTypes": ["UsdGeomMesh", "UsdLuxSphereLight", "UsdLuxCylinderLight", "UsdLuxDiskLight", "UsdLuxDistantLight", "UsdLuxRectLight", "OmniGraph"]
+        },
+        "uiName": "Value"
+      }
+    }
+  }
+}

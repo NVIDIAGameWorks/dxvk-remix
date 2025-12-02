@@ -33,7 +33,7 @@
 
 namespace dxvk {
 
-bool writeComponentMarkdown(const RtComponentSpec* spec, const char* outputFolderPath);
+bool writeComponentMarkdown(const RtComponentSpec* spec, RtComponentType componentType, const ComponentSpecVariantMap& variants, const char* outputFolderPath);
 bool writeMarkdownIndex(const std::vector<const RtComponentSpec*>& specs, const char* outputFolderPath);
 
 }  // namespace dxvk 

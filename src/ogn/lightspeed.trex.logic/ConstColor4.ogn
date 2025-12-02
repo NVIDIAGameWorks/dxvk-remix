@@ -1,0 +1,21 @@
+{
+  "lightspeed.trex.logic.ConstColor4": {
+    "description": ["Provides a constant RGBA color (Red, Green, Blue, Alpha) that you can set.\n\nUse this for fixed colors with transparency. Each channel ranges from 0.0 to 1.0."],
+    "version": 1,
+    "uiName": "Constant Color4",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Constants",
+    "inputs": {
+      "value": {
+        "description": ["The constant RGBA color (Red, Green, Blue, Alpha)."],
+        "type": "float[4]",
+        "default": [0.000000, 0.000000, 0.000000, 0.000000],
+        "metadata": {
+          "outputOnly": "1"
+        },
+        "uiName": "Value"
+      }
+    }
+  }
+}

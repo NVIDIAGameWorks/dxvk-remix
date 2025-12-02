@@ -1,6 +1,6 @@
 # Keyboard Input
 
-Checks the state of a keyboard key or key combination using the same format as RTX options\.
+Detects when keyboard keys are pressed, held, or released\.<br/><br/>Checks the state of a keyboard key or key combination using the same format as RTX options\.
 
 ## Component Information
 
@@ -17,7 +17,7 @@ Checks the state of a keyboard key or key combination using the same format as R
 
 ### Key String
 
-The key combination string \(e\.g\., 'A', 'CTRL,A', 'SHIFT,SPACE'\)\. Supports key names and combinations like RTX options\.
+The key combination string to detect\.<br/>Examples: 'A', 'CTRL, A', 'SHIFT, SPACE'\.<br/>Full list of key names available in \`src/util/util\_keybind\.h\`\.
 
 
 ## State Properties

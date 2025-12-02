@@ -1276,7 +1276,7 @@ namespace dxvk {
 
       // Ensure all of the above values are promoted before the first frame starts.
       // DxvkDevice hasn't been created yet, so pass nullptr here.
-      RtxOption<bool>::applyPendingValues(nullptr);
+      RtxOptionManager::applyPendingValues(nullptr);
     }
 
     static void updateUpscalerFromDlssPreset();
@@ -1328,34 +1328,36 @@ namespace dxvk {
       // Merge the changed options with original options in config file
       Config newConfig;
       auto& optionLayerMap = RtxOptionImpl::getRtxOptionLayerMap();
+      RtxOptionImpl::LayerKey layerKey = {optionSavingTypePriority, configFilePath};
+      
       if (!Option::overwriteConfig()) {
-        const auto& it = optionLayerMap.find(optionSavingTypePriority);
+        const auto& it = optionLayerMap.find(layerKey);
         if (it != optionLayerMap.end()) {
           // Get original option layer config
-          newConfig = it->second.getConfig();
+          newConfig = it->second->getConfig();
           // Get changed options
           Config changedConfigs;
-          RtxOption<bool>::writeOptions(changedConfigs, Option::serializeChangedOptionOnly());
+          RtxOptionManager::writeOptions(changedConfigs, Option::serializeChangedOptionOnly());
           // Merge changed options into original option layer
           newConfig.merge(changedConfigs);
         } else {
-          RtxOption<bool>::writeOptions(newConfig, Option::serializeChangedOptionOnly());
+          RtxOptionManager::writeOptions(newConfig, Option::serializeChangedOptionOnly());
         }
       } else {
-        RtxOption<bool>::writeOptions(newConfig, Option::serializeChangedOptionOnly());
+        RtxOptionManager::writeOptions(newConfig, Option::serializeChangedOptionOnly());
       }
 
       // Update the config of corresponding layer, no need to do it for user/runtime layer b/c it's auto updated when any options in GUI are changed.
       // And we also don't do anything for NONE, which are just experiment options that saved into none.conf.
       if (RtxOptions::Option::optionSavingType() != OptionLayerType::User &&
           RtxOptions::Option::optionSavingType() != OptionLayerType::None) {
-        if (optionLayerMap.find(optionSavingTypePriority) == optionLayerMap.end()){
+        if (optionLayerMap.find(layerKey) == optionLayerMap.end()){
           RtxOptionImpl::addRtxOptionLayer(configFilePath, optionSavingTypePriority, true, 1.0f, 1.0f, &newConfig);
         } else {
-          optionLayerMap.at(optionSavingTypePriority).setConfig(newConfig);
+          optionLayerMap.at(layerKey)->setConfig(newConfig);
         }
         // Update option layers as well
-        optionLayerMap.at(optionSavingTypePriority).setDirty(true);
+        optionLayerMap.at(layerKey)->setDirty(true);
       }
 
       Config::serializeCustomConfig(newConfig, configFilePath, "rtx.");
@@ -1363,20 +1365,22 @@ namespace dxvk {
 
     static void serializeOptionLayer(const RtxOptionLayer& optionLayer, const bool saveToCurrentLayerConfigFile) {
       auto& optionLayerMap = RtxOptionImpl::getRtxOptionLayerMap();
-      auto& rtxConfIt = optionLayerMap.find((uint32_t) RtxOptionLayer::SystemLayerPriority::RtxConf);
+      RtxOptionImpl::LayerKey rtxConfKey = {(uint32_t) RtxOptionLayer::SystemLayerPriority::RtxConf, "rtx.conf"};
+      auto& rtxConfIt = optionLayerMap.find(rtxConfKey);
       Config newConfig;
       if (rtxConfIt == optionLayerMap.end()) {
         RtxOptionImpl::addRtxOptionLayer("rtx.conf", (uint32_t) RtxOptionLayer::SystemLayerPriority::RtxConf, true, 1.0f, 1.0f, &newConfig);
       }
-      auto& rtxConfLayer = optionLayerMap.find((uint32_t)RtxOptionLayer::SystemLayerPriority::RtxConf)->second;
+      auto& rtxConfLayer = optionLayerMap.find(rtxConfKey)->second;
 
-      const auto& it = optionLayerMap.find(optionLayer.getPriority());
+      RtxOptionImpl::LayerKey layerKey = {optionLayer.getPriority(), optionLayer.getName()};
+      const auto& it = optionLayerMap.find(layerKey);
       if (it != optionLayerMap.end()) {
         if (!Option::overwriteConfig()) {
-          newConfig = rtxConfLayer.getConfig();
-          newConfig.merge(it->second.getConfig());
+          newConfig = rtxConfLayer->getConfig();
+          newConfig.merge(it->second->getConfig());
         } else {
-          newConfig = it->second.getConfig();
+          newConfig = it->second->getConfig();
         }
       }
 
@@ -1384,11 +1388,11 @@ namespace dxvk {
       Config::serializeCustomConfig(newConfig, saveToCurrentLayerConfigFile ? optionLayer.getName() : rtxConfigPath, "rtx.");
 
       // Set dirty to update the option layers queue
-      rtxConfLayer.setDirty(true);
+      rtxConfLayer->setDirty(true);
     }
 
     static void reset() {
-      RtxOption<bool>::resetOptions();
+      RtxOptionManager::resetOptions();
     }
 
     static std::unique_ptr<RtxOptions>& Create(const Config& options) {

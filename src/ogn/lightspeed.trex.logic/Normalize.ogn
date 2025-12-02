@@ -1,0 +1,24 @@
+{
+  "lightspeed.trex.logic.Normalize": {
+    "description": ["Normalizes a vector to have length 1.\n\nDivides the vector by its length to produce a unit vector (length 1) in the same direction. If the input vector has zero length, returns a default vector to avoid division by zero."],
+    "version": 1,
+    "uiName": "Normalize",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Transform",
+    "inputs": {
+      "input": {
+        "description": ["The vector to normalize."],
+        "type": ["float[2]", "float[3]", "float[4]"],
+        "uiName": "Input"
+      }
+    },
+    "outputs": {
+      "output": {
+        "description": ["The normalized vector with length 1. Returns (0,1), (0,0,1), or (0,0,0,1) if the input vector has zero length."],
+        "type": ["float[2]", "float[3]", "float[4]"],
+        "uiName": "Output"
+      }
+    }
+  }
+}

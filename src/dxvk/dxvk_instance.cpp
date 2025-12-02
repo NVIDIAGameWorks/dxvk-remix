@@ -641,15 +641,15 @@ namespace dxvk {
     initConfig<Config::Type_RtxUser>();
     initConfig<Config::Type_RtxMod>();
 
-    RtxOptionImpl::addRtxOptionLayer("quality.conf", (uint32_t) RtxOptionLayer::SystemLayerPriority::Quality, true, 1.0f, 1.0f);
+    RtxOptionImpl::addRtxOptionLayer("quality.conf", (uint32_t) RtxOptionLayer::SystemLayerPriority::Quality, true, 1.0f, 0.1f);
     Logger::info("Set quality configs.");
 
-    RtxOptionImpl::addRtxOptionLayer("user.conf", (uint32_t) RtxOptionLayer::SystemLayerPriority::USER, true, 1.0f, 1.0f);
+    RtxOptionImpl::addRtxOptionLayer("user.conf", (uint32_t) RtxOptionLayer::SystemLayerPriority::USER, true, 1.0f, 0.1f);
     Logger::info("Set user realtime configs.");
 
-    RtxOption<bool>::initializeRtxOptions();
-    for (const auto& [priority, optionLayer] : RtxOptionImpl::getRtxOptionLayerMap()) {
-      RtxOption<bool>::addRtxOptionLayer(optionLayer);
+    RtxOptionManager::initializeRtxOptions();
+    for (const auto& [unusedLayerKey, optionLayerPtr] : RtxOptionImpl::getRtxOptionLayerMap()) {
+      RtxOptionManager::addRtxOptionLayer(*optionLayerPtr);
     }
 
     m_config.logOptions("Effective (combined)");
@@ -713,14 +713,14 @@ namespace dxvk {
     if constexpr (type == Config::Type_App) {
       // Set config so that any rtx option initialized later will use the value in that config object
       // The start-up config contains the values from the code and dxvk.conf, only.
-      RtxOption<bool>::setStartupConfig(m_config);
-      RtxOptionImpl::addRtxOptionLayer("dxvk.conf", (uint32_t)RtxOptionLayer::SystemLayerPriority::DxvkConf, true, 1.0f, 1.0f, &m_config);
+      RtxOptionManager::setStartupConfig(m_config);
+      RtxOptionImpl::addRtxOptionLayer("dxvk.conf", (uint32_t)RtxOptionLayer::SystemLayerPriority::DxvkConf, true, 1.0f, 0.1f, &m_config);
       Logger::info("Set startup config.");
     } else if constexpr ((type == Config::Type_RtxUser) || (type == Config::Type_RtxMod)) {
       // Set custom config after the RTX user config has been merged into the config and
       // update the RTX options. Contains values from rtx.conf
-      RtxOption<bool>::setCustomConfig(m_config);
-      RtxOptionImpl::addRtxOptionLayer("rtx.conf", (uint32_t)RtxOptionLayer::SystemLayerPriority::RtxConf, true, 1.0f, 1.0f, nullptr);
+      RtxOptionManager::setCustomConfig(m_config);
+      RtxOptionImpl::addRtxOptionLayer("rtx.conf", (uint32_t)RtxOptionLayer::SystemLayerPriority::RtxConf, true, 1.0f, 0.1f, nullptr);
       Logger::info("Set custom config.");
     }
   }

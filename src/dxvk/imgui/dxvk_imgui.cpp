@@ -2095,25 +2095,26 @@ namespace dxvk {
         ImGui::Indent();
 
         if (IMGUI_ADD_TOOLTIP(ImGui::Button("Disable Layers"), "Reset all settings to Default.")) {
-          for (auto& [priority, optionLayer] : RtxOptionImpl::getRtxOptionLayerMap()) {
-            optionLayer.requestEnabled(false);
+          for (auto& [unusedLayerKey, optionLayerPtr] : RtxOptionImpl::getRtxOptionLayerMap()) {
+            optionLayerPtr->requestEnabled(false);
           }
         }
 
         ImGui::SameLine();
         if (IMGUI_ADD_TOOLTIP(ImGui::Button("Enable Layers"), "Enable all option layers.")) {
-          for (auto& [priority, optionLayer] : RtxOptionImpl::getRtxOptionLayerMap()) {
-            optionLayer.requestEnabled(true);
+          for (auto& [unusedLayerKey, optionLayerPtr] : RtxOptionImpl::getRtxOptionLayerMap()) {
+            optionLayerPtr->requestEnabled(true);
           }
         }
 
         ImGui::Checkbox("Override configs", &RtxOptions::Option::overwriteConfigObject());
 
         uint32_t optionLayerCounter = 1;
-        for (auto& [priority, optionLayer] : RtxOptionImpl::getRtxOptionLayerMap()) {
+        for (auto& [layerKey, optionLayerPtr] : RtxOptionImpl::getRtxOptionLayerMap()) {
           // Runtime option layer priority is reserved for real-time user changes.
           // These layers should not be modified through the GUI.
-          if (priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
+          if (layerKey.priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
+            RtxOptionLayer& optionLayer = *optionLayerPtr;
             ImGui::Dummy(ImVec2(0.0f, 5.0f));
             ImGui::Separator();
             ImGui::Dummy(ImVec2(0.0f, 5.0f));

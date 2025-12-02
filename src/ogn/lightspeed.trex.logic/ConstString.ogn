@@ -1,0 +1,21 @@
+{
+  "lightspeed.trex.logic.ConstString": {
+    "description": ["Provides a constant text string that you can set.\n\nUse this to provide fixed text values, labels, or identifiers to other components."],
+    "version": 1,
+    "uiName": "Constant String",
+    "language": "python",
+    "categoryDefinitions": "config/CategoryDefinition.json",
+    "categories": "Constants",
+    "inputs": {
+      "value": {
+        "description": ["The constant text string."],
+        "type": "token",
+        "default": "",
+        "metadata": {
+          "outputOnly": "1"
+        },
+        "uiName": "Value"
+      }
+    }
+  }
+}

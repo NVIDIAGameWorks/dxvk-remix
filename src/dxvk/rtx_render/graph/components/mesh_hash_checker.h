@@ -35,13 +35,14 @@ namespace components {
 
 #define LIST_OUTPUTS(X) \
   X(RtComponentPropertyType::Bool, false, isUsed, "Is Used", "True if the mesh hash was used in the current frame.") \
-  X(RtComponentPropertyType::Uint32, 0, usageCount, "Usage Count", "Number of times the mesh hash was used in the current frame.")
+  X(RtComponentPropertyType::Float, 0.0f, usageCount, "Usage Count", "Number of times the mesh hash was used in the current frame.")
 
 REMIX_COMPONENT( \
   /* the Component name */ MeshHashChecker, \
   /* the UI name */        "Mesh Hash Checker", \
   /* the UI categories */  "Sense", \
-  /* the doc string */     "Checks if a specific mesh hash was processed in the current frame.", \
+  /* the doc string */     "Detects if a specific mesh is currently being drawn in the scene.\n\n" \
+    "Checks if a specific mesh hash was processed in the current frame.", \
   /* the version number */ 1, \
   LIST_INPUTS, LIST_STATES, LIST_OUTPUTS);
 
@@ -63,7 +64,7 @@ void MeshHashChecker::updateRange(const Rc<DxvkContext>& context, const size_t s
     bool isUsed = count > 0;
     
     m_isUsed[i] = isUsed;
-    m_usageCount[i] = count;
+    m_usageCount[i] = float(count);
   }
 }
 

@@ -32,7 +32,17 @@
 #include "rtx_component_list.h"
 
 namespace dxvk {
+
+// Force instantiation of all flexible components at static initialization time
+// This ensures that components defined in .cpp files get their static initializers run
 namespace {
+  struct FlexibleComponentInstantiator {
+    FlexibleComponentInstantiator() {
+      dxvk::components::forceAllFlexibleComponentInstantiations();
+    }
+  };
+  static FlexibleComponentInstantiator s_flexibleComponentInstantiator;
+  
   /**
    * Removes an element at the specified index from a vector by moving the last element
    * and then removing the last element. This is more efficient than shifting elements.

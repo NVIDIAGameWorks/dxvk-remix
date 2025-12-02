@@ -73,7 +73,8 @@ inline const auto kInterpolationTypeEnumValues = RtComponentPropertySpec::EnumPr
 };
 
 // Apply interpolation/easing to a normalized time value (0-1)
-inline float applyInterpolation(InterpolationType interpolation, float time) {
+template<typename T>
+inline T applyInterpolation(InterpolationType interpolation, T time) {
   switch(interpolation) {
     case InterpolationType::Linear:
       return time;

@@ -4,11 +4,19 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import omni.graph.core as og
+
 if TYPE_CHECKING:
-    from lightspeed.trex.logic.ogn.ogn.OgnTemplateNodePyDatabase import OgnTemplateNodePyDatabase
+    from lightspeed.trex.logic.ogn.ogn.KeyboardInputDatabase import KeyboardInputDatabase
 
 
 class KeyboardInput:
     @staticmethod
-    def compute(_db: OgnTemplateNodePyDatabase):
+    def compute(_db: KeyboardInputDatabase):
         return True
+
+    @staticmethod
+    def on_connection_type_resolve(node) -> None:
+        """Resolve flexible types based on connected attribute types."""
+        # Valid type combinations for this component:
+        # Combination 1: isPressed=bool, keyString=token, wasClicked=bool, wasJustPressed=bool, wasPressedLastFrame=bool

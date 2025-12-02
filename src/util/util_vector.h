@@ -583,7 +583,7 @@ namespace dxvk {
     }
 
     Vector2Base operator/(T scalar) const {
-      return { x / scalar, y / scalar };
+      return Vector2Base{ x / scalar, y / scalar};
     }
 
     Vector2Base& operator+=(const Vector2Base<T>& other) {
