@@ -844,8 +844,15 @@ namespace dxvk {
         addWeightedValue(optionLayer.second.value, optionLayer.second.blendStrength * throughput, optionValue.data);
         throughput *= (1.0f - optionLayer.second.blendStrength);
       } else {
-        if (optionLayer.second.blendStrength >= optionLayer.second.blendThreshold || optionLayer.first.priority == 0) {
-          addWeightedValue(optionLayer.second.value, throughput, optionValue.data);
+        addWeightedValue(optionLayer.second.value, throughput, optionValue.data);
+
+        // For non-collection-like types, we always break after applying the weight
+        if (type != OptionType::HashSet && type != OptionType::HashVector && type != OptionType::IntVector) {
+          break;
+        }
+
+        // For collection-like types, we only continue if the blend strength is high then threshold
+        if (optionLayer.second.blendStrength < optionLayer.second.blendThreshold) {
           break;
         }
       }
