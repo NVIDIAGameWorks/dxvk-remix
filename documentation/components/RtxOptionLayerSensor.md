@@ -23,7 +23,7 @@ The config file for the RtxOptionLayer to read\.
 
 ### Priority
 
-The priority for the option layer\. Numbers are rounded to the nearest positive integer\. Higher values are blended on top of lower values\. Must be unique across all layers\.
+The priority for the option layer\. Numbers are rounded to the nearest positive integer\. Higher values are blended on top of lower values\. If multiple layers share the same priority, they are ordered alphabetically by config path\.
 
 
 **Value Constraints:**

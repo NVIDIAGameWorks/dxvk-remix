@@ -31,7 +31,7 @@ namespace components {
 
 #define LIST_INPUTS(X) \
   X(RtComponentPropertyType::AssetPath, "", configPath, "Config Path", "The config file for the RtxOptionLayer to read.") \
-  X(RtComponentPropertyType::Float, kDefaultComponentRtxOptionLayerPriority, priority, "Priority", "The priority for the option layer. Numbers are rounded to the nearest positive integer. Higher values are blended on top of lower values. Must be unique across all layers.", property.minValue = RtxOptionLayer::s_userOptionLayerOffset + 1, property.maxValue = kMaxComponentRtxOptionLayerPriority, property.optional = true)
+  X(RtComponentPropertyType::Float, kDefaultComponentRtxOptionLayerPriority, priority, "Priority", "The priority for the option layer. Numbers are rounded to the nearest positive integer. Higher values are blended on top of lower values. If multiple layers share the same priority, they are ordered alphabetically by config path.", property.minValue = RtxOptionLayer::s_userOptionLayerOffset + 1, property.maxValue = kMaxComponentRtxOptionLayerPriority, property.optional = true)
 
 #define LIST_STATES(X)
 

@@ -31,12 +31,12 @@ The world space position to test against the mesh bounding box\.
 
 ### Inactive Distance
 
-The distance inside the bounding box that corresponds to a normalized value of 0\.0\.  Negative numbers represent values outside the AABB\. 
+The distance inside the bounding box that corresponds to a normalized value of 0\.0\.  Positive numbers represent values outside the AABB\. 
 
 
 ### Full Activation Distance
 
-The distance inside the bounding box that corresponds to a normalized value of 1\.0\.  Negative numbers represent values outside the AABB\. 
+The distance inside the bounding box that corresponds to a normalized value of 1\.0\.  Positive numbers represent values outside the AABB\. 
 
 
 ### Easing Type

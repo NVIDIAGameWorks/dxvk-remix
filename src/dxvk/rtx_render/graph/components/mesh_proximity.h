@@ -39,8 +39,8 @@ namespace components {
   X(RtComponentPropertyType::Prim, kInvalidPrimTarget, target, "Target", "The mesh prim to get bounding box from. Must be a mesh prim.", \
     property.allowedPrimTypes = {PrimType::UsdGeomMesh}) \
   X(RtComponentPropertyType::Float3, Vector3(0.0f, 0.0f, 0.0f), worldPosition, "World Position", "The world space position to test against the mesh bounding box.") \
-  X(RtComponentPropertyType::Float, 1.0f, inactiveDistance, "Inactive Distance", "The distance inside the bounding box that corresponds to a normalized value of 0.0.  Negative numbers represent values outside the AABB. ", property.optional = true) \
-  X(RtComponentPropertyType::Float, 0.0f, fullActivationDistance, "Full Activation Distance", "The distance inside the bounding box that corresponds to a normalized value of 1.0.  Negative numbers represent values outside the AABB. ", property.optional = true) \
+  X(RtComponentPropertyType::Float, 1.0f, inactiveDistance, "Inactive Distance", "The distance inside the bounding box that corresponds to a normalized value of 0.0.  Positive numbers represent values outside the AABB. ", property.optional = true) \
+  X(RtComponentPropertyType::Float, 0.0f, fullActivationDistance, "Full Activation Distance", "The distance inside the bounding box that corresponds to a normalized value of 1.0.  Positive numbers represent values outside the AABB. ", property.optional = true) \
   X(RtComponentPropertyType::Enum, static_cast<uint32_t>(InterpolationType::Linear), easingType, "Easing Type", \
     "The type of easing to apply to the normalized output.", \
     property.optional = true, \

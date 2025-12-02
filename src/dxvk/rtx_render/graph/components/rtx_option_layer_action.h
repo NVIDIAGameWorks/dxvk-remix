@@ -36,8 +36,13 @@ namespace components {
   X(RtComponentPropertyType::Float, 1.0f, blendStrength, "Blend Strength", "The blend strength for the option layer (0.0 = no effect, 1.0 = full effect.)" \
       "\n\nLowest priority layer uses LERP to blend with default value, then each higher priority layer uses LERP to blend with the previous layer's result." \
       "\n\nIf multiple components control the same layer, the MAX blend strength will be used.", property.minValue = 0.0f, property.maxValue = 1.0f, property.optional = true) \
-  X(RtComponentPropertyType::Float, 0.1f, blendThreshold, "Blend Threshold", "The blend threshold for non-float options (0.0 to 1.0). Non-float options are only applied when blend strength exceeds this threshold. If multiple components control the same layer, the MINIMUM blend threshold will be used.", property.minValue = 0.0f, property.maxValue = 1.0f, property.optional = true) \
-  X(RtComponentPropertyType::Float, kDefaultComponentRtxOptionLayerPriority, priority, "Priority", "The priority for the option layer. Numbers are rounded to the nearest positive integer. Higher values are blended on top of lower values. Must be unique across all layers.", property.minValue = RtxOptionLayer::s_userOptionLayerOffset + 1, property.maxValue = kMaxComponentRtxOptionLayerPriority, property.optional = true)
+  X(RtComponentPropertyType::Float, 0.1f, blendThreshold, "Blend Threshold", \
+      "The blend threshold for non-float options (0.0 to 1.0). Non-float options are only applied when blend strength exceeds this threshold." \
+      " If multiple components control the same layer, the MINIMUM blend threshold will be used.", property.minValue = 0.0f, property.maxValue = 1.0f, property.optional = true) \
+  X(RtComponentPropertyType::Float, kDefaultComponentRtxOptionLayerPriority, priority, "Priority", \
+      "The priority for the option layer. Numbers are rounded to the nearest positive integer. Higher values are blended on top of lower values." \
+      " If two components specify the same priority but different config paths, the layers will be prioritized alphabetically (a.conf will override values from z.conf).", \
+      property.minValue = RtxOptionLayer::s_userOptionLayerOffset + 1, property.maxValue = kMaxComponentRtxOptionLayerPriority, property.optional = true)
 
 #define LIST_STATES(X) \
   X(RtComponentPropertyType::Bool, false, holdsReference, "", "True if the component is holding a reference to the RtxOptionLayer.")
@@ -55,8 +60,9 @@ private:
     /* the doc string */     "Activates and controls configuration layers at runtime based on game conditions.\n\n"
       "Controls an RtxOptionLayer by name, allowing dynamic enable/disable, strength adjustment, and threshold control. "
       "This can be used to activate configuration layers at runtime based on game state or other conditions.\n\n"
-      "The layer is created if it doesn't exist, and managed with reference counting. "
-      "Each layer requires a unique priority value - if multiple components specify the same priority, an error will occur.",
+      "The layer is created if it doesn't exist, and managed with reference counting.\n"
+      "If two components specify the same priority and config path, they will both control the same layer (for enabled components, uses the MAX of the blend strengths and the MIN of the blend thresholds).\n"
+      "If two components specify the same priority but different config paths, the layers will be prioritized alphabetically (a.conf will override values from z.conf).",
     /* the version number */ 1,
     LIST_INPUTS, LIST_STATES, LIST_OUTPUTS,
     /* optional arguments: */

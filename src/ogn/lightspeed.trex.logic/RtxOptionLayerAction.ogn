@@ -1,6 +1,6 @@
 {
   "lightspeed.trex.logic.RtxOptionLayerAction": {
-    "description": ["Activates and controls configuration layers at runtime based on game conditions.\n\nControls an RtxOptionLayer by name, allowing dynamic enable/disable, strength adjustment, and threshold control. This can be used to activate configuration layers at runtime based on game state or other conditions.\n\nThe layer is created if it doesn't exist, and managed with reference counting. Each layer requires a unique priority value - if multiple components specify the same priority, an error will occur."],
+    "description": ["Activates and controls configuration layers at runtime based on game conditions.\n\nControls an RtxOptionLayer by name, allowing dynamic enable/disable, strength adjustment, and threshold control. This can be used to activate configuration layers at runtime based on game state or other conditions.\n\nThe layer is created if it doesn't exist, and managed with reference counting.\nIf two components specify the same priority and config path, they will both control the same layer (for enabled components, uses the MAX of the blend strengths and the MIN of the blend thresholds).\nIf two components specify the same priority but different config paths, the layers will be prioritized alphabetically (a.conf will override values from z.conf)."],
     "version": 1,
     "uiName": "Rtx Option Layer Action",
     "language": "python",
@@ -35,7 +35,7 @@
         "uiName": "Blend Threshold"
       },
       "priority": {
-        "description": ["The priority for the option layer. Numbers are rounded to the nearest positive integer. Higher values are blended on top of lower values. Must be unique across all layers."],
+        "description": ["The priority for the option layer. Numbers are rounded to the nearest positive integer. Higher values are blended on top of lower values. If two components specify the same priority but different config paths, the layers will be prioritized alphabetically (a.conf will override values from z.conf)."],
         "type": "float",
         "default": 10000.000000,
         "optional": true,

@@ -37,7 +37,7 @@ namespace components {
 
 REMIX_COMPONENT( \
   /* the Component name */ ConstFloat, \
-  /* the UI name */        "Constant Float", \
+  /* the UI name */        "Constant Number", \
   /* the UI categories */  "Constants", \
   /* the doc string */     "Provides a constant decimal number that you can set.\n\n" \
     "Use this to provide fixed values like 0.5, 3.14, or 100.0 to other components.", \

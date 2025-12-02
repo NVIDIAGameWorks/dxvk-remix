@@ -2,7 +2,7 @@
   "lightspeed.trex.logic.ConstFloat": {
     "description": ["Provides a constant decimal number that you can set.\n\nUse this to provide fixed values like 0.5, 3.14, or 100.0 to other components."],
     "version": 1,
-    "uiName": "Constant Float",
+    "uiName": "Constant Number",
     "language": "python",
     "categoryDefinitions": "config/CategoryDefinition.json",
     "categories": "Constants",

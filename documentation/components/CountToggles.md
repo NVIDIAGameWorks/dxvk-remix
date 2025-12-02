@@ -41,11 +41,11 @@ The value of the boolean from the previous frame\.
 
 | Property | Display Name | Type | IO Type | Default Value | Optional |
 |----------|--------------|------|---------|---------------|----------|
-| count | Count as Float | Float | Output | 0\.0 | No | 
+| count | Count | Float | Output | 0\.0 | No | 
 
-### Count as Float
+### Count
 
-The current count value as a float\.
+The current count value\.
 
 
 ## Usage Notes
