@@ -390,14 +390,8 @@ namespace dxvk
     float moveLeftRight = 0;
     float moveBackForward = 0;
     float moveDownUp = 0;
-    HWND fgWin = GetForegroundWindow();
-    DWORD processId = 0;
-    if (fgWin) {
-      GetWindowThreadProcessId(fgWin, &processId);
-    }
 
     if (!ImGui::GetIO().WantCaptureMouse && (flags & (int)RtCamera::UpdateFlag::UpdateFreeCamera) != 0) {
-
       // Typical WASD controls with EQ up-down
       bool isKeyAvailable =
         !ImGui::IsKeyDown(ImGuiKey_LeftCtrl) &&
@@ -447,8 +441,6 @@ namespace dxvk
           freeCameraYaw.setDeferred( freeCameraYaw() - coordSystemScale * angularSpeed);
         }
       }
-
-
 
       POINT p;
       if (GetCursorPos(&p)) {

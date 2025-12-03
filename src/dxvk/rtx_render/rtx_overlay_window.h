@@ -31,7 +31,7 @@ namespace dxvk {
   public:
     GameOverlay() = delete;
 
-    GameOverlay(const wchar_t* className, class ImGUI* pImgui);
+    GameOverlay(const char* className, class ImGUI* pImgui);
     ~GameOverlay();
 
     HWND hwnd() const {  return m_hwnd; }
@@ -39,7 +39,17 @@ namespace dxvk {
     void update(HWND gameHwnd);
 
     void gameWndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-    LRESULT overlayWndProc(UINT, WPARAM, LPARAM);
+    LRESULT overlayWndProc(HWND, UINT, WPARAM, LPARAM);
+
+    void setDebugDraw(bool enable, BYTE alpha = 96) {
+      m_debugDraw = enable;
+      m_debugAlpha = alpha;
+      if (m_hwnd) {
+        // Make it visible if debugging; invisible if not.
+        SetLayeredWindowAttributes(m_hwnd, 0, m_debugAlpha, ULW_ALPHA);
+        InvalidateRect(m_hwnd, nullptr, TRUE);
+      }
+    }
 
   private:
     void windowThreadMain();
@@ -47,14 +57,22 @@ namespace dxvk {
     void show();
     void hide();
 
-    HWND m_gameHwnd = nullptr;
-    HWND m_hwnd = nullptr;
+    bool isOurForeground() const;
 
+    HWND m_gameHwnd = nullptr;
+
+    std::atomic<HWND> m_hwnd { 0 };
     std::atomic<bool> m_running { true };
     std::thread m_thread;
-    const wchar_t* m_className;
+    const char* m_className;
 
     ImGUI* m_pImgui = nullptr;
     UINT m_w = 1, m_h = 1;
+
+    bool  m_mouseInsideOverlay = false;
+
+    bool  m_debugDraw = false;
+    BYTE  m_debugAlpha = 96;
+    RECT  m_lastRect { 0,0,0,0 };
   };
 }
