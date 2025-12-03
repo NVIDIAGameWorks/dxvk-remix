@@ -1,5 +1,5 @@
 <!-- New packman transport config requiring Vault for publishing -->
-<config remotes="cloudfront rtx-remix-external">
+<config remotes="cloudfront rtx-remix-external gtl">
     <remote2 name="cloudfront">
         <transport actions="download" protocol="https" packageLocation="d4i3qtqj3r0z5.cloudfront.net/${name}@${version}" />
         <transport actions="upload tag" protocol="s3" packageLocation="packages-for-cloudfront" />
@@ -12,4 +12,7 @@
         <transport actions="get-pass" protocol="https" packageLocation="lspackages.nvidia.com/api/v1/get-pass/rtx-remix-external"/>
         <transport actions="set-pass" protocol="https" packageLocation="lspackages.nvidia.com/api/v1/set-pass/rtx-remix-external"/>
     </remote2>
+	<remote2 name="gtl">
+		<transport actions="download list upload" protocol="gtl"/>
+	</remote2>
 </config>
