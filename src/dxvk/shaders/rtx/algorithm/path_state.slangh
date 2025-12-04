@@ -514,6 +514,8 @@ struct PathState : IBasePayloadState
 
 struct DirectPathTextures
 {
+  __init() {} // Empty constructor is required by Slang to avoid the error 41024
+
   RWTexture2D<uint16_t> SharedFlags;
   RWTexture2D<uint16_t> SharedMediumMaterialIndex;
   RWTexture2D<float4> PrimaryDirectDiffuseLobeRadianceHitDistance;
@@ -528,6 +530,8 @@ struct DirectPathTextures
 
 struct IndirectPathTextures
 {
+  __init() {} // Empty constructor is required by Slang to avoid the error 41024
+
   Texture2D<float4> PrimaryWorldPositionWorldTriangleNormal;
   RWTexture2D<float4> IndirectRadianceHitDistance;
 };
