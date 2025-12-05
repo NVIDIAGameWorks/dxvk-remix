@@ -390,8 +390,14 @@ namespace dxvk
     float moveLeftRight = 0;
     float moveBackForward = 0;
     float moveDownUp = 0;
+    HWND fgWin = GetForegroundWindow();
+    DWORD processId = 0;
+    if (fgWin) {
+      GetWindowThreadProcessId(fgWin, &processId);
+    }
 
     if (!ImGui::GetIO().WantCaptureMouse && (flags & (int)RtCamera::UpdateFlag::UpdateFreeCamera) != 0) {
+
       // Typical WASD controls with EQ up-down
       bool isKeyAvailable =
         !ImGui::IsKeyDown(ImGuiKey_LeftCtrl) &&
@@ -442,15 +448,9 @@ namespace dxvk
         }
       }
 
-      POINT p;
-      if (GetCursorPos(&p)) {
-        if (!lockFreeCamera() && ImGui::IsMouseDown(ImGuiMouseButton_Left) && ((m_mouseX != p.x) || (m_mouseY != p.y))) {
-          freeCameraYaw.setDeferred( freeCameraYaw() + coordSystemScale * (m_mouseX - p.x) * 0.1f * elapsedSec.count());
-          freeCameraPitch.setDeferred( freeCameraPitch() + coordSystemScale * pitchDirection * (m_mouseY - p.y) * 0.2f * elapsedSec.count());
-        }
-
-        m_mouseX = p.x;
-        m_mouseY = p.y;
+      if (!lockFreeCamera() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        freeCameraYaw.setDeferred( freeCameraYaw() - coordSystemScale * ImGui::GetIO().MouseDelta.x * 0.1f * elapsedSec.count());
+        freeCameraPitch.setDeferred( freeCameraPitch() - coordSystemScale * pitchDirection * ImGui::GetIO().MouseDelta.y * 0.2f * elapsedSec.count());
       }
 
       // Reset
@@ -461,13 +461,6 @@ namespace dxvk
         moveDownUp = 0;
         freeCameraYaw.setDeferred(0.0f);
         freeCameraPitch.setDeferred(0.0f);
-      }
-    } else {
-      // track mouse position when out of focus to avoid uncontrollable camera flips when we're back in focus
-      POINT p;
-      if (GetCursorPos(&p)) {
-        m_mouseX = p.x;
-        m_mouseY = p.y;
       }
     }
 
