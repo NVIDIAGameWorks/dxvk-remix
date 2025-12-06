@@ -345,6 +345,7 @@ namespace dxvk {
 
     setCategory(InstanceCategories::WorldUI, lookupHash(RtxOptions::worldSpaceUiTextures(), textureHash));
     setCategory(InstanceCategories::WorldMatte, lookupHash(RtxOptions::worldSpaceUiBackgroundTextures(), textureHash));
+    setCategory(InstanceCategories::LegacyEmissive, lookupHash(RtxOptions::legacyEmissiveTextures(), textureHash));
 
     setCategory(InstanceCategories::Ignore, lookupHash(RtxOptions::ignoreTextures(), textureHash));
     setCategory(InstanceCategories::IgnoreLights, lookupHash(RtxOptions::ignoreLights(), textureHash));

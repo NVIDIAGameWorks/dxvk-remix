@@ -58,6 +58,9 @@
   X(MetallicConstant,                 metallic_constant,                      float,          0.f,                        1.f,                       0.f) \
   X(EmissiveColorConstant,            emissive_color_constant,                Vector3,        Vector3(0.f),               Vector3(1.f),              Vector3(1.0f, 0.1f, 0.1f)) \
   X(EnableEmission,                   enable_emission,                        bool,           false,                      true,                      false) \
+  X(EmissiveAlphaMask,                emissive_alpha_mask,                    bool,           false,                      true,                      false) \
+  X(EmissiveAlphaInvert,              emissive_alpha_invert,                  bool,           false,                      true,                      false) \
+  X(EmissiveColorTint,                emissive_color_tint,                    Vector3,        Vector3(0.f),               Vector3(10.f),             Vector3(1.0f, 1.0f, 1.0f)) \
   X(SpriteSheetRows,                  sprite_sheet_rows,                      uint8_t,        0,                          255,                       0) \
   X(SpriteSheetCols,                  sprite_sheet_cols,                      uint8_t,        0,                          255,                       0) \
   X(SpriteSheetFPS,                   sprite_sheet_fps,                       uint8_t,        0,                          255,                       0) \
