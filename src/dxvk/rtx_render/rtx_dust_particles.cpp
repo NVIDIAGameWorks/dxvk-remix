@@ -95,7 +95,6 @@ namespace dxvk {
         ImGui::DragFloat("Maximum Life", &maxParticleLifeObject(), 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
         ImGui::DragFloat("Minimum Size", &minParticleSizeObject(), 0.01f, 1.f, 50.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
         ImGui::DragFloat("Maximum Size", &maxParticleSizeObject(), 0.01f, 1.f, 50.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::DragFloat("Opacity", &opacityObject(), 0.01f, 0.f, 1.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
       }
 
       if (ImGui::CollapsingHeader("Looks", ImGuiTreeNodeFlags_CollapsingHeader)) {
