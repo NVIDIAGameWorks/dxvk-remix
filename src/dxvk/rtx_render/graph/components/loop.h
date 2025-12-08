@@ -41,7 +41,7 @@ namespace components {
 
 #define LIST_OUTPUTS(X) \
   X(RtComponentPropertyType::NumberOrVector, 0.0f, loopedValue, "Looped Value", "The value with looping applied.") \
-  X(RtComponentPropertyType::Bool, false, isReversing, "Is Reversing", "True if the value is in the reverse phase of ping pong looping. If passing `loopedValue` to an `interpolateFloat` component, hook this up to `shouldReverse` from that component.")
+  X(RtComponentPropertyType::Bool, false, isReversing, "Is Reversing", "True if the value is in the reverse phase of ping pong looping. If passing `loopedValue` to a `Remap` component, hook this up to `shouldReverse` from that component.")
 
 // Manually declaring the class to support templating
 template <RtComponentPropertyType valuePropertyType>
