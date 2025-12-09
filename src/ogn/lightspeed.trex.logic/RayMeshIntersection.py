@@ -19,4 +19,4 @@ class RayMeshIntersection:
     def on_connection_type_resolve(node) -> None:
         """Resolve flexible types based on connected attribute types."""
         # Valid type combinations for this component:
-        # Combination 1: intersectionType=uint, intersects=bool, rayDirection=float[3], rayOrigin=float[3], target=target
+        # Combination 1: intersectionType=token, intersects=bool, rayDirection=float[3], rayOrigin=float[3], target=target

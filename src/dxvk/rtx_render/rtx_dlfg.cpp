@@ -693,7 +693,7 @@ namespace dxvk {
           // if we tried present metering and it failed, fall back to CPU pacing
           if (presentMetering.presentConfigFeedback != 0) {
             usePresentMetering = false;
-            Logger::warn("[DxvkDLFGPresenter] We tried to present with flip metering and it failed - falling back to CPU pacing for this frame");
+            ONCE(Logger::warn("[DxvkDLFGPresenter] We tried to present with flip metering and it failed - falling back to CPU pacing for this frame. This only prints once per session. The failure may be transient."));
           }
         }
 

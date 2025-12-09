@@ -16,6 +16,12 @@
         "description": ["The second value to compare."],
         "type": ["float", "float[2]", "float[3]", "float[4]"],
         "uiName": "B"
+      },
+      "tolerance": {
+        "description": ["The tolerance for rounding errors. Math operations with floating point values are not exact, so equality comparisons should allow for slightly different values. If the difference between A and B is less than Tolerance, the result will be true."],
+        "type": "float",
+        "default": 0.000010,
+        "uiName": "Tolerance"
       }
     },
     "outputs": {

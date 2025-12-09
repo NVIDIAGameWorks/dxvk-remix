@@ -57,7 +57,7 @@ std::string propertyTypeToOgnType(RtComponentPropertyType type) {
     case RtComponentPropertyType::Float2: return "float[2]";
     case RtComponentPropertyType::Float3: return "float[3]";
     case RtComponentPropertyType::Float4: return "float[4]";
-    case RtComponentPropertyType::Enum: return "uint";
+    case RtComponentPropertyType::Enum: return "token";
     case RtComponentPropertyType::String: return "token";
     case RtComponentPropertyType::AssetPath: return "token";
     case RtComponentPropertyType::Hash: return "token";
@@ -114,6 +114,15 @@ std::string getFlexiblePropertyTypeUnion(const ComponentSpecVariantMap& variants
   // Build JSON array string
   if (uniqueTypes.empty()) {
     return "";
+  }
+
+  if (uniqueTypes.size() == 1) {
+    return "\"" + *uniqueTypes.begin() + "\"";
+  }
+
+  if (uniqueTypes.find("target") != uniqueTypes.end()) {
+    // Target is special, and cannot be contained in a union type - so just output `any`.
+    return "\"any\"";
   }
   
   std::string result = "[";
@@ -519,7 +528,7 @@ bool writePythonStub(const RtComponentSpec* spec, RtComponentType componentType,
     std::vector<std::string> flexibleInputs, flexibleOutputs;
     for (const auto& prop : spec->properties) {
       if (prop.type != prop.declaredType) {  // It's a flexible type
-        if (prop.ioType == RtComponentPropertyIOType::Input || prop.ioType == RtComponentPropertyIOType::State) {
+        if (prop.ioType == RtComponentPropertyIOType::Input) {
           flexibleInputs.push_back(prop.name);
         } else if (prop.ioType == RtComponentPropertyIOType::Output) {
           flexibleOutputs.push_back(prop.name);

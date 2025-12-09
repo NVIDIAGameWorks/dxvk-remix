@@ -211,8 +211,16 @@ RtGraphState GraphUsdParser::parseGraph(AssetReplacements& replacements, const p
             if (iter == topology.propertyPathHashToIndexMap.end()) {
               Logger::err(str::format("Property ", propertyPath.GetString(), " has a connection to property ", sourcePath, " that has not been loaded yet.  This may be because that prim failed to load, or it may indicate an error in the topological sort."));
             } else {
-              propertyIndices.push_back(iter->second);
-              hasConnection = true;
+              // Verify that the source property type matches the target property type
+              RtComponentPropertyType sourceType = topology.propertyTypes[iter->second];
+              if (sourceType != property.type) {
+                Logger::err(str::format("Property ", propertyPath.GetString(), " (type ", property.type, 
+                                        ") has a connection to property ", sourcePath, " (type ", sourceType, 
+                                        ") with mismatched types. Connection ignored."));
+              } else {
+                propertyIndices.push_back(iter->second);
+                hasConnection = true;
+              }
             }
           }
         }
@@ -230,8 +238,16 @@ RtGraphState GraphUsdParser::parseGraph(AssetReplacements& replacements, const p
           if (iter == topology.propertyPathHashToIndexMap.end()) {
             Logger::err(str::format("Property ", propertyPath.GetString(), " has a connection to property ", connectionPath, " that has not been loaded yet.  This may be because that prim failed to load, or it may indicate an error in the topological sort."));
           } else {
-            propertyIndices.push_back(iter->second);
-            hasConnection = true;
+            // Verify that the source property type matches the target property type
+            RtComponentPropertyType sourceType = topology.propertyTypes[iter->second];
+            if (sourceType != property.type) {
+              Logger::err(str::format("Property ", propertyPath.GetString(), " (type ", property.type, 
+                                      ") has a connection to property ", connectionPath, " (type ", sourceType, 
+                                      ") with mismatched types. Connection ignored."));
+            } else {
+              propertyIndices.push_back(iter->second);
+              hasConnection = true;
+            }
           }
         }
         if (!hasConnection) {
@@ -265,18 +281,24 @@ RtGraphState GraphUsdParser::parseGraph(AssetReplacements& replacements, const p
 
 std::vector<GraphUsdParser::DAGNode> GraphUsdParser::getDAGSortedNodes(const pxr::UsdPrim& graphPrim) {
   ScopedCpuProfileZone();
+  static const pxr::TfToken omniGraphNodeType("OmniGraphNode");
   std::unordered_map<pxr::SdfPath, size_t, pxr::SdfPath::Hash> pathToIndexMap;
   std::vector<DAGNode> nodes;
   pxr::UsdPrimSiblingRange children = graphPrim.GetFilteredChildren(pxr::UsdPrimIsActive);
   size_t numNodes = 0;
   // UsdPrimSiblingRange has no size() method, so precalculate the size to avoid reallocations.
   for (auto child : children) {
-    numNodes++;
+    if (child.GetTypeName() == omniGraphNodeType) {
+      numNodes++;
+    }
   }
   nodes.reserve(numNodes);
   pathToIndexMap.reserve(numNodes);
   // First, make a list of all the nodes in the graph:
   for (auto child : children) {
+    if (child.GetTypeName() != omniGraphNodeType) {
+      continue;
+    }
     const RtComponentSpec* componentSpec = getComponentSpecForPrim(child);
     if (componentSpec == nullptr) {
       continue;
@@ -297,20 +319,43 @@ std::vector<GraphUsdParser::DAGNode> GraphUsdParser::getDAGSortedNodes(const pxr
       
       // Check for connections on the resolved property path (current name or strongest old name)
       pxr::SdfPath propertyPath = resolvePropertyPath(nodePrim, property);
-      pxr::UsdAttribute attr = nodePrim.GetAttributeAtPath(propertyPath);
       
-      pxr::SdfPath connection;
-      if (getLastValidConnection(attr, connection)) {
-        auto iter = pathToIndexMap.find(connection.GetPrimPath());
-        if (iter == pathToIndexMap.end()) {
-          Logger::err(str::format("Node ", node.path.GetString(), " has a connection to a prim that exists but was not loaded (may have failed to load earlier in the process): ", connection.GetPrimPath().GetString()));
-          continue;
+      // Handle Prim type properties (use relationships) differently from attribute connections
+      if (property.type == RtComponentPropertyType::Prim) {
+        pxr::UsdRelationship rel = nodePrim.GetRelationshipAtPath(propertyPath);
+        if (rel && rel.IsValid()) {
+          pxr::SdfPathVector targets;
+          rel.GetTargets(&targets);
+          if (targets.size() > 1) {
+            pxr::SdfPath sourcePath = targets.back();
+            auto iter = pathToIndexMap.find(sourcePath.GetPrimPath());
+            if (iter == pathToIndexMap.end()) {
+              Logger::err(str::format("Node ", node.path.GetString(), " has a connection to a prim that exists but was not loaded (may have failed to load earlier in the process): ", sourcePath.GetPrimPath().GetString()));
+              continue;
+            }
+            size_t dependentIndex = iter->second;
+            if (node.dependents.find(dependentIndex) == node.dependents.end()) {
+              nodes[dependentIndex].dependencyCount++;
+              node.dependents.insert(dependentIndex);
+            }
+          }
         }
-        size_t dependentIndex = iter->second;
-        // Note: multiple properties can link the same node, so we need to avoid adding duplicate edges.
-        if (node.dependents.find(dependentIndex) == node.dependents.end()) {
-          nodes[dependentIndex].dependencyCount++;
-          node.dependents.insert(dependentIndex);
+      } else {
+        pxr::UsdAttribute attr = nodePrim.GetAttributeAtPath(propertyPath);
+        
+        pxr::SdfPath connection;
+        if (getLastValidConnection(attr, connection)) {
+          auto iter = pathToIndexMap.find(connection.GetPrimPath());
+          if (iter == pathToIndexMap.end()) {
+            Logger::err(str::format("Node ", node.path.GetString(), " has a connection to a prim that exists but was not loaded (may have failed to load earlier in the process): ", connection.GetPrimPath().GetString()));
+            continue;
+          }
+          size_t dependentIndex = iter->second;
+          // Note: multiple properties can link the same node, so we need to avoid adding duplicate edges.
+          if (node.dependents.find(dependentIndex) == node.dependents.end()) {
+            nodes[dependentIndex].dependencyCount++;
+            node.dependents.insert(dependentIndex);
+          }
         }
       }
     }

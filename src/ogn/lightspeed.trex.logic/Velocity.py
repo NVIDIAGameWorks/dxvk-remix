@@ -26,23 +26,17 @@ class Velocity:
 
         # Get attributes
         input_input = node.get_attribute("inputs:input")
-        input_previousValue = node.get_attribute("inputs:previousValue")
         output_velocity = node.get_attribute("outputs:velocity")
 
         # Get current types of connected attributes
         type_input = input_input.get_resolved_type()
-        type_previousValue = input_previousValue.get_resolved_type()
 
         # Check all valid type combinations and resolve output types
-        if (type_input == og.Type(og.BaseDataType.FLOAT) and 
-            type_previousValue == og.Type(og.BaseDataType.FLOAT)):
+        if (type_input == og.Type(og.BaseDataType.FLOAT)):
             output_velocity.set_resolved_type(og.Type(og.BaseDataType.FLOAT))
-        elif (type_input == og.Type(og.BaseDataType.FLOAT, 2) and 
-            type_previousValue == og.Type(og.BaseDataType.FLOAT, 2)):
+        elif (type_input == og.Type(og.BaseDataType.FLOAT, 2)):
             output_velocity.set_resolved_type(og.Type(og.BaseDataType.FLOAT, 2))
-        elif (type_input == og.Type(og.BaseDataType.FLOAT, 3) and 
-            type_previousValue == og.Type(og.BaseDataType.FLOAT, 3)):
+        elif (type_input == og.Type(og.BaseDataType.FLOAT, 3)):
             output_velocity.set_resolved_type(og.Type(og.BaseDataType.FLOAT, 3))
-        elif (type_input == og.Type(og.BaseDataType.FLOAT, 4) and 
-            type_previousValue == og.Type(og.BaseDataType.FLOAT, 4)):
+        elif (type_input == og.Type(og.BaseDataType.FLOAT, 4)):
             output_velocity.set_resolved_type(og.Type(og.BaseDataType.FLOAT, 4))
