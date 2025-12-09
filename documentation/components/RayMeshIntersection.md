@@ -7,7 +7,7 @@ Tests if a ray intersects with a mesh\.<br/><br/>Performs a ray\-mesh intersecti
 - **Name:** `RayMeshIntersection`
 - **UI Name:** Ray Mesh Intersection
 - **Version:** 1
-- **Categories:** Transform
+- **Categories:** Sense
 
 ## Input Properties
 

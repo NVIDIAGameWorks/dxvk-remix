@@ -36,7 +36,6 @@ This documentation provides detailed information about all available components 
 | [Equal To](EqualTo.md) | Returns true if A is equal to B, false otherwise\.<br/><br/>For floating point values, this performs exact eq\.\.\. | 1 |
 | [Floor](Floor.md) | Rounds a value down to the previous integer\.<br/><br/>Returns the largest integer less than or equal to the \.\.\. | 1 |
 | [Greater Than](GreaterThan.md) | Returns true if A is greater than B, false otherwise\. | 1 |
-| [Interpolate Float](InterpolateFloat.md) | Smoothly maps a value from one range to another range with customizable easing curves\.<br/><br/>Interpolates\.\.\. | 1 |
 | [Invert](Invert.md) | Outputs 1 minus the input value\.<br/><br/>Calculates 1 \- input\. Useful for inverting normalized values \(e\.g\.\.\.\. | 1 |
 | [Less Than](LessThan.md) | Returns true if A is less than B, false otherwise\. | 1 |
 | [Loop](Loop.md) | Wraps a number back into a range when it goes outside the boundaries\.<br/><br/>Applies looping behavior to a\.\.\. | 1 |
@@ -45,7 +44,6 @@ This documentation provides detailed information about all available components 
 | [Multiply](Multiply.md) | Multiplies two values together\.<br/><br/>Vector \* Number will multiply all components of the vector by the n\.\.\. | 1 |
 | [Normalize](Normalize.md) | Normalizes a vector to have length 1\.<br/><br/>Divides the vector by its length to produce a unit vector \(le\.\.\. | 1 |
 | [Previous Frame Value](PreviousFrameValue.md) | Outputs the value from the previous frame\.<br/><br/>Stores the input value and outputs it on the next frame\.\.\.\. | 1 |
-| [Ray Mesh Intersection](RayMeshIntersection.md) | Tests if a ray intersects with a mesh\.<br/><br/>Performs a ray\-mesh intersection test\. Currently supports bo\.\.\. | 1 |
 | [Remap](Remap.md) | Smoothly maps a value from one range to another range with customizable easing curves\.<br/><br/>Remaps a val\.\.\. | 1 |
 | [Round](Round.md) | Rounds a value to the nearest integer\.<br/><br/>Rounds to the nearest whole number\. For example: 1\.4 becomes\.\.\. | 1 |
 | [Select](Select.md) | Selects between two values based on a boolean condition\.<br/><br/>If the condition is true, outputs Input A\.\.\.\. | 1 |
@@ -66,6 +64,7 @@ This documentation provides detailed information about all available components 
 | [Light Hash Checker](LightHashChecker.md) | Detects if a specific light is currently active in the scene\.<br/><br/>Checks if a specific light hash is pr\.\.\. | 1 |
 | [Mesh Hash Checker](MeshHashChecker.md) | Detects if a specific mesh is currently being drawn in the scene\.<br/><br/>Checks if a specific mesh hash wa\.\.\. | 1 |
 | [Mesh Proximity](MeshProximity.md) | Measures how far a point is from a mesh's bounding box\. This can be used to determine if the camera \.\.\. | 1 |
+| [Ray Mesh Intersection](RayMeshIntersection.md) | Tests if a ray intersects with a mesh\.<br/><br/>Performs a ray\-mesh intersection test\. Currently supports bo\.\.\. | 1 |
 | [Read Bone Transform](ReadBoneTransform.md) | Reads the transform \(position, rotation, scale\) of a bone from a skinned mesh\.<br/><br/>Extracts the transfo\.\.\. | 1 |
 | [Read Transform](ReadTransform.md) | Reads the transform \(position, rotation, scale\) of a mesh or light in world space\.<br/><br/>Extracts the tra\.\.\. | 1 |
 | [Rtx Option Layer Sensor](RtxOptionLayerSensor.md) | Reads the state of a configuration layer\.<br/><br/>Outputs whether a given RtxOptionLayer is enabled, along \.\.\. | 1 |
@@ -102,8 +101,8 @@ This documentation provides detailed information about all available components 
 
 ## Statistics
 
-- **Total Components:** 69
-- **Categorized Components:** 69
+- **Total Components:** 68
+- **Categorized Components:** 68
 - **Categories:** 5
 
 ---

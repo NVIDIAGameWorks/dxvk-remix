@@ -1,6 +1,6 @@
 # Remap
 
-Smoothly maps a value from one range to another range with customizable easing curves\.<br/><br/>Remaps a value from an input range to an output range with optional easing\. Values will be normalized \(mapped from input range to 0\-1\), eased \(changed from linear to some curve\), then mapped \(0\-1 value to output range\)\.<br/><br/>Note: Input values outside of input range are valid, and easing can lead to the output value being outside of the output range even when input is inside the input range\.<br/><br/>Inverted ranges \(max < min\) are supported, but the results are undefined and may change without warning\.
+Smoothly maps a value from one range to another range with customizable easing curves\.<br/><br/>Remaps a value from an input range to an output range with optional easing\. Values will be normalized \(mapped from input range to 0\-1\), eased \(changed from linear to some curve\), then mapped \(0\-1 value to output range\)\.<br/><br/>Note: Input values outside of input range are valid, and easing can lead to the output value being outside of the output range even when input is inside the input range\.<br/><br/>Inverted ranges \(max < min\) are supported\.
 
 ## Component Information
 

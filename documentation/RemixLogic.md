@@ -12,13 +12,17 @@ By connecting Components in different ways, you can create sophisticated behavio
 
 **Important:** Components must be connected in a way that has a clear starting point and doesn't create loops - each Component can only use information from Components that come before it in the chain.
 
+# Creating Graphs
+
+This page is primarily intended for people who wish to create their own custom components in c++. If this is your first introduction to Remix Logic, you should probably see the [Remix Toolkit documentation](https://docs.omniverse.nvidia.com/kit/docs/rtx_remix/latest/docs/howto/learning-logic.html) for a high level overview and graph creation tutorials.
+
 # Component List
 
 Documentation for each component is available here: [Component List](components/index.md)
 
 # Types of Components
 
-There are three major categories of components:
+There are four major categories of components:
 
 ## Sense Components
 
@@ -53,9 +57,9 @@ These components alter the renderable state.
 * Swap which replacements are applied to a given mesh hash
 * Alter the time multiplier (pausing or slowing all animations)
 
-# Creating Graphs
+## Const Components
 
-Graph creation should be done in the Remix Toolkit.  The graph editor there is still in development.
+These components simply output a single constant value of a given type.  This can be useful for sharing a value between multiple components, but primarily exist as a way to set properties with a flexible type.
 
 # Component Data Types
 
@@ -63,19 +67,18 @@ The component system supports the following data types as defined in `rtx_graph_
 
 | Type | C++ Type | Description | Example Values |
 |------|----------|-------------|----------------|
-| `Bool` | `uint8_t` | True or False boolean values (stored as uint8_t for variant compatibility) | `true`, `false` |
-| `Float` | `float` | A number, including decimal places. Single precision floating point | `1.0f`, `-3.14f` |
+| `Bool` | `uint32_t` | True or False boolean values (stored as uint8_t for variant compatibility) | `true`, `false` |
+| `Float` | `float` | A number, including decimal places. Single precision floating point | `1.0`, `-3.14` |
 | `Float2` | `Vector2` | 2D vector of floats | `Vector2(1.0f, 2.0f)` |
 | `Float3` | `Vector3` | 3D vector of floats | `Vector3(1.0f, 2.0f, 3.0f)` |
-| `Color3` | `Vector3` | RGB color (3D vector) | `Vector3(1.0f, 0.5f, 0.0f)` |
-| `Color4` | `Vector4` | RGBA color (4D vector) | `Vector4(1.0f, 0.5f, 0.0f, 1.0f)` |
-| `Uint32` | `uint32_t` | A positive whole number | `42`, `1000` |
+| `Float4` | `Vector4` | 3D vector of floats | `Vector4(1.0f, 2.0f, 3.0f)` |
+| `Enum` | `uint32_t` | A selection from a limited list of options | `InterpolationType::Linear`, `LoopingType::Loop` |
 | `String` | `std::string` | Some text | `"hello"`, `"world"` |
 | `AssetPath` | `std::string` | Path to an asset file | `"textures/myfile.dds"` |
-| `Hash` | `uint64_t` | 64-bit hash value | `0x123456789ABCDEF0ULL` |
-| `Prim` | `uint32_t` | USD prim identifier | `101`, `102` |
-| `Number` | `std::variant<float, int32_t, uint32_t, uint64_t>` | Flexible numeric type (resolved at load time) | `1.0f`, `42` |
-| `NumberOrVector` | `std::variant<float, Vector2, Vector3, Vector4, int32_t, uint32_t, uint64_t>` | Flexible numeric or vector type (resolved at load time) | `1.0f`, `Vector2(1.0f, 2.0f)` |
+| `Hash` | `uint64_t` | 64-bit hash value | `0x123456789ABCDEF0` |
+| `Prim` | `PrimTarget` | Identifies another object - a mesh, light, material, particle effect, graph, etc. | `</RootNode/meshes/mesh_123456789ABCDEF0/mesh>` |
+| `NumberOrVector` | `std::variant<float, Vector2, Vector3, Vector4>` | Flexible numeric or vector type (resolved at load time) | `1.0f`, `Vector2(1.0f, 2.0f)` |
+| `Any` | `std::variant<...>` | Flexible type that supports all non-flexible types | `1.0f`, `true`, `"textures/myfile.dds"` |
 
 Components with flexible types may not accept all combinations of those types - i.e. you cannot check if a Float is greater than a Vector3.
 
@@ -134,6 +137,9 @@ Available options include:
 * `property.optional` - Whether the component functions without this property being set
 * `property.oldUsdNames` - For backwards compatibility when renaming properties
 * `property.enumValues` - For displaying as an enum in the UI
+* `property.isSettableOutput` - Used for `const` components, use this on an Input property to create an output property which can be set in the toolkit's property panel.
+* `property.treatAsColor` - If set on a Float3 or Float4, this indicates to the toolkit that a color picking widget should be displayed for this property.
+* `property.allowedPrimTypes` - Allows for filtering of `Prim` properties, if the target must be of a specific type (i.e. `PrimType::UsdGeomMesh`  or `PrimType::OmniGraph`)
 
 ### Enum Values Example
 

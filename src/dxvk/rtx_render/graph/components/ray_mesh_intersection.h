@@ -59,7 +59,7 @@ inline const auto kIntersectionTypeEnumValues = RtComponentPropertySpec::EnumPro
 REMIX_COMPONENT( \
   /* the Component name */ RayMeshIntersection, \
   /* the UI name */        "Ray Mesh Intersection", \
-  /* the UI categories */  "Transform", \
+  /* the UI categories */  "Sense", \
   /* the doc string */     "Tests if a ray intersects with a mesh.\n\n" \
     "Performs a ray-mesh intersection test. Currently supports bounding box intersection tests. " \
     "Returns true if the ray intersects the mesh's bounding box.", \

@@ -67,9 +67,10 @@ private:
       "Values will be normalized (mapped from input range to 0-1), eased (changed from linear to some curve), then mapped (0-1 value to output range).\n\n" \
       "Note: Input values outside of input range are valid, and easing can lead to the output value being " \
       "outside of the output range even when input is inside the input range.\n\n" \
-      "Inverted ranges (max < min) are supported, but the results are undefined and may change without warning.",
+      "Inverted ranges (max < min) are supported.",
     /* the version number */ 1,
-    LIST_INPUTS, LIST_STATES, LIST_OUTPUTS
+    LIST_INPUTS, LIST_STATES, LIST_OUTPUTS,
+    spec.oldNames = {"InterpolateFloat"} // TODO: remove this after new versions of the demo are shared.
   )
   void Remap::updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
     for (size_t i = start; i < end; i++) {
@@ -80,7 +81,11 @@ private:
         normalizedValue = 0.0f; // Avoid division by zero
       } else {
         if (m_clampInput[i]) {
-          normalizedValue = clamp(normalizedValue, m_inputMin[i], m_inputMax[i]);
+          if (m_inputMin[i] > m_inputMax[i]) {
+            normalizedValue = clamp(normalizedValue, m_inputMax[i], m_inputMin[i]);
+          } else {
+            normalizedValue = clamp(normalizedValue, m_inputMin[i], m_inputMax[i]);
+          }
         }
         normalizedValue = (normalizedValue - m_inputMin[i]) / (m_inputMax[i] - m_inputMin[i]);
       }

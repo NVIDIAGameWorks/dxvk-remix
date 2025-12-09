@@ -5,7 +5,7 @@
     "uiName": "Ray Mesh Intersection",
     "language": "python",
     "categoryDefinitions": "config/CategoryDefinition.json",
-    "categories": "Transform",
+    "categories": "Sense",
     "inputs": {
       "rayOrigin": {
         "description": ["The origin point of the ray in world space."],
