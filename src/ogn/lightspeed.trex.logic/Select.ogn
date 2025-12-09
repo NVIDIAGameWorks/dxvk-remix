@@ -15,19 +15,19 @@
       },
       "inputA": {
         "description": ["The value to output when condition is true."],
-        "type": ["bool", "float", "float[2]", "float[3]", "float[4]", "target", "token", "uint"],
+        "type": "any",
         "uiName": "Input A"
       },
       "inputB": {
         "description": ["The value to output when condition is false."],
-        "type": ["bool", "float", "float[2]", "float[3]", "float[4]", "target", "token", "uint"],
+        "type": "any",
         "uiName": "Input B"
       }
     },
     "outputs": {
       "output": {
         "description": ["The selected value based on the condition."],
-        "type": ["bool", "float", "float[2]", "float[3]", "float[4]", "target", "token", "uint"],
+        "type": "any",
         "uiName": "Output"
       }
     }

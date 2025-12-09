@@ -42,7 +42,7 @@ REMIX_COMPONENT( \
   /* the UI name */        "Mesh Hash Checker", \
   /* the UI categories */  "Sense", \
   /* the doc string */     "Detects if a specific mesh is currently being drawn in the scene.\n\n" \
-    "Checks if a specific mesh hash was processed in the current frame.", \
+    "This checks all meshes that the game sends to Remix in the current frame, which will probably include meshes that are off camera or occluded.", \
   /* the version number */ 1, \
   LIST_INPUTS, LIST_STATES, LIST_OUTPUTS);
 

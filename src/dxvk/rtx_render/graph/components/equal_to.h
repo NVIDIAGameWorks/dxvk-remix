@@ -28,9 +28,20 @@
 namespace dxvk {
 namespace components {
 
+namespace {
+  constexpr bool isVectorPropertyType(RtComponentPropertyType type) {
+    return type == RtComponentPropertyType::Float2 ||
+           type == RtComponentPropertyType::Float3 ||
+           type == RtComponentPropertyType::Float4;
+  }
+}
+
 #define LIST_INPUTS(X) \
   X(RtComponentPropertyType::NumberOrVector, 0, a, "A","The first value to compare.") \
-  X(RtComponentPropertyType::NumberOrVector, 0, b, "B","The second value to compare.")
+  X(RtComponentPropertyType::NumberOrVector, 0, b, "B","The second value to compare.") \
+  X(RtComponentPropertyType::Float, 0.00001f, tolerance, "Tolerance", "The tolerance for rounding errors."\
+    " Math operations with floating point values are not exact, so equality comparisons should allow for slightly different values." \
+    " If the difference between A and B is less than Tolerance, the result will be true.")
 
 #define LIST_STATES(X)
 
@@ -42,6 +53,7 @@ namespace components {
 template <RtComponentPropertyType aPropertyType, RtComponentPropertyType bPropertyType>
 class EqualTo : public RtRegisteredComponentBatch<EqualTo<aPropertyType, bPropertyType>> {
 private:
+  static constexpr RtComponentPropertyType tolerancePropertyType = RtComponentPropertyType::Float;
   static constexpr RtComponentPropertyType resultPropertyType = RtComponentPropertyType::Bool;
   REMIX_COMPONENT_BODY(
     /* the Component class name */ EqualTo,
@@ -58,7 +70,14 @@ private:
       // This is needed to allow things like Vector3 == int32_t, etc.
       #pragma warning(push)
       #pragma warning(disable: 4244)
-      m_result[i] = m_a[i] == m_b[i];
+      auto diff = m_a[i] - m_b[i];
+      if constexpr (isVectorPropertyType(aPropertyType)) {
+        // For vectors, use length squared to avoid sqrt
+        auto tolSqr = m_tolerance[i] * m_tolerance[i];
+        m_result[i] = lengthSqr(diff) < tolSqr;
+      } else {
+        m_result[i] = std::abs(diff) < m_tolerance[i];
+      }
       #pragma warning(pop)
     }
   }

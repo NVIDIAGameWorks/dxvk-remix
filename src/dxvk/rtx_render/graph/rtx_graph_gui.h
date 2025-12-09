@@ -67,6 +67,7 @@ private:
   std::vector<ComponentInfo> m_components;
   std::array<char, 256> m_instanceFilter = {};
   float m_componentListHeight = kDefaultComponentListHeight;
+  bool m_selectedGraphIsEmpty = false;
 
   // Helper functions
   void showGraphSelector(const SceneManager& sceneManager);

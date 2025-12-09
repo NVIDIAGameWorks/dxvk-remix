@@ -24,9 +24,8 @@ class Select:
         # Combination 3: condition=bool, inputA=float[2], inputB=float[2], output=float[2]
         # Combination 4: condition=bool, inputA=float[3], inputB=float[3], output=float[3]
         # Combination 5: condition=bool, inputA=float[4], inputB=float[4], output=float[4]
-        # Combination 6: condition=bool, inputA=uint, inputB=uint, output=uint
-        # Combination 7: condition=bool, inputA=token, inputB=token, output=token
-        # Combination 8: condition=bool, inputA=target, inputB=target, output=target
+        # Combination 6: condition=bool, inputA=token, inputB=token, output=token
+        # Combination 7: condition=bool, inputA=target, inputB=target, output=target
 
         # Get attributes
         input_inputA = node.get_attribute("inputs:inputA")
@@ -53,9 +52,6 @@ class Select:
         elif (type_inputA == og.Type(og.BaseDataType.FLOAT, 4) and 
             type_inputB == og.Type(og.BaseDataType.FLOAT, 4)):
             output_output.set_resolved_type(og.Type(og.BaseDataType.FLOAT, 4))
-        elif (type_inputA == og.Type(og.BaseDataType.UINT) and 
-            type_inputB == og.Type(og.BaseDataType.UINT)):
-            output_output.set_resolved_type(og.Type(og.BaseDataType.UINT))
         elif (type_inputA == og.Type(og.BaseDataType.TOKEN) and 
             type_inputB == og.Type(og.BaseDataType.TOKEN)):
             output_output.set_resolved_type(og.Type(og.BaseDataType.TOKEN))

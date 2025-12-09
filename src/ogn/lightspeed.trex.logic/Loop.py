@@ -19,10 +19,10 @@ class Loop:
     def on_connection_type_resolve(node) -> None:
         """Resolve flexible types based on connected attribute types."""
         # Valid type combinations for this component:
-        # Combination 1: isReversing=bool, loopedValue=float, loopingType=uint, maxRange=float, minRange=float, value=float
-        # Combination 2: isReversing=bool, loopedValue=float[2], loopingType=uint, maxRange=float[2], minRange=float[2], value=float[2]
-        # Combination 3: isReversing=bool, loopedValue=float[3], loopingType=uint, maxRange=float[3], minRange=float[3], value=float[3]
-        # Combination 4: isReversing=bool, loopedValue=float[4], loopingType=uint, maxRange=float[4], minRange=float[4], value=float[4]
+        # Combination 1: isReversing=bool, loopedValue=float, loopingType=token, maxRange=float, minRange=float, value=float
+        # Combination 2: isReversing=bool, loopedValue=float[2], loopingType=token, maxRange=float[2], minRange=float[2], value=float[2]
+        # Combination 3: isReversing=bool, loopedValue=float[3], loopingType=token, maxRange=float[3], minRange=float[3], value=float[3]
+        # Combination 4: isReversing=bool, loopedValue=float[4], loopingType=token, maxRange=float[4], minRange=float[4], value=float[4]
 
         # Get attributes
         input_value = node.get_attribute("inputs:value")

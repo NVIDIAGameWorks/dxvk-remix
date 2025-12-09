@@ -1222,43 +1222,73 @@ void testEqualTo() {
   
   int testedCount = 0;
   
-  // Test Float variant
+  // Test Float variant with tolerance
   {
     std::unordered_map<std::string, RtComponentPropertyType> desiredTypes = {
       {"a", RtComponentPropertyType::Float},
       {"b", RtComponentPropertyType::Float}
     };
     std::vector<RtComponentPropertyVector> props;
-    props.push_back(std::vector<float>{5.0f, 3.0f, 2.0f});   // a
-    props.push_back(std::vector<float>{5.0f, 4.0f, 2.0f});   // b
-    props.push_back(std::vector<uint32_t>{0, 0, 0});         // result
+    props.push_back(std::vector<float>{5.0f, 3.0f, 2.0f, 1.0f});      // a
+    props.push_back(std::vector<float>{5.0f, 4.0f, 2.0f, 1.05f});     // b
+    props.push_back(std::vector<float>{0.00001f, 0.00001f, 0.00001f, 0.1f});  // tolerance
+    props.push_back(std::vector<uint32_t>{0, 0, 0, 0});               // result
     
-    auto& result = testComponentVariant<uint32_t>("lightspeed.trex.logic.EqualTo", desiredTypes, props, 2, 0, 3);
-    if (result[0] != 1 || result[1] != 0 || result[2] != 1) {
+    auto& result = testComponentVariant<uint32_t>("lightspeed.trex.logic.EqualTo", desiredTypes, props, 3, 0, 4);
+    // [0]: 5.0 == 5.0 (within tiny tolerance) -> true
+    // [1]: 3.0 != 4.0 (diff=1.0, outside tiny tolerance) -> false
+    // [2]: 2.0 == 2.0 (within tiny tolerance) -> true
+    // [3]: 1.0 ~= 1.05 (diff=0.05, within 0.1 tolerance) -> true
+    if (result[0] != 1 || result[1] != 0 || result[2] != 1 || result[3] != 1) {
       throw DxvkError("EqualTo<Float, Float> failed");
     }
     testedCount++;
   }
   
-  // Test Float2 variant
+  // Test Float variant tolerance boundary
+  {
+    std::unordered_map<std::string, RtComponentPropertyType> desiredTypes = {
+      {"a", RtComponentPropertyType::Float},
+      {"b", RtComponentPropertyType::Float}
+    };
+    std::vector<RtComponentPropertyVector> props;
+    props.push_back(std::vector<float>{0.0f, 0.0f});       // a
+    props.push_back(std::vector<float>{0.09f, 0.11f});     // b
+    props.push_back(std::vector<float>{0.1f, 0.1f});       // tolerance
+    props.push_back(std::vector<uint32_t>{0, 0});          // result
+    
+    auto& result = testComponentVariant<uint32_t>("lightspeed.trex.logic.EqualTo", desiredTypes, props, 3, 0, 2);
+    // [0]: |0.0 - 0.09| = 0.09 < 0.1 -> true
+    // [1]: |0.0 - 0.11| = 0.11 >= 0.1 -> false
+    if (result[0] != 1 || result[1] != 0) {
+      throw DxvkError("EqualTo<Float, Float> tolerance boundary failed");
+    }
+    testedCount++;
+  }
+  
+  // Test Float2 variant with tolerance
   {
     std::unordered_map<std::string, RtComponentPropertyType> desiredTypes = {
       {"a", RtComponentPropertyType::Float2},
       {"b", RtComponentPropertyType::Float2}
     };
     std::vector<RtComponentPropertyVector> props;
-    props.push_back(std::vector<Vector2>{Vector2(1.0f, 2.0f), Vector2(3.0f, 4.0f)});  // a
-    props.push_back(std::vector<Vector2>{Vector2(1.0f, 2.0f), Vector2(3.0f, 5.0f)});  // b
-    props.push_back(std::vector<uint32_t>{0, 0});  // result
+    props.push_back(std::vector<Vector2>{Vector2(1.0f, 2.0f), Vector2(3.0f, 4.0f), Vector2(0.0f, 0.0f)});  // a
+    props.push_back(std::vector<Vector2>{Vector2(1.0f, 2.0f), Vector2(3.0f, 5.0f), Vector2(0.05f, 0.05f)});  // b
+    props.push_back(std::vector<float>{0.00001f, 0.00001f, 0.1f});  // tolerance
+    props.push_back(std::vector<uint32_t>{0, 0, 0});  // result
     
-    auto& result = testComponentVariant<uint32_t>("lightspeed.trex.logic.EqualTo", desiredTypes, props, 2, 0, 2);
-    if (result[0] != 1 || result[1] != 0) {
+    auto& result = testComponentVariant<uint32_t>("lightspeed.trex.logic.EqualTo", desiredTypes, props, 3, 0, 3);
+    // [0]: (1,2) == (1,2) -> true
+    // [1]: (3,4) != (3,5) (diff length = 1.0) -> false
+    // [2]: (0,0) ~= (0.05,0.05) (diff length = ~0.07 < 0.1) -> true
+    if (result[0] != 1 || result[1] != 0 || result[2] != 1) {
       throw DxvkError("EqualTo<Float2, Float2> failed");
     }
     testedCount++;
   }
   
-  // Test Float3 variant
+  // Test Float3 variant with tolerance
   {
     std::unordered_map<std::string, RtComponentPropertyType> desiredTypes = {
       {"a", RtComponentPropertyType::Float3},
@@ -1267,16 +1297,17 @@ void testEqualTo() {
     std::vector<RtComponentPropertyVector> props;
     props.push_back(std::vector<Vector3>{Vector3(1.0f, 2.0f, 3.0f), Vector3(4.0f, 5.0f, 6.0f)});  // a
     props.push_back(std::vector<Vector3>{Vector3(1.0f, 2.0f, 3.0f), Vector3(4.0f, 5.0f, 7.0f)});  // b
+    props.push_back(std::vector<float>{0.00001f, 0.00001f});  // tolerance
     props.push_back(std::vector<uint32_t>{0, 0});  // result
     
-    auto& result = testComponentVariant<uint32_t>("lightspeed.trex.logic.EqualTo", desiredTypes, props, 2, 0, 2);
+    auto& result = testComponentVariant<uint32_t>("lightspeed.trex.logic.EqualTo", desiredTypes, props, 3, 0, 2);
     if (result[0] != 1 || result[1] != 0) {
       throw DxvkError("EqualTo<Float3, Float3> failed");
     }
     testedCount++;
   }
   
-  // Test Float4 variant
+  // Test Float4 variant with tolerance
   {
     std::unordered_map<std::string, RtComponentPropertyType> desiredTypes = {
       {"a", RtComponentPropertyType::Float4},
@@ -1285,9 +1316,10 @@ void testEqualTo() {
     std::vector<RtComponentPropertyVector> props;
     props.push_back(std::vector<Vector4>{Vector4(1.0f, 2.0f, 3.0f, 4.0f)});  // a
     props.push_back(std::vector<Vector4>{Vector4(1.0f, 2.0f, 3.0f, 4.0f)});  // b
+    props.push_back(std::vector<float>{0.00001f});  // tolerance
     props.push_back(std::vector<uint32_t>{0});  // result
     
-    auto& result = testComponentVariant<uint32_t>("lightspeed.trex.logic.EqualTo", desiredTypes, props, 2, 0, 1);
+    auto& result = testComponentVariant<uint32_t>("lightspeed.trex.logic.EqualTo", desiredTypes, props, 3, 0, 1);
     if (result[0] != 1) {
       throw DxvkError("EqualTo<Float4, Float4> failed");
     }
