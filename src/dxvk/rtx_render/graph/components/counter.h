@@ -29,7 +29,8 @@ namespace components {
 
 #define LIST_INPUTS(X) \
   X(RtComponentPropertyType::Bool, false, increment, "Increment", "When true, the counter increments by the increment value each frame.") \
-  X(RtComponentPropertyType::Float, 1.0f, incrementValue, "Increment Value", "The value to add to the counter each frame when increment is true.", property.optional = true)
+  X(RtComponentPropertyType::Float, 1.0f, incrementValue, "Increment Value", "The value to add to the counter each frame when increment is true.", property.optional = true) \
+  X(RtComponentPropertyType::Float, 0.0f, defaultValue, "Starting Value", "The initial value of the counter when the component is created.")
 
 #define LIST_STATES(X) \
   X(RtComponentPropertyType::Float, 0.0f, count, "", "The current counter value.")
@@ -37,29 +38,48 @@ namespace components {
 #define LIST_OUTPUTS(X) \
   X(RtComponentPropertyType::Float, 0.0f, value, "Value", "The current counter value.")
 
-REMIX_COMPONENT( \
-  /* the Component name */ Counter, \
-  /* the UI name */        "Counter", \
-  /* the UI categories */  "Transform", \
-  /* the doc string */     "Counts up by a value every frame when a condition is true.\n\n" \
-    "Increments a counter by a specified value every frame that the input bool is true. " \
-    "Useful for tracking how many frames a condition has been active.", \
-  /* the version number */ 1, \
-  LIST_INPUTS, LIST_STATES, LIST_OUTPUTS);
+
+// Manually declaring the class to allow for custom initialize method
+class Counter : public RtRegisteredComponentBatch<Counter> {
+private:
+  REMIX_COMPONENT_GENERATE_PROP_TYPES(LIST_INPUTS, LIST_STATES, LIST_OUTPUTS)
+  REMIX_COMPONENT_BODY(
+    /* the Component class name */ Counter,
+    /* the UI name */        "Counter",
+    /* the UI categories */  "Transform",
+    /* the doc string */     "Counts up by a value every frame when a condition is true.\n\n"
+      "Increments a counter by a specified value every frame that the input bool is true. "
+      "Use `Starting Value` to set the initial counter value. "
+      "Useful for tracking how many frames a condition has been active.",
+    /* the version number */ 1,
+    LIST_INPUTS, LIST_STATES, LIST_OUTPUTS,
+    /* optional arguments: */
+    spec.initialize = initialize; // Initialize callback to set initial value
+  )
+  void updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) final {
+    for (size_t i = start; i < end; i++) {
+      if (m_increment[i]) {
+        m_count[i] += m_incrementValue[i];
+      }
+      
+      m_value[i] = m_count[i];
+    }
+  }
+  
+  // Static wrapper for the initialize callback
+  static void initialize(const Rc<DxvkContext>& context, RtComponentBatch& batch, const size_t index) {
+    static_cast<Counter&>(batch).initializeInstance(context, index);
+  }
+  void initializeInstance(const Rc<DxvkContext>& context, const size_t index)  {
+    // Set the initial counter value based on the default value
+    m_count[index] = m_defaultValue[index];
+    m_value[index] = m_count[index];
+  }
+};
 
 #undef LIST_INPUTS
 #undef LIST_STATES
 #undef LIST_OUTPUTS
-
-void Counter::updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
-  for (size_t i = start; i < end; i++) {
-    if (m_increment[i]) {
-      m_count[i] += m_incrementValue[i];
-    }
-    
-    m_value[i] = m_count[i];
-  }
-}
 
 }  // namespace components
 }  // namespace dxvk

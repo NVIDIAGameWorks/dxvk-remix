@@ -19,4 +19,4 @@ class Counter:
     def on_connection_type_resolve(node) -> None:
         """Resolve flexible types based on connected attribute types."""
         # Valid type combinations for this component:
-        # Combination 1: count=float, increment=bool, incrementValue=float, value=float
+        # Combination 1: count=float, defaultValue=float, increment=bool, incrementValue=float, value=float

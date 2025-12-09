@@ -71,4 +71,9 @@ exe = executable('test_graph_usd_parser',  files('graph/test_component.h', 'grap
 test('test_graph_usd_parser', exe, env: test_env)
 tests += exe
 
+exe = executable('test_transform_components',  files('test_transform_components.cpp'), 
+  include_directories : test_include_path, dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ d3d9_dll, dxvk_lib ] , win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_transform_components', exe, env: test_env)
+tests += exe
+
 alias_target('unit_tests', tests)

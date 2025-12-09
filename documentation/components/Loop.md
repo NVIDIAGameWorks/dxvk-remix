@@ -61,7 +61,7 @@ The value with looping applied\.
 
 ### Is Reversing
 
-True if the value is in the reverse phase of ping pong looping\. If passing \`loopedValue\` to an \`interpolateFloat\` component, hook this up to \`shouldReverse\` from that component\.
+True if the value is in the reverse phase of ping pong looping\. If passing \`loopedValue\` to a \`Remap\` component, hook this up to \`shouldReverse\` from that component\.
 
 
 ## Valid Type Combinations
