@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -19,6 +19,12 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
+
+// NV-DXVK start: Fix some circular inclusion stuff
+#include <string>
+#include <Windows.h>
+// NV-DXVK end
+
 namespace dxvk::window {
   // Finds the window titlebar icon (with several fallback mechanisms) and writes to a file, expects .bmp extension
   void saveWindowIconToFile(const std::string& filename, HWND hwnd = (HWND) 0);

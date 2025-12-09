@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2019-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -33,6 +33,9 @@
 #include "../log/log.h"
 
 #include "../util_env.h"
+// NV-DXVK start: Fix some circular inclusion stuff
+#include "../util_string.h"
+// NV-DXVK end
 
 namespace dxvk {
 

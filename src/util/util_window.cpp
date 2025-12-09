@@ -20,6 +20,9 @@
 * DEALINGS IN THE SOFTWARE.
 */
 #include "util_env.h"
+// NV-DXVK start: 
+#include "util_string.h"
+// NV-DXVK end
 #include "util_window.h"
 #include "log/log.h"
 
