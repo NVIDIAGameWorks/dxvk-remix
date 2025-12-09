@@ -9,14 +9,14 @@
     "inputs": {
       "input": {
         "description": ["The value to store for the next frame."],
-        "type": ["bool", "float", "float[2]", "float[3]", "float[4]", "target", "token", "uint"],
+        "type": "any",
         "uiName": "Input"
       }
     },
     "outputs": {
       "output": {
         "description": ["The value from the previous frame."],
-        "type": ["bool", "float", "float[2]", "float[3]", "float[4]", "target", "token", "uint"],
+        "type": "any",
         "uiName": "Output"
       }
     }

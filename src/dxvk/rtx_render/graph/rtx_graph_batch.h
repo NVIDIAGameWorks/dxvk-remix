@@ -67,8 +67,11 @@ public:
   }
 
   // Safety and validation methods
-  bool isValid() const {
-    return !m_componentBatches.empty() && !m_properties.empty();
+
+  // Returns true if the graph has no valid components.
+  // Empty graphs can exist without causing errors, but they won't do anything.
+  bool isEmpty() const {
+    return m_componentBatches.empty();
   }
 
   bool hasInstance(size_t index) const {

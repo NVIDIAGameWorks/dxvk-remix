@@ -62,7 +62,7 @@ This documentation provides detailed information about all available components 
 | [Fog Hash Checker](FogHashChecker.md) | Detects if a specific fog state is currently active in the scene\.<br/><br/>Checks if a given fog hash matche\.\.\. | 1 |
 | [Keyboard Input](KeyboardInput.md) | Detects when keyboard keys are pressed, held, or released\.<br/><br/>Checks the state of a keyboard key or ke\.\.\. | 1 |
 | [Light Hash Checker](LightHashChecker.md) | Detects if a specific light is currently active in the scene\.<br/><br/>Checks if a specific light hash is pr\.\.\. | 1 |
-| [Mesh Hash Checker](MeshHashChecker.md) | Detects if a specific mesh is currently being drawn in the scene\.<br/><br/>Checks if a specific mesh hash wa\.\.\. | 1 |
+| [Mesh Hash Checker](MeshHashChecker.md) | Detects if a specific mesh is currently being drawn in the scene\.<br/><br/>This checks all meshes that the g\.\.\. | 1 |
 | [Mesh Proximity](MeshProximity.md) | Measures how far a point is from a mesh's bounding box\. This can be used to determine if the camera \.\.\. | 1 |
 | [Ray Mesh Intersection](RayMeshIntersection.md) | Tests if a ray intersects with a mesh\.<br/><br/>Performs a ray\-mesh intersection test\. Currently supports bo\.\.\. | 1 |
 | [Read Bone Transform](ReadBoneTransform.md) | Reads the transform \(position, rotation, scale\) of a bone from a skinned mesh\.<br/><br/>Extracts the transfo\.\.\. | 1 |

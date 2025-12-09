@@ -15,6 +15,7 @@ Returns true if A is equal to B, false otherwise\.<br/><br/>For floating point v
 |----------|--------------|------|---------|---------------|----------|
 | a | A | NumberOrVector | Input | 0 | No | 
 | b | B | NumberOrVector | Input | 0 | No | 
+| tolerance | Tolerance | Float | Input | 0\.00001 | No | 
 
 ### A
 
@@ -24,6 +25,11 @@ The first value to compare\.
 ### B
 
 The second value to compare\.
+
+
+### Tolerance
+
+The tolerance for rounding errors\. Math operations with floating point values are not exact, so equality comparisons should allow for slightly different values\. If the difference between A and B is less than Tolerance, the result will be true\.
 
 
 ## Output Properties
@@ -41,12 +47,12 @@ True if A == B, false otherwise
 
 This component supports flexible types. The following type combinations are valid:
 
-| # | a | b | result |
-|---|---|---|---|
-| 1 | Float | Float | Bool |
-| 2 | Float2 | Float2 | Bool |
-| 3 | Float3 | Float3 | Bool |
-| 4 | Float4 | Float4 | Bool |
+| # | a | b | result | tolerance |
+|---|---|---|---|---|
+| 1 | Float | Float | Bool | Float |
+| 2 | Float2 | Float2 | Bool | Float |
+| 3 | Float3 | Float3 | Bool | Float |
+| 4 | Float4 | Float4 | Bool | Float |
 
 ## Usage Notes
 

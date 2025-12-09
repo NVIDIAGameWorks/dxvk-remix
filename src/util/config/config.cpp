@@ -1372,7 +1372,7 @@ namespace dxvk {
           VkValue vkVal = std::stoul(s, nullptr, 16);
           vk.val = vkVal;
         } else {
-          vk = KeyBind::getVk(s);
+          vk = KeyBind::getVk(toUpper(s));
         }
         if(!KeyBind::isValidVk(vk)) {
           Logger::err(str::format("Failed to parse virtual key string: '", s, "' string does not map to valid Keybind."));
@@ -1522,6 +1522,12 @@ namespace dxvk {
   std::string Config::toLower(std::string str) {
     std::transform(str.begin(), str.end(), str.begin(),
       [] (unsigned char c) { return (c >= 'A' && c <= 'Z') ? (c + 'a' - 'A') : c; });
+    return str;
+  }
+
+  std::string Config::toUpper(std::string str) {
+    std::transform(str.begin(), str.end(), str.begin(),
+      [] (unsigned char c) { return (c >= 'a' && c <= 'z') ? (c - 'a' + 'A') : c; });
     return str;
   }
 

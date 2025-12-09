@@ -357,6 +357,7 @@ namespace dxvk {
     static Config getAppConfig(const std::string& appName);
 
     static std::string toLower(std::string str);
+    static std::string toUpper(std::string str);
 
     /**
      * \brief Writes custom configuration to file
