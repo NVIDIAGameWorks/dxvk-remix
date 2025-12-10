@@ -19,4 +19,4 @@ class MeshProximity:
     def on_connection_type_resolve(node) -> None:
         """Resolve flexible types based on connected attribute types."""
         # Valid type combinations for this component:
-        # Combination 1: activationStrength=float, easingType=uint, fullActivationDistance=float, inactiveDistance=float, signedDistance=float, target=target, worldPosition=float[3]
+        # Combination 1: activationStrength=float, easingType=token, fullActivationDistance=float, inactiveDistance=float, signedDistance=float, target=target, worldPosition=float[3]

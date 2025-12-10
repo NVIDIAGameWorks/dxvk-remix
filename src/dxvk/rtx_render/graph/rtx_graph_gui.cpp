@@ -145,7 +145,12 @@ void RtxGraphGUI::showGraphSelector(const SceneManager& sceneManager) {
 
 void RtxGraphGUI::showComponentList() {
   if (m_components.empty()) {
-    ImGui::Text("No components in selected graph instance");
+    if (m_selectedGraphIsEmpty) {
+      ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.3f, 1.0f), "Empty graph - no valid components found");
+      ImGui::TextWrapped("This graph has no components. This can happen when all components "
+                         "failed to load, are unsupported, or were filtered out.");
+    }
+    ImGui::Text("No graph selected.");
     return;
   }
   if (ImGui::CollapsingHeader("Components:", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -155,8 +160,8 @@ void RtxGraphGUI::showComponentList() {
     for (size_t i = 0; i < m_components.size(); ++i) {
       const auto& component = m_components[i];
       
-      // Component header with collapsible tree node
-      std::string headerText = component.typeName;
+      // Component header with collapsible tree node.  Included the index so each section has a unique name.
+      std::string headerText = component.typeName + " (" + std::to_string(i) + ")";
       
       if (ImGui::CollapsingHeader(headerText.c_str())) {
         // Show component description as tooltip on header hover
@@ -230,6 +235,7 @@ void RtxGraphGUI::showComponentList() {
 void RtxGraphGUI::updateGraphData(const SceneManager& sceneManager) {
   // Clear existing data
   m_components.clear();
+  m_selectedGraphIsEmpty = false;
   
   if (m_selectedInstanceId == kInvalidInstanceId) {
     return;
@@ -254,6 +260,13 @@ void RtxGraphGUI::updateGraphData(const SceneManager& sceneManager) {
   }
   
   const RtGraphBatch& batch = batchIt->second;
+  
+  // Handle empty graphs gracefully - they have no components to display
+  if (batch.isEmpty()) {
+    m_selectedGraphIsEmpty = true;
+    return;
+  }
+  
   const auto& componentBatches = batch.getComponentBatches();
   const auto& topology = batch.getTopology();
   const auto& properties = batch.getProperties();
@@ -346,7 +359,6 @@ std::string RtxGraphGUI::extractGraphInstanceName(const GraphManager& graphManag
     return "Instance " + std::to_string(graphInstance.getId()) + " (Hash: " + hashStream.str() + ")";
   }
   
-  const RtGraphBatch& batch = batchIt->second;
   const auto& initialGraphState = graphInstance.getInitialGraphState();
   
   // Use the stored prim path from the topology
@@ -437,6 +449,8 @@ std::string RtxGraphGUI::formatPropertyValue(const RtComponentPropertyValue& val
       return ss.str();
     } else if constexpr (std::is_same_v<T, std::string>) {
       return "\"" + v + "\"";
+    } else if constexpr (std::is_same_v<T, PrimTarget>) {
+      return "instance: " + std::to_string(v.instanceId) + ", index: " + std::to_string(v.replacementIndex);
     } else {
       return "Unknown";
     }

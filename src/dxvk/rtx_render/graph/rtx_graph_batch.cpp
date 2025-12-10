@@ -98,10 +98,6 @@ namespace {
 void RtGraphBatch::Initialize(const RtGraphTopology& topology) {
   // NOTE: need to do this separate from the constructor, because the address of `this` changes when it's moved.
   ScopedCpuProfileZone();
-  if (topology.componentSpecs.empty()) {
-    Logger::err("RtGraphTopology has no component specs");
-    return;
-  }
 
   // Store pointer to topology for GUI access (safe because topology lives in stable asset storage)
   m_topology = &topology;

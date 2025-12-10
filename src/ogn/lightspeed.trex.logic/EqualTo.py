@@ -19,7 +19,7 @@ class EqualTo:
     def on_connection_type_resolve(node) -> None:
         """Resolve flexible types based on connected attribute types."""
         # Valid type combinations for this component:
-        # Combination 1: a=float, b=float, result=bool
-        # Combination 2: a=float[2], b=float[2], result=bool
-        # Combination 3: a=float[3], b=float[3], result=bool
-        # Combination 4: a=float[4], b=float[4], result=bool
+        # Combination 1: a=float, b=float, result=bool, tolerance=float
+        # Combination 2: a=float[2], b=float[2], result=bool, tolerance=float
+        # Combination 3: a=float[3], b=float[3], result=bool, tolerance=float
+        # Combination 4: a=float[4], b=float[4], result=bool, tolerance=float

@@ -15,14 +15,14 @@
       },
       "input": {
         "description": ["The value to store when store is true."],
-        "type": ["bool", "float", "float[2]", "float[3]", "float[4]", "target", "token", "uint"],
+        "type": "any",
         "uiName": "Input"
       }
     },
     "outputs": {
       "output": {
         "description": ["The currently stored value."],
-        "type": ["bool", "float", "float[2]", "float[3]", "float[4]", "target", "token", "uint"],
+        "type": "any",
         "uiName": "Output"
       }
     }

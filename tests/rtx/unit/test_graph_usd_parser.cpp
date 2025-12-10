@@ -25,6 +25,8 @@
 #include <unordered_map>
 #include <iostream>
 #include <fstream>
+#include <sstream>
+#include <iomanip>
 
 #include "../../test_utils.h"
 #include "rtx_render/graph/rtx_graph_usd_parser.h"
@@ -137,9 +139,21 @@ public:
     attr.SetMetadata(pxr::TfToken("allowedTokens"), pxr::VtValue(tokens));
   }
 
-  // Helper method to add output properties to a node
+  // Helper method to add output properties to a node (for non-Prim types)
   void addOutputProperty(pxr::UsdPrim& nodePrim, const std::string& propertyName) {
     pxr::UsdAttribute attr = nodePrim.CreateAttribute(pxr::TfToken("outputs:" + propertyName), pxr::SdfValueTypeNames->Token);
+  }
+
+  // Helper method to add output relationship properties to a node (for Prim types)
+  void addOutputRelationship(pxr::UsdPrim& nodePrim, const std::string& propertyName, pxr::UsdPrim& targetPrim) {
+    pxr::UsdRelationship rel = nodePrim.CreateRelationship(pxr::TfToken("outputs:" + propertyName));
+    rel.SetTargets({targetPrim.GetPath()});
+  }
+
+  // Helper method to add input relationship properties to a node (for Prim types)  
+  void addInputRelationship(pxr::UsdPrim& nodePrim, const std::string& propertyName, pxr::UsdPrim& targetPrim) {
+    pxr::UsdRelationship rel = nodePrim.CreateRelationship(pxr::TfToken("inputs:" + propertyName));
+    rel.SetTargets({targetPrim.GetPath()});
   }
 
   // Helper method to connect two nodes
@@ -2007,6 +2021,284 @@ void testFlexibleTypeResolutionViaConnections() {
   Logger::info("testFlexibleTypeResolutionViaConnections passed");
 }
 
+void testAllPropertyTypeConnections() {
+  Logger::info("Testing all property type connections...");
+  
+  // Get the TestComponent spec which has all property types
+  const RtComponentSpec* testSpec = components::TestComponent::getStaticSpec();
+  if (testSpec == nullptr) {
+    throw DxvkError("testAllPropertyTypeConnections: testSpec is nullptr");
+  }
+  
+  // Build maps of output and input properties with their types
+  std::vector<std::pair<std::string, RtComponentPropertyType>> outputProperties;
+  std::vector<std::pair<std::string, RtComponentPropertyType>> inputProperties;
+  
+  for (const auto& prop : testSpec->properties) {
+    if (prop.ioType == RtComponentPropertyIOType::Output) {
+      outputProperties.push_back({prop.name, prop.type});
+    } else if (prop.ioType == RtComponentPropertyIOType::Input) {
+      inputProperties.push_back({prop.name, prop.type});
+    }
+  }
+  
+  Logger::info(str::format("  Found ", outputProperties.size(), " output properties and ", 
+                           inputProperties.size(), " input properties"));
+  
+  // Result codes for the grid
+  enum class ConnectionResult {
+    MatchConnected,      // Types match, connection made (correct)
+    MatchNotConnected,   // Types match, connection NOT made (ERROR)
+    MismatchNotConnected,// Types don't match, connection NOT made (correct)
+    MismatchConnected    // Types don't match, connection made (ERROR)
+  };
+  
+  // Store results in a 2D grid [outputIdx][inputIdx]
+  std::vector<std::vector<ConnectionResult>> results(outputProperties.size(), 
+                                                      std::vector<ConnectionResult>(inputProperties.size()));
+  
+  // Build property name to index map once
+  std::unordered_map<std::string, size_t> propertyNameToIndex;
+  for (size_t i = 0; i < testSpec->properties.size(); i++) {
+    propertyNameToIndex[testSpec->properties[i].name] = i;
+  }
+  Logger::info("Expecting many 'err:Property <> (type <>) has a connection to property <> (type <>) with mismatched types. Connection ignored'");
+  
+  // For each output property type, test connecting to every input property type
+  for (size_t outIdx = 0; outIdx < outputProperties.size(); outIdx++) {
+    const auto& [outputName, outputType] = outputProperties[outIdx];
+    
+    for (size_t inIdx = 0; inIdx < inputProperties.size(); inIdx++) {
+      const auto& [inputName, inputType] = inputProperties[inIdx];
+      
+      // Create a fresh test for each connection pair
+      GraphUsdParserTest test;
+      
+      // Create the graph
+      pxr::SdfPath worldPath("/World");
+      pxr::SdfPath graphPath = worldPath.AppendChild(pxr::TfToken("testGraph"));
+      pxr::UsdPrim graphPrim = test.m_stage->DefinePrim(graphPath, pxr::TfToken("OmniGraph"));
+      
+      // Create a test prim for Prim type properties
+      pxr::UsdPrim testMeshPrim = test.m_stage->DefinePrim(worldPath.AppendChild(pxr::TfToken("testMesh")), pxr::TfToken("Mesh"));
+      test.m_pathToOffsetMap[XXH3_64bits(testMeshPrim.GetPath().GetString().c_str(), testMeshPrim.GetPath().GetString().size())] = 100;
+      
+      // Create source node with output
+      pxr::UsdPrim sourceNode = test.createTestAllTypesNode(graphPath, "sourceNode");
+      
+      // Create target node with input
+      pxr::UsdPrim targetNode = test.createTestAllTypesNode(graphPath, "targetNode");
+      
+      // Add all required properties to both nodes
+      // Source node inputs (with default values)
+      test.addInputProperty(sourceNode, "inputBool", "1");
+      test.addInputProperty(sourceNode, "inputFloat", "1.0");
+      test.addInputProperty(sourceNode, "inputFloat2", "(1.0,2.0)");
+      test.addInputProperty(sourceNode, "inputFloat3", "(1.0,2.0,3.0)");
+      test.addInputProperty(sourceNode, "inputFloat4", "(1.0,2.0,3.0,4.0)");
+      test.addInputProperty(sourceNode, "inputString", "source_string");
+      test.addInputProperty(sourceNode, "inputAssetPath", "/path/to/source.usd");
+      test.addInputProperty(sourceNode, "inputHash", "123456789ABCDEF0");
+      test.addEnumInputProperty(sourceNode, "inputUint32Enum", "One", {"One", "Two"});
+      
+      // Source node outputs (use relationships for Prim type)
+      test.addOutputProperty(sourceNode, "outputBool");
+      test.addOutputProperty(sourceNode, "outputFloat");
+      test.addOutputProperty(sourceNode, "outputFloat2");
+      test.addOutputProperty(sourceNode, "outputFloat3");
+      test.addOutputProperty(sourceNode, "outputFloat4");
+      test.addOutputProperty(sourceNode, "outputString");
+      test.addOutputProperty(sourceNode, "outputAssetPath");
+      test.addOutputProperty(sourceNode, "outputHash");
+      test.addOutputProperty(sourceNode, "outputUint32Enum");
+      test.addOutputRelationship(sourceNode, "outputPrim", testMeshPrim);
+      
+      // Target node inputs (with different default values, use relationships for Prim type)
+      test.addInputProperty(targetNode, "inputBool", "0");
+      test.addInputProperty(targetNode, "inputFloat", "2.0");
+      test.addInputProperty(targetNode, "inputFloat2", "(5.0,6.0)");
+      test.addInputProperty(targetNode, "inputFloat3", "(5.0,6.0,7.0)");
+      test.addInputProperty(targetNode, "inputFloat4", "(5.0,6.0,7.0,8.0)");
+      test.addInputProperty(targetNode, "inputString", "target_string");
+      test.addInputProperty(targetNode, "inputAssetPath", "/path/to/target.usd");
+      test.addInputProperty(targetNode, "inputHash", "FEDCBA9876543210");
+      test.addEnumInputProperty(targetNode, "inputUint32Enum", "Two", {"One", "Two"});
+      test.addInputRelationship(targetNode, "inputPrim", testMeshPrim);
+      
+      // Target node outputs (use relationships for Prim type)
+      test.addOutputProperty(targetNode, "outputBool");
+      test.addOutputProperty(targetNode, "outputFloat");
+      test.addOutputProperty(targetNode, "outputFloat2");
+      test.addOutputProperty(targetNode, "outputFloat3");
+      test.addOutputProperty(targetNode, "outputFloat4");
+      test.addOutputProperty(targetNode, "outputString");
+      test.addOutputProperty(targetNode, "outputAssetPath");
+      test.addOutputProperty(targetNode, "outputHash");
+      test.addOutputProperty(targetNode, "outputUint32Enum");
+      test.addOutputRelationship(targetNode, "outputPrim", testMeshPrim);
+      
+      // Connect the source's specified output to the target's specified input
+      // Handle Prim type specially (uses relationships)
+      if (outputType == RtComponentPropertyType::Prim && inputType == RtComponentPropertyType::Prim) {
+        // For Prim-to-Prim connections, update the target input relationship to include the source output path
+        pxr::SdfPath sourcePath = sourceNode.GetPath().AppendProperty(pxr::TfToken("outputs:" + outputName));
+        pxr::UsdRelationship targetRel = targetNode.GetRelationship(pxr::TfToken("inputs:" + inputName));
+        if (targetRel) {
+          targetRel.SetTargets({testMeshPrim.GetPath(), sourcePath});
+        }
+      } else if (outputType != RtComponentPropertyType::Prim && inputType != RtComponentPropertyType::Prim) {
+        test.connectNodes(sourceNode, outputName, targetNode, inputName);
+      }
+      // For mixed Prim/non-Prim connections, don't create a connection - types don't match
+      
+      // Parse the graph
+      RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
+      
+      // Verify we have 2 components
+      if (graphState.topology.componentSpecs.size() != 2) {
+        throw DxvkError(str::format("testAllPropertyTypeConnections: Expected 2 components, got ", 
+                                    graphState.topology.componentSpecs.size(),
+                                    " for connection ", outputName, " (", outputType, 
+                                    ") -> ", inputName, " (", inputType, ")"));
+      }
+      
+      // Get the indices of the output and input in the property list
+      size_t outputPropIdx = propertyNameToIndex[outputName];
+      size_t inputPropIdx = propertyNameToIndex[inputName];
+      
+      // Get the value indices for the source output and target input
+      size_t sourceOutputValueIdx = graphState.topology.propertyIndices[0][outputPropIdx];
+      size_t targetInputValueIdx = graphState.topology.propertyIndices[1][inputPropIdx];
+      
+      // Check if types match and if connection was made
+      bool typesMatch = (outputType == inputType);
+      bool connectionMade = (sourceOutputValueIdx == targetInputValueIdx);
+      
+      // Determine result
+      if (typesMatch) {
+        results[outIdx][inIdx] = connectionMade ? ConnectionResult::MatchConnected 
+                                                : ConnectionResult::MatchNotConnected;
+      } else {
+        results[outIdx][inIdx] = connectionMade ? ConnectionResult::MismatchConnected 
+                                                : ConnectionResult::MismatchNotConnected;
+      }
+    }
+  }
+  
+  // Print the grid header
+  // Legend:
+  //   + = Types match, connected (correct)
+  //   ! = Types match, NOT connected (ERROR)
+  //   . = Types don't match, NOT connected (correct)
+  //   X = Types don't match, connected (ERROR)
+  
+  Logger::info("");
+  Logger::info("Property Type Connection Grid:");
+  Logger::info("  Legend: + = match/connected (OK), . = mismatch/not-connected (OK)");
+  Logger::info("          ! = match/NOT-connected (ERR), X = mismatch/connected (ERR)");
+  Logger::info("");
+  
+  // Calculate column width for type names
+  size_t maxTypeNameLen = 0;
+  for (const auto& [name, type] : inputProperties) {
+    std::ostringstream oss;
+    oss << type;
+    maxTypeNameLen = std::max(maxTypeNameLen, oss.str().length());
+  }
+  
+  // Print column headers (input types) - rotated vertically for compactness
+  // First, collect all input type names
+  std::vector<std::string> inputTypeNames;
+  for (const auto& [name, type] : inputProperties) {
+    std::ostringstream oss;
+    oss << type;
+    inputTypeNames.push_back(oss.str());
+  }
+  
+  // Print the header row with abbreviated input type names
+  std::ostringstream headerLine;
+  headerLine << "  Output \\ Input |";
+  for (const auto& typeName : inputTypeNames) {
+    // Use first 4 chars of type name
+    std::string abbrev = typeName.substr(0, 4);
+    headerLine << " " << abbrev;
+  }
+  Logger::info(headerLine.str());
+  
+  // Print separator line
+  std::ostringstream sepLine;
+  sepLine << "  ----------------|";
+  for (size_t i = 0; i < inputProperties.size(); i++) {
+    sepLine << "-----";
+  }
+  Logger::info(sepLine.str());
+  
+  // Print each row (output types)
+  size_t errorCount = 0;
+  for (size_t outIdx = 0; outIdx < outputProperties.size(); outIdx++) {
+    std::ostringstream rowLine;
+    std::ostringstream oss;
+    oss << outputProperties[outIdx].second;
+    std::string outputTypeName = oss.str();
+    
+    // Pad the output type name to align columns
+    rowLine << "  " << std::setw(14) << std::left << outputTypeName << " |";
+    
+    for (size_t inIdx = 0; inIdx < inputProperties.size(); inIdx++) {
+      char symbol;
+      switch (results[outIdx][inIdx]) {
+        case ConnectionResult::MatchConnected:
+          symbol = '+';
+          break;
+        case ConnectionResult::MatchNotConnected:
+          symbol = '!';
+          errorCount++;
+          break;
+        case ConnectionResult::MismatchNotConnected:
+          symbol = '.';
+          break;
+        case ConnectionResult::MismatchConnected:
+          symbol = 'X';
+          errorCount++;
+          break;
+      }
+      rowLine << "    " << symbol;
+    }
+    Logger::info(rowLine.str());
+  }
+  
+  Logger::info("");
+  
+  // Print summary
+  size_t totalTests = outputProperties.size() * inputProperties.size();
+  Logger::info(str::format("  Total connections tested: ", totalTests));
+  Logger::info(str::format("  Errors found: ", errorCount));
+  
+  // If there were errors, list them
+  if (errorCount > 0) {
+    Logger::info("");
+    Logger::info("  Error details:");
+    for (size_t outIdx = 0; outIdx < outputProperties.size(); outIdx++) {
+      for (size_t inIdx = 0; inIdx < inputProperties.size(); inIdx++) {
+        const auto& [outputName, outputType] = outputProperties[outIdx];
+        const auto& [inputName, inputType] = inputProperties[inIdx];
+        
+        if (results[outIdx][inIdx] == ConnectionResult::MatchNotConnected) {
+          Logger::err(str::format("    ! ", outputType, " -> ", inputType, 
+                                  ": Types MATCH but connection was NOT made"));
+        } else if (results[outIdx][inIdx] == ConnectionResult::MismatchConnected) {
+          Logger::err(str::format("    X ", outputType, " -> ", inputType, 
+                                  ": Types DON'T MATCH but connection WAS made"));
+        }
+      }
+    }
+    
+    throw DxvkError(str::format("testAllPropertyTypeConnections: ", errorCount, " connection errors found"));
+  }
+  
+  Logger::info("testAllPropertyTypeConnections passed - all type combinations verified");
+}
+
 } // namespace dxvk
 
 int main() {
@@ -2049,6 +2341,7 @@ int main() {
     dxvk::testNumberOrVectorFlexibleTypeResolution();
     dxvk::testFlexibleTypeResolutionFromTokenStrings();
     dxvk::testFlexibleTypeResolutionViaConnections();
+    dxvk::testAllPropertyTypeConnections();
     
     dxvk::Logger::info("\n All tests passed successfully!");
     return 0;
