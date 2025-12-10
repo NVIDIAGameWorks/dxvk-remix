@@ -23,6 +23,7 @@
 
 #include "util_env.h"
 // NV-DXVK start: get environment variable with a fallback
+#include "util_string.h"
 #include "config/config.h"
 // NV-DXVK end
 
