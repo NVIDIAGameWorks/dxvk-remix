@@ -59,7 +59,7 @@ void RtxOptionReadBool::updateRange(const Rc<DxvkContext>& context, const size_t
     
     const std::string& optionName = m_optionName[i];
     if (!optionName.empty()) {
-      const XXH64_hash_t optionHash = XXH3_64bits(optionName.c_str(), optionName.length());
+      const XXH64_hash_t optionHash = StringToXXH64(optionName, 0);
       
       auto optionIt = globalRtxOptions.find(optionHash);
       if (optionIt != globalRtxOptions.end()) {
