@@ -1253,26 +1253,37 @@ namespace dxvk {
       m_geometryHashGenerationRule = createRule("Geometry generation", geometryGenerationHashRuleString());
       m_geometryAssetHashRule = createRule("Geometry asset", geometryAssetHashRuleString());
 
-      auto mergedSet = decalTextures();
       // We deprecated dynamicDecalTextures, singleOffsetDecalTextures, nonOffsetDecalTextures with this change
       //  and replaced all decal texture lists with just a single list.
       // TODO(REMIX-2554): Design a general deprecation solution for configs that are no longer required.
-      if (dynamicDecalTextures().size() > 0) {
-        mergedSet.insert(dynamicDecalTextures().begin(), dynamicDecalTextures().end());
-        dynamicDecalTextures.setDeferred({});
-        Logger::info("[Deprecated Config] rtx.dynamicDecalTextures has been deprecated, we have moved all your texture's from this list to rtx.decalTextures, no further action is required from you.  Please re-save your rtx config to get rid of this message.");
+      {
+        auto mergedSet = decalTextures();
+        // Merge user defined decalTextures into mergedSet first then merge with deprecated decal textures
+        auto it = RtxOptionImpl::getGlobalRtxOptionMap().find(StringToXXH64("rtx.decalTextures", 0));
+        if (it != RtxOptionImpl::getGlobalRtxOptionMap().end()) {
+          const auto decalOption = it->second;
+          if (decalOption->optionLayerValueQueue.begin()->first.priority == RtxOptionLayer::s_runtimeOptionLayerPriority) {
+            const auto runtimeDecalTextures = decalOption->optionLayerValueQueue.begin()->second.value.hashSet;
+            mergedSet.insert(runtimeDecalTextures->begin(), runtimeDecalTextures->end());
+          }
+        }
+        if (dynamicDecalTextures().size() > 0) {
+          mergedSet.insert(dynamicDecalTextures().begin(), dynamicDecalTextures().end());
+          dynamicDecalTextures.setDeferred({});
+          Logger::info("[Deprecated Config] rtx.dynamicDecalTextures has been deprecated, we have moved all your textures from this list to rtx.decalTextures, no further action is required from you.  Please re-save your rtx config to get rid of this message.");
+        }
+        if (singleOffsetDecalTextures().size() > 0) {
+          mergedSet.insert(singleOffsetDecalTextures().begin(), singleOffsetDecalTextures().end());
+          singleOffsetDecalTextures.setDeferred({});
+          Logger::info("[Deprecated Config] rtx.singleOffsetDecalTextures has been deprecated, we have moved all your textures from this list to rtx.decalTextures, no further action is required from you.  Please re-save your rtx config to get rid of this message.");
+        }
+        if (nonOffsetDecalTextures().size() > 0) {
+          mergedSet.insert(nonOffsetDecalTextures().begin(), nonOffsetDecalTextures().end());
+          nonOffsetDecalTextures.setDeferred({});
+          Logger::info("[Deprecated Config] rtx.nonOffsetDecalTextures has been deprecated, we have moved all your textures from this list to rtx.decalTextures, no further action is required from you.  Please re-save your rtx config to get rid of this message.");
+        }
+        decalTextures.setDeferred(mergedSet);
       }
-      if (singleOffsetDecalTextures().size() > 0) {
-        mergedSet.insert(singleOffsetDecalTextures().begin(), singleOffsetDecalTextures().end());
-        singleOffsetDecalTextures.setDeferred({});
-        Logger::info("[Deprecated Config] rtx.singleOffsetDecalTextures has been deprecated, we have moved all your texture's from this list to rtx.decalTextures, no further action is required from you.  Please re-save your rtx config to get rid of this message.");
-      }
-      if (nonOffsetDecalTextures().size() > 0) {
-        mergedSet.insert(nonOffsetDecalTextures().begin(), nonOffsetDecalTextures().end());
-        nonOffsetDecalTextures.setDeferred({});
-        Logger::info("[Deprecated Config] rtx.nonOffsetDecalTextures has been deprecated, we have moved all your texture's from this list to rtx.decalTextures, no further action is required from you.  Please re-save your rtx config to get rid of this message.");
-      }
-      decalTextures.setDeferred(mergedSet);
 
       // Ensure all of the above values are promoted before the first frame starts.
       // DxvkDevice hasn't been created yet, so pass nullptr here.
