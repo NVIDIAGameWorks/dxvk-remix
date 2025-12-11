@@ -514,6 +514,11 @@ struct PathState : IBasePayloadState
 
 struct DirectPathTextures
 {
+  // slang zero-init adds an empty initializer list in the front end on each decl
+  // this causes resource members to end up uninitialized at that point, which is an error
+  // empty ctor works around this --- see https://github.com/NVIDIAGameWorks/dxvk-remix/pull/117 for details
+  __init() {}
+
   RWTexture2D<uint16_t> SharedFlags;
   RWTexture2D<uint16_t> SharedMediumMaterialIndex;
   RWTexture2D<float4> PrimaryDirectDiffuseLobeRadianceHitDistance;
@@ -528,6 +533,9 @@ struct DirectPathTextures
 
 struct IndirectPathTextures
 {
+  // see the comments in DirectPathTextures for why we need this empty ctor
+  __init() {}
+
   Texture2D<float4> PrimaryWorldPositionWorldTriangleNormal;
   RWTexture2D<float4> IndirectRadianceHitDistance;
 };
