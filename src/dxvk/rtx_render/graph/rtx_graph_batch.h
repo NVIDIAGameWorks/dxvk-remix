@@ -44,7 +44,7 @@ public:
 
   void Initialize(const RtGraphTopology& topology);
   
-  void addInstance(Rc<DxvkContext> context, const RtGraphState& graphState, GraphInstance* replacementInstance);
+  bool addInstance(Rc<DxvkContext> context, const RtGraphState& graphState, GraphInstance* replacementInstance);
 
   void removeInstance(GraphInstance* graphInstance);
 

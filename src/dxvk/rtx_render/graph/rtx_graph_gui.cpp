@@ -450,7 +450,13 @@ std::string RtxGraphGUI::formatPropertyValue(const RtComponentPropertyValue& val
     } else if constexpr (std::is_same_v<T, std::string>) {
       return "\"" + v + "\"";
     } else if constexpr (std::is_same_v<T, PrimTarget>) {
-      return "instance: " + std::to_string(v.instanceId) + ", index: " + std::to_string(v.replacementIndex);
+      if (v.instanceId == kInvalidInstanceId) {
+        return "Invalid instance";
+      } else if (v.replacementIndex == ReplacementInstance::kInvalidReplacementIndex) {
+        return "Invalid replacement index";
+      } else {
+        return "instance: " + std::to_string(v.instanceId) + ", index: " + std::to_string(v.replacementIndex);
+      }
     } else {
       return "Unknown";
     }
