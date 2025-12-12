@@ -229,7 +229,7 @@ def createSlangTask(inputFile, variantSpec):
     if variantName != inputName:
         task.customName = f'{os.path.basename(inputFile)} ({variantName})'
 
-    command1 = f'{args.slangc} -entry main -target spirv -capability GL_EXT_shader_invocation_reorder -zero-initialize -emit-spirv-directly -verbose-paths {includePaths} ' \
+    command1 = f'{args.slangc} -entry main -target spirv -capability spvShaderInvocationReorderEXT -zero-initialize -emit-spirv-directly -verbose-paths {includePaths} ' \
             + f'-depfile {depFile} {inputFile} -D__SLANG__ {variantDefines} ' \
             + f'-matrix-layout-column-major ' \
             + f'-Wno-30081 '
