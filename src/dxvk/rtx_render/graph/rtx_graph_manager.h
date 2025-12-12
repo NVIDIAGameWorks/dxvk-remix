@@ -71,10 +71,14 @@ public:
     uint64_t instanceId = m_nextInstanceId++;
     auto pair = m_graphInstances.try_emplace(instanceId, this, graphState.topology.graphHash, 0, instanceId, graphState);
     if (!pair.second) {
-      Logger::err(str::format("GraphInstance already exists. Instance: ", instanceId));
+      Logger::err(str::format("GraphInstance already exists. Instance: ", instanceId, " Prim path: ", graphState.primPath));
       return nullptr;
     }
-    iter->second.addInstance(context, graphState, &pair.first->second);
+    if (!iter->second.addInstance(context, graphState, &pair.first->second)) {
+      m_graphInstances.erase(instanceId);
+      Logger::err(str::format("Failed to add GraphInstance to GraphBatch. Instance: ", instanceId, " Prim path: ", graphState.primPath));
+      return nullptr;
+    }
     return &pair.first->second;
   }
 

@@ -764,13 +764,13 @@ RtComponentPropertyValue GraphUsdParser::getPropertyValue(const pxr::UsdRelation
         }
       }
       return propertyValueForceType<PrimTarget>(result);
-    } else {
+    } else if (targets.size() > 1) {
       Logger::err(str::format("Relationship ", rel.GetPath().GetString(), " has multiple targets, which is not supported."));
     }
   }
   // Note: this intentionally ignores the default value - if the relationship isn't connected,
   // we need to use kInvalidReplacementIndex.
-  return ReplacementInstance::kInvalidReplacementIndex;
+  return PrimTarget{ ReplacementInstance::kInvalidReplacementIndex, kInvalidInstanceId };
 }
 
 RtComponentPropertyValue GraphUsdParser::getPropertyValue(const pxr::UsdAttribute& attr, const RtComponentPropertySpec& spec, PathToOffsetMap& pathToOffsetMap) {
