@@ -120,18 +120,18 @@ void RtGraphBatch::Initialize(const RtGraphTopology& topology) {
   m_graphHash = topology.graphHash;
 }
 
-void RtGraphBatch::addInstance(Rc<DxvkContext> context, const RtGraphState& initialGraphState, GraphInstance* graphInstance) {
+bool RtGraphBatch::addInstance(Rc<DxvkContext> context, const RtGraphState& initialGraphState, GraphInstance* graphInstance) {
   ScopedCpuProfileZone();
   if (graphInstance == nullptr) {
     Logger::err("Cannot add null GraphInstance");
-    return;
+    return false;
   }
 
   if (initialGraphState.values.size() != m_properties.size()) {
     Logger::err(str::format("RtGraphState had the wrong number of values. Expected: ",
                             m_properties.size(), " got: ", initialGraphState.values.size()));
     assert(false && "RtGraphState had the wrong number of values.");
-    return;
+    return false;
   }
 
   graphInstance->setBatchIndex(m_graphInstances.size());
@@ -150,10 +150,10 @@ void RtGraphBatch::addInstance(Rc<DxvkContext> context, const RtGraphState& init
       }, initialGraphState.values[i]);
     }
     catch (const std::bad_variant_access& e) {
-      Logger::err(str::format("Type mismatch when adding instance to property ", i, ": ", e.what()));
+      Logger::err(str::format("Graph ", initialGraphState.primPath, " had a type mismatch when adding instance to property ", i, ": ", e.what()));
       // Remove the instance we just added
       m_graphInstances.pop_back();
-      return;
+      return false;
     }
   }
 
@@ -167,6 +167,7 @@ void RtGraphBatch::addInstance(Rc<DxvkContext> context, const RtGraphState& init
     }
     batch->updateRange(context, newInstanceIndex, newInstanceIndex + 1);
   }
+  return true;
 }
 
 void RtGraphBatch::removeInstance(GraphInstance* graphInstance) {
