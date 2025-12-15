@@ -220,12 +220,14 @@ def getSlangVersion(slangcPath):
                               timeout=5)
         output = result.stdout + result.stderr
 
-        # Try to parse version like "v2024.1.23" or "2024.1.23"
-        match = re.search(r'v?(\d+)\.(\d+)\.(\d+)', output)
+        # Try to parse version like "v2024.1.23", "2024.1.23", or "2025.10.4-39-g496fab196"
+        # Match patterns: v?MAJOR.MINOR.PATCH or v?MAJOR.MINOR.PATCH-EXTRA
+        match = re.search(r'v?(\d+)\.(\d+)\.(\d+)(?:-\d+)?', output)
         if match:
             return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
-    except:
-        pass
+    except Exception as e:
+        # Print debug info to help diagnose version detection issues
+        print(f"Warning: Failed to detect Slang version: {e}")
     return None
 
 def getSerCapabilityFlag(slangVersion):
@@ -250,15 +252,6 @@ def getSerCapabilityFlag(slangVersion):
 def createSlangTask(inputFile, variantSpec):
     # Ensure slang runs validation
     os.environ['SLANG_RUN_SPIRV_VALIDATION'] = '1'
-
-    # Determine SER capability based on Slang version
-    slangVersion = getSlangVersion(args.slangc)
-    serCapability = getSerCapabilityFlag(slangVersion)
-
-    if slangVersion:
-        printFromThread(f'Slang version: {slangVersion[0]}.{slangVersion[1]}.{slangVersion[2]}, SER capability: {serCapability}')
-    else:
-        printFromThread(f'Slang version not detected, using SER capability: {serCapability}')
 
     inputName, inputType = os.path.splitext(getShaderName(inputFile))
     variantName, variantType = os.path.splitext(variantSpec[0])
@@ -372,6 +365,15 @@ def parseShaderVariants(inputFile):
         print(f'{inputFile}:{lineno}: no !end-variants found in the file')
         return []
     return result
+
+# Detect Slang version and determine SER capability once before processing shaders
+slangVersion = getSlangVersion(args.slangc)
+serCapability = getSerCapabilityFlag(slangVersion)
+
+if slangVersion:
+    print(f'Slang version: {slangVersion[0]}.{slangVersion[1]}.{slangVersion[2]}, SER capability: {serCapability}')
+else:
+    print(f'Slang version not detected, using SER capability: {serCapability}')
 
 tasks = []
 
