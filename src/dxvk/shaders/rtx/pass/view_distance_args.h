@@ -68,9 +68,14 @@ struct ViewDistanceOptions {
 
   RTX_OPTION("rtx.viewDistance", ViewDistanceMode, distanceMode, ViewDistanceMode::None, "The view distance mode, None disables view distance, Hard Cutoff will cut off geometry past a point, and Coherent Noise will feather geometry out using a stable worldspace noise pattern (experimental).");
   RTX_OPTION("rtx.viewDistance", ViewDistanceFunction, distanceFunction, ViewDistanceFunction::Euclidean, "The view distance function, Euclidean is a simple distance from the camera, whereas Planar Euclidean will ignore distance across the world's \"up\" direction.");
-  RTX_OPTION("rtx.viewDistance", float, distanceThreshold, 500.0f, "The view distance to draw out to based on the result of the view distance function, only used for the Hard Cutoff view distance mode.");
-  RTX_OPTION("rtx.viewDistance", float, distanceFadeMin, 400.0f, "The view distance based on the result of the view distance function to start view distance noise fading at, only used for the Coherent Noise view distance mode.");
-  RTX_OPTION("rtx.viewDistance", float, distanceFadeMax, 500.0f, "The view distance based on the result of the view distance function to end view distance noise fading at (and effectively draw nothing past this point), only used for the Coherent Noise view distance mode.");
+  RTX_OPTION_ARGS("rtx.viewDistance", float, distanceThreshold, 500.0f, "The view distance to draw out to based on the result of the view distance function, only used for the Hard Cutoff view distance mode.",
+                  args.minValue = 0.0f);
+  public: static void distanceFadeMinOnChange(DxvkDevice* device);
+  RTX_OPTION_ARGS("rtx.viewDistance", float, distanceFadeMin, 400.0f, "The view distance based on the result of the view distance function to start view distance noise fading at, only used for the Coherent Noise view distance mode.",
+                  args.minValue = 0.0f, args.onChangeCallback = &distanceFadeMinOnChange);
+  public: static void distanceFadeMaxOnChange(DxvkDevice* device);
+  RTX_OPTION_ARGS("rtx.viewDistance", float, distanceFadeMax, 500.0f, "The view distance based on the result of the view distance function to end view distance noise fading at (and effectively draw nothing past this point), only used for the Coherent Noise view distance mode.",
+                  args.minValue = 0.0f, args.onChangeCallback = &distanceFadeMaxOnChange);
   RTX_OPTION("rtx.viewDistance", float, noiseScale, 3.0f, "The scale per meter value applied to ther world space position fed into the noise generation function for generating the fade in Coherent Noise view distance mode.");
 
 public:

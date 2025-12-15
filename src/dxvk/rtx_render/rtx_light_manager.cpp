@@ -82,14 +82,6 @@ namespace dxvk {
       std::max(fallbackLightRadiance().x, 0.0f),
       std::max(fallbackLightRadiance().y, 0.0f),
       std::max(fallbackLightRadiance().z, 0.0f)));
-    RTX_OPTION_CLAMP_MIN(fallbackLightAngle, 0.0f);
-    RTX_OPTION_CLAMP_MIN(fallbackLightRadius, 0.0f);
-    RTX_OPTION_CLAMP_MIN(fallbackLightConeAngle, 0.0f);
-    RTX_OPTION_CLAMP_MIN(fallbackLightConeSoftness, 0.0f);
-    RTX_OPTION_CLAMP_MIN(fallbackLightFocusExponent, 0.0f);
-    RTX_OPTION_CLAMP_MIN(lightConversionSphereLightFixedRadius, 0.0f);
-    RTX_OPTION_CLAMP_MIN(lightConversionDistantLightFixedIntensity, 0.0f);
-    RTX_OPTION_CLAMP(lightConversionDistantLightFixedAngle, 0.0f, kPi);
   }
 
   LightManager::~LightManager() {

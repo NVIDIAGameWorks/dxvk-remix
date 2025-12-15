@@ -774,21 +774,13 @@ namespace dxvk {
       target.hashSet->insert(source.hashSet->begin(), source.hashSet->end());
       break;
     }
-    case OptionType::HashVector:
-    {
-      target.hashVector->insert(target.hashVector->end(), source.hashVector->begin(), source.hashVector->end());
-      break;
-    }
-    case OptionType::IntVector:
-    {
-      target.intVector->insert(target.intVector->end(), source.intVector->begin(), source.intVector->end());
-      break;
-    }
     case OptionType::Bool:
     case OptionType::Int:
     case OptionType::VirtualKeys:
     case OptionType::Vector2i:
     case OptionType::String:
+    case OptionType::HashVector: // Hash Vectors are strictly ordered and can be size bounded, so we don't want to merge them.
+    case OptionType::IntVector: // Int Vectors are strictly ordered and can be size bounded, so we don't want to merge them.
       target = source;
       break;
     default:
@@ -852,8 +844,8 @@ namespace dxvk {
           continue;
         }
         addWeightedValue(optionLayer.second.value, throughput, optionValue.data);
-        // For non-collection-like types, we always break after applying the weight
-        if (type != OptionType::HashSet && type != OptionType::HashVector && type != OptionType::IntVector) {
+        // For non-set types, we always break after applying the weight
+        if (type != OptionType::HashSet) {
           break;
         }
         

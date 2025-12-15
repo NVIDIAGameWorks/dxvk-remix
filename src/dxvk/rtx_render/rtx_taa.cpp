@@ -55,10 +55,6 @@ namespace dxvk {
 
   DxvkTemporalAA::DxvkTemporalAA(DxvkDevice* device)
   : RtxPass(device), m_vkd(device->vkd()) {
-    // TAA Options
-    RTX_OPTION_CLAMP_MIN(maximumRadiance, 0.0f);
-    RTX_OPTION_CLAMP(newFrameWeight, 0.0f, 1.0f);
-    RTX_OPTION_CLAMP_MIN(colorClampingFactor, 0.0f);
   }
 
   DxvkTemporalAA::~DxvkTemporalAA() {

@@ -173,21 +173,6 @@ namespace dxvk {
   RtxGlobalVolumetrics::RtxGlobalVolumetrics(DxvkDevice* device) : CommonDeviceObject(device), RtxPass(device) {
     // Volumetrics Options
 
-    RTX_OPTION_CLAMP_MIN(froxelGridResolutionScale, static_cast<uint32_t>(1));
-    RTX_OPTION_CLAMP(froxelDepthSlices, static_cast<uint16_t>(1), std::numeric_limits<uint16_t>::max());
-    RTX_OPTION_CLAMP(restirFroxelDepthSlices, static_cast<uint16_t>(1), std::numeric_limits<uint16_t>::max());
-    RTX_OPTION_CLAMP(maxAccumulationFrames, static_cast<uint8_t>(1), std::numeric_limits<uint8_t>::max());
-    RTX_OPTION_CLAMP_MIN(froxelDepthSliceDistributionExponent, 1e-4f);
-    RTX_OPTION_CLAMP_MIN(froxelMaxDistanceMeters, 0.0f);
-    // Note: Clamp to positive values as negative luminance thresholds are not valid.
-    RTX_OPTION_CLAMP_MIN(froxelFireflyFilteringLuminanceThreshold, 0.0f);
-
-    RTX_OPTION_CLAMP_MIN(initialRISSampleCount, static_cast<uint32_t>(1));
-    RTX_OPTION_CLAMP(temporalReuseMaxSampleCount, static_cast<uint16_t>(1), std::numeric_limits<uint16_t>::max());
-
-    RTX_OPTION_CLAMP_MIN(transmittanceMeasurementDistanceMeters, 0.0f);
-    RTX_OPTION_CLAMP(anisotropy, -1.0f, 1.0f);
-
     transmittanceColor.setDeferred(Vector3(
       std::clamp(transmittanceColor().x, 0.0f, 1.0f),
       std::clamp(transmittanceColor().y, 0.0f, 1.0f),
@@ -196,21 +181,6 @@ namespace dxvk {
       std::clamp(singleScatteringAlbedo().x, 0.0f, 1.0f),
       std::clamp(singleScatteringAlbedo().y, 0.0f, 1.0f),
       std::clamp(singleScatteringAlbedo().z, 0.0f, 1.0f)));
-
-    RTX_OPTION_CLAMP_MIN(noiseFieldSubStepSizeMeters, 0.0f);
-    RTX_OPTION_CLAMP_MIN(noiseFieldTimeScale, 0.0f);
-    RTX_OPTION_CLAMP_MIN(noiseFieldDensityScale, 0.0f);
-    RTX_OPTION_CLAMP_MIN(noiseFieldDensityExponent, 0.0f);
-    RTX_OPTION_CLAMP(noiseFieldOctaves, static_cast<uint32_t>(1), static_cast<uint32_t>(8));
-    RTX_OPTION_CLAMP_MIN(noiseFieldInitialFrequencyPerMeter, 0.0f);
-    RTX_OPTION_CLAMP_MIN(noiseFieldLacunarity, 0.0f);
-    RTX_OPTION_CLAMP_MIN(noiseFieldGain, 0.0f);
-
-    RTX_OPTION_CLAMP_MIN(fogRemapMaxDistanceMinMeters, 0.0f);
-    RTX_OPTION_CLAMP_MIN(fogRemapMaxDistanceMaxMeters, 0.0f);
-    RTX_OPTION_CLAMP_MIN(fogRemapTransmittanceMeasurementDistanceMinMeters, 0.0f);
-    RTX_OPTION_CLAMP_MIN(fogRemapTransmittanceMeasurementDistanceMaxMeters, 0.0f);
-    RTX_OPTION_CLAMP_MIN(fogRemapColorMultiscatteringScale, 0.0f);
 
     fogRemapMaxDistanceMinMeters.setDeferred(std::min(fogRemapMaxDistanceMinMeters(), fogRemapMaxDistanceMaxMeters()));
     fogRemapMaxDistanceMaxMeters.setDeferred(std::max(fogRemapMaxDistanceMinMeters(), fogRemapMaxDistanceMaxMeters()));

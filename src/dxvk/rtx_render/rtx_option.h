@@ -57,9 +57,9 @@ namespace dxvk {
     Bool,
     Int,
     Float,
-    HashSet,
-    HashVector,
-    IntVector,
+    HashSet,     // Merges when present in multiple layers.
+    HashVector,  // Does not merge when present in multiple layers. Use when order & number of elements is important.
+    IntVector,   // TODO[REMIX-4861] unused type, should be removed.
     Vector2,
     Vector3,
     Vector2i,
@@ -1068,9 +1068,4 @@ namespace dxvk {
     args.flags = flagsVar )
 #define RTX_OPTION(category, type, name, value, description) RTX_OPTION_FULL(category, type, name, value, "", 0, description, {})
 #define RTX_OPTION_ARGS(category, type, name, value, description, ...) RTX_OPTION_FULL(category, type, name, value, "", 0, description, __VA_ARGS__)
-
-// NOTE: these are deprecated.  Use args.minValue and args.maxValue as part of RTX_OPTION_ARGS instead.
-#define RTX_OPTION_CLAMP(name, minValue, maxValue) name##Object().setDeferred(std::clamp(name(), minValue, maxValue));
-#define RTX_OPTION_CLAMP_MAX(name, maxValue) name##Object().setDeferred(std::min(name(), maxValue));
-#define RTX_OPTION_CLAMP_MIN(name, minValue) name##Object().setDeferred(std::max(name(), minValue));
 }
