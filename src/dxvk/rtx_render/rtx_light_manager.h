@@ -179,20 +179,28 @@ private:
   RTX_OPTION_ARGS("rtx", FallbackLightType, fallbackLightType, FallbackLightType::Distant, "The light type to use for the fallback light. Determines which other fallback light options are used.", args.onChangeCallback = &fallbackLightOnChange);
   RTX_OPTION_ARGS("rtx", Vector3, fallbackLightRadiance, Vector3(1.6f, 1.8f, 2.0f), "The radiance to use for the fallback light (used across all light types).", args.onChangeCallback = &fallbackLightOnChange);
   RTX_OPTION_ARGS("rtx", Vector3, fallbackLightDirection, Vector3(-0.2f, -1.0f, 0.4f), "The direction to use for the fallback light (used only for Distant light types)", args.onChangeCallback = &fallbackLightOnChange);
-  RTX_OPTION_ARGS("rtx", float, fallbackLightAngle, 5.0f, "The angular size in degrees to use for the fallback light (used only for Distant light types). Should only be within the range [0, 180].", args.onChangeCallback = &fallbackLightOnChange);
-  RTX_OPTION_ARGS("rtx", float, fallbackLightRadius, 5.0f, "The radius to use for the fallback light (used only for Sphere light types).", args.onChangeCallback = &fallbackLightOnChange);
+  RTX_OPTION_ARGS("rtx", float, fallbackLightAngle, 5.0f, "The angular size in degrees to use for the fallback light (used only for Distant light types). Should only be within the range [0, 180].",
+                  args.onChangeCallback = &fallbackLightOnChange, args.minValue = 0.0f);
+  RTX_OPTION_ARGS("rtx", float, fallbackLightRadius, 5.0f, "The radius to use for the fallback light (used only for Sphere light types).",
+                  args.onChangeCallback = &fallbackLightOnChange, args.minValue = 0.0f);
   RTX_OPTION_ARGS("rtx", Vector3, fallbackLightPositionOffset, Vector3(0.0f, 0.0f, 0.0f), "The position offset from the camera origin to use for the fallback light (used only for non-Distant light types).", args.onChangeCallback = &fallbackLightOnChange);
   RTX_OPTION_ARGS("rtx", bool, enableFallbackLightShaping, false, "Enables light shaping on the fallback light (only used for non-Distant light types).", args.onChangeCallback = &fallbackLightOnChange);
   RTX_OPTION_ARGS("rtx", bool, enableFallbackLightViewPrimaryAxis, false,
             R"(Enables usage of the camera's view axis as the primary axis for the fallback light's shaping (only used for non - Distant light types). Typically the shaping primary axis may be specified directly, but if desired it may be set to the camera's view axis for a "flashlight" effect.)", args.onChangeCallback = &fallbackLightOnChange);
   RTX_OPTION_ARGS("rtx", Vector3, fallbackLightPrimaryAxis, Vector3(0.0f, 0.0f, -1.0f), "The primary axis to use for the fallback light shaping (used only for non-Distant light types).", args.onChangeCallback = &fallbackLightOnChange);
-  RTX_OPTION_ARGS("rtx", float, fallbackLightConeAngle, 25.0f, "The cone angle in degrees to use for the fallback light shaping (used only for non-Distant light types with shaping enabled). Should only be within the range [0, 180].", args.onChangeCallback = &fallbackLightOnChange);
-  RTX_OPTION_ARGS("rtx", float, fallbackLightConeSoftness, 0.1f, "The cone softness to use for the fallback light shaping (used only for non-Distant light types with shaping enabled).", args.onChangeCallback = &fallbackLightOnChange);
-  RTX_OPTION_ARGS("rtx", float, fallbackLightFocusExponent, 2.0f, "The focus exponent to use for the fallback light shaping (used only for non-Distant light types with shaping enabled).", args.onChangeCallback = &fallbackLightOnChange);
+  RTX_OPTION_ARGS("rtx", float, fallbackLightConeAngle, 25.0f, "The cone angle in degrees to use for the fallback light shaping (used only for non-Distant light types with shaping enabled). Should only be within the range [0, 180].",
+                  args.onChangeCallback = &fallbackLightOnChange, args.minValue = 0.0f);
+  RTX_OPTION_ARGS("rtx", float, fallbackLightConeSoftness, 0.1f, "The cone softness to use for the fallback light shaping (used only for non-Distant light types with shaping enabled).",
+                  args.onChangeCallback = &fallbackLightOnChange, args.minValue = 0.0f);
+  RTX_OPTION_ARGS("rtx", float, fallbackLightFocusExponent, 2.0f, "The focus exponent to use for the fallback light shaping (used only for non-Distant light types with shaping enabled).",
+                  args.onChangeCallback = &fallbackLightOnChange, args.minValue = 0.0f);
   RTX_OPTION("rtx", bool, calculateLightIntensityUsingLeastSquares, true, "Enable usage of least squares for approximating a light's falloff curve rather than a more basic single point approach. This will generally result in more accurate matching of the original application's custom light attenuation curves, especially with non physically based linear-style attenuation.");
-  RTX_OPTION("rtx", float, lightConversionSphereLightFixedRadius, 4.f, "The fixed radius in world units to use for legacy lights converted to sphere lights (currently point and spot lights will convert to sphere lights). Use caution with large light radii as many legacy lights will be placed close to geometry and intersect it, causing suboptimal light sampling performance or other visual artifacts (lights clipping through walls, etc).");
-  RTX_OPTION("rtx", float, lightConversionDistantLightFixedIntensity, 1.0f, "The fixed intensity (in W/sr) to use for legacy lights converted to distant lights (currently directional lights will convert to distant lights).");
-  RTX_OPTION("rtx", float, lightConversionDistantLightFixedAngle, 0.0349f, "The angular size in radians of the distant light source for legacy lights converted to distant lights. Set to ~2 degrees in radians by default. Should only be within the range [0, pi].");
+  RTX_OPTION_ARGS("rtx", float, lightConversionSphereLightFixedRadius, 4.f, "The fixed radius in world units to use for legacy lights converted to sphere lights (currently point and spot lights will convert to sphere lights). Use caution with large light radii as many legacy lights will be placed close to geometry and intersect it, causing suboptimal light sampling performance or other visual artifacts (lights clipping through walls, etc).",
+                  args.minValue = 0.0f);
+  RTX_OPTION_ARGS("rtx", float, lightConversionDistantLightFixedIntensity, 1.0f, "The fixed intensity (in W/sr) to use for legacy lights converted to distant lights (currently directional lights will convert to distant lights).",
+                  args.minValue = 0.0f);
+  RTX_OPTION_ARGS("rtx", float, lightConversionDistantLightFixedAngle, 0.0349f, "The angular size in radians of the distant light source for legacy lights converted to distant lights. Set to ~2 degrees in radians by default. Should only be within the range [0, pi].",
+                  args.minValue = 0.0f, args.maxValue = kPi);
   RTX_OPTION("rtx", float, lightConversionMaxIntensity, FLT_MAX, "The highest intensity value a converted light can have.");
   RTX_OPTION("rtx", float, lightConversionIntensityFactor, 1.f, "Scales the converted light intensities.");
 };

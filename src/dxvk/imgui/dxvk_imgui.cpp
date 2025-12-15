@@ -622,11 +622,6 @@ namespace dxvk {
   , m_about  (new ImGuiAbout)
   , m_splash  (new ImGuiSplash)
   , m_graphGUI  (new RtxGraphGUI) {
-    // Clamp Option ranges
-
-    RTX_OPTION_CLAMP(reflexStatRangeInterpolationRate, 0.0f, 1.0f);
-    RTX_OPTION_CLAMP_MIN(reflexStatRangePaddingRatio, 0.0f);
-
     // Set up constant state
     m_rsState.polygonMode       = VK_POLYGON_MODE_FILL;
     m_rsState.cullMode          = VK_CULL_MODE_BACK_BIT;

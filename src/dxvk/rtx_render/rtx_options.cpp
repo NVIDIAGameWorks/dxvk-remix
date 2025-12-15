@@ -545,4 +545,39 @@ namespace dxvk {
            enableAlwaysCalculateAABB() ||
            NeeCachePass::enable();
   }
+
+  void RtxOptions::resolveTransparencyThresholdOnChange(DxvkDevice* device) {
+    // Adjust valid range on resolveOpaquenessThreshold to prevent value below resolveTransparencyThreshold
+    resolveOpaquenessThresholdObject().setMinValue(resolveTransparencyThreshold());
+  }
+
+  void RtxOptions::pathMinBouncesOnChange(DxvkDevice* device) {
+    // Adjust valid range on pathMaxBounces to prevent value below pathMinBounces
+    pathMaxBouncesObject().setMinValue(pathMinBounces());
+  }
+
+  void RtxOptions::pathMaxBouncesOnChange(DxvkDevice* device) {
+    // Adjust valid range on pathMinBounces to prevent value above pathMaxBounces
+    pathMinBouncesObject().setMaxValue(pathMaxBounces());
+  }
+
+  void RtxOptions::rayPortalSamplingWeightMinDistanceOnChange(DxvkDevice* device) {
+    // Adjust valid range on rayPortalSamplingWeightMaxDistance to prevent value below min distance
+    rayPortalSamplingWeightMaxDistanceObject().setMinValue(rayPortalSamplingWeightMinDistance());
+  }
+
+  void RtxOptions::rayPortalSamplingWeightMaxDistanceOnChange(DxvkDevice* device) {
+    // Adjust valid range on rayPortalSamplingWeightMinDistance to prevent value above max distance
+    rayPortalSamplingWeightMinDistanceObject().setMaxValue(rayPortalSamplingWeightMaxDistance());
+  }
+
+  void ViewDistanceOptions::distanceFadeMinOnChange(DxvkDevice* device) {
+    // Adjust valid range on distanceFadeMax to prevent value below distanceFadeMin
+    distanceFadeMaxObject().setMinValue(distanceFadeMin());
+  }
+
+  void ViewDistanceOptions::distanceFadeMaxOnChange(DxvkDevice* device) {
+    // Adjust valid range on distanceFadeMin to prevent value above distanceFadeMax
+    distanceFadeMinObject().setMaxValue(distanceFadeMax());
+  }
 }
