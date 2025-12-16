@@ -263,6 +263,9 @@ namespace {
           src.getMetallicConstant(),
           src.getEmissiveColorConstant(),
           src.getEnableEmission(),
+          src.getEmissiveAlphaMask(),
+          src.getEmissiveAlphaInvert(),
+          src.getEmissiveColorTint(),
           src.getSpriteSheetRows(),
           src.getSpriteSheetCols(),
           src.getSpriteSheetFPS(),
@@ -359,6 +362,9 @@ namespace {
           extOpaque->metallicConstant,
           tovec3(info.emissiveColorConstant),
           info.emissiveIntensity > 0.f,
+          false, // EmissiveAlphaMask - not used for API materials
+          false, // EmissiveAlphaInvert - not used for API materials
+          Vector3(1.0f, 1.0f, 1.0f), // EmissiveColorTint - white default for API materials
           info.spriteSheetRow,
           info.spriteSheetCol,
           info.spriteSheetFps,
@@ -616,8 +622,9 @@ namespace {
       if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_IGNORE_BAKED_LIGHTING    ){ result.set(InstanceCategories::IgnoreBakedLighting   ); }
       if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_IGNORE_TRANSPARENCY_LAYER){ result.set(InstanceCategories::IgnoreTransparencyLayer); }
       if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_PARTICLE_EMITTER)         { result.set(InstanceCategories::ParticleEmitter); }
+      if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_LEGACY_EMISSIVE)          { result.set(InstanceCategories::LegacyEmissive); }
       
-      static_assert((int)InstanceCategories::Count == 24, "Instance categories changed, please update Remix SDK");
+      static_assert((int)InstanceCategories::Count == 25, "Instance categories changed, please update Remix SDK");
       return result;
     }
 

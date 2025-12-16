@@ -27,6 +27,7 @@
 #include <limits>
 
 #include "../util/util_keybind.h"
+#include "../util/util_string.h"
 #include "../util/config/config.h"
 #include "../util/xxHash/xxhash.h"
 #include "../util/util_math.h"
@@ -204,6 +205,22 @@ namespace dxvk {
                   "Hack/workaround option for dynamic world space UI textures with a coplanar background.\n"
                   "Apply to backgrounds if the foreground material is a dynamic world texture rendered in UI that is unpredictable and rapidly changing.\n"
                   "This offsets the background texture backwards.");
+    RTX_OPTION("rtx", fast_unordered_set, legacyEmissiveTextures, {},
+                  "Textures on draw calls that should be treated as legacy emissive elements.\n"
+                  "Similar to worldspace UI but uses alpha channel for emissive if available, with per-texture controllable emissive strength.");
+    RTX_OPTION("rtx", std::string, legacyEmissiveIntensitiesString, "",
+                  "Per-texture emissive intensity values for legacy emissive textures.\n"
+                  "Format: hash1:intensity1,hash2:intensity2,hash3:intensity3\n"
+                  "Default intensity is 2.0f if not specified.");
+
+    RTX_OPTION("rtx", std::string, legacyEmissiveColorsString, "",
+                  "Per-texture emissive color tint values for legacy emissive textures.\n"
+                  "Format: hash1:r,g,b;hash2:r,g,b;hash3:r,g,b\n"
+                  "Default color is white (1.0,1.0,1.0) if not specified.");
+    RTX_OPTION("rtx", std::string, legacyEmissiveAlphaInvertString, "",
+                  "Per-texture alpha invert flags for legacy emissive textures.\n"
+                  "Format: hash1,hash2,hash3 (only lists hashes that should have inverted alpha)\n"
+                  "When inverted: black alpha = full emission, white alpha = no emission.");
     RTX_OPTION("rtx", fast_unordered_set, hideInstanceTextures, {},
                   "Textures on draw calls that should be hidden from rendering, but not totally ignored.\n"
                   "This is similar to rtx.ignoreTextures but instead of completely ignoring such draw calls they are only hidden from rendering, allowing for the hidden objects to still appear in captures.\n"
@@ -1494,6 +1511,132 @@ namespace dxvk {
     static float calcUserEVBias() {
       return (float(RtxOptions::userBrightness() - 50) / 100.f)
         * RtxOptions::userBrightnessEVRange();
+    }
+
+    // Helper functions for Legacy Emissive intensity parsing
+    static fast_unordered_cache<float> parseLegacyEmissiveIntensities(const std::string& str) {
+      fast_unordered_cache<float> result;
+      if (str.empty()) {
+        return result;
+      }
+      
+      const auto pairs = dxvk::str::split(str, ',');
+      for (const auto& pair : pairs) {
+        const auto hashIntensity = dxvk::str::split(pair, ':');
+        if (hashIntensity.size() == 2) {
+          try {
+            XXH64_hash_t hash = std::stoull(hashIntensity[0], nullptr, 16);
+            float intensity = std::stof(hashIntensity[1]);
+            result[hash] = intensity;
+          } catch (...) {
+            // Skip invalid entries
+          }
+        }
+      }
+      return result;
+    }
+
+    static std::string legacyEmissiveIntensitiesToString(const fast_unordered_cache<float>& cache) {
+      std::string result;
+      bool first = true;
+      for (const auto& pair : cache) {
+        if (!first) {
+          result += ",";
+        }
+        first = false;
+        
+        char hashStr[32];
+        snprintf(hashStr, sizeof(hashStr), "%016llX", pair.first);
+        result += hashStr;
+        result += ":";
+        result += std::to_string(pair.second);
+      }
+      return result;
+    }
+    
+    // Helper functions for Legacy Emissive color parsing
+    static fast_unordered_cache<Vector3> parseLegacyEmissiveColors(const std::string& str) {
+      fast_unordered_cache<Vector3> result;
+      if (str.empty()) {
+        return result;
+      }
+      
+      const auto pairs = dxvk::str::split(str, ';');
+      for (const auto& pair : pairs) {
+        const auto hashColor = dxvk::str::split(pair, ':');
+        if (hashColor.size() == 2) {
+          try {
+            XXH64_hash_t hash = std::stoull(hashColor[0], nullptr, 16);
+            const auto colorValues = dxvk::str::split(hashColor[1], ',');
+            if (colorValues.size() == 3) {
+              Vector3 color(
+                std::stof(colorValues[0]),
+                std::stof(colorValues[1]), 
+                std::stof(colorValues[2])
+              );
+              result[hash] = color;
+            }
+          } catch (...) {
+            // Skip invalid entries
+          }
+        }
+      }
+      return result;
+    }
+    
+    static std::string legacyEmissiveColorsToString(const fast_unordered_cache<Vector3>& cache) {
+      std::string result;
+      bool first = true;
+      for (const auto& pair : cache) {
+        if (!first) {
+          result += ";";
+        }
+        first = false;
+        
+        char hashStr[32];
+        snprintf(hashStr, sizeof(hashStr), "%016llX", pair.first);
+        result += hashStr;
+        result += ":";
+        result += std::to_string(pair.second.x) + "," + 
+                 std::to_string(pair.second.y) + "," + 
+                 std::to_string(pair.second.z);
+      }
+      return result;
+    }
+    
+    // Helper functions for Legacy Emissive alpha invert parsing
+    static fast_unordered_set parseLegacyEmissiveAlphaInvert(const std::string& str) {
+      fast_unordered_set result;
+      if (str.empty()) {
+        return result;
+      }
+      
+      const auto hashes = dxvk::str::split(str, ',');
+      for (const auto& hashStr : hashes) {
+        try {
+          XXH64_hash_t hash = std::stoull(hashStr, nullptr, 16);
+          result.insert(hash);
+        } catch (...) {
+          // Skip invalid entries
+        }
+      }
+      return result;
+    }
+
+    static std::string legacyEmissiveAlphaInvertToString(const fast_unordered_set& hashSet) {
+      std::string result;
+      bool first = true;
+      for (const auto& hash : hashSet) {
+        if (!first) {
+          result += ",";
+        }
+        first = false;
+        
+        char hashStr[32];
+        snprintf(hashStr, sizeof(hashStr), "%016llX", hash);
+        result += hashStr;
+      }
+      return result;
     }
   };
 }

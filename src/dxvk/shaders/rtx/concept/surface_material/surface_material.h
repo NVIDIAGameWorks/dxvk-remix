@@ -94,7 +94,11 @@ struct OpaqueSurfaceMaterial
   float16_t anisotropy;
   uint16_t tangentTextureIndex;
 
-  // 24
+  // 24-27
+  f16vec3 emissiveColorTint;
+  uint16_t _padding_tint;  // Ensure proper alignment
+  
+  // 28-31  
   uint16_t samplerFeedbackStamp;
 
   // Todo: Fixed function blend state info here in the future (Actually this should go on a Legacy Material, or some sort of non-PBR Legacy Surface)
