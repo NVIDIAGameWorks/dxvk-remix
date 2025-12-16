@@ -311,12 +311,15 @@ namespace dxvk {
                     args.onChangeCallback = &graphicsPresetOnChange);
     RTX_OPTION_ENV("rtx", RaytraceModePreset, raytraceModePreset, RaytraceModePreset::Auto, "DXVK_RAYTRACE_MODE_PRESET_TYPE", "");
     RTX_OPTION_FLAG("rtx", bool, lowMemoryGpu, false, RtxOptionFlags::NoSave, "Enables low memory mode, where we aggressively detune caches and streaming systems to accomodate the lower memory available.");
-    RTX_OPTION("rtx", float, emissiveIntensity, 1.0f, "A general scale factor on all emissive intensity values globally. Generally per-material emissive intensities should be used, but this option may be useful for debugging without needing to author materials.");
-    RTX_OPTION("rtx", float, fireflyFilteringLuminanceThreshold, 1000.0f, "Maximum luminance threshold for the firefly filtering to clamp to.");
+    RTX_OPTION_ARGS("rtx", float, emissiveIntensity, 1.0f, "A general scale factor on all emissive intensity values globally. Generally per-material emissive intensities should be used, but this option may be useful for debugging without needing to author materials.",
+                    args.minValue = 0.0f);
+    RTX_OPTION_ARGS("rtx", float, fireflyFilteringLuminanceThreshold, 1000.0f, "Maximum luminance threshold for the firefly filtering to clamp to.",
+                    args.minValue = 0.0f);
     RTX_OPTION("rtx", float, secondarySpecularFireflyFilteringThreshold, 1000.0f, "Firefly luminance clamping threshold for secondary specular signal.");
-    RTX_OPTION("rtx", float, vertexColorStrength, 0.6f,
+    RTX_OPTION_ARGS("rtx", float, vertexColorStrength, 0.6f,
                "A scalar to apply to how strong vertex color influence should be on materials.\n"
-               "A value of 1 indicates that it should be fully considered (though do note the texture operation and relevant parameters still control how much it should be blended with the actual albedo color), a value of 0 indicates that it should be fully ignored.");
+               "A value of 1 indicates that it should be fully considered (though do note the texture operation and relevant parameters still control how much it should be blended with the actual albedo color), a value of 0 indicates that it should be fully ignored.",
+               args.minValue = 0.0f, args.maxValue = 1.0f);
     RTX_OPTION("rtx", bool, vertexColorIsBakedLighting, true, "If true, brightness contribution will be removed from the vertex color by dividing each component by the largest component.");
     RTX_OPTION("rtx", bool, ignoreAllVertexColorBakedLighting, false, "If true, all baked lighting bound to all vertex colors will be ignored.");
     RTX_OPTION("rtx", bool, allowFSE, false,
@@ -605,16 +608,19 @@ namespace dxvk {
 
     // Resolve Options
     // Todo: Potentially document that after a number of resolver interactions is exhausted the next interaction will be treated as a hit regardless.
-    RTX_OPTION("rtx", uint8_t, primaryRayMaxInteractions, 32,
+    RTX_OPTION_ARGS("rtx", uint8_t, primaryRayMaxInteractions, 32,
                "The maximum number of resolver interactions to use for primary (initial G-Buffer) rays.\n"
-               "This affects how many Decals, Ray Portals and potentially particles (if unordered approximations are not enabled) may be interacted with along a ray at the cost of performance for higher amounts of interactions.");
-    RTX_OPTION("rtx", uint8_t, psrRayMaxInteractions, 32,
+               "This affects how many Decals, Ray Portals and potentially particles (if unordered approximations are not enabled) may be interacted with along a ray at the cost of performance for higher amounts of interactions.",
+               args.minValue = static_cast<uint8_t>(1), args.maxValue = std::numeric_limits<uint8_t>::max());
+    RTX_OPTION_ARGS("rtx", uint8_t, psrRayMaxInteractions, 32,
                "The maximum number of resolver interactions to use for PSR (primary surface replacement G-Buffer) rays.\n"
-               "This affects how many Decals, Ray Portals and potentially particles (if unordered approximations are not enabled) may be interacted with along a ray at the cost of performance for higher amounts of interactions.");
-    RTX_OPTION("rtx", uint8_t, secondaryRayMaxInteractions, 8,
+               "This affects how many Decals, Ray Portals and potentially particles (if unordered approximations are not enabled) may be interacted with along a ray at the cost of performance for higher amounts of interactions.",
+               args.minValue = static_cast<uint8_t>(1), args.maxValue = std::numeric_limits<uint8_t>::max());
+    RTX_OPTION_ARGS("rtx", uint8_t, secondaryRayMaxInteractions, 8,
                "The maximum number of resolver interactions to use for secondary (indirect) rays.\n"
                "This affects how many Decals, Ray Portals and potentially particles (if unordered approximations are not enabled) may be interacted with along a ray at the cost of performance for higher amounts of interactions.\n"
-               "This value is recommended to be set lower than the primary/PSR max ray interactions as secondary ray interactions are less visually relevant relative to the performance cost of resolving them.");
+               "This value is recommended to be set lower than the primary/PSR max ray interactions as secondary ray interactions are less visually relevant relative to the performance cost of resolving them.",
+               args.minValue = static_cast<uint8_t>(1), args.maxValue = std::numeric_limits<uint8_t>::max());
     RTX_OPTION("rtx", bool, enableSeparateUnorderedApproximations, true,
                "Use a separate loop during resolving for surfaces which can have lighting evaluated in an approximate unordered way on each path segment (such as particles).\n"
                "This improves performance typically in how particles or decals are rendered and should usually always be enabled.\n"
@@ -626,8 +632,11 @@ namespace dxvk {
     RTX_OPTION_ENV("rtx", bool, enableIndirectTranslucentShadows, false, "RTX_ENABLE_INDIRECT_TRANSLUCENT_SHADOWS", "Calculate coloured shadows for translucent materials (i.e. glass, water) in indirect lighting (i.e. reflections and GI). In engineering terms: include OBJECT_MASK_TRANSLUCENT into secondary visibility rays.");
     RTX_OPTION_ENV("rtx", bool, enableIndirectAlphaBlendShadows, true, "RTX_ENABLE_INDIRECT_ALPHABLEND_SHADOWS", "Calculate shadows for semi-transparent (alpha blended) objects in indirect lighting (i.e. reflections and GI). In engineering terms: include OBJECT_MASK_ALPHA_BLEND into secondary visibility rays.");
 
-    RTX_OPTION("rtx", float, resolveTransparencyThreshold, 1.0f / 255.0f, "A threshold for which any opacity value below is considered totally transparent and may be safely skipped without as significant of a performance cost.");
-    RTX_OPTION("rtx", float, resolveOpaquenessThreshold, 254.0f / 255.0f, "A threshold for which any opacity value above is considered totally opaque.");
+    RTX_OPTION_ARGS("rtx", float, resolveTransparencyThreshold, 1.0f / 255.0f, "A threshold for which any opacity value below is considered totally transparent and may be safely skipped without as significant of a performance cost.",
+               args.minValue = 0.0f, args.maxValue = 1.0f);
+    public: static void resolveTransparencyThresholdOnChange(DxvkDevice* device);
+    RTX_OPTION_ARGS("rtx", float, resolveOpaquenessThreshold, 254.0f / 255.0f, "A threshold for which any opacity value above is considered totally opaque.",
+               args.minValue = 0.0f, args.maxValue = 1.0f, args.onChangeCallback = &resolveTransparencyThresholdOnChange);
 
     // PSR Options
     RTX_OPTION("rtx", bool, enablePSRR, true,
@@ -638,12 +647,14 @@ namespace dxvk {
                "A flag to enable or disable transmission PSR (Primary Surface Replacement).\n"
                "When enabled this feature allows higher quality glass-like refraction in special cases by replacing the G-Buffer's surface with the refracted surface.\n"
                "Should usually be enabled for the sake of quality as almost all applications will utilize it in the form of glass.");
-    RTX_OPTION("rtx", uint8_t, psrrMaxBounces, 10,
+    RTX_OPTION_ARGS("rtx", uint8_t, psrrMaxBounces, 10,
                "The maximum number of Reflection PSR bounces to traverse. Must be 15 or less due to payload encoding.\n"
-               "Should be set higher when many mirror-like reflection bounces may be needed, though more bounces may come at a higher performance cost.");
-    RTX_OPTION("rtx", uint8_t, pstrMaxBounces, 10,
+               "Should be set higher when many mirror-like reflection bounces may be needed, though more bounces may come at a higher performance cost.",
+               args.minValue = static_cast<uint8_t>(1), args.maxValue = static_cast<uint8_t>(254));
+    RTX_OPTION_ARGS("rtx", uint8_t, pstrMaxBounces, 10,
                "The maximum number of Transmission PSR bounces to traverse. Must be 15 or less due to payload encoding.\n"
-               "Should be set higher when refraction through many layers of glass may be needed, though more bounces may come at a higher performance cost.");
+               "Should be set higher when refraction through many layers of glass may be needed, though more bounces may come at a higher performance cost.",
+               args.minValue = static_cast<uint8_t>(1), args.maxValue = static_cast<uint8_t>(254));
     RTX_OPTION("rtx", bool, enablePSTROutgoingSplitApproximation, true,
                "Enable transmission PSR on outgoing transmission events such as leaving translucent materials (rather than respecting no-split path PSR rule).\n"
                "Typically this results in better looking glass when enabled (at the cost of accuracy due to ignoring non-TIR inter-reflections within the glass itself).");
@@ -683,22 +694,31 @@ namespace dxvk {
     RTX_OPTION("rtx", float, russianRouletteDiffuseContinueProbability, 0.1f, "The probability of continuing a diffuse path when Russian Roulette is being used. Only apply to specular based mode.\n");
     RTX_OPTION("rtx", float, russianRouletteSpecularContinueProbability, 0.98f, "The probability of continuing a specular path when Russian Roulette is being used. Only apply to specular based mode.\n");
     RTX_OPTION("rtx", float, russianRouletteDistanceFactor, 0.1f, "Path segments whose distance proportion are under this threshold are more likely to continue. Only apply to specular based mode.\n");
-    RTX_OPTION("rtx", float, russianRouletteMaxContinueProbability, 0.9f,
+    RTX_OPTION_ARGS("rtx", float, russianRouletteMaxContinueProbability, 0.9f,
                "The maximum probability of continuing a path when Russian Roulette is being used.\n"
-               "This ensures all rays have a small probability of terminating each bounce, mostly to prevent infinite paths in perfectly reflective mirror rooms (though the maximum path bounce count will also ensure this).");
+               "This ensures all rays have a small probability of terminating each bounce, mostly to prevent infinite paths in perfectly reflective mirror rooms (though the maximum path bounce count will also ensure this).",
+               args.minValue = 0.0f, args.maxValue = 1.0f);
     RTX_OPTION("rtx", float, russianRoulette1stBounceMinContinueProbability, 0.6f,
                "The minimum probability of continuing a path when Russian Roulette is being used on the first bounce.\n"
                "This ensures that on the first bounce rays are not terminated too aggressively as it may be useful for some denoisers to have a contribution even if it is a relatively unimportant one rather than a missing indirect sample.");
     RTX_OPTION("rtx", float, russianRoulette1stBounceMaxContinueProbability, 1.0f,
                "The maximum probability of continuing a path when Russian Roulette is being used on the first bounce.\n"
                "This is similar to the usual max continuation probability for Russian Roulette, but specifically only for the first bounce.");
-    RTX_OPTION_ENV("rtx", uint8_t, pathMinBounces, 1, "DXVK_PATH_TRACING_MIN_BOUNCES",
+    public: static void pathMinBouncesOnChange(DxvkDevice* device);
+    RTX_OPTION_ARGS("rtx", uint8_t, pathMinBounces, 1,
                    "The minimum number of indirect bounces the path must complete before Russian Roulette can be used. Must be < 16.\n"
-                   "This value is recommended to stay fairly low (1 for example) as forcing longer paths when they carry little contribution quickly becomes detrimental to performance.");
-    RTX_OPTION_ENV("rtx", uint8_t, pathMaxBounces, 4, "DXVK_PATH_TRACING_MAX_BOUNCES",
+                   "This value is recommended to stay fairly low (1 for example) as forcing longer paths when they carry little contribution quickly becomes detrimental to performance.",
+                   args.environment = "DXVK_PATH_TRACING_MIN_BOUNCES",
+                   args.minValue = static_cast<uint8_t>(0), args.maxValue = static_cast<uint8_t>(15),
+                   args.onChangeCallback = &pathMinBouncesOnChange);
+    public: static void pathMaxBouncesOnChange(DxvkDevice* device);
+    RTX_OPTION_ARGS("rtx", uint8_t, pathMaxBounces, 4,
                    "The maximum number of indirect bounces the path will be allowed to complete. Must be < 16.\n"
                    "Higher values result in better indirect lighting quality due to biasing the signal less, lower values result in better performance.\n"
-                   "Very high values are not recommended however as while long paths may be technically needed for unbiased rendering, in practice the contributions from higher bounces have diminishing returns.");
+                   "Very high values are not recommended however as while long paths may be technically needed for unbiased rendering, in practice the contributions from higher bounces have diminishing returns.",
+                   args.environment = "DXVK_PATH_TRACING_MAX_BOUNCES",
+                   args.minValue = static_cast<uint8_t>(0), args.maxValue = static_cast<uint8_t>(15),
+                   args.onChangeCallback = &pathMaxBouncesOnChange);
     // Note: Use caution when adjusting any zero thresholds as values too high may cause entire lobes of contribution to be missing in material edge cases. For example
     // with translucency, a zero threshold on the specular lobe of 0.05 removes the entire contribution when viewing straight on for any glass with an IoR below 1.58 or so
     // which can be paticularly noticable in some scenes. To bias sampling more in the favor of one lobe the min probability should be used instead, but be aware this will
@@ -763,10 +783,11 @@ namespace dxvk {
     RTX_OPTION("rtx", float, worldSpaceUiBackgroundOffset, -0.01f, "Distance along normal to offset objects rendered as worldspace UI, specifically for the background of screens.");
 
     // Light Selection/Sampling Options
-    RTX_OPTION("rtx", uint16_t, risLightSampleCount, 7,
+    RTX_OPTION_ARGS("rtx", uint16_t, risLightSampleCount, 7,
                "The number of lights randomly selected from the global pool to consider when selecting a light with RIS.\n"
                "Higher values generally increases the quality of RIS light sampling, but also has diminishing returns and higher performance cost past a point.\n"
-               "Note that RIS is only used when RTXDI is disabled for direct lighting, or for light sampling in indirect rays, so the impact of this effect will vary.");
+               "Note that RIS is only used when RTXDI is disabled for direct lighting, or for light sampling in indirect rays, so the impact of this effect will vary.",
+               args.minValue = static_cast<uint16_t>(1), args.maxValue = std::numeric_limits<uint16_t>::max());
 
     // Subsurface Scattering
     struct SubsurfaceScattering {
@@ -796,8 +817,10 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, enableCullingInSecondaryRays, false, "Enable front/backface culling for opaque objects. Objects with alpha blend or alpha test are not culled.  Only applies in secondary rays, defaults to off.  Generally helps with light bleeding from objects that aren't watertight.");
     RTX_OPTION("rtx", bool, enableEmissiveBlendModeTranslation, true, "Treat incoming semi/additive D3D blend modes as emissive.");
     RTX_OPTION("rtx", bool, enableEmissiveBlendEmissiveOverride, true, "Override typical material emissive information on draw calls with any emissive blending modes to emulate their original look more accurately.");
-    RTX_OPTION("rtx", float, emissiveBlendOverrideEmissiveIntensity, 0.2f, "The emissive intensity to use when the emissive blend override is enabled. Adjust this if particles for example look overly bright globally.");
-    RTX_OPTION("rtx", float, particleSoftnessFactor, 0.05f, "Multiplier for the view distance that is used to calculate the particle blending range.");
+    RTX_OPTION_ARGS("rtx", float, emissiveBlendOverrideEmissiveIntensity, 0.2f, "The emissive intensity to use when the emissive blend override is enabled. Adjust this if particles for example look overly bright globally.",
+               args.minValue = 0.0f, args.maxValue = FLOAT16_MAX);
+    RTX_OPTION_ARGS("rtx", float, particleSoftnessFactor, 0.05f, "Multiplier for the view distance that is used to calculate the particle blending range.",
+               args.minValue = 0.0f, args.maxValue = 1.0f);
     RTX_OPTION("rtx", float, forceCutoutAlpha, 0.5f,
                "When an object is added to the cutout textures list it will have a cutout alpha mode forced on it, using this value for the alpha test.\n"
                "This is meant to improve the look of some legacy mode materials using low-resolution textures and alpha blending instead of alpha cutout as this can cause blurry halos around edges due to the difficulty of handling this sort of blending in Remix.\n"
@@ -816,12 +839,16 @@ namespace dxvk {
     RTX_OPTION("rtx", Vector3, rayPortalModelNormalAxis, Vector3(0.0f, 0.0f, 1.0f), "The axis in object space to map the ray portal geometry's normal axis to. Currently unused (as PCA is not implemented).");
     RTX_OPTION("rtx", Vector3, rayPortalModelWidthAxis, Vector3(1.0f, 0.0f, 0.0f), "The axis in object space to map the ray portal geometry's width axis to. Currently unused (as PCA is not implemented).");
     RTX_OPTION("rtx", Vector3, rayPortalModelHeightAxis, Vector3(0.0f, 1.0f, 0.0f), "The axis in object space to map the ray portal geometry's height axis to. Currently unused (as PCA is not implemented).");
-    RTX_OPTION("rtx", float, rayPortalSamplingWeightMinDistance, 10.0f,
+    public: static void rayPortalSamplingWeightMinDistanceOnChange(DxvkDevice* device);
+    RTX_OPTION_ARGS("rtx", float, rayPortalSamplingWeightMinDistance, 10.0f,
                "The minimum distance from a portal which the interpolation of the probability of light sampling through portals will begin (and is at its maximum value).\n"
-               "Currently unimplemented, kept here for future use.");
-    RTX_OPTION("rtx", float, rayPortalSamplingWeightMaxDistance, 1000.0f,
+               "Currently unimplemented, kept here for future use.",
+               args.minValue = 0.0f, args.onChangeCallback = &rayPortalSamplingWeightMinDistanceOnChange);
+    public: static void rayPortalSamplingWeightMaxDistanceOnChange(DxvkDevice* device);
+    RTX_OPTION_ARGS("rtx", float, rayPortalSamplingWeightMaxDistance, 1000.0f,
                "The maximum distance from a portal which the interpolation of the probability of light sampling through portals will end (and is at its minimum value such that no portal light sampling will happen beyond this point).\n"
-               "Currently unimplemented, kept here for future use.");
+               "Currently unimplemented, kept here for future use.",
+               args.minValue = 0.0f, args.onChangeCallback = &rayPortalSamplingWeightMaxDistanceOnChange);
     RTX_OPTION("rtx", bool, rayPortalCameraHistoryCorrection, false,
                "A flag to control if history correction on ray portal camera teleportation events is enabled or disabled.\n"
                "This allows for the previous camera matrix to be set to a virtual matrix to correct the large discontunity in position and view direction which happens when a camera teleports from moving through a ray portal (in games like Portal).\n"
@@ -1146,12 +1173,9 @@ namespace dxvk {
     RtxOptions(const Config& options) {
       // Need to set this to true after conf files are parsed, but before any options are accessed.
       RtxOptionImpl::s_isInitialized = true;
+      // Doing this early, so that the validation code below applies to any settings from user.conf
+      RtxOptionManager::applyPendingValues(nullptr);
 
-      RTX_OPTION_CLAMP_MIN(emissiveIntensity, 0.0f);
-      // Note: Clamp to positive values as negative luminance thresholds are not valid.
-      RTX_OPTION_CLAMP_MIN(fireflyFilteringLuminanceThreshold, 0.0f);
-      RTX_OPTION_CLAMP(vertexColorStrength, 0.0f, 1.0f);
-   
       // Render pass modes
 
       //renderPassVolumeIntegrateRaytraceMode = (RenderPassVolumeIntegrateRaytraceMode) std::min(
@@ -1176,39 +1200,6 @@ namespace dxvk {
       //enableShaderExecutionReorderingInPathtracerIntegrateDirect =
       //  options.getOption<bool>("rtx.enableShaderExecutionReorderingInPathtracerIntegrateDirect", enableShaderExecutionReorderingInPathtracerIntegrateDirect);
 
-      // Resolve Options
-
-      // Note: Clamped due to 8 bit usage on GPU.
-      RTX_OPTION_CLAMP(primaryRayMaxInteractions, static_cast<uint8_t>(1), std::numeric_limits<uint8_t>::max());
-      RTX_OPTION_CLAMP(psrRayMaxInteractions, static_cast<uint8_t>(1), std::numeric_limits<uint8_t>::max());
-      RTX_OPTION_CLAMP(secondaryRayMaxInteractions, static_cast<uint8_t>(1), std::numeric_limits<uint8_t>::max());
-      RTX_OPTION_CLAMP(resolveTransparencyThreshold, 0.f, 1.f);
-      RTX_OPTION_CLAMP(resolveOpaquenessThreshold, resolveTransparencyThreshold(), 1.f);
-
-      // PSR Options
-      
-      // Note: Clamped due to 8 bit usage on GPU.
-      RTX_OPTION_CLAMP(psrrMaxBounces, static_cast<uint8_t>(1), static_cast<uint8_t>(254));
-      RTX_OPTION_CLAMP(pstrMaxBounces, static_cast<uint8_t>(1), static_cast<uint8_t>(254));
-      
-      // Path Options
-      RTX_OPTION_CLAMP(russianRouletteMaxContinueProbability, 0.0f, 1.0f);
-      // Note: Clamped to 15 due to usage on GPU.
-      RTX_OPTION_CLAMP(pathMinBounces, static_cast<uint8_t>(0), static_cast<uint8_t>(15));
-      // Note: Clamp to the minimum bounce count additionally.
-      RTX_OPTION_CLAMP(pathMaxBounces, pathMinBounces(), static_cast<uint8_t>(15));
-
-      // Light Selection/Sampling Options
-
-      // Note: Clamped due to 16 bit usage on GPU.
-      RTX_OPTION_CLAMP(risLightSampleCount, static_cast<uint16_t>(1), std::numeric_limits<uint16_t>::max());
-
-      // Alpha Test/Blend Options
-
-      // Note: Clamped to float16 max due to usage on GPU and positive values as emissive intensity values cannot be negative.
-      RTX_OPTION_CLAMP(emissiveBlendOverrideEmissiveIntensity, 0.0f, FLOAT16_MAX);
-      RTX_OPTION_CLAMP(particleSoftnessFactor, 0.0f, 1.0f);
-      
       // Ray Portal Options
       // Note: Ensure the Ray Portal texture hashes are always in pairs of 2
       std::vector<XXH64_hash_t> rayPortalModelTextureHashesTrimmed = rayPortalModelTextureHashes();
@@ -1224,22 +1215,9 @@ namespace dxvk {
       assert(rayPortalModelTextureHashes().size() % 2 == 0);
       assert(rayPortalModelTextureHashes().size() <= maxRayPortalCount);
 
-      // Note: Ensure the portal sampling weight min and max distance are well defined
-      RTX_OPTION_CLAMP_MIN(rayPortalSamplingWeightMinDistance, 0.0f);
-      RTX_OPTION_CLAMP_MIN(rayPortalSamplingWeightMaxDistance, 0.0f);
-      RTX_OPTION_CLAMP_MAX(rayPortalSamplingWeightMinDistance, rayPortalSamplingWeightMaxDistance());
-
       assert(rayPortalSamplingWeightMinDistance() >= 0.0f);
       assert(rayPortalSamplingWeightMaxDistance() >= 0.0f);
       assert(rayPortalSamplingWeightMinDistance() <= rayPortalSamplingWeightMaxDistance());
-      
-      // View Distance Options
-
-      RTX_OPTION_CLAMP_MIN(viewDistanceOptions.distanceThreshold, 0.0f);
-      RTX_OPTION_CLAMP_MIN(viewDistanceOptions.distanceFadeMin, 0.0f);
-      RTX_OPTION_CLAMP_MIN(viewDistanceOptions.distanceFadeMax, 0.0f);
-      RTX_OPTION_CLAMP_MAX(viewDistanceOptions.distanceFadeMin, viewDistanceOptions.distanceFadeMax());
-      RTX_OPTION_CLAMP_MIN(viewDistanceOptions.distanceFadeMax, viewDistanceOptions.distanceFadeMin());
 
       // Replacement options
 
@@ -1318,7 +1296,7 @@ namespace dxvk {
       uint32_t optionSavingTypePriority = (uint32_t) RtxOptionLayer::SystemLayerPriority::Default;
       switch (RtxOptions::Option::optionSavingType()) {
         case OptionLayerType::Rtx:
-          configFilePath = getRtxConfPath();
+          configFilePath = "rtx.conf";
           optionSavingTypePriority = (uint32_t) RtxOptionLayer::SystemLayerPriority::RtxConf;
           break;
         case OptionLayerType::Quality:
@@ -1349,8 +1327,16 @@ namespace dxvk {
           // Get changed options
           Config changedConfigs;
           RtxOptionManager::writeOptions(changedConfigs, Option::serializeChangedOptionOnly());
-          // Merge changed options into original option layer
-          newConfig.merge(changedConfigs);
+
+          if (optionSavingTypePriority == (uint32_t) RtxOptionLayer::SystemLayerPriority::USER) {
+            // If we're saving out user.conf, the only time the old config will have values that the runtime layer
+            // doesn't have is if those values were removed from the runtime layer.  In this case, don't merge the layers.
+            newConfig = changedConfigs;
+          } else {
+            // Merge changed options into original option layer
+            newConfig.merge(changedConfigs);
+          }
+
         } else {
           RtxOptionManager::writeOptions(newConfig, Option::serializeChangedOptionOnly());
         }
@@ -1371,6 +1357,10 @@ namespace dxvk {
         optionLayerMap.at(layerKey)->setDirty(true);
       }
 
+      if (RtxOptions::Option::optionSavingType() == OptionLayerType::Rtx) {
+        // If using an enironment variable to set the rtx.conf path, we need to use it for saving, but not for the layer name.
+        configFilePath = getRtxConfPath();
+      }
       Config::serializeCustomConfig(newConfig, configFilePath, "rtx.");
     }
 
