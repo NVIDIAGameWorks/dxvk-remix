@@ -2280,6 +2280,82 @@ namespace dxvk {
       return str.str();
     }
 
+    // State for hash removal warning popup
+    namespace {
+      bool g_showWarning = false;
+      XXH64_hash_t g_pendingHash = kEmptyHash;
+      std::string g_pendingCategoryId;
+
+      void openHashRemovalWarning(XXH64_hash_t textureHash, const char* uniqueId, RtxOption<fast_unordered_set>* textureSet) {
+        g_showWarning = true;
+        g_pendingHash = textureHash;
+        g_pendingCategoryId = uniqueId;
+        ImGui::OpenPopup("Hash Removal Warning");
+      }
+
+      void closeHashRemovalWarning() {
+        g_showWarning = false;
+        g_pendingHash = kEmptyHash;
+        g_pendingCategoryId.clear();
+      }
+
+      // Returns true if the popup is being shown
+      bool showHashRemovalWarning() {
+        if (!g_showWarning) {
+          return false;
+        }
+
+        bool popupOpen = true;
+        if (ImGui::BeginPopupModal("Hash Removal Warning", &popupOpen, ImGuiWindowFlags_AlwaysAutoResize)) {
+          ImGui::TextWrapped("WARNING: Cannot fully remove this hash!");
+          ImGui::Separator();
+          ImGui::Spacing();
+          
+          ImGui::TextWrapped(
+            "This hash exists in a config layer (e.g., rtx.conf or mod config file).\n\n"
+            "Due to additive combination for hash set options, unchecking will only\n"
+            "remove it from the runtime layer, but it will STILL be present in the\n"
+            "final resolved value.\n\n"
+            "To truly remove it, you must edit the config file where it was originally defined."
+          );
+          
+          ImGui::Spacing();
+          ImGui::Separator();
+          ImGui::Spacing();
+          
+          ImGui::Text("Hash: 0x%016llX", g_pendingHash);
+          ImGui::Text("Category: %s", g_pendingCategoryId.c_str());
+          
+          ImGui::Spacing();
+          ImGui::Separator();
+          ImGui::Spacing();
+
+          // Center the buttons
+          float buttonWidth = 120.0f;
+          float totalWidth = buttonWidth * 2 + ImGui::GetStyle().ItemSpacing.x;
+          float offsetX = (ImGui::GetContentRegionAvail().x - totalWidth) * 0.5f;
+
+          if (offsetX > 0) {
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offsetX);
+          }
+
+          if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
+            closeHashRemovalWarning();
+            ImGui::CloseCurrentPopup();
+          }
+
+          ImGui::EndPopup();
+          return true;
+        }
+
+        if (!popupOpen) {
+          closeHashRemovalWarning();
+        }
+
+        return false;
+      }
+    }
+
     void toggleTextureSelection(XXH64_hash_t textureHash, const char* uniqueId, RtxOption<fast_unordered_set>* textureSet) {
       if (textureHash == kEmptyHash) {
         return;
@@ -2287,8 +2363,16 @@ namespace dxvk {
 
       const char* action;
       if (textureSet->containsHash(textureHash)) {
-        textureSet->removeHash(textureHash);
-        action = "removed";
+        // Check if this hash exists in config layers
+        if (textureSet->isHashInNonRuntimeLayer(textureHash)) {
+          // Show warning popup instead of immediately removing
+          openHashRemovalWarning(textureHash, uniqueId, textureSet);
+          return; // Don't remove yet - wait for user confirmation
+        } else {
+          // Safe to remove - only exists in runtime layer
+          textureSet->removeHash(textureHash);
+          action = "removed";
+        }
       } else {
         textureSet->addHash(textureHash);
         action = "added";
@@ -2323,7 +2407,7 @@ namespace dxvk {
       std::atomic<XXH64_hash_t> g_holdingTexture {};
       bool g_openWhenAvailable {};
 
-      void openImguiPopupOrToogle() {
+      void openImguiPopupOrToggle() {
         // don't show popup window and toggle the list directly,
         // if was a left mouse click in the splitted lists
         bool toggleWithoutPopup = ImGUI::showLegacyTextureGui() &&
@@ -2346,7 +2430,7 @@ namespace dxvk {
         g_holdingTexture.exchange(texHash.value_or(kEmptyHash));
         g_openWhenAvailable = false;
         // no need to wait, open immediately
-        openImguiPopupOrToogle();
+        openImguiPopupOrToggle();
       }
 
       void openAsync() {
@@ -2364,7 +2448,7 @@ namespace dxvk {
         // delayed open, if waiting async to set g_holdingTexture
         if (g_openWhenAvailable) {
           if (g_holdingTexture.load() != kEmptyHash) {
-            openImguiPopupOrToogle();
+            openImguiPopupOrToggle();
             g_openWhenAvailable = false;
           }
         }
@@ -2387,10 +2471,39 @@ namespace dxvk {
                 // option requires a feature, but the texture doesn't have that feature.
                 continue;
               }
-              if (IMGUI_ADD_TOOLTIP(ImGui::Checkbox(rtxOption.displayName, &rtxOption.bufferToggle), rtxOption.textureSetOption->getDescription())) {
+              
+              // Check if this hash exists in config layers (non-runtime)
+              bool existsInConfigLayers = rtxOption.textureSetOption->isHashInNonRuntimeLayer(texHash);
+              
+              // Build display name with warning indicator if hash exists in config layer and is currently checked
+              std::string displayName = rtxOption.displayName;
+              std::string tooltipText = rtxOption.textureSetOption->getDescription();
+              const bool ineffectiveDisable = existsInConfigLayers && rtxOption.bufferToggle;
+              if (ineffectiveDisable) {
+                // Add warning indicator to the label
+                displayName = std::string(rtxOption.displayName) + " [!]";
+                tooltipText = std::string(rtxOption.textureSetOption->getDescription()) + 
+                  "\n\nWARNING: This hash exists in a config file (rtx.conf, mod config, etc.).\n"
+                  "You must edit the source config file to truly remove it.\n";
+
+
+                ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); // Dim the checkbox but keep it functional
+              }
+
+              if (ImGui::Checkbox(displayName.c_str(), &rtxOption.bufferToggle)) {
                 toggleTextureSelection(texHash, rtxOption.uniqueId, rtxOption.textureSetOption);
               }
+
+              if (ineffectiveDisable) {
+                ImGui::PopStyleVar();
+              }
+
+              ImGui::SetTooltipToLastWidgetOnHover(tooltipText.c_str());
             }
+
+            // Show hash removal warning popup if needed
+            showHashRemovalWarning();
+
             ImGui::EndPopup();
             return texHash;
           }
