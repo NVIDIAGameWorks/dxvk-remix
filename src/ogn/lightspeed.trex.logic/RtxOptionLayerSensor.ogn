@@ -11,6 +11,9 @@
         "description": ["The config file for the RtxOptionLayer to read."],
         "type": "token",
         "default": "",
+        "metadata": {
+          "tokenCategory": "AssetPath"
+        },
         "uiName": "Config Path"
       },
       "priority": {

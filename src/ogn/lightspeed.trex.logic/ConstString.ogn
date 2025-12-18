@@ -12,7 +12,8 @@
         "type": "token",
         "default": "",
         "metadata": {
-          "outputOnly": "1"
+          "outputOnly": "1",
+          "tokenCategory": "String"
         },
         "uiName": "Value"
       }

@@ -11,6 +11,9 @@
         "description": ["The key combination string to detect.\nExamples: 'A', 'CTRL, A', 'SHIFT, SPACE'.\nFull list of key names available in `src/util/util_keybind.h`."],
         "type": "token",
         "default": "A",
+        "metadata": {
+          "tokenCategory": "String"
+        },
         "uiName": "Key String"
       }
     },
