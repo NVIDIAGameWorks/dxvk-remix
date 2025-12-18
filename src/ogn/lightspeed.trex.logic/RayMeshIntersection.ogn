@@ -32,7 +32,8 @@
         "type": "token",
         "default": "Bounding Box",
         "metadata": {
-          "allowedTokens": ["Bounding Box"]
+          "allowedTokens": ["Bounding Box"],
+          "tokenCategory": "Enum"
         },
         "optional": true,
         "uiName": "Intersection Type"
