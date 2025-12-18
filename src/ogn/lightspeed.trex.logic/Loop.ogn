@@ -27,7 +27,8 @@
         "type": "token",
         "default": "Loop",
         "metadata": {
-          "allowedTokens": ["Clamp", "Loop", "NoLoop", "PingPong"]
+          "allowedTokens": ["Clamp", "Loop", "NoLoop", "PingPong"],
+          "tokenCategory": "Enum"
         },
         "uiName": "Looping Type"
       }

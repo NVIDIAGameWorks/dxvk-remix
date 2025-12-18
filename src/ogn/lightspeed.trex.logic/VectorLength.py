@@ -1,24 +1,22 @@
 # GENERATED FILE - DO NOT EDIT
 # This file is a stub for OmniGraph editor compatibility, and is not used by the Remix Runtime.
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
-
 import omni.graph.core as og
 
-if TYPE_CHECKING:
-    from lightspeed.trex.logic.ogn.ogn.VectorLengthDatabase import VectorLengthDatabase
+from lightspeed.trex.logic.ogn._impl.type_resolution import resolve_types, standard_compute, standard_initialize
 
 
 class VectorLength:
-    @staticmethod
-    def compute(_db: VectorLengthDatabase):
-        return True
+    # fmt: off
+    VALID_COMBINATIONS = [
+        {"inputs:input": og.Type(og.BaseDataType.FLOAT, 2)},
+        {"inputs:input": og.Type(og.BaseDataType.FLOAT, 3)},
+        {"inputs:input": og.Type(og.BaseDataType.FLOAT, 4)},
+    ]
+    # fmt: on
+
+    compute = standard_compute
+    initialize = standard_initialize
 
     @staticmethod
     def on_connection_type_resolve(node) -> None:
-        """Resolve flexible types based on connected attribute types."""
-        # Valid type combinations for this component:
-        # Combination 1: input=float[2], length=float
-        # Combination 2: input=float[3], length=float
-        # Combination 3: input=float[4], length=float
+        resolve_types(node, VectorLength.VALID_COMBINATIONS)

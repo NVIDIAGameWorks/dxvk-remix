@@ -11,6 +11,9 @@
         "description": ["The light hash to check for usage in the current frame."],
         "type": "token",
         "default": "0x0",
+        "metadata": {
+          "tokenCategory": "Hash"
+        },
         "uiName": "Light Hash"
       }
     },

@@ -50,7 +50,7 @@ std::string escapeJsonString(std::string_view input) {
 }
 
 // Helper function to convert RtComponentPropertyType to OGN type string
-std::string propertyTypeToOgnType(RtComponentPropertyType type) {
+std::string_view propertyTypeToOgnType(RtComponentPropertyType type) {
   switch (type) {
     case RtComponentPropertyType::Bool: return "bool";
     case RtComponentPropertyType::Float: return "float";
@@ -69,7 +69,7 @@ std::string propertyTypeToOgnType(RtComponentPropertyType type) {
 }
 
 // Helper function to convert OGN type string to BaseDataType enum name for Python
-std::string ognTypeToBaseDataType(const std::string& ognType) {
+std::string_view ognTypeToBaseDataType(std::string_view ognType) {
   if (ognType == "bool") return "BOOL";
   if (ognType == "float") return "FLOAT";
   if (ognType == "float[2]") return "FLOAT, 2";
@@ -106,8 +106,8 @@ std::string getFlexiblePropertyTypeUnion(const ComponentSpecVariantMap& variants
     
     auto it = variant->resolvedTypes.find(propertyName);
     if (it != variant->resolvedTypes.end()) {
-      std::string ognType = propertyTypeToOgnType(it->second);
-      uniqueTypes.insert(ognType);
+      std::string_view ognType = propertyTypeToOgnType(it->second);
+      uniqueTypes.insert(std::string(ognType));
     }
   }
   
@@ -192,6 +192,8 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentSpec& spec, 
   // Check if this is a flexible type property (needed throughout the function)
   // If type != declaredType, it means a flexible type was resolved to a concrete type
   bool isFlexibleType = (prop.type != prop.declaredType);
+  const std::string_view ognType = propertyTypeToOgnType(prop.type);
+  const bool isTokenType = ognType == "token";
   
   outputFile << "      \"" << escapeJsonString(prop.name) << "\": {" << std::endl;
   if (!prop.enumValues.empty()) {
@@ -241,7 +243,10 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentSpec& spec, 
   bool isColorType = !isFlexibleType && prop.treatAsColor && 
                      (prop.type == RtComponentPropertyType::Float3 || prop.type == RtComponentPropertyType::Float4);
   
-  if (!prop.enumValues.empty() || isColorType || prop.isSettableOutput || !prop.allowedPrimTypes.empty()) {
+  // Check if we have any metadata to add
+  if (!prop.enumValues.empty() || isColorType
+      || prop.isSettableOutput || !prop.allowedPrimTypes.empty()
+      || isTokenType) {
     
     outputFile << "        \"metadata\": {" << std::endl;
     
@@ -294,6 +299,15 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentSpec& spec, 
         first = false;
       }
       outputFile << "]";
+      hasMetadata = true;
+    }
+    
+    // Add tokenCategory for token types (String, Hash, AssetPath, Enum)
+    if (isTokenType) {
+      if (hasMetadata) {
+        outputFile << "," << std::endl;
+      }
+      outputFile << "          \"tokenCategory\": \"" << prop.type << "\"";
       hasMetadata = true;
     }
     
@@ -424,108 +438,23 @@ bool writePythonStub(const RtComponentSpec* spec, RtComponentType componentType,
 
   std::ofstream& outputFile = *outputFileHolder;
 
-  std::string databaseClassName = spec->getClassName() + "Database";
+  std::string className = spec->getClassName();
+  std::string databaseClassName = className + "Database";
 
   bool hasFlexibleTypes = !variants.empty() && !variants[0]->resolvedTypes.empty();
   
-  outputFile << "# GENERATED FILE - DO NOT EDIT" << std::endl;
-  outputFile << "# This file is a stub for OmniGraph editor compatibility, and is not used by the Remix Runtime." << std::endl;
-  outputFile << "from __future__ import annotations" << std::endl;
-  outputFile << std::endl;
-  outputFile << "from typing import TYPE_CHECKING" << std::endl;
-  outputFile << std::endl;
-  if (hasFlexibleTypes) {
-    outputFile << "import omni.graph.core as og" << std::endl;
-    outputFile << std::endl;
-  }
-  outputFile << "if TYPE_CHECKING:" << std::endl;
-  outputFile << "    from lightspeed.trex.logic.ogn.ogn." << databaseClassName << " import " << databaseClassName << std::endl;
-  outputFile << std::endl;
-  outputFile << std::endl;
-  outputFile << "class "<< escapeJsonString(spec->getClassName()) << ":" << std::endl;
-  outputFile << "    @staticmethod" << std::endl;
-  outputFile << "    def compute(_db: " << databaseClassName << "):" << std::endl;
-  outputFile << "        return True" << std::endl;
-  outputFile << std::endl;
+  // Collect all combinations from the registered variants and check if we have multiple
+  std::vector<std::unordered_map<std::string, RtComponentPropertyType>> combinations;
+  std::vector<std::string> flexibleInputs, flexibleOutputs;
   
-  // If this component has flexible types, generate on_connection_type_resolve
   if (hasFlexibleTypes) {
-    // Collect all combinations from the registered variants
-    std::vector<std::unordered_map<std::string, RtComponentPropertyType>> combinations;
     for (const auto* variant : variants) {
       if (!variant->resolvedTypes.empty()) {
         combinations.push_back(variant->resolvedTypes);
       }
     }
     
-    // Get property names in a consistent order (alphabetical)
-    std::vector<std::string> propNames;
-    if (!combinations.empty()) {
-      for (const auto& [propName, unused_propertyType] : combinations[0]) {
-        propNames.push_back(propName);
-      }
-      std::sort(propNames.begin(), propNames.end());
-      
-      // Sort combinations based on the enum order of their types
-      std::sort(combinations.begin(), combinations.end(),
-        [&propNames](const std::unordered_map<std::string, RtComponentPropertyType>& a,
-                     const std::unordered_map<std::string, RtComponentPropertyType>& b) {
-          for (const auto& propName : propNames) {
-            auto aType = static_cast<int>(a.at(propName));
-            auto bType = static_cast<int>(b.at(propName));
-            if (aType != bType) {
-              return aType < bType;
-            }
-          }
-          return false;
-        });
-      
-      // Deduplicate combinations based on their OGN type signatures
-      // (String, AssetPath, and Hash all map to "token", so we need to remove duplicates)
-      std::vector<std::unordered_map<std::string, RtComponentPropertyType>> uniqueCombinations;
-      std::set<std::string> seenSignatures;
-      
-      for (const auto& combo : combinations) {
-        // Build a signature string from the OGN types of all properties
-        std::string signature;
-        for (const auto& propName : propNames) {
-          if (!signature.empty()) {
-            signature += "|";
-          }
-          signature += propName + ":" + propertyTypeToOgnType(combo.at(propName));
-        }
-        
-        // Only add this combination if we haven't seen this signature before
-        if (seenSignatures.insert(signature).second) {
-          uniqueCombinations.push_back(combo);
-        }
-      }
-      
-      // Replace combinations with deduplicated list
-      combinations = std::move(uniqueCombinations);
-    }
-    
-    outputFile << "    @staticmethod" << std::endl;
-    outputFile << "    def on_connection_type_resolve(node) -> None:" << std::endl;
-    outputFile << "        \"\"\"Resolve flexible types based on connected attribute types.\"\"\"" << std::endl;
-    outputFile << "        # Valid type combinations for this component:" << std::endl;
-    
-    // Generate a comment listing all valid combinations
-    for (size_t i = 0; i < combinations.size(); ++i) {
-      outputFile << "        # Combination " << (i + 1) << ": ";
-      bool first = true;
-      for (const auto& propName : propNames) {
-        if (!first) {
-          outputFile << ", ";
-        }
-        outputFile << propName << "=" << propertyTypeToOgnType(combinations[i].at(propName));
-        first = false;
-      }
-      outputFile << std::endl;
-    }
-    
-    // Separate input and output flexible properties
-    std::vector<std::string> flexibleInputs, flexibleOutputs;
+    // Separate input and output flexible properties (alphabetically sorted)
     for (const auto& prop : spec->properties) {
       if (prop.type != prop.declaredType) {  // It's a flexible type
         if (prop.ioType == RtComponentPropertyIOType::Input) {
@@ -535,60 +464,124 @@ bool writePythonStub(const RtComponentSpec* spec, RtComponentType componentType,
         }
       }
     }
+    std::sort(flexibleInputs.begin(), flexibleInputs.end());
+    std::sort(flexibleOutputs.begin(), flexibleOutputs.end());
     
-    // Generate type checking logic
-    if (!flexibleInputs.empty() && !flexibleOutputs.empty()) {
-      outputFile << std::endl;
-      // Get attributes for all flexible properties
-      outputFile << "        # Get attributes" << std::endl;
-      for (const auto& propName : flexibleInputs) {
-        outputFile << "        input_" << propName << " = node.get_attribute(\"inputs:" << propName << "\")" << std::endl;
-      }
-      for (const auto& propName : flexibleOutputs) {
-        outputFile << "        output_" << propName << " = node.get_attribute(\"outputs:" << propName << "\")" << std::endl;
-      }
-      outputFile << std::endl;
-      
-      // Get current types
-      outputFile << "        # Get current types of connected attributes" << std::endl;
-      for (const auto& propName : flexibleInputs) {
-        outputFile << "        type_" << propName << " = input_" << propName << ".get_resolved_type()" << std::endl;
-      }
-      outputFile << std::endl;
-      
-      // Generate type checking logic for each combination
-      outputFile << "        # Check all valid type combinations and resolve output types" << std::endl;
-      for (size_t i = 0; i < combinations.size(); ++i) {
-        const auto& combo = combinations[i];
-        
-        // Build condition to check if inputs match this combination
-        if (i > 0) {
-          outputFile << "        el";
-        } else {
-          outputFile << "        ";
-        }
-        outputFile << "if (";
-        
-        for (size_t j = 0; j < flexibleInputs.size(); ++j) {
-          const auto& propName = flexibleInputs[j];
-          const auto& propertyType = combo.at(propName);
-          std::string ognType = propertyTypeToOgnType(propertyType);
-          
-          outputFile << "type_" << propName << " == og.Type(og.BaseDataType." << ognTypeToBaseDataType(ognType) << ")";
-          if (j < flexibleInputs.size() - 1) {
-            outputFile << " and " << std::endl << "            ";
+    // Build ordered property list: inputs first, then outputs
+    std::vector<std::string> propNames;
+    propNames.insert(propNames.end(), flexibleInputs.begin(), flexibleInputs.end());
+    propNames.insert(propNames.end(), flexibleOutputs.begin(), flexibleOutputs.end());
+    
+    // Sort combinations based on the enum order of their types
+    std::sort(combinations.begin(), combinations.end(),
+      [&propNames](const std::unordered_map<std::string, RtComponentPropertyType>& a,
+                   const std::unordered_map<std::string, RtComponentPropertyType>& b) {
+        for (const auto& propName : propNames) {
+          auto aType = static_cast<int>(a.at(propName));
+          auto bType = static_cast<int>(b.at(propName));
+          if (aType != bType) {
+            return aType < bType;
           }
         }
-        outputFile << "):" << std::endl;
-        
-        // Set output types for this combination
-        for (const auto& propName : flexibleOutputs) {
-          const auto& propertyType = combo.at(propName);
-          std::string ognType = propertyTypeToOgnType(propertyType);
-          outputFile << "            output_" << propName << ".set_resolved_type(og.Type(og.BaseDataType." << ognTypeToBaseDataType(ognType) << "))" << std::endl;
+        return false;
+      });
+    
+    // Deduplicate combinations based on their OGN type signatures
+    // (String, AssetPath, and Hash all map to "token", so we need to remove duplicates)
+    std::vector<std::unordered_map<std::string, RtComponentPropertyType>> uniqueCombinations;
+    std::set<std::string> seenSignatures;
+    
+    for (const auto& combo : combinations) {
+      // Build a signature string from the OGN types of all properties
+      std::string signature;
+      for (const auto& propName : propNames) {
+        if (!signature.empty()) {
+          signature += "|";
         }
+        signature += propName;
+        signature += ":";
+        signature += propertyTypeToOgnType(combo.at(propName));
+      }
+      
+      // Only add this combination if we haven't seen this signature before
+      if (seenSignatures.insert(signature).second) {
+        uniqueCombinations.push_back(combo);
       }
     }
+    
+    // Replace combinations with deduplicated list
+    combinations = std::move(uniqueCombinations);
+  }
+  
+  // Check if we have multiple unique combinations (need VALID_COMBINATIONS)
+  bool hasMultipleCombinations = hasFlexibleTypes && combinations.size() > 1;
+  
+  // Write file header and imports
+  outputFile << "# GENERATED FILE - DO NOT EDIT" << std::endl;
+  outputFile << "# This file is a stub for OmniGraph editor compatibility, and is not used by the Remix Runtime." << std::endl;
+  
+  // Import og only if we have multiple combinations (need og.Type for VALID_COMBINATIONS)
+  if (hasMultipleCombinations) {
+    outputFile << "import omni.graph.core as og" << std::endl;
+    outputFile << std::endl;
+  }
+  
+  // Always import the standard functions
+  outputFile << "from lightspeed.trex.logic.ogn._impl.type_resolution import resolve_types, standard_compute, standard_initialize" << std::endl;
+  outputFile << std::endl;
+  outputFile << std::endl;
+  outputFile << "class " << escapeJsonString(className) << ":" << std::endl;
+  
+  // If we have multiple combinations, generate VALID_COMBINATIONS as a class attribute
+  if (hasMultipleCombinations) {
+    outputFile << "    # fmt: off" << std::endl;
+    outputFile << "    VALID_COMBINATIONS = [" << std::endl;
+    
+    for (size_t i = 0; i < combinations.size(); ++i) {
+      const auto& combo = combinations[i];
+      outputFile << "        {";
+      
+      bool first = true;
+      // Write inputs first, then outputs
+      for (const auto& propName : flexibleInputs) {
+        if (!first) {
+          outputFile << ", ";
+        }
+        const auto& propertyType = combo.at(propName);
+        std::string_view ognType = propertyTypeToOgnType(propertyType);
+        outputFile << "\"inputs:" << propName << "\": og.Type(og.BaseDataType." << ognTypeToBaseDataType(ognType) << ")";
+        first = false;
+      }
+      for (const auto& propName : flexibleOutputs) {
+        if (!first) {
+          outputFile << ", ";
+        }
+        const auto& propertyType = combo.at(propName);
+        std::string_view ognType = propertyTypeToOgnType(propertyType);
+        outputFile << "\"outputs:" << propName << "\": og.Type(og.BaseDataType." << ognTypeToBaseDataType(ognType) << ")";
+        first = false;
+      }
+      
+      outputFile << "}," << std::endl;
+    }
+    
+    outputFile << "    ]" << std::endl;
+    outputFile << "    # fmt: on" << std::endl;
+    outputFile << std::endl;
+  }
+  
+  // Write standardized compute and initialize
+  outputFile << "    compute = standard_compute" << std::endl;
+  outputFile << "    initialize = standard_initialize" << std::endl;
+  outputFile << std::endl;
+  
+  // Always generate on_connection_type_resolve
+  outputFile << "    @staticmethod" << std::endl;
+  outputFile << "    def on_connection_type_resolve(node) -> None:" << std::endl;
+  if (hasMultipleCombinations) {
+    outputFile << "        resolve_types(node, " << className << ".VALID_COMBINATIONS)" << std::endl;
+  } else {
+    outputFile << "        resolve_types(node, [])" << std::endl;
   }
 
   // Close the file

@@ -11,6 +11,9 @@
         "description": ["The fog hash to check against the current frame's fog hash."],
         "type": "token",
         "default": "0x0",
+        "metadata": {
+          "tokenCategory": "Hash"
+        },
         "uiName": "Fog Hash"
       }
     },
