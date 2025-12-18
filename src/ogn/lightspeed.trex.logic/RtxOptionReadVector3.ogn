@@ -11,6 +11,9 @@
         "description": ["The full name of the RTX option to read (e.g., 'rtx.someOption')."],
         "type": "token",
         "default": "",
+        "metadata": {
+          "tokenCategory": "String"
+        },
         "uiName": "Option Name"
       }
     },

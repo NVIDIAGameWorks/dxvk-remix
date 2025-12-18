@@ -37,7 +37,8 @@
         "type": "token",
         "default": "Linear",
         "metadata": {
-          "allowedTokens": ["Bounce", "Cubic", "EaseIn", "EaseInOut", "EaseOut", "Elastic", "Exponential", "Linear", "Sine"]
+          "allowedTokens": ["Bounce", "Cubic", "EaseIn", "EaseInOut", "EaseOut", "Elastic", "Exponential", "Linear", "Sine"],
+          "tokenCategory": "Enum"
         },
         "uiName": "Easing Type"
       },
