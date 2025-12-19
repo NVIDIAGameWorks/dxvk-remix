@@ -2373,11 +2373,13 @@ namespace dxvk {
       bool g_showWarning = false;
       XXH64_hash_t g_pendingHash = kEmptyHash;
       std::string g_pendingCategoryId;
+      std::string g_pendingConfigName;
 
-      void openHashRemovalWarning(XXH64_hash_t textureHash, const char* uniqueId, RtxOption<fast_unordered_set>* textureSet) {
+      void openHashRemovalWarning(XXH64_hash_t textureHash, const char* uniqueId, const std::string_view configName, RtxOption<fast_unordered_set>* textureSet) {
         g_showWarning = true;
         g_pendingHash = textureHash;
         g_pendingCategoryId = uniqueId;
+        g_pendingConfigName = configName,
         ImGui::OpenPopup("Hash Removal Warning");
       }
 
@@ -2385,6 +2387,7 @@ namespace dxvk {
         g_showWarning = false;
         g_pendingHash = kEmptyHash;
         g_pendingCategoryId.clear();
+        g_pendingConfigName.clear();
       }
 
       // Returns true if the popup is being shown
@@ -2395,17 +2398,12 @@ namespace dxvk {
 
         bool popupOpen = true;
         if (ImGui::BeginPopupModal("Hash Removal Warning", &popupOpen, ImGuiWindowFlags_AlwaysAutoResize)) {
-          ImGui::TextWrapped("WARNING: Cannot fully remove this hash!");
+          ImGui::TextWrapped("WARNING: Cannot remove this texture!");
           ImGui::Separator();
           ImGui::Spacing();
           
           ImGui::TextWrapped(
-            "This hash exists in a config layer (e.g., rtx.conf or mod config file).\n\n"
-            "Due to additive combination for hash set options, unchecking will only\n"
-            "remove it from the runtime layer, but it will STILL be present in the\n"
-            "final resolved value.\n\n"
-            "To truly remove it, you must edit the config file where it was originally defined."
-          );
+            "This texture's hash is saved in a non-runtime config file (%s) and cannot be removed through the run-time interface.\nTo remove it, you must manually edit the %s config file and remove the texture hash from the texture category.", g_pendingConfigName.c_str(), g_pendingConfigName.c_str());
           
           ImGui::Spacing();
           ImGui::Separator();
@@ -2452,9 +2450,10 @@ namespace dxvk {
       const char* action;
       if (textureSet->containsHash(textureHash)) {
         // Check if this hash exists in config layers
-        if (textureSet->isHashInNonRuntimeLayer(textureHash)) {
+        const std::string_view configFileName = textureSet->retrieveNonRuntimeConfigName(textureHash);
+        if (!configFileName.empty()) {
           // Show warning popup instead of immediately removing
-          openHashRemovalWarning(textureHash, uniqueId, textureSet);
+          openHashRemovalWarning(textureHash, uniqueId, configFileName, textureSet);
           return; // Don't remove yet - wait for user confirmation
         } else {
           // Safe to remove - only exists in runtime layer
@@ -2561,7 +2560,7 @@ namespace dxvk {
               }
               
               // Check if this hash exists in config layers (non-runtime)
-              bool existsInConfigLayers = rtxOption.textureSetOption->isHashInNonRuntimeLayer(texHash);
+              bool existsInConfigLayers = !rtxOption.textureSetOption->retrieveNonRuntimeConfigName(texHash).empty();
               
               // Build display name with warning indicator if hash exists in config layer and is currently checked
               std::string displayName = rtxOption.displayName;
