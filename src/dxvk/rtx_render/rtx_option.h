@@ -71,7 +71,6 @@ namespace dxvk {
   enum class OptionLayerType {
     User,
     Rtx,
-    Quality,
     None
   };
 
@@ -114,8 +113,6 @@ namespace dxvk {
       Default = 0,
       DxvkConf = 1,
       RtxConf = 2,
-      Quality = 3,
-      Mod = 4,
       NONE = 0xFFFFFFFE,
       USER = 0xFFFFFFFF
     };
