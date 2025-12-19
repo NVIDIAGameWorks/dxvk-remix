@@ -717,7 +717,7 @@ namespace dxvk {
     // won't actually remove it from the final resolved value, since lower layers
     // will still contribute it via additive combination.
     template<typename = std::enable_if_t<std::is_same_v<T, fast_unordered_set>>>
-    bool isHashInNonRuntimeLayer(const XXH64_hash_t& value) const {
+    const std::string_view retrieveNonRuntimeConfigName(const XXH64_hash_t& value) const {
       std::lock_guard<std::mutex> lock(RtxOptionImpl::s_updateMutex);
       
       // Iterate through all layers except the runtime layer (highest priority)
@@ -730,11 +730,11 @@ namespace dxvk {
         // Check if this layer's hash set contains the value
         const fast_unordered_set* layerHashSet = prioritizedValue.value.hashSet;
         if (layerHashSet && layerHashSet->count(value) > 0) {
-          return true;
+          return layerKey.configName;
         }
       }
       
-      return false;
+      return std::string_view {};
     }
 
     T& getDefaultValue() const {
