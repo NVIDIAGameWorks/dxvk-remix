@@ -1299,10 +1299,6 @@ namespace dxvk {
           configFilePath = "rtx.conf";
           optionSavingTypePriority = (uint32_t) RtxOptionLayer::SystemLayerPriority::RtxConf;
           break;
-        case OptionLayerType::Quality:
-          configFilePath = "quality.conf";
-          optionSavingTypePriority = (uint32_t) RtxOptionLayer::SystemLayerPriority::Quality;
-          break;
         case OptionLayerType::None:
           configFilePath = "none.conf";
           optionSavingTypePriority = (uint32_t) RtxOptionLayer::SystemLayerPriority::NONE;

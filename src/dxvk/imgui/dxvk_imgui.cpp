@@ -563,7 +563,6 @@ namespace dxvk {
   ImGui::ComboWithKey<OptionLayerType>::ComboEntries optionSavingModeComboEntries = { {
       { OptionLayerType::User, "User", "Runtime settings"},
       { OptionLayerType::Rtx, "Rtx", "RTX settings"},
-      { OptionLayerType::Quality, "Quality", "Graphics quality preset settings"},
       { OptionLayerType::None, "None", "No settings layer; used for testing or temporary development" },
   } };
 
