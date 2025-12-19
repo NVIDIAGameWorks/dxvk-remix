@@ -16,7 +16,6 @@ Practical examples of syntax:
 ```
 rtx.someIntScalar = 38
 rtx.someFloatScalar = 29.39
-rtx.someIntVector = 1, -2, 3
 rtx.someFloatVector = 1.0, -2.0, 3.0
 rtx.someBoolean = True
 # Note: Leading whitespace in a string is removed, allowing for nicer option formatting like this without messing up the string.

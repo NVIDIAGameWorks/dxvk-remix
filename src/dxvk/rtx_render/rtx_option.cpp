@@ -39,13 +39,6 @@ namespace dxvk {
     }
   }
 
-  void fillIntVector(const std::vector<std::string>& rawInput, std::vector<int32_t>& intVectorOutput) {
-    for (auto&& intStr : rawInput) {
-      const int32_t i = std::stoi(intStr);
-      intVectorOutput.emplace_back(i);
-    }
-  }
-
   std::string hashTableToString(const fast_unordered_set& hashTable) {
     std::stringstream ss;
     // Collect elements into a vector for sorting
@@ -71,17 +64,6 @@ namespace dxvk {
     }
     return ss.str();
   }
-  
-  std::string vectorToString(const std::vector<int32_t>& intVector) {
-    std::stringstream ss;
-    for (auto&& element : intVector) {
-      if (ss.tellp() != std::streampos(0))
-        ss << ", ";
-
-      ss << element;
-    }
-    return ss.str();
-  }
 
   struct GenericValueWrapper {
     GenericValueWrapper(OptionType optionType) : type(optionType) {
@@ -93,9 +75,6 @@ namespace dxvk {
         break;
       case OptionType::HashVector:
         data.hashVector = &storage.hashVector;
-        break;
-      case OptionType::IntVector:
-        data.intVector = &storage.intVector;
         break;
       case OptionType::VirtualKeys:
         data.virtualKeys = &storage.virtualKeys;
@@ -132,7 +111,6 @@ namespace dxvk {
     union Storage {
       fast_unordered_set hashSet;
       std::vector<XXH64_hash_t> hashVector;
-      std::vector<int32_t> intVector;
       VirtualKeys virtualKeys;
       std::string string;
       Vector2 v2;
@@ -148,7 +126,6 @@ namespace dxvk {
       switch (type) {
       case OptionType::HashSet:      new (&storage.hashSet) fast_unordered_set(); break;
       case OptionType::HashVector:   new (&storage.hashVector) std::vector<XXH64_hash_t>(); break;
-      case OptionType::IntVector:    new (&storage.intVector) std::vector<int32_t>(); break;
       case OptionType::VirtualKeys:  new (&storage.virtualKeys) VirtualKeys(); break;
       case OptionType::String:       new (&storage.string) std::string(); break;
       case OptionType::Vector2:      new (&storage.v2) Vector2(); break;
@@ -163,7 +140,6 @@ namespace dxvk {
       switch (type) {
       case OptionType::HashSet:      storage.hashSet.~fast_unordered_set(); break;
       case OptionType::HashVector:   storage.hashVector.~vector(); break;
-      case OptionType::IntVector:    storage.intVector.~vector(); break;
       case OptionType::VirtualKeys:  storage.virtualKeys.~VirtualKeys(); break;
       case OptionType::String:       storage.string.~basic_string(); break;
       case OptionType::Vector2:      storage.v2.~Vector2(); break;
@@ -183,9 +159,6 @@ namespace dxvk {
       break;
     case OptionType::HashVector:
       value.hashVector = new std::vector<XXH64_hash_t>();
-      break;
-    case OptionType::IntVector:
-      value.intVector = new std::vector<int32_t>();
       break;
     case OptionType::VirtualKeys:
       value.virtualKeys = new VirtualKeys();
@@ -223,9 +196,6 @@ namespace dxvk {
         break;
       case OptionType::HashVector:
         delete value.hashVector;
-        break;
-      case OptionType::IntVector:
-        delete value.intVector;
         break;
       case OptionType::VirtualKeys:
         delete value.virtualKeys;
@@ -303,7 +273,6 @@ namespace dxvk {
     case OptionType::Float: return "float";
     case OptionType::HashSet: return "hash set"; 
     case OptionType::HashVector: return "hash vector";
-    case OptionType::IntVector: return "int vector";
     case OptionType::VirtualKeys: return "virtual keys";
     case OptionType::Vector2: return "float2";
     case OptionType::Vector3: return "float3";
@@ -327,7 +296,6 @@ namespace dxvk {
     case OptionType::Float: return Config::generateOptionString(value.f);
     case OptionType::HashSet: return hashTableToString(*value.hashSet);
     case OptionType::HashVector: return hashVectorToString(*value.hashVector);
-    case OptionType::IntVector: return vectorToString(*value.intVector);
     case OptionType::VirtualKeys: return buildKeyBindDescriptorString(*value.virtualKeys);
     case OptionType::Vector2: return Config::generateOptionString(*value.v2);
     case OptionType::Vector3: return Config::generateOptionString(*value.v3);
@@ -458,9 +426,6 @@ namespace dxvk {
     case OptionType::HashVector:
       fillHashVector(options.getOption<std::vector<std::string>>(fullName.c_str()), *value.hashVector);
       break;
-    case OptionType::IntVector:
-      fillIntVector(options.getOption<std::vector<std::string>>(fullName.c_str()), *value.intVector);
-      break;
     case OptionType::VirtualKeys:
       *value.virtualKeys = options.getOption<VirtualKeys>(fullName.c_str(), *value.virtualKeys);
       break;
@@ -537,9 +502,6 @@ namespace dxvk {
       break;
     case OptionType::HashVector:
       options.setOption(fullName.c_str(), hashVectorToString(*value.hashVector));
-      break;
-    case OptionType::IntVector:
-      options.setOption(fullName.c_str(), vectorToString(*value.intVector));
       break;
     case OptionType::VirtualKeys:
       options.setOption(fullName.c_str(), buildKeyBindDescriptorString(*value.virtualKeys));
@@ -670,9 +632,6 @@ namespace dxvk {
     case OptionType::HashVector:
       return *aValue.hashVector == *bValue.hashVector;
       break;
-    case OptionType::IntVector:
-      return *aValue.intVector == *bValue.intVector;
-      break;
     case OptionType::VirtualKeys:
       return *aValue.virtualKeys == *bValue.virtualKeys;
       break;
@@ -729,9 +688,6 @@ namespace dxvk {
     case OptionType::HashVector:
       *target.hashVector = *source.hashVector;
       break;
-    case OptionType::IntVector:
-      *target.intVector = *source.intVector;
-      break;
     case OptionType::VirtualKeys:
       *target.virtualKeys = *source.virtualKeys;
       break;
@@ -780,7 +736,6 @@ namespace dxvk {
     case OptionType::Vector2i:
     case OptionType::String:
     case OptionType::HashVector: // Hash Vectors are strictly ordered and can be size bounded, so we don't want to merge them.
-    case OptionType::IntVector: // Int Vectors are strictly ordered and can be size bounded, so we don't want to merge them.
       target = source;
       break;
     default:
@@ -925,7 +880,6 @@ Practical examples of syntax:
 ```
 rtx.someIntScalar = 38
 rtx.someFloatScalar = 29.39
-rtx.someIntVector = 1, -2, 3
 rtx.someFloatVector = 1.0, -2.0, 3.0
 rtx.someBoolean = True
 # Note: Leading whitespace in a string is removed, allowing for nicer option formatting like this without messing up the string.
@@ -980,7 +934,6 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
           switch (rtxOption.type) {
           case OptionType::HashSet:
           case OptionType::HashVector:
-          case OptionType::IntVector:
           case OptionType::VirtualKeys:
           case OptionType::String:
             isLongEntryType = true;
