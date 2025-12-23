@@ -1159,8 +1159,7 @@ void writeToNrcOutputsAfterIntegration(PathState pathState)
   const NrcContext nrcContext = Nrc::createNrcContext(pixelCoordinate);
     
   // Sanitize the inputs since they occasionally have NaNs
-  pathState.radiance = NrcSanitizeNansInfs(pathState.radiance);
-  pathState.throughput = NrcSanitizeNansInfs(pathState.throughput);
+  Nrc::sanitizeNrcInputs(pathState.isNrcUpdate, cb.nrcArgs, pathState.throughput, pathState.radiance);
 
   // Note: A path had a bounce index increased when it exits, so it is the same case 
   // as if a new indirect hit was hit when debug registering radiance on NRC hit
