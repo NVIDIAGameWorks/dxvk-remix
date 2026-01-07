@@ -429,6 +429,28 @@ namespace dxvk {
       __debugbreak();
     }
 
+#ifdef REMIX_DEVELOPMENT
+    // Crash Hotkey Feature: When armed via the Development tab checkbox, pressing the crash hotkey
+    // triggers a deliberate null pointer dereference crash. This is useful for testing crash handling,
+    // crash dumps, and crash reporting systems.
+    {
+      static bool crashHotkeyStartupLogged = false;
+      if (!crashHotkeyStartupLogged && RtxOptions::enableCrashHotkey()) {
+        const auto crashHotkeyStr = buildKeyBindDescriptorString(RtxOptions::crashHotkey());
+        Logger::warn(str::format("Crash hotkey is ARMED at startup (via config/environment) - press ", crashHotkeyStr, " to trigger crash"));
+        crashHotkeyStartupLogged = true;
+      }
+      
+      if (RtxOptions::enableCrashHotkey() && ImGUI::checkHotkeyState(RtxOptions::crashHotkey(), false)) {
+        const auto crashHotkeyStr = buildKeyBindDescriptorString(RtxOptions::crashHotkey());
+        Logger::err(str::format("Deliberate crash triggered via crash hotkey (", crashHotkeyStr, ")"));
+        // Trigger a null pointer dereference to cause a crash
+        volatile int* nullPtr = nullptr;
+        *nullPtr = 0xDEAD;
+      }
+    }
+#endif
+
     commitGraphicsState<true, false>();
 
     auto common = getCommonObjects();
