@@ -211,6 +211,44 @@ def createGlslangTask(inputFile):
     task.commands = [command]
     return task
 
+def getSlangVersion(slangcPath):
+    """Query Slang version and return a tuple (major, minor, patch) or None if unavailable."""
+    try:
+        result = subprocess.run([slangcPath, '-version'],
+                              capture_output=True,
+                              text=True,
+                              timeout=5)
+        output = result.stdout + result.stderr
+
+        # Try to parse version like "v2024.1.23", "2024.1.23", or "2025.10.4-39-g496fab196"
+        # Match patterns: v?MAJOR.MINOR.PATCH or v?MAJOR.MINOR.PATCH-EXTRA
+        match = re.search(r'v?(\d+)\.(\d+)\.(\d+)(?:-\d+)?', output)
+        if match:
+            return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    except Exception as e:
+        # Print debug info to help diagnose version detection issues
+        print(f"Warning: Failed to detect Slang version: {e}")
+    return None
+
+def getSerCapabilityFlag(slangVersion):
+    """Determine which SER capability flag to use based on Slang version.
+
+    Returns the appropriate capability flag for shader execution reordering.
+    - Legacy versions (< 2025.24.15): Use spvShaderInvocationReorderNV
+    - New versions (>= 2025.24.15): Use spvShaderInvocationReorderEXT
+    """
+    if slangVersion is None:
+        # Unknown version, use NV
+        return 'spvShaderInvocationReorderNV'
+
+    # Slang 2025.24-15+ has EXT SER intrinsics
+    SER_CAPABILITY_UPDATE_VERSION = (2025, 24, 15)
+
+    if slangVersion >= SER_CAPABILITY_UPDATE_VERSION:
+        return 'spvShaderInvocationReorderEXT'
+    else:
+        return 'spvShaderInvocationReorderNV'
+
 def createSlangTask(inputFile, variantSpec):
     # Ensure slang runs validation
     os.environ['SLANG_RUN_SPIRV_VALIDATION'] = '1'
@@ -229,7 +267,7 @@ def createSlangTask(inputFile, variantSpec):
     if variantName != inputName:
         task.customName = f'{os.path.basename(inputFile)} ({variantName})'
 
-    command1 = f'{args.slangc} -entry main -target spirv -zero-initialize -emit-spirv-directly -verbose-paths {includePaths} ' \
+    command1 = f'{args.slangc} -entry main -target spirv -capability {serCapability} -zero-initialize -emit-spirv-directly -verbose-paths {includePaths} ' \
             + f'-depfile {depFile} {inputFile} -D__SLANG__ {variantDefines} ' \
             + f'-matrix-layout-column-major ' \
             + f'-Wno-30081 '
@@ -327,6 +365,15 @@ def parseShaderVariants(inputFile):
         print(f'{inputFile}:{lineno}: no !end-variants found in the file')
         return []
     return result
+
+# Detect Slang version and determine SER capability once before processing shaders
+slangVersion = getSlangVersion(args.slangc)
+serCapability = getSerCapabilityFlag(slangVersion)
+
+if slangVersion:
+    print(f'Slang version: {slangVersion[0]}.{slangVersion[1]}.{slangVersion[2]}, SER capability: {serCapability}')
+else:
+    print(f'Slang version not detected, using SER capability: {serCapability}')
 
 tasks = []
 
