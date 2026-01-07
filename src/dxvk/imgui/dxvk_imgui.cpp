@@ -1008,6 +1008,18 @@ namespace dxvk {
 
     showHudMessages(ctx);
 
+#ifdef REMIX_DEVELOPMENT
+    // Show visual indicator when crash hotkey is armed
+    if (RtxOptions::enableCrashHotkey()) {
+      const auto crashHotkeyStr = buildKeyBindDescriptorString(RtxOptions::crashHotkey());
+      const auto warningText = str::format("!! CRASH HOTKEY ARMED (", crashHotkeyStr, ") !!");
+      const ImVec2 textSize = ImGui::CalcTextSize(warningText.c_str());
+      const ImGuiViewport* viewport = ImGui::GetMainViewport();
+      const ImVec2 textPos(viewport->Size.x - textSize.x - 10.0f, 10.0f);
+      ImGui::GetForegroundDrawList()->AddText(textPos, IM_COL32(255, 50, 50, 255), warningText.c_str());
+    }
+#endif
+
     ImGui::Render();
   }
 
@@ -1904,6 +1916,40 @@ namespace dxvk {
       ImGui::PushStyleColor(ImGuiCol_Text, lastShaderReloadStatusTextColor);
       ImGui::TextUnformatted(lastShaderReloadStatusText);
       ImGui::PopStyleColor();
+    }
+
+    ImGui::Separator();
+
+    { // Crash Hotkey Feature - allows triggering a deliberate crash for testing crash handling
+      const bool isArmed = RtxOptions::enableCrashHotkey();
+      
+      // Use warning color when armed to make it visually distinct
+      if (isArmed) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.3f, 0.3f, 1.0f));
+      }
+      
+      // ImGui::Checkbox returns true when the checkbox state changes
+      const bool changed = ImGui::Checkbox("Arm Crash Hotkey", &RtxOptions::enableCrashHotkeyObject());
+      
+      if (isArmed) {
+        ImGui::PopStyleColor();
+      }
+      
+      const auto crashHotkeyStr = buildKeyBindDescriptorString(RtxOptions::crashHotkey());
+      ImGui::SetTooltipToLastWidgetOnHover(
+        str::format("When armed, pressing ", crashHotkeyStr, " will trigger a deliberate crash.\n"
+        "Useful for testing crash handling, crash dumps, and crash reporting.\n"
+        "A red warning indicator will appear on screen while armed.").c_str());
+      
+      // Log state changes for crash dump analysis
+      if (changed) {
+        const bool nowArmed = RtxOptions::enableCrashHotkey();
+        if (nowArmed) {
+          Logger::warn(str::format("Crash hotkey ARMED - press ", crashHotkeyStr, " to trigger crash"));
+        } else {
+          Logger::warn("Crash hotkey disarmed");
+        }
+      }
     }
 #endif
 

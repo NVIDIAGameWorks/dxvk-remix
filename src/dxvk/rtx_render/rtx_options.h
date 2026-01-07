@@ -888,6 +888,21 @@ namespace dxvk {
     RTX_OPTION_FLAG_ENV("rtx", bool, enableBreakIntoDebuggerOnPressingB, false, RtxOptionFlags::NoSave, "RTX_BREAK_INTO_DEBUGGER_ON_PRESSING_B",
                     "Enables a break into a debugger at the start of InjectRTX() on a press of key \'B\'.\n"
                     "If debugger is not attached at the time, it will wait until a debugger is attached and break into it then.");
+    
+    // Crash Hotkey Feature (Development builds only)
+    // When enabled via checkbox in the Development tab, pressing the configured hotkey will trigger a deliberate crash.
+    // This is useful for testing crash handling, crash dumps, and crash reporting systems.
+    // The feature is only available in REMIX_DEVELOPMENT builds and defaults to disabled.
+    // The checkbox state is not saved to config files (NoSave), but can be pre-enabled by setting rtx.enableCrashHotkey = True in rtx.conf.
+    RTX_OPTION_FLAG_ENV("rtx", bool, enableCrashHotkey, false, RtxOptionFlags::NoSave, "RTX_ENABLE_CRASH_HOTKEY",
+                    "Arms the crash hotkey feature. When enabled, pressing the crash hotkey combination (Ctrl+Shift+Alt+K by default) will trigger a deliberate crash.\n"
+                    "This option is only available in development builds and is intended for testing crash handling and crash dump generation.\n"
+                    "The armed state is indicated by a red warning overlay on screen. This setting is not saved to config files but can be set manually in rtx.conf.");
+    inline static const VirtualKeys kDefaultCrashHotkey{ VirtualKey{VK_CONTROL}, VirtualKey{VK_SHIFT}, VirtualKey{VK_MENU}, VirtualKey{'K'} };
+    RTX_OPTION_FLAG("rtx", VirtualKeys, crashHotkey, kDefaultCrashHotkey, RtxOptionFlags::NoSave,
+                    "The hotkey combination that triggers a deliberate crash when the crash hotkey feature is armed.\n"
+                    "Default is Ctrl+Shift+Alt+K. Only takes effect when rtx.enableCrashHotkey is True.\n"
+                    "This setting is not saved to config files but can be set manually in rtx.conf.");
     RTX_OPTION_FLAG("rtx", bool, enableInstanceDebuggingTools, false, RtxOptionFlags::NoSave, "NOTE: This will disable temporal correllation for instances, but allow the use of instance developer debug tools");
     RTX_OPTION("rtx", Vector2i, drawCallRange, Vector2i(0, INT32_MAX), "");
     RTX_OPTION("rtx", Vector3, instanceOverrideWorldOffset, Vector3(0.f, 0.f, 0.f), "");
