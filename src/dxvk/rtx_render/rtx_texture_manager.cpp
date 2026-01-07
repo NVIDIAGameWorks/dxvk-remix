@@ -39,8 +39,31 @@ namespace dxvk {
   size_t g_streamedTextures_budgetBytes = 0;
   size_t g_streamedTextures_usedBytes   = 0;
 
+  constexpr size_t Megabytes = 1024 * 1024;
 
   static size_t calcTextureMemoryBudget_Megabytes(DxvkDevice* device);
+  
+  // Returns current VRAM usage by material textures in bytes
+  static size_t calcCurrentTextureUsageBytes(DxvkDevice* device) {
+    size_t usageBytes = 0;
+    for (uint32_t i = 0; i < device->adapter()->memoryProperties().memoryHeapCount; i++) {
+      const bool isDeviceLocal = device->adapter()->memoryProperties().memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT;
+      if (isDeviceLocal) {
+        usageBytes += device->getMemoryStats(i).usedByCategory(DxvkMemoryStats::Category::RTXMaterialTexture);
+      }
+    }
+    return usageBytes;
+  }
+  
+  // Returns texture memory budget in bytes
+  static size_t calcTextureMemoryBudgetBytes(DxvkDevice* device) {
+    return calcTextureMemoryBudget_Megabytes(device) * Megabytes;
+  }
+  
+  // Returns true if current texture VRAM usage exceeds budget
+  static bool isOverTextureBudget(DxvkDevice* device) {
+    return calcCurrentTextureUsageBytes(device) > calcTextureMemoryBudgetBytes(device);
+  }
 
   static size_t stagingBufferSize_Bytes() {
     return std::max(32, RtxOptions::TextureManager::stagingBufferSizeMiB()) * 1024 * 1024;
@@ -393,9 +416,6 @@ namespace dxvk {
 
     
     struct RcHasher { size_t operator()(const Rc<ManagedTexture>& s) const { return (size_t)s.ptr(); } };
-
-
-    constexpr size_t Megabytes = 1024 * 1024;
 
   } // unnamed namespace
 
@@ -913,13 +933,11 @@ namespace dxvk {
   void RtxTextureManager::clear() {
     ScopedCpuProfileZone();
 
-    // demote all
-    {
-      auto l = std::unique_lock{ m_assetHashToTextures_mutex };
-      for (const auto& pair : m_assetHashToTextures) {
-        pair.second->requestMips(0);
-        scheduleTextureLoad(pair.second, false);
-      }
+    // Only demote textures when we're actually over budget.
+    // If we're under budget, there's no reason to demote - keep textures in VRAM
+    // so they're ready when the scene returns (e.g., after closing a menu).
+    if (isOverTextureBudget(m_device)) {
+      manageBudgetWithPriority();
     }
 
     m_textureCache.clear();
@@ -1147,7 +1165,7 @@ namespace dxvk {
       std::sort(prioritylist.begin(), prioritylist.end(), l_sort);
     }
     {
-      const size_t budgetBytes = calcTextureMemoryBudget_Megabytes(m_device) * Megabytes;
+      const size_t budgetBytes = calcTextureMemoryBudgetBytes(m_device);
       size_t       usedBytes   = 0;
       for (ManagedTexture* tex : prioritylist) {
         assert(tex && tex->canDemote && tex->samplerFeedbackStamp != SAMPLER_FEEDBACK_INVALID);
@@ -1178,6 +1196,49 @@ namespace dxvk {
       g_streamedTextures_budgetBytes = budgetBytes;
       g_streamedTextures_usedBytes   = usedBytes;
     }
+  }
+
+  void RtxTextureManager::manageBudgetWithPriority() {
+    ScopedCpuProfileZone();
+    
+    const size_t budgetBytes = calcTextureMemoryBudgetBytes(m_device);
+    size_t currentUsage = calcCurrentTextureUsageBytes(m_device);
+    
+    if (currentUsage <= budgetBytes) {
+      return;  // Already under budget
+    }
+    
+    auto demoteTexture = [&](ManagedTexture* tex) {
+      const uint32_t allmipcount = tex->assetData->info().mipLevels;
+      const uint32_t currentMips = tex->m_requestedMips.load();
+      
+      if (currentMips > 0) {
+        const size_t oldSize = calcSizeForAsset(*tex->assetData, allmipcount - currentMips, allmipcount);
+        tex->requestMips(0);
+        scheduleTextureLoad(tex, false);
+        currentUsage -= oldSize;
+        m_wasTextureBudgetPressure = true;
+      }
+    };
+    
+    // Demote textures that were previously rendered (old scene textures).
+    // Textures with frameLastUsed == UINT32_MAX are newly loaded and haven't been
+    // rendered yet - these are needed for the incoming scene and should be preserved.
+    {
+      auto ls = std::unique_lock{ m_sf.m_idToTexture_mutex };
+      for (const auto& tex : m_sf.m_idToTexture) {
+        if (currentUsage <= budgetBytes) {
+          break;
+        }
+        if (tex != nullptr && tex->canDemote && tex->frameLastUsed != UINT32_MAX) {
+          demoteTexture(tex.ptr());
+        }
+      }
+    }
+    
+    // Update debug stats
+    g_streamedTextures_budgetBytes = budgetBytes;
+    g_streamedTextures_usedBytes = currentUsage;
   }
 
   XXH64_hash_t RtxTextureManager::getUniqueKey() {

@@ -99,10 +99,12 @@ namespace dxvk {
     void submitTexturesToDeviceLocal(DxvkContext* ctx, DxvkBarrierSet& execBarriers, DxvkBarrierSet& execAcquires);
 
     /**
-      * \brief Clears all resources managed by the resource manager.
+      * \brief Clears texture cache when scene is absent.
+      * Textures are only demoted if VRAM usage exceeds budget, preventing
+      * blur pop when returning from full-screen menus.
       */
     void clear();
-
+    
     void prepareSamplerFeedback(DxvkContext* ctx);
     void copySamplerFeedbackToHost(DxvkContext* ctx);
 
@@ -110,6 +112,15 @@ namespace dxvk {
       * \brief Performs garbage collection on the resource manager.
       */
     void garbageCollection(const uint32_t* gpuAccessedMips);
+    
+    /**
+      * \brief Manages texture VRAM budget by demoting textures when over budget.
+      * 
+      * Demotes textures that were previously rendered (frameLastUsed != UINT32_MAX).
+      * Newly loaded textures (frameLastUsed == UINT32_MAX) are preserved since they
+      * haven't been rendered yet and are needed for the incoming scene.
+      */
+    void manageBudgetWithPriority();
 
     /**
       * \brief Returns a unique hash key for the resource manager.
