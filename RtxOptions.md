@@ -372,6 +372,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.localtonemap.mip|int|3|||Top mip level of tone map pyramid\.|
 |rtx.localtonemap.shadows|float|2|||Shadow area strength\. Higher values cause brighter shadows\.|
 |rtx.localtonemap.useGaussian|bool|True|||Uses gaussian kernel to generate tone map pyramid\.|
+|rtx.logCallstacksOnValidationLayerErrors|bool|True|||A flag to enable logging of callstacks when validation layer errors occur\.<br>This is useful for debugging and development to help track down the source of validation layer errors more easily\.<br>Requires pdb symbols to be present next to Remix's d3d9 dll and/or in the working directory to resolve symbols\.|
 |rtx.logLegacyHashReplacementMatches|bool|False||||
 |rtx.lowMemoryGpu|bool|False|||Enables low memory mode, where we aggressively detune caches and streaming systems to accomodate the lower memory available\.|
 |rtx.maxAnisotropySamples|float|8|||The maximum number of samples to use when anisotropic filtering is enabled\.<br>The actual max anisotropy used will be the minimum between this value and the hardware's maximum\. Higher values increase quality but will likely reduce performance\.|
