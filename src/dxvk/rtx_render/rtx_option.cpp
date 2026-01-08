@@ -33,6 +33,8 @@ namespace dxvk {
   }
 
   void fillHashVector(const std::vector<std::string>& rawInput, std::vector<XXH64_hash_t>& hashVectorOutput) {
+    // Clear before filling to prevent doubling when readValue is called on an existing vector
+    hashVectorOutput.clear();
     for (auto&& hashStr : rawInput) {
       const XXH64_hash_t h = std::stoull(hashStr, nullptr, 16);
       hashVectorOutput.emplace_back(h);
@@ -347,11 +349,57 @@ namespace dxvk {
     }
   }
 
-  void RtxOptionImpl::writeOptions(Config& options, bool changedOptionsOnly) {
+  void RtxOptionImpl::writeOptions(Config& options, bool changedOptionsOnly, bool excludeHashSets) {
     auto& globalRtxOptions = getGlobalRtxOptionMap();
     for (auto& pPair : globalRtxOptions) {
       auto& impl = *pPair.second;
+      // Skip hashset options when excludeHashSets is true (e.g., when saving to user.conf)
+      if (excludeHashSets && impl.type == OptionType::HashSet) {
+        continue;
+      }
       impl.writeOption(options, changedOptionsOnly);
+    }
+  }
+
+  void RtxOptionImpl::writeHashSetOptionsFromLayer(Config& options, uint32_t layerPriority, const std::string& layerName, bool changedOptionsOnly) {
+    auto& globalRtxOptions = getGlobalRtxOptionMap();
+    auto& layerMap = getRtxOptionLayerMap();
+    LayerKey layerKey = {layerPriority, layerName};
+    
+    // Get the layer to compare against original config when changedOptionsOnly is true
+    const Config* originalConfig = nullptr;
+    if (changedOptionsOnly) {
+      auto layerMapIt = layerMap.find(layerKey);
+      if (layerMapIt != layerMap.end()) {
+        originalConfig = &layerMapIt->second->getConfig();
+      }
+    }
+    
+    for (auto& pPair : globalRtxOptions) {
+      auto& impl = *pPair.second;
+      if (impl.type != OptionType::HashSet) {
+        continue;
+      }
+      
+      // Check if this option has a value in the specified layer
+      auto layerIt = impl.optionLayerValueQueue.find(layerKey);
+      if (layerIt != impl.optionLayerValueQueue.end() && layerIt->second.value.hashSet) {
+        const fast_unordered_set& hashSet = *layerIt->second.value.hashSet;
+        
+        if (changedOptionsOnly && originalConfig) {
+          // Compare current hashset with original config value
+          fast_unordered_set originalHashSet;
+          fillHashTable(originalConfig->getOption<std::vector<std::string>>(impl.getFullName().c_str()), originalHashSet);
+          
+          if (hashSet == originalHashSet) {
+            continue; // No change, skip this option
+          }
+        }
+        
+        if (!hashSet.empty()) {
+          options.setOption(impl.getFullName().c_str(), hashTableToString(hashSet));
+        }
+      }
     }
   }
 
@@ -608,8 +656,40 @@ namespace dxvk {
     // Only insert into queue when the option can be found in the config of option layer
     if (optionLayer.getConfig().findOption(fullName.c_str())) {
       readValue(optionLayer.getConfig(), fullName, value.data);
-      // All layer properties (priority, blend strength, threshold) are read from the layer itself
-      insertOptionLayerValue(value.data, &optionLayer);
+      
+      const bool isUserConfHashSet = type == OptionType::HashSet && 
+          optionLayer.getPriority() == (uint32_t)RtxOptionLayer::SystemLayerPriority::USER &&
+          value.data.hashSet && !value.data.hashSet->empty();
+      const bool isRtxConfHashSet = type == OptionType::HashSet && 
+          optionLayer.getPriority() == (uint32_t)RtxOptionLayer::SystemLayerPriority::RtxConf &&
+          value.data.hashSet && !value.data.hashSet->empty();
+      
+      if (isUserConfHashSet) {
+        s_userConfHadHashSets = true;
+      }
+      
+      // Hashsets from user.conf are redirected to rtx.conf layer.
+      // Hashsets from rtx.conf merge with existing values (in case user.conf was processed first).
+      // This ensures all hashsets end up combined in the rtx.conf layer.
+      if (isUserConfHashSet || isRtxConfHashSet) {
+        RtxOptionLayer* rtxConfLayer = isUserConfHashSet ? getRtxConfLayer() : const_cast<RtxOptionLayer*>(&optionLayer);
+        if (rtxConfLayer) {
+          LayerKey key = {rtxConfLayer->getPriority(), rtxConfLayer->getName()};
+          auto existingIt = optionLayerValueQueue.find(key);
+          if (existingIt != optionLayerValueQueue.end() && existingIt->second.value.hashSet) {
+            // Merge into existing hashset
+            existingIt->second.value.hashSet->insert(value.data.hashSet->begin(), value.data.hashSet->end());
+          } else {
+            insertOptionLayerValue(value.data, rtxConfLayer);
+          }
+        } else {
+          // Fallback: insert into original layer if rtx.conf not available yet
+          insertOptionLayerValue(value.data, &optionLayer);
+        }
+      } else {
+        insertOptionLayerValue(value.data, &optionLayer);
+      }
+      
       // When adding a new option layer, dirty current option
       markDirty();
     }
@@ -771,7 +851,9 @@ namespace dxvk {
       break;
     case OptionType::HashSet:
     {
-      target.hashSet->insert(source.hashSet->begin(), source.hashSet->end());
+      if (source.hashSet && target.hashSet) {
+        target.hashSet->insert(source.hashSet->begin(), source.hashSet->end());
+      }
       break;
     }
     case OptionType::Bool:
@@ -1208,7 +1290,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 
   const RtxOptionLayer* RtxOptionImpl::getDefaultLayer() {
     auto& layerMap = getRtxOptionLayerMap();
-    LayerKey layerKey = {(uint32_t)RtxOptionLayer::SystemLayerPriority::Default, "default"};
+    LayerKey layerKey = {(uint32_t)RtxOptionLayer::SystemLayerPriority::Default, "<APPLICATION DEFAULT>"};
     auto it = layerMap.find(layerKey);
     
     if (it != layerMap.end()) {
@@ -1217,7 +1299,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
     
     // Create default layer with empty config - does not load any config file, holds in-code default values
     Config emptyConfig;
-    auto layer = std::make_unique<RtxOptionLayer>(emptyConfig, "default", (uint32_t)RtxOptionLayer::SystemLayerPriority::Default, 1.0f, 0.1f);
+    auto layer = std::make_unique<RtxOptionLayer>(emptyConfig, "<APPLICATION DEFAULT>", (uint32_t)RtxOptionLayer::SystemLayerPriority::Default, 1.0f, 0.1f);
     
     // Insert into map
     auto [insertIt, inserted] = layerMap.emplace(layerKey, std::move(layer));
@@ -1228,6 +1310,101 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
     }
     
     return insertIt->second.get();
+  }
+
+  RtxOptionLayer* RtxOptionImpl::getRtxConfLayer() {
+    auto& layerMap = getRtxOptionLayerMap();
+    LayerKey layerKey = {(uint32_t)RtxOptionLayer::SystemLayerPriority::RtxConf, "rtx.conf"};
+    auto it = layerMap.find(layerKey);
+    
+    if (it != layerMap.end()) {
+      return it->second.get();
+    }
+    
+    // Create rtx.conf layer with empty config if it doesn't exist
+    Config emptyConfig;
+    auto layer = std::make_unique<RtxOptionLayer>(emptyConfig, "rtx.conf", (uint32_t)RtxOptionLayer::SystemLayerPriority::RtxConf, 1.0f, 0.1f);
+    
+    // Insert into map
+    auto [insertIt, inserted] = layerMap.emplace(layerKey, std::move(layer));
+    
+    if (!inserted) {
+      Logger::warn("[RTX Option]: Failed to create rtx.conf layer (unexpected insertion failure).");
+      return nullptr;
+    }
+    
+    return insertIt->second.get();
+  }
+
+  void RtxOptionImpl::addHashToRtxConfLayer(const XXH64_hash_t& hash) {
+    RtxOptionLayer* rtxConfLayer = getRtxConfLayer();
+    if (!rtxConfLayer) {
+      Logger::warn("[RTX Option]: Cannot add hash - rtx.conf layer not available.");
+      return;
+    }
+    
+    LayerKey key = {rtxConfLayer->getPriority(), rtxConfLayer->getName()};
+    
+    auto existingIt = optionLayerValueQueue.find(key);
+    if (existingIt != optionLayerValueQueue.end()) {
+      // Entry exists for this layer
+      if (existingIt->second.value.hashSet) {
+        // Add hash to existing set
+        existingIt->second.value.hashSet->insert(hash);
+      } else {
+        // Entry exists but has null hashSet - create one and add the hash
+        existingIt->second.value.hashSet = new fast_unordered_set();
+        existingIt->second.value.hashSet->insert(hash);
+      }
+    } else {
+      // No entry exists for rtx.conf layer - create new entry with just this hash
+      // Note: We don't copy from resolved value here because that would promote ALL
+      // hashes from lower layers (like app config) to rtx.conf. We only want to add
+      // the new hash to rtx.conf, and let the resolution logic merge all layers.
+      GenericValue optionLayerValue;
+      optionLayerValue.hashSet = new fast_unordered_set();
+      optionLayerValue.hashSet->insert(hash);
+      
+      const PrioritizedValue newValue(optionLayerValue, rtxConfLayer->getBlendStrength(), rtxConfLayer->getBlendStrengthThreshold());
+      auto [it, inserted] = optionLayerValueQueue.emplace(key, newValue);
+      
+      if (!inserted) {
+        Logger::err(str::format("[RTX Option]: failed to add hash to RtxOption"));
+      }
+    }
+    
+    // Note: Do NOT set layer dirty here. Setting the layer dirty triggers a re-read
+    // from the Config object, which would overwrite our runtime modifications.
+    // The option itself is marked dirty via markDirty() in addHash(), which is sufficient
+    // for tracking that it needs saving.
+  }
+
+  void RtxOptionImpl::removeHashFromLayers(const XXH64_hash_t& hash) {
+    // Remove from rtx.conf layer
+    LayerKey rtxKey = {(uint32_t)RtxOptionLayer::SystemLayerPriority::RtxConf, "rtx.conf"};
+    auto rtxIt = optionLayerValueQueue.find(rtxKey);
+    if (rtxIt != optionLayerValueQueue.end() && rtxIt->second.value.hashSet) {
+      rtxIt->second.value.hashSet->erase(hash);
+      // Note: Do NOT set layer dirty here - see comment in addHashToRtxConfLayer
+    }
+    
+    // Remove from user.conf layer (if present)
+    LayerKey userKey = {(uint32_t)RtxOptionLayer::SystemLayerPriority::USER, "user.conf"};
+    auto userIt = optionLayerValueQueue.find(userKey);
+    if (userIt != optionLayerValueQueue.end() && userIt->second.value.hashSet) {
+      userIt->second.value.hashSet->erase(hash);
+      // Note: Do NOT set layer dirty here - see comment in addHashToRtxConfLayer
+    }
+  }
+
+  bool RtxOptionImpl::userConfContainsHashSets() {
+    // Return flag set during config loading. This avoids checking optionLayerValueQueue
+    // at runtime, which would be empty after migration moves hashsets to rtx.conf.
+    return s_userConfHadHashSets;
+  }
+  
+  void RtxOptionImpl::clearUserConfHashSetsFlag() {
+    s_userConfHadHashSets = false;
   }
 
   bool writeMarkdownDocumentation(const char* outputMarkdownFilePath) {

@@ -641,15 +641,18 @@ namespace dxvk {
     initConfig<Config::Type_RtxUser>();
     initConfig<Config::Type_RtxMod>();
 
-    RtxOptionImpl::addRtxOptionLayer("user.conf", (uint32_t) RtxOptionLayer::SystemLayerPriority::USER, true, 1.0f, 0.1f);
+    auto userLayer = RtxOptionImpl::addRtxOptionLayer("user.conf", (uint32_t) RtxOptionLayer::SystemLayerPriority::USER, true, 1.0f, 0.1f);
     Logger::info("Set user realtime configs.");
+    if (userLayer) {
+      userLayer->getConfig().logOptions("user.conf");
+    }
 
     RtxOptionManager::initializeRtxOptions();
     for (const auto& [unusedLayerKey, optionLayerPtr] : RtxOptionImpl::getRtxOptionLayerMap()) {
       RtxOptionManager::addRtxOptionLayer(*optionLayerPtr);
     }
 
-    m_config.logOptions("Effective (combined)");
+    m_config.logOptions("Effective configuration for DXVK");
 
     // Output environment variable info
     // Todo: This being here is kinda not great as this results in the Environment variables being parsed 3 times
