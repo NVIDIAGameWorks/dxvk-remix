@@ -929,9 +929,13 @@ namespace dxvk {
                         "This flag enables GPU assisted and synchronization validation along with best practices within the Vulkan validation layers which allow for greater error-checking capability at the cost of significant performance impact.\n"
                         "Much like the rtx.enableValidationLayers option, this option should only be enabled by developers during development and not be put into production builds of any project.\n"
                         "Additionally, this setting must be set at startup and changing it will not take effect at runtime.");
+    RTX_OPTION_FLAG_ENV("rtx", bool, logCallstacksOnValidationLayerErrors, true, RtxOptionFlags::NoSave, "DXVK_LOG_CALLSTACKS_ON_VALIDATION_LAYER_ERRORS",
+                        "A flag to enable logging of callstacks when validation layer errors occur.\n"
+                        "This is useful for debugging and development to help track down the source of validation layer errors more easily.\n"
+                        "Requires pdb symbols to be present next to Remix's d3d9 dll and/or in the working directory to resolve symbols.");
 
-    struct Aliasing
-    {
+
+    struct Aliasing {
       RTX_OPTION("rtx.aliasing", RtxFramePassStage, beginPass, RtxFramePassStage::FrameBegin, "The first render pass where the aliasing resource is bound in a frame.");
       RTX_OPTION("rtx.aliasing", RtxFramePassStage, endPass, RtxFramePassStage::FrameEnd, "The last render pass where the aliasing resource is bound in a frame.");
       RTX_OPTION("rtx.aliasing", RtxTextureFormatCompatibilityCategory, formatCategory, RtxTextureFormatCompatibilityCategory::InvalidFormatCompatibilityCategory, "Specifies the texture format compatibility category for the aliasing resource.");
@@ -944,8 +948,7 @@ namespace dxvk {
       RTX_OPTION("rtx.aliasing", VkImageViewType, imageViewType, VkImageViewType::VK_IMAGE_VIEW_TYPE_2D, "The image view type of the aliasing resource (e.g., 1D, 2D, 3D, or cube).");
     } aliasing;
 
-    struct OpacityMicromap
-    {
+    struct OpacityMicromap {
       friend class RtxOptions;
       friend class ImGUI;
       bool isSupported = false;

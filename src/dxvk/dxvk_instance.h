@@ -23,12 +23,16 @@
 
 #include "../util/config/config.h"
 
+#include <memory>
+
 #include "dxvk_adapter.h"
 #include "dxvk_device_filter.h"
 #include "dxvk_extension_provider.h"
 #include "dxvk_options.h"
 
 namespace dxvk {
+
+  struct DxvkDebugUtilsContext;
   
   /**
    * \brief DXVK instance
@@ -139,6 +143,10 @@ namespace dxvk {
     DxvkInstanceExtensions  m_extensions;
     // NV-DXVK start: use EXT_debug_utils
     VkDebugUtilsMessengerEXT m_debugUtilsMessenger = nullptr;
+    // NV-DXVK end
+
+    // NV-DXVK start: debug callback context (stack trace + duplicate filtering)
+    std::unique_ptr<DxvkDebugUtilsContext> m_debugUtilsContext;
     // NV-DXVK end
 
     std::vector<DxvkExtensionProvider*> m_extProviders;

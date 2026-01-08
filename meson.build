@@ -238,6 +238,15 @@ endif
 lib_shlwapi  = dxvk_compiler.find_library('shlwapi')
 dxvk_extradep += lib_shlwapi
 
+if dxvk_is_msvc
+  lib_dbghelp = dxvk_compiler.find_library('dbghelp', required : true)
+else
+  lib_dbghelp = dxvk_compiler.find_library('dbghelp', dirs : dxvk_library_path, required : false)
+endif
+if lib_dbghelp.found()
+  dxvk_extradep += lib_dbghelp
+endif
+
 if enable_rtxio == true
   rtxio_bin_path = join_paths(global_src_root_norm, 'external/rtxio/bin')
   external_dll_paths += rtxio_bin_path
