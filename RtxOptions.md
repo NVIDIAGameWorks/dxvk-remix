@@ -507,10 +507,10 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.opaqueMaterial.thinFilmThicknessOverride|float|0|||The thin\-film layer's thickness in nanometers for the opaque material when the thin\-film override is enabled\.<br>Should be any value larger than 0, typically within the wavelength of light, but must be less than or equal to OPAQUE\_SURFACE\_MATERIAL\_THIN\_FILM\_MAX\_THICKNESS \(\(1500\.0f\) nm\)\.<br>Should only be used for debugging or development\.|
 |rtx.opaqueOpacityTransmissionLobeSamplingProbabilityZeroThreshold|float|0.01|||The threshold for which to zero opaque opacity probability weight values\.|
 |rtx.opaqueSpecularLobeSamplingProbabilityZeroThreshold|float|0.01|||The threshold for which to zero opaque specular probability weight values\.|
-|rtx.option.optionSavingType|int|0|||Saving type of current runtime changes\.|
+|rtx.option.optionSavingType|int|1|||Saving type of current runtime changes\.|
 |rtx.option.overwriteConfig|bool|False|||This enables overwriting of the original config file when saving settings\.<br>Disable this option to merge the current settings with the preexisting settings in the config\.|
 |rtx.option.saveToLayerConf|bool|False|||Whether or not to save the layer to original config file\.<br>Disable this to save the layer into rtx\.conf\.<br>Base on overwriteConfig, the config of the layer will be merged or override the rtx\.conf\.|
-|rtx.option.serializeChangedOptionOnly|bool|True||||
+|rtx.option.serializeChangedOptionOnly|bool|True|||When disabled, every option's final resolved value is saved\.<br>When enabled, all settings changed in the current session or loaded from user\.conf will be saved to the selected config file\.<br>Note that redundant options are automatically removed, so user\.conf or session options which don't actually cause changes will not be saved\.<br>|
 |rtx.orthographicIsUI|bool|True|||When enabled, draw calls that are orthographic will be considered as UI\.|
 |rtx.particleSoftnessFactor|float|0.05|0|1|Multiplier for the view distance that is used to calculate the particle blending range\.|
 |rtx.particles.enable|bool|True|||Enables particle simulation and rendering\.|

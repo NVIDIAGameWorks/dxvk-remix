@@ -561,13 +561,13 @@ namespace dxvk {
   });
 
   ImGui::ComboWithKey<OptionLayerType>::ComboEntries optionSavingModeComboEntries = { {
-      { OptionLayerType::User, "User", "Runtime settings"},
-      { OptionLayerType::Rtx, "Rtx", "RTX settings"},
-      { OptionLayerType::None, "None", "No settings layer; used for testing or temporary development" },
+      { OptionLayerType::User, "user.conf", "Save runtime settings to user.conf.  Intended for personal graphics quality settings."},
+      { OptionLayerType::Rtx, "rtx.conf", "Save runtime settings to rtx.conf.  Intended for game specific configuration."},
+      { OptionLayerType::None, "new.conf", "Save runtime settings to a new config file (new.conf).\nMove and rename new.conf to create .conf files for RtxOptionLayerAction nodes in Remix graphs." },
   } };
 
   static auto optionSavingModeCombo = ImGui::ComboWithKey<OptionLayerType>(
-    "Type of setting to save##option", ImGui::ComboWithKey<OptionLayerType>::ComboEntries { optionSavingModeComboEntries });
+    "Settings Save Location##option", ImGui::ComboWithKey<OptionLayerType>::ComboEntries { optionSavingModeComboEntries });
 
   static auto themeCombo = ImGui::ComboWithKey<ImGUI::Theme>(
     "Mode##theme",
@@ -1062,6 +1062,34 @@ namespace dxvk {
     common->getSceneManager().getLightManager().showImguiDebugVisualization();
   }
 
+  // Helper to show the hashset migration button with consistent styling
+  // Returns true if the button was clicked
+  bool showHashSetMigrationButton(const char* buttonLabel = "Migrate Textures", const ImVec2& size = ImVec2(0, 0)) {
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.85f, 0.65f, 0.0f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.95f, 0.75f, 0.1f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.75f, 0.55f, 0.0f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
+    
+    bool clicked = ImGui::Button(buttonLabel, size);
+    
+    ImGui::SetTooltipToLastWidgetOnHover(
+      "IMPORTANT: Your user.conf contains texture hashset definitions.\n\n"
+      "Texture categorizations should be stored in rtx.conf, not user.conf.\n"
+      "Clicking this button will:\n"
+      "  1. Move all texture hashsets from user.conf to rtx.conf\n"
+      "  2. Save both config files\n\n"
+      "After migration, texture tagging/untagging will work correctly\n"
+      "and your settings will be properly organized.");
+    
+    ImGui::PopStyleColor(4);
+    
+    if (clicked) {
+      RtxOptions::migrateHashSetsAndSave();
+    }
+    
+    return clicked;
+  }
+
   void ImGUI::showMainMenu(const Rc<DxvkContext>& ctx) {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(ImVec2(m_windowOnRight ? viewport->Size.x - m_windowWidth : 0.f, viewport->Pos.y));
@@ -1134,18 +1162,29 @@ namespace dxvk {
     ImGui::Separator();
     ImGui::Dummy(ImVec2(0, 2));
 
-    IMGUI_ADD_TOOLTIP(optionSavingModeCombo.getKey(&RtxOptions::Option::optionSavingTypeObject()), "Setting saving mode");
+    IMGUI_ADD_TOOLTIP(optionSavingModeCombo.getKey(&RtxOptions::Option::optionSavingTypeObject()), "Which file to save runtime settings to.");
 
     ImGui::Checkbox("Save Changed Settings Only", &RtxOptions::Option::serializeChangedOptionOnlyObject());
     ImGui::Checkbox("Override configs", &RtxOptions::Option::overwriteConfigObject());
 
-    const float buttonWidth = ImGui::GetContentRegionAvail().x / 3 - (ImGui::GetStyle().ItemSpacing.x);
-    if (IMGUI_ADD_TOOLTIP(ImGui::Button("Save Settings", ImVec2(buttonWidth, 0)), "Changes are now saved to selected config file.")) {
-      RtxOptions::serialize();
+    const bool hasHashSetsInUserConf = RtxOptions::userConfContainsHashSets();
+    const float numButtons = 3.0f;
+    const float buttonWidth = ImGui::GetContentRegionAvail().x / numButtons - (ImGui::GetStyle().ItemSpacing.x);
+    
+    
+    // Show migration button if user.conf contains hashsets
+    if (hasHashSetsInUserConf) {
+      showHashSetMigrationButton("Migrate And Save", ImVec2(buttonWidth, 0));
+      ImGui::SameLine();
+    } else {
+      if (IMGUI_ADD_TOOLTIP(ImGui::Button("Save Settings", ImVec2(buttonWidth, 0)), "Save settings out to the selected config file.\nBehavior depends on the above settings.")) {
+        RtxOptions::serialize();
+      }
+  
+      ImGui::SameLine();
     }
 
-    ImGui::SameLine();
-    if (IMGUI_ADD_TOOLTIP(ImGui::Button("Reset settings", ImVec2(buttonWidth, 0)), "Reset all real-time changed settings.")) {
+    if (IMGUI_ADD_TOOLTIP(ImGui::Button("Reset settings", ImVec2(buttonWidth, 0)), "Reset all settings that have been changed this session.")) {
       RtxOptionLayer::setResetSettings(true);
     }
 
@@ -1259,8 +1298,10 @@ namespace dxvk {
       ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(windowPaddingHalfX, 10));
       ImGui::Dummy(ImVec2(0.0f, 0.0f));
 
-      // Center align 
-      const ImVec2 buttonSize = ImVec2((ImGui::GetWindowSize().x - windowPaddingX) / 2, 36);
+      // Check if user.conf contains hashsets that need migration
+      const bool hasHashSetsInUserConf = RtxOptions::userConfContainsHashSets();
+      
+      const ImVec2 buttonSize = ImVec2((ImGui::GetWindowSize().x - windowPaddingX) / 2.0f, 36);
 
       // Make child window start at X offset of tab bar separator
       ImGui::SetCursorPosX(ImGui::GetCursorPosX() - windowPaddingHalfX);
@@ -1272,24 +1313,30 @@ namespace dxvk {
       ImGui::SameLine();
 
       const bool unsavedChanges = m_userGraphicsSettingChanged;
-      if (unsavedChanges) {
+      
+      // If user.conf has hashsets, show migration button instead of regular save
+      if (hasHashSetsInUserConf) {
+        if (showHashSetMigrationButton("Migrate & Save", buttonSize)) {
+          m_userGraphicsSettingChanged = false;
+        }
+      } else {
+        if (ImGui::Button("Save Settings", buttonSize)) {
+          // User graphics menu saves to user.conf
+          auto savedType = RtxOptions::Option::optionSavingType();
+          auto changedSettings = RtxOptions::Option::serializeChangedOptionOnly();
+          RtxOptions::Option::serializeChangedOptionOnly.setImmediately(true);
+          RtxOptions::Option::optionSavingType.setImmediately(OptionLayerType::User);
+          RtxOptions::serialize();
+          RtxOptions::Option::optionSavingType.setImmediately(savedType);
+          RtxOptions::Option::serializeChangedOptionOnly.setImmediately(changedSettings);
+          m_userGraphicsSettingChanged = false;
+        }
 
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7f, 0.35f, 0.14f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.78f, 0.43f, 0.22f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGui::GetStyle().Colors[ImGuiCol_ButtonHovered]);
-      }
-
-      if (ImGui::Button("Save Settings", buttonSize)) {
-        RtxOptions::serialize();
-        m_userGraphicsSettingChanged = false;
-      }
-
-      if (unsavedChanges) {
-        ImGui::PopStyleColor(3);
-        ImGui::SetTooltipToLastWidgetOnHover("Settings have been changed!\nThis will save settings in the rtx.conf file.\nSome may only take effect on next launch.");
-      }
-      else {
-        ImGui::SetTooltipToLastWidgetOnHover("This will save above settings in the rtx.conf file.\nSome may only take effect on next launch.");
+        if (unsavedChanges) {
+          ImGui::SetTooltipToLastWidgetOnHover("Settings have been changed!\nThis will save any changed settings to the user.conf file.\nSome may only take effect on next launch.");
+        } else {
+          ImGui::SetTooltipToLastWidgetOnHover("This will save any changed settings to the user.conf file.\nSome may only take effect on next launch.\n");
+        }
       }
 
       ImGui::EndPopup();
@@ -2570,8 +2617,8 @@ namespace dxvk {
                 // Add warning indicator to the label
                 displayName = std::string(rtxOption.displayName) + " [!]";
                 tooltipText = std::string(rtxOption.textureSetOption->getDescription()) + 
-                  "\n\nWARNING: This hash exists in a config file (rtx.conf, mod config, etc.).\n"
-                  "You must edit the source config file to truly remove it.\n";
+                  "\n\nWARNING: This hash exists in non-editable config (dxvk.conf, hardcoded per-application settings in config.cpp, etc.).\n"
+                  "You must edit the source config file and reload to remove it.\n";
 
 
                 ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); // Dim the checkbox but keep it functional
@@ -2587,9 +2634,6 @@ namespace dxvk {
 
               ImGui::SetTooltipToLastWidgetOnHover(tooltipText.c_str());
             }
-
-            // Show hash removal warning popup if needed
-            showHashRemovalWarning();
 
             ImGui::EndPopup();
             return texHash;
@@ -2853,6 +2897,10 @@ namespace dxvk {
         }
       }
 
+      // Show hash removal warning popup if needed - called outside texture_popup
+      // since it can be triggered when the texture popup isn't open (legacy GUI mode)
+      showHashRemovalWarning();
+
       if (texHashToHighlight) {
         common->metaDebugView().Highlighting.requestHighlighting(*texHashToHighlight, highlightColor, ctx->getDevice()->getCurrentFrameId());
       } else {
@@ -2993,6 +3041,13 @@ namespace dxvk {
     if (IMGUI_ADD_TOOLTIP(ImGui::BeginTabItem("Step 1: Categorize Textures", nullptr, tab_item_flags), "Select texture definitions for Remix")) {
       spacing();
       ImGui::Checkbox("Preserve discarded textures", &RtxOptions::keepTexturesForTaggingObject());
+      
+      // Show migration button if user.conf contains texture hashsets
+      if (RtxOptions::userConfContainsHashSets()) {
+        spacing();
+        showHashSetMigrationButton("Migrate Texture Settings to rtx.conf");
+      }
+      
       separator();
 
       // set thumbnail size

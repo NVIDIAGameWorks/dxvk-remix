@@ -1149,13 +1149,18 @@ namespace dxvk {
                "New projects should not enable this option as this solely exists for compatibility with older hashing schemes.");
 
     struct Option {
-      RTX_OPTION("rtx.option", bool, serializeChangedOptionOnly, true, "");
+      RTX_OPTION("rtx.option", bool, serializeChangedOptionOnly, true,
+                 "When disabled, every option's final resolved value is saved.\n"         
+                 "When enabled, all settings changed in the current session or loaded from user.conf will be saved to the selected config file.\n"
+                 "Note that redundant options are automatically removed, so user.conf or session options which don't actually cause changes will not be saved.\n");
       RTX_OPTION("rtx.option", bool, overwriteConfig, false, "This enables overwriting of the original config file when saving settings.\n"
                   "Disable this option to merge the current settings with the preexisting settings in the config.");
       RTX_OPTION("rtx.option", bool, saveToLayerConf, false, "Whether or not to save the layer to original config file.\n"
                   "Disable this to save the layer into rtx.conf.\n"
                   "Base on overwriteConfig, the config of the layer will be merged or override the rtx.conf.");
-      RTX_OPTION_FLAG("rtx.option", OptionLayerType, optionSavingType, OptionLayerType::User, RtxOptionFlags::NoSave, "Saving type of current runtime changes.");
+      // Default to saving rtx.conf
+      // User graphics menu explicitly saves to user.conf.
+      RTX_OPTION_FLAG("rtx.option", OptionLayerType, optionSavingType, OptionLayerType::Rtx, RtxOptionFlags::NoSave, "Saving type of current runtime changes.");
     } option;
 
     RTX_OPTION("rtx", uint32_t, applicationId, 102100511, "Used to uniquely identify the application to DLSS. Generally should not be changed without good reason.");
@@ -1203,14 +1208,19 @@ namespace dxvk {
       // Ray Portal Options
       // Note: Ensure the Ray Portal texture hashes are always in pairs of 2
       std::vector<XXH64_hash_t> rayPortalModelTextureHashesTrimmed = rayPortalModelTextureHashes();
+      bool modified = false;
       if (rayPortalModelTextureHashesTrimmed.size() % 2 == 1) {
         rayPortalModelTextureHashesTrimmed.pop_back();
+        modified = true;
       }
 
       if (rayPortalModelTextureHashesTrimmed.size() > maxRayPortalCount) {
         rayPortalModelTextureHashesTrimmed.erase(rayPortalModelTextureHashesTrimmed.begin() + maxRayPortalCount, rayPortalModelTextureHashesTrimmed.end());
+        modified = true;
       }
-      rayPortalModelTextureHashes.setDeferred(rayPortalModelTextureHashesTrimmed);
+      if (modified) {
+        rayPortalModelTextureHashes.setDeferred(rayPortalModelTextureHashesTrimmed);
+      }
 
       assert(rayPortalModelTextureHashes().size() % 2 == 0);
       assert(rayPortalModelTextureHashes().size() <= maxRayPortalCount);
@@ -1291,16 +1301,43 @@ namespace dxvk {
       return envVarPath.empty() ? "rtx.conf" : env::getEnvVar(desc.env.c_str());
     }
 
+    // Check if user.conf layer contains any hashset options that need migration
+    static bool userConfContainsHashSets() {
+      return RtxOptionImpl::userConfContainsHashSets();
+    }
+
+    // Save both user.conf and rtx.conf after hashset migration
+    // This should be called when the user clicks the migration button.
+    // The runtime migration already happened during init, so we just need to
+    // persist the changes to disk and clear the migration flag.
+    static void migrateHashSetsAndSave() {
+      // Save user.conf (without hashsets - they were excluded during migration)
+      auto savedType = RtxOptions::Option::optionSavingType();
+      RtxOptions::Option::optionSavingType.setImmediately(OptionLayerType::User);
+      serialize();
+      
+      // Save rtx.conf (with the migrated hashsets)
+      RtxOptions::Option::optionSavingType.setImmediately(OptionLayerType::Rtx);
+      serialize();
+      
+      // Restore original save type
+      RtxOptions::Option::optionSavingType.setImmediately(savedType);
+      
+      // Clear the flag now that files are saved
+      RtxOptionImpl::clearUserConfHashSetsFlag();
+    }
+
     static void serialize() {
       std::string configFilePath;
       uint32_t optionSavingTypePriority = (uint32_t) RtxOptionLayer::SystemLayerPriority::Default;
+      
       switch (RtxOptions::Option::optionSavingType()) {
         case OptionLayerType::Rtx:
           configFilePath = "rtx.conf";
           optionSavingTypePriority = (uint32_t) RtxOptionLayer::SystemLayerPriority::RtxConf;
           break;
         case OptionLayerType::None:
-          configFilePath = "none.conf";
+          configFilePath = "new.conf";
           optionSavingTypePriority = (uint32_t) RtxOptionLayer::SystemLayerPriority::NONE;
           break;
         case OptionLayerType::User:
@@ -1315,33 +1352,65 @@ namespace dxvk {
       auto& optionLayerMap = RtxOptionImpl::getRtxOptionLayerMap();
       RtxOptionImpl::LayerKey layerKey = {optionSavingTypePriority, configFilePath};
       
+      bool mergedWithExisting = false;
       if (!Option::overwriteConfig()) {
         const auto& it = optionLayerMap.find(layerKey);
         if (it != optionLayerMap.end()) {
+          mergedWithExisting = true;
           // Get original option layer config
           newConfig = it->second->getConfig();
-          // Get changed options
+          // Get changed options, excluding hashsets.
+          // Hashsets are handled separately: filtered out for user.conf, added from layer for rtx.conf
           Config changedConfigs;
-          RtxOptionManager::writeOptions(changedConfigs, Option::serializeChangedOptionOnly());
+          RtxOptionImpl::writeOptions(changedConfigs, Option::serializeChangedOptionOnly(), /*excludeHashSets=*/true);
 
           if (optionSavingTypePriority == (uint32_t) RtxOptionLayer::SystemLayerPriority::USER) {
             // If we're saving out user.conf, the only time the old config will have values that the runtime layer
             // doesn't have is if those values were removed from the runtime layer.  In this case, don't merge the layers.
-            newConfig = changedConfigs;
+            // Also remove any hashsets from the old config since they shouldn't be in user.conf
+            Config filteredConfig;
+            for (const auto& option : newConfig.getOptions()) {
+              // Check if this option is a hashset
+              bool isHashSet = false;
+              auto& globalRtxOptions = RtxOptionImpl::getGlobalRtxOptionMap();
+              for (const auto& rtxOptionEntry : globalRtxOptions) {
+                if (rtxOptionEntry.second->type == OptionType::HashSet && 
+                    rtxOptionEntry.second->getFullName() == option.first) {
+                  isHashSet = true;
+                  break;
+                }
+              }
+              if (!isHashSet) {
+                filteredConfig.setOption(option.first, option.second);
+              }
+            }
+            // Merge the non-hashset changed configs
+            filteredConfig.merge(changedConfigs);
+            newConfig = filteredConfig;
           } else {
             // Merge changed options into original option layer
             newConfig.merge(changedConfigs);
+            // For rtx.conf and new.conf, write hashset values from the rtx.conf layer specifically.
+            // Hash sets are always stored in the rtx.conf layer, so we need to look there even when saving to new.conf.
+            if (optionSavingTypePriority == (uint32_t) RtxOptionLayer::SystemLayerPriority::RtxConf || optionSavingTypePriority == (uint32_t) RtxOptionLayer::SystemLayerPriority::NONE) {
+              RtxOptionImpl::writeHashSetOptionsFromLayer(newConfig, (uint32_t) RtxOptionLayer::SystemLayerPriority::RtxConf, "rtx.conf", Option::serializeChangedOptionOnly());
+            }
           }
-
-        } else {
-          RtxOptionManager::writeOptions(newConfig, Option::serializeChangedOptionOnly());
         }
-      } else {
-        RtxOptionManager::writeOptions(newConfig, Option::serializeChangedOptionOnly());
+      }
+      
+      // If we didn't merge with existing config (overwrite mode or layer doesn't exist), write fresh options
+      if (!mergedWithExisting) {
+        RtxOptionImpl::writeOptions(newConfig, Option::serializeChangedOptionOnly(), /*excludeHashSets=*/true);
+        // For rtx.conf and new.conf, write hashset values from the rtx.conf layer specifically.
+        // Hash sets are always stored in the rtx.conf layer, so we need to look there even when saving to new.conf.
+        if (optionSavingTypePriority == (uint32_t) RtxOptionLayer::SystemLayerPriority::RtxConf || optionSavingTypePriority == (uint32_t) RtxOptionLayer::SystemLayerPriority::NONE) {
+          RtxOptionImpl::writeHashSetOptionsFromLayer(newConfig, (uint32_t) RtxOptionLayer::SystemLayerPriority::RtxConf, "rtx.conf", Option::serializeChangedOptionOnly());
+        }
       }
 
       // Update the config of corresponding layer, no need to do it for user/runtime layer b/c it's auto updated when any options in GUI are changed.
-      // And we also don't do anything for NONE, which are just experiment options that saved into none.conf.
+      // And we also don't do anything for NONE, which are just options that saved into new.conf for Logic graph conf files.
       if (RtxOptions::Option::optionSavingType() != OptionLayerType::User &&
           RtxOptions::Option::optionSavingType() != OptionLayerType::None) {
         if (optionLayerMap.find(layerKey) == optionLayerMap.end()){

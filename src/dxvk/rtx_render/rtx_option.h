@@ -406,7 +406,10 @@ namespace dxvk {
     static void setStartupConfig(const Config& options) { s_startupOptions = options; }
     static void setCustomConfig(const Config& options) { s_customOptions = options; }
     static void readOptions(const Config& options);
-    static void writeOptions(Config& options, bool changedOptionsOnly);
+    static void writeOptions(Config& options, bool changedOptionsOnly, bool excludeHashSets = false);
+    // Write hashset options from a specific layer to the config (for layer-specific serialization)
+    // If changedOptionsOnly is true, only writes hashsets that differ from the layer's original config
+    static void writeHashSetOptionsFromLayer(Config& options, uint32_t layerPriority, const std::string& layerName, bool changedOptionsOnly = false);
     static void resetOptions();
     static bool writeMarkdownDocumentation(const char* outputMarkdownFilePath);
 
@@ -434,6 +437,21 @@ namespace dxvk {
     static const RtxOptionLayer* getRuntimeLayer();
     // Get or create the default layer (for in-code default values)
     static const RtxOptionLayer* getDefaultLayer();
+    // Get or create the rtx.conf layer (for hashset modifications)
+    static RtxOptionLayer* getRtxConfLayer();
+
+    // Check if the user.conf layer contained hashsets at load time
+    // This flag is set during config loading and cleared when migration is saved
+    static bool userConfContainsHashSets();
+    
+    // Clear the flag indicating user.conf had hashsets (called after saving migration)
+    static void clearUserConfHashSetsFlag();
+
+    // Add a single hash to the rtx.conf layer's hashset
+    void addHashToRtxConfLayer(const XXH64_hash_t& hash);
+    
+    // Remove a hash from both rtx.conf and user.conf layers (if present in either)
+    void removeHashFromLayers(const XXH64_hash_t& hash);
 
     // Config object holding start up settings
     static Config s_startupOptions;
@@ -441,6 +459,10 @@ namespace dxvk {
 
     // track if the configs have been loaded.
     inline static bool s_isInitialized = false;
+    
+    // Flag set during config loading when hashsets are found in user.conf
+    // Used to show migration UI. Cleared when migration is complete.
+    inline static bool s_userConfHadHashSets = false;
 
     // Mutex to prevent race conditions when clearing dirty RtxOptions
     inline static std::mutex s_updateMutex;
@@ -692,14 +714,16 @@ namespace dxvk {
     template<typename = std::enable_if_t<std::is_same_v<T, fast_unordered_set>>>
     void addHash(const XXH64_hash_t& value) {
       std::lock_guard<std::mutex> lock(RtxOptionImpl::s_updateMutex);
-      getValuePtr<fast_unordered_set>(RtxOptionImpl::ValueType::PendingValue)->insert(value);
+      // Add the hash to just the rtx.conf layer
+      pImpl->addHashToRtxConfLayer(value);
       pImpl->markDirty();
     }
 
     template<typename = std::enable_if_t<std::is_same_v<T, fast_unordered_set>>>
     void removeHash(const XXH64_hash_t& value) {
       std::lock_guard<std::mutex> lock(RtxOptionImpl::s_updateMutex);
-      getValuePtr<fast_unordered_set>(RtxOptionImpl::ValueType::PendingValue)->erase(value);
+      // Remove the hash from both rtx.conf and user.conf layers (if it exists in either)
+      pImpl->removeHashFromLayers(value);
       pImpl->markDirty();
     }
 
@@ -709,18 +733,21 @@ namespace dxvk {
       return getValuePtr<fast_unordered_set>(RtxOptionImpl::ValueType::Value)->count(value) > 0;
     }
 
-    // Check if a hash exists in lower priority layers (below runtime layer)
-    // This is useful to warn users that removing a hash from the runtime layer
-    // won't actually remove it from the final resolved value, since lower layers
+    // Check if a hash exists in layers that we cannot modify (e.g., mod-provided configs).
+    // This warns users that removing a hash won't actually work because lower layers
     // will still contribute it via additive combination.
+    // Returns the config name if found in an unmodifiable layer, empty string otherwise.
     template<typename = std::enable_if_t<std::is_same_v<T, fast_unordered_set>>>
     const std::string_view retrieveNonRuntimeConfigName(const XXH64_hash_t& value) const {
       std::lock_guard<std::mutex> lock(RtxOptionImpl::s_updateMutex);
       
-      // Iterate through all layers except the runtime layer (highest priority)
+      // Iterate through all layers, looking for unmodifiable layers
       for (const auto& [layerKey, prioritizedValue] : pImpl->optionLayerValueQueue) {
-        // Skip the runtime layer - we only care about lower priority layers
-        if (layerKey.priority == RtxOptionLayer::s_runtimeOptionLayerPriority) {
+        // Skip layers we can modify directly:
+        // - user.conf / runtime layer (highest priority, USER == s_runtimeOptionLayerPriority)
+        // - rtx.conf layer (we write hashset changes here)
+        if (layerKey.priority == (uint32_t)RtxOptionLayer::SystemLayerPriority::USER ||
+            layerKey.priority == (uint32_t)RtxOptionLayer::SystemLayerPriority::RtxConf) {
           continue;
         }
         
