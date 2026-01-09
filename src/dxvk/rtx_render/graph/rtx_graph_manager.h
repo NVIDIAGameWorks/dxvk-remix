@@ -20,6 +20,8 @@
 * DEALINGS IN THE SOFTWARE.
 */
 
+#pragma once
+
 #include "dxvk_context.h"
 #include "dxvk_scoped_annotation.h"
 #include "rtx_graph_batch.h"
