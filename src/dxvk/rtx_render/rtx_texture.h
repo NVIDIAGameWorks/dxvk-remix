@@ -57,7 +57,7 @@ namespace dxvk {
 
     // Stage 1 - Texture initialized, image asset data discovered.
     Rc<AssetData>       assetData       = {};
-    DxvkImageCreateInfo futureImageDesc = {};
+    ColorSpace          colorSpace      = { ColorSpace::AUTO };
     size_t              uniqueKey       = kInvalidTextureKey;
     bool                canDemote       = true;
 
@@ -86,6 +86,8 @@ namespace dxvk {
     bool hasUploadedMips(uint32_t requiredMips, bool exact) const;
     void requestMips(uint32_t requiredMips);
     std::pair<uint16_t, uint16_t> calcRequiredMips_BeginEnd() const;
+
+    DxvkImageCreateInfo imageCreateInfo() const;
   };
 
 

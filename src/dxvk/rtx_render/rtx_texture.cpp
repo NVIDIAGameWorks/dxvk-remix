@@ -131,14 +131,22 @@ namespace dxvk {
   {
     Rc<ManagedTexture> texture = new ManagedTexture();
 
-    auto& assetInfo = assetData->info();
+    texture->assetData = assetData;
+    texture->colorSpace = colorSpace;
+    texture->uniqueKey = RtxTextureManager::getUniqueKey();
+    texture->state = ManagedTexture::State::kInitialized;
+
+    return texture;
+  }
+
+  DxvkImageCreateInfo ManagedTexture::imageCreateInfo() const {
+    const AssetInfo& assetInfo = this->assetData->info();
 
     // The nvtt_exporter tool used for png->dds conversion in the TREX export cannot specify SRGB, so we rely on the USD color space
     // setting, and override the format here.  Only applies to BC* formats, since that's all the png->dds conversion flow will generate.
-    VkFormat format = colorSpace == ColorSpace::FORCE_BC_SRGB ? toSRGB(assetInfo.format) : assetInfo.format;
+    VkFormat format = this->colorSpace == ColorSpace::FORCE_BC_SRGB ? TextureUtils::toSRGB(assetInfo.format) : assetInfo.format;
 
-    // Initialize image create info
-    DxvkImageCreateInfo& desc = texture->futureImageDesc;
+    DxvkImageCreateInfo desc{};
     desc.type = VK_IMAGE_TYPE_2D;
     desc.format = format;
     desc.flags = 0;
@@ -147,16 +155,13 @@ namespace dxvk {
     desc.numLayers = assetInfo.numLayers;
     desc.mipLevels = assetInfo.mipLevels;
     desc.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    desc.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
+    desc.stages =
+      VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+      | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
     desc.access = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
     desc.tiling = VK_IMAGE_TILING_OPTIMAL;
     desc.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-    texture->assetData = assetData;
-    texture->uniqueKey = RtxTextureManager::getUniqueKey();
-    texture->state = ManagedTexture::State::kInitialized;
-
-    return texture;
+    return desc;
   }
 
   uint16_t clampMipCountToAvailable(const Rc<AssetData>& assetData, uint32_t targetMipCount) {

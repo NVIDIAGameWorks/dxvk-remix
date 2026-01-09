@@ -512,6 +512,8 @@ namespace dxvk {
     ShaderManager::getInstance()->update();
 #endif
 
+    common->getTextureManager().processAllHotReloadRequests();
+
     const float gpuIdleTimeMilliseconds = getGpuIdleTimeSinceLastCall();
 
     // Note: Only engage ray tracing when it is enabled, the camera is valid and when no shaders are currently being compiled asynchronously (as

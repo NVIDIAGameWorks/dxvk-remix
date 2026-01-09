@@ -79,7 +79,7 @@ namespace dxvk {
      *
      * \param [in] filename Asset file name
      */
-    Rc<AssetData> findAsset(const std::string& filename);
+    Rc<AssetData> findAsset(const std::string& filename, bool allowOnlyPartialDdsLoader = false);
   };
 
 } // namespace dxvk
