@@ -137,6 +137,9 @@ namespace dxvk {
       m_textureCache.free(textureRef);
     }
 
+    void requestHotReload(const Rc<ManagedTexture>& tex);
+    void processAllHotReloadRequests();
+
   private:
     void scheduleTextureLoad(const Rc<ManagedTexture>& texture, bool async);
 
@@ -163,6 +166,13 @@ namespace dxvk {
     bool m_wasTextureBudgetPressure = false;
 
     RTX_OPTION("rtx.texturemanager", bool, showProgress, false, "Show texture loading progress in the HUD.");
+
+    struct RcManagedTextureHash {
+      std::size_t operator()(const Rc<ManagedTexture>& w) const noexcept { return std::hash<void*>{}(w.ptr()); }
+    };
+
+    dxvk::mutex m_hotreloadMutex{};
+    std::unordered_set<Rc<ManagedTexture>, RcManagedTextureHash> m_hotreloadRequests{};
   };
 
 } // namespace dxvk

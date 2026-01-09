@@ -4302,6 +4302,10 @@ namespace dxvk {
 
     if (ImGui::CollapsingHeader("Texture Streaming [Experimental]", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
+      if (RtxOptions::TextureManager::hotReload()) {
+        ImGui::TextColored(ImVec4{ 250 / 255.F, 176 / 255.F, 50 / 255.F, 1.F }, "Hot-reloading active.");
+        ImGui::Dummy({ 0, 2 });
+      }
       ImGui::BeginDisabled(!RtxOptions::TextureManager::samplerFeedbackEnable());
       {
         if (RtxOptions::TextureManager::fixedBudgetEnable() && RtxOptions::TextureManager::samplerFeedbackEnable()) {

@@ -1019,6 +1019,10 @@ namespace dxvk {
       RTX_OPTION("rtx.texturemanager", int, stagingBufferSizeMiB, 96,
                  "Size of a pre-allocated staging (intermediate) buffer to use when sending a texture from a RAM to GPU VRAM. "
                  "If a texture size exceeds this limit, it will not be considered for the texture streaming. In mebibytes.");
+      RTX_OPTION_FLAG_ENV("rtx.texturemanager", bool, hotReload, false, RtxOptionFlags::NoSave, "DXVK_TEXTURES_HOTRELOAD",
+                 "While a game is running, if a texture file is modified on a disk, it will be automatically reuploaded to GPU.");
+      RTX_OPTION_FLAG_ENV("rtx.texturemanager", uint, hotReloadRateMs, 100, RtxOptionFlags::NoSave, "DXVK_TEXTURES_HOTRELOAD_RATE_MS",
+                 "Amount of time to wait between filesystem OS events, for texture hot-reloading. In milliseconds.");
     };
     RTX_OPTION("rtx", bool, reloadTextureWhenResolutionChanged, false, "Reload texture when resolution changed.");
     RTX_OPTION_FLAG_ENV("rtx", bool, alwaysWaitForAsyncTextures, false, RtxOptionFlags::NoSave, "DXVK_WAIT_ASYNC_TEXTURES", 
