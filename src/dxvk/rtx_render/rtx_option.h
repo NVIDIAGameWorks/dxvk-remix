@@ -59,7 +59,6 @@ namespace dxvk {
     Float,
     HashSet,     // Merges when present in multiple layers.
     HashVector,  // Does not merge when present in multiple layers. Use when order & number of elements is important.
-    IntVector,   // TODO[REMIX-4861] unused type, should be removed.
     Vector2,
     Vector3,
     Vector2i,
@@ -85,7 +84,6 @@ namespace dxvk {
     Vector2i* v2i;
     fast_unordered_set* hashSet;
     std::vector<XXH64_hash_t>* hashVector;
-    std::vector<int32_t>* intVector;
     VirtualKeys* virtualKeys;
     std::string* string;
     int64_t value;
@@ -773,9 +771,6 @@ namespace dxvk {
       }
       if constexpr (std::is_same_v<T, std::vector<XXH64_hash_t>>) {
         return OptionType::HashVector;
-      }
-      if constexpr (std::is_same_v<T, std::vector<int32_t>>) {
-        return OptionType::IntVector;
       }
       if constexpr (std::is_same_v<T, Vector4>) {
         return OptionType::Vector4;
