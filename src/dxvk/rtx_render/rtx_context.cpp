@@ -739,7 +739,7 @@ namespace dxvk {
 
     // apply changes to RtxOptions after the frame has ended
     RtxOptionManager::applyPendingValuesOptionLayers();
-    RtxOptionManager::applyPendingValues(m_device.ptr());
+    RtxOptionManager::applyPendingValues(m_device.ptr(), /* forceOnChange */ false);
 
     // Update stats
     updateMetrics(gpuIdleTimeMilliseconds);

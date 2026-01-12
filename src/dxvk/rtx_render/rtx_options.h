@@ -1196,7 +1196,7 @@ namespace dxvk {
       // Need to set this to true after conf files are parsed, but before any options are accessed.
       RtxOptionImpl::s_isInitialized = true;
       // Doing this early, so that the validation code below applies to any settings from user.conf
-      RtxOptionManager::applyPendingValues(nullptr);
+      RtxOptionManager::applyPendingValues(nullptr, /* forceOnChange */ true);
 
       // Render pass modes
 
@@ -1287,7 +1287,7 @@ namespace dxvk {
 
       // Ensure all of the above values are promoted before the first frame starts.
       // DxvkDevice hasn't been created yet, so pass nullptr here.
-      RtxOptionManager::applyPendingValues(nullptr);
+      RtxOptionManager::applyPendingValues(nullptr, /* forceOnChange */ true);
     }
 
     static void updateUpscalerFromDlssPreset();

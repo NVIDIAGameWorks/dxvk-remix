@@ -788,7 +788,7 @@ namespace dxvk {
     }
   }
 
-  void RtxOptionImpl::resolveValue(GenericValue& value, const bool ignoreChangedOption) {
+  bool RtxOptionImpl::resolveValue(GenericValue& value, const bool ignoreChangedOption) {
     /*
       We use "throughput" here because blending (lerp) may happen across multiple layers.
       The effective result is a nested lerp chain, e.g.: v = lerp(A, lerp(B, C))
@@ -890,8 +890,12 @@ namespace dxvk {
       }
     }
 
-    // Copy to resolvedValue
-    copyValue(optionValue.data, value);
+    const bool valueHasChanged = !isEqual(optionValue.data, value);
+    if (valueHasChanged) {
+      // Copy to resolvedValue
+      copyValue(optionValue.data, value);
+    }
+    return valueHasChanged;
   }
 
   bool RtxOptionImpl::writeMarkdownDocumentation(const char* outputMarkdownFilePath) {
