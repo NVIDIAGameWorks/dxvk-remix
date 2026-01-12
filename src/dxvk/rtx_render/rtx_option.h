@@ -372,7 +372,7 @@ namespace dxvk {
     std::string genericValueToString(ValueType valueType) const;
     std::string genericValueToString(const GenericValue& value) const;
     void copyValue(const GenericValue& source, GenericValue& target);
-    void resolveValue(GenericValue& value, const bool ignoreChangedOption);
+    bool resolveValue(GenericValue& value, const bool ignoreChangedOption);
     void addWeightedValue(const GenericValue& source, const float weight, GenericValue& target);
 
     void readValue(const Config& options, const std::string& fullName, GenericValue& value);
@@ -592,7 +592,8 @@ namespace dxvk {
     // This should be called at the very end of the frame in the dxvk-cs thread.
     // Before the first frame is rendered, it also needs to be called at least once during initialization.
     // It's currently called twice during init, due to multiple sections that set many Options then immediately use them.
-    static void applyPendingValues(DxvkDevice* device) {
+    // forceOnChange causes the onChange callback to be called even if the value has not changed 
+    static void applyPendingValues(DxvkDevice* device, bool forceOnChange) {
 
       constexpr static int32_t maxResolves = 4;
       int32_t numResolves = 0;
@@ -609,8 +610,10 @@ namespace dxvk {
         dirtyOptionsVector.reserve(dirtyOptions.size());
         {
           for (auto& rtxOption : dirtyOptions) {
-            rtxOption.second->resolveValue(rtxOption.second->resolvedValue, false);
-            dirtyOptionsVector.push_back(rtxOption.second);
+            const bool valueChanged = rtxOption.second->resolveValue(rtxOption.second->resolvedValue, false);
+            if (forceOnChange || valueChanged) {
+              dirtyOptionsVector.push_back(rtxOption.second);
+            }
           }
         }
         dirtyOptions.clear();
