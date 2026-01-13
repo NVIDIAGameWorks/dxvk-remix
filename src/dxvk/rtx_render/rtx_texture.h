@@ -56,10 +56,10 @@ namespace dxvk {
     };
 
     // Stage 1 - Texture initialized, image asset data discovered.
-    Rc<AssetData>       assetData       = {};
-    ColorSpace          colorSpace      = { ColorSpace::AUTO };
-    size_t              uniqueKey       = kInvalidTextureKey;
-    bool                canDemote       = true;
+    Rc<AssetData>       m_assetData     = {};
+    ColorSpace          m_colorSpace    = { ColorSpace::AUTO };
+    size_t              m_uniqueKey     = kInvalidTextureKey;
+    bool                m_canDemote       = true;
 
     // Stage 2 - Video memory
     // The range [m_currentMip_begin, m_currentMip_end) defines the mip-levels that were used to create m_currentMipView.
@@ -72,15 +72,14 @@ namespace dxvk {
     uint32_t            m_currentMip_end     = 0;
 
     std::atomic_uint8_t m_requestedMips      = 0;
-    std::atomic<State>  state                = State::kUnknown;
-    uint32_t            frameQueuedForUpload = 0;
-    uint64_t            completionSyncpt     = 0; // completion syncpoint value
+    std::atomic<State>  m_state              = State::kUnknown;
+    uint64_t            m_completionSyncpt   = 0; // completion syncpoint value for RTX IO
 
     // Texture streaming
-    uint16_t            samplerFeedbackStamp            = 0;          // unique linear index of this asset; required to keep 
-                                                                      // the data structure access simple (i.e. with a linear index, it's just an offset in array)
-    mutable uint32_t    frameLastUsed                   = UINT32_MAX;
-    mutable uint32_t    frameLastUsedForSamplerFeedback = UINT32_MAX;
+    uint16_t            m_samplerFeedbackStamp = 0; // unique linear index of this asset; required to keep 
+                                                    // the data structure access simple (i.e. with a linear index, it's just an offset in array)
+    mutable uint32_t    m_frameLastUsed                   = UINT32_MAX;
+    mutable uint32_t    m_frameLastUsedForSamplerFeedback = UINT32_MAX;
 
   public:
     bool hasUploadedMips(uint32_t requiredMips, bool exact) const;
@@ -112,7 +111,7 @@ namespace dxvk {
     explicit TextureRef(const Rc<ManagedTexture>& managedTexture)
       : m_imageView{ nullptr }
       , m_managedTexture{ managedTexture }
-      , m_uniqueKey{ managedTexture.ptr() ? managedTexture->uniqueKey : kInvalidTextureKey } { }
+      , m_uniqueKey{ managedTexture.ptr() ? managedTexture->m_uniqueKey : kInvalidTextureKey } { }
       
     bool isImageEmpty() const {
       return getImageView() == nullptr;
@@ -137,7 +136,7 @@ namespace dxvk {
       if (result == 0 && m_managedTexture.ptr() != nullptr) {
         // NOTE: only replacement textures should have an m_managedTexture pointer.  To avoid changing game texture
         // hashes, all ImageHash modifications should be inside this block.
-        const XXH64_hash_t assetDataHash = m_managedTexture->assetData->hash();
+        const XXH64_hash_t assetDataHash = m_managedTexture->m_assetData->hash();
         result = XXH64(&assetDataHash, sizeof(assetDataHash), result);
         // Needed to distinguish materials that load the same file different ways (i.e. raw vs sRGB)
         result = XXH64(&m_uniqueKey, sizeof(m_uniqueKey), result);

@@ -1152,7 +1152,7 @@ namespace dxvk {
         roughnessConstant = 1.f;
       } else {
         if (opaqueMaterialData.getAlbedoOpacityTexture().getManagedTexture() != nullptr) {
-          samplerFeedbackStamp = opaqueMaterialData.getAlbedoOpacityTexture().getManagedTexture()->samplerFeedbackStamp;
+          samplerFeedbackStamp = opaqueMaterialData.getAlbedoOpacityTexture().getManagedTexture()->m_samplerFeedbackStamp;
         }
 
         trackTexture(opaqueMaterialData.getAlbedoOpacityTexture(), albedoOpacityTextureIndex, hasTexcoords, true, samplerFeedbackStamp);

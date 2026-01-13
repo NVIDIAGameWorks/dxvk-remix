@@ -239,10 +239,10 @@ namespace {
 
 
   void filewatchAdd(dxvk::FileWatchTexturesImpl& watch, dxvk::Rc<dxvk::ManagedTexture> tex) {
-    if (!tex.ptr() || !tex->assetData.ptr() || !tex->assetData->info().filename) {
+    if (!tex.ptr() || !tex->m_assetData.ptr() || !tex->m_assetData->info().filename) {
       return;
     }
-    const auto filepath = makeCanonicalPath(tex->assetData->info().filename);
+    const auto filepath = makeCanonicalPath(tex->m_assetData->info().filename);
     if (filepath.empty()) {
       return;
     }

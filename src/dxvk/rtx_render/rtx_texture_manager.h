@@ -116,8 +116,8 @@ namespace dxvk {
     /**
       * \brief Manages texture VRAM budget by demoting textures when over budget.
       * 
-      * Demotes textures that were previously rendered (frameLastUsed != UINT32_MAX).
-      * Newly loaded textures (frameLastUsed == UINT32_MAX) are preserved since they
+      * Demotes textures that were previously rendered (m_frameLastUsed != UINT32_MAX).
+      * Newly loaded textures (m_frameLastUsed == UINT32_MAX) are preserved since they
       * haven't been rendered yet and are needed for the incoming scene.
       */
     void manageBudgetWithPriority();

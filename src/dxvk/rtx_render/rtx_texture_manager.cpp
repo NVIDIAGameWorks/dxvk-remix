@@ -211,7 +211,7 @@ namespace dxvk {
 
       DxvkBufferSlice stagingDst = allocator.alloc(
         CACHE_LINE_SIZE, 
-        calcSizeForAsset(*tex->assetData, mip_begin, mip_end)
+        calcSizeForAsset(*tex->m_assetData, mip_begin, mip_end)
       );
       if (!stagingDst.defined()) {
         return {};
@@ -220,7 +220,7 @@ namespace dxvk {
       auto ready = ReadyToCopy{
         /* .dstTexture = */ tex,
         /* .mips       = */ dmaCopyDataToStaging(stagingDst,
-                                                 *tex->assetData,
+                                                 *tex->m_assetData,
                                                  mip_begin,
                                                  mip_end),
         /* .mip_begin  = */ mip_begin,
@@ -229,7 +229,7 @@ namespace dxvk {
       };
 
       // Release asset source to keep the number of open file low
-      tex->assetData->releaseSource();
+      tex->m_assetData->releaseSource();
       return ready;
     }
 
@@ -309,7 +309,7 @@ namespace dxvk {
           0,
           image->info().numLayers,
         };
-        assert(image->info().numLayers == ready.dstTexture->assetData->info().numLayers); // paranoia
+        assert(image->info().numLayers == ready.dstTexture->m_assetData->info().numLayers); // paranoia
 
         const auto stagingHandle = level.srcBuffer.getSliceHandle();
 
@@ -486,7 +486,7 @@ namespace dxvk {
 
 
   void AsyncRunner::queueAdd(const Rc<ManagedTexture>& tex, bool async) {
-    assert(tex->state == ManagedTexture::State::kQueuedForUpload);
+    assert(tex->m_state == ManagedTexture::State::kQueuedForUpload);
     if (async) {
       assert(!m_requiresShutdown.load());
       auto l = std::unique_lock{ m_texturesToProcess_mutex };
@@ -495,9 +495,9 @@ namespace dxvk {
     } else {
       auto l = std::unique_lock{ m_readyTextures_mutex };
       // In CI, we need to overwrite existing ready requests, never wait even a frame for textures that are kQueuedForUpload
-      if (!RtxOptions::asyncAssetLoading() && tex->state == ManagedTexture::State::kQueuedForUpload) {
+      if (!RtxOptions::asyncAssetLoading() && tex->m_state == ManagedTexture::State::kQueuedForUpload) {
         erase_ifv(m_readyTextures, [&tex](const ReadyToCopy& r) { return r.dstTexture == tex; });
-        tex->state = ManagedTexture::State::kVidMem;
+        tex->m_state = ManagedTexture::State::kVidMem;
       }
       m_readyTextures.push_back(makeStagingForTextureAsset(m_synchronousAlloc, tex));
       assert(m_readyTextures.back().dstTexture.ptr());
@@ -553,7 +553,7 @@ namespace dxvk {
         ReadyToCopy ready;
         {
           {
-            // we need to lock, as 'makeStagingForTextureAsset' need to access 'ManagedTexture::assetData'
+            // we need to lock, as 'makeStagingForTextureAsset' need to access 'ManagedTexture::m_assetData'
             // which may be modified by other threads (e.g. file hot reload)
             auto lockAssetInfo = std::unique_lock{ m_assetInfoMutex };
 
@@ -641,7 +641,7 @@ namespace dxvk {
 
     void queueAdd(const Rc<ManagedTexture>& tex, bool async) {
       assert(!m_requiresShutdown.load());
-      assert(tex->state == ManagedTexture::State::kQueuedForUpload);
+      assert(tex->m_state == ManagedTexture::State::kQueuedForUpload);
       if (!async) {
         m_requiresSyncFlush = true;
       }
@@ -688,7 +688,7 @@ namespace dxvk {
 
           const auto [mip_begin, mip_end] = itemToProcess->calcRequiredMips_BeginEnd();
           auto rtxioDst = allocDeviceImage(m_device.ptr(),
-                                           itemToProcess->assetData,
+                                           itemToProcess->m_assetData,
                                            itemToProcess->imageCreateInfo(),
                                            mip_begin,
                                            mip_end);
@@ -714,10 +714,10 @@ namespace dxvk {
     bool finalizeReadyRtxioTextures(DxvkContext* ctx) {
       auto l_canBeRemovedFromWaiting = [ctx](ReadyToCopy_RTXIO& ready) -> bool {
         Rc<ManagedTexture>& tex = ready.dstTexture;
-        if (tex->state != ManagedTexture::State::kQueuedForUpload) {
+        if (tex->m_state != ManagedTexture::State::kQueuedForUpload) {
           return true;
         }
-        if (!RtxIo::get().isComplete(tex->completionSyncpt)) {
+        if (!RtxIo::get().isComplete(tex->m_completionSyncpt)) {
           return false;
         }
         if (ctx) {
@@ -728,7 +728,7 @@ namespace dxvk {
         tex->m_currentMipView   = ready.rtxioDst;
         tex->m_currentMip_begin = ready.mip_begin;
         tex->m_currentMip_end   = ready.mip_end;
-        tex->state = ManagedTexture::State::kVidMem;
+        tex->m_state = ManagedTexture::State::kVidMem;
         return true;
       };
 
@@ -847,11 +847,11 @@ namespace dxvk {
 
   static ManagedTexture::State processManagedTextureState(ManagedTexture* tex) {
     assert(tex != nullptr);
-    if (tex->state == ManagedTexture::State::kFailed) {
+    if (tex->m_state == ManagedTexture::State::kFailed) {
       tex->requestMips(0);
       return ManagedTexture::State::kFailed;
     }
-    return tex->state;
+    return tex->m_state;
   }
 
   void RtxTextureManager::scheduleTextureLoad(const Rc<ManagedTexture>& texture, bool async) {
@@ -875,8 +875,7 @@ namespace dxvk {
       async = false;
     }
 
-    texture->state = ManagedTexture::State::kQueuedForUpload;
-    texture->frameQueuedForUpload = m_device->getCurrentFrameId();
+    texture->m_state = ManagedTexture::State::kQueuedForUpload;
     if (m_asyncThread) {
       m_asyncThread->queueAdd(texture, async);
     } else if (m_asyncThread_rtxio) {
@@ -896,7 +895,7 @@ namespace dxvk {
         const Rc<ManagedTexture>& tex = ready.dstTexture;
 
         tex->m_currentMipView = allocDeviceImage(m_device,
-                                                 tex->assetData,
+                                                 tex->m_assetData,
                                                  tex->imageCreateInfo(),
                                                  ready.mip_begin,
                                                  ready.mip_end);
@@ -908,7 +907,7 @@ namespace dxvk {
           ready.stagingbuf->onSliceSubmitToCmd();
         }
 
-        tex->state = ManagedTexture::State::kVidMem;
+        tex->m_state = ManagedTexture::State::kVidMem;
       }
     } else if (m_asyncThread_rtxio) {
       m_asyncThread_rtxio->syncPoint(RtxOptions::alwaysWaitForAsyncTextures());
@@ -931,11 +930,11 @@ namespace dxvk {
     }
 
     const auto curframe = m_device->getCurrentFrameId();
-    tex->frameLastUsed = curframe;
+    tex->m_frameLastUsed = curframe;
 
     // If async is not allowed, schedule immediately on this thread, and never demote
     if (!async || RtxOptions::TextureManager::neverDowngradeTextures()) {
-      tex->canDemote = false;
+      tex->m_canDemote = false;
       tex->requestMips(MAX_MIPS);
       scheduleTextureLoad(tex, false);
       return;
@@ -943,14 +942,14 @@ namespace dxvk {
 
     bool streamableWithVariableMips = m_sf.associate(
       RtxOptions::TextureManager::samplerFeedbackEnable() ? associatedFeedbackStamp : SAMPLER_FEEDBACK_INVALID,
-      tex->samplerFeedbackStamp
+      tex->m_samplerFeedbackStamp
     );
     if (!streamableWithVariableMips) {
-      // If mip-specific streaming is NOT possible, then the 'frameLastUsed' heuristic is used,
+      // If mip-specific streaming is NOT possible, then the 'm_frameLastUsed' heuristic is used,
       // i.e. if N frames has passed for a texture that was not used in a scene, then remove it from VRAM.
       return;
     }
-    tex->frameLastUsedForSamplerFeedback = curframe;
+    tex->m_frameLastUsedForSamplerFeedback = curframe;
   }
 
   void RtxTextureManager::clear() {
@@ -1020,14 +1019,14 @@ namespace dxvk {
     }
 
     // stall async texture streaming thread while this thread
-    // is patching up the file header information ('ManagedTexture::assetData')
+    // is patching up the file header information ('ManagedTexture::m_assetData')
     auto lockAssetInfo = std::unique_lock{ m_asyncThread->m_assetInfoMutex };
 
     // iterate destructively
     for (auto it = m_hotreloadRequests.begin(); it != m_hotreloadRequests.end();) {
       const Rc<ManagedTexture>& tex = *it;
 
-      const char* filepath = tex->assetData->info().filename;
+      const char* filepath = tex->m_assetData->info().filename;
       if (!filepath || filepath[0] == '\0') {
         it = m_hotreloadRequests.erase(it); // pop request
         continue;
@@ -1052,7 +1051,7 @@ namespace dxvk {
       }
 
       // replace information about the file
-      tex->assetData = newAssetData;
+      tex->m_assetData = newAssetData;
       tex->requestMips(0);
       scheduleTextureLoad(tex, false);
 
@@ -1147,9 +1146,9 @@ namespace dxvk {
         m_cachedAssetMipcount_length = uint32_t(textureCount);
         for (uint32_t stamp = 0; stamp < textureCount; stamp++) {
           const Rc<ManagedTexture>& tex = m_idToTexture[stamp];
-          assert(stamp == tex->samplerFeedbackStamp);
+          assert(stamp == tex->m_samplerFeedbackStamp);
           if (tex.ptr()) {
-            m_cachedAssetMipcount[stamp] = uint8_t(std::min(tex->assetData->info().mipLevels, uint32_t(MAX_MIPS)));
+            m_cachedAssetMipcount[stamp] = uint8_t(std::min(tex->m_assetData->info().mipLevels, uint32_t(MAX_MIPS)));
           }
         }
       }
@@ -1242,9 +1241,9 @@ namespace dxvk {
       auto ls = std::unique_lock{ m_sf.m_idToTexture_mutex };
       for (const auto& tex : m_sf.m_idToTexture) {
         assert(tex != nullptr);
-        if (tex != nullptr && tex->canDemote) {
-          if ((tex->frameLastUsedForSamplerFeedback != UINT32_MAX) && (curframe - tex->frameLastUsedForSamplerFeedback < 2)) {
-            assert(tex->samplerFeedbackStamp != SAMPLER_FEEDBACK_INVALID);
+        if (tex != nullptr && tex->m_canDemote) {
+          if ((tex->m_frameLastUsedForSamplerFeedback != UINT32_MAX) && (curframe - tex->m_frameLastUsedForSamplerFeedback < 2)) {
+            assert(tex->m_samplerFeedbackStamp != SAMPLER_FEEDBACK_INVALID);
             prioritylist.push_back(tex.ptr());
           } else {
             checkonlyframes.push_back(tex.ptr());
@@ -1257,9 +1256,9 @@ namespace dxvk {
     // For no-sampler-feedback textures, don't use the prioritization and budgeting (for now),
     // as we can't predict how draw call textures (sky, terrain, etc) are used
     for (ManagedTexture* tex : checkonlyframes) {
-      assert(tex && tex->canDemote);
+      assert(tex && tex->m_canDemote);
       tex->requestMips(
-        (tex->frameLastUsed != UINT32_MAX) && (curframe - tex->frameLastUsed <= numFramesToKeepMaterialTextures)
+        (tex->m_frameLastUsed != UINT32_MAX) && (curframe - tex->m_frameLastUsed <= numFramesToKeepMaterialTextures)
         ? MAX_MIPS
         : 0);
       scheduleTextureLoad(tex, true);
@@ -1271,11 +1270,11 @@ namespace dxvk {
     {
       auto l_sort = [curframe, this](const ManagedTexture* a, const ManagedTexture* b) {
         assert(a && b);
-        float weightA = calcResolutionAndHistoryWeightForTexture(m_sf.m_accumulatedMipcount[a->samplerFeedbackStamp], curframe);
-        float weightB = calcResolutionAndHistoryWeightForTexture(m_sf.m_accumulatedMipcount[b->samplerFeedbackStamp], curframe);
+        float weightA = calcResolutionAndHistoryWeightForTexture(m_sf.m_accumulatedMipcount[a->m_samplerFeedbackStamp], curframe);
+        float weightB = calcResolutionAndHistoryWeightForTexture(m_sf.m_accumulatedMipcount[b->m_samplerFeedbackStamp], curframe);
 
         if (std::abs(weightA - weightB) < 0.00001f) {
-          return (a->samplerFeedbackStamp < b->samplerFeedbackStamp); // stable fallback, if too similar
+          return (a->m_samplerFeedbackStamp < b->m_samplerFeedbackStamp); // stable fallback, if too similar
         }
         return weightA > weightB;
       };
@@ -1285,16 +1284,16 @@ namespace dxvk {
       const size_t budgetBytes = calcTextureMemoryBudgetBytes(m_device);
       size_t       usedBytes   = 0;
       for (ManagedTexture* tex : prioritylist) {
-        assert(tex && tex->canDemote && tex->samplerFeedbackStamp != SAMPLER_FEEDBACK_INVALID);
+        assert(tex && tex->m_canDemote && tex->m_samplerFeedbackStamp != SAMPLER_FEEDBACK_INVALID);
         // for low memory GPUs we should do our best to not blow through all memory, lower the highest quality mip level
         // need to account for textures that dont have more than 1 mip level here too.
-        const uint32_t allmipcount = tex->assetData->info().mipLevels - ((RtxOptions::lowMemoryGpu() && tex->assetData->info().mipLevels > 0) ? 1u : 0u);
+        const uint32_t allmipcount = tex->m_assetData->info().mipLevels - ((RtxOptions::lowMemoryGpu() && tex->m_assetData->info().mipLevels > 0) ? 1u : 0u);
 
-        uint32_t mipc = m_sf.m_accumulatedMipcount[tex->samplerFeedbackStamp].mipcount;
+        uint32_t mipc = m_sf.m_accumulatedMipcount[tex->m_samplerFeedbackStamp].mipcount;
         mipc = std::min(mipc, allmipcount);
 
         // TODO: potential bottleneck
-        size_t byteSize = calcSizeForAsset(*tex->assetData, allmipcount - mipc, allmipcount);
+        size_t byteSize = calcSizeForAsset(*tex->m_assetData, allmipcount - mipc, allmipcount);
 
         if (usedBytes + byteSize <= budgetBytes) {
           usedBytes += byteSize;
@@ -1326,11 +1325,11 @@ namespace dxvk {
     }
     
     auto demoteTexture = [&](ManagedTexture* tex) {
-      const uint32_t allmipcount = tex->assetData->info().mipLevels;
+      const uint32_t allmipcount = tex->m_assetData->info().mipLevels;
       const uint32_t currentMips = tex->m_requestedMips.load();
       
       if (currentMips > 0) {
-        const size_t oldSize = calcSizeForAsset(*tex->assetData, allmipcount - currentMips, allmipcount);
+        const size_t oldSize = calcSizeForAsset(*tex->m_assetData, allmipcount - currentMips, allmipcount);
         tex->requestMips(0);
         scheduleTextureLoad(tex, false);
         currentUsage -= oldSize;
@@ -1339,7 +1338,7 @@ namespace dxvk {
     };
     
     // Demote textures that were previously rendered (old scene textures).
-    // Textures with frameLastUsed == UINT32_MAX are newly loaded and haven't been
+    // Textures with m_frameLastUsed == UINT32_MAX are newly loaded and haven't been
     // rendered yet - these are needed for the incoming scene and should be preserved.
     {
       auto ls = std::unique_lock{ m_sf.m_idToTexture_mutex };
@@ -1347,7 +1346,7 @@ namespace dxvk {
         if (currentUsage <= budgetBytes) {
           break;
         }
-        if (tex != nullptr && tex->canDemote && tex->frameLastUsed != UINT32_MAX) {
+        if (tex != nullptr && tex->m_canDemote && tex->m_frameLastUsed != UINT32_MAX) {
           demoteTexture(tex.ptr());
         }
       }
@@ -1421,7 +1420,7 @@ namespace dxvk {
       auto it = m_assetHashToTextures.find(hash);
       if (it != m_assetHashToTextures.end()) {
         // Is this truly the same asset?
-        if (it->second->assetData->info().matches(assetData->info())) {
+        if (it->second->m_assetData->info().matches(assetData->info())) {
           return it->second;
         }
 
@@ -1452,11 +1451,11 @@ namespace dxvk {
 
     Rc<ManagedTexture> texture = TextureUtils::createTexture(assetData, colorSpace);
     if (forceLoad) {
-      texture->canDemote = false;
+      texture->m_canDemote = false;
       texture->requestMips(MAX_MIPS);
       scheduleTextureLoad(texture, false);
     } else {
-      texture->canDemote = true;
+      texture->m_canDemote = true;
       texture->requestMips(1);
       scheduleTextureLoad(texture, false);
     }
@@ -1465,12 +1464,12 @@ namespace dxvk {
       auto ls = std::unique_lock{ m_sf.m_idToTexture_mutex };
 
       if (m_sf.m_idToTexture.size() < SAMPLER_FEEDBACK_MAX_TEXTURE_COUNT) {
-        texture->samplerFeedbackStamp = m_sf.m_idToTexture_count.fetch_add(1);
+        texture->m_samplerFeedbackStamp = m_sf.m_idToTexture_count.fetch_add(1);
         m_sf.m_idToTexture.push_back(texture);
       } else {
         assert(0);
         Logger::err("Sampler feedback stamp overflow!");
-        texture->samplerFeedbackStamp = SAMPLER_FEEDBACK_INVALID;
+        texture->m_samplerFeedbackStamp = SAMPLER_FEEDBACK_INVALID;
       }
     }
 
