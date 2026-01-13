@@ -374,7 +374,7 @@ namespace dxvk {
 
     void readValue(const Config& options, const std::string& fullName, GenericValue& value);
     void readOption(const Config& options, ValueType type);
-    void writeOption(Config& options, bool changedOptionOnly);
+    void writeOption(Config& options, bool changedOptionOnly, const Config* userConfConfig = nullptr);
 
     void insertEmptyOptionLayer(const RtxOptionLayer* layer);
     void insertOptionLayerValue(const GenericValue& value, const RtxOptionLayer* layer);
@@ -406,10 +406,18 @@ namespace dxvk {
     static void setStartupConfig(const Config& options) { s_startupOptions = options; }
     static void setCustomConfig(const Config& options) { s_customOptions = options; }
     static void readOptions(const Config& options);
-    static void writeOptions(Config& options, bool changedOptionsOnly, bool excludeHashSets = false);
+    static void writeOptions(Config& options, bool changedOptionsOnly, bool excludeHashSets = false, const Config* userConfConfig = nullptr);
     // Write hashset options from a specific layer to the config (for layer-specific serialization)
     // If changedOptionsOnly is true, only writes hashsets that differ from the layer's original config
     static void writeHashSetOptionsFromLayer(Config& options, uint32_t layerPriority, const std::string& layerName, bool changedOptionsOnly = false);
+    // Write options that were in user.conf layer but no longer have a runtime layer entry.
+    // This captures explicit changes where the user set a value that matches lower layers (e.g., default).
+    // Used when saving to rtx.conf/new.conf to preserve the user's explicit settings.
+    // Hashsets are excluded as they are handled separately via writeHashSetOptionsFromLayer.
+    static void writeRemovedUserConfOptions(Config& options, const Config* userConfConfig);
+    // Remove options from the config that no longer have runtime layer entries.
+    // These options were removed as redundant (user changed them back to match lower layers).
+    static void removeOptionsWithoutRuntimeEntry(Config& config);
     static void resetOptions();
     static bool writeMarkdownDocumentation(const char* outputMarkdownFilePath);
 

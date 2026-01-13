@@ -349,7 +349,7 @@ namespace dxvk {
     }
   }
 
-  void RtxOptionImpl::writeOptions(Config& options, bool changedOptionsOnly, bool excludeHashSets) {
+  void RtxOptionImpl::writeOptions(Config& options, bool changedOptionsOnly, bool excludeHashSets, const Config* userConfConfig) {
     auto& globalRtxOptions = getGlobalRtxOptionMap();
     for (auto& pPair : globalRtxOptions) {
       auto& impl = *pPair.second;
@@ -357,7 +357,7 @@ namespace dxvk {
       if (excludeHashSets && impl.type == OptionType::HashSet) {
         continue;
       }
-      impl.writeOption(options, changedOptionsOnly);
+      impl.writeOption(options, changedOptionsOnly, userConfConfig);
     }
   }
 
@@ -398,8 +398,82 @@ namespace dxvk {
         
         if (!hashSet.empty()) {
           options.setOption(impl.getFullName().c_str(), hashTableToString(hashSet));
+        } else {
+          // Hashset is now empty - remove the option from config so the old value
+          // doesn't persist and get re-merged when the layer is reprocessed
+          options.removeOption(impl.getFullName());
         }
       }
+    }
+  }
+
+  void RtxOptionImpl::writeRemovedUserConfOptions(Config& options, const Config* userConfConfig) {
+    if (!userConfConfig) {
+      return; // No user.conf config provided
+    }
+    
+    auto& globalRtxOptions = getGlobalRtxOptionMap();
+    
+    // For each option in user.conf, check if the runtime entry was removed
+    for (const auto& configOption : userConfConfig->getOptions()) {
+      // Look up the RtxOptionImpl by hashing the option name
+      auto optionIt = globalRtxOptions.find(StringToXXH64(configOption.first, 0));
+      if (optionIt == globalRtxOptions.end()) {
+        continue; // Option not found in global map
+      }
+      
+      auto& impl = *optionIt->second;
+      
+      if (impl.flags & (uint32_t)RtxOptionFlags::NoSave)
+        continue;
+      
+      // Skip hashsets - they are handled separately via writeHashSetOptionsFromLayer
+      if (impl.type == OptionType::HashSet)
+        continue;
+      
+      // Check if the runtime layer entry is missing (was removed as redundant)
+      bool hasRuntimeEntry = !impl.optionLayerValueQueue.empty() && 
+          impl.optionLayerValueQueue.begin()->first.priority == RtxOptionLayer::s_runtimeOptionLayerPriority;
+      
+      if (!hasRuntimeEntry) {
+        // Option was in user.conf but runtime entry was removed (user changed it to match lower layers)
+        // Write the current resolved value to capture the user's explicit change
+        impl.writeOption(options, false);
+      }
+    }
+  }
+
+  void RtxOptionImpl::removeOptionsWithoutRuntimeEntry(Config& config) {
+    auto& globalRtxOptions = getGlobalRtxOptionMap();
+    
+    // Collect options to remove (can't modify while iterating)
+    std::vector<std::string> optionsToRemove;
+    
+    for (const auto& configOption : config.getOptions()) {
+      // Look up the option in the global map
+      XXH64_hash_t hash = StringToXXH64(configOption.first, 0);
+      auto it = globalRtxOptions.find(hash);
+      if (it == globalRtxOptions.end()) {
+        continue;  // Unknown option, leave it alone
+      }
+      
+      auto& impl = *it->second;
+      
+      // Check if this option has a runtime layer entry
+      bool hasRuntimeEntry = false;
+      if (!impl.optionLayerValueQueue.empty()) {
+        hasRuntimeEntry = (impl.optionLayerValueQueue.begin()->first.priority == RtxOptionLayer::s_runtimeOptionLayerPriority);
+      }
+      
+      if (!hasRuntimeEntry) {
+        // Option no longer has runtime entry - it was removed as redundant
+        optionsToRemove.push_back(configOption.first);
+      }
+    }
+    
+    // Remove the collected options
+    for (const auto& optionName : optionsToRemove) {
+      config.removeOption(optionName);
     }
   }
 
@@ -549,7 +623,7 @@ namespace dxvk {
     }
   }
 
-  void RtxOptionImpl::writeOption(Config& options, bool changedOptionOnly) {
+  void RtxOptionImpl::writeOption(Config& options, bool changedOptionOnly, const Config* userConfConfig) {
     if (flags & (uint32_t)RtxOptionFlags::NoSave)
       return;
     
@@ -557,16 +631,31 @@ namespace dxvk {
     auto& value = resolvedValue;
 
     if (changedOptionOnly) {
-      // Skip options that have no real-time changes, or the real-time value is the same as the original resolved value.
-      if (optionLayerValueQueue.begin()->first.priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
+      // Skip options that have no real-time changes.
+      if (optionLayerValueQueue.empty() || 
+          optionLayerValueQueue.begin()->first.priority != RtxOptionLayer::s_runtimeOptionLayerPriority) {
         return;
-      } else {
-        GenericValueWrapper originalValue(type);
-        resolveValue(originalValue.data, true);
-
-        if (isEqual(originalValue.data, getGenericValue(ValueType::PendingValue))) {
+      }
+      
+      // Compare current value against the ORIGINAL user.conf value (what was loaded from file).
+      // If they match, the user didn't change this option during this session - skip it.
+      // This prevents copying all of user.conf to rtx.conf when saving.
+      if (userConfConfig && userConfConfig->getOptions().count(fullName)) {
+        // Option was in user.conf - compare current value to original user.conf value
+        GenericValueWrapper userConfValue(type);
+        readValue(*userConfConfig, fullName, userConfValue.data);
+        
+        if (isEqual(userConfValue.data, resolvedValue)) {
+          // Current value matches original user.conf value - user didn't change it
           return;
         }
+      }
+      
+      // Also skip if the current value matches value-without-runtime (handles options not in user.conf)
+      GenericValueWrapper originalValue(type);
+      resolveValue(originalValue.data, true);
+      if (isEqual(originalValue.data, getGenericValue(ValueType::PendingValue))) {
+        return;
       }
     }
 

@@ -1,7 +1,5 @@
 # Remix Logic
 
-# ⚠️ Under Construction - not yet ready for use. ⚠️
-
 When creating content for remix mods, modders often want to make the replacement content react to the state of the game. The Remix Logic system provides a flexible way to sense what's happening in the game, make decisions based on that information, and then apply visual changes accordingly.
 
 Remix Logic is built from two simple building blocks:
@@ -67,11 +65,11 @@ The component system supports the following data types as defined in `rtx_graph_
 
 | Type | C++ Type | Description | Example Values |
 |------|----------|-------------|----------------|
-| `Bool` | `uint32_t` | True or False boolean values (stored as uint8_t for variant compatibility) | `true`, `false` |
+| `Bool` | `uint32_t` | True or False boolean values (stored as uint32_t for variant compatibility) | `true`, `false` |
 | `Float` | `float` | A number, including decimal places. Single precision floating point | `1.0`, `-3.14` |
 | `Float2` | `Vector2` | 2D vector of floats | `Vector2(1.0f, 2.0f)` |
 | `Float3` | `Vector3` | 3D vector of floats | `Vector3(1.0f, 2.0f, 3.0f)` |
-| `Float4` | `Vector4` | 3D vector of floats | `Vector4(1.0f, 2.0f, 3.0f)` |
+| `Float4` | `Vector4` | 4D vector of floats, often used for colors | `Vector4(1.0f, 2.0f, 3.0f, 0.0f)` |
 | `Enum` | `uint32_t` | A selection from a limited list of options | `InterpolationType::Linear`, `LoopingType::Loop` |
 | `String` | `std::string` | Some text | `"hello"`, `"world"` |
 | `AssetPath` | `std::string` | Path to an asset file | `"textures/myfile.dds"` |
@@ -80,7 +78,7 @@ The component system supports the following data types as defined in `rtx_graph_
 | `NumberOrVector` | `std::variant<float, Vector2, Vector3, Vector4>` | Flexible numeric or vector type (resolved at load time) | `1.0f`, `Vector2(1.0f, 2.0f)` |
 | `Any` | `std::variant<...>` | Flexible type that supports all non-flexible types | `1.0f`, `true`, `"textures/myfile.dds"` |
 
-Components with flexible types may not accept all combinations of those types - i.e. you cannot check if a Float is greater than a Vector3.
+Components with flexible types may not accept all combinations of those types - i.e. you cannot check if a Float is greater than a Vector3.  The Toolkit may not allow you to set a flexible property directly on the node - you'll instead need to create a Const component of the appropriate type, and connect that to the flexible property.  This is to ensure safe type resolution.
 
 # Creating Components
 
@@ -90,6 +88,10 @@ Before creating a new component, check the list of existing components to see if
 Components are created in C++, using macros. The [TestComponent](https://github.com/NVIDIAGameWorks/dxvk-remix/blob/main/tests/rtx/unit/graph/test_component.h) is a good example component using every data type.
 
 Defining a component has three mandatory pieces: the parameter lists, the component definition, and the `updateRange` function.
+
+## Creating Components with AI
+
+The individual component files have been kept intentionally small.  If you provide this RemixLogic.md as context to a coding AI, it should be able to create simple sensor or logic components relatively easily.
 
 ## Defining Parameters
 
@@ -170,6 +172,29 @@ Then use it in your parameter definition:
 ```
 
 The enum values are stored as the underlying type (e.g., `uint32_t` for `LightType`) but displayed with user-friendly names and descriptions in the UI.
+
+### Allowed Prim Types Example
+
+The `property.allowedPrimTypes` option restricts which USD prim types can be selected for a `Prim` property. This is useful when a component only works with specific object types.
+
+Available `PrimType` values:
+* `PrimType::UsdGeomMesh` - Mesh geometry
+* `PrimType::UsdLuxSphereLight` - Sphere light
+* `PrimType::UsdLuxCylinderLight` - Cylinder light
+* `PrimType::UsdLuxDiskLight` - Disk light
+* `PrimType::UsdLuxDistantLight` - Distant/directional light
+* `PrimType::UsdLuxRectLight` - Rectangular area light
+* `PrimType::OmniGraph` - Another graph
+
+```cpp
+#define LIST_INPUTS(X) \
+  X(RtComponentPropertyType::Prim, kInvalidPrimTarget, targetMesh, "Target Mesh", \
+    "The mesh to modify.", \
+    property.allowedPrimTypes = {PrimType::UsdGeomMesh}) \
+  X(RtComponentPropertyType::Prim, kInvalidPrimTarget, targetLight, "Target Light", \
+    "The light to control.", \
+    property.allowedPrimTypes = {PrimType::UsdLuxSphereLight, PrimType::UsdLuxRectLight})
+```
 
 ## Defining the Component
 
@@ -317,6 +342,144 @@ The `applySceneOverrides` function is not currently safe to use - the rendering 
 * **cleanup**: Resource release, memory cleanup, reference counting
 * **applySceneOverrides**: Don't use this yet
 * **updateRange**: Component logic, state updates, output calculations
+
+## Flexible Type Components
+
+Flexible types (`NumberOrVector` and `Any`) allow a single component definition to work with multiple data types. The actual type is resolved when the graph is loaded from USD. Creating components with flexible types requires using C++ templates and manual class declaration (as shown above).
+
+### Single Flexible Type (Shared Across Properties)
+
+When all flexible-typed properties share the same resolved type (e.g., input and output are both `Float3`), use a single template parameter:
+
+```cpp
+#include "../rtx_graph_component_macros.h"
+
+#define LIST_INPUTS(X) \
+  X(RtComponentPropertyType::NumberOrVector, 0.0f, input, "Input", "The value to smooth.") \
+  X(RtComponentPropertyType::Float, 0.1f, smoothingFactor, "Smoothing Factor", "How fast to smooth.")
+
+#define LIST_STATES(X) \
+  X(RtComponentPropertyType::Bool, false, initialized, "", "Tracks initialization.")
+
+#define LIST_OUTPUTS(X) \
+  X(RtComponentPropertyType::NumberOrVector, 0.0f, output, "Output", "The smoothed value.")
+
+// Template class with one type parameter for all NumberOrVector properties
+template <RtComponentPropertyType valuePropertyType>
+class Smooth : public RtRegisteredComponentBatch<Smooth<valuePropertyType>> {
+private:
+  // Override the property types for flexible properties to use the template parameter
+  static constexpr RtComponentPropertyType inputPropertyType = valuePropertyType;
+  static constexpr RtComponentPropertyType smoothingFactorPropertyType = RtComponentPropertyType::Float;
+  static constexpr RtComponentPropertyType initializedPropertyType = RtComponentPropertyType::Bool;
+  static constexpr RtComponentPropertyType outputPropertyType = valuePropertyType;
+  
+  REMIX_COMPONENT_BODY(
+    Smooth,
+    "Smooth",
+    "Transform",
+    "Applies exponential smoothing to a value over time.",
+    1,
+    LIST_INPUTS, LIST_STATES, LIST_OUTPUTS
+  )
+  
+  void updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
+    for (size_t i = start; i < end; i++) {
+      m_output[i] = lerp(m_input[i], m_output[i], m_smoothingFactor[i]);
+    }
+  }
+};
+
+#undef LIST_INPUTS
+#undef LIST_STATES
+#undef LIST_OUTPUTS
+```
+
+**Key points:**
+* Define `static constexpr RtComponentPropertyType` for each property, using the template parameter for flexible properties
+* The template parameter replaces `REMIX_COMPONENT_GENERATE_PROP_TYPES` for flexible properties
+* Non-flexible properties (like `smoothingFactor`) still use their concrete types
+
+### Template Instantiation
+
+Flexible type components must be explicitly instantiated for each supported type. Add instantiations to `rtx_component_list.cpp`:
+
+```cpp
+// For NumberOrVector types (Float, Float2, Float3, Float4)
+INSTANTIATE_NUMBER_OR_VECTOR_TYPES(Smooth)
+
+// For Any types (all non-flexible types)
+INSTANTIATE_ANY_TYPES(Select)
+```
+
+### Binary Operations with Different Input Types
+
+Some components (like `Add`, `Multiply`) need separate flexible types for each input that may differ. These use multiple template parameters and helper macros from `rtx_graph_flexible_types.h`:
+
+```cpp
+#include "../rtx_graph_component_macros.h"
+#include "../rtx_graph_flexible_types.h"
+
+#define LIST_INPUTS(X) \
+  X(RtComponentPropertyType::NumberOrVector, 0, a, "A", "First value.") \
+  X(RtComponentPropertyType::NumberOrVector, 0, b, "B", "Second value.")
+
+#define LIST_STATES(X)
+
+#define LIST_OUTPUTS(X) \
+  X(RtComponentPropertyType::NumberOrVector, 0, sum, "Sum", "A + B")
+
+// Three template parameters: input A type, input B type, and result type
+template <RtComponentPropertyType aPropertyType, RtComponentPropertyType bPropertyType, RtComponentPropertyType sumPropertyType>
+class Add : public RtRegisteredComponentBatch<Add<aPropertyType, bPropertyType, sumPropertyType>> {
+  REMIX_COMPONENT_BODY(
+    Add,
+    "Add",
+    "Transform",
+    "Adds two values together.",
+    1,
+    LIST_INPUTS, LIST_STATES, LIST_OUTPUTS
+  )
+  
+  void updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
+    for (size_t i = start; i < end; i++) {
+      m_sum[i] = m_a[i] + m_b[i];
+    }
+  }
+};
+
+#undef LIST_INPUTS
+#undef LIST_STATES
+#undef LIST_OUTPUTS
+
+// Forward declaration for the instantiation function
+void createTypeVariantsForAdd();
+```
+
+In the `.cpp` file, use the macro to automatically instantiate all valid type combinations:
+
+```cpp
+#include "add.h"
+#include "../rtx_graph_flexible_types.h"
+
+// Automatically instantiates all valid A + B combinations and computes result types
+DEFINE_BINARY_OP_COMPONENT_CPP(Add, std::declval<A>() + std::declval<B>(), RtComponentPropertyNumberOrVector)
+```
+
+For comparison operations that always return `Bool`:
+
+```cpp
+DEFINE_COMPARISON_OP_COMPONENT_CPP(EqualTo, std::declval<A>() == std::declval<B>(), RtComponentPropertyNumberOrVector)
+```
+
+Finally, call the instantiation function in `rtx_component_list.h`:
+
+```cpp
+inline void forceAllFlexibleComponentInstantiations() {
+  // ...existing calls...
+  createTypeVariantsForAdd();
+}
+```
 
 # Component Versioning
 
