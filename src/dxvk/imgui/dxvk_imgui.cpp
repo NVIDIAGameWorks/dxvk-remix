@@ -584,6 +584,65 @@ namespace dxvk {
   constexpr ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_AlwaysVerticalScrollbar;
   constexpr ImGuiWindowFlags popupWindowFlags = ImGuiWindowFlags_NoSavedSettings;
 
+  // Hashset save warning popup - shown when saving to user.conf with unsaved texture category changes
+  namespace HashSetSaveWarning {
+    static bool s_showWarning = false;
+    static constexpr const char* kPopupName = "Texture Category Warning";
+    
+    void open() {
+      s_showWarning = true;
+      ImGui::OpenPopup(kPopupName);
+    }
+    
+    void close() {
+      s_showWarning = false;
+    }
+    
+    // Shows the warning popup (informational only)
+    void show() {
+      if (!s_showWarning) {
+        return;
+      }
+      
+      bool popupOpen = true;
+      ImGui::SetNextWindowSizeConstraints(ImVec2(450, 0), ImVec2(450, FLT_MAX));
+      if (ImGui::BeginPopupModal(kPopupName, &popupOpen, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextWrapped("Note: Texture Category Changes Not Saved");
+        ImGui::Separator();
+        ImGui::Spacing();
+        
+        ImGui::TextWrapped(
+          "Your settings have been saved to user.conf, but you have texture category changes "
+          "that were NOT included.\n\n"
+          "Texture categories (sky textures, ignore textures, etc.) must be saved to rtx.conf or new.conf, not user.conf.\n\n"
+          "To save your texture category changes, make sure you save to rtx.conf or a new conf file.");
+        
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+        
+        // Center the button
+        float buttonWidth = 80.0f;
+        float offsetX = (ImGui::GetContentRegionAvail().x - buttonWidth) * 0.5f;
+        
+        if (offsetX > 0) {
+          ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offsetX);
+        }
+        
+        if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
+          close();
+          ImGui::CloseCurrentPopup();
+        }
+        
+        ImGui::EndPopup();
+      }
+      
+      if (!popupOpen) {
+        close();
+      }
+    }
+  }
+
   ImGui::ComboWithKey<UpscalerType>& getUpscalerCombo(DxvkDLSS& dlss, DxvkRayReconstruction& rayReconstruction) {
     if (dlss.supportsDLSS()) {
       return upscalerDLSSCombo;
@@ -1179,10 +1238,18 @@ namespace dxvk {
     } else {
       if (IMGUI_ADD_TOOLTIP(ImGui::Button("Save Settings", ImVec2(buttonWidth, 0)), "Save settings out to the selected config file.\nBehavior depends on the above settings.")) {
         RtxOptions::serialize();
+        // Show warning if saving to user.conf and there are unsaved hashset changes
+        if (RtxOptions::Option::optionSavingType() == OptionLayerType::User && 
+            RtxOptions::hasUnsavedHashSetChanges()) {
+          HashSetSaveWarning::open();
+        }
       }
   
       ImGui::SameLine();
     }
+    
+    // Show hashset save warning popup (informational only)
+    HashSetSaveWarning::show();
 
     if (IMGUI_ADD_TOOLTIP(ImGui::Button("Reset settings", ImVec2(buttonWidth, 0)), "Reset all settings that have been changed this session.")) {
       RtxOptionLayer::setResetSettings(true);
@@ -1330,6 +1397,11 @@ namespace dxvk {
           RtxOptions::Option::optionSavingType.setImmediately(savedType);
           RtxOptions::Option::serializeChangedOptionOnly.setImmediately(changedSettings);
           m_userGraphicsSettingChanged = false;
+          
+          // Show warning if there are unsaved hashset changes
+          if (RtxOptions::hasUnsavedHashSetChanges()) {
+            HashSetSaveWarning::open();
+          }
         }
 
         if (unsavedChanges) {
@@ -1338,6 +1410,9 @@ namespace dxvk {
           ImGui::SetTooltipToLastWidgetOnHover("This will save any changed settings to the user.conf file.\nSome may only take effect on next launch.\n");
         }
       }
+      
+      // Show hashset save warning popup (informational only)
+      HashSetSaveWarning::show();
 
       ImGui::EndPopup();
     }

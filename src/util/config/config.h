@@ -321,6 +321,12 @@ namespace dxvk {
     }
     // NV-DXVK end
 
+    // NV-DXVK start: Remove an option from the config
+    void removeOption(const std::string& key) {
+      m_options.erase(key);
+    }
+    // NV-DXVK end
+
     // NV-DXVK start: Provide function to check if option exists in current Config.
     //                Don't call this function at the same time with getOption, which will cause searching unordered_map twice.
     bool findOption(const char* option) const {
