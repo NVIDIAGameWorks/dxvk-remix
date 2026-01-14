@@ -429,8 +429,6 @@ bool writeMarkdownIndex(const std::vector<const RtComponentSpec*>& specs, const 
   
   // Write the index header
   outputFile << "# RTX Remix Component Documentation" << std::endl << std::endl;
-  outputFile << "**⚠️ Warning**: The Component System is not ready for use yet. "
-             << "The information below is not finalized." << std::endl << std::endl;
   outputFile << "This documentation provides detailed information about all available components "
              << "in the RTX Remix graph system." << std::endl << std::endl;
   outputFile << "## Available Components" << std::endl << std::endl;

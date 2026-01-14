@@ -1,7 +1,5 @@
 # RTX Remix Component Documentation
 
-**⚠️ Warning**: The Component System is not ready for use yet. The information below is not finalized.
-
 This documentation provides detailed information about all available components in the RTX Remix graph system.
 
 ## Available Components
