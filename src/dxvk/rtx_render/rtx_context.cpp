@@ -728,8 +728,10 @@ namespace dxvk {
 
       m_previousInjectRtxHadScene = true;
     } else {
-      getSceneManager().clear(this, m_previousInjectRtxHadScene);
-      m_previousInjectRtxHadScene = false;
+      if (!isRaytracingEnabled || !isCameraValid) {
+        getSceneManager().clear(this, m_previousInjectRtxHadScene);
+        m_previousInjectRtxHadScene = false;
+      }
 
       getSceneManager().onFrameEndNoRTX();
     }
