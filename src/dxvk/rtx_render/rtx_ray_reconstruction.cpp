@@ -368,7 +368,7 @@ namespace dxvk {
     RemixGui::Checkbox("Anti-Ghost", &m_biasCurrentColorEnabled);
 
     if (showAdvancedSettings) {
-      bool presetChanged = ImGui::Combo("DLSS-RR Preset", &pathTracerPresetObject(), "Default\0ReSTIR Finetuned\0");
+      bool presetChanged = RemixGui::Combo("DLSS-RR Preset", &pathTracerPresetObject(), "Default\0ReSTIR Finetuned\0");
       if (presetChanged) {
         RtxOptions::updatePathTracerPreset(pathTracerPreset());
       }
@@ -376,7 +376,7 @@ namespace dxvk {
       constexpr ImGuiSliderFlags sliderFlags = ImGuiSliderFlags_AlwaysClamp;
 
       RemixGui::Checkbox("Use Virtual Normals", &m_useVirtualNormals);
-      ImGui::Combo("Particle Mode", &particleBufferModeObject(), "None\0DLSS-RR Upscaling\0");
+      RemixGui::Combo("Particle Mode", &particleBufferModeObject(), "None\0DLSS-RR Upscaling\0");
       RemixGui::Checkbox("Use Specular Hit Distance", &useSpecularHitDistanceObject());
       RemixGui::Checkbox("Preserve Settings in Native Mode", &preserveSettingsInNativeModeObject());
       RemixGui::Checkbox("Combine Specular Albedo", &combineSpecularAlbedoObject());
@@ -386,8 +386,8 @@ namespace dxvk {
       RemixGui::Checkbox("DLSS-RR Detail Enhancement", &enableDetailEnhancementObject());
       RemixGui::Checkbox("Preprocess Secondary Signal", &preprocessSecondarySignalObject());
       RemixGui::Checkbox("DLSS-RR Demodulate Roughness", &demodulateRoughnessObject());
-      ImGui::DragFloat("DLSS-RR Roughness Sensitivity", &upscalerRoughnessDemodulationOffsetObject(), 0.01f, 0.0f, 2.0f, "%.3f");
-      ImGui::DragFloat("DLSS-RR Roughness Multiplier", &upscalerRoughnessDemodulationMultiplierObject(), 0.01f, 0.0f, 20.0f, "%.3f");
+      RemixGui::DragFloat("DLSS-RR Roughness Sensitivity", &upscalerRoughnessDemodulationOffsetObject(), 0.01f, 0.0f, 2.0f, "%.3f");
+      RemixGui::DragFloat("DLSS-RR Roughness Multiplier", &upscalerRoughnessDemodulationMultiplierObject(), 0.01f, 0.0f, 20.0f, "%.3f");
       RemixGui::Checkbox("Composite Volumetric Light", &compositeVolumetricLightObject());      
       RemixGui::Checkbox("Transformer Model D", &enableTransformerModelDObject());
 
@@ -395,8 +395,8 @@ namespace dxvk {
         ImGui::Indent();
 
         RemixGui::Checkbox("Blur", &enableDisocclusionMaskBlurObject());
-        ImGui::DragInt("Blur Radius", &disocclusionMaskBlurRadiusObject(), 1.f, 1, 64, "%d", sliderFlags);
-        ImGui::DragFloat("Blur Normalized Gaussian Weight Sigma", &disocclusionMaskBlurNormalizedGaussianWeightSigmaObject(), 0.01f, 0.0f, 3.0f, "%.3f", sliderFlags);
+        RemixGui::DragInt("Blur Radius", &disocclusionMaskBlurRadiusObject(), 1.f, 1, 64, "%d", sliderFlags);
+        RemixGui::DragFloat("Blur Normalized Gaussian Weight Sigma", &disocclusionMaskBlurNormalizedGaussianWeightSigmaObject(), 0.01f, 0.0f, 3.0f, "%.3f", sliderFlags);
 
         ImGui::Unindent();
       }

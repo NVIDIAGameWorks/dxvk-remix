@@ -87,9 +87,9 @@ namespace dxvk {
     ImGui::Indent();
     RemixGui::Checkbox("Bloom Enabled", &enableObject());
     ImGui::Indent();
-    ImGui::DragFloat("Intensity##bloom", &burnIntensityObject(), 0.05f, 0.f, 5.f, "%.2f");
-    ImGui::DragFloat("Threshold##bloom", &luminanceThresholdObject(), 0.05f, 0.f, 100.f, "%.2f");
-    ImGui::SliderInt("Radius##bloom", &stepsObject(), 4, MaxBloomSteps);
+    RemixGui::DragFloat("Intensity##bloom", &burnIntensityObject(), 0.05f, 0.f, 5.f, "%.2f");
+    RemixGui::DragFloat("Threshold##bloom", &luminanceThresholdObject(), 0.05f, 0.f, 100.f, "%.2f");
+    RemixGui::SliderInt("Radius##bloom", &stepsObject(), 4, MaxBloomSteps);
     ImGui::Unindent();
     ImGui::Unindent();
   }

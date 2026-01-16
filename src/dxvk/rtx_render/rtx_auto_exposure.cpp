@@ -98,15 +98,15 @@ namespace dxvk {
     RemixGui::Checkbox("Eye Adaptation", &enabledObject());
     if (enabled()) {
       ImGui::Indent();
-      ImGui::Combo("Average Mode", &exposureAverageModeObject(), "Mean\0Median");
+      RemixGui::Combo("Average Mode", &exposureAverageModeObject(), "Mean\0Median");
 
-      ImGui::DragFloat("Adaptation Speed", &autoExposureSpeedObject(), 0.001f, 0.f, 100.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-      ImGui::DragFloat("Min (EV100)", &evMinValueObject(), 0.01f, -24.f, 24.f);
-      ImGui::DragFloat("Max (EV100)", &evMaxValueObject(), 0.01f, -24.f, 24.f);
+      RemixGui::DragFloat("Adaptation Speed", &autoExposureSpeedObject(), 0.001f, 0.f, 100.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+      RemixGui::DragFloat("Min (EV100)", &evMinValueObject(), 0.01f, -24.f, 24.f);
+      RemixGui::DragFloat("Max (EV100)", &evMaxValueObject(), 0.01f, -24.f, 24.f);
 
       RemixGui::Checkbox("Center Weighted Metering", &exposureCenterMeteringEnabledObject());
       ImGui::BeginDisabled(!exposureCenterMeteringEnabled());
-      ImGui::DragFloat("Center Metering Size", &centerMeteringSizeObject(), 0.01f, 0.01f, 1.0f);
+      RemixGui::DragFloat("Center Metering Size", &centerMeteringSizeObject(), 0.01f, 0.01f, 1.0f);
       ImGui::EndDisabled();
 
       RemixGui::Checkbox("Exposure Compensation", &useExposureCompensationObject());

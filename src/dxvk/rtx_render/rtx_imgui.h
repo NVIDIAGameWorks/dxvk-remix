@@ -9,7 +9,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace ImGui {
+namespace RemixGui {
 
   IMGUI_API void SetTooltipUnformatted(const char* text);  // Same as SetTooltip, just without text formatting (so percentage signs do not interfere with tooltips when not desired).
   IMGUI_API bool IsItemHoveredDelay(float delay_in_seconds); // Same as IsItemHovered, but only returns true after the item was hovered for x amount of time
@@ -41,7 +41,7 @@ namespace ImGui {
   }
 
   // Adds a tooltip to the imguiCommand and returns boolean result from the passed in imguiCommand
-#define IMGUI_ADD_TOOLTIP(imguiCommand, tooltip) ImGui::addTooltipAndPassthroughValue((imguiCommand), tooltip)
+#define IMGUI_ADD_TOOLTIP(imguiCommand, tooltip) RemixGui::addTooltipAndPassthroughValue((imguiCommand), tooltip)
 
   IMGUI_API void TextCentered(const char* fmt, ...);
   IMGUI_API void TextWrappedCentered(const char* fmt, ...);
@@ -262,7 +262,7 @@ namespace ImGui {
     } else {
       ImGui::TextDisabled("%s (Disabled)", label);
       if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltipUnformatted(rtxOption->getDescription());
+        RemixGui::SetTooltipUnformatted(rtxOption->getDescription());
       }
     }
     if (changed) {
@@ -423,7 +423,7 @@ namespace ImGui {
 
     if (changed) {
       rtxOption->setDeferred(std::string(textBuffer.data()));
-    } else if (IsItemDeactivated()) {
+    } else if (ImGui::IsItemDeactivated()) {
       // If the text box loses focus when `ImGuiInputTextFlags_EnterReturnsTrue` is set, the input value would be lost.
       // This catches that case.
       if (strcmp(textBuffer.data(), rtxOption->get().c_str()) != 0) {

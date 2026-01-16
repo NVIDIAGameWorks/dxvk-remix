@@ -80,9 +80,9 @@ namespace dxvk {
 
   void DemodulatePass::showImguiSettings() {
     RemixGui::Checkbox("Demodulate Roughness", &demodulateRoughnessObject());
-    ImGui::DragFloat("NRD Roughness sensitivity", &demodulateRoughnessOffsetObject(), 0.01f, 0.0f, 5.0f, "%.3f");
+    RemixGui::DragFloat("NRD Roughness sensitivity", &demodulateRoughnessOffsetObject(), 0.01f, 0.0f, 5.0f, "%.3f");
     RemixGui::Checkbox("Direct Light Boiling Filter", &enableDirectLightBoilingFilterObject());
-    ImGui::DragFloat("Direct Light Boiling Threshold", &directLightBoilingThresholdObject(), 0.01f, 1.f, 500.f, "%.1f");
+    RemixGui::DragFloat("Direct Light Boiling Threshold", &directLightBoilingThresholdObject(), 0.01f, 1.f, 500.f, "%.1f");
   }
 
   void DemodulatePass::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {

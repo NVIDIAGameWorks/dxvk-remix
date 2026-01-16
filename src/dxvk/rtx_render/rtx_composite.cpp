@@ -145,18 +145,18 @@ namespace dxvk {
     if (RemixGui::CollapsingHeader("Stochastic Alpha Blend")) {
       ImGui::Indent();
       RemixGui::Checkbox("Enable Stochastic Alpha Blend", &enableStochasticAlphaBlendObject());
-      ImGui::DragFloat("Max Blend Opacity", &stochasticAlphaBlendOpacityThresholdObject(), 0.005f, 0.0f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+      RemixGui::DragFloat("Max Blend Opacity", &stochasticAlphaBlendOpacityThresholdObject(), 0.005f, 0.0f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
       RemixGui::Checkbox("Use Neighbor Search", &stochasticAlphaBlendUseNeighborSearchObject());
       RemixGui::Checkbox("Search The Same Object", &stochasticAlphaBlendSearchTheSameObjectObject());
       RemixGui::Checkbox("Share Search Result", &stochasticAlphaBlendShareNeighborsObject());
-      ImGui::DragInt("Search Iterations", &stochasticAlphaBlendSearchIterationObject(), 0.1f, 1, 20, "%d", ImGuiSliderFlags_AlwaysClamp);
-      ImGui::DragFloat("Initial Search Radius", &stochasticAlphaBlendInitialSearchRadiusObject(), 0.01f, 1.0f, 20.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-      ImGui::DragFloat("Radius Expand Factor", &stochasticAlphaBlendRadiusExpandFactorObject(), 0.01f, 1.0f, 5.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-      ImGui::DragFloat("Neighbor Normal Similarity", &stochasticAlphaBlendNormalSimilarityObject(), 0.001f, 0.0f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-      ImGui::DragFloat("Neighbor Depth Difference", &stochasticAlphaBlendDepthDifferenceObject(), 0.001f, 0.0f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-      ImGui::DragFloat("Neighbor Planar Difference", &stochasticAlphaBlendPlanarDifferenceObject(), 0.001f, 0.0f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+      RemixGui::DragInt("Search Iterations", &stochasticAlphaBlendSearchIterationObject(), 0.1f, 1, 20, "%d", ImGuiSliderFlags_AlwaysClamp);
+      RemixGui::DragFloat("Initial Search Radius", &stochasticAlphaBlendInitialSearchRadiusObject(), 0.01f, 1.0f, 20.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+      RemixGui::DragFloat("Radius Expand Factor", &stochasticAlphaBlendRadiusExpandFactorObject(), 0.01f, 1.0f, 5.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+      RemixGui::DragFloat("Neighbor Normal Similarity", &stochasticAlphaBlendNormalSimilarityObject(), 0.001f, 0.0f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+      RemixGui::DragFloat("Neighbor Depth Difference", &stochasticAlphaBlendDepthDifferenceObject(), 0.001f, 0.0f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+      RemixGui::DragFloat("Neighbor Planar Difference", &stochasticAlphaBlendPlanarDifferenceObject(), 0.001f, 0.0f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
       RemixGui::Checkbox("Use Radiance Volume", &stochasticAlphaBlendUseRadianceVolumeObject());
-      ImGui::DragFloat("Radiance Volume Multiplier", &stochasticAlphaBlendRadianceVolumeMultiplierObject(), 0.001f, 0.0f, 10.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+      RemixGui::DragFloat("Radiance Volume Multiplier", &stochasticAlphaBlendRadianceVolumeMultiplierObject(), 0.001f, 0.0f, 10.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
       RemixGui::Checkbox("Discard Black Pixels", &stochasticAlphaBlendDiscardBlackPixelObject());
       RemixGui::Checkbox("Filter Stochastic Alpha Blend", &stochasticAlphaBlendEnableFilterObject());
       ImGui::Unindent();
@@ -168,8 +168,8 @@ namespace dxvk {
 
     ImGui::BeginDisabled(!enableFog());
     ImGui::Indent();
-    ImGui::DragFloat("Fog Color Scale", &fogColorScaleObject(), 0.01f, 0.0f, 10.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::DragFloat("Max Fog Distance", &maxFogDistanceObject(), 1.f, 0.0f, 0.f, "%.0f", ImGuiSliderFlags_AlwaysClamp);
+    RemixGui::DragFloat("Fog Color Scale", &fogColorScaleObject(), 0.01f, 0.0f, 10.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+    RemixGui::DragFloat("Max Fog Distance", &maxFogDistanceObject(), 1.f, 0.0f, 0.f, "%.0f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::Unindent();
     ImGui::EndDisabled();
   }
@@ -200,13 +200,13 @@ namespace dxvk {
     float bsdfMaxValues[2] = { dlssEnhancementDirectLightMaxValue(), dlssEnhancementIndirectLightMaxValue() };
 
     RemixGui::Checkbox("Enhance BSDF Detail Under DLSS", &enableDLSSEnhancementObject());    
-    ImGui::Combo("Indirect Light Enhancement Mode", &dlssEnhancementModeObject(), "Laplacian\0Normal Difference\0");
-    ImGui::DragFloat2("Direct/Indirect Light Sharpness", bsdfPowers, 0.01f, 0.01f, 20.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::DragFloat2("Direct/Indirect Light Max Strength", bsdfMaxValues, 0.01f, 0.1f, 200.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::DragFloat("Pixel Highlight Reuse Strength", &pixelHighlightReuseStrengthObject(), 0.01f, 0.1f, 10.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::DragFloat("Indirect Light Min Sharpen Roughness", &dlssEnhancementIndirectLightMinRoughnessObject(), 0.01f, 0.f, 1.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+    RemixGui::Combo("Indirect Light Enhancement Mode", &dlssEnhancementModeObject(), "Laplacian\0Normal Difference\0");
+    RemixGui::DragFloat2("Direct/Indirect Light Sharpness", bsdfPowers, 0.01f, 0.01f, 20.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+    RemixGui::DragFloat2("Direct/Indirect Light Max Strength", bsdfMaxValues, 0.01f, 0.1f, 200.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+    RemixGui::DragFloat("Pixel Highlight Reuse Strength", &pixelHighlightReuseStrengthObject(), 0.01f, 0.1f, 10.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+    RemixGui::DragFloat("Indirect Light Min Sharpen Roughness", &dlssEnhancementIndirectLightMinRoughnessObject(), 0.01f, 0.f, 1.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
     RemixGui::Checkbox("Use Post Filter", &usePostFilterObject());
-    ImGui::DragFloat("Post Filter Threshold", &postFilterThresholdObject(), 0.01f, 0.0f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+    RemixGui::DragFloat("Post Filter Threshold", &postFilterThresholdObject(), 0.01f, 0.0f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 
     dlssEnhancementDirectLightPower.setDeferred(bsdfPowers[0]);
     dlssEnhancementIndirectLightPower.setDeferred(bsdfPowers[1]);

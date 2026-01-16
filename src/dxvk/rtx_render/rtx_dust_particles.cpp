@@ -86,32 +86,32 @@ namespace dxvk {
       RemixGui::Checkbox("Enable", &enableObject());
       ImGui::BeginDisabled(!enable());
 
-      ImGui::DragInt("Number of Particles", &numberOfParticlesObject(), 0.1f, 1, 100000000, "%d", ImGuiSliderFlags_AlwaysClamp);
+      RemixGui::DragInt("Number of Particles", &numberOfParticlesObject(), 0.1f, 1, 100000000, "%d", ImGuiSliderFlags_AlwaysClamp);
 
       if (RemixGui::CollapsingHeader("Spawn")) {
-        ImGui::DragFloat("Min Spawn Distance", &minSpawnDistanceObject(), 0.01f, 0.01f, maxSpawnDistance(), "%.2f", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::DragFloat("Max Spawn Distance", &maxSpawnDistanceObject(), 0.01f, minSpawnDistance(), 10000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::DragFloat("Minimum Life", &minParticleLifeObject(), 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::DragFloat("Maximum Life", &maxParticleLifeObject(), 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::DragFloat("Minimum Size", &minParticleSizeObject(), 0.01f, 1.f, 50.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::DragFloat("Maximum Size", &maxParticleSizeObject(), 0.01f, 1.f, 50.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        RemixGui::DragFloat("Min Spawn Distance", &minSpawnDistanceObject(), 0.01f, 0.01f, maxSpawnDistance(), "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        RemixGui::DragFloat("Max Spawn Distance", &maxSpawnDistanceObject(), 0.01f, minSpawnDistance(), 10000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        RemixGui::DragFloat("Minimum Life", &minParticleLifeObject(), 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        RemixGui::DragFloat("Maximum Life", &maxParticleLifeObject(), 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        RemixGui::DragFloat("Minimum Size", &minParticleSizeObject(), 0.01f, 1.f, 50.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        RemixGui::DragFloat("Maximum Size", &maxParticleSizeObject(), 0.01f, 1.f, 50.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
       }
 
       if (RemixGui::CollapsingHeader("Looks")) {
-        ImGui::DragFloat("Opacity", &opacityObject(), 0.01f, 0.f, 1.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::DragFloat("Anisotropy", &anisotropyObject(), 0.01f, -1.f, 1.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        RemixGui::DragFloat("Opacity", &opacityObject(), 0.01f, 0.f, 1.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        RemixGui::DragFloat("Anisotropy", &anisotropyObject(), 0.01f, -1.f, 1.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
       }
 
       if (RemixGui::CollapsingHeader("Simulation")) {
-        ImGui::DragFloat("Time Scale", &timeScaleObject(), 0.01f, 0.f, 1.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::DragFloat("Gravity Force", &gravityForceObject(), 0.01f, -100.f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::DragFloat("Rotation Speed", &rotationSpeedObject(), 0.01f, 0.f, 10.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::DragFloat("Max Speed", &maxSpeedObject(), 0.01f, 0.f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        RemixGui::DragFloat("Time Scale", &timeScaleObject(), 0.01f, 0.f, 1.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        RemixGui::DragFloat("Gravity Force", &gravityForceObject(), 0.01f, -100.f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        RemixGui::DragFloat("Rotation Speed", &rotationSpeedObject(), 0.01f, 0.f, 10.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        RemixGui::DragFloat("Max Speed", &maxSpeedObject(), 0.01f, 0.f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 
         RemixGui::Checkbox("Simulate Turbulence", &useTurbulenceObject());
         ImGui::BeginDisabled(!useTurbulence());
-        ImGui::DragFloat("Turbulence Amplitude", &turbulenceAmplitudeObject(), 0.01f, 0.f, 10.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::DragFloat("Turbulence Frequency", &turbulenceFrequencyObject(), 0.01f, 0.f, 10.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        RemixGui::DragFloat("Turbulence Amplitude", &turbulenceAmplitudeObject(), 0.01f, 0.f, 10.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        RemixGui::DragFloat("Turbulence Frequency", &turbulenceFrequencyObject(), 0.01f, 0.f, 10.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
         ImGui::EndDisabled();
       }
       ImGui::Unindent();

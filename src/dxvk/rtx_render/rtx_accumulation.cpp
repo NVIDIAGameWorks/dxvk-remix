@@ -27,9 +27,9 @@
 
 namespace dxvk {
 
-  ImGui::ComboWithKey<AccumulationBlendMode> accumulationBlendModeCombo = ImGui::ComboWithKey<AccumulationBlendMode>(
+  RemixGui::ComboWithKey<AccumulationBlendMode> accumulationBlendModeCombo = RemixGui::ComboWithKey<AccumulationBlendMode>(
     "Accumulation Blend Mode",
-    ImGui::ComboWithKey<AccumulationBlendMode>::ComboEntries { {
+    RemixGui::ComboWithKey<AccumulationBlendMode>::ComboEntries { {
         {AccumulationBlendMode::Average, "Average"},
         {AccumulationBlendMode::Min, "Min"},
         {AccumulationBlendMode::Max, "Max"},
@@ -123,7 +123,7 @@ namespace dxvk {
         resetNumAccumulatedFrames();
       }
 
-      ImGui::InputInt("Number of Frames To Accumulate", &numFramesToAccumulate);
+      RemixGui::InputInt("Number of Frames To Accumulate", &numFramesToAccumulate);
 
       // Reset accumulation if the cap gets lowered and below the current count
       if (m_prevNumFramesToAccumulate > numFramesToAccumulate() &&

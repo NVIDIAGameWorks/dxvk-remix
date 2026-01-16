@@ -173,23 +173,23 @@ namespace dxvk {
   }
 
   void DxvkRtxdiRayQuery::showImguiSettings() {
-    ImGui::SliderInt("Initial Sample Count", &initialSampleCountObject(), 1, 64);
+    RemixGui::SliderInt("Initial Sample Count", &initialSampleCountObject(), 1, 64);
     RemixGui::Checkbox("Sample Best Lights", &enableBestLightSamplingObject());
     RemixGui::Checkbox("Initial Visibility", &enableInitialVisibilityObject());
     RemixGui::Separator();
     RemixGui::Checkbox("Temporal Reuse", &enableTemporalReuseObject());
     if (enableTemporalReuse()) {
-      ImGui::SliderInt("Max History Length", &maxHistoryLengthObject(), 1, 32);
-      ImGui::SliderInt("Permutation Sampling on Nth Frame", &permutationSamplingNthFrameObject(), 0, 8);
+      RemixGui::SliderInt("Max History Length", &maxHistoryLengthObject(), 1, 32);
+      RemixGui::SliderInt("Permutation Sampling on Nth Frame", &permutationSamplingNthFrameObject(), 0, 8);
       RemixGui::Checkbox("Temporal Bias Correction", &enableTemporalBiasCorrectionObject());
       RemixGui::Checkbox("Discard Enlarged Pixels", &enableDiscardEnlargedPixelsObject());
     }
     RemixGui::Separator();
     RemixGui::Checkbox("Spatial Reuse", &enableSpatialReuseObject());
     if (enableSpatialReuse()) {
-      ImGui::SliderInt("Spatial Sample Count", &spatialSamplesObject(), 1, 16);
-      ImGui::SliderInt("Disocclusion Sample Count", &disocclusionSamplesObject(), 1, 16);
-      ImGui::SliderInt("Disocclusion Frames", &disocclusionFramesObject(), 0, 16);
+      RemixGui::SliderInt("Spatial Sample Count", &spatialSamplesObject(), 1, 16);
+      RemixGui::SliderInt("Disocclusion Sample Count", &disocclusionSamplesObject(), 1, 16);
+      RemixGui::SliderInt("Disocclusion Frames", &disocclusionFramesObject(), 0, 16);
     }
     RemixGui::Checkbox("Ray Traced Bias Correction", &enableRayTracedBiasCorrectionObject());
     RemixGui::Separator();
@@ -203,13 +203,13 @@ namespace dxvk {
     if (enableDenoiserConfidence() && RemixGui::CollapsingHeader("Confidence Settings"))
     {
       ImGui::Indent();
-      ImGui::SliderFloat("History Length", &confidenceHistoryLengthObject(), 0.f, 16.f);
-      ImGui::SliderFloat("Gradient Power", &confidenceGradientPowerObject(), 1.f, 16.f);
-      ImGui::SliderFloat("Gradient Scale", &confidenceGradientScaleObject(), 0.f, 16.f);
-      ImGui::SliderInt("Gradient Filter Passes", &gradientFilterPassesObject(), 0, 6);
-      ImGui::SliderFloat("Filter HitDist Sensitivity", &gradientHitDistanceSensitivityObject(), 0.f, 50.f);
-      ImGui::SliderFloat("Minimum Confidence", &minimumConfidenceObject(), 0.f, 1.f);
-      ImGui::SliderFloat("Confidence HitDist Sensitivity", &confidenceHitDistanceSensitivityObject(), 0.f, 10000.f);
+      RemixGui::SliderFloat("History Length", &confidenceHistoryLengthObject(), 0.f, 16.f);
+      RemixGui::SliderFloat("Gradient Power", &confidenceGradientPowerObject(), 1.f, 16.f);
+      RemixGui::SliderFloat("Gradient Scale", &confidenceGradientScaleObject(), 0.f, 16.f);
+      RemixGui::SliderInt("Gradient Filter Passes", &gradientFilterPassesObject(), 0, 6);
+      RemixGui::SliderFloat("Filter HitDist Sensitivity", &gradientHitDistanceSensitivityObject(), 0.f, 50.f);
+      RemixGui::SliderFloat("Minimum Confidence", &minimumConfidenceObject(), 0.f, 1.f);
+      RemixGui::SliderFloat("Confidence HitDist Sensitivity", &confidenceHitDistanceSensitivityObject(), 0.f, 10000.f);
       ImGui::Unindent();
     }
   }

@@ -112,16 +112,16 @@ namespace dxvk {
   void ImGuiCapture::showTimedCapture(const Rc<DxvkContext>& ctx) {
     if(RemixGui::CollapsingHeader("Timed Capture")) {
       ImGui::Indent();
-      ImGui::InputInt("Max Frames", &RtxOptions::captureMaxFramesObject());
-      ImGui::InputInt("Frames Per Second", &RtxOptions::captureFramesPerSecondObject());
+      RemixGui::InputInt("Max Frames", &RtxOptions::captureMaxFramesObject());
+      RemixGui::InputInt("Frames Per Second", &RtxOptions::captureFramesPerSecondObject());
       if(RemixGui::CollapsingHeader("Animation Compression")) {
         ImGui::Indent();
         ImGui::Text("Inter-frame Mesh Deltas");
-        ImGui::InputFloat("Position",&RtxOptions::captureMeshPositionDeltaObject());
-        ImGui::InputFloat("Normal",&RtxOptions::captureMeshNormalDeltaObject());
-        ImGui::InputFloat("Texcoord",&RtxOptions::captureMeshTexcoordDeltaObject());
-        ImGui::InputFloat("Color",&RtxOptions::captureMeshColorDeltaObject());
-        ImGui::InputFloat("Blend Weight",&RtxOptions::captureMeshBlendWeightDeltaObject());
+        RemixGui::InputFloat("Position",&RtxOptions::captureMeshPositionDeltaObject());
+        RemixGui::InputFloat("Normal",&RtxOptions::captureMeshNormalDeltaObject());
+        RemixGui::InputFloat("Texcoord",&RtxOptions::captureMeshTexcoordDeltaObject());
+        RemixGui::InputFloat("Color",&RtxOptions::captureMeshColorDeltaObject());
+        RemixGui::InputFloat("Blend Weight",&RtxOptions::captureMeshBlendWeightDeltaObject());
         ImGui::Unindent();
       }
       ImGui::Unindent();

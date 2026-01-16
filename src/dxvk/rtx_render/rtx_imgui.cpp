@@ -1,6 +1,6 @@
 #include "rtx_imgui.h"
 
-namespace ImGui {
+namespace RemixGui {
 
   void SetTooltipUnformatted(const char* text) {
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.26f, 0.31f, 0.31f, 1.0f));

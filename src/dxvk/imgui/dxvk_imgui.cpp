@@ -193,35 +193,35 @@ namespace dxvk {
     {"particleemittertextures","Particle Emitters (optional)", &RtxOptions::particleEmitterTexturesObject()}
   };
 
-  ImGui::ComboWithKey<RenderPassGBufferRaytraceMode> renderPassGBufferRaytraceModeCombo {
+  RemixGui::ComboWithKey<RenderPassGBufferRaytraceMode> renderPassGBufferRaytraceModeCombo {
     "GBuffer Raytracing Mode",
-    ImGui::ComboWithKey<RenderPassGBufferRaytraceMode>::ComboEntries { {
+    RemixGui::ComboWithKey<RenderPassGBufferRaytraceMode>::ComboEntries { {
         {RenderPassGBufferRaytraceMode::RayQuery, "RayQuery (CS)"},
         {RenderPassGBufferRaytraceMode::RayQueryRayGen, "RayQuery (RGS)"},
         {RenderPassGBufferRaytraceMode::TraceRay, "TraceRay (RGS)"}
     } }
   };
 
-  ImGui::ComboWithKey<RenderPassIntegrateDirectRaytraceMode> renderPassIntegrateDirectRaytraceModeCombo {
+  RemixGui::ComboWithKey<RenderPassIntegrateDirectRaytraceMode> renderPassIntegrateDirectRaytraceModeCombo {
     "Integrate Direct Raytracing Mode",
-    ImGui::ComboWithKey<RenderPassIntegrateDirectRaytraceMode>::ComboEntries { {
+    RemixGui::ComboWithKey<RenderPassIntegrateDirectRaytraceMode>::ComboEntries { {
         {RenderPassIntegrateDirectRaytraceMode::RayQuery, "RayQuery (CS)"},
         {RenderPassIntegrateDirectRaytraceMode::RayQueryRayGen, "RayQuery (RGS)"}
     } }
   };
 
-  ImGui::ComboWithKey<RenderPassIntegrateIndirectRaytraceMode> renderPassIntegrateIndirectRaytraceModeCombo {
+  RemixGui::ComboWithKey<RenderPassIntegrateIndirectRaytraceMode> renderPassIntegrateIndirectRaytraceModeCombo {
     "Integrate Indirect Raytracing Mode",
-    ImGui::ComboWithKey<RenderPassIntegrateIndirectRaytraceMode>::ComboEntries { {
+    RemixGui::ComboWithKey<RenderPassIntegrateIndirectRaytraceMode>::ComboEntries { {
         {RenderPassIntegrateIndirectRaytraceMode::RayQuery, "RayQuery (CS)"},
         {RenderPassIntegrateIndirectRaytraceMode::RayQueryRayGen, "RayQuery (RGS)"},
         {RenderPassIntegrateIndirectRaytraceMode::TraceRay, "TraceRay (RGS)"}
     } }
   };
 
-  ImGui::ComboWithKey<CameraAnimationMode> cameraAnimationModeCombo {
+  RemixGui::ComboWithKey<CameraAnimationMode> cameraAnimationModeCombo {
     "Camera Animation Mode",
-    ImGui::ComboWithKey<CameraAnimationMode>::ComboEntries { {
+    RemixGui::ComboWithKey<CameraAnimationMode>::ComboEntries { {
         {CameraAnimationMode::CameraShake_LeftRight, "CameraShake Left-Right"},
         {CameraAnimationMode::CameraShake_FrontBack, "CameraShake Front-Back"},
         {CameraAnimationMode::CameraShake_Yaw, "CameraShake Yaw"},
@@ -230,9 +230,9 @@ namespace dxvk {
     } }
   };
 
-  ImGui::ComboWithKey<GraphicsPreset> graphicsPresetCombo{
+  RemixGui::ComboWithKey<GraphicsPreset> graphicsPresetCombo{
     "Graphics Preset",
-    ImGui::ComboWithKey<GraphicsPreset>::ComboEntries{ {
+    RemixGui::ComboWithKey<GraphicsPreset>::ComboEntries{ {
         {GraphicsPreset::Ultra, "Ultra"},
         {GraphicsPreset::High, "High"},
         {GraphicsPreset::Medium, "Medium"},
@@ -241,17 +241,17 @@ namespace dxvk {
     } }
   };
 
-  ImGui::ComboWithKey<int> minPathBouncesCombo {
+  RemixGui::ComboWithKey<int> minPathBouncesCombo {
     "Min Light Bounces",
-    ImGui::ComboWithKey<int>::ComboEntries { {
+    RemixGui::ComboWithKey<int>::ComboEntries { {
         {0, "0"},
         {1, "1"},
     } }
   };
 
-  ImGui::ComboWithKey<int> maxPathBouncesCombo {
+  RemixGui::ComboWithKey<int> maxPathBouncesCombo {
     "Max Light Bounces",
-    ImGui::ComboWithKey<int>::ComboEntries { {
+    RemixGui::ComboWithKey<int>::ComboEntries { {
         {1, "1"},
         {2, "2"},
         {3, "3"},
@@ -263,74 +263,74 @@ namespace dxvk {
     } }
   };
 
-  ImGui::ComboWithKey<int> indirectLightingParticlesCombo {
+  RemixGui::ComboWithKey<int> indirectLightingParticlesCombo {
     "Particle Light",
-    ImGui::ComboWithKey<int>::ComboEntries { {
+    RemixGui::ComboWithKey<int>::ComboEntries { {
         {0, "None"},
         {1, "Low"},
         {2, "High"},
     } }
   };
 
-  ImGui::ComboWithKey<NeuralRadianceCache::QualityPreset> neuralRadianceCacheQualityPresetCombo {
+  RemixGui::ComboWithKey<NeuralRadianceCache::QualityPreset> neuralRadianceCacheQualityPresetCombo {
     "RTX Neural Radiance Cache Quality",
-    ImGui::ComboWithKey<NeuralRadianceCache::QualityPreset>::ComboEntries { {
+    RemixGui::ComboWithKey<NeuralRadianceCache::QualityPreset>::ComboEntries { {
         {NeuralRadianceCache::QualityPreset::Ultra, "Ultra"},
         {NeuralRadianceCache::QualityPreset::High, "High"},
         {NeuralRadianceCache::QualityPreset::Medium, "Medium"}
     } }
   };
 
-  ImGui::ComboWithKey<bool> denoiserQualityCombo {
+  RemixGui::ComboWithKey<bool> denoiserQualityCombo {
     "NRD Denoising Quality",
-    ImGui::ComboWithKey<bool>::ComboEntries { {
+    RemixGui::ComboWithKey<bool>::ComboEntries { {
         {true, "High"},
         {false,"Low"},
     } }
   };
 
-  ImGui::ComboWithKey<int> textureQualityCombo {
+  RemixGui::ComboWithKey<int> textureQualityCombo {
     "Texture Quality",
-    ImGui::ComboWithKey<int>::ComboEntries { {
+    RemixGui::ComboWithKey<int>::ComboEntries { {
         {0, "High"},
         {1, "Low"},
     } }
   };
 
-  ImGui::ComboWithKey<ViewDistanceMode> viewDistanceModeCombo {
+  RemixGui::ComboWithKey<ViewDistanceMode> viewDistanceModeCombo {
     "View Distance Mode",
-    ImGui::ComboWithKey<ViewDistanceMode>::ComboEntries { {
+    RemixGui::ComboWithKey<ViewDistanceMode>::ComboEntries { {
         {ViewDistanceMode::None, "None"},
         {ViewDistanceMode::HardCutoff, "Hard Cutoff"},
         {ViewDistanceMode::CoherentNoise, "Coherent Noise"},
     } }
   };
 
-  ImGui::ComboWithKey<ViewDistanceFunction> viewDistanceFunctionCombo {
+  RemixGui::ComboWithKey<ViewDistanceFunction> viewDistanceFunctionCombo {
     "View Distance Function",
-    ImGui::ComboWithKey<ViewDistanceFunction>::ComboEntries { {
+    RemixGui::ComboWithKey<ViewDistanceFunction>::ComboEntries { {
         {ViewDistanceFunction::Euclidean, "Euclidean"},
         {ViewDistanceFunction::PlanarEuclidean, "Planar Euclidean"},
     } }
   };
 
-  static auto fusedWorldViewModeCombo = ImGui::ComboWithKey<FusedWorldViewMode>(
+  static auto fusedWorldViewModeCombo = RemixGui::ComboWithKey<FusedWorldViewMode>(
   "Fused World-View Mode",
-  ImGui::ComboWithKey<FusedWorldViewMode>::ComboEntries { {
+  RemixGui::ComboWithKey<FusedWorldViewMode>::ComboEntries { {
       {FusedWorldViewMode::None, "None"},
       {FusedWorldViewMode::View, "In View Transform"},
       {FusedWorldViewMode::World, "In World Transform"},
   } });
 
-  static auto skyAutoDetectCombo = ImGui::ComboWithKey<SkyAutoDetectMode>(
+  static auto skyAutoDetectCombo = RemixGui::ComboWithKey<SkyAutoDetectMode>(
     "Sky Auto-Detect",
-    ImGui::ComboWithKey<SkyAutoDetectMode>::ComboEntries{ {
+    RemixGui::ComboWithKey<SkyAutoDetectMode>::ComboEntries{ {
       {SkyAutoDetectMode::None, "Off"},
       {SkyAutoDetectMode::CameraPosition, "By Camera Position"},
       {SkyAutoDetectMode::CameraPositionAndDepthFlags, "By Camera Position and Depth Flags"}
   } });
 
-  static auto upscalerNoDLSSCombo = ImGui::ComboWithKey<UpscalerType>(
+  static auto upscalerNoDLSSCombo = RemixGui::ComboWithKey<UpscalerType>(
     "Upscaler Type",
     { {
       {UpscalerType::None, "None"},
@@ -339,7 +339,7 @@ namespace dxvk {
       {UpscalerType::XeSS, "XeSS"},
   } });
 
-  static auto upscalerDLSSCombo = ImGui::ComboWithKey<UpscalerType>(
+  static auto upscalerDLSSCombo = RemixGui::ComboWithKey<UpscalerType>(
     "Upscaler Type",
     { {
       {UpscalerType::None, "None"},
@@ -349,18 +349,18 @@ namespace dxvk {
       {UpscalerType::XeSS, "XeSS"},
   } });
 
-  ImGui::ComboWithKey<DlssPreset> dlssPresetCombo{
+  RemixGui::ComboWithKey<DlssPreset> dlssPresetCombo{
     "DLSS Preset",
-    ImGui::ComboWithKey<DlssPreset>::ComboEntries{ {
+    RemixGui::ComboWithKey<DlssPreset>::ComboEntries{ {
         {DlssPreset::Off, "Disabled"},
         {DlssPreset::On, "Enabled"},
         {DlssPreset::Custom, "Custom"},
     } }
   };
 
-  ImGui::ComboWithKey<DLSSProfile> dlssProfileCombo{
+  RemixGui::ComboWithKey<DLSSProfile> dlssProfileCombo{
     "DLSS Mode",
-    ImGui::ComboWithKey<DLSSProfile>::ComboEntries{ {
+    RemixGui::ComboWithKey<DLSSProfile>::ComboEntries{ {
         {DLSSProfile::UltraPerf, "Ultra Performance"},
         {DLSSProfile::MaxPerf, "Performance"},
         {DLSSProfile::Balanced, "Balanced"},
@@ -370,9 +370,9 @@ namespace dxvk {
     } }
   };
 
-  ImGui::ComboWithKey<NisPreset> nisPresetCombo{
+  RemixGui::ComboWithKey<NisPreset> nisPresetCombo{
     "NIS Preset",
-    ImGui::ComboWithKey<NisPreset>::ComboEntries{ {
+    RemixGui::ComboWithKey<NisPreset>::ComboEntries{ {
         {NisPreset::Performance, "Performance"},
         {NisPreset::Balanced, "Balanced"},
         {NisPreset::Quality, "Quality"},
@@ -380,9 +380,9 @@ namespace dxvk {
     } }
   };
 
-  ImGui::ComboWithKey<TaauPreset> taauPresetCombo{
+  RemixGui::ComboWithKey<TaauPreset> taauPresetCombo{
     "TAA-U Preset",
-    ImGui::ComboWithKey<TaauPreset>::ComboEntries{ {
+    RemixGui::ComboWithKey<TaauPreset>::ComboEntries{ {
         {TaauPreset::UltraPerformance, "Ultra Performance"},
         {TaauPreset::Performance, "Performance"},
         {TaauPreset::Balanced, "Balanced"},
@@ -391,9 +391,9 @@ namespace dxvk {
     } }
   };
 
-  ImGui::ComboWithKey<XeSSPreset> xessPresetCombo{
+  RemixGui::ComboWithKey<XeSSPreset> xessPresetCombo{
     "XeSS Preset",
-    ImGui::ComboWithKey<XeSSPreset>::ComboEntries{ {
+    RemixGui::ComboWithKey<XeSSPreset>::ComboEntries{ {
         {XeSSPreset::UltraPerf, "Ultra Performance"},
         {XeSSPreset::Performance, "Performance"},
         {XeSSPreset::Balanced, "Balanced"},
@@ -405,17 +405,17 @@ namespace dxvk {
     } }
   };
 
-  ImGui::ComboWithKey<RussianRouletteMode> secondPlusBounceRussianRouletteModeCombo {
+  RemixGui::ComboWithKey<RussianRouletteMode> secondPlusBounceRussianRouletteModeCombo {
     "2nd+ Bounce Russian Roulette Mode",
-    ImGui::ComboWithKey<RussianRouletteMode>::ComboEntries { {
+    RemixGui::ComboWithKey<RussianRouletteMode>::ComboEntries { {
         {RussianRouletteMode::ThroughputBased, "Throughput Based"},
         {RussianRouletteMode::SpecularBased, "Specular Based"}
     } }
   };
 
-  ImGui::ComboWithKey<IntegrateIndirectMode> integrateIndirectModeCombo {
+  RemixGui::ComboWithKey<IntegrateIndirectMode> integrateIndirectModeCombo {
     "Integrate Indirect Illumination Mode",
-    ImGui::ComboWithKey<IntegrateIndirectMode>::ComboEntries { {
+    RemixGui::ComboWithKey<IntegrateIndirectMode>::ComboEntries { {
         {IntegrateIndirectMode::ImportanceSampled, "Importance Sampled",  
           "Importance Sampled. Importance sampled mode uses typical GI sampling and it is not recommended for general use as it provides the noisiest output.\n"
           "It serves as a reference integration mode for validation of other indirect integration modes." },
@@ -429,25 +429,25 @@ namespace dxvk {
     } }
   };
 
-  static auto rayReconstructionModelCombo = ImGui::ComboWithKey<DxvkRayReconstruction::RayReconstructionModel>(
+  static auto rayReconstructionModelCombo = RemixGui::ComboWithKey<DxvkRayReconstruction::RayReconstructionModel>(
     "Ray Reconstruction Model",
     { {
       {DxvkRayReconstruction::RayReconstructionModel::Transformer, "Transformer", "Ensures highest image quality. Can be more expensive than CNN in terms of memory and performance."},
       {DxvkRayReconstruction::RayReconstructionModel::CNN, "CNN", "Ensures great image quality"},
   } });
 
-  ImGui::ComboWithKey<int> dlfgMfgModeCombo {
+  RemixGui::ComboWithKey<int> dlfgMfgModeCombo {
     "DLSS Frame Generation Mode",
-    ImGui::ComboWithKey<int>::ComboEntries { {
+    RemixGui::ComboWithKey<int>::ComboEntries { {
         {1, "2x"},
         {2, "3x"},
         {3, "4x"},
     } }
   };
 
-  ImGui::ComboWithKey<ReflexMode> reflexModeCombo{
+  RemixGui::ComboWithKey<ReflexMode> reflexModeCombo{
     "Reflex",
-    ImGui::ComboWithKey<ReflexMode>::ComboEntries{ {
+    RemixGui::ComboWithKey<ReflexMode>::ComboEntries{ {
         {ReflexMode::None, "Disabled"},
         {ReflexMode::LowLatency, "Enabled"},
         {ReflexMode::LowLatencyBoost, "Enabled + Boost"},
@@ -455,7 +455,7 @@ namespace dxvk {
   };
 
 #ifdef REMIX_DEVELOPMENT
-  ImGui::ComboWithKey<dxvk::RtxFramePassStage>::ComboEntries aliasingPassComboEntries = { {
+  RemixGui::ComboWithKey<dxvk::RtxFramePassStage>::ComboEntries aliasingPassComboEntries = { {
       { RtxFramePassStage::FrameBegin, "FrameBegin" },
       { RtxFramePassStage::Volumetrics, "Volumetrics" },
       { RtxFramePassStage::VolumeIntegrateRestirInitial, "VolumeIntegrateRestirInitial" },
@@ -497,13 +497,13 @@ namespace dxvk {
       { RtxFramePassStage::FrameEnd, "FrameEnd" },
   } };
 
-  static auto aliasingBeginPassCombo = ImGui::ComboWithKey<dxvk::RtxFramePassStage>(
-    "Aliasing Begin Pass", ImGui::ComboWithKey<dxvk::RtxFramePassStage>::ComboEntries{ aliasingPassComboEntries });
+  static auto aliasingBeginPassCombo = RemixGui::ComboWithKey<dxvk::RtxFramePassStage>(
+    "Aliasing Begin Pass", RemixGui::ComboWithKey<dxvk::RtxFramePassStage>::ComboEntries{ aliasingPassComboEntries });
 
-  static auto aliasingEndPassCombo = ImGui::ComboWithKey<dxvk::RtxFramePassStage>(
-    "Aliasing End Pass", ImGui::ComboWithKey<dxvk::RtxFramePassStage>::ComboEntries { aliasingPassComboEntries });
+  static auto aliasingEndPassCombo = RemixGui::ComboWithKey<dxvk::RtxFramePassStage>(
+    "Aliasing End Pass", RemixGui::ComboWithKey<dxvk::RtxFramePassStage>::ComboEntries { aliasingPassComboEntries });
 
-  static auto aliasingExtentCombo = ImGui::ComboWithKey<RtxTextureExtentType>(
+  static auto aliasingExtentCombo = RemixGui::ComboWithKey<RtxTextureExtentType>(
     "Aliasing Extent Type",
     { {
       { RtxTextureExtentType::DownScaledExtent, "DownScaledExtent" },
@@ -511,7 +511,7 @@ namespace dxvk {
       { RtxTextureExtentType::Custom, "Custom" },
   } } );
 
-  static auto aliasingFormatCombo = ImGui::ComboWithKey<RtxTextureFormatCompatibilityCategory>(
+  static auto aliasingFormatCombo = RemixGui::ComboWithKey<RtxTextureFormatCompatibilityCategory>(
      "Aliasing Format",
      { {
       { RtxTextureFormatCompatibilityCategory::Color_Format_8_Bits, "8 Bits Color Texture" },
@@ -525,7 +525,7 @@ namespace dxvk {
      } }
   );
 
-  static auto aliasingImageTypeCombo = ImGui::ComboWithKey<VkImageType>(
+  static auto aliasingImageTypeCombo = RemixGui::ComboWithKey<VkImageType>(
      "Aliasing Image Type",
      { {
       { VK_IMAGE_TYPE_1D, "VK_IMAGE_TYPE_1D" },
@@ -534,7 +534,7 @@ namespace dxvk {
      } }
   );
 
-  static auto aliasingImageViewTypeCombo = ImGui::ComboWithKey<VkImageViewType>(
+  static auto aliasingImageViewTypeCombo = RemixGui::ComboWithKey<VkImageViewType>(
      "Aliasing Image View Type",
      { {
       { VK_IMAGE_VIEW_TYPE_1D, "VK_IMAGE_VIEW_TYPE_1D" },
@@ -553,7 +553,7 @@ namespace dxvk {
     TerrainBaker,
     AsDecals,
   };
-  static auto terrainModeCombo = ImGui::ComboWithKey<TerrainMode>(
+  static auto terrainModeCombo = RemixGui::ComboWithKey<TerrainMode>(
     "Mode##terrain",
     {
       {        TerrainMode::None,              "None"},
@@ -561,17 +561,17 @@ namespace dxvk {
       {    TerrainMode::AsDecals, "Terrain-as-Decals"},
   });
 
-  ImGui::ComboWithKey<OptionLayerType>::ComboEntries optionSavingModeComboEntries = { {
+  RemixGui::ComboWithKey<OptionLayerType>::ComboEntries optionSavingModeComboEntries = { {
       { OptionLayerType::User, "User", "Runtime settings"},
       { OptionLayerType::Rtx, "Rtx", "RTX settings"},
       { OptionLayerType::Quality, "Quality", "Graphics quality preset settings"},
       { OptionLayerType::None, "None", "No settings layer; used for testing or temporary development" },
   } };
 
-  static auto optionSavingModeCombo = ImGui::ComboWithKey<OptionLayerType>(
-    "Type of setting to save##option", ImGui::ComboWithKey<OptionLayerType>::ComboEntries { optionSavingModeComboEntries });
+  static auto optionSavingModeCombo = RemixGui::ComboWithKey<OptionLayerType>(
+    "Type of setting to save##option", RemixGui::ComboWithKey<OptionLayerType>::ComboEntries { optionSavingModeComboEntries });
 
-  static auto themeCombo = ImGui::ComboWithKey<ImGUI::Theme>(
+  static auto themeCombo = RemixGui::ComboWithKey<ImGUI::Theme>(
     "Mode##theme",
     {
       {ImGUI::Theme::Toolkit,  "Default Theme"},
@@ -586,7 +586,7 @@ namespace dxvk {
   constexpr ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_AlwaysVerticalScrollbar;
   constexpr ImGuiWindowFlags popupWindowFlags = ImGuiWindowFlags_NoSavedSettings;
 
-  ImGui::ComboWithKey<UpscalerType>& getUpscalerCombo(DxvkDLSS& dlss, DxvkRayReconstruction& rayReconstruction) {
+  RemixGui::ComboWithKey<UpscalerType>& getUpscalerCombo(DxvkDLSS& dlss, DxvkRayReconstruction& rayReconstruction) {
     if (dlss.supportsDLSS()) {
       return upscalerDLSSCombo;
     } else {
@@ -849,13 +849,13 @@ namespace dxvk {
 
         RemixGui::Checkbox("Use Albedo/Opacity Texture (if present)", &LegacyMaterialDefaults::useAlbedoTextureIfPresentObject());
         RemixGui::Checkbox("Ignore Texture Alpha Channel", &LegacyMaterialDefaults::ignoreAlphaChannelObject());
-        ImGui::ColorEdit3("Albedo", &LegacyMaterialDefaults::albedoConstantObject());
-        ImGui::DragFloat("Opacity", &LegacyMaterialDefaults::opacityConstantObject(), 0.01f, 0.f, 1.f);
-        ImGui::ColorEdit3("Emissive Color", &LegacyMaterialDefaults::emissiveColorConstantObject());
-        ImGui::DragFloat("Emissive Intensity", &LegacyMaterialDefaults::emissiveIntensityObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
-        ImGui::DragFloat("Roughness", &LegacyMaterialDefaults::roughnessConstantObject(), 0.01f, 0.02f, 1.f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Metallic", &LegacyMaterialDefaults::metallicConstantObject(), 0.01f, 0.0f, 1.f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Anisotropy", &LegacyMaterialDefaults::anisotropyObject(), 0.01f, -1.0f, 1.f, "%.3f", sliderFlags);
+        RemixGui::ColorEdit3("Albedo", &LegacyMaterialDefaults::albedoConstantObject());
+        RemixGui::DragFloat("Opacity", &LegacyMaterialDefaults::opacityConstantObject(), 0.01f, 0.f, 1.f);
+        RemixGui::ColorEdit3("Emissive Color", &LegacyMaterialDefaults::emissiveColorConstantObject());
+        RemixGui::DragFloat("Emissive Intensity", &LegacyMaterialDefaults::emissiveIntensityObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
+        RemixGui::DragFloat("Roughness", &LegacyMaterialDefaults::roughnessConstantObject(), 0.01f, 0.02f, 1.f, "%.3f", sliderFlags);
+        RemixGui::DragFloat("Metallic", &LegacyMaterialDefaults::metallicConstantObject(), 0.01f, 0.0f, 1.f, "%.3f", sliderFlags);
+        RemixGui::DragFloat("Anisotropy", &LegacyMaterialDefaults::anisotropyObject(), 0.01f, -1.0f, 1.f, "%.3f", sliderFlags);
 
         ImGui::Unindent();
       }
@@ -866,21 +866,21 @@ namespace dxvk {
         if (RemixGui::CollapsingHeader("Opaque", collapsingHeaderFlags)) {
           ImGui::Indent();
 
-          ImGui::SliderFloat("Albedo Scale", &OpaqueMaterialOptions::albedoScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Albedo Bias", &OpaqueMaterialOptions::albedoBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Metallic Scale", &OpaqueMaterialOptions::metallicScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Metallic Bias", &OpaqueMaterialOptions::metallicBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Roughness Scale", &OpaqueMaterialOptions::roughnessScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Roughness Bias", &OpaqueMaterialOptions::roughnessBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Normal Strength##1", &OpaqueMaterialOptions::normalIntensityObject(), -10.0f, 10.f, "%.3f", sliderFlags);
+          RemixGui::SliderFloat("Albedo Scale", &OpaqueMaterialOptions::albedoScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
+          RemixGui::SliderFloat("Albedo Bias", &OpaqueMaterialOptions::albedoBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
+          RemixGui::SliderFloat("Metallic Scale", &OpaqueMaterialOptions::metallicScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
+          RemixGui::SliderFloat("Metallic Bias", &OpaqueMaterialOptions::metallicBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
+          RemixGui::SliderFloat("Roughness Scale", &OpaqueMaterialOptions::roughnessScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
+          RemixGui::SliderFloat("Roughness Bias", &OpaqueMaterialOptions::roughnessBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
+          RemixGui::SliderFloat("Normal Strength##1", &OpaqueMaterialOptions::normalIntensityObject(), -10.0f, 10.f, "%.3f", sliderFlags);
 
           RemixGui::Checkbox("Enable dual-layer animated water normal for Opaque", &OpaqueMaterialOptions::layeredWaterNormalEnableObject());
 
           if (OpaqueMaterialOptions::layeredWaterNormalEnable()) {
             ImGui::TextWrapped("Animated water with Opaque material is dependent on the original draw call animating using a texture transform.");
-            ImGui::SliderFloat2("Layered Motion Direction", &OpaqueMaterialOptions::layeredWaterNormalMotionObject(), -1.0f, 1.0f, "%.3f", sliderFlags);
-            ImGui::SliderFloat("Layered Motion Scale", &OpaqueMaterialOptions::layeredWaterNormalMotionScaleObject(), -10.0f, 10.0f, "%.3f", sliderFlags);
-            ImGui::SliderFloat("LOD bias", &OpaqueMaterialOptions::layeredWaterNormalLodBiasObject(), 0.0f, 16.0f, "%.3f", sliderFlags);
+            RemixGui::SliderFloat2("Layered Motion Direction", &OpaqueMaterialOptions::layeredWaterNormalMotionObject(), -1.0f, 1.0f, "%.3f", sliderFlags);
+            RemixGui::SliderFloat("Layered Motion Scale", &OpaqueMaterialOptions::layeredWaterNormalMotionScaleObject(), -10.0f, 10.0f, "%.3f", sliderFlags);
+            RemixGui::SliderFloat("LOD bias", &OpaqueMaterialOptions::layeredWaterNormalLodBiasObject(), 0.0f, 16.0f, "%.3f", sliderFlags);
           }
 
           ImGui::Unindent();
@@ -889,17 +889,17 @@ namespace dxvk {
         if (RemixGui::CollapsingHeader("Translucent", collapsingHeaderFlags)) {
           ImGui::Indent();
 
-          ImGui::SliderFloat("Transmit. Color Scale", &TranslucentMaterialOptions::transmittanceColorScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Transmit. Color Bias", &TranslucentMaterialOptions::transmittanceColorBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Normal Strength##2", &TranslucentMaterialOptions::normalIntensityObject(), -10.0f, 10.f, "%.3f", sliderFlags);
+          RemixGui::SliderFloat("Transmit. Color Scale", &TranslucentMaterialOptions::transmittanceColorScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
+          RemixGui::SliderFloat("Transmit. Color Bias", &TranslucentMaterialOptions::transmittanceColorBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
+          RemixGui::SliderFloat("Normal Strength##2", &TranslucentMaterialOptions::normalIntensityObject(), -10.0f, 10.f, "%.3f", sliderFlags);
 
           RemixGui::Checkbox("Enable dual-layer animated water normal for Translucent", &TranslucentMaterialOptions::animatedWaterEnableObject());
           if (TranslucentMaterialOptions::animatedWaterEnable()) {
             ImGui::TextWrapped("Animated water with Translucent materials will animate using Remix animation time.");
 
-            ImGui::SliderFloat2("Primary Texcoord Velocity", &TranslucentMaterialOptions::animatedWaterPrimaryNormalMotionObject(), -0.5f, 0.5f, "%.3f", sliderFlags);
-            ImGui::SliderFloat2("Secondary Normal Texcoord Velocity", &TranslucentMaterialOptions::animatedWaterSecondaryNormalMotionObject(), -0.5f, 0.5f, "%.3f", sliderFlags);
-            ImGui::SliderFloat("Secondary Normal LOD bias", &TranslucentMaterialOptions::animatedWaterSecondaryNormalLodBiasObject(), 0.0f, 16.0f, "%.3f", sliderFlags);
+            RemixGui::SliderFloat2("Primary Texcoord Velocity", &TranslucentMaterialOptions::animatedWaterPrimaryNormalMotionObject(), -0.5f, 0.5f, "%.3f", sliderFlags);
+            RemixGui::SliderFloat2("Secondary Normal Texcoord Velocity", &TranslucentMaterialOptions::animatedWaterSecondaryNormalMotionObject(), -0.5f, 0.5f, "%.3f", sliderFlags);
+            RemixGui::SliderFloat("Secondary Normal LOD bias", &TranslucentMaterialOptions::animatedWaterSecondaryNormalLodBiasObject(), 0.0f, 16.0f, "%.3f", sliderFlags);
           }
           ImGui::Unindent();
         }
@@ -916,7 +916,7 @@ namespace dxvk {
           RemixGui::Checkbox("Enable Thin-Film Layer", &OpaqueMaterialOptions::enableThinFilmOverrideObject());
 
           if (OpaqueMaterialOptions::enableThinFilmOverride()) {
-            ImGui::SliderFloat("Thin Film Thickness", &OpaqueMaterialOptions::thinFilmThicknessOverrideObject(), 0.0f, OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS, "%.1f nm", sliderFlags);
+            RemixGui::SliderFloat("Thin Film Thickness", &OpaqueMaterialOptions::thinFilmThicknessOverrideObject(), 0.0f, OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS, "%.1f nm", sliderFlags);
           }
 
           ImGui::Unindent();
@@ -1168,7 +1168,7 @@ namespace dxvk {
       switchUI = (int) UIType::None;
     }
 
-    ImGui::TextCentered("[Alt + Del] Toggle cursor        [Alt + Backspace] Toggle game input");
+    RemixGui::TextCentered("[Alt + Del] Toggle cursor        [Alt + Backspace] Toggle game input");
     ImGui::End();
 
     // Close via titlebar close button
@@ -1221,7 +1221,7 @@ namespace dxvk {
 
       {
         ImGui::TextSeparator("Display Settings");
-        ImGui::SliderInt("Brightness##user", &RtxOptions::userBrightnessObject(), 0, 100, "%d", ImGuiSliderFlags_AlwaysClamp);
+        RemixGui::SliderInt("Brightness##user", &RtxOptions::userBrightnessObject(), 0, 100, "%d", ImGuiSliderFlags_AlwaysClamp);
         ImGui::Dummy({ 0.f, 4.f });
       }
 
@@ -1297,10 +1297,10 @@ namespace dxvk {
 
       if (unsavedChanges) {
         ImGui::PopStyleColor();
-        ImGui::SetTooltipToLastWidgetOnHover("Settings have been changed!\nThis will save settings in the rtx.conf file.\nSome may only take effect on next launch.");
+        RemixGui::SetTooltipToLastWidgetOnHover("Settings have been changed!\nThis will save settings in the rtx.conf file.\nSome may only take effect on next launch.");
       }
       else {
-        ImGui::SetTooltipToLastWidgetOnHover("This will save above settings in the rtx.conf file.\nSome may only take effect on next launch.");
+        RemixGui::SetTooltipToLastWidgetOnHover("This will save above settings in the rtx.conf file.\nSome may only take effect on next launch.");
       }
 
       ImGui::EndPopup();
@@ -1452,7 +1452,7 @@ namespace dxvk {
 
           // Show resolution slider only for Custom preset
           if (DxvkXeSS::XessOptions::preset() == XeSSPreset::Custom) {
-            m_userGraphicsSettingChanged |= ImGui::SliderFloat("Resolution Scale", &RtxOptions::resolutionScaleObject(), 0.1f, 1.0f, "%.2f");
+            m_userGraphicsSettingChanged |= RemixGui::SliderFloat("Resolution Scale", &RtxOptions::resolutionScaleObject(), 0.1f, 1.0f, "%.2f");
           }
 
           // Display XeSS internal resolution
@@ -1541,7 +1541,7 @@ namespace dxvk {
       m_userGraphicsSettingChanged |= minPathBouncesCombo.getKey(&RtxOptions::pathMinBouncesObject());
       m_userGraphicsSettingChanged |= maxPathBouncesCombo.getKey(&RtxOptions::pathMaxBouncesObject());
       m_userGraphicsSettingChanged |= indirectLightingParticlesCombo.getKey(&indirectLightParticlesLevel);
-      ImGui::SetTooltipToLastWidgetOnHover("Controls the quality of particles in indirect (reflection/GI) rays.");
+      RemixGui::SetTooltipToLastWidgetOnHover("Controls the quality of particles in indirect (reflection/GI) rays.");
 
       // NRC Quality Preset dropdown
       NeuralRadianceCache& nrc = common->metaNeuralRadianceCache();
@@ -1840,7 +1840,7 @@ namespace dxvk {
       RtxContext::triggerScreenshot();
     }
 
-    ImGui::SetTooltipToLastWidgetOnHover("Screenshot will be dumped to, '<exe-dir>/Screenshots'");
+    RemixGui::SetTooltipToLastWidgetOnHover("Screenshot will be dumped to, '<exe-dir>/Screenshots'");
 
     ImGui::SameLine(200.f);
     RemixGui::Checkbox("Include G-Buffer", &RtxOptions::captureDebugImageObject());
@@ -1934,7 +1934,7 @@ namespace dxvk {
       }
       
       const auto crashHotkeyStr = buildKeyBindDescriptorString(RtxOptions::crashHotkey());
-      ImGui::SetTooltipToLastWidgetOnHover(
+      RemixGui::SetTooltipToLastWidgetOnHover(
         str::format("When armed, pressing ", crashHotkeyStr, " will trigger a deliberate crash.\n"
         "Useful for testing crash handling, crash dumps, and crash reporting.\n"
         "A red warning indicator will appear on screen while armed.").c_str());
@@ -2018,8 +2018,8 @@ namespace dxvk {
       if (RemixGui::CollapsingHeader("Camera Animation", collapsingHeaderClosedFlags)) {
         RemixGui::Checkbox("Animate Camera", &RtxOptions::shakeCameraObject());
         cameraAnimationModeCombo.getKey(&RtxOptions::cameraAnimationModeObject());
-        ImGui::DragFloat("Animation Amplitude", &RtxOptions::cameraAnimationAmplitudeObject(), 0.1f, 0.f, 1000.f, "%.2f", sliderFlags);
-        ImGui::DragInt("Shake Period", &RtxOptions::cameraShakePeriodObject(), 0.1f, 1, 100, "%d", sliderFlags);
+        RemixGui::DragFloat("Animation Amplitude", &RtxOptions::cameraAnimationAmplitudeObject(), 0.1f, 0.f, 1000.f, "%.2f", sliderFlags);
+        RemixGui::DragInt("Shake Period", &RtxOptions::cameraShakePeriodObject(), 0.1f, 1, 100, "%d", sliderFlags);
       }
 
       if (RemixGui::CollapsingHeader("Advanced", collapsingHeaderClosedFlags)) {
@@ -2030,7 +2030,7 @@ namespace dxvk {
         if (RtxOptions::rayPortalCameraInBetweenPortalsCorrection()) {
           ImGui::Indent();
 
-          ImGui::DragFloat("Portals: Camera In-Between Portals Correction Threshold", &RtxOptions::rayPortalCameraInBetweenPortalsCorrectionThresholdObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
+          RemixGui::DragFloat("Portals: Camera In-Between Portals Correction Threshold", &RtxOptions::rayPortalCameraInBetweenPortalsCorrectionThresholdObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
 
           ImGui::Unindent();
         }
@@ -2039,7 +2039,7 @@ namespace dxvk {
 
         RemixGui::Checkbox("Override Near Plane (if less than original)", &RtxOptions::enableNearPlaneOverrideObject());
         ImGui::BeginDisabled(!RtxOptions::enableNearPlaneOverride());
-        ImGui::DragFloat("Desired Near Plane Distance", &RtxOptions::nearPlaneOverrideObject(), 0.01f, 0.0001f, FLT_MAX, "%.3f");
+        RemixGui::DragFloat("Desired Near Plane Distance", &RtxOptions::nearPlaneOverrideObject(), 0.01f, 0.0001f, FLT_MAX, "%.3f");
         ImGui::EndDisabled();
       }
       ImGui::Unindent();
@@ -2058,19 +2058,19 @@ namespace dxvk {
       RemixGui::Checkbox("Break into Debugger On Press of Key 'B'", &RtxOptions::enableBreakIntoDebuggerOnPressingBObject());
       RemixGui::Checkbox("Block Input to Game in UI", &RtxOptions::blockInputToGameInUIObject());
       RemixGui::Checkbox("Force Camera Jitter", &RtxOptions::forceCameraJitterObject());
-      ImGui::DragInt("Camera Jitter Sequence Length", &RtxOptions::cameraJitterSequenceLengthObject());
+      RemixGui::DragInt("Camera Jitter Sequence Length", &RtxOptions::cameraJitterSequenceLengthObject());
       
-      ImGui::DragIntRange2("Draw Call Range Filter", &RtxOptions::drawCallRangeObject(), 1.f, 0, INT32_MAX, nullptr, nullptr, ImGuiSliderFlags_AlwaysClamp);
-      ImGui::InputInt("Instance Index Start", &RtxOptions::instanceOverrideInstanceIdxObject());
-      ImGui::InputInt("Instance Index Range", &RtxOptions::instanceOverrideInstanceIdxRangeObject());
-      ImGui::DragFloat3("Instance World Offset", &RtxOptions::instanceOverrideWorldOffsetObject(), 0.1f, -100.f, 100.f, "%.3f", sliderFlags);
+      RemixGui::DragIntRange2("Draw Call Range Filter", &RtxOptions::drawCallRangeObject(), 1.f, 0, INT32_MAX, nullptr, nullptr, ImGuiSliderFlags_AlwaysClamp);
+      RemixGui::InputInt("Instance Index Start", &RtxOptions::instanceOverrideInstanceIdxObject());
+      RemixGui::InputInt("Instance Index Range", &RtxOptions::instanceOverrideInstanceIdxRangeObject());
+      RemixGui::DragFloat3("Instance World Offset", &RtxOptions::instanceOverrideWorldOffsetObject(), 0.1f, -100.f, 100.f, "%.3f", sliderFlags);
       RemixGui::Checkbox("Instance - Print Hash", &RtxOptions::instanceOverrideSelectedInstancePrintMaterialHashObject());
 
       ImGui::Unindent();
       RemixGui::Checkbox("Throttle presents", &RtxOptions::enablePresentThrottleObject());
       if (RtxOptions::enablePresentThrottle()) {
         ImGui::Indent();
-        ImGui::SliderInt("Present delay", &RtxOptions::presentThrottleDelayObject(), 1, 1000, "%d ms", sliderFlags);
+        RemixGui::SliderInt("Present delay", &RtxOptions::presentThrottleDelayObject(), 1, 1000, "%d ms", sliderFlags);
         ImGui::Unindent();
       }
       RemixGui::Checkbox("Hash Collision Detection", &HashCollisionDetectionOptions::enableObject());
@@ -2085,14 +2085,14 @@ namespace dxvk {
         aliasingExtentCombo.getKey(&RtxOptions::Aliasing::extentTypeObject());
         const auto aliasingExtentType = RtxOptions::Aliasing::extentType();
         if (aliasingExtentType == RtxTextureExtentType::Custom) {
-          ImGui::DragInt("Aliasing Width", &RtxOptions::Aliasing::widthObject());
-          ImGui::DragInt("Aliasing Height", &RtxOptions::Aliasing::heightObject());
+          RemixGui::DragInt("Aliasing Width", &RtxOptions::Aliasing::widthObject());
+          RemixGui::DragInt("Aliasing Height", &RtxOptions::Aliasing::heightObject());
         }
         if (RtxOptions::Aliasing::imageType() == VkImageType::VK_IMAGE_TYPE_3D)
         {
-          ImGui::DragInt("Aliasing Depth", &RtxOptions::Aliasing::depthObject());
+          RemixGui::DragInt("Aliasing Depth", &RtxOptions::Aliasing::depthObject());
         }
-        ImGui::DragInt("Aliasing Layer", &RtxOptions::Aliasing::layerObject());
+        RemixGui::DragInt("Aliasing Layer", &RtxOptions::Aliasing::layerObject());
         aliasingImageTypeCombo.getKey(&RtxOptions::Aliasing::imageTypeObject());
         aliasingImageViewTypeCombo.getKey(&RtxOptions::Aliasing::imageViewTypeObject());
 
@@ -2152,7 +2152,7 @@ namespace dxvk {
           }
 
           // Filter for option layer contents
-          IMGUI_ADD_TOOLTIP(ImGui::InputText("RtxOption Display Filter", optionLayerFilter, IM_ARRAYSIZE(optionLayerFilter)), 
+          IMGUI_ADD_TOOLTIP(RemixGui::InputText("RtxOption Display Filter", optionLayerFilter, IM_ARRAYSIZE(optionLayerFilter)), 
               "Filter options displayed in the Contents sections. Only options containing this text will be shown.");
 
           RemixGui::Checkbox("Pause Graph Execution", &GraphManager::pauseGraphUpdatesObject());
@@ -2345,7 +2345,7 @@ namespace dxvk {
 
         RemixGui::Checkbox("Always Developer Menu", &RtxOptions::defaultToAdvancedUIObject());
 
-        if (ImGui::SliderFloat("Background Alpha", &backgroundAlphaObject(), 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp)) {
+        if (RemixGui::SliderFloat("Background Alpha", &backgroundAlphaObject(), 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp)) {
           adjustStyleBackgroundAlpha(backgroundAlpha());
         }
 
@@ -2629,7 +2629,7 @@ namespace dxvk {
                 ImGui::PopStyleVar();
               }
 
-              ImGui::SetTooltipToLastWidgetOnHover(tooltipText.c_str());
+              RemixGui::SetTooltipToLastWidgetOnHover(tooltipText.c_str());
             }
 
             // Show hash removal warning popup if needed
@@ -3055,7 +3055,7 @@ namespace dxvk {
         ImGui::SameLine();
         ImGui::Text("Texture Thumbnail Scale: %d%%", percentage);
         if (ImGui::IsItemHovered()) {
-          ImGui::SetTooltipUnformatted(RtxOptions::textureGridThumbnailScale.getDescription());
+          RemixGui::SetTooltipUnformatted(RtxOptions::textureGridThumbnailScale.getDescription());
         }
 
         RtxOptions::textureGridThumbnailScale.setDeferred(static_cast<float>(percentage) / 100.f);
@@ -3135,16 +3135,16 @@ namespace dxvk {
 
     if (ImGui::BeginTabItem("Step 2: Parameter Tuning", nullptr, tab_item_flags)) {
       spacing();
-      ImGui::DragFloat("Scene Unit Scale", &RtxOptions::sceneScaleObject(), 0.00001f, 0.00001f, FLT_MAX, "%.5f", sliderFlags);
+      RemixGui::DragFloat("Scene Unit Scale", &RtxOptions::sceneScaleObject(), 0.00001f, 0.00001f, FLT_MAX, "%.5f", sliderFlags);
       RemixGui::Checkbox("Scene Z-Up", &RtxOptions::zUpObject());
       RemixGui::Checkbox("Scene Left-Handed Coordinate System", &RtxOptions::leftHandedCoordinateSystemObject());
       fusedWorldViewModeCombo.getKey(&RtxOptions::fusedWorldViewModeObject());
       RemixGui::Separator();
 
-      ImGui::DragFloat("Unique Object Search Distance", &RtxOptions::uniqueObjectDistanceObject(), 0.01f, FLT_MIN, FLT_MAX, "%.3f", sliderFlags);
+      RemixGui::DragFloat("Unique Object Search Distance", &RtxOptions::uniqueObjectDistanceObject(), 0.01f, FLT_MIN, FLT_MAX, "%.3f", sliderFlags);
       RemixGui::Separator();
 
-      ImGui::DragFloat("Vertex Color Strength", &RtxOptions::vertexColorStrengthObject(), 0.001f, 0.0f, 1.0f);
+      RemixGui::DragFloat("Vertex Color Strength", &RtxOptions::vertexColorStrengthObject(), 0.001f, 0.0f, 1.0f);
       RemixGui::Checkbox("Vertex Color Is Baked Lighting", &RtxOptions::vertexColorIsBakedLightingObject());
       RemixGui::Checkbox("Ignore All Baked Lighting", &RtxOptions::ignoreAllVertexColorBakedLightingObject());
       RemixGui::Separator();
@@ -3160,8 +3160,8 @@ namespace dxvk {
 
       if (RemixGui::CollapsingHeader("Texture Parameters", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
-        ImGui::DragFloat("Force Cutout Alpha", &RtxOptions::forceCutoutAlphaObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("World Space UI Background Offset", &RtxOptions::worldSpaceUiBackgroundOffsetObject(), 0.01f, -FLT_MAX, FLT_MAX, "%.3f", sliderFlags);
+        RemixGui::DragFloat("Force Cutout Alpha", &RtxOptions::forceCutoutAlphaObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        RemixGui::DragFloat("World Space UI Background Offset", &RtxOptions::worldSpaceUiBackgroundOffsetObject(), 0.01f, -FLT_MAX, FLT_MAX, "%.3f", sliderFlags);
         RemixGui::Checkbox("Ignore last texture stage", &RtxOptions::ignoreLastTextureStageObject());
         RemixGui::Checkbox("Enable Multiple Stage Texture Factor Blending", &RtxOptions::enableMultiStageTextureFactorBlendingObject());
         ImGui::Unindent();
@@ -3179,18 +3179,18 @@ namespace dxvk {
       if (RemixGui::CollapsingHeader("View Model", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
         RemixGui::Checkbox("Enable View Model", &RtxOptions::ViewModel::enableObject());
-        ImGui::SliderFloat("Max Z Threshold", &RtxOptions::ViewModel::maxZThresholdObject(), 0.0f, 1.0f);
+        RemixGui::SliderFloat("Max Z Threshold", &RtxOptions::ViewModel::maxZThresholdObject(), 0.0f, 1.0f);
         RemixGui::Checkbox("Virtual Instances", &RtxOptions::ViewModel::enableVirtualInstancesObject());
         RemixGui::Checkbox("Perspective Correction", &RtxOptions::ViewModel::perspectiveCorrectionObject());
-        ImGui::DragFloat("Scale", &RtxOptions::ViewModel::scaleObject(), 0.01f, 0.01f, 2.0f);
+        RemixGui::DragFloat("Scale", &RtxOptions::ViewModel::scaleObject(), 0.01f, 0.01f, 2.0f);
         ImGui::Unindent();
       }
 
       if (RemixGui::CollapsingHeader("Sky Tuning", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
-        ImGui::DragFloat("Sky Brightness", &RtxOptions::skyBrightnessObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
-        ImGui::InputInt("First N Untextured Draw Calls", &RtxOptions::skyDrawcallIdThresholdObject(), 1, 1, 0);
-        ImGui::SliderFloat("Sky Min Z Threshold", &RtxOptions::skyMinZThresholdObject(), 0.0f, 1.0f);
+        RemixGui::DragFloat("Sky Brightness", &RtxOptions::skyBrightnessObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
+        RemixGui::InputInt("First N Untextured Draw Calls", &RtxOptions::skyDrawcallIdThresholdObject(), 1, 1, 0);
+        RemixGui::SliderFloat("Sky Min Z Threshold", &RtxOptions::skyMinZThresholdObject(), 0.0f, 1.0f);
         skyAutoDetectCombo.getKey(&RtxOptions::skyAutoDetectObject());
 
         if (RemixGui::CollapsingHeader("Advanced", collapsingHeaderClosedFlags)) {
@@ -3199,10 +3199,10 @@ namespace dxvk {
           RemixGui::Checkbox("Reproject Sky to Main Camera", &RtxOptions::skyReprojectToMainCameraSpaceObject());
           {
             ImGui::BeginDisabled(!RtxOptions::skyReprojectToMainCameraSpace());
-            ImGui::DragFloat("Reprojected Sky Scale", &RtxOptions::skyReprojectScaleObject(), 1.0f, 0.1f, 1000.0f);
+            RemixGui::DragFloat("Reprojected Sky Scale", &RtxOptions::skyReprojectScaleObject(), 1.0f, 0.1f, 1000.0f);
             ImGui::EndDisabled();
           }
-          ImGui::DragFloat("Sky Auto-Detect Unique Camera Search Distance", &RtxOptions::skyAutoDetectUniqueCameraDistanceObject(), 1.0f, 0.1f, 1000.0f);
+          RemixGui::DragFloat("Sky Auto-Detect Unique Camera Search Distance", &RtxOptions::skyAutoDetectUniqueCameraDistanceObject(), 1.0f, 0.1f, 1000.0f);
 
           RemixGui::Checkbox("Force HDR sky", &RtxOptions::skyForceHDRObject());
 
@@ -3212,7 +3212,7 @@ namespace dxvk {
           static int extIdx;
           extIdx = std::clamp(bit::tzcnt(RtxOptions::skyProbeSide()), 8u, 13u) - 8;
 
-          ImGui::Combo("Sky Probe Extent", &extIdx, exts, IM_ARRAYSIZE(exts));
+          RemixGui::Combo("Sky Probe Extent", &extIdx, exts, IM_ARRAYSIZE(exts));
           RtxOptions::skyProbeSide.setDeferred(1 << (extIdx + 8));
 
           ImGui::Unindent();
@@ -3601,7 +3601,7 @@ namespace dxvk {
 
     const auto& reason = ctx->getCommonObjects()->metaNGXContext().getDLFGNotSupportedReason();
     if (reason.size()) {
-      ImGui::SetTooltipToLastWidgetOnHover(reason.c_str());
+      RemixGui::SetTooltipToLastWidgetOnHover(reason.c_str());
       ImGui::TextWrapped(reason.c_str());
     }
 
@@ -3712,7 +3712,7 @@ namespace dxvk {
     ImGui::Text("Game to Render Duration: %.2f ms", latencyStats.gameToRenderDuration[LatencyStats::statFrames - 1]);
     ImGui::SameLine();
     ImGui::TextDisabled("(?)");
-    ImGui::SetTooltipToLastWidgetOnHover("This measures the time from the start of the simulation to the end of the GPU rendering as a total game to render latency.");
+    RemixGui::SetTooltipToLastWidgetOnHover("This measures the time from the start of the simulation to the end of the GPU rendering as a total game to render latency.");
 
     RemixGui::Separator();
 
@@ -3850,15 +3850,15 @@ namespace dxvk {
         dlssProfileCombo.getKey(&RtxOptions::qualityDLSSObject());
         dlss.showImguiSettings();
       } else if (RtxOptions::upscalerType() == UpscalerType::NIS) {
-        ImGui::SliderFloat("Resolution scale", &RtxOptions::resolutionScaleObject(), 0.5f, 1.0f);
-        ImGui::SliderFloat("Sharpness", &ctx->getCommonObjects()->metaNIS().m_sharpness, 0.1f, 1.0f);
+        RemixGui::SliderFloat("Resolution scale", &RtxOptions::resolutionScaleObject(), 0.5f, 1.0f);
+        RemixGui::SliderFloat("Sharpness", &ctx->getCommonObjects()->metaNIS().m_sharpness, 0.1f, 1.0f);
         RemixGui::Checkbox("Use FP16", &ctx->getCommonObjects()->metaNIS().m_useFp16);
       } else if (RtxOptions::upscalerType() == UpscalerType::XeSS) {
           xessPresetCombo.getKey(&DxvkXeSS::XessOptions::presetObject());
 
           // Show resolution slider only for Custom preset
           if (DxvkXeSS::XessOptions::preset() == XeSSPreset::Custom) {
-            m_userGraphicsSettingChanged |= ImGui::SliderFloat("Resolution Scale", &RtxOptions::resolutionScaleObject(), 0.1f, 1.0f, "%.2f");
+            m_userGraphicsSettingChanged |= RemixGui::SliderFloat("Resolution Scale", &RtxOptions::resolutionScaleObject(), 0.1f, 1.0f, "%.2f");
           }
 
           // Display XeSS internal resolution
@@ -3869,7 +3869,7 @@ namespace dxvk {
           xess.getInputSize(inputWidth, inputHeight);
           ImGui::TextWrapped(str::format("Render Resolution: ", inputWidth, "x", inputHeight).c_str());
         } else if (RtxOptions::upscalerType() == UpscalerType::TAAU) {
-        ImGui::SliderFloat("Resolution scale", &RtxOptions::resolutionScaleObject(), 0.5f, 1.0f);
+        RemixGui::SliderFloat("Resolution scale", &RtxOptions::resolutionScaleObject(), 0.5f, 1.0f);
       }
 
       RemixGui::Separator();
@@ -3887,9 +3887,9 @@ namespace dxvk {
       if (RemixGui::CollapsingHeader("Resolver", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
 
-        ImGui::DragInt("Max Primary Interactions", &RtxOptions::primaryRayMaxInteractionsObject(), 1.0f, 1, 255, "%d", sliderFlags);
-        ImGui::DragInt("Max PSR Interactions", &RtxOptions::psrRayMaxInteractionsObject(), 1.0f, 1, 255, "%d", sliderFlags);
-        ImGui::DragInt("Max Secondary Interactions", &RtxOptions::secondaryRayMaxInteractionsObject(), 1.0f, 1, 255, "%d", sliderFlags);
+        RemixGui::DragInt("Max Primary Interactions", &RtxOptions::primaryRayMaxInteractionsObject(), 1.0f, 1, 255, "%d", sliderFlags);
+        RemixGui::DragInt("Max PSR Interactions", &RtxOptions::psrRayMaxInteractionsObject(), 1.0f, 1, 255, "%d", sliderFlags);
+        RemixGui::DragInt("Max Secondary Interactions", &RtxOptions::secondaryRayMaxInteractionsObject(), 1.0f, 1, 255, "%d", sliderFlags);
         RemixGui::Checkbox("Separate Unordered Approximations", &RtxOptions::enableSeparateUnorderedApproximationsObject());
         RemixGui::Checkbox("Direct Translucent Shadows", &RtxOptions::enableDirectTranslucentShadowsObject());
         RemixGui::Checkbox("Direct Alpha Blended Shadows", &RtxOptions::enableDirectAlphaBlendShadowsObject());
@@ -3904,9 +3904,9 @@ namespace dxvk {
         }
         RemixGui::Checkbox("Track Particle Object", &RtxOptions::trackParticleObjectsObject());
 
-        ImGui::SliderFloat("Resolve Transparency Threshold", &RtxOptions::resolveTransparencyThresholdObject(), 0.0f, 1.0f);
+        RemixGui::SliderFloat("Resolve Transparency Threshold", &RtxOptions::resolveTransparencyThresholdObject(), 0.0f, 1.0f);
         RtxOptions::resolveOpaquenessThreshold.setDeferred(std::max(RtxOptions::resolveTransparencyThreshold(), RtxOptions::resolveOpaquenessThreshold()));
-        ImGui::SliderFloat("Resolve Opaqueness Threshold", &RtxOptions::resolveOpaquenessThresholdObject(), 0.0f, 1.0f);
+        RemixGui::SliderFloat("Resolve Opaqueness Threshold", &RtxOptions::resolveOpaquenessThresholdObject(), 0.0f, 1.0f);
 
         ImGui::Unindent();
       }
@@ -3918,12 +3918,12 @@ namespace dxvk {
         RemixGui::Checkbox("Transmission PSR Enabled", &RtxOptions::enablePSTRObject());
         // # bounces limitted by 8b allocation in payload
         // Note: value of 255 effectively means unlimited bounces, and we don't want to allow that
-        ImGui::DragInt("Max Reflection PSR Bounces", &RtxOptions::psrrMaxBouncesObject(), 1.0f, 1, 254, "%d", sliderFlags);
-        ImGui::DragInt("Max Transmission PSR Bounces", &RtxOptions::pstrMaxBouncesObject(), 1.0f, 1, 254, "%d", sliderFlags);
+        RemixGui::DragInt("Max Reflection PSR Bounces", &RtxOptions::psrrMaxBouncesObject(), 1.0f, 1, 254, "%d", sliderFlags);
+        RemixGui::DragInt("Max Transmission PSR Bounces", &RtxOptions::pstrMaxBouncesObject(), 1.0f, 1, 254, "%d", sliderFlags);
         RemixGui::Checkbox("Outgoing Transmission Approx Enabled", &RtxOptions::enablePSTROutgoingSplitApproximationObject());
         RemixGui::Checkbox("Incident Transmission Approx Enabled", &RtxOptions::enablePSTRSecondaryIncidentSplitApproximationObject());
-        ImGui::DragFloat("Reflection PSR Normal Detail Threshold", &RtxOptions::psrrNormalDetailThresholdObject(), 0.001f, 0.f, 1.f);
-        ImGui::DragFloat("Transmission PSR Normal Detail Threshold", &RtxOptions::pstrNormalDetailThresholdObject(), 0.001f, 0.f, 1.f);
+        RemixGui::DragFloat("Reflection PSR Normal Detail Threshold", &RtxOptions::psrrNormalDetailThresholdObject(), 0.001f, 0.f, 1.f);
+        RemixGui::DragFloat("Transmission PSR Normal Detail Threshold", &RtxOptions::pstrNormalDetailThresholdObject(), 0.001f, 0.f, 1.f);
 
         ImGui::Unindent();
       }
@@ -3942,40 +3942,40 @@ namespace dxvk {
         RemixGui::Checkbox("Transmission Approximation in Indirect Rays", &RtxOptions::enableTransmissionApproximationInIndirectRaysObject());
         // # bounces limitted by 4b allocation in payload
         // Note: It's possible get up to 16 bounces => will require logic adjustment
-        ImGui::DragInt("Minimum Path Bounces", &RtxOptions::pathMinBouncesObject(), 1.0f, 0, 15, "%d", sliderFlags);
-        ImGui::DragInt("Maximum Path Bounces", &RtxOptions::pathMaxBouncesObject(), 1.0f, RtxOptions::pathMinBounces(), 15, "%d", sliderFlags);
-        ImGui::DragFloat("Firefly Filtering Luminance Threshold", &RtxOptions::fireflyFilteringLuminanceThresholdObject(), 0.1f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-        ImGui::DragFloat("Secondary Specular Firefly Filtering Threshold", &RtxOptions::secondarySpecularFireflyFilteringThresholdObject(), 0.1f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-        ImGui::DragFloat("Opaque Diffuse Lobe Probability Zero Threshold", &RtxOptions::opaqueDiffuseLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Min Opaque Diffuse Lobe Probability", &RtxOptions::minOpaqueDiffuseLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Opaque Specular Lobe Probability Zero Threshold", &RtxOptions::opaqueSpecularLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Min Opaque Specular Lobe Probability", &RtxOptions::minOpaqueSpecularLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Opaque Opacity Transmission Lobe Probability Zero Threshold", &RtxOptions::opaqueOpacityTransmissionLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Min Opaque Opacity Transmission Lobe Probability", &RtxOptions::minOpaqueOpacityTransmissionLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Diffuse Transmission Lobe Probability Zero Threshold", &RtxOptions::opaqueDiffuseTransmissionLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Min Diffuse Transmission Lobe Probability", &RtxOptions::minOpaqueDiffuseTransmissionLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Translucent Specular Lobe Probability Zero Threshold", &RtxOptions::translucentSpecularLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Min Translucent Specular Lobe Probability", &RtxOptions::minTranslucentSpecularLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Translucent Transmission Lobe Probability Zero Threshold", &RtxOptions::translucentTransmissionLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Min Translucent Transmission Lobe Probability", &RtxOptions::minTranslucentTransmissionLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Indirect Ray Spread Angle Factor", &RtxOptions::indirectRaySpreadAngleFactorObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        RemixGui::DragInt("Minimum Path Bounces", &RtxOptions::pathMinBouncesObject(), 1.0f, 0, 15, "%d", sliderFlags);
+        RemixGui::DragInt("Maximum Path Bounces", &RtxOptions::pathMaxBouncesObject(), 1.0f, RtxOptions::pathMinBounces(), 15, "%d", sliderFlags);
+        RemixGui::DragFloat("Firefly Filtering Luminance Threshold", &RtxOptions::fireflyFilteringLuminanceThresholdObject(), 0.1f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
+        RemixGui::DragFloat("Secondary Specular Firefly Filtering Threshold", &RtxOptions::secondarySpecularFireflyFilteringThresholdObject(), 0.1f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
+        RemixGui::DragFloat("Opaque Diffuse Lobe Probability Zero Threshold", &RtxOptions::opaqueDiffuseLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        RemixGui::DragFloat("Min Opaque Diffuse Lobe Probability", &RtxOptions::minOpaqueDiffuseLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        RemixGui::DragFloat("Opaque Specular Lobe Probability Zero Threshold", &RtxOptions::opaqueSpecularLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        RemixGui::DragFloat("Min Opaque Specular Lobe Probability", &RtxOptions::minOpaqueSpecularLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        RemixGui::DragFloat("Opaque Opacity Transmission Lobe Probability Zero Threshold", &RtxOptions::opaqueOpacityTransmissionLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        RemixGui::DragFloat("Min Opaque Opacity Transmission Lobe Probability", &RtxOptions::minOpaqueOpacityTransmissionLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        RemixGui::DragFloat("Diffuse Transmission Lobe Probability Zero Threshold", &RtxOptions::opaqueDiffuseTransmissionLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        RemixGui::DragFloat("Min Diffuse Transmission Lobe Probability", &RtxOptions::minOpaqueDiffuseTransmissionLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        RemixGui::DragFloat("Translucent Specular Lobe Probability Zero Threshold", &RtxOptions::translucentSpecularLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        RemixGui::DragFloat("Min Translucent Specular Lobe Probability", &RtxOptions::minTranslucentSpecularLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        RemixGui::DragFloat("Translucent Transmission Lobe Probability Zero Threshold", &RtxOptions::translucentTransmissionLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        RemixGui::DragFloat("Min Translucent Transmission Lobe Probability", &RtxOptions::minTranslucentTransmissionLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        RemixGui::DragFloat("Indirect Ray Spread Angle Factor", &RtxOptions::indirectRaySpreadAngleFactorObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
 
         if (RtxOptions::enableRussianRoulette() && RemixGui::CollapsingHeader("Russian Roulette", collapsingHeaderClosedFlags)) {
           ImGui::Indent();
 
-          ImGui::DragFloat("1st bounce: Min Continue Probability", &RtxOptions::russianRoulette1stBounceMinContinueProbabilityObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
-          ImGui::DragFloat("1st bounce: Max Continue Probability", &RtxOptions::russianRoulette1stBounceMaxContinueProbabilityObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
+          RemixGui::DragFloat("1st bounce: Min Continue Probability", &RtxOptions::russianRoulette1stBounceMinContinueProbabilityObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
+          RemixGui::DragFloat("1st bounce: Max Continue Probability", &RtxOptions::russianRoulette1stBounceMaxContinueProbabilityObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
           
           secondPlusBounceRussianRouletteModeCombo.getKey(&RtxOptions::russianRouletteModeObject());
           if (RtxOptions::russianRouletteMode() == RussianRouletteMode::ThroughputBased)
           {
-            ImGui::DragFloat("2nd+ bounce: Max Continue Probability", &RtxOptions::russianRouletteMaxContinueProbabilityObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
+            RemixGui::DragFloat("2nd+ bounce: Max Continue Probability", &RtxOptions::russianRouletteMaxContinueProbabilityObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
           }
           else
           {
-            ImGui::DragFloat("2nd+ bounce: Diffuse Continue Probability", &RtxOptions::russianRouletteDiffuseContinueProbabilityObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
-            ImGui::DragFloat("2nd+ bounce: Specular Continue Probability", &RtxOptions::russianRouletteSpecularContinueProbabilityObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
-            ImGui::DragFloat("2nd+ bounce: Distance Factor", &RtxOptions::russianRouletteDistanceFactorObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
+            RemixGui::DragFloat("2nd+ bounce: Diffuse Continue Probability", &RtxOptions::russianRouletteDiffuseContinueProbabilityObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
+            RemixGui::DragFloat("2nd+ bounce: Specular Continue Probability", &RtxOptions::russianRouletteSpecularContinueProbabilityObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
+            RemixGui::DragFloat("2nd+ bounce: Distance Factor", &RtxOptions::russianRouletteDistanceFactorObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
           }
           
           ImGui::Unindent();
@@ -4022,19 +4022,19 @@ namespace dxvk {
 
         ImGui::TextWrapped("These settings control the effect lights, which are created by Remix, and attached to objects tagged using the rtx.lightConverter option (found in the texture tagging menu as 'Add Light to Texture').");
 
-        ImGui::DragFloat("Light Intensity", &RtxOptions::effectLightIntensityObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-        ImGui::DragFloat("Light Radius", &RtxOptions::effectLightRadiusObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
+        RemixGui::DragFloat("Light Intensity", &RtxOptions::effectLightIntensityObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
+        RemixGui::DragFloat("Light Radius", &RtxOptions::effectLightRadiusObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
         // Plasma ball has first priority
         RemixGui::Checkbox("Plasma Ball Effect", &RtxOptions::effectLightPlasmaBallObject());
         ImGui::BeginDisabled(RtxOptions::effectLightPlasmaBall());
-        ImGui::ColorPicker3("Light Color", &RtxOptions::effectLightColorObject());
+        RemixGui::ColorPicker3("Light Color", &RtxOptions::effectLightColorObject());
         ImGui::EndDisabled();
         ImGui::Unindent();
       }
 
-      ImGui::DragFloat("Emissive Intensity", &RtxOptions::emissiveIntensityObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
+      RemixGui::DragFloat("Emissive Intensity", &RtxOptions::emissiveIntensityObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
       RemixGui::Separator();
-      ImGui::SliderInt("RIS Light Sample Count", &RtxOptions::risLightSampleCountObject(), 0, 64);
+      RemixGui::SliderInt("RIS Light Sample Count", &RtxOptions::risLightSampleCountObject(), 0, 64);
       RemixGui::Separator();
       RemixGui::Checkbox("Direct Lighting Enabled", &RtxOptions::enableDirectLightingObject());
       RemixGui::Checkbox("Indirect Lighting Enabled", &RtxOptions::enableSecondaryBouncesObject());
@@ -4111,18 +4111,18 @@ namespace dxvk {
       RemixGui::Checkbox("Enable Diffusion Profile SSS", &RtxOptions::SubsurfaceScattering::enableDiffusionProfileObject());
 
       if (RtxOptions::SubsurfaceScattering::enableDiffusionProfile()) {
-        ImGui::SliderFloat("SSS Scale", &RtxOptions::SubsurfaceScattering::diffusionProfileScaleObject(), 0.0f, 100.0f);
+        RemixGui::SliderFloat("SSS Scale", &RtxOptions::SubsurfaceScattering::diffusionProfileScaleObject(), 0.0f, 100.0f);
 
         RemixGui::Checkbox("Enable SSS Transmission", &RtxOptions::SubsurfaceScattering::enableTransmissionObject());
         if (RtxOptions::SubsurfaceScattering::enableTransmission()) {
           RemixGui::Checkbox("Enable SSS Transmission Single Scattering", &RtxOptions::SubsurfaceScattering::enableTransmissionSingleScatteringObject());
           RemixGui::Checkbox("Enable Transmission Diffusion Profile Correction [Experimental]", &RtxOptions::SubsurfaceScattering::enableTransmissionDiffusionProfileCorrectionObject());
-          ImGui::DragInt("SSS Transmission BSDF Sample Count", &RtxOptions::SubsurfaceScattering::transmissionBsdfSampleCountObject(), 0.1f, 1, 64, "%d", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragInt("SSS Transmission Single Scattering Sample Count", &RtxOptions::SubsurfaceScattering::transmissionSingleScatteringSampleCountObject(), 0.1f, 1, 64, "%d", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragInt("SSS Transmission BSDF Sample Count", &RtxOptions::SubsurfaceScattering::transmissionBsdfSampleCountObject(), 0.1f, 1, 64, "%d", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragInt("SSS Transmission Single Scattering Sample Count", &RtxOptions::SubsurfaceScattering::transmissionSingleScatteringSampleCountObject(), 0.1f, 1, 64, "%d", ImGuiSliderFlags_AlwaysClamp);
         }
       }
 
-      ImGui::DragInt2("Diffusion Profile Sampling Debugging Pixel Position", &RtxOptions::SubsurfaceScattering::diffusionProfileDebugPixelPositionObject(), 0.1f, 0, INT32_MAX, "%d", ImGuiSliderFlags_AlwaysClamp);
+      RemixGui::DragInt2("Diffusion Profile Sampling Debugging Pixel Position", &RtxOptions::SubsurfaceScattering::diffusionProfileDebugPixelPositionObject(), 0.1f, 0, INT32_MAX, "%d", ImGuiSliderFlags_AlwaysClamp);
 
       ImGui::Unindent();
     }
@@ -4137,16 +4137,16 @@ namespace dxvk {
       RemixGui::Checkbox("Emissive Blend Translation", &RtxOptions::enableEmissiveBlendModeTranslationObject());
 
       RemixGui::Checkbox("Emissive Blend Override", &RtxOptions::enableEmissiveBlendEmissiveOverrideObject());
-      ImGui::DragFloat("Emissive Blend Override Intensity", &RtxOptions::emissiveBlendOverrideEmissiveIntensityObject(), 0.001f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
+      RemixGui::DragFloat("Emissive Blend Override Intensity", &RtxOptions::emissiveBlendOverrideEmissiveIntensityObject(), 0.001f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
 
       RemixGui::Separator();
-      ImGui::SliderFloat("Particle Softness", &RtxOptions::particleSoftnessFactorObject(), 0.f, 0.5f);
+      RemixGui::SliderFloat("Particle Softness", &RtxOptions::particleSoftnessFactorObject(), 0.f, 0.5f);
       RemixGui::Separator();
       if (RemixGui::CollapsingHeader("Weighted Blended OIT", collapsingHeaderClosedFlags)) {
         RemixGui::Checkbox("Enable", &RtxOptions::wboitEnabledObject());
         ImGui::BeginDisabled(!RtxOptions::wboitEnabled());
-        ImGui::SliderFloat("Energy Compensation", &RtxOptions::wboitEnergyLossCompensationObject(), 1.f, 10.f);
-        ImGui::SliderFloat("Depth Weight Tuning", &RtxOptions::wboitDepthWeightTuningObject(), 0.01f, 10.f);
+        RemixGui::SliderFloat("Energy Compensation", &RtxOptions::wboitEnergyLossCompensationObject(), 1.f, 10.f);
+        RemixGui::SliderFloat("Depth Weight Tuning", &RtxOptions::wboitDepthWeightTuningObject(), 0.01f, 10.f);
         ImGui::EndDisabled();
       }
       common->metaComposite().showStochasticAlphaBlendImguiSettings();
@@ -4249,10 +4249,10 @@ namespace dxvk {
 
       if (RemixGui::CollapsingHeader("Tonemapping", collapsingHeaderClosedFlags))
       {
-        ImGui::SliderInt("User Brightness", &RtxOptions::userBrightnessObject(), 0, 100, "%d");
-        ImGui::DragFloat("User Brightness EV Range", &RtxOptions::userBrightnessEVRangeObject(), 0.5f, 0.f, 10.f, "%.1f");
+        RemixGui::SliderInt("User Brightness", &RtxOptions::userBrightnessObject(), 0, 100, "%d");
+        RemixGui::DragFloat("User Brightness EV Range", &RtxOptions::userBrightnessEVRangeObject(), 0.5f, 0.f, 10.f, "%.1f");
         RemixGui::Separator();
-        ImGui::Combo("Tonemapping Mode", &RtxOptions::tonemappingModeObject(), "Global\0Local\0");
+        RemixGui::Combo("Tonemapping Mode", &RtxOptions::tonemappingModeObject(), "Global\0Local\0");
         if (RtxOptions::tonemappingMode() == TonemappingMode::Global) {
           common->metaToneMapping().showImguiSettings();
         } else {
@@ -4287,8 +4287,8 @@ namespace dxvk {
       RemixGui::Checkbox("Enable Triangle Culling (Globally)", &RtxOptions::enableCullingObject());
       RemixGui::Checkbox("Enable Triangle Culling (Override Secondary Rays)", &RtxOptions::enableCullingInSecondaryRaysObject());
       RemixGui::Separator();
-      ImGui::DragInt("Min Prims in Dynamic BLAS", &RtxOptions::minPrimsInDynamicBLASObject(), 1.f, 100, 0);
-      ImGui::DragInt("Max Prims in Merged BLAS", &RtxOptions::maxPrimsInMergedBLASObject(), 1.f, 100, 0);
+      RemixGui::DragInt("Min Prims in Dynamic BLAS", &RtxOptions::minPrimsInDynamicBLASObject(), 1.f, 100, 0);
+      RemixGui::DragInt("Max Prims in Merged BLAS", &RtxOptions::maxPrimsInMergedBLASObject(), 1.f, 100, 0);
       RemixGui::Checkbox("Force Merge All Meshes", &RtxOptions::forceMergeAllMeshesObject());
       RemixGui::Checkbox("Minimize BLAS Merging", &RtxOptions::minimizeBlasMergingObject());
       RemixGui::Separator();
@@ -4306,7 +4306,7 @@ namespace dxvk {
       ImGui::BeginDisabled(!RtxOptions::TextureManager::samplerFeedbackEnable());
       {
         if (RtxOptions::TextureManager::fixedBudgetEnable() && RtxOptions::TextureManager::samplerFeedbackEnable()) {
-          if (ImGui::DragFloatMB_showGB("Texture Budget##1",
+          if (RemixGui::DragFloatMB_showGB("Texture Budget##1",
                                         &RtxOptions::TextureManager::fixedBudgetMiBObject(),
                                         0.5f, 1.f, 32.f, "%.1f GB", ImGuiSliderFlags_NoRoundToFormat)) {
             ctx->getCommonObjects()->getSceneManager().requestVramCompaction();
@@ -4321,13 +4321,13 @@ namespace dxvk {
           s_dummy = RtxOptions::TextureManager::samplerFeedbackEnable()
             ? float(g_streamedTextures_budgetBytes) / 1024.F / 1024.F / 1024.F
             : 0.F;
-          ImGui::DragFloat("Texture Cache##2", &s_dummy, 0.5f, 1.f, 32.f, formatstr, ImGuiSliderFlags_NoRoundToFormat);
+          RemixGui::DragFloat("Texture Cache##2", &s_dummy, 0.5f, 1.f, 32.f, formatstr, ImGuiSliderFlags_NoRoundToFormat);
           ImGui::EndDisabled();
         }
       }
       {
         ImGui::BeginDisabled(RtxOptions::TextureManager::fixedBudgetEnable());
-        if (ImGui::DragInt("of VRAM is dedicated to Textures",
+        if (RemixGui::DragInt("of VRAM is dedicated to Textures",
                             &RtxOptions::TextureManager::budgetPercentageOfAvailableVramObject(),
                             10.F,
                             10,
@@ -4424,9 +4424,9 @@ namespace dxvk {
       RemixGui::Checkbox("Create Virtual Instances", &RtxOptions::PlayerModel::enableVirtualInstancesObject());
       if (RemixGui::CollapsingHeader("Calibration", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
-        ImGui::DragFloat("Backward Offset", &RtxOptions::PlayerModel::backwardOffsetObject(), 0.01f, 0.f, 100.f);
-        ImGui::DragFloat("Horizontal Detection Distance", &RtxOptions::PlayerModel::horizontalDetectionDistanceObject(), 0.01f, 0.f, 100.f);
-        ImGui::DragFloat("Vertical Detection Distance", &RtxOptions::PlayerModel::verticalDetectionDistanceObject(), 0.01f, 0.f, 100.f);
+        RemixGui::DragFloat("Backward Offset", &RtxOptions::PlayerModel::backwardOffsetObject(), 0.01f, 0.f, 100.f);
+        RemixGui::DragFloat("Horizontal Detection Distance", &RtxOptions::PlayerModel::horizontalDetectionDistanceObject(), 0.01f, 0.f, 100.f);
+        RemixGui::DragFloat("Vertical Detection Distance", &RtxOptions::PlayerModel::verticalDetectionDistanceObject(), 0.01f, 0.f, 100.f);
         ImGui::Unindent();
       }
       ImGui::Unindent();
@@ -4435,15 +4435,15 @@ namespace dxvk {
     if (RemixGui::CollapsingHeader("Displacement [Experimental]", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
       ImGui::TextWrapped("Warning: This is currently implemented using POM with a simple height map, displacing inwards.  The implementation may change in the future, which could include changes to the texture format or displacing outwards.\nRaymarched POM will use a simple raymarch algorithm, and will show artifacts on thin features and at oblique angles.\nQuadtree POM depends on custom mipmaps with maximums instead of averages, which can be generated using `generate_max_mip.py`.");
-      ImGui::Combo("Mode", &RtxOptions::Displacement::modeObject(), "Off\0Raymarched POM\0Quadtree POM\0");
+      RemixGui::Combo("Mode", &RtxOptions::Displacement::modeObject(), "Off\0Raymarched POM\0Quadtree POM\0");
       RemixGui::Checkbox("Enable Direct Lighting", &RtxOptions::Displacement::enableDirectLightingObject());
       RemixGui::Checkbox("Enable Indirect Lighting", &RtxOptions::Displacement::enableIndirectLightingObject());
       RemixGui::Checkbox("Enable Indirect Hit", &RtxOptions::Displacement::enableIndirectHitObject());
       RemixGui::Checkbox("Enable NEE Cache", &RtxOptions::Displacement::enableNEECacheObject());
       RemixGui::Checkbox("Enable ReSTIR_GI", &RtxOptions::Displacement::enableReSTIRGIObject());
       RemixGui::Checkbox("Enable PSR", &RtxOptions::Displacement::enablePSRObject());
-      ImGui::DragFloat("Global Displacement Factor", &RtxOptions::Displacement::displacementFactorObject(), 0.01f, 0.0f, 20.0f);
-      ImGui::DragInt("Max Iterations", &RtxOptions::Displacement::maxIterationsObject(), 1.f, 1, 256, "%d", sliderFlags);
+      RemixGui::DragFloat("Global Displacement Factor", &RtxOptions::Displacement::displacementFactorObject(), 0.01f, 0.0f, 20.0f);
+      RemixGui::DragInt("Max Iterations", &RtxOptions::Displacement::maxIterationsObject(), 1.f, 1, 256, "%d", sliderFlags);
       ImGui::Unindent();
     }
 
@@ -4464,11 +4464,11 @@ namespace dxvk {
         viewDistanceFunctionCombo.getKey(&ViewDistanceOptions::distanceFunctionObject());
 
         if (ViewDistanceOptions::distanceMode() == ViewDistanceMode::HardCutoff) {
-          ImGui::DragFloat("Distance Threshold", &ViewDistanceOptions::distanceThresholdObject(), 0.1f, 0.0f, 0.0f, "%.2f", sliderFlags);
+          RemixGui::DragFloat("Distance Threshold", &ViewDistanceOptions::distanceThresholdObject(), 0.1f, 0.0f, 0.0f, "%.2f", sliderFlags);
         } else if (ViewDistanceOptions::distanceMode() == ViewDistanceMode::CoherentNoise) {
-          ImGui::DragFloat("Distance Fade Min", &ViewDistanceOptions::distanceFadeMinObject(), 0.1f, 0.0f, ViewDistanceOptions::distanceFadeMax(), "%.2f", sliderFlags);
-          ImGui::DragFloat("Distance Fade Max", &ViewDistanceOptions::distanceFadeMaxObject(), 0.1f, ViewDistanceOptions::distanceFadeMin(), 0.0f, "%.2f", sliderFlags);
-          ImGui::DragFloat("Noise Scale", &ViewDistanceOptions::noiseScaleObject(), 0.1f, 0.0f, 0.0f, "%.2f", sliderFlags);
+          RemixGui::DragFloat("Distance Fade Min", &ViewDistanceOptions::distanceFadeMinObject(), 0.1f, 0.0f, ViewDistanceOptions::distanceFadeMax(), "%.2f", sliderFlags);
+          RemixGui::DragFloat("Distance Fade Max", &ViewDistanceOptions::distanceFadeMaxObject(), 0.1f, ViewDistanceOptions::distanceFadeMin(), 0.0f, "%.2f", sliderFlags);
+          RemixGui::DragFloat("Noise Scale", &ViewDistanceOptions::noiseScaleObject(), 0.1f, 0.0f, 0.0f, "%.2f", sliderFlags);
 
           // Note: ImGui's limits do not apply for text entry for whatever reason so we need to clamp these options manually to ensure they do not trigger asserts.
           ViewDistanceOptions::distanceFadeMin.setDeferred(std::min(ViewDistanceOptions::distanceFadeMin(), ViewDistanceOptions::distanceFadeMax()));
@@ -4485,14 +4485,14 @@ namespace dxvk {
       RemixGui::Checkbox("Use White Material Textures", &RtxOptions::useWhiteMaterialModeObject());
       RemixGui::Separator();
       constexpr float kMipBiasRange = 32;
-      ImGui::DragFloat("Mip LOD Bias", &RtxOptions::nativeMipBiasObject(), 0.01f, -kMipBiasRange, kMipBiasRange, "%.2f", sliderFlags);
-      ImGui::DragFloat("Upscaling LOD Bias", &RtxOptions::upscalingMipBiasObject(), 0.01f, -kMipBiasRange, kMipBiasRange, "%.2f", sliderFlags);
+      RemixGui::DragFloat("Mip LOD Bias", &RtxOptions::nativeMipBiasObject(), 0.01f, -kMipBiasRange, kMipBiasRange, "%.2f", sliderFlags);
+      RemixGui::DragFloat("Upscaling LOD Bias", &RtxOptions::upscalingMipBiasObject(), 0.01f, -kMipBiasRange, kMipBiasRange, "%.2f", sliderFlags);
       RemixGui::Separator();
       RemixGui::Checkbox("Use Anisotropic Filtering", &RtxOptions::useAnisotropicFilteringObject());
       if (RtxOptions::useAnisotropicFiltering()) {
-        ImGui::DragFloat("Max Anisotropy Samples", &RtxOptions::maxAnisotropySamplesObject(), 0.5f, 1.0f, 16.f, "%.3f", sliderFlags);
+        RemixGui::DragFloat("Max Anisotropy Samples", &RtxOptions::maxAnisotropySamplesObject(), 0.5f, 1.0f, 16.f, "%.3f", sliderFlags);
       }
-      ImGui::DragFloat("Translucent Decal Albedo Factor", &RtxOptions::translucentDecalAlbedoFactorObject(), 0.01f);
+      RemixGui::DragFloat("Translucent Decal Albedo Factor", &RtxOptions::translucentDecalAlbedoFactorObject(), 0.01f);
       ImGui::Unindent();
     }
 
@@ -4509,16 +4509,16 @@ namespace dxvk {
             RemixGui::Checkbox("Infinity Far Frustum", &RtxOptions::AntiCulling::Object::enableInfinityFarFrustumObject());
           }
           RemixGui::Checkbox("Enable Bounding Box Hash For Duplication Check", &RtxOptions::AntiCulling::Object::hashInstanceWithBoundingBoxHashObject());
-          ImGui::InputInt("Instance Max Size", &RtxOptions::AntiCulling::Object::numObjectsToKeepObject(), 1, 1, 0);
-          ImGui::DragFloat("Anti-Culling Fov Scale", &RtxOptions::AntiCulling::Object::fovScaleObject(), 0.01f, 0.1f, 2.0f);
-          ImGui::DragFloat("Anti-Culling Far Plane Scale", &RtxOptions::AntiCulling::Object::farPlaneScaleObject(), 0.1f, 0.1f, 10000.0f);
+          RemixGui::InputInt("Instance Max Size", &RtxOptions::AntiCulling::Object::numObjectsToKeepObject(), 1, 1, 0);
+          RemixGui::DragFloat("Anti-Culling Fov Scale", &RtxOptions::AntiCulling::Object::fovScaleObject(), 0.01f, 0.1f, 2.0f);
+          RemixGui::DragFloat("Anti-Culling Far Plane Scale", &RtxOptions::AntiCulling::Object::farPlaneScaleObject(), 0.1f, 0.1f, 10000.0f);
         }
         RemixGui::Separator();
         RemixGui::Checkbox("Anti-Culling Lights", &RtxOptions::AntiCulling::Light::enableObject());
         if (RtxOptions::AntiCulling::Light::enable()) {
-          ImGui::InputInt("Max Number Of Lights", &RtxOptions::AntiCulling::Light::numLightsToKeepObject(), 1, 1, 0);
-          ImGui::InputInt("Max Number of Frames to keep lights", &RtxOptions::AntiCulling::Light::numFramesToExtendLightLifetimeObject(), 1, 1, 0);
-          ImGui::DragFloat("Anti-Culling Lights Fov Scale", &RtxOptions::AntiCulling::Light::fovScaleObject(), 0.01f, 0.1f, 2.0f);
+          RemixGui::InputInt("Max Number Of Lights", &RtxOptions::AntiCulling::Light::numLightsToKeepObject(), 1, 1, 0);
+          RemixGui::InputInt("Max Number of Frames to keep lights", &RtxOptions::AntiCulling::Light::numFramesToExtendLightLifetimeObject(), 1, 1, 0);
+          RemixGui::DragFloat("Anti-Culling Lights Fov Scale", &RtxOptions::AntiCulling::Light::fovScaleObject(), 0.01f, 0.1f, 2.0f);
         }
       } else {
         ImGui::Text("The game doesn't set up the View Matrix, \nAnti-Culling is disabled to prevent visual corruption.");
