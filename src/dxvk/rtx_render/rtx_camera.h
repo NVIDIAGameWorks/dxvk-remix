@@ -120,7 +120,6 @@ namespace dxvk
     RTX_OPTION("rtx", float, freeCameraTurningSpeed, 1, "Free camera turning speed (applies to keyboard, not mouse) [radians/s].");
     RTX_OPTION("rtx", bool, freeCameraInvertY, false, "Invert free camera pitch direction.");
 
-    long m_mouseX = 0, m_mouseY = 0;
     uint32_t m_renderResolution[2] = { 0, 0 };
     uint32_t m_finalResolution[2] = { 0, 0 };
     float m_jitter[2] = { 0, 0 };

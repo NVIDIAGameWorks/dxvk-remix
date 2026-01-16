@@ -693,7 +693,7 @@ namespace dxvk {
     m_capture = new ImGuiCapture(this);
 
     if (RtxOptions::useNewGuiInputMethod()) {
-      m_overlayWin = new GameOverlay(L"RemixGuiInputSink", this);
+      m_overlayWin = new GameOverlay("RemixGuiInputSink", this);
     }
   }
 
