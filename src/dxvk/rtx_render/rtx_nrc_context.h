@@ -31,8 +31,6 @@
 namespace dxvk {
   struct NrcCtxOptions {
     friend class NeuralRadianceCache;
-    RTX_OPTION("rtx.neuralRadianceCache", NrcResolveMode, debugResolveMode, NrcResolveMode::AddQueryResultToOutput, "Debug Visualization Mode.");
-    RTX_OPTION("rtx.neuralRadianceCache", bool, enableDebugBuffers, false, "Enables Debug Buffers which are needed for a subset of debug visualization modes.");
     RTX_OPTION("rtx.neuralRadianceCache", bool, enableCustomNetworkConfig, false,
                "Enables usage of a custom config \"CustomNetworkConfig.json\" for NRC.\n"
                "The file needs to be present in the application's working directory.");
@@ -43,7 +41,11 @@ namespace dxvk {
   class NrcContext : public CommonDeviceObject, public RcObject {
   public:
 
-    NrcContext(DxvkDevice& device);
+    struct Configuration {
+      bool debugBufferIsRequired = false;
+    };
+
+    NrcContext(DxvkDevice& device, const Configuration& config);
     ~NrcContext();
 
     // Must be called first after NrcContext is created
@@ -60,6 +62,7 @@ namespace dxvk {
     void endFrame();
 
     VkDeviceSize getCurrentMemoryConsumption() const;
+    bool isDebugBufferRequired() const;
 
     void populateShaderConstants(struct NrcConstants& outConstants) const;
 
@@ -78,6 +81,7 @@ namespace dxvk {
     inline static bool s_hasCheckedNrcSupport = false;
 
     bool m_isSupported = false;
+    bool m_isDebugBufferRequired = false;
     nrc::vulkan::Context* m_nrcContext = nullptr;
     nrc::ContextSettings m_nrcContextSettings;
     nrc::FrameSettings m_nrcFrameSettings;
