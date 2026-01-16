@@ -82,7 +82,12 @@ namespace dxvk {
                  "Set to negative value to lower the max number of training bounces and to a higher value to increase it in each quality preset.");
       RTX_OPTION("rtx.neuralRadianceCache", uint32_t, numFramesToSmoothOutTrainingDimensions, 16, "");
       RTX_OPTION("rtx.neuralRadianceCache", bool, trainCache, true, "");
-      RTX_OPTION("rtx.neuralRadianceCache", bool, enableDebugResolveMode, false, "");
+      static void onEnableDebugResolveModeChanged(DxvkDevice* device);
+      RTX_OPTION_ARGS("rtx.neuralRadianceCache", bool, enableDebugResolveMode, false, "", args.environment="RTX_NRC_ENABLE_DEBUG_RESOLVE_MODE", args.onChangeCallback = &onEnableDebugResolveModeChanged);
+      static void onDebugResolveModeChanged(DxvkDevice* device);
+      inline static bool s_nrcPrevDebugResolveIsEnabled = false;
+      inline static bool s_nrcDebugBufferIsRequired { false };
+      RTX_OPTION_ARGS("rtx.neuralRadianceCache", NrcResolveMode, debugResolveMode, NrcResolveMode::AddQueryResultToOutput, "Debug Visualization Mode.", args.environment="RTX_NRC_DEBUG_RESOLVE_MODE", args.onChangeCallback = &onDebugResolveModeChanged);
       RTX_OPTION("rtx.neuralRadianceCache", uint32_t, jitterSequenceLength, 128,
                  "Halton sequence length to use for jittering training path to pixel mapping every frame.\n"
                  "The sequence length governs how often the jitter distribution repeats. Setting this to 0 disables jittering."
@@ -241,7 +246,7 @@ namespace dxvk {
     float                  m_trainingLoss = 0.f;
 
     Vector2                m_numQueryPixelsPerTrainingPixel = Vector2 { 0.f, 0.f };
-    bool                   m_delayedEnableDebugBuffers;
+    bool                   m_enableDebugBuffers = false;
     bool                   m_delayedEnableCustomNetworkConfig;
 
     Vector3                m_sceneBoundsMin = Vector3 { FLT_MAX, FLT_MAX, FLT_MAX };
@@ -249,8 +254,5 @@ namespace dxvk {
 
     // Each training iteration processes 16K training records
     static constexpr uint32_t     kNumTrainingRecordsPerIteration = 16 * 1024;
-
-    // Prev RtxOption states
-    bool m_prevEnableDebugResolveMode = false;
    };
 } // namespace dxvk

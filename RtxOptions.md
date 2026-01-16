@@ -417,7 +417,6 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.neuralRadianceCache.enableAdaptiveTrainingDimensions|bool|True|||Enables adaptive training dimensions that scale based off pathtracer's execution behavior on a given scene\.|
 |rtx.neuralRadianceCache.enableCalculateTrainingLoss|bool|False|||Enables calculation of a training loss\. Imposes a performance penalty\.|
 |rtx.neuralRadianceCache.enableCustomNetworkConfig|bool|False|||Enables usage of a custom config "CustomNetworkConfig\.json" for NRC\.<br>The file needs to be present in the application's working directory\.|
-|rtx.neuralRadianceCache.enableDebugBuffers|bool|False|||Enables Debug Buffers which are needed for a subset of debug visualization modes\.|
 |rtx.neuralRadianceCache.enableDebugResolveMode|bool|False||||
 |rtx.neuralRadianceCache.enableNrcResolver|bool|False|||Enables NRC radiance resolve by NRC's resolver\. Disable to use Remix's resolver\.|
 |rtx.neuralRadianceCache.includeDirectLighting|bool|True||||

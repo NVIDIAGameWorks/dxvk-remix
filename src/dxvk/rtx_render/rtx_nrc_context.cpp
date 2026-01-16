@@ -116,8 +116,8 @@ namespace dxvk {
     }
   }
 
-  NrcContext::NrcContext(DxvkDevice& device)
-    : CommonDeviceObject(&device) {
+  NrcContext::NrcContext(DxvkDevice& device, const Configuration& config)
+    : CommonDeviceObject(&device), m_isDebugBufferRequired(config.debugBufferIsRequired) {
   }
 
   NrcContext::~NrcContext() {
@@ -226,6 +226,7 @@ namespace dxvk {
   }
 
   nrc::Status NrcContext::initialize() {
+    
     m_nrcContextSettings = nrc::ContextSettings {};
 
     nrc::GlobalSettings globalSettings;
@@ -244,8 +245,7 @@ namespace dxvk {
     globalSettings.enableGPUMemoryAllocation = false;
 
     // Only enable debug buffers in development and not production
-    globalSettings.enableDebugBuffers = NrcCtxOptions::enableDebugBuffers();
-
+    globalSettings.enableDebugBuffers = m_isDebugBufferRequired;
     globalSettings.maxNumFramesInFlight = kMaxFramesInFlight;
 
     globalSettings.depsDirectoryPath = !NrcCtxOptions::cudaDllDepsDirectoryPath().empty() ? NrcCtxOptions::cudaDllDepsDirectoryPath().c_str() : nullptr;
@@ -339,7 +339,7 @@ namespace dxvk {
         clearBuffer(ctx, nrc::BufferIdx::TrainingRadianceParams, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_SHADER_WRITE_BIT);
         clearBuffer(ctx, nrc::BufferIdx::QueryRadiance, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_SHADER_WRITE_BIT);
         clearBuffer(ctx, nrc::BufferIdx::QueryRadianceParams, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_SHADER_WRITE_BIT);
-        if (NrcCtxOptions::enableDebugBuffers()) {
+        if (isDebugBufferRequired()) {
           clearBuffer(ctx, nrc::BufferIdx::DebugTrainingPathInfo, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
         }
       }
@@ -437,6 +437,10 @@ namespace dxvk {
     if (status != nrc::Status::OK) {
       ONCE(Logger::err(str::format("[RTX Neural Radiance Cache] BeginFrame call failed. Reason: ", getNrcStatusErrorMessage(status))));
     }
+  }
+
+  bool NrcContext::isDebugBufferRequired() const     {
+    return m_isDebugBufferRequired;
   }
 
   VkDeviceSize NrcContext::getCurrentMemoryConsumption() const {

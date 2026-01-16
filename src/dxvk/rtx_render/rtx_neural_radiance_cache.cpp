@@ -136,9 +136,63 @@ namespace dxvk {
     targetNumTrainingIterations.setMaxValue(maxNumTrainingIterations());
   }
 
+  namespace {
+    bool nrcResolveModeRequiresDebugBuffer(NrcResolveMode resolveMode) {
+
+      switch (resolveMode) {
+      case NrcResolveMode::PrimaryVertexTrainingRadiance:
+      case NrcResolveMode::PrimaryVertexTrainingRadianceSmoothed:
+      case NrcResolveMode::SecondaryVertexTrainingRadiance:
+        [[fallthrough]];
+      case NrcResolveMode::SecondaryVertexTrainingRadianceSmoothed:
+        return true;
+      case NrcResolveMode::AddQueryResultToOutput:
+      case NrcResolveMode::TrainingBounceHeatMap:
+      case NrcResolveMode::TrainingBounceHeatMapSmoothed:
+      case NrcResolveMode::QueryIndex:
+      case NrcResolveMode::TrainingQueryIndex:
+      case NrcResolveMode::DirectCacheView:
+        [[fallthrough]];
+      case NrcResolveMode::ReplaceOutputWithQueryResult:
+        return false;
+      }
+      return false;
+    }
+
+    void onDebugResolveSettingsChanged(DxvkDevice* device) {
+
+      NeuralRadianceCache::NrcOptions::s_nrcDebugBufferIsRequired = NeuralRadianceCache::NrcOptions::enableDebugResolveMode() && nrcResolveModeRequiresDebugBuffer(NeuralRadianceCache::NrcOptions::debugResolveMode());
+
+      if (device == nullptr) {
+        return;
+      }
+
+      // WAR for the onChanged callbacks getting called even if the resolved value for an option hasn't changed. Without this, the debug view will
+      // get set to disabled on config load, eradicating any debug view that was set prior to config load (through environment settings, etc.)
+      if (NeuralRadianceCache::NrcOptions::enableDebugResolveMode() != NeuralRadianceCache::NrcOptions::s_nrcPrevDebugResolveIsEnabled) {
+        DebugView& debugView = device->getCommon()->metaDebugView();
+        if (NeuralRadianceCache::NrcOptions::enableDebugResolveMode()) {
+          debugView.setDebugViewIndex(DEBUG_VIEW_NRC_RESOLVE);
+        }
+        else {
+          debugView.setDebugViewIndex(DEBUG_VIEW_DISABLED);
+        }
+      }
+      NeuralRadianceCache::NrcOptions::s_nrcPrevDebugResolveIsEnabled = NeuralRadianceCache::NrcOptions::enableDebugResolveMode();
+    }
+  }
+
+  void NeuralRadianceCache::NrcOptions::onDebugResolveModeChanged(DxvkDevice* device) {
+    onDebugResolveSettingsChanged(device);
+  }
+
+  void NeuralRadianceCache::NrcOptions::onEnableDebugResolveModeChanged(DxvkDevice* device) {
+    onDebugResolveSettingsChanged(device);
+  }
+
+
   NeuralRadianceCache::NeuralRadianceCache(dxvk::DxvkDevice* device) : RtxPass(device) {
     m_nrcCtxSettings = std::make_unique<nrc::ContextSettings>();
-    m_delayedEnableDebugBuffers = NrcCtxOptions::enableDebugBuffers();
     m_delayedEnableCustomNetworkConfig = NrcCtxOptions::enableCustomNetworkConfig();
   }
 
@@ -147,7 +201,10 @@ namespace dxvk {
   // Initializes state and resources that can be created once on initialization and do not depend on runtime state
   // Returns true on success
   bool NeuralRadianceCache::initialize(dxvk::DxvkDevice& device) {
-    m_nrcCtx = new NrcContext(device);
+
+    NrcContext::Configuration nrcContextCfg;
+    nrcContextCfg.debugBufferIsRequired = NrcOptions::s_nrcDebugBufferIsRequired;
+    m_nrcCtx = new NrcContext(device, nrcContextCfg);
 
     if (m_nrcCtx->initialize() != nrc::Status::OK) {
       return false;
@@ -257,32 +314,19 @@ namespace dxvk {
       ImGui::Checkbox("NRC Resolver", &NrcOptions::enableNrcResolverObject());
       ImGui::Checkbox("Add Path Traced Radiance", &NrcOptions::resolveAddPathTracedRadianceObject());
       ImGui::Checkbox("Add Nrc Queried Radiance", &NrcOptions::resolveAddNrcQueriedRadianceObject());
-
       ImGui::Checkbox("Enable Debug Resolve Mode", &NrcOptions::enableDebugResolveModeObject());
-      ImGui::Checkbox("Enable Debug Buffers ", &m_delayedEnableDebugBuffers);
 
-      const bool hasEnableDebugResolveModeChanged =
-        hasValueChanged(NrcOptions::enableDebugResolveMode(), m_prevEnableDebugResolveMode);
+      nrcDebugResolveModeCombo.getKey(&NrcOptions::debugResolveModeObject());
 
       DebugView& debugView = ctx.getCommonObjects()->metaDebugView();
-
-      // Update Debug View selection for NRC Resolve Mode
-      if (hasEnableDebugResolveModeChanged) {
-        uint32_t debugViewMode = NrcOptions::enableDebugResolveMode()
-          ? DEBUG_VIEW_NRC_RESOLVE
-          : DEBUG_VIEW_DISABLED;
-
-        debugView.setDebugViewIndex(debugViewMode);
-
-      } else if (debugView.getDebugViewIndex() != DEBUG_VIEW_NRC_RESOLVE) {
+      if (NrcOptions::enableDebugResolveMode() && debugView.getDebugViewIndex() != DEBUG_VIEW_NRC_RESOLVE) {
         // Disable debug resolve mode when debug view selection changes to another mode
-        NrcOptions::enableDebugResolveMode.setDeferred(false);
+        NrcOptions::enableDebugResolveMode.setImmediately(false);
 
         // Update previous state too so that it does not trigger any action next frame
-        m_prevEnableDebugResolveMode = NrcOptions::enableDebugResolveMode();
+        NrcOptions::s_nrcPrevDebugResolveIsEnabled = NrcOptions::enableDebugResolveMode();
       }
 
-      nrcDebugResolveModeCombo.getKey(&NrcCtxOptions::debugResolveModeObject());
       ImGui::Unindent();
     }
 
@@ -448,7 +492,7 @@ namespace dxvk {
 
   bool NeuralRadianceCache::isUpdateResolveModeActive() const {
     if (NrcOptions::enableDebugResolveMode()) {
-      switch (NrcCtxOptions::debugResolveMode()) {
+      switch (NrcOptions::debugResolveMode()) {
         case NrcResolveMode::TrainingBounceHeatMap:
         case NrcResolveMode::TrainingBounceHeatMapSmoothed:
         case NrcResolveMode::PrimaryVertexTrainingRadiance:
@@ -533,8 +577,8 @@ namespace dxvk {
       return;
     }
 
-    const bool reinitializeNrcContext = 
-      m_delayedEnableDebugBuffers != NrcCtxOptions::enableDebugBuffers()
+    const bool reinitializeNrcContext =
+      m_nrcCtx->isDebugBufferRequired() != NrcOptions::s_nrcDebugBufferIsRequired
       || m_delayedEnableCustomNetworkConfig != NrcCtxOptions::enableCustomNetworkConfig()
       // [REMIX-3810] WAR to fully recreate NRC when resolution changes to avoid occasional corruption
       // when changing resolutions
@@ -543,10 +587,11 @@ namespace dxvk {
 
     if (reinitializeNrcContext) {
 
-      NrcCtxOptions::enableDebugBuffers.setDeferred(m_delayedEnableDebugBuffers);
       NrcCtxOptions::enableCustomNetworkConfig.setDeferred(m_delayedEnableCustomNetworkConfig);
 
-      m_nrcCtx = new NrcContext(*ctx->getDevice());
+      NrcContext::Configuration nrcContextCfg;
+      nrcContextCfg.debugBufferIsRequired = NrcOptions::s_nrcDebugBufferIsRequired;
+      m_nrcCtx = new NrcContext(*ctx->getDevice(), nrcContextCfg);
 
       if (m_nrcCtx->initialize() != nrc::Status::OK) {
         Logger::err(str::format("[RTX Neural Radiance Cache] Failed to initialize NRC context"));
@@ -668,7 +713,7 @@ namespace dxvk {
       nrcFrameSettings.skipDeltaVertices = NrcOptions::skipDeltaVertices();
       nrcFrameSettings.terminationHeuristicThreshold = NrcOptions::terminationHeuristicThreshold();
       nrcFrameSettings.trainingTerminationHeuristicThreshold = NrcOptions::trainingTerminationHeuristicThreshold();
-      nrcFrameSettings.resolveMode = NrcCtxOptions::debugResolveMode();
+      nrcFrameSettings.resolveMode = NrcOptions::enableDebugResolveMode() ? NrcOptions::debugResolveMode() : NrcResolveMode::AddQueryResultToOutput;
       nrcFrameSettings.trainTheCache = NrcOptions::trainCache();
 
       nrcFrameSettings.usedTrainingDimensions = m_activeTrainingDimensions;
@@ -721,7 +766,7 @@ namespace dxvk {
       m_nrcCtx->clearBuffer(*ctx, nrc::BufferIdx::QueryRadiance, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_SHADER_WRITE_BIT);
       m_nrcCtx->clearBuffer(*ctx, nrc::BufferIdx::QueryRadianceParams, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_SHADER_WRITE_BIT);
       // onFrameBegin() above already clears the counter resource
-      if (NrcCtxOptions::enableDebugBuffers()) {
+      if (m_nrcCtx->isDebugBufferRequired()) {
         m_nrcCtx->clearBuffer(*ctx, nrc::BufferIdx::DebugTrainingPathInfo, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
       }
     }
@@ -973,7 +1018,7 @@ namespace dxvk {
       barriers.push_back(m_nrcCtx->createVkBufferMemoryBarrier(nrc::BufferIdx::QueryPathInfo, srcAccessMask, VK_ACCESS_SHADER_READ_BIT));
       barriers.push_back(m_nrcCtx->createVkBufferMemoryBarrier(nrc::BufferIdx::QueryRadiance, srcAccessMask, VK_ACCESS_SHADER_READ_BIT));
       barriers.push_back(m_nrcCtx->createVkBufferMemoryBarrier(nrc::BufferIdx::TrainingPathInfo, srcAccessMask, VK_ACCESS_SHADER_READ_BIT));
-      if (NrcCtxOptions::enableDebugBuffers()) {
+      if (m_nrcCtx->isDebugBufferRequired()) {
         barriers.push_back(m_nrcCtx->createVkBufferMemoryBarrier(nrc::BufferIdx::DebugTrainingPathInfo, srcAccessMask, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT));
       }
 
@@ -1010,10 +1055,10 @@ namespace dxvk {
       m_nrcCtxSettings->frameDimensions.y };
     pushArgs.addPathtracedRadiance = NrcOptions::resolveAddPathTracedRadiance();
     pushArgs.addNrcRadiance = NrcOptions::resolveAddNrcQueriedRadiance();
-    pushArgs.resolveMode = NrcCtxOptions::debugResolveMode();
+    pushArgs.resolveMode = NrcOptions::enableDebugResolveMode() ? NrcOptions::debugResolveMode() : NrcResolveMode::AddQueryResultToOutput;
     pushArgs.samplesPerPixel = m_nrcCtxSettings->samplesPerPixel;
     pushArgs.resolveModeAccumulationWeight = 0.f;
-    pushArgs.debugBuffersAreEnabled = NrcCtxOptions::enableDebugBuffers();
+    pushArgs.debugBuffersAreEnabled = NrcOptions::s_nrcDebugBufferIsRequired;
 
     // Calculate the smoothing factor when smoothed resolve mode is enabled
     if (pushArgs.resolveMode == NrcResolveMode::TrainingBounceHeatMapSmoothed ||
@@ -1090,7 +1135,7 @@ namespace dxvk {
         barriers.push_back(m_nrcCtx->createVkBufferMemoryBarrier(nrc::BufferIdx::QueryRadianceParams, srcAccessMask, destAccessMask));
         barriers.push_back(m_nrcCtx->createVkBufferMemoryBarrier(nrc::BufferIdx::QueryRadiance, srcAccessMask, destAccessMask));
         barriers.push_back(m_nrcCtx->createVkBufferMemoryBarrier(nrc::BufferIdx::Counter, srcAccessMask, destAccessMask));
-        if (NrcCtxOptions::enableDebugBuffers()) {
+        if (m_nrcCtx->isDebugBufferRequired()) {
           barriers.push_back(m_nrcCtx->createVkBufferMemoryBarrier(nrc::BufferIdx::DebugTrainingPathInfo, srcAccessMask, destAccessMask));
         }
 
