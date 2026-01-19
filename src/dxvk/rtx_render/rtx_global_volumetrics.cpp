@@ -487,9 +487,9 @@ namespace dxvk {
     float transmittanceMeasurementDistance = transmittanceMeasurementDistanceMeters() * RtxOptions::getMeterToWorldUnitScale();
     Vector3 multiScatteringEstimate = Vector3();
 
-    // Todo: Make this configurable in the future as this threshold was created specifically for Portal RTX's underwater fixed function fog.
-    constexpr float waterFogDensityThrehold = 0.065f;
-    const bool canUsePhysicalFog = shouldConvertToPhysicalFog(fogState, waterFogDensityThrehold);
+    // Check if fog density is below the configurable threshold to determine if physical volumetrics should be used.
+    // This threshold was created specifically for Portal RTX's underwater fixed function fog.
+    const bool canUsePhysicalFog = shouldConvertToPhysicalFog(fogState, waterFogDensityThreshold());
 
     if (
       enableFogRemap() &&
