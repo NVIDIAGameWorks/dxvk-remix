@@ -131,9 +131,10 @@ float3 applyToneMapping(float3 color, uint2 pixelPosition)
       // Normal tone mapping
       color = dynamicToneMapper(color);
       
-      if (cb.finalizeWithACES)
+      if (cb.finalizeWithACES || cb.useAgX)
       {
-        color = ACESFilm(color, cb.useLegacyACES);
+        color = applyToneMapping(color, cb.useAgX, cb.useLegacyACES, cb.agxGamma, cb.agxSaturation, cb.agxExposureOffset, 
+                                 cb.agxLook, cb.agxContrast, cb.agxSlope, cb.agxPower);
       }
     } 
     else
