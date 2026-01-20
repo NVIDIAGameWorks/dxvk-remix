@@ -276,6 +276,14 @@ export material AperturePBR_Opacity(
     anno::hidden(),
     anno::in_group("Base Material")
   ]],
+  uniform float normal_scale = 1.0f
+  [[
+    anno::display_name("Normal Map Scale"),
+    anno::hard_range(0.0, 10.0),
+    anno::description("The scale to apply to the normal map's intensity. Note that scales can create banding if out of asset scope and should be used for comparison or quick prototyping."),
+    anno::in_group("Base Material"),
+    anno::unused()
+  ]],
 
   // -------------------- DISPLACEMENT ----------------------
   // Note: The height texture should always be treated as linear.
