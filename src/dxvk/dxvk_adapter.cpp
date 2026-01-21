@@ -175,6 +175,27 @@ namespace dxvk {
     }
     // NV_DXVK end
 
+    // NV-DXVK start: FSR FG integration
+    // Image acquire queue for FSR3 Frame Interpolation - can use any queue family
+    // Prefer a queue from a family with transfer support for efficiency
+    uint32_t imageAcquireQueue = findQueueFamily(VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT,
+                                                  VK_QUEUE_TRANSFER_BIT);
+    if (imageAcquireQueue == VK_QUEUE_FAMILY_IGNORED) {
+      // Fall back to compute+transfer if no dedicated transfer queue
+      imageAcquireQueue = findQueueFamily(VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT,
+                                          VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT);
+    }
+
+    if (imageAcquireQueue != VK_QUEUE_FAMILY_IGNORED) {
+      queues.imageAcquire = imageAcquireQueue;
+    }
+    
+    // FSR FG present queue - MUST be from graphics family to support presentation
+    // (vkGetPhysicalDeviceSurfaceSupportKHR typically only works for graphics family on Windows)
+    // We use the same family as graphics to ensure presentation support
+    queues.fsrPresent = graphicsQueue;
+    // NV-DXVK end
+
     return queues;
   }
 
@@ -451,6 +472,11 @@ namespace dxvk {
       devDlfgExtensions.size(),
       devDlfgExtensions.data(),
       extensionsEnabled);
+    // NV-DXVK end
+
+    // NV-DXVK start: Add memory requirements extension for Remix
+    if (m_deviceExtensions.supports(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME))
+      extensionsEnabled.add(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
     // NV-DXVK end
 
     // Enable additional extensions if necessary
@@ -757,6 +783,16 @@ namespace dxvk {
     if (queueFamilies.present != VK_QUEUE_FAMILY_IGNORED) {
       handleQueueFamily(queueFamilies.present, queueInfos.present);
     }
+
+    // NV-DXVK start: FSR FG integration
+    if (queueFamilies.imageAcquire != VK_QUEUE_FAMILY_IGNORED) {
+      handleQueueFamily(queueFamilies.imageAcquire, queueInfos.imageAcquire);
+    }
+    
+    if (queueFamilies.fsrPresent != VK_QUEUE_FAMILY_IGNORED) {
+      handleQueueFamily(queueFamilies.fsrPresent, queueInfos.fsrPresent);
+    }
+    // NV-DXVK end
 
     // Create the requested queues
 

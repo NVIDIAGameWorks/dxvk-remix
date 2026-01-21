@@ -610,6 +610,11 @@ namespace dxvk {
     extensionsAvailable.enableExtensions(dlfgExtList.size(), dlfgExtList.data(), extensionsEnabled);
     // NV-DXVK end
 
+    // NV-DXVK start: Add debug utils extension for Remix
+    if (extensionsAvailable.supports(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
+      extensionsEnabled.add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    // NV-DXVK end
+
     DxvkNameList extensionNameList = extensionsEnabled.toNameList();
     
     Logger::info("Enabled instance extensions:");

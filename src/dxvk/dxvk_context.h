@@ -70,6 +70,15 @@ namespace dxvk {
      */
     uint32_t dlfgMaxSupportedInterpolatedFrameCount() const;
     // NV-DXVK end
+
+    // NV-DXVK start: FSR FG integration
+    /**
+     * \brief Returns true if FSR Frame Generation is enabled
+     *
+     * This is a combination of the setting being enabled and the device supporting it.
+     */
+    bool isFSRFGEnabled() const;
+    // NV-DXVK end
     
     /**
      * \brief Begins command buffer recording

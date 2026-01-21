@@ -36,6 +36,10 @@
 #include "../dxvk/rtx_render/rtx_dlfg.h"
 // NV-DXVK end
 
+// NV-DXVK start: FSR FG integration
+#include "../dxvk/rtx_render/rtx_fsr_framegen.h"
+// NV-DXVK end
+
 namespace dxvk {
   // NV-DXVK start: App Controlled FSE
   enum FSEState {
@@ -406,6 +410,16 @@ namespace dxvk {
       if (m_dlfgPresenter == nullptr) {
         return true;
       }
+    } else if (m_context->isFSRFGEnabled()) {
+      // FSR FG is enabled - need FSR FG presenter
+      if (m_fsrfgPresenter == nullptr) {
+        Logger::info("NeedRecreatePresenter: FSR FG enabled but no FSR FG presenter, need to recreate");
+        return true;
+      }
+    } else if (m_fsrfgPresenter != nullptr) {
+      // FSR FG presenter exists but FSR FG disabled - can keep using it
+      // (FSR FG can be disabled at runtime without recreating presenter)
+      return false;
     } else {
       if (m_presenter == nullptr) {
         return true;
@@ -413,15 +427,23 @@ namespace dxvk {
     }
 
     // one must be null, one must be non-null
-    assert(m_presenter != nullptr || m_dlfgPresenter != nullptr);
-    assert(m_presenter == nullptr || m_dlfgPresenter == nullptr);
+    assert(m_presenter != nullptr || m_dlfgPresenter != nullptr || m_fsrfgPresenter != nullptr);
+    assert((m_presenter == nullptr) + (m_dlfgPresenter == nullptr) + (m_fsrfgPresenter == nullptr) >= 2);
     return false;
   }
 
   vk::Presenter* D3D9SwapChainEx::GetPresenter() const {
-    const auto presenter = m_presenter != nullptr ? m_presenter.ptr() : m_dlfgPresenter.ptr();
+    // NV-DXVK: Return whichever presenter is active (normal, DLFG, or FSR FG)
+    vk::Presenter* presenter = nullptr;
+    if (m_presenter != nullptr) {
+      presenter = m_presenter.ptr();
+    } else if (m_dlfgPresenter != nullptr) {
+      presenter = m_dlfgPresenter.ptr();
+    } else if (m_fsrfgPresenter != nullptr) {
+      presenter = m_fsrfgPresenter.ptr();
+    }
 
-    // Note: The returned presenter must be non-null as one of the two presenters must be non-null at all times,
+    // Note: The returned presenter must be non-null as one of the presenters must be non-null at all times,
     // and because code will blindly dereference this returned pointer.
     assert(presenter != nullptr);
 
@@ -1350,13 +1372,40 @@ namespace dxvk {
 
     m_device->waitForIdle();
 
+    // NV-DXVK start: FSR FG - Capture surface before destroying old presenter
+    // This allows reusing the surface when switching presenter types at runtime
+    // We call releaseSurface() which sets the presenter's internal handle to VK_NULL_HANDLE
+    // so the destructor won't destroy it - we transfer ownership to the new presenter
+    VkSurfaceKHR existingSurface = VK_NULL_HANDLE;
+    vk::Presenter* currentPresenter = GetPresenter();
+    if (currentPresenter != nullptr) {
+      existingSurface = currentPresenter->releaseSurface();
+      Logger::info("CreatePresenter: Captured existing surface for reuse");
+    }
+    // NV-DXVK end
+
+    // Destroy old presenters - must happen before creating new ones
+    // to release the swapchain (but surface ownership transferred above)
     m_presenter = nullptr;
     m_presentStatus.result = VK_SUCCESS;
 
-    // NV-DXVK start: DLFG integration
+    // NV-DXVK start: DLFG/FSR FG integration
     m_dlfgPresenter = nullptr;
+    m_fsrfgPresenter = nullptr;
+    
+    // Wait after destroying presenters to ensure swapchains are fully released
+    m_device->waitForIdle();
+    
     const bool dlfgEnabled = m_context->isDLFGEnabled();
-    DxvkDeviceQueue presentQueue = dlfgEnabled ? m_device->queues().present : m_device->queues().graphics;
+    const bool fsrfgEnabled = m_context->isFSRFGEnabled();
+    // Only create FSR FG presenter if enabled - runtime enabling requires restart
+    // This avoids VK_ERROR_NATIVE_WINDOW_IN_USE_KHR crash at startup
+    const bool fsrfgSupported = DxvkFSRFrameGen::supportsFSRFrameGen();
+    const bool createFsrfgPresenter = fsrfgEnabled && fsrfgSupported && !dlfgEnabled;
+    Logger::info(str::format("CreatePresenter: dlfgEnabled=", dlfgEnabled, 
+      ", fsrfgEnabled=", fsrfgEnabled, ", fsrfgSupported=", fsrfgSupported,
+      ", createFsrfgPresenter=", createFsrfgPresenter));
+    DxvkDeviceQueue presentQueue = (dlfgEnabled || createFsrfgPresenter) ? m_device->queues().present : m_device->queues().graphics;
     
     vk::PresenterDevice presenterDevice;
     presenterDevice.queueFamily   = presentQueue.queueFamily;
@@ -1372,11 +1421,18 @@ namespace dxvk {
     presenterDesc.numPresentModes = PickPresentModes(false, presenterDesc.presentModes);
     presenterDesc.fullScreenExclusive = PickFullscreenMode();
 
-    // NV-DXVK start: DLFG integration
+    // NV-DXVK start: DLFG/FSR FG integration
     if (dlfgEnabled) {
       // DLFG presents 2 times (1 more frame) in each real frame,
       // increase image count by 1 to avoid resource waiting.
       presenterDesc.imageCount++;
+      // TODO: DLFG presenter may also need surface reuse support
+      // For now, destroy the existing surface if we're creating DLFG presenter
+      if (existingSurface != VK_NULL_HANDLE) {
+        m_device->adapter()->vki()->vkDestroySurfaceKHR(
+          m_device->adapter()->vki()->instance(), existingSurface, nullptr);
+        existingSurface = VK_NULL_HANDLE;
+      }
       m_dlfgPresenter = new DxvkDLFGPresenter(m_device,
                                               m_context,
                                               m_window,
@@ -1384,7 +1440,31 @@ namespace dxvk {
                                               m_device->vkd(),
                                               presenterDevice,
                                               presenterDesc);
+    } else if (createFsrfgPresenter) {
+      // Create FSR FG presenter when enabled
+      // FFX contexts are created lazily in presentImage() when ready
+      // Pass the existing surface to avoid VK_ERROR_NATIVE_WINDOW_IN_USE_KHR
+      presenterDesc.imageCount++;
+      m_fsrfgPresenter = new DxvkFSRFGPresenter(m_device,
+                                                m_context,
+                                                m_window,
+                                                m_device->adapter()->vki(),
+                                                m_device->vkd(),
+                                                presenterDevice,
+                                                presenterDesc,
+                                                existingSurface);
+      existingSurface = VK_NULL_HANDLE;  // Ownership transferred
+      Logger::info(str::format("FSR FG: Created FSR FG Presenter for swapchain ", 
+        presenterDesc.imageExtent.width, "x", presenterDesc.imageExtent.height,
+        " (frame generation ", fsrfgEnabled ? "enabled" : "disabled, can be enabled at runtime", ")"));
     } else {
+      // Regular presenter - needs to destroy existing surface and create new one
+      // TODO: Could also add surface reuse to regular presenter
+      if (existingSurface != VK_NULL_HANDLE) {
+        m_device->adapter()->vki()->vkDestroySurfaceKHR(
+          m_device->adapter()->vki()->instance(), existingSurface, nullptr);
+        existingSurface = VK_NULL_HANDLE;
+      }
       m_presenter = new vk::Presenter(m_window,
         m_device->adapter()->vki(),
         m_device->vkd(),

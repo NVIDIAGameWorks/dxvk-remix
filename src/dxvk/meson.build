@@ -334,6 +334,12 @@ dxvk_src = files([
   'rtx_render/rtx_utils.h',
   'rtx_render/rtx_xess.cpp',
   'rtx_render/rtx_xess.h',
+  'rtx_render/rtx_fsr.cpp',
+  'rtx_render/rtx_fsr.h',
+  'rtx_render/rtx_fsr_framegen.cpp',
+  'rtx_render/rtx_fsr_framegen.h',
+
+  # NOTE: FSR 3.1 links against the prebuilt amd_fidelityfx_vk.dll via import library
 
   'rtx_render/rtx_system_info.cpp',
   'rtx_render/rtx_system_info.h',
@@ -443,6 +449,21 @@ xess_dep = declare_dependency(
   include_directories : xess_include_dir
 )
 
+# FSR3 (FidelityFX SDK) dependency
+# Link against the prebuilt import library for the signed DLL
+fsr3_lib_path = join_paths(global_src_root_norm, 'submodules/FidelityFX-SDK/PrebuiltSignedDLL')
+fsr3_include_dir = include_directories(
+  '../../submodules/FidelityFX-SDK/ffx-api/include'
+)
+fsr3_lib = dxvk_compiler.find_library('amd_fidelityfx_vk', dirs : fsr3_lib_path, required : true)
+fsr3_dep = declare_dependency(
+  dependencies : [ fsr3_lib ],
+  include_directories : fsr3_include_dir
+)
+
+# FidelityFX API dependency
+ffx_api_dep = fsr3_dep
+
 nrc_dll_path = join_paths(meson.global_source_root(), 'submodules/nrc/bin/')
 nrc_lib_path = join_paths(meson.global_source_root(), 'submodules/nrc/lib/')
 nrc_lib = dxvk_compiler.find_library('NRC_Vulkan', dirs : nrc_lib_path, required : true)
@@ -470,7 +491,7 @@ dxvk_embedded_data_files = files([
 
 dxvk_generated_embedded_files = embedding_compiler.process(dxvk_embedded_data_files)
 
-dxvk_deps = [ thread_dep, vkcommon_dep, dxvk_extradep, usd_dep, lssUsd_dep, nrc_dep, nrd_dep, dlss_dep, submodules_dep, xess_dep, tracy_dep, tracy_dep_dynamic, aftermath_dep, nvapi_dep, reflex_dep, usd_plugin_deps ]
+dxvk_deps = [ thread_dep, vkcommon_dep, dxvk_extradep, usd_dep, lssUsd_dep, nrc_dep, nrd_dep, dlss_dep, submodules_dep, xess_dep, fsr3_dep, ffx_api_dep, tracy_dep, tracy_dep_dynamic, aftermath_dep, nvapi_dep, reflex_dep, usd_plugin_deps ]
 
 if enable_rtxio
   dxvk_deps += rtxio_dep

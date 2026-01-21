@@ -39,6 +39,8 @@
 #include "rtx_neural_radiance_cache.h"
 #include "rtx_ray_reconstruction.h"
 #include "rtx_xess.h"
+#include "rtx_fsr.h"
+#include "rtx_fsr_framegen.h"
 #include "rtx_rtxdi_rayquery.h"
 #include "rtx_restir_gi_rayquery.h"
 #include "rtx_composite.h"
@@ -249,6 +251,16 @@ namespace dxvk {
         uint32_t recommendedJitterLength = xess.calcRecommendedJitterSequenceLength();
         uint32_t currentJitterLength = RtxOptions::cameraJitterSequenceLength();
       }
+    } else if (shouldUseFSR()) {
+      DxvkFSR& fsr = m_common->metaFSR();
+      uint32_t displaySize[2] = { upscaleExtent.width, upscaleExtent.height };
+      uint32_t renderSize[2];
+      fsr.setSetting(displaySize, DxvkFSR::FSROptions::preset(), renderSize);
+      downscaleExtent.width = renderSize[0];
+      downscaleExtent.height = renderSize[1];
+      downscaleExtent.depth = 1;
+      Logger::debug(str::format("FSR setDownscaleExtent: display=", displaySize[0], "x", displaySize[1], 
+                                 " render=", renderSize[0], "x", renderSize[1]));
     } else if (shouldUseNIS() || shouldUseTAA()) {
       auto resolutionScale = RtxOptions::resolutionScale();
       downscaleExtent.width = uint32_t(std::roundf(upscaleExtent.width * resolutionScale));
@@ -306,6 +318,8 @@ namespace dxvk {
       return InternalUpscaler::DLSS_RR;
     } else if (shouldUseXeSS() && m_common->metaXeSS().isActive()) {
       return InternalUpscaler::XeSS;
+    } else if (shouldUseFSR() && m_common->metaFSR().isActive()) {
+      return InternalUpscaler::FSR;
     } else if (shouldUseNIS()) {
       return InternalUpscaler::NIS;
     } else if (shouldUseTAA()) {
@@ -656,6 +670,9 @@ namespace dxvk {
         } else if (m_currentUpscaler == InternalUpscaler::XeSS) {
           m_common->metaAutoExposure().createResources(this);
           dispatchXeSS(rtOutput);
+        } else if (m_currentUpscaler == InternalUpscaler::FSR) {
+          m_common->metaAutoExposure().createResources(this);
+          dispatchFSR(rtOutput);
         } else if (m_currentUpscaler == InternalUpscaler::NIS) {
           dispatchNIS(rtOutput);
         } else if (m_currentUpscaler == InternalUpscaler::TAAU){
@@ -704,6 +721,7 @@ namespace dxvk {
         dispatchDebugView(srcImage, rtOutput, captureScreenImage);
 
         dispatchDLFG();
+        dispatchFSRFrameGen();
 
         // Blit to the game target
         {
@@ -1616,6 +1634,14 @@ namespace dxvk {
     xess.dispatch(this, m_execBarriers, rtOutput, m_resetHistory);
   }
 
+  void RtxContext::dispatchFSR(const Resources::RaytracingOutput& rtOutput) {
+    ScopedGpuProfileZone(this, "FSR");
+    setFramePassStage(RtxFramePassStage::FSR);
+    DxvkFSR& fsr = m_common->metaFSR();
+    RtCamera& mainCamera = getSceneManager().getCamera();
+    fsr.dispatch(this, m_execBarriers, rtOutput, mainCamera, m_resetHistory, GlobalTime::get().deltaTimeMs());
+  }
+
   void RtxContext::dispatchTemporalAA(const Resources::RaytracingOutput& rtOutput) {
     ScopedGpuProfileZone(this, "TAA");
     setFramePassStage(RtxFramePassStage::TAA);
@@ -2067,6 +2093,44 @@ namespace dxvk {
     m_device->setupFrameInterpolation(dlfgInfo);
   }
 
+  void RtxContext::dispatchFSRFrameGen() {
+    if (RtxOptions::frameGenerationType() != FrameGenerationType::FSR) {
+      return;
+    }
+
+    DxvkFSRFrameGen& fsrFrameGen = m_common->metaFSRFrameGen();
+    
+    if (!fsrFrameGen.enable()) {
+      return;
+    }
+
+    // Force vsync off if FSR Frame Gen is enabled, as we don't properly support FG + vsync
+    if (RtxOptions::enableVsyncState != EnableVsync::Off) {
+      RtxOptions::enableVsync.setDeferred(EnableVsync::Off);
+      RtxOptions::enableVsyncState = EnableVsync::Off;
+    }
+
+    Resources::RaytracingOutput& rtOutput = getResourceManager().getRaytracingOutput();
+    RtCamera& camera = getSceneManager().getCamera();
+
+    // Note: Display size is set by the presenter during swapchain creation/recreation
+    // Don't set it here based on composite output size, as these can differ during upscaling
+    // (e.g., render at 720p, display at 1080p)
+
+    // Prepare frame generation with motion vectors and depth
+    // Note: prepareFrameGeneration() internally calls configureFrameGeneration() first,
+    // per AMD docs which require configure before prepare dispatch.
+    // The SDK's swapchain proxy receives rendered frames directly via the presenter's blit.
+    fsrFrameGen.prepareFrameGeneration(
+      this,
+      m_execBarriers,
+      camera,
+      rtOutput.m_primaryScreenSpaceMotionVector.view,
+      rtOutput.m_primaryDepth.view,
+      m_resetHistory,
+      GlobalTime::get().deltaTimeMs());
+  }
+
   void RtxContext::flushCommandList() {
     ScopedCpuProfileZone();
 
@@ -2150,6 +2214,10 @@ namespace dxvk {
 
   bool RtxContext::shouldUseXeSS() const {
     return RtxOptions::upscalerType() == UpscalerType::XeSS;
+  }
+
+  bool RtxContext::shouldUseFSR() const {
+    return RtxOptions::upscalerType() == UpscalerType::FSR;
   }
 
   D3D9RtxVertexCaptureData& RtxContext::allocAndMapVertexCaptureConstantBuffer() {

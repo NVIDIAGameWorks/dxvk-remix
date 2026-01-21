@@ -65,7 +65,8 @@ namespace dxvk {
     DLSS,
     NIS,
     TAAU,
-    XeSS
+    XeSS,
+    FSR
   };
 
   enum class GraphicsPreset : int {
@@ -123,6 +124,13 @@ namespace dxvk {
     CameraShake_Yaw,
     CameraShake_Pitch,
     YawRotation
+  };
+
+  // Frame Generation technology selection
+  enum class FrameGenerationType : int {
+    None = 0,    // Frame generation disabled
+    DLSS,        // NVIDIA DLSS Frame Generation (DLSS 3.0/4.0)
+    FSR          // AMD FSR 3 Frame Generation
   };
 
   enum class TonemappingMode : int {
@@ -474,6 +482,7 @@ namespace dxvk {
                    "   NRC supports infinite bounces and often provides results closer to that of reference than ReSTIR GI\n"
                    "   while improving performance in scenarios where ray paths have 2 or more bounces on average.\n");
     RTX_OPTION_ENV("rtx", UpscalerType, upscalerType, UpscalerType::DLSS, "DXVK_UPSCALER_TYPE", "Upscaling boosts performance with varying degrees of image quality tradeoff depending on the type of upscaler and the quality mode/preset.");
+    RTX_OPTION_ENV("rtx", FrameGenerationType, frameGenerationType, FrameGenerationType::None, "DXVK_FRAMEGEN_TYPE", "Frame Generation technology to use. None = disabled, DLSS = NVIDIA DLSS Frame Generation, FSR = AMD FSR 3 Frame Generation.");
     RTX_OPTION_ENV("rtx", bool, enableRayReconstruction, true, "DXVK_RAY_RECONSTRUCTION", "Enables DLSS ray reconstruction, an AI-based denoiser designed for real time ray tracing.");
 
     RTX_OPTION("rtx", float, resolutionScale, 0.75f, "");
@@ -1469,6 +1478,7 @@ namespace dxvk {
     static bool isNISEnabled() { return upscalerType() == UpscalerType::NIS; }
     static bool isTAAEnabled() { return upscalerType() == UpscalerType::TAAU; }
     static bool isXeSSEnabled() { return upscalerType() == UpscalerType::XeSS; }
+    static bool isFSREnabled() { return upscalerType() == UpscalerType::FSR; }
     
     static float getUniqueObjectDistanceSqr() { return uniqueObjectDistance() * uniqueObjectDistance(); }
     static uint32_t getNumFramesToPutLightsToSleep() { return numFramesToKeepLights() /2; }

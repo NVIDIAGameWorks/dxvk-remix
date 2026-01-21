@@ -245,7 +245,7 @@ namespace dxvk {
 
     void showRenderingSettings(const Rc<DxvkContext>& ctx);
 
-    void showDLFGOptions(const Rc<DxvkContext>& ctx);
+    void showDLFGOptions(const Rc<DxvkContext>& ctx, bool isDLSSFGSupported);
     void showReflexOptions(const Rc<DxvkContext>& ctx, bool displayStatsWindowToggle);
     void showReflexLatencyStats();
 

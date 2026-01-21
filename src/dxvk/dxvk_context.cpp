@@ -28,6 +28,11 @@
 #include "../d3d9/d3d9_state.h"
 #include "../d3d9/d3d9_spec_constants.h"
 
+// NV-DXVK start: FSR FG integration
+#include "rtx_render/rtx_fsr_framegen.h"
+#include "rtx_render/rtx_options.h"
+// NV-DXVK end
+
 namespace dxvk {
   DxvkContext::DxvkContext(const Rc<DxvkDevice>& device)
     : m_device(device),
@@ -67,6 +72,29 @@ namespace dxvk {
 
   uint32_t DxvkContext::dlfgMaxSupportedInterpolatedFrameCount() const {
     return m_common->metaNGXContext().supportsDLFG() ? m_common->metaNGXContext().dlfgMaxInterpolatedFrames() : 0;
+  }
+  // NV-DXVK end
+
+  // NV-DXVK start: FSR FG integration
+  bool DxvkContext::isFSRFGEnabled() const {
+    ScopedCpuProfileZone();
+    const bool typeIsFSR = RtxOptions::frameGenerationType() == FrameGenerationType::FSR;
+    const bool enableFlag = DxvkFSRFrameGen::enable();
+    const bool supported = DxvkFSRFrameGen::supportsFSRFrameGen();
+    const bool result = typeIsFSR && enableFlag && supported;
+    
+    // Debug logging - log on first check or when state changes
+    static bool lastResult = false;
+    static bool firstCheck = true;
+    if (firstCheck || result != lastResult) {
+      Logger::info(str::format("FSR FG: isFSRFGEnabled = ", result, 
+        " (type=", static_cast<int>(RtxOptions::frameGenerationType()), 
+        ", enable=", enableFlag, ", supported=", supported, ")"));
+      firstCheck = false;
+      lastResult = result;
+    }
+    
+    return result;
   }
   // NV-DXVK end
 
