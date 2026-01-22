@@ -541,6 +541,18 @@ Components are automatically registered when they are defined using the `REMIX_C
 
 Remix Components are using a subset of the OmniGraph system to enable the Toolkit UI and USD encoding.  It's important to note that while we expose .ogn schema for Remix Components, they are not functional OmniGraph nodes, and the Remix Runtime does not support non-remix OmniGraph components.
 
+## Regenerating Schema
+
+The Toolkit UI for Components is driven by schema files that are auto generated from the C++ component class. To get new components to show up in the Toolkit, you need to regenerate those schema files and then notify the toolkit.
+
+1. Create a new custom component, or change the properties of an existing one.
+2. Build the runtime, and install the updated runtime in your app.
+3. Set an environment variable `RTX_GRAPH_WRITE_OGN_SCHEMA=1`.
+4. Run your app. During startup, new node schema will be generated in `<gameFolder>\rtx-remix\schemas\`
+5. copy the schems into your toolkit install:
+    - In the Toolkit's folder, find `exts\lightspeed.trex.logic.ogn\lightspeed\trex\logic\ogn\ogn\python\nodes\` 
+    - Copy/Paste the files in `schemas` into that `nodes` folder. Most of them should overwrite existing files.
+
 # Graph Execution
 
 Components in a graph are executed in topological order based on their connections. The system:
@@ -562,3 +574,37 @@ Note that graphs are batched by a topological hash.  This means that large numbe
 6. **Plan for versioning**: Design components with future changes in mind.  Consider using Enums instead of booleans 
 7. **Use appropriate data types**: Choose the most specific type that fits your needs
 8. **Handle edge cases**: Consider what happens with invalid or missing inputs
+
+# Conf file creation
+
+To create new .conf files to use with RtxOptionLayerAction, follow these steps:
+
+## Initial Setup:
+
+Do this before creating new conf files.
+
+1. Delete user.conf file if you have it. It would be in the same folder as rtx.conf.  (It it contains valuable data, you can back it up and restore it after creating your new conf files).
+2. Launch the game
+3. Open the User Graphics Settings menu by pressing Alt+X.
+    (If this opened the RTX Remix Developer Menu, click "Graphics Settings Menu" at the top.)
+4. Press the Save Settings button
+5. Close the game.
+
+This ensures all of the automatic graphics quality settings are saved to user.conf.  If you don't do this, they pollute the new .conf files.
+
+## Generating a new .conf file:
+
+1. Launch the game.
+2. Make the changes you want in the RTX Remix Developer Menu. Avoid changing anything you don't want to save, like graphics quality settings or UI preferences.
+3. At the bottom of the Developer Menu, ensure the save settings look like this:
+   - `new.conf` for Settings Save Location
+   - Save Changed Settings Only = Checked
+   - Override configs = Unchecked
+4. Click the save button.
+5. In a file browser, navigate to "new.conf" (same folder as rtx.conf and the game's executable).
+6. Rename "new.conf", and move it into your mod (somewhere inside of `rtx-remix/mods/YourMod/`).
+   - These new .conf files are assets - treat them like a texture or mesh file.
+   - In the toolkit, you can select an RtxOptionLayerAction and set the "Config Path" to the relative path from your target layer to your new .conf file.
+
+The new.conf file will capture all changes made since the game was launched. If you continue making changes and save out more new.conf files, the changes will continue to build up. To reset the change tracking, relaunch the game.
+
