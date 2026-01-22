@@ -141,7 +141,7 @@ namespace dxvk {
     void processAllHotReloadRequests();
 
   private:
-    void scheduleTextureLoad(const Rc<ManagedTexture>& texture, bool async);
+    void scheduleTextureLoad(const Rc<ManagedTexture>& texture, bool async, bool forceUnload = false);
 
   private:
     struct TextureHashFn {
