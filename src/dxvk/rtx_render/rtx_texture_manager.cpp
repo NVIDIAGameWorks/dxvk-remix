@@ -854,7 +854,7 @@ namespace dxvk {
     return tex->m_state;
   }
 
-  void RtxTextureManager::scheduleTextureLoad(const Rc<ManagedTexture>& texture, bool async) {
+  void RtxTextureManager::scheduleTextureLoad(const Rc<ManagedTexture>& texture, bool async, bool forceUnload) {
     if (!texture.ptr()) {
       return;
     }
@@ -864,10 +864,13 @@ namespace dxvk {
       // Texture is in the async thread processing queue, leave it
       return;
     }
-    if (managedState == ManagedTexture::State::kVidMem) {
-      // If uploaded to GPU, check if requested amount of mips is the same
-      if (texture->hasUploadedMips(texture->m_requestedMips, true)) {
-        return;
+    // If not forced, we can early-out if mip count is already satisfied
+    if (!forceUnload) {
+      if (managedState == ManagedTexture::State::kVidMem) {
+        // If uploaded to GPU, check if requested amount of mips is the same
+        if (texture->hasUploadedMips(texture->m_requestedMips, true)) {
+          return;
+        }
       }
     }
 
@@ -1053,7 +1056,8 @@ namespace dxvk {
       // replace information about the file
       tex->m_assetData = newAssetData;
       tex->requestMips(0);
-      scheduleTextureLoad(tex, false);
+      constexpr bool forceUnload = true; // do not check current mip count
+      scheduleTextureLoad(tex, false, forceUnload );
 
       it = m_hotreloadRequests.erase(it); // pop request
     }

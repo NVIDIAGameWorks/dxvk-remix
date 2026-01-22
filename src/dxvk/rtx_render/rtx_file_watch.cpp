@@ -98,15 +98,20 @@ namespace {
 namespace dxvk {
   struct RemoveAllRequest { };
 
+  struct AddTextureRequest {
+    Rc<ManagedTexture> tex;
+  };
+
   struct FileWatchTexturesImpl {
-    std::vector<std::variant<std::filesystem::path, RemoveAllRequest>> m_requests{};
+    // NOTE: non-filewatch threads only push requests
+    //       filewatch thread modifies all the members
+    //       this way, only a single mutex for requests is needed
+    std::vector<std::variant<std::filesystem::path, RemoveAllRequest, AddTextureRequest>> m_requests{};
     std::mutex m_requestsMutex{};
 
     // NOTE: 'm_dirs' list is modified only by the filewatch thread, other threads use requests
     //        this is needed to prevent hanging pointers while ReadDirectoryChanges is waiting for the OS
     std::vector<WatchDir> m_dirs{};
-    std::mutex m_directoryListMutex{};
-    std::mutex m_fileEntryMutex{};
 
     std::atomic_bool m_stop{};
   };
@@ -210,25 +215,6 @@ namespace {
       }
     }
 
-    // check if the directory was already installed
-    {
-      auto lockDirList = std::unique_lock{ watch.m_directoryListMutex };
-
-      for (auto& dir : watch.m_dirs) {
-        if (dir.dirpath.empty()) {
-          assert(0 && "unexpected empty path on WatchDir");
-          continue;
-        }
-        // NOTE: using error_code to avoid exceptions
-        std::error_code ignoredErrorCode{};
-        if (!std::filesystem::equivalent(dirpath, dir.dirpath, ignoredErrorCode)) {
-          continue;
-        }
-        // found that the same directory was already installed => ignore
-        return;
-      }
-    }
-
     // add request, so the filewatch thread will open directory handle
     // as it handles the 'm_dirs' list
     {
@@ -239,17 +225,35 @@ namespace {
 
 
   void filewatchAdd(dxvk::FileWatchTexturesImpl& watch, dxvk::Rc<dxvk::ManagedTexture> tex) {
-    if (!tex.ptr() || !tex->m_assetData.ptr() || !tex->m_assetData->info().filename) {
-      return;
-    }
-    const auto filepath = makeCanonicalPath(tex->m_assetData->info().filename);
-    if (filepath.empty()) {
-      return;
-    }
-    auto lockDirList = std::unique_lock{ watch.m_directoryListMutex };
+    auto lockDirList = std::unique_lock{ watch.m_requestsMutex };
+    watch.m_requests.push_back(dxvk::AddTextureRequest{ tex });
+  }
 
-    // find a directory that contains this file
-    WatchDir* parentDir{};
+
+  void filewatchUninstall(dxvk::FileWatchTexturesImpl& watch) {
+    auto lockDirList = std::unique_lock{ watch.m_requestsMutex };
+    watch.m_requests.push_back(dxvk::RemoveAllRequest{});
+  }
+
+
+  bool directoryAlreadyInstalled(const dxvk::FileWatchTexturesImpl& watch, const std::filesystem::path& dirpath) {
+    for (auto& dir : watch.m_dirs) {
+      if (dir.dirpath.empty()) {
+        assert(0 && "unexpected empty path on WatchDir");
+        continue;
+      }
+      // NOTE: using error_code to avoid exceptions
+      std::error_code ignoredErrorCode{};
+      if (std::filesystem::equivalent(dirpath, dir.dirpath, ignoredErrorCode)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+
+  // find a directory that contains the file
+  WatchDir* findParentWatchDir(dxvk::FileWatchTexturesImpl& watch, const std::filesystem::path& filepath) {
     for (WatchDir& potentialParentDir : watch.m_dirs) {
       auto texturePathRelativeToDirectory = filepath.lexically_relative(potentialParentDir.dirpath);
       // if lexically_relative failed
@@ -262,38 +266,18 @@ namespace {
         continue;
       }
       // found a WatchDir, subtree of which contains the file
-      parentDir = &potentialParentDir;
-      break;
+      return &potentialParentDir;
     }
 
-    if (!parentDir) {
-      dxvk::Logger::warn(
-        dxvk::str::format("filewatch: can't add file: file is not in any of watched directories: ", filepath.string())
-      );
-      return;
-    }
-
-
-    auto lockFileEntry = std::unique_lock{ watch.m_fileEntryMutex };
-    // a single texture file may be referenced by multiple ManagedTexture-s,
-    // so keep a list: and if the file changes, reload all ManagedTexture-s that reference it
-    // NOTE: creates a new entry if doesn't exists
-    WatchFile& watchFile = parentDir->files[filepath];
-    {
-      watchFile.texturesReferencingFile.push_back(tex);
-    }
-  }
-
-
-  void filewatchUninstall(dxvk::FileWatchTexturesImpl& watch) {
-    auto lockDirList = std::unique_lock{ watch.m_requestsMutex };
-    watch.m_requests.push_back(dxvk::RemoveAllRequest{});
+    dxvk::Logger::warn(
+      dxvk::str::format("filewatch: can't add file: file is not in any of watched directories: ", filepath.string())
+    );
+    return nullptr;
   }
 
 
   void processRequests(
     dxvk::FileWatchTexturesImpl& watch,
-    const std::unique_lock<std::mutex>& lockedDirs,    // pass for safety
     const std::unique_lock<std::mutex>& lockedRequests // pass for safety
   ) {
     if (watch.m_requests.empty()) {
@@ -302,10 +286,14 @@ namespace {
     for (const auto& req : watch.m_requests) {
 
       if (auto* dirpathToAdd = std::get_if<std::filesystem::path>(&req)) {
-        WatchDir newDir = openDir(*dirpathToAdd);
-        if (newDir.dirHandle && newDir.watchEvent) {
-          watch.m_dirs.push_back(std::move(newDir));
-          dxvk::Logger::info(dxvk::str::format("filewatch: installed directory watch for: ", dirpathToAdd->string()));
+        // do not install the same directory
+        if (!directoryAlreadyInstalled(watch, *dirpathToAdd)) {
+          // open WinAPI handle
+          WatchDir newDir = openDir(*dirpathToAdd);
+          if (newDir.dirHandle && newDir.watchEvent) {
+            watch.m_dirs.push_back(std::move(newDir));
+            dxvk::Logger::info(dxvk::str::format("filewatch: installed directory watch for: ", dirpathToAdd->string()));
+          }
         }
         continue;
       }
@@ -323,6 +311,19 @@ namespace {
         }
         watch.m_dirs.clear();
         dxvk::Logger::info("filewatch: uninstalled all directory watches");
+        continue;
+      }
+
+      if (auto* textureToAdd = std::get_if<dxvk::AddTextureRequest>(&req)) {
+        const auto filepath = makeCanonicalPath(textureToAdd->tex->m_assetData->info().filename);
+        if (!filepath.empty()) {
+          if (WatchDir* parentDir = findParentWatchDir(watch, filepath)) {
+            // a single texture file may be referenced by multiple ManagedTexture-s,
+            // so keep a list: and if the file changes, reload all ManagedTexture-s that reference it
+            // NOTE: creates a new entry if doesn't exists
+            parentDir->files[filepath].texturesReferencingFile.push_back(textureToAdd->tex);
+          }
+        }
         continue;
       }
 
@@ -346,12 +347,9 @@ namespace {
       // NOTE: we can hold a pointer to 'm_dirs' item, since only this thread modifies 'm_dirs' list
       WatchDir* watchDir = nullptr;
       {
-        // deadlock-free way to lock both mutexes
-        auto lockDirList = std::unique_lock(watch.m_directoryListMutex, std::defer_lock);
-        auto lockRequests = std::unique_lock(watch.m_requestsMutex, std::defer_lock);
-        std::lock(lockDirList, lockRequests);
+        auto lockRequests = std::unique_lock(watch.m_requestsMutex);
 
-        processRequests(watch, lockDirList, lockRequests);
+        processRequests(watch, lockRequests);
 
         if (!watch.m_dirs.empty()) {
           currentdir %= uint32_t(watch.m_dirs.size());
@@ -453,9 +451,6 @@ namespace {
           continue;
         }
 
-        // we're examining WatchFile, so lock the mutex
-        auto lockFileEntry = std::unique_lock{ watch.m_fileEntryMutex };
-
         // ensure that the changed file is being watched
         auto f = watchDir->files.find(absFilepath);
         if (f == watchDir->files.end()) {
@@ -551,6 +546,9 @@ void dxvk::FileWatch::watchTexture(const Rc<ManagedTexture>& tex) {
     return;
   }
   if (!m_impl) {
+    return;
+  }
+  if (!tex.ptr() || !tex->m_assetData.ptr() || !tex->m_assetData->info().filename) {
     return;
   }
   filewatchAdd(*m_impl, tex);
