@@ -97,7 +97,7 @@ namespace RemixGui {
           window->DrawList->ChannelsSetCurrent(0);
         }
 
-        if (isNonDefault) {
+        {
           const float y0 = startCursorPos.y;
           const float y1 = startCursorPos.y + lineHeight;
 
@@ -109,8 +109,13 @@ namespace RemixGui {
           // Right bound extends to cover the reserved button lane but not beyond the row work area.
           const float x1 = prevWorkRectMaxX;
 
-          const ImU32 bg = ImGui::GetColorU32(ImGuiCol_ChildBg);
-          window->DrawList->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), bg, 0.0f);
+          if (ImGui::IsMouseHoveringRect(ImVec2(x0, y0), ImVec2(x1, y1))) {
+            const ImU32 bg = ImGui::GetColorU32(ImGuiCol_HeaderHovered);
+            window->DrawList->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), bg, 0.0f);
+          } else if (isNonDefault) {
+            const ImU32 bg = ImGui::GetColorU32(ImGuiCol_ChildBg);
+            window->DrawList->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), bg, 0.0f);
+          }
         }
 
         // Merge channels so subsequent draws are normal.
