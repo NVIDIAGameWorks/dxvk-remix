@@ -1073,7 +1073,7 @@ namespace dxvk {
 // Example usage, presuming "optionName" is the name of the option:
 // optionName(); // Get the current value of the option
 // optionName.set(value); // Set the value of the option
-// ImGUI::Checkbox("Option Name", &optionName); // Draw the option in the UI
+// RemixGui::Checkbox("Option Name", &optionName); // Draw the option in the UI
 #define RTX_OPTION_FULL(category, type, name, value, environment, flags, description, ...) \
   public: inline static RtxOption<type> name = RtxOption<type>::privateMacroFactory(category, #name, type(value), description, [](){ \
     RtxOptionArgs<type> args; \

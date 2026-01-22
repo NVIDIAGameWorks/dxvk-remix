@@ -150,6 +150,7 @@ namespace dxvk {
 
     // Note: May be NULL until the font loads, needs to be checked before use.
     ImFont*               m_regularFont = nullptr;
+    ImFont*               m_boldFont = nullptr;
     // Note: May be NULL until the font loads, needs to be checked before use.
     ImFont*               m_largeFont = nullptr;
 
@@ -164,7 +165,7 @@ namespace dxvk {
     // Width of developer menu in regular mode
     float                 m_regularWindowWidth = 450.0f;
     // Width of item+label widgets in regular mode (developer menu)
-    float                 m_regularWindowWidgetWidth = 200.f;
+    float                 m_regularWindowWidgetWidth = 150.f;
 
     // Width of developer menu in large mode
     float                 m_largeWindowWidth = 670.0f;
@@ -292,7 +293,7 @@ namespace dxvk {
     public: static void onThemeChange(DxvkDevice* device);
     public: static void onBackgroundAlphaChange(DxvkDevice* device);
     RTX_OPTION_ARGS("rtx.gui", bool, compactGui, false, "A setting to toggle between compact and spacious GUI modes.", args.onChangeCallback = &onThemeChange);
-    RTX_OPTION_ARGS("rtx.gui", float, backgroundAlpha, 0.90f, "A value controlling the alpha of the GUI background.",
+    RTX_OPTION_ARGS("rtx.gui", float, backgroundAlpha, 1.f, "A value controlling the alpha of the GUI background.",
        args.onChangeCallback = &onBackgroundAlphaChange, args.minValue = 0.0f, args.maxValue = 1.0f);
     RTX_OPTION_ARGS("rtx.gui", Theme, themeGui, Theme::Toolkit, "A setting controlling the active GUI theme.", args.onChangeCallback = &onThemeChange);
     RTX_OPTION_ARGS("rtx.gui", bool, largeUiMode, false, "Toggles between Large and Regular GUI Scale Modes.", args.onChangeCallback = &onThemeChange);

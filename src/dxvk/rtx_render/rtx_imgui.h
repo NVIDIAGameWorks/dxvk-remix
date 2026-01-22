@@ -3,12 +3,13 @@
 #include <imgui\imgui.h>
 #include <imgui\imgui_internal.h>
 #include "..\rtx_render\rtx_option.h"
+#include "..\rtx_render\rtx_gui_widgets.h"
 #include "..\util\util_string.h"
 #include "..\util\util_vector.h"
 #include <type_traits>
 #include <utility>
 
-namespace ImGui {
+namespace RemixGui {
 
   IMGUI_API void SetTooltipUnformatted(const char* text);  // Same as SetTooltip, just without text formatting (so percentage signs do not interfere with tooltips when not desired).
   IMGUI_API bool IsItemHoveredDelay(float delay_in_seconds); // Same as IsItemHovered, but only returns true after the item was hovered for x amount of time
@@ -40,22 +41,20 @@ namespace ImGui {
   }
 
   // Adds a tooltip to the imguiCommand and returns boolean result from the passed in imguiCommand
-#define IMGUI_ADD_TOOLTIP(imguiCommand, tooltip) ImGui::addTooltipAndPassthroughValue((imguiCommand), tooltip)
+#define IMGUI_ADD_TOOLTIP(imguiCommand, tooltip) RemixGui::addTooltipAndPassthroughValue((imguiCommand), tooltip)
 
   IMGUI_API void TextCentered(const char* fmt, ...);
   IMGUI_API void TextWrappedCentered(const char* fmt, ...);
-  IMGUI_API bool Checkbox(const char* label, dxvk::RtxOption<bool>* rtxOption);
-  IMGUI_API bool Combo(const char* label, int* current_item, const std::pair<const char*, const char*> items[], int items_count, int popup_max_height_in_items = -1);
-  IMGUI_API bool Combo(const char* label, int* current_item, bool(*items_getter)(void* data, int idx, const char** out_text, const char** out_tooltip), void* data, int items_count, int popup_max_height_in_items = -1);
   IMGUI_API bool ListBox(const char* label, int* current_item, const std::pair<const char*, const char*> items[], int items_count, int height_in_items = -1);
   IMGUI_API bool ListBox(const char* label, int* current_item, bool (*items_getter)(void* data, int idx, const char** out_text, const char** out_tooltip), void* data, int items_count, int height_in_items = -1);
-
 
   // Variant handling RtxOption as input
   template <typename ... Args>
   IMGUI_API bool ColorEdit3(const char* label, dxvk::RtxOption<dxvk::Vector3>* rtxOption, Args&& ... args) {
+    RemixGui::RtxOptionUxWrapper wrapper(rtxOption);
+
     dxvk::Vector3 value = rtxOption->get();
-    bool changed = IMGUI_ADD_TOOLTIP(ColorEdit3(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
+    bool changed = IMGUI_ADD_TOOLTIP(RemixGui::ColorEdit3(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
       rtxOption->setDeferred(value);
     }
@@ -73,7 +72,7 @@ namespace ImGui {
     else
       value = static_cast<int>(*v);
 
-    const bool result = Combo(label, &value, std::forward<Args>(args)...);
+    const bool result = RemixGui::Combo(label, &value, std::forward<Args>(args)...);
 
     if constexpr (std::is_integral_v<T>)
       *v = safeConvertIntegral<int, T>(value);
@@ -87,6 +86,7 @@ namespace ImGui {
   template <typename T, std::enable_if_t<std::is_integral_v<T> || std::is_enum_v<T>, bool> = true,
     typename ... Args>
   IMGUI_API bool Combo(const char* label, dxvk::RtxOption<T>* rtxOption, Args&& ... args) {
+    RemixGui::RtxOptionUxWrapper wrapper(rtxOption);
     T value = rtxOption->get();
     bool changed = IMGUI_ADD_TOOLTIP(Combo(label, &value, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
@@ -106,7 +106,7 @@ namespace ImGui {
     else
       value = static_cast<int>(*v);
 
-    const bool result = DragInt(label, &value, std::forward<Args>(args)...);
+    const bool result = RemixGui::DragInt(label, &value, std::forward<Args>(args)...);
 
     if constexpr (std::is_integral_v<T>)
       *v = safeConvertIntegral<int, T>(value);
@@ -120,8 +120,9 @@ namespace ImGui {
   template <typename T, std::enable_if_t<std::is_integral_v<T> || std::is_enum_v<T>, bool> = true,
     typename ... Args>
   IMGUI_API bool DragInt(const char* label, dxvk::RtxOption<T>* rtxOption, Args&& ... args) {
-    T value = rtxOption->get();
-    bool changed = IMGUI_ADD_TOOLTIP(DragInt(label, &value, std::forward<Args>(args)...), rtxOption->getDescription());
+    RemixGui::RtxOptionUxWrapper wrapper(rtxOption);
+    int value = rtxOption->get();
+    bool changed = IMGUI_ADD_TOOLTIP(RemixGui::DragInt(label, &value, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
       rtxOption->setDeferred(value);
     }
@@ -131,8 +132,9 @@ namespace ImGui {
   // Variant handling RtxOption as input
   template <typename ... Args>
   IMGUI_API bool DragInt2(const char* label, dxvk::RtxOption<dxvk::Vector2i>* rtxOption, Args&& ... args) {
+    RemixGui::RtxOptionUxWrapper wrapper(rtxOption);
     dxvk::Vector2i value = rtxOption->get();
-    bool changed = IMGUI_ADD_TOOLTIP(DragInt2(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
+    bool changed = IMGUI_ADD_TOOLTIP(RemixGui::DragInt2(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
       rtxOption->setDeferred(value);
     }
@@ -150,7 +152,7 @@ namespace ImGui {
     else
       value = static_cast<int>(*v);
 
-    const bool result = InputInt(label, &value, std::forward<Args>(args)...);
+    const bool result = RemixGui::InputInt(label, &value, std::forward<Args>(args)...);
 
     if constexpr (std::is_integral_v<T>)
       *v = safeConvertIntegral<int, T>(value);
@@ -164,6 +166,7 @@ namespace ImGui {
   template <typename T, std::enable_if_t<std::is_integral_v<T> || std::is_enum_v<T>, bool> = true,
             typename ... Args>
   IMGUI_API bool InputInt(const char* label, dxvk::RtxOption<T>* rtxOption, Args&& ... args) {
+    RemixGui::RtxOptionUxWrapper wrapper(rtxOption);
     T value = rtxOption->get();
     bool changed = IMGUI_ADD_TOOLTIP(InputInt(label, &value, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
@@ -183,7 +186,7 @@ namespace ImGui {
     else
       value = static_cast<int>(*v);
 
-    const bool result = SliderInt(label, &value, std::forward<Args>(args)...);
+    const bool result = RemixGui::SliderInt(label, &value, std::forward<Args>(args)...);
 
     if constexpr (std::is_integral_v<T>)
       *v = safeConvertIntegral<int, T>(value);
@@ -197,8 +200,9 @@ namespace ImGui {
   template <typename T, std::enable_if_t<std::is_integral_v<T> || std::is_enum_v<T>, bool> = true, 
             typename ... Args>
   IMGUI_API bool SliderInt(const char* label, dxvk::RtxOption<T>* rtxOption, Args&& ... args) {
-    T value = rtxOption->get();
-    bool changed = IMGUI_ADD_TOOLTIP(SliderInt(label, &value, std::forward<Args>(args)...), rtxOption->getDescription());
+    RemixGui::RtxOptionUxWrapper wrapper(rtxOption);
+    int value = rtxOption->get();
+    bool changed = IMGUI_ADD_TOOLTIP(RemixGui::SliderInt(label, (int*)&value, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
       rtxOption->setDeferred(value);
     }
@@ -214,7 +218,7 @@ namespace ImGui {
     float storage_gigabytes = float(rtxOption->get()) / 1024.f;
     // imgui for that float
     bool hasChanged = IMGUI_ADD_TOOLTIP(
-      ImGui::DragFloat(label, &storage_gigabytes, std::forward<Args>(args)...),
+      RemixGui::DragFloat(label, &storage_gigabytes, std::forward<Args>(args)...),
       rtxOption->getDescription());
 
     // convert back to int megabytes, quantizing by 256mb
@@ -228,8 +232,9 @@ namespace ImGui {
   // Variant handling RtxOption as input
   template <typename ... Args>
   IMGUI_API bool DragFloat(const char* label, dxvk::RtxOption<float>* rtxOption, Args&& ... args) {
+    RemixGui::RtxOptionUxWrapper wrapper(rtxOption);
     float value = rtxOption->get();
-    bool changed = IMGUI_ADD_TOOLTIP(DragFloat(label, &value, std::forward<Args>(args)...), rtxOption->getDescription());
+    bool changed = IMGUI_ADD_TOOLTIP(RemixGui::DragFloat(label, &value, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
       rtxOption->setDeferred(value);
     }
@@ -241,22 +246,23 @@ namespace ImGui {
   // Enabling the checkbox sets the value to `enabledValue`.
   template <typename ... Args>
   IMGUI_API bool OptionalDragFloat(const char* label, dxvk::RtxOption<float>* rtxOption, float enabledValue, Args&& ... args) {
+    RemixGui::RtxOptionUxWrapper wrapper(rtxOption);
     // enabledValue and the default value can't match, otherwise the checkbox won't stay checked.
     assert(enabledValue != rtxOption->getDefaultValue());
     bool enabled = rtxOption->get() != rtxOption->getDefaultValue();
     float value = rtxOption->get();
     std::string hiddenLabel = dxvk::str::format("##", label);
-    bool changed = IMGUI_ADD_TOOLTIP(Checkbox(hiddenLabel.c_str(), &enabled), "Check to enable the option.\nUncheck to disable it and reset to default value.");
+    bool changed = IMGUI_ADD_TOOLTIP(RemixGui::Checkbox(hiddenLabel.c_str(), &enabled), "Check to enable the option.\nUncheck to disable it and reset to default value.");
      ImGui::SameLine();
     if (changed) {
       value = enabled ? enabledValue : rtxOption->getDefaultValue();
     }
     if (enabled) {
-      changed |= IMGUI_ADD_TOOLTIP(DragFloat(label, &value, std::forward<Args>(args)...), rtxOption->getDescription());
+      changed |= IMGUI_ADD_TOOLTIP(RemixGui::DragFloat(label, &value, std::forward<Args>(args)...), rtxOption->getDescription());
     } else {
       ImGui::TextDisabled("%s (Disabled)", label);
       if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltipUnformatted(rtxOption->getDescription());
+        RemixGui::SetTooltipUnformatted(rtxOption->getDescription());
       }
     }
     if (changed) {
@@ -268,8 +274,9 @@ namespace ImGui {
   // Variant handling RtxOption as input
   template <typename ... Args>
   IMGUI_API bool DragFloat2(const char* label, dxvk::RtxOption<dxvk::Vector2>* rtxOption, Args&& ... args) {
+    RemixGui::RtxOptionUxWrapper wrapper(rtxOption);
     dxvk::Vector2 value = rtxOption->get();
-    bool changed = IMGUI_ADD_TOOLTIP(DragFloat2(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
+    bool changed = IMGUI_ADD_TOOLTIP(RemixGui::DragFloat2(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
       rtxOption->setDeferred(value);
     }
@@ -279,8 +286,9 @@ namespace ImGui {
   // Variant handling RtxOption as input
   template <typename ... Args>
   IMGUI_API bool DragFloat3(const char* label, dxvk::RtxOption<dxvk::Vector3>* rtxOption, Args&& ... args) {
+    RemixGui::RtxOptionUxWrapper wrapper(rtxOption);
     dxvk::Vector3 value = rtxOption->get();
-    bool changed = IMGUI_ADD_TOOLTIP(DragFloat3(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
+    bool changed = IMGUI_ADD_TOOLTIP(RemixGui::DragFloat3(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
       rtxOption->setDeferred(value);
     }
@@ -290,42 +298,21 @@ namespace ImGui {
   // Variant handling RtxOption as input
   template <typename ... Args>
   IMGUI_API bool DragFloat4(const char* label, dxvk::RtxOption<dxvk::Vector4>* rtxOption, Args&& ... args) {
+    RemixGui::RtxOptionUxWrapper wrapper(rtxOption);
     dxvk::Vector4 value = rtxOption->get();
-    bool changed = IMGUI_ADD_TOOLTIP(DragFloat4(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
+    bool changed = IMGUI_ADD_TOOLTIP(RemixGui::DragFloat4(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
       rtxOption->setDeferred(value);
     }
     return changed;
   }
-  
-  template <typename ... Args>
-  IMGUI_API bool DragFloatRange(const char* label, std::array<dxvk::RtxOption<float>*, 2> options, Args&& ... args) {
-    PushID(label);
-
-    PushItemWidth(120);
-
-    PushID("min");
-    bool changed1 = DragFloat("", options[0], std::forward<Args>(args)...);
-    PopID();
-    SameLine();
-
-    PushID("max");
-    bool changed2 = DragFloat("", options[1], std::forward<Args>(args)...);
-    PopID();
-    PopItemWidth();
-
-    SameLine();
-
-    Text(label);
-    PopID();
-    return changed1 || changed2;
-  }
 
   // Variant handling RtxOption as input
   template <typename ... Args>
   IMGUI_API bool DragIntRange2(const char* label, dxvk::RtxOption<dxvk::Vector2i>* rtxOption, Args&& ... args) {
+    RemixGui::RtxOptionUxWrapper wrapper(rtxOption);
     dxvk::Vector2i value = rtxOption->get();
-    bool changed = IMGUI_ADD_TOOLTIP(DragIntRange2(label, &value.x, &value.y, std::forward<Args>(args)...), rtxOption->getDescription());
+    bool changed = IMGUI_ADD_TOOLTIP(RemixGui::DragIntRange2(label, &value.x, &value.y, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
       rtxOption->setDeferred(value);
     }
@@ -335,8 +322,9 @@ namespace ImGui {
   // Variant handling RtxOption as input
   template <typename ... Args>
   IMGUI_API bool InputFloat(const char* label, dxvk::RtxOption<float>* rtxOption, Args&& ... args) {
+    RemixGui::RtxOptionUxWrapper wrapper(rtxOption);
     float value = rtxOption->get();
-    bool changed = IMGUI_ADD_TOOLTIP(InputFloat(label, &value, std::forward<Args>(args)...), rtxOption->getDescription());
+    bool changed = IMGUI_ADD_TOOLTIP(RemixGui::InputFloat(label, &value, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
       rtxOption->setDeferred(value);
     }
@@ -346,8 +334,9 @@ namespace ImGui {
   // Variant handling RtxOption as input
   template <typename ... Args>
   IMGUI_API bool SliderFloat(const char* label, dxvk::RtxOption<float>* rtxOption, Args&& ... args) {
+    RemixGui::RtxOptionUxWrapper wrapper(rtxOption);
     float value = rtxOption->get();
-    bool changed = IMGUI_ADD_TOOLTIP(SliderFloat(label, &value, std::forward<Args>(args)...), rtxOption->getDescription());
+    bool changed = IMGUI_ADD_TOOLTIP(RemixGui::SliderFloat(label, &value, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
       rtxOption->setDeferred(value);
     }
@@ -357,8 +346,9 @@ namespace ImGui {
   // Variant handling RtxOption as input
   template <typename ... Args>
   IMGUI_API bool SliderFloat2(const char* label, dxvk::RtxOption<dxvk::Vector2>* rtxOption, Args&& ... args) {
+    RemixGui::RtxOptionUxWrapper wrapper(rtxOption);
     dxvk::Vector2 value = rtxOption->get();
-    bool changed = IMGUI_ADD_TOOLTIP(SliderFloat2(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
+    bool changed = IMGUI_ADD_TOOLTIP(RemixGui::SliderFloat2(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
       rtxOption->setDeferred(value);
     }
@@ -368,8 +358,9 @@ namespace ImGui {
   // Variant handling RtxOption as input
   template <typename ... Args>
   IMGUI_API bool SliderFloat3(const char* label, dxvk::RtxOption<dxvk::Vector3>* rtxOption, Args&& ... args) {
+    RemixGui::RtxOptionUxWrapper wrapper(rtxOption);
     dxvk::Vector3 value = rtxOption->get();
-    bool changed = IMGUI_ADD_TOOLTIP(SliderFloat3(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
+    bool changed = IMGUI_ADD_TOOLTIP(RemixGui::SliderFloat3(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
       rtxOption->setDeferred(value);
     }
@@ -379,8 +370,9 @@ namespace ImGui {
   // Variant handling RtxOption as input
   template <typename ... Args>
   IMGUI_API bool SliderFloat4(const char* label, dxvk::RtxOption<dxvk::Vector4>* rtxOption, Args&& ... args) {
+    RemixGui::RtxOptionUxWrapper wrapper(rtxOption);
     dxvk::Vector4 value = rtxOption->get();
-    bool changed = IMGUI_ADD_TOOLTIP(SliderFloat4(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
+    bool changed = IMGUI_ADD_TOOLTIP(RemixGui::SliderFloat4(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
       rtxOption->setDeferred(value);
     }
@@ -390,8 +382,9 @@ namespace ImGui {
   // Variant handling RtxOption as input
   template <typename ... Args>
   IMGUI_API bool ColorPicker3(const char* label, dxvk::RtxOption<dxvk::Vector3>* rtxOption, Args&& ... args) {
+    RemixGui::RtxOptionUxWrapper wrapper(rtxOption);
     dxvk::Vector3 value = rtxOption->get();
-    bool changed = IMGUI_ADD_TOOLTIP(ColorPicker3(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
+    bool changed = IMGUI_ADD_TOOLTIP(RemixGui::ColorPicker3(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
       rtxOption->setDeferred(value);
     }
@@ -401,8 +394,9 @@ namespace ImGui {
   // Variant handling RtxOption as input
   template <typename ... Args>
   IMGUI_API bool ColorPicker4(const char* label, dxvk::RtxOption<dxvk::Vector4>* rtxOption, Args&& ... args) {
+    RemixGui::RtxOptionUxWrapper wrapper(rtxOption);
     dxvk::Vector4 value = rtxOption->get();
-    bool changed = IMGUI_ADD_TOOLTIP(ColorPicker4(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
+    bool changed = IMGUI_ADD_TOOLTIP(RemixGui::ColorPicker4(label, value.data, std::forward<Args>(args)...), rtxOption->getDescription());
     if (changed) {
       rtxOption->setDeferred(value);
     }
@@ -412,6 +406,7 @@ namespace ImGui {
   // Variant handling RtxOption as input
   template <typename ... Args>
   IMGUI_API bool InputText(const char* label, dxvk::RtxOption<std::string>* rtxOption, Args&& ... args) {
+    RemixGui::RtxOptionUxWrapper wrapper(rtxOption);
     // Note: Includes the null terminator, so the maximum length of text is only 1023 bytes.
     constexpr std::uint32_t maxTextBytes = 1024;
     std::array<char, maxTextBytes> textBuffer{};
@@ -424,11 +419,11 @@ namespace ImGui {
     // Note: Add the null terminator to the end of however much was copied.
     textBuffer[clampedTextSize] = '\0';
 
-    const auto changed = IMGUI_ADD_TOOLTIP(InputText(label, textBuffer.data(), textBuffer.size(), std::forward<Args>(args)...), rtxOption->getDescription());
+    const auto changed = IMGUI_ADD_TOOLTIP(RemixGui::InputText(label, textBuffer.data(), textBuffer.size(), std::forward<Args>(args)...), rtxOption->getDescription());
 
     if (changed) {
       rtxOption->setDeferred(std::string(textBuffer.data()));
-    } else if (IsItemDeactivated()) {
+    } else if (ImGui::IsItemDeactivated()) {
       // If the text box loses focus when `ImGuiInputTextFlags_EnterReturnsTrue` is set, the input value would be lost.
       // This catches that case.
       if (strcmp(textBuffer.data(), rtxOption->get().c_str()) != 0) {
@@ -474,7 +469,7 @@ namespace ImGui {
 
       int comboIdx = it != m_keyToComboIdx.end() ? it->second : 0;
 
-      bool isChanged = Combo(m_widgetName, &comboIdx, getString, static_cast<void*>(&m_comboEntries), static_cast<int>(m_comboEntries.size()));
+      bool isChanged = RemixGui::Combo(m_widgetName, &comboIdx, getString, static_cast<void*>(&m_comboEntries), static_cast<int>(m_comboEntries.size()));
 
       *key = m_comboEntries[comboIdx].key;
 
@@ -484,6 +479,7 @@ namespace ImGui {
     // Variant handling RtxOption as input
     template <typename R>
     bool getKey(dxvk::RtxOption<R>* rtxOption) {
+      RemixGui::RtxOptionUxWrapper wrapper(rtxOption);
       R value = rtxOption->get();
       bool changed = IMGUI_ADD_TOOLTIP(getKey(&value), rtxOption->getDescription());
       if (changed) {

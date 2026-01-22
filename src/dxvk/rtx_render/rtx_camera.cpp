@@ -915,24 +915,22 @@ namespace dxvk
 
   void RtCamera::showImguiSettings() {
     const static ImGuiSliderFlags sliderFlags = ImGuiSliderFlags_AlwaysClamp;
-    const static ImGuiTreeNodeFlags collapsingHeaderFlags = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_CollapsingHeader;
-    const static ImGuiTreeNodeFlags collapsingHeaderClosedFlags = ImGuiTreeNodeFlags_CollapsingHeader;
 
-    if (ImGui::CollapsingHeader("Free Camera", collapsingHeaderFlags)) {
+    if (RemixGui::CollapsingHeader("Free Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
       ImGui::Indent();
 
-      ImGui::Checkbox("Enable Free Camera", &enableFreeCameraObject());
-      ImGui::Checkbox("Lock Free Camera", &lockFreeCameraObject());
-      ImGui::Checkbox("Use Free Camera for Components", &useFreeCameraForComponentsObject());
-      ImGui::DragFloat3("Position", &freeCameraPositionObject(), 0.1f, -1e5, -1e5, "%.3f", sliderFlags);
-      ImGui::DragFloat("Yaw", &freeCameraYawObject(), 0.1f, -Pi<float>(2), Pi<float>(2), "%.3f", sliderFlags);
-      ImGui::DragFloat("Pitch", &freeCameraPitchObject(), 0.1f, -Pi<float>(2), Pi<float>(2), "%.3f", sliderFlags);
-      ImGui::DragFloat("Speed", &freeCameraSpeedObject(), 0.1f, 0.f, 5000.0f, "%.3f");
-      ImGui::DragFloat("Turning Speed", &freeCameraTurningSpeedObject(), 0.01f, 0.f, 3.0f, "%.3f");
-      ImGui::Checkbox("Invert Y", &freeCameraInvertYObject());
-      ImGui::Checkbox("View Relative", &freeCameraViewRelativeObject());
+      RemixGui::Checkbox("Enable Free Camera", &enableFreeCameraObject());
+      RemixGui::Checkbox("Lock Free Camera", &lockFreeCameraObject());
+      RemixGui::Checkbox("Use Free Camera for Components", &useFreeCameraForComponentsObject());
+      RemixGui::DragFloat3("Position", &freeCameraPositionObject(), 0.1f, -1e5, -1e5, "%.3f", sliderFlags);
+      RemixGui::DragFloat("Yaw", &freeCameraYawObject(), 0.1f, -Pi<float>(2), Pi<float>(2), "%.3f", sliderFlags);
+      RemixGui::DragFloat("Pitch", &freeCameraPitchObject(), 0.1f, -Pi<float>(2), Pi<float>(2), "%.3f", sliderFlags);
+      RemixGui::DragFloat("Speed", &freeCameraSpeedObject(), 0.1f, 0.f, 5000.0f, "%.3f");
+      RemixGui::DragFloat("Turning Speed", &freeCameraTurningSpeedObject(), 0.01f, 0.f, 3.0f, "%.3f");
+      RemixGui::Checkbox("Invert Y", &freeCameraInvertYObject());
+      RemixGui::Checkbox("View Relative", &freeCameraViewRelativeObject());
 
-      if (ImGui::CollapsingHeader("Show Camera Controls", collapsingHeaderClosedFlags)) {
+      if (RemixGui::CollapsingHeader("Show Camera Controls")) {
         ImGui::TextUnformatted("MoveFaster:");  ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveFaster()).c_str());
         ImGui::TextUnformatted("MoveForward:"); ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveForward()).c_str());
         ImGui::TextUnformatted("MoveLeft:");    ImGui::SameLine(150); ImGui::TextUnformatted(buildKeyBindDescriptorString(RtxOptions::FreeCam::keyMoveLeft()).c_str());
@@ -1101,7 +1099,7 @@ namespace dxvk
   }
 
   void RtCameraSequence::showImguiSettings() {
-    ImGui::InputText("File Path", &filePathObject(), ImGuiInputTextFlags_EnterReturnsTrue);
+    RemixGui::InputText("File Path", &filePathObject(), ImGuiInputTextFlags_EnterReturnsTrue);
 
     if (ImGui::Button("Load Sequence")) {
       load();

@@ -44,25 +44,25 @@ namespace dxvk {
     RTX_OPTION_FLAG("rtx.lights", bool, debugDrawLightHashes, false, RtxOptionFlags::NoSave, "Draw light hashes of all visible ob screen lights, when enableDebugMode=true.");
   };
 
-  ImGui::ComboWithKey<LightManager::FallbackLightMode> fallbackLightModeCombo {
+  RemixGui::ComboWithKey<LightManager::FallbackLightMode> fallbackLightModeCombo {
     "Fallback Light Mode",
-    ImGui::ComboWithKey<LightManager::FallbackLightMode>::ComboEntries { {
+    RemixGui::ComboWithKey<LightManager::FallbackLightMode>::ComboEntries { {
         {LightManager::FallbackLightMode::Never, "Never"},
         {LightManager::FallbackLightMode::NoLightsPresent, "No Lights Present"},
         {LightManager::FallbackLightMode::Always, "Always"},
     } }
   };
 
-  ImGui::ComboWithKey<LightManager::FallbackLightType> fallbackLightTypeCombo {
+  RemixGui::ComboWithKey<LightManager::FallbackLightType> fallbackLightTypeCombo {
     "Fallback Light Type",
-    ImGui::ComboWithKey<LightManager::FallbackLightType>::ComboEntries { {
+    RemixGui::ComboWithKey<LightManager::FallbackLightType>::ComboEntries { {
         {LightManager::FallbackLightType::Distant, "Distant"},
         {LightManager::FallbackLightType::Sphere, "Sphere"},
     } }
   };
 
   void LightManager::showImguiLightOverview() {
-    if (ImGui::CollapsingHeader("Light Statistics", ImGuiTreeNodeFlags_CollapsingHeader)) {
+    if (RemixGui::CollapsingHeader("Light Statistics")) {
       ImGui::Indent();
       ImGui::Text("Sphere Lights: %d", getLightCount(lightTypeSphere));
       ImGui::Text("Rectangle Lights: %d", getLightCount(lightTypeRect));
@@ -70,11 +70,11 @@ namespace dxvk {
       ImGui::Text("Cylinder Lights: %d", getLightCount(lightTypeCylinder));
       ImGui::Text("Distant Lights: %d", getLightCount(lightTypeDistant));
       ImGui::Text("Total Lights: %d", getActiveCount());
-      ImGui::Separator();
-      ImGui::Checkbox("Enable Debug Visualization", &LightManagerGuiSettings::enableDebugModeObject());
+      RemixGui::Separator();
+      RemixGui::Checkbox("Enable Debug Visualization", &LightManagerGuiSettings::enableDebugModeObject());
       {
         ImGui::BeginDisabled(!LightManagerGuiSettings::enableDebugMode());
-        ImGui::Checkbox("Draw Light Hashes", &LightManagerGuiSettings::debugDrawLightHashesObject());
+        RemixGui::Checkbox("Draw Light Hashes", &LightManagerGuiSettings::debugDrawLightHashesObject());
         ImGui::EndDisabled();
       }
       ImGui::Dummy({ 0,2 });
@@ -88,15 +88,15 @@ namespace dxvk {
 
     const auto separator = []() {
       ImGui::Dummy({ 0,2 });
-      ImGui::Separator();
+      RemixGui::Separator();
       ImGui::Dummy({ 0,2 });
     };
 
-    if (ImGui::CollapsingHeader("Light Translation", ImGuiTreeNodeFlags_CollapsingHeader)) {
+    if (RemixGui::CollapsingHeader("Light Translation")) {
       ImGui::Dummy({ 0,2 });
       ImGui::Indent();
 
-      lightSettingsDirty |= ImGui::Checkbox("Suppress Light Keeping", &suppressLightKeepingObject());
+      lightSettingsDirty |= RemixGui::Checkbox("Suppress Light Keeping", &suppressLightKeepingObject());
 
       separator();
 
@@ -107,35 +107,33 @@ namespace dxvk {
       ImGui::TextColored(ImVec4{ 0.87f, 0.75f, 0.20f, 1.0f }, "Warning: changing Light Conversion values can cause crashes.\nManually entering values is safer than dragging.");
       ImGui::BeginDisabled(disablePointSpot);
       ImGui::Text("Sphere / Spot Light settings");
-      lightSettingsDirty |= ImGui::Checkbox("Use Least Squares Intensity", &calculateLightIntensityUsingLeastSquaresObject());
-      lightSettingsDirty |= ImGui::DragFloat("Light Radius", &lightConversionSphereLightFixedRadiusObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-      lightSettingsDirty |= ImGui::DragFloat("Intensity Factor", &lightConversionIntensityFactorObject(), 0.01f, 0.0f, 2.f, "%.3f");
-      lightSettingsDirty |= ImGui::OptionalDragFloat("Max Intensity", &lightConversionMaxIntensityObject(), 1000000.f, 1.f, 0.0f, FLT_MAX, "%.1f", ImGuiSliderFlags_AlwaysClamp);
+      lightSettingsDirty |= RemixGui::Checkbox("Use Least Squares Intensity", &calculateLightIntensityUsingLeastSquaresObject());
+      lightSettingsDirty |= RemixGui::DragFloat("Light Radius", &lightConversionSphereLightFixedRadiusObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+      lightSettingsDirty |= RemixGui::DragFloat("Intensity Factor", &lightConversionIntensityFactorObject(), 0.01f, 0.0f, 2.f, "%.3f");
+      lightSettingsDirty |= RemixGui::OptionalDragFloat("Max Intensity", &lightConversionMaxIntensityObject(), 1000000.f, 1.f, 0.0f, FLT_MAX, "%.1f", ImGuiSliderFlags_AlwaysClamp);
       ImGui::EndDisabled();
 
       separator();
 
       ImGui::BeginDisabled(disableDirectional);
       ImGui::Text("Distant Light settings");
-      lightSettingsDirty |= ImGui::DragFloat("Fixed Intensity", &lightConversionDistantLightFixedIntensityObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-      lightSettingsDirty |= ImGui::DragFloat("Fixed Angle", &lightConversionDistantLightFixedAngleObject(), 0.01f, 0.0f, kPi, "%.4f rad", ImGuiSliderFlags_AlwaysClamp);
+      lightSettingsDirty |= RemixGui::DragFloat("Fixed Intensity", &lightConversionDistantLightFixedIntensityObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+      lightSettingsDirty |= RemixGui::DragFloat("Fixed Angle", &lightConversionDistantLightFixedAngleObject(), 0.01f, 0.0f, kPi, "%.4f rad", ImGuiSliderFlags_AlwaysClamp);
       ImGui::EndDisabled();
 
       separator();
 
       ImGui::Text("Ignore Game Lights:");
       ImGui::Indent();
-      lightSettingsDirty |= ImGui::Checkbox("Directional", &ignoreGameDirectionalLightsObject());
-      ImGui::SameLine();
-      lightSettingsDirty |= ImGui::Checkbox("Point", &ignoreGamePointLightsObject());
-      ImGui::SameLine();
-      lightSettingsDirty |= ImGui::Checkbox("Spot", &ignoreGameSpotLightsObject());
+      lightSettingsDirty |= RemixGui::Checkbox("Directional", &ignoreGameDirectionalLightsObject());
+      lightSettingsDirty |= RemixGui::Checkbox("Point", &ignoreGamePointLightsObject());
+      lightSettingsDirty |= RemixGui::Checkbox("Spot", &ignoreGameSpotLightsObject());
       ImGui::Unindent();
 
       ImGui::Unindent();
     }
 
-    if (ImGui::CollapsingHeader("Fallback Light", ImGuiTreeNodeFlags_CollapsingHeader)) {
+    if (RemixGui::CollapsingHeader("Fallback Light")) {
       ImGui::Dummy({ 0,2 });
       ImGui::Indent();
 
@@ -145,29 +143,29 @@ namespace dxvk {
       {
         lightSettingsDirty |= fallbackLightTypeCombo.getKey(&fallbackLightTypeObject());
 
-        lightSettingsDirty |= ImGui::DragFloat3("Fallback Light Radiance", &fallbackLightRadianceObject(), 0.1f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+        lightSettingsDirty |= RemixGui::DragFloat3("Fallback Light Radiance", &fallbackLightRadianceObject(), 0.1f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 
         if (fallbackLightType() == FallbackLightType::Distant) {
-          lightSettingsDirty |= ImGui::DragFloat3("Fallback Light Direction", &fallbackLightDirectionObject(), 0.1f, 0.0f, 0.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-          lightSettingsDirty |= ImGui::DragFloat("Fallback Light Angle", &fallbackLightAngleObject(), 0.01f, 0.0f, FLT_MAX, "%.3f deg", ImGuiSliderFlags_AlwaysClamp);
+          lightSettingsDirty |= RemixGui::DragFloat3("Fallback Light Direction", &fallbackLightDirectionObject(), 0.1f, 0.0f, 0.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+          lightSettingsDirty |= RemixGui::DragFloat("Fallback Light Angle", &fallbackLightAngleObject(), 0.01f, 0.0f, FLT_MAX, "%.3f deg", ImGuiSliderFlags_AlwaysClamp);
         } else if (fallbackLightType() == FallbackLightType::Sphere) {
-          lightSettingsDirty |= ImGui::DragFloat("Fallback Light Radius", &fallbackLightRadiusObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-          lightSettingsDirty |= ImGui::DragFloat3("Fallback Light Position Offset", &fallbackLightPositionOffsetObject(), 0.1f, 0.0f, 0.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+          lightSettingsDirty |= RemixGui::DragFloat("Fallback Light Radius", &fallbackLightRadiusObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+          lightSettingsDirty |= RemixGui::DragFloat3("Fallback Light Position Offset", &fallbackLightPositionOffsetObject(), 0.1f, 0.0f, 0.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 
-          lightSettingsDirty |= ImGui::Checkbox("Enable Fallback Light Shaping", &enableFallbackLightShapingObject());
+          lightSettingsDirty |= RemixGui::Checkbox("Enable Fallback Light Shaping", &enableFallbackLightShapingObject());
 
           if (enableFallbackLightShaping()) {
             ImGui::Indent();
 
-            lightSettingsDirty |= ImGui::Checkbox("Fallback Light Match View Axis", &enableFallbackLightViewPrimaryAxisObject());
+            lightSettingsDirty |= RemixGui::Checkbox("Fallback Light Match View Axis", &enableFallbackLightViewPrimaryAxisObject());
 
             if (!enableFallbackLightViewPrimaryAxis()) {
-              lightSettingsDirty |= ImGui::DragFloat3("Fallback Light Primary Axis", &fallbackLightPrimaryAxisObject(), 0.1f, 0.0f, 0.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+              lightSettingsDirty |= RemixGui::DragFloat3("Fallback Light Primary Axis", &fallbackLightPrimaryAxisObject(), 0.1f, 0.0f, 0.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
             }
 
-            lightSettingsDirty |= ImGui::DragFloat("Fallback Light Cone Angle", &fallbackLightConeAngleObject(), 0.01f, 0.0f, FLT_MAX, "%.3f deg", ImGuiSliderFlags_AlwaysClamp);
-            lightSettingsDirty |= ImGui::DragFloat("Fallback Light Cone Softness", &fallbackLightConeSoftnessObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-            lightSettingsDirty |= ImGui::DragFloat("Fallback Light Focus Exponent", &fallbackLightFocusExponentObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+            lightSettingsDirty |= RemixGui::DragFloat("Fallback Light Cone Angle", &fallbackLightConeAngleObject(), 0.01f, 0.0f, FLT_MAX, "%.3f deg", ImGuiSliderFlags_AlwaysClamp);
+            lightSettingsDirty |= RemixGui::DragFloat("Fallback Light Cone Softness", &fallbackLightConeSoftnessObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+            lightSettingsDirty |= RemixGui::DragFloat("Fallback Light Focus Exponent", &fallbackLightFocusExponentObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 
             ImGui::Unindent();
           }
@@ -315,7 +313,7 @@ namespace dxvk {
         }
       }
       ImGui::Text("Frame last touched: %d", light.getFrameLastTouched());
-      ImGui::Separator();
+      RemixGui::Separator();
 
       if (ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
         ImGui::SetClipboardText(hashToString(light.getInitialHash()).c_str());

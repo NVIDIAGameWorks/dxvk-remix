@@ -233,52 +233,52 @@ namespace dxvk {
   }
 
   void RtxGlobalVolumetrics::showImguiSettings() {
-    if (ImGui::CollapsingHeader("Froxel Radiance Cache", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (RemixGui::CollapsingHeader("Froxel Radiance Cache", ImGuiTreeNodeFlags_DefaultOpen)) {
       ImGui::Indent();
 
       showPresetMenu();
 
-      ImGui::Separator();
+      RemixGui::Separator();
 
       static bool showAdvanced = false;
-      ImGui::Checkbox("Show Advanced Options", &showAdvanced);
+      RemixGui::Checkbox("Show Advanced Options", &showAdvanced);
 
       if (showAdvanced) {
-        m_rebuildFroxels |= ImGui::DragInt("Froxel Grid Resolution Scale", &froxelGridResolutionScaleObject(), 0.1f, 1);
-        m_rebuildFroxels |= ImGui::DragInt("Froxel Depth Slices", &froxelDepthSlicesObject(), 0.1f, 1, UINT16_MAX);
-        ImGui::DragInt("Max Accumulation Frames", &maxAccumulationFramesObject(), 0.1f, 1, UINT8_MAX);
-        ImGui::DragFloat("Froxel Depth Slice Distribution Exponent", &froxelDepthSliceDistributionExponentObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::DragFloat("Froxel Max Distance", &froxelMaxDistanceMetersObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::DragFloat("Froxel Firefly Filtering Luminance Threshold", &froxelFireflyFilteringLuminanceThresholdObject(), 0.1f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::Checkbox("Per-Portal Volumes", &enableInPortalsObject());
+        m_rebuildFroxels |= RemixGui::DragInt("Froxel Grid Resolution Scale", &froxelGridResolutionScaleObject(), 0.1f, 1);
+        m_rebuildFroxels |= RemixGui::DragInt("Froxel Depth Slices", &froxelDepthSlicesObject(), 0.1f, 1, UINT16_MAX);
+        RemixGui::DragInt("Max Accumulation Frames", &maxAccumulationFramesObject(), 0.1f, 1, UINT8_MAX);
+        RemixGui::DragFloat("Froxel Depth Slice Distribution Exponent", &froxelDepthSliceDistributionExponentObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+        RemixGui::DragFloat("Froxel Max Distance", &froxelMaxDistanceMetersObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        RemixGui::DragFloat("Froxel Firefly Filtering Luminance Threshold", &froxelFireflyFilteringLuminanceThresholdObject(), 0.1f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+        RemixGui::Checkbox("Per-Portal Volumes", &enableInPortalsObject());
 
-        ImGui::Separator();
-        ImGui::Checkbox("Enable Reference Mode", &enableReferenceModeObject());
-        ImGui::Separator();
+        RemixGui::Separator();
+        RemixGui::Checkbox("Enable Reference Mode", &enableReferenceModeObject());
+        RemixGui::Separator();
 
         ImGui::BeginDisabled(enableReferenceMode());
 
-        m_rebuildFroxels |= ImGui::DragInt("Restir Grid Downsample Factor", &restirGridScaleObject(), 0.1f, 1);
-        m_rebuildFroxels |= ImGui::DragInt("Restir Froxel Depth Slices", &restirFroxelDepthSlicesObject(), 0.1f, 1, UINT16_MAX);
-        ImGui::DragFloat("Restir Guard Band Scale Factor", &restirGridGuardBandFactorObject(), 0.1f, 1.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+        m_rebuildFroxels |= RemixGui::DragInt("Restir Grid Downsample Factor", &restirGridScaleObject(), 0.1f, 1);
+        m_rebuildFroxels |= RemixGui::DragInt("Restir Froxel Depth Slices", &restirFroxelDepthSlicesObject(), 0.1f, 1, UINT16_MAX);
+        RemixGui::DragFloat("Restir Guard Band Scale Factor", &restirGridGuardBandFactorObject(), 0.1f, 1.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 
-        ImGui::DragInt("Initial RIS Sample Count", &initialRISSampleCountObject(), 0.05f, 1, UINT8_MAX);
-        ImGui::Checkbox("Enable Initial Visibility", &enableInitialVisibilityObject());
+        RemixGui::DragInt("Initial RIS Sample Count", &initialRISSampleCountObject(), 0.05f, 1, UINT8_MAX);
+        RemixGui::Checkbox("Enable Initial Visibility", &enableInitialVisibilityObject());
         ImGui::BeginDisabled(!enableInitialVisibility());
-        ImGui::Checkbox("Enable Visibility Reuse", &visibilityReuseObject());
+        RemixGui::Checkbox("Enable Visibility Reuse", &visibilityReuseObject());
         ImGui::EndDisabled();
 
-        ImGui::Checkbox("Enable Temporal Resampling", &enableTemporalResamplingObject());
+        RemixGui::Checkbox("Enable Temporal Resampling", &enableTemporalResamplingObject());
         ImGui::BeginDisabled(!enableTemporalResampling());
-        ImGui::DragInt("Temporal Resampling Max Sample Count", &temporalReuseMaxSampleCountObject(), 1.0f, 1, UINT16_MAX);
+        RemixGui::DragInt("Temporal Resampling Max Sample Count", &temporalReuseMaxSampleCountObject(), 1.0f, 1, UINT16_MAX);
         ImGui::EndDisabled();
 
-        ImGui::Separator();
+        RemixGui::Separator();
 
-        ImGui::Checkbox("Enable Spatial Resampling", &enableSpatialResamplingObject());
+        RemixGui::Checkbox("Enable Spatial Resampling", &enableSpatialResamplingObject());
         ImGui::BeginDisabled(!enableSpatialResampling());
-        ImGui::DragInt("Spatial Resampling Max Sample Count", &spatialReuseMaxSampleCountObject(), 1.0f, 1, UINT16_MAX);
-        ImGui::DragFloat("Clamped Spatial Resampling Search Radius", &spatialReuseSamplingRadiusObject(), 0.01f, 0.0f, 10.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+        RemixGui::DragInt("Spatial Resampling Max Sample Count", &spatialReuseMaxSampleCountObject(), 1.0f, 1, UINT16_MAX);
+        RemixGui::DragFloat("Clamped Spatial Resampling Search Radius", &spatialReuseSamplingRadiusObject(), 0.01f, 0.0f, 10.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
         ImGui::EndDisabled();
 
         ImGui::EndDisabled();
@@ -287,10 +287,10 @@ namespace dxvk {
       ImGui::Unindent();
     }
 
-    if (ImGui::CollapsingHeader("Volumetric Lighting", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (RemixGui::CollapsingHeader("Volumetric Lighting", ImGuiTreeNodeFlags_DefaultOpen)) {
       ImGui::Indent();
 
-      ImGui::Checkbox("Enable Volumetric Lighting", &enableObject());
+      RemixGui::Checkbox("Enable Volumetric Lighting", &enableObject());
       {
         ImGui::Indent();
         ImGui::BeginDisabled(!enable());
@@ -322,69 +322,69 @@ namespace dxvk {
           itemIndex = 0;
         }
 
-        ImGui::Separator();
+        RemixGui::Separator();
 
         static bool showAdvanced = false;
-        ImGui::Checkbox("Show Advanced Material Options", &showAdvanced);
+        RemixGui::Checkbox("Show Advanced Material Options", &showAdvanced);
 
         if (showAdvanced) {
-          ImGui::DragFloat3("Transmittance Color", &transmittanceColorObject(), 0.01f, 0.0f, MaxTransmittanceValue, "%.3f");
-          ImGui::DragFloat("Transmittance Measurement Distance", &transmittanceMeasurementDistanceMetersObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloat3("Single Scattering Albedo", &singleScatteringAlbedoObject(), 0.01f, 0.0f, 1.0f, "%.3f");
-          ImGui::DragFloat("Anisotropy", &anisotropyObject(), 0.01f, -.99f, .99f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloat("Depth Offset", &depthOffsetObject(), 0.01f, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat3("Transmittance Color", &transmittanceColorObject(), 0.01f, 0.0f, MaxTransmittanceValue, "%.3f");
+          RemixGui::DragFloat("Transmittance Measurement Distance", &transmittanceMeasurementDistanceMetersObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat3("Single Scattering Albedo", &singleScatteringAlbedoObject(), 0.01f, 0.0f, 1.0f, "%.3f");
+          RemixGui::DragFloat("Anisotropy", &anisotropyObject(), 0.01f, -.99f, .99f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Depth Offset", &depthOffsetObject(), 0.01f, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 
-          ImGui::Separator();
+          RemixGui::Separator();
 
-          ImGui::Checkbox("Enable Heterogeneous Fog", &enableHeterogeneousFogObject());
+          RemixGui::Checkbox("Enable Heterogeneous Fog", &enableHeterogeneousFogObject());
 
           ImGui::BeginDisabled(!enableHeterogeneousFog());
-          ImGui::DragFloat("Noise Field Substep Size", &noiseFieldSubStepSizeMetersObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragInt("Noise Field Number of Octaves", &noiseFieldOctavesObject(), 0.05f, 1, 8);
-          ImGui::DragFloat("Noise Field Time Scale", &noiseFieldTimeScaleObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloat("Noise Field Density Scale", &noiseFieldDensityScaleObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloat("Noise Field Density Exponent", &noiseFieldDensityExponentObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloat("Noise Field Initial Frequency", &noiseFieldInitialFrequencyPerMeterObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloat("Noise Field Lacunarity", &noiseFieldLacunarityObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloat("Noise Field Gain", &noiseFieldGainObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Noise Field Substep Size", &noiseFieldSubStepSizeMetersObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragInt("Noise Field Number of Octaves", &noiseFieldOctavesObject(), 0.05f, 1, 8);
+          RemixGui::DragFloat("Noise Field Time Scale", &noiseFieldTimeScaleObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Noise Field Density Scale", &noiseFieldDensityScaleObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Noise Field Density Exponent", &noiseFieldDensityExponentObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Noise Field Initial Frequency", &noiseFieldInitialFrequencyPerMeterObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Noise Field Lacunarity", &noiseFieldLacunarityObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Noise Field Gain", &noiseFieldGainObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::EndDisabled();
         }
 
-        ImGui::Separator();
+        RemixGui::Separator();
 
-        ImGui::Checkbox("Atmosphere Enabled", &enableAtmosphereObject());
+        RemixGui::Checkbox("Atmosphere Enabled", &enableAtmosphereObject());
         ImGui::Indent();
         ImGui::BeginDisabled(!enableAtmosphere());
         {
-          ImGui::DragFloat("Planet Radius", &atmospherePlanetRadiusMetersObject(), 0.1f, -FLT_MAX, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloat("Height", &atmosphereHeightMetersObject(), 0.1f, -FLT_MAX, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::Checkbox("Inverted", &atmosphereInvertedObject());
+          RemixGui::DragFloat("Planet Radius", &atmospherePlanetRadiusMetersObject(), 0.1f, -FLT_MAX, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Height", &atmosphereHeightMetersObject(), 0.1f, -FLT_MAX, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::Checkbox("Inverted", &atmosphereInvertedObject());
           ImGui::EndDisabled();
         }
         ImGui::Unindent();
 
-        ImGui::Separator();
-        ImGui::Checkbox("Enable Legacy Fog Remapping", &enableFogRemapObject());
-        ImGui::Separator();
+        RemixGui::Separator();
+        RemixGui::Checkbox("Enable Legacy Fog Remapping", &enableFogRemapObject());
+        RemixGui::Separator();
 
         ImGui::BeginDisabled(!enableFogRemap());
         {
           ImGui::Indent();
 
-          ImGui::Checkbox("Enable Fog Color Remapping", &enableFogColorRemapObject());
+          RemixGui::Checkbox("Enable Fog Color Remapping", &enableFogColorRemapObject());
 
-          ImGui::Checkbox("Enable Fog Max Distance Remapping", &enableFogMaxDistanceRemapObject());
+          RemixGui::Checkbox("Enable Fog Max Distance Remapping", &enableFogMaxDistanceRemapObject());
 
           ImGui::BeginDisabled(!enableFogMaxDistanceRemap());
           {
-            ImGui::DragFloat("Legacy Max Distance Min", &fogRemapMaxDistanceMinMetersObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-            ImGui::DragFloat("Legacy Max Distance Max", &fogRemapMaxDistanceMaxMetersObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-            ImGui::DragFloat("Remapped Transmittance Measurement Distance Min", &fogRemapTransmittanceMeasurementDistanceMinMetersObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-            ImGui::DragFloat("Remapped Transmittance Measurement Distance Max", &fogRemapTransmittanceMeasurementDistanceMaxMetersObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            RemixGui::DragFloat("Legacy Max Distance Min", &fogRemapMaxDistanceMinMetersObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            RemixGui::DragFloat("Legacy Max Distance Max", &fogRemapMaxDistanceMaxMetersObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            RemixGui::DragFloat("Remapped Transmittance Measurement Distance Min", &fogRemapTransmittanceMeasurementDistanceMinMetersObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            RemixGui::DragFloat("Remapped Transmittance Measurement Distance Max", &fogRemapTransmittanceMeasurementDistanceMaxMetersObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           }
           ImGui::EndDisabled();
 
-          ImGui::DragFloat("Color Multiscattering Scale", &fogRemapColorMultiscatteringScaleObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Color Multiscattering Scale", &fogRemapColorMultiscatteringScaleObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 
           ImGui::Unindent();
         }
@@ -394,7 +394,7 @@ namespace dxvk {
         ImGui::Unindent();
       }
 
-      ImGui::Separator();
+      RemixGui::Separator();
       ImGui::Dummy({ 0, 4 });
       {
         ImGui::Indent();

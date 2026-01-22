@@ -27,9 +27,9 @@
 
 namespace dxvk {
 
-  ImGui::ComboWithKey<AccumulationBlendMode> accumulationBlendModeCombo = ImGui::ComboWithKey<AccumulationBlendMode>(
+  RemixGui::ComboWithKey<AccumulationBlendMode> accumulationBlendModeCombo = RemixGui::ComboWithKey<AccumulationBlendMode>(
     "Accumulation Blend Mode",
-    ImGui::ComboWithKey<AccumulationBlendMode>::ComboEntries { {
+    RemixGui::ComboWithKey<AccumulationBlendMode>::ComboEntries { {
         {AccumulationBlendMode::Average, "Average"},
         {AccumulationBlendMode::Min, "Min"},
         {AccumulationBlendMode::Max, "Max"},
@@ -114,17 +114,16 @@ namespace dxvk {
     RtxOption<uint32_t>& numFramesToAccumulate,
     RtxOption<AccumulationBlendMode>& accumulationBlendMode,
     RtxOption<bool>& resetOnCameraTransformChange) {
-    const ImGuiTreeNodeFlags collapsingHeaderFlags = ImGuiTreeNodeFlags_CollapsingHeader;
 
     // Note: Additional ID appended to this header to not conflict with the button itself.
-    if (ImGui::CollapsingHeader("Accumulation##Header", collapsingHeaderFlags)) {
+    if (RemixGui::CollapsingHeader("Accumulation##Header")) {
       ImGui::Indent();
 
       if (ImGui::Button("Reset History")) {
         resetNumAccumulatedFrames();
       }
 
-      ImGui::InputInt("Number of Frames To Accumulate", &numFramesToAccumulate);
+      RemixGui::InputInt("Number of Frames To Accumulate", &numFramesToAccumulate);
 
       // Reset accumulation if the cap gets lowered and below the current count
       if (m_prevNumFramesToAccumulate > numFramesToAccumulate() &&
@@ -142,16 +141,16 @@ namespace dxvk {
 
       accumulationBlendModeCombo.getKey(&accumulationBlendMode);
 
-      ImGui::Checkbox("Reset on Camera Transform Change", &resetOnCameraTransformChange);
+      RemixGui::Checkbox("Reset on Camera Transform Change", &resetOnCameraTransformChange);
 
       IMGUI_ADD_TOOLTIP(
-        ImGui::Checkbox("Continuous Accumulation", &m_enableContinuousAccumulation),
+        RemixGui::Checkbox("Continuous Accumulation", &m_enableContinuousAccumulation),
         "Enables continuous accumulation even after numFramesToAccumulate frame count is reached.\n"
         "Frame to frame accumulation weight remains limitted by numFramesToAccumulate count.\n"
         "This, however, skews the result as values contribute to the end result longer than numFramesToAccumulate allows.\n");
 
       IMGUI_ADD_TOOLTIP(
-        ImGui::Checkbox("Fp16 Accumulation", &m_enableFp16Accumulation),
+        RemixGui::Checkbox("Fp16 Accumulation", &m_enableFp16Accumulation),
         "Accumulate using fp16 precision. Default is fp32.\n"
         "Much of the renderer is limitted to fp16 formats so on one hand fp16 better emulates renderer's formats.\n"
         "On the other hand, renderer also clamps and filters the signal in many places and thus is less prone\n"

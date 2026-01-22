@@ -61,9 +61,9 @@ namespace dxvk {
   }
 
   void DxvkTemporalAA::showImguiSettings() {
-    ImGui::DragFloat("Maximum Radiance", &maximumRadianceObject(), 0.01f, 1e8f, 100.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::DragFloat("New Frame Weight", &newFrameWeightObject(), 0.001f, 1.0f, 0.001f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::DragFloat("Color Clamping Factor", &colorClampingFactorObject(), 0.001f, 0.005f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+    RemixGui::DragFloat("Maximum Radiance", &maximumRadianceObject(), 0.01f, 1e8f, 100.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+    RemixGui::DragFloat("New Frame Weight", &newFrameWeightObject(), 0.001f, 1.0f, 0.001f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+    RemixGui::DragFloat("Color Clamping Factor", &colorClampingFactorObject(), 0.001f, 0.005f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
   }
 
   void DxvkTemporalAA::dispatch(

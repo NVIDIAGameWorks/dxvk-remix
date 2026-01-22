@@ -129,17 +129,17 @@ namespace dxvk {
   DxvkLocalToneMapping::~DxvkLocalToneMapping()  {  }
 
   void DxvkLocalToneMapping::showImguiSettings() {
-    ImGui::DragInt("Mip", &mipObject(), 0.06f, 0, 16);
-    ImGui::DragInt("Display Mip", &displayMipObject(), 0.06f, 0, 16);
-    ImGui::Checkbox("Boost Local Contrast", &boostLocalContrastObject());
-    ImGui::Checkbox("Use Gaussian Kernel", &useGaussianObject());
-    ImGui::Checkbox("Finalize With ACES", &finalizeWithACESObject());
-    ImGui::DragFloat("Exposure Level", &exposureObject(), 0.01f, 0.f, 1000.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::DragFloat("Shadow Level", &shadowsObject(), 0.01f, -10.f, 10.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::DragFloat("Highlight Level", &highlightsObject(), 0.01f, -10.f, 10.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::DragFloat("Exposure Preference Sigma", &exposurePreferenceSigmaObject(), 0.01f, 0.f, 100.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::DragFloat("Exposure Preference Offset", &exposurePreferenceOffsetObject(), 0.001f, -1.f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::Combo("Dither Mode", &ditherModeObject(), "Disabled\0Spatial\0Spatial + Temporal\0");
+    RemixGui::DragInt("Mip", &mipObject(), 0.06f, 0, 16);
+    RemixGui::DragInt("Display Mip", &displayMipObject(), 0.06f, 0, 16);
+    RemixGui::Checkbox("Boost Local Contrast", &boostLocalContrastObject());
+    RemixGui::Checkbox("Use Gaussian Kernel", &useGaussianObject());
+    RemixGui::Checkbox("Finalize With ACES", &finalizeWithACESObject());
+    RemixGui::DragFloat("Exposure Level", &exposureObject(), 0.01f, 0.f, 1000.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+    RemixGui::DragFloat("Shadow Level", &shadowsObject(), 0.01f, -10.f, 10.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+    RemixGui::DragFloat("Highlight Level", &highlightsObject(), 0.01f, -10.f, 10.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+    RemixGui::DragFloat("Exposure Preference Sigma", &exposurePreferenceSigmaObject(), 0.01f, 0.f, 100.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+    RemixGui::DragFloat("Exposure Preference Offset", &exposurePreferenceOffsetObject(), 0.001f, -1.f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+    RemixGui::Combo("Dither Mode", &ditherModeObject(), "Disabled\0Spatial\0Spatial + Temporal\0");
   }
 
   bool DxvkLocalToneMapping::isEnabled() const {

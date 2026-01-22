@@ -175,7 +175,7 @@ namespace dxvk {
   }
 
   void GpuMemoryTracker::renderGui() {
-    if (ImGui::CollapsingHeader("Memory Profiler", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (RemixGui::CollapsingHeader("Memory Profiler", ImGuiTreeNodeFlags_DefaultOpen)) {
       ImGui::TextWrapped("This is a tool to help diagnose memory related problems in Remix.  Press the `Sample Memory` button to take a snapshot of all the memory allocations currently in use by the application.  You can refresh this list at any time by clicking that button.  Once you have a snapshot, the data will be displayed as a list below.");
 
       if (!MemoryTrackerSettings::enable()) {
@@ -201,7 +201,7 @@ namespace dxvk {
       }
       ImGui::SameLine();
 
-      ImGui::Checkbox("Include Whole Frame", &MemoryTrackerSettings::includeWholeFrameObject());
+      RemixGui::Checkbox("Include Whole Frame", &MemoryTrackerSettings::includeWholeFrameObject());
 
       // Options
       static ImGuiTableFlags flags =

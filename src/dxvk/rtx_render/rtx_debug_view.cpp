@@ -56,7 +56,7 @@ namespace dxvk {
   static const auto colormap75 = turboColormap(0.75f);
   static const auto colormap100 = turboColormap(1.0f);
 
-  ImGui::ComboWithKey<uint32_t>::ComboEntries debugViewEntries = { {
+  RemixGui::ComboWithKey<uint32_t>::ComboEntries debugViewEntries = { {
         {DEBUG_VIEW_PRIMITIVE_INDEX, "Primitive Index"},
         {DEBUG_VIEW_PRIMITIVE_INDEX_HASH, "Primitive Index Hash"},
         {DEBUG_VIEW_GEOMETRY_HASH, "Geometry Hash"},
@@ -440,10 +440,10 @@ namespace dxvk {
   };
 
   // ComboBox entries for ImGui
-  ImGui::ComboWithKey<CompositeDebugView> compositeDebugViewCombo = ImGui::ComboWithKey<CompositeDebugView>(
+  RemixGui::ComboWithKey<CompositeDebugView> compositeDebugViewCombo = RemixGui::ComboWithKey<CompositeDebugView>(
     "Composite Debug View",
     // Note: Combo entries are initialized in initCompositeDebugViews()
-    ImGui::ComboWithKey<CompositeDebugView>::ComboEntries {});
+    RemixGui::ComboWithKey<CompositeDebugView>::ComboEntries {});
 
   // Creates 4x4 composite debug views enumerating all debug views listed in debugViewEntries
   void DebugView::initCompositeDebugViews() {
@@ -476,7 +476,7 @@ namespace dxvk {
     // since combos reference name objects in s_compositeDebugViewsMap
     {
       for (auto& compositeDebugView : s_compositeDebugViewsMap) {
-        ImGui::ComboWithKey<CompositeDebugView>::ComboEntry comboEntry = { static_cast<CompositeDebugView>(compositeDebugView.first), compositeDebugView.second.getName() };
+        RemixGui::ComboWithKey<CompositeDebugView>::ComboEntry comboEntry = { static_cast<CompositeDebugView>(compositeDebugView.first), compositeDebugView.second.getName() };
         compositeDebugViewCombo.addComboEntry(comboEntry);
       }
     }
@@ -489,26 +489,26 @@ namespace dxvk {
     }
   }
 
-  ImGui::ComboWithKey<DebugViewDisplayType> displayTypeCombo = ImGui::ComboWithKey<DebugViewDisplayType>(
+  RemixGui::ComboWithKey<DebugViewDisplayType> displayTypeCombo = RemixGui::ComboWithKey<DebugViewDisplayType>(
   "Display Type",
-  ImGui::ComboWithKey<DebugViewDisplayType>::ComboEntries{ {
+  RemixGui::ComboWithKey<DebugViewDisplayType>::ComboEntries{ {
       {DebugViewDisplayType::Standard, "Standard"},
       {DebugViewDisplayType::BGRExclusiveColor, "BGR Exclusive Color"},
       {DebugViewDisplayType::EV100, "Exposure Value (EV100)"},
       {DebugViewDisplayType::HDRWaveform, "HDR Waveform"},
   } });
 
-  ImGui::ComboWithKey<DebugViewSamplerType> samplerTypeCombo = ImGui::ComboWithKey<DebugViewSamplerType>(
+  RemixGui::ComboWithKey<DebugViewSamplerType> samplerTypeCombo = RemixGui::ComboWithKey<DebugViewSamplerType>(
   "Sampler Type",
-  ImGui::ComboWithKey<DebugViewSamplerType>::ComboEntries { {
+  RemixGui::ComboWithKey<DebugViewSamplerType>::ComboEntries { {
       {DebugViewSamplerType::Nearest, "Nearest"},
       {DebugViewSamplerType::NormalizedNearest, "Normalized Nearest"},
       {DebugViewSamplerType::NormalizedLinear, "Normalized Linear"},
   } });
 
-  ImGui::ComboWithKey<PseudoColorMode> pseudoColorModeCombo = ImGui::ComboWithKey<PseudoColorMode>(
+  RemixGui::ComboWithKey<PseudoColorMode> pseudoColorModeCombo = RemixGui::ComboWithKey<PseudoColorMode>(
   "Pseudo Color Mode",
-  ImGui::ComboWithKey<PseudoColorMode>::ComboEntries{ {
+  RemixGui::ComboWithKey<PseudoColorMode>::ComboEntries{ {
       {PseudoColorMode::Disabled, "Disabled"},
       {PseudoColorMode::Luminance, "RGB Luminance"},
       {PseudoColorMode::Red, "Red"},
@@ -517,9 +517,9 @@ namespace dxvk {
       {PseudoColorMode::Alpha, "Alpha"},
   } });
 
-  ImGui::ComboWithKey<DebugViewOutputStatisticsMode> outputStatisticsCombo = ImGui::ComboWithKey<DebugViewOutputStatisticsMode>(
+  RemixGui::ComboWithKey<DebugViewOutputStatisticsMode> outputStatisticsCombo = RemixGui::ComboWithKey<DebugViewOutputStatisticsMode>(
     "Output Statistics Mode",
-    ImGui::ComboWithKey<DebugViewOutputStatisticsMode>::ComboEntries { {
+    RemixGui::ComboWithKey<DebugViewOutputStatisticsMode>::ComboEntries { {
         {DebugViewOutputStatisticsMode::Mean, "Mean"},
         {DebugViewOutputStatisticsMode::Sum, "Sum"},
     } });
@@ -692,7 +692,7 @@ namespace dxvk {
     const int indent = 50;
     ImGui::PushItemWidth(ImGui::GetWindowWidth() - indent);
     ImGui::PushID("Debug Views");
-    ImGui::ListBox("", &itemIndex, items.data(), items.size(), 10);
+    RemixGui::ListBox("", &itemIndex, items.data(), items.size(), 10);
     ImGui::PopID();
     ImGui::PopItemWidth();
 
@@ -754,13 +754,13 @@ namespace dxvk {
   void DebugView::showOutputStatistics() {
 
     if (areDebugViewStatisticsSupported()) {
-      ImGui::Checkbox("Show Output Statistics", &m_showOutputStatistics);
+      RemixGui::Checkbox("Show Output Statistics", &m_showOutputStatistics);
     }
 
     if (m_showOutputStatistics) {
       ImGui::Indent();
 
-      ImGui::Checkbox("Print Output Statistics", &m_printOutputStatistics);
+      RemixGui::Checkbox("Print Output Statistics", &m_printOutputStatistics);
       
       outputStatisticsCombo.getKey(&m_outputStatisticsMode);
 
@@ -790,7 +790,6 @@ namespace dxvk {
     ImGui::PushID("Debug View");
 
     const ImGuiSliderFlags sliderFlags = ImGuiSliderFlags_AlwaysClamp;
-    const ImGuiTreeNodeFlags collapsingHeaderFlags = ImGuiTreeNodeFlags_CollapsingHeader;
 
     // Note: Ensure the enable checkbox state matches what the debug index was set to externally (for example when loaded from settings).
     bool enableCompositeDebugView = static_cast<CompositeDebugView>(Composite::compositeViewIdx()) != CompositeDebugView::Disabled;
@@ -803,13 +802,13 @@ namespace dxvk {
     if (ImGui::Button("Cache Current Image"))
       m_cacheCurrentImage = true;
 
-    ImGui::Checkbox("Show Cached Image", &m_showCachedImage);
+    RemixGui::Checkbox("Show Cached Image", &m_showCachedImage);
 
-    ImGui::Checkbox("Enable Debug View", &enableDebugView);
+    RemixGui::Checkbox("Enable Debug View", &enableDebugView);
 
     if (enableDebugView) {
       // Debug view is required for composite debug views, so put the enablement behind it
-      ImGui::Checkbox("Enable Composite Debug View", &enableCompositeDebugView);
+      RemixGui::Checkbox("Enable Composite Debug View", &enableCompositeDebugView);
 
       if (!enableCompositeDebugView) {
         static char codewordBuf[32] = "";
@@ -842,55 +841,55 @@ namespace dxvk {
 
     showOutputStatistics();
 
-    ImGui::Checkbox("Accumulation", &Accumulation::enableObject());
+    RemixGui::Checkbox("Accumulation", &Accumulation::enableObject());
 
     if (Accumulation::enable()) {
       m_accumulation.showImguiSettings(
         Accumulation::numberOfFramesToAccumulateObject(), Accumulation::blendModeObject(), Accumulation::resetOnCameraTransformChangeObject());
     }
 
-    ImGui::DragFloat4("Debug Knob", (float*)&m_debugKnob, 0.1f, -1000.f, 1000.f, "%.3f", sliderFlags);
+    RemixGui::DragFloat4("Debug Knob", (float*)&m_debugKnob, 0.1f, -1000.f, 1000.f, "%.3f", sliderFlags);
 
     displayTypeCombo.getKey(&displayTypeObject());
     samplerTypeCombo.getKey(&samplerTypeObject());
 
-    ImGui::Checkbox("Replace Composite Output", &replaceCompositeOutputObject());
-    ImGui::Checkbox("Overlay on top of Rendered Output", &overlayOnTopOfRenderOutputObject());
+    RemixGui::Checkbox("Replace Composite Output", &replaceCompositeOutputObject());
+    RemixGui::Checkbox("Overlay on top of Rendered Output", &overlayOnTopOfRenderOutputObject());
 
-    if (ImGui::CollapsingHeader("Display Settings", collapsingHeaderFlags)) {
+    if (RemixGui::CollapsingHeader("Display Settings")) {
       ImGui::Indent();
 
       ImGui::Text("Common:");
 
-      ImGui::Checkbox("Show First Hit Surface", &showFirstGBufferHitObject());
+      RemixGui::Checkbox("Show First Hit Surface", &showFirstGBufferHitObject());
 
       // NaN/Inf Colorization
 
-      ImGui::Checkbox("Color NaN Red/Inf Blue", &m_enableInfNanView);
+      RemixGui::Checkbox("Color NaN Red/Inf Blue", &m_enableInfNanView);
 
       if (m_enableInfNanView) {
-        ImGui::InputInt("Color Code Pixel Radius", &m_colorCodeRadius);
+        RemixGui::InputInt("Color Code Pixel Radius", &m_colorCodeRadius);
       }
 
       // Input Quantization
 
-      ImGui::Checkbox("Quantize Input", &enableInputQuantizationObject());
+      RemixGui::Checkbox("Quantize Input", &enableInputQuantizationObject());
 
       if (enableInputQuantization()) {
-        ImGui::InputFloat("Inverse Quantization Step Size", &inverseQuantizationStepSizeObject(), 0.1f, 1.0f);
+        RemixGui::InputFloat("Inverse Quantization Step Size", &inverseQuantizationStepSizeObject(), 0.1f, 1.0f);
         ImGui::Text("Effective Quantized Step Size: 1.0 / %f", inverseQuantizationStepSize());
       }
 
       if (displayType() == DebugViewDisplayType::Standard) {
         ImGui::Text("Standard:");
 
-        ImGui::Checkbox("Alpha Channel", &m_enableAlphaChannel);
-        ImGui::Checkbox("Gamma Correction", &enableGammaCorrectionObject());
+        RemixGui::Checkbox("Alpha Channel", &m_enableAlphaChannel);
+        RemixGui::Checkbox("Gamma Correction", &enableGammaCorrectionObject());
         pseudoColorModeCombo.getKey(&pseudoColorModeObject());
 
-        ImGui::DragFloat("Scale", &m_scale, 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-        ImGui::InputFloat("Min Value", &minValueObject(), std::max(0.01f, 0.02f * std::abs(minValue())), std::max(0.1f, 0.1f * std::abs(minValue())));
-        ImGui::InputFloat("Max Value", &maxValueObject(), std::max(0.01f, 0.02f * std::abs(maxValue())), std::max(0.1f, 0.1f * std::abs(maxValue())));
+        RemixGui::DragFloat("Scale", &m_scale, 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
+        RemixGui::InputFloat("Min Value", &minValueObject(), std::max(0.01f, 0.02f * std::abs(minValue())), std::max(0.1f, 0.1f * std::abs(minValue())));
+        RemixGui::InputFloat("Max Value", &maxValueObject(), std::max(0.01f, 0.02f * std::abs(maxValue())), std::max(0.1f, 0.1f * std::abs(maxValue())));
 
         // Color legend
         if (pseudoColorMode() != PseudoColorMode::Disabled) {
@@ -911,12 +910,12 @@ namespace dxvk {
       } else if (displayType() == DebugViewDisplayType::BGRExclusiveColor) {
         ImGui::Text("BGR Exclusive Color:");
 
-        ImGui::InputFloat("Max Value", &maxValueObject(), std::max(0.01f, 0.02f * std::abs(maxValue())), std::max(0.1f, 0.1f * std::abs(maxValue())));
+        RemixGui::InputFloat("Max Value", &maxValueObject(), std::max(0.01f, 0.02f * std::abs(maxValue())), std::max(0.1f, 0.1f * std::abs(maxValue())));
       } else if (displayType() == DebugViewDisplayType::EV100) {
         ImGui::Text("Exposure Value (EV100):");
 
-        ImGui::InputInt("Min Value (EV100)", &evMinValueObject());
-        ImGui::InputInt("Max Value (EV100)", &evMaxValueObject());
+        RemixGui::InputInt("Min Value (EV100)", &evMinValueObject());
+        RemixGui::InputInt("Max Value (EV100)", &evMaxValueObject());
 
         // Color legend
         {
@@ -955,23 +954,23 @@ namespace dxvk {
       } else if (displayType() == DebugViewDisplayType::HDRWaveform) {
         ImGui::Text("HDR Waveform:");
 
-        ImGui::Checkbox("Luminance Mode", &m_enableLuminanceMode);
+        RemixGui::Checkbox("Luminance Mode", &m_enableLuminanceMode);
 
-        ImGui::InputInt("Min Value (Log10)", &m_log10MinValue);
-        ImGui::InputInt("Max Value (Log10)", &m_log10MaxValue);
+        RemixGui::InputInt("Min Value (Log10)", &m_log10MinValue);
+        RemixGui::InputInt("Max Value (Log10)", &m_log10MaxValue);
 
         m_log10MaxValue = std::max(m_log10MaxValue, m_log10MinValue);
 
-        ImGui::InputFloat("Histogram Normalization Scale", &m_hdrWaveformHistogramNormalizationScale, 0.02f, 0.1f);
+        RemixGui::InputFloat("Histogram Normalization Scale", &m_hdrWaveformHistogramNormalizationScale, 0.02f, 0.1f);
 
         int hdrWaveformScaleFactor = static_cast<int>(m_hdrWaveformResolutionScaleFactor);
-        ImGui::InputInt("Display Resolution Scale", &hdrWaveformScaleFactor);
+        RemixGui::InputInt("Display Resolution Scale", &hdrWaveformScaleFactor);
 
         // Note: Clamped to 2 due to maximum texture allocation supporting up to this much.
         m_hdrWaveformResolutionScaleFactor = static_cast<uint32_t>(std::max(hdrWaveformScaleFactor, 2));
 
         int hdrWaveformPosition[2] = { static_cast<int>(m_hdrWaveformPosition.x),  static_cast<int>(m_hdrWaveformPosition.y) };
-        ImGui::InputInt2("Display Position", hdrWaveformPosition);
+        RemixGui::InputInt2("Display Position", hdrWaveformPosition);
 
         m_hdrWaveformPosition.x = static_cast<uint32_t>(std::max(hdrWaveformPosition[0], 0));
         m_hdrWaveformPosition.y = static_cast<uint32_t>(std::max(hdrWaveformPosition[1], 0));
@@ -980,12 +979,12 @@ namespace dxvk {
       ImGui::Unindent();
     }
 
-    ImGui::Checkbox("Enable GPU Printing On Press CTRL", &gpuPrint.enableObject());
+    RemixGui::Checkbox("Enable GPU Printing On Press CTRL", &gpuPrint.enableObject());
 
-    if (ImGui::CollapsingHeader("GPU Print", collapsingHeaderFlags)) {
-      ImGui::Checkbox("Use Mouse Position", &gpuPrint.useMousePositionObject());
+    if (RemixGui::CollapsingHeader("GPU Print")) {
+      RemixGui::Checkbox("Use Mouse Position", &gpuPrint.useMousePositionObject());
       if (!gpuPrint.useMousePosition()) {
-        ImGui::DragInt2("Pixel Position", &gpuPrint.pixelIndexObject(), 0.1f, 0, INT32_MAX, "%d", sliderFlags);
+        RemixGui::DragInt2("Pixel Position", &gpuPrint.pixelIndexObject(), 0.1f, 0, INT32_MAX, "%d", sliderFlags);
       }
     }
 

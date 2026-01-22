@@ -759,38 +759,36 @@ namespace dxvk {
 
   void TerrainBaker::showImguiSettings() const {
 
-    constexpr ImGuiTreeNodeFlags collapsingHeaderClosedFlags = ImGuiTreeNodeFlags_CollapsingHeader;
-    constexpr ImGuiTreeNodeFlags collapsingHeaderFlags = collapsingHeaderClosedFlags | ImGuiTreeNodeFlags_DefaultOpen;
     constexpr ImGuiSliderFlags sliderFlags = ImGuiSliderFlags_AlwaysClamp;
 
     {
-      ImGui::Checkbox("Use Terrain Bounding Box", &cascadeMap.useTerrainBBOXObject());
-      ImGui::Checkbox("Clear Terrain Textures Before Terrain Baking", &clearTerrainBeforeBakingObject());
+      RemixGui::Checkbox("Use Terrain Bounding Box", &cascadeMap.useTerrainBBOXObject());
+      RemixGui::Checkbox("Clear Terrain Textures Before Terrain Baking", &clearTerrainBeforeBakingObject());
 
-      if (ImGui::CollapsingHeader("Material", collapsingHeaderClosedFlags)) {
+      if (RemixGui::CollapsingHeader("Material")) {
         ImGui::Indent();
 
         const bool isPSReplacementSupportEnabled = Material::replacementSupportInPS_fixedFunction() || Material::replacementSupportInPS_programmableShaders();
         ImGui::BeginDisabled(!isPSReplacementSupportEnabled);
-        ImGui::Checkbox("Replacements Support in PS", &Material::replacementSupportInPSObject());
+        RemixGui::Checkbox("Replacements Support in PS", &Material::replacementSupportInPSObject());
         ImGui::EndDisabled();
 
-        ImGui::Checkbox("Bake Replacement Materials", &Material::bakeReplacementMaterialsObject());
-        ImGui::Checkbox("Bake Secondary PBR Textures", &Material::bakeSecondaryPBRTexturesObject());
-        ImGui::DragInt("Max Resolution (except for colorOpacity)", &Material::maxResolutionToUseForReplacementMaterialsObject(), 1.f, 1, 16384);
+        RemixGui::Checkbox("Bake Replacement Materials", &Material::bakeReplacementMaterialsObject());
+        RemixGui::Checkbox("Bake Secondary PBR Textures", &Material::bakeSecondaryPBRTexturesObject());
+        RemixGui::DragInt("Max Resolution (except for colorOpacity)", &Material::maxResolutionToUseForReplacementMaterialsObject(), 1.f, 1, 16384);
 
-        if (ImGui::CollapsingHeader("Properties", collapsingHeaderFlags)) {
+        if (RemixGui::CollapsingHeader("Properties")) {
           ImGui::Indent();
 
-          ImGui::ColorEdit3("Emissive Color", &Material::Properties::emissiveColorConstantObject());
-          ImGui::Checkbox("Enable Emission", &Material::Properties::enableEmissionObject());
-          ImGui::DragFloat("Emissive Intensity", &Material::Properties::emissiveIntensityObject(), 0.01f, 0.f, FLT_MAX, "%.3f", sliderFlags);
-          ImGui::DragFloat("Roughness", &Material::Properties::roughnessConstantObject(), 0.01f, 0.f, 1.f, "%.3f", sliderFlags);
-          ImGui::DragFloat("Metallic", &Material::Properties::metallicConstantObject(), 0.01f, 0.f, 1.f, "%.3f", sliderFlags);
-          ImGui::DragFloat("Anisotropy", &Material::Properties::roughnessAnisotropyObject(), 0.01f, -1.0f, 1.f, "%.3f", sliderFlags);
+          RemixGui::ColorEdit3("Emissive Color", &Material::Properties::emissiveColorConstantObject());
+          RemixGui::Checkbox("Enable Emission", &Material::Properties::enableEmissionObject());
+          RemixGui::DragFloat("Emissive Intensity", &Material::Properties::emissiveIntensityObject(), 0.01f, 0.f, FLT_MAX, "%.3f", sliderFlags);
+          RemixGui::DragFloat("Roughness", &Material::Properties::roughnessConstantObject(), 0.01f, 0.f, 1.f, "%.3f", sliderFlags);
+          RemixGui::DragFloat("Metallic", &Material::Properties::metallicConstantObject(), 0.01f, 0.f, 1.f, "%.3f", sliderFlags);
+          RemixGui::DragFloat("Anisotropy", &Material::Properties::roughnessAnisotropyObject(), 0.01f, -1.0f, 1.f, "%.3f", sliderFlags);
           
           ImGui::Text("\nDisplacement Settings");
-          ImGui::DragFloat("Displacement Factor", &Material::Properties::displaceInFactorObject(), 0.01f, 0.01f, 100.f, "%.3f", sliderFlags);
+          RemixGui::DragFloat("Displacement Factor", &Material::Properties::displaceInFactorObject(), 0.01f, 0.01f, 100.f, "%.3f", sliderFlags);
           ImGui::Text("Calculate the lowest safe Displacement Factor for the current \n"
                       "scene.  Mod creators should run this in scenes across the \n"
                       "game, and use the highest returned value.  See Displacement \n"
@@ -804,18 +802,18 @@ namespace dxvk {
         ImGui::Unindent();
       }
 
-      if (ImGui::CollapsingHeader("Cascade Map", collapsingHeaderClosedFlags)) {
+      if (RemixGui::CollapsingHeader("Cascade Map")) {
         ImGui::Indent();
 
-        ImGui::DragFloat("Cascade Map's Default Half Width [meters]", &cascadeMap.defaultHalfWidthObject(), 1.f, 0.1f, 10000.f);
-        ImGui::DragFloat("Cascade Map's Default Height [meters]", &cascadeMap.defaultHeightObject(), 1.f, 0.1f, 10000.f);
-        ImGui::DragFloat("First Cascade Level's Half Width [meters]", &cascadeMap.levelHalfWidthObject(), 1.f, 0.1f, 10000.f);
+        RemixGui::DragFloat("Cascade Map's Default Half Width [meters]", &cascadeMap.defaultHalfWidthObject(), 1.f, 0.1f, 10000.f);
+        RemixGui::DragFloat("Cascade Map's Default Height [meters]", &cascadeMap.defaultHeightObject(), 1.f, 0.1f, 10000.f);
+        RemixGui::DragFloat("First Cascade Level's Half Width [meters]", &cascadeMap.levelHalfWidthObject(), 1.f, 0.1f, 10000.f);
 
-        ImGui::DragInt("Max Cascade Levels", &cascadeMap.maxLevelsObject(), 1.f, 1, 16);
-        ImGui::DragInt("Texture Resolution Per Cascade Level", &cascadeMap.levelResolutionObject(), 8.f, 1, 32 * 1024);
-        ImGui::Checkbox("Expand Last Cascade Level", &cascadeMap.expandLastCascadeObject());
+        RemixGui::DragInt("Max Cascade Levels", &cascadeMap.maxLevelsObject(), 1.f, 1, 16);
+        RemixGui::DragInt("Texture Resolution Per Cascade Level", &cascadeMap.levelResolutionObject(), 8.f, 1, 32 * 1024);
+        RemixGui::Checkbox("Expand Last Cascade Level", &cascadeMap.expandLastCascadeObject());
 
-        if (ImGui::CollapsingHeader("Statistics", collapsingHeaderClosedFlags)) {
+        if (RemixGui::CollapsingHeader("Statistics")) {
           ImGui::Indent();
         
           ImGui::Text("Cascade Levels: %u", m_bakingParams.numCascades);
@@ -828,8 +826,8 @@ namespace dxvk {
         ImGui::Unindent();
       }
 
-      ImGui::Checkbox("Debug: Disable Baking", &debugDisableBakingObject());
-      ImGui::Checkbox("Debug: Disable Binding", &debugDisableBindingObject());
+      RemixGui::Checkbox("Debug: Disable Baking", &debugDisableBakingObject());
+      RemixGui::Checkbox("Debug: Disable Binding", &debugDisableBindingObject());
     }
   }
 

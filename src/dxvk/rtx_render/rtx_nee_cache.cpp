@@ -37,9 +37,9 @@
 
 namespace dxvk {
 
-  ImGui::ComboWithKey<NeeEnableMode> enableModeAfterFirstBounceCombo {
+  RemixGui::ComboWithKey<NeeEnableMode> enableModeAfterFirstBounceCombo {
     "Enable Mode After First Bounce",
-    ImGui::ComboWithKey<NeeEnableMode>::ComboEntries { {
+    RemixGui::ComboWithKey<NeeEnableMode>::ComboEntries { {
         {NeeEnableMode::None, "None"},
         {NeeEnableMode::SpecularOnly, "Specular Only"},
         {NeeEnableMode::All, "All"},
@@ -74,28 +74,28 @@ namespace dxvk {
   NeeCachePass::~NeeCachePass() { }
 
   void NeeCachePass::showImguiSettings() {
-    ImGui::Checkbox("Enable NEE Cache", &enableObject());
-    ImGui::Checkbox("Enable Importance Sampling", &enableImportanceSamplingObject());
-    ImGui::Checkbox("Enable MIS", &enableMISObject());
-    ImGui::Checkbox("Enable Update", &enableUpdateObject());
-    ImGui::Checkbox("Enable On First Bounce", &enableOnFirstBounceObject());
+    RemixGui::Checkbox("Enable NEE Cache", &enableObject());
+    RemixGui::Checkbox("Enable Importance Sampling", &enableImportanceSamplingObject());
+    RemixGui::Checkbox("Enable MIS", &enableMISObject());
+    RemixGui::Checkbox("Enable Update", &enableUpdateObject());
+    RemixGui::Checkbox("Enable On First Bounce", &enableOnFirstBounceObject());
     enableModeAfterFirstBounceCombo.getKey(&enableModeAfterFirstBounceObject());
-    ImGui::Checkbox("Enable Analytical Light", &enableAnalyticalLightObject());
-    ImGui::DragFloat("Specular Factor", &specularFactorObject(), 0.01f, 0.f, 20.f, "%.3f");
-    ImGui::DragFloat("Learning Rate", &learningRateObject(), 0.01f, 0.f, 1.f, "%.3f");
-    ImGui::DragFloat("Uniform Sampling Probability", &uniformSamplingProbabilityObject(), 0.01f, 0.f, 1.f, "%.3f");
-    ImGui::DragFloat("Culling Threshold", &cullingThresholdObject(), 0.001f, 0.f, 1.f, "%.3f");
-    ImGui::DragFloat("Emissive Texture Sample Footprint Scale", &emissiveTextureSampleFootprintScaleObject(), 0.001f, 0.f, 20.f, "%.3f");
-    ImGui::DragFloat("Age Culling Speed", &ageCullingSpeedObject(), 0.001f, 0.0f, 0.99f, "%.3f");
-    ImGui::DragFloat("Cell Resolution", &resolutionObject(), 0.01f, 0.01f, 100.0f, "%.3f");
-    ImGui::DragFloat("Min Range", &minRangeObject(), 1.f, 0.1f, 10000.0f, "%.3f");
-    ImGui::Checkbox("Approximate Particle Lighting", &approximateParticleLightingObject());
-    ImGui::Checkbox("Enable Triangle Exploration", &enableTriangleExplorationObject());
-    ImGui::DragFloat("Triangle Exploration Probability", &triangleExplorationProbabilityObject(), 1.f, 0.0f, 1.0f, "%.3f");
-    ImGui::DragFloat("Triangle Exploration Range Ratio", &triangleExplorationRangeRatioObject(), 1.f, 0.0f, 1.0f, "%.3f");
-    ImGui::DragFloat("Triangle Exploration Accept Range Ratio", &triangleExplorationAcceptRangeRatioObject(), 1.f, 0.0f, 1.0f, "%.3f");
-    ImGui::DragInt("Triangle Exploration Max Range", &triangleExplorationMaxRangeObject(), 0.1f, 1, 1000, "%d", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::Checkbox("Enable Spatial Reuse", &enableSpatialReuseObject());
+    RemixGui::Checkbox("Enable Analytical Light", &enableAnalyticalLightObject());
+    RemixGui::DragFloat("Specular Factor", &specularFactorObject(), 0.01f, 0.f, 20.f, "%.3f");
+    RemixGui::DragFloat("Learning Rate", &learningRateObject(), 0.01f, 0.f, 1.f, "%.3f");
+    RemixGui::DragFloat("Uniform Sampling Probability", &uniformSamplingProbabilityObject(), 0.01f, 0.f, 1.f, "%.3f");
+    RemixGui::DragFloat("Culling Threshold", &cullingThresholdObject(), 0.001f, 0.f, 1.f, "%.3f");
+    RemixGui::DragFloat("Emissive Texture Sample Footprint Scale", &emissiveTextureSampleFootprintScaleObject(), 0.001f, 0.f, 20.f, "%.3f");
+    RemixGui::DragFloat("Age Culling Speed", &ageCullingSpeedObject(), 0.001f, 0.0f, 0.99f, "%.3f");
+    RemixGui::DragFloat("Cell Resolution", &resolutionObject(), 0.01f, 0.01f, 100.0f, "%.3f");
+    RemixGui::DragFloat("Min Range", &minRangeObject(), 1.f, 0.1f, 10000.0f, "%.3f");
+    RemixGui::Checkbox("Approximate Particle Lighting", &approximateParticleLightingObject());
+    RemixGui::Checkbox("Enable Triangle Exploration", &enableTriangleExplorationObject());
+    RemixGui::DragFloat("Triangle Exploration Probability", &triangleExplorationProbabilityObject(), 1.f, 0.0f, 1.0f, "%.3f");
+    RemixGui::DragFloat("Triangle Exploration Range Ratio", &triangleExplorationRangeRatioObject(), 1.f, 0.0f, 1.0f, "%.3f");
+    RemixGui::DragFloat("Triangle Exploration Accept Range Ratio", &triangleExplorationAcceptRangeRatioObject(), 1.f, 0.0f, 1.0f, "%.3f");
+    RemixGui::DragInt("Triangle Exploration Max Range", &triangleExplorationMaxRangeObject(), 0.1f, 1, 1000, "%d", ImGuiSliderFlags_AlwaysClamp);
+    RemixGui::Checkbox("Enable Spatial Reuse", &enableSpatialReuseObject());
   }
 
   void NeeCachePass::setRaytraceArgs(RaytraceArgs& constants, bool resetHistory) const {    

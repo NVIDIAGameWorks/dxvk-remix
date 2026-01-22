@@ -156,77 +156,82 @@ namespace dxvk {
     : CommonDeviceObject(device) { }
 
   void RtxParticleSystemManager::showImguiSettings() {
-    if (ImGui::CollapsingHeader("Particle System", ImGuiTreeNodeFlags_CollapsingHeader)) {
+    if (RemixGui::CollapsingHeader("Particle System")) {
       ImGui::PushID("rtx_particles");
       ImGui::Dummy({ 0,2 });
       ImGui::Indent();
 
-      ImGui::Checkbox("Enable", &enableObject());
+      RemixGui::Checkbox("Enable", &enableObject());
       ImGui::BeginDisabled(!enable());
-      ImGui::Checkbox("Enable Spawning", &enableSpawningObject());
-      ImGui::DragFloat("Time Scale", &timeScaleObject(), 0.01f, 0.f, 1.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+      RemixGui::Checkbox("Enable Spawning", &enableSpawningObject());
+      RemixGui::DragFloat("Time Scale", &timeScaleObject(), 0.01f, 0.f, 1.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 
-      if (ImGui::CollapsingHeader("Global Preset", ImGuiTreeNodeFlags_CollapsingHeader)) {
+      if (RemixGui::CollapsingHeader("Global Preset")) {
         ImGui::TextWrapped("The following settings will be applied to all particle systems created using the texture tagging mechanism.  Particle systems created via USD assets are not affected by these.");
-        ImGui::Separator();
+        RemixGui::Separator();
 
-        ImGui::DragInt("Number of Particles Per Material", &numberOfParticlesPerMaterialObject(), 0.1f, 1, 10000000, "%d", ImGuiSliderFlags_AlwaysClamp);
+        RemixGui::DragInt("Number of Particles Per Material", &numberOfParticlesPerMaterialObject(), 0.1f, 1, 10000000, "%d", ImGuiSliderFlags_AlwaysClamp);
 
         const auto colourPickerOpts = ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoSidePreview | ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_Float | ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_DisplayRGB;
-        if (ImGui::CollapsingHeader("Spawn", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (RemixGui::CollapsingHeader("Spawn", ImGuiTreeNodeFlags_DefaultOpen)) {
           ImGui::PushID("spawn");
-          ImGui::DragInt("Spawn Rate Per Second", &spawnRatePerSecondObject(), 0.1f, 1, 100000, "%d", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::Separator();
-          ImGui::Checkbox("Use Spawn Texture Coordinates", &useSpawnTexcoordsObject());
-          ImGui::Separator();
-          ImGui::DragFloat("Initial Velocity From Motion", &initialVelocityFromMotionObject(), 0.01f, -5000.f, 5000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloat("Initial Velocity From Normal", &initialVelocityFromNormalObject(), 0.01f, -5000.f, 5000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloat("Initial Velocity Cone Angle", &initialVelocityConeAngleDegreesObject(), 0.01f, -5000.f, 5000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::Separator();
-          ImGui::DragFloatRange("Time to Live Range", { &minParticleLifeObject(), &maxParticleLifeObject() }, 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::Separator();
-          ImGui::DragFloatRange("Size Range", { &minSpawnSizeObject(), &maxSpawnSizeObject() }, 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloatRange("Rotation Speed Range", { &minSpawnRotationSpeedObject(), &maxSpawnRotationSpeedObject() }, 0.01f, -100.f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::ColorPicker4("Minimum Color Tint", &minSpawnColorObject(), colourPickerOpts);
-          ImGui::ColorPicker4("Maximum Color Tint", &maxSpawnColorObject(), colourPickerOpts);
+          RemixGui::DragInt("Spawn Rate Per Second", &spawnRatePerSecondObject(), 0.1f, 1, 100000, "%d", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::Separator();
+          RemixGui::Checkbox("Use Spawn Texture Coordinates", &useSpawnTexcoordsObject());
+          RemixGui::Separator();
+          RemixGui::DragFloat("Initial Velocity From Motion", &initialVelocityFromMotionObject(), 0.01f, -5000.f, 5000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Initial Velocity From Normal", &initialVelocityFromNormalObject(), 0.01f, -5000.f, 5000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Initial Velocity Cone Angle", &initialVelocityConeAngleDegreesObject(), 0.01f, -500.f, 500.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::Separator();
+          RemixGui::DragFloat("Min Life", &minParticleLifeObject(), 0.01f, 0.01f, 1000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Max Life", &maxParticleLifeObject(), 0.01f, 0.01f, 1000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::Separator();
+          RemixGui::DragFloat("Min Size", &minSpawnSizeObject(), 0.01f, 0.01f, 1000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Max Size", &maxSpawnSizeObject(), 0.01f, 0.01f, 1000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Min Rotation Speed", &minSpawnRotationSpeedObject(), 0.01f, -100.f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Max Rotation Speed", &maxSpawnRotationSpeedObject(), 0.01f, -100.f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::ColorPicker4("Min Color Tint", &minSpawnColorObject(), colourPickerOpts);
+          RemixGui::ColorPicker4("Max Color Tint", &maxSpawnColorObject(), colourPickerOpts);
           ImGui::PopID();
         }
 
-        if (ImGui::CollapsingHeader("Target", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (RemixGui::CollapsingHeader("Target", ImGuiTreeNodeFlags_DefaultOpen)) {
           ImGui::PushID("target");
-          ImGui::DragFloatRange("Size Range", { &minTargetSizeObject(), &maxTargetSizeObject() }, 0.01f, 0.01f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloatRange("Rotation Speed Range", { &minTargetRotationSpeedObject(), &maxTargetRotationSpeedObject() }, 0.01f, -100.f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::ColorPicker4("Minimum Color Tint", &minTargetColorObject(), colourPickerOpts);
-          ImGui::ColorPicker4("Maximum Color Tint", &maxTargetColorObject(), colourPickerOpts);
+          RemixGui::DragFloat("Min Size", &minTargetSizeObject(), 0.01f, 0.01f, 1000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Max Size", &maxTargetSizeObject(), 0.01f, 0.01f, 1000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Min Rotation Speed", &minTargetRotationSpeedObject(), 0.01f, -1000.f, 1000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Max Rotation Speed", &maxTargetRotationSpeedObject(), 0.01f, -1000.f, 1000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::ColorPicker4("Minimum Color Tint", &minTargetColorObject(), colourPickerOpts);
+          RemixGui::ColorPicker4("Maximum Color Tint", &maxTargetColorObject(), colourPickerOpts);
           ImGui::PopID();
         }
 
-        if (ImGui::CollapsingHeader("Simulation", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen)) {
-          ImGui::DragFloat("Gravity Force", &gravityForceObject(), 0.01f, -1000.f, 1000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloat("Max Speed", &maxSpeedObject(), 0.01f, 0.f, 100000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        if (RemixGui::CollapsingHeader("Simulation", ImGuiTreeNodeFlags_DefaultOpen)) {
+          RemixGui::DragFloat("Gravity Force", &gravityForceObject(), 0.01f, -1000.f, 1000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Max Speed", &maxSpeedObject(), 0.01f, 0.f, 100000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 
-          ImGui::Checkbox("Enable Particle World Collisions", &enableCollisionDetectionObject());
+          RemixGui::Checkbox("Enable Particle World Collisions", &enableCollisionDetectionObject());
           ImGui::BeginDisabled(!enableCollisionDetection());
-          ImGui::DragFloat("Collision Restitution", &collisionRestitutionObject(), 0.01f, 0.f, 1.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloat("Collision Thickness", &collisionThicknessObject(), 0.01f, 0.f, 10000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Collision Restitution", &collisionRestitutionObject(), 0.01f, 0.f, 1.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Collision Thickness", &collisionThicknessObject(), 0.01f, 0.f, 10000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::EndDisabled();
 
-          ImGui::Checkbox("Simulate Turbulence", &useTurbulenceObject());
+          RemixGui::Checkbox("Simulate Turbulence", &useTurbulenceObject());
           ImGui::BeginDisabled(!useTurbulence());
-          ImGui::DragFloat("Turbulence Force", &turbulenceForceObject(), 0.01f, 0.f, 1000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-          ImGui::DragFloat("Turbulence Frequency", &turbulenceFrequencyObject(), 0.01f, 0.f, 10.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Turbulence Force", &turbulenceForceObject(), 0.01f, 0.f, 1000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Turbulence Frequency", &turbulenceFrequencyObject(), 0.01f, 0.f, 10.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::EndDisabled();
         }
 
-        if (ImGui::CollapsingHeader("Visual", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen)) {
-          ImGui::Checkbox("Align Particles with Velocity", &alignParticlesToVelocityObject());
-          ImGui::Checkbox("Enable Motion Trail", &enableMotionTrailObject());
+        if (RemixGui::CollapsingHeader("Visual", ImGuiTreeNodeFlags_DefaultOpen)) {
+          RemixGui::Checkbox("Align Particles with Velocity", &alignParticlesToVelocityObject());
+          RemixGui::Checkbox("Enable Motion Trail", &enableMotionTrailObject());
           ImGui::BeginDisabled(!enableMotionTrail());
-          ImGui::DragFloat("Motion Trail Length Multiplier", &motionTrailMultiplierObject(), 0.01f, 0.001f, 10000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+          RemixGui::DragFloat("Motion Trail Length Multiplier", &motionTrailMultiplierObject(), 0.01f, 0.001f, 10000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           ImGui::EndDisabled();
-          static auto billboardTypeCombo = ImGui::ComboWithKey<ParticleBillboardType>(
+          static auto billboardTypeCombo = RemixGui::ComboWithKey<ParticleBillboardType>(
             "Sky Auto-Detect",
-            ImGui::ComboWithKey<ParticleBillboardType>::ComboEntries { {
+            RemixGui::ComboWithKey<ParticleBillboardType>::ComboEntries { {
               {ParticleBillboardType::FaceCamera_Spherical, "Classic billboard"},
               {ParticleBillboardType::FaceCamera_UpAxisLocked, "Cylindrical billboard (fix up axis)"},
               {ParticleBillboardType::FaceWorldUp, "Horizontal plane (face up axis)"},

@@ -306,7 +306,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.graph.enable|bool|True|||Enable graph loading\.  If disabled, all graphs will be unloaded, losing any state\.|
 |rtx.graph.pauseGraphUpdates|bool|False|||Pause graph updating\.  If enabled, graphs logic will not be updated, but graph state will be retained\.|
 |rtx.graphicsPreset|int|5|||Overall rendering preset, higher presets result in higher image quality, lower presets result in better performance\.|
-|rtx.gui.backgroundAlpha|float|0.9|0|1|A value controlling the alpha of the GUI background\.|
+|rtx.gui.backgroundAlpha|float|1|0|1|A value controlling the alpha of the GUI background\.|
 |rtx.gui.compactGui|bool|False|||A setting to toggle between compact and spacious GUI modes\.|
 |rtx.gui.hudMessageAnimatedDotDurationMilliseconds|int|1000|||A duration in milliseconds between each dot in the animated dot sequence for HUD messages\. Must be greater than 0\.<br>These dots help indicate progress is happening to the user with a bit of animation which can be configured to animate at whatever speed is desired\.|
 |rtx.gui.largeUiMode|bool|False|||Toggles between Large and Regular GUI Scale Modes\.|

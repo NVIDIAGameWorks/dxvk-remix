@@ -25,7 +25,7 @@
 #include "rtx_options.h"
 
 namespace dxvk {
-  auto denoiserCombo = ImGui::ComboWithKey<nrd::Denoiser>(
+  auto denoiserCombo = RemixGui::ComboWithKey<nrd::Denoiser>(
     "Denoiser", {
         {nrd::Denoiser::REBLUR_DIFFUSE_SPECULAR, "ReBLUR"},
         {nrd::Denoiser::RELAX_DIFFUSE_SPECULAR, "ReLAX"},
@@ -33,21 +33,21 @@ namespace dxvk {
     });
 
   auto reblurSettingsPresetCombo = 
-    ImGui::ComboWithKey<NrdSettings::ReblurSettingsPreset>(
+    RemixGui::ComboWithKey<NrdSettings::ReblurSettingsPreset>(
       "Preset", {
           {NrdSettings::ReblurSettingsPreset::Default, "Default"},
           {NrdSettings::ReblurSettingsPreset::Finetuned, "Finetuned"},
       } );
 
   auto relaxSettingsPresetCombo =
-    ImGui::ComboWithKey<NrdSettings::RelaxSettingsPreset>(
+    RemixGui::ComboWithKey<NrdSettings::RelaxSettingsPreset>(
       "Preset", {
           {NrdSettings::RelaxSettingsPreset::Default, "Default"},
           {NrdSettings::RelaxSettingsPreset::Finetuned, "Finetuned (More Stable)"},
       });
 
   auto reblurHitTReconstructionModeCombo =
-    ImGui::ComboWithKey<nrd::HitDistanceReconstructionMode>(
+    RemixGui::ComboWithKey<nrd::HitDistanceReconstructionMode>(
       "Hit T Reconstruction Mode", {
           {nrd::HitDistanceReconstructionMode::OFF, "Off"},
           {nrd::HitDistanceReconstructionMode::AREA_3X3, "Area 3x3"},
@@ -55,7 +55,7 @@ namespace dxvk {
       });
 
   auto relaxHitTReconstructionModeCombo =
-    ImGui::ComboWithKey<nrd::HitDistanceReconstructionMode>(
+    RemixGui::ComboWithKey<nrd::HitDistanceReconstructionMode>(
       "Hit T Reconstruction Mode", {
           {nrd::HitDistanceReconstructionMode::OFF, "Off"},
           {nrd::HitDistanceReconstructionMode::AREA_3X3, "Area 3x3"},
@@ -271,12 +271,10 @@ namespace dxvk {
   void NrdSettings::showImguiSettings() {
 
     const ImGuiSliderFlags sliderFlags = ImGuiSliderFlags_AlwaysClamp;
-    const ImGuiTreeNodeFlags collapsingHeaderFlagsOpen = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_CollapsingHeader;
-    const ImGuiTreeNodeFlags collapsingHeaderFlagsClosed = ImGuiTreeNodeFlags_CollapsingHeader;
 
     // New settings
     {
-      ImGui::Separator();
+      RemixGui::Separator();
       ImGui::Text("NRD v%u.%u.%u", m_libraryDesc.versionMajor, m_libraryDesc.versionMinor, m_libraryDesc.versionBuild);
       ImGui::PushItemWidth(160.f);
     }
@@ -289,17 +287,17 @@ namespace dxvk {
     const bool resetHistoryOnSettingsChange = RtxOptions::resetDenoiserHistoryOnSettingsChange();
 
 #define ADVANCED if (m_showAdvancedSettings)
-    ImGui::Checkbox("Advanced Settings", &m_showAdvancedSettings);
+    RemixGui::Checkbox("Advanced Settings", &m_showAdvancedSettings);
     SettingsImpactingDenoiserOutput prevGroupedSettings = m_groupedSettings;
 
     
-    if (m_type != DenoiserType::DirectLight && ImGui::CollapsingHeader("Integrator Settings", collapsingHeaderFlagsClosed)) {
+    if (m_type != DenoiserType::DirectLight && RemixGui::CollapsingHeader("Integrator Settings")) {
       ImGui::Indent();
 
-      if (m_type == DenoiserType::DirectAndIndirectLight && ImGui::CollapsingHeader("Diffuse", collapsingHeaderFlagsClosed)) {
+      if (m_type == DenoiserType::DirectAndIndirectLight && RemixGui::CollapsingHeader("Diffuse")) {
         ImGui::Indent();
         ImGui::PushID("Diffuse");
-        ImGui::SliderFloat("Max Direct HitT %", &m_groupedSettings.maxDirectHitTContribution, 0.0f, 1.0f);
+        RemixGui::SliderFloat("Max Direct HitT %", &m_groupedSettings.maxDirectHitTContribution, 0.0f, 1.0f);
         ImGui::PopID();
         ImGui::Unindent();
       }
@@ -313,25 +311,25 @@ namespace dxvk {
       }
     }
 
-    if (m_denoiserDesc.denoiser != nrd::Denoiser::REFERENCE && ImGui::CollapsingHeader("Common Settings", collapsingHeaderFlagsClosed)) {
+    if (m_denoiserDesc.denoiser != nrd::Denoiser::REFERENCE && RemixGui::CollapsingHeader("Common Settings")) {
       ImGui::Indent();
 
       // Note: Set to match the range limit checked in rtx_nrd_context.cpp
       static_assert(nrd::CommonSettings{}.denoisingRange == 500000.0f, "NRD's default settings has changed, denoisingRange must be re-evaluated");
       constexpr float denoisingRangeLimit = nrd::CommonSettings{}.denoisingRange;
 
-      ImGui::Checkbox("Validation Layer", &m_commonSettings.enableValidation);
+      RemixGui::Checkbox("Validation Layer", &m_commonSettings.enableValidation);
 
       bool settingsChanged = false;
 
       // Note: the space after "Debug" in the widget name is intentional. "Debug" imgui widget 
       // triggers a different code path in imgui resulting in asserts. Because reasons...
-      ImGui::DragFloat("Debug ", &m_commonSettings.debug, 0.001f, 0.0f, 1.f, "%.3f", sliderFlags);
+      RemixGui::DragFloat("Debug ", &m_commonSettings.debug, 0.001f, 0.0f, 1.f, "%.3f", sliderFlags);
       settingsChanged |= ImGui::DragFloat("Denoising Range", &m_commonSettings.denoisingRange, 100.f, 0.0f, denoisingRangeLimit, "%.1f", sliderFlags);
       settingsChanged |= ImGui::DragFloat("Disocclusion Threshold", &m_commonSettings.disocclusionThreshold, 0.01f, 0.0f, 1.f, "%.3f", sliderFlags);
       if (m_type != DenoiserType::Secondaries)
         settingsChanged |= ImGui::DragFloat("Disocclusion Threshold Alt.", &m_commonSettings.disocclusionThresholdAlternate, 0.01f, 0.0f, 1.f, "%.3f", sliderFlags);
-      ImGui::DragFloat("Split screen: Noisy | Denoised Output", &m_commonSettings.splitScreen, 0.001f, 0.0f, 1.f, "%.3f", sliderFlags);
+      RemixGui::DragFloat("Split screen: Noisy | Denoised Output", &m_commonSettings.splitScreen, 0.001f, 0.0f, 1.f, "%.3f", sliderFlags);
 
       if (resetHistoryOnSettingsChange && settingsChanged)
         m_resetHistory = true;
@@ -342,16 +340,16 @@ namespace dxvk {
 
     // Reference
     if (m_denoiserDesc.denoiser == nrd::Denoiser::REFERENCE) {
-      if (ImGui::CollapsingHeader("Reference Settings", collapsingHeaderFlagsClosed)) {
+      if (RemixGui::CollapsingHeader("Reference Settings")) {
         ImGui::Indent();
-        ImGui::InputInt("Max Frames To Accumulate", &m_referenceSettings.maxAccumulatedFrameNum);
+        RemixGui::InputInt("Max Frames To Accumulate", &m_referenceSettings.maxAccumulatedFrameNum);
         ImGui::Unindent();
       }
     }
 
     // Reblur
     if (m_denoiserDesc.denoiser == nrd::Denoiser::REBLUR_DIFFUSE_SPECULAR) {
-      if (ImGui::CollapsingHeader("Reblur Settings", collapsingHeaderFlagsClosed)) {
+      if (RemixGui::CollapsingHeader("Reblur Settings")) {
         ImGui::Indent();
 
         nrd::ReblurSettings prevReblurSettingsState;
@@ -365,15 +363,15 @@ namespace dxvk {
 
         {
           if (!RtxOptions::adaptiveAccumulation()) {
-            ImGui::SliderInt("History length [frames]", &m_reblurSettings.maxAccumulatedFrameNum, 0, nrd::REBLUR_MAX_HISTORY_FRAME_NUM);
+            RemixGui::SliderInt("History length [frames]", &m_reblurSettings.maxAccumulatedFrameNum, 0, nrd::REBLUR_MAX_HISTORY_FRAME_NUM);
           }
           else {
-            ImGui::SliderFloat("History length [ms]", &m_adaptiveAccumulationLengthMs, 10.f, 1000.f, "%.1f");
-            ImGui::SliderInt("Min history length [ms]", &m_adaptiveMinAccumulatedFrameNum, 0, nrd::REBLUR_MAX_HISTORY_FRAME_NUM);
+            RemixGui::SliderFloat("History length [ms]", &m_adaptiveAccumulationLengthMs, 10.f, 1000.f, "%.1f");
+            RemixGui::SliderInt("Min history length [ms]", &m_adaptiveMinAccumulatedFrameNum, 0, nrd::REBLUR_MAX_HISTORY_FRAME_NUM);
           }
-          ImGui::Checkbox("Anti-firefly", &m_reblurSettings.enableAntiFirefly);
+          RemixGui::Checkbox("Anti-firefly", &m_reblurSettings.enableAntiFirefly);
           ImGui::SameLine();
-          ImGui::Checkbox("Performance mode", &m_reblurSettings.enablePerformanceMode);
+          RemixGui::Checkbox("Performance mode", &m_reblurSettings.enablePerformanceMode);
           ImGui::SameLine();
           reblurHitTReconstructionModeCombo.getKey(&m_reblurSettings.hitDistanceReconstructionMode);
 
@@ -384,31 +382,31 @@ namespace dxvk {
 
           ImGui::Text("PRE-PASS:");
           const float maxBlurRadius = RtxOptions::adaptiveResolutionDenoising() ? 200.0f : 100.0f;
-          ImGui::SliderFloat("Diffuse preblur radius", &m_reblurInternalBlurRadius.diffusePrepassBlurRadius, 0.0f, maxBlurRadius, "%.1f");
-          ImGui::SliderFloat("Specular preblur radius", &m_reblurInternalBlurRadius.specularPrepassBlurRadius, 0.0f, maxBlurRadius, "%.1f");
+          RemixGui::SliderFloat("Diffuse preblur radius", &m_reblurInternalBlurRadius.diffusePrepassBlurRadius, 0.0f, maxBlurRadius, "%.1f");
+          RemixGui::SliderFloat("Specular preblur radius", &m_reblurInternalBlurRadius.specularPrepassBlurRadius, 0.0f, maxBlurRadius, "%.1f");
 
           ImGui::Text("SPATIAL FILTERING:");
-          ImGui::SliderFloat("Max blur radius [pixels]", &m_reblurInternalBlurRadius.maxBlurRadius, 0.0f, RtxOptions::adaptiveResolutionDenoising() ? 120.0f : 60.0f, "%.1f");
+          RemixGui::SliderFloat("Max blur radius [pixels]", &m_reblurInternalBlurRadius.maxBlurRadius, 0.0f, RtxOptions::adaptiveResolutionDenoising() ? 120.0f : 60.0f, "%.1f");
 
-          ImGui::SliderInt("History fix frame Number", &m_reblurSettings.historyFixFrameNum, 0, nrd::REBLUR_MAX_HISTORY_FRAME_NUM);
-          ImGui::SliderFloat("Min blur radius [pixels]", &m_reblurSettings.minBlurRadius, 0.0f, maxBlurRadius, "%.1f");
-          ImGui::SliderFloat("Max blur radius [pixels]", &m_reblurSettings.maxBlurRadius, 0.0f, maxBlurRadius, "%.1f");
-          ImGui::SliderFloat("Lobe angle fraction [normalized %]", &m_reblurSettings.lobeAngleFraction, 0.0f, 1.0f, "%.2f");
-          ImGui::SliderFloat("Roughness fraction [normalized %]", &m_reblurSettings.roughnessFraction, 0.0f, 1.0f, "%.2f");
-          ImGui::SliderFloat("Responsive accumulation roughness threshold", &m_reblurSettings.responsiveAccumulationRoughnessThreshold, 0.0f, 1.0f, "%.2f");
-          ADVANCED ImGui::SliderFloat("Plane distance sensitivity [normalized %]", &m_reblurSettings.planeDistanceSensitivity, 0.0f, 1.0f, "%.2f");
-          ADVANCED ImGui::SliderFloat2("Specular probability threshold for mvec modification", m_reblurSettings.specularProbabilityThresholdsForMvModification, 0.0f, 1.0f, "%.2f");
-          ImGui::SliderFloat("Firefly suppressor min relative scale", &m_reblurSettings.fireflySuppressorMinRelativeScale, 1.0f, 3.0f, "%.2f");
-          ADVANCED ImGui::Checkbox("Enable Prepass Only For Specular Motion Estimation", &m_reblurSettings.usePrepassOnlyForSpecularMotionEstimation);
+          RemixGui::SliderInt("History fix frame Number", &m_reblurSettings.historyFixFrameNum, 0, nrd::REBLUR_MAX_HISTORY_FRAME_NUM);
+          RemixGui::SliderFloat("Min blur radius [pixels]", &m_reblurSettings.minBlurRadius, 0.0f, maxBlurRadius, "%.1f");
+          RemixGui::SliderFloat("Max blur radius [pixels]", &m_reblurSettings.maxBlurRadius, 0.0f, maxBlurRadius, "%.1f");
+          RemixGui::SliderFloat("Lobe angle fraction [normalized %]", &m_reblurSettings.lobeAngleFraction, 0.0f, 1.0f, "%.2f");
+          RemixGui::SliderFloat("Roughness fraction [normalized %]", &m_reblurSettings.roughnessFraction, 0.0f, 1.0f, "%.2f");
+          RemixGui::SliderFloat("Responsive accumulation roughness threshold", &m_reblurSettings.responsiveAccumulationRoughnessThreshold, 0.0f, 1.0f, "%.2f");
+          ADVANCED RemixGui::SliderFloat("Plane distance sensitivity [normalized %]", &m_reblurSettings.planeDistanceSensitivity, 0.0f, 1.0f, "%.2f");
+          ADVANCED RemixGui::SliderFloat2("Specular probability threshold for mvec modification", m_reblurSettings.specularProbabilityThresholdsForMvModification, 0.0f, 1.0f, "%.2f");
+          RemixGui::SliderFloat("Firefly suppressor min relative scale", &m_reblurSettings.fireflySuppressorMinRelativeScale, 1.0f, 3.0f, "%.2f");
+          ADVANCED RemixGui::Checkbox("Enable Prepass Only For Specular Motion Estimation", &m_reblurSettings.usePrepassOnlyForSpecularMotionEstimation);
           
           ImGui::SetNextItemWidth(ImGui::CalcItemWidth() * 0.6f);
 
           ImGui::Text("ANTI-LAG:");
-          ADVANCED ImGui::SliderFloat("Luminance sigma scale", &m_reblurSettings.antilagSettings.luminanceSigmaScale, 0.0f, 10.0f, "%.2f");
-          ADVANCED ImGui::SliderFloat("Luminance sensitivity to darkness", &m_reblurSettings.antilagSettings.luminanceSensitivity, 0.0f, 100.0f, "%.2f");
+          ADVANCED RemixGui::SliderFloat("Luminance sigma scale", &m_reblurSettings.antilagSettings.luminanceSigmaScale, 0.0f, 10.0f, "%.2f");
+          ADVANCED RemixGui::SliderFloat("Luminance sensitivity to darkness", &m_reblurSettings.antilagSettings.luminanceSensitivity, 0.0f, 100.0f, "%.2f");
 
-          ADVANCED ImGui::SliderFloat("Hit distance sigma scale", &m_reblurSettings.antilagSettings.hitDistanceSigmaScale, 0.0f, 10.0f, "%.2f");
-          ADVANCED ImGui::SliderFloat("Hit distance sensitivity to darkness", &m_reblurSettings.antilagSettings.hitDistanceSensitivity, 0.0f, 100.0f, "%.2f");
+          ADVANCED RemixGui::SliderFloat("Hit distance sigma scale", &m_reblurSettings.antilagSettings.hitDistanceSigmaScale, 0.0f, 10.0f, "%.2f");
+          ADVANCED RemixGui::SliderFloat("Hit distance sensitivity to darkness", &m_reblurSettings.antilagSettings.hitDistanceSensitivity, 0.0f, 100.0f, "%.2f");
         }
 
         if (resetHistoryOnSettingsChange && memcmp(&m_reblurSettings, &prevReblurSettingsState, sizeof(m_reblurSettings)) != 0)
@@ -419,7 +417,7 @@ namespace dxvk {
     }
 
     if (m_denoiserDesc.denoiser == nrd::Denoiser::RELAX_DIFFUSE_SPECULAR) {
-      if (ImGui::CollapsingHeader("ReLAX Settings", collapsingHeaderFlagsClosed)) {
+      if (RemixGui::CollapsingHeader("ReLAX Settings")) {
         ImGui::Indent();
 
         nrd::RelaxSettings prevRelaxSettingsState;
@@ -433,60 +431,60 @@ namespace dxvk {
 
         {
           if (!RtxOptions::adaptiveAccumulation()) {
-            ImGui::SliderInt("Diffuse history length [frames]", &m_relaxSettings.diffuseMaxAccumulatedFrameNum, 0, nrd::RELAX_MAX_HISTORY_FRAME_NUM);
-            ImGui::SliderInt("Specular history length [frames]", &m_relaxSettings.specularMaxAccumulatedFrameNum, 0, nrd::RELAX_MAX_HISTORY_FRAME_NUM);
+            RemixGui::SliderInt("Diffuse history length [frames]", &m_relaxSettings.diffuseMaxAccumulatedFrameNum, 0, nrd::RELAX_MAX_HISTORY_FRAME_NUM);
+            RemixGui::SliderInt("Specular history length [frames]", &m_relaxSettings.specularMaxAccumulatedFrameNum, 0, nrd::RELAX_MAX_HISTORY_FRAME_NUM);
           } else {
-            ImGui::SliderFloat("History Length [ms]", &m_adaptiveAccumulationLengthMs, 10.f, 1000.f, "%.1f");
-            ImGui::SliderInt("Min History Length [frames]", &m_adaptiveMinAccumulatedFrameNum, 0, nrd::RELAX_MAX_HISTORY_FRAME_NUM);
+            RemixGui::SliderFloat("History Length [ms]", &m_adaptiveAccumulationLengthMs, 10.f, 1000.f, "%.1f");
+            RemixGui::SliderInt("Min History Length [frames]", &m_adaptiveMinAccumulatedFrameNum, 0, nrd::RELAX_MAX_HISTORY_FRAME_NUM);
           }
-          ImGui::SliderInt("Diffuse fast history length [frames]", &m_relaxSettings.diffuseMaxFastAccumulatedFrameNum, 0, nrd::RELAX_MAX_HISTORY_FRAME_NUM);
-          ImGui::SliderInt("Specular fast history length [frames]", &m_relaxSettings.specularMaxFastAccumulatedFrameNum, 0, nrd::RELAX_MAX_HISTORY_FRAME_NUM);
-          ImGui::Checkbox("Anti-firefly", &m_relaxSettings.enableAntiFirefly);
-          ImGui::Checkbox("Roughness edge stopping", &m_relaxSettings.enableRoughnessEdgeStopping);
+          RemixGui::SliderInt("Diffuse fast history length [frames]", &m_relaxSettings.diffuseMaxFastAccumulatedFrameNum, 0, nrd::RELAX_MAX_HISTORY_FRAME_NUM);
+          RemixGui::SliderInt("Specular fast history length [frames]", &m_relaxSettings.specularMaxFastAccumulatedFrameNum, 0, nrd::RELAX_MAX_HISTORY_FRAME_NUM);
+          RemixGui::Checkbox("Anti-firefly", &m_relaxSettings.enableAntiFirefly);
+          RemixGui::Checkbox("Roughness edge stopping", &m_relaxSettings.enableRoughnessEdgeStopping);
           relaxHitTReconstructionModeCombo.getKey(&m_relaxSettings.hitDistanceReconstructionMode);
 
           ImGui::Text("PRE-PASS:");
           const float maxBlurRadius = RtxOptions::adaptiveResolutionDenoising() ? 200.0f : 100.0f;
-          ImGui::SliderFloat("Diffuse preblur radius", &m_relaxInternalBlurRadius.diffusePrepassBlurRadius, 0.0f, maxBlurRadius, "%.1f");
-          ImGui::SliderFloat("Specular preblur radius", &m_relaxInternalBlurRadius.specularPrepassBlurRadius, 0.0f, maxBlurRadius, "%.1f");
+          RemixGui::SliderFloat("Diffuse preblur radius", &m_relaxInternalBlurRadius.diffusePrepassBlurRadius, 0.0f, maxBlurRadius, "%.1f");
+          RemixGui::SliderFloat("Specular preblur radius", &m_relaxInternalBlurRadius.specularPrepassBlurRadius, 0.0f, maxBlurRadius, "%.1f");
 
           ImGui::Text("REPROJECTION:");
-          ImGui::SliderFloat("Specular variance boost", &m_relaxSettings.specularVarianceBoost, 0.0f, 8.0f, "%.2f");
-          ImGui::SliderFloat("Clamping color sigma scale", &m_relaxSettings.historyClampingColorBoxSigmaScale, 0.0f, 10.0f, "%.1f");
+          RemixGui::SliderFloat("Specular variance boost", &m_relaxSettings.specularVarianceBoost, 0.0f, 8.0f, "%.2f");
+          RemixGui::SliderFloat("Clamping color sigma scale", &m_relaxSettings.historyClampingColorBoxSigmaScale, 0.0f, 10.0f, "%.1f");
 
           ImGui::Text("SPATIAL FILTERING:");
-          ImGui::SliderInt("A-trous iterations", (int32_t*) &m_relaxSettings.atrousIterationNum, 2, 8);
-          ImGui::SliderFloat("Diffuse phi luminance", &m_relaxSettings.diffusePhiLuminance, 0.0f, 10.0f, "%.1f");
-          ImGui::SliderFloat("Specular phi luminance", &m_relaxSettings.specularPhiLuminance, 0.0f, 10.0f, "%.1f");
+          RemixGui::SliderInt("A-trous iterations", (int32_t*) &m_relaxSettings.atrousIterationNum, 2, 8);
+          RemixGui::SliderFloat("Diffuse phi luminance", &m_relaxSettings.diffusePhiLuminance, 0.0f, 10.0f, "%.1f");
+          RemixGui::SliderFloat("Specular phi luminance", &m_relaxSettings.specularPhiLuminance, 0.0f, 10.0f, "%.1f");
           ImGui::SetNextItemWidth(ImGui::CalcItemWidth() * 0.9f);
-          ImGui::SliderFloat("Lobe angle fraction [normalized %]", &m_relaxSettings.lobeAngleFraction, 0.0f, 1.0f, "%.2f");
+          RemixGui::SliderFloat("Lobe angle fraction [normalized %]", &m_relaxSettings.lobeAngleFraction, 0.0f, 1.0f, "%.2f");
           ImGui::SetNextItemWidth(ImGui::CalcItemWidth() * 0.9f);
-          ImGui::SliderFloat("Roughness fraction [normalized %]", &m_relaxSettings.roughnessFraction, 0.0f, 1.0f, "%.2f");
-          ImGui::SliderFloat("Luminance edge stopping relaxation", &m_relaxSettings.luminanceEdgeStoppingRelaxation, 0.0f, 1.0f, "%.2f");
-          ImGui::SliderFloat("Normal edge stopping relaxation", &m_relaxSettings.normalEdgeStoppingRelaxation, 0.0f, 1.0f, "%.2f");
-          ImGui::SliderFloat("Roughness edge stopping relaxation", &m_relaxSettings.roughnessEdgeStoppingRelaxation, 0.0f, 1.0f, "%.2f");
-          ImGui::SliderFloat("Specular lobe angle slack [degrees]", &m_relaxSettings.specularLobeAngleSlack, 0.0f, 89.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
-          ImGui::SliderFloat("Min Hit Distance Weight", &m_relaxSettings.minHitDistanceWeight, 0.0f, 0.2f, "%.3f");
-          ImGui::SliderFloat("Diffuse min luminance weight", &m_relaxSettings.diffuseMinLuminanceWeight, 0.0f, 1.0f, "%.3f");
-          ImGui::SliderFloat("Specular min luminance weight", &m_relaxSettings.specularMinLuminanceWeight, 0.0f, 1.0f, "%.3f");
-          ImGui::SliderFloat("Depth threshold [normalized %]", &m_relaxSettings.depthThreshold, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
-          ImGui::SliderFloat("Confidence driven relaxation multiplier", &m_relaxSettings.confidenceDrivenRelaxationMultiplier, 0.0f, 1.0f, "%.3f");
-          ImGui::SliderFloat("Confidence driven luminance edge stopping relaxation", &m_relaxSettings.confidenceDrivenLuminanceEdgeStoppingRelaxation, 0.0f, 5.0f, "%.3f");
-          ImGui::SliderFloat("Confidence driven normal edge stopping relaxation", &m_relaxSettings.confidenceDrivenNormalEdgeStoppingRelaxation, 0.0f, 1.0f, "%.3f");
+          RemixGui::SliderFloat("Roughness fraction [normalized %]", &m_relaxSettings.roughnessFraction, 0.0f, 1.0f, "%.2f");
+          RemixGui::SliderFloat("Luminance edge stopping relaxation", &m_relaxSettings.luminanceEdgeStoppingRelaxation, 0.0f, 1.0f, "%.2f");
+          RemixGui::SliderFloat("Normal edge stopping relaxation", &m_relaxSettings.normalEdgeStoppingRelaxation, 0.0f, 1.0f, "%.2f");
+          RemixGui::SliderFloat("Roughness edge stopping relaxation", &m_relaxSettings.roughnessEdgeStoppingRelaxation, 0.0f, 1.0f, "%.2f");
+          RemixGui::SliderFloat("Specular lobe angle slack [degrees]", &m_relaxSettings.specularLobeAngleSlack, 0.0f, 89.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
+          RemixGui::SliderFloat("Min Hit Distance Weight", &m_relaxSettings.minHitDistanceWeight, 0.0f, 0.2f, "%.3f");
+          RemixGui::SliderFloat("Diffuse min luminance weight", &m_relaxSettings.diffuseMinLuminanceWeight, 0.0f, 1.0f, "%.3f");
+          RemixGui::SliderFloat("Specular min luminance weight", &m_relaxSettings.specularMinLuminanceWeight, 0.0f, 1.0f, "%.3f");
+          RemixGui::SliderFloat("Depth threshold [normalized %]", &m_relaxSettings.depthThreshold, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
+          RemixGui::SliderFloat("Confidence driven relaxation multiplier", &m_relaxSettings.confidenceDrivenRelaxationMultiplier, 0.0f, 1.0f, "%.3f");
+          RemixGui::SliderFloat("Confidence driven luminance edge stopping relaxation", &m_relaxSettings.confidenceDrivenLuminanceEdgeStoppingRelaxation, 0.0f, 5.0f, "%.3f");
+          RemixGui::SliderFloat("Confidence driven normal edge stopping relaxation", &m_relaxSettings.confidenceDrivenNormalEdgeStoppingRelaxation, 0.0f, 1.0f, "%.3f");
 
           ImGui::Text("DISOCCLUSION FIX:");
-          ImGui::SliderFloat("Edge-stop normal power", &m_relaxSettings.historyFixEdgeStoppingNormalPower, 0.0f, 128.0f, "%.1f");
-          ImGui::SliderInt("Frames to fix", (int32_t*) &m_relaxSettings.historyFixFrameNum, 0, 3);
+          RemixGui::SliderFloat("Edge-stop normal power", &m_relaxSettings.historyFixEdgeStoppingNormalPower, 0.0f, 128.0f, "%.1f");
+          RemixGui::SliderInt("Frames to fix", (int32_t*) &m_relaxSettings.historyFixFrameNum, 0, 3);
 
           ImGui::Text("SPATIAL VARIANCE ESTIMATION:");
-          ImGui::SliderInt("History threshold", (int32_t*) &m_relaxSettings.spatialVarianceEstimationHistoryThreshold, 0, 10);
+          RemixGui::SliderInt("History threshold", (int32_t*) &m_relaxSettings.spatialVarianceEstimationHistoryThreshold, 0, 10);
 
           ImGui::Text("ANTI-LAG:");
-          ImGui::SliderFloat("History acceleration amount", &m_relaxSettings.antilagSettings.accelerationAmount, 0.0f, 1.0f, "%.2f");
-          ImGui::SliderFloat("Spatial sigma scale", &m_relaxSettings.antilagSettings.spatialSigmaScale, 0.0f, 100.0f, "%.2f");
+          RemixGui::SliderFloat("History acceleration amount", &m_relaxSettings.antilagSettings.accelerationAmount, 0.0f, 1.0f, "%.2f");
+          RemixGui::SliderFloat("Spatial sigma scale", &m_relaxSettings.antilagSettings.spatialSigmaScale, 0.0f, 100.0f, "%.2f");
 
-          ImGui::SliderFloat("Temporal sigma scale", &m_relaxSettings.antilagSettings.temporalSigmaScale, 0.0f, 100.0f, "%.2f");
-          ImGui::SliderFloat("History reset amount", &m_relaxSettings.antilagSettings.resetAmount, 0.0f, 1.0f, "%.2f");
+          RemixGui::SliderFloat("Temporal sigma scale", &m_relaxSettings.antilagSettings.temporalSigmaScale, 0.0f, 100.0f, "%.2f");
+          RemixGui::SliderFloat("History reset amount", &m_relaxSettings.antilagSettings.resetAmount, 0.0f, 1.0f, "%.2f");
         }
         ImGui::Unindent();
 

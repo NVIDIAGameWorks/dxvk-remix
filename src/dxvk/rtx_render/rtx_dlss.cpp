@@ -320,7 +320,7 @@ namespace dxvk {
   }
 
   void DxvkDLSS::showImguiSettings() {
-    ImGui::Checkbox("Anti-Ghost", &mBiasCurrentColorEnabled);
+    RemixGui::Checkbox("Anti-Ghost", &mBiasCurrentColorEnabled);
   }
 
   void DxvkDLSS::initializeDLSS(Rc<DxvkContext> renderContext) {

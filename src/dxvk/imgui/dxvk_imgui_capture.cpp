@@ -34,10 +34,6 @@
 
 #include <filesystem>
 
-namespace {
-  static constexpr ImGuiTreeNodeFlags kCollapsingHeaderFlags = ImGuiTreeNodeFlags_CollapsingHeader;
-}
-
 namespace dxvk {
   void ImGuiCapture::update(const Rc<DxvkContext>& ctx) {
     const bool hotkey = ImGUI::checkHotkeyState(RtxOptions::captureHotKey());
@@ -59,8 +55,7 @@ namespace dxvk {
     const bool disableCapture =
       ctx->getCommonObjects()->getSceneManager().areAllReplacementsLoaded() &&
       RtxOptions::getEnableAnyReplacements();
-    constexpr auto headerFlagsDefaultOpen = kCollapsingHeaderFlags | ImGuiTreeNodeFlags_DefaultOpen;
-    if(ImGui::CollapsingHeader("USD Scene Capture", headerFlagsDefaultOpen)) {
+    if(RemixGui::CollapsingHeader("USD Scene Capture", ImGuiTreeNodeFlags_DefaultOpen)) {
       ImGui::Indent();
       ImGui::Text(disableCapture ? "Disable enhanced assets to enable capturing." : "Ready to capture.");
       ImGui::BeginDisabled(disableCapture);
@@ -69,9 +64,9 @@ namespace dxvk {
         showTimedCapture(ctx);
         showContinuousCapture(ctx);
       }
-      ImGui::Separator();
-      ImGui::Checkbox("Correct baked world transforms", &GameCapturer::correctBakedTransformsObject());
-      ImGui::Checkbox("Show menu on capture hotkey", &RtxOptions::captureShowMenuOnHotkeyObject());
+      RemixGui::Separator();
+      RemixGui::Checkbox("Correct baked world transforms", &GameCapturer::correctBakedTransformsObject());
+      RemixGui::Checkbox("Show menu on capture hotkey", &RtxOptions::captureShowMenuOnHotkeyObject());
       if(RtxOptions::captureShowMenuOnHotkey()) {
         ImGui::PushTextWrapPos(ImGui::GetCurrentWindow()->Size.x);
         ImGui::PopTextWrapPos();
@@ -115,18 +110,18 @@ namespace dxvk {
   }
 
   void ImGuiCapture::showTimedCapture(const Rc<DxvkContext>& ctx) {
-    if(ImGui::CollapsingHeader("Timed Capture", kCollapsingHeaderFlags)) {
+    if(RemixGui::CollapsingHeader("Timed Capture")) {
       ImGui::Indent();
-      ImGui::InputInt("Max Frames", &RtxOptions::captureMaxFramesObject());
-      ImGui::InputInt("Frames Per Second", &RtxOptions::captureFramesPerSecondObject());
-      if(ImGui::CollapsingHeader("Animation Compression", kCollapsingHeaderFlags)) {
+      RemixGui::InputInt("Max Frames", &RtxOptions::captureMaxFramesObject());
+      RemixGui::InputInt("Frames Per Second", &RtxOptions::captureFramesPerSecondObject());
+      if(RemixGui::CollapsingHeader("Animation Compression")) {
         ImGui::Indent();
         ImGui::Text("Inter-frame Mesh Deltas");
-        ImGui::InputFloat("Position",&RtxOptions::captureMeshPositionDeltaObject());
-        ImGui::InputFloat("Normal",&RtxOptions::captureMeshNormalDeltaObject());
-        ImGui::InputFloat("Texcoord",&RtxOptions::captureMeshTexcoordDeltaObject());
-        ImGui::InputFloat("Color",&RtxOptions::captureMeshColorDeltaObject());
-        ImGui::InputFloat("Blend Weight",&RtxOptions::captureMeshBlendWeightDeltaObject());
+        RemixGui::InputFloat("Position",&RtxOptions::captureMeshPositionDeltaObject());
+        RemixGui::InputFloat("Normal",&RtxOptions::captureMeshNormalDeltaObject());
+        RemixGui::InputFloat("Texcoord",&RtxOptions::captureMeshTexcoordDeltaObject());
+        RemixGui::InputFloat("Color",&RtxOptions::captureMeshColorDeltaObject());
+        RemixGui::InputFloat("Blend Weight",&RtxOptions::captureMeshBlendWeightDeltaObject());
         ImGui::Unindent();
       }
       ImGui::Unindent();
@@ -134,7 +129,7 @@ namespace dxvk {
   }
 
   void ImGuiCapture::showContinuousCapture(const Rc<DxvkContext>& ctx) {
-    if(ImGui::CollapsingHeader("Continuous Capture", kCollapsingHeaderFlags)) {
+    if(RemixGui::CollapsingHeader("Continuous Capture")) {
     }
   }
 

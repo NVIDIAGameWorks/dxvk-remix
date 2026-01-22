@@ -3,7 +3,7 @@
         <package name="rtx-remix-aftermath" version="1" />
     </dependency>
     <dependency name="fonts" linkPath="external/fonts">
-        <package name="rtx-remix-fonts" version="1" />
+        <package name="rtx-remix-fonts" version="2" />
     </dependency>
     <dependency name="nv_usd_py310_release" linkPath="external/nv_usd_release">
       <package name="nv-usd" version="22.11.nv.0.2.8268.07efe1d5-win64_py310_release-dev_omniverse" />

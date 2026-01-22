@@ -37,10 +37,10 @@ namespace dxvk {
 void RtxGraphGUI::showGraphVisualization(const Rc<DxvkContext>& ctx) {
   RtxContext* rtxContext = static_cast<RtxContext*>(ctx.ptr());
   const SceneManager& sceneManager = rtxContext->getSceneManager();
-  ImGui::Separator();
-  ImGui::Checkbox("Enable", &GraphManager::enableObject());
+  RemixGui::Separator();
+  RemixGui::Checkbox("Enable", &GraphManager::enableObject());
   ImGui::SameLine(0.0f, 20.f);
-  ImGui::Checkbox("Pause", &GraphManager::pauseGraphUpdatesObject());
+  RemixGui::Checkbox("Pause", &GraphManager::pauseGraphUpdatesObject());
   ImGui::SameLine(0.0f, 20.f);
   if (IMGUI_ADD_TOOLTIP(ImGui::Button("Reset Graph State"), "Destroys then recreates all graphs, clearing any stored state.")) {
     const GraphManager& graphManager = sceneManager.getGraphManager();
@@ -60,7 +60,7 @@ void RtxGraphGUI::showGraphVisualization(const Rc<DxvkContext>& ctx) {
 }
 
 void RtxGraphGUI::showGraphSelector(const SceneManager& sceneManager) {
-  if (ImGui::CollapsingHeader("Select Graph Instance:", ImGuiTreeNodeFlags_DefaultOpen)) {
+  if (RemixGui::CollapsingHeader("Select Graph Instance:", ImGuiTreeNodeFlags_DefaultOpen)) {
     ImGui::Indent();
     // Get graph manager and available instances
     const GraphManager& graphManager = sceneManager.getGraphManager();
