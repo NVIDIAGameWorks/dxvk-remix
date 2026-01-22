@@ -3317,10 +3317,10 @@ namespace dxvk {
     style->DisabledAlpha = 0.5f;
 
     style->WindowPadding = ImVec2(8.0f, 10.0f);
-    style->FramePadding = compactGui() ? ImVec2(4.0f, 3.0f) : ImVec2(7.0f, 5.0f);
+    style->FramePadding = compactGui() ? ImVec2(4.0f, 3.0f) : ImVec2(5.0f, 4.0f);
     style->CellPadding = ImVec2(5.0f, 4.0f);
     style->ItemSpacing = compactGui() ? ImVec2(8.0f, 4.0f) : ImVec2(3.0f, 5.0f);
-    style->ItemInnerSpacing = compactGui() ? ImVec2(4.0f, 4.0f) : ImVec2(8.0f, 8.0f);
+    style->ItemInnerSpacing = ImVec2(4.0f, 4.0f);
     style->IndentSpacing = 10.0f;
     style->ColumnsMinSpacing = 10.0f;
     style->ScrollbarSize = 15.0f;
@@ -4642,7 +4642,7 @@ namespace dxvk {
       builder.BuildRanges(&numericalRange);
     }
 
-    // Range of characters we want to use the second (monospaced) font for
+    // Build a second font, where all characters are consistent.  This will be used for non-field/title text
     ImVector<ImWchar> allRange;
     {
       ImFontGlyphRangesBuilder builder;
