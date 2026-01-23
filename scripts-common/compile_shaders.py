@@ -234,6 +234,10 @@ def createSlangTask(inputFile, variantSpec):
             + f'-matrix-layout-column-major ' \
             + f'-Wno-30081 '
 
+    # Add SER capability only for variants that use Shader Execution Reordering
+    if 'RT_SHADER_EXECUTION_REORDERING' in variantSpec:
+        command1 += f'-capability spvShaderInvocationReorderNV '
+
     # Force scalar block layout in shaders - buffers are required to be aligned as such by Neural Radiance Cache
     command1 += f'-fvk-use-scalar-layout '
 
