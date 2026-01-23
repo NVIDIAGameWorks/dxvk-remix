@@ -90,6 +90,7 @@ namespace dxvk {
     : m_sections({
       { "Github Contributors", // Sorted alphabetically by last name
         { "Lorenzo 'King Vulpes' Acevedo IV",
+          "Quinn 'Binq Adams' Baddams",
           "Samuel 'CR' Bowman'",
           "Alexis 'Sortifal' Bruneteau",
           "Ethan 'Xenthio' Cardwell",
