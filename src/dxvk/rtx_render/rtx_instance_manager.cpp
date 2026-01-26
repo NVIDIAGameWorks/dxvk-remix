@@ -29,6 +29,7 @@
 #include "rtx_camera_manager.h"
 #include "rtx_options.h"
 #include "rtx_materials.h"
+#include "rtx_terrain_baker.h"
 
 #include "../d3d9/d3d9_state.h"
 #include "rtx_matrix_helpers.h"
@@ -70,6 +71,13 @@ namespace dxvk {
     // This check can be overridden by replacement assets.
     if (drawCall.getMaterialData().blendMode.enableBlending && !surface.alphaState.isDecal && !drawCall.getGeometryData().forceCullBit)
       flags |= VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+
+    // Disable culling for baked terrain instances when the option is enabled
+    // Terrain with back face culling enabled may flicker in some circumstances.  
+    // Forcing the geometry to be double-sided fixes the flicker, but may be undesireable in some games.
+    if (TerrainBaker::disableBackFaceCulling() && drawCall.testCategoryFlags(InstanceCategories::Terrain)) {
+      flags |= VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+    }
 
     switch (drawCall.getGeometryData().cullMode) {
     case VkCullModeFlagBits::VK_CULL_MODE_NONE:

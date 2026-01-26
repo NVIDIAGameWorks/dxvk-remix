@@ -62,6 +62,7 @@ namespace dxvk {
     RTX_OPTION("rtx.terrainBaker", bool, clearTerrainBeforeBaking, false, "Performs a clear on the terrain texture before it is baked to in a frame.");
     RTX_OPTION("rtx.terrainBaker", bool, debugDisableBaking , false, "Force disables rebaking every frame. Used for debugging only.")
     RTX_OPTION("rtx.terrainBaker", bool, debugDisableBinding, false, "Force disables binding of the baked terrain texture to the terrain meshes. Used for debugging only.");
+    RTX_OPTION("rtx.terrainBaker", bool, disableBackFaceCulling, false, "Disables back-face culling for baked terrain instances. When enabled, all terrain will render as double-sided.");
 
     // Returns shared enablement composed of multiple enablement inputs
     static bool needsTerrainBaking();
