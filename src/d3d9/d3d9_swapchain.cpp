@@ -1194,7 +1194,7 @@ namespace dxvk {
         m_hud->render(m_context, info.format, info.imageExtent);
 
       auto& gui = m_device->getCommon()->getImgui();
-      gui.render(m_window, m_context, info.format, info.imageExtent, m_vsync);
+      gui.render(m_window, m_context, info.imageExtent, m_vsync);
 
       // NV-DXVK start
       m_parent->m_rtx.OnPresent(m_imageViews.at(imageIndex)->image());

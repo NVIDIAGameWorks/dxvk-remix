@@ -31,7 +31,7 @@
 
 #include "imgui.h"
 #include "imgui_internal.h"
-#include "imgui_impl_vulkan.h"
+#include "imgui_impl_dxvk.hpp"
 #include "imgui_impl_win32.h"
 #include "implot.h"
 #include "dxvk_imgui.h"
@@ -150,7 +150,7 @@ namespace ImGui {
 namespace dxvk {
   struct ImGuiTexture {
     Rc<DxvkImageView> imageView = VK_NULL_HANDLE;
-    VkDescriptorSet texID = VK_NULL_HANDLE;
+    ImTextureID texID = VK_NULL_HANDLE;
     uint32_t textureFeatureFlags = 0;
   };
   std::unordered_map<XXH64_hash_t, ImGuiTexture> g_imguiTextureMap;
@@ -665,7 +665,7 @@ namespace dxvk {
     pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
     // ImGUI is currently using a single set per texture, and so we want this to be a big number 
     //  to support displaying texture lists in games that use a lot of textures.
-    // See: 'ImGui_ImplVulkan_AddTexture(...)' for more details about how this system works.
+    // See: 'ImGui_ImplDxvk::AddTexture(...)' for more details about how this system works.
     pool_info.maxSets = 10000;
     pool_info.poolSizeCount = std::size(pool_sizes);
     pool_info.pPoolSizes = pool_sizes;
@@ -715,11 +715,11 @@ namespace dxvk {
     if (m_init) {
       // FontView and FontImage will be released by m_fontTextureView and m_fontTexture later
       ImGuiIO& io = ImGui::GetIO();
-      ImGui_ImplVulkan_Data* bd = (ImGui_ImplVulkan_Data*) io.BackendRendererUserData;
+      ImGui_ImplDxvk::Data* bd = (ImGui_ImplDxvk::Data*) io.BackendRendererUserData;
       bd->FontView = VK_NULL_HANDLE;
       bd->FontImage = VK_NULL_HANDLE;
 
-      ImGui_ImplVulkan_Shutdown();
+      ImGui_ImplDxvk::Shutdown();
       m_init = false;
     }
 
@@ -961,7 +961,7 @@ namespace dxvk {
   }
 
   void ImGUI::update(const Rc<DxvkContext>& ctx) {
-    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplDxvk::NewFrame();
     ImGui_ImplWin32_NewFrame();
 
     ImGui::NewFrame();
@@ -2768,7 +2768,7 @@ namespace dxvk {
 
       // Lazily create the tex ID ImGUI wants
       if (texImgui.texID == VK_NULL_HANDLE) {
-        texImgui.texID = ImGui_ImplVulkan_AddTexture(VK_NULL_HANDLE, texImgui.imageView->handle(), VK_IMAGE_LAYOUT_GENERAL);
+        texImgui.texID = ImGui_ImplDxvk::AddTexture(nullptr, texImgui.imageView);
 
         if (texImgui.texID == VK_NULL_HANDLE) {
           ONCE(Logger::err("Failed to allocate ImGUI handle for texture, likely because we're trying to render more textures than VkDescriptorPoolCreateInfo::maxSets.  As such, we will truncate the texture list to show only what we can."));
@@ -4533,7 +4533,6 @@ namespace dxvk {
   void ImGUI::render(
     const HWND gameHwnd,
     const Rc<DxvkContext>& ctx,
-    VkSurfaceFormatKHR surfaceFormat,
     VkExtent2D         surfaceSize,
     bool               vsync) {
     ScopedGpuProfileZone(ctx, "ImGUI Render");
@@ -4559,23 +4558,7 @@ namespace dxvk {
     }
 
     if (!m_init) {
-      //this initializes imgui for Vulkan
-      ImGui_ImplVulkan_InitInfo init_info = {};
-      init_info.Instance = m_device->instance()->handle();
-      init_info.PhysicalDevice = m_device->adapter()->handle();
-      init_info.Device = m_device->handle();
-      init_info.Queue = m_device->queues().graphics.queueHandle;
-      init_info.DescriptorPool = m_imguiPool;
-      init_info.MinImageCount = 2; // Note: Required to be at least 2 by ImGui.
-      // Note: This image count is important for allocating multiple buffers for ImGui to support multiple frames
-      // in flight without causing corruptions or crashes. This should match ideally what is set in DXVK (via something
-      // like GetActualFrameLatency, but this can change at runtime. Instead we simply use the maximum number of frames
-      // in flight supported by the Remix side of DXVK as this should be enough (as DXVK is also clamped to this amount
-      // currently).
-      init_info.ImageCount = kMaxFramesInFlight;
-      init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-
-      ImGui_ImplVulkan_Init(&init_info, ctx->getFramebufferInfo().renderPass()->getDefaultHandle());
+      ImGui_ImplDxvk::Init(m_device);
 
       //execute a gpu command to upload imgui font textures
       createFontsTexture(ctx);
@@ -4585,46 +4568,14 @@ namespace dxvk {
 
     update(ctx);
 
-    this->setupRendererState(ctx, surfaceFormat, surfaceSize);
+    ImGui_ImplDxvk::RenderDrawData(ImGui::GetDrawData(), ctx.ptr(), surfaceSize.width, surfaceSize.height);
 
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), ctx->getCmdBuffer(DxvkCmdBuffer::ExecBuffer));
-
-    this->resetRendererState(ctx);
-  }
-
-  void ImGUI::setupRendererState(
-    const Rc<DxvkContext>&  ctx,
-          VkSurfaceFormatKHR surfaceFormat,
-          VkExtent2D        surfaceSize) {
-    bool isSrgb = imageFormatInfo(surfaceFormat.format)->flags.test(DxvkFormatFlag::ColorSpaceSrgb);
-
-    VkViewport viewport;
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = float(surfaceSize.width);
-    viewport.height = float(surfaceSize.height);
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-
-    VkRect2D scissor;
-    scissor.offset = { 0, 0 };
-    scissor.extent = surfaceSize;
-
-    ctx->setViewports(1, &viewport, &scissor);
-    ctx->setRasterizerState(m_rsState);
-    ctx->setBlendMode(0, m_blendMode);
-
-    ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, 0, isSrgb);
-  }
-
-  void ImGUI::resetRendererState(const Rc<DxvkContext>& ctx) {
     ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 0);
   }
 
   void ImGUI::createFontsTexture(const Rc<DxvkContext>& ctx) {
     ImGuiIO& io = ImGui::GetIO();
-    ImGui_ImplVulkan_Data* bd = (ImGui_ImplVulkan_Data*)io.BackendRendererUserData;
-    ImGui_ImplVulkan_InitInfo* v = &bd->VulkanInitInfo;
+    ImGui_ImplDxvk::Data* bd = (ImGui_ImplDxvk::Data*)io.BackendRendererUserData;
     
     // Range of characters we want to use the primary font
     ImVector<ImWchar> characterRange;
@@ -4745,11 +4696,10 @@ namespace dxvk {
       m_fontTexture->mipLevelExtent(0),
       pixels, row_pitch, upload_size);
 
-    // Update the Descriptor Set:
-    bd->FontDescriptorSet = (VkDescriptorSet) ImGui_ImplVulkan_AddTexture(bd->FontSampler, bd->FontView, VK_IMAGE_LAYOUT_GENERAL);
+    Rc<DxvkSampler> sampler = m_device->getCommon()->getResources().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 
     // Store our identifier
-    io.Fonts->SetTexID((ImTextureID)bd->FontDescriptorSet);
+    io.Fonts->SetTexID(ImGui_ImplDxvk::AddTexture(sampler, m_fontTextureView));
   }
 
   bool ImGUI::checkHotkeyState(const VirtualKeys& virtKeys, const bool allowContinuousPress) {

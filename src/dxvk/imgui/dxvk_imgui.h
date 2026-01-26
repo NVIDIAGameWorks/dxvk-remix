@@ -96,7 +96,6 @@ namespace dxvk {
     void render(
             const HWND hwnd,
             const Rc<DxvkContext>&  ctx,
-            VkSurfaceFormatKHR surfaceFormat,
             VkExtent2D         surfaceSize,
             bool               vsync);
     
@@ -235,14 +234,6 @@ namespace dxvk {
       const int subItemIndent);
 
     void showHudMessages(const Rc<DxvkContext>& ctx);
-
-    void setupRendererState(
-      const Rc<DxvkContext>&  ctx,
-            VkSurfaceFormatKHR surfaceFormat,
-            VkExtent2D        surfaceSize);
-
-    void resetRendererState(
-      const Rc<DxvkContext>&  ctx);
 
     void showRenderingSettings(const Rc<DxvkContext>& ctx);
 
