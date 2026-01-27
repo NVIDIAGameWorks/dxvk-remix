@@ -126,6 +126,7 @@ namespace dxvk {
           "Alexey Panteleev",
           "Jerran Schmidt",
           "Sascha Sertel",
+          "Jeremy Shopf",
           "Nuno Subtil",
           "Ilya Terentiev",
           "Sunny Thakkar",
