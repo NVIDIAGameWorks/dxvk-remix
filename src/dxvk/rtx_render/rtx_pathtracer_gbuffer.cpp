@@ -390,29 +390,30 @@ namespace dxvk {
 
 
     switch (RtxOptions::renderPassGBufferRaytraceMode()) {
-    case RaytraceMode::RayQuery:
-      VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 16, 8, 1 });
-      {
-        ScopedGpuProfileZone(ctx, "Primary Rays");
-        ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getComputeShader(false, nrcEnabled, wboitEnabled));
-        ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
-      }
+    case RaytraceMode::RayQuery: {
+        VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 16, 8, 1 });
+        {
+          ScopedGpuProfileZone(ctx, "Primary Rays");
+          ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getComputeShader(false, nrcEnabled, wboitEnabled));
+          ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+        }
 
-      {
-        // Warning: do not change the order of Reflection and Transmission PSR, that will break
-        // PSR data dependencies due to resource aliasing.
-        ScopedGpuProfileZone(ctx, "Reflection PSR");
-        ctx->setFramePassStage(RtxFramePassStage::ReflectionPSR);
-        ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getComputeShader(true, nrcEnabled, wboitEnabled));
-        ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
-      }
+        {
+          // Warning: do not change the order of Reflection and Transmission PSR, that will break
+          // PSR data dependencies due to resource aliasing.
+          ScopedGpuProfileZone(ctx, "Reflection PSR");
+          ctx->setFramePassStage(RtxFramePassStage::ReflectionPSR);
+          ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getComputeShader(true, nrcEnabled, wboitEnabled));
+          ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+        }
 
-      {
-        ScopedGpuProfileZone(ctx, "Transmission PSR");
-        ctx->setFramePassStage(RtxFramePassStage::TransmissionPSR);
-        pushArgs.isTransmissionPSR = 1;
-        ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
-        ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+        {
+          ScopedGpuProfileZone(ctx, "Transmission PSR");
+          ctx->setFramePassStage(RtxFramePassStage::TransmissionPSR);
+          pushArgs.isTransmissionPSR = 1;
+          ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
+          ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+        }
       }
       break;
 
