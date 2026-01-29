@@ -16,6 +16,8 @@
         "description": ["The smoothing factor (0-1000). 0 means output never changes. Larger values = faster changes.\n\nTime for output to be within 1% of input for different factors:\n- 1: 6.6 seconds\n- 10: 0.66 seconds\n- 100: 0.066 seconds\n- 1000: 0.0066 seconds\n\nFormula: output = lerp(input, previousOutput, exp2(-smoothingFactor*deltaTime))"],
         "type": "float",
         "default": 0.100000,
+        "minimum": 0.000000,
+        "maximum": 1000.000000,
         "optional": true,
         "uiName": "Smoothing Factor"
       }

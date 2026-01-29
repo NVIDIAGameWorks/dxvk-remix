@@ -27,6 +27,8 @@
         "description": ["The blend strength for the option layer (0.0 = no effect, 1.0 = full effect.)\n\nLowest priority layer uses LERP to blend with default value, then each higher priority layer uses LERP to blend with the previous layer's result.\n\nIf multiple components control the same layer, the MAX blend strength will be used."],
         "type": "float",
         "default": 1.000000,
+        "minimum": 0.000000,
+        "maximum": 1.000000,
         "optional": true,
         "uiName": "Blend Strength"
       },
@@ -34,6 +36,8 @@
         "description": ["The blend threshold for non-float options (0.0 to 1.0). Non-float options are only applied when blend strength exceeds this threshold. If multiple components control the same layer, the MINIMUM blend threshold will be used."],
         "type": "float",
         "default": 0.100000,
+        "minimum": 0.000000,
+        "maximum": 1.000000,
         "optional": true,
         "uiName": "Blend Threshold"
       },
@@ -41,6 +45,8 @@
         "description": ["The priority for the option layer. Numbers are rounded to the nearest positive integer. Higher values are blended on top of lower values. If two components specify the same priority but different config paths, the layers will be prioritized alphabetically (a.conf will override values from z.conf)."],
         "type": "float",
         "default": 10000.000000,
+        "minimum": 101.000000,
+        "maximum": 10000000.000000,
         "optional": true,
         "uiName": "Priority"
       }
