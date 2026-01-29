@@ -19,6 +19,7 @@
         "description": ["The index of the bone to read. Will be rounded to the nearest integer."],
         "type": "float",
         "default": 0.000000,
+        "minimum": 0.000000,
         "uiName": "Bone Index"
       }
     },

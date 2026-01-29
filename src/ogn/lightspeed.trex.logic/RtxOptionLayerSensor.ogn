@@ -20,6 +20,8 @@
         "description": ["The priority for the option layer. Numbers are rounded to the nearest positive integer. Higher values are blended on top of lower values. If multiple layers share the same priority, they are ordered alphabetically by config path."],
         "type": "float",
         "default": 10000.000000,
+        "minimum": 101.000000,
+        "maximum": 10000000.000000,
         "optional": true,
         "uiName": "Priority"
       }
