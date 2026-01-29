@@ -3,12 +3,9 @@
 namespace RemixGui {
 
   void SetTooltipUnformatted(const char* text) {
-    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.26f, 0.31f, 0.31f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(0.99f, 0.96f, 0.78f, 0.920f));
     ImGui::BeginTooltipEx(ImGuiTooltipFlags_OverridePreviousTooltip, ImGuiWindowFlags_None);
     ImGui::TextUnformatted(text);
     ImGui::EndTooltip();
-    ImGui::PopStyleColor(2);
   }
 
   bool IsItemHoveredDelay(float delay_in_seconds) {
@@ -42,6 +39,10 @@ namespace RemixGui {
     ImGui::SetCursorPosX((ImGui::GetWindowSize().x - ImGui::CalcTextSize(fmt).x) * 0.5f);
     ImGui::TextWrappedV(fmt, args);
     va_end(args);
+  }
+
+  bool Checkbox(const char* label, dxvk::RtxOption<bool>* rtxOption) {
+    IMGUI_RTXOPTION_WIDGET(Checkbox(label, &value, 0.9f))
   }
 
   static bool Items_PairGetter(void* data, int idx, const char** out_text, const char** out_tooltip) {
