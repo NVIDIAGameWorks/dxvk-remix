@@ -45,7 +45,9 @@ namespace components {
       property.minValue = RtxOptionLayer::s_userOptionLayerOffset + 1, property.maxValue = kMaxComponentRtxOptionLayerPriority, property.optional = true)
 
 #define LIST_STATES(X) \
-  X(RtComponentPropertyType::Bool, false, holdsReference, "", "True if the component is holding a reference to the RtxOptionLayer.")
+  X(RtComponentPropertyType::Bool, false, holdsReference, "", "True if the component is holding a reference to the RtxOptionLayer.") \
+  X(RtComponentPropertyType::AssetPath, "", cachedConfigPath, "", "Cached config path from when the layer was acquired.") \
+  X(RtComponentPropertyType::Float, 0.0f, cachedPriority, "", "Cached priority from when the layer was acquired.")
 
 #define LIST_OUTPUTS(X)
 
@@ -81,9 +83,9 @@ private:
   void initializeInstance(const Rc<DxvkContext>& context, const size_t index);
   void cleanupInstance(const size_t index);
 
-  uint32_t getPriority(const size_t index) const {
+  uint32_t getPriority(const float originalPriority) const {
     // TODO if the priority is left unset, we need to automatically assign a priority.
-    return getRtxOptionLayerComponentClampedPriority(m_priority[index]);
+    return getRtxOptionLayerComponentClampedPriority(originalPriority);
   }
 };
 
@@ -92,17 +94,23 @@ private:
 #undef LIST_OUTPUTS
 
 void RtxOptionLayerAction::initializeInstance(const Rc<DxvkContext>& context, const size_t index) {
-
-
+  if (m_configPath[index].empty()) {
+    m_holdsReference[index] = false;
+    return;
+  }
+  
   // Acquire layer through the manager
   const RtxOptionLayer* layer = RtxOptionLayerManager::acquireLayer(
     m_configPath[index],
-    getPriority(index),
+    getPriority(m_priority[index]),
     1.0f,  // Default blend strength (will be updated in updateRange)
     0.1f   // Default blend threshold (will be updated in updateRange)
   );
   if (layer != nullptr) {
     m_holdsReference[index] = true;
+    // Cache the values used to acquire this layer
+    m_cachedConfigPath[index] = m_configPath[index];
+    m_cachedPriority[index] = m_priority[index];
   } else {
     Logger::err(str::format("RtxOptionLayerAction: Failed to acquire layer '", m_configPath[index], "' with priority ", m_priority[index], "."));
     m_holdsReference[index] = false;
@@ -114,18 +122,29 @@ void RtxOptionLayerAction::cleanupInstance(const size_t index) {
     return;
   }
   // Release the layer through the manager
-  RtxOptionLayerManager::releaseLayer(m_configPath[index], getPriority(index));
+  RtxOptionLayerManager::releaseLayer(m_cachedConfigPath[index], getPriority(m_cachedPriority[index]));
   m_holdsReference[index] = false;
 }
 
 void RtxOptionLayerAction::updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
   for (size_t i = start; i < end; i++) {
+    // Check if configPath or priority has changed
+    if (m_holdsReference[i]) {
+      const bool configPathChanged = (m_configPath[i] != m_cachedConfigPath[i]);
+      const bool priorityChanged = (m_priority[i] != m_cachedPriority[i]);
+      
+      if (configPathChanged || priorityChanged) {
+        cleanupInstance(i);
+        initializeInstance(context, i);
+      }
+    }
+    
     if (!m_holdsReference[i]) {
       continue;
     }
 
     // Get cached layer pointer
-    RtxOptionLayer* layer = RtxOptionLayerManager::lookupLayer(m_configPath[i], getPriority(i));
+    RtxOptionLayer* layer = RtxOptionLayerManager::lookupLayer(m_cachedConfigPath[i], getPriority(m_cachedPriority[i]));
     
     // Skip if no layer (empty config name or failed creation)
     if (layer == nullptr) {

@@ -64,10 +64,22 @@ The priority for the option layer\. Numbers are rounded to the nearest positive 
 | Property | Display Name | Type | IO Type | Default Value | Optional |
 |----------|--------------|------|---------|---------------|----------|
 | holdsReference |  | Bool | State | false | No | 
+| cachedConfigPath |  | AssetPath | State | "" | No | 
+| cachedPriority |  | Float | State | 0\.0 | No | 
 
 ### 
 
 True if the component is holding a reference to the RtxOptionLayer\.
+
+
+### 
+
+Cached config path from when the layer was acquired\.
+
+
+### 
+
+Cached priority from when the layer was acquired\.
 
 
 ## Usage Notes
