@@ -29,7 +29,7 @@ The priority for the option layer\. Numbers are rounded to the nearest positive 
 **Value Constraints:**
 
 - **Minimum Value:** 101\.0
-- **Maximum Value:** \-2147483648\.0
+- **Maximum Value:** 10000000\.0
 
 ## Output Properties
 

@@ -28,7 +28,10 @@ namespace dxvk {
 namespace components {
 
 // Shared constants for RtxOptionLayer components
-static constexpr uint32_t kMaxComponentRtxOptionLayerPriority = RtxOptionLayer::s_runtimeOptionLayerPriority - 1;
+// Max value is set to 10,000,000 to ensure no data loss when converting between float and uint32_t
+// in RtxOptionLayerAction. Float has 24 bits of precision, so values up to 2^24 (16,777,216) can be
+// represented exactly. This limit provides ample range for priority values while maintaining precision.
+static constexpr uint32_t kMaxComponentRtxOptionLayerPriority = 10000000;
 static constexpr uint32_t kMinComponentRtxOptionLayerPriority = RtxOptionLayer::s_userOptionLayerOffset + 1;
 static constexpr uint32_t kDefaultComponentRtxOptionLayerPriority = 10000;
 

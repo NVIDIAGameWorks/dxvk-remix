@@ -50,12 +50,14 @@ std::string formatFloat(float value) {
     return "FLT_MIN";
   }
   
-  // Check if the value is effectively an integer
-  if (std::floor(value) == value) {
-    // For integer-like values, format with minimal decimal
-    int intValue = static_cast<int>(value);
+  // Check if the value is effectively an integer AND within float's precise integer range
+  // Float can only precisely represent integers up to ±2^24 (±16,777,216)
+  constexpr float kMaxPreciseFloatInt = 1<<24;
+  if (std::floor(value) == value && std::abs(value) <= kMaxPreciseFloatInt) {
+    int32_t intValue = static_cast<int32_t>(value);
     return std::to_string(intValue) + ".0";
   }
+  
   // For non-integer values, use to_string and remove trailing zeros
   std::string result = std::to_string(value);
   // Remove trailing zeros after the decimal point
