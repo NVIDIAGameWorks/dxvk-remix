@@ -30,9 +30,6 @@ namespace RemixGui {
     bool clipPushed = false;
     bool channelsSplit = false;
 
-    // Add this member to the struct:
-// bool channelsSplit = false;
-
     explicit RtxOptionUxWrapper(dxvk::RtxOption<T>* rtxOption)
       : option(rtxOption) {
       window = ImGui::GetCurrentWindow();
@@ -173,7 +170,6 @@ namespace RemixGui {
   bool SliderInt3(const char* label, int v[3], int v_min, int v_max, const char* format = "%d", ImGuiSliderFlags flags = 0, float overlayAlpha = 0.8f);
   bool SliderInt4(const char* label, int v[4], int v_min, int v_max, const char* format = "%d", ImGuiSliderFlags flags = 0, float overlayAlpha = 0.8f);
   
-  bool Checkbox(const char* label, dxvk::RtxOption<bool>* rtxOption);
   bool Checkbox(const char* label, bool* v, float boxScale = .9f);
 
   bool InputFloat(const char* label, float* v, float step = 0.0f, float step_fast = 0.0f, const char* format = "%.3f", ImGuiInputTextFlags flags = 0);
@@ -196,6 +192,7 @@ namespace RemixGui {
   bool DragInt3(const char* label, int v[3], float v_speed = 1.0f, int v_min = 0, int v_max = 0, const char* format = "%d", ImGuiSliderFlags flags = 0);
   bool DragInt4(const char* label, int v[4], float v_speed = 1.0f, int v_min = 0, int v_max = 0, const char* format = "%d", ImGuiSliderFlags flags = 0);
   bool DragIntRange2(const char* label, int* v_current_min, int* v_current_max, float v_speed = 1.0f, int v_min = 0, int v_max = 0, const char* format = "%d", const char* format_max = NULL, ImGuiSliderFlags flags = 0);
+  bool OptionalDragFloat(const char* label, float enabledValue, float defaultValue, float* v, float boxScale = .9f, float vSpeed = 1.0f, float vMin = 0.0f, float vMax = 0.0f, const char* format = "%.3f", ImGuiSliderFlags flags = 0);
   
   bool Combo(const char* label, int* current_item, const char* const items[], int items_count, int popup_max_height_in_items = -1);
   bool Combo(const char* label, int* current_item, const char* items_separated_by_zeros, int popup_max_height_in_items = -1);

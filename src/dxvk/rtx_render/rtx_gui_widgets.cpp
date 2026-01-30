@@ -323,16 +323,6 @@ namespace RemixGui {
     return changed;
   }
 
-  bool Checkbox(const char* label, dxvk::RtxOption<bool>* rtxOption) {
-    RtxOptionUxWrapper wrapper(rtxOption);
-    bool value = rtxOption->get();
-    bool changed = IMGUI_ADD_TOOLTIP(Checkbox(label, &value, 0.9f), rtxOption->getDescription());
-    if (changed) {
-      rtxOption->setDeferred(value);
-    }
-    return changed;
-  }
-
   static void RenderArrowChevron(ImDrawList* draw_list, ImVec2 pos, ImU32 col, ImGuiDir dir, float scale) {
     const float h = draw_list->_Data->FontSize * 1.0f;
     const float r = h * 0.45f * scale;
@@ -631,6 +621,33 @@ namespace RemixGui {
       SetNextItemWidth(GetRowFieldWidth());
       return ImGui::DragScalarN("##v", ImGuiDataType_S32, v, 4, vSpeed, &vMin, &vMax, format, flags);
     });
+  }
+
+  bool OptionalDragFloat(const char* label, float enabledValue, float defaultValue, float* v, float boxScale /*=1.f*/, float vSpeed, float vMin, float vMax, const char* format, ImGuiSliderFlags flags) {
+    if (shouldSkip()) {
+      return false;
+    }
+    bool enabled = *v != defaultValue;
+    FieldRow fr = beginFieldRow(label);
+    PushID(label);
+    BeginGroup();
+    bool changed = checkboxCore("##v", &enabled, boxScale);
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("Check to enable the option.\nUncheck to disable it and reset to default value.");
+    }
+    if (changed) {
+      *v = enabled ? enabledValue : defaultValue;
+    }
+    SameLine();
+    if (enabled) {
+      changed |= ImGui::DragScalar("##v2", ImGuiDataType_Float, v, vSpeed, &vMin, &vMax, format, flags);
+    } else {
+      ImGui::TextDisabled("(Disabled)");
+    }
+    EndGroup();
+    PopID();
+    endFieldRowFromLastItem(fr);
+    return changed;
   }
 
   // Getter for the old Combo() API: const char*[]
