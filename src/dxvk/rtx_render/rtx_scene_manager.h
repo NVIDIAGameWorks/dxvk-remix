@@ -182,7 +182,6 @@ public:
   const FogState& getFogState() const { return m_fog; }
   FogState& getFogState() { return m_fog; }
   const fast_unordered_cache<FogState>& getFogStates() const { return m_fogStates; }
-  void clearFogState();
 
   uint32_t getStartInMediumMaterialIndex() { return m_startInMediumMaterialIndex; }
   
@@ -196,8 +195,7 @@ public:
   void garbageCollection();
   void prepareSceneData(Rc<RtxContext> ctx, class DxvkBarrierSet& execBarriers);
 
-  void onFrameEnd(Rc<DxvkContext> ctx);
-  void onFrameEndNoRTX();
+  void onFrameEnd(Rc<DxvkContext> ctx, bool raytracedThisFrame);
 
   // GameCapturer
   void triggerUsdCapture() const;

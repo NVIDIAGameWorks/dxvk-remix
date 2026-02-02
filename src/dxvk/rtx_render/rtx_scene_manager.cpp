@@ -464,7 +464,7 @@ namespace dxvk {
   }
 
 
-  void SceneManager::onFrameEnd(Rc<DxvkContext> ctx) {
+  void SceneManager::onFrameEnd(Rc<DxvkContext> ctx, bool raytracedThisFrame) {
     ScopedCpuProfileZone();
 
     manageTextureVram();
@@ -476,10 +476,10 @@ namespace dxvk {
 
     m_cameraManager.onFrameEnd();
     m_instanceManager.onFrameEnd();
-    m_previousFrameSceneAvailable = RtxOptions::enablePreviousTLAS();
+    m_previousFrameSceneAvailable = raytracedThisFrame && RtxOptions::enablePreviousTLAS();
 
     m_bufferCache.clear();
-    {
+    if (raytracedThisFrame){
       std::lock_guard lock { m_drawCallMeta.mutex };
       const uint8_t curTick = m_drawCallMeta.ticker;
       const uint8_t nextTick = (m_drawCallMeta.ticker + 1) % m_drawCallMeta.MaxTicks;
@@ -514,19 +514,20 @@ namespace dxvk {
 
     // execute graph updates after all garbage collection is complete (to avoid updating graphs that will just be deleted)
     // RtxOptions will still be pending, so any changes to them will apply next frame.
-    m_graphManager.update(ctx);
+    if (raytracedThisFrame){
+      m_graphManager.update(ctx);
+    }
 
     // Clear replacement material hashes before the next frame.  These are used by components, so must clear after graphManager updates.
     clearFrameReplacementMaterialHashes();
     
     // Clear mesh hashes before the next frame.  These are used by components, so must clear after graphManager updates.
     clearFrameMeshHashes();
-  }
-
-  void SceneManager::onFrameEndNoRTX() {
-    m_cameraManager.onFrameEnd();
-    m_instanceManager.onFrameEnd();
-    manageTextureVram();
+    
+    // Reset the fog state to get it re-discovered on the next frame
+    ImGUI::SetFogStates(m_fogStates, m_fog.getHash());
+    m_fog = FogState();
+    m_fogStates.clear();
   }
 
   std::unordered_set<XXH64_hash_t> uniqueHashes;
@@ -833,12 +834,6 @@ namespace dxvk {
         }
       }
     }
-  }
-
-  void SceneManager::clearFogState() {
-    ImGUI::SetFogStates(m_fogStates, m_fog.getHash());
-    m_fog = FogState();
-    m_fogStates.clear();
   }
 
   void SceneManager::updateBufferCache(RaytraceGeometry& newGeoData) {
