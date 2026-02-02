@@ -255,7 +255,7 @@ namespace dxvk {
     bool m_triggerDelayedTerminate = false;
     uint32_t m_screenshotFrameNum = -1;
     uint32_t m_terminateAppFrameNum = -1;
-    bool m_previousInjectRtxHadScene = false;
+    uint32_t m_framesWithoutValidScene = 0;
     IntegrateIndirectMode m_prevIntegrateIndirectMode = IntegrateIndirectMode::Count;
 
     DxvkRaytracingInstanceState m_rtState;

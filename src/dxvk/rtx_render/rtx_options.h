@@ -559,6 +559,10 @@ namespace dxvk {
     RTX_OPTION("rtx", uint32_t, numFramesToKeepInstances, 1, "");
     RTX_OPTION("rtx", uint32_t, numFramesToKeepBLAS, 1, "");
     RTX_OPTION("rtx", uint32_t, numFramesToKeepLights, 100, ""); // NOTE: This was the default we've had for a while, can probably be reduced...
+    RTX_OPTION("rtx", uint32_t, sceneKeepAliveFrames, 0, 
+               "Number of consecutive frames without valid camera or raytracing before clearing the scene."
+               " Set to 0 to clear immediately (legacy behavior). Higher values prevent scene clearing during"
+               " brief shader loading delays, camera cuts, etc.");
 
     static uint32_t numFramesToKeepGeometryData() {
       return numFramesToKeepBLAS();

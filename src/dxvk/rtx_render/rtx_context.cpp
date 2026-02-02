@@ -516,6 +516,8 @@ namespace dxvk {
 
     const float gpuIdleTimeMilliseconds = getGpuIdleTimeSinceLastCall();
 
+    bool raytracedThisFrame = false;
+
     // Note: Only engage ray tracing when it is enabled, the camera is valid and when no shaders are currently being compiled asynchronously (as
     // trying to render before shaders are done compiling will cause Remix to block).
     if (isRaytracingEnabled && isCameraValid && !asyncShaderCompilationActive) {
@@ -721,12 +723,12 @@ namespace dxvk {
         }
 
         m_common->metaNeuralRadianceCache().onFrameEnd(rtOutput);
-        getSceneManager().onFrameEnd(this);
 
         rtOutput.onFrameEnd();
+        raytracedThisFrame = true;
       }
 
-      m_previousInjectRtxHadScene = true;
+      m_framesWithoutValidScene = 0;
     } else {
       // If raytracing is only disabled because we don't have shaders available, we don't want to clear the scene.
       // This frequently happens for a single frame when a cached shader is being fetched, and causes the Logic 
@@ -734,15 +736,20 @@ namespace dxvk {
       // It might be safe to remove this clear entirely - it was added before we had any garbage collection
       // in the scene manager, so it may not be needed anymore.
       if (!isRaytracingEnabled || !isCameraValid) {
-        getSceneManager().clear(this, m_previousInjectRtxHadScene);
-        m_previousInjectRtxHadScene = false;
+        m_framesWithoutValidScene++;
+        // Some games may have invalid cameras for a brief period during camera cuts, but clearing the scene
+        // during these cuts causes all textures to need to be reloaded, which is slow.
+        if (m_framesWithoutValidScene > RtxOptions::sceneKeepAliveFrames()) {
+          // Only perform Wait For Idle on the first clear to avoid expensive GPU sync on every frame
+          const bool needWfi = (m_framesWithoutValidScene == RtxOptions::sceneKeepAliveFrames() + 1);
+          getSceneManager().clear(this, needWfi);
+        }
+      } else {
+        m_framesWithoutValidScene = 0;
       }
-
-      getSceneManager().onFrameEndNoRTX();
     }
 
-    // Reset the fog state to get it re-discovered on the next frame
-    getSceneManager().clearFogState();
+    getSceneManager().onFrameEnd(this, raytracedThisFrame);
 
     // apply changes to RtxOptions after the frame has ended
     RtxOptionManager::applyPendingValuesOptionLayers();
