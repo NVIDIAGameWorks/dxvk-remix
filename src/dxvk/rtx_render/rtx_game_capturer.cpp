@@ -189,6 +189,7 @@ namespace dxvk {
     m_state.set<State::Capturing, true>();
     m_state.set<State::Initializing, false>();
     m_state.set<State::Complete, false>();
+    m_state.set<State::Failed, false>();
   }
   
   void GameCapturer::prepareInstanceStage(const Rc<DxvkContext> ctx) {
@@ -964,8 +965,16 @@ namespace dxvk {
       pState->set<State::Exporting, true>();
 
       Logger::info("[GameCapturer][" + cap.idStr + "] Begin USD export");
-      lss::GameExporter::exportUsd(exportPrep);
+      const bool exportOk = lss::GameExporter::exportUsd(exportPrep);
       Logger::info("[GameCapturer][" + cap.idStr + "] End USD export");
+
+      if (!exportOk) {
+        complete->stageName = cap.instance.stageName;
+        complete->stagePath = cap.instance.stagePath;
+        pState->set<State::Exporting, false>();
+        pState->set<State::Failed, true>();
+        return;
+      }
 
       // Necessary step for being able to properly diff and check for regressions
       const auto flattenCaptureEnvStr = env::getEnvVar("DXVK_CAPTURE_FLATTEN");

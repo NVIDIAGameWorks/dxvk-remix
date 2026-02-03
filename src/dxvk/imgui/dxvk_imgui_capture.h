@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -82,6 +82,7 @@ namespace dxvk {
       friend ImGuiCapture;
       float m_percent;
       GameCapturer::State m_prevState;
+      bool m_failed = false;
       std::string m_captureStageName = "";
       std::string m_capturePath = "";
       std::vector<std::string> m_output;

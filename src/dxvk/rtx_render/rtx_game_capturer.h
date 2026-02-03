@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -139,13 +139,14 @@ public:
     BeginExport,
     PreppingExport,
     Exporting,
-    Complete
+    Complete,
+    Failed
   );
   const State& getState() const {
     return m_state;
   }
   bool isIdle() const {
-    return m_state.isClear() || m_state.has<State::Complete>();
+    return m_state.isClear() || m_state.has<State::Complete>() || m_state.has<State::Failed>();
   }
 
   struct CompletedCapture {
