@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -41,7 +41,7 @@ public:
   static void setMultiThreadSafety(const bool enable) {
     s_bMultiThreadSafety = enable;
   }
-  static void exportUsd(const Export& exportData);
+  static bool exportUsd(const Export& exportData);
 private:
   struct Reference {
     std::string  stagePath;
@@ -56,7 +56,7 @@ private:
     IdMap<Skeleton> skeletons;
     
   };
-  static void exportUsdInternal(const Export& exportData);
+  static bool exportUsdInternal(const Export& exportData);
   static pxr::UsdStageRefPtr createInstanceStage(const Export& exportData);
   static void setCommonStageMetaData(pxr::UsdStageRefPtr stage, const Export& exportData);
   static void createApertureMdls(const std::string& baseExportPath);
