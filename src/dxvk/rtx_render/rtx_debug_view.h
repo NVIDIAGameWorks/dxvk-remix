@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -117,11 +117,13 @@ namespace dxvk {
     // Note: Used for preserving the debug view state only for ImGui purposes. Not to be used for anything else
     // and should not ever be set to the disabled debug view index.
     uint32_t m_lastDebugViewIdx;
-    RTX_OPTION_ENV("rtx.debugView", DebugViewDisplayType, displayType, DebugViewDisplayType::Standard, "DXVK_RTX_DEBUG_VIEW_DISPLAY_TYPE",
+    RTX_OPTION_ARGS("rtx.debugView", DebugViewDisplayType, displayType, DebugViewDisplayType::Standard,
                    "The display type to use for visualizing debug view input values.\n"
                    "Supported display types are: 0 = Standard, 1 = BGR Exclusive Color, 2 = EV100, 3 = HDR Waveform\n"
                    "Each mode may be useful for a different kind of visualization, though Standard is typically the most common mode to use.\n"
-                   "Standard mode works for a simple direct, scaled or color mapped visualization, BGR exclusive for another type of color mapped visualization, and EV100 or the HDR Waveform for understanding HDR value magnitudes in the input on a log scale.");
+                   "Standard mode works for a simple direct, scaled or color mapped visualization, BGR exclusive for another type of color mapped visualization, and EV100 or the HDR Waveform for understanding HDR value magnitudes in the input on a log scale.",
+                   args.environment = "DXVK_RTX_DEBUG_VIEW_DISPLAY_TYPE",
+                   args.maxValue = DebugViewDisplayType(uint32_t(DebugViewDisplayType::Count) - 1));
 
     RTX_OPTION("rtx.debugView", DebugViewSamplerType, samplerType, DebugViewSamplerType::NormalizedLinear, "Sampler type for debug views that sample from a texture (applies only to a subset of debug views).\n"
                                                                                                            "Supported types are: 0 = Nearest, 1 = Normalized Nearest, 2 = Normalized Linear");

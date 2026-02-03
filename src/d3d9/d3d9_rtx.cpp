@@ -506,8 +506,9 @@ namespace dxvk {
     const uint32_t usedSamplerMask = m_parent->m_psShaderMasks.samplerMask | m_parent->m_vsShaderMasks.samplerMask;
     const uint32_t usedTextureMask = m_parent->m_activeTextures & usedSamplerMask;
     for (uint32_t idx : bit::BitMask(usedTextureMask)) {
-      if (!d3d9State().textures[idx])
+      if (!d3d9State().textures[idx]) {
         continue;
+      }
 
       auto texture = GetCommonTexture(d3d9State().textures[idx]);
 

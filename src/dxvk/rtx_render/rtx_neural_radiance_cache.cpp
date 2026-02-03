@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2024-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2024-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -358,6 +358,9 @@ namespace dxvk {
   }
 
   void NeuralRadianceCache::NrcOptions::onQualityPresetChanged(DxvkDevice* device) {
+    // Code-driven changes for NRC preset (automatically routes to User layer when graphics preset is Custom)
+    RtxOptionLayerTarget layerTarget(RtxOptionEditTarget::Derived);
+
     // Note: This function is called during onChange handler for quality preset option and 
     // all the NRC calls have been issued, so it's safe to set the new settings using immediately.
     // In addition, this ensures the settings being applied immediately on start, rather than being delayed to the next frame

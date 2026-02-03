@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -637,8 +637,6 @@ namespace dxvk {
       m_composite.lastCompositeViewIdx = static_cast<CompositeDebugView>(Composite::compositeViewIdx());
     }
 
-    displayType.setDeferred(static_cast<DebugViewDisplayType>(std::min(static_cast<uint32_t>(displayType()), static_cast<uint32_t>(DebugViewDisplayType::Count) - 1)));
-  
     const uint32_t bufferLength = kMaxFramesInFlight;
 
     DxvkBufferCreateInfo statisticsBufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -47,7 +47,8 @@ namespace dxvk {
 
     RTX_OPTION("rtx.demodulate", bool, demodulateRoughness, true, "Demodulate roughness to improve specular details.");
     RTX_OPTION("rtx.demodulate", float, demodulateRoughnessOffset, 0.1f, "Strength of roughness demodulation, lower values are stronger.");
-    RTX_OPTION("rtx.demodulate", bool, enableDirectLightBoilingFilter, true, "Boiling filter removing direct light sample when its luminance is too high.");
+    RTX_OPTION_ARGS("rtx.demodulate", bool, enableDirectLightBoilingFilter, true, "Boiling filter removing direct light sample when its luminance is too high.",
+                    args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION("rtx.demodulate", float, directLightBoilingThreshold, 5.f, "Remove direct light sample when its luminance is higher than the average one multiplied by this threshold .");
 
   private:

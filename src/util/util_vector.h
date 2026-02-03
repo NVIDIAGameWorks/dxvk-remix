@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -223,6 +223,28 @@ namespace dxvk {
     out.w = std::abs(a.w);
 
     return out;
+  }
+
+  template <typename T>
+  // Wrapping the function name in () to fix linter errors from min/max macros in windows headers.
+  Vector4Base<T> (min)(const Vector4Base<T>& a, const Vector4Base<T>& b) {
+    return Vector4Base<T>(
+      std::min(a.x, b.x),
+      std::min(a.y, b.y),
+      std::min(a.z, b.z),
+      std::min(a.w, b.w)
+    );
+  }
+
+  template <typename T>
+  // Wrapping the function name in () to fix linter errors from min/max macros in windows headers.
+  Vector4Base<T> (max)(const Vector4Base<T>& a, const Vector4Base<T>& b) {
+    return Vector4Base<T>(
+      std::max(a.x, b.x),
+      std::max(a.y, b.y),
+      std::max(a.z, b.z),
+      std::max(a.w, b.w)
+    );
   }
 
   template <typename T>

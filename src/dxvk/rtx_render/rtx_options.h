@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -25,6 +25,8 @@
 #include <unordered_set>
 #include <cassert>
 #include <limits>
+#include <sstream>
+#include <iomanip>
 
 #include "../util/util_keybind.h"
 #include "../util/config/config.h"
@@ -42,7 +44,9 @@
 #include "rtx_materials.h"
 #include "rtx/pass/material_args.h"
 #include "rtx_option.h"
+#include "rtx_option_manager.h"
 #include "rtx_hashing.h"
+#include "rtx_mod_manager.h"
 
 enum _NV_GPU_ARCHITECTURE_ID;
 typedef enum _NV_GPU_ARCHITECTURE_ID NV_GPU_ARCHITECTURE_ID;
@@ -228,26 +232,31 @@ namespace dxvk {
                   "Textures on draw calls used for static geometric decals or decals with complex topology.\n"
                   "These materials will be blended over the materials underneath them when decal material blending is enabled.\n"
                   "A small configurable offset is applied to each flat/co-planar part of these decals to prevent coplanar geometric cases (which poses problems for ray tracing).");
-    // Todo: Deprecation/aliasing macro here for dynamicDecalTextures/singleOffsetDecalTextures/nonOffsetDecalTextures to not have to manually handle their
-    // aliasing to decalTextures, or the inclusion of the deprecation notice in their documentation.
-    RTX_OPTION("rtx", fast_unordered_set, dynamicDecalTextures, {},
+    // Deprecated decal texture options - these are migrated to decalTextures via onChange callbacks
+    public: static void dynamicDecalTexturesOnChange(DxvkDevice* device);
+    public: static void singleOffsetDecalTexturesOnChange(DxvkDevice* device);
+    public: static void nonOffsetDecalTexturesOnChange(DxvkDevice* device);
+    RTX_OPTION_ARGS("rtx", fast_unordered_set, dynamicDecalTextures, {},
                   "Warning: This option is deprecated, please use rtx.decalTextures instead.\n"
                   "Textures on draw calls used for dynamically spawned geometric decals, such as bullet holes.\n"
                   "These materials will be blended over the materials underneath them when decal material blending is enabled.\n"
-                  "A small configurable offset is applied to each quad part of these decals to prevent coplanar geometric cases (which poses problems for ray tracing).");
-    RTX_OPTION("rtx", fast_unordered_set, singleOffsetDecalTextures, {},
+                  "A small configurable offset is applied to each quad part of these decals to prevent coplanar geometric cases (which poses problems for ray tracing).",
+                  args.onChangeCallback = &dynamicDecalTexturesOnChange);
+    RTX_OPTION_ARGS("rtx", fast_unordered_set, singleOffsetDecalTextures, {},
                   "Warning: This option is deprecated, please use rtx.decalTextures instead.\n"
                   "Textures on draw calls used for geometric decals that don't inter-overlap for a given texture hash. Textures must be tagged as \"Decal Texture\" or \"Dynamic Decal Texture\" to apply.\n"
                   "Applies a single shared offset to all the batched decal geometry rendered in a given draw call, rather than increasing offset per decal within the batch (i.e. a quad in case of \"Dynamic Decal Texture\").\n"
                   "Note, the offset adds to the global offset among all decals drawn with different draw calls.\n"
                   "The decal textures tagged this way must not inter-overlap within a batch / single draw call since the same offset is applied to all of them.\n"
                   "Applying a single offset is useful for stabilizing decal offsets when a game dynamically batches decals together.\n"
-                  "In addition, it makes the global decal offset index grow slower and thus it minimizes a chance of hitting the \"rtx.decals.maxOffsetIndex limit\".");
-    RTX_OPTION("rtx", fast_unordered_set, nonOffsetDecalTextures, {},
+                  "In addition, it makes the global decal offset index grow slower and thus it minimizes a chance of hitting the \"rtx.decals.maxOffsetIndex limit\".",
+                  args.onChangeCallback = &singleOffsetDecalTexturesOnChange);
+    RTX_OPTION_ARGS("rtx", fast_unordered_set, nonOffsetDecalTextures, {},
                   "Warning: This option is deprecated, please use rtx.decalTextures instead.\n"
                   "Textures on draw calls used for geometric decals with arbitrary topology that are already offset from the base geometry.\n"
                   "These materials will be blended over the materials underneath them when decal material blending is enabled.\n"
-                  "Unlike typical decals however these decals have no offset applied to them due assuming the offset is already being done by whatever is passing data to Remix.");
+                  "Unlike typical decals however these decals have no offset applied to them due assuming the offset is already being done by whatever is passing data to Remix.",
+                  args.onChangeCallback = &nonOffsetDecalTexturesOnChange);
     RTX_OPTION("rtx", fast_unordered_set, terrainTextures, {}, "Albedo textures that are baked blended together to form a unified terrain texture used during ray tracing.\n"
                                                                   "Put albedo textures into this category if the game renders terrain as a blend of multiple textures.");
     RTX_OPTION("rtx", fast_unordered_set, opacityMicromapIgnoreTextures, {}, "Textures to ignore when generating Opacity Micromaps. This generally does not have to be set and is only useful for black listing problematic cases for Opacity Micromap usage.");
@@ -275,10 +284,14 @@ namespace dxvk {
                   "Some games use different culling methods we can't fully match, use this option to manually add textures to force extend their life when anti-culling fails.");
     RTX_OPTION("rtx.postfx", fast_unordered_set, motionBlurMaskOutTextures, {}, "Disable motion blur for meshes with specific texture.");
 
-    RTX_OPTION("rtx", std::string, geometryGenerationHashRuleString, "positions,indices,texcoords,geometrydescriptor,vertexlayout,vertexshader",
-                  "Defines which asset hashes we need to generate via the geometry processing engine.");
-    RTX_OPTION("rtx", std::string, geometryAssetHashRuleString, "positions,indices,geometrydescriptor",
-                  "Defines which hashes we need to include when sampling from replacements and doing USD capture.");
+    public: static void geometryGenerationHashRuleStringOnChange(DxvkDevice* device);
+    RTX_OPTION_ARGS("rtx", std::string, geometryGenerationHashRuleString, "positions,indices,texcoords,geometrydescriptor,vertexlayout,vertexshader",
+                  "Defines which asset hashes we need to generate via the geometry processing engine.",
+                  args.onChangeCallback = &geometryGenerationHashRuleStringOnChange);
+    public: static void geometryAssetHashRuleStringOnChange(DxvkDevice* device);
+    RTX_OPTION_ARGS("rtx", std::string, geometryAssetHashRuleString, "positions,indices,geometrydescriptor",
+                  "Defines which hashes we need to include when sampling from replacements and doing USD capture.",
+                  args.onChangeCallback = &geometryAssetHashRuleStringOnChange);
     RTX_OPTION("rtx", fast_unordered_set, raytracedRenderTargetTextures, {}, "DescriptorHashes for Render Targets. (Screens that should display the output of another camera).");
     RTX_OPTION("rtx", fast_unordered_set, particleEmitterTextures, {}, "Objects rendered with these textures will emit particles that inherit the material of the object itself.");
     
@@ -297,29 +310,35 @@ namespace dxvk {
                    "Setting this to 0 will use actual frame time delta for a given frame. Non-zero value allows the actual time delta to be overridden and is primarily used for automation to ensure determinism run to run without variance due to frame time fluctuations.");
 
     RTX_OPTION_FLAG("rtx", bool, keepTexturesForTagging, false, RtxOptionFlags::NoSave, "A flag to keep all textures in video memory, which can drastically increase VRAM consumption. Intended to assist with tagging textures that are only used for a short period of time (such as loading screens). Use only when necessary!");
-    RTX_OPTION("rtx.gui", float, textureGridThumbnailScale, 1.f, 
-               "A float to set the scale of thumbnails while selecting textures.\n"
-               "This will be scaled by the default value of 120 pixels.\n"
-               "This value must always be greater than zero.");
+    RTX_OPTION_ARGS("rtx.gui", float, textureGridThumbnailScale, 1.f, 
+                    "A float to set the scale of thumbnails while selecting textures.\n"
+                    "This will be scaled by the default value of 120 pixels.\n"
+                    "This value must always be greater than zero.",
+                    args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION("rtx", bool, skipDrawCallsPostRTXInjection, false, "Ignores all draw calls recorded after RTX Injection, the location of which varies but is currently based on when tagged UI textures begin to draw.");
-    RTX_OPTION_ENV("rtx", DlssPreset, dlssPreset, DlssPreset::On, "RTX_DLSS_PRESET", "Combined DLSS Preset for quickly controlling Upscaling, Frame Interpolation and Latency Reduction.");
-    RTX_OPTION("rtx", NisPreset, nisPreset, NisPreset::Balanced, "Adjusts NIS scaling factor, trades quality for performance.");
-    RTX_OPTION("rtx", TaauPreset, taauPreset, TaauPreset::Balanced,  "Adjusts TAA-U scaling factor, trades quality for performance.");
+    RTX_OPTION_ARGS("rtx", DlssPreset, dlssPreset, DlssPreset::On, "Combined DLSS Preset for quickly controlling Upscaling, Frame Interpolation and Latency Reduction.",
+                    args.environment = "RTX_DLSS_PRESET",
+                    args.flags = RtxOptionFlags::UserSetting);
+    RTX_OPTION_ARGS("rtx", NisPreset, nisPreset, NisPreset::Balanced, "Adjusts NIS scaling factor, trades quality for performance.",
+                    args.flags = RtxOptionFlags::UserSetting);
+    RTX_OPTION_ARGS("rtx", TaauPreset, taauPreset, TaauPreset::Balanced,  "Adjusts TAA-U scaling factor, trades quality for performance.",
+                    args.flags = RtxOptionFlags::UserSetting);
     static void graphicsPresetOnChange(DxvkDevice* device);
     RTX_OPTION_ARGS("rtx", GraphicsPreset, graphicsPreset, GraphicsPreset::Auto, "Overall rendering preset, higher presets result in higher image quality, lower presets result in better performance.",
                     args.environment = "DXVK_GRAPHICS_PRESET_TYPE",
-                    args.onChangeCallback = &graphicsPresetOnChange);
+                    args.onChangeCallback = &graphicsPresetOnChange,
+                    args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION_ENV("rtx", RaytraceModePreset, raytraceModePreset, RaytraceModePreset::Auto, "DXVK_RAYTRACE_MODE_PRESET_TYPE", "");
-    RTX_OPTION_FLAG("rtx", bool, lowMemoryGpu, false, RtxOptionFlags::NoSave, "Enables low memory mode, where we aggressively detune caches and streaming systems to accomodate the lower memory available.");
+    RTX_OPTION_FLAG("rtx", bool, lowMemoryGpu, false, RtxOptionFlags::NoSave | RtxOptionFlags::UserSetting, "Enables low memory mode, where we aggressively detune caches and streaming systems to accomodate the lower memory available.");
     RTX_OPTION_ARGS("rtx", float, emissiveIntensity, 1.0f, "A general scale factor on all emissive intensity values globally. Generally per-material emissive intensities should be used, but this option may be useful for debugging without needing to author materials.",
                     args.minValue = 0.0f);
     RTX_OPTION_ARGS("rtx", float, fireflyFilteringLuminanceThreshold, 1000.0f, "Maximum luminance threshold for the firefly filtering to clamp to.",
                     args.minValue = 0.0f);
     RTX_OPTION("rtx", float, secondarySpecularFireflyFilteringThreshold, 1000.0f, "Firefly luminance clamping threshold for secondary specular signal.");
     RTX_OPTION_ARGS("rtx", float, vertexColorStrength, 0.6f,
-               "A scalar to apply to how strong vertex color influence should be on materials.\n"
-               "A value of 1 indicates that it should be fully considered (though do note the texture operation and relevant parameters still control how much it should be blended with the actual albedo color), a value of 0 indicates that it should be fully ignored.",
-               args.minValue = 0.0f, args.maxValue = 1.0f);
+                    "A scalar to apply to how strong vertex color influence should be on materials.\n"
+                    "A value of 1 indicates that it should be fully considered (though do note the texture operation and relevant parameters still control how much it should be blended with the actual albedo color), a value of 0 indicates that it should be fully ignored.",
+                    args.minValue = 0.0f, args.maxValue = 1.0f);
     RTX_OPTION("rtx", bool, vertexColorIsBakedLighting, true, "If true, brightness contribution will be removed from the vertex color by dividing each component by the largest component.");
     RTX_OPTION("rtx", bool, ignoreAllVertexColorBakedLighting, false, "If true, all baked lighting bound to all vertex colors will be ignored.");
     RTX_OPTION("rtx", bool, allowFSE, false,
@@ -463,7 +482,7 @@ namespace dxvk {
     RTX_OPTION_ENV("rtx", bool, useRTXDI, true, "DXVK_USE_RTXDI",
                    "A flag indicating if RTXDI should be used, true enables RTXDI, false disables it and falls back on simpler light sampling methods.\n"
                    "RTXDI provides improved direct light sampling quality over traditional methods and should generally be enabled for improved direct lighting quality at the cost of some performance.");
-    RTX_OPTION_ENV("rtx", IntegrateIndirectMode, integrateIndirectMode, IntegrateIndirectMode::NeuralRadianceCache, "RTX_INTEGRATE_INDIRECT_MODE",
+    RTX_OPTION_ARGS("rtx", IntegrateIndirectMode, integrateIndirectMode, IntegrateIndirectMode::NeuralRadianceCache,
                    "Indirect integration mode:\n"
                    "0: Importance Sampled. Importance sampled mode uses typical GI sampling and it is not recommended for general use as it provides the noisiest output.\n"
                    "   It serves as a reference integration mode for validation of other indirect integration modes.\n"
@@ -472,11 +491,18 @@ namespace dxvk {
                    "2: RTX Neural Radiance Cache (NRC). NRC is an AI based world space radiance cache. It is live trained by the path tracer\n"
                    "   and allows paths to terminate early by looking up the cached value and saving performance.\n"
                    "   NRC supports infinite bounces and often provides results closer to that of reference than ReSTIR GI\n"
-                   "   while improving performance in scenarios where ray paths have 2 or more bounces on average.\n");
-    RTX_OPTION_ENV("rtx", UpscalerType, upscalerType, UpscalerType::DLSS, "DXVK_UPSCALER_TYPE", "Upscaling boosts performance with varying degrees of image quality tradeoff depending on the type of upscaler and the quality mode/preset.");
-    RTX_OPTION_ENV("rtx", bool, enableRayReconstruction, true, "DXVK_RAY_RECONSTRUCTION", "Enables DLSS ray reconstruction, an AI-based denoiser designed for real time ray tracing.");
+                   "   while improving performance in scenarios where ray paths have 2 or more bounces on average.\n",
+                   args.environment = "RTX_INTEGRATE_INDIRECT_MODE",
+                   args.flags = RtxOptionFlags::UserSetting);
+    RTX_OPTION_ARGS("rtx", UpscalerType, upscalerType, UpscalerType::DLSS, "Upscaling boosts performance with varying degrees of image quality tradeoff depending on the type of upscaler and the quality mode/preset.",
+                    args.environment = "DXVK_UPSCALER_TYPE",
+                    args.flags = RtxOptionFlags::UserSetting);
+    RTX_OPTION_ARGS("rtx", bool, enableRayReconstruction, true, "Enables DLSS ray reconstruction, an AI-based denoiser designed for real time ray tracing.",
+                    args.environment = "DXVK_RAY_RECONSTRUCTION",
+                    args.flags = RtxOptionFlags::UserSetting);
 
-    RTX_OPTION("rtx", float, resolutionScale, 0.75f, "");
+    RTX_OPTION_ARGS("rtx", float, resolutionScale, 0.75f, "",
+                    args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION("rtx", bool, forceCameraJitter, false, "Force enables camera jitter frame to frame.");
     RTX_OPTION("rtx", uint32_t, cameraJitterSequenceLength, 64, "Sets a camera jitter sequence length [number of frames]. It will loop around once the length is reached.");
     RTX_OPTION("rtx", bool, enableDirectLighting, true, "Enables direct lighting (lighting directly from lights on to a surface) on surfaces when set to true, otherwise disables it.");
@@ -492,7 +518,8 @@ namespace dxvk {
     RTX_OPTION_ARGS("rtx", UIType, showUI, UIType::None, "0 = Don't Show, 1 = Show Simple, 2 = Show Advanced.",
                     args.environment = "RTX_GUI_DISPLAY_UI",
                     args.flags = RtxOptionFlags::NoSave | RtxOptionFlags::NoReset);
-    RTX_OPTION_ARGS("rtx", bool, defaultToAdvancedUI, false, "", args.flags = RtxOptionFlags::NoReset);
+    RTX_OPTION_ARGS("rtx", bool, defaultToAdvancedUI, false, "Whether to default to the Advanced UI when opening the developer menu.", 
+                    args.flags = RtxOptionFlags::UserSetting | RtxOptionFlags::NoReset);
 
     public: static void showUICursorOnChange(DxvkDevice* device);
     RTX_OPTION_ARGS("rtx", bool, showUICursor, true, "If true, the ImGUI mouse cursor will be shown when the UI is active.\n"
@@ -509,16 +536,27 @@ namespace dxvk {
                "example override: 'rtx.remixMenuKeyBinds = CTRL, SHIFT, Z'.\n"
                "Full list of key names available in `src/util/util_keybind.h`.");
 
-    RTX_OPTION_ENV("rtx", DLSSProfile, qualityDLSS, DLSSProfile::Auto, "RTX_QUALITY_DLSS", "Adjusts internal DLSS scaling factor, trades quality for performance.");
+    RTX_OPTION_ARGS("rtx", DLSSProfile, qualityDLSS, DLSSProfile::Auto, "Adjusts internal DLSS scaling factor, trades quality for performance.",
+                    args.environment = "RTX_QUALITY_DLSS",
+                    args.flags = RtxOptionFlags::UserSetting);
     // Note: All ray tracing modes depend on the rtx.raytraceModePreset option as they may be overridden by automatic defaults for a specific vendor if the preset is set to Auto. Set
     // to Custom to ensure these settings are not overridden.
     //RenderPassVolumeIntegrateRaytraceMode renderPassVolumeIntegrateRaytraceMode = RenderPassVolumeIntegrateRaytraceMode::RayQuery;
-    RTX_OPTION_ENV("rtx", RenderPassGBufferRaytraceMode, renderPassGBufferRaytraceMode, RenderPassGBufferRaytraceMode::RayQuery, "DXVK_RENDER_PASS_GBUFFER_RAYTRACE_MODE",
-                   "The ray tracing mode to use for the G-Buffer pass which resolves the initial primary and secondary surfaces to apply lighting to.");
-    RTX_OPTION_ENV("rtx", RenderPassIntegrateDirectRaytraceMode, renderPassIntegrateDirectRaytraceMode, RenderPassIntegrateDirectRaytraceMode::RayQuery, "DXVK_RENDER_PASS_INTEGRATE_DIRECT_RAYTRACE_MODE",
-                   "The ray tracing mode to use for the Direct Lighting pass which applies lighting to the primary/secondary surfaces.");
-    RTX_OPTION_ENV("rtx", RenderPassIntegrateIndirectRaytraceMode, renderPassIntegrateIndirectRaytraceMode, RenderPassIntegrateIndirectRaytraceMode::TraceRay, "DXVK_RENDER_PASS_INTEGRATE_INDIRECT_RAYTRACE_MODE",
-                   "The ray tracing mode to use for the Indirect Lighting pass which applies lighting to the primary/secondary surfaces.");
+    RTX_OPTION_ARGS("rtx", RenderPassGBufferRaytraceMode, renderPassGBufferRaytraceMode, RenderPassGBufferRaytraceMode::RayQuery,
+                   "The ray tracing mode to use for the G-Buffer pass which resolves the initial primary and secondary surfaces to apply lighting to.",
+                   args.environment = "DXVK_RENDER_PASS_GBUFFER_RAYTRACE_MODE",
+                   args.maxValue = RenderPassGBufferRaytraceMode(uint32_t(RenderPassGBufferRaytraceMode::Count) - 1),
+                   args.flags = RtxOptionFlags::UserSetting);
+    RTX_OPTION_ARGS("rtx", RenderPassIntegrateDirectRaytraceMode, renderPassIntegrateDirectRaytraceMode, RenderPassIntegrateDirectRaytraceMode::RayQuery,
+                   "The ray tracing mode to use for the Direct Lighting pass which applies lighting to the primary/secondary surfaces.",
+                   args.environment = "DXVK_RENDER_PASS_INTEGRATE_DIRECT_RAYTRACE_MODE",
+                   args.maxValue = RenderPassIntegrateDirectRaytraceMode(uint32_t(RenderPassIntegrateDirectRaytraceMode::Count) - 1),
+                   args.flags = RtxOptionFlags::UserSetting);
+    RTX_OPTION_ARGS("rtx", RenderPassIntegrateIndirectRaytraceMode, renderPassIntegrateIndirectRaytraceMode, RenderPassIntegrateIndirectRaytraceMode::TraceRay,
+                   "The ray tracing mode to use for the Indirect Lighting pass which applies lighting to the primary/secondary surfaces.",
+                   args.environment = "DXVK_RENDER_PASS_INTEGRATE_INDIRECT_RAYTRACE_MODE",
+                   args.maxValue = RenderPassIntegrateIndirectRaytraceMode(uint32_t(RenderPassIntegrateIndirectRaytraceMode::Count) - 1),
+                   args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION("rtx", bool, captureDebugImage, false, "");
 
     // Denoiser Options
@@ -552,7 +590,9 @@ namespace dxvk {
                       "Resets the accumulated debug view output when the camera transform changes.");
     } accumulation;
 
-    RTX_OPTION_ENV("rtx", bool, denoiseDirectAndIndirectLightingSeparately, true, "DXVK_DENOISE_DIRECT_AND_INDIRECT_LIGHTING_SEPARATELY", "Denoising quality, high uses separate denoising of direct and indirect lighting for higher quality at the cost of performance.");
+    RTX_OPTION_ARGS("rtx", bool, denoiseDirectAndIndirectLightingSeparately, true, "Denoising quality, high uses separate denoising of direct and indirect lighting for higher quality at the cost of performance.",
+                    args.environment = "DXVK_DENOISE_DIRECT_AND_INDIRECT_LIGHTING_SEPARATELY",
+                    args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION("rtx", bool, replaceDirectSpecularHitTWithIndirectSpecularHitT, true, "");
     RTX_OPTION("rtx", bool, adaptiveResolutionDenoising, true, "");
     RTX_OPTION_ENV("rtx", bool, adaptiveAccumulation, true, "DXVK_USE_ADAPTIVE_ACCUMULATION", "");
@@ -636,11 +676,11 @@ namespace dxvk {
     RTX_OPTION_ENV("rtx", bool, enableIndirectTranslucentShadows, false, "RTX_ENABLE_INDIRECT_TRANSLUCENT_SHADOWS", "Calculate coloured shadows for translucent materials (i.e. glass, water) in indirect lighting (i.e. reflections and GI). In engineering terms: include OBJECT_MASK_TRANSLUCENT into secondary visibility rays.");
     RTX_OPTION_ENV("rtx", bool, enableIndirectAlphaBlendShadows, true, "RTX_ENABLE_INDIRECT_ALPHABLEND_SHADOWS", "Calculate shadows for semi-transparent (alpha blended) objects in indirect lighting (i.e. reflections and GI). In engineering terms: include OBJECT_MASK_ALPHA_BLEND into secondary visibility rays.");
 
-    RTX_OPTION_ARGS("rtx", float, resolveTransparencyThreshold, 1.0f / 255.0f, "A threshold for which any opacity value below is considered totally transparent and may be safely skipped without as significant of a performance cost.",
-               args.minValue = 0.0f, args.maxValue = 1.0f);
     public: static void resolveTransparencyThresholdOnChange(DxvkDevice* device);
-    RTX_OPTION_ARGS("rtx", float, resolveOpaquenessThreshold, 254.0f / 255.0f, "A threshold for which any opacity value above is considered totally opaque.",
+    RTX_OPTION_ARGS("rtx", float, resolveTransparencyThreshold, 1.0f / 255.0f, "A threshold for which any opacity value below is considered totally transparent and may be safely skipped without as significant of a performance cost.",
                args.minValue = 0.0f, args.maxValue = 1.0f, args.onChangeCallback = &resolveTransparencyThresholdOnChange);
+    RTX_OPTION_ARGS("rtx", float, resolveOpaquenessThreshold, 254.0f / 255.0f, "A threshold for which any opacity value above is considered totally opaque.",
+               args.minValue = 0.0f, args.maxValue = 1.0f);
 
     // PSR Options
     RTX_OPTION("rtx", bool, enablePSRR, true,
@@ -694,17 +734,21 @@ namespace dxvk {
                "On the other hand, randomly terminating paths too aggressively may leave threads in GPU warps without work which may hurt thread occupancy when not used with a thread-reordering technique like SER.\n"
                "Additionally, Russian Roulette will always for the most part increase variance and will reduce the average path depth from whatever the current maximum path length is set to.\n"
                "This increase in variance will slightly impact image quality especially on scenes relying heavily on many bounces of indirect lighting, but this is usually worth it for efficiency purposes, as Russian Roulette allows each ray to reduces variance more than it would otherwise.");
-    RTX_OPTION_ENV("rtx", RussianRouletteMode, russianRouletteMode, RussianRouletteMode::ThroughputBased, "DXVK_PATH_TRACING_RR_MODE","Russian Roulette Mode. Throughput Based: paths with higher throughput become longer; Specular Based: specular paths become longer.\n");
+    RTX_OPTION_ARGS("rtx", RussianRouletteMode, russianRouletteMode, RussianRouletteMode::ThroughputBased, "Russian Roulette Mode. Throughput Based: paths with higher throughput become longer; Specular Based: specular paths become longer.\n",
+                    args.environment = "DXVK_PATH_TRACING_RR_MODE",
+                    args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION("rtx", float, russianRouletteDiffuseContinueProbability, 0.1f, "The probability of continuing a diffuse path when Russian Roulette is being used. Only apply to specular based mode.\n");
     RTX_OPTION("rtx", float, russianRouletteSpecularContinueProbability, 0.98f, "The probability of continuing a specular path when Russian Roulette is being used. Only apply to specular based mode.\n");
     RTX_OPTION("rtx", float, russianRouletteDistanceFactor, 0.1f, "Path segments whose distance proportion are under this threshold are more likely to continue. Only apply to specular based mode.\n");
     RTX_OPTION_ARGS("rtx", float, russianRouletteMaxContinueProbability, 0.9f,
                "The maximum probability of continuing a path when Russian Roulette is being used.\n"
                "This ensures all rays have a small probability of terminating each bounce, mostly to prevent infinite paths in perfectly reflective mirror rooms (though the maximum path bounce count will also ensure this).",
-               args.minValue = 0.0f, args.maxValue = 1.0f);
-    RTX_OPTION("rtx", float, russianRoulette1stBounceMinContinueProbability, 0.6f,
+               args.minValue = 0.0f, args.maxValue = 1.0f,
+               args.flags = RtxOptionFlags::UserSetting);
+    RTX_OPTION_ARGS("rtx", float, russianRoulette1stBounceMinContinueProbability, 0.6f,
                "The minimum probability of continuing a path when Russian Roulette is being used on the first bounce.\n"
-               "This ensures that on the first bounce rays are not terminated too aggressively as it may be useful for some denoisers to have a contribution even if it is a relatively unimportant one rather than a missing indirect sample.");
+               "This ensures that on the first bounce rays are not terminated too aggressively as it may be useful for some denoisers to have a contribution even if it is a relatively unimportant one rather than a missing indirect sample.",
+               args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION("rtx", float, russianRoulette1stBounceMaxContinueProbability, 1.0f,
                "The maximum probability of continuing a path when Russian Roulette is being used on the first bounce.\n"
                "This is similar to the usual max continuation probability for Russian Roulette, but specifically only for the first bounce.");
@@ -714,7 +758,8 @@ namespace dxvk {
                    "This value is recommended to stay fairly low (1 for example) as forcing longer paths when they carry little contribution quickly becomes detrimental to performance.",
                    args.environment = "DXVK_PATH_TRACING_MIN_BOUNCES",
                    args.minValue = static_cast<uint8_t>(0), args.maxValue = static_cast<uint8_t>(15),
-                   args.onChangeCallback = &pathMinBouncesOnChange);
+                   args.onChangeCallback = &pathMinBouncesOnChange,
+                   args.flags = RtxOptionFlags::UserSetting);
     public: static void pathMaxBouncesOnChange(DxvkDevice* device);
     RTX_OPTION_ARGS("rtx", uint8_t, pathMaxBounces, 4,
                    "The maximum number of indirect bounces the path will be allowed to complete. Must be < 16.\n"
@@ -722,15 +767,18 @@ namespace dxvk {
                    "Very high values are not recommended however as while long paths may be technically needed for unbiased rendering, in practice the contributions from higher bounces have diminishing returns.",
                    args.environment = "DXVK_PATH_TRACING_MAX_BOUNCES",
                    args.minValue = static_cast<uint8_t>(0), args.maxValue = static_cast<uint8_t>(15),
-                   args.onChangeCallback = &pathMaxBouncesOnChange);
+                   args.onChangeCallback = &pathMaxBouncesOnChange,
+                   args.flags = RtxOptionFlags::UserSetting);
     // Note: Use caution when adjusting any zero thresholds as values too high may cause entire lobes of contribution to be missing in material edge cases. For example
     // with translucency, a zero threshold on the specular lobe of 0.05 removes the entire contribution when viewing straight on for any glass with an IoR below 1.58 or so
     // which can be paticularly noticable in some scenes. To bias sampling more in the favor of one lobe the min probability should be used instead, but be aware this will
     // end up wasting more samples in some cases versus pure importance sampling (but may help denoising if it cannot deal with super sparse signals).
     RTX_OPTION("rtx", float, opaqueDiffuseLobeSamplingProbabilityZeroThreshold, 0.01f, "The threshold for which to zero opaque diffuse probability weight values.");
-    RTX_OPTION("rtx", float, minOpaqueDiffuseLobeSamplingProbability, 0.25f, "The minimum allowed non-zero value for opaque diffuse probability weights.");
+    RTX_OPTION_ARGS("rtx", float, minOpaqueDiffuseLobeSamplingProbability, 0.25f, "The minimum allowed non-zero value for opaque diffuse probability weights.",
+                    args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION("rtx", float, opaqueSpecularLobeSamplingProbabilityZeroThreshold, 0.01f, "The threshold for which to zero opaque specular probability weight values.");
-    RTX_OPTION("rtx", float, minOpaqueSpecularLobeSamplingProbability, 0.25f, "The minimum allowed non-zero value for opaque specular probability weights.");
+    RTX_OPTION_ARGS("rtx", float, minOpaqueSpecularLobeSamplingProbability, 0.25f, "The minimum allowed non-zero value for opaque specular probability weights.",
+                    args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION("rtx", float, opaqueOpacityTransmissionLobeSamplingProbabilityZeroThreshold, 0.01f, "The threshold for which to zero opaque opacity probability weight values.");
     RTX_OPTION("rtx", float, minOpaqueOpacityTransmissionLobeSamplingProbability, 0.25f, "The minimum allowed non-zero value for opaque opacity probability weights.");
     RTX_OPTION("rtx", float, opaqueDiffuseTransmissionLobeSamplingProbabilityZeroThreshold, 0.01f, "The threshold for which to zero thin opaque diffuse transmission probability weight values.");
@@ -750,29 +798,34 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, rngSeedWithFrameIndex, true,
                "Indicates that pseudo-random number generator should be seeded with the frame number of the application every frame, otherwise seed with 0.\n"
                "This should generally always be enabled as without the frame index each frame will typically be identical in the random values that are produced which will result in incorrect rendering. Only meant as a debugging tool.");
-    RTX_OPTION("rtx", bool, enableFirstBounceLobeProbabilityDithering, true,
+    RTX_OPTION_ARGS("rtx", bool, enableFirstBounceLobeProbabilityDithering, true,
                "A flag to enable or disable screen-space probability dithering on the first indirect lobe sampled.\n"
                "Generally sampling a diffuse, specular or other lobe relies on a random number generated against the probability of sampling each lobe, effectively focusing more rays/paths on lobes which matter more.\n"
                "This can cause issues however with denoisers which do not handle sparse stochastic signals (like those from path tracing) well as they may be expecting a more \"complete\" signal like those used in simpler branching ray tracing setups.\n"
                "To help solve this issue this option uses a temporal screenspace dithering based on the probability rather than a purely random choice to determine which lobe to sample from on the first indirect bounce.\n"
-               "This as a result helps ensure there will always be a diffuse or specular sample within the dithering pattern's area and should help the denoising resolve a more stable result.");
-    RTX_OPTION("rtx", bool, enableUnorderedResolveInIndirectRays, true,
+               "This as a result helps ensure there will always be a diffuse or specular sample within the dithering pattern's area and should help the denoising resolve a more stable result.",
+               args.flags = RtxOptionFlags::UserSetting);
+    RTX_OPTION_ARGS("rtx", bool, enableUnorderedResolveInIndirectRays, true,
                "A flag to enable or disable unordered resolve approximations in indirect rays.\n"
                "This allows for the presence of unordered approximations in resolving to be overridden in indirect rays and as such requires separate unordered approximations to be enabled to have any effect.\n"
                "This option should be enabled if objects which can be resolvered in an unordered way in indirect rays are expected for higher quality in reflections, but may come at a performance cost.\n"
-               "Note that even with this option enabled, unordered resolve approximations are only done on the first indirect bounce for the sake of performance overall.");
+               "Note that even with this option enabled, unordered resolve approximations are only done on the first indirect bounce for the sake of performance overall.",
+               args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION("rtx", bool, enableProbabilisticUnorderedResolveInIndirectRays, true,
                "A flag to enable or disable probabilistic unordered resolve approximations in indirect rays.\n"
                "This flag speeds up the unordered resolve for indirect rays by probabilistically deciding when to perform unordered resolve or not.  Must have both unordered resolve and unordered resolve in indirect rays enabled for this to take effect.\n"
                "This option should be enabled by default as it can significantly improve performance on some hardware.  In rare cases it may come at the cost of some quality for particles and decals in reflections.\n"
                "Note that even with this option enabled, unordered resolve approximations are only done on the first indirect bounce for the sake of performance overall.");
-    RTX_OPTION_ENV("rtx", bool, enableUnorderedEmissiveParticlesInIndirectRays, false, "DXVK_EMISSIVE_INDIRECT_PARTICLES",
+    RTX_OPTION_ARGS("rtx", bool, enableUnorderedEmissiveParticlesInIndirectRays, false,
                    "A flag to enable or disable unordered resolve emissive particles specifically in indirect rays.\n"
                    "Should be enabled in higher quality rendering modes as emissive particles are fairly important in reflections, but may be disabled to skip such interactions which can improve performance on lower end hardware.\n"
-                   "Note that rtx.enableUnorderedResolveInIndirectRays must first be enabled for this option to take any effect (as it will control if unordered resolve is used to begin with in indirect rays).");
-    RTX_OPTION("rtx", bool, enableTransmissionApproximationInIndirectRays, false,
+                   "Note that rtx.enableUnorderedResolveInIndirectRays must first be enabled for this option to take any effect (as it will control if unordered resolve is used to begin with in indirect rays).",
+                   args.environment = "DXVK_EMISSIVE_INDIRECT_PARTICLES",
+                   args.flags = RtxOptionFlags::UserSetting);
+    RTX_OPTION_ARGS("rtx", bool, enableTransmissionApproximationInIndirectRays, false,
                "A flag to enable transmission approximations in indirect rays.\n"
-               "Translucent objects hit by indirect rays will not alter ray direction, just change the ray throughput.");
+               "Translucent objects hit by indirect rays will not alter ray direction, just change the ray throughput.",
+               args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION("rtx", bool, enableDecalMaterialBlending, true,
                "A flag to enable or disable material blending on decals.\n"
                "This should generally always be enabled when decals are in use as this allows decals to be blended down on to the surface they sit slightly above which results in more convincing decals rendering.");
@@ -836,7 +889,11 @@ namespace dxvk {
     // Ray Portal Options
     // Note: Not a set as the ordering of the hashes is important. Keep this list small to avoid expensive O(n) searching (should only have 2 or 4 elements usually).
     // Also must always be a multiple of 2 for proper functionality as each pair of hashes defines a portal connection.
-    RTX_OPTION("rtx", std::vector<XXH64_hash_t>, rayPortalModelTextureHashes, {}, "Texture hashes identifying ray portals. Allowed number of hashes: {0, 2}.");
+    public: static void rayPortalModelTextureHashesOnChange(DxvkDevice* device);
+    RTX_OPTION_ARGS("rtx", std::vector<XXH64_hash_t>, rayPortalModelTextureHashes, {},
+                    "Texture hashes identifying ray portals.\n"
+                    "Entries are interpreted as pairs of hashes; the list length must be even and will be clamped to the internal max portal count.",
+                    args.onChangeCallback = &rayPortalModelTextureHashesOnChange);
     // Todo: Add option for if a model to world transform matrix should be used or if PCA should be used instead to attempt to guess what the matrix should be (for games with
     // pretransformed Ray Portal vertices).
     // Note: Axes used for orienting the portal when PCA is used.
@@ -964,10 +1021,11 @@ namespace dxvk {
                      "a ground densely covered with grass blades or steam consisting of many particles.");
     } opacityMicromap;
 
-    RTX_OPTION("rtx", ReflexMode, reflexMode, ReflexMode::LowLatency,
+    RTX_OPTION_ARGS("rtx", ReflexMode, reflexMode, ReflexMode::LowLatency,
                "Reflex mode selection, enabling it helps minimize input latency, boost mode may further reduce latency by boosting GPU clocks in CPU-bound cases.\n"
                "Supported enum values are 0 = None (Disabled), 1 = LowLatency (Enabled), 2 = LowLatencyBoost (Enabled + Boost).\n"
-               "Note that even when using the \"None\" Reflex mode Reflex will attempt to be initialized. Use rtx.isReflexEnabled to fully disable to skip this initialization if needed.");
+               "Note that even when using the \"None\" Reflex mode Reflex will attempt to be initialized. Use rtx.isReflexEnabled to fully disable to skip this initialization if needed.",
+               args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION_FLAG("rtx", bool, isReflexEnabled, true, RtxOptionFlags::NoSave,
                     "Enables or disables Reflex globally.\n"
                     "Note that this option when set to false will prevent Reflex from even attempting to initialize, unlike setting the Reflex mode to \"None\" which simply tells an initialized Reflex not to take effect.\n"
@@ -983,20 +1041,24 @@ namespace dxvk {
       // If the option is changed to WaitingForImplicitSwapchain, just leave the computed state as it was.
     }
     RTX_OPTION_ARGS("rtx", EnableVsync, enableVsync, EnableVsync::WaitingForImplicitSwapchain, "Controls the game's V-Sync setting. Native game's V-Sync settings are ignored.", 
-                    args.flags = RtxOptionFlags::NoSave,
+                    args.flags = RtxOptionFlags::NoSave | RtxOptionFlags::UserSetting,
                     args.onChangeCallback = &EnableVsyncOnChange);
 
     // Replacement options
-    RTX_OPTION("rtx", bool, enableReplacementAssets, true, "Globally enables or disables all enhanced asset replacement (materials, meshes, lights) functionality.");
-    RTX_OPTION("rtx", bool, enableReplacementLights, true,
+    RTX_OPTION_ARGS("rtx", bool, enableReplacementAssets, true, "Globally enables or disables all enhanced asset replacement (materials, meshes, lights) functionality.",
+                    args.flags = RtxOptionFlags::UserSetting);
+    RTX_OPTION_ARGS("rtx", bool, enableReplacementLights, true,
                "Enables or disables enhanced light replacements.\n"
-               "Requires replacement assets in general to be enabled to have any effect.");
-    RTX_OPTION("rtx", bool, enableReplacementMeshes, true,
+               "Requires replacement assets in general to be enabled to have any effect.",
+               args.flags = RtxOptionFlags::UserSetting);
+    RTX_OPTION_ARGS("rtx", bool, enableReplacementMeshes, true,
                "Enables or disables enhanced mesh replacements.\n"
-               "Requires replacement assets in general to be enabled to have any effect.");
-    RTX_OPTION("rtx", bool, enableReplacementMaterials, true,
+               "Requires replacement assets in general to be enabled to have any effect.",
+               args.flags = RtxOptionFlags::UserSetting);
+    RTX_OPTION_ARGS("rtx", bool, enableReplacementMaterials, true,
                "Enables or disables enhanced material replacements.\n"
-               "Requires replacement assets in general to be enabled to have any effect.");
+               "Requires replacement assets in general to be enabled to have any effect.",
+               args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION("rtx", bool, enableReplacementInstancerMeshRendering, true,
                "Enables or disables rendering GeomPointInstancer meshes using an optimized path.\n"
                "Requires reloading replacement assets.");
@@ -1129,7 +1191,8 @@ namespace dxvk {
     RTX_OPTION("rtx.terrain", bool, terrainAsDecalsEnabledIfNoBaker, false, "If terrain baker is disabled, attempt to blend with the decals.");
     RTX_OPTION("rtx.terrain", bool, terrainAsDecalsAllowOverModulate, false, "Set to true, if it's known that terrain layers with ModulateX2 / ModulateX4 flags do not contain a lighting info, but ModulateX2 / ModulateX4 are used only to blend layers.");
 
-    RTX_OPTION("rtx.userBrightness", int, userBrightness, 50, "How bright the final image should be. [0,100] range.");
+    RTX_OPTION_ARGS("rtx.userBrightness", int, userBrightness, 50, "How bright the final image should be. [0,100] range.",
+                    args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION("rtx.userBrightnessEVRange", float, userBrightnessEVRange, 3.f, "The exposure value (EV) range for \'rtx.userBrightness\' slider, i.e. how much of EV there is between 0 and 100 slider values.");
 
     // Automation Options
@@ -1155,15 +1218,15 @@ namespace dxvk {
     ViewDistanceOptions viewDistanceOptions;
 
     static const HashRule& geometryHashGenerationRule() {
-      return m_instance->m_geometryHashGenerationRule;
+      return s_geometryHashGenerationRule;
     }
     static const HashRule& geometryAssetHashRule() {
-      return m_instance->m_geometryAssetHashRule;
+      return s_geometryAssetHashRule;
     }
 
   private:
-    HashRule m_geometryHashGenerationRule = 0;
-    HashRule m_geometryAssetHashRule = 0;
+    static HashRule s_geometryHashGenerationRule;
+    static HashRule s_geometryAssetHashRule;
 
     RTX_OPTION("rtx", Vector3, effectLightColor, Vector3(1, 1, 1), "Colour of the effect light, if not using plasma ball mode.  Effect lights can be attached to materials from the remix runtime menu, using the `Add Light to Texture` texture tag in game setup.");
     RTX_OPTION("rtx", float, effectLightIntensity, 1.f, "The intensity of the effect light.  Effect lights can be attached to materials from the remix runtime menu, using the `Add Light to Texture` texture tag in game setup.");
@@ -1174,79 +1237,34 @@ namespace dxvk {
                "Whether or not to use slower XXH64 hash on texture upload.\n"
                "New projects should not enable this option as this solely exists for compatibility with older hashing schemes.");
 
-    struct Option {
-      RTX_OPTION("rtx.option", bool, serializeChangedOptionOnly, true, "");
-      RTX_OPTION("rtx.option", bool, overwriteConfig, false, "This enables overwriting of the original config file when saving settings.\n"
-                  "Disable this option to merge the current settings with the preexisting settings in the config.");
-      RTX_OPTION("rtx.option", bool, saveToLayerConf, false, "Whether or not to save the layer to original config file.\n"
-                  "Disable this to save the layer into rtx.conf.\n"
-                  "Base on overwriteConfig, the config of the layer will be merged or override the rtx.conf.");
-      RTX_OPTION_FLAG("rtx.option", OptionLayerType, optionSavingType, OptionLayerType::User, RtxOptionFlags::NoSave, "Saving type of current runtime changes.");
-    } option;
-
     RTX_OPTION("rtx", uint32_t, applicationId, 102100511, "Used to uniquely identify the application to DLSS. Generally should not be changed without good reason.");
 
-    static std::unique_ptr<RtxOptions> m_instance;
+    static RtxOptions* s_instance;
 
   public:
 
-    RtxOptions() = delete;
     RtxOptions(const RtxOptions&) = delete;
     RtxOptions(RtxOptions&&) = delete;
     RtxOptions& operator=(const RtxOptions&) = delete;
     RtxOptions& operator=(RtxOptions&&) = delete;
 
-    RtxOptions(const Config& options) {
+  private:
+
+    RtxOptions() {
+      Logger::info("Initializing RtxOptions...");
+
+      // Optionally write documentation (captures code-defined defaults from RTX_OPTION macros)
+      if (env::getEnvVar("DXVK_DOCUMENTATION_WRITE_RTX_OPTIONS_MD") == "1") {
+        RtxOptionManager::writeMarkdownDocumentation("RtxOptions.md");
+      }
+
+      // Initialize all system layers (creates layers from config files)
+      RtxOptionLayer::initializeSystemLayers();
+
       // Need to set this to true after conf files are parsed, but before any options are accessed.
-      RtxOptionImpl::s_isInitialized = true;
-      // Doing this early, so that the validation code below applies to any settings from user.conf
-      RtxOptionManager::applyPendingValues(nullptr, /* forceOnChange */ true);
-
-      // Render pass modes
-
-      //renderPassVolumeIntegrateRaytraceMode = (RenderPassVolumeIntegrateRaytraceMode) std::min(
-      //  options.getOption<uint32_t>("rtx.renderPassVolumeIntegrateRaytraceMode", (uint32_t) renderPassVolumeIntegrateRaytraceMode, "DXVK_RENDER_PASS_VOLUME_INTEGRATE_RAYTRACE_MODE"),
-      //  (uint32_t) (RenderPassVolumeIntegrateRaytraceMode::Count) -1);
-
-      renderPassGBufferRaytraceMode.setDeferred((RenderPassGBufferRaytraceMode) std::min(
-        (uint32_t) renderPassGBufferRaytraceMode(),
-        (uint32_t) (RenderPassGBufferRaytraceMode::Count) -1));
-
-      renderPassIntegrateDirectRaytraceMode.setDeferred((RenderPassIntegrateDirectRaytraceMode) std::min(
-        (uint32_t) renderPassIntegrateDirectRaytraceMode(),
-        (uint32_t) (RenderPassIntegrateDirectRaytraceMode::Count) - 1));
-      
-      renderPassIntegrateIndirectRaytraceMode.setDeferred((RenderPassIntegrateIndirectRaytraceMode) std::min(
-        (uint32_t) renderPassIntegrateIndirectRaytraceMode(),
-        (uint32_t) (RenderPassIntegrateIndirectRaytraceMode::Count) - 1));
-
-      // Pathtracing options
-      //enableShaderExecutionReorderingInVolumeIntegrate =
-      //  options.getOption<bool>("rtx.enableShaderExecutionReorderingInVolumeIntegrate", enableShaderExecutionReorderingInVolumeIntegrate);
-      //enableShaderExecutionReorderingInPathtracerIntegrateDirect =
-      //  options.getOption<bool>("rtx.enableShaderExecutionReorderingInPathtracerIntegrateDirect", enableShaderExecutionReorderingInPathtracerIntegrateDirect);
-
-      // Ray Portal Options
-      // Note: Ensure the Ray Portal texture hashes are always in pairs of 2
-      std::vector<XXH64_hash_t> rayPortalModelTextureHashesTrimmed = rayPortalModelTextureHashes();
-      if (rayPortalModelTextureHashesTrimmed.size() % 2 == 1) {
-        rayPortalModelTextureHashesTrimmed.pop_back();
-      }
-
-      if (rayPortalModelTextureHashesTrimmed.size() > maxRayPortalCount) {
-        rayPortalModelTextureHashesTrimmed.erase(rayPortalModelTextureHashesTrimmed.begin() + maxRayPortalCount, rayPortalModelTextureHashesTrimmed.end());
-      }
-      rayPortalModelTextureHashes.setDeferred(rayPortalModelTextureHashesTrimmed);
-
-      assert(rayPortalModelTextureHashes().size() % 2 == 0);
-      assert(rayPortalModelTextureHashes().size() <= maxRayPortalCount);
-
-      assert(rayPortalSamplingWeightMinDistance() >= 0.0f);
-      assert(rayPortalSamplingWeightMaxDistance() >= 0.0f);
-      assert(rayPortalSamplingWeightMinDistance() <= rayPortalSamplingWeightMaxDistance());
+      RtxOptionImpl::setInitialized(true);
 
       // Replacement options
-
       if (env::getEnvVar("DXVK_DISABLE_ASSET_REPLACEMENT") == "1") {
         enableReplacementAssets.setDeferred(false);
         enableReplacementLights.setDeferred(false);
@@ -1254,46 +1272,20 @@ namespace dxvk {
         enableReplacementMaterials.setDeferred(false);
       }
 
-      m_geometryHashGenerationRule = createRule("Geometry generation", geometryGenerationHashRuleString());
-      m_geometryAssetHashRule = createRule("Geometry asset", geometryAssetHashRuleString());
-
-      // We deprecated dynamicDecalTextures, singleOffsetDecalTextures, nonOffsetDecalTextures with this change
-      //  and replaced all decal texture lists with just a single list.
-      // TODO(REMIX-2554): Design a general deprecation solution for configs that are no longer required.
-      {
-        auto mergedSet = decalTextures();
-        // Merge user defined decalTextures into mergedSet first then merge with deprecated decal textures
-        auto it = RtxOptionImpl::getGlobalRtxOptionMap().find(StringToXXH64("rtx.decalTextures", 0));
-        if (it != RtxOptionImpl::getGlobalRtxOptionMap().end()) {
-          const auto decalOption = it->second;
-          if (decalOption->optionLayerValueQueue.begin()->first.priority == RtxOptionLayer::s_runtimeOptionLayerPriority) {
-            const auto runtimeDecalTextures = decalOption->optionLayerValueQueue.begin()->second.value.hashSet;
-            mergedSet.insert(runtimeDecalTextures->begin(), runtimeDecalTextures->end());
-          }
-        }
-        if (dynamicDecalTextures().size() > 0) {
-          mergedSet.insert(dynamicDecalTextures().begin(), dynamicDecalTextures().end());
-          dynamicDecalTextures.setDeferred({});
-          Logger::info("[Deprecated Config] rtx.dynamicDecalTextures has been deprecated, we have moved all your textures from this list to rtx.decalTextures, no further action is required from you.  Please re-save your rtx config to get rid of this message.");
-        }
-        if (singleOffsetDecalTextures().size() > 0) {
-          mergedSet.insert(singleOffsetDecalTextures().begin(), singleOffsetDecalTextures().end());
-          singleOffsetDecalTextures.setDeferred({});
-          Logger::info("[Deprecated Config] rtx.singleOffsetDecalTextures has been deprecated, we have moved all your textures from this list to rtx.decalTextures, no further action is required from you.  Please re-save your rtx config to get rid of this message.");
-        }
-        if (nonOffsetDecalTextures().size() > 0) {
-          mergedSet.insert(nonOffsetDecalTextures().begin(), nonOffsetDecalTextures().end());
-          nonOffsetDecalTextures.setDeferred({});
-          Logger::info("[Deprecated Config] rtx.nonOffsetDecalTextures has been deprecated, we have moved all your textures from this list to rtx.decalTextures, no further action is required from you.  Please re-save your rtx config to get rid of this message.");
-        }
-        decalTextures.setDeferred(mergedSet);
-      }
+      // Mark all options with onChange callbacks as dirty. This ensures that options with derived
+      // settings (like NRC's qualityPreset which sets trainingMaxPathBounces) are properly 
+      // initialized even when using default values.
+      RtxOptionManager::markOptionsWithCallbacksDirty();
 
       // Ensure all of the above values are promoted before the first frame starts.
       // DxvkDevice hasn't been created yet, so pass nullptr here.
       RtxOptionManager::applyPendingValues(nullptr, /* forceOnChange */ true);
+
+      // Log effective RtxOption values after all initialization and migrations are complete
+      RtxOptionManager::logEffectiveValues();
     }
 
+  public:
     static void updateUpscalerFromDlssPreset();
     static void updateUpscalerFromNisPreset();
     static void updateUpscalerFromTaauPreset();
@@ -1308,129 +1300,17 @@ namespace dxvk {
 
     static void resetUpscaler();
 
-    inline static const std::string kRtxConfigFilePath = "user.conf";
-
-    static std::string getRtxConfPath() {
-      const Config::Desc& desc = Config::getDesc(Config::Type::Type_RtxUser);
-      const std::string envVarName(desc.env);
-      const std::string envVarPath = !envVarName.empty() ? env::getEnvVar(envVarName.c_str()) : "";
-      return envVarPath.empty() ? "rtx.conf" : env::getEnvVar(desc.env.c_str());
+    static void Create() {
+      if (s_instance == nullptr) {
+        s_instance = new RtxOptions();
+      }
+      // If called a second time, nothing to do - singleton already exists with all options initialized.
     }
 
-    static void serialize() {
-      std::string configFilePath;
-      uint32_t optionSavingTypePriority = (uint32_t) RtxOptionLayer::SystemLayerPriority::Default;
-      switch (RtxOptions::Option::optionSavingType()) {
-        case OptionLayerType::Rtx:
-          configFilePath = "rtx.conf";
-          optionSavingTypePriority = (uint32_t) RtxOptionLayer::SystemLayerPriority::RtxConf;
-          break;
-        case OptionLayerType::Quality:
-          configFilePath = "quality.conf";
-          optionSavingTypePriority = (uint32_t) RtxOptionLayer::SystemLayerPriority::Quality;
-          break;
-        case OptionLayerType::None:
-          configFilePath = "none.conf";
-          optionSavingTypePriority = (uint32_t) RtxOptionLayer::SystemLayerPriority::NONE;
-          break;
-        case OptionLayerType::User:
-        default:
-          configFilePath = kRtxConfigFilePath;
-          optionSavingTypePriority = (uint32_t) RtxOptionLayer::SystemLayerPriority::USER;
-          break;
-      }
-
-      // Merge the changed options with original options in config file
-      Config newConfig;
-      auto& optionLayerMap = RtxOptionImpl::getRtxOptionLayerMap();
-      RtxOptionImpl::LayerKey layerKey = {optionSavingTypePriority, configFilePath};
-      
-      if (!Option::overwriteConfig()) {
-        const auto& it = optionLayerMap.find(layerKey);
-        if (it != optionLayerMap.end()) {
-          // Get original option layer config
-          newConfig = it->second->getConfig();
-          // Get changed options
-          Config changedConfigs;
-          RtxOptionManager::writeOptions(changedConfigs, Option::serializeChangedOptionOnly());
-
-          if (optionSavingTypePriority == (uint32_t) RtxOptionLayer::SystemLayerPriority::USER) {
-            // If we're saving out user.conf, the only time the old config will have values that the runtime layer
-            // doesn't have is if those values were removed from the runtime layer.  In this case, don't merge the layers.
-            newConfig = changedConfigs;
-          } else {
-            // Merge changed options into original option layer
-            newConfig.merge(changedConfigs);
-          }
-
-        } else {
-          RtxOptionManager::writeOptions(newConfig, Option::serializeChangedOptionOnly());
-        }
-      } else {
-        RtxOptionManager::writeOptions(newConfig, Option::serializeChangedOptionOnly());
-      }
-
-      // Update the config of corresponding layer, no need to do it for user/runtime layer b/c it's auto updated when any options in GUI are changed.
-      // And we also don't do anything for NONE, which are just experiment options that saved into none.conf.
-      if (RtxOptions::Option::optionSavingType() != OptionLayerType::User &&
-          RtxOptions::Option::optionSavingType() != OptionLayerType::None) {
-        if (optionLayerMap.find(layerKey) == optionLayerMap.end()){
-          RtxOptionImpl::addRtxOptionLayer(configFilePath, optionSavingTypePriority, true, 1.0f, 1.0f, &newConfig);
-        } else {
-          optionLayerMap.at(layerKey)->setConfig(newConfig);
-        }
-        // Update option layers as well
-        optionLayerMap.at(layerKey)->setDirty(true);
-      }
-
-      if (RtxOptions::Option::optionSavingType() == OptionLayerType::Rtx) {
-        // If using an enironment variable to set the rtx.conf path, we need to use it for saving, but not for the layer name.
-        configFilePath = getRtxConfPath();
-      }
-      Config::serializeCustomConfig(newConfig, configFilePath, "rtx.");
-    }
-
-    static void serializeOptionLayer(const RtxOptionLayer& optionLayer, const bool saveToCurrentLayerConfigFile) {
-      auto& optionLayerMap = RtxOptionImpl::getRtxOptionLayerMap();
-      RtxOptionImpl::LayerKey rtxConfKey = {(uint32_t) RtxOptionLayer::SystemLayerPriority::RtxConf, "rtx.conf"};
-      auto& rtxConfIt = optionLayerMap.find(rtxConfKey);
-      Config newConfig;
-      if (rtxConfIt == optionLayerMap.end()) {
-        RtxOptionImpl::addRtxOptionLayer("rtx.conf", (uint32_t) RtxOptionLayer::SystemLayerPriority::RtxConf, true, 1.0f, 1.0f, &newConfig);
-      }
-      auto& rtxConfLayer = optionLayerMap.find(rtxConfKey)->second;
-
-      RtxOptionImpl::LayerKey layerKey = {optionLayer.getPriority(), optionLayer.getName()};
-      const auto& it = optionLayerMap.find(layerKey);
-      if (it != optionLayerMap.end()) {
-        if (!Option::overwriteConfig()) {
-          newConfig = rtxConfLayer->getConfig();
-          newConfig.merge(it->second->getConfig());
-        } else {
-          newConfig = it->second->getConfig();
-        }
-      }
-
-      const std::string rtxConfigPath = getRtxConfPath();
-      Config::serializeCustomConfig(newConfig, saveToCurrentLayerConfigFile ? optionLayer.getName() : rtxConfigPath, "rtx.");
-
-      // Set dirty to update the option layers queue
-      rtxConfLayer->setDirty(true);
-    }
-
-    static void reset() {
-      RtxOptionManager::resetOptions();
-    }
-
-    static std::unique_ptr<RtxOptions>& Create(const Config& options) {
-
-      if (m_instance == nullptr) {
-        m_instance = std::make_unique<RtxOptions>(options);
-      } else {
-        // Create was called a second time, which means dxvk_instance was recreated.
-        RtxOptionImpl::s_isInitialized = true;
-      }
-      return m_instance;
+    // Returns the merged configuration for DXKV Options. This includes all config files loaded from DXVK_CONFIG_FILE and DXVK_RTX_CONFIG_FILE.
+    // This is available after Create() is called and can be used for DxvkOptions, etc.
+    static const Config& getMergedConfig() {
+      return RtxOptionLayer::getMergedConfig();
     }
 
     static bool getRayPortalTextureIndex(const XXH64_hash_t& h, std::size_t& index) {
@@ -1493,9 +1373,9 @@ namespace dxvk {
 #endif
     }
 
-    static bool getIsOpacityMicromapSupported() { return m_instance->opacityMicromap.isSupported; }
-    static void setIsOpacityMicromapSupported(bool enabled) { m_instance->opacityMicromap.isSupported = enabled; }
-    static bool getEnableOpacityMicromap() { return m_instance->opacityMicromap.enable() && m_instance->opacityMicromap.isSupported; }
+    static bool getIsOpacityMicromapSupported() { return s_instance->opacityMicromap.isSupported; }
+    static void setIsOpacityMicromapSupported(bool enabled) { s_instance->opacityMicromap.isSupported = enabled; }
+    static bool getEnableOpacityMicromap() { return s_instance->opacityMicromap.enable() && s_instance->opacityMicromap.isSupported; }
 
     static bool getEnableAnyReplacements() { return enableReplacementAssets() && (enableReplacementLights() || enableReplacementMeshes() || enableReplacementMaterials()); }
     static bool getEnableReplacementLights() { return enableReplacementAssets() && enableReplacementLights(); }

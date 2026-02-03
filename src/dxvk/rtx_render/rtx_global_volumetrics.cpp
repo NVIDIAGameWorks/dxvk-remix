@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -170,23 +170,7 @@ namespace dxvk {
       )
   };
 
-  RtxGlobalVolumetrics::RtxGlobalVolumetrics(DxvkDevice* device) : CommonDeviceObject(device), RtxPass(device) {
-    // Volumetrics Options
-
-    transmittanceColor.setDeferred(Vector3(
-      std::clamp(transmittanceColor().x, 0.0f, 1.0f),
-      std::clamp(transmittanceColor().y, 0.0f, 1.0f),
-      std::clamp(transmittanceColor().z, 0.0f, 1.0f)));
-    singleScatteringAlbedo.setDeferred(Vector3(
-      std::clamp(singleScatteringAlbedo().x, 0.0f, 1.0f),
-      std::clamp(singleScatteringAlbedo().y, 0.0f, 1.0f),
-      std::clamp(singleScatteringAlbedo().z, 0.0f, 1.0f)));
-
-    fogRemapMaxDistanceMinMeters.setDeferred(std::min(fogRemapMaxDistanceMinMeters(), fogRemapMaxDistanceMaxMeters()));
-    fogRemapMaxDistanceMaxMeters.setDeferred(std::max(fogRemapMaxDistanceMinMeters(), fogRemapMaxDistanceMaxMeters()));
-    fogRemapTransmittanceMeasurementDistanceMinMeters.setDeferred(std::min(fogRemapTransmittanceMeasurementDistanceMinMeters(), fogRemapTransmittanceMeasurementDistanceMaxMeters()));
-    fogRemapTransmittanceMeasurementDistanceMaxMeters.setDeferred(std::max(fogRemapTransmittanceMeasurementDistanceMinMeters(), fogRemapTransmittanceMeasurementDistanceMaxMeters()));
-  }
+  RtxGlobalVolumetrics::RtxGlobalVolumetrics(DxvkDevice* device) : CommonDeviceObject(device), RtxPass(device) {}
 
   // Quality level presets, x component controls the froxelGridResolutionScale and the y component controls the froxelDepthSlices settings.
   static const int2 qualityModes[RtxGlobalVolumetrics::QualityLevel::QualityCount] = {
@@ -377,10 +361,11 @@ namespace dxvk {
 
           ImGui::BeginDisabled(!enableFogMaxDistanceRemap());
           {
-            RemixGui::DragFloat("Legacy Max Distance Min", &fogRemapMaxDistanceMinMetersObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-            RemixGui::DragFloat("Legacy Max Distance Max", &fogRemapMaxDistanceMaxMetersObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-            RemixGui::DragFloat("Remapped Transmittance Measurement Distance Min", &fogRemapTransmittanceMeasurementDistanceMinMetersObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-            RemixGui::DragFloat("Remapped Transmittance Measurement Distance Max", &fogRemapTransmittanceMeasurementDistanceMaxMetersObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            // Use dynamic bounds to prevent min > max configurations
+            RemixGui::DragFloat("Legacy Max Distance Min", &fogRemapMaxDistanceMinMetersObject(), 0.25f, 0.0f, fogRemapMaxDistanceMaxMeters(), "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            RemixGui::DragFloat("Legacy Max Distance Max", &fogRemapMaxDistanceMaxMetersObject(), 0.25f, fogRemapMaxDistanceMinMeters(), FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            RemixGui::DragFloat("Remapped Transmittance Measurement Distance Min", &fogRemapTransmittanceMeasurementDistanceMinMetersObject(), 0.25f, 0.0f, fogRemapTransmittanceMeasurementDistanceMaxMeters(), "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            RemixGui::DragFloat("Remapped Transmittance Measurement Distance Max", &fogRemapTransmittanceMeasurementDistanceMaxMetersObject(), 0.25f, fogRemapTransmittanceMeasurementDistanceMinMeters(), FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           }
           ImGui::EndDisabled();
 
@@ -519,16 +504,25 @@ namespace dxvk {
           float fogRemapTransmittanceMeasurementDistanceMin { fogRemapTransmittanceMeasurementDistanceMinMeters() * RtxOptions::getMeterToWorldUnitScale() };
           float fogRemapTransmittanceMeasurementDistanceMax { fogRemapTransmittanceMeasurementDistanceMaxMeters() * RtxOptions::getMeterToWorldUnitScale() };
 
-          // Note: Ensure the mins and maxes are consistent with eachother.
-          fogRemapMaxDistanceMax = std::max(fogRemapMaxDistanceMax, fogRemapMaxDistanceMin);
-          fogRemapTransmittanceMeasurementDistanceMax = std::max(fogRemapTransmittanceMeasurementDistanceMax, fogRemapTransmittanceMeasurementDistanceMin);
+          // Note: Ensure the mins and maxes are consistent with each other (swap if inverted).
+          if (fogRemapMaxDistanceMin > fogRemapMaxDistanceMax) {
+            std::swap(fogRemapMaxDistanceMin, fogRemapMaxDistanceMax);
+          }
+          if (fogRemapTransmittanceMeasurementDistanceMin > fogRemapTransmittanceMeasurementDistanceMax) {
+            std::swap(fogRemapTransmittanceMeasurementDistanceMin, fogRemapTransmittanceMeasurementDistanceMax);
+          }
 
           float const maxDistanceRange { fogRemapMaxDistanceMax - fogRemapMaxDistanceMin };
           float const transmittanceMeasurementDistanceRange { fogRemapTransmittanceMeasurementDistanceMax - fogRemapTransmittanceMeasurementDistanceMin };
-          // Todo: Scene scale stuff ignored for now because scene scale stuff is not actually functioning properly. Add back in if it's ever fixed.
-          // Note: Remap the end fog state distance into renderer units so that options can all be in renderer units (to be consistent with everything else).
-          // float const normalizedRange{ (fogState.end * sceneScale() - fogRemapMaxDistanceMin) / maxDistanceRange };
-          float const normalizedRange { (fogState.end - fogRemapMaxDistanceMin) / maxDistanceRange };
+          
+          // Handle zero range case (min == max) to avoid division by zero
+          float normalizedRange = 0.0f;
+          if (maxDistanceRange > 0.0f) {
+            // Todo: Scene scale stuff ignored for now because scene scale stuff is not actually functioning properly. Add back in if it's ever fixed.
+            // Note: Remap the end fog state distance into renderer units so that options can all be in renderer units (to be consistent with everything else).
+            // normalizedRange = (fogState.end * sceneScale() - fogRemapMaxDistanceMin) / maxDistanceRange;
+            normalizedRange = (fogState.end - fogRemapMaxDistanceMin) / maxDistanceRange;
+          }
 
           transmittanceMeasurementDistance = normalizedRange * transmittanceMeasurementDistanceRange + fogRemapTransmittanceMeasurementDistanceMin;
         } else if (fogState.mode == D3DFOG_EXP || fogState.mode == D3DFOG_EXP2) {

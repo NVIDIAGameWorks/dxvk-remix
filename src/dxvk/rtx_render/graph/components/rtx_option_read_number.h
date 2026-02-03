@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2025-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -52,7 +52,7 @@ REMIX_COMPONENT( \
 #undef LIST_OUTPUTS
 
 void RtxOptionReadNumber::updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
-  auto& globalRtxOptions = RtxOptionImpl::getGlobalRtxOptionMap();
+  auto& globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
   
   for (size_t i = start; i < end; i++) {
     float value = 0.0f;
@@ -63,13 +63,13 @@ void RtxOptionReadNumber::updateRange(const Rc<DxvkContext>& context, const size
       
       auto optionIt = globalRtxOptions.find(optionHash);
       if (optionIt != globalRtxOptions.end()) {
-        RtxOptionImpl* option = optionIt->second.get();
+        RtxOptionImpl* option = optionIt->second;
         
         // Get the value based on the option type
-        if (option->type == OptionType::Float) {
-          value = option->resolvedValue.f;
-        } else if (option->type == OptionType::Int) {
-          value = static_cast<float>(option->resolvedValue.i);
+        if (option->getType() == OptionType::Float) {
+          value = option->getResolvedValue().f;
+        } else if (option->getType() == OptionType::Int) {
+          value = static_cast<float>(option->getResolvedValue().i);
         } else {
           ONCE(Logger::warn(str::format("RtxOptionReadNumber: Option '", optionName, "' is not a numeric type (float or int).")));
         }

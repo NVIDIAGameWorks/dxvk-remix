@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -23,6 +23,8 @@
 #include <cassert>
 #include <tuple>
 #include <string>
+#include <sstream>
+#include <iomanip>
 #include <optional>
 #include <nvapi.h>
 #include <NVIDIASansRg.ttf.h>
@@ -61,6 +63,8 @@
 #include "dxvk_imgui_about.h"
 #include "dxvk_imgui_splash.h"
 #include "dxvk_imgui_capture.h"
+#include "rtx_render/rtx_option_layer_gui.h"
+#include "rtx_render/rtx_option_manager.h"
 #include "dxvk_scoped_annotation.h"
 #include "../../d3d9/d3d9_rtx.h"
 #include "dxvk_memory_tracker.h"
@@ -230,65 +234,6 @@ namespace dxvk {
     } }
   };
 
-  RemixGui::ComboWithKey<GraphicsPreset> graphicsPresetCombo{
-    "Graphics Preset",
-    RemixGui::ComboWithKey<GraphicsPreset>::ComboEntries{ {
-        {GraphicsPreset::Ultra, "Ultra"},
-        {GraphicsPreset::High, "High"},
-        {GraphicsPreset::Medium, "Medium"},
-        {GraphicsPreset::Low, "Low"},
-        {GraphicsPreset::Custom, "Custom"},
-    } }
-  };
-
-  RemixGui::ComboWithKey<int> minPathBouncesCombo {
-    "Min Light Bounces",
-    RemixGui::ComboWithKey<int>::ComboEntries { {
-        {0, "0"},
-        {1, "1"},
-    } }
-  };
-
-  RemixGui::ComboWithKey<int> maxPathBouncesCombo {
-    "Max Light Bounces",
-    RemixGui::ComboWithKey<int>::ComboEntries { {
-        {1, "1"},
-        {2, "2"},
-        {3, "3"},
-        {4, "4"},
-        {5, "5"},
-        {6, "6"},
-        {7, "7"},
-        {8, "8"},
-    } }
-  };
-
-  RemixGui::ComboWithKey<int> indirectLightingParticlesCombo {
-    "Particle Light",
-    RemixGui::ComboWithKey<int>::ComboEntries { {
-        {0, "None"},
-        {1, "Low"},
-        {2, "High"},
-    } }
-  };
-
-  RemixGui::ComboWithKey<NeuralRadianceCache::QualityPreset> neuralRadianceCacheQualityPresetCombo {
-    "RTX Neural Radiance Cache Quality",
-    RemixGui::ComboWithKey<NeuralRadianceCache::QualityPreset>::ComboEntries { {
-        {NeuralRadianceCache::QualityPreset::Ultra, "Ultra"},
-        {NeuralRadianceCache::QualityPreset::High, "High"},
-        {NeuralRadianceCache::QualityPreset::Medium, "Medium"}
-    } }
-  };
-
-  RemixGui::ComboWithKey<bool> denoiserQualityCombo {
-    "NRD Denoising Quality",
-    RemixGui::ComboWithKey<bool>::ComboEntries { {
-        {true, "High"},
-        {false,"Low"},
-    } }
-  };
-
   RemixGui::ComboWithKey<int> textureQualityCombo {
     "Texture Quality",
     RemixGui::ComboWithKey<int>::ComboEntries { {
@@ -349,15 +294,6 @@ namespace dxvk {
       {UpscalerType::XeSS, "XeSS"},
   } });
 
-  RemixGui::ComboWithKey<DlssPreset> dlssPresetCombo{
-    "DLSS Preset",
-    RemixGui::ComboWithKey<DlssPreset>::ComboEntries{ {
-        {DlssPreset::Off, "Disabled"},
-        {DlssPreset::On, "Enabled"},
-        {DlssPreset::Custom, "Custom"},
-    } }
-  };
-
   RemixGui::ComboWithKey<DLSSProfile> dlssProfileCombo{
     "DLSS Mode",
     RemixGui::ComboWithKey<DLSSProfile>::ComboEntries{ {
@@ -367,27 +303,6 @@ namespace dxvk {
         {DLSSProfile::MaxQuality, "Quality"},
         {DLSSProfile::FullResolution, "Full Resolution"},
         {DLSSProfile::Auto, "Auto"},
-    } }
-  };
-
-  RemixGui::ComboWithKey<NisPreset> nisPresetCombo{
-    "NIS Preset",
-    RemixGui::ComboWithKey<NisPreset>::ComboEntries{ {
-        {NisPreset::Performance, "Performance"},
-        {NisPreset::Balanced, "Balanced"},
-        {NisPreset::Quality, "Quality"},
-        {NisPreset::Fullscreen, "Fullscreen"},
-    } }
-  };
-
-  RemixGui::ComboWithKey<TaauPreset> taauPresetCombo{
-    "TAA-U Preset",
-    RemixGui::ComboWithKey<TaauPreset>::ComboEntries{ {
-        {TaauPreset::UltraPerformance, "Ultra Performance"},
-        {TaauPreset::Performance, "Performance"},
-        {TaauPreset::Balanced, "Balanced"},
-        {TaauPreset::Quality, "Quality"},
-        {TaauPreset::Fullscreen, "Fullscreen"},
     } }
   };
 
@@ -560,16 +475,6 @@ namespace dxvk {
       {TerrainMode::TerrainBaker,     "Terrain Baker"},
       {    TerrainMode::AsDecals, "Terrain-as-Decals"},
   });
-
-  RemixGui::ComboWithKey<OptionLayerType>::ComboEntries optionSavingModeComboEntries = { {
-      { OptionLayerType::User, "User", "Runtime settings"},
-      { OptionLayerType::Rtx, "Rtx", "RTX settings"},
-      { OptionLayerType::Quality, "Quality", "Graphics quality preset settings"},
-      { OptionLayerType::None, "None", "No settings layer; used for testing or temporary development" },
-  } };
-
-  static auto optionSavingModeCombo = RemixGui::ComboWithKey<OptionLayerType>(
-    "Type of setting to save##option", RemixGui::ComboWithKey<OptionLayerType>::ComboEntries { optionSavingModeComboEntries });
 
   static auto themeCombo = RemixGui::ComboWithKey<ImGUI::Theme>(
     "Mode##theme",
@@ -832,7 +737,11 @@ namespace dxvk {
       onOpenMenus();
     }
 
-    RtxOptions::showUI.setDeferred(type);
+    {
+      // Target user layer for UI state changes (this is a user preference)
+      RtxOptionLayerTarget layerTarget(RtxOptionEditTarget::User);
+      RtxOptions::showUI.setDeferred(type);
+    }
 
     if (RtxOptions::blockInputToGameInUI()) {
       BridgeMessageChannel::get().send("UWM_REMIX_UIACTIVE_MSG",
@@ -986,6 +895,9 @@ namespace dxvk {
     } else if (showUI == UIType::Basic) {
       showUserMenu(ctx);
     }
+    
+    // Render any blocked edit popup warnings
+    RemixGui::RenderRtxOptionBlockedEditPopup();
 
     // Note: Only display the latency stats window when the Advanced UI is active as the Basic UI acts as a modal which blocks other
     // windows from being interacted with.
@@ -1077,6 +989,9 @@ namespace dxvk {
   }
 
   void ImGUI::showMainMenu(const Rc<DxvkContext>& ctx) {
+    // Target rtx.conf layer for developer menu changes
+    RtxOptionLayerTarget layerTarget(RtxOptionEditTarget::User);
+
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(ImVec2(m_windowOnRight ? viewport->Size.x - m_windowWidth : 0.f, viewport->Pos.y));
     ImGui::SetNextWindowSize(ImVec2(m_windowWidth, viewport->Size.y));
@@ -1148,20 +1063,183 @@ namespace dxvk {
     RemixGui::Separator();
     ImGui::Dummy(ImVec2(0, 2));
 
-    IMGUI_ADD_TOOLTIP(optionSavingModeCombo.getKey(&RtxOptions::Option::optionSavingTypeObject()), "Setting saving mode");
+    // Get layer pointers and check for unsaved changes
+    RtxOptionLayer* rtxConfLayer = RtxOptionLayer::getRtxConfLayer();
+    RtxOptionLayer* userLayer = const_cast<RtxOptionLayer*>(RtxOptionLayer::getUserLayer());
+    const bool rtxHasUnsaved = rtxConfLayer && rtxConfLayer->hasUnsavedChanges();
+    const bool userHasUnsaved = userLayer && userLayer->hasUnsavedChanges();
+    
+    // ============================================================================
+    // Settings Management Section
+    // ============================================================================
+    if (RemixGui::CollapsingHeader("Settings Management", ImGuiTreeNodeFlags_DefaultOpen)) {
 
-    RemixGui::Checkbox("Save Changed Settings Only", &RtxOptions::Option::serializeChangedOptionOnlyObject());
-    RemixGui::Checkbox("Override configs", &RtxOptions::Option::overwriteConfigObject());
+      // --- User Config Layer (higher priority, shown first) ---
+      ImGui::Text("User Settings (user.conf):");
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Your personal preferences. Saved to `user.conf`.\n"
+          "This includes graphics preset choices, direct graphics settings,\n"
+          "and other per-user preferences like UI configuration.");
+      }
+      if (userHasUnsaved) {
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.0f, 1.0f), "(unsaved changes)");
+        if (ImGui::IsItemHovered()) {
+          ImGui::SetTooltip("Changes have been made since the user.conf file was last saved.");
+        }
+      }
 
-    const float buttonWidth = ImGui::GetContentRegionAvail().x / 3 - (ImGui::GetStyle().ItemSpacing.x);
-    if (IMGUI_ADD_TOOLTIP(ImGui::Button("Save Settings", ImVec2(buttonWidth, 0)), "Changes are now saved to selected config file.")) {
-      RtxOptions::serialize();
+      // Show unsaved changes in a CollapsingHeader
+      if (userHasUnsaved && userLayer) {
+        if (RemixGui::CollapsingHeader("View Changes##User")) {
+          ImGui::Indent();
+          OptionLayerUI::RenderOptions renderOpts;
+          renderOpts.uniqueId = "##UserLayerList";
+          OptionLayerUI::renderToImGui(userLayer, renderOpts);
+          ImGui::Unindent();
+        }
+      }
+      
+      OptionLayerUI::renderLayerButtons(userLayer, "User");
+
+      ImGui::Separator();
+
+      // --- Migration: Move miscategorized options from user.conf to rtx.conf ---
+      // Get cached count of options in user.conf that don't have UserSetting flag
+      const uint32_t userMiscategorizedCount = userLayer ? userLayer->countMiscategorizedOptions() : 0;
+
+      if (userMiscategorizedCount > 0) {
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.85f, 0.65f, 0.0f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.95f, 0.75f, 0.1f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.75f, 0.55f, 0.0f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
+        
+        std::string buttonLabel = str::format("Migrate ", userMiscategorizedCount, " Developer Setting", (userMiscategorizedCount > 1 ? "s" : ""), " to rtx.conf");
+        if (ImGui::Button(buttonLabel.c_str(), ImVec2(-1, 0))) {
+          const uint32_t migratedCount = userLayer->migrateMiscategorizedOptions();
+          Logger::info(str::format("[RTX Option]: Migrated ", migratedCount, " developer settings from user.conf to rtx.conf"));
+        }
+        
+        ImGui::PopStyleColor(4);
+
+        // Tooltip needs to come after the PopStyleColor button to avoid having black text on a dark background
+        if (ImGui::IsItemHovered()) {
+          ImGui::SetTooltip("The user.conf file should only contain end user options (preferences and graphics quality settings).\n\n"
+                            "This button will move all other settings from user.conf to rtx.conf.\n"
+                            "It does not save the changes.");
+        }
+      }
+
+      ImGui::Spacing();
+      ImGui::Spacing();
+      ImGui::Spacing();
+
+      // --- RTX Config Layer ---
+      ImGui::Text("Remix Config (rtx.conf):");
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("The main place where Remix configuration is stored.\n"
+          "Saves to rtx.conf. This should be where mod\n"
+          "developers configure game-specific settings.");
+      }
+      if (rtxHasUnsaved) {
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.0f, 1.0f), "(unsaved changes)");
+        if (ImGui::IsItemHovered()) {
+          ImGui::SetTooltip("Changes have been made since the rtx.conf file was last saved.");
+        }
+      }
+
+      // Show unsaved changes in a CollapsingHeader
+      if (rtxHasUnsaved && rtxConfLayer) {
+        if (RemixGui::CollapsingHeader("View Changes##RtxConf")) {
+          ImGui::Indent();
+          OptionLayerUI::RenderOptions renderOpts;
+          renderOpts.uniqueId = "##RtxConfLayerList";
+          OptionLayerUI::renderToImGui(rtxConfLayer, renderOpts);
+          ImGui::Unindent();
+        }
+      }
+      
+      OptionLayerUI::renderLayerButtons(rtxConfLayer, "RtxConf");
+
+      // --- Migration: Move miscategorized options from rtx.conf to user.conf ---
+      const uint32_t rtxMiscategorizedCount = rtxConfLayer ? rtxConfLayer->countMiscategorizedOptions() : 0;
+      if (rtxMiscategorizedCount > 0) {
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.85f, 0.65f, 0.0f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.95f, 0.75f, 0.1f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.75f, 0.55f, 0.0f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
+        
+        std::string buttonLabel = str::format("Migrate ", rtxMiscategorizedCount, " User Setting", (rtxMiscategorizedCount > 1 ? "s" : ""), " to user.conf");
+        if (ImGui::Button(buttonLabel.c_str(), ImVec2(-1, 0))) {
+          const uint32_t migratedCount = rtxConfLayer->migrateMiscategorizedOptions();
+          Logger::info(str::format("[RTX Option]: Migrated ", migratedCount, " user settings from rtx.conf to user.conf"));
+        }
+        
+        ImGui::PopStyleColor(4);
+
+        // Tooltip needs to come after the PopStyleColor button to avoid having black text on a dark background
+        if (ImGui::IsItemHovered()) {
+          ImGui::SetTooltip("The rtx.conf file contains settings that should be in user.conf (end user options that should not be in mods).\n\n"
+                            "This button will move these settings from rtx.conf to user.conf.\n"
+                            "It does not save the changes.");
+        }
+      }
+
+      ImGui::Spacing();
+      ImGui::Separator();
+      ImGui::Spacing();
+
+      // --- Create .conf file for Logic ---
+      ImGui::Text("Create .conf file for Logic:");
+      ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "(Only unsaved Remix Config changes will be exported)");
+      static char exportFileName[512] = "exported_rtx.conf";
+      ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 100);
+      ImGui::InputText("##ExportFileName", exportFileName, IM_ARRAYSIZE(exportFileName));
+      ImGui::SameLine();
+      ImGui::BeginDisabled(!rtxHasUnsaved);
+      if (ImGui::Button("Create", ImVec2(-1, 0))) {
+        if (rtxConfLayer) {
+          std::string exportPath(exportFileName);
+          rtxConfLayer->exportUnsavedChanges(exportPath);
+        }
+      }
+      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        if (rtxHasUnsaved) {
+          ImGui::SetTooltip("Create a .conf file containing only the unsaved changes from rtx.conf.\nIf the file already exists, changes will be merged into it.");
+        } else {
+          ImGui::SetTooltip("No unsaved changes in rtx.conf to export.");
+        }
+      }
+      ImGui::EndDisabled();
+
     }
 
-    ImGui::SameLine();
-    if (IMGUI_ADD_TOOLTIP(ImGui::Button("Reset settings", ImVec2(buttonWidth, 0)), "Reset all real-time changed settings.")) {
-      RtxOptionLayer::setResetSettings(true);
+    ImGui::Spacing();
+
+    // --- Bottom Buttons ---
+    const float buttonWidth = ImGui::GetContentRegionAvail().x / 2 - (ImGui::GetStyle().ItemSpacing.x / 2);
+    const bool anyUnsavedChanges = rtxHasUnsaved || userHasUnsaved;
+    ImGui::BeginDisabled(!anyUnsavedChanges);
+    if (ImGui::Button("Revert All Unsaved Changes", ImVec2(buttonWidth, 0))) {
+      // Reload all layers that have unsaved changes
+      if (rtxConfLayer && rtxConfLayer->hasUnsavedChanges()) {
+        rtxConfLayer->reload();
+      }
+      if (userLayer && userLayer->hasUnsavedChanges()) {
+        userLayer->reload();
+      }
     }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+      if (anyUnsavedChanges) {
+        ImGui::SetTooltip("Reload rtx.conf and user.conf from disk,\ndiscarding all unsaved changes in both layers.");
+      } else {
+        ImGui::SetTooltip("No unsaved changes to revert.");
+      }
+    }
+    ImGui::EndDisabled();
 
     ImGui::SameLine();
     if (ImGui::Button("Hide UI", ImVec2(buttonWidth, 0))) {
@@ -1179,507 +1257,6 @@ namespace dxvk {
     if (switchUI >= 0) {
       switchMenu((UIType) switchUI);
     }
-  }
-
-  void ImGUI::showUserMenu(const Rc<DxvkContext>& ctx) {
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-
-    ImGui::OpenPopup(m_userGraphicsWindowTitle, ImGuiPopupFlags_NoOpenOverExistingPopup);
-
-    ImGui::SetNextWindowPos(ImVec2(viewport->Size.x * 0.5f - m_userWindowWidth * 0.5f, viewport->Size.y * 0.5f - m_userWindowHeight * 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(m_userWindowWidth, 0));
-    ImGui::SetNextWindowSizeConstraints(ImVec2(m_userWindowWidth, 0), ImVec2(m_userWindowWidth, m_userWindowHeight));
-
-    // Note: When changing this padding consider:
-    // - Checking to ensure text including less visible instances from hover tooltips and etc do not take up more
-    // lines such that empty text lines become ineffective (to prevent jittering when text changes).
-    // - Updating Dummy elements as they currently are based on half the y padding for spacing consistency.
-    constexpr float windowPaddingX = 74.0f;
-    constexpr float windowPaddingHalfX = windowPaddingX * 0.5f;
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(windowPaddingX, 10));
-
-    // Use the same background color and alpha as other menus, PopupBg has alpha 1 because it's used for combobox popups etc. 
-    ImGui::PushStyleColor(ImGuiCol_PopupBg, ImGui::GetStyleColorVec4(ImGuiCol_WindowBg));
-    bool pushedPopupBg = true;
-
-    bool basicMenuOpen = RtxOptions::showUI() == UIType::Basic;
-    if (ImGui::BeginPopupModal(m_userGraphicsWindowTitle, &basicMenuOpen, ImGuiWindowFlags_AlwaysAutoResize)) {
-      // Restore PopupBg
-      ImGui::PopStyleColor();
-      pushedPopupBg = false;
-
-      // Always display memory stats to user.
-      showMemoryStats();
-
-      const int itemWidth = static_cast<int>(largeUiMode() ? m_largeUserWindowWidgeWidth : m_regularUserWindowWidgetWidth);
-      const int subItemWidth = static_cast<int>(ImCeil(itemWidth * 0.86f));
-      const int subItemIndent = (itemWidth > subItemWidth) ? (itemWidth - subItemWidth) : 0;
-
-      const ImVec2 childSize = ImVec2(ImGui::GetContentRegionAvail().x + windowPaddingX, m_userWindowHeight * 0.63f);
-      const static ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_NoCloseWithMiddleMouseButton;
-      const static ImGuiTabItemFlags tab_item_flags = ImGuiTabItemFlags_NoCloseWithMiddleMouseButton;
-
-      {
-        ImGui::TextSeparator("Display Settings");
-        RemixGui::SliderInt("Brightness##user", &RtxOptions::userBrightnessObject(), 0, 100, "%d", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::Dummy({ 0.f, 4.f });
-      }
-
-      ImGui::PopStyleVar();
-
-      auto beginTabChild = [&windowPaddingHalfX, &childSize, &itemWidth](const char* tabID) -> void {
-        // Make child window start at the same X offset as the tab bar separator
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() - windowPaddingHalfX);
-
-        // Make widgets within the child start at the same X offset as widgets outside of the child
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(windowPaddingHalfX, 10));
-        ImGui::BeginChild(tabID, childSize, true);
-
-        ImGui::PushItemWidth(static_cast<float>(itemWidth));
-        };
-
-      auto endTabChild = []() -> void {
-        ImGui::PopItemWidth();
-        ImGui::PopStyleVar();
-        ImGui::EndChild();
-        };
-
-
-      if (ImGui::BeginTabBar("Settings Tabs", tab_bar_flags)) {
-        if (ImGui::BeginTabItem("General", nullptr, tab_item_flags)) {
-          beginTabChild("##tab_child_general");
-          showUserGeneralSettings(ctx, subItemWidth, subItemIndent);
-          endTabChild();
-          ImGui::EndTabItem();
-        }
-
-        if (ImGui::BeginTabItem("Graphics", nullptr, tab_item_flags)) {
-          beginTabChild("##tab_child_graphics");
-          showUserRenderingSettings(ctx, subItemWidth, subItemIndent);
-          endTabChild();
-          ImGui::EndTabItem();
-        }
-
-        if (ImGui::BeginTabItem("Content", nullptr, tab_item_flags)) {
-          beginTabChild("##tab_child_content");
-          showUserContentSettings(ctx, subItemWidth, subItemIndent);
-          endTabChild();
-          ImGui::EndTabItem();
-        }
-
-        ImGui::EndTabBar();
-      }
-
-      ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(windowPaddingHalfX, 10));
-      ImGui::Dummy(ImVec2(0.0f, 0.0f));
-
-      // Center align 
-      const ImVec2 buttonSize = ImVec2((ImGui::GetWindowSize().x - windowPaddingX) / 2, 36);
-
-      // Make child window start at X offset of tab bar separator
-      ImGui::SetCursorPosX(ImGui::GetCursorPosX() - windowPaddingHalfX);
-
-      if (ImGui::Button("Developer Settings Menu", buttonSize)) {
-        switchMenu(UIType::Advanced);
-      }
-
-      ImGui::SameLine();
-
-      const bool unsavedChanges = m_userGraphicsSettingChanged;
-      if (unsavedChanges) {
-        ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_TabActive]);
-      }
-
-      if (ImGui::Button("Save Settings", buttonSize)) {
-        RtxOptions::serialize();
-        m_userGraphicsSettingChanged = false;
-      }
-
-      if (unsavedChanges) {
-        ImGui::PopStyleColor();
-        RemixGui::SetTooltipToLastWidgetOnHover("Settings have been changed!\nThis will save settings in the rtx.conf file.\nSome may only take effect on next launch.");
-      }
-      else {
-        RemixGui::SetTooltipToLastWidgetOnHover("This will save above settings in the rtx.conf file.\nSome may only take effect on next launch.");
-      }
-
-      ImGui::EndPopup();
-    }
-
-    if (pushedPopupBg) {
-      ImGui::PopStyleColor();
-    }
-
-    // Close via titlebar close button
-    if (!basicMenuOpen) {
-      switchMenu(UIType::None);
-    }
-
-    ImGui::PopStyleVar();
-  }
-
-  void ImGUI::showUserGeneralSettings(
-    const Rc<DxvkContext>& ctx,
-    const int subItemWidth,
-    const int subItemIndent) {
-    auto common = ctx->getCommonObjects();
-    DxvkDLSS& dlss = common->metaDLSS();
-    DxvkRayReconstruction& rayReconstruction = common->metaRayReconstruction();
-    DxvkDLFG& dlfg = common->metaDLFG();
-    const RtxReflex& reflex = m_device->getCommon()->metaReflex();
-
-    const bool dlssSupported = dlss.supportsDLSS();
-    const bool dlfgSupported = dlfg.supportsDLFG();
-    const bool dlssRRSupported = rayReconstruction.supportsRayReconstruction();
-    const bool reflexInitialized = reflex.reflexInitialized();
-
-    // Describe the tab
-
-    const char* tabDescriptionText = "General performance settings. Enabling upscaling is recommended to significantly increase performance.";
-
-    // Note: Specifically reference the DLSS preset when present.
-    if (dlssSupported) {
-      tabDescriptionText = "General performance settings. Enabling the DLSS preset is recommended to significantly increase performance.";
-    }
-
-    ImGui::TextWrapped(tabDescriptionText);
-
-    ImGui::Dummy(ImVec2(0.0f, 5.0f));
-
-    // Preset Settings
-
-    if (dlssSupported) {
-      const DlssPreset prevDlssPreset = RtxOptions::dlssPreset();
-
-      ImGui::TextSeparator("Preset Settings");
-
-      m_userGraphicsSettingChanged |= dlssPresetCombo.getKey(&RtxOptions::dlssPresetObject());
-
-      // Revert back to default DLSS settings when switch from Off to Custom
-      if (prevDlssPreset == DlssPreset::Off && RtxOptions::dlssPreset() == DlssPreset::Custom) {
-        RtxOptions::resetUpscaler();
-      }
-
-      RtxOptions::updateUpscalerFromDlssPreset();
-    }
-
-    // Note: Disable all settings in this section beyond the preset when a non-Custom DLSS preset is in use,
-    // but only when DLSS is actually supported.
-    // Note: This is stored as a bool and applied in a SetDisabled per-section so that the section labels do not get disabled
-    // (as this changes the color of the line and text which is undesirable).
-    const bool disableNonPresetSettings = RtxOptions::dlssPreset() != DlssPreset::Custom && dlssSupported;
-
-    // Upscaling Settings
-
-    ImGui::Dummy(ImVec2(0.0f, 3.0f));
-    ImGui::TextSeparator("Upscaling Settings");
-
-    {
-      ImGui::BeginDisabled(disableNonPresetSettings);
-
-      // Upscaler Type
-
-      // Note: Use a different combo box without DLSS's upscaler listed if DLSS overall is unsupported.
-      auto oldUpscalerType = RtxOptions::upscalerType();
-      bool oldDLSSRREnabled = RtxOptions::enableRayReconstruction();
-
-      if (dlss.supportsDLSS()) {
-        m_userGraphicsSettingChanged |= getUpscalerCombo(dlss, rayReconstruction).getKey(&RtxOptions::upscalerTypeObject());
-      }
-      
-      ImGui::PushItemWidth(static_cast<float>(subItemWidth));
-      ImGui::Indent(static_cast<float>(subItemIndent));
-
-      if (dlss.supportsDLSS()) {
-        m_userGraphicsSettingChanged |= showRayReconstructionEnable(dlssRRSupported);
-
-        // If DLSS-RR is toggled, need to update some path tracer options accordingly to improve quality
-        if (oldUpscalerType != RtxOptions::upscalerType() || oldDLSSRREnabled != RtxOptions::enableRayReconstruction()) {
-          RtxOptions::updateLightingSetting();
-        }
-      } else {
-        m_userGraphicsSettingChanged |= getUpscalerCombo(dlss, rayReconstruction).getKey(&RtxOptions::upscalerTypeObject());
-      }
-
-      // Upscaler Preset
-
-
-      switch (RtxOptions::upscalerType()) {
-        case UpscalerType::DLSS: {
-          m_userGraphicsSettingChanged |= dlssProfileCombo.getKey(&RtxOptions::qualityDLSSObject());
-
-          // Display DLSS Upscaling Information
-
-          const auto currentDLSSProfile = RtxOptions::enableRayReconstruction() ? rayReconstruction.getCurrentProfile() : dlss.getCurrentProfile();
-          uint32_t dlssInputWidth, dlssInputHeight;
-
-          if (RtxOptions::enableRayReconstruction()) {
-            rayReconstruction.getInputSize(dlssInputWidth, dlssInputHeight);
-          } else {
-            dlss.getInputSize(dlssInputWidth, dlssInputHeight);
-          }
-
-          ImGui::TextWrapped(str::format("Computed DLSS Mode: ", dlssProfileToString(currentDLSSProfile), ", Render Resolution: ", dlssInputWidth, "x", dlssInputHeight).c_str());
-
-          break;
-        }
-        case UpscalerType::NIS: {
-          m_userGraphicsSettingChanged |= nisPresetCombo.getKey(&RtxOptions::nisPresetObject());
-          RtxOptions::updateUpscalerFromNisPreset();
-
-          // Display NIS Upscaling Information
-
-          auto resolutionScale = RtxOptions::resolutionScale();
-
-          ImGui::TextWrapped(str::format("NIS Resolution Scale: ", resolutionScale).c_str());
-
-          break;
-        }
-        case UpscalerType::TAAU: {
-          m_userGraphicsSettingChanged |= taauPresetCombo.getKey(&RtxOptions::taauPresetObject());
-          RtxOptions::updateUpscalerFromTaauPreset();
-
-          // Display TAA-U Upscaling Information
-
-          auto resolutionScale = RtxOptions::resolutionScale();
-
-          ImGui::TextWrapped(str::format("TAA-U Resolution Scale: ", resolutionScale).c_str());
-
-          break;
-        }
-        case UpscalerType::XeSS: {
-          m_userGraphicsSettingChanged |= xessPresetCombo.getKey(&DxvkXeSS::XessOptions::presetObject());
-
-          // Show resolution slider only for Custom preset
-          if (DxvkXeSS::XessOptions::preset() == XeSSPreset::Custom) {
-            m_userGraphicsSettingChanged |= RemixGui::SliderFloat("Resolution Scale", &RtxOptions::resolutionScaleObject(), 0.1f, 1.0f, "%.2f");
-          }
-
-          // Display XeSS internal resolution
-          auto& xess = ctx->getCommonObjects()->metaXeSS();
-
-          uint32_t inputWidth;
-          uint32_t inputHeight;
-          xess.getInputSize(inputWidth, inputHeight);
-          ImGui::TextWrapped(str::format("Render Resolution: ", inputWidth, "x", inputHeight).c_str());
-
-          break;
-        }
-        case UpscalerType::None: {
-          // No custom UI here.
-          break;
-        }
-      }
-
-      ImGui::Unindent(static_cast<float>(subItemIndent));
-      ImGui::PopItemWidth();
-
-      ImGui::EndDisabled();
-    }
-
-    // Latency Reduction Settings
-    if (dlfgSupported) {
-      ImGui::Dummy(ImVec2(0.0f, 3.0f));
-      ImGui::TextSeparator("Frame Generation Settings");
-      showDLFGOptions(ctx);
-    }
-
-    if (reflexInitialized) {
-      ImGui::Dummy(ImVec2(0.0f, 3.0f));
-      ImGui::TextSeparator("Latency Reduction Settings");
-
-      {
-        ImGui::BeginDisabled(disableNonPresetSettings);
-
-        // Note: Option to toggle the stats window is set to false here as this window is currently
-        // set up to display only when the "advanced" developer settings UI is active.
-        showReflexOptions(ctx, false);
-
-        ImGui::EndDisabled();
-      }
-    }
-
-    ImGui::Dummy(ImVec2(0.0f, 5.0f));
-  }
-
-  void ImGUI::showUserRenderingSettings(
-    const Rc<DxvkContext>& ctx,
-    const int subItemWidth,
-    const int subItemIndent) {
-    auto common = ctx->getCommonObjects();
-    DxvkPostFx& postFx = common->metaPostFx();
-    DxvkRtxdiRayQuery& rtxdiRayQuery = common->metaRtxdiRayQuery();
-    DxvkReSTIRGIRayQuery& restirGiRayQuery = common->metaReSTIRGIRayQuery();
-
-    // Describe the tab
-
-    ImGui::TextWrapped("Rendering-specific settings. Complexity of rendering may be adjusted to balance between performance and quality.");
-
-    ImGui::Dummy(ImVec2(0.0f, 5.0f));
-
-    // Preset Settings
-
-    ImGui::TextSeparator("Preset Settings");
-
-    m_userGraphicsSettingChanged |= graphicsPresetCombo.getKey(&RtxOptions::graphicsPresetObject());
-
-    // Map settings to indirect particle level
-    int indirectLightParticlesLevel = 0;
-    if (RtxOptions::enableUnorderedResolveInIndirectRays()) {
-      indirectLightParticlesLevel = RtxOptions::enableUnorderedEmissiveParticlesInIndirectRays() ? 2 : 1;
-    }
-
-    // Path Tracing Settings
-
-    ImGui::Dummy(ImVec2(0.0f, 3.0f));
-    ImGui::TextSeparator("Path Tracing Settings");
-
-    {
-      // Note: Disabled flags should match preset mapping above to prevent changing settings when a preset overrides them.
-      ImGui::BeginDisabled(RtxOptions::graphicsPreset() != GraphicsPreset::Custom);
-
-      m_userGraphicsSettingChanged |= minPathBouncesCombo.getKey(&RtxOptions::pathMinBouncesObject());
-      m_userGraphicsSettingChanged |= maxPathBouncesCombo.getKey(&RtxOptions::pathMaxBouncesObject());
-      m_userGraphicsSettingChanged |= indirectLightingParticlesCombo.getKey(&indirectLightParticlesLevel);
-      RemixGui::SetTooltipToLastWidgetOnHover("Controls the quality of particles in indirect (reflection/GI) rays.");
-
-      // NRC Quality Preset dropdown
-      NeuralRadianceCache& nrc = common->metaNeuralRadianceCache();
-      if (nrc.checkIsSupported(m_device)) {
-        bool enableNeuralRadianceCache = RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::NeuralRadianceCache;
-
-        // Disable NRC quality preset combo when NRC is not enabled.
-        ImGui::BeginDisabled(!enableNeuralRadianceCache);
-        
-        if (neuralRadianceCacheQualityPresetCombo.getKey(&NeuralRadianceCache::NrcOptions::qualityPresetObject())) {
-          m_userGraphicsSettingChanged = true;
-        }
-
-        ImGui::EndDisabled();
-      }
-
-      // Hide NRD denoiser quality list when DLSS-RR is enabled.
-      bool useRayReconstruction = RtxOptions::isRayReconstructionEnabled();
-      if (!useRayReconstruction) {
-        m_userGraphicsSettingChanged |= denoiserQualityCombo.getKey(&RtxOptions::denoiseDirectAndIndirectLightingSeparatelyObject());
-      }
-
-      ImGui::EndDisabled();
-    }
-
-    // Volumetrics Settings
-
-    ImGui::Dummy(ImVec2(0.0f, 3.0f));
-    ImGui::TextSeparator("RTX Volumetrics Settings");
-    {
-      m_userGraphicsSettingChanged |= RemixGui::Checkbox("Enable Volumetric Lighting", &RtxGlobalVolumetrics::enableObject());
-      ImGui::BeginDisabled(!RtxGlobalVolumetrics::enable());
-      ImGui::Indent(static_cast<float>(subItemIndent));
-      common->metaGlobalVolumetrics().showImguiUserSettings();
-      ImGui::EndDisabled();
-      ImGui::Unindent(static_cast<float>(subItemIndent));
-    }
-
-    // Post Effect Settings
-
-    ImGui::Dummy(ImVec2(0.0f, 3.0f));
-    ImGui::TextSeparator("Post Effect Settings");
-
-    {
-      {
-        // Note: All presets aside from Custom will overwrite this, so only enable for Custom.
-        ImGui::BeginDisabled(RtxOptions::graphicsPreset() != GraphicsPreset::Custom);
-        m_userGraphicsSettingChanged |= RemixGui::Checkbox("Enable Post Effects", &postFx.enableObject());
-        ImGui::EndDisabled();
-      }
-
-      // Note: Medium and Low presets disable all post effects, so no value in changing the individual settings.
-      // High and Ultra allow these to be changed without requiring Custom, so leave enabled for those.
-      ImGui::BeginDisabled(RtxOptions::graphicsPreset() == GraphicsPreset::Medium || RtxOptions::graphicsPreset() == GraphicsPreset::Low);
-      {
-        ImGui::PushItemWidth(static_cast<float>(subItemWidth));
-        ImGui::Indent(static_cast<float>(subItemIndent));
-
-        ImGui::BeginDisabled(!postFx.enable());
-
-        m_userGraphicsSettingChanged |= RemixGui::Checkbox("Enable Motion Blur", &postFx.enableMotionBlurObject());
-        m_userGraphicsSettingChanged |= RemixGui::Checkbox("Enable Chromatic Aberration", &postFx.enableChromaticAberrationObject());
-        m_userGraphicsSettingChanged |= RemixGui::Checkbox("Enable Vignette", &postFx.enableVignetteObject());
-
-        ImGui::EndDisabled();
-
-        ImGui::Unindent(static_cast<float>(subItemIndent));
-        ImGui::PopItemWidth();
-      }
-
-      ImGui::EndDisabled();
-    }
-
-    // Other Settings
-
-    ImGui::Dummy(ImVec2(0.0f, 3.0f));
-    ImGui::TextSeparator("Other Settings");
-
-    {
-      showVsyncOptions(true);
-    }
-
-    // Map indirect particle level back to settings
-    if (RtxOptions::graphicsPreset() == GraphicsPreset::Custom) {
-      switch (indirectLightParticlesLevel) {
-      case 0:
-        RtxOptions::enableUnorderedEmissiveParticlesInIndirectRays.setDeferred(false);
-        RtxOptions::enableUnorderedResolveInIndirectRays.setDeferred(false);
-        break;
-      case 1:
-        RtxOptions::enableUnorderedEmissiveParticlesInIndirectRays.setDeferred(false);
-        RtxOptions::enableUnorderedResolveInIndirectRays.setDeferred(true);
-        break;
-      case 2:
-        RtxOptions::enableUnorderedEmissiveParticlesInIndirectRays.setDeferred(true);
-        RtxOptions::enableUnorderedResolveInIndirectRays.setDeferred(true);
-        break;
-      }
-    }
-
-    ImGui::Dummy(ImVec2(0.0f, 5.0f));
-  }
-
-  void ImGUI::showUserContentSettings(
-    const Rc<DxvkContext>& ctx,
-    const int subItemWidth,
-    const int subItemIndent) {
-    auto common = ctx->getCommonObjects();
-
-    // Describe the tab
-
-    ImGui::TextWrapped("Content-specific settings. Allows control of what types of assets Remix should replace (if any).");
-
-    ImGui::Dummy(ImVec2(0.0f, 5.0f));
-
-    ImGui::BeginDisabled(!common->getSceneManager().areAllReplacementsLoaded());
-
-    m_userGraphicsSettingChanged |= RemixGui::Checkbox("Enable All Enhanced Assets", &RtxOptions::enableReplacementAssetsObject());
-
-    {
-      ImGui::PushItemWidth(static_cast<float>(subItemWidth));
-      ImGui::Indent(static_cast<float>(subItemIndent));
-
-      ImGui::BeginDisabled(!RtxOptions::enableReplacementAssets());
-
-      m_userGraphicsSettingChanged |= RemixGui::Checkbox("Enable Enhanced Materials", &RtxOptions::enableReplacementMaterialsObject());
-      m_userGraphicsSettingChanged |= RemixGui::Checkbox("Enable Enhanced Meshes", &RtxOptions::enableReplacementMeshesObject());
-      m_userGraphicsSettingChanged |= RemixGui::Checkbox("Enable Enhanced Lights", &RtxOptions::enableReplacementLightsObject());
-
-      ImGui::EndDisabled();
-
-      ImGui::Unindent(static_cast<float>(subItemIndent));
-      ImGui::PopItemWidth();
-    }
-
-    ImGui::EndDisabled();
-
-    ImGui::Dummy(ImVec2(0.0f, 5.0f));
   }
 
   struct HudMessage {
@@ -2129,249 +1706,231 @@ namespace dxvk {
         ImGui::Unindent();
       }
 #endif
+    }
 
-      if (IMGUI_ADD_TOOLTIP(RemixGui::CollapsingHeader("Option Layers"), "View what options are present in each layer, and alter the blend strength and threshold for them.")) {
-        ImGui::Indent();
-        static char optionLayerFilter[256] = "";
-        if (IMGUI_ADD_TOOLTIP(RemixGui::CollapsingHeader("Layer Controls"), "Some utilities for controlling the option layers and display.")) {
-          ImGui::Indent();
-
-          if (IMGUI_ADD_TOOLTIP(ImGui::Button("Disable Layers"), "All optional layers will be disabled.  The runtime and default layers will remain active.")) {
-            for (auto& [layerKey, optionLayerPtr] : RtxOptionImpl::getRtxOptionLayerMap()) {
-              if (layerKey.priority != RtxOptionLayer::s_runtimeOptionLayerPriority && layerKey.priority != (uint32_t)RtxOptionLayer::SystemLayerPriority::Default) {
-                optionLayerPtr->requestEnabled(false);
-              }
-            }
-          }
-
-          ImGui::SameLine();
-          if (IMGUI_ADD_TOOLTIP(ImGui::Button("Enable Layers"), "Enable all option layers.")) {
-            for (auto& [unusedLayerKey, optionLayerPtr] : RtxOptionImpl::getRtxOptionLayerMap()) {
-              optionLayerPtr->requestEnabled(true);
-            }
-          }
-
-          // Filter for option layer contents
-          IMGUI_ADD_TOOLTIP(RemixGui::InputText("RtxOption Display Filter", optionLayerFilter, IM_ARRAYSIZE(optionLayerFilter)), 
-              "Filter options displayed in the Contents sections. Only options containing this text will be shown.");
+    if (IMGUI_ADD_TOOLTIP(RemixGui::CollapsingHeader("Option Layers"), "View what options are present in each layer, and alter the blend strength and threshold for them.")) {
+      ImGui::Indent();
+      static char optionLayerFilter[256] = "";
+      // Filter for option layer contents
+      IMGUI_ADD_TOOLTIP(ImGui::InputText("RtxOption Display Filter", optionLayerFilter, IM_ARRAYSIZE(optionLayerFilter)), 
+          "Filter options displayed in the Contents sections. Only options containing this text will be shown.");
 
           RemixGui::Checkbox("Pause Graph Execution", &GraphManager::pauseGraphUpdatesObject());
-          if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(
-              "Many graphs set `enable`, `blendStrength`, and `blendThreshold` every frame.\n"
-              "Pausing the graph execution will allow controlling these values without interference.");
-          }
-          ImGui::Unindent();
-        }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip(
+          "Many graphs set `enable`, `blendStrength`, and `blendThreshold` every frame.\n"
+          "Pausing the graph execution will allow controlling these values without interference.");
+      }
+
         // Pre-compute lowercased filter once for efficiency
-        std::string filterLower = optionLayerFilter;
-        std::transform(filterLower.begin(), filterLower.end(), filterLower.begin(), ::tolower);
+      std::string filterLower = optionLayerFilter;
+      std::transform(filterLower.begin(), filterLower.end(), filterLower.begin(), ::tolower);
 
-        uint32_t optionLayerCounter = 1;
-        for (auto& [layerKey, optionLayerPtr] : RtxOptionImpl::getRtxOptionLayerMap()) {
-          RtxOptionLayer& optionLayer = *optionLayerPtr;
+      uint32_t optionLayerCounter = 1;
+      for (auto& [layerKey, optionLayerPtr] : RtxOptionManager::getLayerRegistry()) {
+        RtxOptionLayer& optionLayer = *optionLayerPtr;
 
-          std::string displayName;
+        const bool isDefaultLayer = layerKey == kRtxOptionLayerDefaultKey;
+        const bool isUserLayer = layerKey == kRtxOptionLayerUserKey;
+        const bool isQualityLayer = layerKey == kRtxOptionLayerQualityKey;
+        const bool isDxvkLayer = layerKey == kRtxOptionLayerDxvkConfKey;
+        const bool isRtxConfLayer = layerKey == kRtxOptionLayerRtxConfKey;
+        const bool hasSaveableConfig = optionLayer.hasSaveableConfigFile() && !isDxvkLayer;
+        const bool hasUnsaved = hasSaveableConfig && optionLayer.hasUnsavedChanges();
+
+        // Skip layers with no values (empty layers), unless they have a saveable config
+        // Dynamic layers with saveable configs should still be shown even when empty/disabled
+        if (!optionLayer.hasValues() && !hasSaveableConfig) {
+          continue;
+        }
+        
+        // Determine display name - system layers have proper names,
+        // dynamically loaded layers have file paths as names which need shortening
+        std::string displayName = optionLayer.getName();
+        
+        // Add config file indicator for layers with associated config files
+        if (isRtxConfLayer) {
+          displayName += " (rtx.conf)";
+        } else if (isUserLayer) {
+          displayName += " (user.conf)";
+        } else if (isDxvkLayer) {
+          displayName += " (dxvk.conf)";
+        }
+        
+        // For non-system layers, shorten long file paths for display
+        if (displayName.length() > 40) {
+          // Try to extract just the file name from the path
+          const std::string modsMarker = (std::filesystem::path("rtx-remix") / "mods" / "").string();
+          size_t modsPos = displayName.find(modsMarker);
+          if (modsPos != std::string::npos) {
+            displayName = displayName.substr(modsPos + modsMarker.length());
+          } else {
+            // Just take the last portion of the path
+            size_t lastSep = displayName.find_last_of("/\\");
+            if (lastSep != std::string::npos) {
+              displayName = displayName.substr(lastSep + 1);
+            }
+          }
+        }
+        
+        // Build header text and styling
+        std::string unsavedIndicator = hasUnsaved ? " *" : "";
+        const std::string optionLayerText = std::to_string(optionLayerCounter++) + ". " + displayName + unsavedIndicator + "###" + displayName;
+        
+        // Determine if layer is active (only applies to layers with blend controls)
+        bool pendingEnabled = optionLayer.getPendingEnabled();
+        float pendingStrength = optionLayer.getPendingBlendStrength();
+        float pendingThreshold = optionLayer.getPendingBlendThreshold();
+        const bool isLayerActive = !hasSaveableConfig || (pendingEnabled && pendingStrength > pendingThreshold);
+        
+        // Apply header styling
+        bool pushedStyle = false;
+        if (!isLayerActive) {
+          ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+          pushedStyle = true;
+        } else if (hasUnsaved) {
+          ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.2f, 1.0f));
+          pushedStyle = true;
+        }
+        
+        // Build tooltip
+        std::string tooltipText;
+        if (isQualityLayer) {
+          tooltipText = "Quality preset settings (highest priority). Empty when Graphics Preset is Custom.";
+        } else if (isUserLayer) {
+          tooltipText = "A User's local graphics settings.  Overrides all other layers except Quality Presets.";
+        } else if (isDefaultLayer) {
+          tooltipText = "Default values for each option, as defined in RtxOptions.md.";
+        } else {
+          tooltipText = optionLayer.getName();
+        }
+        if (!optionLayer.getFilePath().empty() && optionLayer.getFilePath() != optionLayer.getName()) {
+          tooltipText += "\nFile: " + optionLayer.getFilePath();
+        }
+        if (hasUnsaved) {
+          tooltipText += "\n[Has unsaved changes]";
+        }
+        
+        bool headerOpen = IMGUI_ADD_TOOLTIP(RemixGui::CollapsingHeader(optionLayerText.c_str(), collapsingHeaderClosedFlags), tooltipText.c_str());
+        
+        if (pushedStyle) {
+          ImGui::PopStyleColor();
+        }
+        
+        if (headerOpen) {
+          ImGui::Indent();
           
-          if (layerKey.priority != RtxOptionLayer::s_runtimeOptionLayerPriority && layerKey.priority != (uint32_t)RtxOptionLayer::SystemLayerPriority::Default) {
-            const std::string optionLayerName = optionLayer.getName();
-
-            // Process the display name
-            // construct "rtx-remix/mods/" using OS appropriate separator
-            const std::string modsMarker = (std::filesystem::path("rtx-remix") / "mods" / "").string();
-            size_t modsPos = optionLayerName.find(modsMarker);
-  
-            constexpr size_t kLongestPathLength = 30;
-            if (modsPos != std::string::npos) {
-              // Extract portion after "mods/"
-              displayName = optionLayerName.substr(modsPos + modsMarker.length());
-            } else if (optionLayerName.length() > kLongestPathLength) {
-              // Take last 30 characters
-              displayName = "..." + optionLayerName.substr(optionLayerName.length() - kLongestPathLength);
-            } else {
-              displayName = optionLayerName;
+          // Priority display
+          if (isQualityLayer) {
+            ImGui::Text("Priority: MAX");
+            if (ImGui::IsItemHovered()) {
+              ImGui::SetTooltip("Highest possible priority - quality preset settings control these options when preset is not Custom.\nThis layer is empty when Graphics Preset is set to Custom.");
             }
-            bool pendingEnabled = optionLayer.getPendingEnabled();
-            float pendingStrength = optionLayer.getPendingBlendStrength();
-            float pendingThreshold = optionLayer.getPendingBlendThreshold();
-            
-            const std::string optionLayerText = std::to_string(optionLayerCounter++) + ". " + displayName;
-            const bool isLayerActive = pendingEnabled && pendingStrength > pendingThreshold;
-            
-            // Dim the header text when the layer is inactive
-            if (!isLayerActive) {
-              ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+          } else if (isUserLayer) {
+            ImGui::Text("Priority: MAX - 1");
+            if (ImGui::IsItemHovered()) {
+              ImGui::SetTooltip("Second highest priority - user settings that override all layers except Quality Presets.\nWhen Graphics Preset is Custom, this becomes the effective highest priority layer.");
             }
-
-            bool headerOpen = IMGUI_ADD_TOOLTIP(RemixGui::CollapsingHeader(optionLayerText.c_str(), collapsingHeaderClosedFlags), optionLayer.getName().c_str());
-            
-            if (!isLayerActive) {
-              ImGui::PopStyleColor();
-            }
-            
-            if (headerOpen) {
-              ImGui::Indent();
-
-              const std::string priorityText = "Priority: " + std::to_string(optionLayer.getPriority());
-              ImGui::Text(priorityText.c_str());
-              if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip(
-                  "Layers are applied starting with the lowest priority layer, ending with the highest.\n"
-                  "Each layer overrides the values written before it.\n"
-                  "If a layer's blendWeight is not 1 and the option is a float or Vector type,\n"
-                  "then the values will be calculated as LERP(previousValue, layerValue, blendWeight).");
-              }
-
-              const std::string optionLayerEnabledText = "Enabled###Enabled_" + displayName;
-              const std::string optionLayerStrengthText = " Strength###Strength_" + displayName;
-              const std::string optionLayerThresholdText = " Threshold###Threshold_" + displayName;
-              const std::string optionLayerContentsText = "Contents###Contents_" + displayName;
-              
-              // Use pending values for UI display and send requests on change
-              if (IMGUI_ADD_TOOLTIP(RemixGui::Checkbox(optionLayerEnabledText.c_str(), &pendingEnabled), "Check to enable the option layer. Uncheck to disable it.")) {
-                optionLayer.requestEnabled(pendingEnabled);
-              }
-
-              if (IMGUI_ADD_TOOLTIP(RemixGui::SliderFloat(optionLayerStrengthText.c_str(), &pendingStrength, 0.0f, 1.0f),
-                                    "Adjusts the blending strength of this option layer (0 = off, 1 = full effect).")) {
-                optionLayer.requestBlendStrength(pendingStrength);
-              }
-
-              if (IMGUI_ADD_TOOLTIP(RemixGui::SliderFloat(optionLayerThresholdText.c_str(), &pendingThreshold, 0.0f, 1.0f),
-                                    "Sets the blending strength threshold for this option layer. Only applicable to non-float variables.\n"
-                                    "The option is applied only when the blend strength exceeds this threshold.")) {
-                optionLayer.requestBlendThreshold(pendingThreshold);
-              }
-
-              if (ImGui::CollapsingHeader(optionLayerContentsText.c_str(), collapsingHeaderClosedFlags)) {
-                ImGui::Indent();
-                for (const auto& option : optionLayer.getConfig().getOptions()) {
-                  // Apply filter if one is set
-                  if (!filterLower.empty()) {
-                    std::string optionLower = option.first;
-                    std::transform(optionLower.begin(), optionLower.end(), optionLower.begin(), ::tolower);
-                    if (optionLower.find(filterLower) == std::string::npos) {
-                      continue;
-                    }
-                  }
-                  const std::string optionText = option.first + "=" + option.second;
-                  ImGui::TextWrapped(optionText.c_str());
-                }
-                ImGui::Unindent();
-              }
-              ImGui::Unindent();
+          } else if (isDefaultLayer) {
+            ImGui::Text("Priority: 0");
+            if (ImGui::IsItemHovered()) {
+              ImGui::SetTooltip("Lowest possible priority - every other layer will be applied on top of this layer.");
             }
           } else {
-            // Runtime and default option layers don't have configs in the same way as the other layers, so print them differently
-            // The blend and enabled settings for these layers should not be modified through the GUI.
-            bool headerOpen = false;
-            if (layerKey.priority == RtxOptionLayer::s_runtimeOptionLayerPriority) {
-              displayName = "runtime layer";
-              const std::string optionLayerText = std::to_string(optionLayerCounter++) + ". user.conf and runtime changes";
-              headerOpen = IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader(optionLayerText.c_str(), collapsingHeaderClosedFlags), 
-                  "This layer is initialized from user.conf, but includes any options that are changed at runtime (either through the GUI, the API, or when applying presets).");
-            } else {
-              displayName = "default";
-              const std::string optionLayerText = std::to_string(optionLayerCounter++) + ". default";
-              headerOpen = IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader(optionLayerText.c_str(), collapsingHeaderClosedFlags), 
-                  "This is the default setting for each option, as can be seen in RtxOptions.md.");
-            }
-            if (headerOpen) {
-              ImGui::Indent();
-              if (layerKey.priority == RtxOptionLayer::s_runtimeOptionLayerPriority) {
-                ImGui::Text("Priority: MAX");
-                if (ImGui::IsItemHovered()) {
-                  ImGui::SetTooltip("Highest possible priority - any changes made in this layer will apply fully regardless of options in other layers.\n"
-                    "The actual priority value is 4,294,967,295, or uint32's max value.");
-                }
-              } else {
-                ImGui::Text("Priority: 0");
-                if (ImGui::IsItemHovered()) {
-                  ImGui::SetTooltip("Lowest possible priority - every other layer will be applied on top of this layer.");
-                }
-              }
-              const std::string optionLayerContentsText = "Contents###Contents_" + displayName;
-              
-              if (ImGui::CollapsingHeader(optionLayerContentsText.c_str(), collapsingHeaderClosedFlags)) {
-                ImGui::Indent();
-                
-                // For runtime layer, iterate through all options and find those with runtime layer values
-                // (the runtime layer's config is empty since values are stored in each option's optionLayerValueQueue)
-                for (const auto& [optionHash, optionPtr] : RtxOptionImpl::getGlobalRtxOptionMap()) {
-                  const RtxOptionImpl& rtxOption = *optionPtr;
-                  // Check if this option has a runtime layer value (first entry has runtime priority)
-                  if (!rtxOption.optionLayerValueQueue.empty() &&
-                      rtxOption.optionLayerValueQueue.begin()->first.priority == optionLayer.getPriority()) {
-                    const std::string fullName = rtxOption.getFullName();
-                    
-                    // Apply filter if one is set
-                    if (!filterLower.empty()) {
-                      std::string optionLower = fullName;
-                      std::transform(optionLower.begin(), optionLower.end(), optionLower.begin(), ::tolower);
-                      if (optionLower.find(filterLower) == std::string::npos) {
-                        continue;
-                      }
-                    }
-                    
-                    const std::string optionText = fullName + "=" + 
-                      rtxOption.genericValueToString(rtxOption.optionLayerValueQueue.begin()->second.value);
-                    ImGui::TextWrapped(optionText.c_str());
-                  }
-                }
-                ImGui::Unindent();
-              }
-              ImGui::Unindent();
+            ImGui::Text("Priority: %u", optionLayer.getLayerKey().priority);
+            if (ImGui::IsItemHovered()) {
+              ImGui::SetTooltip(
+                "Layers are applied starting with the lowest priority layer, ending with the highest.\n"
+                "Each layer overrides the values written before it.\n"
+                "If a layer's blendWeight is not 1 and the option is a float or Vector type,\n"
+                "then the values will be calculated as LERP(previousValue, layerValue, blendWeight).");
             }
           }
-        }
+          
+          // Enable/blend controls only for saveable config layers (Remix Config, User, dynamically loaded mods)
+          if (hasSaveableConfig && !isUserLayer) {
+            const std::string optionLayerEnabledText = "Enabled###Enabled_" + displayName;
+            const std::string optionLayerStrengthText = " Strength###Strength_" + displayName;
+            const std::string optionLayerThresholdText = " Threshold###Threshold_" + displayName;
+            
+            if (IMGUI_ADD_TOOLTIP(ImGui::Checkbox(optionLayerEnabledText.c_str(), &pendingEnabled), "Check to enable the option layer. Uncheck to disable it.")) {
+              optionLayer.requestEnabled(pendingEnabled);
+            }
 
-        ImGui::Unindent();
+            if (IMGUI_ADD_TOOLTIP(ImGui::SliderFloat(optionLayerStrengthText.c_str(), &pendingStrength, 0.0f, 1.0f),
+                                  "Adjusts the blending strength of this option layer (0 = off, 1 = full effect).")) {
+              optionLayer.requestBlendStrength(pendingStrength);
+            }
+
+            if (IMGUI_ADD_TOOLTIP(ImGui::SliderFloat(optionLayerThresholdText.c_str(), &pendingThreshold, 0.0f, 1.0f),
+                                  "Sets the blending strength threshold for this option layer.")) {
+              optionLayer.requestBlendThreshold(pendingThreshold);
+            }
+          }
+          
+          // Action buttons only for saveable config layers
+          if (hasSaveableConfig) {
+            OptionLayerUI::renderLayerButtons(optionLayerPtr.get(), displayName.c_str());
+          }
+          
+          // Contents section
+          const std::string optionLayerContentsText = "Contents###Contents_" + displayName;
+          if (RemixGui::CollapsingHeader(optionLayerContentsText.c_str(), collapsingHeaderClosedFlags)) {
+            ImGui::Indent();
+            OptionLayerUI::displayContents(optionLayer, filterLower);
+            ImGui::Unindent();
+          }
+          
+          ImGui::Unindent();
+        }
       }
 
-      if (RemixGui::CollapsingHeader("UI Options")) {
-        ImGui::Indent();
+      ImGui::Unindent();
+    }
 
-        if (m_pendingUIOptionsScroll) {
-          ImGui::SetScrollHereY(0.0f);
-          m_pendingUIOptionsScroll = false;
-        }
+    if (RemixGui::CollapsingHeader("UI Options")) {
+      ImGui::Indent();
 
-        {
-          if (RemixGui::Checkbox("Compact UI", &compactGuiObject())) {
-            // Scroll to UI Options on the next frame
-            m_pendingUIOptionsScroll = true;
-          }
-        }
+      if (m_pendingUIOptionsScroll) {
+        ImGui::SetScrollHereY(0.0f);
+        m_pendingUIOptionsScroll = false;
+      }
 
-        RemixGui::Checkbox("Always Developer Menu", &RtxOptions::defaultToAdvancedUIObject());
-
-        if (RemixGui::SliderFloat("Background Alpha", &backgroundAlphaObject(), 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp)) {
-          adjustStyleBackgroundAlpha(backgroundAlpha());
-        }
-
-        
-        if (RemixGui::Checkbox("Use Large UI", &largeUiModeObject())) {
+      {
+        if (RemixGui::Checkbox("Compact UI", &compactGuiObject())) {
+          // Scroll to UI Options on the next frame
           m_pendingUIOptionsScroll = true;
         }
-        
+      }
 
-        {
-          constexpr float indent = 60.0f;
-          ImGui::PushID("gui theme");
-          ImGui::Dummy(ImVec2(0, 2));
-          ImGui::Text("GUI Theme:");
-          ImGui::PushItemWidth(ImGui::GetContentRegionMax().x - indent);
+      RemixGui::Checkbox("Always Developer Menu", &RtxOptions::defaultToAdvancedUIObject());
 
-          if (themeCombo.getKey(&themeGuiObject())) {
-            m_pendingUIOptionsScroll = true;
-          }
+      if (RemixGui::SliderFloat("Background Alpha", &backgroundAlphaObject(), 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp)) {
+        adjustStyleBackgroundAlpha(backgroundAlpha());
+      }
 
-          ImGui::PopItemWidth();
-          ImGui::PopID();
+      
+      if (RemixGui::Checkbox("Use Large UI", &largeUiModeObject())) {
+        m_pendingUIOptionsScroll = true;
+      }
+      
+
+      {
+        constexpr float indent = 60.0f;
+        ImGui::PushID("gui theme");
+        ImGui::Dummy(ImVec2(0, 2));
+        ImGui::Text("GUI Theme:");
+        ImGui::PushItemWidth(ImGui::GetContentRegionMax().x - indent);
+
+        if (themeCombo.getKey(&themeGuiObject())) {
+          m_pendingUIOptionsScroll = true;
         }
 
-        ImGui::Unindent();
+        ImGui::PopItemWidth();
+        ImGui::PopID();
       }
+
+      ImGui::Unindent();
     }
 
     ImGui::PopItemWidth();
@@ -2391,7 +1950,7 @@ namespace dxvk {
       return sceneManager.getAssetReplacer()->getReplacementMaterial(texHash) != nullptr;
     }
 
-    std::string makeTextureInfo(XXH64_hash_t texHash, bool isMaterialReplacement) {
+    std::string makeTextureInfo(XXH64_hash_t texHash, bool isMaterialReplacement, bool includeLayerInfo = true) {
       auto iter = g_imguiTextureMap.find(texHash);
       if (iter == g_imguiTextureMap.end()) {
         return {};
@@ -2409,109 +1968,96 @@ namespace dxvk {
       str << formatName << '\n';
       str << "Hash: " << hashToString(texHash) << '\n';
       
+      if (!includeLayerInfo) {
+        return str.str();
+      }
+      
+      // For each category, show which layers add/remove this hash
+      for (const auto& category : rtxTextureOptions) {
+        if (!category.textureSetOption) {
+          continue;
+        }
+        
+        std::string layerValues = RemixGui::FormatOptionLayerValues(category.textureSetOption, texHash, true);
+        if (!layerValues.empty()) {
+          str << '\n' << category.displayName << ":\n" << layerValues;
+        }
+      }
+      
       return str.str();
-    }
-
-    // State for hash removal warning popup
-    namespace {
-      bool g_showWarning = false;
-      XXH64_hash_t g_pendingHash = kEmptyHash;
-      std::string g_pendingCategoryId;
-      std::string g_pendingConfigName;
-
-      void openHashRemovalWarning(XXH64_hash_t textureHash, const char* uniqueId, const std::string_view configName, RtxOption<fast_unordered_set>* textureSet) {
-        g_showWarning = true;
-        g_pendingHash = textureHash;
-        g_pendingCategoryId = uniqueId;
-        g_pendingConfigName = configName,
-        ImGui::OpenPopup("Hash Removal Warning");
-      }
-
-      void closeHashRemovalWarning() {
-        g_showWarning = false;
-        g_pendingHash = kEmptyHash;
-        g_pendingCategoryId.clear();
-        g_pendingConfigName.clear();
-      }
-
-      // Returns true if the popup is being shown
-      bool showHashRemovalWarning() {
-        if (!g_showWarning) {
-          return false;
-        }
-
-        bool popupOpen = true;
-        if (ImGui::BeginPopupModal("Hash Removal Warning", &popupOpen, ImGuiWindowFlags_AlwaysAutoResize)) {
-          ImGui::TextWrapped("WARNING: Cannot remove this texture!");
-          ImGui::Separator();
-          ImGui::Spacing();
-          
-          ImGui::TextWrapped(
-            "This texture's hash is saved in a non-runtime config file (%s) and cannot be removed through the run-time interface.\nTo remove it, you must manually edit the %s config file and remove the texture hash from the texture category.", g_pendingConfigName.c_str(), g_pendingConfigName.c_str());
-          
-          ImGui::Spacing();
-          ImGui::Separator();
-          ImGui::Spacing();
-          
-          ImGui::Text("Hash: 0x%016llX", g_pendingHash);
-          ImGui::Text("Category: %s", g_pendingCategoryId.c_str());
-          
-          ImGui::Spacing();
-          ImGui::Separator();
-          ImGui::Spacing();
-
-          // Center the buttons
-          float buttonWidth = 120.0f;
-          float totalWidth = buttonWidth * 2 + ImGui::GetStyle().ItemSpacing.x;
-          float offsetX = (ImGui::GetContentRegionAvail().x - totalWidth) * 0.5f;
-
-          if (offsetX > 0) {
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offsetX);
-          }
-
-          if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
-            closeHashRemovalWarning();
-            ImGui::CloseCurrentPopup();
-          }
-
-          ImGui::EndPopup();
-          return true;
-        }
-
-        if (!popupOpen) {
-          closeHashRemovalWarning();
-        }
-
-        return false;
-      }
     }
 
     void toggleTextureSelection(XXH64_hash_t textureHash, const char* uniqueId, RtxOption<fast_unordered_set>* textureSet) {
       if (textureHash == kEmptyHash) {
         return;
       }
+      
+      // Determine if user wants to add (currently unchecked) or remove (currently checked)
+      const bool userWantsRemove = textureSet->containsHash(textureHash);
 
-      const char* action;
-      if (textureSet->containsHash(textureHash)) {
-        // Check if this hash exists in config layers
-        const std::string_view configFileName = textureSet->retrieveNonRuntimeConfigName(textureHash);
-        if (!configFileName.empty()) {
-          // Show warning popup instead of immediately removing
-          openHashRemovalWarning(textureHash, uniqueId, configFileName, textureSet);
-          return; // Don't remove yet - wait for user confirmation
-        } else {
-          // Safe to remove - only exists in runtime layer
-          textureSet->removeHash(textureHash);
-          action = "removed";
+      // Analyze the layer state in a single pass
+      const RtxOptionLayer* targetLayer = textureSet->getTargetLayer();
+      const auto& targetKey = targetLayer->getLayerKey();
+      
+      // Track target layer's opinion and strongest weaker layer's opinion
+      bool targetHasPositive = false;
+      bool targetHasNegative = false;
+      bool weakerLayerAddsHash = false;  // True if strongest weaker layer adds this hash
+      
+      textureSet->forEachLayerValue([&](const RtxOptionLayer* layer, const GenericValue& value) {
+        const HashSetLayer* hashSet = value.hashSet;
+        const auto& layerKey = layer->getLayerKey();
+        
+        if (layerKey == targetKey) {
+          targetHasPositive = hashSet->hasPositive(textureHash);
+          targetHasNegative = hashSet->hasNegative(textureHash);
+        } else if (targetKey < layerKey) {
+          // First weaker layer with an opinion - determines what happens without target layer
+          weakerLayerAddsHash = hashSet->hasPositive(textureHash);
+          return false; // Stop iteration
         }
-      } else {
-        textureSet->addHash(textureHash);
-        action = "added";
-      }
+        return true; // Continue
+      }, textureHash);
 
-      char buffer[256];
-      sprintf_s(buffer, "%s - %s %016llX\n", uniqueId, action, textureHash);
-      Logger::info(buffer);
+      // Lambda to apply the user's intended action to the target layer
+      auto applyAction = [textureSet, textureHash, targetLayer, userWantsRemove, weakerLayerAddsHash, uniqueId,
+                          targetHasPositive, targetHasNegative]() {
+        const char* action;
+        if (userWantsRemove) {
+          // User wants to remove this hash from the resolved set
+          if (!targetHasNegative) {
+            // Either the target has a positive opinion, or no opinion at all
+            // In both cases, create a negative opinion to express "I don't want this"
+            textureSet->removeHash(textureHash, targetLayer);
+            action = "removed (negative opinion)";
+          } else {
+            // Already has a negative opinion - nothing to do
+            action = "already removed";
+          }
+        } else {
+          // User wants to add this hash to the resolved set
+          if (!targetHasPositive) {
+            // Either the target has a negative opinion, or no opinion at all
+            // In both cases, create a positive opinion to express "I want this"
+            textureSet->addHash(textureHash, targetLayer);
+            action = "added (positive opinion)";
+          } else {
+            // Already has a positive opinion - nothing to do
+            action = "already added";
+          }
+        }
+
+        char buffer[256];
+        sprintf_s(buffer, "%s - %s %016llX\n", uniqueId, action, textureHash);
+        Logger::info(buffer);
+      };
+
+      // Check for blocking layers using the standardized popup system.
+      // If blocked, popup is shown and applyAction will be called after user clears blockers.
+      // If not blocked, apply directly.
+      if (!RemixGui::CheckRtxOptionPopups(textureSet, textureHash, applyAction)) {
+        applyAction();
+      }
     }
 
     RtxOption<fast_unordered_set>* findTextureSetByUniqueId(const char* uniqueId) {
@@ -2587,7 +2133,7 @@ namespace dxvk {
         if (ImGui::BeginPopup(POPUP_NAME)) {
           const XXH64_hash_t texHash = g_holdingTexture.load();
           if (texHash != kEmptyHash) {
-            ImGui::Text("Texture Info:\n%s", makeTextureInfo(texHash, isMaterialReplacement(sceneMgr, texHash)).c_str());
+            ImGui::Text("Texture Info:\n%s", makeTextureInfo(texHash, isMaterialReplacement(sceneMgr, texHash), false).c_str());
             if (ImGui::Button("Copy Texture hash##texture_popup")) {
               ImGui::SetClipboardText(hashToString(texHash).c_str());
             }
@@ -2603,37 +2149,36 @@ namespace dxvk {
                 continue;
               }
               
-              // Check if this hash exists in config layers (non-runtime)
-              bool existsInConfigLayers = !rtxOption.textureSetOption->retrieveNonRuntimeConfigName(texHash).empty();
+              // Quick check for blocking layer (need this for display name)
+              bool hasBlockingLayer = false;
+              const RtxOptionLayer* targetLayer = rtxOption.textureSetOption->getTargetLayer();
+              if (targetLayer) {
+                hasBlockingLayer = rtxOption.textureSetOption->getBlockingLayer(targetLayer, texHash) != nullptr;
+              }
               
-              // Build display name with warning indicator if hash exists in config layer and is currently checked
+              // Build display name with warning indicator if hash is blocked by higher priority layer
               std::string displayName = rtxOption.displayName;
-              std::string tooltipText = rtxOption.textureSetOption->getDescription();
-              const bool ineffectiveDisable = existsInConfigLayers && rtxOption.bufferToggle;
-              if (ineffectiveDisable) {
-                // Add warning indicator to the label
+              if (hasBlockingLayer) {
                 displayName = std::string(rtxOption.displayName) + " [!]";
-                tooltipText = std::string(rtxOption.textureSetOption->getDescription()) + 
-                  "\n\nWARNING: This hash exists in a config file (rtx.conf, mod config, etc.).\n"
-                  "You must edit the source config file to truly remove it.\n";
-
-
-                ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f); // Dim the checkbox but keep it functional
               }
 
               if (RemixGui::Checkbox(displayName.c_str(), &rtxOption.bufferToggle)) {
                 toggleTextureSelection(texHash, rtxOption.uniqueId, rtxOption.textureSetOption);
               }
-
-              if (ineffectiveDisable) {
-                ImGui::PopStyleVar();
+              
+              // Only build the expensive tooltip when this item is actually hovered
+              if (ImGui::IsItemHovered()) {
+                std::ostringstream tooltipStream;
+                tooltipStream << rtxOption.textureSetOption->getDescription() << "\n";
+                
+                std::string layerValues = RemixGui::FormatOptionLayerValues(rtxOption.textureSetOption, texHash, false);
+                if (!layerValues.empty()) {
+                  tooltipStream << "\nPer-layer status for this hash:\n" << layerValues;
+                }
+                
+                ImGui::SetTooltip("%s", tooltipStream.str().c_str());
               }
-
-              RemixGui::SetTooltipToLastWidgetOnHover(tooltipText.c_str());
             }
-
-            // Show hash removal warning popup if needed
-            showHashRemovalWarning();
 
             ImGui::EndPopup();
             return texHash;
@@ -2741,7 +2286,9 @@ namespace dxvk {
         }
       }
 
-      if (legacyTextureGuiShowAssignedOnly()) {
+      // Only apply "show assigned only" filtering when using the legacy split texture GUI
+      // When showLegacyTextureGui() is false, we want to show ALL textures in the single grid
+      if (showLegacyTextureGui() && legacyTextureGuiShowAssignedOnly()) {
         if (std::string_view { uniqueId } == Uncategorized) {
           if (textureHasSelection) {
             continue; // Currently handling the uncategorized texture tab and current texture is assigned to a category -> skip
@@ -2826,7 +2373,7 @@ namespace dxvk {
               rtxTextureSelection = str::format(rtxTextureSelection, " - ", rtxOption.displayName, "\n");
             }
           }
-          ImGui::SetTooltip("%s(Left click to assign categories. Middle click to copy a texture hash.)\n\nCurrent categories:%s",
+          ImGui::SetTooltip("%s\n(Left click to assign categories. Middle click to copy a texture hash.)\n\nCurrent categories:%s",
                             makeTextureInfo(texHash, isMaterialReplacement(common->getSceneManager(), texHash)).c_str(),
                             rtxTextureSelection.empty() ? "\n - None\n" : rtxTextureSelection.c_str());
           if (ImGui::IsMouseReleased(ImGuiMouseButton_Middle)) {
@@ -3043,22 +2590,27 @@ namespace dxvk {
       {
         constexpr int step = 25;
         int percentage = static_cast<int>(round(100.f * RtxOptions::textureGridThumbnailScale()));
+        bool changed = false;
 
         float buttonsize = ImGui::GetFont() ? ImGui::GetFont()->FontSize * 1.3f : 4;
         if (ImGui::Button("-##thumbscale", { buttonsize, buttonsize })) {
           percentage = std::max(25, percentage - step);
+          changed = true;
         }
         ImGui::SameLine();
         if (ImGui::Button("+##thumbscale", { buttonsize, buttonsize })) {
           percentage = std::min(300, percentage + step);
+          changed = true;
         }
         ImGui::SameLine();
         ImGui::Text("Texture Thumbnail Scale: %d%%", percentage);
         if (ImGui::IsItemHovered()) {
-          RemixGui::SetTooltipUnformatted(RtxOptions::textureGridThumbnailScale.getDescription());
+          RemixGui::SetTooltipUnformatted(RemixGui::BuildRtxOptionTooltip(&RtxOptions::textureGridThumbnailScale).c_str());
         }
 
-        RtxOptions::textureGridThumbnailScale.setDeferred(static_cast<float>(percentage) / 100.f);
+        if (changed) {
+          RtxOptions::textureGridThumbnailScale.setDeferred(static_cast<float>(percentage) / 100.f);
+        }
       }
 
       RemixGui::Checkbox("Split Texture Category List", &showLegacyTextureGuiObject());
@@ -3067,6 +2619,42 @@ namespace dxvk {
       ImGui::EndDisabled();
 
       separator();
+
+      // One-time migration button: only show if there are texture hashes incorrectly stored in user.conf
+      {
+        const RtxOptionLayer* userLayer = RtxOptionLayer::getUserLayer();
+        bool hasTexturesInUserConf = false;
+        if (userLayer) {
+          for (const auto& rtxOption : rtxTextureOptions) {
+            if (rtxOption.textureSetOption && rtxOption.textureSetOption->hasValueInLayer(userLayer)) {
+              hasTexturesInUserConf = true;
+              break;
+            }
+          }
+        }
+        
+        if (hasTexturesInUserConf) {
+          ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7f, 0.4f, 0.1f, 1.0f));
+          ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.8f, 0.5f, 0.2f, 1.0f));
+          if (IMGUI_ADD_TOOLTIP(ImGui::Button("Migrate user.conf Textures"), 
+              "One-time fix: Move texture hashes from user.conf to rtx.conf.\n\n"
+              "In previous versions, texture categories were incorrectly saved to user.conf.\n"
+              "This button migrates them to rtx.conf where they belong.\n\n"
+              "After clicking, use 'Save rtx.conf Layer' to write changes to disk.")) {
+            RtxOptionLayer* rtxConfLayer = RtxOptionLayer::getRtxConfLayer();
+            if (rtxConfLayer) {
+              for (auto& rtxOption : rtxTextureOptions) {
+                if (rtxOption.textureSetOption) {
+                  rtxOption.textureSetOption->moveLayerValue(userLayer, rtxConfLayer);
+                }
+              }
+              Logger::info("[RTX Option]: Migrated texture hashes from user.conf to rtx.conf");
+            }
+          }
+          ImGui::PopStyleColor(2);
+          separator();
+        }
+      }
 
       if (showLegacyTextureGui()) {
         ImGui::TextUnformatted(
@@ -3120,7 +2708,7 @@ namespace dxvk {
           spacing();
         }
         for (const RtxTextureOption& category : rtxTextureOptions) {
-          showLegacyGui(category.uniqueId, category.displayName, category.textureSetOption->getDescription());
+          showLegacyGui(category.uniqueId, category.displayName, RemixGui::BuildRtxOptionTooltip(category.textureSetOption).c_str());
         }
 
         // Check if last saved category was closed this frame
@@ -3594,7 +3182,6 @@ namespace dxvk {
     }
 
     bool dlfgChanged = RemixGui::Checkbox("Enable DLSS Frame Generation", &DxvkDLFG::enableObject());
-    m_userGraphicsSettingChanged |= dlfgChanged;
     if (supportsMultiFrame) {
       dlfgMfgModeCombo.getKey(&DxvkDLFG::maxInterpolatedFramesObject());
     }
@@ -3634,7 +3221,7 @@ namespace dxvk {
     {
       bool disableReflexUI = ctx->isDLFGEnabled();
       ImGui::BeginDisabled(disableReflexUI);
-      m_userGraphicsSettingChanged |= reflexModeCombo.getKey(&RtxOptions::reflexModeObject());
+      reflexModeCombo.getKey(&RtxOptions::reflexModeObject());
       ImGui::EndDisabled();
     }
 
@@ -3858,7 +3445,7 @@ namespace dxvk {
 
           // Show resolution slider only for Custom preset
           if (DxvkXeSS::XessOptions::preset() == XeSSPreset::Custom) {
-            m_userGraphicsSettingChanged |= RemixGui::SliderFloat("Resolution Scale", &RtxOptions::resolutionScaleObject(), 0.1f, 1.0f, "%.2f");
+            RemixGui::SliderFloat("Resolution Scale", &RtxOptions::resolutionScaleObject(), 0.1f, 1.0f, "%.2f");
           }
 
           // Display XeSS internal resolution
@@ -3905,7 +3492,6 @@ namespace dxvk {
         RemixGui::Checkbox("Track Particle Object", &RtxOptions::trackParticleObjectsObject());
 
         RemixGui::SliderFloat("Resolve Transparency Threshold", &RtxOptions::resolveTransparencyThresholdObject(), 0.0f, 1.0f);
-        RtxOptions::resolveOpaquenessThreshold.setDeferred(std::max(RtxOptions::resolveTransparencyThreshold(), RtxOptions::resolveOpaquenessThreshold()));
         RemixGui::SliderFloat("Resolve Opaqueness Threshold", &RtxOptions::resolveOpaquenessThresholdObject(), 0.0f, 1.0f);
 
         ImGui::Unindent();
@@ -4469,10 +4055,6 @@ namespace dxvk {
           RemixGui::DragFloat("Distance Fade Min", &ViewDistanceOptions::distanceFadeMinObject(), 0.1f, 0.0f, ViewDistanceOptions::distanceFadeMax(), "%.2f", sliderFlags);
           RemixGui::DragFloat("Distance Fade Max", &ViewDistanceOptions::distanceFadeMaxObject(), 0.1f, ViewDistanceOptions::distanceFadeMin(), 0.0f, "%.2f", sliderFlags);
           RemixGui::DragFloat("Noise Scale", &ViewDistanceOptions::noiseScaleObject(), 0.1f, 0.0f, 0.0f, "%.2f", sliderFlags);
-
-          // Note: ImGui's limits do not apply for text entry for whatever reason so we need to clamp these options manually to ensure they do not trigger asserts.
-          ViewDistanceOptions::distanceFadeMin.setDeferred(std::min(ViewDistanceOptions::distanceFadeMin(), ViewDistanceOptions::distanceFadeMax()));
-          ViewDistanceOptions::distanceFadeMax.setDeferred(std::max(ViewDistanceOptions::distanceFadeMin(), ViewDistanceOptions::distanceFadeMax()));
         }
       }
 

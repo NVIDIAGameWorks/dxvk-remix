@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -1094,16 +1094,14 @@ namespace {
 
     std::string strKey = std::string{ key };
 
-    const auto& globalRtxOptions = dxvk::RtxOptionImpl::getGlobalRtxOptionMap();
-    const XXH64_hash_t optionHash = dxvk::StringToXXH64(strKey, 0);
-    auto found = globalRtxOptions.find(optionHash);
-    if (found == globalRtxOptions.end()) {
+    dxvk::RtxOptionImpl* option = dxvk::RtxOptionImpl::getOptionByFullName(strKey);
+    if (!option) {
       return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
     }
 
     dxvk::Config newSetting;
     newSetting.setOptionMove(std::move(strKey), std::string{ value });
-    found->second->readOption(newSetting, dxvk::RtxOptionImpl::ValueType::PendingValue);
+    option->readOption(newSetting, dxvk::RtxOptionLayer::getUserLayer());
 
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }

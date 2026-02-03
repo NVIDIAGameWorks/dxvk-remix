@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -38,12 +38,32 @@
 #include "rtx_global_volumetrics.h"
 
 namespace dxvk {
-  std::unique_ptr<RtxOptions> RtxOptions::m_instance = nullptr;
+  RtxOptions* RtxOptions::s_instance = nullptr;
+  HashRule RtxOptions::s_geometryHashGenerationRule = 0;
+  HashRule RtxOptions::s_geometryAssetHashRule = 0;
+
   
   void RtxOptions::graphicsPresetOnChange(DxvkDevice* device) {
     // device will be nullptr during initial config loading.
     if (device == nullptr) {
       return;
+    }
+
+    // When switching to Custom preset, migrate ALL Quality layer settings to User layer.
+    // This allows users to customize settings that were previously controlled by the preset.
+    // NOTE: this does not run during the initial load due to the device nullptr check above.
+    if (RtxOptions::graphicsPreset() == GraphicsPreset::Custom) {
+      const RtxOptionLayer* qualityLayer = RtxOptionLayer::getQualityLayer();
+      const RtxOptionLayer* userLayer = RtxOptionLayer::getUserLayer();
+      
+      if (qualityLayer && userLayer) {
+        // Migrate ALL options from Quality layer to User layer (not just those with the flag)
+        for (auto& [hash, optionPtr] : RtxOptionImpl::getGlobalOptionMap()) {
+          optionPtr->moveLayerValue(qualityLayer, userLayer);
+        }
+        Logger::info("[Graphics Preset] Switched to Custom - Quality settings migrated to User layer");
+      }
+      return;  // Don't apply preset settings when Custom - Quality layer is now empty
     }
 
     // TODO[REMIX-1482]: Currently tests expect to skip applying the graphics preset, so this needs to be skipped in test runs.
@@ -67,7 +87,37 @@ namespace dxvk {
     BridgeMessageChannel::get().send("UWM_REMIX_UIACTIVE_MSG", doBlock ? 1 : 0, 0);
   }
 
+  void RtxOptions::dynamicDecalTexturesOnChange(DxvkDevice* device) {
+    if (dynamicDecalTextures.migrateDeprecatedValuesTo(decalTextures)) {
+      Logger::info("[Deprecated Config] rtx.dynamicDecalTextures has been deprecated, "
+                   "we have moved all your textures from this list to rtx.decalTextures, "
+                   "no further action is required from you. "
+                   "Please re-save your rtx config to get rid of this message.");
+    }
+  }
+
+  void RtxOptions::singleOffsetDecalTexturesOnChange(DxvkDevice* device) {
+    if (singleOffsetDecalTextures.migrateDeprecatedValuesTo(decalTextures)) {
+      Logger::info("[Deprecated Config] rtx.singleOffsetDecalTextures has been deprecated, "
+                   "we have moved all your textures from this list to rtx.decalTextures, "
+                   "no further action is required from you. "
+                   "Please re-save your rtx config to get rid of this message.");
+    }
+  }
+
+  void RtxOptions::nonOffsetDecalTexturesOnChange(DxvkDevice* device) {
+    if (nonOffsetDecalTextures.migrateDeprecatedValuesTo(decalTextures)) {
+      Logger::info("[Deprecated Config] rtx.nonOffsetDecalTextures has been deprecated, "
+                   "we have moved all your textures from this list to rtx.decalTextures, "
+                   "no further action is required from you. "
+                   "Please re-save your rtx config to get rid of this message.");
+    }
+  }
+
   void RtxOptions::updateUpscalerFromDlssPreset() {
+    // Code-driven changes for DLSS preset (automatically routes to User layer when preset is Custom)
+    RtxOptionLayerTarget layerTarget(RtxOptionEditTarget::Derived);
+
     if (RtxOptions::Automation::disableUpdateUpscaleFromDlssPreset()) {
       return;
     }
@@ -90,6 +140,9 @@ namespace dxvk {
   }
 
   void RtxOptions::updateUpscalerFromNisPreset() {
+    // Code-driven changes for NIS preset (automatically routes to User layer when preset is Custom)
+    RtxOptionLayerTarget layerTarget(RtxOptionEditTarget::Derived);
+
     switch (nisPreset()) {
     case NisPreset::Performance:
       resolutionScale.setDeferred(0.5f);
@@ -107,6 +160,9 @@ namespace dxvk {
   }
 
   void RtxOptions::updateUpscalerFromTaauPreset() {
+    // Code-driven changes for TAAU preset (automatically routes to User layer when preset is Custom)
+    RtxOptionLayerTarget layerTarget(RtxOptionEditTarget::Derived);
+
     switch (taauPreset()) {
     case TaauPreset::UltraPerformance:
       resolutionScale.setDeferred(0.33f);
@@ -127,6 +183,9 @@ namespace dxvk {
   }
 
   void RtxOptions::updatePresetFromUpscaler() {
+    // Code-driven changes for upscaler preset (automatically routes to User layer when preset is Custom)
+    RtxOptionLayerTarget layerTarget(RtxOptionEditTarget::Derived);
+
     if (RtxOptions::upscalerType() == UpscalerType::None &&
         reflexMode() == ReflexMode::None) {
       RtxOptions::dlssPreset.setDeferred(DlssPreset::Off);
@@ -218,6 +277,9 @@ namespace dxvk {
   }
 
   void RtxOptions::updatePathTracerPreset(PathTracerPreset preset) {
+    // Code-driven changes for path tracer preset (automatically routes to User layer when preset is Custom)
+    RtxOptionLayerTarget layerTarget(RtxOptionEditTarget::Derived);
+
     if (preset == PathTracerPreset::RayReconstruction) {
       // RTXDI
       DxvkRtxdiRayQuery::stealBoundaryPixelSamplesWhenOutsideOfScreen.setDeferred(false);
@@ -286,6 +348,9 @@ namespace dxvk {
   }
 
   void RtxOptions::updateLightingSetting() {
+    // Code-driven changes for lighting setting (automatically routes to User layer when preset is Custom)
+    RtxOptionLayerTarget layerTarget(RtxOptionEditTarget::Derived);
+
     bool isRayReconstruction = RtxOptions::isRayReconstructionEnabled();
     bool isDLSS = RtxOptions::isDLSSEnabled();
     bool isNative = RtxOptions::upscalerType() == UpscalerType::None;
@@ -301,6 +366,9 @@ namespace dxvk {
   }
     
   void RtxOptions::updateGraphicsPresets(DxvkDevice* device) {
+    // Code-driven changes for graphics preset (automatically routes to User layer when preset is Custom)
+    RtxOptionLayerTarget layerTarget(RtxOptionEditTarget::Derived);
+
     // Handle Automatic Graphics Preset (From configuration/default)
 
     if (RtxOptions::graphicsPreset() == GraphicsPreset::Auto) {
@@ -373,9 +441,12 @@ namespace dxvk {
         RtxOptions::lowMemoryGpu.setDeferred(false);
       }
 
-      // TODO[REMIX-4105] all of these are used right after being set, so this needs to be setImmediately.
-      // This should be addressed by REMIX-4109 if that is done before REMIX-4105 is fully cleaned up.
-      RtxOptions::graphicsPreset.setImmediately(preferredDefault);
+      // graphicsPreset itself should go to User layer, not Quality layer
+      // (graphicsPreset controls what goes into Quality, it's not controlled BY Quality)
+      {
+        RtxOptionLayerTarget userTarget(RtxOptionEditTarget::User);
+        RtxOptions::graphicsPreset.setImmediately(preferredDefault);
+      }
     }
 
     auto common = device->getCommon();
@@ -530,6 +601,9 @@ namespace dxvk {
   }
 
   void RtxOptions::resetUpscaler() {
+    // Code-driven changes for upscaler reset (automatically routes to User layer when preset is Custom)
+    RtxOptionLayerTarget layerTarget(RtxOptionEditTarget::Derived);
+    
     RtxOptions::upscalerType.setDeferred(UpscalerType::DLSS);
     reflexMode.setDeferred(ReflexMode::LowLatency);
   }
@@ -559,6 +633,34 @@ namespace dxvk {
   void RtxOptions::pathMaxBouncesOnChange(DxvkDevice* device) {
     // Adjust valid range on pathMinBounces to prevent value above pathMaxBounces
     pathMinBouncesObject().setMaxValue(pathMaxBounces());
+  }
+
+  void RtxOptions::rayPortalModelTextureHashesOnChange(DxvkDevice* device) {
+    // Ensure the Ray Portal texture hashes are always in pairs of 2 and don't exceed maxRayPortalCount
+    std::vector<XXH64_hash_t> trimmedHashes = rayPortalModelTextureHashes();
+    
+    // Must be a multiple of 2
+    if (trimmedHashes.size() % 2 == 1) {
+      trimmedHashes.pop_back();
+    }
+    
+    // Must not exceed maxRayPortalCount
+    if (trimmedHashes.size() > maxRayPortalCount) {
+      trimmedHashes.erase(trimmedHashes.begin() + maxRayPortalCount, trimmedHashes.end());
+    }
+    
+    // Only update if the value changed
+    if (trimmedHashes != rayPortalModelTextureHashes()) {
+      rayPortalModelTextureHashesObject().setDeferred(trimmedHashes);
+    }
+  }
+
+  void RtxOptions::geometryGenerationHashRuleStringOnChange(DxvkDevice* device) {
+    s_geometryHashGenerationRule = createRule("Geometry generation", geometryGenerationHashRuleString());
+  }
+
+  void RtxOptions::geometryAssetHashRuleStringOnChange(DxvkDevice* device) {
+    s_geometryAssetHashRule = createRule("Geometry asset", geometryAssetHashRuleString());
   }
 
   void RtxOptions::rayPortalSamplingWeightMinDistanceOnChange(DxvkDevice* device) {

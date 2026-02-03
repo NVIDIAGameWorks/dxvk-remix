@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -752,7 +752,6 @@ namespace dxvk {
     getSceneManager().onFrameEnd(this, raytracedThisFrame);
 
     // apply changes to RtxOptions after the frame has ended
-    RtxOptionManager::applyPendingValuesOptionLayers();
     RtxOptionManager::applyPendingValues(m_device.ptr(), /* forceOnChange */ false);
 
     // Update stats
@@ -1276,7 +1275,7 @@ namespace dxvk {
     constants.resolveOpaquenessThreshold = RtxOptions::resolveOpaquenessThreshold();
     constants.resolveStochasticAlphaBlendThreshold = m_common->metaComposite().stochasticAlphaBlendOpacityThreshold();
 
-    constants.skyBrightness = RtxOptions::skyBrightness();RtxOptions::skyBrightness();
+    constants.skyBrightness = RtxOptions::skyBrightness();
     constants.isLastCompositeOutputValid = restirGI.isActive() && restirGI.getLastCompositeOutput().matchesWriteFrameIdx(frameIdx - 1);
     constants.isZUp = RtxOptions::zUp();
     constants.enableCullingSecondaryRays = RtxOptions::enableCullingInSecondaryRays();
@@ -1409,8 +1408,9 @@ namespace dxvk {
       // Fallback to ReSTIRGI
       Logger::warn(str::format("[RTX] Neural Radiance Cache is not supported. Switching indirect illumination mode to ReSTIR GI."));
       // TODO[REMIX-4105] trying to use NRC for a frame when it isn't supported will cause a crash, so this needs to be setImmediately.
-      // Should refactor this to use a separate global for the final state, and indicate user preference with the option. 
-      RtxOptions::integrateIndirectMode.setImmediately(IntegrateIndirectMode::ReSTIRGI);
+      // Should refactor this to use a separate global for the final state, and indicate user preference with the option.
+      // Use Quality layer to ensure this overrides the Environment layer (where env vars are stored).
+      RtxOptions::integrateIndirectMode.setImmediately(IntegrateIndirectMode::ReSTIRGI, RtxOptionLayer::getQualityLayer());
     }
   }
 

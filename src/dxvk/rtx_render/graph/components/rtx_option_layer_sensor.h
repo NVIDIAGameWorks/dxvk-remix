@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2025-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -23,15 +23,18 @@
 #pragma once
 
 #include "../rtx_graph_component_macros.h"
-#include "../../rtx_option_layer_manager.h"
-#include "rtx_option_layer_constants.h"
+#include "../../rtx_option_manager.h"
 
 namespace dxvk {
 namespace components {
 
 #define LIST_INPUTS(X) \
   X(RtComponentPropertyType::AssetPath, "", configPath, "Config Path", "The config file for the RtxOptionLayer to read.") \
-  X(RtComponentPropertyType::Float, kDefaultComponentRtxOptionLayerPriority, priority, "Priority", "The priority for the option layer. Numbers are rounded to the nearest positive integer. Higher values are blended on top of lower values. If multiple layers share the same priority, they are ordered alphabetically by config path.", property.minValue = RtxOptionLayer::s_userOptionLayerOffset + 1, property.maxValue = kMaxComponentRtxOptionLayerPriority, property.optional = true)
+  X(RtComponentPropertyType::Float, kDefaultDynamicRtxOptionLayerPriority, priority, "Priority", \
+    "The priority for the option layer. Numbers are rounded to the nearest positive integer. " \
+    "Higher values are blended on top of lower values. If multiple layers share the same priority, " \
+    "they are ordered alphabetically by config path.", property.minValue = kMinDynamicRtxOptionLayerPriority, \
+    property.maxValue = kMaxDynamicRtxOptionLayerPriority, property.optional = true) 
 
 #define LIST_STATES(X)
 
@@ -63,9 +66,8 @@ void RtxOptionLayerSensor::updateRange(const Rc<DxvkContext>& context, const siz
     
     // Look up the layer
     if (!m_configPath[i].empty()) {
-      uint32_t priority = getRtxOptionLayerComponentClampedPriority(m_priority[i]);
-      
-      const RtxOptionLayer* layer = RtxOptionLayerManager::lookupLayer(m_configPath[i], priority);
+      const uint32_t priority = clampComponentLayerPriority(m_priority[i]);
+      const RtxOptionLayer* layer = RtxOptionManager::getLayer({ priority, m_configPath[i] });
       
       if (layer != nullptr) {
         isEnabled = layer->isEnabled();
