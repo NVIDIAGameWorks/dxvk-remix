@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -329,22 +329,8 @@ namespace dxvk {
     }
     // NV-DXVK end
     
-    // NV-DXVK start: Generic config parsing, reduce duped code
-    enum Type {
-      Type_User,
-      Type_App,
-      Type_RtxUser,
-      Type_RtxMod,
-      Type_kSize
-    };
-    struct Desc{
-      std::string name;
-      std::string env;
-      std::string confName;
-    };
-    static const Desc& getDesc(const Type& type) { return m_descs[type]; }
-    template<Type type>
-    static Config getConfig(const std::string& configPath = "");
+    // NV-DXVK start: Config file loading
+    // Load a config file from the specified path
     static Config getOptionLayerConfig(const std::string& configPath);
     // NV-DXVK end
 
@@ -439,13 +425,6 @@ namespace dxvk {
     std::string getOptionValue(
       const char*         option) const;
       
-    // NV-DXVK start: Generic config parsing, reduce duped code
-    static const inline std::array<Desc,Type_kSize> m_descs {
-      Desc{"User","DXVK_CONFIG_FILE","dxvk.conf"},
-      Desc{"App","DXVK_USE_CONF_FOR_EXE",""},
-      Desc{"RtxUser","DXVK_RTX_CONFIG_FILE","rtx.conf"},
-      Desc{"RtxMod","","rtx.conf"}
-    };
     // NV-DXVK end
 
   };

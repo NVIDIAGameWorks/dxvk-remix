@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2025-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -54,7 +54,7 @@ std::string formatFloat(float value) {
   // Float can only precisely represent integers up to ±2^24 (±16,777,216)
   constexpr float kMaxPreciseFloatInt = 1<<24;
   if (std::floor(value) == value && std::abs(value) <= kMaxPreciseFloatInt) {
-    int32_t intValue = static_cast<int32_t>(value);
+    const int32_t intValue = static_cast<int32_t>(value);
     return std::to_string(intValue) + ".0";
   }
   

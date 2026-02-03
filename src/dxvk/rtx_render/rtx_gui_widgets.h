@@ -135,22 +135,48 @@ namespace RemixGui {
 
         id = window->GetID((void*) option);
 
+        bool resetButtonHovered = false;
         if (ImGui::ItemAdd(hitBb, id)) {
-          bool hovered = false;
           bool held = false;
-          bool pressed = ImGui::ButtonBehavior(hitBb, id, &hovered, &held, ImGuiButtonFlags_PressedOnClick);
+          bool pressed = ImGui::ButtonBehavior(hitBb, id, &resetButtonHovered, &held, ImGuiButtonFlags_PressedOnClick);
           if (pressed) {
             option->resetToDefault();
           }
 
           const ImU32 fill = isNonDefault ? ImGui::GetColorU32((ImU32) 0xFFffc734) : ImGui::GetColorU32((ImU32) 0xFF464646);
-          const ImU32 outline = ImGui::GetColorU32(hovered ? ImGuiCol_Text : ImGuiCol_Border);
+          const ImU32 outline = ImGui::GetColorU32(resetButtonHovered ? ImGuiCol_Text : ImGuiCol_Border);
 
           window->DrawList->AddCircleFilled(circleCenter, circleRadius, fill);
           window->DrawList->AddCircle(circleCenter, circleRadius, outline, 0, 1.0f);
 
-          if (hovered) {
-            ImGui::SetTooltip("Reset to default (%s)", option->getName().c_str());
+          if (resetButtonHovered) {
+            ImGui::SetTooltip("Reset to default (%s)", option->getName());
+          }
+        }
+
+        // Show RtxOption tooltip when hovering over label/widget area (but not if another tooltip is already shown)
+        const float x0 = window->WorkRect.Min.x;
+        const float x1 = prevWorkRectMaxX - reservedRightW;
+        const float y0 = startCursorPos.y;
+        const float y1 = startCursorPos.y + lineHeight;
+        
+        if (!resetButtonHovered && ImGui::IsMouseHoveringRect(ImVec2(x0, y0), ImVec2(x1, y1))) {
+          // Check if any tooltip window was created (by code between the construction and destruction of this wrapper)
+          bool tooltipAlreadyShown = false;
+          for (int i = 0; i <= g.TooltipOverrideCount; i++) {
+            char window_name[16];
+            ImFormatString(window_name, 16, "##Tooltip_%02d", i);
+            ImGuiWindow* tooltip_window = ImGui::FindWindowByName(window_name);
+            if (tooltip_window && tooltip_window->Active && !tooltip_window->Hidden) {
+              tooltipAlreadyShown = true;
+              break;
+            }
+          }
+
+          if (!tooltipAlreadyShown) {
+            // Only build the tooltip when actually hovering (BuildRtxOptionTooltip is expensive)
+            std::string tooltipText = RemixGui::BuildRtxOptionTooltip(option);
+            ImGui::SetTooltip("%s", tooltipText.c_str());
           }
         }
       }

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2025-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -50,7 +50,8 @@ namespace dxvk {
       friend class DxvkXeSS;
       friend class ImGUI;
 
-      RTX_OPTION("rtx.xess", XeSSPreset, preset, XeSSPreset::Balanced, "Adjusts XeSS scaling factor, trades quality for performance.");
+      RTX_OPTION_ARGS("rtx.xess", XeSSPreset, preset, XeSSPreset::Balanced, "Adjusts XeSS scaling factor, trades quality for performance.",
+                      args.flags = RtxOptionFlags::UserSetting);
       RTX_OPTION("rtx.xess", float, jitterScale, 1.0f, "Multiplier for XeSS jitter intensity. Values > 1.0 increase jitter, < 1.0 reduce it. Can help reduce aliasing or temporal artifacts.");
       RTX_OPTION("rtx.xess", bool, useOptimizedJitter, true, "Use XeSS-optimized jitter patterns and scaling. When disabled, uses the same jitter as other upscalers.");
       RTX_OPTION("rtx.xess", bool, useRecommendedJitterSequenceLength, true, "Use XeSS 2.1 recommended jitter sequence length calculation based on scaling factor. When disabled, uses the global cameraJitterSequenceLength setting.");

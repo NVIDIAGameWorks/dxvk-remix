@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2025-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -52,7 +52,7 @@ REMIX_COMPONENT( \
 #undef LIST_OUTPUTS
 
 void RtxOptionReadBool::updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
-  auto& globalRtxOptions = RtxOptionImpl::getGlobalRtxOptionMap();
+  auto& globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
   
   for (size_t i = start; i < end; i++) {
     bool value = false;
@@ -63,11 +63,11 @@ void RtxOptionReadBool::updateRange(const Rc<DxvkContext>& context, const size_t
       
       auto optionIt = globalRtxOptions.find(optionHash);
       if (optionIt != globalRtxOptions.end()) {
-        RtxOptionImpl* option = optionIt->second.get();
+        RtxOptionImpl* option = optionIt->second;
         
         // Get the value if it's a bool type
-        if (option->type == OptionType::Bool) {
-          value = option->resolvedValue.b;
+        if (option->getType() == OptionType::Bool) {
+          value = option->getResolvedValue().b;
         } else {
           ONCE(Logger::warn(str::format("RtxOptionReadBool: Option '", optionName, "' is not a bool type.")));
         }

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2025-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -52,7 +52,7 @@ REMIX_COMPONENT( \
 #undef LIST_OUTPUTS
 
 void RtxOptionReadColor3::updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
-  auto& globalRtxOptions = RtxOptionImpl::getGlobalRtxOptionMap();
+  auto& globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
   
   for (size_t i = start; i < end; i++) {
     Vector3 value(0.0f, 0.0f, 0.0f);
@@ -63,11 +63,12 @@ void RtxOptionReadColor3::updateRange(const Rc<DxvkContext>& context, const size
       
       auto optionIt = globalRtxOptions.find(optionHash);
       if (optionIt != globalRtxOptions.end()) {
-        RtxOptionImpl* option = optionIt->second.get();
+        RtxOptionImpl* option = optionIt->second;
         
         // Get the value if it's a Vector3 type (Color3 is stored as Vector3)
-        if (option->type == OptionType::Vector3 && option->resolvedValue.v3 != nullptr) {
-          value = *option->resolvedValue.v3;
+        const auto resolved = option->getResolvedValue();
+        if (option->getType() == OptionType::Vector3 && resolved.v3 != nullptr) {
+          value = *resolved.v3;
         } else {
           ONCE(Logger::warn(str::format("RtxOptionReadColor3: Option '", optionName, "' is not a Vector3/Color3 type.")));
         }

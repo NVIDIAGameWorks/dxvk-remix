@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -63,10 +63,16 @@ namespace dxvk {
     inline bool isChromaticAberrationEnabled() const { return enable() && enableChromaticAberration() && chromaticAberrationAmount() > 0.0f; }
     inline bool isVignetteEnabled() const { return enable() && enableVignette() && vignetteIntensity() > 0.0f; }
 
-    RTX_OPTION_ENV("rtx.postfx", bool, enable, true, "RTX_POST_FX_ENABLE", "Enables post-processing effects.");
-    RTX_OPTION_ENV("rtx.postfx", bool, enableMotionBlur, true, "RTX_POST_FX_MOTION_BLUR_ENABLE", "Enables motion blur post-processing effect.");
-    RTX_OPTION("rtx.postfx", bool, enableChromaticAberration, true, "Enables chromatic aberration post-processing effect.");
-    RTX_OPTION("rtx.postfx", bool, enableVignette, true, "Enables vignette post-processing effect.");
+    RTX_OPTION_ARGS("rtx.postfx", bool, enable, true, "Enables post-processing effects.",
+                    args.environment = "RTX_POST_FX_ENABLE",
+                    args.flags = RtxOptionFlags::UserSetting);
+    RTX_OPTION_ARGS("rtx.postfx", bool, enableMotionBlur, true, "Enables motion blur post-processing effect.",
+                    args.environment = "RTX_POST_FX_MOTION_BLUR_ENABLE",
+                    args.flags = RtxOptionFlags::UserSetting);
+    RTX_OPTION_ARGS("rtx.postfx", bool, enableChromaticAberration, true, "Enables chromatic aberration post-processing effect.",
+                    args.flags = RtxOptionFlags::UserSetting);
+    RTX_OPTION_ARGS("rtx.postfx", bool, enableVignette, true, "Enables vignette post-processing effect.",
+                    args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION("rtx.postfx", bool, desaturateOthersOnHighlight, true, "If true, desaturare all objects that are not highlighted.");
 
   private:

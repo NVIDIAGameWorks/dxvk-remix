@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2025-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -153,7 +153,7 @@ void RtxGraphGUI::showComponentList() {
     ImGui::Text("No graph selected.");
     return;
   }
-  if (ImGui::CollapsingHeader("Components:", ImGuiTreeNodeFlags_DefaultOpen)) {
+  if (RemixGui::CollapsingHeader("Components:", ImGuiTreeNodeFlags_DefaultOpen)) {
     // Show components in a scrollable list with resizable height
     ImGui::BeginChild("ComponentList", ImVec2(0, m_componentListHeight), true, ImGuiWindowFlags_AlwaysVerticalScrollbar);
     
@@ -163,7 +163,7 @@ void RtxGraphGUI::showComponentList() {
       // Component header with collapsible tree node.  Included the index so each section has a unique name.
       std::string headerText = component.typeName + " (" + std::to_string(i) + ")";
       
-      if (ImGui::CollapsingHeader(headerText.c_str())) {
+      if (RemixGui::CollapsingHeader(headerText.c_str())) {
         // Show component description as tooltip on header hover
         if (ImGui::IsItemHovered() && !component.docString.empty()) {
           ImGui::BeginTooltip();

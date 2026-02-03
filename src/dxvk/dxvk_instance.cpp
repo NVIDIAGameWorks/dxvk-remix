@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -392,13 +392,14 @@ namespace dxvk {
     RtxSystemInfo::logReport();
     // NV-DXVK end 
 
-    // NV-DXVK start: Decomposed growing config initialization
+    // NV-DXVK start: Initialize RtxOptions (loads all config files and creates option layers)
     // TODO[REMIX-4106] we need to avoid re-parsing the same config files when dxvk_instance is recreated.
-    initConfigs();
-    // NV-DXVK end 
-
+    RtxOptions::Create();
+    
+    // Get the merged config for DxvkOptions and other queries
+    m_config = RtxOptions::getMergedConfig();
     m_options = DxvkOptions(m_config);
-    RtxOptions::Create(m_config);
+    // NV-DXVK end
 
     // NV-DXVK start: Wait for debugger functionality
     if (m_config.getOption<bool>("dxvk.waitForDebuggerToAttach", false, "DXVK_WAIT_FOR_DEBUGGER_TO_ATTACH"))
@@ -804,111 +805,5 @@ namespace dxvk {
     for (uint32_t i = 0; i < names.count(); i++)
       Logger::info(str::format("  ", names.name(i)));
   }
-  
-  // NV-DXVK start: Custom config loading/logging
-  void DxvkInstance::initConfigs() {
-    
-    // Load configurations
-    // Note: Loading is done in the following order currently, each step overriding values in the previous
-    // configuration values when a conflict exist, resulting in the combined "effective" configuration:
-    // - Configuration defaults in code (Implicit)
-    // - dxvk.conf ("User Config"), can be multiple when set with envvar
-    // - Per-application configuration in code ("Built-in Config" from config.cpp)
-    // - rtx.conf ("RTX User Config"), can be multiple when set with envvar
-    //   - baseGameModPath/rtx.conf (Mod-specific extension of "RTX User Config")
-    m_config = Config();
-    initConfig<Config::Type_User>();
-    initConfig<Config::Type_App>();
-    initConfig<Config::Type_RtxUser>();
-    initConfig<Config::Type_RtxMod>();
-
-    RtxOptionImpl::addRtxOptionLayer("quality.conf", (uint32_t) RtxOptionLayer::SystemLayerPriority::Quality, true, 1.0f, 0.1f);
-    Logger::info("Set quality configs.");
-
-    RtxOptionImpl::addRtxOptionLayer("user.conf", (uint32_t) RtxOptionLayer::SystemLayerPriority::USER, true, 1.0f, 0.1f);
-    Logger::info("Set user realtime configs.");
-
-    RtxOptionManager::initializeRtxOptions();
-    for (const auto& [unusedLayerKey, optionLayerPtr] : RtxOptionImpl::getRtxOptionLayerMap()) {
-      RtxOptionManager::addRtxOptionLayer(*optionLayerPtr);
-    }
-
-    m_config.logOptions("Effective (combined)");
-
-    // Output environment variable info
-    // Todo: This being here is kinda not great as this results in the Environment variables being parsed 3 times
-    // which is quite redundant. Unfortunately this logging can't go in Config::getOption as this function is called
-    // twice (again, redundant) resulting in duplicate messages. Ideally this system should be refactored to get all the
-    // relevant environment variable values for the desired RtxOptions in a loop like this, and then use those when
-    // setting the options up to avoid redundantly making a ton of syscalls. Luckily this code only happens in loading
-    // so it is not a huge performance overhead, and the value of seeing which environment variables are overriding options
-    // is currently more valuable (since they continue to cause problems when unseen in the log).
-
-    bool firstEnvironmentOverride = true;
-
-    for (auto&& option : RtxOptionImpl::getGlobalRtxOptionMap()) {
-      const auto optionName = option.second->getFullName();
-      const auto envVarName = option.second->environment;
-
-      if (envVarName) {
-        const std::string& envVarValue = env::getEnvVar(envVarName);
-
-        if (envVarValue != "") {
-          // Note: Only print out the section header if there's at least one environment variable override.
-          if (firstEnvironmentOverride) {
-            Logger::info("Environment variable option overrides:");
-
-            firstEnvironmentOverride = false;
-          }
-
-          Logger::info(str::format("  ", optionName, " overridden by environment variable: ", envVarName, "=", envVarValue));
-        }
-      }
-    }
-  }
-  
-  template<Config::Type type>
-  void DxvkInstance::initConfig() {
-    const auto name = Config::getDesc(type).name;
-    Logger::info(str::format("Init config: ", name));
-    std::string configPath = "";
-    if constexpr (type == Config::Type_RtxMod) {
-      // Handle games that have native mod support, where the base game looks into another folder for mod, 
-      // and the new asset path is passed in through the command line
-      const auto baseGameModPath = ModManager::getBaseGameModPath(
-        m_config.getOption<std::string>("rtx.baseGameModRegex", "", ""),
-        m_config.getOption<std::string>("rtx.baseGameModPathRegex", "", ""));
-
-      if (baseGameModPath.empty()) {
-        // Skip RtxMod if not present, as it may just pick up a different rtx.mod path
-        Logger::info("No base game mod path found. Skipping initialization.");
-        return;
-      } else {
-        Logger::info(str::format("Found base game mod path: ", baseGameModPath));
-        configPath = baseGameModPath;
-      }
-    }
-    m_confs[type] = Config::getConfig<type>(configPath);
-    m_confs[type].logOptions(name.c_str());
-    m_config.merge(m_confs[type]);
-
-    if constexpr (type == Config::Type_User) {
-      RtxOptionImpl::addRtxOptionLayer("dxvk.conf", (uint32_t) RtxOptionLayer::SystemLayerPriority::DxvkConf, true, 1.0f, 0.1f, &m_confs[type]);
-      Logger::info("Set user specific config.");
-    } else if constexpr (type == Config::Type_App) {
-      // Set config so that any rtx option initialized later will use the value in that config object
-      // The start-up config contains the values from the code and dxvk.conf, only.
-      RtxOptionManager::setStartupConfig(m_config);
-      RtxOptionImpl::addRtxOptionLayer("<APPLICATION DEFAULT>", (uint32_t) RtxOptionLayer::SystemLayerPriority::Default, true, 1.0f, 0.1f, &m_confs[type]);
-      Logger::info("Set startup config.");
-    } else if constexpr ((type == Config::Type_RtxUser) || (type == Config::Type_RtxMod)) {
-      // Set custom config after the RTX user config has been merged into the config and
-      // update the RTX options. Contains values from rtx.conf
-      RtxOptionManager::setCustomConfig(m_config);
-      RtxOptionImpl::addRtxOptionLayer("rtx.conf", (uint32_t) RtxOptionLayer::SystemLayerPriority::RtxConf, true, 1.0f, 0.1f, nullptr);
-      Logger::info("Set custom config.");
-    }
-  }
-  // NV-DXVK end 
   
 }

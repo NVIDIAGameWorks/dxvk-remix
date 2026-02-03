@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2024-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2024-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -54,13 +54,14 @@ namespace dxvk {
       RTX_OPTION_ENV("rtx.neuralRadianceCache", bool, includeDirectLighting, true, "RTX_NRC_INCLUDE_DIRECT_LIGHTING", "");
       RTX_OPTION("rtx.neuralRadianceCache", bool, resetHistory, false, "");
       RTX_OPTION("rtx.neuralRadianceCache", bool, allowRussianRouletteOnUpdate, false, "");
-      RTX_OPTION("rtx.neuralRadianceCache", uint32_t, targetNumTrainingIterations, 4,
+      RTX_OPTION_ARGS("rtx.neuralRadianceCache", uint32_t, targetNumTrainingIterations, 4,
                  "This controls the target number of training iterations to perform each frame,\n"
                  "which in turn determines the ideal number of training records that\n"
                  "the training/update path tracing pass is expected to generate.\n"
                  "Each training batch contains 16K training records derived from path segments\n"
                  "in the the NRC update path tracing pass. For example, 4 training iterations results in 64K training records.\n"
-                 "Higher number results in more responsive NRC cache at the cost of increased workload.\n");
+                 "Higher number results in more responsive NRC cache at the cost of increased workload.\n",
+                 args.flags = RtxOptionFlags::UserSetting);
       public: static void onMaxNumTrainingIterationsChanged(DxvkDevice* device);
       RTX_OPTION_ARGS("rtx.neuralRadianceCache", uint32_t, maxNumTrainingIterations, 16,
                  "This controls the max number of training iterations to perform in a frame.\n"
@@ -93,17 +94,18 @@ namespace dxvk {
                  "The sequence length governs how often the jitter distribution repeats. Setting this to 0 disables jittering."
                  "Training paths are mapped to a subset of pixels every frame, generally there is 1 training path per 100 pixels.\n"
                  "The value to use should be same or slightly higher than the number of pixels per training path so that all pixels get cycled through over a smaller time window.");
-      RTX_OPTION("rtx.neuralRadianceCache", uint8_t, trainingMaxPathBounces, 15,
+      RTX_OPTION_ARGS("rtx.neuralRadianceCache", uint8_t, trainingMaxPathBounces, 15,
                 "The maximum number of indirect bounces the path will be allowed to complete during NRC Update path tracing pass. Must be < 16.\n"
                 "NRC requires this value to be fairly high (8+) for best lighting signal reconstruction.\n"
                 "This value can be lower in games with darker surfaces and higher in games with albedos close to 1\n"
                 "and/or to reconstruct lighting phenomena requiring many bounces.\n"
-                "Setting this parameter to a higher has no to minor performance and moderate memory requirements (~10MiB per bounce) impact.");
+                "Setting this parameter to a higher has no to minor performance and moderate memory requirements (~10MiB per bounce) impact.",
+                args.flags = RtxOptionFlags::UserSetting);
       RTX_OPTION("rtx.neuralRadianceCache", bool, clearBuffersOnFrameStart, false, "Clears buffers for NRC before they are written to by the the Pathtracer.");
       RTX_OPTION("rtx.neuralRadianceCache", bool, resolveAddPathTracedRadiance, true, "");
       RTX_OPTION("rtx.neuralRadianceCache", bool, resolveAddNrcQueriedRadiance, true, "");
       RTX_OPTION("rtx.neuralRadianceCache", bool, enableNrcResolver, false, "Enables NRC radiance resolve by NRC's resolver. Disable to use Remix's resolver.");
-      RTX_OPTION("rtx.neuralRadianceCache", float, smallestResolvableFeatureSizeMeters, 0.01f, "");
+      RTX_OPTION_FLAG("rtx.neuralRadianceCache", float, smallestResolvableFeatureSizeMeters, 0.01f, RtxOptionFlags::UserSetting, "");
       RTX_OPTION("rtx.neuralRadianceCache", bool, skipDeltaVertices, true, "");
       RTX_OPTION("rtx.neuralRadianceCache", float, sceneBoundsWidthMeters, 200.f, 
                  "Minimum width of a 3D axis-aligned bounding box in meters that will cover any in-game scene.\n"
@@ -117,7 +119,7 @@ namespace dxvk {
                  "This is strongly recommended to leave enabled as otherwise the scene bounds would have to cover all geometry\n"
                  "across all camera cuts (i.e. when loading into a new level), which can be prohibitively expensive requiring\n"
                  "very large scene bounding box to cover geometry that can be loaded in from any level.\n");
-      RTX_OPTION("rtx.neuralRadianceCache", float, terminationHeuristicThreshold, 0.1f, "");
+      RTX_OPTION_FLAG("rtx.neuralRadianceCache", float, terminationHeuristicThreshold, 0.1f, RtxOptionFlags::UserSetting, "");
       RTX_OPTION("rtx.neuralRadianceCache", float, trainingTerminationHeuristicThreshold, 0.25f, "");
       RTX_OPTION("rtx.neuralRadianceCache", float, proportionPrimarySegmentsToTrainOn, 0.02f, "");
       RTX_OPTION("rtx.neuralRadianceCache", float, proportionTertiaryPlusSegmentsToTrainOn, 1.f, "");
@@ -137,7 +139,8 @@ namespace dxvk {
                       "Lower quality presets result in faster path-tracing with fewer bounces that may result in lower quality indirect lighting.\n"
                       "Higher quality presets result in more responsive and detailed indirect lighting.",
                       args.environment = "RTX_NRC_QUALITY_PRESET",
-                      args.onChangeCallback = &onQualityPresetChanged);
+                      args.onChangeCallback = &onQualityPresetChanged,
+                      args.flags = RtxOptionFlags::UserSetting);
       inline static QualityPreset s_prevQualityPreset = QualityPreset::Count;
 
       RTX_OPTION("rtx.neuralRadianceCache", float, luminanceClampMultiplier, 0.f,

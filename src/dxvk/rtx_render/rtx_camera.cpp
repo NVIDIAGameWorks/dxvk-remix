@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -27,6 +27,7 @@
 #include "rtx_camera.h"
 #include <windows.h>
 #include "rtx_options.h"
+#include "rtx_option_layer.h"
 #include "rtx_matrix_helpers.h"
 #include "rtx_imgui.h"
 #include "rtx_xess.h"
@@ -386,83 +387,112 @@ namespace dxvk
     m_prevRunningTime = currTime;
 
     // Perform custom camera controls logic
+    // NOTE: We track whether camera input occurred this frame so we don't overwrite
+    // pending UI changes. Only call setDeferred() when there's actual movement input.
 
     float moveLeftRight = 0;
     float moveBackForward = 0;
     float moveDownUp = 0;
+    float deltaYaw = 0;
+    float deltaPitch = 0;
+    bool hasMovementInput = false;
+    bool hasRotationInput = false;
+    bool resetCamera = false;
+
+    // Read current values for use in matrix calculation
+    float currentYaw = freeCameraYaw();
+    float currentPitch = freeCameraPitch();
+    Vector3 currentPosition = freeCameraPosition();
+
     HWND fgWin = GetForegroundWindow();
     DWORD processId = 0;
     if (fgWin) {
       GetWindowThreadProcessId(fgWin, &processId);
     }
 
-    if (!ImGui::GetIO().WantCaptureMouse && (flags & (int)RtCamera::UpdateFlag::UpdateFreeCamera) != 0) {
-
-      // Typical WASD controls with EQ up-down
-      bool isKeyAvailable =
-        !ImGui::IsKeyDown(ImGuiKey_LeftCtrl) &&
-        !ImGui::IsKeyDown(ImGuiKey_RightCtrl) &&
-        !ImGui::IsKeyDown(ImGuiKey_LeftAlt) &&
-        !ImGui::IsKeyDown(ImGuiKey_RightAlt) && !lockFreeCamera();
-
+    if ((flags & (int)RtCamera::UpdateFlag::UpdateFreeCamera) != 0) {
       float coordSystemScale = m_context.isLHS ? -1.f : 1.f;
-
       float pitchDirection = freeCameraInvertY() ? -1.f : 1.f;
 
-      if (isKeyAvailable) {
-        float speed = elapsedSec.count() * RtxOptions::sceneScale() * freeCameraSpeed();
-        float angularSpeed = elapsedSec.count() * M_PI * freeCameraTurningSpeed();
-        // Speed booster
-        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveFaster(), true)) {
-          speed *= 4;
-        }
-        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveForward(), true)) {
-          moveBackForward += coordSystemScale * speed;
-        }
-        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveLeft(), true)) {
-          moveLeftRight -= speed;
-        }
-        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveBack(), true)) {
-          moveBackForward -= coordSystemScale * speed;
-        }
-        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveRight(), true)) {
-          moveLeftRight += speed;
-        }
-        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveUp(), true)) {
-          moveDownUp += speed;
-        }
-        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveDown(), true)) {
-          moveDownUp -= speed;
-        }
-        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyPitchDown(), true)) {
-          freeCameraPitch.setDeferred( freeCameraPitch() + coordSystemScale * pitchDirection * angularSpeed);
-        }
-        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyPitchUp(), true)) {
-          freeCameraPitch.setDeferred( freeCameraPitch() - coordSystemScale * pitchDirection * angularSpeed);
-        }
-        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyYawLeft(), true)) {
-          freeCameraYaw.setDeferred( freeCameraYaw() + coordSystemScale *  angularSpeed);
-        }
-        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyYawRight(), true)) {
-          freeCameraYaw.setDeferred( freeCameraYaw() - coordSystemScale * angularSpeed);
+      // Keyboard controls - works unless typing in a text field
+      if (!ImGui::GetIO().WantTextInput) {
+        bool isKeyAvailable =
+          !ImGui::IsKeyDown(ImGuiKey_LeftCtrl) &&
+          !ImGui::IsKeyDown(ImGuiKey_RightCtrl) &&
+          !ImGui::IsKeyDown(ImGuiKey_LeftAlt) &&
+          !ImGui::IsKeyDown(ImGuiKey_RightAlt) && !lockFreeCamera();
+
+        if (isKeyAvailable) {
+          float speed = elapsedSec.count() * RtxOptions::sceneScale() * freeCameraSpeed();
+          float angularSpeed = elapsedSec.count() * M_PI * freeCameraTurningSpeed();
+          // Speed booster
+          if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveFaster(), true)) {
+            speed *= 4;
+          }
+          if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveForward(), true)) {
+            moveBackForward += coordSystemScale * speed;
+            hasMovementInput = true;
+          }
+          if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveLeft(), true)) {
+            moveLeftRight -= speed;
+            hasMovementInput = true;
+          }
+          if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveBack(), true)) {
+            moveBackForward -= coordSystemScale * speed;
+            hasMovementInput = true;
+          }
+          if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveRight(), true)) {
+            moveLeftRight += speed;
+            hasMovementInput = true;
+          }
+          if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveUp(), true)) {
+            moveDownUp += speed;
+            hasMovementInput = true;
+          }
+          if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveDown(), true)) {
+            moveDownUp -= speed;
+            hasMovementInput = true;
+          }
+          if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyPitchDown(), true)) {
+            deltaPitch += coordSystemScale * pitchDirection * angularSpeed;
+            hasRotationInput = true;
+          }
+          if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyPitchUp(), true)) {
+            deltaPitch -= coordSystemScale * pitchDirection * angularSpeed;
+            hasRotationInput = true;
+          }
+          if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyYawLeft(), true)) {
+            deltaYaw += coordSystemScale * angularSpeed;
+            hasRotationInput = true;
+          }
+          if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyYawRight(), true)) {
+            deltaYaw -= coordSystemScale * angularSpeed;
+            hasRotationInput = true;
+          }
         }
       }
 
-      if (!lockFreeCamera() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-        freeCameraYaw.setDeferred( freeCameraYaw() - coordSystemScale * ImGui::GetIO().MouseDelta.x * 0.1f * elapsedSec.count());
-        freeCameraPitch.setDeferred( freeCameraPitch() - coordSystemScale * pitchDirection * ImGui::GetIO().MouseDelta.y * 0.2f * elapsedSec.count());
-      }
+      // Mouse controls - only when mouse is not over menu
+      if (!ImGui::GetIO().WantCaptureMouse) {
+        auto mouseDelta = ImGui::GetIO().MouseDelta;
+        if (!lockFreeCamera() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+          deltaYaw -= coordSystemScale * ImGui::GetIO().MouseDelta.x * 0.1f * elapsedSec.count();
+          deltaPitch -= coordSystemScale * pitchDirection * ImGui::GetIO().MouseDelta.y * 0.2f * elapsedSec.count();
+          if (mouseDelta.x != 0 || mouseDelta.y != 0) {
+            hasRotationInput = true;
+          }
+        }
 
-      // Reset
-      if (ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
-        freeCameraPosition.setDeferred(Vector3(0.f));
-        moveLeftRight = 0;
-        moveBackForward = 0;
-        moveDownUp = 0;
-        freeCameraYaw.setDeferred(0.0f);
-        freeCameraPitch.setDeferred(0.0f);
+        // Reset
+        if (!lockFreeCamera() && ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+          resetCamera = true;
+        }
       }
     }
+
+    // Apply deltas to current values for matrix calculation
+    currentYaw += deltaYaw;
+    currentPitch += deltaPitch;
 
     // Calculate Free Camera matrix information
 
@@ -476,24 +506,43 @@ namespace dxvk
     const float upSign = isViewUpsideDown ? -1.f : 1.f;
 
     freeCamViewToWorld[3] = Vector4d(0.0);
-    freeCamViewToWorld *= getMatrixFromEulerAngles(upSign * freeCameraPitch(), freeCameraYaw());
+    freeCamViewToWorld *= getMatrixFromEulerAngles(upSign * currentPitch, currentYaw);
 
     if (m_type == CameraType::Main && (flags & (uint32_t)UpdateFlag::UpdateFreeCamera)) {
-      Vector3 freeCameraPos = freeCameraPosition();
-      freeCameraPos += moveLeftRight * Vector3(freeCamViewToWorld.data[0].xyz());
-      freeCameraPos += upSign * moveDownUp * Vector3(freeCamViewToWorld.data[1].xyz());
-      freeCameraPos -= moveBackForward * Vector3(freeCamViewToWorld.data[2].xyz());
-      freeCameraPosition.setDeferred(freeCameraPos);
+      currentPosition += moveLeftRight * Vector3(freeCamViewToWorld.data[0].xyz());
+      currentPosition += upSign * moveDownUp * Vector3(freeCamViewToWorld.data[1].xyz());
+      currentPosition -= moveBackForward * Vector3(freeCamViewToWorld.data[2].xyz());
+
+      // Only update options when there's actual input - don't overwrite pending UI changes
+      // Use the User edit target so these go to rtx.conf (these are UI-driven via camera controls)
+      if (resetCamera) {
+        RtxOptionLayerTarget layerTarget(RtxOptionEditTarget::User);
+        freeCameraPosition.setDeferred(Vector3(0.f));
+        freeCameraYaw.setDeferred(0.0f);
+        freeCameraPitch.setDeferred(0.0f);
+        currentPosition = Vector3(0.f);
+        currentYaw = 0.0f;
+        currentPitch = 0.0f;
+      } else {
+        RtxOptionLayerTarget layerTarget(RtxOptionEditTarget::User);
+        if (hasMovementInput) {
+          freeCameraPosition.setDeferred(currentPosition);
+        }
+        if (hasRotationInput) {
+          freeCameraYaw.setDeferred(currentYaw);
+          freeCameraPitch.setDeferred(currentPitch);
+        }
+      }
       
-      // save free camera context
+      // save free camera context using local values (since setDeferred doesn't update immediately)
       m_context.enableFreeCamera = enableFreeCamera();
-      m_context.freeCameraPosition = freeCameraPosition();
-      m_context.freeCameraYaw = freeCameraYaw();
-      m_context.freeCameraPitch = freeCameraPitch();
+      m_context.freeCameraPosition = currentPosition;
+      m_context.freeCameraYaw = currentYaw;
+      m_context.freeCameraPitch = currentPitch;
       m_context.freeCameraViewRelative = freeCameraViewRelative();
     }
 
-    freeCamViewToWorld[3] = m_matCache[MatrixType::ViewToWorld][3] + Vector4d{ Vector3d{ freeCameraPosition() }, 0.0 };
+    freeCamViewToWorld[3] = m_matCache[MatrixType::ViewToWorld][3] + Vector4d{ Vector3d{ currentPosition }, 0.0 };
     return freeCamViewToWorld;
   }
 
@@ -549,6 +598,9 @@ namespace dxvk
 
 
   bool RtCamera::updateFromSetting(uint32_t frameIdx, const RtCameraSetting& setting, uint32_t flags) {
+    // Use the User edit target so these go to rtx.conf (these are UI-driven via camera settings)
+    RtxOptionLayerTarget layerTarget(RtxOptionEditTarget::User);
+    
     enableFreeCamera.setDeferred(setting.enableFreeCamera);
     freeCameraPosition.setDeferred(setting.freeCameraPosition);
     freeCameraYaw.setDeferred(setting.freeCameraYaw);

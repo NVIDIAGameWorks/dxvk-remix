@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -158,12 +158,6 @@ namespace dxvk {
     
     static void logNameList(const DxvkNameList& names);
     
-    // NV-DXVK start: Custom config loading/logging
-    std::array<Config,Config::Type_kSize> m_confs;
-    void initConfigs();
-    template<Config::Type type>
-    void initConfig();
-    // NV-DXVK end 
   };
   
 }
