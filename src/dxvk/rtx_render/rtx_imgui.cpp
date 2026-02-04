@@ -5,6 +5,8 @@
 
 namespace RemixGui {
 
+  constexpr float kFixedTooltipWidth = 540; // so the text doesn't spread too wide
+
   // Popup state - stores what we need to compute display at render time
   static bool s_showPopup = false;
   static dxvk::RtxOptionImpl* s_popupImpl = nullptr;
@@ -240,8 +242,15 @@ namespace RemixGui {
   }
 
   void SetTooltipUnformatted(const char* text) {
+    // fixed size tooltip for readability
+    // -1 to preserve automatic resize on Y
+    ImGui::SetNextWindowSizeConstraints(
+      ImVec2(kFixedTooltipWidth, -1),
+      ImVec2(kFixedTooltipWidth, -1)
+    );
     ImGui::BeginTooltipEx(ImGuiTooltipFlags_OverridePreviousTooltip, ImGuiWindowFlags_None);
-    ImGui::TextUnformatted(text);
+    // NOTE: imgui has an optimization for "%s" format string that directly puts 'text' without formatting
+    ImGui::TextWrapped("%s", text);
     ImGui::EndTooltip();
   }
 
