@@ -176,7 +176,7 @@ namespace RemixGui {
           if (!tooltipAlreadyShown) {
             // Only build the tooltip when actually hovering (BuildRtxOptionTooltip is expensive)
             std::string tooltipText = RemixGui::BuildRtxOptionTooltip(option);
-            ImGui::SetTooltip("%s", tooltipText.c_str());
+            RemixGui::SetTooltipUnformatted(tooltipText.c_str());
           }
         }
       }

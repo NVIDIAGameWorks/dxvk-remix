@@ -278,9 +278,9 @@ namespace dxvk {
           // Only build the expensive tooltip when hovered
           std::string tooltip = OptionLayerUI::renderToString(userLayer, "user.conf");
           tooltip += "\nSome settings may only take effect on next launch.";
-          ImGui::SetTooltip("%s", tooltip.c_str());
+          RemixGui::SetTooltipUnformatted(tooltip.c_str());
         } else {
-          ImGui::SetTooltip("No unsaved changes in user.conf.\nSome settings may only take effect on next launch.");
+          RemixGui::SetTooltipUnformatted("No unsaved changes in user.conf.\nSome settings may only take effect on next launch.");
         }
       }
       
