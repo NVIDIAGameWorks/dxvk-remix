@@ -287,7 +287,8 @@ namespace {
           src.getSubsurfaceMaxSampleRadius(),
           src.getFilterMode(),
           src.getWrapModeU(),
-          src.getWrapModeV()
+          src.getWrapModeV(),
+          src.getNormalScale(),
         } };
       }
       case MaterialDataType::Translucent: 
@@ -384,6 +385,7 @@ namespace {
           info.filterMode,
           info.wrapModeU,
           info.wrapModeV,
+          1.0f,
         } };
       }
       if (auto extTranslucent = pnext::find<remixapi_MaterialInfoTranslucentEXT>(&info)) {

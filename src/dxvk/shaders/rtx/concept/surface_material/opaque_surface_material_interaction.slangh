@@ -708,7 +708,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     else // Decode encoded normal sample
     {
       // Note: Using f16 from texture to decode from is fine as the original texture is only 8 bits of precision.
-      tangentNormal = unsignedOctahedralToHemisphereDirection(vec2(normalSample.xy), cb.opaqueMaterialArgs.normalIntensity);
+      tangentNormal = unsignedOctahedralToHemisphereDirection(vec2(normalSample.xy), opaqueSurfaceMaterial.normalScale * cb.opaqueMaterialArgs.normalIntensity);
     }
     
     const f16mat3 tangentToWorld = transpose(worldToTangent);
@@ -729,7 +729,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
 
     if (secondNormalLoaded)
     {
-      f16vec3 tangentNormal2 = unsignedOctahedralToHemisphereDirection(vec2(secondNormalSample.xy), cb.opaqueMaterialArgs.normalIntensity);
+      f16vec3 tangentNormal2 = unsignedOctahedralToHemisphereDirection(vec2(secondNormalSample.xy), opaqueSurfaceMaterial.normalScale * cb.opaqueMaterialArgs.normalIntensity);
       
       tangentNormal2 = normalBlendRNM(tangentNormal2, tangentNormal);
       normal = normalize(mul(tangentToWorld, tangentNormal2));
