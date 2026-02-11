@@ -106,6 +106,18 @@ struct SssArgs {
   u16vec2 diffusionProfileDebuggingPixel;
 };
 
+struct EyeArgs {
+  uint  enableEyes;
+  float normalBendingEyeball;
+  float normalBendingCornea;
+  float whitesAlbedoScale;
+
+  float irisRadius;
+  float irisDepth;
+  uint  pad0;
+  uint  pad1;
+};
+
 #define OBJECT_PICKING_INVALID (cb.clearColorPicking)
 
 // Constant buffer
@@ -138,6 +150,7 @@ struct RaytraceArgs {
   DomeLightArgs domeLightArgs;
   NrcArgs nrcArgs;
   SssArgs sssArgs;
+  EyeArgs eyeArgs;
 
   Camera renderTargetCamera;
 

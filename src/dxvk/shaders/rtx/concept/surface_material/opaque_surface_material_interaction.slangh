@@ -466,6 +466,81 @@ void storeSamplerFeedback(uint32_t samplerFeedbackStamp, SurfaceInteraction surf
   }
 }
 
+void overrideMaterialInteractionForEye(
+  inout OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  const OpaqueSurfaceMaterial            opaqueSurfaceMaterial,
+  inout SurfaceInteraction               surfaceInteraction,
+  const Surface                          surface,
+  const f16vec3                          whitesAlbedo,
+  const f16mat3                          worldToTangent,
+  const MinimalRayInteraction            minimalRayInteraction,
+)
+{
+  float2 uvIris = eyeCalcIrisUvParallaxed(
+    surfaceInteraction.textureCoordinates,
+    surface.eyeBasisU,
+    surface.eyeBasisV,
+    surfaceInteraction.interpolatedNormal,
+    worldToTangent,
+    minimalRayInteraction.viewDirection,
+    cb.eyeArgs.irisRadius,
+    cb.eyeArgs.irisDepth
+  );
+
+  bool    irisLoaded;
+  f16vec4 irisSample;
+  {
+    // 'surfaceMaterialInteractionTextureReadHelper' requires 'surfaceInteraction.textureCoordinates'
+    vec2 savedCoordinates = surfaceInteraction.textureCoordinates;
+    // so set iris UV temporarily
+    surfaceInteraction.textureCoordinates = uvIris;
+    irisLoaded                            = surfaceMaterialInteractionTextureReadHelper(
+      opaqueSurfaceMaterial.secondaryTextureIndex,
+      opaqueSurfaceMaterial.samplerIndex,
+      surfaceInteraction,
+      irisSample
+    );
+    // and revert UV back
+    surfaceInteraction.textureCoordinates = savedCoordinates;
+  }
+
+  if (!irisLoaded)
+  {
+    return;
+  }
+
+  // Note: Gamma correct albedo input (be it from a constant or a texture). Currently assuming all textures are not using sRGB formats which
+  // automatically do this conversion.
+  // Todo: Disable this for when a sRGB texture is the source of the albedo.
+  irisSample.rgb = gammaToLinear(irisSample.rgb);
+
+  // blend between whites and iris
+  f16vec3 eyeAlbedo = mix(
+    saturate(whitesAlbedo * cb.eyeArgs.whitesAlbedoScale),
+    irisSample.rgb,
+    irisSample.a // 0 (transparent) - whites, 1 (opaque) - iris
+  );
+  // NOTE: eye redness can be added here, if a game can provide such data
+
+  const float16_t eyeRoughness  = 0.h;
+  const float16_t eyeMetallic   = 0.h;
+  const float16_t eyeOpacity    = 1.h;
+  const float16_t eyeAnisotropy = 0.h;
+  calcRoughness(
+    eyeRoughness,
+    eyeAnisotropy,
+    opaqueSurfaceMaterialInteraction.isotropicRoughness,
+    opaqueSurfaceMaterialInteraction.anisotropicRoughness
+  );
+  opaqueSurfaceMaterialInteraction.albedo           = albedoToAdjustedAlbedo(eyeAlbedo, eyeMetallic, eyeOpacity);
+  opaqueSurfaceMaterialInteraction.baseReflectivity = calcBaseReflectivity(eyeAlbedo, eyeMetallic, eyeOpacity);
+  opaqueSurfaceMaterialInteraction.opacity          = eyeOpacity;
+
+  opaqueSurfaceMaterialInteraction.emissiveRadiance =
+    irisSample.rgb * irisSample.a *
+    opaqueSurfaceMaterial.emissiveIntensity;
+}
+
 // Opaque Surface Material Interaction Functions
 
 OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
@@ -798,6 +873,20 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
 
   opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction =
     subSurfaceMaterialReadHelper(opaqueSurfaceMaterial.subsurfaceMaterialIndex, surfaceInteraction, opaqueSurfaceMaterial.samplerIndex);
+
+  // For an eye, load a secondary texture (iris) and blend on top of primary texture (whites)
+  if (cb.eyeArgs.enableEyes && surface.isEye)
+  {
+    overrideMaterialInteractionForEye(
+      opaqueSurfaceMaterialInteraction,
+      opaqueSurfaceMaterial,
+      surfaceInteraction,
+      surface,
+      albedo,
+      worldToTangent,
+      minimalRayInteraction
+    );
+  }
 
   return opaqueSurfaceMaterialInteraction;
 }

@@ -38,7 +38,7 @@ namespace dxvk {
 // Surfaces
 
 // Todo: Compute size directly from sizeof of GPU structure (by including it), for now computed by sum of members manually
-constexpr std::size_t kSurfaceGPUSize = 15 * 4 * 4;
+constexpr std::size_t kSurfaceGPUSize = 16 * 4 * 4;
 
 // Note: Use caution when changing this enum, must match the values defined on the MDL side of things.
 
@@ -80,6 +80,16 @@ static_assert((int)AlphaTestType::kAlways == (int)VkCompareOp::VK_COMPARE_OP_ALW
 bool getEnableDiffuseLayerOverrideHack();
 float getEmissiveIntensity();
 float getDisplacementFactor();
+
+struct RtEyeParams {
+  // origin of eyeball in world space
+  // used to calculate eye normals
+  Vector3 eyeballOrigin = Vector3{ 0, 0, 0 };
+  // right/up vectors that define an eye orientation
+  // NOTE: vectors can be unnormalized, and that scale denotes an iris size 
+  Vector3 eyeRightU = Vector3{ 1, 0, 0 };
+  Vector3 eyeUpV = Vector3{ 0, 1, 0 };
+};
 
 struct RtSurface {
   RtSurface() {
@@ -211,15 +221,27 @@ struct RtSurface {
     writeGPUHelper(data, offset, instanceToWorld.data[3].y);
     writeGPUHelper(data, offset, instanceToWorld.data[3].z);
 
-    // Note: Only 2 rows of texture transform written for now due to limit of 2 element restriction.
-    writeGPUHelper(data, offset, textureTransform.data[0].x);
-    writeGPUHelper(data, offset, textureTransform.data[1].x);
-    writeGPUHelper(data, offset, textureTransform.data[2].x);
-    writeGPUHelper(data, offset, textureTransform.data[3].x);
-    writeGPUHelper(data, offset, textureTransform.data[0].y);
-    writeGPUHelper(data, offset, textureTransform.data[1].y);
-    writeGPUHelper(data, offset, textureTransform.data[2].y);
-    writeGPUHelper(data, offset, textureTransform.data[3].y);
+    if (eyeParams) {
+      // eye vectors are aliased with texture transform
+      writeGPUHelper(data, offset, eyeParams->eyeRightU[0]);
+      writeGPUHelper(data, offset, eyeParams->eyeRightU[1]);
+      writeGPUHelper(data, offset, eyeParams->eyeRightU[2]);
+      writeGPUHelper(data, offset, uint32_t{});
+      writeGPUHelper(data, offset, eyeParams->eyeUpV[0]);
+      writeGPUHelper(data, offset, eyeParams->eyeUpV[1]);
+      writeGPUHelper(data, offset, eyeParams->eyeUpV[2]);
+      writeGPUHelper(data, offset, uint32_t{});
+    } else {
+      // Note: Only 2 rows of texture transform written for now due to limit of 2 element restriction.
+      writeGPUHelper(data, offset, textureTransform.data[0].x);
+      writeGPUHelper(data, offset, textureTransform.data[1].x);
+      writeGPUHelper(data, offset, textureTransform.data[2].x);
+      writeGPUHelper(data, offset, textureTransform.data[3].x);
+      writeGPUHelper(data, offset, textureTransform.data[0].y);
+      writeGPUHelper(data, offset, textureTransform.data[1].y);
+      writeGPUHelper(data, offset, textureTransform.data[2].y);
+      writeGPUHelper(data, offset, textureTransform.data[3].y);
+    }
 
     std::uint32_t textureSpritesheetData = 0;
 
@@ -247,8 +269,12 @@ struct RtSurface {
     textureFlags |= ((static_cast<uint32_t>(textureAlphaArg2Source) & 0x3) << 9);
     textureFlags |= ((static_cast<uint32_t>(textureAlphaOperation)  & 0x7) << 11);
 
+    textureFlags |= eyeParams ? (1 << 14) : 0;
+    // textureFlags bits 15-16 unused
+
     static_assert(static_cast<uint32_t>(TexGenMode::Count) <= 4);
     textureFlags |= ((static_cast<uint32_t>(texgenMode) & 0x3) << 17);
+    // textureFlags bits 19-30 unused
 
     writeGPUHelper(data, offset, textureFlags);
 
@@ -256,6 +282,18 @@ struct RtSurface {
     writeGPUHelper(data, offset, normalInstanceToWorld.data[2].z);
 
     writeGPUHelper(data, offset, clipPlane);
+
+    // eye origin
+    if (eyeParams) {
+      writeGPUHelper(data, offset, eyeParams->eyeballOrigin.x);
+      writeGPUHelper(data, offset, eyeParams->eyeballOrigin.y);
+      writeGPUHelper(data, offset, eyeParams->eyeballOrigin.z);
+    } else {
+      writeGPUHelper(data, offset, uint32_t{});
+      writeGPUHelper(data, offset, uint32_t{});
+      writeGPUHelper(data, offset, uint32_t{});
+    }
+    writeGPUHelper(data, offset, uint32_t{});
 
     assert(offset - oldOffset == kSurfaceGPUSize);
   }
@@ -305,6 +343,7 @@ struct RtSurface {
   DxvkRtTextureOperation textureAlphaOperation = DxvkRtTextureOperation::SelectArg1;
   uint32_t tFactor = 0xffffffff;   // Value for D3DRS_TEXTUREFACTOR, default value of is opaque white
   TexGenMode texgenMode = TexGenMode::None;
+  std::optional<RtEyeParams> eyeParams = {};
 
   bool doBuffersMatch(const RtSurface& surface) {
     return positionBufferIndex == surface.positionBufferIndex
@@ -503,9 +542,10 @@ struct RtOpaqueSurfaceMaterial {
     bool ignoreAlphaChannel, bool enableThinFilm, bool alphaIsThinFilmThickness, float thinFilmThicknessConstant,
     uint32_t samplerIndex, float displaceIn, float displaceOut,
     uint32_t subsurfaceMaterialIndex, bool isRaytracedRenderTarget,
-    uint16_t samplerFeedbackStamp
+    uint16_t samplerFeedbackStamp,
+    uint32_t secondaryTextureIndex = 0
   ) :
-    m_albedoOpacityTextureIndex{ albedoOpacityTextureIndex }, m_normalTextureIndex{ normalTextureIndex },
+    m_albedoOpacityTextureIndex{ albedoOpacityTextureIndex }, m_secondaryTextureIndex{secondaryTextureIndex}, m_normalTextureIndex{ normalTextureIndex },
     m_tangentTextureIndex { tangentTextureIndex }, m_heightTextureIndex { heightTextureIndex }, m_roughnessTextureIndex{ roughnessTextureIndex },
     m_metallicTextureIndex{ metallicTextureIndex }, m_emissiveColorTextureIndex{ emissiveColorTextureIndex },
     m_anisotropy{ anisotropy }, m_emissiveIntensity{ emissiveIntensity },
@@ -602,8 +642,11 @@ struct RtOpaqueSurfaceMaterial {
     // data[24]
     writeGPUHelperExplicit<2>(data, offset, m_samplerFeedbackStamp);
 
-    // data[25 - 31]
-    writeGPUPadding<14>(data, offset);
+    // data[25]
+    writeGPUHelperExplicit<2>(data, offset, m_secondaryTextureIndex);
+
+    // data[26 - 31]
+    writeGPUPadding<12>(data, offset);
     assert(offset - oldOffset == kSurfaceMaterialGPUSize);
   }
 
@@ -701,34 +744,67 @@ struct RtOpaqueSurfaceMaterial {
 
 private:
   void updateCachedHash() {
-    XXH64_hash_t h = 0;
-
-    h = XXH64(&m_albedoOpacityTextureIndex, sizeof(m_albedoOpacityTextureIndex), h);
-    h = XXH64(&m_normalTextureIndex, sizeof(m_normalTextureIndex), h);
-    h = XXH64(&m_tangentTextureIndex, sizeof(m_tangentTextureIndex), h);
-    h = XXH64(&m_heightTextureIndex, sizeof(m_heightTextureIndex), h);
-    h = XXH64(&m_roughnessTextureIndex, sizeof(m_roughnessTextureIndex), h);
-    h = XXH64(&m_metallicTextureIndex, sizeof(m_metallicTextureIndex), h);
-    h = XXH64(&m_emissiveColorTextureIndex, sizeof(m_emissiveColorTextureIndex), h);
-    h = XXH64(&m_anisotropy, sizeof(m_anisotropy), h);
-    h = XXH64(&m_emissiveIntensity, sizeof(m_emissiveIntensity), h);
-    h = XXH64(&m_albedoOpacityConstant, sizeof(m_albedoOpacityConstant), h);
-    h = XXH64(&m_roughnessConstant, sizeof(m_roughnessConstant), h);
-    h = XXH64(&m_metallicConstant, sizeof(m_metallicConstant), h);
-    h = XXH64(&m_emissiveColorConstant, sizeof(m_emissiveColorConstant), h);
-    h = XXH64(&m_enableEmission, sizeof(m_enableEmission), h);
-    h = XXH64(&m_ignoreAlphaChannel, sizeof(m_ignoreAlphaChannel), h);
-    h = XXH64(&m_enableThinFilm, sizeof(m_enableThinFilm), h);
-    h = XXH64(&m_alphaIsThinFilmThickness, sizeof(m_alphaIsThinFilmThickness), h);
-    h = XXH64(&m_thinFilmThicknessConstant, sizeof(m_thinFilmThicknessConstant), h);
-    h = XXH64(&m_samplerIndex, sizeof(m_samplerIndex), h);
-    h = XXH64(&m_displaceIn, sizeof(m_displaceIn), h);
-    h = XXH64(&m_displaceOut, sizeof(m_displaceOut), h);
-    h = XXH64(&m_subsurfaceMaterialIndex, sizeof(m_subsurfaceMaterialIndex), h);
-    h = XXH64(&m_isRaytracedRenderTarget, sizeof(m_isRaytracedRenderTarget), h);
-    h = XXH64(&m_samplerFeedbackStamp, sizeof(m_samplerFeedbackStamp), h);
-
-    m_cachedHash = h;
+    static_assert(
+      sizeof(*this) == 120,
+      "add new member for hashing if needed: add a MEMBER into the struct + add a VALUE into the list-init"
+    );
+    struct HashStruct {
+      uint32_t albedoOpacityTextureIndex;
+      uint32_t normalTextureIndex;
+      uint32_t tangentTextureIndex;
+      uint32_t heightTextureIndex;
+      uint32_t roughnessTextureIndex;
+      uint32_t metallicTextureIndex;
+      uint32_t emissiveColorTextureIndex;
+      float anisotropy;
+      float emissiveIntensity;
+      Vector4 albedoOpacityConstant;
+      float roughnessConstant;
+      float metallicConstant;
+      Vector3 emissiveColorConstant;
+      uint32_t enableEmission;            // NOTE: uint32_t to avoid padding
+      uint32_t ignoreAlphaChannel;        // NOTE: uint32_t to avoid padding
+      uint32_t enableThinFilm;            // NOTE: uint32_t to avoid padding
+      uint32_t alphaIsThinFilmThickness;  // NOTE: uint32_t to avoid padding
+      float thinFilmThicknessConstant;
+      uint32_t samplerIndex;
+      float displaceIn;
+      float displaceOut;
+      uint32_t subsurfaceMaterialIndex;
+      uint32_t isRaytracedRenderTarget;   // NOTE: uint32_t to avoid padding
+      uint32_t samplerFeedbackStamp;      // NOTE: uint32_t to avoid padding
+      uint32_t secondaryTextureIndex;
+      // NOTE: There must be NO padding between members, as the struct is used for hashing
+    };
+    static_assert(alignof(HashStruct) == 4 && sizeof(HashStruct) % 4 == 0);
+    HashStruct hashData = HashStruct{
+      m_albedoOpacityTextureIndex,
+      m_normalTextureIndex,
+      m_tangentTextureIndex,
+      m_heightTextureIndex,
+      m_roughnessTextureIndex,
+      m_metallicTextureIndex,
+      m_emissiveColorTextureIndex,
+      m_anisotropy,
+      m_emissiveIntensity,
+      m_albedoOpacityConstant,
+      m_roughnessConstant,
+      m_metallicConstant,
+      m_emissiveColorConstant,
+      m_enableEmission,
+      m_ignoreAlphaChannel,
+      m_enableThinFilm,
+      m_alphaIsThinFilmThickness,
+      m_thinFilmThicknessConstant,
+      m_samplerIndex,
+      m_displaceIn,
+      m_displaceOut,
+      m_subsurfaceMaterialIndex,
+      m_isRaytracedRenderTarget,
+      m_samplerFeedbackStamp,
+      m_secondaryTextureIndex,
+    };
+    m_cachedHash = XXH3_64bits(&hashData, sizeof(hashData));
   }
 
   void updateCachedData() {
@@ -743,6 +819,7 @@ private:
   }
 
   uint32_t m_albedoOpacityTextureIndex;
+  uint32_t m_secondaryTextureIndex;
   uint32_t m_normalTextureIndex;
   uint32_t m_tangentTextureIndex;
   uint32_t m_heightTextureIndex;
@@ -873,23 +950,43 @@ struct RtTranslucentSurfaceMaterial {
   }
 private:
   void updateCachedHash() {
-    XXH64_hash_t h = 0;
-
-    h = XXH64(&m_normalTextureIndex, sizeof(m_normalTextureIndex), h);
-    h = XXH64(&m_transmittanceTextureIndex, sizeof(m_transmittanceTextureIndex), h);
-    h = XXH64(&m_emissiveColorTextureIndex, sizeof(m_emissiveColorTextureIndex), h);
-    h = XXH64(&m_refractiveIndex, sizeof(m_refractiveIndex), h);
-    h = XXH64(&m_transmittanceColor, sizeof(m_transmittanceColor), h);
-    h = XXH64(&m_transmittanceMeasurementDistance, sizeof(m_transmittanceMeasurementDistance), h);
-    h = XXH64(&m_enableEmission, sizeof(m_enableEmission), h);
-    h = XXH64(&m_emissiveIntensity, sizeof(m_emissiveIntensity), h);
-    h = XXH64(&m_emissiveColorConstant, sizeof(m_emissiveColorConstant), h);
-    h = XXH64(&m_isThinWalled, sizeof(m_isThinWalled), h);
-    h = XXH64(&m_thinWallThickness, sizeof(m_thinWallThickness), h);
-    h = XXH64(&m_useDiffuseLayer, sizeof(m_useDiffuseLayer), h);
-    h = XXH64(&m_samplerIndex, sizeof(m_samplerIndex), h);
-
-    m_cachedHash = h;
+    static_assert(
+      sizeof(*this) == 96,
+      "add new member for hashing if needed: add a MEMBER into the struct + add a VALUE into the list-init"
+    );
+    struct HashStruct {
+      uint32_t normalTextureIndex;
+      uint32_t transmittanceTextureIndex;
+      uint32_t emissiveColorTextureIndex;
+      float refractiveIndex;
+      Vector3 transmittanceColor;
+      float transmittanceMeasurementDistance;
+      uint32_t enableEmission;  // NOTE: uint32_t to avoid padding
+      float emissiveIntensity;
+      Vector3 emissiveColorConstant;
+      uint32_t isThinWalled;    // NOTE: uint32_t to avoid padding
+      float thinWallThickness;
+      uint32_t useDiffuseLayer; // NOTE: uint32_t to avoid padding
+      uint32_t samplerIndex;
+      // NOTE: There must be NO padding between members, as the struct is used for hashing
+    };
+    static_assert(alignof(HashStruct) == 4 && sizeof(HashStruct) % 4 == 0);
+    HashStruct hashData = HashStruct{
+      m_normalTextureIndex,
+      m_transmittanceTextureIndex,
+      m_emissiveColorTextureIndex,
+      m_refractiveIndex,
+      m_transmittanceColor,
+      m_transmittanceMeasurementDistance,
+      m_enableEmission,
+      m_emissiveIntensity,
+      m_emissiveColorConstant,
+      m_isThinWalled,
+      m_thinWallThickness,
+      m_useDiffuseLayer,
+      m_samplerIndex,
+    };
+    m_cachedHash = XXH3_64bits(&hashData, sizeof(hashData));
   }
 
   void updateCachedData() {
@@ -1031,18 +1128,33 @@ struct RtRayPortalSurfaceMaterial {
 
 private:
   void updateCachedHash() {
-    XXH64_hash_t h = 0;
-
-    h = XXH64(&m_maskTextureIndex, sizeof(m_maskTextureIndex), h);
-    h = XXH64(&m_maskTextureIndex2, sizeof(m_maskTextureIndex2), h);
-    h = XXH64(&m_rayPortalIndex, sizeof(m_rayPortalIndex), h);
-    h = XXH64(&m_rotationSpeed, sizeof(m_rotationSpeed), h);
-    h = XXH64(&m_enableEmission, sizeof(m_enableEmission), h);
-    h = XXH64(&m_emissiveIntensity, sizeof(m_emissiveIntensity), h);
-    h = XXH64(&m_samplerIndex, sizeof(m_samplerIndex), h);
-    h = XXH64(&m_samplerIndex2, sizeof(m_samplerIndex2), h);
-
-    m_cachedHash = h;
+    static_assert(
+      sizeof(*this) == 40,
+      "add new member for hashing if needed: add a MEMBER into the struct + add a VALUE into the list-init"
+    );
+    struct HashStruct {
+      uint32_t maskTextureIndex;
+      uint32_t maskTextureIndex2;
+      uint32_t rayPortalIndex;  // NOTE: uint32_t to avoid padding
+      float rotationSpeed;
+      uint32_t enableEmission;  // NOTE: uint32_t to avoid padding
+      float emissiveIntensity;
+      uint32_t samplerIndex;
+      uint32_t samplerIndex2;
+      // NOTE: There must be NO padding between members, as the struct is used for hashing
+    };
+    static_assert(alignof(HashStruct) == 4 && sizeof(HashStruct) % 4 == 0);
+    HashStruct hashData = HashStruct{
+      m_maskTextureIndex,
+      m_maskTextureIndex2,
+      m_rayPortalIndex,
+      m_rotationSpeed,
+      m_enableEmission,
+      m_emissiveIntensity,
+      m_samplerIndex,
+      m_samplerIndex2,
+    };
+    m_cachedHash = XXH3_64bits(&hashData, sizeof(hashData));
   }
 
   uint32_t m_maskTextureIndex;
@@ -1194,26 +1306,27 @@ struct RtSubsurfaceMaterial {
   }
 
 private:
-  struct HashStruct {
-    uint32_t m_subsurfaceTransmittanceTextureIndex;
-    uint32_t m_subsurfaceThicknessTextureIndex;
-    uint32_t m_subsurfaceSingleScatteringAlbedoTextureIndex;
-    Vector3 m_subsurfaceTransmittanceColor;
-    float m_subsurfaceMeasurementDistance;
-    Vector3 m_subsurfaceSingleScatteringAlbedo;
-    float m_subsurfaceVolumetricAnisotropy;
-    Vector3 m_subsurfaceVolumetricAttenuationCoefficient;
-    float m_subsurfaceRadiusScale;
-    float m_subsurfaceMaxSampleRadius;
-
-    XXH64_hash_t calculateHash() {
-      static_assert(sizeof(HashStruct) == sizeof(uint32_t) * 16);
-      return XXH3_64bits(this, sizeof(HashStruct));
-    }
-  };
 
   void updateCachedHash() {
-    HashStruct hashData = {
+    static_assert(
+      sizeof(*this) == 72,
+      "add new member for hashing if needed: add a MEMBER into the struct + add a VALUE into the list-init"
+    );
+    struct HashStruct {
+      uint32_t m_subsurfaceTransmittanceTextureIndex;
+      uint32_t m_subsurfaceThicknessTextureIndex;
+      uint32_t m_subsurfaceSingleScatteringAlbedoTextureIndex;
+      Vector3 m_subsurfaceTransmittanceColor;
+      float m_subsurfaceMeasurementDistance;
+      Vector3 m_subsurfaceSingleScatteringAlbedo;
+      float m_subsurfaceVolumetricAnisotropy;
+      Vector3 m_subsurfaceVolumetricAttenuationCoefficient;
+      float m_subsurfaceRadiusScale;
+      float m_subsurfaceMaxSampleRadius;
+      // NOTE: There must be NO padding between members, as the struct is used for hashing
+    };
+    static_assert(alignof(HashStruct) == 4 && sizeof(HashStruct) % 4 == 0);
+    HashStruct hashData = HashStruct{
       m_subsurfaceTransmittanceTextureIndex,
       m_subsurfaceThicknessTextureIndex,
       m_subsurfaceSingleScatteringAlbedoTextureIndex,
@@ -1223,8 +1336,9 @@ private:
       m_subsurfaceVolumetricAnisotropy,
       m_subsurfaceVolumetricAttenuationCoefficient,
       m_subsurfaceRadiusScale,
-      m_subsurfaceMaxSampleRadius };
-    m_cachedHash = hashData.calculateHash();
+      m_subsurfaceMaxSampleRadius,
+    };
+    m_cachedHash = XXH3_64bits(&hashData, sizeof(hashData));
   }
 
   // Thin Opaque Textures Index (Shared with SSS)

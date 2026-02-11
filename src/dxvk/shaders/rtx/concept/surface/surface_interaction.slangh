@@ -25,6 +25,7 @@
 #include "rtx/utility/math.slangh"
 #include "rtx/utility/packing.slangh"
 #include "rtx/concept/ray/ray.h"
+#include "rtx/concept/surface/eye.slangh"
 #include "rtx/pass/common_bindings.slangh"
 #include "rtx/utility/debug_view_indices.h"
 
@@ -558,7 +559,7 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
       }
 #endif
     }
-    
+
     // Compute texture gradients
     // Note: This is done here as it depends on the triangle normal and texture coordinates being calculated first
 
@@ -608,6 +609,40 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
       surfaceInteraction.triangleNormal,
       surfaceInteraction.triangleTangent,
       surfaceInteraction.triangleBitangent);
+  }
+
+  // Calculate normals for an eye, with a slight bump on a cornea
+  if (cb.eyeArgs.enableEyes && surface.isEye)
+  {
+    vec2 uvWhites = eyeCalcUvWhites(hitPosition, surface.eyeBasisU, surface.eyeBasisV, surface.eyeOrigin);
+
+    vec3 enormal, etangent, ebitangent;
+    eyeCalcNormalFrame(
+      hitPosition,
+      surfaceInteraction.triangleNormal,
+      rayInteraction.viewDirection,
+      surface.eyeBasisU,
+      surface.eyeBasisV,
+      surface.eyeOrigin,
+      cb.eyeArgs.irisRadius + 0.04, // cornea (lens) is slightly larger than the iris itself
+      uvWhites,
+      enormal,
+      etangent,
+      ebitangent
+    );
+
+    surfaceInteraction.textureCoordinates    = uvWhites;
+    surfaceInteraction.textureGradientX      = 0.f;
+    surfaceInteraction.textureGradientY      = 0.f;
+    // NOTE: disregard the triangle normals
+    surfaceInteraction.triangleNormal        = enormal;
+    surfaceInteraction.interpolatedNormal    = enormal;
+    surfaceInteraction.interpolatedTangent   = etangent;
+    surfaceInteraction.rawTangent            = etangent;
+    surfaceInteraction.triangleTangent       = etangent;
+    surfaceInteraction.interpolatedBitangent = ebitangent;
+    surfaceInteraction.rawBitangent          = ebitangent;
+    surfaceInteraction.triangleBitangent     = ebitangent;
   }
 
   // Adjust texture coordinates and gradients for animated sprite sheet logic

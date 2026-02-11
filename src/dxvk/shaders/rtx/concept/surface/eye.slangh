@@ -1,0 +1,165 @@
+/*
+* Copyright (c) 2026, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+
+#pragma once
+
+
+// NOTES
+// * Iris   -- Colored part, resides at some depth below cornea
+// * Cornea -- Transparent outer layer, covers iris.
+//             It's a lens, so that iris appears shifted when viewed from different angles
+// * Iris radius <= Cornea radius < Eyeball radius
+// * Textures:
+//     * whites texture: covers whole eye, RGB
+//     * iris   texture: RGB - iris diffuse term; ALPHA channel - iris mask, 0.0 whites, 1.0 iris
+//
+
+
+// Calculate eye whites tex.coords from a world-space position
+float2 eyeCalcUvWhites(
+  const float3 hitPosition, // world space ray hit position on an eye surface
+  const float3 eyeBasisU,
+  const float3 eyeBasisV,
+  const float3 eyeballOrigin
+)
+{
+  // project world position into eye UV space
+  float2 uvWhites = float2(
+    dot(hitPosition, eyeBasisU), //
+    dot(hitPosition, eyeBasisV)  //
+  );
+
+  // offset by eyeball position, so eyeball is centered at (0,0) UV
+  uvWhites.x += -dot(eyeballOrigin, eyeBasisU);
+  uvWhites.y += -dot(eyeballOrigin, eyeBasisV);
+
+  // remap the range, as the projection gives [-1,1], but UV is [0,1]
+  uvWhites = uvWhites * 0.5 + 0.5f;
+
+  return uvWhites;
+}
+
+
+// returns 0 if whites, 1 if iris
+float eyeIsIris(float2 uvWhites, float irisRadius, float transitionSoftness = 0.05)
+{
+  // NOTE: uvWhites is centered around (0.5, 0.5), so center around 0
+  return 1 - smoothstep(irisRadius - transitionSoftness, irisRadius, length(uvWhites - 0.5));
+}
+
+
+void eyeCalcNormalFrame(
+  const float3 hitPosition,
+  const float3 hitTriangleNormal,
+  const float3 viewDirection,
+  const float3 eyeBasisU,
+  const float3 eyeBasisV,
+  const float3 eyeballOrigin,
+  const float  corneaRadius,
+  const float2 uvWhites,
+  inout float3 outNormal,
+  inout float3 outTangent,
+  inout float3 outBitangent
+)
+{
+  float3 eyedir = -normalize(cross(eyeBasisU, eyeBasisV));
+
+  // offset sphere center along eye direction for more bent normals
+  // use different centers for cornea and eyeball, as cornea has a different curvature
+  float3 originForNormal = mix(
+    eyeballOrigin + eyedir * cb.eyeArgs.normalBendingEyeball,
+    eyeballOrigin + eyedir * cb.eyeArgs.normalBendingCornea,
+    eyeIsIris(uvWhites, corneaRadius) //
+  );
+
+  // just a sphere normal
+  outNormal = normalize(hitPosition - originForNormal);
+  // but there's a case when sphere normal can be facing away from view direction
+  // so fix it up so it always produces a normal so that reflection vector would be correct
+  outNormal = getBentNormal(hitTriangleNormal, outNormal, -viewDirection);
+
+  // NOTE: eye whites should have a slight noise/variation on normals to look less like a glass,
+  //       an approximation might be to sample whites albedo and perturb normals a bit
+
+  outTangent   = normalize(eyeBasisU);
+  outBitangent = normalize(eyeBasisV);
+
+  // orthogonalize tangent
+  outTangent = normalize(outTangent - dot(outTangent, outNormal) * outNormal);
+  // and bitangent
+  outBitangent =
+    normalize(outBitangent - dot(outBitangent, outNormal) * outNormal - dot(outBitangent, outTangent) * outTangent);
+}
+
+
+float2 eyeParallaxUv(
+  float3   eyeballLookDirection, // normal of a iris plane
+  float3   hitNormal,
+  float3   cameraDirection,
+  float    irisDepth,
+  float3x3 worldToTangentSpace
+)
+{
+  float3 lensRefractDir = refract(-cameraDirection, hitNormal, 1.0);
+
+  float heightInLookDir = abs(dot(eyeballLookDirection, -lensRefractDir));
+
+  float3 parallaxOffset = lensRefractDir * (irisDepth / max(heightInLookDir, 0.00001));
+
+  // project world space into tangent/UV space
+  return mul(worldToTangentSpace, parallaxOffset).xy;
+}
+
+
+float2 eyeCalcIrisUvParallaxed(
+  const float2   uvWhites,
+  const float3   eyeBasisU,
+  const float3   eyeBasisV,
+  const float3   eyeSurfaceHitNormal,
+  const float3x3 worldToTangent, // can be calculated with eyeCalcNormalFrame
+  const float3   viewDirection,
+  const float    irisRadius,
+  const float    irisDepth
+)
+{
+  float2 uvIris = uvWhites;
+  uvIris -= 0.5; // set center to 0
+
+  float3 eyedir           = -normalize(cross(eyeBasisU, eyeBasisV));
+  float  parallaxStrength = eyeIsIris(uvWhites, irisRadius, 0.02);
+
+  uvIris += parallaxStrength * eyeParallaxUv(eyedir, eyeSurfaceHitNormal, viewDirection, irisDepth, worldToTangent);
+
+  // corner case: if parallax moves uv outside iris radius, clamp it back,
+  //              so we don't sample whites texture from iris area
+  float len = length(uvIris);
+  if (parallaxStrength > 0.000001 && len > irisRadius)
+  {
+    uvIris = (uvIris / len) * irisRadius;
+  }
+
+  // NOTE: an eye dilation can be simulated by scaling uvIris
+
+  uvIris *= 2;   // iris needs to be 2 times smaller compared to whites in world space
+  uvIris += 0.5; // back to center at 0.5
+  return uvIris;
+}

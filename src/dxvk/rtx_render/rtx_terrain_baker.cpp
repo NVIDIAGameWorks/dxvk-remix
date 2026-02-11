@@ -645,7 +645,7 @@ namespace dxvk {
       createTextureRef(ReplacementMaterialTextureType::Roughness),
       createTextureRef(ReplacementMaterialTextureType::Metallic),
       createTextureRef(ReplacementMaterialTextureType::Emissive),
-      TextureRef(), TextureRef(), TextureRef(), TextureRef(), // SSS textures
+      TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), // SSS textures
       Material::Properties::roughnessAnisotropy(),
       Material::Properties::emissiveIntensity(),
       Vector3(1, 1, 1), // AlbedoConstant - unused since the AlbedoOpacity texture must be always present for baking

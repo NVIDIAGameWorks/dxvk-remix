@@ -255,6 +255,7 @@ namespace {
           preloadTexture(preload.subsurfaceThicknessTexture),
           preloadTexture(preload.subsurfaceSingleScatteringAlbedoTexture),
           preloadTexture(preload.subsurfaceRadiusTexture),
+          TextureRef(),
           src.getAnisotropyConstant(),
           src.getEmissiveIntensity(),
           src.getAlbedoConstant(),
@@ -340,6 +341,7 @@ namespace {
       if (auto extOpaque = pnext::find<remixapi_MaterialInfoOpaqueEXT>(&info)) {
         auto extSubsurface = pnext::find<remixapi_MaterialInfoOpaqueSubsurfaceEXT>(&info);
         return MaterialData { OpaqueMaterialData {
+          {},
           {},
           {},
           {},
