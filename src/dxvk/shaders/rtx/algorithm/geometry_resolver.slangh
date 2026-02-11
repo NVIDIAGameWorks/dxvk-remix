@@ -131,9 +131,9 @@ void geometryResolverOutputMiss(
 
     if (cb.enableStochasticAlphaBlend)
     {
-      AlphaBlendSurface alphaBlendSurface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[pixelCoordinate]);    
+      AlphaBlendSurface alphaBlendSurface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[pixelCoordinate], cb.alphaBlendSurfacePackMult);
       alphaBlendSurface.finalize(0);
-      AlphaBlendGBuffer[pixelCoordinate] = alphaBlendSurface.pack();
+      AlphaBlendGBuffer[pixelCoordinate] = alphaBlendSurface.pack(cb.alphaBlendSurfacePackMult);
     }
   }
   else
@@ -344,9 +344,9 @@ void geometryResolverOutputSurface(
   if (cb.enableStochasticAlphaBlend && primarySurface)
   {
     //Write opaque objects' geometry hash
-    AlphaBlendSurface alphaBlendSurface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[pixelCoordinate]);
+    AlphaBlendSurface alphaBlendSurface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[pixelCoordinate], cb.alphaBlendSurfacePackMult);
     alphaBlendSurface.finalize(surface.hashPacked);
-    AlphaBlendGBuffer[pixelCoordinate] = alphaBlendSurface.pack();
+    AlphaBlendGBuffer[pixelCoordinate] = alphaBlendSurface.pack(cb.alphaBlendSurfacePackMult);
   }
 
   geometryResolverOutputSurfaceDebugView(pixelCoordinate, virtualMotion);
@@ -1528,10 +1528,10 @@ void geometryResolverVertex(
     f16vec4 alphaBlendColor = AlphaBlendSurface::getAlphaBlendSurface(polymorphicSurfaceMaterialInteraction);
     bool hasEmissive = any(geometryResolverState.radiance > 0);
     
-    AlphaBlendSurface alphaBlendSurface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[geometryResolverState.pixelCoordinate]);
+    AlphaBlendSurface alphaBlendSurface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[geometryResolverState.pixelCoordinate], cb.alphaBlendSurfacePackMult);
     alphaBlendSurface.update(
       alphaBlendColor, polymorphicSurfaceMaterialInteraction.shadingNormal, geometryResolverState.accumulatedHitDistance, surface.hashPacked, hasEmissive);
-    AlphaBlendGBuffer[geometryResolverState.pixelCoordinate] = alphaBlendSurface.pack();
+    AlphaBlendGBuffer[geometryResolverState.pixelCoordinate] = alphaBlendSurface.pack(cb.alphaBlendSurfacePackMult);
 
     if (alphaBlendSurface.backgroundTransparency < 1.0 / 255.0)
     {
@@ -2532,7 +2532,7 @@ void geometryResolver(ivec2 pixelCoordinate) {
     RNG randomState = createRNG(geometryResolverState.pixelCoordinate, cb.frameIdx);
     AlphaBlendSurface alphaBlendSurface = AlphaBlendSurface.createEmpty();
     alphaBlendSurface.randomThreshold = getNextSampleBlueNoise(randomState);
-    AlphaBlendGBuffer[pixelCoordinate] = alphaBlendSurface.pack();
+    AlphaBlendGBuffer[pixelCoordinate] = alphaBlendSurface.pack(cb.alphaBlendSurfacePackMult);
   }
   ParticleBuffer[pixelCoordinate] = vec4(0,0,0,1);
   PrimaryAttenuation[pixelCoordinate] = colorToR11G11B10(geometryResolverState.attenuation);

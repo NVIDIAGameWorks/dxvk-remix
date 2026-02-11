@@ -69,7 +69,7 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
   const float viewDistance = length(viewPosition);
   vec3 cameraPosition = cameraGetWorldPosition(fakeCamera);
 
-  AlphaBlendSurface surface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[thread_id]);
+  AlphaBlendSurface surface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[thread_id], cb.alphaBlendSurfacePackMult);
   vec3 surfaceLight = 0;
   vec4 debugValue = 0;
   vec3 surfacePosition = cameraPosition + surface.hitT * primaryRayDirections.worldDirection;
@@ -107,7 +107,7 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
           bool isSameGeometry = true;
           if (cb.stochasticAlphaBlendSearchTheSameObject)
           {
-            uint16_t neighborGeometryHash = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[neighborPixel]).geometryHash;
+            uint16_t neighborGeometryHash = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[neighborPixel], cb.alphaBlendSurfacePackMult).geometryHash;
             isSameGeometry = (i == 0) || surface.geometryHash == neighborGeometryHash;
           }
           if (!isMiss && (isCoplanar || isDepthSimilar) && isNormalSimilar && isSameGeometry)

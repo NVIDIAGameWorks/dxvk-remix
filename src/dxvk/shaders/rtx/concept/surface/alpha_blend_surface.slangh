@@ -30,13 +30,15 @@ struct AlphaBlendSurface
 {
   f16vec4 color;
   f16vec3 normal;
-  float16_t hitT;
   float16_t backgroundTransparency;
   float16_t randomThreshold;
   uint16_t geometryHash;
+  float hitT;
   bool hasEmissive;
 
-  uint4 pack()
+  // NOTE: 'hitTFloat16PackingMultiplier' is used to scale down 'hitT' (Float32)
+  //       to prevent overflow during packing into Float16
+  uint4 pack(float hitTFloat16PackingMultiplier)
   {
     uint4 data;
     data.x = 
@@ -45,13 +47,17 @@ struct AlphaBlendSurface
       (uint32_t(f16ToUnorm8(color.b)) << 8) |
       (uint32_t(f16ToUnorm8(color.a)));
 
-    data.y = (uint32_t(float16BitsToUint16(backgroundTransparency)) << 16) | uint32_t(float16BitsToUint16(hitT));
+    float     hitTScaled   = hitT / hitTFloat16PackingMultiplier;
+    float16_t hitTScaled16 = float16_t(hitTScaled > float16Max ? float16Max : hitTScaled);
+
+    data.y = (uint32_t(float16BitsToUint16(backgroundTransparency)) << 16) | uint32_t(float16BitsToUint16(hitTScaled16));
     data.z = sphereDirectionToSnorm2x16(normal);
     data.w = (uint32_t(float16BitsToUint16(randomThreshold)) << 16) | (uint32_t(geometryHash) & 0xfffe) | (hasEmissive ? 0x1 : 0x0);
     return data;
   }
 
-  [mutating] void unpack(const uint4 data)
+  // NOTE: 'hitTFloat16PackingMultiplier' must be the same as the one used in pack()
+  [mutating] void unpack(const uint4 data, float hitTFloat16PackingMultiplier)
   {
     color.r = unorm8ToF16(uint8_t(data.x >> 24));
     color.g = unorm8ToF16(uint8_t(data.x >> 16));
@@ -59,7 +65,7 @@ struct AlphaBlendSurface
     color.a = unorm8ToF16(uint8_t(data.x));
 
     backgroundTransparency = uint16BitsToHalf(data.y >> 16);
-    hitT = uint16BitsToHalf(data.y & 0xffff);
+    hitT = float(uint16BitsToHalf(data.y & 0xffff)) * hitTFloat16PackingMultiplier;
     randomThreshold = uint16BitsToHalf(data.w >> 16);
     geometryHash = (data.w & 0xfffe);
     hasEmissive = (data.w & 0x1) > 0 ? true : false;
@@ -79,10 +85,10 @@ struct AlphaBlendSurface
     return surface;
   }
 
-  static AlphaBlendSurface createFromPacked(const uint4 data)
+  static AlphaBlendSurface createFromPacked(const uint4 data, float hitTFloat16PackingMultiplier)
   {
     AlphaBlendSurface surface = {};
-    surface.unpack(data);
+    surface.unpack(data, hitTFloat16PackingMultiplier);
     return surface;
   }
 
@@ -119,7 +125,7 @@ struct AlphaBlendSurface
     return f16vec4(0,0,0,0);
   }
 
-  [mutating] void update(f16vec4 newColor, f16vec3 newNormal, float16_t newHitT, uint16_t newHash, bool newHasEmissive)
+  [mutating] void update(f16vec4 newColor, f16vec3 newNormal, float newHitT, uint16_t newHash, bool newHasEmissive)
   {
     // Suppose we have 3 alpha blend surfaces, from front to back, with color C1, C2, C3, alpha a1, a2, a3,
     // and a opaque background with color CB.

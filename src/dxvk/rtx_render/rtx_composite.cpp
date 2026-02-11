@@ -459,6 +459,7 @@ namespace dxvk {
     compositeArgs.stochasticAlphaBlendPlanarDifference = stochasticAlphaBlendPlanarDifference();
     compositeArgs.stochasticAlphaBlendDiscardBlackPixel = stochasticAlphaBlendDiscardBlackPixel();
     compositeArgs.stochasticAlphaBlendRadianceVolumeMultiplier = stochasticAlphaBlendRadianceVolumeMultiplier();
+    compositeArgs.alphaBlendSurfacePackMult = RtxOptions::getMeterToWorldUnitScale();
     
     compositeArgs.clearColorFinalColor = sceneManager.getGlobals().clearColorFinalColor;
 

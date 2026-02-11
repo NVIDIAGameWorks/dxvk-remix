@@ -112,4 +112,9 @@ struct CompositeArgs {
 
   vec3 clearColorFinalColor;
   uint timeSinceStartMS;
+
+  float alphaBlendSurfacePackMult; // for packing/unpacking hitT into Float16 in AlphaBlendSurface
+  float pad1;
+  float pad2;
+  float pad3;
 };
