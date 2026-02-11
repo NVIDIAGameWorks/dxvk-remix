@@ -2808,6 +2808,20 @@ namespace dxvk {
         ImGui::Unindent();
       }
 
+      if (RtxOptions::Eye::showOptions() && RemixGui::CollapsingHeader("Eyes", collapsingHeaderClosedFlags)) {
+        ImGui::Indent();
+        RemixGui::Checkbox("Enable eye shading", &RtxOptions::Eye::enableObject());
+        ImGui::BeginDisabled(!RtxOptions::Eye::enable());
+        RemixGui::Checkbox("Detect texture-generation draw call as Eye", &RtxOptions::Eye::assumeViewTexgenModeAsEyeObject());
+        RemixGui::DragFloat("Eye Whites Albedo Scale", &RtxOptions::Eye::eyeWhitesAlbedoScaleObject(), 0.01F);
+        RemixGui::DragFloat("Normals: Eyeball Offset", &RtxOptions::Eye::eyeballSphereOffsetObject(), 0.001F);
+        RemixGui::DragFloat("Normals: Cornea Offset", &RtxOptions::Eye::corneaSphereOffsetObject(), 0.001F);
+        RemixGui::DragFloat("Iris Radius", &RtxOptions::Eye::irisRadiusObject(), 0.001F);
+        RemixGui::DragFloat("Iris Depth", &RtxOptions::Eye::irisDepthObject(), 0.001F);
+        ImGui::EndDisabled();
+        ImGui::Unindent();
+      }
+
       auto common = ctx->getCommonObjects();
       common->getSceneManager().getLightManager().showImguiSettings();
 

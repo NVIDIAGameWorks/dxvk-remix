@@ -1195,6 +1195,27 @@ namespace dxvk {
                     args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION("rtx.userBrightnessEVRange", float, userBrightnessEVRange, 3.f, "The exposure value (EV) range for \'rtx.userBrightness\' slider, i.e. how much of EV there is between 0 and 100 slider values.");
 
+    struct Eye {
+      RTX_OPTION("rtx.eye", bool, showOptions, false, "Show eye options in the developer menu.");
+      RTX_OPTION("rtx.eye", bool, enable, false, "Enable shader code for eye drawing (eyeball normals, iris blending).");
+      RTX_OPTION("rtx.eye", bool, assumeViewTexgenModeAsEye, true, 
+                 "Used to detect eyes and its vectors, by assuming that a draw call with D3DTSS_TCI_CAMERASPACEPOSITION and specific texture transform is an eye draw call.");
+      RTX_OPTION("rtx.eye", float, eyeballSphereOffset, 0.18F,
+                 "How much to offset a sphere origin when calculating the eye normals on Whites. "
+                 "The larger the value, the more pronounced the ambient shadowing is on an eyeball, to better ground the eyes on a face.");
+      RTX_OPTION("rtx.eye", float, corneaSphereOffset, 0.1F,
+                 "How much to offset a sphere origin when calculating the eye normals on Cornea. "
+                 "Positive values make the eye cornea appear more spherical. Negative values - more flat.");
+      RTX_OPTION("rtx.eye", float, eyeWhitesAlbedoScale, 0.5F, "Brightness multiplier for the eye whites.");
+      RTX_OPTION("rtx.eye", float, irisRadius, 0.165F,
+                 "Size of an iris in the iris texture. "
+                 "If the iris texture is sampled outside of this radius, it's assumed that that area is a transition to the eye whites, "
+                 "so iris depth gradually goes to 0.");
+      RTX_OPTION("rtx.eye", float, irisDepth, 0.06F,
+                 "How deep should the iris (colored part of an eye) be placed behind the cornea (eye lens). "
+                 "The larger the value the more distortion there is, because of the lens.");
+    };
+
     // Automation Options
     struct Automation {
       RTX_OPTION_FLAG_ENV("rtx.automation", bool, disableBlockingDialogBoxes, false, RtxOptionFlags::NoSave, "RTX_AUTOMATION_DISABLE_BLOCKING_DIALOG_BOXES",

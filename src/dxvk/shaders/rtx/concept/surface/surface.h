@@ -50,6 +50,7 @@ struct Surface
   uint4 data12;
   uint4 data13;
   uint4 data14;
+  uint4 data15;
 
   // flags and properties
 
@@ -248,6 +249,15 @@ struct Surface
       data11 = asuint(newValue[0]);
       data12 = asuint(newValue[1]);
     }
+  }
+  // NOTE: eyeball right/up vectors are aliased with a texture transform
+  property vec3 eyeBasisU
+  {
+    get { return asfloat(data11.xyz); }
+  }
+  property vec3 eyeBasisV
+  {
+    get { return asfloat(data12.xyz); }
   }
 
   // Buffers
@@ -453,6 +463,12 @@ struct Surface
     set { data13.z = (data13.z & ~(0x3 << 17)) | (uint32_t(newValue & 0x3) << 17); }
   }
 
+  property bool isEye
+  {
+    get { return packedFlagGet(data13.z, 1 << 14); }
+    set { data13.z = newValue ? packedFlagSet(data13.z, 1 << 14) : packedFlagUnset(data13.z, 1 << 14); }
+  }
+
   property uint tFactor
   {
     get { return data13.y; }
@@ -477,6 +493,11 @@ struct Surface
   {
     get { return data2.x; }
     set { data2.x = newValue; }
+  }
+
+  property vec3 eyeOrigin
+  {
+    get { return asfloat(data15.xyz); }
   }
 };
 

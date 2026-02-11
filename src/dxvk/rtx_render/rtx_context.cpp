@@ -1303,6 +1303,13 @@ namespace dxvk {
     constants.wboitDepthWeightTuning = RtxOptions::wboitDepthWeightTuning();
     constants.wboitEnabled = RtxOptions::wboitEnabled();
 
+    constants.eyeArgs.enableEyes = RtxOptions::Eye::enable();
+    constants.eyeArgs.normalBendingEyeball = RtxOptions::Eye::eyeballSphereOffset();
+    constants.eyeArgs.normalBendingCornea = RtxOptions::Eye::corneaSphereOffset();
+    constants.eyeArgs.whitesAlbedoScale = RtxOptions::Eye::eyeWhitesAlbedoScale();
+    constants.eyeArgs.irisRadius = RtxOptions::Eye::irisRadius();
+    constants.eyeArgs.irisDepth = RtxOptions::Eye::irisDepth();
+
     // Upload the constants to the GPU
     {
       Rc<DxvkBuffer> cb = getResourceManager().getConstantsBuffer();

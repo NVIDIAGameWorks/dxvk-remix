@@ -567,6 +567,7 @@ struct DrawCallState {
   bool hasTextureCoordinates() const {
     return getGeometryData().texcoordBuffer.defined() || getTransformData().texgenMode != TexGenMode::None;
   }
+  bool isEye() const;
 
   bool stencilEnabled = false;
 

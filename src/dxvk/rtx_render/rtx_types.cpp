@@ -272,6 +272,13 @@ namespace dxvk {
     return false;
   }
 
+  bool DrawCallState::isEye() const {
+    if (RtxOptions::Eye::enable() && RtxOptions::Eye::assumeViewTexgenModeAsEye()) {
+      return getTransformData().texgenMode == TexGenMode::ViewPositions;
+    }
+    return false;
+  }
+
   bool DrawCallState::finalizeGeometryHashes() {
     if (!geometryData.futureGeometryHashes.valid()) {
       return false;
