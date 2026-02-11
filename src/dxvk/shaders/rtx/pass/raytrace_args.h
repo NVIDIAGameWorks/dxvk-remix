@@ -381,7 +381,7 @@ struct RaytraceArgs {
   uint allowNrcTraining;
 
   float vertexColorStrength;
-  uint pad0;
+  float alphaBlendSurfacePackMult; // for packing/unpacking hitT into Float16 in AlphaBlendSurface
 
   float wboitEnergyLossCompensation;
   float wboitDepthWeightTuning;

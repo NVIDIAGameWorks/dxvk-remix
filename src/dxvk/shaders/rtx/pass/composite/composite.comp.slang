@@ -366,7 +366,7 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
   bool isAlphaBlend = false;
   if (cb.enableStochasticAlphaBlend)
   {    
-    AlphaBlendSurface surface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[thread_id]);
+    AlphaBlendSurface surface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[thread_id], cb.alphaBlendSurfacePackMult);
     vec3 cameraPosition = cameraGetWorldPosition(fakeCamera);
     vec4 centerLight = AlphaBlendRadiance[thread_id];
     bool discardPixel = cb.stochasticAlphaBlendDiscardBlackPixel && all(centerLight.xyz == 0);
@@ -394,7 +394,7 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
           }
           int2 neighborPixel = clamp(thread_id.xy + offset * 2,0,cb.resolution-1);
 
-          AlphaBlendSurface neighborSurface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[neighborPixel]);
+          AlphaBlendSurface neighborSurface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[neighborPixel], cb.alphaBlendSurfacePackMult);
           if (neighborSurface.isValid())
           {
             const CameraDirections neighborRayDirections = cameraPixelCoordinateToDirection(fakeCamera, neighborPixel.xy);
