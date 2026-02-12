@@ -210,22 +210,30 @@ void writeEnumValues(std::ofstream& outputFile, const RtComponentPropertySpec& p
 
 // Helper function to write min/max value constraints if they exist
 void writeMinMaxValues(std::ofstream& outputFile, const RtComponentPropertySpec& prop) {
-  // Check if minValue or maxValue are set (they default to false, which is a uint32_t with value 0)
-  const bool hasMinValue = !(std::holds_alternative<uint32_t>(prop.minValue) && std::get<uint32_t>(prop.minValue) == 0);
-  const bool hasMaxValue = !(std::holds_alternative<uint32_t>(prop.maxValue) && std::get<uint32_t>(prop.maxValue) == 0);
+  // Check if limit metadata is set (they default to false, which is a uint32_t with value 0)
+  const bool hasHardMin = !(std::holds_alternative<uint32_t>(prop.hardMin) && std::get<uint32_t>(prop.hardMin) == 0);
+  const bool hasHardMax = !(std::holds_alternative<uint32_t>(prop.hardMax) && std::get<uint32_t>(prop.hardMax) == 0);
+  const bool hasSoftMin = !(std::holds_alternative<uint32_t>(prop.softMin) && std::get<uint32_t>(prop.softMin) == 0);
+  const bool hasSoftMax = !(std::holds_alternative<uint32_t>(prop.softMax) && std::get<uint32_t>(prop.softMax) == 0);
+  const bool hasUiStep = !(std::holds_alternative<uint32_t>(prop.uiStep) && std::get<uint32_t>(prop.uiStep) == 0);
   
-  if (hasMinValue || hasMaxValue) {
+  if (hasHardMin || hasHardMax || hasSoftMin || hasSoftMax || hasUiStep) {
     outputFile << std::endl << "**Value Constraints:**" << std::endl << std::endl;
     
-    if (hasMinValue) {
-      outputFile << "- **Minimum Value:** " 
-                 << escapeMarkdown(getValueAsString(prop.minValue, prop)) 
-                 << std::endl;
+    if (hasHardMin) {
+      outputFile << "- **Minimum Valid Value:** " << escapeMarkdown(getValueAsString(prop.hardMin, prop)) << std::endl;
     }
-    if (hasMaxValue) {
-      outputFile << "- **Maximum Value:** " 
-                 << escapeMarkdown(getValueAsString(prop.maxValue, prop)) 
-                 << std::endl;
+    if (hasHardMax) {
+      outputFile << "- **Maximum Valid Value:** " << escapeMarkdown(getValueAsString(prop.hardMax, prop)) << std::endl;
+    }
+    if (hasSoftMin) {
+      outputFile << "- **Suggested Minimum:** " << escapeMarkdown(getValueAsString(prop.softMin, prop)) << std::endl;
+    }
+    if (hasSoftMax) {
+      outputFile << "- **Suggested Maximum:** " << escapeMarkdown(getValueAsString(prop.softMax, prop)) << std::endl;
+    }
+    if (hasUiStep) {
+      outputFile << "- **UI Step:** " << escapeMarkdown(getValueAsString(prop.uiStep, prop)) << std::endl;
     }
   }
 }

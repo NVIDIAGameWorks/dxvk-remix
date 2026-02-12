@@ -131,11 +131,14 @@ Each parameter can have optional properties set after the docString:
 
 ```cpp
 X(RtComponentPropertyType::Float, 1.f, inputFloat, "Input Float", "test for Float", \
-  property.minValue = 0.0f, property.maxValue = 10.0f, property.optional = true)
+  property.hardMin = 0.0f, property.hardMax = 10.0f, property.optional = true)
 ```
 
 Available options include:
-* `property.minValue` / `property.maxValue` - Range constraints (currently UI hints only)
+* **Limit metadata** (numeric types only; emitted in OGN as attribute metadata for UI/sliders):
+  * `property.hardMin` / `property.hardMax` - Absolute minimum and maximum values (values outside this range are invalid)
+  * `property.softMin` / `property.softMax` - Suggested minimum and maximum values, mainly used to set UI slider range
+  * `property.uiStep` - Smallest change that can be made with a UI slider
 * `property.optional` - Whether the component functions without this property being set
 * `property.oldUsdNames` - For backwards compatibility when renaming properties
 * `property.enumValues` - For displaying as an enum in the UI

@@ -28,8 +28,11 @@ The priority for the option layer\. Numbers are rounded to the nearest positive 
 
 **Value Constraints:**
 
-- **Minimum Value:** 100\.0
-- **Maximum Value:** 10000000\.0
+- **Minimum Valid Value:** 100\.0
+- **Maximum Valid Value:** 10000000\.0
+- **Suggested Minimum:** 1000\.0
+- **Suggested Maximum:** 20000\.0
+- **UI Step:** 100\.0
 
 ## Output Properties
 

@@ -36,7 +36,7 @@ namespace components {
 #define LIST_INPUTS(X) \
   X(RtComponentPropertyType::Prim, kInvalidPrimTarget, target, "Target", "The mesh prim to read the bone transform from. Must be a skinned mesh.", \
     property.allowedPrimTypes = {PrimType::UsdGeomMesh}) \
-  X(RtComponentPropertyType::Float, 0.0f, boneIndex, "Bone Index", "The index of the bone to read. Will be rounded to the nearest integer.", property.minValue = 0.0f)
+  X(RtComponentPropertyType::Float, 0.0f, boneIndex, "Bone Index", "The index of the bone to read. Will be rounded to the nearest integer.", property.hardMin = 0.0f, property.softMax = 256.0f, property.uiStep = 1.0f)
 
 #define LIST_STATES(X)
 

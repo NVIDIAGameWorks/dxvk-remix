@@ -25,7 +25,11 @@
         "description": ["Multiplier for time speed. 1.0 = normal speed, 2.0 = double speed, 0.5 = half speed."],
         "type": "float",
         "default": 1.000000,
-        "minimum": 0.000000,
+        "metadata": {
+          "hardMin": 0.000000,
+          "softMax": 3.000000,
+          "uiStep": 0.100000
+        },
         "optional": true,
         "uiName": "Speed Multiplier"
       }

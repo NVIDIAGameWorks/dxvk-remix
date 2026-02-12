@@ -33,8 +33,10 @@ namespace components {
   X(RtComponentPropertyType::Float, kDefaultDynamicRtxOptionLayerPriority, priority, "Priority", \
     "The priority for the option layer. Numbers are rounded to the nearest positive integer. " \
     "Higher values are blended on top of lower values. If multiple layers share the same priority, " \
-    "they are ordered alphabetically by config path.", property.minValue = kMinDynamicRtxOptionLayerPriority, \
-    property.maxValue = kMaxDynamicRtxOptionLayerPriority, property.optional = true) 
+    "they are ordered alphabetically by config path.", \
+    property.hardMin = kMinDynamicRtxOptionLayerPriority, property.hardMax = kMaxDynamicRtxOptionLayerPriority, \
+    property.softMin = kDefaultDynamicRtxOptionLayerPriority / 10, property.softMax = kDefaultDynamicRtxOptionLayerPriority * 2, \
+    property.uiStep = kDefaultDynamicRtxOptionLayerPriority / 100, property.optional = true) 
 
 #define LIST_STATES(X)
 

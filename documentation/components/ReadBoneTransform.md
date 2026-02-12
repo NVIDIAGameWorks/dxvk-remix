@@ -28,7 +28,9 @@ The index of the bone to read\. Will be rounded to the nearest integer\.
 
 **Value Constraints:**
 
-- **Minimum Value:** 0\.0
+- **Minimum Valid Value:** 0\.0
+- **Suggested Maximum:** 256\.0
+- **UI Step:** 1\.0
 
 ## Output Properties
 

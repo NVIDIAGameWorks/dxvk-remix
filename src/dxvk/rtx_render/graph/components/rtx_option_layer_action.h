@@ -34,14 +34,16 @@ namespace components {
   X(RtComponentPropertyType::Bool, true, enabled, "Enabled", "If true, the option layer is enabled and its settings are applied. If false, the layer is disabled. If multiple components control the same layer, it will be enabled if ANY of them request it.", property.optional = true) \
   X(RtComponentPropertyType::Float, 1.0f, blendStrength, "Blend Strength", "The blend strength for the option layer (0.0 = no effect, 1.0 = full effect.)" \
       "\n\nLowest priority layer uses LERP to blend with default value, then each higher priority layer uses LERP to blend with the previous layer's result." \
-      "\n\nIf multiple components control the same layer, the MAX blend strength will be used.", property.minValue = 0.0f, property.maxValue = 1.0f, property.optional = true) \
+      "\n\nIf multiple components control the same layer, the MAX blend strength will be used.", property.hardMin = 0.0f, property.hardMax = 1.0f, property.optional = true) \
   X(RtComponentPropertyType::Float, 0.1f, blendThreshold, "Blend Threshold", \
       "The blend threshold for non-float options (0.0 to 1.0). Non-float options are only applied when blend strength exceeds this threshold." \
-      " If multiple components control the same layer, the MINIMUM blend threshold will be used.", property.minValue = 0.0f, property.maxValue = 1.0f, property.optional = true) \
+      " If multiple components control the same layer, the MINIMUM blend threshold will be used.", property.hardMin = 0.0f, property.hardMax = 1.0f, property.optional = true) \
   X(RtComponentPropertyType::Float, kDefaultDynamicRtxOptionLayerPriority, priority, "Priority", \
       "The priority for the option layer. Numbers are rounded to the nearest positive integer. Higher values are blended on top of lower values." \
       " If two components specify the same priority but different config paths, the layers will be prioritized alphabetically (a.conf will override values from z.conf).", \
-      property.minValue = kMinDynamicRtxOptionLayerPriority, property.maxValue = kMaxDynamicRtxOptionLayerPriority, property.optional = true)
+      property.hardMin = kMinDynamicRtxOptionLayerPriority, property.hardMax = kMaxDynamicRtxOptionLayerPriority, \
+      property.softMin = kDefaultDynamicRtxOptionLayerPriority / 10, property.softMax = kDefaultDynamicRtxOptionLayerPriority * 2, \
+      property.uiStep = kDefaultDynamicRtxOptionLayerPriority / 100, property.optional = true)
 
 #define LIST_STATES(X) \
   X(RtComponentPropertyType::Bool, false, holdsReference, "", "True if the component is holding a reference to the RtxOptionLayer.") \
