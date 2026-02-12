@@ -31,7 +31,8 @@ namespace components {
 #define LIST_INPUTS(X) \
   X(RtComponentPropertyType::Bool, true, enabled, "Enabled", "If true, time accumulation continues. If false, time is paused.", property.optional = true) \
   X(RtComponentPropertyType::Bool, true, resetWhenDisabled, "Reset When Disabled", "If true and `enabled` is false, the accumulated time is reset to 0.", property.optional = true) \
-  X(RtComponentPropertyType::Float, 1.0f, speedMultiplier, "Speed Multiplier", "Multiplier for time speed. 1.0 = normal speed, 2.0 = double speed, 0.5 = half speed.", property.minValue = 0.0f, property.optional = true)
+  X(RtComponentPropertyType::Float, 1.0f, speedMultiplier, "Speed Multiplier", "Multiplier for time speed. 1.0 = normal speed, 2.0 = double speed, 0.5 = half speed.", \
+    property.hardMin = 0.0f, property.softMax = 3.0f, property.uiStep = 0.1f, property.optional = true)
 
 #define LIST_STATES(X) \
   X(RtComponentPropertyType::Float, 0.0f, accumulatedTime, "", "The accumulated time since component creation (in seconds).")

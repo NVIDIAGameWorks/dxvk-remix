@@ -224,8 +224,8 @@ RtComponentPropertyValue propertyValueForceType(const E& value) {
 }
 
 // Helper to convert a RtComponentPropertyValue to the correct type for a property.
-// This is used to ensure minValue/maxValue have the correct type even if the user
-// writes `property.minValue = 0` (which defaults to int32_t).
+// This is used to ensure limit fields (hardMin, hardMax, etc.) have the correct type even if the user
+// writes `property.hardMin = 0` (which defaults to int32_t).
 // Only converts between numeric types; non-numeric types are left as-is.
 template<typename TargetType>
 RtComponentPropertyValue convertPropertyValueToType(const RtComponentPropertyValue& value) {
@@ -306,8 +306,8 @@ struct RtComponentPropertySpec {
   ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
   // To set optional values when using the macros, write them as a comma separated list after the docString. 
-  // `property.<name> = <value>`, i.e. `property.minValue = 0.0f, property.maxValue = 1.0f`
-  // Note: minValue and maxValue are automatically converted to match the property's declared type
+  // `property.<name> = <value>`, i.e. `property.hardMin = 0.0f, property.hardMax = 1.0f`
+  // Note: limit related fields are automatically converted to match the property's declared type
 
   // If this property has been renamed, list the old `usdPropertyName`s here for backwards compatibility.
   // If multiple definitions for the same property exist, the property on the strongest USD layer will be used.
@@ -316,11 +316,18 @@ struct RtComponentPropertySpec {
   // property.oldUsdNames = { "thirdName", "secondName", "originalName" }
   std::vector<std::string> oldUsdNames;
 
-  // NOTE: These are currently unenforced on the c++ side, but should be used for OGN generation.
+  // Value limits for OGN attribute metadata (softMin, softMax, hardMin, hardMax, uiStep).
+  // hard limits are absolute boundaries - values outside this range are invalid inputs.
+  // soft limits are suggested boundaries, mainly used for setting the size of UI sliders.
+  // uiStep is the smallest change that can be made with a UI slider.
+  // NOTE: These are currently unenforced on the c++ side, but are emitted in OGN metadata for UI/sliders.
   // TODO: consider enforcing these on the c++ side (between component batch updates?)
-  // Using kFalsePropertyValue to represent false due to the bool problem mentioned in RtComponentPropertyValue.
-  RtComponentPropertyValue minValue = kFalsePropertyValue;
-  RtComponentPropertyValue maxValue = kFalsePropertyValue;
+  // Using kFalsePropertyValue to represent "not set" due to the bool problem mentioned in RtComponentPropertyValue.
+  RtComponentPropertyValue hardMin = kFalsePropertyValue;
+  RtComponentPropertyValue hardMax = kFalsePropertyValue;
+  RtComponentPropertyValue softMin = kFalsePropertyValue;
+  RtComponentPropertyValue softMax = kFalsePropertyValue;
+  RtComponentPropertyValue uiStep = kFalsePropertyValue;
 
 
   // Whether the component will function without this property being set.

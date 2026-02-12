@@ -36,8 +36,8 @@ The blend strength for the option layer \(0\.0 = no effect, 1\.0 = full effect\.
 
 **Value Constraints:**
 
-- **Minimum Value:** 0\.0
-- **Maximum Value:** 1\.0
+- **Minimum Valid Value:** 0\.0
+- **Maximum Valid Value:** 1\.0
 
 ### Blend Threshold
 
@@ -46,8 +46,8 @@ The blend threshold for non\-float options \(0\.0 to 1\.0\)\. Non\-float options
 
 **Value Constraints:**
 
-- **Minimum Value:** 0\.0
-- **Maximum Value:** 1\.0
+- **Minimum Valid Value:** 0\.0
+- **Maximum Valid Value:** 1\.0
 
 ### Priority
 
@@ -56,8 +56,11 @@ The priority for the option layer\. Numbers are rounded to the nearest positive 
 
 **Value Constraints:**
 
-- **Minimum Value:** 100\.0
-- **Maximum Value:** 10000000\.0
+- **Minimum Valid Value:** 100\.0
+- **Maximum Valid Value:** 10000000\.0
+- **Suggested Minimum:** 1000\.0
+- **Suggested Maximum:** 20000\.0
+- **UI Step:** 100\.0
 
 ## State Properties
 

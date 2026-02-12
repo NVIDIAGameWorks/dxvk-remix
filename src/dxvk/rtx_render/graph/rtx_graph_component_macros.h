@@ -39,9 +39,9 @@
 #define REMIX_COMPONENT_GENERATE_CLASS_TYPE(propertyType, defaultValue, name, uiName, docString, ...) \
   using name##CppType = RtComponentPropertyTypeToCppType<name##PropertyType>;
 
-// To set optional values, when using these macros, write them as a comma separated list of 
-// `property.<name> = <value>`, i.e. `property.minValue = 0.0f, property.maxValue = 1.0f`
-// Note: minValue and maxValue are automatically converted to match the property's declared type
+// To set optional values, when using these macros, write them as a comma separated list of
+// `property.<name> = <value>`, i.e. `property.hardMin = 0.0f, property.hardMax = 1.0f`, optionally property.softMin, property.softMax, property.uiStep
+// Note: hardMin, hardMax, softMin, softMax, and uiStep are automatically converted to match the property's declared type
 #define REMIX_COMPONENT_GENERATE_CONST_MEMBER(propertyType, defaultValue, name, uiName, docString, ...) \
   const std::vector<name##CppType>& m_##name;
 
@@ -82,14 +82,21 @@
   { \
     RtComponentPropertySpec& property = s_spec.properties[index]; \
     __VA_ARGS__; \
-    /* Enforce type correctness for minValue and maxValue after they're set */ \
-    /* Check if minValue was set (not default) and convert to correct type */ \
-    if (property.minValue != kFalsePropertyValue) { \
-      property.minValue = convertPropertyValueToType<name##CppType>(property.minValue); \
+    /* Enforce type correctness for limit metadata (hardMin, hardMax, softMin, softMax, uiStep) after they're set */ \
+    if (property.hardMin != kFalsePropertyValue) { \
+      property.hardMin = convertPropertyValueToType<name##CppType>(property.hardMin); \
     } \
-    /* Check if maxValue was set (not default) and convert to correct type */ \
-    if (property.maxValue != kFalsePropertyValue) { \
-      property.maxValue = convertPropertyValueToType<name##CppType>(property.maxValue); \
+    if (property.hardMax != kFalsePropertyValue) { \
+      property.hardMax = convertPropertyValueToType<name##CppType>(property.hardMax); \
+    } \
+    if (property.softMin != kFalsePropertyValue) { \
+      property.softMin = convertPropertyValueToType<name##CppType>(property.softMin); \
+    } \
+    if (property.softMax != kFalsePropertyValue) { \
+      property.softMax = convertPropertyValueToType<name##CppType>(property.softMax); \
+    } \
+    if (property.uiStep != kFalsePropertyValue) { \
+      property.uiStep = convertPropertyValueToType<name##CppType>(property.uiStep); \
     } \
     if (!property.oldUsdNames.empty()) { \
       std::string prefix = "inputs:"; \

@@ -34,7 +34,9 @@ Multiplier for time speed\. 1\.0 = normal speed, 2\.0 = double speed, 0\.5 = hal
 
 **Value Constraints:**
 
-- **Minimum Value:** 0\.0
+- **Minimum Valid Value:** 0\.0
+- **Suggested Maximum:** 3\.0
+- **UI Step:** 0\.1
 
 ## State Properties
 

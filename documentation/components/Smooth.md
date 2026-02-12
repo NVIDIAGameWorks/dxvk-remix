@@ -28,8 +28,9 @@ The smoothing factor \(0\-1000\)\. 0 means output never changes\. Larger values 
 
 **Value Constraints:**
 
-- **Minimum Value:** 0\.0
-- **Maximum Value:** 1000\.0
+- **Minimum Valid Value:** 0\.0
+- **Maximum Valid Value:** 1000\.0
+- **UI Step:** 1\.0
 
 ## State Properties
 

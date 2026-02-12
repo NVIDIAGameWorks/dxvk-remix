@@ -38,7 +38,7 @@ namespace components {
     "- 100: 0.066 seconds\n"\
     "- 1000: 0.0066 seconds\n\n"\
     "Formula: output = lerp(input, previousOutput, exp2(-smoothingFactor*deltaTime))",\
-    property.minValue = 0.0f, property.maxValue = 1000.0f, property.optional = true)
+    property.hardMin = 0.0f, property.hardMax = 1000.0f, property.uiStep = 1.0f, property.optional = true)
 
 #define LIST_STATES(X) \
   X(RtComponentPropertyType::Bool, false, initialized, "", "Tracks if the smooth value has been initialized.")
