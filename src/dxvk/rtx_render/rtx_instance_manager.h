@@ -150,6 +150,7 @@ uint32_t getFirstBillboardIndex() const { return m_firstBillboard; }
   bool isViewModelNonReference() const;
   bool isViewModelReference() const;
   bool isViewModelVirtual() const;
+  bool isSubsurface() const { return m_isSubsurface; }
 
   bool isUnlinkedForGC() const { return m_isUnlinkedForGC; }
 
@@ -205,6 +206,7 @@ private:
   bool m_isUnordered = false;
   bool m_isObjectToWorldMirrored = false;
   bool m_isCreatedByRenderer = false;
+  bool m_isSubsurface = false;
   BlasEntry* m_linkedBlas = nullptr;
   XXH64_hash_t m_materialHash = kEmptyHash;
   XXH64_hash_t m_materialDataHash = kEmptyHash;

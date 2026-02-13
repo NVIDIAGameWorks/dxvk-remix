@@ -1101,7 +1101,9 @@ namespace dxvk {
             materialData.getOpaqueMaterialData().setEnableEmission(true);
             materialData.getOpaqueMaterialData().setEmissiveIntensity(RtxOptions::emissiveBlendOverrideEmissiveIntensity());
             materialData.getOpaqueMaterialData().setEmissiveColorTexture(materialData.getOpaqueMaterialData().getAlbedoOpacityTexture());
-          } 
+          }
+
+          currentInstance.m_isSubsurface = materialData.getOpaqueMaterialData().getSubsurfaceDiffusionProfile();
 
           break;
         }
