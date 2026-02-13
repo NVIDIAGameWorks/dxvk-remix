@@ -862,6 +862,12 @@ namespace dxvk {
         "Enable diffusion profile correction when enabling SSS Transmission.\n"
         "Both burley's diffusion profile and SSS Transmission includes the single scattering energy.\n"
         "The correction removes the single scattering part from diffusion profile to avoid double counting the single scattering energy.");
+      RTX_OPTION("rtx.subsurface", bool, enableHeuristicSingleScatteringTransmission, true,
+        "Heuristically checks the mean free path (MFP) of SSS materials to determine whether "
+        "single scattering transmission should be enabled. Extremely large MFP values usually "
+        "indicate thick volumes dominated by high-order scattering, which is already approximated "
+        "by the diffusion profile and captures most of the SSS energy. In these cases, the single "
+        "scattering contribution can be safely ignored.");
       RTX_OPTION("rtx.subsurface", uint8_t, transmissionBsdfSampleCount, 1, "The sample count for transmission BSDF.(1spp as default)");
       RTX_OPTION("rtx.subsurface", uint8_t, transmissionSingleScatteringSampleCount, 1, "The sample count for every single scattering on BSDF transmission (refracted) ray.(1spp as default)");
       RTX_OPTION("rtx.subsurface", Vector2i, diffusionProfileDebugPixelPosition, Vector2i(INT32_MAX, INT32_MAX), "Pixel position where we show debugging sampling positions for diffusion profile. Requires set debug view to 'SSS Diffusion Profile Sampling'.");

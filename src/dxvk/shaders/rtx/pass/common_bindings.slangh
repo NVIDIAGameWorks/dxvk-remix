@@ -64,6 +64,9 @@ RaytracingAccelerationStructure previousTopLevelAS;
 layout(binding = BINDING_ACCELERATION_STRUCTURE_UNORDERED)
 RaytracingAccelerationStructure unorderedTLAS;
 
+layout(binding = BINDING_ACCELERATION_STRUCTURE_SSS)
+RaytracingAccelerationStructure sssTLAS;
+
 layout(binding = BINDING_SURFACE_DATA_BUFFER) 
 StructuredBuffer<Surface> surfaces;
 

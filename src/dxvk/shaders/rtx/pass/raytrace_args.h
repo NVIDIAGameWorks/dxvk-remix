@@ -356,7 +356,7 @@ struct RaytraceArgs {
   float resolveStochasticAlphaBlendThreshold;
   float translucentDecalAlbedoFactor;
 
-  float pad;
+  uint enableHeuristicSingleScatteringTransmission;
 
   float skyBrightness;
 

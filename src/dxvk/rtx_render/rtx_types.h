@@ -825,6 +825,7 @@ struct Tlas {
   enum Type : size_t {
     Opaque,
     Unordered,
+    SSS,
 
     Count
   };

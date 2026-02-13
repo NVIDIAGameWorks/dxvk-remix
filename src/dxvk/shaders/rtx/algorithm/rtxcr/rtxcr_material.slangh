@@ -1,5 +1,5 @@
 /***************************************************************************
- # Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+ # Copyright (c) 2024-2026, NVIDIA CORPORATION.  All rights reserved.
  #
  # NVIDIA CORPORATION and its licensors retain all intellectual property
  # and proprietary rights in and to this software, related documentation
@@ -43,12 +43,11 @@ SssDiffusionProfileResult createEmptySssDiffusionProfileResult()
 
 SssTracingResult traceSssRay(
   const Ray sssSampleRay,
-  const uint8_t rayMask) {
-  uint rayFlags = RAY_FLAG_NONE;
-
+  const uint8_t rayMask,
+  const uint rayFlags) {
   RayQuery<0> rayQuery = RayQuery<0>();
   rayQuery.TraceRayInline(
-      topLevelAS,
+      sssTLAS,
       rayFlags, rayMask,
       rayToRayDesc(sssSampleRay)
   );
@@ -136,9 +135,9 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
     Ray sssSampleRay;
     sssSampleRay.origin = subsurfaceSample.samplePosition;
     sssSampleRay.direction = -diskNormalWorldSpace; // Shooting a ray from sample disk towards the surface
-    sssSampleRay.tMax = floatMax;
+    sssSampleRay.tMax = max(subsurfaceMaterial.maxSampleRadius * subsurfaceMaterialData.scale * 2.0f, 0.1f);
 
-    const SssTracingResult sssTracingResult = traceSssRay(sssSampleRay, rayMask);
+    const SssTracingResult sssTracingResult = traceSssRay(sssSampleRay, OBJECT_MASK_OPAQUE, RAY_FLAG_CULL_BACK_FACING_TRIANGLES);
 
     // Current sample ray misses or hits surface that different to the center surface, continue to the next sample
     if (!sssTracingResult.hasHit || primarySurfaceIndex != sssTracingResult.surfaceIndex) {
@@ -218,9 +217,19 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
     ++validSampleCount;
   }
 
+  // Scattering MFP values close to 1.0 in all RGB channels indicate a thick medium where
+  // transmission single scattering contribution is minimal. In this case, we rely on the
+  // diffusion profile only, which captures most of the SSS energy dominated by multiple scattering.
+  //
+  // Note: Use 0.99 instead of 1.0 to avoid potential floating-point precision issues.
+  const bool enableSingleScatteringTransmission =
+      cb.enableSssTransmission &&
+      cb.enableHeuristicSingleScatteringTransmission &&
+      any(subsurfaceMaterialData.scatteringColor < 0.99f);
+
   subsurfaceInteraction =
     RTXCR_CreateSubsurfaceInteraction(minimalSurfaceInteraction.position, minimalSurfaceInteraction.triangleNormal, minimalSurfaceInteraction.triangleTangent, minimalSurfaceInteraction.triangleBitangent);
-  const float3 singleScatteringTransmission = cb.enableSssTransmission ?
+  const float3 singleScatteringTransmission = enableSingleScatteringTransmission ?
     evalSingleScatteringTransmission(opaqueSurfaceMaterialInteraction, minimalRayInteraction, minimalSurfaceInteraction,
     rayMask, sampledTransportPortalIndex, geometryFlags, viewRay, primarySurfaceIndex,
     subsurfaceMaterialData, subsurfaceInteraction,
@@ -263,7 +272,7 @@ float3 evalSingleScatteringTransmission(
     const float3 hitPos = subsurfaceInteraction.centerPosition;
 
     const Ray transmissionRay = rayCreateDirection(minimalRayInteraction, minimalSurfaceInteraction, viewRay, refractedRayDirection, true);
-    SssTracingResult transmissionTracingResult = traceSssRay(transmissionRay, rayMask);
+    SssTracingResult transmissionTracingResult = traceSssRay(transmissionRay, OBJECT_MASK_OPAQUE, RAY_FLAG_NONE);
 
     // Note: In theory, we don't need to check hit because the model should be water tight, which is nessary for our SSS algorithm.
     //       But we still check here for extra security just in case the model is not water tight or we suffer on self-intersections.
@@ -363,7 +372,7 @@ float3 evalSingleScatteringTransmission(
       singleScatteringRay.direction = scatteringDirection;
       singleScatteringRay.tMax = floatMax;
 
-      SssTracingResult singleScatteringTracingResult = traceSssRay(singleScatteringRay, rayMask);
+      SssTracingResult singleScatteringTracingResult = traceSssRay(singleScatteringRay, OBJECT_MASK_OPAQUE, RAY_FLAG_NONE);
 
       if (!singleScatteringTracingResult.hasHit) {
         continue;

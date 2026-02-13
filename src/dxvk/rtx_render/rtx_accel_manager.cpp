@@ -145,6 +145,9 @@ namespace dxvk {
       if (usesUnorderedApproximations != geometryUsesUnorderedApproximations) {
         return false;
       }
+      if (hasSssInstances != instance->isSubsurface()) {
+        return false;
+      }
     }
 
     BlasEntry* blasEntry = instance->getBlas();
@@ -164,6 +167,7 @@ namespace dxvk {
     customIndexFlags = geometryCustomIndexFlags;
     instanceFlags = geometryInstanceFlags;
     usesUnorderedApproximations = geometryUsesUnorderedApproximations;
+    hasSssInstances = instance->isSubsurface();
     return true;
   }
 
@@ -760,6 +764,9 @@ namespace dxvk {
       m_mergedInstances[Tlas::Unordered].push_back(blasInstance);
     } else {
       m_mergedInstances[Tlas::Opaque].push_back(blasInstance);
+      if (instance->isSubsurface()) {
+        m_mergedInstances[Tlas::SSS].push_back(blasInstance);
+      }
     }
 
     // Append the instance to the reordered surface list
@@ -868,6 +875,9 @@ namespace dxvk {
         m_mergedInstances[Tlas::Unordered].push_back(instance);
       } else {
         m_mergedInstances[Tlas::Opaque].push_back(instance);
+        if (bucket->hasSssInstances) {
+          m_mergedInstances[Tlas::SSS].push_back(instance);
+        }
       }
     }
   }
@@ -1295,6 +1305,11 @@ namespace dxvk {
     size_t totalScratchSize = 0;
     internalBuildTlas<Tlas::Opaque>(ctx, totalScratchSize);
     internalBuildTlas<Tlas::Unordered>(ctx, totalScratchSize);
+    // Only build TLAS for SSS when necessary
+    const bool isBuildSssTlas = RtxOptions::SubsurfaceScattering::enableDiffusionProfile() && m_mergedInstances[Tlas::SSS].size() > 0;
+    if (isBuildSssTlas) {
+      internalBuildTlas<Tlas::SSS>(ctx, totalScratchSize);
+    }
 
     ctx->emitMemoryBarrier(0,
       VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
@@ -1313,7 +1328,7 @@ namespace dxvk {
 
   template<Tlas::Type type>
   void AccelManager::internalBuildTlas(Rc<DxvkContext> ctx, size_t& totalScratchSize) {
-    static constexpr const char* names[] = { "TLAS_Opaque", "TLAS_NonOpaque" };
+    static constexpr const char* names[] = { "TLAS_Opaque", "TLAS_NonOpaque", "TLAS_SSS" };
     ScopedGpuProfileZone(ctx, names[type]);
     const VkBuildAccelerationStructureFlagsKHR flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR | additionalAccelerationStructureFlags();
 
