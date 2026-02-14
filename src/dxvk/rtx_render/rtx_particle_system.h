@@ -79,6 +79,7 @@ namespace dxvk {
       Rc<DxvkBuffer> m_vb;
       Rc<DxvkBuffer> m_ib;
       Rc<ConservativeCounter> m_count;
+      Resources::Resource m_animationState;
 
       XXH64_hash_t m_cachedHash = kEmptyHash;
 
@@ -90,6 +91,17 @@ namespace dxvk {
       uint64_t lastSpawnTimeMs;
 
       GpuParticleSystem context;
+
+      // CPU-only animation data (extracted from RtxParticleSystemDesc for texture generation)
+      struct AnimationData {
+        std::vector<vec4> minColor;
+        std::vector<vec4> maxColor;
+        std::vector<vec2> minSize;
+        std::vector<vec2> maxSize;
+        std::vector<vec3> maxVelocity;
+        std::vector<float> minRotationSpeed;
+        std::vector<float> maxRotationSpeed;
+      } animationData;
 
       std::vector<uint16_t> spawnContextParticleMap;
 
@@ -122,6 +134,10 @@ namespace dxvk {
 
       const Rc<DxvkBuffer>& getIndexBuffer() const {
         return m_ib;
+      }
+
+      const Rc<DxvkImageView>& getAnimationDataTexture() const {
+        return m_animationState.view;
       }
 
       const uint32_t getGeneration() const {
@@ -163,20 +179,23 @@ namespace dxvk {
     RTX_OPTION("rtx.particles", float, timeScale, 1.f, "Time modifier, can be used to slow/speed up time.");
 
     RTX_OPTION("rtx.particles.globalPreset", int, spawnRatePerSecond, 100, "Number of particles (per system) to spawn per second on average.");
+    RTX_OPTION("rtx.particles.globalPreset", float, spawnBurstDuration, 0.f, "Number of seconds between particle spawning bursts.  For a value of 0, we assume continuous spawning, for all values greater than 0 we expect particles to be spawned in bursts.  This value will still respect the spawn rate per second parameter and the max particle parameter.");
     RTX_OPTION("rtx.particles.globalPreset", int, numberOfParticlesPerMaterial, 10000, "Maximum number of particles to simulate per material simultaneously.  There is a performance consideration, lower numbers are more performant.  Ideal is to tune this number for your specific needs.");
 
     RTX_OPTION("rtx.particles.globalPreset", float, minParticleLife, 1.f, "Minimum lifetime (in seconds) to give to a particle when spawned.");
     RTX_OPTION("rtx.particles.globalPreset", float, maxParticleLife, 1.f, "Maximum lifetime (in seconds) to give to a particle when spawned.");
 
-    RTX_OPTION("rtx.particles.globalPreset", float, minSpawnSize, 10.f, "Minimum size (in centimeters) to give to a particle when spawned.");
-    RTX_OPTION("rtx.particles.globalPreset", float, maxSpawnSize, 10.f, "Maximum size (in centimeters) to give to a particle when spawned.");
+    RTX_OPTION("rtx.particles.globalPreset", float, maxSpeed, -1.f, "Note, this settings is being deprecated in favour of the maxSpawnVelocity and maxTargetVelocity variables.");
+
+    RTX_OPTION("rtx.particles.globalPreset", Vector2, minSpawnSize, Vector2(10.f), "Minimum size (in centimeters) to give to a particle when spawned.");
+    RTX_OPTION("rtx.particles.globalPreset", Vector2, maxSpawnSize, Vector2(10.f), "Maximum size (in centimeters) to give to a particle when spawned.");
     RTX_OPTION("rtx.particles.globalPreset", float, minSpawnRotationSpeed, 0.f, "Minimum rotation speed (in revolutions per second) to give to a particle when spawned.");
     RTX_OPTION("rtx.particles.globalPreset", float, maxSpawnRotationSpeed, 0.f, "Maximum rotation speed (in revolutions per second) to give to a particle when spawned.");
     RTX_OPTION("rtx.particles.globalPreset", Vector4, minSpawnColor, Vector4(1.f), "Minimum range of the color to tint a particle with when spawned.");
     RTX_OPTION("rtx.particles.globalPreset", Vector4, maxSpawnColor, Vector4(1.f), "Minimum range of the color to tint a particle with when spawned.");
 
-    RTX_OPTION("rtx.particles.globalPreset", float, minTargetSize, 0.f, "Minimum size (in centimeters) picked from a range, to be used as the target animation state, at the end of the particles life.");
-    RTX_OPTION("rtx.particles.globalPreset", float, maxTargetSize, 0.f, "Maximum size (in centimeters) picked from a range, to be used as the target animation state, at the end of the particles life.");
+    RTX_OPTION("rtx.particles.globalPreset", Vector2, minTargetSize, Vector2(0.f), "Minimum size (in centimeters) picked from a range, to be used as the target animation state, at the end of the particles life.");
+    RTX_OPTION("rtx.particles.globalPreset", Vector2, maxTargetSize, Vector2(0.f), "Maximum size (in centimeters) picked from a range, to be used as the target animation state, at the end of the particles life.");
     RTX_OPTION("rtx.particles.globalPreset", float, minTargetRotationSpeed, 0.f, "Minimum rotation speed (in revolutions per second) picked from a range, to be used as the target animation state, at the end of the particles life.  Only used if alignParticlesToVelocity is false.");
     RTX_OPTION("rtx.particles.globalPreset", float, maxTargetRotationSpeed, 0.f, "Maximum rotation speed (in revolutions per second) picked from a range, to be used as the target animation state, at the end of the particles life.  Only used if alignParticlesToVelocity is false.");
     RTX_OPTION("rtx.particles.globalPreset", Vector4, minTargetColor, Vector4(1.f, 1.f, 1.f, 0.f), "Minimum RGBA color picked from a range, to be used as the target animation state, at the end of the particles life.");
@@ -186,7 +205,8 @@ namespace dxvk {
     RTX_OPTION("rtx.particles.globalPreset", float, initialVelocityFromNormal, 0.f, "Initial speed to apply on spawn (centimeters per sec) along the normal vector of the spawning triangle.");
     RTX_OPTION("rtx.particles.globalPreset", float, initialVelocityConeAngleDegrees, 0.f, "Specifies the half angle, in degrees, of the random emission cone  around the triangles surface normal when spawning a new particle.  A value in the range of 0 to 180 degrees is expected.");
     RTX_OPTION("rtx.particles.globalPreset", float, gravityForce, -.98f, "Net influence of gravity acting on each particle (centimeters per second squared).");
-    RTX_OPTION("rtx.particles.globalPreset", float, maxSpeed, -1.f, "Maximum speed of a particle in world space (in centimeters per second).  Negative values imply unlimited.");
+    RTX_OPTION("rtx.particles.globalPreset", Vector3, maxSpawnVelocity, Vector3(-1.f), "Maximum velocity of a particle in world space (in centimeters per second) to be used at spawn time.  Negative values imply unlimited.");
+    RTX_OPTION("rtx.particles.globalPreset", Vector3, maxTargetVelocity, Vector3(-1.f), "Maximum velocity of a particle in world space (in centimeters per second) at a particles end of life.  Negative values imply unlimited.");
     RTX_OPTION("rtx.particles.globalPreset", bool, useSpawnTexcoords, false, "Use the texture coordinates of the emitter mesh when spawning particles.");
     RTX_OPTION("rtx.particles.globalPreset", bool, alignParticlesToVelocity, false, "Rotates the particles such that they are always aligned with their direction of travel, in this mode we ignore rotation speed.");
     RTX_OPTION("rtx.particles.globalPreset", bool, enableCollisionDetection, false, "Enables particle collisions with the world.");
@@ -198,6 +218,17 @@ namespace dxvk {
     RTX_OPTION("rtx.particles.globalPreset", bool, enableMotionTrail, false, "Elongates the particle with respect to velocity, texture edges are preserved, with only the center being stretched which provides a motion blur like effect on the particles themselves.  This will automatically align particles rotation with their individual velocity (similar to rtx.particles.globalPreset.alignParticlesToVelocity) and so rotation parameters are no longer taken into account when this setting is enabled.");
     RTX_OPTION("rtx.particles.globalPreset", float, motionTrailMultiplier, 1.f, "When enableMotionTrail is set to enabled, this value can be used to increase (or decrease) the length of the tail artificially, which is determined by the velocity.  A value of 1 (the default) will ensure each particle is the exact size of the motion over the previous frame.  Values greater than 1 will increase that size linearly.  Likewise for smaller than 1.  0 and below is an invalid value.");
     RTX_OPTION("rtx.particles.globalPreset", ParticleBillboardType, billboardType, ParticleBillboardType::FaceCamera_Spherical, "Billboard type to use for the global particle preset.");
+    RTX_OPTION("rtx.particles.globalPreset", ParticleSpriteSheetMode, spriteSheetMode, ParticleSpriteSheetMode::UseMaterialSpriteSheet, "Sprite sheet mode to use for generating particle UVs.  Options are, 0: Prefer material sprite sheet parameters - 1: Animate spritesheet with respect to the lifetime of the particle - 2: Pick a random sprite from the sheet per particle to use as the texture.");
+    RTX_OPTION("rtx.particles.globalPreset", Vector3, attractorPosition, Vector3(0.f, 0.f, 0.f), "The position in world space of the 'attractor' - which can be used to make particles be drawn to and even orbit a particular location.");
+    RTX_OPTION("rtx.particles.globalPreset", float, attractorForce, 0.f, "How strongly should the particles be attracted to the the attractor position.  A value of 0 defines no attraction what soever, the unit is centimeters per second per second.");
+    RTX_OPTION("rtx.particles.globalPreset", float, attractorRadius, 0.f, "Tunable falloff for the attractor - outside of this radius the attractor has no effect.");
+    RTX_OPTION("rtx.particles.globalPreset", ParticleCollisionMode, collisionMode, ParticleCollisionMode::Bounce, "Selects the collision mode for the particle - which controls behaviour on collision (if enabled). 0: Bounce on collision.  1: Stop all motion on collision.  2: Kill particle on collision.");
+    RTX_OPTION("rtx.particles.globalPreset", float, dragCoefficient, 0.f, "Slows particles down over time, like air-resistance.  This parameter must be greater than 0.  0 means particles wont slow down due to drag, for values larger than this particles will slow over time without any external force being applied.");
+    RTX_OPTION("rtx.particles.globalPreset", bool, restrictVelocityX, false, "Restricts particle velocity in the X axis.");
+    RTX_OPTION("rtx.particles.globalPreset", bool, restrictVelocityY, false, "Restricts particle velocity in the Y axis.");
+    RTX_OPTION("rtx.particles.globalPreset", bool, restrictVelocityZ, false, "Restricts particle velocity in the Z axis.");
+    RTX_OPTION("rtx.particles.globalPreset", ParticleRandomFlipAxis, randomFlipAxis, ParticleRandomFlipAxis::None, "Allows the particle to be flipped randomly on spawn based on the selection here.  Controlled per axis (or both).  This feature helps hide repetition when reusing a single particle texture multiple times.");
+    RTX_OPTION("rtx.particles.globalPreset", float, initialRotationDeviationDegrees, 0.f, "Range of degrees to rotate each particle by on spawn.");
 
 
     void setupConstants(RtxContext* ctx, ParticleSystemConstants& constants);
@@ -207,7 +238,7 @@ namespace dxvk {
 
     void prepareForNextFrame();
 
-    bool fetchParticleSystem(DxvkContext* ctx, const DrawCallState& drawCallState, const RtxParticleSystemDesc& desc, const MaterialData& renderMaterialData, ParticleSystem** materialSystem);
+    bool fetchParticleSystem(DxvkContext* ctx, const DrawCallState& drawCallState, RtxParticleSystemDesc desc, const MaterialData& renderMaterialData, ParticleSystem** materialSystem);
 
     static uint32_t getNumberOfParticlesToSpawn(ParticleSystem* materialSystem, const DrawCallState& drawCallState);
 

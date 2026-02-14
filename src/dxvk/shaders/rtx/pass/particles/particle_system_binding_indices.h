@@ -49,7 +49,7 @@ struct GpuParticle {
   [mutating]
   void reset(GpuParticleSystem system, float3 worldPosition, float3 worldVelocity, f16vec4 _uvMinMax, f16vec4 color, float seed) {
     randSeed = seed;
-    rotation = 0.h;
+    rotation = half((seed * 2.0f - 1.0f) * radians(system.desc.initialRotationDeviationDegrees));
     timeToLive = initialTimeToLive(system);
     enBaseColor = float4x16ToUnorm4x8(color);
     position = worldPosition;
@@ -70,45 +70,32 @@ struct GpuParticle {
     return timeToLive <= 0;
   }
 
-  half initialTimeToLive(GpuParticleSystem system) { 
+  float16_t initialTimeToLive(GpuParticleSystem system) {
     return max(kMinimumParticleLife, system.varyTimeToLive(randSeed));
   }
 
-  f16vec4 color(GpuParticleSystem system) {
-    return unorm4x8ToFloat4x16(enBaseColor) * lerp(targetColor(system), spawnColor(system), normalizedLife(system));
+  float computeDataRow(ParticleAnimationDataRows initial, const bool randomizeAcrossTwoRows) {
+    return (float(initial) + select(randomizeAcrossTwoRows, randSeed, 0.f) + 0.5f) / float(ParticleAnimationDataRows::Count);
   }
 
-  half rotationSpeed(GpuParticleSystem system) {
-    return lerp(targetRotationSpeed(system), spawnRotationSpeed(system), normalizedLife(system));
+  float16_t4 color(GpuParticleSystem system, Sampler2D<float4> data) {
+    return unorm4x8ToFloat4x16(enBaseColor) * data.SampleLevel(float2(normalizedLife(system), computeDataRow(ParticleAnimationDataRows::MinColor, true)), 0);
   }
 
-  half size(GpuParticleSystem system) {
-    return lerp(targetSize(system), spawnSize(system), normalizedLife(system));
+  float16_t rotationSpeed(GpuParticleSystem system, Sampler2D<float4> data) {
+    return data.SampleLevel(float2(normalizedLife(system), computeDataRow(ParticleAnimationDataRows::MinRotationSpeed, true)), 0).x;
   }
 
-  half spawnRotationSpeed(GpuParticleSystem system) { 
-    return system.varySpawnRotationSpeed(randSeed);
-  }
-  half targetRotationSpeed(GpuParticleSystem system) { 
-    return system.varyTargetRotationSpeed(randSeed);
-  }
-  
-  half spawnSize(GpuParticleSystem system) {
-    return system.varySpawnSize(randSeed);
-  }
-  half targetSize(GpuParticleSystem system) {
-    return system.varyTargetSize(randSeed);
+  float16_t2 size(GpuParticleSystem system, Sampler2D<float4> data) {
+    return data.SampleLevel(float2(normalizedLife(system), computeDataRow(ParticleAnimationDataRows::MinSize, true)), 0).xy;
   }
 
-  f16vec4 spawnColor(GpuParticleSystem system) {
-    return system.varySpawnColor(randSeed);
-  }
-  f16vec4 targetColor(GpuParticleSystem system) {
-    return system.varyTargetColor(randSeed);
+  float16_t3 maxVelocity(GpuParticleSystem system, Sampler2D<float4> data) {
+    return data.SampleLevel(float2(normalizedLife(system), computeDataRow(ParticleAnimationDataRows::MaxVelocity, false)), 0).xyz;
   }
 
   // Gradually moves from 1 when born to 0 when dead over lifetime
-  half normalizedLife(GpuParticleSystem system) {
+  float16_t normalizedLife(GpuParticleSystem system) {
     return timeToLive / initialTimeToLive(system);
   }
 #endif
@@ -127,6 +114,7 @@ struct ParticleVertex {
 #define PARTICLE_SYSTEM_BINDING_PREV_WORLD_POSITION_INPUT              53
 #define PARTICLE_SYSTEM_BINDING_PREV_PRIMARY_SCREEN_SPACE_MOTION_INPUT 54
 #define PARTICLE_SYSTEM_BINDING_PARTICLES_BUFFER_INPUT                 55
+#define PARTICLE_SYSTEM_BINDING_ANIMATION_DATA_INPUT                   56
 
 #define PARTICLE_SYSTEM_BINDING_PARTICLES_BUFFER_INPUT_OUTPUT  60
 #define PARTICLE_SYSTEM_BINDING_VERTEX_BUFFER_OUTPUT           61

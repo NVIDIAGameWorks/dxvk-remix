@@ -272,6 +272,12 @@ namespace RemixGui {
   }
 
   template <typename ... Args>
+  IMGUI_API bool InputFloat3(const char* label, dxvk::RtxOption<dxvk::Vector3>* rtxOption, Args&& ... args) {
+    IMGUI_RTXOPTION_WIDGET(RemixGui::InputFloat3(label, value.data, std::forward<Args>(args)...))
+  }
+
+  // Variant handling RtxOption as input
+  template <typename ... Args>
   IMGUI_API bool SliderFloat(const char* label, dxvk::RtxOption<float>* rtxOption, Args&& ... args) {
     IMGUI_RTXOPTION_WIDGET(RemixGui::SliderFloat(label, &value, std::forward<Args>(args)...))
   }

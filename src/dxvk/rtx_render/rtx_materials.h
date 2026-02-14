@@ -1824,6 +1824,62 @@ struct MaterialData {
     return m_particleSystem.has_value() ? &m_particleSystem.value() : nullptr;
   }
   
+  void getSpriteSheetData(uint8_t& spriteSheetRows, uint8_t& spriteSheetCols, uint8_t& spriteSheetFPS) const {
+    // Note: Extract spritesheet information from the associated material data as it ends up stored in the Surface
+    // not in the Surface Material like most material information.
+    switch (getType()) {
+    case MaterialDataType::Opaque:
+      spriteSheetRows = getOpaqueMaterialData().getSpriteSheetRows();
+      spriteSheetCols = getOpaqueMaterialData().getSpriteSheetCols();
+      spriteSheetFPS = getOpaqueMaterialData().getSpriteSheetFPS();
+
+      break;
+    case MaterialDataType::Translucent:
+      spriteSheetRows = getTranslucentMaterialData().getSpriteSheetRows();
+      spriteSheetCols = getTranslucentMaterialData().getSpriteSheetCols();
+      spriteSheetFPS = getTranslucentMaterialData().getSpriteSheetFPS();
+
+      break;
+    case MaterialDataType::RayPortal:
+      spriteSheetRows = getRayPortalMaterialData().getSpriteSheetRows();
+      spriteSheetCols = getRayPortalMaterialData().getSpriteSheetCols();
+      spriteSheetFPS = getRayPortalMaterialData().getSpriteSheetFPS();
+
+      break;
+    case MaterialDataType::Count:
+    case MaterialDataType::Invalid:
+      assert(0);
+      break;
+    }
+  }
+  
+  void setSpriteSheetData(uint8_t spriteSheetRows, uint8_t spriteSheetCols, uint8_t spriteSheetFPS) {
+    switch (getType()) {
+    case MaterialDataType::Opaque:
+       getOpaqueMaterialData().setSpriteSheetRows(spriteSheetRows);
+       getOpaqueMaterialData().setSpriteSheetCols(spriteSheetCols);
+       getOpaqueMaterialData().setSpriteSheetFPS(spriteSheetFPS);
+
+      break;
+    case MaterialDataType::Translucent:
+      getTranslucentMaterialData().setSpriteSheetRows(spriteSheetRows);
+      getTranslucentMaterialData().setSpriteSheetCols(spriteSheetCols);
+      getTranslucentMaterialData().setSpriteSheetFPS(spriteSheetFPS);
+
+      break;
+    case MaterialDataType::RayPortal:
+      getRayPortalMaterialData().setSpriteSheetRows(spriteSheetRows);
+      getRayPortalMaterialData().setSpriteSheetCols(spriteSheetCols);
+      getRayPortalMaterialData().setSpriteSheetFPS(spriteSheetFPS);
+
+      break;
+    case MaterialDataType::Count:
+    case MaterialDataType::Invalid:
+      assert(0);
+      break;
+    }
+  }
+
   void mergeLegacyMaterial(const LegacyMaterialData& input) {
     std::visit([&](auto& mat) {
       using T = std::decay_t<decltype(mat)>;

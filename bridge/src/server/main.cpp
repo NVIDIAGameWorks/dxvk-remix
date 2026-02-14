@@ -2938,6 +2938,7 @@ void ProcessDeviceCommandQueue() {
           serialize::InstanceInfoObjectPicking objectPicking;
           serialize::InstanceInfoBlend blend;
           serialize::InstanceInfoTransforms boneXforms;
+          serialize::InstanceInfoParticleSystem particleSystem;
         } exts;
         memset(&exts, 0, sizeof(InstanceExtensions));
 
@@ -2982,6 +2983,14 @@ void ProcessDeviceCommandQueue() {
               deserializeFromQueue(exts.boneXforms);
               pInfoProto->pNext = &(exts.boneXforms);
               pInfoProto = &getInfoProto(exts.boneXforms);
+              break;
+            }
+            case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT:
+            {
+              assert(!exts.particleSystem.pNext);
+              deserializeFromQueue(exts.particleSystem);
+              pInfoProto->pNext = &(exts.particleSystem);
+              pInfoProto = &getInfoProto(exts.particleSystem);
               break;
             }
             default:

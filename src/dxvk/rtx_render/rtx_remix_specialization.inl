@@ -20,6 +20,46 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+namespace {
+  typedef struct remixapi_InstanceInfoParticleSystemLegacyEXT {
+    remixapi_StructType      sType;
+    void* pNext;
+    uint32_t         maxNumParticles;
+    remixapi_Bool    useTurbulence;
+    remixapi_Bool    alignParticlesToVelocity;
+    remixapi_Bool    useSpawnTexcoords;
+    remixapi_Bool    enableCollisionDetection;
+    remixapi_Bool    enableMotionTrail;
+    remixapi_Bool    hideEmitter;
+    remixapi_Float4D minSpawnColor;
+    remixapi_Float4D maxSpawnColor;
+    float            minTimeToLive;
+    float            maxTimeToLive;
+    float            initialVelocityFromNormal;
+    float            initialVelocityConeAngleDegrees;
+    float            minSpawnSize;
+    float            maxSpawnSize;
+    float            gravityForce;
+    float            maxSpeed;
+    float            turbulenceFrequency;
+    float            turbulenceForce;
+    float            minSpawnRotationSpeed;
+    float            maxSpawnRotationSpeed;
+    float            spawnRatePerSecond;
+    float            collisionThickness;
+    float            collisionRestitution;
+    float            motionTrailMultiplier;
+    float            initialVelocityFromMotion;
+    float            minTargetSize;
+    float            maxTargetSize;
+    float            minTargetRotationSpeed;
+    float            maxTargetRotationSpeed;
+    remixapi_Float4D minTargetColor;
+    remixapi_Float4D maxTargetColor;
+    uint32_t         billboardType;
+  } remixapi_InstanceInfoParticleSystemLegacyEXT;
+}
+
 namespace pnext::detail {
 
   // NOTE: To add a new type:
@@ -29,6 +69,7 @@ namespace pnext::detail {
   //       (i.e. can be put linked into 'pNext' chain of a parent type)
   //       (e.g. 'remixapi_LightInfoSphereEXT' is an extension of 'remixapi_LightInfo'):
   //     * Then add 'Root' specifying the extension type and root (parent) type.
+
 
   // clang-format off
   using AllTypes = TypeList<
@@ -51,6 +92,7 @@ namespace pnext::detail {
     remixapi_InstanceInfoBlendEXT,
     remixapi_InstanceInfoObjectPickingEXT,
     remixapi_InstanceInfoParticleSystemEXT,
+    remixapi_InstanceInfoParticleSystemLegacyEXT,
     remixapi_CameraInfo,
     remixapi_CameraInfoParameterizedEXT
   >;
@@ -74,6 +116,7 @@ namespace pnext::detail {
   template<> constexpr auto ToEnum< remixapi_InstanceInfoBoneTransformsEXT  > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BONE_TRANSFORMS_EXT;
   template<> constexpr auto ToEnum< remixapi_InstanceInfoBlendEXT           > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
   template<> constexpr auto ToEnum< remixapi_InstanceInfoObjectPickingEXT   > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_OBJECT_PICKING_EXT;
+  template<> constexpr auto ToEnum< remixapi_InstanceInfoParticleSystemLegacyEXT > = REMIXAPI_STRUCT_TYPE_DEPRECATED_LEGACY_PARTICLE_SYSTEM;
   template<> constexpr auto ToEnum< remixapi_InstanceInfoParticleSystemEXT  > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT;
   template<> constexpr auto ToEnum< remixapi_CameraInfo                     > = REMIXAPI_STRUCT_TYPE_CAMERA_INFO;
   template<> constexpr auto ToEnum< remixapi_CameraInfoParameterizedEXT     > = REMIXAPI_STRUCT_TYPE_CAMERA_INFO_PARAMETERIZED_EXT;
@@ -94,6 +137,7 @@ namespace pnext::detail {
   template<>           struct Root< remixapi_InstanceInfoBlendEXT           >{ using Type = remixapi_InstanceInfo;              };
   template<>           struct Root< remixapi_InstanceInfoObjectPickingEXT   >{ using Type = remixapi_InstanceInfo;              };
   template<>           struct Root< remixapi_InstanceInfoParticleSystemEXT  >{ using Type = remixapi_InstanceInfo;              };
+  template<>           struct Root< remixapi_InstanceInfoParticleSystemLegacyEXT >{ using Type = remixapi_InstanceInfo;         };
   template<>           struct Root< remixapi_CameraInfoParameterizedEXT     >{ using Type = remixapi_CameraInfo;                };
   // clang-format on
 }
