@@ -131,8 +131,12 @@ namespace {
       };
     }
 
+    Vector2 tovec2(const remixapi_Float2D& v) {
+      return Vector2{ v.x, v.y };
+    }
+
     Vector3 tovec3(const remixapi_Float3D& v) {
-      return Vector3{ v.x, v.y, v.z };
+      return Vector3 { v.x, v.y, v.z };
     }
 
     Vector4 tovec4(const remixapi_Float4D& v) {
@@ -141,6 +145,50 @@ namespace {
 
     Vector3d tovec3d(const remixapi_Float3D& v) {
       return Vector3d{ v.x, v.y, v.z };
+    }
+
+    std::vector<float> toAnimatedFloat1D(const remixapi_AnimatedFloat1D& animated) {
+      std::vector<float> result;
+      if (animated.pData && animated.numberElements > 0) {
+        result.reserve(animated.numberElements);
+        for (uint32_t i = 0; i < animated.numberElements; ++i) {
+          result.push_back(animated.pData[i]);
+        }
+      }
+      return result;
+    }
+
+    std::vector<vec2> toAnimatedFloat2D(const remixapi_AnimatedFloat2D& animated) {
+      std::vector<vec2> result;
+      if (animated.pData && animated.numberElements > 0) {
+        result.reserve(animated.numberElements);
+        for (uint32_t i = 0; i < animated.numberElements; ++i) {
+          result.push_back(vec2(animated.pData[i].x, animated.pData[i].y));
+        }
+      }
+      return result;
+    }
+
+    std::vector<vec3> toAnimatedFloat3D(const remixapi_AnimatedFloat3D& animated) {
+      std::vector<vec3> result;
+      if (animated.pData && animated.numberElements > 0) {
+        result.reserve(animated.numberElements);
+        for (uint32_t i = 0; i < animated.numberElements; ++i) {
+          result.push_back(vec3(animated.pData[i].x, animated.pData[i].y, animated.pData[i].z));
+        }
+      }
+      return result;
+    }
+
+    std::vector<vec4> toAnimatedFloat4D(const remixapi_AnimatedFloat4D& animated) {
+      std::vector<vec4> result;
+      if (animated.pData && animated.numberElements > 0) {
+        result.reserve(animated.numberElements);
+        for (uint32_t i = 0; i < animated.numberElements; ++i) {
+          result.push_back(vec4(animated.pData[i].x, animated.pData[i].y, animated.pData[i].z, animated.pData[i].w));
+        }
+      }
+      return result;
     }
 
     constexpr bool tobool(remixapi_Bool b) {
@@ -623,45 +671,47 @@ namespace {
       return result;
     }
 
-    RtxParticleSystemDesc toRtParticleDesc(const remixapi_InstanceInfoParticleSystemEXT& info) {
+    RtxParticleSystemDesc toRtParticleDesc(const remixapi_InstanceInfoParticleSystemLegacyEXT& info) {
       RtxParticleSystemDesc desc {};
 
       // Lifetimes
-      desc.minTtl = info.minTimeToLive;
-      desc.maxTtl = info.maxTimeToLive;
+      desc.minTimeToLive = info.minTimeToLive;
+      desc.maxTimeToLive = info.maxTimeToLive;
 
       // Initial 
-      desc.spawnRate = info.spawnRatePerSecond;
+      desc.spawnRatePerSecond = info.spawnRatePerSecond;
       desc.initialVelocityFromMotion = info.initialVelocityFromMotion;
       desc.initialVelocityFromNormal = info.initialVelocityFromNormal;
       desc.initialVelocityConeAngleDegrees = info.initialVelocityConeAngleDegrees;
       desc.gravityForce = info.gravityForce;
-      desc.maxSpeed = info.maxSpeed;
       desc.motionTrailMultiplier = info.motionTrailMultiplier;
 
       // Turbulence
       desc.turbulenceFrequency = info.turbulenceFrequency;
       desc.turbulenceForce = info.turbulenceForce;
 
-      // Spawn
-      desc.minSpawnRotationSpeed = info.minSpawnRotationSpeed;
-      desc.maxSpawnRotationSpeed = info.maxSpawnRotationSpeed;
-      desc.minSpawnSize = info.minSpawnSize;
-      desc.maxSpawnSize = info.maxSpawnSize;
-      desc.minSpawnColor = tovec4(info.minSpawnColor);
-      desc.maxSpawnColor = tovec4(info.maxSpawnColor);
+      // Convert spawn/target pairs to 2-element animated vectors
+      // Color: spawn at index 0, target at index 1
+      desc.minColor = { vec4(info.minSpawnColor.x, info.minSpawnColor.y, info.minSpawnColor.z, info.minSpawnColor.w), 
+                        vec4(info.minTargetColor.x, info.minTargetColor.y, info.minTargetColor.z, info.minTargetColor.w) };
+      desc.maxColor = { vec4(info.maxSpawnColor.x, info.maxSpawnColor.y, info.maxSpawnColor.z, info.maxSpawnColor.w), 
+                        vec4(info.maxTargetColor.x, info.maxTargetColor.y, info.maxTargetColor.z, info.maxTargetColor.w) };
 
-      // Target
-      desc.minTargetRotationSpeed = info.minTargetRotationSpeed;
-      desc.maxTargetRotationSpeed = info.maxTargetRotationSpeed;
-      desc.minTargetSize = info.minTargetSize;
-      desc.maxTargetSize = info.maxTargetSize;
-      desc.minTargetColor = tovec4(info.minTargetColor);
-      desc.maxTargetColor = tovec4(info.maxTargetColor);
+      // Size: spawn at index 0, target at index 1
+      desc.minSize = { vec2(info.minSpawnSize, info.minSpawnSize), vec2(info.minTargetSize, info.minTargetSize) };
+      desc.maxSize = { vec2(info.maxSpawnSize, info.maxSpawnSize), vec2(info.maxTargetSize, info.maxTargetSize) };
+
+      // Rotation speed: spawn at index 0, target at index 1
+      desc.minRotationSpeed = { info.minSpawnRotationSpeed, info.minTargetRotationSpeed };
+      desc.maxRotationSpeed = { info.maxSpawnRotationSpeed, info.maxTargetRotationSpeed };
+
+      // Velocity: spawn at index 0, target at index 1
+      desc.maxVelocity = { vec3(info.maxSpeed, info.maxSpeed, info.maxSpeed), vec3(info.maxSpeed, info.maxSpeed, info.maxSpeed) };
 
       // Collision
       desc.collisionThickness = info.collisionThickness;
       desc.collisionRestitution = info.collisionRestitution;
+      desc.collisionMode = ParticleCollisionMode::Bounce;
 
       // Counts/flags
       desc.maxNumParticles = info.maxNumParticles;
@@ -669,12 +719,64 @@ namespace {
       desc.alignParticlesToVelocity = static_cast<uint8_t>(info.alignParticlesToVelocity);
       desc.useSpawnTexcoords = static_cast<uint8_t>(info.useSpawnTexcoords);
       desc.enableCollisionDetection = static_cast<uint8_t>(info.enableCollisionDetection);
-      desc.enableMotionTrail = static_cast<uint>(info.enableMotionTrail);
-      desc.hideEmitter = static_cast<uint>(info.hideEmitter);
+      desc.enableMotionTrail = static_cast<uint8_t>(info.enableMotionTrail);
+      desc.hideEmitter = static_cast<uint8_t>(info.hideEmitter);
+
+      // Types/modes
       desc.billboardType = static_cast<ParticleBillboardType>(info.billboardType);
+      desc.spriteSheetMode = ParticleSpriteSheetMode::UseMaterialSpriteSheet;
+      desc.randomFlipAxis = ParticleRandomFlipAxis::None;
+
+      return desc;
+    }
+
+    RtxParticleSystemDesc toRtParticleDesc(const remixapi_InstanceInfoParticleSystemEXT& info) {
+      RtxParticleSystemDesc desc;
+      desc.maxNumParticles = info.maxNumParticles;
+
+      // Animated float conversions
+      desc.minColor = toAnimatedFloat4D(info.minColor);
+      desc.maxColor = toAnimatedFloat4D(info.maxColor);
+      desc.minRotationSpeed = toAnimatedFloat1D(info.minRotationSpeed);
+      desc.maxRotationSpeed = toAnimatedFloat1D(info.maxRotationSpeed);
+      desc.minSize = toAnimatedFloat2D(info.minSize);
+      desc.maxSize = toAnimatedFloat2D(info.maxSize);
+      desc.maxVelocity = toAnimatedFloat3D(info.maxVelocity);
+
+      desc.minTimeToLive = info.minTimeToLive;
+      desc.maxTimeToLive = info.maxTimeToLive;
+      desc.initialVelocityFromNormal = info.initialVelocityFromNormal;
+      desc.initialVelocityConeAngleDegrees = info.initialVelocityConeAngleDegrees;
+      desc.initialVelocityFromMotion = info.initialVelocityFromMotion;
+      desc.turbulenceFrequency = info.turbulenceFrequency;
+      desc.turbulenceForce = info.turbulenceForce;
+      desc.motionTrailMultiplier = info.motionTrailMultiplier;
+      desc.spawnRatePerSecond = info.spawnRatePerSecond;
+      desc.collisionThickness = info.collisionThickness;
+      desc.collisionRestitution = info.collisionRestitution;
+      desc.gravityForce = info.gravityForce;
+      desc.billboardType = static_cast<ParticleBillboardType>(info.billboardType);
+      desc.hideEmitter = static_cast<uint8_t>(info.hideEmitter);
+      desc.enableMotionTrail = static_cast<uint8_t>(info.enableMotionTrail);
+      desc.useTurbulence = static_cast<uint8_t>(info.useTurbulence);
+      desc.alignParticlesToVelocity = static_cast<uint8_t>(info.alignParticlesToVelocity);
+      desc.useSpawnTexcoords = static_cast<uint8_t>(info.useSpawnTexcoords);
+      desc.enableCollisionDetection = static_cast<uint8_t>(info.enableCollisionDetection);
+      desc.dragCoefficient = info.dragCoefficient;
+      desc.initialRotationDeviationDegrees = info.initialRotationDeviationDegrees;
+      desc.spawnBurstDuration = info.spawnBurstDuration;
+      desc.attractorRadius = info.attractorRadius;
+      desc.attractorPosition = tovec3(info.attractorPosition);
+      desc.attractorForce = info.attractorForce;
+      desc.spriteSheetMode = static_cast<ParticleSpriteSheetMode>(info.spriteSheetMode);
+      desc.collisionMode = static_cast<ParticleCollisionMode>(info.collisionMode);
+      desc.randomFlipAxis = static_cast<ParticleRandomFlipAxis>(info.randomFlipAxis);
+      desc.restrictVelocityX = static_cast<uint8_t>(info.restrictVelocityX);
+      desc.restrictVelocityY = static_cast<uint8_t>(info.restrictVelocityY);
+      desc.restrictVelocityZ = static_cast<uint8_t>(info.restrictVelocityZ);
 
       // If this assert fails a new particle system parameter added, please update here.
-      assert(pxr::RemixParticleSystemAPI::GetSchemaAttributeNames(false).size() == 33);
+      assert(pxr::RemixParticleSystemAPI::GetSchemaAttributeNames(false).size() == 46);
 
       return desc;
     }
@@ -740,6 +842,9 @@ dxvk::ExternalDrawState dxvk::RemixAPIPrivateAccessor::toRtDrawState(const remix
 
   std::optional<RtxParticleSystemDesc> optParticles;
   if (auto extParticles = pnext::find<remixapi_InstanceInfoParticleSystemEXT>(&info)) {
+    optParticles.emplace(convert::toRtParticleDesc(*extParticles));
+  }
+  if (auto extParticles = pnext::find<remixapi_InstanceInfoParticleSystemLegacyEXT>(&info)) {
     optParticles.emplace(convert::toRtParticleDesc(*extParticles));
   }
 

@@ -23,6 +23,7 @@
 
 #include "rtx_mod_usd.h"
 #include "rtx_asset_replacer.h"
+#include "../../lssusd/curve_utils.h"
 
 #include "dxvk_device.h"
 #include "dxvk_context.h"
@@ -61,6 +62,7 @@
 #include "../../lssusd/usd_include_end.h"
 #include "../util/util_watchdog.h"
 
+#include "../../lssusd/particle_system_helpers_vec.h"
 #include "../../lssusd/game_exporter_common.h"
 #include "../../lssusd/game_exporter_paths.h"
 #include "../../lssusd/usd_mesh_importer.h"
@@ -510,93 +512,253 @@ void UsdMod::Impl::processGraph(Args& args, const uint32_t meshIndex) {
   args.meshes[meshIndex].graphState.emplace(GraphUsdParser::parseGraph(*m_owner.m_replacements, graphPrim, args.pathHashToIndexMap));
 }
 
-inline Vector4 toFloat4(const pxr::GfVec4f& v) {
-  Vector4 f;
-  f.x = v[0];
-  f.y = v[1];
-  f.z = v[2];
-  f.w = v[3];
-  return f;
-}
-
-inline ParticleBillboardType toBillboardType(const pxr::TfToken& token) {
-  static pxr::RemixTokensType tokens;
-  if (token == tokens.faceCamera_UpAxisLocked) {
-    return FaceCamera_UpAxisLocked;
-  }
-  if (token == tokens.faceCamera_Position) {
-    return FaceCamera_Position;
-  }
-  if (token == tokens.faceWorldUp) {
-    return FaceWorldUp;
-  }
-  return FaceCamera_Spherical;
-}
-
-std::optional<RtxParticleSystemDesc> UsdMod::Impl::processParticleSystem(Args& args, const pxr::UsdPrim& prim) {
+template<typename T>
+static bool _SafeGetPrimvar(const pxr::UsdPrim& prim, const pxr::SdfPath& id, const pxr::TfToken& name, T& value) {
   using namespace pxr;
+  UsdAttribute attribute = prim.GetAttribute(TfToken(std::string("primvars:") + name.GetString()));
+  if (!attribute.IsDefined()) {
+    return false;
+  }
 
-  if (!prim.HasAPI<RemixParticleSystemAPI>()) {
+  VtValue v;
+  if (!attribute.Get(&v)) {
+    return false;
+  }
+
+  return lss::ConvertPrimvarValue(v, value);
+}
+
+std::optional<RtxParticleSystemDesc> UsdMod::Impl::processParticleSystem(Args& args, const pxr::UsdPrim& sceneDelegate) {
+  using namespace pxr;
+  using namespace CurveUtils;
+  using ColorGradientData = ColorGradientDataT<vec4>;
+
+  if (!sceneDelegate.HasAPI<RemixParticleSystemAPI>()) {
     return std::nullopt;
   }
-  RemixParticleSystemAPI particleSystem(prim);
+  RemixParticleSystemAPI particleSystem(sceneDelegate);
 
-  RtxParticleSystemDesc particleDesc;
-  // Helper macro to read an attribute into a float or int field
-#define READ_ATTR(Type, attrName, field) \
-            if (UsdAttribute attr = particleSystem.GetPrimvarsParticle##attrName##Attr()) { \
-                Type result; \
-                attr.Get<Type>(&result); \
-                particleDesc.field = result; \
-            } 
-#define READ_ATTR_CONV(Type, attrName, field, conversionFunc) \
-            if (UsdAttribute attr = particleSystem.GetPrimvarsParticle##attrName##Attr()) { \
-                Type result; \
-                attr.Get<Type>(&result); \
-                particleDesc.field = conversionFunc(result); \
-            } 
+  RtxParticleSystemDesc particleInfo;
 
-    // Read all simulation parameters
-  READ_ATTR(float, MinTimeToLive, minTtl);
-  READ_ATTR(float, MaxTimeToLive, maxTtl);
-  READ_ATTR(float, InitialVelocityFromMotion, initialVelocityFromMotion);
-  READ_ATTR(float, InitialVelocityFromNormal, initialVelocityFromNormal);
-  READ_ATTR(float, InitialVelocityConeAngleDegrees, initialVelocityConeAngleDegrees);
-  READ_ATTR(float, MinSpawnSize, minSpawnSize);
-  READ_ATTR(float, MaxSpawnSize, maxSpawnSize);
-  READ_ATTR(float, MinSpawnRotationSpeed, minSpawnRotationSpeed);
-  READ_ATTR(float, MaxSpawnRotationSpeed, maxSpawnRotationSpeed);
-  READ_ATTR(float, MinTargetSize, minTargetSize);
-  READ_ATTR(float, MaxTargetSize, maxTargetSize);
-  READ_ATTR(float, MinTargetRotationSpeed, minTargetRotationSpeed);
-  READ_ATTR(float, MaxTargetRotationSpeed, maxTargetRotationSpeed);
-  READ_ATTR(float, GravityForce, gravityForce);
-  READ_ATTR(float, MaxSpeed, maxSpeed);
-  READ_ATTR(float, TurbulenceFrequency, turbulenceFrequency);
-  READ_ATTR(float, TurbulenceForce, turbulenceForce);
-  READ_ATTR(float, CollisionThickness, collisionThickness);
-  READ_ATTR(float, CollisionRestitution, collisionRestitution);
-  READ_ATTR(float, MotionTrailMultiplier, motionTrailMultiplier);
-  READ_ATTR(int, MaxNumParticles, maxNumParticles);
-  READ_ATTR(bool, UseTurbulence, useTurbulence);
-  READ_ATTR(bool, UseSpawnTexcoords, useSpawnTexcoords);
-  READ_ATTR(bool, EnableCollisionDetection, enableCollisionDetection);
-  READ_ATTR(bool, AlignParticlesToVelocity, alignParticlesToVelocity);
-  READ_ATTR(bool, EnableMotionTrail, enableMotionTrail);
-  READ_ATTR(bool, HideEmitter, hideEmitter);
-  READ_ATTR(float, SpawnRatePerSecond, spawnRate);
-  READ_ATTR_CONV(TfToken, BillboardType, billboardType, toBillboardType);
-  READ_ATTR_CONV(GfVec4f, MaxSpawnColor, maxSpawnColor, toFloat4);
-  READ_ATTR_CONV(GfVec4f, MinSpawnColor, minSpawnColor, toFloat4);
-  READ_ATTR_CONV(GfVec4f, MaxTargetColor, maxTargetColor, toFloat4);
-  READ_ATTR_CONV(GfVec4f, MinTargetColor, minTargetColor, toFloat4);
-  // If this assert fails a new particle system parameter added, please update here.
-  assert(RemixParticleSystemAPI::GetSchemaAttributeNames(false).size() == 33);
+  bool anyExists = false;
+  const pxr::SdfPath id = sceneDelegate.GetPath();
+  uint32_t counter = 0;
 
-#undef READ_ATTR
-#undef READ_ATTR_CONV
+  // Helper to read float array primvar
+  auto readFloatArray = [&](const char* name, pxr::VtArray<float>& out) -> bool {
+    return _SafeGetPrimvar(sceneDelegate, id, pxr::TfToken(std::string("particle:") + name), out) && out.size() > 0;
+  };
 
-  return particleDesc;
+  // Helper to read vec4 array primvar
+  auto readVec4Array = [&](const char* name, pxr::VtArray<GfVec4f>& out) -> bool {
+    return _SafeGetPrimvar(sceneDelegate, id, pxr::TfToken(std::string("particle:") + name), out) && out.size() > 0;
+  };
+
+  // Helper to read token array primvar
+  auto readTokenArray = [&](const char* name, pxr::VtArray<TfToken>& out) -> bool {
+    return _SafeGetPrimvar(sceneDelegate, id, pxr::TfToken(std::string("particle:") + name), out) && out.size() > 0;
+  };
+
+  // Helper to read bool array primvar
+  auto readBoolArray = [&](const char* name, pxr::VtArray<bool>& out) -> bool {
+    return _SafeGetPrimvar(sceneDelegate, id, pxr::TfToken(std::string("particle:") + name), out) && out.size() > 0;
+  };
+
+  // Read float curve data from USD primvars and populate a FloatCurveData struct
+  auto readFloatCurveData = [&](const char* baseName) -> FloatCurveData {
+    FloatCurveData curve;
+    pxr::VtArray<float> times;
+    pxr::VtArray<float> values, inTangentValues, outTangentValues, inTangentTimes, outTangentTimes;
+    pxr::VtArray<TfToken> inTangentTypes, outTangentTypes;
+    pxr::VtArray<bool> tangentBrokens;
+    
+    readFloatArray((std::string(baseName) + ":times").c_str(), times);
+    readFloatArray((std::string(baseName) + ":values").c_str(), values);
+    readTokenArray((std::string(baseName) + ":inTangentTypes").c_str(), inTangentTypes);
+    readTokenArray((std::string(baseName) + ":outTangentTypes").c_str(), outTangentTypes);
+    readFloatArray((std::string(baseName) + ":inTangentValues").c_str(), inTangentValues);
+    readFloatArray((std::string(baseName) + ":outTangentValues").c_str(), outTangentValues);
+    readFloatArray((std::string(baseName) + ":inTangentTimes").c_str(), inTangentTimes);
+    readFloatArray((std::string(baseName) + ":outTangentTimes").c_str(), outTangentTimes);
+    readBoolArray((std::string(baseName) + ":tangentBrokens").c_str(), tangentBrokens);
+
+    // Copy to curve data struct
+    curve.times.assign(times.begin(), times.end());
+    curve.values.assign(values.begin(), values.end());
+    curve.inTangentValues.assign(inTangentValues.begin(), inTangentValues.end());
+    curve.outTangentValues.assign(outTangentValues.begin(), outTangentValues.end());
+    curve.inTangentTimes.assign(inTangentTimes.begin(), inTangentTimes.end());
+    curve.outTangentTimes.assign(outTangentTimes.begin(), outTangentTimes.end());
+    curve.tangentBrokens.assign(tangentBrokens.begin(), tangentBrokens.end());
+    
+    // Convert token types
+    curve.inTangentTypes.reserve(inTangentTypes.size());
+    for (const auto& t : inTangentTypes) {
+      curve.inTangentTypes.push_back(parseTangentType(t.GetText()));
+    }
+    curve.outTangentTypes.reserve(outTangentTypes.size());
+    for (const auto& t : outTangentTypes) {
+      curve.outTangentTypes.push_back(parseTangentType(t.GetText()));
+    }
+    
+    return curve;
+  };
+
+  // Read color gradient data from USD primvars
+  auto readColorGradientData = [&](const char* baseName) -> ColorGradientData {
+    ColorGradientData gradient;
+    pxr::VtArray<float> times;
+    pxr::VtArray<GfVec4f> values;
+    
+    readFloatArray((std::string(baseName) + ":times").c_str(), times);
+    readVec4Array((std::string(baseName) + ":values").c_str(), values);
+
+    gradient.times.assign(times.begin(), times.end());
+    gradient.values.reserve(values.size());
+    for (const auto& v : values) {
+      gradient.values.push_back(vec4(v[0], v[1], v[2], v[3]));
+    }
+    
+    return gradient;
+  };
+
+  // Bake a single float channel using curve utilities
+  auto bakeFloatChannel = [&](const char* baseName, std::vector<float>& out, float defaultValue) -> bool {
+    FloatCurveData curve = readFloatCurveData(baseName);
+    return bakeFloatCurve(curve, out, kDefaultAnimationResolution, defaultValue);
+  };
+
+  // Bake color channel using curve utilities
+  auto bakeColorChannel = [&](const char* baseName, std::vector<vec4>& out, vec4 defaultValue) -> bool {
+    ColorGradientData gradient = readColorGradientData(baseName);
+    return bakeColorGradient(gradient, out, kDefaultAnimationResolution, defaultValue);
+  };
+
+  // Bake vec2 from two independent float channels
+  auto bakeVec2Channels = [&](const char* baseNameX, const char* baseNameY, std::vector<vec2>& out, vec2 defaultValue) -> bool {
+    std::vector<float> xChannel, yChannel;
+    bool hasX = bakeFloatChannel(baseNameX, xChannel, defaultValue.x);
+    bool hasY = bakeFloatChannel(baseNameY, yChannel, defaultValue.y);
+    return combineToVec2(xChannel, hasX, yChannel, hasY, out, defaultValue, kDefaultAnimationResolution);
+  };
+
+  // Bake vec3 from three independent float channels
+  auto bakeVec3Channels = [&](const char* baseNameX, const char* baseNameY, const char* baseNameZ, std::vector<vec3>& out, vec3 defaultValue) -> bool {
+    std::vector<float> xChannel, yChannel, zChannel;
+    bool hasX = bakeFloatChannel(baseNameX, xChannel, defaultValue.x);
+    bool hasY = bakeFloatChannel(baseNameY, yChannel, defaultValue.y);
+    bool hasZ = bakeFloatChannel(baseNameZ, zChannel, defaultValue.z);
+    return combineToVec3(xChannel, hasX, yChannel, hasY, zChannel, hasZ, out, defaultValue, kDefaultAnimationResolution);
+  };
+
+  // The assert at the end of this function validates that we account for every schema attribute.
+  // The _SafeGetParticlePrimvar macro increments `counter` automatically. For animated properties
+  // read through our curve/gradient helpers (not the macro), we increment manually here.
+
+  // Color gradient animated properties: 2 channels (minColor, maxColor) x 2 attrs (times, values) = 4 schema attrs
+  bool hasNewMinColor = bakeColorChannel("minColor", particleInfo.minColor, vec4(1.0f));
+  bool hasNewMaxColor = bakeColorChannel("maxColor", particleInfo.maxColor, vec4(1.0f));
+  counter += 4; // minColor:{times,values}, maxColor:{times,values}
+
+  // Float curve animated properties: each channel has 9 attrs (times, values, in/outTangentTypes, in/outTangentValues, in/outTangentTimes, tangentBrokens)
+  // Size: 4 channels (minSize:x, minSize:y, maxSize:x, maxSize:y) x 9 = 36 schema attrs
+  bool hasNewMinSize = bakeVec2Channels("minSize:x", "minSize:y", particleInfo.minSize, vec2(10.0f, 10.0f));
+  bool hasNewMaxSize = bakeVec2Channels("maxSize:x", "maxSize:y", particleInfo.maxSize, vec2(10.0f, 10.0f));
+  counter += 36; // minSize:{x,y}, maxSize:{x,y} -- 4 channels x 9 attrs
+
+  // Rotation speed: 2 channels (minRotationSpeed, maxRotationSpeed) x 9 = 18 schema attrs
+  bool hasNewMinRotationSpeed = bakeFloatChannel("minRotationSpeed", particleInfo.minRotationSpeed, 0.0f);
+  bool hasNewMaxRotationSpeed = bakeFloatChannel("maxRotationSpeed", particleInfo.maxRotationSpeed, 0.0f);
+  counter += 18; // minRotationSpeed, maxRotationSpeed -- 2 channels x 9 attrs
+
+  // Velocity: 3 channels (maxVelocity:x, maxVelocity:y, maxVelocity:z) x 9 = 27 schema attrs
+  bool hasNewMaxVelocity = bakeVec3Channels("maxVelocity:x", "maxVelocity:y", "maxVelocity:z", particleInfo.maxVelocity, vec3(-1.0f, -1.0f, -1.0f));
+  counter += 27; // maxVelocity:{x,y,z} -- 3 channels x 9 attrs
+
+  // Standalone animated scalar properties (read via curve helpers, not the macro)
+  // minSize, maxSize, minColor, maxColor, minRotationSpeed, maxRotationSpeed, maxVelocity = 7 schema attrs
+  counter += 7;
+
+  // Legacy spawn/target fields - read them, and if new animated fields weren't found, create animation from spawn->target
+  vec4 minSpawnColor(1.0f), maxSpawnColor(1.0f), minTargetColor(1.0f, 1.0f, 1.0f, 0.0f), maxTargetColor(1.0f, 1.0f, 1.0f, 0.0f);
+  vec2 minSpawnSize(10.0f, 10.0f), maxSpawnSize(10.0f, 10.0f), minTargetSize(0.0f, 0.0f), maxTargetSize(0.0f, 0.0f);
+  float minSpawnRotationSpeed = 0.0f, maxSpawnRotationSpeed = 0.0f, minTargetRotationSpeed = 0.0f, maxTargetRotationSpeed = 0.0f;
+  vec3 maxSpawnVelocity(-1.0f, -1.0f, -1.0f), maxTargetVelocity(-1.0f, -1.0f, -1.0f);
+
+  _SafeGetParticlePrimvar(GfVec4f, id, minSpawnColor, );
+  _SafeGetParticlePrimvar(GfVec4f, id, maxSpawnColor, );
+  _SafeGetParticlePrimvar(GfVec4f, id, minTargetColor, );
+  _SafeGetParticlePrimvar(GfVec4f, id, maxTargetColor, );
+  _SafeGetParticlePrimvar(GfVec2f, id, minSpawnSize, );
+  _SafeGetParticlePrimvar(GfVec2f, id, maxSpawnSize, );
+  _SafeGetParticlePrimvar(GfVec2f, id, minTargetSize, );
+  _SafeGetParticlePrimvar(GfVec2f, id, maxTargetSize, );
+  _SafeGetParticlePrimvar(float, id, minSpawnRotationSpeed, );
+  _SafeGetParticlePrimvar(float, id, maxSpawnRotationSpeed, );
+  _SafeGetParticlePrimvar(float, id, minTargetRotationSpeed, );
+  _SafeGetParticlePrimvar(float, id, maxTargetRotationSpeed, );
+  _SafeGetParticlePrimvar(GfVec3f, id, maxSpawnVelocity, );
+  _SafeGetParticlePrimvar(GfVec3f, id, maxTargetVelocity, );
+
+  // Fall back to legacy spawn/target animation if new fields weren't provided
+  if (!hasNewMinColor) {
+    particleInfo.minColor = { minSpawnColor, minTargetColor };
+  }
+  if (!hasNewMaxColor) {
+    particleInfo.maxColor = { maxSpawnColor, maxTargetColor };
+  }
+  if (!hasNewMinSize) {
+    particleInfo.minSize = { minSpawnSize, minTargetSize };
+  }
+  if (!hasNewMaxSize) {
+    particleInfo.maxSize = { maxSpawnSize, maxTargetSize };
+  }
+  if (!hasNewMinRotationSpeed) {
+    particleInfo.minRotationSpeed = { minSpawnRotationSpeed, minTargetRotationSpeed };
+  }
+  if (!hasNewMaxRotationSpeed) {
+    particleInfo.maxRotationSpeed = { maxSpawnRotationSpeed, maxTargetRotationSpeed };
+  }
+  if (!hasNewMaxVelocity) {
+    particleInfo.maxVelocity = { maxSpawnVelocity, maxTargetVelocity };
+  }
+
+  _SafeGetParticlePrimvar(GfVec3f, id, attractorPosition, particleInfo.);
+  _SafeGetParticlePrimvar(float, id, attractorForce, particleInfo.);
+  _SafeGetParticlePrimvar(float, id, minTimeToLive, particleInfo.);
+  _SafeGetParticlePrimvar(float, id, maxTimeToLive, particleInfo.);
+  _SafeGetParticlePrimvar(float, id, initialVelocityFromNormal, particleInfo.);
+  _SafeGetParticlePrimvar(float, id, initialVelocityConeAngleDegrees, particleInfo.);
+  _SafeGetParticlePrimvar(float, id, turbulenceFrequency, particleInfo.);
+  _SafeGetParticlePrimvar(float, id, turbulenceForce, particleInfo.);
+  _SafeGetParticlePrimvar(float, id, motionTrailMultiplier, particleInfo.);
+  _SafeGetParticlePrimvar(float, id, spawnRatePerSecond, particleInfo.);
+  _SafeGetParticlePrimvar(float, id, collisionThickness, particleInfo.);
+  _SafeGetParticlePrimvar(float, id, collisionRestitution, particleInfo.);
+  _SafeGetParticlePrimvar(float, id, initialRotationDeviationDegrees, particleInfo.);
+  _SafeGetParticlePrimvar(float, id, spawnBurstDuration, particleInfo.);
+  _SafeGetParticlePrimvar(float, id, dragCoefficient, particleInfo.);
+  _SafeGetParticlePrimvar(float, id, attractorRadius, particleInfo.);
+  _SafeGetParticlePrimvar(float, id, gravityForce, particleInfo.);
+  _SafeGetParticlePrimvar(float, id, initialVelocityFromMotion, particleInfo.);
+  _SafeGetParticlePrimvar(int, id, maxNumParticles, particleInfo.);
+  _SafeGetParticlePrimvar(TfToken, id, billboardType, particleInfo.);
+  _SafeGetParticlePrimvar(TfToken, id, spriteSheetMode, particleInfo.);
+  _SafeGetParticlePrimvar(TfToken, id, collisionMode, particleInfo.);
+  _SafeGetParticlePrimvar(TfToken, id, randomFlipAxis, particleInfo.);
+  _SafeGetParticlePrimvar(bool, id, hideEmitter, particleInfo.);
+  _SafeGetParticlePrimvar(bool, id, enableMotionTrail, particleInfo.);
+  _SafeGetParticlePrimvar(bool, id, useTurbulence, particleInfo.);
+  _SafeGetParticlePrimvar(bool, id, alignParticlesToVelocity, particleInfo.);
+  _SafeGetParticlePrimvar(bool, id, useSpawnTexcoords, particleInfo.);
+  _SafeGetParticlePrimvar(bool, id, enableCollisionDetection, particleInfo.);
+  _SafeGetParticlePrimvar(bool, id, restrictVelocityX, particleInfo.);
+  _SafeGetParticlePrimvar(bool, id, restrictVelocityY, particleInfo.);
+  _SafeGetParticlePrimvar(bool, id, restrictVelocityZ, particleInfo.);
+
+  assert(RemixParticleSystemAPI::GetSchemaAttributeNames(false).size() == counter);
+
+  return particleInfo;
 }
 
 void UsdMod::Impl::processPointInstancer(Args& args, const pxr::UsdPrim& prim) {

@@ -90,6 +90,37 @@ float3 projectOntoPlaneDir(float3 v, float3 n, float3 fallbackDir)
   return (l2 > 1e-12f) ? p * rsqrt(l2) : fallbackDir;
 }
 
+float2 computeRandomFlip(ParticleRandomFlipAxis mode, float randSeed)
+{
+  switch (mode)
+  {
+    default:
+    case ParticleRandomFlipAxis::None:
+      return float2(1.0f, 1.0f);
+    case ParticleRandomFlipAxis::Horizontal:
+      return float2((randSeed < 0.5f) ? -1.0f : 1.0f, 1.f);
+    case ParticleRandomFlipAxis::Vertical:
+      return float2(1.f, (randSeed < 0.5f) ? -1.0f : 1.0f);
+    case ParticleRandomFlipAxis::Both:
+      if (randSeed < 0.25f)
+      {
+        return float2(-1.0f, -1.0f);
+      }
+      else if (randSeed < 0.50f)
+      {
+        return float2( 1.0f, -1.0f);
+      }
+      else if (randSeed < 0.75f)
+      {
+        return float2(-1.0f,  1.0f);
+      }
+      else
+      {
+        return float2( 1.0f,  1.0f);
+      }
+  }
+}
+
 [shader("compute")]
 [numthreads(128, 1, 1)]
 void main(uint2 threadIdx : SV_DispatchThreadID)
@@ -106,10 +137,10 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
   const GpuParticle particle = Particles[particleIdx];
   
   // precache some values
-  const float size = particle.size(particleSystem);
-  const float16_t4 color = particle.color(particleSystem);
+  const float16_t2 size = particle.size(particleSystem, animationDataTex) * float16_t(particleCb.sceneScale);
+  const float16_t4 color = particle.color(particleSystem, animationDataTex);
   
-  if(particle.isDead() || particle.isSleeping() || color.w < particleCb.resolveTransparencyThreshold || size <= particleCb.minParticleSize)
+  if(particle.isDead() || particle.isSleeping() || color.w < particleCb.resolveTransparencyThreshold || max(size.x, size.y) < 0.1h)
   {
     clearParticleVertices(threadIdx.x, particleSystem);
     return;
@@ -162,6 +193,24 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
     } break;
   }
   
+  // Screen-space size culling
+  {
+    float4 centerClip = mul(particleCb.prevWorldToProjection, float4(particle.position, 1.0f));
+    float4 offsetClip = mul(particleCb.prevWorldToProjection, float4(particle.position + basisRight * size.x + basisUp * size.y, 1.0f));
+    
+    float2 centerNdc = centerClip.xy / centerClip.w;
+    float2 offsetNdc = offsetClip.xy / offsetClip.w;
+    
+    float2 ndcDelta    = offsetNdc - centerNdc;
+    float2 screenDelta = ndcDelta * float2(particleCb.renderingWidth, particleCb.renderingHeight);
+
+    if (dot(screenDelta, screenDelta) <= particleCb.minParticleSize * particleCb.minParticleSize)
+    {
+      clearParticleVertices(threadIdx.x, particleSystem);
+      return;
+    }
+  }
+  
   float2x2 rot2D = float2x2(1.f, 0.f, 0.f, 1.f);
   if (particleSystem.desc.alignParticlesToVelocity)
   {
@@ -174,6 +223,50 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
     sincos(particle.rotation, s, c);
     rot2D = float2x2(c, -s, s, c);
   }
+  
+  
+  float2 baseUvMin = particle.uvMinMax.xy;
+  float2 baseUvMax = particle.uvMinMax.zw;
+
+  // Treat 0 as 1 so non-configured sheet still behaves like a "single frame"
+  const uint sheetRows = max(1u, (uint)particleSystem.desc.spriteSheetRows);
+  const uint sheetCols = max(1u, (uint)particleSystem.desc.spriteSheetCols);
+  const uint totalFrames = sheetRows * sheetCols;
+
+  uint frameIndex = 0;
+
+  if (totalFrames > 1)
+  {
+    switch(particleSystem.desc.spriteSheetMode) 
+    {
+      default:
+      case ParticleSpriteSheetMode::UseMaterialSpriteSheet:
+      {
+        // assume no sprite sheet customization necessary from particle system
+        frameIndex = 0;
+      } break;
+      case ParticleSpriteSheetMode::OverrideMaterial_Lifetime:
+      {
+        float lifeFrac = 1.f - particle.normalizedLife(particleSystem); 
+        frameIndex = min(totalFrames - 1, floor(lifeFrac * totalFrames));
+      } break;
+      case ParticleSpriteSheetMode::OverrideMaterial_Random:
+      {
+        // Use randSeed (stable while the particle lives) as a seed.
+        frameIndex = min(totalFrames - 1, uint(particle.randSeed * totalFrames));
+      } break;
+    }
+  }
+
+  // Convert frameIndex to (row, col) in the spritesheet grid.
+  const uint frameRow = (sheetCols > 0) ? (frameIndex / sheetCols) : 0;
+  const uint frameCol = (sheetCols > 0) ? (frameIndex % sheetCols) : 0;
+
+  // Compute the UV min/max for this specific frame.
+  const float2 sheetSize = baseUvMax - baseUvMin;
+  const float2 cellSize  = sheetSize / float2(sheetCols, sheetRows);
+
+  float2 frameUvMin = baseUvMin + float2(frameCol, frameRow) * cellSize;
   
   const uint colorEnc = float4x16ToUnorm4x8(color.zyxw);
   
@@ -195,13 +288,13 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
       float2 motionDir = speed > 0 ? motionPlane / speed : float2(0, 1);
       float2 orthoDir  = float2(-motionDir.y, motionDir.x);
 
-      float width = offset.x * size;
+      float width = offset.x * size.x;
 
       // indices 0..3 -> tail
       // indices 4..7 -> head
       float len = (i >= 4) ? (speed * particleSystem.desc.motionTrailMultiplier * particleCb.deltaTimeSecs) : 0;                                       
       
-      float height = offset.y * size + len;
+      float height = offset.y * size.y + len;
       
       // reconstruct world space offset
       float2 planeOffset = width * orthoDir + height * motionDir;
@@ -209,13 +302,13 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
     } 
     else 
     {
-      const float2 localOffset = mul(rot2D, offset);
-      worldOffset = (localOffset.x * basisRight + localOffset.y * basisUp) * size;
+      const float2 localOffset = mul(rot2D, offset * size);
+      worldOffset = (localOffset.x * basisRight + localOffset.y * basisUp);
     }
     
     vertex.position = chopMantissaLSB(particle.position + worldOffset, 4); // lop off some LSB to get better compression;
     vertex.color = colorEnc;
-    vertex.texcoord = (offset + 0.5f) * (particle.uvMinMax.zw - particle.uvMinMax.xy) + particle.uvMinMax.xy;
+    vertex.texcoord = (offset * computeRandomFlip(particleSystem.desc.randomFlipAxis, particle.randSeed) + 0.5f) * cellSize + frameUvMin;
     
     // Always keep active particle vertices in the 0 ~ N range of buffer (unlike particles themselves)
     Vertices[threadIdx.x * particleSystem.numVerticesPerParticle + i] = vertex;

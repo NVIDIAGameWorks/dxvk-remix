@@ -47,12 +47,10 @@ struct vec2 {
     return *this;
   }
 
-  vec2& operator*(float s)
-  {
-    x *= s;
-    y *= s;
-    return *this;
-  }
+  vec2 operator+(const vec2& other) const { return vec2(x + other.x, y + other.y); }
+  vec2 operator-(const vec2& other) const { return vec2(x - other.x, y - other.y); }
+  vec2 operator*(float s) const { return vec2(x * s, y * s); }
+  friend vec2 operator*(float s, const vec2& v) { return vec2(s * v.x, s * v.y); }
 };
 
 struct vec3 {
@@ -75,6 +73,11 @@ struct vec3 {
     z = v.z;
     return *this;
   }
+
+  vec3 operator+(const vec3& other) const { return vec3(x + other.x, y + other.y, z + other.z); }
+  vec3 operator-(const vec3& other) const { return vec3(x - other.x, y - other.y, z - other.z); }
+  vec3 operator*(float s) const { return vec3(x * s, y * s, z * s); }
+  friend vec3 operator*(float s, const vec3& v) { return vec3(s * v.x, s * v.y, s * v.z); }
 };
 
 struct alignas(16) vec4 {
@@ -84,6 +87,9 @@ struct alignas(16) vec4 {
   float w;
 
   vec4() = default;
+  explicit vec4(float _swiz) : x(_swiz), y(_swiz), z(_swiz), w(_swiz) {}
+  vec4(vec2 _xy, float _z, float _w) : x(_xy.x), y(_xy.y), z(_z), w(_w) {}
+  vec4(vec3 _xyz, float _w) : x(_xyz.x), y(_xyz.y), z(_xyz.z), w(_w) {}
   vec4(float _x, float _y, float _z, float _w) : x(_x), y(_y), z(_z), w(_w) {}
   vec4& operator=(const dxvk::Vector4& v)
   {
@@ -93,6 +99,11 @@ struct alignas(16) vec4 {
     w = v.w;
     return *this;
   }
+
+  vec4 operator+(const vec4& other) const { return vec4(x + other.x, y + other.y, z + other.z, w + other.w); }
+  vec4 operator-(const vec4& other) const { return vec4(x - other.x, y - other.y, z - other.z, w - other.w); }
+  vec4 operator*(float s) const { return vec4(x * s, y * s, z * s, w * s); }
+  friend vec4 operator*(float s, const vec4& v) { return vec4(s * v.x, s * v.y, s * v.z, s * v.w); }
 };
 
 typedef uint16_t half;

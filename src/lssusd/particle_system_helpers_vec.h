@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -19,30 +19,31 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
+
 #pragma once
 
-enum ParticleBillboardType : uint8_t {
-  FaceCamera_Spherical = 0,   // classic billboard
-  FaceCamera_UpAxisLocked,    // cylindrical billboard (fix up axis)
-  FaceCamera_Position,        // camera->particle vector
-  FaceWorldUp,                // horizontal plane (face up axis)
-};
+// This header provides vec2/vec3/vec4 specializations of AssignFromPrimvar.
+// Include this AFTER both particle_system_helpers.h and shader_types.h are included.
+// Do NOT include this in HdRemix code as it requires MathLib.
 
-enum ParticleSpriteSheetMode : uint8_t {
-  UseMaterialSpriteSheet = 0, // use the regular sprite sheet params from material
-  OverrideMaterial_Lifetime,  // frame 0 at birth, last frame at death.
-  OverrideMaterial_Random,    // pick one frame and keep it for the particle's life.
-};
+#include "particle_system_helpers.h"
+#include "../dxvk/shaders/rtx/utility/shader_types.h"
 
-enum ParticleCollisionMode : uint8_t {
-  Bounce = 0, // particle should bounce following collision
-  Stop,       // stop all motion for the particle on collision
-  Kill,       // kill the particle immediately on collision
-};
+namespace lss {
 
-enum ParticleRandomFlipAxis : uint8_t {
-  None = 0,
-  Horizontal,
-  Vertical,
-  Both
-};
+  template<>
+  inline vec4 AssignFromPrimvar<vec4, pxr::GfVec4f>(const pxr::GfVec4f& src) {
+    return vec4(src[0], src[1], src[2], src[3]);
+  }
+
+  template<>
+  inline vec3 AssignFromPrimvar<vec3, pxr::GfVec3f>(const pxr::GfVec3f& src) {
+    return vec3(src[0], src[1], src[2]);
+  }
+
+  template<>
+  inline vec2 AssignFromPrimvar<vec2, pxr::GfVec2f>(const pxr::GfVec2f& src) {
+    return vec2(src[0], src[1]);
+  }
+
+}

@@ -99,6 +99,102 @@ static inline constexpr uint32_t sizeOf<remixapi_Transform>() {
   return 3 * 4 * sizeof(float);
 }
 
+// remixapi_AnimatedFloat1D
+template<>
+static inline uint32_t sizeOf(const remixapi_AnimatedFloat1D& v) {
+  return sizeof(uint32_t) + v.numberElements * sizeof(float);
+}
+template<>
+void serialize(const remixapi_AnimatedFloat1D& serializeFrom, void*& pSerialize) {
+  serialize(serializeFrom.numberElements, pSerialize);
+  if (serializeFrom.numberElements > 0 && serializeFrom.pData) {
+    serialize(serializeFrom.pData, pSerialize, serializeFrom.numberElements * sizeof(float));
+  }
+}
+template<>
+void deserialize(void*& deserializeFrom, remixapi_AnimatedFloat1D& deserializeTo) {
+  deserialize(deserializeFrom, deserializeTo.numberElements);
+  if (deserializeTo.numberElements > 0) {
+    auto* arr = new float[deserializeTo.numberElements];
+    deserialize(deserializeFrom, arr, deserializeTo.numberElements * sizeof(float));
+    deserializeTo.pData = arr;
+  } else {
+    deserializeTo.pData = nullptr;
+  }
+}
+
+// remixapi_AnimatedFloat2D
+template<>
+static inline uint32_t sizeOf(const remixapi_AnimatedFloat2D& v) {
+  return sizeof(uint32_t) + v.numberElements * sizeOf<remixapi_Float2D>();
+}
+template<>
+void serialize(const remixapi_AnimatedFloat2D& serializeFrom, void*& pSerialize) {
+  serialize(serializeFrom.numberElements, pSerialize);
+  if (serializeFrom.numberElements > 0 && serializeFrom.pData) {
+    serialize(serializeFrom.pData, pSerialize, serializeFrom.numberElements * sizeOf<remixapi_Float2D>());
+  }
+}
+template<>
+void deserialize(void*& deserializeFrom, remixapi_AnimatedFloat2D& deserializeTo) {
+  deserialize(deserializeFrom, deserializeTo.numberElements);
+  if (deserializeTo.numberElements > 0) {
+    auto* arr = new remixapi_Float2D[deserializeTo.numberElements];
+    deserialize(deserializeFrom, arr, deserializeTo.numberElements * sizeOf<remixapi_Float2D>());
+    deserializeTo.pData = arr;
+  } else {
+    deserializeTo.pData = nullptr;
+  }
+}
+
+// remixapi_AnimatedFloat3D
+template<>
+static inline uint32_t sizeOf(const remixapi_AnimatedFloat3D& v) {
+  return sizeof(uint32_t) + v.numberElements * sizeOf<remixapi_Float3D>();
+}
+template<>
+void serialize(const remixapi_AnimatedFloat3D& serializeFrom, void*& pSerialize) {
+  serialize(serializeFrom.numberElements, pSerialize);
+  if (serializeFrom.numberElements > 0 && serializeFrom.pData) {
+    serialize(serializeFrom.pData, pSerialize, serializeFrom.numberElements * sizeOf<remixapi_Float3D>());
+  }
+}
+template<>
+void deserialize(void*& deserializeFrom, remixapi_AnimatedFloat3D& deserializeTo) {
+  deserialize(deserializeFrom, deserializeTo.numberElements);
+  if (deserializeTo.numberElements > 0) {
+    auto* arr = new remixapi_Float3D[deserializeTo.numberElements];
+    deserialize(deserializeFrom, arr, deserializeTo.numberElements * sizeOf<remixapi_Float3D>());
+    deserializeTo.pData = arr;
+  } else {
+    deserializeTo.pData = nullptr;
+  }
+}
+
+// remixapi_AnimatedFloat4D
+template<>
+static inline uint32_t sizeOf(const remixapi_AnimatedFloat4D& v) {
+  return sizeof(uint32_t) + v.numberElements * sizeOf<remixapi_Float4D>();
+}
+template<>
+void serialize(const remixapi_AnimatedFloat4D& serializeFrom, void*& pSerialize) {
+  serialize(serializeFrom.numberElements, pSerialize);
+  if (serializeFrom.numberElements > 0 && serializeFrom.pData) {
+    serialize(serializeFrom.pData, pSerialize, serializeFrom.numberElements * sizeOf<remixapi_Float4D>());
+  }
+}
+template<>
+void deserialize(void*& deserializeFrom, remixapi_AnimatedFloat4D& deserializeTo) {
+  deserialize(deserializeFrom, deserializeTo.numberElements);
+  if (deserializeTo.numberElements > 0) {
+    auto* arr = new remixapi_Float4D[deserializeTo.numberElements];
+    deserialize(deserializeFrom, arr, deserializeTo.numberElements * sizeOf<remixapi_Float4D>());
+    deserializeTo.pData = arr;
+  } else {
+    deserializeTo.pData = nullptr;
+  }
+}
+
 // remixapi_Path
 static inline uint32_t pathSize(const remixapi_Path& path) {
   return (path ? wcslen(path) + 1 : 0) * sizeof(wchar_t);
@@ -518,7 +614,7 @@ void InstanceInfoBlend::_dtor() {
 }
 
 
-#define InstanceInfoParticleSystemVars sType, \
+#define InstanceInfoParticleSystemScalarVars sType, \
                                        maxNumParticles, \
                                        useTurbulence, \
                                        alignParticlesToVelocity, \
@@ -526,43 +622,60 @@ void InstanceInfoBlend::_dtor() {
                                        enableCollisionDetection, \
                                        enableMotionTrail, \
                                        hideEmitter, \
-                                       minSpawnColor, \
-                                       maxSpawnColor, \
+                                       restrictVelocityX, \
+                                       restrictVelocityY, \
+                                       restrictVelocityZ, \
+                                       attractorPosition, \
                                        minTimeToLive, \
                                        maxTimeToLive, \
-                                       initialVelocityFromMotion, \
                                        initialVelocityFromNormal, \
                                        initialVelocityConeAngleDegrees, \
-                                       minSpawnSize, \
-                                       maxSpawnSize, \
+                                       dragCoefficient, \
+                                       initialRotationDeviationDegrees, \
                                        gravityForce, \
-                                       maxSpeed, \
                                        turbulenceFrequency, \
                                        turbulenceForce, \
-                                       minSpawnRotationSpeed, \
-                                       maxSpawnRotationSpeed, \
                                        spawnRatePerSecond, \
                                        collisionThickness, \
                                        collisionRestitution, \
                                        motionTrailMultiplier, \
-                                       minTargetSize, \
-                                       maxTargetSize, \
-                                       minTargetRotationSpeed, \
-                                       maxTargetRotationSpeed, \
-                                       minTargetColor, \
-                                       maxTargetColor, \
-                                       billboardType
+                                       initialVelocityFromMotion, \
+                                       spawnBurstDuration, \
+                                       attractorRadius, \
+                                       attractorForce, \
+                                       billboardType, \
+                                       spriteSheetMode, \
+                                       collisionMode, \
+                                       randomFlipAxis
+#define InstanceInfoParticleSystemAnimatedVars minColor, \
+                                              maxColor, \
+                                              minRotationSpeed, \
+                                              maxRotationSpeed, \
+                                              minSize, \
+                                              maxSize, \
+                                              maxVelocity
 uint32_t InstanceInfoParticleSystem::_calcSize() const {
-  return fold_helper::calcSize(InstanceInfoParticleSystemVars);
+  return fold_helper::calcSize(InstanceInfoParticleSystemScalarVars)
+       + fold_helper::calcSize(InstanceInfoParticleSystemAnimatedVars);
 }
 void InstanceInfoParticleSystem::_serialize(void*& pSerialize) const {
-  fold_helper::serialize(pSerialize, InstanceInfoParticleSystemVars);
+  fold_helper::serialize(pSerialize, InstanceInfoParticleSystemScalarVars);
+  fold_helper::serialize(pSerialize, InstanceInfoParticleSystemAnimatedVars);
 }
 void InstanceInfoParticleSystem::_deserialize(void*& pDeserialize) {
   pNext = nullptr;
-  fold_helper::deserialize(pDeserialize, InstanceInfoParticleSystemVars);
+  fold_helper::deserialize(pDeserialize, InstanceInfoParticleSystemScalarVars);
+  fold_helper::deserialize(pDeserialize, InstanceInfoParticleSystemAnimatedVars);
 }
-void InstanceInfoParticleSystem::_dtor() { }
+void InstanceInfoParticleSystem::_dtor() {
+  delete[] minColor.pData;
+  delete[] maxColor.pData;
+  delete[] minRotationSpeed.pData;
+  delete[] maxRotationSpeed.pData;
+  delete[] minSize.pData;
+  delete[] maxSize.pData;
+  delete[] maxVelocity.pData;
+}
 
 
 uint32_t InstanceInfoTransforms::_calcSize() const {

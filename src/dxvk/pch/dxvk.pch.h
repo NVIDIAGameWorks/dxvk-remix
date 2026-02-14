@@ -30,6 +30,7 @@
 #include <limits>
 
 #include "../../lssusd/mdl_helpers.h"
+#include "../../lssusd/particle_system_helpers.h"
 #include "../../lssusd/usd_include_begin.h"
 #include <pxr/base/vt/value.h>
 #include <pxr/usd/usd/tokens.h>

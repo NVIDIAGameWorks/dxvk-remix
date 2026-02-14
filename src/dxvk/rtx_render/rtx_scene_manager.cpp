@@ -1036,11 +1036,13 @@ namespace dxvk {
     // Priority ordering for particle system descriptors is: Mesh, Material, Texture.  This matches the implementation in toolkit.
     // By this point, pParticleSystemDesc will contain the information from a mesh replacement (if one exists), so we just handle
     // materials replacements, and texture taggin categories below.
+    RtxParticleSystemDesc globalParticleDesc; // Storage for global desc if needed
     if (!pParticleSystemDesc) {
       pParticleSystemDesc = renderMaterialData.getParticleSystemDesc();
     }
     if (!pParticleSystemDesc && drawCallState.categories.test(InstanceCategories::ParticleEmitter)) {
-      pParticleSystemDesc = &RtxParticleSystemManager::createGlobalParticleSystemDesc();
+      globalParticleDesc = RtxParticleSystemManager::createGlobalParticleSystemDesc();
+      pParticleSystemDesc = &globalParticleDesc;
     }
     if (instance && pParticleSystemDesc) {
       RtxParticleSystemManager& particleSystem = device()->getCommon()->metaParticleSystem();

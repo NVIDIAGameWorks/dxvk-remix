@@ -1079,6 +1079,9 @@ namespace dxvk {
         }
 
         uint8_t spriteSheetRows = 0, spriteSheetCols = 0, spriteSheetFPS = 0;
+        materialData.getSpriteSheetData(currentInstance.surface.spriteSheetRows, currentInstance.surface.spriteSheetCols, currentInstance.surface.spriteSheetFPS);
+        currentInstance.m_isAnimated = currentInstance.surface.spriteSheetFPS != 0;
+        currentInstance.surface.objectPickingValue = drawCall.drawCallID;
 
         // Note: Extract spritesheet information from the associated material data as it ends up stored in the Surface
         // not in the Surface Material like most material information.
@@ -1124,13 +1127,6 @@ namespace dxvk {
           assert(0);
           break;
         }
-
-        currentInstance.surface.spriteSheetRows = spriteSheetRows;
-        currentInstance.surface.spriteSheetCols = spriteSheetCols;
-        currentInstance.surface.spriteSheetFPS = spriteSheetFPS;
-
-        currentInstance.m_isAnimated = currentInstance.surface.spriteSheetFPS != 0;
-        currentInstance.surface.objectPickingValue = drawCall.drawCallID;
       }
 
       // Update transform

@@ -140,19 +140,25 @@ void render(uint32_t windowWidth, uint32_t windowHeight) {
     };
     g_remix.DrawInstance(&meshInstanceInfo);
 
+    remixapi_Float4D particleMinColor[] = { { 1.f, 1.f, 1.f, 1.f } };
+    remixapi_Float4D particleMaxColor[] = { { 1.f, 1.f, 1.f, 1.f } };
+    remixapi_Float2D particleMinSize[] = { { 1.f, 1.f } };
+    remixapi_Float2D particleMaxSize[] = { { 2.f, 2.f } };
+    remixapi_Float3D particleMaxVelocity[] = { { 1.f, 1.f, 1.f } };
+
     remixapi_InstanceInfoParticleSystemEXT particleInfo = {
       .sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT,
       .maxNumParticles = 1000,
       .spawnRatePerSecond = 10.f,
       .hideEmitter = 0,
       .gravityForce = 1.f,
-      .maxSpeed = 1.f,
-      .minSpawnSize = 1.f,
-      .maxSpawnSize = 2.f,
+      .minSize = { particleMinSize, 1 },
+      .maxSize = { particleMaxSize, 1 },
       .minTimeToLive = 1.f,
       .maxTimeToLive = 10.f,
-      .minSpawnColor = { 1.f, 1.f, 1.f, 1.f },
-      .maxSpawnColor = { 1.f, 1.f, 1.f, 1.f },
+      .minColor = { particleMinColor, 1 },
+      .maxColor = { particleMaxColor, 1 },
+      .maxVelocity = { particleMaxVelocity, 1 },
     };
     meshInstanceInfo.pNext = &particleInfo;
     g_remix.DrawInstance(&meshInstanceInfo);

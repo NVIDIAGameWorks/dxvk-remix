@@ -25,6 +25,22 @@
 #include "rtx/utility/shader_types.h"
 #include "particle_system_enums.h"
 
+
+enum class ParticleAnimationDataRows {
+  MinColor = 0,
+  MaxColor,
+
+  MinSize,
+  MaxSize,
+
+  MinRotationSpeed,
+  MaxRotationSpeed,
+
+  MaxVelocity,
+
+  Count
+};
+
 struct GpuSpawnContext {
   mat4x3 spawnObjectToWorld;
   mat4x3 spawnPrevObjectToWorld;
@@ -46,79 +62,137 @@ struct GpuSpawnContext {
   uint16_t spawnMeshTexcoordsIdx;
 };
 
-struct RtxParticleSystemDesc { 
-  vec4 minSpawnColor;
+// GPU-compatible particle system description - this struct is uploaded to the GPU
+// and must contain only POD types with no CPU-specific members like std::vector.
+struct GpuParticleSystemDesc { 
+  vec3 attractorPosition;
+  float attractorForce;
 
-  vec4 maxSpawnColor;
-
-  vec4 minTargetColor;
-
-  vec4 maxTargetColor;
-
-  float minTargetSize;
-  float maxTargetSize;
-  float minTargetRotationSpeed;
-  float maxTargetRotationSpeed;
-
-  float minTtl;
-  float maxTtl;
+  float minTimeToLive;
+  float maxTimeToLive;
   float initialVelocityFromNormal;
   float initialVelocityConeAngleDegrees;
-
-  float minSpawnSize;
-  float maxSpawnSize;
-  float gravityForce;
-  float maxSpeed;
 
   float turbulenceFrequency;
   float turbulenceForce;
   float motionTrailMultiplier;
   float minSpawnRotationSpeed;
 
-  float maxSpawnRotationSpeed;
-  float spawnRate;
-  float collisionThickness;
-  float collisionRestitution;
+  float initialRotationDeviationDegrees;
+  float spawnBurstDuration;
+  float dragCoefficient;
+  float attractorRadius;
   
+  float gravityForce;
   float initialVelocityFromMotion;
   uint maxNumParticles;
   ParticleBillboardType billboardType;
-  uint8_t hideEmitter;
-  uint8_t enableMotionTrail;
-  uint8_t useTurbulence;
-  uint8_t alignParticlesToVelocity;
-  uint8_t useSpawnTexcoords;
-  uint8_t enableCollisionDetection;
-  uint8_t pad;
+  ParticleSpriteSheetMode spriteSheetMode;
+  ParticleCollisionMode collisionMode;
+  ParticleRandomFlipAxis randomFlipAxis;
+
+  float spawnRatePerSecond;
+  float collisionThickness;
+  float collisionRestitution;
+  uint8_t spriteSheetRows;
+  uint8_t spriteSheetCols;
+  uint8_t hideEmitter : 1;
+  uint8_t enableMotionTrail : 1;
+  uint8_t useTurbulence : 1;
+  uint8_t alignParticlesToVelocity : 1;
+  uint8_t useSpawnTexcoords : 1;
+  uint8_t enableCollisionDetection : 1;
+  uint8_t restrictVelocityX : 1;
+  uint8_t restrictVelocityY : 1;
+  uint8_t restrictVelocityZ : 1;
+
+// Note: Spatial fields (collisionThickness, attractorRadius, gravityForce,
+  // initialVelocityFromNormal, attractorForce, turbulenceForce, turbulenceFrequency)
+  // are authored in centimeters and scaled by ParticleSystemConstants::sceneScale
+  // at the point of use on the GPU.
+};
 
 #ifdef __cplusplus
-  RtxParticleSystemDesc() {
-    // This struct can be hashed so ensure its initialized
-    memset(this, 0, sizeof(*this));
+// CPU-side particle system description that extends GpuParticleSystemDesc with
+// CPU-only members (std::vector) used for generating animation data textures.
+// This struct should NOT be directly uploaded to the GPU.
+struct RtxParticleSystemDesc : GpuParticleSystemDesc {
+  // These are CPU only, they will be used to generate animation data textures
+  std::vector<vec4> minColor;
+  std::vector<vec4> maxColor;
+  std::vector<vec2> minSize;
+  std::vector<vec2> maxSize;
+  std::vector<vec3> maxVelocity;
+  std::vector<float> minRotationSpeed;
+  std::vector<float> maxRotationSpeed;
+
+  RtxParticleSystemDesc() 
+    : GpuParticleSystemDesc{}
+  {
+    attractorPosition = {0.0f, 0.0f, 0.0f};
+    attractorForce = 0.0f;
+    minTimeToLive = 0.0f;
+    maxTimeToLive = 0.0f;
+    initialVelocityFromNormal = 0.0f;
+    initialVelocityConeAngleDegrees = 0.0f;
+    turbulenceFrequency = 0.0f;
+    turbulenceForce = 0.0f;
+    motionTrailMultiplier = 0.0f;
+    minSpawnRotationSpeed = 0.0f;
+    initialRotationDeviationDegrees = 0.0f;
+    spawnBurstDuration = 0.0f;
+    dragCoefficient = 0.0f;
+    attractorRadius = 0.0f;
+    gravityForce = 0.0f;
+    initialVelocityFromMotion = 0.0f;
+    maxNumParticles = 0;
+    billboardType = FaceCamera_Spherical;
+    spriteSheetMode = UseMaterialSpriteSheet;
+    collisionMode = Bounce;
+    randomFlipAxis = None;
+    spawnRatePerSecond = 0.0f;
+    collisionThickness = 0.0f;
+    collisionRestitution = 0.0f;
+    spriteSheetRows = 0;
+    spriteSheetCols = 0;
+    hideEmitter = 0;
+    enableMotionTrail = 0;
+    useTurbulence = 0;
+    alignParticlesToVelocity = 0;
+    useSpawnTexcoords = 0;
+    enableCollisionDetection = 0;
+    restrictVelocityX = 0;
+    restrictVelocityY = 0;
+    restrictVelocityZ = 0;
   }
 
   XXH64_hash_t calcHash() const {
-    return XXH3_64bits(this, sizeof(*this));
+    // Hash the base GPU-compatible struct plus all animation curve data
+    XXH64_hash_t h = XXH3_64bits(static_cast<const GpuParticleSystemDesc*>(this), sizeof(GpuParticleSystemDesc));
+    auto hashVec = [&](const auto& v) {
+      if (!v.empty()) {
+        h = XXH3_64bits_withSeed(v.data(), v.size() * sizeof(v[0]), h);
+      }
+    };
+    hashVec(minColor);
+    hashVec(maxColor);
+    hashVec(minSize);
+    hashVec(maxSize);
+    hashVec(maxVelocity);
+    hashVec(minRotationSpeed);
+    hashVec(maxRotationSpeed);
+    return h;
   }
 
-  void applySceneScale(const float centimetersToUnits) {
-    // These params are in centimeters
-    minTargetSize *= centimetersToUnits;
-    maxTargetSize *= centimetersToUnits;
-    minSpawnSize *= centimetersToUnits;
-    maxSpawnSize *= centimetersToUnits;
-    collisionThickness *= centimetersToUnits;
-    gravityForce *= centimetersToUnits;
-    initialVelocityFromNormal *= centimetersToUnits;
-    maxSpeed *= centimetersToUnits;
-    turbulenceForce *= centimetersToUnits;
-    turbulenceFrequency *= centimetersToUnits;
+  // Returns only the GPU-compatible portion of this descriptor
+  const GpuParticleSystemDesc& getGpuDesc() const {
+    return static_cast<const GpuParticleSystemDesc&>(*this);
   }
-#endif
 };
+#endif
 
 struct GpuParticleSystem { 
-  RtxParticleSystemDesc desc; // TODO: Can compress this further.
+  GpuParticleSystemDesc desc; // GPU-compatible descriptor only
 
   // These members aren't hashed
   float2 particleVertexOffsets[8];
@@ -126,7 +200,7 @@ struct GpuParticleSystem {
   uint spawnParticleOffset = 0;
   uint spawnParticleCount = 0;
   uint numVerticesPerParticle = 4;
-  uint particleTailOffset = 0;
+  uint particleTailOffset = 0; 
 
   uint simulateParticleCount = 0;
   uint particleHeadOffset = 0;
@@ -135,38 +209,13 @@ struct GpuParticleSystem {
 
 #ifndef __cplusplus
   float16_t varyTimeToLive(float rand) {
-    return lerp(desc.minTtl, desc.maxTtl, rand);
+    return lerp(desc.minTimeToLive, desc.maxTimeToLive, rand);
   }
-
-  float16_t4 varySpawnColor(float rand) {
-    return float16_t4(lerp(desc.minSpawnColor, desc.maxSpawnColor, rand));
-  }
-
-  float16_t varySpawnSize(float rand) {
-    return lerp(desc.minSpawnSize, desc.maxSpawnSize, rand);
-  }
-
-  float16_t varySpawnRotationSpeed(float rand) {
-    return lerp(desc.minSpawnRotationSpeed, desc.maxSpawnRotationSpeed, rand) * twoPi;
-  }
-
-  float16_t4 varyTargetColor(float rand) {
-    return float16_t4(lerp(desc.minTargetColor, desc.maxTargetColor, rand));
-  }
-
-  float16_t varyTargetSize(float rand) {
-    return lerp(desc.minTargetSize, desc.maxTargetSize, rand);
-}
-
-  float16_t varyTargetRotationSpeed(float rand) {
-    return lerp(desc.minTargetRotationSpeed, desc.maxTargetRotationSpeed, rand) * twoPi;
-  }
-
 #else
   GpuParticleSystem() = default;
   GpuParticleSystem(const GpuParticleSystem& other) = default;
-  explicit GpuParticleSystem(const RtxParticleSystemDesc& desc)
-    : desc(desc) { 
+  explicit GpuParticleSystem(const RtxParticleSystemDesc& cpuDesc)
+    : desc(cpuDesc.getGpuDesc()) { 
   }
 #endif
 };
@@ -189,6 +238,6 @@ struct ParticleSystemConstants {
 
   float resolveTransparencyThreshold;
   float minParticleSize;
+  float sceneScale;
   uint pad1;
-  uint pad2;
 };

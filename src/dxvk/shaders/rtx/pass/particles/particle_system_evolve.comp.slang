@@ -99,34 +99,73 @@ void collideParticleWithScene(inout GpuParticle p)
   float signedDist = dot(p.position - si.position, n);
 
   // only collide if we've gone inside but not deeper than thickness
-  float thickness = particleCb.particleSystem.desc.collisionThickness;
+  float thickness = particleCb.particleSystem.desc.collisionThickness * particleCb.sceneScale;
   if (signedDist < 0.0f && signedDist > -thickness)
   {
-    // reflect & apply restitution
-    float3 vRef = reflect(relVel, n);
-    p.velocity = vRef * particleCb.particleSystem.desc.collisionRestitution + sceneVel;
+    switch(particleCb.particleSystem.desc.collisionMode) 
+    {
+      case ParticleCollisionMode::Bounce:
+      {
+        // reflect & apply restitution
+        float3 vRef = reflect(relVel, n);
+        p.velocity = vRef * particleCb.particleSystem.desc.collisionRestitution + sceneVel;
+      } break;
+      case ParticleCollisionMode::Stop:
+      {
+        p.velocity = 0..xxx;
+      } break;
+      case ParticleCollisionMode::Kill:
+      {
+        p.velocity = 0..xxx;
+        p.timeToLive = 0.f;
+      } break;
+    }
   }
 }
+
+float3 attractorAcceleration(const GpuParticleSystem particleSystem, float3 particlePos)
+{
+  float3 toAttractor = particleSystem.desc.attractorPosition - particlePos;
+  float distSq = max(dot(toAttractor, toAttractor), 1e-4f);
+
+  // radius tuned inverse-square falloff
+  float scaledRadius = particleSystem.desc.attractorRadius * particleCb.sceneScale;
+  float invRadius = rcp(max(scaledRadius, 1e-3f));
+  float falloff = rcp(1.0f + distSq * invRadius * invRadius);
+
+  return toAttractor * rsqrt(distSq) * (particleSystem.desc.attractorForce * particleCb.sceneScale * falloff);
+}
+
 
 // Updates a particles state for one time step
 void evolve(inout GpuParticle particle, const GpuParticleSystem particleSystem)
 {
   if (particleSystem.desc.useTurbulence)
   {
-    particle.velocity += curlOfValueNoise(particle.position * particleSystem.desc.turbulenceFrequency, particleCb.absoluteTimeSecs * particleSystem.desc.turbulenceFrequency) * particleSystem.desc.turbulenceForce * particleCb.deltaTimeSecs;
+    float scaledTurbFreq = particleSystem.desc.turbulenceFrequency * particleCb.sceneScale;
+    particle.velocity += curlOfValueNoise(particle.position * scaledTurbFreq, particleCb.absoluteTimeSecs * scaledTurbFreq) * particleSystem.desc.turbulenceForce * particleCb.sceneScale * particleCb.deltaTimeSecs;
   }
   
-  particle.velocity += particleCb.upDirection * particleSystem.desc.gravityForce * particleCb.deltaTimeSecs;
+  // Gravity
+  particle.velocity += particleCb.upDirection * particleSystem.desc.gravityForce * particleCb.sceneScale * particleCb.deltaTimeSecs;
+  
+  // Attractor
+  particle.velocity += attractorAcceleration(particleSystem, particle.position) * particleCb.deltaTimeSecs;
+  
+  // Drag
+  particle.velocity *= max(1.f - particleSystem.desc.dragCoefficient * particleCb.deltaTimeSecs, 0.f);
   
   if (particleSystem.desc.enableCollisionDetection)
   {
     collideParticleWithScene(particle);
   }
   
-  if (dot(particle.velocity, particle.velocity) > float16_t(0.f) && particleSystem.desc.maxSpeed >= 0)
-  {
-    particle.velocity = min(particleSystem.desc.maxSpeed, length(particle.velocity)) * normalize(particle.velocity);
-  }
+  // Per axis motion restriction
+  particle.velocity = select(bool3(particleSystem.desc.restrictVelocityX, particleSystem.desc.restrictVelocityY, particleSystem.desc.restrictVelocityZ), 0..xxx,  particle.velocity);
+  
+  // Max velocity clamping
+  float16_t3 maxVelocity = particle.maxVelocity(particleSystem, animationDataTex) * float16_t(particleCb.sceneScale);
+  particle.velocity = select(maxVelocity > 0.h, clamp(particle.velocity, -maxVelocity, maxVelocity), particle.velocity);
   
   particle.position += particle.velocity * particleCb.deltaTimeSecs;
   
@@ -138,7 +177,7 @@ void evolve(inout GpuParticle particle, const GpuParticleSystem particleSystem)
     }
     else
     {
-      particle.rotation = (particle.rotation + particle.rotationSpeed(particleSystem) * particleCb.deltaTimeSecs) % twoPi;
+      particle.rotation = (particle.rotation + particle.rotationSpeed(particleSystem, animationDataTex) * particleCb.deltaTimeSecs) % twoPi;
     }
   }
 }
@@ -167,7 +206,7 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
   particle.timeToLive -= particleCb.deltaTimeSecs;
   
   // Our counting strategy is conservative, therefore, we must also account for the non-random, max lifetime
-  float targetLifetimeForCounter = (particle.initialTimeToLive(particleSystem) - particleSystem.desc.maxTtl);
+  float targetLifetimeForCounter = (particle.initialTimeToLive(particleSystem) - particleSystem.desc.maxTimeToLive);
   if (particle.timeToLive <= targetLifetimeForCounter && !particle.isDead()) 
   {
     particle.setDead();
