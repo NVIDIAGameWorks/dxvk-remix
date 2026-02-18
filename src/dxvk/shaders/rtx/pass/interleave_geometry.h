@@ -120,6 +120,11 @@ namespace interleaver {
       dst[idx * cb.outputStride + writeOffset++] = normals.x;
       dst[idx * cb.outputStride + writeOffset++] = normals.y;
       dst[idx * cb.outputStride + writeOffset++] = normals.z;
+    } else if (cb.forceNormals) {
+      // Reserve normal space with zeros; will be filled by smooth normals pass
+      dst[idx * cb.outputStride + writeOffset++] = 0.0f;
+      dst[idx * cb.outputStride + writeOffset++] = 0.0f;
+      dst[idx * cb.outputStride + writeOffset++] = 0.0f;
     }
 
     if (cb.hasTexcoord) {

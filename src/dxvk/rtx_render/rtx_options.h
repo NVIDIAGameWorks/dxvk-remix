@@ -294,6 +294,10 @@ namespace dxvk {
                   args.onChangeCallback = &geometryAssetHashRuleStringOnChange);
     RTX_OPTION("rtx", fast_unordered_set, raytracedRenderTargetTextures, {}, "DescriptorHashes for Render Targets. (Screens that should display the output of another camera).");
     RTX_OPTION("rtx", fast_unordered_set, particleEmitterTextures, {}, "Objects rendered with these textures will emit particles that inherit the material of the object itself.");
+    RTX_OPTION("rtx", fast_unordered_set, smoothNormalsTextures, {},
+                  "Textures on draw calls whose geometry should have smooth normals generated on the GPU.\n"
+                  "This is useful for older D3D9 games where the geometry may be missing smooth normals, especially when using the VertexShader Capture mechanism.\n"
+                  "When a draw call matches, area-weighted smooth normals will be computed from the triangle mesh and used for ray tracing.");
     
   public:
     RTX_OPTION("rtx", bool, showRaytracingOption, true, "Enables or disables the option to toggle ray tracing in the UI. When set to false the ray tracing checkbox will not appear in the Remix UI.");
