@@ -1514,7 +1514,7 @@ namespace dxvk {
 
     // Create buffers
     {
-      DxvkBufferCreateInfo ommBufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+      DxvkBufferCreateInfo ommBufferInfo;
       ommBufferInfo.usage = VK_BUFFER_USAGE_MICROMAP_BUILD_INPUT_READ_ONLY_BIT_EXT | 
         VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
       ommBufferInfo.access = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -1724,7 +1724,7 @@ namespace dxvk {
     // Create micromap buffer
     if (!ommCacheItem.ommArrayBuffer.ptr())
     {
-      DxvkBufferCreateInfo ommBufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+      DxvkBufferCreateInfo ommBufferInfo;
       ommBufferInfo.usage = VK_BUFFER_USAGE_MICROMAP_BUILD_INPUT_READ_ONLY_BIT_EXT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
       ommBufferInfo.access = VK_ACCESS_SHADER_WRITE_BIT;
       ommBufferInfo.size = opacityMicromapBufferSize;

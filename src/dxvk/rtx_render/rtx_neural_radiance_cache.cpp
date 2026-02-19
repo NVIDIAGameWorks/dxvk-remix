@@ -212,7 +212,7 @@ namespace dxvk {
 
     // Create a buffer to track training records counts
     {
-      DxvkBufferCreateInfo bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+      DxvkBufferCreateInfo bufferInfo;
       bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
       bufferInfo.stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
       bufferInfo.access = VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;

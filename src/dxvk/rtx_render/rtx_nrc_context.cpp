@@ -476,7 +476,7 @@ namespace dxvk {
     }
 
     // Set up buffer create info
-    DxvkBufferCreateInfo bufferCreateInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    DxvkBufferCreateInfo bufferCreateInfo;
     {
       bufferCreateInfo.usage = m_nrcContext->GetBufferUsageFlags(allocationInfo);
       bufferCreateInfo.stages = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;   // ToDo - should narrow it down?
