@@ -292,7 +292,7 @@ namespace dxvk {
 
     VkAabbPositionsKHR aabbPositions = { -1.f, -1.f, -1.f, 1.f, 1.f, 1.f };
 
-    DxvkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    DxvkBufferCreateInfo info;
     info.usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
     info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
     info.access = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -403,7 +403,7 @@ namespace dxvk {
     auto& instances = instanceManager.getInstanceTable();
 
     // Allocate the transform buffer
-    DxvkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    DxvkBufferCreateInfo info;
     info.usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
     info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
     info.access = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -970,10 +970,11 @@ namespace dxvk {
     }
 
     // Allocate the instance buffer and copy its contents from host to device memory
-    DxvkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    DxvkBufferCreateInfo info;
     info.usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
     info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
     info.access = VK_ACCESS_TRANSFER_WRITE_BIT;
+    info.size = 0;
 
     // Vk instance buffer
     for (const auto& instances : m_mergedInstances) {
@@ -981,7 +982,7 @@ namespace dxvk {
     }
     info.size = align(info.size * sizeof(VkAccelerationStructureInstanceKHR), kBufferAlignment);
 
-    if (m_vkInstanceBuffer == nullptr || info.size > m_vkInstanceBuffer->info().size) {
+    if ((m_vkInstanceBuffer == nullptr || info.size > m_vkInstanceBuffer->info().size) && info.size != 0) {
       m_vkInstanceBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXAccelerationStructure, "Instance Buffer");
       Logger::debug("DxvkRaytrace: Vulkan AS Instance Realloc");
     }
@@ -1104,7 +1105,7 @@ namespace dxvk {
     const auto surfacesGPUSize = m_reorderedSurfaces.size() * kSurfaceGPUSize;
 
     // Allocate the instance buffer and copy its contents from host to device memory
-    DxvkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    DxvkBufferCreateInfo info;
     info.usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
       VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
@@ -1372,7 +1373,7 @@ namespace dxvk {
 
     if (tlas.accelStructure == nullptr || sizeInfo.accelerationStructureSize > tlas.accelStructure->info().size) {
       ScopedGpuProfileZone(ctx, "buildTLAS_createAccelStructure");
-      DxvkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+      DxvkBufferCreateInfo info;
       info.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
       info.stages = VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
       info.access = VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;

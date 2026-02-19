@@ -362,7 +362,25 @@ namespace dxvk {
     // Assume we won't need this, and update the value if required
     output.previousPositionBuffer = RaytraceBuffer();
 
-    const size_t vertexStride = (input.isVertexDataInterleaved() && input.areFormatsGpuFriendly()) ? input.positionBuffer.stride() : RtxGeometryUtils::computeOptimalVertexStride(input);
+    // When the SmoothNormals category is set and the input has no normals, force the interleaved
+    // vertex layout to include space for normals. The smooth normals compute pass will fill them in later.
+    const bool needsSmoothNormals = drawCallState.categories.test(InstanceCategories::SmoothNormals);
+    const bool forceNormals = needsSmoothNormals && !input.normalBuffer.defined();
+
+    // When smooth normals state changes (added or removed), promote to kUpdateBVH so the vertex
+    // data is re-interleaved and the smooth normals dispatch runs (or original normals are restored).
+    if (needsSmoothNormals != output.smoothNormalsApplied && result == ObjectCacheState::kUpdateInstance) {
+      result = ObjectCacheState::kUpdateBVH;
+    }
+    if (!needsSmoothNormals) {
+      output.smoothNormalsApplied = false;
+    }
+
+    // If forceNormals is true, we can't use the fast "already interleaved" path since
+    // we need to change the layout to include normal space.
+    const size_t vertexStride = (input.isVertexDataInterleaved() && input.areFormatsGpuFriendly() && !forceNormals)
+      ? input.positionBuffer.stride()
+      : RtxGeometryUtils::computeOptimalVertexStride(input, forceNormals);
 
     switch (result) {
       case ObjectCacheState::KBuildBVH: {
@@ -380,7 +398,7 @@ namespace dxvk {
         assert(output.indexCacheBuffer == nullptr && output.historyBuffer[0] == nullptr);
 
         // Create a index buffer and vertex buffer we can use for raytracing.
-        DxvkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+        DxvkBufferCreateInfo info;
         info.usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
         info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
         info.access = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -398,7 +416,7 @@ namespace dxvk {
         info.size = align(vertexBufferSize, CACHE_LINE_SIZE);
         output.historyBuffer[0] = m_device->createBuffer(info, memoryProperty, DxvkMemoryStats::Category::RTXAccelerationStructure, "Geometry Buffer");
 
-        RtxGeometryUtils::cacheVertexDataOnGPU(ctx, input, output);
+        RtxGeometryUtils::cacheVertexDataOnGPU(ctx, input, output, forceNormals);
 
         break;
       }
@@ -426,7 +444,7 @@ namespace dxvk {
           output.historyBuffer[0] = m_device->createBuffer(output.historyBuffer[1]->info(), memoryProperty, DxvkMemoryStats::Category::RTXAccelerationStructure, "Geometry Buffer");
         } 
 
-        RtxGeometryUtils::cacheVertexDataOnGPU(ctx, input, output);
+        RtxGeometryUtils::cacheVertexDataOnGPU(ctx, input, output, forceNormals);
 
         // Sometimes, we need to invalidate history, do that here by copying the current buffer to the previous..
         if (invalidateHistory) {
@@ -991,6 +1009,19 @@ namespace dxvk {
 
     // Update the input state, so we always have a reference to the original draw call state
     pBlas->frameLastTouched = m_device->getCurrentFrameId();
+
+    // Generate smooth normals for geometry that is flagged via the SmoothNormals texture category.
+    // This is useful for older D3D9 games where geometry may lack smooth normals, especially
+    // when using the VertexShader Capture mechanism. The smooth normals are computed on the GPU
+    // from the triangle mesh (area-weighted) and written into the normal buffer.
+    // Only dispatch on BVH build/update — for static geometry, positions don't change so
+    // the normals computed on the first pass remain valid for subsequent frames.
+    if (drawCallState.categories.test(InstanceCategories::SmoothNormals) &&
+        (result == ObjectCacheState::KBuildBVH || result == ObjectCacheState::kUpdateBVH)) {
+      m_device->getCommon()->metaGeometryUtils().dispatchSmoothNormals(ctx, drawCallState.getGeometryData(), pBlas->modifiedGeometryData);
+      pBlas->modifiedGeometryData.smoothNormalsApplied = true;
+      pBlas->frameLastUpdated = pBlas->frameLastTouched;
+    }
 
     if (drawCallState.getSkinningState().numBones > 0 &&
         drawCallState.getGeometryData().numBonesPerVertex > 0 &&
@@ -1575,7 +1606,7 @@ namespace dxvk {
     // but we have to create a buffer to pass to DXVK's updateBuffer for now.
     {
       // Allocate the instance buffer and copy its contents from host to device memory
-      DxvkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+      DxvkBufferCreateInfo info;
       info.usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
       info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
       info.access = VK_ACCESS_TRANSFER_WRITE_BIT;

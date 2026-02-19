@@ -1489,7 +1489,7 @@ bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
   const size_t vertexDataSize = processedMesh->GetNumVertices() * processedMesh->GetVertexStride();
 
   // Allocate the instance buffer and copy its contents from host to device memory
-  DxvkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+  DxvkBufferCreateInfo info;
   info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
   info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
   info.access = VK_ACCESS_TRANSFER_WRITE_BIT;

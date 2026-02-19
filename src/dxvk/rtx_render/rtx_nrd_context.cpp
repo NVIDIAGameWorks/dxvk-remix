@@ -409,7 +409,7 @@ namespace dxvk {
     // to create. You receive a max constant buffer size across all pipelines.
     // Only with a specific set of NRD settings, you get the dispatch descriptions
     // which include per pipeline constant buffer size and texture pool assignments
-    DxvkBufferCreateInfo cbufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    DxvkBufferCreateInfo cbufferInfo;
     cbufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     cbufferInfo.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
     cbufferInfo.access = VK_ACCESS_TRANSFER_WRITE_BIT;

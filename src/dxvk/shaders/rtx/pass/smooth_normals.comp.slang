@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -19,36 +19,37 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
-#pragma once
+#include "smooth_normals_binding_indices.h"
+#include "smooth_normals.h"
 
-struct InterleaveGeometryArgs {
-  uint32_t positionOffset;
-  uint32_t positionStride;
-  uint32_t positionFormat;
+layout(binding = SMOOTH_NORMALS_BINDING_POSITION_RO)
+StructuredBuffer<float> positionData;
 
-  uint32_t hasNormals;
-  uint32_t normalOffset;
-  uint32_t normalStride;
-  uint32_t normalFormat;
+layout(binding = SMOOTH_NORMALS_BINDING_NORMAL_RW)
+RWStructuredBuffer<float> normalData;
 
-  uint32_t hasTexcoord;
-  uint32_t texcoordOffset;
-  uint32_t texcoordStride;
-  uint32_t texcoordFormat;
+layout(binding = SMOOTH_NORMALS_BINDING_INDEX_INPUT)
+StructuredBuffer<uint> srcIndex;
 
-  uint32_t hasColor0;
-  uint32_t color0Offset;
-  uint32_t color0Stride;
-  uint32_t color0Format;
+layout(binding = SMOOTH_NORMALS_BINDING_HASH_TABLE)
+RWStructuredBuffer<int> hashTable;
 
-  uint32_t minVertexIndex;
-  uint32_t outputStride;
-  uint32_t vertexCount;
-  uint32_t forceNormals; // When set, reserve normal space in output even if hasNormals is false (writes zeros)
-};
+layout(push_constant)
+ConstantBuffer<SmoothNormalsArgs> cb;
 
-#define INTERLEAVE_GEOMETRY_BINDING_OUTPUT           0
-#define INTERLEAVE_GEOMETRY_BINDING_POSITION_INPUT   1
-#define INTERLEAVE_GEOMETRY_BINDING_NORMAL_INPUT     2
-#define INTERLEAVE_GEOMETRY_BINDING_TEXCOORD_INPUT   3
-#define INTERLEAVE_GEOMETRY_BINDING_COLOR0_INPUT     4
+[shader("compute")]
+[numthreads(128, 1, 1)]
+void main(uint idx : SV_DispatchThreadID)
+{
+  uint phase = cb.phase;
+
+  // Hash table is pre-cleared to zero by the host via vkCmdFillBuffer.
+  if (phase == 1) {
+    if (idx >= cb.numTriangles) return;
+    smoothNormalsAccumulate(idx, positionData, srcIndex, hashTable, cb);
+  }
+  else if (phase == 2) {
+    if (idx >= cb.numVertices) return;
+    smoothNormalsScatter(idx, positionData, normalData, hashTable, cb);
+  }
+}
