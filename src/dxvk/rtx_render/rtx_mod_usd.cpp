@@ -675,10 +675,6 @@ std::optional<RtxParticleSystemDesc> UsdMod::Impl::processParticleSystem(Args& a
   bool hasNewMaxVelocity = bakeVec3Channels("maxVelocity:x", "maxVelocity:y", "maxVelocity:z", particleInfo.maxVelocity, vec3(-1.0f, -1.0f, -1.0f));
   counter += 27; // maxVelocity:{x,y,z} -- 3 channels x 9 attrs
 
-  // Standalone animated scalar properties (read via curve helpers, not the macro)
-  // minSize, maxSize, minColor, maxColor, minRotationSpeed, maxRotationSpeed, maxVelocity = 7 schema attrs
-  counter += 7;
-
   // Legacy spawn/target fields - read them, and if new animated fields weren't found, create animation from spawn->target
   vec4 minSpawnColor(1.0f), maxSpawnColor(1.0f), minTargetColor(1.0f, 1.0f, 1.0f, 0.0f), maxTargetColor(1.0f, 1.0f, 1.0f, 0.0f);
   vec2 minSpawnSize(10.0f, 10.0f), maxSpawnSize(10.0f, 10.0f), minTargetSize(0.0f, 0.0f), maxTargetSize(0.0f, 0.0f);
