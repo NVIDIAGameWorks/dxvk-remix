@@ -245,6 +245,14 @@ namespace dxvk {
       (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT),
       VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
+    m_pSmoothNormalsHashData = std::make_unique<RtxStagingDataAlloc>(
+      device,
+      "RtxStagingDataAlloc: Smooth Normals Hash Table",
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+      (VkBufferUsageFlags) (VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT),
+      VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+      VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT);
+
     m_skinningContext = device->createContext();
   }
 
@@ -252,6 +260,7 @@ namespace dxvk {
 
   void RtxGeometryUtils::onDestroy() {
     m_pCbData = nullptr;
+    m_pSmoothNormalsHashData = nullptr;
     m_skinningContext = nullptr;
   }
 
@@ -1038,11 +1047,13 @@ namespace dxvk {
     // Decide whether to use the CPU path.  The input raster buffers must be host-visible
     // and not pending GPU write.  For small meshes the CPU path avoids GPU dispatch overhead.
     const uint32_t kMaxTrianglesForCPU = 512;
-    const bool inputAccessible = input.positionBuffer.defined() && input.indexBuffer.defined()
+    const bool inputAccessible = input.positionBuffer.defined() && input.indexBuffer.defined() && input.normalBuffer.defined()
                               && input.positionBuffer.mapPtr() != nullptr
                               && input.indexBuffer.mapPtr() != nullptr
+                              && input.normalBuffer.mapPtr() != nullptr
                               && !input.positionBuffer.isPendingGpuWrite()
-                              && !input.indexBuffer.isPendingGpuWrite();
+                              && !input.indexBuffer.isPendingGpuWrite()
+                              && !input.normalBuffer.isPendingGpuWrite();
     const bool useCPU = inputAccessible && numTriangles <= kMaxTrianglesForCPU;
 
     if (useCPU) {
@@ -1079,18 +1090,14 @@ namespace dxvk {
     } else {
       // --- GPU path ---
 
-      // Allocate scratch buffer for the open-addressing hash table (4 ints per entry: tag + 3 normal components)
-      DxvkBufferCreateInfo hashBufInfo;
-      hashBufInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-      hashBufInfo.stages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-      hashBufInfo.access = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
-      hashBufInfo.size = hashTableSize * 4 * sizeof(int);
-      auto hashTableBuffer = m_device->createBuffer(hashBufInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "Smooth Normals Hash Table");
+      // Sub-allocate from a pooled device-local buffer for the hash table (4 ints per entry: tag + 3 normal components)
+      const VkDeviceSize hashBufSize = hashTableSize * 4 * sizeof(int);
+      DxvkBufferSlice hashTableSlice = m_pSmoothNormalsHashData->alloc(16, hashBufSize);
 
       ctx->bindResourceBuffer(SMOOTH_NORMALS_BINDING_POSITION_RO, DxvkBufferSlice(geo.positionBuffer.buffer()));
       ctx->bindResourceBuffer(SMOOTH_NORMALS_BINDING_NORMAL_RW, DxvkBufferSlice(geo.normalBuffer.buffer()));
       ctx->bindResourceBuffer(SMOOTH_NORMALS_BINDING_INDEX_INPUT, DxvkBufferSlice(geo.indexBuffer.buffer()));
-      ctx->bindResourceBuffer(SMOOTH_NORMALS_BINDING_HASH_TABLE, DxvkBufferSlice(hashTableBuffer));
+      ctx->bindResourceBuffer(SMOOTH_NORMALS_BINDING_HASH_TABLE, hashTableSlice);
 
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, SmoothNormalsShader::getShader());
       ctx->setPushConstantBank(DxvkPushConstantBank::RTX);
@@ -1098,8 +1105,8 @@ namespace dxvk {
       const VkExtent3D vertexWorkgroups = util::computeBlockCount(VkExtent3D { params.numVertices, 1, 1 }, VkExtent3D { 128, 1, 1 });
       const VkExtent3D triangleWorkgroups = util::computeBlockCount(VkExtent3D { params.numTriangles, 1, 1 }, VkExtent3D { 128, 1, 1 });
 
-      // Clear the hash table to zero using vkCmdFillBuffer
-      ctx->clearBuffer(hashTableBuffer, 0, hashBufInfo.size, 0);
+      // Clear the hash table slice to zero using vkCmdFillBuffer
+      ctx->clearBuffer(hashTableSlice.buffer(), hashTableSlice.offset(), hashBufSize, 0);
 
       // Phase 1: Accumulate area-weighted face normals into hash table by position
       params.phase = 1;

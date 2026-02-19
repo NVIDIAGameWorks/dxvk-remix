@@ -48,6 +48,7 @@ namespace dxvk {
   */
   class RtxGeometryUtils : public CommonDeviceObject {
     std::unique_ptr<RtxStagingDataAlloc> m_pCbData;
+    std::unique_ptr<RtxStagingDataAlloc> m_pSmoothNormalsHashData;
     Rc<DxvkContext> m_skinningContext;
     uint32_t m_skinningCommands = 0;
 
