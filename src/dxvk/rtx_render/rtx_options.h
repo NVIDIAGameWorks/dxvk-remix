@@ -534,6 +534,11 @@ namespace dxvk {
                     "If true, input will not be passed to the game when the UI is active.\n"
                     "Can be toggled with Alt + Backspace", args.onChangeCallback = &blockInputToGameInUIOnChange, args.flags = RtxOptionFlags::NoSave);
 
+    RTX_OPTION_ARGS("rtx", bool, restoreCursorPosition, false,
+                    "If true, the game's mouse cursor position will be restored when the Remix UI is closed.\n"
+                    "This should fix the issue where the game camera suddenly turns when closing the UI.\n",
+                    args.flags = RtxOptionFlags::UserSetting);
+
     inline static const VirtualKeys kDefaultRemixMenuKeyBinds{ VirtualKey{VK_MENU},VirtualKey{'X'} };
     RTX_OPTION("rtx", VirtualKeys, remixMenuKeyBinds, kDefaultRemixMenuKeyBinds,
                "Hotkey to open the Remix menu.\n"
