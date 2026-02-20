@@ -1,4 +1,4 @@
-﻿"""
+"""
 generate_and_patch_schema.py
 
 Generate USD schema sources with usdGenSchema, then patch plugInfo.json
@@ -39,6 +39,49 @@ def replace_in_obj(obj, repl):
         return s
     else:
         return obj
+
+
+def restore_property_custom_data(source_schema_path, generated_schema_path):
+    """usdGenSchema strips property-level customData.  This copies it from
+    the source schema.usda back into the generated generatedSchema.usda
+    using the Sdf.PropertySpec.customData API."""
+    from pxr import Sdf
+
+    src_layer = Sdf.Layer.FindOrOpen(source_schema_path)
+    gen_layer = Sdf.Layer.FindOrOpen(generated_schema_path)
+    if not src_layer or not gen_layer:
+        logging.warning("Could not open layers for customData restoration")
+        return
+
+    patched_count = 0
+
+    def _traverse(prim_path):
+        nonlocal patched_count
+        src_prim = src_layer.GetPrimAtPath(prim_path)
+        gen_prim = gen_layer.GetPrimAtPath(prim_path)
+        if not src_prim or not gen_prim:
+            return
+
+        for src_prop_spec in src_prim.properties:
+            if not src_prop_spec.customData:
+                continue
+            gen_prop = gen_layer.GetPropertyAtPath(
+                prim_path.AppendProperty(src_prop_spec.name))
+            if gen_prop:
+                gen_prop.customData = dict(src_prop_spec.customData)
+                patched_count += 1
+
+        for child_spec in gen_prim.nameChildren:
+            _traverse(prim_path.AppendChild(child_spec.name))
+
+    for root_spec in gen_layer.rootPrims:
+        _traverse(Sdf.Path.absoluteRootPath.AppendChild(root_spec.name))
+
+    if patched_count:
+        gen_layer.Save()
+        logging.info(f"Restored customData on {patched_count} properties in generatedSchema.usda")
+    else:
+        logging.info("No property customData to restore")
 
 def main():
     logging.basicConfig(
@@ -106,6 +149,14 @@ def main():
         sys.exit(1)
     finally:
         sys.argv = old_argv
+
+    # Restore property-level customData that usdGenSchema strips.
+    gen_schema = os.path.join(args.outdir, 'generatedSchema.usda')
+    logging.info("Restoring property-level customData from source schema")
+    try:
+        restore_property_custom_data(args.schema_usda, gen_schema)
+    except Exception as e:
+        logging.warning(f"customData restoration failed (non-fatal): {e}")
 
     # patch plugInfo.json, stripping leading comments
     pluginfo = os.path.join(args.outdir, 'plugInfo.json')
