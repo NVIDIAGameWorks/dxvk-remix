@@ -180,15 +180,15 @@ namespace dxvk {
         if (RemixGui::CollapsingHeader("Spawn", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen)) {
           ImGui::Indent();
           ImGui::PushID("spawn");
-          RemixGui::DragInt("Spawn Rate Per Second", &spawnRatePerSecondObject(), 0.1f, 1, 100000);
+          RemixGui::DragInt("Spawn Rate Per Second", &spawnRatePerSecondObject(), 0.1f, 0, 100000);
           RemixGui::DragFloat("Burst Duration (s)", &spawnBurstDurationObject(), 0.1f, 0.f, 100000.f, "%.2f");
           RemixGui::Separator();
           RemixGui::Checkbox("Use Spawn Texture Coordinates", &useSpawnTexcoordsObject());
           RemixGui::Separator();
           RemixGui::DragFloat("Initial Velocity From Motion", &initialVelocityFromMotionObject(), 0.01f, -5000.f, 5000.f, "%.2f");
           RemixGui::DragFloat("Initial Velocity From Normal", &initialVelocityFromNormalObject(), 0.01f, -5000.f, 5000.f, "%.2f");
-          RemixGui::DragFloat("Initial Velocity Cone Angle", &initialVelocityConeAngleDegreesObject(), 0.01f, -5000.f, 5000.f, "%.2f");
-          RemixGui::DragFloat("Initial Rotation Deviation", &initialRotationDeviationDegreesObject(), 0.01f, -5000.f, 5000.f, "%.2f");
+          RemixGui::DragFloat("Initial Velocity Cone Angle", &initialVelocityConeAngleDegreesObject(), 0.01f, 0.f, 180.f, "%.2f");
+          RemixGui::DragFloat("Initial Rotation Deviation", &initialRotationDeviationDegreesObject(), 0.01f, 0.f, 180.f, "%.2f");
           RemixGui::Separator();
           RemixGui::DragFloat("Min Life", &minParticleLifeObject(), 0.01f, 0.01f, 1000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           RemixGui::DragFloat("Max Life", &maxParticleLifeObject(), 0.01f, 0.01f, 1000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
