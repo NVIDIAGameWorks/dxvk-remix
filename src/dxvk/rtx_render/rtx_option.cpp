@@ -440,43 +440,44 @@ namespace dxvk {
     }
     
     // Parse the environment variable value based on the option type
+    bool success = false;
     switch (m_type) {
     case OptionType::Bool:
-      Config::parseOptionValue(envVarValue, layerValue->b);
+      success = Config::parseOptionValue(envVarValue, layerValue->b);
       break;
     case OptionType::Int:
-      Config::parseOptionValue(envVarValue, layerValue->i);
+      success = Config::parseOptionValue(envVarValue, layerValue->i);
       break;
     case OptionType::Float:
-      Config::parseOptionValue(envVarValue, layerValue->f);
+      success = Config::parseOptionValue(envVarValue, layerValue->f);
       break;
     case OptionType::Vector2:
-      Config::parseOptionValue(envVarValue, *layerValue->v2);
+      success = Config::parseOptionValue(envVarValue, *layerValue->v2);
       break;
     case OptionType::Vector3:
-      Config::parseOptionValue(envVarValue, *layerValue->v3);
+      success = Config::parseOptionValue(envVarValue, *layerValue->v3);
       break;
     case OptionType::Vector2i:
-      Config::parseOptionValue(envVarValue, *layerValue->v2i);
+      success = Config::parseOptionValue(envVarValue, *layerValue->v2i);
       break;
     case OptionType::Vector4:
-      Config::parseOptionValue(envVarValue, *layerValue->v4);
+      success = Config::parseOptionValue(envVarValue, *layerValue->v4);
       break;
     case OptionType::String:
-      Config::parseOptionValue(envVarValue, *layerValue->string);
+      success = Config::parseOptionValue(envVarValue, *layerValue->string);
       break;
     case OptionType::VirtualKeys:
-      Config::parseOptionValue(envVarValue, *layerValue->virtualKeys);
+      success = Config::parseOptionValue(envVarValue, *layerValue->virtualKeys);
       break;
     case OptionType::HashSet: {
       std::vector<std::string> hashStrings;
-      Config::parseOptionValue(envVarValue, hashStrings);
+      success = Config::parseOptionValue(envVarValue, hashStrings);
       layerValue->hashSet->parseFromStrings(hashStrings);
       break;
     }
     case OptionType::HashVector: {
       std::vector<std::string> hashStrings;
-      Config::parseOptionValue(envVarValue, hashStrings);
+      success = Config::parseOptionValue(envVarValue, hashStrings);
       fillHashVector(hashStrings, *layerValue->hashVector);
       break;
     }
@@ -485,6 +486,11 @@ namespace dxvk {
       return false;
     }
     
+    if (!success) {
+      Logger::warn(str::format("[RTX Option]: Environment variable failed to parse: ", getFullName()));
+      return false;
+    }
+
     markDirty();
     return true;
   }
