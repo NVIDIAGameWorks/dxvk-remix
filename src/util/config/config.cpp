@@ -1279,20 +1279,24 @@ namespace dxvk {
     Vector2i& result) {
     std::stringstream ss(value);
     std::string s;
-    for (int i = 0; i < 2; ++i) {
-      if (!std::getline(ss, s, ',')) {
-        return false;
-      }
 
-      int value;
-      if (!parseOptionValue(s, value)) {
-        return false;
-      }
+    // NV-DXVK start: promote scalar to vectors
+    if (!std::getline(ss, s, ',') || !parseOptionValue(s, result[0])) {
+      return false;
+    }
 
-      result[i] = value;
+    // If there is only a single value in the config for this vector, copy it to the other channels
+    if (!std::getline(ss, s, ',')) {
+      result = Vector2i(result[0]);
+      return true;
+    }
+
+    if (!parseOptionValue(s, result[1])) {
+      return false;
     }
 
     return true;
+    // NV-DXVK end
   }
 
   // NV-DXVK start: added a variant
@@ -1301,17 +1305,18 @@ namespace dxvk {
     Vector2& result) {
     std::stringstream ss(value);
     std::string s;
-    for (int i = 0; i < 2; ++i) {
-      if (!std::getline(ss, s, ',')) {
-        return false;
-      }
 
-      float value;
-      if (!parseOptionValue(s, value)) {
-        return false;
-      }
+    if (!std::getline(ss, s, ',') || !parseOptionValue(s, result[0])) {
+      return false;
+    }
 
-      result[i] = value;
+    // If there is only a single value in the config for this vector, copy it to the other channels
+    if (!std::getline(ss, s, ',')) {
+      result = Vector2(result[0]);
+      return true;
+    }
+    if (!parseOptionValue(s, result[1])) {
+      return false;
     }
 
     return true;
@@ -1322,17 +1327,21 @@ namespace dxvk {
     Vector4& result) {
     std::stringstream ss(value);
     std::string s;
-    for (int i = 0; i < 4; ++i) {
-      if (!std::getline(ss, s, ',')) {
-        return false;
-      }
 
-      float value;
-      if (!parseOptionValue(s, value)) {
-        return false;
-      }
+    if (!std::getline(ss, s, ',') || !parseOptionValue(s, result[0])) {
+      return false;
+    }
 
-      result[i] = value;
+    // If there is only a single value in the config for this vector, copy it to the other channels
+    if (!std::getline(ss, s, ',')) {
+      result = Vector4(result[0]);
+      return true;
+    }
+
+    if (!parseOptionValue(s, result[1]) ||
+        !std::getline(ss, s, ',') || !parseOptionValue(s, result[2]) ||
+        !std::getline(ss, s, ',') || !parseOptionValue(s, result[3])) {
+      return false;
     }
 
     return true;
@@ -1344,22 +1353,27 @@ namespace dxvk {
     Vector3& result) {
     std::stringstream ss(value);
     std::string s;
-    for (int i = 0; i < 3; ++i) {
-      if (!std::getline(ss, s, ',')) {
-        return false;
-      }
 
-      float value;
-      if (!parseOptionValue(s, value)) {
-        return false;
-      }
+    // NV-DXVK start: promote scalar to vectors
+    if (!std::getline(ss, s, ',') || !parseOptionValue(s, result[0])) {
+      return false;
+    }
 
-      result[i] = value;
+    // If there is only a single value in the config for this vector, copy it to the other channels
+    if (!std::getline(ss, s, ',')) {
+      result = Vector3(result[0]);
+      return true;
+    }
+
+    if (!parseOptionValue(s, result[1]) ||
+        !std::getline(ss, s, ',') || !parseOptionValue(s, result[2])) {
+      return false;
     }
 
     return true;
+    // NV-DXVK end
   }
-  
+
   bool Config::parseOptionValue(
     const std::string& value,
     VirtualKeys& result) {

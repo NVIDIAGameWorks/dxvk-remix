@@ -2408,6 +2408,100 @@ namespace rtx_option_test {
   }
 
   // ============================================================================
+  // Test: Config scalar-to-vector promotion
+  // Tests that a single scalar in config promotes to all vector components
+  // ============================================================================
+
+  void test_configScalarToVectorPromotion() {
+    std::cout << "  Running test_configScalarToVectorPromotion..." << std::endl;
+
+    // Part 1: parseOptionValue with single scalar for each vector type
+    Vector2 v2Result;
+    Config::parseOptionValue("1.5", v2Result);
+    TEST_ASSERT_FLOAT_EQ(v2Result.x, 1.5f, 0.0001f, "Scalar 1.5 -> Vector2 x should be 1.5");
+    TEST_ASSERT_FLOAT_EQ(v2Result.y, 1.5f, 0.0001f, "Scalar 1.5 -> Vector2 y should be 1.5");
+
+    Vector2i v2iResult;
+    Config::parseOptionValue("42", v2iResult);
+    TEST_ASSERT(v2iResult.x == 42, "Scalar 42 -> Vector2i x should be 42");
+    TEST_ASSERT(v2iResult.y == 42, "Scalar 42 -> Vector2i y should be 42");
+
+    Vector3 v3Result;
+    Config::parseOptionValue("2.5", v3Result);
+    TEST_ASSERT_FLOAT_EQ(v3Result.x, 2.5f, 0.0001f, "Scalar 2.5 -> Vector3 x should be 2.5");
+    TEST_ASSERT_FLOAT_EQ(v3Result.y, 2.5f, 0.0001f, "Scalar 2.5 -> Vector3 y should be 2.5");
+    TEST_ASSERT_FLOAT_EQ(v3Result.z, 2.5f, 0.0001f, "Scalar 2.5 -> Vector3 z should be 2.5");
+
+    Vector4 v4Result;
+    Config::parseOptionValue("3.0", v4Result);
+    TEST_ASSERT_FLOAT_EQ(v4Result.x, 3.0f, 0.0001f, "Scalar 3.0 -> Vector4 x should be 3.0");
+    TEST_ASSERT_FLOAT_EQ(v4Result.y, 3.0f, 0.0001f, "Scalar 3.0 -> Vector4 y should be 3.0");
+    TEST_ASSERT_FLOAT_EQ(v4Result.z, 3.0f, 0.0001f, "Scalar 3.0 -> Vector4 z should be 3.0");
+    TEST_ASSERT_FLOAT_EQ(v4Result.w, 3.0f, 0.0001f, "Scalar 3.0 -> Vector4 w should be 3.0");
+
+    // Part 2: test that non-scalar promotions fail
+    {
+      Vector3 v3Result;
+      bool result = Config::parseOptionValue("2.5, 2.5", v3Result);
+      TEST_ASSERT(!result, "Non-scalar config entries should fail parsing when attempted promotion is performed");
+    }
+
+    {
+      Vector4 v4Result;
+      bool result = Config::parseOptionValue("2.5, 2.5", v4Result);
+      TEST_ASSERT(!result, "Non-scalar config entries should fail parsing when attempted promotion is performed");
+    }
+
+
+    // Part 3: setOption(string) + getOption<Vector> round-trip
+    Config config;
+    config.setOption("rtx.test.promoteV2", std::string("1.25"));
+    Vector2 v2Round = config.getOption<Vector2>("rtx.test.promoteV2", Vector2(0, 0));
+    TEST_ASSERT_FLOAT_EQ(v2Round.x, 1.25f, 0.0001f, "getOption Vector2 from scalar string x should be 1.25");
+    TEST_ASSERT_FLOAT_EQ(v2Round.y, 1.25f, 0.0001f, "getOption Vector2 from scalar string y should be 1.25");
+
+    config.setOption("rtx.test.promoteV3", std::string("2.0"));
+    Vector3 v3Round = config.getOption<Vector3>("rtx.test.promoteV3", Vector3(0, 0, 0));
+    TEST_ASSERT_FLOAT_EQ(v3Round.x, 2.0f, 0.0001f, "getOption Vector3 from scalar string x should be 2.0");
+    TEST_ASSERT_FLOAT_EQ(v3Round.y, 2.0f, 0.0001f, "getOption Vector3 from scalar string y should be 2.0");
+    TEST_ASSERT_FLOAT_EQ(v3Round.z, 2.0f, 0.0001f, "getOption Vector3 from scalar string z should be 2.0");
+
+    config.setOption("rtx.test.promoteV2i", std::string("99"));
+    Vector2i v2iRound = config.getOption<Vector2i>("rtx.test.promoteV2i", Vector2i(0, 0));
+    TEST_ASSERT(v2iRound.x == 99, "getOption Vector2i from scalar string x should be 99");
+    TEST_ASSERT(v2iRound.y == 99, "getOption Vector2i from scalar string y should be 99");
+
+    // Part 4: Config file with scalar for vector option -> load and apply to RtxOption
+    std::string tempConfigPath = "test_rtx_option_scalar_promotion.conf";
+    std::ofstream ofs(tempConfigPath);
+    TEST_ASSERT(ofs.is_open(), "Failed to create temp config file for scalar promotion");
+    ofs << "rtx.test.testVector3 = 7.0\n";
+    ofs.close();
+
+    Config scalarConfig = Config::getOptionLayerConfig(tempConfigPath);
+    TEST_ASSERT(scalarConfig.getOptions().size() > 0, "Config should have options after loading scalar file");
+
+    const RtxOptionLayer* scalarLayer = RtxOptionManager::acquireLayer(
+      tempConfigPath, RtxOptionLayerKey{27500, "ScalarPromotionTestLayer"}, 1.0f, 0.1f, false, &scalarConfig);
+    TEST_ASSERT(scalarLayer != nullptr, "Failed to create layer for scalar promotion test");
+    TEST_ASSERT(scalarLayer->isValid(), "Layer should be valid after creation with scalar config");
+
+    RtxOptionManager::applyPendingValues(nullptr, false);
+
+    Vector3 loadedScalarV3 = TestOptions::testVector3();
+    TEST_ASSERT_FLOAT_EQ(loadedScalarV3.x, 7.0f, 0.0001f, "File scalar 7.0 -> testVector3.x should be 7.0");
+    TEST_ASSERT_FLOAT_EQ(loadedScalarV3.y, 7.0f, 0.0001f, "File scalar 7.0 -> testVector3.y should be 7.0");
+    TEST_ASSERT_FLOAT_EQ(loadedScalarV3.z, 7.0f, 0.0001f, "File scalar 7.0 -> testVector3.z should be 7.0");
+
+    RtxOptionManager::releaseLayer(scalarLayer);
+    RtxOptionManager::applyPendingValues(nullptr, false);
+    std::filesystem::remove(tempConfigPath);
+    verifyOptionsAtDefaults();
+
+    std::cout << "    PASSED" << std::endl;
+  }
+
+  // ============================================================================
   // Test: Reset to Default
   // Tests resetToDefault() method
   // ============================================================================
@@ -2787,6 +2881,7 @@ namespace rtx_option_test {
     test_configSerialization();
     test_configFileIO();
     test_configParsing();
+    test_configScalarToVectorPromotion();
     
     std::cout << "============================================" << std::endl;
     std::cout << "All RTX Option Unit Tests PASSED!" << std::endl;

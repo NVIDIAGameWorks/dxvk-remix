@@ -104,6 +104,7 @@ namespace bridge_util {
       if (parseOptionValue(value, result)) {
         return result;
       } else {
+        Logger::warn(std::string("Option failed to parse: ") + option);// NV-DXVK - adding warning on failure
         return fallback;
       }
     }
