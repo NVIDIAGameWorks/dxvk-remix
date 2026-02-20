@@ -1914,7 +1914,6 @@ namespace dxvk {
       if (RemixGui::Checkbox("Use Large UI", &largeUiModeObject())) {
         m_pendingUIOptionsScroll = true;
       }
-      
 
       {
         constexpr float indent = 60.0f;
@@ -2887,6 +2886,12 @@ namespace dxvk {
           }
         }
         ImGui::PopID();
+        ImGui::Unindent();
+      }
+
+      if (RemixGui::CollapsingHeader("Input", collapsingHeaderClosedFlags)) {
+        ImGui::Indent();
+        RemixGui::Checkbox("Restore Mouse Position on Remix UI Close", &RtxOptions::restoreCursorPositionObject());
         ImGui::Unindent();
       }
 
@@ -4331,6 +4336,9 @@ namespace dxvk {
     freeUnusedMemory();
 
     ::ShowCursor(m_prevCursorVisible);
+    if (RtxOptions::restoreCursorPosition()) {
+      ::SetPhysicalCursorPos(m_cachedGameCursorX, m_cachedGameCursorY);
+    }
   }
 
   void ImGUI::onOpenMenus() {
@@ -4342,6 +4350,12 @@ namespace dxvk {
     CURSORINFO info;
     GetCursorInfo(&info);
     m_prevCursorVisible = info.flags == CURSOR_SHOWING;
+
+    // Use physical cursor position to avoid DPI scaling issues
+    POINT pt;
+    ::GetPhysicalCursorPos(&pt);
+    m_cachedGameCursorX = pt.x;
+    m_cachedGameCursorY = pt.y;
   }
 
   void ImGUI::freeUnusedMemory() {

@@ -160,6 +160,8 @@ namespace dxvk {
     bool                  m_init = false;
     bool                  m_prevCursorVisible = false;
 
+    int                   m_cachedGameCursorX = 0;
+    int                   m_cachedGameCursorY = 0;
 
     // Width of developer menu in regular mode
     float                 m_regularWindowWidth = 450.0f;
