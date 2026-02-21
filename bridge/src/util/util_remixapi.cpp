@@ -703,6 +703,31 @@ void InstanceInfoTransforms::_dtor() {
 }
 
 
+uint32_t InstanceInfoGpuInstancing::_calcSize() const {
+  uint32_t size = 0;
+  size += sizeOf(sType);
+  size += sizeOf(instanceTransforms_count);
+  size += sizeOf<remixapi_Transform>() * instanceTransforms_count;
+  return size;
+}
+void InstanceInfoGpuInstancing::_serialize(void*& pSerialize) const {
+  bridge_util::serialize(sType, pSerialize);
+  bridge_util::serialize(instanceTransforms_count, pSerialize);
+  for(size_t iXform = 0; iXform < instanceTransforms_count; ++iXform) {
+    bridge_util::serialize(instanceTransforms_values[iXform], pSerialize);
+  }
+}
+void InstanceInfoGpuInstancing::_deserialize(void*& pDeserialize) {
+  bridge_util::deserialize(pDeserialize, sType);
+  pNext = nullptr;
+  bridge_util::deserialize(pDeserialize, instanceTransforms_count);
+  deserialize_const_p_for_each(pDeserialize, instanceTransforms_values, instanceTransforms_count);
+}
+void InstanceInfoGpuInstancing::_dtor() {
+  delete[] instanceTransforms_values;
+}
+
+
 ///////////////
 // LightInfo //
 ///////////////

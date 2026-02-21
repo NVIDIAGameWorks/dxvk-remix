@@ -56,6 +56,7 @@ int main(int argc, char * argv[]) {
   READ_DESERIALIZE_COMPARE(pDeserialize, InstanceInfoObjectPicking, instObjPick);
   READ_DESERIALIZE_COMPARE(pDeserialize, InstanceInfoBlend, instBlend);
   READ_DESERIALIZE_COMPARE(pDeserialize, InstanceInfoTransforms, instBoneXform);
+  READ_DESERIALIZE_COMPARE(pDeserialize, InstanceInfoGpuInstancing, instGpuInstancing);
   READ_DESERIALIZE_COMPARE(pDeserialize, LightInfo, light);
   READ_DESERIALIZE_COMPARE(pDeserialize, LightInfoSphere, lightSphere);
   READ_DESERIALIZE_COMPARE(pDeserialize, LightInfoRect, lightRect);

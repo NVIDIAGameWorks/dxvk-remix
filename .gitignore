@@ -37,3 +37,8 @@
 **/_batch_output/**
 /public/bin/
 *.log
+.build-venv/
+.venv/
+metrics.txt
+nrc_session_log.txt
+python.dxvk-cache

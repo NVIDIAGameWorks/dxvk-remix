@@ -849,13 +849,24 @@ dxvk::ExternalDrawState dxvk::RemixAPIPrivateAccessor::toRtDrawState(const remix
     optParticles.emplace(convert::toRtParticleDesc(*extParticles));
   }
 
+  std::vector<Matrix4> gpuInstancingTransforms;
+  if (auto extInstancing = pnext::find<remixapi_InstanceInfoGpuInstancingEXT>(&info)) {
+    if (extInstancing->instanceTransforms_count > 0 && extInstancing->instanceTransforms_values) {
+      gpuInstancingTransforms.reserve(extInstancing->instanceTransforms_count);
+      for (uint32_t i = 0; i < extInstancing->instanceTransforms_count; ++i) {
+        gpuInstancingTransforms.push_back(convert::tomat4(extInstancing->instanceTransforms_values[i]));
+      }
+    }
+  }
+
   return ExternalDrawState {
     prototype,
     info.mesh,
     convert::categoryToCameraType(info.categoryFlags),
     convert::toRtCategories(info.categoryFlags),
     convert::tobool(info.doubleSided),
-    optParticles
+    optParticles,
+    std::move(gpuInstancingTransforms)
   };
 }
 

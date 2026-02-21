@@ -120,6 +120,7 @@ void render(uint32_t windowWidth, uint32_t windowHeight) {
     g_remix->SetupCamera(cameraInfo);
   }
   {
+    // Base mesh - positioned at z=5 so it's clearly visible
     auto meshInstanceInfo = remixapi_InstanceInfo {
       .sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO,
       .categoryFlags = 0,
@@ -127,11 +128,40 @@ void render(uint32_t windowWidth, uint32_t windowHeight) {
       .transform = { {
         {1,0,0,0},
         {0,1,0,0},
-        {0,0,1,0},
+        {0,0,1,5},  // Move to z=5 so it's visible
       } },
       .doubleSided = true,
     };
     g_remix->DrawInstance(meshInstanceInfo);
+
+    // GPU Instancing example: render 5 instances of the mesh in a row at around z=10
+    // Spread horizontally so they don't overlap
+    remixapi_Transform gpuInstanceTransforms[] = {
+      { {{ 1,0,0,-6 }, { 0,1,0,0 }, { 0,0,1,10.0f }} },
+      { {{ 1,0,0,-3 }, { 0,1,0,0 }, { 0,0,1,9.3f }} },
+      { {{ 1,0,0, 0 }, { 0,1,0,2 }, { 0,0,1,10.6f }} },  // Center one raised on Y
+      { {{ 1,0,0, 3 }, { 0,1,0,0 }, { 0,0,1,12.0f }} },
+      { {{ 1,0,0, 6 }, { 0,1,0,0 }, { 0,0,1,10.3f }} },
+    };
+    auto gpuInstancingInfo = remixapi_InstanceInfoGpuInstancingEXT {
+      .sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_GPU_INSTANCING_EXT,
+      .pNext = nullptr,
+      .instanceTransforms_values = gpuInstanceTransforms,
+      .instanceTransforms_count = std::size(gpuInstanceTransforms),
+    };
+    auto gpuInstancedMesh = remixapi_InstanceInfo {
+      .sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO,
+      .pNext = &gpuInstancingInfo,
+      .categoryFlags = 0,
+      .mesh = g_scene_mesh,
+      .transform = { {  // Base transform (identity)
+        {1,0,0,0},
+        {0,1,0,0},
+        {0,0,1,0},
+      } },
+      .doubleSided = true,
+    };
+    g_remix->DrawInstance(gpuInstancedMesh);
   }
   {
     g_remix->DrawLightInstance(g_scene_light);

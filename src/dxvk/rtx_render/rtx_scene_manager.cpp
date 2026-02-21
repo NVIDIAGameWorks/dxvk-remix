@@ -497,6 +497,7 @@ namespace dxvk {
     m_previousFrameSceneAvailable = raytracedThisFrame && RtxOptions::enablePreviousTLAS();
 
     m_bufferCache.clear();
+    m_externalGpuInstancingTransforms.clear();
     if (raytracedThisFrame){
       std::lock_guard lock { m_drawCallMeta.mutex };
       const uint8_t curTick = m_drawCallMeta.ticker;
@@ -1765,6 +1766,11 @@ namespace dxvk {
       state.drawCall.transformData.worldToView = Matrix4 { rtCamera.getWorldToView() };
       state.drawCall.transformData.viewToProjection = Matrix4 { rtCamera.getViewToProjection() };
       state.drawCall.transformData.objectToView = state.drawCall.transformData.worldToView * state.drawCall.transformData.objectToWorld;
+    }
+
+    if (!state.gpuInstancingTransforms.empty()) {
+      m_externalGpuInstancingTransforms.push_back(std::move(state.gpuInstancingTransforms));
+      state.drawCall.transformData.instancesToObject = &m_externalGpuInstancingTransforms.back();
     }
 
     for (const RasterGeometry& submesh : m_pReplacer->accessExternalMesh(state.mesh)) {

@@ -39,6 +39,7 @@ int main(int argc, char * argv[]) {
   INIT_SERIALIZE_WRITE(InstanceInfoObjectPicking, instObjPick, file);
   INIT_SERIALIZE_WRITE(InstanceInfoBlend, instBlend, file);
   INIT_SERIALIZE_WRITE(InstanceInfoTransforms, instBoneXform, file);
+  INIT_SERIALIZE_WRITE(InstanceInfoGpuInstancing, instGpuInstancing, file);
   INIT_SERIALIZE_WRITE(LightInfo, light, file);
   INIT_SERIALIZE_WRITE(LightInfoSphere, lightSphere, file);
   INIT_SERIALIZE_WRITE(LightInfoRect, lightRect, file);

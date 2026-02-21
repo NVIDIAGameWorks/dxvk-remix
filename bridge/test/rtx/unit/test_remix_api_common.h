@@ -463,6 +463,28 @@ bool InstanceInfoTransforms::compare(const RemixApiT& me, const RemixApiT& other
 }
 
 
+using InstanceInfoGpuInstancing = Expected<remixapi_InstanceInfoGpuInstancingEXT>;
+void InstanceInfoGpuInstancing::init() {
+  sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_GPU_INSTANCING_EXT;
+  pNext = nullptr;
+  populateReasonableVal(instanceTransforms_count);
+  auto* pXforms = new remixapi_Transform[instanceTransforms_count];
+  for(size_t iXform = 0; iXform < instanceTransforms_count; ++iXform) {
+    populateVal(pXforms[iXform]);
+  }
+  instanceTransforms_values = pXforms;
+}
+bool InstanceInfoGpuInstancing::compare(const RemixApiT& me, const RemixApiT& other) const {
+  SIMPLE_COMPARE(me, other, instanceTransforms_count);
+  for(size_t iXform = 0; iXform < instanceTransforms_count; ++iXform) {
+    const auto& meXform = me.instanceTransforms_values[iXform];
+    const auto& otherXform = other.instanceTransforms_values[iXform];
+    SIMPLE_COMPARE(meXform, otherXform, matrix);
+  }
+  return true;
+}
+
+
 #define LightInfoVars hash, \
                       radiance
 using LightInfo = Expected<remixapi_LightInfo>;
@@ -668,6 +690,7 @@ InstanceInfo inst;
 InstanceInfoObjectPicking instObjPick;
 InstanceInfoBlend instBlend;
 InstanceInfoTransforms instBoneXform;
+InstanceInfoGpuInstancing instGpuInstancing;
 LightInfo light;
 LightInfoSphere lightSphere;
 LightInfoRect lightRect;
