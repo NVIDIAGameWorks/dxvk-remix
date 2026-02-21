@@ -126,6 +126,7 @@ template<> constexpr auto ToRemixApiStructEnum< remixapi_InstanceInfoBoneTransfo
 template<> constexpr auto ToRemixApiStructEnum< remixapi_InstanceInfoBlendEXT           > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
 template<> constexpr auto ToRemixApiStructEnum< remixapi_InstanceInfoObjectPickingEXT   > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_OBJECT_PICKING_EXT;
 template<> constexpr auto ToRemixApiStructEnum< remixapi_InstanceInfoParticleSystemEXT  > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT;
+template<> constexpr auto ToRemixApiStructEnum< remixapi_InstanceInfoGpuInstancingEXT   > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_GPU_INSTANCING_EXT;
 template<> constexpr auto ToRemixApiStructEnum< remixapi_CameraInfo                     > = REMIXAPI_STRUCT_TYPE_CAMERA_INFO;
 template<> constexpr auto ToRemixApiStructEnum< remixapi_CameraInfoParameterizedEXT     > = REMIXAPI_STRUCT_TYPE_CAMERA_INFO_PARAMETERIZED_EXT;
 
@@ -149,6 +150,7 @@ using InstanceInfoObjectPicking = bridge_util::Serializable<remixapi_InstanceInf
 using InstanceInfoBlend = bridge_util::Serializable<remixapi_InstanceInfoBlendEXT,true>;
 using InstanceInfoTransforms = bridge_util::Serializable<remixapi_InstanceInfoBoneTransformsEXT,false>;
 using InstanceInfoParticleSystem = bridge_util::Serializable<remixapi_InstanceInfoParticleSystemEXT, true>;
+using InstanceInfoGpuInstancing = bridge_util::Serializable<remixapi_InstanceInfoGpuInstancingEXT, false>;
 
 // Light Info
 using LightInfo = bridge_util::Serializable<remixapi_LightInfo,true>;

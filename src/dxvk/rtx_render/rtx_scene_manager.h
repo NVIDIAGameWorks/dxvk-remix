@@ -21,12 +21,12 @@
 */
 #pragma once
 
+#include <deque>
 #include <mutex>
 #include <vector>
 #include <set>
 #include <unordered_set>
 #include <unordered_map>
-#include <list>
 #include <variant>
 
 #include "../dxvk_buffer.h"
@@ -109,6 +109,7 @@ struct ExternalDrawState {
   CategoryFlags categories {};
   bool doubleSided {};
   const std::optional<RtxParticleSystemDesc> optionalParticleDesc {};
+  std::vector<Matrix4> gpuInstancingTransforms {};
 };
 
 // Scene manager is a super manager, it's the interface between rendering and world state
@@ -359,6 +360,9 @@ private:
 
   // Mesh hash tracking for current frame (hash -> count)
   std::unordered_map<XXH64_hash_t, uint32_t> m_currentFrameMeshHashes;
+
+  // Using std::deque for pointer stability: push_back doesn't invalidate existing pointers
+  std::deque<std::vector<Matrix4>> m_externalGpuInstancingTransforms;
 };
 
 }  // namespace nvvk

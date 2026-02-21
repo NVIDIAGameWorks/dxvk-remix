@@ -796,6 +796,16 @@ namespace remix {
     }
   };
 
+  struct InstanceInfoGpuInstancingEXT : remixapi_InstanceInfoGpuInstancingEXT {
+    InstanceInfoGpuInstancingEXT() {
+      sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_GPU_INSTANCING_EXT;
+      pNext = nullptr;
+      instanceTransforms_values = nullptr;
+      instanceTransforms_count = 0;
+      static_assert(sizeof remixapi_InstanceInfoGpuInstancingEXT == 32);
+    }
+  };
+
   using InstanceCategoryBit = remixapi_InstanceCategoryBit;
   using InstanceCategoryFlags = remixapi_InstanceCategoryFlags;
 

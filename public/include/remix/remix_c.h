@@ -54,7 +54,7 @@
 
 #define REMIXAPI_VERSION_MAJOR 0
 #define REMIXAPI_VERSION_MINOR 6
-#define REMIXAPI_VERSION_PATCH 1
+#define REMIXAPI_VERSION_PATCH 2
 
 
 // External
@@ -94,6 +94,7 @@ extern "C" {
     REMIXAPI_STRUCT_TYPE_PRESENT_INFO                         = 23,
     REMIXAPI_STRUCT_TYPE_DEPRECATED_LEGACY_PARTICLE_SYSTEM    = 24,
     REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT    = 25,
+    REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_GPU_INSTANCING_EXT    = 26,
     // NOTE: if adding a new struct, register it in 'rtx_remix_specialization.inl'
     //       and only extend this enum by appending, never adjust the order of these 
     //       as that will break backwards compatibility.
@@ -496,6 +497,13 @@ extern "C" {
     uint8_t             collisionMode;
     uint8_t             randomFlipAxis;
   } remixapi_InstanceInfoParticleSystemEXT;
+
+  typedef struct remixapi_InstanceInfoGpuInstancingEXT {
+    remixapi_StructType       sType;
+    void*                     pNext;
+    const remixapi_Transform* instanceTransforms_values;
+    uint32_t                  instanceTransforms_count;
+  } remixapi_InstanceInfoGpuInstancingEXT;
 
   typedef struct remixapi_InstanceInfo {
     remixapi_StructType            sType;
