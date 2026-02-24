@@ -948,20 +948,6 @@ class "ParticleSystemAPI" (
             }
         )
 
-    float3 primvars:particle:maxTargetVelocity = (-1.0, -1.0, -1.0) (
-            doc = "Maximum velocity (centimeters per sec) of a particle in world space. Particles exceeding this are clamped.  Negative values imply unlimited speed."
-            displayGroup = "Target"
-            displayName = "Maximum Velocity"
-            customData = {
-                dictionary limits = {
-                    dictionary hard = {
-                        float3 minimum = (-100000, -100000, -100000)
-                        float3 maximum = (100000, 100000, 100000)
-                    }
-                }
-            }
-        )
-
     bool primvars:particle:hideEmitter = false (
             doc = "Hide or show the particle emitter in the rendered output."
             displayGroup = "Spawn"
@@ -1029,20 +1015,6 @@ class "ParticleSystemAPI" (
                         float minimum = 0
                         float maximum = 180
                         float step = 0.01
-                    }
-                }
-            }
-        )
-
-    float3 primvars:particle:maxSpawnVelocity = (-1.0, -1.0, -1.0) (
-            doc = "Maximum velocity (centimeters per sec) of a particle in world space. Particles exceeding this are clamped.  Negative values imply unlimited speed."
-            displayGroup = "Spawn"
-            displayName = "Maximum Velocity"
-            customData = {
-                dictionary limits = {
-                    dictionary hard = {
-                        float3 minimum = (-100000, -100000, -100000)
-                        float3 maximum = (100000, 100000, 100000)
                     }
                 }
             }
