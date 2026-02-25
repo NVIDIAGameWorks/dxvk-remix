@@ -87,8 +87,21 @@ namespace dxvk {
     BridgeMessageChannel::get().send("UWM_REMIX_UIACTIVE_MSG", doBlock ? 1 : 0, 0);
   }
 
+  namespace {
+    bool migrateHashSet(const GenericValue& src, GenericValue& dst, bool destHasExistingValue) {
+      HashSetLayer* sourceHashSet = src.hashSet;
+      HashSetLayer* destHashSet = dst.hashSet;
+      if (!sourceHashSet || sourceHashSet->empty() || !destHashSet) {
+        return false;
+      }
+      // Union merge for hash sets
+      destHashSet->mergeFrom(*sourceHashSet);
+      return true;
+    }
+  }
   void RtxOptions::dynamicDecalTexturesOnChange(DxvkDevice* device) {
-    if (dynamicDecalTextures.migrateDeprecatedValuesTo(decalTextures)) {
+    if (dynamicDecalTextures.migrateValuesTo(&decalTextures, migrateHashSet)) {
+      dynamicDecalTextures.clearFromStrongerLayers(RtxOptionLayer::getDefaultLayer());
       Logger::info("[Deprecated Config] rtx.dynamicDecalTextures has been deprecated, "
                    "we have moved all your textures from this list to rtx.decalTextures, "
                    "no further action is required from you. "
@@ -97,7 +110,8 @@ namespace dxvk {
   }
 
   void RtxOptions::singleOffsetDecalTexturesOnChange(DxvkDevice* device) {
-    if (singleOffsetDecalTextures.migrateDeprecatedValuesTo(decalTextures)) {
+    if (singleOffsetDecalTextures.migrateValuesTo(&decalTextures, migrateHashSet)) {
+      singleOffsetDecalTextures.clearFromStrongerLayers(RtxOptionLayer::getDefaultLayer());
       Logger::info("[Deprecated Config] rtx.singleOffsetDecalTextures has been deprecated, "
                    "we have moved all your textures from this list to rtx.decalTextures, "
                    "no further action is required from you. "
@@ -106,7 +120,8 @@ namespace dxvk {
   }
 
   void RtxOptions::nonOffsetDecalTexturesOnChange(DxvkDevice* device) {
-    if (nonOffsetDecalTextures.migrateDeprecatedValuesTo(decalTextures)) {
+    if (nonOffsetDecalTextures.migrateValuesTo(&decalTextures, migrateHashSet)) {
+      nonOffsetDecalTextures.clearFromStrongerLayers(RtxOptionLayer::getDefaultLayer());
       Logger::info("[Deprecated Config] rtx.nonOffsetDecalTextures has been deprecated, "
                    "we have moved all your textures from this list to rtx.decalTextures, "
                    "no further action is required from you. "
