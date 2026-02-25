@@ -30,6 +30,8 @@
 #include <mutex>
 #include <atomic>
 #include <optional>
+#include <initializer_list>
+#include <utility>
 
 #include "../util/config/config.h"
 #include "../util/xxHash/xxhash.h"
@@ -226,12 +228,18 @@ namespace dxvk {
     void markDirty();
     bool isDirty() const;
     void invokeOnChangeCallback(DxvkDevice* device) const;
-    
+
+    // Migrate all layer values from this option to another option.
+    // The lambda does all type conversion (read from src, write to dest).
+    // bool isDestValueNew will be supplied to the transform indicating that the dest already has a value in its layer
+    // Returns true if all data was migrated successfully
+    bool migrateValuesTo(RtxOptionImpl* destOption, std::function<bool(const GenericValue& src, GenericValue& dest, bool isDestValueNew)> transform);
+
     // Static method for full name construction
     static std::string getFullName(const std::string& category, const std::string& name) {
       return category + "." + name;
     }
-    
+
 
   protected:
     // Protected constructor - only derived RtxOption<T> can construct
@@ -256,7 +264,7 @@ namespace dxvk {
     std::map<RtxOptionLayerKey, PrioritizedValue> m_optionLayerValueQueue;
 
     // Returns pointer to value in layer, creating a new entry if not found
-    GenericValue* getOrCreateGenericValue(const RtxOptionLayer* layer);
+    std::pair<GenericValue*, bool> getOrCreateGenericValue(const RtxOptionLayer* layer);
 
     const char* getTypeString() const;
 
@@ -273,13 +281,6 @@ namespace dxvk {
     void writeOption(Config& options, const RtxOptionLayer* layer, bool changedOptionOnly);
 
     void insertOptionLayerValue(const GenericValue& value, const RtxOptionLayer* layer);
-
-    // Migrate all layer values from this option to another option.
-    // For hash sets, the migration performs a union (this option's data is added to destination).
-    // For other types, this option's value only overwrites the destination if the destination layer doesn't already have data.
-    // After migration, this option is cleared in each layer.
-    // Returns true if any data was migrated.
-    bool migrateValuesTo(RtxOptionImpl* destOption);
 
     bool isEqual(const GenericValue& aValue, const GenericValue& bValue) const;
 
@@ -449,17 +450,6 @@ namespace dxvk {
     bool containsHash(const XXH64_hash_t& value) const {
       std::lock_guard<std::mutex> lock(RtxOptionImpl::getUpdateMutex());
       return m_resolvedValue.hashSet->count(value) > 0;
-    }
-
-    // Migrate all values from this deprecated option to another option.
-    // Both options must be of the same type (enforced at compile time by the template parameter).
-    // For hash sets, the migration performs a union (this option's data is added to destination).
-    // For other types, this option's value only overwrites the destination if the destination layer doesn't already have data.
-    // After migration, this option is cleared in each layer.
-    // Returns true if any data was migrated.
-    bool migrateDeprecatedValuesTo(RtxOption<T>& destOption) {
-      std::lock_guard<std::mutex> lock(RtxOptionImpl::getUpdateMutex());
-      return migrateValuesTo(&destOption);
     }
 
     T& getDefaultValue() const {
@@ -727,14 +717,14 @@ namespace dxvk {
     // Get or create pointer to basic types for a specific layer (mutable - creates if not present)
     template <typename BasicType, std::enable_if_t<std::is_pod_v<BasicType>, bool> = true>
     BasicType* getOrCreateValuePtr(const RtxOptionLayer* layer) {
-      GenericValue* genericValue = getOrCreateGenericValue(layer);
+      auto [genericValue, _] = getOrCreateGenericValue(layer);
       return genericValue ? reinterpret_cast<BasicType*>(genericValue) : nullptr;
     }
 
     // Get or create pointer to structs and classes for a specific layer (mutable - creates if not present)
     template <typename ClassType, std::enable_if_t<!std::is_pod_v<ClassType>, bool> = true>
     ClassType* getOrCreateValuePtr(const RtxOptionLayer* layer) {
-      GenericValue* genericValue = getOrCreateGenericValue(layer);
+      auto [genericValue, _] = getOrCreateGenericValue(layer);
       return genericValue ? reinterpret_cast<ClassType*>(genericValue->pointer) : nullptr;
     }
 
