@@ -23,7 +23,8 @@ This document outlines our project's C++ code formatting standards, commenting s
 - **Member Variables**: Prefix member variables with `m_`.
 - **Pointers**: Prefix pointers with `p`.
 - **Variables and Namespaces**: and functions: camelCase
-- **Constants and macros**: UPPER_CASE
+- **Constants**: `k` prefix and camelCase, i.e. `kConstantName`
+-  **Macros and defines**: UPPER_CASE
 - **Class and struct names**: PascalCase
 
   ```cpp
