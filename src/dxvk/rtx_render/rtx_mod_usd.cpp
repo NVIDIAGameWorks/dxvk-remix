@@ -675,15 +675,13 @@ std::optional<RtxParticleSystemDesc> UsdMod::Impl::processParticleSystem(Args& a
   bool hasNewMaxVelocity = bakeVec3Channels("maxVelocity:x", "maxVelocity:y", "maxVelocity:z", particleInfo.maxVelocity, vec3(-1.0f, -1.0f, -1.0f));
   counter += 27; // maxVelocity:{x,y,z} -- 3 channels x 9 attrs
 
-  // Standalone animated scalar properties (read via curve helpers, not the macro)
-  // minSize, maxSize, minColor, maxColor, minRotationSpeed, maxRotationSpeed, maxVelocity = 7 schema attrs
-  counter += 7;
-
   // Legacy spawn/target fields - read them, and if new animated fields weren't found, create animation from spawn->target
   vec4 minSpawnColor(1.0f), maxSpawnColor(1.0f), minTargetColor(1.0f, 1.0f, 1.0f, 0.0f), maxTargetColor(1.0f, 1.0f, 1.0f, 0.0f);
   vec2 minSpawnSize(10.0f, 10.0f), maxSpawnSize(10.0f, 10.0f), minTargetSize(0.0f, 0.0f), maxTargetSize(0.0f, 0.0f);
   float minSpawnRotationSpeed = 0.0f, maxSpawnRotationSpeed = 0.0f, minTargetRotationSpeed = 0.0f, maxTargetRotationSpeed = 0.0f;
-  vec3 maxSpawnVelocity(-1.0f, -1.0f, -1.0f), maxTargetVelocity(-1.0f, -1.0f, -1.0f);
+  float maxSpeed = 0.0f;
+
+  // maxSpeed has been deprecated; apply it to both velocity limits if present. 
 
   _SafeGetParticlePrimvar(GfVec4f, id, minSpawnColor, );
   _SafeGetParticlePrimvar(GfVec4f, id, maxSpawnColor, );
@@ -697,8 +695,15 @@ std::optional<RtxParticleSystemDesc> UsdMod::Impl::processParticleSystem(Args& a
   _SafeGetParticlePrimvar(float, id, maxSpawnRotationSpeed, );
   _SafeGetParticlePrimvar(float, id, minTargetRotationSpeed, );
   _SafeGetParticlePrimvar(float, id, maxTargetRotationSpeed, );
-  _SafeGetParticlePrimvar(GfVec3f, id, maxSpawnVelocity, );
-  _SafeGetParticlePrimvar(GfVec3f, id, maxTargetVelocity, );
+
+  // maxSpeed is deprecated (removed from schema); read if present for backward compatibility (do not increment counter).
+  {
+    float temp {};
+    if (_SafeGetPrimvar(sceneDelegate, id, pxr::TfToken("particle:maxSpeed"), temp)) {
+      maxSpeed = temp;
+      anyExists = true;
+    }
+  }
 
   // Fall back to legacy spawn/target animation if new fields weren't provided
   if (!hasNewMinColor) {
@@ -720,7 +725,8 @@ std::optional<RtxParticleSystemDesc> UsdMod::Impl::processParticleSystem(Args& a
     particleInfo.maxRotationSpeed = { maxSpawnRotationSpeed, maxTargetRotationSpeed };
   }
   if (!hasNewMaxVelocity) {
-    particleInfo.maxVelocity = { maxSpawnVelocity, maxTargetVelocity };
+    // maxSpeed has been deprecated; use it if maxVelocity isn't available
+    particleInfo.maxVelocity = { {maxSpeed, maxSpeed, maxSpeed}, {maxSpeed, maxSpeed, maxSpeed} };
   }
 
   _SafeGetParticlePrimvar(GfVec3f, id, attractorPosition, particleInfo.);

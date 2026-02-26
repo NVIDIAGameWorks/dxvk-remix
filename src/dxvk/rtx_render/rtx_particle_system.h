@@ -185,7 +185,8 @@ namespace dxvk {
     RTX_OPTION("rtx.particles.globalPreset", float, minParticleLife, 1.f, "Minimum lifetime (in seconds) to give to a particle when spawned.");
     RTX_OPTION("rtx.particles.globalPreset", float, maxParticleLife, 1.f, "Maximum lifetime (in seconds) to give to a particle when spawned.");
 
-    RTX_OPTION("rtx.particles.globalPreset", float, maxSpeed, -1.f, "Note, this settings is being deprecated in favour of the maxSpawnVelocity and maxTargetVelocity variables.");
+    static void maxSpeedOnChange(DxvkDevice* device);
+    RTX_OPTION_ARGS("rtx.particles.globalPreset", float, maxSpeed, -1.f, "*DEPRECATED* this setting has been removed in favor of maxSpawnVelocity and maxTargetVelocity.", args.onChangeCallback = &maxSpeedOnChange, args.flags = RtxOptionFlags::NoSave );
 
     RTX_OPTION("rtx.particles.globalPreset", Vector2, minSpawnSize, Vector2(10.f), "Minimum size (in centimeters) to give to a particle when spawned.");
     RTX_OPTION("rtx.particles.globalPreset", Vector2, maxSpawnSize, Vector2(10.f), "Maximum size (in centimeters) to give to a particle when spawned.");

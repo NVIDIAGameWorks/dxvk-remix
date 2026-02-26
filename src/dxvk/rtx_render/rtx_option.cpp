@@ -224,10 +224,10 @@ namespace dxvk {
     return nullptr;
   }
 
-  GenericValue* RtxOptionImpl::getOrCreateGenericValue(const RtxOptionLayer* layer) {
+  std::pair<GenericValue*, bool> RtxOptionImpl::getOrCreateGenericValue(const RtxOptionLayer* layer) {
     if (!layer) {
       Logger::warn("[RTX Option]: getOrCreateGenericValue called with null layer.");
-      return nullptr;
+      return { nullptr, false };
     }
 
     RtxOptionLayerKey layerKey = layer->getLayerKey();
@@ -235,24 +235,19 @@ namespace dxvk {
     if (it != m_optionLayerValueQueue.end()) {
       // Mark that this layer has values (in case it wasn't set before)
       layer->setHasValues(true);
-      return &it->second.value;
+      return {&it->second.value, false};
     }
-    
+
     // Create a new entry for this layer
     GenericValue newValue = createGenericValue(m_type);
     PrioritizedValue prioritizedValue(newValue, m_type, layer->getBlendStrength(), layer->getBlendStrengthThreshold());
     auto [insertIt, inserted] = m_optionLayerValueQueue.emplace(layerKey, std::move(prioritizedValue));
-    
     if (!inserted) {
-      // PrioritizedValue RAII handles cleanup when the temporary is destroyed on failed insert
       Logger::warn("[RTX Option]: Failed to insert layer value for option: " + std::string(m_name));
-      return nullptr;
+      return {nullptr, false};
     }
-    
-    // Mark that this layer now has values
     layer->setHasValues(true);
-    
-    return &insertIt->second.value;
+    return {&insertIt->second.value, true};
   }
 
   const char* RtxOptionImpl::getTypeString() const {
@@ -407,7 +402,7 @@ namespace dxvk {
     }
     
     // Read into the specified layer (create entry since we know option exists)
-    GenericValue* layerValue = getOrCreateGenericValue(layer);
+    auto [layerValue, _] = getOrCreateGenericValue(layer);
     if (layerValue) {
       readValue(options, fullName, *layerValue);
     }
@@ -433,50 +428,51 @@ namespace dxvk {
     }
     
     // Get or create a value in the environment layer
-    GenericValue* layerValue = getOrCreateGenericValue(envLayer);
+    auto [layerValue, _] = getOrCreateGenericValue(envLayer);
     if (!layerValue) {
       Logger::warn(str::format("[RTX Option]: Failed to create environment layer value for: ", getFullName()));
       return false;
     }
     
     // Parse the environment variable value based on the option type
+    bool success = false;
     switch (m_type) {
     case OptionType::Bool:
-      Config::parseOptionValue(envVarValue, layerValue->b);
+      success = Config::parseOptionValue(envVarValue, layerValue->b);
       break;
     case OptionType::Int:
-      Config::parseOptionValue(envVarValue, layerValue->i);
+      success = Config::parseOptionValue(envVarValue, layerValue->i);
       break;
     case OptionType::Float:
-      Config::parseOptionValue(envVarValue, layerValue->f);
+      success = Config::parseOptionValue(envVarValue, layerValue->f);
       break;
     case OptionType::Vector2:
-      Config::parseOptionValue(envVarValue, *layerValue->v2);
+      success = Config::parseOptionValue(envVarValue, *layerValue->v2);
       break;
     case OptionType::Vector3:
-      Config::parseOptionValue(envVarValue, *layerValue->v3);
+      success = Config::parseOptionValue(envVarValue, *layerValue->v3);
       break;
     case OptionType::Vector2i:
-      Config::parseOptionValue(envVarValue, *layerValue->v2i);
+      success = Config::parseOptionValue(envVarValue, *layerValue->v2i);
       break;
     case OptionType::Vector4:
-      Config::parseOptionValue(envVarValue, *layerValue->v4);
+      success = Config::parseOptionValue(envVarValue, *layerValue->v4);
       break;
     case OptionType::String:
-      Config::parseOptionValue(envVarValue, *layerValue->string);
+      success = Config::parseOptionValue(envVarValue, *layerValue->string);
       break;
     case OptionType::VirtualKeys:
-      Config::parseOptionValue(envVarValue, *layerValue->virtualKeys);
+      success = Config::parseOptionValue(envVarValue, *layerValue->virtualKeys);
       break;
     case OptionType::HashSet: {
       std::vector<std::string> hashStrings;
-      Config::parseOptionValue(envVarValue, hashStrings);
+      success = Config::parseOptionValue(envVarValue, hashStrings);
       layerValue->hashSet->parseFromStrings(hashStrings);
       break;
     }
     case OptionType::HashVector: {
       std::vector<std::string> hashStrings;
-      Config::parseOptionValue(envVarValue, hashStrings);
+      success = Config::parseOptionValue(envVarValue, hashStrings);
       fillHashVector(hashStrings, *layerValue->hashVector);
       break;
     }
@@ -485,6 +481,11 @@ namespace dxvk {
       return false;
     }
     
+    if (!success) {
+      Logger::warn(str::format("[RTX Option]: Environment variable failed to parse: ", getFullName()));
+      return false;
+    }
+
     markDirty();
     return true;
   }
@@ -595,7 +596,7 @@ namespace dxvk {
     if (layer == nullptr) {
       return;
     }
-    
+
     auto it = m_optionLayerValueQueue.find(layer->getLayerKey());
     if (it != m_optionLayerValueQueue.end()) {
       // When removing a layer, dirty current option
@@ -720,7 +721,7 @@ namespace dxvk {
     }
 
     // Get or create dest layer value
-    GenericValue* destValue = getOrCreateGenericValue(destLayer);
+    auto [destValue, _] = getOrCreateGenericValue(destLayer);
     if (!destValue) {
       return;
     }
@@ -753,90 +754,33 @@ namespace dxvk {
     markDirty();
   }
 
-  bool RtxOptionImpl::migrateValuesTo(RtxOptionImpl* destOption) {
-    if (!destOption) {
-      return false;
-    }
-
-    // Verify types match
-    if (m_type != destOption->m_type) {
-      assert(false && "Cannot migrate option: type mismatch");
-      return false;
-    }
+  bool RtxOptionImpl::migrateValuesTo(RtxOptionImpl* destOption, std::function<bool(const GenericValue& src, GenericValue& dest, bool destHasExistingValue)> transform) {
+    std::lock_guard<std::mutex> lock(getUpdateMutex());
 
     Logger::info(str::format("[Migration] Migrating from ", getFullName(), " to ", destOption->getFullName()));
 
-    bool anyMigrated = false;
-
-    // Collect keys to remove after iteration (can't modify map while iterating)
-    std::vector<RtxOptionLayerKey> keysToRemove;
-
-    // Migrate data from each layer
     for (auto& [layerKey, sourcePrioritizedValue] : m_optionLayerValueQueue) {
-      // Skip the default layer - we keep it
       if (layerKey == kRtxOptionLayerDefaultKey) {
         continue;
       }
 
-      // Find or create the destination layer entry
-      auto destIt = destOption->m_optionLayerValueQueue.find(layerKey);
-      GenericValue* destValue = nullptr;
+      // Find or create the destination layer value
+      RtxOptionLayer* layer = RtxOptionManager::getLayer(layerKey);
+      assert(layer);
 
-      if (destIt != destOption->m_optionLayerValueQueue.end()) {
-        destValue = &destIt->second.value;
-      } else {
-        // Create a new entry using the source's blend values
-        GenericValue newValue = createGenericValue(m_type);
-        PrioritizedValue prioritizedValue(newValue, m_type, sourcePrioritizedValue.blendStrength, sourcePrioritizedValue.blendThreshold);
-        auto [insertIt, inserted] = destOption->m_optionLayerValueQueue.emplace(layerKey, std::move(prioritizedValue));
-        if (inserted) {
-          destValue = &insertIt->second.value;
-        }
-      }
-
+      auto [destValue, destIsNew] = destOption->getOrCreateGenericValue(layer);
       if (!destValue) {
-        continue;
+        Logger::err(str::format("[Migration] *FAILURE* Migrating from ", getFullName(), " to ", destOption->getFullName()));
+        assert(0);
+        return false;
       }
 
-      switch (m_type) {
-      case OptionType::HashSet: {
-        HashSetLayer* sourceHashSet = sourcePrioritizedValue.value.hashSet;
-        if (!sourceHashSet || sourceHashSet->empty() || !destValue->hashSet) {
-          break;
-        }
-
-        // Union merge for hash sets
-        destValue->hashSet->mergeFrom(*sourceHashSet);
-
-        anyMigrated = true;
-        break;
+      if (transform(sourcePrioritizedValue.value, *destValue, !destIsNew)) {
+        destOption->markDirty();
       }
-      default: {
-        // For non-hashset types, only migrate if destination didn't already have data in this layer
-        if (destIt == destOption->m_optionLayerValueQueue.end()) {
-          destOption->copyValue(sourcePrioritizedValue.value, *destValue);
-          anyMigrated = true;
-        }
-        break;
-      }
-      }
-
-      // Mark this layer for removal from source
-      keysToRemove.push_back(layerKey);
     }
 
-    // Remove all migrated layers from source, leaving only the default
-    // PrioritizedValue RAII handles cleanup when erase destroys the element
-    for (const auto& key : keysToRemove) {
-      m_optionLayerValueQueue.erase(key);
-    }
-
-    if (anyMigrated) {
-      destOption->markDirty();
-      markDirty();
-    }
-
-    return anyMigrated;
+    return true;
   }
 
   void RtxOptionImpl::updateLayerBlendStrength(const RtxOptionLayer& optionLayer) {

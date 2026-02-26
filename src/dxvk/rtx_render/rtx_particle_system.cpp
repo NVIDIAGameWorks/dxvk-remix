@@ -96,6 +96,25 @@ namespace dxvk {
     };
   }
 
+
+  void RtxParticleSystemManager::maxSpeedOnChange(DxvkDevice* device) {
+
+    auto floatToVector3 = [](const GenericValue& src, GenericValue& dest, bool destHasExistingValue) {
+      if (!destHasExistingValue) {
+        *dest.v3 = Vector3(src.f, src.f, src.f);
+        return true;
+      }
+      return false;
+    };
+
+    if (maxSpeed.migrateValuesTo(&maxSpawnVelocityObject(), floatToVector3) &&
+        maxSpeed.migrateValuesTo(&maxTargetVelocityObject(), floatToVector3)) {
+      maxSpeed.clearFromStrongerLayers(RtxOptionLayer::getDefaultLayer());
+      Logger::info("[Deprecated Config] rtx.particles.globalPreset.maxSpeed has been migrated to rtx.particles.globalPreset.maxSpawnVelocity and rtx.particles.globalPreset.maxTargetVelocity."
+                   "Please re-save your config to get rid of this message.");
+    } 
+  }
+
   RtxParticleSystemManager::ConservativeCounter::ConservativeCounter(DxvkContext* ctx, const uint32_t framesInFlight, const uint32_t upperBound)
     : m_framesInFlight(framesInFlight)
     , m_upperBound(upperBound) {
@@ -180,15 +199,16 @@ namespace dxvk {
         if (RemixGui::CollapsingHeader("Spawn", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen)) {
           ImGui::Indent();
           ImGui::PushID("spawn");
-          RemixGui::DragInt("Spawn Rate Per Second", &spawnRatePerSecondObject(), 0.1f, 1, 100000);
+          RemixGui::DragInt("Spawn Rate Per Second", &spawnRatePerSecondObject(), 0.1f, 0, 100000);
           RemixGui::DragFloat("Burst Duration (s)", &spawnBurstDurationObject(), 0.1f, 0.f, 100000.f, "%.2f");
           RemixGui::Separator();
           RemixGui::Checkbox("Use Spawn Texture Coordinates", &useSpawnTexcoordsObject());
           RemixGui::Separator();
+          RemixGui::InputFloat3("Max Velocity", &maxSpawnVelocityObject());
           RemixGui::DragFloat("Initial Velocity From Motion", &initialVelocityFromMotionObject(), 0.01f, -5000.f, 5000.f, "%.2f");
           RemixGui::DragFloat("Initial Velocity From Normal", &initialVelocityFromNormalObject(), 0.01f, -5000.f, 5000.f, "%.2f");
-          RemixGui::DragFloat("Initial Velocity Cone Angle", &initialVelocityConeAngleDegreesObject(), 0.01f, -5000.f, 5000.f, "%.2f");
-          RemixGui::DragFloat("Initial Rotation Deviation", &initialRotationDeviationDegreesObject(), 0.01f, -5000.f, 5000.f, "%.2f");
+          RemixGui::DragFloat("Initial Velocity Cone Angle", &initialVelocityConeAngleDegreesObject(), 0.01f, 0.f, 180.f, "%.2f");
+          RemixGui::DragFloat("Initial Rotation Deviation", &initialRotationDeviationDegreesObject(), 0.01f, 0.f, 180.f, "%.2f");
           RemixGui::Separator();
           RemixGui::DragFloat("Min Life", &minParticleLifeObject(), 0.01f, 0.01f, 1000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
           RemixGui::DragFloat("Max Life", &maxParticleLifeObject(), 0.01f, 0.01f, 1000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
@@ -206,6 +226,7 @@ namespace dxvk {
         if (RemixGui::CollapsingHeader("Target", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen)) {
           ImGui::Indent();
           ImGui::PushID("target");
+          RemixGui::InputFloat3("Max Velocity", &maxTargetVelocityObject());
           RemixGui::DragFloat2("Min Size", &minTargetSizeObject(), 0.01f, 0.01f, 100.f, "%.2f");
           RemixGui::DragFloat2("Max Size", &maxTargetSizeObject(), 0.01f, 0.01f, 100.f, "%.2f");
           RemixGui::DragFloat("Min Rotation Speed", &minTargetRotationSpeedObject(), 0.01f, -1000.f, 1000.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
@@ -219,7 +240,9 @@ namespace dxvk {
         if (ImGui::CollapsingHeader("Simulation", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen)) {
           ImGui::Indent();
           RemixGui::DragFloat("Gravity Force", &gravityForceObject(), 0.01f, -1000.f, 1000.f, "%.2f");
+          ImGui::BeginDisabled();
           RemixGui::DragFloat("Max Speed", &maxSpeedObject(), 0.01f, 0.f, 100000.f, "%.2f");
+          ImGui::EndDisabled();
           RemixGui::DragFloat("Drag Coefficient", &dragCoefficientObject(), 0.01f, 0.f, 100.f, "%.2f");
 
           if (ImGui::CollapsingHeader("Attractor", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen)) {

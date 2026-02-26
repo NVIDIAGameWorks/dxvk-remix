@@ -34,35 +34,89 @@ class "ParticleSystemAPI" (
             doc = "Maximum number of particles to simulate per emitter (or material) simultaneously. Lower values are more performant - tune this to your needs."
             displayGroup = "Spawn"
             displayName = "Max Number of Particles"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        int minimum = 1
+                        int maximum = 10000000
+                        int step = 1
+                    }
+                }
+            }
         )
 
     float primvars:particle:spawnRatePerSecond = 0.0 (
             doc = "Number of particles to spawn per second on average from this emitter."
             displayGroup = "Spawn"
             displayName = "Spawn Rate"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 100000
+                        float step = 1
+                    }
+                }
+            }
         )
     float primvars:particle:spawnBurstDuration = 0.0 (
             doc = "Number of seconds between particle spawning bursts.  For a value of 0, we assume continuous spawning, for all values greater than 0 we expect particles to be spawned in bursts.  This value will still respect the spawn rate per second parameter and the max particle parameter."
             displayGroup = "Spawn"
             displayName = "Burst Duration"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 100000
+                        float step = 0.1
+                    }
+                }
+            }
         )
 
     float primvars:particle:minTimeToLive = 1.0 (
             doc = "Minimum lifetime (in seconds) to give to a particle when spawned. Particles older than this are immediately killed."
             displayGroup = "Spawn"
             displayName = "Minimum Time to Live"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0.01
+                        float maximum = 1000
+                        float step = 0.01
+                    }
+                }
+            }
         )
 
     float primvars:particle:maxTimeToLive = 1.0 (
             doc = "Maximum lifetime (in seconds) to give to a particle when spawned. After this time, particles are automatically removed."
             displayGroup = "Spawn"
             displayName = "Maximum Time to Live"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0.01
+                        float maximum = 1000
+                        float step = 0.01
+                    }
+                }
+            }
         )
 
     float2 primvars:particle:minSpawnSize = (10, 10) (
             doc = "Minimum size (in centimeters) to give to a particle when spawned."
             displayGroup = "Spawn"
             displayName = "Minimum Particle Size"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float2 minimum = (0.01, 0.01)
+                        float2 maximum = (100, 100)
+                        float step = 0.01
+                    }
+                }
+            }
         )
 
     # ========== Animated Color Properties (gradient with shared keyframe times across RGBA) ==========
@@ -71,10 +125,13 @@ class "ParticleSystemAPI" (
             doc = "Keyframe times [0-1] over particle lifetime for minColor gradient. Empty means use legacy or constant mode."
             displayGroup = "Lifetime Animation"
             displayName = "Min Color Times"
-            limits = {
-                dictionary hard = {
-                    float minimum = 0
-                    float maximum = 1
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 1
+                        float step = 0.01
+                    }
                 }
             }
         )
@@ -82,10 +139,12 @@ class "ParticleSystemAPI" (
             doc = "Keyframe RGBA values for minColor gradient. Must match length of minColor:times."
             displayGroup = "Lifetime Animation"
             displayName = "Min Color Values"
-            limits = {
-                dictionary hard = {
-                    color4f minimum = (0, 0, 0, 0)
-                    color4f maximum = (1, 1, 1, 1)
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        color4f minimum = (0, 0, 0, 0)
+                        color4f maximum = (1, 1, 1, 1)
+                    }
                 }
             }
         )
@@ -94,10 +153,13 @@ class "ParticleSystemAPI" (
             doc = "Keyframe times [0-1] over particle lifetime for maxColor gradient."
             displayGroup = "Lifetime Animation"
             displayName = "Max Color Times"
-            limits = {
-                dictionary hard = {
-                    float minimum = 0
-                    float maximum = 1
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 1
+                        float step = 0.01
+                    }
                 }
             }
         )
@@ -105,10 +167,12 @@ class "ParticleSystemAPI" (
             doc = "Keyframe RGBA values for maxColor gradient."
             displayGroup = "Lifetime Animation"
             displayName = "Max Color Values"
-            limits = {
-                dictionary hard = {
-                    color4f minimum = (0, 0, 0, 0)
-                    color4f maximum = (1, 1, 1, 1)
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        color4f minimum = (0, 0, 0, 0)
+                        color4f maximum = (1, 1, 1, 1)
+                    }
                 }
             }
         )
@@ -120,10 +184,13 @@ class "ParticleSystemAPI" (
             doc = "Keyframe times [0-1] for minSize X channel animation."
             displayGroup = "Lifetime Animation"
             displayName = "Min Size X Times"
-            limits = {
-                dictionary hard = {
-                    float minimum = 0
-                    float maximum = 1
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 1
+                        float step = 0.01
+                    }
                 }
             }
         )
@@ -131,10 +198,13 @@ class "ParticleSystemAPI" (
             doc = "Keyframe values for minSize X channel."
             displayGroup = "Lifetime Animation"
             displayName = "Min Size X Values"
-            limits = {
-                dictionary hard = {
-                    float minimum = 0
-                    float maximum = 100000
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 100000
+                        float step = 0.01
+                    }
                 }
             }
         )
@@ -181,10 +251,13 @@ class "ParticleSystemAPI" (
             doc = "Keyframe times [0-1] for minSize Y channel animation."
             displayGroup = "Lifetime Animation"
             displayName = "Min Size Y Times"
-            limits = {
-                dictionary hard = {
-                    float minimum = 0
-                    float maximum = 1
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 1
+                        float step = 0.01
+                    }
                 }
             }
         )
@@ -192,10 +265,13 @@ class "ParticleSystemAPI" (
             doc = "Keyframe values for minSize Y channel."
             displayGroup = "Lifetime Animation"
             displayName = "Min Size Y Values"
-            limits = {
-                dictionary hard = {
-                    float minimum = 0
-                    float maximum = 100000
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 100000
+                        float step = 0.01
+                    }
                 }
             }
         )
@@ -242,10 +318,13 @@ class "ParticleSystemAPI" (
             doc = "Keyframe times [0-1] for maxSize X channel animation."
             displayGroup = "Lifetime Animation"
             displayName = "Max Size X Times"
-            limits = {
-                dictionary hard = {
-                    float minimum = 0
-                    float maximum = 1
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 1
+                        float step = 0.01
+                    }
                 }
             }
         )
@@ -253,10 +332,13 @@ class "ParticleSystemAPI" (
             doc = "Keyframe values for maxSize X channel."
             displayGroup = "Lifetime Animation"
             displayName = "Max Size X Values"
-            limits = {
-                dictionary hard = {
-                    float minimum = 0
-                    float maximum = 100000
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 100000
+                        float step = 0.01
+                    }
                 }
             }
         )
@@ -303,10 +385,13 @@ class "ParticleSystemAPI" (
             doc = "Keyframe times [0-1] for maxSize Y channel animation."
             displayGroup = "Lifetime Animation"
             displayName = "Max Size Y Times"
-            limits = {
-                dictionary hard = {
-                    float minimum = 0
-                    float maximum = 1
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 1
+                        float step = 0.01
+                    }
                 }
             }
         )
@@ -314,10 +399,13 @@ class "ParticleSystemAPI" (
             doc = "Keyframe values for maxSize Y channel."
             displayGroup = "Lifetime Animation"
             displayName = "Max Size Y Values"
-            limits = {
-                dictionary hard = {
-                    float minimum = 0
-                    float maximum = 100000
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 100000
+                        float step = 0.01
+                    }
                 }
             }
         )
@@ -366,10 +454,13 @@ class "ParticleSystemAPI" (
             doc = "Keyframe times [0-1] for minRotationSpeed animation."
             displayGroup = "Lifetime Animation"
             displayName = "Min Rotation Speed Times"
-            limits = {
-                dictionary hard = {
-                    float minimum = 0
-                    float maximum = 1
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 1
+                        float step = 0.01
+                    }
                 }
             }
         )
@@ -377,10 +468,13 @@ class "ParticleSystemAPI" (
             doc = "Keyframe values for minRotationSpeed."
             displayGroup = "Lifetime Animation"
             displayName = "Min Rotation Speed Values"
-            limits = {
-                dictionary hard = {
-                    float minimum = -10000
-                    float maximum = 10000
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = -10000
+                        float maximum = 10000
+                        float step = 0.01
+                    }
                 }
             }
         )
@@ -427,10 +521,13 @@ class "ParticleSystemAPI" (
             doc = "Keyframe times [0-1] for maxRotationSpeed animation."
             displayGroup = "Lifetime Animation"
             displayName = "Max Rotation Speed Times"
-            limits = {
-                dictionary hard = {
-                    float minimum = 0
-                    float maximum = 1
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 1
+                        float step = 0.01
+                    }
                 }
             }
         )
@@ -438,10 +535,13 @@ class "ParticleSystemAPI" (
             doc = "Keyframe values for maxRotationSpeed."
             displayGroup = "Lifetime Animation"
             displayName = "Max Rotation Speed Values"
-            limits = {
-                dictionary hard = {
-                    float minimum = -10000
-                    float maximum = 10000
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = -10000
+                        float maximum = 10000
+                        float step = 0.01
+                    }
                 }
             }
         )
@@ -490,10 +590,13 @@ class "ParticleSystemAPI" (
             doc = "Keyframe times [0-1] for maxVelocity X channel animation."
             displayGroup = "Lifetime Animation"
             displayName = "Max Velocity X Times"
-            limits = {
-                dictionary hard = {
-                    float minimum = 0
-                    float maximum = 1
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 1
+                        float step = 0.01
+                    }
                 }
             }
         )
@@ -501,10 +604,13 @@ class "ParticleSystemAPI" (
             doc = "Keyframe values for maxVelocity X channel."
             displayGroup = "Lifetime Animation"
             displayName = "Max Velocity X Values"
-            limits = {
-                dictionary hard = {
-                    float minimum = -1000000
-                    float maximum = 1000000
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = -1000000
+                        float maximum = 1000000
+                        float step = 0.01
+                    }
                 }
             }
         )
@@ -551,10 +657,13 @@ class "ParticleSystemAPI" (
             doc = "Keyframe times [0-1] for maxVelocity Y channel animation."
             displayGroup = "Lifetime Animation"
             displayName = "Max Velocity Y Times"
-            limits = {
-                dictionary hard = {
-                    float minimum = 0
-                    float maximum = 1
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 1
+                        float step = 0.01
+                    }
                 }
             }
         )
@@ -562,10 +671,13 @@ class "ParticleSystemAPI" (
             doc = "Keyframe values for maxVelocity Y channel."
             displayGroup = "Lifetime Animation"
             displayName = "Max Velocity Y Values"
-            limits = {
-                dictionary hard = {
-                    float minimum = -1000000
-                    float maximum = 1000000
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = -1000000
+                        float maximum = 1000000
+                        float step = 0.01
+                    }
                 }
             }
         )
@@ -612,10 +724,13 @@ class "ParticleSystemAPI" (
             doc = "Keyframe times [0-1] for maxVelocity Z channel animation."
             displayGroup = "Lifetime Animation"
             displayName = "Max Velocity Z Times"
-            limits = {
-                dictionary hard = {
-                    float minimum = 0
-                    float maximum = 1
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 1
+                        float step = 0.01
+                    }
                 }
             }
         )
@@ -623,10 +738,13 @@ class "ParticleSystemAPI" (
             doc = "Keyframe values for maxVelocity Z channel."
             displayGroup = "Lifetime Animation"
             displayName = "Max Velocity Z Values"
-            limits = {
-                dictionary hard = {
-                    float minimum = -1000000
-                    float maximum = 1000000
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = -1000000
+                        float maximum = 1000000
+                        float step = 0.01
+                    }
                 }
             }
         )
@@ -673,72 +791,161 @@ class "ParticleSystemAPI" (
             doc = "Maximum size (in centimeters) to give to a particle when spawned."
             displayGroup = "Spawn"
             displayName = "Maximum Particle Size"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float2 minimum = (0.01, 0.01)
+                        float2 maximum = (10000, 10000)
+                        float step = 0.01
+                    }
+                }
+            }
         )
 
     float primvars:particle:minSpawnRotationSpeed = 0.0 (
             doc = "Minimum rotation speed (in revolutions per second) to give to a particle when spawned. Only used if alignParticlesToVelocity is false."
             displayGroup = "Spawn"
             displayName = "Minimum Rotation Speed"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = -100
+                        float maximum = 100
+                        float step = 0.01
+                    }
+                }
+            }
         )
 
     float primvars:particle:maxSpawnRotationSpeed = 0.0 (
             doc = "Maximum rotation speed (in revolutions per second) to give to a particle when spawned. Only used if alignParticlesToVelocity is false."
             displayGroup = "Spawn"
             displayName = "Maximum Rotation Speed"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = -100
+                        float maximum = 100
+                        float step = 0.01
+                    }
+                }
+            }
         )
 
     color4f primvars:particle:minSpawnColor = (1, 1, 1, 1) (
             doc = "Minimum RGBA color to tint each newly spawned particle. Each component is in [0,1]."
             displayGroup = "Spawn"
             displayName = "Minimum Spawn Color"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        color4f minimum = (0, 0, 0, 0)
+                        color4f maximum = (1, 1, 1, 1)
+                    }
+                }
+            }
         )
 
     color4f primvars:particle:maxSpawnColor = (1, 1, 1, 1) (
             doc = "Maximum RGBA color to tint each newly spawned particle. Each component is in [0,1]."
             displayGroup = "Spawn"
             displayName = "Maximum Spawn Color"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        color4f minimum = (0, 0, 0, 0)
+                        color4f maximum = (1, 1, 1, 1)
+                    }
+                }
+            }
         )
 
     float2 primvars:particle:minTargetSize = (0, 0) (
             doc = "Minimum size (in centimeters) picked from a range, to be used as the target animation state, at the end of the particles life."
             displayGroup = "Target"
             displayName = "Minimum Particle Size"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float2 minimum = (0.01, 0.01)
+                        float2 maximum = (100, 100)
+                        float step = 0.01
+                    }
+                }
+            }
         )
 
     float2 primvars:particle:maxTargetSize = (0, 0) (
             doc = "Maximum size (in centimeters) picked from a range, to be used as the target animation state, at the end of the particles life."
             displayGroup = "Target"
             displayName = "Maximum Particle Size"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float2 minimum = (0.01, 0.01)
+                        float2 maximum = (100, 100)
+                        float step = 0.01
+                    }
+                }
+            }
         )
 
     float primvars:particle:minTargetRotationSpeed = 0.0 (
             doc = "Minimum rotation speed (in revolutions per second) picked from a range, to be used as the target animation state, at the end of the particles life.  Only used if alignParticlesToVelocity is false."
             displayGroup = "Target"
             displayName = "Minimum Rotation Speed"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = -1000
+                        float maximum = 1000
+                        float step = 0.01
+                    }
+                }
+            }
         )
 
     float primvars:particle:maxTargetRotationSpeed = 0.0 (
             doc = "Maximum rotation speed (in revolutions per second) picked from a range, to be used as the target animation state, at the end of the particles life.  Only used if alignParticlesToVelocity is false."
             displayGroup = "Target"
             displayName = "Maximum Rotation Speed"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = -1000
+                        float maximum = 1000
+                        float step = 0.01
+                    }
+                }
+            }
         )
 
     color4f primvars:particle:minTargetColor = (1, 1, 1, 0) (
             doc = "Minimum RGBA color picked from a range, to be used as the target animation state, at the end of the particles life."
             displayGroup = "Target"
             displayName = "Minimum Target Color"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        color4f minimum = (0, 0, 0, 0)
+                        color4f maximum = (1, 1, 1, 1)
+                    }
+                }
+            }
         )
 
     color4f primvars:particle:maxTargetColor = (1, 1, 1, 0) (
             doc = "Maximum RGBA color picked from a range, to be used as the target animation state, at the end of the particles life."
             displayGroup = "Target"
             displayName = "Maximum Target Color"
-        )
-
-    float3 primvars:particle:maxTargetVelocity = (-1.0, -1.0, -1.0) (
-            doc = "Maximum velocity (centimeters per sec) of a particle in world space. Particles exceeding this are clamped.  Negative values imply unlimited speed."
-            displayGroup = "Target"
-            displayName = "Maximum Velocity"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        color4f minimum = (0, 0, 0, 0)
+                        color4f maximum = (1, 1, 1, 1)
+                    }
+                }
+            }
         )
 
     bool primvars:particle:hideEmitter = false (
@@ -757,30 +964,60 @@ class "ParticleSystemAPI" (
             doc = "Multiplier for initial velocity applied at spawn time, based on the spawning objects current velocity."
             displayGroup = "Spawn"
             displayName = "Initial Velocity From Motion"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = -5000
+                        float maximum = 5000
+                        float step = 0.01
+                    }
+                }
+            }
         )
 
     float primvars:particle:initialVelocityFromNormal = 0.0 (
             doc = "Initial speed (centimeters per sec) applied at spawn along the normal vector of the emitting triangle."
             displayGroup = "Spawn"
             displayName = "Initial Velocity From Normal"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = -5000
+                        float maximum = 5000
+                        float step = 0.01
+                    }
+                }
+            }
         )
 
     float primvars:particle:initialVelocityConeAngleDegrees = 0.0 (
             doc = "Half-angle (in degrees) of the random emission cone around the triangle's surface normal when spawning. Value must be in [0,180]."
             displayGroup = "Spawn"
             displayName = "Initial Velocity Cone Angle"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 180
+                        float step = 0.01
+                    }
+                }
+            }
         )
 
     float primvars:particle:initialRotationDeviationDegrees = 0.0 (
             doc = "HRange of degrees to rotate each particle by on spawn (in degrees). Value must be in [0,180]."
             displayGroup = "Spawn"
             displayName = "Initial Rotation Deviation"
-        )
-
-    float3 primvars:particle:maxSpawnVelocity = (-1.0, -1.0, -1.0) (
-            doc = "Maximum velocity (centimeters per sec) of a particle in world space. Particles exceeding this are clamped.  Negative values imply unlimited speed."
-            displayGroup = "Spawn"
-            displayName = "Maximum Velocity"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 180
+                        float step = 0.01
+                    }
+                }
+            }
         )
 
     # Simulation
@@ -788,6 +1025,15 @@ class "ParticleSystemAPI" (
             doc = "Net influence of gravity on each particle (centimeters per second squared). Negative values pull particles downward."
             displayGroup = "Simulation"
             displayName = "Gravity Force"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = -100000
+                        float maximum = 100000
+                        float step = 0.01
+                    }
+                }
+            }
         )
 
     bool primvars:particle:restrictVelocityX = false (
@@ -818,12 +1064,30 @@ class "ParticleSystemAPI" (
             doc = "How much turbulence influences the velocity of a particle as an external force (represented in centimeters per second squared)."
             displayGroup = "Simulation"
             displayName = "Turbulence Force"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 100000
+                        float step = 0.01
+                    }
+                }
+            }
         )
 
     float primvars:particle:turbulenceFrequency = 0.05 (
             doc = "Frequency (rate of change) of the turbulence forces. Lower values change slowly; higher values change rapidly.  This is specified in centimeters."
             displayGroup = "Simulation"
             displayName = "Turbulence Frequency"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 1000
+                        float step = 0.01
+                    }
+                }
+            }
         )
 
     # Collision
@@ -837,12 +1101,30 @@ class "ParticleSystemAPI" (
             doc = "Fraction of velocity retained after colliding with geometry. 1.0 = perfectly elastic (no speed loss); 0.0 = completely inelastic. Values outside [0,1] are clamped."
             displayGroup = "Collision"
             displayName = "Bounciness"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 1
+                        float step = 0.01
+                    }
+                }
+            }
         )
 
     float primvars:particle:collisionThickness = 5.0 (
             doc = "Maximum penetration depth (in centimeters) at which a particle will still register a collision. Deeper penetrations are ignored."
             displayGroup = "Collision"
             displayName = "Thickness"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 10000
+                        float step = 0.01
+                    }
+                }
+            }
         )
 
     # Visual
@@ -862,6 +1144,15 @@ class "ParticleSystemAPI" (
             doc = "Multiplier for motion-trail length when enableMotionTrail is on. 1.0 = exact displacement over the last frame; >1 lengthens the trail, <1 shortens it. Values =0 are invalid."
             displayGroup = "Visual"
             displayName = "Motion Trail Multiplier"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0.001
+                        float maximum = 10000
+                        float step = 0.01
+                    }
+                }
+            }
         )
 
     uniform token primvars:particle:billboardType = "FaceCamera_Spherical" (
@@ -941,18 +1232,45 @@ class "ParticleSystemAPI" (
             doc = "How strongly should the particles be attracted to the the attractor position.  A value of 0 defines no attraction what soever, the unit is centimeters per second per second."
             displayGroup = "Simulation"
             displayName = "Attractor Force"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = -100000
+                        float maximum = 100000
+                        float step = 0.01
+                    }
+                }
+            }
         )
 
     float primvars:particle:attractorRadius = 0.0 (
             doc = "Tunable falloff for the attractor - outside of this radius the attractor has no effect."
             displayGroup = "Simulation"
             displayName = "Attractor Radius"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 100000
+                        float step = 0.01
+                    }
+                }
+            }
         )
 
     float primvars:particle:dragCoefficient = 0.0 (
             doc = "Slows particles down over time, like air-resistance.  This parameter must be greater than 0.  0 means particles wont slow down due to drag, for values larger than this particles will slow over time without any external force being applied."
             displayGroup = "Simulation"
             displayName = "Drag Coefficient"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 100
+                        float step = 0.01
+                    }
+                }
+            }
         )
 
     uniform token primvars:particle:collisionMode = "Bounce" (
