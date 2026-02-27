@@ -66,8 +66,8 @@ RWTexture2D<uint> SharedMaterialData0;
 layout(r32ui, binding = GBUFFER_BINDING_SHARED_MATERIAL_DATA1_OUTPUT)
 RWTexture2D<uint> SharedMaterialData1;
 
-layout(r16ui, binding = GBUFFER_BINDING_SHARED_MEDIUM_MATERIAL_INDEX_OUTPUT)
-RWTexture2D<uint16_t> SharedMediumMaterialIndex;
+layout(r32ui, binding = GBUFFER_BINDING_SHARED_MEDIUM_MATERIAL_INDEX_OUTPUT)
+RWTexture2D<uint> SharedMediumMaterialIndex;
 
 // Primary Surface Outputs (Coherent)
 
@@ -187,8 +187,8 @@ RWTexture2D<float4> ParticleBuffer;
 layout(rg32f, binding = GBUFFER_BINDING_SHARED_TEXTURE_COORD_OUTPUT)
 RWTexture2D<float2> SharedTextureCoord;
 
-layout(r16ui, binding = GBUFFER_BINDING_SHARED_SURFACE_INDEX_OUTPUT)
-RWTexture2D<uint16_t> SharedSurfaceIndex;
+layout(r32ui, binding = GBUFFER_BINDING_SHARED_SURFACE_INDEX_OUTPUT)
+RWTexture2D<uint> SharedSurfaceIndex;
 
 layout(r32f, binding = GBUFFER_BINDING_PRIMARY_DEPTH_DLSSRR_OUTPUT)
 RWTexture2D<float> PrimaryDepthDLSSRR;

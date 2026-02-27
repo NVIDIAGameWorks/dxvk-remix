@@ -60,7 +60,7 @@ struct OpaqueSurfaceMaterial
   uint16_t flags;
   uint16_t samplerIndex;
   uint16_t albedoOpacityTextureIndex;
-  uint16_t subsurfaceMaterialIndex;
+  uint16_t secondaryTextureIndex;
 
   // 4-7
   f16vec4 albedoOpacityConstant;
@@ -76,7 +76,6 @@ struct OpaqueSurfaceMaterial
   // The fields below here are overridden to constant values in that code, so should be left at the end
   // If we add a new field that is used for visibility, it should go above this.
   // If it isn't used for visibility, it should go below and be overridden in opaqueSurfaceMaterialCreate().
-
 
   // 12-15
   uint16_t emissiveColorTextureIndex;
@@ -94,16 +93,16 @@ struct OpaqueSurfaceMaterial
   float16_t anisotropy;
   uint16_t tangentTextureIndex;
 
-  // 24
+  // 24-25
+  uint subsurfaceMaterialIndex;
+
+  // 26
   uint16_t samplerFeedbackStamp;
 
   // Todo: Fixed function blend state info here in the future (Actually this should go on a Legacy Material, or some sort of non-PBR Legacy Surface)
 
-  // 25
-  uint16_t secondaryTextureIndex;
-
   // padding (to keep size matching with MemoryPolymorphicSurfaceMaterial)
-  uint16_t data[6];
+  uint16_t data[5];
 
   bool hasValidDisplacement() {
     return flags & OPAQUE_SURFACE_MATERIAL_FLAG_HAS_DISPLACEMENT;
@@ -125,13 +124,17 @@ struct TranslucentSurfaceMaterial
   uint16_t emissiveColorTextureIndex;
   float16_t emissiveIntensity;
   float16_t refractiveIndex;
+
+  // 12-13: Source surface material index (21 bits).  Placed here (byte offset 24)
+  // so the uint32_t is naturally 4-byte aligned — avoids Slang inserting padding
+  // that would break reinterpret<> from the 64-byte MemoryPolymorphicSurfaceMaterial.
+  uint32_t sourceSurfaceMaterialIndex;
+
+  // 14-16
   f16vec3 emissiveColorConstant;
 
-  // Note: Source values only used for serialization purposes.
-  uint16_t sourceSurfaceMaterialIndex;
-
   // padding (to keep size matching with MemoryPolymorphicSurfaceMaterial)
-  uint16_t data[16];
+  uint16_t data[15];
 };
 
 struct RayPortalSurfaceMaterial
@@ -235,7 +238,7 @@ struct TranslucentSurfaceMaterialInteraction
   // if it requires an indirection should be better than reading/writing more data to per-pixel buffers. Additionally the
   // lack of the original values such as the transmittance measurement distance and color make it hard to send this compactly
   // without otherwise having to upload those to the Translucent Surface Material (could be done if needed though).
-  uint16_t sourceSurfaceMaterialIndex;
+  uint sourceSurfaceMaterialIndex;
   // Note: Raw (gamma encoded) emissive color packed in R5G6B5 needed for more tight packing, not ideal as this carries live state
   // across other code but this is an easy way to get the required info.
   uint16_t sourcePackedGammaEmissiveColor;
@@ -287,7 +290,7 @@ struct PolymorphicSurfaceMaterialInteraction
   float16_t fdata4;
   float16_t fdata5;
 
-  uint16_t idata0;
+  uint idata0;
   uint16_t idata1;
 
   uint32_t i32data0;

@@ -43,6 +43,7 @@ namespace dxvk {
     * - Rendering the particle geometry (vertex and index buffers).
     */
   class RtxParticleSystemManager : public CommonDeviceObject {
+
     struct SpawnContext {
       uint32_t numberOfParticles;
       uint32_t instanceId;

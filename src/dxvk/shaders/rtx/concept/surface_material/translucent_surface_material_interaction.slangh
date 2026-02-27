@@ -227,7 +227,7 @@ TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreat
   const uint data0 = gBufferMemoryPolymorphicSurfaceMaterialInteraction.data0;
   const uint data1 = gBufferMemoryPolymorphicSurfaceMaterialInteraction.data1;
 
-  const uint16_t sourceSurfaceMaterialIndex = uint16_t(data0 >> 0);
+  const uint sourceSurfaceMaterialIndex = data0 & SURFACE_INDEX_MAX_VALUE;
 
   // Note: Fetch and decode the Translucent Surface Material constants based on the specified index. This should be faster than reading
   // a ton of data from the G-Buffer with how things are stored currently assuming the material struct is well cached, but if this ever
@@ -248,7 +248,7 @@ TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreat
     translucentSurfaceMaterial.thicknessOrMeasurementDistance;
 
   const bool useDiffuseLayer = (data0 & (1 << 29)) != 0;
-  const float16_t diffuseOpacity = unorm8ToF16(uint8_t(data0 >> 16));
+  const float16_t diffuseOpacity = unorm8ToF16(uint8_t(data0 >> SURFACE_INDEX_BIT_COUNT));
   const f16vec3 gammaVariableColor = r5g6b5ToColor(uint16_t(data1 >> 0));
   const f16vec3 gammaEmissiveColor = r5g6b5ToColor(uint16_t(data1 >> 16));
   const f16vec3 variableColor = gammaToLinearFast(gammaVariableColor);

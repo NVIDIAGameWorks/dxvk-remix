@@ -102,8 +102,8 @@ namespace dxvk {
   RtInstance::RtInstance(const uint64_t id, uint32_t instanceVectorId)
     : m_id(id)
     , m_instanceVectorId(instanceVectorId)
-    , m_surfaceIndex(BINDING_INDEX_INVALID)
-    , m_previousSurfaceIndex(BINDING_INDEX_INVALID) { }
+    , m_surfaceIndex(SURFACE_INDEX_INVALID)
+    , m_previousSurfaceIndex(SURFACE_INDEX_INVALID) { }
 
   // Makes a copy of an instance
   RtInstance::RtInstance(const RtInstance& src, uint64_t id, uint32_t instanceVectorId)
@@ -1881,7 +1881,7 @@ namespace dxvk {
 
   void InstanceManager::resetSurfaceIndices() {
     for (auto instance : m_instances)
-      instance->m_surfaceIndex = BINDING_INDEX_INVALID;
+      instance->m_surfaceIndex = SURFACE_INDEX_INVALID;
   }
 
   inline bool isFpSpecial(float x) {

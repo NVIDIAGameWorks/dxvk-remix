@@ -23,7 +23,7 @@
 
 // Ray Portal Surface Material Functions
 
-RayPortalSurfaceMaterial rayPortalSurfaceMaterialCreate(uint16_t surfaceMaterialIndex, MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial)
+RayPortalSurfaceMaterial rayPortalSurfaceMaterialCreate(uint surfaceMaterialIndex, MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial)
 {
   return reinterpret<RayPortalSurfaceMaterial>(memoryPolymorphicSurfaceMaterial);
 }

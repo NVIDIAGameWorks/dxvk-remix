@@ -128,11 +128,11 @@ bool isThinOpaqueSubsurfaceMaterial(OpaqueSurfaceMaterialInteraction opaqueSurfa
 }
 
 SubsurfaceMaterialInteraction subSurfaceMaterialReadHelper(
-  uint16_t subsurfaceMaterialIndex,
+  uint subsurfaceMaterialIndex,
   SurfaceInteraction surfaceInteraction,
   uint16_t samplerIndex)
 {
-  if ((!cb.sssArgs.enableThinOpaque && !cb.sssArgs.enableDiffusionProfile) || subsurfaceMaterialIndex == BINDING_INDEX_INVALID)
+  if ((!cb.sssArgs.enableThinOpaque && !cb.sssArgs.enableDiffusionProfile) || subsurfaceMaterialIndex == SURFACE_INDEX_INVALID)
   {
     SubsurfaceMaterialInteraction subsurfaceMaterialInteraction;
     subsurfaceMaterialInteraction.measurementDistance = 0.0h;

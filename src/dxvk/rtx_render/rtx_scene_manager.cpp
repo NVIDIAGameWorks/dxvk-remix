@@ -517,7 +517,7 @@ namespace dxvk {
     }
     
     m_activePOMCount = 0;
-    m_startInMediumMaterialIndex = BINDING_INDEX_INVALID;
+    m_startInMediumMaterialIndex = SURFACE_INDEX_INVALID;
     m_startInMediumMaterialIndex_inCache = UINT32_MAX;
 
     if (m_uniqueObjectSearchDistance != RtxOptions::uniqueObjectDistance()) {
@@ -1152,7 +1152,7 @@ namespace dxvk {
       uint32_t roughnessTextureIndex = kSurfaceMaterialInvalidTextureIndex;
       uint32_t metallicTextureIndex = kSurfaceMaterialInvalidTextureIndex;
       uint32_t emissiveColorTextureIndex = kSurfaceMaterialInvalidTextureIndex;
-      uint32_t subsurfaceMaterialIndex = kSurfaceMaterialInvalidTextureIndex;
+      uint32_t subsurfaceMaterialIndex = SURFACE_INDEX_INVALID;
       uint32_t subsurfaceTransmittanceTextureIndex = kSurfaceMaterialInvalidTextureIndex;
       uint32_t subsurfaceThicknessTextureIndex = kSurfaceMaterialInvalidTextureIndex;
       uint32_t subsurfaceSingleScatteringAlbedoTextureIndex = kSurfaceMaterialInvalidTextureIndex;
@@ -1600,39 +1600,47 @@ namespace dxvk {
     m_accelManager.prepareSceneData(ctx, execBarriers, m_instanceManager);
     m_lightManager.prepareSceneData(ctx, m_cameraManager);
 
-    // Build the TLAS
-    m_accelManager.buildTlas(ctx);
-
-    // Todo: These updates require a lot of temporary buffer allocations and memcopies, ideally we should memcpy directly into a mapped pointer provided by Vulkan,
-    // but we have to create a buffer to pass to DXVK's updateBuffer for now.
+    // Upload surface material buffer BEFORE the GPU culling dispatch so the
+    // compute shader can copy template material entries to per-instance slots.
+    // For PointInstancer duplicate entries we skip writeGPUData and advance past
+    // the gap — the GPU shader will fill those slots.
     {
-      // Allocate the instance buffer and copy its contents from host to device memory
-      DxvkBufferCreateInfo info;
-      info.usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
-      info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
-      info.access = VK_ACCESS_TRANSFER_WRITE_BIT;
+      DxvkBufferCreateInfo matInfo;
+      matInfo.usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+                    | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
+                    | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+      matInfo.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR
+                     | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+      matInfo.access = VK_ACCESS_TRANSFER_WRITE_BIT;
 
-      // Surface Material buffer
       if (m_surfaceMaterialCache.getTotalCount() > 0) {
         ScopedGpuProfileZone(ctx, "updateSurfaceMaterials");
-        // Note: We duplicate the materials in the buffer so we don't have to do pointer chasing on the GPU (i.e. rather than BLAS->Surface->Material, do, BLAS->Surface, BLAS->Material)
+        // Note: We duplicate the materials in the buffer so we don't have to do pointer chasing on the GPU
         size_t surfaceMaterialsGPUSize = m_accelManager.getSurfaceCount() * kSurfaceMaterialGPUSize;
         if (m_startInMediumMaterialIndex_inCache != UINT32_MAX) {
           surfaceMaterialsGPUSize += kSurfaceMaterialGPUSize;
         }
 
-        info.size = align(surfaceMaterialsGPUSize, kBufferAlignment);
-        info.usage |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-        if (m_surfaceMaterialBuffer == nullptr || info.size > m_surfaceMaterialBuffer->info().size) {
-          m_surfaceMaterialBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "Surface Material Buffer");
+        matInfo.size = align(surfaceMaterialsGPUSize, kBufferAlignment);
+        if (m_surfaceMaterialBuffer == nullptr || matInfo.size > m_surfaceMaterialBuffer->info().size) {
+          m_surfaceMaterialBuffer = m_device->createBuffer(matInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "Surface Material Buffer");
         }
 
         std::size_t dataOffset = 0;
-        uint16_t surfaceIndex = 0;
+        uint32_t surfaceIndex = 0;
         std::vector<unsigned char> surfaceMaterialsGPUData(surfaceMaterialsGPUSize);
         for (auto&& pInstance : m_accelManager.getOrderedInstances()) {
-          auto&& surfaceMaterial = m_surfaceMaterialCache.getObjectTable()[pInstance->surface.surfaceMaterialIndex];
-          surfaceMaterial.writeGPUData(surfaceMaterialsGPUData.data(), dataOffset, surfaceIndex);
+          // For PointInstancer duplicates (entries beyond the template), skip
+          // writeGPUData — the GPU culling shader copies the template material.
+          const auto& surf = pInstance->surface;
+          if (surf.instancesToObject != nullptr &&
+              surf.surfaceIndexOfFirstInstance != SIZE_MAX &&
+              surfaceIndex > surf.surfaceIndexOfFirstInstance) {
+            dataOffset += kSurfaceMaterialGPUSize;
+          } else {
+            auto&& surfaceMaterial = m_surfaceMaterialCache.getObjectTable()[surf.surfaceMaterialIndex];
+            surfaceMaterial.writeGPUData(surfaceMaterialsGPUData.data(), dataOffset, surfaceIndex);
+          }
           surfaceIndex++;
         }
 
@@ -1648,6 +1656,25 @@ namespace dxvk {
 
         ctx->writeToBuffer(m_surfaceMaterialBuffer, 0, surfaceMaterialsGPUData.size(), surfaceMaterialsGPUData.data());
       }
+    }
+
+    // GPU-driven PointInstancer culling: overwrites visible instance placeholders
+    // in m_vkInstanceBuffer with proper transforms and masks, copies per-instance
+    // surface and material data from templates. Must run after prepareSceneData
+    // (which uploads placeholders) and before buildTlas.
+    m_accelManager.dispatchPointInstancerCulling(ctx, m_cameraManager, m_surfaceMaterialBuffer);
+
+    // Build the TLAS
+    m_accelManager.buildTlas(ctx);
+
+    // Todo: These updates require a lot of temporary buffer allocations and memcopies, ideally we should memcpy directly into a mapped pointer provided by Vulkan,
+    // but we have to create a buffer to pass to DXVK's updateBuffer for now.
+    {
+      // Allocate the instance buffer and copy its contents from host to device memory
+      DxvkBufferCreateInfo info;
+      info.usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
+      info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
+      info.access = VK_ACCESS_TRANSFER_WRITE_BIT;
 
       // Surface Material Extension Buffer
       if (m_surfaceMaterialExtensionCache.getTotalCount() > 0) {
@@ -1663,7 +1690,7 @@ namespace dxvk {
         std::size_t dataOffset = 0;
         std::vector<unsigned char> surfaceMaterialExtensionsGPUData(surfaceMaterialExtensionsGPUSize);
 
-        uint16_t surfaceIndex = 0;
+        uint32_t surfaceIndex = 0;
         for (auto&& surfaceMaterialExtension : m_surfaceMaterialExtensionCache.getObjectTable()) {
           surfaceMaterialExtension.writeGPUData(surfaceMaterialExtensionsGPUData.data(), dataOffset, surfaceIndex);
           surfaceIndex++;

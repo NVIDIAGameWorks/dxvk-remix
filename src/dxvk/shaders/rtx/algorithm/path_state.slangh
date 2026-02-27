@@ -63,12 +63,12 @@ struct PathState : IBasePayloadState
   f16vec3 throughput;
   float16_t firstBounceHitDistance; // Note: The total hit distance of the resolve for the first bounce.
   uint16_t neeCacheCellOffset;
-  uint16_t mediumMaterialIndex;
+  float16_t solidAnglePdf; // unused (1b - sign bit)
   float16_t coneSpreadAngle; // unused (1b - sign bit)
   float16_t _coneRadius; // unused (1b - sign bit)
   
+  uint mediumMaterialIndex;
   f16vec3 _direction;
-  float16_t solidAnglePdf; // unused (1b - sign bit)
   uint8_t _flags; // continueResolving(bool:1b) 
                   // continuePath(bool:1b) 
                   // insideMedium(bool:1b) 
@@ -520,7 +520,7 @@ struct DirectPathTextures
   __init() {}
 
   RWTexture2D<uint16_t> SharedFlags;
-  RWTexture2D<uint16_t> SharedMediumMaterialIndex;
+  RWTexture2D<uint> SharedMediumMaterialIndex;
   RWTexture2D<float4> PrimaryDirectDiffuseLobeRadianceHitDistance;
   RWTexture2D<float4> PrimaryDirectSpecularLobeRadianceHitDistance;
   RWTexture2D<float4> SecondaryCombinedDiffuseLobeRadianceHitDistance;

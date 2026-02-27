@@ -294,10 +294,10 @@ RAB_Surface RAB_GetGBufferSurface(ivec2 pixel, bool previousFrame)
     surface.opaqueSurfaceMaterialInteraction.isotropicRoughness,
     surface.opaqueSurfaceMaterialInteraction.anisotropicRoughness);
 
-  const uint16_t primarySurfaceIndex = uint16_t(SharedSurfaceIndex[pixel]);
+  const uint primarySurfaceIndex = uint(SharedSurfaceIndex[pixel]);
   uint16_t samplerIndex = 0;
 
-  const uint16_t subsurfaceMaterialIndex = getSubsurfaceMaterialIndex(surfaceMaterials[primarySurfaceIndex], samplerIndex);
+  const uint subsurfaceMaterialIndex = getSubsurfaceMaterialIndex(surfaceMaterials[primarySurfaceIndex], samplerIndex);
   surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction = subSurfaceMaterialReadHelper(SharedSubsurfaceData[pixel], SharedSubsurfaceDiffusionProfileData[pixel]);
 
   GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixel, SharedFlags);

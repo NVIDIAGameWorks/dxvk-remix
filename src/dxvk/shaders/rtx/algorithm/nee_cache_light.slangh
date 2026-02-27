@@ -341,7 +341,7 @@ struct NEECacheUtils
     int surfaceIndex = data.x;
     int primitiveIndex = data.y;
     float triangleLight = 0;
-    if (surfaceIndex >= 0 && surfaceIndex != BINDING_INDEX_INVALID && primitiveIndex >= 0)
+    if (surfaceIndex >= 0 && surfaceIndex != SURFACE_INDEX_INVALID && primitiveIndex >= 0)
     {
       vec3 triangleCenter;
       vec3 lightFlux;

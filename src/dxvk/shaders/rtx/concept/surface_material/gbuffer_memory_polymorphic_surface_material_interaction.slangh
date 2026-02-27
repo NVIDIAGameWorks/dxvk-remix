@@ -105,11 +105,10 @@ GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfa
   const uint8_t encodedDiffuseOpacity = f16ToUnorm8(translucentSurfaceMaterialInteraction.diffuseOpacity);
 
   gBufferMemoryPolymorphicSurfaceMaterialInteraction.data0 =
-    // bits 0-15: Material index
-    (uint32_t(translucentSurfaceMaterialInteraction.sourceSurfaceMaterialIndex) << 0) |
-    // bits 16-23: Material index
-    (uint32_t(encodedDiffuseOpacity) << 16) |
-    // Note: 5 bits free here reserved for future use or precision improvements.
+    // bits 0-20: Source surface material index (SURFACE_INDEX_BIT_COUNT bits)
+    (uint32_t(translucentSurfaceMaterialInteraction.sourceSurfaceMaterialIndex) & SURFACE_INDEX_MAX_VALUE) |
+    // bits 21-28: Diffuse opacity (8 bits)
+    (uint32_t(encodedDiffuseOpacity) << SURFACE_INDEX_BIT_COUNT) |
     // bit 29: Use diffuse layer flag
     (useDiffuseLayer ? 0 : (1 << 29)) |
     // bits 31-30: material type

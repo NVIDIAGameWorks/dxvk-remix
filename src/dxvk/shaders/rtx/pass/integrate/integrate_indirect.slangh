@@ -114,7 +114,7 @@ void integrate_indirect_pass(ivec2 threadIndex)
 
   // Read the medium material index
 
-  const uint16_t mediumMaterialIndex = SharedMediumMaterialIndex[gbufferPixelCoordinate];
+  const uint mediumMaterialIndex = SharedMediumMaterialIndex[gbufferPixelCoordinate];
 
   // Load state data carried over from the direct integration pass
 

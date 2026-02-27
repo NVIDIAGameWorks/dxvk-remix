@@ -157,7 +157,7 @@ void geometryResolverOutputSurface(
   Surface surface, SurfaceInteraction surfaceInteraction,
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   vec3 radiance, f16vec3 attenuation, f16vec4 accumulatedRotation,
-  uint16_t mediumMaterialIndex, float virtualHitDistance, bool directionAltered,
+  uint mediumMaterialIndex, float virtualHitDistance, bool directionAltered,
   bool useAlternateDisocclusionThreshold, bool isViewModel)
 {
   // Output Attenuation (Primary/secondary surface coherent)
@@ -464,13 +464,19 @@ void geometryResolverVertexOutputDebugView(
     break;
   case DEBUG_VIEW_CUSTOM_INDEX:
 
-    if (rayInteraction.customIndex & CUSTOM_INDEX_IS_VIEW_MODEL)
+    if (rayInteraction.isViewModel)
       storeInDebugView(pixelCoordinate, vec3(0.f, 0.f, 1.f));
-    else 
+    else
+    {
+      // Reconstruct approximate custom-index visualization from packed surface + flags.
+      // Lower 24 bits of _surfaceAndFlags mirror the customInstanceIndex bit layout
+      // (surfaceIndex includes geometryIndex, so values differ slightly from raw InstanceID).
+      uint ci = rayInteraction._surfaceAndFlags & 0xFFFFFFu;
       storeInDebugView(pixelCoordinate, vec3(
-        float(rayInteraction.customIndex & 0x3FF) / 1024.f,
-        float((rayInteraction.customIndex >> 10) & 0x3FF) / 1024.f,
-        float((rayInteraction.customIndex >> 20) & 0xFFF) / 4096.f));
+        float(ci & 0x3FF) / 1024.f,
+        float((ci >> 10) & 0x3FF) / 1024.f,
+        float((ci >> 20) & 0xFFF) / 4096.f));
+    }
 
     break;
   case DEBUG_VIEW_BARYCENTRICS:
@@ -1456,7 +1462,7 @@ void geometryResolverVertex(
     isRaytracedRenderTarget,
     false, true);
   
-  if (cb.startInMediumMaterialIndex != BINDING_INDEX_INVALID)
+  if (cb.startInMediumMaterialIndex != SURFACE_INDEX_INVALID)
   {
     const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[cb.startInMediumMaterialIndex];
     const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
@@ -1675,7 +1681,7 @@ void geometryResolverVertex(
 
   const bool enteredMedium = !oldInsideMedium && geometryResolverState.insideMedium;
   const bool exitedMedium = oldInsideMedium && !geometryResolverState.insideMedium;
-  uint16_t transmissionMediumMaterialIndex = cb.startInMediumMaterialIndex;
+  uint transmissionMediumMaterialIndex = cb.startInMediumMaterialIndex;
 
   if (enteredMedium)
   {
@@ -1688,10 +1694,10 @@ void geometryResolverVertex(
   }
   else if (exitedMedium)
   {
-    transmissionMediumMaterialIndex = BINDING_INDEX_INVALID;
+    transmissionMediumMaterialIndex = SURFACE_INDEX_INVALID;
   }
 
-  if (rayInteraction.customIndex & CUSTOM_INDEX_IS_VIEW_MODEL)
+  if (rayInteraction.isViewModel)
   {
     geometryResolverState.isViewModelSurface = true;
   }
@@ -1722,7 +1728,7 @@ void geometryResolverVertex(
       geometryResolverState.performPSTR = true;
       Ray newRay = rayCreateRenderTarget(cb.renderTargetCamera, surfaceInteraction.textureCoordinates, ray);
 
-      const GbufferPSRData psrData = packPSRData(newRay, BINDING_INDEX_INVALID,
+      const GbufferPSRData psrData = packPSRData(newRay, SURFACE_INDEX_INVALID,
         geometryResolverState.attenuation,
         getIdentityQuaternion(), // TODO[REMIX-3500] this will lead to incorrect motion vectors. It needs to be a full perspective matrix, which won't fit into PSR
         packedGeometryFlags);
@@ -1737,7 +1743,7 @@ void geometryResolverVertex(
       geometryResolverState.performPSRR = true;
       Ray newRay = rayCreateDirection(
         rayInteraction, surfaceInteraction, ray, ray.direction, true);
-      const GbufferPSRData psrData = packPSRData(newRay, BINDING_INDEX_INVALID,
+      const GbufferPSRData psrData = packPSRData(newRay, SURFACE_INDEX_INVALID,
         geometryResolverState.attenuation,
         geometryResolverState.accumulatedRotation,
         packedGeometryFlags);
@@ -1771,7 +1777,7 @@ void geometryResolverVertex(
 
       f16vec4 vectorTransform = quaternionMultiply(geometryResolverState.accumulatedRotation, surfaceMaterialInteractionReflectionPSRSample.vectorTransform, true);
       
-      const GbufferPSRData psrData = packPSRData(sampledRay, BINDING_INDEX_INVALID,
+      const GbufferPSRData psrData = packPSRData(sampledRay, SURFACE_INDEX_INVALID,
         geometryResolverState.attenuation * surfaceMaterialInteractionReflectionPSRSample.attenuation,
         vectorTransform,
         packedGeometryFlags);
@@ -2098,7 +2104,7 @@ void geometryPSRResolverVertex(
   // more expensive in some cases than doing it after resolving is finished, but saves payload space.
   // Additionally this allows for proper handling of infinite attenuation when a miss happens.
 
-  if (geometryPSRResolverState.mediumMaterialIndex != BINDING_INDEX_INVALID)
+  if (geometryPSRResolverState.mediumMaterialIndex != SURFACE_INDEX_INVALID)
   {
     const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[geometryPSRResolverState.mediumMaterialIndex];
     const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
@@ -2266,7 +2272,7 @@ void geometryPSRResolverVertex(
   }
   else if (exitedMedium)
   {
-    geometryPSRResolverState.mediumMaterialIndex = BINDING_INDEX_INVALID;
+    geometryPSRResolverState.mediumMaterialIndex = SURFACE_INDEX_INVALID;
   }
 
   // Handle PSR continuation or output a surface otherwise
@@ -2350,7 +2356,7 @@ void geometryPSRResolverVertex(
     SharedRadianceB[geometryPSRResolverState.pixelCoordinate] = geometryPSRResolverState.radiance.b;
   }
 
-  if (rayInteraction.customIndex & CUSTOM_INDEX_IS_VIEW_MODEL)
+  if (rayInteraction.isViewModel)
   {
     geometryPSRResolverState.isViewModelSurface = true;
   }
@@ -2437,7 +2443,7 @@ void preprocessPrimaryRayState(inout Ray originalCameraRay, inout GeometryResolv
     rayMask |= OBJECT_MASK_PLAYER_MODEL;
   }
 
-  if (cb.startInMediumMaterialIndex != BINDING_INDEX_INVALID) {
+  if (cb.startInMediumMaterialIndex != SURFACE_INDEX_INVALID) {
     geometryResolverState.insideMedium = true;
   }
 

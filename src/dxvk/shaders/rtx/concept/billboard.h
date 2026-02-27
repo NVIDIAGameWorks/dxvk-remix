@@ -28,8 +28,9 @@ static const uint billboardFlagIsCameraFacing = 0x02;
 struct MemoryBillboard
 {
   vec3 center;
-  uint16_t surfaceIndex;
-  uint16_t materialType;
+  // Packed: bits 0-20 = surfaceIndex (SURFACE_INDEX_BIT_COUNT), bits 21-22 = materialType (2 bits).
+  // Same encoding as the lower 23 bits of instanceCustomIndex.
+  uint surfaceIndexAndMaterialType;
 
   vec3 xAxis;
   float inverseHalfWidth;

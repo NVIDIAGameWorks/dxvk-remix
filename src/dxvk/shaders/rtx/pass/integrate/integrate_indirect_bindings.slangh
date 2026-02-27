@@ -37,14 +37,14 @@ SamplerCube<float3> SkyProbe;
 layout(r16ui, binding = INTEGRATE_INDIRECT_BINDING_SHARED_FLAGS_INPUT)
 Texture2D<uint16_t> SharedFlags;
 
-layout(r16ui, binding = INTEGRATE_INDIRECT_BINDING_SHARED_MEDIUM_MATERIAL_INDEX_INPUT)
-Texture2D<uint16_t> SharedMediumMaterialIndex;
+layout(r32ui, binding = INTEGRATE_INDIRECT_BINDING_SHARED_MEDIUM_MATERIAL_INDEX_INPUT)
+Texture2D<uint> SharedMediumMaterialIndex;
 
 layout(rg32f, binding = INTEGRATE_INDIRECT_BINDING_SHARED_TEXTURE_COORD_INPUT)
 Texture2D<float2> SharedTextureCoord;
 
-layout(r16ui, binding = INTEGRATE_INDIRECT_BINDING_SHARED_SURFACE_INDEX_INPUT)
-Texture2D<uint16_t> SharedSurfaceIndex;
+layout(r32ui, binding = INTEGRATE_INDIRECT_BINDING_SHARED_SURFACE_INDEX_INPUT)
+Texture2D<uint> SharedSurfaceIndex;
 
 layout(rg16ui, binding = INTEGRATE_INDIRECT_BINDING_SHARED_SUBSURFACE_DATA_INPUT)
 Texture2D<uint2> SharedSubsurfaceData;
