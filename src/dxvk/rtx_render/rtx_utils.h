@@ -62,7 +62,10 @@ void writeGPUHelperExplicit(unsigned char* data, std::size_t& offset, const T& v
   static_assert(Bytes <= sizeof(T), "Explicit size must be less than or equal to the size of the original value");
 
   // Note: Ensure the value can fit in the requested explicit size
-  assert(value < (static_cast<T>(1) << (Bytes * 8)));
+  // When Bytes == sizeof(T) all values of T fit, so no range check is needed (and the shift would be UB).
+  if constexpr (Bytes < sizeof(T)) {
+    assert(value < (static_cast<T>(1) << (Bytes * 8)));
+  }
 
   std::memcpy(data + offset, &value, Bytes);
 

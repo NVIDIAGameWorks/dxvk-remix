@@ -53,7 +53,7 @@ PathState pathStateCreateEmpty(GeometryFlags geometryFlags)
   pathState.radiance = vec3(0.0f, 0.0f, 0.0f);
   pathState.throughput = f16vec3(1.h);
   pathState.firstBounceHitDistance = kEmptyPixelHitDistance;
-  pathState.mediumMaterialIndex = BINDING_INDEX_INVALID;
+  pathState.mediumMaterialIndex = SURFACE_INDEX_INVALID;
   
   pathState.continueResolving = true;
   pathState.continuePath = true;
@@ -408,7 +408,7 @@ void integratePathVertex(
   // more expensive in some cases than doing it after resolving is finished, but saves payload space.
   // Additionally this allows for proper handling of infinite attenuation when a miss happens.
 
-  if (pathState.mediumMaterialIndex != BINDING_INDEX_INVALID)
+  if (pathState.mediumMaterialIndex != SURFACE_INDEX_INVALID)
   {
     const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[pathState.mediumMaterialIndex];
     const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
@@ -440,7 +440,7 @@ void integratePathVertex(
     pathState.origin = newRay.origin;
     pathState.direction = newRay.direction;
     pathState.insideMedium = false;
-    pathState.mediumMaterialIndex = BINDING_INDEX_INVALID;
+    pathState.mediumMaterialIndex = SURFACE_INDEX_INVALID;
     pathState.continuePath = true;
     
     if (cb.debugView == DEBUG_VIEW_RAYTRACED_RENDER_TARGET_INDIRECT
@@ -1203,7 +1203,7 @@ void integrateIndirectPath(
   u16vec2 gbufferPixelCoordinate,
   uint indirectSbtOffset,
   IndirectPathTextures indirectPathTextures,
-  GeometryFlags geometryFlags, uint16_t mediumMaterialIndex, vec3 rayOrigin, f16vec3 rayDirection,
+  GeometryFlags geometryFlags, uint mediumMaterialIndex, vec3 rayOrigin, f16vec3 rayDirection,
   f16vec3 throughput, float16_t rayConeRadius, float16_t firstHitPerceptualRoughness,
   float16_t firstSampledLobePdf, float16_t firstSampledSolidAnglePdf,
   float16_t gbufferSurfaceHitDistance, bool isNrcUpdate)
@@ -1259,11 +1259,11 @@ void integrateIndirectPath(
     // Set initial POM material and texcoords from textures.
     if (pathState.continuePath && cb.pomEnableIndirectLighting && geometryFlags.pomOpaqueSurfaceEncountered)
     {
-      uint16_t primarySurfaceIndex = uint16_t(SharedSurfaceIndex[gbufferPixelCoordinate]);
+      uint primarySurfaceIndex = uint(SharedSurfaceIndex[gbufferPixelCoordinate]);
       
       if (cb.debugView == DEBUG_VIEW_HEIGHT_MAP && TRUE_OR_CHECK_WHEN_NRC_ENABLED(pathState.isNrcQuery))
       {
-        if (primarySurfaceIndex != BINDING_INDEX_INVALID)
+        if (primarySurfaceIndex != SURFACE_INDEX_INVALID)
         {
           const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
           if (memoryPolymorphicSurfaceMaterial.isOpaque())
@@ -1286,7 +1286,7 @@ void integrateIndirectPath(
         }
       }
 
-      if (primarySurfaceIndex != BINDING_INDEX_INVALID)
+      if (primarySurfaceIndex != SURFACE_INDEX_INVALID)
       {
         const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
         if (memoryPolymorphicSurfaceMaterial.hasValidDisplacement())

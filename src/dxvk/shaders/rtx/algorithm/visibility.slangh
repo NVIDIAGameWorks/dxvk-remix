@@ -54,7 +54,7 @@ f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo ra
     // Map the surface index from the previous frame to the current frame
     rayInteraction.surfaceIndex = surfaceMapping[rayInteraction.surfaceIndex];
 
-    if (rayInteraction.surfaceIndex == BINDING_INDEX_INVALID)
+    if (rayInteraction.surfaceIndex == SURFACE_INDEX_INVALID)
     {
       // Surface no longer exists - assume it was transparent, which is safer than
       // assuming an opaque surface, because that would introduce more bias in ReSTIR
@@ -425,7 +425,7 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
   // ViewModel instances shouldn't occlude anything but ViewModel surfaces and primary rays
   bool hasRayOriginatedFromViewModel = false,
   bool usePreviousTLAS = false,
-  uint16_t primarySurfaceIndex = BINDING_INDEX_INVALID, float2 texCoords = f16vec2(0.0h),
+  uint primarySurfaceIndex = SURFACE_INDEX_INVALID, float2 texCoords = f16vec2(0.0h),
   bool isThinOpaqueSubsurface = false,
   f16vec3 shadingNormal = f16vec3(0.0h), bool clearOpaqueHitAttenuation = true)
 {
@@ -456,7 +456,7 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
   {
     if (cb.debugView == DEBUG_VIEW_HEIGHT_MAP)
     {
-      if (primarySurfaceIndex != BINDING_INDEX_INVALID)
+      if (primarySurfaceIndex != SURFACE_INDEX_INVALID)
       {
         const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
         if (memoryPolymorphicSurfaceMaterial.isOpaque())
@@ -483,7 +483,7 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
       }
     }
 
-    if (primarySurfaceIndex != BINDING_INDEX_INVALID)
+    if (primarySurfaceIndex != SURFACE_INDEX_INVALID)
     {
       const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
       if (memoryPolymorphicSurfaceMaterial.hasValidDisplacement())

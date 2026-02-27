@@ -42,7 +42,7 @@ Texture2D<uint> SharedMaterialData1;
 Texture2D<float2> SharedTextureCoord;
 
 [[vk::binding(INTEGRATE_DIRECT_BINDING_SHARED_SURFACE_INDEX_INPUT)]]
-Texture2D<uint16_t> SharedSurfaceIndex;
+Texture2D<uint> SharedSurfaceIndex;
 
 [[vk::binding(INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DATA_INPUT)]]
 Texture2D<uint2> SharedSubsurfaceData;
@@ -56,7 +56,7 @@ Texture2D<uint2> SharedSubsurfaceDiffusionProfileData;
 RWTexture2D<uint16_t> SharedFlags;
 
 [[vk::binding(INTEGRATE_DIRECT_BINDING_SHARED_MEDIUM_MATERIAL_INDEX_INPUT_OUTPUT)]]
-RWTexture2D<uint16_t> SharedMediumMaterialIndex;
+RWTexture2D<uint> SharedMediumMaterialIndex;
 
 // Primary Inputs
 

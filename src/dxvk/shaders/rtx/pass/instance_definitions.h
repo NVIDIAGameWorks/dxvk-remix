@@ -136,8 +136,22 @@
 /****************************** ~Instance Mask - Unordered TLAS **********************************************/
 
 
-// Custom Index encoding
-#define CUSTOM_INDEX_IS_VIEW_MODEL     (1 << 23)
-#define CUSTOM_INDEX_MATERIAL_TYPE_BIT (21)
-#define CUSTOM_INDEX_SURFACE_MASK      ((1 << CUSTOM_INDEX_MATERIAL_TYPE_BIT) - 1)
+// Engine-wide index limits.
+// SurfaceIndex: 21 bits (fits in the 24-bit instanceCustomIndex alongside 2-bit material type + 1-bit view-model flag).
+// PrimitiveIndex: 26 bits (max ~67M triangles per scene).
+#define SURFACE_INDEX_BIT_COUNT       21
+#define SURFACE_INDEX_MAX_VALUE       ((1 << SURFACE_INDEX_BIT_COUNT) - 1)
+#define PRIMITIVE_INDEX_BIT_COUNT     26
+#define PRIMITIVE_INDEX_MAX_VALUE     ((1 << PRIMITIVE_INDEX_BIT_COUNT) - 1)
 
+// Custom Index encoding (24-bit VkAccelerationStructureInstanceKHR.instanceCustomIndex)
+//   Bits  0..20 : surface index  (CUSTOM_INDEX_SURFACE_MASK)
+//   Bits 21..22 : material type  (CUSTOM_INDEX_MATERIAL_TYPE_MASK)
+//   Bit  23     : is view model  (CUSTOM_INDEX_IS_VIEW_MODEL)
+#define CUSTOM_INDEX_SURFACE_MASK      SURFACE_INDEX_MAX_VALUE
+#define CUSTOM_INDEX_MATERIAL_TYPE_BIT  SURFACE_INDEX_BIT_COUNT
+#define CUSTOM_INDEX_MATERIAL_TYPE_MASK (0x3u << CUSTOM_INDEX_MATERIAL_TYPE_BIT)
+#define CUSTOM_INDEX_IS_VIEW_MODEL     (1u << 23)
+#define CUSTOM_INDEX_FRONT_HIT         (1u << 24)
+
+#include "common_binding_indices.h"

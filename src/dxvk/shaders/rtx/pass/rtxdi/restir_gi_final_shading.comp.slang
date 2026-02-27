@@ -179,8 +179,8 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
       // The value is based on experiment. If incorrect shadows are observed, a smaller value should be used.
       float16_t coneSpreadAngle = 0.025;
       vec3 samplePosition = spatialReservoir.getVisibilityPoint(minimalSurfaceInteraction.position);
-      uint16_t primarySurfaceIndex = cb.pomEnableReSTIRGI && polymorphicSurfaceMaterialInteractionHasHeightTexture(polymorphicSurfaceMaterialInteraction) ?
-        uint16_t(SharedSurfaceIndex[threadIndex]) : BINDING_INDEX_INVALID;
+      uint primarySurfaceIndex = cb.pomEnableReSTIRGI && polymorphicSurfaceMaterialInteractionHasHeightTexture(polymorphicSurfaceMaterialInteraction) ?
+        uint(SharedSurfaceIndex[threadIndex]) : SURFACE_INDEX_INVALID;
 
       // Enable visibility validation when spatial reservoir is not inside portal, and from an opaque hit point.
       // If the actual hit distance is beyond sampleDistance * validSampleMaxRange, the sample should be invalidated because the surface is no longer there.

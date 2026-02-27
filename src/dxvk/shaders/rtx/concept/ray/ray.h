@@ -22,6 +22,8 @@
 #ifndef RAY_H
 #define RAY_H
 
+#include "rtx/pass/instance_definitions.h"
+
 // Disable Slang warning about deprecation of inheritance in favor of composition
 // struct Base { int a; };
 // struct Inherited : public Base { int b; }; <- no more this
@@ -85,10 +87,40 @@ struct RayInteraction : MinimalRayInteraction
   float hitDistance = 0.f;
   uint barycentricCoordinates = 0u;
   uint primitiveIndex = 0u;
-  uint customIndex = 0u;
-  uint16_t surfaceIndex = 0u;
-  uint8_t materialType = 0u;
-  uint8_t frontHit = 0u; // Todo: Pack this into some other value to not take up extra space
+
+  // Packed surface index + flags (saves 8 bytes vs. separate fields).
+  // Bit layout mirrors the customInstanceIndex encoding with an extra frontHit bit:
+  //   Bits  0..20 : surfaceIndex  (CUSTOM_INDEX_SURFACE_MASK)
+  //   Bits 21..22 : materialType  (CUSTOM_INDEX_MATERIAL_TYPE_MASK)
+  //   Bit  23     : isViewModel   (CUSTOM_INDEX_IS_VIEW_MODEL)
+  //   Bit  24     : frontHit      (CUSTOM_INDEX_FRONT_HIT)
+  //   Bits 25..31 : reserved
+  // Default: all flags = 0.
+  uint _surfaceAndFlags = SURFACE_INDEX_INVALID;
+   
+  property uint surfaceIndex
+  {
+    get { return _surfaceAndFlags & CUSTOM_INDEX_SURFACE_MASK; }
+    set { _surfaceAndFlags = (_surfaceAndFlags & ~CUSTOM_INDEX_SURFACE_MASK) | (newValue & CUSTOM_INDEX_SURFACE_MASK); }
+  }
+
+  property uint8_t materialType
+  {
+    get { return uint8_t((_surfaceAndFlags & CUSTOM_INDEX_MATERIAL_TYPE_MASK) >> CUSTOM_INDEX_MATERIAL_TYPE_BIT); }
+    set { _surfaceAndFlags = (_surfaceAndFlags & ~CUSTOM_INDEX_MATERIAL_TYPE_MASK) | ((uint(newValue) << CUSTOM_INDEX_MATERIAL_TYPE_BIT) & CUSTOM_INDEX_MATERIAL_TYPE_MASK); }
+  }
+
+  property bool isViewModel
+  {
+    get { return packedFlagGet(_surfaceAndFlags, CUSTOM_INDEX_IS_VIEW_MODEL); }
+    set { _surfaceAndFlags = packedFlagAssign(_surfaceAndFlags, CUSTOM_INDEX_IS_VIEW_MODEL, newValue); }
+  }
+
+  property bool frontHit
+  {
+    get { return packedFlagGet(_surfaceAndFlags, CUSTOM_INDEX_FRONT_HIT); }
+    set { _surfaceAndFlags = packedFlagAssign(_surfaceAndFlags, CUSTOM_INDEX_FRONT_HIT, newValue); }
+  }
 };
 
 struct GBufferMemoryMinimalRayInteraction

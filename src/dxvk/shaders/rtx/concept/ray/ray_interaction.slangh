@@ -51,9 +51,9 @@ RayInteraction rayInteractionCreate(Ray ray, RayHitInfo rayHitInfo)
   rayInteraction.hitDistance = rayHitInfo.hitDistance;
   rayInteraction.barycentricCoordinates = rayHitInfo.barycentricCoordinates;
   rayInteraction.primitiveIndex = rayHitInfo.primitiveIndex;
-  rayInteraction.customIndex = rayHitInfo.customIndex;
   rayInteraction.surfaceIndex = calculateSurfaceIndex(rayHitInfo);
   rayInteraction.materialType = calculateMaterialType(rayHitInfo);
+  rayInteraction.isViewModel = (rayHitInfo.customIndex & CUSTOM_INDEX_IS_VIEW_MODEL) != 0;
   rayInteraction.frontHit = rayHitInfo.frontHit;
 
   return rayInteraction;

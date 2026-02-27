@@ -69,6 +69,7 @@
 #include "../../d3d9/d3d9_rtx.h"
 #include "dxvk_memory_tracker.h"
 #include "rtx_render/rtx_particle_system.h"
+#include "rtx_render/rtx_point_instancer_system.h"
 #include "rtx_render/rtx_overlay_window.h"
 
 
@@ -3697,6 +3698,8 @@ namespace dxvk {
     }
 
     RtxParticleSystemManager::showImguiSettings();
+
+    RtxPointInstancerSystem::showImguiSettings();
 
     if (RemixGui::CollapsingHeader("RTX Volumetrics (Global)", collapsingHeaderClosedFlags)) {
       ImGui::Indent();

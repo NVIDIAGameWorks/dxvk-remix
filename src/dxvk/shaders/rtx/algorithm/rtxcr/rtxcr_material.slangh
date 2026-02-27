@@ -22,7 +22,7 @@ struct SssTracingResult
   MinimalSurfaceInteraction sssMinimalSurfaceInteraction;
   f16vec3 normal;
   vec2 textureCoordinates;
-  uint16_t surfaceIndex;
+  uint surfaceIndex;
   bool hasHit;
   float16_t hitDistance;
 };
@@ -69,7 +69,7 @@ SssTracingResult traceSssRay(
   SssTracingResult sssTracingResult;
   sssTracingResult.hasHit = rayHitInfo.hasHit;
   sssTracingResult.hitDistance = sssTracingResult.hasHit ? rayHitInfo.hitDistance : -1.0h;
-  sssTracingResult.surfaceIndex = sssTracingResult.hasHit ? sssRayInteraction.surfaceIndex : BINDING_INDEX_INVALID;
+  sssTracingResult.surfaceIndex = sssTracingResult.hasHit ? sssRayInteraction.surfaceIndex : SURFACE_INDEX_INVALID;
   sssTracingResult.sssMinimalSurfaceInteraction.position = surfaceInteraction.position;
   sssTracingResult.sssMinimalSurfaceInteraction.positionError = surfaceInteraction.positionError;
   sssTracingResult.sssMinimalSurfaceInteraction.triangleNormal = surfaceInteraction.triangleNormal;
@@ -89,7 +89,7 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
   const uint8_t sampledTransportPortalIndex,
   const GeometryFlags geometryFlags,
   const Ray viewRay,
-  const uint16_t primarySurfaceIndex,
+  const uint primarySurfaceIndex,
   ivec2 pixelCoordinate,
   Texture2D<uint> worldShadingNormal,
   inout RNG randomState) {
@@ -252,7 +252,7 @@ float3 evalSingleScatteringTransmission(
   const uint8_t sampledTransportPortalIndex,
   const GeometryFlags geometryFlags,
   const Ray viewRay,
-  const uint16_t primarySurfaceIndex,
+  const uint primarySurfaceIndex,
   RTXCR_SubsurfaceMaterialData subsurfaceMaterialData,
   RTXCR_SubsurfaceInteraction subsurfaceInteraction,
   const int bsdfSampleCount,

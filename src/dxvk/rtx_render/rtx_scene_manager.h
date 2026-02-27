@@ -320,7 +320,7 @@ private:
 
   FogState m_fog;
   fast_unordered_cache<FogState> m_fogStates;
-  uint32_t m_startInMediumMaterialIndex = BINDING_INDEX_INVALID;
+  uint32_t m_startInMediumMaterialIndex = SURFACE_INDEX_INVALID;
   uint32_t m_startInMediumMaterialIndex_inCache = UINT32_MAX;
 
   // TODO: Move the following resources and getters to RtResources class

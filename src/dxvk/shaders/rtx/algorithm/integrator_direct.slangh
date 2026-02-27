@@ -70,7 +70,7 @@ void evalNEEPrimary(
   //  is disabled, we must also handle that user choice gracefully.
   const bool pomOpaqueSurfaceEncountered = geometryFlags.pomOpaqueSurfaceEncountered && cb.pomEnableDirectLighting;
 
-  const uint16_t primarySurfaceIndex = (pomOpaqueSurfaceEncountered || isDiffusionProfileSss) ? uint16_t(SharedSurfaceIndex[pixelCoordinate]) : BINDING_INDEX_INVALID;
+  const uint primarySurfaceIndex = (pomOpaqueSurfaceEncountered || isDiffusionProfileSss) ? uint(SharedSurfaceIndex[pixelCoordinate]) : SURFACE_INDEX_INVALID;
 
   VisibilityResult occludedVisibility;
   occludedVisibility.hasOpaqueHit = true;
@@ -212,7 +212,7 @@ void sampleIndirectRayForFirstBounce(
   MinimalRayInteraction primaryMinimalRayInteraction, 
   MinimalSurfaceInteraction primaryMinimalSurfaceInteraction,
   PolymorphicSurfaceMaterialInteraction primaryPolymorphicSurfaceMaterialInteraction,
-  inout uint16_t mediumMaterialIndex,
+  inout uint mediumMaterialIndex,
   inout bool insideMedium,
   out bool mediumChanged,
   out Ray sampledRay,
@@ -283,7 +283,7 @@ void sampleAndStoreIndirectRayPathSample(
   PolymorphicSurfaceMaterialInteraction primaryPolymorphicSurfaceMaterialInteraction,
   inout GeometryFlags geometryFlags)
 {
-  uint16_t mediumMaterialIndex = SharedMediumMaterialIndex[pixelCoordinate];
+  uint mediumMaterialIndex = SharedMediumMaterialIndex[pixelCoordinate];
   bool insideMedium = geometryFlags.insideMedium;
 
   bool mediumChanged;

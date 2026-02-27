@@ -52,9 +52,16 @@
 #define COMMON_MAX_BINDING                       BINDING_SAMPLER_READBACK_BUFFER
 #define COMMON_NUM_BINDINGS                      (COMMON_MAX_BINDING + 1)
 
-// Note: Used to represent a non-existent buffer and material index in the Surface,
-// as well as texture index in the Surface Material.
+// Note: Used to represent a non-existent buffer
 #define BINDING_INDEX_INVALID uint16_t(0xFFFF)
+
+// Sentinel for an invalid surface index.  Equals the 21-bit maximum (SURFACE_INDEX_MAX_VALUE
+// from instance_definitions.h) so that it fits inside the packed RayInteraction._surfaceAndFlags
+// field.  The surfaceMapping buffer returns int32_t(-1) for unmapped surfaces; the 21-bit
+// property setter truncates 0xFFFFFFFF to 0x1FFFFF automatically.
+// This reserves the highest representable surface index as "invalid", reducing the usable
+// range by one (max usable index = SURFACE_INDEX_MAX_VALUE - 1 = 2,097,150).
+#define SURFACE_INDEX_INVALID 0x001FFFFFu
 
 #define SAMPLER_FEEDBACK_INVALID           uint16_t(0xFFFF)
 #define SAMPLER_FEEDBACK_MAX_TEXTURE_COUNT uint16_t(0xFFFF)

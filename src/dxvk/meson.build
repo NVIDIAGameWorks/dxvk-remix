@@ -346,6 +346,9 @@ dxvk_src = files([
   'rtx_render/rtx_particle_system.cpp',
   'rtx_render/rtx_particle_system.h',
 
+  'rtx_render/rtx_point_instancer_system.cpp',
+  'rtx_render/rtx_point_instancer_system.h',
+
   'rtx_render/graph/rtx_component_list.h',
   'rtx_render/graph/rtx_component_list.cpp',
   'rtx_render/graph/components/add.cpp',

@@ -972,13 +972,13 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
 
       rayHitInfo.hitDistance = t;
 
-      rayInteraction.surfaceIndex = billboard.surfaceIndex;
+      rayInteraction.surfaceIndex = billboard.surfaceIndexAndMaterialType & CUSTOM_INDEX_SURFACE_MASK;
       rayInteraction.hitDistance = t;
       rayInteraction.barycentricCoordinates = 0;
       rayInteraction.primitiveIndex = 0;
-      rayInteraction.customIndex = 0;
+      rayInteraction.isViewModel = false;
       rayInteraction.frontHit = NdotD < 0;
-      rayInteraction.materialType = billboard.materialType;
+      rayInteraction.materialType = (billboard.surfaceIndexAndMaterialType >> CUSTOM_INDEX_MATERIAL_TYPE_BIT) & surfaceMaterialTypeMask;
 
       // Calculate texture gradient
       float16_t coneRadius = ray.coneRadius + float16_t(ray.spreadAngle * t);

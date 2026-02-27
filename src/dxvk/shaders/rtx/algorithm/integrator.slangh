@@ -182,7 +182,7 @@ Ray sampleDirection(
 bool evalMediumChange(
   bool oldInsideMedium, bool insideMedium,
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
-  inout uint16_t mediumMaterialIndex)
+  inout uint mediumMaterialIndex)
 {
   // Set the material medium index if a medium was entered or exited
   // Note: This does not work for nested translucency as most recent medium entered is stored, but this is a fine thing to not support as
@@ -204,7 +204,7 @@ bool evalMediumChange(
   }
   else if (exitedMedium)
   {
-    mediumMaterialIndex = BINDING_INDEX_INVALID;
+    mediumMaterialIndex = SURFACE_INDEX_INVALID;
 
     return true;
   }
@@ -225,7 +225,7 @@ bool evalNEESecondary(
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
   inout vec3 diffuseLight,
   inout vec3 specularLight,
-  uint16_t surfaceIndex, float2 texcoords)
+  uint surfaceIndex, float2 texcoords)
 {
 
   // Setup and trace the visibility ray
