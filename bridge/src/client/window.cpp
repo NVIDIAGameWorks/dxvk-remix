@@ -373,11 +373,16 @@ bool unset() {
 
   // Put the game's intended WndProc back on top of the WndProc stack
   auto prevWndProc = asWndProcP(OrigSetWindowLongA(g_hwnd, GWLP_WNDPROC, asLong(g_gameWndProc)));
-  assert(RemixWndProc == prevWndProc);
-  
-  if(!prevWndProc) {
+
+  if (!prevWndProc) {
     // It would be weird to have gotten here, but that's why we throw a warning
     Logger::warn(kStr_unset_wndProcInvalidWarn);
+  } else if (RemixWndProc != prevWndProc) {
+    // Another component (e.g. display mode switch) may have subclassed the window
+    // after RemixWndProc was installed, inserting itself on top of the WndProc chain.
+    // This can happen during resolution changes. The restore is still valid.
+    Logger::warn(format_string("WndProc::unset - expected RemixWndProc (%p) but found %p; "
+      "another component likely subclassed the window during a mode change", RemixWndProc, prevWndProc));
   }
 
   // Clean out the globals

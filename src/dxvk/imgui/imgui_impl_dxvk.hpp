@@ -127,8 +127,22 @@ namespace ImGui_ImplDxvk {
     return dev->createBuffer(info, mem, DxvkMemoryStats::Category::RTXBuffer, name);
   }
 
+  inline void Shutdown() {
+    if (!g) {
+      return;
+    }
+
+    delete g;
+    g = nullptr;
+  }
+
   inline bool Init(const Rc<DxvkDevice>& device) {
-    IM_ASSERT(g == nullptr && "ImGui_ImplDxvk already initialized");
+    // If a previous backend instance was not cleanly shut down (e.g. the game
+    // recreated the D3D device during a resolution change before the old one
+    // was fully released), tear it down before re-initializing.
+    if (g != nullptr) {
+      Shutdown();
+    }
 
     g = new Backend();
     g->device = device;
@@ -144,12 +158,6 @@ namespace ImGui_ImplDxvk {
     g->buffers.ibSize = 64 * 1024;
 
     return true;
-  }
-
-  inline void Shutdown() {
-    if (!g) return;
-    delete g;
-    g = nullptr;
   }
 
   inline void NewFrame() {
