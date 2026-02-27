@@ -380,10 +380,18 @@ void integratePathVertex(
 #endif
   }
  
-  // Update NRC on hit
+  // Handle emissive radiance and attenuation from the Resolve function
 
-  NrcProgressState nrcProgressState = NrcProgressState::Continue;
+  // Note: When accumulating radiance/throughput from the resolve logic, emissive takes priority
+  // over attenuation so that emissive surfaces do not attenuate themselves.
+  float16_t oldLuminance = calcBt709Luminance(pathState.radiance);
+  accumulateRadiance(pathState, emissiveRadiance);
+  accumulateThroughput(pathState, radianceAttenuation);
+
+  // Update NRC on hit
   
+  NrcProgressState nrcProgressState = NrcProgressState::Continue;
+
   if (ENABLE_NRC && rayInteractionHasHit(rayInteraction) && !pathState.continueResolving) 
   {  
     nrcProgressState = updateNrcOnHit(pathState, surfaceInteraction, polymorphicSurfaceMaterialInteraction);
@@ -393,15 +401,7 @@ void integratePathVertex(
       pathState.continuePath = false;
       return;
     }
-  }
-
-  // Handle emissive radiance and attenuation from the Resolve function
-
-  // Note: When accumulating radiance/throughput from the resolve logic, emissive takes priority
-  // over attenuation so that emissive surfaces do not attenuate themselves.
-  float16_t oldLuminance = calcBt709Luminance(pathState.radiance);
-  accumulateRadiance(pathState, emissiveRadiance);
-  accumulateThroughput(pathState, radianceAttenuation);
+  } 
 
   // Handle medium attenuation if needed
   // Note: This is done here to avoid needing to accumulate the total resolved hit distance. Slightly
