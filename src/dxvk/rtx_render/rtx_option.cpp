@@ -656,8 +656,7 @@ namespace dxvk {
 
   void RtxOptionImpl::clearFromStrongerLayers(const RtxOptionLayer* targetLayer,
                                                std::optional<XXH64_hash_t> hash) {
-    const RtxOptionLayer* target = getTargetLayer(targetLayer);
-    const RtxOptionLayerKey targetKey = target ? target->getLayerKey() : kRtxOptionLayerDefaultKey;
+    const RtxOptionLayerKey targetKey = targetLayer ? targetLayer->getLayerKey() : kRtxOptionLayerDefaultKey;
     
     bool anyModified = false;
     
