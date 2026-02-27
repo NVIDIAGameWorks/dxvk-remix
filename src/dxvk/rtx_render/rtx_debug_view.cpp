@@ -447,6 +447,11 @@ namespace dxvk {
 
   // Creates 4x4 composite debug views enumerating all debug views listed in debugViewEntries
   void DebugView::initCompositeDebugViews() {
+    static bool s_initialized = false;
+    if (s_initialized) {
+      return;
+    }
+    s_initialized = true;
 
     // Initialize implicit commposite debug views
     {
