@@ -771,7 +771,7 @@
                     `Files to update: ${updateFiles.length > 0 ? updateFiles.join(', ') : 'none'}\n` +
                     `Files to delete: ${deleteFiles.length > 0 ? deleteFiles.join(', ') : 'none'}\n` +
                     `Commit message:`,
-                    `[skip-ci] Auto-update: ${filesToPromote.length} component documentation or schema files`
+                    `[skip-tests] Auto-update: ${filesToPromote.length} component documentation or schema files`
                 );
                 
                 if (!message || message.trim() === '') {
