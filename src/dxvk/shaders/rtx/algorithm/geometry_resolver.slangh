@@ -21,6 +21,11 @@
 */
 #pragma once
 
+#define RESOLVER_USE_VOLUMETRIC_ATTENUATION
+#ifndef RESOLVE_OPACITY_LIGHTING_APPROXIMATION
+#define RESOLVE_OPACITY_LIGHTING_APPROXIMATION
+#endif
+
 #include "rtx/algorithm/geometry_resolver_state.slangh"
 #include "rtx/utility/noise.slangh"
 #include "rtx/utility/procedural_noise.slangh"
@@ -1532,7 +1537,11 @@ void geometryResolverVertex(
   if (cb.enableStochasticAlphaBlend && isStochasticAlphaBlend)
   {
     f16vec4 alphaBlendColor = AlphaBlendSurface::getAlphaBlendSurface(polymorphicSurfaceMaterialInteraction);
-    bool hasEmissive = any(geometryResolverState.radiance > 0);
+    
+    // Check both accumulated radiance and material emissive radiance for alpha emissive surfaces
+    // Material emissive radiance is added to geometryResolverState.radiance later, so check it here
+    const vec3 materialEmissiveRadiance = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
+    bool hasEmissive = any(geometryResolverState.radiance > 0) || any(materialEmissiveRadiance > 0);
     
     AlphaBlendSurface alphaBlendSurface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[geometryResolverState.pixelCoordinate], cb.alphaBlendSurfacePackMult);
     alphaBlendSurface.update(
