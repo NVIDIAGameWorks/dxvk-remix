@@ -196,8 +196,10 @@ namespace dxvk {
   }
 
   void CompositePass::showDenoiseImguiSettings() {
-    float bsdfPowers[2] = { dlssEnhancementDirectLightPower(), dlssEnhancementIndirectLightPower() };
-    float bsdfMaxValues[2] = { dlssEnhancementDirectLightMaxValue(), dlssEnhancementIndirectLightMaxValue() };
+    const float prevBsdfPowers[2] = { dlssEnhancementDirectLightPower(), dlssEnhancementIndirectLightPower() };
+    const float prevBsdfMaxValues[2] = { dlssEnhancementDirectLightMaxValue(), dlssEnhancementIndirectLightMaxValue() };
+    float bsdfPowers[2] = { prevBsdfPowers[0], prevBsdfPowers[1] };
+    float bsdfMaxValues[2] = { prevBsdfMaxValues[0], prevBsdfMaxValues[1] };
 
     RemixGui::Checkbox("Enhance BSDF Detail Under DLSS", &enableDLSSEnhancementObject());    
     RemixGui::Combo("Indirect Light Enhancement Mode", &dlssEnhancementModeObject(), "Laplacian\0Normal Difference\0");
@@ -207,6 +209,17 @@ namespace dxvk {
     RemixGui::DragFloat("Indirect Light Min Sharpen Roughness", &dlssEnhancementIndirectLightMinRoughnessObject(), 0.01f, 0.f, 1.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
     RemixGui::Checkbox("Use Post Filter", &usePostFilterObject());
     RemixGui::DragFloat("Post Filter Threshold", &postFilterThresholdObject(), 0.01f, 0.0f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+
+    if (bsdfPowers[0] != prevBsdfPowers[0]) {
+      RemixGui::CheckRtxOptionPopups(&dlssEnhancementDirectLightPowerObject());
+    } else if (bsdfPowers[1] != prevBsdfPowers[1]) {
+      RemixGui::CheckRtxOptionPopups(&dlssEnhancementIndirectLightPowerObject());
+    }
+    if (bsdfMaxValues[0] != prevBsdfMaxValues[0]) {
+      RemixGui::CheckRtxOptionPopups(&dlssEnhancementDirectLightMaxValueObject());
+    } else if (bsdfMaxValues[1] != prevBsdfMaxValues[1]) {
+      RemixGui::CheckRtxOptionPopups(&dlssEnhancementIndirectLightMaxValueObject());
+    }
 
     dlssEnhancementDirectLightPower.setDeferred(bsdfPowers[0]);
     dlssEnhancementIndirectLightPower.setDeferred(bsdfPowers[1]);

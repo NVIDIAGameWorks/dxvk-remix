@@ -274,7 +274,11 @@ namespace dxvk {
 
     RemixGui::Checkbox("Reset History", &NrcOptions::resetHistoryObject());
     RemixGui::Checkbox("Train Cache", &NrcOptions::trainCacheObject());
-    RemixGui::Checkbox("Use Custom Network Config \"CustomNetworkConfig.json\"", &m_delayedEnableCustomNetworkConfig);
+    bool changed = RemixGui::Checkbox("Use Custom Network Config \"CustomNetworkConfig.json\"", &m_delayedEnableCustomNetworkConfig);
+
+    if (changed) {
+      RemixGui::CheckRtxOptionPopups(&NrcCtxOptions::enableCustomNetworkConfigObject());
+    }
 
     if (RemixGui::CollapsingHeader("Training", ImGuiTreeNodeFlags_DefaultOpen)) {
       ImGui::Indent();
