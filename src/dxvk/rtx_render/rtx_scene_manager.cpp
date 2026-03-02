@@ -726,7 +726,8 @@ namespace dxvk {
       if (replacement.includeOriginal) {
         DrawCallState newDrawCallState(*input);
         newDrawCallState.categories = replacement.categories.applyCategoryFlags(newDrawCallState.categories);
-        instance = processDrawCallState(ctx, newDrawCallState, renderMaterialData);
+        const RtxParticleSystemDesc* pParticleSystemDesc = replacement.particleSystem.has_value() ? &replacement.particleSystem.value() : nullptr;
+        instance = processDrawCallState(ctx, newDrawCallState, renderMaterialData, nullptr, pParticleSystemDesc);
       } else if (replacement.type == AssetReplacement::eMesh) {
         DrawCallTransforms transforms = input->getTransformData();
         

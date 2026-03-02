@@ -993,7 +993,12 @@ bool UsdMod::Impl::processReplacement(Args& args) {
     static const pxr::TfToken kMeshToken("mesh");
     args.meshes.push_back(AssetReplacement(args.rootPrim.GetPrimPath().AppendChild(kMeshToken).GetString()));
     args.meshes[0].includeOriginal = true;
-    args.meshes[0].categories = processCategoryFlags(args.rootPrim);
+    // The ParticleSystemAPI and category flags are authored on the mesh child prim, not the root hash prim.
+    pxr::UsdPrim meshPrim = args.rootPrim.GetChild(kMeshToken);
+    const pxr::UsdPrim& componentPrim = meshPrim.IsValid() ? meshPrim : args.rootPrim;
+    args.meshes[0].categories = processCategoryFlags(componentPrim);
+    std::optional<RtxParticleSystemDesc> particleSystem = processParticleSystem(args, componentPrim);
+    args.meshes[0].particleSystem = particleSystem;
   }
   processReplacementRecursive(args, args.rootPrim, true);
 
