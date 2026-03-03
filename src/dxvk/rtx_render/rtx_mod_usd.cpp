@@ -1016,7 +1016,10 @@ bool UsdMod::Impl::processReplacement(Args& args) {
   }
 
   // Only return false if no changes were made to the draw call, including the original draw being preserved.
-  if (args.meshes.size() == 1 && args.meshes[0].includeOriginal) {
+  // A particle system or category override on the original draw still counts as a change.
+  if (args.meshes.size() == 1 && args.meshes[0].includeOriginal
+      && !args.meshes[0].particleSystem.has_value()
+      && args.meshes[0].categories.categoryExists.raw() == 0) {
     return false;
   }
   return true;
