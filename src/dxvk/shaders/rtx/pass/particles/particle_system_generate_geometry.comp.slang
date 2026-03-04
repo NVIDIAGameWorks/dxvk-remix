@@ -53,8 +53,9 @@ float2 calcBillboardSinCos(float3 velocity, float3 camRight, float3 camUp)
   }
   float3 v = velocity / len;
 
-  // screenspace velocity
-  float2 vel2D = float2(dot(v, camRight), -dot(v, camUp));
+  // screenspace velocity — signs match the motion-trail convention so that
+  // "align to velocity" and motion trails orient the texture the same way.
+  float2 vel2D = float2(-dot(v, camRight), dot(v, camUp));
   vel2D = normalize(vel2D);
 
   return vel2D;
@@ -308,7 +309,10 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
     
     vertex.position = chopMantissaLSB(particle.position + worldOffset, 4); // lop off some LSB to get better compression;
     vertex.color = colorEnc;
-    vertex.texcoord = (offset * computeRandomFlip(particleSystem.desc.randomFlipAxis, particle.randSeed) + 0.5f) * cellSize + frameUvMin;
+    // For standard billboards, negate offset.y in UV so that screen-top maps to V=0 (texture top).
+    // Motion trails don't need this because motionDir naturally inverts the Y axis in position computation.
+    float2 uvOffset = particleSystem.desc.enableMotionTrail ? offset : float2(offset.x, -offset.y);
+    vertex.texcoord = (uvOffset * computeRandomFlip(particleSystem.desc.randomFlipAxis, particle.randSeed) + 0.5f) * cellSize + frameUvMin;
     
     // Always keep active particle vertices in the 0 ~ N range of buffer (unlike particles themselves)
     Vertices[threadIdx.x * particleSystem.numVerticesPerParticle + i] = vertex;
