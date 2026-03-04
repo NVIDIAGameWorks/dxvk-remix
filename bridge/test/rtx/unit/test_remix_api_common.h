@@ -23,7 +23,9 @@ Values(uint32_t, 0x01234567, 0x0, 0x89ABCDEF, 0xABABCDCD, 0x0, 0xEEEEFFFF, 0xDEA
 Values(int32_t, 0x7123456F, 0x789ABCDF, 0x7ABACDCF, 0x7FFFFFFF, 0x7BDCCDB7)
 Values(uint64_t, 0xFEDCBA987654320, 0xFFEEDDCCBBAA9988, 0x77665544332211, 0x010011000111ACDB)
 Values(float, 0.1234f, 1.234f, 9.876f, 0.9876f, 13.37f)
-Values(remixapi_Float3D, {1.f,2.f,3.f}, {4.f,5.f,6.f}, {7.f,8.f,9.f})
+Values(remixapi_Float2D, { 1.f,2.f }, { 3.f,4.f }, { 5.f,6.f }, { 7.f,8.f }, { 9.f,10.f })
+Values(remixapi_Float3D, { 1.f,2.f,3.f }, { 4.f,5.f,6.f }, { 7.f,8.f,9.f })
+Values(remixapi_Float4D, { 1.f,2.f,3.f,4.f }, { 5.f,6.f,7.f,8.f }, { 9.f,10.f,11.f,12.f })
 Values(remixapi_Transform, {{{ 1.f, 2.f,   3.f,  4.f },
                              { 5.f, 6.f,   7.f,  8.f },
                              { 9.f, 10.f, 11.f, 12.f }}},
@@ -77,6 +79,42 @@ static void populateReasonableVal(T& val) {
   val = (T)(vals.at(seed++ % vals.size()));
 }
 
+template<>
+static void populateVal(remixapi_AnimatedFloat1D& val) {
+  populateReasonableVal(val.numberElements);
+  val.pData = new float[val.numberElements];
+  for (uint32_t i = 0; i < val.numberElements; ++i) {
+    populateVal(val.pData[i]);
+  }
+}
+
+template<>
+static void populateVal(remixapi_AnimatedFloat2D& val) {
+  populateReasonableVal(val.numberElements);
+  val.pData = new remixapi_Float2D[val.numberElements];
+  for (uint32_t i = 0; i < val.numberElements; ++i) {
+    populateVal(val.pData[i]);
+  }
+}
+
+template<>
+static void populateVal(remixapi_AnimatedFloat3D& val) {
+  populateReasonableVal(val.numberElements);
+  val.pData = new remixapi_Float3D[val.numberElements];
+  for (uint32_t i = 0; i < val.numberElements; ++i) {
+    populateVal(val.pData[i]);
+  }
+}
+
+template<>
+static void populateVal(remixapi_AnimatedFloat4D& val) {
+  populateReasonableVal(val.numberElements);
+  val.pData = new remixapi_Float4D[val.numberElements];
+  for (uint32_t i = 0; i < val.numberElements; ++i) {
+    populateVal(val.pData[i]);
+  }
+}
+
 #define SIMPLE_COMPARE(ME_NAME, OTHER_NAME, VAL_NAME) \
   if(!expected::compare(ME_NAME.VAL_NAME,OTHER_NAME.VAL_NAME)) { return false; }
 
@@ -100,6 +138,72 @@ static bool compare(const remixapi_Float3D& a, const remixapi_Float3D& b) {
   return a.x == b.x
       && a.y == b.y
       && a.z == b.z;
+}
+
+template<>
+static bool compare(const remixapi_Float2D& a, const remixapi_Float2D& b) {
+  return a.x == b.x
+      && a.y == b.y;
+}
+
+template<>
+static bool compare(const remixapi_Float4D& a, const remixapi_Float4D& b) {
+  return a.x == b.x
+      && a.y == b.y
+      && a.z == b.z
+      && a.w == b.w;
+}
+
+template<>
+static bool compare(const remixapi_AnimatedFloat1D& a, const remixapi_AnimatedFloat1D& b) {
+  if (a.numberElements != b.numberElements) {
+    return false;
+  }
+  for (uint32_t i = 0; i < a.numberElements; ++i) {
+    if (a.pData[i] != b.pData[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+template<>
+static bool compare(const remixapi_AnimatedFloat2D& a, const remixapi_AnimatedFloat2D& b) {
+  if (a.numberElements != b.numberElements) {
+    return false;
+  }
+  for (uint32_t i = 0; i < a.numberElements; ++i) {
+    if (!compare(a.pData[i], b.pData[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+template<>
+static bool compare(const remixapi_AnimatedFloat3D& a, const remixapi_AnimatedFloat3D& b) {
+  if (a.numberElements != b.numberElements) {
+    return false;
+  }
+  for (uint32_t i = 0; i < a.numberElements; ++i) {
+    if (!compare(a.pData[i], b.pData[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+template<>
+static bool compare(const remixapi_AnimatedFloat4D& a, const remixapi_AnimatedFloat4D& b) {
+  if (a.numberElements != b.numberElements) {
+    return false;
+  }
+  for (uint32_t i = 0; i < a.numberElements; ++i) {
+    if (!compare(a.pData[i], b.pData[i])) {
+      return false;
+    }
+  }
+  return true;
 }
 
 template<>
@@ -680,6 +784,56 @@ bool LightInfoUSD::compare(const RemixApiT& me, const RemixApiT& other) const {
 }
 
 
+using InstanceInfoParticleSystem = Expected<remixapi_InstanceInfoParticleSystemEXT>;
+#define InstanceInfoParticleSystemVars maxNumParticles, \
+                                       useTurbulence, \
+                                       alignParticlesToVelocity, \
+                                       useSpawnTexcoords, \
+                                       enableCollisionDetection, \
+                                       enableMotionTrail, \
+                                       hideEmitter, \
+                                       restrictVelocityX, \
+                                       restrictVelocityY, \
+                                       restrictVelocityZ, \
+                                       minColor, \
+                                       maxColor, \
+                                       minRotationSpeed, \
+                                       maxRotationSpeed, \
+                                       minSize, \
+                                       maxSize, \
+                                       maxVelocity, \
+                                       attractorPosition, \
+                                       minTimeToLive, \
+                                       maxTimeToLive, \
+                                       initialVelocityFromNormal, \
+                                       initialVelocityConeAngleDegrees, \
+                                       dragCoefficient, \
+                                       initialRotationDeviationDegrees, \
+                                       gravityForce, \
+                                       turbulenceFrequency, \
+                                       turbulenceForce, \
+                                       spawnRatePerSecond, \
+                                       collisionThickness, \
+                                       collisionRestitution, \
+                                       motionTrailMultiplier, \
+                                       initialVelocityFromMotion, \
+                                       spawnBurstDuration, \
+                                       attractorRadius, \
+                                       attractorForce, \
+                                       billboardType, \
+                                       spriteSheetMode, \
+                                       collisionMode, \
+                                       randomFlipAxis
+void InstanceInfoParticleSystem::init() {
+  sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT;
+  pNext = nullptr;
+  populateVals(InstanceInfoParticleSystemVars);
+}
+bool InstanceInfoParticleSystem::compare(const RemixApiT& me, const RemixApiT& other) const {
+  return compareVals(me, other, InstanceInfoParticleSystemVars);
+}
+
+
 MaterialInfo mat;
 MaterialInfoOpaque matOpaque;
 MaterialInfoOpaqueSubsurface matOpaqueSubSurf;
@@ -699,5 +853,6 @@ LightInfoCylinder lightCyl;
 LightInfoDistant lightDist;
 LightInfoDome lightDome;
 LightInfoUSD lightUSD;
+InstanceInfoParticleSystem instParticle;
 
 }
