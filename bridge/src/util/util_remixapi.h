@@ -148,7 +148,7 @@ using InstanceInfo = bridge_util::Serializable<remixapi_InstanceInfo,true>;
 using InstanceInfoObjectPicking = bridge_util::Serializable<remixapi_InstanceInfoObjectPickingEXT,true>;
 using InstanceInfoBlend = bridge_util::Serializable<remixapi_InstanceInfoBlendEXT,true>;
 using InstanceInfoTransforms = bridge_util::Serializable<remixapi_InstanceInfoBoneTransformsEXT,false>;
-using InstanceInfoParticleSystem = bridge_util::Serializable<remixapi_InstanceInfoParticleSystemEXT, true>;
+using InstanceInfoParticleSystem = bridge_util::Serializable<remixapi_InstanceInfoParticleSystemEXT, false>;
 
 // Light Info
 using LightInfo = bridge_util::Serializable<remixapi_LightInfo,true>;

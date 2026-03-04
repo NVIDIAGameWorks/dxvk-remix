@@ -993,7 +993,12 @@ bool UsdMod::Impl::processReplacement(Args& args) {
     static const pxr::TfToken kMeshToken("mesh");
     args.meshes.push_back(AssetReplacement(args.rootPrim.GetPrimPath().AppendChild(kMeshToken).GetString()));
     args.meshes[0].includeOriginal = true;
-    args.meshes[0].categories = processCategoryFlags(args.rootPrim);
+    // The ParticleSystemAPI and category flags are authored on the mesh child prim, not the root hash prim.
+    pxr::UsdPrim meshPrim = args.rootPrim.GetChild(kMeshToken);
+    const pxr::UsdPrim& componentPrim = meshPrim.IsValid() ? meshPrim : args.rootPrim;
+    args.meshes[0].categories = processCategoryFlags(componentPrim);
+    std::optional<RtxParticleSystemDesc> particleSystem = processParticleSystem(args, componentPrim);
+    args.meshes[0].particleSystem = particleSystem;
   }
   processReplacementRecursive(args, args.rootPrim, true);
 
@@ -1011,7 +1016,10 @@ bool UsdMod::Impl::processReplacement(Args& args) {
   }
 
   // Only return false if no changes were made to the draw call, including the original draw being preserved.
-  if (args.meshes.size() == 1 && args.meshes[0].includeOriginal) {
+  // A particle system or category override on the original draw still counts as a change.
+  if (args.meshes.size() == 1 && args.meshes[0].includeOriginal
+      && !args.meshes[0].particleSystem.has_value()
+      && args.meshes[0].categories.categoryExists.raw() == 0) {
     return false;
   }
   return true;
