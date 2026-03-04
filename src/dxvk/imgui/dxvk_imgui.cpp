@@ -2790,6 +2790,7 @@ namespace dxvk {
           {
             ImGui::BeginDisabled(!RtxOptions::skyReprojectToMainCameraSpace());
             RemixGui::DragFloat("Reprojected Sky Scale", &RtxOptions::skyReprojectScaleObject(), 1.0f, 0.1f, 1000.0f);
+            RemixGui::Checkbox("Force Auto-Detected Sky to Reproject", &RtxOptions::skyForceAutoDetectedToReprojectObject());
             ImGui::EndDisabled();
           }
           RemixGui::DragFloat("Sky Auto-Detect Unique Camera Search Distance", &RtxOptions::skyAutoDetectUniqueCameraDistanceObject(), 1.0f, 0.1f, 1000.0f);

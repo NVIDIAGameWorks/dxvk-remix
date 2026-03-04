@@ -597,6 +597,12 @@ struct DrawCallState {
   bool isDrawingToRaytracedRenderTarget = false;
   bool isUsingRaytracedRenderTarget = false;
 
+  // Set when the Sky category was assigned by skyAutoDetect heuristic
+  // (as opposed to explicit methods like skyBoxTextures/skyBoxGeometries/skyMinZThreshold).
+  // Used by tryHandleSky to optionally bypass cubemap rasterization for autoDetected sky,
+  // since it may be world geometry that should go through reprojection instead.
+  bool skyAutoDetected = false;
+
   void setupCategoriesForTexture();
   void setupCategoriesForGeometry();
   void setupCategoriesForHeuristics(uint32_t prevFrameSeenCamerasCount,

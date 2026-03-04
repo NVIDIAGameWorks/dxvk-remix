@@ -1190,6 +1190,11 @@ namespace dxvk {
                "Useful, if a game has a skybox that contains geometry that can be a part of the main scene (e.g. buildings, mountains). "
                "So with this option enabled, that geometry would be promoted from sky rasterization to ray tracing.");
     RTX_OPTION("rtx", float, skyReprojectScale, 16.0f, "Scaling of the sky geometry on reprojection to main camera space.");
+    RTX_OPTION("rtx", bool, skyForceAutoDetectedToReproject, false,
+               "When enabled, draw calls classified as sky by auto-detect are always reprojected to main camera space "
+               "instead of being rasterized to the sky cubemap. This fixes a class of bugs where auto-detect misclassifies "
+               "world geometry as sky (due to shared camera positions), causing that geometry to become invisible. "
+               "Only effective when Sky Auto-Detect and Reproject Sky to Main Camera are both enabled.");
 
     // TODO (REMIX-656): Remove this once we can transition content to new hash
     RTX_OPTION("rtx", bool, logLegacyHashReplacementMatches, false, "");
