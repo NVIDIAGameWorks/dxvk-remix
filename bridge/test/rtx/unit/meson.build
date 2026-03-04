@@ -51,6 +51,5 @@ test('remix_api__' + variant,
              '--executablesDir', meson.current_build_dir(),
              '--artifactDir', remix_api_test_artifacts_dir ])
 endif
-
 alias_target('unit_tests', tests)
 

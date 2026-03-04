@@ -65,6 +65,7 @@ int main(int argc, char * argv[]) {
   READ_DESERIALIZE_COMPARE(pDeserialize, LightInfoDistant, lightDist);
   READ_DESERIALIZE_COMPARE(pDeserialize, LightInfoDome, lightDome);
   READ_DESERIALIZE_COMPARE(pDeserialize, LightInfoUSD, lightUSD);
+  READ_DESERIALIZE_COMPARE(pDeserialize, InstanceInfoParticleSystem, instParticle);
 
   delete pDataBegin;
 
