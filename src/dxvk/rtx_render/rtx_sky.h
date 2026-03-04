@@ -167,6 +167,13 @@ dxvk::RtxContext::TryHandleSkyResult dxvk::RtxContext::tryHandleSky(const DrawPa
       if (!RtxOptions::skyReprojectToMainCameraSpace()) {
         return true;
       }
+      // When skyForceAutoDetectedToReproject is enabled, draw calls classified as sky by
+      // autoDetect are always reprojected instead of rasterized to the cubemap. This fixes
+      // a class of bugs where autoDetect misclassifies world geometry as sky (due to shared
+      // camera positions), causing that geometry to become invisible.
+      if (RtxOptions::skyForceAutoDetectedToReproject() && originalDrawCallState->skyAutoDetected) {
+        return false;
+      }
       // Always rasterize sky planes
       if (isSkyboxQuad(*originalDrawCallState)) {
         return true;
