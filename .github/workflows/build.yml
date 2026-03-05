@@ -33,7 +33,7 @@ jobs:
 
     - name: Setup Meson
       run: pip install meson==1.1.0
-    
+
     - name: Build
       shell: pwsh
       run: |
@@ -43,11 +43,11 @@ jobs:
 
     - name: Copy readme
       run: copy artifacts_readme.txt _output
-    
+
     - name: Upload x64 binaries
       uses: actions/upload-artifact@v4
       with:
-        name: rtx-remix-for-x64-games-${{env.GITHUB_SHA_SHORT}}-${{github.run_number}}-${{matrix.build-flavour}}
+        name: rtx-remix-for-x64-games-${{github.run_number}}-${{env.GITHUB_SHA_SHORT}}-${{matrix.build-flavour}}
         path: |
           _output\*.dll
           _output\*.pdb
@@ -61,7 +61,7 @@ jobs:
         Move-Item -Path _output\*.dll -Destination _output\.trex\
         Move-Item -Path _output\*.pdb -Destination _output\.trex\
         Move-Item -Path _output\usd -Destination _output\.trex\usd
-    
+
     - name: Build Bridge
       shell: pwsh
       run: |
@@ -78,7 +78,7 @@ jobs:
     - name: Upload x86 binaries
       uses: actions/upload-artifact@v4
       with:
-        name: rtx-remix-for-x86-games-${{env.GITHUB_SHA_SHORT}}-${{github.run_number}}-${{matrix.build-flavour}}
+        name: rtx-remix-for-x86-games-${{github.run_number}}-${{env.GITHUB_SHA_SHORT}}-${{matrix.build-flavour}}
         include-hidden-files: true
         path: |
           _output\*.dll
