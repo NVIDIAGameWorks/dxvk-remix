@@ -669,6 +669,12 @@ namespace dxvk
 
     auto modifiedViewToProj = Matrix4d{ newViewToProjection };
 
+    // Correct for games that use a negative Y scale in the projection matrix
+    // (e.g., certain Unity titles) which causes the ray-traced scene to render upside-down.
+    if (correctProjectionYFlip()) {
+      modifiedViewToProj[1][1] = -modifiedViewToProj[1][1];
+    }
+
     updateAntiCulling(fov, aspectRatio, nearPlane, farPlane, isLHS);
 
     // Sometimes we want to modify the near plane for RT.  See DevSettings->Camera->Advanced

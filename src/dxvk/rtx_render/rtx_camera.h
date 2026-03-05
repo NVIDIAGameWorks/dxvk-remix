@@ -119,6 +119,10 @@ namespace dxvk
     RTX_OPTION("rtx", float, freeCameraSpeed, 200, "Free camera speed [GameUnits/s].");
     RTX_OPTION("rtx", float, freeCameraTurningSpeed, 1, "Free camera turning speed (applies to keyboard, not mouse) [radians/s].");
     RTX_OPTION("rtx", bool, freeCameraInvertY, false, "Invert free camera pitch direction.");
+    RTX_OPTION("rtx.camera", bool, correctProjectionYFlip, false,
+               "Some games (typically Unity titles) use a projection matrix with a negative Y scale, causing the "
+               "ray-traced scene to render upside down. Enable this to automatically detect and correct the Y-flip "
+               "in the projection matrix at runtime.");
 
     uint32_t m_renderResolution[2] = { 0, 0 };
     uint32_t m_finalResolution[2] = { 0, 0 };
