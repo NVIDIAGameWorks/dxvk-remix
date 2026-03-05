@@ -1021,7 +1021,7 @@ class "ParticleSystemAPI" (
         )
 
     # Simulation
-    float primvars:particle:gravityForce = -0.98 (
+    float primvars:particle:gravityForce = 0.0 (
             doc = "Net influence of gravity on each particle (centimeters per second squared). Negative values pull particles downward."
             displayGroup = "Simulation"
             displayName = "Gravity Force"
