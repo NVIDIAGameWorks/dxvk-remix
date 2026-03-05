@@ -21,39 +21,22 @@
 */
 #pragma once
 
+#include "../utility/cpu_gpu_compat.h"
+
 // Shared smooth normals implementation — compiles as both C++ and Slang/HLSL.
-// Follows the same dual-compile pattern as skinning.h.
 
 #ifdef __cplusplus
-#include <cstring>
-#include <algorithm>
 namespace dxvk {
-typedef Vector3 float3;
 
-#define ReadBuffer(T)   const T*
-#define WriteBuffer(T)  T*
-#define RWIntBuffer      int32_t*
+#define RWIntBuffer     int32_t*
 #define ConstBuffer(T)  const T&
-
-// CPU: reinterpret float bits via memcpy (strict-aliasing safe)
-inline uint32_t asuint_sn(float f) {
-  uint32_t u;
-  std::memcpy(&u, &f, sizeof(u));
-  return u;
-}
 
 #else // GPU (Slang/HLSL)
 
-#define ReadBuffer(T)   StructuredBuffer<T>
-#define WriteBuffer(T)  RWStructuredBuffer<T>
 #define RWIntBuffer      RWStructuredBuffer<int>
 // Use plain struct (not ConstantBuffer<T>) so callers can pass push constants
 // or regular constant buffers alike — Slang handles the implicit conversion.
 #define ConstBuffer(T)  T
-
-uint asuint_sn(float f) {
-  return asuint(f);
-}
 
 #endif
 
@@ -105,7 +88,7 @@ uint smoothNormalsLoadIndex(uint idx,
 uint canonicalizeFloatBits(float v)
 {
   if (v == 0.0f) return 0u;
-  return asuint_sn(v);
+  return asuint(v);
 }
 
 // Compute the hash-table slot index from a position.
@@ -145,7 +128,7 @@ void accumulateAtPosition(float3 pos, float3 faceNormal,
   int iy = int(faceNormal.y * FIXED_POINT_SCALE);
   int iz = int(faceNormal.z * FIXED_POINT_SCALE);
 
-  uint probes = std::min(MAX_PROBES, hashTableSize);
+  uint probes = min(MAX_PROBES, hashTableSize);
   for (uint p = 0; p < probes; p++) {
     uint entrySlot = (slot + p) & (hashTableSize - 1);
     uint base = entrySlot * 4;
@@ -213,11 +196,7 @@ float3 lookupSmoothedNormal(float3 pos,
 #endif
                             uint hashTableSize)
 {
-#ifdef __cplusplus
-  uint probes = std::min(MAX_PROBES, hashTableSize);
-#else
   uint probes = min(MAX_PROBES, hashTableSize);
-#endif
 
   uint tag  = computePositionTag(pos);
   uint slot = hashPositionSlot(pos, hashTableSize);
@@ -275,7 +254,7 @@ void smoothNormalsAccumulate(uint triIdx,
 }
 
 // ---------------------------------------------------------------------------
-// Phase 2: Per-vertex scatter and normalize
+// Phase 2: Per-vertex scatter, normalize, and encode
 // ---------------------------------------------------------------------------
 
 void smoothNormalsScatter(uint vertIdx,
@@ -298,16 +277,18 @@ void smoothNormalsScatter(uint vertIdx,
     n = float3(0.0f, 1.0f, 0.0f); // Default up normal for degenerate cases
   }
 
+  // Always output octahedral-encoded normals (single uint32 stored as float).
+  // This is more efficient than 3-float normals and matches what the surface
+  // interaction shader expects when normalsEncoded is set.
   uint normalBase = cb.normalOffset / 4 + vertIdx * (cb.normalStride / 4);
-  normalData[normalBase + 0] = n.x;
-  normalData[normalBase + 1] = n.y;
-  normalData[normalBase + 2] = n.z;
+  uint encoded = encodeNormal(n);
+  normalData[normalBase] = asfloat(encoded);
 }
 
 #ifdef __cplusplus
-#undef ReadBuffer
-#undef WriteBuffer
 #undef RWIntBuffer
 #undef ConstBuffer
 } // namespace dxvk
 #endif
+
+#include "../utility/cpu_gpu_compat_undef.h"
