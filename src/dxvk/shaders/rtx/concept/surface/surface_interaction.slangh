@@ -103,7 +103,7 @@ bool isSurfaceClipped(Surface surface, MinimalSurfaceInteraction surfaceInteract
 
   return clipDistance < 0.0;
 }
- 
+
 // <0, 1> -> <-0.5, 0.5>
 vec2 texcoordToOffsetFromTextureCenter(vec2 texcoord)
 {
@@ -186,7 +186,7 @@ void calcSpritesheetValues(
   inout vec2 uvBias
 )
 {
-  const uint numSprites = spriteSheetCols * spriteSheetRows;
+  const uint numSprites = uint(spriteSheetCols) * uint(spriteSheetRows);
   // Note: timeSinceStartSeconds is clamped to (2^24 - 1) / 1000 on the CPU side so this multiplication shouldn't overflow.
   const uint frame = (uint(timeSinceStartSeconds * spriteSheetFPS)) % numSprites;
 
@@ -265,7 +265,7 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
   const vec3 bary = uintToBarycentrics(rayInteraction.barycentricCoordinates);
 
   SurfaceInteraction surfaceInteraction;
-  
+
   // Calculate vertex position in world space
   // Note: World space positions needed to compute the texture gradients, a bit expensive but probably easier than transforming
   // the ray direction into object space and worrying about how to transform its cone width appropriately (scales could affect it).
@@ -340,14 +340,14 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
   else
   {
     vec3 normals[3];
-  
+
     for (uint i = 0; i < 3; i++)
     {
       const uint currentIndex = idx[i];
-  
+
       const uint normalBufferIndex = surface.normalBufferIndex;
       const uint normalElementIndex = (currentIndex * uint(surface.normalStride) + surface.normalOffset) / 4;
-  
+
       if (surface.normalsEncoded)
       {
         const uint encodedNormal = floatBitsToUint(BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex));
@@ -375,7 +375,7 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
     // each of the 3 vertex normals. Do note however that keeping this as close to the interpolation step as possible is important to avoid
     // hiding invalid values from other logic in Remix.
     const f16vec3 sanitizedObjectInterpolatedNormal = sanitize(objectInterpolatedNormal, triangleNormal);
-  
+
     // Note: Second normalization required as vector may be scaled through a normal transformation
     const f16vec3 interpolatedNormal = f16vec3(normalize(mul(surface.normalObjectToWorld, sanitizedObjectInterpolatedNormal)));
     // Really the only reason to flip this normal is for double-sided geometry.  Do not flip based on view vector!
@@ -443,7 +443,7 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
 
         rawTextureCoordinate = viewPos;
       }
-      else if (surface.texcoordGenerationMode == uint(TexGenMode::ViewNormals)) 
+      else if (surface.texcoordGenerationMode == uint(TexGenMode::ViewNormals))
       {
         const uint currentIndex = idx[i];
         const uint normalBufferIndex = surface.normalBufferIndex;
@@ -508,14 +508,14 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
       genTangSpace(
       texcoords, worldPositions, surfaceInteraction.interpolatedNormal,
       surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent, surfaceInteraction.rawTangent, surfaceInteraction.rawBitangent);
-    
+
       // Derive triangle TBN based on interpolated TBN. This works in all cases tested,
       // and should be much cheaper than calling genTangSpace again.
       f16vec4 interpolatedToTriangle = quaternionCreateOrientation(surfaceInteraction.interpolatedNormal, surfaceInteraction.triangleNormal);
       surfaceInteraction.triangleTangent = quaternionTransformVector(interpolatedToTriangle, surfaceInteraction.interpolatedTangent);
       surfaceInteraction.triangleBitangent = quaternionTransformVector(interpolatedToTriangle, surfaceInteraction.interpolatedBitangent);
     }
-    
+
     // Convert texcoords from the 1st cascade to a corresponding cascade in a combined tiled cascades texture space
     if (surface.texcoordGenerationMode == uint(TexGenMode::CascadedViewPositions))
     {
@@ -523,7 +523,7 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
 
       // Calculate the texcoords for cascade maps with more than one cascade.
       // Texcoords for the first cascade are already correct if there's only a single cascade in the map
-      if (cb.terrainArgs.maxCascadeLevel > 0) 
+      if (cb.terrainArgs.maxCascadeLevel > 0)
       {
         // For surfaces with displacement, we need to ensure the final hit point is within a cascade level.
         // To do this, calculate the furthest texcoord that displacement could return, and use a cascade level that includes that point.
@@ -538,7 +538,7 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
         // Calculate a cascade level if sampling outside the first cascade
         if (maxTextureCenterOffset >= 0.5)
         {
-          // Convert the offset from <0, 0.5> to <0, 1> of the first cascade 
+          // Convert the offset from <0, 0.5> to <0, 1> of the first cascade
           const float normalizedTextureCenterOffset = maxTextureCenterOffset * 2;
 
           // Calculate the cascade level starting from cascade level 1
@@ -659,7 +659,7 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
       surface.spriteSheetFPS);
   }
 
-  // Baked terrain is the only surface using cascaded view positions, so key off of that. 
+  // Baked terrain is the only surface using cascaded view positions, so key off of that.
   const bool isBakedTerrain = surface.texcoordGenerationMode == uint(TexGenMode::CascadedViewPositions);
 
   // Compute vertex colors

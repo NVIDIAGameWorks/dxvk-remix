@@ -1632,7 +1632,7 @@ void geometryResolverVertex(
 
     // For emissive surface that has sprite sheet animation, put emissive component to particle layer to reduce ghosting
     if (cb.outputParticleLayer && any(materialEmissiveRadiance > 0.0) &&
-        surface.spriteSheetRows * surface.spriteSheetCols > 1)
+        uint(surface.spriteSheetRows) * uint(surface.spriteSheetCols) > 1)
     {
       accumulateParticleBuffer(geometryResolverState.pixelCoordinate, materialEmissiveRadiance * geometryResolverState.attenuation);
     }
