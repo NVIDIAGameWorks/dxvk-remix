@@ -57,7 +57,7 @@ bool rayPortalSurfaceMaterialInteractionSpriteSheetReadHelper(
   // Make sure we don't sample from neighbouring sprite sheet cells
   originalCoord = saturate(originalCoord);
 
-  const uint numSprites = (spriteSheetCols * spriteSheetRows);
+  const uint numSprites = uint(spriteSheetCols) * uint(spriteSheetRows);
   const float frameWithFraction = (timeSinceStartSeconds * spriteSheetFPS) % numSprites;
   uint frame = floor(frameWithFraction);
   const float frameFraction = frac(frameWithFraction);
@@ -196,7 +196,7 @@ RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteractionCreate(
     unorm8ToF16(uint8_t(data1 >> 24)));
   const uint8_t rayPortalIndex = uint8_t(data0 >> 0);
   const uint8_t isInsidePortal = uint8_t(data0 >> 8);
-  
+
   rayPortalSurfaceMaterialInteraction.mask = mask;
   rayPortalSurfaceMaterialInteraction.isInsidePortal = isInsidePortal;
   rayPortalSurfaceMaterialInteraction.rayPortalIndex = rayPortalIndex;
@@ -212,7 +212,7 @@ void rayPortalSurfaceMaterialInteractionCalcSample(
 {
   unused(insideMedium);
   unused(penetrateSurface);
-  
+
   surfaceMaterialInteractionLobeSample.lobe = uint8_t(0u);
   surfaceMaterialInteractionLobeSample.pdf = float16_t(1.0f);
 
@@ -236,10 +236,10 @@ SurfaceMaterialInteractionPSRSample rayPortalSurfaceMaterialInteractionCalcPSRTr
   RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
   MinimalRayInteraction minimalRayInteraction,
   inout bool insideMedium, inout bool penetrateSurface)
-{  
+{
   unused(insideMedium);
   unused(penetrateSurface);
-  
+
   SurfaceMaterialInteractionPSRSample materialPSRSample;
 
   materialPSRSample.performPSR = false;
@@ -258,7 +258,7 @@ void rayPortalSurfaceMaterialInteractionCalcPSRSample(
   inout bool insideMedium, inout bool penetrateSurface)
 {
   unused(diffuseLayerWeight);
-  
+
   // Sample Reflection PSR
 
   surfaceMaterialInteractionReflectionPSRSample = rayPortalSurfaceMaterialInteractionCalcPSRReflectionSample(
