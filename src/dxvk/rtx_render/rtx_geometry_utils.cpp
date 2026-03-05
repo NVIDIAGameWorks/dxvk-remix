@@ -1007,7 +1007,7 @@ namespace dxvk {
     return std::sqrtf(maxUvTileSizeSqr);
   }
 
-  void RtxGeometryUtils::dispatchSmoothNormals(const Rc<DxvkContext>& ctx, const RasterGeometry& input, const RaytraceGeometry& geo) {
+  void RtxGeometryUtils::dispatchSmoothNormals(const Rc<DxvkContext>& ctx, const RasterGeometry& input, RaytraceGeometry& geo) {
     ScopedGpuProfileZone(ctx, "smoothNormals");
 
     if (!geo.positionBuffer.defined() || !geo.indexBuffer.defined() || !geo.normalBuffer.defined()) {
@@ -1030,13 +1030,7 @@ namespace dxvk {
     hashTableSize |= hashTableSize >> 16;
     hashTableSize++;
 
-    // Set up shared args used by both CPU and GPU paths
     SmoothNormalsArgs params {};
-    params.positionOffset = geo.positionBuffer.offsetFromSlice();
-    params.positionStride = geo.positionBuffer.stride();
-    params.normalOffset = geo.normalBuffer.offsetFromSlice();
-    params.normalStride = geo.normalBuffer.stride();
-    params.indexOffset = geo.indexBuffer.offsetFromSlice();
     params.indexStride = (geo.indexBuffer.indexType() == VK_INDEX_TYPE_UINT16) ? 2 : 4;
     params.numTriangles = numTriangles;
     params.numVertices = geo.vertexCount;
@@ -1044,17 +1038,15 @@ namespace dxvk {
     params.phase = 0;
     params.hashTableSize = hashTableSize;
 
+    assert(geo.vertexCount == input.vertexCount);
+
     // Decide whether to use the CPU path.  The input raster buffers must be host-visible
     // and not pending GPU write.  For small meshes the CPU path avoids GPU dispatch overhead.
+    const bool mustUseGPU = input.indexBuffer.mapPtr() == nullptr || input.positionBuffer.mapPtr() == nullptr;
+    const bool pendingGpuWrite = input.positionBuffer.isPendingGpuWrite() || input.indexBuffer.isPendingGpuWrite();
+
     const uint32_t kMaxTrianglesForCPU = 512;
-    const bool inputAccessible = input.positionBuffer.defined() && input.indexBuffer.defined() && input.normalBuffer.defined()
-                              && input.positionBuffer.mapPtr() != nullptr
-                              && input.indexBuffer.mapPtr() != nullptr
-                              && input.normalBuffer.mapPtr() != nullptr
-                              && !input.positionBuffer.isPendingGpuWrite()
-                              && !input.indexBuffer.isPendingGpuWrite()
-                              && !input.normalBuffer.isPendingGpuWrite();
-    const bool useCPU = inputAccessible && numTriangles <= kMaxTrianglesForCPU;
+    const bool useCPU = numTriangles <= kMaxTrianglesForCPU && !pendingGpuWrite && !mustUseGPU;
 
     if (useCPU) {
       // --- CPU path: uses the same shared functions as the GPU shader ---
@@ -1062,33 +1054,33 @@ namespace dxvk {
       const uint32_t* srcIndex = reinterpret_cast<const uint32_t*>(input.indexBuffer.mapPtr(0));
 
       // Remap offsets to the raster input buffers
-      SmoothNormalsArgs cpuParams = params;
-      cpuParams.positionOffset = input.positionBuffer.offsetFromSlice();
-      cpuParams.positionStride = input.positionBuffer.stride();
-      cpuParams.indexOffset = input.indexBuffer.offsetFromSlice();
+      params.positionOffset = input.positionBuffer.offsetFromSlice();
+      params.positionStride = input.positionBuffer.stride();
+      params.normalOffset = 0; // CPU output writes per-vertex via writeToBuffer, so offset/stride handled externally
+      params.normalStride = 0; 
+      params.indexOffset = input.indexBuffer.offsetFromSlice();
 
       // Allocate and zero the hash table on the CPU
-      std::vector<int32_t> hashTableData(hashTableSize * 4, 0);
+      std::vector<int32_t> hashTable(hashTableSize * 4, 0);
 
       // Phase 1: Accumulate face normals (shared function)
       for (uint32_t tri = 0; tri < numTriangles; tri++) {
-        smoothNormalsAccumulate(tri, srcPosition, srcIndex, hashTableData.data(), cpuParams);
+        smoothNormalsAccumulate(tri, srcPosition, srcIndex, hashTable.data(), params);
       }
 
-      // Phase 2: Scatter & normalize, writing directly to the output buffer if CPU-accessible
-      float* dstNormalPtr = reinterpret_cast<float*>(geo.normalBuffer.mapPtr(0));
-
-      // Write directly to the mapped output buffer — no writeToBuffer overhead
-      SmoothNormalsArgs scatterParams = cpuParams;
-      scatterParams.normalOffset = geo.normalBuffer.offsetFromSlice();
-      scatterParams.normalStride = geo.normalBuffer.stride();
-
+      // Phase 2: Scatter & normalize — writes encoded normals to the GPU buffer
+      float dstNormal;
       for (uint32_t v = 0; v < geo.vertexCount; v++) {
-        smoothNormalsScatter(v, srcPosition, dstNormalPtr, hashTableData.data(), scatterParams);
+        smoothNormalsScatter(v, srcPosition, &dstNormal, hashTable.data(), params);
+        ctx->writeToBuffer(geo.normalBuffer.buffer(), geo.normalBuffer.offsetFromSlice() + v * geo.normalBuffer.stride(), sizeof(dstNormal),  &dstNormal);
       }
-      
     } else {
       // --- GPU path ---
+      params.positionOffset = geo.positionBuffer.offsetFromSlice();
+      params.positionStride = geo.positionBuffer.stride();
+      params.normalOffset = geo.normalBuffer.offsetFromSlice();
+      params.normalStride = geo.normalBuffer.stride();
+      params.indexOffset = geo.indexBuffer.offsetFromSlice();
 
       // Sub-allocate from a pooled device-local buffer for the hash table (4 ints per entry: tag + 3 normal components)
       const VkDeviceSize hashBufSize = hashTableSize * 4 * sizeof(int);
@@ -1113,10 +1105,15 @@ namespace dxvk {
       ctx->pushConstants(0, sizeof(SmoothNormalsArgs), &params);
       ctx->dispatch(triangleWorkgroups.width, triangleWorkgroups.height, triangleWorkgroups.depth);
 
-      // Phase 2: Each vertex reads its smoothed normal from hash table, normalizes, writes to output
+      // Phase 2: Each vertex reads its smoothed normal from hash table, normalizes, writes encoded output
       params.phase = 2;
       ctx->pushConstants(0, sizeof(SmoothNormalsArgs), &params);
       ctx->dispatch(vertexWorkgroups.width, vertexWorkgroups.height, vertexWorkgroups.depth);
     }
+
+    // Smooth normals always outputs octahedral-encoded normals (single R32_UINT per vertex).
+    // Update the buffer format metadata so downstream readers (surface_interaction, skinning)
+    // correctly decode the normals.
+    geo.normalBuffer.setVertexFormat(VK_FORMAT_R32_UINT);
   }
 }
