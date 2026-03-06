@@ -55,9 +55,9 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <NMakeOutput>..\_Comp64Debug\src\d3d9\d3d9.dll</NMakeOutput>
-    <NMakeBuildCommandLine>ninja -C ..\_Comp64Debug</NMakeBuildCommandLine>
-    <NMakeReBuildCommandLine>ninja -C ..\_Comp64Debug clean all</NMakeReBuildCommandLine>
-    <NMakeCleanCommandLine>ninja -C ..\_Comp64Debug clean</NMakeCleanCommandLine>
+    <NMakeBuildCommandLine>meson compile -C ..\_Comp64Debug</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>meson compile -C ..\_Comp64Debug --clean &amp;&amp; meson compile -C ..\_Comp64Debug</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>meson compile -C ..\_Comp64Debug --clean</NMakeCleanCommandLine>
     <NMakeOutput>dxvk-remix.dll</NMakeOutput>
     <NMakePreprocessorDefinitions>_DEBUG;$dxvk_cpp_defines;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
     <NMakeIncludeSearchPath>$include_search_path_debug</NMakeIncludeSearchPath>
@@ -65,9 +65,9 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugOptimized|x64'">
     <NMakeOutput>..\_Comp64DebugOptimized\src\d3d9\d3d9.dll</NMakeOutput>
-    <NMakeBuildCommandLine>ninja -C ..\_Comp64DebugOptimized</NMakeBuildCommandLine>
-    <NMakeReBuildCommandLine>ninja -C ..\_Comp64DebugOptimized clean all</NMakeReBuildCommandLine>
-    <NMakeCleanCommandLine>ninja -C ..\_Comp64DebugOptimized clean</NMakeCleanCommandLine>
+    <NMakeBuildCommandLine>meson compile -C ..\_Comp64DebugOptimized</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>meson compile -C ..\_Comp64DebugOptimized --clean &amp;&amp; meson compile -C ..\_Comp64DebugOptimized</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>meson compile -C ..\_Comp64DebugOptimized --clean</NMakeCleanCommandLine>
     <NMakeOutput>dxvk-remix.dll</NMakeOutput>
     <NMakePreprocessorDefinitions>$dxvk_cpp_defines;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
     <NMakeIncludeSearchPath>$include_search_path_debugoptimized</NMakeIncludeSearchPath>
@@ -75,9 +75,9 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <NMakeOutput>..\_Comp64Release\src\d3d9\d3d9.dll</NMakeOutput>
-    <NMakeBuildCommandLine>ninja -C ..\_Comp64Release</NMakeBuildCommandLine>
-    <NMakeReBuildCommandLine>ninja -C ..\_Comp64Release clean all</NMakeReBuildCommandLine>
-    <NMakeCleanCommandLine>ninja -C ..\_Comp64Release clean</NMakeCleanCommandLine>
+    <NMakeBuildCommandLine>meson compile -C ..\_Comp64Release</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>meson compile -C ..\_Comp64Release --clean &amp;&amp; meson compile -C ..\_Comp64Release</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>meson compile -C ..\_Comp64Release --clean</NMakeCleanCommandLine>
     <NMakeOutput>dxvk-remix.dll</NMakeOutput>
     <NMakePreprocessorDefinitions>NDEBUG;$dxvk_cpp_defines;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
     <NMakeIncludeSearchPath>$include_search_path_release</NMakeIncludeSearchPath>
