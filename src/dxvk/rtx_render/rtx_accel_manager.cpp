@@ -1184,9 +1184,22 @@ namespace dxvk {
       }
 
       // Find the size of the surface mapping buffer
-      // For PointInstancers all instances share one surface, so no per-instance increment
-      maxPreviousSurfaceIndex = std::max(maxPreviousSurfaceIndex, currentInstance.getPreviousSurfaceIndex());
+      // Skip SURFACE_INDEX_INVALID (new instances with no previous-frame data) to avoid
+      // oversizing the mapping vector 
+      const uint32_t prevIdx = currentInstance.getPreviousSurfaceIndex();
+      if (prevIdx != SURFACE_INDEX_INVALID) {
+        maxPreviousSurfaceIndex = std::max(maxPreviousSurfaceIndex, prevIdx);
+      }
     }
+
+    // The GPU's SharedSurfaceIndex texture may reference any surface index from the
+    // previous frame.  Ensure the mapping covers at least the previous frame's surface
+    // count so those GPU lookups read SURFACE_INDEX_INVALID rather than stale buffer data.
+    auto& previousFrameSurfaceCount = uploadSurfaceDataFuncState.previousFrameSurfaceCount;
+    if (previousFrameSurfaceCount > 0) {
+      maxPreviousSurfaceIndex = std::max(maxPreviousSurfaceIndex, previousFrameSurfaceCount - 1);
+    }
+    previousFrameSurfaceCount = static_cast<uint32_t>(m_reorderedSurfaces.size());
 
     assert(dataOffset == surfacesGPUSize);
     assert(surfacesGPUData.size() == surfacesGPUSize);

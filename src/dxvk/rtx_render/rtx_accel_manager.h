@@ -136,6 +136,7 @@ private:
   struct {
     std::vector<unsigned char> surfacesGPUData;
     std::vector<uint32_t> surfaceIndexMapping;
+    uint32_t previousFrameSurfaceCount = 0; // Tracks last frame's surface count for mapping coverage
   } uploadSurfaceDataFuncState;
 
   void buildBlases(Rc<DxvkContext> ctx, DxvkBarrierSet& execBarriers,
