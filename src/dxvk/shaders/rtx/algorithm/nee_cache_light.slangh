@@ -270,6 +270,15 @@ struct NEECacheUtils
       }
     }
 
+    // Clamp to valid range. After geometry re-indexing (BLAS rebuild), the
+    // candidate's base primitiveIndex may have been clamped to the surface
+    // edge while its range still extends beyond — causing out-of-bounds
+    // vertex reads, degenerate triangles, and zero radiance.
+    if (cb.neeCacheArgs.enableReshuffleResilience)
+    {
+      primitiveIndex = min(primitiveIndex, triangleCount - 1);
+    }
+
     RayInteraction rayInteracton;
     SurfaceInteraction surfaceInteraction;
     getInteractions(surface, surfaceIndex, primitiveIndex, uvw.xy, shadingPosition, coneRadius, spreadAngle, footprintMode, rayInteracton, surfaceInteraction);

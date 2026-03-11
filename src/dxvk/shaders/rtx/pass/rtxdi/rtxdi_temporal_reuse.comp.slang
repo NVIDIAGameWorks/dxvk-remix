@@ -44,8 +44,7 @@
 [numthreads(16, 8, 1)]
 void main(int2 thread_id : SV_DispatchThreadID)
 {
-  Camera camera = cb.camera;
-  if (thread_id.x >= camera.resolution.x || thread_id.y >= camera.resolution.y)
+  if (thread_id.x >= cb.camera.resolution.x || thread_id.y >= cb.camera.resolution.y)
   {
     return;
   }
@@ -96,7 +95,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
 
   RTXDI_TemporalResamplingParameters tparams;
   tparams.prevPixelCenter = prevPixelCenter;
-  tparams.expectedPrevHitDistance = length(prevVirtualWorldPosition - cameraGetPreviousWorldPosition(camera).xyz);
+  tparams.expectedPrevHitDistance = length(prevVirtualWorldPosition - cameraGetPreviousWorldPosition(cb.camera).xyz);
   tparams.virtualMotionVector = virtualMotionVector;
   tparams.sourceBufferIndex = RTXDI_GetTemporalInputPage();
   tparams.maxHistoryLength = cb.enableRtxdiTemporalReuse ? cb.rtxdiMaxHistoryLength : 0;
@@ -119,7 +118,9 @@ void main(int2 thread_id : SV_DispatchThreadID)
 
   float currentReprojectionConfidence = 0;
   if (isGBufferSimilar)
+  {
     currentReprojectionConfidence = ReprojectionConfidence[temporalSamplePixelPos];
+  }
 
   currentReprojectionConfidence = min(currentReprojectionConfidence + 1.f / kReprojectionConfidenceHistoryLength, 1.f);
   ReprojectionConfidence[thread_id] = currentReprojectionConfidence;
@@ -127,7 +128,9 @@ void main(int2 thread_id : SV_DispatchThreadID)
   // Remember which pixel the temporal reservoir belongs to, if it comes from a valid reprojection.
   // Needed for the gradients pass.
   if (!isGBufferSimilar)
+  {
     temporalSamplePixelPos = -1;
+  }
   TemporalPosition[thread_id] = pack32(u16vec2(temporalSamplePixelPos));
 
   RAB_StoreReservoir(state, thread_id, RTXDI_GetTemporalOutputPage());

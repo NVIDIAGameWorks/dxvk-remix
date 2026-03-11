@@ -96,6 +96,8 @@ namespace dxvk {
     RemixGui::DragFloat("Triangle Exploration Accept Range Ratio", &triangleExplorationAcceptRangeRatioObject(), 1.f, 0.0f, 1.0f, "%.3f");
     RemixGui::DragInt("Triangle Exploration Max Range", &triangleExplorationMaxRangeObject(), 0.1f, 1, 1000, "%d", ImGuiSliderFlags_AlwaysClamp);
     RemixGui::Checkbox("Enable Spatial Reuse", &enableSpatialReuseObject());
+    RemixGui::Checkbox("Enable Reshuffle Resilience", &enableReshuffleResilienceObject());
+    RemixGui::DragInt("Reshuffle Max Age", &reshuffleMaxAgeObject(), 0.1f, 0, 15, "%d", ImGuiSliderFlags_AlwaysClamp);
   }
 
   void NeeCachePass::setRaytraceArgs(RaytraceArgs& constants, bool resetHistory) const {    
@@ -119,6 +121,8 @@ namespace dxvk {
     constants.neeCacheArgs.triangleExplorationMaxRange = triangleExplorationMaxRange();
     constants.neeCacheArgs.triangleExplorationProbability = enableTriangleExploration() ? triangleExplorationProbability() : 0.0f;
     constants.neeCacheArgs.enableSpatialReuse = enableSpatialReuse();
+    constants.neeCacheArgs.enableReshuffleResilience = enableReshuffleResilience();
+    constants.neeCacheArgs.reshuffleMaxAge = reshuffleMaxAge();
 
     static uvec2 oldResolution {0, 0};
     constants.neeCacheArgs.clearCache = resetHistory || oldResolution.x != constants.camera.resolution.x || oldResolution.y != constants.camera.resolution.y;
