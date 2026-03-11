@@ -51,11 +51,13 @@
 groupshared uint2 s_candidateList[CANDIDATE_LENGTH][BATCH_SIZE];
 groupshared float s_candidateLight[CANDIDATE_LENGTH][BATCH_SIZE];
 groupshared int s_candidateCount[BATCH_SIZE];
+groupshared int s_reshuffledCount[BATCH_SIZE];
 
-int convertToThisFramePrefixSumID(int lastID, out int surfaceID, out int primitiveID)
+int convertToThisFramePrefixSumID(int lastID, out int surfaceID, out int primitiveID, out bool reshuffled)
 {
   surfaceID = NEE_CACHE_INVALID_ID;
   primitiveID = NEE_CACHE_INVALID_ID;
+  reshuffled = false;
   if (lastID == NEE_CACHE_INVALID_ID)
   {
     return NEE_CACHE_INVALID_ID;
@@ -69,6 +71,33 @@ int convertToThisFramePrefixSumID(int lastID, out int surfaceID, out int primiti
   int surfaceIDThis = NEECacheUtils.convertToCurrentSurfaceID(surfaceIDLast);
   surfaceID = surfaceIDThis;
   primitiveID = primitiveIDLast;
+
+  // After geometry re-indexing (BLAS rebuild), the surface's primitive count may
+  // have changed. Clamp the old primitive ID to the new valid range rather than
+  // dropping the entry entirely. On emissive surfaces, the clamped primitive is
+  // still emissive and maintains cache continuity through the reshuffle.
+  if (cb.neeCacheArgs.enableReshuffleResilience && surfaceIDThis >= 0 && surfaceIDThis < cb.surfaceCount)
+  {
+    int primCount = NEECacheUtils.getSurfacePrimitiveCount(surfaceIDThis, PrimitiveIDPrefixSum);
+    if (primCount <= 0)
+    {
+      return NEE_CACHE_INVALID_ID;
+    }
+    if (primitiveIDLast >= primCount)
+    {
+      primitiveIDLast = primCount - 1;
+      primitiveID = primitiveIDLast;
+      reshuffled = true;
+    }
+    // Also detect when the primitive count itself changed — even if the old
+    // primitive ID is still in range, the indices may have been reordered.
+    int lastPrimCount = NEECacheUtils.getSurfacePrimitiveCount(surfaceIDLast, LastPrimitiveIDPrefixSum);
+    if (primCount != lastPrimCount)
+    {
+      reshuffled = true;
+    }
+  }
+
   return NEECacheUtils.convertIDToPrefixSumID(surfaceIDThis, primitiveIDLast, PrimitiveIDPrefixSum);
 }
 
@@ -124,6 +153,10 @@ void clearTask(uint2 localIndex)
   if (localIndex.x == 0)
   {
     s_candidateCount[localIndex.y] = 0;
+    if (cb.neeCacheArgs.enableReshuffleResilience)
+    {
+      s_reshuffledCount[localIndex.y] = 0;
+    }
   }
 }
 
@@ -200,11 +233,35 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
     int taskID = localIndex.x;
     uint2 value = cell.getSlotTaskValue(taskID);
     int surfaceID, primitiveID;
+    bool candidateReshuffled;
     uint oldRange = (value.x & 0xff000000);
-    value.x = convertToThisFramePrefixSumID(value.x & 0xffffff, surfaceID, primitiveID);
+    value.x = convertToThisFramePrefixSumID(value.x & 0xffffff, surfaceID, primitiveID, candidateReshuffled);
     value.x |= oldRange;
     int delta = max(value.y * cb.neeCacheArgs.learningRate, 1);
     value.y = clamp(int(value.y) - delta, 0, 1 << 25);
+
+    // Invalidate old entries whose mapped triangle is no longer emissive.
+    if (cb.neeCacheArgs.enableReshuffleResilience && value.x != NEE_CACHE_INVALID_ID)
+    {
+      vec3 triangleCenter, lightIntensity;
+      f16vec3 triangleNormal;
+      NEECacheUtils.calculateTriangleLightIntensity(surfaceID, primitiveID, triangleCenter, triangleNormal, lightIntensity);
+      if (all(lightIntensity == 0))
+      {
+        value.x = NEE_CACHE_INVALID_ID;
+      }
+    }
+
+    // If the candidate was reshuffled, we may want to keep it in the cache and give it a chance 
+    // to be re-evaluated and promoted in the new position, rather than dropping it immediately. 
+    // This can help preserve cache stability through brief disruptions like BLAS primitive reshuffles. 
+    // Track the count of reshuffled candidates for potential use in adaptive strategies (e.g. more aggressive culling 
+    // if many candidates were reshuffled and thus may be inaccurate).
+    if (candidateReshuffled && cb.neeCacheArgs.enableReshuffleResilience)
+    {
+      InterlockedAdd(s_reshuffledCount[localIndex.y], 1);
+    }
+
     if (value.x != NEE_CACHE_INVALID_ID && value.y > 0)
     {
       insertTask(value, localIndex.y);
@@ -227,7 +284,8 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
     }
     value.x &= 0xffffff;
     int surfaceID, primitiveID;
-    value.x = convertToThisFramePrefixSumID(value.x, surfaceID, primitiveID);
+    bool hashReshuffled;
+    value.x = convertToThisFramePrefixSumID(value.x, surfaceID, primitiveID, hashReshuffled);
     value.y = min(maxDeltaValue, value.y);
 
     // Remove non-emissive triangles, these triangles may be in the candidate list because of large mipmap footprint caused by diffuse ray
@@ -393,32 +451,67 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
 void updateTriangleSample(NEECell cell, uint2 localIndex, uint3 threadIndex)
 {
   // Update sample
-  vec3 cameraPosition = cameraGetWorldPosition(cb.camera);
   RNG rng = createRNG(uvec2(threadIndex.xy + threadIndex.z * NEE_CACHE_ELEMENTS * NEE_CACHE_PROBE_RESOLUTION * NEE_CACHE_PROBE_RESOLUTION), cb.frameIdx, threadIndex.z);
-  for (int i = localIndex.x; i < NEE_CACHE_SAMPLES; i += NEE_CACHE_ELEMENTS)
-  {
-    float lightObjectPdf = 0;
-    NEESample sample = NEESample.createEmpty();
-    float randomNumber = float(i + getNextSampleBlueNoise(rng)) / NEE_CACHE_SAMPLES;
-    NEECandidate candidate = cell.sampleCandidate(randomNumber, lightObjectPdf);
-    if (candidate.isValid())
-    {
-      float16_t spreadAngle = float16_t(cb.screenSpacePixelSpreadHalfAngle);
-      float16_t coneRadius = 0.0;
-      vec3 uvw = vec3(getNextSampleBlueNoise(rng), getNextSampleBlueNoise(rng), getNextSampleBlueNoise(rng));
-      float area;
-      int primitiveID = candidate.getPrimitiveID();
-      LightSample lightSample = NEECacheUtils.calculateLightSampleFromCandidate(
-        candidate.getSurfaceID(), primitiveID, candidate.getRange(), PrimitiveIDPrefixSum, uvw, lightObjectPdf,
-        /*cellCenter*/ 0, coneRadius, spreadAngle, area, false, kFootprintFromTextureCoordDiff);
+  // Skip sample recomputation when candidates reshuffled or were all lost.
+  // This preserves the previous frame's cached samples through brief disruptions
+  // (e.g. BLAS primitive reshuffles that change surface primitive counts).
+  // On clearCache frames the buffer contents are undefined, so skip preservation.
+  bool cellReshuffled = cb.neeCacheArgs.enableReshuffleResilience &&
+    cb.neeCacheArgs.clearCache == 0 &&
+    (s_candidateCount[localIndex.y] == 0 || s_reshuffledCount[localIndex.y] > 0);
 
-      sample.position = lightSample.position;
-      sample.normal = lightSample.normal;
-      sample.pdf = lightSample.solidAnglePdf;
-      sample.radiance = lightSample.radiance;
-      sample.triangleID = NEECacheUtils.convertIDToPrefixSumID(candidate.getSurfaceID(), primitiveID, PrimitiveIDPrefixSum);
+  // Track consecutive reshuffled frames via a per-cell age counter (0-15).
+  // After reshuffleMaxAge consecutive reshuffled frames, force a sample refresh to avoid
+  // permanently stale samples (e.g. from continuously animating emissive particles).
+  // A reshuffleMaxAge of 0 disables the age limit (samples can be preserved indefinitely).
+  uint reshuffleAge = cell.getReshuffleAge();
+  if (cellReshuffled)
+  {
+    reshuffleAge++;
+    // If the cell was reshuffled and reached the maximum age, consider it no longer reshuffled and allow sample refresh in the next frame.
+    if (cb.neeCacheArgs.reshuffleMaxAge > 0 && reshuffleAge >= cb.neeCacheArgs.reshuffleMaxAge)
+    {
+      cellReshuffled = false;
     }
-    cell.setSample(i, sample);
+  }
+  else
+  {
+    reshuffleAge = 0;
+  }
+
+  if (localIndex.x == 0)
+  {
+    cell.setReshuffled(cellReshuffled);
+    cell.setReshuffleAge(reshuffleAge);
+  }
+
+  if (!cellReshuffled)
+  {
+    for (int i = localIndex.x; i < NEE_CACHE_SAMPLES; i += NEE_CACHE_ELEMENTS)
+    {
+      float lightObjectPdf = 0;
+      NEESample sample = NEESample.createEmpty();
+      float randomNumber = float(i + getNextSampleBlueNoise(rng)) / NEE_CACHE_SAMPLES;
+      NEECandidate candidate = cell.sampleCandidate(randomNumber, lightObjectPdf);
+      if (candidate.isValid())
+      {
+        float16_t spreadAngle = float16_t(cb.screenSpacePixelSpreadHalfAngle);
+        float16_t coneRadius = 0.0;
+        vec3 uvw = vec3(getNextSampleBlueNoise(rng), getNextSampleBlueNoise(rng), getNextSampleBlueNoise(rng));
+        float area;
+        int primitiveID = candidate.getPrimitiveID();
+        LightSample lightSample = NEECacheUtils.calculateLightSampleFromCandidate(
+          candidate.getSurfaceID(), primitiveID, candidate.getRange(), PrimitiveIDPrefixSum, uvw, lightObjectPdf,
+          /*cellCenter*/ 0, coneRadius, spreadAngle, area, false, kFootprintFromTextureCoordDiff);
+
+        sample.position = lightSample.position;
+        sample.normal = lightSample.normal;
+        sample.pdf = lightSample.solidAnglePdf;
+        sample.radiance = lightSample.radiance;
+        sample.triangleID = NEECacheUtils.convertIDToPrefixSumID(candidate.getSurfaceID(), primitiveID, PrimitiveIDPrefixSum);
+      }
+      cell.setSample(i, sample);
+    }
   }
   GroupMemoryBarrierWithGroupSync();
 }

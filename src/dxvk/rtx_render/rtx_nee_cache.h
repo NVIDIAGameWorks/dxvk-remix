@@ -71,6 +71,9 @@ namespace dxvk {
     RTX_OPTION("rtx.neeCache", float, triangleExplorationRangeRatio, 0.1, "Index range to triangle count ratio, when triangle exploration is enabled.");
     RTX_OPTION("rtx.neeCache", float, triangleExplorationAcceptRangeRatio, 0.33, "Accept index range to search range ratio, when triangle exploration is enabled.");
     RTX_OPTION("rtx.neeCache", bool,  enableSpatialReuse, true, "Enable NEE cell share statistics information with neighbors.");
+    RTX_OPTION("rtx.neeCache", bool,  enableReshuffleResilience, true, "Preserve cached light samples through BLAS primitive reshuffles. Reduces flicker when geometry is re-indexed but may show stale lighting for one extra frame when emissive surfaces are removed.");
+    RTX_OPTION_ARGS("rtx.neeCache", int, reshuffleMaxAge, 8, "Maximum consecutive reshuffled frames before forcing a sample refresh. Prevents permanently stale samples from continuously animating emissive geometry (e.g. particle systems). 0 disables the limit.",
+                    args.minValue = 0, args.maxValue = 15);
   private:
     Rc<vk::DeviceFn> m_vkd;
   };
