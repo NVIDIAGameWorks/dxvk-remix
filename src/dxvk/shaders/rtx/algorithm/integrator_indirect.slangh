@@ -668,7 +668,7 @@ void integratePathVertex(
           // When candidates are reshuffled (BLAS rebuild), the cached samples are preserved
           // but their triangleIDs are stale prefix sum IDs from the previous frame.
           // Don't feed stale IDs back into the cache.
-          const bool hasFreshCandidates = cell.getCandidateCount() > 0 && (!reshuffleResilience || !cell.isReshuffled());
+          const bool hasFreshCandidates = cell.getCandidateCount() > 0;
           
           // Calculate cached triangle NEE sample's MIS light contribution
           vec3 diffuseLightTriangle, specularLightTriangle;

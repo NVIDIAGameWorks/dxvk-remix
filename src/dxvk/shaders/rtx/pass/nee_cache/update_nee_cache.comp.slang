@@ -51,13 +51,11 @@
 groupshared uint2 s_candidateList[CANDIDATE_LENGTH][BATCH_SIZE];
 groupshared float s_candidateLight[CANDIDATE_LENGTH][BATCH_SIZE];
 groupshared int s_candidateCount[BATCH_SIZE];
-groupshared int s_reshuffledCount[BATCH_SIZE];
 
-int convertToThisFramePrefixSumID(int lastID, out int surfaceID, out int primitiveID, out bool reshuffled)
+int convertToThisFramePrefixSumID(int lastID, out int surfaceID, out int primitiveID)
 {
   surfaceID = NEE_CACHE_INVALID_ID;
   primitiveID = NEE_CACHE_INVALID_ID;
-  reshuffled = false;
   if (lastID == NEE_CACHE_INVALID_ID)
   {
     return NEE_CACHE_INVALID_ID;
@@ -87,14 +85,6 @@ int convertToThisFramePrefixSumID(int lastID, out int surfaceID, out int primiti
     {
       primitiveIDLast = primCount - 1;
       primitiveID = primitiveIDLast;
-      reshuffled = true;
-    }
-    // Also detect when the primitive count itself changed — even if the old
-    // primitive ID is still in range, the indices may have been reordered.
-    int lastPrimCount = NEECacheUtils.getSurfacePrimitiveCount(surfaceIDLast, LastPrimitiveIDPrefixSum);
-    if (primCount != lastPrimCount)
-    {
-      reshuffled = true;
     }
   }
 
@@ -153,10 +143,6 @@ void clearTask(uint2 localIndex)
   if (localIndex.x == 0)
   {
     s_candidateCount[localIndex.y] = 0;
-    if (cb.neeCacheArgs.enableReshuffleResilience)
-    {
-      s_reshuffledCount[localIndex.y] = 0;
-    }
   }
 }
 
@@ -233,9 +219,8 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
     int taskID = localIndex.x;
     uint2 value = cell.getSlotTaskValue(taskID);
     int surfaceID, primitiveID;
-    bool candidateReshuffled;
     uint oldRange = (value.x & 0xff000000);
-    value.x = convertToThisFramePrefixSumID(value.x & 0xffffff, surfaceID, primitiveID, candidateReshuffled);
+    value.x = convertToThisFramePrefixSumID(value.x & 0xffffff, surfaceID, primitiveID);
     value.x |= oldRange;
     int delta = max(value.y * cb.neeCacheArgs.learningRate, 1);
     value.y = clamp(int(value.y) - delta, 0, 1 << 25);
@@ -250,16 +235,6 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
       {
         value.x = NEE_CACHE_INVALID_ID;
       }
-    }
-
-    // If the candidate was reshuffled, we may want to keep it in the cache and give it a chance 
-    // to be re-evaluated and promoted in the new position, rather than dropping it immediately. 
-    // This can help preserve cache stability through brief disruptions like BLAS primitive reshuffles. 
-    // Track the count of reshuffled candidates for potential use in adaptive strategies (e.g. more aggressive culling 
-    // if many candidates were reshuffled and thus may be inaccurate).
-    if (candidateReshuffled && cb.neeCacheArgs.enableReshuffleResilience)
-    {
-      InterlockedAdd(s_reshuffledCount[localIndex.y], 1);
     }
 
     if (value.x != NEE_CACHE_INVALID_ID && value.y > 0)
@@ -284,8 +259,7 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
     }
     value.x &= 0xffffff;
     int surfaceID, primitiveID;
-    bool hashReshuffled;
-    value.x = convertToThisFramePrefixSumID(value.x, surfaceID, primitiveID, hashReshuffled);
+    value.x = convertToThisFramePrefixSumID(value.x, surfaceID, primitiveID);
     value.y = min(maxDeltaValue, value.y);
 
     // Remove non-emissive triangles, these triangles may be in the candidate list because of large mipmap footprint caused by diffuse ray
@@ -452,40 +426,10 @@ void updateTriangleSample(NEECell cell, uint2 localIndex, uint3 threadIndex)
 {
   // Update sample
   RNG rng = createRNG(uvec2(threadIndex.xy + threadIndex.z * NEE_CACHE_ELEMENTS * NEE_CACHE_PROBE_RESOLUTION * NEE_CACHE_PROBE_RESOLUTION), cb.frameIdx, threadIndex.z);
-  // Skip sample recomputation when candidates reshuffled or were all lost.
+
   // This preserves the previous frame's cached samples through brief disruptions
-  // (e.g. BLAS primitive reshuffles that change surface primitive counts).
-  // On clearCache frames the buffer contents are undefined, so skip preservation.
-  bool cellReshuffled = cb.neeCacheArgs.enableReshuffleResilience &&
-    cb.neeCacheArgs.clearCache == 0 &&
-    (s_candidateCount[localIndex.y] == 0 || s_reshuffledCount[localIndex.y] > 0);
-
-  // Track consecutive reshuffled frames via a per-cell age counter (0-15).
-  // After reshuffleMaxAge consecutive reshuffled frames, force a sample refresh to avoid
-  // permanently stale samples (e.g. from continuously animating emissive particles).
-  // A reshuffleMaxAge of 0 disables the age limit (samples can be preserved indefinitely).
-  uint reshuffleAge = cell.getReshuffleAge();
-  if (cellReshuffled)
-  {
-    reshuffleAge++;
-    // If the cell was reshuffled and reached the maximum age, consider it no longer reshuffled and allow sample refresh in the next frame.
-    if (cb.neeCacheArgs.reshuffleMaxAge > 0 && reshuffleAge >= cb.neeCacheArgs.reshuffleMaxAge)
-    {
-      cellReshuffled = false;
-    }
-  }
-  else
-  {
-    reshuffleAge = 0;
-  }
-
-  if (localIndex.x == 0)
-  {
-    cell.setReshuffled(cellReshuffled);
-    cell.setReshuffleAge(reshuffleAge);
-  }
-
-  if (!cellReshuffled)
+  // (e.g. BLAS primitive reshuffles that break surface mapping for one frame).
+  if (s_candidateCount[localIndex.y] > 0 || !cb.neeCacheArgs.enableReshuffleResilience)
   {
     for (int i = localIndex.x; i < NEE_CACHE_SAMPLES; i += NEE_CACHE_ELEMENTS)
     {
