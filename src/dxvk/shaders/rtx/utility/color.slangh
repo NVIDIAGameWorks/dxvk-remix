@@ -137,9 +137,9 @@ GENERIC_GAMMA_TO_LINEAR_FAST(vec3)
 vector<T, 3> rgbToYCoCg<T: __BuiltinFloatingPointType>(vector<T, 3> color)
 {
   const matrix<T, 3, 3> rgbToYCoCgTransform = matrix<T, 3, 3>(
-    T(0.25), T(0.5), T(-0.25),
-    T(0.5), T(0.0), T(0.5),
-    T(0.25), T(-0.5), T(-0.25)
+    T(0.25),  T(0.5), T(0.25),
+    T(0.5),   T(0.0), T(-0.5),
+    T(-0.25), T(0.5), T(-0.25) 
   );
 
   return mul(rgbToYCoCgTransform, color);
@@ -148,9 +148,9 @@ vector<T, 3> rgbToYCoCg<T: __BuiltinFloatingPointType>(vector<T, 3> color)
 vector<T, 3> yCoCgToRGB<T: __BuiltinFloatingPointType>(vector<T, 3> color)
 {
   const matrix<T, 3, 3> yCoCgToRGBTransform = matrix<T, 3, 3>(
-    T(1.0), T(1.0), T(1.0),
-    T(1.0), T(0.0), T(-1.0),
-    T(-1.0), T(1.0), T(-1.0)
+    T(1.0), T(1.0),  T(-1.0),
+    T(1.0), T(0.0),  T(1.0),
+    T(1.0), T(-1.0), T(-1.0)
   );
 
   return mul(yCoCgToRGBTransform, color);
