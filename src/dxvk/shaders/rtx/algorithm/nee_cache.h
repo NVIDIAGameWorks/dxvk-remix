@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -32,6 +32,16 @@
 #define NEE_CACHE_WRITE_SAMPLE 0
 #define NEE_CACHE_WRITE_CANDIDATE 0
 #endif
+
+// Bit layout for the candidate count uint when reshuffle resilience is enabled:
+// bits [7:0]   = candidate count
+// bit  [8]     = reshuffle flag (current frame)
+// bits [12:9]  = reshuffle age counter (0-15 consecutive reshuffled frames)
+static const uint kNeeCacheCandidateCountMask  = 0xFF;
+static const uint kNeeCacheReshuffledBit       = 0x100;
+static const uint kNeeCacheReshuffleAgeShift   = 9;
+static const uint kNeeCacheReshuffleAgeMask    = 0xF;  // 4 bits
+static const uint kNeeCacheReshuffleAgeMax     = 15;
 
 struct NEESample
 {
@@ -547,14 +557,68 @@ struct NEECell
 
   int getCandidateCount()
   {
-    uint count = NeeCache.Load(getBaseAddress());
-    return min(count, getMaxCandidateCount());
+    uint data = NeeCache.Load(getBaseAddress());
+    if (cb.neeCacheArgs.enableReshuffleResilience)
+    {
+      // When reshuffle resilience is enabled, the candidate count is stored in the lower 8 bits of the data, 
+      // and the reshuffle flag is stored in the 9th bit. This is to make sure that 
+      // when BLAS rebuild causes primitive indices reshuffled and the cache is not updated yet, 
+      // the system can still use the cached candidates instead of sampling from reshuffled candidates which may cause bias.
+      return min(data & kNeeCacheCandidateCountMask, getMaxCandidateCount());
+    }
+    return min(data, getMaxCandidateCount());
+  }
+
+  // Returns true when primitive indices reshuffled (BLAS rebuild changed prim count).
+  // Consumers should use cached samples instead of sampling from reshuffled candidates.
+  bool isReshuffled()
+  {
+    uint data = NeeCache.Load(getBaseAddress());
+    return (data & kNeeCacheReshuffledBit) != 0;
+  }
+
+  // Number of consecutive frames this cell has been reshuffled (0-15).
+  // On clearCache frames the GPU buffer has undefined initial contents;
+  // callers must gate reads with cb.neeCacheArgs.clearCache == 0.
+  uint getReshuffleAge()
+  {
+    uint data = NeeCache.Load(getBaseAddress());
+    return (data >> kNeeCacheReshuffleAgeShift) & kNeeCacheReshuffleAgeMask;
   }
 
 #if NEE_CACHE_WRITE_CANDIDATE
   void setCandidateCount(int count)
   {
-    NeeCache.Store(getBaseAddress(), count);
+    if (cb.neeCacheArgs.enableReshuffleResilience)
+    {
+      uint existing = NeeCache.Load(getBaseAddress());
+      NeeCache.Store(getBaseAddress(), (existing & ~kNeeCacheCandidateCountMask) | uint(count & kNeeCacheCandidateCountMask));
+    }
+    else
+    {
+      NeeCache.Store(getBaseAddress(), count);
+    }
+  }
+
+  void setReshuffled(bool reshuffled)
+  {
+    uint existing = NeeCache.Load(getBaseAddress());
+    if (reshuffled)
+    {
+      NeeCache.Store(getBaseAddress(), existing | kNeeCacheReshuffledBit);
+    }
+    else
+    {
+      NeeCache.Store(getBaseAddress(), existing & ~kNeeCacheReshuffledBit);
+    }
+  }
+
+  void setReshuffleAge(uint age)
+  {
+    uint existing = NeeCache.Load(getBaseAddress());
+    existing &= ~(kNeeCacheReshuffleAgeMask << kNeeCacheReshuffleAgeShift);
+    existing |= (min(age, kNeeCacheReshuffleAgeMax) << kNeeCacheReshuffleAgeShift);
+    NeeCache.Store(getBaseAddress(), existing);
   }
 
   void setCandidate(int idx, NEECandidate candidate)

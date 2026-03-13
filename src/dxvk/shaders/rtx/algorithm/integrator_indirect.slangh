@@ -658,11 +658,17 @@ void integratePathVertex(
           pathState.enableNeeCacheAfterFirstBounce)
       {
         NEECell cell = NEECache.getCell(pathState.neeCacheCellOffset);
-        if (cell.isValid() && cell.getCandidateCount() > 0)
+        bool reshuffleResilience = cb.neeCacheArgs.enableReshuffleResilience;
+        if (cell.isValid() && (reshuffleResilience || cell.getCandidateCount() > 0))
         {
           float randomNumber = RAB_GetNextRandom(rtxdiRNG);
           uint triangleID;
           LightSample lightSampleTriangle = cell.getCachedLightSample(randomNumber, surfaceInteraction.position, rayInteraction.coneRadius, pathState.coneSpreadAngle, triangleID);
+
+          // When candidates are reshuffled (BLAS rebuild), the cached samples are preserved
+          // but their triangleIDs are stale prefix sum IDs from the previous frame.
+          // Don't feed stale IDs back into the cache.
+          const bool hasFreshCandidates = cell.getCandidateCount() > 0;
           
           // Calculate cached triangle NEE sample's MIS light contribution
           vec3 diffuseLightTriangle, specularLightTriangle;
@@ -678,17 +684,28 @@ void integratePathVertex(
           float r = RAB_GetNextRandom(rtxdiRNG);
           if (r * (weightLight + weightTriangle) > weightLight)
           {
-            lightIdx = kInvalidLightIdx;
-            lightTask = triangleID;
+            // Only switch feedback to triangle task when candidates are fresh,
+            // otherwise keep the analytical light index for correct task typing.
+            // Without this guard, the analytical light index would be inserted
+            // as a triangle prefix sum ID, corrupting the cache.
+            if (hasFreshCandidates || !reshuffleResilience)
+            {
+              lightIdx = kInvalidLightIdx;
+              lightTask = triangleID;
+            }
             lightSample = lightSampleTriangle;
             diffuseLight = diffuseLightTriangle;
             specularLight = specularLightTriangle;
           }
   
           // Finalize the chosen sample
-          float targetPdf = calcBt709Luminance(diffuseLight + specularLight);
-          lightSample.solidAnglePdf = targetPdf / (weightLight + weightTriangle);
-          lightSampleValid = true;
+          float totalWeight = weightLight + weightTriangle;
+          if (totalWeight > 0)
+          {
+            float targetPdf = calcBt709Luminance(diffuseLight + specularLight);
+            lightSample.solidAnglePdf = targetPdf / totalWeight;
+            lightSampleValid = true;
+          }
         }
       }
     

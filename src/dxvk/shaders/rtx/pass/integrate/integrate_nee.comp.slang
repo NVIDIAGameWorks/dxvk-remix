@@ -158,78 +158,99 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     if (cell.isValid())
     {
       int candidateCount = cell.getCandidateCount();
+      bool reshuffleResilience = cb.neeCacheArgs.enableReshuffleResilience;
+
+      OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+      LightSample lightSample;
+      bool usedCachedSample = false;
+      int primitiveIndex = 0;
+      NEECandidate candidate;
+
       if (candidateCount > 0)
       {
-        OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
-
-        LightSample lightSample;
         float lightObjectPdf = 0;
-        NEECandidate candidate = cell.sampleCandidate(RAB_GetNextRandom(rtxdiRNG), lightObjectPdf);
-        int primitiveIndex = candidate.getPrimitiveID();
-        int range = candidate.getRange();
+        candidate = cell.sampleCandidate(RAB_GetNextRandom(rtxdiRNG), lightObjectPdf);
+        primitiveIndex = candidate.getPrimitiveID();
         vec3 uvw = vec3(RAB_GetNextRandom(rtxdiRNG), RAB_GetNextRandom(rtxdiRNG), RAB_GetNextRandom(rtxdiRNG));
         float triangleArea;
         float16_t spreadAngle = getLobeAngleFromMaterial(opaqueSurfaceMaterialInteraction);
         lightSample = NEECacheUtils.calculateLightSampleFromCandidate(
           candidate.getSurfaceID(), primitiveIndex, candidate.getRange(), PrimitiveIDPrefixSum, uvw, lightObjectPdf, minimalSurfaceInteraction.position,
           minimalRayInteraction.coneRadius, spreadAngle, triangleArea, true, kFootprintFromRayOriginClamped);
-          
+      }
+      else if (reshuffleResilience)
+      {
+        // Fallback: candidates lost or reshuffled (BLAS rebuild changed prim count).
+        // Use cached world-space samples preserved by the update shader.
+        uint triangleID;
+        float16_t spreadAngle = getLobeAngleFromMaterial(opaqueSurfaceMaterialInteraction);
+        lightSample = cell.getCachedLightSample(RAB_GetNextRandom(rtxdiRNG), minimalSurfaceInteraction.position,
+          minimalRayInteraction.coneRadius, spreadAngle, triangleID);
+        usedCachedSample = true;
+        // Invalidate cached samples whose pdf became zero (e.g. triangle faces away
+        // from the current shading point) to prevent NaN in MIS weight division.
+        if (lightSample.solidAnglePdf <= 0)
+        {
+          lightSample.radiance = 0;
+        }
+      }
+
+      if (any(lightSample.radiance > 0))
+      {
         bool isVisible = false;
         vec3 diffuseLight = 0;
         vec3 specularLight = 0;
-        if (any(lightSample.radiance > 0))
+        vec3 inputDirection = normalize(lightSample.position - minimalSurfaceInteraction.position);
+        float brdfSampleSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+        float misWeight = lightSample.solidAnglePdf / (brdfSampleSolidAnglePdf + lightSample.solidAnglePdf);
+        lightSample.radiance *= misWeight;
+
+        evaluateUnshadowedLight(lightSample, opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection, diffuseLight, specularLight);
+
+        uint8_t rayMask = OBJECT_MASK_OPAQUE | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
+        rayMask |= (cb.enableIndirectAlphaBlendShadows) ? OBJECT_MASK_ALPHA_BLEND : 0;
+
+        bool pomOpaqueSurfaceEncountered = cb.pomEnableNEECache && opaqueSurfaceMaterialInteractionHasHeightTexture(opaqueSurfaceMaterialInteraction);
+        isVisible = evalNEESecondary(
+          lightSample, invalidRayPortalIndex, surface.portalSpace, rayMask, pomOpaqueSurfaceEncountered,
+          surface.isViewModel, primaryRay,
+          minimalRayInteraction, minimalSurfaceInteraction, opaqueSurfaceMaterialInteraction,
+          diffuseLight, specularLight, SharedSurfaceIndex[threadIndex], SharedTextureCoord[threadIndex]);
+
+        // Coordinate of a training path in NRC training pixel coordinate space
+        uvec2 nrcTrainingPixelCoordinate;
+        bool hasNrcTrainingPath = false;
+
+        if (cb.enableNrc)
         {
-          vec3 inputDirection = normalize(lightSample.position - minimalSurfaceInteraction.position);
-          float brdfSampleSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
-          float misWeight = lightSample.solidAnglePdf / (brdfSampleSolidAnglePdf + lightSample.solidAnglePdf);
-          lightSample.radiance *= misWeight;
+          hasNrcTrainingPath = Nrc::calculateIfPixelHasActiveNrcTrainingPath(threadIndex, cb.nrcArgs, nrcTrainingPixelCoordinate);
+        }
 
-          evaluateUnshadowedLight(lightSample, opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection, diffuseLight, specularLight);
-
-          uint8_t rayMask = OBJECT_MASK_OPAQUE | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
-          rayMask |= (cb.enableIndirectAlphaBlendShadows) ? OBJECT_MASK_ALPHA_BLEND : 0;
-          
-          bool pomOpaqueSurfaceEncountered = cb.pomEnableNEECache && opaqueSurfaceMaterialInteractionHasHeightTexture(opaqueSurfaceMaterialInteraction);
-          isVisible = evalNEESecondary(
-            lightSample, invalidRayPortalIndex, surface.portalSpace, rayMask, pomOpaqueSurfaceEncountered,
-            surface.isViewModel, primaryRay,
-            minimalRayInteraction, minimalSurfaceInteraction, opaqueSurfaceMaterialInteraction,
-            diffuseLight, specularLight, SharedSurfaceIndex[threadIndex], SharedTextureCoord[threadIndex]);
-
-          // Coordinate of a training path in NRC training pixel coordinate space
-          uvec2 nrcTrainingPixelCoordinate;
-          bool hasNrcTrainingPath = false;
-
-          if (cb.enableNrc) 
+        // Feed back to NEE cache hash tasks (skip when using cached samples — triangleID may be stale)
+        if ((!usedCachedSample || !reshuffleResilience)
+          && any(diffuseLight + specularLight) > 0
+          && (hasNrcTrainingPath
+              || (threadIndex.x + threadIndex.y) % 4 == 0))
+        {
+          int prefixTask = NEECacheUtils.convertIDToPrefixSumID(candidate.getSurfaceID(), primitiveIndex, PrimitiveIDPrefixSum);
+          if (cb.neeCacheArgs.enableSpatialReuse)
           {
-            hasNrcTrainingPath = Nrc::calculateIfPixelHasActiveNrcTrainingPath(threadIndex, cb.nrcArgs, nrcTrainingPixelCoordinate);
+            jitter = sampleUniformIntRng(rtxdiRNG);
+            cell = NEECache.getCell(NEECache.pointToOffset(minimalSurfaceInteraction.position, minimalSurfaceInteraction.triangleNormal, jitter));
           }
+          cell.insertSlotTask(prefixTask, diffuseLight + specularLight, false);
+        }
 
-          // Skip some pixels to reduce memory traffic, especially when large screen area is occupied by a single cell.
-          if (any(diffuseLight + specularLight) > 0
-            // Don't skip pixels with active NRC training paths. They are run at low(er) resolution anyway
-            && (hasNrcTrainingPath
-                || (threadIndex.x + threadIndex.y) % 4 == 0))
-          {
-            int prefixTask = NEECacheUtils.convertIDToPrefixSumID(candidate.getSurfaceID(), primitiveIndex, PrimitiveIDPrefixSum);
-            if (cb.neeCacheArgs.enableSpatialReuse)
-            {
-              jitter = sampleUniformIntRng(rtxdiRNG);
-              cell = NEECache.getCell(NEECache.pointToOffset(minimalSurfaceInteraction.position, minimalSurfaceInteraction.triangleNormal, jitter));
-            }
-            cell.insertSlotTask(prefixTask, diffuseLight + specularLight, false);
-          }
+        indirectDiffuseOutput.xyz += diffuseLight;
+        indirectSpecularOutput.xyz += specularLight;
 
-          indirectDiffuseOutput.xyz += diffuseLight;
-          indirectSpecularOutput.xyz += specularLight;
-
-          // Add the sampled NEE Cache light radiance to NRC training paths
-          if (hasNrcTrainingPath)
-          {
-            const uint bounceIndex = 0;
-            const vec3 neeRadiance = diffuseLight + specularLight;
-            addRadianceToNrcTrainingPathVertex(threadIndex, nrcTrainingPixelCoordinate, bounceIndex, neeRadiance);
-          }
+        // Add the sampled NEE Cache light radiance to NRC training paths
+        if (hasNrcTrainingPath)
+        {
+          const uint bounceIndex = 0;
+          const vec3 neeRadiance = diffuseLight + specularLight;
+          addRadianceToNrcTrainingPathVertex(threadIndex, nrcTrainingPixelCoordinate, bounceIndex, neeRadiance);
         }
 
         if (cb.enableReSTIRGI && isVisible)

@@ -196,7 +196,7 @@ namespace dxvk {
     void dispatchSmoothNormals(
       const Rc<DxvkContext>& ctx,
       const RasterGeometry& input,
-      const RaytraceGeometry& geo);
+      RaytraceGeometry& geo);
 
     inline void flushCommandList() {
       if (m_skinningContext->getCommandList() != nullptr && m_skinningCommands > 0) {

@@ -21,21 +21,15 @@
 */
 #pragma once
 
+#include "../utility/cpu_gpu_compat.h"
+
 // This function can be executed on the CPU or GPU!!
 #ifdef __cplusplus
 namespace dxvk {
-typedef Vector4i uint4;
-typedef Vector3 float3;
-typedef Vector4 float4;
 
 #define toMatrix4(m) (*reinterpret_cast<const Matrix4*>(&m))
 #define mul(mat, vec) (mat * vec)
 
-#define abs(x) std::abs(x)
-#define max(x, y) std::max(x, y)
-
-#define WriteBuffer(T) T*
-#define ReadBuffer(T) const T*
 #define ReadByteBuffer const uint8_t*
 #define ConstBuffer(T) const T&
 
@@ -43,19 +37,10 @@ uint4 get(ReadByteBuffer buf, uint index) {
   return uint4(buf[index], buf[index+1], buf[index+2], buf[index+3]);
 }
 
-uint asuint(float f) {
-  return *reinterpret_cast<const uint*>(&f);
-}
-
-float asfloat(uint u) {
-  return *reinterpret_cast<const float*>(&u);
-}
 #else
 #define toMatrix4(x) x
 #define Matrix4 float4x4
 
-#define WriteBuffer(T) RWStructuredBuffer<T>
-#define ReadBuffer(T) StructuredBuffer<T>
 #define ReadByteBuffer ByteAddressBuffer
 #define ConstBuffer(T) ConstantBuffer<T>
 
@@ -70,57 +55,6 @@ uint4 get(ReadByteBuffer buf, uint index) {
   // return buf.Load4(index);
 }
 #endif
-// Todo: Share with GPU implementation by including here
-uint f32ToUnorm16(float x) {
-  const float scalar = (1 << 16) - 1;
-  const float conv = x * scalar + 0.5f;
-
-  return uint(conv);
-}
-float unorm16ToF32(uint x) {
-  const float scalar = (1 << 16) - 1;
-  const float conv = float(x & ((1 << 16) - 1)) / scalar;
-
-  return conv;
-}
-uint encodeNormal(float3 n) {
-  const float maxMag = abs(n.x) + abs(n.y) + abs(n.z);
-  const float inverseMag = maxMag == 0.0f ? 0.0f : (1.0f / maxMag);
-  float x = n.x * inverseMag;
-  float y = n.y * inverseMag;
-
-  if (n.z < 0.0f) {
-    const float originalXSign = x < 0.0f ? -1.0f : 1.0f;
-    const float originalYSign = y < 0.0f ? -1.0f : 1.0f;
-    const float inverseAbsX = 1.0f - abs(x);
-    const float inverseAbsY = 1.0f - abs(y);
-
-    x = inverseAbsY * originalXSign;
-    y = inverseAbsX * originalYSign;
-  }
-
-  // Signed->Unsigned octahedral
-  x = x * 0.5f + 0.5f;
-  y = y * 0.5f + 0.5f;
-
-  return f32ToUnorm16(x) | (f32ToUnorm16(y) << 16);
-}
-float3 decodeNormal(uint e) {
-  float x = unorm16ToF32(e);
-  float y = unorm16ToF32(e >> 16);
-
-  // Unsigned->Signed octahedral
-  x = x * 2.0f - 1.0f;
-  y = y * 2.0f - 1.0f;
-
-  float3 v = float3(x, y, 1.0f - abs(x) - abs(y));
-  const float t = max(-v.z, 0.0f);
-
-  v.x += (v.x >= 0.0f) ? -t : t;
-  v.y += (v.y >= 0.0f) ? -t : t;
-
-  return normalize(v);
-}
 
 void skinning(const uint32_t idx,
               WriteBuffer(float) dstPosition,
@@ -214,11 +148,11 @@ void skinning(const uint32_t idx,
 }
 
 #ifdef __cplusplus
-#undef WriteBuffer
-#undef ReadBuffer
+#undef ReadByteBuffer
+#undef ConstBuffer
 #undef toMatrix4
 #undef mul
-#undef max
-#undef abs
 } //dxvk
 #endif
+
+#include "../utility/cpu_gpu_compat_undef.h"

@@ -123,6 +123,7 @@ class GeometryBuffer : public DxvkBufferSlice {
   uint32_t offsetFromSlice() const { return m_offsetFromSlice;}
   uint32_t stride() const { return m_stride; }
   VkFormat vertexFormat() const {return m_format.vertex;}
+  void setVertexFormat(VkFormat fmt) { m_format.vertex = fmt; }
   VkIndexType indexType() const {return m_format.index;}
 
   bool operator==(GeometryBuffer const& rhs) const {

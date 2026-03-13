@@ -42,3 +42,4 @@
 metrics.txt
 nrc_session_log.txt
 python.dxvk-cache
+*.xml.user
