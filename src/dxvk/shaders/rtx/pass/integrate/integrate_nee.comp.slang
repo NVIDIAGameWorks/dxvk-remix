@@ -159,9 +159,6 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     {
       int candidateCount = cell.getCandidateCount();
       bool reshuffleResilience = cb.neeCacheArgs.enableReshuffleResilience;
-      // Use cached samples when candidates were reshuffled (prim count changed)
-      // to avoid sampling from primitives that now map to different triangles.
-      const bool cellReshuffled = reshuffleResilience && cell.isReshuffled();
 
       OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
 
@@ -170,7 +167,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
       int primitiveIndex = 0;
       NEECandidate candidate;
 
-      if (candidateCount > 0 && !cellReshuffled)
+      if (candidateCount > 0)
       {
         float lightObjectPdf = 0;
         candidate = cell.sampleCandidate(RAB_GetNextRandom(rtxdiRNG), lightObjectPdf);
