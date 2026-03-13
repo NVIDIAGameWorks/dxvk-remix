@@ -21,6 +21,7 @@
  */
 #include "pch.h"
 #include "d3d9_device.h"
+#include "di_hook.h"
 #include "d3d9_lss.h"
 #include "d3d9_util.h"
 #include "d3d9_surfacebuffer_helper.h"
@@ -336,6 +337,8 @@ template<bool EnableSync>
 BOOL Direct3DDevice9Ex_LSS<EnableSync>::ShowCursor(BOOL bShow) {
   ZoneScoped;
   LogFunctionCall();
+
+  SetGameCursorVisible(bShow != FALSE);
 
   UID currentUID = 0;
   {
