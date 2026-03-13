@@ -29,6 +29,7 @@ extern void DInputSetDefaultWindow(HWND hwnd);
 
 extern void InputWinHooksReattach();
 extern void SetGameCursorVisible(bool visible);
+extern void SetGameCustomCursor(HCURSOR hCursor);
 
 namespace DI {
   

@@ -798,9 +798,16 @@ public:
 };
 
 static std::atomic<bool> g_gameCursorVisible = { false };
+static std::atomic<HCURSOR> g_gameCustomCursor = { nullptr };
 
 void SetGameCursorVisible(bool visible) {
   g_gameCursorVisible.store(visible, std::memory_order_relaxed);
+}
+
+void SetGameCustomCursor(HCURSOR hCursor) {
+  HCURSOR old = g_gameCustomCursor.exchange(hCursor, std::memory_order_relaxed);
+  if (old != nullptr)
+    DestroyCursor(old);
 }
 
 API_HOOK_DECL(GetCursorPos);
@@ -1001,8 +1008,9 @@ static HCURSOR WINAPI HookedSetCursor(HCURSOR hCursor) {
   if (ClientOptions::getForceSoftwareCursorVisibility() &&
       hCursor == NULL &&
       g_gameCursorVisible.load(std::memory_order_relaxed)) {
+    HCURSOR custom = g_gameCustomCursor.load(std::memory_order_relaxed);
     static HCURSOR arrowCursor = LoadCursor(NULL, IDC_ARROW);
-    hCursor = arrowCursor;
+    hCursor = custom ? custom : arrowCursor;
   }
   return OrigSetCursor(hCursor);
 }
