@@ -111,7 +111,7 @@ void main(uint2 threadId : SV_DispatchThreadID)
   }
   else if (cb.tonemapOperator == tonemapOperatorHableFilmic)
   {
-    texelFinal = hableFilmicToneMapper(texelFinal);
+    texelFinal = hableFilmicToneMapper(texelFinal, cb.hableA, cb.hableB, cb.hableC, cb.hableD, cb.hableE, cb.hableF, cb.hableW);
   }
   if (cb.performSRGBConversion)
   {

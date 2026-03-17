@@ -131,7 +131,8 @@ namespace dxvk {
 
   enum class TonemappingMode : int {
     Global = 0,
-    Local
+    Local,
+    Direct  // Direct operator-only mode (no dynamic tone curve, no local pyramid).
   };
 
   enum class UIType : int {
@@ -1118,10 +1119,10 @@ namespace dxvk {
                "Should only be set to false for debugging purposes if the partial DDS loader's logic is suspected to be incorrect to compare against GLI's implementation.");
 
     RTX_OPTION("rtx", TonemappingMode, tonemappingMode, TonemappingMode::Local,
-               "The tonemapping type to use, 0 for Global, 1 for Local (Default).\n"
+               "The tonemapping type to use, 0 for Global, 1 for Local (Default), 2 for Direct.\n"
                "Global tonemapping tonemaps the image with respect to global parameters, usually based on statistics about the rendered image as a whole.\n"
                "Local tonemapping on the other hand uses more spatially-local parameters determined by regions of the rendered image rather than the whole image.\n"
-               "Local tonemapping can result in better preservation of highlights and shadows in scenes with high amounts of dynamic range whereas global tonemapping may have to comprimise between over or underexposure.");
+               "Direct applies only the selected tonemapping operator (no dynamic tone curve, no local pyramid) — useful for evaluating a specific operator in isolation.");
     // Capture Options
     //   General
     RTX_OPTION("rtx", bool, captureShowMenuOnHotkey, true,

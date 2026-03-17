@@ -73,23 +73,23 @@ float3 ACESFilm(float3 color, bool useLegacyACES, bool suppressBlackLevelClamp =
 
 // Hable/Uncharted 2 filmic tonemapper.
 // Reference: http://filmicworlds.com/blog/filmic-tonemapping-operators/
-float3 hablePartial(float3 x)
+// The exposure bias of 2.0 is the Uncharted 2 reference value and is baked in;
+// use the global exposure control to adjust scene brightness instead.
+float3 hablePartial(float3 x, float A, float B, float C, float D, float E, float F)
 {
-  const float A = 0.15f;
-  const float B = 0.50f;
-  const float C = 0.10f;
-  const float D = 0.20f;
-  const float E = 0.02f;
-  const float F = 0.30f;
   return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
 }
 
+float3 hableFilmicToneMapper(float3 inputColor, float A, float B, float C, float D, float E, float F, float W)
+{
+  const float exposureBias = 2.0f;
+  float3 curr = hablePartial(exposureBias * inputColor, A, B, C, D, E, F);
+  float3 whiteScale = float3(1.0f) / hablePartial(float3(W), A, B, C, D, E, F);
+  return curr * whiteScale;
+}
+
+// Convenience overload with Uncharted 2 defaults (for callers without param access).
 float3 hableFilmicToneMapper(float3 inputColor)
 {
-  // White point W = 11.2 (Uncharted 2 reference white), exposure bias = 2.0.
-  const float W = 11.2f;
-  const float exposureBias = 2.0f;
-  float3 curr = hablePartial(exposureBias * inputColor);
-  float3 whiteScale = float3(1.0f) / hablePartial(float3(W));
-  return curr * whiteScale;
+  return hableFilmicToneMapper(inputColor, 0.15f, 0.50f, 0.10f, 0.20f, 0.02f, 0.30f, 11.2f);
 }

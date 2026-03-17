@@ -112,6 +112,45 @@ namespace dxvk {
       RemixGui::Combo("Tonemapping Operator", &tonemapOperatorObject(),
                       "None\0ACES\0ACES (Legacy)\0Hable Filmic\0");
 
+      if (tonemapOperator() == TonemapOperator::HableFilmic) {
+        ImGui::Indent();
+        ImGui::Text("Hable Filmic Parameters:");
+
+        // Presets
+        struct HablePreset {
+          const char* name;
+          float A, B, C, D, E, F, W;
+        };
+        static const HablePreset kPresets[] = {
+          { "Uncharted 2 (Default)", 0.15f, 0.50f, 0.10f, 0.20f, 0.02f, 0.30f, 11.2f  },
+          { "Half-Life: Alyx",       0.319f,0.5047f,0.1619f,0.4667f,0.0f,0.7475f,3.9996f },
+        };
+        if (ImGui::Button("Preset: Uncharted 2")) {
+          const auto& p = kPresets[0];
+          hableShoulderStrength.setDeferred(p.A); hableLinearStrength.setDeferred(p.B);
+          hableLinearAngle.setDeferred(p.C);      hableToeStrength.setDeferred(p.D);
+          hableToeNumerator.setDeferred(p.E);     hableToeDenominator.setDeferred(p.F);
+          hableWhitePoint.setDeferred(p.W);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Preset: Half-Life: Alyx")) {
+          const auto& p = kPresets[1];
+          hableShoulderStrength.setDeferred(p.A); hableLinearStrength.setDeferred(p.B);
+          hableLinearAngle.setDeferred(p.C);      hableToeStrength.setDeferred(p.D);
+          hableToeNumerator.setDeferred(p.E);     hableToeDenominator.setDeferred(p.F);
+          hableWhitePoint.setDeferred(p.W);
+        }
+
+        RemixGui::DragFloat("Shoulder Strength", &hableShoulderStrengthObject(), 0.005f, 0.0f,  1.0f, "%.4f");
+        RemixGui::DragFloat("Linear Strength",   &hableLinearStrengthObject(),   0.005f, 0.0f,  1.0f, "%.4f");
+        RemixGui::DragFloat("Linear Angle",      &hableLinearAngleObject(),      0.005f, 0.0f,  1.0f, "%.4f");
+        RemixGui::DragFloat("Toe Strength",      &hableToeStrengthObject(),      0.005f, 0.0f,  1.0f, "%.4f");
+        RemixGui::DragFloat("Toe Numerator",     &hableToeNumeratorObject(),     0.001f, 0.0f,  0.5f, "%.4f");
+        RemixGui::DragFloat("Toe Denominator",   &hableToeDenominatorObject(),   0.005f, 0.0f,  1.0f, "%.4f");
+        RemixGui::DragFloat("White Point",       &hableWhitePointObject(),       0.1f,   0.1f, 20.0f, "%.4f");
+        ImGui::Unindent();
+      }
+
       RemixGui::Combo("Dither Mode", &ditherModeObject(), "Disabled\0Spatial\0Spatial + Temporal\0");
 
       RemixGui::Checkbox("Tuning Mode", &tuningModeObject());
@@ -251,10 +290,22 @@ namespace dxvk {
 
     // Prepare shader arguments
     ToneMappingApplyToneMappingArgs pushArgs = {};
-    pushArgs.toneMappingEnabled = tonemappingEnabled();
+    // In Direct mode, skip the dynamic tone curve — operator runs alone.
+    const bool directMode = RtxOptions::tonemappingMode() == TonemappingMode::Direct;
+    pushArgs.toneMappingEnabled = directMode ? false : tonemappingEnabled();
+    pushArgs.directOperatorMode = directMode ? 1u : 0u;
     pushArgs.colorGradingEnabled = colorGradingEnabled();
     pushArgs.enableAutoExposure = autoExposureEnabled;
     pushArgs.tonemapOperator = static_cast<uint32_t>(tonemapOperator());
+
+    // Hable filmic parameters.
+    pushArgs.hableA = hableShoulderStrength();
+    pushArgs.hableB = hableLinearStrength();
+    pushArgs.hableC = hableLinearAngle();
+    pushArgs.hableD = hableToeStrength();
+    pushArgs.hableE = hableToeNumerator();
+    pushArgs.hableF = hableToeDenominator();
+    pushArgs.hableW = hableWhitePoint();
 
     // Tonemap args
     pushArgs.performSRGBConversion = performSRGBConversion;

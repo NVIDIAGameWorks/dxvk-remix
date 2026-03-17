@@ -107,6 +107,16 @@ struct FinalCombineArgs
   uint frameIndex;
   uint pad1;
   uint pad2;
+
+  // Hable filmic parameters (only used when tonemapOperator == tonemapOperatorHableFilmic).
+  float hableA;  // Shoulder strength.
+  float hableB;  // Linear strength.
+  float hableC;  // Linear angle.
+  float hableD;  // Toe strength.
+  float hableE;  // Toe numerator.
+  float hableF;  // Toe denominator.
+  float hableW;  // White point.
+  float hablePad;
 };
 
 

@@ -118,6 +118,14 @@ namespace dxvk {
     RTX_OPTION_ENV("rtx.tonemap", TonemapOperator, tonemapOperator, TonemapOperator::None, "DXVK_TONEMAP_OPERATOR",
                    "Tonemapping operator to apply after the dynamic tone curve.\n"
                    "Supported values are 0 = None (dynamic curve only), 1 = ACES, 2 = ACES (Legacy), 3 = Hable Filmic.");
+    // Hable/Uncharted 2 filmic tonemapper parameters (only used when tonemapOperator = HableFilmic).
+    RTX_OPTION("rtx.tonemap", float, hableShoulderStrength, 0.15f, "Hable filmic: A — shoulder strength.");
+    RTX_OPTION("rtx.tonemap", float, hableLinearStrength,   0.50f, "Hable filmic: B — linear strength.");
+    RTX_OPTION("rtx.tonemap", float, hableLinearAngle,      0.10f, "Hable filmic: C — linear angle.");
+    RTX_OPTION("rtx.tonemap", float, hableToeStrength,      0.20f, "Hable filmic: D — toe strength.");
+    RTX_OPTION("rtx.tonemap", float, hableToeNumerator,     0.02f, "Hable filmic: E — toe numerator.");
+    RTX_OPTION("rtx.tonemap", float, hableToeDenominator,   0.30f, "Hable filmic: F — toe denominator.");
+    RTX_OPTION("rtx.tonemap", float, hableWhitePoint,       4.00f, "Hable filmic: W — white point (linear scene value that maps to 1.0). HLA default: 4.0, Uncharted 2 default: 11.2.");
     RTX_OPTION("rtx.tonemap", float, dynamicRange, 15.f, "Range [0, inf). Without further adjustments, the tone curve will try to fit the entire luminance of the scene into the range [-dynamicRange, 0] in linear photographic stops. Higher values adjust for ambient monitor lighting; perfect conditions -> 17.587 stops.");
     RTX_OPTION("rtx.tonemap", float, shadowMinSlope, 0.f, "Range [0, inf). Forces the tone curve below a linear value of 0.18 to have at least this slope, making the tone darker.");
     RTX_OPTION("rtx.tonemap", float, shadowContrast, 0.f, "Range [0, inf). Additional gamma power to apply to the tone of the tone curve below shadowContrastEnd.");
