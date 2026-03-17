@@ -34,6 +34,14 @@ namespace dxvk {
 
   class DxvkDevice;
 
+  // Tonemapping operator applied after the dynamic tone curve.
+  enum class TonemapOperator : uint32_t {
+    None        = 0, // Dynamic curve only, no additional operator.
+    ACES        = 1,
+    ACESLegacy  = 2,
+    HableFilmic = 3,
+  };
+
   class DxvkToneMapping: public CommonDeviceObject {
   public:
     explicit DxvkToneMapping(DxvkDevice* device);
@@ -107,7 +115,9 @@ namespace dxvk {
     RTX_OPTION("rtx.tonemap", float, toneCurveMinStops, -24.0f, "Low endpoint of the tone curve (in log2(linear)).");
     RTX_OPTION("rtx.tonemap", float, toneCurveMaxStops, 8.0f, "High endpoint of the tone curve (in log2(linear))."); 
     RTX_OPTION("rtx.tonemap", bool,  tuningMode, false, "A flag to enable a debug visualization to tune the tonemapping exposure curve with, as well as exposing parameters for tuning the tonemapping in the UI.");
-    RTX_OPTION("rtx.tonemap", bool,  finalizeWithACES, false, "A flag to enable applying a final pass of ACES tonemapping to the tonemapped result.");
+    RTX_OPTION_ENV("rtx.tonemap", TonemapOperator, tonemapOperator, TonemapOperator::None, "DXVK_TONEMAP_OPERATOR",
+                   "Tonemapping operator to apply after the dynamic tone curve.\n"
+                   "Supported values are 0 = None (dynamic curve only), 1 = ACES, 2 = ACES (Legacy), 3 = Hable Filmic.");
     RTX_OPTION("rtx.tonemap", float, dynamicRange, 15.f, "Range [0, inf). Without further adjustments, the tone curve will try to fit the entire luminance of the scene into the range [-dynamicRange, 0] in linear photographic stops. Higher values adjust for ambient monitor lighting; perfect conditions -> 17.587 stops.");
     RTX_OPTION("rtx.tonemap", float, shadowMinSlope, 0.f, "Range [0, inf). Forces the tone curve below a linear value of 0.18 to have at least this slope, making the tone darker.");
     RTX_OPTION("rtx.tonemap", float, shadowContrast, 0.f, "Range [0, inf). Additional gamma power to apply to the tone of the tone curve below shadowContrastEnd.");

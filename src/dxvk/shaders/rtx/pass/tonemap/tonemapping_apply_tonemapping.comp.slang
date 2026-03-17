@@ -96,7 +96,6 @@ float3 filmicToneMapper(float3 inputColor)
   return pow(x, float3(2.2));
 }
 
-
 // Dynamic tone mapper based on Eilertsen, Mantiuk, and Unger's paper
 // *Real-time noise-aware tone mapping*. Applies a luminance-based tone 
 // curve and then applies filmic saturation emulation.
@@ -131,10 +130,19 @@ float3 applyToneMapping(float3 color, uint2 pixelPosition)
       // Normal tone mapping
       color = dynamicToneMapper(color);
       
-      if (cb.finalizeWithACES)
+      if (cb.tonemapOperator == tonemapOperatorACES)
       {
-        color = ACESFilm(color, cb.useLegacyACES);
+        color = ACESFilm(color, false);
       }
+      else if (cb.tonemapOperator == tonemapOperatorACESLegacy)
+      {
+        color = ACESFilm(color, true);
+      }
+      else if (cb.tonemapOperator == tonemapOperatorHableFilmic)
+      {
+        color = hableFilmicToneMapper(color);
+      }
+      // tonemapOperatorNone: dynamic curve only, no additional operator.
     } 
     else
     {

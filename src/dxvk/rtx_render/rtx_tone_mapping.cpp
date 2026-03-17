@@ -109,7 +109,8 @@ namespace dxvk {
     RemixGui::Checkbox("Tonemapping Enabled", &tonemappingEnabledObject());
     if (tonemappingEnabled()) {
       ImGui::Indent();
-      RemixGui::Checkbox("Finalize With ACES", &finalizeWithACESObject());
+      RemixGui::Combo("Tonemapping Operator", &tonemapOperatorObject(),
+                      "None\0ACES\0ACES (Legacy)\0Hable Filmic\0");
 
       RemixGui::Combo("Dither Mode", &ditherModeObject(), "Disabled\0Spatial\0Spatial + Temporal\0");
 
@@ -253,8 +254,7 @@ namespace dxvk {
     pushArgs.toneMappingEnabled = tonemappingEnabled();
     pushArgs.colorGradingEnabled = colorGradingEnabled();
     pushArgs.enableAutoExposure = autoExposureEnabled;
-    pushArgs.finalizeWithACES = finalizeWithACES();
-    pushArgs.useLegacyACES = RtxOptions::useLegacyACES();
+    pushArgs.tonemapOperator = static_cast<uint32_t>(tonemapOperator());
 
     // Tonemap args
     pushArgs.performSRGBConversion = performSRGBConversion;

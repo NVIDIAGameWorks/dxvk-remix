@@ -63,7 +63,7 @@ struct LuminanceArgs
   float highlights;
   uint debugView;
 
-  uint useLegacyACES;
+  uint tonemapOperator;  // One of tonemapOperator* constants from tonemapping.h.
   uint pad1;
   uint pad2;
   uint enableAutoExposure;
@@ -98,14 +98,14 @@ struct FinalCombineArgs
   float exposure;
   uint debugView;
 
-  uint finalizeWithACES;
+  uint tonemapOperator;  // One of tonemapOperator* constants from tonemapping.h.
   uint performSRGBConversion;
   uint enableAutoExposure;
   uint pad0;
 
   uint ditherMode;
   uint frameIndex;
-  uint useLegacyACES;
+  uint pad1;
   uint pad2;
 };
 

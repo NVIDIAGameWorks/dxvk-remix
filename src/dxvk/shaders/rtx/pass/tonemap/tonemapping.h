@@ -53,6 +53,12 @@ static const uint32_t ditherModeNone = 0;
 static const uint32_t ditherModeSpatialOnly = 1;
 static const uint32_t ditherModeSpatialTemporal = 2;
 
+// Tonemapping operator constants (matches TonemapOperator enum in rtx_tone_mapping.h).
+static const uint32_t tonemapOperatorNone        = 0; // Dynamic curve only.
+static const uint32_t tonemapOperatorACES        = 1;
+static const uint32_t tonemapOperatorACESLegacy  = 2;
+static const uint32_t tonemapOperatorHableFilmic = 3;
+
 // Constant buffers
 
 struct ToneMappingAutoExposureArgs {
@@ -116,11 +122,11 @@ struct ToneMappingApplyToneMappingArgs {
   float saturation;
   float toneCurveMinStops;
   float toneCurveMaxStops;
-  uint finalizeWithACES;
+  uint tonemapOperator;  // One of tonemapOperator* constants: None=0, ACES=1, ACESLegacy=2, HableFilmic=3.
 
   uint ditherMode;
   uint frameIndex;
-  uint useLegacyACES;
+  uint pad0;
   uint pad1;
 };
 

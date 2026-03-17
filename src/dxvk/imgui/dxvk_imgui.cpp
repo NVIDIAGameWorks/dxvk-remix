@@ -3872,15 +3872,6 @@ namespace dxvk {
         } else {
           common->metaLocalToneMapping().showImguiSettings();
         }
-        if (RtxOptions::showLegacyACESOption()) {
-          RemixGui::Separator();
-          RemixGui::Checkbox("Use Legacy ACES", &RtxOptions::useLegacyACESObject());
-          if (!RtxOptions::useLegacyACES()) {
-            ImGui::Indent();
-            ImGui::TextWrapped("WARNING: Non-legacy ACES is currently experimental and the implementation is a subject to change.");
-            ImGui::Unindent();
-          }
-        }
       }
 
       if (RemixGui::CollapsingHeader("Post FX", collapsingHeaderClosedFlags))

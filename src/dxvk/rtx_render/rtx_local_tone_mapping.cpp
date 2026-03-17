@@ -133,7 +133,8 @@ namespace dxvk {
     RemixGui::DragInt("Display Mip", &displayMipObject(), 0.06f, 0, 16);
     RemixGui::Checkbox("Boost Local Contrast", &boostLocalContrastObject());
     RemixGui::Checkbox("Use Gaussian Kernel", &useGaussianObject());
-    RemixGui::Checkbox("Finalize With ACES", &finalizeWithACESObject());
+    RemixGui::Combo("Tonemapping Operator", &tonemapOperatorObject(),
+                    "None\0ACES\0ACES (Legacy)\0Hable Filmic\0");
     RemixGui::DragFloat("Exposure Level", &exposureObject(), 0.01f, 0.f, 1000.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     RemixGui::DragFloat("Shadow Level", &shadowsObject(), 0.01f, -10.f, 10.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     RemixGui::DragFloat("Highlight Level", &highlightsObject(), 0.01f, -10.f, 10.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
@@ -184,7 +185,7 @@ namespace dxvk {
       pushArgs.highlights = pow(2.f, -highlights());
       pushArgs.debugView = debugView.debugViewIdx();
       pushArgs.enableAutoExposure = enableAutoExposure;
-      pushArgs.useLegacyACES = RtxOptions::useLegacyACES();
+      pushArgs.tonemapOperator = static_cast<uint32_t>(tonemapOperator());
       ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
       ctx->bindResourceView(LUMINANCE_ORIGINAL, rtOutput.m_finalOutput.view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(LUMINANCE_OUTPUT, m_mips.views[0], nullptr);
@@ -276,8 +277,7 @@ namespace dxvk {
       pushArgs.debugView = debugView.debugViewIdx();
       pushArgs.enableAutoExposure = enableAutoExposure;
       pushArgs.performSRGBConversion = performSRGBConversion;
-      pushArgs.finalizeWithACES = finalizeWithACES();
-      pushArgs.useLegacyACES = RtxOptions::useLegacyACES();
+      pushArgs.tonemapOperator = static_cast<uint32_t>(tonemapOperator());
       switch (ditherMode()) {
       case DitherMode::None: pushArgs.ditherMode = ditherModeNone; break;
       case DitherMode::Spatial: pushArgs.ditherMode = ditherModeSpatialOnly; break;

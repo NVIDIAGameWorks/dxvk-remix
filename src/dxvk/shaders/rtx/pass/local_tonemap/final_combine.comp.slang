@@ -96,7 +96,7 @@ void main(uint2 threadId : SV_DispatchThreadID)
 
   // Apply local exposure adjustment as a crude multiplier on all RGB channels.
   // This is... generally pretty wrong, but enough for the demo purpose.
-  vec3 texelOriginal = linearToGamma(ACESFilm(originalColor.xyz, cb.useLegacyACES, true));
+  vec3 texelOriginal = linearToGamma(ACESFilm(originalColor.xyz, cb.tonemapOperator == tonemapOperatorACESLegacy, true));
   float luminance = calcBt709Luminance(texelOriginal) + 0.00001;
   float finalMultiplier = max(A * luminance + B, 0.0) / luminance;
   // This is a hack to prevent super dark pixels getting boosted by a lot and showing compression artifacts.
@@ -105,9 +105,13 @@ void main(uint2 threadId : SV_DispatchThreadID)
     mix(1.0, finalMultiplier, (luminance / lerpToUnityThreshold) * (luminance / lerpToUnityThreshold));
 
   vec3 texelFinal = originalColor.xyz * finalMultiplier;
-  if (cb.finalizeWithACES)
+  if (cb.tonemapOperator == tonemapOperatorACES || cb.tonemapOperator == tonemapOperatorACESLegacy)
   {
-    texelFinal = ACESFilm(texelFinal, cb.useLegacyACES);
+    texelFinal = ACESFilm(texelFinal, cb.tonemapOperator == tonemapOperatorACESLegacy);
+  }
+  else if (cb.tonemapOperator == tonemapOperatorHableFilmic)
+  {
+    texelFinal = hableFilmicToneMapper(texelFinal);
   }
   if (cb.performSRGBConversion)
   {
