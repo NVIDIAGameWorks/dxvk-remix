@@ -261,11 +261,11 @@ pxr::UsdStageRefPtr GameExporter::createInstanceStage(const Export& exportData) 
   // capture meta data
   pxr::VtDictionary customLayerData;
   customLayerData.SetValueAtPath("lightspeed_layer_type", pxr::VtValue("capture"));
-  customLayerData.SetValueAtPath("lightspeed_game_name", pxr::VtValue(dxvk::str::stripNonAscii(exportData.meta.windowTitle)));
-  customLayerData.SetValueAtPath("lightspeed_exe_name", pxr::VtValue(dxvk::str::stripNonAscii(exportData.meta.exeName)));
+  customLayerData.SetValueAtPath("lightspeed_game_name", pxr::VtValue(dxvk::str::sanitizeUtf8(exportData.meta.windowTitle)));
+  customLayerData.SetValueAtPath("lightspeed_exe_name", pxr::VtValue(dxvk::str::sanitizeUtf8(exportData.meta.exeName)));
   const auto relToCaptureIconPath = std::filesystem::relative(exportData.meta.iconPath, exportData.baseExportPath).string();
-  customLayerData.SetValueAtPath("lightspeed_game_icon", pxr::VtValue(dxvk::str::stripNonAscii(relToCaptureIconPath)));
-  customLayerData.SetValueAtPath("lightspeed_geometry_hash_rules", pxr::VtValue(dxvk::str::stripNonAscii(exportData.meta.geometryHashRule)));
+  customLayerData.SetValueAtPath("lightspeed_game_icon", pxr::VtValue(dxvk::str::sanitizeUtf8(relToCaptureIconPath)));
+  customLayerData.SetValueAtPath("lightspeed_geometry_hash_rules", pxr::VtValue(dxvk::str::sanitizeUtf8(exportData.meta.geometryHashRule)));
   instanceStage->GetRootLayer()->SetCustomLayerData(customLayerData);
 
   return instanceStage;

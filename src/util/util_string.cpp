@@ -77,9 +77,58 @@ namespace dxvk::str {
     return !(ch <= 0x7F);
   }
 
-  std::string stripNonAscii(const std::string& input) {
-    std::string result = input;
-    result.erase(std::remove_if(result.begin(), result.end(), isInvalidAscii), result.end());
+  std::string sanitizeUtf8(const std::string& input) {
+    // Validate UTF-8 by round-tripping through wide string conversion.
+    // This preserves valid non-ASCII UTF-8 characters (e.g., Cyrillic, CJK)
+    // while stripping truly invalid sequences.
+    if (input.empty()) {
+      return input;
+    }
+    int wideLen = ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+      input.c_str(), -1, nullptr, 0);
+    if (wideLen > 0) {
+      // Input is valid UTF-8, return as-is
+      return input;
+    }
+    // Input contains invalid UTF-8 sequences; strip only the invalid bytes
+    std::string result;
+    result.reserve(input.size());
+    for (size_t i = 0; i < input.size(); ) {
+      unsigned char ch = static_cast<unsigned char>(input[i]);
+      if (ch <= 0x7F) {
+        result.push_back(ch);
+        i++;
+      } else if ((ch & 0xE0) == 0xC0 && i + 1 < input.size() &&
+                 (static_cast<unsigned char>(input[i+1]) & 0xC0) == 0x80) {
+        result.push_back(input[i]);
+        result.push_back(input[i+1]);
+        i += 2;
+      } else if ((ch & 0xF0) == 0xE0 && i + 2 < input.size() &&
+                 (static_cast<unsigned char>(input[i+1]) & 0xC0) == 0x80 &&
+                 (static_cast<unsigned char>(input[i+2]) & 0xC0) == 0x80) {
+        result.push_back(input[i]);
+        result.push_back(input[i+1]);
+        result.push_back(input[i+2]);
+        i += 3;
+      } else if ((ch & 0xF8) == 0xF0 && i + 3 < input.size() &&
+                 (static_cast<unsigned char>(input[i+1]) & 0xC0) == 0x80 &&
+                 (static_cast<unsigned char>(input[i+2]) & 0xC0) == 0x80 &&
+                 (static_cast<unsigned char>(input[i+3]) & 0xC0) == 0x80) {
+        result.push_back(input[i]);
+        result.push_back(input[i+1]);
+        result.push_back(input[i+2]);
+        result.push_back(input[i+3]);
+        i += 4;
+      } else {
+        // Skip invalid byte
+        i++;
+      }
+    }
+    // If all bytes were invalid and stripped, return a descriptive placeholder
+    // to avoid producing an empty string that could cause invalid USD syntax
+    if (result.empty()) {
+      result = "<Invalid UTF-8 encoding>";
+    }
     return result;
   }
 
