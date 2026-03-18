@@ -733,7 +733,7 @@ namespace RemixGui {
           SetItemDefaultFocus();
         }
         if (itemTooltip && itemTooltip[0] != '\0' && IsItemHovered()) {
-          SetTooltipUnformatted(itemTooltip);
+          SetTooltipUnformattedUnwrapped(itemTooltip);
         }
         PopID();
       }
