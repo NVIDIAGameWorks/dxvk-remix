@@ -194,11 +194,17 @@ namespace dxvk::window {
     const bool isUnicode = IsWindowUnicode(hwnd);
     if (isUnicode) {
       wchar_t title[256];
-      GetWindowTextW(hwnd, title, sizeof(title));
+      GetWindowTextW(hwnd, title, ARRAYSIZE(title));
       return str::fromws(title);
     } else {
       char title[256];
       GetWindowTextA(hwnd, title, sizeof(title));
+      // Convert from system ANSI code page to wide chars, then to UTF-8
+      wchar_t wideTitle[256];
+      int wideLen = ::MultiByteToWideChar(CP_ACP, 0, title, -1, wideTitle, ARRAYSIZE(wideTitle));
+      if (wideLen > 0) {
+        return str::fromws(wideTitle);
+      }
       return std::string(title);
     }
   }
