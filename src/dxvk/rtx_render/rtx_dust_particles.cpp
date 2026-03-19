@@ -249,6 +249,7 @@ namespace dxvk {
     pushArgs.frustumDet = pushArgs.frustumB * pushArgs.frustumB - 4 * pushArgs.frustumA * pushArgs.frustumC;
 
     pushArgs.isCameraLhs = camera.isLHS();
+    pushArgs.sceneScale = RtxOptions::sceneScale();
   }
 
   static_assert(sizeof(GpuDustParticle) == 8 * 4, "Unexpected, please check perf");// be careful with performance when increasing this!
