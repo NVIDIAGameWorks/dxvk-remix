@@ -50,6 +50,8 @@
 #include "rtx_render/rtx_neural_radiance_cache.h"
 #include "rtx_render/rtx_ray_reconstruction.h"
 #include "rtx_render/rtx_xess.h"
+#include "rtx_render/rtx_fsr.h"
+#include "rtx_render/rtx_fsr_framegen.h"
 #include "rtx_render/rtx_rtxdi_rayquery.h"
 #include "rtx_render/rtx_restir_gi_rayquery.h"
 #include "rtx_render/rtx_debug_view.h"
@@ -284,6 +286,7 @@ namespace dxvk {
       {UpscalerType::NIS, "NIS"},
       {UpscalerType::TAAU, "TAA-U"},
       {UpscalerType::XeSS, "XeSS"},
+      {UpscalerType::FSR, "FSR"},
   } });
 
   static auto upscalerDLSSCombo = RemixGui::ComboWithKey<UpscalerType>(
@@ -294,6 +297,7 @@ namespace dxvk {
       {UpscalerType::NIS, "NIS"},
       {UpscalerType::TAAU, "TAA-U"},
       {UpscalerType::XeSS, "XeSS"},
+      {UpscalerType::FSR, "FSR"},
   } });
 
   RemixGui::ComboWithKey<DLSSProfile> dlssProfileCombo{
@@ -319,6 +323,102 @@ namespace dxvk {
         {XeSSPreset::UltraQualityPlus, "Ultra Quality Plus"},
         {XeSSPreset::NativeAA, "Native Anti-Aliasing"},
         {XeSSPreset::Custom, "Custom"},
+    } }
+  };
+
+  RemixGui::ComboWithKey<FSRPreset> fsrPresetCombo{
+    "FSR Preset",
+    RemixGui::ComboWithKey<FSRPreset>::ComboEntries{ {
+        {FSRPreset::UltraPerformance, "Ultra Performance"},
+        {FSRPreset::Performance, "Performance"},
+        {FSRPreset::Balanced, "Balanced"},
+        {FSRPreset::Quality, "Quality"},
+        {FSRPreset::NativeAA, "Native Anti-Aliasing"},
+    } }
+  };
+
+  RemixGui::ComboWithKey<DlssPreset> dlssPresetCombo{
+    "DLSS Preset",
+    RemixGui::ComboWithKey<DlssPreset>::ComboEntries{ {
+        {DlssPreset::Off, "Off"},
+        {DlssPreset::On, "On"},
+        {DlssPreset::Custom, "Custom"},
+    } }
+  };
+
+  RemixGui::ComboWithKey<NisPreset> nisPresetCombo{
+    "NIS Preset",
+    RemixGui::ComboWithKey<NisPreset>::ComboEntries{ {
+        {NisPreset::Performance, "Performance"},
+        {NisPreset::Balanced, "Balanced"},
+        {NisPreset::Quality, "Quality"},
+        {NisPreset::Fullscreen, "Fullscreen"},
+    } }
+  };
+
+  RemixGui::ComboWithKey<TaauPreset> taauPresetCombo{
+    "TAA-U Preset",
+    RemixGui::ComboWithKey<TaauPreset>::ComboEntries{ {
+        {TaauPreset::UltraPerformance, "Ultra Performance"},
+        {TaauPreset::Performance, "Performance"},
+        {TaauPreset::Balanced, "Balanced"},
+        {TaauPreset::Quality, "Quality"},
+        {TaauPreset::Fullscreen, "Fullscreen"},
+    } }
+  };
+
+  RemixGui::ComboWithKey<GraphicsPreset> graphicsPresetCombo{
+    "Graphics Preset",
+    RemixGui::ComboWithKey<GraphicsPreset>::ComboEntries{ {
+        {GraphicsPreset::Ultra, "Ultra"},
+        {GraphicsPreset::High, "High"},
+        {GraphicsPreset::Medium, "Medium"},
+        {GraphicsPreset::Low, "Low"},
+        {GraphicsPreset::Custom, "Custom"},
+    } }
+  };
+
+  RemixGui::ComboWithKey<uint8_t> minPathBouncesCombo{
+    "Min Path Bounces",
+    RemixGui::ComboWithKey<uint8_t>::ComboEntries{ {
+        {0, "0"}, {1, "1"}, {2, "2"}, {3, "3"}, {4, "4"},
+        {5, "5"}, {6, "6"}, {7, "7"}, {8, "8"}, {9, "9"},
+        {10, "10"}, {11, "11"}, {12, "12"}, {13, "13"}, {14, "14"}, {15, "15"},
+    } }
+  };
+
+  RemixGui::ComboWithKey<uint8_t> maxPathBouncesCombo{
+    "Max Path Bounces",
+    RemixGui::ComboWithKey<uint8_t>::ComboEntries{ {
+        {0, "0"}, {1, "1"}, {2, "2"}, {3, "3"}, {4, "4"},
+        {5, "5"}, {6, "6"}, {7, "7"}, {8, "8"}, {9, "9"},
+        {10, "10"}, {11, "11"}, {12, "12"}, {13, "13"}, {14, "14"}, {15, "15"},
+    } }
+  };
+
+  RemixGui::ComboWithKey<int> indirectLightingParticlesCombo{
+    "Indirect Lighting Particles",
+    RemixGui::ComboWithKey<int>::ComboEntries{ {
+        {0, "Off"},
+        {1, "Resolve Only"},
+        {2, "Resolve + Emissive"},
+    } }
+  };
+
+  RemixGui::ComboWithKey<bool> denoiserQualityCombo{
+    "Denoiser Quality",
+    RemixGui::ComboWithKey<bool>::ComboEntries{ {
+        {false, "Performance"},
+        {true, "Quality"},
+    } }
+  };
+
+  RemixGui::ComboWithKey<NeuralRadianceCache::QualityPreset> neuralRadianceCacheQualityPresetCombo{
+    "NRC Quality Preset",
+    RemixGui::ComboWithKey<NeuralRadianceCache::QualityPreset>::ComboEntries{ {
+        {NeuralRadianceCache::QualityPreset::Medium, "Medium"},
+        {NeuralRadianceCache::QualityPreset::High, "High"},
+        {NeuralRadianceCache::QualityPreset::Ultra, "Ultra"},
     } }
   };
 
@@ -352,6 +452,26 @@ namespace dxvk {
       {DxvkRayReconstruction::RayReconstructionModel::Transformer, "Transformer", "Ensures highest image quality. Can be more expensive than CNN in terms of memory and performance."},
       {DxvkRayReconstruction::RayReconstructionModel::CNN, "CNN", "Ensures great image quality"},
   } });
+
+  // Frame Generation Type selector (DLSS-G or FSR)
+  // Full combo shown when DLSS FG is supported
+  RemixGui::ComboWithKey<FrameGenerationType> frameGenTypeCombo {
+    "Frame Generation",
+    RemixGui::ComboWithKey<FrameGenerationType>::ComboEntries { {
+        {FrameGenerationType::None, "Off", "Frame generation disabled"},
+        {FrameGenerationType::DLSS, "DLSS", "NVIDIA DLSS Frame Generation"},
+        {FrameGenerationType::FSR, "FSR", "AMD FSR Frame Generation"},
+    } }
+  };
+
+  // Reduced combo shown when DLSS FG is NOT supported (no DLSS FG capable GPU)
+  RemixGui::ComboWithKey<FrameGenerationType> frameGenTypeComboNoDLSS {
+    "Frame Generation",
+    RemixGui::ComboWithKey<FrameGenerationType>::ComboEntries { {
+        {FrameGenerationType::None, "Off", "Frame generation disabled"},
+        {FrameGenerationType::FSR, "FSR", "AMD FSR Frame Generation"},
+    } }
+  };
 
   RemixGui::ComboWithKey<int> dlfgMfgModeCombo {
     "DLSS Frame Generation Mode",
@@ -404,6 +524,7 @@ namespace dxvk {
       { RtxFramePassStage::DLSSRR, "DLSSRR" },
       { RtxFramePassStage::NIS, "NIS" },
       { RtxFramePassStage::XeSS, "XeSS" },
+      { RtxFramePassStage::FSR, "FSR" },
       { RtxFramePassStage::TAA, "TAA" },
       { RtxFramePassStage::DustParticles, "DustParticles" },
       { RtxFramePassStage::Bloom, "Bloom" },
@@ -1259,6 +1380,531 @@ namespace dxvk {
     if (switchUI >= 0) {
       switchMenu((UIType) switchUI);
     }
+  }
+
+  void ImGUI::showUserMenu(const Rc<DxvkContext>& ctx) {
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+
+    ImGui::OpenPopup(m_userGraphicsWindowTitle, ImGuiPopupFlags_NoOpenOverExistingPopup);
+
+    ImGui::SetNextWindowPos(ImVec2(viewport->Size.x * 0.5f - m_userWindowWidth * 0.5f, viewport->Size.y * 0.5f - m_userWindowHeight * 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(m_userWindowWidth, 0));
+    ImGui::SetNextWindowSizeConstraints(ImVec2(m_userWindowWidth, 0), ImVec2(m_userWindowWidth, m_userWindowHeight));
+
+    // Note: When changing this padding consider:
+    // - Checking to ensure text including less visible instances from hover tooltips and etc do not take up more
+    // lines such that empty text lines become ineffective (to prevent jittering when text changes).
+    // - Updating Dummy elements as they currently are based on half the y padding for spacing consistency.
+    constexpr float windowPaddingX = 74.0f;
+    constexpr float windowPaddingHalfX = windowPaddingX * 0.5f;
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(windowPaddingX, 10));
+
+    // Use the same background color and alpha as other menus, PopupBg has alpha 1 because it's used for combobox popups etc. 
+    ImGui::PushStyleColor(ImGuiCol_PopupBg, ImGui::GetStyleColorVec4(ImGuiCol_WindowBg));
+    bool pushedPopupBg = true;
+
+    bool basicMenuOpen = RtxOptions::showUI() == UIType::Basic;
+    if (ImGui::BeginPopupModal(m_userGraphicsWindowTitle, &basicMenuOpen, ImGuiWindowFlags_AlwaysAutoResize)) {
+      // Restore PopupBg
+      ImGui::PopStyleColor();
+      pushedPopupBg = false;
+
+      // Always display memory stats to user.
+      showMemoryStats();
+
+      const int itemWidth = static_cast<int>(largeUiMode() ? m_largeUserWindowWidgeWidth : m_regularUserWindowWidgetWidth);
+      const int subItemWidth = static_cast<int>(ImCeil(itemWidth * 0.86f));
+      const int subItemIndent = (itemWidth > subItemWidth) ? (itemWidth - subItemWidth) : 0;
+
+      const ImVec2 childSize = ImVec2(ImGui::GetContentRegionAvail().x + windowPaddingX, m_userWindowHeight * 0.63f);
+      const static ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_NoCloseWithMiddleMouseButton;
+      const static ImGuiTabItemFlags tab_item_flags = ImGuiTabItemFlags_NoCloseWithMiddleMouseButton;
+
+      {
+        ImGui::TextSeparator("Display Settings");
+        RemixGui::SliderInt("Brightness##user", &RtxOptions::userBrightnessObject(), 0, 100, "%d", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::Dummy({ 0.f, 4.f });
+      }
+
+      ImGui::PopStyleVar();
+
+      auto beginTabChild = [&windowPaddingHalfX, &childSize, &itemWidth](const char* tabID) -> void {
+        // Make child window start at the same X offset as the tab bar separator
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() - windowPaddingHalfX);
+
+        // Make widgets within the child start at the same X offset as widgets outside of the child
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(windowPaddingHalfX, 10));
+        ImGui::BeginChild(tabID, childSize, true);
+
+        ImGui::PushItemWidth(static_cast<float>(itemWidth));
+        };
+
+      auto endTabChild = []() -> void {
+        ImGui::PopItemWidth();
+        ImGui::PopStyleVar();
+        ImGui::EndChild();
+        };
+
+
+      if (ImGui::BeginTabBar("Settings Tabs", tab_bar_flags)) {
+        if (ImGui::BeginTabItem("General", nullptr, tab_item_flags)) {
+          beginTabChild("##tab_child_general");
+          showUserGeneralSettings(ctx, subItemWidth, subItemIndent);
+          endTabChild();
+          ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem("Graphics", nullptr, tab_item_flags)) {
+          beginTabChild("##tab_child_graphics");
+          showUserRenderingSettings(ctx, subItemWidth, subItemIndent);
+          endTabChild();
+          ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem("Content", nullptr, tab_item_flags)) {
+          beginTabChild("##tab_child_content");
+          showUserContentSettings(ctx, subItemWidth, subItemIndent);
+          endTabChild();
+          ImGui::EndTabItem();
+        }
+
+        ImGui::EndTabBar();
+      }
+
+      ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(windowPaddingHalfX, 10));
+      ImGui::Dummy(ImVec2(0.0f, 0.0f));
+
+      // Center align 
+      const ImVec2 buttonSize = ImVec2((ImGui::GetWindowSize().x - windowPaddingX) / 2, 36);
+
+      // Make child window start at X offset of tab bar separator
+      ImGui::SetCursorPosX(ImGui::GetCursorPosX() - windowPaddingHalfX);
+
+      if (ImGui::Button("Developer Settings Menu", buttonSize)) {
+        switchMenu(UIType::Advanced);
+      }
+
+      ImGui::SameLine();
+
+      const bool unsavedChanges = m_userGraphicsSettingChanged;
+      if (unsavedChanges) {
+
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7f, 0.35f, 0.14f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.78f, 0.43f, 0.22f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGui::GetStyle().Colors[ImGuiCol_ButtonHovered]);
+      }
+
+      if (ImGui::Button("Save Settings", buttonSize)) {
+        if (auto* pUserLayer = RtxOptionManager::getLayer(kRtxOptionLayerUserKey)) {
+          pUserLayer->save();
+        }
+        m_userGraphicsSettingChanged = false;
+      }
+
+      if (unsavedChanges) {
+        ImGui::PopStyleColor(3);
+        RemixGui::SetTooltipToLastWidgetOnHover("Settings have been changed!\nThis will save settings in the rtx.conf file.\nSome may only take effect on next launch.");
+      }
+      else {
+        RemixGui::SetTooltipToLastWidgetOnHover("This will save above settings in the rtx.conf file.\nSome may only take effect on next launch.");
+      }
+
+      ImGui::EndPopup();
+    }
+
+    if (pushedPopupBg) {
+      ImGui::PopStyleColor();
+    }
+
+    // Close via titlebar close button
+    if (!basicMenuOpen) {
+      switchMenu(UIType::None);
+    }
+
+    ImGui::PopStyleVar();
+  }
+
+  void ImGUI::showUserGeneralSettings(
+    const Rc<DxvkContext>& ctx,
+    const int subItemWidth,
+    const int subItemIndent) {
+    auto common = ctx->getCommonObjects();
+    DxvkDLSS& dlss = common->metaDLSS();
+    DxvkRayReconstruction& rayReconstruction = common->metaRayReconstruction();
+    DxvkDLFG& dlfg = common->metaDLFG();
+    const RtxReflex& reflex = m_device->getCommon()->metaReflex();
+
+    const bool dlssSupported = dlss.supportsDLSS();
+    const bool dlfgSupported = dlfg.supportsDLFG();
+    const bool dlssRRSupported = rayReconstruction.supportsRayReconstruction();
+    const bool reflexInitialized = reflex.reflexInitialized();
+
+    // Describe the tab
+
+    const char* tabDescriptionText = "General performance settings. Enabling upscaling is recommended to significantly increase performance.";
+
+    // Note: Specifically reference the DLSS preset when present.
+    if (dlssSupported) {
+      tabDescriptionText = "General performance settings. Enabling the DLSS preset is recommended to significantly increase performance.";
+    }
+
+    ImGui::TextWrapped(tabDescriptionText);
+
+    ImGui::Dummy(ImVec2(0.0f, 5.0f));
+
+    // Preset Settings
+
+    if (dlssSupported) {
+      const DlssPreset prevDlssPreset = RtxOptions::dlssPreset();
+
+      ImGui::TextSeparator("Preset Settings");
+
+      m_userGraphicsSettingChanged |= dlssPresetCombo.getKey(&RtxOptions::dlssPresetObject());
+
+      // Revert back to default DLSS settings when switch from Off to Custom
+      if (prevDlssPreset == DlssPreset::Off && RtxOptions::dlssPreset() == DlssPreset::Custom) {
+        RtxOptions::resetUpscaler();
+      }
+
+      RtxOptions::updateUpscalerFromDlssPreset();
+    }
+
+    // Note: Disable all settings in this section beyond the preset when a non-Custom DLSS preset is in use,
+    // but only when DLSS is actually supported.
+    // Note: This is stored as a bool and applied in a SetDisabled per-section so that the section labels do not get disabled
+    // (as this changes the color of the line and text which is undesirable).
+    const bool disableNonPresetSettings = RtxOptions::dlssPreset() != DlssPreset::Custom && dlssSupported;
+
+    // Upscaling Settings
+
+    ImGui::Dummy(ImVec2(0.0f, 3.0f));
+    ImGui::TextSeparator("Upscaling Settings");
+
+    {
+      ImGui::BeginDisabled(disableNonPresetSettings);
+
+      // Upscaler Type
+
+      // Note: Use a different combo box without DLSS's upscaler listed if DLSS overall is unsupported.
+      auto oldUpscalerType = RtxOptions::upscalerType();
+      bool oldDLSSRREnabled = RtxOptions::enableRayReconstruction();
+
+      if (dlss.supportsDLSS()) {
+        m_userGraphicsSettingChanged |= getUpscalerCombo(dlss, rayReconstruction).getKey(&RtxOptions::upscalerTypeObject());
+      }
+      
+      ImGui::PushItemWidth(static_cast<float>(subItemWidth));
+      ImGui::Indent(static_cast<float>(subItemIndent));
+
+      if (dlss.supportsDLSS()) {
+        m_userGraphicsSettingChanged |= showRayReconstructionEnable(dlssRRSupported);
+
+        // If DLSS-RR is toggled, need to update some path tracer options accordingly to improve quality
+        if (oldUpscalerType != RtxOptions::upscalerType() || oldDLSSRREnabled != RtxOptions::enableRayReconstruction()) {
+          RtxOptions::updateLightingSetting();
+        }
+      } else {
+        m_userGraphicsSettingChanged |= getUpscalerCombo(dlss, rayReconstruction).getKey(&RtxOptions::upscalerTypeObject());
+      }
+
+      // Upscaler Preset
+
+
+      switch (RtxOptions::upscalerType()) {
+        case UpscalerType::DLSS: {
+          m_userGraphicsSettingChanged |= dlssProfileCombo.getKey(&RtxOptions::qualityDLSSObject());
+
+          // Display DLSS Upscaling Information
+
+          const auto currentDLSSProfile = RtxOptions::enableRayReconstruction() ? rayReconstruction.getCurrentProfile() : dlss.getCurrentProfile();
+          uint32_t dlssInputWidth, dlssInputHeight;
+
+          if (RtxOptions::enableRayReconstruction()) {
+            rayReconstruction.getInputSize(dlssInputWidth, dlssInputHeight);
+          } else {
+            dlss.getInputSize(dlssInputWidth, dlssInputHeight);
+          }
+
+          ImGui::TextWrapped(str::format("Computed DLSS Mode: ", dlssProfileToString(currentDLSSProfile), ", Render Resolution: ", dlssInputWidth, "x", dlssInputHeight).c_str());
+
+          break;
+        }
+        case UpscalerType::NIS: {
+          m_userGraphicsSettingChanged |= nisPresetCombo.getKey(&RtxOptions::nisPresetObject());
+          RtxOptions::updateUpscalerFromNisPreset();
+
+          // Display NIS Upscaling Information
+
+          auto resolutionScale = RtxOptions::resolutionScale();
+
+          ImGui::TextWrapped(str::format("NIS Resolution Scale: ", resolutionScale).c_str());
+
+          break;
+        }
+        case UpscalerType::TAAU: {
+          m_userGraphicsSettingChanged |= taauPresetCombo.getKey(&RtxOptions::taauPresetObject());
+          RtxOptions::updateUpscalerFromTaauPreset();
+
+          // Display TAA-U Upscaling Information
+
+          auto resolutionScale = RtxOptions::resolutionScale();
+
+          ImGui::TextWrapped(str::format("TAA-U Resolution Scale: ", resolutionScale).c_str());
+
+          break;
+        }
+        case UpscalerType::XeSS: {
+          m_userGraphicsSettingChanged |= xessPresetCombo.getKey(&DxvkXeSS::XessOptions::presetObject());
+
+          // Show resolution slider only for Custom preset
+          if (DxvkXeSS::XessOptions::preset() == XeSSPreset::Custom) {
+            m_userGraphicsSettingChanged |= RemixGui::SliderFloat("Resolution Scale", &RtxOptions::resolutionScaleObject(), 0.1f, 1.0f, "%.2f");
+          }
+
+          // Display XeSS internal resolution
+          auto& xess = ctx->getCommonObjects()->metaXeSS();
+
+          uint32_t inputWidth;
+          uint32_t inputHeight;
+          xess.getInputSize(inputWidth, inputHeight);
+          ImGui::TextWrapped(str::format("Render Resolution: ", inputWidth, "x", inputHeight).c_str());
+
+          break;
+        }
+        case UpscalerType::FSR: {
+          m_userGraphicsSettingChanged |= fsrPresetCombo.getKey(&DxvkFSR::FSROptions::presetObject());
+
+          // Display FSR internal resolution
+          auto& fsr = ctx->getCommonObjects()->metaFSR();
+
+          uint32_t inputWidth;
+          uint32_t inputHeight;
+          fsr.getInputSize(inputWidth, inputHeight);
+          ImGui::TextWrapped(str::format("Render Resolution: ", inputWidth, "x", inputHeight).c_str());
+
+          break;
+        }
+        case UpscalerType::None: {
+          // No custom UI here.
+          break;
+        }
+      }
+
+      if (RtxOptions::upscalerType() != UpscalerType::None) {
+        m_userGraphicsSettingChanged |= RemixGui::SliderFloat("Sharpness", &DxvkFSR::FSROptions::sharpnessObject(), 0.0f, 1.0f, "%.2f");
+      }
+
+      ImGui::Unindent(static_cast<float>(subItemIndent));
+      ImGui::PopItemWidth();
+
+      ImGui::EndDisabled();
+    }
+
+    // Frame Generation Settings — show if any FG technology is supported (DLSS FG or FSR FG)
+    const bool fsrfgSupported = DxvkFSRFrameGen::supportsFSRFrameGen();
+    const bool anyFrameGenSupported = dlfgSupported || fsrfgSupported;
+    if (anyFrameGenSupported) {
+      ImGui::Dummy(ImVec2(0.0f, 3.0f));
+      ImGui::TextSeparator("Frame Generation Settings");
+      showDLFGOptions(ctx, dlfgSupported);
+    }
+
+    if (reflexInitialized) {
+      ImGui::Dummy(ImVec2(0.0f, 3.0f));
+      ImGui::TextSeparator("Latency Reduction Settings");
+
+      {
+        ImGui::BeginDisabled(disableNonPresetSettings);
+
+        // Note: Option to toggle the stats window is set to false here as this window is currently
+        // set up to display only when the "advanced" developer settings UI is active.
+        showReflexOptions(ctx, false);
+
+        ImGui::EndDisabled();
+      }
+    }
+
+    ImGui::Dummy(ImVec2(0.0f, 5.0f));
+  }
+
+  void ImGUI::showUserRenderingSettings(
+    const Rc<DxvkContext>& ctx,
+    const int subItemWidth,
+    const int subItemIndent) {
+    auto common = ctx->getCommonObjects();
+    DxvkPostFx& postFx = common->metaPostFx();
+    DxvkRtxdiRayQuery& rtxdiRayQuery = common->metaRtxdiRayQuery();
+    DxvkReSTIRGIRayQuery& restirGiRayQuery = common->metaReSTIRGIRayQuery();
+
+    // Describe the tab
+
+    ImGui::TextWrapped("Rendering-specific settings. Complexity of rendering may be adjusted to balance between performance and quality.");
+
+    ImGui::Dummy(ImVec2(0.0f, 5.0f));
+
+    // Preset Settings
+
+    ImGui::TextSeparator("Preset Settings");
+
+    m_userGraphicsSettingChanged |= graphicsPresetCombo.getKey(&RtxOptions::graphicsPresetObject());
+
+    // Map settings to indirect particle level
+    int indirectLightParticlesLevel = 0;
+    if (RtxOptions::enableUnorderedResolveInIndirectRays()) {
+      indirectLightParticlesLevel = RtxOptions::enableUnorderedEmissiveParticlesInIndirectRays() ? 2 : 1;
+    }
+
+    // Path Tracing Settings
+
+    ImGui::Dummy(ImVec2(0.0f, 3.0f));
+    ImGui::TextSeparator("Path Tracing Settings");
+
+    {
+      // Note: Disabled flags should match preset mapping above to prevent changing settings when a preset overrides them.
+      ImGui::BeginDisabled(RtxOptions::graphicsPreset() != GraphicsPreset::Custom);
+
+      m_userGraphicsSettingChanged |= minPathBouncesCombo.getKey(&RtxOptions::pathMinBouncesObject());
+      m_userGraphicsSettingChanged |= maxPathBouncesCombo.getKey(&RtxOptions::pathMaxBouncesObject());
+      m_userGraphicsSettingChanged |= indirectLightingParticlesCombo.getKey(&indirectLightParticlesLevel);
+      RemixGui::SetTooltipToLastWidgetOnHover("Controls the quality of particles in indirect (reflection/GI) rays.");
+
+      // NRC Quality Preset dropdown
+      NeuralRadianceCache& nrc = common->metaNeuralRadianceCache();
+      if (nrc.checkIsSupported(m_device)) {
+        bool enableNeuralRadianceCache = RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::NeuralRadianceCache;
+
+        // Disable NRC quality preset combo when NRC is not enabled.
+        ImGui::BeginDisabled(!enableNeuralRadianceCache);
+        
+        if (neuralRadianceCacheQualityPresetCombo.getKey(&NeuralRadianceCache::NrcOptions::qualityPresetObject())) {
+          m_userGraphicsSettingChanged = true;
+        }
+
+        ImGui::EndDisabled();
+      }
+
+      // Hide NRD denoiser quality list when DLSS-RR is enabled.
+      bool useRayReconstruction = RtxOptions::isRayReconstructionEnabled();
+      if (!useRayReconstruction) {
+        m_userGraphicsSettingChanged |= denoiserQualityCombo.getKey(&RtxOptions::denoiseDirectAndIndirectLightingSeparatelyObject());
+      }
+
+      ImGui::EndDisabled();
+    }
+
+    // Volumetrics Settings
+
+    ImGui::Dummy(ImVec2(0.0f, 3.0f));
+    ImGui::TextSeparator("RTX Volumetrics Settings");
+    {
+      m_userGraphicsSettingChanged |= RemixGui::Checkbox("Enable Volumetric Lighting", &RtxGlobalVolumetrics::enableObject());
+      ImGui::BeginDisabled(!RtxGlobalVolumetrics::enable());
+      ImGui::Indent(static_cast<float>(subItemIndent));
+      common->metaGlobalVolumetrics().showImguiUserSettings();
+      ImGui::EndDisabled();
+      ImGui::Unindent(static_cast<float>(subItemIndent));
+    }
+
+    // Post Effect Settings
+
+    ImGui::Dummy(ImVec2(0.0f, 3.0f));
+    ImGui::TextSeparator("Post Effect Settings");
+
+    {
+      {
+        // Note: All presets aside from Custom will overwrite this, so only enable for Custom.
+        ImGui::BeginDisabled(RtxOptions::graphicsPreset() != GraphicsPreset::Custom);
+        m_userGraphicsSettingChanged |= RemixGui::Checkbox("Enable Post Effects", &postFx.enableObject());
+        ImGui::EndDisabled();
+      }
+
+      // Note: Medium and Low presets disable all post effects, so no value in changing the individual settings.
+      // High and Ultra allow these to be changed without requiring Custom, so leave enabled for those.
+      ImGui::BeginDisabled(RtxOptions::graphicsPreset() == GraphicsPreset::Medium || RtxOptions::graphicsPreset() == GraphicsPreset::Low);
+      {
+        ImGui::PushItemWidth(static_cast<float>(subItemWidth));
+        ImGui::Indent(static_cast<float>(subItemIndent));
+
+        ImGui::BeginDisabled(!postFx.enable());
+
+        m_userGraphicsSettingChanged |= RemixGui::Checkbox("Enable Motion Blur", &postFx.enableMotionBlurObject());
+        m_userGraphicsSettingChanged |= RemixGui::Checkbox("Enable Chromatic Aberration", &postFx.enableChromaticAberrationObject());
+        m_userGraphicsSettingChanged |= RemixGui::Checkbox("Enable Vignette", &postFx.enableVignetteObject());
+
+        ImGui::EndDisabled();
+
+        ImGui::Unindent(static_cast<float>(subItemIndent));
+        ImGui::PopItemWidth();
+      }
+
+      ImGui::EndDisabled();
+    }
+
+    // Other Settings
+
+    ImGui::Dummy(ImVec2(0.0f, 3.0f));
+    ImGui::TextSeparator("Other Settings");
+
+    {
+      showVsyncOptions(true);
+    }
+
+    // Map indirect particle level back to settings
+    if (RtxOptions::graphicsPreset() == GraphicsPreset::Custom) {
+      switch (indirectLightParticlesLevel) {
+      case 0:
+        RtxOptions::enableUnorderedEmissiveParticlesInIndirectRays.setDeferred(false);
+        RtxOptions::enableUnorderedResolveInIndirectRays.setDeferred(false);
+        break;
+      case 1:
+        RtxOptions::enableUnorderedEmissiveParticlesInIndirectRays.setDeferred(false);
+        RtxOptions::enableUnorderedResolveInIndirectRays.setDeferred(true);
+        break;
+      case 2:
+        RtxOptions::enableUnorderedEmissiveParticlesInIndirectRays.setDeferred(true);
+        RtxOptions::enableUnorderedResolveInIndirectRays.setDeferred(true);
+        break;
+      }
+    }
+
+    ImGui::Dummy(ImVec2(0.0f, 5.0f));
+  }
+
+  void ImGUI::showUserContentSettings(
+    const Rc<DxvkContext>& ctx,
+    const int subItemWidth,
+    const int subItemIndent) {
+    auto common = ctx->getCommonObjects();
+
+    // Describe the tab
+
+    ImGui::TextWrapped("Content-specific settings. Allows control of what types of assets Remix should replace (if any).");
+
+    ImGui::Dummy(ImVec2(0.0f, 5.0f));
+
+    ImGui::BeginDisabled(!common->getSceneManager().areAllReplacementsLoaded());
+
+    m_userGraphicsSettingChanged |= RemixGui::Checkbox("Enable All Enhanced Assets", &RtxOptions::enableReplacementAssetsObject());
+
+    {
+      ImGui::PushItemWidth(static_cast<float>(subItemWidth));
+      ImGui::Indent(static_cast<float>(subItemIndent));
+
+      ImGui::BeginDisabled(!RtxOptions::enableReplacementAssets());
+
+      m_userGraphicsSettingChanged |= RemixGui::Checkbox("Enable Enhanced Materials", &RtxOptions::enableReplacementMaterialsObject());
+      m_userGraphicsSettingChanged |= RemixGui::Checkbox("Enable Enhanced Meshes", &RtxOptions::enableReplacementMeshesObject());
+      m_userGraphicsSettingChanged |= RemixGui::Checkbox("Enable Enhanced Lights", &RtxOptions::enableReplacementLightsObject());
+
+      ImGui::EndDisabled();
+
+      ImGui::Unindent(static_cast<float>(subItemIndent));
+      ImGui::PopItemWidth();
+    }
+
+    ImGui::EndDisabled();
+
+    ImGui::Dummy(ImVec2(0.0f, 5.0f));
   }
 
   struct HudMessage {
@@ -3169,8 +3815,10 @@ namespace dxvk {
   void ImGUI::showVsyncOptions(bool enableDLFGGuard) {
     // we should never get here without a swapchain, so we must have latched the vsync value already
     assert(RtxOptions::enableVsyncState != EnableVsync::WaitingForImplicitSwapchain);
+
+    const bool anyFGActive = enableDLFGGuard && (DxvkDLFG::enable() || DxvkFSRFrameGen::enable());
     
-    if (enableDLFGGuard && DxvkDLFG::enable()) {
+    if (anyFGActive) {
       ImGui::BeginDisabled();
     }
 
@@ -3189,7 +3837,7 @@ namespace dxvk {
     ImGui::Unindent();
     ImGui::EndDisabled();
     
-    if (enableDLFGGuard && DxvkDLFG::enable()) {
+    if (anyFGActive) {
       ImGui::Indent();
       ImGui::TextWrapped("When Frame Generation is active, V-Sync is automatically disabled.");
       ImGui::Unindent();
@@ -3198,37 +3846,92 @@ namespace dxvk {
     }
   }
 
-  void ImGUI::showDLFGOptions(const Rc<DxvkContext>& ctx) {
-    const bool supportsDLFG = ctx->getCommonObjects()->metaNGXContext().supportsDLFG() && !ctx->getCommonObjects()->metaDLFG().hasDLFGFailed();
-    const uint32_t maxInterpolatedFrames = ctx->getCommonObjects()->metaNGXContext().dlfgMaxInterpolatedFrames();
-    const bool supportsMultiFrame = maxInterpolatedFrames > 1;
-
-    if (!supportsDLFG) {
-      ImGui::BeginDisabled();
+  void ImGUI::showDLFGOptions(const Rc<DxvkContext>& ctx, bool isDLSSFGSupported) {
+    // Frame Generation type selection
+    // Use the appropriate combo based on whether DLSS FG is supported by the GPU
+    if (isDLSSFGSupported) {
+      m_userGraphicsSettingChanged |= frameGenTypeCombo.getKey(&RtxOptions::frameGenerationTypeObject());
+    } else {
+      // DLSS FG not supported — only show Off and FSR options
+      // If DLSS was previously selected (e.g. from config), reset to None
+      if (RtxOptions::frameGenerationType() == FrameGenerationType::DLSS) {
+        RtxOptions::frameGenerationType.setDeferred(FrameGenerationType::None);
+      }
+      m_userGraphicsSettingChanged |= frameGenTypeComboNoDLSS.getKey(&RtxOptions::frameGenerationTypeObject());
     }
+    
+    const FrameGenerationType selectedType = RtxOptions::frameGenerationType();
 
-    bool dlfgChanged = RemixGui::Checkbox("Enable DLSS Frame Generation", &DxvkDLFG::enableObject());
-    if (supportsMultiFrame) {
-      dlfgMfgModeCombo.getKey(&DxvkDLFG::maxInterpolatedFramesObject());
+    // Keep runtime toggles aligned with the type selector.
+    if (selectedType == FrameGenerationType::None) {
+      DxvkDLFG::enable.setDeferred(false);
+      DxvkFSRFrameGen::enable.setDeferred(false);
     }
+    
+    // DLSS Frame Generation options
+    if (selectedType == FrameGenerationType::DLSS) {
+      const bool supportsDLFG = ctx->getCommonObjects()->metaNGXContext().supportsDLFG() && !ctx->getCommonObjects()->metaDLFG().hasDLFGFailed();
+      const uint32_t maxInterpolatedFrames = ctx->getCommonObjects()->metaNGXContext().dlfgMaxInterpolatedFrames();
+      const bool supportsMultiFrame = maxInterpolatedFrames > 1;
+      const bool fsrFgEnabled = DxvkFSRFrameGen::enable();
 
-    const auto& reason = ctx->getCommonObjects()->metaNGXContext().getDLFGNotSupportedReason();
-    if (reason.size()) {
-      RemixGui::SetTooltipToLastWidgetOnHover(reason.c_str());
-      ImGui::TextWrapped(reason.c_str());
-    }
+      const bool disableDlfgToggle = !supportsDLFG || fsrFgEnabled;
+      ImGui::BeginDisabled(disableDlfgToggle);
 
-    if (!supportsDLFG) {
+      bool dlfgChanged = RemixGui::Checkbox("Enable DLSS Frame Generation", &DxvkDLFG::enableObject());
+      m_userGraphicsSettingChanged |= dlfgChanged;
+      if (supportsMultiFrame) {
+        dlfgMfgModeCombo.getKey(&DxvkDLFG::maxInterpolatedFramesObject());
+      }
+
+      if (fsrFgEnabled) {
+        RemixGui::SetTooltipToLastWidgetOnHover("Disable FSR Frame Generation before enabling DLSS Frame Generation.");
+        ImGui::TextWrapped("DLSS Frame Generation is unavailable while FSR Frame Generation is enabled.");
+      }
+
+      const auto& reason = ctx->getCommonObjects()->metaNGXContext().getDLFGNotSupportedReason();
+      if (reason.size()) {
+        RemixGui::SetTooltipToLastWidgetOnHover(reason.c_str());
+        ImGui::TextWrapped(reason.c_str());
+      }
+
       ImGui::EndDisabled();
-    }
 
-    // Need to change Reflex in sync with DLFG, not on the next frame.
-    if (dlfgChanged) {
-      if (!supportsDLFG) {
-        DxvkDLFG::enable.setDeferred(false);
-      } else if (!DxvkDLFG::enable()){
-        // DLFG was just enabled.  force Reflex to Low Latency.
-        RtxOptions::reflexMode.setDeferred(ReflexMode::LowLatency);
+      // Need to change Reflex in sync with DLFG, not on the next frame.
+      if (dlfgChanged) {
+        if (!supportsDLFG) {
+          DxvkDLFG::enable.setDeferred(false);
+        } else if (!DxvkDLFG::enable()){
+          // DLFG was just enabled.  force Reflex to Low Latency.
+          RtxOptions::reflexMode.setDeferred(ReflexMode::LowLatency);
+          DxvkFSRFrameGen::enable.setDeferred(false);
+        }
+      }
+    }
+    // FSR Frame Generation options
+    else if (selectedType == FrameGenerationType::FSR) {
+      const bool supportsFSRFG = DxvkFSRFrameGen::supportsFSRFrameGen();
+      const bool dlssFgEnabled = DxvkDLFG::enable();
+
+      if (!supportsFSRFG) {
+        ImGui::TextWrapped("FSR Frame Generation is not supported on this system.");
+      } else {
+        // FSR FG is automatically enabled when this option is selected
+        ImGui::TextWrapped("FSR Frame Generation is enabled. Works on any modern GPU.");
+        
+        // Still provide the toggle for users who want to temporarily disable it
+        ImGui::BeginDisabled(dlssFgEnabled);
+        bool fsrfgChanged = RemixGui::Checkbox("Enable FSR Frame Generation", &DxvkFSRFrameGen::enableObject());
+        m_userGraphicsSettingChanged |= fsrfgChanged;
+        if (dlssFgEnabled) {
+          RemixGui::SetTooltipToLastWidgetOnHover("Disable DLSS Frame Generation before enabling FSR Frame Generation.");
+          ImGui::TextWrapped("FSR Frame Generation is unavailable while DLSS Frame Generation is enabled.");
+        }
+        ImGui::EndDisabled();
+
+        if (fsrfgChanged && DxvkFSRFrameGen::enable()) {
+          DxvkDLFG::enable.setDeferred(false);
+        }
       }
     }
 
@@ -3427,7 +4130,10 @@ namespace dxvk {
         RemixGui::Separator();
       }
 
-      showDLFGOptions(ctx);
+      {
+        const bool dlfgSupportedDev = ctx->getCommonObjects()->metaDLFG().supportsDLFG();
+        showDLFGOptions(ctx, dlfgSupportedDev);
+      }
 
       RemixGui::Separator();
 
@@ -3463,9 +4169,8 @@ namespace dxvk {
         dlssProfileCombo.getKey(&RtxOptions::qualityDLSSObject());
         dlss.showImguiSettings();
       } else if (RtxOptions::upscalerType() == UpscalerType::NIS) {
-        RemixGui::SliderFloat("Resolution scale", &RtxOptions::resolutionScaleObject(), 0.5f, 1.0f);
-        RemixGui::SliderFloat("Sharpness", &ctx->getCommonObjects()->metaNIS().m_sharpness, 0.1f, 1.0f);
-        RemixGui::Checkbox("Use FP16", &ctx->getCommonObjects()->metaNIS().m_useFp16);
+  RemixGui::SliderFloat("Resolution scale", &RtxOptions::resolutionScaleObject(), 0.5f, 1.0f);
+  RemixGui::Checkbox("Use FP16", &ctx->getCommonObjects()->metaNIS().m_useFp16);
       } else if (RtxOptions::upscalerType() == UpscalerType::XeSS) {
           xessPresetCombo.getKey(&DxvkXeSS::XessOptions::presetObject());
 
@@ -3482,8 +4187,20 @@ namespace dxvk {
           xess.getInputSize(inputWidth, inputHeight);
           ImGui::TextWrapped(str::format("Render Resolution: ", inputWidth, "x", inputHeight).c_str());
         } else if (RtxOptions::upscalerType() == UpscalerType::TAAU) {
-        RemixGui::SliderFloat("Resolution scale", &RtxOptions::resolutionScaleObject(), 0.5f, 1.0f);
+  RemixGui::SliderFloat("Resolution scale", &RtxOptions::resolutionScaleObject(), 0.5f, 1.0f);
+      } else if (RtxOptions::upscalerType() == UpscalerType::FSR) {
+        fsrPresetCombo.getKey(&DxvkFSR::FSROptions::presetObject());
+        
+        // Display FSR internal resolution
+        auto& fsr = ctx->getCommonObjects()->metaFSR();
+        uint32_t inputWidth, inputHeight;
+        fsr.getInputSize(inputWidth, inputHeight);
+        ImGui::TextWrapped(str::format("Render Resolution: ", inputWidth, "x", inputHeight).c_str());
       }
+
+        if (RtxOptions::upscalerType() != UpscalerType::None) {
+          RemixGui::SliderFloat("Sharpness", &DxvkFSR::FSROptions::sharpnessObject(), 0.0f, 1.0f, "%.2f");
+        }
 
       RemixGui::Separator();
 

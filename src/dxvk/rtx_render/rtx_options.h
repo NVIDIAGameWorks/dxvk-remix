@@ -69,7 +69,8 @@ namespace dxvk {
     DLSS,
     NIS,
     TAAU,
-    XeSS
+    XeSS,
+    FSR
   };
 
   enum class GraphicsPreset : int {
@@ -127,6 +128,13 @@ namespace dxvk {
     CameraShake_Yaw,
     CameraShake_Pitch,
     YawRotation
+  };
+
+  // Frame Generation technology selection
+  enum class FrameGenerationType : int {
+    None = 0,    // Frame generation disabled
+    DLSS,        // NVIDIA DLSS Frame Generation (DLSS 3.0/4.0)
+    FSR          // AMD FSR 3 Frame Generation
   };
 
   enum class TonemappingMode : int {
@@ -501,6 +509,9 @@ namespace dxvk {
     RTX_OPTION_ARGS("rtx", UpscalerType, upscalerType, UpscalerType::DLSS, "Upscaling boosts performance with varying degrees of image quality tradeoff depending on the type of upscaler and the quality mode/preset.",
                     args.environment = "DXVK_UPSCALER_TYPE",
                     args.flags = RtxOptionFlags::UserSetting);
+  RTX_OPTION_ARGS("rtx", FrameGenerationType, frameGenerationType, FrameGenerationType::None, "Frame Generation technology to use. None = disabled, DLSS = NVIDIA DLSS Frame Generation, FSR = AMD FSR 3 Frame Generation.",
+          args.environment = "DXVK_FRAMEGEN_TYPE",
+          args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION_ARGS("rtx", bool, enableRayReconstruction, true, "Enables DLSS ray reconstruction, an AI-based denoiser designed for real time ray tracing.",
                     args.environment = "DXVK_RAY_RECONSTRUCTION",
                     args.flags = RtxOptionFlags::UserSetting);
@@ -1394,6 +1405,7 @@ namespace dxvk {
     static bool isNISEnabled() { return upscalerType() == UpscalerType::NIS; }
     static bool isTAAEnabled() { return upscalerType() == UpscalerType::TAAU; }
     static bool isXeSSEnabled() { return upscalerType() == UpscalerType::XeSS; }
+    static bool isFSREnabled() { return upscalerType() == UpscalerType::FSR; }
     
     static float getUniqueObjectDistanceSqr() { return uniqueObjectDistance() * uniqueObjectDistance(); }
     static uint32_t getNumFramesToPutLightsToSleep() { return numFramesToKeepLights() /2; }

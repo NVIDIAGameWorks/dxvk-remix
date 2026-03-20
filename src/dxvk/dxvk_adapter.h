@@ -80,6 +80,10 @@ namespace dxvk {
     // NV-DXVK start: DLFG integration
     uint32_t present = VK_QUEUE_FAMILY_IGNORED;
     // NV-DXVK end
+    // NV-DXVK start: FSR FG integration
+    uint32_t imageAcquire = VK_QUEUE_FAMILY_IGNORED;
+    uint32_t fsrPresent = VK_QUEUE_FAMILY_IGNORED;  // Present queue for FSR FG (must support presentation)
+    // NV-DXVK end
   };
 
   // NV-DXVK begin: General Queue Allocation Improvements
@@ -100,6 +104,10 @@ namespace dxvk {
     DxvkAdapterQueueInfo transfer{};
     std::optional<DxvkAdapterQueueInfo> asyncCompute{};
     std::optional<DxvkAdapterQueueInfo> present{};
+    // NV-DXVK start: FSR FG integration
+    std::optional<DxvkAdapterQueueInfo> imageAcquire{};
+    std::optional<DxvkAdapterQueueInfo> fsrPresent{};  // Present queue for FSR FG (must support presentation)
+    // NV-DXVK end
   };
   // NV-DXVK end
   
