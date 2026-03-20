@@ -254,6 +254,12 @@ namespace RemixGui {
     ImGui::EndTooltip();
   }
 
+  void SetTooltipUnformattedUnwrapped(const char* text) {
+    ImGui::BeginTooltipEx(ImGuiTooltipFlags_OverridePreviousTooltip, ImGuiWindowFlags_None);
+    ImGui::TextUnformatted(text);
+    ImGui::EndTooltip();
+  }
+
   bool IsItemHoveredDelay(float delay_in_seconds) {
     return ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) && GImGui->HoveredIdTimer > delay_in_seconds;
   }
