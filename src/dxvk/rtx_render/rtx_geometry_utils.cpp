@@ -970,7 +970,15 @@ namespace dxvk {
     const void* pVertexData = input.positionBuffer.mapPtr((size_t)input.positionBuffer.offsetFromSlice());
     const uint32_t vertexCount = input.vertexCount;
     const size_t vertexStride = input.positionBuffer.stride();
-    
+
+    // R16G16_SFLOAT and other non-float32 texcoord formats cannot be safely read as Vector2 on the CPU.
+    // The interleaver converts them to R32G32_SFLOAT on the GPU, but this function operates on raw
+    // pre-interleave input geometry, so skip computation for unsupported formats.
+    const VkFormat texFmt = input.texcoordBuffer.vertexFormat();
+    if (texFmt != VK_FORMAT_R32G32_SFLOAT && texFmt != VK_FORMAT_R32G32B32_SFLOAT && texFmt != VK_FORMAT_R32G32B32A32_SFLOAT) {
+      return NAN;
+    }
+
     const void* pTexcoordData = input.texcoordBuffer.mapPtr((size_t)input.texcoordBuffer.offsetFromSlice());
     const size_t texcoordStride = input.texcoordBuffer.stride();
 

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -65,7 +65,7 @@ namespace dxvk {
      * \brief Currently we only support these texcoord formats...
      */
     static bool isTexcoordFormatValid(VkFormat format) {
-      return format == VK_FORMAT_R32G32B32A32_SFLOAT || format == VK_FORMAT_R32G32B32_SFLOAT || format == VK_FORMAT_R32G32_SFLOAT;
+      return format == VK_FORMAT_R32G32B32A32_SFLOAT || format == VK_FORMAT_R32G32B32_SFLOAT || format == VK_FORMAT_R32G32_SFLOAT || format == VK_FORMAT_R16G16_SFLOAT;
     }
 
     /**

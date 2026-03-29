@@ -406,13 +406,18 @@ struct GeometryBufferData {
       positionData = nullptr;
     }
 
+    texcoordStride = 0;
+    texcoordData = nullptr;
+    // Only float32 texcoord formats can be safely read as Vector2 on the CPU.
+    // R16G16_SFLOAT and other non-float32 formats are converted to R32G32_SFLOAT by the GPU interleaver;
+    // treat them as absent here to avoid mis-reading packed half-float data as float2.
     if (geometryData.texcoordBuffer.defined()) {
-      constexpr size_t texcoordSubElementSize = sizeof(float);
-      texcoordStride = geometryData.texcoordBuffer.stride() / texcoordSubElementSize;
-      texcoordData = (float*) geometryData.texcoordBuffer.mapPtr((size_t) geometryData.texcoordBuffer.offsetFromSlice());
-    } else {
-      texcoordStride = 0;
-      texcoordData = nullptr;
+      const VkFormat texFmt = geometryData.texcoordBuffer.vertexFormat();
+      if (texFmt == VK_FORMAT_R32G32_SFLOAT || texFmt == VK_FORMAT_R32G32B32_SFLOAT || texFmt == VK_FORMAT_R32G32B32A32_SFLOAT) {
+        constexpr size_t texcoordSubElementSize = sizeof(float);
+        texcoordStride = geometryData.texcoordBuffer.stride() / texcoordSubElementSize;
+        texcoordData = (float*) geometryData.texcoordBuffer.mapPtr((size_t) geometryData.texcoordBuffer.offsetFromSlice());
+      }
     }
 
     if (geometryData.normalBuffer.defined()) {
