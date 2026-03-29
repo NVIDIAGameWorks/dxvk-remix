@@ -755,8 +755,14 @@ namespace dxvk {
                                           std::shared_ptr<Mesh> pMesh) {
 
     AssetExporter::BufferCallback captureMeshTexCoordsAsync = [ctx, geomData, currentFrameNum, pMesh](Rc<DxvkBuffer> texBuf) {
-      assert(geomData.texcoordBuffer.vertexFormat() == VK_FORMAT_R32G32_SFLOAT ||
-             geomData.texcoordBuffer.vertexFormat() == VK_FORMAT_R32G32B32_SFLOAT);
+      // Only float32 texcoord formats can be safely read as float* on the CPU.
+      // Non-float32 formats (e.g. R16G16_SFLOAT) are normally converted to R32G32_SFLOAT by the
+      // GPU interleaver before reaching here, but guard defensively in case that changes.
+      const VkFormat texFmt = geomData.texcoordBuffer.vertexFormat();
+      if (texFmt != VK_FORMAT_R32G32_SFLOAT && texFmt != VK_FORMAT_R32G32B32_SFLOAT && texFmt != VK_FORMAT_R32G32B32A32_SFLOAT) {
+        Logger::err(str::format("[GameCapturer] Skipping texcoord capture for unsupported format: ", texFmt));
+        return;
+      }
       // Prep helper vars
       const size_t numVertices = geomData.vertexCount;
       constexpr size_t texcoordSubElementSize = sizeof(float);
