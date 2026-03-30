@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -96,6 +96,7 @@ namespace dxvk {
           "Ethan 'Xenthio' Cardwell",
           "Alexander 'xoxor4d' Engel",
           "James Horsley 'mmdanggg2'",
+          "Kim 'Kim2091'",
           "Leonardo Leotte",
           "Jeffrey 'skurtyyskirts' Munoz",
           "Nico Rodrigues-McKenna",

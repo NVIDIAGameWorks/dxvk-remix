@@ -1,5 +1,5 @@
 #############################################################################
-# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -84,6 +84,10 @@ tests += exe
 exe = executable('test_option_layer_export',  files('test_option_layer_export.cpp'), 
   include_directories : test_include_path, dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ d3d9_dll, dxvk_lib ] , win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
 test('test_option_layer_export', exe, env: test_env)
+tests += exe
+
+exe = executable('test_f16tof32',  files('test_f16tof32.cpp'),  include_directories : test_include_path, dependencies : test_unit_deps, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_f16tof32', exe, env: test_env)
 tests += exe
 
 alias_target('unit_tests', tests)
