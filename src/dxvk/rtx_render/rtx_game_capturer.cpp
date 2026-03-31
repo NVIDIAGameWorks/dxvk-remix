@@ -194,11 +194,19 @@ namespace dxvk {
   
   void GameCapturer::prepareInstanceStage(const Rc<DxvkContext> ctx) {
     const auto ogStagePathStr = buildStagePath(m_options.instanceStageName);
-    const auto stagePathStr = env::dedupeFilename(ogStagePathStr);
-    const auto dedupedFileName =  std::filesystem::path(stagePathStr).stem().string();
-    m_pCap->instance.stageName = dedupedFileName;
+    std::string stagePathStr;
+    if (RtxOptions::captureOverwriteExistingCapture()) {
+      if (std::filesystem::exists(ogStagePathStr)) {
+        std::filesystem::remove(ogStagePathStr);
+      }
+      stagePathStr = ogStagePathStr;
+    } else {
+      stagePathStr = env::dedupeFilename(ogStagePathStr);
+    }
+    const auto resolvedFileName = std::filesystem::path(stagePathStr).stem().string();
+    m_pCap->instance.stageName = resolvedFileName;
     m_pCap->instance.stagePath = stagePathStr;
-    m_exporter.generateSceneThumbnail(ctx, BASE_DIR + lss::commonDirName::thumbDir, dedupedFileName);
+    m_exporter.generateSceneThumbnail(ctx, BASE_DIR + lss::commonDirName::thumbDir, resolvedFileName);
   }
 
   void GameCapturer::capture(const Rc<DxvkContext> ctx, const float frameTimeMilliseconds) {
