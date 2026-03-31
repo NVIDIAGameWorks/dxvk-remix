@@ -158,7 +158,7 @@ namespace dxvk {
   namespace {
     template<int RtInstanceSize> struct CheckRtInstanceSize {
       // The second line of the build error should contain the new size of RtInstance in the template argument, i.e. `dxvk::CheckRtInstanceSize<newSize>`
-      static_assert(RtInstanceSize == 768, "RtInstance size has changed.  Fix the copy constructor above this message, then update the expected size.");
+      static_assert(RtInstanceSize == 752, "RtInstance size has changed.  Fix the copy constructor above this message, then update the expected size.");
     };
     CheckRtInstanceSize<sizeof(RtInstance)> _rtInstanceSizeTest;
   }
@@ -262,7 +262,7 @@ namespace dxvk {
   // Returns true if this is the first update this frame
   bool RtInstance::setFrameLastUpdated(const uint32_t frameIndex) {
     if (m_frameLastUpdated != frameIndex) {
-      m_seenCameraTypes.clear();
+      m_seenCameraTypes.clrAll();
 
       m_frameLastUpdated = frameIndex;
 
@@ -289,16 +289,16 @@ namespace dxvk {
   }
 
   bool RtInstance::registerCamera(CameraType::Enum cameraType, uint32_t frameIndex) {
-    bool settingNewCameraType = std::find(m_seenCameraTypes.begin(), m_seenCameraTypes.end(), cameraType) == m_seenCameraTypes.end();
+    const bool settingNewCameraType = !m_seenCameraTypes.test(cameraType);
 
-    if (settingNewCameraType) 
-      m_seenCameraTypes.push_back(cameraType);
+    if (settingNewCameraType)
+      m_seenCameraTypes.set(cameraType);
 
     return settingNewCameraType;
   }
 
   bool RtInstance::isCameraRegistered(CameraType::Enum cameraType) const {
-    return std::find(m_seenCameraTypes.begin(), m_seenCameraTypes.end(), cameraType) != m_seenCameraTypes.end();
+    return m_seenCameraTypes.test(cameraType);
   }
 
   void RtInstance::setCustomIndexBit(uint32_t oneBitMask, bool value) {
@@ -424,10 +424,12 @@ namespace dxvk {
       "Category Flags: ", m_categoryFlags.raw(), "\n",
       "\n",
       "=== Camera Types ===\n",
-      "Seen Camera Types Count: ", m_seenCameraTypes.size()));
-    
-    for (size_t i = 0; i < m_seenCameraTypes.size(); ++i) {
-      Logger::warn(str::format("  Camera Type ", i, ": ", static_cast<int>(m_seenCameraTypes[i])));
+      "Seen Camera Types Mask: ", m_seenCameraTypes.raw()));
+
+    for (uint32_t type = 0; type < CameraType::Count; ++type) {
+      if (m_seenCameraTypes.test(static_cast<CameraType::Enum>(type))) {
+        Logger::warn(str::format("  Camera Type: ", type));
+      }
     }
     
     Logger::warn(str::format(
@@ -1247,6 +1249,12 @@ namespace dxvk {
 
       if (currentInstance.m_isPlayerModel && drawCall.cameraType != CameraType::ViewModel) {
         mask |= OBJECT_MASK_PLAYER_MODEL;
+        // Lazy-clear stale instances if onFrameEnd() was skipped last frame (e.g. device loss on alt+tab)
+        const uint32_t currentFrameId = m_device->getCurrentFrameId();
+        if (m_playerModelInstancesFrameId != currentFrameId) {
+          m_playerModelInstances.clear();
+          m_playerModelInstancesFrameId = currentFrameId;
+        }
         m_playerModelInstances.push_back(&currentInstance);
       } else {
         currentInstance.m_isPlayerModel = false;
@@ -1291,8 +1299,15 @@ namespace dxvk {
     bool billboardsGotGenerated = false;
     currentInstance.m_billboardCount = 0;
     
-    if (drawCall.cameraType == CameraType::ViewModel && !currentInstance.m_isHidden && isFirstUpdateThisFrame)
+    if (drawCall.cameraType == CameraType::ViewModel && !currentInstance.m_isHidden && isFirstUpdateThisFrame) {
+      // Lazy-clear stale candidates if onFrameEnd() was skipped last frame (e.g. device loss on alt+tab)
+      const uint32_t currentFrameId = m_device->getCurrentFrameId();
+      if (m_viewModelCandidatesFrameId != currentFrameId) {
+        m_viewModelCandidates.clear();
+        m_viewModelCandidatesFrameId = currentFrameId;
+      }
       m_viewModelCandidates.push_back(&currentInstance);
+    }
 
     if (RtxOptions::enableSeparateUnorderedApproximations() &&
         (drawCall.cameraType == CameraType::Main || drawCall.cameraType == CameraType::ViewModel) &&
@@ -1456,7 +1471,9 @@ namespace dxvk {
     for (auto* candidateInstance : m_viewModelCandidates) {
 
       // Valid view model instances must be associated only with the view model camera
-      if (candidateInstance->m_seenCameraTypes.size() != 1)
+      // Check: exactly one bit set (power-of-two check via raw bitmask)
+      const auto seenMask = candidateInstance->m_seenCameraTypes.raw();
+      if (seenMask == 0 || (seenMask & (seenMask - 1)) != 0)
         continue;
 
       // Hide the reference instance since we'll create a separate instance for the view model 
