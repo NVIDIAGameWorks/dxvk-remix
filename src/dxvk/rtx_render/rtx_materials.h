@@ -81,6 +81,8 @@ static_assert((int)AlphaTestType::kAlways == (int)VkCompareOp::VK_COMPARE_OP_ALW
 bool getEnableDiffuseLayerOverrideHack();
 float getEmissiveIntensity();
 float getDisplacementFactor();
+float getDisplacementInFactor();
+float getDisplacementOutFactor();
 
 struct RtEyeParams {
   // origin of eyeball in world space
@@ -589,8 +591,8 @@ struct RtOpaqueSurfaceMaterial {
       flags |= OPAQUE_SURFACE_MATERIAL_FLAG_IS_RAYTRACED_RENDER_TARGET;
     }
 
-    float displaceIn = m_displaceIn * getDisplacementFactor();
-    float displaceOut = m_displaceOut * getDisplacementFactor();
+    float displaceIn = m_displaceIn * getDisplacementInFactor();
+    float displaceOut = m_displaceOut * getDisplacementOutFactor();
     uint32_t heightTextureIndex = m_heightTextureIndex;
     if (hasValidDisplacement()) {
       flags |= OPAQUE_SURFACE_MATERIAL_FLAG_HAS_DISPLACEMENT;

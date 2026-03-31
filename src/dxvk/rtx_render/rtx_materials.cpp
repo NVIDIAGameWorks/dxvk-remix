@@ -38,6 +38,14 @@ float getDisplacementFactor() {
   return RtxOptions::Displacement::displacementFactor();
 }
 
+float getDisplacementInFactor() {
+  return RtxOptions::Displacement::displacementFactor() * RtxOptions::Displacement::displacementInFactor();
+}
+
+float getDisplacementOutFactor() {
+  return RtxOptions::Displacement::displacementFactor() * RtxOptions::Displacement::displacementOutFactor();
+}
+
 dxvk::OpaqueMaterialData LegacyMaterialData::createDefault() {
   OpaqueMaterialData opaqueMat;
   opaqueMat.setAnisotropyConstant(LegacyMaterialDefaults::anisotropy());
