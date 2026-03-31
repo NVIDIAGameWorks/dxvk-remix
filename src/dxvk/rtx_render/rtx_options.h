@@ -1147,8 +1147,10 @@ namespace dxvk {
                "String that can be used for auto-replacing current time stamp in instance stage name.\n"
                "Note: Changing this value does not change the default value for rtx.captureInstanceStageName.");
     // Note: default values are used before configs are loaded.  Cannot use the value of `captureTimestampReplacement` to set the default value of `captureInstanceStageName`.
-    RTX_OPTION("rtx", std::string, captureInstanceStageName, "capture_{timestamp}.usd",  
+    RTX_OPTION("rtx", std::string, captureInstanceStageName, "capture_{timestamp}.usd",
                "Name of the \'instance\' stage (see: \'rtx.captureInstances\').");
+    RTX_OPTION("rtx", bool, captureOverwriteExistingCapture, false,
+               "If true, a capture with the same filename will overwrite any existing capture file instead of appending a numeric suffix to avoid collisions.");
     RTX_OPTION("rtx", bool, captureEnableMultiframe, false, "Enables multi-frame capturing. THIS HAS NOT BEEN MAINTAINED AND SHOULD BE USED WITH EXTREME CAUTION.");
     RTX_OPTION("rtx", uint32_t, captureMaxFrames, 1, "Max frames capturable when running a multi-frame capture. The capture can be toggled to completion manually.");
     RTX_OPTION("rtx", uint32_t, captureFramesPerSecond, 24,

@@ -106,6 +106,7 @@ namespace dxvk {
     }
     commonButtonWidth = std::max(firstButtonWidth, ImGui::GetItemRectSize().x);
     m_stageNameInputBox.validateStageName();
+    RemixGui::Checkbox("Overwrite existing capture", &RtxOptions::captureOverwriteExistingCaptureObject());
     m_progress.show(ctx);
   }
 
