@@ -803,6 +803,7 @@ namespace dxvk {
           RemixGui::SliderFloat("Transmit. Color Scale", &TranslucentMaterialOptions::transmittanceColorScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
           RemixGui::SliderFloat("Transmit. Color Bias", &TranslucentMaterialOptions::transmittanceColorBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
           RemixGui::SliderFloat("Normal Strength##2", &TranslucentMaterialOptions::normalIntensityObject(), -10.0f, 10.f, "%.3f", sliderFlags);
+          RemixGui::DragFloat("IOR Scale", &TranslucentMaterialOptions::refractiveIndexScaleObject(), 0.01f, 0.1f, 3.0f);
 
           RemixGui::Checkbox("Enable dual-layer animated water normal for Translucent", &TranslucentMaterialOptions::animatedWaterEnableObject());
           if (TranslucentMaterialOptions::animatedWaterEnable()) {

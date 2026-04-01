@@ -135,6 +135,7 @@ struct TranslucentMaterialOptions {
   RTX_OPTION("rtx.translucentMaterial", float, transmittanceColorScale, 1.0f, "A scale factor to apply to all transmittance color values in the translucent material. Should only be used for debugging or development.");
   RTX_OPTION("rtx.translucentMaterial", float, transmittanceColorBias, 0.0f, "A bias factor to add to all transmittance color values in the opaque material. Should only be used for debugging or development.");
   RTX_OPTION("rtx.translucentMaterial", float, normalIntensity, 1.0f, "An arbitrary strength scale factor to apply when decoding normals in the translucent material. Should only be used for debugging or development.");
+  RTX_OPTION("rtx.translucentMaterial", float, refractiveIndexScale, 1.0f, "A scale factor to apply to the index of refraction for all translucent materials. The scale is clamped to [0.0, 3.0]. Should only be used for look development.");
 
   // Animated Water
   RTX_OPTION("rtx.translucentMaterial", Vector2, animatedWaterPrimaryNormalMotion, Vector2(0.05f, 0.05f),
