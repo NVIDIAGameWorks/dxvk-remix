@@ -1313,7 +1313,7 @@ namespace dxvk {
       trackTexture(translucentMaterialData.getTransmittanceTexture(), transmittanceTextureIndex, hasTexcoords);
       trackTexture(translucentMaterialData.getEmissiveColorTexture(), emissiveColorTextureIndex, hasTexcoords);
 
-      float refractiveIndex = translucentMaterialData.getRefractiveIndex();
+      float refractiveIndex = translucentMaterialData.getRefractiveIndex() * std::clamp(TranslucentMaterialOptions::refractiveIndexScale(), 0.0f, 3.0f);
       Vector3 transmittanceColor = translucentMaterialData.getTransmittanceColor();
       float transmittanceMeasureDistance = translucentMaterialData.getTransmittanceMeasurementDistance();
       Vector3 emissiveColorConstant = translucentMaterialData.getEmissiveColorConstant();
