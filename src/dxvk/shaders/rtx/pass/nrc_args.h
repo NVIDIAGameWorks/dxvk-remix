@@ -46,4 +46,9 @@ struct NrcArgs {
 
   vec3 sceneBoundsMax;
   float trainingLuminanceClamp;
+
+  uint boostEmissives;
+  uint pad0;
+  uint pad1;
+  uint pad2;
 };

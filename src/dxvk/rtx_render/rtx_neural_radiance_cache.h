@@ -52,6 +52,11 @@ namespace dxvk {
 
       RTX_OPTION("rtx.neuralRadianceCache", bool, learnIrradiance, true, "");
       RTX_OPTION_ENV("rtx.neuralRadianceCache", bool, includeDirectLighting, true, "RTX_NRC_INCLUDE_DIRECT_LIGHTING", "");
+      RTX_OPTION("rtx.neuralRadianceCache", bool, boostEmissives, true,
+                 "Preserves emissive lighting on indirect bounces where NRC would otherwise terminate the path before evaluating it.\n"
+                 "When Include Direct Lighting is enabled, NRC terminates paths immediately on cache hit, skipping emissive evaluation.\n"
+                 "The cache cannot accurately represent sharp emissive features, so this option defers termination\n"
+                 "until after MIS-weighted emissive accumulation. May cause minor double-counting in rare cases.");
       RTX_OPTION("rtx.neuralRadianceCache", bool, resetHistory, false, "");
       RTX_OPTION("rtx.neuralRadianceCache", bool, allowRussianRouletteOnUpdate, false, "");
       RTX_OPTION_ARGS("rtx.neuralRadianceCache", uint32_t, targetNumTrainingIterations, 4,

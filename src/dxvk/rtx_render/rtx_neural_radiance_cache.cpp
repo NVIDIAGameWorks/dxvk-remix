@@ -285,6 +285,7 @@ namespace dxvk {
 
       RemixGui::Checkbox("Learn Irradiance", &NrcOptions::learnIrradianceObject());
       RemixGui::Checkbox("Include Direct Lighting", &NrcOptions::includeDirectLightingObject());
+      RemixGui::Checkbox("Boost Emissives", &NrcOptions::boostEmissivesObject());
       
       RemixGui::DragInt("Max Number of Training Iterations", &NrcOptions::maxNumTrainingIterationsObject(), 1.f, 1, 16, "%d", ImGuiSliderFlags_AlwaysClamp);
       RemixGui::DragInt("Target Number of Training Iterations", &NrcOptions::targetNumTrainingIterationsObject(), 1.f, 1, 16, "%d", ImGuiSliderFlags_AlwaysClamp);
@@ -488,6 +489,8 @@ namespace dxvk {
     }
 
     nrcArgs.trainingLuminanceClamp = NrcOptions::luminanceClampMultiplier() * NrcOptions::maxExpectedAverageRadianceValue();
+
+    nrcArgs.boostEmissives = NrcOptions::boostEmissives();
   }
 
   const Vector2& NeuralRadianceCache::getNumQueryPixelsPerTrainingPixel() const {
