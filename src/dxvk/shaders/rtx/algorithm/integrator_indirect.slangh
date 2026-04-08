@@ -396,7 +396,8 @@ void integratePathVertex(
   {  
     nrcProgressState = updateNrcOnHit(pathState, surfaceInteraction, polymorphicSurfaceMaterialInteraction);
 
-    if (nrcProgressState == NrcProgressState::TerminateImmediately)
+    // Terminate prior to resolving surface's emissive contribution if NRC indicates so and boostEmissives is not enabled.
+    if (nrcProgressState == NrcProgressState::TerminateImmediately && !cb.nrcArgs.boostEmissives)
     {
       pathState.continuePath = false;
       return;
@@ -434,8 +435,10 @@ void integratePathVertex(
   }
 
   // If the camera index changed then this ray passed through a render target. Cast a ray from the new camera.
-  if (cb.enableRaytracedRenderTarget && isRaytracedRenderTarget && pathState.bounceIteration == 1)
-  {
+  // Note: NRC TerminateImmediately with boostEmissives must take priority as a query record has already been created
+  if (cb.enableRaytracedRenderTarget && isRaytracedRenderTarget && pathState.bounceIteration == 1
+      && !(ENABLE_NRC && nrcProgressState == NrcProgressState::TerminateImmediately))
+  { 
     Ray newRay = rayCreateRenderTarget(cb.renderTargetCamera, surfaceInteraction.textureCoordinates, ray);
     pathState.origin = newRay.origin;
     pathState.direction = newRay.direction;
@@ -511,6 +514,16 @@ void integratePathVertex(
 
     const vec3 emissiveLightRadiance = emissiveLight * misWeight;
     accumulateRadiance(pathState, emissiveLightRadiance);
+  }
+
+  // When boostEmissives is enabled, defer TerminateImmediately until after emissive accumulation
+  // so that the hit surface's emissive self-emission is properly MIS-weighted.
+  // Without this, emissive lighting is lost on TerminateImmediately paths (includeDirectLighting=true)
+  // because NRC's irradiance cache poorly captures sharp emissive features.
+  if (ENABLE_NRC && nrcProgressState == NrcProgressState::TerminateImmediately && cb.nrcArgs.boostEmissives)
+  {
+    pathState.continuePath = false;
+    return;
   }
 
 // We don't need to sample lights or surface rays in the portal closest hit shader
