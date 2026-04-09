@@ -739,12 +739,24 @@ void integratePathVertex(
         // WAR for REMIX-3705 producing NaNs here
         if (isValidValue(neeLight))
         {
+          // Note: Skip insertion when lightTask holds kInvalidLightIdx but would be
+          // inserted as a triangle task (isLightTask == false). This happens when
+          // reshuffle resilience keeps the original lightIdx to preserve task typing
+          // but no valid analytical light was sampled, leaving lightTask == 0xFFFF.
+          // See "if (hasFreshCandidates || !reshuffleResilience)"" above for more context.
+          // Inserting 0xFFFF as a triangle prefix sum ID corrupts the NEE cache and
+          // can cause an out-of-range shared memory access in the update shader.
+          // This isn't caught by if (lastID == NEE_CACHE_INVALID_ID) because
+          // 0xFFFF != 0xFFFFFF. The binary search in convertPrefixSumIDToID treats
+          // 65535 as a real prefix sum ID, producing garbage surfaceID/primitiveID.
+          const bool isLightTask = lightIdx != kInvalidLightIdx;
           if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && 
               any(neeLight > 0) && 
-              all((pathState.pixelCoordinate & 0x3) != 1))
+              all((pathState.pixelCoordinate & 0x3) != 1) &&
+              (isLightTask || lightTask != uint(kInvalidLightIdx)))
           {
             NEECell cell = NEECache.getCell(pathState.neeCacheCellOffset);
-            cell.insertSlotTask(lightTask, neeLight, lightIdx != kInvalidLightIdx);
+            cell.insertSlotTask(lightTask, neeLight, isLightTask);
           }
       
           float16_t specularPortion = calcBt709Luminance(specularLight) / calcBt709Luminance(neeLight);
