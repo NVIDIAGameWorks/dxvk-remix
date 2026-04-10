@@ -33,6 +33,7 @@
 #include "rtx_terrain_baker.h"
 #include "rtx_texture_manager.h"
 #include "rtx_xess.h"
+#include "rtx_fsr.h"
 
 #include <assert.h>
 
@@ -122,7 +123,7 @@ namespace dxvk {
   float SceneManager::getTotalMipBias() {
     auto& resourceManager = m_device->getCommon()->getResources();
   
-    const bool temporalUpscaling = RtxOptions::isDLSSOrRayReconstructionEnabled() || RtxOptions::isXeSSEnabled() || RtxOptions::isTAAEnabled();
+    const bool temporalUpscaling = RtxOptions::isDLSSOrRayReconstructionEnabled() || RtxOptions::isXeSSEnabled() || RtxOptions::isFSREnabled() || RtxOptions::isTAAEnabled();
     
     float totalUpscaleMipBias = 0.0f;
     
@@ -137,6 +138,16 @@ namespace dxvk {
           float xessMipBias = xess.calcRecommendedMipBias();
           totalUpscaleMipBias += xessMipBias;
         }
+      } else if (RtxOptions::isFSREnabled()) {
+        // FSR uses the FSR developer guide formula
+        totalUpscaleMipBias = -log2(resourceManager.getUpscaleRatio());
+        
+        // Add FSR-specific mip bias when FSR is active
+        DxvkFSR& fsr = m_device->getCommon()->metaFSR();
+        if (fsr.isActive()) {
+          float fsrMipBias = fsr.calcRecommendedMipBias();
+          totalUpscaleMipBias += fsrMipBias;
+        }
       } else {
         // Restore original behavior for DLSS, TAA, and other upscalers
         totalUpscaleMipBias = log2(resourceManager.getUpscaleRatio()) + RtxOptions::upscalingMipBias();
@@ -149,7 +160,7 @@ namespace dxvk {
   float SceneManager::getCalculatedUpscalingMipBias() {
     auto& resourceManager = m_device->getCommon()->getResources();
     
-    const bool temporalUpscaling = RtxOptions::isXeSSEnabled();
+    const bool temporalUpscaling = RtxOptions::isXeSSEnabled() || RtxOptions::isFSREnabled();
     if (!temporalUpscaling) {
       return 0.0f;
     }
