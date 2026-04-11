@@ -39,11 +39,11 @@ Write-Host "vswhere found at: $vsWhere" -ForegroundColor Yellow
 #
 $vsPath = &$vsWhere -latest -version "[16.0,19.0)" -products * `
  -requires Microsoft.Component.MSBuild `
- -property installationPath
+ -property installationPath -prerelease -nologo -utf8
 If ([string]::IsNullOrEmpty("$vsPath")) {
-  Write-Error "Failed to find Visual Studio 2019 installation. Aborting." -ErrorAction Stop
+  Write-Error "Failed to find Visual Studio installation. Aborting." -ErrorAction Stop
 }
-Write-Host "Using Visual Studio installation at: ${vsPath}" -ForegroundColor Yellow
+Write-Host "Using Visual Studio installation at: $vsPath" -ForegroundColor Yellow
 
 
 #
@@ -53,19 +53,17 @@ If (Test-Path env:LIBPATH) {
   Write-Host "Visual Studio Command Prompt variables already set." -ForegroundColor Yellow
 } Else {
   # Load VC vars
-  Push-Location "${vsPath}\VC\Auxiliary\Build"
-  cmd /c "vcvarsall.bat x64&set" |
-	ForEach-Object {
-	  # Due to some odd behavior with how powershell core (pwsh) (powershell 5.X not tested) interprets a specific
-	  # predefined gitlab CI variable (in this case CI_MERGE_REQUEST_DESCRIPTION) with a value that includes ===  
-	  # The `Contains` method is used to ignore the string === to prevent pwsh from erroneously encountering an error.
-	  If ($_ -match "=") {
-		  If (-not ($_.Contains('==='))) {
-			  $v = $_.split("="); Set-Item -Force -Path "ENV:\$($v[0])" -Value "$($v[1])"
-		  }
-	  }
-	}
-  Pop-Location
+  $vcVarsOutput = cmd /v:on /c "set __VSCMD_ARG_NO_LOGO=1 & call `"$vsPath\VC\Auxiliary\Build\vcvarsall.bat`" x64 > nul & set"
+  If ($LASTEXITCODE -ne 0) {
+    Write-Error "Failed to initialize Visual Studio Command Prompt variables. Aborting." -ErrorAction Stop
+  }
+  $vcVarsOutput | ForEach-Object {
+    If ($_ -match '^\w.*=' -and $_ -notmatch '===') {
+      $name, $value = $_ -split '=', 2
+      Set-Item -Path "Env:\$($name)" -Value "$value" -Force
+      $name, $value = $null
+    }
+  }
   Write-Host "Visual Studio Command Prompt variables set." -ForegroundColor Yellow
 }
 
