@@ -23,117 +23,115 @@
 #
 # Find vswhere (installed with recent Visual Studio versions).
 #
-If ($vsWhere = Get-Command "vswhere.exe" -ErrorAction SilentlyContinue) {
-  $vsWhere = $vsWhere.Path
-} ElseIf (Test-Path "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe") {
-  $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+if ($vsWhere = Get-Command "vswhere.exe" -ErrorAction SilentlyContinue) {
+    $vsWhere = $vsWhere.Path
 }
- Else {
-  Write-Error "vswhere not found. Aborting." -ErrorAction Stop
+elseif (Test-Path "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe") {
+    $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+}
+else {
+    Write-Error "vswhere not found. Aborting." -ErrorAction Stop
 }
 Write-Host "vswhere found at: $vsWhere" -ForegroundColor Yellow
-
 
 #
 # Get path to Visual Studio installation using vswhere.
 #
-$vsPath = &$vsWhere -latest -version "[16.0,18.0)" -products * `
- -requires Microsoft.Component.MSBuild `
- -property installationPath
-If ([string]::IsNullOrEmpty("$vsPath")) {
-  Write-Error "Failed to find Visual Studio 2019 installation. Aborting." -ErrorAction Stop
+$vsPath = & $vsWhere -nologo -utf8 -latest -prerelease -requires Microsoft.Component.MSBuild -products * -version "[16.0,19.0)" -property installationPath
+if ([string]::IsNullOrEmpty("$vsPath")) {
+    Write-Error "Failed to find Visual Studio installation. Aborting." -ErrorAction Stop
 }
-Write-Host "Using Visual Studio installation at: ${vsPath}" -ForegroundColor Yellow
-
+Write-Host "Using Visual Studio installation at: $vsPath" -ForegroundColor Yellow
 
 #
 # Make sure the Visual Studio Command Prompt variables are set.
 #
-If (Test-Path env:LIBPATH) {
-  Write-Host "Visual Studio Command Prompt variables already set." -ForegroundColor Yellow
-} Else {
-  # Load VC vars
-  Push-Location "${vsPath}\VC\Auxiliary\Build"
-  cmd /c "vcvarsall.bat x64&set" |
-	ForEach-Object {
-	  # Due to some odd behavior with how powershell core (pwsh) (powershell 5.X not tested) interprets a specific
-	  # predefined gitlab CI variable (in this case CI_MERGE_REQUEST_DESCRIPTION) with a value that includes ===  
-	  # The `Contains` method is used to ignore the string === to prevent pwsh from erroneously encountering an error.
-	  If ($_ -match "=") {
-		  If (-not ($_.Contains('==='))) {
-			  $v = $_.split("="); Set-Item -Force -Path "ENV:\$($v[0])" -Value "$($v[1])"
-		  }
-	  }
-	}
-  Pop-Location
-  Write-Host "Visual Studio Command Prompt variables set." -ForegroundColor Yellow
+if ($Env:LIBPATH) {
+    Write-Host "Visual Studio Command Prompt variables already set." -ForegroundColor Yellow
+}
+else {
+    # Load VC vars
+    $vcVarsOutput = cmd /c "set __VSCMD_ARG_NO_LOGO=1 & call `"$vsPath\VC\Auxiliary\Build\vcvarsall.bat`" x64 > nul & if errorlevel 1 exit /b %errorlevel% & set"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Failed to initialize Visual Studio Command Prompt variables. Aborting." -ErrorAction Stop
+    }
+    $vcVarsOutput |
+    ForEach-Object {
+        if ($_ -and $_.Contains('=')) {
+            $name, $value = $_ -split '=', 2
+            if (-not [string]::IsNullOrEmpty($name)) {
+                Set-Item -Path "Env:\$($name)" -Value $value -Force
+            }
+        }
+    }
+    Write-Host "Visual Studio Command Prompt variables set." -ForegroundColor Yellow
 }
 
 function PerformBuild {
-	param(
-		[Parameter(Mandatory)]
-		[string]$Backend,
+    param(
+        [Parameter(Mandatory)]
+        [string]$Backend,
 
-		[Parameter(Mandatory)]
-		[string]$BuildFlavour,
+        [Parameter(Mandatory)]
+        [string]$BuildFlavour,
 		
-		[Parameter(Mandatory)]
-		[string]$BuildSubDir,
+        [Parameter(Mandatory)]
+        [string]$BuildSubDir,
 
-		[Parameter(Mandatory)]
-		[string]$EnableTracy,
+        [Parameter(Mandatory)]
+        [string]$EnableTracy,
 
-		[string]$BuildTarget,
+        [string]$BuildTarget,
 
-		[string[]]$InstallTags,
+        [string[]]$InstallTags,
 
-		[bool]$ConfigureOnly = $false,
+        [bool]$ConfigureOnly = $false,
 
-		[bool]$ShadersOnly = $false
-	)
+        [bool]$ShadersOnly = $false
+    )
 
-	$CurrentDir = Get-Location
-	$OutputDir = [IO.Path]::Combine($CurrentDir, "_output")
-	$BuildDir = [IO.Path]::Combine($CurrentDir, $BuildSubDir)
+    $CurrentDir = Get-Location
+    $OutputDir = [IO.Path]::Combine($CurrentDir, "_output")
+    $BuildDir = [IO.Path]::Combine($CurrentDir, $BuildSubDir)
 
-	Push-Location $CurrentDir
-		$mesonArgs = "setup --buildtype `"$BuildFlavour`" --backend `"$Backend`" -Denable_tracy=`"$EnableTracy`" `"$BuildSubDir`""
-		if ( $ShadersOnly ) {
-			$mesonArgs = "$mesonArgs -Ddownload_apics=False"
-		}
-		Start-Process "meson" -NoNewWindow -ArgumentList $mesonArgs -wait
-	Pop-Location
+    Push-Location $CurrentDir
+    $mesonArgs = "setup --buildtype `"$BuildFlavour`" --backend `"$Backend`" -Denable_tracy=`"$EnableTracy`" `"$BuildSubDir`""
+    if ( $ShadersOnly ) {
+        $mesonArgs = "$mesonArgs -Ddownload_apics=False"
+    }
+    Start-Process "meson" -NoNewWindow -ArgumentList $mesonArgs -Wait
+    Pop-Location
 
-	if ( $LASTEXITCODE -ne 0 ) {
-		Write-Output "Failed to run meson setup"
-		exit $LASTEXITCODE
-	}
+    if ( $LASTEXITCODE -ne 0 ) {
+        Write-Output "Failed to run meson setup"
+        exit $LASTEXITCODE
+    }
 
-	if ($ShadersOnly) {
-		Push-Location $BuildDir
-		$mesonArgs = "compile rtx_shaders"
-		Start-Process "meson" -NoNewWindow -ArgumentList $mesonArgs -wait
-		Pop-Location
-		exit $LASTEXITCODE
-	}
+    if ($ShadersOnly) {
+        Push-Location $BuildDir
+        $mesonArgs = "compile rtx_shaders"
+        Start-Process "meson" -NoNewWindow -ArgumentList $mesonArgs -Wait
+        Pop-Location
+        exit $LASTEXITCODE
+    }
 
-	if (!$ConfigureOnly) {
-		Push-Location $BuildDir
-			& meson compile -v 
+    if (!$ConfigureOnly) {
+        Push-Location $BuildDir
+        & meson compile -v 
 
-			if ($InstallTags -and $InstallTags.Count -gt 0) {
-				# join array into comma-separated list
-				$tagList = $InstallTags -join ','
-				& meson install --tags $tagList
-			}
-			else {
-				& meson install
-			}
-		Pop-Location
+        if ($InstallTags -and $InstallTags.Count -gt 0) {
+            # join array into comma-separated list
+            $tagList = $InstallTags -join ','
+            & meson install --tags $tagList
+        }
+        else {
+            & meson install
+        }
+        Pop-Location
 
-		if ( $LASTEXITCODE -ne 0 ) {
-			Write-Output "Failed to run build step"
-			exit $LASTEXITCODE
-		}
-	}
+        if ( $LASTEXITCODE -ne 0 ) {
+            Write-Output "Failed to run build step"
+            exit $LASTEXITCODE
+        }
+    }
 }
