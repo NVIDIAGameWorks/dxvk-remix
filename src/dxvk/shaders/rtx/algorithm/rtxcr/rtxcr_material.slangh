@@ -230,7 +230,7 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
     const f16vec3 inputDirection = visibility.rayDirection;
     const float16_t /* n.l */ normalDotInputDirection = max(dot(inputDirection, shadingNormal), 0.0f);
 
-    sssScatteringWeight += RTXCR_EvalBssrdf(subsurfaceSample, float3(sssLightSample.radiance), float(normalDotInputDirection)) * lightSampleThroughput.rrr;
+    sssScatteringWeight += RTXCR_EvalBssrdf(subsurfaceSample, float3(sssLightSample.radiance), float(normalDotInputDirection)) * commonLightThroughput;
 
     ++validSampleCount;
   }
