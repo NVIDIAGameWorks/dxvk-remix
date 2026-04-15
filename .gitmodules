@@ -42,3 +42,6 @@
 [submodule "submodules/xess"]
 	path = submodules/xess
 	url = https://github.com/intel/xess.git
+[submodule "submodules/FidelityFX-SDK"]
+	path = submodules/FidelityFX-SDK
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK.git
