@@ -171,7 +171,7 @@ namespace remix {
   }
 
   struct Interface {
-    HMODULE            m_RemixDLL { nullptr };
+    remixapi_HMODULE   m_RemixDLL { nullptr };
     remixapi_Interface m_CInterface {};
 
     // Functions
@@ -206,13 +206,14 @@ namespace remix {
                                                                    uint8_t colorR, uint8_t colorG, uint8_t colorB);
   };
 
+#ifndef REMIX_WINAPI_NO_LIBRARY_LOADER
   namespace lib {
     // Helper function to load a .dll of Remix, and initialize it.
     // pRemixD3D9DllPath is a path to .dll file, e.g. "C:\dxvk-remix-nv\public\bin\d3d9.dll"
     [[nodiscard]] inline Result< Interface > loadRemixDllAndInitialize(const std::filesystem::path& remixD3D9DllPath) {
 
       remixapi_Interface interfaceInC = {};
-      HMODULE remixDll = nullptr;
+      remixapi_HMODULE remixDll = nullptr;
 
       remixapi_ErrorCode status =
         remixapi_lib_loadRemixDllAndInitialize(remixD3D9DllPath.c_str(),
@@ -242,6 +243,7 @@ namespace remix {
       return remixapi_lib_shutdownAndUnloadRemixDll(&interfaceInCpp.m_CInterface, interfaceInCpp.m_RemixDLL);
     }
   }
+#endif // !REMIX_WINAPI_NO_LIBRARY_LOADER
 
 
 
