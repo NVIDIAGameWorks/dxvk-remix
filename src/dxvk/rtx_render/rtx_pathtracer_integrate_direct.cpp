@@ -202,11 +202,12 @@ namespace dxvk {
     const bool ommEnabled = RtxOptions::getEnableOpacityMicromap();
 
     switch (RtxOptions::renderPassIntegrateDirectRaytraceMode()) {
-    case RaytraceMode::RayQuery:
+    case RaytraceMode::RayQuery: {
       VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 16, 8, 1 });
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getComputeShader());
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
-      break;
+    }
+    break;
     case RaytraceMode::RayQueryRayGen:
       ctx->bindRaytracingPipelineShaders(getPipelineShaders(true, ommEnabled));
       ctx->traceRays(rayDims.width, rayDims.height, rayDims.depth);
