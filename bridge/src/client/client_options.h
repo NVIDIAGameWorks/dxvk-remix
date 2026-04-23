@@ -78,4 +78,11 @@ namespace ClientOptions {
   inline bool getOptimizedDynamicLock() {
     return bridge_util::Config::getOption<bool>("client.optimizedDynamicLock", false);
   }
+
+  // When enabled, prevents SetCursor(NULL) from hiding the OS cursor while
+  // the game's D3D9 ShowCursor state is TRUE.  Fixes invisible cursors in
+  // games that draw a software cursor sprite which the path tracer drops.
+  inline bool getForceSoftwareCursorVisibility() {
+    return bridge_util::Config::getOption<bool>("client.forceSoftwareCursorVisibility", true);
+  }
 }
