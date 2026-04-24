@@ -22,6 +22,7 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <mutex>
@@ -50,6 +51,30 @@ namespace dxvk {
    */
   class Metrics {
   public:
+    struct TestTraceConfig {
+      bool enabled = false;
+      bool screenshotFrameEnabled = false;
+      uint32_t screenshotFrameNum = 0;
+      uint32_t terminateAppFrameNum = 0;
+    };
+
+    struct TestTraceSample {
+      uint32_t frameId = 0;
+      float effectiveDeltaMs = 0.0f;
+      float realWallDeltaMs = 0.0f;
+      float gpuIdleTimeMs = 0.0f;
+      uint32_t surfaceCount = 0;
+      uint32_t shaderCompileInflightCount = 0;
+      uint32_t debugViewMode = 0;
+      uint32_t compositeDebugViewMode = 0;
+      bool raytracingEnabled = false;
+      bool cameraValid = false;
+      bool asyncShaderPrewarming = false;
+      bool asyncCompilationEnabled = false;
+      bool asyncCompilationActive = false;
+      bool surfaceBufferAvailable = false;
+    };
+
     Metrics();
     ~Metrics();
 
@@ -59,7 +84,30 @@ namespace dxvk {
     static void logFloat(Metric metric, const float& value);
     static void serialize();
 
+    static void configureTestTrace(const TestTraceConfig& config);
+    static void setTestTraceScreenshotFrameEnabled(bool enabled);
+    static void recordTestTrace(const TestTraceSample& sample);
+
   private:
+    struct TestTraceEvent {
+      uint32_t frameId = 0;
+      float effectiveDeltaMs = 0.0f;
+      float realWallDeltaMs = 0.0f;
+      float gpuIdleTimeMs = 0.0f;
+      uint32_t screenshotTargetFrame = 0;
+      uint32_t terminateTargetFrame = 0;
+      uint32_t surfaceCount = 0;
+      uint32_t shaderCompileInflightCount = 0;
+      uint32_t debugViewMode = 0;
+      uint32_t compositeDebugViewMode = 0;
+      bool raytracingEnabled = false;
+      bool cameraValid = false;
+      bool asyncShaderPrewarming = false;
+      bool asyncCompilationEnabled = false;
+      bool asyncCompilationActive = false;
+      bool surfaceBufferAvailable = false;
+    };
+
     inline static const std::string m_metricNames[] = {
       "dxvk_average_frame_time_ms",
       "dxvk_vid_memory_usage_mb",
@@ -69,18 +117,27 @@ namespace dxvk {
       "dxvk_frame_count",
     };
 
+    static constexpr uint32_t kTestTraceMaxEvents = 16;
     static_assert(std::size(m_metricNames) == kCount, "m_metricNames must have an entry for every Metric enum value");
 
     std::array<float, Metric::kCount> m_data = {};
+    TestTraceConfig m_testTraceConfig = {};
+    bool m_testTraceFlushed = false;
+    uint32_t m_testTraceEventCount = 0;
+    std::array<TestTraceEvent, kTestTraceMaxEvents> m_testTraceEvents = {};
 
     static Metrics s_instance;
     
-    dxvk::mutex    m_mutex;
+    dxvk::mutex   m_mutex;
     std::ofstream m_fileStream;
     
     template<typename T>
     void emitMsg(Metric metric, const T& value);
+
+    void emitTestTraceArtifacts();
+    bool shouldCaptureTestTrace(uint32_t frameId) const;
     
     static std::string getFileName();
+    static std::string getOutputPath(const char* fileName);
   };
 }
