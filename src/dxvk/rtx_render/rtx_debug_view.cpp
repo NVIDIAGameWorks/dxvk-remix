@@ -1013,6 +1013,10 @@ namespace dxvk {
     return debugViewIdx();
   }
 
+  uint32_t DebugView::getCompositeDebugViewIndex() const {
+    return m_composite.compositeViewIdx();
+  }
+
   void DebugView::setDebugViewIndex(uint32_t debugViewIndex) {
     debugViewIdx.setDeferred(debugViewIndex);
     if (debugViewIndex != DEBUG_VIEW_DISABLED) {
