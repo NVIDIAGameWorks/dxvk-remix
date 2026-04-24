@@ -70,7 +70,7 @@ void evalNEEPrimary(
   //  is disabled, we must also handle that user choice gracefully.
   const bool pomOpaqueSurfaceEncountered = geometryFlags.pomOpaqueSurfaceEncountered && cb.pomEnableDirectLighting;
 
-  const uint primarySurfaceIndex = (pomOpaqueSurfaceEncountered || isDiffusionProfileSss) ? uint(SharedSurfaceIndex[pixelCoordinate]) : SURFACE_INDEX_INVALID;
+  const uint sharedSurfaceIndex = (pomOpaqueSurfaceEncountered || isDiffusionProfileSss) ? uint(SharedSurfaceIndex[pixelCoordinate]) : SURFACE_INDEX_INVALID;
 
   VisibilityResult occludedVisibility;
   occludedVisibility.hasOpaqueHit = true;
@@ -81,7 +81,7 @@ void evalNEEPrimary(
       lightSample.position, rayMask,
       sampledTransportPortalIndex, geometryFlags.portalSpace, pomOpaqueSurfaceEncountered,
       minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, geometryFlags.isViewModel, false,
-      primarySurfaceIndex, SharedTextureCoord[pixelCoordinate],
+      sharedSurfaceIndex, SharedTextureCoord[pixelCoordinate],
       isThinOpaqueSubsurface,
       opaqueSurfaceMaterialInteraction.shadingNormal) :
     occludedVisibility;
@@ -91,12 +91,24 @@ void evalNEEPrimary(
   SssDiffusionProfileResult sssDiffusionProfileResult = createEmptySssDiffusionProfileResult();
   if (isDiffusionProfileSss)
   {
-    sssDiffusionProfileResult = evalSssDiffusionProfile(
-      opaqueSurfaceMaterialInteraction, minimalRayInteraction, minimalSurfaceInteraction,
-      rayMask, sampledTransportPortalIndex, geometryFlags, viewRay,
-      primarySurfaceIndex, pixelCoordinate,
-      PrimaryWorldShadingNormal,
-      randomState);
+    if (geometryFlags.primarySelectedIntegrationSurface)
+    {
+      sssDiffusionProfileResult = evalSssDiffusionProfile(
+        opaqueSurfaceMaterialInteraction, minimalRayInteraction, minimalSurfaceInteraction,
+        rayMask, sampledTransportPortalIndex, geometryFlags, viewRay,
+        sharedSurfaceIndex, pixelCoordinate,
+        PrimaryWorldShadingNormal,
+        randomState);
+    }
+    else
+    {
+      sssDiffusionProfileResult = evalSssDiffusionProfile(
+        opaqueSurfaceMaterialInteraction, minimalRayInteraction, minimalSurfaceInteraction,
+        rayMask, sampledTransportPortalIndex, geometryFlags, viewRay,
+        sharedSurfaceIndex, pixelCoordinate,
+        SecondaryWorldShadingNormal,
+        randomState);
+    }
 
     visibility.hasOpaqueHit = (hasNonSssOpaqueHit && sssDiffusionProfileResult.allSamplesHaveHit);
   }

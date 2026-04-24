@@ -160,6 +160,11 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
     const vec4 projPos = mul(camera.worldToProjectionJittered, vec4(sssTracingResult.sssMinimalSurfaceInteraction.position.xyz, 1.0f));
     const vec3 ndcPos = projPos.xyz / projPos.w;
     const ivec2 samplePixelCoordinate = cameraNDCToPixelCoordinate(camera, ndcPos.xy);
+    // The SSS mesh may be off-screen when only visible via PSR (mirror reflection).
+    // In that case the camera projection lands outside the viewport, making RTXDI
+    // reservoir reads invalid and silently dropping every disk sample.  Detect this
+    // and fall back to RIS so the SSS contribution is still evaluated.
+    const bool sampleInsideScreen = projPos.w > 0.0f && all((ndcPos.xy >= -1.0f) && (ndcPos.xy <= 1.0f));
 
     LightSample sssLightSample;
     float inverseSelectionPdf;
@@ -167,7 +172,7 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
     bool risLightSampleValid = false;
     uint8_t sampledTransportPortalIndex = invalidRayPortalIndex;
     uint16_t lightIdx = kInvalidLightIdx;
-    if (cb.enableRtxdi && geometryFlags.primarySelectedIntegrationSurface)
+    if (cb.enableRtxdi && geometryFlags.primarySelectedIntegrationSurface && sampleInsideScreen)
     {
       // Select and sample a light for NEE via RTXDI
       rtxdiLightSampleValid = sampleLightRTXDI(
@@ -226,7 +231,7 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
 
     /// Evaluate BSSRDF
 
-    const f16vec3 shadingNormal = signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(worldShadingNormal[samplePixelCoordinate]));
+    const f16vec3 shadingNormal = sssTracingResult.normal;
     const f16vec3 inputDirection = visibility.rayDirection;
     const float16_t /* n.l */ normalDotInputDirection = max(dot(inputDirection, shadingNormal), 0.0f);
 
