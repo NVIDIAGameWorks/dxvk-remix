@@ -11,6 +11,9 @@ namespace dxvk {
     uint64_t                    m_lastUs = 0;
     uint64_t                    m_currentUs = 0;
     float                       m_deltaSec = 0.0f;
+    uint64_t                    m_realLastUs = 0;
+    uint64_t                    m_realCurrentUs = 0;
+    float                       m_realDeltaSec = 0.0f;
     uint64_t                    m_frameIdx = 0;
     float                       m_timeDeltaBetweenFrames = 0.f;
     std::function<uint64_t()>   m_source;
@@ -36,6 +39,8 @@ namespace dxvk {
       : m_source(&GlobalTime::defaultSource) {
       m_lastUs = m_source();
       m_currentUs = m_lastUs;
+      m_realLastUs = m_lastUs;
+      m_realCurrentUs = m_lastUs;
       m_startTimeUs = m_lastUs;
     }
 
@@ -52,6 +57,10 @@ namespace dxvk {
 
     // Call once per frame before queries
     void update() {
+      m_realLastUs = m_realCurrentUs;
+      m_realCurrentUs = defaultSource();
+      m_realDeltaSec = (m_realCurrentUs - m_realLastUs) * 1e-6f;
+
       m_lastUs = m_currentUs;
       m_currentUs = m_source();
       m_deltaSec = (m_currentUs - m_lastUs) * 1e-6f;
@@ -66,6 +75,16 @@ namespace dxvk {
     // scaled delta-t (ms)
     float deltaTimeMs() const {
       return m_deltaSec * 1000.f;
+    }
+
+    // actual frame delta-t (s), ignoring deterministic time settings
+    float realDeltaTime() const {
+      return m_realDeltaSec;
+    }
+
+    // actual frame delta-t (ms), ignoring deterministic time settings
+    float realDeltaTimeMs() const {
+      return m_realDeltaSec * 1000.f;
     }
 
     // whole micro-seconds since startup
