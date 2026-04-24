@@ -450,10 +450,12 @@ namespace dxvk {
     // Only create SSS Textures when there're SSS materials in the scene
     {
       if (sceneManager.isSssMaterialExist() || sceneManager.isThinOpaqueMaterialExist()) {
-        if (!m_raytracingOutput.m_sharedSubsurfaceData.isValid()) {
+        if (!m_raytracingOutput.m_sharedSubsurfaceData.isValid() ||
+            m_raytracingOutput.m_sharedSubsurfaceData.image->info().extent != m_downscaledExtent) {
           m_raytracingOutput.m_sharedSubsurfaceData = createImageResource(ctx, "primary subsurface material buffer", m_downscaledExtent, VK_FORMAT_R16G16_UINT);
         }
-        if (!m_raytracingOutput.m_sharedSubsurfaceDiffusionProfileData.isValid()) {
+        if (!m_raytracingOutput.m_sharedSubsurfaceDiffusionProfileData.isValid() ||
+            m_raytracingOutput.m_sharedSubsurfaceDiffusionProfileData.image->info().extent != m_downscaledExtent) {
           // The single scattering is also stored in diffusion profile texture which is used in thin opaque. So we need to create this texture for thin opaque as well.
           m_raytracingOutput.m_sharedSubsurfaceDiffusionProfileData = createImageResource(ctx, "primary subsurface material diffusion profile data buffer", m_downscaledExtent, VK_FORMAT_R32G32_UINT);
         }
