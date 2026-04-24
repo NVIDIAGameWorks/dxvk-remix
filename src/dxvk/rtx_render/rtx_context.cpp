@@ -210,6 +210,14 @@ namespace dxvk {
   // Returns GPU idle time between calls to this in milliseconds
   float RtxContext::getGpuIdleTimeSinceLastCall() {
     uint64_t currGpuIdleTicks = m_device->getStatCounters().getCtr(DxvkStatCounter::GpuIdleTicks);
+    if (!m_prevGpuIdleTicksInitialized) {
+      // DxvkSubmissionQueue::gpuIdleTicks() is a monotonic accumulator, so the
+      // only invalid sample here is the first one before we've established a baseline.
+      m_prevGpuIdleTicks = currGpuIdleTicks;
+      m_prevGpuIdleTicksInitialized = true;
+      return 0.0f;
+    }
+
     uint64_t delta = currGpuIdleTicks - m_prevGpuIdleTicks;
     m_prevGpuIdleTicks = currGpuIdleTicks;
 
