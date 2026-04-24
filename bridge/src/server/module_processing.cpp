@@ -60,7 +60,7 @@ namespace {
     presParam.MultiSampleQuality = *reinterpret_cast<const DWORD*>(rawPresentationParameters + 5);
 
     presParam.SwapEffect = *reinterpret_cast<const D3DSWAPEFFECT*>(rawPresentationParameters + 6);
-    presParam.hDeviceWindow = (HWND)(uintptr_t)(rawPresentationParameters[7]);
+    presParam.hDeviceWindow = TRUNCATE_HANDLE(HWND, rawPresentationParameters[7]);
     presParam.Windowed = *reinterpret_cast<const BOOL*>(rawPresentationParameters + 8);
     presParam.EnableAutoDepthStencil = *reinterpret_cast<const BOOL*>(rawPresentationParameters + 9);
     presParam.AutoDepthStencilFormat = *reinterpret_cast<const D3DFORMAT*>(rawPresentationParameters + 10);
