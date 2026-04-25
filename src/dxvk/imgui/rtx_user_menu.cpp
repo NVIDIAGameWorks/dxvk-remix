@@ -456,6 +456,9 @@ namespace dxvk {
 
           break;
         }
+        case UpscalerType::FSR: {
+          break;
+        }
         case UpscalerType::None: {
           // No custom UI here.
           break;
@@ -472,7 +475,7 @@ namespace dxvk {
     if (dlfgSupported) {
       ImGui::Dummy(ImVec2(0.0f, 3.0f));
       ImGui::TextSeparator("Frame Generation Settings");
-      showDLFGOptions(ctx);
+      showDLFGOptions(ctx, dlfgSupported);
     }
 
     if (reflexInitialized) {
