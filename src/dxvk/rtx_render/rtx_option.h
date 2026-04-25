@@ -231,8 +231,11 @@ namespace dxvk {
 
     // Migrate all layer values from this option to another option.
     // The lambda does all type conversion (read from src, write to dest).
-    // bool isDestValueNew will be supplied to the transform indicating that the dest already has a value in its layer
-    // Returns true if all data was migrated successfully
+    // bool isDestValueNew will be supplied to the transform indicating that the dest already has a value in its layer.
+    // Returns true if at least one non-default layer value was migrated (i.e. the
+    // transform returned true for it). Returns false if there was nothing to migrate
+    // (no non-default layer values, or the transform declined every value) — callers
+    // should gate any "please re-save your rtx config" deprecation logging on this.
     bool migrateValuesTo(RtxOptionImpl* destOption, std::function<bool(const GenericValue& src, GenericValue& dest, bool isDestValueNew)> transform);
 
     // Static method for full name construction
