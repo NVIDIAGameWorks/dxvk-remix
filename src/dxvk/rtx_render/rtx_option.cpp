@@ -756,7 +756,7 @@ namespace dxvk {
   bool RtxOptionImpl::migrateValuesTo(RtxOptionImpl* destOption, std::function<bool(const GenericValue& src, GenericValue& dest, bool destHasExistingValue)> transform) {
     std::lock_guard<std::mutex> lock(getUpdateMutex());
 
-    Logger::info(str::format("[Migration] Migrating from ", getFullName(), " to ", destOption->getFullName()));
+    bool migrated = false;
 
     for (auto& [layerKey, sourcePrioritizedValue] : m_optionLayerValueQueue) {
       if (layerKey == kRtxOptionLayerDefaultKey) {
@@ -776,10 +776,20 @@ namespace dxvk {
 
       if (transform(sourcePrioritizedValue.value, *destValue, !destIsNew)) {
         destOption->markDirty();
+        migrated = true;
       }
     }
 
-    return true;
+    // Only announce the migration when at least one non-default layer actually
+    // moved. Callers (decal-texture / particle maxSpeed) gate their own
+    // `[Deprecated Config]` "please re-save your rtx config" log on this
+    // return value, so emitting true when nothing moved spams users who have
+    // no deprecated keys in any of their configs.
+    if (migrated) {
+      Logger::info(str::format("[Migration] Migrating from ", getFullName(), " to ", destOption->getFullName()));
+    }
+
+    return migrated;
   }
 
   void RtxOptionImpl::updateLayerBlendStrength(const RtxOptionLayer& optionLayer) {
