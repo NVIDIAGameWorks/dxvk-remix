@@ -35,7 +35,7 @@ void volume_integrate_pass(ivec3 threadIndex)
   const uint froxelVolume = threadIndex.x / froxelDimensions.x;
 
   // Here we consider multiple virtual froxel volumes, which we store in the X dimension of our 3D textures
-  if (any(threadIndex.yz >= froxelDimensions.yz) || froxelVolume > volumeArgs.numActiveFroxelVolumes)
+  if (any(threadIndex.yz >= froxelDimensions.yz) || froxelVolume >= volumeArgs.numActiveFroxelVolumes)
   {
     return;
   }
