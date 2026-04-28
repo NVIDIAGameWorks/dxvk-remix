@@ -100,6 +100,11 @@ namespace bridge_util {
         return T();
       }
       const std::string& value = get().getOptionValue(option);
+      if (value.empty()) {
+        // Missing options use the caller-supplied fallback silently —
+        // a fallback parameter is the explicit contract for absence.
+        return fallback;
+      }
       T result;
       if (parseOptionValue(value, result)) {
         return result;
