@@ -138,7 +138,6 @@ namespace dxvk {
 
         {DEBUG_VIEW_SHARED_BIAS_CURRENT_COLOR_MASK, "DLSS Bias Color Mask"},
 
-        {DEBUG_VIEW_IS_INSIDE_FRUSTUM, "Is Inside Frustum"},
         {DEBUG_VIEW_IS_OUTSIDE_AABB, "Is Outside Axis Aligned Bounding Box",
                                     "Legend: Black - inside, Combination of Red|Green|Blue - outside x|y|z axis\n"
                                     "The Bounding Box is centered around the camera.\n"

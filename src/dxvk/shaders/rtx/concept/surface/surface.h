@@ -159,12 +159,6 @@ struct Surface
     set { data2.w = newValue ? packedFlagSet(data2.w, 1 << 30) : packedFlagUnset(data2.w, 1 << 30); }
   }
 
-  property bool isInsideFrustum
-  {
-    get { return packedFlagGet(data2.w, 1 << 31); }
-    set { data2.w = newValue ? packedFlagSet(data2.w, 1 << 31) : packedFlagUnset(data2.w, 1 << 31); }
-  }
-
   // Matrices
 
   property mat4x3 prevObjectToWorld

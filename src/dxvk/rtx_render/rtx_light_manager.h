@@ -71,6 +71,7 @@ public:
   void showImguiDebugVisualization() const;
 
   const std::unordered_map<XXH64_hash_t, RtLight>& getLightTable() const { return m_lights; }
+  const std::unordered_map<uint64_t, RtLight>& getExternallyTrackedLightTable() const { return m_externallyTrackedLights; }
   const Rc<DxvkBuffer> getLightBuffer() const { return m_lightBuffer; }
   const Rc<DxvkBuffer> getPreviousLightBuffer() const { return m_previousLightBuffer.ptr() ? m_previousLightBuffer : m_lightBuffer; }
   const Rc<DxvkBuffer> getLightMappingBuffer() const { return m_lightMappingBuffer; }
@@ -92,11 +93,9 @@ public:
 
   // Externally tracked lights are lights whose lifecycle (creation, update, removal) is managed externally, rather than the
   // existing frame-to-frame tracking and anti-culling systems. These are kept separte to avoid any interference from anti culling
-  // and light matching.
+  // and light matching. Remove external lights by calling light->markForGarbageCollection().
   RtLight* createExternallyTrackedLight(const RtLight& light);
   void updateExternallyTrackedLight(RtLight* light, const RtLight& newLight);
-  void removeExternallyTrackedLight(RtLight* light);
-
   void addExternalLight(remixapi_LightHandle handle, const RtLight& rtlight);
   void addExternalDomeLight(remixapi_LightHandle handle, const DomeLight& domeLight);
   void removeExternalLight(remixapi_LightHandle handle);

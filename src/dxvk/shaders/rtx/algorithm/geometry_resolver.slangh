@@ -1098,9 +1098,6 @@ void geometryResolverVertexOutputDebugView(
       accumulateInDebugViewAnd(pixelCoordinate, isValid);
       break;
     }
-  case DEBUG_VIEW_IS_INSIDE_FRUSTUM:
-    storeInDebugView(pixelCoordinate, surface.isInsideFrustum ? vec3(0.0f, 1.0f, 0.0f) : vec3(1.0f, 0.0f, 0.0f));
-    break;
   case DEBUG_VIEW_IS_OUTSIDE_AABB:
     vec3 relativePosition = abs(surfaceInteraction.position - cameraGetWorldPosition(cb.camera));
     storeInDebugView(pixelCoordinate, vec3(relativePosition > cb.debugKnob.xyz * 0.5f));

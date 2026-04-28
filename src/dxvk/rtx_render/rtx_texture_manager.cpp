@@ -955,6 +955,16 @@ namespace dxvk {
     tex->m_frameLastUsedForSamplerFeedback = curframe;
   }
 
+  void RtxTextureManager::keepTextureAlive(uint32_t textureIndex) {
+    if (textureIndex >= m_textureCache.getTotalCount()) {
+      return;
+    }
+    const Rc<ManagedTexture>& tex = m_textureCache.at(textureIndex).getManagedTexture();
+    if (tex != nullptr) {
+      tex->m_frameLastUsed = m_device->getCurrentFrameId();
+    }
+  }
+
   void RtxTextureManager::clear() {
     ScopedCpuProfileZone();
 

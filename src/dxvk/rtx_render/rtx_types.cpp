@@ -21,7 +21,10 @@
 */
 #pragma once
 
+#include <algorithm>
+
 #include "rtx_types.h"
+#include "rtx_asset_replacer.h"
 #include "rtx_options.h"
 #include "rtx_terrain_baker.h"
 #include "rtx_instance_manager.h"
@@ -104,40 +107,6 @@ namespace dxvk {
     return os << static_cast<uint8_t>(type);
   }
 
-  ReplacementInstance* PrimInstanceOwner::getOrCreateReplacementInstance(void* owner, PrimInstance::Type type, size_t index,size_t numPrims) {
-    if (m_replacementInstance != nullptr && !isRoot(owner)) {
-      // This Prim is already a non-root member of another replacementInstance, but SceneManager is trying to use it as the root of a new replacement.
-      ONCE(assert(false && "getOrCreateReplacementInstance should only be called on root prims"));
-      // Try to handle it gracefully anyways by removing this from the previous replacement and making it the root of a new replacement.
-      // This will cause m_replacmementInstance to be null, so it will enter the new ReplacementInstance case below.
-      setReplacementInstance(nullptr, ReplacementInstance::kInvalidReplacementIndex, owner, type);
-    }
-
-    if (m_replacementInstance == nullptr) {
-      ReplacementInstance* replacement = new ReplacementInstance();
-      replacement->setup(PrimInstance(owner, type), numPrims);
-      setReplacementInstance(replacement, index, owner, type);
-    } else if (m_replacementInstance->prims.size() != numPrims) {
-      // Number of prims changing generally means a new replacement asset has loaded in.
-      // Need to unlink the old instances, and either re-link them (if they are returned as 
-      // similar by findSimilarInstances) or create new ones.
-      ReplacementInstance* replacement = m_replacementInstance;
-      
-      // Clear the root manually, so that `clear()` doesn't try to delete the replacement.
-      replacement->root = PrimInstance();
-      // Clear the link to this prim so that it doesn't get marked for GC.
-      setReplacementInstance(nullptr, ReplacementInstance::kInvalidReplacementIndex, owner, type);
-
-      // Wipe out all the links in the replacement, which will mark all of the old non-root replacements for cleanup.
-      replacement->clear();
-      
-      // Redo replacement setup.
-      replacement->setup(PrimInstance(owner, type), numPrims);
-      setReplacementInstance(replacement, index, owner, type);
-    }
-    return m_replacementInstance;
-  }
-
   ReplacementInstance::~ReplacementInstance() {
     root = PrimInstance();
     clear();
@@ -160,13 +129,75 @@ namespace dxvk {
       }
       prims[i].setReplacementInstance(nullptr, kInvalidReplacementIndex);
     }
+    geometryBoundingBox.invalidate();
+    lightBoundingBox.invalidate();
+    boundingBoxDirty = true;
   }
 
   void ReplacementInstance::setup(PrimInstance newRoot, size_t numPrims) {
+    clear();
     prims.resize(numPrims);
     root = newRoot;
   }
-  
+
+  void ReplacementInstance::recalculateBoundingBox(
+      const Matrix4& newObjectToWorld,
+      const std::vector<AssetReplacement>& replacements,
+      const AxisAlignedBoundingBox* originalGeometryBBox) {
+    objectToWorld = newObjectToWorld;
+
+    if (!boundingBoxDirty) {
+      return;
+    }
+
+    AxisAlignedBoundingBox geoBBox;
+    AxisAlignedBoundingBox litBBox;
+
+    for (const auto& replacement : replacements) {
+      if (replacement.includeOriginal && originalGeometryBBox != nullptr) {
+        geoBBox.unionWith(*originalGeometryBBox);
+      } else if (replacement.type == AssetReplacement::eMesh && replacement.geometry != nullptr) {
+        const AxisAlignedBoundingBox& srcBBox = replacement.geometry->data.boundingBox;
+        if (srcBBox.isValid()) {
+          const Vector3& mn = srcBBox.minPos;
+          const Vector3& mx = srcBBox.maxPos;
+          const Vector3 corners[8] = {
+            Vector3(mn.x, mn.y, mn.z), Vector3(mx.x, mn.y, mn.z),
+            Vector3(mn.x, mx.y, mn.z), Vector3(mn.x, mn.y, mx.z),
+            Vector3(mx.x, mx.y, mn.z), Vector3(mn.x, mx.y, mx.z),
+            Vector3(mx.x, mn.y, mx.z), Vector3(mx.x, mx.y, mx.z)
+          };
+          for (const Vector3& corner : corners) {
+            const Vector3 transformed = (replacement.replacementToObject * Vector4(corner, 1.0f)).xyz();
+            for (uint32_t j = 0; j < 3; j++) {
+              geoBBox.minPos[j] = std::min(geoBBox.minPos[j], transformed[j]);
+              geoBBox.maxPos[j] = std::max(geoBBox.maxPos[j], transformed[j]);
+            }
+          }
+        }
+      } else if (replacement.type == AssetReplacement::eLight && replacement.lightData.has_value()) {
+        RtLight objectSpaceLight = replacement.lightData->toRtLight();
+        const Vector3 pos = objectSpaceLight.getPosition();
+        float lightRadius = 0.f;
+        if (objectSpaceLight.getType() == RtLightType::Sphere) {
+          lightRadius = objectSpaceLight.getSphereLight().getRadius();
+        }
+        for (uint32_t j = 0; j < 3; j++) {
+          litBBox.minPos[j] = std::min(litBBox.minPos[j], pos[j] - lightRadius);
+          litBBox.maxPos[j] = std::max(litBBox.maxPos[j], pos[j] + lightRadius);
+        }
+      }
+    }
+
+    if (geoBBox.isValid()) {
+      geometryBoundingBox = geoBBox;
+    }
+    if (litBBox.isValid()) {
+      lightBoundingBox = litBBox;
+    }
+    boundingBoxDirty = false;
+  }
+
   bool PrimInstanceOwner::isRoot(const void* owner) const {
     return m_replacementInstance != nullptr
       && m_replacementIndex != ReplacementInstance::kInvalidReplacementIndex
@@ -174,63 +205,34 @@ namespace dxvk {
   }
 
   void PrimInstanceOwner::setReplacementInstance(ReplacementInstance* replacementInstance, size_t replacementIndex, void* owner, PrimInstance::Type type) {
-    // Early out if this is just re-applying the same values.
-    if (m_replacementInstance != nullptr && m_replacementInstance == replacementInstance) {
-      ONCE(assert(false && "single prim is being set to multiple replacement indices."));
+    // No-op if already linked to the same slot
+    if (m_replacementInstance == replacementInstance && m_replacementIndex == replacementIndex) {
       return;
     }
 
-    // Then check if the owner is already in a replacement:
-    if (m_replacementInstance && m_replacementIndex != ReplacementInstance::kInvalidReplacementIndex) {
-      
-      // Inside a replacement, check if it's the root:
-      if (isRoot(owner)) {
-        // This is the root of a replacement being deleted.
-        // Clear the root, and delete the replacementInstance.
-        // the ReplacementInstance destructor will call this function again, which will
-        // actually clear m_replacementInstance and m_replacementIndex.
-        delete m_replacementInstance;
-        m_replacementInstance = nullptr;
-        m_replacementIndex = ReplacementInstance::kInvalidReplacementIndex;
-        return;
+    // Unlink from current ReplacementInstance
+    if (m_replacementInstance != nullptr &&
+        m_replacementIndex < m_replacementInstance->prims.size()) {
+      PrimInstance& currentSlot = m_replacementInstance->prims[m_replacementIndex];
+      if (currentSlot.getUntyped() == owner) {
+        currentSlot = PrimInstance();
       }
-
-      // Next, remove the prim from the replacementInstance.
-      PrimInstance& prim = m_replacementInstance->prims[m_replacementIndex];
-      if (prim.getType() == type && prim.getUntyped() == owner) {
-        // clear up the old reference to this owner
-        prim = PrimInstance();
-      } else {
-        // The prim believed it was in a slot, but something else was actually there.
-        // This is a sign that something went wrong earlier, but shouldn't cause problems itself.
-        ONCE(assert(false && "PrimInstance was not properly removed from its replacementInstance before something else took its place."));
+      if (m_replacementInstance->root.getUntyped() == owner) {
+        m_replacementInstance->root = PrimInstance();
       }
     }
 
-    // Set this owner to the new replacementInstance.
+    // Link to new ReplacementInstance
     m_replacementInstance = replacementInstance;
     m_replacementIndex = replacementIndex;
 
-    // Inform the replacementInstance that this owner is now in it.
-    if (m_replacementInstance && replacementIndex != ReplacementInstance::kInvalidReplacementIndex) {
-      PrimInstance& prim = m_replacementInstance->prims[replacementIndex];
-      if (prim.getType() != type && prim.getType() != PrimInstance::Type::None) {
-        // While specific pointers may change, the type of a slot should never change.
-        ONCE(assert(false && "Trying to assign a primInstance to a replacementInstance slot that was not the same type."));
-        m_replacementInstance = nullptr;
-        m_replacementIndex = ReplacementInstance::kInvalidReplacementIndex;
-        return;
-      } else if (prim.getUntyped() != nullptr && prim.getUntyped() != owner) {
-        // Another owner is already in this spot.  Clean that up properly before overriding it.
-        if (m_replacementInstance->root.getUntyped() == prim.getUntyped()) {
-          // Replacing the old root.  Shouldn't happen, but if it does we would want to
-          // update the root before clearing the old root, to avoid triggering garbage collection.
-          m_replacementInstance->root = PrimInstance(owner, type);
-        }
-        prim.setReplacementInstance(nullptr, ReplacementInstance::kInvalidReplacementIndex);
-        ONCE(assert(false && "PrimInstance was not properly cleaned up before being replaced."));
+    if (m_replacementInstance != nullptr &&
+        m_replacementIndex < m_replacementInstance->prims.size()) {
+      PrimInstance& targetSlot = m_replacementInstance->prims[m_replacementIndex];
+      if (targetSlot.getUntyped() != nullptr && targetSlot.getUntyped() != owner) {
+        targetSlot.setReplacementInstance(nullptr, ReplacementInstance::kInvalidReplacementIndex);
       }
-      prim = PrimInstance(owner, type);
+      targetSlot = PrimInstance(owner, type);
     }
   }
 
@@ -570,26 +572,17 @@ namespace dxvk {
   }
 
   BlasEntry::BlasEntry(const DrawCallState& input_)
-    : input(input_), m_spatialMap(RtxOptions::uniqueObjectDistance() * 2.f) {
-      if (RtxOptions::uniqueObjectDistance() <= 0.f) {
-        ONCE(Logger::err("rtx.uniqueObjectDistance must be greater than 0."));
-      }
+    : input(input_) {
     }
 
   void BlasEntry::unlinkInstance(RtInstance* instance) {
-    instance->removeFromSpatialCache();
     auto it = std::find(m_linkedInstances.begin(), m_linkedInstances.end(), instance);
     if (it != m_linkedInstances.end()) {
-      // Swap & pop - faster than "erase", but doesn't preserve order, which is fine here.
       std::swap(*it, m_linkedInstances.back());
       m_linkedInstances.pop_back();
     } else {
       ONCE(Logger::err("Tried to unlink an instance, which was never linked!"));
     }
-  }
-
-  void BlasEntry::rebuildSpatialMap() {
-    m_spatialMap.rebuild(RtxOptions::uniqueObjectDistance() * 2.f);
   }
 
 } // namespace dxvk

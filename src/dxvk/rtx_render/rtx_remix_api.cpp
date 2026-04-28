@@ -816,6 +816,7 @@ dxvk::ExternalDrawState dxvk::RemixAPIPrivateAccessor::toRtDrawState(const remix
     for (uint32_t boneIdx = 0; boneIdx < boneCount; boneIdx++) {
       prototype.skinningData.pBoneMatrices[boneIdx] = convert::tomat4(extBones->boneTransforms_values[boneIdx]);
     }
+    prototype.skinningData.computeHash();
   }
 
   if (auto extBlend = pnext::find<remixapi_InstanceInfoBlendEXT>(&info)) {
@@ -1053,8 +1054,7 @@ namespace {
     }
     std::lock_guard lock { s_mutex };
     remixDevice->EmitCs([cHandle = handle](dxvk::DxvkContext* ctx) {
-      auto& assets = ctx->getCommonObjects()->getSceneManager().getAssetReplacer();
-      assets->destroyExternalMesh(cHandle);
+      ctx->getCommonObjects()->getSceneManager().destroyExternalMesh(cHandle);
     });
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
