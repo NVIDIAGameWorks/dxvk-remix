@@ -40,6 +40,7 @@
 #include "rtx_common_object.h"
 #include "rtx_camera_manager.h"
 #include "rtx_draw_call_cache.h"
+#include "rtx_draw_call_tracker.h"
 #include "rtx_sparse_unique_cache.h"
 #include "rtx_light_manager.h"
 #include "rtx_instance_manager.h"
@@ -110,6 +111,10 @@ struct ExternalDrawState {
   bool doubleSided {};
   const std::optional<RtxParticleSystemDesc> optionalParticleDesc {};
   std::vector<Matrix4> gpuInstancingTransforms {};
+
+  // Draw-instance identity for ReplacementInstance lookup. Excludes per-frame camera matrices
+  // (worldToView / viewToProjection / objectToView) filled in submitExternalDraw after hashing.
+  XXH64_hash_t computeExternalDrawIdentityHash() const;
 };
 
 // Scene manager is a super manager, it's the interface between rendering and world state
@@ -131,6 +136,9 @@ public:
 
   void submitDrawState(Rc<DxvkContext> ctx, const DrawCallState& input, const MaterialData* overrideMaterialData);
   void submitExternalDraw(Rc<DxvkContext> ctx, ExternalDrawState&& state);
+
+  // Remove an externally created mesh and all associated replacement instances.
+  void destroyExternalMesh(remixapi_MeshHandle handle);
   
   bool areAllReplacementsLoaded() const;
   std::vector<Mod::State> getReplacementStates() const;
@@ -271,9 +279,6 @@ private:
   ObjectCacheState onSceneObjectAdded(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, BlasEntry* pBlas);
   // Called whenever a BLAS scene object is updated
   ObjectCacheState onSceneObjectUpdated(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, BlasEntry* pBlas);
-  // Called whenever a BLAS scene object is destroyed
-  void onSceneObjectDestroyed(const BlasEntry& pBlas);
-
   // Called whenever a new instance has been added to the database
   void onInstanceAdded(RtInstance& instance);
   // Called whenever instance metadata is updated
@@ -281,12 +286,12 @@ private:
   // Called whenever an instance has been removed from the database
   void onInstanceDestroyed(RtInstance& instance);
 
-  // Called to destroy a ReplacementInstance.
-  // This is used to clear up all references to the ReplacementInstance.
-  // Also responsible for removing any graphs from graphManager.
-  void destroyReplacementInstance(ReplacementInstance* replacementInstance);
+  void drawReplacements(Rc<DxvkContext> ctx, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, MaterialData& renderMaterialData, ReplacementInstance* replacementInstance);
 
-  void drawReplacements(Rc<DxvkContext> ctx, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, MaterialData& renderMaterialData);
+  // Re-register an existing instance's buffers, textures, and materials in the
+  // current frame's per-frame tables without running the full draw call pipeline.
+  // Called for anti-culled instances whose game draw call was not submitted this frame.
+  void keepInstanceAlive(RtInstance& instance);
 
   void createEffectLight(Rc<DxvkContext> ctx, const DrawCallState& input, const RtInstance* instance);
 
@@ -363,6 +368,8 @@ private:
 
   // Using std::deque for pointer stability: push_back doesn't invalidate existing pointers
   std::deque<std::vector<Matrix4>> m_externalGpuInstancingTransforms;
+
+  DrawCallTracker m_drawCallTracker;
 };
 
 }  // namespace nvvk

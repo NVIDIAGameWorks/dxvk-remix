@@ -57,14 +57,14 @@ void LightHashChecker::updateRange(const Rc<DxvkContext>& context, const size_t 
   const SceneManager& sceneManager = rtxContext->getSceneManager();
   const LightManager& lightManager = sceneManager.getLightManager();
   
-  // Get the light table
-  const std::unordered_map<XXH64_hash_t, RtLight>& lightTable = lightManager.getLightTable();
+  const auto& lightTable = lightManager.getLightTable();
+  const auto& externalLightTable = lightManager.getExternallyTrackedLightTable();
   
   for (size_t i = start; i < end; i++) {
     const uint64_t targetHash = m_lightHash[i];
     
-    // Check if the light hash exists in the light table
-    bool isUsed = lightTable.find(targetHash) != lightTable.end();
+    bool isUsed = lightTable.find(targetHash) != lightTable.end()
+               || externalLightTable.find(targetHash) != externalLightTable.end();
     
     m_isUsed[i] = isUsed;
   }

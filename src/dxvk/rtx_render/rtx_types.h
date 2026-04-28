@@ -46,6 +46,8 @@ struct RtLight;
 class GraphInstance;
 struct D3D9FixedFunctionVS;
 struct D3D9FixedFunctionPS;
+struct DrawCallState;
+struct AssetReplacement;
 struct ReplacementInstance;
 
 using RasterBuffer = GeometryBuffer<Raster>;
@@ -106,18 +108,9 @@ std::ostream& operator << (std::ostream& os, PrimInstance::Type type);
 
 struct ReplacementInstance {
   // Lifecycle note:
-  // Currently, ReplacementInstances are created the first time a given replaced draw call
-  // is rendered.  A single entity (a light or instance) is designated as the 'root'.
-  // When that entity is destroyed, the ReplacementInstance is destroyed.
-  // Unfortunately, lights and instances aren't always destroyed at the same time, or
-  // in the same order they were created.  To accomodate that, when non-root entities
-  // are deleted, they remove themselves from the `entities` vector.  Similarly, when
-  // the root is deleted, all entities remaining in the vector will have their pointer
-  // to the ReplacementInstance set to nullptr.
-  // TODO(REMIX-4226): In the future, draw calls should be tracked and destroyed based
-  // on the pre-replacement draw call, so that everything in a ReplacementInstance gets
-  // destroyed at the same time.  When that change is made, the original tracked draw
-  // call should own this ReplacementInstance.
+  // All ReplacementInstances are owned by DrawCallTracker and tracked via two-level hash
+  // lookup (identity hash + tracking hash + proximity). PrimInstanceOwner stores a non-owning
+  // pointer; DrawCallTracker::destroyReplacementInstance() handles destruction.
 
   static constexpr uint32_t kInvalidReplacementIndex = UINT32_MAX;
 
@@ -129,6 +122,57 @@ struct ReplacementInstance {
   PrimInstance root;
 
   void setup(PrimInstance newRoot, size_t numPrims);
+
+  // Frame-to-frame tracking fields (used by SceneManager two-level lookup)
+  uint32_t id = 0;
+  XXH64_hash_t identityHash = kEmptyHash;
+  XXH64_hash_t spatialMapHash = kEmptyHash;
+  XXH64_hash_t materialHash = kEmptyHash;
+  XXH64_hash_t vertexPositionHash = kEmptyHash;
+  Vector3 centroid = Vector3(0.f);
+  uint32_t frameCreated = 0;
+  uint32_t frameLastSeen = 0;
+  XXH64_hash_t spatialCacheTransformHash = kEmptyHash;
+  XXH64_hash_t materialSpatialCacheTransformHash = kEmptyHash;
+
+  // Pointer to the replacement data this RI was set up with. Used to detect when
+  // replacements change (async load, hot reload) and the RI needs reinitialization.
+  const std::vector<AssetReplacement>* activeReplacements = nullptr;
+
+  // Draw call properties that affect anti-culling GC decisions.
+  // Set from the original DrawCallState each time the RI is matched.
+  // Stored as raw bits because CategoryFlags is defined later in this file.
+  uint32_t categoryFlags = 0;
+  bool isSkinned = false;
+
+  // When true, the aggregate object-space bounding boxes (geometryBoundingBox,
+  // lightBoundingBox) will be recomputed from the replacement mesh/light data
+  // on the next drawReplacements call. Defaults to true so the initial frame
+  // computes the AABB. Set back to true by clear() or dirtyBoundingBox().
+  bool boundingBoxDirty = true;
+
+  void dirtyBoundingBox() { boundingBoxDirty = true; }
+
+  // Recompute the aggregate object-space bounding boxes from the replacement data,
+  // if boundingBoxDirty is set. Always updates objectToWorld (the game object may
+  // move each frame). Clears boundingBoxDirty after computation.
+  // originalGeometryBBox is the original draw call's geometry bbox, used for
+  // includeOriginal replacements (pass nullptr when there is no original geometry,
+  // e.g. light-only replacements in addLight).
+  void recalculateBoundingBox(const Matrix4& newObjectToWorld,
+                              const std::vector<AssetReplacement>& replacements,
+                              const AxisAlignedBoundingBox* originalGeometryBBox = nullptr);
+
+  // Anti-culling bounding boxes, both in the space defined by objectToWorld.
+  // For mesh draw calls, this is the original draw call's object space.
+  // For light replacements, this is the D3D9 light's local space.
+  // objectToWorld transforms these to world space for the frustum check.
+  // geometryBoundingBox covers mesh geometry (checked against main camera frustum).
+  // lightBoundingBox covers light positions expanded by radius (checked against
+  // the wider light anti-culling frustum). If either check passes, the RI is kept alive.
+  AxisAlignedBoundingBox geometryBoundingBox;
+  AxisAlignedBoundingBox lightBoundingBox;
+  Matrix4 objectToWorld;
 };
 
 // Wrapper utility to share the code for handling replacementInstance ownership.
@@ -150,7 +194,6 @@ public:
 
   bool isRoot(const void* owner) const;
   void setReplacementInstance(ReplacementInstance* replacementInstance, size_t replacementIndex, void* owner, PrimInstance::Type type);
-  ReplacementInstance* getOrCreateReplacementInstance(void* owner, PrimInstance::Type type, size_t index, size_t numPrims);
   ReplacementInstance* getReplacementInstance() const { return m_replacementInstance; }
   size_t getReplacementIndex() const { return m_replacementIndex; }
   bool isSubPrim() const {
@@ -754,8 +797,6 @@ struct BlasEntry {
   // Frame when the vertex data of this geometry was last updated, used to detect static geometries
   uint32_t frameLastUpdated = kInvalidFrameIndex;
 
-  using InstanceMap = SpatialMap<RtInstance>;
-
   Rc<PooledBlas> dynamicBlas = nullptr;
 
   std::vector<VkAccelerationStructureGeometryKHR> buildGeometries;
@@ -794,10 +835,6 @@ struct BlasEntry {
   void unlinkInstance(RtInstance* instance);
 
   const std::vector<RtInstance*>& getLinkedInstances() const { return m_linkedInstances; }
-  InstanceMap& getSpatialMap() { return m_spatialMap; }
-  const InstanceMap& getSpatialMap() const { return m_spatialMap; }
-
-  void rebuildSpatialMap();
 
   void printDebugInfo(const char* name = "") const {
 #ifdef REMIX_DEVELOPMENT
@@ -832,7 +869,6 @@ struct BlasEntry {
 
 private:
   std::vector<RtInstance*> m_linkedInstances;
-  InstanceMap m_spatialMap;
   std::unordered_map<XXH64_hash_t, LegacyMaterialData> m_materials;
 };
 

@@ -67,14 +67,6 @@ public:
   Vector3 getWorldPosition() const { return Vector3{ m_vkInstance.transform.matrix[0][3], m_vkInstance.transform.matrix[1][3], m_vkInstance.transform.matrix[2][3] }; }
   const Vector3& getPrevWorldPosition() const { return surface.prevObjectToWorld.data[3].xyz(); }
 
-  void removeFromSpatialCache() {
-    if (m_isCreatedByRenderer || !m_linkedBlas || m_isUnlinkedForGC || m_spatialCacheHash == kEmptyHash) {
-      return;
-    }
-    m_linkedBlas->getSpatialMap().erase(m_spatialCacheHash);
-    m_spatialCacheHash = kEmptyHash;
-  }
-
   bool isCreatedThisFrame(uint32_t frameIndex) const { return frameIndex == m_frameCreated; }
 
   // Bind a BLAS object to this instance
@@ -98,9 +90,6 @@ public:
   uint32_t getFrameAge() const { return m_frameLastUpdated - m_frameCreated; }
   // Signal this object should be collected on the next GC pass
   void markForGarbageCollection() const;
-  void markAsUnlinkedFromBlasEntryForGarbageCollection() const;
-  void markAsInsideFrustum() const;
-  void markAsOutsideFrustum() const;
   // Returns true if a new camera type was registered
   bool registerCamera(CameraType::Enum cameraType, uint32_t frameIndex);
   bool isCameraRegistered(CameraType::Enum cameraType) const;
@@ -153,8 +142,6 @@ uint32_t getFirstBillboardIndex() const { return m_firstBillboard; }
   bool isViewModelVirtual() const;
   bool isSubsurface() const { return m_isSubsurface; }
 
-  bool isUnlinkedForGC() const { return m_isUnlinkedForGC; }
-
   PrimInstanceOwner& getPrimInstanceOwner() { return m_primInstanceOwner; }
   
   void printDebugInfo() const;
@@ -177,8 +164,6 @@ private:
   mutable uint32_t m_instanceVectorId; // Index within instance vector in instance manager
 
   mutable bool m_isMarkedForGC = false;
-  mutable bool m_isUnlinkedForGC = false;
-  mutable bool m_isInsideFrustum = true;
   mutable uint32_t m_frameLastUpdated = kInvalidFrameIndex;
   mutable uint32_t m_frameCreated = kInvalidFrameIndex;
 
@@ -220,7 +205,6 @@ private:
 
   CategoryFlags m_categoryFlags;
 
-  XXH64_hash_t m_spatialCacheHash = kEmptyHash;
 
   // This can be used to access all lights and instances that originate from the same draw call.
   // Left as nullptr if the draw call does not have replacement data.
@@ -307,6 +291,9 @@ public:
   // Binds a raytracing material to the specified instance.
   void bindMaterial(RtInstance& instance, const RtSurfaceMaterial& material);
 
+  // Copies buffer indices from the BlasEntry's geometry data to the instance's surface.
+  void processInstanceBuffers(const BlasEntry& blas, RtInstance& currentInstance) const;
+
   // Creates a copy of a reference instance and adds it to the instance pool
   // Temporary single frame instances generated every frame should disable valid id generation to avoid overflowing it
   RtInstance* createInstanceCopy(const RtInstance& reference, bool generateValidID = true);
@@ -329,7 +316,7 @@ public:
   void resetSurfaceIndices();
 
   const std::vector<IntersectionBillboard>& getBillboards() const { return m_billboards; }
-  
+
 private:
   ResourceCache* m_pResourceCache;
 
@@ -343,7 +330,6 @@ private:
   uint32_t m_playerModelInstancesFrameId = kInvalidFrameIndex;
   std::vector<IntersectionBillboard> m_billboards;
 
-  bool m_previousViewModelState = false;
   RtInstance* targetInstance = nullptr;
 
   uint32_t m_decalSortOrderCounter = 0;  // monotonically incrementing value indicating the draw call order of this decal on the frame
@@ -357,11 +343,7 @@ private:
   // Handles the case of when two (or more) identical geometries+textures draw calls have been submitted in a single frame (typically used for two-pass rendering in FF)
   void mergeInstanceHeuristics(RtInstance& instanceToModify, const DrawCallState& drawCall, const RtSurface::AlphaState& alphaState) const;
 
-  // Finds the "closest" matching instance to a set of inputs, returns a pointer (can be null if not found) to closest instance
-  RtInstance* findSimilarInstance(BlasEntry& blas, const MaterialData& material, const Matrix4& firstInstanceObjectToWorld, CameraType::Enum cameraType, const RayPortalManager& rayPortalManager);
-
   RtInstance* addInstance(BlasEntry& blas);
-  void processInstanceBuffers(const BlasEntry& blas, RtInstance& currentInstance) const;
 
   void updateInstance(
     RtInstance& currentInstance, const CameraManager& cameraManager,

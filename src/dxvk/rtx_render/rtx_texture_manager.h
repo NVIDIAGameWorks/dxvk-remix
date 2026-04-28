@@ -132,6 +132,12 @@ namespace dxvk {
       return showProgress();
     }
 
+    /**
+    * \brief Marks a texture as used in the current frame to prevent garbage collection.
+    * \param [in] textureIndex Index of the texture in the resource table.
+    */
+    void keepTextureAlive(uint32_t textureIndex);
+
     // Do not use. This is here temporarily for WAR for REMIX-1557
     void releaseTexture(TextureRef& textureRef) {
       m_textureCache.free(textureRef);

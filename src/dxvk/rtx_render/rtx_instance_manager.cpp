@@ -138,12 +138,9 @@ namespace dxvk {
     // Members for which state carry over is intentionally skipped
     /*
        m_isMarkedForGC
-       m_isUnlinkedForGC
-       m_isInsideFrustum
        m_frameLastUpdated
        m_frameCreated
        m_isCreatedByRenderer
-       m_spatialCacheHash
        m_primInstanceOwner
        buildGeometries
        buildRanges
@@ -158,7 +155,7 @@ namespace dxvk {
   namespace {
     template<int RtInstanceSize> struct CheckRtInstanceSize {
       // The second line of the build error should contain the new size of RtInstance in the template argument, i.e. `dxvk::CheckRtInstanceSize<newSize>`
-      static_assert(RtInstanceSize == 752, "RtInstance size has changed.  Fix the copy constructor above this message, then update the expected size.");
+      static_assert(RtInstanceSize == 744, "RtInstance size has changed.  Fix the copy constructor above this message, then update the expected size.");
     };
     CheckRtInstanceSize<sizeof(RtInstance)> _rtInstanceSizeTest;
   }
@@ -173,34 +170,20 @@ namespace dxvk {
     // NOTE: VkTransformMatrixKHR is 4x3 matrix, and Matrix4 is 4x4
     const auto t = transpose(surface.objectToWorld);
     memcpy(&m_vkInstance.transform, &t, sizeof(VkTransformMatrixKHR));
-
-    if (!m_isCreatedByRenderer) {
-      // NOTE: This code would cache instances based on predicted position instead of current position, but in testing it fails too frequently
-      // const Vector3 newPos = 2.f * surface.objectToWorld[3].xyz() - surface.prevObjectToWorld[3].xyz();
-
-      // Cache based on current position.
-      const Matrix4 firstInstanceObjectToWorld = calcFirstInstanceObjectToWorld();
-      const Vector3 newPos = getBlas()->input.getGeometryData().boundingBox.getTransformedCentroid(firstInstanceObjectToWorld);
-      m_spatialCacheHash = m_linkedBlas->getSpatialMap().move(m_spatialCacheHash, newPos, firstInstanceObjectToWorld, this);
-    }
   }
 
   bool RtInstance::teleport(const Matrix4& objectToWorld) {
     surface.objectToWorld = objectToWorld;
     surface.normalObjectToWorld = transpose(inverse(Matrix3(surface.objectToWorld)));
     surface.prevObjectToWorld = objectToWorld;
-    if (!m_isCreatedByRenderer) {
-      const Matrix4 firstInstanceObjectToWorld = calcFirstInstanceObjectToWorld();
-      const Vector3 centroid = getBlas()->input.getGeometryData().boundingBox.getTransformedCentroid(firstInstanceObjectToWorld);
-      m_spatialCacheHash = m_linkedBlas->getSpatialMap().insert(centroid, firstInstanceObjectToWorld, this);
-    }
-    
+
+
     // The D3D matrix on input, needs to be transposed before feeding to the VK API (left/right handed conversion)
     // NOTE: VkTransformMatrixKHR is 4x3 matrix, and Matrix4 is 4x4
     const auto t = transpose(surface.objectToWorld);
     memcpy(&m_vkInstance.transform, &t, sizeof(VkTransformMatrixKHR));
     
-    return false; // freshly teleported instances are always treated as still.
+    return false;
   }
 
   bool RtInstance::teleport(const Matrix4& objectToWorld, const Matrix4& prevObjectToWorld) {
@@ -276,17 +259,6 @@ namespace dxvk {
     m_isMarkedForGC = true;
   }
 
-  void RtInstance::markAsUnlinkedFromBlasEntryForGarbageCollection() const {
-    m_isUnlinkedForGC = true;
-  }
-
-  void RtInstance::markAsInsideFrustum() const {
-    m_isInsideFrustum = true;
-  }
-
-  void RtInstance::markAsOutsideFrustum() const {
-    m_isInsideFrustum = false;
-  }
 
   bool RtInstance::registerCamera(CameraType::Enum cameraType, uint32_t frameIndex) {
     const bool settingNewCameraType = !m_seenCameraTypes.test(cameraType);
@@ -373,7 +345,6 @@ namespace dxvk {
       "Material Data Hash: 0x", std::hex, m_materialDataHash, std::dec, "\n",
       "Texcoord Hash: 0x", std::hex, m_texcoordHash, std::dec, "\n",
       "Index Hash: 0x", std::hex, m_indexHash, std::dec, "\n",
-      "Spatial Cache Hash: 0x", std::hex, m_spatialCacheHash, std::dec, "\n",
       "\n",
       "=== Vulkan Instance Info ===\n",
       "VK Instance Mask: ", m_vkInstance.mask, "\n",
@@ -411,8 +382,6 @@ namespace dxvk {
       "\n",
       "=== Garbage Collection Flags ===\n",
       "Is Marked For GC: ", m_isMarkedForGC ? "true" : "false", "\n",
-      "Is Unlinked For GC: ", m_isUnlinkedForGC ? "true" : "false", "\n",
-      "Is Inside Frustum: ", m_isInsideFrustum ? "true" : "false", "\n",
       "\n",
       "=== View Model Flags ===\n",
       "Is View Model: ", isViewModel() ? "true" : "false", "\n",
@@ -461,7 +430,6 @@ namespace dxvk {
   InstanceManager::InstanceManager(DxvkDevice* device, ResourceCache* pResourceCache)
     : CommonDeviceObject(device)
     , m_pResourceCache(pResourceCache) {
-    m_previousViewModelState = RtxOptions::ViewModel::enable();
   }
 
   InstanceManager::~InstanceManager() {
@@ -488,47 +456,18 @@ namespace dxvk {
   }  
 
   void InstanceManager::garbageCollection() {
-    // Can be configured per game: 'rtx.numFramesToKeepInstances'
-    const uint32_t numFramesToKeepInstances = RtxOptions::numFramesToKeepInstances();
-    
-    // Remove instances past their lifetime or marked for GC explicitly
-    const uint32_t currentFrame = m_device->getCurrentFrameId();
-
-    // Need to release all instances when ViewModel enablement changes
-    // This is a big hammer but it's fine, it's a debugging feature
-    const bool isViewModelEnabled = RtxOptions::ViewModel::enable();
-    if (isViewModelEnabled != m_previousViewModelState) {
-      clear();
-      m_previousViewModelState = isViewModelEnabled;
-    }
-
-    const bool forceGarbageCollection = (m_instances.size() >= RtxOptions::AntiCulling::Object::numObjectsToKeep());
+    // All instance lifetimes are managed externally: tracked instances are marked
+    // for GC by ReplacementInstance::clear(), ephemeral copies are marked on creation.
     for (uint32_t i = 0; i < m_instances.size();) {
-      // Must take a ref here since we'll be swapping
       RtInstance*& pInstance = m_instances[i];
       assert(pInstance != nullptr);
 
-      const bool enableGarbageCollection =
-        !RtxOptions::AntiCulling::isObjectAntiCullingEnabled() || // It's always True if anti-culling is disabled
-        (pInstance->m_isInsideFrustum) ||
-        (pInstance->getBlas()->input.getSkinningState().numBones > 0) ||
-        (pInstance->m_isAnimated) ||
-        (pInstance->m_isPlayerModel);
-
-      if (((forceGarbageCollection || enableGarbageCollection) &&
-           pInstance->m_frameLastUpdated + numFramesToKeepInstances <= currentFrame) ||
-          pInstance->m_isMarkedForGC) {
-        // Note: Pop and swap for performance, index not incremented to process swapped instance on next iteration
+      if (pInstance->m_isMarkedForGC) {
         removeInstance(pInstance);
 
-        // NOTE: pInstance is now the (previously) last element
         std::swap(pInstance, m_instances.back());
-
         m_instances[i]->m_instanceVectorId = i;
-
         delete m_instances.back();
-
-        // Remove the last element
         m_instances.pop_back();
         continue;
       }
@@ -549,21 +488,19 @@ namespace dxvk {
     const CameraManager& cameraManager, const RayPortalManager& rayPortalManager,
     BlasEntry& blas, const DrawCallState& drawCall, MaterialData& materialData, RtInstance* existingInstance) {
 
-    // If the RtInstance represents multiple instances, use the full transform of the first copy for the spatial map.
-    // this prevents a bad de-duplication when the same replacement asset is used in multiple GeomPointInstancer prims.
-    Matrix4 firstInstanceObjectToWorld = drawCall.getTransformData().calcFirstInstanceObjectToWorld();
-
-    // If we already know which instance to use, just use that.
+    // If no existing instance is provided, this is a genuinely new draw call and we need to create a fresh instance.
     RtInstance* currentInstance = existingInstance;
 
-    // Search for an existing instance matching our input
     if (currentInstance == nullptr) {
-      currentInstance = findSimilarInstance(blas, materialData, firstInstanceObjectToWorld, drawCall.cameraType, rayPortalManager);
-    }
-
-    if (currentInstance == nullptr) {
-      // No existing match - so need to create one
       currentInstance = addInstance(blas);
+    } else if (currentInstance->getBlas() != &blas) {
+      // The BlasEntry changed — re-link the instance to the current one.
+      BlasEntry* oldBlas = currentInstance->getBlas();
+      if (oldBlas != nullptr) {
+        oldBlas->unlinkInstance(currentInstance);
+      }
+      currentInstance->setBlas(blas);
+      blas.linkInstance(currentInstance);
     }
 
     updateInstance(*currentInstance, cameraManager, blas, drawCall, materialData);
@@ -780,105 +717,6 @@ namespace dxvk {
     // NOTE: In the future we could extend this with heuristics as needed...
   }
 
-  RtInstance* InstanceManager::findSimilarInstance(BlasEntry& blas, const MaterialData& material, const Matrix4& firstInstanceObjectToWorld, CameraType::Enum cameraType, const RayPortalManager& rayPortalManager) {
-
-    // Disable temporal correlation between instances so that duplicate instances are not created
-    // should a developer option change instance enough for it not to match anymore
-    if (RtxOptions::enableInstanceDebuggingTools()) {
-      return nullptr;
-    }
-
-    RtInstance* result = nullptr;
-
-    const uint32_t currentFrameIdx = m_device->getCurrentFrameId();
-    const Vector3 worldPosition = blas.input.getGeometryData().boundingBox.getTransformedCentroid(firstInstanceObjectToWorld);
-    
-    const float uniqueObjectDistanceSqr = RtxOptions::getUniqueObjectDistanceSqr();
-
-    RtInstance* pSimilar = nullptr;
-    float nearestDistSqr = FLT_MAX;
-
-    // Search the BLAS for an instance matching ours
-    {
-      // Search for an exact match
-      result = const_cast<RtInstance*>(blas.getSpatialMap().getDataAtTransform(firstInstanceObjectToWorld));
-      if (result != nullptr) {
-        return result;
-      }
-      
-      // No exact match, so find the closest match in the region
-      // (need to check a 2x2x2 patch of cells to account for positions close to a border)
-      result = const_cast<RtInstance*>(blas.getSpatialMap().getNearestData(worldPosition, uniqueObjectDistanceSqr, nearestDistSqr,
-        [&] (const RtInstance* instance) {
-          // Filter out instances by returning false if the instance:
-          // - has already been updated this frame
-          // - doesn't use the same material
-          // - is a sub prim of a replacement instance
-          return instance->m_frameLastUpdated != currentFrameIdx && instance->m_materialHash == material.getHash() && !instance->m_primInstanceOwner.isSubPrim();
-        }
-      ));
-      if (nearestDistSqr == 0.0f && result != nullptr) {
-        // Not going to find anything closer
-        return result;
-      }
-    }
-
-    // For portal gun and other objects that were drawn in the ViewModel, need to check the
-    // virtual version of the instance from previous frame.
-    if (nearestDistSqr > 0.0f &&
-        cameraType == CameraType::ViewModel && 
-        RtxOptions::useRayPortalVirtualInstanceMatching() ) {
-      const Matrix4* teleportMatrix = nullptr;
-      for (const RtInstance* instance : blas.getLinkedInstances()) {
-        if (instance->m_frameLastUpdated != currentFrameIdx - 1 || 
-            instance->m_materialHash != material.getHash()) {
-          continue;
-        }
-        
-        // Compare against virtual position of a predicted instance's position in the current frame
-        const Vector3& prevPrevInstanceWorldPosition = instance->getPrevWorldPosition();
-        const Vector3& prevInstanceWorldPosition = instance->getWorldPosition();
-        const Vector3 predictedInstanceWorldPosition = prevInstanceWorldPosition +
-          (prevInstanceWorldPosition - prevPrevInstanceWorldPosition);
-      
-        // Check all portal pairs
-        for (auto& rayPortalPair : rayPortalManager.getRayPortalPairInfos()) {
-          if (rayPortalPair.has_value()) {
-            for (uint32_t i = 0; i < 2; i++) {
-              const auto& rayPortal = rayPortalPair->pairInfos[i];
-
-              const Vector3 virtualPredictedInstanceWorldPosition =
-                rayPortalManager.getVirtualPosition(predictedInstanceWorldPosition, rayPortal.portalToOpposingPortalDirection);
-
-              // Distance of the object from the predicted virtual position of an instance
-              const float virtualDistSqr = lengthSqr(virtualPredictedInstanceWorldPosition - worldPosition);
-
-              // Is the instance is similar, and within range?  We already know the BLAS is shared, due to the for loop
-              if (virtualDistSqr <= uniqueObjectDistanceSqr && virtualDistSqr < nearestDistSqr) {
-                nearestDistSqr = virtualDistSqr;
-                result = const_cast<RtInstance*>(instance);
-                teleportMatrix = &rayPortal.portalToOpposingPortalDirection;
-                if (virtualDistSqr == 0.0f) {
-                  // Not going to find anything closer.
-                  break;
-                }
-              }
-            }
-          }
-        }
-      }
-      
-      // If the match was against a virtual equivalent of the instance from previous frame, 
-      // update the instance's transform to that of the virtual one
-      if (teleportMatrix) {
-        result->teleportWithHistory(*teleportMatrix);
-      }
-    }
-
-
-    return result; 
-  }
-
   RtInstance* InstanceManager::addInstance(BlasEntry& blas) {
     const uint32_t currentFrameIdx = m_device->getCurrentFrameId();
 
@@ -904,9 +742,6 @@ namespace dxvk {
     // Notify events after instance has been added
     for (auto& event : m_eventHandlers)
       event.onInstanceAddedCallback(*currentInstance);
-
-    // onInstanceAddedCallback will link current instance to the BLAS
-    currentInstance->m_isUnlinkedForGC = false;
 
     return currentInstance;
   }
@@ -1066,7 +901,6 @@ namespace dxvk {
         // Note: Skip the spritesheet adjustment logic in the surface interaction when using Ray Portal materials as this logic
         // is done later in the Surface Material Interaction (and doing it in both places will just double up the animation).
         currentInstance.surface.skipSurfaceInteractionSpritesheetAdjustment = (currentInstance.m_materialType == MaterialDataType::RayPortal);
-        currentInstance.surface.isInsideFrustum = RtxOptions::AntiCulling::isObjectAntiCullingEnabled() ? currentInstance.m_isInsideFrustum : true;
 
         currentInstance.surface.blendModeState = drawCall.getMaterialData().blendMode;
 
@@ -1338,7 +1172,6 @@ namespace dxvk {
     // Always clean up replacement instance references, even for renderer-created instances
     // to avoid use-after-free bugs in ReplacementInstance.prims
     instance->getPrimInstanceOwner().setReplacementInstance(nullptr, ReplacementInstance::kInvalidReplacementIndex, instance, PrimInstance::Type::Instance);
-    instance->removeFromSpatialCache();
     
     // In these cases we skip calling onInstanceDestroyed:
     //   Some view model and player instances are created in the renderer and don't have onInstanceAdded called,
