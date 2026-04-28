@@ -1254,6 +1254,9 @@ namespace dxvk {
       RTX_OPTION_FLAG_ENV("rtx.automation", bool, suppressAssetLoadingErrors, false, RtxOptionFlags::NoSave, "RTX_AUTOMATION_SUPPRESS_ASSET_LOADING_ERRORS",
                           "Suppresses asset loading errors by turning them into warnings.\n"
                           "This option is typically meant for automation of tests for which acceptable asset loading issues are known.");
+      RTX_OPTION_FLAG_ENV("rtx.automation", bool, enableTestTrace, false, RtxOptionFlags::NoSave, "RTX_TEST_TRACE",
+                          "Enables opt-in frame trace artifacts for automation-driven image tests.\n"
+                          "When enabled, Remix records a bounded frame window around the configured screenshot frame, writes frame_trace.jsonl, and appends dxvk_trace_* summary fields to metrics.txt.");
     };
 
   public:

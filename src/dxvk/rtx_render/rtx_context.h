@@ -249,7 +249,8 @@ namespace dxvk {
     bool m_resetHistory = true;    // Discards use of temporal data in passes
 
     std::chrono::time_point<std::chrono::steady_clock> m_prevRunningTime;
-    uint64_t m_prevGpuIdleTicks;
+    uint64_t m_prevGpuIdleTicks = 0;
+    bool m_prevGpuIdleTicksInitialized = false;
 
     bool m_screenshotFrameEnabled = false;
     bool m_triggerDelayedTerminate = false;

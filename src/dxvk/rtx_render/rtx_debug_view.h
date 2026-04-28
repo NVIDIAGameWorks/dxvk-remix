@@ -73,6 +73,7 @@ namespace dxvk {
     }
 
     uint32_t getDebugViewIndex() const;
+    uint32_t getCompositeDebugViewIndex() const;
     void setDebugViewIndex(uint32_t debugViewIndex);
 
     // GPU Print

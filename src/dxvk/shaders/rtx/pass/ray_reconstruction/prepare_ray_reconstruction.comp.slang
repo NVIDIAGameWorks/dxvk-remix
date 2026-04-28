@@ -226,7 +226,7 @@ void main(uint2 threadId : SV_DispatchThreadID)
   const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(threadId, SharedFlags);
   if (cb.combineSpecularAlbedo)
   {
-    bool hasPSR = geometryFlags.performPSTR || geometryFlags.performPSRR;
+    bool hasPSR = geometryFlags.performPSTR && geometryFlags.performPSRR;
 
     vec4 primaryAttenuation = vec4(r11g11b10ToColor(PrimaryAttenuation[threadId]), 1.0);
     vec4 secondaryAttenuation = hasPSR ? vec4(r11g11b10ToColor(SecondaryAttenuation[threadId]), 1.0) : vec4(0,0,0,1);
