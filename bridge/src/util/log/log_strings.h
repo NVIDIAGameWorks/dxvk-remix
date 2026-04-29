@@ -38,7 +38,6 @@ namespace logger_strings {
   namespace WndProc {
     constexpr char* kStr_newSetWindowLong_settingHwnd = "[WndProc][NewSetWindowLong] Setting new HWND=0x%08x, OldHWND=0x%08x";
     constexpr char* kStr_newSetWindowLong_settingWndProc = "[WndProc][NewSetWindowLong] Setting NewWndProc=0x%08x, OldWndProc=0x%08x";
-    constexpr char* kStr_newGetWindowLong_gettingWndProc = "[WndProc][NewGetWindowLong] Getting WndProc=0x%08x";
     constexpr char* kStr_init_attachErr = "[WndProc][init] Attach failed!";
     constexpr char* kStr_terminate_detachErr = "[WndProc][terminate] Detach failed!";
     constexpr char* kStr_set_implicitWarn = "[WndProc][set] Calling WndProc::set(...) without an intermediate unset(). Calling implicitly...";

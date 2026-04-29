@@ -100,8 +100,7 @@ static LONG WINAPI NewGetWindowLong(_In_ HWND hWnd, _In_ int nIndex) {
     // If we haven't yet set the RemixWndProc, as is evident by g_gameWndProc being invalid, then just
     // call OrigGetWindowLong as usual
     if(isSet()) {
-      Logger::debug(format_string(kStr_newGetWindowLong_gettingWndProc, g_gameWndProc));
-      // We only handle cases wherein the window's handle matches the window's handle 
+      // We only handle cases wherein the window's handle matches the window's handle
       // used in D3DDEVICE_CREATION_PARAMETERS or D3DPRESENT_PARAMETERS
       if (hWnd == g_hwnd)
         return asLong(g_gameWndProc);
