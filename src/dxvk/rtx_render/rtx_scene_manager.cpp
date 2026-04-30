@@ -256,6 +256,10 @@ namespace dxvk {
     textureManager.clear();
 
     m_previousFrameSceneAvailable = false;
+    m_startInMediumMaterialIndex = SURFACE_INDEX_INVALID;
+    m_fogStartInMediumMaterialIndex_inCache = kInvalidMaterialCacheIndex;
+    m_externalStartInMediumMaterialIndex_inCache = kInvalidMaterialCacheIndex;
+    m_startInMediumMaterialIndex_inCache = kInvalidMaterialCacheIndex;
   }
 
   void SceneManager::garbageCollection() {
@@ -503,6 +507,7 @@ namespace dxvk {
     
     m_activePOMCount = 0;
     m_startInMediumMaterialIndex = SURFACE_INDEX_INVALID;
+    m_fogStartInMediumMaterialIndex_inCache = UINT32_MAX;
     m_startInMediumMaterialIndex_inCache = UINT32_MAX;
 
     if (m_uniqueObjectSearchDistance != RtxOptions::uniqueObjectDistance()) {
@@ -562,7 +567,7 @@ namespace dxvk {
             uint32_t id = UINT32_MAX;
             createSurfaceMaterial(*pFogReplacement, input, &id);
             assert(id != UINT32_MAX);
-            m_startInMediumMaterialIndex_inCache = id;
+            m_fogStartInMediumMaterialIndex_inCache = id;
           }
         } else if (m_fog.mode == D3DFOG_NONE) {
           // render the first unreplaced fog.
@@ -1349,35 +1354,7 @@ namespace dxvk {
 
       surfaceMaterial.emplace(opaqueSurfaceMaterial);
     } else if (renderMaterialDataType == MaterialDataType::Translucent) {
-      const auto& translucentMaterialData = renderMaterialData.getTranslucentMaterialData();
-
-      uint32_t normalTextureIndex = kSurfaceMaterialInvalidTextureIndex;
-      uint32_t transmittanceTextureIndex = kSurfaceMaterialInvalidTextureIndex;
-      uint32_t emissiveColorTextureIndex = kSurfaceMaterialInvalidTextureIndex;
-
-      trackTexture(translucentMaterialData.getNormalTexture(), normalTextureIndex, hasTexcoords);
-      trackTexture(translucentMaterialData.getTransmittanceTexture(), transmittanceTextureIndex, hasTexcoords);
-      trackTexture(translucentMaterialData.getEmissiveColorTexture(), emissiveColorTextureIndex, hasTexcoords);
-
-      float refractiveIndex = translucentMaterialData.getRefractiveIndex() * std::clamp(TranslucentMaterialOptions::refractiveIndexScale(), 0.0f, 3.0f);
-      Vector3 transmittanceColor = translucentMaterialData.getTransmittanceColor();
-      float transmittanceMeasureDistance = translucentMaterialData.getTransmittanceMeasurementDistance();
-      Vector3 emissiveColorConstant = translucentMaterialData.getEmissiveColorConstant();
-      bool enableEmissive = translucentMaterialData.getEnableEmission();
-      float emissiveIntensity = translucentMaterialData.getEmissiveIntensity() * RtxOptions::emissiveIntensity();
-      bool isThinWalled = translucentMaterialData.getEnableThinWalled();
-      float thinWallThickness = translucentMaterialData.getThinWallThickness();
-      bool useDiffuseLayer = translucentMaterialData.getEnableDiffuseLayer();
-
-      const RtTranslucentSurfaceMaterial translucentSurfaceMaterial{
-        normalTextureIndex, transmittanceTextureIndex, emissiveColorTextureIndex,
-        refractiveIndex,
-        transmittanceMeasureDistance, transmittanceColor,
-        enableEmissive, emissiveIntensity, emissiveColorConstant,
-        isThinWalled, thinWallThickness, useDiffuseLayer, samplerIndex
-      };
-
-      surfaceMaterial.emplace(translucentSurfaceMaterial);
+      surfaceMaterial.emplace(createTranslucentSurfaceMaterial(renderMaterialData.getTranslucentMaterialData(), samplerIndex, hasTexcoords));
     } else if (renderMaterialDataType == MaterialDataType::RayPortal) {
       const auto& rayPortalMaterialData = renderMaterialData.getRayPortalMaterialData();
 
@@ -1409,6 +1386,74 @@ namespace dxvk {
       *out_indexInCache = index;
     }
     return m_surfaceMaterialCache.at(index);
+  }
+
+  RtTranslucentSurfaceMaterial SceneManager::createTranslucentSurfaceMaterial(const TranslucentMaterialData& translucentMaterialData,
+                                                                              uint32_t samplerIndex,
+                                                                              bool hasTexcoords) {
+    uint32_t normalTextureIndex = kSurfaceMaterialInvalidTextureIndex;
+    uint32_t transmittanceTextureIndex = kSurfaceMaterialInvalidTextureIndex;
+    uint32_t emissiveColorTextureIndex = kSurfaceMaterialInvalidTextureIndex;
+
+    trackTexture(translucentMaterialData.getNormalTexture(), normalTextureIndex, hasTexcoords);
+    trackTexture(translucentMaterialData.getTransmittanceTexture(), transmittanceTextureIndex, hasTexcoords);
+    trackTexture(translucentMaterialData.getEmissiveColorTexture(), emissiveColorTextureIndex, hasTexcoords);
+
+    return RtTranslucentSurfaceMaterial{
+      normalTextureIndex,
+      transmittanceTextureIndex,
+      emissiveColorTextureIndex,
+      translucentMaterialData.getRefractiveIndex() * std::clamp(TranslucentMaterialOptions::refractiveIndexScale(), 0.0f, 3.0f),
+      translucentMaterialData.getTransmittanceMeasurementDistance(),
+      translucentMaterialData.getTransmittanceColor(),
+      translucentMaterialData.getEnableEmission(),
+      translucentMaterialData.getEmissiveIntensity() * RtxOptions::emissiveIntensity(),
+      translucentMaterialData.getEmissiveColorConstant(),
+      translucentMaterialData.getEnableThinWalled(),
+      translucentMaterialData.getThinWallThickness(),
+      translucentMaterialData.getEnableDiffuseLayer(),
+      samplerIndex
+    };
+  }
+
+  Rc<DxvkSampler> SceneManager::getOrCreateExternalSampler() {
+    if (m_externalSampler == nullptr) {
+      auto s = DxvkSamplerCreateInfo {};
+      {
+        s.magFilter = VK_FILTER_LINEAR;
+        s.minFilter = VK_FILTER_LINEAR;
+        s.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        s.mipmapLodBias = 0.f;
+        s.mipmapLodMin = 0.f;
+        s.mipmapLodMax = 0.f;
+        s.useAnisotropy = VK_FALSE;
+        s.maxAnisotropy = 1.f;
+        s.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        s.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        s.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        s.compareToDepth = VK_FALSE;
+        s.compareOp = VK_COMPARE_OP_NEVER;
+        s.borderColor = VkClearColorValue {};
+        s.usePixelCoord = VK_FALSE;
+      }
+      m_externalSampler = m_device->createSampler(s);
+    }
+
+    return m_externalSampler;
+  }
+
+  void SceneManager::setExternalStartInMediumMaterial(const MaterialData& translucentMaterial) {
+    assert(translucentMaterial.getType() == MaterialDataType::Translucent);
+
+    const auto samplerIndex = trackSampler(getOrCreateExternalSampler());
+    const auto surfaceMaterial = RtSurfaceMaterial(
+      createTranslucentSurfaceMaterial(translucentMaterial.getTranslucentMaterialData(), samplerIndex, true));
+
+    m_externalStartInMediumMaterialIndex_inCache = m_surfaceMaterialCache.track(surfaceMaterial);
+  }
+
+  void SceneManager::clearExternalStartInMediumMaterial() {
+    m_externalStartInMediumMaterialIndex_inCache = UINT32_MAX;
   }
 
   std::optional<XXH64_hash_t> SceneManager::findLegacyTextureHashByObjectPickingValue(uint32_t objectPickingValue) {
@@ -1663,6 +1708,10 @@ namespace dxvk {
       m_cameraManager.getCamera(CameraType::Main),
       m_cameraManager.isCameraValid(CameraType::ViewModel) ? &m_cameraManager.getCamera(CameraType::ViewModel) : nullptr);
 
+    m_startInMediumMaterialIndex_inCache = m_externalStartInMediumMaterialIndex_inCache != kInvalidMaterialCacheIndex
+      ? m_externalStartInMediumMaterialIndex_inCache
+      : m_fogStartInMediumMaterialIndex_inCache;
+
     if (m_cameraManager.isCameraCutThisFrame()) {
       // Ignore camera cut events on teleportation so we don't flush the caches
       if (!didTeleport) {
@@ -1719,7 +1768,7 @@ namespace dxvk {
         ScopedGpuProfileZone(ctx, "updateSurfaceMaterials");
         // Note: We duplicate the materials in the buffer so we don't have to do pointer chasing on the GPU
         size_t surfaceMaterialsGPUSize = m_accelManager.getSurfaceCount() * kSurfaceMaterialGPUSize;
-        if (m_startInMediumMaterialIndex_inCache != UINT32_MAX) {
+        if (m_startInMediumMaterialIndex_inCache != kInvalidMaterialCacheIndex) {
           surfaceMaterialsGPUSize += kSurfaceMaterialGPUSize;
         }
 
@@ -1746,7 +1795,7 @@ namespace dxvk {
           surfaceIndex++;
         }
 
-        if (m_startInMediumMaterialIndex_inCache != UINT32_MAX) {
+        if (m_startInMediumMaterialIndex_inCache != kInvalidMaterialCacheIndex) {
           auto&& surfaceMaterial = m_surfaceMaterialCache.getObjectTable()[m_startInMediumMaterialIndex_inCache];
           surfaceMaterial.writeGPUData(surfaceMaterialsGPUData.data(), dataOffset, surfaceIndex);
           m_startInMediumMaterialIndex = surfaceIndex;
@@ -1863,31 +1912,11 @@ namespace dxvk {
   static_assert(std::is_same_v< decltype(RtSurface::objectPickingValue), ObjectPickingValue>);
 
   void SceneManager::submitExternalDraw(Rc<DxvkContext> ctx, ExternalDrawState&& state) {
-    if (m_externalSampler == nullptr) {
-      auto s = DxvkSamplerCreateInfo {};
-      {
-        s.magFilter = VK_FILTER_LINEAR;
-        s.minFilter = VK_FILTER_LINEAR;
-        s.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-        s.mipmapLodBias = 0.f;
-        s.mipmapLodMin = 0.f;
-        s.mipmapLodMax = 0.f;
-        s.useAnisotropy = VK_FALSE;
-        s.maxAnisotropy = 1.f;
-        s.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        s.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        s.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        s.compareToDepth = VK_FALSE;
-        s.compareOp = VK_COMPARE_OP_NEVER;
-        s.borderColor = VkClearColorValue {};
-        s.usePixelCoord = VK_FALSE;
-      }
-      m_externalSampler = m_device->createSampler(s);
-    }
+    Rc<DxvkSampler> externalSampler = getOrCreateExternalSampler();
 
     {
-      state.drawCall.materialData.samplers[0] = m_externalSampler;
-      state.drawCall.materialData.samplers[1] = m_externalSampler;
+      state.drawCall.materialData.samplers[0] = externalSampler;
+      state.drawCall.materialData.samplers[1] = externalSampler;
     }
     {
       const RtCamera& rtCamera = ctx->getCommonObjects()->getSceneManager().getCameraManager()
