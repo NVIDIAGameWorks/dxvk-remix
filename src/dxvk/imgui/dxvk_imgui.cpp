@@ -57,7 +57,7 @@
 #include "dxvk_image.h"
 #include "../util/rc/util_rc_ptr.h"
 #include "../util/util_math.h"
-#include "../util/util_globaltime.h"
+#include "../util/util_global_time.h"
 #include "rtx_render/rtx_opacity_micromap_manager.h"
 #include "rtx_render/rtx_bridge_message_channel.h"
 #include "dxvk_imgui_about.h"
@@ -3497,6 +3497,7 @@ namespace dxvk {
       ImGui::Indent();
 
       RemixGui::Checkbox("RNG: seed with frame index", &RtxOptions::rngSeedWithFrameIndexObject());
+      RemixGui::Checkbox("Advance time", &RtxOptions::advanceTimeObject());
 
       if (RemixGui::CollapsingHeader("Resolver", collapsingHeaderClosedFlags)) {
         ImGui::Indent();

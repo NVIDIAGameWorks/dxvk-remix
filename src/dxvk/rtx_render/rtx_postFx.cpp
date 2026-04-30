@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -33,7 +33,7 @@
 #include <pxr/base/arch/math.h>
 #include "rtx_imgui.h"
 
-#include "../util/util_globaltime.h"
+#include "../util/util_global_time.h"
 
 namespace dxvk {
   std::array<uint8_t, 3> g_customHighlightColor = { 118, 185, 0 };

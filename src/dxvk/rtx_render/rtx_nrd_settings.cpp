@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -496,7 +496,11 @@ namespace dxvk {
   }
 
   void NrdSettings::updateAdaptiveAccumulation(float frameTimeMs) {
-    const uint32_t maxAccumFrameNum = static_cast<uint32_t>(ceil(m_adaptiveAccumulationLengthMs / frameTimeMs));
+    // Fall back to the configured constant frame time (or 60 FPS) when the per-frame delta is 0,
+    // to avoid divide-by-zero on frame 0 in deterministic mode and when advanceTime is off.
+    const float fallbackMs = RtxOptions::timeDeltaBetweenFrames() > 0.f ? RtxOptions::timeDeltaBetweenFrames() : 16.6f;
+    const float effectiveFrameTimeMs = frameTimeMs > 0.0f ? frameTimeMs : fallbackMs;
+    const uint32_t maxAccumFrameNum = static_cast<uint32_t>(ceil(m_adaptiveAccumulationLengthMs / effectiveFrameTimeMs));
     if (m_denoiserDesc.denoiser == nrd::Denoiser::REBLUR_DIFFUSE_SPECULAR) {
       m_reblurSettings.maxAccumulatedFrameNum = Clamp(maxAccumFrameNum, m_adaptiveMinAccumulatedFrameNum, nrd::REBLUR_MAX_HISTORY_FRAME_NUM);
     } else if (m_denoiserDesc.denoiser == nrd::Denoiser::RELAX_DIFFUSE_SPECULAR) {
