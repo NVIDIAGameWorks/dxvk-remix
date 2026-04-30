@@ -58,7 +58,8 @@ namespace dxvk {
 
     void release();
 
-    bool useRayReconstruction();
+    bool useRayReconstruction() const;
+    bool denoiseSecondarySignalWithExternalDenoiser() const;
 
     void setSettings(const uint32_t displaySize[2], const DLSSProfile profile, uint32_t outRenderSize[2]);
 

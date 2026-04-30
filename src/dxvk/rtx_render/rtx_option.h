@@ -753,7 +753,7 @@ namespace dxvk {
       } else {
         // For non-POD types (vectors, etc.), store as pointer
         if (!targetValue.has_value()) {
-          targetValue = std::optional<GenericValue>(GenericValue{});
+          targetValue = std::optional<GenericValue>(GenericValue {});
           // Note: This is a `new` with no matching `delete`. This is safe because the
           // RtxOptionImpl object is never destroyed, and follows the pattern used in the constructor.
           targetValue.value().pointer = new T();

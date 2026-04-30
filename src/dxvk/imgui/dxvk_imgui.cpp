@@ -3842,6 +3842,17 @@ namespace dxvk {
         }
       }
 
+      // Show secondary denoiser settings when RR is enabled and secondary signal uses external denoiser
+      if (!useNRD && isRayReconstructionEnabled && common->metaRayReconstruction().denoiseSecondarySignalWithExternalDenoiser()) {
+        if (RemixGui::CollapsingHeader("Secondary Direct/Indirect Light Denoiser", collapsingHeaderClosedFlags)) {
+          ImGui::Indent();
+          ImGui::PushID("Secondary Direct/Indirect Light Denoiser");
+          common->metaSecondaryCombinedLightDenoiser().showImguiSettings();
+          ImGui::PopID();
+          ImGui::Unindent();
+        }
+      }
+
       ImGui::Unindent();
     }
 
