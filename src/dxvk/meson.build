@@ -382,6 +382,8 @@ dxvk_src = files([
 
   'rtx_render/rtx_gui_widgets.cpp',
   'rtx_render/rtx_gui_widgets.h',
+  'rtx_render/rtx_option_blocking_popup.cpp',
+  'rtx_render/rtx_option_blocking_popup.h',
 
   'platform/dxvk_win32_exts.cpp',
   
@@ -477,7 +479,7 @@ rtx_shaders = custom_target(
 )
 
 dxvk_embedded_data_files = files([
-  '../../external/fonts/NVIDIASans/NVIDIASansRg.ttf',
+  '../../external/fonts/NVIDIASans/NVIDIASansMd.ttf',
   '../../external/fonts/NVIDIASans/NVIDIASansBd.ttf',
   '../../external/fonts/RobotoMono/RobotoMonoRg.ttf'
 ])

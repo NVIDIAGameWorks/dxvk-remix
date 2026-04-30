@@ -1,8 +1,30 @@
+/*
+* Copyright (c) 2026, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
 #pragma once
 
 #include <imgui\imgui.h>
 #include <imgui\imgui_internal.h>
 #include "..\rtx_render\rtx_option.h"
+#include "..\rtx_render\rtx_option_blocking_popup.h"
 #include "..\util\util_string.h"
 #include "..\util\util_vector.h"
 #include <type_traits>
@@ -140,6 +162,7 @@ namespace RemixGui {
           bool held = false;
           bool pressed = ImGui::ButtonBehavior(hitBb, id, &resetButtonHovered, &held, ImGuiButtonFlags_PressedOnClick);
           if (pressed) {
+            CheckRtxOptionPopups(option);
             option->resetToDefault();
           }
 
@@ -197,6 +220,10 @@ namespace RemixGui {
   bool SliderInt4(const char* label, int v[4], int v_min, int v_max, const char* format = "%d", ImGuiSliderFlags flags = 0, float overlayAlpha = 0.8f);
   
   bool Checkbox(const char* label, bool* v, float boxScale = .9f);
+
+  // Labeled rows are laid out as [label text | control]. This fixes the pixel width of the left column where the label string is drawn (and clipped); it does not set the width of the checkbox, slider, or other control, which uses the rest of the row. Without a push, that label column defaults to ~50% of the row.
+  void PushLabelColumnFixedWidth(float labelColumnWidthPixels);
+  void PopLabelColumnFixedWidth();
 
   bool InputFloat(const char* label, float* v, float step = 0.0f, float step_fast = 0.0f, const char* format = "%.3f", ImGuiInputTextFlags flags = 0);
   bool InputFloat2(const char* label, float v[2], const char* format = "%.3f", ImGuiInputTextFlags flags = 0);
