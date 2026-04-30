@@ -811,6 +811,12 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, rngSeedWithFrameIndex, true,
                "Indicates that pseudo-random number generator should be seeded with the frame number of the application every frame, otherwise seed with 0.\n"
                "This should generally always be enabled as without the frame index each frame will typically be identical in the random values that are produced which will result in incorrect rendering. Only meant as a debugging tool.");
+    // declare onAdvanceTimeChanged
+    static void onAdvanceTimeChanged(DxvkDevice* device);
+    RTX_OPTION_ARGS("rtx", bool, advanceTime, true,
+               "A flag to enable or disable advancing time used by Remix subsystems (particle effects, animations, etc.).\n",
+                    args.environment = "RTX_ADVANCE_TIME",
+                    args.onChangeCallback = &RtxOptions::onAdvanceTimeChanged);
     RTX_OPTION_ARGS("rtx", bool, enableFirstBounceLobeProbabilityDithering, true,
                "A flag to enable or disable screen-space probability dithering on the first indirect lobe sampled.\n"
                "Generally sampling a diffuse, specular or other lobe relies on a random number generated against the probability of sampling each lobe, effectively focusing more rays/paths on lobes which matter more.\n"

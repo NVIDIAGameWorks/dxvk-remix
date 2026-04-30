@@ -33,6 +33,7 @@
 #include "rtx_demodulate.h"
 #include "rtx_neural_radiance_cache.h"
 #include "rtx_ray_reconstruction.h"
+#include "../util/util_global_time.h"
 
 #include "dxvk_device.h"
 #include "rtx_global_volumetrics.h"
@@ -80,6 +81,10 @@ namespace dxvk {
       auto& io = ImGui::GetIO();
       io.MouseDrawCursor = RtxOptions::showUICursor() && RtxOptions::showUI() != UIType::None;
     }
+  }
+
+  void RtxOptions::onAdvanceTimeChanged(DxvkDevice* device) {
+    GlobalTime::get().setAdvanceTime(RtxOptions::advanceTime());
   }
 
   void RtxOptions::blockInputToGameInUIOnChange(DxvkDevice* device) {

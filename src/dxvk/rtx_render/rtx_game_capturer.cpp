@@ -50,7 +50,7 @@
 #include "rtx_matrix_helpers.h"
 #include "rtx_lights.h"
 
-#include "../util/util_globaltime.h"
+#include "../util/util_global_time.h"
 
 #include <filesystem>
 

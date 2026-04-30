@@ -56,7 +56,7 @@
 
 #include "../util/log/metrics.h"
 #include "../util/util_defer.h"
-#include "../util/util_globaltime.h"
+#include "../util/util_global_time.h"
 
 #include "rtx_imgui.h"
 #include "dxvk_scoped_annotation.h"
@@ -195,7 +195,8 @@ namespace dxvk {
     checkNeuralRadianceCacheSupport();
     reportCpuSimdSupport();
 
-    GlobalTime::get().init(RtxOptions::timeDeltaBetweenFrames());
+    GlobalTime::get().init(RtxOptions::timeDeltaBetweenFrames() * 0.001f);
+    GlobalTime::get().setAdvanceTime(RtxOptions::advanceTime());
   }
 
   RtxContext::~RtxContext() {
