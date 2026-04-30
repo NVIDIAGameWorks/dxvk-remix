@@ -58,19 +58,9 @@ namespace dxvk {
 
     bool getOverlayOnTopOfRenderOutput() const;
 
-    const Rc<DxvkImageView>& getDebugOutput() {
-      return m_debugView.view;
-    }
-
-    const Rc<DxvkImageView>& getFinalDebugOutput() {
-      return static_cast<CompositeDebugView>(m_composite.compositeViewIdx()) != CompositeDebugView::Disabled
-        ? m_composite.compositeView.view
-        : m_debugView.view;
-    }
-
-    const Rc<DxvkImageView>& getInstrumentation() {
-      return m_instrumentation.view;
-    }
+    const Rc<DxvkImageView>& getDebugOutput();
+    const Rc<DxvkImageView>& getFinalDebugOutput();
+    const Rc<DxvkImageView>& getInstrumentation();
 
     uint32_t getDebugViewIndex() const;
     uint32_t getCompositeDebugViewIndex() const;
@@ -249,6 +239,7 @@ namespace dxvk {
 
     // Statistics
     DebugViewOutputStatisticsMode m_outputStatisticsMode = DebugViewOutputStatisticsMode::Mean;
+    Rc<DxvkBuffer> m_statisticsBufferGpu;
     Rc<DxvkBuffer> m_statisticsBuffer;
     vec4 m_outputStatistics;
 

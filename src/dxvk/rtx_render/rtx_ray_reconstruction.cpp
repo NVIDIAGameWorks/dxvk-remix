@@ -119,8 +119,12 @@ namespace dxvk {
     release();
   }
 
-  bool DxvkRayReconstruction::useRayReconstruction() {
+  bool DxvkRayReconstruction::useRayReconstruction() const {
     return supportsRayReconstruction() && RtxOptions::isRayReconstructionEnabled();
+  }
+
+  bool DxvkRayReconstruction::denoiseSecondarySignalWithExternalDenoiser() const {
+    return useRayReconstruction() && !enableNRDForTraining() && preprocessSecondarySignal();
   }
 
   void DxvkRayReconstruction::dispatch(
