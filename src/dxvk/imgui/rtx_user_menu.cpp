@@ -287,7 +287,7 @@ namespace dxvk {
       ImGui::SameLine();
       
       // Clear User Settings button
-      if (ImGui::Button("Reset to Default", buttonSize)) {
+      if (ImGui::Button("Delete All User Settings", buttonSize)) {
         if (userLayer) {
           userLayer->removeFromAllOptions();
         }
