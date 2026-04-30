@@ -140,6 +140,9 @@ public:
   // Remove an externally created mesh and all associated replacement instances.
   void destroyExternalMesh(remixapi_MeshHandle handle);
   
+  void setExternalStartInMediumMaterial(const MaterialData& translucentMaterial);
+  void clearExternalStartInMediumMaterial();
+  
   bool areAllReplacementsLoaded() const;
   std::vector<Mod::State> getReplacementStates() const;
 
@@ -271,6 +274,10 @@ private:
   const RtSurfaceMaterial& createSurfaceMaterial(const MaterialData& renderMaterialData,
                                                  const DrawCallState& drawCallState,
                                                  uint32_t* out_indexInCache = nullptr);
+  RtTranslucentSurfaceMaterial createTranslucentSurfaceMaterial(const TranslucentMaterialData& translucentMaterialData,
+                                                                uint32_t samplerIndex,
+                                                                bool hasTexcoords);
+  Rc<DxvkSampler> getOrCreateExternalSampler();
 
   // Updates ref counts for new buffers
   void updateBufferCache(RaytraceGeometry& newGeoData);
@@ -300,6 +307,7 @@ private:
   
   MaterialData determineMaterialData(const MaterialData* overrideMaterialData, const DrawCallState& input);
   
+  const uint32_t kInvalidMaterialCacheIndex = UINT32_MAX;
   uint32_t m_beginUsdExportFrameNum = -1;
   bool m_enqueueDelayedClear = false;
   bool m_previousFrameSceneAvailable = false;
@@ -326,7 +334,9 @@ private:
   FogState m_fog;
   fast_unordered_cache<FogState> m_fogStates;
   uint32_t m_startInMediumMaterialIndex = SURFACE_INDEX_INVALID;
-  uint32_t m_startInMediumMaterialIndex_inCache = UINT32_MAX;
+  uint32_t m_fogStartInMediumMaterialIndex_inCache = kInvalidMaterialCacheIndex;
+  uint32_t m_externalStartInMediumMaterialIndex_inCache = kInvalidMaterialCacheIndex;
+  uint32_t m_startInMediumMaterialIndex_inCache = kInvalidMaterialCacheIndex;
 
   // TODO: Move the following resources and getters to RtResources class
   Rc<DxvkBuffer> m_surfaceMaterialBuffer;
