@@ -31,7 +31,7 @@
 layout(binding = GEN_TRILIST_BINDING_OUTPUT)
 RWStructuredBuffer<uint16_t> dst;
 
-layout(binding = GEN_TRILIST_BINDING_INPUT) 
+layout(binding = GEN_TRILIST_BINDING_INPUT)
 StructuredBuffer<uint16_t> src;
 
 layout(push_constant)

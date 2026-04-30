@@ -21,7 +21,7 @@
 */
 #pragma once
 
-struct GenTriListArgs 
+struct GenTriListArgs
 {
   uint32_t useIndexBuffer;
   uint32_t topology;
@@ -29,6 +29,8 @@ struct GenTriListArgs
   uint32_t primCount;
   uint32_t minVertex;
   uint32_t maxVertex;
+  uint32_t useUint32;
+  uint32_t srcUseUint32;
 };
 
 #define GEN_TRILIST_BINDING_OUTPUT  0
