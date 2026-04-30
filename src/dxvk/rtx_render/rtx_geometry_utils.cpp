@@ -703,13 +703,6 @@ namespace dxvk {
 
     const VkIndexType indexBufferType = getOptimalIndexFormat(input.vertexCount);
     const uint32_t indexStride = (indexBufferType == VK_INDEX_TYPE_UINT16) ? 2 : 4;
-
-    // TODO: Dont support 32-bit indices here yet
-    if (indexBufferType != VK_INDEX_TYPE_UINT16 || (input.indexBuffer.defined() && input.indexBuffer.indexType() != VK_INDEX_TYPE_UINT16)) {
-      ONCE(Logger::err("Not implemented yet, generating indices for a mesh which has 32-bit indices"));
-      return false;
-    }
-
     assert(output->info().size == align(indexCount * indexStride, CACHE_LINE_SIZE));
 
     // Prepare shader arguments
@@ -720,6 +713,8 @@ namespace dxvk {
     pushArgs.useIndexBuffer = (input.indexBuffer.defined() && input.indexCount > 0) ? 1 : 0;
     pushArgs.minVertex = 0;
     pushArgs.maxVertex = input.vertexCount - 1;
+    pushArgs.useUint32 = (indexBufferType == VK_INDEX_TYPE_UINT32) ? 1 : 0;
+    pushArgs.srcUseUint32 = (input.indexBuffer.defined() && input.indexBuffer.indexType() == VK_INDEX_TYPE_UINT32) ? 1 : 0;
 
     ctx->getCommonObjects()->metaGeometryUtils().dispatchGenTriList(ctx, pushArgs, DxvkBufferSlice(output), pushArgs.useIndexBuffer ? &input.indexBuffer : nullptr);
 
@@ -731,11 +726,22 @@ namespace dxvk {
     return true;
   }
 
+  // CPU path only writes uint16 indices; meshes needing uint32 output (vertexCount >= 64K) use the compute shader.
+  template<typename SrcType>
+  static void dispatchGenTriListCpu(const Rc<DxvkContext>& ctx, const GenTriListArgs& cb, const DxvkBufferSlice& dstSlice, uint16_t* dst, const RasterBuffer* srcBuffer) {
+    const SrcType* src = (cb.useIndexBuffer != 0) ? reinterpret_cast<SrcType*>(srcBuffer->mapPtr()) : nullptr;
+    for (uint32_t idx = 0; idx < cb.primCount; idx++) {
+      generateIndices(idx, dst, src, cb);
+    }
+    ctx->writeToBuffer(dstSlice.buffer(), 0, cb.primCount * 3 * sizeof(uint16_t), dst);
+  }
+
   void RtxGeometryUtils::dispatchGenTriList(const Rc<DxvkContext>& ctx, const GenTriListArgs& cb, const DxvkBufferSlice& dstSlice, const RasterBuffer* srcBuffer) const {
     ScopedGpuProfileZone(ctx, "generateTriangleList");
-    // At some point, its more efficient to do these calculations on the GPU, this limit is somewhat arbitrary however, and might require better tuning...
-    const uint32_t kNumTrianglesToProcessOnCPU = 512;
-    const bool useGPU = ((srcBuffer != nullptr) && (srcBuffer->isPendingGpuWrite())) || cb.primCount > kNumTrianglesToProcessOnCPU;
+    constexpr uint32_t kNumTrianglesToProcessOnCPU = 512;
+    const bool useGPU = (cb.useUint32 != 0)
+      || ((srcBuffer != nullptr) && (srcBuffer->isPendingGpuWrite()))
+      || cb.primCount > kNumTrianglesToProcessOnCPU;
 
     if (useGPU) {
       ctx->bindResourceBuffer(GEN_TRILIST_BINDING_OUTPUT, dstSlice);
@@ -753,14 +759,11 @@ namespace dxvk {
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
     } else {
       uint16_t dst[kNumTrianglesToProcessOnCPU * 3];
-
-      const uint16_t* src = (cb.useIndexBuffer != 0) ? reinterpret_cast<uint16_t*>(srcBuffer->mapPtr()) : nullptr;
-
-      for (uint32_t idx = 0; idx < cb.primCount; idx++) {
-        generateIndices(idx, dst, src, cb);
+      if (cb.srcUseUint32 != 0) {
+        dispatchGenTriListCpu<uint32_t>(ctx, cb, dstSlice, dst, srcBuffer);
+      } else {
+        dispatchGenTriListCpu<uint16_t>(ctx, cb, dstSlice, dst, srcBuffer);
       }
-
-      ctx->writeToBuffer(dstSlice.buffer(), 0, cb.primCount * 3 * sizeof(uint16_t), dst);
     }
   }
 
