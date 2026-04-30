@@ -4278,7 +4278,6 @@ namespace dxvk {
     {
       // Add letters/symbols (NVIDIA-Sans)
       m_regularFont = io.Fonts->AddFontFromMemoryTTF(&___NVIDIASansMd[0], nvidiaSansLength, 0, &normalFontCfg, characterRange.Data);
-      io.FontDefault = m_regularFont;
 
       // Enable merging
       normalFontCfg.MergeMode = true;
@@ -4310,6 +4309,9 @@ namespace dxvk {
     // Build the fonts
 
     io.Fonts->Build();
+
+    // Apply the correct default font based on largeUiMode setting
+    io.FontDefault = largeUiMode() ? m_largeFont : m_regularFont;
 
 
     // Allocate/upload glyph cache...
