@@ -327,6 +327,33 @@ namespace dxvk {
     , m_originalWidth(pPresentParams->BackBufferWidth)
     , m_originalHeight(pPresentParams->BackBufferHeight) {
     this->NormalizePresentParameters(pPresentParams);
+
+    // If the caller passed BB=0 (D3D9 auto-mode), the init list above
+    // captured 0 into m_originalWidth/Height — and NormalizePresentParameters
+    // just filled the BB fields from GetWindowClientSize and computed
+    // m_widthScale = NEW_BB / m_originalWidth = NEW_BB / 0 = Inf. That Inf
+    // propagates into D3D9DeviceEx::SetViewport's per-rect multiply, making
+    // the device init's first SetViewport produce a NaN/Inf VkViewport
+    // and CreateDevice fail with D3DERR_NOTAVAILABLE.
+    //
+    // Re-anchor here using the post-Normalize values, then recompute the
+    // scale factors. This matches the same re-anchor we already do in Reset
+    // (where it handles resolution changes). Gate on the
+    // DXVK_RESOLUTION_WIDTH/HEIGHT env vars being empty so the upscale
+    // feature is preserved.
+    const bool isDxvkResolutionEnvSet =
+         env::getEnvVar("DXVK_RESOLUTION_WIDTH")  != ""
+      || env::getEnvVar("DXVK_RESOLUTION_HEIGHT") != "";
+    if (!isDxvkResolutionEnvSet
+        && pPresentParams->BackBufferWidth  > 0
+        && pPresentParams->BackBufferHeight > 0
+        && (m_originalWidth == 0 || m_originalHeight == 0)) {
+      m_originalWidth  = pPresentParams->BackBufferWidth;
+      m_originalHeight = pPresentParams->BackBufferHeight;
+      m_widthScale  = 1.0f;
+      m_heightScale = 1.0f;
+    }
+
     m_presentParams = *pPresentParams;
     m_window = m_presentParams.hDeviceWindow;
 
@@ -842,6 +869,24 @@ namespace dxvk {
     D3D9DeviceLock lock = m_parent->LockDevice();
 
     this->SynchronizePresent();
+
+    // Re-anchor m_originalWidth/Height to the new BackBuffer dims
+    // before NormalizePresentParameters runs. Mirrors the same fix in
+    // D3D9SwapChainEx::Reset above. D3D9SwapchainExternal extends
+    // D3D9SwapChainEx and overrides Reset, so without duplicating the
+    // re-anchor here the bridge / RemixAPI path leaves m_originalWidth
+    // pinned at the first CreateDevice's value, producing the same
+    // 2D zoom-into-top-left symptom on every Reset to a different size.
+    const bool isDxvkResolutionEnvSet =
+         env::getEnvVar("DXVK_RESOLUTION_WIDTH")  != ""
+      || env::getEnvVar("DXVK_RESOLUTION_HEIGHT") != "";
+    if (!isDxvkResolutionEnvSet && pPresentParams != nullptr
+        && pPresentParams->BackBufferWidth  > 0
+        && pPresentParams->BackBufferHeight > 0) {
+      m_originalWidth  = pPresentParams->BackBufferWidth;
+      m_originalHeight = pPresentParams->BackBufferHeight;
+    }
+
     this->NormalizePresentParameters(pPresentParams);
 
     if (pPresentParams->hDeviceWindow != nullptr && m_window != pPresentParams->hDeviceWindow) {
@@ -864,6 +909,38 @@ namespace dxvk {
     D3D9DeviceLock lock = m_parent->LockDevice();
 
     this->SynchronizePresent();
+
+    // Re-anchor m_originalWidth/Height to the new BackBuffer dims
+    // before NormalizePresentParameters runs. Without this, m_originalWidth
+    // is permanently the dims of the very first CreateDevice (pinned in
+    // the ctor with no other writers tree-wide). After a Reset to a
+    // different size, NormalizePresentParameters then computes
+    // m_widthScale = NEW_BB_W / FIRST_BB_W (not 1.0). That scale
+    // multiplies every D3DVIEWPORT9 rect inside D3D9DeviceEx::SetViewport,
+    // producing a Vulkan viewport that overflows the backbuffer
+    // attachment — the visible result is the top-left quadrant of the
+    // rendered scene with the rest clipped. Triggered whenever a host
+    // process creates the device at one resolution then Resets to
+    // another (e.g. an engine that initializes at a default size then
+    // applies the user-selected resolution from a settings menu).
+    //
+    // Preserve the DXVK_RESOLUTION_WIDTH/HEIGHT upscale feature in
+    // NormalizePresentParameters: when those env vars are set, the
+    // engine-supplied BackBufferWidth/Height is overwritten by the
+    // env-var values to produce an intentional upscale ratio. In that
+    // case we must NOT re-anchor m_originalWidth, because the whole
+    // point of the env-var path is `m_widthScale = ENV_W / m_originalW`
+    // != 1.0. So gate the re-anchor on env vars being empty.
+    const bool isDxvkResolutionEnvSet =
+         env::getEnvVar("DXVK_RESOLUTION_WIDTH")  != ""
+      || env::getEnvVar("DXVK_RESOLUTION_HEIGHT") != "";
+    if (!isDxvkResolutionEnvSet && pPresentParams != nullptr
+        && pPresentParams->BackBufferWidth  > 0
+        && pPresentParams->BackBufferHeight > 0) {
+      m_originalWidth  = pPresentParams->BackBufferWidth;
+      m_originalHeight = pPresentParams->BackBufferHeight;
+    }
+
     this->NormalizePresentParameters(pPresentParams);
 
     m_dirty    |= m_presentParams.BackBufferFormat   != pPresentParams->BackBufferFormat
