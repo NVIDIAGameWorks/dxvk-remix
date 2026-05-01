@@ -389,9 +389,9 @@ namespace dxvk {
     ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
 
 
+    const VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 16, 8, 1 });
     switch (RtxOptions::renderPassGBufferRaytraceMode()) {
     case RaytraceMode::RayQuery:
-      VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 16, 8, 1 });
       {
         ScopedGpuProfileZone(ctx, "Primary Rays");
         ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getComputeShader(false, nrcEnabled, wboitEnabled));
