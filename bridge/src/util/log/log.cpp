@@ -163,6 +163,11 @@ namespace bridge_util {
   }
 
   void Logger::emitMsg(const LogLevel level, const std::string& message) {
+    // Filter early — formatMessage builds a std::stringstream whose locale-facet
+    // path can fault on a freed _Locimp; skip it for messages we'd drop anyway.
+    if (logger && level < logger->m_level) {
+      return;
+    }
     if(!logger) {
       auto ss = formatMessage(level, message);
       std::scoped_lock lock(s_mutex);
