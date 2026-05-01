@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -19,33 +19,21 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
-#include "gen_tri_list_index_buffer_indices.h"
 
-// Borrowed from the vulkan_core.h file: 
-#define VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST  3
-#define VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP 4
-#define VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN   5
+#pragma once
 
-#include "gen_tri_list_index_buffer.h"
+#include <imgui\imgui.h>
+#include "rtx_option.h"
+#include <functional>
+#include <optional>
 
-layout(binding = GEN_TRILIST_BINDING_OUTPUT)
-RWStructuredBuffer<uint16_t> dst;
+namespace RemixGui {
 
-layout(binding = GEN_TRILIST_BINDING_INPUT)
-StructuredBuffer<uint16_t> src;
+  // Modal and helpers when a stronger RtxOption layer blocks the user write target
+  // (FormatOptionLayerValues in rtx_imgui.cpp)
+  IMGUI_API bool CheckRtxOptionPopups(dxvk::RtxOptionImpl* impl,
+                                      std::optional<XXH64_hash_t> hash = std::nullopt,
+                                      std::function<void()> onApplyAction = nullptr);
+  IMGUI_API void RenderRtxOptionBlockedEditPopup();
 
-layout(push_constant)
-ConstantBuffer<GenTriListArgs> cb;
-
-
-[shader("compute")]
-[numthreads(128, 1, 1)]
-void main(uint idx : SV_DispatchThreadID)
-{
-  if (idx >= cb.primCount)
-  {
-    return;
-  }
-
-  generateIndices(idx, dst, src, cb);
-}
+} // namespace RemixGui

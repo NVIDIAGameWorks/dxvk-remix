@@ -50,7 +50,7 @@
 #include "rtx_matrix_helpers.h"
 #include "rtx_lights.h"
 
-#include "../util/util_globaltime.h"
+#include "../util/util_global_time.h"
 
 #include <filesystem>
 
@@ -309,8 +309,7 @@ namespace dxvk {
   }
 
   void GameCapturer::captureLights() {
-    for (auto&& pair : m_sceneManager.getLightManager().getLightTable()) {
-      const RtLight& rtLight = pair.second;
+    auto captureLight = [&](const RtLight& rtLight) {
       assert(rtLight.getInitialHash() != 0);
       switch (rtLight.getType()) {
       default:
@@ -336,6 +335,13 @@ namespace dxvk {
         captureDistantLight(rtLight.getDistantLight());
         break;
       }
+    };
+
+    for (auto&& pair : m_sceneManager.getLightManager().getLightTable()) {
+      captureLight(pair.second);
+    }
+    for (auto&& pair : m_sceneManager.getLightManager().getExternallyTrackedLightTable()) {
+      captureLight(pair.second);
     }
   }
 

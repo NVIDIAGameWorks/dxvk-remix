@@ -816,6 +816,7 @@ dxvk::ExternalDrawState dxvk::RemixAPIPrivateAccessor::toRtDrawState(const remix
     for (uint32_t boneIdx = 0; boneIdx < boneCount; boneIdx++) {
       prototype.skinningData.pBoneMatrices[boneIdx] = convert::tomat4(extBones->boneTransforms_values[boneIdx]);
     }
+    prototype.skinningData.computeHash();
   }
 
   if (auto extBlend = pnext::find<remixapi_InstanceInfoBlendEXT>(&info)) {
@@ -1053,8 +1054,7 @@ namespace {
     }
     std::lock_guard lock { s_mutex };
     remixDevice->EmitCs([cHandle = handle](dxvk::DxvkContext* ctx) {
-      auto& assets = ctx->getCommonObjects()->getSceneManager().getAssetReplacer();
-      assets->destroyExternalMesh(cHandle);
+      ctx->getCommonObjects()->getSceneManager().destroyExternalMesh(cHandle);
     });
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
@@ -1079,6 +1079,41 @@ namespace {
     remixDevice->EmitCs([cRtCamera = convert::toRtCamera(*info)](dxvk::DxvkContext* ctx) {
       ctx->getCommonObjects()->getSceneManager().getCameraManager()
         .processExternalCamera(cRtCamera.type, cRtCamera.worldToView, cRtCamera.viewToProjection);
+    });
+    return REMIXAPI_ERROR_CODE_SUCCESS;
+  }
+
+  remixapi_ErrorCode REMIXAPI_CALL remixapi_SetCameraMediumMaterial(
+    const remixapi_CameraMediumInfo* info) {
+    dxvk::D3D9DeviceEx* remixDevice = tryAsDxvk();
+    if (!remixDevice) {
+      return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
+    }
+    if (!info || info->sType != REMIXAPI_STRUCT_TYPE_CAMERA_MEDIUM_INFO) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+
+    const remixapi_MaterialHandle handle = info->medium;
+
+    std::lock_guard lock { s_mutex };
+    remixDevice->EmitCs([handle](dxvk::DxvkContext* ctx) {
+      auto& sceneManager = ctx->getCommonObjects()->getSceneManager();
+      if (handle == nullptr) {
+        sceneManager.clearExternalStartInMediumMaterial();
+        return;
+      }
+
+      const dxvk::MaterialData* material = sceneManager.getAssetReplacer()->accessExternalMaterial(handle);
+      if (material == nullptr) {
+        dxvk::Logger::warn("SetCameraMediumMaterial: material handle not found");
+        return;
+      }
+      if (material->getType() != dxvk::MaterialDataType::Translucent) {
+        dxvk::Logger::warn("SetCameraMediumMaterial: material must be translucent");
+        return;
+      }
+
+      sceneManager.setExternalStartInMediumMaterial(*material);
     });
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
@@ -1698,6 +1733,7 @@ extern "C"
       interf.CreateMesh = remixapi_CreateMesh;
       interf.DestroyMesh = remixapi_DestroyMesh;
       interf.SetupCamera = remixapi_SetupCamera;
+      interf.SetCameraMediumMaterial = remixapi_SetCameraMediumMaterial;
       interf.DrawInstance = remixapi_DrawInstance;
       interf.CreateLight = remixapi_CreateLight;
       interf.DestroyLight = remixapi_DestroyLight;
@@ -1712,7 +1748,7 @@ extern "C"
       interf.pick_RequestObjectPicking = remixapi_pick_RequestObjectPicking;
       interf.pick_HighlightObjects = remixapi_pick_HighlightObjects;
     }
-    static_assert(sizeof(interf) == 168, "Add/remove function registration");
+    static_assert(sizeof(interf) == 176, "Add/remove function registration");
 
     *out_result = interf;
     return REMIXAPI_ERROR_CODE_SUCCESS;

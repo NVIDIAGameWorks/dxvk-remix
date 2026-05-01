@@ -33,9 +33,11 @@
 #include "rtx_demodulate.h"
 #include "rtx_neural_radiance_cache.h"
 #include "rtx_ray_reconstruction.h"
+#include "../util/util_global_time.h"
 
 #include "dxvk_device.h"
 #include "rtx_global_volumetrics.h"
+#include "rtx_scene_manager.h"
 
 namespace dxvk {
   RtxOptions* RtxOptions::s_instance = nullptr;
@@ -81,10 +83,24 @@ namespace dxvk {
     }
   }
 
+  void RtxOptions::onAdvanceTimeChanged(DxvkDevice* device) {
+    GlobalTime::get().setAdvanceTime(RtxOptions::advanceTime());
+  }
+
   void RtxOptions::blockInputToGameInUIOnChange(DxvkDevice* device) {
     const bool doBlock = RtxOptions::blockInputToGameInUI() && RtxOptions::showUI() != UIType::None;
 
     BridgeMessageChannel::get().send("UWM_REMIX_UIACTIVE_MSG", doBlock ? 1 : 0, 0);
+  }
+
+  void RtxOptions::ViewModel::enableOnChange(DxvkDevice* device) {
+    if (device) {
+      // applyPendingValues (which invokes this callback) runs after onFrameEnd,
+      // so no rendering is in flight and we can clear the scene immediately
+      // without a WFI or deferred clear.  Using a delayed clear here would cause
+      // a frame to render with the old scene but the new view model setting.
+      device->getCommon()->getSceneManager().clear(nullptr, false);
+    }
   }
 
   namespace {

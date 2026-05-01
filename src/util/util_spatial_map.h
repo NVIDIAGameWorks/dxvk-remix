@@ -30,6 +30,9 @@
 
 namespace dxvk {
   // A structure to allow for quickly returning data close to a specific position.
+  // Multiple entries may share the same transform hash (e.g. distinct draw calls
+  // at the same position). The cache uses a multimap so callers can iterate over
+  // all colliding entries via a filter function.
   template<class T>
   class SpatialMap {
   private:
@@ -56,18 +59,19 @@ namespace dxvk {
       return *this;
     }
 
-    // returns the data with an identical transform
-    const T* getDataAtTransform(const Matrix4& transform) const {
+    // Iterates all entries at the given transform and calls visitor(data) for each.
+    // If the visitor returns true, iteration stops (early out).
+    void forEachAtTransform(const Matrix4& transform, std::function<bool(const T*)> visitor) const {
       XXH64_hash_t transformHash = XXH64(&transform, sizeof(transform), 0);
-      auto pair = m_cache.find(transformHash);
-      if ( pair != m_cache.end()) {
-        return pair->second.data;
+      auto range = m_cache.equal_range(transformHash);
+      for (auto iter = range.first; iter != range.second; ++iter) {
+        if (visitor(iter->second.data)) {
+          return;
+        }
       }
-      return nullptr;
     }
 
-    // returns the entry cosest to `centroid` that passes the `filter` and is less than `sqrt(maxDistSqr)` units from `centroid`.
-    // `filter` should return true if the entry is a valid result.
+    // Returns the entry closest to `centroid` that passes the `filter` and is less than `sqrt(maxDistSqr)` units from `centroid`.
     const T* getNearestData(const Vector3& centroid, float maxDistSqr, float& nearestDistSqr, std::function<bool(const T*)> filter) const {
       static const std::array kOffsets{
         Vector3i{0, 0, 0},
@@ -97,7 +101,6 @@ namespace dxvk {
           if (distSqr <= maxDistSqr && distSqr < nearestDistSqr) {
               nearestDistSqr = distSqr;
             if (nearestDistSqr == 0.0f) {
-              // Not going to find anything closer, so stop the iteration
               return entry.data;
             }
             nearestData = entry.data;
@@ -109,52 +112,39 @@ namespace dxvk {
     
     XXH64_hash_t insert(const Vector3& centroid, const Matrix4& transform, const T* data) {
       XXH64_hash_t transformHash = XXH64(&transform, sizeof(transform), 0);
-      while(m_cache.find(transformHash) != m_cache.end()) {
-        // Note: This can happen if an instance is moved to the same position as another existing instance.
-        // It can cause a single frame of NaN, but shouldn't cause any crashes.
-        // TODO(REMIX-4134): Once spatial map is used on draw calls and not rtInstances, it should be safe to restore the assert() below.
-        ONCE(Logger::warn("Specified hash was already present in SpatialMap::insert(). May indicate a duplicated overlapping object."));
-        // assert(false);
-        transformHash++;
-      }
-      auto [iter, success] = m_cache.emplace(std::piecewise_construct,
+      m_cache.emplace(std::piecewise_construct,
           std::forward_as_tuple(transformHash),
           std::forward_as_tuple(data, centroid, transformHash));
-      if (!success) {
-        ONCE(Logger::err("Failed to add entry in SpatialMap::insert()."));
-        assert(false);
-        return transformHash;
-      }
       m_cells[getCellPos(centroid)].emplace_back(data, centroid, transformHash);
       return transformHash;
     }
 
-    void erase(const XXH64_hash_t& transformHash) {
-      auto pair = m_cache.find(transformHash);
-      if (pair != m_cache.end()) {
-        eraseFromCell(pair->second.centroid, transformHash);
-        m_cache.erase(pair);
-      } else {
-        // Note: This can happen if a duplicate hash is encountered in the insert() call.
-        // TODO(REMIX-4134): Once spatial map is used on draw calls and not rtInstances, it should be safe to restore the assert() below.
-        ONCE(Logger::warn("Specified hash was missing in SpatialMap::erase()."));
-        // assert(false);
+    void erase(const XXH64_hash_t& transformHash, const T* data) {
+      auto range = m_cache.equal_range(transformHash);
+      for (auto iter = range.first; iter != range.second; ++iter) {
+        if (iter->second.data == data) {
+          eraseFromCell(iter->second.centroid, transformHash, data);
+          m_cache.erase(iter);
+          return;
+        }
       }
+      ONCE(Logger::warn("Specified entry was missing in SpatialMap::erase()."));
     }
 
     XXH64_hash_t move(const XXH64_hash_t& oldTransformHash, const Vector3& centroid, const Matrix4& newTransform, const T* data) {
       XXH64_hash_t transformHash = XXH64(&newTransform, sizeof(newTransform), 0);
 
       if (oldTransformHash != transformHash) {
-        erase(oldTransformHash);
-        insert(centroid, newTransform, data);
+        erase(oldTransformHash, data);
+        transformHash = insert(centroid, newTransform, data);
       }
       return transformHash;
     }
 
     void rebuild(float cellSize) {
+      m_cellSize = cellSize;
       m_cells.clear();
-      for (auto pair : m_cache) {
+      for (auto& pair : m_cache) {
         m_cells[getCellPos(pair.second.centroid)].emplace_back(pair.second);
       }
     }
@@ -170,7 +160,7 @@ namespace dxvk {
       return Vector3i(int(std::floor(scaledPos.x)), int(std::floor(scaledPos.y)), int(std::floor(scaledPos.z))); 
     }
 
-    void eraseFromCell(const Vector3& pos, XXH64_hash_t hash) {
+    void eraseFromCell(const Vector3& pos, XXH64_hash_t hash, const T* data) {
       auto cellIter = m_cells.find(getCellPos(pos));
       if (cellIter == m_cells.end()) {
         ONCE(Logger::err("Specified cell was already empty in SpatialMap::erase()."));
@@ -180,9 +170,8 @@ namespace dxvk {
 
       std::vector<Entry>& cell = cellIter->second;
       for (auto iter = cell.begin(); iter != cell.end(); ++iter) {
-        if (iter->transformHash == hash) {
+        if (iter->transformHash == hash && iter->data == data) {
           if (cell.size() > 1) {
-            // Swap & pop - faster than "erase", but doesn't preserve order, which is fine here.
             std::swap(*iter, cell.back());
             cell.pop_back();
           } else {
@@ -197,6 +186,6 @@ namespace dxvk {
 
     float m_cellSize;
     fast_spatial_cache<std::vector<Entry>> m_cells;
-    fast_unordered_cache<Entry> m_cache;
+    fast_unordered_multimap<Entry> m_cache;
   };
 }

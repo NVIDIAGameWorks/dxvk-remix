@@ -74,7 +74,7 @@
 
 namespace dxvk {
 
-  RtLight LightData::toRtLight(const RtLight* const originalLight) const {
+  RtLight LightData::toRtLight() const {
     switch (m_lightType) {
     // Note: This default case should never be hit as an Unknown light type must be merged before it should be converted to LightData,
     // the assert is here just for debugging to assert when an unexpected light type is passed in (so this is an "unreachable"-style assert).
@@ -89,11 +89,7 @@ namespace dxvk {
       // the existing behavior.
       const auto radiusScale = std::max(std::max(m_xScale, m_yScale), m_zScale);
 
-      if (!originalLight || originalLight->getType() != RtLightType::Sphere) {
-        return RtLight(RtSphereLight(m_position, calculateRadiance(), m_Radius * radiusScale, getLightShaping(m_zAxis), m_VolumetricRadianceScale, m_cachedHash));
-      } else {
-        return RtLight(RtSphereLight(m_position, calculateRadiance(), m_Radius * radiusScale, getLightShaping(m_zAxis), m_VolumetricRadianceScale, m_cachedHash), originalLight->getSphereLight());
-      }
+      return RtLight(RtSphereLight(m_position, calculateRadiance(), m_Radius * radiusScale, getLightShaping(m_zAxis), m_VolumetricRadianceScale, m_cachedHash));
     }
     case LightType::Rect:
     {

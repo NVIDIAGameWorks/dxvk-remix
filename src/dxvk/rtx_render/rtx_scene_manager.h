@@ -40,6 +40,7 @@
 #include "rtx_common_object.h"
 #include "rtx_camera_manager.h"
 #include "rtx_draw_call_cache.h"
+#include "rtx_draw_call_tracker.h"
 #include "rtx_sparse_unique_cache.h"
 #include "rtx_light_manager.h"
 #include "rtx_instance_manager.h"
@@ -110,6 +111,10 @@ struct ExternalDrawState {
   bool doubleSided {};
   const std::optional<RtxParticleSystemDesc> optionalParticleDesc {};
   std::vector<Matrix4> gpuInstancingTransforms {};
+
+  // Draw-instance identity for ReplacementInstance lookup. Excludes per-frame camera matrices
+  // (worldToView / viewToProjection / objectToView) filled in submitExternalDraw after hashing.
+  XXH64_hash_t computeExternalDrawIdentityHash() const;
 };
 
 // Scene manager is a super manager, it's the interface between rendering and world state
@@ -131,6 +136,12 @@ public:
 
   void submitDrawState(Rc<DxvkContext> ctx, const DrawCallState& input, const MaterialData* overrideMaterialData);
   void submitExternalDraw(Rc<DxvkContext> ctx, ExternalDrawState&& state);
+
+  // Remove an externally created mesh and all associated replacement instances.
+  void destroyExternalMesh(remixapi_MeshHandle handle);
+  
+  void setExternalStartInMediumMaterial(const MaterialData& translucentMaterial);
+  void clearExternalStartInMediumMaterial();
   
   bool areAllReplacementsLoaded() const;
   std::vector<Mod::State> getReplacementStates() const;
@@ -263,6 +274,10 @@ private:
   const RtSurfaceMaterial& createSurfaceMaterial(const MaterialData& renderMaterialData,
                                                  const DrawCallState& drawCallState,
                                                  uint32_t* out_indexInCache = nullptr);
+  RtTranslucentSurfaceMaterial createTranslucentSurfaceMaterial(const TranslucentMaterialData& translucentMaterialData,
+                                                                uint32_t samplerIndex,
+                                                                bool hasTexcoords);
+  Rc<DxvkSampler> getOrCreateExternalSampler();
 
   // Updates ref counts for new buffers
   void updateBufferCache(RaytraceGeometry& newGeoData);
@@ -271,9 +286,6 @@ private:
   ObjectCacheState onSceneObjectAdded(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, BlasEntry* pBlas);
   // Called whenever a BLAS scene object is updated
   ObjectCacheState onSceneObjectUpdated(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, BlasEntry* pBlas);
-  // Called whenever a BLAS scene object is destroyed
-  void onSceneObjectDestroyed(const BlasEntry& pBlas);
-
   // Called whenever a new instance has been added to the database
   void onInstanceAdded(RtInstance& instance);
   // Called whenever instance metadata is updated
@@ -281,12 +293,12 @@ private:
   // Called whenever an instance has been removed from the database
   void onInstanceDestroyed(RtInstance& instance);
 
-  // Called to destroy a ReplacementInstance.
-  // This is used to clear up all references to the ReplacementInstance.
-  // Also responsible for removing any graphs from graphManager.
-  void destroyReplacementInstance(ReplacementInstance* replacementInstance);
+  void drawReplacements(Rc<DxvkContext> ctx, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, MaterialData& renderMaterialData, ReplacementInstance* replacementInstance);
 
-  void drawReplacements(Rc<DxvkContext> ctx, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, MaterialData& renderMaterialData);
+  // Re-register an existing instance's buffers, textures, and materials in the
+  // current frame's per-frame tables without running the full draw call pipeline.
+  // Called for anti-culled instances whose game draw call was not submitted this frame.
+  void keepInstanceAlive(RtInstance& instance);
 
   void createEffectLight(Rc<DxvkContext> ctx, const DrawCallState& input, const RtInstance* instance);
 
@@ -295,6 +307,7 @@ private:
   
   MaterialData determineMaterialData(const MaterialData* overrideMaterialData, const DrawCallState& input);
   
+  const uint32_t kInvalidMaterialCacheIndex = UINT32_MAX;
   uint32_t m_beginUsdExportFrameNum = -1;
   bool m_enqueueDelayedClear = false;
   bool m_previousFrameSceneAvailable = false;
@@ -321,7 +334,9 @@ private:
   FogState m_fog;
   fast_unordered_cache<FogState> m_fogStates;
   uint32_t m_startInMediumMaterialIndex = SURFACE_INDEX_INVALID;
-  uint32_t m_startInMediumMaterialIndex_inCache = UINT32_MAX;
+  uint32_t m_fogStartInMediumMaterialIndex_inCache = kInvalidMaterialCacheIndex;
+  uint32_t m_externalStartInMediumMaterialIndex_inCache = kInvalidMaterialCacheIndex;
+  uint32_t m_startInMediumMaterialIndex_inCache = kInvalidMaterialCacheIndex;
 
   // TODO: Move the following resources and getters to RtResources class
   Rc<DxvkBuffer> m_surfaceMaterialBuffer;
@@ -363,6 +378,8 @@ private:
 
   // Using std::deque for pointer stability: push_back doesn't invalidate existing pointers
   std::deque<std::vector<Matrix4>> m_externalGpuInstancingTransforms;
+
+  DrawCallTracker m_drawCallTracker;
 };
 
 }  // namespace nvvk

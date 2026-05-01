@@ -27,7 +27,7 @@
 #include <iomanip>
 #include <optional>
 #include <nvapi.h>
-#include <NVIDIASansRg.ttf.h>
+#include <NVIDIASansMd.ttf.h>
 #include <NVIDIASansBd.ttf.h>
 #include <RobotoMonoRg.ttf.h>
 
@@ -57,7 +57,7 @@
 #include "dxvk_image.h"
 #include "../util/rc/util_rc_ptr.h"
 #include "../util/util_math.h"
-#include "../util/util_globaltime.h"
+#include "../util/util_global_time.h"
 #include "rtx_render/rtx_opacity_micromap_manager.h"
 #include "rtx_render/rtx_bridge_message_channel.h"
 #include "dxvk_imgui_about.h"
@@ -1989,6 +1989,18 @@ namespace dxvk {
       return str.str();
     }
 
+    float computeTexturePopupLabelColumnWidth(uint32_t textureFeatureFlags) {
+      float maxWidth = 0.0f;
+      for (const auto& rtxOption : rtxTextureOptions) {
+        if ((rtxOption.featureFlagMask & textureFeatureFlags) != rtxOption.featureFlagMask) {
+          continue;
+        }
+        const std::string labelForWidth = std::string(rtxOption.displayName) + " [!]";
+        maxWidth = ImMax(maxWidth, ImGui::CalcTextSize(labelForWidth.c_str()).x);
+      }
+      return maxWidth + ImGui::GetStyle().FramePadding.x * 2.0f;
+    }
+
     void toggleTextureSelection(XXH64_hash_t textureHash, const char* uniqueId, RtxOption<fast_unordered_set>* textureSet) {
       if (textureHash == kEmptyHash) {
         return;
@@ -2131,7 +2143,24 @@ namespace dxvk {
             g_openWhenAvailable = false;
           }
         }
-        
+
+        const XXH64_hash_t texHashForSizing = g_holdingTexture.load();
+        float texturePopupLabelColumnW = 0.0f;
+        if (texHashForSizing != kEmptyHash) {
+          uint32_t textureFeatureFlagsForSizing = 0;
+          const auto pairForSizing = g_imguiTextureMap.find(texHashForSizing);
+          if (pairForSizing != g_imguiTextureMap.end()) {
+            textureFeatureFlagsForSizing = pairForSizing->second.textureFeatureFlags;
+          }
+          texturePopupLabelColumnW = computeTexturePopupLabelColumnWidth(textureFeatureFlagsForSizing);
+          if (ImGui::IsPopupOpen(POPUP_NAME, ImGuiPopupFlags_None)) {
+            const ImGuiStyle& sizingStyle = ImGui::GetStyle();
+            const float minPopupW =
+              texturePopupLabelColumnW + sizingStyle.ItemInnerSpacing.x + ImGui::GetFrameHeight() + sizingStyle.WindowPadding.x * 2.0f;
+            ImGui::SetNextWindowSizeConstraints(ImVec2(minPopupW, 0.0f), ImVec2(FLT_MAX, FLT_MAX));
+          }
+        }
+
         if (ImGui::BeginPopup(POPUP_NAME)) {
           const XXH64_hash_t texHash = g_holdingTexture.load();
           if (texHash != kEmptyHash) {
@@ -2144,6 +2173,7 @@ namespace dxvk {
             if (pair != g_imguiTextureMap.end()) {
               textureFeatureFlags = pair->second.textureFeatureFlags;
             }
+            RemixGui::PushLabelColumnFixedWidth(texturePopupLabelColumnW);
             for (auto& rtxOption : rtxTextureOptions) {
               rtxOption.bufferToggle = rtxOption.textureSetOption->containsHash(texHash);
               if ((rtxOption.featureFlagMask & textureFeatureFlags) != rtxOption.featureFlagMask) {
@@ -2181,6 +2211,7 @@ namespace dxvk {
                 ImGui::SetTooltip("%s", tooltipStream.str().c_str());
               }
             }
+            RemixGui::PopLabelColumnFixedWidth();
 
             ImGui::EndPopup();
             return texHash;
@@ -2940,10 +2971,10 @@ namespace dxvk {
     style->ScrollbarSize = 15.0f;
     style->GrabMinSize = 10.0f;
 
-    style->WindowBorderSize = 1.0f;
-    style->ChildBorderSize = 1.0f;
-    style->PopupBorderSize = 1.0f;
-    style->FrameBorderSize = 1.0f;
+    style->WindowBorderSize = 1.5f;
+    style->ChildBorderSize = 1.5f;
+    style->PopupBorderSize = 1.5f;
+    style->FrameBorderSize = 1.5f;
     style->TabBorderSize = 0.0f;
 
     style->WindowRounding = 0.0f;
@@ -2968,7 +2999,7 @@ namespace dxvk {
     style->Colors[ImGuiCol_Text] = ImVec4(0.8f, 0.8f, 0.8f, 1.00f);
     style->Colors[ImGuiCol_TextDisabled] = ImVec4(0.44f, 0.44f, 0.44f, 1.00f);
     style->Colors[ImGuiCol_ChildBg] = ImVec4(0.16f, 0.16f, 0.16f, 0.86f);
-    style->Colors[ImGuiCol_Border] = ImVec4(0.34f, 0.34f, 0.34f, 0.86f);
+    style->Colors[ImGuiCol_Border] = ImVec4(0.34f, 0.34f, 0.34f, 1.0f);
     style->Colors[ImGuiCol_BorderShadow] = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
     style->Colors[ImGuiCol_FrameBg] = ImVec4(0.188f, 0.188f, 0.188f, 1.00f);
     style->Colors[ImGuiCol_FrameBgHovered] = ImVec4(0.15f, 0.30f, 0.35f, 1.00f);
@@ -3497,6 +3528,7 @@ namespace dxvk {
       ImGui::Indent();
 
       RemixGui::Checkbox("RNG: seed with frame index", &RtxOptions::rngSeedWithFrameIndexObject());
+      RemixGui::Checkbox("Advance time", &RtxOptions::advanceTimeObject());
 
       if (RemixGui::CollapsingHeader("Resolver", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
@@ -3833,6 +3865,17 @@ namespace dxvk {
           }
         }
 
+        if (RemixGui::CollapsingHeader("Secondary Direct/Indirect Light Denoiser", collapsingHeaderClosedFlags)) {
+          ImGui::Indent();
+          ImGui::PushID("Secondary Direct/Indirect Light Denoiser");
+          common->metaSecondaryCombinedLightDenoiser().showImguiSettings();
+          ImGui::PopID();
+          ImGui::Unindent();
+        }
+      }
+
+      // Show secondary denoiser settings when RR is enabled and secondary signal uses external denoiser
+      if (!useNRD && isRayReconstructionEnabled && common->metaRayReconstruction().denoiseSecondarySignalWithExternalDenoiser()) {
         if (RemixGui::CollapsingHeader("Secondary Direct/Indirect Light Denoiser", collapsingHeaderClosedFlags)) {
           ImGui::Indent();
           ImGui::PushID("Secondary Direct/Indirect Light Denoiser");
@@ -4228,14 +4271,13 @@ namespace dxvk {
     normalFontCfg.SizePixels = 16.f;
     normalFontCfg.FontDataOwnedByAtlas = false;
 
-    const size_t nvidiaSansLength = sizeof(___NVIDIASansRg) / sizeof(___NVIDIASansRg[0]);
+    const size_t nvidiaSansLength = sizeof(___NVIDIASansMd) / sizeof(___NVIDIASansMd[0]);
     const size_t nvidiaSansBdLength = sizeof(___NVIDIASansBd) / sizeof(___NVIDIASansBd[0]);
     const size_t robotoMonoLength = sizeof(___RobotoMonoRg) / sizeof(___RobotoMonoRg[0]);
 
     {
       // Add letters/symbols (NVIDIA-Sans)
-      m_regularFont = io.Fonts->AddFontFromMemoryTTF(&___NVIDIASansRg[0], nvidiaSansLength, 0, &normalFontCfg, characterRange.Data);
-      io.FontDefault = m_regularFont;
+      m_regularFont = io.Fonts->AddFontFromMemoryTTF(&___NVIDIASansMd[0], nvidiaSansLength, 0, &normalFontCfg, characterRange.Data);
 
       // Enable merging
       normalFontCfg.MergeMode = true;
@@ -4267,6 +4309,9 @@ namespace dxvk {
     // Build the fonts
 
     io.Fonts->Build();
+
+    // Apply the correct default font based on largeUiMode setting
+    io.FontDefault = largeUiMode() ? m_largeFont : m_regularFont;
 
 
     // Allocate/upload glyph cache...

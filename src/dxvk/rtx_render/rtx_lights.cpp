@@ -1008,7 +1008,6 @@ void RtLight::copyFrom(const RtLight& light) {
   // Copy anti-culling union members safely based on the anti-culling type
   switch (light.m_anticullingType) {
   case RtLightAntiCullingType::GameLight:
-  case RtLightAntiCullingType::LightReplacement:
     m_originalPosition = light.m_originalPosition;
     m_originalLightRadius = light.m_originalLightRadius;
     break;

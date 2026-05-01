@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2025-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -25,7 +25,7 @@
 #include "../../test_utils.h"
 #include "../../../src/util/util_vector.h"
 #include "../../../src/util/log/log.h"
-#include "../../../src/util/util_globaltime.h"
+#include "../../../src/util/util_global_time.h"
 #include "../../../src/dxvk/rtx_render/graph/rtx_graph_types.h"
 #include "../../../src/dxvk/rtx_render/graph/rtx_graph_batch.h"
 

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2025-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -23,7 +23,7 @@
 #pragma once
 
 #include "../rtx_graph_component_macros.h"
-#include "../../../util/util_globaltime.h"
+#include "../../../util/util_global_time.h"
 
 namespace dxvk {
 namespace components {

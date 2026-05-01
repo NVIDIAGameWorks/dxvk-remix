@@ -60,7 +60,6 @@ enum class RtLightType {
 enum class RtLightAntiCullingType {
   Ignore,
   GameLight,
-  LightReplacement,
   MeshReplacement
 };
 

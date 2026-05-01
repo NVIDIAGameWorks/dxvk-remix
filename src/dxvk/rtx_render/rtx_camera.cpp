@@ -1170,7 +1170,7 @@ namespace dxvk
     }
 
     int oldFrame = m_currentFrame;
-    IMGUI_ADD_TOOLTIP(ImGui::SliderInt("Current Frame", &m_currentFrame, 0, m_settings.size() -1, "%d", ImGuiSliderFlags_AlwaysClamp), "Current Frame.");
+    IMGUI_ADD_TOOLTIP(RemixGui::SliderInt("Current Frame", &m_currentFrame, 0, m_settings.size() -1, "%d", ImGuiSliderFlags_AlwaysClamp), "Current Frame.");
     m_currentFrame = std::min(m_currentFrame, (int)m_settings.size());
 
     Mode currentMode = mode();
