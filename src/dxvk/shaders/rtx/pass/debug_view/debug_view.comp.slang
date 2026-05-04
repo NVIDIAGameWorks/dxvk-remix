@@ -632,8 +632,17 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
   return value;
 }
 
+static const uint32_t kDebugViewThreadGroupSize = DEBUG_VIEW_THREAD_GROUP_SIZE_WIDTH * DEBUG_VIEW_THREAD_GROUP_SIZE_HEIGHT;
+static const uint32_t kDebugViewMinWaveSize = 8; // Value to support all hardware. Wave size can be as low as 8 on some hardware
+static const uint32_t kDebugViewMaxWavesPerGroup = (kDebugViewThreadGroupSize + kDebugViewMinWaveSize - 1) / kDebugViewMinWaveSize;
 
-void storeDebugViewOutputStatistics(vec4 value)
+// Workgroup-level partial sums for statistics reduction (avoids per-pixel global atomics)
+#if ENABLE_DEBUG_VIEW_OPTIONAL_FEATURES
+// Note: storing float4 for cleaner implementation because reducing the bank conflicts due to it makes zero difference
+groupshared float4 s_wavePartials[kDebugViewMaxWavesPerGroup];
+#endif
+
+void storeDebugViewOutputStatistics(vec4 value, uint groupIndex)
 {
   if (!cb.calculateStatistics)
   {
@@ -641,42 +650,51 @@ void storeDebugViewOutputStatistics(vec4 value)
   }
 
 #if ENABLE_DEBUG_VIEW_OPTIONAL_FEATURES
-  // Optional features guarantees float atomics support
+  // First level: reduce within each wave using intrinsics (no atomics needed)
+  float4 waveSum = float4(WaveActiveSum(value.x), WaveActiveSum(value.y),
+                          WaveActiveSum(value.z), WaveActiveSum(value.w));
 
-#define INTERLOCKED_OP_VEC4(INTERLOCKED_OP, STRUCTURED_BUFFER_FLOAT, vec4Value) \
-  INTERLOCKED_OP(STRUCTURED_BUFFER_FLOAT[0], vec4Value.x);  \
-  INTERLOCKED_OP(STRUCTURED_BUFFER_FLOAT[1], vec4Value.y);  \
-  INTERLOCKED_OP(STRUCTURED_BUFFER_FLOAT[2], vec4Value.z);  \
-  INTERLOCKED_OP(STRUCTURED_BUFFER_FLOAT[3], vec4Value.w)
-
-  switch (cb.statisticsMode)
+  if (WaveIsFirstLane())
   {
-    case DebugViewOutputStatisticsMode::Sum:
-    default:
-      INTERLOCKED_OP_VEC4(InterlockedAddFloat, DebugViewStatistics, value);
-      break;
-    case DebugViewOutputStatisticsMode::Mean:
-      value *= cb.rcpNumOutputPixels;
-      INTERLOCKED_OP_VEC4(InterlockedAddFloat, DebugViewStatistics, value);
-      break;
- };
+    const uint waveIndex = groupIndex / WaveGetLaneCount();
+    s_wavePartials[waveIndex] = waveSum;
+  }
+
+  GroupMemoryBarrierWithGroupSync();
+
+  // Second level: thread 0 sums the per-wave partials and does a single global atomic
+  if (groupIndex == 0)
+  {
+    float4 groupSum = float4(0.0f);
+    const uint numWaves = (kDebugViewThreadGroupSize + WaveGetLaneCount() - 1) / WaveGetLaneCount();
+    for (uint i = 0; i < numWaves; i++)
+    {
+      groupSum += s_wavePartials[i];
+    }
+
+    InterlockedAddFloat(DebugViewStatistics[0], groupSum.x);
+    InterlockedAddFloat(DebugViewStatistics[1], groupSum.y);
+    InterlockedAddFloat(DebugViewStatistics[2], groupSum.z);
+    InterlockedAddFloat(DebugViewStatistics[3], groupSum.w);
+  }
 #endif
 }
 
 [shader("compute")]
-[numthreads(16, 8, 1)]
-void main(uint2 threadId : SV_DispatchThreadID)
+[numthreads(DEBUG_VIEW_THREAD_GROUP_SIZE_WIDTH, DEBUG_VIEW_THREAD_GROUP_SIZE_HEIGHT, 1)]
+void main(uint2 threadId : SV_DispatchThreadID, uint groupIndex : SV_GroupIndex)
 {
-  if (any(threadId >= cb.debugViewResolution))
+  // Out-of-bounds threads must still participate in the workgroup reduction barrier
+  vec4 value = vec4(0.0f);
+
+  if (all(threadId < cb.debugViewResolution))
   {
-    return;
+    RNG randomState = createRNG(threadId, cb.frameIdx, 0);
+    value = loadInput(randomState, threadId);
+
+    const bool storeInAccumulationBuffer = true;
+    value = accumulate(threadId, value, cb.accumulationArgs, storeInAccumulationBuffer, AccumulatedDebugView);
   }
 
-  RNG randomState = createRNG(threadId, cb.frameIdx, 0);
-  vec4 value = loadInput(randomState, threadId);
-
-  const bool storeInAccumulationBuffer = true;
-  value = accumulate(threadId, value, cb.accumulationArgs, storeInAccumulationBuffer, AccumulatedDebugView);
-
-  storeDebugViewOutputStatistics(value);
+  storeDebugViewOutputStatistics(value, groupIndex);
 }

@@ -36,6 +36,9 @@
 #include "rtx/pass/nrc_args.h"
 #include "rtx/algorithm/accumulate.h"
 
+#define DEBUG_VIEW_THREAD_GROUP_SIZE_WIDTH 16
+#define DEBUG_VIEW_THREAD_GROUP_SIZE_HEIGHT 8
+
 // Display Types
 enum class DebugViewDisplayType : uint32_t {
   Standard = 0,

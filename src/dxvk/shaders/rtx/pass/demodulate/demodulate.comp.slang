@@ -209,7 +209,7 @@ void applyDirectLightBoilingFilter(
   uint key = getNormalDepthKey(primaryVirtualWorldNormal, absDepth, depthSplit);
   GroupMemoryBarrierWithGroupSync();
 
-  // Calculate average luminance value for pixels belong to the same key
+  // Calculate average luminance value for pixels belonging to the same key
   float diffuseLuminance = calcBt709Luminance(primaryDirectDiffuseOutput.xyz);
   float specularLuminance = calcBt709Luminance(primaryDirectSpecularOutput.xyz);
   InterlockedAdd(s_hashedValue1[key], encodeLuminance(diffuseLuminance), dummyI);
