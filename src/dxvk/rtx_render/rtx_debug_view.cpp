@@ -736,9 +736,6 @@ namespace dxvk {
       vec4* gpuMappedVec4 = reinterpret_cast<vec4*>(m_statisticsBuffer->mapPtr(offset));
 
       m_outputStatistics = *gpuMappedVec4;
-
-      // Zero out the backing memory
-      *gpuMappedVec4 = vec4(0.f, 0.f, 0.f, 0.f);
     }
 
     // Normalize the retrieved values in case the input was supersampled due to resolution mismatch
@@ -769,6 +766,12 @@ namespace dxvk {
         outputStatistics *=
           static_cast<float>(nrc.getNumQueryPixelsPerTrainingPixel().x * nrc.getNumQueryPixelsPerTrainingPixel().y);
         break;
+    }
+
+    if (m_outputStatisticsMode == DebugViewOutputStatisticsMode::Mean) {
+      const VkExtent3D& debugViewExtent = m_debugView.view->imageInfo().extent;
+      outputStatistics *=
+        1.f / static_cast<float>(debugViewExtent.width * debugViewExtent.height);
     }
   }
 
@@ -1381,7 +1384,7 @@ namespace dxvk {
     ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getDebugViewShader());
 
     const VkExtent3D outputExtent = VkExtent3D { debugViewArgs.debugViewResolution.x, debugViewArgs.debugViewResolution.y, 1 };
-    const VkExtent3D workgroups = util::computeBlockCount(outputExtent, VkExtent3D { 16, 8, 1 });
+    const VkExtent3D workgroups = util::computeBlockCount(outputExtent, VkExtent3D { DEBUG_VIEW_THREAD_GROUP_SIZE_WIDTH, DEBUG_VIEW_THREAD_GROUP_SIZE_HEIGHT, 1 });
     ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
 
     ctx->copyBuffer(m_statisticsBuffer, statisticsBufferOffset, m_statisticsBufferGpu, statisticsBufferOffset, sizeof(m_outputStatistics));
