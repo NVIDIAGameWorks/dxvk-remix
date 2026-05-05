@@ -3634,9 +3634,9 @@ namespace dxvk {
 
         RemixGui::Checkbox("Enable Opacity Micromap", &RtxOptions::OpacityMicromap::enableObject());
         
-        if (common->getOpacityMicromapManager())
+        if (common->getOpacityMicromapManager()) {
           common->getOpacityMicromapManager()->showImguiSettings();
-
+        }
         ImGui::Unindent();
       }
 

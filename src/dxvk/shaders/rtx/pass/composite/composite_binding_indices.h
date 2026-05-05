@@ -21,6 +21,9 @@
 */
 #pragma once
 
+#define COMPOSITE_THREAD_GROUP_WIDTH 16
+#define COMPOSITE_THREAD_GROUP_HEIGHT 8
+
 // Inputs
 
 #define COMPOSITE_SHARED_FLAGS_INPUT                         0

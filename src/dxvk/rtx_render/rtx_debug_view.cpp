@@ -898,8 +898,13 @@ namespace dxvk {
 
     RemixGui::Checkbox("Replace Composite Output", &replaceCompositeOutputObject());
     RemixGui::Checkbox("Overlay on top of Rendered Output", &overlayOnTopOfRenderOutputObject());
+    if (overlayOnTopOfRenderOutput()) {
+      ImGui::Indent();
+      RemixGui::DragFloat("Overlay Opacity", &overlayOpacityObject(), 0.01f, 0.f, 1.f, "%.3f", sliderFlags);
+      ImGui::Unindent();
+    }
 
-    if (RemixGui::CollapsingHeader("Display Settings")) {
+    if (ImGui::CollapsingHeader("Display Settings", ImGuiTreeNodeFlags_CollapsingHeader)) {
       ImGui::Indent();
 
       ImGui::Text("Common:");
@@ -1112,7 +1117,7 @@ namespace dxvk {
       RtxContext& rtxCtx = dynamic_cast<RtxContext&>(*ctx.ptr());
       m_accumulation.onFrameBegin(
         rtxCtx, Accumulation::enable(), Accumulation::numberOfFramesToAccumulate(),
-        Accumulation::resetOnCameraTransformChange() );
+        Accumulation::resetOnCameraTransformChange());
     }
 
     // Clear debug view resources
@@ -1248,6 +1253,7 @@ namespace dxvk {
     debugViewArgs.nrcArgs = rtOutput.m_raytraceArgs.nrcArgs;
 
     debugViewArgs.overlayOnTopOfRenderOutput = overlayOnTopOfRenderOutput();
+    debugViewArgs.overlayOpacity = std::clamp(overlayOpacity(), 0.f, 1.f);
 
     const VkExtent3D renderToOutputExtent =
       debugViewArgs.writeToCompositeOutput

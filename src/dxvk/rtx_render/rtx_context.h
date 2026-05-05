@@ -180,7 +180,8 @@ namespace dxvk {
 
     VkExtent3D setDownscaleExtent(const VkExtent3D& upscaleExtent);
 
-    VkExtent3D onFrameBegin(const VkExtent3D& upscaleExtent);
+    VkExtent3D onInjectRtxFrameBegin(const VkExtent3D& upscaleExtent);
+    void onInjectRtxFrameEnd(bool raytracedThisFrame);
 
     void dispatchVolumetrics(const Resources::RaytracingOutput& rtOutput);
     void dispatchIntegrate(const Resources::RaytracingOutput& rtOutput);
@@ -202,7 +203,6 @@ namespace dxvk {
     void dispatchObjectPicking(Resources::RaytracingOutput& rtOutput, const VkExtent3D& srcExtent, const VkExtent3D& targetExtent);
     void dispatchDLFG();
     void updateMetrics(const float gpuIdleTimeMilliseconds) const;
-
     void rasterizeToSkyMatte(const DrawParameters& params, const DrawCallState& drawCallState);
     void initSkyProbe();
     void rasterizeToSkyProbe(const DrawParameters& params, const DrawCallState& drawCallState);

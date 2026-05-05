@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -87,7 +87,7 @@ namespace dxvk {
 
   void DemodulatePass::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
     const auto& numRaysExtent = rtOutput.m_compositeOutputExtent;
-    VkExtent3D workgroups = util::computeBlockCount(numRaysExtent, VkExtent3D{ 16, 8, 1 });
+    VkExtent3D workgroups = util::computeBlockCount(numRaysExtent, VkExtent3D{ DEMODULATE_THREAD_GROUP_WIDTH, DEMODULATE_THREAD_GROUP_HEIGHT, 1 });
 
     ScopedGpuProfileZone(ctx, "Demodulate");
     ctx->setFramePassStage(RtxFramePassStage::Demodulate);
@@ -128,12 +128,13 @@ namespace dxvk {
     const bool isPrimaryIndirectRadianceResourceUsed = isPrimaryIndirectRadianceResourceRead || isPrimaryIndirectRadianceResourceWritten;
     Resources::AccessType primaryIndirectRadianceAccessType;
 
-    if (isPrimaryIndirectRadianceResourceRead && isPrimaryIndirectRadianceResourceWritten)
+    if (isPrimaryIndirectRadianceResourceRead && isPrimaryIndirectRadianceResourceWritten) {
       primaryIndirectRadianceAccessType = Resources::AccessType::ReadWrite;
-    else if (isPrimaryIndirectRadianceResourceRead)
+    } else if (isPrimaryIndirectRadianceResourceRead) {
       primaryIndirectRadianceAccessType = Resources::AccessType::Read;
-    else
+    } else {
       primaryIndirectRadianceAccessType = Resources::AccessType::Write;
+    }
 
     ctx->bindResourceView(DEMODULATE_BINDING_PRIMARY_INDIRECT_DIFFUSE_RADIANCE_INPUT_OUTPUT, rtOutput.m_primaryIndirectDiffuseRadiance.view(primaryIndirectRadianceAccessType, isPrimaryIndirectRadianceResourceUsed), nullptr);
     ctx->bindResourceView(DEMODULATE_BINDING_PRIMARY_INDIRECT_SPECULAR_RADIANCE_INPUT_OUTPUT, rtOutput.m_primaryIndirectSpecularRadiance.view(primaryIndirectRadianceAccessType, isPrimaryIndirectRadianceResourceUsed), nullptr);

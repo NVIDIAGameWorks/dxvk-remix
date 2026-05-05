@@ -210,7 +210,11 @@ namespace dxvk {
                "When disabled Debug View output is generated close to the end of RTX pipeline (after postprocessing and upscaling).");
     RTX_OPTION_ENV("rtx.debugView", bool, overlayOnTopOfRenderOutput, false, "RTX_DEBUG_VIEW_OVERLAY_ON_TOP_OF_RENDER_OUTPUT",
                "Enables the debug view to be overlayed directly on top of the rendered output.\n"
-               "Primarily used to overlay NaN/Inf debug view on top since it overlays pixels of 0 value on top of rendered output.");
+               "Overlays all non zero RGB values from the debug view on top of the rendered output.\n"
+               "Use rtx.debugView.overlayOpacity to control the transparency of the overlay.\n");
+    RTX_OPTION("rtx.debugView", float, overlayOpacity, 1.f,
+               "Opacity of the debug view overlay when rtx.debugView.overlayOnTopOfRenderOutput is enabled.\n"
+               "  0 == fully transparent, 1 == fully opaque.\n");
 
     // HDR Waveform Display
     bool m_enableLuminanceMode = false;

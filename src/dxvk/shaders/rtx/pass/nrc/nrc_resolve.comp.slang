@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2024-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2024-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -35,6 +35,9 @@
 
 // Inputs
 
+layout(binding = NRC_RESOLVE_BINDING_RAYTRACE_ARGS_INPUT)
+ConstantBuffer<RaytraceArgs> cb;
+
 layout(binding = NRC_RESOLVE_BINDING_NRC_QUERY_PATH_INFO_INPUT)
 StructuredBuffer<NrcPackedQueryPathInfo> QueryPathInfo;
 
@@ -49,10 +52,6 @@ RWStructuredBuffer<NrcDebugTrainingPathInfo> DebugTrainingPathInfo;
 
 layout(r16ui, binding = NRC_RESOLVE_BINDING_SHARED_FLAGS_INPUT)
 Texture2D<uint16_t> SharedFlags;
-
-
-layout(binding = NRC_RESOLVE_BINDING_RAYTRACE_ARGS_INPUT)
-ConstantBuffer<RaytraceArgs> cb;
 
 // Inputs / Outputs
 
@@ -300,7 +299,7 @@ void storeIndirectRadiance(
 }
 
 [shader("compute")]
-[numthreads(16, 8, 1)]
+[numthreads(NRC_RESOLVE_THREADS_DISPATCH_WIDTH, NRC_RESOLVE_THREADS_DISPATCH_HEIGHT, 1)]
 void main(uint2 launchIndex: SV_DispatchThreadID)
 {
   if (any(launchIndex >= push.resolution))

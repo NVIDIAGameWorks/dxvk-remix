@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -28,8 +28,8 @@
 #define TAA_FEEDBACK_OUTPUT                   4
 #define TAA_LINEAR_SAMPLER                    5
 
-#define TAA_TILE_SIZE_X 16
-#define TAA_TILE_SIZE_Y 16
+#define TAA_TILE_SIZE_WIDTH 16
+#define TAA_TILE_SIZE_HEIGHT 16
 
 struct TemporalAaArgs
 {

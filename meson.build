@@ -562,7 +562,7 @@ nrc_dll_path = join_paths(global_src_root_norm, 'submodules/nrc/bin/')
 xess_dll_path = join_paths(global_src_root_norm, 'submodules/xess/bin/')
 
 nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Release/')
-if get_option('buildtype') == 'debug'  
+if get_option('buildtype') == 'debug'
   nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Debug/')
 endif
 
@@ -582,7 +582,7 @@ aftermath_dep = declare_dependency(
     dependencies : [ aftermath_lib ],
     include_directories : aftermath_include_path
   )
-  
+
 nvapi_dep = declare_dependency(
     dependencies : [ nvapi_lib ],
     include_directories : nvapi_include_paths
@@ -760,7 +760,7 @@ if dxvk_is_ninja
     install_data(join_paths(aftermath_lib_path, 'GFSDK_Aftermath_Lib.x64.dll'), install_dir : output_path, install_tag: target_suffix) 
 
     if enable_rtxio == true
-      install_data(join_paths(rtxio_bin_path, 'rtxio.dll'), install_dir : output_path, install_tag: target_suffix) 
+      install_data(join_paths(rtxio_bin_path, 'rtxio.dll'), install_dir : output_path, install_tag: target_suffix)
     endif
 
     if src_exe != ''

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2024-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2024-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -47,6 +47,9 @@
 
 #define NRC_RESOLVE_BINDING_DEBUG_VIEW_TEXTURE_OUTPUT                            30
 #define NRC_RESOLVE_BINDING_GPU_PRINT_BUFFER_OUTPUT                              31
+
+#define NRC_RESOLVE_THREADS_DISPATCH_WIDTH  16
+#define NRC_RESOLVE_THREADS_DISPATCH_HEIGHT 8
 
 struct NrcResolvePushConstants
 {

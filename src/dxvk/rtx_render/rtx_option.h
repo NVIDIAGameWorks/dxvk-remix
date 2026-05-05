@@ -52,7 +52,7 @@ class RtxOptionManager;
 
 namespace dxvk {
   class DxvkDevice;
-  
+
   // RtxOption refers to a serializable option, which can be of a basic type (i.e. int) or a class type (i.e. vector hash value)
   // On initialization, it retrieves a value from a Config object and add itself to a global list so that all options can be serialized 
   // into a file when requested.
@@ -526,7 +526,7 @@ namespace dxvk {
       std::lock_guard<std::mutex> lock(RtxOptionImpl::getUpdateMutex());
       return getMinMaxValueHelper<T>(minValue);
     }
-    
+
     template<typename = std::enable_if_t<isClampable()>>
     void setMaxValue(const T& v) {
       std::lock_guard<std::mutex> lock(RtxOptionImpl::getUpdateMutex());
@@ -770,7 +770,7 @@ namespace dxvk {
     std::optional<T> getMinMaxValueHelper(const std::optional<GenericValue>& sourceValue) const {
       if (!sourceValue.has_value()) {
         return std::nullopt;
-      } 
+      }
       if constexpr (std::is_pod_v<T>) {
         // For POD types (int, float, etc.), retrieve from the appropriate union member
         const GenericValue& gv = sourceValue.value();

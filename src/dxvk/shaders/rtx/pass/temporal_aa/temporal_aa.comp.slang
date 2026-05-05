@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -44,9 +44,9 @@ SamplerState LinearSampler;
 layout(push_constant)
 ConstantBuffer<TemporalAaArgs> cb;
 
-#define BUFFER_X (TAA_TILE_SIZE_X + 3)
-#define BUFFER_Y (TAA_TILE_SIZE_Y + 3)
-#define RENAMED_GROUP_Y ((TAA_TILE_SIZE_X * TAA_TILE_SIZE_Y) / BUFFER_X)
+#define BUFFER_X (TAA_TILE_SIZE_WIDTH + 3)
+#define BUFFER_Y (TAA_TILE_SIZE_HEIGHT + 3)
+#define RENAMED_GROUP_Y ((TAA_TILE_SIZE_WIDTH * TAA_TILE_SIZE_HEIGHT) / BUFFER_X)
 
 groupshared float4 s_ColorsAndLengths[BUFFER_Y][BUFFER_X];
 groupshared float2 s_MotionVectors[BUFFER_Y][BUFFER_X];
@@ -97,14 +97,14 @@ void Preload(int2 sharedID, int2 globalID, const float3 invPqC)
 }
 
 [shader("compute")]
-[numthreads(TAA_TILE_SIZE_X, TAA_TILE_SIZE_Y, 1)]
+[numthreads(TAA_TILE_SIZE_WIDTH, TAA_TILE_SIZE_HEIGHT, 1)]
 void main(
   in uint2 groupId  : SV_GroupID,
   in uint  groupIdx : SV_GroupIndex,
   in uint2 threadId : SV_GroupThreadID,
   in uint2 pixelPos : SV_DispatchThreadID)
 {
-  const int2 groupBase = int2(OutputToInput(groupId * int2(TAA_TILE_SIZE_X, TAA_TILE_SIZE_Y), cb.inputOverOutputViewSize) - 1);
+  const int2 groupBase = int2(OutputToInput(groupId * int2(TAA_TILE_SIZE_WIDTH, TAA_TILE_SIZE_HEIGHT), cb.inputOverOutputViewSize) - 1);
 
 #if SHARED_MEM_OPT == 1
   if (cb.isTaaUpscale)
