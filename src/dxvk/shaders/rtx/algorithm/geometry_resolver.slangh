@@ -198,12 +198,12 @@ void geometryResolverOutputSurface(
 
     // Set value of 10000.f that forces RR to discard history.
     // Set the log value of 10000.f since RR uses log scale. RR prepass will revert the log operation after blurring the values.
-    const float kDLSSRRDisocclusionThresholdValue = 
-      cb.setLogValueForDisocclusionMaskForDLSSRR 
+    const float kDLSSRRDisocclusionThresholdValue =
+      cb.setLogValueForDisocclusionMaskForDLSSRR
       ? 9.2103403719762 // == log(10000.f)
       : 10000.f;
-    const float kDisocclusionThresholdValue = 
-      cb.enableDLSSRR 
+    const float kDisocclusionThresholdValue =
+      cb.enableDLSSRR
       ? kDLSSRRDisocclusionThresholdValue
       : 1.f;
     const bool discardRRHistory = surface.hasMaterialChanged || surface.isAnimatedWater;
@@ -353,11 +353,11 @@ void geometryResolverOutputSurface(
 }
 
 void geometryResolverDLSSRROutputSurface(
-    uvec2 pixelCoordinate,
-    Ray ray,
-    Surface surface, SurfaceInteraction surfaceInteraction,
-    PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
-    f16vec3 attenuation, f16vec4 accumulatedRotation, float virtualHitDistance)
+  uvec2 pixelCoordinate,
+  Ray ray,
+  Surface surface, SurfaceInteraction surfaceInteraction,
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
+  f16vec3 attenuation, f16vec4 accumulatedRotation, float virtualHitDistance)
 {
   // Recreate the original primary camera ray
   // Note: This is done to not have to pass extra information into the payload.
@@ -401,7 +401,7 @@ void geometryResolverDLSSRROutputSurface(
 void accumulateParticleBuffer(ivec2 pixelCoordinate, vec3 radiance)
 {
   // Accumulate radiance to particle buffer, when DLSS-RR is on.
-  // Particles, glasses and opaque surfaces' emissive component will be recorded in this buffer.
+  // Particles, glass and opaque surfaces' emissive component will be recorded in this buffer.
   vec4 prevParticleEmissive = ParticleBuffer[pixelCoordinate];
   prevParticleEmissive.xyz += radiance;
   ParticleBuffer[pixelCoordinate] = prevParticleEmissive;
@@ -1252,8 +1252,7 @@ vec3 approximateDiffuseLayerRadiance(SurfaceInteraction surfaceInteraction,
 
 // Performs NRC related updates after a GBuffer miss
 void updateNrcOnGBufferMiss(
-  uvec2 pixelCoordinate,
-  NrcArgs nrcArgs)
+  uvec2 pixelCoordinate)
 {
 #if ENABLE_NRC
   // Query path is always traced at the full ray tracing resolution
@@ -1557,12 +1556,12 @@ void geometryResolverVertex(
   // Output a miss
   if (!rayInteractionHasHit(rayInteraction))
   {
-    updateNrcOnGBufferMiss(geometryResolverState.pixelCoordinate, cb.nrcArgs);
+    updateNrcOnGBufferMiss(geometryResolverState.pixelCoordinate);
 
     // Note: Always write to primary surface for initial misses, 
     // it always will be the selected integrated surface in this case as well.
     geometryResolverOutputMiss(true, true, geometryResolverState.pixelCoordinate);
-    
+
     SharedRadianceRG[geometryResolverState.pixelCoordinate] = geometryResolverState.radiance.rg;
     SharedRadianceB[geometryResolverState.pixelCoordinate] = geometryResolverState.radiance.b;
     PrimaryScreenSpaceMotionVectorDLSSRR[geometryResolverState.pixelCoordinate] = calcMotionVectorForRayMiss(geometryResolverState.pixelCoordinate);
@@ -1863,8 +1862,9 @@ void geometryResolverVertex(
   if (cb.enableDLSSRR)
   {
     geometryResolverDLSSRROutputSurface(
-        geometryResolverState.pixelCoordinate, ray, surface, surfaceInteraction, polymorphicSurfaceMaterialInteraction,
-        geometryResolverState.attenuation, geometryResolverState.accumulatedRotation, geometryResolverState.accumulatedHitDistance
+      geometryResolverState.pixelCoordinate,
+      ray, surface, surfaceInteraction, polymorphicSurfaceMaterialInteraction,
+      geometryResolverState.attenuation, geometryResolverState.accumulatedRotation, geometryResolverState.accumulatedHitDistance
     );
   }
 
@@ -2168,7 +2168,7 @@ void geometryPSRResolverVertex(
     // NRC is only used for paths that are fully integrated
     if (geometryPSRResolverState.selectedIntegrationSurface)
     {
-      updateNrcOnGBufferMiss(geometryPSRResolverState.pixelCoordinate, cb.nrcArgs);
+      updateNrcOnGBufferMiss(geometryPSRResolverState.pixelCoordinate);
     }
 
     // Output Miss
@@ -2522,7 +2522,8 @@ void geometryPSRResolver(inout GeometryPSRResolverState psrResolverState) {
   }
 }
 
-void geometryResolver(ivec2 pixelCoordinate) {
+void geometryResolver(ivec2 pixelCoordinate)
+{
   // Initialize Geometry Resolver State
 
   // Note: Acts partially as live state due to some values being carried across both the
@@ -2537,7 +2538,7 @@ void geometryResolver(ivec2 pixelCoordinate) {
     alphaBlendSurface.randomThreshold = getNextSampleBlueNoise(randomState);
     AlphaBlendGBuffer[pixelCoordinate] = alphaBlendSurface.pack(cb.alphaBlendSurfacePackMult);
   }
-  ParticleBuffer[pixelCoordinate] = vec4(0,0,0,1);
+  ParticleBuffer[pixelCoordinate] = vec4(0, 0, 0, 0);
   PrimaryAttenuation[pixelCoordinate] = colorToR11G11B10(geometryResolverState.attenuation);
 
 #ifndef GBUFFER_PSR
@@ -2627,8 +2628,8 @@ void geometryResolver(ivec2 pixelCoordinate) {
   // Output to debug view
   geometryResolverOutputDebugView(pixelCoordinate);
 }
-
-void geometryPSRResolverPass(ivec2 pixelCoordinate) {
+void geometryPSRResolverPass(ivec2 pixelCoordinate)
+{
   GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixelCoordinate, SharedFlags);
 
   // Early out if the PSR pass currently executing does not handle a requested PSR type

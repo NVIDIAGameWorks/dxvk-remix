@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -108,7 +108,7 @@ namespace dxvk {
 
     ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, TemporalAaShader::getShader());
 
-    const VkExtent3D workgroups = util::computeBlockCount(outputSize, VkExtent3D { TAA_TILE_SIZE_X , TAA_TILE_SIZE_Y, 1 } );
+    const VkExtent3D workgroups = util::computeBlockCount(outputSize, VkExtent3D { TAA_TILE_SIZE_WIDTH , TAA_TILE_SIZE_HEIGHT, 1 } );
     ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
   }
 

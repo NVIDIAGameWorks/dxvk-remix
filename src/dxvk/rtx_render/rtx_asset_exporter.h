@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -64,7 +64,7 @@ namespace dxvk {
     }
 
   private:
-    Rc<sync::Fence> m_readbackSignal = nullptr;
+    Rc<sync::Fence> m_readbackSignal;
     std::atomic<uint64_t> m_signalValue = 1;
     dxvk::mutex m_readbackSignalMutex;
     std::atomic<uint64_t> m_numExportsInFlight = 0;

@@ -353,7 +353,6 @@ namespace dxvk {
     ImGUI              m_imgui;
     Rc<GameCapturer>   m_capturer;
 
-
     // RTX Shaders
     Active<RtxGlobalVolumetrics>            m_globalVolumetrics;
     Active<DxvkPathtracerGbuffer>           m_pathtracerGbuffer;

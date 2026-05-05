@@ -255,7 +255,7 @@ namespace dxvk {
     case OptionType::Bool: return "bool";
     case OptionType::Int: return "int";
     case OptionType::Float: return "float";
-    case OptionType::HashSet: return "hash set"; 
+    case OptionType::HashSet: return "hash set";
     case OptionType::HashVector: return "hash vector";
     case OptionType::VirtualKeys: return "virtual keys";
     case OptionType::Vector2: return "float2";

@@ -390,7 +390,7 @@ namespace dxvk {
     compositeArgs.resolution.x = float(cameraConstants.resolution.x);
     compositeArgs.resolution.y = float(cameraConstants.resolution.y);
     compositeArgs.nearPlane = cameraConstants.nearPlane;
-    compositeArgs.frameIdx = m_device->getCurrentFrameId();
+    compositeArgs.frameIdx = frameIdx;
 
     if (enableFog()) {
       const float colorScale = fogColorScale();
@@ -497,7 +497,7 @@ namespace dxvk {
     ctx->getCommandList()->trackResource<DxvkAccess::Read>(cb);
 
     ctx->bindResourceBuffer(COMPOSITE_CONSTANTS_INPUT, DxvkBufferSlice(cb, 0, cb->info().size));
-    VkExtent3D workgroups = util::computeBlockCount(rtOutput.m_compositeOutputExtent, VkExtent3D { 16, 8, 1 });
+    VkExtent3D workgroups = util::computeBlockCount(rtOutput.m_compositeOutputExtent, VkExtent3D { COMPOSITE_THREAD_GROUP_WIDTH, COMPOSITE_THREAD_GROUP_HEIGHT, 1 });
 
     if (enableStochasticAlphaBlend()) {
       ScopedGpuProfileZone(ctx, "Composite Alpha Blend");

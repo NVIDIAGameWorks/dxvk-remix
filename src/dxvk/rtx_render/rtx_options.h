@@ -818,7 +818,7 @@ namespace dxvk {
     // declare onAdvanceTimeChanged
     static void onAdvanceTimeChanged(DxvkDevice* device);
     RTX_OPTION_ARGS("rtx", bool, advanceTime, true,
-               "A flag to enable or disable advancing time used by Remix subsystems (particle effects, animations, etc.).\n",
+                    "A flag to enable or disable advancing time used by Remix subsystems (particle effects, animations, etc.).\n",
                     args.environment = "RTX_ADVANCE_TIME",
                     args.onChangeCallback = &RtxOptions::onAdvanceTimeChanged);
     RTX_OPTION_ARGS("rtx", bool, enableFirstBounceLobeProbabilityDithering, true,

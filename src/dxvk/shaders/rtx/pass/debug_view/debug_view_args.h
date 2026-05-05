@@ -81,6 +81,10 @@ struct DebugViewArgs {
   Camera camera;
   RayPortalHitInfo rayPortalHitInfos[maxRayPortalCount * 2];
   VolumeArgs volumeArgs;
+  NrdArgs nrd;
+  NrcArgs nrcArgs;
+  AccumulationArgs accumulationArgs;
+
   uint debugViewIdx;
   int colorCodeRadius;
   float animationTimeSec;
@@ -105,37 +109,32 @@ struct DebugViewArgs {
   // Note: Must be a scalar multiple of the debug view resolution, so either half, quarter, etc so that
   // math works properly without causing weird artifacts due to nearest neighbor sampling.
   uvec2 hdrWaveformResolution;
+
   uvec2 hdrWaveformPosition;
   uint hdrWaveformResolutionScaleFactor;
   float hdrWaveformHistogramNormalizationScale;
 
   vec4 debugKnob;
 
-  NrdArgs nrd;
-  NrcArgs nrcArgs;
-
-  AccumulationArgs accumulationArgs;
-
   // Common Display enable flags
   uint enableInfNanViewFlag;
-
   // Standard Display enable flags
   PseudoColorMode pseudoColorMode;
   uint enableAlphaChannelFlag;
-
   // HDR Waveform Display enable flags
   uint enableLuminanceModeFlag;
 
   DebugViewSamplerType samplerType;
-
   // Feature enablement
   uint isRTXDIConfidenceValid;
-
   // Gamma flag
   uint enableGammaCorrectionFlag;
+  uint pad0;
 
   uint overlayOnTopOfRenderOutput;
-
+  float overlayOpacity;
+  uvec2 pad1;
+  
   // Quantization Options
   uint enableInputQuantization;
   float quantizationStepSize;

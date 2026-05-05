@@ -69,7 +69,7 @@ void storeNrcPathState(
     encodedCumulSpreadRadius,
     nrcPathState.packedData,
     float16BitsToUint16(nrcPathState.brdfPdf));
-  }
+}
 
 NrcPathState initializeNrcPathState(
   const uvec2 nrcPathData0,
@@ -230,19 +230,19 @@ void updateNrcOnPrimaryHit(
   // NRC backpropagates radiance for training paths so any radiance accumulated up to the GBuffer hit
   // does not need to be registered with NRC since it can't backpropagate it to the eye.
   // Therefore, we can simply pass empty values to NRC on a GBuffer hit
-  f16vec3 dummyThroughtput = f16vec3(1);
+  f16vec3 dummyThroughput = f16vec3(1);
   vec3 dummyRadiance = vec3(0);
 
   // Register a gbuffer surface hit
   // Note: NRC zeroes out radiance and throughput on updates for training paths
   NrcProgressState nrcProgressState = updateNrcOnHit(nrcPathPixelCoordinate, NrcIsUpdateMode(),
     surfaceInteraction, polymorphicSurfaceMaterialInteraction, viewVector, bounce,
-    pathSegmentHitDistance, true, cb.nrcArgs, dummyThroughtput, dummyRadiance, nrcPathState);
+    pathSegmentHitDistance, true, cb.nrcArgs, dummyThroughput, dummyRadiance, nrcPathState);
 
   if (NrcIsQueryMode() && nrcProgressState == NrcProgressState::TerminateImmediately)
   {
     const NrcContext nrcContext = createNrcContext(nrcPathPixelCoordinate);
-    NrcWriteFinalPathInfo(nrcContext, nrcPathState, dummyThroughtput, dummyRadiance);
+    NrcWriteFinalPathInfo(nrcContext, nrcPathState, dummyThroughput, dummyRadiance);
   }
 
   // Store NRC path state for subsequent path tracer passes to continue with
@@ -264,10 +264,10 @@ void updateNrcOnPrimaryMiss(
   updateNrcOnMiss(nrcPathPixelCoordinate, NrcIsUpdateMode(), nrcPathState, true);
 
   // NRC ignores radiance passed in when a GBuffer miss occurs / no vertices have been recorded along a path
-  vec3 dummyThroughtput = vec3(1);
+  vec3 dummyThroughput = vec3(1);
   vec3 dummyRadiance = vec3(0);
 
-  NrcWriteFinalPathInfo(nrcContext, nrcPathState, dummyThroughtput, dummyRadiance);
+  NrcWriteFinalPathInfo(nrcContext, nrcPathState, dummyThroughput, dummyRadiance);
 }
 
 #endif

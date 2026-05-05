@@ -537,7 +537,7 @@ vec4 compositeResult(
 }
 
 [shader("compute")]
-[numthreads(16, 8, 1)]
+[numthreads(COMPOSITE_THREAD_GROUP_WIDTH, COMPOSITE_THREAD_GROUP_HEIGHT, 1)]
 void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThreadID)
 {
   // Note: Fake camera constructed due to Composite pass's lack of access to typical constant buffer members. A bit hacky

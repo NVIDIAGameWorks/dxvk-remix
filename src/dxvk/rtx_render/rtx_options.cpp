@@ -44,7 +44,6 @@ namespace dxvk {
   HashRule RtxOptions::s_geometryHashGenerationRule = 0;
   HashRule RtxOptions::s_geometryAssetHashRule = 0;
 
-  
   void RtxOptions::graphicsPresetOnChange(DxvkDevice* device) {
     // device will be nullptr during initial config loading.
     if (device == nullptr) {

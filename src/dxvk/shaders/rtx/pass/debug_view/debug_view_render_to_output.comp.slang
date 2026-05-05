@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2025-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -47,9 +47,10 @@ void overlayOnTopOfRenderOutput(ivec2 threadId, inout vec4 value)
   if (cb.overlayOnTopOfRenderOutput)
   {
     vec4 renderOutput = RenderOutput[threadId];
-    
-    // Overlay any 0 value pixels. This is simple method that works for overlaying NaN debug view over rendered output
-    value = mix(renderOutput, value, any(value.xyz > 0));
+
+    // Overlay on top of render output
+    const float opacity = any(value.xyz > 0) ? saturate(cb.overlayOpacity) : 0.f;
+    value = mix(renderOutput, value, opacity);
   }
 }
 

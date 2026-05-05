@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -549,7 +549,7 @@ void outputToDebugViewAtTheEnd(
 }
 
 [shader("compute")]
-[numthreads(16, 8, 1)]
+[numthreads(DEMODULATE_THREAD_GROUP_WIDTH, DEMODULATE_THREAD_GROUP_HEIGHT, 1)]
 void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_GroupThreadID)
 {
   const Camera camera = cb.camera;
