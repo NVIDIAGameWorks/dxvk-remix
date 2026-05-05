@@ -118,6 +118,7 @@ void geometryResolverOutputMiss(
     if (cb.enableDLSSRR)
     {
       PrimaryPerceptualRoughness[pixelCoordinate] = 0.f;
+      PrimaryWorldShadingNormalDLSSRR[pixelCoordinate] = vec4(0);
     }
 
     // Note: Always write to stochastic buffers in the primary surface case.
