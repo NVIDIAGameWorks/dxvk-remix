@@ -1374,7 +1374,7 @@ namespace dxvk {
 
     VkDeviceSize statisticsBufferOffset = (frameIdx % kMaxFramesInFlight) * sizeof(m_outputStatistics);
     ctx->clearBuffer(m_statisticsBufferGpu, statisticsBufferOffset, sizeof(m_outputStatistics), 0);
-    ctx->bindResourceBuffer(DEBUG_VIEW_BINDING_STATISTICS_BUFFER_OUTPUT, DxvkBufferSlice(m_statisticsBufferGpu, statisticsBufferOffset, m_statisticsBufferGpu->info().size));
+    ctx->bindResourceBuffer(DEBUG_VIEW_BINDING_STATISTICS_BUFFER_OUTPUT, DxvkBufferSlice(m_statisticsBufferGpu, statisticsBufferOffset, sizeof(m_outputStatistics)));
 
     // Samplers
 

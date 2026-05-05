@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -30,12 +30,6 @@
 // Inputs
 layout(binding = RAY_RECONSTRUCTION_CONSTANTS_INPUT)
 ConstantBuffer<RayReconstructionArgs> cb;
-
-layout(r32ui, binding = RAY_RECONSTRUCTION_NORMALS_INPUT)
-Texture2D<uint> Normals;
-
-layout(rgba16f, binding = RAY_RECONSTRUCTION_VIRTUAL_NORMALS_INPUT)
-Texture2D<float4> VirtualNormals;
 
 layout(rgba16f, binding = RAY_RECONSTRUCTION_PRIMARY_INDIRECT_SPECULAR_INPUT)
 Texture2D<float4> PrimaryIndirectSpecular;
@@ -85,10 +79,6 @@ RWTexture2D<float4> PrimaryAlbedo;
 
 layout(rgb10_a2, binding = RAY_RECONSTRUCTION_PRIMARY_SPECULAR_ALBEDO_INPUT_OUTPUT)
 RWTexture2D<float4> PrimarySpecularAlbedo;
-
-// Outputs
-layout(rgba16f, binding = RAY_RECONSTRUCTION_NORMALS_OUTPUT)
-RWTexture2D<float4> NormalsOutput;
 
 layout(r16f, binding = RAY_RECONSTRUCTION_HIT_DISTANCE_OUTPUT)
 RWTexture2D<float> HitDistanceOutput;
@@ -195,31 +185,6 @@ void main(uint2 threadId : SV_DispatchThreadID)
 
   const bool isPrimaryGBufferMiss = PrimaryConeRadius[threadId].x == 0.0f;
 
-  // Choose normal inputs for DLSS-RR
-  {
-    // RR expects 0 normal on misses
-    float3 normal = float3(0);
-
-    if (!isPrimaryGBufferMiss)
-    {
-      if (cb.enableDLSSRRInputs)
-      {
-        normal = InNormalsDLSSRR[threadId].xyz;
-      }
-      else if (cb.rayReconstructionUseVirtualNormals)
-      {
-        normal = texelFetch(VirtualNormals, threadId, 0).xyz * 2.0 - 1.0;
-      }
-      else
-      {
-        vec2 octNormal = snorm2x16ToFloat2x32(texelFetch(Normals, threadId, 0));
-        normal = signedOctahedralToSphereDirection(octNormal);
-      }
-    }
-
-    imageStore(NormalsOutput, threadId, float4(normal, 0.0));
-  }
-
   const float primaryPerceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[threadId].w;
   const float secondaryPerceptualRoughness = SecondaryVirtualWorldNormalPerceptualRoughness[threadId].w;
 
@@ -264,51 +229,11 @@ void main(uint2 threadId : SV_DispatchThreadID)
 
   blurDisocclusionMask(threadId);
 
-  // DLSS-RR doesn't expect hitT with holes, here a simple box filter is used to provide a dense hitT input.
-  // The filter calculates average hitT in 3x3 area, excluding the minimum and the maximum ones.
   float hitDistance = 0;
 
   if (!isPrimaryGBufferMiss)
   {
     hitDistance = PrimaryIndirectSpecular[threadId].a;
-    
-    if (cb.filterHitT)
-    {
-      const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(threadId, SharedFlags);
-      // Calculate average specular hitT
-      float totalHitT = 0;
-      float totalWeight = 0;
-      float minHitT = 1e10;
-      float maxHitT = 0;
-      for (int i = 0; i < 9; ++i)
-      {
-        int2 offset = int2(i % 3, i / 3) - 1;
-        const GeometryFlags neighborFlags = geometryFlagsReadFromGBuffer(threadId + offset, SharedFlags);
-        if (neighborFlags.firstSampledLobeIsSpecular)
-        {
-          float hitT = PrimaryIndirectSpecular[threadId + offset].a;
-          totalHitT += hitT;
-          totalWeight += 1;
-          minHitT = min(minHitT, hitT);
-          maxHitT = max(maxHitT, hitT);
-        }
-      }
-
-      float hitT = hitDistance;
-      if (!geometryFlags.firstSampledLobeIsSpecular && totalWeight > 0)
-      {
-        // If this pixel doesn't have specular hitT, use average specular hitT from neighbors
-        hitT = totalHitT / totalWeight;
-      }
-      else if ((hitDistance == minHitT || hitDistance == maxHitT) && totalWeight > 2)
-      {
-        // Remove minimum or maximum hitT and calculate average hitT
-        totalHitT -= minHitT + maxHitT;
-        totalWeight -= 2;
-        hitT = totalHitT / totalWeight;
-      }
-      hitDistance = hitT;
-    }
   }
 
   HitDistanceOutput[threadId] = hitDistance;
@@ -335,7 +260,7 @@ void main(uint2 threadId : SV_DispatchThreadID)
     storeInDebugView(threadId, hitDistance / 1000.0);
     break;
   case DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_WORLD_SHADING_NORMAL:
-    storeInDebugView(threadId, NormalsOutput[threadId]);
+    storeInDebugView(threadId, InNormalsDLSSRR[threadId]);
     break;
   case DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_DEPTH:
     storeInDebugView(threadId, InDepth[threadId].x);
@@ -361,7 +286,7 @@ void main(uint2 threadId : SV_DispatchThreadID)
     isValid &= isValidValue(hitDistance);
 
     // DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_WORLD_SHADING_NORMAL
-    isValid &= isValidValue(NormalsOutput[threadId]);
+    isValid &= isValidValue(InNormalsDLSSRR[threadId]);
 
     // DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_DEPTH
     isValid &= isValidValue(InDepth[threadId].x);

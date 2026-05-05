@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -30,8 +30,6 @@
 
 // Inputs
 #define RAY_RECONSTRUCTION_CONSTANTS_INPUT                    0
-#define RAY_RECONSTRUCTION_NORMALS_INPUT                      1
-#define RAY_RECONSTRUCTION_VIRTUAL_NORMALS_INPUT              2
 
 #define RAY_RECONSTRUCTION_PRIMARY_INDIRECT_SPECULAR_INPUT    3
 #define RAY_RECONSTRUCTION_PRIMARY_ATTENUATION_INPUT          4
@@ -55,7 +53,6 @@
 #define RAY_RECONSTRUCTION_PRIMARY_SPECULAR_ALBEDO_INPUT_OUTPUT 41
 
 // Outputs
-#define RAY_RECONSTRUCTION_NORMALS_OUTPUT                       50
 #define RAY_RECONSTRUCTION_HIT_DISTANCE_OUTPUT                  51
 #define RAY_RECONSTRUCTION_DEBUG_VIEW_OUTPUT                    52
 #define RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_MASK_OUTPUT     53
@@ -71,18 +68,13 @@ struct RayReconstructionArgs {
   float upscalerRoughnessDemodulationOffset;
   uint debugViewIdx;
 
-  uint enableDLSSRRInputs;
   uint particleBufferMode;
   uint enableDemodulateAttenuation;
-  uint filterHitT;
-
   uint combineSpecularAlbedo;
-  uint useExternalExposure;
-  uint rayReconstructionUseVirtualNormals;
   uint frameIdx;
 
   uint enableDisocclusionMaskBlur;
   uint disocclusionMaskBlurRadius;
-  float rcpSquaredDisocclusionMaskBlurGaussianWeightSigma; 
+  float rcpSquaredDisocclusionMaskBlurGaussianWeightSigma;
   uint pad0;
 };

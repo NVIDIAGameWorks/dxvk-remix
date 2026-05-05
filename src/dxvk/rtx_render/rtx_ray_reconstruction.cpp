@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2024-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2024-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -53,8 +53,6 @@ namespace dxvk {
       SHADER_SOURCE(PrepareRayReconstructionShader, VK_SHADER_STAGE_COMPUTE_BIT, prepare_ray_reconstruction)
 
         BEGIN_PARAMETER()
-        TEXTURE2D(RAY_RECONSTRUCTION_NORMALS_INPUT)
-        TEXTURE2D(RAY_RECONSTRUCTION_VIRTUAL_NORMALS_INPUT)
         CONSTANT_BUFFER(RAY_RECONSTRUCTION_CONSTANTS_INPUT)
         // Primary surface data
         TEXTURE2D(RAY_RECONSTRUCTION_PRIMARY_INDIRECT_SPECULAR_INPUT)
@@ -77,7 +75,6 @@ namespace dxvk {
         RW_TEXTURE2D(RAY_RECONSTRUCTION_PRIMARY_ALBEDO_INPUT_OUTPUT)
         RW_TEXTURE2D(RAY_RECONSTRUCTION_PRIMARY_SPECULAR_ALBEDO_INPUT_OUTPUT)
 
-        RW_TEXTURE2D(RAY_RECONSTRUCTION_NORMALS_OUTPUT)
         RW_TEXTURE2D(RAY_RECONSTRUCTION_HIT_DISTANCE_OUTPUT)
         RW_TEXTURE2D(RAY_RECONSTRUCTION_DEBUG_VIEW_OUTPUT)
         RW_TEXTURE2D(RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_MASK_OUTPUT)
@@ -111,8 +108,6 @@ namespace dxvk {
   void DxvkRayReconstruction::release() {
     m_rayReconstructionContext = {};
     mRecreate = true;
-    m_normals.image = nullptr;
-    m_normals.view = nullptr;
   }
   
   void DxvkRayReconstruction::onDestroy() {
@@ -160,16 +155,16 @@ namespace dxvk {
     VkExtent3D workgroups = util::computeBlockCount(
       rtOutput.m_primaryLinearViewZ.view->imageInfo().extent, VkExtent3D { 16, 16, 1 });
 
-    auto motionVectorInput = enableDLSSRRSurfaceReplacement() ? &rtOutput.m_primaryScreenSpaceMotionVectorDLSSRR : &rtOutput.m_primaryScreenSpaceMotionVector;
-    auto depthInput = enableDLSSRRSurfaceReplacement() ? &rtOutput.m_primaryDepthDLSSRR.resource(Resources::AccessType::Read) : &rtOutput.m_primaryDepth;
+    // Use DLSS-RR surface replacement. Translucent surfaces with significant refraction are excluded 
+    // from surface replacement and its surface motion vector will be used.
+    auto motionVectorInput = &rtOutput.m_primaryScreenSpaceMotionVectorDLSSRR;
+    auto depthInput = &rtOutput.m_primaryDepthDLSSRR.resource(Resources::AccessType::Read);
     
     {
       ScopedGpuProfileZone(ctx, "Prepare DLSS");
 
       RayReconstructionArgs constants = { };
       constants.camera = sceneManager.getCamera().getShaderConstants();
-      constants.useExternalExposure = !mAutoExposure ? 1 : 0;
-      constants.rayReconstructionUseVirtualNormals = m_useVirtualNormals ? 1 : 0;
       constants.combineSpecularAlbedo = combineSpecularAlbedo() ? 1 : 0;
       constants.debugViewIdx = rtOutput.m_raytraceArgs.debugView;
       constants.debugKnob = rtOutput.m_raytraceArgs.debugKnob;
@@ -177,8 +172,6 @@ namespace dxvk {
       constants.enableDemodulateAttenuation = demodulateAttenuation() ? 1 : 0;
       constants.upscalerRoughnessDemodulationOffset = upscalerRoughnessDemodulationOffset();
       constants.upscalerRoughnessDemodulationMultiplier = upscalerRoughnessDemodulationMultiplier();
-      constants.enableDLSSRRInputs = enableDLSSRRSurfaceReplacement();
-      constants.filterHitT = filterHitT();
       constants.particleBufferMode = (uint32_t)getParticleBufferMode();
       constants.frameIdx = rtOutput.m_raytraceArgs.frameIdx;
       constants.enableDisocclusionMaskBlur = enableDisocclusionMaskBlur();
@@ -191,13 +184,6 @@ namespace dxvk {
 
       ctx->bindResourceBuffer(RAY_RECONSTRUCTION_CONSTANTS_INPUT, DxvkBufferSlice(m_constants, 0, m_constants->info().size));
 
-      if (m_useVirtualNormals) {
-        ctx->bindResourceView(RAY_RECONSTRUCTION_NORMALS_INPUT, nullptr, nullptr);
-        ctx->bindResourceView(RAY_RECONSTRUCTION_VIRTUAL_NORMALS_INPUT, rtOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughness.view, nullptr);
-      } else {
-        ctx->bindResourceView(RAY_RECONSTRUCTION_NORMALS_INPUT, rtOutput.m_primaryWorldShadingNormal.view, nullptr);
-        ctx->bindResourceView(RAY_RECONSTRUCTION_VIRTUAL_NORMALS_INPUT, nullptr, nullptr);
-      }
       ctx->bindResourceView(RAY_RECONSTRUCTION_PRIMARY_INDIRECT_SPECULAR_INPUT, rtOutput.m_primaryIndirectSpecularRadiance.view(Resources::AccessType::Read), nullptr);
       // Primary data
       ctx->bindResourceView(RAY_RECONSTRUCTION_PRIMARY_ATTENUATION_INPUT, rtOutput.m_primaryAttenuation.view, nullptr);
@@ -225,7 +211,6 @@ namespace dxvk {
 
       // Outputs
 
-      ctx->bindResourceView(RAY_RECONSTRUCTION_NORMALS_OUTPUT, m_normals.view, nullptr);
       ctx->bindResourceView(RAY_RECONSTRUCTION_HIT_DISTANCE_OUTPUT, rtOutput.m_rayReconstructionHitDistance.view(Resources::AccessType::Write), nullptr);
       ctx->bindResourceView(RAY_RECONSTRUCTION_DEBUG_VIEW_OUTPUT, debugView.getDebugOutput(), nullptr);
       ctx->bindResourceView(RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_MASK_OUTPUT, rtOutput.m_primaryDisocclusionMaskForRR.view(Resources::AccessType::Write), nullptr);
@@ -246,19 +231,17 @@ namespace dxvk {
 
       std::vector<Rc<DxvkImageView>> pInputs = {
         rtOutput.m_compositeOutput.view(Resources::AccessType::Read),
-        rtOutput.m_primaryScreenSpaceMotionVector.view,
-        rtOutput.m_primaryDepth.view,
-        m_useVirtualNormals ? rtOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughness.view : rtOutput.m_primaryWorldShadingNormal.view,
+        motionVectorInput->view,
+        depthInput->view,
+        rtOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughness.view,
         rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read),
         rtOutput.m_primaryAlbedo.view,
         rtOutput.m_sharedBiasCurrentColorMask.view(Resources::AccessType::Read),
         rtOutput.m_rayReconstructionParticleBuffer.view,
-        m_normals.view,
+        rtOutput.m_primaryWorldShadingNormalDLSSRR.view(Resources::AccessType::Read),
         rtOutput.m_primarySpecularAlbedo.view(Resources::AccessType::Read),
         rtOutput.m_primaryPerceptualRoughness.view,
-        rtOutput.m_rayReconstructionHitDistance.view(Resources::AccessType::Read),
-        rtOutput.m_primaryScreenSpaceMotionVectorDLSSRR.view,
-        rtOutput.m_primaryDepthDLSSRR.view(Resources::AccessType::Read)
+        rtOutput.m_rayReconstructionHitDistance.view(Resources::AccessType::Read)
       };
 
       const DxvkAutoExposure& autoExposure = device()->getCommon()->metaAutoExposure();
@@ -312,7 +295,7 @@ namespace dxvk {
 
       // Note: DLSS-RR currently uses DLSS's depth input for "linear view depth", which is what our virtual linear view Z represents (not quite depth in the
       // technical sense but this is likely what they mean).
-      auto normalsInput = &m_normals;
+      auto normalsInput = &rtOutput.m_primaryWorldShadingNormalDLSSRR.resource(Resources::AccessType::Read);
       // Note: Texture contains specular albedo in this case as DLSS happens after demodulation
       auto specularAlbedoInput = &rtOutput.m_primarySpecularAlbedo.resource(Resources::AccessType::Read);
       m_rayReconstructionContext->setWorldToViewMatrix(camera.getWorldToView());
@@ -379,20 +362,17 @@ namespace dxvk {
 
       constexpr ImGuiSliderFlags sliderFlags = ImGuiSliderFlags_AlwaysClamp;
 
-      RemixGui::Checkbox("Use Virtual Normals", &m_useVirtualNormals);
       RemixGui::Combo("Particle Mode", &particleBufferModeObject(), "None\0DLSS-RR Upscaling\0");
       RemixGui::Checkbox("Use Specular Hit Distance", &useSpecularHitDistanceObject());
       RemixGui::Checkbox("Preserve Settings in Native Mode", &preserveSettingsInNativeModeObject());
       RemixGui::Checkbox("Combine Specular Albedo", &combineSpecularAlbedoObject());
-      RemixGui::Checkbox("Filter Hit Distance", &filterHitTObject());
-      RemixGui::Checkbox("Use DLSS-RR Specific Surface Replacement", &enableDLSSRRSurfaceReplacementObject());
       RemixGui::Checkbox("DLSS-RR Demodulate Attenuation", &demodulateAttenuationObject());
       RemixGui::Checkbox("DLSS-RR Detail Enhancement", &enableDetailEnhancementObject());
       RemixGui::Checkbox("Preprocess Secondary Signal", &preprocessSecondarySignalObject());
       RemixGui::Checkbox("DLSS-RR Demodulate Roughness", &demodulateRoughnessObject());
       RemixGui::DragFloat("DLSS-RR Roughness Sensitivity", &upscalerRoughnessDemodulationOffsetObject(), 0.01f, 0.0f, 2.0f, "%.3f");
       RemixGui::DragFloat("DLSS-RR Roughness Multiplier", &upscalerRoughnessDemodulationMultiplierObject(), 0.01f, 0.0f, 20.0f, "%.3f");
-      RemixGui::Checkbox("Composite Volumetric Light", &compositeVolumetricLightObject());      
+      RemixGui::Checkbox("Composite Volumetric Light", &compositeVolumetricLightObject());
       RemixGui::Checkbox("Transformer Model D", &enableTransformerModelDObject());
 
       if (RemixGui::CollapsingHeader("Disocclusion Mask")) {
@@ -450,34 +430,6 @@ namespace dxvk {
   }
 
   void DxvkRayReconstruction::initializeRayReconstruction(Rc<DxvkContext> renderContext) {
-    DxvkImageCreateInfo desc;
-    desc.type = VK_IMAGE_TYPE_2D;
-    desc.flags = 0;
-    desc.sampleCount = VK_SAMPLE_COUNT_1_BIT;
-    desc.extent = { mInputSize[0], mInputSize[1], 1 };
-    desc.numLayers = 1;
-    desc.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-    desc.stages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-    desc.access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-    desc.tiling = VK_IMAGE_TILING_OPTIMAL;
-    desc.layout = VK_IMAGE_LAYOUT_UNDEFINED;
-
-    DxvkImageViewCreateInfo viewInfo;
-    viewInfo.type = VK_IMAGE_VIEW_TYPE_2D;
-    viewInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
-    viewInfo.aspect = VK_IMAGE_ASPECT_COLOR_BIT;
-    viewInfo.minLevel = 0;
-    viewInfo.minLayer = 0;
-    viewInfo.numLayers = 1;
-    viewInfo.format = desc.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-    viewInfo.numLevels = desc.mipLevels = 1;
-
-    viewInfo.format = desc.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-    m_normals.image = m_device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, "RayReconstruction normal");
-    m_normals.view = m_device->createImageView(m_normals.image, viewInfo);
-    renderContext->changeImageLayout(m_normals.image, VK_IMAGE_LAYOUT_GENERAL);
-
-    
     if (!m_rayReconstructionContext) {
       m_rayReconstructionContext = m_device->getCommon()->metaNGXContext().createRayReconstructionContext();
     }

@@ -79,8 +79,6 @@ namespace dxvk {
     RTX_OPTION("rtx.rayreconstruction", float, upscalerRoughnessDemodulationOffset, 1.5f, "Strength of upscaler roughness demodulation. Only used by DLSS-RR.");
     RTX_OPTION("rtx.rayreconstruction", float, upscalerRoughnessDemodulationMultiplier, 0.15f, "Multiplier of upscaler roughness demodulation to suppress noise. Only used by DLSS-RR.");
     RTX_OPTION("rtx.rayreconstruction", bool, demodulateAttenuation, true, "Demodulate attenuation to reduce ghosting when an object is behind textured translucent objects.\n");
-    RTX_OPTION("rtx.rayreconstruction", bool, filterHitT, true, "Filter hit distance to improve specular reflection quality.\n");
-    RTX_OPTION("rtx.rayreconstruction", bool, enableDLSSRRSurfaceReplacement, true, "Use DLSS-RR surface replacement. Translucent surfaces with significant refraction are excluded from surface replacement and its surface motion vector will be used.\n");
     RTX_OPTION("rtx.rayreconstruction", bool, preprocessSecondarySignal, true, "Denoise secondary signal before passing to DLSS-RR. This option improves reflection on translucent objects.\n");
     RTX_OPTION("rtx.rayreconstruction", bool, compositeVolumetricLight, true, "Composite volumetric light and then input the result to DLSS-RR, otherwise volumetric light is in a separate layer. Disabling it may introduce flickering artifacts.\n");
     RTX_OPTION_ARGS("rtx.rayreconstruction", RayReconstructionModel, model, RayReconstructionModel::Transformer, "Ray reconstruction model to use. 0: CNN, 1: Transformer (higher quality).",
@@ -96,8 +94,6 @@ namespace dxvk {
   private:
     void initializeRayReconstruction(Rc<DxvkContext> pRenderContext);
 
-    Resources::Resource         m_normals;
-    bool                        m_useVirtualNormals = true;
     bool                        m_biasCurrentColorEnabled = true;
     RayReconstructionModel      m_prevModel;
     bool                        m_prevEnableTransformerModelD;
