@@ -41,7 +41,6 @@
 //!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
 
 
-
 // WBOIT
 
 //!variant gbuffer_psr_material_opaque_translucent_closestHit_wboit.rchit
@@ -63,7 +62,6 @@
 //!>       ENABLE_NRC=1
 //!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
 //!>       UNORDERED_RESOLVE_WBOIT
-
 
 //!end-variants
 

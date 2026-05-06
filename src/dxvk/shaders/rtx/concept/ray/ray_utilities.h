@@ -84,7 +84,7 @@ float calculatePositionError(vec3 p)
 // previously computed with the calculatePositionError(p) function above.
 // If the offset point is desired on the "inside" of a surface (for example when dealing 
 // with translucency or double sided geometry), invert the normal passed in beforehand.
-vec3 calculateRayOffset(float positionError, f16vec3 triangleNormal)
+vec3 calculateRayOffset(float positionError, vec3 triangleNormal)
 {
   // A single ULP (Unit in the Last Place, or Unit of Least Precision) of 32-bit floats, calculated as
   //   ((asfloat(asuint(x) + 1) - x) / x)

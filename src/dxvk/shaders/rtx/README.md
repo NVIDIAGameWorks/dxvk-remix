@@ -102,6 +102,19 @@ Example exampleCreate(InputStruct inputData)
 
 //!end-variants
 
+// Variant Matrix Comments (For cross-product variants)
+
+//!variant-matrix foo
+//!> common SOME_DEFINE
+//!> axis mode raster.comp
+//!> axis mode raytrace.rgen RAY_PIPELINE
+//!> axis feature -
+//!> axis feature feature_enabled ENABLE_FEATURE=1
+//!> order mode feature
+//!end-variants
+
+// This also emits rtx_shaders/foo_variants.h with axis constants and filtered X-macros.
+
 // Includes
 
 // Note: It is common to put defines in pass files like this to define behavior which should

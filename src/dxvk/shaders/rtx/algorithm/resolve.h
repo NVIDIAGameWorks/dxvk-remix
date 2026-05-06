@@ -66,15 +66,15 @@ static const uint8_t resolveModeDecalMaterialBlending = uint8_t(1 << 7);
 interface IBasePayloadState
 {
   property float3 origin { get; set; }
-  property float16_t coneRadius { get; set; }
+  property float coneRadius { get; set; }
   property float segmentHitDistance { get; set; }
   property uint8_t rayMask { get; set; }
   property PortalSpace2BitsType portalSpace{ get; set; }
-  property f16vec3 direction { get; set; }
+  property vec3 direction { get; set; }
   property bool decalEncountered { get; set; }
   property bool continueResolving { get; set; }
   property bool directionAltered { get; set; }
-  property f16vec4 accumulatedRotation { get; set; }
+  property vec4 accumulatedRotation { get; set; }
 
 #ifdef RAY_PIPELINE
   // Returns if the caller should reorder before invokeHitObject, along with coherence hints to use

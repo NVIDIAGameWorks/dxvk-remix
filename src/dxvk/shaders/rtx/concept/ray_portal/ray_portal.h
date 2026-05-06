@@ -86,7 +86,7 @@ struct PortalTransform
     return ret;
   }
 
-  f16vec4 unpackRotation()
+  vec4 unpackRotation()
   {
     return quat;
   }

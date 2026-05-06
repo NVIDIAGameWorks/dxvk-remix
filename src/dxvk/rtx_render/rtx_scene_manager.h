@@ -21,7 +21,6 @@
 */
 #pragma once
 
-#include <deque>
 #include <mutex>
 #include <vector>
 #include <set>
@@ -375,9 +374,6 @@ private:
 
   // Mesh hash tracking for current frame (hash -> count)
   std::unordered_map<XXH64_hash_t, uint32_t> m_currentFrameMeshHashes;
-
-  // Using std::deque for pointer stability: push_back doesn't invalidate existing pointers
-  std::deque<std::vector<Matrix4>> m_externalGpuInstancingTransforms;
 
   DrawCallTracker m_drawCallTracker;
 };

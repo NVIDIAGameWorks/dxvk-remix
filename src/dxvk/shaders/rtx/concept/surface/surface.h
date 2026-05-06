@@ -503,9 +503,9 @@ struct MinimalSurfaceInteraction
   // Used for calculating ray offsets.
   float positionError = 0.f;
   // TODO this could just be a `quaternion triangleTBN` 
-  f16vec3 triangleNormal = 0.h;
-  f16vec3 triangleTangent = 0.h;
-  f16vec3 triangleBitangent = 0.h;
+  vec3 triangleNormal = 0.f;
+  vec3 triangleTangent = 0.f;
+  vec3 triangleBitangent = 0.f;
 
   // Surfaces created from gbuffer may not be valid (i.e. if this pixel was a ray miss)
   property bool isValid
@@ -522,12 +522,12 @@ struct SurfaceInteraction : MinimalSurfaceInteraction
   vec2 textureGradientY = 0..xx;
   // Note: All normal, tangent and bitangent vectors are in world space.
   // TODO this could just be a `quaternion interpolatedTBN` 
-  f16vec3 interpolatedNormal = 0.h;
-  f16vec3 interpolatedTangent = 0.h;
-  f16vec3 interpolatedBitangent = 0.h;
-  f16vec3 rawTangent = 0.h;
-  f16vec3 rawBitangent = 0.h;
-  f16vec4 vertexColor = 0.h;
+  vec3 interpolatedNormal = 0.f;
+  vec3 interpolatedTangent = 0.f;
+  vec3 interpolatedBitangent = 0.f;
+  vec3 rawTangent = 0.f;
+  vec3 rawBitangent = 0.f;
+  vec4 vertexColor = 0.0f;
   float triangleArea = 0.f;
 };
 

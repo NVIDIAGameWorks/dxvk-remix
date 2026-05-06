@@ -210,10 +210,10 @@ void main(int2 thread_id : SV_DispatchThreadID)
   if (cb.enableReSTIRGIReflectionReprojection > 0 && surface.portalSpace == PORTAL_SPACE_NONE)
   {
     float roughWeight = 1.0 - surface.opaqueSurfaceMaterialInteraction.isotropicRoughness;
-    const float16_t normalDotOutputDirection = dot(surface.opaqueSurfaceMaterialInteraction.shadingNormal, surface.minimalRayInteraction.viewDirection);
-    const float16_t albedoLuminance = calcBt709Luminance(surface.opaqueSurfaceMaterialInteraction.albedo);
-    const f16vec3 fresnel = evalOpaqueSchlickFresnel(surface.opaqueSurfaceMaterialInteraction.baseReflectivity, normalDotOutputDirection);
-    const float16_t fresnelLuminance = calcBt709Luminance(fresnel);
+    const float normalDotOutputDirection = dot(surface.opaqueSurfaceMaterialInteraction.shadingNormal, surface.minimalRayInteraction.viewDirection);
+    const float albedoLuminance = calcBt709Luminance(surface.opaqueSurfaceMaterialInteraction.albedo);
+    const vec3 fresnel = evalOpaqueSchlickFresnel(surface.opaqueSurfaceMaterialInteraction.baseReflectivity, normalDotOutputDirection);
+    const float fresnelLuminance = calcBt709Luminance(fresnel);
     float specularWeight = fresnelLuminance / (fresnelLuminance + albedoLuminance);
     reflectionWeight = specularWeight * roughWeight;
   }
@@ -228,7 +228,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
   {
     float3 worldPos = surface.minimalSurfaceInteraction.position;
     float3 viewVector = -surface.minimalRayInteraction.viewDirection;
-    f16vec3 surfaceNormal = surface.opaqueSurfaceMaterialInteraction.shadingNormal;
+    vec3 surfaceNormal = surface.opaqueSurfaceMaterialInteraction.shadingNormal;
     float3 reflectionVector = reflect(viewVector, surfaceNormal);
 
     // Calculate reflection hit T

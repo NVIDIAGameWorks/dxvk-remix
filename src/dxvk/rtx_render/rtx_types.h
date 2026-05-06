@@ -32,6 +32,7 @@
 #include "../../util/util_spatial_map.h"
 
 #include <inttypes.h>
+#include <memory>
 #include <vector>
 #include <future>
 
@@ -513,7 +514,7 @@ struct DrawCallTransforms {
   bool enableClipPlane = false;
   Vector4 clipPlane{ 0.f };
   TexGenMode texgenMode = TexGenMode::None;
-  const std::vector<Matrix4>* instancesToObject = nullptr;
+  std::shared_ptr<const std::vector<Matrix4>> instancesToObject;
 
   void sanitize() {
     if (objectToWorld[3][3] == 0.f) objectToWorld[3][3] = 1.f;
@@ -768,6 +769,11 @@ struct PooledBlas : public RcObject {
   // Keep a copy of the build info so we can validate BLAS update compatibility
   VkAccelerationStructureBuildGeometryInfoKHR buildInfo = {};
   std::vector<uint32_t> primitiveCounts {};
+
+  // Content hash of the geometry data that was last built into this BLAS.
+  // When the merged BLAS content (geometry addresses + primitive counts) is
+  // unchanged, the GPU build can be skipped entirely.
+  XXH64_hash_t contentHash = kEmptyHash;
 
   explicit PooledBlas();
   ~PooledBlas();

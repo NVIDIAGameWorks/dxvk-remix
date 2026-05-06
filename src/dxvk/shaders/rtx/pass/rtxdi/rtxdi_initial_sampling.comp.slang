@@ -20,18 +20,18 @@
 * DEALINGS IN THE SOFTWARE.
 */
 
-//!variant rtxdi_temporal_reuse.comp
+//!variant rtxdi_initial_sampling.comp
 //!>       RTXDI_NO_PORTALS=0
 
-//!variant rtxdi_temporal_reuse_no_portals.comp
+//!variant rtxdi_initial_sampling_no_portals.comp
 //!>       RTXDI_NO_PORTALS=1
 
 //!end-variants
 
 #define USE_32BIT_RAY_DIRECTION 1
-#define RAB_HAS_PREVIOUS_GBUFFER 1
 #define RAB_HAS_CURRENT_GBUFFER 1
 #define RAB_HAS_RTXDI_RESERVOIRS 1
+#define RTXDI_DEFER_INITIAL_VISIBILITY 1
 
 #include "rtx/pass/common_bindings.slangh"
 #include "rtx/pass/rtxdi/rtxdi_reuse_bindings.slangh"
@@ -63,7 +63,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
   {
     return;
   }
-  
+
   RAB_RandomSamplerState rng = RAB_InitRandomSampler(thread_id, cb.frameIdx, 2);
 
   vec2 screenSpaceMotion = PrimaryScreenSpaceMotionVector[thread_id];
@@ -87,63 +87,27 @@ void main(int2 thread_id : SV_DispatchThreadID)
     }
   }
 
-
-  RTXDI_Reservoir state = RAB_LoadReservoir(thread_id, RTXDI_GetTemporalOutputPage());
+  RTXDI_Reservoir state = RTXDI_EmptyReservoir();
   if (cb.lightCount != 0)
   {
-    RTXDI_SkipRandomLightsRng(rng);
-    RTXDI_SkipSingleLightRng(rng, previousBestLightIndex);
-    RAB_SkipRandoms(rng, 1);
-  }
+    RTXDI_SampleRandomLights(state, rng, surface, previousBestLightIndex, previousBestLightPortalIdx,
+      cb.enableRtxdiInitialVisibility && !RTXDI_DEFER_INITIAL_VISIBILITY);
 
-  const float3 virtualMotionVector = PrimaryVirtualMotionVector[thread_id].xyz;
-  const float3 prevVirtualWorldPosition = surface.virtualWorldPosition + virtualMotionVector;
+    RTXDI_Reservoir bestLightReservoir = RTXDI_SampleSingleLight(rng, surface, previousBestLightIndex, previousBestLightPortalIdx,
+      cb.enableRtxdiInitialVisibility && !RTXDI_DEFER_INITIAL_VISIBILITY);
+    float random = RAB_GetNextRandom(rng);
+    RTXDI_CombineReservoirs(state, bestLightReservoir, random, bestLightReservoir.targetPdf);
 
-  float viewDirectionDotTriangleNormal = abs(dot(surface.minimalRayInteraction.viewDirection, surface.minimalSurfaceInteraction.triangleNormal));
-
-  RTXDI_TemporalResamplingParameters tparams;
-  tparams.prevPixelCenter = prevPixelCenter;
-  tparams.expectedPrevHitDistance = length(prevVirtualWorldPosition - cameraGetPreviousWorldPosition(cb.camera).xyz);
-  tparams.virtualMotionVector = virtualMotionVector;
-  tparams.sourceBufferIndex = RTXDI_GetTemporalInputPage();
-  tparams.maxHistoryLength = cb.enableRtxdiTemporalReuse ? cb.rtxdiMaxHistoryLength : 0;
-  tparams.biasCorrectionMode = cb.enableRtxdiTemporalBiasCorrection ? 
-    cb.enableRtxdiRayTracedBiasCorrection 
-      ? RTXDI_BIAS_CORRECTION_RAY_TRACED
-      : RTXDI_BIAS_CORRECTION_BASIC
-    : RTXDI_BIAS_CORRECTION_OFF;
-  tparams.depthThreshold = 0.01 / max(viewDirectionDotTriangleNormal, 0.01);
-  tparams.normalThreshold = 0.8;
-  tparams.discardEnlargedPixels = cb.enableRtxdiDiscardEnlargedPixels;
-  tparams.discardInvisibleSamples = cb.enableRtxdiDiscardInvisibleSamples;
-  tparams.enablePermutationSampling = cb.enableRtxdiPermutationSampling;
-#if RTXDI_NO_PORTALS
-  tparams.enableCrossPortalReuse = false;
-#else
-  tparams.enableCrossPortalReuse = cb.teleportationPortalIndex != 0;
+#if RTXDI_DEFER_INITIAL_VISIBILITY
+    if (cb.enableRtxdiInitialVisibility)
+    {
+      RTXDI_UpdateSelectedReservoirVisibility(state, surface);
+    }
 #endif
-  tparams.uniformRandomNumber = cb.uniformRandomNumber;
 
-  int2 temporalSamplePixelPos;
-  bool isGBufferSimilar;
-  RTXDI_TemporalResampling(state, thread_id, surface, rng, tparams, temporalSamplePixelPos, isGBufferSimilar);
-
-  float currentReprojectionConfidence = 0;
-  if (isGBufferSimilar)
-  {
-    currentReprojectionConfidence = ReprojectionConfidence[temporalSamplePixelPos];
+    // Note: I have NO IDEA why this works, but it's necessary to get unbiased results with best light sampling.
+    state.M = 1;
   }
-
-  currentReprojectionConfidence = min(currentReprojectionConfidence + 1.f / kReprojectionConfidenceHistoryLength, 1.f);
-  ReprojectionConfidence[thread_id] = currentReprojectionConfidence;
-
-  // Remember which pixel the temporal reservoir belongs to, if it comes from a valid reprojection.
-  // Needed for the gradients pass.
-  if (!isGBufferSimilar)
-  {
-    temporalSamplePixelPos = -1;
-  }
-  TemporalPosition[thread_id] = pack32(u16vec2(temporalSamplePixelPos));
 
   RAB_StoreReservoir(state, thread_id, RTXDI_GetTemporalOutputPage());
 }

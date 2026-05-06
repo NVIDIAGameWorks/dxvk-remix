@@ -138,10 +138,10 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
   const GpuParticle particle = Particles[particleIdx];
   
   // precache some values
-  const float16_t2 size = particle.size(particleSystem, animationDataTex) * float16_t(particleCb.sceneScale);
-  const float16_t4 color = particle.color(particleSystem, animationDataTex);
+  const float2 size = particle.size(particleSystem, animationDataTex) * particleCb.sceneScale;
+  const float4 color = particle.color(particleSystem, animationDataTex);
   
-  if(particle.isDead() || particle.isSleeping() || color.w < particleCb.resolveTransparencyThreshold || max(size.x, size.y) < 0.1h)
+  if(particle.isDead() || particle.isSleeping() || color.w < particleCb.resolveTransparencyThreshold || max(size.x, size.y) < 0.1f)
   {
     clearParticleVertices(threadIdx.x, particleSystem);
     return;
@@ -269,7 +269,7 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
 
   float2 frameUvMin = baseUvMin + float2(frameCol, frameRow) * cellSize;
   
-  const uint colorEnc = float4x16ToUnorm4x8(color.zyxw);
+  const uint colorEnc = float4x32ToUnorm4x8(color.zyxw);
   
   [unroll]
   for (uint i = 0; i < particleSystem.numVerticesPerParticle; i++) 

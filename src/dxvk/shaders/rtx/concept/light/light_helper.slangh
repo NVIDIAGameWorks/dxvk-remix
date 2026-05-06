@@ -31,7 +31,7 @@ static const float lightSamplingEpsilon = 1e-10f;
 struct LightSample
 {
   vec3 position;
-  f16vec3 normal;
+  vec3 normal;
   vec3 radiance;
   // Note: 32 bit floating point used to avoid precision issues with some kinds of sampling on lights.
   float solidAnglePdf;

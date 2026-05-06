@@ -37,12 +37,12 @@ DistantLight distantLightCreate(DecodedPolymorphicLight decodedPolymorphicLight)
   const uint32_t data20 = decodedPolymorphicLight.data2.x;
   const uint32_t data21 = decodedPolymorphicLight.data2.y;
 
-  distantLight.direction = f16vec3(uint16BitsToHalf(data00.x), uint16BitsToHalf(data00.y), uint16BitsToHalf(data01.x));
-  distantLight.orientation = f16vec4(
-    uint16BitsToHalf(data01.y),
-    uint16BitsToHalf(data02.x),
-    uint16BitsToHalf(data02.y),
-    uint16BitsToHalf(data03.x));
+  distantLight.direction = vec3(uint16BitsToF32(data00.x), uint16BitsToF32(data00.y), uint16BitsToF32(data01.x));
+  distantLight.orientation = vec4(
+    uint16BitsToF32(data01.y),
+    uint16BitsToF32(data02.x),
+    uint16BitsToF32(data02.y),
+    uint16BitsToF32(data03.x));
   // Note: data03.y unused
   distantLight.cosHalfAngle = uintBitsToFloat(data20);
   distantLight.sinHalfAngle = uintBitsToFloat(data21);
@@ -70,23 +70,23 @@ float distantLightCalcWeight(DistantLight distantLight, VolumeInteraction viewVo
     return calcBt709Luminance(distantLight.radiance);
 }
 
-LightSample distantLightSampleArea(DistantLight distantLight, f16vec2 sampleCoordinates, vec3 position)
+LightSample distantLightSampleArea(DistantLight distantLight, vec2 sampleCoordinates, vec3 position)
 {
   // Calculate the sample direction from a cone of directions
   // Note: This represents the solid angle to be sampled from of the distant light based on its half angle
 
   float uniformConeSolidAnglePdf;
-  const f16vec3 rawDistantDirectionSample = calcUniformConeDirectionSample(sampleCoordinates, distantLight.cosHalfAngle, uniformConeSolidAnglePdf);
+  const vec3 rawDistantDirectionSample = calcUniformConeDirectionSample(sampleCoordinates, distantLight.cosHalfAngle, uniformConeSolidAnglePdf);
   // Note: No normalization required here as calcUniformConeDirectionSample should produce a normalized direction and a normalized quaternion
   // should preserve the normalization across a transformation. Do note however that if the quaternion is not normalized for some reason this will
   // produce incorrect results (but currently the direction the quaternion is constructed with on the CPU side is ensured to be normalized).
-  const f16vec3 distantDirectionSample = quaternionTransformVector(distantLight.orientation, rawDistantDirectionSample);
+  const vec3 distantDirectionSample = quaternionTransformVector(distantLight.orientation, rawDistantDirectionSample);
 
   // Calculate sample position on the distant light
   // Todo: Since there is no physical distant light to hit (as it is at infinity), this simply uses a large
   // number far enough away from anything in the world, but this could be improved.
 
-  const f16vec3 distantNormalSample = distantLight.direction;
+  const vec3 distantNormalSample = distantLight.direction;
   const vec3 distantPositionSample = position + vec3(-distantDirectionSample) * 100000.0f;
 
   // Create the light sample
@@ -104,7 +104,7 @@ LightSample distantLightSampleArea(DistantLight distantLight, f16vec2 sampleCoor
 }
 
 LightSample distantLightSampleArea(
-  DistantLight distantLight, f16vec2 sampleCoordinates,
+  DistantLight distantLight, vec2 sampleCoordinates,
   MinimalSurfaceInteraction viewSurfaceInteraction)
 {
   return distantLightSampleArea(
@@ -113,7 +113,7 @@ LightSample distantLightSampleArea(
 }
 
 LightSample distantLightSampleArea(
-  DistantLight distantLight, f16vec2 sampleCoordinates,
+  DistantLight distantLight, vec2 sampleCoordinates,
   VolumeInteraction viewVolumeInteraction)
 {
   return distantLightSampleArea(

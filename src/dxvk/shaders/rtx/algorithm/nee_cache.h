@@ -47,8 +47,8 @@ struct NEESample
 {
   vec3 position;
   float pdf;
-  f16vec3 normal;
-  f16vec3 radiance;
+  vec3 normal;
+  vec3 radiance;
   uint triangleID;
 
   NeeCache_PackedSample pack()
@@ -137,7 +137,7 @@ struct NEELightCandidate
     vec2 uv = vec2(encodedOffset >> 24, (encodedOffset >> 16) & 0xff) / 255.0;
     uv = uv * 2.0 - 1.0;
     vec3 offset = signedOctahedralToSphereDirection(uv);
-    float offsetLength = float(uint16BitsToHalf(encodedOffset & 0xffff)) * range;
+    float offsetLength = uint16BitsToF32(encodedOffset & 0xffff) * range;
     return offset * offsetLength;
   }
 
@@ -161,14 +161,14 @@ struct NEELightCandidate
     m_data.x = (m_data.x & 0xffff0000) | lightIdx;
   }
 
-  float16_t getRadiance()
+  float getRadiance()
   {
-    return uint16BitsToHalf(m_data.x >> 16);
+    return uint16BitsToF32(m_data.x >> 16);
   }
 
-  [mutating] void setRadiance(float16_t radiance)
+  [mutating] void setRadiance(float radiance)
   {
-    uint encodedRadiance = float16BitsToUint16(radiance);
+    uint encodedRadiance = float16BitsToUint16(float16_t(radiance));
     m_data.x = (encodedRadiance << 16) | (m_data.x & 0xffff);
   }
 
@@ -239,15 +239,15 @@ struct NEECandidate
     return uint2(getSurfaceID(), getPrimitiveID());
   }
 
-  float16_t getSampleProbability()
+  float getSampleProbability()
   {
     uint8_t thresholdI = (m_data.x >> 24) & 0xff;
     return unorm8ToF16(thresholdI);
   }
 
-  [mutating] void setSampleProbability(float16_t threshold)
+  [mutating] void setSampleProbability(float threshold)
   {
-    uint thresholdI = f16ToUnorm8(threshold);
+    uint thresholdI = f32ToUnorm8(threshold);
     m_data.x = (m_data.x & 0xffffff) | (thresholdI << 24);
   }
 
@@ -390,7 +390,7 @@ struct NEECell
 
   void insertSlotTask(uint task, vec3 radiance, bool isLightTask) {
     float accumulateValue = calcBt709Luminance(radiance);
-    float16_t randomOffset = (reversebits(asuint(accumulateValue)) >> 22) / 1024.0;
+    float randomOffset = (reversebits(asuint(accumulateValue)) >> 22) / 1024.0f;
     uint index = getSlotBinHash(task + cb.frameIdx);
     int taskAddress = getHashTaskAddress(index);
     uint sortValueI = firstbithigh(uint(min(accumulateValue, 50) / 0.001));
@@ -401,8 +401,8 @@ struct NEECell
     // so quantization is necessary to convert floating point values to integers.
     // The max value is required to suppress the impact from fireflies, otherwise a firefly may inject a
     // useless triangle / light to the cache.
-    const float16_t minValue = 0.01;
-    const float16_t maxValue = 1000;
+    const float minValue = 0.01f;
+    const float maxValue = 1000.0f;
     int accumulateValueI = clamp(accumulateValue, 0.0, maxValue) / minValue + randomOffset;
 
     if (accumulateValueI == 0)
@@ -462,17 +462,17 @@ struct NEECell
   }
 #endif
 
-  float calculateLightCandidateWeight(NEELightCandidate candidate, vec3 cellCenter, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness, bool isThinOpaqueSubsurface)
+  float calculateLightCandidateWeight(NEELightCandidate candidate, vec3 cellCenter, vec3 surfacePoint, vec3 viewDirection, vec3 normal, float specularRatio, float roughness, bool isThinOpaqueSubsurface)
   {
     vec3 candidateOffset = candidate.getOffset();
-    f16vec3 inputDirection = normalize(candidateOffset + cellCenter + normal * length(candidateOffset) * 0.01 - surfacePoint);
+    vec3 inputDirection = normalize(candidateOffset + cellCenter + normal * length(candidateOffset) * 0.01f - surfacePoint);
 
     // Use a simplified GGX model to calculate light contribution
-    float16_t ndoti = dot(inputDirection, normal);
-    float16_t diffuseTerm = !isThinOpaqueSubsurface ? (1.0 - specularRatio) / pi : (1.0 - specularRatio) / twoPi;
+    float ndoti = dot(inputDirection, normal);
+    float diffuseTerm = !isThinOpaqueSubsurface ? (1.0f - specularRatio) / pi : (1.0f - specularRatio) / twoPi;
     float specularTerm = 0.0f;
 
-    if (!isThinOpaqueSubsurface || ndoti > 0.0h) {
+    if (!isThinOpaqueSubsurface || ndoti > 0.0f) {
       ndoti = saturate(ndoti);
 
       // The specular term consists of there parts: D, G, F
@@ -480,7 +480,7 @@ struct NEECell
       // For D term, we use GGX normal distribution
       // For G term, we simply assume it to be 1
       // For F term, we assume it's the baseReflectivity, fresnel effect is not considered.
-      f16vec3 halfVector = normalize(inputDirection + viewDirection);
+      vec3 halfVector = normalize(inputDirection + viewDirection);
       float ndotm = saturate(dot(halfVector, normal));
       specularTerm = specularRatio * evalGGXNormalDistributionIsotropic(roughness, ndotm) * cb.neeCacheArgs.specularFactor * 0.25;
     } else // isThinOpaqueSubsurface && ndoti < 0
@@ -492,7 +492,7 @@ struct NEECell
     return radiance * (diffuseTerm + specularTerm) * ndoti;
   }
 
-  void calculateLightCandidateNormalizedWeight(int ithCandidate, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness, bool isThinOpaqueSubsurface, out float pdf)
+  void calculateLightCandidateNormalizedWeight(int ithCandidate, vec3 surfacePoint, vec3 viewDirection, vec3 normal, float specularRatio, float roughness, bool isThinOpaqueSubsurface, out float pdf)
   {
     int count = getLightCandidateCount();
     float totalWeight = 0;
@@ -512,7 +512,7 @@ struct NEECell
     pdf = chosenWeight / totalWeight;
   }
 
-  void sampleLightCandidate(inout RAB_RandomSamplerState rtxdiRNG, vec2 uniformRandomNumber, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness, bool isThinOpaqueSubsurface, inout uint16_t lightIdx, out float invPdf)
+  void sampleLightCandidate(inout RAB_RandomSamplerState rtxdiRNG, vec2 uniformRandomNumber, vec3 surfacePoint, vec3 viewDirection, vec3 normal, float specularRatio, float roughness, bool isThinOpaqueSubsurface, inout uint16_t lightIdx, out float invPdf)
   {
     int lightCount = cb.lightRanges[lightTypeCount-1].offset + cb.lightRanges[lightTypeCount-1].count;
     uint uniformLightIdx = clamp(uniformRandomNumber.y * lightCount, 0, lightCount-1);
@@ -632,7 +632,7 @@ struct NEECell
     return NEECandidate.create(NeeCache.Load2(getCandidateAddress(idx)));
   }
 
-  float16_t searchCandidate(int surfaceID, int primitiveID)
+  float searchCandidate(int surfaceID, int primitiveID)
   {
     uint address = getCandidateAddress(0);
     uint endAddress = address + getCandidateSize() * getCandidateCount();
@@ -646,7 +646,7 @@ struct NEECell
         return candidate.getSampleProbability() / float(range);
       }
     }
-    return float16_t(0.0);
+    return 0.0f;
   }
 
   NEECandidate sampleCandidate(float sampleThreshold, out float pdf)
@@ -687,7 +687,7 @@ struct NEECell
   }
 
   // This is an optimized version of the function "getLightSample()". It uses cached samples instead of generating it on the fly.
-  LightSample getCachedLightSample(float randomNumber, vec3 position, float16_t coneRadius, float16_t coneSpreadAngle, out uint triangleID)
+  LightSample getCachedLightSample(float randomNumber, vec3 position, float coneRadius, float coneSpreadAngle, out uint triangleID)
   {
     LightSample lightSampleTriangle;
     int sampleIdx = randomNumber * NEE_CACHE_SAMPLES;
@@ -700,7 +700,7 @@ struct NEECell
 
   // This function is mainly for debug purposes. The function "getCachedLightSample()" is an optimized version for this function.
   // Samples from "getCachedLightSample()" should converge to the same result as this function.
-  LightSample getLightSample(StructuredBuffer<uint> PrimitiveIDPrefixSumBuffer, vec4 randomNumber, vec3 position, float16_t coneRadius, float16_t coneSpreadAngle, out uint triangleID)
+  LightSample getLightSample(StructuredBuffer<uint> PrimitiveIDPrefixSumBuffer, vec4 randomNumber, vec3 position, float coneRadius, float coneSpreadAngle, out uint triangleID)
   {
     LightSample lightSampleTriangle;
     // Sample cached triangles
@@ -738,7 +738,7 @@ struct NEECache
       const float base,
       const float baseLog,
       const float resolution,
-      const f16vec3 triangleNormal,
+      const vec3 triangleNormal,
       uint jitterRnd,        // 32 bit random number used for jittering
       const float jitterScale)
   {
@@ -769,8 +769,8 @@ struct NEECache
     if (jitterScale != 0 && dot(triangleNormal, triangleNormal) > 0.f)
     {
         // Add a translation in the geometric tangential plane to avoid jumping away from surfaces.
-        f16vec3 b0 = 0;
-        f16vec3 b1 = 0;
+        vec3 b0 = 0;
+        vec3 b1 = 0;
         calcOrthonormalBasis(triangleNormal, b0, b1);
         float continousSize = jitterScale * distance / resolution;
         // We use 8 random bits per dimension which is enough for a cosmetic jittering
@@ -788,13 +788,13 @@ struct NEECache
     return int4(gridPos, lvl - HASH_GRID_MIN_LOG_LEVEL);
   }
 
-  static uint computeDirectionalHash(f16vec3 normal)
+  static uint computeDirectionalHash(vec3 normal)
   {
 #if 1
     return 0;
 #else
-    f16vec3 absNormal = abs(normal);
-    float16_t maxAbsNormal = max(absNormal.x, max(absNormal.y, absNormal.z));
+    vec3 absNormal = abs(normal);
+    float maxAbsNormal = max(absNormal.x, max(absNormal.y, absNormal.z));
     uint result = 0;
     result |= (maxAbsNormal == absNormal.x) ? 1 : 0;
     result |= (maxAbsNormal == absNormal.y) ? 2 : 0;
@@ -807,7 +807,7 @@ struct NEECache
 #endif
   }
 
-  static uint getSpatialHashValue(float3 position, f16vec3 normal, uint jitterRnd)
+  static uint getSpatialHashValue(float3 position, vec3 normal, uint jitterRnd)
   {
     float resolution = cb.neeCacheArgs.resolution;
     float minDistance = cb.neeCacheArgs.minRange;
@@ -853,12 +853,12 @@ struct NEECache
     return hash & (NEE_CACHE_TOTAL_PROBE - 1);
   }
 
-  static uint getAddressJittered(vec3 position, f16vec3 normal, uint jitter)
+  static uint getAddressJittered(vec3 position, vec3 normal, uint jitter)
   {
     return getSpatialHashValue(position, normal, jitter);
   }
 
-  static int pointToOffset(vec3 position, f16vec3 normal, uint jitteredNumber)
+  static int pointToOffset(vec3 position, vec3 normal, uint jitteredNumber)
   {
     return getAddressJittered(position, normal, jitteredNumber);
   }
@@ -886,12 +886,12 @@ struct NEECache
     return idx - s_analyticalLightStartIdx;
   }
 
-  static bool shouldUseHigherBounceNeeCache(bool isSpecularLobe, float16_t isotropicRoughness)
+  static bool shouldUseHigherBounceNeeCache(bool isSpecularLobe, float isotropicRoughness)
   {
     // ReSTIR GI can handle diffuse rays quite well, but not for highly specular surfaces.
     // Skip diffuse and rough specular surfaces to improve performance.
     // The roughness threshold here is based on experiment.
-    const float16_t minRoughness = 0.1;
+    const float minRoughness = 0.1f;
     return cb.neeCacheArgs.enableModeAfterFirstBounce == NeeEnableMode::SpecularOnly ? isSpecularLobe && isotropicRoughness < minRoughness : true;
   }
 }

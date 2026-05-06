@@ -31,15 +31,15 @@
 #pragma warning(disable:30816)
 
 #ifndef USE_32BIT_RAY_DIRECTION
-#define USE_32BIT_RAY_DIRECTION 0
+#define USE_32BIT_RAY_DIRECTION 1
 #endif
 
 struct Ray
 {
   vec3 origin;
   // Note: Cone radius at the origin of the ray, not a hit point
-  float16_t coneRadius;
-  float16_t spreadAngle;
+  float coneRadius;
+  float spreadAngle;
   // Note: Assumed to be normalized in advance
 #if USE_32BIT_RAY_DIRECTION
   vec3 direction;
@@ -67,19 +67,15 @@ struct GBufferMemoryMinimalRay
 
 struct MinimalRay
 {
-  float16_t spreadAngle = 0.h;
+  float spreadAngle = 0.f;
 };
 
 // Note: Minimal version of typical Ray Interaction for transmission across passes.
 struct MinimalRayInteraction
 {
   // Note: Cone radius at the hit point (after spreading over a distance from the view ray)
-  float16_t coneRadius = 0.h;
-  // Note: Do not use direction for anything highly precise (e.g. hit position derivation) as it is only
-  // 16 bit and will lack enough precision to get highly accurate results. Generally acceptable for lighting
-  // however unless significant artifacting is seen, in which case it may be justifiable to bump the precision
-  // up (for primary rays mainly the concern exists).
-  f16vec3 viewDirection = 0.h;
+  float coneRadius = 0.f;
+  vec3 viewDirection = 0.f;
 };
 
 struct RayInteraction : MinimalRayInteraction

@@ -38,8 +38,8 @@ GBufferMemoryMinimalRayInteraction gBufferMemoryMinimalRayInteractionCreate(
 
   // Note: Encode if the view direction needs to be deserialized in the sign bit of the cone radius.
   gBufferMemoryMinimalRayInteraction.encodedConeRadius =
-    (viewDirectionSerializationRequired ? float16_t(-1.0f) : float16_t(1.0f)) *
-    minimalRayInteraction.coneRadius;
+    float16_t((viewDirectionSerializationRequired ? -1.0f : 1.0f) *
+              minimalRayInteraction.coneRadius);
 
   return gBufferMemoryMinimalRayInteraction;
 }

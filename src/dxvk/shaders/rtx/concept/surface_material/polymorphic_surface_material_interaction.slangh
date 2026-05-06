@@ -143,20 +143,20 @@ void polymorphicSurfaceMaterialInteractionCalcSample(
   inout bool insideMedium, inout bool penetrateSurface,
   bool isPrimaryIndirectSample)
 {
-  const f16vec4 tangentToWorldSpaceQuaternion =
+  const vec4 tangentToWorldSpaceQuaternion =
     quaternionCreateOrientation(materialTangentSpaceNormal, polymorphicSurfaceMaterialInteraction.shadingNormal);
 
   const uint8_t polymorphicType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
 
   // Note: Both probability and dither sampling needs to update the random state here. So we remove the branch for
   // probability sampling and always get the next blue noise to update the random state.
-  float16_t lobeRandom = float16_t(getNextSampleBlueNoise(randomState));
+  float lobeRandom = getNextSampleBlueNoise(randomState);
   if (isPrimaryIndirectSample && cb.enableFirstBounceLobeProbabilityDithering && polymorphicType == surfaceMaterialTypeOpaque)
   {
     // Note: NRD team suggested to give lobe a 1/16 random tail, but this will cause some
     // significant artifacts, such as muted some specular highlights. So we currently use
     // bayer dither without random offset here.
-    lobeRandom = float16_t(bayer4x4(randomState.pixelIdx, randomState.temporalIdx));
+    lobeRandom = bayer4x4(randomState.pixelIdx, randomState.temporalIdx);
   }
 
   switch (uint(polymorphicType))
@@ -198,9 +198,9 @@ void polymorphicSurfaceMaterialInteractionCalcPSRSample(
   MinimalRayInteraction minimalRayInteraction,
   inout SurfaceMaterialInteractionPSRSample surfaceMaterialInteractionReflectionPSRSample,
   inout SurfaceMaterialInteractionPSRSample surfaceMaterialInteractionTransmissionPSRSample,
-  inout f16vec3 diffuseLayerWeight,
+  inout vec3 diffuseLayerWeight,
   inout bool reflectionSelectedIntegrationSurface,
-  inout float16_t selectedIntegrationSurfacePdf,
+  inout float selectedIntegrationSurfacePdf,
   inout bool insideMedium, inout bool penetrateSurface)
 {    
   const uint8_t polymorphicType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
@@ -220,7 +220,7 @@ void polymorphicSurfaceMaterialInteractionCalcPSRSample(
     break;
   case uint(surfaceMaterialTypeTranslucent):
     const TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction = translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
-    const float16_t random = getNextSampleBlueNoise(randomState);
+    const float random = getNextSampleBlueNoise(randomState);
 
     translucentSurfaceMaterialInteractionCalcPSRSample(
       translucentSurfaceMaterialInteraction, random, minimalRayInteraction,
@@ -242,7 +242,7 @@ void polymorphicSurfaceMaterialInteractionCalcPSRSample(
   }
 }
 
-f16vec3 polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(
+vec3 polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction)
 {
   return polymorphicSurfaceMaterialInteraction.emissiveRadiance;
@@ -261,5 +261,5 @@ bool polymorphicSurfaceMaterialInteractionHasSubsurface(
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction)
 {
   const uint8_t polymorphicType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
-  return polymorphicType == uint(surfaceMaterialTypeOpaque) && polymorphicSurfaceMaterialInteraction.fdata5 > 0.0h;
+  return polymorphicType == uint(surfaceMaterialTypeOpaque) && polymorphicSurfaceMaterialInteraction.fdata5 > 0.0f;
 }

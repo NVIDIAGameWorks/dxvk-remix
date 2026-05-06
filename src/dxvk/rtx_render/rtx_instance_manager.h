@@ -69,6 +69,12 @@ public:
 
   bool isCreatedThisFrame(uint32_t frameIndex) const { return frameIndex == m_frameCreated; }
 
+  // Syncs surface and material data from a reference instance.
+  // Preserves the persistent instance's identity (id, vector index) and lifecycle state.
+  // Set preserveTransforms when the caller applies an absolute corrected transform afterward.
+  // Leave it false before relative transforms, such as portal teleports.
+  void updateFromReference(const RtInstance& src, bool preserveTransforms = true);
+
   // Bind a BLAS object to this instance
   void setBlas(BlasEntry& blas);
 
@@ -141,6 +147,16 @@ uint32_t getFirstBillboardIndex() const { return m_firstBillboard; }
   bool isViewModelReference() const;
   bool isViewModelVirtual() const;
   bool isSubsurface() const { return m_isSubsurface; }
+  bool isCreatedByRenderer() const { return m_isCreatedByRenderer; }
+
+  // Returns true if this instance has been modified since the last BLAS build
+  // (transform, material, or geometry change).  New instances default to dirty.
+  bool isBlasDirty() const { return m_blasDirty; }
+  void clearBlasDirty() { m_blasDirty = false; }
+  bool isBillboardGeometryDirty() const { return m_billboardGeometryDirty; }
+  void clearBillboardGeometryDirty() { m_billboardGeometryDirty = false; }
+
+  bool isMarkedForGC() const { return m_isMarkedForGC; }
 
   PrimInstanceOwner& getPrimInstanceOwner() { return m_primInstanceOwner; }
   
@@ -154,6 +170,7 @@ private:
     }
     return surface.objectToWorld;
   }
+  void copyInstanceDataFrom(const RtInstance& src);
   void onTransformChanged();
   friend class InstanceManager;
 
@@ -163,7 +180,6 @@ private:
   const uint64_t m_id;
   mutable uint32_t m_instanceVectorId; // Index within instance vector in instance manager
 
-  mutable bool m_isMarkedForGC = false;
   mutable uint32_t m_frameLastUpdated = kInvalidFrameIndex;
   mutable uint32_t m_frameCreated = kInvalidFrameIndex;
 
@@ -175,16 +191,19 @@ private:
   uint32_t m_secondaryOpacityTextureIndex = kSurfaceMaterialInvalidTextureIndex;
   uint32_t m_secondarySamplerIndex = kSurfaceMaterialInvalidTextureIndex;
 
-  // Extra instance meta data needed for Opacity Micromap Manager, generally describes if animated spritesheets are in use
-  // on a given instance (though the applicability to OMMs are only relevant for Opaque and Ray Portal materials currently
-  // where cutout opacity can be animated, translucent materials do not have any relation right now to OMMs).
-  bool m_isAnimated = false;
+  uint32_t m_surfaceIndex;        // Material surface index for reordered surfaces by AccelManager
+  uint32_t m_previousSurfaceIndex;
+
   // Object with Opacity Micromap per-instance data maintained by Opacity Micromap Manager.
   // Stored in instance object to avoid indirection of looking it up for an instance
   OpacityMicromapInstanceData m_opacityMicromapInstanceData;
 
-  uint32_t m_surfaceIndex;        // Material surface index for reordered surfaces by AccelManager
-  uint32_t m_previousSurfaceIndex;
+  // Extra instance meta data needed for Opacity Micromap Manager, generally describes if animated spritesheets are in use
+// on a given instance (though the applicability to OMMs are only relevant for Opaque and Ray Portal materials currently
+// where cutout opacity can be animated, translucent materials do not have any relation right now to OMMs).
+  bool m_isAnimated = false;
+
+  mutable bool m_isMarkedForGC = false;
 
   bool m_isHidden = false;
   bool m_isPlayerModel = false;
@@ -193,6 +212,8 @@ private:
   bool m_isObjectToWorldMirrored = false;
   bool m_isCreatedByRenderer = false;
   bool m_isSubsurface = false;
+  bool m_blasDirty = true;  // Needs reprocessing in mergeInstancesIntoBlas; starts dirty for new instances
+  bool m_billboardGeometryDirty = true;  // Needs initial geometry info generation for billboard-derived layout
   BlasEntry* m_linkedBlas = nullptr;
   XXH64_hash_t m_materialHash = kEmptyHash;
   XXH64_hash_t m_materialDataHash = kEmptyHash;
@@ -267,7 +288,19 @@ public:
 
   // Returns the active number of instances in scene
   const uint32_t getActiveCount() const { return m_instances.size(); }
-  
+
+  // Returns a monotonically increasing token used only for equality checks by
+  // acceleration-structure caches.  It is bumped for changes that affect BLAS
+  // or TLAS membership/build inputs: instance add/remove, transform changes
+  // baked into merged BLASes, material or bucket-key changes, geometry/build
+  // range changes, and external systems invalidating AS bindings.
+  uint64_t getSceneGeneration() const { return m_sceneGeneration; }
+
+  // Notify that acceleration structures must be reconsidered.  Per-frame GPU
+  // surface-data refreshes (previous-frame indices/transforms, surface mapping,
+  // prefix sums) do not need this notification when BLAS/TLAS inputs are stable.
+  void notifySceneChanged() { ++m_sceneGeneration; }
+
   void onFrameEnd();
 
   // Optional notification callbacks that can be implemented to "opt-in" to InstanceManager events
@@ -324,6 +357,7 @@ private:
   uint64_t m_nextInstanceId = 1;
 
   std::vector<RtInstance*> m_instances; 
+  uint64_t m_sceneGeneration = 0;
   std::vector<RtInstance*> m_viewModelCandidates;
   uint32_t m_viewModelCandidatesFrameId = kInvalidFrameIndex;
   std::vector<RtInstance*> m_playerModelInstances;
@@ -337,6 +371,23 @@ private:
   // Controls active portal space for which virtual view model or player model instances have been generated for.
   // Negative values mean there is no portal that's close enough to the camera.
   int m_virtualInstancePortalIndex = 0;    
+
+  // Persistent renderer-created instances that survive across frames.
+  // Maps reference instance → derived instance.  Avoids create/destroy
+  // churn that would needlessly bump m_sceneGeneration every frame.
+  std::unordered_map<RtInstance*, RtInstance*> m_persistentViewModelInstances;
+  std::unordered_map<RtInstance*, RtInstance*> m_persistentVirtualViewModelInstances;
+  std::unordered_map<RtInstance*, RtInstance*> m_persistentPlayerModelClones;
+
+  // Removes persistent entries whose references are no longer active and
+  // marks the associated derived instances for GC.
+  void cleanupPersistentMap(std::unordered_map<RtInstance*, RtInstance*>& map,
+                            const std::unordered_set<RtInstance*>& activeReferences);
+
+  // Removes any persistent map entry (key or value) that references a
+  // dying instance.  Called from garbageCollection() before the instance
+  // is deleted to prevent dangling pointers.
+  void erasePersistentMapEntries(RtInstance* dying);
 
   std::vector<InstanceEventHandler> m_eventHandlers;
 
@@ -372,4 +423,3 @@ private:
 };
 
 }  // namespace dxvk
-

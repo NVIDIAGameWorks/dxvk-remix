@@ -20,16 +20,16 @@
 struct SssTracingResult
 {
   MinimalSurfaceInteraction sssMinimalSurfaceInteraction;
-  f16vec3 normal;
+  vec3 normal;
   vec2 textureCoordinates;
   uint subsurfaceMaterialIndex;
   bool hasHit;
-  float16_t hitDistance;
+  float hitDistance;
 };
 
 struct SssDiffusionProfileResult
 {
-  f16vec3 scatteringWeight;
+  vec3 scatteringWeight;
   bool allSamplesHaveHit;
 };
 
@@ -72,7 +72,7 @@ SssTracingResult traceSssRay(
   // Construct sss tracing result
   SssTracingResult sssTracingResult;
   sssTracingResult.hasHit = rayHitInfo.hasHit;
-  sssTracingResult.hitDistance = sssTracingResult.hasHit ? rayHitInfo.hitDistance : -1.0h;
+  sssTracingResult.hitDistance = sssTracingResult.hasHit ? rayHitInfo.hitDistance : -1.0f;
   sssTracingResult.subsurfaceMaterialIndex = sssTracingResult.hasHit ? sssOpaqueSurfaceMaterial.subsurfaceMaterialIndex : SURFACE_INDEX_INVALID;
   sssTracingResult.sssMinimalSurfaceInteraction.position = surfaceInteraction.position;
   sssTracingResult.sssMinimalSurfaceInteraction.positionError = surfaceInteraction.positionError;
@@ -99,7 +99,7 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
   inout RNG randomState)
 {
 
-  f16vec3 sssScatteringWeight = 0.0f;
+  vec3 sssScatteringWeight = 0.0f;
 
   /// Load Subsurface Material
 
@@ -116,7 +116,7 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
   /// Create interaction
 
   const float rand = getNextSampleBlueNoise(randomState);
-  const f16vec3 diskNormalWorldSpace = (rand <= 0.5f) ? opaqueSurfaceMaterialInteraction.shadingNormal : minimalRayInteraction.viewDirection;
+  const vec3 diskNormalWorldSpace = (rand <= 0.5f) ? opaqueSurfaceMaterialInteraction.shadingNormal : minimalRayInteraction.viewDirection;
 
   RTXCR_SubsurfaceInteraction subsurfaceInteraction =
     RTXCR_CreateSubsurfaceInteraction(minimalSurfaceInteraction.position, diskNormalWorldSpace, minimalSurfaceInteraction.triangleTangent, minimalSurfaceInteraction.triangleBitangent);
@@ -231,9 +231,9 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
 
     /// Evaluate BSSRDF
 
-    const f16vec3 shadingNormal = sssTracingResult.normal;
-    const f16vec3 inputDirection = visibility.rayDirection;
-    const float16_t /* n.l */ normalDotInputDirection = max(dot(inputDirection, shadingNormal), 0.0f);
+    const vec3 shadingNormal = sssTracingResult.normal;
+    const vec3 inputDirection = visibility.rayDirection;
+    const float /* n.l */ normalDotInputDirection = max(dot(inputDirection, shadingNormal), 0.0f);
 
     sssScatteringWeight += RTXCR_EvalBssrdf(subsurfaceSample, float3(sssLightSample.radiance), float(normalDotInputDirection)) * commonLightThroughput;
 

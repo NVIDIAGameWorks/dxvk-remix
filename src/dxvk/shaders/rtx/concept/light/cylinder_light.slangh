@@ -39,7 +39,7 @@ float cylinderLightCalcPositionalWeight(CylinderLight cylinderLight, vec3 positi
   );
 }
 
-bool cylinderLightCalcVisibilityWeight(CylinderLight cylinderLight, f16vec3 triangleNormal, vec3 lightVector, vec3 edgeLightVector)
+bool cylinderLightCalcVisibilityWeight(CylinderLight cylinderLight, vec3 triangleNormal, vec3 lightVector, vec3 edgeLightVector)
 {
   // Cull the cylinders that are completely hidden below the surface.
   const bool frontSideCylinder = dot(lightVector, vec3(triangleNormal)) > float(-cylinderLight.radius) ||
@@ -65,10 +65,10 @@ CylinderLight cylinderLightCreate(DecodedPolymorphicLight decodedPolymorphicLigh
   const u16vec2 data21 = unpack16(decodedPolymorphicLight.data2.y);
 
   cylinderLight.position = vec3(uintBitsToFloat(data00), uintBitsToFloat(data01), uintBitsToFloat(data02));
-  cylinderLight.radius = uint16BitsToHalf(data03.x);
-  cylinderLight.axis = f16vec3(uint16BitsToHalf(data20.x), uint16BitsToHalf(data20.y), uint16BitsToHalf(data21.x));
+  cylinderLight.radius = uint16BitsToF32(data03.x);
+  cylinderLight.axis = vec3(uint16BitsToF32(data20.x), uint16BitsToF32(data20.y), uint16BitsToF32(data21.x));
   // Note: data21.y unused
-  cylinderLight.axisLength = uint16BitsToHalf(data03.y);
+  cylinderLight.axisLength = uint16BitsToF32(data03.y);
   cylinderLight.radiance = decodedPolymorphicLight.radiance;
 
   return cylinderLight;
@@ -111,37 +111,37 @@ float cylinderLightCalcWeight(CylinderLight cylinderLight, VolumeInteraction vie
   return positionalWeight;
 }
 
-LightSample cylinderLightSampleArea(CylinderLight cylinderLight, f16vec2 sampleCoordinates, vec3 position)
+LightSample cylinderLightSampleArea(CylinderLight cylinderLight, vec2 sampleCoordinates, vec3 position)
 {
   // Construct a coordinate frame around the main axis
 
-  f16vec3 normal;
-  f16vec3 bitangent;
+  vec3 normal;
+  vec3 bitangent;
   calcOrthonormalBasis(cylinderLight.axis, normal, bitangent);
 
   // Compute phi and z
 
-  const float16_t phi = float16_t(twoPi) * sampleCoordinates.x;
+  const float phi = float(twoPi) * sampleCoordinates.x;
 
-  const float16_t sinPhi = sin(phi);
-  const float16_t cosPhi = cos(phi);
+  const float sinPhi = sin(phi);
+  const float cosPhi = cos(phi);
 
-  const float16_t z = (sampleCoordinates.y - float16_t(0.5f)) * cylinderLight.axisLength;
+  const float z = (sampleCoordinates.y - float(0.5f)) * cylinderLight.axisLength;
 
   // Calculate sample position and normal on the cylinder
 
   // Note: Normalize used to ensure the resulting vector is normalized, even though in theory it should be.
-  const f16vec3 cylinderNormalSample = normalize(sinPhi * bitangent + cosPhi * normal);
+  const vec3 cylinderNormalSample = normalize(sinPhi * bitangent + cosPhi * normal);
   const vec3 cylinderPositionSample =
     cylinderLight.position + vec3(z * cylinderLight.axis + cylinderLight.radius * cylinderNormalSample);
   // Note: Reprojection for position to minimize error here skipped for performance
 
   // Calculate pdf
 
-  const float16_t areaPdf = float16_t(1.0f / cylinderLightCalcSurfaceArea(cylinderLight));
+  const float areaPdf = float(1.0f / cylinderLightCalcSurfaceArea(cylinderLight));
   const vec3 sampleVector = cylinderPositionSample - position;
   const float sampleDistance = length(sampleVector);
-  const float16_t sampleCosTheta = dot(f16vec3(normalize(sampleVector)), -cylinderNormalSample);
+  const float sampleCosTheta = dot(vec3(normalize(sampleVector)), -cylinderNormalSample);
   const float solidAnglePdf = areaPdftoSolidAnglePdf(areaPdf, sampleDistance, abs(sampleCosTheta));
 
   // Create the light sample
@@ -151,7 +151,7 @@ LightSample cylinderLightSampleArea(CylinderLight cylinderLight, f16vec2 sampleC
   lightSample.position = cylinderPositionSample;
   lightSample.normal = cylinderNormalSample;
 
-  if (sampleCosTheta <= float16_t(0.0f))
+  if (sampleCosTheta <= float(0.0f))
   {
       lightSample.radiance = vec3(0.0f, 0.0f, 0.0f);
       lightSample.solidAnglePdf = 0.0f;
@@ -166,7 +166,7 @@ LightSample cylinderLightSampleArea(CylinderLight cylinderLight, f16vec2 sampleC
 }
 
 LightSample cylinderLightSampleArea(
-  CylinderLight cylinderLight, f16vec2 sampleCoordinates,
+  CylinderLight cylinderLight, vec2 sampleCoordinates,
   MinimalSurfaceInteraction viewSurfaceInteraction)
 {
   return cylinderLightSampleArea(
@@ -175,7 +175,7 @@ LightSample cylinderLightSampleArea(
 }
 
 LightSample cylinderLightSampleArea(
-  CylinderLight cylinderLight, f16vec2 sampleCoordinates,
+  CylinderLight cylinderLight, vec2 sampleCoordinates,
   VolumeInteraction viewVolumeInteraction)
 {
   return cylinderLightSampleArea(

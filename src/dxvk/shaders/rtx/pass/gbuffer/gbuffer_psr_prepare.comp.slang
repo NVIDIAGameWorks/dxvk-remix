@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -20,58 +20,28 @@
 * DEALINGS IN THE SOFTWARE.
 */
 
-//!variant gbuffer_miss.rmiss
-
-
-// NRC
-
-//!variant gbuffer_nrc_miss.rmiss
-//!>       ENABLE_NRC=1
-
-
-// WBOIT
-
-//!variant gbuffer_miss_wboit.rmiss
-//!>       UNORDERED_RESOLVE_WBOIT
-
-// NRC
-
-//!variant gbuffer_nrc_miss_wboit.rmiss
-//!>       ENABLE_NRC=1
-//!>       UNORDERED_RESOLVE_WBOIT
-
-//!end-variants
-
 #define RAY_TRACING_PRIMARY_RAY
-#define RAY_PIPELINE
-// Note: Opacity lighting approximation used in the GBuffer pass due to it being most visually
-// prominent on particles in primary rays and important in PSR.
 #define RESOLVE_OPACITY_LIGHTING_APPROXIMATION 1
-
-// Note: No RESOLVER_USE_VOLUMETRIC_ATTENUATION here - we will calculate attenuation for the primary vertex
-//       during composition.  This is so we can factor in heterogenous attenuation via the global volumetrics system.
+#define OPAQUE_MATERIAL_USE_THIN_FILM 1
+#define OPAQUE_MATERIAL_USE_POM 1
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/common_bindings.slangh"
 #include "rtx/pass/gbuffer/gbuffer_binding_indices.h"
 #include "rtx/pass/gbuffer/gbuffer_bindings.slangh"
-// Note: Needed for declaration of g-buffer ray payload structure
 #include "rtx/algorithm/geometry_resolver_state.slangh"
-// Note: Needed for empty extra args structure.
-#include "rtx/algorithm/resolve.h"
 
+#include "rtx/concept/camera/camera.slangh"
 #include "rtx/algorithm/geometry_resolver.slangh"
 
-[shader("miss")]
-void main(inout GeometryResolverState rayPayload : SV_RayPayload)
+[shader("compute")]
+[numthreads(16, 8, 1)]
+void main(uint2 ipos : SV_DispatchThreadID)
 {
-  // Construct a Ray Hit Info for the miss
+  if (any(ipos >= cb.camera.resolution))
+  {
+    return;
+  }
 
-  RAY_HIT_INFO_CREATE_TRACE_RAY_MISS(rayHitInfo);
-
-  // Invoke the Geometry Resolver Vertex function and handle the payload
-
-  EmptyExtraArgs extraArgs;
-
-  geometryResolverVertex(extraArgs, rayHitInfo, rayPayload);
+  geometryPSRPreparePass(ipos);
 }

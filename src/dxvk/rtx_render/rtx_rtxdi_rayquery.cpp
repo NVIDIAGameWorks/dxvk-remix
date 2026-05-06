@@ -38,8 +38,14 @@
 #include "rtx_neural_radiance_cache.h"
 #include "rtx_ray_reconstruction.h"
 
-#include <rtx_shaders/rtxdi_temporal_reuse.h>
+#include <rtx_shaders/rtxdi_initial_sampling.h>
+#include <rtx_shaders/rtxdi_initial_sampling_no_portals.h>
 #include <rtx_shaders/rtxdi_spatial_reuse.h>
+#include <rtx_shaders/rtxdi_spatial_reuse_no_bsdf_detail.h>
+#include <rtx_shaders/rtxdi_spatial_reuse_no_portals.h>
+#include <rtx_shaders/rtxdi_spatial_reuse_no_portals_no_bsdf_detail.h>
+#include <rtx_shaders/rtxdi_temporal_reuse.h>
+#include <rtx_shaders/rtxdi_temporal_reuse_no_portals.h>
 #include <rtx_shaders/rtxdi_compute_gradients.h>
 #include <rtx_shaders/rtxdi_filter_gradients.h>
 #include <rtx_shaders/rtxdi_compute_confidence.h>
@@ -49,6 +55,52 @@ namespace dxvk {
 
   // Defined within an unnamed namespace to ensure unique definition across binary
   namespace {
+    bool useRtxdiPortalShaderVariants() {
+      // Portal enablement is controlled by configuration, so this avoids switching RTXDI shader
+      // variants when portals are merely absent from the current frame.
+      return !RtxOptions::rayPortalModelTextureHashes().empty();
+    }
+
+    class RTXDIInitialSamplingShader : public ManagedShader {
+      SHADER_SOURCE(RTXDIInitialSamplingShader, VK_SHADER_STAGE_COMPUTE_BIT, rtxdi_initial_sampling)
+
+      BINDLESS_ENABLED()
+
+      BEGIN_PARAMETER()
+        COMMON_RAYTRACING_BINDINGS
+
+        // Inputs
+        TEXTURE2D(RTXDI_REUSE_BINDING_WORLD_SHADING_NORMAL_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_PERCEPTUAL_ROUGHNESS_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_HIT_DISTANCE_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_ALBEDO_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_BASE_REFLECTIVITY_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_WORLD_POSITION_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_PREV_WORLD_POSITION_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_VIEW_DIRECTION_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_CONE_RADIUS_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_WS_MVEC_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_SS_MVEC_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_POSITION_ERROR_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_SUBSURFACE_DATA_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_SHARED_FLAGS_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_BEST_LIGHTS_INPUT)
+
+        // Inputs / Outputs
+        RW_STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_RTXDI_RESERVOIR_INPUT_OUTPUT)
+        RW_TEXTURE2D(RTXDI_REUSE_BINDING_LAST_GBUFFER_INPUT_OUTPUT)
+
+        // Outputs
+        RW_TEXTURE2D(RTXDI_REUSE_BINDING_REPROJECTION_CONFIDENCE_OUTPUT)
+        RW_TEXTURE2D(RTXDI_REUSE_BINDING_BSDF_FACTOR_OUTPUT)
+        RW_TEXTURE2D(RTXDI_REUSE_BINDING_TEMPORAL_POSITION_OUTPUT)
+      END_PARAMETER()
+    };
+
+    PREWARM_SHADER_PIPELINE(RTXDIInitialSamplingShader);
+
     class RTXDITemporalReuseShader : public ManagedShader {
       SHADER_SOURCE(RTXDITemporalReuseShader, VK_SHADER_STAGE_COMPUTE_BIT, rtxdi_temporal_reuse)
 
@@ -167,6 +219,65 @@ namespace dxvk {
     };
 
     PREWARM_SHADER_PIPELINE(RTXDIComputeConfidenceShader);
+
+    Rc<DxvkShader> getRtxdiInitialSamplingShader(bool usePortalShaderVariants) {
+      if (usePortalShaderVariants) {
+        return RTXDIInitialSamplingShader::getShader();
+      }
+
+      return GET_SHADER_VARIANT(VK_SHADER_STAGE_COMPUTE_BIT, RTXDIInitialSamplingShader, rtxdi_initial_sampling_no_portals);
+    }
+
+    Rc<DxvkShader> getRtxdiTemporalReuseShader(bool usePortalShaderVariants) {
+      if (usePortalShaderVariants) {
+        return RTXDITemporalReuseShader::getShader();
+      }
+
+      return GET_SHADER_VARIANT(VK_SHADER_STAGE_COMPUTE_BIT, RTXDITemporalReuseShader, rtxdi_temporal_reuse_no_portals);
+    }
+
+    bool useRtxdiSpatialBsdfDetailShaderVariant(const Resources::RaytracingOutput& rtOutput) {
+      return rtOutput.m_raytraceArgs.enableEnhanceBSDFDetail &&
+             rtOutput.m_raytraceArgs.enhanceBSDFDirectLightPower > 0.f;
+    }
+
+    Rc<DxvkShader> getRtxdiSpatialReuseShader(bool usePortalShaderVariants, bool useBsdfDetailShaderVariant) {
+      if (usePortalShaderVariants) {
+        return useBsdfDetailShaderVariant
+          ? RTXDISpatialReuseShader::getShader()
+          : GET_SHADER_VARIANT(VK_SHADER_STAGE_COMPUTE_BIT, RTXDISpatialReuseShader, rtxdi_spatial_reuse_no_bsdf_detail);
+      }
+
+      return useBsdfDetailShaderVariant
+        ? GET_SHADER_VARIANT(VK_SHADER_STAGE_COMPUTE_BIT, RTXDISpatialReuseShader, rtxdi_spatial_reuse_no_portals)
+        : GET_SHADER_VARIANT(VK_SHADER_STAGE_COMPUTE_BIT, RTXDISpatialReuseShader, rtxdi_spatial_reuse_no_portals_no_bsdf_detail);
+    }
+
+    struct RTXDIReuseShaderVariantPrewarmer {
+      RTXDIReuseShaderVariantPrewarmer() {
+        AutoShaderPipelinePrewarmer::registerComputeShaderForPrewarm([] {
+          return getRtxdiInitialSamplingShader(false);
+        });
+
+        AutoShaderPipelinePrewarmer::registerComputeShaderForPrewarm([] {
+          return getRtxdiTemporalReuseShader(false);
+        });
+
+        AutoShaderPipelinePrewarmer::registerComputeShaderForPrewarm([] {
+          return getRtxdiSpatialReuseShader(false, true);
+        });
+
+        AutoShaderPipelinePrewarmer::registerComputeShaderForPrewarm([] {
+          return getRtxdiSpatialReuseShader(true, false);
+        });
+
+        AutoShaderPipelinePrewarmer::registerComputeShaderForPrewarm([] {
+          return getRtxdiSpatialReuseShader(false, false);
+        });
+      }
+    };
+
+    RTXDIReuseShaderVariantPrewarmer s_rtxdiReuseShaderVariantPrewarmer;
   }
 
   DxvkRtxdiRayQuery::DxvkRtxdiRayQuery(DxvkDevice* device) {
@@ -217,7 +328,7 @@ namespace dxvk {
   void DxvkRtxdiRayQuery::setRaytraceArgs(Resources::RaytracingOutput& rtOutput) const {
     // ToDo should pass the rayTrace args directly like in the other cases...
     // ToDo add a struct for RTXDI within raytraceArgs and retain same names for options & refs in code. These diffs make it much more hard to look for ref in code...
-    rtOutput.m_raytraceArgs.enableRtxdiCrossPortalLight = enableCrossPortalLight();
+    rtOutput.m_raytraceArgs.enableRtxdiCrossPortalLight = enableCrossPortalLight() && useRtxdiPortalShaderVariants();
     rtOutput.m_raytraceArgs.enableRtxdiInitialVisibility = enableInitialVisibility();
     rtOutput.m_raytraceArgs.enableRtxdiPermutationSampling = permutationSamplingNthFrame() > 0 && (rtOutput.m_raytraceArgs.frameIdx % permutationSamplingNthFrame()) == 0;
     rtOutput.m_raytraceArgs.enableRtxdiRayTracedBiasCorrection = enableRayTracedBiasCorrection();
@@ -266,11 +377,11 @@ namespace dxvk {
 
     const auto& numRaysExtent = rtOutput.m_compositeOutputExtent;
     VkExtent3D workgroups = util::computeBlockCount(numRaysExtent, VkExtent3D{ 16, 8, 1 });
+    const bool usePortalShaderVariants = useRtxdiPortalShaderVariants();
 
     ctx->bindCommonRayTracingResources(rtOutput);
     
     {
-      ScopedGpuProfileZone(ctx, "RTXDI Initial & Temporal Reuse");
       ctx->setFramePassStage(RtxFramePassStage::RTXDI_InitialTemporalReuse);
 
       // Inputs
@@ -306,8 +417,17 @@ namespace dxvk {
       ctx->bindResourceView(RTXDI_REUSE_BINDING_BSDF_FACTOR_OUTPUT, rtOutput.m_bsdfFactor.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_TEMPORAL_POSITION_OUTPUT, rtOutput.m_primaryRtxdiTemporalPosition.view(Resources::AccessType::Write), nullptr);
 
-      ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, RTXDITemporalReuseShader::getShader());
-      ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+      {
+        ScopedGpuProfileZone(ctx, "RTXDI Initial Sampling");
+        ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getRtxdiInitialSamplingShader(usePortalShaderVariants));
+        ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+      }
+
+      {
+        ScopedGpuProfileZone(ctx, "RTXDI Temporal Reuse");
+        ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getRtxdiTemporalReuseShader(usePortalShaderVariants));
+        ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+      }
     }
 
     {
@@ -346,7 +466,9 @@ namespace dxvk {
       ctx->bindResourceView(RTXDI_REUSE_BINDING_TEMPORAL_POSITION_OUTPUT, rtOutput.m_primaryRtxdiTemporalPosition.view(Resources::AccessType::Write), nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_BEST_LIGHTS_INPUT, rtOutput.m_rtxdiBestLights.view(Resources::AccessType::Read, rtOutput.m_raytraceArgs.enableRtxdiBestLightSampling), nullptr);
 
-      ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, RTXDISpatialReuseShader::getShader());
+      ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getRtxdiSpatialReuseShader(
+        usePortalShaderVariants,
+        useRtxdiSpatialBsdfDetailShaderVariant(rtOutput)));
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
     }
   }

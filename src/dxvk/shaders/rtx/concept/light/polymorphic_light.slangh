@@ -82,7 +82,7 @@ DecodedPolymorphicLight decodePolymorphicLight(MemoryPolymorphicLight memoryPoly
 }
 
 LightSample decodedPolymorphicLightSampleArea(
-  DecodedPolymorphicLight decodedPolymorphicLight, f16vec2 sampleCoordinates,
+  DecodedPolymorphicLight decodedPolymorphicLight, vec2 sampleCoordinates,
   MinimalSurfaceInteraction viewSurfaceInteraction)
 {
   switch (uint(decodedPolymorphicLight.polymorphicType))
@@ -128,7 +128,7 @@ LightSample decodedPolymorphicLightSampleArea(
 }
 
 LightSample memoryPolymorphicLightSampleArea(
-  MemoryPolymorphicLight memoryPolymorphicLight, f16vec2 sampleCoordinates,
+  MemoryPolymorphicLight memoryPolymorphicLight, vec2 sampleCoordinates,
   MinimalSurfaceInteraction viewSurfaceInteraction)
 {
   const DecodedPolymorphicLight decodedPolymorphicLight = decodePolymorphicLight(memoryPolymorphicLight);
@@ -137,7 +137,7 @@ LightSample memoryPolymorphicLightSampleArea(
 }
 
 LightSample decodedPolymorphicLightSampleArea(
-  DecodedPolymorphicLight decodedPolymorphicLight, f16vec2 sampleCoordinates,
+  DecodedPolymorphicLight decodedPolymorphicLight, vec2 sampleCoordinates,
   VolumeInteraction volumeInteraction)
 {
   switch (uint(decodedPolymorphicLight.polymorphicType))
@@ -183,7 +183,7 @@ LightSample decodedPolymorphicLightSampleArea(
 }
 
 LightSample memoryPolymorphicLightSampleArea(
-  MemoryPolymorphicLight memoryPolymorphicLight, f16vec2 sampleCoordinates,
+  MemoryPolymorphicLight memoryPolymorphicLight, vec2 sampleCoordinates,
   VolumeInteraction volumeInteraction)
 {
   const DecodedPolymorphicLight decodedPolymorphicLight = decodePolymorphicLight(memoryPolymorphicLight);

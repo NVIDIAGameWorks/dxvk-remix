@@ -29,11 +29,11 @@ struct LightShaping
 {
   bool enabled;
 
-  f16vec3 primaryAxis;
+  vec3 primaryAxis;
   // Using OneMinus to get the improved float precision near 0.  With this, the smallest angle we support is around 0.25 degrees.
-  float16_t oneMinusCosConeAngle;
-  float16_t coneSoftness;
-  float16_t focusExponent;
+  float oneMinusCosConeAngle;
+  float coneSoftness;
+  float focusExponent;
 };
 
 struct MemoryPolymorphicLight
@@ -64,7 +64,7 @@ struct DecodedPolymorphicLight
 struct SphereLight
 {
   vec3 position;
-  float16_t radius; // Note: Assumed to be >0 always to avoid point light case
+  float radius; // Note: Assumed to be >0 always to avoid point light case
   vec3 radiance;
   LightShaping shaping;
 };
@@ -72,12 +72,12 @@ struct SphereLight
 struct RectLight
 {
   vec3 position;
-  f16vec2 dimensions; // Note: Assumed to be >0 always to avoid point light case
-  f16vec3 xAxis;
-  f16vec3 yAxis;
+  vec2 dimensions; // Note: Assumed to be >0 always to avoid point light case
+  vec3 xAxis;
+  vec3 yAxis;
   // Note: Precomputed normal stored for less runtime computation, remove if packing ever should be more intense
   // (and derive from cross product of axes).
-  f16vec3 normal;
+  vec3 normal;
   vec3 radiance;
   LightShaping shaping;
 };
@@ -85,12 +85,12 @@ struct RectLight
 struct DiskLight
 {
   vec3 position;
-  f16vec2 halfDimensions; // Note: Assumed to be >0 always to avoid point light case
-  f16vec3 xAxis;
-  f16vec3 yAxis;
+  vec2 halfDimensions; // Note: Assumed to be >0 always to avoid point light case
+  vec3 xAxis;
+  vec3 yAxis;
   // Note: Precomputed normal stored for less runtime computation, remove if packing ever should be more intense
   // (and derive from cross product of axes).
-  f16vec3 normal;
+  vec3 normal;
   vec3 radiance;
   LightShaping shaping;
 };
@@ -98,19 +98,19 @@ struct DiskLight
 struct CylinderLight
 {
   vec3 position;
-  float16_t radius; // Note: Assumed to be >0 always to avoid line light case
-  f16vec3 axis;
-  float16_t axisLength; // Note: Assumed to be >0 always to avoid ring light case
+  float radius; // Note: Assumed to be >0 always to avoid line light case
+  vec3 axis;
+  float axisLength; // Note: Assumed to be >0 always to avoid ring light case
   vec3 radiance;
   // Note: No shaping as it has little reasonable meaning for a Cylinder light (Omniverse has it though, but it doesn't work)
 };
 
 struct DistantLight
 {
-  f16vec3 direction;
+  vec3 direction;
   // Note: Precomputed orientation stored for less runtime computation, remove if packing ever should be more intense
   // (and derive from direction, or perhaps derive direction from the quaternion itself).
-  f16vec4 orientation;
+  vec4 orientation;
   // Note: Both cos/sin are stored instead of a single angle as Distant lights are not paticularly heavy
   // on their memory budget and can afford this for free essentially. Additionally these are stored as
   // 32 bit floats to avoid precision issues when cosine is near 1 (as a 16 bit float is not precise enough to store
@@ -128,7 +128,7 @@ struct LightInteraction
   // interaction for example does not as it would be redundant. This is because the hit position on low poly
   // light geometry may not be on the actual surface of the light and needs to be corrected.
   vec3 position;
-  f16vec3 normal;
+  vec3 normal;
   vec3 radiance;
   // Note: 32 bit floating point used to avoid precision issues with some kinds of sampling on lights.
   float solidAnglePdf;

@@ -26,10 +26,10 @@ DecalMaterialInteraction decalMaterialInteractionUnpack(MemoryDecalMaterialInter
   DecalMaterialInteraction decalMaterialInteraction;
 
   decalMaterialInteraction.shadingNormal = signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(memory.packed.x));
-  decalMaterialInteraction.albedo = unorm3x8ToFloat3x16(memory.packed.y);
-  decalMaterialInteraction.roughness = perceptualRoughnessToRoughness(unorm8ToF16(memory.packed.y >> 24));
-  decalMaterialInteraction.baseReflectivity = unorm3x8ToFloat3x16(memory.packed.z);
-  decalMaterialInteraction.anisotropy = unorm8ToF16(memory.packed.z >> 24);
+  decalMaterialInteraction.albedo = unorm3x8ToFloat3x32(memory.packed.y);
+  decalMaterialInteraction.roughness = perceptualRoughnessToRoughness(unorm8ToF32(memory.packed.y >> 24));
+  decalMaterialInteraction.baseReflectivity = unorm3x8ToFloat3x32(memory.packed.z);
+  decalMaterialInteraction.anisotropy = unorm8ToF32(memory.packed.z >> 24);
   decalMaterialInteraction.opacity = decalMaterialInteractionExtractOpacity(memory.packed); // uses packed.w
   // packed.w[31:16] unused
   decalMaterialInteraction.emissiveRadiance = memory.emissiveRadiance;
@@ -37,8 +37,8 @@ DecalMaterialInteraction decalMaterialInteractionUnpack(MemoryDecalMaterialInter
   return decalMaterialInteraction;
 }
 
-float16_t decalMaterialInteractionExtractOpacity(uint4 packed) {
-  return uint16BitsToHalf(packed.w);
+float decalMaterialInteractionExtractOpacity(uint4 packed) {
+  return unorm16ToF32(uint16_t(packed.w));
 }
 
 MemoryDecalMaterialInteraction decalMaterialInteractionPack(DecalMaterialInteraction decalMaterialInteraction)
@@ -46,12 +46,12 @@ MemoryDecalMaterialInteraction decalMaterialInteractionPack(DecalMaterialInterac
   MemoryDecalMaterialInteraction memory;
 
   memory.packed.x = float2x32ToSnorm2x16(sphereDirectionToSignedOctahedral(decalMaterialInteraction.shadingNormal));
-  memory.packed.y = float3x16ToUnorm3x8(decalMaterialInteraction.albedo)
-           | (uint(f16ToUnorm8(roughnessToPerceptualRoughness(decalMaterialInteraction.roughness))) << 24);
-  memory.packed.z = float3x16ToUnorm3x8(decalMaterialInteraction.baseReflectivity)
-           | (uint(f16ToUnorm8(decalMaterialInteraction.anisotropy)) << 24);
-  memory.packed.w = float16BitsToUint16(decalMaterialInteraction.opacity);
-  memory.emissiveRadiance = decalMaterialInteraction.emissiveRadiance;
+  memory.packed.y = float3x32ToUnorm3x8(decalMaterialInteraction.albedo)
+           | (uint(f32ToUnorm8(roughnessToPerceptualRoughness(decalMaterialInteraction.roughness))) << 24);
+  memory.packed.z = float3x32ToUnorm3x8(decalMaterialInteraction.baseReflectivity)
+           | (uint(f32ToUnorm8(decalMaterialInteraction.anisotropy)) << 24);
+  memory.packed.w = f32ToUnorm16(decalMaterialInteraction.opacity);
+  memory.emissiveRadiance = f16vec3(decalMaterialInteraction.emissiveRadiance);
 
   return memory;
 }
@@ -123,7 +123,7 @@ void decalMaterialInteractionBlend(
   opaqueSurfaceMaterialInteraction.isotropicRoughness = mix(opaqueSurfaceMaterialInteraction.isotropicRoughness,
     decalMaterialInteraction.roughness, decalMaterialInteraction.opacity);
 
-  f16vec2 decalAnisotropicRoughness = isotropicRoughnessToAnisotropicRoughness(decalMaterialInteraction.roughness, decalMaterialInteraction.anisotropy);
+  vec2 decalAnisotropicRoughness = isotropicRoughnessToAnisotropicRoughness(decalMaterialInteraction.roughness, decalMaterialInteraction.anisotropy);
 
   opaqueSurfaceMaterialInteraction.anisotropicRoughness = mix(opaqueSurfaceMaterialInteraction.anisotropicRoughness,
     decalAnisotropicRoughness, decalMaterialInteraction.opacity);
@@ -155,4 +155,6 @@ void decalMaterialInteractionBlend(
   // Note: Alpha compositing equation for alpha applied to diffuse opacity.
   translucentSurfaceMaterialInteraction.diffuseOpacity =
     decalMaterialInteraction.opacity + translucentSurfaceMaterialInteraction.diffuseOpacity * (1.0 - decalMaterialInteraction.opacity);
+
+  translucentSurfaceMaterialInteraction.flags |= TRANSLUCENT_SURFACE_MATERIAL_FLAG_USE_DIFFUSE_LAYER;
 }

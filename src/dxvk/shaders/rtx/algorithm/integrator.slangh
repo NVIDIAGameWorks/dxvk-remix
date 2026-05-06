@@ -40,8 +40,8 @@
 
 struct IndirectSampleData
 {
-  float16_t firstSampledLobePdf;    
-  float16_t firstSampledSolidAnglePdf;
+  float firstSampledLobePdf;
+  float firstSampledSolidAnglePdf;
   bool firstSampledLobeIsSpecular;
   bool insideMedium; 
 
@@ -56,7 +56,7 @@ struct IndirectSampleData
 
   uint pack()
   {
-    uint encodedData = packFloat2x16(abs(f16vec2(firstSampledLobePdf, firstSampledSolidAnglePdf)));
+    uint encodedData = packFloat2x16(abs(vec2(firstSampledLobePdf, firstSampledSolidAnglePdf)));
     
     // Note: Encode flags into the sign bits of each float. This must be done manually because -0 may not be properly
     // stored if the value is 0 as -0 and +0 tend to be treated the same. Assumes the pdfs are always 0 or greater
@@ -83,11 +83,11 @@ struct IndirectSampleData
 
   bool isValidSample()
   {
-    return firstSampledSolidAnglePdf > 0.h;
+    return firstSampledSolidAnglePdf > 0.0f;
   }
 }
 
-float calculateSpreadAngleFromSolidAnglePdf(float16_t incomingSpreadAngle, float16_t solidAnglePdf)
+float calculateSpreadAngleFromSolidAnglePdf(float incomingSpreadAngle, float solidAnglePdf)
 {
   // Note: If the spread angle is exactly 1.0, this is almost certainly the result of sampling a dirac on something such as perfectly
   // smooth opaque or translucent objects as we use a PDF of 1 in these cases (so that division by the PDF works out properly), and in
@@ -115,7 +115,7 @@ float calculateSpreadAngleFromSolidAnglePdf(float16_t incomingSpreadAngle, float
   //
   // The 'indirectRaySpreadAngleFactor' is a tweakable parameter compensating for the fact that we take multiple samples
   // in the cone. Normally it should be in the [0..1] range. Set it to 0 to disable the spread angle widening.
-  float16_t newSpreadAngle = 2.0 * asin(sqrt(saturate(1.0 / (4.0 * pi * solidAnglePdf)))) * cb.indirectRaySpreadAngleFactor;
+  float newSpreadAngle = 2.0f * asin(sqrt(saturate(1.0f / (4.0f * pi * solidAnglePdf)))) * cb.indirectRaySpreadAngleFactor;
   
   return max(incomingSpreadAngle, newSpreadAngle);
 }
@@ -124,7 +124,7 @@ Ray sampleDirection(
   inout RNG randomState, inout bool insideMedium, inout vec3 throughput,
   Ray ray, MinimalRayInteraction minimalRayInteraction, MinimalSurfaceInteraction minimalSurfaceInteraction,
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
-  out uint8_t sampledLobe, out float16_t sampledLobePdf, out float16_t solidAnglePdf,
+  out uint8_t sampledLobe, out float sampledLobePdf, out float solidAnglePdf,
   bool isPrimaryIndirectSample)
 {
   // Sample from the material
@@ -171,7 +171,7 @@ Ray sampleDirection(
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   out uint8_t sampledLobe, bool isPrimaryIndirectSample)
 {
-  float16_t dummySampledLobePdf, dummySolidAnglePdf;
+  float dummySampledLobePdf, dummySolidAnglePdf;
 
   return sampleDirection(
     randomState, insideMedium, throughput,
@@ -279,7 +279,7 @@ void evaluateUnshadowedLight(
   LightSample lightSample,
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
   MinimalRayInteraction minimalRayInteraction,
-  f16vec3 inputDirection,
+  vec3 inputDirection,
   out vec3 diffuseLight,
   out vec3 specularLight)
 {
@@ -302,8 +302,8 @@ float calculateRussianRouletteContinueProbability(
   bool isOpaqueMaterial,
   bool isSpecularLobe,
   vec3 continuationThroughput,
-  float16_t isotropicRoughness,
-  float16_t hitDistance)
+  float isotropicRoughness,
+  float hitDistance)
 {
   if (pathState.russianRouletteMode == RussianRouletteMode::ThroughputBased)
   {

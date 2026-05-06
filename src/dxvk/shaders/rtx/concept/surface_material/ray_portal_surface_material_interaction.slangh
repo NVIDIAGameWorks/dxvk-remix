@@ -34,8 +34,8 @@ bool rayPortalSurfaceMaterialInteractionSpriteSheetReadHelper(
   uint8_t spriteSheetRows,
   uint8_t spriteSheetCols,
   uint8_t spriteSheetFPS,
-  float16_t rotationSpeed,
-  inout f16vec4 textureSample)
+  float rotationSpeed,
+  inout vec4 textureSample)
 {
   // Return if no texture is available
   if (textureIndex == BINDING_INDEX_INVALID)
@@ -70,19 +70,19 @@ bool rayPortalSurfaceMaterialInteractionSpriteSheetReadHelper(
   // get prev frame sample
   vec2 uvBias = vec2(frame % spriteSheetCols, frame / spriteSheetCols) * uvSize;
   surfaceInteraction.textureCoordinates = uvBias + originalCoord * uvSize;
-  const f16vec4 prevSample = textureRead(textureIndex, samplerIndex, surfaceInteraction);
+  const vec4 prevSample = textureRead(textureIndex, samplerIndex, surfaceInteraction);
 
   // get next frame sample
   frame = (frame + 1) % numSprites;
   uvBias = vec2(frame % spriteSheetCols, frame / spriteSheetCols) * uvSize;
   surfaceInteraction.textureCoordinates = uvBias + originalCoord * uvSize;
-  const f16vec4 futureSample = textureRead(textureIndex, samplerIndex, surfaceInteraction);
+  const vec4 futureSample = textureRead(textureIndex, samplerIndex, surfaceInteraction);
 
   // Gamma correct the color component of the samples if requested
-  const f16vec4 correctedPrevSample = textureGammaCorrect ?
+  const vec4 correctedPrevSample = textureGammaCorrect ?
     vec4(gammaToLinear(prevSample.rgb), prevSample.a) :
     prevSample;
-  const f16vec4 correctedFutureSample = textureGammaCorrect ?
+  const vec4 correctedFutureSample = textureGammaCorrect ?
     vec4(gammaToLinear(futureSample.rgb), futureSample.a) :
     futureSample;
 
@@ -103,8 +103,8 @@ RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteractionCreate(
 
   // Sample from each Ray Portal Surface Material texture
 
-  f16vec4 maskSample;
-  f16vec4 maskSample2;
+  vec4 maskSample;
+  vec4 maskSample2;
 
   const bool maskLoaded = rayPortalSurfaceMaterialInteractionSpriteSheetReadHelper(
     rayPortalSurfaceMaterial.maskTextureIndex,
@@ -121,17 +121,17 @@ RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteractionCreate(
   // when opening a Portal). To be sure the texture is not being loaded it would be good to short circut the evaluation of the texture read helper,
   // but this complicates the determination of the default mask color a bit (without moving the invalid texture check out at least), so we instead just
   // hope the optimizer will remove the texture load when any code referencing it is behind a conditional.
-  const bool shouldUseMask2Texture = all(surfaceInteraction.textureCoordinates >= f16vec2(0.0f)) && all(surfaceInteraction.textureCoordinates <= f16vec2(1.0f));
+  const bool shouldUseMask2Texture = all(surfaceInteraction.textureCoordinates >= vec2(0.0f)) && all(surfaceInteraction.textureCoordinates <= vec2(1.0f));
   const bool maskLoaded2 = surfaceMaterialInteractionTextureReadHelper(rayPortalSurfaceMaterial.maskTextureIndex2, rayPortalSurfaceMaterial.samplerIndex2, surfaceInteraction, maskSample2);
 
   // Load Color
 
-  f16vec4 mask = f16vec4(1.0f, 1.0f, 1.0f, 0.0f);
+  vec4 mask = vec4(1.0f, 1.0f, 1.0f, 0.0f);
 
   if (maskLoaded)
   {
     mask = maskSample;
-    mask.rgb *= uint16BitsToHalf(cb.emissiveIntensity) * rayPortalSurfaceMaterial.emissiveIntensity;
+    mask.rgb *= uint16BitsToF32(cb.emissiveIntensity) * rayPortalSurfaceMaterial.emissiveIntensity;
   }
 
   // Note: Mask sample color (not alpha) is gamma corrected implicitly by the spritesheet read helper, no need
@@ -139,7 +139,7 @@ RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteractionCreate(
 
   // Load Portal mask
 
-  float16_t mask2 = maskLoaded2 ? 0.0h : 1.0h;
+  float mask2 = maskLoaded2 ? 0.0f : 1.0f;
 
   if (shouldUseMask2Texture && maskLoaded2)
   {
@@ -149,7 +149,7 @@ RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteractionCreate(
   {
     // Approximation for the Portal mask texture
     float2 texcoord = surfaceInteraction.textureCoordinates * 2.f - 1.f;
-    mask2 = float16_t(1.f - saturate(0.6f * dot(texcoord, texcoord)));
+    mask2 = float(1.f - saturate(0.6f * dot(texcoord, texcoord)));
   }
 
   // Note: Portal mask is linear data and has no need to be gamma corrected.
@@ -158,7 +158,7 @@ RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteractionCreate(
 
   rayPortalSurfaceMaterialInteraction.mask = mask;
   rayPortalSurfaceMaterialInteraction.rayPortalIndex = rayPortalSurfaceMaterial.rayPortalIndex;
-  rayPortalSurfaceMaterialInteraction.isInsidePortal = mask2 > 0.5h ? 1 : 0;
+  rayPortalSurfaceMaterialInteraction.isInsidePortal = mask2 > 0.5f ? 1 : 0;
 
   return rayPortalSurfaceMaterialInteraction;
 }
@@ -189,11 +189,11 @@ RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteractionCreate(
   const uint data0 = gBufferMemoryPolymorphicSurfaceMaterialInteraction.data0;
   const uint data1 = gBufferMemoryPolymorphicSurfaceMaterialInteraction.data1;
 
-  const f16vec4 mask = f16vec4(
-    unorm8ToF16(uint8_t(data1 >> 0)),
-    unorm8ToF16(uint8_t(data1 >> 8)),
-    unorm8ToF16(uint8_t(data1 >> 16)),
-    unorm8ToF16(uint8_t(data1 >> 24)));
+  const vec4 mask = vec4(
+    unorm8ToF32(uint8_t(data1 >> 0)),
+    unorm8ToF32(uint8_t(data1 >> 8)),
+    unorm8ToF32(uint8_t(data1 >> 16)),
+    unorm8ToF32(uint8_t(data1 >> 24)));
   const uint8_t rayPortalIndex = uint8_t(data0 >> 0);
   const uint8_t isInsidePortal = uint8_t(data0 >> 8);
 
@@ -214,10 +214,10 @@ void rayPortalSurfaceMaterialInteractionCalcSample(
   unused(penetrateSurface);
 
   surfaceMaterialInteractionLobeSample.lobe = uint8_t(0u);
-  surfaceMaterialInteractionLobeSample.pdf = float16_t(1.0f);
+  surfaceMaterialInteractionLobeSample.pdf = float(1.0f);
 
-  surfaceMaterialInteractionSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
-  surfaceMaterialInteractionSample.throughput = f16vec3(0.0, 0.0, 0.0);
+  surfaceMaterialInteractionSample.inputDirection = vec3(0.0, 0.0, 0.0);
+  surfaceMaterialInteractionSample.throughput = vec3(0.0, 0.0, 0.0);
   surfaceMaterialInteractionSample.solidAnglePdf = 0.0f;
 }
 
@@ -252,9 +252,9 @@ void rayPortalSurfaceMaterialInteractionCalcPSRSample(
   MinimalRayInteraction minimalRayInteraction,
   inout SurfaceMaterialInteractionPSRSample surfaceMaterialInteractionReflectionPSRSample,
   inout SurfaceMaterialInteractionPSRSample surfaceMaterialInteractionTransmissionPSRSample,
-  inout f16vec3 diffuseLayerWeight,
+  inout vec3 diffuseLayerWeight,
   inout bool reflectionSelectedIntegrationSurface,
-  inout float16_t selectedIntegrationSurfacePdf,
+  inout float selectedIntegrationSurfacePdf,
   inout bool insideMedium, inout bool penetrateSurface)
 {
   unused(diffuseLayerWeight);

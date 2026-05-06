@@ -186,31 +186,31 @@ struct SubsurfaceMaterialInteraction
 
 struct OpaqueSurfaceMaterialInteraction
 {
-  f16vec3 shadingNormal;
-  float16_t opacity;
-  f16vec3 albedo;
-  float16_t normalDetail; // 1.0 - dot(shadingNormal, interpolatedNormal)
-  f16vec3 baseReflectivity;
+  vec3 shadingNormal;
+  float opacity;
+  vec3 albedo;
+  float normalDetail; // 1.0 - dot(shadingNormal, interpolatedNormal)
+  vec3 baseReflectivity;
   // Note: These roughness values are non-perceptual roughness.
-  float16_t isotropicRoughness;
-  f16vec2 anisotropicRoughness;
+  float isotropicRoughness;
+  vec2 anisotropicRoughness;
   // Note: fp16 may not be sufficient here for high radiance values, potentially change if clamping
-  f16vec3 emissiveRadiance;
+  vec3 emissiveRadiance;
   SubsurfaceMaterialInteraction subsurfaceMaterialInteraction;
   // Note: A value of 0 in the thin film thickness indicates the thin film is disabled.
-  float16_t thinFilmThickness;
+  float thinFilmThickness;
   uint8_t flags;
 };
 
 struct DecalMaterialInteraction
 {
-  f16vec3 shadingNormal;
-  f16vec3 albedo;
-  f16vec3 baseReflectivity;
-  f16vec3 emissiveRadiance;
-  float16_t opacity;
-  float16_t roughness;
-  float16_t anisotropy;
+  vec3 shadingNormal;
+  vec3 albedo;
+  vec3 baseReflectivity;
+  vec3 emissiveRadiance;
+  float opacity;
+  float roughness;
+  float anisotropy;
 };
 
 struct MemoryDecalMaterialInteraction
@@ -221,17 +221,17 @@ struct MemoryDecalMaterialInteraction
 
 struct TranslucentSurfaceMaterialInteraction
 {
-  f16vec3 shadingNormal;
-  float16_t normalDetail; // 1.0 - dot(shadingNormal, interpolatedNormal)
+  vec3 shadingNormal;
+  float normalDetail; // 1.0 - dot(shadingNormal, interpolatedNormal)
 
-  float16_t baseReflectivity;
-  float16_t refractiveIndex;
-  f16vec3 transmittanceColor;
-  f16vec3 emissiveRadiance;
+  float baseReflectivity;
+  float refractiveIndex;
+  vec3 transmittanceColor;
+  vec3 emissiveRadiance;
 
   // diffuse layer parameters, only valid if TRANSLUCENT_SURFACE_MATERIAL_FLAG_USE_ALBEDO_LAYER is set in flags
-  f16vec3 diffuseColor;
-  float16_t diffuseOpacity;
+  vec3 diffuseColor;
+  float diffuseOpacity;
 
   // Note: Source values only used for serialization purposes.
   // Note: Used as much of a translucent material is constant and typically reading from the material even
@@ -245,7 +245,7 @@ struct TranslucentSurfaceMaterialInteraction
 
   // encodes either the thin-walled thickness or the transmittance measurement distance
   // thin-walled thickness is represented as a negative number
-  float16_t thicknessOrMeasurementDistance;
+  float thicknessOrMeasurementDistance;
 
   uint8_t flags;
 
@@ -254,7 +254,7 @@ struct TranslucentSurfaceMaterialInteraction
 
 struct RayPortalSurfaceMaterialInteraction
 {
-  f16vec4 mask;
+  vec4 mask;
 
   uint8_t rayPortalIndex;
   uint8_t isInsidePortal;
@@ -278,17 +278,17 @@ struct GBufferMemoryPolymorphicSurfaceMaterialInteraction
 
 struct PolymorphicSurfaceMaterialInteraction
 {
-  f16vec3 shadingNormal;
-  f16vec3 emissiveRadiance;
-  f16vec3 vdata0;
-  f16vec3 vdata1;
+  vec3 shadingNormal;
+  vec3 emissiveRadiance;
+  vec3 vdata0;
+  vec3 vdata1;
 
-  float16_t fdata0;
-  float16_t fdata1;
-  float16_t fdata2;
-  float16_t fdata3;
-  float16_t fdata4;
-  float16_t fdata5;
+  float fdata0;
+  float fdata1;
+  float fdata2;
+  float fdata3;
+  float fdata4;
+  float fdata5;
 
   uint idata0;
   uint16_t idata1;
