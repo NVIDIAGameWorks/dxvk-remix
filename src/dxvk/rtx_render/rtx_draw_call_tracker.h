@@ -35,18 +35,6 @@ class RtCamera;
 class RayPortalManager;
 struct MaterialData;
 
-// Bundled hash/position/transform parameters used to look up or create a ReplacementInstance.
-// Constructed by callers from whatever source they have (DrawCallState, D3DLIGHT9, ExternalDrawState).
-struct InstanceLookupKey {
-  XXH64_hash_t identityHash;
-  // The hash to identify which spatial map to search for the replacementInstance.
-  XXH64_hash_t spatialMapHash;
-  XXH64_hash_t materialHash;
-  XXH64_hash_t vertexPositionHash;
-  Vector3 worldPos;
-  Matrix4 transform;
-};
-
 // Tracks draw calls across frames by mapping each draw call to a ReplacementInstance.
 // Uses a two-level hash lookup (identity hash for L1, tracking hash + spatial proximity
 // for L2) to match the current frame's draw calls against previous frames.
@@ -59,7 +47,11 @@ public:
   DrawCallTracker& operator=(const DrawCallTracker&) = delete;
 
   // Find or create a ReplacementInstance using precomputed lookup key.
-  ReplacementInstance* findOrCreateReplacementInstance(const InstanceLookupKey& key);
+  // When allowCrossTopologyMatching is false, Level 2.5 (material-bucket spatial fallback) is
+  // skipped — used for non-skinned draws so identical modular static meshes cannot steal
+  // each other's ReplacementInstance across topology buckets.
+  ReplacementInstance* findOrCreateReplacementInstance(
+      const ReplacementInstance::LookupKey& key, bool allowCrossTopologyMatching = true);
 
   // Removes replacement instances whose spatialMapHash matches (same bucket key as
   // m_assetSpatialMaps). Used when a draw source tied to that bucket is invalidated.
@@ -113,7 +105,7 @@ private:
   // Returns nullptr if no portal match is found.
   ReplacementInstance* tryPortalMatch(
       ReplacementInstance* newInstance,
-      const InstanceLookupKey& key,
+      const ReplacementInstance::LookupKey& key,
       const RayPortalManager& rayPortalManager);
 
   // Erases an entry from a spatial map bucket and removes the bucket if empty.
@@ -126,12 +118,11 @@ private:
   // Reassociates an existing ReplacementInstance with a new draw call identity.
   // Updates position fields and optionally moves within spatial maps.
   // moveInAssetMap: if non-null, the RI is moved within this asset spatial map.
-  // moveInMaterialMap: if true, the RI is moved within its material spatial map.
+  // The material spatial map is always updated for the new pose and material key.
   ReplacementInstance* reassociateMatch(
       ReplacementInstance* match,
-      const InstanceLookupKey& key,
-      ReplacementSpatialMap* moveInAssetMap,
-      bool moveInMaterialMap);
+      const ReplacementInstance::LookupKey& key,
+      ReplacementSpatialMap* moveInAssetMap);
 
   std::vector<std::unique_ptr<ReplacementInstance>> m_replacementInstances;
   uint32_t m_nextReplacementInstanceId = 0;

@@ -28,6 +28,27 @@
 
 namespace dxvk {
 
+  // Compute which of the lookup-key fields differ from the values currently cached
+  // on the supplied ReplacementInstance. Used to populate ri->dirtyFlags after a
+  // match/reassociate, so downstream consumers can gate work on what actually changed.
+  // Caller is expected to invoke this BEFORE overwriting the RI's cached fields.
+  static ReplacementInstance::DirtyFlags computeDirtyFlags(
+      const ReplacementInstance* ri, const ReplacementInstance::LookupKey& key) {
+    ReplacementInstance::DirtyFlags flags;
+    // This function is only called when the full identity hash doesn't match, so something must have changed.
+    flags.set(ReplacementInstance::DirtyFlag::Any);
+    if (std::memcmp(&ri->objectToWorld, &key.transform, sizeof(Matrix4)) != 0) {
+      flags.set(ReplacementInstance::DirtyFlag::Transform);
+    }
+    if (ri->vertexPositionHash != key.vertexPositionHash) {
+      flags.set(ReplacementInstance::DirtyFlag::VertexPosHash);
+    }
+    if (ri->materialHash != key.materialHash) {
+      flags.set(ReplacementInstance::DirtyFlag::MaterialHash);
+    }
+    return flags;
+  }
+
   // Frustum check for an AABB in the space defined by objectToWorld.
   // Uses SAT (high precision) or fast check based on the RtxOption.
   static bool aabbIntersectsFrustum(
@@ -86,9 +107,9 @@ namespace dxvk {
 
   ReplacementInstance* DrawCallTracker::reassociateMatch(
       ReplacementInstance* match,
-      const InstanceLookupKey& key,
-      ReplacementSpatialMap* moveInAssetMap,
-      bool moveInMaterialMap) {
+      const ReplacementInstance::LookupKey& key,
+      ReplacementSpatialMap* moveInAssetMap) {
+    const XXH64_hash_t prevMat = match->materialHash;
     m_identityHashMap.erase(match->identityHash);
     match->identityHash = key.identityHash;
     match->vertexPositionHash = key.vertexPositionHash;
@@ -99,12 +120,22 @@ namespace dxvk {
           match->spatialCacheTransformHash, key.worldPos, key.transform, match);
     }
 
-    if (moveInMaterialMap) {
-      auto matMapIter = m_materialSpatialMaps.find(match->materialHash);
+    const float spatialMapCellSize = RtxOptions::uniqueObjectDistance() * 2.f;
+
+    if (prevMat != key.materialHash) {
+      eraseFromSpatialMap(m_materialSpatialMaps, prevMat,
+          match->materialSpatialCacheTransformHash, match);
+      auto matEmplace = m_materialSpatialMaps.try_emplace(key.materialHash, spatialMapCellSize);
+      match->materialSpatialCacheTransformHash =
+          matEmplace.first->second.insert(key.worldPos, key.transform, match);
+      match->materialHash = key.materialHash;
+    } else {
+      auto matMapIter = m_materialSpatialMaps.find(prevMat);
       if (matMapIter != m_materialSpatialMaps.end()) {
         match->materialSpatialCacheTransformHash = matMapIter->second.move(
             match->materialSpatialCacheTransformHash, key.worldPos, key.transform, match);
       }
+      match->materialHash = key.materialHash;
     }
 
     m_identityHashMap[key.identityHash] = match;
@@ -125,7 +156,7 @@ namespace dxvk {
   }
 
   ReplacementInstance* DrawCallTracker::findOrCreateReplacementInstance(
-      const InstanceLookupKey& key) {
+      const ReplacementInstance::LookupKey& key, bool allowCrossTopologyMatching) {
     const uint32_t currentFrameId = m_device->getCurrentFrameId();
 
     // Level 1: exact identity match.
@@ -135,7 +166,18 @@ namespace dxvk {
     // merges into the same instance via mergeInstanceHeuristics in updateInstance.
     auto exactMatchIter = m_identityHashMap.find(key.identityHash);
     if (exactMatchIter != m_identityHashMap.end()) {
-      return exactMatchIter->second;
+      // identityHash includes transform/material/vertex hashes, so all key fields
+      // match this RI's cached values by construction. Nothing changed since last
+      // submission of this identity.
+      //
+      // Only clear dirtyFlags on the first lookup of a new frame. A second lookup
+      // within the same frame (two-pass rendering) must not clobber flags an earlier
+      // path (L2/L2.5) set when first matching this RI for the current frame.
+      ReplacementInstance* match = exactMatchIter->second;
+      if (match->frameLastSeen != currentFrameId) {
+        match->dirtyFlags = ReplacementInstance::DirtyFlags();
+      }
+      return match;
     }
 
     // Level 2: tracking hash (topological, stable for animated geometry) + spatial proximity
@@ -159,6 +201,10 @@ namespace dxvk {
         return false;
       });
       if (exactTransformMatch != nullptr) {
+        // Compute diff before reassociation. Transform/vertex/spatialMap match
+        // by construction here; only material can diverge (l2Filter requires
+        // material match, so usually nothing differs at this point).
+        exactTransformMatch->dirtyFlags = computeDirtyFlags(exactTransformMatch, key);
         m_identityHashMap.erase(exactTransformMatch->identityHash);
         exactTransformMatch->identityHash = key.identityHash;
         m_identityHashMap[key.identityHash] = exactTransformMatch;
@@ -171,9 +217,12 @@ namespace dxvk {
         key.worldPos, uniqueObjectDistanceSqr, nearestDistSqr, l2Filter);
 
       if (nearestMatch != nullptr) {
-        return reassociateMatch(
-            const_cast<ReplacementInstance*>(nearestMatch),
-            key, &spatialMapIter->second, true);
+        // Compute diff before reassociation overwrites the cached fields. The
+        // transform differs (otherwise we would have hit the exact-transform
+        // branch above); other fields may also have changed.
+        ReplacementInstance* match = const_cast<ReplacementInstance*>(nearestMatch);
+        match->dirtyFlags = computeDirtyFlags(match, key);
+        return reassociateMatch(match, key, &spatialMapIter->second);
       }
     }
 
@@ -182,7 +231,9 @@ namespace dxvk {
     // the tracking hash (Indices + GeometryDescriptor) change, so the RI lives in a
     // different asset spatial map bucket. The material spatial map indexes all RIs by
     // material hash regardless of topology, allowing O(1) bucket lookup + spatial search.
-    {
+    // Skipped for non-skinned game draws: identical static modular meshes share material +
+    // topology class but must not steal each other's ReplacementInstance across buckets.
+    if (allowCrossTopologyMatching) {
       auto frameFilter = [&](const ReplacementInstance* candidate) {
         return candidate->frameLastSeen != currentFrameId;
       };
@@ -196,6 +247,11 @@ namespace dxvk {
         if (crossMatch != nullptr) {
           ReplacementInstance* bestMatch = const_cast<ReplacementInstance*>(crossMatch);
 
+          // Compute diff before any cached field is overwritten. SpatialMapHash
+          // typically differs here (cross-topology entry point), and the
+          // transform usually differs too.
+          bestMatch->dirtyFlags = computeDirtyFlags(bestMatch, key);
+
           // Migrate the RI from the old spatial map to the new one.
           eraseFromSpatialMap(m_assetSpatialMaps, bestMatch->spatialMapHash,
               bestMatch->spatialCacheTransformHash, bestMatch);
@@ -205,21 +261,15 @@ namespace dxvk {
           bestMatch->spatialCacheTransformHash =
               newMapIter->second.insert(key.worldPos, key.transform, bestMatch);
 
-          return reassociateMatch(bestMatch, key, nullptr, true);
+          return reassociateMatch(bestMatch, key, nullptr);
         }
       }
     }
 
-    // Level 3: no match — create a new ReplacementInstance
-    auto newReplacementInstance = std::make_unique<ReplacementInstance>();
+    // Level 3: no match — create a new ReplacementInstance.
+    auto newReplacementInstance = std::make_unique<ReplacementInstance>(
+        key, m_nextReplacementInstanceId++, currentFrameId);
     ReplacementInstance* replacementInstance = newReplacementInstance.get();
-    replacementInstance->id = m_nextReplacementInstanceId++;
-    replacementInstance->identityHash = key.identityHash;
-    replacementInstance->spatialMapHash = key.spatialMapHash;
-    replacementInstance->materialHash = key.materialHash;
-    replacementInstance->vertexPositionHash = key.vertexPositionHash;
-    replacementInstance->centroid = key.worldPos;
-    replacementInstance->frameCreated = currentFrameId;
 
     m_identityHashMap[key.identityHash] = replacementInstance;
 
@@ -247,7 +297,7 @@ namespace dxvk {
     const auto& hashes = drawCallState.getGeometryData().hashes;
     const Matrix4& objectToWorld = drawCallState.getTransformData().objectToWorld;
 
-    const InstanceLookupKey key {
+    const ReplacementInstance::LookupKey key {
       computeIdentityHash(drawCallState),
       hashes.getHashForRule<rules::TopologicalHash>(),
       materialData.getHash(),
@@ -256,7 +306,8 @@ namespace dxvk {
       objectToWorld
     };
 
-    ReplacementInstance* result = findOrCreateReplacementInstance(key);
+    const bool allowCrossTopology = drawCallState.getSkinningState().numBones > 0;
+    ReplacementInstance* result = findOrCreateReplacementInstance(key, allowCrossTopology);
 
     // Portal-aware matching for ViewModel draw calls: if the normal lookup created a
     // brand-new ReplacementInstance (no existing prims), try matching through portals.
@@ -274,7 +325,7 @@ namespace dxvk {
 
   ReplacementInstance* DrawCallTracker::tryPortalMatch(
       ReplacementInstance* newInstance,
-      const InstanceLookupKey& key,
+      const ReplacementInstance::LookupKey& key,
       const RayPortalManager& rayPortalManager) {
     const uint32_t currentFrameId = m_device->getCurrentFrameId();
     const float uniqueObjectDistanceSqr = RtxOptions::getUniqueObjectDistanceSqr();
@@ -315,7 +366,7 @@ namespace dxvk {
 
           return reassociateMatch(
               const_cast<ReplacementInstance*>(portalMatch),
-              key, &spatialMapIter->second, false);
+              key, &spatialMapIter->second);
         }
       }
     }
@@ -365,14 +416,21 @@ namespace dxvk {
           // Skinned and player model objects should always be GC'd when stale —
           // anti-culling them produces frozen poses or wrong positions.
           // Objects tagged IgnoreAntiCulling by the game config are also exempt.
+          // Translation-animated objects (transform changed in their last update)
+          // are also exempt: anti-culling them freezes them mid-motion at the
+          // last-seen position, which is rarely the right answer for a moving
+          // entity that the game has finished drawing.
           // Note: the old system also exempted spritesheet-animated objects, but that
           // was likely a conservative safeguard — spritesheet state isn't broken by
           // anti-culling the way skeletal pose is.
           const CategoryFlags categories(replacementInstance->categoryFlags);
+          const bool wasMovingWhenLastSeen =
+              replacementInstance->dirtyFlags.test(ReplacementInstance::DirtyFlag::Transform);
           const bool exemptFromAntiCulling =
               replacementInstance->isSkinned ||
               categories.test(InstanceCategories::ThirdPersonPlayerModel) ||
-              categories.test(InstanceCategories::IgnoreAntiCulling);
+              categories.test(InstanceCategories::IgnoreAntiCulling) ||
+              wasMovingWhenLastSeen;
 
           // Object anti-culling: keep objects that are OUTSIDE the camera frustum.
           // If the game stopped submitting an object that's clearly visible, it
