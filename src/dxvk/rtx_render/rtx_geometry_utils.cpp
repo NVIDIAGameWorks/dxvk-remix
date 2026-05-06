@@ -280,7 +280,10 @@ namespace dxvk {
 
     // Note: VK_FORMAT_R32_UINT assumed to be 32 bit spherical octahedral normals.
     assert(normalVertexFormat == VK_FORMAT_R32G32B32_SFLOAT || normalVertexFormat == VK_FORMAT_R32G32B32A32_SFLOAT || normalVertexFormat == VK_FORMAT_R32_UINT);
-    assert(drawCallState.getGeometryData().blendWeightBuffer.defined());
+    if (!drawCallState.getGeometryData().blendWeightBuffer.defined()) {
+      ONCE(Logger::err("RtxGeometryUtils::dispatchSkinning: draw call has bones but no blend weight buffer, cannot apply skinning"));
+      return;
+    }
 
     memcpy(&params.bones[0], &drawCallState.getSkinningState().pBoneMatrices[0], sizeof(Matrix4) * drawCallState.getSkinningState().numBones);
 
