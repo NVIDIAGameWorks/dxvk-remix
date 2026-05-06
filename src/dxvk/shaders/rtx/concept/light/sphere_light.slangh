@@ -38,7 +38,7 @@ float sphereLightCalcPositionalWeight(SphereLight sphereLight, vec3 position, in
   );
 }
 
-bool sphereLightCalcVisibilityWeight(SphereLight sphereLight, f16vec3 triangleNormal, vec3 lightVector)
+bool sphereLightCalcVisibilityWeight(SphereLight sphereLight, vec3 triangleNormal, vec3 lightVector)
 {
   // Check if the sphere light is completely hidden beneath the surface defined by the triangle normal.
   const bool frontSideSphere = dot(lightVector, vec3(triangleNormal)) > float(-sphereLight.radius);
@@ -61,7 +61,7 @@ SphereLight sphereLightCreate(DecodedPolymorphicLight decodedPolymorphicLight)
   const u16vec2 data03 = unpack16(decodedPolymorphicLight.data0.w);
 
   sphereLight.position = vec3(uintBitsToFloat(data00), uintBitsToFloat(data01), uintBitsToFloat(data02));
-  sphereLight.radius = uint16BitsToHalf(data03.x);
+  sphereLight.radius = uint16BitsToF32(data03.x);
   sphereLight.radiance = decodedPolymorphicLight.radiance;
   sphereLight.shaping = decodedPolymorphicLight.shaping;
 
@@ -106,17 +106,17 @@ float sphereLightCalcWeight(SphereLight sphereLight, VolumeInteraction viewVolum
   return positionalWeight;
 }
 
-float16_t sphereLightCalcShaping(SphereLight sphereLight, f16vec3 lightToViewDirection)
+float sphereLightCalcShaping(SphereLight sphereLight, vec3 lightToViewDirection)
 {
   return lightShapingCalcRadialFalloff(sphereLight.shaping, lightToViewDirection);
 }
 
-LightSample sphereLightSampleArea(SphereLight sphereLight, f16vec2 sampleCoordinates, vec3 position)
+LightSample sphereLightSampleArea(SphereLight sphereLight, vec2 sampleCoordinates, vec3 position)
 {
   const vec3 lightVector = sphereLight.position - position;
   const float lightDistance2 = squareLength(lightVector);
   const float lightDistance = sqrt(lightDistance2);
-  const float16_t radius2 = square(sphereLight.radius);
+  const float radius2 = square(sphereLight.radius);
 
   // Note: Sampling based on PBRT's solid angle sphere sampling, resulting in fewer rays occluded by the light itself,
   // ignoring special case for when viewing inside the light (which should just use normal spherical area sampling)
@@ -126,31 +126,31 @@ LightSample sphereLightSampleArea(SphereLight sphereLight, f16vec2 sampleCoordin
 
   const float sinThetaMax2 = max(float(radius2) / lightDistance2, lightSamplingEpsilon);
   const float cosThetaMax = sqrt(max(lightSamplingEpsilon, 1.0f - sinThetaMax2));
-  const float16_t phi = float16_t(twoPi) * sampleCoordinates.x;
+  const float phi = float(twoPi) * sampleCoordinates.x;
   const float cosTheta = mix(float(cosThetaMax), float(1.0f), float(sampleCoordinates.y));
-  const float16_t sinTheta = float16_t(sqrt(max(0.0f, 1.0f - square(cosTheta))));
+  const float sinTheta = float(sqrt(max(0.0f, 1.0f - square(cosTheta))));
 
   // Calculate the alpha value representing the spherical coordinates of the sample point
 
   const float dc = lightDistance;
   const float dc2 = lightDistance2;
   const float ds = dc * cosTheta - sqrt(max(lightSamplingEpsilon, radius2 - dc2 * sinTheta * sinTheta));
-  const float16_t cosAlpha = float16_t((dc2 + radius2 - square(ds)) / (2.0f * dc * sphereLight.radius));
-  const float16_t sinAlpha = sqrt(max(float16_t(0.0f), float16_t(1.0f) - square(cosAlpha)));
+  const float cosAlpha = float((dc2 + radius2 - square(ds)) / (2.0f * dc * sphereLight.radius));
+  const float sinAlpha = sqrt(max(float(0.0f), float(1.0f) - square(cosAlpha)));
 
   // Construct a coordinate frame to sample in around the direction of the light vector
 
-  const f16vec3 sampleSpaceNormal = f16vec3(normalize(lightVector));
-  f16vec3 sampleSpaceTangent;
-  f16vec3 sampleSpaceBitangent;
+  const vec3 sampleSpaceNormal = vec3(normalize(lightVector));
+  vec3 sampleSpaceTangent;
+  vec3 sampleSpaceBitangent;
   calcOrthonormalBasis(sampleSpaceNormal, sampleSpaceTangent, sampleSpaceBitangent);
 
   // Calculate sample position and normal on the sphere
 
-  const float16_t sinPhi = sin(phi);
-  const float16_t cosPhi = cos(phi);
+  const float sinPhi = sin(phi);
+  const float cosPhi = cos(phi);
 
-  const f16vec3 sphereNormalSample = normalize(calcSphericalDirection(
+  const vec3 sphereNormalSample = normalize(calcSphericalDirection(
       sinAlpha, cosAlpha, sinPhi, cosPhi, -sampleSpaceTangent, -sampleSpaceBitangent, -sampleSpaceNormal));
   const vec3 spherePositionSample = sphereLight.position + sphereLight.radius * sphereNormalSample;
   // Note: Reprojection for position to minimize error here skipped for performance
@@ -164,8 +164,8 @@ LightSample sphereLightSampleArea(SphereLight sphereLight, f16vec2 sampleCoordin
 
   // Calculate light shaping
 
-  const f16vec3 lightToViewDirection = f16vec3(normalize(position - spherePositionSample));
-  const float16_t lightShaping = sphereLightCalcShaping(sphereLight, lightToViewDirection);
+  const vec3 lightToViewDirection = vec3(normalize(position - spherePositionSample));
+  const float lightShaping = sphereLightCalcShaping(sphereLight, lightToViewDirection);
 
   // Create the light sample
 
@@ -180,7 +180,7 @@ LightSample sphereLightSampleArea(SphereLight sphereLight, f16vec2 sampleCoordin
 }
 
 LightSample sphereLightSampleArea(
-  SphereLight sphereLight, f16vec2 sampleCoordinates,
+  SphereLight sphereLight, vec2 sampleCoordinates,
   MinimalSurfaceInteraction viewSurfaceInteraction)
 {
   return sphereLightSampleArea(
@@ -189,7 +189,7 @@ LightSample sphereLightSampleArea(
 }
 
 LightSample sphereLightSampleArea(
-  SphereLight sphereLight, f16vec2 sampleCoordinates,
+  SphereLight sphereLight, vec2 sampleCoordinates,
   VolumeInteraction viewVolumeInteraction)
 {
   return sphereLightSampleArea(

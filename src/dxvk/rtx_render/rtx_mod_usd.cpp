@@ -873,8 +873,8 @@ void UsdMod::Impl::processPointInstancer(Args& args, const pxr::UsdPrim& prim) {
           // Fast Path - this will attach a list of transforms to the replacement, which can be used later to render multiple copies of it.
           
           // Copy the transform vector to this mesh
-          args.meshes[meshInd].instancesToObject = instanceToObjectTransforms;
-          auto& instancesToObject = args.meshes[meshInd].instancesToObject;
+          args.meshes[meshInd].instancesToObject = std::make_shared<std::vector<Matrix4>>(instanceToObjectTransforms);
+          auto& instancesToObject = *args.meshes[meshInd].instancesToObject;
           // Append the meshToProtoRoot transform
           for (size_t instanceInd = 0; instanceInd < instancesToObject.size(); ++instanceInd) {
             instancesToObject[instanceInd] = instancesToObject[instanceInd] * args.meshes[meshInd].replacementToObject;

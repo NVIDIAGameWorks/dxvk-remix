@@ -104,11 +104,11 @@ void loadVertexData(uint triIdx, Surface surface, out float2 vertexTexcoords[3],
   }
 }
 
-void applyVertexAndTextureOperationsToOpacity(inout float16_t opacity, f16vec3 albedo, float3 bary, Surface surface, float16_t vertexOpacities[3])
+void applyVertexAndTextureOperationsToOpacity(inout float opacity, vec3 albedo, float3 bary, Surface surface, float16_t vertexOpacities[3])
 {
   if (cb.isOpaqueMaterial)
   {
-    float16_t vertexInterpolatedOpacity = 1.h;
+    float vertexInterpolatedOpacity = 1.0f;
 
     if (surface.color0BufferIndex != BINDING_INDEX_INVALID)
     {
@@ -116,14 +116,14 @@ void applyVertexAndTextureOperationsToOpacity(inout float16_t opacity, f16vec3 a
     }
 
     // Fixed function texture stage state for alpha channel
-    float16_t textureAlphaArg1, textureAlphaArg2;
-    float16_t tFactorAlpha = float16_t((surface.tFactor >> 24) & 0xff) / 255.0;
+    float textureAlphaArg1, textureAlphaArg2;
+    float tFactorAlpha = float((surface.tFactor >> 24) & 0xff) / 255.0f;
     chooseTextureArgument(textureAlphaArg1, surface.textureAlphaArg1Source, opacity, vertexInterpolatedOpacity, tFactorAlpha, opacity);
-    chooseTextureArgument(textureAlphaArg2, surface.textureAlphaArg2Source, opacity, vertexInterpolatedOpacity, tFactorAlpha, float16_t(1.0));
+    chooseTextureArgument(textureAlphaArg2, surface.textureAlphaArg2Source, opacity, vertexInterpolatedOpacity, tFactorAlpha, float(1.0));
     chooseTextureOperationAlpha(opacity, surface.textureAlphaOperation, textureAlphaArg1, textureAlphaArg2);
 
     // Unused
-    float16_t emissiveBlendOverrideInfluence = float16_t(0);
+    float emissiveBlendOverrideInfluence = float(0);
 
     // This must be enabled as the opacities are otherwise zeroed out by the handler
     const bool enableOpacityEmissiveBlendModes = true;
@@ -133,14 +133,14 @@ void applyVertexAndTextureOperationsToOpacity(inout float16_t opacity, f16vec3 a
   }
 }
 
-f16vec4 sampleColorOpacityTexture(Sampler2D textureSampler, float2 texcoords)
+vec4 sampleColorOpacityTexture(Sampler2D textureSampler, float2 texcoords)
 {
   return textureSampler.SampleLevel(texcoords, 0);
 }
 
-f16vec4 sampleColorOpacityRaw(float2 texcoords)
+vec4 sampleColorOpacityRaw(float2 texcoords)
 {
-  f16vec4 colorOpacity = sampleColorOpacityTexture(Opacity, texcoords);
+  vec4 colorOpacity = sampleColorOpacityTexture(Opacity, texcoords);
 
   if (cb.isRayPortalMaterial)
   {
@@ -154,14 +154,15 @@ f16vec4 sampleColorOpacityRaw(float2 texcoords)
 
 float16_t sampleOpacity(float2 texcoords, Surface surface, float3 bary, float16_t vertexOpacities[3])
 {
-  f16vec4 colorOpacity = sampleColorOpacityRaw(texcoords);
+  vec4 colorOpacity = sampleColorOpacityRaw(texcoords);
+  float opacity = colorOpacity.a;
   
   if (cb.applyVertexAndTextureOperations)
   {
-    applyVertexAndTextureOperationsToOpacity(colorOpacity.a, colorOpacity.rgb, bary, surface, vertexOpacities);
+    applyVertexAndTextureOperationsToOpacity(opacity, colorOpacity.rgb, bary, surface, vertexOpacities);
   }
 
-  return colorOpacity.a;
+  return float16_t(opacity);
 }
 
 // Samples opacity for a micro triangle with conservative estimation

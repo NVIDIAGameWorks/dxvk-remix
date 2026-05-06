@@ -21,6 +21,8 @@
 */
 #pragma once
 
+#include <memory>
+
 #include "rtx_types.h"
 #include "graph/rtx_graph_types.h"
 #include "rtx_lights.h"
@@ -72,7 +74,9 @@ namespace dxvk {
     // If this replacement represents multiple instances of an object, then this will contain a
     // list of transforms from the instance's space to Object space
     // (use the drawcall's objectToWorld * instancesToObject[n] to get instance n's world transform).
-    std::vector<Matrix4> instancesToObject;
+    // Stored as shared_ptr so downstream consumers (DrawCallTransforms, RtSurface,
+    // PointInstancerBatch) can safely reference the data across frame boundaries.
+    std::shared_ptr<std::vector<Matrix4>> instancesToObject;
     // If this replacement represents a single instance from a pointInstancer, then this will 
     // contain the index of the instance in the pointInstancer.
     uint32_t pointInstanceIndex = kInvalidPointInstanceIndex; 

@@ -21,6 +21,9 @@
 */
 #pragma once
 
+#include <memory>
+#include <vector>
+
 #include "../dxvk_format.h"
 #include "../dxvk_include.h"
 
@@ -60,7 +63,7 @@ namespace dxvk {
     * Consumed by dispatchCulling() to drive the GPU compute.
     */
   struct PointInstancerBatch {
-    const std::vector<Matrix4>* transforms;       // Source instanceToObject transforms (CPU data, uploaded per batch)
+    std::shared_ptr<const std::vector<Matrix4>> transforms; // Source instanceToObject transforms (CPU data, uploaded per batch)
     Matrix4 objectToWorld;                         // Object-to-world for this instancer
     Matrix4 prevObjectToWorld;                     // Previous-frame object-to-world (for motion vectors in surface data)
     uint32_t instanceCount;                        // Number of input transforms

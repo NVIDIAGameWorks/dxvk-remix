@@ -153,7 +153,7 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
   SurfaceInteraction surfaceInteraction,
   uint surfaceIndex,
   bool directionAltered,
-  f16vec4 accumulatedRotation,
+  vec4 accumulatedRotation,
   RWTexture2D<uint> worldShadingNormalTexture,
   RWTexture2D<float> perceptualRoughnessTexture,
   RWTexture2D<float4> virtualWorldShadingNormalPerceptualRoughnessTexture,

@@ -32,7 +32,7 @@ struct NEECacheUtils
     return uv.x + uv.y < 1 ? uv : 1 - uv.yx;
   }
 
-  static float calculateLightSamplingSolidAnglePDF(float triangleArea, vec3 samplePosition, f16vec3 sampleNormal, vec3 surfacePosition)
+  static float calculateLightSamplingSolidAnglePDF(float triangleArea, vec3 samplePosition, vec3 sampleNormal, vec3 surfacePosition)
   {
     vec3 offset = samplePosition - surfacePosition;
     float r2 = dot(offset, offset);
@@ -124,7 +124,7 @@ struct NEECacheUtils
   }
 
   static void getInteractions(
-    Surface surface, int surfaceIndex, int primitiveIndex, vec2 uv, vec3 shadingPosition, float16_t coneRadius, float16_t spreadAngle, int footprintMode,
+    Surface surface, int surfaceIndex, int primitiveIndex, vec2 uv, vec3 shadingPosition, float coneRadius, float spreadAngle, int footprintMode,
     out RayInteraction rayInteracton, out SurfaceInteraction surfaceInteraction)
   {
     rayInteracton.barycentricCoordinates = barycentricsToUint(NEECacheUtils.uvToBarycentrics(uv));
@@ -142,8 +142,8 @@ struct NEECacheUtils
     // surfaceInteraction.vertexColor = f16vec4(0);
     surfaceInteraction.positionError = 0;
     surfaceInteraction.motion = 0;
-    surfaceInteraction.interpolatedTangent = f16vec3(0);
-    surfaceInteraction.interpolatedBitangent = f16vec3(0);
+    surfaceInteraction.interpolatedTangent = vec3(0);
+    surfaceInteraction.interpolatedBitangent = vec3(0);
   #endif
 
     rayInteracton.viewDirection = normalize(surfaceInteraction.position - shadingPosition);
@@ -211,8 +211,8 @@ struct NEECacheUtils
 
       if (cb.neeCacheArgs.approximateParticleLighting && !surface.isFullyOpaque)
       {
-        f16vec3 radianceAttenuation = 1.0;
-        float16_t opaqueApproximationOutgoingAttenuation = 1.0;
+        vec3 radianceAttenuation = 1.0;
+        float opaqueApproximationOutgoingAttenuation = 1.0;
         vec3 emissiveRadiance = 0.0;
         const bool approximationHandled = evaluateOpaqueApproximations(
           resolveMode,
@@ -227,7 +227,7 @@ struct NEECacheUtils
   }
 
   static LightSample calculateLightSampleFromCandidate(
-    int surfaceIndex, inout int primitiveIndex, int range, StructuredBuffer<uint> PrimitiveIDPrefixSumBuffer, vec3 uvw, float trianglePdf, vec3 shadingPosition, float16_t coneRadius, float16_t spreadAngle,
+    int surfaceIndex, inout int primitiveIndex, int range, StructuredBuffer<uint> PrimitiveIDPrefixSumBuffer, vec3 uvw, float trianglePdf, vec3 shadingPosition, float coneRadius, float spreadAngle,
     out float triangleArea, bool useSolidAnglePdf = true, int footprintMode = kFootprintFromRayOrigin)
   {
     Surface surface = getSurface(surfaceIndex);
@@ -291,7 +291,7 @@ struct NEECacheUtils
   }
 
   static LightSample calculateLightSampleFromTriangle(
-    int surfaceIndex, int primitiveIndex, vec2 uv, float trianglePdf, vec3 shadingPosition, float16_t coneRadius, float16_t spreadAngle,
+    int surfaceIndex, int primitiveIndex, vec2 uv, float trianglePdf, vec3 shadingPosition, float coneRadius, float spreadAngle,
     out float triangleArea, bool useSolidAnglePdf = true, int footprintMode = kFootprintFromRayOrigin)
   {
     Surface surface = getSurface(surfaceIndex);
@@ -302,7 +302,7 @@ struct NEECacheUtils
     return calculateLightSample(surface, surfaceInteraction, rayInteracton, shadingPosition, trianglePdf, triangleArea, useSolidAnglePdf, footprintMode);
   }
 
-  static void calculateTriangleLightIntensity(int surfaceIndex, int primitiveIndex, out vec3 triangleCenter, out f16vec3 triangleNormal, out vec3 lightIntensity)
+  static void calculateTriangleLightIntensity(int surfaceIndex, int primitiveIndex, out vec3 triangleCenter, out vec3 triangleNormal, out vec3 lightIntensity)
   {
     const Surface surface = surfaces[uint(surfaceIndex)]; 
     RayInteraction rayInteracton = RayInteraction();
@@ -312,7 +312,7 @@ struct NEECacheUtils
     rayInteracton.surfaceIndex = surfaceIndex;
 
     Ray dummyRay;
-    dummyRay.direction = f16vec3(1.0);
+    dummyRay.direction = vec3(1.0);
     SurfaceInteraction surfaceInteraction = surfaceInteractionCreate<SurfaceIgnoreTangents>(surface, rayInteracton, dummyRay, false, kFootprintFromTextureCoordDiff);
     triangleCenter = surfaceInteraction.position;
     triangleNormal = surfaceInteraction.triangleNormal;
@@ -330,7 +330,7 @@ struct NEECacheUtils
     }
   }  
 
-  static float calculateGeometricTerm(vec3 surfacePosition, vec3 samplePosition, f16vec3 sampleNormal, float cellSize)
+  static float calculateGeometricTerm(vec3 surfacePosition, vec3 samplePosition, vec3 sampleNormal, float cellSize)
   {
     vec3 offset = samplePosition - surfacePosition;
     float cellDistance = length(offset);
@@ -354,7 +354,7 @@ struct NEECacheUtils
     {
       vec3 triangleCenter;
       vec3 lightFlux;
-      f16vec3  triangleNormal;
+      vec3 triangleNormal;
       NEECacheUtils.calculateTriangleLightIntensity(surfaceIndex, primitiveIndex, triangleCenter, triangleNormal, lightFlux);
 
       vec3 offset = triangleCenter - cellCenter;
@@ -383,7 +383,7 @@ struct NEECacheUtils
     return weight * calculateAgingFactor(age);
   }
 
-  static void calculateLightSampleInfo(int lightIndex, f16vec2 uv, uint age, vec3 cellCenter, float cellSize, out float16_t radiance, out vec3 offset/*direction*/)
+  static void calculateLightSampleInfo(int lightIndex, vec2 uv, uint age, vec3 cellCenter, float cellSize, out float radiance, out vec3 offset/*direction*/)
   {
     float halfCellSize = cellSize * 0.5;
 
@@ -433,7 +433,7 @@ struct NEECacheUtils
     return misWeight;
   }
 
-  static float calculateBRDFSampleMISWeight(SurfaceInteraction surfaceInteraction, f16vec3 direction, float hitDistance, float lightSelectionPDF, float brdfSampleSolidAnglePDF)
+  static float calculateBRDFSampleMISWeight(SurfaceInteraction surfaceInteraction, vec3 direction, float hitDistance, float lightSelectionPDF, float brdfSampleSolidAnglePDF)
   {
     float areaPdf = 1.0 / surfaceInteraction.triangleArea;
     float cosPhi = abs(dot(direction, surfaceInteraction.triangleNormal));
@@ -443,9 +443,9 @@ struct NEECacheUtils
     return misWeight;
   }
 
-  static float calculateBSDFSampleTotalPDF(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction, f16vec3 viewDirection, f16vec3 sampleDirection, float firstSampledSolidAnglePdf, bool firstSampledLobeIsSpecular)
+  static float calculateBSDFSampleTotalPDF(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction, vec3 viewDirection, vec3 sampleDirection, float firstSampledSolidAnglePdf, bool firstSampledLobeIsSpecular)
   {
-    float16_t diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability, diffuseTransmissionProbability = 0.0f;
+    float diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability, diffuseTransmissionProbability = 0.0f;
     bool isValid = opaqueSurfaceMaterialInteractionCalcLobeProbability(
       opaqueSurfaceMaterialInteraction, viewDirection,
       diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability, diffuseTransmissionProbability);

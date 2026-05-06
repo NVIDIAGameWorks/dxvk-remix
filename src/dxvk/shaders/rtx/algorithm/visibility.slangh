@@ -39,7 +39,7 @@ static const uint visibilityModeOpaqueOnly = (1 << 5);                 // Only q
 // Visibility Helper Functions
 
 // Returns the attenuation factor for the surface, i.e. (1.0 - opacity)
-f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo rayHitInfo, const bool usePreviousTLAS)
+vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo rayHitInfo, const bool usePreviousTLAS)
 {
   RayInteraction rayInteraction = rayInteractionCreate(ray, rayHitInfo);
   
@@ -48,7 +48,7 @@ f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo ra
     // View model instances don't have an inter-frame mapping, assume they're transparent
     if (rayHitInfo.customIndex & CUSTOM_INDEX_IS_VIEW_MODEL)
     {
-      return 1.0;
+      return vec3(1.0f);
     }
 
     // Map the surface index from the previous frame to the current frame
@@ -58,7 +58,7 @@ f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo ra
     {
       // Surface no longer exists - assume it was transparent, which is safer than
       // assuming an opaque surface, because that would introduce more bias in ReSTIR
-      return 1.0;
+      return vec3(1.0f);
     }
   }
 
@@ -91,7 +91,7 @@ f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo ra
   if (isSurfaceClipped(surface, surfaceInteraction))
   {
     // Ignore parts of surfaces that are under clip planes
-    return 1.0;
+    return vec3(1.0f);
   }
 
   const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[rayInteraction.surfaceIndex];
@@ -118,32 +118,32 @@ f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo ra
     //      This is necessary for subsurface material or the alpha-test will be ignored.
     if (!isThinOpaqueSubsurface || handleStochasticAlphaBlend || opaqueSurfaceMaterialInteraction.opacity <= cb.resolveTransparencyThreshold)
     {
-      return 1.0h - opaqueSurfaceMaterialInteraction.opacity;
+      return vec3(1.0f - opaqueSurfaceMaterialInteraction.opacity);
     }
     
     if (VisibilityMode & visibilityModeEnableSubsurfaceMaterials)
     {
-      const float16_t normalDotOutputDirection = dot(-ray.direction, opaqueSurfaceMaterialInteraction.shadingNormal);
+      const float normalDotOutputDirection = dot(-ray.direction, opaqueSurfaceMaterialInteraction.shadingNormal);
       if (normalDotOutputDirection < materialEpsilon)
       {
-        return 0.0h;
+        return vec3(0.0f);
       }
     
       const SubsurfaceMaterial subsurfaceMaterial = subsurfaceMaterialCreate(opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction);
     
       // Approximate the attenuation with assumption that input and output rays are on the same line and the volume is isotropic
-      const float16_t baseReflectivity = calcBt709Luminance(opaqueSurfaceMaterialInteraction.baseReflectivity);
-      const float16_t insideRelativeRefractiveIndex = baseReflectivityToIoR(materialIoRVacuum, baseReflectivity) / materialIoRVacuum;
+      const float baseReflectivity = calcBt709Luminance(opaqueSurfaceMaterialInteraction.baseReflectivity);
+      const float insideRelativeRefractiveIndex = baseReflectivityToIoR(materialIoRVacuum, baseReflectivity) / materialIoRVacuum;
     
       // Calculate path integral throughput/weight
-      const float16_t outsideFresnel = evalTranslucentSchlickFresnel(baseReflectivity, normalDotOutputDirection);
-      const float16_t insideFresnel = evalTranslucentSchlickFresnelTIR(baseReflectivity, insideRelativeRefractiveIndex, normalDotOutputDirection);
-      const float16_t attenuationDistance = subsurfaceMaterial.measurementDistance * subsurfaceMaterial.measurementDistance;
-      const f16vec3 attenuation = evalBeerLambertAttenuation(subsurfaceMaterial.volumetricAttenuationCoefficient, attenuationDistance * rcp(float(normalDotOutputDirection)));
+      const float outsideFresnel = evalTranslucentSchlickFresnel(baseReflectivity, normalDotOutputDirection);
+      const float insideFresnel = evalTranslucentSchlickFresnelTIR(baseReflectivity, insideRelativeRefractiveIndex, normalDotOutputDirection);
+      const float attenuationDistance = subsurfaceMaterial.measurementDistance * subsurfaceMaterial.measurementDistance;
+      const vec3 attenuation = evalBeerLambertAttenuation(subsurfaceMaterial.volumetricAttenuationCoefficient, attenuationDistance * rcp(float(normalDotOutputDirection)));
     
-      if (insideFresnel >= 1.0h)
+      if (insideFresnel >= 1.0f)
       {
-        return 0.0h;
+        return vec3(0.0f);
       }
     
       return subsurfaceMaterial.singleScatteringAlbedo * (1.0f - outsideFresnel) * (1.0f - insideFresnel) *
@@ -157,7 +157,7 @@ f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo ra
     const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial, true);
 
     // Extract the thin walled flag before evaluating the material interaction
-    const bool isThinWalled = translucentSurfaceMaterial.thicknessOrMeasurementDistance < float16_t(0);
+    const bool isThinWalled = translucentSurfaceMaterial.thicknessOrMeasurementDistance < 0.0f;
 
     // Only evaluate the translucent attenuation for thin-walled materials because we're doing an unordered
     // traversal and don't know the distance traveled in a thick material.
@@ -167,16 +167,16 @@ f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo ra
         translucentSurfaceMaterialInteractionCreate(translucentSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
 
       // Approximate the attenuation distance based on the triangle normal
-      const float16_t thickness = translucentSurfaceMaterialInteractionGetThinWallThickness(translucentSurfaceMaterialInteraction);
-      const float16_t attenuationDistance = abs(evalThinAttenuationDistance(thickness, surfaceInteraction.triangleNormal, ray.direction));
-      const f16vec3 attenuationCoefficient = transmittanceToAttenuationCoefficient(translucentSurfaceMaterialInteraction.transmittanceColor, 1.0);
-      const f16vec3 volumeAttenuation = evalBeerLambertAttenuation(attenuationCoefficient, attenuationDistance);
+      const float thickness = translucentSurfaceMaterialInteractionGetThinWallThickness(translucentSurfaceMaterialInteraction);
+      const float attenuationDistance = abs(evalThinAttenuationDistance(thickness, surfaceInteraction.triangleNormal, ray.direction));
+      const vec3 attenuationCoefficient = transmittanceToAttenuationCoefficient(translucentSurfaceMaterialInteraction.transmittanceColor, 1.0);
+      const vec3 volumeAttenuation = evalBeerLambertAttenuation(attenuationCoefficient, attenuationDistance);
 
       return volumeAttenuation;
     }
   }
 
-  return float16_t(1.0);
+  return vec3(1.0f);
 }
 
 void applyPortalTextureTransform(RayPortalHitInfo portal, inout float2 textureCoordinates)
@@ -188,7 +188,7 @@ void applyPortalTextureTransform(RayPortalHitInfo portal, inout float2 textureCo
   textureCoordinates = mul(float3(textureCoordinates, 1.0), textureTransform);
 }
 
-float16_t getRayPortalTransparency(
+float getRayPortalTransparency(
   Ray ray,
   RayPortalHitInfo portal,
   out float t)
@@ -250,19 +250,19 @@ float16_t getRayPortalTransparency(
 
       if (!rayPortalSurfaceMaterialInteraction.isInsidePortal)
       {
-        return 0.0h;
+        return 0.0f;
       }
 
-      return saturate(1.0h - rayPortalSurfaceMaterialInteraction.mask.a);
+      return saturate(1.0f - rayPortalSurfaceMaterialInteraction.mask.a);
     }
   }
 
-  return 0.0h;
+  return 0.0f;
 }
 
 struct VisibilityResult {
-  f16vec3 attenuation;
-  f16vec3 rayDirection;
+  vec3 attenuation;
+  vec3 rayDirection;
   float hitDistance;
   bool hasOpaqueHit;
   bool hasPOMHit;
@@ -289,13 +289,13 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
   // If we're expecting to cross a particular portal, test whether the ray intersects that portal first.
   // If it doesn't, there's no need to trace any rays as the result is always "invisible".
   float portalIntersectionT = 0;
-  float16_t portalTransparency = 1.0;
+  float portalTransparency = 1.0f;
   if (expectedRayPortalIndex != invalidRayPortalIndex)
   {
     const RayPortalHitInfo rayPortalHitInfo = cb.rayPortalHitInfos[int(expectedRayPortalIndex)];
 
     portalTransparency = getRayPortalTransparency(visibilityRay, rayPortalHitInfo, portalIntersectionT);
-    if (portalTransparency == float16_t(0))
+    if (portalTransparency == 0.0f)
     {
       result.attenuation = 0;
       result.hitDistance = visibilityRay.tMax; // We don't know the distance, but whatever
@@ -307,7 +307,7 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
   }
 
   // Initialize the result with full transmission
-  result.attenuation = f16vec3(1.0);
+  result.attenuation = vec3(1.0f);
   result.hitDistance = visibilityRay.tMax;
   result.hasOpaqueHit = false;
   result.hasPOMHit = false;
@@ -353,13 +353,13 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
         RayHitInfo rayHitInfo;
         RAY_HIT_INFO_CREATE_RAY_QUERY_CANDIDATE(rayHitInfo, rayQuery)
 
-        f16vec3 surfaceAttenuation = handleVisibilityVertex<VisibilityMode>(visibilityRay, rayHitInfo, usePreviousTLAS);
+        vec3 surfaceAttenuation = handleVisibilityVertex<VisibilityMode>(visibilityRay, rayHitInfo, usePreviousTLAS);
 
-        f16vec3 prevAttenuation = result.attenuation;
+        vec3 prevAttenuation = result.attenuation;
         result.attenuation *= surfaceAttenuation;
 
         // Find an opaque hit
-        if ((float16_t(1) - calcBt709Luminance(result.attenuation)) >= cb.resolveOpaquenessThreshold)
+        if ((1.0f - calcBt709Luminance(result.attenuation)) >= cb.resolveOpaquenessThreshold)
         {
           // If opaque hit is not considered in the attenuation term, need to recover previous attenuation.
           if (!clearOpaqueHitAttenuation)
@@ -376,7 +376,7 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
     {
       if (clearOpaqueHitAttenuation)
       {
-        result.attenuation = f16vec3(0.0);
+        result.attenuation = vec3(0.0f);
       }
       result.hitDistance = rayQuery.CommittedRayT();
       result.hasOpaqueHit = true;
@@ -398,7 +398,7 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
       visibilityRay.origin = (mul(teleportMatrix, vec4(portalIntersectionPosition, 1.0f))).xyz;
       visibilityRay.direction = normalize(mul(mat3(teleportMatrix), visibilityRay.direction));
       visibilityRay.tMax = max(0, originalTMax - portalIntersectionT);
-      visibilityRay.coneRadius += float16_t(visibilityRay.spreadAngle * portalIntersectionT);
+      visibilityRay.coneRadius += visibilityRay.spreadAngle * portalIntersectionT;
 
       // Apply the portal mask
       result.attenuation *= portalTransparency;
@@ -421,13 +421,13 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
 VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
   MinimalSurfaceInteraction minimalSurfaceInteraction, float3 targetPosition,
   uint8_t rayMask, uint8_t expectedRayPortalIndex, PortalSpace2BitsType rayOriginPortalSpace, bool pomOpaqueSurfaceEncountered,
-  float16_t coneRadius = 0, float16_t spreadAngle = 0, float16_t tMaxFactor = 1.0h,
+  float coneRadius = 0, float spreadAngle = 0, float tMaxFactor = 1.0f,
   // ViewModel instances shouldn't occlude anything but ViewModel surfaces and primary rays
   bool hasRayOriginatedFromViewModel = false,
   bool usePreviousTLAS = false,
-  uint primarySurfaceIndex = SURFACE_INDEX_INVALID, float2 texCoords = f16vec2(0.0h),
+  uint primarySurfaceIndex = SURFACE_INDEX_INVALID, float2 texCoords = vec2(0.0f),
   bool isThinOpaqueSubsurface = false,
-  f16vec3 shadingNormal = f16vec3(0.0h), bool clearOpaqueHitAttenuation = true)
+  vec3 shadingNormal = vec3(0.0f), bool clearOpaqueHitAttenuation = true)
 {
   MinimalRayInteraction minimalRayInteraction = (MinimalRayInteraction) 0;
   minimalRayInteraction.coneRadius = coneRadius;

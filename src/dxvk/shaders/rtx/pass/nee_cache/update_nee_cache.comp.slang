@@ -231,7 +231,7 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
     if (cb.neeCacheArgs.enableReshuffleResilience && value.x != NEE_CACHE_INVALID_ID)
     {
       vec3 triangleCenter, lightIntensity;
-      f16vec3 triangleNormal;
+      vec3 triangleNormal;
       NEECacheUtils.calculateTriangleLightIntensity(surfaceID, primitiveID, triangleCenter, triangleNormal, lightIntensity);
       if (all(lightIntensity == 0))
       {
@@ -268,7 +268,7 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
     if (value.x != NEE_CACHE_INVALID_ID)
     {
       vec3 triangleCenter, lightIntensity;
-      f16vec3 triangleNormal;
+      vec3 triangleNormal;
       NEECacheUtils.calculateTriangleLightIntensity(surfaceID, primitiveID, triangleCenter, triangleNormal, lightIntensity);
       if (all(lightIntensity == 0))
       {

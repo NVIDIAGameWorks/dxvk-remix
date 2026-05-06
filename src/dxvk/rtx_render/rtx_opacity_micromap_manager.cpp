@@ -256,7 +256,8 @@ namespace dxvk {
 
   OpacityMicromapManager::OpacityMicromapManager(DxvkDevice* device)
     : CommonDeviceObject(device)
-    , m_memoryManager(device) {
+    , m_memoryManager(device)
+    , m_ommGeneration(s_nextOmmGeneration++) {
   }
 
   OpacityMicromapManager::~OpacityMicromapManager() { 
@@ -451,6 +452,10 @@ namespace dxvk {
     // Don't destroy the container as it's being used to iterate through below
     const bool destroyParentInstanceOmmRequestContainer = false;
 
+    // Reset retain-mode state so this instance can be re-registered if recreated
+    getOmmInstanceData(instance).ommBuildRequested = false;
+    m_ommCandidates.erase(const_cast<RtInstance*>(&instance));
+
     auto destroyCachedData = [&](XXH64_hash_t ommSrcHash) {
       auto ommCacheIterator = m_ommCache.find(ommSrcHash);
 
@@ -534,6 +539,12 @@ namespace dxvk {
     m_numTexelsPerMicroTriangle.clear();
 
     m_instanceOmmRequests.clear();
+
+    // Note: m_ommCandidates is intentionally NOT cleared here. It tracks
+    // instances that need a retry, while processOmmCandidates() also scans
+    // the instance table for stale generation data after this generation bump.
+
+    m_ommGeneration++;
 
     m_memoryManager.releaseAll();
     m_amountOfMemoryMissing = 0;
@@ -671,10 +682,21 @@ namespace dxvk {
   }
 
   void OpacityMicromapManager::onInstanceAdded(const RtInstance& instance) {
-    // Do nothing, intra-frame submission OMM work is done on onInstanceUpdated()
+    // Defer insertion until processOmmCandidates() can collect instances
+    // that have been through at least one full BLAS build cycle.
+    // Direct insertion here was causing GPU device lost because instances
+    // haven't had fillGeometryInfoFromBlasEntry or uploadSurfaceData run yet.
   }
 
-  // Requires registerOpacityMicromapBuildRequest() to be be called prior to this in a frame
+  void OpacityMicromapManager::seedCandidates(const std::vector<RtInstance*>& instances) {
+    for (RtInstance* inst : instances) {
+      if (inst && !inst->isMarkedForGC()) {
+        m_ommCandidates.insert(inst);
+      }
+    }
+  }
+
+  // Requires processOmmCandidates() to be called prior to this in a frame
   bool OpacityMicromapManager::usesOpacityMicromap(const RtInstance& instance) {
     const OpacityMicromapInstanceData& ommInstanceData = instance.getOpacityMicromapInstanceData();
 
@@ -702,7 +724,8 @@ namespace dxvk {
 
   OpacityMicromapInstanceData::OpacityMicromapInstanceData()
     : usesOMM(false)
-    , needsToCalculateNumTexelsPerMicroTriangle(false) { }
+    , needsToCalculateNumTexelsPerMicroTriangle(false)
+    , ommBuildRequested(false) { }
 
   OpacityMicromapInstanceData& OpacityMicromapManager::getOmmInstanceData(const RtInstance& instance) {
     // OMM Instance Data is managed by OMM manager but stored in an instance to avoid indirect lookups. 
@@ -983,6 +1006,7 @@ namespace dxvk {
     }
 
     if (instance.testCategoryFlags(InstanceCategories::IgnoreOpacityMicromap) ||
+        instance.testCategoryFlags(InstanceCategories::Terrain) ||
         instance.testCategoryFlags(InstanceCategories::IgnoreAlphaChannel)) {
       return false;
     }
@@ -1173,7 +1197,7 @@ namespace dxvk {
 
           if (currentFrameIndex != ommBuildRequestStatistics.lastRequestFrameId) {
             ommBuildRequestStatistics.lastRequestFrameId = currentFrameIndex;
-            ommBuildRequestStatistics.numFramesRequested = 1 + std::min<uint16_t>(UINT16_MAX - 1, minNumFramesRequested);
+            ommBuildRequestStatistics.numFramesRequested = 1 + std::min<uint16_t>(UINT16_MAX - 1, ommBuildRequestStatistics.numFramesRequested);
           }
 
           if (instance.getFrameAge() < minInstanceFrameAge)
@@ -1228,6 +1252,7 @@ namespace dxvk {
         CachedSourceData& itemSourceData = m_cachedSourceData[itemOmmSrcHash];
 
         if (sourceData.numTriangles < itemSourceData.numTriangles ||
+            (sourceData.numTriangles == itemSourceData.numTriangles && ommSrcHash < itemOmmSrcHash) ||
             // insert in front of any billboard requests
             usesSplitBillboardOpacityMicromap(*itemSourceData.getInstance())) {
           cacheStateListIter = m_unprocessedList.insert(itemIter, ommSrcHash);
@@ -1280,57 +1305,220 @@ namespace dxvk {
     updateSourceHash(instance, ommSrcHash);
   }
 
-  bool OpacityMicromapManager::registerOpacityMicromapBuildRequest(RtInstance& instance,
-                                                                   const InstanceManager& instanceManager,
-                                                                   const std::vector<TextureRef>& textures) {
+  void OpacityMicromapManager::processOmmCandidates(const InstanceManager& instanceManager,
+                                                     const std::vector<TextureRef>& textures) {
     ScopedCpuProfileZone();
 
-    // Skip processing if there's no available memory backing
-    if (m_memoryManager.getBudget() == 0) {
-      return false;
+    // Nothing to do if budget is zero — no OMMs can be created.
+    const bool hasBudget = m_memoryManager.getBudget() != 0;
+
+    const uint32_t currentFrameIndex = m_device->getCurrentFrameId();
+
+    // Per-frame processing budget: limits how many non-deferred candidates are fully processed
+    // to spread work across frames and avoid spikes when many deferrals expire at once.
+    // When request filtering is disabled, tests expect every eligible request to be submitted
+    // deterministically, so do not throttle candidate processing.
+    constexpr uint32_t kMaxCandidatesPerFrame = 1024;
+    const bool filterBuildRequests = OpacityMicromapOptions::BuildRequests::filtering();
+    const uint32_t maxCandidatesPerFrame = filterBuildRequests ? kMaxCandidatesPerFrame : UINT32_MAX;
+    uint32_t candidatesProcessedThisFrame = 0;
+
+    // Counters used for staggering deferrals across frames.
+    uint32_t numThrottled = 0;
+    uint32_t numRegisterFailed = 0;
+    std::vector<RtInstance*> retryCandidates;
+
+    auto keepCandidateForRetry = [this](RtInstance* inst) {
+      if (inst && !inst->isMarkedForGC()) {
+        m_ommCandidates.insert(inst);
+      }
+    };
+
+    // Walk the instance table instead of the unordered retry set so OMM request
+    // registration is deterministic. Stale generation data catches new instances
+    // and instances that need re-registration after an OMM cache reset.
+    std::vector<RtInstance*> candidates;
+    candidates.reserve(instanceManager.getInstanceTable().size());
+    for (RtInstance* inst : instanceManager.getInstanceTable()) {
+      if (!inst || inst->isMarkedForGC()) {
+        if (inst) {
+          m_ommCandidates.erase(inst);
+        }
+        continue;
+      }
+
+      const OpacityMicromapInstanceData& ommInstanceData = inst->getOpacityMicromapInstanceData();
+      if (m_ommCandidates.find(inst) != m_ommCandidates.end() ||
+          ommInstanceData.ommEligibilityGeneration != m_ommGeneration) {
+        candidates.push_back(inst);
+      }
     }
 
-    OpacityMicromapInstanceData& ommInstanceData = getOmmInstanceData(instance);
-    ommInstanceData.usesOMM = calculateInstanceUsesOpacityMicromap(instance);
+    for (RtInstance* inst : candidates) {
 
-    if (!ommInstanceData.usesOMM) {
-      return false;
+      // Remove GC'd instances
+      if (inst->isMarkedForGC()) {
+        m_ommCandidates.erase(inst);
+        continue;
+      }
+
+      // Skip instances whose BLAS hasn't been assigned yet.
+      // onInstanceAdded fires during draw call submission, before the BLAS loop
+      // assigns geometry.  The instance will be processed on a subsequent frame
+      // once its BLAS is set.
+      if (!inst->getBlas()) {
+        keepCandidateForRetry(inst);
+        continue;
+      }
+
+      // Skip brand-new instances (frameAge == 0).  processOmmCandidates runs
+      // BEFORE the BLAS build loop that calls fillGeometryInfoFromBlasEntry,
+      // so geometry data (modifiedGeometryData, buildGeometries) isn't ready
+      // yet on the instance's first frame.  Deferring to the next frame
+      // ensures the OMM is built against fully initialised geometry.
+      if (inst->getFrameAge() == 0) {
+        keepCandidateForRetry(inst);
+        continue;
+      }
+
+      OpacityMicromapInstanceData& ommInstanceData = getOmmInstanceData(*inst);
+
+      // Already registered in the current generation — done.
+      if (ommInstanceData.ommBuildRequested &&
+          ommInstanceData.ommRegistrationGeneration == m_ommGeneration) {
+        m_ommCandidates.erase(inst);
+        continue;
+      }
+      ommInstanceData.ommBuildRequested = false;
+
+      // Deferred — skip until retry frame is reached.
+      if (currentFrameIndex < ommInstanceData.ommRetryAfterFrame) {
+        keepCandidateForRetry(inst);
+        continue;
+      }
+
+      // Per-frame budget exceeded — stagger deferral to spread across future frames.
+      if (candidatesProcessedThisFrame >= maxCandidatesPerFrame) {
+        // Spread excess candidates across the next 32 frames to avoid future spikes.
+        ommInstanceData.ommRetryAfterFrame = currentFrameIndex + 1 + (numThrottled % 32);
+        ++numThrottled;
+        keepCandidateForRetry(inst);
+        continue;
+      }
+      ++candidatesProcessedThisFrame;
+
+      // No budget — keep candidate for retry when budget becomes available.
+      if (!hasBudget) {
+        keepCandidateForRetry(inst);
+        continue;
+      }
+
+      // Eligibility check — only runs once per instance per generation.
+      // Permanently ineligible instances are removed from the candidate set.
+      // The generation check ensures re-evaluation when OMM options change (clear()/generation bump).
+      if (ommInstanceData.ommEligibilityGeneration != m_ommGeneration) {
+        ommInstanceData.ommEligibilityGeneration = m_ommGeneration;
+        ommInstanceData.usesOMM = calculateInstanceUsesOpacityMicromap(*inst);
+        if (!ommInstanceData.usesOMM || inst->isViewModelNonReference()) {
+          m_ommCandidates.erase(inst);
+          continue;
+        }
+      }
+
+      // Textures not resident yet — defer.
+      if (!areInstanceTexturesResident(*inst, textures)) {
+        keepCandidateForRetry(inst);
+        continue;
+      }
+
+      // --- Fast pre-check for non-billboard instances with a known hash ---
+      // Avoids expensive generateInstanceOmmRequests / OmmRequest construction
+      // when the filter stats haven't been met yet.
+      const XXH64_hash_t cachedHash = ommInstanceData.ommSrcHash;
+      if (cachedHash != kEmptyHash && !usesSplitBillboardOpacityMicromap(*inst)) {
+        // Already in the OMM cache — full registration will succeed, proceed to full path.
+        if (m_ommCache.find(cachedHash) != m_ommCache.end()) {
+          // Fall through to full registration below.
+        }
+        // Blacklisted — permanently remove.
+        else if (m_blackListedList.find(cachedHash) != m_blackListedList.end()) {
+          m_ommCandidates.erase(inst);
+          continue;
+        }
+        // Pre-check the filter stats without constructing OmmRequest.
+        else if (filterBuildRequests) {
+          const uint32_t minInstanceFrameAge = OpacityMicromapOptions::BuildRequests::minInstanceFrameAge();
+          const uint32_t minNumRequests = OpacityMicromapOptions::BuildRequests::minNumRequests();
+          const uint32_t minNumFramesRequested = OpacityMicromapOptions::BuildRequests::minNumFramesRequested();
+
+          // Check capacity — if stats map is full and this hash isn't tracked yet, defer.
+          if (m_ommBuildRequestStatistics.size() >= OpacityMicromapOptions::BuildRequests::maxRequests() &&
+              m_ommBuildRequestStatistics.find(cachedHash) == m_ommBuildRequestStatistics.end()) {
+            ommInstanceData.ommRetryAfterFrame = currentFrameIndex + 1 + (numRegisterFailed % 32);
+            ++numRegisterFailed;
+            keepCandidateForRetry(inst);
+            continue;
+          }
+
+          // Accumulate stats cheaply.
+          OMMBuildRequestStatistics& stats = m_ommBuildRequestStatistics[cachedHash];
+          stats.numTimesRequested = 1 + std::min<uint16_t>(UINT16_MAX - 1, stats.numTimesRequested);
+          if (currentFrameIndex != stats.lastRequestFrameId) {
+            stats.lastRequestFrameId = currentFrameIndex;
+            stats.numFramesRequested = 1 + std::min<uint16_t>(UINT16_MAX - 1, stats.numFramesRequested);
+          }
+
+          // Check thresholds — defer if not met.
+          if (inst->getFrameAge() < minInstanceFrameAge ||
+              stats.numTimesRequested < minNumRequests ||
+              stats.numFramesRequested < minNumFramesRequested) {
+            ++numRegisterFailed;
+            keepCandidateForRetry(inst);
+            continue;
+          }
+          // Filter passed — fall through to full registration which will erase stats and build.
+        }
+      }
+
+      // --- Attempt OMM registration ---
+      InstanceOmmRequests ommRequests;
+      generateInstanceOmmRequests(*inst, instanceManager, ommRequests.ommRequests);
+
+      m_instanceOmmRequests.emplace(getOpacityMicromapHash(*inst), ommRequests);
+
+      bool allRegistersSucceeded = true;
+      for (auto& ommRequest : ommRequests.ommRequests) {
+        allRegistersSucceeded &= registerOmmRequestInternal(*inst, ommRequest);
+      }
+
+      // Purge bookkeeping if no active requests resulted
+      auto instanceOmmRequestsIter = m_instanceOmmRequests.find(getOpacityMicromapHash(*inst));
+      if (instanceOmmRequestsIter->second.numActiveRequests == 0) {
+        m_instanceOmmRequests.erase(instanceOmmRequestsIter);
+      }
+
+      if (allRegistersSucceeded) {
+        ommInstanceData.ommBuildRequested = true;
+        ommInstanceData.ommRegistrationGeneration = m_ommGeneration;
+        m_ommCandidates.erase(inst);
+      } else {
+        // Defer retry to avoid re-doing expensive generateInstanceOmmRequests work every frame
+        // for instances that can't complete registration (e.g., maxRequests cap reached).
+        // Stagger deferrals to spread retries across frames.
+        ommInstanceData.ommRetryAfterFrame = currentFrameIndex + 1 + (numRegisterFailed % 32);
+        if (!inst->isMarkedForGC() &&
+            m_ommCandidates.find(inst) == m_ommCandidates.end()) {
+          retryCandidates.push_back(inst);
+        }
+        ++numRegisterFailed;
+      }
     }
 
-    if (!areInstanceTexturesResident(instance, textures)) {
-      return false;
+    for (RtInstance* inst : retryCandidates) {
+      if (!inst->isMarkedForGC()) {
+        m_ommCandidates.insert(inst);
+      }
     }
-
-    // Ignore non-reference view model instance requests for adding new OMM requests.
-    // Their OMM data will be generated via OMM requests for reference ViewModel instances.
-    // The reason why they cannot be registered for building is that instance manager 
-    // does not call destroyInstance callbacks when they are destroyed. Also reference instances
-    // are kept across frames which is more fitting for OMM generation with a per frame building budget.
-    if (instance.isViewModelNonReference()) {
-      return false;
-    }
-
-    InstanceOmmRequests ommRequests;
-
-    generateInstanceOmmRequests(instance, instanceManager, ommRequests.ommRequests);
-
-    // Bookkeep the requests now so that they can be released should any registers fail below
-    m_instanceOmmRequests.emplace(getOpacityMicromapHash(instance), ommRequests);
-
-    bool allRegistersSucceeded = true;
-
-    // Register all omm requests for the instance
-    for (auto& ommRequest : ommRequests.ommRequests)
-      allRegistersSucceeded &= registerOmmRequestInternal(instance, ommRequest);
-
-    // Purge the instance omm requests that didn't end up with any active omm requests
-    // ToDo: should avoid adding into the list in the first place as this happens for ommRequests that
-    //   have already been completed as well
-    auto instanceOmmRequestsIter = m_instanceOmmRequests.find(getOpacityMicromapHash(instance));
-    if (instanceOmmRequestsIter->second.numActiveRequests == 0)
-      m_instanceOmmRequests.erase(instanceOmmRequestsIter);
-      
-    return allRegistersSucceeded;
   }
 
   bool OpacityMicromapManager::registerOmmRequestInternal(RtInstance& instance, const OmmRequest& ommRequest) {
@@ -1379,6 +1567,10 @@ namespace dxvk {
                                                               VkAccelerationStructureGeometryKHR& targetGeometry,
                                                               const InstanceManager& instanceManager) {
     ScopedCpuProfileZone();
+
+    // Always clear any stale OMM binding from cached geometry data.
+    // If binding succeeds below, pNext will be set to the new OMM descriptor.
+    targetGeometry.geometry.triangles.pNext = nullptr;
     
     // Skip trying to bind an OMM if the budget is 0 since no OMMs can exist
     if (m_memoryManager.getBudget() == 0) {
@@ -1664,7 +1856,18 @@ namespace dxvk {
     const std::vector<TextureRef>& textures,
     uint32_t& availableBakingBudget) {
     
+    // Guard against null instance — can happen if the instance was destroyed
+    // between registration and baking, or if the source data was invalidated.
+    if (!sourceData.getInstance()) {
+      return OmmResult::Failure;
+    }
+
     const RtInstance& instance = *sourceData.getInstance();
+
+    // Guard against null BLAS — instance may have been partially torn down.
+    if (!instance.getBlas()) {
+      return OmmResult::Failure;
+    }
 
     if (!areInstanceTexturesResident(instance, textures)) {
       return OmmResult::DependenciesUnavailable;
@@ -2103,6 +2306,7 @@ namespace dxvk {
       
       if (result == OmmResult::Success) {
         ommCacheItem.cacheState = OpacityMicromapCacheState::eStep3_Built;
+        m_hasNewlyBuiltOmms = true;
         // Move the item from the baked list to the end of the built list
         auto ommSrcHashIterToMove = ommSrcHashIter++;
         m_builtList.splice(m_builtList.end(), m_bakedList, ommSrcHashIterToMove);
@@ -2169,6 +2373,7 @@ namespace dxvk {
     m_numBoundOMMs = 0;
     m_numRequestedOMMBindings = 0;
     m_scratchMemoryUsedThisFrame = 0;
+    m_hasNewlyBuiltOmms = false;
 
     // Clear caches if we need to rebuild OMMs
     {
@@ -2188,18 +2393,33 @@ namespace dxvk {
         clear();
         // Reset the black listed list as well since black listing depends on the settings
         m_blackListedList.clear();
+        m_needsBlasRebuild = true;
       }
     }
 
-    // Purge obsolete OMM build requests
-    for (auto statIter = m_ommBuildRequestStatistics.begin(); statIter != m_ommBuildRequestStatistics.end();) {
-      const uint32_t requestAge = currentFrameIndex - statIter->second.lastRequestFrameId;
+    // Detect binding/building option toggles that require BLAS rebuilds
+    // so existing OMM bindings are added or removed.
+    {
+      bool bindingOptionsChanged = false;
+      bindingOptionsChanged |= hasValueChanged(OpacityMicromapOptions::enableBinding(), m_prevEnableBinding);
+      bindingOptionsChanged |= hasValueChanged(OpacityMicromapOptions::enableBuilding(), m_prevEnableBuilding);
+      bindingOptionsChanged |= hasValueChanged(OpacityMicromapOptions::enableBakingArrays(), m_prevEnableBakingArrays);
+      if (bindingOptionsChanged) {
+        m_needsBlasRebuild = true;
+      }
+    }
 
-      // Increment the iterator before any deletion
-      auto currentStatIter = statIter++;
-
-      if (requestAge > OpacityMicromapOptions::BuildRequests::maxRequestFrameAge())
-        m_ommBuildRequestStatistics.erase(currentStatIter);
+    // Retain mode: build request statistics are no longer purged by frame age.
+    // They persist until the request passes the filter (erased in addNewOmmBuildRequest)
+    // or the instance is destroyed (erased in destroyInstance).
+    // Instead, auto-advance numFramesRequested so deferred candidates can
+    // accumulate enough "frames requested" to pass the filter without
+    // requiring per-frame registration calls.
+    for (auto& [hash, stats] : m_ommBuildRequestStatistics) {
+      if (currentFrameIndex != stats.lastRequestFrameId) {
+        stats.lastRequestFrameId = currentFrameIndex;
+        stats.numFramesRequested = 1 + std::min<uint16_t>(UINT16_MAX - 1, stats.numFramesRequested);
+      }
     }
     
     // Account for OMM usage in BLASes in a previous TLAS

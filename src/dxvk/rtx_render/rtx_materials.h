@@ -21,6 +21,9 @@
 */
 #pragma once
 
+#include <memory>
+#include <variant>
+
 #include "rtx_texture.h"
 #include "rtx_option.h"
 #include "../../util/util_color.h"
@@ -476,8 +479,10 @@ struct RtSurface {
   uint32_t objectPickingValue = 0; // NOTE: a value to fill GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT
   uint32_t decalSortOrder = 0; // see: InstanceManager::m_decalSortOrderCounter
 
-  // PointInstancer support - this surface may represent multiple instances, one for each transform in instancesToObject
-  const std::vector<Matrix4>* instancesToObject = nullptr;
+  // PointInstancer support - this surface may represent multiple instances, one for each transform in instancesToObject.
+  // Some API-provided instance transform arrays are not owned by an AssetReplacement and may be destroyed before the
+  // next full scene clear, so surfaces retain shared ownership of the transform data they reference.
+  std::shared_ptr<const std::vector<Matrix4>> instancesToObject;
   // on the GPU, multiple copies of this surface with different transforms will exist.  They will be in a continuous block, starting at surfaceIndexOfFirstInstance.
   size_t surfaceIndexOfFirstInstance = SIZE_MAX;
 };

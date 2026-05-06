@@ -46,7 +46,7 @@ RayInteraction rayInteractionCreate(Ray ray, RayHitInfo rayHitInfo)
   // to do in the future (though there are a few other places where the spread angle is used which use it as a raw angle value rather than a
   // tangent, so these may need to be rewritten to accomodate such a change, and really the difference between the tangent and its approximation
   // are so minor at this scale that it likely will not make any difference).
-  rayInteraction.coneRadius = ray.coneRadius + float16_t(ray.spreadAngle * rayHitInfo.hitDistance);
+  rayInteraction.coneRadius = ray.coneRadius + ray.spreadAngle * rayHitInfo.hitDistance;
   rayInteraction.viewDirection = -ray.direction;
   rayInteraction.hitDistance = rayHitInfo.hitDistance;
   rayInteraction.barycentricCoordinates = rayHitInfo.barycentricCoordinates;

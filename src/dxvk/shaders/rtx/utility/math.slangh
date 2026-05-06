@@ -233,6 +233,17 @@ void calcOrthonormalBasis(f16vec3 normal, out f16vec3 tangent, out f16vec3 bitan
   bitangent = f16vec3(b, sign + normal.y * normal.y * a, -normal.y);
 }
 
+void calcOrthonormalBasis(vec3 normal, out vec3 tangent, out vec3 bitangent)
+{
+  const float sign = signNotZero(normal.z);
+
+  const float a = -1.0f / (sign + normal.z);
+  const float b = normal.x * normal.y * a;
+
+  tangent = vec3(1.0f + sign * normal.x * normal.x * a, sign * b, -sign * normal.x);
+  bitangent = vec3(b, sign + normal.y * normal.y * a, -normal.y);
+}
+
 // Calculates spherical coordinates to cartesian coordinates given either the standard or a custom basis.
 #define GENERIC_CALC_SPHERICAL_DIRECTION(type, vectorType)                  \
 vectorType calcSphericalDirection(type sinTheta, type cosTheta,             \
@@ -315,45 +326,68 @@ mat3 inverse(mat3 m)
   return result;
 }
 
+bool isQuatRightHanded(float16_t q)
+{
+  return float16BitsToUint16(q) & 0x8000;
+}
+
+bool isQuatRightHanded(float q)
+{
+  return asuint(q) & 0x80000000;
+}
+
 // Calculates the quaternion which transforms the normalized vector src to normalized vector dst
 // Note: returns a zero quat if src == -dst, case when dot(src, dst) == -1 needs to be handled if this is expected.
-f16vec4 quaternionCreateOrientation(f16vec3 src, f16vec3 dst)
+vec4 quaternionCreateOrientation(vec3 src, vec3 dst)
 {
   // https://stackoverflow.com/questions/1171849/finding-quaternion-representing-the-rotation-from-one-vector-to-another
-  f16vec4 q;
+  vec4 q;
   q.xyz = cross(src, dst);
   q.w = 1.0 + dot(src, dst);
 
   // Normalize the quaternion
-  float16_t len = length(q);
-  q = (len > float16_t(0.0)) ? q / len : f16vec4(1.0, 0.0, 0.0, 0.0);
+  float len = length(q);
+  q = (len > 0.0f) ? q / len : vec4(1.0, 0.0, 0.0, 0.0);
 
   // Quaternions returned here are always positive
-  return (q.w < 0.h) ? -q : q;
+  return (q.w < 0.0f) ? -q : q;
 }
 
 // Transform a vector v with a quaternion q, v doesn't need to be normalized
-f16vec3 quaternionTransformVector(f16vec4 q, f16vec3 v, bool signBitIsParity = false)
+f16vec3 quaternionTransformVector(vec4 q, f16vec3 v, bool signBitIsParity = false)
 {
-  f16vec3 newVector = v + float16_t(2.0) * cross(q.xyz, cross(q.xyz, v) + q.w * v);
+  vec3 newVector = vec3(v) + 2.0f * cross(q.xyz, cross(q.xyz, vec3(v)) + q.w * vec3(v));
 
   // In cases where we encode the sign bit of the quaternion representing an improper rotation...
   if (signBitIsParity)
   {
-    newVector = (isQuatRightHanded(q.w) ? -1.h : 1.h) * newVector;
+    newVector = (isQuatRightHanded(q.w) ? -1.0f : 1.0f) * newVector;
+  }
+
+  return f16vec3(newVector);
+}
+
+vec3 quaternionTransformVector(vec4 q, vec3 v, bool signBitIsParity = false)
+{
+  vec3 newVector = v + 2.0f * cross(q.xyz, cross(q.xyz, v) + q.w * v);
+
+  // In cases where we encode the sign bit of the quaternion representing an improper rotation...
+  if (signBitIsParity)
+  {
+    newVector = (isQuatRightHanded(q.w) ? -1.0f : 1.0f) * newVector;
   }
 
   return newVector;
 }
 
-f16vec4 quaternionInverse(f16vec4 q)
+vec4 quaternionInverse(vec4 q)
 {
-  return f16vec4(-q.xyz, q.w);
+  return vec4(-q.xyz, q.w);
 }
 
-f16vec4 quaternionMultiply(f16vec4 q1, f16vec4 q2, bool signBitIsParity = false)
+vec4 quaternionMultiply(vec4 q1, vec4 q2, bool signBitIsParity = false)
 {
-  f16vec4 q;
+  vec4 q;
 
   // q1 * q2
   q.w = q1.w * q2.w - dot(q1.xyz, q2.xyz);
@@ -365,7 +399,7 @@ f16vec4 quaternionMultiply(f16vec4 q1, f16vec4 q2, bool signBitIsParity = false)
   // In cases where we encode the sign bit of the quaternion representing an improper rotation...
   if (signBitIsParity)
   {
-    return (isQuatRightHanded(q1) ? -1.h : 1.h) * (isQuatRightHanded(q2.w) ? -1.h : 1.h) * q;
+    return (isQuatRightHanded(q1) ? -1.0f : 1.0f) * (isQuatRightHanded(q2.w) ? -1.0f : 1.0f) * q;
   }
   else
   {
@@ -380,11 +414,11 @@ f16vec4 quaternionMultiply(f16vec4 q1, f16vec4 q2, bool signBitIsParity = false)
 // handedness. No guarantees for left or right handedness are made as it depends on the triangle's UV layout.
 void genTangSpace(vec2 uvs[3],
                   vec3 pos[3],
-                  f16vec3 normal,
-                  out f16vec3 tangent,
-                  out f16vec3 bitangent,
-                  out f16vec3 rawTangentOut,
-                  out f16vec3 rawBitangentOut)
+                  vec3 normal,
+                  out vec3 tangent,
+                  out vec3 bitangent,
+                  out vec3 rawTangentOut,
+                  out vec3 rawBitangentOut)
 {
   // Compute triangle partial derivatives
 
@@ -425,17 +459,14 @@ void genTangSpace(vec2 uvs[3],
 
   // Gram-Schmidt Orthogonalization
 
-  // Note: Converted to 32 bit float to use with other vectors easier, hopefully won't take up too many more registers.
-  const vec3 preciseNormal = vec3(normal);
-
   // Note: Orthogonalizing here will not change the cross product's direction (relevant for later when the bitangent is derived)
   // or the overall general direction the tangent is facing as the orthogonalized vector is a linear combination of the two input
   // vectors and thus will stay as part of the plane spanned by the two vectors. Additionally, this must be done as the tangent
   // vector calculated from the texture coordinates/positions may not be orthogonal to the specified normal.
-  const vec3 newTangent = orthogonalize(rawTangent, preciseNormal);
+  const vec3 newTangent = orthogonalize(rawTangent, normal);
   // Note: This process creates a new bitangent vector orthogonal to the normal and newly orthogonalized tangent but potentially not
   // in the same direction as the calculated bitangent from the texture coordinates/positions (and this will be corrected for later).
-  const vec3 newBitangent = cross(preciseNormal, newTangent);
+  const vec3 newBitangent = cross(normal, newTangent);
 
   // Handle invalid cases with a fallback basis generation
 
@@ -464,25 +495,22 @@ void genTangSpace(vec2 uvs[3],
   // spaces may be either left handed or right handed in Remix).
   const float bitangentSign = signNotZero(dot(newBitangent, rawBitangent));
 
-  // Note: Float 16 conversion done after normalization in these cases to avoid precision/overflow issues with large tangent vectors.
-  // Not quite as accurate as this may result in a slightly non-normalized vector compared to normalizing it in this quantized form,
-  // but it should be fine.
-  tangent = f16vec3(normalize(newTangent));
-  bitangent = f16vec3(normalize(bitangentSign * newBitangent));
+  tangent = normalize(newTangent);
+  bitangent = normalize(bitangentSign * newBitangent);
 }
 
 // Smart bent normal for ray tracing
 // See appendix A.3 in https://arxiv.org/pdf/1705.01263.pdf
-f16vec3 getBentNormal(f16vec3 geometryNormal, f16vec3 shadingNormal, f16vec3 viewDirection)
+vec3 getBentNormal(vec3 geometryNormal, vec3 shadingNormal, vec3 viewDirection)
 {
   // Specular reflection in shading normal
-  const f16vec3 R = reflect(viewDirection, shadingNormal);
-  const float16_t a = dot(geometryNormal, R);
+  const vec3 R = reflect(viewDirection, shadingNormal);
+  const float a = dot(geometryNormal, R);
 
-  if (a < float16_t(0.0)) // Perturb normal
+  if (a < 0.0f) // Perturb normal
   {
-    const float16_t b = max(float16_t(0.0001), dot(shadingNormal, geometryNormal));
-    const f16vec3 newVector = -viewDirection + normalize(R - shadingNormal * a / b);
+    const float b = max(0.0001f, dot(shadingNormal, geometryNormal));
+    const vec3 newVector = -viewDirection + normalize(R - shadingNormal * a / b);
 
     // Note: Fall back to the geometry normal if if normalization is not possible.
     return safeNormalize(newVector, geometryNormal);
@@ -508,15 +536,15 @@ f16mat3 getReflectionMatrix(f16vec3 normal)
   );
 }
 
-f16vec4 getReflectionQuaternion(f16vec3 normal)
+vec4 getReflectionQuaternion(vec3 normal)
 {
   // Half-angle for quaternion calculation
-  float16_t halfAngle = pi * 0.5f;
+  float halfAngle = pi * 0.5f;
 
   // Calculate the quaternion components
-  float16_t sinHalfAngle = sin(halfAngle);
+  float sinHalfAngle = sin(halfAngle);
     
-  f16vec4 q;
+  vec4 q;
   q.x = normal.x * sinHalfAngle;
   q.y = normal.y * sinHalfAngle;
   q.z = normal.z * sinHalfAngle;
@@ -528,10 +556,10 @@ f16vec4 getReflectionQuaternion(f16vec3 normal)
   return -normalize(q);
 }
 
-f16vec4 getRefractionQuaternion(f16vec3 normal)
+vec4 getRefractionQuaternion(vec3 normal)
 {
   // Todo
-  return f16vec4(0.h, 0.h, 0.h, 1.h);
+  return vec4(0.0f, 0.0f, 0.0f, 1.0f);
 }
 
 f16mat3 getIdentityMatrix()
@@ -539,7 +567,7 @@ f16mat3 getIdentityMatrix()
   return f16mat3(1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f);
 }
 
-f16mat3 quaternionToRotMat3(f16vec4 q)
+f16mat3 quaternionToRotMat3(vec4 q)
 {
   return f16mat3(
     quaternionToTangent(q),
@@ -547,48 +575,53 @@ f16mat3 quaternionToRotMat3(f16vec4 q)
     quaternionToNormal(q));
 }
 
-f16vec3 quaternionToTangent(f16vec4 q)
+vec3 quaternionToTangent(vec4 q)
 {
-  return quaternionTransformVector(q, f16vec3(1,0,0));
+  return quaternionTransformVector(q, vec3(1, 0, 0));
 }
 
-f16vec3 quaternionToBitangent(f16vec4 q)
+vec3 quaternionToBitangent(vec4 q)
 {
   if (isQuatRightHanded(q)) {
-    return quaternionTransformVector(q, f16vec3(0,1,0));
+    return quaternionTransformVector(q, vec3(0, 1, 0));
   } else {
-    return quaternionTransformVector(q, f16vec3(0,-1,0));
+    return quaternionTransformVector(q, vec3(0, -1, 0));
   }
 }
 
-f16vec3 quaternionToNormal(f16vec4 q)
+vec3 quaternionToNormal(vec4 q)
 {
-  return quaternionTransformVector(q, f16vec3(0,0,1));
+  return quaternionTransformVector(q, vec3(0, 0, 1));
 }
 
 // Because quaternion == -quaternion, we can use the sign bit of the w
 // component of the quaternion to encode the handedness of the original TBN matrix.
-bool isQuatRightHanded(f16vec4 q) 
+bool isQuatRightHanded(f16vec4 q)
 {
-  return float16BitsToUint16(q.w) & 0x8000;
+  return isQuatRightHanded(q.w);
+}
+
+bool isQuatRightHanded(vec4 q)
+{
+  return isQuatRightHanded(q.w);
 }
 
 // This produces a quaternion with a positive w, then inverts the quaternion if the input
 // TBN was right handed.  As q == -q for rotation purposes, this is a safe way to store
 // an extra flag along with the quaternion.
 // `isQuatRightHanded` can be used to easily check if the input TBN was right handed.
-f16vec4 tbnFrameToQuaternion(f16vec3 tangent, f16vec3 biTangent, f16vec3 normal)
+vec4 tbnFrameToQuaternion(vec3 tangent, vec3 biTangent, vec3 normal)
 {
   const bool rightHanded = (dot(cross(tangent,biTangent), normal) >= 0.0);
   if (!rightHanded)
   {
     biTangent = -biTangent;
   }
-  f16mat3 rotationMatrix = { tangent, biTangent, normal };
+  mat3 rotationMatrix = { tangent, biTangent, normal };
   rotationMatrix = transpose(rotationMatrix);
 
   const float tr = rotationMatrix[0][0] + rotationMatrix[1][1] + rotationMatrix[2][2];
-  f16vec4 quaternion;
+  vec4 quaternion;
   if (tr > 0)
   {
     float s = sqrt(tr + 1.0) * 2; // s=4*qw
@@ -626,15 +659,15 @@ f16vec4 tbnFrameToQuaternion(f16vec3 tangent, f16vec3 biTangent, f16vec3 normal)
   // (or vice versa) flip the quaternion.
   if (isQuatRightHanded(quaternion) != rightHanded)
   {
-    quaternion = uint16BitsToHalf(float16BitsToUint16(quaternion) ^ 0x8000);
+    quaternion = -quaternion;
   }
 
   return quaternion;
 }
 
-f16vec4 getIdentityQuaternion()
+vec4 getIdentityQuaternion()
 {
-  return f16vec4(0.h, 0.h, 0.h, 1.h);
+  return vec4(0.0f, 0.0f, 0.0f, 1.0f);
 }
 
 // Calculate a non-normalized gaussian weight for a sample position

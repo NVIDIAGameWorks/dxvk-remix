@@ -35,7 +35,7 @@
 #include "rtx/pass/nrc/nrc_utilities.slangh"
 #include "rtx/pass/nrc/nrc_debug_view_utilities.slangh"
 
-float16_t getLobeAngleFromMaterial(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction)
+float getLobeAngleFromMaterial(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction)
 {
   const float perceptualRoughnessSquared = opaqueSurfaceMaterialInteraction.isotropicRoughness;
   const float lobeAngleNorm = 2.0 * perceptualRoughnessSquared / (1.0 + perceptualRoughnessSquared);
@@ -174,7 +174,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
         primitiveIndex = candidate.getPrimitiveID();
         vec3 uvw = vec3(RAB_GetNextRandom(rtxdiRNG), RAB_GetNextRandom(rtxdiRNG), RAB_GetNextRandom(rtxdiRNG));
         float triangleArea;
-        float16_t spreadAngle = getLobeAngleFromMaterial(opaqueSurfaceMaterialInteraction);
+        float spreadAngle = getLobeAngleFromMaterial(opaqueSurfaceMaterialInteraction);
         lightSample = NEECacheUtils.calculateLightSampleFromCandidate(
           candidate.getSurfaceID(), primitiveIndex, candidate.getRange(), PrimitiveIDPrefixSum, uvw, lightObjectPdf, minimalSurfaceInteraction.position,
           minimalRayInteraction.coneRadius, spreadAngle, triangleArea, true, kFootprintFromRayOriginClamped);
@@ -184,7 +184,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
         // Fallback: candidates lost or reshuffled (BLAS rebuild changed prim count).
         // Use cached world-space samples preserved by the update shader.
         uint triangleID;
-        float16_t spreadAngle = getLobeAngleFromMaterial(opaqueSurfaceMaterialInteraction);
+        float spreadAngle = getLobeAngleFromMaterial(opaqueSurfaceMaterialInteraction);
         lightSample = cell.getCachedLightSample(RAB_GetNextRandom(rtxdiRNG), minimalSurfaceInteraction.position,
           minimalRayInteraction.coneRadius, spreadAngle, triangleID);
         usedCachedSample = true;

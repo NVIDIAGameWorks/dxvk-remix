@@ -27,7 +27,7 @@ GBufferMemoryMinimalSurfaceInteraction gBufferMemoryMinimalSurfaceInteractionCre
 {
   GBufferMemoryMinimalSurfaceInteraction gBufferMemoryMinimalSurfaceInteraction;
 
-  const f16vec4 quaternion = tbnFrameToQuaternion(
+  const vec4 quaternion = tbnFrameToQuaternion(
     minimalSurfaceInteraction.triangleTangent,
     minimalSurfaceInteraction.triangleBitangent,
     minimalSurfaceInteraction.triangleNormal);

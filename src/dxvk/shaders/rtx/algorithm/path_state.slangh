@@ -40,7 +40,7 @@ static const uint kApproxRNGSamplesPerBounce = 16;
 // The maximum value to use in throughput-related division operations to prevent an overflow to infinity.
 // This effectively will clamp any throughput values higher than this value to this value during any division
 // operations as well. Set similarly to the materialMaximum value just below the limit of 16 bit floats.
-static const float16_t kThroughputClampedDivisionMaximum = float16_t(65000.0);
+static const float kThroughputClampedDivisionMaximum = 65000.0f;
 
 #define NEE_CACHE_STATE_DISABLED 0
 #define NEE_CACHE_STATE_LAST_ENABLED 1
@@ -107,22 +107,22 @@ struct PathState : IBasePayloadState
   // NRC resets path state's throughput on each bounce, but some parts of the PT
   // require accrued throughput along the full path regardless
   // Note: valid for isNrcUpdate == true
-  property f16vec3 throughputFullPath
+  property vec3 throughputFullPath
   {
     get 
     {
-      return f16vec3(
-        uint16BitsToHalf(nrcData0),
-        uint16BitsToHalf(nrcData0 >> 16),
-        uint16BitsToHalf(nrcData1));
+      return vec3(
+        uint16BitsToF32(nrcData0),
+        uint16BitsToF32(nrcData0 >> 16),
+        uint16BitsToF32(nrcData1));
     }
 
     set
     {
-      nrcData0 = uint(float16BitsToUint16(newValue.x))
-               | (uint(float16BitsToUint16(newValue.y)) << 16);
+      nrcData0 = uint(float16BitsToUint16(float16_t(newValue.x)))
+               | (uint(float16BitsToUint16(float16_t(newValue.y))) << 16);
       nrcData1 = (nrcData1 & 0xFFFF0000) 
-               | uint(float16BitsToUint16(newValue.z));
+               | uint(float16BitsToUint16(float16_t(newValue.z)));
     }
   }
 
@@ -290,10 +290,10 @@ struct PathState : IBasePayloadState
     set { _origin = newValue; }
   }
 
-  property float16_t coneRadius 
+  property float coneRadius
   {
     get { return _coneRadius; }
-    set { _coneRadius = newValue; }
+    set { _coneRadius = float16_t(newValue); }
   }
 
   property float segmentHitDistance 
@@ -372,10 +372,10 @@ struct PathState : IBasePayloadState
 
   // Packed members
 
-  property f16vec3 direction
+  property vec3 direction
   {
       get { return _direction; }
-      set { _direction = newValue; }
+      set { _direction = f16vec3(newValue); }
   }
 
   // Track the portal ID that an indirect ray crosses
@@ -397,16 +397,16 @@ struct PathState : IBasePayloadState
       set { _data = (_data & (~(0xf << 4))) | ((newValue & 0xf) << 4); }
   }
 
-  property f16vec4 accumulatedRotation
+  property vec4 accumulatedRotation
   {
       get { return getIdentityQuaternion(); }
       set { }
   }
 
-  property float16_t gbufferPerceptualRoughness
+  property float gbufferPerceptualRoughness
   {
-      get { return unorm8ToF16(_roughness); }
-      set { _roughness = f16ToUnorm8(newValue); }
+      get { return unorm8ToF32(_roughness); }
+      set { _roughness = f32ToUnorm8(newValue); }
   }
 
   // Methods
@@ -422,7 +422,7 @@ struct PathState : IBasePayloadState
     return sampleOffset;
   }
 
-  f16vec3 calculateFullThroughput() 
+  vec3 calculateFullThroughput()
   {
 #if ENABLE_NRC
     if (isNrcUpdate)
@@ -470,17 +470,17 @@ struct PathState : IBasePayloadState
   }
 
   // Describe the rate at which we should perform unordered resolve for indirect rays.
-  static const float16_t kUnorderedResolveSelectionProbabilityMin = 1.h/16.h;
-  static const float16_t kUnorderedResolveSelectionProbabilityMax = 1.h/2.h;
+  static const float kUnorderedResolveSelectionProbabilityMin = 1.0f / 16.0f;
+  static const float kUnorderedResolveSelectionProbabilityMax = 1.0f / 2.0f;
 
-  float16_t getUnorderedApproximationSelectionProbability()
+  float getUnorderedApproximationSelectionProbability()
   {
     return cb.enableProbabilisticUnorderedResolveInIndirectRays
              // Note: The use of gbuffer roughness here is just a rough estimator for how important a ray is to the overall path contribution. 
              //       There are better estimators, however this one is basically free, and provides good quality.  Ideally we want high probability
              //       when the ray is from a smooth material, and low probability when it is very rough.
              ? lerp(kUnorderedResolveSelectionProbabilityMax, kUnorderedResolveSelectionProbabilityMin, gbufferPerceptualRoughness)
-             : 1.h;
+             : 1.0f;
   }
 
 #if defined(RAY_PIPELINE) && defined(RT_SHADER_EXECUTION_REORDERING)

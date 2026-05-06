@@ -596,10 +596,12 @@ namespace dxvk {
     const uint32_t numDispatches = dxvk::util::ceilDivide(numThreads, numThreadsPerDispatch);
     const uint32_t baseThreadIndexOffset = bakeState.numMicroTrianglesBaked / args.numMicroTrianglesPerThread;
 
-    args.numActiveThreads = numThreadsPerDispatch;
-
     for (uint32_t i = 0; i < numDispatches; i++) {
-      args.threadIndexOffset = i * numThreadsPerDispatch + baseThreadIndexOffset;
+      const uint32_t dispatchThreadOffset = i * numThreadsPerDispatch;
+      const uint32_t numActiveThreadsThisDispatch = std::min(numThreads - dispatchThreadOffset, numThreadsPerDispatch);
+
+      args.threadIndexOffset = dispatchThreadOffset + baseThreadIndexOffset;
+      args.numActiveThreads = numActiveThreadsThisDispatch;
 
       // Upload the arguments into a buffer slice
       const auto& devInfo = ctx->getDevice()->properties().core.properties;
@@ -611,7 +613,9 @@ namespace dxvk {
       ctx->bindResourceBuffer(BINDING_BAKE_OPACITY_MICROMAP_CONSTANTS, cb);
 
       // Run the shader
-      const VkExtent3D workgroups = util::computeBlockCount(VkExtent3D { numThreadsPerDispatch, 1, 1 }, VkExtent3D { BAKE_OPACITY_MICROMAP_NUM_THREAD_PER_COMPUTE_BLOCK, 1, 1 });
+      const VkExtent3D workgroups = util::computeBlockCount(
+        VkExtent3D { numActiveThreadsThisDispatch, 1, 1 },
+        VkExtent3D { BAKE_OPACITY_MICROMAP_NUM_THREAD_PER_COMPUTE_BLOCK, 1, 1 });
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
     }
 

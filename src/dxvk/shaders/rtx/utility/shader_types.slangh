@@ -150,6 +150,16 @@ vector<float16_t, N> uint16BitsToHalf<let N : int>(vector<uint16_t, N> u)
   return reinterpret<vector<float16_t, N>>(u);
 }
 
+float uint16BitsToF32(uint16_t u)
+{
+  return float(uint16BitsToHalf(u));
+}
+
+vector<float, N> uint16BitsToF32<let N : int>(vector<uint16_t, N> u)
+{
+  return vector<float, N>(uint16BitsToHalf(u));
+}
+
 uint16_t float16BitsToUint16(float16_t f)
 {
   return reinterpret<uint16_t>(f);
@@ -169,6 +179,11 @@ float16_t2 unpackFloat2x16(uint32_t u)
 uint32_t packFloat2x16(float16_t2 f)
 {
   return (uint32_t(reinterpret<uint16_t>(f.y)) << 16) | uint32_t(reinterpret<uint16_t>(f.x));
+}
+
+uint32_t packFloat2x16(float2 f)
+{
+  return packFloat2x16(float16_t2(f));
 }
 
 // For reference https://github.com/g-truc/glm/blob/2d4c4b4dd31fde06cfffad7915c2b3006402322f/glm/gtc/packing.hpp#L45
@@ -203,6 +218,11 @@ float16_t4 unpackFloat4x16(uint2 u)
 uint2 packFloat4x16(float16_t4 u)
 {
   return uint2(packFloat2x16(u.xy), packFloat2x16(u.zw));
+}
+
+uint2 packFloat4x16(float4 u)
+{
+  return packFloat4x16(float16_t4(u));
 }
 
 // Implement the float-typed InterlockedAdd in SPIRV assembly because Slang doesn't have it

@@ -30,9 +30,9 @@ TranslucentSurfaceMaterial translucentSurfaceMaterialCreate(MemoryPolymorphicSur
     TranslucentSurfaceMaterial translucentSurfaceMaterial = reinterpret<TranslucentSurfaceMaterial>(memoryPolymorphicSurfaceMaterial);
     translucentSurfaceMaterial.normalTextureIndex = BINDING_INDEX_INVALID;
     translucentSurfaceMaterial.emissiveColorTextureIndex = BINDING_INDEX_INVALID;
-    translucentSurfaceMaterial.emissiveIntensity = 0.h;
-    translucentSurfaceMaterial.refractiveIndex = 1.h;
-    translucentSurfaceMaterial.emissiveColorConstant = 0.h;
+    translucentSurfaceMaterial.emissiveIntensity = 0.f;
+    translucentSurfaceMaterial.refractiveIndex = 1.f;
+    translucentSurfaceMaterial.emissiveColorConstant = 0.f;
     return translucentSurfaceMaterial;
   }
   else
@@ -42,7 +42,7 @@ TranslucentSurfaceMaterial translucentSurfaceMaterialCreate(MemoryPolymorphicSur
 }
 
 // Note: This function should only be called on thick translucent surfaces and must be checked in advance.
-f16vec3 translucentSurfaceMaterialEvalVolumeTransmittance(
+vec3 translucentSurfaceMaterialEvalVolumeTransmittance(
   TranslucentSurfaceMaterial translucentSurfaceMaterial,
   float distance)
 {
@@ -54,17 +54,17 @@ f16vec3 translucentSurfaceMaterialEvalVolumeTransmittance(
   const vec3 attenuationCoefficient = transmittanceToAttenuationCoefficient(
     translucentSurfaceMaterial.transmittanceColor,
     translucentSurfaceMaterial.thicknessOrMeasurementDistance);
-  const f16vec3 volumeAttenuation = evalBeerLambertAttenuation(attenuationCoefficient, distance);
+  const vec3 volumeAttenuation = evalBeerLambertAttenuation(attenuationCoefficient, distance);
 
   return volumeAttenuation;
 }
 
-f16vec3 translucentSurfaceMaterialEvalInfiniteVolumeTransmittance(TranslucentSurfaceMaterial translucentSurfaceMaterial)
+vec3 translucentSurfaceMaterialEvalInfiniteVolumeTransmittance(TranslucentSurfaceMaterial translucentSurfaceMaterial)
 {
   const vec3 attenuationCoefficient = transmittanceToAttenuationCoefficient(
     translucentSurfaceMaterial.transmittanceColor,
     translucentSurfaceMaterial.thicknessOrMeasurementDistance);
-  const f16vec3 volumeAttenuation = evalBeerLambertInfiniteAttenuation(attenuationCoefficient);
+  const vec3 volumeAttenuation = evalBeerLambertInfiniteAttenuation(attenuationCoefficient);
 
   return volumeAttenuation;
 }

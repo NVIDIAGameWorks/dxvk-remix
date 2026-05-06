@@ -41,7 +41,6 @@
 //!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
 
 
-
 // WBOIT
 
 //!variant gbuffer_material_opaque_translucent_closestHit_wboit.rchit

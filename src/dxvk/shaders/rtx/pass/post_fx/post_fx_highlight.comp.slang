@@ -236,7 +236,7 @@ void main(uint2 pixelPos : SV_DispatchThreadID)
   {
     uint encoded = makeEncodedForSobel(pixelPos, toHighlight);
 
-    f16vec2 gradient = f16vec2(0.0);
+    vec2 gradient = vec2(0.0);
     for (int16_t i = -1; i <= 1; i++)
     {
       for (int16_t j = -1; j <= 1; j++)
@@ -245,15 +245,15 @@ void main(uint2 pixelPos : SV_DispatchThreadID)
         // (-1,0,+1)    (-1,-2,-1)
         // (-2,0,+2)    ( 0, 0, 0)
         // (-1,0,+1)    (+1,+2,+1)
-        const f16vec2 sobel = f16vec2(
-          float16_t(j) * (i == 0 ? float16_t(2.0) : float16_t(1.0)),          
-          float16_t(i) * (j == 0 ? float16_t(2.0) : float16_t(1.0))          
+        const vec2 sobel = vec2(
+          float(j) * (i == 0 ? 2.0f : 1.0f),
+          float(i) * (j == 0 ? 2.0f : 1.0f)
         );
 
         gradient += sobel * ACCESS_PIX(encoded, i, j);
       }
     }
-    const float16_t magnitude = saturate(length(gradient));
+    const float magnitude = saturate(length(gradient));
 
     result.rgb = lerp(
       result.rgb,

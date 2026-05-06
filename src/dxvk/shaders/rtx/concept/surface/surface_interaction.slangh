@@ -58,17 +58,17 @@ static const bool SurfaceIgnoreTangents = false;
 // - texGradientX: The output for the first gradient of the texture coordinates.
 // - texGradientY: The output for the second gradient of the texture coordinates.
 void computeAnisotropicEllipseAxes(
-  vec3 intersectionPoint, f16vec3 triangleNormal, float twoTriangleArea, f16vec3 rayConeDir,
-  float16_t rayConeRadiusAtIntersection, vec3 positions[3], vec2 txcoords[3], vec2 interpolatedTexCoordsAtIntersection,
+  vec3 intersectionPoint, vec3 triangleNormal, float twoTriangleArea, vec3 rayConeDir,
+  float rayConeRadiusAtIntersection, vec3 positions[3], vec2 txcoords[3], vec2 interpolatedTexCoordsAtIntersection,
   inout vec2 texGradientX, inout vec2 texGradientY)
 {
   // Compute ellipse axes.
-  vec3 ellipseAxis0 = rayConeDir - dot(vec3(triangleNormal), vec3(rayConeDir)) * vec3(triangleNormal); // Project the ray direction onto the plane to find the ellipse axis.
-  const vec3 rayDirPlaneProjection0 = ellipseAxis0 - dot(vec3(rayConeDir), ellipseAxis0) * vec3(rayConeDir); // Project the ellipse axis onto the plane defined by the ray cone's direction.
+  vec3 ellipseAxis0 = rayConeDir - dot(triangleNormal, rayConeDir) * triangleNormal; // Project the ray direction onto the plane to find the ellipse axis.
+  const vec3 rayDirPlaneProjection0 = ellipseAxis0 - dot(rayConeDir, ellipseAxis0) * rayConeDir; // Project the ellipse axis onto the plane defined by the ray cone's direction.
   ellipseAxis0 *= rayConeRadiusAtIntersection / max(0.0001, length(rayDirPlaneProjection0)); // Use similar triangles to find the scale of the axis.
 
-  vec3 ellipseAxis1 = cross(vec3(triangleNormal), ellipseAxis0); // Find the other orthogonal ellipse axis via a cross product with the triangle's normal.
-  const vec3 rayDirPlaneProjection1 = ellipseAxis1 - dot(vec3(rayConeDir), ellipseAxis1) * vec3(rayConeDir);
+  vec3 ellipseAxis1 = cross(triangleNormal, ellipseAxis0); // Find the other orthogonal ellipse axis via a cross product with the triangle's normal.
+  const vec3 rayDirPlaneProjection1 = ellipseAxis1 - dot(rayConeDir, ellipseAxis1) * rayConeDir;
   ellipseAxis1 *= rayConeRadiusAtIntersection / max(0.0001, length(rayDirPlaneProjection1));
 
   // Compute barycentrics and texture coordinate gradients.
@@ -80,13 +80,13 @@ void computeAnisotropicEllipseAxes(
   vec3 edgeP;
 
   edgeP = d + ellipseAxis0;
-  const float u1 = (dot(vec3(triangleNormal), cross(edgeP, edge02)) * oneOverTwoAreaTriangle);
-  const float v1 = (dot(vec3(triangleNormal), cross(edge01, edgeP)) * oneOverTwoAreaTriangle);
+  const float u1 = (dot(triangleNormal, cross(edgeP, edge02)) * oneOverTwoAreaTriangle);
+  const float v1 = (dot(triangleNormal, cross(edge01, edgeP)) * oneOverTwoAreaTriangle);
   texGradientX = (1.0 - u1 - v1) * txcoords[0] + u1 * txcoords[1] + v1 * txcoords[2] - interpolatedTexCoordsAtIntersection;
 
   edgeP = d + ellipseAxis1;
-  const float u2 = (dot(vec3(triangleNormal), cross(edgeP, edge02)) * oneOverTwoAreaTriangle);
-  const float v2 = (dot(vec3(triangleNormal), cross(edge01, edgeP)) * oneOverTwoAreaTriangle);
+  const float u2 = (dot(triangleNormal, cross(edgeP, edge02)) * oneOverTwoAreaTriangle);
+  const float v2 = (dot(triangleNormal, cross(edge01, edgeP)) * oneOverTwoAreaTriangle);
   texGradientY = (1.0 - u2 - v2) * txcoords[0] + u2 * txcoords[1] + v2 * txcoords[2] - interpolatedTexCoordsAtIntersection;
 }
 
@@ -326,10 +326,9 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
   const float worldTwoTriangleArea = dot(worldTriangleVector, worldTriangleNormal);
   surfaceInteraction.triangleArea = worldTwoTriangleArea * 0.5;
 
-  // Note: fp16 conversion done after area calculation so the fp32 normal can be used
-  const f16vec3 triangleNormal = f16vec3(worldTriangleNormal);
-  const bool triangleNormalSameDirection = dot(triangleNormal, rayInteraction.viewDirection) >= float16_t(0.0);
-  const f16vec3 flippedTriangleNormal = triangleNormalSameDirection ? triangleNormal : -triangleNormal;
+  const vec3 triangleNormal = worldTriangleNormal;
+  const bool triangleNormalSameDirection = dot(triangleNormal, rayInteraction.viewDirection) >= 0.0f;
+  const vec3 flippedTriangleNormal = triangleNormalSameDirection ? triangleNormal : -triangleNormal;
 
   surfaceInteraction.triangleNormal = flippedTriangleNormal;
 
@@ -374,15 +373,15 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
     // used in Remix. This is done here rather than earlier when normals are read from the buffer to only sanitize once rather than for
     // each of the 3 vertex normals. Do note however that keeping this as close to the interpolation step as possible is important to avoid
     // hiding invalid values from other logic in Remix.
-    const f16vec3 sanitizedObjectInterpolatedNormal = sanitize(objectInterpolatedNormal, triangleNormal);
+    const vec3 sanitizedObjectInterpolatedNormal = sanitize(objectInterpolatedNormal, triangleNormal);
 
     // Note: Second normalization required as vector may be scaled through a normal transformation
-    const f16vec3 interpolatedNormal = f16vec3(normalize(mul(surface.normalObjectToWorld, sanitizedObjectInterpolatedNormal)));
+    const vec3 interpolatedNormal = normalize(mul(surface.normalObjectToWorld, sanitizedObjectInterpolatedNormal));
     // Really the only reason to flip this normal is for double-sided geometry.  Do not flip based on view vector!
-    const bool interpolatedNormalSameDirection = dot(interpolatedNormal, flippedTriangleNormal) >= float16_t(0.0);
-    const f16vec3 flippedInterpolatedNormal = interpolatedNormalSameDirection ? interpolatedNormal : -interpolatedNormal;
+    const bool interpolatedNormalSameDirection = dot(interpolatedNormal, flippedTriangleNormal) >= 0.0f;
+    const vec3 flippedInterpolatedNormal = interpolatedNormalSameDirection ? interpolatedNormal : -interpolatedNormal;
 
-    const f16vec3 bentInterpolatedNormal = getBentNormal(surfaceInteraction.triangleNormal, flippedInterpolatedNormal, ray.direction);
+    const vec3 bentInterpolatedNormal = getBentNormal(surfaceInteraction.triangleNormal, flippedInterpolatedNormal, ray.direction);
 
     surfaceInteraction.interpolatedNormal = bentInterpolatedNormal;
   }
@@ -511,7 +510,7 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
 
       // Derive triangle TBN based on interpolated TBN. This works in all cases tested,
       // and should be much cheaper than calling genTangSpace again.
-      f16vec4 interpolatedToTriangle = quaternionCreateOrientation(surfaceInteraction.interpolatedNormal, surfaceInteraction.triangleNormal);
+      vec4 interpolatedToTriangle = quaternionCreateOrientation(surfaceInteraction.interpolatedNormal, surfaceInteraction.triangleNormal);
       surfaceInteraction.triangleTangent = quaternionTransformVector(interpolatedToTriangle, surfaceInteraction.interpolatedTangent);
       surfaceInteraction.triangleBitangent = quaternionTransformVector(interpolatedToTriangle, surfaceInteraction.interpolatedBitangent);
     }
@@ -527,8 +526,8 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
       {
         // For surfaces with displacement, we need to ensure the final hit point is within a cascade level.
         // To do this, calculate the furthest texcoord that displacement could return, and use a cascade level that includes that point.
-        const f16mat3 worldToTangent = f16mat3(surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent, surfaceInteraction.interpolatedNormal);
-        const f16vec3 viewDirTangentSpace = normalize(mul(worldToTangent, rayInteraction.viewDirection));
+        const mat3 worldToTangent = mat3(surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent, surfaceInteraction.interpolatedNormal);
+        const vec3 viewDirTangentSpace = normalize(mul(worldToTangent, rayInteraction.viewDirection));
         // viewDirection is hitPos to camera, so invert it before converting to a texcoord offset.
         const vec2 maxPossiblePomOffset = viewDirTangentSpace.xy * (-1.f * cb.terrainArgs.displaceIn / viewDirTangentSpace.z);
 
@@ -568,8 +567,8 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
     if (footprintMode != kFootprintFromTextureCoordDiff)
     {
       const vec3 positionOffset = surfaceInteraction.position - ray.origin;
-      const f16vec3 direction = footprintMode == kFootprintFromRayDirection ? ray.direction : normalize(positionOffset);
-      const float16_t coneRadius = footprintMode == kFootprintFromRayDirection ? rayInteraction.coneRadius : rayInteraction.coneRadius + length(positionOffset) * ray.spreadAngle;
+      const vec3 direction = footprintMode == kFootprintFromRayDirection ? ray.direction : normalize(positionOffset);
+      const float coneRadius = footprintMode == kFootprintFromRayDirection ? rayInteraction.coneRadius : rayInteraction.coneRadius + length(positionOffset) * ray.spreadAngle;
 
       computeAnisotropicEllipseAxes(
         hitPosition, triangleNormal, worldTwoTriangleArea, direction,
@@ -669,7 +668,7 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
      // They won't get reapplied later anyway
      !isBakedTerrain)
   {
-    f16vec4 color[3];
+    vec4 color[3];
 
     for (uint i = 0; i < 3; i++)
     {
@@ -681,17 +680,17 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
       // VK_FORMAT_B8G8R8A8_UNORM
       const uint colorBits = floatBitsToUint(BUFFER_ARRAY(geometries, color0BufferIndex, color0ElementIndex));
 
-      color[i].x = unorm8ToF16(uint8_t(colorBits >> 16));
-      color[i].y = unorm8ToF16(uint8_t(colorBits >> 8));
-      color[i].z = unorm8ToF16(uint8_t(colorBits));
-      color[i].w = unorm8ToF16(uint8_t(colorBits >> 24));
+      color[i].x = unorm8ToF32(uint8_t(colorBits >> 16));
+      color[i].y = unorm8ToF32(uint8_t(colorBits >> 8));
+      color[i].z = unorm8ToF32(uint8_t(colorBits));
+      color[i].w = unorm8ToF32(uint8_t(colorBits >> 24));
     }
 
     surfaceInteraction.vertexColor = interpolateHitAttribute(color, bary);
   }
   else
   {
-    surfaceInteraction.vertexColor = f16vec4(1.0, 1.0, 1.0, 1.0);
+    surfaceInteraction.vertexColor = vec4(1.0, 1.0, 1.0, 1.0);
   }
 
   return surfaceInteraction;

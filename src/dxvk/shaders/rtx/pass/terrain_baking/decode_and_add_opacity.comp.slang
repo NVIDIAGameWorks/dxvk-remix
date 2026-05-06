@@ -50,9 +50,9 @@ void main(uint2 thread_id : SV_DispatchThreadID)
   const float2 uv = cb.rcpResolution * (thread_id + 0.5f);
 
   // ToDo trilinear sampling
-  float16_t opacity = InputAlbedoOpacityTexture.SampleLevel(LinearSampler, uv, 0.f).a;
+  float opacity = InputAlbedoOpacityTexture.SampleLevel(LinearSampler, uv, 0.f).a;
 
-  f16vec4 outSample = f16vec4(0, 0, 0, opacity);
+  vec4 outSample = vec4(0, 0, 0, opacity);
 
   switch (cb.textureType) 
   {

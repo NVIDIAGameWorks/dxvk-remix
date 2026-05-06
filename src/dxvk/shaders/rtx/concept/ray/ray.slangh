@@ -43,7 +43,7 @@
 vec3 rayOffsetSurfaceOriginHelper(MinimalSurfaceInteraction minimalSurfaceInteraction, bool penetrateSurface)
 {
   // Flip the triangle normal if requested to offset rays on the opposite side of the surface
-  const f16vec3 effectiveTriangleNormal = penetrateSurface ? -minimalSurfaceInteraction.triangleNormal : minimalSurfaceInteraction.triangleNormal;
+  const vec3 effectiveTriangleNormal = penetrateSurface ? -minimalSurfaceInteraction.triangleNormal : minimalSurfaceInteraction.triangleNormal;
 
   // Return the origin of the ray with the offset position from the surface interaction
   return minimalSurfaceInteraction.position + calculateRayOffset(minimalSurfaceInteraction.positionError, effectiveTriangleNormal);
@@ -54,9 +54,9 @@ Ray rayCreateEmpty()
   Ray ret;
 
   ret.origin = vec3(0);
-  ret.coneRadius = float16_t(0);
-  ret.spreadAngle = float16_t(0);
-  ret.direction = f16vec3(0);
+  ret.coneRadius = 0.f;
+  ret.spreadAngle = 0.f;
+  ret.direction = vec3(0);
   ret.tMax = 0;
 
   return ret;
@@ -66,7 +66,7 @@ Ray rayCreateEmpty()
 // (since the amount to offset depends on the distance from the view point).
 Ray rayCreateInternal(
   MinimalRayInteraction minimalRayInteraction, MinimalSurfaceInteraction minimalSurfaceInteraction, Ray viewRay,
-  f16vec3 direction, float tMax, bool penetrateSurface)
+  vec3 direction, float tMax, bool penetrateSurface)
 {
   Ray ray;
 
@@ -81,7 +81,7 @@ Ray rayCreateInternal(
 
 Ray rayCreateInternal(
   MinimalRayInteraction minimalRayInteraction, VolumeInteraction volumeInteraction, Ray viewRay,
-  f16vec3 direction, float tMax)
+  vec3 direction, float tMax)
 {
   Ray ray;
 
@@ -95,12 +95,12 @@ Ray rayCreateInternal(
 }
 
 // Note: This create function creates a ray from a camera and a screen UV, allowing for primary ray generation.
-Ray rayCreatePrimary(Camera camera, vec2 screenUV, float16_t screenSpacePixelSpreadAngle, bool jitter)
+Ray rayCreatePrimary(Camera camera, vec2 screenUV, float screenSpacePixelSpreadAngle, bool jitter)
 {
   Ray ray;
 
   ray.origin = cameraGetWorldPosition(camera);
-  ray.coneRadius = float16_t(0.0); // Note: Cone radius always 0 to start at the camera
+  ray.coneRadius = 0.0f; // Note: Cone radius always 0 to start at the camera
   ray.spreadAngle = screenSpacePixelSpreadAngle;
   ray.direction = cameraScreenUVToDirection(camera, screenUV, jitter).worldDirection;
   ray.tMax = floatMax;
@@ -113,7 +113,7 @@ Ray rayCreatePrimaryFromPixel(Camera camera, ivec2 pixelCoordinate, bool jitter 
 {
   const vec2 inUV = cameraPixelCoordinateToScreenUV(camera, pixelCoordinate);
 
-  return rayCreatePrimary(camera, inUV, float16_t(cb.screenSpacePixelSpreadHalfAngle), jitter);
+  return rayCreatePrimary(camera, inUV, cb.screenSpacePixelSpreadHalfAngle, jitter);
 }
 
 // Create a ray that passes through a render target
@@ -140,7 +140,7 @@ Ray rayCreateRenderTarget(Camera camera, vec2 screenUV, Ray viewRay)
 // offset on the opposite side.
 Ray rayCreateDirection(
   MinimalRayInteraction minimalRayInteraction, MinimalSurfaceInteraction minimalSurfaceInteraction, Ray viewRay,
-  f16vec3 direction, bool penetrateSurface)
+  vec3 direction, bool penetrateSurface)
 {
   return rayCreateInternal(minimalRayInteraction, minimalSurfaceInteraction, viewRay, direction, floatMax, penetrateSurface);
 }
@@ -156,7 +156,7 @@ Ray rayCreatePosition(
   // is a bit ambigious. If it's supposed to be the length of the input vector then this would fork fine as the length would be
   // 0 for zero vectors, but if it's set to 1 to match the fallback vector then the ray will have an incorrect tMax. As such we
   // just calculate the tMax manually for clarity and hope the compiler optimizes the redundant length calculations together.
-  const f16vec3 direction = f16vec3(safeNormalize(rayVector, vec3(0.0f, 0.0f, 1.0f)));
+  const vec3 direction = safeNormalize(rayVector, vec3(0.0f, 0.0f, 1.0f));
   const float tMax = length(rayVector);
 
   return rayCreateInternal(minimalRayInteraction, minimalSurfaceInteraction, viewRay, direction, tMax, penetrateSurface);
@@ -167,7 +167,7 @@ Ray rayCreatePosition(
   vec3 targetPosition)
 {
   const vec3 rayVector = targetPosition - volumeInteraction.position;
-  const f16vec3 direction = f16vec3(safeNormalize(rayVector, vec3(0.0f, 0.0f, 1.0f)));
+  const vec3 direction = safeNormalize(rayVector, vec3(0.0f, 0.0f, 1.0f));
   const float tMax = length(rayVector);
 
   return rayCreateInternal(minimalRayInteraction, volumeInteraction, viewRay, direction, tMax);
@@ -178,7 +178,7 @@ Ray rayCreatePositionSubsurface(
   vec3 targetPosition, vec3 shadingNormal)
 {
   const vec3 rayVector = targetPosition - minimalSurfaceInteraction.position;
-  const f16vec3 direction = f16vec3(safeNormalize(rayVector, vec3(0.0f, 0.0f, 1.0f)));
+  const vec3 direction = safeNormalize(rayVector, vec3(0.0f, 0.0f, 1.0f));
   const float tMax = length(rayVector);
 
   // If the new tracing ray is on the other side of SSS surface, treat the surface as penetrateSurface 

@@ -27,7 +27,7 @@
 // Approximate wavelengths for the sRGB primaries in nanometers. Note these are not exact as
 // the sRGB primaries are mixtures of multiple wavelengths.
 // https://clarkvision.com/articles/color-spaces/
-static const f16vec3 sRGBPrimaryWavelengths = f16vec3(612.0f, 549.0f, 465.0f);
+static const vec3 sRGBPrimaryWavelengths = vec3(612.0f, 549.0f, 465.0f);
 
 // Calculates the average value of a color
 #define GENERIC_AVERAGE_COLOR(averageType, colorType)                        \

@@ -47,11 +47,11 @@ struct GpuParticle {
   static const uint kBufferClearValue = (kDeadTimeToLiveSentinel << 16) | kDeadTimeToLiveSentinel;
 #else
   [mutating]
-  void reset(GpuParticleSystem system, float3 worldPosition, float3 worldVelocity, f16vec4 _uvMinMax, f16vec4 color, float seed) {
+  void reset(GpuParticleSystem system, float3 worldPosition, float3 worldVelocity, f16vec4 _uvMinMax, vec4 color, float seed) {
     randSeed = seed;
     rotation = half((seed * 2.0f - 1.0f) * radians(system.desc.initialRotationDeviationDegrees));
     timeToLive = initialTimeToLive(system);
-    enBaseColor = float4x16ToUnorm4x8(color);
+    enBaseColor = float4x32ToUnorm4x8(color);
     position = worldPosition;
     velocity = worldVelocity;
     uvMinMax = _uvMinMax;
@@ -78,15 +78,15 @@ struct GpuParticle {
     return (float(initial) + select(randomizeAcrossTwoRows, randSeed, 0.f) + 0.5f) / float(ParticleAnimationDataRows::Count);
   }
 
-  float16_t4 color(GpuParticleSystem system, Sampler2D<float4> data) {
-    return unorm4x8ToFloat4x16(enBaseColor) * data.SampleLevel(float2(normalizedLife(system), computeDataRow(ParticleAnimationDataRows::MinColor, true)), 0);
+  float4 color(GpuParticleSystem system, Sampler2D<float4> data) {
+    return unorm4x8ToFloat4x32(enBaseColor) * data.SampleLevel(float2(normalizedLife(system), computeDataRow(ParticleAnimationDataRows::MinColor, true)), 0);
   }
 
   float16_t rotationSpeed(GpuParticleSystem system, Sampler2D<float4> data) {
     return data.SampleLevel(float2(normalizedLife(system), computeDataRow(ParticleAnimationDataRows::MinRotationSpeed, true)), 0).x;
   }
 
-  float16_t2 size(GpuParticleSystem system, Sampler2D<float4> data) {
+  float2 size(GpuParticleSystem system, Sampler2D<float4> data) {
     return data.SampleLevel(float2(normalizedLife(system), computeDataRow(ParticleAnimationDataRows::MinSize, true)), 0).xy;
   }
 

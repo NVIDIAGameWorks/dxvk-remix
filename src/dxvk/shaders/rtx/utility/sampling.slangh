@@ -24,9 +24,9 @@
 #include "rtx/utility/math.slangh"
 
 // Note: Converts an area-based PDF to a solid angle PDF given a distance and angle between the sample and viewing point.
-float areaPdftoSolidAnglePdf(float areaPdf, float distance, float16_t cosTheta)
+float areaPdftoSolidAnglePdf(float areaPdf, float distance, float cosTheta)
 {
-  return areaPdf * square(distance) / float16_t(cosTheta);
+  return areaPdf * square(distance) / float(cosTheta);
 }
 
 float getUniformSphereSolidAnglePdf()
@@ -39,7 +39,7 @@ float getUniformHemisphereSolidAnglePdf()
   return 1.0f / twoPi;
 }
 
-float getCosineHemisphereSolidAnglePdf(float16_t normalDotMicrofacetNormal)
+float getCosineHemisphereSolidAnglePdf(float normalDotMicrofacetNormal)
 {
   return float(normalDotMicrofacetNormal) / pi;
 }
@@ -52,20 +52,20 @@ float getUniformConeSolidAnglePdf(float cosThetaMax)
 
 // Calculates a random position sample on a cube centered at the origin.
 // Note the random sample should be in the range [0, 1] to prevent issues.
-f16vec3 calcUniformCenteredCubePositionSample(f16vec3 rndSample)
+vec3 calcUniformCenteredCubePositionSample(vec3 rndSample)
 {
-  return rndSample * f16vec3(2.0f) - f16vec3(1.0f);
+  return rndSample * vec3(2.0f) - vec3(1.0f);
 }
 
 // Calculates a random (mostly normalized) direction vector sampled on a uniform sphere.
 // Note the random sample should be in the range [0, 1] to prevent issues.
-f16vec3 calcUniformSphereDirectionSample(f16vec2 rndSample, inout float solidAnglePdf)
+vec3 calcUniformSphereDirectionSample(vec2 rndSample, inout float solidAnglePdf)
 {
-  const float16_t phi = float16_t(twoPi) * rndSample.x;
-  const float16_t cosTheta = float16_t(1.0f) - float16_t(2.0f) * rndSample.y;
-  const float16_t sinTheta = sqrt(max(float16_t(1.0f) - square(cosTheta), float16_t(0.0f)));
+  const float phi = float(twoPi) * rndSample.x;
+  const float cosTheta = float(1.0f) - float(2.0f) * rndSample.y;
+  const float sinTheta = sqrt(max(float(1.0f) - square(cosTheta), float(0.0f)));
 
-  f16vec3 result;
+  vec3 result;
 
   result.x = sinTheta * cos(phi);
   result.y = sinTheta * sin(phi);
@@ -78,13 +78,13 @@ f16vec3 calcUniformSphereDirectionSample(f16vec2 rndSample, inout float solidAng
 
 // Calculates a random (mostly normalized) direction vector sampled on a uniform hemisphere around the Z axis.
 // Note the random sample should be in the range [0, 1] to prevent issues.
-f16vec3 calcUniformHemisphereDirectionSample(f16vec2 rndSample, inout float solidAnglePdf)
+vec3 calcUniformHemisphereDirectionSample(vec2 rndSample, inout float solidAnglePdf)
 {
-  const float16_t phi = float16_t(twoPi) * rndSample.x;
-  const float16_t cosTheta = rndSample.y;
-  const float16_t sinTheta = sqrt(float16_t(1.0f) - square(cosTheta));
+  const float phi = float(twoPi) * rndSample.x;
+  const float cosTheta = rndSample.y;
+  const float sinTheta = sqrt(float(1.0f) - square(cosTheta));
 
-  f16vec3 result;
+  vec3 result;
 
   result.x = sinTheta * cos(phi);
   result.y = sinTheta * sin(phi);
@@ -97,14 +97,14 @@ f16vec3 calcUniformHemisphereDirectionSample(f16vec2 rndSample, inout float soli
 
 // Calculates a random (mostly normalized) direction vector sampled on a cosine-weighted hemisphere around the Z axis.
 // Note the random sample should be in the range [0, 1] to prevent issues.
-f16vec3 calcCosineHemisphereDirectionSample(f16vec2 rndSample, inout float solidAnglePdf)
+vec3 calcCosineHemisphereDirectionSample(vec2 rndSample, inout float solidAnglePdf)
 {
-  const float16_t phi = float16_t(twoPi) * rndSample.x;
-  const float16_t cosTheta = sqrt(rndSample.y);
+  const float phi = float(twoPi) * rndSample.x;
+  const float cosTheta = sqrt(rndSample.y);
   // Note: square(cosTheta) == rndSample.y
-  const float16_t sinTheta = sqrt(float16_t(1.0) - rndSample.y);
+  const float sinTheta = sqrt(float(1.0) - rndSample.y);
 
-  f16vec3 result;
+  vec3 result;
 
   result.x = sinTheta * cos(phi);
   result.y = sinTheta * sin(phi);
@@ -115,21 +115,21 @@ f16vec3 calcCosineHemisphereDirectionSample(f16vec2 rndSample, inout float solid
   return result;
 }
 
-f16vec2 calcConcentricDiskDirectionSample(f16vec2 rndSample)
+vec2 calcConcentricDiskDirectionSample(vec2 rndSample)
 {
   // Map uniform random numbers to [-1,1]^2
-  const f16vec2 uOffset = float16_t(2.0f) * rndSample - f16vec2(1.0f, 1.0f);
+  const vec2 uOffset = 2.0f * rndSample - vec2(1.0f, 1.0f);
 
   // Handle degeneracy at the origin
-  if (uOffset.x == float16_t(0.0f) && uOffset.y == float16_t(0.0f))
+  if (uOffset.x == float(0.0f) && uOffset.y == float(0.0f))
   {
-    return f16vec2(0.0f, 0.0f);
+    return vec2(0.0f, 0.0f);
   }
 
   // Apply concentric mapping to point
-  float16_t theta, r;
-  const float16_t piOver4 = float16_t(0.25f * pi);
-  const float16_t piOver2 = float16_t(0.5f * pi);
+  float theta, r;
+  const float piOver4 = float(0.25f * pi);
+  const float piOver2 = float(0.5f * pi);
 
   if (abs(uOffset.x) > abs(uOffset.y))
   {
@@ -142,7 +142,7 @@ f16vec2 calcConcentricDiskDirectionSample(f16vec2 rndSample)
     theta = piOver2 - piOver4 * (uOffset.x / uOffset.y);
   }
 
-  return r * f16vec2(cos(theta), sin(theta));
+  return r * vec2(cos(theta), sin(theta));
 }
 
 // Calculates a random (mostly normalized) direction vector sampled within a visible cone with a specified angular size around the Z axis.
@@ -152,7 +152,7 @@ f16vec2 calcConcentricDiskDirectionSample(f16vec2 rndSample)
 // long as the PDF is calculated in a 32 bit way to avoid NaNs, but to get adequate Distant light softness with its small solid angles, it
 // is more important to not have the sampled direction collapse to a single quantized value. We may want to check in the future that the
 // resulting 16 bit vec3 type is not being overly quantized either, but the issue I think is more in the calculation, not the output.
-f16vec3 calcUniformConeDirectionSample(f16vec2 rndSample, float cosThetaMax, inout float solidAnglePdf)
+vec3 calcUniformConeDirectionSample(vec2 rndSample, float cosThetaMax, inout float solidAnglePdf)
 {
   const float phi = twoPi * float(rndSample.x);
   const float cosTheta = mix(cosThetaMax, 1.0f, float(rndSample.y));
@@ -162,7 +162,7 @@ f16vec3 calcUniformConeDirectionSample(f16vec2 rndSample, float cosThetaMax, ino
 
   solidAnglePdf = getUniformConeSolidAnglePdf(cosThetaMax);
 
-  return f16vec3(result);
+  return vec3(result);
 }
 
 // [Heitz 2018, "Sampling the GGX Distribution of Visible Normals"]
@@ -171,32 +171,32 @@ f16vec3 calcUniformConeDirectionSample(f16vec2 rndSample, float cosThetaMax, ino
 // wise than later methods (e.g. spherical cap based sampling).
 // Note: This function operates in tangent space so any vectors given to it or retreived from it should also be in
 // tangent space.
-f16vec3 calcGGXVisibleNormalDistributionProjectedSample(f16vec2 anisotropicRoughness, f16vec3 Ve, f16vec2 u)
+vec3 calcGGXVisibleNormalDistributionProjectedSample(vec2 anisotropicRoughness, vec3 Ve, vec2 u)
 {
   // Section 3.2: transforming the view direction to the hemisphere configuration
-  const f16vec3 Vh = normalize(f16vec3(anisotropicRoughness * Ve.xy, Ve.z));
+  const vec3 Vh = normalize(vec3(anisotropicRoughness * Ve.xy, Ve.z));
 
   // Section 4.1: orthonormal basis
   // Note: This implementation deviates from the paper's by using Pixar's orthonormal basis function as this eliminates
   // issues with low roughness values due to fp16 usage (from division by values which get flushed to 0), as well as improves
   // the quality of the basis vectors generated.
-  f16vec3 T1, T2;
+  vec3 T1, T2;
   calcOrthonormalBasis(Vh, T1, T2);
 
   // Section 4.2: parameterization of the projected area
-  const float16_t r = sqrt(u.x);
-  const float16_t phi = float16_t(twoPi) * u.y;
-  const float16_t t1 = r * cos(phi);
-  const float16_t s = float16_t(0.5) * (float16_t(1.0) + Vh.z);
+  const float r = sqrt(u.x);
+  const float phi = float(twoPi) * u.y;
+  const float t1 = r * cos(phi);
+  const float s = float(0.5) * (float(1.0) + Vh.z);
   const float t1sq = float(t1) * float(t1);
-  const float16_t t2 = mix(sqrt(max(float16_t(1.0 - t1sq), float16_t(0))), r * sin(phi), s);
+  const float t2 = mix(sqrt(max(float(1.0 - t1sq), float(0))), r * sin(phi), s);
   const float t2sq = float(t2) * float(t2);
 
   // Section 4.3: reprojection onto hemisphere
-  const f16vec3 Nh = t1 * T1 + t2 * T2 + sqrt(max(float16_t(0.0), float16_t(1.0 - (t1sq + t2sq)))) * Vh;
+  const vec3 Nh = t1 * T1 + t2 * T2 + sqrt(max(float(0.0), float(1.0 - (t1sq + t2sq)))) * Vh;
 
   // Section 3.4: transforming the normal back to the ellipsoid configuration
-  const f16vec3 Ne = normalize(f16vec3(anisotropicRoughness * Nh.xy, max(float16_t(0.0), Nh.z)));
+  const vec3 Ne = normalize(vec3(anisotropicRoughness * Nh.xy, max(float(0.0), Nh.z)));
 
   return Ne;
 }
@@ -207,10 +207,10 @@ f16vec3 calcGGXVisibleNormalDistributionProjectedSample(f16vec2 anisotropicRough
 // set by different sampling methods using the general spherical cap method as a basis.
 // Note: This function operates in tangent space so any vectors given to it or retreived from it should also be in
 // tangent space.
-f16vec3 calcGGXVisibleNormalDistributionSphericalCapSample(f16vec2 anisotropicRoughness, f16vec3 outputDirection, f16vec2 u, float16_t k = 1.0h)
+vec3 calcGGXVisibleNormalDistributionSphericalCapSample(vec2 anisotropicRoughness, vec3 outputDirection, vec2 u, float k = 1.0f)
 {
   // Unstretch the view direction back to a hemisphere
-  const f16vec3 unstretchedOutputDirection = normalize(f16vec3(
+  const vec3 unstretchedOutputDirection = normalize(vec3(
     anisotropicRoughness * outputDirection.xy,
     outputDirection.z
   ));
@@ -220,19 +220,19 @@ f16vec3 calcGGXVisibleNormalDistributionSphericalCapSample(f16vec2 anisotropicRo
   // Note: Probably could be >= 0 rather than > 0 to consider parallel view directions to the triangle as I do not think
   // that would affect the math, but keeping it like this for now. If ever changed however, a similar condition exists
   // in evalGGXShadowing which would also need to be updated.
-  const float16_t b = outputDirection.z > 0.0h ? k * unstretchedOutputDirection.z : unstretchedOutputDirection.z;
+  const float b = outputDirection.z > 0.0f ? k * unstretchedOutputDirection.z : unstretchedOutputDirection.z;
 
   // Listing 3: Spherical cap sampling
-  const float16_t phi = float16_t(twoPi) * u.x;
-  const float16_t z = fma(1.0h - u.y, 1.0h + b, -b);
-  const float16_t sinTheta = sqrt(clamp(1.0h - z * z, 0.0f, 1.0f));
-  const float16_t x = sinTheta * cos(phi);
-  const float16_t y = sinTheta * sin(phi);
-  const f16vec3 c = f16vec3(x, y, z);
-  const f16vec3 unstretchedMicrofacetNormal = c + unstretchedOutputDirection;
+  const float phi = float(twoPi) * u.x;
+  const float z = fma(1.0f - u.y, 1.0f + b, -b);
+  const float sinTheta = sqrt(clamp(1.0f - z * z, 0.0f, 1.0f));
+  const float x = sinTheta * cos(phi);
+  const float y = sinTheta * sin(phi);
+  const vec3 c = vec3(x, y, z);
+  const vec3 unstretchedMicrofacetNormal = c + unstretchedOutputDirection;
 
   // Stretch the microfacet normal back to the anisotropic ellipsoid
-  const f16vec3 microfacetNormal = normalize(f16vec3(
+  const vec3 microfacetNormal = normalize(vec3(
     anisotropicRoughness * unstretchedMicrofacetNormal.xy,
     unstretchedMicrofacetNormal.z
   ));
@@ -249,7 +249,7 @@ f16vec3 calcGGXVisibleNormalDistributionSphericalCapSample(f16vec2 anisotropicRo
 // Calculates a new direction based on the visible GGX normal distribution function for a given view direction using
 // the current selected method (via macro). All sampling methods this sampling function uses have the same PDF (which
 // can be calculated via evalGGXVisibleNormalDistributionSamplePdf).
-f16vec3 calcGGXVisibleNormalDistributionSample(f16vec2 anisotropicRoughness, f16vec3 outputDirection, f16vec2 u)
+vec3 calcGGXVisibleNormalDistributionSample(vec2 anisotropicRoughness, vec3 outputDirection, vec2 u)
 {
 #if GGX_VNDF_SAMPLING_METHOD == 0
   return calcGGXVisibleNormalDistributionProjectedSample(anisotropicRoughness, outputDirection, u);
@@ -262,15 +262,15 @@ f16vec3 calcGGXVisibleNormalDistributionSample(f16vec2 anisotropicRoughness, f16
 
 // [Eto 2023, "Bounded VNDF Sampling for Smith-GGX Reflections"]
 // Calculates the lower bound scaling constant to apply to bounded VNDF sampling, k, from Equation 5.
-float16_t calcBoundedVNDFLowerBoundScalar(f16vec2 anisotropicRoughness, f16vec3 outputDirection)
+float calcBoundedVNDFLowerBoundScalar(vec2 anisotropicRoughness, vec3 outputDirection)
 {
-  const float16_t a = saturate(min(anisotropicRoughness.x, anisotropicRoughness.y));
+  const float a = saturate(min(anisotropicRoughness.x, anisotropicRoughness.y));
   // Note: Sign omitted from Equation 4 as this never applies when a <= 1 (which is always the case with our requirements on
   // how roughness is parameterized).
-  const float16_t s = 1.0h + length(outputDirection.xy);
-  const float16_t a2 = square(a);
-  const float16_t s2 = square(s);
-  const float16_t k = (1.0h - a2) * s2 / (s2 + a2 * square(outputDirection.z));
+  const float s = 1.0f + length(outputDirection.xy);
+  const float a2 = square(a);
+  const float s2 = square(s);
+  const float k = (1.0f - a2) * s2 / (s2 + a2 * square(outputDirection.z));
 
   return k;
 }
@@ -286,11 +286,11 @@ float16_t calcBoundedVNDFLowerBoundScalar(f16vec2 anisotropicRoughness, f16vec3 
 // greater than 1 anyways so it is not desirable.
 // Additionally, since this bounded VNDF sampling changes the sampled distribution, care must be taken to use the proper PDF
 // as the usual GGX VNDF PDF will not work for this.
-f16vec3 calcGGXBoundedVisibleNormalDistributionSample(f16vec2 anisotropicRoughness, f16vec3 outputDirection, f16vec2 u)
+vec3 calcGGXBoundedVisibleNormalDistributionSample(vec2 anisotropicRoughness, vec3 outputDirection, vec2 u)
 {
   // Calculate the lower bound scaling constant
 
-  const float16_t k = calcBoundedVNDFLowerBoundScalar(anisotropicRoughness, outputDirection);
+  const float k = calcBoundedVNDFLowerBoundScalar(anisotropicRoughness, outputDirection);
 
   // Sample the VNDF with a bounded spherical cap based on the scaling constant
 

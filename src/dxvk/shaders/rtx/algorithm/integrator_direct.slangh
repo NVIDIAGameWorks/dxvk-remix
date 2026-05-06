@@ -125,9 +125,9 @@ void evalNEEPrimary(
   // Evaluate the material and accumulate throughput and hit distance
 
   SurfaceMaterialInteractionSplitWeight emptyWeight;
-  emptyWeight.diffuseReflectionWeight   = f16vec3(0.0h, 0.0h, 0.0h);
-  emptyWeight.specularReflectionWeight  = f16vec3(0.0h, 0.0h, 0.0h);
-  emptyWeight.diffuseTransmissionWeight = f16vec3(0.0h, 0.0h, 0.0h);
+  emptyWeight.diffuseReflectionWeight   = vec3(0.0f, 0.0f, 0.0f);
+  emptyWeight.specularReflectionWeight  = vec3(0.0f, 0.0f, 0.0f);
+  emptyWeight.diffuseTransmissionWeight = vec3(0.0f, 0.0f, 0.0f);
 
   SurfaceMaterialInteractionSplitWeight splitWeight =
     !hasNonSssOpaqueHit ?
@@ -139,9 +139,9 @@ void evalNEEPrimary(
   // Determine the weight for the lobes lobe
 
   // SSS is a generic version for diffuse, remove the diffuse lobe when SSS is enabled to avoid duplication.
-  const f16vec3 diffuseLobeWeight = !isDiffusionProfileSss ? splitWeight.diffuseReflectionWeight : f16vec3(0.0h, 0.0h, 0.0h);
-  const f16vec3 specularLobeWeight = splitWeight.specularReflectionWeight;
-  const f16vec3 diffuseTransmissionLobeWeight = splitWeight.diffuseTransmissionWeight;
+  const vec3 diffuseLobeWeight = !isDiffusionProfileSss ? splitWeight.diffuseReflectionWeight : vec3(0.0f, 0.0f, 0.0f);
+  const vec3 specularLobeWeight = splitWeight.specularReflectionWeight;
+  const vec3 diffuseTransmissionLobeWeight = splitWeight.diffuseTransmissionWeight;
 
   // TODO: Handle Transmission Weight
 
@@ -171,7 +171,7 @@ void evalNEEPrimary(
 void calculateRussianRouletteOnFirstBounce(
   inout RNG randomState,
   inout vec3 throughput,
-  inout float16_t firstSampledSolidAnglePdf) 
+  inout float firstSampledSolidAnglePdf)
 {
   if (!(cb.enableRussianRoulette && cb.pathMinBounces == 0) ||
     // Unbiased NRC training paths don't use RR, but for sake of simplicity
@@ -212,7 +212,7 @@ void calculateRussianRouletteOnFirstBounce(
 
     // Multiply RR probability into the first sampled solid angle pdf as well so that RR probability carries
     // over into calculateReSTIRGIRadianceFactor() in indirect pass
-    firstSampledSolidAnglePdf *= float16_t(continueProbability);
+    firstSampledSolidAnglePdf *= continueProbability;
   }
 }
 
@@ -220,7 +220,7 @@ void calculateRussianRouletteOnFirstBounce(
 void sampleIndirectRayForFirstBounce(
   u16vec2 pixelCoordinate,
   Ray primaryRay,
-  float16_t integrationSurfacePdf,
+  float integrationSurfacePdf,
   MinimalRayInteraction primaryMinimalRayInteraction, 
   MinimalSurfaceInteraction primaryMinimalSurfaceInteraction,
   PolymorphicSurfaceMaterialInteraction primaryPolymorphicSurfaceMaterialInteraction,
@@ -229,10 +229,10 @@ void sampleIndirectRayForFirstBounce(
   out bool mediumChanged,
   out Ray sampledRay,
   out vec3 throughput,
-  out float16_t perceptualRoughness,
+  out float perceptualRoughness,
   out uint8_t firstRayPathSampledLobe,
-  out float16_t firstSampledLobePdf,
-  out float16_t firstSampledSolidAnglePdf,
+  out float firstSampledLobePdf,
+  out float firstSampledSolidAnglePdf,
   out bool firstSampledLobeIsSpecular)
 {
   // Construct RNG as it is not carried in the path state
@@ -289,7 +289,7 @@ void sampleIndirectRayForFirstBounce(
 void sampleAndStoreIndirectRayPathSample(
   u16vec2 pixelCoordinate,
   Ray primaryRay,
-  float16_t integrationSurfacePdf,
+  float integrationSurfacePdf,
   MinimalRayInteraction primaryMinimalRayInteraction, 
   MinimalSurfaceInteraction primarySurfaceInteraction,
   PolymorphicSurfaceMaterialInteraction primaryPolymorphicSurfaceMaterialInteraction,
@@ -301,10 +301,10 @@ void sampleAndStoreIndirectRayPathSample(
   bool mediumChanged;
   Ray sampledRay;
   vec3 throughput;
-  float16_t perceptualRoughness;
+  float perceptualRoughness;
   uint8_t firstRayPathSampledLobe;
-  float16_t firstSampledSolidAnglePdf;
-  float16_t firstSampledLobePdf;
+  float firstSampledSolidAnglePdf;
+  float firstSampledLobePdf;
   bool firstSampledLobeIsSpecular;
 
   // Sample an indirect ray
@@ -357,7 +357,7 @@ void sampleAndStoreIndirectRayPathSample(
 void integrateDirectPath(
   inout RNG randomState, ivec2 pixelCoordinate,
   DirectPathTextures directPathTextures,
-  GeometryFlags geometryFlags, float16_t integrationSurfacePdf,
+  GeometryFlags geometryFlags, float integrationSurfacePdf,
   Ray primaryRay, MinimalRayInteraction primaryMinimalRayInteraction, MinimalSurfaceInteraction primarySurfaceInteraction,
   PolymorphicSurfaceMaterialInteraction primaryPolymorphicSurfaceMaterialInteraction)
 {

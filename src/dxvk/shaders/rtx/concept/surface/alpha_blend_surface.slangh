@@ -28,10 +28,10 @@
 
 struct AlphaBlendSurface
 {
-  f16vec4 color;
-  f16vec3 normal;
-  float16_t backgroundTransparency;
-  float16_t randomThreshold;
+  vec4 color;
+  vec3 normal;
+  float backgroundTransparency;
+  float randomThreshold;
   uint16_t geometryHash;
   float hitT;
   bool hasEmissive;
@@ -42,31 +42,31 @@ struct AlphaBlendSurface
   {
     uint4 data;
     data.x = 
-      (uint32_t(f16ToUnorm8(color.r)) << 24) |
-      (uint32_t(f16ToUnorm8(color.g)) << 16) |
-      (uint32_t(f16ToUnorm8(color.b)) << 8) |
-      (uint32_t(f16ToUnorm8(color.a)));
+      (uint32_t(f32ToUnorm8(color.r)) << 24) |
+      (uint32_t(f32ToUnorm8(color.g)) << 16) |
+      (uint32_t(f32ToUnorm8(color.b)) << 8) |
+      (uint32_t(f32ToUnorm8(color.a)));
 
-    float     hitTScaled   = hitT / hitTFloat16PackingMultiplier;
+    float hitTScaled = hitT / hitTFloat16PackingMultiplier;
     float16_t hitTScaled16 = float16_t(hitTScaled > float16Max ? float16Max : hitTScaled);
 
-    data.y = (uint32_t(float16BitsToUint16(backgroundTransparency)) << 16) | uint32_t(float16BitsToUint16(hitTScaled16));
+    data.y = (uint32_t(float16BitsToUint16(float16_t(backgroundTransparency))) << 16) | uint32_t(float16BitsToUint16(hitTScaled16));
     data.z = sphereDirectionToSnorm2x16(normal);
-    data.w = (uint32_t(float16BitsToUint16(randomThreshold)) << 16) | (uint32_t(geometryHash) & 0xfffe) | (hasEmissive ? 0x1 : 0x0);
+    data.w = (uint32_t(float16BitsToUint16(float16_t(randomThreshold))) << 16) | (uint32_t(geometryHash) & 0xfffe) | (hasEmissive ? 0x1 : 0x0);
     return data;
   }
 
   // NOTE: 'hitTFloat16PackingMultiplier' must be the same as the one used in pack()
   [mutating] void unpack(const uint4 data, float hitTFloat16PackingMultiplier)
   {
-    color.r = unorm8ToF16(uint8_t(data.x >> 24));
-    color.g = unorm8ToF16(uint8_t(data.x >> 16));
-    color.b = unorm8ToF16(uint8_t(data.x >> 8));
-    color.a = unorm8ToF16(uint8_t(data.x));
+    color.r = unorm8ToF32(uint8_t(data.x >> 24));
+    color.g = unorm8ToF32(uint8_t(data.x >> 16));
+    color.b = unorm8ToF32(uint8_t(data.x >> 8));
+    color.a = unorm8ToF32(uint8_t(data.x));
 
-    backgroundTransparency = uint16BitsToHalf(data.y >> 16);
-    hitT = float(uint16BitsToHalf(data.y & 0xffff)) * hitTFloat16PackingMultiplier;
-    randomThreshold = uint16BitsToHalf(data.w >> 16);
+    backgroundTransparency = uint16BitsToF32(data.y >> 16);
+    hitT = uint16BitsToF32(data.y & 0xffff) * hitTFloat16PackingMultiplier;
+    randomThreshold = uint16BitsToF32(data.w >> 16);
     geometryHash = (data.w & 0xfffe);
     hasEmissive = (data.w & 0x1) > 0 ? true : false;
 
@@ -76,10 +76,10 @@ struct AlphaBlendSurface
   static AlphaBlendSurface createEmpty()
   {
     AlphaBlendSurface surface;
-    surface.color = f16vec4(0.0);
+    surface.color = vec4(0.0);
     surface.hitT = 0.0;
     surface.backgroundTransparency = 1.0;
-    surface.normal = f16vec3(0.0);
+    surface.normal = vec3(0.0);
     surface.randomThreshold = 0.0;
     surface.geometryHash = 0;
     return surface;
@@ -107,25 +107,25 @@ struct AlphaBlendSurface
     color.a = 1.0;
   }
 
-  static f16vec4 getAlphaBlendSurface(PolymorphicSurfaceMaterialInteraction bsdf)
+  static vec4 getAlphaBlendSurface(PolymorphicSurfaceMaterialInteraction bsdf)
   {
     if (bsdf.type == surfaceMaterialTypeOpaque)
     {
       // See opaqueSurfaceMaterialInteractionCreate()
       // vdata0 is albedo
       // fdata0 is opacity
-      f16vec3 albedo = bsdf.vdata0;
-      float16_t opacity = abs(bsdf.fdata0);
+      vec3 albedo = bsdf.vdata0;
+      float opacity = abs(bsdf.fdata0);
 
       // The input color has pre-multiplied alpha, demodulate it first
       // See albedoToAdjustedAlbedo()
-      f16vec3 color = opacity == 0.0 ? 0.0 : saturate(albedo / opacity);
-      return f16vec4(color, opacity);
+      vec3 color = opacity == 0.0 ? 0.0 : saturate(albedo / opacity);
+      return vec4(color, opacity);
     }
-    return f16vec4(0,0,0,0);
+    return vec4(0,0,0,0);
   }
 
-  [mutating] void update(f16vec4 newColor, f16vec3 newNormal, float newHitT, uint16_t newHash, bool newHasEmissive)
+  [mutating] void update(vec4 newColor, vec3 newNormal, float newHitT, uint16_t newHash, bool newHasEmissive)
   {
     // Suppose we have 3 alpha blend surfaces, from front to back, with color C1, C2, C3, alpha a1, a2, a3,
     // and a opaque background with color CB.
@@ -154,7 +154,7 @@ struct AlphaBlendSurface
         setOpaque();
       }
     }
-    backgroundTransparency *= saturate(float16_t(1) - newColor.a);
+    backgroundTransparency *= saturate(1.0f - float(newColor.a));
   }
 
   [mutating] void finalize(uint16_t newHash)

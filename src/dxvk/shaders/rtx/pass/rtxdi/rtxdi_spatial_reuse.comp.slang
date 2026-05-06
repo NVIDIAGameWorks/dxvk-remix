@@ -19,9 +19,33 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
+
+//!variant rtxdi_spatial_reuse.comp
+//!>       RTXDI_NO_PORTALS=0
+//!>       RTXDI_ENABLE_BSDF_DETAIL=1
+
+//!variant rtxdi_spatial_reuse_no_portals.comp
+//!>       RTXDI_NO_PORTALS=1
+//!>       RTXDI_ENABLE_BSDF_DETAIL=1
+
+//!variant rtxdi_spatial_reuse_no_bsdf_detail.comp
+//!>       RTXDI_NO_PORTALS=0
+//!>       RTXDI_ENABLE_BSDF_DETAIL=0
+
+//!variant rtxdi_spatial_reuse_no_portals_no_bsdf_detail.comp
+//!>       RTXDI_NO_PORTALS=1
+//!>       RTXDI_ENABLE_BSDF_DETAIL=0
+
+//!end-variants
+
 #define USE_32BIT_RAY_DIRECTION 1
 #define RAB_HAS_CURRENT_GBUFFER 1
 #define RAB_HAS_RTXDI_RESERVOIRS 1
+#define RTXDI_COHERENT_SPATIAL_NEIGHBOR_OFFSETS 1
+
+#ifndef RTXDI_ENABLE_BSDF_DETAIL
+#define RTXDI_ENABLE_BSDF_DETAIL 1
+#endif
 
 #include "rtx/pass/common_bindings.slangh"
 #include "rtx/pass/rtxdi/rtxdi_reuse_bindings.slangh"
@@ -39,7 +63,9 @@
 #include "rtx/algorithm/resolve.slangh"
 #include "rtx/algorithm/visibility.slangh"
 #include "rtx/algorithm/rtxdi/rtxdi.slangh"
+#if RTXDI_ENABLE_BSDF_DETAIL
 #include "rtxdi/DlssEnhancementFilterFunctions.slangh"
+#endif
 
 [shader("compute")]
 [numthreads(16, 8, 1)]
@@ -103,11 +129,12 @@ void main(int2 thread_id : SV_DispatchThreadID)
 
   RAB_StoreReservoir(result, thread_id, RTXDI_GetSpatialOutputPage());
 
-  f16vec2 factor = f16vec2(1);
+  vec2 factor = vec2(1);
+#if RTXDI_ENABLE_BSDF_DETAIL
   if (cb.enableEnhanceBSDFDetail && RTXDI_IsValidReservoir(result) && cb.enhanceBSDFDirectLightPower > 0)
   {
     const RAB_LightSample finalSample =
-      RAB_GetPortalSpaceLightSample(result.lightIdx, f16vec2(result.uv), result.portalIdx, surface);
+      RAB_GetPortalSpaceLightSample(result.lightIdx, vec2(result.uv), result.portalIdx, surface);
     const float3 cameraPosition = cameraGetWorldPosition(camera);
     const float neighborDepthThreshold = 0.02f;
     const float neighborNormalThreshold = 0.998f;
@@ -116,8 +143,9 @@ void main(int2 thread_id : SV_DispatchThreadID)
     float3 finalSampleDirection = normalize(finalSample.position - surface.minimalSurfaceInteraction.position);
     factor = RTXDI_GetDlssEnhancementDirectFactor(thread_id, finalSample.position, finalSampleDirection, false, cameraPosition, neighborDepthThreshold, neighborNormalThreshold, brdfClampMin, brdfClampMax);
 
-    factor = pow(factor, float16_t(cb.enhanceBSDFDirectLightPower));
-    factor = clamp(factor, f16vec2(0), f16vec2(cb.enhanceBSDFDirectLightMaxValue));
+    factor = pow(factor, cb.enhanceBSDFDirectLightPower);
+    factor = clamp(factor, vec2(0), vec2(cb.enhanceBSDFDirectLightMaxValue));
   }
+#endif
   BSDFFactor[thread_id] = vec2(factor);
 }

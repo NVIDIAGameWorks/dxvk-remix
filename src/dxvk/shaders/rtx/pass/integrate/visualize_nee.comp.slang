@@ -163,7 +163,7 @@ void getTriangleCandidateInfo(NEECell cell, int binIndex, out float probability,
 
   // Triangle color
   vec3 triangleCenter;
-  f16vec3 triangleNormal;
+  vec3 triangleNormal;
   NEECacheUtils.calculateTriangleLightIntensity(candidiate.getSurfaceID(), candidiate.getPrimitiveID(), triangleCenter, triangleNormal, lightIntensity);
   // Multiply 0.1 to show brighter lights
   lightIntensity = log(calcBt709Luminance(lightIntensity) + 1) * 0.1;

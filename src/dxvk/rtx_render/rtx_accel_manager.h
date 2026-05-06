@@ -59,11 +59,43 @@ class AccelManager : public CommonDeviceObject {
     uint32_t reorderedSurfacesOffset = UINT32_MAX;
     bool hasOmmInstances = false;
     bool hasSssInstances = false;
+
+    // The PooledBlas assigned to this bucket by createBlasBuffersAndInstances.
+    // Stored here so the per-bucket cache can capture it after buildBlases.
+    PooledBlas* assignedBlas = nullptr;
     
     // Tries to add a geometry instance to the bucket. The addition is successful if either:
     //   a) the bucket is empty,
     //   b) the instance has the same mask etc. as all other instances in the bucket.
     bool tryAddInstance(RtInstance* instance);
+  };
+
+  // Key for O(1) bucket lookup in the merged-BLAS path.
+  // Two instances can share a merged BLAS bucket iff they have identical keys.
+  struct BlasBucketKey {
+    uint32_t instanceShaderBindingTableRecordOffset = 0;
+    uint32_t customIndexFlags = 0;
+    VkGeometryInstanceFlagsKHR instanceFlags = 0;
+    uint8_t instanceMask = 0;
+    bool usesUnorderedApproximations = false;
+    bool isSubsurface = false;
+    uint8_t pad = 0;
+
+    bool operator==(const BlasBucketKey& other) const {
+      return instanceMask == other.instanceMask &&
+             instanceShaderBindingTableRecordOffset == other.instanceShaderBindingTableRecordOffset &&
+             customIndexFlags == other.customIndexFlags &&
+             instanceFlags == other.instanceFlags &&
+             usesUnorderedApproximations == other.usesUnorderedApproximations &&
+             isSubsurface == other.isSubsurface;
+    }
+  };
+  static_assert(sizeof(BlasBucketKey) == 16, "BlasBucketKey must remain fully padded for stable hashing.");
+
+  struct BlasBucketKeyHash {
+    size_t operator()(const BlasBucketKey& k) const {
+      return static_cast<size_t>(XXH3_64bits(&k, sizeof(k)));
+    }
   };
 
 public:
@@ -118,6 +150,15 @@ public:
 
   uint32_t getSurfaceCount() const { return m_reorderedSurfaces.size(); }
   const std::vector<RtInstance*>& getOrderedInstances() const { return m_reorderedSurfaces; }
+
+  // Returns true if the last mergeInstancesIntoBlas call took the fast-skip
+  // path (scene generation unchanged).  When true, m_reorderedSurfaces and
+  // all BLAS/surface data are identical to the previous frame, so callers
+  // can skip redundant GPU uploads (e.g. surface materials).
+  bool wasSceneUnchangedThisFrame() const { return m_sceneUnchangedThisFrame; }
+
+  void removeInstanceFromBucketCache(RtInstance* instance);
+  void invalidateOpacityMicromapBindings() { m_ommBindPending = true; }
 
 private:
   struct SurfaceInfo {
@@ -176,6 +217,50 @@ private:
   // instances in each TLAS type.  These slots are NOT stored in m_mergedInstances —
   // the GPU culling shader fills them directly in the instance buffer.
   uint32_t m_pointInstancerSlotsPerType[Tlas::Count] = {};
+
+  // --- Incremental BLAS build caching ---
+  // Scene generation from InstanceManager when the BLAS was last built.
+  uint64_t m_lastProcessedGeneration = UINT64_MAX;
+  bool m_sceneUnchangedThisFrame = false;
+  // Set when newly built OMMs need to be bound to BLASes.  Forces all buckets
+  // dirty on the next incremental rebuild so tryBindOpacityMicromap runs.
+  bool m_ommBindPending = false;
+
+  // Number of non-billboard entries in m_mergedInstances per TLAS type.
+  // prepareSceneData() truncates to this baseline before appending fresh billboard instances.
+  uint32_t m_mergedInstancesBaselineCount[Tlas::Count] = {};
+
+  // Tracks all dynamic BLAS references from the last full build so they can be
+  // touched during the cached (skip) path to prevent GC from collecting them.
+  std::vector<Rc<PooledBlas>> m_activeDynamicBlases;
+
+  // --- Dynamics-only rebuild cached state ---
+  // Per-bucket cache from the last build.  Each entry corresponds to one merged
+  // BLAS bucket and stores all the data needed to restore its portion of
+  // m_reorderedSurfaces and m_mergedInstances without re-running the bucket pipeline.
+  struct CachedBucketState {
+    // The instances that contributed geometry to this bucket (for dirty checking)
+    std::vector<RtInstance*> instances;
+    // Surface data for m_reorderedSurfaces
+    std::vector<RtInstance*> surfaces;
+    std::vector<uint32_t> indexOffsets;
+    // The PooledBlas assigned to this bucket (kept alive via Rc)
+    Rc<PooledBlas> assignedBlas;
+    // TLAS instance template (surface offset must be adjusted each frame)
+    VkAccelerationStructureInstanceKHR tlasInstance {};
+    // Which TLAS type(s) this bucket was emitted to
+    bool isUnordered = false;
+    bool hasSssInstances = false;
+  };
+  std::vector<CachedBucketState> m_cachedBuckets;
+
+  // Maps a merged instance pointer to its bucket index in m_cachedBuckets.
+  // Allows O(1) "is this instance in a clean bucket?" check in the main loop.
+  std::unordered_map<RtInstance*, uint32_t> m_instanceBucketIndex;
+
+  // Set of BlasEntry* that went to the dynamic path on the last full rebuild.
+  // Used for quick O(1) per-instance classification on the dynamics-only path.
+  std::unordered_set<BlasEntry*> m_cachedDynamicBlasEntries;
 
   Rc<DxvkBuffer> m_vkInstanceBuffer; // Note: Holds Vulkan AS Instances, not RtInstances
   Rc<DxvkBuffer> m_surfaceBuffer;

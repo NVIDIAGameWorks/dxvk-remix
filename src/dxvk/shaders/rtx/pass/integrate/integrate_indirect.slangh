@@ -119,17 +119,17 @@ void integrate_indirect_pass(ivec2 threadIndex)
   // Load state data carried over from the direct integration pass
 
   const vec4 rayOriginDirection = RayOriginDirection[gbufferPixelCoordinate];
-  const f16vec4 throughputConeRadius = ThroughputConeRadius[gbufferPixelCoordinate];
+  const vec4 throughputConeRadius = ThroughputConeRadius[gbufferPixelCoordinate];
   IndirectSampleData indirectSampleData;
   indirectSampleData.load(gbufferPixelCoordinate, FirstSampledLobeData);
 
   const vec3 rayOrigin = rayOriginDirection.xyz;
-  const f16vec3 rayDirection = signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(floatBitsToUint(rayOriginDirection.w)));
-  const f16vec3 throughput = throughputConeRadius.xyz;
-  const float16_t coneRadius = throughputConeRadius.w;
-  const float16_t firstHitPerceptualRoughness = FirstHitPerceptualRoughness[gbufferPixelCoordinate];
-  const float16_t firstSampledLobePdf = indirectSampleData.firstSampledLobePdf;
-  const float16_t firstSampledSolidAnglePdf = indirectSampleData.firstSampledSolidAnglePdf;
+  const vec3 rayDirection = signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(floatBitsToUint(rayOriginDirection.w)));
+  const vec3 throughput = throughputConeRadius.xyz;
+  const float coneRadius = throughputConeRadius.w;
+  const float firstHitPerceptualRoughness = FirstHitPerceptualRoughness[gbufferPixelCoordinate];
+  const float firstSampledLobePdf = indirectSampleData.firstSampledLobePdf;
+  const float firstSampledSolidAnglePdf = indirectSampleData.firstSampledSolidAnglePdf;
 
   float gbufferSurfaceHitDistance = 0;
   if (geometryFlags.primarySelectedIntegrationSurface)

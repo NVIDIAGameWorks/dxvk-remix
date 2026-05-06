@@ -344,10 +344,17 @@ namespace dxvk {
     friend class OpacityMicromapManager;
   public:
     OpacityMicromapInstanceData();
+    bool isOmmBuildRequested(uint32_t currentGeneration) const {
+      return ommBuildRequested && ommRegistrationGeneration == currentGeneration;
+    }
   private:
     XXH64_hash_t ommSrcHash = kEmptyHash;
+    uint32_t ommRegistrationGeneration = 0;
+    uint32_t ommEligibilityGeneration = UINT32_MAX;  // Generation when eligibility was last evaluated
+    uint32_t ommRetryAfterFrame = 0;                 // Skip processing until this frame is reached
     bool usesOMM : 1;
     bool needsToCalculateNumTexelsPerMicroTriangle : 1;
+    bool ommBuildRequested : 1;
   };
 
   // OpacityMicromapManager generates and manages Opacity Micromap data
@@ -371,14 +378,6 @@ namespace dxvk {
     static XXH64_hash_t calculateSourceHash(XXH64_hash_t geometryHash, XXH64_hash_t materialHash, const RtSurface::AlphaState& alphaState);
     
     InstanceEventHandler getInstanceEventHandler();
-
-    // Registers Opacity Micromap build request for an instance. 
-    // Call this when tryBindOpacityMicromap() is not called for the instance within a frame 
-    // but it is still desired to add the request to the build queue (i.e. in ViewModel reference 
-    // instance case).
-    // Returns true if the Opacity Micromap build request has been added now or previously. 
-    // Returns false if the Opacity Micromap build request was rejected
-    bool registerOpacityMicromapBuildRequest(RtInstance& instance, const InstanceManager& instanceManager, const std::vector<TextureRef>& textures);
 
     // Tries to bind an opacity micromap for a given instance to the target, 
     // If the instance uses an opacity micromap and the Opacity Micromap data is generated, 
@@ -428,6 +427,31 @@ namespace dxvk {
 
     // Internal use only
     void onInstanceUnlinked(const RtInstance& instance);
+
+    // Processes OMM candidates that are pending registration.  By the time
+    // this runs, onInstanceUpdated has already culled ineligible instances, so
+    // the candidate set is small.  Called once per frame from the accel manager.
+    void processOmmCandidates(const InstanceManager& instanceManager, const std::vector<TextureRef>& textures);
+
+    // Returns true if any OMMs transitioned to the Built state this frame,
+    // meaning affected BLASes should be rebuilt to bind them.
+    bool hasNewlyBuiltOmms() const { return m_hasNewlyBuiltOmms; }
+
+    // Returns true if OMM option changes require all BLASes to be rebuilt
+    // (e.g. binding or building options toggled).  Cleared after reading.
+    bool consumeNeedsBlasRebuild() {
+      bool val = m_needsBlasRebuild;
+      m_needsBlasRebuild = false;
+      return val;
+    }
+
+    // Seeds m_ommCandidates with all existing instances so that instances
+    // added before the event handler was registered still get OMM processing.
+    void seedCandidates(const std::vector<RtInstance*>& instances);
+
+    // Generation counter bumped on clear().  Used by isOmmBuildRequested() to
+    // invalidate stale retain-mode flags after cache resets.
+    uint32_t getOmmGeneration() const { return m_ommGeneration; }
   private:
     typedef fast_unordered_cache<OpacityMicromapCacheItem> OpacityMicromapCache;
 
@@ -572,6 +596,31 @@ namespace dxvk {
     // This could be stored in CachedSourceData to avoid an additional unordered_map lookup
     fast_unordered_cache<NumTexelsPerMicroTriangleCalculationData> m_numTexelsPerMicroTriangle;
     std::vector<const RtInstance*> m_instancesToDestroy;
+
+    // Retain-mode: instances whose OMM registration was rejected by a temporary
+    // condition (filter age/count, texture residency).  Retried each frame via
+    // processOmmCandidates().
+    std::unordered_set<RtInstance*> m_ommCandidates;
+
+    // Set to true whenever buildOpacityMicromapsInternal transitions any OMM to
+    // the Built state.  The accel manager uses this to force a scene rebuild so
+    // the newly-built OMMs get bound to BLASes.
+    bool m_hasNewlyBuiltOmms = false;
+
+    // Set when OMM option changes require all BLASes to be rebuilt.
+    bool m_needsBlasRebuild = false;
+
+    // Generation counter incremented on clear().  Invalidates stale
+    // ommBuildRequested flags on instances without iterating them.
+    // Uses a static base so each new manager instance gets a unique starting
+    // generation, preventing collisions with flags set by a prior manager.
+    static inline uint32_t s_nextOmmGeneration = 1;
+    uint32_t m_ommGeneration = 0;
+
+    // Previous-frame option values for detecting binding/building toggles.
+    bool m_prevEnableBinding = OpacityMicromapOptions::enableBinding();
+    bool m_prevEnableBuilding = OpacityMicromapOptions::enableBuilding();
+    bool m_prevEnableBakingArrays = OpacityMicromapOptions::enableBakingArrays();
 
     // Need to give access to CachedSourceData to be able to purge m_numTexelsPerMicroTriangleStaging
     friend class CachedSourceData;

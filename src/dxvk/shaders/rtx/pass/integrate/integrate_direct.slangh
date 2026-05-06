@@ -115,7 +115,7 @@ void integrate_direct_pass(ivec2 threadIndex)
 
   // Read the integration surface PDF
 
-  const float16_t integrationSurfacePdf = SharedIntegrationSurfacePdf[threadIndex];
+  const float integrationSurfacePdf = SharedIntegrationSurfacePdf[threadIndex];
 
   // Deserialize the Ray
 
@@ -162,7 +162,7 @@ void integrate_direct_pass(ivec2 threadIndex)
   if (polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque)
   {
     const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
-    const f16vec3 adjustedBaseReflectivity = opaqueSurfaceMaterialGetAdjustedBaseReflectivity(opaqueSurfaceMaterialInteraction);
+    const vec3 adjustedBaseReflectivity = opaqueSurfaceMaterialGetAdjustedBaseReflectivity(opaqueSurfaceMaterialInteraction);
 
     if (geometryFlags.primarySelectedIntegrationSurface)
     {
