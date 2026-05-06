@@ -4,6 +4,8 @@
 #include "../dxvk/dxvk_buffer.h"
 #include "../util/util_threadpool.h"
 
+#include <array>
+#include <memory>
 #include <vector>
 #include <optional>
 
@@ -172,6 +174,23 @@ namespace dxvk {
     }
 
   private: 
+    // Reused fixed-size blocks: once allocated, a block is never reallocated, so background
+    // skinning can keep raw Matrix4* into a prior copy. m_blocks can grow, but the heap
+    // Block objects and their `m_matrices` array storage stay pinned. The write cursor
+    // rewinds each frame; old blocks are retained to avoid per-frame allocs.
+    struct SkinningMatrixPool {
+      static constexpr size_t kMatricesPerBlock = 256 * 256;
+      struct Block {
+        std::array<Matrix4, kMatricesPerBlock> m_matrices;
+      };
+      std::vector<std::unique_ptr<Block>> m_blocks;
+      size_t m_blockIndex = 0;          // which block the next write will use
+      size_t m_nextIndexInBlock = 0;    // next free slot in m_blocks[m_blockIndex]
+
+      void clear();
+      const Matrix4* stageBones(const Matrix4* source, size_t matrixCount);
+    } m_stagedBones;
+
     inline static const uint32_t kMaxConcurrentDraws = 6 * 1024; // some games issuing >3000 draw calls per frame...  account for some consumer thread lag with x2
     using GeometryProcessor = WorkerThreadPool<kMaxConcurrentDraws>;
     const std::unique_ptr<GeometryProcessor> m_pGeometryWorkers;
@@ -192,8 +211,6 @@ namespace dxvk {
     // in DXVK depend on say when the submit thread's present happens which is unpredictable).
     uint64_t m_reflexFrameId = 0;
 
-    std::vector<Matrix4> m_stagedBones;
-    uint32_t m_stagedBonesCount = 0;
     uint32_t m_maxBone = 0;
 
     const bool m_enableDrawCallConversion;

@@ -15,6 +15,9 @@
 #include "d3d9_texture.h"
 #include "../dxvk/rtx_render/rtx_terrain_baker.h"
 
+#include <cassert>
+#include <cstring>
+
 namespace dxvk {
   static const bool s_isDxvkResolutionEnvVarSet = (env::getEnvVar("DXVK_RESOLUTION_WIDTH") != "") || (env::getEnvVar("DXVK_RESOLUTION_HEIGHT") != "");
   
@@ -29,9 +32,37 @@ namespace dxvk {
     , m_parent(d3d9Device)
     , m_enableDrawCallConversion(enableDrawCallConversion)
     , m_pGeometryWorkers(enableDrawCallConversion ? std::make_unique<GeometryProcessor>(numGeometryProcessingThreads(), "geometry-processing") : nullptr) {
+  }
 
-    // Add space for 256 objects skinned with 256 bones each.
-    m_stagedBones.resize(256 * 256);
+  void D3D9Rtx::SkinningMatrixPool::clear() {
+    m_blockIndex = 0;
+    m_nextIndexInBlock = 0;
+  }
+
+  const Matrix4* D3D9Rtx::SkinningMatrixPool::stageBones(const Matrix4* source, size_t matrixCount) {
+    assert(matrixCount <= kMatricesPerBlock);
+    if (matrixCount == 0) {
+      return nullptr;
+    }
+    for (;;) {
+      if (m_blocks.empty()) {
+        m_blocks.push_back(std::make_unique<Block>());
+        m_blockIndex = 0;
+        m_nextIndexInBlock = 0;
+      } else if (m_nextIndexInBlock + matrixCount > kMatricesPerBlock) {
+        ++m_blockIndex;
+        m_nextIndexInBlock = 0;
+        if (m_blockIndex == m_blocks.size()) {
+          m_blocks.push_back(std::make_unique<Block>());
+        }
+        continue;
+      }
+      break;
+    }
+    Matrix4* const dest = m_blocks[m_blockIndex]->m_matrices.data() + m_nextIndexInBlock;
+    memcpy(dest, source, matrixCount * sizeof(Matrix4));
+    m_nextIndexInBlock += matrixCount;
+    return dest;
   }
 
   void D3D9Rtx::Initialize() {
@@ -760,7 +791,7 @@ namespace dxvk {
 
     // Some games set vertex blend without enough data to actually do the blending, handle that logic below.
 
-    const bool hasBlendWeight = d3d9State().vertexDecl != nullptr ? d3d9State().vertexDecl->TestFlag(D3D9VertexDeclFlag::HasBlendWeight) : false;
+    const bool hasBlendWeight = geoData.blendWeightBuffer.defined();
     const bool hasBlendIndices = d3d9State().vertexDecl != nullptr ? d3d9State().vertexDecl->TestFlag(D3D9VertexDeclFlag::HasBlendIndices) : false;
     const bool indexedVertexBlend = hasBlendIndices && d3d9State().renderStates[D3DRS_INDEXEDVERTEXBLENDENABLE];
 
@@ -813,13 +844,9 @@ namespace dxvk {
     const uint32_t maxBone = m_maxBone > 0 ? m_maxBone : 255;
     const uint32_t startBoneTransform = GetTransformIndex(D3DTS_WORLDMATRIX(0));
 
-    if (m_stagedBonesCount + maxBone >= m_stagedBones.size()) {
-      throw DxvkError("Bones temp storage is too small.");
-    }
-
-    Matrix4* boneMatrices = m_stagedBones.data() + m_stagedBonesCount;
-    memcpy(boneMatrices, d3d9State().transforms.data() + startBoneTransform, sizeof(Matrix4)*(maxBone + 1));
-    m_stagedBonesCount += maxBone + 1;
+    const uint32_t nMat = maxBone + 1;
+    const Matrix4* const boneMatrices = m_stagedBones.stageBones(
+        d3d9State().transforms.data() + startBoneTransform, nMat);
 
     return m_pGeometryWorkers->Schedule([boneMatrices, blendIndices, numBonesPerVertex, vertexCount]()->SkinningData {
       ScopedCpuProfileZone();
@@ -1231,7 +1258,7 @@ namespace dxvk {
     m_drawCallID = 0;
     m_seenCameraPositionsPrev = std::move(m_seenCameraPositions);
 
-    m_stagedBonesCount = 0;
+    m_stagedBones.clear();
   }
 
   void D3D9Rtx::OnPresent(const Rc<DxvkImage>& targetImage) {
