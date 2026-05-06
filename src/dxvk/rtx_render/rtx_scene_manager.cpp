@@ -1571,7 +1571,7 @@ namespace dxvk {
       XXH64_hash_t lightIdHash = lightAssetHash;
       lightIdHash = XXH64(&lightPos, sizeof(Vector3), lightIdHash);
 
-      const InstanceLookupKey lightKey { lightIdHash, lightAssetHash, kEmptyHash, kEmptyHash, lightPos, lightTransform };
+      const ReplacementInstance::LookupKey lightKey { lightIdHash, lightAssetHash, kEmptyHash, kEmptyHash, lightPos, lightTransform };
       ReplacementInstance* replacementInstance = m_drawCallTracker.findOrCreateReplacementInstance(lightKey);
 
       // Reinitialize the RI if the prim count doesn't match the replacement count.
@@ -1959,7 +1959,7 @@ namespace dxvk {
     const XXH64_hash_t matHash = state.drawCall.materialData.getHash();
     const Vector3 worldPos = xform[3].xyz();
 
-    const InstanceLookupKey externalKey { identityHash, spatialMapHash, matHash, kEmptyHash, worldPos, xform };
+    const ReplacementInstance::LookupKey externalKey { identityHash, spatialMapHash, matHash, kEmptyHash, worldPos, xform };
     ReplacementInstance* replacementInstance = m_drawCallTracker.findOrCreateReplacementInstance(externalKey);
 
     AxisAlignedBoundingBox geometryBBox;

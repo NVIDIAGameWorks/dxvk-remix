@@ -115,6 +115,39 @@ struct ReplacementInstance {
 
   static constexpr uint32_t kInvalidReplacementIndex = UINT32_MAX;
 
+  // Bundled hash/position/transform parameters used to look up or create a
+  // ReplacementInstance. Constructed by callers from whatever source they have
+  // (DrawCallState, D3DLIGHT9, ExternalDrawState).
+  struct LookupKey {
+    XXH64_hash_t identityHash;
+    // The hash to identify which spatial map to search for the replacementInstance.
+    XXH64_hash_t spatialMapHash;
+    XXH64_hash_t materialHash;
+    XXH64_hash_t vertexPositionHash;
+    Vector3 worldPos;
+    Matrix4 transform;
+  };
+
+  ReplacementInstance() = delete;
+
+  ReplacementInstance(const LookupKey& key, uint32_t newId, uint32_t frameId);
+
+  // Bit indices describing which fields of this RI changed in the most recent
+  // submission relative to the previously cached data. Computed immediately
+  // after a drawcall is matched to a ReplacementInstance.
+  //
+  // Note: distinct from boundingBoxDirty. That flag is a "pending work" signal
+  // set externally and cleared by the consumer (recalculateBoundingBox).
+  // dirtyFlags is a snapshot of "what changed in the last update", overwritten
+  // on the next submission. Different semantics, different lifetimes.
+  enum class DirtyFlag : uint32_t {
+    Transform,
+    VertexPosHash,
+    MaterialHash,
+    Any,           // Catch-all bit that is set if anything at all has changed
+  };
+  using DirtyFlags = Flags<DirtyFlag>;
+
   ~ReplacementInstance();
 
   void clear();
@@ -174,6 +207,13 @@ struct ReplacementInstance {
   AxisAlignedBoundingBox geometryBoundingBox;
   AxisAlignedBoundingBox lightBoundingBox;
   Matrix4 objectToWorld;
+
+  // Snapshot of which fields of this RI changed in the most recent submission.
+  // Initialized by setup() (all bits set, so the first frame's update runs every
+  // step) and updated by findOrCreateReplacementInstance on each subsequent
+  // match. Used downstream to gate update work and to identify animated
+  // entities for anti-culling.
+  DirtyFlags dirtyFlags;
 };
 
 // Wrapper utility to share the code for handling replacementInstance ownership.

@@ -134,6 +134,24 @@ namespace dxvk {
     boundingBoxDirty = true;
   }
 
+  ReplacementInstance::ReplacementInstance(const LookupKey& key, uint32_t newId, uint32_t frameId)
+      : id(newId)
+      , identityHash(key.identityHash)
+      , spatialMapHash(key.spatialMapHash)
+      , materialHash(key.materialHash)
+      , vertexPositionHash(key.vertexPositionHash)
+      , centroid(key.worldPos)
+      , frameCreated(frameId) {
+    // No prior data to diff against; every field is effectively new. Set all
+    // dirty bits so downstream update logic that gates individual steps on
+    // specific bits runs the full update on the RI's first submission.
+    dirtyFlags.set(
+        DirtyFlag::Transform,
+        DirtyFlag::VertexPosHash,
+        DirtyFlag::MaterialHash,
+        DirtyFlag::Any);
+  }
+
   void ReplacementInstance::setup(PrimInstance newRoot, size_t numPrims) {
     clear();
     prims.resize(numPrims);
