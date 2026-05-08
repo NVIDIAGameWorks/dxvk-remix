@@ -58,7 +58,7 @@
 
 #define REMIXAPI_VERSION_MAJOR 0
 #define REMIXAPI_VERSION_MINOR 6
-#define REMIXAPI_VERSION_PATCH 3
+#define REMIXAPI_VERSION_PATCH 4
 
 
 // External
@@ -760,6 +760,8 @@ extern "C" {
     uint64_t            version;
   } remixapi_InitializeLibraryInfo;
 
+  // NOTE: If adding a new function, append at the end of the struct.
+  //       Reordering breaks backwards compatibility.
   typedef struct remixapi_Interface {
     PFN_remixapi_Shutdown           Shutdown;
     PFN_remixapi_CreateMaterial     CreateMaterial;
@@ -767,7 +769,6 @@ extern "C" {
     PFN_remixapi_CreateMesh         CreateMesh;
     PFN_remixapi_DestroyMesh        DestroyMesh;
     PFN_remixapi_SetupCamera        SetupCamera;
-    PFN_remixapi_SetCameraMediumMaterial SetCameraMediumMaterial;
     PFN_remixapi_DrawInstance       DrawInstance;
     PFN_remixapi_CreateLight        CreateLight;
     PFN_remixapi_DestroyLight       DestroyLight;
@@ -787,6 +788,8 @@ extern "C" {
 
     PFN_remixapi_Startup            Startup;
     PFN_remixapi_Present            Present;
+
+    PFN_remixapi_SetCameraMediumMaterial SetCameraMediumMaterial;
   } remixapi_Interface;
 
   REMIXAPI remixapi_ErrorCode REMIXAPI_CALL remixapi_InitializeLibrary(
