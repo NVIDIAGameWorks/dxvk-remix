@@ -372,6 +372,22 @@ void    ImGui_ImplWin32_NewFrame()
     io.DeltaTime = (float)(current_time - bd->Time) / bd->TicksPerSecond;
     bd->Time = current_time;
 
+    // NV-DXVK start: clamp DeltaTime to a small positive value
+    // ImGui::NewFrame()'s ErrorCheckNewFrameSanityChecks asserts on
+    // DeltaTime <= 0 (imgui.cpp line 7984, "Need a positive DeltaTime!").
+    // On fast or virtualized hardware, two consecutive NewFrame() calls
+    // can fall within a single QPC tick (~100 ns), producing exactly 0.0f
+    // here. That has been observed as an intermittent CI fast-fail
+    // (0xC0000409) on a multi-frame image test while the game is on an
+    // init/menu screen presenting at high rate with minimal work between
+    // frames. Clamp to a small positive value so ImGui's sanity check
+    // passes; any reasonable lower bound works because this only fires in
+    // the degenerate same-tick case.
+    if (io.DeltaTime <= 0.0f) {
+      io.DeltaTime = 1.0f / 1000.0f; // 1 ms
+    }
+    // NV-DXVK end
+
     // Update OS mouse position
     ImGui_ImplWin32_UpdateMouseData();
 
