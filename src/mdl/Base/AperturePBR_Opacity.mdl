@@ -213,33 +213,29 @@ export material AperturePBR_Opacity(
   [[
     anno::enable_if("use_legacy_alpha_state == false && blend_enabled == true"),
     anno::display_name("Blend Type"),
-    anno::description("The alpha state blend type to use."),
-    anno::in_group("Alpha Blending"),
-    anno::unused()
+    anno::description("The alpha state blend type to use. Used by the Runtime to determine how blending is performed."),
+    anno::in_group("Alpha Blending")
   ]],
   uniform bool inverted_blend = false
   [[
     anno::enable_if("use_legacy_alpha_state == false && blend_enabled == true"),
     anno::display_name("Inverted Blend"),
-    anno::description("Indicates if an inverted blend type should be used."),
-    anno::in_group("Alpha Blending"),
-    anno::unused()
+    anno::description("Indicates if an inverted blend type should be used. Used by the Runtime."),
+    anno::in_group("Alpha Blending")
   ]],
   uniform AlphaTestType alpha_test_type = Always
   [[
     anno::enable_if("use_legacy_alpha_state == false"),
     anno::display_name("Alpha Test Type"),
-    anno::description("The alpha state alpha test type to use."),
-    anno::in_group("Alpha Blending"),
-    anno::unused()
+    anno::description("The alpha test comparison operation to use. When set to 'Always', no alpha cutout is applied. Set to 'Greater' with a reference value for alpha cutout behavior."),
+    anno::in_group("Alpha Blending")
   ]],
   uniform float alpha_test_reference_value = 0.0f
   [[
     anno::enable_if("use_legacy_alpha_state == false"),
     anno::display_name("Alpha Test Reference Value"),
-    anno::description("The value to use for alpha testing against."),
-    anno::in_group("Alpha Blending"),
-    anno::unused()
+    anno::description("The value to use for alpha testing against. Pixels with alpha below this threshold will be discarded when using comparison modes like 'Greater'."),
+    anno::in_group("Alpha Blending")
   ]],
   // -------------------- FILTERING ----------------------
   uniform FilterMode filter_mode = Linear
