@@ -202,6 +202,14 @@ private:
                   args.minValue = 0.0f, args.maxValue = kPi);
   RTX_OPTION("rtx", float, lightConversionMaxIntensity, FLT_MAX, "The highest intensity value a converted light can have.");
   RTX_OPTION("rtx", float, lightConversionIntensityFactor, 1.f, "Scales the converted light intensities.");
+  RTX_OPTION("rtx", bool, enableLegacyRectLightConeShaping, false,
+             "If true, restores the legacy cos(angle) * aspectRatio formula for RectLight cone shaping. "
+             "Enable this only to preserve the look of existing scenes that were authored against the legacy behavior. "
+             "Note this can silently kill the light at high aspect ratios.");
+  RTX_OPTION("rtx", bool, enableRectLightConeShapingRatioScaling, false,
+             "If true, scales the RectLight cone half-angle by the light's aspect ratio in tangent space, "
+             "producing a cone that matches the rect's proportions. When false (default), the cone is uniform "
+             "and independent of the light's width/height. Ignored when enableLegacyRectLightConeShaping is true.");
 };
 
 }  // namespace dxvk
