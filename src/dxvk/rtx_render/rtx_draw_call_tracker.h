@@ -64,6 +64,14 @@ public:
       const MaterialData& materialData,
       const RayPortalManager& rayPortalManager);
 
+  // Look up an existing ReplacementInstance by L1 identity hash only. Returns
+  // nullptr if no RI exists for this key. Unlike findOrCreateReplacementInstance,
+  // this never allocates and never runs the L2/L2.5 spatial searches -- intended
+  // for "is there stale state to clean up?" probes that must not pollute the
+  // tracker with empty RIs (e.g. game lights when their replacement was just
+  // toggled off).
+  ReplacementInstance* findReplacementInstanceByIdentity(XXH64_hash_t identityHash);
+
   // Garbage collect expired ReplacementInstances. Object anti-culling keeps mesh RIs alive
   // if their bounding box intersects the camera frustum. Light content uses the camera's
   // light anti-culling frustum (wider FOV) and extended lifetime.

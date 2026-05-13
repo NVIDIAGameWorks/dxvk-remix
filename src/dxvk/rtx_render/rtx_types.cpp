@@ -108,12 +108,14 @@ namespace dxvk {
   }
 
   ReplacementInstance::~ReplacementInstance() {
-    root = PrimInstance();
     clear();
   }
 
   void ReplacementInstance::clear() {
-    // clear up all references to this ReplacementInstance.
+    // Mark all prim entities for GC and detach their back-pointers, then drop
+    // the prim/root slots, the active-replacements tracking pointer, and the
+    // cached aggregate bounding boxes so the RI is in a clean "no replacement
+    // attached" state. setup() is the matching re-init.
     for (size_t i = 0; i < prims.size(); i++) {
       RtInstance* subInstance = prims[i].getInstance();
       if (subInstance) {
@@ -129,6 +131,9 @@ namespace dxvk {
       }
       prims[i].setReplacementInstance(nullptr, kInvalidReplacementIndex);
     }
+    prims.clear();
+    root = PrimInstance();
+    activeReplacements = nullptr;
     geometryBoundingBox.invalidate();
     lightBoundingBox.invalidate();
     boundingBoxDirty = true;
@@ -152,10 +157,12 @@ namespace dxvk {
         DirtyFlag::Any);
   }
 
-  void ReplacementInstance::setup(PrimInstance newRoot, size_t numPrims) {
+  void ReplacementInstance::setup(PrimInstance newRoot, size_t numPrims,
+                                  const std::vector<AssetReplacement>* replacements) {
     clear();
     prims.resize(numPrims);
     root = newRoot;
+    activeReplacements = replacements;
   }
 
   void ReplacementInstance::recalculateBoundingBox(

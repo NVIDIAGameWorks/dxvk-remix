@@ -323,6 +323,11 @@ namespace dxvk {
     return result;
   }
 
+  ReplacementInstance* DrawCallTracker::findReplacementInstanceByIdentity(XXH64_hash_t identityHash) {
+    auto it = m_identityHashMap.find(identityHash);
+    return (it != m_identityHashMap.end()) ? it->second : nullptr;
+  }
+
   ReplacementInstance* DrawCallTracker::tryPortalMatch(
       ReplacementInstance* newInstance,
       const ReplacementInstance::LookupKey& key,
