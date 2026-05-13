@@ -247,7 +247,15 @@ namespace dxvk {
     // Called before instance manager's clear, so that it resets all tracked instances in Opacity Micromap manager at once
     if (m_opacityMicromapManager.get())
       m_opacityMicromapManager->clear();
-    
+
+    // Invalidate AccelManager's bucket cache before InstanceManager::clear() deletes
+    // every RtInstance. The cache holds raw RtInstance* in m_cachedBuckets[].instances /
+    // .surfaces and m_instanceBucketIndex, and the next frame's mergeInstancesIntoBlas
+    // dirty check would dereference those (now-freed) pointers. The per-instance
+    // onInstanceDestroyed -> removeInstanceFromBucketCache hook only patches the index
+    // map, not the vectors, so a bulk reset must drop the cache wholesale.
+    m_accelManager.clear();
+
     m_instanceManager.clear();
     m_lightManager.clear();
     m_graphManager.clear();
@@ -615,6 +623,11 @@ namespace dxvk {
     if (pReplacements != nullptr) {
       drawReplacements(ctx, &input, pReplacements, renderMaterialData, replacementInstance);
     } else {
+      // If there was a replacement last frame, clean it up.
+      if (replacementInstance->activeReplacements != nullptr) {
+        replacementInstance->clear();
+      }
+
       // ExistingInstance will be nullptr the first frame a replacementInstance is used.
       // The actual instance creation still happens in instanceManager.processSceneObject().
       RtInstance* existingInstance = (replacementInstance->prims.size() > 0)
@@ -624,7 +637,7 @@ namespace dxvk {
           existingInstance, nullptr);
       if (instance != nullptr) {
         if (replacementInstance->root.getUntyped() == nullptr) {
-          replacementInstance->setup(PrimInstance(instance, PrimInstance::Type::Instance), 1);
+          replacementInstance->setup(PrimInstance(instance, PrimInstance::Type::Instance), 1, nullptr);
         }
         if (replacementInstance->prims[0].getUntyped() != instance) {
           instance->getPrimInstanceOwner().setReplacementInstance(replacementInstance, 0, instance,
@@ -755,9 +768,7 @@ namespace dxvk {
     if (replacementInstance->activeReplacements != pReplacements &&
         replacementInstance->root.getUntyped() != nullptr) {
       replacementInstance->clear();
-      replacementInstance->root = PrimInstance();
     }
-    replacementInstance->activeReplacements = pReplacements;
 
     // Detect replacements of meshes that would have unstable hashes due to the vertex hash using vertex data from a shared vertex buffer.
     // TODO: Once the vertex hash only uses vertices referenced by the index buffer, this should be removed.
@@ -823,7 +834,7 @@ namespace dxvk {
         if (replacementInstance->root.getUntyped() == nullptr) {
           // This is the first time this replacementInstance is used, and the first mesh drawn
           //  as part of this replacementInstance, so invoke setup and set the root.
-          replacementInstance->setup(PrimInstance(instance, PrimInstance::Type::Instance), pReplacements->size());
+          replacementInstance->setup(PrimInstance(instance, PrimInstance::Type::Instance), pReplacements->size(), pReplacements);
           instance->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, instance, PrimInstance::Type::Instance);
         } else if (replacementInstance->prims[i].getUntyped() != instance) {
           instance->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, instance, PrimInstance::Type::Instance);
@@ -1562,14 +1573,15 @@ namespace dxvk {
     const RtLight rtLight = lightData->toRtLight();
     const std::vector<AssetReplacement>* pReplacements = m_pReplacer->getReplacementsForLight(rtLight.getInitialHash());
 
+    // Build identity hash from the light's stable hash + position. Used by
+    // both the replacement and the toggle-off cleanup paths below; must stay
+    // in sync between them so they target the same RI.
+    const XXH64_hash_t lightAssetHash = rtLight.getInitialHash();
+    const Vector3 lightPos = rtLight.getPosition();
+    const XXH64_hash_t lightIdHash = XXH64(&lightPos, sizeof(Vector3), lightAssetHash);
+
     if (pReplacements) {
       const Matrix4 lightTransform = LightUtils::getLightTransform(light);
-
-      // Build identity hash from the light's stable hash + position
-      const XXH64_hash_t lightAssetHash = rtLight.getInitialHash();
-      const Vector3 lightPos = rtLight.getPosition();
-      XXH64_hash_t lightIdHash = lightAssetHash;
-      lightIdHash = XXH64(&lightPos, sizeof(Vector3), lightIdHash);
 
       const ReplacementInstance::LookupKey lightKey { lightIdHash, lightAssetHash, kEmptyHash, kEmptyHash, lightPos, lightTransform };
       ReplacementInstance* replacementInstance = m_drawCallTracker.findOrCreateReplacementInstance(lightKey);
@@ -1577,13 +1589,9 @@ namespace dxvk {
       // Reinitialize the RI if the prim count doesn't match the replacement count.
       // This handles the transition from unreplaced (1 prim) to replaced (N prims)
       // when replacements finish loading asynchronously.
-      // clear() marks existing prims for GC but doesn't resize the vector, so we
-      // must also empty it so that setup() is triggered in the loop below.
       if (replacementInstance->root.getUntyped() != nullptr &&
           replacementInstance->prims.size() != pReplacements->size()) {
         replacementInstance->clear();
-        replacementInstance->prims.clear();
-        replacementInstance->root = PrimInstance();
       }
 
       // All lights in a light replacement are externally tracked, with their
@@ -1631,7 +1639,7 @@ namespace dxvk {
             RtLight* newLight = m_lightManager.createExternallyTrackedLight(rtReplacementLight);
             if (newLight != nullptr) {
               if (replacementInstance->prims.empty()) {
-                replacementInstance->setup(PrimInstance(newLight, PrimInstance::Type::Light), pReplacements->size());
+                replacementInstance->setup(PrimInstance(newLight, PrimInstance::Type::Light), pReplacements->size(), pReplacements);
               }
               newLight->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, newLight, PrimInstance::Type::Light);
               if (replacementInstance->root.getUntyped() == nullptr) {
@@ -1653,6 +1661,19 @@ namespace dxvk {
         replacementInstance->boundingBoxDirty = false;
       }
     } else {
+      // If this light previously had a replacement (e.g. enableReplacementLights
+      // was just toggled off), the externally-tracked replacement lights are
+      // still alive in LightManager -- they have no frame-age GC; their
+      // lifecycle is owned by the RI. Tear down the RI so its prims get marked
+      // for GC; otherwise the user sees the replacement lights and the original
+      // game light rendering simultaneously until DrawCallTracker collects the
+      // RI ~numFramesToKeepInstances frames later.
+      if (ReplacementInstance* stale = m_drawCallTracker.findReplacementInstanceByIdentity(lightIdHash)) {
+        if (stale->activeReplacements != nullptr) {
+          stale->clear();
+        }
+      }
+
       // This is a light coming from the game directly, so use the appropriate API for filter rules
       m_lightManager.addGameLight(light.Type, rtLight);
     }
@@ -1987,7 +2008,7 @@ namespace dxvk {
 
       if (instance != nullptr) {
         if (replacementInstance->root.getUntyped() == nullptr) {
-          replacementInstance->setup(PrimInstance(instance, PrimInstance::Type::Instance), submeshes.size());
+          replacementInstance->setup(PrimInstance(instance, PrimInstance::Type::Instance), submeshes.size(), nullptr);
         }
         if (replacementInstance->prims.size() > i &&
             replacementInstance->prims[i].getUntyped() != instance) {

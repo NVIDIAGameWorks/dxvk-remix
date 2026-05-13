@@ -502,6 +502,17 @@ namespace dxvk {
           const auto& cachedBucket = m_cachedBuckets[bi];
 
           for (RtInstance* inst : cachedBucket.instances) {
+            // Validity check MUST come first: if the cached instance is no longer
+            // in the live set (per-instance GC, or any path that bypasses the
+            // bucket-vector cleanup), the pointer is dangling and must not be
+            // dereferenced. Mark the bucket dirty so it gets rebuilt without
+            // touching the stale entry.
+            if (currentInstanceSet.find(inst) == currentInstanceSet.end()) {
+              bucketDirty[bi] = true;
+              anyBucketDirty = true;
+              break;
+            }
+
             const uint32_t customIndexFlags = inst->getVkInstance().instanceCustomIndex & ~uint32_t(CUSTOM_INDEX_SURFACE_MASK);
             const bool bucketKeyChanged =
               inst->getVkInstance().mask != cachedBucket.tlasInstance.mask ||
@@ -511,8 +522,7 @@ namespace dxvk {
               inst->usesUnorderedApproximations() != cachedBucket.isUnordered ||
               inst->isSubsurface() != cachedBucket.hasSssInstances;
 
-            if (currentInstanceSet.find(inst) == currentInstanceSet.end() ||
-                inst->isBlasDirty() ||
+            if (inst->isBlasDirty() ||
                 inst->getBlas()->frameLastUpdated == currentFrame ||
                 bucketKeyChanged) {
               bucketDirty[bi] = true;

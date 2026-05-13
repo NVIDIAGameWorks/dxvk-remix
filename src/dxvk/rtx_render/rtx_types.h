@@ -150,12 +150,21 @@ struct ReplacementInstance {
 
   ~ReplacementInstance();
 
+  // Mark all prim entities for GC, drop the prim/root slots, reset cached
+  // aggregate bounding boxes, and clear activeReplacements. Returns the RI to
+  // the same shape it had immediately after construction.
   void clear();
 
   std::vector<PrimInstance> prims;
   PrimInstance root;
 
-  void setup(PrimInstance newRoot, size_t numPrims);
+  // Reset the RI and re-initialize it with the given root, prim count, and
+  // tracking pointer to the replacement vector that owns those prims (pass
+  // nullptr for non-replacement contexts -- e.g. standalone draws or external
+  // mesh submissions). The stored pointer is used by drawReplacements to
+  // detect when the underlying replacement data has changed across frames.
+  void setup(PrimInstance newRoot, size_t numPrims,
+             const std::vector<AssetReplacement>* replacements);
 
   // Frame-to-frame tracking fields (used by SceneManager two-level lookup)
   uint32_t id = 0;
