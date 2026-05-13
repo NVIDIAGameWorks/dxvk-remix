@@ -123,12 +123,22 @@ namespace dxvk {
 
       separator();
 
+      ImGui::Text("Rectangle Light settings");
+      lightSettingsDirty |= RemixGui::Checkbox("Enable Legacy RectLight Cone Shaping", &enableLegacyRectLightConeShapingObject());
+      ImGui::BeginDisabled(enableLegacyRectLightConeShaping());
+      lightSettingsDirty |= RemixGui::Checkbox("Enable RectLight Cone Shaping Ratio Scaling", &enableRectLightConeShapingRatioScalingObject());
+      ImGui::EndDisabled();
+
+      separator();
+
       ImGui::Text("Ignore Game Lights:");
       ImGui::Indent();
       lightSettingsDirty |= RemixGui::Checkbox("Directional", &ignoreGameDirectionalLightsObject());
       lightSettingsDirty |= RemixGui::Checkbox("Point", &ignoreGamePointLightsObject());
       lightSettingsDirty |= RemixGui::Checkbox("Spot", &ignoreGameSpotLightsObject());
       ImGui::Unindent();
+
+      separator();
 
       ImGui::Unindent();
     }

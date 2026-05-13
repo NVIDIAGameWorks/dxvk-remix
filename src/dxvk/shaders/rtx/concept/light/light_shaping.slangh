@@ -58,7 +58,36 @@ float lightShapingCalcScaledRadialFalloff(LightShaping lightShaping, vec3 lightT
 {
   // Lights with angles < 1.3 will fall to 0 when you use float 16 here.
   const float cosTheta = dot(lightShaping.primaryAxis, lightToViewDirection);
-  const float scaledConeAngle = (1.0 - lightShaping.oneMinusCosConeAngle) * ratio;
+  const float cosConeAngle = 1.0 - lightShaping.oneMinusCosConeAngle;
+  float scaledConeAngle = 1.0f;
+  if (cb.enableLegacyRectLightConeShaping == 0)
+  {
+    // Scale the half-angle in tangent space so the cone matches a rectangular pyramid with the
+    // light's aspect ratio. For a rect cone of width W, height H whose apex is at distance D:
+    //     tan(theta_y) = (H/2) / D
+    //     tan(theta_x) = (W/2) / D
+    //   => tan(theta_x) = tan(theta_y) * (W/H) = tan(theta_y) * ratio
+    // This is the geometrically correct relationship; the linear-in-angle form theta_x = theta_y * ratio
+    // is only a small-angle approximation, and the cos-multiply form cos(theta) * ratio is just wrong
+    // (it saturates at 1.0 and silently kills the light, e.g. coneAngle=60deg with ratio>=2).
+    //
+    // Derivation of cos(theta_x) from cos(theta_y) and ratio:
+    //     sin(theta_y) = sqrt(1 - cos^2(theta_y))
+    //     tan(theta_x) = sin(theta_y) / cos(theta_y) * ratio
+    //     cos(theta_x) = 1 / sqrt(1 + tan^2(theta_x))
+    //
+    // Note: The tangent grows without bound as theta_x -> pi/2, so cos(theta_x) -> 0 and the cone naturally
+    // saturates at a hemisphere as ratio -> infinity. No clamp or wrap-around handling needed.
+    const float sinConeAngle = sqrt(max(0.0f, 1.0f - cosConeAngle * cosConeAngle));
+    const float tanScaled = (sinConeAngle * ratio) / max(cosConeAngle, 1e-6f);
+    scaledConeAngle = 1.0f / sqrt(1.0f + tanScaled * tanScaled);
+  }
+  else
+  {
+    // Legacy formula, retained as an opt-in toggle so projects authored against the old
+    // behavior can preserve their look. Note: this can silently kill the light at high aspect ratios.
+    scaledConeAngle = cosConeAngle * ratio;
+  }
 
   if (cosTheta < scaledConeAngle)
   {
@@ -113,10 +142,14 @@ float lightShapingCalcPlanarFalloff(
   const vec3 xProjectedLightDir = xProjectedLightVector / xProjectedLightDistance;
   const vec3 yProjectedLightDir = yProjectedLightVector / yProjectedLightDistance;
 
-  // compute the falloff in each dimension separately
-  // TODO: effect of this ratio is odd, but it is in renderman, and so also here for now
+  // Compute the falloff in each dimension separately. By default the Y dimension also uses ratio=1.0,
+  // producing a uniform cone independent of the light's aspect ratio (which empirically gives the best
+  // visual results). Opt into aspect-ratio scaling via enableRectLightConeShapingRatioScaling, or via
+  // the legacy formula via enableLegacyRectLightConeShaping (both apply the rect's width/height ratio).
+  const bool applyRatioScaling = (cb.enableLegacyRectLightConeShaping != 0) || (cb.enableRectLightConeShapingRatioScaling != 0);
+  const float yRatio = applyRatioScaling ? ratio : 1.0f;
   const float xFalloff = lightShapingCalcScaledRadialFalloff(lightShaping, xProjectedLightDir, 1.0f);
-  const float yFalloff = lightShapingCalcScaledRadialFalloff(lightShaping, yProjectedLightDir, ratio);
+  const float yFalloff = lightShapingCalcScaledRadialFalloff(lightShaping, yProjectedLightDir, yRatio);
 
   return xFalloff * yFalloff;
 }
