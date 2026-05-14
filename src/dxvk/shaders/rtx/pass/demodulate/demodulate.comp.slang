@@ -93,48 +93,6 @@ void demodulate(
   }
 }
 
-float2 filterAverageNeighborNonzeroHitT(Texture2D<float2> tex, float2 centerHitTs, int2 pixelCoordinate)
-{
-  const float invalidHitTValue = 0.0f;
-
-  // Note: Early out to avoid sampling if no filtering needs to happen.
-  if (all(centerHitTs != float2(invalidHitTValue, invalidHitTValue)))
-  {
-    return centerHitTs;
-  }
-
-  // Average the neighboring Hit T values
-
-  float2 sum = float2(0.0f, 0.0f);
-  float2 count = 0;
-
-  const int r = 1;
-  for (int xx = -r; xx <= r; xx++)
-  {
-    for (int yy = -r; yy <= r; yy++)
-    {
-      // Note: Skip center pixel as it is known to be an invalid Hit T (for at least one of the
-      // channels).
-      if (xx != 0 || yy != 0)
-      {
-        const float2 value = tex[pixelCoordinate + int2(xx, yy)].xy;
-
-        sum += value;
-        // Note: Ignore HitT values of 0 as these signal invalid samples (since not all pixel will
-        // have a valid sample to accumulate from).
-        count.x += (value.x > invalidHitTValue) ? 1 : 0;
-        count.y += (value.y > invalidHitTValue) ? 1 : 0;
-      }
-    }
-  }
-
-  const float2 averagedHitTs = sum / max(count, 1);
-
-  return float2(
-    (centerHitTs.x == invalidHitTValue) ? averagedHitTs.x : centerHitTs.x,
-    (centerHitTs.y == invalidHitTValue) ? averagedHitTs.y : centerHitTs.y);
-}
-
 groupshared uint s_hashedValue1[12];
 groupshared uint s_hashedValue2[12];
 groupshared uint s_hashedCount[12];
@@ -552,18 +510,14 @@ void outputToDebugViewAtTheEnd(
 [numthreads(DEMODULATE_THREAD_GROUP_WIDTH, DEMODULATE_THREAD_GROUP_HEIGHT, 1)]
 void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_GroupThreadID)
 {
-  const Camera camera = cb.camera;
-
-  // Early out for pixels outside the camera
-
-  if (any(pixelCoordinate >= camera.resolution))
+  if (any(pixelCoordinate >= cb.camera.resolution))
   {
     return;
   }
 
   // Reconstruct the primary ray direction for the current pixel
 
-  const CameraDirections primaryRayDirections = cameraPixelCoordinateToDirection(camera, pixelCoordinate);
+  const CameraDirections primaryRayDirections = cameraPixelCoordinateToDirection(cb.camera, pixelCoordinate);
 
   // Deserialize flags
   const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixelCoordinate, SharedFlags);
@@ -596,12 +550,20 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_Gro
   // Note: Somewhat costly math operations, but the secondary specular albedo will (hopefully) be skipped out in most cases
   // due to its sole usage in secondary surface demodulation which is only enabled if the secondary surface mask is set (though
   // the debug view may drag this contribution in anyways potentially, so remove debug view code ideally).
-  const vec3 primarySpecularAlbedo = !isPrimaryMiss
-    ? evalSpecularAlbedoGGXSchlick(primaryBaseReflectivity, calcRoughness(primaryPerceptualRoughness), primaryNormalDotViewDirection)
-    : vec3(0);
-  const vec3 secondarySpecularAlbedo = geometryFlags.performPSTR || geometryFlags.performPSRR ? evalSpecularAlbedoGGXSchlick(
-    secondaryBaseReflectivity, calcRoughness(secondaryPerceptualRoughness),
-    secondaryNormalDotViewDirection) : vec3(0);
+  vec3 primarySpecularAlbedo = vec3(0);
+  vec3 secondarySpecularAlbedo = vec3(0);
+
+  if (!isPrimaryMiss)
+  {
+    primarySpecularAlbedo = evalSpecularAlbedoGGXSchlick(
+      primaryBaseReflectivity, calcRoughness(primaryPerceptualRoughness), primaryNormalDotViewDirection);
+  }
+
+  if ((geometryFlags.performPSTR || geometryFlags.performPSRR))
+  {
+    secondarySpecularAlbedo = evalSpecularAlbedoGGXSchlick(
+      secondaryBaseReflectivity, calcRoughness(secondaryPerceptualRoughness), secondaryNormalDotViewDirection);
+  }
 
   // Write out the Primary and Secondary Specular Albedo
   // Note: This overwrites the base reflectivity used in these buffers up to this point. This is fine though as
@@ -652,7 +614,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_Gro
   if (geometryFlags.secondarySurfaceMask && !geometryFlags.primarySelectedIntegrationSurface)
   {
     indirectRadianceHitDistanceInput = IndirectRadianceHitDistance[pixelCoordinate];
-    
+
     secondaryCombinedDiffuseInput = SecondaryCombinedDiffuseRadiance[pixelCoordinate];
     secondaryCombinedSpecularInput = SecondaryCombinedSpecularRadiance[pixelCoordinate];
 
@@ -686,7 +648,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_Gro
   //
   // If secondary bounces are disabled, the primaryIndirectSpecularInput will contain garbage data, which shouldn't be
   // used to replace the primaryDirectSpecularInput
-  if (cb.enableReplaceDirectSpecularHitTWithIndirectSpecularHitT && cb.enableSecondaryBounces)
+  if (cb.enableReplaceDirectSpecularHitTWithIndirectSpecularHitT && cb.enableSecondaryBounces && demodulatePrimaryInput)
   {
     primaryDirectSpecularInput.a = primaryIndirectSpecularInput.a;
   }
@@ -695,7 +657,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_Gro
   // is meant more for debugging and not actual production use, otherwise the summing of the radiance channels should happen
   // in the integrator to not waste memory bandwidth. Direct and indirect radiance will be combined after demodulation 
   // because of direct light boiling filter.
-  if (!cb.enableSeparatedDenoisers)
+  if (!cb.enableSeparatedDenoisers && demodulatePrimaryInput)
   {
     const float primaryDirectDiffuseLuminance = calcBt709Luminance(primaryDirectDiffuseInput.rgb);
     const float primaryIndirectDiffuseLuminance = calcBt709Luminance(primaryIndirectDiffuseInput.rgb);
@@ -739,7 +701,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_Gro
       cb.primaryIndirectNrd, primaryDemodulationData,
       primaryIndirectDiffuseInput, primaryIndirectSpecularInput,
       primaryIndirectDiffuseOutput, primaryIndirectSpecularOutput, cb.enableDemodulateRoughness);
-    
+
     // If separate denoisers are disabled, combine direct and indirect radiance signals.
     if (!cb.enableSeparatedDenoisers)
     {
@@ -771,7 +733,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_Gro
     PrimaryIndirectDiffuseRadiance[pixelCoordinate] = primaryIndirectDiffuseOutput;
     PrimaryIndirectSpecularRadiance[pixelCoordinate] = primaryIndirectSpecularOutput;
   }
-  
+
   SecondaryCombinedDiffuseRadiance[pixelCoordinate] = secondaryCombinedDiffuseOutput;
   SecondaryCombinedSpecularRadiance[pixelCoordinate] = secondaryCombinedSpecularOutput;
 

@@ -1314,17 +1314,17 @@ void integrateIndirectPath(
             
             if (opaqueSurfaceMaterial.heightTextureIndex == BINDING_INDEX_INVALID)
             {
-              storeInDebugView(getDispatchRaysIndex().xy, float3(1.f, 1.f, 0.f));
+              storeInDebugView(gbufferPixelCoordinate, float3(1.f, 1.f, 0.f));
             }
           }
           else
           {
-            storeInDebugView(getDispatchRaysIndex().xy, float3(1.f, 0.5f, 0.f));
+            storeInDebugView(gbufferPixelCoordinate, float3(1.f, 0.5f, 0.f));
           }
         }
         else
         {
-          storeInDebugView(getDispatchRaysIndex().xy, float3(1.f, 0.f, 0.f));
+          storeInDebugView(gbufferPixelCoordinate, float3(1.f, 0.f, 0.f));
         }
       }
 
@@ -1391,32 +1391,25 @@ void integrateIndirectPath(
       TRUE_OR_CHECK_WHEN_NRC_ENABLED(pathState.isNrcQuery));
   }
 
-  u16vec2 gbufferPixelCoordinate = pathState.pixelCoordinate;
-
-#if ENABLE_NRC
-  if (pathState.isNrcUpdate)
-  {
-    gbufferPixelCoordinate = Nrc::calculateTrainingPixelCoordinateInQuerySpace(gbufferPixelCoordinate, cb.nrcArgs);
-  }
-#endif
-
-  // Re-load geometry flags from the resource so that they're not carried around as live state during a ray path integration
-  geometryFlags = geometryFlagsReadFromGBuffer(gbufferPixelCoordinate, SharedFlags);
-
-  storeRestirGIRadiance(pathState, geometryFlags, gbufferSurfaceHitDistance);
-
-  vec4 indirectOutData = vec4(pathState.radiance, pathState.firstBounceHitDistance);
-
-  // Sanitize only primary indirect signal
-  // Secondary indirect signal is sanitized in demodulate pass after radiance contribution from the direct lighting is added
-  if (geometryFlags.primarySelectedIntegrationSurface)
-  {
-    indirectOutData = sanitizeRadianceHitDistance(indirectOutData.xyz, indirectOutData.w);
-  }
-
-  // Store the integrated ray path radiance and hit distance
   if (TRUE_OR_CHECK_WHEN_NRC_ENABLED(pathState.isNrcQuery))
   {
+    const u16vec2 gbufferPixelCoordinate = pathState.pixelCoordinate;
+
+    // Re-load geometry flags from the resource so that they're not carried around as live state during a ray path integration
+    geometryFlags = geometryFlagsReadFromGBuffer(gbufferPixelCoordinate, SharedFlags);
+
+    storeRestirGIRadiance(pathState, geometryFlags, gbufferSurfaceHitDistance);
+
+    vec4 indirectOutData = vec4(pathState.radiance, pathState.firstBounceHitDistance);
+
+    // Sanitize only primary indirect signal
+    // Secondary indirect signal is sanitized in demodulate pass after radiance contribution from the direct lighting is added
+    if (geometryFlags.primarySelectedIntegrationSurface)
+    {
+      indirectOutData = sanitizeRadianceHitDistance(indirectOutData.xyz, indirectOutData.w);
+    }
+
+    // Store the integrated ray path radiance and hit distance
     indirectPathTextures.IndirectRadianceHitDistance[gbufferPixelCoordinate] = indirectOutData;
   }
   

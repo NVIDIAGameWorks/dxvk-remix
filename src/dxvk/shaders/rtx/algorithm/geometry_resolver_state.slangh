@@ -48,12 +48,12 @@ struct GeometryResolverState : IBasePayloadState
   f16vec3 attenuation;
   uint8_t _rayMask;
 
-  // Property to get and set pixel coordinate
-  property u16vec2 pixelCoordinate 
+  // Property to get pixel coordinate
+  property u16vec2 pixelCoordinate
   {
-    get 
+    get
     {
-      return getDispatchRaysIndex().xy;
+      return u16vec2(getDispatchRaysIndex().xy);
     }
   }
 
@@ -213,12 +213,12 @@ struct GeometryPSRResolverState : IBasePayloadState
   uint8_t bounceIteration;
   f16vec3 attenuation;
 
-  // Property to get and set pixel coordinate
-  property u16vec2 pixelCoordinate 
+  // Property to get pixel coordinate
+  property u16vec2 pixelCoordinate
   {
-    get 
+    get
     {
-      return getDispatchRaysIndex().xy;
+      return u16vec2(getDispatchRaysIndex().xy);
     }
   }
 

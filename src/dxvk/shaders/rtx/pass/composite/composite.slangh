@@ -21,6 +21,7 @@
 */
 
 #include "rtx/external/NRD.slangh"
+#include "rtx/utility/color.slangh"
 
 #define D3DFOG_NONE   0
 #define D3DFOG_EXP    1
@@ -30,13 +31,17 @@
 vec4 calculateFog(float viewDistance)
 {
   if (cb.fogMode == D3DFOG_NONE)
+  {
     return vec4(0.0);
+  }
 
   // Hack: Lets the current fog system look fine on maps with a skybox, to be removed once we read fog parameters
   // properly from the game as they will specify how exactly the fog should look (if its even enabled rather than having
   // it enabled by default).
   if (viewDistance > cb.maxFogDistance)
+  {
     return vec4(0.0);
+  }
 
   // https://docs.microsoft.com/en-us/windows/win32/direct3d9/fog-formulas
 
@@ -105,4 +110,10 @@ vec3 applyPostFilter(Texture2D<float4> texture, uint2 pixel, uint denoiserMode)
     centerColor = avgColor;
   }
   return centerColor;
+}
+
+// Clamp to the nearest valid texel so edge pixels do not get biased darker by missing neighbors.
+int2 clampPixelCoordinate(int2 pixelCoordinate, int2 offset)
+{
+  return clamp(pixelCoordinate + offset, 0, cb.camera.resolution - 1);
 }

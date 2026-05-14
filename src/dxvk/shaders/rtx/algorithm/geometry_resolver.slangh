@@ -517,7 +517,7 @@ void geometryResolverDLSSRROutputSurface(
 void accumulateParticleBuffer(ivec2 pixelCoordinate, vec3 radiance)
 {
   // Accumulate radiance to particle buffer, when DLSS-RR is on.
-  // Particles, glasses and opaque surfaces' emissive component will be recorded in this buffer.
+  // Particles, glass and opaque surfaces' emissive component will be recorded in this buffer.
   vec4 prevParticleEmissive = ParticleBuffer[pixelCoordinate];
   prevParticleEmissive.xyz += radiance;
   ParticleBuffer[pixelCoordinate] = prevParticleEmissive;

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -32,7 +32,7 @@
 
 // Deserialize the Ray Interaction, Surface Interaction, and Surface Material Interaction
 void deserializeInteractions(
-  ivec2 pixelCoordinate, 
+  ivec2 pixelCoordinate,
   GeometryFlags geometryFlags,
   out MinimalRayInteraction minimalRayInteraction,
   out MinimalSurfaceInteraction minimalSurfaceInteraction,
@@ -67,23 +67,23 @@ void deserializeInteractions(
   }
 }
 
-void integrate_direct_pass(ivec2 threadIndex)
+void integrate_direct_pass(uvec2 threadIndex)
 {
   if (any(threadIndex >= cb.camera.resolution))
   {
     return;
   }
 
-  RNG rng = createRNG(uvec2(threadIndex), cb.frameIdx);
+  uvec2 pixelCoordinate = threadIndex;
 
   // Deserialize flags
 
-  GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(threadIndex, SharedFlags);
+  GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixelCoordinate, SharedFlags);
 
   // Check if the GBuffer was hit on the Primary and Secondary surfaces
 
-  const bool primaryGBufferMiss = isGBufferMiss(threadIndex, PrimaryConeRadius);
-  const bool secondaryGBufferMiss = isGBufferMiss(threadIndex, SecondaryConeRadius);
+  const bool primaryGBufferMiss = isGBufferMiss(pixelCoordinate, PrimaryConeRadius);
+  const bool secondaryGBufferMiss = isGBufferMiss(pixelCoordinate, SecondaryConeRadius);
 
   // Write out empty data
   // Note: This should hopefully prevent any weird undefined data from bleeding into pixels actually being denoised, but
@@ -91,8 +91,8 @@ void integrate_direct_pass(ivec2 threadIndex)
 
   if (primaryGBufferMiss)
   {
-    imageStore(PrimaryDirectDiffuseLobeRadianceHitDistance, threadIndex, vec4(0.0f, 0.0f, 0.0f, 0.0f));
-    imageStore(PrimaryDirectSpecularLobeRadianceHitDistance, threadIndex, vec4(0.0f, 0.0f, 0.0f, 0.0f));
+    PrimaryDirectDiffuseLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
+    PrimaryDirectSpecularLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
 
     // Note: Early out if no more work on the primary surface is needed.
     if (geometryFlags.primarySelectedIntegrationSurface)
@@ -103,19 +103,21 @@ void integrate_direct_pass(ivec2 threadIndex)
 
   if (secondaryGBufferMiss)
   {
-    imageStore(SecondaryCombinedDiffuseLobeRadianceHitDistance, threadIndex, vec4(0.0f, 0.0f, 0.0f, 0.0f));
-    imageStore(SecondaryCombinedSpecularLobeRadianceHitDistance, threadIndex, vec4(0.0f, 0.0f, 0.0f, 0.0f));
-
-    // Note: Early out if no more work on the secondary surface is needed.
+    SecondaryCombinedDiffuseLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
+    SecondaryCombinedSpecularLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
+  
+    // Note: Early out if no more work on the secondary surface is needed
     if (!geometryFlags.primarySelectedIntegrationSurface)
     {
       return;
     }
-  }  
+  }
+
+  RNG rng = createRNG(pixelCoordinate, cb.frameIdx);
 
   // Read the integration surface PDF
 
-  const float integrationSurfacePdf = SharedIntegrationSurfacePdf[threadIndex];
+  const float integrationSurfacePdf = SharedIntegrationSurfacePdf[pixelCoordinate];
 
   // Deserialize the Ray
 
@@ -137,16 +139,8 @@ void integrate_direct_pass(ivec2 threadIndex)
 
   // Deserialize the Ray Interaction, Surface Interaction, and Surface Material Interaction
   deserializeInteractions(
-    threadIndex, geometryFlags,
+    pixelCoordinate, geometryFlags,
     minimalRayInteraction, minimalSurfaceInteraction, polymorphicSurfaceMaterialInteraction);
-
-  // Sample an indirect ray path sample in direct integration pass since the material for the primary surface has been loaded.
-  // This is faster than reloading all the material data in the indirect pass and computing a ray path sample there
-  // Note: this updates geometryFlags
-  sampleAndStoreIndirectRayPathSample(
-    threadIndex, primaryRay, integrationSurfacePdf, 
-    minimalRayInteraction, minimalSurfaceInteraction, polymorphicSurfaceMaterialInteraction,
-    geometryFlags);
 
   // Rewrite Material Data for Denoising
   // Note: This is done to turn the usual material data base reflectivity into something more suitable for
@@ -170,32 +164,27 @@ void integrate_direct_pass(ivec2 threadIndex)
       // still. Instead, the ReSTIR GI final shading pass will do this adjustment instead before it is used by demodulation and the denoiser.
       if (!cb.enableReSTIRGI)
       {
-        imageStore(PrimaryBaseReflectivity, threadIndex, vec4(adjustedBaseReflectivity, 0.0f));
+        PrimaryBaseReflectivity[pixelCoordinate] = vec4(adjustedBaseReflectivity, 0.0f);
       }
     }
     else
     {
-      imageStore(SecondaryBaseReflectivity, threadIndex, vec4(adjustedBaseReflectivity, 0.0f));
+      SecondaryBaseReflectivity[pixelCoordinate] = vec4(adjustedBaseReflectivity, 0.0f);
     }
   }
 
+  // Sample an indirect ray path sample in direct integration pass since the material for the primary surface has been loaded.
+  // This is faster than reloading all the material data in the indirect pass and computing a ray path sample there
+  // Note: this updates geometryFlags
+  sampleAndStoreIndirectRayPathSample(
+    pixelCoordinate, primaryRay, integrationSurfacePdf, 
+    minimalRayInteraction, minimalSurfaceInteraction, polymorphicSurfaceMaterialInteraction,
+    geometryFlags);
+
   // Integrate the Direct portion of the Path
 
-  DirectPathTextures directPathTextures;
-
-  directPathTextures.SharedFlags = SharedFlags;
-  directPathTextures.SharedMediumMaterialIndex = SharedMediumMaterialIndex;
-  directPathTextures.PrimaryDirectDiffuseLobeRadianceHitDistance = PrimaryDirectDiffuseLobeRadianceHitDistance;
-  directPathTextures.PrimaryDirectSpecularLobeRadianceHitDistance = PrimaryDirectSpecularLobeRadianceHitDistance;
-  directPathTextures.SecondaryCombinedDiffuseLobeRadianceHitDistance = SecondaryCombinedDiffuseLobeRadianceHitDistance;
-  directPathTextures.SecondaryCombinedSpecularLobeRadianceHitDistance = SecondaryCombinedSpecularLobeRadianceHitDistance;
-  directPathTextures.IndirectRayOriginDirection = aliasedData0.IndirectRayOriginDirection;
-  directPathTextures.IndirectThroughputConeRadius = IndirectThroughputConeRadius;
-  directPathTextures.IndirectFirstHitPerceptualRoughness = aliasedData1.IndirectFirstHitPerceptualRoughness;
-  directPathTextures.PrimaryRtxdiIlluminance = PrimaryRtxdiIlluminance;
-
   integrateDirectPath(
-    rng, threadIndex, directPathTextures,
+    rng, pixelCoordinate,
     geometryFlags, integrationSurfacePdf,
     primaryRay, minimalRayInteraction, minimalSurfaceInteraction,
     polymorphicSurfaceMaterialInteraction);

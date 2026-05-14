@@ -1057,9 +1057,6 @@ namespace dxvk {
 
     // Push constants
     NrcResolvePushConstants pushArgs = {};
-    pushArgs.resolution = uvec2 {
-      m_nrcCtxSettings->frameDimensions.x,
-      m_nrcCtxSettings->frameDimensions.y };
     pushArgs.addPathtracedRadiance = NrcOptions::resolveAddPathTracedRadiance();
     pushArgs.addNrcRadiance = NrcOptions::resolveAddNrcQueriedRadiance();
     pushArgs.resolveMode = NrcOptions::enableDebugResolveMode() ? NrcOptions::debugResolveMode() : NrcResolveMode::AddQueryResultToOutput;

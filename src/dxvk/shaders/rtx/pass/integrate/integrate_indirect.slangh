@@ -29,16 +29,16 @@
 #include "rtx/concept/surface/surface.slangh"
 #include "rtx/concept/surface_material/surface_material.slangh"
 #include "rtx/algorithm/integrator_indirect.slangh"
-
-// Returns true if this is an active pixel
-// Returns false if the thread should terminate
-bool initPixelOnLaunch(inout uvec2 gbufferPixelCoordinate, out bool isNrcUpdate)
+// Returns true for query pixels and training pixels that are not out of bounds
+bool nrcCombinedToGbufferPixelCoordinate(
+  uvec2 combinedNrcCoordinate,
+  out uvec2 gbufferPixelCoordinate,
+  out bool isNrcUpdate)
 {
-  isNrcUpdate = false;  
-
+  isNrcUpdate = false; 
+  
 #if ENABLE_NRC
   // Identify which NRC mode this thread index corresponds to
-  const uvec2 combinedNrcCoordinate = gbufferPixelCoordinate;   
   isNrcUpdate = Nrc::isUpdatePixel(combinedNrcCoordinate, cb);
     
   if (isNrcUpdate)
@@ -47,6 +47,7 @@ bool initPixelOnLaunch(inout uvec2 gbufferPixelCoordinate, out bool isNrcUpdate)
 
     if (any(nrcUpdatePixelCoordinate >= cb.nrcArgs.activeTrainingDimensions))
     {
+      gbufferPixelCoordinate = uvec2(-1, -1); // To avoid uninitialized variable warning
       return false;
     }
 
@@ -54,28 +55,38 @@ bool initPixelOnLaunch(inout uvec2 gbufferPixelCoordinate, out bool isNrcUpdate)
   }
   else
   {
+    gbufferPixelCoordinate = combinedNrcCoordinate;
     gbufferPixelCoordinate.y -= cb.nrcArgs.numRowsForUpdate;
   }
 #else
-  // Mark as unused since the parameter is not being written to
-  unused(gbufferPixelCoordinate);
+  gbufferPixelCoordinate = combinedNrcCoordinate;
 #endif
-
-  if (any(gbufferPixelCoordinate >= cb.camera.resolution))
-  {
-    return false;
-  }
 
   return true;
 }
 
-void integrate_indirect_pass(ivec2 threadIndex)
+// Returns true if this is an active pixel
+// Returns false if the thread should terminate
+bool initPixelCoordinateOnLaunch(inout uvec2 gbufferPixelCoordinate, out bool isNrcUpdate)
+{
+  if (!nrcCombinedToGbufferPixelCoordinate(
+      gbufferPixelCoordinate,
+      gbufferPixelCoordinate,
+      isNrcUpdate))
+  {
+    return false;
+  }
+  
+  return all(gbufferPixelCoordinate < cb.camera.resolution);
+}
+
+void integrate_indirect_pass(uvec2 threadIndex)
 {
   uvec2 gbufferPixelCoordinate = threadIndex;
 
   bool isNrcUpdate = false;
 
-  if (!initPixelOnLaunch(gbufferPixelCoordinate, isNrcUpdate))
+  if (!initPixelCoordinateOnLaunch(gbufferPixelCoordinate, isNrcUpdate))
   {
     return;
   }

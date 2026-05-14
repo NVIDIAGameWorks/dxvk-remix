@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -51,23 +51,24 @@
 
 [shader("compute")]
 [numthreads(16, 8, 1)]
-void main(int2 thread_id : SV_DispatchThreadID)
+void main(int2 threadIndex : SV_DispatchThreadID)
 {
-  if (thread_id.x >= cb.camera.resolution.x || thread_id.y >= cb.camera.resolution.y)
+  if (any(threadIndex >= cb.camera.resolution))
   {
     return;
   }
 
-  RAB_Surface surface = RAB_GetGBufferSurface(thread_id, false);
+  const int2 pixelCoordinate = threadIndex;
+  RAB_Surface surface = RAB_GetGBufferSurface(pixelCoordinate, false);
   if (!RAB_IsSurfaceValid(surface))
   {
     return;
   }
   
-  RAB_RandomSamplerState rng = RAB_InitRandomSampler(thread_id, cb.frameIdx, 2);
+  RAB_RandomSamplerState rng = RAB_InitRandomSampler(pixelCoordinate, cb.frameIdx, 2);
 
-  vec2 screenSpaceMotion = PrimaryScreenSpaceMotionVector[thread_id];
-  ivec2 prevPixelCenter = thread_id + ivec2(screenSpaceMotion.xy);
+  vec2 screenSpaceMotion = PrimaryScreenSpaceMotionVector[pixelCoordinate];
+  ivec2 prevPixelCenter = pixelCoordinate + ivec2(screenSpaceMotion.xy);
 
   uint16_t previousBestLightIndex = RTXDI_INVALID_LIGHT_INDEX;
   uint8_t previousBestLightPortalIdx = RTXDI_INVALID_PORTAL_INDEX;
@@ -88,7 +89,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
   }
 
 
-  RTXDI_Reservoir state = RAB_LoadReservoir(thread_id, RTXDI_GetTemporalOutputPage());
+  RTXDI_Reservoir state = RAB_LoadReservoir(pixelCoordinate, RTXDI_GetTemporalOutputPage());
   if (cb.lightCount != 0)
   {
     RTXDI_SkipRandomLightsRng(rng);
@@ -96,14 +97,14 @@ void main(int2 thread_id : SV_DispatchThreadID)
     RAB_SkipRandoms(rng, 1);
   }
 
-  const float3 virtualMotionVector = PrimaryVirtualMotionVector[thread_id].xyz;
+  const float3 virtualMotionVector = PrimaryVirtualMotionVector[pixelCoordinate].xyz;
   const float3 prevVirtualWorldPosition = surface.virtualWorldPosition + virtualMotionVector;
 
   float viewDirectionDotTriangleNormal = abs(dot(surface.minimalRayInteraction.viewDirection, surface.minimalSurfaceInteraction.triangleNormal));
 
   RTXDI_TemporalResamplingParameters tparams;
   tparams.prevPixelCenter = prevPixelCenter;
-  tparams.expectedPrevHitDistance = length(prevVirtualWorldPosition - cameraGetPreviousWorldPosition(cb.camera).xyz);
+  tparams.expectedPrevHitDistance = calculateExpectedPreviousHitDistance(cb.camera, prevVirtualWorldPosition);
   tparams.virtualMotionVector = virtualMotionVector;
   tparams.sourceBufferIndex = RTXDI_GetTemporalInputPage();
   tparams.maxHistoryLength = cb.enableRtxdiTemporalReuse ? cb.rtxdiMaxHistoryLength : 0;
@@ -126,7 +127,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
 
   int2 temporalSamplePixelPos;
   bool isGBufferSimilar;
-  RTXDI_TemporalResampling(state, thread_id, surface, rng, tparams, temporalSamplePixelPos, isGBufferSimilar);
+  RTXDI_TemporalResampling(state, pixelCoordinate, surface, rng, tparams, temporalSamplePixelPos, isGBufferSimilar);
 
   float currentReprojectionConfidence = 0;
   if (isGBufferSimilar)
@@ -135,7 +136,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
   }
 
   currentReprojectionConfidence = min(currentReprojectionConfidence + 1.f / kReprojectionConfidenceHistoryLength, 1.f);
-  ReprojectionConfidence[thread_id] = currentReprojectionConfidence;
+  ReprojectionConfidence[pixelCoordinate] = currentReprojectionConfidence;
 
   // Remember which pixel the temporal reservoir belongs to, if it comes from a valid reprojection.
   // Needed for the gradients pass.
@@ -143,7 +144,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
   {
     temporalSamplePixelPos = -1;
   }
-  TemporalPosition[thread_id] = pack32(u16vec2(temporalSamplePixelPos));
+  TemporalPosition[pixelCoordinate] = pack32(u16vec2(temporalSamplePixelPos));
 
-  RAB_StoreReservoir(state, thread_id, RTXDI_GetTemporalOutputPage());
+  RAB_StoreReservoir(state, pixelCoordinate, RTXDI_GetTemporalOutputPage());
 }

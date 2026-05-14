@@ -200,7 +200,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
   vec4 prevNDC = mul(camera.prevWorldToProjection, vec4(prevVirtualWorldPosition, 1.0f));
   prevNDC.xyz /= prevNDC.w;
   float2 prevPixelCenter = cameraNDCToScreenUV(camera, prevNDC.xy) * vec2(camera.resolution);
-  float2 expectedPrevHitDistance = length(prevVirtualWorldPosition - cameraGetPreviousWorldPosition(camera).xyz);
+  float2 expectedPrevHitDistance = calculateExpectedPreviousHitDistance(camera, prevVirtualWorldPosition);
   float viewDirectionDotTriangleNormal = abs(dot(surface.minimalRayInteraction.viewDirection, surface.minimalSurfaceInteraction.triangleNormal));
   float2 depthThreshold = 0.01 / max(viewDirectionDotTriangleNormal, 0.01);
   float normalThreshold = lerp(0.995, 0.5, surface.opaqueSurfaceMaterialInteraction.isotropicRoughness);
@@ -303,7 +303,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
   tparams.prevPixelCenter = prevPixelCenter;
   tparams.prevBackupPixelCenter = prevBackupPixelCenter;
   tparams.resolution = cb.camera.resolution;
-  tparams.expectedPrevHitDistance = vec2(expectedPrevHitDistance);
+  tparams.expectedPrevHitDistance = expectedPrevHitDistance;
   tparams.normalThreshold = normalThreshold;
   tparams.depthThreshold = depthThreshold;
   tparams.virtualMotionVector = virtualMotionVector;

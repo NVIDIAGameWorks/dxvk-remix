@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -27,6 +27,10 @@ struct VisualizeNeeArgs
 {
   vec2 mouseUV;
 };
+
+// Thread group dimensions for NEE compute shader
+#define INTEGRATE_NEE_THREADS_DISPATCH_WIDTH 16
+#define INTEGRATE_NEE_THREADS_DISPATCH_HEIGHT 8
 
 // Inputs
 

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -67,26 +67,37 @@
 [shader("raygeneration")]
 void main()
 {
+  const uint2 threadIndex = DispatchRaysIndex().xy;
+
+  if (any(threadIndex >= cb.camera.resolution))
+  {
+    return;
+  }
+
+  uvec2 pixelCoordinate = threadIndex;
+
   #ifdef GBUFFER_PSR
-  geometryPSRResolverPass(DispatchRaysIndex().xy);
+  geometryPSRResolverPass(pixelCoordinate);
   #else
-  geometryResolver(DispatchRaysIndex().xy);
+  geometryResolver(pixelCoordinate);
   #endif
 }
 #else
 [shader("compute")]
 [numthreads(16, 8, 1)]
-void main(uint2 ipos : SV_DispatchThreadID)
+void main(uint2 threadIndex : SV_DispatchThreadID)
 {
-  if (any(ipos >= cb.camera.resolution))
+  if (any(threadIndex >= cb.camera.resolution))
   {
     return;
   }
 
+  uvec2 pixelCoordinate = threadIndex;
+
   #ifdef GBUFFER_PSR
-  geometryPSRResolverPass(ipos);
+  geometryPSRResolverPass(pixelCoordinate);
   #else
-  geometryResolver(ipos);
+  geometryResolver(pixelCoordinate);
   #endif
 }
 #endif

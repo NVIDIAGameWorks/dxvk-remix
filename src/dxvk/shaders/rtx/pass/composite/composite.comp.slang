@@ -34,7 +34,6 @@
 #include "rtx/utility/debug_view_helpers.slangh"
 #include "rtx/concept/camera/camera.slangh"
 #include "rtx/concept/surface/alpha_blend_surface.slangh"
-#include "rtx/external/NRD.slangh"
 #include "rtx/utility/geometry_flags.slangh"
 
 #include "rtx/algorithm/volume_composite_helpers.slangh"
@@ -47,7 +46,7 @@ float3 sampleDomeLightTexture(Sampler2D<float3> DomeLight, float3 worldDirection
   return DomeLight.SampleLevel(sampleUV, 0).xyz;
 }
 
-void updateDebugViewAtStart(uint2 thread_id) 
+void preCompositeDebugView(uint2 pixelCoordinate)
 {
   // Output Debug Information
   switch(cb.debugViewIdx)
@@ -55,49 +54,58 @@ void updateDebugViewAtStart(uint2 thread_id)
   case DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_DIFFUSE_RADIANCE:
   case DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_DIFFUSE_HIT_T:
     if (cb.enableSeparatedDenoisers)
-      storeInDebugView(thread_id, PrimaryIndirectDiffuseRadianceHitDistance[thread_id]);
+    {
+      storeInDebugView(pixelCoordinate, PrimaryIndirectDiffuseRadianceHitDistance[pixelCoordinate]);
+    }
     break;
   case DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_SPECULAR_RADIANCE:
   case DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_SPECULAR_HIT_T:
     if (cb.enableSeparatedDenoisers)
-      storeInDebugView(thread_id, PrimaryIndirectSpecularRadianceHitDistance[thread_id]);
+    {
+      storeInDebugView(pixelCoordinate, PrimaryIndirectSpecularRadianceHitDistance[pixelCoordinate]);
+    }
     break;
   }
 }
 
-void updateAlphaBlendDebugView(uint2 thread_id, AlphaBlendSurface surface)
+void updateAlphaBlendDebugView(
+  uint2 pixelCoordinate,
+  AlphaBlendSurface surface)
 {
   // Output Debug Information
   switch(cb.debugViewIdx)
   {
   case DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_COLOR:
-    storeInDebugView(thread_id, surface.isValid() ? surface.color.rgb : f16vec3(1,0,1));
+    storeInDebugView(pixelCoordinate, surface.isValid() ? surface.color.rgb : f16vec3(1,0,1));
     break;
   case DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_NORMAL:
-    storeInDebugView(thread_id, surface.isValid() ? surface.normal : f16vec3(0));
+    storeInDebugView(pixelCoordinate, surface.isValid() ? surface.normal : f16vec3(0));
     break;
   case DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_GEOMETRY_HASH:
-    storeInDebugView(thread_id, r5g6b5ToColor(surface.geometryHash));
+    storeInDebugView(pixelCoordinate, r5g6b5ToColor(surface.geometryHash));
     break;    
   case DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_BACKGROUND_TRANSPARENCY:
-    storeInDebugView(thread_id, surface.backgroundTransparency);
+    storeInDebugView(pixelCoordinate, surface.backgroundTransparency);
     break;
   }
 }
 
-void postCompositeDebugView(uint2 thread_id, GeometryFlags geometryFlags, vec4 particleLayer)
+void postCompositeDebugView(
+  uint2 pixelCoordinate,
+  GeometryFlags geometryFlags,
+  vec4 particleLayer)
 {
   // Output Debug Information
   switch(cb.debugViewIdx)
   {
   case DEBUG_VIEW_GEOMETRY_FLAGS_FIRST_SAMPLED_LOBE_IS_SPECULAR:
-    storeInDebugView(thread_id, geometryFlags.firstSampledLobeIsSpecular);
+    storeInDebugView(pixelCoordinate, geometryFlags.firstSampledLobeIsSpecular);
     break;
   case DEBUG_VIEW_RAY_RECONSTRUCTION_PARTICLE_LAYER:
-    storeInDebugView(thread_id, particleLayer);
+    storeInDebugView(pixelCoordinate, particleLayer);
     break;
   case DEBUG_VIEW_RAY_RECONSTRUCTION_PARTICLE_LAYER_ALPHA:
-    storeInDebugView(thread_id, 1.0 - particleLayer.w);
+    storeInDebugView(pixelCoordinate, 1.0 - particleLayer.w);
     break;
   }
 }
@@ -117,12 +125,10 @@ void loadInputRadiance(
   out vec3 remodulatedTotalPrimaryRadiance,
   out vec3 remodulatedTotalSecondaryRadiance)
 {
-  sharedRadiance = vec3(
-    texelFetch(SharedRadianceRG, pixelCoordinate, 0).xy,
-    texelFetch(SharedRadianceB, pixelCoordinate, 0).x);
+  sharedRadiance = vec3(SharedRadianceRG[pixelCoordinate].xy, SharedRadianceB[pixelCoordinate]);
 
-  vec3 primaryDirectDiffuseRadiance = texelFetch(PrimaryDirectDiffuseRadianceHitDistance, pixelCoordinate, 0).xyz;
-  vec3 primaryDirectSpecularRadiance = texelFetch(PrimaryDirectSpecularRadianceHitDistance, pixelCoordinate, 0).xyz;
+  vec3 primaryDirectDiffuseRadiance = PrimaryDirectDiffuseRadianceHitDistance[pixelCoordinate].xyz;
+  vec3 primaryDirectSpecularRadiance = PrimaryDirectSpecularRadianceHitDistance[pixelCoordinate].xyz;
 
   unpackDenoiserRadiance(primaryDirectDiffuseRadiance, cb.primaryDirectDenoiser);
   unpackDenoiserRadiance(primaryDirectSpecularRadiance, cb.primaryDirectDenoiser);
@@ -132,8 +138,8 @@ void loadInputRadiance(
 
   if (geometryFlags.secondarySurfaceMask)
   {
-    secondaryCombinedDiffuseRadiance = texelFetch(SecondaryCombinedDiffuseRadianceHitDistance, pixelCoordinate, 0).xyz;
-    secondaryCombinedSpecularRadiance = texelFetch(SecondaryCombinedSpecularRadianceHitDistance, pixelCoordinate, 0).xyz;
+    secondaryCombinedDiffuseRadiance = SecondaryCombinedDiffuseRadianceHitDistance[pixelCoordinate].xyz;
+    secondaryCombinedSpecularRadiance = SecondaryCombinedSpecularRadianceHitDistance[pixelCoordinate].xyz;
 
     unpackDenoiserRadiance(secondaryCombinedDiffuseRadiance, cb.secondaryCombinedDenoiser);
     unpackDenoiserRadiance(secondaryCombinedSpecularRadiance, cb.secondaryCombinedDenoiser);
@@ -151,8 +157,8 @@ void loadInputRadiance(
     }
     else
     {
-      primaryIndirectDiffuseRadiance = texelFetch(PrimaryIndirectDiffuseRadianceHitDistance, pixelCoordinate, 0).xyz;
-      primaryIndirectSpecularRadiance = texelFetch(PrimaryIndirectSpecularRadianceHitDistance, pixelCoordinate, 0).xyz;
+      primaryIndirectDiffuseRadiance = PrimaryIndirectDiffuseRadianceHitDistance[pixelCoordinate].xyz;
+      primaryIndirectSpecularRadiance = PrimaryIndirectSpecularRadianceHitDistance[pixelCoordinate].xyz;
 
       unpackDenoiserRadiance(primaryIndirectDiffuseRadiance, cb.primaryIndirectDenoiser);
       unpackDenoiserRadiance(primaryIndirectSpecularRadiance, cb.primaryIndirectDenoiser);
@@ -178,9 +184,9 @@ void loadInputRadiance(
   vec3 primaryCombinedSpecularRadiance;
 
   vec2 bsdfFactor = cb.enableRtxdi ? BSDFFactor[pixelCoordinate].xy : vec2(1);
-  vec2 bsdfFactor2 = cb.enableReSTIRGI? BSDFFactor2[pixelCoordinate].xy : vec2(1);
+  vec2 bsdfFactor2 = cb.enableReSTIRGI ? BSDFFactor2[pixelCoordinate].xy : vec2(1);
 
-  if (cb.enhanceAlbedo)
+  if (cb.enhanceAlbedo && cb.enableReSTIRGI)
   {
     PrimaryAlbedo[pixelCoordinate].xyz = primaryAlbedo * sqrt(bsdfFactor2.x);
   }
@@ -188,9 +194,11 @@ void loadInputRadiance(
   if (cb.combineLightingChannels != 0) {
     primaryCombinedDiffuseRadiance = primaryDirectDiffuseRadiance * bsdfFactor.x + primaryIndirectDiffuseRadiance * bsdfFactor2.x;
     primaryCombinedSpecularRadiance = primaryDirectSpecularRadiance * bsdfFactor.y + primaryIndirectSpecularRadiance * bsdfFactor2.y;
-  } else {
-    bsdfFactor.x = clamp(bsdfFactor.x, 0.7, 1.3); 
-    bsdfFactor = 0.5 * (bsdfFactor + bsdfFactor2);
+  }
+  else
+  {
+    bsdfFactor.x = clamp(bsdfFactor.x, 0.7f, 1.3f); 
+    bsdfFactor = 0.5f * (bsdfFactor + bsdfFactor2);
     primaryCombinedDiffuseRadiance = primaryDirectDiffuseRadiance * bsdfFactor.x;
     primaryCombinedSpecularRadiance = primaryDirectSpecularRadiance * bsdfFactor.y;
   }
@@ -199,8 +207,9 @@ void loadInputRadiance(
   remodulatedTotalSecondaryRadiance = vec3(0.0f, 0.0f, 0.0f);
 
   {
-    float roughnessFactor = 1.0;
-    if (cb.demodulateRoughness) {
+    float roughnessFactor = 1.0f;
+    if (cb.demodulateRoughness) 
+    {
       roughnessFactor = getRoughnessDemodulationFactor(perceptualRoughness, cb.roughnessDemodulationOffset);
     }
 
@@ -211,8 +220,11 @@ void loadInputRadiance(
 
     remodulatedTotalPrimaryRadiance = primaryMiss ? cb.clearColorFinalColor : remodulatedTotalPrimaryRadiance;
 
-    float specularWeight = pow(perceptualRoughness, cb.pixelHighlightReuseStrength);
-    LastFinalOutput[pixelCoordinate] = primaryMiss ? vec4(0) : vec4(primaryIndirectDiffuseRadiance, calcBt709Luminance(primaryIndirectSpecularRadiance) / roughnessFactor * specularWeight);
+    if (cb.enableReSTIRGI)
+    {
+      float specularWeight = pow(perceptualRoughness, cb.pixelHighlightReuseStrength);
+      LastFinalOutput[pixelCoordinate] = primaryMiss ? vec4(0) : vec4(primaryIndirectDiffuseRadiance, calcBt709Luminance(primaryIndirectSpecularRadiance) / roughnessFactor * specularWeight);
+    }
   }
 
   if (geometryFlags.secondarySurfaceMask)
@@ -227,7 +239,6 @@ void loadInputRadiance(
 void applyVolumetricLighting(
   uint2 pixelCoordinate,
   inout RNG randomState,
-  Camera fakeCamera,
   CameraDirections primaryRayDirections,
   bool primaryMiss,
   float viewDistance,
@@ -243,29 +254,31 @@ void applyVolumetricLighting(
   // Override the default volume sampling RNG seed offset
   setVolumeSamplingRngSeed(1);
 
-  const VolumeArgs volumeArgs = cb.volumeArgs;
+  // Calculate volumetric radiance and attenuation if volumetric lighting is enabled
 
-  volumetricPreintegratedRadiance = vec3(0.0f, 0.0f, 0.0f);
-  volumeAttenuation = vec3(1.0f, 1.0f, 1.0f);
-  alphaBlendOutput = vec3(0.0f, 0.0f, 0.0f);
-  backgroundAlpha = 1;
+  volumetricPreintegratedRadiance = vec3(0);
+  volumeAttenuation = vec3(1);
+  alphaBlendOutput = vec3(0);
+  backgroundAlpha = 1.0f;
 
   // Note: This is only evaluated when volumetrics are enabled, no external check is needed.
   // Todo: Using Primary linear view Z for now, not the best option as this does not work with PSR (among other effects like
   // Portals and particles), but fine for initial testing.
   {
-    vec2 volumeUV = cameraPixelCoordinateToScreenUV(fakeCamera, pixelCoordinate);
-    volumeUV.x /= volumeArgs.numFroxelVolumes;
+    vec2 volumeUV = cameraPixelCoordinateToScreenUV(cb.camera, pixelCoordinate);
+    volumeUV.x /= cb.volumeArgs.numFroxelVolumes;
     integrateVolumetricNEE(
       randomState, VolumeFilteredRadianceAge, VolumeFilteredRadianceY, VolumeFilteredRadianceCoCg,
-      volumeArgs, cb.timeSinceStartMS, pixelCoordinate, volumeUV, primaryMiss, cameraGetWorldPosition(fakeCamera), viewDistance, primaryRayDirections.worldDirection,
+      cb.volumeArgs, cb.timeSinceStartMS, pixelCoordinate, volumeUV, primaryMiss, cameraGetWorldPosition(cb.camera), viewDistance, primaryRayDirections.worldDirection,
       volumetricPreintegratedRadiance, volumeAttenuation);
   }
+
+  // Stochastic alpha blend
 
   if (cb.enableStochasticAlphaBlend)
   {    
     AlphaBlendSurface surface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[pixelCoordinate], cb.alphaBlendSurfacePackMult);
-    vec3 cameraPosition = cameraGetWorldPosition(fakeCamera);
+    vec3 cameraPosition = cameraGetWorldPosition(cb.camera);
     vec4 centerLight = AlphaBlendRadiance[pixelCoordinate];
     bool discardPixel = cb.stochasticAlphaBlendDiscardBlackPixel && all(centerLight.xyz == 0);
 
@@ -288,12 +301,12 @@ void applyVolumetricLighting(
           {
             continue;
           }
-          int2 neighborPixel = clamp(pixelCoordinate + offset * 2,0,cb.resolution-1);
+          int2 neighborPixel = clamp(int2(pixelCoordinate) + offset * 2, int2(0), cb.camera.resolution - 1);
 
           AlphaBlendSurface neighborSurface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[neighborPixel], cb.alphaBlendSurfacePackMult);
           if (neighborSurface.isValid())
           {
-            const CameraDirections neighborRayDirections = cameraPixelCoordinateToDirection(fakeCamera, neighborPixel.xy);
+            const CameraDirections neighborRayDirections = cameraPixelCoordinateToDirection(cb.camera, neighborPixel.xy);
             vec3 neighborPosition = cameraPosition + neighborSurface.hitT * neighborRayDirections.worldDirection;
 
             const float transparencyBandwidth = 0.05;
@@ -319,18 +332,18 @@ void applyVolumetricLighting(
       }
       alphaBlendOutput = totalLight.xyz;
 
-      if (volumeArgs.enable)
+      if (cb.volumeArgs.enable)
       {
         float alphaBlendSurfaceLinearViewZ = surface.hitT * primaryRayDirections.viewDirection.z;
-        
-        vec2 volumeUV = cameraPixelCoordinateToScreenUV(fakeCamera, pixelCoordinate);
-        volumeUV.x /= volumeArgs.numFroxelVolumes;
+
+        vec2 volumeUV = cameraPixelCoordinateToScreenUV(cb.camera, pixelCoordinate);
+        volumeUV.x /= cb.volumeArgs.numFroxelVolumes;
         
         vec3 alphaVolumetricPreintegratedRadiance = vec3(0.0f, 0.0f, 0.0f);
         vec3 alphaVolumetricAttenuation = vec3(1.0f, 1.0f, 1.0f);
         integrateVolumetricNEE(
           randomState, VolumeFilteredRadianceAge, VolumeFilteredRadianceY, VolumeFilteredRadianceCoCg,
-          volumeArgs, cb.timeSinceStartMS, pixelCoordinate, volumeUV, false, cameraGetWorldPosition(fakeCamera), surface.hitT, primaryRayDirections.worldDirection,
+          cb.volumeArgs, cb.timeSinceStartMS, pixelCoordinate, volumeUV, false, cameraGetWorldPosition(cb.camera), surface.hitT, primaryRayDirections.worldDirection,
           alphaVolumetricPreintegratedRadiance, alphaVolumetricAttenuation);
 
         alphaBlendOutput *= alphaVolumetricAttenuation * (1 - backgroundAlpha);
@@ -352,24 +365,19 @@ void applyVolumetricLighting(
     updateAlphaBlendDebugView(pixelCoordinate, surface);
   }
 
-  particleLayerOutput = 0.0;
-  radianceOutput = vec3(0.0f, 0.0f, 0.0f);
+  particleLayerOutput = vec4(0);
+  radianceOutput = vec3(0);
   if (cb.outputParticleLayer)
   {
-    particleLayerOutput.xyz = RayReconstructionParticleOutput[pixelCoordinate].xyz;
-  
     if (cb.outputSecondarySignalToParticleLayer)
     {
       // Secondary signal and preintegrated signal have no noise
       if (cb.compositeVolumetricLight)
       {
-        particleLayerOutput.xyz += remodulatedTotalSecondaryRadiance * volumeAttenuation;
         radianceOutput += volumetricPreintegratedRadiance;
       }
-      else
-      {
-        particleLayerOutput.xyz += remodulatedTotalSecondaryRadiance * volumeAttenuation;
-      }
+
+      particleLayerOutput.xyz += remodulatedTotalSecondaryRadiance * volumeAttenuation;
     }
     else
     {
@@ -385,7 +393,6 @@ void applyVolumetricLighting(
 
 void applySkyContribution(
   uint2 pixelCoordinate,
-  Camera fakeCamera,
   CameraDirections primaryRayDirections,
   bool primaryMiss,
   vec3 volumeAttenuation,
@@ -396,15 +403,18 @@ void applySkyContribution(
     return;
   }
 
+  vec3 skyContribution;
   if (cb.domeLightArgs.active)
   {
-    radianceOutput += cb.domeLightArgs.radiance * sampleDomeLightTexture(SkyLight, primaryRayDirections.worldDirection, cb.domeLightArgs.worldToLightTransform) * volumeAttenuation;
+    skyContribution = cb.domeLightArgs.radiance * sampleDomeLightTexture(SkyLight, primaryRayDirections.worldDirection, cb.domeLightArgs.worldToLightTransform) * volumeAttenuation;
   }
   else
   {
-    vec2 screenUV = cameraPixelCoordinateToScreenUV(fakeCamera, pixelCoordinate);
-    radianceOutput += cb.skyBrightness * SkyLight.SampleLevel(screenUV, 0) * volumeAttenuation;
+    vec2 screenUV = cameraPixelCoordinateToScreenUV(cb.camera, pixelCoordinate);
+    skyContribution = cb.skyBrightness * SkyLight.SampleLevel(screenUV, 0) * volumeAttenuation;
   }
+
+  radianceOutput += skyContribution;
 }
 
 void applyFog(
@@ -414,7 +424,7 @@ void applyFog(
 {
   if (cb.volumeArgs.enable)
   {
-    return;
+    return; // Volumetric fog is applied in volume integration
   }
 
   // Todo: Using view distance is a bit of a hack here, the primary emissive contribution will not be fully weighted correctly
@@ -422,8 +432,8 @@ void applyFog(
   const vec4 fogColor = calculateFog(viewDistance);
 
   // Blend fog over output
-  radianceOutput = radianceOutput * (1.0f - fogColor.a) + fogColor.rgb * fogColor.a;
-
+  radianceOutput = lerp(radianceOutput, fogColor.rgb, fogColor.a);
+  
   // TODO: Disable fog for particle layer to avoid flickering, need to find a proper way to apply fog to particles
   // particleLayerOutput.rgb = lerp(particleLayerOutput.rgb, fogColor.rgb, fogColor.a);
 }
@@ -436,13 +446,13 @@ void demodulateAttenuation(
 {
   // Filter attenuation to avoid abrupt change and improve stability.
   vec3 neighborAttenuation = 0;
-  neighborAttenuation += r11g11b10ToColor(imageLoad(PrimaryAttenuation, pixelCoordinate + int2(1,0)));
-  neighborAttenuation += r11g11b10ToColor(imageLoad(PrimaryAttenuation, pixelCoordinate + int2(-1,0)));
-  neighborAttenuation += r11g11b10ToColor(imageLoad(PrimaryAttenuation, pixelCoordinate + int2(0,1)));
-  neighborAttenuation += r11g11b10ToColor(imageLoad(PrimaryAttenuation, pixelCoordinate + int2(0,-1)));
+  neighborAttenuation += r11g11b10ToColor(PrimaryAttenuation[clampPixelCoordinate(pixelCoordinate, int2(1, 0))]);
+  neighborAttenuation += r11g11b10ToColor(PrimaryAttenuation[clampPixelCoordinate(pixelCoordinate, int2(-1, 0))]);
+  neighborAttenuation += r11g11b10ToColor(PrimaryAttenuation[clampPixelCoordinate(pixelCoordinate, int2(0, 1))]);
+  neighborAttenuation += r11g11b10ToColor(PrimaryAttenuation[clampPixelCoordinate(pixelCoordinate, int2(0, -1))]);
 
   const float neighborWeight = 0.5;
-  vec3 blurredAttenuation = (primaryAttenuation + neighborAttenuation * neighborWeight) / (1.0 + neighborWeight * 4.0);
+  const vec3 blurredAttenuation = (primaryAttenuation + neighborAttenuation * neighborWeight) / (1.0 + neighborWeight * 4.0);
 
   // Output particles to a separate layer for DLSS-RR.
   // Demodulate attenuation
@@ -458,33 +468,29 @@ void demodulateAttenuation(
 
 vec4 compositeResult(
   uint2 pixelCoordinate,
-  Camera fakeCamera,
   GeometryFlags geometryFlags,
   float primaryLinearViewZ,
   bool primaryMiss,
   out vec4 particleLayerOutput)
 {
-  updateDebugViewAtStart(pixelCoordinate);
-
   RNG randomState = createRNG(pixelCoordinate, cb.frameIdx, 0);
 
   // Load GBuffer Information
 
-  const vec3 primaryAttenuation = r11g11b10ToColor(imageLoad(PrimaryAttenuation, pixelCoordinate));
+  const vec3 primaryAttenuation = r11g11b10ToColor(PrimaryAttenuation[pixelCoordinate]);
   const vec3 primaryAlbedo = PrimaryAlbedo[pixelCoordinate].xyz;
-  const vec3 primarySpecularAlbedo = texelFetch(PrimarySpecularAlbedo, pixelCoordinate, 0).xyz;
+  const vec3 primarySpecularAlbedo = PrimarySpecularAlbedo[pixelCoordinate].xyz;
   const vec4 primaryVirtualWorldNormalPerceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[pixelCoordinate];
   const vec3 primaryVirtualNormal = primaryVirtualWorldNormalPerceptualRoughness.xyz * 2.0 - 1.0;
   const float perceptualRoughness = primaryVirtualWorldNormalPerceptualRoughness.w;
-
   const vec3 secondaryAttenuation = r11g11b10ToColor(imageLoad(SecondaryAttenuation, pixelCoordinate));
-  const vec3 secondaryAlbedo = texelFetch(SecondaryAlbedo, pixelCoordinate, 0).xyz;
-  const vec3 secondarySpecularAlbedo = texelFetch(SecondarySpecularAlbedo, pixelCoordinate, 0).xyz;
+  const vec3 secondaryAlbedo = SecondaryAlbedo[pixelCoordinate].xyz;
+  const vec3 secondarySpecularAlbedo = SecondarySpecularAlbedo[pixelCoordinate].xyz;
 
   // Reconstruct the primary ray direction and view hit distance for the current pixel
 
-  const CameraDirections primaryRayDirections = cameraPixelCoordinateToDirection(fakeCamera, pixelCoordinate);
-  const vec3 viewPosition = cameraReconstructViewPosition(fakeCamera, primaryRayDirections.viewDirection, primaryLinearViewZ);
+  const CameraDirections primaryRayDirections = cameraPixelCoordinateToDirection(cb.camera, pixelCoordinate);
+  const vec3 viewPosition = cameraReconstructViewPosition(cb.camera, primaryRayDirections.viewDirection, primaryLinearViewZ);
   // Note: Should be equal to the virtual hit distance just without needing to read it (since we need the linear view Z in world space for
   // other calculations here anyways and can just use it to reconstruct this).
   const float viewDistance = length(viewPosition);
@@ -505,7 +511,7 @@ vec4 compositeResult(
   float backgroundAlpha;
   vec3 radianceOutput;
   applyVolumetricLighting(
-    pixelCoordinate, randomState, fakeCamera, primaryRayDirections, primaryMiss, viewDistance,
+    pixelCoordinate, randomState, primaryRayDirections, primaryMiss, viewDistance,
     remodulatedTotalSecondaryRadiance, sharedRadiance,
     volumetricPreintegratedRadiance, volumeAttenuation, alphaBlendOutput, backgroundAlpha,
     radianceOutput, particleLayerOutput);
@@ -519,8 +525,9 @@ vec4 compositeResult(
   radianceOutput += sharedRadiance;
 
   // Add sky radiance
-  applySkyContribution(pixelCoordinate, fakeCamera, primaryRayDirections, primaryMiss, volumeAttenuation, radianceOutput);
-  
+  applySkyContribution(pixelCoordinate, primaryRayDirections, primaryMiss, volumeAttenuation, radianceOutput);
+
+  // Apply fog 
   applyFog(viewDistance, radianceOutput, particleLayerOutput);
 
   vec4 finalOutput = vec4(radianceOutput * backgroundAlpha + alphaBlendOutput, 1);
@@ -528,9 +535,8 @@ vec4 compositeResult(
   {
     demodulateAttenuation(pixelCoordinate, primaryAttenuation, finalOutput, particleLayerOutput);
 
-    particleLayerOutput = sanitize(particleLayerOutput, 0.0);
-
-    RayReconstructionParticleOutput[pixelCoordinate] = particleLayerOutput;
+    particleLayerOutput.xyz += RayReconstructionParticleOutput[pixelCoordinate].xyz;
+    RayReconstructionParticleOutput[pixelCoordinate] = sanitize(particleLayerOutput, 0.f);
   }
 
   return finalOutput;
@@ -538,29 +544,20 @@ vec4 compositeResult(
 
 [shader("compute")]
 [numthreads(COMPOSITE_THREAD_GROUP_WIDTH, COMPOSITE_THREAD_GROUP_HEIGHT, 1)]
-void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThreadID)
+void main(uint2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThreadID)
 {
-  // Note: Fake camera constructed due to Composite pass's lack of access to typical constant buffer members. A bit hacky
-  // and may result in issues in the future if the Camera API is updated to use new members internally (not super likely)
-  // but avoids code duplication.
-  Camera fakeCamera = { 0 };
-
-  fakeCamera.resolution = cb.resolution;
-  fakeCamera.projectionToViewJittered = cb.projectionToViewJittered;
-  fakeCamera.viewToWorld = cb.viewToWorld;
-  fakeCamera.nearPlane = cb.nearPlane;
-
-  // Early out for pixels outside the camera
-
-  if (any(thread_id >= fakeCamera.resolution))
+  if (any(threadIndex >= cb.camera.resolution))
   {
     return;
   }
 
+  preCompositeDebugView(threadIndex);
+
+  const uvec2 pixelCoordinate = threadIndex;
   // Load GBuffer Information
 
-  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(thread_id, SharedFlags);
-  const float primaryLinearViewZ = texelFetch(PrimaryLinearViewZ, thread_id.xy, 0).x;
+  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(threadIndex, SharedFlags);
+  const float primaryLinearViewZ = PrimaryLinearViewZ[threadIndex.xy];
   // Note: Relying on the same sentinel value outputted to the linear view Z which NRD relies on, so this is safe (and lets us not have to read
   // in the cone radius texture which typically contains the flag we use to determine this).
   const bool primaryMiss = primaryLinearViewZ == cb.primaryDirectMissLinearViewZ
@@ -568,11 +565,9 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
                            && !geometryFlags.performPSRR;  // must not be PSR
 
   vec4 particleLayerOutput;
-  vec4 finalOutput = compositeResult(thread_id, fakeCamera, geometryFlags, primaryLinearViewZ, primaryMiss, particleLayerOutput);
+  vec4 finalOutput = compositeResult(pixelCoordinate, geometryFlags, primaryLinearViewZ, primaryMiss, particleLayerOutput);
 
-  finalOutput = accumulate(thread_id.xy, finalOutput, cb.accumulationArgs, true, AccumulatedFinalOutput);
+  FinalOutput[pixelCoordinate] = accumulate(pixelCoordinate, finalOutput, cb.accumulationArgs, true, AccumulatedFinalOutput);
   
-  imageStore(FinalOutput, thread_id.xy, finalOutput);
-
-  postCompositeDebugView(thread_id, geometryFlags, particleLayerOutput);
+  postCompositeDebugView(pixelCoordinate, geometryFlags, particleLayerOutput);
 }

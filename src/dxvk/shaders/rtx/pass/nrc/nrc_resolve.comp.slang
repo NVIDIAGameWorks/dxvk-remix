@@ -83,7 +83,7 @@ enum class OutputMode
 
 void writeToDebugView(
   OutputMode outputMode,
-  uint2 pixelIndex,
+  uint2 pixelCoordinate,
   vec3 color)
 {
   // Prevent NaNs and Infs leaking into final image
@@ -104,14 +104,14 @@ void writeToDebugView(
   switch (outputMode)
   {
   case OutputMode::Add:
-    outputValue += DebugView[pixelIndex];
+    outputValue += DebugView[pixelCoordinate];
     break;
 
   case OutputMode::Replace:
     break;
   }
 
-  DebugView[pixelIndex] = outputValue;
+  DebugView[pixelCoordinate] = outputValue;
 }
 
 // Heat map where 0->1 maps to
@@ -250,7 +250,7 @@ void debugResolve(uint2 pixelIndex)
 }
 
 vec3 loadIndirectRadiance(
-  uint2 launchIndex,
+  uint2 pixelCoordinate,
   GeometryFlags geometryFlags)
 {
   // Indirect NEE shader already split radiance into diffuse and specular resources for the primary surface
@@ -258,21 +258,21 @@ vec3 loadIndirectRadiance(
   {
     if (geometryFlags.firstSampledLobeIsSpecular)
     {
-      return PrimarySpecularRadianceHitDistance[launchIndex].xyz;
+      return PrimarySpecularRadianceHitDistance[pixelCoordinate].xyz;
     }
     else
     {
-      return PrimaryDiffuseRadianceHitDistance[launchIndex].xyz;
+      return PrimaryDiffuseRadianceHitDistance[pixelCoordinate].xyz;
     }
   }
   else
   {
-    return IndirectRadianceHitDistance[launchIndex].xyz;
+    return IndirectRadianceHitDistance[pixelCoordinate].xyz;
   }
 }
 
 void storeIndirectRadiance(
-  uint2 launchIndex,
+  uint2 pixelCoordinate,
   GeometryFlags geometryFlags,
   vec3 indirectRadiance)
 {
@@ -280,51 +280,53 @@ void storeIndirectRadiance(
   {
     if (geometryFlags.firstSampledLobeIsSpecular)
     {
-      PrimarySpecularRadianceHitDistance[launchIndex].xyz = indirectRadiance;
+      PrimarySpecularRadianceHitDistance[pixelCoordinate].xyz = indirectRadiance;
     }
     else
     {
-      PrimaryDiffuseRadianceHitDistance[launchIndex].xyz = indirectRadiance;
+      PrimaryDiffuseRadianceHitDistance[pixelCoordinate].xyz = indirectRadiance;
     }
   }
   else
   {
-    IndirectRadianceHitDistance[launchIndex].xyz = indirectRadiance;
+    IndirectRadianceHitDistance[pixelCoordinate].xyz = indirectRadiance;
   }
 
   if (cb.debugView == DEBUG_VIEW_NRC_RESOLVED_RADIANCE)
   {
-    storeInDebugView(launchIndex, indirectRadiance);
+    storeInDebugView(pixelCoordinate, indirectRadiance);
   }
 }
 
 [shader("compute")]
 [numthreads(NRC_RESOLVE_THREADS_DISPATCH_WIDTH, NRC_RESOLVE_THREADS_DISPATCH_HEIGHT, 1)]
-void main(uint2 launchIndex: SV_DispatchThreadID)
+void main(uint2 threadIndex: SV_DispatchThreadID)
 {
-  if (any(launchIndex >= push.resolution))
+  if (any(threadIndex >= cb.camera.resolution))
   {
     return;
   }
 
+  const uvec2 pixelCoordinate = threadIndex;
+
   if (push.resolveMode != NrcResolveMode::AddQueryResultToOutput) 
   {
-    debugResolve(launchIndex);
+    debugResolve(pixelCoordinate);
   }
     
-  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(launchIndex, SharedFlags);
+  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixelCoordinate, SharedFlags);
 
   const uint sampleIndex = 0;
   const uint samplesPerPixel = push.samplesPerPixel;
 
-  const uint pathIndex = NrcCalculateQueryPathIndex(push.resolution, launchIndex, sampleIndex, samplesPerPixel);
+  const uint pathIndex = NrcCalculateQueryPathIndex(cb.camera.resolution, pixelCoordinate, sampleIndex, samplesPerPixel);
   const NrcQueryPathInfo queryPathInfo = NrcUnpackQueryPathInfo(QueryPathInfo[pathIndex]);
 
   vec3 indirectRadiance = vec3(0);
 
   if (push.addPathtracedRadiance)
   {
-    indirectRadiance = loadIndirectRadiance(launchIndex, geometryFlags);
+    indirectRadiance = loadIndirectRadiance(pixelCoordinate, geometryFlags);
   }
 
   // Resolve NRC radiance
@@ -340,6 +342,5 @@ void main(uint2 launchIndex: SV_DispatchThreadID)
     }
   }  
 
-
-  storeIndirectRadiance(launchIndex, geometryFlags, indirectRadiance);
+  storeIndirectRadiance(pixelCoordinate, geometryFlags, indirectRadiance);
 }

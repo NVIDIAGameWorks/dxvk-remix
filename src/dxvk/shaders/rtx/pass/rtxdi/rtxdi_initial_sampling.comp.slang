@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -51,23 +51,24 @@
 
 [shader("compute")]
 [numthreads(16, 8, 1)]
-void main(int2 thread_id : SV_DispatchThreadID)
+void main(int2 threadIndex : SV_DispatchThreadID)
 {
-  if (thread_id.x >= cb.camera.resolution.x || thread_id.y >= cb.camera.resolution.y)
+  if (any(threadIndex >= cb.camera.resolution))
   {
     return;
   }
 
-  RAB_Surface surface = RAB_GetGBufferSurface(thread_id, false);
+  const int2 pixelCoordinate = threadIndex;
+  RAB_Surface surface = RAB_GetGBufferSurface(pixelCoordinate, false);
   if (!RAB_IsSurfaceValid(surface))
   {
     return;
   }
 
-  RAB_RandomSamplerState rng = RAB_InitRandomSampler(thread_id, cb.frameIdx, 2);
+  RAB_RandomSamplerState rng = RAB_InitRandomSampler(pixelCoordinate, cb.frameIdx, 2);
 
-  vec2 screenSpaceMotion = PrimaryScreenSpaceMotionVector[thread_id];
-  ivec2 prevPixelCenter = thread_id + ivec2(screenSpaceMotion.xy);
+  vec2 screenSpaceMotion = PrimaryScreenSpaceMotionVector[pixelCoordinate];
+  ivec2 prevPixelCenter = pixelCoordinate + ivec2(screenSpaceMotion.xy);
 
   uint16_t previousBestLightIndex = RTXDI_INVALID_LIGHT_INDEX;
   uint8_t previousBestLightPortalIdx = RTXDI_INVALID_PORTAL_INDEX;
@@ -109,5 +110,5 @@ void main(int2 thread_id : SV_DispatchThreadID)
     state.M = 1;
   }
 
-  RAB_StoreReservoir(state, thread_id, RTXDI_GetTemporalOutputPage());
+  RAB_StoreReservoir(state, pixelCoordinate, RTXDI_GetTemporalOutputPage());
 }

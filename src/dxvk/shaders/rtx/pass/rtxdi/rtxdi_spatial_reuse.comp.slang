@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -69,18 +69,18 @@
 
 [shader("compute")]
 [numthreads(16, 8, 1)]
-void main(int2 thread_id : SV_DispatchThreadID)
+void main(int2 threadIndex : SV_DispatchThreadID)
 {
-  Camera camera = cb.camera;
-  if (thread_id.x >= camera.resolution.x || thread_id.y >= camera.resolution.y)
+  if (any(threadIndex >= cb.camera.resolution))
   {
     return;
   }
 
-  RAB_Surface surface = RAB_GetGBufferSurface(thread_id, false);
+  const int2 pixelCoordinate = threadIndex;
+  RAB_Surface surface = RAB_GetGBufferSurface(pixelCoordinate, false);
   if (!cb.enableReSTIRGI)
   {
-    imageStore(GBufferLast, thread_id, RAB_PackLastFrameGBuffer(surface));
+    imageStore(GBufferLast, pixelCoordinate, RAB_PackLastFrameGBuffer(surface));
   }
 
   if (!RAB_IsSurfaceValid(surface))
@@ -88,9 +88,9 @@ void main(int2 thread_id : SV_DispatchThreadID)
     return;
   }
 
-  RAB_RandomSamplerState rtxdiRNG = RAB_InitRandomSampler(thread_id, cb.frameIdx, 3);
+  RAB_RandomSamplerState rtxdiRNG = RAB_InitRandomSampler(pixelCoordinate, cb.frameIdx, 3);
   
-  RTXDI_Reservoir reservoir = RAB_LoadReservoir(thread_id, RTXDI_GetSpatialInputPage());
+  RTXDI_Reservoir reservoir = RAB_LoadReservoir(pixelCoordinate, RTXDI_GetSpatialInputPage());
 
   // Calculate the average reprojection confidence in the neighborhood to reject individual pixels that failed to reproject
   const int filterRadius = 1;
@@ -99,7 +99,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
   for (int xx = -filterRadius; xx <= filterRadius; ++xx)
   for (int yy = -filterRadius; yy <= filterRadius; ++yy)
   {
-    sumConfidence += ReprojectionConfidence[thread_id + int2(xx, yy)].r;
+    sumConfidence += ReprojectionConfidence[pixelCoordinate + int2(xx, yy)].r;
   }
 
   const float historyLength = sumConfidence * (float(kReprojectionConfidenceHistoryLength) / float(filterArea));
@@ -121,13 +121,13 @@ void main(int2 thread_id : SV_DispatchThreadID)
   sparams.screenResolution = cb.camera.resolution;
 
   RTXDI_Reservoir result = RTXDI_SpatialResampling(
-    thread_id,
+    pixelCoordinate,
     surface,
     reservoir,
     rtxdiRNG,
     sparams);
 
-  RAB_StoreReservoir(result, thread_id, RTXDI_GetSpatialOutputPage());
+  RAB_StoreReservoir(result, pixelCoordinate, RTXDI_GetSpatialOutputPage());
 
   vec2 factor = vec2(1);
 #if RTXDI_ENABLE_BSDF_DETAIL
@@ -135,17 +135,17 @@ void main(int2 thread_id : SV_DispatchThreadID)
   {
     const RAB_LightSample finalSample =
       RAB_GetPortalSpaceLightSample(result.lightIdx, vec2(result.uv), result.portalIdx, surface);
-    const float3 cameraPosition = cameraGetWorldPosition(camera);
+    const float3 cameraPosition = cameraGetWorldPosition(cb.camera);
     const float neighborDepthThreshold = 0.02f;
     const float neighborNormalThreshold = 0.998f;
     const float brdfClampMin = 0.001f;
     const float brdfClampMax = 1000.0f;
     float3 finalSampleDirection = normalize(finalSample.position - surface.minimalSurfaceInteraction.position);
-    factor = RTXDI_GetDlssEnhancementDirectFactor(thread_id, finalSample.position, finalSampleDirection, false, cameraPosition, neighborDepthThreshold, neighborNormalThreshold, brdfClampMin, brdfClampMax);
+    factor = RTXDI_GetDlssEnhancementDirectFactor(pixelCoordinate, finalSample.position, finalSampleDirection, false, cameraPosition, neighborDepthThreshold, neighborNormalThreshold, brdfClampMin, brdfClampMax);
 
     factor = pow(factor, cb.enhanceBSDFDirectLightPower);
     factor = clamp(factor, vec2(0), vec2(cb.enhanceBSDFDirectLightMaxValue));
   }
 #endif
-  BSDFFactor[thread_id] = vec2(factor);
+  BSDFFactor[pixelCoordinate] = vec2(factor);
 }
