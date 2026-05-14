@@ -201,7 +201,7 @@ namespace dxvk {
 
     const bool ommEnabled = RtxOptions::getEnableOpacityMicromap();
 
-    const VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 16, 8, 1 });
+    const VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { INTEGRATE_DIRECT_THREADS_DISPATCH_WIDTH, INTEGRATE_DIRECT_THREADS_DISPATCH_HEIGHT, 1 });
     switch (RtxOptions::renderPassIntegrateDirectRaytraceMode()) {
     case RaytraceMode::RayQuery:
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getComputeShader());

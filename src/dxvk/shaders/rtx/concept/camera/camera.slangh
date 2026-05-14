@@ -185,6 +185,11 @@ vec3 cameraGetPreviousWorldPosition(Camera camera)
   return transpose(camera.prevViewToWorld)[3].xyz;
 }
 
+float calculateExpectedPreviousHitDistance(Camera camera, vec3 previousVirtualWorldPosition)
+{
+  return length(previousVirtualWorldPosition - cameraGetPreviousWorldPosition(camera));
+}
+
 // Note: For all translated world space functions, these may not do anything if an application does not specify a world to view matrix
 // (for instance by pre-transforming on the CPU or using a fullly composed model to view matrix like how OpenGL always operates).
 // This means when relying on translated world space for improved precision results may vary on some applications.

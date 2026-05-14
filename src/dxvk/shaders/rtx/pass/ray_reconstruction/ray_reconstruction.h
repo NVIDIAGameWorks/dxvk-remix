@@ -43,7 +43,6 @@
 #define RAY_RECONSTRUCTION_SECONDARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT 13
 
 #define RAY_RECONSTRUCTION_SHARED_FLAGS_INPUT                 20
-#define RAY_RECONSTRUCTION_COMBINED_INPUT                     21
 #define RAY_RECONSTRUCTION_NORMALS_DLSSRR_INPUT               22
 #define RAY_RECONSTRUCTION_DEPTHS_INPUT                       23
 #define RAY_RECONSTRUCTION_MOTION_VECTOR_INPUT                24
@@ -66,15 +65,15 @@ struct RayReconstructionArgs {
   uint enableDemodulateRoughness;
   float upscalerRoughnessDemodulationMultiplier;
   float upscalerRoughnessDemodulationOffset;
-  uint debugViewIdx;
+  uint debugView;
 
   uint particleBufferMode;
-  uint enableDemodulateAttenuation;
   uint combineSpecularAlbedo;
   uint frameIdx;
+  float rcpSquaredDisocclusionMaskBlurGaussianWeightSigma;
 
   uint enableDisocclusionMaskBlur;
   uint disocclusionMaskBlurRadius;
-  float rcpSquaredDisocclusionMaskBlurGaussianWeightSigma;
+  uint enableReSTIRGI;
   uint pad0;
 };

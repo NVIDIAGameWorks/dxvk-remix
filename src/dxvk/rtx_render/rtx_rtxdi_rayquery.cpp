@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -343,6 +343,7 @@ namespace dxvk {
     rtOutput.m_raytraceArgs.rtxdiDisocclusionFrames = float(disocclusionFrames());
     rtOutput.m_raytraceArgs.rtxdiSpatialSamples = spatialSamples();
     rtOutput.m_raytraceArgs.rtxdiMaxHistoryLength = maxHistoryLength();
+
     // Note: best light sampling uses data written into the RtxdiBestLights texture by the confidence pass on the previous frame.
     // We need to make sure that the data is there and valid: light indices from more than one frame ago are not mappable to the current frame.
     const bool isRtxdiBestLightsValid = rtOutput.m_rtxdiBestLights.matchesWriteFrameIdx(rtOutput.m_raytraceArgs.frameIdx - 1);
@@ -350,6 +351,26 @@ namespace dxvk {
     rtOutput.m_raytraceArgs.enableRtxdiBestLightSampling = enableBestLightSampling() && isRtxdiBestLightsValid;
     // Note: initialSamples is not written here, it's used in LightManager::setRaytraceArgs
     // to derive the per-light-type sample counts
+  }
+
+  bool DxvkRtxdiRayQuery::getEnableDenoiserGradient(RtxContext& ctx) const {
+    if (!enableDenoiserGradient()) {
+      return false;
+    }
+
+    DxvkRayReconstruction& rayReconstruction = ctx.getCommonObjects()->metaRayReconstruction();
+    DxvkReSTIRGIRayQuery& restirGI = ctx.getCommonObjects()->metaReSTIRGIRayQuery();
+
+    const bool isNrdAPrimaryDenoiser = RtxOptions::useDenoiser()
+      && !rayReconstruction.useRayReconstruction()
+      && !RtxOptions::useDenoiserReferenceMode();
+
+    // Gradients are only used when NRD is a primary denoiser and/or ReSTIR GI is using it
+    if (!isNrdAPrimaryDenoiser && !(restirGI.isActive() && restirGI.validateLightingChange())) {
+      return false;
+    }
+
+    return true;
   }
 
   bool DxvkRtxdiRayQuery::getEnableDenoiserConfidence(RtxContext& ctx) const {
@@ -361,9 +382,9 @@ namespace dxvk {
       && !rayReconstruction.useRayReconstruction()
       && !RtxOptions::useDenoiserReferenceMode();
 
-    // Confidence is only used when NRD is a primary denoiser and in ReSTIR GI 
+    // Confidence is only used when NRD is a primary denoiser and in ReSTIR GI
     return (isNrdAPrimaryDenoiser || restirGI.isActive())
-        && enableTemporalReuse() && enableDenoiserGradient() && enableDenoiserConfidence();
+        && enableTemporalReuse() && getEnableDenoiserGradient(ctx) && enableDenoiserConfidence();
   }
 
   void DxvkRtxdiRayQuery::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
@@ -474,8 +495,14 @@ namespace dxvk {
   }
 
   void DxvkRtxdiRayQuery::dispatchGradient(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
-    
-    if (!RtxOptions::useRTXDI() || !enableDenoiserGradient()) {
+
+    if (!RtxOptions::useRTXDI()) {
+      return;
+    }
+
+    // The pass produces two outputs: gradients (for denoiser confidence) and best-lights (for initial sampling /
+    // temporal reuse). Skip the dispatch entirely if neither consumer is active.
+    if (!getEnableDenoiserGradient(*ctx) && !enableBestLightSampling()) {
       return;
     }
 
@@ -521,17 +548,7 @@ namespace dxvk {
 
       // Check if the gradients are actually used by the runtime.
       // Otherwise only m_rtxdiBestLights needs to be filled out in the pass
-      {
-        DxvkRayReconstruction& rayReconstruction = ctx->getCommonObjects()->metaRayReconstruction();
-        DxvkReSTIRGIRayQuery& restirGI = ctx->getCommonObjects()->metaReSTIRGIRayQuery();
-
-        const bool isNrdAPrimaryDenoiser = RtxOptions::useDenoiser()
-          && !rayReconstruction.useRayReconstruction()
-          && !RtxOptions::useDenoiserReferenceMode();
-
-        // gradients are only used when NRD is a primary denoiser and/or ReSTIR GI is using it
-        args.computeGradients = isNrdAPrimaryDenoiser || (restirGI.isActive() && restirGI.validateLightingChange());
-      }
+      args.computeGradients = getEnableDenoiserGradient(*ctx);
 
       ctx->pushConstants(0, sizeof(args), &args);
 

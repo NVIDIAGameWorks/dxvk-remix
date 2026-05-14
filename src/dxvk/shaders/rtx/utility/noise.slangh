@@ -60,6 +60,16 @@ uint uintHash(uint4 x)
   return uintHash(x.x ^ uintHash(x.y) ^ uintHash(x.z) ^ uintHash(x.w));
 }
 
+float whiteNoise(uvec4 x)
+{
+  return randomFloat(x);
+}
+
+float whiteNoise(uvec2 pixelCoord, uint temporalIdx, uint seed)
+{
+  return whiteNoise(uvec4(pixelCoord, temporalIdx, seed));
+}
+
 // Generates a uniformly random float in the range [0, 1) from a 1D input seed
 float randomFloat(uint x)
 {
@@ -207,7 +217,9 @@ RNG createRNGAnywhere(uint temporalIdx, uint offset)
 // Note: Used for validating blue noise implementation. Set to 1 to use white noise for everything which should be
 // fairly purely random with full float precision. Blue noise on the other hand will be quantized to the precision of
 // unorms in the blue noise texture, but generally this does not matter even as low as 8 bits of precision.
+#ifndef WHITE_NOISE_OVERRIDE
 #define WHITE_NOISE_OVERRIDE 0
+#endif
 
 // Samples a floating point noise value from the RNG. Returned range is [0, 1)
 // Note: This is a scalar (1D) sample value, ideally it should only be used for uncorrelated 1D scalar samples, not samples
@@ -220,12 +232,7 @@ float getNextSampleBlueNoise(inout RNG rng)
   const uint oldSeed = rng.seed++;
 
 #if WHITE_NOISE_OVERRIDE
-  return randomFloat(uint4(
-    rng.pixelIdx.x,
-    rng.pixelIdx.y,
-    rng.temporalIdx,
-    oldSeed
-  ));
+  return whiteNoise(rng.pixelIdx, rng.temporalIdx, oldSeed);
 #else
   // Note: Increment the seed once per sample to let each sample be distinct within the current blue noise
   // temporal layer.

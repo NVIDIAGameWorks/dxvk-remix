@@ -228,7 +228,7 @@ void getLightCandidateInfo(NEECell cell, int binIndex, RAB_Surface surface, f16v
 }
 
 [shader("compute")]
-[numthreads(16, 8, 1)]
+[numthreads(INTEGRATE_NEE_THREADS_DISPATCH_WIDTH, INTEGRATE_NEE_THREADS_DISPATCH_HEIGHT, 1)]
 void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupThreadID)
 {
   if (any(threadIndex >= cb.camera.resolution))

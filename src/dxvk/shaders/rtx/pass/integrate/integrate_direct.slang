@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -51,9 +51,9 @@ void main()
 }
 #else
 [shader("compute")]
-[numthreads(16, 8, 1)]
+[numthreads(INTEGRATE_DIRECT_THREADS_DISPATCH_WIDTH, INTEGRATE_DIRECT_THREADS_DISPATCH_HEIGHT, 1)]
 void main(uint2 ipos : SV_DispatchThreadID)
-{ 
+{
   integrate_direct_pass(ipos);
 }
 #endif

@@ -44,6 +44,9 @@ namespace dxvk {
     void showImguiSettings();
     void setRaytraceArgs(Resources::RaytracingOutput& rtOutput) const;
     bool getEnableDenoiserConfidence(RtxContext& ctx) const;
+    // Returns true if denoiser gradient calculation is enabled and actually consumed downstream
+    // (NRD primary denoiser or ReSTIR GI lighting validation).
+    bool getEnableDenoiserGradient(RtxContext& ctx) const;
     
     RTX_OPTION("rtx.di", bool, enableCrossPortalLight, true, "");
     RTX_OPTION("rtx.di", bool, enableInitialVisibility, true, "Whether to trace a visibility ray for the light sample selected in the initial sampling pass.");

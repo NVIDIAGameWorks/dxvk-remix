@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -512,28 +512,11 @@ struct PathState : IBasePayloadState
 #endif
 }
 
-struct DirectPathTextures
+struct IndirectPathTextures
 {
   // slang zero-init adds an empty initializer list in the front end on each decl
   // this causes resource members to end up uninitialized at that point, which is an error
   // empty ctor works around this --- see https://github.com/NVIDIAGameWorks/dxvk-remix/pull/117 for details
-  __init() {}
-
-  RWTexture2D<uint16_t> SharedFlags;
-  RWTexture2D<uint> SharedMediumMaterialIndex;
-  RWTexture2D<float4> PrimaryDirectDiffuseLobeRadianceHitDistance;
-  RWTexture2D<float4> PrimaryDirectSpecularLobeRadianceHitDistance;
-  RWTexture2D<float4> SecondaryCombinedDiffuseLobeRadianceHitDistance;
-  RWTexture2D<float4> SecondaryCombinedSpecularLobeRadianceHitDistance;
-  RWTexture2D<float4> IndirectRayOriginDirection;
-  RWTexture2D<float4> IndirectThroughputConeRadius;
-  RWTexture2D<float> IndirectFirstHitPerceptualRoughness;
-  RWTexture2D<float> PrimaryRtxdiIlluminance;
-};
-
-struct IndirectPathTextures
-{
-  // see the comments in DirectPathTextures for why we need this empty ctor
   __init() {}
 
   Texture2D<float4> PrimaryWorldPositionWorldTriangleNormal;

@@ -24,16 +24,19 @@
 #include "rtx/external/NRC.h"
 #include "nrc/include/NrcStructures.h"
 
+// Thread group dimensions for NRC resolve dispatch
+#define NRC_RESOLVE_THREADS_DISPATCH_WIDTH  16
+#define NRC_RESOLVE_THREADS_DISPATCH_HEIGHT 8
+
 // Inputs
 
-#define NRC_RESOLVE_BINDING_NRC_QUERY_PATH_INFO_INPUT                            0
-#define NRC_RESOLVE_BINDING_NRC_QUERY_RADIANCE_INPUT                             1
-#define NRC_RESOLVE_BINDING_NRC_TRAINING_PATH_INFO_INPUT                         2
+#define NRC_RESOLVE_BINDING_RAYTRACE_ARGS_INPUT                                  0
+#define NRC_RESOLVE_BINDING_NRC_QUERY_PATH_INFO_INPUT                            2
+#define NRC_RESOLVE_BINDING_NRC_QUERY_RADIANCE_INPUT                             3
+#define NRC_RESOLVE_BINDING_NRC_TRAINING_PATH_INFO_INPUT                         4
 
 #define NRC_RESOLVE_BINDING_SHARED_FLAGS_INPUT                                   5
 #define NRC_RESOLVE_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT                 6
-
-#define NRC_RESOLVE_BINDING_RAYTRACE_ARGS_INPUT                                  9
 
 // Inputs / Outputs
 
@@ -48,12 +51,10 @@
 #define NRC_RESOLVE_BINDING_DEBUG_VIEW_TEXTURE_OUTPUT                            30
 #define NRC_RESOLVE_BINDING_GPU_PRINT_BUFFER_OUTPUT                              31
 
-#define NRC_RESOLVE_THREADS_DISPATCH_WIDTH  16
-#define NRC_RESOLVE_THREADS_DISPATCH_HEIGHT 8
 
 struct NrcResolvePushConstants
 {
-  uvec2 resolution;
+  uvec2 pad0;
   uint addPathtracedRadiance;
   uint addNrcRadiance;
 

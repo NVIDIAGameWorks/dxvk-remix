@@ -55,14 +55,11 @@ Texture2D<float4> SecondaryVirtualWorldNormalPerceptualRoughness;
 layout(r16ui, binding = RAY_RECONSTRUCTION_SHARED_FLAGS_INPUT)
 Texture2D<uint16_t> SharedFlags;
 
-layout(binding = RAY_RECONSTRUCTION_COMBINED_INPUT)
-Texture2D<float4> CombinedInput;
-
 layout(rgba16f, binding = RAY_RECONSTRUCTION_NORMALS_DLSSRR_INPUT)
 Texture2D<float4> InNormalsDLSSRR;
 
 layout(r32f, binding = RAY_RECONSTRUCTION_DEPTHS_INPUT)
-Texture2D<float4> InDepth;
+Texture2D<float> InDepth;
 
 layout(rg16f, binding = RAY_RECONSTRUCTION_MOTION_VECTOR_INPUT)
 Texture2D<float2> InMotionVector;
@@ -109,14 +106,14 @@ float convertBlurredDisocclusionMaskForRRUse(float disocclusionMask)
 }
 
 // Blurs disocclusion mask using a spiral pattern
-void blurDisocclusionMask(uint2 threadId) 
+void blurDisocclusionMask(uint2 pixelCoordinate)
 {
   if (!cb.enableDisocclusionMaskBlur)
   {
     return;
   }
 
-  const float2 centerPixel = threadId + 0.5f;
+  const float2 centerPixel = pixelCoordinate + 0.5f;
   const int numSamples = 8; // Number of samples in the spiral blur
   const float rcpNumSamples = 1.0f / numSamples;
   const float twoPi = 2 * 3.14159265359f;
@@ -153,8 +150,15 @@ void blurDisocclusionMask(uint2 threadId)
       offset = float2(cos(angle), sin(angle)) * distance;
     }
 
+    int2 neighborCoordinate = centerPixel + offset;
+
+    if (any(neighborCoordinate < 0) || any(neighborCoordinate >= int2(cb.camera.resolution)))
+    {
+      continue;
+    }
+
     // Sample the texture at the offset position
-    float sample = DisocclusionMask[int2(centerPixel + offset)];
+    float sample = DisocclusionMask[neighborCoordinate];
 
     // Calculate Gaussian weight based on distance
     float weight = calcGaussianWeight(squaredNormalizedDistance, cb.rcpSquaredDisocclusionMaskBlurGaussianWeightSigma);
@@ -167,34 +171,83 @@ void blurDisocclusionMask(uint2 threadId)
   float blurredValue = sum / weightSum;
 
   // Write the blurred value to the output
-  DisocclusionMaskOutput[threadId] = convertBlurredDisocclusionMaskForRRUse(blurredValue);
+  DisocclusionMaskOutput[pixelCoordinate] = convertBlurredDisocclusionMaskForRRUse(blurredValue);
 }
 
-[shader("compute")]
-[numthreads(16, 16, 1)]
-void main(uint2 threadId : SV_DispatchThreadID)
+void writeDebugViewOutputs(uint2 pixelCoordinate)
 {
-  const Camera camera = cb.camera;
-
-  // Early out for pixels outside the camera
-
-  if (any(threadId >= camera.resolution))
+  switch (cb.debugView)
   {
-    return;
+  case DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_MASK:
+    if (cb.enableDisocclusionMaskBlur)
+    {
+      storeInDebugView(pixelCoordinate, DisocclusionMaskOutput[pixelCoordinate]);
+    }
+    else
+    {
+      storeInDebugView(pixelCoordinate, DisocclusionMask[pixelCoordinate]);
+    }
+    break;
+  case DEBUG_VIEW_RAY_RECONSTRUCTION_DIFFUSE_ALBEDO:
+    storeInDebugView(pixelCoordinate, PrimaryAlbedo[pixelCoordinate]);
+    break;
+  case DEBUG_VIEW_RAY_RECONSTRUCTION_SPECULAR_ALBEDO:
+    storeInDebugView(pixelCoordinate, PrimarySpecularAlbedo[pixelCoordinate]);
+    break;
+  case DEBUG_VIEW_RAY_RECONSTRUCTION_HIT_DISTANCE:
+    storeInDebugView(pixelCoordinate, HitDistanceOutput[pixelCoordinate] / 1000.0);
+    break;
+  case DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_WORLD_SHADING_NORMAL:
+    storeInDebugView(pixelCoordinate, InNormalsDLSSRR[pixelCoordinate]);
+    break;
+  case DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_DEPTH:
+    storeInDebugView(pixelCoordinate, InDepth[pixelCoordinate]);
+    break;
+  case DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_SCREEN_SPACE_MOTION_VECTOR:
+    storeInDebugView(pixelCoordinate, InMotionVector[pixelCoordinate]);
+    break;
+  case DEBUG_VIEW_NAN:
+    bool isValid = true;
+
+    // DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_MASK
+    isValid &= cb.enableDisocclusionMaskBlur
+      ? isValidValue(DisocclusionMaskOutput[pixelCoordinate])
+      : isValidValue(DisocclusionMask[pixelCoordinate]);
+
+    // DEBUG_VIEW_RAY_RECONSTRUCTION_DIFFUSE_ALBEDO
+    isValid &= isValidValue(PrimaryAlbedo[pixelCoordinate]);
+
+    // DEBUG_VIEW_RAY_RECONSTRUCTION_SPECULAR_ALBEDO
+    isValid &= isValidValue(PrimarySpecularAlbedo[pixelCoordinate]);
+
+    // DEBUG_VIEW_RAY_RECONSTRUCTION_HIT_DISTANCE
+    isValid &= isValidValue(HitDistanceOutput[pixelCoordinate]);
+
+    // DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_WORLD_SHADING_NORMAL
+    isValid &= isValidValue(InNormalsDLSSRR[pixelCoordinate]);
+
+    // DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_DEPTH
+    isValid &= isValidValue(InDepth[pixelCoordinate]);
+
+    // DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_SCREEN_SPACE_MOTION_VECTOR
+    isValid &= isValidValue(InMotionVector[pixelCoordinate]);
+
+    accumulateInDebugViewAnd(pixelCoordinate, isValid);
   }
+}
 
-  const bool isPrimaryGBufferMiss = PrimaryConeRadius[threadId].x == 0.0f;
+void preprocessInputsForRR(uint2 pixelCoordinate)
+{
+  const bool isPrimaryGBufferMiss = PrimaryConeRadius[pixelCoordinate].x == 0.0f;
 
-  const float primaryPerceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[threadId].w;
-  const float secondaryPerceptualRoughness = SecondaryVirtualWorldNormalPerceptualRoughness[threadId].w;
+  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixelCoordinate, SharedFlags);
 
-  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(threadId, SharedFlags);
   if (cb.combineSpecularAlbedo)
   {
     bool hasPSR = geometryFlags.performPSTR && geometryFlags.performPSRR;
 
-    vec4 primaryAttenuation = vec4(r11g11b10ToColor(PrimaryAttenuation[threadId]), 1.0);
-    vec4 secondaryAttenuation = hasPSR ? vec4(r11g11b10ToColor(SecondaryAttenuation[threadId]), 1.0) : vec4(0,0,0,1);
+    vec4 primaryAttenuation = vec4(r11g11b10ToColor(PrimaryAttenuation[pixelCoordinate]), 1.0);
+    vec4 secondaryAttenuation = hasPSR ? vec4(r11g11b10ToColor(SecondaryAttenuation[pixelCoordinate]), 1.0) : vec4(0,0,0,1);
 
     // Normalize attenuation to get the color tinting without any dimmming
     const float maxPrimaryAttenuation = max3(primaryAttenuation.r, primaryAttenuation.g, primaryAttenuation.b);
@@ -202,14 +255,18 @@ void main(uint2 threadId : SV_DispatchThreadID)
     const float maxSecondaryAttenuation = max3(secondaryAttenuation.r, secondaryAttenuation.g, secondaryAttenuation.b);
     secondaryAttenuation = maxSecondaryAttenuation <= 0.f ? vec4(0.f) : secondaryAttenuation / maxSecondaryAttenuation;
 
-    vec4 primaryAlbedo          = PrimaryAlbedo[threadId] * primaryAttenuation;
-    vec4 primarySpecularAlbedo  = PrimarySpecularAlbedo[threadId] * primaryAttenuation;
+    // Read PrimaryAlbedo and SecondaryAlbedo from remapped coordinate, write to separate DLSS-RR output at screen-space
+    vec4 primaryAlbedo          = PrimaryAlbedo[pixelCoordinate] * primaryAttenuation;
+    vec4 primarySpecularAlbedo  = PrimarySpecularAlbedo[pixelCoordinate] * primaryAttenuation;
 
-    vec4 secondaryAlbedo         = vec4(SecondaryAlbedo[threadId].xyz, 0.0) * secondaryAttenuation;
-    vec4 secondarySpecularAlbedo = vec4(SecondarySpecularAlbedo[threadId].xyz, 0.0) * secondaryAttenuation;
+    vec4 secondaryAlbedo         = vec4(SecondaryAlbedo[pixelCoordinate].xyz, 0.0) * secondaryAttenuation;
+    vec4 secondarySpecularAlbedo = vec4(SecondarySpecularAlbedo[pixelCoordinate].xyz, 0.0) * secondaryAttenuation;
+
+    const float primaryPerceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[pixelCoordinate].w;
+    const float secondaryPerceptualRoughness = SecondaryVirtualWorldNormalPerceptualRoughness[pixelCoordinate].w;
 
     primarySpecularAlbedo *= getRoughnessFactor(primaryPerceptualRoughness);
-    
+
     // Combine secondary albedo to improve reflection quality.
     if (hasPSR)
     {
@@ -219,81 +276,43 @@ void main(uint2 threadId : SV_DispatchThreadID)
 
     // If the primary albedo is very close to 0, clamp it to 0.  This avoids a bug where
     // near 0 albedos cause RR to think the pixel is supposed to be very brightly lit.
-    if (all(primaryAlbedo.rgb < (0.5f / 255.0f))) {
+    if (all(primaryAlbedo.rgb < (0.5f / 255.0f)))
+    {
       primaryAlbedo = vec4(0.f, 0.f, 0.f, 1.f);
     }
 
-    PrimaryAlbedo[threadId] = primaryAlbedo;
-    PrimarySpecularAlbedo[threadId] = primarySpecularAlbedo;
+    PrimaryAlbedo[pixelCoordinate] = primaryAlbedo;
+
+    PrimarySpecularAlbedo[pixelCoordinate] = primarySpecularAlbedo;
   }
 
-  blurDisocclusionMask(threadId);
+  blurDisocclusionMask(pixelCoordinate);
 
+  // When ReSTIR-GI is on, both indirect channels carry the same hit distance, so the lobe gate would
+  // drop a valid signal for diffuse-first pixels. In NEE/NRC modes the specular channel is only
+  // populated for specular-first paths, so the gate is a no-op optimization there.
   float hitDistance = 0;
-
-  if (!isPrimaryGBufferMiss)
+  if (!isPrimaryGBufferMiss &&
+      (cb.enableReSTIRGI || geometryFlags.firstSampledLobeIsSpecular))
   {
-    hitDistance = PrimaryIndirectSpecular[threadId].a;
+    hitDistance = PrimaryIndirectSpecular[pixelCoordinate].a;
+  }
+  HitDistanceOutput[pixelCoordinate] = hitDistance;
+}
+
+[shader("compute")]
+[numthreads(16, 16, 1)]
+void main(uint2 threadId : SV_DispatchThreadID)
+{
+  // Early out for pixels outside the camera
+  if (any(threadId >= cb.camera.resolution))
+  {
+    return;
   }
 
-  HitDistanceOutput[threadId] = hitDistance;
+  uvec2 pixelCoordinate = threadId;
 
-  switch (cb.debugViewIdx)
-  {
-  case DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_MASK:
-    if (cb.enableDisocclusionMaskBlur)
-    {
-      storeInDebugView(threadId, DisocclusionMaskOutput[threadId]);
-    }
-    else 
-    {
-      storeInDebugView(threadId, DisocclusionMask[threadId]);
-    }
-    break;
-  case DEBUG_VIEW_RAY_RECONSTRUCTION_DIFFUSE_ALBEDO:
-    storeInDebugView(threadId, PrimaryAlbedo[threadId]);
-    break;
-  case DEBUG_VIEW_RAY_RECONSTRUCTION_SPECULAR_ALBEDO:
-    storeInDebugView(threadId, PrimarySpecularAlbedo[threadId]);
-    break;
-  case DEBUG_VIEW_RAY_RECONSTRUCTION_HIT_DISTANCE:
-    storeInDebugView(threadId, hitDistance / 1000.0);
-    break;
-  case DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_WORLD_SHADING_NORMAL:
-    storeInDebugView(threadId, InNormalsDLSSRR[threadId]);
-    break;
-  case DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_DEPTH:
-    storeInDebugView(threadId, InDepth[threadId].x);
-    break;
-  case DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_SCREEN_SPACE_MOTION_VECTOR:
-    storeInDebugView(threadId, InMotionVector[threadId]);
-    break;
-  case DEBUG_VIEW_NAN:
-    bool isValid = true;
+  preprocessInputsForRR(pixelCoordinate);
 
-    // DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_MASK
-    isValid &= cb.enableDisocclusionMaskBlur
-      ? isValidValue(DisocclusionMaskOutput[threadId])
-      : isValidValue(DisocclusionMask[threadId]);
-
-    // DEBUG_VIEW_RAY_RECONSTRUCTION_DIFFUSE_ALBEDO
-    isValid &= isValidValue(PrimaryAlbedo[threadId]);
-
-    // DEBUG_VIEW_RAY_RECONSTRUCTION_SPECULAR_ALBEDO
-    isValid &= isValidValue(PrimarySpecularAlbedo[threadId]);
-
-    // DEBUG_VIEW_RAY_RECONSTRUCTION_HIT_DISTANCE
-    isValid &= isValidValue(hitDistance);
-
-    // DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_WORLD_SHADING_NORMAL
-    isValid &= isValidValue(InNormalsDLSSRR[threadId]);
-
-    // DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_DEPTH
-    isValid &= isValidValue(InDepth[threadId].x);
-
-    // DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_SCREEN_SPACE_MOTION_VECTOR
-    isValid &= isValidValue(InMotionVector[threadId]);
-    
-    accumulateInDebugViewAnd(threadId, isValid);
-  }
+  writeDebugViewOutputs(pixelCoordinate);
 }

@@ -369,8 +369,6 @@ namespace dxvk {
     ctx->bindResourceView(COMPOSITE_DEBUG_VIEW_OUTPUT, debugView.getDebugOutput(), nullptr);
     ctx->bindResourceView(COMPOSITE_RAY_RECONSTRUCTION_PARTICLE_BUFFER_OUTPUT, rtOutput.m_rayReconstructionParticleBuffer.view, nullptr);
 
-    ctx->bindResourceView(COMPOSITE_RAY_RECONSTRUCTION_PARTICLE_BUFFER_OUTPUT, rtOutput.m_rayReconstructionParticleBuffer.view, nullptr);
-
     const DomeLightArgs& domeLightArgs = sceneManager.getLightManager().getDomeLightArgs();
     ctx->bindResourceSampler(COMPOSITE_SKY_LIGHT_TEXTURE, linearSampler);
     if (domeLightArgs.active) {
@@ -382,14 +380,7 @@ namespace dxvk {
       ctx->bindResourceView(COMPOSITE_SKY_LIGHT_TEXTURE, ctx->getResourceManager().getSkyMatte(ctx).view, nullptr);
     }
 
-    // Some camera parameters for primary ray reconstruction
-    Camera cameraConstants = sceneManager.getCamera().getShaderConstants();
-    compositeArgs.camera = cameraConstants;
-    compositeArgs.projectionToViewJittered = cameraConstants.projectionToViewJittered;
-    compositeArgs.viewToWorld = cameraConstants.viewToWorld;
-    compositeArgs.resolution.x = float(cameraConstants.resolution.x);
-    compositeArgs.resolution.y = float(cameraConstants.resolution.y);
-    compositeArgs.nearPlane = cameraConstants.nearPlane;
+    compositeArgs.camera = sceneManager.getCamera().getShaderConstants();
     compositeArgs.frameIdx = frameIdx;
 
     if (enableFog()) {
