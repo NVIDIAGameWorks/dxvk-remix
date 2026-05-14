@@ -19,9 +19,11 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
+#include <assert.h>
+#include <atomic>
+#include <cstring>
 #include <mutex>
 #include <vector>
-#include <assert.h>
 
 #include "rtx_context.h"
 #include "rtx_scene_manager.h"
@@ -40,6 +42,18 @@
 #include "rtx/pass/instance_definitions.h"
 
 namespace dxvk {
+
+  namespace {
+    std::atomic<uint64_t> s_nextRtInstanceCacheIdentity { 1 };
+
+    uint64_t nextRtInstanceCacheIdentity() {
+      return s_nextRtInstanceCacheIdentity.fetch_add(1, std::memory_order_relaxed);
+    }
+
+#ifndef NDEBUG
+    constexpr int kDestroyedRtInstanceMemoryPattern = 0xDD;
+#endif
+  }
   
   static bool isMirrorTransform(const Matrix4& m) {
     // Note: Identify if the winding is inverted by checking if the z axis is ever flipped relative to what it's expected to be for clockwise vertices in a lefthanded space
@@ -102,6 +116,7 @@ namespace dxvk {
   RtInstance::RtInstance(const uint64_t id, uint32_t instanceVectorId)
     : m_id(id)
     , m_instanceVectorId(instanceVectorId)
+    , m_cacheIdentity(nextRtInstanceCacheIdentity())
     , m_surfaceIndex(SURFACE_INDEX_INVALID)
     , m_previousSurfaceIndex(SURFACE_INDEX_INVALID) { }
 
@@ -109,10 +124,26 @@ namespace dxvk {
   RtInstance::RtInstance(const RtInstance& src, uint64_t id, uint32_t instanceVectorId)
     : m_id(id)
     , m_instanceVectorId(instanceVectorId)
+    , m_cacheIdentity(nextRtInstanceCacheIdentity())
     , m_surfaceIndex(SURFACE_INDEX_INVALID)
     , m_previousSurfaceIndex(SURFACE_INDEX_INVALID) {
     copyInstanceDataFrom(src);
   }
+
+#ifndef NDEBUG
+  void RtInstance::operator delete(void* ptr) noexcept {
+    if (ptr != nullptr) {
+      std::memset(ptr, kDestroyedRtInstanceMemoryPattern, sizeof(RtInstance));
+    }
+
+    ::operator delete(ptr);
+  }
+
+  void RtInstance::operator delete(void* ptr, std::size_t) noexcept {
+    RtInstance::operator delete(ptr);
+  }
+#endif
+
   // Ensure copyInstanceDataFrom copies all needed members when size changes, and update the object size check.
   // Note: The object has a different size on Debug builds. 
   //       Checking the non-Debug flavors is good enough for the sake of convenience of tracking just a single size.
@@ -120,7 +151,7 @@ namespace dxvk {
   namespace {
     template<int RtInstanceSize> struct CheckRtInstanceSize {
       // The second line of the build error should contain the new size of RtInstance in the template argument, i.e. `dxvk::CheckRtInstanceSize<newSize>`
-      static_assert(RtInstanceSize == 760, "RtInstance size has changed.  Fix the copy constructor above this message, then update the expected size.");
+      static_assert(RtInstanceSize == 768, "RtInstance size has changed.  Fix the copy constructor above this message, then update the expected size.");
     };
     CheckRtInstanceSize<sizeof(RtInstance)> _rtInstanceSizeTest;
   }
@@ -141,6 +172,7 @@ namespace dxvk {
     m_secondarySamplerIndex = src.m_secondarySamplerIndex;
     m_isAnimated = src.m_isAnimated;
     m_opacityMicromapInstanceData = src.m_opacityMicromapInstanceData;
+    m_opacityMicromapInstanceData.resetCopiedRequestState();
     m_surfaceIndex = src.m_surfaceIndex;
     m_previousSurfaceIndex = src.m_previousSurfaceIndex;
     m_isHidden = src.m_isHidden;
@@ -161,9 +193,10 @@ namespace dxvk {
     m_categoryFlags = src.m_categoryFlags;
 
     // Intentionally NOT synced (identity / lifecycle / per-build state):
-    //   m_id, m_instanceVectorId, m_isMarkedForGC, m_isUnlinkedForGC,
+    //   m_id, m_instanceVectorId, m_cacheIdentity, m_isMarkedForGC, m_isUnlinkedForGC,
     //   m_isInsideFrustum, m_frameLastUpdated, m_frameCreated,
     //   m_isCreatedByRenderer, m_spatialCacheHash,
+    //   OMM request registration state,
     //   m_primInstanceOwner, buildGeometries, buildRanges,
     //   billboardIndices, indexOffsets, m_blasDirty,
     //   m_billboardGeometryDirty
@@ -467,6 +500,9 @@ namespace dxvk {
   }
 
   InstanceManager::~InstanceManager() {
+#ifndef NDEBUG
+    releaseDestroyedInstanceQuarantine();
+#endif
   }
 
   void InstanceManager::removeEventHandler(void* eventHandlerOwnerAddress) {
@@ -482,7 +518,7 @@ namespace dxvk {
     notifySceneChanged();
     for (RtInstance* instance : m_instances) {
       removeInstance(instance);
-      delete instance;
+      destroyInstanceAllocation(instance);
     }
 
     m_instances.clear();
@@ -534,6 +570,25 @@ namespace dxvk {
     eraseFromMap(m_persistentPlayerModelClones);
   }
 
+#ifndef NDEBUG
+  void InstanceManager::releaseDestroyedInstanceQuarantine() {
+    while (!m_destroyedInstanceQuarantine.empty()) {
+      ::operator delete(m_destroyedInstanceQuarantine.front());
+      m_destroyedInstanceQuarantine.pop_front();
+    }
+  }
+#endif
+
+  void InstanceManager::destroyInstanceAllocation(RtInstance* instance) {
+#ifndef NDEBUG
+    instance->~RtInstance();
+    std::memset(instance, kDestroyedRtInstanceMemoryPattern, sizeof(RtInstance));
+    m_destroyedInstanceQuarantine.push_back(instance);
+#else
+    delete instance;
+#endif
+  }
+
   void InstanceManager::garbageCollection() {
     // All instance lifetimes are managed externally: tracked instances are marked
     // for GC by ReplacementInstance::clear(), ephemeral copies are marked on creation.
@@ -552,7 +607,7 @@ namespace dxvk {
         // NOTE: pInstance is now the (previously) last element
         std::swap(pInstance, m_instances.back());
         m_instances[i]->m_instanceVectorId = i;
-        delete m_instances.back();
+        destroyInstanceAllocation(m_instances.back());
         m_instances.pop_back();
         continue;
       }
@@ -586,6 +641,8 @@ namespace dxvk {
       }
       currentInstance->setBlas(blas);
       blas.linkInstance(currentInstance);
+      currentInstance->m_blasDirty = true;
+      notifySceneChanged();
     }
 
     updateInstance(*currentInstance, cameraManager, blas, drawCall, materialData);
@@ -918,6 +975,17 @@ namespace dxvk {
                                        const BlasEntry& blas,
                                        const DrawCallState& drawCall,
                                        MaterialData& materialData) {
+    const CategoryFlags previousCategoryFlags = currentInstance.m_categoryFlags;
+    const uint8_t previousInstanceMask = currentInstance.m_vkInstance.mask;
+    const uint32_t previousCustomIndexFlags = currentInstance.m_vkInstance.instanceCustomIndex & ~uint32_t(CUSTOM_INDEX_SURFACE_MASK);
+    const uint32_t previousInstanceShaderBindingTableRecordOffset = currentInstance.m_vkInstance.instanceShaderBindingTableRecordOffset;
+    const VkGeometryInstanceFlagsKHR previousInstanceFlags = currentInstance.m_vkInstance.flags;
+    const bool previousUsesUnorderedApproximations = currentInstance.m_isUnordered;
+    const bool previousIsSubsurface = currentInstance.m_isSubsurface;
+    const VkGeometryFlagsKHR previousGeometryFlags = currentInstance.m_geometryFlags;
+    const auto previousInstancesToObject = currentInstance.surface.instancesToObject;
+    const size_t previousInstancesToObjectSize = previousInstancesToObject ? previousInstancesToObject->size() : 0;
+
     currentInstance.m_categoryFlags = drawCall.getCategoryFlags();
     currentInstance.surface.instancesToObject = drawCall.getTransformData().instancesToObject;
 
@@ -1260,6 +1328,26 @@ namespace dxvk {
         currentInstance.m_blasDirty = true;
         currentInstance.m_billboardGeometryDirty = true;
       }
+    }
+
+    const auto currentInstancesToObject = currentInstance.surface.instancesToObject;
+    const size_t currentInstancesToObjectSize = currentInstancesToObject ? currentInstancesToObject->size() : 0;
+    const uint32_t currentCustomIndexFlags = currentInstance.m_vkInstance.instanceCustomIndex & ~uint32_t(CUSTOM_INDEX_SURFACE_MASK);
+    const bool accelerationStructureKeyChanged =
+      previousCategoryFlags.raw() != currentInstance.m_categoryFlags.raw() ||
+      previousInstanceMask != currentInstance.m_vkInstance.mask ||
+      previousCustomIndexFlags != currentCustomIndexFlags ||
+      previousInstanceShaderBindingTableRecordOffset != currentInstance.m_vkInstance.instanceShaderBindingTableRecordOffset ||
+      previousInstanceFlags != currentInstance.m_vkInstance.flags ||
+      previousUsesUnorderedApproximations != currentInstance.m_isUnordered ||
+      previousIsSubsurface != currentInstance.m_isSubsurface ||
+      previousGeometryFlags != currentInstance.m_geometryFlags ||
+      previousInstancesToObject.get() != currentInstancesToObject.get() ||
+      previousInstancesToObjectSize != currentInstancesToObjectSize;
+
+    if (accelerationStructureKeyChanged) {
+      notifySceneChanged();
+      currentInstance.m_blasDirty = true;
     }
 
     // Updates done only once a frame unless overriden due to an explicit state

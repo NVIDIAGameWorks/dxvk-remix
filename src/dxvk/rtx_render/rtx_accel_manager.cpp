@@ -70,7 +70,13 @@ namespace dxvk {
   }
 
   void AccelManager::removeInstanceFromBucketCache(RtInstance* instance) {
-    m_instanceBucketIndex.erase(instance);
+    if (m_instanceBucketIndex.erase(instance) == 0) {
+      return;
+    }
+
+    m_cachedBuckets.clear();
+    m_instanceBucketIndex.clear();
+    m_lastProcessedGeneration = UINT64_MAX;
   }
 
   void AccelManager::garbageCollection() {
@@ -501,13 +507,27 @@ namespace dxvk {
         for (uint32_t bi = 0; bi < m_cachedBuckets.size(); ++bi) {
           const auto& cachedBucket = m_cachedBuckets[bi];
 
-          for (RtInstance* inst : cachedBucket.instances) {
+          if (cachedBucket.instances.size() != cachedBucket.instanceCacheIdentities.size()) {
+            bucketDirty[bi] = true;
+            anyBucketDirty = true;
+            continue;
+          }
+
+          for (size_t ii = 0; ii < cachedBucket.instances.size(); ++ii) {
+            RtInstance* inst = cachedBucket.instances[ii];
+
             // Validity check MUST come first: if the cached instance is no longer
             // in the live set (per-instance GC, or any path that bypasses the
             // bucket-vector cleanup), the pointer is dangling and must not be
             // dereferenced. Mark the bucket dirty so it gets rebuilt without
             // touching the stale entry.
             if (currentInstanceSet.find(inst) == currentInstanceSet.end()) {
+              bucketDirty[bi] = true;
+              anyBucketDirty = true;
+              break;
+            }
+
+            if (inst->getCacheIdentity() != cachedBucket.instanceCacheIdentities[ii]) {
               bucketDirty[bi] = true;
               anyBucketDirty = true;
               break;
@@ -1018,6 +1038,7 @@ namespace dxvk {
         for (RtInstance* inst : bucket->originalInstances) {
           if (cached.instances.empty() || cached.instances.back() != inst) {
             cached.instances.push_back(inst);
+            cached.instanceCacheIdentities.push_back(inst->getCacheIdentity());
           }
         }
         cached.surfaces = bucket->originalInstances;

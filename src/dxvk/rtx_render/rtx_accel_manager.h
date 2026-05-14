@@ -241,6 +241,7 @@ private:
   struct CachedBucketState {
     // The instances that contributed geometry to this bucket (for dirty checking)
     std::vector<RtInstance*> instances;
+    std::vector<uint64_t> instanceCacheIdentities;
     // Surface data for m_reorderedSurfaces
     std::vector<RtInstance*> surfaces;
     std::vector<uint32_t> indexOffsets;
