@@ -75,12 +75,18 @@ namespace dxvk {
       uint8_t zWriteEnable;
       uint8_t zEnable;
       uint8_t skyAutoDetected;
+      uint8_t _pad0;
+      uint8_t _pad1;
       Matrix4 objectToWorld;
       Matrix4 textureTransform;
     };
+    static_assert(
+      sizeof(ExternalDrawIdentityHashData) == 184,
+      "recheck the memory layout, and ensure that there are no holes, "
+      "as the padding might be default-initialized to non-zero, and XXH3_64bits is used on memory range"
+    );
 
-    // 0 initialize to avoid any problems caused by padding
-    ExternalDrawIdentityHashData data {};
+    ExternalDrawIdentityHashData data{};
 
     const DrawCallTransforms& transforms = drawCall.getTransformData();
     data.meshId = reinterpret_cast<uintptr_t>(mesh);
@@ -1980,8 +1986,14 @@ namespace dxvk {
     const XXH64_hash_t matHash = state.drawCall.materialData.getHash();
     const Vector3 worldPos = xform[3].xyz();
 
+    // NOTE: disallow a search for matching instances by 'materialHash' and other indirect ways,
+    //       as it's expected that the API user controls the instances precisely with remixapi_MeshHandle
+    //       (external draw calls set 'spatialMapHash' to remixapi_MeshHandle and remixapi_MeshHandle must be immutable on instances,
+    //       so setting 'allowCrossTopologyMatching' to 'true' will overwrite 'spatialMapHash')
+    constexpr bool allowCrossTopologyMatching = false;
+
     const ReplacementInstance::LookupKey externalKey { identityHash, spatialMapHash, matHash, kEmptyHash, worldPos, xform };
-    ReplacementInstance* replacementInstance = m_drawCallTracker.findOrCreateReplacementInstance(externalKey);
+    ReplacementInstance* replacementInstance = m_drawCallTracker.findOrCreateReplacementInstance(externalKey, allowCrossTopologyMatching);
 
     AxisAlignedBoundingBox geometryBBox;
 
@@ -2029,11 +2041,15 @@ namespace dxvk {
   }
 
   void SceneManager::destroyExternalMesh(remixapi_MeshHandle handle) {
+    removeInstancesWithExternalMesh(handle);
+    m_pReplacer->destroyExternalMesh(handle);
+  }
+
+  void SceneManager::removeInstancesWithExternalMesh(remixapi_MeshHandle handle) {
     if (handle) {
       m_drawCallTracker.removeReplacementInstancesWithSpatialMapHash(
           spatialMapHashForExternalDrawMesh(handle));
     }
-    m_pReplacer->destroyExternalMesh(handle);
   }
 
   namespace {

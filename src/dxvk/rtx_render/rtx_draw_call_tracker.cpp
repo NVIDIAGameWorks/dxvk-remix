@@ -256,6 +256,8 @@ namespace dxvk {
           eraseFromSpatialMap(m_assetSpatialMaps, bestMatch->spatialMapHash,
               bestMatch->spatialCacheTransformHash, bestMatch);
 
+          // NOTE: overriding existing 'spatialMapHash',
+          //       so extra care required if 'spatialMapHash' should be immutable, mainly for remixapi_MeshHandle
           bestMatch->spatialMapHash = key.spatialMapHash;
           auto [newMapIter, inserted] = m_assetSpatialMaps.try_emplace(key.spatialMapHash, spatialMapCellSize);
           bestMatch->spatialCacheTransformHash =
