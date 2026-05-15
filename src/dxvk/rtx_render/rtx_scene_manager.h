@@ -138,6 +138,7 @@ public:
 
   // Remove an externally created mesh and all associated replacement instances.
   void destroyExternalMesh(remixapi_MeshHandle handle);
+  void removeInstancesWithExternalMesh(remixapi_MeshHandle handle);
   
   void setExternalStartInMediumMaterial(const MaterialData& translucentMaterial);
   void clearExternalStartInMediumMaterial();
