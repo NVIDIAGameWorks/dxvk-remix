@@ -97,7 +97,9 @@ struct VolumeArgs {
 
   float maxAttenuationDistanceForNoAtmosphere;
   uint resetHistory;
-  vec2 pad0;
+  uint16_t enableTranslucentShadows;
+  uint16_t pad0;
+  uint pad1;
 };
 
 #ifdef __cplusplus
