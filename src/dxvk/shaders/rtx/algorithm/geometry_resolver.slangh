@@ -416,7 +416,7 @@ void geometryResolverOutputSurface<
     AlphaBlendGBuffer[pixelCoordinate] = alphaBlendSurface.pack(cb.alphaBlendSurfacePackMult);
   }
 
-  geometryResolverOutputSurfaceDebugView(pixelCoordinate, virtualMotion);
+  geometryResolverOutputSurfaceDebugView<PRIMARY_SURFACE>(pixelCoordinate, virtualMotion, polymorphicSurfaceMaterialInteraction);
 }
 
 void geometryResolverOutputSurfaceDynamic(
@@ -525,9 +525,11 @@ void accumulateParticleBuffer(ivec2 pixelCoordinate, vec3 radiance)
 
 #if GBUFFER_FEATURE_DEBUG_VIEW
 
-void geometryResolverOutputSurfaceDebugView(
+void geometryResolverOutputSurfaceDebugView<
+  let PRIMARY_SURFACE : bool>(
   uvec2 pixelCoordinate,
-  vec3 virtualMotion)
+  vec3 virtualMotion,
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction)
  {
   switch(cb.debugView)
   {
@@ -537,16 +539,50 @@ void geometryResolverOutputSurfaceDebugView(
   case DEBUG_VIEW_VIRTUAL_MOTION_VECTOR:
     storeInDebugView(pixelCoordinate, virtualMotion);
     break;
-   case DEBUG_VIEW_NAN:
+  case DEBUG_VIEW_SECONDARY_PERCEPTUAL_ROUGHNESS:
+    if (!PRIMARY_SURFACE)
+    {
+      storeInDebugView(pixelCoordinate, SecondaryPerceptualRoughness[pixelCoordinate]);
+    }
+    break;
+  case DEBUG_VIEW_SECONDARY_ALBEDO:
+    if (!PRIMARY_SURFACE)
+    {
+      storeInDebugView(pixelCoordinate, SecondaryAlbedo[pixelCoordinate].xyz);
+    }
+    break;
+  case DEBUG_VIEW_SECONDARY_BASE_REFLECTIVITY_RAW:
+    if (!PRIMARY_SURFACE)
+    {
+      storeInDebugView(pixelCoordinate, SecondaryBaseReflectivity[pixelCoordinate].xyz);
+    }
+    break;
+  case DEBUG_VIEW_NAN:
    {
      bool isValid = true;
-      
+
      // DEBUG_VIEW_VIRTUAL_MOTION_VECTOR
      isValid &= isValidValue(virtualMotion);
+
+     // DEBUG_VIEW_SECONDARY_PERCEPTUAL_ROUGHNESS / DEBUG_VIEW_SECONDARY_ALBEDO
+     if (!PRIMARY_SURFACE)
+     {
+       isValid &= isValidValue(SecondaryPerceptualRoughness[pixelCoordinate]);
+       isValid &= isValidValue(SecondaryAlbedo[pixelCoordinate].xyz);
+       // DEBUG_VIEW_SECONDARY_BASE_REFLECTIVITY_RAW
+       isValid &= isValidValue(SecondaryBaseReflectivity[pixelCoordinate].xyz);
+     }
 
      accumulateInDebugViewAnd(pixelCoordinate, isValid);
      break;
    }
+  }
+
+  // Primary-material debug views are factored into a separate helper because the unordered-decals
+  // pass re-invokes it after blending updates the GBuffer; calling it here covers the initial write.
+  if (PRIMARY_SURFACE)
+  {
+    geometryResolverOutputPrimaryMaterialDebugView(pixelCoordinate, polymorphicSurfaceMaterialInteraction);
   }
 }
 
@@ -755,21 +791,6 @@ void geometryResolverVertexOutputDebugView(
     }
 
     storeInDebugView(pixelCoordinate, albedo);
-
-    break;
-  case DEBUG_VIEW_BASE_REFLECTIVITY:
-    vec3 baseReflectivity = vec3(0.0f);
-
-    if (materialType == surfaceMaterialTypeOpaque)
-    {
-      baseReflectivity = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction).baseReflectivity;
-    }
-    else if (materialType == surfaceMaterialTypeTranslucent)
-    {
-      baseReflectivity = translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction).baseReflectivity;
-    }
-    
-    storeInDebugView(pixelCoordinate, baseReflectivity);
 
     break;
   case DEBUG_VIEW_ROUGHNESS:
@@ -1075,18 +1096,6 @@ void geometryResolverVertexOutputDebugView(
       }
       isValid &= isValidValue(albedo);
 
-      // DEBUG_VIEW_BASE_REFLECTIVITY
-      vec3 baseReflectivity = vec3(0.0f);
-      if (materialType == surfaceMaterialTypeOpaque)
-      {
-        baseReflectivity = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction).baseReflectivity;
-      }
-      else if (materialType == surfaceMaterialTypeTranslucent)
-      {
-        baseReflectivity = translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction).baseReflectivity;
-      }
-      isValid &= isValidValue(baseReflectivity);
-
       // DEBUG_VIEW_ROUGHNESS
       float isotropicRoughness = 0.0f;
       if (materialType == surfaceMaterialTypeOpaque)
@@ -1334,7 +1343,12 @@ void geometryResolverOutputDebugView(uvec2 pixelCoordinate)
   }
 }
 
-void geometryResolverOutputFinalPrimaryMaterialDebugView(
+// Writes primary-surface debug views derived from the GBuffer-resident material data.
+// May be called more than once per pixel: once after the initial primary material write in the
+// geometry resolve pass, and again after unordered-decal blending updates the same GBuffer
+// resources. All cases here must therefore be safe to re-run (snapshot writes that overwrite the
+// previous value, or accumulators whose operation is idempotent/order-independent).
+void geometryResolverOutputPrimaryMaterialDebugView(
   uvec2 pixelCoordinate,
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction)
 {
@@ -1343,6 +1357,12 @@ void geometryResolverOutputFinalPrimaryMaterialDebugView(
   switch(cb.debugView)
   {
   default:
+    break;
+  case DEBUG_VIEW_PRIMARY_PERCEPTUAL_ROUGHNESS:
+    storeInDebugView(pixelCoordinate, PrimaryPerceptualRoughness[pixelCoordinate]);
+    break;
+  case DEBUG_VIEW_PRIMARY_BASE_REFLECTIVITY_RAW:
+    storeInDebugView(pixelCoordinate, PrimaryBaseReflectivity[pixelCoordinate].xyz);
     break;
   case DEBUG_VIEW_SHADING_NORMAL:
   {
@@ -1379,22 +1399,6 @@ void geometryResolverOutputFinalPrimaryMaterialDebugView(
     }
 
     storeInDebugView(pixelCoordinate, albedo);
-    break;
-  }
-  case DEBUG_VIEW_BASE_REFLECTIVITY:
-  {
-    vec3 baseReflectivity = vec3(0.0f);
-
-    if (materialType == surfaceMaterialTypeOpaque)
-    {
-      baseReflectivity = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction).baseReflectivity;
-    }
-    else if (materialType == surfaceMaterialTypeTranslucent)
-    {
-      baseReflectivity = vec3(translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction).baseReflectivity);
-    }
-
-    storeInDebugView(pixelCoordinate, baseReflectivity);
     break;
   }
   case DEBUG_VIEW_ROUGHNESS:
@@ -1511,9 +1515,11 @@ void geometryResolverOutputFinalPrimaryMaterialDebugView(
 
 #else
 
-void geometryResolverOutputSurfaceDebugView(
+void geometryResolverOutputSurfaceDebugView<
+  let PRIMARY_SURFACE : bool>(
   uvec2 pixelCoordinate,
-  vec3 virtualMotion)
+  vec3 virtualMotion,
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction)
 {
 }
 
@@ -1996,7 +2002,7 @@ void geometryResolverVertex(
 
   // Update NRC when a final GBuffer hit occurs.
   // Note: any path termination handling is delayed to indirect pass
-  if (!(geometryResolverState.performPSRR || geometryResolverState.performPSTR))
+  if (!geometryResolverState.performedAnyPSR())
   {
     // Note: radiance and throughput gets reset by NRC for training paths
     updateNrcOnGBufferHitTrainingAndQueryPaths(geometryResolverState.pixelCoordinate,
@@ -2038,7 +2044,7 @@ void geometryResolverVertex(
 #else
     true &&
 #endif
-    (geometryResolverState.performPSRR || geometryResolverState.performPSTR);
+    geometryResolverState.performedAnyPSR();
 
   if (writeFirstHitForPSRPrepare)
   {
@@ -2106,7 +2112,7 @@ void geometryResolverVertex(
     }
   }
 #if GBUFFER_FEATURE_INLINE_PSR_SAMPLING
-  else if (geometryResolverState.performPSRR || geometryResolverState.performPSTR)
+  else if (geometryResolverState.performedAnyPSR())
   {
     // Set the geometry flag bits that must be the same for both PSR passes, see unpackPSRData(...)
 
@@ -2202,7 +2208,7 @@ void geometryResolverVertex(
       geometryResolverState.isViewModelSurface);
   }
 
-  if (GBUFFER_FEATURE_INLINE_PSR_SAMPLING && !push.usePSRPrepare && (geometryResolverState.performPSRR || geometryResolverState.performPSTR))
+  if (GBUFFER_FEATURE_INLINE_PSR_SAMPLING && !push.usePSRPrepare && geometryResolverState.performedAnyPSR())
   {
     PrimaryAttenuation[geometryResolverState.pixelCoordinate] = colorToR11G11B10(geometryResolverState.attenuation);
   }
@@ -2953,7 +2959,7 @@ void geometryResolver(ivec2 pixelCoordinate) {
   bool primarySelectedIntegrationSurface;
   bool secondarySurfaceMask;
 
-  if (geometryResolverState.performPSRR && geometryResolverState.performPSTR)
+  if (geometryResolverState.hasSecondarySurface())
   {
     // Note: Transmission preferred as the primary surface when both PSRR and PSTR are done at the same time.
     primarySelectedIntegrationSurface = !geometryResolverState.reflectionSelectedIntegrationSurface;
@@ -3269,7 +3275,7 @@ void geometryResolverApplyUnorderedDecalsPass(ivec2 pixelCoordinate) {
   }
 
 #if GBUFFER_FEATURE_DEBUG_VIEW
-  geometryResolverOutputFinalPrimaryMaterialDebugView(
+  geometryResolverOutputPrimaryMaterialDebugView(
     pixelCoordinate,
     blendedPolymorphicSurfaceMaterialInteraction);
 #endif
@@ -3406,7 +3412,10 @@ void geometryPSRPreparePass(ivec2 pixelCoordinate) {
   SharedRadianceB[pixelCoordinate] = radiance.b;
   SharedIntegrationSurfacePdf[pixelCoordinate] = selectedIntegrationSurfacePdf;
 
-  if (performPSRR && performPSTR)
+  geometryFlags.performPSRR = performPSRR;
+  geometryFlags.performPSTR = performPSTR;
+
+  if (geometryFlags.hasSecondarySurface())
   {
     geometryFlags.primarySelectedIntegrationSurface = !reflectionSelectedIntegrationSurface;
     geometryFlags.secondarySurfaceMask = true;
@@ -3417,10 +3426,7 @@ void geometryPSRPreparePass(ivec2 pixelCoordinate) {
     geometryFlags.secondarySurfaceMask = false;
   }
 
-  geometryFlags.performPSRR = performPSRR;
-  geometryFlags.performPSTR = performPSTR;
-
-  if (!(performPSRR || performPSTR))
+  if (!geometryFlags.performedAnyPSR())
   {
     geometryResolverOutputMiss<false, false>(pixelCoordinate);
     geometryFlagsWriteToGBuffer(geometryFlags, pixelCoordinate, SharedFlags);
