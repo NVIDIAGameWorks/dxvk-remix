@@ -188,25 +188,77 @@ void applyDirectLightBoilingFilter(
   }
 }
 
+struct PrimaryDemodulationSignals
+{
+  vec4 directDiffuseInput;
+  vec4 directSpecularInput;
+  vec4 indirectDiffuseInput;
+  vec4 indirectSpecularInput;
+  vec4 directDiffuseOutput;
+  vec4 directSpecularOutput;
+  vec4 indirectDiffuseOutput;
+  vec4 indirectSpecularOutput;
+};
+
+struct SecondaryDemodulationSignals
+{
+  vec4 combinedDiffuseInput;
+  vec4 combinedSpecularInput;
+  vec4 indirectRadianceHitDistanceInput;
+  vec4 combinedDiffuseOutput;
+  vec4 combinedSpecularOutput;
+};
+
+PrimaryDemodulationSignals makeEmptyPrimaryDemodulationSignals()
+{
+  PrimaryDemodulationSignals primarySignals;
+  primarySignals.directDiffuseInput     = vec4(vec3(0), kEmptyPixelHitDistance);
+  primarySignals.directSpecularInput    = vec4(vec3(0), kEmptyPixelHitDistance);
+  primarySignals.indirectDiffuseInput   = vec4(vec3(0), kEmptyPixelHitDistance);
+  primarySignals.indirectSpecularInput  = vec4(vec3(0), kEmptyPixelHitDistance);
+  primarySignals.directDiffuseOutput    = vec4(vec3(0), kEmptyPixelHitDistance);
+  primarySignals.directSpecularOutput   = vec4(vec3(0), kEmptyPixelHitDistance);
+  primarySignals.indirectDiffuseOutput  = vec4(vec3(0), kEmptyPixelHitDistance);
+  primarySignals.indirectSpecularOutput = vec4(vec3(0), kEmptyPixelHitDistance);
+  return primarySignals;
+}
+
+SecondaryDemodulationSignals makeEmptySecondaryDemodulationSignals()
+{
+  SecondaryDemodulationSignals secondarySignals;
+  secondarySignals.combinedDiffuseInput             = vec4(vec3(0), kEmptyPixelHitDistance);
+  secondarySignals.combinedSpecularInput            = vec4(vec3(0), kEmptyPixelHitDistance);
+  secondarySignals.indirectRadianceHitDistanceInput = vec4(vec3(0), kEmptyPixelHitDistance);
+  secondarySignals.combinedDiffuseOutput            = vec4(vec3(0), kEmptyPixelHitDistance);
+  secondarySignals.combinedSpecularOutput           = vec4(vec3(0), kEmptyPixelHitDistance);
+  return secondarySignals;
+}
+
 void outputToDebugViewAtTheEnd(
   uint2 pixelCoordinate,
-  vec4 indirectRadianceHitDistanceInput,
-  vec3 primarySpecularAlbedo,
-  vec3 secondarySpecularAlbedo,
-  vec4 primaryDirectDiffuseInput,
-  vec4 primaryDirectSpecularInput,
-  vec4 primaryIndirectDiffuseInput,
-  vec4 primaryIndirectSpecularInput,
-  vec4 secondaryCombinedDiffuseInput,
-  vec4 secondaryCombinedSpecularInput,
-  vec4 primaryDirectDiffuseOutput,
-  vec4 primaryDirectSpecularOutput,
-  vec4 primaryIndirectDiffuseOutput,
-  vec4 primaryIndirectSpecularOutput,
-  vec4 secondaryCombinedDiffuseOutput,
-  vec4 secondaryCombinedSpecularOutput)
+  PrimaryDemodulationSignals primarySignals,
+  SecondaryDemodulationSignals secondarySignals)
 {
   const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixelCoordinate, SharedFlags);
+  const bool performedAnyPSR = geometryFlags.performedAnyPSR();
+  // Matches the gate inside demodulateSecondaryPath that actually populates the secondary radiance signals.
+  const bool secondaryRadianceValid = performedAnyPSR
+    && geometryFlags.secondarySurfaceMask
+    && !geometryFlags.primarySelectedIntegrationSurface;
+
+  const vec4 indirectRadianceHitDistanceInput     = secondarySignals.indirectRadianceHitDistanceInput;
+  const vec4 primaryDirectDiffuseInput            = primarySignals.directDiffuseInput;
+  const vec4 primaryDirectSpecularInput           = primarySignals.directSpecularInput;
+  const vec4 primaryIndirectDiffuseInput          = primarySignals.indirectDiffuseInput;
+  const vec4 primaryIndirectSpecularInput         = primarySignals.indirectSpecularInput;
+  const vec4 secondaryCombinedDiffuseInput        = secondarySignals.combinedDiffuseInput;
+  const vec4 secondaryCombinedSpecularInput       = secondarySignals.combinedSpecularInput;
+  const vec4 primaryDirectDiffuseOutput           = primarySignals.directDiffuseOutput;
+  const vec4 primaryDirectSpecularOutput          = primarySignals.directSpecularOutput;
+  const vec4 primaryIndirectDiffuseOutput         = primarySignals.indirectDiffuseOutput;
+  const vec4 primaryIndirectSpecularOutput        = primarySignals.indirectSpecularOutput;
+  const vec4 secondaryCombinedDiffuseOutput       = secondarySignals.combinedDiffuseOutput;
+  const vec4 secondaryCombinedSpecularOutput      = secondarySignals.combinedSpecularOutput;
 
   // Output Debug Information
   switch(cb.debugView)
@@ -324,12 +376,14 @@ void outputToDebugViewAtTheEnd(
     ));
 
     break;
-  // Specular Albedos
   case DEBUG_VIEW_PRIMARY_SPECULAR_ALBEDO:
-    storeInDebugView(pixelCoordinate, primarySpecularAlbedo);
+    storeInDebugView(pixelCoordinate, aliasedData0.PrimarySpecularAlbedo[pixelCoordinate].xyz);
     break;
   case DEBUG_VIEW_SECONDARY_SPECULAR_ALBEDO:
-    storeInDebugView(pixelCoordinate, secondarySpecularAlbedo);
+    if (geometryFlags.hasSecondarySurface())
+    {
+      storeInDebugView(pixelCoordinate, aliasedData1.SecondarySpecularAlbedo[pixelCoordinate].xyz);
+    }
     break;
   // Primary Direct Data
   case DEBUG_VIEW_NOISY_PRIMARY_DIRECT_DIFFUSE_RADIANCE:
@@ -385,36 +439,48 @@ void outputToDebugViewAtTheEnd(
     storeInDebugView(pixelCoordinate, indirectRadianceHitDistanceInput.xyz);
     break;
   case DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_RADIANCE:
-    if (!geometryFlags.primarySelectedIntegrationSurface)
+    if (secondaryRadianceValid)
     {
       storeInDebugView(pixelCoordinate, indirectRadianceHitDistanceInput.xyz);
     }
     break;
   case DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_DIFFUSE_RADIANCE:
-    if (!geometryFlags.primarySelectedIntegrationSurface
+    if (secondaryRadianceValid
       && !geometryFlags.firstSampledLobeIsSpecular)
     {
       storeInDebugView(pixelCoordinate, indirectRadianceHitDistanceInput.xyz);
     }
     break;
   case DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_SPECULAR_RADIANCE:
-    if (!geometryFlags.primarySelectedIntegrationSurface
+    if (secondaryRadianceValid
       && geometryFlags.firstSampledLobeIsSpecular)
     {
       storeInDebugView(pixelCoordinate, indirectRadianceHitDistanceInput.xyz);
     }
     break;    
   case DEBUG_VIEW_NOISY_SECONDARY_COMBINED_DIFFUSE_RADIANCE:
-    storeInDebugView(pixelCoordinate, secondaryCombinedDiffuseInput.xyz);
+    if (secondaryRadianceValid)
+    {
+      storeInDebugView(pixelCoordinate, secondaryCombinedDiffuseInput.xyz);
+    }
     break;
   case DEBUG_VIEW_NOISY_SECONDARY_COMBINED_SPECULAR_RADIANCE:
-    storeInDebugView(pixelCoordinate, secondaryCombinedSpecularInput.xyz);
+    if (secondaryRadianceValid)
+    {
+      storeInDebugView(pixelCoordinate, secondaryCombinedSpecularInput.xyz);
+    }
     break;
   case DEBUG_VIEW_NOISY_DEMODULATED_SECONDARY_COMBINED_DIFFUSE_RADIANCE:
-    storeInDebugView(pixelCoordinate, secondaryCombinedDiffuseOutput.xyz);
+    if (secondaryRadianceValid)
+    {
+      storeInDebugView(pixelCoordinate, secondaryCombinedDiffuseOutput.xyz);
+    }
     break;
   case DEBUG_VIEW_NOISY_DEMODULATED_SECONDARY_COMBINED_SPECULAR_RADIANCE:
-    storeInDebugView(pixelCoordinate, secondaryCombinedSpecularOutput.xyz);
+    if (secondaryRadianceValid)
+    {
+      storeInDebugView(pixelCoordinate, secondaryCombinedSpecularOutput.xyz);
+    }
     break;
   case DEBUG_VIEW_NOISY_PRIMARY_DIRECT_RADIANCE:
     storeInDebugView(pixelCoordinate, 
@@ -430,8 +496,11 @@ void outputToDebugViewAtTheEnd(
       primaryIndirectDiffuseInput.xyz + primaryIndirectSpecularInput.xyz);
     break;
   case DEBUG_VIEW_NOISY_SECONDARY_RADIANCE:
-    storeInDebugView(pixelCoordinate, 
-      secondaryCombinedDiffuseInput.xyz + secondaryCombinedSpecularInput.xyz);
+    if (secondaryRadianceValid)
+    {
+      storeInDebugView(pixelCoordinate,
+        secondaryCombinedDiffuseInput.xyz + secondaryCombinedSpecularInput.xyz);
+    }
     break;
   case DEBUG_VIEW_NOISY_RADIANCE:
     storeInDebugView(pixelCoordinate, 
@@ -445,9 +514,12 @@ void outputToDebugViewAtTheEnd(
     bool isValid = true;
     
     // DEBUG_VIEW_PRIMARY_SPECULAR_ALBEDO
-    isValid &= isValidValue(primarySpecularAlbedo);
+    isValid &= isValidValue(aliasedData0.PrimarySpecularAlbedo[pixelCoordinate].xyz);
     // DEBUG_VIEW_SECONDARY_SPECULAR_ALBEDO
-    isValid &= isValidValue(secondarySpecularAlbedo);
+    if (performedAnyPSR)
+    {
+      isValid &= isValidValue(aliasedData1.SecondarySpecularAlbedo[pixelCoordinate].xyz);
+    }
     // DEBUG_VIEW_NOISY_PRIMARY_DIRECT_DIFFUSE_RADIANCE
     isValid &= isValidValue(primaryDirectDiffuseInput.xyz);
     // DEBUG_VIEW_NOISY_PRIMARY_DIRECT_SPECULAR_RADIANCE
@@ -484,15 +556,18 @@ void outputToDebugViewAtTheEnd(
     // DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_RADIANCE
     // DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_DIFFUSE_RADIANCE
     // DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_SPECULAR_RADIANCE
-    isValid &= isValidValue(indirectRadianceHitDistanceInput);
-    // DEBUG_VIEW_NOISY_SECONDARY_COMBINED_DIFFUSE_RADIANCE
-    isValid &= isValidValue(secondaryCombinedDiffuseInput.xyz);
-    // DEBUG_VIEW_NOISY_SECONDARY_COMBINED_SPECULAR_RADIANCE
-    isValid &= isValidValue(secondaryCombinedSpecularInput.xyz);
-    // DEBUG_VIEW_NOISY_DEMODULATED_SECONDARY_COMBINED_DIFFUSE_RADIANCE
-    isValid &= isValidValue(secondaryCombinedDiffuseOutput.xyz);
-    // DEBUG_VIEW_NOISY_DEMODULATED_SECONDARY_COMBINED_SPECULAR_RADIANCE
-    isValid &= isValidValue(secondaryCombinedSpecularOutput.xyz);
+    if (secondaryRadianceValid)
+    {
+      isValid &= isValidValue(indirectRadianceHitDistanceInput);
+      // DEBUG_VIEW_NOISY_SECONDARY_COMBINED_DIFFUSE_RADIANCE
+      isValid &= isValidValue(secondaryCombinedDiffuseInput.xyz);
+      // DEBUG_VIEW_NOISY_SECONDARY_COMBINED_SPECULAR_RADIANCE
+      isValid &= isValidValue(secondaryCombinedSpecularInput.xyz);
+      // DEBUG_VIEW_NOISY_DEMODULATED_SECONDARY_COMBINED_DIFFUSE_RADIANCE
+      isValid &= isValidValue(secondaryCombinedDiffuseOutput.xyz);
+      // DEBUG_VIEW_NOISY_DEMODULATED_SECONDARY_COMBINED_SPECULAR_RADIANCE
+      isValid &= isValidValue(secondaryCombinedSpecularOutput.xyz);
+    }
 
     // Skipped - since these represent combined values from above
     // DEBUG_VIEW_NOISY_PRIMARY_DIRECT_RADIANCE
@@ -506,24 +581,18 @@ void outputToDebugViewAtTheEnd(
   }
 }
 
-[shader("compute")]
-[numthreads(DEMODULATE_THREAD_GROUP_WIDTH, DEMODULATE_THREAD_GROUP_HEIGHT, 1)]
-void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_GroupThreadID)
+
+// Demodulates the primary surface direct and indirect signals and writes them to the per-signal
+// denoiser input buffers. Loads primary GBuffer data, computes and stores the primary specular
+// albedo (re-read for the debug view), and runs the per-lobe demodulation.
+PrimaryDemodulationSignals demodulatePrimaryPath(
+  uvec2 pixelCoordinate,
+  uvec2 localIndex,
+  GeometryFlags geometryFlags,
+  CameraDirections primaryRayDirections)
 {
-  if (any(pixelCoordinate >= cb.camera.resolution))
-  {
-    return;
-  }
+  PrimaryDemodulationSignals primarySignals = makeEmptyPrimaryDemodulationSignals();
 
-  // Reconstruct the primary ray direction for the current pixel
-
-  const CameraDirections primaryRayDirections = cameraPixelCoordinateToDirection(cb.camera, pixelCoordinate);
-
-  // Deserialize flags
-  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixelCoordinate, SharedFlags);
-
-  // Load Primary G-Buffer data
-  const vec3 primaryDiffuseAlbedo = PrimaryAlbedo[pixelCoordinate].xyz;
   const vec3 primaryBaseReflectivity = aliasedData0.PrimaryBaseReflectivity[pixelCoordinate].xyz;
   // Note: Decode from unorm encoded representation.
   const vec3 primaryVirtualWorldNormal = PrimaryVirtualWorldNormalPerceptualRoughness[pixelCoordinate].xyz * 2.0f - 1.0f;
@@ -531,220 +600,246 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_Gro
   const float primaryLinearViewZ = PrimaryLinearViewZ[pixelCoordinate].x;
   const bool isPrimaryMiss = primaryLinearViewZ == cb.primaryDirectMissLinearViewZ;
 
-  // Load Secondary G-Buffer data
-  const vec3 secondaryDiffuseAlbedo = SecondaryAlbedo[pixelCoordinate].xyz;
-  const vec3 secondaryBaseReflectivity = aliasedData1.SecondaryBaseReflectivity[pixelCoordinate].xyz;
-  // Note: Decode from unorm encoded representation.
-  const vec3 secondaryVirtualWorldNormal = SecondaryVirtualWorldNormalPerceptualRoughness[pixelCoordinate].xyz * 2.0f - 1.0f;
-  const float secondaryPerceptualRoughness = SecondaryVirtualWorldNormalPerceptualRoughness[pixelCoordinate].w;
-  const float secondaryLinearViewZ = SecondaryLinearViewZ[pixelCoordinate].x;
-
-  // Calculate Primary and Secondary Specular Albedo Approximations
-  // Note: This is done to have higher quality demodulation than using a simple base reflectivity.
-
-  // Note: Virtual world normal used so direction does not need to be read from the GBuffer, simple camera direction can
-  // be re-derived as virtual normals are oriented with respect to the camera.
-  const float primaryNormalDotViewDirection = dot(primaryVirtualWorldNormal, -primaryRayDirections.worldDirection);
-  const float secondaryNormalDotViewDirection = dot(secondaryVirtualWorldNormal, -primaryRayDirections.worldDirection);
-
-  // Note: Somewhat costly math operations, but the secondary specular albedo will (hopefully) be skipped out in most cases
-  // due to its sole usage in secondary surface demodulation which is only enabled if the secondary surface mask is set (though
-  // the debug view may drag this contribution in anyways potentially, so remove debug view code ideally).
   vec3 primarySpecularAlbedo = vec3(0);
-  vec3 secondarySpecularAlbedo = vec3(0);
-
   if (!isPrimaryMiss)
   {
+    // Note: Virtual world normal used so direction does not need to be read from the GBuffer; the camera direction
+    // can be re-derived since virtual normals are oriented with respect to the camera.
+    const float primaryNormalDotViewDirection = dot(primaryVirtualWorldNormal, -primaryRayDirections.worldDirection);
     primarySpecularAlbedo = evalSpecularAlbedoGGXSchlick(
       primaryBaseReflectivity, calcRoughness(primaryPerceptualRoughness), primaryNormalDotViewDirection);
   }
-
-  if ((geometryFlags.performPSTR || geometryFlags.performPSRR))
-  {
-    secondarySpecularAlbedo = evalSpecularAlbedoGGXSchlick(
-      secondaryBaseReflectivity, calcRoughness(secondaryPerceptualRoughness), secondaryNormalDotViewDirection);
-  }
-
-  // Write out the Primary and Secondary Specular Albedo
-  // Note: This overwrites the base reflectivity used in these buffers up to this point. This is fine though as
-  // only the composite pass will use this information later to remodulate the signal after it has been denoised.
-
+  // Note: Overwrites the base reflectivity in this buffer; composite remodulates with this value.
   aliasedData0.PrimarySpecularAlbedo[pixelCoordinate].xyz = primarySpecularAlbedo;
-  aliasedData1.SecondarySpecularAlbedo[pixelCoordinate].xyz = secondarySpecularAlbedo;
 
-  // Set Primary G-Buffer data
+  const vec3 primaryDiffuseAlbedo = PrimaryAlbedo[pixelCoordinate].xyz;
+
   DemodulationData primaryDemodulationData;
   primaryDemodulationData.diffuseAlbedo = primaryDiffuseAlbedo;
   primaryDemodulationData.specularAlbedo = primarySpecularAlbedo;
   primaryDemodulationData.perceptualRoughness = primaryPerceptualRoughness;
   primaryDemodulationData.linearViewZ = primaryLinearViewZ;
 
-  // Set Secondary Demodulation Data
-  DemodulationData secondaryDemodulationData;
-  secondaryDemodulationData.diffuseAlbedo = secondaryDiffuseAlbedo;
-  secondaryDemodulationData.specularAlbedo = secondarySpecularAlbedo;
-  secondaryDemodulationData.perceptualRoughness = secondaryPerceptualRoughness;
-  secondaryDemodulationData.linearViewZ = secondaryLinearViewZ;
-
-  // Inputs
-  // Pixels with zero Hit T will have denoiser try to fill in missing hit T data, 0 radiance will be used in filtering as-is
-  // Note: inactive pixel inputs are not initialized to valid PT outputs as they are not used to generate outputs for the denoiser,
-  //  but we set them to 0 here for DebugView usage purposes 
-  vec4 indirectRadianceHitDistanceInput = vec4(vec3(0), kEmptyPixelHitDistance);
-  vec4 primaryDirectDiffuseInput = vec4(vec3(0), kEmptyPixelHitDistance);
-  vec4 primaryDirectSpecularInput = vec4(vec3(0), kEmptyPixelHitDistance);
-  vec4 primaryIndirectDiffuseInput = vec4(vec3(0), kEmptyPixelHitDistance);
-  vec4 primaryIndirectSpecularInput = vec4(vec3(0), kEmptyPixelHitDistance);
-  vec4 secondaryCombinedDiffuseInput = vec4(vec3(0), kEmptyPixelHitDistance);
-  vec4 secondaryCombinedSpecularInput = vec4(vec3(0), kEmptyPixelHitDistance);
-  
-  // Load the primary direct and indirect signals
   // If rtxdi and restir gi are enabled, the primary surface input is dense and demodulation can always be enabled.
-  bool demodulatePrimaryInput = (cb.enableRtxdi && cb.enableReSTIRGI) || geometryFlags.primarySelectedIntegrationSurface;
-  if (demodulatePrimaryInput)
+  const bool primaryInputValid =
+    (cb.enableRtxdi && cb.enableReSTIRGI) || geometryFlags.primarySelectedIntegrationSurface;
+  const bool demodulatePrimaryDirectInput = primaryInputValid;
+  const bool demodulatePrimaryIndirectInput = primaryInputValid;
+
+  if (demodulatePrimaryDirectInput)
   {
-    primaryDirectDiffuseInput = PrimaryDirectDiffuseRadiance[pixelCoordinate];
-    primaryDirectSpecularInput = PrimaryDirectSpecularRadiance[pixelCoordinate];
-  
-    primaryIndirectDiffuseInput = PrimaryIndirectDiffuseRadiance[pixelCoordinate];
-    primaryIndirectSpecularInput = PrimaryIndirectSpecularRadiance[pixelCoordinate];
-  }
-  
-  // Load the secondary combined signals
-  if (geometryFlags.secondarySurfaceMask && !geometryFlags.primarySelectedIntegrationSurface)
-  {
-    indirectRadianceHitDistanceInput = IndirectRadianceHitDistance[pixelCoordinate];
-
-    secondaryCombinedDiffuseInput = SecondaryCombinedDiffuseRadiance[pixelCoordinate];
-    secondaryCombinedSpecularInput = SecondaryCombinedSpecularRadiance[pixelCoordinate];
-
-    // Note: For secondary surfaces combine direct and indirect radiance for the current lobe.
-    // Note: Radiance only carried over on secondary surfaces, always through the sampled lobe (as this is the lobe indirect integration
-    // is done on, the opposing lobe is only given direct lighting).
-    if (geometryFlags.firstSampledLobeIsSpecular)
-    {
-      secondaryCombinedSpecularInput = sanitizeRadianceHitDistance(
-        secondaryCombinedSpecularInput.xyz + indirectRadianceHitDistanceInput.xyz, indirectRadianceHitDistanceInput.w);
-    }
-    else
-    {
-      secondaryCombinedDiffuseInput = sanitizeRadianceHitDistance(
-        secondaryCombinedDiffuseInput.xyz + indirectRadianceHitDistanceInput.xyz, indirectRadianceHitDistanceInput.w);
-    }
-
-    // The secondary signal doesn't have advanced techniques like ReSTIR and has more noise and fireflies, especially for specular signal.
-    // A more restrictive clamping threshold is needed to remove fireflies.
-    secondaryCombinedSpecularInput.xyz = fireflyFiltering(secondaryCombinedSpecularInput.xyz, cb.secondarySpecularFireflyFilteringThreshold);
+    primarySignals.directDiffuseInput = PrimaryDirectDiffuseRadiance[pixelCoordinate];
+    primarySignals.directSpecularInput = PrimaryDirectSpecularRadiance[pixelCoordinate];
   }
 
-  // Overwrite the direct specular HitT with the indirect specular HitT.
-  // The reason is that the denoiser uses HitT mostly for calculating motion vectors for reflections.
-  // For that purpose, the denoiser expects to see HitT from surfaces that are in the specular reflection lobe.
-  // When calculating direct lighting (NEE/RTXDI), we select a light per pixel, and the distance to that light
-  // becomes the HitT for both diffuse and specular channels. In many cases, the light is selected 
-  // for a surface because of its diffuse contribution, not specular, which makes the specular channel
-  // contain the HitT of a diffuse light. That confuses the denoiser and breaks reprojection.
-  // On the other hand, the indirect specular HitT is always computed by tracing rays in the specular lobe.
-  //
-  // If secondary bounces are disabled, the primaryIndirectSpecularInput will contain garbage data, which shouldn't be
-  // used to replace the primaryDirectSpecularInput
-  if (cb.enableReplaceDirectSpecularHitTWithIndirectSpecularHitT && cb.enableSecondaryBounces && demodulatePrimaryInput)
+  if (demodulatePrimaryIndirectInput)
   {
-    primaryDirectSpecularInput.a = primaryIndirectSpecularInput.a;
+    primarySignals.indirectDiffuseInput = PrimaryIndirectDiffuseRadiance[pixelCoordinate];
+    primarySignals.indirectSpecularInput = PrimaryIndirectSpecularRadiance[pixelCoordinate];
   }
 
-  // If separate denoisers are disabled, combine the inputs into one channel. Note that this is only done here as this mode
-  // is meant more for debugging and not actual production use, otherwise the summing of the radiance channels should happen
-  // in the integrator to not waste memory bandwidth. Direct and indirect radiance will be combined after demodulation 
-  // because of direct light boiling filter.
-  if (!cb.enableSeparatedDenoisers && demodulatePrimaryInput)
+  // Overwrite the direct specular HitT with the indirect specular HitT. The denoiser uses HitT
+  // mostly for calculating motion vectors for reflections; the indirect specular HitT is always
+  // from rays traced in the specular lobe, while the direct HitT often reflects the distance
+  // to a NEE-selected light that may not be in the specular lobe.
+  if (cb.enableReplaceDirectSpecularHitTWithIndirectSpecularHitT && cb.enableSecondaryBounces && demodulatePrimaryIndirectInput)
   {
-    const float primaryDirectDiffuseLuminance = calcBt709Luminance(primaryDirectDiffuseInput.rgb);
-    const float primaryIndirectDiffuseLuminance = calcBt709Luminance(primaryIndirectDiffuseInput.rgb);
+    primarySignals.directSpecularInput.a = primarySignals.indirectSpecularInput.a;
+  }
 
-    // We mix the direct and indirect HitT's for the diffuse channel here, to get somewhat sharper shadows.
-    // But sometimes they can get too sharp, so clamp the direct (NEE) HitT contribution to a user-defined percentage.
+  // Luminance-weighted mix of direct and indirect HitT for the diffuse channel — sharper shadows
+  // without losing too much spatial detail. Only relevant when separated denoisers are off.
+  if (!cb.enableSeparatedDenoisers && demodulatePrimaryIndirectInput)
+  {
+    const float primaryDirectDiffuseLuminance = calcBt709Luminance(primarySignals.directDiffuseInput.rgb);
+    const float primaryIndirectDiffuseLuminance = calcBt709Luminance(primarySignals.indirectDiffuseInput.rgb);
+
     float directHitTContribution =
       primaryDirectDiffuseLuminance /
       max(primaryDirectDiffuseLuminance + primaryIndirectDiffuseLuminance, 0.001);
     directHitTContribution = clamp(directHitTContribution, 0.0, cb.primaryDirectNrd.maxDirectHitTContribution);
 
-    primaryDirectDiffuseInput.a = mix(primaryIndirectDiffuseInput.a, primaryDirectDiffuseInput.a, directHitTContribution);
+    primarySignals.directDiffuseInput.a = mix(primarySignals.indirectDiffuseInput.a, primarySignals.directDiffuseInput.a, directHitTContribution);
   }
 
-  // Demodulate and output information
-
-  // Pixels with zero Hit T will have denoiser try to fill in missing hit T data, 0 radiance will be used in filtering as-is
-  vec4 primaryDirectDiffuseOutput = vec4(vec3(0), kEmptyPixelHitDistance);
-  vec4 primaryDirectSpecularOutput = vec4(vec3(0), kEmptyPixelHitDistance);
-  vec4 primaryIndirectDiffuseOutput = vec4(vec3(0), kEmptyPixelHitDistance);
-  vec4 primaryIndirectSpecularOutput = vec4(vec3(0), kEmptyPixelHitDistance);
-  vec4 secondaryCombinedDiffuseOutput = vec4(vec3(0), kEmptyPixelHitDistance);
-  vec4 secondaryCombinedSpecularOutput = vec4(vec3(0), kEmptyPixelHitDistance);
-
-  if (demodulatePrimaryInput)
+  if (demodulatePrimaryDirectInput)
   {
-    // Demodulate primary direct inputs
     demodulate(
       cb.primaryDirectNrd, primaryDemodulationData,
-      primaryDirectDiffuseInput, primaryDirectSpecularInput,
-      primaryDirectDiffuseOutput, primaryDirectSpecularOutput, cb.enableDemodulateRoughness);
+      primarySignals.directDiffuseInput, primarySignals.directSpecularInput,
+      primarySignals.directDiffuseOutput, primarySignals.directSpecularOutput, cb.enableDemodulateRoughness);
 
     if (cb.enableDirectLightBoilingFilter)
     {
-      applyDirectLightBoilingFilter(localIndex, primaryLinearViewZ, primaryVirtualWorldNormal, 
-        primaryDirectDiffuseOutput.xyz, primaryDirectSpecularOutput.xyz);
+      applyDirectLightBoilingFilter(localIndex, primaryLinearViewZ, primaryVirtualWorldNormal,
+        primarySignals.directDiffuseOutput.xyz, primarySignals.directSpecularOutput.xyz);
     }
+  }
 
-    // Demodulate primary indirect inputs    
+  if (demodulatePrimaryIndirectInput)
+  {
     demodulate(
       cb.primaryIndirectNrd, primaryDemodulationData,
-      primaryIndirectDiffuseInput, primaryIndirectSpecularInput,
-      primaryIndirectDiffuseOutput, primaryIndirectSpecularOutput, cb.enableDemodulateRoughness);
-
-    // If separate denoisers are disabled, combine direct and indirect radiance signals.
-    if (!cb.enableSeparatedDenoisers)
-    {
-      primaryDirectDiffuseOutput.xyz += primaryIndirectDiffuseOutput.xyz;
-      primaryDirectSpecularOutput.xyz += primaryIndirectSpecularOutput.xyz;
-      primaryIndirectDiffuseOutput = primaryIndirectSpecularOutput = 0;
-    }
+      primarySignals.indirectDiffuseInput, primarySignals.indirectSpecularInput,
+      primarySignals.indirectDiffuseOutput, primarySignals.indirectSpecularOutput, cb.enableDemodulateRoughness);
   }
 
-  // Note: No need to demodulate any data outside the bounds of the secondary surface mask as they will not be read
-  // or remodulated during compositing, so don't bother with it to save a bit of performance/memory bandwidth in the
-  // common case (since secondary surfaces aren't super common).
+  // If separate denoisers are disabled, combine direct and indirect radiance signals here.
+  if (demodulatePrimaryDirectInput && !cb.enableSeparatedDenoisers)
+  {
+    primarySignals.directDiffuseOutput.xyz += primarySignals.indirectDiffuseOutput.xyz;
+    primarySignals.directSpecularOutput.xyz += primarySignals.indirectSpecularOutput.xyz;
+    primarySignals.indirectDiffuseOutput = primarySignals.indirectSpecularOutput = 0;
+  }
+
+  PrimaryDirectDiffuseRadiance[pixelCoordinate] = primarySignals.directDiffuseOutput;
+  PrimaryDirectSpecularRadiance[pixelCoordinate] = primarySignals.directSpecularOutput;
+  if (cb.enableSeparatedDenoisers)
+  {
+    PrimaryIndirectDiffuseRadiance[pixelCoordinate] = primarySignals.indirectDiffuseOutput;
+    PrimaryIndirectSpecularRadiance[pixelCoordinate] = primarySignals.indirectSpecularOutput;
+  }
+
+  return primarySignals;
+}
+
+// Demodulates the secondary (PSR) surface signal and writes it to the secondary denoiser input
+// buffers. Should only be called on PSR pixels (geometryFlags.performedAnyPSR()).
+// Loads secondary GBuffer data, computes and stores the secondary specular albedo (returned for
+// the dense debug view), and runs the lobe-combined demodulation.
+SecondaryDemodulationSignals demodulateSecondaryPath(
+  uvec2 pixelCoordinate,
+  GeometryFlags geometryFlags,
+  CameraDirections primaryRayDirections)
+{
+  SecondaryDemodulationSignals secondarySignals = makeEmptySecondaryDemodulationSignals();
+
+  // Only PSR pixels carry valid secondary GBuffer data and produce secondary radiance.
+  if (!geometryFlags.performedAnyPSR())
+  {
+    return secondarySignals;
+  }
+
+  const vec3 secondaryBaseReflectivity = aliasedData1.SecondaryBaseReflectivity[pixelCoordinate].xyz;
+  // Note: Decode from unorm encoded representation.
+  const vec3 secondaryVirtualWorldNormal = SecondaryVirtualWorldNormalPerceptualRoughness[pixelCoordinate].xyz * 2.0f - 1.0f;
+  const float secondaryPerceptualRoughness = SecondaryVirtualWorldNormalPerceptualRoughness[pixelCoordinate].w;
+  // Note: Virtual world normal used so direction does not need to be read from the GBuffer; the camera direction
+  // can be re-derived since virtual normals are oriented with respect to the camera.
+  const float secondaryNormalDotViewDirection = dot(secondaryVirtualWorldNormal, -primaryRayDirections.worldDirection);
+  const vec3 secondarySpecularAlbedo = evalSpecularAlbedoGGXSchlick(
+    secondaryBaseReflectivity, calcRoughness(secondaryPerceptualRoughness), secondaryNormalDotViewDirection);
+  // Note: Overwrites the base reflectivity in this buffer; composite remodulates with this value.
+  aliasedData1.SecondarySpecularAlbedo[pixelCoordinate].xyz = secondarySpecularAlbedo;
+
+  const vec3 secondaryDiffuseAlbedo = SecondaryAlbedo[pixelCoordinate].xyz;
+
   if (geometryFlags.secondarySurfaceMask && !geometryFlags.primarySelectedIntegrationSurface)
   {
-    // Demodulate secondary combined inputs
+    DemodulationData secondaryDemodulationData;
+    secondaryDemodulationData.diffuseAlbedo = secondaryDiffuseAlbedo;
+    secondaryDemodulationData.specularAlbedo = secondarySpecularAlbedo;
+    secondaryDemodulationData.perceptualRoughness = secondaryPerceptualRoughness;
+    secondaryDemodulationData.linearViewZ = SecondaryLinearViewZ[pixelCoordinate].x;
+
+    secondarySignals.indirectRadianceHitDistanceInput = IndirectRadianceHitDistance[pixelCoordinate];
+    secondarySignals.combinedDiffuseInput = SecondaryCombinedDiffuseRadiance[pixelCoordinate];
+    secondarySignals.combinedSpecularInput = SecondaryCombinedSpecularRadiance[pixelCoordinate];
+
+    // For secondary surfaces combine direct and indirect radiance for the current lobe.
+    if (geometryFlags.firstSampledLobeIsSpecular)
+    {
+      secondarySignals.combinedSpecularInput = sanitizeRadianceHitDistance(
+        secondarySignals.combinedSpecularInput.xyz + secondarySignals.indirectRadianceHitDistanceInput.xyz, secondarySignals.indirectRadianceHitDistanceInput.w);
+    }
+    else
+    {
+      secondarySignals.combinedDiffuseInput = sanitizeRadianceHitDistance(
+        secondarySignals.combinedDiffuseInput.xyz + secondarySignals.indirectRadianceHitDistanceInput.xyz, secondarySignals.indirectRadianceHitDistanceInput.w);
+    }
+
+    // The secondary signal doesn't have advanced techniques like ReSTIR; a tighter clamp removes fireflies.
+    secondarySignals.combinedSpecularInput.xyz = fireflyFiltering(secondarySignals.combinedSpecularInput.xyz, cb.secondarySpecularFireflyFilteringThreshold);
+
     demodulate(
       cb.secondaryCombinedNrd, secondaryDemodulationData,
-      secondaryCombinedDiffuseInput, secondaryCombinedSpecularInput,
-      secondaryCombinedDiffuseOutput, secondaryCombinedSpecularOutput, false);
+      secondarySignals.combinedDiffuseInput, secondarySignals.combinedSpecularInput,
+      secondarySignals.combinedDiffuseOutput, secondarySignals.combinedSpecularOutput, false);
   }
 
-  // Output to resources fed to the denoiser
-  
-  PrimaryDirectDiffuseRadiance[pixelCoordinate] = primaryDirectDiffuseOutput;
-  PrimaryDirectSpecularRadiance[pixelCoordinate] = primaryDirectSpecularOutput;
-  
-  if (cb.enableSeparatedDenoisers) 
+  SecondaryCombinedDiffuseRadiance[pixelCoordinate] = secondarySignals.combinedDiffuseOutput;
+  SecondaryCombinedSpecularRadiance[pixelCoordinate] = secondarySignals.combinedSpecularOutput;
+
+  return secondarySignals;
+}
+
+void outputToDebugViewAtTheStart(
+  uint2 pixelCoordinate,
+  GeometryFlags geometryFlags)
+{
+  // The base reflectivity aliases hold the post-integrate adjusted value at this point; they get
+  // overwritten by Primary/Secondary SpecularAlbedo later in this pass, so the views must be
+  // emitted here, before demodulatePrimary/SecondaryPath run.
+  const bool primaryHit = PrimaryLinearViewZ[pixelCoordinate].x != cb.primaryDirectMissLinearViewZ;
+
+  switch (cb.debugView)
   {
-    PrimaryIndirectDiffuseRadiance[pixelCoordinate] = primaryIndirectDiffuseOutput;
-    PrimaryIndirectSpecularRadiance[pixelCoordinate] = primaryIndirectSpecularOutput;
+  default:
+    break;
+  case DEBUG_VIEW_PRIMARY_BASE_REFLECTIVITY_ADJUSTED:
+    if (primaryHit)
+    {
+      storeInDebugView(pixelCoordinate, aliasedData0.PrimaryBaseReflectivity[pixelCoordinate].xyz);
+    }
+    break;
+  case DEBUG_VIEW_SECONDARY_BASE_REFLECTIVITY_ADJUSTED:
+    if (geometryFlags.hasSecondarySurface())
+    {
+      storeInDebugView(pixelCoordinate, aliasedData1.SecondaryBaseReflectivity[pixelCoordinate].xyz);
+    }
+    break;
+  case DEBUG_VIEW_NAN:
+  {
+    bool isValid = true;
+    if (primaryHit)
+    {
+      isValid &= isValidValue(aliasedData0.PrimaryBaseReflectivity[pixelCoordinate].xyz);
+    }
+    if (geometryFlags.performedAnyPSR())
+    {
+      isValid &= isValidValue(aliasedData1.SecondaryBaseReflectivity[pixelCoordinate].xyz);
+    }
+    accumulateInDebugViewAnd(pixelCoordinate, isValid);
+    break;
+  }
+  }
+}
+
+[shader("compute")]
+[numthreads(DEMODULATE_THREAD_GROUP_WIDTH, DEMODULATE_THREAD_GROUP_HEIGHT, 1)]
+void main(uint2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThreadID)
+{
+  if (any(threadIndex >= cb.camera.resolution))
+  {
+    return;
   }
 
-  SecondaryCombinedDiffuseRadiance[pixelCoordinate] = secondaryCombinedDiffuseOutput;
-  SecondaryCombinedSpecularRadiance[pixelCoordinate] = secondaryCombinedSpecularOutput;
+  uvec2 pixelCoordinate = threadIndex;
 
-  outputToDebugViewAtTheEnd(
-    pixelCoordinate,
-    indirectRadianceHitDistanceInput,
-    primarySpecularAlbedo, secondarySpecularAlbedo,
-    primaryDirectDiffuseInput, primaryDirectSpecularInput,
-    primaryIndirectDiffuseInput, primaryIndirectSpecularInput,
-    secondaryCombinedDiffuseInput, secondaryCombinedSpecularInput, 
-    primaryDirectDiffuseOutput, primaryDirectSpecularOutput,
-    primaryIndirectDiffuseOutput, primaryIndirectSpecularOutput,
-    secondaryCombinedDiffuseOutput, secondaryCombinedSpecularOutput);
+  const CameraDirections primaryRayDirections = cameraPixelCoordinateToDirection(cb.camera, pixelCoordinate);
+  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixelCoordinate, SharedFlags);
+
+  // Emit debug views that read from resources soon to be overwritten by this pass.
+  outputToDebugViewAtTheStart(pixelCoordinate, geometryFlags);
+
+  // Primary surface
+  PrimaryDemodulationSignals primarySignals = demodulatePrimaryPath(
+    pixelCoordinate, localIndex, geometryFlags, primaryRayDirections);
+
+  // Secondary surface
+  SecondaryDemodulationSignals secondarySignals = demodulateSecondaryPath(
+    pixelCoordinate, geometryFlags, primaryRayDirections);
+
+  // Output to debug view
+  outputToDebugViewAtTheEnd(pixelCoordinate, primarySignals, secondarySignals);
 }

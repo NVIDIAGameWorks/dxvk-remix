@@ -188,6 +188,18 @@ struct GeometryResolverState : IBasePayloadState
     return false;
   }
 #endif // defined(RAY_PIPELINE)
+
+  // True if any PSR (reflection or transmission) is being performed for this pixel.
+  bool performedAnyPSR()
+  {
+    return performPSTR || performPSRR;
+  }
+
+  // True only when BOTH PSRR and PSTR fire — one becomes the primary surface, the other becomes a distinct secondary surface.
+  bool hasSecondarySurface()
+  {
+    return performPSTR && performPSRR;
+  }
 }
 
 struct GeometryPSRResolverState : IBasePayloadState
@@ -363,7 +375,7 @@ struct GeometryPSRResolverState : IBasePayloadState
   }
 
 #ifdef RAY_PIPELINE
-  bool shouldReorder(out uint coherenceHints, out uint numCoherenceHints) 
+  bool shouldReorder(out uint coherenceHints, out uint numCoherenceHints)
   {
     coherenceHints = 0;
     numCoherenceHints = 0;

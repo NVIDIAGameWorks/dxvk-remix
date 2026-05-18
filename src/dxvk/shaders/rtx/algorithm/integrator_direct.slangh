@@ -517,7 +517,7 @@ void integratorDirectPathOutputDebugView(
     }
     break;
   }
-  case DEBUG_VIEW_PERCEPTUAL_ROUGHNESS:
+  case DEBUG_VIEW_INDIRECT_FIRST_HIT_PERCEPTUAL_ROUGHNESS:
     storeInDebugView(pixelCoordinate, aliasedData1.IndirectFirstHitPerceptualRoughness[pixelCoordinate]);
     break;
   case DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_RAY_THROUGHPUT:
@@ -543,7 +543,7 @@ void integratorDirectPathOutputDebugView(
       isValid &= isValidValue(SecondaryCombinedSpecularLobeRadianceHitDistance[pixelCoordinate]);
     }
 
-    // DEBUG_VIEW_PERCEPTUAL_ROUGHNESS
+    // DEBUG_VIEW_INDIRECT_FIRST_HIT_PERCEPTUAL_ROUGHNESS
     isValid &= isValidValue(aliasedData1.IndirectFirstHitPerceptualRoughness[pixelCoordinate]);
 
     // DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_RAY_THROUGHPUT
