@@ -375,10 +375,16 @@ namespace dxvk {
     // instance should always be valid at this point, but let's check on previous instance being actually valid before unlinking it
     else if (instance) {
       auto instanceOmmRequestsIter = instanceOmmRequests.find(getOpacityMicromapHash(*instance));
-      omm_validation_assert(instanceOmmRequestsIter->second.numActiveRequests > 0);
-      instanceOmmRequestsIter->second.numActiveRequests -= 1;
-      if (deleteParentInstanceIfEmpty && instanceOmmRequestsIter->second.numActiveRequests == 0) {
-        instanceOmmRequests.erase(instanceOmmRequestsIter);
+      if (instanceOmmRequestsIter != instanceOmmRequests.end()) {
+        omm_validation_assert(instanceOmmRequestsIter->second.numActiveRequests > 0);
+        if (instanceOmmRequestsIter->second.numActiveRequests > 0) {
+          instanceOmmRequestsIter->second.numActiveRequests -= 1;
+        }
+        if (deleteParentInstanceIfEmpty && instanceOmmRequestsIter->second.numActiveRequests == 0) {
+          instanceOmmRequests.erase(instanceOmmRequestsIter);
+        }
+      } else {
+        omm_validation_assert(0 && "OMM source data parent request container was already removed");
       }
 
       ommManager.onInstanceUnlinked(*instance);
@@ -1344,6 +1350,13 @@ namespace dxvk {
         if (inst) {
           m_ommCandidates.erase(inst);
         }
+        continue;
+      }
+
+      // Renderer-created copies inherit their reference instance's OMM binding state,
+      // but they do not receive the normal OMM ownership lifecycle.
+      if (inst->isCreatedByRenderer()) {
+        m_ommCandidates.erase(inst);
         continue;
       }
 

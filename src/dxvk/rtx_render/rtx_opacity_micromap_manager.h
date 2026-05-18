@@ -347,6 +347,12 @@ namespace dxvk {
     bool isOmmBuildRequested(uint32_t currentGeneration) const {
       return ommBuildRequested && ommRegistrationGeneration == currentGeneration;
     }
+    void resetCopiedRequestState() {
+      ommRegistrationGeneration = 0;
+      ommRetryAfterFrame = 0;
+      needsToCalculateNumTexelsPerMicroTriangle = false;
+      ommBuildRequested = false;
+    }
   private:
     XXH64_hash_t ommSrcHash = kEmptyHash;
     uint32_t ommRegistrationGeneration = 0;
