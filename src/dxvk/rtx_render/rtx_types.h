@@ -34,6 +34,7 @@
 #include <inttypes.h>
 #include <memory>
 #include <vector>
+#include <unordered_set>
 #include <future>
 
 using remixapi_MaterialHandle = struct remixapi_MaterialHandle_T*;
@@ -884,12 +885,12 @@ struct BlasEntry {
   }
 
   void linkInstance(RtInstance* instance) {
-    m_linkedInstances.push_back(instance);
+    m_linkedInstances.insert(instance);
   }
 
   void unlinkInstance(RtInstance* instance);
 
-  const std::vector<RtInstance*>& getLinkedInstances() const { return m_linkedInstances; }
+  const std::unordered_set<RtInstance*>& getLinkedInstances() const { return m_linkedInstances; }
 
   void printDebugInfo(const char* name = "") const {
 #ifdef REMIX_DEVELOPMENT
@@ -923,7 +924,13 @@ struct BlasEntry {
   }
 
 private:
-  std::vector<RtInstance*> m_linkedInstances;
+  // Hash set instead of vector: unlink path used to be O(N) (std::find then
+  // swap-and-pop), which became a hot spot when many same-geometry transient
+  // instances share one BlasEntry — end-of-frame GC of N instances ran in
+  // O(N²). Switching to a hash set makes unlink O(1) average. Insertion
+  // ordering doesn't matter for any current consumer (size / empty are the
+  // only read operations on this container).
+  std::unordered_set<RtInstance*> m_linkedInstances;
   std::unordered_map<XXH64_hash_t, LegacyMaterialData> m_materials;
 };
 
