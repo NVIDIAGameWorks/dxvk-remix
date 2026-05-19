@@ -289,6 +289,8 @@ void integratePathVertex(
   bool pomOpaqueSurfaceEncountered = false;
   bool isStochasticAlphaBlend = false; // note: not used here
   uint8_t firstRayPortal = invalidRayPortalIndex;
+  // Indirect rays have no transparency layer; merge any ring emissive back into emissiveRadiance below.
+  vec3 transparencyLayerEmissive = vec3(0.0f);
 
   resolveVertex<PathState>(
     resolveMode,
@@ -297,11 +299,14 @@ void integratePathVertex(
     surface, surfaceInteraction,
     polymorphicSurfaceMaterialInteraction,
     radianceAttenuation, emissiveRadiance,
+    transparencyLayerEmissive,
     decalMemory, decalEmissiveRadiance, 
     pathState.coneSpreadAngle,
     isStochasticAlphaBlend, firstRayPortal,
     pomOpaqueSurfaceEncountered,
     isRaytracedRenderTarget);
+
+  emissiveRadiance += transparencyLayerEmissive;
 
   // We can encounter a POM surface during resolving (as it's a shared function).  But if POM is disabled in indirect cases
   //  we must also handle that case and ensure nothing tries to use POM elsewhere.

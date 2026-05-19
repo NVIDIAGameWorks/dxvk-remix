@@ -314,6 +314,11 @@ void resolveVertex<T: IBasePayloadState>(
   inout Surface surface, inout SurfaceInteraction surfaceInteraction,
   inout PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   inout vec3 radianceAttenuation, inout vec3 emissiveRadiance,
+  // Emissive radiance produced by surfaces that should be composited as a separate
+  // transparency layer overlay (e.g. RayPortal ring), pre-multiplied by the local
+  // radianceAttenuation at the point of emission. The caller decides where this goes
+  // (transparency buffer for primary/PSR, or merged back into emissiveRadiance for indirect).
+  inout vec3 transparencyLayerEmissive,
   uint4 decalMemory,
   vec3 decalEmissiveRadiance,
   float coneSpreadAngle,
@@ -593,7 +598,12 @@ void resolveVertex<T: IBasePayloadState>(
       // Portal RTX, but this should be removed some day.
       const float hackPortalEmissiveIntensity = 0.5f;
 
-      emissiveRadiance +=
+      // Route the ring contribution to the transparency layer so it is composited as a stable additive overlay by DLSS-RR, 
+      // rather than being mixed into the per-frame composited primary radiance (which causes silhouette shimmer
+      // when sparse direct/indirect sampling is enabled). Mathematically equivalent to
+      // an alpha-blended overlay: through-portal scaled by ringTransparency stays in the
+      // primary path; ring contribution scaled by (1 - ringTransparency) goes here.
+      transparencyLayerEmissive +=
         (rayPortalSurfaceMaterialInteraction.mask.rgb * (1.0f - ringTransparency) * hackPortalEmissiveIntensity) * radianceAttenuation;
       radianceAttenuation *= ringTransparency;
     }
