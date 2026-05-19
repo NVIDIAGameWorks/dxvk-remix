@@ -561,8 +561,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   // Note: Relying on the same sentinel value outputted to the linear view Z which NRD relies on, so this is safe (and lets us not have to read
   // in the cone radius texture which typically contains the flag we use to determine this).
   const bool primaryMiss = primaryLinearViewZ == cb.primaryDirectMissLinearViewZ
-                           && !geometryFlags.performPSTR
-                           && !geometryFlags.performPSRR;  // must not be PSR
+                           && !geometryFlags.performedAnyPSR();  // must not be PSR
 
   vec4 particleLayerOutput;
   vec4 finalOutput = compositeResult(pixelCoordinate, geometryFlags, primaryLinearViewZ, primaryMiss, particleLayerOutput);

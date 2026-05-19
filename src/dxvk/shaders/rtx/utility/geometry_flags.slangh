@@ -94,16 +94,31 @@ struct GeometryFlags
 #endif   
   property uint8_t objectMask
   {
-    get 
-    { 
+    get
+    {
       uint dynamicObjectMaskBits = (_encodedFlags >> 11) & ((1 << OBJECT_MASK_ALL_DYNAMIC_NUMBER_OF_ACTIVE_BITS) - 1);
       return uint8_t(dynamicObjectMaskBits << OBJECT_MASK_ALL_DYNAMIC_FIRST_ACTIVE_BIT_OFFSET);
     }
-    set 
-    { 
+    set
+    {
       uint dynamicObjectMaskBits = (newValue & OBJECT_MASK_ALL_DYNAMIC) >> OBJECT_MASK_ALL_DYNAMIC_FIRST_ACTIVE_BIT_OFFSET;
       _encodedFlags = (_encodedFlags & ~(((1 << OBJECT_MASK_ALL_DYNAMIC_NUMBER_OF_ACTIVE_BITS) - 1) << 11)) | (dynamicObjectMaskBits << 11);
     }
+  }
+
+  // True if any PSR (reflection or transmission) was performed for this pixel.
+  // Does NOT imply a distinct secondary surface exists — single-PSR pixels become the primary surface.
+  bool performedAnyPSR()
+  {
+    return performPSTR || performPSRR;
+  }
+
+  // True only when BOTH PSRR and PSTR fired for this pixel (e.g. glass that both reflects and transmits),
+  // in which case one becomes the primary surface and the other is stored as a distinct secondary surface
+  // with its own GBuffer/attenuation data. See geometry_resolver.slangh where secondarySurfaceMask is set.
+  bool hasSecondarySurface()
+  {
+    return performPSTR && performPSRR;
   }
 };
 

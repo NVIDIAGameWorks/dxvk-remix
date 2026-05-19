@@ -21,6 +21,8 @@
 */
 #pragma once
 
+#include <cstddef>
+#include <deque>
 #include <mutex>
 #include <vector>
 #include <unordered_set>
@@ -49,9 +51,14 @@ public:
   RtInstance() = delete;
   RtInstance(const uint64_t id, uint32_t instanceVectorId);
   RtInstance(const RtInstance& src, uint64_t id, uint32_t instanceVectorId);
+#ifndef NDEBUG
+  static void operator delete(void* ptr) noexcept;
+  static void operator delete(void* ptr, std::size_t size) noexcept;
+#endif
 
   uint64_t getId() const { return m_id; }
   uint32_t getVectorIdx() const { return m_instanceVectorId; }
+  uint64_t getCacheIdentity() const { return m_cacheIdentity; }
   const VkAccelerationStructureInstanceKHR& getVkInstance() const { return m_vkInstance; }
   VkAccelerationStructureInstanceKHR& getVkInstance() { return m_vkInstance; }
   bool isObjectToWorldMirrored() const { return m_isObjectToWorldMirrored; }
@@ -179,6 +186,7 @@ private:
   // most notably the GameCapturer
   const uint64_t m_id;
   mutable uint32_t m_instanceVectorId; // Index within instance vector in instance manager
+  const uint64_t m_cacheIdentity; // Unique per allocation; used to detect raw-pointer ABA in acceleration-structure caches
 
   mutable uint32_t m_frameLastUpdated = kInvalidFrameIndex;
   mutable uint32_t m_frameCreated = kInvalidFrameIndex;
@@ -388,6 +396,13 @@ private:
   // dying instance.  Called from garbageCollection() before the instance
   // is deleted to prevent dangling pointers.
   void erasePersistentMapEntries(RtInstance* dying);
+
+#ifndef NDEBUG
+  std::deque<void*> m_destroyedInstanceQuarantine;
+
+  void releaseDestroyedInstanceQuarantine();
+#endif
+  void destroyInstanceAllocation(RtInstance* instance);
 
   std::vector<InstanceEventHandler> m_eventHandlers;
 

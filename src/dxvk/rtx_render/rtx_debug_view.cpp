@@ -114,9 +114,9 @@ namespace dxvk {
                                                     "Parameterize via:\n"
                                                     "Debug Knob [0]: num texels per checker box [Default: 64]\n"
                                                     "Debug Knob [1]: checkers overlay strength [Default: 0.5]"},
-        {DEBUG_VIEW_BASE_REFLECTIVITY, "Base Reflectivity"},
         {DEBUG_VIEW_ROUGHNESS, "Isotropic Roughness"},
-        {DEBUG_VIEW_PERCEPTUAL_ROUGHNESS, "Perceptual Roughness"},
+        {DEBUG_VIEW_INDIRECT_FIRST_HIT_PERCEPTUAL_ROUGHNESS, "Indirect First Hit Perceptual Roughness"},
+        {DEBUG_VIEW_PRIMARY_PERCEPTUAL_ROUGHNESS, "Primary Perceptual Roughness"},
         {DEBUG_VIEW_ANISOTROPY, "Anisotropy"},
         {DEBUG_VIEW_ANISOTROPIC_ROUGHNESS, "Anisotropic Roughness"},
         {DEBUG_VIEW_OPACITY, "Opacity"},
@@ -234,6 +234,12 @@ namespace dxvk {
 
         {DEBUG_VIEW_PRIMARY_SPECULAR_ALBEDO,               "Primary Specular Albedo"},
         {DEBUG_VIEW_SECONDARY_SPECULAR_ALBEDO,               "Secondary Specular Albedo"},
+        {DEBUG_VIEW_SECONDARY_ALBEDO,                      "Secondary Diffuse Albedo"},
+        {DEBUG_VIEW_PRIMARY_BASE_REFLECTIVITY_RAW,         "Primary Base Reflectivity (Raw)"},
+        {DEBUG_VIEW_PRIMARY_BASE_REFLECTIVITY_ADJUSTED,    "Primary Base Reflectivity (Adjusted)"},
+        {DEBUG_VIEW_SECONDARY_BASE_REFLECTIVITY_RAW,       "Secondary Base Reflectivity (Raw)"},
+        {DEBUG_VIEW_SECONDARY_BASE_REFLECTIVITY_ADJUSTED,  "Secondary Base Reflectivity (Adjusted)"},
+        {DEBUG_VIEW_SECONDARY_PERCEPTUAL_ROUGHNESS, "Secondary Perceptual Roughness" },
 
         {DEBUG_VIEW_NOISY_PRIMARY_DIRECT_DIFFUSE_RADIANCE,               "Primary Direct Diffuse: Noisy Color"},
         {DEBUG_VIEW_NOISY_PRIMARY_DIRECT_DIFFUSE_HIT_T,                  "Primary Direct Diffuse: Noisy HitT"},
@@ -436,7 +442,7 @@ namespace dxvk {
   #define LIST_EXPLICIT_COMPOSITE_DEBUG_VIEWS(X) \
     X(CompositeDebugView::FinalRenderWithMaterialProperties, "Final Render + Material Properties", 3, \
       DEBUG_VIEW_POST_TONEMAP_OUTPUT, DEBUG_VIEW_ALBEDO, DEBUG_VIEW_SHADING_NORMAL, \
-      DEBUG_VIEW_PERCEPTUAL_ROUGHNESS, DEBUG_VIEW_EMISSIVE_RADIANCE, DEBUG_VIEW_HEIGHT_MAP) \
+      DEBUG_VIEW_PRIMARY_PERCEPTUAL_ROUGHNESS, DEBUG_VIEW_EMISSIVE_RADIANCE, DEBUG_VIEW_HEIGHT_MAP) \
     X(CompositeDebugView::OpaqueMaterialTextureResolutionCheckers, "Opaque Material Texture Resolution Checkers", 2, \
       DEBUG_VIEW_OPAQUE_RAW_ALBEDO_RESOLUTION_CHECKERS, DEBUG_VIEW_OPAQUE_NORMAL_RESOLUTION_CHECKERS, \
       DEBUG_VIEW_OPAQUE_ROUGHNESS_RESOLUTION_CHECKERS)

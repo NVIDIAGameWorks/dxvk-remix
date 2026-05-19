@@ -129,6 +129,8 @@ namespace dxvk {
                "Enabling volumetric lighting provides higher quality ray traced physical volumetrics, disabling falls back to cheaper depth based fog.\n"
                "Note that disabling this option does not disable the froxel radiance cache as a whole as it is still needed for other non-volumetric lighting approximations.",
                args.flags = RtxOptionFlags::UserSetting);
+    RTX_OPTION("rtx.volumetrics", bool, enableTranslucentShadows, false,
+               "Calculate coloured shadows from translucent materials (i.e. glass, water) in volumetric lighting. In engineering terms: include OBJECT_MASK_TRANSLUCENT into volumetric visibility rays.");
     RTX_OPTION_ARGS("rtx.volumetrics", Vector3, transmittanceColor, Vector3(0.999f, 0.999f, 0.999f),
                "The color to use for calculating transmittance measured at a specific distance.\n"
                "Note that this color is assumed to be in sRGB space and gamma encoded as it will be converted to linear for use in volumetrics.",

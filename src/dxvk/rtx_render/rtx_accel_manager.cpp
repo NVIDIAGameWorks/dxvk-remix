@@ -65,12 +65,28 @@ namespace dxvk {
     m_cachedBuckets.clear();
     m_instanceBucketIndex.clear();
     m_cachedDynamicBlasEntries.clear();
+    resetUniqueDynamicBlasGroups();
     m_lastProcessedGeneration = UINT64_MAX;
     m_ommBindPending = false;
   }
 
+  void AccelManager::resetUniqueDynamicBlasGroups() {
+    for (uint32_t i = 0; i < m_uniqueDynamicBlasCount; ++i) {
+      m_uniqueDynamicBlas[i].blasEntry = nullptr;
+      m_uniqueDynamicBlas[i].instances.clear();
+    }
+    m_uniqueDynamicBlasCount = 0;
+    m_uniqueDynamicBlasIndex.clear();
+  }
+
   void AccelManager::removeInstanceFromBucketCache(RtInstance* instance) {
-    m_instanceBucketIndex.erase(instance);
+    if (m_instanceBucketIndex.erase(instance) == 0) {
+      return;
+    }
+
+    m_cachedBuckets.clear();
+    m_instanceBucketIndex.clear();
+    m_lastProcessedGeneration = UINT64_MAX;
   }
 
   void AccelManager::garbageCollection() {
@@ -501,13 +517,27 @@ namespace dxvk {
         for (uint32_t bi = 0; bi < m_cachedBuckets.size(); ++bi) {
           const auto& cachedBucket = m_cachedBuckets[bi];
 
-          for (RtInstance* inst : cachedBucket.instances) {
+          if (cachedBucket.instances.size() != cachedBucket.instanceCacheIdentities.size()) {
+            bucketDirty[bi] = true;
+            anyBucketDirty = true;
+            continue;
+          }
+
+          for (size_t ii = 0; ii < cachedBucket.instances.size(); ++ii) {
+            RtInstance* inst = cachedBucket.instances[ii];
+
             // Validity check MUST come first: if the cached instance is no longer
             // in the live set (per-instance GC, or any path that bypasses the
             // bucket-vector cleanup), the pointer is dangling and must not be
             // dereferenced. Mark the bucket dirty so it gets rebuilt without
             // touching the stale entry.
             if (currentInstanceSet.find(inst) == currentInstanceSet.end()) {
+              bucketDirty[bi] = true;
+              anyBucketDirty = true;
+              break;
+            }
+
+            if (inst->getCacheIdentity() != cachedBucket.instanceCacheIdentities[ii]) {
               bucketDirty[bi] = true;
               anyBucketDirty = true;
               break;
@@ -598,8 +628,15 @@ namespace dxvk {
 
     size_t totalScratchMemory = 0;
 
-    // NOTE: Would like to use the BLAS Linked instances here, but that misses viewmodel and virtual instances
-    std::unordered_map<BlasEntry*, std::vector<RtInstance*>> uniqueBlas;
+    // NOTE: Would like to use the BLAS Linked instances here, but that misses viewmodel and virtual instances.
+    // Keep emission order deterministic by storing dynamic BLAS groups in first-seen instance order.
+    resetUniqueDynamicBlasGroups();
+    if (m_uniqueDynamicBlas.capacity() < instances.size()) {
+      m_uniqueDynamicBlas.reserve(instances.size());
+    }
+    if (m_uniqueDynamicBlasIndex.bucket_count() < instances.size()) {
+      m_uniqueDynamicBlasIndex.reserve(instances.size());
+    }
 
     // Hash map for O(1) bucket lookup instead of O(buckets) linear search per instance
     std::unordered_map<BlasBucketKey, BlasBucket*, BlasBucketKeyHash> bucketMap;
@@ -691,11 +728,23 @@ namespace dxvk {
 
       if (requestDynamicBlas && !forceMergedBlas) {
         // Since this loop is iterating over instances, and instances can share BLAS, we will build these later after identifying unique ones.
-        uniqueBlas[blasEntry].push_back(instance);
+        auto uniqueBlasIter = m_uniqueDynamicBlasIndex.find(blasEntry);
+        if (uniqueBlasIter == m_uniqueDynamicBlasIndex.end()) {
+          const uint32_t uniqueBlasIdx = m_uniqueDynamicBlasCount++;
+          uniqueBlasIter = m_uniqueDynamicBlasIndex.emplace(blasEntry, uniqueBlasIdx).first;
+
+          if (uniqueBlasIdx == m_uniqueDynamicBlas.size()) {
+            m_uniqueDynamicBlas.push_back({});
+          }
+
+          m_uniqueDynamicBlas[uniqueBlasIdx].blasEntry = blasEntry;
+        }
+
+        m_uniqueDynamicBlas[uniqueBlasIter->second].instances.push_back(instance);
       } else {
         // Make sure we don't double up on blas entries, this should only happen if theres a bug
         // TODO (REMIX-3996) will break the assumptions we make here about all instances in a BlasEntry having the same instancesToObject array
-        assert(uniqueBlas.find(blasEntry) == uniqueBlas.end());
+        assert(m_uniqueDynamicBlasIndex.find(blasEntry) == m_uniqueDynamicBlasIndex.end());
 
         if (blasEntry->dynamicBlas != nullptr) {
           // Move the BLAS used by this geometry to the common pool.
@@ -744,9 +793,10 @@ namespace dxvk {
     }
 
     // Build/Update the dynamic BLAS
-    for (const std::pair<BlasEntry*, std::vector<RtInstance*>> pair : uniqueBlas) {
-      BlasEntry* blasEntry = pair.first;
-      if (pair.second.size() == 0) {
+    for (uint32_t uniqueBlasIdx = 0; uniqueBlasIdx < m_uniqueDynamicBlasCount; ++uniqueBlasIdx) {
+      const UniqueBlasInstances& uniqueBlasEntry = m_uniqueDynamicBlas[uniqueBlasIdx];
+      BlasEntry* blasEntry = uniqueBlasEntry.blasEntry;
+      if (uniqueBlasEntry.instances.size() == 0) {
         continue;
       }
       assert(blasEntry->buildGeometries.size() == 1); // dynamic BLAS should always have this
@@ -758,10 +808,10 @@ namespace dxvk {
         // Check validity of a built BLAS, only if:
         // We can only support OMM on dynamic BLAS whos surface is unique to that BLAS.  This is so we can benefit from instancing BLAS memory.  
         // In cases where there are multiple linked instances each with different surfaces OMM would break.
-        bool ommsCompatible = pair.second.size() == 1;
-        const XXH64_hash_t firstOmmHash = OpacityMicromapManager::getOpacityMicromapHash(*pair.second[0]);
-        for (uint32_t i = 1; i < pair.second.size(); i++) {
-          const XXH64_hash_t thisOmmHash = OpacityMicromapManager::getOpacityMicromapHash(*pair.second[i]);
+        bool ommsCompatible = uniqueBlasEntry.instances.size() == 1;
+        const XXH64_hash_t firstOmmHash = OpacityMicromapManager::getOpacityMicromapHash(*uniqueBlasEntry.instances[0]);
+        for (uint32_t i = 1; i < uniqueBlasEntry.instances.size(); i++) {
+          const XXH64_hash_t thisOmmHash = OpacityMicromapManager::getOpacityMicromapHash(*uniqueBlasEntry.instances[i]);
           if (thisOmmHash != firstOmmHash) {
             ommsCompatible = false;
             break;
@@ -769,7 +819,7 @@ namespace dxvk {
         }
 
         if (ommsCompatible) {
-          RtInstance* exemplarInstance = pair.second[0];
+          RtInstance* exemplarInstance = uniqueBlasEntry.instances[0];
 
           // Bind opacity micromap
           // Opacity micromaps must be bound before acceleration sizes are calculated
@@ -858,7 +908,7 @@ namespace dxvk {
         copyAccelerationStructureBuildGeometryInfo(buildInfo, selectedBlas->buildInfo);
       }
 
-      for (RtInstance* rtInstance : pair.second) {
+      for (RtInstance* rtInstance : uniqueBlasEntry.instances) {
         // Append an instance of this merged BLAS to the merged instance list
         if (rtInstance->surface.instancesToObject == nullptr) {
           addBlas(rtInstance, blasEntry, nullptr);
@@ -1018,6 +1068,7 @@ namespace dxvk {
         for (RtInstance* inst : bucket->originalInstances) {
           if (cached.instances.empty() || cached.instances.back() != inst) {
             cached.instances.push_back(inst);
+            cached.instanceCacheIdentities.push_back(inst->getCacheIdentity());
           }
         }
         cached.surfaces = bucket->originalInstances;
@@ -1063,8 +1114,9 @@ namespace dxvk {
 
       // Update the dynamic BlasEntry set for the full-skip path
       m_cachedDynamicBlasEntries.clear();
-      for (const auto& pair : uniqueBlas) {
-        m_cachedDynamicBlasEntries.insert(pair.first);
+      for (uint32_t uniqueBlasIdx = 0; uniqueBlasIdx < m_uniqueDynamicBlasCount; ++uniqueBlasIdx) {
+        const UniqueBlasInstances& uniqueBlasEntry = m_uniqueDynamicBlas[uniqueBlasIdx];
+        m_cachedDynamicBlasEntries.insert(uniqueBlasEntry.blasEntry);
       }
     }
   }

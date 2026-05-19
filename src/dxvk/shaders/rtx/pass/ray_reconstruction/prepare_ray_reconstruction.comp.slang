@@ -244,10 +244,10 @@ void preprocessInputsForRR(uint2 pixelCoordinate)
 
   if (cb.combineSpecularAlbedo)
   {
-    bool hasPSR = geometryFlags.performPSTR && geometryFlags.performPSRR;
+    bool hasSecondarySurface = geometryFlags.hasSecondarySurface();
 
     vec4 primaryAttenuation = vec4(r11g11b10ToColor(PrimaryAttenuation[pixelCoordinate]), 1.0);
-    vec4 secondaryAttenuation = hasPSR ? vec4(r11g11b10ToColor(SecondaryAttenuation[pixelCoordinate]), 1.0) : vec4(0,0,0,1);
+    vec4 secondaryAttenuation = hasSecondarySurface ? vec4(r11g11b10ToColor(SecondaryAttenuation[pixelCoordinate]), 1.0) : vec4(0,0,0,1);
 
     // Normalize attenuation to get the color tinting without any dimmming
     const float maxPrimaryAttenuation = max3(primaryAttenuation.r, primaryAttenuation.g, primaryAttenuation.b);
@@ -268,7 +268,7 @@ void preprocessInputsForRR(uint2 pixelCoordinate)
     primarySpecularAlbedo *= getRoughnessFactor(primaryPerceptualRoughness);
 
     // Combine secondary albedo to improve reflection quality.
-    if (hasPSR)
+    if (hasSecondarySurface)
     {
       primaryAlbedo += secondaryAlbedo;
       primarySpecularAlbedo += secondarySpecularAlbedo * getRoughnessFactor(secondaryPerceptualRoughness);

@@ -17,19 +17,22 @@ VisibilityResult evalVolumeNEEVisibility(
 
   // Trace a visibility ray to test if the light is visible
 
-  // Note: Only trace rays against fully opaque objects and ray portals. This excludes translucent objects, or opaque objects
-  // with opacity, and ViewModel geometry. This is done so regions with many particles to not cause excessive shadowing on the lighting since this is
-  // just meant to be a rough approximation, and so these particles do not force us to need large numbers of resolve iterations
-  // to cast rays through them (as this would be expensive). We may want to add a bit more nuance here in the future to allow
-  // approximations of glass as large glass objects should ideally cast tinted shadows into particles, but we currently do not
-  // have a way to discriminate between translucency and opacity (and have no more bits available at least for now for this).
+  // Note: Only trace rays against fully opaque objects, alpha blend objects, optionally translucent
+  // objects, and ray portals. This excludes ViewModel geometry. Translucent objects are disabled by
+  // default because evaluating their material transmittance increases visibility ray cost.
+  const bool enableTranslucentShadows = cb.volumeArgs.enableTranslucentShadows != 0;
   uint8_t rayMask = OBJECT_MASK_OPAQUE | OBJECT_MASK_ALPHA_BLEND;
+  rayMask |= enableTranslucentShadows ? OBJECT_MASK_TRANSLUCENT : 0;
 
   // Note: Culling disabled via visibilityModeDisableCulling to avoid light leaking through geometry as this is especially
   // bad in volumetrics due to how the voxels leak through walls to begin with. Other NEE does not disable culling like this
   // due to this due single sided decal-like objects causing issues in some cases.
-  const VisibilityResult visibility = traceVisibilityRay<visibilityModeDisableCulling>(
-    visibilityRay, rayMask, sampledTransportPortalIndex, portalSpace);
+  if (enableTranslucentShadows)
+  {
+    return traceVisibilityRay<visibilityModeDisableCulling | visibilityModeEnableTranslucentMaterials>(
+      visibilityRay, rayMask, sampledTransportPortalIndex, portalSpace);
+  }
 
-  return visibility;
+  return traceVisibilityRay<visibilityModeDisableCulling>(
+    visibilityRay, rayMask, sampledTransportPortalIndex, portalSpace);
 }
