@@ -1767,6 +1767,7 @@ void geometryResolverVertex(
   bool isRaytracedRenderTarget = false;
   bool isStochasticAlphaBlend = false;
   uint8_t firstRayPortal = invalidRayPortalIndex;
+  vec3 transparencyLayerEmissive = vec3(0.0f);
   
   resolveVertex<GeometryResolverState>(
     resolveMode,
@@ -1775,6 +1776,7 @@ void geometryResolverVertex(
     surface, surfaceInteraction,
     polymorphicSurfaceMaterialInteraction,
     radianceAttenuation, emissiveRadiance,
+    transparencyLayerEmissive,
     decalMemory, decalEmissiveRadiance, 
     cb.screenSpacePixelSpreadHalfAngle,
     isStochasticAlphaBlend, firstRayPortal,
@@ -1814,8 +1816,14 @@ void geometryResolverVertex(
     {
       particleEmissive = emissiveRadiance;
     }
-    accumulateParticleBuffer(geometryResolverState.pixelCoordinate, particleEmissive * geometryResolverState.attenuation);
+    // RayPortal ring contribution is routed to the particle buffer since it's noiseless signal for best reconstruction. This avoids leaking the outline onto primary surface.
+    accumulateParticleBuffer(geometryResolverState.pixelCoordinate, (particleEmissive + transparencyLayerEmissive) * geometryResolverState.attenuation);
     emissiveRadiance -= particleEmissive;
+  }
+  else
+  {
+    // Particle layer unavailable: fall back to mixing the ring into primary emissive
+    emissiveRadiance += transparencyLayerEmissive;
   }
 
   bool isUnorderedEmissive = any(emissiveRadiance > 0.0f);
@@ -2444,6 +2452,7 @@ void geometryPSRResolverVertex(
 
   bool isStochasticAlphaBlend = false; // note, not actually used here
   uint8_t firstRayPortal = invalidRayPortalIndex;
+  vec3 transparencyLayerEmissive = vec3(0.0f);
   
   resolveVertex<GeometryPSRResolverState>(
     resolveMode,
@@ -2452,6 +2461,7 @@ void geometryPSRResolverVertex(
     surface, surfaceInteraction,
     polymorphicSurfaceMaterialInteraction,
     radianceAttenuation, emissiveRadiance,
+    transparencyLayerEmissive,
     decalMemory, decalEmissiveRadiance, 
     cb.screenSpacePixelSpreadHalfAngle,
     isStochasticAlphaBlend, firstRayPortal,
@@ -2461,10 +2471,19 @@ void geometryPSRResolverVertex(
   // Handle attenuation and emissive radiance from the Resolve function
 
   // Note: Emissive radiance handled first so objects with opacity do not attenuate themselves.
-  if (GBUFFER_FEATURE_PARTICLE_LAYER && cb.outputParticleLayer && polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque && geometryPSRResolverState.continueResolving)
+  if (GBUFFER_FEATURE_PARTICLE_LAYER && cb.outputParticleLayer)
   {
-    particleEmissive.xyz += emissiveRadiance * geometryPSRResolverState.attenuation;
-    emissiveRadiance = 0;
+    if (polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque && geometryPSRResolverState.continueResolving)
+    {
+      particleEmissive.xyz += emissiveRadiance * geometryPSRResolverState.attenuation;
+      emissiveRadiance = 0;
+    }
+    // RayPortal ring contribution: route to particle layer for stable overlay (matches primary path).
+    particleEmissive.xyz += transparencyLayerEmissive * geometryPSRResolverState.attenuation;
+  }
+  else
+  {
+    emissiveRadiance += transparencyLayerEmissive;
   }
 
   if (any(particleEmissive != vec4(0,0,0,1)))
