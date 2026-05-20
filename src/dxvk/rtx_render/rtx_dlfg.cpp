@@ -2,7 +2,8 @@
 #include "rtx_dlfg.h"
 
 namespace {
-  constexpr uint32_t kDLFGMaxInterpolatedFrames = 4;
+  // 6x frame generation: 1 rendered frame + up to 5 interpolated frames
+  constexpr uint32_t kDLFGMaxInterpolatedFrames = 6;
   constexpr uint64_t kPacerDoNotWait = uint64_t(-1);
 
   // debugging flags
@@ -243,7 +244,10 @@ namespace dxvk {
     m_appRequestedImageCount = desc.imageCount;
 
     vk::PresenterDesc adjustedDesc = desc;
-    adjustedDesc.imageCount = m_ctx->dlfgMaxSupportedInterpolatedFrameCount() + 1;
+    // Allocate only as many swapchain images as the configured multiplier needs (interpolated + 1 rendered),
+    // rather than always allocating the hardware maximum. Swapchain will be recreated if the user increases
+    // the multiplier at runtime (see acquireNextImage).
+    adjustedDesc.imageCount = m_ctx->dlfgInterpolatedFrameCount() + 1;
     
     VkResult res = vk::Presenter::recreateSwapChain(adjustedDesc);
     if (res != VK_SUCCESS) {
@@ -373,6 +377,16 @@ namespace dxvk {
     if (m_lastPresentStatus != VK_SUCCESS) {
       // got an error, bail until it's handled
       // xxxnsubtil: may need to signal the frame end semaphore here
+      return false;
+    }
+
+    // If the frame generation multiplier changed, the swapchain image count no longer matches.
+    // Return VK_ERROR_OUT_OF_DATE_KHR to force recreation. Checking here on the present thread
+    // (rather than on the CS thread) ensures no command list waits/signals or presents get
+    // submitted against the old swapchain semaphores.
+    const uint32_t neededImages = m_ctx->dlfgInterpolatedFrameCount() + 1;
+    if (neededImages != m_info.imageCount) {
+      m_lastPresentStatus = VK_ERROR_OUT_OF_DATE_KHR;
       return false;
     }
 
@@ -639,7 +653,9 @@ namespace dxvk {
           }
         }
 
-        {
+        // Skip post-interpolate barriers and commandlist submission if swapchain acquire failed above,
+        // since the command list was reset and is no longer in a recording state. Bail until it's handled.
+        if (m_lastPresentStatus == VK_SUCCESS) {
           ScopedGpuProfileZone_Present(m_device, commandList->getCmdBuffer(), "DLFG post-interpolate barriers");
 
           barriers.addBarrier(present.frameInterpolation.motionVectors->image()->handle(),
@@ -657,14 +673,14 @@ namespace dxvk {
                               present.frameInterpolation.depthLayout);
 
           barriers.record(m_device, *commandList, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+
+          // queue interpolated frame presents before doing the rendered frame, to avoid stalling on swapchain acquire at the bottom
+
+          // pacer thread will do a CPU wait on this command list before signaling the semaphores below
+          pacer.lastCmdListFence = commandList->getSignalFence();
+          commandList->endRecording();
+          commandList->submit();
         }
-
-        // queue interpolated frame presents before doing the rendered frame, to avoid stalling on swapchain acquire at the bottom
-
-        // pacer thread will do a CPU wait on this command list before signaling the semaphores below
-        pacer.lastCmdListFence = commandList->getSignalFence();
-        commandList->endRecording();
-        commandList->submit();
         commandList = nullptr;
 
         reflex.endOutOfBandRendering(present.present.cachedReflexFrameId);

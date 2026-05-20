@@ -43,8 +43,8 @@
 #include <vulkan/vulkan.h>
 #include <nvsdk_ngx_vk.h>
 #include <nvsdk_ngx_helpers_vk.h>
-#include <nvsdk_ngx_dlssg.h>
-#include <nvsdk_ngx_dlssg_vk.h>
+#include <nvsdk_ngx_helpers_dlssg.h>
+#include <nvsdk_ngx_helpers_dlssg_vk.h>
 #include <nvsdk_ngx_defs_dlssg.h>
 
 #include "rtx_resources.h"
