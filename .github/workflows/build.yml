@@ -89,3 +89,37 @@ jobs:
           _output\.trex\*.exe
           _output\.trex\*.pdb
           _output\.trex\usd\*
+
+  notify-slack-on-failure:
+    runs-on: ubuntu-latest
+    needs: build-windows
+    if: ${{ failure() }}
+
+    steps:
+    - name: Notify Slack
+      uses: slackapi/slack-github-action@v3
+      with:
+        webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+        webhook-type: incoming-webhook
+        payload: |
+          text: "<!here> Build workflow failed for ${{ github.repository }}"
+          blocks:
+            - type: section
+              text:
+                type: mrkdwn
+                text: ":rotating-light-red: *Build workflow failed* for `${{ github.repository }}`"
+            - type: section
+              fields:
+                - type: mrkdwn
+                  text: "*Ref:*\n`${{ github.ref_name }}`"
+                - type: mrkdwn
+                  text: "*Commit:*\n`${{ github.sha }}`"
+                - type: mrkdwn
+                  text: "*Event:*\n`${{ github.event_name }}`"
+            - type: actions
+              elements:
+                - type: button
+                  text:
+                    type: plain_text
+                    text: View workflow run
+                  url: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
