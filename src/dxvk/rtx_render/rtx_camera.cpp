@@ -103,6 +103,15 @@ namespace dxvk
     return { cameraParams[PROJ_ZNEAR], cameraParams[PROJ_ZFAR] };
   }
 
+  void RtCamera::invalidateViewHistory(uint32_t frameIdx) {
+    m_lastViewHistoryInvalidationFrameId = frameIdx;
+  }
+
+  bool RtCamera::isViewHistoryInvalidated(uint32_t frameIdx) const {
+    return m_lastViewHistoryInvalidationFrameId == frameIdx
+        || isCameraCut();
+  }
+
   bool RtCamera::isCameraCut() const {
     return lengthSqr(getViewToWorld()[3] - getPreviousViewToWorld()[3]) > RtxOptions::getUniqueObjectDistanceSqr();
   }

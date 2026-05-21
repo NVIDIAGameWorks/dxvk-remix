@@ -22,6 +22,7 @@
 #pragma once
 
 #include <mutex>
+#include <optional>
 #include <vector>
 #include <set>
 #include <unordered_set>
@@ -135,6 +136,8 @@ public:
 
   void submitDrawState(Rc<DxvkContext> ctx, const DrawCallState& input, const MaterialData* overrideMaterialData);
   void submitExternalDraw(Rc<DxvkContext> ctx, ExternalDrawState&& state);
+  void setStartInMediumMaterial(const MaterialData& translucentMaterial);
+  void clearStartInMediumMaterial();
 
   // Remove an externally created mesh and all associated replacement instances.
   void destroyExternalMesh(remixapi_MeshHandle handle);
@@ -333,10 +336,16 @@ private:
 
   FogState m_fog;
   fast_unordered_cache<FogState> m_fogStates;
+  std::mutex m_startInMediumMaterialMutex;
+  std::optional<MaterialData> m_pendingStartInMediumMaterial;
+  bool m_pendingClearStartInMediumMaterial = false;
+  std::optional<MaterialData> m_persistentStartInMediumMaterial;
   uint32_t m_startInMediumMaterialIndex = SURFACE_INDEX_INVALID;
   uint32_t m_fogStartInMediumMaterialIndex_inCache = kInvalidMaterialCacheIndex;
   uint32_t m_externalStartInMediumMaterialIndex_inCache = kInvalidMaterialCacheIndex;
   uint32_t m_startInMediumMaterialIndex_inCache = kInvalidMaterialCacheIndex;
+  uint32_t m_lastResolvedStartInMediumMaterialIndexInCache = kInvalidMaterialCacheIndex;
+  uint32_t m_lastUploadedStartInMediumMaterialIndexInCache = kInvalidMaterialCacheIndex;
 
   // TODO: Move the following resources and getters to RtResources class
   Rc<DxvkBuffer> m_surfaceMaterialBuffer;
