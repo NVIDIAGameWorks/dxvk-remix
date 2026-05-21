@@ -585,9 +585,10 @@ namespace dxvk {
     volumeArgs.scatteringCoefficient = volumetricScatteringCoefficient;
     volumeArgs.enableVolumeRISInitialVisibility = enableInitialVisibility();
     volumeArgs.enablevisibilityReuse = visibilityReuse();
+    const bool isViewHistoryInvalidated = mainCamera.isViewHistoryInvalidated(m_device->getCurrentFrameId());
     // Note: We need to invalidate the volumetric reservoir when detecting camera cut to avoid accumulating the history from different scenes
-    volumeArgs.enableVolumeTemporalResampling = enableTemporalResampling() && !cameraManager.getMainCamera().isCameraCut();
-    volumeArgs.enableVolumeSpatialResampling = enableSpatialResampling() && !cameraManager.getMainCamera().isCameraCut();
+    volumeArgs.enableVolumeTemporalResampling = enableTemporalResampling() && !isViewHistoryInvalidated;
+    volumeArgs.enableVolumeSpatialResampling = enableSpatialResampling() && !isViewHistoryInvalidated;
     volumeArgs.numSpatialSamples = spatialReuseMaxSampleCount();
     volumeArgs.spatialSamplingRadius = spatialReuseSamplingRadius();
     volumeArgs.numFroxelVolumes = m_numFroxelVolumes;     
@@ -658,7 +659,7 @@ namespace dxvk {
     }
 
     // Note: We need to invalidate the volumetric history buffers (radiance and age buffers) when detecting camera cut to avoid accumulating the history from different scenes
-    volumeArgs.resetHistory = cameraManager.getMainCamera().isCameraCut();
+    volumeArgs.resetHistory = isViewHistoryInvalidated;
 
     return volumeArgs;
   }

@@ -226,6 +226,8 @@ namespace dxvk
     Vector3 m_artificalWorldOffset = Vector3(0.f);
     Vector3 m_previousArtificalWorldOffset = Vector3(0.f);
 
+    uint32_t m_lastViewHistoryInvalidationFrameId = kInvalidFrameIndex;
+
     // Note: Start the camera off as invalid until it is set properly.
     uint32_t m_frameLastTouched = kInvalidFrameIndex;
     std::chrono::time_point<std::chrono::system_clock> m_prevRunningTime = {};
@@ -300,6 +302,8 @@ namespace dxvk
       m_type = type;
     }
 
+    void invalidateViewHistory(uint32_t frameIdx);
+    bool isViewHistoryInvalidated(uint32_t frameIdx) const;
     bool isCameraCut() const;
     static bool isFreeCameraEnabled();
     Vector3 getHorizontalForwardDirection() const;

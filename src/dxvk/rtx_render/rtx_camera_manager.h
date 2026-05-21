@@ -82,6 +82,7 @@ namespace dxvk {
     std::array<RtCamera, CameraType::Count> m_cameras;
     CameraType::Enum m_lastSetCameraType = CameraType::Unknown;
     uint32_t m_lastCameraCutFrameId = -1;
+    uint32_t m_lastCameraViewHistoryInvalidationFrameId = -1;
     fast_unordered_cache<DecomposeProjectionParams> m_decompositionCache;
 
     DecomposeProjectionParams getOrDecomposeProjection(const Matrix4& viewToProjection);
@@ -89,4 +90,3 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, rayPortalEnabled, false, "Enables ray portal support. Note this requires portal texture hashes to be set for the ray portal geometries in rtx.rayPortalModelTextureHashes.");
   };
 }  // namespace dxvk
-

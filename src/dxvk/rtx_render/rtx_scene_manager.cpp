@@ -274,6 +274,8 @@ namespace dxvk {
     m_fogStartInMediumMaterialIndex_inCache = kInvalidMaterialCacheIndex;
     m_externalStartInMediumMaterialIndex_inCache = kInvalidMaterialCacheIndex;
     m_startInMediumMaterialIndex_inCache = kInvalidMaterialCacheIndex;
+    m_lastResolvedStartInMediumMaterialIndexInCache = kInvalidMaterialCacheIndex;
+    m_lastUploadedStartInMediumMaterialIndexInCache = kInvalidMaterialCacheIndex;
   }
 
   void SceneManager::garbageCollection() {
@@ -1480,6 +1482,19 @@ namespace dxvk {
     m_externalStartInMediumMaterialIndex_inCache = UINT32_MAX;
   }
 
+  void SceneManager::setStartInMediumMaterial(const MaterialData& translucentMaterial) {
+    assert(translucentMaterial.getType() == MaterialDataType::Translucent);
+    std::lock_guard lock { m_startInMediumMaterialMutex };
+    m_pendingClearStartInMediumMaterial = false;
+    m_pendingStartInMediumMaterial = translucentMaterial;
+  }
+
+  void SceneManager::clearStartInMediumMaterial() {
+    std::lock_guard lock { m_startInMediumMaterialMutex };
+    m_pendingStartInMediumMaterial.reset();
+    m_pendingClearStartInMediumMaterial = true;
+  }
+
   std::optional<XXH64_hash_t> SceneManager::findLegacyTextureHashByObjectPickingValue(uint32_t objectPickingValue) {
     std::lock_guard lock { m_drawCallMeta.mutex };
 
@@ -1742,9 +1757,63 @@ namespace dxvk {
       m_cameraManager.getCamera(CameraType::Main),
       m_cameraManager.isCameraValid(CameraType::ViewModel) ? &m_cameraManager.getCamera(CameraType::ViewModel) : nullptr);
 
-    m_startInMediumMaterialIndex_inCache = m_externalStartInMediumMaterialIndex_inCache != kInvalidMaterialCacheIndex
-      ? m_externalStartInMediumMaterialIndex_inCache
-      : m_fogStartInMediumMaterialIndex_inCache;
+    {
+      const uint32_t previousStartInMediumMaterialIndexInCache = m_lastResolvedStartInMediumMaterialIndexInCache;
+      std::optional<MaterialData> pendingStartInMediumMaterial;
+      uint32_t persistentStartInMediumMaterialIndexInCache = kInvalidMaterialCacheIndex;
+      bool clearStartInMediumMaterial = false;
+      {
+        std::lock_guard lock { m_startInMediumMaterialMutex };
+        clearStartInMediumMaterial = m_pendingClearStartInMediumMaterial;
+        m_pendingClearStartInMediumMaterial = false;
+        if (m_pendingStartInMediumMaterial.has_value()) {
+          pendingStartInMediumMaterial = std::move(m_pendingStartInMediumMaterial);
+          m_pendingStartInMediumMaterial.reset();
+        }
+      }
+
+      if (clearStartInMediumMaterial) {
+        m_persistentStartInMediumMaterial.reset();
+      }
+
+      if (pendingStartInMediumMaterial.has_value()) {
+        m_persistentStartInMediumMaterial = std::move(pendingStartInMediumMaterial);
+      }
+
+      if (m_persistentStartInMediumMaterial.has_value()) {
+        assert(m_persistentStartInMediumMaterial->getType() == MaterialDataType::Translucent);
+        const auto samplerIndex = trackSampler(getOrCreateExternalSampler());
+        const auto surfaceMaterial = RtSurfaceMaterial(
+          createTranslucentSurfaceMaterial(m_persistentStartInMediumMaterial->getTranslucentMaterialData(), samplerIndex, true));
+        persistentStartInMediumMaterialIndexInCache = m_surfaceMaterialCache.track(surfaceMaterial);
+      }
+
+      m_startInMediumMaterialIndex_inCache = m_externalStartInMediumMaterialIndex_inCache != kInvalidMaterialCacheIndex
+        ? m_externalStartInMediumMaterialIndex_inCache
+        : persistentStartInMediumMaterialIndexInCache != kInvalidMaterialCacheIndex
+          ? persistentStartInMediumMaterialIndexInCache
+          : m_fogStartInMediumMaterialIndex_inCache;
+
+      if (m_startInMediumMaterialIndex_inCache != kInvalidMaterialCacheIndex &&
+          m_startInMediumMaterialIndex_inCache >= m_surfaceMaterialCache.getObjectTable().size()) {
+        Logger::debug(str::format(
+          "[RTX] Ignoring stale camera medium material cache index ", m_startInMediumMaterialIndex_inCache,
+          " on frame ", m_device->getCurrentFrameId(),
+          "; surfaceMaterialCacheSize=", m_surfaceMaterialCache.getObjectTable().size()));
+        m_startInMediumMaterialIndex_inCache = kInvalidMaterialCacheIndex;
+      }
+
+      if (m_startInMediumMaterialIndex_inCache != previousStartInMediumMaterialIndexInCache) {
+        Logger::debug(str::format(
+          "[RTX] View history invalidated due to camera medium change on frame ", m_device->getCurrentFrameId(),
+          ": previousStartInMediumInCache=", previousStartInMediumMaterialIndexInCache,
+          ", currentStartInMediumInCache=", m_startInMediumMaterialIndex_inCache,
+          ", cleared=", clearStartInMediumMaterial ? "true" : "false",
+          ", pendingSet=", pendingStartInMediumMaterial.has_value() ? "true" : "false"));
+        m_cameraManager.getMainCamera().invalidateViewHistory(m_device->getCurrentFrameId());
+      }
+      m_lastResolvedStartInMediumMaterialIndexInCache = m_startInMediumMaterialIndex_inCache;
+    }
 
     if (m_cameraManager.isCameraCutThisFrame()) {
       // Ignore camera cut events on teleportation so we don't flush the caches
@@ -1798,22 +1867,26 @@ namespace dxvk {
     // the surface order and material data are normally identical to last frame.
     // Baked terrain materials are updated independently of acceleration-structure
     // scene generation, so keep their surface-material upload live.
+    const bool startInMediumStateChanged = m_startInMediumMaterialIndex_inCache != m_lastUploadedStartInMediumMaterialIndexInCache;
     const bool updateSurfaceMaterials =
       !m_accelManager.wasSceneUnchangedThisFrame() ||
-      TerrainBaker::needsTerrainBaking();
+      TerrainBaker::needsTerrainBaking() ||
+      startInMediumStateChanged;
     if (updateSurfaceMaterials) {
       DxvkBufferCreateInfo matInfo;
       matInfo.usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
-                    | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
-                    | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
+        | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
       matInfo.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR
-                     | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
       matInfo.access = VK_ACCESS_TRANSFER_WRITE_BIT;
 
       if (m_surfaceMaterialCache.getTotalCount() > 0) {
         ScopedGpuProfileZone(ctx, "updateSurfaceMaterials");
         // Note: We duplicate the materials in the buffer so we don't have to do pointer chasing on the GPU
         size_t surfaceMaterialsGPUSize = m_accelManager.getSurfaceCount() * kSurfaceMaterialGPUSize;
+        const uint32_t expectedSurfaceMaterialEntries = m_accelManager.getSurfaceCount()
+          + (m_startInMediumMaterialIndex_inCache != kInvalidMaterialCacheIndex ? 1u : 0u);
         if (m_startInMediumMaterialIndex_inCache != kInvalidMaterialCacheIndex) {
           surfaceMaterialsGPUSize += kSurfaceMaterialGPUSize;
         }
@@ -1835,6 +1908,7 @@ namespace dxvk {
               surfaceIndex > surf.surfaceIndexOfFirstInstance) {
             dataOffset += kSurfaceMaterialGPUSize;
           } else {
+            assert(surf.surfaceMaterialIndex < m_surfaceMaterialCache.getObjectTable().size());
             auto&& surfaceMaterial = m_surfaceMaterialCache.getObjectTable()[surf.surfaceMaterialIndex];
             surfaceMaterial.writeGPUData(surfaceMaterialsGPUData.data(), dataOffset, surfaceIndex);
           }
@@ -1846,13 +1920,21 @@ namespace dxvk {
           surfaceMaterial.writeGPUData(surfaceMaterialsGPUData.data(), dataOffset, surfaceIndex);
           m_startInMediumMaterialIndex = surfaceIndex;
           surfaceIndex++;
+        } else {
+          m_startInMediumMaterialIndex = SURFACE_INDEX_INVALID;
         }
 
+        assert(surfaceIndex == expectedSurfaceMaterialEntries);
         assert(dataOffset == surfaceMaterialsGPUSize);
         assert(surfaceMaterialsGPUData.size() == surfaceMaterialsGPUSize);
+        m_lastUploadedStartInMediumMaterialIndexInCache = m_startInMediumMaterialIndex_inCache;
 
         ctx->writeToBuffer(m_surfaceMaterialBuffer, 0, surfaceMaterialsGPUData.size(), surfaceMaterialsGPUData.data());
       }
+    } else {
+      m_startInMediumMaterialIndex = m_startInMediumMaterialIndex_inCache != kInvalidMaterialCacheIndex
+        ? m_accelManager.getSurfaceCount()
+        : SURFACE_INDEX_INVALID;
     }
 
     // GPU-driven PointInstancer culling: overwrites visible instance placeholders

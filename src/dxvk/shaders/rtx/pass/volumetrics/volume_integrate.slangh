@@ -134,7 +134,7 @@ void volume_integrate_pass(ivec3 threadIndex)
   // Integrate the Volume
 
   integrateVolume(
-    rabRandomState, froxelIndex, froxelVolume, previousFroxelLookup.volumeIndex, previousVolumeExists,
+    rabRandomState, froxelIndex, froxelVolume, previousFroxelLookup.volumeIndex, previousVolumeExists && !volumeArgs.resetHistory,
     ray, minimalRayInteraction, volumeInteraction,
     previousFroxelLookup.uvw, previousFroxelIndex, clampedPreviousFroxelIndex);
 }
