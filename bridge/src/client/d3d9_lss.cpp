@@ -49,7 +49,9 @@
 #include "util_seh.h"
 #include "util_semaphore.h"
 
+#include <algorithm>
 #include <assert.h>
+#include <cctype>
 #include <sstream>
 #include <stdio.h>
 #include <string>
@@ -470,11 +472,38 @@ void RemixDetach() {
   }
 }
 
+static bool shouldAttachToCurrentProcess() {
+  std::string targetProcess = ClientOptions::getTargetProcess();
+  if (targetProcess.empty()) {
+    return true;
+  }
+
+  char exePath[MAX_PATH];
+  DWORD len = GetModuleFileNameA(NULL, exePath, MAX_PATH);
+  if (len == 0) return true;
+
+  std::string currentExe(exePath);
+  auto pos = currentExe.find_last_of("\\/");
+  if (pos != std::string::npos) {
+    currentExe = currentExe.substr(pos + 1);
+  }
+
+  std::transform(currentExe.begin(), currentExe.end(), currentExe.begin(),
+    [](unsigned char c) { return std::tolower(c); });
+  std::transform(targetProcess.begin(), targetProcess.end(), targetProcess.begin(),
+    [](unsigned char c) { return std::tolower(c); });
+
+  return currentExe == targetProcess;
+}
+
 /*
  * Direct3D9 Interface Implementation
  */
 
 HRESULT LssDirect3DCreate9Ex(UINT SDKVersion, IDirect3D9Ex** ppDeviceEx) {
+  if (!shouldAttachToCurrentProcess()) {
+    return orig_Direct3DCreate9Ex(SDKVersion, ppDeviceEx);
+  }
   if (!RemixAttach(NULL)) {
     return D3DERR_NOTAVAILABLE;
   }
@@ -489,6 +518,9 @@ HRESULT LssDirect3DCreate9Ex(UINT SDKVersion, IDirect3D9Ex** ppDeviceEx) {
 }
 
 IDirect3D9* LssDirect3DCreate9(UINT SDKVersion) {
+  if (!shouldAttachToCurrentProcess()) {
+    return orig_Direct3DCreate9(SDKVersion);
+  }
   if (!RemixAttach(NULL)) {
     return nullptr;
   }

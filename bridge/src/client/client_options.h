@@ -31,6 +31,10 @@
 #include <d3d9.h>
 
 namespace ClientOptions {
+  inline std::string getTargetProcess() {
+    return bridge_util::Config::getOption<std::string>("client.targetProcess", "");
+  }
+
   inline bool getUseVanillaDxvk() {
     return bridge_util::Config::getOption<bool>("client.useVanillaDxvk", false);
   }
