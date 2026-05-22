@@ -862,6 +862,19 @@ namespace dxvk {
 
     RTX_OPTION("rtx", float, worldSpaceUiBackgroundOffset, -0.01f, "Distance along normal to offset objects rendered as worldspace UI, specifically for the background of screens.");
 
+    struct ShadowTerminator {
+      RTX_OPTION("rtx.shadowTerminator", bool, soften, true,
+                 "Fix the harsh transition on a shadow terminator by gradually smoothing, when the geometry normal is inconsistent with shading normal."
+                 "Note that it doesn't modify the shadow ray, and only applies a falloff when calculating a direct illumination.");
+
+      RTX_OPTION("rtx.shadowTerminator", bool, enableOffset, true,
+                 "Offset the shadow ray origin along the triangle vertex normals to avoid self-intersection. "
+                 "Helps to remove the triangular shadow artifacts on a terminator region. "
+                 "Note that it may introduce a noticeable light leaking if the geometry is low-poly.");
+      RTX_OPTION("rtx.shadowTerminator", float, maxArea, 0.05f, "If a polygon area is larger than this value (in square meters), then a shadow terminator offset will not be applied.");
+      RTX_OPTION("rtx.shadowTerminator", float, maxLength, 0.02f, "Clamp shadow terminator length by this value (in meters).");
+    };
+
     // Light Selection/Sampling Options
     RTX_OPTION_ARGS("rtx", uint16_t, risLightSampleCount, 7,
                "The number of lights randomly selected from the global pool to consider when selecting a light with RIS.\n"

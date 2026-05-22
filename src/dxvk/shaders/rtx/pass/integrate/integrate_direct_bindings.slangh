@@ -32,6 +32,9 @@ SamplerCube<float3> SkyProbe;
 [[vk::binding(INTEGRATE_DIRECT_BINDING_SHARED_INTEGRATION_SURFACE_PDF_INPUT)]]
 Texture2D<float> SharedIntegrationSurfacePdf;
 
+[[vk::binding(INTEGRATE_DIRECT_BINDING_SHARED_SHADOW_TERMINATOR_FIX_INPUT)]]
+Texture2D<float> SharedTerminatorFix;
+
 [[vk::binding(INTEGRATE_DIRECT_BINDING_SHARED_MATERIAL_DATA0_INPUT)]]
 Texture2D<uint> SharedMaterialData0;
 

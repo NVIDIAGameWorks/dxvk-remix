@@ -76,10 +76,10 @@ SssTracingResult traceSssRay(
   sssTracingResult.subsurfaceMaterialIndex = sssTracingResult.hasHit ? sssOpaqueSurfaceMaterial.subsurfaceMaterialIndex : SURFACE_INDEX_INVALID;
   sssTracingResult.sssMinimalSurfaceInteraction.position = surfaceInteraction.position;
   sssTracingResult.sssMinimalSurfaceInteraction.positionError = surfaceInteraction.positionError;
-  sssTracingResult.sssMinimalSurfaceInteraction.triangleNormal = surfaceInteraction.triangleNormal;
-  sssTracingResult.sssMinimalSurfaceInteraction.triangleTangent = surfaceInteraction.triangleTangent;
-  sssTracingResult.sssMinimalSurfaceInteraction.triangleBitangent = surfaceInteraction.triangleBitangent;
-  sssTracingResult.normal = surfaceInteraction.interpolatedNormal;
+  sssTracingResult.sssMinimalSurfaceInteraction.geometryNormal = surfaceInteraction.geometryNormal;
+  sssTracingResult.sssMinimalSurfaceInteraction.geometryTangent = surfaceInteraction.geometryTangent;
+  sssTracingResult.sssMinimalSurfaceInteraction.geometryBitangent = surfaceInteraction.geometryBitangent;
+  sssTracingResult.normal = surfaceInteraction.geometryNormal;
   sssTracingResult.textureCoordinates = surfaceInteraction.textureCoordinates;
 
   return sssTracingResult;
@@ -119,7 +119,7 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
   const vec3 diskNormalWorldSpace = (rand <= 0.5f) ? opaqueSurfaceMaterialInteraction.shadingNormal : minimalRayInteraction.viewDirection;
 
   RTXCR_SubsurfaceInteraction subsurfaceInteraction =
-    RTXCR_CreateSubsurfaceInteraction(minimalSurfaceInteraction.position, diskNormalWorldSpace, minimalSurfaceInteraction.triangleTangent, minimalSurfaceInteraction.triangleBitangent);
+    RTXCR_CreateSubsurfaceInteraction(minimalSurfaceInteraction.position, diskNormalWorldSpace, minimalSurfaceInteraction.geometryTangent, minimalSurfaceInteraction.geometryBitangent);
 
   uint16_t validSampleCount = 0;
 
@@ -251,7 +251,7 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
       any(subsurfaceMaterialData.scatteringColor < 0.99f);
 
   subsurfaceInteraction =
-    RTXCR_CreateSubsurfaceInteraction(minimalSurfaceInteraction.position, minimalSurfaceInteraction.triangleNormal, minimalSurfaceInteraction.triangleTangent, minimalSurfaceInteraction.triangleBitangent);
+    RTXCR_CreateSubsurfaceInteraction(minimalSurfaceInteraction.position, minimalSurfaceInteraction.geometryNormal, minimalSurfaceInteraction.geometryTangent, minimalSurfaceInteraction.geometryBitangent);
   const float3 singleScatteringTransmission = enableSingleScatteringTransmission ?
     evalSingleScatteringTransmission(opaqueSurfaceMaterialInteraction, minimalRayInteraction, minimalSurfaceInteraction,
     rayMask, sampledTransportPortalIndex, geometryFlags, viewRay, primarySurfaceIndex,
@@ -318,7 +318,7 @@ float3 evalSingleScatteringTransmission(
 
       // Revert normal, because we are hitting from back of the surface
       transmissionTracingResult.normal = -transmissionTracingResult.normal;
-      transmissionTracingResult.sssMinimalSurfaceInteraction.triangleNormal = -transmissionTracingResult.sssMinimalSurfaceInteraction.triangleNormal;
+      transmissionTracingResult.sssMinimalSurfaceInteraction.geometryNormal = -transmissionTracingResult.sssMinimalSurfaceInteraction.geometryNormal;
 
       // Sample light on back, can't use RTXDI because it's screen space
 
@@ -413,7 +413,7 @@ float3 evalSingleScatteringTransmission(
 
       // Revert normal, because we are hitting from back of the surface
       singleScatteringTracingResult.normal = -singleScatteringTracingResult.normal;
-      singleScatteringTracingResult.sssMinimalSurfaceInteraction.triangleNormal = -singleScatteringTracingResult.sssMinimalSurfaceInteraction.triangleNormal;
+      singleScatteringTracingResult.sssMinimalSurfaceInteraction.geometryNormal = -singleScatteringTracingResult.sssMinimalSurfaceInteraction.geometryNormal;
 
       const float totalScatteringDistance = currentT + singleScatteringTracingResult.hitDistance;
 

@@ -362,7 +362,6 @@ void geometryResolverOutputSurface<
       surfaceInteraction, ivec2(pixelCoordinate),
       aliasedData0.PrimaryWorldPositionWorldTriangleNormal,
       PrimaryPositionError);
-    PrimaryWorldInterpolatedNormal[pixelCoordinate] = float2x32ToSnorm2x16(sphereDirectionToSignedOctahedral(surfaceInteraction.interpolatedNormal));
   }
   else if (SELECTED_INTEGRATION_SURFACE)
   {
@@ -370,6 +369,14 @@ void geometryResolverOutputSurface<
       surfaceInteraction, ivec2(pixelCoordinate),
       SecondaryWorldPositionWorldTriangleNormal,
       SecondaryPositionError);
+  }
+
+  if (cb.shadowTerminatorArgs.enableOffset)
+  {
+    if (PRIMARY_SURFACE || SELECTED_INTEGRATION_SURFACE)
+    {
+      SharedTerminatorFix[pixelCoordinate] = surfaceInteraction.shadowTerminatorOffset;
+    }
   }
 
   // Serialize out the Medium Material Index
@@ -701,23 +708,14 @@ void geometryResolverVertexOutputDebugView(
   case DEBUG_VIEW_TEXCOORD_GENERATION_MODE:
     storeInDebugView(pixelCoordinate, uint(surface.texcoordGenerationMode));
     break;
-  case DEBUG_VIEW_TRIANGLE_NORMAL:
-    storeInDebugView(pixelCoordinate, surfaceInteraction.triangleNormal);
+  case DEBUG_VIEW_GEOMETRY_NORMAL:
+    storeInDebugView(pixelCoordinate, surfaceInteraction.geometryNormal);
     break;
-  case DEBUG_VIEW_TRIANGLE_TANGENT:
-    storeInDebugView(pixelCoordinate, surfaceInteraction.triangleTangent);
+  case DEBUG_VIEW_GEOMETRY_TANGENT:
+    storeInDebugView(pixelCoordinate, surfaceInteraction.geometryTangent);
     break;
-  case DEBUG_VIEW_TRIANGLE_BITANGENT:
-    storeInDebugView(pixelCoordinate, surfaceInteraction.triangleBitangent);
-    break;
-  case DEBUG_VIEW_INTERPOLATED_NORMAL:
-    storeInDebugView(pixelCoordinate, surfaceInteraction.interpolatedNormal);
-    break;
-  case DEBUG_VIEW_INTERPOLATED_TANGENT:
-    storeInDebugView(pixelCoordinate, surfaceInteraction.interpolatedTangent);
-    break;
-  case DEBUG_VIEW_INTERPOLATED_BITANGENT:
-    storeInDebugView(pixelCoordinate, surfaceInteraction.interpolatedBitangent);
+  case DEBUG_VIEW_GEOMETRY_BITANGENT:
+    storeInDebugView(pixelCoordinate, surfaceInteraction.geometryBitangent);
     break;
   case DEBUG_VIEW_SHADING_NORMAL:
     vec3 shadingNormal = vec3(0.0f);
@@ -1050,23 +1048,14 @@ void geometryResolverVertexOutputDebugView(
       // DEBUG_VIEW_TEXCOORD_GENERATION_MODE
       isValid &= isValidValue(surface.texcoordGenerationMode);
 
-      // DEBUG_VIEW_TRIANGLE_NORMAL
-      isValid &= isValidValue(surfaceInteraction.triangleNormal);
+      // DEBUG_VIEW_GEOMETRY_NORMAL
+      isValid &= isValidValue(surfaceInteraction.geometryNormal);
 
-      // DEBUG_VIEW_TRIANGLE_TANGENT
-      isValid &= isValidValue(surfaceInteraction.triangleTangent);
+      // DEBUG_VIEW_GEOMETRY_TANGENT
+      isValid &= isValidValue(surfaceInteraction.geometryTangent);
 
-      // DEBUG_VIEW_TRIANGLE_BITANGENT
-      isValid &= isValidValue(surfaceInteraction.triangleBitangent);
-
-      // DEBUG_VIEW_INTERPOLATED_NORMAL
-      isValid &= isValidValue(surfaceInteraction.interpolatedNormal);
-
-      // DEBUG_VIEW_INTERPOLATED_TANGENT
-      isValid &= isValidValue(surfaceInteraction.interpolatedTangent);
-
-      // DEBUG_VIEW_INTERPOLATED_BITANGENT
-      isValid &= isValidValue(surfaceInteraction.interpolatedBitangent);
+      // DEBUG_VIEW_GEOMETRY_BITANGENT
+      isValid &= isValidValue(surfaceInteraction.geometryBitangent);
 
       // DEBUG_VIEW_SHADING_NORMAL
       vec3 shadingNormal = vec3(0.0f);
@@ -1265,7 +1254,7 @@ void geometryResolverVertexOutputDebugView(
       if (opaqueSurfaceMaterial.hasValidDisplacement())
       {
         SurfaceInteraction tempSurfaceInteraction = surfaceInteractionCreate<SurfaceGenerateTangents>(surface, rayInteraction, ray);
-        const f16mat3 worldToTangent = f16mat3(tempSurfaceInteraction.interpolatedTangent, tempSurfaceInteraction.interpolatedBitangent, tempSurfaceInteraction.interpolatedNormal);
+        const f16mat3 worldToTangent = f16mat3(tempSurfaceInteraction.geometryTangent, tempSurfaceInteraction.geometryBitangent, tempSurfaceInteraction.geometryNormal);
         const vec3 viewDirTangentSpace = normalize(mul(worldToTangent, rayInteraction.viewDirection));
         hitPos = pomCalculateTexcoord(opaqueSurfaceMaterial, tempSurfaceInteraction, viewDirTangentSpace, iterations);
       }
@@ -1284,7 +1273,7 @@ void geometryResolverVertexOutputDebugView(
       if (opaqueSurfaceMaterial.hasValidDisplacement())
       {
         SurfaceInteraction tempSurfaceInteraction = surfaceInteractionCreate<SurfaceGenerateTangents>(surface, rayInteraction, ray);
-        const f16mat3 worldToTangent = f16mat3(tempSurfaceInteraction.interpolatedTangent, tempSurfaceInteraction.interpolatedBitangent, tempSurfaceInteraction.interpolatedNormal);
+        const f16mat3 worldToTangent = f16mat3(tempSurfaceInteraction.geometryTangent, tempSurfaceInteraction.geometryBitangent, tempSurfaceInteraction.geometryNormal);
         const vec3 viewDirTangentSpace = normalize(mul(worldToTangent, rayInteraction.viewDirection));
         uint iterations = 0;
         hitPos = pomCalculateTexcoord(opaqueSurfaceMaterial, tempSurfaceInteraction, viewDirTangentSpace, iterations);
@@ -3352,9 +3341,10 @@ void geometryPSRPreparePass(ivec2 pixelCoordinate) {
   SurfaceInteraction surfaceInteraction;
   surfaceInteraction.position = minimalSurfaceInteraction.position;
   surfaceInteraction.positionError = minimalSurfaceInteraction.positionError;
-  surfaceInteraction.triangleNormal = minimalSurfaceInteraction.triangleNormal;
-  surfaceInteraction.triangleTangent = minimalSurfaceInteraction.triangleTangent;
-  surfaceInteraction.triangleBitangent = minimalSurfaceInteraction.triangleBitangent;
+  surfaceInteraction.shadowTerminatorOffset = minimalSurfaceInteraction.shadowTerminatorOffset;
+  surfaceInteraction.geometryNormal = minimalSurfaceInteraction.geometryNormal;
+  surfaceInteraction.geometryTangent = minimalSurfaceInteraction.geometryTangent;
+  surfaceInteraction.geometryBitangent = minimalSurfaceInteraction.geometryBitangent;
 
   GBufferMemoryPolymorphicSurfaceMaterialInteraction surfaceMaterialInteractionMemory;
   surfaceMaterialInteractionMemory.worldShadingNormal =

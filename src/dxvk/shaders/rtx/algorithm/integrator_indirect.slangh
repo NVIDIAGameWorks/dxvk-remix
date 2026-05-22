@@ -331,7 +331,7 @@ void integratePathVertex(
       if (rayInteractionHasHit(rayInteraction))
       {
         hitPosition = surfaceInteraction.position;
-        hitNormal = surfaceInteraction.triangleNormal;
+        hitNormal = surfaceInteraction.geometryNormal;
 
         // Only consider geometry from opaque surfaces.
         // Suppose an indirect ray goes through glass and then hits a bright opaque wall, the light is coming from the opaque wall,
@@ -619,10 +619,10 @@ void integratePathVertex(
           float cameraDistance = length(surfaceInteraction.position - cameraGetWorldPosition(cb.camera));
           const float planeTolerance = 0.1;
           const float distanceTolerance = 0.01;
-          isWithinGbuffer = dot(surfaceInteraction.interpolatedNormal, gbuffer.triangleNormal) > 0.8f &&   // sane normal difference?
+          isWithinGbuffer = dot(surfaceInteraction.geometryNormal, gbuffer.geometryNormal) > 0.8f &&   // sane normal difference?
                             gbuffer.isValid && // was this pixel valid
                             (relativeLength < cameraDistance * distanceTolerance ||
-                             abs(dot(relativePosition, surfaceInteraction.interpolatedNormal)) < planeTolerance * relativeLength);
+                             abs(dot(relativePosition, surfaceInteraction.geometryNormal)) < planeTolerance * relativeLength);
         }
     
         if (isWithinGbuffer)
@@ -643,7 +643,7 @@ void integratePathVertex(
       {
         rtxdiRNG = RAB_InitRandomSampler(pathState.pixelCoordinate, cb.frameIdx, pathState.bounceIteration);
         uint jitter = sampleUniformIntRng(rtxdiRNG);
-        pathState.neeCacheCellOffset = NEECache.pointToOffset(surfaceInteraction.position, surfaceInteraction.triangleNormal, jitter);
+        pathState.neeCacheCellOffset = NEECache.pointToOffset(surfaceInteraction.position, surfaceInteraction.geometryNormal, jitter);
       }
 
       if (!isWithinGbuffer)
@@ -884,10 +884,10 @@ void integratePathVertex(
         const float distanceTolerance = 0.05;
     
         isWithinGbuffer =
-          dot(surfaceInteraction.triangleNormal, prevSurfaceInteraction.triangleNormal) > 0.8f &&
+          dot(surfaceInteraction.geometryNormal, prevSurfaceInteraction.geometryNormal) > 0.8f &&
           prevSurfaceInteraction.isValid &&
           (relativeLength < prevHitDistance * distanceTolerance ||
-            abs(dot(prevSurfaceInteraction.triangleNormal, relativePosition)) < relativeLength * planeTolerance);
+            abs(dot(prevSurfaceInteraction.geometryNormal, relativePosition)) < relativeLength * planeTolerance);
       }
 
       if (cb.enableReSTIRGILightingValidation > 0 && isWithinGbuffer)
@@ -1298,7 +1298,7 @@ void integrateIndirectPath(
       MinimalSurfaceInteraction gbuffer = minimalSurfaceInteractionReadFromGBuffer(gbufferPixelCoordinate, indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal);
       if(gbuffer.isValid)
       {
-        pathState.neeCacheCellOffset = NEECache.pointToOffset(rayOrigin, gbuffer.triangleNormal, jitter);
+        pathState.neeCacheCellOffset = NEECache.pointToOffset(rayOrigin, gbuffer.geometryNormal, jitter);
       }
     }
 

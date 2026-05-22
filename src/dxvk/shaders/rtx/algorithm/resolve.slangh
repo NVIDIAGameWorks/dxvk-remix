@@ -971,16 +971,13 @@ void resolveVertexUnorderedParticles<
 
       surfaceInteraction.position = p;
       surfaceInteraction.positionError = 0;
-      surfaceInteraction.triangleNormal = normal;
-      surfaceInteraction.triangleTangent = billboard.xAxis;
-      surfaceInteraction.triangleBitangent = billboard.yAxis;
+      surfaceInteraction.geometryNormal = normal;
+      surfaceInteraction.geometryTangent = billboard.xAxis;
+      surfaceInteraction.geometryBitangent = billboard.yAxis;
       surfaceInteraction.motion = 0;
       surfaceInteraction.textureCoordinates = uv;
       surfaceInteraction.textureGradientX = dUVRatio.x * billboard.xAxisUV;
       surfaceInteraction.textureGradientY = dUVRatio.y * billboard.yAxisUV;
-      surfaceInteraction.interpolatedNormal = normal;
-      surfaceInteraction.interpolatedTangent = billboard.xAxis;
-      surfaceInteraction.interpolatedBitangent = billboard.yAxis;
       surfaceInteraction.vertexColor = vertexColor;
     }
 
@@ -1341,16 +1338,13 @@ void resolveVertexUnordered<
 
       surfaceInteraction.position = p;
       surfaceInteraction.positionError = 0;
-      surfaceInteraction.triangleNormal = normal;
-      surfaceInteraction.triangleTangent = billboard.xAxis;
-      surfaceInteraction.triangleBitangent = billboard.yAxis;
+      surfaceInteraction.geometryNormal = normal;
+      surfaceInteraction.geometryTangent = billboard.xAxis;
+      surfaceInteraction.geometryBitangent = billboard.yAxis;
       surfaceInteraction.motion = 0;
       surfaceInteraction.textureCoordinates = uv;
       surfaceInteraction.textureGradientX = dUVRatio.x * billboard.xAxisUV;
       surfaceInteraction.textureGradientY = dUVRatio.y * billboard.yAxisUV;
-      surfaceInteraction.interpolatedNormal = normal;
-      surfaceInteraction.interpolatedTangent = billboard.xAxis;
-      surfaceInteraction.interpolatedBitangent = billboard.yAxis;
       surfaceInteraction.vertexColor = vertexColor;
     }
 
@@ -1407,7 +1401,7 @@ void resolveVertexUnordered<
             maxSortOrder = decalSortKey;
             // TODO[REMIX-3080] Unusued for now, will be needed for normal blending
             // Note: Ideally this should be the final surface's tangent space, but in practice any decal's tangent space should work.
-            // worldToDecalTangent = f16mat3(surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent, surfaceInteraction.interpolatedNormal);
+            // worldToDecalTangent = f16mat3(surfaceInteraction.geometryTangent, surfaceInteraction.geometryBitangent, surfaceInteraction.geometryNormal);
           }
 #else
           // For indirect rays, use resevoir sampling (adapted to drop decals that are less than the topmost opaque decal we've seen)

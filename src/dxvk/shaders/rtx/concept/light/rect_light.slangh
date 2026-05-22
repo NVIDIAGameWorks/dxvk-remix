@@ -117,7 +117,7 @@ float rectLightCalcWeight(RectLight rectLight, MinimalSurfaceInteraction viewSur
   vec3 lightVector;
   float maxRectRadius;
   const float positionalWeight = rectLightCalcPositionalWeight(rectLight, viewSurfaceInteraction.position, lightVector, maxRectRadius);
-  const bool visibilityWeight = rectLightCalcVisibilityWeight(rectLight, viewSurfaceInteraction.triangleNormal, lightVector, maxRectRadius, isThinOpaqueSubsurface);
+  const bool visibilityWeight = rectLightCalcVisibilityWeight(rectLight, viewSurfaceInteraction.geometryNormal, lightVector, maxRectRadius, isThinOpaqueSubsurface);
 
   // Note: Ideally this if statement is re-ordered to avoid the calculation of the positional weight when the visibility test fails now that the logic has been abstracted
   // into functions.

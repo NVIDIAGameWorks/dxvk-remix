@@ -53,9 +53,6 @@ Texture2D<uint2> SharedSubsurfaceDiffusionProfileData;
 layout(r32ui, binding = INTEGRATE_NEE_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT)
 Texture2D<uint> PrimaryWorldShadingNormal;
 
-layout(r32ui, binding = INTEGRATE_NEE_BINDING_PRIMARY_WORLD_INTERPOLATED_NORMAL_INPUT)
-Texture2D<uint> PrimaryWorldInterpolatedNormal;
-
 layout(r32f, binding = INTEGRATE_NEE_BINDING_PRIMARY_HIT_DISTANCE_INPUT)
 Texture2D<float> PrimaryHitDistance;
 

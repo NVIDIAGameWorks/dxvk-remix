@@ -93,11 +93,11 @@ TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreat
   const bool emissiveColorLoaded = surfaceMaterialInteractionTextureReadHelper(translucentSurfaceMaterial.emissiveColorTextureIndex, translucentSurfaceMaterial.samplerIndex, surfaceInteraction, emissiveColorSample);
 
   // Create a tangent to world space matrix for future calculations
-  const f16mat3 tangentToWorld = transpose(f16mat3(surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent, surfaceInteraction.interpolatedNormal));
+  const f16mat3 tangentToWorld = transpose(f16mat3(surfaceInteraction.geometryTangent, surfaceInteraction.geometryBitangent, surfaceInteraction.geometryNormal));
 
   // Load Normal
 
-  vec3 normal = surfaceInteraction.interpolatedNormal;
+  vec3 normal = surfaceInteraction.geometryNormal;
 
   if (normalLoaded)
   {
@@ -161,8 +161,8 @@ TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreat
   // Transform to desired Translucent Material Interaction values
 
   translucentSurfaceMaterialInteraction.isAnimatedWater = surface.isAnimatedWater;
-  translucentSurfaceMaterialInteraction.shadingNormal = getBentNormal(surfaceInteraction.triangleNormal, normal, -minimalRayInteraction.viewDirection);
-  translucentSurfaceMaterialInteraction.normalDetail = float(1.0 - dot(float3(translucentSurfaceMaterialInteraction.shadingNormal), float3(surfaceInteraction.interpolatedNormal)));
+  translucentSurfaceMaterialInteraction.shadingNormal = getBentNormal(surfaceInteraction.geometryNormal, normal, -minimalRayInteraction.viewDirection);
+  translucentSurfaceMaterialInteraction.normalDetail = float(1.0 - dot(float3(translucentSurfaceMaterialInteraction.shadingNormal), float3(surfaceInteraction.geometryNormal)));
   translucentSurfaceMaterialInteraction.baseReflectivity = translucentSurfaceMaterial.baseReflectivity;
   translucentSurfaceMaterialInteraction.refractiveIndex = translucentSurfaceMaterial.refractiveIndex;
 

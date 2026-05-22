@@ -29,15 +29,15 @@ MinimalSurfaceInteraction minimalSurfaceInteractionCreate(GBufferMemoryMinimalSu
 {
   MinimalSurfaceInteraction minimalSurfaceInteraction;
 
-  const uint32_t packedTriangleTBN =
+  const uint32_t packedGeometryTBN =
     floatBitsToUint(gBufferMemoryMinimalSurfaceInteraction.encodedWorldPositionWorldTriangleTBN.w);
-  const vec4 quaternion = uint32ToQuaternion(packedTriangleTBN);
+  const vec4 quaternion = uint32ToQuaternion(packedGeometryTBN);
 
   minimalSurfaceInteraction.position = gBufferMemoryMinimalSurfaceInteraction.encodedWorldPositionWorldTriangleTBN.xyz;
   minimalSurfaceInteraction.positionError = gBufferMemoryMinimalSurfaceInteraction.positionError;
-  minimalSurfaceInteraction.triangleTangent = quaternionToTangent(quaternion);
-  minimalSurfaceInteraction.triangleBitangent = quaternionToBitangent(quaternion);
-  minimalSurfaceInteraction.triangleNormal = quaternionToNormal(quaternion);
+  minimalSurfaceInteraction.geometryTangent = quaternionToTangent(quaternion);
+  minimalSurfaceInteraction.geometryBitangent = quaternionToBitangent(quaternion);
+  minimalSurfaceInteraction.geometryNormal = quaternionToNormal(quaternion);
   return minimalSurfaceInteraction;
 }
 
@@ -45,8 +45,8 @@ MinimalSurfaceInteraction minimalSurfaceInteractionAffineTransform(MinimalSurfac
 {
   minimalSurfaceInteraction.position = (mul(transformMatrix, vec4(minimalSurfaceInteraction.position, 1))).xyz;
   minimalSurfaceInteraction.positionError = max(minimalSurfaceInteraction.positionError, calculatePositionError(minimalSurfaceInteraction.position));
-  minimalSurfaceInteraction.triangleNormal = mul(mat3(transformMatrix), minimalSurfaceInteraction.triangleNormal);
-  minimalSurfaceInteraction.triangleTangent = mul(mat3(transformMatrix), minimalSurfaceInteraction.triangleTangent);
-  minimalSurfaceInteraction.triangleBitangent = mul(mat3(transformMatrix), minimalSurfaceInteraction.triangleBitangent);
+  minimalSurfaceInteraction.geometryNormal = mul(mat3(transformMatrix), minimalSurfaceInteraction.geometryNormal);
+  minimalSurfaceInteraction.geometryTangent = mul(mat3(transformMatrix), minimalSurfaceInteraction.geometryTangent);
+  minimalSurfaceInteraction.geometryBitangent = mul(mat3(transformMatrix), minimalSurfaceInteraction.geometryBitangent);
   return minimalSurfaceInteraction;
 }

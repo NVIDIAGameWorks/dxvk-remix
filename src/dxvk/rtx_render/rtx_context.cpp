@@ -1355,6 +1355,13 @@ namespace dxvk {
     constants.eyeArgs.irisRadius = RtxOptions::Eye::irisRadius();
     constants.eyeArgs.irisDepth = RtxOptions::Eye::irisDepth();
 
+    constants.shadowTerminatorArgs.soften = RtxOptions::ShadowTerminator::soften();
+
+    // Note: shadow terminator image are allocated/freed based on this RtxOption
+    constants.shadowTerminatorArgs.enableOffset = RtxOptions::ShadowTerminator::enableOffset();
+    constants.shadowTerminatorArgs.maxArea = std::max(0.f, RtxOptions::ShadowTerminator::maxArea() * RtxOptions::getMeterToWorldUnitScale() * RtxOptions::getMeterToWorldUnitScale());
+    constants.shadowTerminatorArgs.maxLength = std::max(0.f, RtxOptions::ShadowTerminator::maxLength() * RtxOptions::getMeterToWorldUnitScale());
+
     // Upload the constants to the GPU
     {
       Rc<DxvkBuffer> cb = getResourceManager().getConstantsBuffer();

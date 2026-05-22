@@ -157,7 +157,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
       polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque)
   {
     uint jitter = sampleUniformIntRng(rtxdiRNG);
-    NEECell cell = NEECache.getCell(NEECache.pointToOffset(minimalSurfaceInteraction.position, minimalSurfaceInteraction.triangleNormal, jitter));
+    NEECell cell = NEECache.getCell(NEECache.pointToOffset(minimalSurfaceInteraction.position, minimalSurfaceInteraction.geometryNormal, jitter));
     if (cell.isValid())
     {
       int candidateCount = cell.getCandidateCount();
@@ -240,7 +240,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           if (cb.neeCacheArgs.enableSpatialReuse)
           {
             jitter = sampleUniformIntRng(rtxdiRNG);
-            cell = NEECache.getCell(NEECache.pointToOffset(minimalSurfaceInteraction.position, minimalSurfaceInteraction.triangleNormal, jitter));
+            cell = NEECache.getCell(NEECache.pointToOffset(minimalSurfaceInteraction.position, minimalSurfaceInteraction.geometryNormal, jitter));
           }
           cell.insertSlotTask(prefixTask, diffuseLight + specularLight, false);
         }

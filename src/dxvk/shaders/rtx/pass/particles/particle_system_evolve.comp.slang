@@ -75,7 +75,7 @@ void collideParticleWithScene(inout GpuParticle p)
   }
   
   // unpack, normalize
-  float3 n = normalize(float3(si.triangleNormal));
+  float3 n = normalize(float3(si.geometryNormal));
   
   float2 screenVelocity = PreviousPrimaryScreenSpaceMotionVector[pixel];
   

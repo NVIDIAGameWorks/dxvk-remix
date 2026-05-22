@@ -59,6 +59,7 @@
 #define DEBUG_VIEW_BINDING_ALTERNATE_DISOCCLUSION_THRESHOLD_INPUT                          32
 
 #define DEBUG_VIEW_BINDING_PREV_WORLD_POSITION_INPUT                                       33
+#define DEBUG_VIEW_BINDING_SHARED_TERMINATOR_FIX_INPUT                                     34
 
 // Inputs / Outputs
 

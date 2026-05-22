@@ -38,6 +38,41 @@
 #include "rtx/algorithm/rtxcr/rtxcr_material.slangh"
 #include "integrator.slangh"
 
+// From 'Predictable and Targeted Softening of the Shadow Terminator'.
+// Returns a [0,1] weight to smooth the shadow terminator on the diffuse lobe.
+//
+// Softens the abrupt shadow terminator by
+// 1) applying a general falloff on terminator angles
+// 2) the falloff is more drastic if a shading normal (normal maps) mismatches geometry normal,
+//    to eliminate the abrupt terminator caused by directions that are in a shading normal hemisphere,
+//    but are NOT valid in a geometry normal hemisphere. (see the red area in Figure 2 of the paper).
+// The paper suggests a heuristic to apply a falloff on a diffuse term
+// when the given ray direction approaches such a range.
+// NOTE: rayDirection points from the surface to a light / sample position.
+// NOTE: this is a separate technique from the shadow terminator offset, 
+//       as this function mostly solves a problem on surfaces with a normal map, as they perturb the shading normal.
+float softenShadowTerminator(const vec3 geometryNormal, const vec3 shadingNormal, const vec3 rayDirection)
+{
+  // Softening is applied up to this angle threshold (in radians). Default ~3 degrees.
+  const float softeningThresholdAngle = 0.05;
+  
+  // Apply more softening the larger the deviation of shading normal (normal map) from geometry normal.
+  // Note: if shading / geometry normals are the same, a constant softening is still applied, so the terminator is always smoother.
+  float softeningThreshold = lerp(
+    sin(softeningThresholdAngle + 0.1),
+    sin(softeningThresholdAngle),
+    saturate(dot(shadingNormal, geometryNormal))
+  );
+
+  // Shadowing factor: closer to 0 when the ray is at grazing angle from geometry normal (i.e. at terminator),
+  // and reaches 0 sooner if the shading normal deviates more from the geometry normal.
+  float shadowing = saturate(dot(geometryNormal, rayDirection) / softeningThreshold);
+
+  // Smoothstep function, for a gradual falloff
+  float G = shadowing * shadowing * (3.0 - 2.0 * shadowing);
+  return saturate(G);
+}
+
 void evalNEEPrimary(
   vec3 throughput,
   ivec2 pixelCoordinate,
@@ -135,6 +170,16 @@ void evalNEEPrimary(
     emptyWeight;
 
   const float lightSampleThroughput = isValidLightSample ? invSelectionPdf / lightSample.solidAnglePdf : 0.0f;
+
+  if (cb.shadowTerminatorArgs.soften)
+  {
+    // soften the abrupt edge between light and shadow, see function description
+    splitWeight.diffuseReflectionWeight *= softenShadowTerminator(
+      minimalSurfaceInteraction.geometryNormal,
+      opaqueSurfaceMaterialInteraction.shadingNormal,
+      visibility.rayDirection
+    );
+  }
 
   // Determine the weight for the lobes lobe
 

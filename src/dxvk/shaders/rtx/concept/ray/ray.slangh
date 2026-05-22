@@ -37,16 +37,26 @@
 #include "rtx/concept/ray/gbuffer_memory_minimal_ray_interaction.slangh"
 #include "rtx/concept/ray/minimal_ray_interaction.slangh"
 
+// NOTE: SHADOW_TERMINATOR_FIX_ALLOWED is enabled only for direct lighting passes. Terminator offset must not be present on primary, indirect, volumetrics etc.
+// WARN: shadow terminator offset precision degrades on large position values!
+//       if such a case is found, consider gradually minimizing 'shadowTerminatorOffset' as a workaround.
+
 // Returns a new origin to use for a ray offset from a surface. This variant of the ray offsetting function
 // should be used when the hit position was derived with barycentrics as only the magnitude of the position
 // need be considered when offsetting.
 vec3 rayOffsetSurfaceOriginHelper(MinimalSurfaceInteraction minimalSurfaceInteraction, bool penetrateSurface)
 {
   // Flip the triangle normal if requested to offset rays on the opposite side of the surface
-  const vec3 effectiveTriangleNormal = penetrateSurface ? -minimalSurfaceInteraction.triangleNormal : minimalSurfaceInteraction.triangleNormal;
+  const vec3 effectiveTriangleNormal = penetrateSurface ? -minimalSurfaceInteraction.geometryNormal : minimalSurfaceInteraction.geometryNormal;
 
   // Return the origin of the ray with the offset position from the surface interaction
-  return minimalSurfaceInteraction.position + calculateRayOffset(minimalSurfaceInteraction.positionError, effectiveTriangleNormal);
+  return 
+    minimalSurfaceInteraction.position
+    + calculateRayOffset(minimalSurfaceInteraction.positionError, effectiveTriangleNormal)
+#ifdef SHADOW_TERMINATOR_FIX_ALLOWED
+    + minimalSurfaceInteraction.shadowTerminatorOffset * effectiveTriangleNormal
+#endif
+    ;
 }
 
 Ray rayCreateEmpty()

@@ -33,6 +33,7 @@
 #define OPAQUE_MATERIAL_USE_THIN_FILM 1
 #define OPAQUE_MATERIAL_USE_POM 1
 #define RAB_HAS_RTXDI_RESERVOIRS 1
+#define SHADOW_TERMINATOR_FIX_ALLOWED 1
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/common_bindings.slangh"

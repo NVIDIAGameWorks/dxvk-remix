@@ -87,7 +87,7 @@ float sphereLightCalcWeight(SphereLight sphereLight, MinimalSurfaceInteraction v
 {
   vec3 lightVector;
   const float positionalWeight = sphereLightCalcPositionalWeight(sphereLight, viewSurfaceInteraction.position, lightVector);
-  const bool visibilityWeight = sphereLightCalcVisibilityWeight(sphereLight, viewSurfaceInteraction.triangleNormal, lightVector);
+  const bool visibilityWeight = sphereLightCalcVisibilityWeight(sphereLight, viewSurfaceInteraction.geometryNormal, lightVector);
 
   // Note: Ideally this if statement is re-ordered to avoid the calculation of the positional weight when the visibility test fails now that the logic has been abstracted
   // into functions.
