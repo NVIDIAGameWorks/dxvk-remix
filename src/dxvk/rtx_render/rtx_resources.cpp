@@ -464,6 +464,28 @@ namespace dxvk {
         m_raytracingOutput.m_sharedSubsurfaceDiffusionProfileData.reset();
       }
     }
+
+    // Alloc / free images based on RtxOption
+    if (RtxOptions::ShadowTerminator::enableOffset()) {
+      for (auto& terminatorResource : m_raytracingOutput.m_sharedTerminatorFix) {
+        if (!terminatorResource.isValid() || terminatorResource.image->info().extent != m_downscaledExtent) {
+          terminatorResource = createImageResource(ctx, "shadow terminator fix", m_downscaledExtent, VK_FORMAT_R16_SFLOAT);
+        }
+        assert(terminatorResource.isValid());
+        if (resetHistory && terminatorResource.isValid()) {
+          VkClearColorValue clearValue = { 0.f, 0.f, 0.f, 0.f };
+          VkImageSubresourceRange subRange = {};
+          subRange.layerCount = 1;
+          subRange.levelCount = 1;
+          subRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+          ctx->clearColorImage(terminatorResource.image, clearValue, subRange);
+        }
+      }
+    } else {
+      for (auto& terminatorResource : m_raytracingOutput.m_sharedTerminatorFix) {
+        terminatorResource.reset();
+      }
+    }
   }
 
   void Resources::onResize(Rc<DxvkContext> ctx, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent) {
@@ -1019,7 +1041,6 @@ namespace dxvk {
 
     m_raytracingOutput.m_primaryAttenuation = createImageResource(ctx, "primary attenuation", m_downscaledExtent, VK_FORMAT_R32_UINT);
     m_raytracingOutput.m_primaryWorldShadingNormal = createImageResource(ctx, "primary world shading normal", m_downscaledExtent, VK_FORMAT_R32_UINT);
-    m_raytracingOutput.m_primaryWorldInterpolatedNormal = createImageResource(ctx, "primary world interpolated normal", m_downscaledExtent, VK_FORMAT_R32_UINT);
     m_raytracingOutput.m_primaryPerceptualRoughness = createImageResource(ctx, "primary perceptual roughness", m_downscaledExtent, VK_FORMAT_R8_UNORM);
     m_raytracingOutput.m_primaryLinearViewZ = createImageResource(ctx, "primary linear view Z", m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
     uint32_t primaryDepthIndex = 0;

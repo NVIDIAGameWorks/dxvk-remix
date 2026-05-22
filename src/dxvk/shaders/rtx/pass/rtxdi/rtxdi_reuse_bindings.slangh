@@ -62,6 +62,14 @@ Texture2D<float2> PrimaryScreenSpaceMotionVector;
 layout(r32f, binding = RTXDI_REUSE_BINDING_POSITION_ERROR_INPUT)
 Texture2D<float> PrimaryPositionError;
 
+[[vk::binding(RTXDI_REUSE_BINDING_SHARED_TERMINATOR_FIX_INPUT)]]
+Texture2D<float> SharedTerminatorFix;
+
+// NOTE: temporal resampling relies on the previous frame data,
+//       so the terminator fix must also be included to avoid incorrect resampling
+[[vk::binding(RTXDI_REUSE_BINDING_SHARED_TERMINATOR_FIX_PREVIOUS_INPUT)]]
+Texture2D<float> SharedTerminatorFixPrevious;
+
 layout(r16ui, binding = RTXDI_REUSE_BINDING_SHARED_FLAGS_INPUT)
 Texture2D<uint16_t> SharedFlags;
 

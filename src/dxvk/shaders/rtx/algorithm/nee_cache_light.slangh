@@ -142,8 +142,6 @@ struct NEECacheUtils
     // surfaceInteraction.vertexColor = f16vec4(0);
     surfaceInteraction.positionError = 0;
     surfaceInteraction.motion = 0;
-    surfaceInteraction.interpolatedTangent = vec3(0);
-    surfaceInteraction.interpolatedBitangent = vec3(0);
   #endif
 
     rayInteracton.viewDirection = normalize(surfaceInteraction.position - shadingPosition);
@@ -155,13 +153,13 @@ struct NEECacheUtils
 
     LightSample lightSample = {};
     lightSample.position = surfaceInteraction.position;
-    lightSample.normal = surfaceInteraction.interpolatedNormal;
+    lightSample.normal = surfaceInteraction.geometryNormal;
     float lightPdf = trianglePdf;
     triangleArea = surfaceInteraction.triangleArea;
     if (useSolidAnglePdf)
     {
       lightPdf *= calculateLightSamplingSolidAnglePDF(
-        surfaceInteraction.triangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, shadingPosition);
+        surfaceInteraction.triangleArea, surfaceInteraction.position, surfaceInteraction.geometryNormal, shadingPosition);
     }
     else
     {
@@ -315,7 +313,7 @@ struct NEECacheUtils
     dummyRay.direction = vec3(1.0);
     SurfaceInteraction surfaceInteraction = surfaceInteractionCreate<SurfaceIgnoreTangents>(surface, rayInteracton, dummyRay, false, kFootprintFromTextureCoordDiff);
     triangleCenter = surfaceInteraction.position;
-    triangleNormal = surfaceInteraction.triangleNormal;
+    triangleNormal = surfaceInteraction.geometryNormal;
     lightIntensity = vec3(0);
 
     const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surfaceIndex];
@@ -436,7 +434,7 @@ struct NEECacheUtils
   static float calculateBRDFSampleMISWeight(SurfaceInteraction surfaceInteraction, vec3 direction, float hitDistance, float lightSelectionPDF, float brdfSampleSolidAnglePDF)
   {
     float areaPdf = 1.0 / surfaceInteraction.triangleArea;
-    float cosPhi = abs(dot(direction, surfaceInteraction.triangleNormal));
+    float cosPhi = abs(dot(direction, surfaceInteraction.geometryNormal));
     float r2 = hitDistance * hitDistance;
     float lightPdf = lightSelectionPDF * areaPdf * r2 / cosPhi;
     float misWeight = saturate(brdfSampleSolidAnglePDF / (brdfSampleSolidAnglePDF + lightPdf));

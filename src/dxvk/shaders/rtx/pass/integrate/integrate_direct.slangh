@@ -30,6 +30,14 @@
 #include "rtx/concept/surface_material/surface_material.slangh"
 #include "rtx/algorithm/integrator_direct.slangh"
 
+#ifndef SHADOW_TERMINATOR_FIX_ALLOWED
+    #error "macro SHADOW_TERMINATOR_FIX_ALLOWED must be defined and set 1 for all direct lighting passes"
+    // NOTE: shadow terminator code must be compiled in all direct lighting passesd (including RTXDI), 
+    //       otherwise a terminator fix will be applied inconsistently, for example, 
+    //       causing different RTXDI passes produce different results (RTXDI has temporal/spatial resampling
+    //       which must account shadow terminator fix...)
+#endif
+
 // Deserialize the Ray Interaction, Surface Interaction, and Surface Material Interaction
 void deserializeInteractions(
   ivec2 pixelCoordinate,
@@ -182,6 +190,14 @@ void integrate_direct_pass(uvec2 threadIndex)
     geometryFlags);
 
   // Integrate the Direct portion of the Path
+
+#ifdef SHADOW_TERMINATOR_FIX_ALLOWED
+    if (cb.shadowTerminatorArgs.enableOffset)
+    {
+      // NOTE: can't be inside 'deserializeInteractions', as 'sampleAndStoreIndirectRayPathSample' stores data for other passes
+      minimalSurfaceInteraction.shadowTerminatorOffset = SharedTerminatorFix[threadIndex];
+    }
+#endif
 
   integrateDirectPath(
     rng, pixelCoordinate,

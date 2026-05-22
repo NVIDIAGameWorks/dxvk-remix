@@ -161,7 +161,7 @@ float3 RAB_GetSurfaceNormal(RAB_Surface surface)
 
 float3 RAB_GetTriangleNormal(RAB_Surface surface)
 {
-  return surface.minimalSurfaceInteraction.triangleNormal;
+  return surface.minimalSurfaceInteraction.geometryNormal;
 }
 
 float3 RAB_GetViewDirection(RAB_Surface surface)
@@ -188,9 +188,9 @@ RAB_Surface RAB_EmptySurface()
 {
   RAB_Surface surface = (RAB_Surface)0;
   surface.minimalRayInteraction.viewDirection = vec3(0, 0, 1);
-  surface.minimalSurfaceInteraction.triangleNormal = vec3(0, 0, 1);
-  surface.minimalSurfaceInteraction.triangleTangent = vec3(1, 0, 0);
-  surface.minimalSurfaceInteraction.triangleBitangent = vec3(0, 1, 0);
+  surface.minimalSurfaceInteraction.geometryNormal = vec3(0, 0, 1);
+  surface.minimalSurfaceInteraction.geometryTangent = vec3(1, 0, 0);
+  surface.minimalSurfaceInteraction.geometryBitangent = vec3(0, 1, 0);
   surface.opaqueSurfaceMaterialInteraction.shadingNormal = vec3(0, 0, 1);
   surface.opaqueSurfaceMaterialInteraction.albedo = vec3(0, 0, 1);
   surface.opaqueSurfaceMaterialInteraction.baseReflectivity = vec3(0, 0, 1);
@@ -288,6 +288,13 @@ RAB_Surface RAB_GetGBufferSurface(ivec2 pixel, bool previousFrame)
   const Ray originalPrimaryRay = rayCreatePrimaryFromPixel(cb.camera, pixel);
   surface.minimalRayInteraction = minimalRayInteractionReadFromGBuffer(originalPrimaryRay, pixel, PrimaryViewDirection, PrimaryConeRadius);
   surface.minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBufferWithError(pixel, PrimaryWorldPositionWorldTriangleNormal, PrimaryPositionError);
+#ifdef SHADOW_TERMINATOR_FIX_ALLOWED
+  // NOTE: SHADOW_TERMINATOR_FIX_ALLOWED is enabled only for direct lighting passes. Terminator offset must not be present on primary, indirect, volumetrics etc.
+  if (cb.shadowTerminatorArgs.enableOffset)
+  {
+    surface.minimalSurfaceInteraction.shadowTerminatorOffset = SharedTerminatorFix[pixel];
+  }
+#endif
   surface.opaqueSurfaceMaterialInteraction.shadingNormal = signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(PrimaryWorldShadingNormal[pixel]));
   surface.opaqueSurfaceMaterialInteraction.albedo = PrimaryAlbedo[pixel].rgb;
   surface.opaqueSurfaceMaterialInteraction.opacity = 1.0;
@@ -365,7 +372,7 @@ float RAB_GetLightSampleTargetPdfForSurface(RAB_LightSample lightSample, RAB_Sur
   vec3 L = normalize(lightSample.position - surface.minimalSurfaceInteraction.position);
 
   // Need to compute the transmission pdf if the ray interact with SSS surface
-  if (dot(L, surface.minimalSurfaceInteraction.triangleNormal) <= 0.0f &&
+  if (dot(L, surface.minimalSurfaceInteraction.geometryNormal) <= 0.0f &&
       (!cb.sssArgs.enableThinOpaque || !isThinOpaqueSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction)))
   {
     return 0;
@@ -395,7 +402,7 @@ SurfaceMaterialInteractionSplitWeight RAB_CalculateBRDF(vec3 L, RAB_Surface surf
   weight.specularReflectionWeight = vec3(0);
   weight.diffuseTransmissionWeight = vec3(0);
 
-  if (dot(L, surface.minimalSurfaceInteraction.triangleNormal) <= 0.0f &&
+  if (dot(L, surface.minimalSurfaceInteraction.geometryNormal) <= 0.0f &&
       (!cb.sssArgs.enableThinOpaque || !isThinOpaqueSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction)))
   {
     return weight;
@@ -410,7 +417,7 @@ float RAB_GetGITargetPdfForSurface(vec3 radiance, vec3 position, RAB_Surface sur
 {
   vec3 L = normalize(position - surface.minimalSurfaceInteraction.position);
 
-  if ((dot(L, surface.minimalSurfaceInteraction.triangleNormal) <= 0.0f ||
+  if ((dot(L, surface.minimalSurfaceInteraction.geometryNormal) <= 0.0f ||
        dot(L, surface.opaqueSurfaceMaterialInteraction.shadingNormal) <= 0.0f) &&
       (!cb.sssArgs.enableThinOpaque || !isThinOpaqueSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction)))
   {
@@ -495,20 +502,20 @@ bool RAB_ShouldDiscardEnlargedPixel(inout RAB_RandomSamplerState rng, RAB_Surfac
   if (cb.teleportationPortalIndex != 0 || surface.portalSpace == PORTAL_SPACE_PORTAL_COMBINED)
     return false;
   
-  vec3 triangleNormal = surface.minimalSurfaceInteraction.triangleNormal;
+  vec3 geometryNormal = surface.minimalSurfaceInteraction.geometryNormal;
   if (surface.portalSpace == PORTAL_SPACE_PORTAL_0 || surface.portalSpace == PORTAL_SPACE_PORTAL_1)
   {
     RayPortalHitInfo rayPortalHitInfo = cb.rayPortalHitInfos[(uint)getOpposingRayPortalIndex(surface.portalSpace)];
     if (rayPortalHitInfoIsActive(rayPortalHitInfo))
     {
       mat4 teleportMatrix = rayPortalHitInfo.encodedPortalToOpposingPortalDirection.unpack();
-      triangleNormal = mul(mat3(teleportMatrix), triangleNormal);
+      geometryNormal = mul(mat3(teleportMatrix), geometryNormal);
     }
   }
   const float3 cameraPositon = cameraGetWorldPosition(cb.camera);
   const float3 prevVirtualWorldPosition = surface.virtualWorldPosition + virtualMotionVector;
-  float prevFactor = getProjectionFactor(cameraGetPreviousWorldPosition(cb.camera).xyz, prevVirtualWorldPosition, triangleNormal);
-  float currFactor = getProjectionFactor(cameraPositon, surface.virtualWorldPosition, triangleNormal);
+  float prevFactor = getProjectionFactor(cameraGetPreviousWorldPosition(cb.camera).xyz, prevVirtualWorldPosition, geometryNormal);
+  float currFactor = getProjectionFactor(cameraPositon, surface.virtualWorldPosition, geometryNormal);
   float invalidProbability = (currFactor - prevFactor) * 20;
 
   return RAB_GetNextRandom(rng) < min(0.5, invalidProbability);
@@ -535,10 +542,21 @@ RAB_Surface RAB_GetSurfaceForTemporalBiasCorrection(RAB_Surface currentSurface, 
       }
   
       temporalSurface.minimalSurfaceInteraction.position = temporalSurfaceInteraction.position;
-      temporalSurface.minimalSurfaceInteraction.triangleNormal = temporalSurfaceInteraction.triangleNormal;
-      temporalSurface.minimalSurfaceInteraction.triangleTangent = temporalSurfaceInteraction.triangleTangent;
-      temporalSurface.minimalSurfaceInteraction.triangleBitangent = temporalSurfaceInteraction.triangleBitangent;
+      temporalSurface.minimalSurfaceInteraction.geometryNormal = temporalSurfaceInteraction.geometryNormal;
+      temporalSurface.minimalSurfaceInteraction.geometryTangent = temporalSurfaceInteraction.geometryTangent;
+      temporalSurface.minimalSurfaceInteraction.geometryBitangent = temporalSurfaceInteraction.geometryBitangent;
       // Note: don't copy the positionError field because it's zero.
+
+#ifdef SHADOW_TERMINATOR_FIX_ALLOWED
+      if (cb.shadowTerminatorArgs.enableOffset)
+      {
+        // for temporal samples, it's important to load corresponding terminator offset;
+        // because, if a base sample has the offset, but a temporal sample doesn't,
+        // then we introduce a bias (e.g. overbright) during resampling
+        // because of the difference of illumination on them
+        temporalSurface.minimalSurfaceInteraction.shadowTerminatorOffset = SharedTerminatorFixPrevious[prevPixelID];
+      }
+#endif
     }
 #endif
 

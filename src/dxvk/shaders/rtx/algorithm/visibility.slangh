@@ -168,7 +168,7 @@ vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo rayHi
 
       // Approximate the attenuation distance based on the triangle normal
       const float thickness = translucentSurfaceMaterialInteractionGetThinWallThickness(translucentSurfaceMaterialInteraction);
-      const float attenuationDistance = abs(evalThinAttenuationDistance(thickness, surfaceInteraction.triangleNormal, ray.direction));
+      const float attenuationDistance = abs(evalThinAttenuationDistance(thickness, surfaceInteraction.geometryNormal, ray.direction));
       const vec3 attenuationCoefficient = transmittanceToAttenuationCoefficient(translucentSurfaceMaterialInteraction.transmittanceColor, 1.0);
       const vec3 volumeAttenuation = evalBeerLambertAttenuation(attenuationCoefficient, attenuationDistance);
 

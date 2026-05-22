@@ -201,7 +201,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
   prevNDC.xyz /= prevNDC.w;
   float2 prevPixelCenter = cameraNDCToScreenUV(camera, prevNDC.xy) * vec2(camera.resolution);
   float2 expectedPrevHitDistance = calculateExpectedPreviousHitDistance(camera, prevVirtualWorldPosition);
-  float viewDirectionDotTriangleNormal = abs(dot(surface.minimalRayInteraction.viewDirection, surface.minimalSurfaceInteraction.triangleNormal));
+  float viewDirectionDotTriangleNormal = abs(dot(surface.minimalRayInteraction.viewDirection, surface.minimalSurfaceInteraction.geometryNormal));
   float2 depthThreshold = 0.01 / max(viewDirectionDotTriangleNormal, 0.01);
   float normalThreshold = lerp(0.995, 0.5, surface.opaqueSurfaceMaterialInteraction.isotropicRoughness);
 

@@ -236,7 +236,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   vec3 specularLight = vec3(0);
   float initialWeight = 1;
   float restirWeight = 0;
-  float VdotN = dot(minimalRayInteraction.viewDirection, minimalSurfaceInteraction.triangleNormal);
+  float VdotN = dot(minimalRayInteraction.viewDirection, minimalSurfaceInteraction.geometryNormal);
   if (!gBufferMiss && polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque)
   {
     OpaqueSurfaceMaterialInteraction material = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
@@ -427,9 +427,8 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     }
     else if (cb.enhanceBSDFIndirectMode == 1)
     {
-      const float3 interpolatedNormal = signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(PrimaryWorldInterpolatedNormal[threadIndex]));
       factor = ReSTIRGI_GetDlssEnhancementIndirectFactorNormalDifference(
-        (int2)threadIndex, minimalSurfaceInteraction.position, interpolatedNormal, spatialReservoir,
+        (int2)threadIndex, minimalSurfaceInteraction.position, minimalSurfaceInteraction.geometryNormal, spatialReservoir,
         cb.enhanceBSDFIndirectLightMinRoughness, vec2(0.05f, 0.01f), vec2(1.0f, 100.0f));
 
       // Scale and clamp factor

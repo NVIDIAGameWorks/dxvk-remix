@@ -230,6 +230,7 @@ namespace dxvk
     };
 
     struct RaytracingOutput {
+      // Note: resources are called 'shared' if they are written by both Primary and Secondary (PSR) passes
       Resource m_sharedFlags;
       Resource m_sharedRadianceRG;
       Resource m_sharedRadianceB;
@@ -241,10 +242,12 @@ namespace dxvk
       AliasedResource m_sharedSurfaceIndex;
       Resource m_sharedSubsurfaceData;
       Resource m_sharedSubsurfaceDiffusionProfileData;
+      // Terminator offset image is written by Primary and overwritten by a single chosen Secondary pass -- so it's shared,
+      // as a terminator fix not that visible if we have both reflections/refractions, so we can omit it in one of them.
+      Resource m_sharedTerminatorFix[2];
 
       Resource m_primaryAttenuation;
       Resource m_primaryWorldShadingNormal;
-      Resource m_primaryWorldInterpolatedNormal;
       Resource m_primaryPerceptualRoughness;
       Resource m_primaryLinearViewZ;
       ResourceQueue m_primaryDepthQueue;
@@ -355,6 +358,8 @@ namespace dxvk
       const AliasedResource& getPreviousRtxdiConfidence() const { return m_rtxdiConfidence[!m_swapTextures]; }
       const AliasedResource& getCurrentPrimaryWorldPositionWorldTriangleNormal() const { return m_primaryWorldPositionWorldTriangleNormal[m_swapTextures]; }
       const AliasedResource& getPreviousPrimaryWorldPositionWorldTriangleNormal() const { return m_primaryWorldPositionWorldTriangleNormal[!m_swapTextures]; }
+      const Resource& getCurrentSharedTerminatorFix() const { return m_sharedTerminatorFix[m_swapTextures]; }
+      const Resource& getPreviousSharedTerminatorFix() const { return m_sharedTerminatorFix[!m_swapTextures]; }
 
     private:
       bool m_swapTextures = false;

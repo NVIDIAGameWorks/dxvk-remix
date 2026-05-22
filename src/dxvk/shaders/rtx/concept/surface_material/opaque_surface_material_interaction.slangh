@@ -348,9 +348,9 @@ float opaqueSurfaceMaterialInteractionCalcHeightThroughput(
 {
   // rebuild tangent space
   const f16mat3 worldToTangent = f16mat3(
-    minimalSurfaceInteraction.triangleTangent,
-    minimalSurfaceInteraction.triangleBitangent,
-    minimalSurfaceInteraction.triangleNormal);
+    minimalSurfaceInteraction.geometryTangent,
+    minimalSurfaceInteraction.geometryBitangent,
+    minimalSurfaceInteraction.geometryNormal);
   const vec3 lightDirTangentSpace = normalize(mul(worldToTangent, rayDirection));
   return pomSampleVisibility(opaqueSurfaceMaterial, texcoord, lightDirTangentSpace);
 }
@@ -480,7 +480,7 @@ void overrideMaterialInteractionForEye(
     surfaceInteraction.textureCoordinates,
     surface.eyeBasisU,
     surface.eyeBasisV,
-    surfaceInteraction.interpolatedNormal,
+    surfaceInteraction.geometryNormal,
     worldToTangent,
     minimalRayInteraction.viewDirection,
     cb.eyeArgs.irisRadius,
@@ -555,7 +555,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
 
   // Create a tangent to world space matrix for future calculations
 
-  const f16mat3 worldToTangent = f16mat3(surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent, surfaceInteraction.interpolatedNormal);
+  const f16mat3 worldToTangent = f16mat3(surfaceInteraction.geometryTangent, surfaceInteraction.geometryBitangent, surfaceInteraction.geometryNormal);
 
   // Note: Does not represent if the thin film is enabled in all cases, such as if the thin film enable override is specified, merely concerned with if
   // it has been directly enabled by the material itself.
@@ -566,7 +566,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
 #ifdef OPAQUE_MATERIAL_USE_POM
   if (cb.pomMode != DisplacementMode::Off && opaqueSurfaceMaterial.hasValidDisplacement())
   {
-    const mat3 worldToTexture = inverse(transpose(mat3(surfaceInteraction.rawTangent, surfaceInteraction.rawBitangent, surfaceInteraction.interpolatedNormal)));
+    const mat3 worldToTexture = inverse(transpose(mat3(surfaceInteraction.rawTangent, surfaceInteraction.rawBitangent, surfaceInteraction.geometryNormal)));
     // TextureGradient x might be along the same direction as the view ray?  make a debug view that shows the dot product between textureGradient.x and viewDirTangentSpace?
 
     vec3 viewDirTextureSpace = normalize(mul(worldToTexture, minimalRayInteraction.viewDirection));
@@ -766,7 +766,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
 
   // Load Normal
 
-  vec3 normal = surfaceInteraction.interpolatedNormal;
+  vec3 normal = surfaceInteraction.geometryNormal;
   // Note: Defaults to 0 as this indicates no normal detail (which should be the case when a normal map is not present).
   float normalDetail = 0.0f;
 
@@ -853,7 +853,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
 
   // Transform to desired Opaque Material Interaction values
 
-  opaqueSurfaceMaterialInteraction.shadingNormal = getBentNormal(surfaceInteraction.triangleNormal, normal, -minimalRayInteraction.viewDirection);
+  opaqueSurfaceMaterialInteraction.shadingNormal = getBentNormal(surfaceInteraction.geometryNormal, normal, -minimalRayInteraction.viewDirection);
   opaqueSurfaceMaterialInteraction.normalDetail = normalDetail;
   // Todo: Shading tangent/bitangent for anisotropy?
   opaqueSurfaceMaterialInteraction.opacity = opacity;

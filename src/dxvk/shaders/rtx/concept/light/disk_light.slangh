@@ -96,7 +96,7 @@ float diskLightCalcWeight(DiskLight diskLight, MinimalSurfaceInteraction viewSur
   vec3 lightVector;
   float maxDiskRadius;
   const float positionalWeight = diskLightCalcPositionalWeight(diskLight, viewSurfaceInteraction.position, lightVector, maxDiskRadius);
-  const bool visibilityWeight = diskLightCalcVisibilityWeight(diskLight, viewSurfaceInteraction.triangleNormal, lightVector, maxDiskRadius, isThinOpaqueSubsurface);
+  const bool visibilityWeight = diskLightCalcVisibilityWeight(diskLight, viewSurfaceInteraction.geometryNormal, lightVector, maxDiskRadius, isThinOpaqueSubsurface);
 
   // Note: Ideally this if statement is re-ordered to avoid the calculation of the positional weight when the visibility test fails now that the logic has been abstracted
   // into functions.

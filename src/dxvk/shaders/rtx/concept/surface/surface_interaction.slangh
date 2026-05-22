@@ -148,6 +148,37 @@ void convert1stCascadeTexCoordsToTargetCascadeLevel(uint targetCascadeLevel, ino
   }
 }
 
+vec3 calcShadowTerminatorOffset(
+  const vec3 positions[3], // world space
+  const vec3 normals[3],   // world space
+  const vec3 bary,
+  const vec3 viewDirection
+)
+{
+  const vec3 hitPosition = interpolateHitAttribute(positions, bary);
+
+  // get distance vectors from triangle vertices
+  vec3 tmpu = hitPosition - positions[0];
+  vec3 tmpv = hitPosition - positions[1];
+  vec3 tmpw = hitPosition - positions[2];
+
+  // project these onto the tangent planes defined by the shading normals
+  tmpu = tmpu - min(0.0, dot(tmpu, normals[0])) * normals[0];
+  tmpv = tmpv - min(0.0, dot(tmpv, normals[1])) * normals[1];
+  tmpw = tmpw - min(0.0, dot(tmpw, normals[2])) * normals[2];
+
+  vec3 terminatorOffset = bary.x * tmpu + bary.y * tmpv + bary.z * tmpw;
+
+  // renormalize, if too long
+  float flen = length(terminatorOffset);
+  if (flen > cb.shadowTerminatorArgs.maxLength)
+  {
+    terminatorOffset *= cb.shadowTerminatorArgs.maxLength / flen;
+  }
+
+  return sanitize(terminatorOffset, vec3(0));
+}
+
 // Adjusts a specified set of texture coordinates and gradients with respect to specified spritesheet information.
 void calcSpriteSheetAdjustment(
   inout vec2 textureCoordinates,
@@ -330,11 +361,9 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
   const bool triangleNormalSameDirection = dot(triangleNormal, rayInteraction.viewDirection) >= 0.0f;
   const vec3 flippedTriangleNormal = triangleNormalSameDirection ? triangleNormal : -triangleNormal;
 
-  surfaceInteraction.triangleNormal = flippedTriangleNormal;
-
   if (surface.normalBufferIndex == BINDING_INDEX_INVALID)
   {
-    surfaceInteraction.interpolatedNormal = surfaceInteraction.triangleNormal;
+    surfaceInteraction.geometryNormal = flippedTriangleNormal;
   }
   else
   {
@@ -368,22 +397,50 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
     // Note: Fall back to the triangle normal when an interpolated normal cannot be derived. Note this will not produce a
     // valid normal for cases where the positional data itself is NaN/Inf, but these cases likely indicate corruption in
     // the original data to begin with.
-    const vec3 objectInterpolatedNormal = safeNormalize(interpolateHitAttribute(normals, bary), triangleNormal);
+    normals[0] = safeNormalize(normals[0], triangleNormal);
+    normals[1] = safeNormalize(normals[1], triangleNormal);
+    normals[2] = safeNormalize(normals[2], triangleNormal);
+
     // Note: This is done due to input data from source applications potentially containing NaNs/Infs and thus needing to be sanitized before being
     // used in Remix. This is done here rather than earlier when normals are read from the buffer to only sanitize once rather than for
     // each of the 3 vertex normals. Do note however that keeping this as close to the interpolation step as possible is important to avoid
     // hiding invalid values from other logic in Remix.
-    const vec3 sanitizedObjectInterpolatedNormal = sanitize(objectInterpolatedNormal, triangleNormal);
+    normals[0] = sanitize(normals[0], triangleNormal);
+    normals[1] = sanitize(normals[1], triangleNormal);
+    normals[2] = sanitize(normals[2], triangleNormal);
 
     // Note: Second normalization required as vector may be scaled through a normal transformation
-    const vec3 interpolatedNormal = normalize(mul(surface.normalObjectToWorld, sanitizedObjectInterpolatedNormal));
+    normals[0] = safeNormalize(mul(surface.normalObjectToWorld, normals[0]), triangleNormal);
+    normals[1] = safeNormalize(mul(surface.normalObjectToWorld, normals[1]), triangleNormal);
+    normals[2] = safeNormalize(mul(surface.normalObjectToWorld, normals[2]), triangleNormal);
+
     // Really the only reason to flip this normal is for double-sided geometry.  Do not flip based on view vector!
-    const bool interpolatedNormalSameDirection = dot(interpolatedNormal, flippedTriangleNormal) >= 0.0f;
-    const vec3 flippedInterpolatedNormal = interpolatedNormalSameDirection ? interpolatedNormal : -interpolatedNormal;
+    normals[0] *= dot(normals[0], flippedTriangleNormal) >= float16_t(0.0) ? 1 : -1;
+    normals[1] *= dot(normals[1], flippedTriangleNormal) >= float16_t(0.0) ? 1 : -1;
+    normals[2] *= dot(normals[2], flippedTriangleNormal) >= float16_t(0.0) ? 1 : -1;
 
-    const vec3 bentInterpolatedNormal = getBentNormal(surfaceInteraction.triangleNormal, flippedInterpolatedNormal, ray.direction);
+    normals[0] = getBentNormal(flippedTriangleNormal, normals[0], ray.direction);
+    normals[1] = getBentNormal(flippedTriangleNormal, normals[1], ray.direction);
+    normals[2] = getBentNormal(flippedTriangleNormal, normals[2], ray.direction);
 
-    surfaceInteraction.interpolatedNormal = bentInterpolatedNormal;
+    const vec3 geometryNormal = safeNormalize(interpolateHitAttribute(normals, bary), triangleNormal);
+
+    if (cb.shadowTerminatorArgs.enableOffset)
+    {
+      float maxQuadArea = cb.shadowTerminatorArgs.maxArea;
+
+      // if triangle is small, apply the shadow terminator offset
+      // but on large triangles, skip it, as it introduces light leaking
+      float termScale = 1.0 - smoothstep(maxQuadArea * 0.5, maxQuadArea, worldTwoTriangleArea);
+
+      // since 'surface.normalBufferIndex' is defined, the geometry normal is not flat across the triangle,
+      // we need to apply the shadow terminator fix to prevent harsh shadow edges
+      vec3 terminatorOffset = calcShadowTerminatorOffset(worldPositions, normals, bary, rayInteraction.viewDirection);
+      // project onto the normal: it's more coarse, but requires only vec1 storage instead of vec3
+      surfaceInteraction.shadowTerminatorOffset = termScale * max(0, dot(terminatorOffset, geometryNormal));
+    }
+
+    surfaceInteraction.geometryNormal = geometryNormal;
   }
 
   // Compute motion
@@ -505,14 +562,8 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
       // TBN  in local space, but since we generate the TBN frame in world space this is more applicable. Additionally
       // it removes the need to keep the object space positions around which should ideally reduce register pressure.
       genTangSpace(
-      texcoords, worldPositions, surfaceInteraction.interpolatedNormal,
-      surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent, surfaceInteraction.rawTangent, surfaceInteraction.rawBitangent);
-
-      // Derive triangle TBN based on interpolated TBN. This works in all cases tested,
-      // and should be much cheaper than calling genTangSpace again.
-      vec4 interpolatedToTriangle = quaternionCreateOrientation(surfaceInteraction.interpolatedNormal, surfaceInteraction.triangleNormal);
-      surfaceInteraction.triangleTangent = quaternionTransformVector(interpolatedToTriangle, surfaceInteraction.interpolatedTangent);
-      surfaceInteraction.triangleBitangent = quaternionTransformVector(interpolatedToTriangle, surfaceInteraction.interpolatedBitangent);
+      texcoords, worldPositions, surfaceInteraction.geometryNormal,
+      surfaceInteraction.geometryTangent, surfaceInteraction.geometryBitangent, surfaceInteraction.rawTangent, surfaceInteraction.rawBitangent);
     }
 
     // Convert texcoords from the 1st cascade to a corresponding cascade in a combined tiled cascades texture space
@@ -526,7 +577,7 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
       {
         // For surfaces with displacement, we need to ensure the final hit point is within a cascade level.
         // To do this, calculate the furthest texcoord that displacement could return, and use a cascade level that includes that point.
-        const mat3 worldToTangent = mat3(surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent, surfaceInteraction.interpolatedNormal);
+        const mat3 worldToTangent = mat3(surfaceInteraction.geometryTangent, surfaceInteraction.geometryBitangent, surfaceInteraction.geometryNormal);
         const vec3 viewDirTangentSpace = normalize(mul(worldToTangent, rayInteraction.viewDirection));
         // viewDirection is hitPos to camera, so invert it before converting to a texcoord offset.
         const vec2 maxPossiblePomOffset = viewDirTangentSpace.xy * (-1.f * cb.terrainArgs.displaceIn / viewDirTangentSpace.z);
@@ -600,14 +651,9 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
 
     // Create dummy tangent basis thats reasonable WRT normal
     calcOrthonormalBasis(
-      surfaceInteraction.interpolatedNormal,
-      surfaceInteraction.interpolatedTangent,
-      surfaceInteraction.interpolatedBitangent);
-
-    calcOrthonormalBasis(
-      surfaceInteraction.triangleNormal,
-      surfaceInteraction.triangleTangent,
-      surfaceInteraction.triangleBitangent);
+      surfaceInteraction.geometryNormal,
+      surfaceInteraction.geometryTangent,
+      surfaceInteraction.geometryBitangent);
   }
 
   // Calculate normals for an eye, with a slight bump on a cornea
@@ -618,7 +664,7 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
     vec3 enormal, etangent, ebitangent;
     eyeCalcNormalFrame(
       hitPosition,
-      surfaceInteraction.triangleNormal,
+      surfaceInteraction.geometryNormal,
       rayInteraction.viewDirection,
       surface.eyeBasisU,
       surface.eyeBasisV,
@@ -634,14 +680,11 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
     surfaceInteraction.textureGradientX      = 0.f;
     surfaceInteraction.textureGradientY      = 0.f;
     // NOTE: disregard the triangle normals
-    surfaceInteraction.triangleNormal        = enormal;
-    surfaceInteraction.interpolatedNormal    = enormal;
-    surfaceInteraction.interpolatedTangent   = etangent;
+    surfaceInteraction.geometryNormal        = enormal;
+    surfaceInteraction.geometryTangent       = etangent;
     surfaceInteraction.rawTangent            = etangent;
-    surfaceInteraction.triangleTangent       = etangent;
-    surfaceInteraction.interpolatedBitangent = ebitangent;
+    surfaceInteraction.geometryBitangent     = ebitangent;
     surfaceInteraction.rawBitangent          = ebitangent;
-    surfaceInteraction.triangleBitangent     = ebitangent;
   }
 
   // Adjust texture coordinates and gradients for animated sprite sheet logic

@@ -32,6 +32,7 @@
 #define RAB_HAS_PREVIOUS_GBUFFER 1
 #define RAB_HAS_CURRENT_GBUFFER 1
 #define RAB_HAS_RTXDI_RESERVOIRS 1
+#define SHADOW_TERMINATOR_FIX_ALLOWED 1
 
 #include "rtx/pass/common_bindings.slangh"
 #include "rtx/pass/rtxdi/rtxdi_reuse_bindings.slangh"
@@ -100,7 +101,7 @@ void main(int2 threadIndex : SV_DispatchThreadID)
   const float3 virtualMotionVector = PrimaryVirtualMotionVector[pixelCoordinate].xyz;
   const float3 prevVirtualWorldPosition = surface.virtualWorldPosition + virtualMotionVector;
 
-  float viewDirectionDotTriangleNormal = abs(dot(surface.minimalRayInteraction.viewDirection, surface.minimalSurfaceInteraction.triangleNormal));
+  float viewDirectionDotGeometryNormal = abs(dot(surface.minimalRayInteraction.viewDirection, surface.minimalSurfaceInteraction.geometryNormal));
 
   RTXDI_TemporalResamplingParameters tparams;
   tparams.prevPixelCenter = prevPixelCenter;
@@ -113,7 +114,7 @@ void main(int2 threadIndex : SV_DispatchThreadID)
       ? RTXDI_BIAS_CORRECTION_RAY_TRACED
       : RTXDI_BIAS_CORRECTION_BASIC
     : RTXDI_BIAS_CORRECTION_OFF;
-  tparams.depthThreshold = 0.01 / max(viewDirectionDotTriangleNormal, 0.01);
+  tparams.depthThreshold = 0.01 / max(viewDirectionDotGeometryNormal, 0.01);
   tparams.normalThreshold = 0.8;
   tparams.discardEnlargedPixels = cb.enableRtxdiDiscardEnlargedPixels;
   tparams.discardInvisibleSamples = cb.enableRtxdiDiscardInvisibleSamples;

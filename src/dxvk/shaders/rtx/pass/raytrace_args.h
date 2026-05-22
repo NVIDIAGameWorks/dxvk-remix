@@ -120,6 +120,14 @@ struct EyeArgs {
   uint  pad1;
 };
 
+struct ShadowTerminatorArgs
+{
+  uint  enableOffset;
+  uint  soften;
+  float maxArea;
+  float maxLength;
+};
+
 #define OBJECT_PICKING_INVALID (cb.clearColorPicking)
 
 // Constant buffer
@@ -153,6 +161,7 @@ struct RaytraceArgs {
   NrcArgs nrcArgs;
   SssArgs sssArgs;
   EyeArgs eyeArgs;
+  ShadowTerminatorArgs shadowTerminatorArgs;
 
   Camera renderTargetCamera;
 

@@ -87,12 +87,9 @@ namespace dxvk {
         {DEBUG_VIEW_TEXCOORD_GENERATION_MODE, "Texture Coordinates Generation Mode"},
         {DEBUG_VIEW_VIRTUAL_MOTION_VECTOR, "Virtual Motion Vector"},
         {DEBUG_VIEW_SCREEN_SPACE_MOTION_VECTOR, "Screen-Space Motion Vector"},
-        {DEBUG_VIEW_TRIANGLE_NORMAL, "Triangle Normal"},
-        {DEBUG_VIEW_TRIANGLE_TANGENT, "Triangle Tangent"},
-        {DEBUG_VIEW_TRIANGLE_BITANGENT, "Triangle Bitangent"},
-        {DEBUG_VIEW_INTERPOLATED_NORMAL, "Interpolated Normal"},
-        {DEBUG_VIEW_INTERPOLATED_TANGENT, "Interpolated Tangent"},
-        {DEBUG_VIEW_INTERPOLATED_BITANGENT, "Interpolated Bitangent"},
+        {DEBUG_VIEW_GEOMETRY_NORMAL, "Geometry Normal"},
+        {DEBUG_VIEW_GEOMETRY_TANGENT, "Geometry Tangent"},
+        {DEBUG_VIEW_GEOMETRY_BITANGENT, "Geometry Bitangent"},
         {DEBUG_VIEW_SHADING_NORMAL, "Shading Normal"},
         {DEBUG_VIEW_VIRTUAL_SHADING_NORMAL, "Virtual Shading Normal"},
         {DEBUG_VIEW_VERTEX_COLOR, "Vertex Color"},
@@ -340,6 +337,8 @@ namespace dxvk {
                                                   "  1: World Normal\n"
                                                   "  2: World Tangent\n"
                                                   "  3: World Bitangent" },
+
+        {DEBUG_VIEW_SHADOW_TERMINATOR_OFFSET, "Shadow Terminator Offset"},
       };
 
   // Note: this does a linear search through the debug view vector so do not use it in performance critical code
@@ -574,6 +573,7 @@ namespace dxvk {
         TEXTURE2D(DEBUG_VIEW_BINDING_COMPOSITE_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_ALTERNATE_DISOCCLUSION_THRESHOLD_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_PREV_WORLD_POSITION_INPUT)
+        TEXTURE2D(DEBUG_VIEW_BINDING_SHARED_TERMINATOR_FIX_INPUT)
 
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_ACCUMULATED_DEBUG_VIEW_INPUT_OUTPUT)
 
@@ -1377,6 +1377,8 @@ namespace dxvk {
     ctx->bindResourceView(DEBUG_VIEW_BINDING_PREV_WORLD_POSITION_INPUT,
                            rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read,
                                                                                               rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().matchesWriteFrameIdx(frameIdx - 1)), nullptr);
+
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_SHARED_TERMINATOR_FIX_INPUT, rtOutput.getCurrentSharedTerminatorFix().view, nullptr);
 
     // Inputs / Outputs
 

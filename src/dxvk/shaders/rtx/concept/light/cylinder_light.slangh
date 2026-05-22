@@ -91,7 +91,7 @@ float cylinderLightCalcWeight(CylinderLight cylinderLight, MinimalSurfaceInterac
   vec3 lightVector;
   vec3 edgeLightVector;
   const float positionalWeight = cylinderLightCalcPositionalWeight(cylinderLight, viewSurfaceInteraction.position, lightVector, edgeLightVector);
-  const bool visibilityWeight = cylinderLightCalcVisibilityWeight(cylinderLight, viewSurfaceInteraction.triangleNormal, lightVector, edgeLightVector);
+  const bool visibilityWeight = cylinderLightCalcVisibilityWeight(cylinderLight, viewSurfaceInteraction.geometryNormal, lightVector, edgeLightVector);
 
   // Note: Ideally this if statement is re-ordered to avoid the calculation of the positional weight when the visibility test fails now that the logic has been abstracted
   // into functions.

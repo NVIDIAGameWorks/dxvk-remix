@@ -502,10 +502,11 @@ struct MinimalSurfaceInteraction
   // Floating-point error of position representation in object space or world space, whichever is larger.
   // Used for calculating ray offsets.
   float positionError = 0.f;
-  // TODO this could just be a `quaternion triangleTBN` 
-  vec3 triangleNormal = 0.f;
-  vec3 triangleTangent = 0.f;
-  vec3 triangleBitangent = 0.f;
+  // TODO this could just be a `quaternion geometryTBN` 
+  vec3 geometryNormal = 0.f;
+  vec3 geometryTangent = 0.f;
+  vec3 geometryBitangent = 0.f;
+  float shadowTerminatorOffset = 0.f;
 
   // Surfaces created from gbuffer may not be valid (i.e. if this pixel was a ray miss)
   property bool isValid
@@ -520,11 +521,6 @@ struct SurfaceInteraction : MinimalSurfaceInteraction
   vec2 textureCoordinates = 0..xx;
   vec2 textureGradientX = 0..xx;
   vec2 textureGradientY = 0..xx;
-  // Note: All normal, tangent and bitangent vectors are in world space.
-  // TODO this could just be a `quaternion interpolatedTBN` 
-  vec3 interpolatedNormal = 0.f;
-  vec3 interpolatedTangent = 0.f;
-  vec3 interpolatedBitangent = 0.f;
   vec3 rawTangent = 0.f;
   vec3 rawBitangent = 0.f;
   vec4 vertexColor = 0.0f;

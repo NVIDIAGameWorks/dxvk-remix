@@ -77,9 +77,6 @@ RWTexture2D<uint> PrimaryAttenuation;
 layout(r32ui, binding = GBUFFER_BINDING_PRIMARY_WORLD_SHADING_NORMAL_OUTPUT)
 RWTexture2D<uint> PrimaryWorldShadingNormal;
 
-layout(r32ui, binding = GBUFFER_BINDING_PRIMARY_WORLD_INTERPOLATED_NORMAL_OUTPUT)
-RWTexture2D<uint> PrimaryWorldInterpolatedNormal;
-
 layout(r8, binding = GBUFFER_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_OUTPUT)
 RWTexture2D<float> PrimaryPerceptualRoughness;
 
@@ -112,6 +109,9 @@ RWTexture2D<float> PrimaryConeRadius;
 
 layout(r32f, binding = GBUFFER_BINDING_PRIMARY_POSITION_ERROR_OUTPUT)
 RWTexture2D<float> PrimaryPositionError;
+
+[[vk::binding(GBUFFER_BINDING_SHARED_SHADOW_TERMINATOR_FIX_OUTPUT)]]
+RWTexture2D<float> SharedTerminatorFix;
 
 // Secondary Surface Outputs (Coherent/Stochastic)
 // World Shading Normal, View Direction, Cone Radius, and World Position/World

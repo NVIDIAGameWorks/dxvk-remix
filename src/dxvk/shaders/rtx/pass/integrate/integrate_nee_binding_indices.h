@@ -51,7 +51,6 @@ struct VisualizeNeeArgs
 
 #define INTEGRATE_NEE_BINDING_PRIMARY_POSITION_ERROR_INPUT                              53
 #define INTEGRATE_NEE_BINDING_PRIMARY_HIT_DISTANCE_INPUT                                54
-#define INTEGRATE_NEE_BINDING_PRIMARY_WORLD_INTERPOLATED_NORMAL_INPUT                   55
 #define INTEGRATE_NEE_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT                      56
 
 #define INTEGRATE_NEE_BINDING_NEE_CACHE                                                 57

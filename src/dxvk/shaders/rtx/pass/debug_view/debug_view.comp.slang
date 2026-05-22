@@ -115,6 +115,9 @@ Texture2D<float> PrimaryDisocclusionThreshold;
 layout(binding = DEBUG_VIEW_BINDING_PREV_WORLD_POSITION_INPUT)
 Texture2D<float4> PreviousWorldPosition_WorldTriangleNormal;
 
+[[vk::binding(DEBUG_VIEW_BINDING_SHARED_TERMINATOR_FIX_INPUT)]]
+Texture2D<float4> SharedShadowTerminatorFix;
+
 // Inputs / Outputs
 
 [[vk::binding(DEBUG_VIEW_BINDING_ACCUMULATED_DEBUG_VIEW_INPUT_OUTPUT)]]
@@ -497,18 +500,21 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
       }
       else if(cb.debugKnob.x <= 2.f)
       {
-        value.xyz = normalize(float3(si.triangleNormal));
+        value.xyz = normalize(float3(si.geometryNormal));
       }
       else if(cb.debugKnob.x <= 3.f)
       {
-        value.xyz = normalize(float3(si.triangleTangent));
+        value.xyz = normalize(float3(si.geometryTangent));
       }
       else if(cb.debugKnob.x <= 4.f)
       {
-        value.xyz = normalize(float3(si.triangleBitangent));
+        value.xyz = normalize(float3(si.geometryBitangent));
       }
       break;
     }
+  case DEBUG_VIEW_SHADOW_TERMINATOR_OFFSET:
+    value = SharedShadowTerminatorFix[threadId];
+    break;
   case DEBUG_VIEW_NAN:
     bool isValid = DebugView[threadId].x != 0.0;
 
@@ -561,6 +567,9 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
     isValid &= isValidValue(RenderOutput[upscaledPixelCoordinate]);
     // DEBUG_VIEW_COMPOSITE_OUTPUT
     isValid &= isValidValue(Composite[threadId]);
+
+    // DEBUG_VIEW_SHADOW_TERMINATOR_OFFSET
+    isValid &= isValidValue(SharedShadowTerminatorFix[threadId]);
 
     // Skipped
     // DEBUG_VIEW_VIEW_MODEL

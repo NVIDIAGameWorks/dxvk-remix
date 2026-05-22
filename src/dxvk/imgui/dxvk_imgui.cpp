@@ -2760,6 +2760,9 @@ namespace dxvk {
     if (ImGui::BeginTabItem("Step 2: Parameter Tuning", nullptr, tab_item_flags)) {
       spacing();
       RemixGui::DragFloat("Scene Unit Scale", &RtxOptions::sceneScaleObject(), 0.00001f, 0.00001f, FLT_MAX, "%.5f", sliderFlags);
+      ImGui::Indent();
+      ImGui::TextWrapped("1 cm  =  %.2f game units", RtxOptions::sceneScale());
+      ImGui::Unindent();
       RemixGui::Checkbox("Scene Z-Up", &RtxOptions::zUpObject());
       RemixGui::Checkbox("Scene Left-Handed Coordinate System", &RtxOptions::leftHandedCoordinateSystemObject());
       fusedWorldViewModeCombo.getKey(&RtxOptions::fusedWorldViewModeObject());
@@ -3656,6 +3659,7 @@ namespace dxvk {
           ImGui::Unindent();
         }
       }
+
       ImGui::Unindent();
     }
 
@@ -3954,6 +3958,23 @@ namespace dxvk {
       RemixGui::Separator();
       RemixGui::Checkbox("Portals: Virtual Instance Matching", &RtxOptions::useRayPortalVirtualInstanceMatchingObject());
       RemixGui::Checkbox("Portals: Fade In Effect", &RtxOptions::enablePortalFadeInEffectObject());
+      ImGui::Unindent();
+    }
+
+    if (RemixGui::CollapsingHeader("Shadow Terminator Fix", collapsingHeaderClosedFlags)) {
+      ImGui::Indent();
+      RemixGui::Checkbox("Enable Terminator Offset", &RtxOptions::ShadowTerminator::enableOffsetObject());
+      ImGui::Indent();
+      ImGui::BeginDisabled(!RtxOptions::ShadowTerminator::enableOffset());
+      ImGui::TextWrapped("NOTE: The options below are metric (ensure a correct scene scale).");
+      RemixGui::DragFloat("Area Threshold (in meters^2)", &RtxOptions::ShadowTerminator::maxAreaObject(), 0.01f, 0.f, 100.f);
+      RemixGui::DragFloat("Max Offset Length (in meters)", &RtxOptions::ShadowTerminator::maxLengthObject(), 0.01f, 0.f, 1.f);
+      ImGui::EndDisabled();
+      ImGui::Unindent();
+
+      RemixGui::Separator();
+      RemixGui::Checkbox("Terminator Transition Softening", &RtxOptions::ShadowTerminator::softenObject());
+
       ImGui::Unindent();
     }
 
