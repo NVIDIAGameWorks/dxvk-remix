@@ -656,23 +656,28 @@ namespace dxvk {
         // Skip post-interpolate barriers and commandlist submission if swapchain acquire failed above,
         // since the command list was reset and is no longer in a recording state. Bail until it's handled.
         if (m_lastPresentStatus == VK_SUCCESS) {
-          ScopedGpuProfileZone_Present(m_device, commandList->getCmdBuffer(), "DLFG post-interpolate barriers");
+          {
+            // Note: the profile zone must end before endRecording()/submit() below, since
+            // its destructor records a vkCmdWriteTimestamp into the command buffer when
+            // Tracy is connected.
+            ScopedGpuProfileZone_Present(m_device, commandList->getCmdBuffer(), "DLFG post-interpolate barriers");
 
-          barriers.addBarrier(present.frameInterpolation.motionVectors->image()->handle(),
-                    VK_IMAGE_ASPECT_COLOR_BIT,
-                    VK_ACCESS_SHADER_READ_BIT,
-                    VK_ACCESS_SHADER_WRITE_BIT,
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                    present.frameInterpolation.motionVectorsLayout);
+            barriers.addBarrier(present.frameInterpolation.motionVectors->image()->handle(),
+                      VK_IMAGE_ASPECT_COLOR_BIT,
+                      VK_ACCESS_SHADER_READ_BIT,
+                      VK_ACCESS_SHADER_WRITE_BIT,
+                      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                      present.frameInterpolation.motionVectorsLayout);
 
-          barriers.addBarrier(present.frameInterpolation.depth->image()->handle(),
-                              VK_IMAGE_ASPECT_COLOR_BIT,
-                              VK_ACCESS_SHADER_READ_BIT,
-                              VK_ACCESS_SHADER_WRITE_BIT,
-                              VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                              present.frameInterpolation.depthLayout);
+            barriers.addBarrier(present.frameInterpolation.depth->image()->handle(),
+                                VK_IMAGE_ASPECT_COLOR_BIT,
+                                VK_ACCESS_SHADER_READ_BIT,
+                                VK_ACCESS_SHADER_WRITE_BIT,
+                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                present.frameInterpolation.depthLayout);
 
-          barriers.record(m_device, *commandList, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            barriers.record(m_device, *commandList, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+          }
 
           // queue interpolated frame presents before doing the rendered frame, to avoid stalling on swapchain acquire at the bottom
 
