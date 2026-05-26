@@ -569,11 +569,22 @@ namespace dxvk {
   PrepareDrawFlags D3D9Rtx::internalPrepareDraw(const IndexContext& indexContext, const VertexContext vertexContext[caps::MaxStreams], const DrawContext& drawContext) {
     ScopedCpuProfileZone();
 
-    // RTX was injected => treat everything else as rasterized 
+    // RTX was injected => treat everything else as rasterized,
+    // unless this draw targets a raytraced render target (e.g. render-to-texture
+    // in games that draw UI before 3D content).
     if (m_rtxInjectTriggered) {
-      return RtxOptions::skipDrawCallsPostRTXInjection()
-             ? PrepareDrawFlag::Ignore
-             : PrepareDrawFlag::PreserveDrawCallAndItsState;
+      bool isRaytracedRenderTarget = false;
+      if (RtxOptions::RaytracedRenderTarget::enable()) {
+        D3D9CommonTexture* texture = GetCommonTexture(d3d9State().renderTargets[kRenderTargetIndex]->GetBaseTexture());
+        if (texture && lookupHash(RtxOptions::raytracedRenderTargetTextures(), texture->GetImage()->getDescriptorHash())) {
+          isRaytracedRenderTarget = true;
+        }
+      }
+      if (!isRaytracedRenderTarget) {
+        return RtxOptions::skipDrawCallsPostRTXInjection()
+               ? PrepareDrawFlag::Ignore
+               : PrepareDrawFlag::PreserveDrawCallAndItsState;
+      }
     }
 
     const auto [status, triggerRtxInjection] = makeDrawCallType(drawContext);
