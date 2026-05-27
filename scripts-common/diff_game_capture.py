@@ -1,8 +1,13 @@
 import argparse
 import pathlib
 import numpy
-from pxr import Usd
+try:
+    from pxr import Usd
+except:
+    print("ERROR: Failed to import USD Python bindings. Make sure they are installed and on the PYTHONPATH.")
+    exit(1)
 from enum import Enum
+import traceback
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--golden", required=True)
@@ -264,8 +269,13 @@ class CaptureDiff:
                         print("        Golden: " + str(diffAttr.goldenVal))
                         print("        Other:  " + str(diffAttr.otherVal))
 
-diff = CaptureDiff(args.golden, args.other)
-diff.print()
+try:
+    diff = CaptureDiff(args.golden, args.other)
+    diff.print()
+except Exception as e:
+    print("ERROR: Exception during diff: " + str(e))
+    traceback.print_exc()
+    exit(1)
 if(diff.passed()):
     exit(0)
 else:
