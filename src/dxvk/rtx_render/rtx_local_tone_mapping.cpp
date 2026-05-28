@@ -104,7 +104,6 @@ namespace dxvk {
       PUSH_CONSTANTS(FinalCombineArgs)
 
       BEGIN_PARAMETER()
-        TEXTURE2DARRAY(FINAL_COMBINE_BLUE_NOISE_TEXTURE_INPUT)
         SAMPLER2D(FINAL_COMBINE_MIP_ASSEMBLE)
         SAMPLER2D(FINAL_COMBINE_ORIGINAL_MIP)
         TEXTURE2D(FINAL_COMBINE_ORIGINAL_MIP0)
@@ -139,7 +138,6 @@ namespace dxvk {
     RemixGui::DragFloat("Highlight Level", &highlightsObject(), 0.01f, -10.f, 10.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     RemixGui::DragFloat("Exposure Preference Sigma", &exposurePreferenceSigmaObject(), 0.01f, 0.f, 100.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     RemixGui::DragFloat("Exposure Preference Offset", &exposurePreferenceOffsetObject(), 0.001f, -1.f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-    RemixGui::Combo("Dither Mode", &ditherModeObject(), "Disabled\0Spatial\0Spatial + Temporal\0");
   }
 
   bool DxvkLocalToneMapping::isEnabled() const {
@@ -152,8 +150,6 @@ namespace dxvk {
      Rc<DxvkImageView> exposureView,
      const Resources::RaytracingOutput& rtOutput,
      const float frameTimeMilliseconds,
-     bool performSRGBConversion,
-     bool resetHistory,
      bool enableAutoExposure) {
 
     if (m_mips.views.size() == 0) {
@@ -275,19 +271,11 @@ namespace dxvk {
       pushArgs.resolution = uvec2 { finalResolution.width, finalResolution.height };
       pushArgs.debugView = debugView.debugViewIdx();
       pushArgs.enableAutoExposure = enableAutoExposure;
-      pushArgs.performSRGBConversion = performSRGBConversion;
       pushArgs.finalizeWithACES = finalizeWithACES();
       pushArgs.useLegacyACES = RtxOptions::useLegacyACES();
-      switch (ditherMode()) {
-      case DitherMode::None: pushArgs.ditherMode = ditherModeNone; break;
-      case DitherMode::Spatial: pushArgs.ditherMode = ditherModeSpatialOnly; break;
-      case DitherMode::SpatialTemporal: pushArgs.ditherMode = ditherModeSpatialTemporal; break;
-      }
-      pushArgs.frameIndex = ctx->getDevice()->getCurrentFrameId();
 
       ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
 
-      ctx->bindResourceView(FINAL_COMBINE_BLUE_NOISE_TEXTURE_INPUT, ctx->getResourceManager().getBlueNoiseTexture(ctx), nullptr);
       ctx->bindResourceView(FINAL_COMBINE_ORIGINAL_MIP0, m_mips.views[0], nullptr);
       ctx->bindResourceView(FINAL_COMBINE_ORIGINAL_MIP, m_mips.views[displayMipLevel], nullptr);
       ctx->bindResourceView(FINAL_COMBINE_WEIGHT_MIP0, m_mipsWeights.views[0], nullptr);

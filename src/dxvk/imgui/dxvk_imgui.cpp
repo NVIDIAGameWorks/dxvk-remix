@@ -3935,7 +3935,10 @@ namespace dxvk {
 
       if (RemixGui::CollapsingHeader("Post FX", collapsingHeaderClosedFlags))
         common->metaPostFx().showImguiSettings();
-      
+
+      if (RemixGui::CollapsingHeader("sRGB + Dither", collapsingHeaderClosedFlags))
+        common->metaSRGBDither().showImguiSettings();
+
       ImGui::Unindent();
     }
 

@@ -559,6 +559,7 @@ namespace dxvk {
     m_geometryUtils(device),
     m_imageUtils(device),
     m_postFx(device),
+    m_srgbDither(device),
     m_capturer(new GameCapturer(device, m_sceneManager, m_exporter.get())),
     m_lastKnownWindowHandle((HWND) 0) { }
 

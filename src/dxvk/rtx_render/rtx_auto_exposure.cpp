@@ -324,7 +324,6 @@ namespace dxvk {
     Rc<DxvkSampler> linearSampler,
     const Resources::RaytracingOutput& rtOutput,
     const float frameTimeMilliseconds,
-    bool performSRGBConversion,
     bool resetHistory) {
 
     ScopedGpuProfileZone(ctx, "Auto Exposure");

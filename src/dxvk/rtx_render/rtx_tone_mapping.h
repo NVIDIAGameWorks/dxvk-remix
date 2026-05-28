@@ -45,7 +45,6 @@ namespace dxvk {
       Rc<DxvkImageView> exposureView,
       const Resources::RaytracingOutput& rtOutput,
       const float frameTimeMilliseconds,
-      bool performSRGBConversion = true,
       bool resetHistory = false,
       bool autoExposureEnabled = true);
     
@@ -71,7 +70,6 @@ namespace dxvk {
       Rc<DxvkImageView> exposureView,
       const Resources::Resource& inputBuffer,
       const Resources::Resource& colorBuffer,
-      bool performSRGBConversion,
       bool autoExposureEnabled);
 
     Rc<vk::DeviceFn> m_vkd;
@@ -85,12 +83,6 @@ namespace dxvk {
     enum class ExposureAverageMode : uint32_t {
       Mean = 0,
       Median
-    };
-
-    enum class DitherMode : uint32_t {
-      None = 0,
-      Spatial,
-      SpatialTemporal,
     };
 
     RTX_OPTION("rtx.tonemap", float, exposureBias, 0.f, "The exposure value to use for the global tonemapper when auto exposure is disabled, or a bias multiplier on top of the auto exposure's calculated exposure value.");
@@ -114,14 +106,6 @@ namespace dxvk {
     RTX_OPTION("rtx.tonemap", float, shadowContrastEnd, 0.f, "Range (-inf, 0]. High endpoint for the shadow contrast effect in linear stops; values above this are unaffected.");
     RTX_OPTION("rtx.tonemap", float, curveShift, 0.0f, "Range [0, inf). Amount by which to shift the tone curve up or down. Nonzero values will cause additional clipping.");
     RTX_OPTION("rtx.tonemap", float, maxExposureIncrease, 5.f, "Range [0, inf). Forces the tone curve to not increase luminance values at any point more than this value.");
-
-    // Dithering settings
-    RTX_OPTION("rtx.tonemap", DitherMode, ditherMode, DitherMode::SpatialTemporal,
-               "Tonemap dither mode selection, dithering allows for reduction of banding artifacts in the final rendered output from quantization using a small amount of monochromatic noise. Impact typically most visible in darker regions with smooth lighting gradients.\n"
-               "Enabling dithering will make the rendered image slightly noisier, though usually dither noise is fairly imperceptible in most cases without looking closely. Generally dithered results will also look better than the alternative of banding artifacts due to increasing perceptual precision of the signal.\n"
-               "Note that temporal dithering may increase perceptual precision further but may also introduce more noticeable noise in the final output in some cases due to the noise pattern changing every frame unlike a purely spatial approach.\n"
-               "Supported enum values are 0 = None (Disabled), 1 = Spatial (Enabled, Spatial dithering only), 2 = SpatialTemporal (Enabled, Spatial and temporal dithering).\n"
-               "Generally enabling dithering is recommended, but disabling it may be useful in some niche cases for improving compression ratios in images or videos at the cost of quality (as noise while it may not be very visible may be more difficult to compress), or for capturing \"raw\" post-tonemapped data from the renderer.");
   };
   
 }

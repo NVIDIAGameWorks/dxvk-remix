@@ -723,13 +723,22 @@ namespace dxvk {
         dust.simulateAndDraw(this, m_state, rtOutput);
 
         dispatchBloom(rtOutput);
-        dispatchPostFx(rtOutput);
 
-        // Tone mapping
-        // WAR for TREX-553 - disable sRGB conversion as NVTT implicitly applies it during dds->png
-        // conversion for 16bit float formats
+        // Motion blur runs before tonemapping while the image is still in linear HDR space.
+        dispatchPostFxMotionBlur(rtOutput);
+
+        dispatchToneMapping(rtOutput);
+
+        // Lens effects (chromatic aberration, vignette) run AFTER tonemapping. They are
+        // display-space artifacts so they operate on post-tonemap LDR data.
+        dispatchPostFxLensEffects(rtOutput);
+
+        // Final output pass converts the linear post-tonemap LDR image to sRGB and applies
+        // dithering as the very last step. SRGB conversion is suppressed for screenshot
+        // captures (WAR for TREX-553: NVTT implicitly applies sRGB during dds->png conversion
+        // for 16bit float formats).
         const bool performSRGBConversion = !captureScreenImage && g_allowSrgbConversionForOutput;
-        dispatchToneMapping(rtOutput, performSRGBConversion);
+        dispatchSRGBDither(rtOutput, performSRGBConversion);
 
         if (captureScreenImage) {
           if (m_common->metaDebugView().debugViewIdx() == DEBUG_VIEW_DISABLED) {
@@ -1734,40 +1743,42 @@ namespace dxvk {
       rtOutput, settings);
   }
 
-  void RtxContext::dispatchToneMapping(const Resources::RaytracingOutput& rtOutput, bool performSRGBConversion) {
+  void RtxContext::dispatchToneMapping(const Resources::RaytracingOutput& rtOutput) {
     ScopedCpuProfileZone();
 
     if (m_common->metaDebugView().debugViewIdx() == DEBUG_VIEW_PRE_TONEMAP_OUTPUT) {
       return;
     }
 
-    // TODO: I think these are unnecessary, and/or should be automatically done within DXVK 
+    // TODO: I think these are unnecessary, and/or should be automatically done within DXVK
     this->spillRenderPass(false);
     this->unbindComputePipeline();
 
-    DxvkAutoExposure& autoExposure = m_common->metaAutoExposure();    
-    autoExposure.dispatch(this, 
+    DxvkAutoExposure& autoExposure = m_common->metaAutoExposure();
+    autoExposure.dispatch(this,
       getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER),
-      rtOutput, GlobalTime::get().deltaTimeMs(), performSRGBConversion);
+      rtOutput, GlobalTime::get().deltaTimeMs());
 
-    // We don't reset history for tonemapper on m_resetHistory for easier comparison when toggling raytracing modes.
-    // The tone curve shouldn't be too different between raytracing modes, 
-    // but the reset of denoised buffers causes wide tone curve differences
-    // until it converges and thus making comparison of raytracing mode outputs more difficult
+    const bool resetToneMapperHistory = m_resetHistory || getSceneManager().getCamera().isCameraCut();
     setFramePassStage(RtxFramePassStage::ToneMapping);
     if (RtxOptions::tonemappingMode() == TonemappingMode::Global) {
       DxvkToneMapping& toneMapper = m_common->metaToneMapping();
-      toneMapper.dispatch(this, 
+      toneMapper.dispatch(this,
         getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER),
         autoExposure.getExposureTexture().view,
-        rtOutput, GlobalTime::get().deltaTimeMs(), performSRGBConversion, autoExposure.enabled());
+        rtOutput,
+        GlobalTime::get().deltaTimeMs(),
+        resetToneMapperHistory,
+        autoExposure.enabled());
     }
     DxvkLocalToneMapping& localTonemapper = m_common->metaLocalToneMapping();
     if (localTonemapper.isActive()) {
       localTonemapper.dispatch(this,
         getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE),
         autoExposure.getExposureTexture().view,
-        rtOutput, GlobalTime::get().deltaTimeMs(), performSRGBConversion, autoExposure.enabled());
+        rtOutput,
+        GlobalTime::get().deltaTimeMs(),
+        autoExposure.enabled());
     }
   }
 
@@ -1787,21 +1798,42 @@ namespace dxvk {
       rtOutput.m_finalOutput.resource(Resources::AccessType::ReadWrite));
   }
 
-  void RtxContext::dispatchPostFx(Resources::RaytracingOutput& rtOutput) {
+  void RtxContext::dispatchPostFxMotionBlur(Resources::RaytracingOutput& rtOutput) {
     ScopedCpuProfileZone();
     DxvkPostFx& postFx = m_common->metaPostFx();
-    RtCamera& mainCamera = getSceneManager().getCamera();
+    const RtCamera& mainCamera = getSceneManager().getCamera();
     if (!postFx.enable()) {
       return;
     }
 
-    postFx.dispatch(this,
+    postFx.dispatchMotionBlur(this,
       getResourceManager().getSampler(VK_FILTER_NEAREST, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE),
       getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE),
       mainCamera.getShaderConstants().resolution,
       RtxOptions::rngSeedWithFrameIndex() ? m_device->getCurrentFrameId() : 0,
       rtOutput,
       mainCamera.isViewHistoryInvalidated(m_device->getCurrentFrameId()));
+  }
+
+  void RtxContext::dispatchPostFxLensEffects(Resources::RaytracingOutput& rtOutput) {
+    ScopedCpuProfileZone();
+    DxvkPostFx& postFx = m_common->metaPostFx();
+    const RtCamera& mainCamera = getSceneManager().getCamera();
+    if (!postFx.enable()) {
+      return;
+    }
+
+    postFx.dispatchLensEffects(this,
+      getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE),
+      mainCamera.getShaderConstants().resolution,
+      RtxOptions::rngSeedWithFrameIndex() ? m_device->getCurrentFrameId() : 0,
+      rtOutput);
+  }
+
+  void RtxContext::dispatchSRGBDither(const Resources::RaytracingOutput& rtOutput, bool performSRGBConversion) {
+    ScopedCpuProfileZone();
+
+    m_common->metaSRGBDither().dispatch(this, rtOutput, performSRGBConversion);
   }
 
   void RtxContext::dispatchDebugView(Rc<DxvkImage>& srcImage, const Resources::RaytracingOutput& rtOutput, bool captureScreenImage)  {
