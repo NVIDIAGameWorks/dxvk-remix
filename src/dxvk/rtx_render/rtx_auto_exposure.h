@@ -44,7 +44,6 @@ namespace dxvk {
       Rc<DxvkSampler> linearSampler,
       const Resources::RaytracingOutput& rtOutput,
       const float frameTimeMilliseconds,
-      bool performSRGBConversion = true,
       bool resetHistory = false);
 
     void showImguiSettings();

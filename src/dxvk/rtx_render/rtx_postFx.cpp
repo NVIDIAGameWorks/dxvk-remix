@@ -178,7 +178,7 @@ namespace dxvk {
     ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
   }
 
-  void dispatchMotionBlur(
+  void dispatchMotionBlurInternal(
     Rc<RtxContext> ctx,
     Rc<DxvkSampler> nearestSampler,
     Rc<DxvkSampler> linearSampler,
@@ -237,26 +237,11 @@ namespace dxvk {
     ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
   }
 
-  void DxvkPostFx::dispatch(
-    Rc<RtxContext> ctx,
-    Rc<DxvkSampler> nearestSampler,
-    Rc<DxvkSampler> linearSampler,
-    const uvec2& mainCameraResolution,
-    const uint32_t frameIdx,
-    const Resources::RaytracingOutput& rtOutput,
-    const bool cameraCutDetected)
-  {
-    if (!enable()) {
-      return;
-    }
-
-    ScopedGpuProfileZone(ctx, "PostFx");
-    ctx->setFramePassStage(RtxFramePassStage::PostFX);
-
+  namespace {
     // Simulate chromatic aberration offset scale by calculating the focal length differences of 3 Fraunhofer lines,
     // the wavelength of these lines are used for measuring chromatic aberrations
     // https://www.rp-photonics.com/chromatic_aberrations.html
-    auto calculateChromaticAberrationScale = [](const float chromaticAberrationAmount) {
+    float2 calculateChromaticAberrationScale(const float chromaticAberrationAmount) {
       constexpr float lambdaC = 656.3f; // [nm] blue Fraunhofer F line from hydrogen
       constexpr float lambdaD = 589.2f; // [nm] orange Fraunhofer D line from sodium, in the region of maximum sensitivity of the human eye
       constexpr float lambdaF = 486.1f; // [nm] red Fraunhofer C line from hydrogen
@@ -268,10 +253,30 @@ namespace dxvk {
 
       const float2 scale = float2(fcFocalDiff * (lambdaC - lambdaD), fcFocalDiff * (lambdaD - lambdaF));
 
-      const float chromaticAberrationIntensity = chromaticAberrationAmount;
+      return float2(scale.x * chromaticAberrationAmount, scale.y * chromaticAberrationAmount);
+    }
+  }
 
-      return float2(scale.x * chromaticAberrationIntensity, scale.y * chromaticAberrationIntensity);
-    };
+  void DxvkPostFx::dispatchMotionBlur(
+    Rc<RtxContext> ctx,
+    Rc<DxvkSampler> nearestSampler,
+    Rc<DxvkSampler> linearSampler,
+    const uvec2& mainCameraResolution,
+    const uint32_t frameIdx,
+    const Resources::RaytracingOutput& rtOutput,
+    const bool cameraCutDetected)
+  {
+    if (!enable()) {
+      return;
+    }
+    if (cameraCutDetected || !isMotionBlurEnabled()) {
+      return;
+    }
+
+    assert(motionBlurSampleCount() <= 10);
+
+    ScopedGpuProfileZone(ctx, "PostFx Motion Blur");
+    ctx->setFramePassStage(RtxFramePassStage::PostFX);
 
     const Resources::Resource& inOutColorTexture = rtOutput.m_finalOutput.resource(Resources::AccessType::ReadWrite);
     const VkExtent3D& inputSize = inOutColorTexture.image->info().extent;
@@ -293,6 +298,55 @@ namespace dxvk {
     postFxArgs.jitterStrength = motionBlurJitterStrength();
     postFxArgs.motionBlurDlfgDeduction = ctx->isDLFGEnabled() ?
       1.0f / static_cast<float>(ctx->dlfgInterpolatedFrameCount() + 1) : 1.0f;
+
+    ctx->setPushConstantBank(DxvkPushConstantBank::RTX);
+
+    dispatchMotionBlurInternal(
+      ctx,
+      nearestSampler, linearSampler,
+      postFxArgs,
+      workgroups,
+      rtOutput,
+      inOutColorTexture, rtOutput.m_postFxIntermediateTexture);
+
+    // Copy the blurred result back into the final output so downstream passes can read it.
+    ctx->copyImage(
+      inOutColorTexture.image,
+      { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+      { 0, 0, 0 },
+      rtOutput.m_postFxIntermediateTexture.image,
+      { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+      { 0, 0, 0 },
+      inputSize);
+  }
+
+  void DxvkPostFx::dispatchLensEffects(
+    Rc<RtxContext> ctx,
+    Rc<DxvkSampler> linearSampler,
+    const uvec2& mainCameraResolution,
+    const uint32_t frameIdx,
+    const Resources::RaytracingOutput& rtOutput)
+  {
+    if (!enable()) {
+      return;
+    }
+    if (!isChromaticAberrationEnabled() && !isVignetteEnabled()) {
+      return;
+    }
+
+    ScopedGpuProfileZone(ctx, "PostFx Lens Effects");
+    ctx->setFramePassStage(RtxFramePassStage::PostFX);
+
+    const Resources::Resource& inOutColorTexture = rtOutput.m_finalOutput.resource(Resources::AccessType::ReadWrite);
+    const VkExtent3D& inputSize = inOutColorTexture.image->info().extent;
+    const VkExtent3D workgroups = util::computeBlockCount(inputSize, VkExtent3D { POST_FX_TILE_SIZE , POST_FX_TILE_SIZE, 1 } );
+
+    PostFxArgs postFxArgs = {};
+    postFxArgs.imageSize = { (uint)inputSize.width, (uint)inputSize.height };
+    postFxArgs.invImageSize = { 1.0f / (float) inputSize.width, 1.0f / (float) inputSize.height };
+    postFxArgs.invMainCameraResolution = float2(1.0f / (float)mainCameraResolution.x, 1.0f / (float)mainCameraResolution.y);
+    postFxArgs.inputOverOutputViewSize = float2((float)mainCameraResolution.x * postFxArgs.invImageSize.x, (float)mainCameraResolution.y * postFxArgs.invImageSize.y);
+    postFxArgs.frameIdx = frameIdx;
     postFxArgs.chromaticCenterAttenuationAmount = chromaticCenterAttenuationAmount();
     postFxArgs.chromaticAberrationScale = calculateChromaticAberrationScale(isChromaticAberrationEnabled() ? chromaticAberrationAmount() : 0.0f);
     postFxArgs.vignetteIntensity = isVignetteEnabled() ? vignetteIntensity() : 0.0f;
@@ -301,41 +355,20 @@ namespace dxvk {
 
     ctx->setPushConstantBank(DxvkPushConstantBank::RTX);
 
-    const Resources::Resource* lastPointer = &inOutColorTexture;
+    dispatchPostLensEffects(ctx, linearSampler, postFxArgs, workgroups,
+                            inOutColorTexture, rtOutput.m_postFxIntermediateTexture);
 
-    const bool motionBlurEnabled = !cameraCutDetected && isMotionBlurEnabled();
-    if (motionBlurEnabled)
-    {
-      assert(motionBlurSampleCount() <= 10);
-      lastPointer = &rtOutput.m_postFxIntermediateTexture;
-      dispatchMotionBlur(
-        ctx,
-        nearestSampler, linearSampler,
-        postFxArgs,
-        workgroups,
-        rtOutput,
-        inOutColorTexture, *lastPointer);
-    }
-
-    if (isChromaticAberrationEnabled() || isVignetteEnabled())
-    {
-      dispatchPostLensEffects(ctx, linearSampler, postFxArgs, workgroups, *lastPointer, inOutColorTexture);
-
-      lastPointer = &inOutColorTexture;
-    }
-
-    if (lastPointer->image != inOutColorTexture.image)
-    {
-      // Copy to the output texture if the final output is not the input texture
-      ctx->copyImage(
-        inOutColorTexture.image,
-        { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
-        { 0, 0, 0 },
-        rtOutput.m_postFxIntermediateTexture.image,
-        { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
-        { 0, 0, 0 },
-        inputSize);
-    }
+    // The lens-effect shader uses a Sampler2D input and an RWTexture2D output. To keep the
+    // input/output decoupled (and avoid sampling-while-writing hazards) we write into the
+    // intermediate texture and copy it back into the final output.
+    ctx->copyImage(
+      inOutColorTexture.image,
+      { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+      { 0, 0, 0 },
+      rtOutput.m_postFxIntermediateTexture.image,
+      { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+      { 0, 0, 0 },
+      inputSize);
   }
 
   namespace {

@@ -40,7 +40,9 @@ namespace dxvk {
     DxvkPostFx(DxvkDevice* device);
     ~DxvkPostFx();
 
-    void dispatch(
+    // Motion blur phase. Runs before tonemapping while the image is still in linear HDR space.
+    // Reads m_finalOutput, writes back to m_finalOutput (via intermediate texture).
+    void dispatchMotionBlur(
       Rc<RtxContext> ctx,
       Rc<DxvkSampler> nearestSampler,
       Rc<DxvkSampler> linearSampler,
@@ -48,6 +50,16 @@ namespace dxvk {
       const uint32_t frameIdx,
       const Resources::RaytracingOutput& rtOutput,
       const bool cameraCutDetected);
+
+    // Lens effects phase (chromatic aberration + vignette). Runs after tonemapping
+    // so it operates on post-tonemap LDR data — these are display-space lens artifacts.
+    // Reads and writes m_finalOutput in place.
+    void dispatchLensEffects(
+      Rc<RtxContext> ctx,
+      Rc<DxvkSampler> linearSampler,
+      const uvec2& mainCameraResolution,
+      const uint32_t frameIdx,
+      const Resources::RaytracingOutput& rtOutput);
 
     void dispatchHighlighting(
       Rc<RtxContext> ctx,
@@ -89,7 +101,7 @@ namespace dxvk {
     RTX_OPTION("rtx.postfx", float, motionBlurJitterStrength, 0.6f, "The jitter strength of every sample along the motion vector.");
     RTX_OPTION("rtx.postfx", float, chromaticAberrationAmount, 0.02f, "The strength of chromatic aberration.");
     RTX_OPTION("rtx.postfx", float, chromaticCenterAttenuationAmount, 0.975f, "Control the amount of chromatic aberration effect that attunuated when close to the center of screen.");
-    RTX_OPTION("rtx.postfx", float, vignetteIntensity, 0.8f, "The darkness of vignette effect.");
+    RTX_OPTION("rtx.postfx", float, vignetteIntensity, 0.6f, "The darkness of vignette effect.");
     RTX_OPTION("rtx.postfx", float, vignetteRadius, 0.8f, "The radius that vignette effect starts. The unit is normalized screen space, 0 represents the center, 1 means the edge of the short edge of the rendering window. So, this setting can larger than 1 until reach to the long edge of the rendering window.");
     RTX_OPTION("rtx.postfx", float, vignetteSoftness, 0.2f, "The gradient that the color drop to black from the vignetteRadius to the edge of rendering window.");
   };

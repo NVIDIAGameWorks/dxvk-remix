@@ -860,7 +860,7 @@ namespace dxvk {
       { "rtx.postfx.enableMotionBlurNoiseSample",               "True"  },
       { "rtx.postfx.chromaticAberrationAmount",                 "0.0"   },
       { "rtx.postfx.chromaticCenterAttenuationAmount",          "0.975" },
-      { "rtx.postfx.vignetteIntensity",                         "1.0"   },
+      { "rtx.postfx.vignetteIntensity",                         "0.8"   },
       { "rtx.postfx.vignetteRadius",                            "0.8"   },
       { "rtx.postfx.vignetteSoftness",                          "0.1"   },
       { "rtx.enableNearPlaneOverride",                          "True"  },
