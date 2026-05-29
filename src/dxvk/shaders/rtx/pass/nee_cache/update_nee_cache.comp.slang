@@ -51,6 +51,12 @@
 groupshared uint2 s_candidateList[CANDIDATE_LENGTH][BATCH_SIZE];
 groupshared float s_candidateLight[CANDIDATE_LENGTH][BATCH_SIZE];
 groupshared int s_candidateCount[BATCH_SIZE];
+// Per-batch flag set by lane 0 in updateTriangleSample when the cell's
+// reshuffle-age counter has reached reshuffleMaxAge consecutive empty frames.
+// Forces the sample-refresh body to run so stale NEESample entries from
+// previous-frame writes are overwritten with empty samples. Restores the
+// age-bounded preservation that REMIX-5118 deleted; see updateTriangleSample.
+groupshared int s_reshuffleRefresh[BATCH_SIZE];
 
 int convertToThisFramePrefixSumID(int lastID, out int surfaceID, out int primitiveID)
 {
@@ -429,9 +435,50 @@ void updateTriangleSample(NEECell cell, uint2 localIndex, uint3 threadIndex)
   // Update sample
   RNG rng = createRNG(uvec2(threadIndex.xy + threadIndex.z * NEE_CACHE_ELEMENTS * NEE_CACHE_PROBE_RESOLUTION * NEE_CACHE_PROBE_RESOLUTION), cb.frameIdx, threadIndex.z);
 
+  // Per-cell age counter for the empty-cell preservation fallback.
+  //
+  // REMIX-5071 introduced reshuffle resilience: when a cell has no candidates
+  // (e.g. brief BLAS primitive reshuffle), the cached NEESample array from
+  // the previous frame is preserved instead of refreshed, suppressing flicker.
+  //
+  // REMIX-5118 simplified this and inadvertently deleted the age-counter cap
+  // that bounded the preservation window. Without the cap, when an emissive
+  // surface is removed entirely, the cell's candidate count drops to 0
+  // permanently and the cached samples persist indefinitely — stale light
+  // from the removed emissive remains visible "effectively forever".
+  //
+  // Restore the cap: increment a per-cell age counter each frame the cell
+  // has no candidates; reset to 0 when candidates arrive; once the counter
+  // reaches reshuffleMaxAge (and the cap is non-zero), force the refresh
+  // body to run. The body writes NEESample.createEmpty() through the
+  // !candidate.isValid() fall-through, clearing the stale entries.
+  //
+  // Only lane 0 of each batch touches the cell's age field to avoid race;
+  // the resulting refresh decision is broadcast via groupshared memory.
+  // reshuffleMaxAge = 0 honors the documented "disables the limit" semantics.
+  if (cb.neeCacheArgs.enableReshuffleResilience && localIndex.x == 0)
+  {
+    s_reshuffleRefresh[localIndex.y] = 0;
+    if (s_candidateCount[localIndex.y] > 0)
+    {
+      if (cell.getReshuffleAge() != 0)
+        cell.setReshuffleAge(0);
+    }
+    else
+    {
+      uint newAge = min(cell.getReshuffleAge() + 1u, kNeeCacheReshuffleAgeMax);
+      cell.setReshuffleAge(newAge);
+      if (cb.neeCacheArgs.reshuffleMaxAge > 0 && newAge >= cb.neeCacheArgs.reshuffleMaxAge)
+        s_reshuffleRefresh[localIndex.y] = 1;
+    }
+  }
+  GroupMemoryBarrierWithGroupSync();
+
   // This preserves the previous frame's cached samples through brief disruptions
   // (e.g. BLAS primitive reshuffles that break surface mapping for one frame).
-  if (s_candidateCount[localIndex.y] > 0 || !cb.neeCacheArgs.enableReshuffleResilience)
+  // Bounded by the reshuffleMaxAge cap above — once exceeded, the body runs
+  // to overwrite stale samples with empty data.
+  if (s_candidateCount[localIndex.y] > 0 || !cb.neeCacheArgs.enableReshuffleResilience || s_reshuffleRefresh[localIndex.y] != 0)
   {
     for (int i = localIndex.x; i < NEE_CACHE_SAMPLES; i += NEE_CACHE_ELEMENTS)
     {
