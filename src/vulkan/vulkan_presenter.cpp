@@ -55,6 +55,36 @@ namespace dxvk::vk {
     destroySurface();
   }
 
+  // NV-DXVK start: FSR FG support - Protected constructor with existing surface
+  Presenter::Presenter(
+          HWND            window,
+    const Rc<InstanceFn>& vki,
+    const Rc<DeviceFn>&   vkd,
+          PresenterDevice device,
+          VkSurfaceKHR    existingSurface)
+  : m_vki(vki), m_vkd(vkd), m_device(device), m_window(window), m_surface(existingSurface) {
+    // As of Wine 5.9, winevulkan provides this extension, but does
+    // not filter the pNext chain for VkSwapchainCreateInfoKHR properly
+    // before passing it to the Linux side, which breaks RenderDoc.
+    if (m_device.features.fullScreenExclusive && ::GetModuleHandle("winevulkan.dll")) {
+      Logger::warn("winevulkan detected, disabling exclusive fullscreen support");
+      m_device.features.fullScreenExclusive = false;
+    }
+    // Note: derived class is responsible for calling recreateSwapChain
+    // since the FFX swapchain proxy needs to be created first
+  }
+
+  void Presenter::takeSurfaceFrom(Presenter* other) {
+    if (other && other->m_surface != VK_NULL_HANDLE) {
+      // Take ownership of the surface
+      m_surface = other->m_surface;
+      m_window = other->m_window;
+      // Clear the other presenter's surface so it doesn't destroy it
+      other->m_surface = VK_NULL_HANDLE;
+    }
+  }
+  // NV-DXVK end
+
 
   PresenterInfo Presenter::info() const {
     return m_info;

@@ -43,6 +43,8 @@
 #include "rtx_render/rtx_ngx_wrapper.h"
 #include "rtx_render/rtx_dlfg.h"
 #include "rtx_render/rtx_dlss.h"
+#include "rtx_render/rtx_fsr_framegen.h"
+#include "rtx_render/rtx_rcas.h"
 #include "rtx_render/rtx_nis.h"
 #include "rtx_render/rtx_taa.h"
 #include "rtx_render/rtx_auto_exposure.h"
@@ -84,7 +86,9 @@ namespace dxvk {
   class RtxTextureManager;
   class NeuralRadianceCache;
   class DxvkXeSS;
-
+  class DxvkFSR;
+  class DxvkFSRFrameGen;
+  
   class NGXContext;
 
   class DxvkObjects {
@@ -227,6 +231,18 @@ namespace dxvk {
 
     DxvkXeSS& metaXeSS() {
       return m_xess.get();
+    }
+
+    DxvkFSR& metaFSR() {
+      return m_fsr.get();
+    }
+
+    DxvkFSRFrameGen& metaFSRFrameGen() {
+      return m_fsrFrameGen.get();
+    }
+
+    DxvkRCAS& metaRCAS() {
+      return m_rcas.get();
     }
 
     CompositePass& metaComposite() {
@@ -384,6 +400,9 @@ namespace dxvk {
     Active<DxvkNIS>                         m_nis;
     Active<DxvkTemporalAA>                  m_taa;
     Active<DxvkXeSS>                        m_xess;
+    Active<DxvkFSR>                         m_fsr;
+    Active<DxvkFSRFrameGen>                 m_fsrFrameGen;
+    Active<DxvkRCAS>                        m_rcas;
     Active<CompositePass>                   m_composite;
     Active<DebugView>                       m_debug_view;
     Active<DxvkAutoExposure>                m_autoExposure;

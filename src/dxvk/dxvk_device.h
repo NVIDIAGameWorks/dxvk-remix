@@ -98,6 +98,11 @@ namespace dxvk {
     // NV-DXVK start: DLFG integration
     DxvkDeviceQueue present;  // we run DLFG + presents in this queue
     // NV-DXVK end
+
+    // NV-DXVK start: FSR FG integration
+    DxvkDeviceQueue imageAcquire;  // dedicated queue for FSR frame interpolation image acquire
+    DxvkDeviceQueue fsrPresent;    // present queue for FSR FG (from graphics family, supports presentation)
+    // NV-DXVK end
   };
   
   /**
