@@ -136,6 +136,41 @@ namespace dxvk::vk {
       // NV-DXVK end
     ~Presenter();
 
+    // NV-DXVK start: FSR FG support - Expose surface transfer for presenter switching
+    /**
+     * \brief Transfers surface from another presenter
+     * 
+     * Takes ownership of the surface from another presenter
+     * to allow switching presenter types without recreating
+     * the surface. The source presenter's surface will be
+     * set to VK_NULL_HANDLE.
+     * \param [in] other The presenter to take the surface from
+     */
+    void takeSurfaceFrom(Presenter* other);
+
+    /**
+     * \brief Gets the current surface handle
+     * \returns The VkSurfaceKHR handle
+     */
+    VkSurfaceKHR getSurface() const {
+      return m_surface;
+    }
+
+    /**
+     * \brief Releases ownership of the surface
+     * 
+     * Returns the surface handle and sets internal handle to
+     * VK_NULL_HANDLE so the destructor won't destroy it.
+     * Caller is responsible for the surface lifetime.
+     * \returns The VkSurfaceKHR handle (caller takes ownership)
+     */
+    VkSurfaceKHR releaseSurface() {
+      VkSurfaceKHR surface = m_surface;
+      m_surface = VK_NULL_HANDLE;
+      return surface;
+    }
+    // NV-DXVK end
+
     /**
      * \brief Actual presenter info
      * \returns Swap chain properties
@@ -264,6 +299,16 @@ namespace dxvk::vk {
     }
 
     /**
+     * \brief Gets the Vulkan swap chain handle
+     *
+     * Used by FSR Frame Generation to wrap the swapchain.
+     * \returns The VkSwapchainKHR handle.
+     */
+    VkSwapchainKHR getSwapChain() const {
+      return m_swapchain;
+    }
+
+    /**
      * \brief Acquires FSE
      *
      * When using app-controlled FSE, this function acquires the
@@ -290,6 +335,23 @@ namespace dxvk::vk {
 
   protected:
   // NV-DXVK end
+
+    // NV-DXVK start: FSR FG support - Protected constructor for derived classes
+    /**
+     * \brief Protected constructor for derived classes
+     * 
+     * Creates a presenter using an existing surface, allowing
+     * derived classes to take ownership of another presenter's
+     * surface without recreating it. This avoids VK_ERROR_NATIVE_WINDOW_IN_USE_KHR
+     * when switching presenter types at runtime.
+     */
+    Presenter(
+            HWND            window,
+      const Rc<InstanceFn>& vki,
+      const Rc<DeviceFn>&   vkd,
+            PresenterDevice device,
+            VkSurfaceKHR    existingSurface);
+    // NV-DXVK end
 
     Rc<InstanceFn>    m_vki;
     Rc<DeviceFn>      m_vkd;
