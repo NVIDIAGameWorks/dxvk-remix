@@ -53,7 +53,7 @@ If (Test-Path env:LIBPATH) {
   Write-Host "Visual Studio Command Prompt variables already set." -ForegroundColor Yellow
 } Else {
   # Load VC vars
-  $vcVarsOutput = cmd /v:on /c "set __VSCMD_ARG_NO_LOGO=1 & call `"$vsPath\VC\Auxiliary\Build\vcvarsall.bat`" x64 > nul & set"
+  $vcVarsOutput = cmd /v:on /c "set __VSCMD_ARG_NO_LOGO=1 & call `"$vsPath\VC\Auxiliary\Build\vcvarsall.bat`" x64 > nul && set"
   If ($LASTEXITCODE -ne 0) {
     Write-Error "Failed to initialize Visual Studio Command Prompt variables. Aborting." -ErrorAction Stop
   }
