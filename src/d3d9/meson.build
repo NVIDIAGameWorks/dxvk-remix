@@ -106,6 +106,17 @@ d3d9_dll = shared_library('d3d9', d3d9_src, dxvk_version, glsl_generator.process
   install: true
   )
 
+# Copy FSR3 DLL to d3d9 output directory for runtime loading
+fsr3_dll_src = join_paths(global_src_root_norm, 'submodules/FidelityFX-SDK/PrebuiltSignedDLL/amd_fidelityfx_vk.dll')
+fsr3_dll_build = custom_target('copy_fsr3_dll',
+  output: 'amd_fidelityfx_vk.dll',
+  input: fsr3_dll_src,
+  command: [python_interpreter, '-c', 'import shutil; import sys; shutil.copy(sys.argv[1], sys.argv[2])', '@INPUT@', '@OUTPUT@'],
+  build_by_default: true,
+  install: true,
+  install_dir: get_option('bindir')
+)
+
 d3d9_dep = declare_dependency(
   link_with           : [ d3d9_dll ],
   include_directories : [ dxvk_include_path ])
