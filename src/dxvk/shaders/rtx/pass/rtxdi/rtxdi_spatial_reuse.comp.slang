@@ -67,6 +67,7 @@
 #if RTXDI_ENABLE_BSDF_DETAIL
 #include "rtxdi/DlssEnhancementFilterFunctions.slangh"
 #endif
+#include "rtx/pass/sparse_rendering/compact_active_pixels.slangh"
 
 [shader("compute")]
 [numthreads(16, 8, 1)]
@@ -77,7 +78,29 @@ void main(int2 threadIndex : SV_DispatchThreadID)
     return;
   }
 
-  const int2 pixelCoordinate = threadIndex;
+  uvec2 remapped;
+  const bool isActive = loadPixelCoordinate(uint2(threadIndex), DirectActiveLocalPixelCoords,
+    cb.camera.resolution, cb.sparseRenderingArgs, remapped);
+  int2 pixelCoordinate = int2(remapped);
+
+  if (!isActive) {
+    if (cb.sparseRenderingArgs.enableRtxdiReuseForInactivePixels) {
+      // Write GBufferLast before early-out (needed by subsequent passes)
+      RAB_Surface surface = RAB_GetGBufferSurface(pixelCoordinate, false);
+      if (!cb.enableReSTIRGI) {
+        imageStore(GBufferLast, pixelCoordinate, RAB_PackLastFrameGBuffer(surface));
+      }
+
+      // Pass through the reservoir from temporal reuse unchanged
+      RTXDI_Reservoir reservoir = RAB_LoadReservoir(pixelCoordinate, RTXDI_GetSpatialInputPage());
+      RAB_StoreReservoir(reservoir, pixelCoordinate, RTXDI_GetSpatialOutputPage());
+
+      // Neutral BSDF factor for inactive pixels
+      BSDFFactor[pixelCoordinate] = vec2(1);
+    }
+    return;
+  }
+
   RAB_Surface surface = RAB_GetGBufferSurface(pixelCoordinate, false);
   if (!cb.enableReSTIRGI)
   {

@@ -25,6 +25,7 @@
 #include "rtx.h"
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx_render/rtx_shader_manager.h"
+#include "rtx_render/rtx_sparse_rendering.h"
 #include "dxvk_scoped_annotation.h"
 #include "rtx_context.h"
 #include "rtx_imgui.h"
@@ -116,6 +117,7 @@ namespace dxvk {
         STRUCTURED_BUFFER(NRC_RESOLVE_BINDING_NRC_TRAINING_PATH_INFO_INPUT)
         
         TEXTURE2D(NRC_RESOLVE_BINDING_SHARED_FLAGS_INPUT)
+        TEXTURE2D(NRC_RESOLVE_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)
         CONSTANT_BUFFER(NRC_RESOLVE_BINDING_RAYTRACE_ARGS_INPUT)
 
         RW_STRUCTURED_BUFFER(NRC_RESOLVE_BINDING_NRC_DEBUG_TRAINING_PATH_INFO_INPUT_OUTPUT)
@@ -129,7 +131,14 @@ namespace dxvk {
      END_PARAMETER()
     };
 
-    PREWARM_SHADER_PIPELINE(NrcResolveShader);
+  }
+
+  void NeuralRadianceCache::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
+    if (RtxOptions::integrateIndirectMode() != IntegrateIndirectMode::NeuralRadianceCache) {
+      return;
+    }
+
+    NrcResolveShader::getShader();
   }
 
   void NeuralRadianceCache::NrcOptions::onMaxNumTrainingIterationsChanged(DxvkDevice* device) {
@@ -1043,6 +1052,7 @@ namespace dxvk {
       ctx.bindResourceBuffer(NRC_RESOLVE_BINDING_NRC_DEBUG_TRAINING_PATH_INFO_INPUT_OUTPUT, m_nrcCtx->getBufferSlice(ctx, nrc::BufferIdx::DebugTrainingPathInfo));
 
       ctx.bindResourceView(NRC_RESOLVE_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
+      ctx.bindResourceView(NRC_RESOLVE_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT, rtOutput.m_sparseRenderingIndirectActiveLocalPixelCoords.view, nullptr);
       ctx.bindResourceBuffer(NRC_RESOLVE_BINDING_RAYTRACE_ARGS_INPUT, DxvkBufferSlice(raytraceArgsBuffer, 0, raytraceArgsBuffer->info().size));
 
       ctx.bindResourceView(NRC_RESOLVE_BINDING_PRIMARY_DIFFUSE_RADIANCE_HIT_DISTANCE_INPUT_OUTPUT, rtOutput.m_primaryIndirectDiffuseRadiance.view(Resources::AccessType::ReadWrite), nullptr);

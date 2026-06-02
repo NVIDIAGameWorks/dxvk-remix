@@ -25,6 +25,7 @@
 
 namespace dxvk {
   class NGXRayReconstructionContext;
+  class DxvkPipelineManager;
   class DxvkRayReconstruction : public DxvkDLSS {
   public:
     enum class RayReconstructionParticleBufferMode : uint32_t {
@@ -40,6 +41,8 @@ namespace dxvk {
     explicit DxvkRayReconstruction(DxvkDevice* device);
 
     bool supportsRayReconstruction() const;
+
+    void prewarmShaders(DxvkPipelineManager& pipelineManager) const;
 
     void showRayReconstructionImguiSettings(bool showAdvancedSettings);
 
@@ -79,7 +82,8 @@ namespace dxvk {
     RTX_OPTION("rtx.rayreconstruction", float, upscalerRoughnessDemodulationOffset, 1.5f, "Strength of upscaler roughness demodulation. Only used by DLSS-RR.");
     RTX_OPTION("rtx.rayreconstruction", float, upscalerRoughnessDemodulationMultiplier, 0.15f, "Multiplier of upscaler roughness demodulation to suppress noise. Only used by DLSS-RR.");
     RTX_OPTION("rtx.rayreconstruction", bool, demodulateAttenuation, true, "Demodulate attenuation to reduce ghosting when an object is behind textured translucent objects.\n");
-    RTX_OPTION("rtx.rayreconstruction", bool, preprocessSecondarySignal, true, "Denoise secondary signal before passing to DLSS-RR. This option improves reflection on translucent objects.\n");
+    RTX_OPTION_ARGS("rtx.rayreconstruction", bool, preprocessSecondarySignal, true, "Denoise secondary signal before passing to DLSS-RR. This option improves reflection on translucent objects.\n",
+                    args.environment = "RTX_RAY_RECONSTRUCTION_PREPROCESS_SECONDARY_SIGNAL");
     RTX_OPTION("rtx.rayreconstruction", bool, compositeVolumetricLight, true, "Composite volumetric light and then input the result to DLSS-RR, otherwise volumetric light is in a separate layer. Disabling it may introduce flickering artifacts.\n");
     RTX_OPTION_ARGS("rtx.rayreconstruction", RayReconstructionModel, model, RayReconstructionModel::Transformer, "Ray reconstruction model to use. 0: CNN, 1: Transformer (higher quality).",
                     args.environment = "RTX_RAY_RECONSTRUCTION_MODEL",

@@ -33,6 +33,8 @@
 #include "rtx/concept/camera/camera.slangh"
 #include "rtx/utility/geometry_flags.slangh"
 #include "rtx/concept/ray/ray_helper.slangh"
+#include "rtx/pass/sparse_rendering/sparse_rendering.slangh"
+#include "rtx/pass/sparse_rendering/compact_active_pixels.slangh"
 #include "rtx/algorithm/integrator_helpers.slangh"
 #include "rtx/external/NRD.slangh"
 
@@ -380,7 +382,7 @@ void outputToDebugViewAtTheEnd(
     storeInDebugView(pixelCoordinate, aliasedData0.PrimarySpecularAlbedo[pixelCoordinate].xyz);
     break;
   case DEBUG_VIEW_SECONDARY_SPECULAR_ALBEDO:
-    if (geometryFlags.hasSecondarySurface())
+    if (performedAnyPSR)
     {
       storeInDebugView(pixelCoordinate, aliasedData1.SecondarySpecularAlbedo[pixelCoordinate].xyz);
     }
@@ -581,19 +583,22 @@ void outputToDebugViewAtTheEnd(
   }
 }
 
-
 // Demodulates the primary surface direct and indirect signals and writes them to the per-signal
 // denoiser input buffers. Loads primary GBuffer data, computes and stores the primary specular
-// albedo (re-read for the debug view), and runs the per-lobe demodulation.
+// albedo (re-read for the debug view), and runs the per-lobe demodulation. The helper internally
+// gates on isPixelActive — the direct/indirect integrator does not produce valid inputs for
+// sparse-inactive pixels, so it returns empty signals on those.
 PrimaryDemodulationSignals demodulatePrimaryPath(
   uvec2 pixelCoordinate,
   uvec2 localIndex,
   GeometryFlags geometryFlags,
-  CameraDirections primaryRayDirections)
+  CameraDirections primaryRayDirections,
+  bool isPixelActive,
+  bool isDirectActive,
+  bool isIndirectActive)
 {
   PrimaryDemodulationSignals primarySignals = makeEmptyPrimaryDemodulationSignals();
 
-  const vec3 primaryBaseReflectivity = aliasedData0.PrimaryBaseReflectivity[pixelCoordinate].xyz;
   // Note: Decode from unorm encoded representation.
   const vec3 primaryVirtualWorldNormal = PrimaryVirtualWorldNormalPerceptualRoughness[pixelCoordinate].xyz * 2.0f - 1.0f;
   const float primaryPerceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[pixelCoordinate].w;
@@ -601,16 +606,26 @@ PrimaryDemodulationSignals demodulatePrimaryPath(
   const bool isPrimaryMiss = primaryLinearViewZ == cb.primaryDirectMissLinearViewZ;
 
   vec3 primarySpecularAlbedo = vec3(0);
-  if (!isPrimaryMiss)
+  // Compute specular albedo only for primary-hit pixels that need it: every active pixel, plus all
+  // primary-hit pixels in dense mode. Sparse-inactive pixels stay zero.
+  const bool needSpecularAlbedo = isPixelActive || !cb.sparseRenderingArgs.enableSparsePrimarySpecularAlbedo;
+  if (needSpecularAlbedo && !isPrimaryMiss)
   {
+    const vec3 primaryBaseReflectivity = aliasedData0.PrimaryBaseReflectivity[pixelCoordinate].xyz;
     // Note: Virtual world normal used so direction does not need to be read from the GBuffer; the camera direction
     // can be re-derived since virtual normals are oriented with respect to the camera.
     const float primaryNormalDotViewDirection = dot(primaryVirtualWorldNormal, -primaryRayDirections.worldDirection);
     primarySpecularAlbedo = evalSpecularAlbedoGGXSchlick(
       primaryBaseReflectivity, calcRoughness(primaryPerceptualRoughness), primaryNormalDotViewDirection);
   }
+
   // Note: Overwrites the base reflectivity in this buffer; composite remodulates with this value.
   aliasedData0.PrimarySpecularAlbedo[pixelCoordinate].xyz = primarySpecularAlbedo;
+
+  if (!isPixelActive)
+  {
+    return primarySignals;
+  }
 
   const vec3 primaryDiffuseAlbedo = PrimaryAlbedo[pixelCoordinate].xyz;
 
@@ -623,8 +638,8 @@ PrimaryDemodulationSignals demodulatePrimaryPath(
   // If rtxdi and restir gi are enabled, the primary surface input is dense and demodulation can always be enabled.
   const bool primaryInputValid =
     (cb.enableRtxdi && cb.enableReSTIRGI) || geometryFlags.primarySelectedIntegrationSurface;
-  const bool demodulatePrimaryDirectInput = primaryInputValid;
-  const bool demodulatePrimaryIndirectInput = primaryInputValid;
+  const bool demodulatePrimaryDirectInput = primaryInputValid && isDirectActive;
+  const bool demodulatePrimaryIndirectInput = primaryInputValid && isIndirectActive;
 
   if (demodulatePrimaryDirectInput)
   {
@@ -636,6 +651,19 @@ PrimaryDemodulationSignals demodulatePrimaryPath(
   {
     primarySignals.indirectDiffuseInput = PrimaryIndirectDiffuseRadiance[pixelCoordinate];
     primarySignals.indirectSpecularInput = PrimaryIndirectSpecularRadiance[pixelCoordinate];
+  }
+
+  // Pre-scale per-lobe radiance by the inverse of its own sparse-rendering sampling rate so
+  // every downstream stage (boiling filter, NRD packing, combined-mode merge, denoiser) sees an
+  // unbiased estimate without needing further scale logic. HitT stays unscaled.
+  if (cb.sparseRenderingArgs.mode != SparseRenderingMode::Off)
+  {
+    const float directRadianceScale = calculateRadianceScaleFromSamplingRate(SparseRenderingDirectPixelSamplingRate[pixelCoordinate]);
+    const float indirectRadianceScale = calculateRadianceScaleFromSamplingRate(SparseRenderingIndirectPixelSamplingRate[pixelCoordinate]);
+    primarySignals.directDiffuseInput.xyz *= directRadianceScale;
+    primarySignals.directSpecularInput.xyz *= directRadianceScale;
+    primarySignals.indirectDiffuseInput.xyz *= indirectRadianceScale;
+    primarySignals.indirectSpecularInput.xyz *= indirectRadianceScale;
   }
 
   // Overwrite the direct specular HitT with the indirect specular HitT. The denoiser uses HitT
@@ -685,26 +713,37 @@ PrimaryDemodulationSignals demodulatePrimaryPath(
   }
 
   // If separate denoisers are disabled, combine direct and indirect radiance signals here.
-  if (demodulatePrimaryDirectInput && !cb.enableSeparatedDenoisers)
+  // Composite gates primary direct/indirect reads with the per-signal active masks, so skip the
+  // writes for inactive pixels — they would never be read.
+  if (primaryInputValid && !cb.enableSeparatedDenoisers)
   {
     primarySignals.directDiffuseOutput.xyz += primarySignals.indirectDiffuseOutput.xyz;
     primarySignals.directSpecularOutput.xyz += primarySignals.indirectSpecularOutput.xyz;
-    primarySignals.indirectDiffuseOutput = primarySignals.indirectSpecularOutput = 0;
+
+    PrimaryDirectDiffuseRadiance[pixelCoordinate] = primarySignals.directDiffuseOutput;
+    PrimaryDirectSpecularRadiance[pixelCoordinate] = primarySignals.directSpecularOutput;
   }
 
-  PrimaryDirectDiffuseRadiance[pixelCoordinate] = primarySignals.directDiffuseOutput;
-  PrimaryDirectSpecularRadiance[pixelCoordinate] = primarySignals.directSpecularOutput;
-  if (cb.enableSeparatedDenoisers)
-  {
-    PrimaryIndirectDiffuseRadiance[pixelCoordinate] = primarySignals.indirectDiffuseOutput;
-    PrimaryIndirectSpecularRadiance[pixelCoordinate] = primarySignals.indirectSpecularOutput;
-  }
+  // Composite gates primary direct/indirect reads with the per-signal active masks, so skip the
+  // writes for inactive pixels — they would never be read.
+    if (isDirectActive)
+    {
+      PrimaryDirectDiffuseRadiance[pixelCoordinate] = primarySignals.directDiffuseOutput;
+      PrimaryDirectSpecularRadiance[pixelCoordinate] = primarySignals.directSpecularOutput;
+    }
+    if (cb.enableSeparatedDenoisers && isIndirectActive)
+    {
+      PrimaryIndirectDiffuseRadiance[pixelCoordinate] = primarySignals.indirectDiffuseOutput;
+      PrimaryIndirectSpecularRadiance[pixelCoordinate] = primarySignals.indirectSpecularOutput;
+    }
 
   return primarySignals;
 }
 
 // Demodulates the secondary (PSR) surface signal and writes it to the secondary denoiser input
-// buffers. Should only be called on PSR pixels (geometryFlags.performedAnyPSR()).
+// buffers. Should only be called on PSR pixels (geometryFlags.performedAnyPSR()). Runs regardless of
+// sparse active state — the integrator produces secondary radiance for all PSR pixels, so the
+// output stays dense and the RR particle layer matches the SR-off baseline.
 // Loads secondary GBuffer data, computes and stores the secondary specular albedo (returned for
 // the dense debug view), and runs the lobe-combined demodulation.
 SecondaryDemodulationSignals demodulateSecondaryPath(
@@ -767,6 +806,7 @@ SecondaryDemodulationSignals demodulateSecondaryPath(
       secondarySignals.combinedDiffuseOutput, secondarySignals.combinedSpecularOutput, false);
   }
 
+  // ToDo: scale secondaries  prior to being denoised by NRD when sparse secondary lighting gets added.
   SecondaryCombinedDiffuseRadiance[pixelCoordinate] = secondarySignals.combinedDiffuseOutput;
   SecondaryCombinedSpecularRadiance[pixelCoordinate] = secondarySignals.combinedSpecularOutput;
 
@@ -793,7 +833,7 @@ void outputToDebugViewAtTheStart(
     }
     break;
   case DEBUG_VIEW_SECONDARY_BASE_REFLECTIVITY_ADJUSTED:
-    if (geometryFlags.hasSecondarySurface())
+    if (geometryFlags.performedAnyPSR())
     {
       storeInDebugView(pixelCoordinate, aliasedData1.SecondaryBaseReflectivity[pixelCoordinate].xyz);
     }
@@ -825,6 +865,14 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   }
 
   uvec2 pixelCoordinate = threadIndex;
+  bool isDirectActive = true;
+  bool isIndirectActive = true;
+  if (cb.sparseRenderingArgs.mode != SparseRenderingMode::Off)
+  {
+    isDirectActive = isActivePixelFromMask(SparseRenderingDirectActivePixelMask, pixelCoordinate);
+    isIndirectActive = isActivePixelFromMask(SparseRenderingIndirectActivePixelMask, pixelCoordinate);
+  }
+  const bool isPixelActive = isDirectActive || isIndirectActive;
 
   const CameraDirections primaryRayDirections = cameraPixelCoordinateToDirection(cb.camera, pixelCoordinate);
   const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixelCoordinate, SharedFlags);
@@ -834,9 +882,10 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
 
   // Primary surface
   PrimaryDemodulationSignals primarySignals = demodulatePrimaryPath(
-    pixelCoordinate, localIndex, geometryFlags, primaryRayDirections);
+    pixelCoordinate, localIndex, geometryFlags, primaryRayDirections,
+    isPixelActive, isDirectActive, isIndirectActive);
 
-  // Secondary surface
+  // Secondary surface - runs on every PSR pixel regardless of sparse active state so the secondary signal stays dense
   SecondaryDemodulationSignals secondarySignals = demodulateSecondaryPath(
     pixelCoordinate, geometryFlags, primaryRayDirections);
 

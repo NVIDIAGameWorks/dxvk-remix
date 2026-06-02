@@ -179,6 +179,8 @@ dxvk_src = files([
   'rtx_render/rtx_accel_manager.h',
   'rtx_render/rtx_accumulation.cpp',
   'rtx_render/rtx_accumulation.h',
+  'rtx_render/rtx_sparse_rendering.cpp',
+  'rtx_render/rtx_sparse_rendering.h',
   'rtx_render/rtx_asset_data.h',
   'rtx_render/rtx_asset_data_manager.cpp',
   'rtx_render/rtx_asset_data_manager.h',
@@ -507,7 +509,7 @@ dxvk_deps += delayimp_dep
 dxvk_lib = static_library('dxvk', dxvk_src, dxvk_version, [generated_dxvk_shaders, rtx_shaders, dxvk_generated_embedded_files],
   link_with           : [ util_lib, spirv_lib, usd_plugins ], 
   dependencies        : [ dxvk_deps ],
-  include_directories : [ dxvk_include_path, dxvk_shader_include_path, rtxdi_include_path, remix_api_include_path, rtxcr_include_path, submodules_include_path  ],
+  include_directories : [ dxvk_include_path, dxvk_shader_include_path, rtxdi_include_path, remix_api_include_path, rtxcr_include_path, submodules_include_path ],
   override_options    : ['cpp_std='+dxvk_cpp_std],
   # Force switch statements over enums to either cover all cases or have a default case.
   cpp_args            : dxvk_is_msvc ? ['/we4062'] : ['-Wswitch'],

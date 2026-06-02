@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -44,6 +44,8 @@
 #define RTXDI_REUSE_BINDING_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT 41
 #define RTXDI_REUSE_BINDING_SHARED_TERMINATOR_FIX_INPUT             42
 #define RTXDI_REUSE_BINDING_SHARED_TERMINATOR_FIX_PREVIOUS_INPUT    43
+
+#define RTXDI_REUSE_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT         50
 
 // Inputs / Outputs
 

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -73,6 +73,12 @@ Texture2D<float2> BSDFFactor;
 layout(binding = COMPOSITE_BSDF_FACTOR2_INPUT)
 Texture2D<float2> BSDFFactor2;
 
+layout(binding = COMPOSITE_DIRECT_PIXEL_SAMPLING_RATE_INPUT)
+Texture2D<float> SparseRenderingDirectPixelSamplingRate;
+
+layout(binding = COMPOSITE_INDIRECT_PIXEL_SAMPLING_RATE_INPUT)
+Texture2D<float> SparseRenderingIndirectPixelSamplingRate;
+
 layout(binding = COMPOSITE_VOLUME_FILTERED_RADIANCE_AGE_INPUT)
 Sampler3D<float> VolumeFilteredRadianceAge;
 layout(binding = COMPOSITE_VOLUME_FILTERED_RADIANCE_Y_INPUT)
@@ -91,6 +97,18 @@ Sampler3D<float4> ValueNoiseSampler;
 
 layout(binding = COMPOSITE_SKY_LIGHT_TEXTURE)
 Sampler2D<float3> SkyLight;
+
+layout(binding = COMPOSITE_ACTIVE_PIXEL_MASK_INPUT)
+Texture2D<uint> SparseRenderingActivePixelMask;
+
+layout(binding = COMPOSITE_DIRECT_ACTIVE_PIXEL_MASK_INPUT)
+Texture2D<uint> SparseRenderingDirectActivePixelMask;
+
+layout(binding = COMPOSITE_INDIRECT_ACTIVE_PIXEL_MASK_INPUT)
+Texture2D<uint> SparseRenderingIndirectActivePixelMask;
+
+layout(binding = COMPOSITE_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)
+Texture2D<uint16_t> UnionActiveLocalPixelCoords;
 
 // Inputs/Outputs
 layout(binding = COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT)
@@ -111,3 +129,5 @@ layout(binding = COMPOSITE_RAY_RECONSTRUCTION_PARTICLE_BUFFER_OUTPUT)
 RWTexture2D<float4> RayReconstructionParticleOutput;
 layout(binding = COMPOSITE_DEBUG_VIEW_OUTPUT)
 RWTexture2D<float4> DebugView;
+layout(r16f, binding = COMPOSITE_RAY_RECONSTRUCTION_HIT_DISTANCE_OUTPUT)
+RWTexture2D<float> RayReconstructionHitDistanceOutput;

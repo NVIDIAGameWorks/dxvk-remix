@@ -1,0 +1,103 @@
+/*
+* Copyright (c) 2026, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Per-pixel sampling-rate thresholding helpers.
+//
+// Including shaders MUST have a `Texture2DArray BlueNoise` binding in scope
+
+
+#include "rtx/pass/sparse_rendering/sparse_rendering.slangh"
+#include "rtx/pass/nrc/nrc_utilities.slangh"
+#include "rtx/utility/noise.slangh"
+
+// Returns a deterministic [0,1) sample for thresholding per-pixel sampling rates.
+// `channel` decorrelates the threshold across signals (e.g. direct vs indirect).
+float calculatePerPixelRateThreshold(uvec2 pixelCoordinate, SparseRenderingArgs args, uint32_t frameIdx, uint32_t channel)
+{
+  switch (args.perPixelRateNoiseSource)
+  {
+    default:
+    case PerPixelRateNoiseSource::WhiteNoise:
+    {
+      return whiteNoise(pixelCoordinate, frameIdx, channel);
+    }
+    case PerPixelRateNoiseSource::BlueNoise128x128x64x8:
+    {
+      const ivec3 c = ivec3(int(pixelCoordinate.x & 127u), int(pixelCoordinate.y & 127u), int((frameIdx + channel * 17u) & 63u));
+      return BlueNoise.Load(int4(c, 0)).r;
+    }
+  }
+}
+
+// Per-pixel-rate active selection given an already-computed sampling rate. Returns active==true
+// with probability ~rate via the configured per-pixel noise source. `channel` decorrelates
+// callers that gate different signals (direct vs indirect).
+bool isActivePixelFromSamplingRate(
+  uvec2 pixelCoordinate,
+  float samplingRate,
+  SparseRenderingArgs args,
+  uint32_t frameIdx,
+  uint32_t channel,
+  out float outputScale)
+{
+  outputScale = calculateRadianceScaleFromSamplingRate(samplingRate);
+
+  const float threshold = calculatePerPixelRateThreshold(pixelCoordinate, args, frameIdx, channel);
+  return threshold <= samplingRate;
+}
+
+static const uint32_t kSparseSignalChannelDirect = 0u;
+static const uint32_t kSparseSignalChannelIndirect = 1u;
+
+bool isActivePixelForDirect(
+  uvec2 pixelCoordinate,
+  float directSamplingRate,
+  SparseRenderingArgs args,
+  uint32_t frameIdx,
+  out float outputScale)
+{
+  return isActivePixelFromSamplingRate(pixelCoordinate, directSamplingRate, args, frameIdx, kSparseSignalChannelDirect, outputScale);
+}
+
+bool isActivePixelForIndirect(
+  uvec2 pixelCoordinate,
+  float indirectSamplingRate,
+  SparseRenderingArgs args,
+  uint32_t frameIdx,
+  out float outputScale)
+{
+  return isActivePixelFromSamplingRate(pixelCoordinate, indirectSamplingRate, args, frameIdx, kSparseSignalChannelIndirect, outputScale);
+}
+
+// Returns true when the pixel lies on the NRC training grid and should therefore be forced
+// active by the sparse prepasses (the network needs a sample at every training pixel).
+bool isForcedNrcTrainingPixel(uvec2 pixelCoordinate, bool enableNrc, SparseRenderingArgs args)
+{
+  if (!enableNrc || !args.forceNrcTrainingPixelsActive)
+  {
+    return false;
+  }
+
+  uvec2 unusedTrainingPixelCoordinate;
+  return Nrc::calculateIfPixelHasActiveNrcTrainingPath(pixelCoordinate, args.nrcArgs, unusedTrainingPixelCoordinate);
+}

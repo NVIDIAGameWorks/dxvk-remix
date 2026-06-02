@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -33,6 +33,7 @@
 namespace dxvk {
 
   class DxvkDevice;
+  class DxvkPipelineManager;
 
   class DxvkToneMapping: public CommonDeviceObject {
   public:
@@ -47,8 +48,10 @@ namespace dxvk {
       const float frameTimeMilliseconds,
       bool resetHistory = false,
       bool autoExposureEnabled = true);
-    
+
     bool isEnabled() const { return tonemappingEnabled(); }
+
+    void prewarmShaders(DxvkPipelineManager& pipelineManager) const;
 
     void showImguiSettings();
 

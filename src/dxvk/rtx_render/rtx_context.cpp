@@ -43,6 +43,8 @@
 #include "rtx_composite.h"
 #include "rtx_debug_view.h"
 
+#include "rtx/pass/sparse_rendering/sparse_rendering.h"
+
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/raytrace_args.h"
 #include "rtx/pass/volume_args.h"
@@ -50,6 +52,7 @@
 #include "rtx/utility/gpu_printing.h"
 #include "rtx_nrd_settings.h"
 #include "rtx_scene_manager.h"
+#include "rtx_sparse_rendering.h"
 
 #include "../d3d9/d3d9_state.h"
 #include "../d3d9/d3d9_spec_constants.h"
@@ -1147,6 +1150,16 @@ namespace dxvk {
     constants.enableBillboardOrientationCorrection = RtxOptions::enableBillboardOrientationCorrection() && RtxOptions::enableSeparateUnorderedApproximations();
     constants.useIntersectionBillboardsOnPrimaryRays = RtxOptions::useIntersectionBillboardsOnPrimaryRays() && constants.enableBillboardOrientationCorrection;
     constants.enableDirectLightBoilingFilter = m_common->metaDemodulate().enableDirectLightBoilingFilter() && RtxOptions::useRTXDI();
+
+    auto& sparseRendering = m_common->metaSparseRendering();
+    if (constants.enableDirectLightBoilingFilter && sparseRendering.isActive()) {
+      // RR path disables direct light boiling filter, but in case someone manually enables it.
+      // Technically it can be supported if needed in the future - it would need to ensure a spatial locality of remapped pixels to work for the filter
+      // (it may already since it has group based expectations).
+      ONCE(Logger::warn("[RTX] Direct Light Boiling Filter is not supported with Sparse Rendering enabled."));
+      constants.enableDirectLightBoilingFilter = false;
+    }
+
     constants.directLightBoilingThreshold = m_common->metaDemodulate().directLightBoilingThreshold();
     constants.translucentDecalAlbedoFactor = RtxOptions::translucentDecalAlbedoFactor();
     constants.enablePlayerModelInPrimarySpace = RtxOptions::PlayerModel::enableInPrimarySpace();
@@ -1246,6 +1259,9 @@ namespace dxvk {
 
     m_common->metaNeeCache().setRaytraceArgs(constants, m_resetHistory);
     constants.surfaceCount = getSceneManager().getAccelManager().getSurfaceCount();
+
+    m_common->metaSparseRendering().setSparseRenderingArgs(*this, constants.sparseRenderingArgs);
+    constants.sparseRenderingArgs.nrcArgs = constants.nrcArgs;
 
     auto* cameraTeleportDirectionInfo = getSceneManager().getRayPortalManager().getCameraTeleportationRayPortalDirectionInfo();
     constants.teleportationPortalIndex = cameraTeleportDirectionInfo ? cameraTeleportDirectionInfo->entryPortalInfo.portalIndex + 1 : 0;
@@ -1519,6 +1535,10 @@ namespace dxvk {
 
     // Gbuffer Raytracing
     m_common->metaPathtracerGbuffer().dispatch(this, rtOutput);
+
+    // Sparse Rendering: sampling rates + active-pixel mask + compaction.
+    // Runs after Gbuffer so the active-pixel mask can read current-frame SharedFlags.
+    m_common->metaSparseRendering().dispatch(*this, rtOutput);
 
     // RTXDI
     m_common->metaRtxdiRayQuery().dispatch(this, rtOutput);

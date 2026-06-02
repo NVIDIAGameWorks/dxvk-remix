@@ -337,6 +337,26 @@ namespace dxvk {
                                                   "  1: World Normal\n"
                                                   "  2: World Tangent\n"
                                                   "  3: World Bitangent" },
+        {DEBUG_VIEW_SPARSE_RENDERING_DIRECT_PIXEL_SAMPLING_RATE,        "Sparse Rendering Direct Final Sampling Probability",
+                                                                        "Shows the per-pixel direct-lighting final sampling probability." },
+        {DEBUG_VIEW_SPARSE_RENDERING_INDIRECT_PIXEL_SAMPLING_RATE,      "Sparse Rendering Indirect Final Sampling Probability",
+                                                                        "Shows the per-pixel indirect-lighting final sampling probability." },
+        {DEBUG_VIEW_SPARSE_RENDERING_ACTIVE_PIXELS_MASK,         "Sparse Rendering Active Pixel Mask",
+                                                                 "Shows the actual stochastic active pixels selected this frame." },
+        {DEBUG_VIEW_SPARSE_RENDERING_DIRECT_ACTIVE_PIXELS_PERCENTAGE, "Sparse Rendering Direct Active Pixels Percentage",
+                                                                 "Shows the per-pixel direct-lighting sampling probability." },
+        {DEBUG_VIEW_SPARSE_RENDERING_INDIRECT_ACTIVE_PIXELS_PERCENTAGE, "Sparse Rendering Indirect Active Pixels Percentage",
+                                                                 "Shows the per-pixel indirect-lighting sampling probability." },
+        {DEBUG_VIEW_SPARSE_RENDERING_DIRECT_ACTIVE_PIXELS_OUTPUT_SCALE, "Sparse Rendering Direct Active Pixel Output Scale",
+                                                                 "Shows 1 / direct sampling probability on pixels selected by the active pixel mask." },
+        {DEBUG_VIEW_SPARSE_RENDERING_INDIRECT_ACTIVE_PIXELS_OUTPUT_SCALE, "Sparse Rendering Indirect Active Pixel Output Scale",
+                                                                 "Shows 1 / indirect sampling probability on pixels selected by the active pixel mask." },
+        {DEBUG_VIEW_SPARSE_RENDERING_UNION_ACTIVE_THREADS, "Sparse Rendering Union Active Threads",
+                                                                 "Outputs 1 for pixels whose composite thread was union-active (direct or indirect active, or a primary miss)." },
+        {DEBUG_VIEW_SPARSE_RENDERING_DIRECT_ACTIVE_THREADS, "Sparse Rendering Direct Active Threads",
+                                                                 "Outputs 1 for pixels whose composite thread was direct-active." },
+        {DEBUG_VIEW_SPARSE_RENDERING_INDIRECT_ACTIVE_THREADS, "Sparse Rendering Indirect Active Threads",
+                                                                 "Outputs 1 for pixels whose composite thread was indirect-active." },
 
         {DEBUG_VIEW_SHADOW_TERMINATOR_OFFSET, "Shadow Terminator Offset"},
       };
@@ -598,8 +618,6 @@ namespace dxvk {
       END_PARAMETER()
     };
 
-    PREWARM_SHADER_PIPELINE(DebugViewPostprocessShader);
-
     class DebugViewWaveformRenderShader : public ManagedShader {
       SHADER_SOURCE(DebugViewWaveformRenderShader, VK_SHADER_STAGE_COMPUTE_BIT, debug_view_waveform_render)
 
@@ -613,8 +631,6 @@ namespace dxvk {
       END_PARAMETER()
     };
 
-    PREWARM_SHADER_PIPELINE(DebugViewWaveformRenderShader);
-
     class DebugViewRenderToOutputShader : public ManagedShader {
       SHADER_SOURCE(DebugViewRenderToOutputShader, VK_SHADER_STAGE_COMPUTE_BIT, debug_view_render_to_output)
       
@@ -626,7 +642,6 @@ namespace dxvk {
       END_PARAMETER()
     };
 
-    PREWARM_SHADER_PIPELINE(DebugViewRenderToOutputShader);
   }
 
   DebugView::DebugView(dxvk::DxvkDevice* device)
@@ -641,7 +656,14 @@ namespace dxvk {
   }
 
   void DebugView::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
+    if (debugViewIdx() == DEBUG_VIEW_DISABLED) {
+      return;
+    }
+
     getDebugViewShader();
+    DebugViewPostprocessShader::getShader();
+    DebugViewWaveformRenderShader::getShader();
+    DebugViewRenderToOutputShader::getShader();
   }
 
   bool DebugView::areDebugViewStatisticsSupported() const {

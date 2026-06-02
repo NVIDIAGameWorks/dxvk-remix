@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -294,6 +294,14 @@ namespace dxvk
       AliasedResource m_indirectRadianceHitDistance;
       AliasedResource m_rayReconstructionHitDistance;
       Resource m_rayReconstructionParticleBuffer;
+      Resource m_sparseRenderingDirectActivePixelMask;
+      Resource m_sparseRenderingIndirectActivePixelMask;
+      Resource m_sparseRenderingUnionActivePixelMask;
+      Resource m_sparseRenderingDirectPixelSamplingRate;
+      Resource m_sparseRenderingIndirectPixelSamplingRate;
+      Resource m_sparseRenderingDirectActiveLocalPixelCoords;
+      Resource m_sparseRenderingIndirectActiveLocalPixelCoords;
+      Resource m_sparseRenderingUnionActiveLocalPixelCoords;
 
       AliasedResource m_primaryDirectDiffuseRadiance;
       AliasedResource m_primaryDirectSpecularRadiance;

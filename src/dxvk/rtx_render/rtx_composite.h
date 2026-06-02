@@ -29,6 +29,7 @@
 #include "rtx_accumulation.h"
 
 struct RaytraceArgs;
+struct CompositeArgs;
 
 namespace dxvk {
   class Config;

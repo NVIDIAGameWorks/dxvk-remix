@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -60,8 +60,7 @@ namespace dxvk {
         TEXTURE2D(NIS_BINDING_COEF_SCALER)    \
         TEXTURE2D(NIS_BINDING_COEF_USM)   \
       END_PARAMETER()   \
-    }; \
-    PREWARM_SHADER_PIPELINE(NISShader_##__blocksize##_##__fp##_##__blockheight);
+    };
 
 #define NIS_SHADER_PERMUTATION(__blocksize, __fp) \
   __NIS_SHADER_PERMUTATION(__blocksize, __fp, 24); \
@@ -82,6 +81,23 @@ namespace dxvk {
   }
 
   DxvkNIS::~DxvkNIS() {
+  }
+
+  void DxvkNIS::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
+    if (!RtxOptions::isNISEnabled()) {
+      return;
+    }
+
+    // At prewarm time we don't yet know the GPU-specific block size / FP precision picked by
+    // setConfig(), so prewarm all eight variants.
+    NISShader_128_float_24::getShader();
+    NISShader_128_float_32::getShader();
+    NISShader_128_half_24::getShader();
+    NISShader_128_half_32::getShader();
+    NISShader_256_float_24::getShader();
+    NISShader_256_float_32::getShader();
+    NISShader_256_half_24::getShader();
+    NISShader_256_half_32::getShader();
   }
 
   static const Resources::Resource& getInput(const dxvk::Rc<DxvkContext>& ctx, const Resources::RaytracingOutput& rtOutput) {

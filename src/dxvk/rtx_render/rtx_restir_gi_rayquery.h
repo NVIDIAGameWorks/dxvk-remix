@@ -51,6 +51,7 @@ namespace dxvk {
   };
   
   class RtxContext;
+  class DxvkPipelineManager;
 
   class DxvkReSTIRGIRayQuery: public RtxPass {
     
@@ -60,6 +61,8 @@ namespace dxvk {
     ~DxvkReSTIRGIRayQuery() = default;
 
     void dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput);
+
+    void prewarmShaders(DxvkPipelineManager& pipelineManager) const;
 
     void showImguiSettings();
 

@@ -49,7 +49,6 @@ namespace dxvk {
       END_PARAMETER()
     };
 
-    PREWARM_SHADER_PIPELINE(TemporalAaShader);
   }
 
 
@@ -58,6 +57,14 @@ namespace dxvk {
   }
 
   DxvkTemporalAA::~DxvkTemporalAA() {
+  }
+
+  void DxvkTemporalAA::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
+    if (!RtxOptions::isTAAEnabled()) {
+      return;
+    }
+
+    TemporalAaShader::getShader();
   }
 
   void DxvkTemporalAA::showImguiSettings() {

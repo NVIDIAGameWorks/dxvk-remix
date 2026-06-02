@@ -400,7 +400,7 @@ void sampleAndStoreIndirectRayPathSample(
  }
 
 void integrateDirectPath(
-  inout RNG randomState, ivec2 pixelCoordinate,
+  inout RNG randomState, uvec2 pixelCoordinate,
   GeometryFlags geometryFlags, float integrationSurfacePdf,
   Ray primaryRay, MinimalRayInteraction primaryMinimalRayInteraction, MinimalSurfaceInteraction primarySurfaceInteraction,
   PolymorphicSurfaceMaterialInteraction primaryPolymorphicSurfaceMaterialInteraction)
@@ -600,8 +600,8 @@ void integratorDirectPathOutputDebugView(
     isValid &= isValidValue(indirectSampleData.firstSampledLobePdf);
 
     // DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_SAMPLED_SOLID_ANGLE_PDF
-    isValid &= isValidValue(indirectSampleData.firstSampledLobePdf);
-    
+    isValid &= isValidValue(indirectSampleData.firstSampledSolidAnglePdf);
+
     accumulateInDebugViewAnd(pixelCoordinate, isValid);
     break;
   }
