@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -52,8 +52,6 @@ namespace dxvk {
       END_PARAMETER()
     };
 
-    PREWARM_SHADER_PIPELINE(HistogramShader);
-
     class ToneCurveShader : public ManagedShader
     {
       SHADER_SOURCE(ToneCurveShader, VK_SHADER_STAGE_COMPUTE_BIT, tonemapping_tone_curve)
@@ -65,8 +63,6 @@ namespace dxvk {
         RW_TEXTURE1D(TONEMAPPING_TONE_CURVE_TONE_CURVE_INPUT_OUTPUT)
       END_PARAMETER()
     };
-
-    PREWARM_SHADER_PIPELINE(ToneCurveShader);
 
     class ApplyTonemappingShader : public ManagedShader
     {
@@ -82,14 +78,23 @@ namespace dxvk {
       END_PARAMETER()
     };
 
-    PREWARM_SHADER_PIPELINE(ApplyTonemappingShader);
   }
-  
+
   DxvkToneMapping::DxvkToneMapping(DxvkDevice* device)
   : CommonDeviceObject(device), m_vkd(device->vkd())  {
   }
-  
+
   DxvkToneMapping::~DxvkToneMapping()  {  }
+
+  void DxvkToneMapping::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
+    if (RtxOptions::tonemappingMode() != TonemappingMode::Global) {
+      return;
+    }
+
+    HistogramShader::getShader();
+    ToneCurveShader::getShader();
+    ApplyTonemappingShader::getShader();
+  }
 
   void DxvkToneMapping::showImguiSettings() {
 

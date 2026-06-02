@@ -32,6 +32,8 @@
 #include "rtx/utility/gpu_printing.slangh"
 #include "rtx/pass/nrc/nrc_utilities.slangh"
 #include "rtx/utility/debug_view_helpers.slangh"
+#include "rtx/pass/sparse_rendering/sparse_rendering.slangh"
+#include "rtx/pass/sparse_rendering/compact_active_pixels.slangh"
 
 // Inputs
 
@@ -52,6 +54,9 @@ RWStructuredBuffer<NrcDebugTrainingPathInfo> DebugTrainingPathInfo;
 
 layout(r16ui, binding = NRC_RESOLVE_BINDING_SHARED_FLAGS_INPUT)
 Texture2D<uint16_t> SharedFlags;
+
+layout(binding = NRC_RESOLVE_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)
+Texture2D<uint16_t> IndirectActiveLocalPixelCoords;
 
 // Inputs / Outputs
 
@@ -151,13 +156,33 @@ vec3 IndexToColor(uint x)
   return color;
 }
 
-void debugResolve(uint2 pixelIndex)
+void debugResolve(uint2 pixelIndex, bool pixelIsActive)
 {
   // Early out on out-of-frame pixels
   const uint2 frameDimensions = cb.camera.resolution;
   if (any(pixelIndex >= frameDimensions))
   {
     return;
+  }
+
+  // Under sparse rendering, inactive screen pixels have no valid per-pixel query data. Only the
+  // training-pixel-backed modes are valid for inactive pixels (their source is DebugTrainingPathInfo
+  // which is per training pixel, shared across every screen pixel in the same training tile).
+  if (!pixelIsActive)
+  {
+    switch (push.resolveMode)
+    {
+    case NrcResolveMode::TrainingBounceHeatMap:
+    case NrcResolveMode::TrainingBounceHeatMapSmoothed:
+    case NrcResolveMode::PrimaryVertexTrainingRadiance:
+    case NrcResolveMode::PrimaryVertexTrainingRadianceSmoothed:
+    case NrcResolveMode::SecondaryVertexTrainingRadiance:
+    case NrcResolveMode::SecondaryVertexTrainingRadianceSmoothed:
+    case NrcResolveMode::TrainingQueryIndex:
+      break;
+    default:
+      return;
+    }
   }
 
   const uint samplesPerPixel = push.samplesPerPixel;
@@ -234,10 +259,20 @@ void debugResolve(uint2 pixelIndex)
   {
     if (push.debugBuffersAreEnabled)
     {
-      // We store smoothed color data in one of our debug buffers
+      // We store smoothed color data in one of our debug buffers.
+      // Only active screen pixels update the per-training-pixel accumulation; inactive pixels just
+      // read the latest accumulated value for display. This avoids both racing writes and repeated
+      // lerps within a single training tile under sparse rendering.
       vec3 previous = DebugTrainingPathInfo[trainingPathIndex].accumulation;
-      outputColor = lerp(previous, outputColor, push.resolveModeAccumulationWeight);
-      DebugTrainingPathInfo[trainingPathIndex].accumulation = outputColor;
+      if (pixelIsActive)
+      {
+        outputColor = lerp(previous, outputColor, push.resolveModeAccumulationWeight);
+        DebugTrainingPathInfo[trainingPathIndex].accumulation = outputColor;
+      }
+      else
+      {
+        outputColor = previous;
+      }
       }
     }
     break;
@@ -307,11 +342,18 @@ void main(uint2 threadIndex: SV_DispatchThreadID)
     return;
   }
 
-  const uvec2 pixelCoordinate = threadIndex;
+  uvec2 pixelCoordinate;
+  const bool pixelIsActive = loadPixelCoordinate(threadIndex, IndirectActiveLocalPixelCoords,
+                                                 cb.camera.resolution, cb.sparseRenderingArgs, pixelCoordinate);
 
-  if (push.resolveMode != NrcResolveMode::AddQueryResultToOutput) 
+  if (push.resolveMode != NrcResolveMode::AddQueryResultToOutput)
   {
-    debugResolve(pixelCoordinate);
+    debugResolve(pixelCoordinate, pixelIsActive);
+  }
+
+  if (!pixelIsActive)
+  {
+    return;
   }
     
   const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixelCoordinate, SharedFlags);

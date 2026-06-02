@@ -43,6 +43,7 @@
 #include "rtx_shaders/prepare_ray_reconstruction.h"
 #include "rtx_shader_manager.h"
 #include "rtx_ray_reconstruction.h"
+#include "rtx_restir_gi_rayquery.h"
 
 namespace dxvk {
 
@@ -73,13 +74,11 @@ namespace dxvk {
         RW_TEXTURE2D(RAY_RECONSTRUCTION_PRIMARY_ALBEDO_INPUT_OUTPUT)
         RW_TEXTURE2D(RAY_RECONSTRUCTION_PRIMARY_SPECULAR_ALBEDO_INPUT_OUTPUT)
 
-        RW_TEXTURE2D(RAY_RECONSTRUCTION_HIT_DISTANCE_OUTPUT)
         RW_TEXTURE2D(RAY_RECONSTRUCTION_DEBUG_VIEW_OUTPUT)
         RW_TEXTURE2D(RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_MASK_OUTPUT)
 
         END_PARAMETER()
     };
-    PREWARM_SHADER_PIPELINE(PrepareRayReconstructionShader);
   }
 
   DxvkRayReconstruction::DxvkRayReconstruction(DxvkDevice* device)
@@ -93,6 +92,14 @@ namespace dxvk {
     info.access = VK_ACCESS_TRANSFER_WRITE_BIT;
     info.size = sizeof(RayReconstructionArgs);
     m_constants = device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "DLSS-RR constant buffer");
+  }
+
+  void DxvkRayReconstruction::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
+    if (!RtxOptions::enableRayReconstruction()) {
+      return;
+    }
+
+    PrepareRayReconstructionShader::getShader();
   }
 
   bool DxvkRayReconstruction::supportsRayReconstruction() const {
@@ -209,7 +216,6 @@ namespace dxvk {
 
       // Outputs
 
-      ctx->bindResourceView(RAY_RECONSTRUCTION_HIT_DISTANCE_OUTPUT, rtOutput.m_rayReconstructionHitDistance.view(Resources::AccessType::Write), nullptr);
       ctx->bindResourceView(RAY_RECONSTRUCTION_DEBUG_VIEW_OUTPUT, debugView.getDebugOutput(), nullptr);
       ctx->bindResourceView(RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_MASK_OUTPUT, rtOutput.m_primaryDisocclusionMaskForRR.view(Resources::AccessType::Write), nullptr);
 

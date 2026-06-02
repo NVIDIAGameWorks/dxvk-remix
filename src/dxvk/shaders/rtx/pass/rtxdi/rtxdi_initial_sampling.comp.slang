@@ -48,6 +48,7 @@
 #include "rtx/concept/light/light.slangh"
 #include "rtx/algorithm/resolve.slangh"
 #include "rtx/algorithm/rtxdi/rtxdi.slangh"
+#include "rtx/pass/sparse_rendering/compact_active_pixels.slangh"
 
 [shader("compute")]
 [numthreads(16, 8, 1)]
@@ -58,7 +59,17 @@ void main(int2 threadIndex : SV_DispatchThreadID)
     return;
   }
 
-  const int2 pixelCoordinate = threadIndex;
+  uvec2 remapped;
+  const bool isActive = loadPixelCoordinate(uint2(threadIndex), DirectActiveLocalPixelCoords,
+    cb.camera.resolution, cb.sparseRenderingArgs, remapped);
+  int2 pixelCoordinate = int2(remapped);
+
+  // Inactive pixels are handled by the temporal reuse pass (cheap reprojection or skip).
+  if (!isActive)
+  {
+    return;
+  }
+
   RAB_Surface surface = RAB_GetGBufferSurface(pixelCoordinate, false);
   if (!RAB_IsSurfaceValid(surface))
   {

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -84,6 +84,7 @@ namespace dxvk {
   class RtxTextureManager;
   class NeuralRadianceCache;
   class DxvkXeSS;
+  class SparseRendering;
 
   class NGXContext;
 
@@ -139,6 +140,10 @@ namespace dxvk {
 
     RtxGlobalVolumetrics& metaGlobalVolumetrics() {
       return m_globalVolumetrics.get();
+    }
+
+    SparseRendering& metaSparseRendering() {
+      return m_sparseRendering.get();
     }
 
     DxvkPathtracerGbuffer& metaPathtracerGbuffer() {
@@ -361,6 +366,7 @@ namespace dxvk {
 
     // RTX Shaders
     Active<RtxGlobalVolumetrics>            m_globalVolumetrics;
+    Active<SparseRendering>                 m_sparseRendering;
     Active<DxvkPathtracerGbuffer>           m_pathtracerGbuffer;
     Active<DxvkRtxdiRayQuery>               m_rtxdiRayQuery;
     Active<DxvkReSTIRGIRayQuery>            m_restirgiRayQuery;

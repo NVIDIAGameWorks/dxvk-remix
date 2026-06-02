@@ -1,0 +1,83 @@
+/*
+* Copyright (c) 2025-2026, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Load-path API for sparse rendering's compacted active-pixel maps. Safe to include
+// from non-SR shaders that consume the maps. SR-internal write-path helpers (Morton
+// encoding, packing) live in compact_active_pixels_internal.slangh.
+
+#include "rtx/pass/sparse_rendering/compact_active_pixels_binding_indices.h"
+
+static const uint kPackedLocalPixelActiveFlag = 0x8000;
+
+bool isPackedLocalPixelEntryActive(uint16_t packedCoordinate)
+{
+  return packedCoordinate & kPackedLocalPixelActiveFlag;
+}
+
+bool unpackLocalPixelCoordinate(uint16_t packedCoordinate, out uint2 localPixelCoordinate)
+{
+  localPixelCoordinate = uint2(packedCoordinate & 0xFF, (packedCoordinate >> 8) & 0x7F);
+
+  return isPackedLocalPixelEntryActive(packedCoordinate);
+}
+
+// Retrieves a pixel coordinate from locally compacted sparse rendering maps.
+// Returns true if this is an active and false if inactive.
+bool loadLocalPixelCoordinate(
+	Texture2D<uint16_t> ActiveLocalPixelCoords,
+	uint2 pixelCoordinate,
+  out uvec2 gbufferPixelCoordinate)
+{
+  const uint16_t packedLocalPixelCoord = ActiveLocalPixelCoords[pixelCoordinate];
+  uint2 localPixelCoord;
+  const bool isActive = unpackLocalPixelCoordinate(packedLocalPixelCoord, localPixelCoord);
+
+  // Calculate pixel coord - works for both active and inactive pixels
+
+  const uint2 groupBasePixelCoord = uint2(
+    pixelCoordinate.x - (pixelCoordinate.x % COMPACT_ACTIVE_PIXELS_TILE_SIZE_X),
+    pixelCoordinate.y - (pixelCoordinate.y % COMPACT_ACTIVE_PIXELS_TILE_SIZE_Y));
+
+  gbufferPixelCoordinate = groupBasePixelCoord + localPixelCoord;
+
+  return isActive;
+}
+
+// Loads a pixel coordinate in the GBuffer corresponding to the current thread index.
+// Returns true for active pixels and false for inactive pixels.
+// Note: this must be only called for pixels within raytracing resolution bounds.
+bool loadPixelCoordinate(
+  uint2 threadIndex,
+  Texture2D<uint16_t> ActiveLocalPixelCoords,
+  uvec2 raytracingResolution,
+  SparseRenderingArgs args,
+  out uvec2 gbufferPixelCoordinate)
+{
+  if (args.mode != SparseRenderingMode::Off)
+  {
+    return loadLocalPixelCoordinate(ActiveLocalPixelCoords, threadIndex, gbufferPixelCoordinate);
+  }
+
+  gbufferPixelCoordinate = threadIndex;
+  return true;
+}

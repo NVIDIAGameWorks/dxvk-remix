@@ -49,6 +49,58 @@
 #include "rtx/concept/light/light.slangh"
 #include "rtx/algorithm/resolve.slangh"
 #include "rtx/algorithm/rtxdi/rtxdi.slangh"
+#include "rtx/pass/sparse_rendering/compact_active_pixels.slangh"
+
+// Cheap reprojection for inactive sparse rendering pixels.
+// Copies the previous frame's reservoir forward (with light index remapping)
+// and decays confidence so that the pixel doesn't cause a false disocclusion boost
+// when it becomes active again.
+void reprojectInactivePixelReservoir(int2 pixelCoordinate) {
+  vec2 screenSpaceMotion = PrimaryScreenSpaceMotionVector[pixelCoordinate];
+  ivec2 prevPixelCenter = pixelCoordinate + ivec2(screenSpaceMotion.xy);
+
+  RTXDI_Reservoir reservoir = RTXDI_EmptyReservoir();
+  float confidence = 0;
+
+  if (all(prevPixelCenter >= 0) && all(prevPixelCenter < cb.camera.resolution)) {
+    RAB_Surface currentSurface = RAB_GetGBufferSurface(pixelCoordinate, false);
+    RAB_Surface previousSurface = RAB_GetGBufferSurface(prevPixelCenter, true);
+
+    if (RAB_IsSurfaceValid(currentSurface) && RAB_IsSurfaceValid(previousSurface)) {
+      // Surface consistency check with thresholds matching RTXDI spatial reuse conventions
+      if (RTXDI_IsValidNeighbor(
+            RAB_GetSurfaceNormal(currentSurface), RAB_GetSurfaceNormal(previousSurface),
+            RAB_GetSurfaceLinearDepth(currentSurface), RAB_GetSurfaceLinearDepth(previousSurface),
+            0.8, 0.1)) {
+        reservoir = RAB_LoadReservoir(prevPixelCenter, RTXDI_GetTemporalInputPage());
+
+        if (RTXDI_IsValidReservoir(reservoir)) {
+          uint16_t remappedLightIdx = RAB_TranslateLightIndex(reservoir.lightIdx, false);
+          if (remappedLightIdx == RTXDI_INVALID_LIGHT_INDEX) {
+            reservoir = RTXDI_EmptyReservoir();
+          } else {
+            reservoir.lightIdx = remappedLightIdx;
+            // Clamp M to 1 so this stale reservoir doesn't dominate during RIS
+            // combination in spatial reuse (risWeight = targetPdf * W * M).
+            // Without this, M accumulates across inactive frames and the stale
+            // inverse-PDF weight (W) can produce extreme fireflies.
+            reservoir.M = 1;
+          }
+        }
+      }
+
+      confidence = ReprojectionConfidence[prevPixelCenter];
+    }
+  }
+
+  // Decay confidence — inactive pixels gradually lose confidence so they don't
+  // cause a false disocclusion boost when they become active again
+  confidence = max(confidence - 1.0 / kReprojectionConfidenceHistoryLength, 0);
+
+  ReprojectionConfidence[pixelCoordinate] = confidence;
+  TemporalPosition[pixelCoordinate] = pack32(u16vec2(-1));
+  RAB_StoreReservoir(reservoir, pixelCoordinate, RTXDI_GetTemporalOutputPage());
+}
 
 [shader("compute")]
 [numthreads(16, 8, 1)]
@@ -59,7 +111,20 @@ void main(int2 threadIndex : SV_DispatchThreadID)
     return;
   }
 
-  const int2 pixelCoordinate = threadIndex;
+  uvec2 remapped;
+  const bool isActive = loadPixelCoordinate(uint2(threadIndex), DirectActiveLocalPixelCoords,
+    cb.camera.resolution, cb.sparseRenderingArgs, remapped);
+  int2 pixelCoordinate = int2(remapped);
+
+  if (!isActive)
+  {
+    if (cb.sparseRenderingArgs.enableRtxdiReuseForInactivePixels)
+    {
+      reprojectInactivePixelReservoir(pixelCoordinate);
+    }
+    return;
+  }
+
   RAB_Surface surface = RAB_GetGBufferSurface(pixelCoordinate, false);
   if (!RAB_IsSurfaceValid(surface))
   {

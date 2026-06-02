@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -27,6 +27,7 @@
 
 namespace dxvk {
     class DxvkDevice;
+    class DxvkPipelineManager;
 
     // NVIDIA Image Scaling implementation
     class DxvkNIS {
@@ -36,6 +37,8 @@ namespace dxvk {
         ~DxvkNIS();
 
         Rc<DxvkShader> getShader();
+
+        void prewarmShaders(DxvkPipelineManager& pipelineManager) const;
 
         void dispatch(Rc<RtxContext> ctx, const Resources::RaytracingOutput& rtOutput);
 

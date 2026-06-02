@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -89,7 +89,6 @@ namespace dxvk {
       END_PARAMETER()
     };
 
-    PREWARM_SHADER_PIPELINE(ReSTIRGITemporalReuseShader);
 
     class ReSTIRGISpatialReuseShader : public ManagedShader
     {
@@ -127,7 +126,6 @@ namespace dxvk {
       END_PARAMETER()
     };
 
-    PREWARM_SHADER_PIPELINE(ReSTIRGISpatialReuseShader);
 
     class ReSTIRGIFinalShadingShader : public ManagedShader {
       SHADER_SOURCE(ReSTIRGIFinalShadingShader, VK_SHADER_STAGE_COMPUTE_BIT, restir_gi_final_shading)
@@ -166,10 +164,19 @@ namespace dxvk {
       END_PARAMETER()
     };
 
-    PREWARM_SHADER_PIPELINE(ReSTIRGIFinalShadingShader);
   }
 
   DxvkReSTIRGIRayQuery::DxvkReSTIRGIRayQuery(DxvkDevice* device): RtxPass(device) {
+  }
+
+  void DxvkReSTIRGIRayQuery::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
+    if (!RtxOptions::useReSTIRGI()) {
+      return;
+    }
+
+    ReSTIRGITemporalReuseShader::getShader();
+    ReSTIRGISpatialReuseShader::getShader();
+    ReSTIRGIFinalShadingShader::getShader();
   }
 
   void DxvkReSTIRGIRayQuery::showImguiSettings() {

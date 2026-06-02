@@ -33,6 +33,7 @@ namespace dxvk {
   class RtxContext;
   class DxvkDevice;
   class NrcContext;
+  class DxvkPipelineManager;
 
   // Manages resources for and interactions with Neural Radiance Cache (NRC) context
   class NeuralRadianceCache : public RtxPass {
@@ -174,6 +175,8 @@ namespace dxvk {
 
     // Returns if NRC is supported
     static bool checkIsSupported(const DxvkDevice* device);
+
+    void prewarmShaders(DxvkPipelineManager& pipelineManager) const;
 
     // To be called after both query and training PT passes completed to get a resolved radiance output
     void dispatchTrainingAndResolve(RtxContext& ctx,  const Resources::RaytracingOutput& rtOutput);

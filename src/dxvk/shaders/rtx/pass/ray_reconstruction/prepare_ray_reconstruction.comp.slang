@@ -77,9 +77,6 @@ RWTexture2D<float4> PrimaryAlbedo;
 layout(rgb10_a2, binding = RAY_RECONSTRUCTION_PRIMARY_SPECULAR_ALBEDO_INPUT_OUTPUT)
 RWTexture2D<float4> PrimarySpecularAlbedo;
 
-layout(r16f, binding = RAY_RECONSTRUCTION_HIT_DISTANCE_OUTPUT)
-RWTexture2D<float> HitDistanceOutput;
-
 layout(binding = RAY_RECONSTRUCTION_DEBUG_VIEW_OUTPUT)
 RWTexture2D<float4> DebugView;
 
@@ -194,9 +191,6 @@ void writeDebugViewOutputs(uint2 pixelCoordinate)
   case DEBUG_VIEW_RAY_RECONSTRUCTION_SPECULAR_ALBEDO:
     storeInDebugView(pixelCoordinate, PrimarySpecularAlbedo[pixelCoordinate]);
     break;
-  case DEBUG_VIEW_RAY_RECONSTRUCTION_HIT_DISTANCE:
-    storeInDebugView(pixelCoordinate, HitDistanceOutput[pixelCoordinate] / 1000.0);
-    break;
   case DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_WORLD_SHADING_NORMAL:
     storeInDebugView(pixelCoordinate, InNormalsDLSSRR[pixelCoordinate]);
     break;
@@ -220,9 +214,6 @@ void writeDebugViewOutputs(uint2 pixelCoordinate)
     // DEBUG_VIEW_RAY_RECONSTRUCTION_SPECULAR_ALBEDO
     isValid &= isValidValue(PrimarySpecularAlbedo[pixelCoordinate]);
 
-    // DEBUG_VIEW_RAY_RECONSTRUCTION_HIT_DISTANCE
-    isValid &= isValidValue(HitDistanceOutput[pixelCoordinate]);
-
     // DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_WORLD_SHADING_NORMAL
     isValid &= isValidValue(InNormalsDLSSRR[pixelCoordinate]);
 
@@ -238,8 +229,6 @@ void writeDebugViewOutputs(uint2 pixelCoordinate)
 
 void preprocessInputsForRR(uint2 pixelCoordinate)
 {
-  const bool isPrimaryGBufferMiss = PrimaryConeRadius[pixelCoordinate].x == 0.0f;
-
   const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixelCoordinate, SharedFlags);
 
   if (cb.combineSpecularAlbedo)
@@ -287,17 +276,6 @@ void preprocessInputsForRR(uint2 pixelCoordinate)
   }
 
   blurDisocclusionMask(pixelCoordinate);
-
-  // When ReSTIR-GI is on, both indirect channels carry the same hit distance, so the lobe gate would
-  // drop a valid signal for diffuse-first pixels. In NEE/NRC modes the specular channel is only
-  // populated for specular-first paths, so the gate is a no-op optimization there.
-  float hitDistance = 0;
-  if (!isPrimaryGBufferMiss &&
-      (cb.enableReSTIRGI || geometryFlags.firstSampledLobeIsSpecular))
-  {
-    hitDistance = PrimaryIndirectSpecular[pixelCoordinate].a;
-  }
-  HitDistanceOutput[pixelCoordinate] = hitDistance;
 }
 
 [shader("compute")]

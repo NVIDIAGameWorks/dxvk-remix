@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -36,6 +36,7 @@
 #include "rtx/external/NRD.slangh"
 #include "rtx/utility/geometry_flags.slangh"
 #include "rtx/algorithm/volume_lighting.slangh"
+#include "rtx/pass/sparse_rendering/sparse_rendering.slangh"
 
 groupshared uint samplePixel[16 * 8];
 
@@ -81,33 +82,40 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
       {
         if (!found)
         {
-          float neighborViewZ = texelFetch(PrimaryLinearViewZ, neighborPixel, 0).x;
-          const vec4 neighborNormalData = PrimaryVirtualWorldNormalPerceptualRoughness[neighborPixel.xy];
-          const vec3 neighborNormal = neighborNormalData.xyz * 2-1;
-          const CameraDirections neighborRayDirections = cameraPixelCoordinateToDirection(cb.camera, neighborPixel.xy);
-          float neighborDistance = abs(neighborViewZ / neighborRayDirections.viewDirection.z);
-          vec3 neighborPosition = cameraPosition + neighborDistance * neighborRayDirections.worldDirection;
-          float depthDiff = abs(neighborDistance - surface.hitT);
-          float3 positionDiff = neighborPosition-surfacePosition;
-
-          bool isMiss = neighborViewZ == cb.primaryDirectMissLinearViewZ;
-          bool isCoplanar = (abs(dot(normalize(positionDiff), particleNormal)) < cb.stochasticAlphaBlendPlanarDifference && depthDiff < surface.hitT * 0.2);
-          bool isDepthSimilar = length(positionDiff) < cb.stochasticAlphaBlendDepthDifference;
-          bool isNormalSimilar = dot(neighborNormal, particleNormal) > cb.stochasticAlphaBlendNormalSimilarity;
-          bool isSameGeometry = true;
-          if (cb.stochasticAlphaBlendSearchTheSameObject)
+          if (cb.sparseRenderingArgs.mode != SparseRenderingMode::Off && !isActivePixelFromMask(SparseRenderingActivePixelMask, uvec2(neighborPixel)))
           {
-            uint16_t neighborGeometryHash = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[neighborPixel], cb.alphaBlendSurfacePackMult).geometryHash;
-            isSameGeometry = (i == 0) || surface.geometryHash == neighborGeometryHash;
-          }
-          if (!isMiss && (isCoplanar || isDepthSimilar) && isNormalSimilar && isSameGeometry)
-          {
-            found = true;
-            samplePixel[localIndex.y * 16 + localIndex.x] = (neighborPixel.x << 16) | neighborPixel.y;
+            radius *= cb.stochasticAlphaBlendRadiusExpandFactor;
           }
           else
           {
-            radius *= cb.stochasticAlphaBlendRadiusExpandFactor;
+            float neighborViewZ = texelFetch(PrimaryLinearViewZ, neighborPixel, 0).x;
+            const vec4 neighborNormalData = PrimaryVirtualWorldNormalPerceptualRoughness[neighborPixel.xy];
+            const vec3 neighborNormal = neighborNormalData.xyz * 2-1;
+            const CameraDirections neighborRayDirections = cameraPixelCoordinateToDirection(cb.camera, neighborPixel.xy);
+            float neighborDistance = abs(neighborViewZ / neighborRayDirections.viewDirection.z);
+            vec3 neighborPosition = cameraPosition + neighborDistance * neighborRayDirections.worldDirection;
+            float depthDiff = abs(neighborDistance - surface.hitT);
+            float3 positionDiff = neighborPosition-surfacePosition;
+
+            bool isMiss = neighborViewZ == cb.primaryDirectMissLinearViewZ;
+            bool isCoplanar = (abs(dot(normalize(positionDiff), particleNormal)) < cb.stochasticAlphaBlendPlanarDifference && depthDiff < surface.hitT * 0.2);
+            bool isDepthSimilar = length(positionDiff) < cb.stochasticAlphaBlendDepthDifference;
+            bool isNormalSimilar = dot(neighborNormal, particleNormal) > cb.stochasticAlphaBlendNormalSimilarity;
+            bool isSameGeometry = true;
+            if (cb.stochasticAlphaBlendSearchTheSameObject)
+            {
+              uint16_t neighborGeometryHash = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[neighborPixel], cb.alphaBlendSurfacePackMult).geometryHash;
+              isSameGeometry = (i == 0) || surface.geometryHash == neighborGeometryHash;
+            }
+            if (!isMiss && (isCoplanar || isDepthSimilar) && isNormalSimilar && isSameGeometry)
+            {
+              found = true;
+              samplePixel[localIndex.y * 16 + localIndex.x] = (neighborPixel.x << 16) | neighborPixel.y;
+            }
+            else
+            {
+              radius *= cb.stochasticAlphaBlendRadiusExpandFactor;
+            }
           }
         }
 

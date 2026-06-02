@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -29,6 +29,10 @@
 #include "rtx/concept/surface/surface.slangh"
 #include "rtx/concept/surface_material/surface_material.slangh"
 #include "rtx/algorithm/integrator_indirect.slangh"
+#include "rtx/pass/debug_view/debug_view_args.h"
+#include "rtx/pass/sparse_rendering/sparse_rendering.slangh"
+#include "rtx/pass/sparse_rendering/compact_active_pixels.slangh"
+
 // Returns true for query pixels and training pixels that are not out of bounds
 bool nrcCombinedToGbufferPixelCoordinate(
   uvec2 combinedNrcCoordinate,
@@ -76,8 +80,22 @@ bool initPixelCoordinateOnLaunch(inout uvec2 gbufferPixelCoordinate, out bool is
   {
     return false;
   }
-  
-  return all(gbufferPixelCoordinate < cb.camera.resolution);
+
+  // NRC training threads have dedicated valid coords (already validated against activeTrainingDimensions)
+  // that are not remapped on sparse rendering
+  if (isNrcUpdate)
+  {
+    return true;
+  }
+
+  // Bounds-check before any per-pixel texture reads
+  if (any(gbufferPixelCoordinate >= cb.camera.resolution))
+  {
+    return false;
+  }
+
+  return loadPixelCoordinate(gbufferPixelCoordinate, IndirectActiveLocalPixelCoords,
+                             cb.camera.resolution, cb.sparseRenderingArgs, gbufferPixelCoordinate);
 }
 
 void integrate_indirect_pass(uvec2 threadIndex)
@@ -157,7 +175,7 @@ void integrate_indirect_pass(uvec2 threadIndex)
   IndirectPathTextures indirectPathTextures;
 
   indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal = PrimaryWorldPositionWorldTriangleNormal;
-  indirectPathTextures.IndirectRadianceHitDistance = IndirectRadianceHitDistance;// aliasedData0.IndirectRadianceHitDistance;
+  indirectPathTextures.IndirectRadianceHitDistance = IndirectRadianceHitDistance;
   
   integrateIndirectPath(
     gbufferPixelCoordinate, INTEGRATE_INDIRECT_SBT_OFFSET_STANDARD, indirectPathTextures,

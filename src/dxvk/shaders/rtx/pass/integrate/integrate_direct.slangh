@@ -29,6 +29,7 @@
 #include "rtx/concept/surface/surface.slangh"
 #include "rtx/concept/surface_material/surface_material.slangh"
 #include "rtx/algorithm/integrator_direct.slangh"
+#include "rtx/pass/sparse_rendering/sparse_rendering.slangh"
 
 #ifndef SHADOW_TERMINATOR_FIX_ALLOWED
     #error "macro SHADOW_TERMINATOR_FIX_ALLOWED must be defined and set 1 for all direct lighting passes"
@@ -84,6 +85,21 @@ void integrate_direct_pass(uvec2 threadIndex)
 
   uvec2 pixelCoordinate = threadIndex;
 
+  // Pixels inactive in direct sparse rendering may still need their indirect ray path
+  // sample prepared here (the indirect pass relies on data produced by
+  // sampleAndStoreIndirectRayPathSample). For those, run only the indirect-prep path
+  // and early-exit before performing direct lighting work.
+  const bool isDirectActive = loadPixelCoordinate(
+    threadIndex, DirectActiveLocalPixelCoords,
+    cb.camera.resolution, cb.sparseRenderingArgs, pixelCoordinate);
+
+  const bool isIndirectActive = isActivePixelFromMask(cb.sparseRenderingArgs, SparseRenderingIndirectActivePixelMask, pixelCoordinate);
+
+  if (!isDirectActive && !isIndirectActive)
+  {
+    return;
+  }
+
   // Deserialize flags
 
   GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixelCoordinate, SharedFlags);
@@ -97,28 +113,31 @@ void integrate_direct_pass(uvec2 threadIndex)
   // Note: This should hopefully prevent any weird undefined data from bleeding into pixels actually being denoised, but
   // may not be needed depending on how the denoiser works.
 
-  if (primaryGBufferMiss)
+  if (isDirectActive)
   {
-    PrimaryDirectDiffuseLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
-    PrimaryDirectSpecularLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
-
-    // Note: Early out if no more work on the primary surface is needed.
-    if (geometryFlags.primarySelectedIntegrationSurface)
+    if (primaryGBufferMiss)
     {
-      return;
+      PrimaryDirectDiffuseLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
+      PrimaryDirectSpecularLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
+    }
+
+    if (secondaryGBufferMiss)
+    {
+      SecondaryCombinedDiffuseLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
+      SecondaryCombinedSpecularLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
     }
   }
 
-  if (secondaryGBufferMiss)
+  // Note: Early out if no more work on the primary surface is needed
+  if (primaryGBufferMiss && geometryFlags.primarySelectedIntegrationSurface)
   {
-    SecondaryCombinedDiffuseLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
-    SecondaryCombinedSpecularLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
-  
-    // Note: Early out if no more work on the secondary surface is needed
-    if (!geometryFlags.primarySelectedIntegrationSurface)
-    {
-      return;
-    }
+    return;
+  }
+
+  // Note: Early out if no more work on the secondary surface is needed
+  if (secondaryGBufferMiss && !geometryFlags.primarySelectedIntegrationSurface)
+  {
+    return;
   }
 
   RNG rng = createRNG(pixelCoordinate, cb.frameIdx);
@@ -184,10 +203,21 @@ void integrate_direct_pass(uvec2 threadIndex)
   // Sample an indirect ray path sample in direct integration pass since the material for the primary surface has been loaded.
   // This is faster than reloading all the material data in the indirect pass and computing a ray path sample there
   // Note: this updates geometryFlags
-  sampleAndStoreIndirectRayPathSample(
-    pixelCoordinate, primaryRay, integrationSurfacePdf, 
-    minimalRayInteraction, minimalSurfaceInteraction, polymorphicSurfaceMaterialInteraction,
-    geometryFlags);
+  // Note: this needs to be done when indirect is active or when we're integrating a secondary surface at full rate
+  if (isIndirectActive || !geometryFlags.primarySelectedIntegrationSurface)
+  {
+    sampleAndStoreIndirectRayPathSample(
+      pixelCoordinate, primaryRay, integrationSurfacePdf,
+      minimalRayInteraction, minimalSurfaceInteraction, polymorphicSurfaceMaterialInteraction,
+      geometryFlags);
+  }
+
+  // Direct-inactive pixels only need the indirect ray path sample prepared above; skip
+  // the rest of the direct lighting work.
+  if (!isDirectActive)
+  {
+    return;
+  }
 
   // Integrate the Direct portion of the Path
 

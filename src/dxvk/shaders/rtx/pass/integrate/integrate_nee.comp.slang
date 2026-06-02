@@ -29,6 +29,8 @@
 
 #include "rtx/pass/common_bindings.slangh"
 #include "rtx/pass/integrate/integrate_nee_bindings.slangh"
+#include "rtx/pass/sparse_rendering/sparse_rendering.slangh"
+#include "rtx/pass/sparse_rendering/compact_active_pixels.slangh"
 #include "rtx/utility/gbuffer_helpers.slangh"
 #include "rtx/utility/debug_view_helpers.slangh"
 #include "rtx/algorithm/integrator_helpers.slangh"
@@ -83,7 +85,13 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     return;
   }
 
-  uvec2 pixelCoordinate = threadIndex;
+  uvec2 pixelCoordinate;
+  if (!loadPixelCoordinate(threadIndex, IndirectActiveLocalPixelCoords,
+                           cb.camera.resolution, cb.sparseRenderingArgs, pixelCoordinate))
+  {
+    return;
+  }
+
   const bool gBufferMiss = isGBufferMiss(pixelCoordinate, PrimaryConeRadius);
 
   // Early out if the primary surface was a miss or if the indirect integrator was not selected

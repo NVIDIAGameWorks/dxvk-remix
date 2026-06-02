@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -34,6 +34,7 @@
 #include "rtx/algorithm/integrator.slangh"
 #include "rtx/concept/surface_material/opaque_surface_material_interaction.slangh"
 #include "rtx/pass/nrc/nrc_integrator_utilities.slangh"
+#include "rtx/pass/sparse_rendering/sparse_rendering.slangh"
 
 // Input specular signal of low roughness material into restir gi
 static const uint kRestirGIAcceptLowRoughnessInput = false;
@@ -1262,6 +1263,7 @@ void integrateIndirectPath(
   // Note: Carry over relevant state from the direct lighting integration. These are currently the only values which
   // need to be set, the rest can remain as default.
   pathState.origin = rayOrigin;
+  pathState.pixelCoordinate = gbufferPixelCoordinate;
   pathState.coneRadius = rayConeRadius;
   pathState.direction = rayDirection;
   pathState.mediumMaterialIndex = mediumMaterialIndex;

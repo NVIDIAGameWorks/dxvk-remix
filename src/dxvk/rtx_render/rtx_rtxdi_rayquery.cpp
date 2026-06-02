@@ -34,6 +34,7 @@
 #include "dxvk_scoped_annotation.h"
 #include "dxvk_context.h"
 #include "rtx_context.h"
+#include "rtx_sparse_rendering.h"
 #include "rtx_imgui.h"
 #include "rtx_neural_radiance_cache.h"
 #include "rtx_ray_reconstruction.h"
@@ -87,6 +88,7 @@ namespace dxvk {
         TEXTURE2D(RTXDI_REUSE_BINDING_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_SHARED_FLAGS_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_BEST_LIGHTS_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)
 
         // Inputs / Outputs
         RW_STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_RTXDI_RESERVOIR_INPUT_OUTPUT)
@@ -129,6 +131,7 @@ namespace dxvk {
         TEXTURE2D(RTXDI_REUSE_BINDING_SHARED_TERMINATOR_FIX_PREVIOUS_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_SHARED_FLAGS_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_BEST_LIGHTS_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)
         
         // Inputs / Outputs
         RW_STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_RTXDI_RESERVOIR_INPUT_OUTPUT)
@@ -171,6 +174,7 @@ namespace dxvk {
         TEXTURE2D(RTXDI_REUSE_BINDING_SHARED_TERMINATOR_FIX_PREVIOUS_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_SHARED_FLAGS_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_BEST_LIGHTS_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)
 
         // Inputs / Outputs
         RW_STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_RTXDI_RESERVOIR_INPUT_OUTPUT)
@@ -374,6 +378,13 @@ namespace dxvk {
       return false;
     }
 
+    // Gradient calculation is not supported with sparse rendering enabled, so override the enablement to false
+    SparseRendering& sparseRendering = ctx.getCommonObjects()->metaSparseRendering();
+    if (sparseRendering.isActive()) {
+      ONCE(Logger::warn("[RTX] Denoiser Gradient is not supported with Sparse Rendering enabled. Disabling Denoiser Gradient."));
+      return false;
+    }
+
     return true;
   }
 
@@ -432,6 +443,7 @@ namespace dxvk {
       ctx->bindResourceView(RTXDI_REUSE_BINDING_SHARED_TERMINATOR_FIX_PREVIOUS_INPUT, rtOutput.getPreviousSharedTerminatorFix().view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_BEST_LIGHTS_INPUT, rtOutput.m_rtxdiBestLights.view(Resources::AccessType::Read, rtOutput.m_raytraceArgs.enableRtxdiBestLightSampling) , nullptr);
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT, rtOutput.m_sparseRenderingDirectActiveLocalPixelCoords.view, nullptr);
 
       // Inputs / Outputs
 
@@ -482,6 +494,7 @@ namespace dxvk {
       ctx->bindResourceView(RTXDI_REUSE_BINDING_SHARED_TERMINATOR_FIX_INPUT, rtOutput.getCurrentSharedTerminatorFix().view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_SHARED_TERMINATOR_FIX_PREVIOUS_INPUT, rtOutput.getPreviousSharedTerminatorFix().view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT, rtOutput.m_sparseRenderingDirectActiveLocalPixelCoords.view, nullptr);
 
       // Inputs / Outputs
 

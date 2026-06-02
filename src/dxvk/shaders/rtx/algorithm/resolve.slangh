@@ -317,7 +317,7 @@ void resolveVertex<T: IBasePayloadState>(
   // Emissive radiance produced by surfaces that should be composited as a separate
   // transparency layer overlay (e.g. RayPortal ring), pre-multiplied by the local
   // radianceAttenuation at the point of emission. The caller decides where this goes
-  // (transparency buffer for primary/PSR, or merged back into emissiveRadiance for indirect).
+  // (particle buffer for primary/PSR, or merged back into emissiveRadiance for indirect).
   inout vec3 transparencyLayerEmissive,
   uint4 decalMemory,
   vec3 decalEmissiveRadiance,

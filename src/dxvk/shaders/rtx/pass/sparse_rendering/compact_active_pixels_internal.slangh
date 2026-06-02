@@ -1,0 +1,88 @@
+/*
+* Copyright (c) 2025-2026, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// SR-internal compaction helpers used to BUILD the compacted active-pixel maps.
+// External consumers only need the load-path API in compact_active_pixels.slangh.
+
+#include "rtx/pass/sparse_rendering/compact_active_pixels.slangh"
+
+#if COMPACT_ACTIVE_PIXELS_TILE_SIZE_X > 256 || COMPACT_ACTIVE_PIXELS_TILE_SIZE_Y > 128
+  #error "COMPACT_ACTIVE_PIXELS_TILE_SIZE_X must be <= 256 and COMPACT_ACTIVE_PIXELS_TILE_SIZE_Y must be <= 128 to fit in uint8_t local pixel coords with a high bit active value sentinel."
+#endif
+
+#if (COMPACT_ACTIVE_PIXELS_TILE_SIZE % COMPACT_ACTIVE_PIXELS_GROUP_SIZE) != 0
+  #error "COMPACT_ACTIVE_PIXELS_TILE_SIZE must be an exact multiple of COMPACT_ACTIVE_PIXELS_GROUP_SIZE."
+#endif
+
+// Decode a Morton (Z-order) code into (x, y) coordinates.
+// x occupies even bits (0, 2, 4, ...), y occupies odd bits (1, 3, 5, ...).
+uint2 mortonDecode(uint code)
+{
+  uint x = code;
+  uint y = code >> 1;
+
+  x &= 0x55555555u;
+  x = (x | (x >> 1)) & 0x33333333u;
+  x = (x | (x >> 2)) & 0x0F0F0F0Fu;
+  x = (x | (x >> 4)) & 0x00FF00FFu;
+  x = (x | (x >> 8)) & 0x0000FFFFu;
+
+  y &= 0x55555555u;
+  y = (y | (y >> 1)) & 0x33333333u;
+  y = (y | (y >> 2)) & 0x0F0F0F0Fu;
+  y = (y | (y >> 4)) & 0x00FF00FFu;
+  y = (y | (y >> 8)) & 0x0000FFFFu;
+
+  return uint2(x, y);
+}
+
+// Map a compacted linear index to 2D tile-local coordinates using Morton (Z-order) curve.
+// Handles non-square tiles by splitting into square sub-tiles along the wider dimension.
+uint2 mortonIndexToTileCoord(uint index) {
+#if COMPACT_ACTIVE_PIXELS_TILE_SIZE_X >= COMPACT_ACTIVE_PIXELS_TILE_SIZE_Y
+  static const uint kSquareSize = COMPACT_ACTIVE_PIXELS_TILE_SIZE_Y;
+#else
+  static const uint kSquareSize = COMPACT_ACTIVE_PIXELS_TILE_SIZE_X;
+#endif
+  static const uint kSquareArea = kSquareSize * kSquareSize;
+
+  uint squareIdx = index / kSquareArea;
+  uint mortonIdx = index % kSquareArea;
+  uint2 coord = mortonDecode(mortonIdx);
+
+#if COMPACT_ACTIVE_PIXELS_TILE_SIZE_X >= COMPACT_ACTIVE_PIXELS_TILE_SIZE_Y
+  coord.x += squareIdx * kSquareSize;
+#else
+  coord.y += squareIdx * kSquareSize;
+#endif
+
+  return coord;
+}
+
+uint16_t packLocalPixelCoordinate(uint2 localPixelCoordinate, bool isActive)
+{
+  return uint16_t(
+    (localPixelCoordinate.x & 0xFF) |
+    ((localPixelCoordinate.y & 0x7F) << 8) |
+    (isActive ? kPackedLocalPixelActiveFlag : 0));
+}

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -32,6 +32,7 @@
 #include "rtx_render/rtx_debug_view.h"
 #include "rtx_render/rtx_xess.h"
 
+#include "rtx_render/rtx_sparse_rendering.h"
 
 namespace dxvk {
   
@@ -528,6 +529,7 @@ namespace dxvk {
     m_imgui(device),
     m_dummyResources(device),
     m_globalVolumetrics(device),
+    m_sparseRendering(device),
     m_pathtracerGbuffer(device),
     m_rtxdiRayQuery(device),
     m_restirgiRayQuery(device),

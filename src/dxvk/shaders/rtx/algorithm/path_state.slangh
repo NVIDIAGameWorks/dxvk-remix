@@ -82,7 +82,10 @@ struct PathState : IBasePayloadState
                  // indirectLightPortalID(uint:2b), 
                  // bounceIteration(uint:4b)
   uint8_t _roughness;
-    
+
+  // Need to track pixel coordinate for sparse rendering where threads can remap to different pixels
+  u16vec2 _pixelCoordinate;
+
 #if ENABLE_NRC
 
   uint nrcData0;  // NrcQuery:
@@ -215,13 +218,17 @@ struct PathState : IBasePayloadState
     {
       if (isNrcQuery)
       {
-        const u16vec2 nrcCombinedCoordinate = getDispatchRaysIndex().xy;
-        return u16vec2(nrcCombinedCoordinate.x, nrcCombinedCoordinate.y -  cb.nrcArgs.numRowsForUpdate);
+        return _pixelCoordinate;
       }
       else
       {
         return Nrc::calculateUpdatePixelCoordinateFromCombinedCoordinate(getDispatchRaysIndex().xy, cb);
       }
+    }
+
+    set 
+    { 
+      _pixelCoordinate = newValue; 
     }
   }
 
@@ -262,7 +269,12 @@ struct PathState : IBasePayloadState
   {
     get 
     {
-      return getDispatchRaysIndex().xy;
+      return _pixelCoordinate;
+    }
+
+    set 
+    { 
+      _pixelCoordinate = newValue; 
     }
   }
 
