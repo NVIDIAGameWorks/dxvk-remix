@@ -3224,6 +3224,14 @@ void geometryResolverApplyUnorderedDecalsPass(ivec2 pixelCoordinate) {
     return;
   }
 
+  if (GBUFFER_FEATURE_OBJECT_PICKING && cb.enableObjectPicking != 0 && surfaceIndex >= 0)
+  {
+    // The main GBuffer pass has already written the base surface by the time
+    // deferred decals run. Publish the selected decal explicitly so picking
+    // still reports the visible unordered decal rather than the surface below.
+    PrimaryObjectPicking[pixelCoordinate] = surfaces[uint(surfaceIndex)].objectPickingValue;
+  }
+
   GBufferMemoryPolymorphicSurfaceMaterialInteraction materialMemory;
   materialMemory.worldShadingNormal =
     signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(PrimaryWorldShadingNormal[pixelCoordinate]));
