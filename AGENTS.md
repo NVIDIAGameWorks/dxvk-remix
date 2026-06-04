@@ -36,6 +36,7 @@ Full guide: `documentation/CONTRIBUTING-style-guide.md`
   - Member variables: `m_` prefix (e.g. `m_value`)
   - Pointers: `p` prefix (e.g. `pInput`, `m_pPointer`)
   - Variables and functions: `camelCase`
+  - Functions: Prefer short verb + object names aligned with the subsystem; avoid encoding implementation steps in the identifier (see `documentation/CONTRIBUTING-style-guide.md`, Naming Conventions).
   - Constants: `k` prefix and camelCase, i.e. `kConstantName`
   - Macros and defines: `UPPER_CASE`
   - Classes and structs: `PascalCase`

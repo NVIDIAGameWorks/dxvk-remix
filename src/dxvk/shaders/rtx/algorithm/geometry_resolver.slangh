@@ -656,6 +656,11 @@ void geometryResolverVertexOutputDebugView(
     storeInDebugView(pixelCoordinate, surface.isStatic ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0));
 
     break;
+  case DEBUG_VIEW_PRESERVE_PATH:
+    // Red if any contributing hit is dynamic; green only when all hits took the preserve path.
+    accumulatePreservePathDebugView(pixelCoordinate, surface.isPreservePath);
+
+    break;
   case DEBUG_VIEW_IS_OPAQUE:
     // Green = opaque, Red = not opaque
     storeInDebugView(pixelCoordinate, surface.isFullyOpaque ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0));
@@ -1020,6 +1025,7 @@ void geometryResolverVertexOutputDebugView(
       // Skipped
       // DEBUG_VIEW_IS_FRONT_HIT
       // DEBUG_VIEW_IS_STATIC
+      // DEBUG_VIEW_PRESERVE_PATH
       // DEBUG_VIEW_IS_OPAQUE
       // DEBUG_VIEW_IS_DIRECTION_ALTERED
       // DEBUG_VIEW_IS_EMISSIVE_BLEND

@@ -126,6 +126,14 @@ struct ReplacementInstance {
     XXH64_hash_t vertexPositionHash;
     Vector3 worldPos;
     Matrix4 transform;
+    // Texture-coordinate projection from DrawCallTransforms. Surface state on the
+    // preserve path is reused as-is, so any frame-to-frame drift in textureTransform
+    // or texgenMode (e.g. terrain baker rewriting view→cascade space, or free-camera
+    // view-space texgen) must be detected as a dirty-flag change to push the draw
+    // back onto the dynamic path. Light/external lookups default to identity / None
+    // so they don't churn dirty flags.
+    Matrix4 textureTransform = Matrix4();
+    TexGenMode texgenMode = TexGenMode::None;
   };
 
   ReplacementInstance() = delete;
@@ -144,9 +152,15 @@ struct ReplacementInstance {
     Transform,
     VertexPosHash,
     MaterialHash,
-    Any,           // Catch-all bit that is set if anything at all has changed
+    Other,           // Catch-all bit that is set if the object is changed but the defined flags don't apply
   };
   using DirtyFlags = Flags<DirtyFlag>;
+  inline static const DirtyFlags kAllDirtyFlags{
+    DirtyFlag::Transform,
+    DirtyFlag::VertexPosHash,
+    DirtyFlag::MaterialHash,
+    DirtyFlag::Other,
+  };
 
   ~ReplacementInstance();
 
@@ -176,10 +190,13 @@ struct ReplacementInstance {
   uint32_t frameCreated = 0;
   uint32_t frameLastSeen = 0;
   XXH64_hash_t spatialCacheTransformHash = kEmptyHash;
-  XXH64_hash_t materialSpatialCacheTransformHash = kEmptyHash;
 
   // Pointer to the replacement data this RI was set up with. Used to detect when
-  // replacements change (async load, hot reload) and the RI needs reinitialization.
+  // replacements change (async load, hot reload, variant toggle) and the RI needs reinitialization.
+  // Comparing this against getReplacementsForMesh's return value is sufficient for all transitions:
+  // first-time publishes go nullptr → live ptr, and variant toggles produce a different lookup key
+  // (assetHash + variantId), which returns a different vector pointer. drawReplacements clears and
+  // rebuilds prims when this mismatches.
   const std::vector<AssetReplacement>* activeReplacements = nullptr;
 
   // Draw call properties that affect anti-culling GC decisions.
@@ -203,7 +220,6 @@ struct ReplacementInstance {
   // includeOriginal replacements (pass nullptr when there is no original geometry,
   // e.g. light-only replacements in addLight).
   void recalculateBoundingBox(const Matrix4& newObjectToWorld,
-                              const std::vector<AssetReplacement>& replacements,
                               const AxisAlignedBoundingBox* originalGeometryBBox = nullptr);
 
   // Anti-culling bounding boxes, both in the space defined by objectToWorld.
@@ -216,6 +232,14 @@ struct ReplacementInstance {
   AxisAlignedBoundingBox geometryBoundingBox;
   AxisAlignedBoundingBox lightBoundingBox;
   Matrix4 objectToWorld;
+
+  // Cached copies of the texture-coordinate projection fields from the last
+  // submission's LookupKey. Compared against the current key in computeDirtyFlags
+  // so that view-dependent texgen (terrain baker, free-camera) and any other
+  // textureTransform/texgenMode churn force the dynamic path, which refreshes
+  // RtSurface state. See LookupKey for the dirty-flag rationale.
+  Matrix4 textureTransform;
+  TexGenMode texgenMode = TexGenMode::None;
 
   // Snapshot of which fields of this RI changed in the most recent submission.
   // Initialized by setup() (all bits set, so the first frame's update runs every

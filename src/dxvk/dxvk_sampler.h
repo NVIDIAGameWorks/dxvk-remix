@@ -3,6 +3,7 @@
 #include "dxvk_resource.h"
 // NV-DXVK start
 #include "../util/xxHash/xxhash.h"
+#include "../util/util_struct_hash.h"
 // NV-DXVK end
 
 namespace dxvk {
@@ -44,9 +45,22 @@ namespace dxvk {
 
     // NV-DXVK start
     XXH64_hash_t calculateHash() const {
-      static_assert(sizeof(DxvkSamplerCreateInfo) == 72 && "DxvkSamplerCreateInfo changed. Double check the struct is still fully padded and initialized. This is needed for used hashing and comparison functions.");
-     
-      return XXH3_64bits(this, sizeof(DxvkSamplerCreateInfo));
+      return hashStructByMemory(*this,
+          &DxvkSamplerCreateInfo::magFilter,
+          &DxvkSamplerCreateInfo::minFilter,
+          &DxvkSamplerCreateInfo::mipmapMode,
+          &DxvkSamplerCreateInfo::mipmapLodBias,
+          &DxvkSamplerCreateInfo::mipmapLodMin,
+          &DxvkSamplerCreateInfo::mipmapLodMax,
+          &DxvkSamplerCreateInfo::useAnisotropy,
+          &DxvkSamplerCreateInfo::maxAnisotropy,
+          &DxvkSamplerCreateInfo::addressModeU,
+          &DxvkSamplerCreateInfo::addressModeV,
+          &DxvkSamplerCreateInfo::addressModeW,
+          &DxvkSamplerCreateInfo::compareToDepth,
+          &DxvkSamplerCreateInfo::compareOp,
+          &DxvkSamplerCreateInfo::borderColor,
+          &DxvkSamplerCreateInfo::usePixelCoord);
     }
 
     bool operator== (const DxvkSamplerCreateInfo& other) const {

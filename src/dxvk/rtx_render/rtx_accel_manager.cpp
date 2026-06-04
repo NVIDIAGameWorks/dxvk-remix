@@ -1172,7 +1172,6 @@ namespace dxvk {
       uint32_t primitiveCount;
       uint32_t pad;
     };
-    static_assert(sizeof(BucketGeometryContentHashData) == 80, "BucketGeometryContentHashData must remain fully padded for stable hashing.");
     std::vector<BucketGeometryContentHashData> contentHashData;
 
     // Create or find a matching BLAS for each bucket, then build it
@@ -1252,7 +1251,13 @@ namespace dxvk {
         // Geometry order is part of the merged BLAS layout and affects primitive
         // to surface mapping, so include the bucket order in the content hash.
         if (!contentHashData.empty()) {
-          newContentHash = XXH3_64bits(contentHashData.data(), contentHashData.size() * sizeof(contentHashData[0]));
+          newContentHash = hashStructArrayByMemory(contentHashData.data(), contentHashData.size(),
+              &BucketGeometryContentHashData::vertexHash,
+              &BucketGeometryContentHashData::indexHash,
+              &BucketGeometryContentHashData::boneHash,
+              &BucketGeometryContentHashData::transform,
+              &BucketGeometryContentHashData::primitiveCount,
+              &BucketGeometryContentHashData::pad);
         }
       }
 

@@ -140,8 +140,8 @@ public:
   void clearStartInMediumMaterial();
 
   // Remove an externally created mesh and all associated replacement instances.
+  // Note: this is only safe to call from the dxvk-cs thread.
   void destroyExternalMesh(remixapi_MeshHandle handle);
-  void removeInstancesWithExternalMesh(remixapi_MeshHandle handle);
   
   void setExternalStartInMediumMaterial(const MaterialData& translucentMaterial);
   void clearExternalStartInMediumMaterial();
@@ -277,6 +277,14 @@ private:
   const RtSurfaceMaterial& createSurfaceMaterial(const MaterialData& renderMaterialData,
                                                  const DrawCallState& drawCallState,
                                                  uint32_t* out_indexInCache = nullptr);
+
+  // Update per-frame scene-wide aggregates derived from a finalized opaque surface
+  // material (POM count, SSS / thin-opaque existence). These are reset each frame
+  // in onFrameEnd; both the dynamic path (createSurfaceMaterial) and the
+  // preserve path (preserveInstance) must call this so the classification of
+  // SSS-vs-thin-opaque lives in exactly one place.
+  void accumulateOpaqueMaterialAggregates(const RtOpaqueSurfaceMaterial& opaqueMat);
+
   RtTranslucentSurfaceMaterial createTranslucentSurfaceMaterial(const TranslucentMaterialData& translucentMaterialData,
                                                                 uint32_t samplerIndex,
                                                                 bool hasTexcoords);
@@ -292,16 +300,46 @@ private:
   // Called whenever a new instance has been added to the database
   void onInstanceAdded(RtInstance& instance);
   // Called whenever instance metadata is updated
-  void onInstanceUpdated(RtInstance& instance, const DrawCallState& drawCall, const MaterialData& material, const bool hasTransformChanged, const bool hasVerticesdChanged, const bool isFirstUpdateThisFrame);
+  void onInstanceUpdated(RtInstance& instance, const DrawCallState& drawCall, const MaterialData* material, const bool hasTransformChanged, const bool hasVerticesdChanged, const bool isFirstUpdateThisFrame);
   // Called whenever an instance has been removed from the database
   void onInstanceDestroyed(RtInstance& instance);
 
   void drawReplacements(Rc<DxvkContext> ctx, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, MaterialData& renderMaterialData, ReplacementInstance* replacementInstance);
 
-  // Re-register an existing instance's buffers, textures, and materials in the
-  // current frame's per-frame tables without running the full draw call pipeline.
-  // Called for anti-culled instances whose game draw call was not submitted this frame.
-  void keepInstanceAlive(RtInstance& instance);
+  // Build the per-replacement DrawCallState used by both the dynamic (drawReplacements) and
+  // preserve (syncPreservedReplacementMeshesState) paths so they always feed the same input
+  // into the BlasEntry / processDrawCallState. Returns std::nullopt for replacement types
+  // that don't drive a mesh draw (lights, graphs).
+  // Static member so the friendship of SceneManager with DrawCallState carries through.
+  static std::optional<DrawCallState> buildReplacementMeshDrawCallState(
+      const DrawCallState& input,
+      const AssetReplacement& replacement);
+
+  // Minimal per-frame work: refresh buffer-cache indices and touch textures so the instance
+  // still renders after m_bufferCache is cleared (see preserve path for unchanged / anti-culled draws).
+  // When pInput is set (preserve replacement draw path), also runs the ray-portal refresh
+  // via processRayPortalData on the cached RtSurfaceMaterial.
+  void preserveInstance(
+      RtInstance& instance,
+      const DrawCallState* pInput = nullptr);
+
+  // Lights and graph prims for mesh replacements (drawReplacements / dynamic path).
+  void processReplacementLights(const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, ReplacementInstance* replacementInstance);
+  void processReplacementGraphs(Rc<DxvkContext> ctx, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, ReplacementInstance* replacementInstance);
+
+  // Preserve path: minimal work to keep replacement meshes, lights, and graphs alive (buffer cache, textures, light touch, bbox).
+  void preserveReplacementInstance(
+      Rc<DxvkContext> ctx,
+      const DrawCallState& input,
+      const std::vector<AssetReplacement>* pReplacements,
+      ReplacementInstance* replacementInstance);
+
+  // Refreshes BlasEntry::input and per-instance draw state on the preserve path (matches drawReplacements'
+  // DrawCallState wiring).
+  void syncPreservedReplacementMeshesState(
+      const DrawCallState& input,
+      const std::vector<AssetReplacement>* pReplacements,
+      ReplacementInstance* replacementInstance);
 
   void createEffectLight(Rc<DxvkContext> ctx, const DrawCallState& input, const RtInstance* instance);
 
@@ -378,6 +416,11 @@ private:
   bool m_sssMaterialExist = false;
 
   bool m_isAntiCullingSupported = true;
+
+  // Matches RtxTextureManager::m_textureCacheGeneration after a completed frame's texture
+  // registrations. Updated once per frame in onFrameEnd (before manageTextureVram). Left
+  // stale when manageTextureVram clears the cache so the next frame is all-dynamic.
+  uint32_t m_textureCacheGenerationValidForPreserve = 0;
 
   // Replacement material hash tracking for current frame (hash -> count)
   std::unordered_map<XXH64_hash_t, uint32_t> m_currentFrameReplacementMaterialHashes;

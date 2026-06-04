@@ -253,8 +253,11 @@ struct InstanceEventHandler {
   // Callback triggered whenever a new instance has been added to the database
   std::function<void(RtInstance&)> onInstanceAddedCallback;
   // Callback triggered whenever instance metadata is updated - the boolean flags 
-  //   signal if the transform and/or vertex positions have changed (respectively)
-  std::function<void(RtInstance&, const DrawCallState& drawCall, const MaterialData&, bool, bool, bool)> onInstanceUpdatedCallback;
+  //   signal if the transform and/or vertex positions have changed (respectively).
+  // The MaterialData pointer is non-null on the dynamic update path and null on the
+  // preserve path (RtInstance::surface.isPreservePath is set iff the pointer is null).
+  // Handlers must null-check or short-circuit on isPreservePath before reading material.
+  std::function<void(RtInstance&, const DrawCallState& drawCall, const MaterialData*, bool, bool, bool)> onInstanceUpdatedCallback;
   // Callback triggered whenever an instance has been removed from the database
   std::function<void(RtInstance&)> onInstanceDestroyedCallback;
 
@@ -335,6 +338,34 @@ public:
   // Copies buffer indices from the BlasEntry's geometry data to the instance's surface.
   void processInstanceBuffers(const BlasEntry& blas, RtInstance& currentInstance) const;
 
+  // Per-frame finalization shared by the dynamic and preserve paths:
+  // re-registers the player-model / view-model candidate lists (cleared every onFrameEnd) and
+  // dispatches onInstanceUpdated to listeners.
+  // updateInstance() calls this at the end of its dynamic-state work; the preserve path calls
+  // it directly with hasTransformChanged / hasPreviousPositions == false because the instance's
+  // RtSurface (transform, vertex buffers) is reused as-is from the last dynamic update.
+  // materialData is non-null on the dynamic path and null on the preserve path — see
+  // onInstanceUpdatedCallback's contract above for the null-handling requirement.
+  void preserveInstance(
+      RtInstance& instance,
+      const DrawCallState& drawCall,
+      const MaterialData* materialData,
+      bool hasTransformChanged = false,
+      bool hasPreviousPositions = false,
+      bool isFirstUpdateThisFrame = true,
+      bool fireEvents = true);
+
+  // Rebuild this instance's contribution to m_billboards (which is cleared every
+  // frame in onFrameEnd) and update m_billboardCount / m_firstBillboard / blas
+  // dirty bits accordingly. Mirrors the billboard block inside updateInstance so
+  // both the dynamic and preserve draw paths leave billboard-backed unordered draws
+  // (particles, beams) in the same state. Without this call, preserved
+  // particles/beams keep stale m_firstBillboard offsets and produce no
+  // intersection primitives for portal-space sampling.
+  void refreshBillboardsForCurrentFrame(RtInstance& currentInstance,
+                                        CameraType::Enum cameraType,
+                                        const Vector3& cameraViewDirection);
+
   // Creates a copy of a reference instance and adds it to the instance pool
   // Temporary single frame instances generated every frame should disable valid id generation to avoid overflowing it
   RtInstance* createInstanceCopy(const RtInstance& reference, bool generateValidID = true);
@@ -409,11 +440,18 @@ private:
   // Handles the case of when two (or more) identical geometries+textures draw calls have been submitted in a single frame (typically used for two-pass rendering in FF)
   void mergeInstanceHeuristics(RtInstance& instanceToModify, const DrawCallState& drawCall, const RtSurface::AlphaState& alphaState) const;
 
+  void registerViewModelCandidate(RtInstance& instance);
+
+  // Adds an instance to the per-frame player-model worklist consumed by
+  // filterPlayerModelInstances() / createPlayerModelVirtualInstances().
+  // Mirrors registerViewModelCandidate's lazy-clear pattern.
+  void registerPlayerModelInstance(RtInstance& instance);
+
   RtInstance* addInstance(BlasEntry& blas);
 
   void updateInstance(
-    RtInstance& currentInstance, const CameraManager& cameraManager,
-    const BlasEntry& blas, const DrawCallState& drawCall, MaterialData& materialData);
+      RtInstance& currentInstance, const CameraManager& cameraManager,
+      const BlasEntry& blas, const DrawCallState& drawCall, MaterialData& materialData);
 
   void removeInstance(RtInstance* instance);
 
@@ -425,6 +463,10 @@ private:
   void createBillboards(RtInstance& instance, const Vector3& cameraViewDirection);
 
   void createBeams(RtInstance& instance);
+
+  // Returns the TLAS mask to use for an intersection primitive (billboard / beam) generated
+  // from `instance`. Pure function of the instance's alphaState + m_isPlayerModel.
+  static uint32_t computeBillboardIntersectionPrimitiveMask(const RtInstance& instance);
 
   void filterPlayerModelInstances(const Vector3& playerModelPosition, const RtInstance* bodyInstance);
 
