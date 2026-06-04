@@ -68,13 +68,18 @@ namespace dxvk {
   }
 
   NeeCachePass::NeeCachePass(dxvk::DxvkDevice* device)
-    : m_vkd(device->vkd()) {
+    : RtxPass(device)
+    , m_vkd(device->vkd()) {
   }
 
   NeeCachePass::~NeeCachePass() { }
 
   void NeeCachePass::showImguiSettings() {
     RemixGui::Checkbox("Enable NEE Cache", &enableObject());
+    if (ImGui::Button("Reset NEE Cache")) {
+      requestCacheReset();
+    }
+    RemixGui::SetTooltipToLastWidgetOnHover("Clears cached NEE candidates and samples on the next NEE cache update.");
     RemixGui::Checkbox("Enable Importance Sampling", &enableImportanceSamplingObject());
     RemixGui::Checkbox("Enable MIS", &enableMISObject());
     RemixGui::Checkbox("Enable Update", &enableUpdateObject());
@@ -100,8 +105,26 @@ namespace dxvk {
     RemixGui::DragInt("Reshuffle Max Age", &reshuffleMaxAgeObject(), 0.1f, 0, 15, "%d", ImGuiSliderFlags_AlwaysClamp);
   }
 
-  void NeeCachePass::setRaytraceArgs(RaytraceArgs& constants, bool resetHistory) const {    
-    constants.neeCacheArgs.enable = enable();
+  bool NeeCachePass::isEnabled() const {
+    return enable();
+  }
+
+  bool NeeCachePass::onActivation(Rc<DxvkContext>&) {
+    requestCacheReset();
+    return true;
+  }
+
+  void NeeCachePass::onDeactivation() {
+  }
+
+  void NeeCachePass::requestCacheReset() const {
+    m_resetCacheRequested = true;
+  }
+
+  void NeeCachePass::setRaytraceArgs(RaytraceArgs& constants, bool resetHistory) const {
+    const bool neeCacheActive = isActive();
+
+    constants.neeCacheArgs.enable = neeCacheActive;
     constants.neeCacheArgs.enableImportanceSampling = enableImportanceSampling();
     constants.neeCacheArgs.enableMIS = enableMIS();
     constants.neeCacheArgs.enableOnFirstBounce = enableOnFirstBounce();
@@ -125,12 +148,17 @@ namespace dxvk {
     constants.neeCacheArgs.reshuffleMaxAge = reshuffleMaxAge();
 
     static uvec2 oldResolution {0, 0};
-    constants.neeCacheArgs.clearCache = resetHistory || oldResolution.x != constants.camera.resolution.x || oldResolution.y != constants.camera.resolution.y;
+    const bool canClearCache = neeCacheActive && enableUpdate();
+    const bool resetRequested = m_resetCacheRequested;
+    if (canClearCache) {
+      m_resetCacheRequested = false;
+    }
+    constants.neeCacheArgs.clearCache = resetHistory || resetRequested || oldResolution.x != constants.camera.resolution.x || oldResolution.y != constants.camera.resolution.y;
     oldResolution = constants.camera.resolution;
   }
 
   void NeeCachePass::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
-    if (!enable() || !enableUpdate()) {
+    if (!isActive() || !enableUpdate()) {
       return;
     }
 

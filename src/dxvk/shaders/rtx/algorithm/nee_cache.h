@@ -591,6 +591,12 @@ struct NEECell
   {
     if (cb.neeCacheArgs.enableReshuffleResilience)
     {
+      if (cb.neeCacheArgs.clearCache != 0)
+      {
+        NeeCache.Store(getBaseAddress(), uint(count & kNeeCacheCandidateCountMask));
+        return;
+      }
+
       uint existing = NeeCache.Load(getBaseAddress());
       NeeCache.Store(getBaseAddress(), (existing & ~kNeeCacheCandidateCountMask) | uint(count & kNeeCacheCandidateCountMask));
     }
@@ -895,4 +901,3 @@ struct NEECache
     return cb.neeCacheArgs.enableModeAfterFirstBounce == NeeEnableMode::SpecularOnly ? isSpecularLobe && isotropicRoughness < minRoughness : true;
   }
 }
-

@@ -33,7 +33,7 @@ namespace dxvk {
 
   class RtxContext;
 
-  class NeeCachePass {
+  class NeeCachePass : public RtxPass {
 
   public:
     NeeCachePass(dxvk::DxvkDevice* device);
@@ -75,6 +75,12 @@ namespace dxvk {
     RTX_OPTION_ARGS("rtx.neeCache", int, reshuffleMaxAge, 8, "Maximum consecutive reshuffled frames before forcing a sample refresh. Prevents permanently stale samples from continuously animating emissive geometry (e.g. particle systems). 0 disables the limit.",
                     args.minValue = 0, args.maxValue = 15);
   private:
+    bool isEnabled() const override;
+    bool onActivation(Rc<DxvkContext>& ctx) override;
+    void onDeactivation() override;
+    void requestCacheReset() const;
+
     Rc<vk::DeviceFn> m_vkd;
+    mutable bool m_resetCacheRequested = false;
   };
 } // namespace dxvk

@@ -495,13 +495,13 @@ namespace dxvk {
     const bool ommEnabled = RtxOptions::getEnableOpacityMicromap();
     const bool includePortals = RtxOptions::rayPortalModelTextureHashes().size() > 0 || rtOutput.m_raytraceArgs.numActiveRayPortals > 0;
     const bool pomEnabled = rtOutput.m_raytraceArgs.pomMode != DisplacementMode::Off && RtxOptions::Displacement::enableIndirectHit();
-    const bool neeCacheEnabled = NeeCachePass::enable();
     const bool wboitEnabled = RtxOptions::wboitEnabled();
 
     // Trace indirect ray
     {
       ScopedGpuProfileZone(ctx, "Integrate Indirect Raytracing");
       const NeeCachePass& neeCache = ctx->getCommonObjects()->metaNeeCache();
+      const bool neeCacheEnabled = neeCache.isActive();
       const VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 16, 8, 1 });
       switch (RtxOptions::renderPassIntegrateIndirectRaytraceMode()) {
       case RaytraceMode::RayQuery:
