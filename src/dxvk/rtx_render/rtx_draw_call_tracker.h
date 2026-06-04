@@ -23,6 +23,7 @@
 
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "rtx_types.h"
@@ -33,7 +34,6 @@ namespace dxvk {
 class DxvkDevice;
 class RtCamera;
 class RayPortalManager;
-struct MaterialData;
 
 // Tracks draw calls across frames by mapping each draw call to a ReplacementInstance.
 // Uses a two-level hash lookup (identity hash for L1, tracking hash + spatial proximity
@@ -46,36 +46,39 @@ public:
   DrawCallTracker(const DrawCallTracker&) = delete;
   DrawCallTracker& operator=(const DrawCallTracker&) = delete;
 
-  // Find or create a ReplacementInstance using precomputed lookup key.
-  // When allowCrossTopologyMatching is false, Level 2.5 (material-bucket spatial fallback) is
-  // skipped — used for non-skinned draws so identical modular static meshes cannot steal
-  // each other's ReplacementInstance across topology buckets.
-  ReplacementInstance* findOrCreateReplacementInstance(
-      const ReplacementInstance::LookupKey& key, bool allowCrossTopologyMatching = true);
-
   // Removes replacement instances whose spatialMapHash matches (same bucket key as
   // m_assetSpatialMaps). Used when a draw source tied to that bucket is invalidated.
   void removeReplacementInstancesWithSpatialMapHash(XXH64_hash_t spatialMapHash);
 
-  // Find or create a ReplacementInstance from a DrawCallState and its material.
+  // Find or create a ReplacementInstance from a DrawCallState.
+  // L1 identity includes legacy material hash from DrawCallState plus the hash of
+  // overrideMaterialData when non-null (terrain bake, particles, etc.); full merged
+  // render MaterialData is not required for tracking.
   // Portal-aware matching for ViewModel draw calls is performed using the RayPortalManager.
   ReplacementInstance* findOrCreateReplacementInstance(
+    const ReplacementInstance::LookupKey& key);
+
+  // Wrapper for the above function that constructs the LookupKey from the DrawCallState.
+  ReplacementInstance* findOrCreateReplacementInstance(
       const DrawCallState& drawCallState,
-      const MaterialData& materialData,
-      const RayPortalManager& rayPortalManager);
+      const RayPortalManager& rayPortalManager,
+      const MaterialData* overrideMaterialData);
 
   // Look up an existing ReplacementInstance by L1 identity hash only. Returns
   // nullptr if no RI exists for this key. Unlike findOrCreateReplacementInstance,
-  // this never allocates and never runs the L2/L2.5 spatial searches -- intended
+  // this never allocates and never runs the L2 spatial search -- intended
   // for "is there stale state to clean up?" probes that must not pollute the
   // tracker with empty RIs (e.g. game lights when their replacement was just
   // toggled off).
+  // outMatchKind is always set to how the instance was resolved.
   ReplacementInstance* findReplacementInstanceByIdentity(XXH64_hash_t identityHash);
 
   // Garbage collect expired ReplacementInstances. Object anti-culling keeps mesh RIs alive
   // if their bounding box intersects the camera frustum. Light content uses the camera's
   // light anti-culling frustum (wider FOV) and extended lifetime.
-  void garbageCollectReplacementInstances(RtCamera& camera, bool isAntiCullingSupported);
+  void garbageCollectReplacementInstances(
+      RtCamera& camera,
+      bool isAntiCullingSupported);
 
   void clear();
 
@@ -88,7 +91,10 @@ public:
   }
 
   // Compute a hash that uniquely identifies a draw call for L1 matching.
-  static XXH64_hash_t computeIdentityHash(const DrawCallState& drawCallState);
+  // When overrideMaterialData is non-null, its hash is mixed in (e.g. terrain bake, particle material).
+  static XXH64_hash_t computeIdentityHash(
+      const DrawCallState& drawCallState,
+      const MaterialData* overrideMaterialData = nullptr);
 
 private:
   // Cleans up a ReplacementInstance's map/index entries and prims. Does NOT remove
@@ -101,12 +107,6 @@ private:
 
   using ReplacementSpatialMap = SpatialMap<ReplacementInstance>;
   std::unordered_map<XXH64_hash_t, ReplacementSpatialMap> m_assetSpatialMaps;
-
-  // Secondary spatial index keyed by material hash for cross-topology matching.
-  // When animated geometry uses different index buffers per frame (changing the
-  // tracking hash), this index allows O(1) lookup by material + spatial proximity
-  // instead of scanning all tracking hash buckets.
-  std::unordered_map<XXH64_hash_t, ReplacementSpatialMap> m_materialSpatialMaps;
 
   // Attempts to match a newly created ReplacementInstance through ray portals.
   // If a match is found, destroys the new RI and returns the reassociated match.
@@ -126,7 +126,6 @@ private:
   // Reassociates an existing ReplacementInstance with a new draw call identity.
   // Updates position fields and optionally moves within spatial maps.
   // moveInAssetMap: if non-null, the RI is moved within this asset spatial map.
-  // The material spatial map is always updated for the new pose and material key.
   ReplacementInstance* reassociateMatch(
       ReplacementInstance* match,
       const ReplacementInstance::LookupKey& key,

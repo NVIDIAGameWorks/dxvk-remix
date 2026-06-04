@@ -32,6 +32,7 @@
 #include "rtx_point_instancer_system.h"
 #include "../util/util_vector.h"
 #include "../util/util_matrix.h"
+#include "../util/util_struct_hash.h"
 
 namespace dxvk 
 {
@@ -90,11 +91,17 @@ class AccelManager : public CommonDeviceObject {
              isSubsurface == other.isSubsurface;
     }
   };
-  static_assert(sizeof(BlasBucketKey) == 16, "BlasBucketKey must remain fully padded for stable hashing.");
 
   struct BlasBucketKeyHash {
     size_t operator()(const BlasBucketKey& k) const {
-      return static_cast<size_t>(XXH3_64bits(&k, sizeof(k)));
+      return static_cast<size_t>(hashStructByMemory(k,
+          &BlasBucketKey::instanceShaderBindingTableRecordOffset,
+          &BlasBucketKey::customIndexFlags,
+          &BlasBucketKey::instanceFlags,
+          &BlasBucketKey::instanceMask,
+          &BlasBucketKey::usesUnorderedApproximations,
+          &BlasBucketKey::isSubsurface,
+          &BlasBucketKey::pad));
     }
   };
 

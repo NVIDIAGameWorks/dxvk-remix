@@ -721,6 +721,12 @@ namespace dxvk {
         ctx, "baked terrain texture", resolution, getTextureFormat(textureType), VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, getClearColor(textureType), getMipLevels(textureType, resolution));
 
       m_needsMaterialDataUpdate = true;
+      // Cascade image just appeared or changed size, so the cascade set the
+      // override OpaqueMaterialData describes is different from any prior frame.
+      // SceneManager reads this to keep terrain draws on the dynamic path for
+      // this frame and rebuild their cached RtSurfaceMaterial with the new
+      // cascade texture indices.
+      m_cascadeCompositionChangedThisFrame = true;
     }
 
     return texture;
@@ -854,6 +860,7 @@ namespace dxvk {
     }
 
     m_hasInitializedMaterialDataThisFrame = false;
+    m_cascadeCompositionChangedThisFrame = false;
 
     for (BakedTexture& texture : m_materialTextures) {
       texture.onFrameEnd(ctx);

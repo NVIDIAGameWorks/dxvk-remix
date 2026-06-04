@@ -969,8 +969,6 @@ namespace dxvk {
 
     RTX_OPTION_ENV("rtx", bool, useWhiteMaterialMode, false, "RTX_USE_WHITE_MATERIAL_MODE", "Override all objects' materials by white material");
     RTX_OPTION("rtx", bool, useHighlightLegacyMode, false, "");
-    RTX_OPTION("rtx", bool, useHighlightUnsafeAnchorMode, false, "");
-    RTX_OPTION("rtx", bool, useHighlightUnsafeReplacementMode, false, "");
     RTX_OPTION("rtx", float, nativeMipBias, 0.0f,
                "Specifies a mipmapping level bias to add to all material texture filtering. Stacks with the upscaling mip bias.\n"
                "Mipmaps are determined based on how far away a texture is, using this can bias the desired level in a lower quality direction (positive bias), or a higher quality direction with potentially more aliasing (negative bias).\n"
@@ -1006,6 +1004,11 @@ namespace dxvk {
                     "The hotkey combination that triggers a deliberate crash when the crash hotkey feature is armed.\n"
                     "Default is Ctrl+Shift+Alt+K. Only takes effect when rtx.enableCrashHotkey is True.\n"
                     "This setting is not saved to config files but can be set manually in rtx.conf.");
+    RTX_OPTION_ARGS("rtx", bool, enablePreservePath, true,
+                "When true, Remix attempts to identify draw calls whose state has not changed since last frame and re-use the previous\n"
+                "frame's translation, rather than retranslating the draw call into raytrace-ready scene data.\n"
+                "When false, every submit uses full dynamic geometry and instance processing (drawReplacements / processDrawCallState).\n"
+                "Disable for debugging or compatibility when suspecting preserve-path regressions.");
     RTX_OPTION_FLAG("rtx", bool, enableInstanceDebuggingTools, false, RtxOptionFlags::NoSave, "NOTE: This will disable temporal correllation for instances, but allow the use of instance developer debug tools");
     RTX_OPTION("rtx", Vector2i, drawCallRange, Vector2i(0, INT32_MAX), "");
     RTX_OPTION("rtx", Vector3, instanceOverrideWorldOffset, Vector3(0.f, 0.f, 0.f), "");

@@ -1637,6 +1637,7 @@ namespace dxvk {
 
     if (RemixGui::CollapsingHeader("Developer Options", collapsingHeaderFlags)) {
       ImGui::Indent();
+      RemixGui::Checkbox("Enable Preserve Path", &RtxOptions::enablePreservePathObject());
       RemixGui::Checkbox("Enable Instance Debugging", &RtxOptions::enableInstanceDebuggingToolsObject());
       RemixGui::Checkbox("Disable Draw Calls Post RTX Injection", &RtxOptions::skipDrawCallsPostRTXInjectionObject());
       RemixGui::Checkbox("Break into Debugger On Press of Key 'B'", &RtxOptions::enableBreakIntoDebuggerOnPressingBObject());
@@ -2543,8 +2544,6 @@ namespace dxvk {
     ImGui::EndDisabled();
     RemixGui::Separator();
     RemixGui::Checkbox("Highlight Legacy Materials (flash red)", &RtxOptions::useHighlightLegacyModeObject());
-    RemixGui::Checkbox("Highlight Legacy Meshes with Shared Vertex Buffers (dull purple)", &RtxOptions::useHighlightUnsafeAnchorModeObject());
-    RemixGui::Checkbox("Highlight Replacements with Unstable Anchors (flash red)", &RtxOptions::useHighlightUnsafeReplacementModeObject());
 
   }
 

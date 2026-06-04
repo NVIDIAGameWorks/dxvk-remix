@@ -713,10 +713,8 @@ namespace dxvk {
     assert(light->getExternallyTrackedLightId() != kInvalidExternallyTrackedLightId && " light passed to updateExternallyTrackedLight is not actually externally tracked.");
     uint16_t bufferIdx = light->getBufferIdx();
     *light = newLight;
-    light->setFrameLastTouched(m_device->getCurrentFrameId());
     light->setBufferIdx(bufferIdx);
   }
-
 
   void LightManager::addExternalLight(remixapi_LightHandle handle, const RtLight& rtlight) {
     auto found = m_externalLights.find(handle);

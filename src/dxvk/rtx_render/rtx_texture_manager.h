@@ -24,6 +24,7 @@
 
 #include <mutex>
 #include <queue>
+#include <vector>
 
 #include "../../util/thread.h"
 #include "../../util/rc/util_rc_ptr.h"
@@ -90,7 +91,7 @@ namespace dxvk {
       * \param [in] associatedFeedbackStamp A sampler feedback stamp from which to inherit a sampled mip count (written on GPU).
       * \param [in] async If a texture is allowed to be loaded asynchronously.
       * \param [out] textureIndexOut Index of the added texture in resource table.
-    */
+      */
     void addTexture(const TextureRef&  inputTexture, uint16_t associatedFeedbackStamp, bool async, uint32_t& textureIndexOut);
 
     /**
@@ -104,7 +105,13 @@ namespace dxvk {
       * blur pop when returning from full-screen menus.
       */
     void clear();
-    
+
+    // Incremented whenever clear() empties m_textureCache. SceneManager compares this
+    // against m_textureCacheGenerationValidForPreserve to gate the preserve draw path.
+    uint32_t getTextureCacheGeneration() const {
+      return m_textureCacheGeneration;
+    }
+
     void prepareSamplerFeedback(DxvkContext* ctx);
     void copySamplerFeedbackToHost(DxvkContext* ctx);
 
@@ -132,11 +139,16 @@ namespace dxvk {
       return showProgress();
     }
 
+    void updateSamplerFeedback(const Rc<ManagedTexture>& tex, uint16_t associatedFeedbackStamp);
+
     /**
-    * \brief Marks a texture as used in the current frame to prevent garbage collection.
-    * \param [in] textureIndex Index of the texture in the resource table.
-    */
-    void keepTextureAlive(uint32_t textureIndex);
+     * Preserve path: re-run addTexture for the bindless slot so this frame's texture table
+     * matches the dynamic path (track + frame usage). \p leaderSamplerFeedbackStamp may be
+     * SAMPLER_FEEDBACK_INVALID; addTexture still must run for correct bindless registration.
+     * \p async controls whether the texture may be loaded asynchronously; when false, all
+     * mips are scheduled immediately on this thread and the texture is marked non-demotable.
+     */
+    void preserveTexture(uint32_t textureIndex, uint16_t leaderSamplerFeedbackStamp, bool async = true);
 
     // Do not use. This is here temporarily for WAR for REMIX-1557
     void releaseTexture(TextureRef& textureRef) {
@@ -161,6 +173,7 @@ namespace dxvk {
       }
     };
     SparseUniqueCache<TextureRef, TextureHashFn, TextureEquality> m_textureCache;
+    uint32_t m_textureCacheGeneration = 0;
 
     AsyncRunner*       m_asyncThread;
     AsyncRunner_RTXIO* m_asyncThread_rtxio;

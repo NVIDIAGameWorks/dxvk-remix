@@ -70,6 +70,7 @@ namespace dxvk {
         {DEBUG_VIEW_BARYCENTRICS, "Barycentric Coordinates"},
         {DEBUG_VIEW_IS_FRONT_HIT, "Is Front Hit"},
         {DEBUG_VIEW_IS_STATIC, "Is Static"},
+        {DEBUG_VIEW_PRESERVE_PATH, "Preserve path (preserved instances)"},
         {DEBUG_VIEW_IS_OPAQUE, "Is Opaque"},
         {DEBUG_VIEW_IS_THIN_OPAQUE, "Is Thin Opaque"},
         {DEBUG_VIEW_IS_SUBSURFACE_SCATTERING, "Is Subsurface Scattering (SSS)"},

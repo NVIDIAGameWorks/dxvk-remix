@@ -26,6 +26,7 @@ This document outlines our project's C++ code formatting standards, commenting s
 - **Constants**: `k` prefix and camelCase, i.e. `kConstantName`
 -  **Macros and defines**: UPPER_CASE
 - **Class and struct names**: PascalCase
+- **Functions**: Prefer a short **verb + object** name that matches vocabulary in the same subsystem (e.g. `registerCamera`, `mergeInstanceHeuristics`). Do not spell out mechanics (which container, per-frame reset); put that in a comment on the definition or call site.
 
   ```cpp
   class Example {

@@ -927,14 +927,37 @@ namespace dxvk {
     // Track this texture to make a linear table for this frame
     textureIndexOut = m_textureCache.track(inputTexture);
 
-    const Rc<ManagedTexture>& tex = m_textureCache.at(textureIndexOut).getManagedTexture();
+    preserveTexture(textureIndexOut, associatedFeedbackStamp, async);
+  }
+
+  void RtxTextureManager::updateSamplerFeedback(const Rc<ManagedTexture>& tex, uint16_t associatedFeedbackStamp) {
+    bool streamableWithVariableMips = m_sf.associate(
+      RtxOptions::TextureManager::samplerFeedbackEnable() ? associatedFeedbackStamp : SAMPLER_FEEDBACK_INVALID,
+      tex->m_samplerFeedbackStamp
+    );
+    if (streamableWithVariableMips) {
+      // If mip-specific streaming is NOT possible, then the 'm_frameLastUsed' heuristic is used,
+      // i.e. if N frames has passed for a texture that was not used in a scene, then remove it from VRAM.
+      tex->m_frameLastUsedForSamplerFeedback = m_device->getCurrentFrameId();
+    }
+  }
+
+  void RtxTextureManager::preserveTexture(uint32_t textureIndex, uint16_t leaderSamplerFeedbackStamp, bool async) {
+    constexpr uint32_t kInvalidSurfaceTextureIndex = 0xFFFFu;
+    if (textureIndex == kInvalidSurfaceTextureIndex || textureIndex >= m_textureCache.getTotalCount()) {
+      return;
+    }
+    const TextureRef& texRef = m_textureCache.at(textureIndex);
+    if (!texRef.isValid()) {
+      return;
+    }
+    const Rc<ManagedTexture>& tex = texRef.getManagedTexture();
     if (tex == nullptr) {
       return;
     }
 
     const auto curframe = m_device->getCurrentFrameId();
     tex->m_frameLastUsed = curframe;
-
     // If async is not allowed, schedule immediately on this thread, and never demote
     if (!async || RtxOptions::TextureManager::neverDowngradeTextures()) {
       tex->m_canDemote = false;
@@ -942,27 +965,7 @@ namespace dxvk {
       scheduleTextureLoad(tex, false);
       return;
     }
-
-    bool streamableWithVariableMips = m_sf.associate(
-      RtxOptions::TextureManager::samplerFeedbackEnable() ? associatedFeedbackStamp : SAMPLER_FEEDBACK_INVALID,
-      tex->m_samplerFeedbackStamp
-    );
-    if (!streamableWithVariableMips) {
-      // If mip-specific streaming is NOT possible, then the 'm_frameLastUsed' heuristic is used,
-      // i.e. if N frames has passed for a texture that was not used in a scene, then remove it from VRAM.
-      return;
-    }
-    tex->m_frameLastUsedForSamplerFeedback = curframe;
-  }
-
-  void RtxTextureManager::keepTextureAlive(uint32_t textureIndex) {
-    if (textureIndex >= m_textureCache.getTotalCount()) {
-      return;
-    }
-    const Rc<ManagedTexture>& tex = m_textureCache.at(textureIndex).getManagedTexture();
-    if (tex != nullptr) {
-      tex->m_frameLastUsed = m_device->getCurrentFrameId();
-    }
+    updateSamplerFeedback(tex, leaderSamplerFeedbackStamp);
   }
 
   void RtxTextureManager::clear() {
@@ -976,6 +979,7 @@ namespace dxvk {
     }
 
     m_textureCache.clear();
+    ++m_textureCacheGeneration;
   }
 
   void RtxTextureManager::requestHotReload(const Rc<ManagedTexture>& tex) {

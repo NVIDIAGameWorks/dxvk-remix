@@ -36,6 +36,8 @@ util_src = files([
 
   'util_singleton.h',
 
+  'util_struct_hash.h',
+
   'util_fastops.cpp',
   'util_fastops.h',
 

@@ -25,6 +25,7 @@
 #include "rtx_geometry_utils.h"
 #include "rtx_resources.h"
 #include "rtx_mipmap.h"
+#include "../util/util_struct_hash.h"
 
 namespace dxvk {
 
@@ -45,6 +46,15 @@ namespace dxvk {
     const RtxMipmap::Resource& getTerrainTexture(ReplacementMaterialTextureType::Enum textureType) const;
     const MaterialData* getMaterialData() const;
     const Rc<DxvkSampler>& getTerrainSampler() const;
+
+    // True if any cascade image was created or resized during the current frame.
+    // Used by SceneManager to keep terrain draws on the dynamic path for one
+    // frame after the cascade set changes so the per-frame surface-material
+    // pre-creation cache picks up the new cascade indices instead of reusing
+    // a stale entry that was built when the cascade set was incomplete.
+    bool cascadeCompositionChangedThisFrame() const {
+      return m_cascadeCompositionChangedThisFrame;
+    }
 
     void showImguiSettings() const;
 
@@ -176,11 +186,12 @@ namespace dxvk {
       uint16_t /*ReplacementMaterialTextureType::Enum*/ textureType;
       
       XXH64_hash_t calculateHash() const {
-        return XXH3_64bits(this, sizeof(TextureKey));
+        return hashStructByMemory(*this,
+            &TextureKey::width,
+            &TextureKey::height,
+            &TextureKey::textureType);
       }
     };
-
-    static_assert(sizeof(TextureKey) == 6 && "Validate the struct is fully packed and update the static assert check.");
 
     fast_unordered_cache<Resources::Resource> m_stagingTextureCache;
 
@@ -222,6 +233,9 @@ namespace dxvk {
 
     // Set to true when m_materialData needs to be updated to reflect latest changes.
     bool m_needsMaterialDataUpdate = false;
+
+    // Tracks per-frame cascade image creation/resizing. Cleared in onFrameEnd.
+    bool m_cascadeCompositionChangedThisFrame = false;
     
     // Set to true when a button is clicked in the GUI, tracks all incoming uv densities for a frame and changes displaceInFactor to the resulting value.
     bool m_calculatingDisplaceInFactor = false;
