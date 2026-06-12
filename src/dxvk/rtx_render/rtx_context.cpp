@@ -488,6 +488,9 @@ namespace dxvk {
     const auto isRaytracingEnabled = RtxOptions::enableRaytracing();
     const auto asyncShaderCompilationActive = RtxOptions::Shader::enableAsyncCompilation() && common->pipelineManager().remixShaderCompilationCount() > 0;
 
+    // Whether a ray-traced scene is actually being rendered this frame.
+    const bool isCameraValid = getSceneManager().getCamera().isValid(m_device->getCurrentFrameId());
+
     // Determine and set present throttle delay
     // Note: This must be done before the early out returns below which is why some logic here is redundant (e.g. checking if ray tracing is supported again)
     // just to ensure the present throttle delay is always being set properly.
@@ -496,8 +499,9 @@ namespace dxvk {
     std::uint32_t requestedAsyncShaderCompilationDelay = 0U;
 
     // Note: Only use the async shader compilation throttle delay when rendering which uses Remix shaders would actually take place. As such this delay is not
-    // needed when ray tracing is not supported or enabled as Remix shaders will not be used in that case.
-    if (m_rayTracingSupported && isRaytracingEnabled && asyncShaderCompilationActive) {
+    // needed when ray tracing is not supported or enabled, or when there is no valid camera yet (e.g. a 2D main menu) as Remix shaders will not be
+    // used in that case.
+    if (m_rayTracingSupported && isRaytracingEnabled && asyncShaderCompilationActive && isCameraValid) {
       requestedAsyncShaderCompilationDelay = RtxOptions::Shader::asyncCompilationThrottleMilliseconds();
     }
 
@@ -519,7 +523,6 @@ namespace dxvk {
       return;
     }
 
-    const bool isCameraValid = getSceneManager().getCamera().isValid(m_device->getCurrentFrameId());
     if (!isCameraValid) {
       ONCE(Logger::info(str::format("[RTX-Compatibility-Info] Trying to raytrace but not detecting a valid camera.")));
     }
