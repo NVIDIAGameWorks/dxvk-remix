@@ -7,6 +7,22 @@
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
+static bool canDispatchToImGuiWin32() {
+  if (ImGui::GetCurrentContext() == nullptr) {
+    return false;
+  }
+
+  return ImGui::GetIO().BackendPlatformUserData != nullptr;
+}
+
+static bool dispatchToImGuiWin32(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+  if (!canDispatchToImGuiWin32()) {
+    return false;
+  }
+
+  return ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam) != 0;
+}
+
 namespace dxvk {
 // Custom window events used to perform actions for showing/hiding the overlay window in the message pump thread.
 #define WM_REMIX_HIDE_OVERLAY (WM_USER+0x7E1+1)
@@ -143,7 +159,7 @@ void GameOverlay::hide() {
 
   if (m_mouseInsideOverlay) {
     m_mouseInsideOverlay = false;
-    ImGui_ImplWin32_WndProcHandler(m_hwnd, WM_MOUSELEAVE, 0, 0);
+    dispatchToImGuiWin32(m_hwnd, WM_MOUSELEAVE, 0, 0);
   }
 
   SetWindowPos(m_hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
@@ -317,7 +333,7 @@ LRESULT GameOverlay::overlayWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
     if (!isOurForeground()) {
       if (m_mouseInsideOverlay) { 
         m_mouseInsideOverlay = false;
-        ImGui_ImplWin32_WndProcHandler(m_hwnd, WM_MOUSELEAVE, 0, 0);
+        dispatchToImGuiWin32(m_hwnd, WM_MOUSELEAVE, 0, 0);
       }
       return 0;
     }
@@ -377,12 +393,12 @@ LRESULT GameOverlay::overlayWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
         if (GetKeyState(VK_SHIFT) & 0x8000) wp |= MK_SHIFT;
 
         LPARAM lp = MAKELPARAM((WORD) (SHORT) x, (WORD) (SHORT) y);
-        ImGui_ImplWin32_WndProcHandler(m_hwnd, WM_MOUSEMOVE, wp, lp);
+        dispatchToImGuiWin32(m_hwnd, WM_MOUSEMOVE, wp, lp);
 
         if (m.usButtonFlags) {
           auto send_btn = [&](UINT msg, WPARAM w) {
             LPARAM lp = MAKELPARAM((WORD) (SHORT) x, (WORD) (SHORT) y);
-            ImGui_ImplWin32_WndProcHandler(m_hwnd, msg, w, lp);
+            dispatchToImGuiWin32(m_hwnd, msg, w, lp);
           };
           if (m.usButtonFlags & RI_MOUSE_LEFT_BUTTON_DOWN)  send_btn(WM_LBUTTONDOWN, wp | MK_LBUTTON);
           if (m.usButtonFlags & RI_MOUSE_LEFT_BUTTON_UP)    send_btn(WM_LBUTTONUP, wp & ~MK_LBUTTON);
@@ -400,18 +416,18 @@ LRESULT GameOverlay::overlayWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
           SHORT d = (SHORT) m.usButtonData;
           WPARAM w = MAKEWPARAM(wp & 0xFFFF, (UINT16) d);
           LPARAM l = MAKELPARAM((WORD) (SHORT) x, (WORD) (SHORT) y);
-          ImGui_ImplWin32_WndProcHandler(m_hwnd, WM_MOUSEWHEEL, w, l);
+          dispatchToImGuiWin32(m_hwnd, WM_MOUSEWHEEL, w, l);
         }
         if (m.usButtonFlags & RI_MOUSE_HWHEEL) {
           SHORT d = (SHORT) m.usButtonData;
           WPARAM w = MAKEWPARAM(wp & 0xFFFF, (UINT16) d);
           LPARAM l = MAKELPARAM((WORD) (SHORT) x, (WORD) (SHORT) y);
-          ImGui_ImplWin32_WndProcHandler(m_hwnd, WM_MOUSEHWHEEL, w, l);
+          dispatchToImGuiWin32(m_hwnd, WM_MOUSEHWHEEL, w, l);
         }
       } else {
         if (m_mouseInsideOverlay) {
           m_mouseInsideOverlay = false;
-          ImGui_ImplWin32_WndProcHandler(m_hwnd, WM_MOUSELEAVE, 0, 0);
+          dispatchToImGuiWin32(m_hwnd, WM_MOUSELEAVE, 0, 0);
         }
       }
 
@@ -424,7 +440,7 @@ LRESULT GameOverlay::overlayWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
   }
 
   // Let ImGui Win32 backend handle everything else (keyboard, etc.)
-  if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
+  if (dispatchToImGuiWin32(hWnd, msg, wParam, lParam))
     return 0;
 
   return DefWindowProcW(m_hwnd, msg, wParam, lParam);

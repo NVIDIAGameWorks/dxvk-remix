@@ -340,8 +340,18 @@ bool set(HWND hwnd) {
   assert(IsWindow(hwnd));
 
   // If set is called a subsequent time without an unset in between, we need to null out our
-  // current handles, so we implicitly call unset
+  // current handles, so we implicitly call unset.
+  // However, if RemixWndProc is already installed for the same HWND, this call is idempotent.
   const bool bHwndReset = g_hwnd && (hwnd != g_hwnd); // In case hWnd changes
+  if (g_gameWndProc && !bHwndReset) {
+    const auto currentWndProc = asWndProcP(OrigGetWindowLongA(hwnd, GWLP_WNDPROC));
+    if (currentWndProc == RemixWndProc) {
+      // Already hooked for this window - just refresh DirectInput forwarding target.
+      DInputSetDefaultWindow(hwnd);
+      return true;
+    }
+  }
+
   if(g_gameWndProc || bHwndReset) {
     Logger::warn(kStr_set_implicitWarn);
     unset();
