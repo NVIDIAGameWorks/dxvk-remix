@@ -1076,6 +1076,14 @@ namespace dxvk {
     // a stale buffer left over from the last kUpdateBVH frame would feed into motion vectors.
     pBlas->modifiedGeometryData.previousPositionBuffer = RaytraceBuffer();
 
+    // The last dynamic update may have left prevObjectToWorld != objectToWorld and
+    // isStatic == false (e.g. after a transform-changing move()). Re-sync on the first
+    // preserve frame after that.
+    if (!instance.surface.isStatic) {
+      instance.surface.prevObjectToWorld = instance.surface.objectToWorld;
+      instance.surface.isStatic = true;
+    }
+
     // Buffer indices are per-frame (m_bufferCache is cleared in onFrameEnd),
     // so re-register geometry buffers and copy fresh indices to the surface.
     updateBufferCache(pBlas->modifiedGeometryData);
