@@ -703,6 +703,20 @@ namespace dxvk {
 
         ctx->setBarrierControl(DxvkBarrierControlFlags());
 
+        // FIX (stale over-draw ghost): the geometry pass above generated exactly particleCount quads into
+        // [0, particleCount). But submitDrawState() runs before this simulate() and computes a conservative
+        // draw count = particleCount(prev frame) + spawnParticleCount >= particleCount, so the draw renders a
+        // trailing band of quads in [particleCount, drawCount) that this frame never wrote -> STALE geometry
+        // left in the vertex buffer from earlier frames (the ghost blob). Zero that tail every frame so any
+        // over-drawn quad is degenerate (zero-area, alpha 0) and rasterizes to nothing. Live and freshly
+        // spawned quads live in [0, particleCount) and are untouched, so no particle is ever dropped.
+        if (particleSystem.particleCount < particleSystem.desc.maxNumParticles) {
+          const VkDeviceSize vstride = VkDeviceSize(sizeof(ParticleVertex)) * system.second->getVerticesPerParticle();
+          const VkDeviceSize clearOffset = VkDeviceSize(particleSystem.particleCount) * vstride;
+          const VkDeviceSize clearSize = VkDeviceSize(particleSystem.desc.maxNumParticles - particleSystem.particleCount) * vstride;
+          ctx->clearBuffer(system.second->getVertexBuffer(), clearOffset, clearSize, 0);
+        }
+
         if (!isNumParticlesConstant) {
           conservativeCount->postSimulation(ctx, ctx->getDevice()->getCurrentFrameId());
         }
