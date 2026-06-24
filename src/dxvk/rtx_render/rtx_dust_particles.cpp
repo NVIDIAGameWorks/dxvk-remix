@@ -209,8 +209,9 @@ namespace dxvk {
   void RtxDustParticles::setupConstants(RtxContext* ctx, const float frameTimeSecs, Resources& resourceManager, DustParticleSystemConstants& pushArgs) {
     pushArgs.minTtl = minParticleLife();
     pushArgs.maxTtl = maxParticleLife();
-    pushArgs.minParticleSize = minParticleSize();
-    pushArgs.maxParticleSize = maxParticleSize();
+    const float resolutionScale = float(resourceManager.getTargetDimensions().height) / 1080.0f;
+    pushArgs.minParticleSize = minParticleSize() * resolutionScale;
+    pushArgs.maxParticleSize = maxParticleSize() * resolutionScale;
     pushArgs.opacity = opacity();
     pushArgs.anisotropy = anisotropy();
     pushArgs.cullDistanceFromCamera = RtxGlobalVolumetrics::froxelMaxDistanceMeters() * RtxOptions::getMeterToWorldUnitScale();

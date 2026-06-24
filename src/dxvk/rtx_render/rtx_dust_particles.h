@@ -41,8 +41,8 @@ namespace dxvk {
     RTX_OPTION("rtx.dust", float, maxSpawnDistance, 400.f, "Maximum distance in world space from camera to spawn particles.");
     RTX_OPTION("rtx.dust", float, minParticleLife, 3.f, "Minimum lifetime (in seconds) to give to a particle when spawned.");
     RTX_OPTION("rtx.dust", float, maxParticleLife, 6.f, "Maximum lifetime (in seconds) to give to a particle when spawned.");
-    RTX_OPTION("rtx.dust", float, minParticleSize, 1.f, "Minimum size (in pixels) to give to a particle when spawned.");
-    RTX_OPTION("rtx.dust", float, maxParticleSize, 3.f, "Maximum size (in pixels) to give to a particle when spawned.");
+    RTX_OPTION("rtx.dust", float, minParticleSize, 1.f, "Minimum size (in pixels at 1080p reference resolution) to give to a particle when spawned.");
+    RTX_OPTION("rtx.dust", float, maxParticleSize, 3.f, "Maximum size (in pixels at 1080p reference resolution) to give to a particle when spawned.");
     RTX_OPTION("rtx.dust", float, opacity, .5f, "Opacity of the particles.");
     RTX_OPTION("rtx.dust", float, anisotropy, .5f, "Anisotropy of the particles for lighting purposes.");
     RTX_OPTION("rtx.dust", float, gravityForce, -.5f, "Net influence of gravity acting on each particle (meters per second squared).");
