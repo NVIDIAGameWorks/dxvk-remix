@@ -4624,6 +4624,14 @@ namespace dxvk {
     const bool readOnly = Flags & D3DLOCK_READONLY;
     pResource->SetReadOnlyLocked(Subresource, readOnly);
 
+    // On a write lock of mip 0, clear the existing hash so SetupForRtxFrom recomputes it.
+    if (MipLevel == 0 && !readOnly) {
+      Rc<DxvkImage> image = pResource->GetImage();
+      if (image != nullptr && image->getHash() != kEmptyHash) {
+        pResource->ClearHash();
+      }
+    }
+
     bool renderable = desc.Usage & (D3DUSAGE_RENDERTARGET | D3DUSAGE_DEPTHSTENCIL);
 
     // If we recently wrote to the texture on the gpu,

@@ -409,6 +409,7 @@ namespace dxvk {
 
     void SetupForRtx();
     void SetupForRtxFrom(const D3D9CommonTexture* source);
+    void ClearHash();
     
     void AddDirtyBox(CONST D3DBOX* pDirtyBox, uint32_t layer) {
       if (pDirtyBox) {
