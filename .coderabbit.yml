@@ -4,3 +4,5 @@ reviews:
   auto_review:
     enabled: false
     drafts: false
+
+poem: false
