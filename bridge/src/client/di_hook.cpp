@@ -159,6 +159,17 @@ public:
     return s_hwnd;
   }
 
+  static void resetMouseState() {
+    s_mouseX = 0;
+    s_mouseY = 0;
+    s_mouseButtons[0] = 0;
+    s_mouseButtons[1] = 0;
+    s_mouseMove = { 0 };
+    s_mouseLButton = { 0 };
+    s_mouseRButton = { 0 };
+    s_mouseWheel = { 0 };
+  }
+
   static void updateKeyState(LPBYTE KS) {
     bool windowUpdated = false;
 
@@ -221,6 +232,10 @@ public:
 
   template<typename T>
   static void updateMouseState(const T* state, bool isAbsoluteAxis) {
+    if (RemixState::isUIActive()) {
+      return;
+    }
+
     if (isAbsoluteAxis) {
       s_mouseX = state->lX;
       s_mouseY = state->lY;
@@ -462,7 +477,7 @@ protected:
       break;
     }
 
-    if (RemixState::isUIActive())  {
+    if (RemixState::isUIActive()) {
       // Remix UI is active - wipe input state
       memset(data, 0, size);
     }
@@ -563,6 +578,29 @@ protected:
   }
   
 public:
+  static void flushPendingMouseInput() {
+    if (!MouseDevice || !OrigGetDeviceState) {
+      return;
+    }
+
+    // Drain buffered relative-axis reports without forwarding them to the game.
+    DIMOUSESTATE state {};
+    for (int i = 0; i < 32; ++i) {
+      if (OrigGetDeviceState(MouseDevice, sizeof(DIMOUSESTATE), &state) != DI_OK) {
+        break;
+      }
+    }
+
+    if (OrigGetDeviceData) {
+      DIDEVICEOBJECTDATA buffer[64];
+      DWORD count = ARRAYSIZE(buffer);
+      while (OrigGetDeviceData(MouseDevice, sizeof(DIDEVICEOBJECTDATA), buffer, &count, 0) == DI_OK &&
+             count > 0) {
+        count = ARRAYSIZE(buffer);
+      }
+    }
+  }
+
   static void unsetCooperativeLevel() {
     const auto hwnd = DirectInputForwarder::getWindow();
     if(hwnd) {
@@ -954,19 +992,43 @@ static LRESULT CALLBACK HookedLowLevelKeyboardProc(int nCode, WPARAM wParam, LPA
   return CallNextHookEx(accessWinHook(WH_KEYBOARD_LL), nCode, wParam, lParam);
 }
 
+namespace {
+  // Last cursor position observed while Remix UI is inactive. While UI is active
+  // GetCursorPos returns this value; on UI close it is restored to the OS cursor.
+  POINT g_lastKnownCursorPos {};
+}
+
+void DI::onRemixUIActivated() {
+  if (OrigGetCursorPos) {
+    OrigGetCursorPos(&g_lastKnownCursorPos);
+  }
+}
+
+void DI::onRemixUIDeactivated() {
+  if (OrigSetCursorPos) {
+    OrigSetCursorPos(g_lastKnownCursorPos.x, g_lastKnownCursorPos.y);
+  }
+
+  DirectInputForwarder::resetMouseState();
+  DirectInput8Hook::flushPendingMouseInput();
+  DirectInput7Hook::flushPendingMouseInput();
+}
+
 static BOOL WINAPI HookedGetCursorPos(LPPOINT lp) {
   LogStaticFunctionCall();
 
-  static POINT lastKnownPos;
+  if (lp == nullptr) {
+    SetLastError(ERROR_INVALID_PARAMETER);
+    return FALSE;
+  }
 
-  // Return last know position when Remix UI is active
   if (RemixState::isUIActive()) {
-    *lp = lastKnownPos;
+    *lp = g_lastKnownCursorPos;
     return TRUE;
   }
 
   if (OrigGetCursorPos(lp)) {
-    lastKnownPos = *lp;
+    g_lastKnownCursorPos = *lp;
     return TRUE;
   }
 
@@ -975,11 +1037,16 @@ static BOOL WINAPI HookedGetCursorPos(LPPOINT lp) {
 
 static BOOL WINAPI HookedSetCursorPos(int X, int Y) {
   LogStaticFunctionCall();
-  // Block if Remix UI is active
   if (RemixState::isUIActive()) {
     return TRUE;
   }
-  return OrigSetCursorPos(X, Y);
+
+  const BOOL result = OrigSetCursorPos(X, Y);
+  if (result) {
+    g_lastKnownCursorPos.x = X;
+    g_lastKnownCursorPos.y = Y;
+  }
+  return result;
 }
 
 static SHORT WINAPI HookedGetAsyncKeyState(int vk) {
