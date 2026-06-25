@@ -42,3 +42,4 @@
 [submodule "submodules/xess"]
 	path = submodules/xess
 	url = https://github.com/intel/xess.git
+	shallow = false
