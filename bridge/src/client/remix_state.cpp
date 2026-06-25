@@ -32,10 +32,12 @@ void RemixState::init(MessageChannelBase& msgChannel) {
   msgChannel.registerHandler(kUIActiveMsgName,
     [](uint32_t wParam, uint32_t lParam) {
       if (wParam & 1) {
+        DI::onRemixUIActivated();
         m_state |= RemixStateBits::UIActive;
         Logger::info("Remix UI activated.");
         DI::unsetCooperativeLevel();
       } else {
+        DI::onRemixUIDeactivated();
         m_state &= ~RemixStateBits::UIActive;
         Logger::info("Remix UI deactivated.");
         DI::resetCooperativeLevel();
