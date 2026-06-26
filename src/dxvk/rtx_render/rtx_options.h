@@ -212,9 +212,15 @@ namespace dxvk {
                   "Textures on draw calls that should be hidden from rendering, but not totally ignored.\n"
                   "This is similar to rtx.ignoreTextures but instead of completely ignoring such draw calls they are only hidden from rendering, allowing for the hidden objects to still appear in captures.\n"
                   "As such, this is mostly only a development tool to hide objects during development until they are properly replaced, otherwise the objects should be ignored with rtx.ignoreTextures instead for better performance.");
-    RTX_OPTION("rtx", fast_unordered_set, playerModelTextures, {}, "");
-    RTX_OPTION("rtx", fast_unordered_set, playerModelBodyTextures, {}, "");
-    RTX_OPTION("rtx", fast_unordered_set, lightConverter, {}, "");
+    RTX_OPTION("rtx", fast_unordered_set, playerModelTextures, {},
+                  "Textures on draw calls that are part of the third-person player model, such as body, head, or held equipment.\n"
+                  "Tagged instances use the player-model ray mask so their primary-ray visibility, shadows, reflections, and portal-space virtual copies can be controlled independently from regular world geometry.");
+    RTX_OPTION("rtx", fast_unordered_set, playerModelBodyTextures, {},
+                  "Textures on draw calls that identify the player model body/root position.\n"
+                  "Remix uses the tagged body instance as the anchor for filtering nearby player-model parts and for creating or positioning virtual player-model instances through portals.");
+    RTX_OPTION("rtx", fast_unordered_set, lightConverter, {},
+                  "Textures on draw calls that should spawn Remix effect lights.\n"
+                  "An effect light is a dynamic sphere light placed at the tagged draw call's geometry centroid; radius, intensity, color, and plasma-ball animation are controlled in the Runtime UI's Lighting > Effect Light section.");
     RTX_OPTION("rtx", fast_unordered_set, particleTextures, {},
                   "Textures on draw calls that should be treated as particles.\n"
                   "When objects are marked as particles more approximate rendering methods are leveraged allowing for more effecient and typically better looking particle rendering.\n"
