@@ -253,8 +253,18 @@ namespace dxvk {
               SWP_NOACTIVATE | SWP_NOZORDER | SWP_ASYNCWINDOWPOS);
           }
           else {
-            if (IsWindowVisible(window))
+            if (IsWindowVisible(window)) {
               ShowWindow(window, SW_MINIMIZE);
+              // Some games (Unreal Engine) can manage to recreate the swapchain during window procs
+              // Grab the swapchain again to ensure it is still valid
+              std::lock_guard lock(g_windowProcMapMutex);
+
+              auto it = g_windowProcMap.find(window);
+              if (it != g_windowProcMap.end())
+                windowData = it->second;
+              else
+                return 0;
+            }
           }
         }
       }
