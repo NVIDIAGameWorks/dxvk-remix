@@ -105,10 +105,10 @@ function PerformBuild {
 	$BuildDir = [IO.Path]::Combine($CurrentDir, $BuildSubDir)
 
 	Push-Location $CurrentDir
-		$mesonArgs = @("--buildtype", "`"$BuildFlavour`"",
-			"--backend", "`"$Backend`"", "`"$BuildSubDir`"", "--debug")
+		$mesonArgs = @("--buildtype", $BuildFlavour,
+			"--backend", $Backend, $BuildSubDir, "--debug")
 		if ( $BuildTarget ) {
-	            $mesonArgs += "-Denable_tests=`"$true`""
+	            $mesonArgs += "-Denable_tests=true"
 	        }
 
 		If ( $Platform -eq "arm64ec" ) {
