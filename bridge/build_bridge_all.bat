@@ -21,14 +21,7 @@ REM FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 REM DEALINGS IN THE SOFTWARE.
 REM
 
-powershell -command "& { . .\build_bridge.ps1; Build -Platform x64 -BuildFlavour debug -BuildSubDir _compDebug_x64 ; exit $LastExitCode }
+call build_bridge_debug.bat %*
+call build_bridge_debugoptimized.bat %*
+call build_bridge_release.bat %*
 
-powershell -command "& { . .\build_bridge.ps1; Build -Platform x64 -BuildFlavour debugoptimized -BuildSubDir _compDebugOptimized_x64 ; exit $LastExitCode }
-
-powershell -command "& { . .\build_bridge.ps1; Build -Platform x64 -BuildFlavour release -BuildSubDir _compRelease_x64 ; exit $LastExitCode }
-
-powershell -command "& { . .\build_bridge.ps1; Build -Platform x86 -BuildFlavour debug -BuildSubDir _compDebug_x86 ; exit $LastExitCode }
-
-powershell -command "& { . .\build_bridge.ps1; Build -Platform x86 -BuildFlavour debugoptimized -BuildSubDir _compDebugOptimized_x86 ; exit $LastExitCode }
-
-powershell -command "& { . .\build_bridge.ps1; Build -Platform x86 -BuildFlavour release -BuildSubDir _compRelease_x86 ; exit $LastExitCode }

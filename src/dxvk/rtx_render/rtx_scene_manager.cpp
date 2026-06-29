@@ -355,13 +355,12 @@ namespace dxvk {
       }
     }
 
-    // Copy the input directly to the output as a starting point for our modified geometry data
-    RaytraceGeometry output = inOutGeometry;
+    RaytraceGeometry& output = inOutGeometry;
 
     output.lastBoneHash = drawCallState.getSkinningState().boneHash;
 
     // Update draw parameters
-    output.cullMode = input.cullMode;
+    output.cullMode = drawCallState.getCullMode();
     output.frontFace = input.frontFace;
 
     // Copy the hashes over
@@ -386,7 +385,7 @@ namespace dxvk {
 
     // When the SmoothNormals category is set and the input has no normals, force the interleaved
     // vertex layout to include space for normals. The smooth normals compute pass will fill them in later.
-    const bool needsSmoothNormals = drawCallState.categories.test(InstanceCategories::SmoothNormals);
+    const bool needsSmoothNormals = drawCallState.getCategoryFlags().test(InstanceCategories::SmoothNormals);
     const bool forceNormals = needsSmoothNormals && !input.normalBuffer.defined();
 
     // When smooth normals state changes (added or removed), promote to kUpdateBVH so the vertex
@@ -484,21 +483,18 @@ namespace dxvk {
     // Update color buffer in BVH with DrawCallState
     // The user can disable/enable color buffer for specific materials, so we manually sync the DrawCallState and BVH here to keep the color buffer in BVH updated.
     // Note, we don't setup kUpdateBVH because it's too waste to update all buffers if only the color buffer needs to be updated.
-    if (output.color0Buffer.defined() && !drawCallState.geometryData.color0Buffer.defined()) {
+    if (output.color0Buffer.defined() && !drawCallState.getGeometryData().color0Buffer.defined()) {
       // Remove the color buffer in BVH if the color buffer from drawcall is removed by ignoreBakedLighting
       output.color0Buffer = RaytraceBuffer();
-    } else if (!output.color0Buffer.defined() && drawCallState.geometryData.color0Buffer.defined()) {
+    } else if (!output.color0Buffer.defined() && drawCallState.getGeometryData().color0Buffer.defined()) {
       // Write the color buffer back to BVH if the color buffer is enabled again
       const DxvkBufferSlice slice = DxvkBufferSlice(output.historyBuffer[0]);
-      const auto& colorBuffer = drawCallState.geometryData.color0Buffer;
+      const auto& colorBuffer = drawCallState.getGeometryData().color0Buffer;
       output.color0Buffer = RaytraceBuffer(slice, colorBuffer.offsetFromSlice(), colorBuffer.stride(), colorBuffer.vertexFormat());
     }
 
     // Update buffers in the cache
     updateBufferCache(output);
-
-    // Finalize our modified geometry data to the output
-    inOutGeometry = output;
 
     return result;
   }
@@ -874,13 +870,15 @@ namespace dxvk {
       const DrawCallState& input,
       const AssetReplacement& replacement) {
     if (replacement.includeOriginal) {
-      DrawCallState newDrawCallState(input);
-      newDrawCallState.categories = replacement.categories.applyCategoryFlags(newDrawCallState.categories);
+      auto newDrawCallState = std::make_optional<DrawCallState>(input);
+      newDrawCallState->modifyCategoryFlags() = replacement.categories.applyCategoryFlags(newDrawCallState->getCategoryFlags());
       return newDrawCallState;
     }
 
     if (replacement.type == AssetReplacement::eMesh) {
-      DrawCallTransforms transforms = input.getTransformData();
+      auto newDrawCallState = std::make_optional<DrawCallState>(input);
+
+      DrawCallTransforms& transforms = newDrawCallState->modifyTransformData();
       transforms.objectToWorld = transforms.objectToWorld * replacement.replacementToObject;
       transforms.objectToView = transforms.objectToView * replacement.replacementToObject;
       if (replacement.instancesToObject && !replacement.instancesToObject->empty()) {
@@ -892,10 +890,8 @@ namespace dxvk {
       transforms.textureTransform = Matrix4();
       transforms.texgenMode = TexGenMode::None;
 
-      DrawCallState newDrawCallState(input);
-      newDrawCallState.geometryData = replacement.geometry->data; // Note: Geometry Data replaced
-      newDrawCallState.transformData = transforms;
-      newDrawCallState.categories = replacement.categories.applyCategoryFlags(newDrawCallState.categories);
+      newDrawCallState->overrideGeometryData(&replacement.geometry->data);
+      newDrawCallState->modifyCategoryFlags() = replacement.categories.applyCategoryFlags(newDrawCallState->getCategoryFlags());
       return newDrawCallState;
     }
 
@@ -1336,7 +1332,7 @@ namespace dxvk {
     textureManager.addTexture(inputTexture, samplerFeedbackStamp, async, textureIndex);
   }
 
-  RtInstance* SceneManager::processDrawCallState(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, MaterialData& renderMaterialData, RtInstance* existingInstance, const RtxParticleSystemDesc* pParticleSystemDesc) {
+  RtInstance* SceneManager::processDrawCallState(const Rc<DxvkContext>& ctx, const DrawCallState& drawCallState, const MaterialData& renderMaterialData, RtInstance* existingInstance, const RtxParticleSystemDesc* pParticleSystemDesc) {
     ScopedCpuProfileZone();
 
     if (renderMaterialData.getIgnored()) {
@@ -1361,9 +1357,9 @@ namespace dxvk {
     // This is useful for older D3D9 games where geometry may lack smooth normals, especially
     // when using the VertexShader Capture mechanism. The smooth normals are computed on the GPU
     // from the triangle mesh (area-weighted) and written into the normal buffer.
-    // Only dispatch on BVH build/update — for static geometry, positions don't change so
+    // Only dispatch on BVH build/update - for static geometry, positions don't change so
     // the normals computed on the first pass remain valid for subsequent frames.
-    if (drawCallState.categories.test(InstanceCategories::SmoothNormals) &&
+    if (drawCallState.getCategoryFlags().test(InstanceCategories::SmoothNormals) &&
         (result == ObjectCacheState::KBuildBVH || result == ObjectCacheState::kUpdateBVH)) {
       m_device->getCommon()->metaGeometryUtils().dispatchSmoothNormals(ctx, drawCallState.getGeometryData(), pBlas->modifiedGeometryData);
       pBlas->modifiedGeometryData.smoothNormalsApplied = true;
@@ -1420,7 +1416,7 @@ namespace dxvk {
     if (!pParticleSystemDesc) {
       pParticleSystemDesc = renderMaterialData.getParticleSystemDesc();
     }
-    if (!pParticleSystemDesc && drawCallState.categories.test(InstanceCategories::ParticleEmitter)) {
+    if (!pParticleSystemDesc && drawCallState.getCategoryFlags().test(InstanceCategories::ParticleEmitter)) {
       globalParticleDesc = RtxParticleSystemManager::createGlobalParticleSystemDesc();
       pParticleSystemDesc = &globalParticleDesc;
     }
@@ -2185,7 +2181,7 @@ namespace dxvk {
     // Upload surface material buffer BEFORE the GPU culling dispatch so the
     // compute shader can copy template material entries to per-instance slots.
     // For PointInstancer duplicate entries we skip writeGPUData and advance past
-    // the gap — the GPU shader will fill those slots.
+    // the gap - the GPU shader will fill those slots.
     //
     // When the scene is unchanged (fast-skip path in mergeInstancesIntoBlas),
     // the surface order and material data are normally identical to last frame.
@@ -2225,7 +2221,7 @@ namespace dxvk {
         std::vector<unsigned char> surfaceMaterialsGPUData(surfaceMaterialsGPUSize);
         for (auto&& pInstance : m_accelManager.getOrderedInstances()) {
           // For PointInstancer duplicates (entries beyond the template), skip
-          // writeGPUData — the GPU culling shader copies the template material.
+          // writeGPUData - the GPU culling shader copies the template material.
           const auto& surf = pInstance->surface;
           if (surf.instancesToObject != nullptr &&
               surf.surfaceIndexOfFirstInstance != SIZE_MAX &&
@@ -2272,7 +2268,7 @@ namespace dxvk {
 
     // Todo: These updates require a lot of temporary buffer allocations and memcopies, ideally we should memcpy directly into a mapped pointer provided by Vulkan,
     // but we have to create a buffer to pass to DXVK's updateBuffer for now.
-    // Skip when scene is unchanged — buffers from last frame are still valid.
+    // Skip when scene is unchanged - buffers from last frame are still valid.
     if (!m_accelManager.wasSceneUnchangedThisFrame()) {
       // Allocate the instance buffer and copy its contents from host to device memory
       DxvkBufferCreateInfo info;
@@ -2364,23 +2360,27 @@ namespace dxvk {
 
   static_assert(std::is_same_v< decltype(RtSurface::objectPickingValue), ObjectPickingValue>);
 
-  void SceneManager::submitExternalDraw(Rc<DxvkContext> ctx, ExternalDrawState&& state) {
+  void SceneManager::submitExternalDraw(const Rc<DxvkContext>& ctx, std::unique_ptr<ExternalDrawState> pstate) {
+    ScopedCpuProfileZone();
+
     Rc<DxvkSampler> externalSampler = getOrCreateExternalSampler();
 
+    auto& state = *pstate;
+
     {
-      state.drawCall.materialData.samplers[0] = externalSampler;
-      state.drawCall.materialData.samplers[1] = externalSampler;
+      state.drawCall.modifyMaterialData().samplers[0] = externalSampler;
+      state.drawCall.modifyMaterialData().samplers[1] = externalSampler;
     }
     {
       const RtCamera& rtCamera = ctx->getCommonObjects()->getSceneManager().getCameraManager()
         .getCamera(state.cameraType);
-      state.drawCall.transformData.worldToView = Matrix4 { rtCamera.getWorldToView() };
-      state.drawCall.transformData.viewToProjection = Matrix4 { rtCamera.getViewToProjection() };
-      state.drawCall.transformData.objectToView = state.drawCall.transformData.worldToView * state.drawCall.transformData.objectToWorld;
+      state.drawCall.modifyTransformData().worldToView = rtCamera.getWorldToViewf();
+      state.drawCall.modifyTransformData().viewToProjection = rtCamera.getViewToProjectionf();
+      state.drawCall.modifyTransformData().objectToView = state.drawCall.getTransformData().worldToView * state.drawCall.getTransformData().objectToWorld;
     }
 
     if (!state.gpuInstancingTransforms.empty()) {
-      state.drawCall.transformData.instancesToObject =
+      state.drawCall.modifyTransformData().instancesToObject =
         std::make_shared<const std::vector<Matrix4>>(std::move(state.gpuInstancingTransforms));
     }
 
@@ -2388,8 +2388,8 @@ namespace dxvk {
 
     const XXH64_hash_t identityHash = state.computeExternalDrawIdentityHash();
     const XXH64_hash_t spatialMapHash = spatialMapHashForExternalDrawMesh(state.mesh);
-    const Matrix4& xform = state.drawCall.transformData.objectToWorld;
-    const XXH64_hash_t matHash = state.drawCall.materialData.getHash();
+    const Matrix4& xform = state.drawCall.getTransformData().objectToWorld;
+    const XXH64_hash_t matHash = state.drawCall.getMaterialData().getHash();
     const Vector3 worldPos = xform[3].xyz();
 
     const ReplacementInstance::LookupKey externalKey { identityHash, spatialMapHash, matHash, kEmptyHash, worldPos, xform };
@@ -2398,12 +2398,12 @@ namespace dxvk {
     AxisAlignedBoundingBox geometryBBox;
 
     for (size_t i = 0; i < submeshes.size(); i++) {
-      state.drawCall.geometryData = submeshes[i];
-      state.drawCall.geometryData.cullMode = state.doubleSided ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT;
+      state.drawCall.overrideGeometryData(&submeshes[i]);
+      state.drawCall.overrideCullMode(state.doubleSided ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT);
 
       const MaterialData* material = m_pReplacer->accessExternalMaterial(submeshes[i].externalMaterial);
       if (material != nullptr) {
-        state.drawCall.materialData.setHashOverride(material->getHash());
+        state.drawCall.modifyMaterialData().setHashOverride(material->getHash());
       } 
 
       const RtxParticleSystemDesc* pParticles = nullptr;
@@ -2414,9 +2414,10 @@ namespace dxvk {
       RtInstance* existingInstance = (replacementInstance->prims.size() > i)
           ? replacementInstance->prims[i].getInstance() : nullptr;
 
-      RtInstance* instance = processDrawCallState(ctx, state.drawCall,
-          material != nullptr ? MaterialData(*material) : LegacyMaterialData().as<OpaqueMaterialData>(),
-          existingInstance, pParticles);
+      static MaterialData defaultMaterialData(LegacyMaterialData::createDefault());
+      auto& materialData = material != nullptr ? *material : defaultMaterialData;
+
+      RtInstance* instance = processDrawCallState(ctx, state.drawCall, materialData, existingInstance, pParticles);
 
       if (instance != nullptr) {
         if (replacementInstance->root.getUntyped() == nullptr) {

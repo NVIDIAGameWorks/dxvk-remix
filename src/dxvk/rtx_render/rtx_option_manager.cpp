@@ -174,7 +174,7 @@ namespace dxvk {
       dirtyOptionsVector.reserve(dirtyOptions.size());
       {
         for (auto& rtxOption : dirtyOptions) {
-          const bool valueChanged = rtxOption.second->resolveValue(rtxOption.second->m_resolvedValue, false);
+          const bool valueChanged = rtxOption.second->resolveValue(rtxOption.second->m_resolvedValue);
           if (forceOnChange || valueChanged) {
             dirtyOptionsVector.push_back(rtxOption.second);
           }

@@ -45,10 +45,11 @@ gen_and_patch = custom_target(
   env: {
     # mirror what the script expects
     'USD_SCHEMA_PYTHON':    usd_schema_plugins_python,
-    'USD_NVUSD_BINDIR':     usd_schema_plugins_nvusd_bindir,
-    'USD_LIBPYTHON_DIR':    usd_libpython_dir,
+    'USD_NVUSD_BINDIR':     usd_schema_plugins_nvusd_bindir_host,
+    'USD_LIBPYTHON_DIR':    usd_libpython_dir_host,
     'ORIG_PATH':            orig_path,
-    'USD_NVUSD_LIBDIR':     usd_schema_plugins_nvusd_libdir,
+    'USD_NVUSD_LIBDIR':     usd_schema_plugins_nvusd_libdir_host,
+    'PXR_USD_WINDOWS_DLL_PATH': [usd_schema_plugins_nvusd_bindir_host, usd_schema_plugins_nvusd_libdir_host, usd_libpython_dir_host],
   }
 )
 

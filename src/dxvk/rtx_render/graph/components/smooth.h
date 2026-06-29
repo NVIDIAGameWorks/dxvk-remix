@@ -64,7 +64,7 @@ private:
     /* the version number */ 1,
     LIST_INPUTS, LIST_STATES, LIST_OUTPUTS
   )
-  void Smooth::updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
+  void updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
     float deltaTime = GlobalTime::get().deltaTime();
     for (size_t i = start; i < end; i++) {
       // On the first frame, initialize smoothedValue to the input value to avoid lerping from 0

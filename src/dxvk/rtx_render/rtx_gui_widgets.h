@@ -31,6 +31,10 @@
 #include <utility>
 
 namespace RemixGui {
+  // Forward declaration
+  std::string BuildRtxOptionTooltip(dxvk::RtxOptionImpl* impl);
+  void SetTooltipUnformatted(const char* text);
+
   // RAII wrapper for per-row UX around an RtxOption<T>.
   // Reserves a right-side button lane so wrapped widgets never overlap it.
   template <typename T>

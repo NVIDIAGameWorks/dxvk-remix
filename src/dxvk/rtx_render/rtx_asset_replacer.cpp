@@ -194,7 +194,7 @@ void AssetReplacer::registerExternalMesh(remixapi_MeshHandle handle, std::vector
     return;
   }
 
-  m_extMeshes.emplace(handle, std::move(submeshes));
+  m_extMeshes.emplace(handle, std::make_unique< std::vector<RasterGeometry>>(std::move(submeshes)));
 }
 
 const std::vector<RasterGeometry>& AssetReplacer::accessExternalMesh(remixapi_MeshHandle handle) const {
@@ -203,7 +203,7 @@ const std::vector<RasterGeometry>& AssetReplacer::accessExternalMesh(remixapi_Me
     static const auto s_empty = std::vector<RasterGeometry> {};
     return s_empty;
   }
-  return found->second;
+  return *found->second;
 }
 
 void AssetReplacer::destroyExternalMesh(remixapi_MeshHandle handle) {

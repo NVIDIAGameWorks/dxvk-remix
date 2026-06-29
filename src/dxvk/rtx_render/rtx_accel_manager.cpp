@@ -400,26 +400,31 @@ namespace dxvk {
     return newBlas;
   }
 
-  static void trackBlasBuildResources(Rc<DxvkContext> ctx, DxvkBarrierSet& execBarriers, const BlasEntry* blasEntry) {
-    ScopedCpuProfileZone();
-    ctx->getCommandList()->trackResource<DxvkAccess::Read>(blasEntry->modifiedGeometryData.positionBuffer.buffer());
-    ctx->getCommandList()->trackResource<DxvkAccess::Read>(blasEntry->modifiedGeometryData.indexBuffer.buffer());
+  static void trackBlasBuildResources(const Rc<DxvkContext>& ctx, DxvkBarrierSet& execBarriers, const BlasEntry* blasEntry) {
+    auto& positionBuffer = blasEntry->modifiedGeometryData.positionBuffer.buffer();
 
     execBarriers.accessBuffer(
-      blasEntry->modifiedGeometryData.positionBuffer.getSliceHandle(),
-      blasEntry->modifiedGeometryData.positionBuffer.buffer()->info().stages,
-      blasEntry->modifiedGeometryData.positionBuffer.buffer()->info().access,
+      positionBuffer->getSliceHandle(),
+      positionBuffer->info().stages,
+      positionBuffer->info().access,
       VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
       VK_ACCESS_SHADER_READ_BIT);
 
+    auto& indexBuffer = blasEntry->modifiedGeometryData.indexBuffer.buffer();
+
     execBarriers.accessBuffer(
-      blasEntry->modifiedGeometryData.indexBuffer.getSliceHandle(),
-      blasEntry->modifiedGeometryData.indexBuffer.buffer()->info().stages,
-      blasEntry->modifiedGeometryData.indexBuffer.buffer()->info().access,
+      indexBuffer->getSliceHandle(),
+      indexBuffer->info().stages,
+      indexBuffer->info().access,
       VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
       VK_ACCESS_SHADER_READ_BIT);
 
-    execBarriers.recordCommands(ctx->getCommandList());
+    auto& cb = ctx->getCommandList();
+
+    cb->trackResource<DxvkAccess::Read>(indexBuffer);
+    cb->trackResource<DxvkAccess::Read>(positionBuffer);
+
+    execBarriers.recordCommands(cb);
   }
 
   void AccelManager::mergeInstancesIntoBlas(Rc<DxvkContext> ctx, 

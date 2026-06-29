@@ -70,7 +70,7 @@ namespace dxvk {
 namespace dxvk {
   // Because DrawCallState/LegacyMaterialData hide needed fields as private
   struct RemixAPIPrivateAccessor {
-    static ExternalDrawState toRtDrawState(const remixapi_InstanceInfo& info);
+    static std::unique_ptr<ExternalDrawState> toRtDrawState(const remixapi_InstanceInfo& info);
   };
 }
 
@@ -782,22 +782,21 @@ namespace {
       return desc;
     }
 
-    ExternalDrawState toRtDrawState(const remixapi_InstanceInfo& info) {
+    std::unique_ptr<dxvk::ExternalDrawState> toRtDrawState(const remixapi_InstanceInfo& info) {
       return RemixAPIPrivateAccessor::toRtDrawState(info);
     }
   }
 }
 
-dxvk::ExternalDrawState dxvk::RemixAPIPrivateAccessor::toRtDrawState(const remixapi_InstanceInfo& info)
+std::unique_ptr<dxvk::ExternalDrawState> dxvk::RemixAPIPrivateAccessor::toRtDrawState(const remixapi_InstanceInfo& info)
 {
-  auto prototype = DrawCallState {};
+  auto state = std::make_unique<dxvk::ExternalDrawState>();
+
+  auto& prototype = state->drawCall;
   {
     prototype.cameraType = CameraType::Main;
     prototype.transformData.objectToWorld = convert::tomat4(info.transform);
-    prototype.transformData.textureTransform = Matrix4 {};
     prototype.transformData.texgenMode = TexGenMode::None;
-    prototype.materialData.colorTextures[0] = TextureRef {};
-    prototype.materialData.colorTextures[1] = TextureRef {};
     prototype.categories = convert::toRtCategories(info.categoryFlags);
   }
 
@@ -811,7 +810,7 @@ dxvk::ExternalDrawState dxvk::RemixAPIPrivateAccessor::toRtDrawState(const remix
       extBones->boneTransforms_count : REMIXAPI_INSTANCE_INFO_MAX_BONES_COUNT;
     prototype.skinningData.minBoneIndex = 0;
     prototype.skinningData.numBones = boneCount;
-    prototype.skinningData.numBonesPerVertex = prototype.geometryData.numBonesPerVertex;
+    prototype.skinningData.numBonesPerVertex = prototype.getGeometryData().numBonesPerVertex;
     prototype.skinningData.pBoneMatrices.resize(boneCount);
     for (uint32_t boneIdx = 0; boneIdx < boneCount; boneIdx++) {
       prototype.skinningData.pBoneMatrices[boneIdx] = convert::tomat4(extBones->boneTransforms_values[boneIdx]);
@@ -842,17 +841,16 @@ dxvk::ExternalDrawState dxvk::RemixAPIPrivateAccessor::toRtDrawState(const remix
     prototype.materialData.blendMode.writeMask = (VkColorComponentFlags) extBlend->writeMask;
   }
 
-  std::optional<RtxParticleSystemDesc> optParticles;
   if (auto extParticles = pnext::find<remixapi_InstanceInfoParticleSystemEXT>(&info)) {
-    optParticles.emplace(convert::toRtParticleDesc(*extParticles));
+    state->optionalParticleDesc.emplace(convert::toRtParticleDesc(*extParticles));
   }
   if (auto extParticles = pnext::find<remixapi_InstanceInfoParticleSystemLegacyEXT>(&info)) {
-    optParticles.emplace(convert::toRtParticleDesc(*extParticles));
+    state->optionalParticleDesc.emplace(convert::toRtParticleDesc(*extParticles));
   }
 
-  std::vector<Matrix4> gpuInstancingTransforms;
   if (auto extInstancing = pnext::find<remixapi_InstanceInfoGpuInstancingEXT>(&info)) {
     if (extInstancing->instanceTransforms_count > 0 && extInstancing->instanceTransforms_values) {
+      auto& gpuInstancingTransforms = state->gpuInstancingTransforms;
       gpuInstancingTransforms.reserve(extInstancing->instanceTransforms_count);
       for (uint32_t i = 0; i < extInstancing->instanceTransforms_count; ++i) {
         gpuInstancingTransforms.push_back(convert::tomat4(extInstancing->instanceTransforms_values[i]));
@@ -860,15 +858,12 @@ dxvk::ExternalDrawState dxvk::RemixAPIPrivateAccessor::toRtDrawState(const remix
     }
   }
 
-  return ExternalDrawState {
-    prototype,
-    info.mesh,
-    convert::categoryToCameraType(info.categoryFlags),
-    convert::toRtCategories(info.categoryFlags),
-    convert::tobool(info.doubleSided),
-    optParticles,
-    std::move(gpuInstancingTransforms)
-  };
+  state->mesh = info.mesh;
+  state->cameraType = convert::categoryToCameraType(info.categoryFlags);
+  state->categories = convert::toRtCategories(info.categoryFlags);
+  state->doubleSided = convert::tobool(info.doubleSided);
+
+  return state;
 }
 
 namespace {
@@ -1124,8 +1119,13 @@ namespace {
     if (!remixDevice) {
       return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
     }
+    ScopedCpuProfileZone();
+
+    // Hoist conversion outside of mutex
+    auto drawState = convert::toRtDrawState(*info);
+
     std::lock_guard lock { s_mutex };
-    remixDevice->EmitCs([cRtDrawState = convert::toRtDrawState(*info)](dxvk::DxvkContext* dxvkCtx) mutable {
+    remixDevice->EmitCs<false>([cRtDrawState = std::move(drawState)](dxvk::DxvkContext* dxvkCtx) mutable {
       auto* ctx = static_cast<dxvk::RtxContext*>(dxvkCtx);
       ctx->commitExternalGeometryToRT(std::move(cRtDrawState));
     });

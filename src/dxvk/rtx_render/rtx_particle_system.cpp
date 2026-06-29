@@ -442,7 +442,7 @@ namespace dxvk {
 
     const XXH64_hash_t particleSystemHash = drawCallState.getMaterialData().getHash() ^ desc.calcHash();
 
-    auto& materialSystemIt = m_particleSystems.find(particleSystemHash);
+    auto materialSystemIt = m_particleSystems.find(particleSystemHash);
     if (materialSystemIt == m_particleSystems.end()) {
       // Strip out any custom particle defined in the target material to avoid creating duplicated, nested systems.
       MaterialData particleRenderMaterial(renderMaterialData);
@@ -733,7 +733,7 @@ namespace dxvk {
 
     // Align the data
     std::vector<GpuSpawnContext> gpuSpawnContexts(m_spawnContexts.size());
-    for (auto& spawnCtxIt = m_spawnContexts.begin(); spawnCtxIt != m_spawnContexts.end(); spawnCtxIt++) {
+    for (auto spawnCtxIt = m_spawnContexts.begin(); spawnCtxIt != m_spawnContexts.end(); spawnCtxIt++) {
       const SpawnContext& spawnCtx = *spawnCtxIt;
       const uint32_t contextIdx = spawnCtxIt - m_spawnContexts.begin();
       GpuSpawnContext& gpuCtx = gpuSpawnContexts[contextIdx];
@@ -746,7 +746,7 @@ namespace dxvk {
         //   In the event it does happen, handle gracefully...dw
         memset(&gpuCtx, 0, sizeof(GpuSpawnContext));
         // zero out the spawn count, so we dont try to create any new particles here
-        auto& particleSystemIt = m_particleSystems.find(spawnCtx.particleSystemHash);
+        auto particleSystemIt = m_particleSystems.find(spawnCtx.particleSystemHash);
         if (particleSystemIt != m_particleSystems.end()) {
           particleSystemIt->second->context.spawnParticleCount = 0;
         }
@@ -830,23 +830,23 @@ namespace dxvk {
       const RtCamera& camera = ctx->getSceneManager().getCamera();
 
       DrawCallState newDrawCallState;
-      newDrawCallState.geometryData = particleGeometry; // Note: Geometry Data replaced
-      newDrawCallState.categories = particleSystem.categories;
-      newDrawCallState.categories.set(InstanceCategories::Particle); // ?
-      newDrawCallState.categories.clr(InstanceCategories::ParticleEmitter);
-      newDrawCallState.categories.clr(InstanceCategories::Hidden);
-      newDrawCallState.transformData.viewToProjection = camera.getViewToProjection();
-      newDrawCallState.transformData.worldToView = camera.getWorldToView();
-      newDrawCallState.materialData = particleSystem.legacyMaterialData;
+      newDrawCallState.modifyGeometryData() = particleGeometry; // Note: Geometry Data replaced
+      newDrawCallState.modifyCategoryFlags() = particleSystem.categories;
+      newDrawCallState.modifyCategoryFlags().set(InstanceCategories::Particle); // ?
+      newDrawCallState.modifyCategoryFlags().clr(InstanceCategories::ParticleEmitter);
+      newDrawCallState.modifyCategoryFlags().clr(InstanceCategories::Hidden);
+      newDrawCallState.modifyTransformData().viewToProjection = camera.getViewToProjection();
+      newDrawCallState.modifyTransformData().worldToView = camera.getWorldToView();
+      newDrawCallState.modifyMaterialData() = particleSystem.legacyMaterialData;
 
       // We want to always have particles support vertex colour for now.
-      newDrawCallState.materialData.textureColorArg1Source = RtTextureArgSource::Texture;
-      newDrawCallState.materialData.textureColorArg2Source = RtTextureArgSource::VertexColor0;
-      newDrawCallState.materialData.textureColorOperation = DxvkRtTextureOperation::Modulate;
-      newDrawCallState.materialData.textureAlphaArg1Source = RtTextureArgSource::Texture;
-      newDrawCallState.materialData.textureAlphaArg2Source = RtTextureArgSource::VertexColor0;
-      newDrawCallState.materialData.textureAlphaOperation = DxvkRtTextureOperation::Modulate;
-      newDrawCallState.materialData.isVertexColorBakedLighting = false;
+      newDrawCallState.modifyMaterialData().textureColorArg1Source = RtTextureArgSource::Texture;
+      newDrawCallState.modifyMaterialData().textureColorArg2Source = RtTextureArgSource::VertexColor0;
+      newDrawCallState.modifyMaterialData().textureColorOperation = DxvkRtTextureOperation::Modulate;
+      newDrawCallState.modifyMaterialData().textureAlphaArg1Source = RtTextureArgSource::Texture;
+      newDrawCallState.modifyMaterialData().textureAlphaArg2Source = RtTextureArgSource::VertexColor0;
+      newDrawCallState.modifyMaterialData().textureAlphaOperation = DxvkRtTextureOperation::Modulate;
+      newDrawCallState.modifyMaterialData().isVertexColorBakedLighting = false;
 
       ctx->getSceneManager().submitDrawState(ctx, newDrawCallState, &particleSystem.materialData);
     }
@@ -1009,7 +1009,8 @@ namespace dxvk {
     if (!m_animationState.isValid()) {
       const uint32_t width = 256; // this parameter controls the resolution of the interpolation space for all system level parameters
       const uint32_t height = (uint32_t) ParticleAnimationDataRows::Count;
-      m_animationState = device->getCommon()->getResources().createImageResource(Rc<DxvkContext>(ctx), "RTX Particles - Animation Data Tex", { width, height, 1 }, VK_FORMAT_R16G16B16A16_SFLOAT);
+      auto ctxRc = Rc<DxvkContext>(ctx);
+      m_animationState = device->getCommon()->getResources().createImageResource(ctxRc, "RTX Particles - Animation Data Tex", { width, height, 1 }, VK_FORMAT_R16G16B16A16_SFLOAT);
 
       // Helper to sample and interpolate from animation keyframes at normalized position u in [0,1]
       auto sampleAnimation = [](const auto& data, float u, auto defaultValue) {

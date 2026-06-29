@@ -26,7 +26,11 @@
 #include "dxvk_image.h"
 
 // this gets included from other modules, so use full path to external --- ugly!
+#ifdef _M_X64
 #include "../../../external/ngx_sdk_dldn/include/nvsdk_ngx.h"
+#else
+#include "../../../external/ngx_sdk_dldn_arm64/include/nvsdk_ngx.h"
+#endif
 
 namespace dxvk {
 

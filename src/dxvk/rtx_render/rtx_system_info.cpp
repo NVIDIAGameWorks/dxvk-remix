@@ -59,56 +59,18 @@ namespace dxvk {
     ScopedCpuProfileZoneN("System Info Log Report");
 
     // = Get CPU Information =
-    // Note: Currently this code relies on __cpuid, but this is only valid on x86 CPUs. For ARM something like the Registry
-    // on Windows may have to be used (see HKEY_LOCAL_MACHINE\HARDWARE\DESCRIPTION\System\CentralProcessor\0\ProcessorNameString)
-    // or /proc/cpuinfo on Linux. Technically AArch64 does have an instruction (mrs) to access similar information in MIDR_EL1,
-    // but this would require Remix to run at a higher privilege level which is not desirable.
 
-    std::array<int, 4> cpuIdData;
+    char brandString[128] = "Unknown CPU";
+    char manufacturerID[128] = "Unknown Vendor";
 
-    // Get CPU Manufacturer ID
-
-    // Note: CPUID EAX = 0: Highest Function Index + Manufacturer ID
-    __cpuid(cpuIdData.data(), 0);
-
-    std::array<int, 3> manufacturerIDData;
-
-    // Note: Ordering of Manufacturer ID is EBX EDX ECX, hence this strange ordering.
-    manufacturerIDData[0] = cpuIdData[1];
-    manufacturerIDData[1] = cpuIdData[3];
-    manufacturerIDData[2] = cpuIdData[2];
-
-    const auto manufacturerIDStart = reinterpret_cast<const char*>(manufacturerIDData.data());
-    const auto manufacturerIDLength = stringLengthOrMax(
-      manufacturerIDStart,
-      manufacturerIDData.size() * sizeof(decltype(manufacturerIDData)::value_type)
-    );
-    const std::string_view manufacturerID{ manufacturerIDStart, manufacturerIDLength };
-
-    // Get CPU Brand String
-
-    // Note: CPUID EAX = 0x80000000: Highest Extended Function Index
-    __cpuid(cpuIdData.data(), 0x80000000);
-
-    const auto maxExtendedFunctionIndex = cpuIdData[0];
-    std::array<int, 4 * 3> brandStringData;
-    std::optional<std::string_view> brandString{};
-
-    // Note: Some CPUs may not support a Brand String if their extended function index does not go
-    // up to the last index of the Brand String.
-    if (maxExtendedFunctionIndex >= 0x80000004) {
-      // Note: CPUID EAX = 0x80000002-0x80000004: Brand String
-      __cpuid(&brandStringData[0], 0x80000002);
-      __cpuid(&brandStringData[4], 0x80000003);
-      __cpuid(&brandStringData[8], 0x80000004);
-
-      const auto brandStringStart = reinterpret_cast<const char*>(brandStringData.data());
-      const auto brandStringLength = stringLengthOrMax(
-        brandStringStart,
-        brandStringData.size() * sizeof(decltype(brandStringData)::value_type)
-      );
-
-      brandString.emplace(brandStringStart, brandStringLength);
+    HKEY hKey;
+    if (ERROR_SUCCESS == RegOpenKeyExA(HKEY_LOCAL_MACHINE, "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", 0, KEY_READ, &hKey)) {
+      DWORD type;
+      DWORD size = sizeof(brandString);
+      RegQueryValueExA(hKey, "ProcessorNameString", nullptr, &type, reinterpret_cast<PBYTE>(brandString), &size);
+      size = sizeof(manufacturerID);
+      RegQueryValueExA(hKey, "VendorIdentifier", nullptr, &type, reinterpret_cast<PBYTE>(manufacturerID), &size);
+      RegCloseKey(hKey);
     }
 
     // = Get Memory Information =
@@ -189,7 +151,7 @@ namespace dxvk {
 
     Logger::info(str::format(
       "System Information Report:"
-      "\n  CPU: (", manufacturerID, ") ", brandString.value_or("Unknown")
+      "\n  CPU: (", manufacturerID, ") ", brandString
     ));
 
     if (hasMemoryInformation) {

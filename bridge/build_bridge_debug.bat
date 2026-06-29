@@ -21,10 +21,39 @@ REM FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 REM DEALINGS IN THE SOFTWARE.
 REM
 
+set WITH_ARM=0
+
+if /I "%~1"=="arm64" (
+  set WITH_ARM=1
+)
+
+if /I "%~3"=="arm64" (
+  set WITH_ARM=1
+)
+
+if /I "%~1"=="-vcvars_ver" (
+  set VCVARSVER="%~2"
+)
+
+if /I "%~2"=="-vcvars_ver" (
+  set VCVARSVER="%~3"
+)
+
+if not %WITH_ARM% == 0 (
+  if not defined VCVARSVER (
+    powershell -command "& { . .\build_bridge.ps1; Build -Platform arm64 -BuildFlavour debug -BuildSubDir _compDebug_arm64; exit $LastExitCode }
+  ) else (
+    powershell -command "& { . .\build_bridge.ps1; Build -Platform arm64 -BuildFlavour debug -BuildSubDir _compDebug_arm64 -VcVarsVer %VCVARSVER%; exit $LastExitCode }
+  )
+  IF NOT %ERRORLEVEL% == 0 GOTO :End
+  GOTO :BuildClient
+)
+
 powershell -command "& { . .\build_bridge.ps1; Build -Platform x64 -BuildFlavour debug -BuildSubDir _compDebug_x64 ; exit $LastExitCode }
 IF NOT %ERRORLEVEL% == 0 GOTO :End
 
+:BuildClient
 powershell -command "& { . .\build_bridge.ps1; Build -Platform x86 -BuildFlavour debug -BuildSubDir _compDebug_x86 ; exit $LastExitCode }
 
 :End
-exit %ERRORLEVEL%
+exit /b %ERRORLEVEL%

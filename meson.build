@@ -24,7 +24,7 @@ project(
   'dxvk', ['c', 'cpp'],
   version : 'remix-main',
   meson_version : '>= 0.60',
-  default_options : ['werror=true', 'b_vscrt=from_buildtype']
+  default_options : ['werror=true', 'b_vscrt=from_buildtype', 'cpp_std=c++17']
 )
 
 global_src_root_norm = meson.global_source_root().replace('\\', '/')
@@ -43,14 +43,16 @@ current_build_dir_norm = meson.current_build_dir().replace('\\', '/')
 #     early outs if everything's already fetched, so the waste is negligible + forgiveable.
 get_dependencies_script_path = join_paths(global_src_root_norm, 'scripts-common/update-deps.cmd')
 message('Downloading dependencies...')
-packman_out = run_command(get_dependencies_script_path, 'packman-external.xml', 'update-deps.log', check: true)
+# Note: arm64 deps placed in a separate xml to keep x64 builds functional
+dependencies_file = target_machine.cpu() != 'armv8' ? 'packman-external.xml' : 'packman-external-arm64.xml'
+packman_out = run_command(get_dependencies_script_path, dependencies_file, 'update-deps.log', check: true)
 message(packman_out.stdout().strip())
 if packman_out.returncode() != 0
   message(packman_out.stderr().strip())
   error('Failed to get dependencies.')
 endif
 fetch_packman_target = custom_target('fetch_packman',
-  input            : ['packman-external.xml', get_dependencies_script_path],
+  input            : [dependencies_file, get_dependencies_script_path],
   output           : 'update-deps.log',
   command          : [get_dependencies_script_path, '@INPUT0@', '@OUTPUT0@' ] )
 
@@ -71,11 +73,30 @@ vs_project_defines += '_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR;'
 dxvk_compiler = meson.get_compiler('cpp')
 dxvk_is_msvc = dxvk_compiler.get_id() == 'msvc'
 dxvk_is_ninja = meson.backend() == 'ninja'
+dxvk_is_woa = target_machine.cpu() == 'armv8'
+dxvk_is_woa_ec = target_machine.cpu() == 'arm64ec'
 enable_rtxio = get_option('enable_rtxio')
 
 external_dll_paths = []
 
 if dxvk_is_msvc
+  if dxvk_is_woa
+    # sse2neon requires conformant preproc
+    add_global_arguments('/Zc:preprocessor', language : 'cpp')
+    add_project_arguments('/DNO_AVX', language : 'cpp')
+
+    # USD 25+ attempts to redefine some POSIX definitions without checking if they are available
+    add_global_arguments('/wd4005', language : 'cpp')
+    # USD 25+ may have inconsistent dll linkage in some function declarations
+    add_global_arguments('/wd4273', language : 'cpp')
+  endif
+
+  if dxvk_is_woa_ec
+    # Older TBB attempts to redefine some x64 intrinsics which are not available in arm64ec
+    add_global_arguments('/wd4163', language : 'cpp')
+    add_project_arguments('/DNO_AVX', language : 'cpp')
+  endif
+
   if get_option('buildtype') == 'release'
     add_global_arguments('/Zi', language : 'cpp')
     add_global_arguments('/FS', language : 'cpp')
@@ -102,6 +123,17 @@ if dxvk_is_ninja
   # workarounds for our strange symbol name differences when embedding MDL
   add_global_arguments('/DBUILD_NINJA=1', language : 'cpp')
   vs_project_defines += 'BUILD_NINJA=1;'
+
+  if dxvk_is_woa_ec
+    # Meson Ninja backend has no idea of arm64ec
+    # https://github.com/mesonbuild/meson/issues/15440
+    # As of Meson 1.9 it is not possible to link for arm64ec target with Ninja
+    # add_global_arguments('/arm64EC', language : 'cpp')
+    # add_global_arguments('/D "_AMD64_" /D "_ARM64EC_"', language : 'cpp')
+    # add_global_link_arguments('/machine:arm64ec', language : 'cpp')
+    error('Please use the MSVC backend. As of Meson 1.11.0 (4/14/2026) it is not possible to link for arm64ec target with Ninja.')
+  endif
+
 else
   add_global_arguments('/DBUILD_NINJA=0', language : 'cpp')
   vs_project_defines += 'BUILD_NINJA=0;'
@@ -127,9 +159,6 @@ else
 endif
 
 if dxvk_is_msvc
-  if not dxvk_is_ninja
-    add_project_arguments('/std:' + dxvk_cpp_std, language : 'cpp')
-  endif
   add_global_arguments('/MP', language : 'cpp')
 endif
 
@@ -166,9 +195,16 @@ endif
 remix_api_include_path = include_directories('./public/include')
 add_global_arguments('/DREMIX_LIBRARY_EXPORTS=1', language : 'cpp')
 
+if dxvk_is_woa
+  nrc_include_path = 'external/nrc_arm64/include'
+else
+  nrc_include_path = 'submodules/nrc/include'
+endif
+
 dxvk_include_dirs = [
   './include',
   './include/vulkan/include',
+  nrc_include_path
 ]
 
 dxvk_include_path = include_directories(dxvk_include_dirs)
@@ -183,10 +219,14 @@ test_include_dirs = [
 
 test_include_path = include_directories(test_include_dirs)
 
-if (cpu_family == 'x86_64')
+if (cpu_family == 'x86_64') or dxvk_is_woa_ec
   dxvk_library_path = join_paths(global_src_root_norm, 'lib')
 else
-  dxvk_library_path = join_paths(global_src_root_norm, 'lib32')
+  if dxvk_is_woa
+    dxvk_library_path = join_paths(global_src_root_norm, 'liba64')
+  else
+    dxvk_library_path = join_paths(global_src_root_norm, 'lib32')
+  endif
 endif
 
 dxvk_extradep = [ ]
@@ -223,7 +263,6 @@ lib_vulkan  = dxvk_compiler.find_library('vulkan-1', dirs : dxvk_library_path)
 lib_d3d9    = dxvk_compiler.find_library('d3d9')
 lib_d3d11   = dxvk_compiler.find_library('d3d11')
 lib_dxgi    = dxvk_compiler.find_library('dxgi')
-lib_d3dcompiler_43 = dxvk_compiler.find_library('d3dcompiler_43', dirs : dxvk_library_path)
 if not dxvk_is_msvc
   lib_ws2_32 = dxvk_compiler.find_library('ws2_32', dirs : dxvk_library_path)
 endif
@@ -248,10 +287,17 @@ if lib_dbghelp.found()
 endif
 
 if enable_rtxio == true
-  rtxio_bin_path = join_paths(global_src_root_norm, 'external/rtxio/bin')
+  if dxvk_is_woa
+    rtxio_bin_path = join_paths(global_src_root_norm, 'external/rtxio_arm64/bin')
+    rtxio_lib = dxvk_compiler.find_library('rtxio', dirs : join_paths(global_src_root_norm, 'external/rtxio_arm64/lib'))
+    rtxio_include_path = include_directories('external/rtxio_arm64/include')
+  else
+    rtxio_bin_path = join_paths(global_src_root_norm, 'external/rtxio/bin')
+    rtxio_lib = dxvk_compiler.find_library('rtxio', dirs : join_paths(global_src_root_norm, 'external/rtxio/lib'))
+    rtxio_include_path = include_directories('external/rtxio/include')
+  endif
+
   external_dll_paths += rtxio_bin_path
-  rtxio_lib = dxvk_compiler.find_library('rtxio', dirs : join_paths(global_src_root_norm, 'external/rtxio/lib'))
-  rtxio_include_path = include_directories('external/rtxio/include')
   dxvk_extradep += rtxio_lib
 endif
 
@@ -477,20 +523,24 @@ embedding_compiler = generator(xxd_exe,
 
 mdl_include_dir = include_directories('external/omni_core_materials')
 
-usd_debug_release_dir = 'external/nv_usd_' + usd_debug_or_release + '/'
+if dxvk_is_woa
+  usd_debug_release_dir = 'external/usd_stock_arm64/' + usd_debug_or_release + '/'
+else
+  usd_debug_release_dir = 'external/nv_usd_' + usd_debug_or_release + '/'
+endif
+
 usd_lib_path = join_paths(global_src_root_norm, usd_debug_release_dir)
 
 # NOTE newer versions of meson prefer relative paths for include directories
 nv_usd_include_path = include_directories(join_paths(usd_debug_release_dir, 'include'))
-boost_include_path = include_directories(join_paths(usd_debug_release_dir, 'include', 'boost'), is_system: true)
 
-usd_include_paths = [nv_usd_include_path, boost_include_path]
+usd_include_paths = [nv_usd_include_path]
 
 vk_include_path = include_directories('./include/vulkan/include')
 # required for NV_present_metering
 add_project_arguments('-DVK_ENABLE_BETA_EXTENSIONS', language : 'cpp')
 
-lssusd_include_paths = [nv_usd_include_path, boost_include_path, vk_include_path]
+lssusd_include_paths = [nv_usd_include_path, vk_include_path]
 
 # This will be populated by the usd plugin builder
 usd_plugins = []
@@ -498,13 +548,18 @@ usd_plugin_deps = []
 usd_plugin_delay_load_args = []
 
 nvapi_include_paths = include_directories('submodules/nvapi')
-nvapi_lib_path = join_paths(global_src_root_norm, 'submodules/nvapi/amd64')
-nvapi_lib = dxvk_compiler.find_library('nvapi64', dirs : nvapi_lib_path)
+if dxvk_is_woa
+  nvapi_lib_path = join_paths(global_src_root_norm, 'external/nvapi_arm64/arm64')
+  nvapi_lib = dxvk_compiler.find_library('nvapia64', dirs : nvapi_lib_path)
+else
+  nvapi_lib_path = join_paths(global_src_root_norm, 'submodules/nvapi/amd64')
+  nvapi_lib = dxvk_compiler.find_library('nvapi64', dirs : nvapi_lib_path)
+endif
 
 # Cache lib locations
 external_dll_paths += usd_lib_path
 
-nvusd_deplibs = [
+nvusd_deplibs_22 = [
   'ar',
   'arch',
   'js',
@@ -533,31 +588,88 @@ nvusd_deplibs = [
                                        'tbb',    # NOTE: remixsdk also depends on tbb.dll, assuming both USD / remixsdk use the same tbb version
 ]
 
-usd_linklibs = []
-foreach ulib : nvusd_deplibs
-  usd_linklibs += dxvk_compiler.find_library(ulib, dirs: join_paths(usd_lib_path, 'lib'))
-endforeach
+nvusd_deplibs = [
+  'usd_ar',
+  'usd_arch',
+  'usd_js',
+  'usd_gf',
+  'usd_kind',
+  'usd_sdf',
+  'usd_sdr',
+  'usd_pcp',
+  'usd_tf',
+  'usd_trace',
+  'usd_usd',
+  'usd_usdLux',
+  'usd_usdGeom',
+  'usd_usdRender',
+  'usd_usdShade',
+  'usd_usdSkel',
+  'usd_work',
+  'usd_vt',
+  'usd_python',
+  'usd_plug',
+  'usd_ts',
+]
 
-reflex_include_path = include_directories( 'external/reflex/inc')
-reflex_lib_path = join_paths(global_src_root_norm, 'external/reflex/lib')
+usd_linklibs = []
+if dxvk_is_woa
+  foreach ulib : nvusd_deplibs
+    usd_linklibs += dxvk_compiler.find_library(ulib, dirs: join_paths(usd_lib_path, 'lib'))
+  endforeach
+
+  usd_linklibs += dxvk_compiler.find_library(get_option('buildtype') == 'debug' ? 'tbb12_debug' : 'tbb12', dirs: join_paths(usd_lib_path, 'lib'))
+  usd_linklibs += dxvk_compiler.find_library('python311', dirs: join_paths(usd_lib_path, 'lib'))
+else
+  foreach ulib : nvusd_deplibs_22
+    usd_linklibs += dxvk_compiler.find_library(ulib, dirs: join_paths(usd_lib_path, 'lib'))
+  endforeach
+endif
+
+if dxvk_is_woa
+  reflex_lib_path = join_paths(global_src_root_norm, 'external/reflex_arm64/lib')
+  reflex_include_path = include_directories( 'external/reflex_arm64/inc')
+else
+  reflex_lib_path = join_paths(global_src_root_norm, 'external/reflex/lib')
+  reflex_include_path = include_directories( 'external/reflex/inc')
+endif
 external_dll_paths += reflex_lib_path
 reflex_lib = dxvk_compiler.find_library('NvLowLatencyVk', dirs : reflex_lib_path)
 
-aftermath_include_path = include_directories( 'external/aftermath/include')
-aftermath_lib_path = join_paths(global_src_root_norm, 'external/aftermath/lib/x64/')
-external_dll_paths += aftermath_lib_path
-aftermath_lib = dxvk_compiler.find_library('GFSDK_Aftermath_Lib.x64', dirs : aftermath_lib_path)
+if dxvk_is_woa
+  aftermath_lib_path = join_paths(global_src_root_norm, 'external/aftermath_arm64/lib/arm64/')
+  external_dll_paths += aftermath_lib_path
+  aftermath_lib = dxvk_compiler.find_library('GFSDK_Aftermath_Lib.arm64', dirs : aftermath_lib_path)
+  aftermath_include_path = include_directories( 'external/aftermath_arm64/include')
+else
+  aftermath_lib_path = join_paths(global_src_root_norm, 'external/aftermath/lib/x64/')
+  external_dll_paths += aftermath_lib_path
+  aftermath_lib = dxvk_compiler.find_library('GFSDK_Aftermath_Lib.x64', dirs : aftermath_lib_path)
+  aftermath_include_path = include_directories( 'external/aftermath/include')
+endif
 
 # this is repeated below, since we overwrite dlss_lib_path in src/dxvk/meson.build for some reason
-dlss_root_path = 'external/ngx_sdk_dldn'
-dlss_lib_path = join_paths(global_src_root_norm, dlss_root_path, 'lib/Windows_x86_64/rel/')
+if dxvk_is_woa
+  dlss_root_path = 'external/ngx_sdk_dldn_arm64'
+  dlfg_root_path = 'external/ngx_sdk_dlfg_arm64'
+  dlss_lib_path = join_paths(global_src_root_norm, dlss_root_path, 'lib/Windows_arm64/rel/')
+  dlfg_lib_path = join_paths(global_src_root_norm, dlfg_root_path, 'lib/Windows_arm64/rel/')
+else
+  dlss_root_path = 'external/ngx_sdk_dldn'
+  dlfg_root_path = 'external/ngx_sdk_dlfg'
+  dlss_lib_path = join_paths(global_src_root_norm, dlss_root_path, 'lib/Windows_x86_64/rel/')
+  dlfg_lib_path = join_paths(global_src_root_norm, dlfg_root_path, 'lib/Windows_x86_64/rel/')
+endif
+
 external_dll_paths += dlss_lib_path
-dlfg_root_path = 'external/ngx_sdk_dlfg'
-dlfg_lib_path = join_paths(global_src_root_norm, dlfg_root_path, 'lib/Windows_x86_64/rel/')
 external_dll_paths += dlfg_lib_path
 
 nrc_dll_name = 'NRC_Vulkan.dll'
-nrc_dll_path = join_paths(global_src_root_norm, 'submodules/nrc/bin/')
+if dxvk_is_woa
+  nrc_dll_path = join_paths(global_src_root_norm, 'external/nrc_arm64/bin/')
+else
+  nrc_dll_path = join_paths(global_src_root_norm, 'submodules/nrc/bin/')
+endif
 
 xess_dll_path = join_paths(global_src_root_norm, 'submodules/xess/bin/')
 
@@ -622,7 +734,7 @@ dxvkrt_output_targets = {
 
 subdir('tests/rtx')
 
-if dxvk_is_ninja
+if dxvk_is_ninja or dxvk_is_woa_ec
   # this is how we force meson to reconfigure when external files change
   # (meson does not do globbing)
   if fs.exists('gametargets.conf')
@@ -639,21 +751,39 @@ if dxvk_is_ninja
   fs.read('vsgen/vsutil.py')
 
   # ... and now we do this again, because src/dxvk/meson.build overwrites this for some reason
-  dlss_root_path = 'external/ngx_sdk_dldn'
-  dlss_lib_path = join_paths(global_src_root_norm, dlss_root_path, 'lib/Windows_x86_64/rel/')
-  dlfg_root_path = 'external/ngx_sdk_dlfg'
-  dlfg_lib_path = join_paths(global_src_root_norm, dlfg_root_path, 'lib/Windows_x86_64/rel/')
+  if dxvk_is_woa
+    dlss_root_path = 'external/ngx_sdk_dldn_arm64'
+    dlss_lib_path = join_paths(global_src_root_norm, dlss_root_path, 'lib/Windows_arm64/rel/')
+    dlfg_root_path = 'external/ngx_sdk_dlfg_arm64'
+    dlfg_lib_path = join_paths(global_src_root_norm, dlfg_root_path, 'lib/Windows_arm64/rel/')
+  else
+    dlss_root_path = 'external/ngx_sdk_dldn'
+    dlss_lib_path = join_paths(global_src_root_norm, dlss_root_path, 'lib/Windows_x86_64/rel/')
+    dlfg_root_path = 'external/ngx_sdk_dlfg'
+    dlfg_lib_path = join_paths(global_src_root_norm, dlfg_root_path, 'lib/Windows_x86_64/rel/')
+  endif
 
   # meson seems to force / as the path separator in custom_target
   # ... except in the case where the path separators are inconsistent, in which case it does nothing
   # force / as the path separator here to make sure it stays consistent
-  nrc_lib_path = join_paths(global_src_root_norm, 'submodules/nrc/Lib/')
- 
-  nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Release/')
-  if get_option('buildtype') == 'debug'
-    nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Debug/')
+  if dxvk_is_woa
+    nrc_lib_path = join_paths(global_src_root_norm, 'external/nrc_arm64/Lib/')
+  else
+    nrc_lib_path = join_paths(global_src_root_norm, 'submodules/nrc/Lib/')
   endif
-  
+
+  if dxvk_is_woa
+    nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd_arm64/Lib/Release/')
+    if get_option('buildtype') == 'debug'
+      nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd_arm64/Lib/Debug/')
+    endif
+  else
+    nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Release/')
+    if get_option('buildtype') == 'debug'
+      nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Debug/')
+    endif
+  endif
+
   apic_copy_targets = []
 
   vs_gen_cmdline = [ vs_project_defines ]
@@ -727,11 +857,22 @@ if dxvk_is_ninja
     # using tagged install targets to get the files in the right place at install time (each project in VS knows which tag to use)
 
     install_subdir(join_paths(usd_lib_path, 'lib/usd/'), install_dir : output_path, install_tag: target_suffix)  
-    
-    foreach ulib : nvusd_deplibs
-      install_data(join_paths(usd_lib_path, 'lib', ulib + '.dll'), install_dir : output_path, install_tag: target_suffix) 
-    endforeach
-  
+
+    if dxvk_is_woa
+      foreach ulib : nvusd_deplibs
+        install_data(join_paths(usd_lib_path, 'lib', ulib + '.dll'), install_dir : output_path, install_tag: target_suffix) 
+      endforeach
+
+      install_data(join_paths(usd_lib_path, 'bin', get_option('buildtype') == 'debug' ? 'tbbmalloc_debug.dll' : 'tbbmalloc.dll'), install_dir : output_path, install_tag: target_suffix)
+      install_data(join_paths(usd_lib_path, 'bin', get_option('buildtype') == 'debug' ? 'tbb12_debug.dll' : 'tbb12.dll'), install_dir : output_path, install_tag: target_suffix)
+      install_data(join_paths(usd_lib_path, 'lib', 'python311.dll'), install_dir : output_path, install_tag: target_suffix)
+      install_subdir(join_paths(usd_lib_path, 'lib/python/'), install_dir : output_path, install_tag: target_suffix)
+    else
+      foreach ulib : nvusd_deplibs_22
+        install_data(join_paths(usd_lib_path, 'lib', ulib + '.dll'), install_dir : output_path, install_tag: target_suffix) 
+      endforeach
+    endif
+
     install_data(join_paths(global_src_root_norm, 'src', 'usd-plugins', 'plugInfo.json'), install_dir : join_paths(output_path, 'usd', 'plugins'), install_tag: target_suffix) 
 
     # install USD plugins
@@ -741,14 +882,23 @@ if dxvk_is_ninja
       install_tag: target_suffix 
     )
 
-    install_data(join_paths(nrc_dll_path, nrc_dll_name), install_dir : output_path, install_tag: target_suffix) 
-    install_data(join_paths(nrc_dll_path, 'cudart64_12.dll'), install_dir : output_path, install_tag: target_suffix) 
-    install_data(join_paths(nrc_dll_path, 'nvrtc64_120_0.dll'), install_dir : output_path, install_tag: target_suffix) 
-    install_data(join_paths(nrc_dll_path, 'nvrtc-builtins64_125.dll'), install_dir : output_path, install_tag: target_suffix) 
+    if dxvk_is_woa
+      install_data(join_paths(nrc_dll_path, nrc_dll_name), install_dir : output_path, install_tag: target_suffix) 
+      install_data(join_paths(nrc_dll_path, 'cudart64_13.dll'), install_dir : output_path, install_tag: target_suffix) 
+      install_data(join_paths(nrc_dll_path, 'nvrtc64_130_0.dll'), install_dir : output_path, install_tag: target_suffix) 
+      install_data(join_paths(nrc_dll_path, 'nvrtc-builtins64_131.dll'), install_dir : output_path, install_tag: target_suffix) 
+    else
+      install_data(join_paths(nrc_dll_path, nrc_dll_name), install_dir : output_path, install_tag: target_suffix) 
+      install_data(join_paths(nrc_dll_path, 'cudart64_12.dll'), install_dir : output_path, install_tag: target_suffix) 
+      install_data(join_paths(nrc_dll_path, 'nvrtc64_120_0.dll'), install_dir : output_path, install_tag: target_suffix) 
+      install_data(join_paths(nrc_dll_path, 'nvrtc-builtins64_128.dll'), install_dir : output_path, install_tag: target_suffix) 
+    endif
 
     install_data(join_paths(nrd_lib_path, 'NRD.dll'), install_dir : output_path, install_tag: target_suffix) 
     
-    install_data(join_paths(xess_dll_path, 'libxess.dll'), install_dir : output_path, install_tag: target_suffix)
+    if not dxvk_is_woa
+      install_data(join_paths(xess_dll_path, 'libxess.dll'), install_dir : output_path, install_tag: target_suffix)
+    endif
 
     install_data(join_paths(dlss_lib_path, 'nvngx_dlss.dll'), install_dir : output_path, install_tag: target_suffix) 
     install_data(join_paths(dlss_lib_path, 'nvngx_dlssd.dll'), install_dir : output_path, install_tag: target_suffix) 
@@ -757,7 +907,11 @@ if dxvk_is_ninja
 
     install_data(join_paths(reflex_lib_path, 'NvLowLatencyVk.dll'), install_dir : output_path, install_tag: target_suffix) 
 
-    install_data(join_paths(aftermath_lib_path, 'GFSDK_Aftermath_Lib.x64.dll'), install_dir : output_path, install_tag: target_suffix) 
+    if dxvk_is_woa
+      install_data(join_paths(aftermath_lib_path, 'GFSDK_Aftermath_Lib.arm64.dll'), install_dir : output_path, install_tag: target_suffix) 
+    else
+      install_data(join_paths(aftermath_lib_path, 'GFSDK_Aftermath_Lib.x64.dll'), install_dir : output_path, install_tag: target_suffix)
+    endif
 
     if enable_rtxio == true
       install_data(join_paths(rtxio_bin_path, 'rtxio.dll'), install_dir : output_path, install_tag: target_suffix)

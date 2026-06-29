@@ -1249,7 +1249,7 @@ namespace dxvk {
 
     DxvkFramebufferInfo getFramebufferInfo() const { return m_state.om.framebufferInfo; }
     VkCommandBuffer getCmdBuffer(DxvkCmdBuffer cmdBuffer) const { return m_cmd->getCmdBuffer(cmdBuffer); }
-    Rc<DxvkCommandList> getCommandList() const { return m_cmd; }
+    const Rc<DxvkCommandList>& getCommandList() const { return m_cmd; }
 
     DxvkObjects* getCommonObjects() const { return m_common; }
     const Rc<DxvkDevice>& getDevice() const { return m_device; }

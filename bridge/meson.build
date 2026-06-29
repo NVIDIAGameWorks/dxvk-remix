@@ -117,7 +117,7 @@ bridge_include_path = '' # include_directories('./include')
 util_include_path = include_directories('./src/util')
 public_include_path = include_directories('../public/include/')
 
-if (cpu_family == 'x86_64')
+if (cpu_family == 'x86_64') or (cpu_family == 'aarch64')
   bridge_library_path = meson.global_source_root() + '/lib'
 else
   bridge_library_path = meson.global_source_root() + '/lib32'
@@ -140,10 +140,10 @@ else
   endif
 endif
 
-if cpu_family == 'x86_64'
+if (cpu_family == 'x86_64') or (cpu_family == 'aarch64')
   add_global_arguments('/DREMIX_BRIDGE_SERVER', language : 'cpp')
 
-  if bridge_compiler.has_argument('-msse3')
+  if bridge_compiler.has_argument('-msse3') and (cpu_family != 'aarch64')
     add_project_arguments('-msse3', language: ['c', 'cpp'])
   endif
 elif cpu_family == 'x86'
@@ -304,11 +304,16 @@ foreach key : copy_targets.keys()
                     output_path,
                     'NvRemixLauncher32*'])
     else
+        platform_output_path = output_path
+        if cpu_family != 'x86_64'
+          # place non-x64 servers into dedicated folders
+          platform_output_path = output_path + '_' + cpu_family
+        endif
         run_target('copy_' + target_suffix + '_server',
           depends: [ server_exe ],
           command : [copy_script_path,
                     meson.current_build_dir().replace('\\', '/') + '/src/server',
-                    output_path + '/.trex',
+                    platform_output_path,
                     'NvRemixBridge*'])
     endif
 endforeach

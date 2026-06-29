@@ -61,6 +61,8 @@ namespace dxvk {
       RTX_OPTION("rtx.xess", uint32_t, minJitterSequenceLength, 8, "Minimum jitter sequence length for XeSS, even at low scaling factors.");
     };
 
+#ifndef _M_ARM64
+
     // Constructor with device
     DxvkXeSS(DxvkDevice* device);
 
@@ -119,6 +121,54 @@ namespace dxvk {
     VkExtent2D m_xessOutputSize;
     bool m_recreate;
     float m_lastResolutionScale; // Track resolution scale changes for Custom preset
-  };
 
+#else
+
+    // Constructor with device
+    DxvkXeSS(DxvkDevice* device) : RtxPass(device), CommonDeviceObject(device) {
+    }
+
+    void initialize(Rc<DxvkContext> renderContext, const VkExtent3D& targetExtent) {
+    }
+
+    VkExtent3D getInputSize(const VkExtent3D& targetExtent) const {
+      return {};
+    }
+
+    void dispatch(
+      Rc<DxvkContext> renderContext,
+      DxvkBarrierSet& barriers,
+      const Resources::RaytracingOutput& rtOutput,
+      bool resetHistory) {
+    }
+
+    // Public methods needed by RTX context
+    void setSetting(const uint32_t displaySize[2], const XeSSPreset preset, uint32_t outRenderSize[2]) {
+    }
+    void getInputSize(uint32_t& width, uint32_t& height) const {
+    }
+
+    // XeSS 2.1 public helper methods
+    uint32_t calcRecommendedJitterSequenceLength() const {
+      return 1;
+    }
+    float calcRecommendedMipBias() const {
+      return 0;
+    }
+
+  protected:
+
+    // RtxPass interface
+    virtual bool isEnabled() const override {
+      return false;
+    }
+    virtual bool onActivation(Rc<DxvkContext>& ctx) override {
+      return true;
+    }
+    virtual void onDeactivation() override {
+    }
+
+#endif
+
+  };
 }

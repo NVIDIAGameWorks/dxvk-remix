@@ -238,6 +238,29 @@ namespace dxvk {
     return m_pGeometryWorkers->Schedule([pVertexData, vertexCount, vertexStride, vertexBuffer]()->AxisAlignedBoundingBox {
       ScopedCpuProfileZone();
 
+#if defined(_M_ARM64) || defined(_M_ARM64EC)
+      float32x4_t minPos = vdupq_n_f32(FLT_MAX);
+      float32x4_t maxPos = vdupq_n_f32(-FLT_MAX);
+
+      const uint8_t* pVertex = static_cast<const uint8_t*>(pVertexData);
+      for (uint32_t vertexIdx = 0; vertexIdx < vertexCount; ++vertexIdx) {
+        const Vector3* const pVertexPos = reinterpret_cast<const Vector3* const>(pVertex);
+        float32x4_t vertexPos;
+        vertexPos.n128_f32[0] = pVertexPos->x;
+        vertexPos.n128_f32[1] = pVertexPos->y;
+        vertexPos.n128_f32[2] = pVertexPos->z;
+
+        minPos = vminq_f32(minPos, vertexPos);
+        maxPos = vmaxq_f32(maxPos, vertexPos);
+
+        pVertex += vertexStride;
+      }
+
+      AxisAlignedBoundingBox boundingBox {
+        Vector3{ vgetq_lane_f32(minPos, 0), vgetq_lane_f32(minPos, 1), vgetq_lane_f32(minPos, 2) },
+        Vector3{ vgetq_lane_f32(maxPos, 0), vgetq_lane_f32(maxPos, 1), vgetq_lane_f32(maxPos, 2) }
+      };
+#else
       __m128 minPos = _mm_set_ps1(FLT_MAX);
       __m128 maxPos = _mm_set_ps1(-FLT_MAX);
 
@@ -255,6 +278,7 @@ namespace dxvk {
         Vector3{ minPos.m128_f32[0], minPos.m128_f32[1], minPos.m128_f32[2] },
         Vector3{ maxPos.m128_f32[0], maxPos.m128_f32[1], maxPos.m128_f32[2] }
       };
+#endif
 
       vertexBuffer->decRef();
 

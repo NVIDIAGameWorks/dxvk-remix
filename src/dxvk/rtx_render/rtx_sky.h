@@ -222,10 +222,10 @@ dxvk::RtxContext::TryHandleSkyResult dxvk::RtxContext::tryHandleSky(const DrawPa
   for (DrawCallState& skyGeometry : m_delayedRayTracedSky) {
     // Swap camera
     skyGeometry.cameraType = CameraType::Main;
-    skyGeometry.categories.clr(InstanceCategories::Sky);
+    skyGeometry.modifyCategoryFlags().clr(InstanceCategories::Sky);
 
     // And reproject
-    DrawCallTransforms& skyTransform = skyGeometry.transformData;
+    DrawCallTransforms& skyTransform = skyGeometry.modifyTransformData();
 
     // Near / far planes must match to prevent problems related to the mismatching Z-space
     const Matrix4d skyViewToProjection = overrideNearFarPlanes(

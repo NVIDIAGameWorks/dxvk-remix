@@ -735,27 +735,44 @@ namespace dxvk {
 
     // Filter Physical Devices
 
-    std::vector<VkPhysicalDeviceProperties> deviceProperties(numAdapters);
+    std::vector<VkPhysicalDeviceProperties2> deviceProperties(numAdapters);
+    std::vector<VkPhysicalDeviceVulkan12Properties> deviceVulkanProperties(numAdapters);
     DxvkDeviceFilterFlags filterFlags = 0;
+    
+    bool haveRealDGPU = false;
+    bool haveRealIGPU = false;
 
     for (uint32_t i = 0; i < numAdapters; i++) {
-      m_vki->vkGetPhysicalDeviceProperties(adapters[i], &deviceProperties[i]);
+      deviceProperties[i].sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+      deviceProperties[i].pNext = &deviceVulkanProperties[i];
 
-      // Skip CPU or Integrated GPU devices if any other device type is present
-      // Note: Originally DXVK only did this for CPU devices, but Remix extends this logic to include
-      // Integrated GPUs too. This is because applications have little information about which device
-      // is best when exposed as adapters through DirectX and cannot be expected to make a good selection
-      // on their own. In the case of Remix, if a dedicated GPU is installed on a system it should almost
-      // always be prioritized over integrated GPUs, as some applications will attempt to select a
-      // non-default adapter and often times end up severely degrading performance by unknowingly selecting
-      // one corresponding to an integrated GPU.
+      deviceVulkanProperties[i].sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES;
+      deviceVulkanProperties[i].pNext = nullptr;
 
-      if (deviceProperties[i].deviceType != VK_PHYSICAL_DEVICE_TYPE_CPU) {
-        filterFlags.set(DxvkDeviceFilterFlag::SkipCpuDevices);
+      m_vki->vkGetPhysicalDeviceProperties2(adapters[i], &deviceProperties[i]);
+
+      if (deviceProperties[i].properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+        haveRealDGPU |= !DxvkAdapter::isEmulated(deviceVulkanProperties[i]);
       }
 
-      if (deviceProperties[i].deviceType != VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) {
+      if (deviceProperties[i].properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) {
+        haveRealIGPU |= !DxvkAdapter::isEmulated(deviceVulkanProperties[i]);
+      }
+    }
+
+    if (numAdapters > 1) {
+      // Skip CPU, Integrated or Emulated GPU devices if any other device type is present
+
+      // If we have more than one device always skip CPU devices.
+      filterFlags.set(DxvkDeviceFilterFlag::SkipCpuDevices);
+
+      if (haveRealDGPU) {
+        // Skip integrated and emulated device(s) if we have a real dGPU
         filterFlags.set(DxvkDeviceFilterFlag::SkipIntegratedGPUDevices);
+        filterFlags.set(DxvkDeviceFilterFlag::SkipEmulatedGPUDevices);
+      } else if (haveRealIGPU) {
+        // Skip emulated device(s) if we have a real iGPU
+        filterFlags.set(DxvkDeviceFilterFlag::SkipEmulatedGPUDevices);
       }
     }
 

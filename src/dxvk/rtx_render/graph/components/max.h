@@ -54,7 +54,7 @@ private:
     /* the version number */ 1,
     LIST_INPUTS, LIST_STATES, LIST_OUTPUTS
   )
-  void Max::updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
+  void updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
     for (size_t i = start; i < end; i++) {
       if constexpr (valuePropertyType == RtComponentPropertyType::Float) {
         m_result[i] = std::max(m_a[i], m_b[i]);

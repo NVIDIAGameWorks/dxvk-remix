@@ -99,6 +99,11 @@
 
 #define PLATFORM_HAS_TRANSCENDENTAL_INTRINSICS          (_MSC_VER >= 1920 && __clang__ == 0)
 
+#if defined ( _M_ARM64 )
+#undef PLATFORM_HAS_TRANSCENDENTAL_INTRINSICS
+#define PLATFORM_HAS_TRANSCENDENTAL_INTRINSICS          0
+#endif
+
 // NOTE: x32 / x64
 
 #define PLATFORM_x32                                    0

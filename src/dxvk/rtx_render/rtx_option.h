@@ -524,7 +524,7 @@ namespace dxvk {
     template<typename = std::enable_if_t<isClampable()>>
     std::optional<T> getMinValue() const {
       std::lock_guard<std::mutex> lock(RtxOptionImpl::getUpdateMutex());
-      return getMinMaxValueHelper<T>(minValue);
+      return getMinMaxValueHelper(minValue);
     }
 
     template<typename = std::enable_if_t<isClampable()>>
@@ -539,7 +539,7 @@ namespace dxvk {
     template<typename = std::enable_if_t<isClampable()>>
     std::optional<T> getMaxValue() const {
       std::lock_guard<std::mutex> lock(RtxOptionImpl::getUpdateMutex());
-      return getMinMaxValueHelper<T>(maxValue);
+      return getMinMaxValueHelper(maxValue);
     }
 
   private:

@@ -69,7 +69,7 @@ namespace nrd {
       return NULL;
     }
 
-#define GET_PROC_MACRO(proc)  dispatch.##proc = (pfn##proc)GetProcAddress(hNRD, #proc)
+#define GET_PROC_MACRO(proc)  dispatch.proc = (pfn##proc)GetProcAddress(hNRD, #proc)
     GET_PROC_MACRO(CreateInstance);
     GET_PROC_MACRO(DestroyInstance);
     GET_PROC_MACRO(GetLibraryDesc);

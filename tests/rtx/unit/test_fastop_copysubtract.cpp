@@ -23,8 +23,11 @@
 #include <random>
 
 #include "../../test_utils.h"
-#include "../../../src/util/util_fastops.h"
 #include "../../../src/util/util_timer.h"
+
+// Note: including fastops source directly since the test uses
+// potentially inlined functions which may not be available in the Utils static lib
+#include "../../../src/util/util_fastops.cpp"
 
 using namespace dxvk;
 
@@ -33,7 +36,7 @@ using namespace dxvk;
         {                                                                                                                             \
           std::cout << "Running: copySubtract"#bitwidth"_"#ISA" --> ";                                                                \
           Timer time;                                                                                                                 \
-          fast::copySubtract##bitwidth##_##ISA##((uint##bitwidth##_t*) dstData2, (uint##bitwidth##_t*) srcData, count, value, ignoreSentinel, sentinelValue); \
+          fast::copySubtract##bitwidth##_##ISA((uint##bitwidth##_t*) dstData2, (uint##bitwidth##_t*) srcData, count, value, ignoreSentinel, sentinelValue); \
         }                                                                                                                             \
         if (memcmp(dstData2, dstData, sizeof(T) * count) != 0)                                                                        \
           throw dxvk::DxvkError("Output not matching copySubtract"#bitwidth"_"#ISA);                                                  \
@@ -48,15 +51,6 @@ using namespace dxvk;
 
 
 namespace fast {
-  template<typename T>
-  extern void copySubtract_slow(T* dstData, const T* srcData, const uint32_t count, const T value, const bool ignoreSentinel, const T sentinelValue);
-
-  extern void copySubtract16_SSE(uint16_t* dstData, const uint16_t* srcData, const uint32_t count, const uint16_t value, const bool ignoreSentinel, const uint16_t sentinelValue);
-  extern void copySubtract16_AVX2(uint16_t* dstData, const uint16_t* srcData, const uint32_t count, const uint16_t value, const bool ignoreSentinel, const uint16_t sentinelValue);
-  extern void copySubtract16_AVX512(uint16_t* dstData, const uint16_t* srcData, const uint32_t count, const uint16_t value, const bool ignoreSentinel, const uint16_t sentinelValue);
-  extern void copySubtract32_SSE(uint32_t* dstData, const uint32_t* srcData, const uint32_t count, const uint32_t value, const bool ignoreSentinel, const uint32_t sentinelValue);
-  extern void copySubtract32_AVX2(uint32_t* dstData, const uint32_t* srcData, const uint32_t count, const uint32_t value, const bool ignoreSentinel, const uint32_t sentinelValue);
-  extern void copySubtract32_AVX512(uint32_t* dstData, const uint32_t* srcData, const uint32_t count, const uint32_t value, const bool ignoreSentinel, const uint32_t sentinelValue);
 
 class CopySubtractTestApp {
 public:
@@ -136,12 +130,16 @@ private:
     memset(dstData2, 0, sizeof(T) * count);
     if (std::is_same<T, uint16_t>::value) {
       TEST(SSE, 16);
+#ifndef NO_AVX
       TEST_CHECK(AVX2, 16);
       TEST_CHECK(AVX512, 16);
+#endif
     } else if (std::is_same<T, uint32_t>::value) {
       TEST(SSE, 32);
+#ifndef NO_AVX
       TEST_CHECK(AVX2, 32);
       TEST_CHECK(AVX512, 32);
+#endif
     } else {
       throw dxvk::DxvkError("Invalid test");
     }

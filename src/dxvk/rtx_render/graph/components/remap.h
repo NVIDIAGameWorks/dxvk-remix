@@ -72,7 +72,7 @@ private:
     LIST_INPUTS, LIST_STATES, LIST_OUTPUTS,
     spec.oldNames = {"InterpolateFloat"} // TODO: remove this after new versions of the demo are shared.
   )
-  void Remap::updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
+  void updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
     for (size_t i = start; i < end; i++) {
       // Step 1: Normalize input value to 0-1 range (reverse LERP / float_to_strength)
       float normalizedValue = m_value[i];

@@ -21,7 +21,7 @@ namespace dxvk::sync {
   void spin(uint32_t spinCount, const Fn& fn) {
     while (unlikely(!fn())) {
       for (uint32_t i = 1; i < spinCount; i++) {
-        _mm_pause();
+        YieldProcessor();
         if (fn())
           return;
       }

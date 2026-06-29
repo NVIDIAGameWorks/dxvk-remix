@@ -657,15 +657,20 @@ struct DrawCallState {
 
   // Note: This uses the original material for the hash, not the replaced material
   const XXH64_hash_t getHash(const HashRule& rule) const {
-    return geometryData.getHashForRule(rule) ^ materialData.getHash();
+    return getGeometryData().getHashForRule(rule) ^ materialData.getHash();
   }
 
   [[deprecated("(REMIX-656): Remove this once we can transition content to new hash")]]
   const XXH64_hash_t getHashLegacy(const HashRule& rule) const {
-    return geometryData.getHashForRuleLegacy(rule) ^ materialData.getHash();
+    return getGeometryData().getHashForRuleLegacy(rule) ^ materialData.getHash();
   }
 
   const RasterGeometry& getGeometryData() const {
+    return nullptr == overrides.geometryData ? geometryData : *overrides.geometryData;
+  }
+
+  RasterGeometry& modifyGeometryData() {
+    assert(nullptr == overrides.geometryData && "Refusing to modify overridden geometry data!");
     return geometryData;
   }
 
@@ -673,7 +678,15 @@ struct DrawCallState {
     return materialData;
   }
 
+  LegacyMaterialData& modifyMaterialData() {
+    return materialData;
+  }
+
   const DrawCallTransforms& getTransformData() const {
+    return transformData;
+  }
+
+  DrawCallTransforms& modifyTransformData() {
     return transformData;
   }
 
@@ -687,6 +700,14 @@ struct DrawCallState {
 
   const CategoryFlags getCategoryFlags() const {
     return categories;
+  }
+
+  CategoryFlags& modifyCategoryFlags() {
+    return categories;
+  }
+
+  VkCullModeFlags getCullMode() const {
+    return VK_CULL_MODE_FLAG_BITS_MAX_ENUM == overrides.cullMode ? getGeometryData().cullMode : overrides.cullMode;
   }
 
   bool finalizePendingFutures(const RtCamera* pLastCamera);
@@ -794,13 +815,17 @@ struct DrawCallState {
 #endif
   }
 
+  void overrideGeometryData(const RasterGeometry* overriddenGeometryData) {
+    overrides.geometryData = overriddenGeometryData;
+  }
+
+  void overrideCullMode(VkCullModeFlags overriddenCullMode) {
+    overrides.cullMode = overriddenCullMode;
+  }
+
 private:
-  friend class RtxContext;
-  friend class SceneManager;
   friend struct D3D9Rtx;
-  friend class TerrainBaker;
   friend struct RemixAPIPrivateAccessor;
-  friend class RtxParticleSystemManager;
 
   bool finalizeGeometryHashes();
   void finalizeGeometryBoundingBox();
@@ -825,6 +850,12 @@ private:
   FogState fogState;
 
   CategoryFlags categories = 0;
+
+  // Overridden geometry (replaced or external) and states
+  struct {
+    const RasterGeometry* geometryData = nullptr; // TBD: use a shared ptr?
+    VkCullModeFlags cullMode = VK_CULL_MODE_FLAG_BITS_MAX_ENUM;
+  } overrides;
 };
 
  // A BLAS and its data buffer that can be pooled and used for various geometries

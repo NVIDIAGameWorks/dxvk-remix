@@ -36,10 +36,11 @@ function Build {
 		[Parameter(Mandatory)]
 		[string]$BuildSubDir,
 		
-		[string]$BuildTarget
+		[string]$BuildTarget,
+		[string]$VcVarsVer
 	)
 
-	SetupVS -Platform $Platform
+	SetupVS -Platform $Platform -VcVarsVer $VcVarsVer
 	
 	if ($BuildTarget) {
 		PerformBuild -Backend ninja -Platform $Platform -BuildFlavour $BuildFlavour -BuildSubDir $BuildSubDir -BuildTarget $BuildTarget

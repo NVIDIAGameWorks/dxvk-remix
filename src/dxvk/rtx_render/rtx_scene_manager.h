@@ -109,7 +109,7 @@ struct ExternalDrawState {
   CameraType::Enum cameraType {};
   CategoryFlags categories {};
   bool doubleSided {};
-  const std::optional<RtxParticleSystemDesc> optionalParticleDesc {};
+  std::optional<RtxParticleSystemDesc> optionalParticleDesc {};
   std::vector<Matrix4> gpuInstancingTransforms {};
 
   // Draw-instance identity for ReplacementInstance lookup. Excludes per-frame camera matrices
@@ -135,7 +135,7 @@ public:
   void onDestroy();
 
   void submitDrawState(Rc<DxvkContext> ctx, const DrawCallState& input, const MaterialData* overrideMaterialData);
-  void submitExternalDraw(Rc<DxvkContext> ctx, ExternalDrawState&& state);
+  void submitExternalDraw(const Rc<DxvkContext>& ctx, std::unique_ptr<ExternalDrawState> state);
   void setStartInMediumMaterial(const MaterialData& translucentMaterial);
   void clearStartInMediumMaterial();
 
@@ -268,9 +268,9 @@ private:
   ObjectCacheState processGeometryInfo(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, RaytraceGeometry& modifiedGeometryData);
 
   // Consumes a draw call state and updates the scene state accordingly
-  RtInstance* processDrawCallState(Rc<DxvkContext> ctx, 
+  RtInstance* processDrawCallState(const Rc<DxvkContext>& ctx, 
                                    const DrawCallState& blasInput, 
-                                   MaterialData& materialData, 
+                                   const MaterialData& materialData, 
                                    RtInstance* existingInstance = nullptr,
                                    const RtxParticleSystemDesc* pParticleSystemDesc = nullptr);
 

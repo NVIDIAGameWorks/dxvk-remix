@@ -1,4 +1,5 @@
 #include "dxvk_device_filter.h"
+#include "../vulkan/vulkan_util.h"
 
 namespace dxvk {
   
@@ -16,7 +17,9 @@ namespace dxvk {
   }
   
   
-  bool DxvkDeviceFilter::testAdapter(const VkPhysicalDeviceProperties& properties) const {
+  bool DxvkDeviceFilter::testAdapter(const VkPhysicalDeviceProperties2& properties2) const {
+    const auto& properties = properties2.properties;
+
     if (properties.apiVersion < VK_MAKE_VERSION(1, 1, 0)) {
       Logger::warn(str::format("Skipping Vulkan 1.0 adapter: ", properties.deviceName));
       return false;
@@ -33,6 +36,19 @@ namespace dxvk {
         return false;
       }
     }
+
+    // NV-DXVK start: Emulated GPU device filter
+    if (m_flags.test(DxvkDeviceFilterFlag::SkipEmulatedGPUDevices)) {
+      if (auto vkProps = vk::findStructInPNextChain<VkPhysicalDeviceVulkan12Properties>(
+        properties2, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES)) {
+
+        if (DxvkAdapter::isEmulated(*vkProps)) {
+          Logger::warn(str::format("Skipping Emulated GPU adapter: ", properties.deviceName));
+          return false;
+        }
+      }
+    }
+    // NV-DXVK end
 
     // NV-DXVK start: Integrated GPU device filter
     if (m_flags.test(DxvkDeviceFilterFlag::SkipIntegratedGPUDevices)) {

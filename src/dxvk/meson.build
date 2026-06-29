@@ -438,9 +438,14 @@ nrd_dep = declare_dependency(
   include_directories : nrd_include_dir
 )
 
+target_dlss_lib_path = 'lib/Windows_x86_64/x86_64'
+if dxvk_is_woa
+  target_dlss_lib_path = 'lib/Windows_arm64/arm64'
+endif
+
 # Note: Include directory paths must be relative paths due to a limitation in Meson (currently at least)
 dlss_include_dir = include_directories(join_paths('../../', dlss_root_path, 'include'))
-dlss_lib_path = join_paths(global_src_root_norm, dlss_root_path, 'lib/Windows_x86_64/x86_64')
+dlss_lib_path = join_paths(global_src_root_norm, dlss_root_path, target_dlss_lib_path)
 dlfg_include_dir = include_directories(join_paths('../../', dlfg_root_path, 'include'))
 cc = meson.get_compiler('c')
 dlss_lib_name = 'nvsdk_ngx_d'
@@ -453,17 +458,27 @@ dlss_dep = declare_dependency(
   include_directories : [ dlss_include_dir, dlfg_include_dir ]
 )
 
-# XeSS dependency
-xess_lib_path = join_paths(global_src_root_norm, 'submodules/xess/lib')
-xess_include_dir = include_directories('../../submodules/xess/inc')
-xess_lib = dxvk_compiler.find_library('libxess', dirs : xess_lib_path, required : false)
-xess_dep = declare_dependency(
-  dependencies : [ xess_lib ],
-  include_directories : xess_include_dir
-)
+if dxvk_is_woa
+  nrc_dll_path = join_paths(meson.global_source_root(), 'external/nrc_arm64/bin/')
+  nrc_lib_path = join_paths(meson.global_source_root(), 'external/nrc_arm64/lib/')
+  nrc_include_path = include_directories(join_paths('../../', 'external/nrc_arm64/include'))
+else
+  nrc_dll_path = join_paths(meson.global_source_root(), 'submodules/nrc/bin/')
+  nrc_lib_path = join_paths(meson.global_source_root(), 'submodules/nrc/lib/')
+  nrc_include_path = include_directories(join_paths('../../', 'submodules/nrc/include'))
+endif
 
-nrc_dll_path = join_paths(meson.global_source_root(), 'submodules/nrc/bin/')
-nrc_lib_path = join_paths(meson.global_source_root(), 'submodules/nrc/lib/')
+# XeSS dependency
+if not dxvk_is_woa
+  xess_lib_path = join_paths(global_src_root_norm, 'submodules/xess/lib')
+  xess_include_dir = include_directories('../../submodules/xess/inc')
+  xess_lib = dxvk_compiler.find_library('libxess', dirs : xess_lib_path, required : false)
+  xess_dep = declare_dependency(
+    dependencies : [ xess_lib ],
+    include_directories : xess_include_dir
+  )
+endif
+
 nrc_lib = dxvk_compiler.find_library('NRC_Vulkan', dirs : nrc_lib_path, required : true)
 
 nrc_dep = declare_dependency(
@@ -490,7 +505,11 @@ dxvk_embedded_data_files = files([
 
 dxvk_generated_embedded_files = embedding_compiler.process(dxvk_embedded_data_files)
 
-dxvk_deps = [ thread_dep, vkcommon_dep, dxvk_extradep, usd_dep, lssUsd_dep, nrc_dep, nrd_dep, dlss_dep, submodules_dep, xess_dep, tracy_dep, tracy_dep_dynamic, aftermath_dep, nvapi_dep, reflex_dep, usd_plugin_deps ]
+dxvk_deps = [ thread_dep, vkcommon_dep, dxvk_extradep, usd_dep, lssUsd_dep, nrc_dep, nrd_dep, dlss_dep, submodules_dep, tracy_dep, tracy_dep_dynamic, aftermath_dep, nvapi_dep, reflex_dep, usd_plugin_deps ]
+
+if not dxvk_is_woa
+  dxvk_deps += xess_dep
+endif
 
 if enable_rtxio
   dxvk_deps += rtxio_dep

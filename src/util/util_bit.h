@@ -52,7 +52,9 @@ namespace dxvk::bit {
   
   inline uint32_t tzcnt(uint32_t n) {
     #if defined(_MSC_VER) && !defined(__clang__)
-    return _tzcnt_u32(n);
+    unsigned long index;
+    _BitScanForward(&index, n);
+    return uint32_t(index);
     #elif defined(__BMI__)
     return __tzcnt_u32(n);
     #elif defined(__GNUC__) || defined(__clang__)
@@ -98,7 +100,10 @@ namespace dxvk::bit {
 
   inline uint32_t lzcnt(uint32_t n) {
     #if (defined(_MSC_VER) && !defined(__clang__)) || defined(__LZCNT__)
-    return _lzcnt_u32(n);
+    if (n == 0) return 32;
+    unsigned long r = 0;
+    _BitScanReverse(&r, n);
+    return 31 - r;
     #elif defined(__GNUC__) || defined(__clang__)
     return n != 0 ? __builtin_clz(n) : 32;
     #else
@@ -144,7 +149,7 @@ namespace dxvk::bit {
   template<typename T>
   bool bcmpeq(const T* a, const T* b) {
     static_assert(alignof(T) >= 16);
-    #if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
+    #if (defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)) && !defined(_M_ARM64)
     auto ai = reinterpret_cast<const __m128i*>(a);
     auto bi = reinterpret_cast<const __m128i*>(b);
 

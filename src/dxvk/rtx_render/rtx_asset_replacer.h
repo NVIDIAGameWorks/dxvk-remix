@@ -309,7 +309,7 @@ namespace dxvk {
     ModManager m_modManager;
 
     std::unordered_map<remixapi_MaterialHandle, std::optional<MaterialData>> m_extMaterials {};
-    std::unordered_map<remixapi_MeshHandle, std::vector<RasterGeometry>> m_extMeshes {};
+    std::unordered_map<remixapi_MeshHandle, std::unique_ptr<std::vector<RasterGeometry>>> m_extMeshes {};
   };
 } // namespace dxvk
 
