@@ -383,7 +383,7 @@ namespace dxvk {
     CompositeDebugViewClass(
       const char* name,
       uint32_t numColumns,
-      std::vector<uint32_t>& debugViewIndices)
+      std::vector<uint32_t>&& debugViewIndices)
       : m_numColumns(numColumns)
       , m_debugViewIndices(std::move(debugViewIndices)) {
       
@@ -507,7 +507,7 @@ namespace dxvk {
           debugViewIndices.push_back(debugViewEntries[debugViewIdx].key);
         }
 
-        s_compositeDebugViewsMap.emplace(compositeDebugViewIdx, CompositeDebugViewClass(name.c_str(), kNumColumns, debugViewIndices));
+        s_compositeDebugViewsMap.emplace(compositeDebugViewIdx, CompositeDebugViewClass(name.c_str(), kNumColumns, std::move(debugViewIndices)));
 
         compositeDebugViewIdx++;
       }

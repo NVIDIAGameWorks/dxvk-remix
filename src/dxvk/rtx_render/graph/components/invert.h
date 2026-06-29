@@ -50,7 +50,7 @@ private:
     /* the version number */ 1,
     LIST_INPUTS, LIST_STATES, LIST_OUTPUTS
   )
-  void Invert::updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
+  void updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
     for (size_t i = start; i < end; i++) {
       if constexpr (valuePropertyType == RtComponentPropertyType::Float) {
         m_output[i] = 1.0f - m_input[i];

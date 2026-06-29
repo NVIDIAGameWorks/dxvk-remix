@@ -21,7 +21,12 @@ REM FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 REM DEALINGS IN THE SOFTWARE.
 REM
 
-.\build_bridge_%1.bat
+set "VARIANT=%1"
+set "ARGC=%*"
+:: Remove the first argument from the string
+call set "REST=%%ARGC:*%1 =%%"
+
+.\build_bridge_%VARIANT%.bat %REST%
 
 SET ERR=%ERRORLEVEL%
 IF %ERR% == 0 GOTO :End

@@ -248,7 +248,11 @@ namespace dxvk {
     globalSettings.enableDebugBuffers = m_isDebugBufferRequired;
     globalSettings.maxNumFramesInFlight = kMaxFramesInFlight;
 
-    globalSettings.depsDirectoryPath = !NrcCtxOptions::cudaDllDepsDirectoryPath().empty() ? NrcCtxOptions::cudaDllDepsDirectoryPath().c_str() : nullptr;
+    // Note: converting cudaDllDepsDirectoryPath to wchar using filesystem
+    const std::filesystem::path path{ NrcCtxOptions::cudaDllDepsDirectoryPath() };
+    const std::wstring wpath{ path.wstring() };
+
+    globalSettings.depsDirectoryPath = wpath.c_str();
 
     // Initialize the NRC Library
     nrc::Status status = nrc::vulkan::Initialize(globalSettings);

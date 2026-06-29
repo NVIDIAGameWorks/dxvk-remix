@@ -147,13 +147,7 @@ namespace dxvk
       return false;
     }
 
-    NVSDK_NGX_Parameter* tempParams;
-    result = NVSDK_NGX_VULKAN_AllocateParameters(&tempParams);
-    if (NVSDK_NGX_FAILED(result)) {
-      Logger::err(str::format("NVSDK_NGX_VULKAN_AllocateParameters failed: ", resultToString(result)));
-      return false;
-    }
-
+    NVSDK_NGX_Parameter* tempParams = nullptr;
     result = NVSDK_NGX_VULKAN_GetCapabilityParameters(&tempParams);
     if (NVSDK_NGX_FAILED(result)) {
       Logger::err(str::format("NVSDK_NGX_VULKAN_GetCapabilityParameters failed: ", resultToString(result)));
@@ -355,7 +349,7 @@ namespace dxvk
         }
       }
     }
-    
+
     return false;
   }
 
@@ -433,12 +427,7 @@ namespace dxvk
 
   NGXFeatureContext::NGXFeatureContext(DxvkDevice* device): m_device(device)
   {
-    NVSDK_NGX_Result result = NVSDK_NGX_VULKAN_AllocateParameters(&m_parameters);
-    if (NVSDK_NGX_FAILED(result)) {
-      Logger::err(str::format("NVSDK_NGX_VULKAN_AllocateParameters failed: ", resultToString(result)));
-    }
-
-    result = NVSDK_NGX_VULKAN_GetCapabilityParameters(&m_parameters);
+    NVSDK_NGX_Result result = NVSDK_NGX_VULKAN_GetCapabilityParameters(&m_parameters);
     if (NVSDK_NGX_FAILED(result)) {
       Logger::err(str::format("NVSDK_NGX_VULKAN_GetCapabilityParameters failed: ", resultToString(result)));
     }

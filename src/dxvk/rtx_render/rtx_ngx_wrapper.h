@@ -22,8 +22,13 @@
 #pragma once
 
 // this gets included from other modules, so use full path to external --- ugly!
+#ifdef _M_X64
 #include "../../../external/ngx_sdk_dldn/include/nvsdk_ngx.h"
 #include "../../../external/ngx_sdk_dldn/include/nvsdk_ngx_defs_dlssd.h"
+#else
+#include "../../../external/ngx_sdk_dldn_arm64/include/nvsdk_ngx.h"
+#include "../../../external/ngx_sdk_dldn_arm64/include/nvsdk_ngx_defs_dlssd.h"
+#endif
 #include <memory>
 #include "../util/rc/util_rc_ptr.h"
 #include "rtx_semaphore.h"

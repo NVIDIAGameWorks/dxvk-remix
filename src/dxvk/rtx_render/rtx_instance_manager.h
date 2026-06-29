@@ -330,7 +330,7 @@ public:
   // Takes a scene object entry (blas + drawcall) and generates/finds the instance data internally
   RtInstance* processSceneObject(
     const CameraManager& cameraManager, const RayPortalManager& rayPortalManager,
-    BlasEntry& blas, const DrawCallState& drawCall, MaterialData& materialData, RtInstance* existingInstance);
+    BlasEntry& blas, const DrawCallState& drawCall, const MaterialData& materialData, RtInstance* existingInstance);
 
   // Binds a raytracing material to the specified instance.
   void bindMaterial(RtInstance& instance, const RtSurfaceMaterial& material);
@@ -451,7 +451,7 @@ private:
 
   void updateInstance(
       RtInstance& currentInstance, const CameraManager& cameraManager,
-      const BlasEntry& blas, const DrawCallState& drawCall, MaterialData& materialData);
+      const BlasEntry& blas, const DrawCallState& drawCall, const MaterialData* materialData);
 
   void removeInstance(RtInstance* instance);
 

@@ -14,8 +14,9 @@ namespace dxvk {
   enum class DxvkDeviceFilterFlag {
     MatchDeviceName          = 0,
     SkipCpuDevices           = 1,
-    // NV-DXVK start: Integrated GPU device filter
+    // NV-DXVK start: Integrated and emulated GPU device filter
     SkipIntegratedGPUDevices = 2,
+    SkipEmulatedGPUDevices   = 3,
     // NV-DXVK end
   };
   
@@ -44,7 +45,7 @@ namespace dxvk {
      * \returns \c true if the test passes
      */
     bool testAdapter(
-      const VkPhysicalDeviceProperties& properties) const;
+      const VkPhysicalDeviceProperties2& properties) const;
     
   private:
     

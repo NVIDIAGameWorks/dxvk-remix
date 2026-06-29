@@ -28,7 +28,7 @@ if not enable_tests
 		subdir('client')
 		subdir('server')
 		subdir('launcher')
-	elif cpu_family == 'x86_64'
+	elif (cpu_family == 'x86_64') or (cpu_family == 'aarch64')
 		subdir('server')
 	endif
 endif

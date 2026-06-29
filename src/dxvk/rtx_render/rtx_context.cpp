@@ -909,8 +909,8 @@ namespace dxvk {
   void RtxContext::commitGeometryToRT(const DrawParameters& params, DrawCallState& drawCallState){
     ScopedCpuProfileZone();
 
-    RasterGeometry& geoData = drawCallState.geometryData;
-    DrawCallTransforms& transformData = drawCallState.transformData;
+    const RasterGeometry& geoData = drawCallState.getGeometryData();
+    DrawCallTransforms& transformData = drawCallState.modifyTransformData();
 
     assert(geoData.futureGeometryHashes.valid());
     assert(geoData.positionBuffer.defined());
@@ -991,7 +991,7 @@ namespace dxvk {
     }
   }
 
-  void RtxContext::commitExternalGeometryToRT(ExternalDrawState&& state) {
+  void RtxContext::commitExternalGeometryToRT(std::unique_ptr<ExternalDrawState> state) {
     getSceneManager().submitExternalDraw(this, std::move(state));
   }
 
@@ -2582,7 +2582,7 @@ namespace dxvk {
       return;
     }
 
-    DrawCallTransforms& transformData = drawCallState.transformData;
+    DrawCallTransforms& transformData = drawCallState.modifyTransformData();
 
     // Terrain Baker (may) update bound color textures, so preserve the views
     Rc<DxvkImageView> previousColorView;
@@ -2601,7 +2601,7 @@ namespace dxvk {
           opaqueReplacementMaterial = &replacementMaterial->getOpaqueMaterialData();
 
           // Original 0th colour texture slot
-          const uint32_t colorTextureSlot = drawCallState.materialData.colorTextureSlot[0];
+          const uint32_t colorTextureSlot = drawCallState.getMaterialData().colorTextureSlot[0];
 
           // Save current color texture first
           if (colorTextureSlot < m_rc.size() && m_rc[colorTextureSlot].imageView != nullptr) {
@@ -2636,7 +2636,7 @@ namespace dxvk {
         overrideMaterial.colorTextures[0] = (*outOverrideMaterialData)->getOpaqueMaterialData().getAlbedoOpacityTexture();
         overrideMaterial.samplers[0] = terrainBaker.getTerrainSampler();
         overrideMaterial.updateCachedHash();
-        drawCallState.materialData = overrideMaterial;
+        drawCallState.modifyMaterialData() = overrideMaterial;
       }
 
       // Restore state modified during baking
@@ -2644,7 +2644,7 @@ namespace dxvk {
 
         // Restore bound color texture views
         if (previousColorView != nullptr) {
-          bindResourceView(drawCallState.materialData.colorTextureSlot[0], previousColorView, nullptr);
+          bindResourceView(drawCallState.getMaterialData().colorTextureSlot[0], previousColorView, nullptr);
         }
       }
     }
@@ -2667,7 +2667,7 @@ namespace dxvk {
         getSceneManager().trackTexture(albedoOpacity, textureIndex, true, false);
 
         if (!albedoOpacity.isImageEmpty()) {
-          replacementTextureSlot = drawCallState.materialData.colorTextureSlot[0];
+          replacementTextureSlot = drawCallState.getMaterialData().colorTextureSlot[0];
           replacementTexture = albedoOpacity.getImageView();
           replacemenIsLDR = TextureUtils::isLDR(albedoOpacity.getImageView()->info().format);
         } else {
@@ -2712,7 +2712,7 @@ namespace dxvk {
 
     // Restore color texture
     if (curColorView != nullptr) {
-      bindResourceView(drawCallState.materialData.colorTextureSlot[0], curColorView, nullptr);
+      bindResourceView(drawCallState.getMaterialData().colorTextureSlot[0], curColorView, nullptr);
     }
   }
 

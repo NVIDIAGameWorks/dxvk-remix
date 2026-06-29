@@ -22,6 +22,7 @@
 #pragma once
 
 #include "util_math.h"
+#include "util_fastops.h"
 #include "util_vector.h"
 #include "vulkan/vulkan_core.h"
 #include "log/log.h"
@@ -221,6 +222,34 @@ namespace dxvk {
 
   };
   
+  inline Matrix4Base<float> Matrix4Base<float>::operator*(const Matrix4Base<float>& m2) const {
+#if defined(_M_X64) && !defined(_M_ARM64EC)
+    const auto& m1 = *this;
+
+    const auto& srcA0 = m1[0];
+    const auto& srcA1 = m1[1];
+    const auto& srcA2 = m1[2];
+    const auto& srcA3 = m1[3];
+
+    const auto& srcB0 = m2[0];
+    const auto& srcB1 = m2[1];
+    const auto& srcB2 = m2[2];
+    const auto& srcB3 = m2[3];
+
+    Matrix4Base<float> result;
+    result[0] = srcA0 * srcB0[0] + srcA1 * srcB0[1] + srcA2 * srcB0[2] + srcA3 * srcB0[3];
+    result[1] = srcA0 * srcB1[0] + srcA1 * srcB1[1] + srcA2 * srcB1[2] + srcA3 * srcB1[3];
+    result[2] = srcA0 * srcB2[0] + srcA1 * srcB2[1] + srcA2 * srcB2[2] + srcA3 * srcB2[3];
+    result[3] = srcA0 * srcB3[0] + srcA1 * srcB3[1] + srcA2 * srcB3[2] + srcA3 * srcB3[3];
+    return result;
+#else
+    // Not using Matrix4Base here to save on constructor
+    float32_t result[16];
+    fast::matrix4_multiply(&data[0].data[0], &m2.data[0].data[0], result);
+    return *reinterpret_cast<Matrix4Base<float>*>(result);
+#endif
+  }
+
 
   template<typename T>
   inline Matrix4Base<T> operator*(T scalar, const Matrix4Base<T>& m) { return m * scalar; }

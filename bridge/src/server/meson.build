@@ -48,7 +48,7 @@ server_resource = windows.compile_resources('NvRemixBridge.rc',
 
 server_exe = executable('NvRemixBridge', server_src, server_header, server_version, server_resource,
 sources             : [ bridge_version ],
-build_by_default    : (cpu_family == 'x86_64') ? true : false,
+build_by_default    : (cpu_family == 'x86_64') or (cpu_family == 'aarch64') ? true : false,
 dependencies        : [ thread_dep, util_dep, lib_version, tracy_dep ],
 include_directories : [ bridge_include_path, util_include_path, public_include_path ],
 win_subsystem       : 'windows')
@@ -56,7 +56,7 @@ win_subsystem       : 'windows')
 
 server_output_dir = output_dir + '.trex'
 
-if cpu_family == 'x86_64'
+if (cpu_family == 'x86_64') or (cpu_family == 'aarch64')
 	if build_os == 'windows'
 	custom_target('copy_server_to_output',
 		output           : ['copy_server_to_output'],

@@ -19,14 +19,12 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
-#include <smmintrin.h>
 #include <math.h>
 #include <intrin.h>
 #include "util_math.h"
 #include "util_fastops.h"
 #include <algorithm>
 #include <ppl.h>
-#include "util_fastops.h"
 
 #define SSE_ENABLE ((fast::g_simdSupportLevel != fast::SIMD::None) && 1)
 
@@ -34,6 +32,7 @@ namespace fast {
   static SIMD initSimdSupport() {
     SIMD simdSupport = SIMD::None;
 
+#if !defined(_M_ARM64)
     // Query CPUID info with EAX = 7
     int result[4];
     __cpuid(result, 7);
@@ -45,9 +44,14 @@ namespace fast {
     } else 
   #endif
 
+#if !defined(_M_ARM64EC)
+    // Note: Newer WoA builds report AVX2 support but since
+    // we cannot compile AVX2 we need to force disable it.
     if ((result[1] & (1 << 5)) != 0) {
       simdSupport = SIMD::AVX2;
-    } else {
+    } else
+#endif
+    {
       // Query CPUID info with EAX = 1
       __cpuid(result, 1);
 
@@ -62,16 +66,22 @@ namespace fast {
         simdSupport = SIMD::None;
       }
     }
-
+#else
+    simdSupport = SIMD::SSE4_1;
+#endif
     return simdSupport;
   }
 
   static const SIMD g_simdSupportLevel = initSimdSupport();
 
   static bool initBmi2Support() {
+#if defined(_M_ARM64)
+    return false;
+#else
     int result[4];
     __cpuid(result, 0x7);
     return (result[1] & (1 << 8));
+#endif
   }
 
   static const bool g_supportsBMI2 = initBmi2Support();
@@ -312,6 +322,7 @@ namespace fast {
     maxOut = (uint32_t) maxOut16;
   }
 
+#if !defined(NO_AVX)
   __forceinline void findMinMax16_AVX2(const uint32_t count, const uint16_t* data, uint32_t& minOut, uint32_t& maxOut) {
     const uint32_t numLanes = 16;
     const uint32_t alignedCount = dxvk::alignDown(count, numLanes);
@@ -343,6 +354,7 @@ namespace fast {
     minOut = (uint32_t) minOut16;
     maxOut = (uint32_t) maxOut16;
   }
+#endif
 
   __forceinline void findMinMax16_slow(const uint32_t count, const uint16_t* data, uint32_t& minOut, uint32_t& maxOut) {
     uint16_t minOut16 = data[0];
@@ -356,7 +368,7 @@ namespace fast {
     maxOut = (uint32_t) maxOut16;
   }
 
-
+#if !defined(NO_AVX)
   __forceinline void findMinMaxWithsentinelValue16_AVX2(const uint32_t count, const uint16_t* data, uint32_t& minOut, uint32_t& maxOut, const uint16_t sentinelValue) {
     const uint32_t numLanes = 16;
     const uint32_t alignedCount = dxvk::alignDown(count, numLanes);
@@ -394,7 +406,7 @@ namespace fast {
     minOut = (uint32_t) minOut16;
     maxOut = (uint32_t) maxOut16;
   }
-
+#endif
   template<SIMD V>
   __forceinline void findMinMaxWithsentinelValue16_SSE(const uint32_t count, const uint16_t* data, uint32_t& minOut, uint32_t& maxOut, const uint16_t sentinelValue) {
     const uint32_t numLanes = 8;
@@ -464,7 +476,7 @@ namespace fast {
       maxOut = std::max(maxOut, data[i]);
     }
   }
-
+#if !defined(NO_AVX)
   __forceinline void findMinMax32_AVX2(const uint32_t count, const uint32_t* data, uint32_t& minOut, uint32_t& maxOut) {
     const uint32_t numLanes = 8;
     const uint32_t alignedCount = dxvk::alignDown(count, numLanes);
@@ -494,7 +506,7 @@ namespace fast {
       maxOut = std::max(maxOut, data[i]);
     }
   }
-
+#endif
   __forceinline void findMinMax32_slow(const uint32_t count, const uint32_t* data, uint32_t& minOut, uint32_t& maxOut) {
     minOut = data[0];
     maxOut = data[0];
@@ -503,7 +515,7 @@ namespace fast {
       maxOut = std::max(maxOut, data[i]);
     }
   }
-
+#if !defined(NO_AVX)
   __forceinline void findMinMaxWithsentinelValue32_AVX2(const uint32_t count, const uint32_t* data, uint32_t& minOut, uint32_t& maxOut, const uint32_t sentinelValue) {
     const uint32_t numLanes = 8;
     const uint32_t alignedCount = dxvk::alignDown(count, numLanes);
@@ -538,7 +550,7 @@ namespace fast {
       maxOut = std::max(maxOut, (data[i] == sentinelValue) ? maxOut : data[i]);
     }
   }
-
+#endif
   template<SIMD V>
   __forceinline void findMinMaxWithsentinelValue32_SSE(const uint32_t count, const uint32_t* data, uint32_t& minOut, uint32_t& maxOut, const uint32_t sentinelValue) {
     const uint32_t numLanes = 4;
@@ -584,10 +596,12 @@ namespace fast {
       if (ignoreSentinel) {
         if (useSSE) {
           switch (g_simdSupportLevel) {
+#if !defined(NO_AVX)
           case SIMD::AVX512:
           case SIMD::AVX2:
             findMinMaxWithsentinelValue16_AVX2(count, (uint16_t*) data, minOut, maxOut, sentinelValue);
             break;
+#endif
           case SIMD::SSE4_1:
             findMinMaxWithsentinelValue16_SSE<SIMD::SSE4_1>(count, (uint16_t*) data, minOut, maxOut, sentinelValue);
             break;
@@ -606,10 +620,12 @@ namespace fast {
       } else {
         if (useSSE) {
           switch (g_simdSupportLevel) {
+#if !defined(NO_AVX)
           case SIMD::AVX512:
           case SIMD::AVX2:
             findMinMax16_AVX2(count, (uint16_t*) data, minOut, maxOut);
             break;
+#endif
           case SIMD::SSE4_1:
             findMinMax16_SSE<SIMD::SSE4_1>(count, (uint16_t*) data, minOut, maxOut);
             break;
@@ -630,10 +646,12 @@ namespace fast {
       if (ignoreSentinel) {
         if (useSSE) {
           switch (g_simdSupportLevel) {
+#if !defined(NO_AVX)
           case SIMD::AVX512:
           case SIMD::AVX2:
             findMinMaxWithsentinelValue32_AVX2(count, (uint32_t*) data, minOut, maxOut, sentinelValue);
             break;
+#endif
           case SIMD::SSE4_1:
             findMinMaxWithsentinelValue32_SSE<SIMD::SSE4_1>(count, (uint32_t*) data, minOut, maxOut, sentinelValue);
             break;
@@ -652,10 +670,12 @@ namespace fast {
       } else {
         if (useSSE) {
           switch (g_simdSupportLevel) {
+#if !defined(NO_AVX)
           case SIMD::AVX512:
           case SIMD::AVX2:
             findMinMax32_AVX2(count, (uint32_t*) data, minOut, maxOut);
             break;
+#endif
           case SIMD::SSE4_1:
             findMinMax32_SSE<SIMD::SSE4_1>(count, (uint32_t*) data, minOut, maxOut);
             break;
@@ -724,7 +744,7 @@ namespace fast {
       dstData[i] = srcData[i] - ((ignoreSentinel && srcData[i] == sentinelValue) ? 0 : value);
     }
   }
-
+#if !defined(NO_AVX)
   __forceinline void copySubtract16_AVX2(uint16_t* dstData, const uint16_t* srcData, const uint32_t count, const uint16_t value, const bool ignoreSentinel, const uint16_t sentinelValue) {
     const uint32_t numLanes = 16;
     const uint32_t alignedCount = dxvk::alignDown(count, numLanes);
@@ -786,7 +806,6 @@ namespace fast {
       dstData[i] = srcData[i] - ((ignoreSentinel && srcData[i] == sentinelValue) ? 0 : value);
     }
   }
-
   __forceinline void copySubtract16_AVX512(uint16_t* dstData, const uint16_t* srcData, const uint32_t count, const uint16_t value, const bool ignoreSentinel, const uint16_t sentinelValue) {
     const uint32_t numLanes = 32;
     const uint32_t alignedCount = dxvk::alignDown(count, numLanes);
@@ -845,7 +864,7 @@ namespace fast {
       dstData[i] = srcData[i] - ((ignoreSentinel && srcData[i] == sentinelValue) ? 0 : value);
     }
   }
-
+#endif
   __forceinline void copySubtract32_SSE(uint32_t* dstData, const uint32_t* srcData, const uint32_t count, const uint32_t value, const bool ignoreSentinel, const uint32_t sentinelValue) {
     const uint32_t numLanes = 4;
     const uint32_t alignedCount = dxvk::alignDown(count, numLanes);
@@ -887,12 +906,14 @@ namespace fast {
     if (useSSE) {
       if (std::is_same<T, uint16_t>::value) {
         switch (g_simdSupportLevel) {
+#if !defined(NO_AVX)
         case SIMD::AVX512:
           copySubtract16_AVX512((uint16_t*) dstData, (uint16_t*) srcData, count, value, ignoreSentinel, sentinelValue);
           break;
         case SIMD::AVX2:
           copySubtract16_AVX2((uint16_t*) dstData, (uint16_t*) srcData, count, value, ignoreSentinel, sentinelValue);
           break;
+#endif
         case SIMD::SSE4_1:
         case SIMD::SSE3:
         case SIMD::SSE2:
@@ -903,12 +924,14 @@ namespace fast {
         }
       } else if (std::is_same<T, uint32_t>::value) {
         switch (g_simdSupportLevel) {
+#if !defined(NO_AVX)
         case SIMD::AVX512:
           copySubtract32_AVX512((uint32_t*) dstData, (uint32_t*) srcData, count, value, ignoreSentinel, sentinelValue);
           break;
         case SIMD::AVX2:
           copySubtract32_AVX2((uint32_t*) dstData, (uint32_t*) srcData, count, value, ignoreSentinel, sentinelValue);
           break;
+#endif
         case SIMD::SSE4_1:
         case SIMD::SSE3:
         case SIMD::SSE2:
@@ -951,11 +974,12 @@ namespace fast {
     }
   }
 
-
+#if !defined(NO_AVX)
   template<typename T>
   __forceinline T findNthBit_BMI2(const T num, const T n) {
     return _tzcnt_u32(_pdep_u32(1 << n, num));
   }
+#endif
 
   template<typename T>
   __forceinline T findNthBit_slow(const T num, const T n) {
@@ -972,8 +996,10 @@ namespace fast {
 
   template<typename T>
   T findNthBit(const T num, const T n) {
+#if !defined(NO_AVX)
     if (g_supportsBMI2)
       return findNthBit_BMI2(num, n);
+#endif
 
     return findNthBit_slow(num, n);
   }

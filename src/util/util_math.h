@@ -27,6 +27,11 @@
 #include "util_once.h"
 #include "log/log.h"
 
+#if defined(_M_ARM64)
+// NOTE: use MathLib and sse2neon for x86 SIMD emulation on ARM
+#include "MathLib/MathLib.h"
+#endif
+
 namespace dxvk {
 
   enum class MathValidationLevel {
@@ -47,7 +52,7 @@ namespace dxvk {
 #else
     MathValidationLevel::ErrorOnce;
 #endif
-  constexpr size_t CACHE_LINE_SIZE = 64;
+  constexpr size_t CACHE_LINE_SIZE = std::hardware_destructive_interference_size;
   constexpr float FLOAT16_MAX = 6.5504e+4f;
 
   // Asserts that a condition is true, but changes behavior based on the MATH_VALIDATION_LEVEL.

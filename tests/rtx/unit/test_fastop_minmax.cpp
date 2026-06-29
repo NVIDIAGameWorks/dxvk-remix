@@ -22,8 +22,11 @@
 #include <cstring>
 #include <random>
 #include "../../test_utils.h"
-#include "../../../src/util/util_fastops.h"
 #include "../../../src/util/util_timer.h"
+
+// Note: including fastops source directly since the test uses
+// potentially inlined functions which may not be available in the Utils static lib
+#include "../../../src/util/util_fastops.cpp"
 
 using namespace dxvk;
 
@@ -32,7 +35,7 @@ using namespace dxvk;
         {                                                                  \
           std::cout << "Running: findMinMax"#bitwidth"_"#ISA" --> ";       \
           Timer time;                                                      \
-          fast::findMinMax##bitwidth##_##ISA##(count, (uint##bitwidth##_t*) pData, min2, max2);    \
+          fast::findMinMax##bitwidth##_##ISA(count, (uint##bitwidth##_t*) pData, min2, max2);    \
         }                                                                  \
         if (min2 != min || max2 != max)                                    \
           throw dxvk::DxvkError("Min/Max not matching findMinMax"#bitwidth"_"#ISA);  \
@@ -51,7 +54,7 @@ using namespace dxvk;
         {                                                                  \
           std::cout << "Running: findMinMaxWithsentinelValue"#bitwidth"_"#ISA" --> ";       \
           Timer time;                                                      \
-          fast::findMinMaxWithsentinelValue##bitwidth##_##ISA##(count, (uint##bitwidth##_t*) pData, min2, max2, sentinel);    \
+          fast::findMinMaxWithsentinelValue##bitwidth##_##ISA(count, (uint##bitwidth##_t*) pData, min2, max2, sentinel);    \
         }                                                                  \
         if (min2 != min || max2 != max)                                    \
           throw dxvk::DxvkError("Min/Max not matching findMinMaxWithsentinelValue"#bitwidth"_"#ISA);  \
@@ -65,28 +68,6 @@ using namespace dxvk;
       }                                                                   \
 
 namespace fast {
-
-  extern void findMinMax16_slow(const uint32_t count, const uint16_t* data, uint32_t& minOut, uint32_t& maxOut);
-  template<SIMD V>
-  extern void findMinMax16_SSE(const uint32_t count, const uint16_t* data, uint32_t& minOut, uint32_t& maxOut);
-
-  extern void findMinMax16_AVX2(const uint32_t count, const uint16_t* data, uint32_t& minOut, uint32_t& maxOut);
-
-  extern void findMinMax32_slow(const uint32_t count, const uint32_t* data, uint32_t& minOut, uint32_t& maxOut);
-  template<SIMD V>
-  extern void findMinMax32_SSE(const uint32_t count, const uint32_t* data, uint32_t& minOut, uint32_t& maxOut);
-
-  extern void findMinMax32_AVX2(const uint32_t count, const uint32_t* data, uint32_t& minOut, uint32_t& maxOut);
-
-  extern void findMinMaxWithsentinelValue16_slow(const uint32_t count, const uint16_t* data, uint32_t& minOut, uint32_t& maxOut, const uint16_t sentinelValue);
-  template<SIMD V>
-  extern void findMinMaxWithsentinelValue16_SSE(const uint32_t count, const uint16_t* data, uint32_t& minOut, uint32_t& maxOut, const uint16_t sentinelValue);
-  extern void findMinMaxWithsentinelValue16_AVX2(const uint32_t count, const uint16_t* data, uint32_t& minOut, uint32_t& maxOut, const uint16_t sentinelValue);
-
-  extern void findMinMaxWithsentinelValue32_slow(const uint32_t count, const uint32_t* data, uint32_t& minOut, uint32_t& maxOut, const uint32_t sentinelValue);
-  template<SIMD V>
-  extern void findMinMaxWithsentinelValue32_SSE(const uint32_t count, const uint32_t* data, uint32_t& minOut, uint32_t& maxOut, const uint32_t sentinelValue);
-  extern void findMinMaxWithsentinelValue32_AVX2(const uint32_t count, const uint32_t* data, uint32_t& minOut, uint32_t& maxOut, const uint32_t sentinelValue);
 
 class MinMaxTestApp {
 public:
@@ -156,7 +137,9 @@ private:
 
       TEST(SSE<SIMD::SSE2>, 16);
       TEST(SSE<SIMD::SSE4_1>, 16);
+#ifndef NO_AVX
       TEST_CHECK(AVX2, 16);
+#endif
     } else if (std::is_same<T, uint32_t>::value) {
       // Now test regular CPU logic
       {
@@ -167,7 +150,9 @@ private:
 
       TEST(SSE<SIMD::SSE2>, 32);
       TEST(SSE<SIMD::SSE4_1>, 32);
+#ifndef NO_AVX
       TEST_CHECK(AVX2, 32);
+#endif
     } else {
       throw dxvk::DxvkError("Invalid test");
     }
@@ -188,7 +173,9 @@ private:
 
       TEST_SENTINEL(SSE<SIMD::SSE2>, 16);
       TEST_SENTINEL(SSE<SIMD::SSE4_1>, 16);
+#ifndef NO_AVX
       TEST_SENTINEL_CHECK(AVX2, 16);
+#endif
     } else if (std::is_same<T, uint32_t>::value) {
       // Now test regular CPU logic
       {
@@ -199,7 +186,9 @@ private:
 
       TEST_SENTINEL(SSE<SIMD::SSE2>, 32);
       TEST_SENTINEL(SSE<SIMD::SSE4_1>, 32);
+#ifndef NO_AVX
       TEST_SENTINEL_CHECK(AVX2, 32);
+#endif
     } else {
       throw dxvk::DxvkError("Invalid test");
     }

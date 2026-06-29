@@ -1841,6 +1841,7 @@ struct MaterialData {
   static_assert(std::is_same_v<std::variant_alternative_t<(size_t)MaterialDataType::Translucent, MaterialVariant>, TranslucentMaterialData>, "MaterialVariant[Translucent] must be TranslucentMaterialData, please check your change.");
   static_assert(std::is_same_v<std::variant_alternative_t<(size_t)MaterialDataType::RayPortal,   MaterialVariant>, RayPortalMaterialData>,   "MaterialVariant[RayPortal] must be RayPortalMaterialData, please check your change.");
 
+  MaterialData() = default;
   MaterialData(const OpaqueMaterialData& opaque, std::optional<RtxParticleSystemDesc> particleSystem = std::nullopt, bool ignored = false)
     : m_ignored { ignored }, m_data { opaque }, m_particleSystem { particleSystem } {}
 

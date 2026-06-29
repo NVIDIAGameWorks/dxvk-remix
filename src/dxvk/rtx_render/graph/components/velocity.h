@@ -54,9 +54,9 @@ private:
     /* the version number */ 1,
     LIST_INPUTS, LIST_STATES, LIST_OUTPUTS
   )
-  void Velocity::updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
-  float deltaTime = GlobalTime::get().deltaTime();
-  for (size_t i = start; i < end; i++) {
+  void updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
+    float deltaTime = GlobalTime::get().deltaTime();
+    for (size_t i = start; i < end; i++) {
       // Calculate velocity as the change from previous frame
       m_velocity[i] = (m_input[i] - m_previousValue[i]) / deltaTime;
       

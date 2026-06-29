@@ -218,6 +218,9 @@ namespace dxvk
     // the matrices retreived from the various getter functions can be casted to float matrices for a minor upfront performance cost.
     Matrix4d m_matCache[MatrixType::Count] = {};
 
+    // Single precision matrix cache to save on conversion
+    Matrix4 m_matCachef[MatrixType::Count];
+
     RtFrustum m_frustum;
     cFrustum m_lightAntiCullingFrustum;
 
@@ -231,6 +234,8 @@ namespace dxvk
     // Note: Start the camera off as invalid until it is set properly.
     uint32_t m_frameLastTouched = kInvalidFrameIndex;
     std::chrono::time_point<std::chrono::system_clock> m_prevRunningTime = {};
+
+    static bool m_isFreeCameraEnabled;
 
   public:
     RtCamera() = default;
@@ -263,6 +268,9 @@ namespace dxvk
     const Matrix4d& getPreviousProjectionToView() const { return m_matCache[MatrixType::PreviousProjectionToView]; }
 
     const Matrix4d& getViewToWorldToFreeCamViewToWorld() const;
+
+    const Matrix4& getWorldToViewf(bool freecam = true) const;
+    const Matrix4& getViewToProjectionf() const { return m_matCachef[MatrixType::ViewToProjection]; }
 
     const RtFrustum& getFrustum() const { return m_frustum; }
     RtFrustum& getFrustum() { return m_frustum; }

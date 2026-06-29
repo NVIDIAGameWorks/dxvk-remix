@@ -55,7 +55,7 @@ private:
     /* the version number */ 1,
     LIST_INPUTS, LIST_STATES, LIST_OUTPUTS
   )
-  void Select::updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
+  void updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
     for (size_t i = start; i < end; i++) {
       m_output[i] = m_condition[i] ? m_inputA[i] : m_inputB[i];
     }

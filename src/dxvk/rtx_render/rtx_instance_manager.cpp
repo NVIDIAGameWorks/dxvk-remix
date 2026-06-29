@@ -94,7 +94,7 @@ namespace dxvk {
       flags |= VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
     }
 
-    switch (drawCall.getGeometryData().cullMode) {
+    switch (drawCall.getCullMode()) {
     case VkCullModeFlagBits::VK_CULL_MODE_NONE:
       flags |= VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
       break;
@@ -627,7 +627,7 @@ namespace dxvk {
 
   RtInstance* InstanceManager::processSceneObject(
     const CameraManager& cameraManager, const RayPortalManager& rayPortalManager,
-    BlasEntry& blas, const DrawCallState& drawCall, MaterialData& materialData, RtInstance* existingInstance) {
+    BlasEntry& blas, const DrawCallState& drawCall, const MaterialData& materialData, RtInstance* existingInstance) {
 
     // If no existing instance is provided, this is a genuinely new draw call and we need to create a fresh instance.
     RtInstance* currentInstance = existingInstance;
@@ -646,7 +646,7 @@ namespace dxvk {
       notifySceneChanged();
     }
 
-    updateInstance(*currentInstance, cameraManager, blas, drawCall, materialData);
+    updateInstance(*currentInstance, cameraManager, blas, drawCall, &materialData);
    
     return currentInstance;
   }
@@ -975,7 +975,7 @@ namespace dxvk {
                                        const CameraManager& cameraManager,
                                        const BlasEntry& blas,
                                        const DrawCallState& drawCall,
-                                       MaterialData& materialData) {
+                                       const MaterialData* materialData) {
     const CategoryFlags previousCategoryFlags = currentInstance.m_categoryFlags;
     const uint8_t previousInstanceMask = currentInstance.m_vkInstance.mask;
     const uint32_t previousCustomIndexFlags = currentInstance.m_vkInstance.instanceCustomIndex & ~uint32_t(CUSTOM_INDEX_SURFACE_MASK);
@@ -1017,7 +1017,7 @@ namespace dxvk {
        // Don't overwrite transform from when the instance was seen with the main camera
        !currentInstance.isCameraRegistered(CameraType::Main));
 
-    const RtSurface::AlphaState alphaState = calculateAlphaState(drawCall, materialData);
+    const RtSurface::AlphaState alphaState = calculateAlphaState(drawCall, *materialData);
     bool hasTransformChanged = false;
     bool hasPreviousPositions = false;
 
@@ -1032,9 +1032,9 @@ namespace dxvk {
       if (isFirstUpdateThisFrame) {
         processInstanceBuffers(blas, currentInstance);
 
-        currentInstance.m_materialType = materialData.getType();
+        currentInstance.m_materialType = materialData->getType();
 
-        const XXH64_hash_t materialInstanceHash = materialData.getHash();
+        const XXH64_hash_t materialInstanceHash = materialData->getHash();
         currentInstance.m_materialDataHash = drawCall.getMaterialData().getHash();
         currentInstance.surface.hasMaterialChanged = currentInstance.m_materialHash != kEmptyHash && currentInstance.m_materialHash != materialInstanceHash;
         currentInstance.m_materialHash = materialInstanceHash;
@@ -1081,54 +1081,36 @@ namespace dxvk {
           currentInstance.surface.eyeParams = eyeParams;
         }
 
-        uint8_t spriteSheetRows = 0, spriteSheetCols = 0, spriteSheetFPS = 0;
-        materialData.getSpriteSheetData(currentInstance.surface.spriteSheetRows, currentInstance.surface.spriteSheetCols, currentInstance.surface.spriteSheetFPS);
+        materialData->getSpriteSheetData(currentInstance.surface.spriteSheetRows, currentInstance.surface.spriteSheetCols, currentInstance.surface.spriteSheetFPS);
         currentInstance.m_isAnimated = currentInstance.surface.spriteSheetFPS != 0;
         currentInstance.surface.objectPickingValue = drawCall.drawCallID;
 
-        // Note: Extract spritesheet information from the associated material data as it ends up stored in the Surface
-        // not in the Surface Material like most material information.
-        switch (materialData.getType()) {
-        case MaterialDataType::Opaque:
-        {
-          spriteSheetRows = materialData.getOpaqueMaterialData().getSpriteSheetRows();
-          spriteSheetCols = materialData.getOpaqueMaterialData().getSpriteSheetCols();
-          spriteSheetFPS = materialData.getOpaqueMaterialData().getSpriteSheetFPS();
+        // Temp storage for the case we need to patch the material data
+        MaterialData tmpMaterialData;
 
-          const bool useLegacyAlphaState = materialData.getOpaqueMaterialData().getUseLegacyAlphaState();
+        if (materialData->getType() == MaterialDataType::Opaque)
+        {
+          const bool useLegacyAlphaState = materialData->getOpaqueMaterialData().getUseLegacyAlphaState();
 
           if (currentInstance.m_isWorldSpaceUI) {
+            // Here we need to do deep copy and patch the material
+            tmpMaterialData = *materialData;
+            materialData = &tmpMaterialData;
             // For worldspace UI, we want to show the UI (unlit) in the world.  So configure the blend mode if blending is used accordingly.
-            materialData.getOpaqueMaterialData().setEnableEmission(true);
-            materialData.getOpaqueMaterialData().setEmissiveIntensity(2.0f);
-            materialData.getOpaqueMaterialData().setEmissiveColorTexture(materialData.getOpaqueMaterialData().getAlbedoOpacityTexture());
+            tmpMaterialData.getOpaqueMaterialData().setEnableEmission(true);
+            tmpMaterialData.getOpaqueMaterialData().setEmissiveIntensity(2.0f);
+            tmpMaterialData.getOpaqueMaterialData().setEmissiveColorTexture(tmpMaterialData.getOpaqueMaterialData().getAlbedoOpacityTexture());
           } else if (currentInstance.surface.alphaState.emissiveBlend && RtxOptions::enableEmissiveBlendEmissiveOverride() && useLegacyAlphaState) {
+            // Here we need to do deep copy and patch the material
+            tmpMaterialData = *materialData;
+            materialData = &tmpMaterialData;
             // If the user has decided to override the legacy alpha state, assume they know what they are doing and allow for explicit emission controls.
-            materialData.getOpaqueMaterialData().setEnableEmission(true);
-            materialData.getOpaqueMaterialData().setEmissiveIntensity(RtxOptions::emissiveBlendOverrideEmissiveIntensity());
-            materialData.getOpaqueMaterialData().setEmissiveColorTexture(materialData.getOpaqueMaterialData().getAlbedoOpacityTexture());
+            tmpMaterialData.getOpaqueMaterialData().setEnableEmission(true);
+            tmpMaterialData.getOpaqueMaterialData().setEmissiveIntensity(RtxOptions::emissiveBlendOverrideEmissiveIntensity());
+            tmpMaterialData.getOpaqueMaterialData().setEmissiveColorTexture(tmpMaterialData.getOpaqueMaterialData().getAlbedoOpacityTexture());
           }
 
-          currentInstance.m_isSubsurface = materialData.getOpaqueMaterialData().getSubsurfaceDiffusionProfile();
-
-          break;
-        }
-        case MaterialDataType::Translucent:
-          spriteSheetRows = materialData.getTranslucentMaterialData().getSpriteSheetRows();
-          spriteSheetCols = materialData.getTranslucentMaterialData().getSpriteSheetCols();
-          spriteSheetFPS = materialData.getTranslucentMaterialData().getSpriteSheetFPS();
-
-          break;
-        case MaterialDataType::RayPortal:
-          spriteSheetRows = materialData.getRayPortalMaterialData().getSpriteSheetRows();
-          spriteSheetCols = materialData.getRayPortalMaterialData().getSpriteSheetCols();
-          spriteSheetFPS = materialData.getRayPortalMaterialData().getSpriteSheetFPS();
-
-          break;
-        case MaterialDataType::Count:
-        case MaterialDataType::Invalid:
-          assert(0);
-          break;
+          currentInstance.m_isSubsurface = materialData->getOpaqueMaterialData().getSubsurfaceDiffusionProfile();
         }
       }
 
@@ -1328,7 +1310,7 @@ namespace dxvk {
     // Hand off to the shared per-frame finalization (registers view-model / player-model
     // candidates and invokes onInstanceUpdated listeners). The preserve path calls this
     // directly with hasTransformChanged / hasPreviousPositions == false and a null materialData.
-    preserveInstance(currentInstance, drawCall, &materialData,
+    preserveInstance(currentInstance, drawCall, materialData,
                      hasTransformChanged, hasPreviousPositions, isFirstUpdateThisFrame, fireEvents);
   }
 

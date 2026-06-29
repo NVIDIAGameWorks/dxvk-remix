@@ -43,3 +43,6 @@
 	path = submodules/xess
 	url = https://github.com/intel/xess.git
 	shallow = false
+[submodule "include/MathLib/External/sse2neon"]
+	path = include/MathLib/External/sse2neon
+	url = https://github.com/DLTcollab/sse2neon.git

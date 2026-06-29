@@ -38,6 +38,14 @@ using namespace dxvk;
 using namespace std;
 using namespace chrono;
 
+inline uint64_t hwCounter() {
+#if _M_ARM64
+  return _ReadStatusReg(ARM64_SYSREG(3,3, 9,13,0));
+#else
+  return __rdtsc();
+#endif
+}
+
 class ThreadPoolTestApp {
 public:
   static void run() { 
@@ -78,7 +86,7 @@ private:
     vector<Future<uint32_t>> results(numTasks);
     {
       Timer t;
-      const uint64_t s = __rdtsc();
+      const uint64_t s = hwCounter();
 
       for (uint32_t i = 0; i < numTasks; i++) {
         // Spawn N tasks that sleep a bit, and return a 1
@@ -103,7 +111,7 @@ private:
         }
       }
 
-      const uint64_t e = __rdtsc();
+      const uint64_t e = hwCounter();
 
       cout << "Scheduled " << numTasks << " tasks in " << e - s << " clocks" << endl;
     }

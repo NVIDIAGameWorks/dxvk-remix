@@ -30,6 +30,10 @@
 #  define TRACY_HW_TIMER
 #endif
 
+#if defined _WIN32 && defined _M_ARM64
+#  define TRACY_TIMER_QPC
+#endif
+
 #if defined TRACY_TIMER_FALLBACK || !defined TRACY_HW_TIMER
 #  include <chrono>
 #endif

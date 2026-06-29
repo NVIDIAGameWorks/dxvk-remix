@@ -56,7 +56,7 @@ private:
     /* the version number */ 1,
     LIST_INPUTS, LIST_STATES, LIST_OUTPUTS
   )
-  void ConditionallyStore::updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
+  void updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
     for (size_t i = start; i < end; i++) {
       if (m_store[i]) {
         m_storedValue[i] = m_input[i];

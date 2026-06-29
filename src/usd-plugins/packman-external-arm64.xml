@@ -1,0 +1,21 @@
+<project toolsVersion="7.2.2">
+  <!-- Window on Arm deps -->
+  <dependency name="usd.py311.windows-arm64.stock.debug" linkPath="./_external/usd_stock_arm64/debug">
+    <package name="usd.py311.windows-arm64.stock.debug" version="0.25.11"/>
+  </dependency>
+  <dependency name="usd.py311.windows-arm64.stock.release" linkPath="./_external/usd_stock_arm64/release">
+    <package name="usd.py311.windows-arm64.stock.release" version="0.25.11"/>
+  </dependency>
+  <dependency name="usd_py311_release" linkPath="./_external/usd_stock_x64/release">
+    <package name="usd.py311.windows-x86_64.stock.release" version="0.25.11-gl.18041+v25.11.363a7c8d" />
+  </dependency>
+  <dependency name="usd_py311_debug" linkPath="./_external/usd_stock_x64/debug">
+    <package name="usd.py311.windows-x86_64.stock.debug" version="0.25.11-gl.18041+v25.11.363a7c8d" />
+  </dependency>
+  <dependency name="python311_arm64" linkPath="./_external/python311_arm64">
+    <package name="python" version="3_11_3_windows-arm64"/>
+  </dependency>
+  <dependency name="python311" linkPath="./_external/python311_x64">
+    <package name="python" version="3.11.10+nv1-windows-x86_64" />
+  </dependency>
+</project>

@@ -69,6 +69,17 @@ namespace lss {
   template<>
   inline ParticleBillboardType AssignFromPrimvar<ParticleBillboardType, pxr::TfToken>(const pxr::TfToken& token) {
     static pxr::RemixTokensType tokens;
+#if PXR_VERSION > 2500
+    if (token == tokens.FaceCamera_UpAxisLocked) {
+      return FaceCamera_UpAxisLocked;
+    }
+    if (token == tokens.FaceCamera_Position) {
+      return FaceCamera_Position;
+    }
+    if (token == tokens.FaceWorldUp) {
+      return FaceWorldUp;
+    }
+#else
     if (token == tokens.faceCamera_UpAxisLocked) {
       return FaceCamera_UpAxisLocked;
     }
@@ -78,36 +89,66 @@ namespace lss {
     if (token == tokens.faceWorldUp) {
       return FaceWorldUp;
     }
+#endif
     return FaceCamera_Spherical;
   }
 
   template<>
   inline ParticleSpriteSheetMode AssignFromPrimvar<ParticleSpriteSheetMode, pxr::TfToken>(const pxr::TfToken& token) {
     static pxr::RemixTokensType tokens;
+#if PXR_VERSION > 2500
+    if (token == tokens.OverrideMaterial_Lifetime) {
+      return OverrideMaterial_Lifetime;
+    }
+    if (token == tokens.OverrideMaterial_Random) {
+      return OverrideMaterial_Random;
+    }
+#else
     if (token == tokens.overrideMaterial_Lifetime) {
       return OverrideMaterial_Lifetime;
     }
     if (token == tokens.overrideMaterial_Random) {
       return OverrideMaterial_Random;
     }
+#endif
     return UseMaterialSpriteSheet;
   }
 
   template<>
   inline ParticleCollisionMode AssignFromPrimvar<ParticleCollisionMode, pxr::TfToken>(const pxr::TfToken& token) {
     static pxr::RemixTokensType tokens;
+#if PXR_VERSION > 2500
+    if (token == tokens.Stop) {
+      return ParticleCollisionMode::Stop;
+    }
+    if (token == tokens.Kill) {
+      return ParticleCollisionMode::Kill;
+    }
+#else
     if (token == tokens.stop) {
       return ParticleCollisionMode::Stop;
     }
     if (token == tokens.kill) {
       return ParticleCollisionMode::Kill;
     }
+#endif
     return ParticleCollisionMode::Bounce;
   }
 
   template<>
   inline ParticleRandomFlipAxis AssignFromPrimvar<ParticleRandomFlipAxis, pxr::TfToken>(const pxr::TfToken& token) {
     static pxr::RemixTokensType tokens;
+#if PXR_VERSION > 2500
+    if (token == tokens.Vertical) {
+      return ParticleRandomFlipAxis::Vertical;
+    }
+    if (token == tokens.Horizontal) {
+      return ParticleRandomFlipAxis::Horizontal;
+    }
+    if (token == tokens.Both) {
+      return ParticleRandomFlipAxis::Both;
+    }
+#else
     if (token == tokens.vertical) {
       return ParticleRandomFlipAxis::Vertical;
     }
@@ -117,6 +158,7 @@ namespace lss {
     if (token == tokens.both) {
       return ParticleRandomFlipAxis::Both;
     }
+#endif
     return ParticleRandomFlipAxis::None;
   }
 

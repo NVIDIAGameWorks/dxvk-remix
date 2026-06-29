@@ -116,8 +116,10 @@ namespace dxvk
     return lengthSqr(getViewToWorld()[3] - getPreviousViewToWorld()[3]) > RtxOptions::getUniqueObjectDistanceSqr();
   }
 
+  bool RtCamera::m_isFreeCameraEnabled;
+
   bool RtCamera::isFreeCameraEnabled() {
-    return enableFreeCamera();
+    return m_isFreeCameraEnabled;
   }
 
   Vector3 RtCamera::getHorizontalForwardDirection() const {
@@ -250,6 +252,12 @@ namespace dxvk
     return (freecam && isFreeCameraEnabled()) 
       ? m_matCache[MatrixType::FreeCamWorldToView] 
       : m_matCache[MatrixType::WorldToView]; 
+  }
+
+  const Matrix4& RtCamera::getWorldToViewf(bool freecam) const {
+    return (freecam && isFreeCameraEnabled())
+      ? m_matCachef[MatrixType::FreeCamWorldToView]
+      : m_matCachef[MatrixType::WorldToView];
   }
 
   const Matrix4d& RtCamera::getPreviousWorldToView(bool freecam) const { 
@@ -630,6 +638,8 @@ namespace dxvk
       return false;
     }
 
+    m_isFreeCameraEnabled = enableFreeCamera();
+
     m_context.worldToView = newWorldToView;
     m_context.viewToProjection = newViewToProjection;
     m_context.fov = fov;
@@ -751,8 +761,12 @@ namespace dxvk
       m_firstUpdate = false;
     }
 
+    // Note: cache some matrices in single precision to save on conversion at runtime
+    m_matCachef[MatrixType::WorldToView] = m_matCache[MatrixType::WorldToView];
+    m_matCachef[MatrixType::ViewToProjection] = m_matCache[MatrixType::ViewToProjection];
+
     // Only calculate free camera matrices for main camera
-    if (!enableFreeCamera() || m_type != CameraType::Main) {
+    if (!m_isFreeCameraEnabled || m_type != CameraType::Main) {
       return isCameraCut();
     }
 
@@ -778,6 +792,9 @@ namespace dxvk
     m_matCache[MatrixType::FreeCamViewToTranslatedWorld] = freeCamViewToTranslatedWorld;
 
     m_matCache[MatrixType::ViewToWorldToFreeCamViewToWorld] = m_matCache[MatrixType::WorldToView] * m_matCache[MatrixType::FreeCamViewToWorld];
+
+    // Note: cache some matrices in single precision to save on conversion at runtime
+    m_matCachef[MatrixType::FreeCamWorldToView] = m_matCache[MatrixType::FreeCamWorldToView];
 
     return false; // If we are using the debug/free camera, never do camera cuts
   }

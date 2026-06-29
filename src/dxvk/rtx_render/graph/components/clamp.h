@@ -58,7 +58,7 @@ private:
     /* the version number */ 1,
     LIST_INPUTS, LIST_STATES, LIST_OUTPUTS
   )
-  void Clamp::updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
+  void updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
     for (size_t i = start; i < end; i++) {
       if constexpr (valuePropertyType == RtComponentPropertyType::Float) {
         m_result[i] = std::clamp(m_value[i], m_minValue[i], m_maxValue[i]);

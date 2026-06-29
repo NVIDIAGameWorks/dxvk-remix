@@ -23,6 +23,8 @@
 #include <codecvt>
 #include <cassert>
 
+#ifndef _M_ARM64
+
 #include "rtx.h"
 #include "rtx_context.h"
 #include "rtx_options.h"
@@ -760,4 +762,6 @@ namespace dxvk {
     width = m_xessOutputSize.width;
     height = m_xessOutputSize.height;
   }
-} 
+}
+
+#endif

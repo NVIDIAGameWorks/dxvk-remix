@@ -23,7 +23,9 @@
 function SetupVS {
 	param(
 		[Parameter(Mandatory)]
-		[string]$Platform
+		[string]$Platform,
+
+		[string]$VcVarsVer
 	)
 	#
 	# Find vswhere (installed with recent Visual Studio versions).
@@ -50,6 +52,15 @@ function SetupVS {
 	}
 	Write-Host "Using Visual Studio installation at: ${vsPath}" -ForegroundColor Yellow
 
+	If ( ($Platform -eq "arm64") -or ($Platform -eq "arm64ec") ) {
+		$Platform = "amd64_arm64"
+	}
+
+	$vcvarsArgs = $Platform
+	if ( -not [string]::IsNullOrEmpty($VcVarsVer) ) {
+		$vcvarsArgs += " -vcvars_ver=${VcVarsVer}"
+		Write-Host "Pinning MSVC toolset to version: ${VcVarsVer}" -ForegroundColor Yellow
+	}
 
 	#
 	# Make sure the Visual Studio Command Prompt variables are set.
@@ -60,10 +71,12 @@ function SetupVS {
 	  # Load VC vars
 	  Push-Location "${vsPath}\VC\Auxiliary\Build"
 
-	  cmd /c "vcvarsall.bat $Platform &set" |
+	  cmd /c "vcvarsall.bat ${vcvarsArgs} &set" |
 		ForEach-Object {
-		  If ($_ -match "=") {
-			$v = $_.split("="); Set-Item -Force -Path "ENV:\$($v[0])" -Value "$($v[1])"
+		  # Skip lines starting with '=' (Windows pseudo-variables like '=C:=...') and
+		  # preserve values containing '=' (e.g. CI_MERGE_REQUEST_DESCRIPTION).
+		  If ($_ -match "^([^=]+)=(.*)$") {
+			Set-Item -Force -Path "ENV:\$($Matches[1])" -Value "$($Matches[2])"
 		  }
 		}
 	  Pop-Location
@@ -92,11 +105,19 @@ function PerformBuild {
 	$BuildDir = [IO.Path]::Combine($CurrentDir, $BuildSubDir)
 
 	Push-Location $CurrentDir
-		$mesonArgs = "setup --buildtype `"$BuildFlavour`" --backend `"$Backend`" `"$BuildSubDir`" --debug"
+		$mesonArgs = @("--buildtype", "`"$BuildFlavour`"",
+			"--backend", "`"$Backend`"", "`"$BuildSubDir`"", "--debug")
 		if ( $BuildTarget ) {
-	            $mesonArgs += " -Denable_tests=`"$true`""
+	            $mesonArgs += "-Denable_tests=`"$true`""
 	        }
-		Start-Process "meson" -ArgumentList $mesonArgs -wait
+
+		If ( $Platform -eq "arm64ec" ) {
+			$mesonArgs += @("--cross-file", "build-wina64ec.txt")
+		} Else { If ( $Platform -eq "arm64" ) {
+			$mesonArgs += @("--cross-file", "build-wina64.txt")
+		}}
+
+		& meson setup $mesonArgs
 	Pop-Location
 
 	if ( $LASTEXITCODE -ne 0 ) {

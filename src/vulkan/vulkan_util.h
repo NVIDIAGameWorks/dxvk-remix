@@ -157,6 +157,23 @@ namespace dxvk::vk {
     }
   }
 
+  template<typename T, typename Tin>
+  const T* findStructInPNextChain(const Tin& vkStruct, VkStructureType sType) {
+    auto pNext = vkStruct.pNext;
+
+    while (pNext) {
+      auto pStruct = reinterpret_cast<ChainStruct<T>*>(pNext);
+
+      if (pStruct->sType == sType) {
+        return reinterpret_cast<const T*>(pStruct);
+      }
+
+      pNext = pStruct->pNext;
+    }
+
+    return nullptr;
+  }
+
 }
 
 
