@@ -480,19 +480,23 @@ namespace dxvk {
       clear();
 
     // Generate a GPU dome light if necessary
-    DomeLight activeDomeLight;
-    if (getActiveDomeLight(activeDomeLight)) {
-      // Ensures a texture stays in VidMem
-      SceneManager& sceneManager = device()->getCommon()->getSceneManager();
-      sceneManager.trackTexture(activeDomeLight.texture, m_gpuDomeLightArgs.textureIndex, true, false);
-
-      m_gpuDomeLightArgs.active = true;
-      m_gpuDomeLightArgs.radiance = activeDomeLight.radiance;
-      m_gpuDomeLightArgs.worldToLightTransform = activeDomeLight.worldToLight;
-    } else {
+    {
+      // reset state
       m_gpuDomeLightArgs.active = false;
       m_gpuDomeLightArgs.radiance = Vector3(0.0f);
       m_gpuDomeLightArgs.textureIndex = BINDING_INDEX_INVALID;
+      DomeLight activeDomeLight;
+      if (getActiveDomeLight(activeDomeLight)) {
+        // Ensures a texture stays in VidMem
+        SceneManager& sceneManager = device()->getCommon()->getSceneManager();
+        sceneManager.trackTexture(activeDomeLight.texture, m_gpuDomeLightArgs.textureIndex, true, false);
+
+        if (m_gpuDomeLightArgs.textureIndex != BINDING_INDEX_INVALID) {
+          m_gpuDomeLightArgs.active = true;
+          m_gpuDomeLightArgs.radiance = activeDomeLight.radiance;
+          m_gpuDomeLightArgs.worldToLightTransform = activeDomeLight.worldToLight;
+        }
+      }
     }
 
     // Reset external active light list.
@@ -733,7 +737,12 @@ namespace dxvk {
   }
 
   bool LightManager::getActiveDomeLight(DomeLight& domeLightOut) {
-    if (m_externalDomeLights.size() == 0 || m_externalActiveDomeLight == nullptr) {
+    if (m_externalActiveDomeLight == nullptr) {
+      return false;
+    }
+
+    if (m_externalDomeLights.size() == 0) {
+      m_externalActiveDomeLight = nullptr;
       return false;
     }
 
@@ -747,6 +756,18 @@ namespace dxvk {
     domeLightOut = found->second;
 
     return true;
+  }
+
+  const DomeLightArgs& LightManager::getDomeLightArgs() {
+    const remixapi_LightHandle activeDomeLightHandle = m_externalActiveDomeLight;
+    DomeLight activeDomeLight;
+    if (!getActiveDomeLight(activeDomeLight) && activeDomeLightHandle != nullptr) {
+      m_gpuDomeLightArgs.active = false;
+      m_gpuDomeLightArgs.radiance = Vector3(0.0f);
+      m_gpuDomeLightArgs.textureIndex = BINDING_INDEX_INVALID;
+    }
+
+    return m_gpuDomeLightArgs;
   }
 
   void LightManager::addExternalDomeLight(remixapi_LightHandle handle, const DomeLight& domeLight) {
