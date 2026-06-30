@@ -499,24 +499,101 @@ void genTangSpace(vec2 uvs[3],
   bitangent = normalize(bitangentSign * newBitangent);
 }
 
-// Smart bent normal for ray tracing
-// See appendix A.3 in https://arxiv.org/pdf/1705.01263.pdf
+// Set to 1 to compile the previous bent-normal implementation.
+#ifndef USE_LEGACY_BENT_NORMAL
+#define USE_LEGACY_BENT_NORMAL 0
+#endif
+
 vec3 getBentNormal(vec3 geometryNormal, vec3 shadingNormal, vec3 viewDirection)
 {
-  // Specular reflection in shading normal
+#if USE_LEGACY_BENT_NORMAL
+  // Smart bent normal for ray tracing
+  // See appendix A.3 in https://arxiv.org/pdf/1705.01263.pdf
   const vec3 R = reflect(viewDirection, shadingNormal);
   const float a = dot(geometryNormal, R);
 
-  if (a < 0.0f) // Perturb normal
+  if (a < 0.0f)
   {
     const float b = max(0.0001f, dot(shadingNormal, geometryNormal));
     const vec3 newVector = -viewDirection + normalize(R - shadingNormal * a / b);
 
-    // Note: Fall back to the geometry normal if if normalization is not possible.
+    // Note: Fall back to the geometry normal if normalization is not possible.
     return safeNormalize(newVector, geometryNormal);
   }
-  
+
   return shadingNormal;
+#else
+  // Keep specular reflection above the geometric surface by minimally rotating
+  // the shading normal toward the geometry normal.
+  const float kIncidentClearanceScale = 0.98f;
+  const float kMaxReflectionClearanceCosine = 0.01f;
+  const float kMinTangentLength = 1e-8f;
+  const float kMinQuadraticDenominator = 1e-8f;
+
+  const vec3 incidentDirection = -viewDirection;
+  const vec3 reflectedDirection = reflect(viewDirection, shadingNormal);
+  const float geometryNormalDotIncident = max(0.0f, dot(geometryNormal, incidentDirection));
+
+  // At grazing incidence, reduce the margin so the geometry normal itself
+  // always remains a valid solution.
+  const float minGeometryNormalDotReflection = min(kIncidentClearanceScale * geometryNormalDotIncident, kMaxReflectionClearanceCosine);
+  if (dot(geometryNormal, reflectedDirection) >= minGeometryNormalDotReflection)
+  {
+    return shadingNormal;
+  }
+
+  const vec3 tangentVector = shadingNormal - geometryNormal * dot(shadingNormal, geometryNormal);
+  const float tangentVectorLength = length(tangentVector);
+  if (tangentVectorLength <= kMinTangentLength)
+  {
+    return geometryNormal;
+  }
+
+  const vec3 tangent = tangentVector / tangentVectorLength;
+  const float tangentDotIncident = dot(tangent, incidentDirection);
+
+  // Parameterize the corrected normal as normalize(geometryNormal + slope * tangent).
+  // Setting the geometric-normal component of its reflection to the required
+  // margin gives the quadratic
+  const float rootTerm = max(0.0f, square(tangentDotIncident) + square(geometryNormalDotIncident) - square(minGeometryNormalDotReflection));
+  const float root = sqrt(rootTerm);
+
+  // Evaluate the positive root in the form that avoids subtracting nearly
+  // equal values at grazing angles.
+  float slope;
+  if (tangentDotIncident >= 0.0f)
+  {
+    const float denominator = geometryNormalDotIncident + minGeometryNormalDotReflection;
+    if (denominator <= kMinQuadraticDenominator)
+    {
+      return geometryNormal;
+    }
+
+    slope = (tangentDotIncident + root) / denominator;
+  }
+  else
+  {
+    const float denominator = root - tangentDotIncident;
+    if (denominator <= kMinQuadraticDenominator)
+    {
+      return geometryNormal;
+    }
+
+    slope = (geometryNormalDotIncident - minGeometryNormalDotReflection) / denominator;
+  }
+
+  const vec3 correctedNormal = safeNormalize(geometryNormal + slope * tangent, geometryNormal);
+  const vec3 correctedReflection = reflect(viewDirection, correctedNormal);
+
+  // Guard the closed-form solution against float32 cancellation at extremely
+  // grazing angles. The geometry normal is always the conservative fallback.
+  if (dot(correctedNormal, incidentDirection) <= 0.0f || dot(geometryNormal, correctedReflection) < 0.0f)
+  {
+    return geometryNormal;
+  }
+
+  return correctedNormal;
+#endif
 }
 
 f16mat3 getReflectionMatrix(f16vec3 normal)
