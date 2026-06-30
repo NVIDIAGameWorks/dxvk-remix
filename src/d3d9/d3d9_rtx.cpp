@@ -525,8 +525,12 @@ namespace dxvk {
     // TODO(REMIX-760): Support reverse engineering pre-transformed vertices
     if (d3d9State().vertexDecl != nullptr) {
       if (d3d9State().vertexDecl->TestFlag(D3D9VertexDeclFlag::HasPositionT)) {
-        ONCE(Logger::info("[RTX-Compatibility-Info] Skipped drawcall, using pre-transformed vertices which isn't currently supported."));
-        return { RtxGeometryStatus::Rasterized, false };
+        if (preTransformedVerticesIsUI()) {
+          return { RtxGeometryStatus::Rasterized, true };
+        } else {
+          ONCE(Logger::info("[RTX-Compatibility-Info] Skipped drawcall, using pre-transformed vertices which isn't currently supported."));
+          return { RtxGeometryStatus::Rasterized, false };
+        }
       }
     }
 
