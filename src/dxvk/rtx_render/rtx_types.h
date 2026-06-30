@@ -185,6 +185,7 @@ struct ReplacementInstance {
   XXH64_hash_t identityHash = kEmptyHash;
   XXH64_hash_t spatialMapHash = kEmptyHash;
   XXH64_hash_t materialHash = kEmptyHash;
+  XXH64_hash_t legacyMaterialIdentityHash = kEmptyHash;
   XXH64_hash_t vertexPositionHash = kEmptyHash;
   Vector3 centroid = Vector3(0.f);
   uint32_t frameCreated = 0;

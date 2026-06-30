@@ -28,6 +28,10 @@
 
 namespace dxvk {
 
+  // Indicates that an option with the InvalidatesDrawcallTranslation flag has been changed since the last frame.
+  // This should only ever be modified or read on the dxvk-cs thread.
+  bool RtxOptionManager::s_drawcallTranslationInvalid = false;
+
   // ============================================================================
   // RtxOptionManager static method implementations
   // ============================================================================
@@ -185,6 +189,9 @@ namespace dxvk {
 
       // Invoke onChange callbacks after promoting all values
       for (RtxOptionImpl* rtxOption : dirtyOptionsVector) {
+        if ((rtxOption->getFlags() & RtxOptionFlags::InvalidatesDrawcallTranslation) != 0) {
+          s_drawcallTranslationInvalid = true;
+        }
         rtxOption->invokeOnChangeCallback(device);
       }
 
@@ -209,6 +216,14 @@ namespace dxvk {
 
     // Don't let dirty options persist across frames
     getDirtyOptionMap().clear();
+  }
+
+  void RtxOptionManager::clearDrawcallTranslationInvalid() {
+    s_drawcallTranslationInvalid = false;
+  }
+
+  bool RtxOptionManager::isDrawcallTranslationInvalid() {
+    return s_drawcallTranslationInvalid;
   }
 
   void RtxOptionManager::logEffectiveValues() {

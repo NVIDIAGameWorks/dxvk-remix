@@ -571,6 +571,9 @@ namespace dxvk {
     ImGUI::SetFogStates(m_fogStates, m_fog.getHash());
     m_fog = FogState();
     m_fogStates.clear();
+    
+    // Any drawcall translation invalidation has been consumed by this point. Clear the flag before new dirty options are processed.
+    RtxOptionManager::clearDrawcallTranslationInvalid();
   }
 
   std::unordered_set<XXH64_hash_t> uniqueHashes;
@@ -714,15 +717,21 @@ namespace dxvk {
         m_device->getCommon()->getTextureManager().getTextureCacheGeneration() ==
         m_textureCacheGenerationValidForPreserve;
 
+    const XXH64_hash_t legacyMaterialIdentityHash = input.getMaterialData().computeIdentityHash();
+    const bool legacyMaterialIdentityHashMatch =
+        replacementInstance->legacyMaterialIdentityHash == legacyMaterialIdentityHash;
+
     const bool usePreservePath =
         RtxOptions::enablePreservePath() &&
         replacementInstance->dirtyFlags.isClear() &&
+        !RtxOptionManager::isDrawcallTranslationInvalid() &&
         !secondSubmissionThisFrame &&
         !input.getCategoryFlags().test(InstanceCategories::ParticleEmitter) &&
         !RtxOptions::shouldConvertToLight(input.getMaterialData().getHash()) &&
         !blasAlreadyTouchedByOtherDraw() &&
         !anyReplacementHasParticleSystem() &&
         activeReplacementsMatch &&
+        legacyMaterialIdentityHashMatch &&
         !terrainCascadesJustChanged &&
         cachedTexturesValidForPreserve;
 
@@ -753,6 +762,7 @@ namespace dxvk {
           }
         }
       }
+      replacementInstance->legacyMaterialIdentityHash = legacyMaterialIdentityHash;
     }
 
     replacementInstance->frameLastSeen = currentFrameId;
@@ -1079,6 +1089,9 @@ namespace dxvk {
       instance.surface.prevObjectToWorld = instance.surface.objectToWorld;
       instance.surface.isStatic = true;
     }
+
+    // The last dynamic update may have left hasMaterialChanged == true.
+    instance.surface.hasMaterialChanged = false;
 
     // Buffer indices are per-frame (m_bufferCache is cleared in onFrameEnd),
     // so re-register geometry buffers and copy fresh indices to the surface.

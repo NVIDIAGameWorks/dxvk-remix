@@ -50,6 +50,7 @@ namespace dxvk {
     NoSave = 0x1,       // Runtime-only option - routed to Derived layer, never saved to config files
     NoReset = 0x2,      // Don't reset this option when layer is cleared via UI
     UserSetting = 0x4,  // End-user setting - belongs in User or Quality layers, not in mod configs
+    InvalidatesDrawcallTranslation = 0x8, // Options that invalidate preserved draw calls (forces retranslation next frame when changed)
   };
   
   // Mask of flags that determine which layer an option belongs in.

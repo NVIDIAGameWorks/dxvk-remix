@@ -125,8 +125,16 @@ namespace dxvk {
     // A value is redundant if lower priority layers would resolve to the same value
     static size_t removeRedundantLayerValues(const RtxOptionLayer* layer);
 
+    // When an RtxOption that is used during draw call translation is changed, this flag is set to true.
+    // This flag is cleared at the start of SceneManager::onFrameEnd before processing any dirty options.
+    // Call this only from the dxvk-cs thread.
+    static bool isDrawcallTranslationInvalid();
+    // Call this only from the dxvk-cs thread.
+    static void clearDrawcallTranslationInvalid();
+
   private:
     static std::mutex s_layerMutex;
+    static bool s_drawcallTranslationInvalid;
     
     // Remove a layer from the registry and all options (internal use only)
     static bool unregisterLayer(const RtxOptionLayer* layer);
