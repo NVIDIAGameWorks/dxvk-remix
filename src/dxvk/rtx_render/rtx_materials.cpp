@@ -23,8 +23,120 @@
 #include "rtx_materials.h"
 
 #include "rtx_options.h"
+#include "../util/util_struct_hash.h"
 
 namespace dxvk {
+
+XXH64_hash_t LegacyMaterialData::computeIdentityHash() const {
+  // Only fields consumed by determineMaterialData(), mergeLegacyMaterial(), and
+  // InstanceManager surface alpha/blend setup. D3DMATERIAL9 constants, color-source
+  // intermediates, texture slots, and alphaTestEnabled are excluded.
+  struct LegacyMaterialIdentityHashData {
+    XXH64_hash_t colorTextureHash0;
+    XXH64_hash_t colorTextureHash1;
+    XXH64_hash_t samplerHash0;
+    XXH64_hash_t samplerHash1;
+    uint32_t alphaTestCompareOp;
+    uint32_t tFactor;
+    uint32_t blendEnableBlending;
+    uint32_t blendColorSrcFactor;
+    uint32_t blendColorDstFactor;
+    uint32_t blendColorBlendOp;
+    uint32_t blendAlphaSrcFactor;
+    uint32_t blendAlphaDstFactor;
+    uint32_t blendAlphaBlendOp;
+    uint32_t blendWriteMask;
+    uint8_t alphaTestReferenceValue;
+    uint8_t textureColorArg1Source;
+    uint8_t textureColorArg2Source;
+    uint8_t textureColorOperation;
+    uint8_t textureAlphaArg1Source;
+    uint8_t textureAlphaArg2Source;
+    uint8_t textureAlphaOperation;
+    uint8_t isTextureFactorBlend;
+    uint8_t isVertexColorBakedLighting;
+    uint8_t padding[7];
+  };
+
+  static_assert(hasNoImplicitPadding<LegacyMaterialIdentityHashData>(
+      &LegacyMaterialIdentityHashData::colorTextureHash0,
+      &LegacyMaterialIdentityHashData::colorTextureHash1,
+      &LegacyMaterialIdentityHashData::samplerHash0,
+      &LegacyMaterialIdentityHashData::samplerHash1,
+      &LegacyMaterialIdentityHashData::alphaTestCompareOp,
+      &LegacyMaterialIdentityHashData::tFactor,
+      &LegacyMaterialIdentityHashData::blendEnableBlending,
+      &LegacyMaterialIdentityHashData::blendColorSrcFactor,
+      &LegacyMaterialIdentityHashData::blendColorDstFactor,
+      &LegacyMaterialIdentityHashData::blendColorBlendOp,
+      &LegacyMaterialIdentityHashData::blendAlphaSrcFactor,
+      &LegacyMaterialIdentityHashData::blendAlphaDstFactor,
+      &LegacyMaterialIdentityHashData::blendAlphaBlendOp,
+      &LegacyMaterialIdentityHashData::blendWriteMask,
+      &LegacyMaterialIdentityHashData::alphaTestReferenceValue,
+      &LegacyMaterialIdentityHashData::textureColorArg1Source,
+      &LegacyMaterialIdentityHashData::textureColorArg2Source,
+      &LegacyMaterialIdentityHashData::textureColorOperation,
+      &LegacyMaterialIdentityHashData::textureAlphaArg1Source,
+      &LegacyMaterialIdentityHashData::textureAlphaArg2Source,
+      &LegacyMaterialIdentityHashData::textureAlphaOperation,
+      &LegacyMaterialIdentityHashData::isTextureFactorBlend,
+      &LegacyMaterialIdentityHashData::isVertexColorBakedLighting,
+      &LegacyMaterialIdentityHashData::padding),
+      "LegacyMaterialIdentityHashData has padding bytes");
+
+  LegacyMaterialIdentityHashData data{};
+  data.colorTextureHash0 = colorTextures[0].getImageHash();
+  data.colorTextureHash1 = colorTextures[1].getImageHash();
+  data.samplerHash0 = samplers[0].ptr() != nullptr ? samplers[0]->info().calculateHash() : kEmptyHash;
+  data.samplerHash1 = samplers[1].ptr() != nullptr ? samplers[1]->info().calculateHash() : kEmptyHash;
+  data.alphaTestCompareOp = static_cast<uint32_t>(alphaTestCompareOp);
+  data.tFactor = tFactor;
+  data.blendEnableBlending = static_cast<uint32_t>(blendMode.enableBlending);
+  data.blendColorSrcFactor = static_cast<uint32_t>(blendMode.colorSrcFactor);
+  data.blendColorDstFactor = static_cast<uint32_t>(blendMode.colorDstFactor);
+  data.blendColorBlendOp = static_cast<uint32_t>(blendMode.colorBlendOp);
+  data.blendAlphaSrcFactor = static_cast<uint32_t>(blendMode.alphaSrcFactor);
+  data.blendAlphaDstFactor = static_cast<uint32_t>(blendMode.alphaDstFactor);
+  data.blendAlphaBlendOp = static_cast<uint32_t>(blendMode.alphaBlendOp);
+  data.blendWriteMask = static_cast<uint32_t>(blendMode.writeMask);
+  data.alphaTestReferenceValue = alphaTestReferenceValue;
+  data.textureColorArg1Source = static_cast<uint8_t>(textureColorArg1Source);
+  data.textureColorArg2Source = static_cast<uint8_t>(textureColorArg2Source);
+  data.textureColorOperation = static_cast<uint8_t>(textureColorOperation);
+  data.textureAlphaArg1Source = static_cast<uint8_t>(textureAlphaArg1Source);
+  data.textureAlphaArg2Source = static_cast<uint8_t>(textureAlphaArg2Source);
+  data.textureAlphaOperation = static_cast<uint8_t>(textureAlphaOperation);
+  data.isTextureFactorBlend = isTextureFactorBlend ? 1u : 0u;
+  data.isVertexColorBakedLighting = isVertexColorBakedLighting ? 1u : 0u;
+
+  return hashStructByMemory(
+      data,
+      &LegacyMaterialIdentityHashData::colorTextureHash0,
+      &LegacyMaterialIdentityHashData::colorTextureHash1,
+      &LegacyMaterialIdentityHashData::samplerHash0,
+      &LegacyMaterialIdentityHashData::samplerHash1,
+      &LegacyMaterialIdentityHashData::alphaTestCompareOp,
+      &LegacyMaterialIdentityHashData::tFactor,
+      &LegacyMaterialIdentityHashData::blendEnableBlending,
+      &LegacyMaterialIdentityHashData::blendColorSrcFactor,
+      &LegacyMaterialIdentityHashData::blendColorDstFactor,
+      &LegacyMaterialIdentityHashData::blendColorBlendOp,
+      &LegacyMaterialIdentityHashData::blendAlphaSrcFactor,
+      &LegacyMaterialIdentityHashData::blendAlphaDstFactor,
+      &LegacyMaterialIdentityHashData::blendAlphaBlendOp,
+      &LegacyMaterialIdentityHashData::blendWriteMask,
+      &LegacyMaterialIdentityHashData::alphaTestReferenceValue,
+      &LegacyMaterialIdentityHashData::textureColorArg1Source,
+      &LegacyMaterialIdentityHashData::textureColorArg2Source,
+      &LegacyMaterialIdentityHashData::textureColorOperation,
+      &LegacyMaterialIdentityHashData::textureAlphaArg1Source,
+      &LegacyMaterialIdentityHashData::textureAlphaArg2Source,
+      &LegacyMaterialIdentityHashData::textureAlphaOperation,
+      &LegacyMaterialIdentityHashData::isTextureFactorBlend,
+      &LegacyMaterialIdentityHashData::isVertexColorBakedLighting,
+      &LegacyMaterialIdentityHashData::padding);
+}
 
 bool getEnableDiffuseLayerOverrideHack() {
   return TranslucentMaterialOptions::enableDiffuseLayerOverride();

@@ -495,22 +495,57 @@ struct RtSurface {
 
 struct LegacyMaterialDefaults {
   friend class ImGUI;
-  RTX_OPTION("rtx.legacyMaterial", float, anisotropy, 0.f, "The default roughness anisotropy to use for non-replaced \"legacy\" materials. Should be in the range -1 to 1, where 0 is isotropic.");
-  RTX_OPTION("rtx.legacyMaterial", float, emissiveIntensity, 0.f, "The default emissive intensity to use for non-replaced \"legacy\" materials.");
-  RTX_OPTION("rtx.legacyMaterial", bool, useAlbedoTextureIfPresent, true, "A flag to determine if an \"albedo\" texture (a qualifying color texture) from the original application should be used if present on non-replaced \"legacy\" materials.");
-  RTX_OPTION("rtx.legacyMaterial", Vector3, albedoConstant, Vector3(1.0f, 1.0f, 1.0f), "The default albedo constant to use for non-replaced \"legacy\" materials. Should be a color in sRGB colorspace with gamma encoding.");
-  RTX_OPTION("rtx.legacyMaterial", float, opacityConstant, 1.f, "The default opacity constant to use for non-replaced \"legacy\" materials. Should be in the range 0 to 1.");
-  RTX_OPTION_ENV("rtx.legacyMaterial", float, roughnessConstant, 0.7f, "DXVK_LEGACY_MATERIAL_DEFAULT_ROUGHNESS", "The default perceptual roughness constant to use for non-replaced \"legacy\" materials. Should be in the range 0 to 1.");
-  RTX_OPTION("rtx.legacyMaterial", float, metallicConstant, 0.1f, "The default metallic constant to use for non-replaced \"legacy\" materials. Should be in the range 0 to 1.");
-  RTX_OPTION("rtx.legacyMaterial", Vector3, emissiveColorConstant, Vector3(0.0f, 0.0f, 0.0f), "The default emissive color constant to use for non-replaced \"legacy\" materials. Should be a color in sRGB colorspace with gamma encoding.");
-  RTX_OPTION("rtx.legacyMaterial", bool, enableEmissive, false, "A flag to determine if emission should be used on non-replaced \"legacy\" materials.");
-  RTX_OPTION("rtx.legacyMaterial", bool, ignoreAlphaChannel, false, "A flag to determine if the albedo alpha channel should be ignored on non-replaced \"legacy\" materials.");
-  RTX_OPTION("rtx.legacyMaterial", bool, enableThinFilm, false, "A flag to determine if a thin-film layer should be used on non-replaced \"legacy\" materials.");
-  RTX_OPTION("rtx.legacyMaterial", bool, alphaIsThinFilmThickness, false, "A flag to determine if the alpha channel from the albedo source should be treated as thin film thickness on non-replaced \"legacy\" materials.");
+  RTX_OPTION_ARGS("rtx.legacyMaterial", float, anisotropy, 0.f,
+                  "The default roughness anisotropy to use for non-replaced \"legacy\" materials. "
+                  "Should be in the range -1 to 1, where 0 is isotropic.",
+                  args.flags = RtxOptionFlags::InvalidatesDrawcallTranslation);
+  RTX_OPTION_ARGS("rtx.legacyMaterial", float, emissiveIntensity, 0.f,
+                  "The default emissive intensity to use for non-replaced \"legacy\" materials.",
+                  args.flags = RtxOptionFlags::InvalidatesDrawcallTranslation);
+  RTX_OPTION_ARGS("rtx.legacyMaterial", bool, useAlbedoTextureIfPresent, true,
+                  "A flag to determine if an \"albedo\" texture (a qualifying color texture) from the original application "
+                  "should be used if present on non-replaced \"legacy\" materials.",
+                  args.flags = RtxOptionFlags::InvalidatesDrawcallTranslation);
+  RTX_OPTION_ARGS("rtx.legacyMaterial", Vector3, albedoConstant, Vector3(1.0f, 1.0f, 1.0f),
+                  "The default albedo constant to use for non-replaced \"legacy\" materials. "
+                  "Should be a color in sRGB colorspace with gamma encoding.",
+                  args.flags = RtxOptionFlags::InvalidatesDrawcallTranslation);
+  RTX_OPTION_ARGS("rtx.legacyMaterial", float, opacityConstant, 1.f,
+                  "The default opacity constant to use for non-replaced \"legacy\" materials. "
+                  "Should be in the range 0 to 1.",
+                  args.flags = RtxOptionFlags::InvalidatesDrawcallTranslation);
+  RTX_OPTION_ARGS("rtx.legacyMaterial", float, roughnessConstant, 0.7f,
+                  "The default perceptual roughness constant to use for non-replaced \"legacy\" materials. "
+                  "Should be in the range 0 to 1.",
+                  args.environment = "DXVK_LEGACY_MATERIAL_DEFAULT_ROUGHNESS",
+                  args.flags = RtxOptionFlags::InvalidatesDrawcallTranslation);
+  RTX_OPTION_ARGS("rtx.legacyMaterial", float, metallicConstant, 0.1f,
+                  "The default metallic constant to use for non-replaced \"legacy\" materials. "
+                  "Should be in the range 0 to 1.",
+                  args.flags = RtxOptionFlags::InvalidatesDrawcallTranslation);
+  RTX_OPTION_ARGS("rtx.legacyMaterial", Vector3, emissiveColorConstant, Vector3(0.0f, 0.0f, 0.0f),
+                  "The default emissive color constant to use for non-replaced \"legacy\" materials. "
+                  "Should be a color in sRGB colorspace with gamma encoding.",
+                  args.flags = RtxOptionFlags::InvalidatesDrawcallTranslation);
+  RTX_OPTION_ARGS("rtx.legacyMaterial", bool, enableEmissive, false,
+                  "A flag to determine if emission should be used on non-replaced \"legacy\" materials.",
+                  args.flags = RtxOptionFlags::InvalidatesDrawcallTranslation);
+  RTX_OPTION_ARGS("rtx.legacyMaterial", bool, ignoreAlphaChannel, false,
+                  "A flag to determine if the albedo alpha channel should be ignored on non-replaced \"legacy\" materials.",
+                  args.flags = RtxOptionFlags::InvalidatesDrawcallTranslation);
+  RTX_OPTION_ARGS("rtx.legacyMaterial", bool, enableThinFilm, false,
+                  "A flag to determine if a thin-film layer should be used on non-replaced \"legacy\" materials.",
+                  args.flags = RtxOptionFlags::InvalidatesDrawcallTranslation);
+  RTX_OPTION_ARGS("rtx.legacyMaterial", bool, alphaIsThinFilmThickness, false,
+                  "A flag to determine if the alpha channel from the albedo source should be treated as thin film thickness "
+                  "on non-replaced \"legacy\" materials.",
+                  args.flags = RtxOptionFlags::InvalidatesDrawcallTranslation);
   // Note: Should be something non-zero as 0 is an invalid thickness to have (even if this is just unused).
-  RTX_OPTION("rtx.legacyMaterial", float, thinFilmThicknessConstant, 200.f,
-             "The thickness (in nanometers) of the thin-film layer assuming it is enabled on non-replaced \"legacy\" materials.\n"
-             "Should be any value larger than 0, typically within the wavelength of light, but must be less than or equal to OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS (" STRINGIFY(OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS) " nm).");
+  RTX_OPTION_ARGS("rtx.legacyMaterial", float, thinFilmThicknessConstant, 200.f,
+                  "The thickness (in nanometers) of the thin-film layer assuming it is enabled on non-replaced \"legacy\" materials.\n"
+                  "Should be any value larger than 0, typically within the wavelength of light, but must be less than or equal to "
+                  "OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS (" STRINGIFY(OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS) " nm).",
+                  args.flags = RtxOptionFlags::InvalidatesDrawcallTranslation);
 };
 
 // Surface Materials
@@ -1706,6 +1741,9 @@ struct LegacyMaterialData {
   const XXH64_hash_t getHash() const {
     return m_cachedHash;
   }
+
+  // Hash of legacy material inputs that affect dynamic-path material binding.
+  XXH64_hash_t computeIdentityHash() const;
 
   const TextureRef& getColorTexture() const {
     return colorTextures[0];

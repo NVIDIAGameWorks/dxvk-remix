@@ -132,6 +132,7 @@ namespace dxvk {
     prims.clear();
     root = PrimInstance();
     activeReplacements = nullptr;
+    legacyMaterialIdentityHash = kEmptyHash;
     geometryBoundingBox.invalidate();
     lightBoundingBox.invalidate();
     boundingBoxDirty = true;
