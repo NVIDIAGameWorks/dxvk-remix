@@ -2804,6 +2804,7 @@ namespace dxvk {
       if (RemixGui::CollapsingHeader("Heuristics", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
         RemixGui::Checkbox("Orthographic Is UI", &D3D9Rtx::orthographicIsUIObject());
+        RemixGui::Checkbox("Pre-Transformed Vertices Is UI", &D3D9Rtx::preTransformedVerticesIsUIObject());
         RemixGui::Checkbox("Allow Cubemaps", &D3D9Rtx::allowCubemapsObject());
         RemixGui::Checkbox("Always Calculate AABB (For Instance Matching)", &RtxOptions::enableAlwaysCalculateAABBObject());
         RemixGui::Checkbox("Skip Sky Fog Values", &RtxOptions::fogIgnoreSkyObject());

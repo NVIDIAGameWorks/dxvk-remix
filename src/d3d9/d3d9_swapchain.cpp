@@ -1101,11 +1101,18 @@ namespace dxvk {
     if (env::getEnvVar("DXVK_FORCE_WINDOWED") == "1")
       pPresentParams->Windowed         = TRUE;
 
+    const bool isDxvkResolutionEnvVarSet = env::getEnvVar("DXVK_RESOLUTION_WIDTH") != "" || env::getEnvVar("DXVK_RESOLUTION_HEIGHT") != "";
+
     if (env::getEnvVar("DXVK_RESOLUTION_WIDTH") != "")
       pPresentParams->BackBufferWidth = stoul(env::getEnvVar("DXVK_RESOLUTION_WIDTH"));
 
     if (env::getEnvVar("DXVK_RESOLUTION_HEIGHT") != "")
       pPresentParams->BackBufferHeight = stoul(env::getEnvVar("DXVK_RESOLUTION_HEIGHT"));
+
+    if (!isDxvkResolutionEnvVarSet) {
+      m_originalWidth = pPresentParams->BackBufferWidth;
+      m_originalHeight = pPresentParams->BackBufferHeight;
+    }
 
     m_widthScale = (float)pPresentParams->BackBufferWidth / m_originalWidth;
     m_heightScale = (float)pPresentParams->BackBufferHeight / m_originalHeight;
