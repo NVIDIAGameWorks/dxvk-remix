@@ -1,4 +1,4 @@
-/*
+﻿/*
 * Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
@@ -131,6 +131,7 @@ namespace dxvk {
           "Jerran Schmidt",
           "Sascha Sertel",
           "Jeremy Shopf",
+          "Kamil Slawicki",
           "Nuno Subtil",
           "Ilya Terentiev",
           "Peter Thacker",
