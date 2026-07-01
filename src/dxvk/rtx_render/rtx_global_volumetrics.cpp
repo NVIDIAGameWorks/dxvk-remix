@@ -172,6 +172,14 @@ namespace dxvk {
 
   RtxGlobalVolumetrics::RtxGlobalVolumetrics(DxvkDevice* device) : CommonDeviceObject(device), RtxPass(device) {}
 
+  void RtxGlobalVolumetrics::onFroxelResourceOptionsChanged(DxvkDevice* device) {
+    if (device == nullptr) {
+      return;
+    }
+
+    device->getCommon()->metaGlobalVolumetrics().m_rebuildFroxels = true;
+  }
+
   // Quality level presets, x component controls the froxelGridResolutionScale and the y component controls the froxelDepthSlices settings.
   static const int2 qualityModes[RtxGlobalVolumetrics::QualityLevel::QualityCount] = {
     int2(32, 48),
@@ -228,8 +236,8 @@ namespace dxvk {
       RemixGui::Checkbox("Show Advanced Options", &showAdvanced);
 
       if (showAdvanced) {
-        m_rebuildFroxels |= RemixGui::DragInt("Froxel Grid Resolution Scale", &froxelGridResolutionScaleObject(), 0.1f, 1);
-        m_rebuildFroxels |= RemixGui::DragInt("Froxel Depth Slices", &froxelDepthSlicesObject(), 0.1f, 1, UINT16_MAX);
+        RemixGui::DragInt("Froxel Grid Resolution Scale", &froxelGridResolutionScaleObject(), 0.1f, 1);
+        RemixGui::DragInt("Froxel Depth Slices", &froxelDepthSlicesObject(), 0.1f, 1, UINT16_MAX);
         RemixGui::DragInt("Max Accumulation Frames", &maxAccumulationFramesObject(), 0.1f, 1, UINT8_MAX);
         RemixGui::DragFloat("Froxel Depth Slice Distribution Exponent", &froxelDepthSliceDistributionExponentObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
         RemixGui::DragFloat("Froxel Max Distance", &froxelMaxDistanceMetersObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
@@ -242,8 +250,8 @@ namespace dxvk {
 
         ImGui::BeginDisabled(enableReferenceMode());
 
-        m_rebuildFroxels |= RemixGui::DragInt("Restir Grid Downsample Factor", &restirGridScaleObject(), 0.1f, 1);
-        m_rebuildFroxels |= RemixGui::DragInt("Restir Froxel Depth Slices", &restirFroxelDepthSlicesObject(), 0.1f, 1, UINT16_MAX);
+        RemixGui::DragInt("Restir Grid Downsample Factor", &restirGridScaleObject(), 0.1f, 1);
+        RemixGui::DragInt("Restir Froxel Depth Slices", &restirFroxelDepthSlicesObject(), 0.1f, 1, UINT16_MAX);
         RemixGui::DragFloat("Restir Guard Band Scale Factor", &restirGridGuardBandFactorObject(), 0.1f, 1.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 
         RemixGui::DragInt("Initial RIS Sample Count", &initialRISSampleCountObject(), 0.05f, 1, UINT8_MAX);
@@ -404,24 +412,8 @@ namespace dxvk {
       qualityPreset = qualityModes[desiredQualityLevel];
     }
 
-    // Set new values based on preset values and cache old values
-
-    const auto newFroxelGridResolutionScale = qualityPreset.x;
-    const auto newFroxelDepthSlices = qualityPreset.y;
-    const auto oldFroxelGridResolutionScale = froxelGridResolutionScale();
-    const auto oldFroxelDepthSlices = froxelDepthSlices();
-
-    froxelGridResolutionScale.setDeferred(newFroxelGridResolutionScale);
-    froxelDepthSlices.setDeferred(newFroxelDepthSlices);
-
-    // Indicate that the froxel resources should be rebuilt if any relevant values changed
-
-    if (
-      newFroxelGridResolutionScale != oldFroxelGridResolutionScale ||
-      newFroxelDepthSlices != oldFroxelDepthSlices
-    ) {
-      m_rebuildFroxels = true;
-    }
+    froxelGridResolutionScale.setDeferred(static_cast<uint32_t>(qualityPreset.x));
+    froxelDepthSlices.setDeferred(static_cast<uint16_t>(qualityPreset.y));
   }
 
   void RtxGlobalVolumetrics::setPreset(const PresetType presetType) {
@@ -798,7 +790,6 @@ namespace dxvk {
 
     if (m_rebuildFroxels) {
       createDownscaledResource(ctx, frameBeginCtx.downscaledExtent);
-      m_rebuildFroxels = false;
     }
   }
 
@@ -832,6 +823,8 @@ namespace dxvk {
 
     m_volumeReservoirs[0] = Resources::createImageResource(ctx, "volume reservoir 0", restirFroxelGridFullDimensions, VK_FORMAT_R32G32B32A32_UINT, 1, VK_IMAGE_TYPE_3D, VK_IMAGE_VIEW_TYPE_3D);
     m_volumeReservoirs[1] = Resources::createImageResource(ctx, "volume reservoir 1", restirFroxelGridFullDimensions, VK_FORMAT_R32G32B32A32_UINT, 1, VK_IMAGE_TYPE_3D, VK_IMAGE_VIEW_TYPE_3D);
+
+    m_rebuildFroxels = false;
   }
 
   void RtxGlobalVolumetrics::releaseDownscaledResource() {
