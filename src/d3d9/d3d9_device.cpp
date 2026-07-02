@@ -4624,11 +4624,21 @@ namespace dxvk {
     const bool readOnly = Flags & D3DLOCK_READONLY;
     pResource->SetReadOnlyLocked(Subresource, readOnly);
 
-    // On a write lock of mip 0, clear the existing hash so SetupForRtxFrom recomputes it.
+    // These hashes are configured as stable identities for RTX draw-call setup.
+    // Some games update them after setup, but Remix still needs the original
+    // hash to classify terrain and omit auxiliary textures like lightmaps.
     if (MipLevel == 0 && !readOnly) {
       Rc<DxvkImage> image = pResource->GetImage();
-      if (image != nullptr && image->getHash() != kEmptyHash) {
-        pResource->ClearHash();
+      if (image != nullptr) {
+        const XXH64_hash_t imageHash = image->getHash();
+        const bool keepConfiguredHash =
+          lookupHash(RtxOptions::terrainTextures(), imageHash) ||
+          lookupHash(RtxOptions::lightmapTextures(), imageHash) ||
+          lookupHash(RtxOptions::ignoreTextures(), imageHash) ||
+          lookupHash(RtxOptions::ignoreBakedLightingTextures(), imageHash);
+        if (imageHash != kEmptyHash && !keepConfiguredHash) {
+          pResource->ClearHash();
+        }
       }
     }
 
