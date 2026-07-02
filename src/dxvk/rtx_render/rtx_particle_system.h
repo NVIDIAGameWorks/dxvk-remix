@@ -28,9 +28,11 @@
 #include "rtx_resources.h"
 #include "rtx/pass/particles/particle_system_binding_indices.h"
 #include <random>
+#include <unordered_map>
 
 namespace dxvk {
   class RtxContext;
+  class RtInstance;
 
   /**
     * A particle system implementation that can handle multiple materials,
@@ -179,6 +181,10 @@ namespace dxvk {
     RTX_OPTION("rtx.particles", bool, enableSpawning, true, "Controls whether or not any particle system can currently spawn new particles.");
     RTX_OPTION("rtx.particles", float, timeScale, 1.f, "Time modifier, can be used to slow/speed up time.");
 
+    RTX_OPTION("rtx.particles", bool, enableDiscontinuityGuard, false, "ON: when an emitter's one-frame motion deviates from a moving average of its recent velocity (swap / teleport / loop restart), collapse the spawn prev transform to the current one to kill the spawn ghost trail. This may fix bugs where particles seems to blur across large distances for one frame. Option may be removed when instance tracking becomes more reliable.");
+    RTX_OPTION_ARGS("rtx.particles", float, discontinuityFactor, 3.0f, "Multiplier on an emitter's recent velocity (plus the floor) above which a one-frame deviation is treated as a discontinuity (swap / teleport), collapsing the spawn context's prev transform to the current one. Higher = more tolerant before snapping. Only used when rtx.particles.enableDiscontinuityGuard is ON.", args.minValue = 1.0f);
+    RTX_OPTION_ARGS("rtx.particles", float, discontinuityFloor, 1.0f, "Minimum per-frame motion added to the emitter's recent speed when forming the discontinuity threshold. Suppresses false snaps from jitter on a near-stationary emitter. This value is multiplied by rtx.sceneScale (rendering units of 1cm per game unit, default 1). Only used when rtx.particles.enableDiscontinuityGuard is ON.", args.minValue = 0.0f);
+
     RTX_OPTION("rtx.particles.globalPreset", int, spawnRatePerSecond, 100, "Number of particles (per system) to spawn per second on average.");
     RTX_OPTION("rtx.particles.globalPreset", float, spawnBurstDuration, 0.f, "Number of seconds between particle spawning bursts.  For a value of 0, we assume continuous spawning, for all values greater than 0 we expect particles to be spawned in bursts.  This value will still respect the spawn rate per second parameter and the max particle parameter.");
     RTX_OPTION("rtx.particles.globalPreset", int, numberOfParticlesPerMaterial, 10000, "Maximum number of particles to simulate per material simultaneously.  There is a performance consideration, lower numbers are more performant.  Ideal is to tune this number for your specific needs.");
@@ -237,6 +243,9 @@ namespace dxvk {
 
     void allocStaticBuffers(DxvkContext* ctx);
     void writeSpawnContextsToGpu(RtxContext* ctx);
+
+    // Returns the spawn prev transform, collapsing it to currTransform on a motion discontinuity.
+    Matrix4 resolveSpawnPrevTransform(const RtInstance& instance, const Matrix4& currTransform, const Matrix4& prevTransform, uint32_t currentFrameId);
 
     void prepareForNextFrame();
 
