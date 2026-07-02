@@ -188,6 +188,18 @@ namespace dxvk {
       RemixGui::Checkbox("Enable Spawning", &enableSpawningObject());
       RemixGui::DragFloat("Time Scale", &timeScaleObject(), 0.01f, 0.f, 1.f, "%.2f");
 
+      if (RemixGui::CollapsingHeader("Emitter Discontinuity Lerp Guard", ImGuiTreeNodeFlags_CollapsingHeader)) {
+        ImGui::Indent();
+        ImGui::PushID("discontinuity_guard");
+        RemixGui::Checkbox("Enable", &enableDiscontinuityGuardObject());
+        ImGui::BeginDisabled(!enableDiscontinuityGuard());
+        RemixGui::DragFloat("Discontinuity Factor", &discontinuityFactorObject(), 0.01f, 1.f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        RemixGui::DragFloat("Discontinuity Floor", &discontinuityFloorObject(), 0.01f, 0.f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::EndDisabled();
+        ImGui::PopID();
+        ImGui::Unindent();
+      }
+
       if (RemixGui::CollapsingHeader("Global Preset", ImGuiTreeNodeFlags_CollapsingHeader)) {
         ImGui::Indent();
         ImGui::TextWrapped("The following settings will be applied to all particle systems created using the texture tagging mechanism.  Particle systems created via USD assets are not affected by these.");
@@ -726,10 +738,51 @@ namespace dxvk {
     prepareForNextFrame();
   }
 
+  Matrix4 RtxParticleSystemManager::resolveSpawnPrevTransform(const RtInstance& instance, const Matrix4& currTransform, const Matrix4& prevTransform, const uint32_t currentFrameId) {
+    if (!enableDiscontinuityGuard() || instance.getId() == kInvalidInstanceId) {
+      return prevTransform;
+    }
+
+    RtInstance::EmitterMotionState& motion = instance.getEmitterMotionState();
+
+    // Update once per frame, even if the emitter has multiple spawn contexts this frame.
+    if (motion.lastFrame != currentFrameId) {
+      const Vector3 gap = currTransform[3].xyz() - prevTransform[3].xyz();
+
+      // No recent history (first occurrence, or resumed after the guard was off / the emitter paused
+      // spawning): seed instead of snapping, so a stale average can't trigger a false discontinuity.
+      constexpr uint32_t kStaleEmitterFrames = 8u;
+      const bool stale = motion.lastFrame == kInvalidFrameIndex ||
+                         (currentFrameId - motion.lastFrame) > kStaleEmitterFrames;
+
+      if (stale) {
+        motion.velocityMovingAverage = Vector3(0.f);
+        motion.discontinuity = false;
+      } else {
+        const Vector3 velocityMovingAverage = motion.velocityMovingAverage;
+        const float residual = length(gap - velocityMovingAverage);
+        const float threshold = discontinuityFactor() *
+                                (length(velocityMovingAverage) + discontinuityFloor() * RtxOptions::sceneScale());
+        motion.discontinuity = residual > threshold;
+
+        // Add the gap into the average, clamped so one big jump can't dominate it.
+        const float gapLen = length(gap);
+        const Vector3 foldGap = (gapLen > threshold && gapLen > 0.f) ? gap * (threshold / gapLen) : gap;
+        motion.velocityMovingAverage = velocityMovingAverage * 0.8f + foldGap * 0.2f;
+      }
+
+      motion.lastFrame = currentFrameId;
+    }
+
+    return motion.discontinuity ? currTransform : prevTransform;
+  }
+
   void RtxParticleSystemManager::writeSpawnContextsToGpu(RtxContext* ctx) {
     if (!m_spawnContexts.size()) {
       return;
     }
+
+    const uint32_t currentFrameId = ctx->getDevice()->getCurrentFrameId();
 
     // Align the data
     std::vector<GpuSpawnContext> gpuSpawnContexts(m_spawnContexts.size());
@@ -753,8 +806,10 @@ namespace dxvk {
         continue;
       }
 
-      gpuCtx.spawnObjectToWorld = pTargetInstance->getTransform();
-      gpuCtx.spawnPrevObjectToWorld = pTargetInstance->getPrevTransform();
+      const Matrix4 currTransform = pTargetInstance->getTransform();
+      const Matrix4& prevTransform = pTargetInstance->getPrevTransform();
+      gpuCtx.spawnObjectToWorld = currTransform;
+      gpuCtx.spawnPrevObjectToWorld = resolveSpawnPrevTransform(*pTargetInstance, currTransform, prevTransform, currentFrameId);
 
       gpuCtx.indices32bit = pTargetInstance->getBlas()->modifiedGeometryData.indexBuffer.indexType() == VK_INDEX_TYPE_UINT32 ? 1 : 0;
       gpuCtx.numTriangles = pTargetInstance->getBlas()->modifiedGeometryData.indexCount / 3;
