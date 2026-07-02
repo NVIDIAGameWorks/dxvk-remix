@@ -2417,6 +2417,9 @@ namespace dxvk {
       this->spillRenderPass(true);
       
       DxvkBufferSliceHandle bufferSlice = buffer->getSliceHandle(offset, size);
+      if (m_execBarriers.isBufferDirty(bufferSlice, DxvkAccess::Write))
+        m_execBarriers.recordCommands(m_cmd);
+
       DxvkCmdBuffer cmdBuffer = DxvkCmdBuffer::ExecBuffer;
 
       auto stagingSlice = m_staging.alloc(CACHE_LINE_SIZE, size);
