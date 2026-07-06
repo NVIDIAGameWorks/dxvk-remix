@@ -140,27 +140,34 @@ struct ReplacementInstance {
 
   ReplacementInstance(const LookupKey& key, uint32_t newId, uint32_t frameId);
 
-  // Bit indices describing which fields of this RI changed in the most recent
-  // submission relative to the previously cached data. Computed immediately
-  // after a drawcall is matched to a ReplacementInstance.
+  // Per-submission update routing. Lookup-drift bits (Transform, VertexPosHash,
+  // MaterialHash, Other) reflect LookupKey changes; cleared on the first exact-match
+  // lookup each frame. Dynamic-feature bits (ParticleSystem, EffectLight) are set
+  // during processDrawCallState and cleared only when entering the dynamic path.
   //
   // Note: distinct from boundingBoxDirty. That flag is a "pending work" signal
   // set externally and cleared by the consumer (recalculateBoundingBox).
-  // dirtyFlags is a snapshot of "what changed in the last update", overwritten
-  // on the next submission. Different semantics, different lifetimes.
   enum class DirtyFlag : uint32_t {
+    // These bits indicate that something about the draw call has changed:
     Transform,
     VertexPosHash,
     MaterialHash,
-    Other,           // Catch-all bit that is set if the object is changed but the defined flags don't apply
+    Other,           // Catch-all: texgen/texture-transform drift and other lookup changes
+    
+    // These bits indicate that something in the previous frame's update required the next frame to be dynamic.
+    ParticleSystem,
   };
   using DirtyFlags = Flags<DirtyFlag>;
-  inline static const DirtyFlags kAllDirtyFlags{
+  inline static const DirtyFlags kLookupDriftMask{
     DirtyFlag::Transform,
     DirtyFlag::VertexPosHash,
     DirtyFlag::MaterialHash,
     DirtyFlag::Other,
   };
+  inline static const DirtyFlags kDynamicFeatureMask{
+    DirtyFlag::ParticleSystem,
+  };
+  inline static const DirtyFlags kAllDirtyFlags = kLookupDriftMask | kDynamicFeatureMask;
 
   ~ReplacementInstance();
 
@@ -242,11 +249,8 @@ struct ReplacementInstance {
   Matrix4 textureTransform;
   TexGenMode texgenMode = TexGenMode::None;
 
-  // Snapshot of which fields of this RI changed in the most recent submission.
-  // Initialized by setup() (all bits set, so the first frame's update runs every
-  // step) and updated by findOrCreateReplacementInstance on each subsequent
-  // match. Used downstream to gate update work and to identify animated
-  // entities for anti-culling.
+  // Gates preserve vs dynamic dispatch and (future) split updaters. See DirtyFlag
+  // and kLookupDriftMask / kDynamicFeatureMask for clear semantics.
   DirtyFlags dirtyFlags;
 };
 

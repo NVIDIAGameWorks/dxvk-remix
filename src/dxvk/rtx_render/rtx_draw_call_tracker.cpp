@@ -29,22 +29,21 @@
 
 namespace dxvk {
 
-  // Compute which of the lookup-key fields differ from the values currently cached
-  // on the supplied ReplacementInstance. Used to populate ri->dirtyFlags after a
-  // match/reassociate, so downstream consumers can gate work on what actually changed.
+  // Compute which lookup-key fields differ from the RI's cached values and write
+  // the lookup-drift bits to ri->dirtyFlags (dynamic-feature bits are preserved).
   // Caller is expected to invoke this BEFORE overwriting the RI's cached fields.
-  static ReplacementInstance::DirtyFlags computeDirtyFlags(
-      const ReplacementInstance* ri, const ReplacementInstance::LookupKey& key) {
-    ReplacementInstance::DirtyFlags flags;
+  static void computeDirtyFlags(
+      ReplacementInstance* ri, const ReplacementInstance::LookupKey& key) {
+    ri->dirtyFlags.clr(ReplacementInstance::kLookupDriftMask);
     // This function is only called when the full identity hash doesn't match, so something must have changed.
     if (std::memcmp(&ri->objectToWorld, &key.transform, sizeof(Matrix4)) != 0) {
-      flags.set(ReplacementInstance::DirtyFlag::Transform);
+      ri->dirtyFlags.set(ReplacementInstance::DirtyFlag::Transform);
     }
     if (ri->vertexPositionHash != key.vertexPositionHash) {
-      flags.set(ReplacementInstance::DirtyFlag::VertexPosHash);
+      ri->dirtyFlags.set(ReplacementInstance::DirtyFlag::VertexPosHash);
     }
     if (ri->materialHash != key.materialHash) {
-      flags.set(ReplacementInstance::DirtyFlag::MaterialHash);
+      ri->dirtyFlags.set(ReplacementInstance::DirtyFlag::MaterialHash);
     }
     // textureTransform/texgenMode aren't fed into a dedicated dirty bit yet —
     // surface state on the preserve path is reused as-is, so any drift here (terrain
@@ -53,12 +52,11 @@ namespace dxvk {
     // into the catch-all Other bit so usePreservePath's isClear() check fails.
     if (std::memcmp(&ri->textureTransform, &key.textureTransform, sizeof(Matrix4)) != 0 ||
         ri->texgenMode != key.texgenMode) {
-      flags.set(ReplacementInstance::DirtyFlag::Other);
+      ri->dirtyFlags.set(ReplacementInstance::DirtyFlag::Other);
     }
-    if (flags.isClear()) {
-      flags.set(ReplacementInstance::DirtyFlag::Other);
+    if ((ri->dirtyFlags & ReplacementInstance::kLookupDriftMask).isClear()) {
+      ri->dirtyFlags.set(ReplacementInstance::DirtyFlag::Other);
     }
-    return flags;
   }
 
   // Frustum check for an AABB in the space defined by objectToWorld.
@@ -186,12 +184,13 @@ namespace dxvk {
       // match this RI's cached values by construction. Nothing changed since last
       // submission of this identity.
       //
-      // Only clear dirtyFlags on the first lookup of a new frame. A second lookup
+      // Only clear lookup-drift bits on the first lookup of a new frame. A second lookup
       // within the same frame (two-pass rendering) must not clobber flags the L2
-      // path set when first matching this RI for the current frame.
+      // path set when first matching this RI for the current frame. Dynamic-feature
+      // bits persist until the dynamic path runs.
       ReplacementInstance* match = exactMatchIter->second;
       if (match->frameLastSeen != currentFrameId) {
-        match->dirtyFlags = ReplacementInstance::DirtyFlags();
+        match->dirtyFlags.clr(ReplacementInstance::kLookupDriftMask);
       }
       return match;
     }
@@ -220,7 +219,7 @@ namespace dxvk {
         // Compute diff before reassociation. Transform/vertex/spatialMap match
         // by construction here; only material can diverge (l2Filter requires
         // material match, so usually nothing differs at this point).
-        exactTransformMatch->dirtyFlags = computeDirtyFlags(exactTransformMatch, key);
+        computeDirtyFlags(exactTransformMatch, key);
         m_identityHashMap.erase(exactTransformMatch->identityHash);
         exactTransformMatch->identityHash = key.identityHash;
         m_identityHashMap[key.identityHash] = exactTransformMatch;
@@ -237,7 +236,7 @@ namespace dxvk {
         // transform differs (otherwise we would have hit the exact-transform
         // branch above); other fields may also have changed.
         ReplacementInstance* match = const_cast<ReplacementInstance*>(nearestMatch);
-        match->dirtyFlags = computeDirtyFlags(match, key);
+        computeDirtyFlags(match, key);
         return reassociateMatch(match, key, &spatialMapIter->second);
       }
     }
@@ -343,7 +342,7 @@ namespace dxvk {
           m_replacementInstances.pop_back();
 
           ReplacementInstance* match = const_cast<ReplacementInstance*>(portalMatch);
-          match->dirtyFlags = computeDirtyFlags(match, key);
+          computeDirtyFlags(match, key);
           return reassociateMatch( match, key, &spatialMapIter->second);
         }
       }

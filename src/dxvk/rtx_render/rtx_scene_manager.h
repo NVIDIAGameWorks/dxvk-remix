@@ -270,7 +270,8 @@ private:
   // Consumes a draw call state and updates the scene state accordingly
   RtInstance* processDrawCallState(const Rc<DxvkContext>& ctx, 
                                    const DrawCallState& blasInput, 
-                                   const MaterialData& materialData, 
+                                   const MaterialData& materialData,
+                                   ReplacementInstance& replacementInstance,
                                    RtInstance* existingInstance = nullptr,
                                    const RtxParticleSystemDesc* pParticleSystemDesc = nullptr);
 
