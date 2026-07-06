@@ -332,8 +332,18 @@ namespace dxvk {
 
     // NV-DXVK start: DLFG integration
     if (RtxOptions::enableVsync() == EnableVsync::WaitingForImplicitSwapchain) {
-      // save the vsync state when the first swapchain is created, to act as the default
-      RtxOptions::enableVsyncState = m_presentParams.PresentationInterval ? EnableVsync::On : EnableVsync::Off;
+      // Save the vsync state when the first swapchain is created, to act as the default.
+      // D3D9 semantics: D3DPRESENT_INTERVAL_IMMEDIATE (0x80000000) is the only
+      // "present unsynchronized" request; DEFAULT (0), ONE (1) and TWO..FOUR all
+      // present synchronized to vblank. A plain truthiness check reads IMMEDIATE
+      // (nonzero) as vsync-On and DEFAULT (zero) as vsync-Off - both inverted -
+      // which capped games that explicitly request IMMEDIATE at device creation
+      // to the display refresh until something else flipped the state (e.g.
+      // DLFG's force-vsync-off on the first interpolated 3D frame).
+      RtxOptions::enableVsyncState =
+          (m_presentParams.PresentationInterval == D3DPRESENT_INTERVAL_IMMEDIATE)
+              ? EnableVsync::Off
+              : EnableVsync::On;
     }
     // NV-DXVK end
 
