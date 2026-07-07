@@ -58,33 +58,6 @@ XXH64_hash_t LegacyMaterialData::computeIdentityHash() const {
     uint8_t padding[7];
   };
 
-  static_assert(hasNoImplicitPadding<LegacyMaterialIdentityHashData>(
-      &LegacyMaterialIdentityHashData::colorTextureHash0,
-      &LegacyMaterialIdentityHashData::colorTextureHash1,
-      &LegacyMaterialIdentityHashData::samplerHash0,
-      &LegacyMaterialIdentityHashData::samplerHash1,
-      &LegacyMaterialIdentityHashData::alphaTestCompareOp,
-      &LegacyMaterialIdentityHashData::tFactor,
-      &LegacyMaterialIdentityHashData::blendEnableBlending,
-      &LegacyMaterialIdentityHashData::blendColorSrcFactor,
-      &LegacyMaterialIdentityHashData::blendColorDstFactor,
-      &LegacyMaterialIdentityHashData::blendColorBlendOp,
-      &LegacyMaterialIdentityHashData::blendAlphaSrcFactor,
-      &LegacyMaterialIdentityHashData::blendAlphaDstFactor,
-      &LegacyMaterialIdentityHashData::blendAlphaBlendOp,
-      &LegacyMaterialIdentityHashData::blendWriteMask,
-      &LegacyMaterialIdentityHashData::alphaTestReferenceValue,
-      &LegacyMaterialIdentityHashData::textureColorArg1Source,
-      &LegacyMaterialIdentityHashData::textureColorArg2Source,
-      &LegacyMaterialIdentityHashData::textureColorOperation,
-      &LegacyMaterialIdentityHashData::textureAlphaArg1Source,
-      &LegacyMaterialIdentityHashData::textureAlphaArg2Source,
-      &LegacyMaterialIdentityHashData::textureAlphaOperation,
-      &LegacyMaterialIdentityHashData::isTextureFactorBlend,
-      &LegacyMaterialIdentityHashData::isVertexColorBakedLighting,
-      &LegacyMaterialIdentityHashData::padding),
-      "LegacyMaterialIdentityHashData has padding bytes");
-
   LegacyMaterialIdentityHashData data{};
   data.colorTextureHash0 = colorTextures[0].getImageHash();
   data.colorTextureHash1 = colorTextures[1].getImageHash();
@@ -110,8 +83,7 @@ XXH64_hash_t LegacyMaterialData::computeIdentityHash() const {
   data.isTextureFactorBlend = isTextureFactorBlend ? 1u : 0u;
   data.isVertexColorBakedLighting = isVertexColorBakedLighting ? 1u : 0u;
 
-  return hashStructByMemory(
-      data,
+  return hashStructByMemory<LegacyMaterialIdentityHashData,
       &LegacyMaterialIdentityHashData::colorTextureHash0,
       &LegacyMaterialIdentityHashData::colorTextureHash1,
       &LegacyMaterialIdentityHashData::samplerHash0,
@@ -135,7 +107,7 @@ XXH64_hash_t LegacyMaterialData::computeIdentityHash() const {
       &LegacyMaterialIdentityHashData::textureAlphaOperation,
       &LegacyMaterialIdentityHashData::isTextureFactorBlend,
       &LegacyMaterialIdentityHashData::isVertexColorBakedLighting,
-      &LegacyMaterialIdentityHashData::padding);
+      &LegacyMaterialIdentityHashData::padding>(data);
 }
 
 bool getEnableDiffuseLayerOverrideHack() {
