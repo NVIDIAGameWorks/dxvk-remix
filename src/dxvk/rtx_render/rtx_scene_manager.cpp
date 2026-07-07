@@ -112,7 +112,7 @@ namespace dxvk {
     data.objectToWorld = transforms.objectToWorld;
     data.textureTransform = transforms.textureTransform;
 
-    return hashStructByMemory(data,
+    return hashStructByMemory<ExternalDrawIdentityHashData,
         &ExternalDrawIdentityHashData::meshId,
         &ExternalDrawIdentityHashData::materialHash,
         &ExternalDrawIdentityHashData::boneHash,
@@ -129,7 +129,7 @@ namespace dxvk {
         &ExternalDrawIdentityHashData::_pad0,
         &ExternalDrawIdentityHashData::_pad1,
         &ExternalDrawIdentityHashData::objectToWorld,
-        &ExternalDrawIdentityHashData::textureTransform);
+        &ExternalDrawIdentityHashData::textureTransform>(data);
   }
 
   SceneManager::SceneManager(DxvkDevice* device)

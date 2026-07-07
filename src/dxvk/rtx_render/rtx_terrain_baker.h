@@ -186,10 +186,10 @@ namespace dxvk {
       uint16_t /*ReplacementMaterialTextureType::Enum*/ textureType;
       
       XXH64_hash_t calculateHash() const {
-        return hashStructByMemory(*this,
+        return hashStructByMemory<TextureKey,
             &TextureKey::width,
             &TextureKey::height,
-            &TextureKey::textureType);
+            &TextureKey::textureType>(*this);
       }
     };
 

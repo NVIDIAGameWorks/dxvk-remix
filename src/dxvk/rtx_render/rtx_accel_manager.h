@@ -94,14 +94,14 @@ class AccelManager : public CommonDeviceObject {
 
   struct BlasBucketKeyHash {
     size_t operator()(const BlasBucketKey& k) const {
-      return static_cast<size_t>(hashStructByMemory(k,
+      return static_cast<size_t>(hashStructByMemory<BlasBucketKey,
           &BlasBucketKey::instanceShaderBindingTableRecordOffset,
           &BlasBucketKey::customIndexFlags,
           &BlasBucketKey::instanceFlags,
           &BlasBucketKey::instanceMask,
           &BlasBucketKey::usesUnorderedApproximations,
           &BlasBucketKey::isSubsurface,
-          &BlasBucketKey::pad));
+          &BlasBucketKey::pad>(k));
     }
   };
 
