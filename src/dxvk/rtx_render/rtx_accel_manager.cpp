@@ -1256,13 +1256,13 @@ namespace dxvk {
         // Geometry order is part of the merged BLAS layout and affects primitive
         // to surface mapping, so include the bucket order in the content hash.
         if (!contentHashData.empty()) {
-          newContentHash = hashStructArrayByMemory(contentHashData.data(), contentHashData.size(),
+          newContentHash = hashStructArrayByMemory<BucketGeometryContentHashData,
               &BucketGeometryContentHashData::vertexHash,
               &BucketGeometryContentHashData::indexHash,
               &BucketGeometryContentHashData::boneHash,
               &BucketGeometryContentHashData::transform,
               &BucketGeometryContentHashData::primitiveCount,
-              &BucketGeometryContentHashData::pad);
+              &BucketGeometryContentHashData::pad>(contentHashData.data(), contentHashData.size());
         }
       }
 

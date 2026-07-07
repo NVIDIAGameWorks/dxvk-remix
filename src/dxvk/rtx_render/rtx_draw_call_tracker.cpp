@@ -109,7 +109,7 @@ namespace dxvk {
     data.textureTransform = drawCallState.getTransformData().textureTransform;
     data.texgenMode = static_cast<uint32_t>(drawCallState.getTransformData().texgenMode);
 
-    return hashStructByMemory(data,
+    return hashStructByMemory<IdentityHashData,
         &IdentityHashData::geoHash,
         &IdentityHashData::matHash,
         &IdentityHashData::boneHash,
@@ -119,7 +119,7 @@ namespace dxvk {
         &IdentityHashData::cameraType,
         &IdentityHashData::categories,
         &IdentityHashData::texgenMode,
-        &IdentityHashData::_pad0);
+        &IdentityHashData::_pad0>(data);
   }
 
   void DrawCallTracker::eraseFromSpatialMap(

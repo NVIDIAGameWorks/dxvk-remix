@@ -45,7 +45,7 @@ namespace dxvk {
 
     // NV-DXVK start
     XXH64_hash_t calculateHash() const {
-      return hashStructByMemory(*this,
+      return hashStructByMemory<DxvkSamplerCreateInfo,
           &DxvkSamplerCreateInfo::magFilter,
           &DxvkSamplerCreateInfo::minFilter,
           &DxvkSamplerCreateInfo::mipmapMode,
@@ -60,7 +60,7 @@ namespace dxvk {
           &DxvkSamplerCreateInfo::compareToDepth,
           &DxvkSamplerCreateInfo::compareOp,
           &DxvkSamplerCreateInfo::borderColor,
-          &DxvkSamplerCreateInfo::usePixelCoord);
+          &DxvkSamplerCreateInfo::usePixelCoord>(*this);
     }
 
     bool operator== (const DxvkSamplerCreateInfo& other) const {
