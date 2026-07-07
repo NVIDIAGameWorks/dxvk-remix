@@ -88,6 +88,8 @@ namespace dxvk {
         {DEBUG_VIEW_TEXCOORD_GENERATION_MODE, "Texture Coordinates Generation Mode"},
         {DEBUG_VIEW_VIRTUAL_MOTION_VECTOR, "Virtual Motion Vector"},
         {DEBUG_VIEW_SCREEN_SPACE_MOTION_VECTOR, "Screen-Space Motion Vector"},
+        {DEBUG_VIEW_TRIANGLE_NORMAL, "Triangle Normal"},
+        {DEBUG_VIEW_INTERPOLATED_VERTEX_NORMAL, "Interpolated Vertex Normal"},
         {DEBUG_VIEW_GEOMETRY_NORMAL, "Geometry Normal"},
         {DEBUG_VIEW_GEOMETRY_TANGENT, "Geometry Tangent"},
         {DEBUG_VIEW_GEOMETRY_BITANGENT, "Geometry Bitangent"},

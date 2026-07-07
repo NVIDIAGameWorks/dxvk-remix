@@ -524,6 +524,13 @@ struct MinimalSurfaceInteraction
 
 struct SurfaceInteraction : MinimalSurfaceInteraction
 {
+#ifdef GBUFFER_FEATURE_DEBUG_VIEW
+#if GBUFFER_FEATURE_DEBUG_VIEW
+  vec3 debugTriangleNormal = 0.f;
+  vec3 debugInterpolatedVertexNormal = 0.f;
+#endif
+#endif
+
   vec3 motion = 0..xxx;
   vec2 textureCoordinates = 0..xx;
   vec2 textureGradientX = 0..xx;

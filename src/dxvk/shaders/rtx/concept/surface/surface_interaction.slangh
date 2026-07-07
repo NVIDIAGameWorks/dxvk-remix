@@ -361,6 +361,13 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
   const bool triangleNormalSameDirection = dot(triangleNormal, rayInteraction.viewDirection) >= 0.0f;
   const vec3 flippedTriangleNormal = triangleNormalSameDirection ? triangleNormal : -triangleNormal;
 
+#ifdef GBUFFER_FEATURE_DEBUG_VIEW
+#if GBUFFER_FEATURE_DEBUG_VIEW
+  surfaceInteraction.debugTriangleNormal = flippedTriangleNormal;
+  surfaceInteraction.debugInterpolatedVertexNormal = flippedTriangleNormal;
+#endif
+#endif
+
   if (surface.normalBufferIndex == BINDING_INDEX_INVALID)
   {
     surfaceInteraction.geometryNormal = flippedTriangleNormal;
@@ -418,6 +425,14 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
     normals[0] *= dot(normals[0], flippedTriangleNormal) >= float16_t(0.0) ? 1 : -1;
     normals[1] *= dot(normals[1], flippedTriangleNormal) >= float16_t(0.0) ? 1 : -1;
     normals[2] *= dot(normals[2], flippedTriangleNormal) >= float16_t(0.0) ? 1 : -1;
+
+#ifdef GBUFFER_FEATURE_DEBUG_VIEW
+#if GBUFFER_FEATURE_DEBUG_VIEW
+    surfaceInteraction.debugInterpolatedVertexNormal = safeNormalize(
+      interpolateHitAttribute(normals, bary),
+      triangleNormal);
+#endif
+#endif
 
     normals[0] = getBentNormal(flippedTriangleNormal, normals[0], ray.direction);
     normals[1] = getBentNormal(flippedTriangleNormal, normals[1], ray.direction);
