@@ -850,31 +850,28 @@ void RtDistantLight::applyTransform(const Matrix4& lightToWorld) {
 void RtDistantLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
   [[maybe_unused]] const std::size_t oldOffset = offset;
 
-  assert(m_direction < Vector3(FLOAT16_MAX));
-  writeGPUHelper(data, offset, glm::packHalf1x16(m_direction.x));
-  writeGPUHelper(data, offset, glm::packHalf1x16(m_direction.y));
-  writeGPUHelper(data, offset, glm::packHalf1x16(m_direction.z));
+  // Direction and orientation are stored as full float32 (not float16): float16's coarse angular
+  // precision quantizes small direction changes to the same value, causing shadows to snap/step
+  // instead of moving smoothly on slowly animated distant (sun) lights.
 
   // Note: Ensure the orientation quaternion is normalized as this is a requirement for the GPU encoding.
   assert(isApproxNormalized(m_orientation, kNormalizationThreshold));
-  assert(m_orientation < Vector4(FLOAT16_MAX));
-  // Note: Orientation could be more heavily packed (down to snorms, or even other quaternion memory encodings), but
-  // there is enough space that no fancy encoding which would just waste performance on the GPU side is needed.
-  writeGPUHelper(data, offset, glm::packHalf1x16(m_orientation.x));
-  writeGPUHelper(data, offset, glm::packHalf1x16(m_orientation.y));
-  writeGPUHelper(data, offset, glm::packHalf1x16(m_orientation.z));
-  writeGPUHelper(data, offset, glm::packHalf1x16(m_orientation.w));
-
-  writeGPUPadding<2>(data, offset);
+  writeGPUHelper(data, offset, m_orientation.x);
+  writeGPUHelper(data, offset, m_orientation.y);
+  writeGPUHelper(data, offset, m_orientation.z);
+  writeGPUHelper(data, offset, m_orientation.w);
 
   writeGPUHelper(data, offset, packLogLuv32(m_radiance));
   writeGPUPadding<12>(data, offset); // no shaping
 
+  assert(isApproxNormalized(m_direction, kNormalizationThreshold));
+  writeGPUHelper(data, offset, m_direction.x);
+  writeGPUHelper(data, offset, m_direction.y);
+  writeGPUHelper(data, offset, m_direction.z);
+  writeGPUPadding<4>(data, offset);
+
   writeGPUHelper(data, offset, m_cosHalfAngle);
   writeGPUHelper(data, offset, m_sinHalfAngle);
-
-  // Note: Unused space for distant lights
-  writeGPUPadding<16>(data, offset);
 
   writeGPUDataVolumetricRadianceScale(data, oldOffset, offset, m_volumetricRadianceScale);
 

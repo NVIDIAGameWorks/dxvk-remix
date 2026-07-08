@@ -30,22 +30,10 @@ DistantLight distantLightCreate(DecodedPolymorphicLight decodedPolymorphicLight)
 
   DistantLight distantLight;
 
-  const u16vec2 data00 = unpack16(decodedPolymorphicLight.data0.x);
-  const u16vec2 data01 = unpack16(decodedPolymorphicLight.data0.y);
-  const u16vec2 data02 = unpack16(decodedPolymorphicLight.data0.z);
-  const u16vec2 data03 = unpack16(decodedPolymorphicLight.data0.w);
-  const uint32_t data20 = decodedPolymorphicLight.data2.x;
-  const uint32_t data21 = decodedPolymorphicLight.data2.y;
-
-  distantLight.direction = vec3(uint16BitsToF32(data00.x), uint16BitsToF32(data00.y), uint16BitsToF32(data01.x));
-  distantLight.orientation = vec4(
-    uint16BitsToF32(data01.y),
-    uint16BitsToF32(data02.x),
-    uint16BitsToF32(data02.y),
-    uint16BitsToF32(data03.x));
-  // Note: data03.y unused
-  distantLight.cosHalfAngle = uintBitsToFloat(data20);
-  distantLight.sinHalfAngle = uintBitsToFloat(data21);
+  distantLight.orientation = uintBitsToFloat(decodedPolymorphicLight.data0);
+  distantLight.direction = uintBitsToFloat(decodedPolymorphicLight.data2.xyz);
+  distantLight.cosHalfAngle = uintBitsToFloat(decodedPolymorphicLight.data3.x);
+  distantLight.sinHalfAngle = uintBitsToFloat(decodedPolymorphicLight.data3.y);
   distantLight.radiance = decodedPolymorphicLight.radiance;
 
   return distantLight;
