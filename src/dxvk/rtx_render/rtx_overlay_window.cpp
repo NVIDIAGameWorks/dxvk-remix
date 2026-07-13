@@ -8,9 +8,10 @@
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 namespace dxvk {
-// Custom window events used to perform actions for showing/hiding the overlay window in the message pump thread.
+// Custom window events used to perform actions in the overlay message pump thread.
 #define WM_REMIX_HIDE_OVERLAY (WM_USER+0x7E1+1)
 #define WM_REMIX_SHOW_OVERLAY (WM_USER+0x7E1+2)
+#define WM_REMIX_UPDATE_INPUT_FOCUS (WM_USER+0x7E1+3)
 
 static LRESULT CALLBACK sWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
   if (msg == WM_NCCREATE) {
@@ -157,18 +158,27 @@ void GameOverlay::gameWndProcHandler(HWND gameHwnd, UINT msg, WPARAM wParam, LPA
 
   auto postShowMsg = [this] { PostMessage(hwnd(), WM_REMIX_SHOW_OVERLAY, 0, 0); };
   auto postHideMsg = [this] { PostMessage(hwnd(), WM_REMIX_HIDE_OVERLAY, 0, 0); };
+  auto postInputFocusMsg = [this](bool focused) {
+    PostMessage(hwnd(), WM_REMIX_UPDATE_INPUT_FOCUS, focused, 0);
+  };
 
   switch (msg) {
   case WM_ACTIVATE:
   case WM_ACTIVATEAPP:
   {
-    const bool becameActive = (wParam != 0);
+    const bool becameActive = msg == WM_ACTIVATEAPP
+      ? wParam != FALSE
+      : LOWORD(wParam) != WA_INACTIVE;
     HWND fg = GetForegroundWindow();
     DWORD fgPid = 0, gamePid = 0, ovlPid = 0;
     GetWindowThreadProcessId(fg, &fgPid);
     GetWindowThreadProcessId(m_gameHwnd, &gamePid);
     GetWindowThreadProcessId(m_hwnd, &ovlPid);
     const bool foregroundIsUs = (fg == m_hwnd) || (fgPid == ovlPid);
+
+    if (msg == WM_ACTIVATEAPP) {
+      postInputFocusMsg(becameActive);
+    }
 
     if (becameActive) {
       postShowMsg();
@@ -293,6 +303,11 @@ LRESULT GameOverlay::overlayWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 
   case WM_REMIX_SHOW_OVERLAY: show(); return 0;
   case WM_REMIX_HIDE_OVERLAY: hide(); return 0;
+  case WM_REMIX_UPDATE_INPUT_FOCUS:
+    // The non-activating overlay does not receive focus messages itself.
+    ImGui_ImplWin32_WndProcHandler(
+      hWnd, wParam ? WM_SETFOCUS : WM_KILLFOCUS, 0, 0);
+    return 0;
   case WM_DESTROY: PostQuitMessage(0); return 0;
 
   // Important, we are taking over the implementation of LEAVE to handle mouse interactions with the overlay
