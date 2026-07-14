@@ -23,6 +23,7 @@
 #include "rtx_graph_ogn_writer.h"
 #include "../util/util_env.h"
 #include "../util/util_filesys.h"
+#include "../util/util_string.h"
 #include <algorithm>
 #include <filesystem>
 #include <sstream>
@@ -30,25 +31,6 @@
 
 namespace dxvk {
 namespace {
-// Helper function to escape JSON strings
-std::string escapeJsonString(std::string_view input) {
-  std::string output;
-  output.reserve(input.size());
-  for (char c : input) {
-    switch (c) {
-      case '"': output += "\\\""; break;
-      case '\\': output += "\\\\"; break;
-      case '\b': output += "\\b"; break;
-      case '\f': output += "\\f"; break;      
-      case '\n': output += "\\n"; break;
-      case '\r': output += "\\r"; break;
-      case '\t': output += "\\t"; break;
-      default: output += c; break;
-    }
-  }
-  return output;
-}
-
 // Helper function to convert RtComponentPropertyType to OGN type string
 std::string_view propertyTypeToOgnType(RtComponentPropertyType type) {
   switch (type) {
@@ -167,9 +149,9 @@ std::string getDefaultValueAsJson(const RtComponentPropertyValue& value, RtCompo
     case RtComponentPropertyType::Enum:
       return std::to_string(std::get<uint32_t>(value));
     case RtComponentPropertyType::String:
-      return "\"" + escapeJsonString(std::get<std::string>(value)) + "\"";
+      return "\"" + str::escapeCStyle(std::get<std::string>(value)) + "\"";
     case RtComponentPropertyType::AssetPath:
-      return "\"" + escapeJsonString(std::get<std::string>(value)) + "\"";
+      return "\"" + str::escapeCStyle(std::get<std::string>(value)) + "\"";
     case RtComponentPropertyType::Hash: {
       // Hash is stored as uint64_t but output as a hex string token in OGN
       std::ostringstream ss;
@@ -195,10 +177,10 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentSpec& spec, 
   const std::string_view ognType = propertyTypeToOgnType(prop.type);
   const bool isTokenType = ognType == "token";
   
-  outputFile << "      \"" << escapeJsonString(prop.name) << "\": {" << std::endl;
+  outputFile << "      \"" << str::escapeCStyle(prop.name) << "\": {" << std::endl;
   if (!prop.enumValues.empty()) {
     // For enum documentation, we need to combine everything into the property docstring.
-    outputFile << "        \"description\": [\"" << escapeJsonString(prop.docString) << "\\n" << "Allowed values:\\n";
+    outputFile << "        \"description\": [\"" << str::escapeCStyle(prop.docString) << "\\n" << "Allowed values:\\n";
     std::string defaultEnumValueString = "";
     for (const auto& enumValue : prop.enumValues) { 
       assert(enumValue.first != "None" && "None enum values will cause python errors in the toolkit, and should be renamed.");
@@ -212,7 +194,7 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentSpec& spec, 
 
     outputFile << "        \"default\": \"" << defaultEnumValueString << "\"," << std::endl;
   } else {
-    outputFile << "        \"description\": [\"" << escapeJsonString(prop.docString) << "\"]," << std::endl;
+    outputFile << "        \"description\": [\"" << str::escapeCStyle(prop.docString) << "\"]," << std::endl;
     
     // Check if this is a flexible type property
     // If type != declaredType, it means a flexible type was resolved to a concrete type
@@ -274,7 +256,7 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentSpec& spec, 
         if (!first) {
           outputFile << ", ";
         }
-        outputFile << "\"" << escapeJsonString(enumValue.first) << "\"";
+        outputFile << "\"" << str::escapeCStyle(enumValue.first) << "\"";
         first = false;
       }
       outputFile << "]";
@@ -302,7 +284,7 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentSpec& spec, 
           outputFile << ", ";
         }
         std::string primTypeName = primTypeToString(primType);
-        outputFile << "\"" << escapeJsonString(primTypeName) << "\"";
+        outputFile << "\"" << str::escapeCStyle(primTypeName) << "\"";
         first = false;
       }
       outputFile << "]";
@@ -364,7 +346,7 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentSpec& spec, 
     outputFile << "        \"optional\": true," << std::endl;
   }
 
-  outputFile << "        \"uiName\": \"" << escapeJsonString(prop.uiName) << "\"" << std::endl;
+  outputFile << "        \"uiName\": \"" << str::escapeCStyle(prop.uiName) << "\"" << std::endl;
 
 
   outputFile << "      }";
@@ -394,15 +376,15 @@ bool writeOGNSchema(const RtComponentSpec* spec, RtComponentType componentType, 
   outputFile << "{" << std::endl;
   
   // Start the node definition
-  outputFile << "  \"" << escapeJsonString(spec->name) << "\": {" << std::endl;
+  outputFile << "  \"" << str::escapeCStyle(spec->name) << "\": {" << std::endl;
 
   // Write the node properties
-  outputFile << "    \"description\": [\"" << escapeJsonString(spec->docString) << "\"]," << std::endl;
+  outputFile << "    \"description\": [\"" << str::escapeCStyle(spec->docString) << "\"]," << std::endl;
   outputFile << "    \"version\": " << spec->version << "," << std::endl;
-  outputFile << "    \"uiName\": \"" << escapeJsonString(spec->uiName) << "\"," << std::endl;
+  outputFile << "    \"uiName\": \"" << str::escapeCStyle(spec->uiName) << "\"," << std::endl;
   outputFile << "    \"language\": \"python\"," << std::endl;
   outputFile << "    \"categoryDefinitions\": \"config/CategoryDefinition.json\"," << std::endl;
-  outputFile << "    \"categories\": \"" << escapeJsonString(spec->categories) << "\"," << std::endl;
+  outputFile << "    \"categories\": \"" << str::escapeCStyle(spec->categories) << "\"," << std::endl;
 
   // Separate properties by IO type
   std::vector<const RtComponentPropertySpec*> inputs, states, outputs;
@@ -574,7 +556,7 @@ bool writePythonStub(const RtComponentSpec* spec, RtComponentType componentType,
   outputFile << "from lightspeed.trex.logic.ogn._impl.type_resolution import resolve_types, standard_compute, standard_initialize" << std::endl;
   outputFile << std::endl;
   outputFile << std::endl;
-  outputFile << "class " << escapeJsonString(className) << ":" << std::endl;
+  outputFile << "class " << str::escapeCStyle(className) << ":" << std::endl;
   
   // If we have multiple combinations, generate VALID_COMBINATIONS as a class attribute
   if (hasMultipleCombinations) {

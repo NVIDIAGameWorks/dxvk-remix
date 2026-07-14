@@ -1703,3 +1703,9 @@ const ModTypeInfo& UsdMod::getTypeInfo() {
 }
 
 } // namespace dxvk
+
+// Export function for unit testing - writes the RemixCategories schema.usda
+// generated from the InstanceCategories enum (see usd_common.h).
+bool writeRemixCategoriesSchemaUsda(const char* outputFilePath) {
+  return dxvk::writeRemixCategoriesSchemaUsda(outputFilePath);
+}
