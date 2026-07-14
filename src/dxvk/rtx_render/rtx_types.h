@@ -880,6 +880,10 @@ struct PooledBlas : public RcObject {
   VkAccelerationStructureBuildGeometryInfoKHR buildInfo = {};
   std::vector<uint32_t> primitiveCounts {};
 
+  // Hash of the index topology that was last built into this BLAS.
+  // Vulkan updates may change vertex positions, but not index values.
+  XXH64_hash_t topologyHash = kEmptyHash;
+
   // Content hash of the geometry data that was last built into this BLAS.
   // When the merged BLAS content (geometry addresses + primitive counts) is
   // unchanged, the GPU build can be skipped entirely.
