@@ -51,6 +51,8 @@ namespace dxvk {
     // NV-DXVK start: Integrate Aftermath
     bool enableAftermath;
     bool enableAftermathResourceTracking;
+    bool enableGpuCrashState;
+    bool enableGpuCrashStateBufferRetention;
     // NV-DXVK end
 
     // NV-DXVK start: early submit heuristics for memcpy work

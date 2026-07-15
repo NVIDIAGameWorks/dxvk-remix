@@ -28,6 +28,7 @@
 #include "../util/rc/util_rc_ptr.h"
 #include "rtx_types.h"
 #include "rtx_common_object.h"
+#include "rtx_gpu_crash_recorder.h"
 #include "rtx_staging.h"
 #include "rtx_point_instancer_system.h"
 #include "../util/util_vector.h"
@@ -157,6 +158,8 @@ public:
 
   void buildTlas(Rc<DxvkContext> ctx);
 
+  void dumpCrashState(const char* reason) const { m_gpuCrashRecorder.dump(reason); }
+
   // Returns the number of live BLAS objects
   static uint32_t getBlasCount();
 
@@ -198,6 +201,7 @@ private:
                    const std::vector<std::unique_ptr<BlasBucket>>& blasBuckets, 
                    std::vector<VkAccelerationStructureBuildGeometryInfoKHR>& blasToBuild,
                    std::vector<VkAccelerationStructureBuildRangeInfoKHR*>& blasRangesToBuild,
+                   const std::vector<VkTransformMatrixKHR>& instanceTransforms,
                    size_t& currentScratchOffset);
   
   void addBlas(RtInstance* instance, BlasEntry* blasEntry, const Matrix4* instanceToObject);
@@ -300,6 +304,9 @@ private:
   Rc<DxvkBuffer> getScratchMemory(const size_t requiredScratchAllocSize);
   Rc<PooledBlas> createPooledBlas(size_t bufferSize, const char* name) const;
 
+  // The recorder currently lives here because it only captures acceleration
+  // structure state. Move it higher if crash recording expands beyond AS data.
+  RtxGpuCrashRecorder m_gpuCrashRecorder;
   VkDeviceSize m_scratchAlignment;
   Rc<DxvkBuffer> m_scratchBuffer;
 };

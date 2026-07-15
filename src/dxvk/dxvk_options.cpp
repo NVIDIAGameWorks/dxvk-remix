@@ -35,6 +35,9 @@ namespace dxvk {
     // NV-DXVK start: Integrate Aftermath
     enableAftermath = config.getOption<bool>("dxvk.enableAftermath", false);
     enableAftermathResourceTracking = config.getOption<bool>("dxvk.enableAftermathResourceTracking", false);
+    enableGpuCrashState = config.getOption<bool>("rtx.enableGpuCrashState", false);
+    enableGpuCrashStateBufferRetention =
+      config.getOption<bool>("rtx.enableGpuCrashStateBufferRetention", false);
     // NV-DXVK end
 
     // NV-DXVK start: early submit heuristics for memcpy work
