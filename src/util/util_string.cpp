@@ -72,6 +72,24 @@ namespace dxvk::str {
     return result;
   }
 
+  std::string escapeCStyle(std::string_view input) {
+    std::string output;
+    output.reserve(input.size());
+    for (const char c : input) {
+      switch (c) {
+      case '"':  output += "\\\""; break;
+      case '\\': output += "\\\\"; break;
+      case '\b': output += "\\b";  break;
+      case '\f': output += "\\f";  break;
+      case '\n': output += "\\n";  break;
+      case '\r': output += "\\r";  break;
+      case '\t': output += "\\t";  break;
+      default:   output += c;      break;
+      }
+    }
+    return output;
+  }
+
   bool isInvalidAscii(const unsigned char ch) {
     // Single-byte character (ASCII)
     return !(ch <= 0x7F);

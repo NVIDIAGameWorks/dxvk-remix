@@ -73,6 +73,10 @@ namespace dxvk::str {
 
   std::vector<std::string> split(std::string s, const char delimiter = ',');
 
+  // Escape a string into a single-line, double-quoted string literal using
+  // C-style backslash escapes. Suitable for JSON and USD string values.
+  std::string escapeCStyle(std::string_view input);
+
   std::string sanitizeUtf8(const std::string& input);
 
   std::string formatBytes(size_t bytes);

@@ -154,6 +154,7 @@ usd_plugins_output_dir = join_paths(meson.project_build_root(), 'remix-usd-plugi
 # List all schema-plugin names:
 schema_plugins = [
   'RemixParticleSystem',
+  'RemixCategories',
 ]
 
 foreach plugin : schema_plugins
