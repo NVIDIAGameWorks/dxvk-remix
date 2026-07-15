@@ -81,7 +81,7 @@ namespace dxvk {
       m_hud->render(m_context, fmt, { imageInfo.extent.width, imageInfo.extent.height });
     }
 
-    if (g_combineGuiInFinalColor) {
+    if (ImGUI::enableExternalPresenter() && g_combineGuiInFinalColor) {
       m_device->getCommon()->getImgui().render(m_context, { imageInfo.extent.width, imageInfo.extent.height });
     }
 
