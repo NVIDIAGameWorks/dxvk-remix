@@ -877,11 +877,6 @@ namespace dxvk {
   }
 
   void ImGUI::update(const Rc<DxvkContext>& ctx) {
-    ImGui_ImplDxvk::NewFrame();
-    ImGui_ImplWin32_NewFrame();
-
-    ImGui::NewFrame();
-
     processHotkeys();
     updateQuickActions(ctx);
 
@@ -4252,18 +4247,19 @@ namespace dxvk {
     ImGui::PopItemWidth();
   }
 
-  void ImGUI::render(
-    const HWND gameHwnd,
-    const Rc<DxvkContext>& ctx,
-    VkExtent2D         surfaceSize,
-    bool               vsync) {
+  void ImGUI::render(const Rc<DxvkContext>& ctx, VkExtent2D surfaceSize) {
     ScopedGpuProfileZone(ctx, "ImGUI Render");
+
+    const HWND gameHwnd = ctx->getCommonObjects()->getLastKnownWindowHandle();
+    
+    // We need a window to render the GUI and for input to work correctly
+    if (gameHwnd == 0) {
+      return;
+    }
 
     if (m_overlayWin.ptr() != nullptr) {
       m_overlayWin->update(gameHwnd);
     }
-
-    m_lastRenderVsyncStatus = vsync;
 
     ImGui::SetCurrentContext(m_context);
     ImPlot::SetCurrentContext(m_plotContext);
@@ -4288,11 +4284,17 @@ namespace dxvk {
       m_init = true;
     }
 
+    ImGui_ImplDxvk::NewFrame();
+    ImGui_ImplWin32_NewFrame(); 
+
+    ImGuiIO& io = ImGui::GetIO();
+    io.DisplaySize = ImVec2((float) surfaceSize.width, (float) surfaceSize.height);
+
+    ImGui::NewFrame();
+
     update(ctx);
 
     ImGui_ImplDxvk::RenderDrawData(ImGui::GetDrawData(), ctx.ptr(), surfaceSize.width, surfaceSize.height);
-
-    ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 0);
   }
 
   void ImGUI::createFontsTexture(const Rc<DxvkContext>& ctx) {

@@ -99,7 +99,7 @@ void GameOverlay::show() {
 
   DpiCtxGuard dpiGuard;
 
-  const Vector4 sr(0.f);
+  const Vector4 sr = m_pImgui ? ImGUI::subRect() : Vector4 { 0, 0, 0, 0 };
   RECT raw = vec4ToRectMinMax(sr);
 
   RECT screenRc {};
@@ -459,7 +459,7 @@ void GameOverlay::windowThreadMain() {
   RegisterClass(&wc);
 
   // initial rect (prefer subrect, else fallback)
-  RECT screenRc = vec4ToRectMinMax(Vector4(0.f));
+  RECT screenRc = vec4ToRectMinMax(m_pImgui ? ImGUI::subRect() : Vector4 { 0,0,0,0 });
   if (isEmptyRect(screenRc)) {
     screenRc = clientRectScreen(m_gameHwnd);
   }
