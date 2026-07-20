@@ -30,13 +30,41 @@ class CommonShader {
   DWORD getShaderInstructionSize(const DWORD* pTokens) {
     const DWORD* pStart = pTokens;
     const DWORD opcode = ((*pTokens) & D3DSI_OPCODE_MASK);
-    
+
     if (opcode == D3DSIO_COMMENT) {
       return (((*pTokens) & D3DSI_COMMENTSIZE_MASK) >> D3DSI_COMMENTSIZE_SHIFT) + 1;
     }
     if (m_majorVersion >= 2) {
       return (((*pTokens) & D3DSI_INSTLENGTH_MASK) >> D3DSI_INSTLENGTH_SHIFT) + 1;
     }
+
+    // PS 1.4 reuses opcodes 0x40 and 0x42 (D3DSIO_TEXCRD and D3DSIO_TEXLD)
+    // with EXPLICIT dst+src token pairs (3 dwords) instead of the
+    // PS 1.0–1.3 forms (D3DSIO_TEXCOORD / D3DSIO_TEX) that had implicit
+    // src derived from the dst register index (2 dwords). The static
+    // table below was authored for PS 1.0–1.3 / VS 1.x and gives the
+    // wrong size for PS 1.4 — the parser advances by 2 instead of 3,
+    // lands mid-instruction, treats a register-arg token as the next
+    // opcode, misaligns indefinitely, and walks past the actual
+    // D3DSIO_END token off the end of the bytecode buffer. Without
+    // PageHeap the over-read silently corrupts the heap freelist and
+    // surfaces as a delayed RtlpAllocateHeap AV; with PageHeap it AVs
+    // immediately on the guard page.
+    //
+    // PS 1.4 token layout:
+    //   0x40 (D3DSIO_TEXCRD):  op + dst + src = 3 dwords
+    //   0x42 (D3DSIO_TEXLD):   op + dst + src = 3 dwords
+    //   0x41 (D3DSIO_TEXKILL): unchanged at 2 dwords (op + dst)
+    if (m_majorVersion == 1 && m_minorVersion == 4) {
+      switch (opcode) {
+        case 0x40: return 3;  // D3DSIO_TEXCRD (PS 1.4)
+        case 0x42: return 3;  // D3DSIO_TEXLD  (PS 1.4)
+        // 0x41 (TEXKILL) falls through to the PS 1.0–1.3 table below
+        // (still 2 dwords in PS 1.4). 0x43–0x4F are deprecated/reserved
+        // in PS 1.4 and shouldn't appear in valid 1.4 bytecode.
+      }
+    }
+
     switch (opcode) {
       case 0x0: return 1;
       case 0x1: return 3;
@@ -128,9 +156,37 @@ class CommonShader {
   size_t getShaderByteSize(const DWORD* pTokens) {
     // Set starting pointer and increment past the header.
     const DWORD* pStart = pTokens++;
-    while (((*pTokens) & D3DSI_OPCODE_MASK) != D3DSIO_END) {
-      pTokens += getShaderInstructionSize(pTokens);
+
+    // Defense-in-depth bound. Real D3D9 shaders are at most a few KB.
+    // 16K dwords (64 KB) is far more than any legitimate shader. If the
+    // walk exceeds this without finding D3DSIO_END the bytecode is
+    // malformed or our instruction-size table doesn't recognize a token
+    // in this shader version. Bailing with a logged error is strictly
+    // better than walking off the end of the heap (silent freelist
+    // corruption in non-PageHeap runs, instant guard-page AV under
+    // PageHeap).
+    constexpr size_t kMaxShaderDwords = 16 * 1024;
+    size_t walked = 0;
+    while (walked < kMaxShaderDwords &&
+           ((*pTokens) & D3DSI_OPCODE_MASK) != D3DSIO_END) {
+      const DWORD step = getShaderInstructionSize(pTokens);
+      pTokens += step;
+      walked += step;
     }
+
+    if (walked >= kMaxShaderDwords) {
+      bridge_util::Logger::err(
+        "CommonShader::getShaderByteSize: walked past 16K-dword cap "
+        "without finding D3DSIO_END. Bytecode malformed or unsupported "
+        "shader version. Returning cap-bounded size; server will likely "
+        "reject the shader.");
+      // We never found END. Return the walked size so the caller's
+      // memcpy is bounded by the cap rather than running until the
+      // next page-fault. Server-side compilation will fail; that's
+      // strictly better than crashing the client.
+      return walked * sizeof(DWORD);
+    }
+
     return ((pTokens - pStart) + 1) * sizeof(DWORD);
   }
 
