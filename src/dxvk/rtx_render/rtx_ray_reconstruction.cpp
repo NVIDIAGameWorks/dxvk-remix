@@ -385,6 +385,7 @@ namespace dxvk {
         RemixGui::Checkbox("Blur", &enableDisocclusionMaskBlurObject());
         RemixGui::DragInt("Blur Radius", &disocclusionMaskBlurRadiusObject(), 1.f, 1, 64, "%d", sliderFlags);
         RemixGui::DragFloat("Blur Normalized Gaussian Weight Sigma", &disocclusionMaskBlurNormalizedGaussianWeightSigmaObject(), 0.01f, 0.0f, 3.0f, "%.3f", sliderFlags);
+        RemixGui::Checkbox("Invalidate History for Animated Water", &invalidateHistoryForAnimatedWaterObject());
 
         ImGui::Unindent();
       }

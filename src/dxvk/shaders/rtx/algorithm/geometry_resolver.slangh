@@ -277,7 +277,9 @@ void geometryResolverOutputSurface<
       GBUFFER_FEATURE_DLSSRR && cb.enableDLSSRR
       ? kDLSSRRDisocclusionThresholdValue
       : 1.f;
-    const bool discardRRHistory = surface.hasMaterialChanged || surface.isAnimatedWater;
+    const bool discardRRHistory =
+      surface.hasMaterialChanged ||
+      (surface.isAnimatedWater && cb.invalidateHistoryForAnimatedWater);
 
     // Note: Fully use an alternate disocclusion threshold when specified, done by setting the mix value to 1.0 (this mixes
     // between the standard and alternate disocclusion threshold specified in the denoiser's settings).

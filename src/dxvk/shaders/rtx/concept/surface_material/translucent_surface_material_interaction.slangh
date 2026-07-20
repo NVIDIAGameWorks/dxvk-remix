@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -858,10 +858,10 @@ SurfaceMaterialInteractionPSRSample translucentSurfaceMaterialInteractionCalcPSR
   SurfaceMaterialInteractionPSRSample materialPSRSample;
 
   materialPSRSample.performPSR = true;
-  materialPSRSample.useAlternateDisocclusionThreshold = 
-    cb.enableDLSSRR 
-    ? translucentSurfaceMaterialInteraction.isAnimatedWater
-    : translucentSurfaceMaterialInteraction.normalDetail > float(cb.psrrNormalDetailThreshold);
+  materialPSRSample.useAlternateDisocclusionThreshold =
+    cb.enableDLSSRR
+    ? (translucentSurfaceMaterialInteraction.isAnimatedWater && cb.invalidateHistoryForAnimatedWater)
+    : (translucentSurfaceMaterialInteraction.normalDetail > float(cb.psrrNormalDetailThreshold));
   materialPSRSample.inputDirection = inputDirection;
   materialPSRSample.attenuation = attenuation;
   materialPSRSample.vectorTransform = getReflectionQuaternion(microfacetNormal);
@@ -1073,9 +1073,9 @@ SurfaceMaterialInteractionPSRSample translucentSurfaceMaterialInteractionCalcPSR
 
   materialPSRSample.performPSR = true;
   materialPSRSample.useAlternateDisocclusionThreshold =
-    cb.enableDLSSRR 
-    ? translucentSurfaceMaterialInteraction.isAnimatedWater
-    : translucentSurfaceMaterialInteraction.normalDetail > float(cb.pstrNormalDetailThreshold);
+    cb.enableDLSSRR
+    ? (translucentSurfaceMaterialInteraction.isAnimatedWater && cb.invalidateHistoryForAnimatedWater)
+    : (translucentSurfaceMaterialInteraction.normalDetail > float(cb.pstrNormalDetailThreshold));
   materialPSRSample.inputDirection = inputDirection;
   materialPSRSample.attenuation = attenuation;
   materialPSRSample.vectorTransform = vectorTransform;

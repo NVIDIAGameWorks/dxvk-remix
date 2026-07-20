@@ -93,6 +93,10 @@ namespace dxvk {
     RTX_OPTION("rtx.rayreconstruction", float, disocclusionMaskBlurNormalizedGaussianWeightSigma, 0.5f,
                "Normalized Gaussian weight sigma to use for blurring disocclusion mask.\n"
                "The sigma is applied to the normalized blur kernel radius extents (i.e. <0, 1>).")
+    RTX_OPTION("rtx.rayreconstruction", bool, invalidateHistoryForAnimatedWater, false,
+               "Adds animated water surfaces to the disocclusion mask, making DLSS Ray Reconstruction discard their temporal history every frame.\n"
+               "This suppresses ghosting from the water's per-frame normal variation, but can introduce shimmering on objects seen through or near the water, so it is disabled by default.\n"
+               "Enable it for content whose animated water ghosts noticeably.");
     RTX_OPTION("rtx.rayreconstruction", bool, enableTransformerModelD, false, "");
 
   private:
