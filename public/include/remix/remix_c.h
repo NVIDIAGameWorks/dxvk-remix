@@ -477,6 +477,7 @@ extern "C" {
     REMIXAPI_INSTANCE_CATEGORY_BIT_IGNORE_TRANSPARENCY_LAYER = 1 << 22,
     REMIXAPI_INSTANCE_CATEGORY_BIT_PARTICLE_EMITTER          = 1 << 23,
     REMIXAPI_INSTANCE_CATEGORY_BIT_SMOOTH_NORMALS            = 1 << 24,
+    REMIXAPI_INSTANCE_CATEGORY_BIT_HAIR_CARDS                = 1 << 25,
   } remixapi_InstanceCategoryBit;
 
   typedef uint32_t remixapi_InstanceCategoryFlags;

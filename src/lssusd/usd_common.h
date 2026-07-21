@@ -44,6 +44,7 @@ namespace dxvk {
     { InstanceCategories::IgnoreTransparencyLayer, "remix_category:ignore_transparency_layer","Ignore Transparency Layer", "rtx.ignoreTransparencyLayerTextures" },
     { InstanceCategories::ParticleEmitter,         "remix_category:particle_emitter",         "Particle Emitter",          "rtx.particleEmitterTextures" },
     { InstanceCategories::SmoothNormals,           "remix_category:smooth_normals",           "Smooth Normals",            "rtx.smoothNormalsTextures" },
+    { InstanceCategories::HairCards,               "remix_category:hair_cards",               "Hair Cards",                "rtx.hairCardTextures" },
   };
 
   // Table must have one entry per enum value.

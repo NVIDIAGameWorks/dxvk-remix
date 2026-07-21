@@ -584,7 +584,7 @@ struct RtOpaqueSurfaceMaterial {
     const Vector3& emissiveColorConstant, bool enableEmission,
     bool ignoreAlphaChannel, bool enableThinFilm, bool alphaIsThinFilmThickness, float thinFilmThicknessConstant,
     uint32_t samplerIndex, float displaceIn, float displaceOut,
-    uint32_t subsurfaceMaterialIndex, bool isRaytracedRenderTarget,
+    uint32_t subsurfaceMaterialIndex, bool isRaytracedRenderTarget, bool isHairCard,
     uint16_t samplerFeedbackStamp,
     uint32_t secondaryTextureIndex = 0
   ) :
@@ -598,7 +598,7 @@ struct RtOpaqueSurfaceMaterial {
     m_ignoreAlphaChannel { ignoreAlphaChannel }, m_enableThinFilm { enableThinFilm }, m_alphaIsThinFilmThickness { alphaIsThinFilmThickness },
     m_thinFilmThicknessConstant { thinFilmThicknessConstant }, m_samplerIndex{ samplerIndex }, m_displaceIn{ displaceIn },
     m_displaceOut{ displaceOut }, m_subsurfaceMaterialIndex(subsurfaceMaterialIndex), m_isRaytracedRenderTarget(isRaytracedRenderTarget),
-    m_samplerFeedbackStamp{ samplerFeedbackStamp }
+    m_isHairCard(isHairCard), m_samplerFeedbackStamp{ samplerFeedbackStamp }
   {
     updateCachedData();
     updateCachedHash();
@@ -629,6 +629,10 @@ struct RtOpaqueSurfaceMaterial {
 
     if (m_isRaytracedRenderTarget) {
       flags |= OPAQUE_SURFACE_MATERIAL_FLAG_IS_RAYTRACED_RENDER_TARGET;
+    }
+
+    if (m_isHairCard) {
+      flags |= OPAQUE_SURFACE_MATERIAL_FLAG_IS_HAIR_CARD;
     }
 
     float displaceIn = m_displaceIn * getDisplacementInFactor();
@@ -833,6 +837,7 @@ private:
       float displaceOut;
       uint32_t subsurfaceMaterialIndex;
       uint32_t isRaytracedRenderTarget;   // NOTE: uint32_t to avoid padding
+      uint32_t isHairCard;                // NOTE: uint32_t to avoid padding
       uint32_t samplerFeedbackStamp;      // NOTE: uint32_t to avoid padding
       uint32_t secondaryTextureIndex;
       // NOTE: There must be NO padding between members, as the struct is used for hashing
@@ -862,6 +867,7 @@ private:
       m_displaceOut,
       m_subsurfaceMaterialIndex,
       m_isRaytracedRenderTarget,
+      m_isHairCard,
       m_samplerFeedbackStamp,
       m_secondaryTextureIndex,
     };
@@ -912,6 +918,7 @@ private:
   uint32_t m_subsurfaceMaterialIndex;
 
   bool m_isRaytracedRenderTarget;
+  bool m_isHairCard;
 
   uint16_t m_samplerFeedbackStamp;
 

@@ -148,4 +148,9 @@ class "RemixInstanceCategoryAPI" (
         displayGroup = "Remix Categories"
         displayName = "Smooth Normals"
     )
+    bool remix_category:hair_cards = 0 (
+        doc = "Textures on draw calls that should be treated as alpha-tested hair cards.\nTagged materials preserve fine texture detail, render as cutouts instead of alpha blends, and disable backface culling."
+        displayGroup = "Remix Categories"
+        displayName = "Hair Cards"
+    )
 }

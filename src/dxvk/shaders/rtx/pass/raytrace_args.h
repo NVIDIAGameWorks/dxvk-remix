@@ -397,6 +397,8 @@ struct RaytraceArgs {
   uint sssTransmissionSingleScatteringSampleCount;
   uint enableTransmissionDiffusionProfileCorrection;
   float totalMipBias;
+  float hairCardMipBias;
+  float hairCardRoughnessScale;
 
   uint forceFirstHitInGBufferPass;
 
