@@ -191,9 +191,12 @@ namespace dxvk {
     geoData.positionBuffer = RasterBuffer(slice, 0, stride, VK_FORMAT_R32G32B32A32_SFLOAT);
     assert(geoData.positionBuffer.offset() % 4 == 0);
 
-    // Did we have a texcoord buffer bound for this draw?  Note, we currently get texcoord from the vertex shader output 
-    if (BoundShaderHas(vertexShader, DxsoUsage::Texcoord, false) && (!geoData.texcoordBuffer.defined() || !RtxGeometryUtils::isTexcoordFormatValid(geoData.texcoordBuffer.vertexFormat()))) {
-      // Known offset for vertex capture buffers
+    if (BoundShaderHas(vertexShader, DxsoUsage::Texcoord, false)
+        && (useVertexCapturedTexcoords() || !geoData.texcoordBuffer.defined() || !RtxGeometryUtils::isTexcoordFormatValid(geoData.texcoordBuffer.vertexFormat()))) {
+      // By default we only capture VS output texcoords when the input vertex declaration didn't
+      // already provide them.  Overriding valid input texcoords with the VS output is opt-in
+      // (useVertexCapturedTexcoords), since the data a VS writes to the :TEXCOORD attribute isn't
+      // always actual UVs and its memory layout can't be assumed for all games.
       const uint32_t texcoordOffset = offsetof(CapturedVertex, texcoord0);
       geoData.texcoordBuffer = RasterBuffer(slice, texcoordOffset, stride, VK_FORMAT_R32G32_SFLOAT);
       assert(geoData.texcoordBuffer.offset() % 4 == 0);
