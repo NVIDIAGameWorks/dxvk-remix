@@ -542,14 +542,14 @@ void applyVolumetricLighting(
   radianceOutput = vec3(0);
   if (cb.outputParticleLayer)
   {
+    // Volumetric light composition is independent of secondary signal routing.
+    if (cb.compositeVolumetricLight)
+    {
+      radianceOutput += volumetricPreintegratedRadiance * volumetricRadianceScale;
+    }
+
     if (cb.outputSecondarySignalToParticleLayer)
     {
-      // Secondary signal and preintegrated signal have no noise
-      if (cb.compositeVolumetricLight)
-      {
-        radianceOutput += volumetricPreintegratedRadiance * volumetricRadianceScale;
-      }
-
       // Note: secondary radiance is pre-scaled in the demodulate pass before NRD,
       // so the denoised output is already at the correct dense level.
       particleLayerOutput.xyz += remodulatedTotalSecondaryRadiance * volumeAttenuation;
