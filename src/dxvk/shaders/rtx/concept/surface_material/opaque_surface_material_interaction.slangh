@@ -560,6 +560,8 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   // Note: Does not represent if the thin film is enabled in all cases, such as if the thin film enable override is specified, merely concerned with if
   // it has been directly enabled by the material itself.
   const bool thinFilmEnabled = opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_USE_THIN_FILM_LAYER;
+  const bool isHairCardMaterial = opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_IS_HAIR_CARD;
+  const float materialLodBias = isHairCardMaterial ? cb.hairCardMipBias : 0.0f;
 
   opaqueSurfaceMaterialInteraction.flags |= thinFilmEnabled ? OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_USE_THIN_FILM_LAYER : 0;
 
@@ -597,8 +599,8 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   vec4 metallicSample;
   vec4 emissiveColorSample;
 
-  const bool albedoOpacityLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.albedoOpacityTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, albedoOpacitySample);
-  const bool normalLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.normalTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, normalSample);
+  const bool albedoOpacityLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.albedoOpacityTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, albedoOpacitySample, materialLodBias);
+  const bool normalLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.normalTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, normalSample, materialLodBias);
 
   bool secondNormalLoaded = false;
   if (cb.opaqueMaterialArgs.layeredWaterNormalEnable && surface.isAnimatedWater)
@@ -617,10 +619,10 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     surfaceInteraction.textureCoordinates = savedCoordinates;
   }
 
-  const bool tangentLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.tangentTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, tangentSample);
-  const bool roughnessLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.roughnessTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, roughnessSample);
-  const bool metallicLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.metallicTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, metallicSample);
-  const bool emissiveColorLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.emissiveColorTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, emissiveColorSample);
+  const bool tangentLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.tangentTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, tangentSample, materialLodBias);
+  const bool roughnessLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.roughnessTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, roughnessSample, materialLodBias);
+  const bool metallicLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.metallicTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, metallicSample, materialLodBias);
+  const bool emissiveColorLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.emissiveColorTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, emissiveColorSample, materialLodBias);
   
   // Load Emissive Color
 
@@ -838,7 +840,8 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   }
 #endif  
   // Apply material modifiers
-  roughness = saturate(roughness * cb.opaqueMaterialArgs.roughnessScale + cb.opaqueMaterialArgs.roughnessBias);
+  const float roughnessScale = cb.opaqueMaterialArgs.roughnessScale * (isHairCardMaterial ? cb.hairCardRoughnessScale : 1.0f);
+  roughness = saturate(roughness * roughnessScale + cb.opaqueMaterialArgs.roughnessBias);
 
   // Load Metallic
 

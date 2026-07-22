@@ -1485,6 +1485,8 @@ namespace dxvk {
     preCreationHash = XXH64(&samplerIndex2, sizeof(samplerIndex2), preCreationHash);
     preCreationHash = XXH64(&hasTexcoords, sizeof(hasTexcoords), preCreationHash);
     preCreationHash = XXH64(&drawCallState.isUsingRaytracedRenderTarget, sizeof(drawCallState.isUsingRaytracedRenderTarget), preCreationHash);
+    const bool isHairCard = drawCallState.testCategoryFlags(InstanceCategories::HairCards);
+    preCreationHash = XXH64(&isHairCard, sizeof(isHairCard), preCreationHash);
 
     // For Opaque materials, fold in a bitmask of which texture slots are populated. MaterialData::getHash()
     // sums TextureRef::getImageHash() across slots, but render-target-backed TextureRefs (notably
@@ -1664,7 +1666,7 @@ namespace dxvk {
         emissiveColorConstant, enableEmissive,
         ignoreAlphaChannel, thinFilmEnable, alphaIsThinFilmThickness,
         thinFilmThicknessConstant, samplerIndex, displaceIn, displaceOut, 
-        subsurfaceMaterialIndex, isUsingRaytracedRenderTarget,
+        subsurfaceMaterialIndex, isUsingRaytracedRenderTarget, isHairCard,
         samplerFeedbackStamp,
         secondaryTextureIndex
       };

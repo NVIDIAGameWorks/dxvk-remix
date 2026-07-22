@@ -1186,6 +1186,8 @@ namespace dxvk {
     constants.pomMaxIterations = RtxOptions::Displacement::maxIterations();
 
     constants.totalMipBias = getSceneManager().getTotalMipBias(); 
+    constants.hairCardMipBias = RtxOptions::hairCardMipBias();
+    constants.hairCardRoughnessScale = RtxOptions::hairCardRoughnessScale();
 
     constants.upscaleFactor = float2 {
       rtOutput.m_compositeOutputExtent.width / static_cast<float>(rtOutput.m_finalOutputExtent.width),

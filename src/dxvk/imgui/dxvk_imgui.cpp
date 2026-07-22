@@ -182,6 +182,7 @@ namespace dxvk {
     {"lightmaptextures","Lightmap Textures (optional)", &RtxOptions::lightmapTexturesObject()},
     {"ignorelights", "Ignore Lights (optional)", &RtxOptions::ignoreLightsObject()},
     {"particletextures", "Particle Texture (optional)", &RtxOptions::particleTexturesObject()},
+    {"haircardtextures", "Hair Cards Texture (optional)", &RtxOptions::hairCardTexturesObject()},
     {"beamtextures", "Beam Texture (optional)", &RtxOptions::beamTexturesObject()},
     {"ignoretransparencytextures", "Ignore Transparency Layer Texture (optional)", &RtxOptions::ignoreTransparencyLayerTexturesObject()},
     {"lightconvertertextures", "Add Light to Textures (optional)", &RtxOptions::lightConverterObject()},
@@ -787,6 +788,8 @@ namespace dxvk {
           RemixGui::SliderFloat("Metallic Bias", &OpaqueMaterialOptions::metallicBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
           RemixGui::SliderFloat("Roughness Scale", &OpaqueMaterialOptions::roughnessScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
           RemixGui::SliderFloat("Roughness Bias", &OpaqueMaterialOptions::roughnessBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
+          RemixGui::DragFloat("Hair Cards Mip Bias", &RtxOptions::hairCardMipBiasObject(), 0.25f, -32.0f, 16.0f, "%.2f", sliderFlags);
+          RemixGui::DragFloat("Hair Cards Roughness Scale", &RtxOptions::hairCardRoughnessScaleObject(), 0.01f, 0.0f, 4.0f, "%.3f", sliderFlags);
           RemixGui::SliderFloat("Normal Strength##1", &OpaqueMaterialOptions::normalIntensityObject(), -10.0f, 10.f, "%.3f", sliderFlags);
 
           RemixGui::Checkbox("Enable dual-layer animated water normal for Opaque", &OpaqueMaterialOptions::layeredWaterNormalEnableObject());
