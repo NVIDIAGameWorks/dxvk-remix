@@ -518,6 +518,7 @@ namespace dxvk {
 
     m_cameraManager.onFrameEnd();
     m_instanceManager.onFrameEnd();
+    m_materializedTrianglesThisFrame = 0;
     m_previousFrameSceneAvailable = raytracedThisFrame && RtxOptions::enablePreviousTLAS();
 
     m_bufferCache.clear();
@@ -714,6 +715,7 @@ namespace dxvk {
     const bool usePreservePath =
         RtxOptions::enablePreservePath() &&
         replacementInstance->dirtyFlags.isClear() &&
+        !replacementInstance->pendingMaterialization &&
         !RtxOptionManager::isDrawcallTranslationInvalid() &&
         !secondSubmissionThisFrame &&
         !input.getCategoryFlags().test(InstanceCategories::ParticleEmitter) &&
@@ -746,6 +748,7 @@ namespace dxvk {
 
         RtInstance* instance = processDrawCallState(ctx, input, renderMaterialData,
             *replacementInstance, existingInstance, nullptr);
+        replacementInstance->pendingMaterialization = m_lastDrawDeferredByBudget;
         if (instance != nullptr) {
           if (replacementInstance->root.getUntyped() == nullptr) {
             replacementInstance->setup(PrimInstance(instance, PrimInstance::Type::Instance), 1, nullptr);
@@ -917,6 +920,8 @@ namespace dxvk {
       return replacementInstance->prims[idx].getInstance();
     };
 
+    bool anyPrimDeferredByBudget = false;
+
     for (size_t i = 0; i < pReplacements->size(); i++) {
       auto& replacement = (*pReplacements)[i];
       RtInstance* instance = nullptr;
@@ -932,6 +937,7 @@ namespace dxvk {
 
         const RtxParticleSystemDesc* pParticleSystemDesc = replacement.particleSystem.has_value() ? &replacement.particleSystem.value() : nullptr;
         instance = processDrawCallState(ctx, *newDrawCallState, renderMaterialData, *replacementInstance, getExistingInstance(i), pParticleSystemDesc);
+        anyPrimDeferredByBudget |= m_lastDrawDeferredByBudget;
       }
 
       if (instance != nullptr) {
@@ -945,6 +951,8 @@ namespace dxvk {
         }
       }
     }
+
+    replacementInstance->pendingMaterialization = anyPrimDeferredByBudget;
 
     processReplacementLights(input, pReplacements, replacementInstance);
     processReplacementGraphs(ctx, input, pReplacements, replacementInstance);
@@ -1350,15 +1358,40 @@ namespace dxvk {
   RtInstance* SceneManager::processDrawCallState(const Rc<DxvkContext>& ctx, const DrawCallState& drawCallState, const MaterialData& renderMaterialData, ReplacementInstance& replacementInstance, RtInstance* existingInstance, const RtxParticleSystemDesc* pParticleSystemDesc) {
     ScopedCpuProfileZone();
 
+    m_lastDrawDeferredByBudget = false;
+
     if (renderMaterialData.getIgnored()) {
       return nullptr;
     }
 
     ObjectCacheState result = ObjectCacheState::kInvalid;
     BlasEntry* pBlas = nullptr;
-    if (m_drawCallCache.get(drawCallState, &pBlas) == DrawCallCache::CacheState::kExisted) {
+    // Per-frame materialization budget: bound the triangles of NEW geometry
+    // (cache misses = full upload + BLAS build) admitted per frame. Admission
+    // is allowed while the frame's counter is still under budget (the last
+    // admission may overshoot by one mesh — a hard "must fit" rule would
+    // starve meshes larger than the budget whenever a trickle of small new
+    // geometry, e.g. particles, runs earlier in the frame's draw order).
+    // Over-budget draws are skipped without allocating an entry and retried on
+    // subsequent frames: originals via the game's per-frame resubmission,
+    // replacement prims via ReplacementInstance::pendingMaterialization which
+    // keeps the RI off the preserve path until nothing was deferred.
+    const uint32_t materializationBudget = RtxOptions::materializationBudgetTrianglesPerFrame();
+    bool allowNewGeometry = true;
+    uint32_t newGeometryTriangles = 0;
+    if (materializationBudget > 0) {
+      newGeometryTriangles = drawCallState.getGeometryData().calculatePrimitiveCount();
+      allowNewGeometry = m_materializedTrianglesThisFrame < materializationBudget;
+    }
+    const DrawCallCache::CacheState cacheState = m_drawCallCache.get(drawCallState, &pBlas, allowNewGeometry);
+    if (cacheState == DrawCallCache::CacheState::kRejectedBudget) {
+      m_lastDrawDeferredByBudget = true;
+      return nullptr;
+    }
+    if (cacheState == DrawCallCache::CacheState::kExisted) {
       result = onSceneObjectUpdated(ctx, drawCallState, pBlas);
     } else {
+      m_materializedTrianglesThisFrame += newGeometryTriangles;
       result = onSceneObjectAdded(ctx, drawCallState, pBlas);
     }
     

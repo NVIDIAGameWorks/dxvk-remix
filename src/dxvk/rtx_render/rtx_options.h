@@ -637,6 +637,15 @@ namespace dxvk {
     RTX_OPTION_ENV("rtx", bool, adaptiveAccumulation, true, "DXVK_USE_ADAPTIVE_ACCUMULATION", "");
     RTX_OPTION("rtx", uint32_t, numFramesToKeepInstances, 1, "");
     RTX_OPTION("rtx", uint32_t, numFramesToKeepBLAS, 1, "");
+    RTX_OPTION("rtx", uint32_t, materializationBudgetTrianglesPerFrame, 0,
+               "When > 0, bounds the triangles of NEW geometry materialized (uploaded + BLAS-built) per frame.\n"
+               "New geometry is admitted while the frame's running total is under the budget; the final "
+               "admission may overshoot by one mesh, so a single mesh larger than the budget still loads. "
+               "Over-budget draws are skipped statelessly and retried on following frames: original draws "
+               "via the game's own resubmission, replacement prims via the ReplacementInstance "
+               "pendingMaterialization flag, which bypasses the preserve path until every prim materialized. "
+               "Trades a brief pop-in at the frustum edge for the frame spike a burst of newly-visible "
+               "geometry otherwise causes. 0 = unlimited (legacy behavior).");
     RTX_OPTION("rtx", uint32_t, numFramesToKeepLights, 100, ""); // NOTE: This was the default we've had for a while, can probably be reduced...
     RTX_OPTION("rtx", uint32_t, sceneKeepAliveFrames, 0, 
                "Number of consecutive frames without valid camera or raytracing before clearing the scene."
