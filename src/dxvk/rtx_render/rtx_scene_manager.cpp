@@ -1229,13 +1229,21 @@ namespace dxvk {
     // No MaterialData is threaded through: SceneManager::preserveInstance reads the cached
     // RtSurfaceMaterial via surfaceMaterialIndex (Ray Portals included), and InstanceManager
     // event handlers contract for a null material on the preserve path.
+    bool hasInstance = false;
     for (auto& prim : replacementInstance->prims) {
       RtInstance* instance = prim.getInstance();
       if (instance != nullptr) {
+        // drawCallID is frame-local. Without refreshing it, a preserved surface retains an ID
+        // whose texture metadata has expired and can collide with an unrelated current draw.
+        instance->surface.objectPickingValue = input.drawCallID;
         instance->surface.isPreservePath = true;
         preserveInstance(*instance, &input);
         m_instanceManager.preserveInstance(*instance, input, nullptr);
+        hasInstance = true;
       }
+    }
+    if (hasInstance) {
+      trackObjectPickingMeta(input, input.drawCallID);
     }
     replacementInstance->recalculateBoundingBox(
         input.getTransformData().objectToWorld, &input.getGeometryData().boundingBox);
@@ -1390,30 +1398,8 @@ namespace dxvk {
       createEffectLight(ctx, drawCallState, instance);
     }
 
-    const bool objectPickingActive = m_device->getCommon()->getResources().getRaytracingOutput()
-      .m_primaryObjectPicking.isValid();
-
-    if (objectPickingActive && instance && g_allowMappingLegacyHashToObjectPickingValue) {
-      auto meta = DrawCallMetaInfo {};
-      {
-        XXH64_hash_t h;
-        h = drawCallState.getMaterialData().getColorTexture().getImageHash();
-        if (h != kEmptyHash) {
-          meta.legacyTextureHash = h;
-        }
-        h = drawCallState.getMaterialData().getColorTexture2().getImageHash();
-        if (h != kEmptyHash) {
-          meta.legacyTextureHash2 = h;
-        }
-      }
-
-      {
-        std::lock_guard lock { m_drawCallMeta.mutex };
-        auto [iter, isNew] = m_drawCallMeta.infos[m_drawCallMeta.ticker].emplace(instance->surface.objectPickingValue, meta);
-        ONCE_IF_FALSE(isNew, Logger::warn(
-          "Found multiple draw calls with the same \'objectPickingValue\'. "
-          "Ignoring further MetaInfo-s, some objects might be not be available through object picking"));
-      }
+    if (instance) {
+      trackObjectPickingMeta(drawCallState, instance->surface.objectPickingValue);
     }
 
     // Priority ordering for particle system descriptors is: Mesh, Material, Texture.  This matches the implementation in toolkit.
@@ -1439,6 +1425,32 @@ namespace dxvk {
     }
 
     return instance; 
+  }
+
+  void SceneManager::trackObjectPickingMeta(
+      const DrawCallState& drawCallState,
+      ObjectPickingValue objectPickingValue) {
+    const bool objectPickingActive = m_device->getCommon()->getResources().getRaytracingOutput()
+      .m_primaryObjectPicking.isValid();
+    if (!objectPickingActive || !g_allowMappingLegacyHashToObjectPickingValue) {
+      return;
+    }
+
+    auto meta = DrawCallMetaInfo {};
+    XXH64_hash_t h = drawCallState.getMaterialData().getColorTexture().getImageHash();
+    if (h != kEmptyHash) {
+      meta.legacyTextureHash = h;
+    }
+    h = drawCallState.getMaterialData().getColorTexture2().getImageHash();
+    if (h != kEmptyHash) {
+      meta.legacyTextureHash2 = h;
+    }
+
+    std::lock_guard lock { m_drawCallMeta.mutex };
+    auto [iter, isNew] = m_drawCallMeta.infos[m_drawCallMeta.ticker].emplace(objectPickingValue, meta);
+    ONCE_IF_FALSE(isNew, Logger::warn(
+      "Found multiple draw calls with the same \'objectPickingValue\'. "
+      "Ignoring further MetaInfo-s, some objects might be not be available through object picking"));
   }
 
   const RtSurfaceMaterial& SceneManager::createSurfaceMaterial(const MaterialData& renderMaterialData,
