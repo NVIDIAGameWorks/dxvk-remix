@@ -634,6 +634,9 @@ namespace {
     // --
 
     CameraType::Enum categoryToCameraType(remixapi_InstanceCategoryFlags flags) {
+      if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_VIEW_MODEL) {
+        return CameraType::ViewModel;
+      }
       if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_SKY) {
         return CameraType::Sky;
       }
@@ -792,10 +795,11 @@ namespace {
 std::unique_ptr<dxvk::ExternalDrawState> dxvk::RemixAPIPrivateAccessor::toRtDrawState(const remixapi_InstanceInfo& info)
 {
   auto state = std::make_unique<dxvk::ExternalDrawState>();
+  const CameraType::Enum cameraType = convert::categoryToCameraType(info.categoryFlags);
 
   auto& prototype = state->drawCall;
   {
-    prototype.cameraType = CameraType::Main;
+    prototype.cameraType = cameraType;
     prototype.transformData.objectToWorld = convert::tomat4(info.transform);
     prototype.transformData.texgenMode = TexGenMode::None;
     prototype.categories = convert::toRtCategories(info.categoryFlags);
@@ -860,7 +864,7 @@ std::unique_ptr<dxvk::ExternalDrawState> dxvk::RemixAPIPrivateAccessor::toRtDraw
   }
 
   state->mesh = info.mesh;
-  state->cameraType = convert::categoryToCameraType(info.categoryFlags);
+  state->cameraType = cameraType;
   state->categories = convert::toRtCategories(info.categoryFlags);
   state->doubleSided = convert::tobool(info.doubleSided);
 
