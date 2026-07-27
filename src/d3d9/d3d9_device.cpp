@@ -4627,7 +4627,7 @@ namespace dxvk {
     // These hashes are configured as stable identities for RTX draw-call setup.
     // Some games update them after setup, but Remix still needs the original
     // hash to classify terrain and omit auxiliary textures like lightmaps.
-    if (MipLevel == 0 && !readOnly) {
+    if (MipLevel == 0 && !readOnly && RtxOptions::recomputeTextureHashOnWrite()) {
       Rc<DxvkImage> image = pResource->GetImage();
       if (image != nullptr) {
         const XXH64_hash_t imageHash = image->getHash();
