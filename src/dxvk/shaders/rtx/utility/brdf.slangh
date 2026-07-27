@@ -730,6 +730,7 @@ float evalHenyeyGreensteinPhaseFunction(in const float anisotropy,
 
 // Implement First-Order Approximation for 1-layer virtual volume surface to simulate diffuse transmission of Thin Opaque Surface
 // [P. Hanrahan 1993, "Reflection from Layered Surfaces due to Subsurface Scattering"], Chapter 5.1
+// Note: Returns an unprojected BTDF; the caller applies the incident-direction cosine.
 vec3 evalHanrahanSingleScatteringDiffuseTransmission(
   const vec3 surfaceBaseReflectivity,
   const vec3 attenuationCoefficient,
@@ -738,33 +739,35 @@ vec3 evalHanrahanSingleScatteringDiffuseTransmission(
   const float volumetricAnisotropy,
   const float /* n.v */ normalDotOutputDirection,
   const float /*-n.l */ transmissionNormalDotInputDirection,
-  const float /* v.l */ inputDirectionDotOutputDirection)
+  const float /*-v.l */ inputPropagationDirectionDotOutputDirection)
 {
   const float baseReflectivity = calcBt709Luminance(surfaceBaseReflectivity);
-  const float refractiveIndex = baseReflectivityToIoR(materialIoRVacuum, baseReflectivity);
-  const float insideRelativeRefractiveIndex = refractiveIndex / materialIoRVacuum;
 
-  // Calculate path integral throughput/weight
-  const float outsideFresnel = evalTranslucentSchlickFresnel(baseReflectivity, normalDotOutputDirection);
-  const float insideFresnel = evalTranslucentSchlickFresnelTIR(baseReflectivity, insideRelativeRefractiveIndex, transmissionNormalDotInputDirection);
-  const float attenuationDistance = measurementDistance * measurementDistance;
-  const vec3 firstAttenuation = evalBeerLambertAttenuation(attenuationCoefficient, attenuationDistance * rcp(float(normalDotOutputDirection)));
-  const vec3 secondAttenuation = evalBeerLambertAttenuation(attenuationCoefficient, attenuationDistance * rcp(float(transmissionNormalDotInputDirection)));
-
-  if (transmissionNormalDotInputDirection < materialEpsilon || insideFresnel >= 1.0f)
+  if (normalDotOutputDirection < materialEpsilon || transmissionNormalDotInputDirection < materialEpsilon)
   {
     return vec3(0.0f, 0.0f, 0.0f);
   }
 
-  const float phaseWeight = evalHenyeyGreensteinPhaseFunction(volumetricAnisotropy, inputDirectionDotOutputDirection);
+  // Calculate path integral throughput/weight
+  // Note: Both directions are in the outside medium. Fresnel reflectance is reciprocal, so the
+  // inside boundary can be evaluated from its corresponding outside direction. Treating that
+  // direction as an inside direction would incorrectly apply total internal reflection to valid
+  // lighting directions.
+  const float outsideFresnel = evalTranslucentSchlickFresnel(baseReflectivity, normalDotOutputDirection);
+  const float insideFresnel = evalTranslucentSchlickFresnel(baseReflectivity, transmissionNormalDotInputDirection);
+  const float attenuationDistance = measurementDistance * measurementDistance;
+  const vec3 firstAttenuation = evalBeerLambertAttenuation(attenuationCoefficient, attenuationDistance * rcp(float(normalDotOutputDirection)));
+  const vec3 secondAttenuation = evalBeerLambertAttenuation(attenuationCoefficient, attenuationDistance * rcp(float(transmissionNormalDotInputDirection)));
 
-  if ((normalDotOutputDirection - transmissionNormalDotInputDirection) >= materialEpsilon)
+  const float phaseWeight = evalHenyeyGreensteinPhaseFunction(volumetricAnisotropy, inputPropagationDirectionDotOutputDirection);
+  const float cosineDifference = normalDotOutputDirection - transmissionNormalDotInputDirection;
+
+  if (abs(cosineDifference) >= materialEpsilon)
   {
     // First-Order forward scattered radiance equation
     return singleScatteringAlbedo * (1.0f - outsideFresnel) * (1.0f - insideFresnel) *
-           safePositiveDivide(normalDotOutputDirection,
-            (normalDotOutputDirection - transmissionNormalDotInputDirection), materialEpsilon) *
-           phaseWeight * (firstAttenuation - secondAttenuation);
+           safePositiveDivide(float(1), abs(cosineDifference), materialEpsilon) *
+           phaseWeight * abs(firstAttenuation - secondAttenuation);
   }
   else
   {
@@ -772,7 +775,7 @@ vec3 evalHanrahanSingleScatteringDiffuseTransmission(
     //       when normalDotOutputDirection and transmissionNormalDotInputDirection are the same value
     return singleScatteringAlbedo * (1.0f - outsideFresnel) * (1.0f - insideFresnel) *
            safePositiveDivide((attenuationCoefficient * attenuationDistance),
-            transmissionNormalDotInputDirection, materialEpsilon) *
+            square(transmissionNormalDotInputDirection), materialEpsilon) *
            phaseWeight * secondAttenuation;
   }
 }
