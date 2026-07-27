@@ -1455,7 +1455,7 @@ SurfaceMaterialInteractionSample thinOpaqueSurfaceMaterialInteractionCalcDiffuse
   const float /* n.v */ normalDotOutputDirection = outputDirection.z;
   // Note: Negative as input direction always points into surface
   const float /*-n.l */ transmissionNormalDotInputDirection = -inputDirection.z;
-  const float /* v.l */ inputDirectionDotOutputDirection = dot(-outputDirection, inputDirection);
+  const float /*-v.l */ inputPropagationDirectionDotOutputDirection = dot(-outputDirection, inputDirection);
 
   const vec3 weight = evalHanrahanSingleScatteringDiffuseTransmission(
     opaqueSurfaceMaterialInteraction.baseReflectivity,
@@ -1463,7 +1463,7 @@ SurfaceMaterialInteractionSample thinOpaqueSurfaceMaterialInteractionCalcDiffuse
     subsurfaceMaterial.singleScatteringAlbedo, subsurfaceMaterial.volumetricAnisotropy,
     normalDotOutputDirection,
     transmissionNormalDotInputDirection,
-    inputDirectionDotOutputDirection);
+    inputPropagationDirectionDotOutputDirection);
 
   if (all(weight == 0.0f))
   {
@@ -1929,7 +1929,7 @@ SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcProjec
       subsurfaceMaterial.singleScatteringAlbedo, subsurfaceMaterial.volumetricAnisotropy,
       normalDotOutputDirection,
       transmissionNormalDotInputDirection,
-      inputDirectionDotOutputDirection);
+      -inputDirectionDotOutputDirection);
   }
 
   if (normalDotOutputDirection < 0.0f || normalDotInputDirection < 0.0f)
