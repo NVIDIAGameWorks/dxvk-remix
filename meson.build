@@ -1,5 +1,5 @@
 #############################################################################
-# Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -883,15 +883,15 @@ if dxvk_is_ninja or dxvk_is_woa_ec
     )
 
     if dxvk_is_woa
-      install_data(join_paths(nrc_dll_path, nrc_dll_name), install_dir : output_path, install_tag: target_suffix) 
-      install_data(join_paths(nrc_dll_path, 'cudart64_13.dll'), install_dir : output_path, install_tag: target_suffix) 
-      install_data(join_paths(nrc_dll_path, 'nvrtc64_130_0.dll'), install_dir : output_path, install_tag: target_suffix) 
-      install_data(join_paths(nrc_dll_path, 'nvrtc-builtins64_131.dll'), install_dir : output_path, install_tag: target_suffix) 
+      install_data(join_paths(nrc_dll_path, nrc_dll_name), install_dir : output_path, install_tag: target_suffix)
+      install_data(join_paths(nrc_dll_path, 'cudart64_13.dll'), install_dir : output_path, install_tag: target_suffix)
+      install_data(join_paths(nrc_dll_path, 'nvrtc64_130_0.dll'), install_dir : output_path, install_tag: target_suffix)
+      install_data(join_paths(nrc_dll_path, 'nvrtc-builtins64_131.dll'), install_dir : output_path, install_tag: target_suffix)
     else
-      install_data(join_paths(nrc_dll_path, nrc_dll_name), install_dir : output_path, install_tag: target_suffix) 
-      install_data(join_paths(nrc_dll_path, 'cudart64_12.dll'), install_dir : output_path, install_tag: target_suffix) 
-      install_data(join_paths(nrc_dll_path, 'nvrtc64_120_0.dll'), install_dir : output_path, install_tag: target_suffix) 
-      install_data(join_paths(nrc_dll_path, 'nvrtc-builtins64_128.dll'), install_dir : output_path, install_tag: target_suffix) 
+      install_data(join_paths(nrc_dll_path, nrc_dll_name), install_dir : output_path, install_tag: target_suffix)
+      install_data(join_paths(nrc_dll_path, 'cudart64_13.dll'), install_dir : output_path, install_tag: target_suffix)
+      install_data(join_paths(nrc_dll_path, 'nvrtc64_130_0.dll'), install_dir : output_path, install_tag: target_suffix)
+      install_data(join_paths(nrc_dll_path, 'nvrtc-builtins64_133.dll'), install_dir : output_path, install_tag: target_suffix)
     endif
 
     install_data(join_paths(nrd_lib_path, 'NRD.dll'), install_dir : output_path, install_tag: target_suffix) 
