@@ -1067,6 +1067,11 @@ namespace dxvk {
                "A time in milliseconds that the DXVK presentation thread should sleep for. Requires present throttling to be enabled to take effect.\n"
                "Note that the application may sleep for longer than the specified time as is expected with sleep functions in general.");
     RTX_OPTION_ENV("rtx", bool, validateCPUIndexData, false, "DXVK_VALIDATE_CPU_INDEX_DATA", "");
+    RTX_OPTION_ARGS("rtx", bool, recomputeTextureHashOnWrite, false,
+                "When true, Remix computes the hash of a texture when the game writes to the resource. Some games manage their own pool of\n"
+                "textures and shuffle data around those resources resulting in incorrect textures being displayed. Recomputing the hash\n"
+                "when the game writes to the resource can resolve this issue, however this can have unintended side effects when replacing\n"
+                "animated game textures.");
     RTX_OPTION("rtx", uint, dumpAllInstancesOnFrame, UINT32_MAX, "If set, and running in a REMIX_DEVELOPMENT build, this will dump all active instances to the log on the specified frame.");
     // Note: Use use areValidationLayersEnabled helper function rather than accessing this option directly as additional logic must be done to determine if validation layers should be used or not.
     RTX_OPTION_FLAG_ENV("rtx", bool, enableValidationLayers, false, RtxOptionFlags::NoSave, "DXVK_ENABLE_VALIDATION_LAYERS",
