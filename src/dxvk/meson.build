@@ -308,6 +308,7 @@ dxvk_src = files([
   'rtx_render/rtx_pathtracer_integrate_indirect.h',
   'rtx_render/rtx_postFx.cpp',
   'rtx_render/rtx_postFx.h',
+  'rtx_render/rtx_preserved_object_picking.h',
   'rtx_render/rtx_srgb_dither.cpp',
   'rtx_render/rtx_srgb_dither.h',
   'rtx_render/rtx_ray_portal_manager.cpp',
