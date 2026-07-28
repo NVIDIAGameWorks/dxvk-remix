@@ -60,6 +60,7 @@
 #include "../util/log/metrics.h"
 #include "../util/util_defer.h"
 #include "../util/util_global_time.h"
+#include "../util/util_sentry.h"
 
 #include "rtx_imgui.h"
 #include "dxvk_scoped_annotation.h"
@@ -445,6 +446,38 @@ namespace dxvk {
 
     getSceneManager().onFrameEnd(this, rayTracedThisFrame);
   }
+  
+#ifdef REMIX_DEVELOPMENT
+  bool RtxContext::handleCrashHotkeys() {
+    // Crash Hotkey Feature: When armed via the Development tab checkbox, pressing the crash hotkey
+    // triggers a deliberate null pointer dereference crash. This is useful for testing crash handling,
+    // crash dumps, and crash reporting systems.
+    static bool crashHotkeyStartupLogged = false;
+    if (!crashHotkeyStartupLogged && RtxOptions::enableCrashHotkey()) {
+      const auto crashHotkeyStr = buildKeyBindDescriptorStringForDisplay(RtxOptions::crashHotkey());
+      const auto gpuCrashHotkeyStr = buildKeyBindDescriptorStringForDisplay(RtxOptions::gpuCrashHotkey());
+      Logger::warn(str::format("Crash hotkeys ARMED at startup - ", crashHotkeyStr, " = CPU crash, ", gpuCrashHotkeyStr, " = GPU crash"));
+      crashHotkeyStartupLogged = true;
+    }
+
+    if (RtxOptions::enableCrashHotkey() && ImGUI::checkHotkeyState(RtxOptions::crashHotkey(), false)) {
+      const auto crashHotkeyStr = buildKeyBindDescriptorStringForDisplay(RtxOptions::crashHotkey());
+      Logger::err(str::format("Deliberate crash triggered via crash hotkey (", crashHotkeyStr, ")"));
+      // Trigger a null pointer dereference to cause a crash
+      volatile int* nullPtr = nullptr;
+      *nullPtr = 0xDEAD;
+    }
+
+    if (RtxOptions::enableCrashHotkey() && ImGUI::checkHotkeyState(RtxOptions::gpuCrashHotkey(), false)) {
+      const auto gpuCrashHotkeyStr = buildKeyBindDescriptorStringForDisplay(RtxOptions::gpuCrashHotkey());
+      Logger::warn(str::format("GPU crash triggered via hotkey (", gpuCrashHotkeyStr, ")"));
+      commitGraphicsState<true, false>();
+      getCommonObjects()->metaGpuCrash().dispatch(this);
+      return true;
+    }
+    return false;
+  }
+#endif
 
   // Hooked into D3D9 presentImage (same place HUD rendering is)
   void RtxContext::injectRTX(std::uint64_t cachedReflexFrameId, Rc<DxvkImage> targetImage) {
@@ -461,24 +494,8 @@ namespace dxvk {
     }
 
 #ifdef REMIX_DEVELOPMENT
-    // Crash Hotkey Feature: When armed via the Development tab checkbox, pressing the crash hotkey
-    // triggers a deliberate null pointer dereference crash. This is useful for testing crash handling,
-    // crash dumps, and crash reporting systems.
-    {
-      static bool crashHotkeyStartupLogged = false;
-      if (!crashHotkeyStartupLogged && RtxOptions::enableCrashHotkey()) {
-        const auto crashHotkeyStr = buildKeyBindDescriptorString(RtxOptions::crashHotkey());
-        Logger::warn(str::format("Crash hotkey is ARMED at startup (via config/environment) - press ", crashHotkeyStr, " to trigger crash"));
-        crashHotkeyStartupLogged = true;
-      }
-      
-      if (RtxOptions::enableCrashHotkey() && ImGUI::checkHotkeyState(RtxOptions::crashHotkey(), false)) {
-        const auto crashHotkeyStr = buildKeyBindDescriptorString(RtxOptions::crashHotkey());
-        Logger::err(str::format("Deliberate crash triggered via crash hotkey (", crashHotkeyStr, ")"));
-        // Trigger a null pointer dereference to cause a crash
-        volatile int* nullPtr = nullptr;
-        *nullPtr = 0xDEAD;
-      }
+    if (handleCrashHotkeys()) {
+      return;
     }
 #endif
 
@@ -836,6 +853,13 @@ namespace dxvk {
 
   // Called right before D3D9 present
   void RtxContext::onPresent(Rc<DxvkImage> targetImage) {
+    {
+      static bool s_firstFrameDone = false;
+      if (!s_firstFrameDone) {
+        s_firstFrameDone = true;
+        sentry::onFirstFrame();
+      }
+    }
     // If injectRTX couldn't screenshot a final image or a pre-present screenshot is requested,
     // take a screenshot of a present image (with UI and others)
     {

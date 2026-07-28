@@ -138,6 +138,7 @@ namespace dxvk {
     None = 0,
     Basic,
     Advanced,
+    FirstUseGuide,
     Count
   };
 
@@ -174,13 +175,6 @@ namespace dxvk {
   };
 
   class RtxOptions {
-    friend class ImGUI;
-    friend class ImGuiSplash;
-    friend class ImGuiCapture;
-    friend class NeuralRadianceCache;
-    friend class RtxContext;
-    friend class RtxInitializer;
-    friend class RtxComposite;
 
     RTX_OPTION("rtx", fast_unordered_set, lightmapTextures, {},
                   "Textures used for lightmapping (baked static lighting on surfaces) in older games.\n"
@@ -545,7 +539,7 @@ namespace dxvk {
 
     RTX_OPTION("rtx", bool, useNewGuiInputMethod, true, "Disables the previous method for getting mouse/keyboard input and enables a new method which should be more reliable.  If successful the old method will be deprecated.  This setting can't be changed at runtime, so it must be set in a .conf file.");
 
-    RTX_OPTION_ARGS("rtx", UIType, showUI, UIType::None, "0 = Don't Show, 1 = Show Simple, 2 = Show Advanced.",
+    RTX_OPTION_ARGS("rtx", UIType, showUI, UIType::None, "0 = Don't Show, 1 = Show Simple, 2 = Show Advanced, 3 = First Use Guide.",
                     args.environment = "RTX_GUI_DISPLAY_UI",
                     args.flags = RtxOptionFlags::NoSave | RtxOptionFlags::NoReset);
     RTX_OPTION_ARGS("rtx", bool, defaultToAdvancedUI, false, "Whether to default to the Advanced UI when opening the developer menu.", 
@@ -1042,6 +1036,12 @@ namespace dxvk {
                     "The hotkey combination that triggers a deliberate crash when the crash hotkey feature is armed.\n"
                     "Default is Ctrl+Shift+Alt+K. Only takes effect when rtx.enableCrashHotkey is True.\n"
                     "This setting is not saved to config files but can be set manually in rtx.conf.");
+    // GPU crash hotkey - same "armed" state as crashHotkey. When armed, this key triggers a GPU crash (dialog + Sentry).
+    inline static const VirtualKeys kDefaultGpuCrashHotkey{ VirtualKey{VK_CONTROL}, VirtualKey{VK_SHIFT}, VirtualKey{VK_MENU}, VirtualKey{'G'} };
+    RTX_OPTION_FLAG("rtx", VirtualKeys, gpuCrashHotkey, kDefaultGpuCrashHotkey, RtxOptionFlags::NoSave,
+                    "The hotkey that triggers a GPU crash when the crash hotkey feature is armed.\n"
+                    "Default is Ctrl+Shift+Alt+G.");
+
     RTX_OPTION_ARGS("rtx", bool, enablePreservePath, true,
                 "When true, Remix attempts to identify draw calls whose state has not changed since last frame and re-use the previous\n"
                 "frame's translation, rather than retranslating the draw call into raytrace-ready scene data.\n"

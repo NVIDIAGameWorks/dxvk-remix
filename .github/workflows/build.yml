@@ -9,6 +9,8 @@ on:
 jobs:
   build-windows:
     runs-on: windows-2022
+    env:
+      BUILD_SENTRY_ENVIRONMENT: ${{ github.event_name == 'pull_request' && 'github-testing' || 'github-production' }}
 
     strategy:
       matrix:

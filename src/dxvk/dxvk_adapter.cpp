@@ -28,6 +28,8 @@
 #include "dxvk_device.h"
 #include "dxvk_instance.h"
 #include "../util/util_once.h"
+#include "../util/util_sentry.h"
+#include "../util/util_string.h"
 
 // NV-DXVK start: RTXIO
 #include "rtx_render/rtx_io.h"
@@ -864,6 +866,38 @@ namespace dxvk {
       new vk::DeviceFn(true, m_vki->instance(), device),
       devExtensions, enabledFeatures, queueInfos);
     result->initResources();
+
+    // NV-DXVK start: Update Sentry GPU tags now that the real adapter has been chosen.
+    // The instance constructor already set these from m_adapters[0] as a fallback; correct
+    // them here with the adapter that the game actually selected for device creation.
+    {
+      const auto& props = this->deviceProperties();
+      const char* vendor = "Unknown";
+      switch (props.vendorID) {
+        case 0x10de: vendor = "NVIDIA"; break;
+        case 0x1002: vendor = "AMD";    break;
+        case 0x8086: vendor = "Intel";  break;
+      }
+      sentry::setTag("gpu_vendor", vendor);
+
+      VkPhysicalDeviceMemoryProperties memProps = this->memoryProperties();
+      VkDeviceSize vramBytes = 0;
+      for (uint32_t i = 0; i < memProps.memoryHeapCount; i++) {
+        if (memProps.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
+          vramBytes += memProps.memoryHeaps[i].size;
+        }
+      }
+      sentry::setTag("vram", str::formatBytes(static_cast<size_t>(vramBytes)));
+
+      const bool onlyAdapter = (instance->enumAdapters(1) == nullptr);
+      if (onlyAdapter) {
+        sentry::setTag("gpu_selection", "only_gpu");
+      } else {
+        sentry::setTag("gpu_selection", props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? "discrete" : "integrated");
+      }
+    }
+    // NV-DXVK end
+
     return result;
   }
 
@@ -905,29 +939,53 @@ namespace dxvk {
     VkPhysicalDeviceMemoryProperties memoryInfo = this->memoryProperties();
 
     Logger::info(str::format(deviceInfo.deviceName, ":"));
-    Logger::info(str::format("  Driver: ",
+    sentry::setTag("gpu", deviceInfo.deviceName);
+
+    const std::string driverVersion = str::format(
       VK_VERSION_MAJOR(deviceInfo.driverVersion), ".",
       VK_VERSION_MINOR(deviceInfo.driverVersion), ".",
-      VK_VERSION_PATCH(deviceInfo.driverVersion)));
-    Logger::info(str::format("  Vulkan: ",
+      VK_VERSION_PATCH(deviceInfo.driverVersion));  
+    Logger::info(str::format("  Driver: ", driverVersion));
+    sentry::setTag("gpu_driver", driverVersion);
+
+    const std::string vulkanVersion = str::format(
       VK_VERSION_MAJOR(deviceInfo.apiVersion), ".",
       VK_VERSION_MINOR(deviceInfo.apiVersion), ".",
-      VK_VERSION_PATCH(deviceInfo.apiVersion)));
+      VK_VERSION_PATCH(deviceInfo.apiVersion));
+    Logger::info(str::format("  Vulkan: ", vulkanVersion));
+    sentry::setTag("vulkan_version", vulkanVersion);
 
+    std::string memoryContext;
     for (uint32_t i = 0; i < memoryInfo.memoryHeapCount; i++) {
       constexpr VkDeviceSize mib = 1024 * 1024;
 
-      Logger::info(str::format("  Memory Heap[", i, "]: "));
-      Logger::info(str::format("    Size: ", memoryInfo.memoryHeaps[i].size / mib, " MiB"));
-      Logger::info(str::format("    Flags: ", "0x", std::hex, memoryInfo.memoryHeaps[i].flags));
+      const std::string heapHeader = str::format("  Memory Heap[", i, "]: ");
+      if (!memoryContext.empty()) {
+        memoryContext += "\n";
+      }
+      memoryContext += heapHeader;
+      Logger::info(heapHeader);
+
+      const std::string sizeLine = str::format("    Size: ", memoryInfo.memoryHeaps[i].size / mib, " MiB");
+      memoryContext += "\n" + sizeLine;
+      Logger::info(sizeLine);
+
+      const std::string flagsLine = str::format("    Flags: ", "0x", std::hex, memoryInfo.memoryHeaps[i].flags);
+      memoryContext += "\n" + flagsLine;
+      Logger::info(flagsLine);
 
       for (uint32_t j = 0; j < memoryInfo.memoryTypeCount; j++) {
         if (memoryInfo.memoryTypes[j].heapIndex == i) {
-          Logger::info(str::format(
+          const std::string typeLine = str::format(
             "    Memory Type[", j, "]: ",
-            "Property Flags = ", "0x", std::hex, memoryInfo.memoryTypes[j].propertyFlags));
+            "Property Flags = ", "0x", std::hex, memoryInfo.memoryTypes[j].propertyFlags);
+          memoryContext += "\n" + typeLine;
+          Logger::info(typeLine);
         }
       }
+    }
+    if (!memoryContext.empty()) {
+      sentry::setContext("device_properties_memory", memoryContext);
     }
   }
   

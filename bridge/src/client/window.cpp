@@ -34,6 +34,7 @@
 
 #include <unordered_map>
 #include <mutex>
+#include <atomic>
 #include <d3d9.h>
 
 using namespace bridge_util;
@@ -48,6 +49,7 @@ namespace {
 HWND g_hwnd = nullptr;
 WNDPROC g_gameWndProc = nullptr;
 bool g_bActivateProcessed = false;
+std::atomic<bool> g_suppressWindowManagement { false };
 
 // reinterpret_cast wrappers
 template<typename T>
@@ -163,7 +165,7 @@ void windowMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
       D3DPRESENT_PARAMETERS presParams = data.presParam;
       if (msg == WM_ACTIVATEAPP && !presParams.Windowed && !(msg == WM_NCCALCSIZE && wParam == TRUE)) {
         D3DDEVICE_CREATION_PARAMETERS create_parms = data.createParam;
-        if (!(create_parms.BehaviorFlags & D3DCREATE_NOWINDOWCHANGES)) {
+        if (!(create_parms.BehaviorFlags & D3DCREATE_NOWINDOWCHANGES) && !g_suppressWindowManagement) {
           if (wParam && !g_bActivateProcessed) {
             RECT rect;
             GetMonitorRect(GetDefaultMonitor(), &rect);
@@ -180,7 +182,7 @@ void windowMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
       } else if (msg == WM_SIZE) {
         D3DDEVICE_CREATION_PARAMETERS create_parms = data.createParam;
 
-        if (!(create_parms.BehaviorFlags & D3DCREATE_NOWINDOWCHANGES) && !IsIconic(hWnd)) {
+        if (!(create_parms.BehaviorFlags & D3DCREATE_NOWINDOWCHANGES) && !IsIconic(hWnd) && !g_suppressWindowManagement) {
           PostMessageW(hWnd, WM_ACTIVATEAPP, 1, GetCurrentThreadId());
         }
       }
@@ -395,6 +397,45 @@ bool unset() {
 
 bool invokeRemixWndProc(UINT msg, WPARAM wParam, LPARAM lParam) {
   return remixMsg(g_hwnd, msg, wParam, lParam);
+}
+
+void setSuppressWindowManagement(bool suppress) {
+  g_suppressWindowManagement = suppress;
+}
+
+HWND getHwnd() {
+  return g_hwnd;
+}
+
+void prepareForCrashDialog(bool async) {
+  // Process-global and idempotent: stop Windows from ghosting the (soon-to-be-unresponsive) window,
+  // and stop our WndProc from restoring it to fullscreen while the crash dialog is up.
+  DisableProcessWindowsGhosting();
+  g_suppressWindowManagement = true;
+
+  HWND hGame = g_hwnd;
+  if (!hGame) {
+    Logger::warn("Crash window prep: no game HWND available, skipping window manipulation");
+    return;
+  }
+
+  const DWORD exStyle = GetWindowLong(hGame, GWL_EXSTYLE);
+  Logger::warn(format_string("Crash window prep: HWND=0x%p topmost=%d iconic=%d visible=%d async=%d",
+      hGame, (exStyle & WS_EX_TOPMOST) != 0, IsIconic(hGame) != FALSE, IsWindowVisible(hGame) != FALSE,
+      async ? 1 : 0));
+
+  // Demote from the topmost band so the MB_TOPMOST crash dialog sits above the game window, then
+  // minimize. SWP_ASYNCWINDOWPOS / ShowWindowAsync post the request to the owning thread rather than
+  // blocking on it; a synchronous call from off the main thread would hang if the main thread is stuck
+  // in the Present wait and not pumping messages.
+  const UINT swpFlags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | (async ? SWP_ASYNCWINDOWPOS : 0u);
+  SetWindowPos(hGame, HWND_NOTOPMOST, 0, 0, 0, 0, swpFlags);
+  if (async) {
+    ShowWindowAsync(hGame, SW_FORCEMINIMIZE);
+  } else {
+    ShowWindow(hGame, SW_FORCEMINIMIZE);
+  }
+  Logger::warn("Crash window prep: HWND_NOTOPMOST + SW_FORCEMINIMIZE applied");
 }
 
 }

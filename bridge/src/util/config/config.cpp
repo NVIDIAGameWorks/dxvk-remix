@@ -26,19 +26,24 @@
   * at https://github.com/doitsujin/dxvk/blob/master/src/util/config/config.cpp
   */
 
-#include "config.h"
-
-#include "log/log.h"
-#include "util_bytes.h"
-#include "util_process.h"
-
-#include <fstream>
-#include <sstream>
-#include <iostream>
-#include <regex>
 #include <bitset>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <mutex>
+#include <regex>
+#include <sstream>
+
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+
+#include "config.h"
+#include "log/log.h"
+#include "util_bytes.h"
+#include "util_filesys.h"
+#include "util_process.h"
+#include "../../../../src/util/util_per_game_config.h"
 
 // Guarantee internal linkage only
 namespace {
@@ -107,6 +112,20 @@ namespace {
       config.setOption(key.str(), value.str());
     }
   }
+
+  static std::filesystem::path getUserSettingsFilePath() {
+    const char* localAppData = std::getenv("LOCALAPPDATA");
+    if (localAppData == nullptr || localAppData[0] == '\0' || !dxvk::util::RtxFileSys::isInitialized()) {
+      return {};
+    }
+
+    const std::string configFileName = dxvk::perGameConfigFileName(dxvk::util::RtxFileSys::rootPath());
+    if (configFileName.empty()) {
+      return {};
+    }
+
+    return std::filesystem::path(localAppData) / "NVIDIA" / "RTXRemix" / "user_settings" / configFileName;
+  }
 }
 
 namespace bridge_util {
@@ -139,7 +158,49 @@ namespace bridge_util {
 
 
   void Config::setOption(const std::string& key, const std::string& value) {
-    get().m_options.insert_or_assign(key, value);
+    m_options.insert_or_assign(key, value);
+  }
+
+
+  Config Config::loadFromFile(const std::filesystem::path& filePath) {
+    Config config;
+
+    std::ifstream stream(filePath);
+    if (!stream.good()) {
+      return config;
+    }
+
+    std::string line;
+    while (std::getline(stream, line)) {
+      parseUserConfigLine(config, line);
+    }
+
+    return config;
+  }
+
+
+  bool Config::saveToFile(const Config& config, const std::filesystem::path& filePath) {
+    std::error_code ec;
+    std::filesystem::create_directories(filePath.parent_path(), ec);
+    if (ec) {
+      return false;
+    }
+
+    std::ofstream stream(filePath, std::ios::trunc);
+    if (!stream) {
+      return false;
+    }
+
+    for (const auto& pair : config.m_options) {
+      const bool needsQuotes = pair.second.find_first_of(" \t") != std::string::npos;
+      if (needsQuotes) {
+        stream << pair.first << " = \"" << pair.second << "\"\n";
+      } else {
+        stream << pair.first << " = " << pair.second << '\n';
+      }
+    }
+
+    return true;
   }
 
 
@@ -192,30 +253,64 @@ namespace bridge_util {
     }
     const std::string moduleDir = moduleFilePath.string().substr(0, finalDirPos + 1);
     const std::string trexDirPath = (app == App::Client) ? moduleDir + ".trex\\" : moduleDir;
-    const std::string userConfPath = trexDirPath + "bridge.conf";
+    const std::filesystem::path userConfPath = trexDirPath + "bridge.conf";
 
-    // Open the file if it exists
-    Logger::info(std::string("Trying to open config file: ") + userConfPath);
-    std::ifstream stream(userConfPath);
-
-    if (!stream.good()) {
+    Logger::info(std::string("Trying to open config file: ") + userConfPath.string());
+    if (!std::filesystem::exists(userConfPath)) {
       return config;
     }
 
-    // Inform the user that we loaded a file, might
-    // help when debugging configuration issues
-    Logger::info(std::string("Found user config file: ") + userConfPath);
+    Logger::info(std::string("Found user config file: ") + userConfPath.string());
+    return loadFromFile(userConfPath);
+  }
 
-    // Parse the file line by line
-    std::string line;
 
-    while (std::getline(stream, line)) {
-      parseUserConfigLine(config, line);
+  bool Config::s_userSettingsLoaded = false;
+  static std::mutex s_userSettingsMutex;
+
+  Config& Config::getUserSettings() {
+    static Config config;
+    {
+      std::lock_guard<std::mutex> lock(s_userSettingsMutex);
+      if (!s_userSettingsLoaded) {
+        s_userSettingsLoaded = true;
+        config.m_options.clear();
+
+        const std::filesystem::path filePath = getUserSettingsFilePath();
+        if (!filePath.empty()) {
+          config = loadFromFile(filePath);
+        }
+      }
     }
-
     return config;
   }
 
+  bool Config::setUserSetting(const char* option, const std::string& value) {
+    if (option == nullptr || option[0] == '\0') {
+      return false;
+    }
+
+    const std::filesystem::path filePath = getUserSettingsFilePath();
+    if (filePath.empty()) {
+      return false;
+    }
+
+    std::lock_guard<std::mutex> lock(s_userSettingsMutex);
+    Config config = loadFromFile(filePath);
+    config.setOption(option, value);
+
+    if (!saveToFile(config, filePath)) {
+      return false;
+    }
+
+    s_userSettingsLoaded = false;
+    return true;
+  }
+
+  void Config::reloadUserSettings() {
+    std::lock_guard<std::mutex> lock(s_userSettingsMutex);
+    s_userSettingsLoaded = false;
+  }
 
   void Config::logOptions() const {
     if (!m_options.empty()) {

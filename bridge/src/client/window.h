@@ -73,5 +73,17 @@ extern bool set(HWND hwnd);
 extern bool unset();
 // Directly invoke the RemixWndProc logic, really only useful for DirectInput forwarding
 extern bool invokeRemixWndProc(UINT msg, WPARAM wParam, LPARAM lParam);
+// Suppress fullscreen window management (minimize/restore) — call before showing crash dialogs
+// so the game's render loop can't fight back against a forced minimize.
+extern void setSuppressWindowManagement(bool suppress);
+// Returns the HWND that the bridge WndProc is currently installed on, or nullptr if unset.
+extern HWND getHwnd();
+// Prepare the game window so the crash dialog is visible on top: disable the Windows "not responding"
+// ghost, suppress our WndProc's fullscreen-restore, demote the window from topmost, and minimize it.
+// Pass async=true from a thread that does NOT own the game window (e.g. the process-monitor threadpool
+// thread that runs OnServerExited): the window calls then post to the owning thread instead of blocking
+// on it, which is essential because the owning main thread may be stuck in the Present wait and not
+// pumping messages. Pass async=false only from the window-owning main thread (the GPU-crash early handler).
+extern void prepareForCrashDialog(bool async);
 
 }

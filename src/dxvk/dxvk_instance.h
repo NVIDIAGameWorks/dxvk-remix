@@ -23,6 +23,7 @@
 
 #include "../util/config/config.h"
 
+#include <atomic>
 #include <memory>
 
 #include "dxvk_adapter.h"
@@ -134,8 +135,11 @@ namespace dxvk {
   private:
     Config              m_config;
     DxvkOptions         m_options;
+
     // NV-DXVK start: Integrate Aftermath
-    bool                m_aftermathEnabled = false;
+    // Aftermath GPU crash dumps are registered once per process.
+    static std::atomic<bool> s_aftermathEnabled;
+    static bool              s_aftermathInitFailed;
     // NV-DXVK end
 
     Rc<vk::LibraryFn>       m_vkl;
@@ -147,6 +151,10 @@ namespace dxvk {
 
     // NV-DXVK start: debug callback context (stack trace + duplicate filtering)
     std::unique_ptr<DxvkDebugUtilsContext> m_debugUtilsContext;
+    // NV-DXVK end
+
+    // NV-DXVK start: add information to crash reporting.
+    void setSentryGpuAndAftermathTags();
     // NV-DXVK end
 
     std::vector<DxvkExtensionProvider*> m_extProviders;

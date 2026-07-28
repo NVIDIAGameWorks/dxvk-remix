@@ -8,6 +8,11 @@
 #include "../util/util_filesys.h"
 // NV-DXVK end
 
+// NV-DXVK start: Sentry crash reporting
+#include "../util/util_sentry.h"
+#include "version.h"
+// NV-DXVK end
+
 #include <windows.h>
 
 class D3DFE_PROCESSVERTICES;
@@ -29,15 +34,23 @@ namespace dxvk {
     if (!ppDirect3D9Ex)
       return D3DERR_INVALIDCALL;
       
-// NV-DXVK start: Set up rtx filesystem
+// NV-DXVK start: Set up rtx filesystem and Sentry crash reporting
     // If Direct3DCreate9 is invoked more than once, we want our static
     // state to remain.
     ONCE(
-      const auto exePath = env::getExePath();
-      const auto exeDir = std::filesystem::path(exePath).parent_path();
-      util::RtxFileSys::init(exeDir.string());
+      if (!util::RtxFileSys::isInitialized()) {
+        const auto exePath = env::getExePath();
+        const auto exeDir = std::filesystem::path(exePath).parent_path();
+        util::RtxFileSys::init(exeDir.string());
+      }
       Logger::initRtxLog();
       util::RtxFileSys::print();
+      
+      // Initialize Sentry crash reporting (safe to call outside DllMain)
+      const auto remixVersion = std::string("dxvk-remix@") + DXVK_VERSION;
+      sentry::initialize(remixVersion.c_str());
+      // Prompt for crash report upload as early as possible (before any code that might crash on launch)
+      sentry::showCrashReportDialogIfNeeded();
     );
 // NV-DXVK end
 
@@ -133,6 +146,14 @@ constexpr bool strings_equal(char const * a, char const * b) {
 }
 
 extern "C" {
+  DLLEXPORT void __stdcall RtxSentryRunUploadHelper(const char* sentryDatabasePathUtf8, const char* crashType) {
+    dxvk::sentry::runUploadHelper(sentryDatabasePathUtf8, crashType);
+  }
+
+  DLLEXPORT void __stdcall RtxSentryShutdown() {
+    dxvk::sentry::shutdown();
+  }
+
   DLLEXPORT uint64_t __stdcall QueryFeatureVersion(version::Feature feat) {
     static_assert(strings_equal(__func__, version::QueryFuncName));
     static_assert(std::is_same_v< decltype(&QueryFeatureVersion), version::QueryFunc >);
@@ -163,4 +184,3 @@ void dummy() {
   // need to reference a function so it's exported from d3d9.dll
   remixapi_InitializeLibrary(nullptr, nullptr);
 }
-// NV-DXVK end

@@ -508,12 +508,6 @@ if get_option('enable_tracy')
   vs_project_defines += 'TRACY_ON_DEMAND;'
 endif
 
-if get_option('buildtype') == 'debug'
-  usd_debug_or_release = 'Debug'
-else
-  usd_debug_or_release = 'Release'
-endif
-
 # embedding compiler
 xxd_exe = find_program('external/nv_xxd/nv_xxd')
 embedding_compiler = generator(xxd_exe,
@@ -521,24 +515,15 @@ embedding_compiler = generator(xxd_exe,
     arguments : [ '@INPUT@', '@OUTPUT@', '@BASENAME@' ]
 )
 
-mdl_include_dir = include_directories('external/omni_core_materials')
-
-if dxvk_is_woa
-  usd_debug_release_dir = 'external/usd_stock_arm64/' + usd_debug_or_release + '/'
-else
-  usd_debug_release_dir = 'external/nv_usd_' + usd_debug_or_release + '/'
-endif
-
-usd_lib_path = join_paths(global_src_root_norm, usd_debug_release_dir)
-
-# NOTE newer versions of meson prefer relative paths for include directories
-nv_usd_include_path = include_directories(join_paths(usd_debug_release_dir, 'include'))
-
-usd_include_paths = [nv_usd_include_path]
-
 vk_include_path = include_directories('./include/vulkan/include')
 # required for NV_present_metering
 add_project_arguments('-DVK_ENABLE_BETA_EXTENSIONS', language : 'cpp')
+
+# External dependencies configuration
+# Configures Sentry, USD include/lib paths, MDL includes and the RTX IO dependency.
+# (NVAPI, Reflex, Aftermath, DLSS, DLFG, NRD, NRC and XeSS are configured below,
+#  as they carry Windows-on-Arm specific handling.)
+subdir('external-build')
 
 lssusd_include_paths = [nv_usd_include_path, vk_include_path]
 
@@ -701,13 +686,6 @@ nvapi_dep = declare_dependency(
   )
 
 embedded_includes = [ mdl_include_dir ]
-
-if enable_rtxio == true
-  rtxio_dep = declare_dependency(
-    dependencies : [ rtxio_lib ],
-    include_directories : rtxio_include_path
-  )
-endif
 
 embedded_dep = declare_dependency(
   dependencies : [ ],
@@ -915,6 +893,12 @@ if dxvk_is_ninja or dxvk_is_woa_ec
 
     if enable_rtxio == true
       install_data(join_paths(rtxio_bin_path, 'rtxio.dll'), install_dir : output_path, install_tag: target_suffix)
+    endif
+
+    # Install Sentry crashpad next to d3d9 when Sentry is enabled (disabled for debug builds)
+    if enable_sentry == true
+      install_data(join_paths(sentry_bin_path, 'crashpad_handler.exe'), install_dir : output_path, install_tag: target_suffix)
+      install_data(join_paths(sentry_bin_path, 'crashpad_wer.dll'), install_dir : output_path, install_tag: target_suffix)
     endif
 
     if src_exe != ''

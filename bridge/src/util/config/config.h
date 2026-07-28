@@ -27,6 +27,7 @@
 
 #pragma once
 
+#include <filesystem>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -72,7 +73,7 @@ namespace bridge_util {
      * \param [in] key Option name
      * \param [in] value Option value
      */
-    static void setOption(
+    void setOption(
       const std::string& key,
       const std::string& value);
 
@@ -122,7 +123,33 @@ namespace bridge_util {
      */
     static bool isOptionDefined(const char* option);
 
+    // Load/save key = value .conf files using the same parser as bridge.conf.
+    static Config loadFromFile(const std::filesystem::path& filePath);
+    static bool saveToFile(const Config& config, const std::filesystem::path& filePath);
+
+    // Read a value from the UserSettings .conf file in %LOCALAPPDATA% (keyed by
+    // RtxFileSys::rootPath() hash). The file is loaded on first call and cached.
+    // Call reloadUserSettings() to refresh the cache. Must match the path and
+    // format used by src/util/util_local_data.cpp.
+    template<typename T>
+    static T getUserSetting(const char* option, T fallback = T()) {
+      const std::string& value = getUserSettings().getOptionValue(option);
+      T result;
+      if (parseOptionValue(value, result)) {
+        return result;
+      }
+      return fallback;
+    }
+
+    // Write a value to the per-game UserSettings .conf file, preserving other keys.
+    static bool setUserSetting(const char* option, const std::string& value);
+
+    // Reload the UserSettings file from disk, discarding the cached values.
+    static void reloadUserSettings();
+
   private:
+    static Config& getUserSettings();
+    static bool s_userSettingsLoaded;
     static bool s_bIsInit;
     using OptionMap = std::unordered_map<std::string, std::string>;
     OptionMap m_options;

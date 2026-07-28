@@ -78,6 +78,10 @@
 #define REMIX_BRIDGE_SERVER
 #endif
 
+#if defined(REMIX_BRIDGE_CLIENT) && defined(REMIX_BRIDGE_SERVER)
+#error "Both REMIX_BRIDGE_CLIENT and REMIX_BRIDGE_SERVER are defined. Use the vcvars platform that matches the Meson build directory (x86 for *_x86, x64 for *_x64)."
+#endif
+
 #if defined(__GNUC__)
 #define FORCEINLINE __attribute__((always_inline)) inline
 #elif defined(_MSC_VER)

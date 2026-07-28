@@ -25,26 +25,21 @@
 #include <map>
 
 namespace logger_strings {
-  constexpr char* OutOfBufferMemory = "The host application has tried to write data larger than one of the RTX Remix Bridge's buffers. Increase one of the buffer sizes in \".trex\\bridge.conf\".\n\n";
-  constexpr char* OutOfBufferMemory1 = " Buffer Option: ";
-  constexpr char* MultipleActiveCommands = "Multiple active Command instances detected!";
-  constexpr char* RtxRemixRuntimeError = "RTX Remix Runtime Error!";
-  constexpr char* BridgeClientClosing = "The RTX Remix Runtime has encountered an unexpected issue. The application will close.\n\n"
-                                        "Please collect any: \n"
-                                        "  *.log files in <application_directory>/rtx-remix/logs/\n"
-                                        "  *.dmp files next to the application or in the .trex folder\n"
-                                        "and report the error at https://github.com/NVIDIAGameWorks/rtx-remix/issues.";
-  
+  constexpr const char* OutOfBufferMemory = "The host application has tried to write data larger than one of the RTX Remix Bridge's buffers. Increase one of the buffer sizes in \".trex\\bridge.conf\".\n\n";
+  constexpr const char* OutOfBufferMemory1 = " Buffer Option: ";
+  constexpr const char* MultipleActiveCommands = "Multiple active Command instances detected!";
+  constexpr const char* RtxRemixRuntimeError = "RTX Remix Runtime Error!";
+
   namespace WndProc {
-    constexpr char* kStr_newSetWindowLong_settingHwnd = "[WndProc][NewSetWindowLong] Setting new HWND=0x%08x, OldHWND=0x%08x";
-    constexpr char* kStr_newSetWindowLong_settingWndProc = "[WndProc][NewSetWindowLong] Setting NewWndProc=0x%08x, OldWndProc=0x%08x";
-    constexpr char* kStr_init_attachErr = "[WndProc][init] Attach failed!";
-    constexpr char* kStr_terminate_detachErr = "[WndProc][terminate] Detach failed!";
-    constexpr char* kStr_set_implicitWarn = "[WndProc][set] Calling WndProc::set(...) without an intermediate unset(). Calling implicitly...";
-    constexpr char* kStr_set_failedErr = "[WndProc][set] Failed!";
-    constexpr char* kStr_set_settingWndProc = "[WndProc][set] Setting RemixWndProc=0x%08x, GameWndProc=0x%08x";
-    constexpr char* kStr_unset_wndProcInvalidWarn = "[WndProc][unset] Previous WndProc is invalid.";
-    constexpr char* kStr_unset_unsettingWndProc = "[WndProc][unset] Unsetting prevWndProc=0x%08x, GameWndProc=0x%08x";
+    constexpr const char* kStr_newSetWindowLong_settingHwnd = "[WndProc][NewSetWindowLong] Setting new HWND=%p, OldHWND=%p";
+    constexpr const char* kStr_newSetWindowLong_settingWndProc = "[WndProc][NewSetWindowLong] Setting NewWndProc=%p, OldWndProc=%p";
+    constexpr const char* kStr_init_attachErr = "[WndProc][init] Attach failed!";
+    constexpr const char* kStr_terminate_detachErr = "[WndProc][terminate] Detach failed!";
+    constexpr const char* kStr_set_implicitWarn = "[WndProc][set] Calling WndProc::set(...) without an intermediate unset(). Calling implicitly...";
+    constexpr const char* kStr_set_failedErr = "[WndProc][set] Failed!";
+    constexpr const char* kStr_set_settingWndProc = "[WndProc][set] Setting RemixWndProc=%p, GameWndProc=%p";
+    constexpr const char* kStr_unset_wndProcInvalidWarn = "[WndProc][unset] Previous WndProc is invalid.";
+    constexpr const char* kStr_unset_unsettingWndProc = "[WndProc][unset] Unsetting prevWndProc=%p, GameWndProc=%p";
   }
 
   inline static const std::map<const std::string, const std::string> bufferNameToOptionMap =
