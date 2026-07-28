@@ -128,6 +128,38 @@ namespace dxvk {
     m_mutexQueue.unlock();
   }
 
+  // NV-DXVK start: GPU crash diagnostics
+  void DxvkSubmissionQueue::onGpuCrash(const char* reason) {
+    if (m_gpuCrashHandled.exchange(true)) {
+      return;
+    }
+
+    // The submission queue is destroyed and its threads are joined before the
+    // device's common objects, so the scene manager and recorder are alive here.
+    m_device->getCommon()->getSceneManager().getAccelManager().dumpCrashState(reason);
+
+    if (m_device->config().enableAftermath) {
+      // Stall the pending exception until Aftermath has finished writing or reports an error.
+      constexpr uint32_t kTimeoutPreventionLimit = 5000;
+      constexpr uint32_t kTimeoutPerTry = 100;
+      uint32_t elapsedTime = 0;
+      GFSDK_Aftermath_CrashDump_Status aftermathStatus = GFSDK_Aftermath_CrashDump_Status_NotStarted;
+
+      while (elapsedTime < kTimeoutPreventionLimit) {
+        GFSDK_Aftermath_GetCrashDumpStatus(&aftermathStatus);
+
+        if (aftermathStatus == GFSDK_Aftermath_CrashDump_Status_Finished
+         || aftermathStatus == GFSDK_Aftermath_CrashDump_Status_Unknown) {
+          break;
+        }
+
+        Sleep(kTimeoutPerTry);
+        elapsedTime += kTimeoutPerTry;
+      }
+    }
+  }
+  // NV-DXVK end
+
   void DxvkSubmissionQueue::submitCmdLists() {
     env::setThreadName("dxvk-submit");
 
@@ -247,25 +279,14 @@ namespace dxvk {
       } else if (status == VK_ERROR_DEVICE_LOST || entry.submit.cmdList != nullptr) {
         Logger::err(str::format("DxvkSubmissionQueue: Command submission failed: ", status));
         m_lastError = status;
-        
-        if (m_device->config().enableAftermath) {
-          // Stall the pending exception until aftermath has finished writing (or hits some error)
-          uint32_t counter = 0;
-          GFSDK_Aftermath_CrashDump_Status aftermathStatus = GFSDK_Aftermath_CrashDump_Status_NotStarted; 
-          
-          static const uint32_t kTimeoutPreventionLimit = 5000;
-          
-          while (counter < kTimeoutPreventionLimit) {
-            GFSDK_Aftermath_GetCrashDumpStatus(&aftermathStatus);
 
-            if (aftermathStatus == GFSDK_Aftermath_CrashDump_Status_Finished || aftermathStatus == GFSDK_Aftermath_CrashDump_Status_Unknown)
-              break; // Our dump was written
-
-            static const uint32_t kTimeoutPerTry = 100;
-            Sleep(kTimeoutPerTry);
-            counter += kTimeoutPerTry;
-          }
+        // NV-DXVK start: GPU crash diagnostics
+        // Aftermath only produces a GPU crash dump for device loss. Other
+        // submission failures retain their existing handling without a stall.
+        if (status == VK_ERROR_DEVICE_LOST) {
+          onGpuCrash("queue submission");
         }
+        // NV-DXVK end
         m_device->waitForIdle();
       }
 
@@ -308,6 +329,13 @@ namespace dxvk {
       if (status != VK_SUCCESS) {
         Logger::err(str::format("DxvkSubmissionQueue: Failed to sync fence: ", status));
         m_lastError = status;
+
+        // NV-DXVK start: GPU crash diagnostics
+        if (status == VK_ERROR_DEVICE_LOST) {
+          onGpuCrash("fence synchronization");
+        }
+        // NV-DXVK end
+
         m_device->waitForIdle();
       }
 

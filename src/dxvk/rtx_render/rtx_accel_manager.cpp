@@ -49,6 +49,9 @@ namespace dxvk {
 
   AccelManager::AccelManager(DxvkDevice* device)
     : CommonDeviceObject(device)
+    , m_gpuCrashRecorder(
+        device->config().enableGpuCrashState,
+        device->config().enableGpuCrashStateBufferRetention)
     // Note: The scratch buffer's device address must be aligned to the minimum alignment required by the Vulkan runtime, otherwise
     //    // even if scratch allocation offsets are aligned they may add to a device address which will mess up this alignment (the alignment
     //    // requirement in Vulkan applies to the scratch buffer's device address, not just an offset as the name may imply). The lack of
@@ -59,6 +62,7 @@ namespace dxvk {
   }
 
   void AccelManager::clear() {
+    m_gpuCrashRecorder.clear();
     m_blasPool.clear();
 
     // Invalidate incremental rebuild cache
@@ -1027,7 +1031,8 @@ namespace dxvk {
     }
 
     buildBlases(ctx, execBarriers, cameraManager, opacityMicromapManager, instanceManager, 
-                textures, instances, blasBuckets, blasToBuild, blasRangesToBuild, totalScratchMemory);
+                textures, instances, blasBuckets, blasToBuild, blasRangesToBuild,
+                instanceTransforms, totalScratchMemory);
 
     // If new OMMs were built this frame, force a full scene rebuild next frame
     // so tryBindOpacityMicromap runs on all instances and the BLASes pick up the new OMMs.
@@ -1758,6 +1763,7 @@ namespace dxvk {
                                  const std::vector<std::unique_ptr<BlasBucket>>& blasBuckets,
                                  std::vector<VkAccelerationStructureBuildGeometryInfoKHR>& blasToBuild,
                                  std::vector<VkAccelerationStructureBuildRangeInfoKHR*>& blasRangesToBuild,
+                                 const std::vector<VkTransformMatrixKHR>& instanceTransforms,
                                  size_t& totalScratchMemory) {
     ScopedGpuProfileZone(ctx, "buildBLAS");
     // Upload surfaces before opacity micromap generation which reads the surface data on the GPU
@@ -1820,6 +1826,12 @@ namespace dxvk {
         desc.scratchData.deviceAddress += m_scratchBuffer->getDeviceAddress();
       }
       assert(blasToBuild.size() == blasRangesToBuild.size());
+      m_gpuCrashRecorder.recordBlasBuilds(
+        m_device->getCurrentFrameId(),
+        blasToBuild,
+        blasRangesToBuild,
+        m_transformBuffer != nullptr ? m_transformBuffer->getDeviceAddress() : 0,
+        instanceTransforms);
       ctx->vkCmdBuildAccelerationStructuresKHR(blasToBuild.size(), blasToBuild.data(), blasRangesToBuild.data());
 
       execBarriers.accessBuffer(
@@ -1837,6 +1849,13 @@ namespace dxvk {
     if (m_vkInstanceBuffer == nullptr) {
       return;
     }
+
+    m_gpuCrashRecorder.recordScene(
+      m_device->getCurrentFrameId(),
+      m_lastProcessedGeneration,
+      m_reorderedSurfaces,
+      m_blasPool,
+      m_activeDynamicBlases);
 
     ScopedGpuProfileZone(ctx, "buildTLAS");
 
@@ -1894,9 +1913,11 @@ namespace dxvk {
     instancesVk.data.deviceAddress = m_vkInstanceBuffer->getDeviceAddress();
 
     // Rewind address to tlas start (normal + PointInstancer slots per preceding type)
+    VkDeviceSize instanceBufferOffset = 0;
     for (size_t n = 0; n < type; ++n) {
-      instancesVk.data.deviceAddress += (m_mergedInstances[n].size() + m_pointInstancerSlotsPerType[n]) * sizeof(VkAccelerationStructureInstanceKHR);
+      instanceBufferOffset += (m_mergedInstances[n].size() + m_pointInstancerSlotsPerType[n]) * sizeof(VkAccelerationStructureInstanceKHR);
     }
+    instancesVk.data.deviceAddress += instanceBufferOffset;
 
     // Put the above into a VkAccelerationStructureGeometryKHR. We need to put the
     // instances struct in a union and label it as instance data.
@@ -1952,6 +1973,16 @@ namespace dxvk {
     const VkAccelerationStructureBuildRangeInfoKHR* pBuildOffsetInfo = &buildOffsetInfo;
 
     // Build the TLAS
+    m_gpuCrashRecorder.recordTlasBuild(
+      m_device->getCurrentFrameId(),
+      type,
+      buildInfo,
+      buildOffsetInfo,
+      m_mergedInstances[type],
+      m_pointInstancerSlotsPerType[type],
+      instancesVk.data.deviceAddress,
+      instanceBufferOffset,
+      tlas.accelStructure);
     ctx->getCommandList()->vkCmdBuildAccelerationStructuresKHR(1, &buildInfo, &pBuildOffsetInfo);
 
     ctx->getCommandList()->trackResource<DxvkAccess::Write>(tlas.accelStructure);
