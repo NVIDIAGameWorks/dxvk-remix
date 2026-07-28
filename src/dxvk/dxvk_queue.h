@@ -286,6 +286,15 @@ namespace dxvk {
     void submitCmdLists();
 
     void finishCmdLists();
+
+    // NV-DXVK start: GPU crash handling (Aftermath dump wait + device-loss reporting)
+    // Stall until Aftermath finishes writing its crash dump (no-op if Aftermath is disabled).
+    void waitForAftermathDump();
+
+    // Report the GPU crash and terminate the process. Only the first thread to observe device loss
+    // performs the handling; any other thread blocks here until the process is killed.
+    void handleDeviceLost();
+    // NV-DXVK end
     
     // NV-DXVK start: DLFG integration
     DxvkFrameInterpolationInfo m_currentFrameInterpolationData;

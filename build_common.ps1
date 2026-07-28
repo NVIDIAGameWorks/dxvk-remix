@@ -123,6 +123,9 @@ function PerformBuild {
 	Push-Location $CurrentDir
 		$mesonArgs = @("--buildtype", $BuildFlavour,
 			"--backend", $Backend, "-Denable_tracy=$EnableTracy", $BuildSubDir)
+		if ( $env:BUILD_SENTRY_ENVIRONMENT ) {
+			$mesonArgs += "-Dremix_sentry_environment=$env:BUILD_SENTRY_ENVIRONMENT"
+		}
 		if ( $ShadersOnly ) {
 			$mesonArgs += "-Ddownload_apics=False"
 		}

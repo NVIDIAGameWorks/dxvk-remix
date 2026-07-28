@@ -553,6 +553,7 @@ namespace dxvk {
     m_taa(device),
     m_xess(device),
     m_composite(device),
+    m_gpuCrash(device),
     m_debug_view(device),
     m_autoExposure(device),
     m_toneMapping(device),

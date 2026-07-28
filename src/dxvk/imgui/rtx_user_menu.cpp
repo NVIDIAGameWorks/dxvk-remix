@@ -21,6 +21,7 @@
 */
 
 #include "dxvk_imgui.h"
+#include "dxvk_imgui_first_use_guide.h"
 #include "imgui.h"
 #include "rtx_render/rtx_imgui.h"
 #include "dxvk_device.h"
@@ -229,6 +230,13 @@ namespace dxvk {
         if (ImGui::BeginTabItem("Content", nullptr, tab_item_flags)) {
           beginTabChild("##tab_child_content");
           showUserContentSettings(ctx, subItemWidth, subItemIndent);
+          endTabChild();
+          ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem("Permissions", nullptr, tab_item_flags)) {
+          beginTabChild("##tab_child_permissions");
+          ImGuiFirstUseGuide::showPermissionsUI();
           endTabChild();
           ImGui::EndTabItem();
         }

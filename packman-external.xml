@@ -41,4 +41,7 @@
     <dependency name="spirv_tools" linkPath="external/spirv_tools">
         <package name="rtx-remix-spirv_tools" version="spirv_tools-vulkan-sdk-1.4.313" />
     </dependency>
+    <dependency name="sentry-native" linkPath="external/sentry-native">
+        <package name="rtx-remix-sentry-native" version="0.15.3" />
+    </dependency>
 </project>

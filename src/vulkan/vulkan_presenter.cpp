@@ -24,6 +24,8 @@
 
 #include "../dxvk/dxvk_format.h"
 #include "../util/util_monitor.h"
+#include "../util/util_sentry.h"
+#include "../util/util_string.h"
 
 namespace dxvk::vk {
 
@@ -268,14 +270,18 @@ namespace dxvk::vk {
     if (m_device.features.fullScreenExclusive)
       swapInfo.pNext = &fullScreenInfo;
 
-    Logger::info(str::format(
+    // NV-DXVK start: record swap chain properties to Sentry context
+    const std::string actualSwapChainText = str::format(
       "Presenter: Actual swap chain properties:"
       "\n  Format:       ", m_info.format.format,
       "\n  Present mode: ", m_info.presentMode,
       "\n  Buffer size:  ", m_info.imageExtent.width, "x", m_info.imageExtent.height,
       "\n  Image count:  ", m_info.imageCount,
-      "\n  Exclusive FS: ", desc.fullScreenExclusive));
-    
+      "\n  Exclusive FS: ", desc.fullScreenExclusive);
+    Logger::info(actualSwapChainText);
+    sentry::setContext("actual_swap_chain", actualSwapChainText);
+    // NV-DXVK end
+
     if ((status = m_vkd->vkCreateSwapchainKHR(m_vkd->device(), &swapInfo, nullptr, &m_swapchain)) != VK_SUCCESS) {
 
       const auto errString(str::format("Presenter: vkCreateSwapchainKHR failed, error code: ", status));

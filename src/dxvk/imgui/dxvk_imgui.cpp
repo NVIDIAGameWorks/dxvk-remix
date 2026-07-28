@@ -62,6 +62,7 @@
 #include "rtx_render/rtx_opacity_micromap_manager.h"
 #include "rtx_render/rtx_bridge_message_channel.h"
 #include "dxvk_imgui_about.h"
+#include "dxvk_imgui_first_use_guide.h"
 #include "dxvk_imgui_splash.h"
 #include "dxvk_imgui_capture.h"
 #include "rtx_render/rtx_option_layer_gui.h"
@@ -533,6 +534,7 @@ namespace dxvk {
   : m_device (device)
   , m_gameHwnd   (nullptr)
   , m_about  (new ImGuiAbout)
+  , m_firstUseGuide (new ImGuiFirstUseGuide)
   , m_splash  (new ImGuiSplash)
   , m_graphGUI  (new RtxGraphGUI) {
     // Set up constant state
@@ -891,6 +893,17 @@ namespace dxvk {
 
     showDebugVisualizations(ctx);
 
+    // On first frame, check if the first-use guide should be shown (overrides loaded showUI).
+    {
+      static bool s_firstUseChecked = false;
+      if (!s_firstUseChecked) {
+        s_firstUseChecked = true;
+        if (ImGuiFirstUseGuide::shouldShow()) {
+          switchMenu(UIType::FirstUseGuide);
+        }
+      }
+    }
+
     const auto showUI = RtxOptions::showUI();
     if (showUI == UIType::Advanced) {
       showMainMenu(ctx);
@@ -899,6 +912,10 @@ namespace dxvk {
       //ImGui::ShowDemoWindow();
     } else if (showUI == UIType::Basic) {
       showUserMenu(ctx);
+    } else if (showUI == UIType::FirstUseGuide) {
+      if (m_firstUseGuide->show(m_boldFont)) {
+        switchMenu(UIType::None);
+      }
     }
     
     // Render any blocked edit popup warnings
@@ -927,10 +944,11 @@ namespace dxvk {
     showHudMessages(ctx);
 
 #ifdef REMIX_DEVELOPMENT
-    // Show visual indicator when crash hotkey is armed
+    // Show visual indicator when crash hotkeys are armed (one option arms both CPU and GPU crash hotkeys)
     if (RtxOptions::enableCrashHotkey()) {
-      const auto crashHotkeyStr = buildKeyBindDescriptorString(RtxOptions::crashHotkey());
-      const auto warningText = str::format("!! CRASH HOTKEY ARMED (", crashHotkeyStr, ") !!");
+      const auto crashHotkeyStr = buildKeyBindDescriptorStringForDisplay(RtxOptions::crashHotkey());
+      const auto gpuCrashHotkeyStr = buildKeyBindDescriptorStringForDisplay(RtxOptions::gpuCrashHotkey());
+      const auto warningText = str::format("!! CRASH HOTKEYS ARMED (", crashHotkeyStr, " = CPU crash, ", gpuCrashHotkeyStr, " = GPU crash) !!");
       const ImVec2 textSize = ImGui::CalcTextSize(warningText.c_str());
       const ImGuiViewport* viewport = ImGui::GetMainViewport();
       const ImVec2 textPos(viewport->Size.x - textSize.x - 10.0f, 10.0f);
@@ -1500,7 +1518,7 @@ namespace dxvk {
 
     ImGui::Separator();
 
-    { // Crash Hotkey Feature - allows triggering a deliberate crash for testing crash handling
+    { // Crash Hotkey Feature - arms both CPU crash (deliberate crash) and GPU crash (dialog + Sentry) hotkeys
       const bool isArmed = RtxOptions::enableCrashHotkey();
       
       // Use warning color when armed to make it visually distinct
@@ -1508,32 +1526,32 @@ namespace dxvk {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.3f, 0.3f, 1.0f));
       }
       
-      // ImGui::Checkbox returns true when the checkbox state changes
       const bool changed = RemixGui::Checkbox("Arm Crash Hotkey", &RtxOptions::enableCrashHotkeyObject());
       
       if (isArmed) {
         ImGui::PopStyleColor();
       }
       
-      const auto crashHotkeyStr = buildKeyBindDescriptorString(RtxOptions::crashHotkey());
+      const auto crashHotkeyStr = buildKeyBindDescriptorStringForDisplay(RtxOptions::crashHotkey());
+      const auto gpuCrashHotkeyStr = buildKeyBindDescriptorStringForDisplay(RtxOptions::gpuCrashHotkey());
       RemixGui::SetTooltipToLastWidgetOnHover(
-        str::format("When armed, pressing ", crashHotkeyStr, " will trigger a deliberate crash.\n"
-        "Useful for testing crash handling, crash dumps, and crash reporting.\n"
+        str::format("When armed: ", crashHotkeyStr, " = deliberate CPU crash; ", gpuCrashHotkeyStr, " = deliberate GPU crash.\n"
         "A red warning indicator will appear on screen while armed.").c_str());
       
       // Log state changes for crash dump analysis
       if (changed) {
         const bool nowArmed = RtxOptions::enableCrashHotkey();
         if (nowArmed) {
-          Logger::warn(str::format("Crash hotkey ARMED - press ", crashHotkeyStr, " to trigger crash"));
+          Logger::warn(str::format("Crash hotkeys ARMED - ", crashHotkeyStr, " = CPU crash, ", gpuCrashHotkeyStr, " = GPU crash"));
         } else {
-          Logger::warn("Crash hotkey disarmed");
+          Logger::warn("Crash hotkeys disarmed");
         }
       }
     }
+    
+    RemixGui::Separator();
 #endif
 
-    RemixGui::Separator();
 
     showVsyncOptions(false);
 

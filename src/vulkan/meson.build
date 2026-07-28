@@ -6,7 +6,7 @@ vkcommon_src = files([
 
 thread_dep = dependency('threads')
 
-vulkan_deps = [ thread_dep, lib_vulkan ]
+vulkan_deps = [ thread_dep, lib_vulkan, util_dep ]
 
 vkcommon_lib = static_library('vkcommon', vkcommon_src,
   dependencies        : [ vulkan_deps ],

@@ -99,24 +99,31 @@ std::optional<std::ofstream> createDirectoriesAndOpenFile(const std::filesystem:
 
 
 bool RtxFileSys::s_bInit = false;
+RtxFileSys::fspath RtxFileSys::s_rootPath;
 RtxFileSys::PathArray RtxFileSys::s_paths;
 
 void RtxFileSys::init(const std::string rootPath) {
-  assert(!s_bInit && "[RtxFileSys] Already init.");
-  if(s_bInit) {
+  if (s_bInit) {
     Logger::err("[RtxFileSys] Already init.");
+    return;
   }
   if(!std::filesystem::exists(rootPath)) {
     Logger::err(format("[RtxFileSys] Cannot resolve RTX filesystem, base path does exist: ", rootPath));
+    return;
   }
+  s_rootPath = std::filesystem::weakly_canonical(std::filesystem::absolute(fspath(rootPath)));
   for(const auto& pathSpec : s_pathSpecs) {
-    const std::string pathStr = (pathSpec.env.empty()) ? "" : getEnvVar(pathSpec.env.c_str());
+    std::string pathStr = (pathSpec.env.empty()) ? "" : getEnvVar(pathSpec.env.c_str());
+    // Reject paths containing " so they cannot be used for command injection when passed to CreateProcess.
+    if (!pathStr.empty() && pathStr.find('"') != std::string::npos) {
+      pathStr = "";
+    }
     fspath& path = s_paths[pathSpec.id];
     if (path.compare("none") == 0) {
       path = "";
       continue;
     } else if (pathStr.empty()) {
-      path = rootPath / pathSpec.defaultRelPath;
+      path = s_rootPath / pathSpec.defaultRelPath;
     } else {
       path = pathStr;
       path /= ""; // Add ending slash
