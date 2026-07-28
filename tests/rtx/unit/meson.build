@@ -90,6 +90,11 @@ exe = executable('test_option_layer_export',  files('test_option_layer_export.cp
 test('test_option_layer_export', exe, env: test_env)
 tests += exe
 
+exe = executable('test_preserved_object_picking',  files('test_preserved_object_picking.cpp'),
+  include_directories : test_include_path, dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ d3d9_dll, dxvk_lib ] , win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_preserved_object_picking', exe, env: test_env)
+tests += exe
+
 exe = executable('test_f16tof32',  files('test_f16tof32.cpp'),  include_directories : test_include_path, dependencies : test_unit_deps, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
 test('test_f16tof32', exe, env: test_env)
 tests += exe

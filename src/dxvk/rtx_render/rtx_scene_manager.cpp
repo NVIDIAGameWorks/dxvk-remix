@@ -31,6 +31,7 @@
 #include "dxvk_buffer.h"
 #include "rtx_context.h"
 #include "rtx_options.h"
+#include "rtx_preserved_object_picking.h"
 #include "rtx_terrain_baker.h"
 #include "rtx_texture_manager.h"
 #include "rtx_texture.h"
@@ -1229,22 +1230,18 @@ namespace dxvk {
     // No MaterialData is threaded through: SceneManager::preserveInstance reads the cached
     // RtSurfaceMaterial via surfaceMaterialIndex (Ray Portals included), and InstanceManager
     // event handlers contract for a null material on the preserve path.
-    bool hasInstance = false;
-    for (auto& prim : replacementInstance->prims) {
-      RtInstance* instance = prim.getInstance();
-      if (instance != nullptr) {
-        // drawCallID is frame-local. Without refreshing it, a preserved surface retains an ID
-        // whose texture metadata has expired and can collide with an unrelated current draw.
-        instance->surface.objectPickingValue = input.drawCallID;
-        instance->surface.isPreservePath = true;
-        preserveInstance(*instance, &input);
-        m_instanceManager.preserveInstance(*instance, input, nullptr);
-        hasInstance = true;
-      }
-    }
-    if (hasInstance) {
-      trackObjectPickingMeta(input, input.drawCallID);
-    }
+    preserveInstancesWithObjectPicking(
+      replacementInstance->prims,
+      input.drawCallID,
+      [&](RtInstance& instance) {
+        instance.surface.isPreservePath = true;
+        preserveInstance(instance, &input);
+        m_instanceManager.preserveInstance(instance, input, nullptr);
+      },
+      [&] {
+        trackObjectPickingMeta(input, input.drawCallID);
+      });
+
     replacementInstance->recalculateBoundingBox(
         input.getTransformData().objectToWorld, &input.getGeometryData().boundingBox);
   }
