@@ -44,7 +44,7 @@ gen_and_patch = custom_target(
   console : true,    
   env: {
     # mirror what the script expects
-    'USD_SCHEMA_PYTHON':    usd_schema_plugins_python,
+    'USD_SCHEMA_PYTHON':    usd_schema_plugins_python_dir,
     'USD_NVUSD_BINDIR':     usd_schema_plugins_nvusd_bindir_host,
     'USD_LIBPYTHON_DIR':    usd_libpython_dir_host,
     'ORIG_PATH':            orig_path,
@@ -52,6 +52,17 @@ gen_and_patch = custom_target(
     'PXR_USD_WINDOWS_DLL_PATH': [usd_schema_plugins_nvusd_bindir_host, usd_schema_plugins_nvusd_libdir_host, usd_libpython_dir_host],
   }
 )
+
+# link_with only orders consumer linking; it does not wait for schema generation
+# before compiling consumers. Propagate api.h without exposing generated sources.
+foreach generated_file : gen_and_patch.to_list()
+  if fs.name(generated_file.full_path()) == 'api.h'
+    api_header = generated_file
+    break
+  endif
+endforeach
+
+api_header_dep = declare_dependency(sources: api_header)
 
 dep = declare_dependency(sources: gen_and_patch)
 
@@ -71,5 +82,8 @@ plugin_lib = shared_library(
 )
 
 usd_plugins += plugin_lib
-usd_plugin_deps += declare_dependency( link_with: [ plugin_lib ] )
+usd_plugin_deps += declare_dependency(
+  dependencies: api_header_dep,
+  link_with: [ plugin_lib ]
+)
 usd_plugin_delay_load_args += '/DELAYLOAD:' + plugin_name + '.dll'

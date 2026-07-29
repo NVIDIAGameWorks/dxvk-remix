@@ -99,24 +99,31 @@ else
   usd_debug_or_release = 'Release'
 endif
 
-# Windows-on-Arm uses a separate stock USD build; x64 uses the NVIDIA USD build.
 if dxvk_is_woa
   usd_debug_release_dir = 'external/usd_stock_arm64/' + usd_debug_or_release + '/'
 else
-  usd_debug_release_dir = 'external/nv_usd_' + usd_debug_or_release + '/'
+  usd_debug_release_dir = 'external/usd_stock_x64/' + usd_debug_or_release + '/'
 endif
 
 usd_lib_path = join_paths(global_src_root_norm, usd_debug_release_dir)
+
+if dxvk_is_woa
+  python_lib_path = join_paths(usd_lib_path, 'lib')
+  python_dll_path = python_lib_path
+  # The stock Arm64 USD package already contains the Python headers.
+  python_include_paths = []
+else
+  python_path = join_paths(global_src_root_norm, 'external/python311_x64')
+  python_lib_path = join_paths(python_path, 'libs')
+  python_dll_path = python_path
+  python_include_paths = [include_directories('../external/python311_x64/include')]
+endif
 
 # NOTE newer versions of meson prefer relative paths for include directories.
 # Prefix with ../ since these paths are resolved relative to this subdir.
 nv_usd_include_path = include_directories(join_paths('..', usd_debug_release_dir, 'include'))
 
-usd_include_paths = [nv_usd_include_path]
-
-# NOTE: the USD link libraries (nvusd_deplibs / nvusd_deplibs_22 / usd_linklibs / usd_dep)
-# are declared in the root meson.build, since the library set differs between x64 and
-# Windows-on-Arm.
+usd_include_paths = [nv_usd_include_path] + python_include_paths
 
 # ============================================================================
 # RTX IO

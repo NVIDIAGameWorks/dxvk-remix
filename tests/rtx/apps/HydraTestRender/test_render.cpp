@@ -119,8 +119,14 @@ struct CameraController {
     float focalLength = 50.0f; // mm
     float horizAperture = 20.955f; // mm
 
-    usdCamera.GetFocalLengthAttr().Get(&focalLength);
-    usdCamera.GetHorizontalApertureAttr().Get(&horizAperture);
+    if (bool(usdCamera)) {
+      if (bool(usdCamera.GetFocalLengthAttr())) {
+        usdCamera.GetFocalLengthAttr().Get(&focalLength);
+      }
+      if (bool(usdCamera.GetHorizontalApertureAttr())) {
+        usdCamera.GetHorizontalApertureAttr().Get(&horizAperture);
+      }
+    }
 
     // FOV in degrees
     fov = 2.0f * std::atan(horizAperture / (2.0f * focalLength)) * 180.0f / M_PI;
@@ -221,12 +227,13 @@ UsdGeomCamera findFirstCamera(const UsdStageRefPtr& stage) {
 
 // Dummy delegate to pass some basic MDL data through to Hydra
 class MdlImagingDelegate : public UsdImagingDelegate {
+  UsdStageRefPtr _stage;
 public:
-  MdlImagingDelegate(HdRenderIndex* renderIndex, SdfPath const& delegateID)
-    : UsdImagingDelegate(renderIndex, delegateID) { }
+  MdlImagingDelegate(HdRenderIndex* renderIndex, SdfPath const& delegateID, UsdStageRefPtr stage)
+    : UsdImagingDelegate(renderIndex, delegateID), _stage{stage} { }
 
   VtValue GetMaterialResource(SdfPath const& materialId) override {
-    UsdPrim materialPrim = _GetUsdPrim(materialId);
+    UsdPrim materialPrim = _stage->GetPrimAtPath(materialId.GetAbsoluteRootOrPrimPath());
     if (!materialPrim.IsValid() || !materialPrim.IsA<UsdShadeMaterial>()) {
       return VtValue();
     }
@@ -278,7 +285,7 @@ public:
       }
     }
 
-    shaderNode.identifier = shaderNode.subIdentifier = TfToken(mdl.subIdentifier); // e.g. "AperturePBR_Translucent"
+    shaderNode.identifier = TfToken(mdl.subIdentifier); // e.g. "AperturePBR_Translucent"
     shaderNode.parameters[TfToken("file")] = VtValue(mdl.mdlFilePath);
 
     HdMaterialNetworkMap netMap;
@@ -381,7 +388,7 @@ int main(int argc, char** argv) {
   }
 
   // Setup Scene Delegate (UsdImaging)
-  UsdImagingDelegate* sceneDelegate = new MdlImagingDelegate(renderIndex, SdfPath("/"));
+  UsdImagingDelegate* sceneDelegate = new MdlImagingDelegate(renderIndex, SdfPath("/"), stage);
   sceneDelegate->Populate(stage->GetPseudoRoot());
 
   pxr::UsdGeomCamera usdCamera = findFirstCamera(stage);
