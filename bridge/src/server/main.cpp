@@ -3505,7 +3505,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
     return 1;
   }
   if (wcscmp(argList[1], BRIDGE_VERSION_W) != 0) {
-    Logger::err(format_string("Client (%s) and server (%s) version numbers do not match. Mixed version runtime execution is currently not supported! Exiting...", argList[1], BRIDGE_VERSION));
+    Logger::err(format_string("Client (%ls) and server (%s) version numbers do not match. Mixed version runtime execution is currently not supported! Exiting...", argList[1], BRIDGE_VERSION));
     LocalFree(argList);
     return 1;
   }
