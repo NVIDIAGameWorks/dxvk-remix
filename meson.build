@@ -79,6 +79,8 @@ enable_rtxio = get_option('enable_rtxio')
 
 external_dll_paths = []
 
+add_global_arguments('/wd4273', language : 'cpp')
+
 if dxvk_is_msvc
   if dxvk_is_woa
     # sse2neon requires conformant preproc
@@ -525,8 +527,6 @@ add_project_arguments('-DVK_ENABLE_BETA_EXTENSIONS', language : 'cpp')
 #  as they carry Windows-on-Arm specific handling.)
 subdir('external-build')
 
-lssusd_include_paths = [nv_usd_include_path, vk_include_path]
-
 # This will be populated by the usd plugin builder
 usd_plugins = []
 usd_plugin_deps = []
@@ -543,35 +543,6 @@ endif
 
 # Cache lib locations
 external_dll_paths += usd_lib_path
-
-nvusd_deplibs_22 = [
-  'ar',
-  'arch',
-  'js',
-  'gf',
-  'kind',
-  'sdf',
-  'sdr',
-  'ndr',
-  'pcp',
-  'tf',
-  'trace',
-  'usd',
-  'usdLux',
-  'usdGeom',
-  'usdRender',
-  'usdShade',
-  'usdSkel',
-  'work',
-  'vt',
-  'python310',
-  'plug',
-  'tbbmalloc',
-  get_option('buildtype') == 'debug' ? 'boost_python310-vc142-mt-gd-x64-1_76' :
-                                       'boost_python310-vc142-mt-x64-1_76',
-  get_option('buildtype') == 'debug' ? 'tbb_debug' :
-                                       'tbb',    # NOTE: remixsdk also depends on tbb.dll, assuming both USD / remixsdk use the same tbb version
-]
 
 nvusd_deplibs = [
   'usd_ar',
@@ -598,18 +569,12 @@ nvusd_deplibs = [
 ]
 
 usd_linklibs = []
-if dxvk_is_woa
-  foreach ulib : nvusd_deplibs
-    usd_linklibs += dxvk_compiler.find_library(ulib, dirs: join_paths(usd_lib_path, 'lib'))
-  endforeach
+foreach ulib : nvusd_deplibs
+  usd_linklibs += dxvk_compiler.find_library(ulib, dirs: join_paths(usd_lib_path, 'lib'))
+endforeach
 
-  usd_linklibs += dxvk_compiler.find_library(get_option('buildtype') == 'debug' ? 'tbb12_debug' : 'tbb12', dirs: join_paths(usd_lib_path, 'lib'))
-  usd_linklibs += dxvk_compiler.find_library('python311', dirs: join_paths(usd_lib_path, 'lib'))
-else
-  foreach ulib : nvusd_deplibs_22
-    usd_linklibs += dxvk_compiler.find_library(ulib, dirs: join_paths(usd_lib_path, 'lib'))
-  endforeach
-endif
+usd_linklibs += dxvk_compiler.find_library(get_option('buildtype') == 'debug' ? 'tbb12_debug' : 'tbb12', dirs: join_paths(usd_lib_path, 'lib'))
+usd_linklibs += dxvk_compiler.find_library('python311', dirs: python_lib_path)
 
 if dxvk_is_woa
   reflex_lib_path = join_paths(global_src_root_norm, 'external/reflex_arm64/lib')
@@ -836,20 +801,16 @@ if dxvk_is_ninja or dxvk_is_woa_ec
 
     install_subdir(join_paths(usd_lib_path, 'lib/usd/'), install_dir : output_path, install_tag: target_suffix)  
 
-    if dxvk_is_woa
-      foreach ulib : nvusd_deplibs
-        install_data(join_paths(usd_lib_path, 'lib', ulib + '.dll'), install_dir : output_path, install_tag: target_suffix) 
-      endforeach
 
-      install_data(join_paths(usd_lib_path, 'bin', get_option('buildtype') == 'debug' ? 'tbbmalloc_debug.dll' : 'tbbmalloc.dll'), install_dir : output_path, install_tag: target_suffix)
-      install_data(join_paths(usd_lib_path, 'bin', get_option('buildtype') == 'debug' ? 'tbb12_debug.dll' : 'tbb12.dll'), install_dir : output_path, install_tag: target_suffix)
-      install_data(join_paths(usd_lib_path, 'lib', 'python311.dll'), install_dir : output_path, install_tag: target_suffix)
-      install_subdir(join_paths(usd_lib_path, 'lib/python/'), install_dir : output_path, install_tag: target_suffix)
-    else
-      foreach ulib : nvusd_deplibs_22
-        install_data(join_paths(usd_lib_path, 'lib', ulib + '.dll'), install_dir : output_path, install_tag: target_suffix) 
-      endforeach
-    endif
+    foreach ulib : nvusd_deplibs
+      install_data(join_paths(usd_lib_path, 'lib', ulib + '.dll'), install_dir : output_path, install_tag: target_suffix) 
+    endforeach
+
+    install_data(join_paths(usd_lib_path, 'bin', get_option('buildtype') == 'debug' ? 'tbbmalloc_debug.dll' : 'tbbmalloc.dll'), install_dir : output_path, install_tag: target_suffix)
+    install_data(join_paths(usd_lib_path, 'bin', get_option('buildtype') == 'debug' ? 'tbb12_debug.dll' : 'tbb12.dll'), install_dir : output_path, install_tag: target_suffix)
+    install_data(join_paths(python_dll_path, 'python311.dll'), install_dir : output_path, install_tag: target_suffix)
+    install_subdir(join_paths(usd_lib_path, 'lib/python/'), install_dir : output_path, install_tag: target_suffix)
+
 
     install_data(join_paths(global_src_root_norm, 'src', 'usd-plugins', 'plugInfo.json'), install_dir : join_paths(output_path, 'usd', 'plugins'), install_tag: target_suffix) 
 

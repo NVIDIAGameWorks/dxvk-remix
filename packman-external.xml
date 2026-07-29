@@ -5,11 +5,14 @@
     <dependency name="fonts" linkPath="external/fonts">
         <package name="rtx-remix-fonts" version="2" />
     </dependency>
-    <dependency name="nv_usd_py310_release" linkPath="external/nv_usd_release">
-      <package name="nv-usd" version="22.11.nv.0.2.8268.07efe1d5-win64_py310_release-dev_omniverse" />
+    <dependency name="usd_py311_debug" linkPath="./external/usd_stock_x64/debug">
+        <package name="usd.py311.windows-x86_64.stock.debug" version="0.25.11-gl.18041+v25.11.363a7c8d" />
     </dependency>
-    <dependency name="nv_usd_py310_debug" linkPath="external/nv_usd_debug" tags="non-redist">
-      <package name="nv-usd" version="22.11.nv.0.2.8268.07efe1d5-win64_py310_debug-dev_omniverse" />
+    <dependency name="usd_py311_release" linkPath="./external/usd_stock_x64/release">
+        <package name="usd.py311.windows-x86_64.stock.release" version="0.25.11-gl.18041+v25.11.363a7c8d" />
+    </dependency>
+    <dependency name="python311" linkPath="./external/python311_x64">
+        <package name="python" version="3.11.10+nv1-windows-x86_64" />
     </dependency>
     <dependency name="omni_core_materials" linkPath="external/omni_core_materials">
         <package name="rtx-remix-omni_core_materials" version="16" />

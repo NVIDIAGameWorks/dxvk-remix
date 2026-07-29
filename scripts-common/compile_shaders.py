@@ -251,6 +251,9 @@ def createSlangTask(inputFile, variantSpec):
     if args.binary:
         task.commands = [command1]
     else:
+        # NOTE: rebuild shader if its generated header is missing
+        task.outputs.append(headerFile)
+
         # Command to convert SPV into c array header
         script_dir = os.path.dirname(os.path.realpath(__file__))
         shader_xxd = os.path.join(script_dir, 'shader_xxd.py')

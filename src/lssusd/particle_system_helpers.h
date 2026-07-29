@@ -83,10 +83,10 @@ namespace lss {
     if (token == tokens.faceCamera_UpAxisLocked) {
       return FaceCamera_UpAxisLocked;
     }
-    if (token == tokens.faceCamera_Position) {
+    if (token == tokens.FaceCamera_Position) {
       return FaceCamera_Position;
     }
-    if (token == tokens.faceWorldUp) {
+    if (token == tokens.FaceWorldUp) {
       return FaceWorldUp;
     }
 #endif
@@ -107,7 +107,7 @@ namespace lss {
     if (token == tokens.overrideMaterial_Lifetime) {
       return OverrideMaterial_Lifetime;
     }
-    if (token == tokens.overrideMaterial_Random) {
+    if (token == tokens.OverrideMaterial_Random) {
       return OverrideMaterial_Random;
     }
 #endif
@@ -128,7 +128,7 @@ namespace lss {
     if (token == tokens.stop) {
       return ParticleCollisionMode::Stop;
     }
-    if (token == tokens.kill) {
+    if (token == tokens.Kill) {
       return ParticleCollisionMode::Kill;
     }
 #endif
@@ -152,10 +152,10 @@ namespace lss {
     if (token == tokens.vertical) {
       return ParticleRandomFlipAxis::Vertical;
     }
-    if (token == tokens.horizontal) {
+    if (token == tokens.Horizontal) {
       return ParticleRandomFlipAxis::Horizontal;
     }
-    if (token == tokens.both) {
+    if (token == tokens.Both) {
       return ParticleRandomFlipAxis::Both;
     }
 #endif
