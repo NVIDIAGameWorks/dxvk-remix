@@ -130,12 +130,24 @@ namespace sentry {
         const char* handlerPathUtf8) {
       sentry_options_set_database_path(options, databasePathUtf8);
       sentry_options_set_handler_path(options, handlerPathUtf8);
-      sentry_options_set_dsn(options, SENTRY_DSN);
+      // RTX_SENTRY_TEST_DSN lets tests redirect sentry to an unreachable endpoint so that
+      // envelopes are cached on disk rather than sent, making post-test inspection possible.
+      const char* testDsn = std::getenv("RTX_SENTRY_TEST_DSN");
+      sentry_options_set_dsn(options, testDsn ? testDsn : SENTRY_DSN);
 
       // Metrics and structured logs default to ON in sentry-native >= 0.14. Remix crash reporting
       // is strictly opt-in crash data only, so disable both.
       sentry_options_set_enable_metrics(options, 0);
       sentry_options_set_enable_logs(options, 0);
+
+      // Privacy hardening: disable everything that is not crash/usage data Remix explicitly sends.
+      // auto_session_tracking: sends a session-health envelope on every launch/exit silently; Remix
+      // never calls sentry_start_session(), so this tracking is unintentional.
+      sentry_options_set_auto_session_tracking(options, 0);
+      // attach_screenshot: off by default but explicit — a game screenshot may contain sensitive content.
+      sentry_options_set_attach_screenshot(options, 0);
+      // send_client_reports: SDK-internal discard-reason telemetry; not something Remix opted into.
+      sentry_options_set_send_client_reports(options, 0);
 
       // Consent-aware offline caching (sentry-native >= 0.14 crashpad support): if a crash is
       // captured while consent is not yet granted, the report is cached as an envelope instead of

@@ -51,12 +51,20 @@ namespace dxvk {
       ImGui::Spacing();
 
       bool changed = false;
-      changed |= ImGui::Checkbox("Basic session and system information collected each time RTX Remix is launched", &allowUsage);
-      if (ImGui::IsItemHovered()) {
+      changed |= ImGui::Checkbox("Basic session and system information", &allowUsage);
+      bool usageHovered = ImGui::IsItemHovered();
+      ImGui::Indent(30.0f);
+      ImGui::Text("Collected each time RTX Remix is launched.");
+      ImGui::Unindent(30.0f);
+      if (usageHovered || ImGui::IsItemHovered()) {
         ImGui::SetTooltip("Includes game name, Remix version, GPU model and driver, OS version,\nRAM, and session configuration flags. Does not include user files, game\ncontent, or broad system state. NVIDIA will use this data to prioritize\ndevelopment work.");
       }
-      changed |= ImGui::Checkbox("Technical crash information automatically submitted when RTX Remix crashes", &allowCrash);
-      if (ImGui::IsItemHovered()) {
+      changed |= ImGui::Checkbox("Technical crash information", &allowCrash);
+      bool crashHovered = ImGui::IsItemHovered();
+      ImGui::Indent(30.0f);
+      ImGui::Text("Automatically submitted when RTX Remix crashes.");
+      ImGui::Unindent(30.0f);
+      if (crashHovered || ImGui::IsItemHovered()) {
         ImGui::SetTooltip("Includes the same basic system information above plus crash type, error\nseverity, and GPU diagnostic state at the time of the crash, without identifying\nyou. NVIDIA will use this data to prioritize, investigate, and fix issues.");
       }
 
