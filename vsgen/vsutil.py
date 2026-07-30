@@ -19,6 +19,10 @@ def pathsep_to_backslash(path):
 def pathsep_to_underscore(path):
     return pathsep_to_backslash(path).replace("\\", "_")
 
+def meson_underscorify(path):
+    import re
+    return re.sub(r'[^a-zA-Z0-9_]', '_', path)
+
 # returns true if file exists
 def check_if_file_exists(output_root_path, filename):
     output_root_path = pathsep_to_backslash(output_root_path)
