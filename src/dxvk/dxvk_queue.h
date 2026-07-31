@@ -254,6 +254,10 @@ namespace dxvk {
     DxvkDevice*             m_device;
 
     std::atomic<VkResult>   m_lastError = { VK_SUCCESS };
+
+    // NV-DXVK start: GPU crash diagnostics
+    std::atomic<bool>       m_gpuCrashHandled = { false };
+    // NV-DXVK end
     
     std::atomic<bool>       m_stopped = { false };
     std::atomic<uint32_t>   m_pending = { 0u };
@@ -275,9 +279,22 @@ namespace dxvk {
     VkResult submitToQueue(
       const DxvkSubmitInfo& submission);
 
+    // NV-DXVK start: GPU crash diagnostics
+    void onGpuCrash(const char* reason);
+    // NV-DXVK end
+
     void submitCmdLists();
 
     void finishCmdLists();
+
+    // NV-DXVK start: GPU crash handling (Aftermath dump wait + device-loss reporting)
+    // Stall until Aftermath finishes writing its crash dump (no-op if Aftermath is disabled).
+    void waitForAftermathDump();
+
+    // Report the GPU crash and terminate the process. Only the first thread to observe device loss
+    // performs the handling; any other thread blocks here until the process is killed.
+    void handleDeviceLost();
+    // NV-DXVK end
     
     // NV-DXVK start: DLFG integration
     DxvkFrameInterpolationInfo m_currentFrameInterpolationData;

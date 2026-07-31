@@ -124,6 +124,13 @@ def main():
         except Exception as e:
             logging.warning(f"Failed to add DLL directory {nvlib}: {e}")
 
+    if usd_bind:
+        logging.info(f"Adding usd bin directory: {usd_bind}")
+        try:
+            os.add_dll_directory(usd_bind)
+        except Exception as e:
+            logging.warning(f"Failed to add DLL directory {usd_bind}: {e}")
+
     # remove plugInfo.json if it exists, to avoid problems in usdGenSchema if the schema changes
     if os.path.isfile(os.path.join(args.outdir, 'plugInfo.json')):
         logging.info(f"Removing existing plugInfo.json at {args.outdir}")

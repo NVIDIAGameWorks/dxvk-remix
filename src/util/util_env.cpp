@@ -28,6 +28,7 @@
 // NV-DXVK end
 
 #include "./com/com_include.h"
+#include <shellapi.h>
 
 #include <Windows.h>
 #include <stdio.h>
@@ -306,10 +307,15 @@ namespace dxvk::env {
     return !!CreateDirectoryW(widePath, nullptr);
   }
 
-  void killProcess() {
-    const DWORD pid = GetCurrentProcessId();
-    HANDLE hnd;
-    hnd = OpenProcess(SYNCHRONIZE | PROCESS_TERMINATE, TRUE, pid);
-    TerminateProcess(hnd, 0);
+  // NV-DXVK start: Add exit code parameter so the bridge can distinguish GPU crashes from CPU crashes
+  void killProcess(uint32_t exitCode) {
+    if (!TerminateProcess(GetCurrentProcess(), exitCode)) {
+      ExitProcess(exitCode);
+    }
+  }
+  // NV-DXVK end
+
+  void openUrlInBrowser(const char* url) {
+    ShellExecuteA(nullptr, "open", url, nullptr, nullptr, SW_SHOWNORMAL);
   }
 }

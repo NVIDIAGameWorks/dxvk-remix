@@ -22,9 +22,12 @@
 #pragma once
 
 #include "util_messagechannel.h"
+#include "window.h"
 
 #include "log/log.h"
 #include "config/global_options.h"
+
+#include "../../../src/util/util_crash_report.h"
 
 #include <memory>
 #include <stdint.h>
@@ -60,4 +63,17 @@ static void initServerMessageChannel(const uint32_t serverThreadId) {
 static void initRemixMessageChannel() {
   assert(!gpRemixMessageChannel);
   gpRemixMessageChannel = std::make_unique<MessageChannelClient>("UWM_REMIX_BRIDGE_REGISTER_THREADPROC_MSG");
+
+  // The renderer sends this the moment it detects a GPU crash, before the slow Sentry capture.
+  // Acting here — before OnServerExited fires — prevents Windows from ghosting the window during
+  // the 10-15 seconds the server spends on Sentry upload before it exits. This is specifically
+  // for GPU crashes; CPU crashes are handled via OnServerExited directly since the server dies
+  // immediately and there is no early notification.
+  gpRemixMessageChannel->registerHandler(dxvk::kGpuCrashNotifyMsgName, [](uintptr_t, intptr_t) {
+    Logger::warn("Crash handler (GPU, early): preparing window for crash dialog");
+    // This handler runs on the game's main (window-owning) thread via the WndProc, so the synchronous
+    // window path is safe and takes effect immediately.
+    WndProc::prepareForCrashDialog(/*async=*/false);
+    return true;
+  });
 }

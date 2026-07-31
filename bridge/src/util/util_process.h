@@ -37,7 +37,7 @@ namespace bridge_util {
 
   class Process {
   public:
-    typedef void (*ProcessExitCallback)(Process const*);
+    typedef void (*ProcessExitCallback)(Process const*, DWORD exitCode);
 
     Process() = delete;
     Process(Process& p) = delete;
@@ -66,8 +66,13 @@ namespace bridge_util {
     }
 
     void OnExited() {
+      // Read the child's exit code and hand it to the callback.
+      DWORD exitCode = 0;
+      if (hProcess) {
+        GetExitCodeProcess(hProcess, &exitCode);
+      }
       if (exitCallback) {
-        exitCallback(this);
+        exitCallback(this, exitCode);
       }
     }
 

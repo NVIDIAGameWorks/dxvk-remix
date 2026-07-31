@@ -53,6 +53,17 @@ gen_and_patch = custom_target(
   }
 )
 
+# link_with only orders consumer linking; it does not wait for schema generation
+# before compiling consumers. Propagate api.h without exposing generated sources.
+foreach generated_file : gen_and_patch.to_list()
+  if fs.name(generated_file.full_path()) == 'api.h'
+    api_header = generated_file
+    break
+  endif
+endforeach
+
+api_header_dep = declare_dependency(sources: api_header)
+
 dep = declare_dependency(sources: gen_and_patch)
 
 # Compile the plugin shared library
@@ -73,5 +84,8 @@ plugin_lib = shared_library(
 )
 
 usd_plugins += plugin_lib
-usd_plugin_deps += declare_dependency( link_with: [ plugin_lib ] )
+usd_plugin_deps += declare_dependency(
+  dependencies: api_header_dep,
+  link_with: [ plugin_lib ]
+)
 usd_plugin_delay_load_args += '/DELAYLOAD:' + plugin_name + '.dll'

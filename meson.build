@@ -1,5 +1,5 @@
 #############################################################################
-# Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -78,6 +78,8 @@ dxvk_is_woa_ec = target_machine.cpu() == 'arm64ec'
 enable_rtxio = get_option('enable_rtxio')
 
 external_dll_paths = []
+
+add_global_arguments('/wd4273', language : 'cpp')
 
 if dxvk_is_msvc
   if dxvk_is_woa
@@ -508,12 +510,6 @@ if get_option('enable_tracy')
   vs_project_defines += 'TRACY_ON_DEMAND;'
 endif
 
-if get_option('buildtype') == 'debug'
-  usd_debug_or_release = 'Debug'
-else
-  usd_debug_or_release = 'Release'
-endif
-
 # embedding compiler
 xxd_exe = find_program('external/nv_xxd/nv_xxd')
 embedding_compiler = generator(xxd_exe,
@@ -521,26 +517,15 @@ embedding_compiler = generator(xxd_exe,
     arguments : [ '@INPUT@', '@OUTPUT@', '@BASENAME@' ]
 )
 
-mdl_include_dir = include_directories('external/omni_core_materials')
-
-if dxvk_is_woa
-  usd_debug_release_dir = 'external/usd_stock_arm64/' + usd_debug_or_release + '/'
-else
-  usd_debug_release_dir = 'external/nv_usd_' + usd_debug_or_release + '/'
-endif
-
-usd_lib_path = join_paths(global_src_root_norm, usd_debug_release_dir)
-
-# NOTE newer versions of meson prefer relative paths for include directories
-nv_usd_include_path = include_directories(join_paths(usd_debug_release_dir, 'include'))
-
-usd_include_paths = [nv_usd_include_path]
-
 vk_include_path = include_directories('./include/vulkan/include')
 # required for NV_present_metering
 add_project_arguments('-DVK_ENABLE_BETA_EXTENSIONS', language : 'cpp')
 
-lssusd_include_paths = [nv_usd_include_path, vk_include_path]
+# External dependencies configuration
+# Configures Sentry, USD include/lib paths, MDL includes and the RTX IO dependency.
+# (NVAPI, Reflex, Aftermath, DLSS, DLFG, NRD, NRC and XeSS are configured below,
+#  as they carry Windows-on-Arm specific handling.)
+subdir('external-build')
 
 # This will be populated by the usd plugin builder
 usd_plugins = []
@@ -558,35 +543,6 @@ endif
 
 # Cache lib locations
 external_dll_paths += usd_lib_path
-
-nvusd_deplibs_22 = [
-  'ar',
-  'arch',
-  'js',
-  'gf',
-  'kind',
-  'sdf',
-  'sdr',
-  'ndr',
-  'pcp',
-  'tf',
-  'trace',
-  'usd',
-  'usdLux',
-  'usdGeom',
-  'usdRender',
-  'usdShade',
-  'usdSkel',
-  'work',
-  'vt',
-  'python310',
-  'plug',
-  'tbbmalloc',
-  get_option('buildtype') == 'debug' ? 'boost_python310-vc142-mt-gd-x64-1_76' :
-                                       'boost_python310-vc142-mt-x64-1_76',
-  get_option('buildtype') == 'debug' ? 'tbb_debug' :
-                                       'tbb',    # NOTE: remixsdk also depends on tbb.dll, assuming both USD / remixsdk use the same tbb version
-]
 
 nvusd_deplibs = [
   'usd_ar',
@@ -613,18 +569,12 @@ nvusd_deplibs = [
 ]
 
 usd_linklibs = []
-if dxvk_is_woa
-  foreach ulib : nvusd_deplibs
-    usd_linklibs += dxvk_compiler.find_library(ulib, dirs: join_paths(usd_lib_path, 'lib'))
-  endforeach
+foreach ulib : nvusd_deplibs
+  usd_linklibs += dxvk_compiler.find_library(ulib, dirs: join_paths(usd_lib_path, 'lib'))
+endforeach
 
-  usd_linklibs += dxvk_compiler.find_library(get_option('buildtype') == 'debug' ? 'tbb12_debug' : 'tbb12', dirs: join_paths(usd_lib_path, 'lib'))
-  usd_linklibs += dxvk_compiler.find_library('python311', dirs: join_paths(usd_lib_path, 'lib'))
-else
-  foreach ulib : nvusd_deplibs_22
-    usd_linklibs += dxvk_compiler.find_library(ulib, dirs: join_paths(usd_lib_path, 'lib'))
-  endforeach
-endif
+usd_linklibs += dxvk_compiler.find_library(get_option('buildtype') == 'debug' ? 'tbb12_debug' : 'tbb12', dirs: join_paths(usd_lib_path, 'lib'))
+usd_linklibs += dxvk_compiler.find_library('python311', dirs: python_lib_path)
 
 if dxvk_is_woa
   reflex_lib_path = join_paths(global_src_root_norm, 'external/reflex_arm64/lib')
@@ -701,13 +651,6 @@ nvapi_dep = declare_dependency(
   )
 
 embedded_includes = [ mdl_include_dir ]
-
-if enable_rtxio == true
-  rtxio_dep = declare_dependency(
-    dependencies : [ rtxio_lib ],
-    include_directories : rtxio_include_path
-  )
-endif
 
 embedded_dep = declare_dependency(
   dependencies : [ ],
@@ -858,20 +801,16 @@ if dxvk_is_ninja or dxvk_is_woa_ec
 
     install_subdir(join_paths(usd_lib_path, 'lib/usd/'), install_dir : output_path, install_tag: target_suffix)  
 
-    if dxvk_is_woa
-      foreach ulib : nvusd_deplibs
-        install_data(join_paths(usd_lib_path, 'lib', ulib + '.dll'), install_dir : output_path, install_tag: target_suffix) 
-      endforeach
 
-      install_data(join_paths(usd_lib_path, 'bin', get_option('buildtype') == 'debug' ? 'tbbmalloc_debug.dll' : 'tbbmalloc.dll'), install_dir : output_path, install_tag: target_suffix)
-      install_data(join_paths(usd_lib_path, 'bin', get_option('buildtype') == 'debug' ? 'tbb12_debug.dll' : 'tbb12.dll'), install_dir : output_path, install_tag: target_suffix)
-      install_data(join_paths(usd_lib_path, 'lib', 'python311.dll'), install_dir : output_path, install_tag: target_suffix)
-      install_subdir(join_paths(usd_lib_path, 'lib/python/'), install_dir : output_path, install_tag: target_suffix)
-    else
-      foreach ulib : nvusd_deplibs_22
-        install_data(join_paths(usd_lib_path, 'lib', ulib + '.dll'), install_dir : output_path, install_tag: target_suffix) 
-      endforeach
-    endif
+    foreach ulib : nvusd_deplibs
+      install_data(join_paths(usd_lib_path, 'lib', ulib + '.dll'), install_dir : output_path, install_tag: target_suffix) 
+    endforeach
+
+    install_data(join_paths(usd_lib_path, 'bin', get_option('buildtype') == 'debug' ? 'tbbmalloc_debug.dll' : 'tbbmalloc.dll'), install_dir : output_path, install_tag: target_suffix)
+    install_data(join_paths(usd_lib_path, 'bin', get_option('buildtype') == 'debug' ? 'tbb12_debug.dll' : 'tbb12.dll'), install_dir : output_path, install_tag: target_suffix)
+    install_data(join_paths(python_dll_path, 'python311.dll'), install_dir : output_path, install_tag: target_suffix)
+    install_subdir(join_paths(usd_lib_path, 'lib/python/'), install_dir : output_path, install_tag: target_suffix)
+
 
     install_data(join_paths(global_src_root_norm, 'src', 'usd-plugins', 'plugInfo.json'), install_dir : join_paths(output_path, 'usd', 'plugins'), install_tag: target_suffix) 
 
@@ -883,15 +822,15 @@ if dxvk_is_ninja or dxvk_is_woa_ec
     )
 
     if dxvk_is_woa
-      install_data(join_paths(nrc_dll_path, nrc_dll_name), install_dir : output_path, install_tag: target_suffix) 
-      install_data(join_paths(nrc_dll_path, 'cudart64_13.dll'), install_dir : output_path, install_tag: target_suffix) 
-      install_data(join_paths(nrc_dll_path, 'nvrtc64_130_0.dll'), install_dir : output_path, install_tag: target_suffix) 
-      install_data(join_paths(nrc_dll_path, 'nvrtc-builtins64_131.dll'), install_dir : output_path, install_tag: target_suffix) 
+      install_data(join_paths(nrc_dll_path, nrc_dll_name), install_dir : output_path, install_tag: target_suffix)
+      install_data(join_paths(nrc_dll_path, 'cudart64_13.dll'), install_dir : output_path, install_tag: target_suffix)
+      install_data(join_paths(nrc_dll_path, 'nvrtc64_130_0.dll'), install_dir : output_path, install_tag: target_suffix)
+      install_data(join_paths(nrc_dll_path, 'nvrtc-builtins64_131.dll'), install_dir : output_path, install_tag: target_suffix)
     else
-      install_data(join_paths(nrc_dll_path, nrc_dll_name), install_dir : output_path, install_tag: target_suffix) 
-      install_data(join_paths(nrc_dll_path, 'cudart64_12.dll'), install_dir : output_path, install_tag: target_suffix) 
-      install_data(join_paths(nrc_dll_path, 'nvrtc64_120_0.dll'), install_dir : output_path, install_tag: target_suffix) 
-      install_data(join_paths(nrc_dll_path, 'nvrtc-builtins64_128.dll'), install_dir : output_path, install_tag: target_suffix) 
+      install_data(join_paths(nrc_dll_path, nrc_dll_name), install_dir : output_path, install_tag: target_suffix)
+      install_data(join_paths(nrc_dll_path, 'cudart64_13.dll'), install_dir : output_path, install_tag: target_suffix)
+      install_data(join_paths(nrc_dll_path, 'nvrtc64_130_0.dll'), install_dir : output_path, install_tag: target_suffix)
+      install_data(join_paths(nrc_dll_path, 'nvrtc-builtins64_133.dll'), install_dir : output_path, install_tag: target_suffix)
     endif
 
     install_data(join_paths(nrd_lib_path, 'NRD.dll'), install_dir : output_path, install_tag: target_suffix) 
@@ -915,6 +854,12 @@ if dxvk_is_ninja or dxvk_is_woa_ec
 
     if enable_rtxio == true
       install_data(join_paths(rtxio_bin_path, 'rtxio.dll'), install_dir : output_path, install_tag: target_suffix)
+    endif
+
+    # Install Sentry crashpad next to d3d9 when Sentry is enabled (disabled for debug builds)
+    if enable_sentry == true
+      install_data(join_paths(sentry_bin_path, 'crashpad_handler.exe'), install_dir : output_path, install_tag: target_suffix)
+      install_data(join_paths(sentry_bin_path, 'crashpad_wer.dll'), install_dir : output_path, install_tag: target_suffix)
     endif
 
     if src_exe != ''

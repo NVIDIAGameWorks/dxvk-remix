@@ -60,6 +60,7 @@
 #include "rtx_render/rtx_dust_particles.h"
 #include "rtx_render/rtx_particle_system.h"
 #include "rtx_render/rtx_point_instancer_system.h"
+#include "rtx_render/rtx_gpu_crash.h"
 
 #include "rtx_render/rtx_denoise_type.h"
 #include "../util/util_lazy.h"
@@ -238,6 +239,10 @@ namespace dxvk {
       return m_composite.get();
     }
 
+    GpuCrashPass& metaGpuCrash() {
+      return m_gpuCrash.get();
+    }
+
     DebugView& metaDebugView() {
       return m_debug_view.get();
     }
@@ -391,6 +396,7 @@ namespace dxvk {
     Active<DxvkTemporalAA>                  m_taa;
     Active<DxvkXeSS>                        m_xess;
     Active<CompositePass>                   m_composite;
+    Active<GpuCrashPass>                    m_gpuCrash;
     Active<DebugView>                       m_debug_view;
     Active<DxvkAutoExposure>                m_autoExposure;
     Active<DxvkToneMapping>                 m_toneMapping;

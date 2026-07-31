@@ -52,4 +52,7 @@
     <dependency name="rtxio_arm64" linkPath="external/rtxio_arm64">
         <package name="rtxio_arm64" version="1" />
     </dependency>
+    <dependency name="sentry-native_arm64" linkPath="external/sentry-native_arm64">
+        <package name="rtx-remix-sentry-native_arm64" version="0.15.3" />
+    </dependency>
 </project>

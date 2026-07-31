@@ -8,6 +8,7 @@ util_src = files([
   'util_matrix.cpp',
   'util_monitor.cpp',
   'util_window.cpp',
+  'util_sentry.cpp',
 
   'thread.cpp',
   
@@ -46,6 +47,13 @@ util_src = files([
   'util_filesys.h',
   'util_filesys.cpp',
 
+  'util_local_data.h',
+  'util_local_data.cpp',
+
+  'util_per_game_config.h',
+
+  'util_crash_report.h',
+
   'util_threadpool.h',
   'util_atomic_queue.h',
 
@@ -60,8 +68,10 @@ util_src = files([
 ])
 
 util_lib = static_library('util', util_src,
+  dependencies        : [ sentry_dep ],
   include_directories : [ dxvk_include_path ],
   override_options    : ['cpp_std='+dxvk_cpp_std])
 
 util_dep = declare_dependency(
-  link_with           : [ util_lib ])
+  link_with           : [ util_lib ],
+  dependencies        : [ sentry_dep ])

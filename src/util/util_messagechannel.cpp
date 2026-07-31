@@ -264,10 +264,6 @@ void MessageChannelServer::workerJob() {
   MSG msg;
   const HWND kCurrentThreadId = (HWND) (-1);
   while (GetMessage(&msg, kCurrentThreadId, 0, 0)) {
-    // Destroy the thread if the window was also destroyed.
-    if (msg.message == WM_DESTROY)
-      return;
-
     TranslateMessage(&msg);
 
     if (onMessage(msg.message, msg.wParam, msg.lParam)) {
@@ -276,6 +272,10 @@ void MessageChannelServer::workerJob() {
 
     if (m_windowHandler) {
       m_windowHandler(m_clientWindow, msg.message, msg.wParam, msg.lParam);
+    }
+
+    if (msg.message == WM_DESTROY) {
+      return;
     }
   }
 }

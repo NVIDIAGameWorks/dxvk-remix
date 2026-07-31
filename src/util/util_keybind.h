@@ -343,17 +343,25 @@ private:
     } 
 };
 
-static std::string buildKeyBindDescriptorString(const VirtualKeys& virtKeys) {
-    std::stringstream ss;
-    bool bIsFirst = true;
-    for(const auto& virtKey : virtKeys) {
-        if(!bIsFirst) {
-            ss << kVirtualKeyDelimiter;
-        }
-        ss << KeyBind::getName(virtKey);
-        bIsFirst = false;
-    }
-    return ss.str();
+// NV-DXVK begin
+// `buildKeyBindDescriptorString`  with no delimiter arg should be used for serialization.
+// `buildKeyBindDescriptorStringForDisplay` should be used for displaying keyboard shortcuts in the UI.
+static std::string buildKeyBindDescriptorString(const VirtualKeys& virtKeys, const char delimiter = kVirtualKeyDelimiter) {
+  std::stringstream ss;
+  bool bIsFirst = true;
+  for(const auto& virtKey : virtKeys) {
+      if(!bIsFirst) {
+          ss << delimiter;
+      }
+      ss << KeyBind::getName(virtKey);
+      bIsFirst = false;
+  }
+  return ss.str();
 }
+
+static std::string buildKeyBindDescriptorStringForDisplay(const VirtualKeys& virtKeys) {
+    return buildKeyBindDescriptorString(virtKeys, '+');
+}
+// NV-DXVK end
 
 }

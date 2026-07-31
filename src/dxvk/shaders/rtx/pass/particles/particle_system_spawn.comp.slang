@@ -106,11 +106,19 @@ GpuParticle respawn(uint particleIdx, uint spawnCtxIdx, const GpuParticleSystem 
       color += unorm4x8ToFloat4x32(colorBits).zyxw * randomBary[i];
     }
     
-    const uint baseSrcTexcoordOffset = (spawnCtx.spawnMeshTexcoordsOffset + index * spawnCtx.spawnMeshTexcoordsStride) / 4;
-    float2 texcoord = float2(BUFFER_ARRAY(geometries, (uint)spawnCtx.spawnMeshTexcoordsIdx, baseSrcTexcoordOffset + 0),
-                             BUFFER_ARRAY(geometries, (uint)spawnCtx.spawnMeshTexcoordsIdx, baseSrcTexcoordOffset + 1));
+    // Only fetch emitter UVs when a valid texcoord buffer is bound. For a mesh without UVs,
+    // spawnMeshTexcoordsIdx == BINDING_INDEX_INVALID (0xFFFF); reading geometries[0xFFFF] is an
+    // out-of-range bindless descriptor access and faults the GPU (device loss). Mirrors the
+    // existing guards on the color and prev-position reads above.
+    float2 texcoord = float2(0.0f, 0.0f);
+    if (spawnCtx.spawnMeshTexcoordsIdx != BINDING_INDEX_INVALID)
+    {
+      const uint baseSrcTexcoordOffset = (spawnCtx.spawnMeshTexcoordsOffset + index * spawnCtx.spawnMeshTexcoordsStride) / 4;
+      texcoord = float2(BUFFER_ARRAY(geometries, (uint)spawnCtx.spawnMeshTexcoordsIdx, baseSrcTexcoordOffset + 0),
+                        BUFFER_ARRAY(geometries, (uint)spawnCtx.spawnMeshTexcoordsIdx, baseSrcTexcoordOffset + 1));
+    }
     
-    if (particleSystem.desc.useSpawnTexcoords)
+    if (particleSystem.desc.useSpawnTexcoords && spawnCtx.spawnMeshTexcoordsIdx != BINDING_INDEX_INVALID)
     {
       if (i == 0)
       {

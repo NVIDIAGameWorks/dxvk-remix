@@ -62,6 +62,7 @@
 #include "rtx_render/rtx_opacity_micromap_manager.h"
 #include "rtx_render/rtx_bridge_message_channel.h"
 #include "dxvk_imgui_about.h"
+#include "dxvk_imgui_first_use_guide.h"
 #include "dxvk_imgui_splash.h"
 #include "dxvk_imgui_capture.h"
 #include "rtx_render/rtx_option_layer_gui.h"
@@ -182,6 +183,7 @@ namespace dxvk {
     {"lightmaptextures","Lightmap Textures (optional)", &RtxOptions::lightmapTexturesObject()},
     {"ignorelights", "Ignore Lights (optional)", &RtxOptions::ignoreLightsObject()},
     {"particletextures", "Particle Texture (optional)", &RtxOptions::particleTexturesObject()},
+    {"haircardtextures", "Hair Cards Texture (optional)", &RtxOptions::hairCardTexturesObject()},
     {"beamtextures", "Beam Texture (optional)", &RtxOptions::beamTexturesObject()},
     {"ignoretransparencytextures", "Ignore Transparency Layer Texture (optional)", &RtxOptions::ignoreTransparencyLayerTexturesObject()},
     {"lightconvertertextures", "Add Light to Textures (optional)", &RtxOptions::lightConverterObject()},
@@ -532,6 +534,7 @@ namespace dxvk {
   : m_device (device)
   , m_gameHwnd   (nullptr)
   , m_about  (new ImGuiAbout)
+  , m_firstUseGuide (new ImGuiFirstUseGuide)
   , m_splash  (new ImGuiSplash)
   , m_graphGUI  (new RtxGraphGUI) {
     // Set up constant state
@@ -787,6 +790,8 @@ namespace dxvk {
           RemixGui::SliderFloat("Metallic Bias", &OpaqueMaterialOptions::metallicBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
           RemixGui::SliderFloat("Roughness Scale", &OpaqueMaterialOptions::roughnessScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
           RemixGui::SliderFloat("Roughness Bias", &OpaqueMaterialOptions::roughnessBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
+          RemixGui::DragFloat("Hair Cards Mip Bias", &RtxOptions::hairCardMipBiasObject(), 0.25f, -32.0f, 16.0f, "%.2f", sliderFlags);
+          RemixGui::DragFloat("Hair Cards Roughness Scale", &RtxOptions::hairCardRoughnessScaleObject(), 0.01f, 0.0f, 4.0f, "%.3f", sliderFlags);
           RemixGui::SliderFloat("Normal Strength##1", &OpaqueMaterialOptions::normalIntensityObject(), -10.0f, 10.f, "%.3f", sliderFlags);
 
           RemixGui::Checkbox("Enable dual-layer animated water normal for Opaque", &OpaqueMaterialOptions::layeredWaterNormalEnableObject());
@@ -888,6 +893,17 @@ namespace dxvk {
 
     showDebugVisualizations(ctx);
 
+    // On first frame, check if the first-use guide should be shown (overrides loaded showUI).
+    {
+      static bool s_firstUseChecked = false;
+      if (!s_firstUseChecked) {
+        s_firstUseChecked = true;
+        if (ImGuiFirstUseGuide::shouldShow()) {
+          switchMenu(UIType::FirstUseGuide);
+        }
+      }
+    }
+
     const auto showUI = RtxOptions::showUI();
     if (showUI == UIType::Advanced) {
       showMainMenu(ctx);
@@ -896,6 +912,10 @@ namespace dxvk {
       //ImGui::ShowDemoWindow();
     } else if (showUI == UIType::Basic) {
       showUserMenu(ctx);
+    } else if (showUI == UIType::FirstUseGuide) {
+      if (m_firstUseGuide->show(m_boldFont)) {
+        switchMenu(UIType::None);
+      }
     }
     
     // Render any blocked edit popup warnings
@@ -924,10 +944,11 @@ namespace dxvk {
     showHudMessages(ctx);
 
 #ifdef REMIX_DEVELOPMENT
-    // Show visual indicator when crash hotkey is armed
+    // Show visual indicator when crash hotkeys are armed (one option arms both CPU and GPU crash hotkeys)
     if (RtxOptions::enableCrashHotkey()) {
-      const auto crashHotkeyStr = buildKeyBindDescriptorString(RtxOptions::crashHotkey());
-      const auto warningText = str::format("!! CRASH HOTKEY ARMED (", crashHotkeyStr, ") !!");
+      const auto crashHotkeyStr = buildKeyBindDescriptorStringForDisplay(RtxOptions::crashHotkey());
+      const auto gpuCrashHotkeyStr = buildKeyBindDescriptorStringForDisplay(RtxOptions::gpuCrashHotkey());
+      const auto warningText = str::format("!! CRASH HOTKEYS ARMED (", crashHotkeyStr, " = CPU crash, ", gpuCrashHotkeyStr, " = GPU crash) !!");
       const ImVec2 textSize = ImGui::CalcTextSize(warningText.c_str());
       const ImGuiViewport* viewport = ImGui::GetMainViewport();
       const ImVec2 textPos(viewport->Size.x - textSize.x - 10.0f, 10.0f);
@@ -1497,7 +1518,7 @@ namespace dxvk {
 
     ImGui::Separator();
 
-    { // Crash Hotkey Feature - allows triggering a deliberate crash for testing crash handling
+    { // Crash Hotkey Feature - arms both CPU crash (deliberate crash) and GPU crash (dialog + Sentry) hotkeys
       const bool isArmed = RtxOptions::enableCrashHotkey();
       
       // Use warning color when armed to make it visually distinct
@@ -1505,32 +1526,32 @@ namespace dxvk {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.3f, 0.3f, 1.0f));
       }
       
-      // ImGui::Checkbox returns true when the checkbox state changes
       const bool changed = RemixGui::Checkbox("Arm Crash Hotkey", &RtxOptions::enableCrashHotkeyObject());
       
       if (isArmed) {
         ImGui::PopStyleColor();
       }
       
-      const auto crashHotkeyStr = buildKeyBindDescriptorString(RtxOptions::crashHotkey());
+      const auto crashHotkeyStr = buildKeyBindDescriptorStringForDisplay(RtxOptions::crashHotkey());
+      const auto gpuCrashHotkeyStr = buildKeyBindDescriptorStringForDisplay(RtxOptions::gpuCrashHotkey());
       RemixGui::SetTooltipToLastWidgetOnHover(
-        str::format("When armed, pressing ", crashHotkeyStr, " will trigger a deliberate crash.\n"
-        "Useful for testing crash handling, crash dumps, and crash reporting.\n"
+        str::format("When armed: ", crashHotkeyStr, " = deliberate CPU crash; ", gpuCrashHotkeyStr, " = deliberate GPU crash.\n"
         "A red warning indicator will appear on screen while armed.").c_str());
       
       // Log state changes for crash dump analysis
       if (changed) {
         const bool nowArmed = RtxOptions::enableCrashHotkey();
         if (nowArmed) {
-          Logger::warn(str::format("Crash hotkey ARMED - press ", crashHotkeyStr, " to trigger crash"));
+          Logger::warn(str::format("Crash hotkeys ARMED - ", crashHotkeyStr, " = CPU crash, ", gpuCrashHotkeyStr, " = GPU crash"));
         } else {
-          Logger::warn("Crash hotkey disarmed");
+          Logger::warn("Crash hotkeys disarmed");
         }
       }
     }
+    
+    RemixGui::Separator();
 #endif
 
-    RemixGui::Separator();
 
     showVsyncOptions(false);
 
@@ -2803,6 +2824,7 @@ namespace dxvk {
         RemixGui::Checkbox("Allow Cubemaps", &D3D9Rtx::allowCubemapsObject());
         RemixGui::Checkbox("Always Calculate AABB (For Instance Matching)", &RtxOptions::enableAlwaysCalculateAABBObject());
         RemixGui::Checkbox("Skip Sky Fog Values", &RtxOptions::fogIgnoreSkyObject());
+        RemixGui::Checkbox("Recompute Texture Hash On Write", &RtxOptions::recomputeTextureHashOnWriteObject());
         ImGui::Unindent();
       }
 
@@ -2819,6 +2841,7 @@ namespace dxvk {
         ImGui::Indent();
         RemixGui::Checkbox("Capture Vertices from Shader", &D3D9Rtx::useVertexCaptureObject());
         RemixGui::Checkbox("Capture Normals from Shader", &D3D9Rtx::useVertexCapturedNormalsObject());
+        RemixGui::Checkbox("Capture Texcoords from Shader", &D3D9Rtx::useVertexCapturedTexcoordsObject());
         RemixGui::Separator();
         RemixGui::Checkbox("Use World Transforms", &D3D9Rtx::useWorldMatricesForShadersObject());
         ImGui::Unindent();

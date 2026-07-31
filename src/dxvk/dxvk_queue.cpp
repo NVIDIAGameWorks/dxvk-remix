@@ -26,6 +26,13 @@
 #include "NvLowLatencyVk.h"
 #include "GFSDK_Aftermath_GpuCrashDump.h"
 
+#include "../util/util_env.h"
+// NV-DXVK start: Shared crash-report exit code / dialog helpers
+#include "../util/util_crash_report.h"
+#include "rtx_render/rtx_bridge_message_channel.h"
+// NV-DXVK end
+#include "../util/util_sentry.h"
+
 namespace dxvk {
   
   DxvkSubmissionQueue::DxvkSubmissionQueue(DxvkDevice* device)
@@ -127,6 +134,38 @@ namespace dxvk {
     ScopedCpuProfileZone();
     m_mutexQueue.unlock();
   }
+
+  // NV-DXVK start: GPU crash diagnostics
+  void DxvkSubmissionQueue::onGpuCrash(const char* reason) {
+    if (m_gpuCrashHandled.exchange(true)) {
+      return;
+    }
+
+    // The submission queue is destroyed and its threads are joined before the
+    // device's common objects, so the scene manager and recorder are alive here.
+    m_device->getCommon()->getSceneManager().getAccelManager().dumpCrashState(reason);
+
+    if (m_device->config().enableAftermath) {
+      // Stall the pending exception until Aftermath has finished writing or reports an error.
+      constexpr uint32_t kTimeoutPreventionLimit = 5000;
+      constexpr uint32_t kTimeoutPerTry = 100;
+      uint32_t elapsedTime = 0;
+      GFSDK_Aftermath_CrashDump_Status aftermathStatus = GFSDK_Aftermath_CrashDump_Status_NotStarted;
+
+      while (elapsedTime < kTimeoutPreventionLimit) {
+        GFSDK_Aftermath_GetCrashDumpStatus(&aftermathStatus);
+
+        if (aftermathStatus == GFSDK_Aftermath_CrashDump_Status_Finished
+         || aftermathStatus == GFSDK_Aftermath_CrashDump_Status_Unknown) {
+          break;
+        }
+
+        Sleep(kTimeoutPerTry);
+        elapsedTime += kTimeoutPerTry;
+      }
+    }
+  }
+  // NV-DXVK end
 
   void DxvkSubmissionQueue::submitCmdLists() {
     env::setThreadName("dxvk-submit");
@@ -247,26 +286,18 @@ namespace dxvk {
       } else if (status == VK_ERROR_DEVICE_LOST || entry.submit.cmdList != nullptr) {
         Logger::err(str::format("DxvkSubmissionQueue: Command submission failed: ", status));
         m_lastError = status;
-        
-        if (m_device->config().enableAftermath) {
-          // Stall the pending exception until aftermath has finished writing (or hits some error)
-          uint32_t counter = 0;
-          GFSDK_Aftermath_CrashDump_Status aftermathStatus = GFSDK_Aftermath_CrashDump_Status_NotStarted; 
-          
-          static const uint32_t kTimeoutPreventionLimit = 5000;
-          
-          while (counter < kTimeoutPreventionLimit) {
-            GFSDK_Aftermath_GetCrashDumpStatus(&aftermathStatus);
 
-            if (aftermathStatus == GFSDK_Aftermath_CrashDump_Status_Finished || aftermathStatus == GFSDK_Aftermath_CrashDump_Status_Unknown)
-              break; // Our dump was written
-
-            static const uint32_t kTimeoutPerTry = 100;
-            Sleep(kTimeoutPerTry);
-            counter += kTimeoutPerTry;
-          }
+        // NV-DXVK start: GPU crash diagnostics and handling on device loss
+        // Aftermath only produces a GPU crash dump for device loss. Other
+        // submission failures retain their existing handling without a stall.
+        if (status == VK_ERROR_DEVICE_LOST) {
+          onGpuCrash("queue submission");
+          handleDeviceLost();
+        } else {
+          waitForAftermathDump();
+          m_device->waitForIdle();
         }
-        m_device->waitForIdle();
+        // NV-DXVK end
       }
 
       m_submitQueue.pop();
@@ -308,7 +339,15 @@ namespace dxvk {
       if (status != VK_SUCCESS) {
         Logger::err(str::format("DxvkSubmissionQueue: Failed to sync fence: ", status));
         m_lastError = status;
-        m_device->waitForIdle();
+
+        // NV-DXVK start: GPU crash diagnostics and handling on device loss
+        if (status == VK_ERROR_DEVICE_LOST) {
+          onGpuCrash("fence synchronization");
+          handleDeviceLost();
+        } else {
+          m_device->waitForIdle();
+        }
+        // NV-DXVK end
       }
 
       // Release resources and signal events, then immediately wake
@@ -328,4 +367,56 @@ namespace dxvk {
       m_device->recycleCommandList(entry.submit.cmdList);
     }
   }
+
+  // NV-DXVK start: GPU crash handling (Aftermath dump wait + device-loss reporting)
+  void DxvkSubmissionQueue::waitForAftermathDump() {
+    if (!m_device->config().enableAftermath) {
+      return;
+    }
+
+    // Stall the pending exception until Aftermath has finished writing (or hits some error).
+    uint32_t counter = 0;
+    GFSDK_Aftermath_CrashDump_Status aftermathStatus = GFSDK_Aftermath_CrashDump_Status_NotStarted;
+
+    static const uint32_t kTimeoutPreventionLimit = 5000;
+
+    while (counter < kTimeoutPreventionLimit) {
+      GFSDK_Aftermath_GetCrashDumpStatus(&aftermathStatus);
+
+      if (aftermathStatus == GFSDK_Aftermath_CrashDump_Status_Finished || aftermathStatus == GFSDK_Aftermath_CrashDump_Status_Unknown) {
+        break; // Our dump was written
+      }
+
+      static const uint32_t kTimeoutPerTry = 100;
+      Sleep(kTimeoutPerTry);
+      counter += kTimeoutPerTry;
+    }
+  }
+
+  void DxvkSubmissionQueue::handleDeviceLost() {
+    // Both the submit and finish threads can observe device loss; ensure only the first one performs
+    // crash handling. Any other thread blocks here until the process is terminated below.
+    static std::atomic<bool> s_handlingDeviceLoss(false);
+    if (s_handlingDeviceLoss.exchange(true)) {
+      while (true) {
+        Sleep(1000);
+      }
+    }
+
+    // Notify the bridge client immediately so it can disable the Windows ghost dialog and
+    // prepare the crash dialog window before the slow Sentry capture/upload below.
+    BridgeMessageChannel::get().send(kGpuCrashNotifyMsgName, 0, 0);
+
+    waitForAftermathDump();
+    // Capture/upload the GPU crash (no-op if Sentry is inactive) before tearing down.
+    sentry::processPendingGpuCrashReports();
+    Logger::err("DxvkSubmissionQueue: Exiting after GPU device loss");
+    // Signal the GPU-crash exit code so the bridge can distinguish this from a CPU crash.
+    // sentry::shutdown() is intentionally omitted here: sentry_close() blocks for several seconds
+    // waiting for a network flush, but at this point crash data is already captured and cached
+    // locally — the bridge client will trigger upload after the user grants consent. The
+    // out-of-process crashpad_handler.exe handles any remaining cleanup independently.
+    env::killProcess(kRemixGpuCrashExitCode);
+  }
+  // NV-DXVK end
 }

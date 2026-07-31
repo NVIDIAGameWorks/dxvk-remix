@@ -83,6 +83,10 @@ namespace dxvk {
     if (!RtxOptions::enableCulling())
       flags |= VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
 
+    if (drawCall.testCategoryFlags(InstanceCategories::HairCards)) {
+      flags |= VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+    }
+
     // This check can be overridden by replacement assets.
     if (drawCall.getMaterialData().blendMode.enableBlending && !surface.alphaState.isDecal && !drawCall.getGeometryData().forceCullBit)
       flags |= VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
@@ -676,18 +680,32 @@ namespace dxvk {
     // Handle Alpha Test State
 
     // Note: Even if the Alpha Test enable flag is set, we consider it disabled if the actual test type is set to always.
-    const bool forceAlphaTest = drawCall.getCategoryFlags().test(InstanceCategories::AlphaBlendToCutout);
-    const bool alphaTestEnabled = forceAlphaTest || (AlphaTestType)drawCall.getMaterialData().alphaTestCompareOp != AlphaTestType::kAlways;
+    const bool forceCutoutAlphaTest = drawCall.testCategoryFlags(InstanceCategories::AlphaBlendToCutout);
+    const bool forceHairCardAlphaTest = drawCall.testCategoryFlags(InstanceCategories::HairCards);
+    const bool forceAlphaTest = forceCutoutAlphaTest || forceHairCardAlphaTest;
+    const bool legacyAlphaTestEnabled = (AlphaTestType)drawCall.getMaterialData().alphaTestCompareOp != AlphaTestType::kAlways;
+    const bool materialAlphaTestEnabled = opaqueMaterialData.getAlphaTestType() != AlphaTestType::kAlways;
 
     // Note: Use the Opaque Material Data's alpha test state information directly if requested,
     // otherwise derive the alpha test state from the drawcall (via its legacy material data).
-    if (forceAlphaTest) {
+    if (forceCutoutAlphaTest) {
       out.alphaTestType = AlphaTestType::kGreater;
       out.alphaTestReferenceValue = static_cast<uint8_t>(RtxOptions::forceCutoutAlpha() * 255.0);
+    } else if (forceHairCardAlphaTest) {
+      if (!useLegacyAlphaState && materialAlphaTestEnabled) {
+        out.alphaTestType = opaqueMaterialData.getAlphaTestType();
+        out.alphaTestReferenceValue = opaqueMaterialData.getAlphaTestReferenceValue();
+      } else if (legacyAlphaTestEnabled) {
+        out.alphaTestType = (AlphaTestType)drawCall.getMaterialData().alphaTestCompareOp;
+        out.alphaTestReferenceValue = drawCall.getMaterialData().alphaTestReferenceValue;
+      } else {
+        out.alphaTestType = AlphaTestType::kGreater;
+        out.alphaTestReferenceValue = static_cast<uint8_t>(RtxOptions::forceCutoutAlpha() * 255.0);
+      }
     } else if (!useLegacyAlphaState) {
       out.alphaTestType = opaqueMaterialData.getAlphaTestType();
       out.alphaTestReferenceValue = opaqueMaterialData.getAlphaTestReferenceValue();
-    } else if (alphaTestEnabled) {
+    } else if (legacyAlphaTestEnabled) {
       out.alphaTestType = (AlphaTestType)drawCall.getMaterialData().alphaTestCompareOp;
       out.alphaTestReferenceValue = drawCall.getMaterialData().alphaTestReferenceValue;
     }

@@ -28,6 +28,7 @@
 #include "../dxvk/dxvk_objects.h"
 #include "../util/util_env.h"
 #include "../util/util_once.h"
+#include "../util/util_sentry.h"
 #include "../util/util_string.h"
 #include "../dxvk/rtx_render/rtx_bridge_message_channel.h"
 #include "../dxvk/dxvk_scoped_annotation.h"
@@ -217,6 +218,14 @@ namespace dxvk {
       ? windowData.unicode
       : IsWindowUnicode(window);
 
+    // NV-DXVK start: Sentry shutdown so pending events are flushed (WM_DESTROY = normal close; WM_ENDSESSION = logoff/system shutdown)
+    // All sentry::* entry points are no-op after shutdown so late dxvk/Aftermath calls are safe.
+    // For WM_ENDSESSION, wParam=FALSE means the session shutdown was canceled; skip in that case.
+    if (message == WM_DESTROY || (message == WM_ENDSESSION && wParam != 0)) {
+      dxvk::sentry::shutdown();
+    }
+    // NV-DXVK end
+
     // NV-DXVK start: Handling stale Swapchains.
     // Majority of NV-DXVK changes below are related to bSkipSwapchainActions
 
@@ -329,6 +338,8 @@ namespace dxvk {
     this->NormalizePresentParameters(pPresentParams);
     m_presentParams = *pPresentParams;
     m_window = m_presentParams.hDeviceWindow;
+
+    sentry::setTag("windowed", m_presentParams.Windowed ? "true" : "false");
 
     // NV-DXVK start: DLFG integration
     if (RtxOptions::enableVsync() == EnableVsync::WaitingForImplicitSwapchain) {
@@ -851,6 +862,7 @@ namespace dxvk {
     }
 
     m_presentParams = *pPresentParams;
+    sentry::setTag("windowed", m_presentParams.Windowed ? "true" : "false");
 
     CreateBackBuffers(m_presentParams.BackBufferCount);
 
@@ -939,6 +951,7 @@ namespace dxvk {
     }
 
     m_presentParams = *pPresentParams;
+    sentry::setTag("windowed", m_presentParams.Windowed ? "true" : "false");
 
     if (modifyWindow && changeFullscreen)
       SetGammaRamp(0, &m_ramp);

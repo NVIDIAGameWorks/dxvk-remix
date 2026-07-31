@@ -191,9 +191,12 @@ namespace dxvk {
     geoData.positionBuffer = RasterBuffer(slice, 0, stride, VK_FORMAT_R32G32B32A32_SFLOAT);
     assert(geoData.positionBuffer.offset() % 4 == 0);
 
-    // Did we have a texcoord buffer bound for this draw?  Note, we currently get texcoord from the vertex shader output 
-    if (BoundShaderHas(vertexShader, DxsoUsage::Texcoord, false) && (!geoData.texcoordBuffer.defined() || !RtxGeometryUtils::isTexcoordFormatValid(geoData.texcoordBuffer.vertexFormat()))) {
-      // Known offset for vertex capture buffers
+    if (BoundShaderHas(vertexShader, DxsoUsage::Texcoord, false)
+        && (useVertexCapturedTexcoords() || !geoData.texcoordBuffer.defined() || !RtxGeometryUtils::isTexcoordFormatValid(geoData.texcoordBuffer.vertexFormat()))) {
+      // By default we only capture VS output texcoords when the input vertex declaration didn't
+      // already provide them.  Overriding valid input texcoords with the VS output is opt-in
+      // (useVertexCapturedTexcoords), since the data a VS writes to the :TEXCOORD attribute isn't
+      // always actual UVs and its memory layout can't be assumed for all games.
       const uint32_t texcoordOffset = offsetof(CapturedVertex, texcoord0);
       geoData.texcoordBuffer = RasterBuffer(slice, texcoordOffset, stride, VK_FORMAT_R32G32_SFLOAT);
       assert(geoData.texcoordBuffer.offset() % 4 == 0);
@@ -458,6 +461,14 @@ namespace dxvk {
       return { RtxGeometryStatus::Ignored, false };
     }
 
+    {
+      D3D9CommonTexture* rtTexture = GetCommonTexture(d3d9State().renderTargets[kRenderTargetIndex]->GetBaseTexture());
+      if (rtTexture != nullptr && rtTexture->GetImage() == nullptr) {
+        ONCE(Logger::info("[RTX-Compatibility-Info] Skipped drawcall, render target has no GPU image (possibly a depth-only pass)."));
+        return { RtxGeometryStatus::Ignored, false };
+      }
+    }
+
     constexpr DWORD rgbWriteMask = D3DCOLORWRITEENABLE_RED | D3DCOLORWRITEENABLE_GREEN | D3DCOLORWRITEENABLE_BLUE;
     if ((d3d9State().renderStates[ColorWriteIndex(kRenderTargetIndex)] & rgbWriteMask) != rgbWriteMask) {
       ONCE(Logger::info("[RTX-Compatibility-Info] Skipped drawcall, colour write disabled."));
@@ -487,7 +498,7 @@ namespace dxvk {
     // a texture for some geometry later
     if (RtxOptions::RaytracedRenderTarget::enable()) {
       D3D9CommonTexture* texture = GetCommonTexture(d3d9State().renderTargets[kRenderTargetIndex]->GetBaseTexture());
-      if (texture && lookupHash(RtxOptions::raytracedRenderTargetTextures(), texture->GetImage()->getDescriptorHash())) {
+      if (texture && texture->GetImage() != nullptr && lookupHash(RtxOptions::raytracedRenderTargetTextures(), texture->GetImage()->getDescriptorHash())) {
         m_activeDrawCallState.isDrawingToRaytracedRenderTarget = true;
         return { RtxGeometryStatus::RayTraced, false };
       }
@@ -580,7 +591,7 @@ namespace dxvk {
       bool isRaytracedRenderTarget = false;
       if (RtxOptions::RaytracedRenderTarget::enable()) {
         D3D9CommonTexture* texture = GetCommonTexture(d3d9State().renderTargets[kRenderTargetIndex]->GetBaseTexture());
-        if (texture && lookupHash(RtxOptions::raytracedRenderTargetTextures(), texture->GetImage()->getDescriptorHash())) {
+        if (texture && texture->GetImage() != nullptr && lookupHash(RtxOptions::raytracedRenderTargetTextures(), texture->GetImage()->getDescriptorHash())) {
           isRaytracedRenderTarget = true;
         }
       }

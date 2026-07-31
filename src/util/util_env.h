@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -23,6 +23,7 @@
 
 // NV-DXVK start: Fix some circular inclusion stuff
 #include <string>
+#include <cstdint>
 // NV-DXVK end
 
 namespace dxvk::env {
@@ -171,8 +172,17 @@ namespace dxvk::env {
    */
   bool createDirectory(const std::string& path);
   
+  // NV-DXVK start: Add exit code parameter so the bridge can distinguish GPU crashes from CPU crashes
   /**
  * \brief Kills the current process via system
+ *
+ * \param [in] exitCode Exit code reported to the parent process (e.g. the bridge). Defaults to 0.
  */
-  void killProcess();
+  void killProcess(uint32_t exitCode = 0);
+  // NV-DXVK end
+
+  /**
+   * \brief Opens a URL in the default browser
+   */
+  void openUrlInBrowser(const char* url);
 }

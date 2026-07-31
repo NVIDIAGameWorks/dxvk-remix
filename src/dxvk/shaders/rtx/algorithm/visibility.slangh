@@ -133,18 +133,14 @@ vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo rayHi
     
       // Approximate the attenuation with assumption that input and output rays are on the same line and the volume is isotropic
       const float baseReflectivity = calcBt709Luminance(opaqueSurfaceMaterialInteraction.baseReflectivity);
-      const float insideRelativeRefractiveIndex = baseReflectivityToIoR(materialIoRVacuum, baseReflectivity) / materialIoRVacuum;
     
       // Calculate path integral throughput/weight
+      // Note: The ray direction is in the outside medium. By reciprocity the entry and exit
+      // boundaries have the same Fresnel reflectance for this straight-through approximation.
       const float outsideFresnel = evalTranslucentSchlickFresnel(baseReflectivity, normalDotOutputDirection);
-      const float insideFresnel = evalTranslucentSchlickFresnelTIR(baseReflectivity, insideRelativeRefractiveIndex, normalDotOutputDirection);
+      const float insideFresnel = evalTranslucentSchlickFresnel(baseReflectivity, normalDotOutputDirection);
       const float attenuationDistance = subsurfaceMaterial.measurementDistance * subsurfaceMaterial.measurementDistance;
       const vec3 attenuation = evalBeerLambertAttenuation(subsurfaceMaterial.volumetricAttenuationCoefficient, attenuationDistance * rcp(float(normalDotOutputDirection)));
-    
-      if (insideFresnel >= 1.0f)
-      {
-        return vec3(0.0f);
-      }
     
       return subsurfaceMaterial.singleScatteringAlbedo * (1.0f - outsideFresnel) * (1.0f - insideFresnel) *
               safePositiveDivide((subsurfaceMaterial.volumetricAttenuationCoefficient * attenuationDistance),

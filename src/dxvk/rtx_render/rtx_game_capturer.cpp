@@ -572,7 +572,15 @@ namespace dxvk {
       }
       for (uint32_t i = 0; i < (uint32_t) InstanceCategories::Count; i++) {
         const InstanceCategories flag = (InstanceCategories) i;
-        pMesh->lssData.categoryFlags[getInstanceCategorySubKey(flag)] = flags.test(flag);
+        const bool isSet = flags.test(flag);
+
+        // Keep Hair Cards absent from captured categoryFlags when false instead of authoring an explicit false value.
+        // This preserves existing captures while true hair-card instances still store the category explicitly.
+        if (flag == InstanceCategories::HairCards && !isSet) {
+          continue;
+        }
+
+        pMesh->lssData.categoryFlags[getInstanceCategorySubKey(flag)] = isSet;
       }
       pMesh->lssData.numVertices = numVertices;
       pMesh->lssData.numIndices = numIndices;

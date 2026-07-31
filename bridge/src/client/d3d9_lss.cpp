@@ -49,13 +49,17 @@
 #include "util_seh.h"
 #include "util_semaphore.h"
 
+#include "../../../src/util/util_crash_report.h"
+
 #include <algorithm>
 #include <assert.h>
 #include <cctype>
+#include <filesystem>
 #include <sstream>
 #include <stdio.h>
 #include <string>
 #include <mutex>
+#include <vector>
 
 using namespace bridge_util;
 
@@ -144,16 +148,140 @@ void SetupExceptionHandler() {
   }
 }
 
-void OnServerExited(Process const* process) {
+namespace {
+  // Key must match sentry::kAllowCrashReportingKey in src/util/util_sentry.h.
+  bool userHasCrashReportingPermission() {
+    bridge_util::Config::reloadUserSettings();
+    return bridge_util::Config::getUserSetting<bool>("allowCrashReporting", false);
+  }
+
+  // Delete pending crash data so a declined crash is not uploaded later (e.g. if the user grants
+  // permission after clicking No here). Removes the crashpad reports/attachments, the offline
+  // envelope cache, and per-run session dirs; preserves identity/consent files (settings.dat,
+  // user-consent, installation_id). Mirrors sentry::clearPendingCrashReports() in the runtime.
+  void clearPendingCrashData(const std::filesystem::path& sentryDbDir) {
+    namespace fs = std::filesystem;
+    if (!fs::exists(sentryDbDir)) {
+      return;
+    }
+    std::error_code ec;
+    for (const char* subDir : { "reports", "attachments", "cache" }) {
+      fs::remove_all(sentryDbDir / subDir, ec);
+      if (ec) {
+        Logger::warn(std::string("clearPendingCrashData: failed to remove '") + (sentryDbDir / subDir).string() + "': " + ec.message());
+        ec.clear();
+      }
+    }
+    std::vector<fs::path> runPaths;
+    for (auto it = fs::directory_iterator(sentryDbDir, ec); !ec && it != fs::directory_iterator(); it.increment(ec)) {
+      const auto name = it->path().filename().string();
+      if ((name.size() >= 4 && name.compare(name.size() - 4, 4, ".run") == 0)
+          || (name.size() >= 9 && name.compare(name.size() - 9, 9, ".run.lock") == 0)) {
+        runPaths.push_back(it->path());
+      }
+    }
+    for (const auto& runPath : runPaths) {
+      fs::remove_all(runPath, ec);
+      if (ec) {
+        Logger::warn(std::string("clearPendingCrashData: failed to remove '") + runPath.string() + "': " + ec.message());
+        ec.clear();
+      }
+    }
+  }
+
+  // Sentry only uploads when an application process restarts after a crash, so we just
+  // relaunch the bridge server process with the --sentry-upload-only flag.
+  void triggerSentryUpload(bool isGpuCrash) {
+    if (gRemixFolder.empty()) {
+      return;
+    }
+    const auto logsDir = dxvk::util::RtxFileSys::path(dxvk::util::RtxFileSys::Logs);
+    const std::wstring exePathW = (std::filesystem::path(gRemixFolder) / L".trex/NvRemixBridge.exe").wstring();
+    const std::wstring crashTypeW = isGpuCrash ? L"GPU" : L"CPU";
+    // logsDir is safe for command line: RtxFileSys::init rejects env paths containing ".
+    const std::wstring cmdLine = L"\"" + exePathW + L"\" --sentry-upload-only \"" + logsDir.wstring() + L"\" " + crashTypeW;
+    std::vector<wchar_t> cmdLineBuf(cmdLine.begin(), cmdLine.end());
+    cmdLineBuf.push_back(L'\0');
+    STARTUPINFOW si = { sizeof(si) };
+    PROCESS_INFORMATION pi = {};
+    if (CreateProcessW(exePathW.c_str(), cmdLineBuf.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+      CloseHandle(pi.hProcess);
+      CloseHandle(pi.hThread);
+    }
+  }
+
+  // Shows a single crash popup, applies user choice, then exits.
+  [[noreturn]] void promptCrashReportAndApplyChoice(bool isGpuCrash) {
+    namespace fs = std::filesystem;
+    const auto logsDir = dxvk::util::RtxFileSys::path(dxvk::util::RtxFileSys::Logs);
+    const auto sentryDbDir = logsDir / ".sentry-native";
+    const bool alreadyHasConsent = userHasCrashReportingPermission();
+
+    const dxvk::CrashPromptKind promptKind = isGpuCrash ? dxvk::CrashPromptKind::GpuImmediate : dxvk::CrashPromptKind::CpuImmediate;
+    const std::wstring message = dxvk::buildCrashReportMessage(promptKind, alreadyHasConsent);
+
+    // Prepare the game window so the dialog is visible on top (demote from topmost + minimize, plus
+    // ghost suppression / WndProc fullscreen-restore suppression). This runs on the process-monitor
+    // threadpool thread — NOT the window-owning main thread — so use the async path to avoid blocking
+    // on the main thread, which may be stuck in the Present wait and not pumping messages. For GPU
+    // crashes the early handler has usually already done this; this call is the backstop and also
+    // covers CPU crashes (which have no early handler).
+    WndProc::prepareForCrashDialog(/*async=*/true);
+
+    if (alreadyHasConsent) {
+      Logger::warn("Crash dialog: showing info dialog (consent already given)");
+      MessageBoxW(nullptr, message.c_str(), dxvk::kCrashReportDialogTitle, MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
+      Logger::err("Crash reporting: user already granted permission. Upload triggered.");
+      triggerSentryUpload(isGpuCrash);
+
+    } else {
+      Logger::warn("Crash dialog: showing consent dialog");
+      const int result = MessageBoxW(nullptr, message.c_str(), dxvk::kCrashReportDialogTitle, MB_YESNO | MB_ICONQUESTION | MB_TOPMOST);
+      Logger::warn(format_string("Crash dialog: consent dialog dismissed (result=%d)", result));
+
+      if (result == IDYES) {
+        // Record consent before uploading so the runtime does not prompt again next launch.
+        Logger::err("Crash reporting: user granted permission. Upload triggered.");
+        bridge_util::Config::setUserSetting("allowCrashReporting", "True");
+        triggerSentryUpload(isGpuCrash);
+      } else {
+        Logger::err("Crash reporting: user declined permission.");
+        // Delete the crash data so it is not uploaded later if the user grants permission afterward.
+        clearPendingCrashData(sentryDbDir);
+      }
+    }
+
+    std::exit(-1);
+  }
+}
+
+void OnServerExited(Process const*, DWORD exitCode) {
   BridgeState::setServerState(BridgeState::ProcessState::Exited);
+
+  // Stop the WndProc from restoring the fullscreen window during crash handling.
+  // When the server exits while the game's render loop is running (server signalled Present
+  // before crashing), the game keeps calling D3D9 functions and its own window management fights
+  // any forced minimize — the WM_SIZE → WM_ACTIVATEAPP loop keeps re-expanding the window to
+  // fullscreen. Suppressing it here prevents that before we disable the bridge or show the dialog.
+  WndProc::setSuppressWindowManagement(true);
+  Logger::warn("Crash handler: window management suppressed, ghosting disabled");
+
+  // Suppress the Windows "not responding" ghost dialog for the remainder of this process lifetime.
+  // The game's main thread is blocked in the Present semaphore wait and cannot pump messages, so
+  // Windows will otherwise offer to kill the process before our crash dialog can appear.
+  DisableProcessWindowsGhosting();
 
   // Disable the bridge to terminate any ongoing processing
   gbBridgeRunning = false;
   // Notify the user that we have to shut down the bridge entirely because we don't have a renderer anymore
   if (BridgeState::getClientState() != BridgeState::ProcessState::DoneProcessing) {
+    // The runtime signals GPU crashes (device loss) via a dedicated exit code so we can show a
+    // GPU-specific dialog instead of the generic crash prompt.
+    const bool isGpuCrash = (exitCode == dxvk::kRemixGpuCrashExitCode);
+    Logger::warn(format_string("Crash handler: server exited (code=0x%08x, type=%s)",
+        exitCode, isGpuCrash ? "GPU" : "CPU"));
     PrintRecentCommandHistory();
-    Logger::errLogMessageBoxAndExit(logger_strings::BridgeClientClosing);
-    std::abort();
+    promptCrashReportAndApplyChoice(isGpuCrash);
   }
 
   const auto timeServerEnd = std::chrono::high_resolution_clock::now();

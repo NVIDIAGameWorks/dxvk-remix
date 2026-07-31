@@ -23,6 +23,7 @@
 
 #include "dxvk_scoped_annotation.h"
 #include "../../util/log/log.h"
+#include "../../util/util_sentry.h"
 #include "../../util/util_string.h"
 
 #include <cassert>
@@ -148,23 +149,28 @@ namespace dxvk {
     // = Log System Information Report =
     // Note: This report should contain information about relevant hardware on the system which may be useful for debugging when a log is provided. No identifiable information
     // (e.g. serial numbers, usernames, computer names, etc) should be included here to preserve privacy.
+    // Same data is set as Sentry tags/context so crash reports include it.
 
-    Logger::info(str::format(
-      "System Information Report:"
-      "\n  CPU: (", manufacturerID, ") ", brandString
-    ));
+    const std::string cpuLine = str::format(
+      "  CPU: (", manufacturerID, ") ", brandString
+    );
+    Logger::info(str::format("System Information Report:\n", cpuLine));
+    sentry::setContext("system_info_cpu", cpuLine);
 
     if (hasMemoryInformation) {
       const auto usedPhysicalMemory = memoryStatus.ullTotalPhys >= memoryStatus.ullAvailPhys ? memoryStatus.ullTotalPhys - memoryStatus.ullAvailPhys : 0;
       const auto usedCommittedMemory = memoryStatus.ullTotalPageFile >= memoryStatus.ullAvailPageFile ? memoryStatus.ullTotalPageFile - memoryStatus.ullAvailPageFile : 0;
       const auto usedVirtualMemory = memoryStatus.ullTotalVirtual >= memoryStatus.ullAvailVirtual ? memoryStatus.ullTotalVirtual - memoryStatus.ullAvailVirtual : 0;
 
-      Logger::info(str::format(
+      sentry::setTag("ram", str::formatBytes(static_cast<size_t>(memoryStatus.ullTotalPhys)));
+      const std::string memoryLine = str::format(
         "  Memory: ",
         str::formatBytes(usedPhysicalMemory), " / ", str::formatBytes(memoryStatus.ullTotalPhys), " physical, ",
         str::formatBytes(usedCommittedMemory), " / ", str::formatBytes(memoryStatus.ullTotalPageFile), " committed, ",
         str::formatBytes(usedVirtualMemory), " / ", str::formatBytes(memoryStatus.ullTotalVirtual), " virtual (current process)"
-      ));
+      );
+      Logger::info(memoryLine);
+      sentry::setContext("system_info_memory", memoryLine);
     }
 
     if (hasOsInformation) {
@@ -175,6 +181,7 @@ namespace dxvk {
       }
 
       Logger::info(osString);
+      sentry::setContext("system_info_os", osString);
     }
   }
 
