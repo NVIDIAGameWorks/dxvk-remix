@@ -910,7 +910,20 @@ namespace dxvk {
           if (b->deviceProperties().deviceType == deviceTypes[i]) bRank = i;
         }
 
-        return aRank < bRank;
+        if (aRank != bRank)
+          return aRank < bRank;
+
+        // Among adapters of the same device type, prefer ones that support
+        // ray tracing extensions required by RTX Remix.
+        const bool aSupportsRT = a->supportsExtension(VK_KHR_RAY_QUERY_EXTENSION_NAME)
+                               && a->supportsExtension(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+        const bool bSupportsRT = b->supportsExtension(VK_KHR_RAY_QUERY_EXTENSION_NAME)
+                               && b->supportsExtension(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+
+        if (aSupportsRT != bSupportsRT)
+          return aSupportsRT;
+
+        return false;
       });
     
     if (result.size() == 0) {
