@@ -819,7 +819,9 @@ namespace dxvk {
     m_sf.m_cachedAssetMipcount = new uint8_t[SAMPLER_FEEDBACK_MAX_TEXTURE_COUNT]{ /* zero-init */ };
     m_sf.m_cachedGpubuf = new uint32_t[SAMPLER_FEEDBACK_MAX_TEXTURE_COUNT]; // NO zero-init
 
-    static_assert(SAMPLER_FEEDBACK_INVALID == UINT16_MAX, "must be 0xFF for memset");
+    // SAMPLER_FEEDBACK_INVALID must be 0xFFFF (all-0xFF bytes) for memset to fill
+    // each uint16_t slot with the correct sentinel value.
+    static_assert(SAMPLER_FEEDBACK_INVALID == UINT16_MAX, "SAMPLER_FEEDBACK_INVALID must be 0xFFFF for memset fill to be correct");
     memset(m_sf.m_related, 0xFF, SAMPLER_FEEDBACK_MAX_TEXTURE_COUNT * SAMPLER_FEEDBACK_RELATED_PER_TEX * sizeof(m_sf.m_related[0]));
 
     FileWatch::get().beginThread(this);
@@ -919,35 +921,17 @@ namespace dxvk {
   }
 
   void RtxTextureManager::addTexture(const TextureRef& inputTexture, uint16_t associatedFeedbackStamp, bool async, uint32_t& textureIndexOut) {
-    // If theres valid texture backing this ref, then skip
     if (!inputTexture.isValid()) {
       return;
     }
 
-    // Track this texture to make a linear table for this frame
     textureIndexOut = m_textureCache.track(inputTexture);
 
-    preserveTexture(textureIndexOut, associatedFeedbackStamp, async);
-  }
-
-  void RtxTextureManager::updateSamplerFeedback(const Rc<ManagedTexture>& tex, uint16_t associatedFeedbackStamp) {
-    bool streamableWithVariableMips = m_sf.associate(
-      RtxOptions::TextureManager::samplerFeedbackEnable() ? associatedFeedbackStamp : SAMPLER_FEEDBACK_INVALID,
-      tex->m_samplerFeedbackStamp
-    );
-    if (streamableWithVariableMips) {
-      // If mip-specific streaming is NOT possible, then the 'm_frameLastUsed' heuristic is used,
-      // i.e. if N frames has passed for a texture that was not used in a scene, then remove it from VRAM.
-      tex->m_frameLastUsedForSamplerFeedback = m_device->getCurrentFrameId();
-    }
-  }
-
-  void RtxTextureManager::preserveTexture(uint32_t textureIndex, uint16_t leaderSamplerFeedbackStamp, bool async) {
     constexpr uint32_t kInvalidSurfaceTextureIndex = 0xFFFFu;
-    if (textureIndex == kInvalidSurfaceTextureIndex || textureIndex >= m_textureCache.getTotalCount()) {
+    if (textureIndexOut == kInvalidSurfaceTextureIndex || textureIndexOut >= m_textureCache.getTotalCount()) {
       return;
     }
-    const TextureRef& texRef = m_textureCache.at(textureIndex);
+    const TextureRef& texRef = m_textureCache.at(textureIndexOut);
     if (!texRef.isValid()) {
       return;
     }
@@ -956,17 +940,92 @@ namespace dxvk {
       return;
     }
 
-    const auto curframe = m_device->getCurrentFrameId();
-    tex->m_frameLastUsed = curframe;
-    // If async is not allowed, schedule immediately on this thread, and never demote
     if (!async || RtxOptions::TextureManager::neverDowngradeTextures()) {
       tex->m_canDemote = false;
       tex->requestMips(MAX_MIPS);
       scheduleTextureLoad(tex, false);
       return;
     }
-    updateSamplerFeedback(tex, leaderSamplerFeedbackStamp);
+    updateSamplerFeedback(tex, associatedFeedbackStamp);
   }
+
+  void RtxTextureManager::updateSamplerFeedback(const Rc<ManagedTexture>& tex, uint16_t associatedFeedbackStamp) {
+    m_sf.associate(
+      RtxOptions::TextureManager::samplerFeedbackEnable() ? associatedFeedbackStamp : SAMPLER_FEEDBACK_INVALID,
+      tex->m_samplerFeedbackStamp
+    );
+  }
+
+  void RtxTextureManager::assertAllRefCountsZero() {
+    auto ls = std::unique_lock{ m_sf.m_idToTexture_mutex };
+    for (const auto& tex : m_sf.m_idToTexture) {
+      if (tex != nullptr && tex->m_refCount != 0) {
+        Logger::err(str::format("[RTX] assertAllRefCountsZero: texture stamp ", tex->m_samplerFeedbackStamp,
+          " has ref count ", tex->m_refCount, " after all instances destroyed (retain/release mismatch)"));
+        assert(false && "assertAllRefCountsZero: non-zero ref count after instance destruction");
+        tex->m_refCount = 0;
+      }
+    }
+
+    const uint32_t remaining = m_retainedCount.load(std::memory_order_relaxed);
+    if (remaining != 0) {
+      Logger::err(str::format("[RTX] assertAllRefCountsZero: m_retainedCount is ", remaining,
+        " after all per-texture ref counts were zeroed (0<->1 transition tracking is broken)"));
+      assert(false && "assertAllRefCountsZero: m_retainedCount inconsistent with per-texture ref counts");
+      m_retainedCount.store(0, std::memory_order_relaxed);
+    }
+  }
+
+  void RtxTextureManager::retainTexture(uint32_t textureIndex) {
+    // forEachTextureIndex on RtSurfaceMaterial yields kSurfaceMaterialInvalidTextureIndex
+    // (0xFFFFu) for unset texture slots, and in-range indices can point to TextureRefs whose
+    // ManagedTexture is still null (loading in progress). Both cases are silent no-ops.
+    if (textureIndex >= m_textureCache.getTotalCount()) {
+      if (textureIndex != kSurfaceMaterialInvalidTextureIndex) {
+        Logger::err(str::format("[RTX] retainTexture: index ", textureIndex,
+          " out of range (cache size ", m_textureCache.getTotalCount(),
+          "; texture cache is inconsistent with surface material cache"));
+        assert(false && "retainTexture: index out of range");
+      }
+      return;
+    }
+    const Rc<ManagedTexture>& tex = m_textureCache.at(textureIndex).getManagedTexture();
+    if (tex == nullptr) {
+      return;
+    }
+    if (tex->m_refCount < 0) {
+      Logger::err(str::format("[RTX] retainTexture: index ", textureIndex,
+        " has negative ref count ", tex->m_refCount,
+        "; resetting to 0 so subsequent retains are counted correctly"));
+      assert(false && "retainTexture: negative ref count from prior underflow");
+      tex->m_refCount = 0;
+    }
+    if (tex->m_refCount++ == 0) {
+      m_retainedCount.fetch_add(1, std::memory_order_relaxed);
+    }
+  }
+
+  void RtxTextureManager::releaseTexture(uint32_t textureIndex) {
+    // Out-of-bounds is silently expected after SceneManager::clear() clears the texture
+    // cache before all instance destroy events fire; in that case the release is a no-op.
+    if (textureIndex >= m_textureCache.getTotalCount()) {
+      return;
+    }
+    const Rc<ManagedTexture>& tex = m_textureCache.at(textureIndex).getManagedTexture();
+    if (tex == nullptr) {
+      return;
+    }
+    if (tex->m_refCount <= 0) {
+      Logger::err(str::format("[RTX] releaseTexture: ref count underflow at index ", textureIndex,
+        " (count is ", tex->m_refCount, "; mismatched retainTexture/releaseTexture calls)"));
+      assert(false && "releaseTexture: ref count underflow");
+      return;
+    }
+    if (--tex->m_refCount == 0) {
+      m_retainedCount.fetch_sub(1, std::memory_order_relaxed);
+    }
+  }
+
 
   void RtxTextureManager::clear() {
     ScopedCpuProfileZone();
@@ -977,6 +1036,13 @@ namespace dxvk {
     if (isOverTextureBudget(m_device)) {
       manageBudgetWithPriority();
     }
+
+    // Reset sampler feedback relationships so they are rebuilt from scratch by the next
+    // dynamic frame rather than carrying over stale groupings from the old scene.
+    // SAMPLER_FEEDBACK_INVALID must be 0xFFFF (all-0xFF bytes) for memset to fill
+    // each uint16_t slot with the correct sentinel value.
+    static_assert(SAMPLER_FEEDBACK_INVALID == UINT16_MAX, "SAMPLER_FEEDBACK_INVALID must be 0xFFFF for memset fill to be correct");
+    memset(m_sf.m_related, 0xFF, SAMPLER_FEEDBACK_MAX_TEXTURE_COUNT * SAMPLER_FEEDBACK_RELATED_PER_TEX * sizeof(m_sf.m_related[0]));
 
     m_textureCache.clear();
     ++m_textureCacheGeneration;
@@ -1207,9 +1273,6 @@ namespace dxvk {
       }
     }
 
-    static_assert(SAMPLER_FEEDBACK_INVALID == UINT16_MAX, "must be 0xFF for memset");
-    memset(m_related, 0xFF, textureCount * SAMPLER_FEEDBACK_RELATED_PER_TEX * sizeof(m_related[0]));
-
     return textureCount;
   }
 
@@ -1244,7 +1307,6 @@ namespace dxvk {
     ScopedCpuProfileZone();
 
     const auto curframe = m_device->getCurrentFrameId();
-    const auto numFramesToKeepMaterialTextures = RtxOptions::numFramesToKeepMaterialTextures();
 
     uint32_t sfTextureCount = m_sf.fetchNoisyMipCounts(gpuAccessedMips);
     m_sf.accumulateMipCounts(sfTextureCount, curframe, m_wasTextureBudgetPressure);
@@ -1260,8 +1322,7 @@ namespace dxvk {
       for (const auto& tex : m_sf.m_idToTexture) {
         assert(tex != nullptr);
         if (tex != nullptr && tex->m_canDemote) {
-          if ((tex->m_frameLastUsedForSamplerFeedback != UINT32_MAX) && (curframe - tex->m_frameLastUsedForSamplerFeedback < 2)) {
-            assert(tex->m_samplerFeedbackStamp != SAMPLER_FEEDBACK_INVALID);
+          if (tex->m_refCount > 0 && tex->m_samplerFeedbackStamp != SAMPLER_FEEDBACK_INVALID) {
             prioritylist.push_back(tex.ptr());
           } else {
             checkonlyframes.push_back(tex.ptr());
@@ -1271,14 +1332,11 @@ namespace dxvk {
     }
 
 
-    // For no-sampler-feedback textures, don't use the prioritization and budgeting (for now),
-    // as we can't predict how draw call textures (sky, terrain, etc) are used
+    // Non-SF textures (sky, terrain, etc.): keep at full mips while active in the scene,
+    // evict once the scene clears (m_refCount > 0 reset in clear()).
     for (ManagedTexture* tex : checkonlyframes) {
       assert(tex && tex->m_canDemote);
-      tex->requestMips(
-        (tex->m_frameLastUsed != UINT32_MAX) && (curframe - tex->m_frameLastUsed <= numFramesToKeepMaterialTextures)
-        ? MAX_MIPS
-        : 0);
+      tex->requestMips(tex->m_refCount > 0 ? MAX_MIPS : 0);
       scheduleTextureLoad(tex, true);
     }
 
@@ -1355,16 +1413,16 @@ namespace dxvk {
       }
     };
     
-    // Demote textures that were previously rendered (old scene textures).
-    // Textures with m_frameLastUsed == UINT32_MAX are newly loaded and haven't been
-    // rendered yet - these are needed for the incoming scene and should be preserved.
+    // Demote active scene textures (m_refCount > 0) to free budget.
+    // Skip newly loaded textures (m_refCount > 0 == false) since they haven't been
+    // registered yet and are needed for the incoming scene.
     {
       auto ls = std::unique_lock{ m_sf.m_idToTexture_mutex };
       for (const auto& tex : m_sf.m_idToTexture) {
         if (currentUsage <= budgetBytes) {
           break;
         }
-        if (tex != nullptr && tex->m_canDemote && tex->m_frameLastUsed != UINT32_MAX) {
+        if (tex != nullptr && tex->m_canDemote && tex->m_refCount > 0) {
           demoteTexture(tex.ptr());
         }
       }

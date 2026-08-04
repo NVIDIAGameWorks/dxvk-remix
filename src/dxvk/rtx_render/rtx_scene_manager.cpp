@@ -256,11 +256,9 @@ namespace dxvk {
 
     // We still need to clear caches even if the scene wasn't rendered
     m_bufferCache.clear();
-    m_surfaceMaterialCache.clear();
     m_preCreationSurfaceMaterialMap.clear();
-    m_surfaceMaterialExtensionCache.clear();
     m_volumeMaterialCache.clear();
-    
+
     // Clear ReplacementInstances first: their destructors call clear() which
     // accesses prims[] to mark entities for GC and clear back-pointers.
     // Entities must still be alive at this point.
@@ -278,7 +276,34 @@ namespace dxvk {
     // map, not the vectors, so a bulk reset must drop the cache wholesale.
     m_accelManager.clear();
 
+    // Instance destruction fires onInstanceDestroyed -> releaseSurfaceMaterial for every
+    // game-submitted instance, decrementing texture ref counts and feature counts.
+    // The surface material cache must still be valid here so those releases are not
+    // silently skipped by the bounds check in releaseSurfaceMaterial.
     m_instanceManager.clear();
+
+    // After all instances are destroyed their retain/release pairs must be balanced.
+    // If any count is non-zero here there is a retain/release mismatch.
+    if (m_activePOMCount != 0) {
+      Logger::err(str::format("[RTX] SceneManager::clear: POM count is ", m_activePOMCount, " after instance destruction (retain/release mismatch)"));
+      assert(false && "SceneManager::clear: POM count non-zero after instance destruction");
+      m_activePOMCount = 0;
+    }
+    if (m_sssCount != 0) {
+      Logger::err(str::format("[RTX] SceneManager::clear: SSS count is ", m_sssCount, " after instance destruction (retain/release mismatch)"));
+      assert(false && "SceneManager::clear: SSS count non-zero after instance destruction");
+      m_sssCount = 0;
+    }
+    if (m_thinOpaqueCount != 0) {
+      Logger::err(str::format("[RTX] SceneManager::clear: thin-opaque count is ", m_thinOpaqueCount, " after instance destruction (retain/release mismatch)"));
+      assert(false && "SceneManager::clear: thin-opaque count non-zero after instance destruction");
+      m_thinOpaqueCount = 0;
+    }
+    textureManager.assertAllRefCountsZero();
+
+    // Now safe to clear material caches; all ref counts have been released.
+    m_surfaceMaterialCache.clear();
+    m_surfaceMaterialExtensionCache.clear();
     m_lightManager.clear();
     m_graphManager.clear();
     m_rayPortalManager.clear();
@@ -299,7 +324,7 @@ namespace dxvk {
     ScopedCpuProfileZone();
 
     // BlasEntry GC: remove entries not touched recently.
-    // Only GC entries with no linked instances — instances still reference the BlasEntry
+    // Only GC entries with no linked instances -- instances still reference the BlasEntry
     // for TLAS build, and destroying it would cause a one-frame visibility gap.
     if (m_device->getCurrentFrameId() > RtxOptions::numFramesToKeepGeometryData()) {
       const size_t oldestFrame = m_device->getCurrentFrameId() - RtxOptions::numFramesToKeepGeometryData();
@@ -540,7 +565,6 @@ namespace dxvk {
       m_opacityMicromapManager->onFrameEnd();
     }
     
-    m_activePOMCount = 0;
     m_startInMediumMaterialIndex = SURFACE_INDEX_INVALID;
     m_fogStartInMediumMaterialIndex_inCache = UINT32_MAX;
     m_startInMediumMaterialIndex_inCache = UINT32_MAX;
@@ -553,8 +577,6 @@ namespace dxvk {
     // Not currently safe to cache these across frames (due to texture indices and rtx options potentially changing)
     m_preCreationSurfaceMaterialMap.clear();
 
-    m_thinOpaqueMaterialExist = false;
-    m_sssMaterialExist = false;
 
     // execute graph updates after all garbage collection is complete (to avoid updating graphs that will just be deleted)
     // RtxOptions will still be pending, so any changes to them will apply next frame.
@@ -656,11 +678,11 @@ namespace dxvk {
     // Preserve path: L1 means this draw still matches the same ReplacementInstance by identity; replacer reload is
     // expected to clear the draw-call tracker (see SceneManager::clear), so we do not re-verify mesh prims or
     // activeReplacements pointers every frame. If a path exists where replacements bind without a clear, use dynamic
-    // (drawReplacements) for that transition — drawReplacements already reconciles activeReplacements and prims.
+    // (drawReplacements) for that transition -- drawReplacements already reconciles activeReplacements and prims.
     //
     // Static path reuses each prim's BlasEntry::modifiedGeometryData as-is. If another draw earlier this frame
     // already entered DrawCallCache::get and re-bound a sibling-topology BlasEntry to its own data (kUpdateBVH),
-    // the cached buffers no longer correspond to this draw — fall back to dynamic so DrawCallCache::get's
+    // the cached buffers no longer correspond to this draw -- fall back to dynamic so DrawCallCache::get's
     // "frameLastTouched skip" allocates a fresh BlasEntry and processSceneObject re-links the instance.
     auto blasAlreadyTouchedByOtherDraw = [replacementInstance, currentFrameId]() -> bool {
       for (const auto& prim : replacementInstance->prims) {
@@ -1095,56 +1117,7 @@ namespace dxvk {
 
     pBlas->frameLastTouched = m_device->getCurrentFrameId();
 
-    // Surface material and texture indices are generally stable across frames.
-    // If textureManager::clear() is called, the texture cache generation will change,
-    // and the draw calls will take the dynamic path the next frame.
-    // Refresh texture streaming on the preserve path: fetchNoisyMipCounts clears m_related each
-    // GC, so we must repeat preserveTexture(TextureRef,...) (not just associate). Opaque subsurface-extension maps are
-    // not in RtSurfaceMaterial::forEachTextureIndex — include those explicitly. Material graph and
-    // extension cache are scene-owned; leader stamp resolution stays here (RtxTextureManager::preserveTexture).
     const uint32_t surfaceMatIdx = instance.surface.surfaceMaterialIndex;
-    if (surfaceMatIdx < m_surfaceMaterialCache.getTotalCount()) {
-      auto& textureManager = m_device->getCommon()->getTextureManager();
-      const RtSurfaceMaterial& surfaceMat = m_surfaceMaterialCache.getObjectTable()[surfaceMatIdx];
-      const RtOpaqueSurfaceMaterial* pOpaqueMat = nullptr;
-      uint16_t leaderStamp = SAMPLER_FEEDBACK_INVALID;
-      if (surfaceMat.getType() == RtSurfaceMaterialType::Opaque) {
-        pOpaqueMat = &surfaceMat.getOpaqueSurfaceMaterial();
-        leaderStamp = pOpaqueMat->getSamplerFeedbackStamp();
-        if (leaderStamp == SAMPLER_FEEDBACK_INVALID) {
-          const uint32_t albedoIdx = pOpaqueMat->getAlbedoOpacityTextureIndex();
-          const auto& textureTable = textureManager.getTextureTable();
-          if (albedoIdx < textureTable.size()) {
-            const Rc<ManagedTexture>& albedoMt = textureTable[albedoIdx].getManagedTexture();
-            if (albedoMt != nullptr) {
-              leaderStamp = albedoMt->m_samplerFeedbackStamp;
-            }
-          }
-        }
-      }
-
-      const auto touchTexture = [&](uint32_t texIdx) {
-        textureManager.preserveTexture(texIdx, leaderStamp);
-      };
-
-      surfaceMat.forEachTextureIndex(touchTexture);
-
-      if (pOpaqueMat != nullptr) {
-        // Per-frame aggregate flags/counts that createSurfaceMaterial sets on the
-        // dynamic path are reset each frame in onFrameEnd. The preserve path skips
-        // createSurfaceMaterial, so without this call a frame where every POM /
-        // SSS / thin-opaque draw is preserved would leave the aggregates at their
-        // reset value and silently disable POM (constants.pomMode is gated on
-        // getActivePOMCount() > 0) or the SSS pipeline branches.
-        accumulateOpaqueMaterialAggregates(*pOpaqueMat);
-
-        const uint32_t subsurfaceIdx = pOpaqueMat->getSubsurfaceMaterialIndex();
-        if (subsurfaceIdx != SURFACE_INDEX_INVALID &&
-            subsurfaceIdx < m_surfaceMaterialExtensionCache.getTotalCount()) {
-          m_surfaceMaterialExtensionCache.getObjectTable()[subsurfaceIdx].forEachTextureIndex(touchTexture);
-        }
-      }
-    }
 
     // Ray Portal refresh on the preserve path. RayPortalManager::clear() wipes m_rayPortalInfos
     // every frame in endFrame, so processRayPortalData must repopulate the slot for any portal
@@ -1306,10 +1279,16 @@ namespace dxvk {
     }
     
     // Create and bind the RT material
-    const RtSurfaceMaterial& surfaceMaterial = createSurfaceMaterial(*material, drawCall);
+    uint32_t newMatIdx = kInvalidMaterialCacheIndex;
+    const RtSurfaceMaterial& surfaceMaterial = createSurfaceMaterial(*material, drawCall, &newMatIdx);
 
     if(isFirstUpdateThisFrame) {
+      const uint32_t oldMatIdx = instance.surface.surfaceMaterialIndex;
       m_instanceManager.bindMaterial(instance, surfaceMaterial);
+      if (newMatIdx != oldMatIdx) {
+        retainSurfaceMaterial(newMatIdx);
+        releaseSurfaceMaterial(oldMatIdx);
+      }
     }
 
     // Update portal
@@ -1318,7 +1297,96 @@ namespace dxvk {
     }
   }
 
+  void SceneManager::retainSurfaceMaterial(uint32_t matIdx) {
+    // Retain is always called with newMatIdx from createSurfaceMaterial, which must return
+    // a valid in-bounds index. An out-of-bounds index here indicates a logic error upstream.
+    if (matIdx >= m_surfaceMaterialCache.getTotalCount()) {
+      Logger::err(str::format("[RTX] retainSurfaceMaterial: matIdx ", matIdx,
+        " out of bounds (cache size ", m_surfaceMaterialCache.getTotalCount(),
+        "; createSurfaceMaterial returned invalid index"));
+      assert(false && "retainSurfaceMaterial: matIdx out of bounds");
+      return;
+    }
+    auto& textureManager = m_device->getCommon()->getTextureManager();
+    const RtSurfaceMaterial& mat = m_surfaceMaterialCache.getObjectTable()[matIdx];
+    mat.forEachTextureIndex([&](uint32_t texIdx) {
+      textureManager.retainTexture(texIdx);
+    });
+    if (mat.getType() == RtSurfaceMaterialType::Opaque) {
+      const RtOpaqueSurfaceMaterial& opaque = mat.getOpaqueSurfaceMaterial();
+      if (opaque.hasValidDisplacement()) {
+        ++m_activePOMCount;
+      }
+      const uint32_t subsurfaceIdx = opaque.getSubsurfaceMaterialIndex();
+      if (subsurfaceIdx != SURFACE_INDEX_INVALID &&
+          subsurfaceIdx < m_surfaceMaterialExtensionCache.getTotalCount()) {
+        const RtSurfaceMaterial& extMat = m_surfaceMaterialExtensionCache.getObjectTable()[subsurfaceIdx];
+        extMat.forEachTextureIndex([&](uint32_t texIdx) {
+          textureManager.retainTexture(texIdx);
+        });
+        if (extMat.getType() == RtSurfaceMaterialType::Subsurface) {
+          const float radiusScale = extMat.getSubsurfaceMaterial().getSubsurfaceRadiusScale();
+          if (radiusScale > 0.0f)      ++m_sssCount;
+          else if (radiusScale < 0.0f) ++m_thinOpaqueCount;
+        }
+      }
+    }
+  }
+
+  void SceneManager::releaseSurfaceMaterial(uint32_t matIdx) {
+    // Out-of-bounds covers instances that were never bound (surfaceMaterialIndex ==
+    // kSurfaceInvalidSurfaceMaterialIndex). Renderer-created instances skip
+    // onInstanceDestroyedCallback entirely so they never reach here.
+    if (matIdx >= m_surfaceMaterialCache.getTotalCount()) {
+      return;
+    }
+    auto& textureManager = m_device->getCommon()->getTextureManager();
+    const RtSurfaceMaterial& mat = m_surfaceMaterialCache.getObjectTable()[matIdx];
+    mat.forEachTextureIndex([&](uint32_t texIdx) {
+      textureManager.releaseTexture(texIdx);
+    });
+    if (mat.getType() == RtSurfaceMaterialType::Opaque) {
+      const RtOpaqueSurfaceMaterial& opaque = mat.getOpaqueSurfaceMaterial();
+      if (opaque.hasValidDisplacement()) {
+        if (m_activePOMCount == 0) {
+          Logger::err("[RTX] releaseSurfaceMaterial: POM count underflow (mismatched retain/release)");
+          assert(false && "releaseSurfaceMaterial: POM count underflow");
+        } else {
+          --m_activePOMCount;
+        }
+      }
+      const uint32_t subsurfaceIdx = opaque.getSubsurfaceMaterialIndex();
+      if (subsurfaceIdx != SURFACE_INDEX_INVALID &&
+          subsurfaceIdx < m_surfaceMaterialExtensionCache.getTotalCount()) {
+        const RtSurfaceMaterial& extMat = m_surfaceMaterialExtensionCache.getObjectTable()[subsurfaceIdx];
+        extMat.forEachTextureIndex([&](uint32_t texIdx) {
+          textureManager.releaseTexture(texIdx);
+        });
+        if (extMat.getType() == RtSurfaceMaterialType::Subsurface) {
+          const float radiusScale = extMat.getSubsurfaceMaterial().getSubsurfaceRadiusScale();
+          if (radiusScale > 0.0f) {
+            if (m_sssCount == 0) {
+              Logger::err("[RTX] releaseSurfaceMaterial: SSS count underflow (mismatched retain/release)");
+              assert(false && "releaseSurfaceMaterial: SSS count underflow");
+            } else {
+              --m_sssCount;
+            }
+          } else if (radiusScale < 0.0f) {
+            if (m_thinOpaqueCount == 0) {
+              Logger::err("[RTX] releaseSurfaceMaterial: thin-opaque count underflow (mismatched retain/release)");
+              assert(false && "releaseSurfaceMaterial: thin-opaque count underflow");
+            } else {
+              --m_thinOpaqueCount;
+            }
+          }
+        }
+      }
+    }
+  }
+
   void SceneManager::onInstanceDestroyed(RtInstance& instance) {
+    releaseSurfaceMaterial(instance.surface.surfaceMaterialIndex);
+
     // Evict from the AccelManager bucket cache to prevent stale pointer ABA issues.
     m_accelManager.removeInstanceFromBucketCache(&instance);
 
@@ -1680,8 +1748,6 @@ namespace dxvk {
         secondaryTextureIndex
       };
 
-      accumulateOpaqueMaterialAggregates(opaqueSurfaceMaterial);
-
       surfaceMaterial.emplace(opaqueSurfaceMaterial);
     } else if (renderMaterialDataType == MaterialDataType::Translucent) {
       surfaceMaterial.emplace(createTranslucentSurfaceMaterial(renderMaterialData.getTranslucentMaterialData(), samplerIndex, hasTexcoords));
@@ -1718,35 +1784,6 @@ namespace dxvk {
     return m_surfaceMaterialCache.at(index);
   }
 
-  void SceneManager::accumulateOpaqueMaterialAggregates(const RtOpaqueSurfaceMaterial& opaqueMat) {
-    if (opaqueMat.hasValidDisplacement()) {
-      ++m_activePOMCount;
-    }
-
-    const uint32_t subsurfaceIdx = opaqueMat.getSubsurfaceMaterialIndex();
-    if (subsurfaceIdx == SURFACE_INDEX_INVALID ||
-        subsurfaceIdx >= m_surfaceMaterialExtensionCache.getTotalCount()) {
-      return;
-    }
-    const RtSurfaceMaterial& extMat = m_surfaceMaterialExtensionCache.getObjectTable()[subsurfaceIdx];
-    if (extMat.getType() != RtSurfaceMaterialType::Subsurface) {
-      return;
-    }
-    // createSurfaceMaterial's SSS/thin-opaque branch encodes
-    // isSubsurfaceScatteringDiffusionProfile into the sign of radiusScale:
-    //   true  → radiusScale clamped to >= 1e-5f (strictly > 0) → SSS material
-    //   false → radiusScale = -1 (strictly < 0)               → thin-opaque material
-    // (the asserts there enforce the sign, and the GPU side in rtx_materials.h
-    // branches on the same convention). The sign of radiusScale is therefore the
-    // cached form of the SSS-vs-thin-opaque selector and can be inspected here
-    // without re-reading the original MaterialData.
-    const float radiusScale = extMat.getSubsurfaceMaterial().getSubsurfaceRadiusScale();
-    if (radiusScale > 0.0f) {
-      m_sssMaterialExist = true;
-    } else if (radiusScale < 0.0f) {
-      m_thinOpaqueMaterialExist = true;
-    }
-  }
 
   RtTranslucentSurfaceMaterial SceneManager::createTranslucentSurfaceMaterial(const TranslucentMaterialData& translucentMaterialData,
                                                                               uint32_t samplerIndex,
@@ -2357,6 +2394,7 @@ namespace dxvk {
     m_device->statCounters().setCtr(DxvkStatCounter::RtxBlasCount, AccelManager::getBlasCount());
     m_device->statCounters().setCtr(DxvkStatCounter::RtxBufferCount, m_bufferCache.getActiveCount());
     m_device->statCounters().setCtr(DxvkStatCounter::RtxTextureCount, textureManager.getTextureTable().size());
+    m_device->statCounters().setCtr(DxvkStatCounter::RtxReplacementTextureCount, textureManager.getActiveReplacementTextures());
     m_device->statCounters().setCtr(DxvkStatCounter::RtxInstanceCount, m_instanceManager.getActiveCount());
     m_device->statCounters().setCtr(DxvkStatCounter::RtxSurfaceMaterialCount, m_surfaceMaterialCache.getActiveCount());
     m_device->statCounters().setCtr(DxvkStatCounter::RtxSurfaceMaterialExtensionCount, m_surfaceMaterialExtensionCache.getActiveCount());

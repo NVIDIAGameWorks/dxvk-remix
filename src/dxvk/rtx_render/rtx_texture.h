@@ -76,10 +76,9 @@ namespace dxvk {
     uint64_t            m_completionSyncpt   = 0; // completion syncpoint value for RTX IO
 
     // Texture streaming
-    uint16_t            m_samplerFeedbackStamp = 0; // unique linear index of this asset; required to keep 
+    uint16_t            m_samplerFeedbackStamp = 0; // unique linear index of this asset; required to keep
                                                     // the data structure access simple (i.e. with a linear index, it's just an offset in array)
-    mutable uint32_t    m_frameLastUsed                   = UINT32_MAX;
-    mutable uint32_t    m_frameLastUsedForSamplerFeedback = UINT32_MAX;
+    int32_t             m_refCount = 0;  // number of live RtInstances whose bound surface material references this texture; negative values indicate a retain/release bug
 
   public:
     bool hasUploadedMips(uint32_t requiredMips, bool exact) const;
