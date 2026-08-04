@@ -1360,14 +1360,14 @@ namespace dxvk {
       bool hasPreviousPositions,
       bool isFirstUpdateThisFrame,
       bool fireEvents) {
-    // Camera registration. Idempotent (RtInstance::m_seenCameraTypes is cumulative and never
-    // cleared), so calling it from updateInstance and again here is harmless. We need it on
-    // the preserve path because that path bypasses updateInstance entirely.
-    instance.registerCamera(drawCall.cameraType, m_device->getCurrentFrameId());
+    // Camera registration. This is per-instance, so this detects the first time an instance
+    // is drawn with a given camera each frame.
+    const bool isNewCameraTypeThisFrame =
+        instance.registerCamera(drawCall.cameraType, m_device->getCurrentFrameId());
 
     // Re-register view-model candidates every frame; m_viewModelCandidates is cleared in
     // onFrameEnd, and createViewModelInstances() iterates the list later in the frame.
-    if (drawCall.cameraType == CameraType::ViewModel && !instance.isHidden() && isFirstUpdateThisFrame) {
+    if (drawCall.cameraType == CameraType::ViewModel && !instance.isHidden() && isNewCameraTypeThisFrame) {
       registerViewModelCandidate(instance);
     }
 
@@ -1549,11 +1549,11 @@ namespace dxvk {
     std::unordered_set<RtInstance*> activeViewModelReferences;
     for (auto* candidateInstance : m_viewModelCandidates) {
 
-      // Valid view model instances must be associated only with the view model camera
-      // Check: exactly one bit set (power-of-two check via raw bitmask)
-      const auto seenMask = candidateInstance->m_seenCameraTypes.raw();
-      if (seenMask == 0 || (seenMask & (seenMask - 1)) != 0)
+      // A valid view-model reference must have been drawn with the view-model camera this
+      // frame.
+      if (!candidateInstance->isCameraRegistered(CameraType::ViewModel)) {
         continue;
+      }
 
       // Hide the reference instance since we'll create a separate instance for the view model 
       candidateInstance->m_vkInstance.mask = 0;
