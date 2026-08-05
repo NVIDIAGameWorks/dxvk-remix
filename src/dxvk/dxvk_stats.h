@@ -32,6 +32,7 @@ namespace dxvk {
     RtxBlasCount,                      ///< Number of unique BLAS's in the scene/geometry cache
     RtxBufferCount,                    ///< Number of unique buffers being tracked for RT rendering
     RtxTextureCount,                   ///< Number of unique textures being tracked for RT rendering
+    RtxReplacementTextureCount,        ///< Number of replacement textures currently used by at least one live instance
     RtxInstanceCount,                  ///< Number of surfaces and TLAS instance nodes in the scene
     RtxSurfaceMaterialCount,           ///< Number of surface materials in the scene
     RtxSurfaceMaterialExtensionCount,  ///< Number of surface material extensions in the scene

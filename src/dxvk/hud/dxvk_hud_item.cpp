@@ -813,22 +813,24 @@ namespace dxvk::hud {
     HudPos       position) {
     const DxvkStatCounters counters = m_device->getStatCounters();
 
-    const std::string labels[] = { "# Presents:" , 
+    const std::string labels[] = { "# Presents:" ,
                                    "# BLAS:" ,
-                                   "# Buffers:" , 
-                                   "# Textures:" , 
-                                   "# Instances/Surfaces:" , 
-                                   "# Surface Materials:" , 
+                                   "# Buffers:" ,
+                                   "# Textures:" ,
+                                   "# Active Replacement Textures:",
+                                   "# Instances/Surfaces:" ,
+                                   "# Surface Materials:" ,
                                    "# Surface Material Extensions:" ,
-                                   "# Volume Materials:" , 
+                                   "# Volume Materials:" ,
                                    "# Lights:",
                                    "# Samplers:",
                                    "# Textures in-flight:",
-                                   "# Last tex. batch (ms):"}; 
+                                   "# Last tex. batch (ms):"};
     const uint64_t values[] = { counters.getCtr(DxvkStatCounter::QueuePresentCount),
                                 counters.getCtr(DxvkStatCounter::RtxBlasCount),
                                 counters.getCtr(DxvkStatCounter::RtxBufferCount),
                                 counters.getCtr(DxvkStatCounter::RtxTextureCount),
+                                counters.getCtr(DxvkStatCounter::RtxReplacementTextureCount),
                                 counters.getCtr(DxvkStatCounter::RtxInstanceCount),
                                 counters.getCtr(DxvkStatCounter::RtxSurfaceMaterialCount),
                                 counters.getCtr(DxvkStatCounter::RtxSurfaceMaterialExtensionCount),

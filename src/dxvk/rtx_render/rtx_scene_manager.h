@@ -250,8 +250,8 @@ public:
   void requestVramCompaction();
   void manageTextureVram();
 
-  bool isThinOpaqueMaterialExist() const { return m_thinOpaqueMaterialExist; }
-  bool isSssMaterialExist() const { return m_sssMaterialExist; }
+  bool isThinOpaqueMaterialExist() const { return m_thinOpaqueCount > 0; }
+  bool isSssMaterialExist() const { return m_sssCount > 0; }
 
   bool isAntiCullingSupported() const { return m_isAntiCullingSupported; }
 
@@ -279,12 +279,11 @@ private:
                                                  const DrawCallState& drawCallState,
                                                  uint32_t* out_indexInCache = nullptr);
 
-  // Update per-frame scene-wide aggregates derived from a finalized opaque surface
-  // material (POM count, SSS / thin-opaque existence). These are reset each frame
-  // in onFrameEnd; both the dynamic path (createSurfaceMaterial) and the
-  // preserve path (preserveInstance) must call this so the classification of
-  // SSS-vs-thin-opaque lives in exactly one place.
-  void accumulateOpaqueMaterialAggregates(const RtOpaqueSurfaceMaterial& opaqueMat);
+  // Retain / release all resources associated with the surface material at the given cache index:
+  // texture ref counts (via RtxTextureManager) and scene-wide feature counts (POM, SSS, thin-opaque).
+  // Called when an instance's bound material changes or the instance is destroyed.
+  void retainSurfaceMaterial(uint32_t matIdx);
+  void releaseSurfaceMaterial(uint32_t matIdx);
 
   RtTranslucentSurfaceMaterial createTranslucentSurfaceMaterial(const TranslucentMaterialData& translucentMaterialData,
                                                                 uint32_t samplerIndex,
@@ -415,8 +414,8 @@ private:
   std::atomic_bool m_forceFreeTextureMemory = false;
   std::atomic_bool m_forceFreeUnusedDxvkAllocatorChunks = false;
 
-  bool m_thinOpaqueMaterialExist = false;
-  bool m_sssMaterialExist = false;
+  uint32_t m_thinOpaqueCount = 0;
+  uint32_t m_sssCount = 0;
 
   bool m_isAntiCullingSupported = true;
 
