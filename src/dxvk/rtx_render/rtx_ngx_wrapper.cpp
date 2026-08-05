@@ -926,11 +926,19 @@ namespace dxvk
     consts.motionVectorsInvalidValue = 0.0; // xxxnsubtil: is this correct?
     consts.motionVectorsDilated = false;
 
+#ifdef _M_X64
+    // The x64 SDK helper sources these values from consts, overriding direct parameter writes.
+    consts.multiFrameCount = interpolatedFrameCount;
+    consts.multiFrameIndex = interpolatedFrameIndex + 1;
+#else
+    // The older ARM64 SDK requires setting these parameters directly.
+    m_parameters->Set(NVSDK_NGX_DLSSG_Parameter_MultiFrameCount, interpolatedFrameCount);
+    m_parameters->Set(NVSDK_NGX_DLSSG_Parameter_MultiFrameIndex, interpolatedFrameIndex + 1);
+#endif
+
     m_parameters->Set(NVSDK_NGX_DLSSG_Parameter_CmdQueue, m_device->queues().__DLFG_QUEUE.queueHandle);
     m_parameters->Set(NVSDK_NGX_DLSSG_Parameter_EnableInterp, 1);
     m_parameters->Set(NVSDK_NGX_DLSSG_Parameter_IsRecording, 1);
-    m_parameters->Set(NVSDK_NGX_DLSSG_Parameter_MultiFrameCount, interpolatedFrameCount);
-    m_parameters->Set(NVSDK_NGX_DLSSG_Parameter_MultiFrameIndex, interpolatedFrameIndex + 1);
 
     NVSDK_NGX_Result result;
     result = NGX_VK_EVALUATE_DLSSG(clientCommandList, m_feature, m_parameters, &evalParams, &consts);
