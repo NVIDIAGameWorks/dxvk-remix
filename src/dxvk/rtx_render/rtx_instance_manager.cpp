@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -164,6 +164,30 @@ namespace dxvk {
 
   void RtInstance::setBlas(BlasEntry& blas) {
     m_linkedBlas = &blas;
+    syncBufferIndicesFromBlas();
+  }
+
+  void RtInstance::syncBufferIndicesFromBlas() {
+    if (m_linkedBlas == nullptr) {
+      return;
+    }
+    const RaytraceGeometry& geo = m_linkedBlas->modifiedGeometryData;
+    surface.positionBufferIndex = geo.positionBufferIndex;
+    surface.positionOffset      = geo.positionBuffer.offsetFromSlice();
+    surface.positionStride      = geo.positionBuffer.stride();
+    surface.normalBufferIndex   = geo.normalBufferIndex;
+    surface.normalOffset        = geo.normalBuffer.offsetFromSlice();
+    surface.normalStride        = geo.normalBuffer.stride();
+    surface.normalFormat        = geo.normalBuffer.vertexFormat();
+    surface.color0BufferIndex   = geo.color0BufferIndex;
+    surface.color0Offset        = geo.color0Buffer.offsetFromSlice();
+    surface.color0Stride        = geo.color0Buffer.stride();
+    surface.texcoordBufferIndex = geo.texcoordBufferIndex;
+    surface.texcoordOffset      = geo.texcoordBuffer.offsetFromSlice();
+    surface.texcoordStride      = geo.texcoordBuffer.stride();
+    surface.previousPositionBufferIndex = geo.previousPositionBufferIndex;
+    surface.indexBufferIndex    = geo.indexBufferIndex;
+    surface.indexStride         = geo.indexBuffer.stride();
   }
 
   void RtInstance::copyInstanceDataFrom(const RtInstance& src) {
@@ -228,10 +252,14 @@ namespace dxvk {
       m_vkInstance.transform = savedVkTransform;
     }
 
+    // Clones are not linked into BlasEntry::m_linkedInstances (see createInstanceCopy), so
+    // updateBufferCache's push never reaches them. Re-derive from the BLAS rather than relying on
+    // the reference instance having been refreshed first.
+    syncBufferIndicesFromBlas();
+
     // Mark dirty so the incremental BLAS cache treats this instance as changed.
     m_blasDirty = true;
     m_billboardGeometryDirty = true;
-
   }
 
   void RtInstance::onTransformChanged() {
@@ -922,26 +950,13 @@ namespace dxvk {
     m_instances.push_back(newInstance);
     notifySceneChanged();
 
-    return newInstance;
-  }
+    // Renderer-created clones (view model, player model, ray-portal virtual instances) deliberately
+    // skip onInstanceAdded, so BlasEntry::linkInstance is never called for them and
+    // updateBufferCache's propagation will not reach them. Derive the indices straight from the BLAS
+    // instead of trusting the indices copied from the reference instance.
+    newInstance->syncBufferIndicesFromBlas();
 
-  void InstanceManager::processInstanceBuffers(const BlasEntry& blas, RtInstance& currentInstance) const {
-    currentInstance.surface.positionBufferIndex = blas.modifiedGeometryData.positionBufferIndex;
-    currentInstance.surface.positionOffset = blas.modifiedGeometryData.positionBuffer.offsetFromSlice();
-    currentInstance.surface.positionStride = blas.modifiedGeometryData.positionBuffer.stride();
-    currentInstance.surface.normalBufferIndex = blas.modifiedGeometryData.normalBufferIndex;
-    currentInstance.surface.normalOffset = blas.modifiedGeometryData.normalBuffer.offsetFromSlice();
-    currentInstance.surface.normalStride = blas.modifiedGeometryData.normalBuffer.stride();
-    currentInstance.surface.normalFormat = blas.modifiedGeometryData.normalBuffer.vertexFormat();
-    currentInstance.surface.color0BufferIndex = blas.modifiedGeometryData.color0BufferIndex;
-    currentInstance.surface.color0Offset = blas.modifiedGeometryData.color0Buffer.offsetFromSlice();
-    currentInstance.surface.color0Stride = blas.modifiedGeometryData.color0Buffer.stride();
-    currentInstance.surface.texcoordBufferIndex = blas.modifiedGeometryData.texcoordBufferIndex;
-    currentInstance.surface.texcoordOffset = blas.modifiedGeometryData.texcoordBuffer.offsetFromSlice();
-    currentInstance.surface.texcoordStride = blas.modifiedGeometryData.texcoordBuffer.stride();
-    currentInstance.surface.previousPositionBufferIndex = blas.modifiedGeometryData.previousPositionBufferIndex;
-    currentInstance.surface.indexBufferIndex = blas.modifiedGeometryData.indexBufferIndex;
-    currentInstance.surface.indexStride = blas.modifiedGeometryData.indexBuffer.stride();
+    return newInstance;
   }
 
   // Returns true if the instance was modified
@@ -1048,8 +1063,6 @@ namespace dxvk {
     if (isFirstUpdateThisFrame || overridePreviousCameraUpdate) {
 
       if (isFirstUpdateThisFrame) {
-        processInstanceBuffers(blas, currentInstance);
-
         currentInstance.m_materialType = materialData->getType();
 
         const XXH64_hash_t materialInstanceHash = materialData->getHash();
@@ -1139,7 +1152,14 @@ namespace dxvk {
                                    || currentInstance.testCategoryFlags(InstanceCategories::Particle)
                                    || currentInstance.testCategoryFlags(InstanceCategories::WorldUI);
 
-        hasPreviousPositions = blas.modifiedGeometryData.previousPositionBuffer.defined() && !isMotionUnstable;
+        // previousPositionBuffer is only re-pointed at historyBuffer[1] by processGeometryInfo on a
+        // kUpdateBVH frame. On any later frame it still holds that older slice - e.g. a preserved
+        // BLAS, or the kUpdateInstance early-out in onSceneObjectUpdated when a sibling draw already
+        // touched this BlasEntry. Gate on frameLastUpdated so stale vertices never feed motion vectors.
+        const bool previousPositionsValidThisFrame = blas.frameLastUpdated == m_device->getCurrentFrameId();
+        hasPreviousPositions = previousPositionsValidThisFrame
+                            && blas.modifiedGeometryData.previousPositionBuffer.defined()
+                            && !isMotionUnstable;
         const bool isFirstUpdateAfterCreation = currentInstance.isCreatedThisFrame(m_device->getCurrentFrameId()) && isFirstUpdateThisFrame;
 
         // Note: objectToView is aliased on updates, since findSimilarInstance() doesn't discern it

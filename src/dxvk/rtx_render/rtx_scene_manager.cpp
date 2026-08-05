@@ -254,6 +254,10 @@ namespace dxvk {
       m_device->waitForIdle();
     }
 
+    // unregister all geometry buffers and verify that nothing has leaked.
+    // (this function could be debug only, but this isn't a hot path.) 
+    verifyAndReleaseBufferCache();
+
     // We still need to clear caches even if the scene wasn't rendered
     m_bufferCache.clear();
     m_preCreationSurfaceMaterialMap.clear();
@@ -332,6 +336,7 @@ namespace dxvk {
       for (auto iter = entries.begin(); iter != entries.end(); ) {
         if (iter->second.frameLastTouched < oldestFrame &&
             iter->second.getLinkedInstances().empty()) {
+          unregisterGeometryBuffers(iter->second.modifiedGeometryData);
           iter = entries.erase(iter);
         } else {
           ++iter;
@@ -360,10 +365,19 @@ namespace dxvk {
   }
 
   template<bool isNew>
-  SceneManager::ObjectCacheState SceneManager::processGeometryInfo(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, RaytraceGeometry& inOutGeometry) {
+  SceneManager::ObjectCacheState SceneManager::processGeometryInfo(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, BlasEntry* pBlas) {
     ScopedCpuProfileZone();
     ObjectCacheState result = ObjectCacheState::KBuildBVH;
     const RasterGeometry& input = drawCallState.getGeometryData();
+    RaytraceGeometry& inOutGeometry = pBlas->modifiedGeometryData;
+
+    // Need to call updateBufferCache() on *every* exit path.  This needs to run after changes
+    // have been made, but before we actually exit the function.
+    struct BufferCacheGuard {
+      SceneManager& sceneManager;
+      BlasEntry* pBlas;
+      ~BufferCacheGuard() { sceneManager.updateBufferCache(pBlas); }
+    } bufferCacheGuard { *this, pBlas };
 
     // Determine the optimal object state for this geometry
     if (!isNew) {
@@ -519,9 +533,6 @@ namespace dxvk {
       output.color0Buffer = RaytraceBuffer(slice, colorBuffer.offsetFromSlice(), colorBuffer.stride(), colorBuffer.vertexFormat());
     }
 
-    // Update buffers in the cache
-    updateBufferCache(output);
-
     return result;
   }
 
@@ -546,7 +557,6 @@ namespace dxvk {
     m_instanceManager.onFrameEnd();
     m_previousFrameSceneAvailable = raytracedThisFrame && RtxOptions::enablePreviousTLAS();
 
-    m_bufferCache.clear();
     if (raytracedThisFrame) {
       std::lock_guard lock { m_drawCallMeta.mutex };
       const uint8_t curTick = m_drawCallMeta.ticker;
@@ -1040,42 +1050,71 @@ namespace dxvk {
     }
   }
 
-  void SceneManager::updateBufferCache(RaytraceGeometry& newGeoData) {
+  void SceneManager::updateBufferCache(BlasEntry* pBlas) {
     ScopedCpuProfileZone();
-    if (newGeoData.indexBuffer.defined()) {
-      newGeoData.indexBufferIndex = m_bufferCache.track(newGeoData.indexBuffer);
-    } else {
-      newGeoData.indexBufferIndex = kSurfaceInvalidBufferIndex;
-    }
 
-    if (newGeoData.normalBuffer.defined()) {
-      newGeoData.normalBufferIndex = m_bufferCache.track(newGeoData.normalBuffer);
-    } else {
-      newGeoData.normalBufferIndex = kSurfaceInvalidBufferIndex;
-    }
+    // Acquire or re-acquire a stable buffer-cache slot. If the buffer matches the
+    // currently registered slot, this is a no-op (fast path for static geometry).
+    // If any slot changed, propagate updated indices to all currently-linked instances
+    // immediately so they are never stale.
+    bool changed = false;
+    auto updateSlot = [&](const RaytraceBuffer& buf, uint32_t& idx) {
+      if (!buf.defined()) {
+        if (idx != kSurfaceInvalidBufferIndex) {
+          m_bufferCache.release(idx);
+          idx = kSurfaceInvalidBufferIndex;
+          changed = true;
+        }
+        return;
+      }
+      if (m_bufferCache.isRegistered(idx, buf)) {
+        return;
+      }
+      if (idx != kSurfaceInvalidBufferIndex) {
+        m_bufferCache.release(idx);
+      }
+      idx = m_bufferCache.acquire(buf);
+      changed = true;
+    };
 
-    if (newGeoData.color0Buffer.defined()) {
-      newGeoData.color0BufferIndex = m_bufferCache.track(newGeoData.color0Buffer);
-    } else {
-      newGeoData.color0BufferIndex = kSurfaceInvalidBufferIndex;
-    }
+    RaytraceGeometry& geo = pBlas->modifiedGeometryData;
+    updateSlot(geo.indexBuffer,            geo.indexBufferIndex);
+    updateSlot(geo.normalBuffer,           geo.normalBufferIndex);
+    updateSlot(geo.color0Buffer,           geo.color0BufferIndex);
+    updateSlot(geo.texcoordBuffer,         geo.texcoordBufferIndex);
+    updateSlot(geo.positionBuffer,         geo.positionBufferIndex);
+    updateSlot(geo.previousPositionBuffer, geo.previousPositionBufferIndex);
 
-    if (newGeoData.texcoordBuffer.defined()) {
-      newGeoData.texcoordBufferIndex = m_bufferCache.track(newGeoData.texcoordBuffer);
-    } else {
-      newGeoData.texcoordBufferIndex = kSurfaceInvalidBufferIndex;
+    if (changed) {
+      for (RtInstance* inst : pBlas->getLinkedInstances()) {
+        inst->syncBufferIndicesFromBlas();
+      }
     }
+  }
 
-    if (newGeoData.positionBuffer.defined()) {
-      newGeoData.positionBufferIndex = m_bufferCache.track(newGeoData.positionBuffer);
-    } else {
-      newGeoData.positionBufferIndex = kSurfaceInvalidBufferIndex;
+  void SceneManager::unregisterGeometryBuffers(RaytraceGeometry& geo) {
+    auto releaseSlot = [&](uint32_t& idx) {
+      if (idx != kSurfaceInvalidBufferIndex) {
+        m_bufferCache.release(idx);
+        idx = kSurfaceInvalidBufferIndex;
+      }
+    };
+    releaseSlot(geo.indexBufferIndex);
+    releaseSlot(geo.normalBufferIndex);
+    releaseSlot(geo.color0BufferIndex);
+    releaseSlot(geo.texcoordBufferIndex);
+    releaseSlot(geo.positionBufferIndex);
+    releaseSlot(geo.previousPositionBufferIndex);
+  }
+
+  void SceneManager::verifyAndReleaseBufferCache() {
+    for (auto& [hash, entry] : m_drawCallCache.getEntries()) {
+      unregisterGeometryBuffers(entry.modifiedGeometryData);
     }
-
-    if (newGeoData.previousPositionBuffer.defined()) {
-      newGeoData.previousPositionBufferIndex = m_bufferCache.track(newGeoData.previousPositionBuffer);
-    } else {
-      newGeoData.previousPositionBufferIndex = kSurfaceInvalidBufferIndex;
+    if (m_bufferCache.getActiveCount() != 0) {
+      ONCE(Logger::err(str::format("RetainedBufferTable: ", m_bufferCache.getActiveCount(),
+                                   " buffer slot(s) still registered after scene clear — registration/release imbalance")));
+      ONCE(assert(false && "RetainedBufferTable: detected possible buffer leak."));
     }
   }
 
@@ -1091,13 +1130,6 @@ namespace dxvk {
     instance.setFrameLastUpdated(m_device->getCurrentFrameId());
 
     // Preserve path: keep RtInstance surface/material/transform/mask state from the last dynamic update.
-    // Only refresh per-frame buffer-cache indices (and BLAS touch / texture lifetime) so GPU addresses stay valid.
-
-    // Preserve / anti-culled draw: positions are unchanged this frame, so there is no meaningful
-    // previousPosition data. Clear it to match processGeometryInfo's kUpdateInstance behavior
-    // (it always clears, then only kUpdateBVH re-points it at historyBuffer[1]); without this,
-    // a stale buffer left over from the last kUpdateBVH frame would feed into motion vectors.
-    pBlas->modifiedGeometryData.previousPositionBuffer = RaytraceBuffer();
 
     // The last dynamic update may have left prevObjectToWorld != objectToWorld and
     // isStatic == false (e.g. after a transform-changing move()). Re-sync on the first
@@ -1110,10 +1142,14 @@ namespace dxvk {
     // The last dynamic update may have left hasMaterialChanged == true.
     instance.surface.hasMaterialChanged = false;
 
-    // Buffer indices are per-frame (m_bufferCache is cleared in onFrameEnd),
-    // so re-register geometry buffers and copy fresh indices to the surface.
-    updateBufferCache(pBlas->modifiedGeometryData);
-    m_instanceManager.processInstanceBuffers(*pBlas, instance);
+    // On the first preserve encounter per frame, release the previousPositionBuffer slot
+    // so instances don't carry a stale previous-position index forward. Subsequent preserve
+    // draws on the same BLAS this frame skip this (frameLastTouched already == current).
+    if (pBlas->frameLastTouched != m_device->getCurrentFrameId()
+        && pBlas->modifiedGeometryData.previousPositionBuffer.defined()) {
+      pBlas->modifiedGeometryData.previousPositionBuffer = RaytraceBuffer();
+      updateBufferCache(pBlas);
+    }
 
     pBlas->frameLastTouched = m_device->getCurrentFrameId();
 
@@ -1221,7 +1257,7 @@ namespace dxvk {
 
   SceneManager::ObjectCacheState SceneManager::onSceneObjectAdded(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, BlasEntry* pBlas) {
     // This is a new object.
-    ObjectCacheState result = processGeometryInfo<true>(ctx, drawCallState, pBlas->modifiedGeometryData);
+    ObjectCacheState result = processGeometryInfo<true>(ctx, drawCallState, pBlas);
     
     assert(result == ObjectCacheState::KBuildBVH);
 
@@ -1238,7 +1274,7 @@ namespace dxvk {
     }
 
     // TODO: If mesh is static, no need to do any of the below, just use the existing modifiedGeometryData and set result to kInstanceUpdate.
-    ObjectCacheState result = processGeometryInfo<false>(ctx, drawCallState, pBlas->modifiedGeometryData);
+    ObjectCacheState result = processGeometryInfo<false>(ctx, drawCallState, pBlas);
 
     // We dont expect to hit the rebuild path here - since this would indicate an index buffer or other topological change, and that *should* trigger a new scene object (since the hash would change)
     assert(result != ObjectCacheState::KBuildBVH);
@@ -1417,6 +1453,11 @@ namespace dxvk {
 
     if (renderMaterialData.getIgnored()) {
       return nullptr;
+    }
+
+    // Clear the preserve-path flag at the start of a dynamic update.
+    if (existingInstance != nullptr) {
+      existingInstance->surface.isPreservePath = false;
     }
 
     ObjectCacheState result = ObjectCacheState::kInvalid;

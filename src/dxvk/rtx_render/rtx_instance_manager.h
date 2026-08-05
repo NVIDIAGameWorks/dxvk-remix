@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -100,8 +100,13 @@ public:
   // Leave it false before relative transforms, such as portal teleports.
   void updateFromReference(const RtInstance& src, bool preserveTransforms = true);
 
-  // Bind a BLAS object to this instance
+  // Bind a BLAS object to this instance and sync buffer indices/strides from its geometry data.
   void setBlas(BlasEntry& blas);
+
+  // Syncs surface buffer indices and strides from the currently bound BLAS.
+  // Called by setBlas() on initial bind or re-link, and by updateBufferCache()
+  // when geometry buffer slots change mid-scene.
+  void syncBufferIndicesFromBlas();
 
   // Sets current and previous transforms explicitly
   bool teleport(const Matrix4& objectToWorld);
@@ -356,9 +361,6 @@ public:
 
   // Binds a raytracing material to the specified instance.
   void bindMaterial(RtInstance& instance, const RtSurfaceMaterial& material);
-
-  // Copies buffer indices from the BlasEntry's geometry data to the instance's surface.
-  void processInstanceBuffers(const BlasEntry& blas, RtInstance& currentInstance) const;
 
   // Per-frame finalization shared by the dynamic and preserve paths:
   // re-registers the player-model / view-model candidate lists (cleared every onFrameEnd) and
