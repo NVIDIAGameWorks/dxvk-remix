@@ -222,7 +222,7 @@ public:
                     uint32_t& textureIndex,
                     bool hasTexcoords,
                     bool async = true,
-                    uint16_t samplerFeedbackStamp = SAMPLER_FEEDBACK_INVALID);
+                    uint16_t* inout_samplerFeedbackStamp = nullptr);
   [[nodiscard]] SamplerIndex trackSampler(Rc<DxvkSampler> sampler);
 
   std::optional<XXH64_hash_t> findLegacyTextureHashByObjectPickingValue(uint32_t objectPickingValue);

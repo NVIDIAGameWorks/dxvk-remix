@@ -133,8 +133,11 @@ struct TranslucentSurfaceMaterial
   // 14-16
   f16vec3 emissiveColorConstant;
 
+  // 17
+  uint16_t samplerFeedbackStamp;
+
   // padding (to keep size matching with MemoryPolymorphicSurfaceMaterial)
-  uint16_t data[15];
+  uint16_t data[14];
 };
 
 struct RayPortalSurfaceMaterial

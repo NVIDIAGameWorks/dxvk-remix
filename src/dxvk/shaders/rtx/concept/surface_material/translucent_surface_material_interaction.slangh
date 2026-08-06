@@ -185,6 +185,10 @@ TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreat
 
   translucentSurfaceMaterialInteraction.flags = translucentSurfaceMaterial.flags;
 
+#ifdef RAY_TRACING_PRIMARY_RAY
+  storeSamplerFeedback(translucentSurfaceMaterial.samplerFeedbackStamp, surfaceInteraction);
+#endif
+
   return translucentSurfaceMaterialInteraction;
 }
 
