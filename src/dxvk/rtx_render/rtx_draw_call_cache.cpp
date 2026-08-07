@@ -46,12 +46,15 @@ DrawCallCache::DrawCallCache(DxvkDevice* device) : CommonDeviceObject(device) {
 }
 DrawCallCache::~DrawCallCache() {}
 
-DrawCallCache::CacheState DrawCallCache::get(const DrawCallState& drawCall, BlasEntry** out) {
+DrawCallCache::CacheState DrawCallCache::get(const DrawCallState& drawCall, BlasEntry** out, bool allowAllocate) {
   // First, find the right bucket:
   const XXH64_hash_t hash = drawCall.getGeometryData().getHashForRule<rules::TopologicalHash>();
   auto range = m_entries.equal_range(hash);
   if (range.first == m_entries.end()) {
     // New bucket
+    if (!allowAllocate) {
+      return CacheState::kRejectedBudget;
+    }
     *out = allocateEntry(hash, drawCall);
     return CacheState::kNew;
   }
@@ -76,6 +79,9 @@ DrawCallCache::CacheState DrawCallCache::get(const DrawCallState& drawCall, Blas
     } else {
       // First frame of having two mismatching instances, and the first instance has already 
       // been paired with the existing BlasEntry.
+      if (!allowAllocate) {
+        return CacheState::kRejectedBudget;
+      }
       *out = allocateEntry(hash, drawCall);
       return CacheState::kNew;
     }
@@ -120,6 +126,9 @@ DrawCallCache::CacheState DrawCallCache::get(const DrawCallState& drawCall, Blas
   }
   if (*out == nullptr) {
     // Failed to find similar blas, so allocate a new one
+    if (!allowAllocate) {
+      return CacheState::kRejectedBudget;
+    }
     *out = allocateEntry(hash, drawCall);
     return CacheState::kNew;
   }

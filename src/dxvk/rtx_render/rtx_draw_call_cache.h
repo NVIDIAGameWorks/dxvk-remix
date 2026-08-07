@@ -46,6 +46,9 @@ public:
   {
     kNew = 0,
     kExisted = 1,
+    // Lookup missed and allocation was disallowed (materialization budget
+    // exhausted this frame) — no entry was created, *out is nullptr.
+    kRejectedBudget = 2,
   };
 
   DrawCallCache(DrawCallCache const&) = delete;
@@ -54,7 +57,7 @@ public:
   explicit DrawCallCache(DxvkDevice* device);
   ~DrawCallCache();
 
-  CacheState get(const DrawCallState& drawCall, BlasEntry** out);
+  CacheState get(const DrawCallState& drawCall, BlasEntry** out, bool allowAllocate = true);
 
   MultimapType& getEntries() {return m_entries;}
 
