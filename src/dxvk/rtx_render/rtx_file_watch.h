@@ -22,6 +22,9 @@
 
 #pragma once
 
+#include <memory>
+#include <mutex>
+
 #include "../../util/rc/util_rc_ptr.h"
 #include "../../util/util_singleton.h"
 
@@ -44,15 +47,20 @@ namespace dxvk {
     FileWatch& operator=(FileWatch&&) = delete;
 
     void beginThread(RtxTextureManager* textureManager);
-    void endThread();
+    void endThread(RtxTextureManager* textureManager);
 
     void installDir(const char* dirpath);
     void removeAllWatchDirs();
 
-    void watchTexture(const Rc<ManagedTexture>& tex);
+    void watchTexture(RtxTextureManager* textureManager, const Rc<ManagedTexture>& tex);
 
   private:
+    void endThreadLocked();
 
+    std::mutex m_mutex;
+    // D3D device recreation can overlap texture manager lifetimes. Track the active owner so
+    // delayed teardown from an old manager cannot stop the new watch thread.
+    const RtxTextureManager* m_textureManager = nullptr;
     std::unique_ptr<dxvk::thread> m_fileCheckingThread;
     std::unique_ptr<FileWatchTexturesImpl> m_impl;
   };

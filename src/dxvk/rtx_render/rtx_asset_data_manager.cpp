@@ -535,7 +535,8 @@ namespace dxvk {
 
     for (const auto& [p, curSearchPath] : m_searchPaths) {
       if (curSearchPath == searchPath) {
-        // We already have this path - bail out
+        // The file watch thread may have been recreated with the D3D device.
+        FileWatch::get().installDir(searchPath.c_str());
         return;
       }
     }
