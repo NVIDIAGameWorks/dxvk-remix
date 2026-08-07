@@ -26,7 +26,10 @@
 #include <string>
 #include <filesystem>
 #include <cassert>
+#include <cstring>
 #include <array>
+
+#include "util_process.h"
 
 namespace version {
   static constexpr uint64_t fileSysV = 1;
@@ -80,6 +83,15 @@ public:
   }
   static void print();
   static void mkDirs(const fspath& path);
+
+  // Returns Remix runtime folder name for the known archs.
+  // If the arch is a nullptr or not known returns the default runtime dir name.
+  static inline const char* runtimeDirName(const char* arch) {
+    if (arch && 0 == std::strcmp(arch, bridge_util::RTX_ARCH_ARM64)) {
+      return ".trex_arm64";
+    }
+    return ".trex";
+  }
 };
 
 }

@@ -252,7 +252,8 @@ namespace bridge_util {
       return config;
     }
     const std::string moduleDir = moduleFilePath.string().substr(0, finalDirPos + 1);
-    const std::string trexDirPath = (app == App::Client) ? moduleDir + ".trex\\" : moduleDir;
+    const std::string trexDirName = dxvk::util::RtxFileSys::runtimeDirName(getNativeArchString());
+    const std::string trexDirPath = (app == App::Client) ? moduleDir + trexDirName + "\\" : moduleDir;
     const std::filesystem::path userConfPath = trexDirPath + "bridge.conf";
 
     Logger::info(std::string("Trying to open config file: ") + userConfPath.string());

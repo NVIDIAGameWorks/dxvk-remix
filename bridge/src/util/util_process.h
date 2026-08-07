@@ -184,7 +184,23 @@ namespace bridge_util {
     }
     return ppid;
   }
-  
+
+  static const char* RTX_ARCH_UNKNOWN = "unk";
+  static const char* RTX_ARCH_X64 = "x64";
+  static const char* RTX_ARCH_ARM64 = "arm64";
+
+  static inline const char* getNativeArchString() {
+    USHORT curMachine, nativeMachine = IMAGE_FILE_MACHINE_AMD64;
+    ::IsWow64Process2(::GetCurrentProcess(), &curMachine, &nativeMachine);
+
+    if (nativeMachine == IMAGE_FILE_MACHINE_ARM64) {
+      return RTX_ARCH_ARM64;
+    } else if (nativeMachine == IMAGE_FILE_MACHINE_AMD64) {
+      return RTX_ARCH_X64;
+    }
+
+    return RTX_ARCH_UNKNOWN;
+  }
 }
 
 #endif // UTIL_PROCESS_H_
