@@ -128,6 +128,14 @@ bool gbBridgeRunning = true;
 std::string gRemixFolder = "";
 std::mutex gSwapChainMapMutex;
 SwapChainMap gSwapChainMap;
+const char* gServerExecutable = "NvRemixBridge.exe";
+
+static fspath GetServerExecutablePath() {
+  ONCE(Logger::info(std::string("Native arch: ") + getNativeArchString()));
+
+  auto arch = bridge_util::Config::getOption<bool>("forceX64Server", false) ? nullptr : getNativeArchString();
+  return fspath(gRemixFolder) / dxvk::util::RtxFileSys::runtimeDirName(arch) / gServerExecutable;
+}
 
 void PrintRecentCommandHistory() {
   // Log history of recent client side commands sent and received by the server
@@ -196,7 +204,7 @@ namespace {
       return;
     }
     const auto logsDir = dxvk::util::RtxFileSys::path(dxvk::util::RtxFileSys::Logs);
-    const std::wstring exePathW = (std::filesystem::path(gRemixFolder) / L".trex/NvRemixBridge.exe").wstring();
+    const std::wstring exePathW = GetServerExecutablePath().wstring();
     const std::wstring crashTypeW = isGpuCrash ? L"GPU" : L"CPU";
     // logsDir is safe for command line: RtxFileSys::init rejects env paths containing ".
     const std::wstring cmdLine = L"\"" + exePathW + L"\" --sentry-upload-only \"" + logsDir.wstring() + L"\" " + crashTypeW;
@@ -300,8 +308,7 @@ void InitServer() {
   }
   Logger::info("Launching server with GUID " + gUniqueIdentifier.toString());
   std::stringstream cmdSS;
-  cmdSS << gRemixFolder;
-  cmdSS << ".trex/NvRemixBridge.exe";
+  cmdSS << GetServerExecutablePath().string();
   cmdSS << " " << gUniqueIdentifier.toString();
   cmdSS << " " << BRIDGE_VERSION;
   cmdSS << " " << std::string(GetCommandLineA());
