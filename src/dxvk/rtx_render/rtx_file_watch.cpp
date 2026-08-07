@@ -236,6 +236,22 @@ namespace {
   }
 
 
+  void filewatchCloseAllDirs(dxvk::FileWatchTexturesImpl& watch) {
+    for (auto& dir : watch.m_dirs) {
+      if (dir.dirHandle) {
+        CloseHandle(dir.dirHandle);
+        dir.dirHandle = NULL;
+      }
+      if (dir.watchEvent != NULL) {
+        CloseHandle(dir.watchEvent);
+        dir.watchEvent = NULL;
+      }
+    }
+    watch.m_dirs.clear();
+    dxvk::Logger::info("filewatch: uninstalled all directory watches");
+  }
+
+
   bool directoryAlreadyInstalled(const dxvk::FileWatchTexturesImpl& watch, const std::filesystem::path& dirpath) {
     for (auto& dir : watch.m_dirs) {
       if (dir.dirpath.empty()) {
@@ -299,18 +315,7 @@ namespace {
       }
 
       if (auto* needToRemoveAllDirs = std::get_if<dxvk::RemoveAllRequest>(&req)) {
-        for (auto& dir : watch.m_dirs) {
-          if (dir.dirHandle) {
-            CloseHandle(dir.dirHandle);
-            dir.dirHandle = NULL;
-          }
-          if (dir.watchEvent != NULL) {
-            CloseHandle(dir.watchEvent);
-            dir.watchEvent = NULL;
-          }
-        }
-        watch.m_dirs.clear();
-        dxvk::Logger::info("filewatch: uninstalled all directory watches");
+        filewatchCloseAllDirs(watch);
         continue;
       }
 
@@ -482,40 +487,56 @@ dxvk::FileWatch::FileWatch() = default;
 
 
 dxvk::FileWatch::~FileWatch() {
-  endThread();
+  auto lock = std::unique_lock{ m_mutex };
+  endThreadLocked();
 }
 
 
 void dxvk::FileWatch::beginThread(RtxTextureManager* textureManager) {
+  auto lock = std::unique_lock{ m_mutex };
+  endThreadLocked();
+
   if (!RtxOptions::TextureManager::hotReload()) {
     return;
   }
+
+  m_textureManager = textureManager;
   m_impl = std::make_unique<FileWatchTexturesImpl>();
 
-  m_fileCheckingThread = std::make_unique<dxvk::thread>([this, textureManager] {
-    filewatchThreadFunc(*m_impl, textureManager);
+  m_fileCheckingThread = std::make_unique<dxvk::thread>([impl = m_impl.get(), textureManager] {
+    filewatchThreadFunc(*impl, textureManager);
   });
   m_fileCheckingThread->set_priority(ThreadPriority::Lowest);
 }
 
 
-void dxvk::FileWatch::endThread() {
+void dxvk::FileWatch::endThread(RtxTextureManager* textureManager) {
+  auto lock = std::unique_lock{ m_mutex };
+  if (m_textureManager != textureManager) {
+    return;
+  }
+
+  endThreadLocked();
+}
+
+
+void dxvk::FileWatch::endThreadLocked() {
   if (m_impl) {
     // signal the thread to stop
     m_impl->m_stop = true;
   }
 
   if (m_fileCheckingThread) {
-    // NOTE: catch all exceptions, just in case
-    try {
-      m_fileCheckingThread->join();
-      m_fileCheckingThread = {};
-    } catch (...) {
-    }
+    m_fileCheckingThread->join();
+    m_fileCheckingThread = {};
   }
 
-  removeAllWatchDirs();
+  if (m_impl) {
+    filewatchCloseAllDirs(*m_impl);
+  }
+
   m_impl = {};
+  m_textureManager = nullptr;
 }
 
 
@@ -526,6 +547,8 @@ void dxvk::FileWatch::installDir(const char* dirpath) {
   if (!dxvk::RtxOptions::TextureManager::hotReload()) {
     return;
   }
+
+  auto lock = std::unique_lock{ m_mutex };
   if (!m_impl) {
     return;
   }
@@ -534,6 +557,7 @@ void dxvk::FileWatch::installDir(const char* dirpath) {
 
 
 void dxvk::FileWatch::removeAllWatchDirs() {
+  auto lock = std::unique_lock{ m_mutex };
   if (!m_impl) {
     return;
   }
@@ -541,11 +565,13 @@ void dxvk::FileWatch::removeAllWatchDirs() {
 }
 
 
-void dxvk::FileWatch::watchTexture(const Rc<ManagedTexture>& tex) {
+void dxvk::FileWatch::watchTexture(RtxTextureManager* textureManager, const Rc<ManagedTexture>& tex) {
   if (!dxvk::RtxOptions::TextureManager::hotReload()) {
     return;
   }
-  if (!m_impl) {
+
+  auto lock = std::unique_lock{ m_mutex };
+  if (!m_impl || m_textureManager != textureManager) {
     return;
   }
   if (!tex.ptr() || !tex->m_assetData.ptr() || !tex->m_assetData->info().filename) {
