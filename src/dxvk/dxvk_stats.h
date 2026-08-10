@@ -30,7 +30,9 @@ namespace dxvk {
     // NV-DXVK begin: RTX Remix counters
     CmdTraceRaysCalls,                 ///< Number of traceRays calls
     RtxBlasCount,                      ///< Number of unique BLAS's in the scene/geometry cache
-    RtxBufferCount,                    ///< Number of unique buffers being tracked for RT rendering
+    RtxBufferCount,                    ///< Number of unique (buffer, offset, length) slices tracked for RT rendering.
+                                       ///< Interleaved attributes share one slot; slots are retained until the
+                                       ///< owning BlasEntry is GC'd, so this is not a per-frame peak.
     RtxTextureCount,                   ///< Number of unique textures being tracked for RT rendering
     RtxReplacementTextureCount,        ///< Number of replacement textures currently used by at least one live instance
     RtxInstanceCount,                  ///< Number of surfaces and TLAS instance nodes in the scene

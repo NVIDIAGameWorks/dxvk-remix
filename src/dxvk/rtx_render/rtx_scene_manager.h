@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -36,6 +36,7 @@
 #include "../util/util_hashtable.h"
 
 #include "rtx_globals.h"
+#include "rtx_retained_buffer_table.h"
 #include "rtx_types.h"
 #include "rtx_common_object.h"
 #include "rtx_camera_manager.h"
@@ -69,8 +70,7 @@ public:
   const RtSurfaceMaterial& get(const uint32_t index) const { return m_surfaceMaterialCache.getObjectTable()[index]; }
 
 protected:
-  BufferRefTable<RaytraceBuffer> m_bufferCache;
-  BufferRefTable<Rc<DxvkSampler>> m_materialSamplerCache;
+  RetainedBufferTable<RaytraceBuffer> m_bufferCache;
 
   struct SurfaceMaterialHashFn {
     size_t operator() (const RtSurfaceMaterial& mat) const {
@@ -265,7 +265,7 @@ private:
   };
   // Handles conversion of geometry data coming from a draw call, to the data used by the raytracing backend
   template<bool isNew>
-  ObjectCacheState processGeometryInfo(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, RaytraceGeometry& modifiedGeometryData);
+  ObjectCacheState processGeometryInfo(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, BlasEntry* pBlas);
 
   // Consumes a draw call state and updates the scene state accordingly
   RtInstance* processDrawCallState(const Rc<DxvkContext>& ctx, 
@@ -290,8 +290,16 @@ private:
                                                                 bool hasTexcoords);
   Rc<DxvkSampler> getOrCreateExternalSampler();
 
-  // Updates ref counts for new buffers
-  void updateBufferCache(RaytraceGeometry& newGeoData);
+  // Acquire/update stable buffer-cache slots for all geometry buffers in geo.
+  // Called on the dynamic path (KBuildBVH / kUpdateBVH / kUpdateInstance) only.
+  void updateBufferCache(BlasEntry* pBlas);
+
+  // Release all buffer-cache slots held by geo. Called when a BlasEntry is GC'd.
+  void unregisterGeometryBuffers(RaytraceGeometry& geo);
+
+  // Release every BlasEntry's buffer slots and assert the active count reaches zero.
+  // Called from clear() to detect registration/release imbalances before wiping the table.
+  void verifyAndReleaseBufferCache();
 
   // Called whenever a new BLAS scene object is added to the cache
   ObjectCacheState onSceneObjectAdded(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, BlasEntry* pBlas);
@@ -315,8 +323,7 @@ private:
       const DrawCallState& input,
       const AssetReplacement& replacement);
 
-  // Minimal per-frame work: refresh buffer-cache indices and touch textures so the instance
-  // still renders after m_bufferCache is cleared (see preserve path for unchanged / anti-culled draws).
+  // Minimal per-frame work for the preserve path (unchanged / anti-culled draws).
   // When pInput is set (preserve replacement draw path), also runs the ray-portal refresh
   // via processRayPortalData on the cached RtSurfaceMaterial.
   void preserveInstance(
