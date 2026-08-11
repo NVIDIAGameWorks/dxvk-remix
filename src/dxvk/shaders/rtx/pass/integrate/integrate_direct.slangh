@@ -225,7 +225,7 @@ void integrate_direct_pass(uvec2 threadIndex)
     if (cb.shadowTerminatorArgs.enableOffset)
     {
       // NOTE: can't be inside 'deserializeInteractions', as 'sampleAndStoreIndirectRayPathSample' stores data for other passes
-      minimalSurfaceInteraction.shadowTerminatorOffset = SharedTerminatorFix[threadIndex];
+      minimalSurfaceInteraction.shadowTerminatorOffset = SharedTerminatorFix[pixelCoordinate];
     }
 #endif
 

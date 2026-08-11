@@ -1181,8 +1181,11 @@ namespace dxvk {
     auto& sparseRendering = m_common->metaSparseRendering();
     if (constants.enableDirectLightBoilingFilter && sparseRendering.isActive()) {
       // RR path disables direct light boiling filter, but in case someone manually enables it.
-      // Technically it can be supported if needed in the future - it would need to ensure a spatial locality of remapped pixels to work for the filter
-      // (it may already since it has group based expectations).
+      // The filter is group cooperative - it accumulates into groupshared memory across
+      // GroupMemoryBarrierWithGroupSync() and zero initializes that memory from a single thread.
+      // Sparse rendering runs it on direct active threads only, so part of the group would skip
+      // the barriers and the accumulators could stay uninitialized. Supporting it needs every
+      // thread in the group to reach the barriers, not just spatial locality of remapped pixels.
       ONCE(Logger::warn("[RTX] Direct Light Boiling Filter is not supported with Sparse Rendering enabled."));
       constants.enableDirectLightBoilingFilter = false;
     }
