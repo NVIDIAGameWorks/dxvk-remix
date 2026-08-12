@@ -1086,9 +1086,13 @@ namespace dxvk {
     updateSlot(geo.previousPositionBuffer, geo.previousPositionBufferIndex);
 
     if (changed) {
-      for (RtInstance* inst : pBlas->getLinkedInstances()) {
-        inst->syncBufferIndicesFromBlas();
-      }
+      syncLinkedInstances(pBlas);
+    }
+  }
+
+  void SceneManager::syncLinkedInstances(BlasEntry* pBlas) {
+    for (RtInstance* inst : pBlas->getLinkedInstances()) {
+      inst->syncBufferIndicesFromBlas();
     }
   }
 
@@ -1491,6 +1495,8 @@ namespace dxvk {
         (result == ObjectCacheState::KBuildBVH || result == ObjectCacheState::kUpdateBVH)) {
       m_device->getCommon()->metaGeometryUtils().dispatchSmoothNormals(ctx, drawCallState.getGeometryData(), pBlas->modifiedGeometryData);
       pBlas->modifiedGeometryData.smoothNormalsApplied = true;
+      // dispatchSmoothNormals() changes the vertex buffers, which need to be re-synced.
+      syncLinkedInstances(pBlas);
       pBlas->frameLastUpdated = pBlas->frameLastTouched;
       m_instanceManager.notifySceneChanged();
     }

@@ -294,6 +294,10 @@ private:
   // Called on the dynamic path (KBuildBVH / kUpdateBVH / kUpdateInstance) only.
   void updateBufferCache(BlasEntry* pBlas);
 
+  // Propagate the BLAS's current geometry buffer indices/strides/formats to all
+  // currently-linked instances.
+  void syncLinkedInstances(BlasEntry* pBlas);
+
   // Release all buffer-cache slots held by geo. Called when a BlasEntry is GC'd.
   void unregisterGeometryBuffers(RaytraceGeometry& geo);
 
