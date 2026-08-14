@@ -110,8 +110,12 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
   RTXCR_SubsurfaceMaterialData subsurfaceMaterialData = RTXCR_CreateDefaultSubsurfaceMaterialData();
   subsurfaceMaterialData.transmissionColor = float3(subsurfaceMaterial.volumetricAttenuationCoefficient);
   subsurfaceMaterialData.scatteringColor = float3(subsurfaceMaterial.singleScatteringAlbedo);
+  // For diffusion-profile materials, measurementDistance is a reused field containing the radius scale,
+  // rather than a physical measurement distance; increasing it produces deeper subsurface scattering.
   subsurfaceMaterialData.scale = subsurfaceMaterial.measurementDistance * cb.sssArgs.diffusionProfileScale;
   subsurfaceMaterialData.g = subsurfaceMaterial.volumetricAnisotropy;
+
+  const float maxSampleRadius = float(subsurfaceMaterial.maxSampleRadius) * cb.metersToWorldUnitScale;
 
   /// Create interaction
 
@@ -134,7 +138,7 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
     RTXCR_SubsurfaceSample subsurfaceSample;
     RTXCR_EvalBurleyDiffusionProfile(subsurfaceMaterialData,
                                      subsurfaceInteraction,
-                                     subsurfaceMaterial.maxSampleRadius,
+                                     maxSampleRadius,
                                      cb.enableSssTransmission && cb.enableTransmissionDiffusionProfileCorrection,
                                      rand2,
                                      subsurfaceSample);
@@ -143,7 +147,7 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
     Ray sssSampleRay;
     sssSampleRay.origin = subsurfaceSample.samplePosition;
     sssSampleRay.direction = -diskNormalWorldSpace; // Shooting a ray from sample disk towards the surface
-    sssSampleRay.tMax = max(subsurfaceMaterial.maxSampleRadius * subsurfaceMaterialData.scale * 2.0f, 0.1f);
+    sssSampleRay.tMax = max(maxSampleRadius * 2.0f, 0.1f);
 
     const SssTracingResult sssTracingResult = traceSssRay(sssSampleRay, OBJECT_MASK_OPAQUE, RAY_FLAG_CULL_BACK_FACING_TRIANGLES);
 
