@@ -84,11 +84,12 @@ namespace dxvk {
     // this into a thread count by mulitplying by how many threads per warp there are (typically 32).
     // Example for a RTX 3090: 82 SMs * 64 warps per SM * 32 threads per warp = 167,936 froxels to saturate the GPU. It is fine to be a bit below this though as most gpus will have fewer SMs than this, and higher resolutions
     // will also use more froxels due to how the grid is allocated with respect to the (downscaled when DLSS is in use) resolution, and we don't want the froxel passes to be too expensive (unless higher quality results are desired).
-    RTX_OPTION("rtx.volumetrics", float, restirGridGuardBandFactor, 1.1f, "The scale factor for the restir grid guard band, which is an extended part of the viewing frustum for which we should calculate lighting information for, even though they are technically offscreen.  This helps reduce noise in cases where the camera is moving around.");
+    RTX_OPTION_ARGS("rtx.volumetrics", float, restirGridGuardBandFactor, 1.1f, "The scale factor for the restir grid guard band, which is an extended part of the viewing frustum for which we should calculate lighting information for, even though they are technically offscreen.  This helps reduce noise in cases where the camera is moving around.",
+                    args.minValue = 1.0f);
     RTX_OPTION_ARGS("rtx.volumetrics", uint32_t, restirGridScale, 4,
                "The scale factor to divide the x and y froxel grid resolution by to determine the x and y dimensions of the ReSTIR froxel grid.\n"
                "Note that unlike the rtx.volumetrics.froxelGridResolutionScale option this is not dividing the render resolution, but rather is a scalar on top of the resulting froxel grid resolution after it is divided by the resolution scale.",
-               args.onChangeCallback = &onFroxelResourceOptionsChanged);
+               args.minValue = static_cast<uint32_t>(1), args.onChangeCallback = &onFroxelResourceOptionsChanged);
     RTX_OPTION_ARGS("rtx.volumetrics", uint32_t, froxelGridResolutionScale, 8, "The scale factor to divide the x and y render resolution by to determine the x and y dimensions of the froxel grid.",
                     args.minValue = static_cast<uint32_t>(1), args.onChangeCallback = &onFroxelResourceOptionsChanged, args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION_ARGS("rtx.volumetrics", uint16_t, froxelDepthSlices, 64, "The z dimension of the froxel grid. Must be constant after initialization.",
@@ -125,8 +126,10 @@ namespace dxvk {
                "Spatial resampling allows for reuse of spatial information when picking froxel grid light samples similar to how ReSTIR works, providing higher quality light samples.\n");
     RTX_OPTION_ARGS("rtx.volumetrics", uint16_t, temporalReuseMaxSampleCount, 2, "The number of samples to clamp temporal reservoirs to, should usually be around the value: desired_max_history_frames * average_reservoir_samples.",
                     args.minValue = static_cast<uint16_t>(1), args.maxValue = std::numeric_limits<uint16_t>::max());
-    RTX_OPTION("rtx.volumetrics", uint16_t, spatialReuseMaxSampleCount, 8, "The number of spatial samples to perform, generally higher is better, but the law of diminishing returns applies.");
-    RTX_OPTION("rtx.volumetrics", float, spatialReuseSamplingRadius, 0.8f, "Search radius (in froxels) to search for neighbour candidates in spatial reuse pass.");
+    RTX_OPTION_ARGS("rtx.volumetrics", uint16_t, spatialReuseMaxSampleCount, 8, "The number of spatial samples to perform, generally higher is better, but the law of diminishing returns applies.",
+                    args.minValue = static_cast<uint16_t>(1));
+    RTX_OPTION_ARGS("rtx.volumetrics", float, spatialReuseSamplingRadius, 0.8f, "Search radius (in froxels) to search for neighbour candidates in spatial reuse pass.",
+                    args.minValue = 0.0f);
     RTX_OPTION_FLAG("rtx.volumetrics", bool, enableReferenceMode, false, RtxOptionFlags::NoSave, "Enables reference mode for volumetrics.  This is very expensive, but allows for rendering engineers to test how close sampling approximations are to the real thing. This will not save.");
     RTX_OPTION_ARGS("rtx.volumetrics", bool, enable, true,
                "Enabling volumetric lighting provides higher quality ray traced physical volumetrics, disabling falls back to cheaper depth based fog.\n"
@@ -172,13 +175,16 @@ namespace dxvk {
                     args.minValue = 0.0f);
     RTX_OPTION_ARGS("rtx.volumetrics", float, noiseFieldGain, 0.5f, "Visual Parameter: A scale factor in the range (0, infinity) to apply to the noise amplitude with each noise octave. Larger values typically make the noise field more jagged whereas lower values make the noise field smoother.",
                     args.minValue = 0.0f);
-    RTX_OPTION("rtx.volumetrics", float, depthOffset, 0.5f, "Depth offset to avoid volumetric light leaking.");
+    RTX_OPTION_ARGS("rtx.volumetrics", float, depthOffset, 0.5f, "Depth offset to avoid volumetric light leaking.",
+                    args.minValue = 0.0f);
     RTX_OPTION("rtx.volumetrics", bool, enableAtmosphere, false,
                "Enables a finite atmosphere in the volumetrics system.\n"
                "When false, the volumetric volume is assumed to reach to infinity in every direction, when true the volumetric volume will be limited to that a finite atmosphere controlled by parameters describing atmosphere height and its curvature via a planetary radius.\n"
                "This option should generally be enabled if volumetrics are used in outdoor settings as without a finite atmosphere infinite light sources such as the skybox and distant lights will not function properly.");
-    RTX_OPTION("rtx.volumetrics", float, atmospherePlanetRadiusMeters, 10000.f, "Radius of the planet in meters, respects scene scale.");
-    RTX_OPTION("rtx.volumetrics", float, atmosphereHeightMeters, 30.0f, "Height of the atmosphere in meters, respects scene scale.");
+    RTX_OPTION_ARGS("rtx.volumetrics", float, atmospherePlanetRadiusMeters, 10000.f, "Radius of the planet in meters, respects scene scale.",
+                    args.minValue = 0.0f);
+    RTX_OPTION_ARGS("rtx.volumetrics", float, atmosphereHeightMeters, 30.0f, "Height of the atmosphere in meters, respects scene scale.",
+                    args.minValue = 0.0f);
     RTX_OPTION("rtx.volumetrics", bool, atmosphereInverted, false,
                "A flag to invert the rendering of the volumetric atmosphere if rtx.volumetrics.enableAtmosphere is enabled.\n"
                "Some games render the world upside down and that cannot be detected automatically, this setting can be used to correct that inversion for the volumetric atmosphere.");
@@ -201,10 +207,11 @@ namespace dxvk {
                "A flag to enable or disable remapping fixed function fox's max distance. Only takes effect when fog remapping in general is enabled.\n"
                "Enables or disables remapping functionality relating to the max distance parameter of fixed function fog.\n"
                "This allows dynamic changes to the game's fog max distance to be reflected somewhat in the volumetrics system. Overrides the specified volumetric transmittance measurement distance.");
-    RTX_OPTION("rtx.volumetrics", float, waterFogDensityThreshold, 0.065f,
+    RTX_OPTION_ARGS("rtx.volumetrics", float, waterFogDensityThreshold, 0.065f,
                "The fog density threshold for determining when to use physical volumetrics vs fixed function fog.\n"
                "Values below this threshold will use physical volumetrics, while values above will fall back to fixed function fog.\n"
-               "This threshold was created specifically for Portal RTX's underwater fixed function fog.");
+               "This threshold was created specifically for Portal RTX's underwater fixed function fog.",
+               args.minValue = 0.0f);
     RTX_OPTION_ARGS("rtx.volumetrics", float, fogRemapMaxDistanceMinMeters, 1.0f,
                "A value controlling the \"max distance\" fixed function fog parameter's minimum remapping bound.\n"
                "Note that fog remapping and fog max distance remapping must be enabled for this setting to have any effect.  In meters.",
