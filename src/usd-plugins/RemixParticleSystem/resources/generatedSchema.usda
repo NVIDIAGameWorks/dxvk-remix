@@ -1,28 +1,10 @@
 #usda 1.0
 (
-    """API schema for driving GPU particle systems on existing Mesh or Material prims."""
-    subLayers = [
-        @usdGeom/schema.usda@,   # for UsdGeomMesh
-        @usdShade/schema.usda@   # for UsdShadeMaterial
-    ]
+    """Canonical codeless schema for ParticleSystemAPI.
+    Edit this file directly; test_particle_system_schema verifies its properties against the reader contract."""
 )
 
-over "GLOBAL" (
-    customData = {
-        string libraryName = "Remix"
-        string libraryPath = "."
-    }
-)
-{
-}
-
-# Single apply API schema: can be applied to any prim (we'll
-# conventionally use it on Mesh and Material prims).
 class "ParticleSystemAPI" (
-    inherits = </APISchemaBase>
-    customData = {
-        token apiSchemaType = "singleApply"
-    }
     doc = """
         Adds GPU-driven particle simulation parameters to an existing prim.
         Apply to a Mesh to make it an emitter, or to a Material to mark it

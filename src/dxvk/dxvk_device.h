@@ -686,5 +686,11 @@ namespace dxvk {
             uint32_t                index) const;
     
   };
+
+  // NV-DXVK start: Remix native device access
+  // Non-owning. D3D9DeviceEx::m_dxvkDevice owns the device while published.
+  // Callers must serialize registration, queries, and shutdown.
+  extern DxvkDevice* g_dxvkDeviceNative;
+  // NV-DXVK end
   
 }

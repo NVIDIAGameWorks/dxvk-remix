@@ -175,5 +175,16 @@ namespace dxvk {
       DxvkHash, DxvkEq> m_raytracingPipelines;
 
   };
-  
+
 }
+
+// NV-DXVK start
+// d3d9.dll export consumed by HdRemix.dll (see GetRenderStats() in
+// nv-private/hdremix/renderDelegate.cpp).  Loaded via GetProcAddress; not
+// part of remixapi_Interface and not gated by REMIXAPI_VERSION_*.
+//
+// Returns the number of Remix shaders currently being compiled by background
+// worker threads.  0 = all shaders ready (path tracer unblocked).
+// UINT32_MAX = no Remix device registered yet (too early in initialization).
+extern "C" __declspec(dllexport) uint32_t remixinternal_GetShaderCompilationCount();
+// NV-DXVK end
