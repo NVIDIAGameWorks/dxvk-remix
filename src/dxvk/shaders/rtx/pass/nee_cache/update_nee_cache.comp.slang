@@ -43,8 +43,6 @@
 #define UPDATE_NEE_CACHE 1
 #include "rtx/algorithm/nee_cache.h"
 
-#define INVALID_ID 0xffffff
-
 #define CANDIDATE_LENGTH NEE_CACHE_ELEMENTS * 2
 #define CANDIDATE_GROUP_SIZE 16
 #define BATCH_SIZE 8
@@ -226,8 +224,8 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
     int taskID = localIndex.x;
     uint2 value = cell.getSlotTaskValue(taskID);
     int surfaceID, primitiveID;
-    uint oldRange = (value.x & 0xff000000);
-    value.x = convertToThisFramePrefixSumID(value.x & 0xffffff, surfaceID, primitiveID);
+    uint oldRange = (value.x & ~PRIMITIVE_INDEX_MAX_VALUE);
+    value.x = convertToThisFramePrefixSumID(value.x & PRIMITIVE_INDEX_MAX_VALUE, surfaceID, primitiveID);
     value.x |= oldRange;
     int delta = max(value.y * cb.neeCacheArgs.learningRate, 1);
     value.y = clamp(int(value.y) - delta, 0, 1 << 25);
@@ -264,7 +262,7 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
     {
       continue;
     }
-    value.x &= 0xffffff;
+    value.x &= PRIMITIVE_INDEX_MAX_VALUE;
     int surfaceID, primitiveID;
     value.x = convertToThisFramePrefixSumID(value.x, surfaceID, primitiveID);
     value.y = min(maxDeltaValue, value.y);
@@ -288,8 +286,8 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
       bool found = false;
       for (int j = 0; j < existingCount; ++j)
       {
-        int firstPrimitiveID = (s_candidateList[j][localIndex.y].x & 0xffffff);
-        int range = (s_candidateList[j][localIndex.y].x >> 24);
+        int firstPrimitiveID = (s_candidateList[j][localIndex.y].x & PRIMITIVE_INDEX_MAX_VALUE);
+        int range = (s_candidateList[j][localIndex.y].x >> PRIMITIVE_INDEX_BIT_COUNT);
         if (value.x >= firstPrimitiveID && value.x < firstPrimitiveID + range)
         {
           s_candidateList[j][localIndex.y].y += value.y;
@@ -300,7 +298,7 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
 
       if (!found)
       {
-        value.x = ((1 << 24) | value.x);
+        value.x = ((1 << PRIMITIVE_INDEX_BIT_COUNT) | value.x);
         insertTask(value, localIndex.y);
       }
     }
@@ -314,9 +312,9 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
   for (int i = localIndex.x; i < NEE_CACHE_HASH_TASK_COUNT && cb.neeCacheArgs.triangleExplorationProbability > 0; i += CANDIDATE_GROUP_SIZE)
   {
     uint2 data = s_candidateList[i][localIndex.y];
-    uint range = (data.x >> 24);
-    uint primitiveID = (data.x & 0xffffff);
-    uint2 newData = uint2(data.y, (primitiveID << 8) | range);
+    uint range = (data.x >> PRIMITIVE_INDEX_BIT_COUNT);
+    uint primitiveID = (data.x & PRIMITIVE_INDEX_MAX_VALUE);
+    uint2 newData = uint2(data.y, (primitiveID << NEE_RANGE_BITS) | range);
     s_candidateList[i][localIndex.y] = newData;
   }
 
@@ -335,8 +333,8 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
     for (int i = 0; i < count; i++)
     {
       uint2 data = s_candidateList[i][localIndex.y];
-      uint newRange = (data.y & 0xff);
-      uint newPrefixSumID = (data.y >> 8);
+      uint newRange = (data.y & NEE_RANGE_MAX);
+      uint newPrefixSumID = (data.y >> NEE_RANGE_BITS);
       uint newValue = data.x;
       totalValue += newValue;
     }
@@ -350,8 +348,8 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
     for (int i = 0; i < count; i++)
     {
       uint2 data = s_candidateList[i][localIndex.y];
-      uint newRange = (data.y & 0xff);
-      uint newPrefixSumID = (data.y >> 8);
+      uint newRange = (data.y & NEE_RANGE_MAX);
+      uint newPrefixSumID = (data.y >> NEE_RANGE_BITS);
       uint newValue = data.x;
 
       int newSurfaceID, newPrimitiveID;
@@ -359,7 +357,7 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
       int primitiveCount = NEECacheUtils.getSurfacePrimitiveCount(newSurfaceID, PrimitiveIDPrefixSum);
       int gab = min(cb.neeCacheArgs.triangleExplorationMaxRange, cb.neeCacheArgs.triangleExplorationRangeRatio * primitiveCount) * 
         cb.neeCacheArgs.triangleExplorationAcceptRangeRatio + 1;
-      if (newSurfaceID == oldSurfaceID && oldPrimitiveID < newPrimitiveID + newRange + gab && oldPrimitiveID + oldRange - newPrimitiveID < 255 &&
+      if (newSurfaceID == oldSurfaceID && oldPrimitiveID < newPrimitiveID + newRange + gab && oldPrimitiveID + oldRange - newPrimitiveID < NEE_RANGE_MAX &&
         oldValue + newValue < maxMergeValue)
       {
         // Merge
@@ -367,7 +365,7 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
         oldPrefixSumID = newPrefixSumID;
         oldPrimitiveID = newPrimitiveID;
         oldValue += newValue;
-        s_candidateList[oldIndex][localIndex.y] = uint2((oldRange << 24) | oldPrefixSumID, oldValue);
+        s_candidateList[oldIndex][localIndex.y] = uint2((oldRange << PRIMITIVE_INDEX_BIT_COUNT) | oldPrefixSumID, oldValue);
         newValue = 0;
         newRange = 0;
       }
@@ -382,7 +380,7 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
         oldValue = newValue;
       }
 
-      s_candidateList[i][localIndex.y] = uint2((newRange << 24) | newPrefixSumID, newValue);
+      s_candidateList[i][localIndex.y] = uint2((newRange << PRIMITIVE_INDEX_BIT_COUNT) | newPrefixSumID, newValue);
     }
   }
 
@@ -400,7 +398,7 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
   if (cb.neeCacheArgs.triangleExplorationProbability == 0.0)
   {
     uint2 task = s_candidateList[localIndex.x][localIndex.y];
-    task.x = (task.x & 0xffffff) | (1 << 24);
+    task.x = (task.x & PRIMITIVE_INDEX_MAX_VALUE) | (1 << PRIMITIVE_INDEX_BIT_COUNT);
 
     s_candidateList[localIndex.x][localIndex.y].x = task.x;
     GroupMemoryBarrierWithGroupSync();
@@ -421,8 +419,8 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
     int candidateID = localIndex.x;
     uint2 task = s_candidateList[candidateID][localIndex.y];
     int surfaceID, primitiveID;
-    NEECacheUtils.convertPrefixSumIDToID(task.x & 0xffffff, PrimitiveIDPrefixSum, surfaceID, primitiveID);
-    NEECandidate candidate = NEECandidate.create(surfaceID, primitiveID, max(1, task.x >> 24));
+    NEECacheUtils.convertPrefixSumIDToID(task.x & PRIMITIVE_INDEX_MAX_VALUE, PrimitiveIDPrefixSum, surfaceID, primitiveID);
+    NEECandidate candidate = NEECandidate.create(surfaceID, primitiveID, max(1, task.x >> PRIMITIVE_INDEX_BIT_COUNT));
 
     candidate.setSampleProbability(s_candidateLight[candidateID][localIndex.y]);
     cell.setCandidate(candidateID, candidate);
@@ -539,7 +537,7 @@ void updateLightTask(NEECell cell, uint2 localIndex)
     {
       continue;
     }
-    value.x &= 0xffffff;
+    value.x &= PRIMITIVE_INDEX_MAX_VALUE;
     value.x = convertLightIndex(value.x);
     value.y = min(maxDeltaValue, value.y);
 

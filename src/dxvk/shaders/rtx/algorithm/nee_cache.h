@@ -226,12 +226,12 @@ struct NEECandidate
 
   int getPrimitiveID()
   {
-    return m_data.y & 0xffffff;
+    return m_data.y & PRIMITIVE_INDEX_MAX_VALUE;
   }
 
   [mutating] void setPrimitiveID(int primitiveID)
   {
-    m_data.y = (m_data.y & 0xff000000) | primitiveID;
+    m_data.y = (m_data.y & ~PRIMITIVE_INDEX_MAX_VALUE) | primitiveID;
   }
 
   uint2 getIDData()
@@ -253,12 +253,12 @@ struct NEECandidate
 
   int getRange()
   {
-    return (m_data.y >> 24) & 0xff;
+    return (m_data.y >> PRIMITIVE_INDEX_BIT_COUNT) & NEE_RANGE_MAX;
   }
 
   [mutating] void setRange(uint range)
   {
-    m_data.y = (m_data.y & 0xffffff) | (range << 24);
+    m_data.y = (m_data.y & PRIMITIVE_INDEX_MAX_VALUE) | (range << PRIMITIVE_INDEX_BIT_COUNT);
   }
 
   static NEECandidate create(uint surfaceID, uint primitiveID, uint range)
@@ -385,16 +385,19 @@ struct NEECell
 
   static bool isLightTask(uint2 value)
   {
-    return (value.x & (1 << 24)) != 0;
+    return (value.x & (1 << NEE_ISLIGHT_BIT)) != 0;
   }
 
   void insertSlotTask(uint task, vec3 radiance, bool isLightTask) {
+    if (!isLightTask && task > PRIMITIVE_INDEX_MAX_VALUE) {
+      return;
+    }
     float accumulateValue = calcBt709Luminance(radiance);
     float randomOffset = (reversebits(asuint(accumulateValue)) >> 22) / 1024.0f;
     uint index = getSlotBinHash(task + cb.frameIdx);
     int taskAddress = getHashTaskAddress(index);
     uint sortValueI = firstbithigh(uint(min(accumulateValue, 50) / 0.001));
-    task |= (sortValueI << 25) | (isLightTask ? (1 << 24) : 0);
+    task |= (sortValueI << NEE_SORT_SHIFT) | (isLightTask ? (1 << NEE_ISLIGHT_BIT) : 0);
 
     // Clamp min/max value before accumulation to improve stability.
     // The min value is required because floating point atomics is not supported on all platforms,

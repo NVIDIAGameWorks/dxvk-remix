@@ -23,7 +23,8 @@
 
 #include "rtx/concept/light/light_helper.slangh"
 #include "rtx/concept/light/light.slangh"
-#define NEE_CACHE_INVALID_ID 0xffffff
+#include "rtx/pass/instance_definitions.h"
+#define NEE_CACHE_INVALID_ID PRIMITIVE_INDEX_MAX_VALUE
 
 struct NEECacheUtils
 {
@@ -241,7 +242,7 @@ struct NEECacheUtils
     {
       trianglePdf /= float(range);
       float triangleExplorationProbability = cb.neeCacheArgs.triangleExplorationProbability;
-      if (uvw.z < triangleExplorationProbability && range < 255)
+      if (uvw.z < triangleExplorationProbability && range < NEE_RANGE_MAX)
       {
         // Sample a triangle outside the given range with a low probability to search potential emissive triangles.
         // The code here is slightly biased because we use the probability for triangles inside the range,

@@ -138,11 +138,20 @@
 
 // Engine-wide index limits.
 // SurfaceIndex: 21 bits (fits in the 24-bit instanceCustomIndex alongside 2-bit material type + 1-bit view-model flag).
-// PrimitiveIndex: 26 bits (max ~67M triangles per scene).
+// PrimitiveIndex: 27 bits (max 134M triangles per scene). Other packing constants are derived from this value.
 #define SURFACE_INDEX_BIT_COUNT       21
 #define SURFACE_INDEX_MAX_VALUE       ((1 << SURFACE_INDEX_BIT_COUNT) - 1)
-#define PRIMITIVE_INDEX_BIT_COUNT     26
+#define PRIMITIVE_INDEX_BIT_COUNT     27
 #define PRIMITIVE_INDEX_MAX_VALUE     ((1 << PRIMITIVE_INDEX_BIT_COUNT) - 1)
+
+// NEE packing constants
+// The sort key packed above this shift is limited to 32 - PRIMITIVE_INDEX_BIT_COUNT - 1 (for NEE_ISLIGHT_BIT)
+// Current max value in nee_cache.h is: firstbithigh(50 / 0.001); which requires 4 bits so with a PRIMITIVE_INDEX_BIT_COUNT
+// of 27 there is no capacity to increase the PRIMITIVE_INDEX_BIT_COUNT, only to reduce it (or change the structure)
+#define NEE_ISLIGHT_BIT               PRIMITIVE_INDEX_BIT_COUNT
+#define NEE_SORT_SHIFT                (NEE_ISLIGHT_BIT + 1)
+#define NEE_RANGE_BITS                (32 - PRIMITIVE_INDEX_BIT_COUNT)
+#define NEE_RANGE_MAX                 ((1 << NEE_RANGE_BITS) - 1)
 
 // Custom Index encoding (24-bit VkAccelerationStructureInstanceKHR.instanceCustomIndex)
 //   Bits  0..20 : surface index  (CUSTOM_INDEX_SURFACE_MASK)
