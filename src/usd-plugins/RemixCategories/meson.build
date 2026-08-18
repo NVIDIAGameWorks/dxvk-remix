@@ -1,91 +1,26 @@
-# NOTE: This needs to be updated per plugin, based on the class names defined in the schema
-plugin_classes = [
-	'RemixInstanceCategoryAPI',
-]
+# Minimal RemixCategories.dll — registers TfType for HasAPI() support.
+# Schema property definitions come from checked-in codeless resources.
 
-# Below here, things should remain the same plugin to plugin -
-
-fs = import('fs')
-plugin_name = fs.name(meson.current_source_dir())
-
-# Source layout:
-# /<plugin_name>/schema.usda
-plugin_src = meson.current_source_dir()
-schema_usda = join_paths(plugin_src, 'schema.usda')
-
-generated_files = []
-foreach class : plugin_classes
-  generated_files += 'wrap' + class + '.cpp'
-  generated_files += class + '.h'
-  generated_files += class + '.cpp'
-endforeach
-
-schema_script = join_paths(global_src_root_norm, 'scripts-common', 'generate_and_patch_schema.py')
-
-gen_and_patch = custom_target(
-  'gen_and_patch_schema_' + plugin_name,
-  input: [ schema_usda, usd_schema_plugins_python ],
-  output: [
-    'generatedSchema.usda',
-    'plugInfo.json',
-    'api.h',
-    'tokens.h',
-    'tokens.cpp',
-    'wrapTokens.cpp'
-  ] + generated_files,
-  command: [
-    usd_schema_plugins_python,
-    schema_script,
-    '--schema-usda', schema_usda,
-    '--outdir', meson.current_build_dir(),
-    '--plugin-name', plugin_name
-  ],
-  build_by_default: true,
-  console : true,    
-  env: {
-    # mirror what the script expects
-    'USD_SCHEMA_PYTHON':    usd_schema_plugins_python,
-    'USD_NVUSD_BINDIR':     usd_schema_plugins_nvusd_bindir_host,
-    'USD_LIBPYTHON_DIR':    usd_libpython_dir_host,
-    'ORIG_PATH':            orig_path,
-    'USD_NVUSD_LIBDIR':     usd_schema_plugins_nvusd_libdir_host,
-    'PXR_USD_WINDOWS_DLL_PATH': [usd_schema_plugins_nvusd_bindir_host, usd_schema_plugins_nvusd_libdir_host, usd_libpython_dir_host],
-  }
+remix_categories_plugin = shared_module(
+  'RemixCategories',
+  'remixInstanceCategoryAPI.cpp',
+  include_directories: include_directories('../' + usd_schema_plugins_nvusd_dir + '/include'),
+  dependencies: usd_schema_plugins_linklibs,
+  cpp_args: ['-DNOMINMAX', usd_schema_plugins_isdebug ? '-DTBB_USE_DEBUG=1' : '-DTBB_USE_DEBUG=0', '/Zc:inline-', '/wd4251', '/wd4275', '/wd4305', '/wd4244', '/wd4273'],
+  override_options: ['cpp_std=c++17'],
+  install: false,
 )
 
-# link_with only orders consumer linking; it does not wait for schema generation
-# before compiling consumers. Propagate api.h without exposing generated sources.
-foreach generated_file : gen_and_patch.to_list()
-  if fs.name(generated_file.full_path()) == 'api.h'
-    api_header = generated_file
-    break
-  endif
-endforeach
-
-api_header_dep = declare_dependency(sources: api_header)
-
-dep = declare_dependency(sources: gen_and_patch)
-
-# Compile the plugin shared library
-plugin_lib = shared_library(
-  plugin_name,
-  [ gen_and_patch ],
-  include_directories : [
-    usd_schema_plugins_includes,
-    '.'
-  ],
-  # The generated api.h gates its export macro on <LIBRARYNAME>_EXPORTS, where
-  # LIBRARYNAME is the uppercased 'libraryName' from schema.usda ("RemixCategories").
-  cpp_args:             [ '-DREMIXCATEGORIES_EXPORTS', usd_schema_plugins_defines, usd_schema_plugins_compilerflags ],
-  c_args:               [ '-DREMIXCATEGORIES_EXPORTS', usd_schema_plugins_defines, usd_schema_plugins_compilerflags ],
-  dependencies:         [ dep, usd_schema_plugins_linklibs],
-  override_options:     ['cpp_std=c++17'],   # USD 22.11 requires c++17,
-  install: true
+configure_file(
+  input: 'resources/plugInfo.json',
+  output: 'plugInfo.json',
+  copy: true,
+)
+configure_file(
+  input: 'resources/generatedSchema.usda',
+  output: 'generatedSchema.usda',
+  copy: true,
 )
 
-usd_plugins += plugin_lib
-usd_plugin_deps += declare_dependency(
-  dependencies: api_header_dep,
-  link_with: [ plugin_lib ]
-)
-usd_plugin_delay_load_args += '/DELAYLOAD:' + plugin_name + '.dll'
+# Also mirror the installed layout so USD can load the build-tree plugin.
+subdir('resources')

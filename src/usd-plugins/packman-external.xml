@@ -1,11 +1,8 @@
 <project toolsVersion="7.2.2">
-  <dependency name="usd_py311_debug" linkPath="./_external/usd_stock_x64/debug">
-    <package name="usd.py311.windows-x86_64.stock.debug" version="0.25.11-gl.18041+v25.11.363a7c8d" />
+  <dependency name="usd_release" linkPath="./_external/usd_stock_x64/release">
+    <package name="open_usd" version="25.11+07744417-windows-x86_64-release-nopython" />
   </dependency>
-  <dependency name="usd_py311_release" linkPath="./_external/usd_stock_x64/release">
-    <package name="usd.py311.windows-x86_64.stock.release" version="0.25.11-gl.18041+v25.11.363a7c8d" />
-  </dependency>
-  <dependency name="python311" linkPath="./_external/python311_x64">
-    <package name="python" version="3.11.10+nv1-windows-x86_64" />
+  <dependency name="usd_debug" linkPath="./_external/usd_stock_x64/debug" tags="non-redist">
+    <package name="open_usd" version="25.11+07744417-windows-x86_64-debug-nopython" />
   </dependency>
 </project>

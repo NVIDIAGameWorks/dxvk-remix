@@ -35,6 +35,10 @@
 #include "rtx_render/rtx_sparse_rendering.h"
 
 namespace dxvk {
+
+  // NV-DXVK start: Remix native device access
+  DxvkDevice* g_dxvkDeviceNative = nullptr;
+  // NV-DXVK end
   
   DxvkDevice::DxvkDevice(
     const Rc<vk::InstanceFn>&       vki,

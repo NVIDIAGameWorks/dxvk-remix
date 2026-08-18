@@ -66,8 +66,12 @@ exe = executable('test_graph_documentation',  files('test_graph_documentation.cp
 test('test_graph_documentation', exe, env: test_env, priority : -50, args: d3d9_dll.full_path())
 tests += exe
 
-exe = executable('test_remix_categories',  files('test_remix_categories.cpp'), include_directories : test_include_path, dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ d3d9_dll ] , win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
-test('test_remix_categories', exe, env: test_env, priority : -50, args: d3d9_dll.full_path())
+exe = executable('test_remix_categories', files('test_remix_categories.cpp'), dependencies : usd_dep, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_remix_categories', exe, env: test_env, args: remix_categories_plugin.full_path(), depends: remix_categories_plugin)
+tests += exe
+
+exe = executable('test_particle_system_schema', files('test_particle_system_schema.cpp'), dependencies : usd_dep, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_particle_system_schema', exe, env: test_env, args: remix_particle_system_plugin.full_path(), depends: remix_particle_system_plugin)
 tests += exe
 
 exe = executable('test_graph_usd_parser',  files('graph/test_component.h', 'graph/test_flexible_component.h', 'graph/test_flexible_component.cpp', 'test_graph_usd_parser.cpp'), 

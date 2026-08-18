@@ -30,13 +30,14 @@ dxvk-remix also contains a subproject in the `bridge` folder, which enables 32 b
 7. [Python](https://www.python.org/downloads/)
     - 3.9 or newer
     - Ensure you are using python installed from the link above and not from the Microsoft Store
+    - Python is required by developer build tooling; the packaged RTX Remix Runtime does not link against Python.
 8. [DirectX Runtime](https://www.microsoft.com/en-us/download/details.aspx?id=35)
     - Latest version should work.
     - This includes d3d9x*.dll which are required to run the game
     - May already be installed if you have D3D9 games installed
 
 #### Additional notes:
-- If any dependency paths change (i.e. new Vulkan library), run `meson --reconfigure` in _Compiler64 directory via a command prompt. This may revert some custom VS project settings
+- If dependency paths change (for example, after installing a new Vulkan SDK), reconfigure the affected build from the repository root, such as `meson setup --reconfigure _Comp64Release`.
 
 ### Generate and build dxvk-remix Visual Studio project 
 1. Clone the repository with all submodules:
@@ -54,15 +55,22 @@ dxvk-remix also contains a subproject in the `bridge` folder, which enables 32 b
     - Right Click on `dxvk-remix\build_dxvk_all_ninja.ps1` and select "Run with Powershell"
     - If that fails or has problems, run the build manually in a way you can read the errors:
         - open a windows file explorer to the `dxvk-remix` folder
-        - remove artifacts from the previous attempt by deleting all folders that start with `_`, i.e. `_vs/` and `_Comp64Debug`
+        - remove only the generated configuration that failed, such as `_Comp64Debug/`; remove `_vs/` as well only if the generated Visual Studio solution must be recreated
         - type `cmd` in the address bar to open a command line window in that folder.
         - copy and paste `powershell -command "& .\build_dxvk_all_ninja.ps1"` into the command line, then press enter
-    - This will build all 3 configurations of dxvk-remix project inside subdirectories of the build tree: 
+    - Optional flags:
+        - `-SkipApics` — skip downloading game test captures (requires auth token)
+    - Examples:
+        ```powershell
+        .\build_dxvk_all_ninja.ps1
+        .\build_dxvk_all_ninja.ps1 -SkipApics
+        ```
+    - This will build all 3 configurations of dxvk-remix project inside subdirectories of the build tree:
         - **_Comp64Debug** - full debug instrumentation, runtime speed may be slow
         - **_Comp64DebugOptimized** - partial debug instrumentation (i.e. asserts), runtime speed is generally comparable to that of release configuration
-        - **_Comp64Release** - fastest runtime 
+        - **_Comp64Release** - fastest runtime
     - This will generate a project in the **_vs** subdirectory
-    - Only x64 build targets are supported
+    - This script builds the officially supported x64 targets. ARM64 and ARM64EC configurations are compile-tested in CI but are not part of this local build workflow.
 
 5. Open **_vs/dxvk-remix.sln** in Visual Studio (2019+). 
     - Do not convert the solution on load if prompted when using a newer version of Visual Studio 
@@ -74,7 +82,12 @@ dxvk-remix also contains a subproject in the `bridge` folder, which enables 32 b
 
 2. Update paths in the **gametargets.conf** for your game. Follow example in the **gametargets.example.conf**. Make sure to remove "#" from the start of all three lines
 
-3. Open and, simply, re-save top-level **meson.build** file (i.e. via notepad) to update its time stamp, and rerun the build. This will trigger a full meson script run which will generate a project within the Visual Studio solution file and deploy built binaries into games' directories specified in **gametargets.conf**
+3. Reconfigure and rebuild each configuration you use so Meson reloads **gametargets.conf**. For example:
+    ```powershell
+    meson setup --reconfigure _Comp64Release
+    meson compile -C _Comp64Release
+    ```
+    The build deploys binaries to the game directories specified in **gametargets.conf**.
 
 ### Profiling Remix
 Remix has support for profiling using the [Tracy](https://github.com/wolfpld/tracy) tool, specifically the [v0.8 release](https://github.com/wolfpld/tracy/releases/download/v0.8/Tracy-0.8.7z)

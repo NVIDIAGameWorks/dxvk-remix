@@ -39,4 +39,5 @@
 #pragma warning(disable:4127) // conditional expression is constant
 #pragma warning(disable:4267) // because of USD headers: conversion from 'size_t' to 'type', possible loss of data
 #pragma warning(disable:4275) // boost warning
+#pragma warning(disable:4273) // USD 25.11 sdf/listOp.h: inconsistent dll linkage on SdfApplyListOrdering
 #endif

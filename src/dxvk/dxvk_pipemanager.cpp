@@ -20,6 +20,7 @@
 * DEALINGS IN THE SOFTWARE.
 */
 #include "dxvk_device.h"
+#include "dxvk_objects.h"
 #include "dxvk_pipemanager.h"
 #include "dxvk_state_cache.h"
 
@@ -153,5 +154,16 @@ namespace dxvk {
     if (m_stateCache != nullptr)
       m_stateCache->stopWorkerThreads();
   }
-  
+
 }
+
+// NV-DXVK start
+// See declaration in dxvk_pipemanager.h.
+uint32_t remixinternal_GetShaderCompilationCount() {
+  dxvk::DxvkDevice* pDevice = dxvk::g_dxvkDeviceNative;
+  if (pDevice == nullptr) {
+    return UINT32_MAX;
+  }
+  return pDevice->getCommon()->pipelineManager().remixShaderCompilationCount();
+}
+// NV-DXVK end

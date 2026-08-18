@@ -107,23 +107,11 @@ endif
 
 usd_lib_path = join_paths(global_src_root_norm, usd_debug_release_dir)
 
-if dxvk_is_woa
-  python_lib_path = join_paths(usd_lib_path, 'lib')
-  python_dll_path = python_lib_path
-  # The stock Arm64 USD package already contains the Python headers.
-  python_include_paths = []
-else
-  python_path = join_paths(global_src_root_norm, 'external/python311_x64')
-  python_lib_path = join_paths(python_path, 'libs')
-  python_dll_path = python_path
-  python_include_paths = [include_directories('../external/python311_x64/include')]
-endif
-
 # NOTE newer versions of meson prefer relative paths for include directories.
 # Prefix with ../ since these paths are resolved relative to this subdir.
 nv_usd_include_path = include_directories(join_paths('..', usd_debug_release_dir, 'include'))
 
-usd_include_paths = [nv_usd_include_path] + python_include_paths
+usd_include_paths = [nv_usd_include_path]
 
 # ============================================================================
 # RTX IO

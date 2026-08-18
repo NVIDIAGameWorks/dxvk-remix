@@ -79,8 +79,6 @@ enable_rtxio = get_option('enable_rtxio')
 
 external_dll_paths = []
 
-add_global_arguments('/wd4273', language : 'cpp')
-
 if dxvk_is_msvc
   if dxvk_is_woa
     # sse2neon requires conformant preproc
@@ -563,7 +561,6 @@ nvusd_deplibs = [
   'usd_usdSkel',
   'usd_work',
   'usd_vt',
-  'usd_python',
   'usd_plug',
   'usd_ts',
 ]
@@ -574,7 +571,6 @@ foreach ulib : nvusd_deplibs
 endforeach
 
 usd_linklibs += dxvk_compiler.find_library(get_option('buildtype') == 'debug' ? 'tbb12_debug' : 'tbb12', dirs: join_paths(usd_lib_path, 'lib'))
-usd_linklibs += dxvk_compiler.find_library('python311', dirs: python_lib_path)
 
 if dxvk_is_woa
   reflex_lib_path = join_paths(global_src_root_norm, 'external/reflex_arm64/lib')
@@ -808,10 +804,7 @@ if dxvk_is_ninja or dxvk_is_woa_ec
 
     install_data(join_paths(usd_lib_path, 'bin', get_option('buildtype') == 'debug' ? 'tbbmalloc_debug.dll' : 'tbbmalloc.dll'), install_dir : output_path, install_tag: target_suffix)
     install_data(join_paths(usd_lib_path, 'bin', get_option('buildtype') == 'debug' ? 'tbb12_debug.dll' : 'tbb12.dll'), install_dir : output_path, install_tag: target_suffix)
-    install_data(join_paths(python_dll_path, 'python311.dll'), install_dir : output_path, install_tag: target_suffix)
-    install_subdir(join_paths(usd_lib_path, 'lib/python/'), install_dir : output_path, install_tag: target_suffix)
-
-
+    # Python DLL not needed for nopy USD build
     install_data(join_paths(global_src_root_norm, 'src', 'usd-plugins', 'plugInfo.json'), install_dir : join_paths(output_path, 'usd', 'plugins'), install_tag: target_suffix) 
 
     # install USD plugins
