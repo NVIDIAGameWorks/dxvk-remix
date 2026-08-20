@@ -33,11 +33,10 @@ namespace dxvk {
     hud                   = config.getOption<std::string>("dxvk.hud", "");
 
     // NV-DXVK start: Integrate Aftermath
-    enableAftermath = config.getOption<bool>("dxvk.enableAftermath", false);
-    enableAftermathResourceTracking = config.getOption<bool>("dxvk.enableAftermathResourceTracking", false);
-    enableGpuCrashState = config.getOption<bool>("rtx.enableGpuCrashState", false);
-    enableGpuCrashStateBufferRetention =
-      config.getOption<bool>("rtx.enableGpuCrashStateBufferRetention", false);
+    enableAftermath                    = config.getOption<bool>("dxvk.enableAftermath",                   false, "DXVK_ENABLE_AFTERMATH");
+    enableAftermathResourceTracking    = config.getOption<bool>("dxvk.enableAftermathResourceTracking",   false, "DXVK_ENABLE_AFTERMATH_RESOURCE_TRACKING");
+    enableGpuCrashState                = config.getOption<bool>("rtx.enableGpuCrashState",                false, "DXVK_ENABLE_GPU_CRASH_STATE");
+    enableGpuCrashStateBufferRetention = config.getOption<bool>("rtx.enableGpuCrashStateBufferRetention", false, "DXVK_ENABLE_GPU_CRASH_STATE_BUFFER_RETENTION");
     // NV-DXVK end
 
     // NV-DXVK start: early submit heuristics for memcpy work
