@@ -79,7 +79,7 @@ void main(int2 threadIndex : SV_DispatchThreadID)
   }
 
   uvec2 remapped;
-  const bool isActive = loadPixelCoordinate(uint2(threadIndex), DirectActiveLocalPixelCoords,
+  const bool isActive = loadPixelCoordinate(uint2(threadIndex), ActiveLocalPixelCoords,
     cb.camera.resolution, cb.sparseRenderingArgs, remapped);
   int2 pixelCoordinate = int2(remapped);
 

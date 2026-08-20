@@ -94,7 +94,7 @@ bool initPixelCoordinateOnLaunch(inout uvec2 gbufferPixelCoordinate, out bool is
     return false;
   }
 
-  return loadPixelCoordinate(gbufferPixelCoordinate, IndirectActiveLocalPixelCoords,
+  return loadPixelCoordinate(gbufferPixelCoordinate, ActiveLocalPixelCoords,
                              cb.camera.resolution, cb.sparseRenderingArgs, gbufferPixelCoordinate);
 }
 

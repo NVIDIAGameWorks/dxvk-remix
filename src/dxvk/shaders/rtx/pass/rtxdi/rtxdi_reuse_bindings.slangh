@@ -86,7 +86,7 @@ layout(rg32ui, binding = RTXDI_REUSE_BINDING_SUBSURFACE_DIFFUSION_PROFILE_DATA_I
 Texture2D<uint2> SharedSubsurfaceDiffusionProfileData;
 
 layout(r16ui, binding = RTXDI_REUSE_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)
-Texture2D<uint16_t> DirectActiveLocalPixelCoords;
+Texture2D<uint16_t> ActiveLocalPixelCoords;
 
 // Inputs / Outputs
 

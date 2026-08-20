@@ -30,63 +30,34 @@
 #include "rtx/pass/nrc/nrc_utilities.slangh"
 #include "rtx/utility/noise.slangh"
 
-// Returns a deterministic [0,1) sample for thresholding per-pixel sampling rates.
-// `channel` decorrelates the threshold across signals (e.g. direct vs indirect).
-float calculatePerPixelRateThreshold(uvec2 pixelCoordinate, SparseRenderingArgs args, uint32_t frameIdx, uint32_t channel)
+// Returns a deterministic [0,1) sample for thresholding the per-pixel sampling rate.
+float calculatePerPixelRateThreshold(uvec2 pixelCoordinate, SparseRenderingArgs args, uint32_t frameIdx)
 {
   switch (args.perPixelRateNoiseSource)
   {
     default:
     case PerPixelRateNoiseSource::WhiteNoise:
     {
-      return whiteNoise(pixelCoordinate, frameIdx, channel);
+      return whiteNoise(pixelCoordinate, frameIdx, 0u);
     }
     case PerPixelRateNoiseSource::BlueNoise128x128x64x8:
     {
-      const ivec3 c = ivec3(int(pixelCoordinate.x & 127u), int(pixelCoordinate.y & 127u), int((frameIdx + channel * 17u) & 63u));
+      const ivec3 c = ivec3(int(pixelCoordinate.x & 127u), int(pixelCoordinate.y & 127u), int(frameIdx & 63u));
       return BlueNoise.Load(int4(c, 0)).r;
     }
   }
 }
 
 // Per-pixel-rate active selection given an already-computed sampling rate. Returns active==true
-// with probability ~rate via the configured per-pixel noise source. `channel` decorrelates
-// callers that gate different signals (direct vs indirect).
+// with probability ~rate via the configured per-pixel noise source.
 bool isActivePixelFromSamplingRate(
   uvec2 pixelCoordinate,
   float samplingRate,
   SparseRenderingArgs args,
-  uint32_t frameIdx,
-  uint32_t channel,
-  out float outputScale)
+  uint32_t frameIdx)
 {
-  outputScale = calculateRadianceScaleFromSamplingRate(samplingRate);
-
-  const float threshold = calculatePerPixelRateThreshold(pixelCoordinate, args, frameIdx, channel);
+  const float threshold = calculatePerPixelRateThreshold(pixelCoordinate, args, frameIdx);
   return threshold <= samplingRate;
-}
-
-static const uint32_t kSparseSignalChannelDirect = 0u;
-static const uint32_t kSparseSignalChannelIndirect = 1u;
-
-bool isActivePixelForDirect(
-  uvec2 pixelCoordinate,
-  float directSamplingRate,
-  SparseRenderingArgs args,
-  uint32_t frameIdx,
-  out float outputScale)
-{
-  return isActivePixelFromSamplingRate(pixelCoordinate, directSamplingRate, args, frameIdx, kSparseSignalChannelDirect, outputScale);
-}
-
-bool isActivePixelForIndirect(
-  uvec2 pixelCoordinate,
-  float indirectSamplingRate,
-  SparseRenderingArgs args,
-  uint32_t frameIdx,
-  out float outputScale)
-{
-  return isActivePixelFromSamplingRate(pixelCoordinate, indirectSamplingRate, args, frameIdx, kSparseSignalChannelIndirect, outputScale);
 }
 
 // Returns true when the pixel lies on the NRC training grid and should therefore be forced

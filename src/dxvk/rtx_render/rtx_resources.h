@@ -294,14 +294,9 @@ namespace dxvk
       AliasedResource m_indirectRadianceHitDistance;
       AliasedResource m_rayReconstructionHitDistance;
       Resource m_rayReconstructionParticleBuffer;
-      Resource m_sparseRenderingDirectActivePixelMask;
-      Resource m_sparseRenderingIndirectActivePixelMask;
-      Resource m_sparseRenderingUnionActivePixelMask;
-      Resource m_sparseRenderingDirectPixelSamplingRate;
-      Resource m_sparseRenderingIndirectPixelSamplingRate;
-      Resource m_sparseRenderingDirectActiveLocalPixelCoords;
-      Resource m_sparseRenderingIndirectActiveLocalPixelCoords;
-      Resource m_sparseRenderingUnionActiveLocalPixelCoords;
+      Resource m_sparseRenderingActivePixelMask;
+      Resource m_sparseRenderingPixelSamplingRate;
+      Resource m_sparseRenderingActiveLocalPixelCoords;
 
       AliasedResource m_primaryDirectDiffuseRadiance;
       AliasedResource m_primaryDirectSpecularRadiance;

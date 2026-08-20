@@ -56,7 +56,7 @@ layout(r16ui, binding = NRC_RESOLVE_BINDING_SHARED_FLAGS_INPUT)
 Texture2D<uint16_t> SharedFlags;
 
 layout(binding = NRC_RESOLVE_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)
-Texture2D<uint16_t> IndirectActiveLocalPixelCoords;
+Texture2D<uint16_t> ActiveLocalPixelCoords;
 
 // Inputs / Outputs
 
@@ -343,7 +343,7 @@ void main(uint2 threadIndex: SV_DispatchThreadID)
   }
 
   uvec2 pixelCoordinate;
-  const bool pixelIsActive = loadPixelCoordinate(threadIndex, IndirectActiveLocalPixelCoords,
+  const bool pixelIsActive = loadPixelCoordinate(threadIndex, ActiveLocalPixelCoords,
                                                  cb.camera.resolution, cb.sparseRenderingArgs, pixelCoordinate);
 
   if (push.resolveMode != NrcResolveMode::AddQueryResultToOutput)

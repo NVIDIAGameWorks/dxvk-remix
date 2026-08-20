@@ -56,7 +56,6 @@ namespace dxvk {
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DATA_INPUT)
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT)
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)
-        TEXTURE2D(INTEGRATE_DIRECT_BINDING_SPARSE_RENDERING_INDIRECT_ACTIVE_PIXEL_MASK_INPUT)
 
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT)
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_INPUT)
@@ -158,8 +157,7 @@ namespace dxvk {
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DATA_INPUT, rtOutput.m_sharedSubsurfaceData.view, nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT, rtOutput.m_sharedSubsurfaceDiffusionProfileData.view, nullptr);
-    ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT, rtOutput.m_sparseRenderingDirectActiveLocalPixelCoords.view, nullptr);
-    ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SPARSE_RENDERING_INDIRECT_ACTIVE_PIXEL_MASK_INPUT, rtOutput.m_sparseRenderingIndirectActivePixelMask.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT, rtOutput.m_sparseRenderingActiveLocalPixelCoords.view, nullptr);
 
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_primaryWorldShadingNormal.view, nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_INPUT, rtOutput.m_primaryPerceptualRoughness.view, nullptr);

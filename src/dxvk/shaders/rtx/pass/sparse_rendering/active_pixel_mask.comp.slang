@@ -26,22 +26,13 @@
 
 // Inputs
 
-layout(binding = ACTIVE_PIXEL_MASK_BINDING_DIRECT_PIXEL_SAMPLING_RATE_INPUT)
-Texture2D<float> DirectPixelSamplingRate;
-
-layout(binding = ACTIVE_PIXEL_MASK_BINDING_INDIRECT_PIXEL_SAMPLING_RATE_INPUT)
-Texture2D<float> IndirectPixelSamplingRate;
+layout(binding = ACTIVE_PIXEL_MASK_BINDING_PIXEL_SAMPLING_RATE_INPUT)
+Texture2D<float> PixelSamplingRate;
 
 // Outputs
 
-layout(binding = ACTIVE_PIXEL_MASK_BINDING_DIRECT_ACTIVE_PIXEL_MASK_OUTPUT)
-RWTexture2D<uint> DirectActivePixelMask;
-
-layout(binding = ACTIVE_PIXEL_MASK_BINDING_INDIRECT_ACTIVE_PIXEL_MASK_OUTPUT)
-RWTexture2D<uint> IndirectActivePixelMask;
-
-layout(binding = ACTIVE_PIXEL_MASK_BINDING_UNION_ACTIVE_PIXEL_MASK_OUTPUT)
-RWTexture2D<uint> UnionActivePixelMask;
+layout(binding = ACTIVE_PIXEL_MASK_BINDING_ACTIVE_PIXEL_MASK_OUTPUT)
+RWTexture2D<uint> ActivePixelMask;
 
 [shader("compute")]
 [numthreads(ACTIVE_PIXEL_MASK_THREADGROUP_SIZE_WIDTH, ACTIVE_PIXEL_MASK_THREADGROUP_SIZE_HEIGHT, 1)]
@@ -58,34 +49,27 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 
   const uvec2 basePixelCoordinate = maskCoordinate * uvec2(ACTIVE_PIXEL_MASK_BLOCK_WIDTH, ACTIVE_PIXEL_MASK_BLOCK_HEIGHT);
 
-  uint directMask = 0;
-  uint indirectMask = 0;
-  uint unionMask = 0;
+  uint activeMask = 0;
 
+  [unroll]
   for (uint y = 0; y < ACTIVE_PIXEL_MASK_BLOCK_HEIGHT; ++y)
   {
+    [unroll]
     for (uint x = 0; x < ACTIVE_PIXEL_MASK_BLOCK_WIDTH; ++x)
     {
       const uvec2 pixelCoordinate = basePixelCoordinate + uvec2(x, y);
       const bool inBounds = all(pixelCoordinate < cb.camera.resolution);
 
-      bool directActive = false;
-      bool indirectActive = false;
+      bool active = false;
       if (inBounds)
       {
-        float unusedScale = 1.f;
-        directActive = isActivePixelForDirect(pixelCoordinate, DirectPixelSamplingRate[pixelCoordinate], cb.sparseRenderingArgs, cb.frameIdx, unusedScale);
-        indirectActive = isActivePixelForIndirect(pixelCoordinate, IndirectPixelSamplingRate[pixelCoordinate], cb.sparseRenderingArgs, cb.frameIdx, unusedScale);
+        active = isActivePixelFromSamplingRate(pixelCoordinate, PixelSamplingRate[pixelCoordinate], cb.sparseRenderingArgs, cb.frameIdx);
       }
 
       const uint bitIndex = y * ACTIVE_PIXEL_MASK_BLOCK_WIDTH + x;
-      directMask |= directActive << bitIndex;
-      indirectMask |= indirectActive << bitIndex;
-      unionMask |= (directActive || indirectActive) << bitIndex;
+      activeMask |= active << bitIndex;
     }
   }
 
-  DirectActivePixelMask[maskCoordinate] = directMask;
-  IndirectActivePixelMask[maskCoordinate] = indirectMask;
-  UnionActivePixelMask[maskCoordinate] = unionMask;
+  ActivePixelMask[maskCoordinate] = activeMask;
 }
