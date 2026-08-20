@@ -6,8 +6,8 @@
 
 namespace dxvk {
   struct MemoryTrackerSettings {
-    RTX_OPTION_FLAG("rtx.profiler.memory", bool, enable, false, RtxOptionFlags::NoSave, "Enables the memory profiler which allows users to inspect Remix resources using the profiler tool in the Dev Settings Remix window.  This option is disabled by default, and must be enabled from application launch to work correctly.");
-    RTX_OPTION_FLAG("rtx.profiler.memory", bool, includeWholeFrame, false, RtxOptionFlags::NoSave, "Profiles memory across the entire frame when enabled.  When disabled we only see a snapshot of memory at the time of sampling.  This has some additional CPU performance overhead so is disabled by default.");
+    RTX_OPTION_FLAG_ENV("rtx.profiler.memory", bool, enable, false, RtxOptionFlags::NoSave, "RTX_PROFILER_MEMORY_ENABLE", "Enables the memory profiler which allows users to inspect Remix resources using the profiler tool in the Dev Settings Remix window.  This option is disabled by default, and must be enabled from application launch to work correctly.");
+    RTX_OPTION_FLAG_ENV("rtx.profiler.memory", bool, includeWholeFrame, false, RtxOptionFlags::NoSave, "RTX_PROFILER_MEMORY_INCLUDE_WHOLE_FRAME", "Profiles memory across the entire frame when enabled.  When disabled we only see a snapshot of memory at the time of sampling.  This has some additional CPU performance overhead so is disabled by default.");
   };
 
   // If src is longer than (N-2), the last three characters of the copied
@@ -179,7 +179,7 @@ namespace dxvk {
       ImGui::TextWrapped("This is a tool to help diagnose memory related problems in Remix.  Press the `Sample Memory` button to take a snapshot of all the memory allocations currently in use by the application.  You can refresh this list at any time by clicking that button.  Once you have a snapshot, the data will be displayed as a list below.");
 
       if (!MemoryTrackerSettings::enable()) {
-        ImGui::TextWrapped("Memory profiler is disabled.  Please enable in the rtx.conf with `rtx.profiler.memory.enable = True`.");
+        ImGui::TextWrapped("Memory profiler is disabled.  Please enable in the rtx.conf with `rtx.profiler.memory.enable = True` or with `RTX_PROFILER_MEMORY_ENABLE = 1` environment variable");
         return;
       }
 
