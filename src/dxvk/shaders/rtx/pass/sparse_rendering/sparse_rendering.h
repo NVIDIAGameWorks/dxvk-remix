@@ -41,20 +41,16 @@ struct SparseRenderingArgs
 
   SparseRenderingMode mode;
   PerPixelRateNoiseSource perPixelRateNoiseSource;
-  float directPixelSamplingRate;
-  float indirectPixelSamplingRate;
-
+  float pixelSamplingRate;
   uint forceNrcTrainingPixelsActive;
+
   uint enableSparsePrimaryRayMissComposition;
   uint enableSparseSecondaryLighting;
   uint enableRtxdiReuseForInactivePixels;
-
   uint enableSparseVolumetricsPrimaryHit;
+
   uint enableSparseVolumetricsPrimaryMiss;
   uint enableSparsePrimarySpecularAlbedo;
-  uint pad0;
-
   // Dimensions of the active-pixel mask buffer in mask elements (ceil(resolution / blockSize)).
   uvec2 activePixelMaskExtent;
-  uvec2 pad1;
 };

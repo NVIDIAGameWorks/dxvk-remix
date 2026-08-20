@@ -49,7 +49,7 @@ layout(rg32ui, binding = INTEGRATE_NEE_BINDING_SHARED_SUBSURFACE_DIFFUSION_PROFI
 Texture2D<uint2> SharedSubsurfaceDiffusionProfileData;
 
 layout(binding = INTEGRATE_NEE_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)
-Texture2D<uint16_t> IndirectActiveLocalPixelCoords;
+Texture2D<uint16_t> ActiveLocalPixelCoords;
 
 // Primary Inputs
 

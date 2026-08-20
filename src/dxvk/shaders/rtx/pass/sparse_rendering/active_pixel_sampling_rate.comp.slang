@@ -25,8 +25,8 @@
 #include "rtx/pass/sparse_rendering/per_pixel_rate.slangh"
 #include "rtx/utility/geometry_flags.slangh"
 
-// Returns the per-pixel direct-lighting sampling rate in [0,1] for the active sparse rendering mode.
-float calculateDirectPixelSamplingRate(uvec2 pixelCoordinate, SparseRenderingArgs args)
+// Returns the per-pixel sampling rate in [0,1] for the active sparse rendering mode.
+float calculatePixelSamplingRate(uvec2 pixelCoordinate, SparseRenderingArgs args)
 {
   switch (args.mode)
   {
@@ -35,21 +35,7 @@ float calculateDirectPixelSamplingRate(uvec2 pixelCoordinate, SparseRenderingArg
       return 1.f;
 
     case SparseRenderingMode::Uniform:
-      return args.directPixelSamplingRate;
-  }
-}
-
-// Returns the per-pixel indirect-lighting sampling rate in [0,1] for the active sparse rendering mode.
-float calculateIndirectPixelSamplingRate(uvec2 pixelCoordinate, SparseRenderingArgs args)
-{
-  switch (args.mode)
-  {
-    default:
-    case SparseRenderingMode::Off:
-      return 1.f;
-
-    case SparseRenderingMode::Uniform:
-      return args.indirectPixelSamplingRate;
+      return args.pixelSamplingRate;
   }
 }
 
@@ -60,11 +46,8 @@ Texture2D<uint16_t> SharedFlags;
 
 // Outputs
 
-layout(r8, binding = ACTIVE_PIXEL_MASK_BINDING_DIRECT_PIXEL_SAMPLING_RATE_OUTPUT)
-RWTexture2D<float> DirectPixelSamplingRate;
-
-layout(r8, binding = ACTIVE_PIXEL_MASK_BINDING_INDIRECT_PIXEL_SAMPLING_RATE_OUTPUT)
-RWTexture2D<float> IndirectPixelSamplingRate;
+layout(r8, binding = ACTIVE_PIXEL_MASK_BINDING_PIXEL_SAMPLING_RATE_OUTPUT)
+RWTexture2D<float> PixelSamplingRate;
 
 [shader("compute")]
 [numthreads(ACTIVE_PIXEL_MASK_THREADGROUP_SIZE_WIDTH, ACTIVE_PIXEL_MASK_THREADGROUP_SIZE_HEIGHT, 1)]
@@ -76,8 +59,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     return;
   }
 
-  float directRate = 1.f;
-  float indirectRate = 1.f;
+  float rate = 1.f;
 
   // When secondary surfaces are not sparsely lit, force pixels whose selected integration
   // surface is the secondary surface to full rate when enabled
@@ -93,8 +75,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
   // Calculate sampling rate for the inactive ones
   if (!isSecondaryFullRate && !isForcedNrcTrainingPixel)
   {
-    directRate = calculateDirectPixelSamplingRate(pixelCoordinate, cb.sparseRenderingArgs);
-    indirectRate = calculateIndirectPixelSamplingRate(pixelCoordinate, cb.sparseRenderingArgs);
+    rate = calculatePixelSamplingRate(pixelCoordinate, cb.sparseRenderingArgs);
   }
 
   // The rate is stored in an R8_UNORM texture (8-bit / 256 levels). Hardware UNORM
@@ -102,9 +83,5 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
   // value seen by every consumer is as intended, keeping the per-pixel sampling rate used for sample
   // drawing in sync with the scale used for radiance reconstruction.
   const float kQuantum = 1.0f / 255.0f;
-  const float quantizedDirectRate = round(clamp(directRate, 0.0f, 1.0f) * 255.0f) * kQuantum;
-  const float quantizedIndirectRate = round(clamp(indirectRate, 0.0f, 1.0f) * 255.0f) * kQuantum;
-
-  DirectPixelSamplingRate[pixelCoordinate] = quantizedDirectRate;
-  IndirectPixelSamplingRate[pixelCoordinate] = quantizedIndirectRate;
+  PixelSamplingRate[pixelCoordinate] = round(clamp(rate, 0.0f, 1.0f) * 255.0f) * kQuantum;
 }

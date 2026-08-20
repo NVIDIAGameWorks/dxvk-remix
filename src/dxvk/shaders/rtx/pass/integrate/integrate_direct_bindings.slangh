@@ -54,10 +54,7 @@ Texture2D<uint2> SharedSubsurfaceData;
 Texture2D<uint2> SharedSubsurfaceDiffusionProfileData;
 
 [[vk::binding(INTEGRATE_DIRECT_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)]]
-Texture2D<uint16_t> DirectActiveLocalPixelCoords;
-
-[[vk::binding(INTEGRATE_DIRECT_BINDING_SPARSE_RENDERING_INDIRECT_ACTIVE_PIXEL_MASK_INPUT)]]
-Texture2D<uint> SparseRenderingIndirectActivePixelMask;
+Texture2D<uint16_t> ActiveLocalPixelCoords;
 
 // Shared Inputs/Outputs
 

@@ -86,7 +86,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   }
 
   uvec2 pixelCoordinate;
-  if (!loadPixelCoordinate(threadIndex, IndirectActiveLocalPixelCoords,
+  if (!loadPixelCoordinate(threadIndex, ActiveLocalPixelCoords,
                            cb.camera.resolution, cb.sparseRenderingArgs, pixelCoordinate))
   {
     return;

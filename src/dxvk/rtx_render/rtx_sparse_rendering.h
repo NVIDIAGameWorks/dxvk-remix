@@ -47,25 +47,36 @@ namespace dxvk {
         "WhiteNoise (0): wangHash ~ white-noise.\n"
         "BlueNoise128x128x64x8 (1): 8 bit 128x128 blue-noise 64 frame length.");
 
-      RTX_OPTION_ARGS("rtx.sparseRendering", float, directLightingSamplingRate, 1.0f,
-        "Per-pixel sampling rate for primary direct lighting (RTXDI + integrate_direct).\n"
+      RTX_OPTION_ARGS("rtx.sparseRendering", float, samplingRate, 1.0f,
+        "Per-pixel sampling rate shared by primary direct and indirect lighting.\n"
         "Lower values boost performance at the cost of image detail and temporal stability.\n"
         "Range [0.0625, 1.0]. Rates below ~0.2 tend to look bad and yield diminishing perf returns.",
-        args.environment = "RTX_SPARSE_RENDERING_DIRECT_LIGHTING_SAMPLING_RATE",
+        args.environment = "RTX_SPARSE_RENDERING_SAMPLING_RATE",
         // 1/255 is the absolute minimum, but 1/16 is a more reasonable lower bound for image quality. Even 1/16 will show temporal instabilities but tends to not be catastrophic.
         // Second, there are diminishing returns on performance with lower rates so aggressive rates don't provide much more performance but can cause very bad image quality.
         args.minValue = 1.0f / 16.0f,
         args.maxValue = 1.0f);
 
-      RTX_OPTION_ARGS("rtx.sparseRendering", float, indirectLightingSamplingRate, 1.0f,
-        "Per-pixel sampling rate for primary indirect lighting (integrate_indirect, integrate_nee, NRC resolve).\n"
-        "Lower values boost performance at the cost of image detail and temporal stability.\n"
-        "Range [0.0625, 1.0]. Rates below ~0.2 tend to look bad and yield diminishing perf returns.",
-        args.environment = "RTX_SPARSE_RENDERING_INDIRECT_LIGHTING_SAMPLING_RATE",
-        // 1/255 is the absolute minimum, but 1/16 is a more reasonable lower bound for image quality. Even 1/16 will show temporal instabilities but has been tested to not be not catastrophic.
-        // Second, there are diminishing returns on performance with lower rates so aggressive rates don't provide much more performance but can cause very bad image quality.
+      // Deprecated per-signal rates - these are migrated to samplingRate via an onChange callback.
+      static void deprecatedSamplingRateOnChange(DxvkDevice* device);
+      RTX_OPTION_ARGS("rtx.sparseRendering", float, directLightingSamplingRate, 1.0f,
+        "Warning: This option is deprecated, please use rtx.sparseRendering.samplingRate instead.\n"
+        "Direct and indirect lighting use a single shared rate. A value set here migrates to that option unless it\n"
+        "already holds a value from the same config, which is left as it is.",
+        args.environment = "RTX_SPARSE_RENDERING_DIRECT_LIGHTING_SAMPLING_RATE",
         args.minValue = 1.0f / 16.0f,
-        args.maxValue = 1.0f);
+        args.maxValue = 1.0f,
+        args.onChangeCallback = &deprecatedSamplingRateOnChange);
+
+      RTX_OPTION_ARGS("rtx.sparseRendering", float, indirectLightingSamplingRate, 1.0f,
+        "Warning: This option is deprecated, please use rtx.sparseRendering.samplingRate instead.\n"
+        "Direct and indirect lighting use a single shared rate. A value set here migrates to that option unless it\n"
+        "already holds a value from the same config, which is left as it is - including one migrated from\n"
+        "rtx.sparseRendering.directLightingSamplingRate, which takes precedence when both are set.",
+        args.environment = "RTX_SPARSE_RENDERING_INDIRECT_LIGHTING_SAMPLING_RATE",
+        args.minValue = 1.0f / 16.0f,
+        args.maxValue = 1.0f,
+        args.onChangeCallback = &deprecatedSamplingRateOnChange);
 
       RTX_OPTION("rtx.sparseRendering", bool, enableSparsePrimaryRayMissComposition, false,
         "When enabled, primary miss pixels (sky) use sparse rendering.\n"

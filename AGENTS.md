@@ -43,6 +43,7 @@ Full guide: `documentation/CONTRIBUTING-style-guide.md`
 - **Includes**: Standard library first, then third-party, then local. Separate groups with blank lines.
 - **Memory**: Prefer smart pointers (`std::unique_ptr`, `std::shared_ptr`). Use `Rc<T>` for GPU resources.
 - **Profiling**: Use `ScopedCpuProfileZone()` / `ScopedGpuProfileZone(ctx, "name")` for performance-critical code.
+- **Comments**: Describe the code as it is now. Do not write comments that contrast the current state with a previous one, or that explain a change rather than the code — wording like "now shared", "no longer", "instead of", "unified" and similar reads as a changelog entry, and it goes stale as soon as the next change lands. A reader has the code in front of them, not its history; put the rationale for a change in the commit message or MR description, not in the source.
 
 ### Changes to Core DXVK Files (Applies to code files outside of `rtx_render`)
 

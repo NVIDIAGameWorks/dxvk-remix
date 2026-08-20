@@ -593,9 +593,7 @@ PrimaryDemodulationSignals demodulatePrimaryPath(
   uvec2 localIndex,
   GeometryFlags geometryFlags,
   CameraDirections primaryRayDirections,
-  bool isPixelActive,
-  bool isDirectActive,
-  bool isIndirectActive)
+  bool isPixelActive)
 {
   PrimaryDemodulationSignals primarySignals = makeEmptyPrimaryDemodulationSignals();
 
@@ -638,46 +636,40 @@ PrimaryDemodulationSignals demodulatePrimaryPath(
   // If rtxdi and restir gi are enabled, the primary surface input is dense and demodulation can always be enabled.
   const bool primaryInputValid =
     (cb.enableRtxdi && cb.enableReSTIRGI) || geometryFlags.primarySelectedIntegrationSurface;
-  const bool demodulatePrimaryDirectInput = primaryInputValid && isDirectActive;
-  const bool demodulatePrimaryIndirectInput = primaryInputValid && isIndirectActive;
+  const bool demodulatePrimaryInput = primaryInputValid && isPixelActive;
 
-  if (demodulatePrimaryDirectInput)
+  if (demodulatePrimaryInput)
   {
     primarySignals.directDiffuseInput = PrimaryDirectDiffuseRadiance[pixelCoordinate];
     primarySignals.directSpecularInput = PrimaryDirectSpecularRadiance[pixelCoordinate];
-  }
-
-  if (demodulatePrimaryIndirectInput)
-  {
     primarySignals.indirectDiffuseInput = PrimaryIndirectDiffuseRadiance[pixelCoordinate];
     primarySignals.indirectSpecularInput = PrimaryIndirectSpecularRadiance[pixelCoordinate];
   }
 
-  // Pre-scale per-lobe radiance by the inverse of its own sparse-rendering sampling rate so
+  // Pre-scale per-lobe radiance by the inverse of the sparse-rendering sampling rate so
   // every downstream stage (boiling filter, NRD packing, combined-mode merge, denoiser) sees an
   // unbiased estimate without needing further scale logic. HitT stays unscaled.
   if (cb.sparseRenderingArgs.mode != SparseRenderingMode::Off)
   {
-    const float directRadianceScale = calculateRadianceScaleFromSamplingRate(SparseRenderingDirectPixelSamplingRate[pixelCoordinate]);
-    const float indirectRadianceScale = calculateRadianceScaleFromSamplingRate(SparseRenderingIndirectPixelSamplingRate[pixelCoordinate]);
-    primarySignals.directDiffuseInput.xyz *= directRadianceScale;
-    primarySignals.directSpecularInput.xyz *= directRadianceScale;
-    primarySignals.indirectDiffuseInput.xyz *= indirectRadianceScale;
-    primarySignals.indirectSpecularInput.xyz *= indirectRadianceScale;
+    const float radianceScale = calculateRadianceScaleFromSamplingRate(SparseRenderingPixelSamplingRate[pixelCoordinate]);
+    primarySignals.directDiffuseInput.xyz *= radianceScale;
+    primarySignals.directSpecularInput.xyz *= radianceScale;
+    primarySignals.indirectDiffuseInput.xyz *= radianceScale;
+    primarySignals.indirectSpecularInput.xyz *= radianceScale;
   }
 
   // Overwrite the direct specular HitT with the indirect specular HitT. The denoiser uses HitT
   // mostly for calculating motion vectors for reflections; the indirect specular HitT is always
   // from rays traced in the specular lobe, while the direct HitT often reflects the distance
   // to a NEE-selected light that may not be in the specular lobe.
-  if (cb.enableReplaceDirectSpecularHitTWithIndirectSpecularHitT && cb.enableSecondaryBounces && demodulatePrimaryIndirectInput)
+  if (cb.enableReplaceDirectSpecularHitTWithIndirectSpecularHitT && cb.enableSecondaryBounces && demodulatePrimaryInput)
   {
     primarySignals.directSpecularInput.a = primarySignals.indirectSpecularInput.a;
   }
 
   // Luminance-weighted mix of direct and indirect HitT for the diffuse channel — sharper shadows
   // without losing too much spatial detail. Only relevant when separated denoisers are off.
-  if (!cb.enableSeparatedDenoisers && demodulatePrimaryIndirectInput)
+  if (!cb.enableSeparatedDenoisers && demodulatePrimaryInput)
   {
     const float primaryDirectDiffuseLuminance = calcBt709Luminance(primarySignals.directDiffuseInput.rgb);
     const float primaryIndirectDiffuseLuminance = calcBt709Luminance(primarySignals.indirectDiffuseInput.rgb);
@@ -690,7 +682,7 @@ PrimaryDemodulationSignals demodulatePrimaryPath(
     primarySignals.directDiffuseInput.a = mix(primarySignals.indirectDiffuseInput.a, primarySignals.directDiffuseInput.a, directHitTContribution);
   }
 
-  if (demodulatePrimaryDirectInput)
+  if (demodulatePrimaryInput)
   {
     demodulate(
       cb.primaryDirectNrd, primaryDemodulationData,
@@ -702,10 +694,7 @@ PrimaryDemodulationSignals demodulatePrimaryPath(
       applyDirectLightBoilingFilter(localIndex, primaryLinearViewZ, primaryVirtualWorldNormal,
         primarySignals.directDiffuseOutput.xyz, primarySignals.directSpecularOutput.xyz);
     }
-  }
 
-  if (demodulatePrimaryIndirectInput)
-  {
     demodulate(
       cb.primaryIndirectNrd, primaryDemodulationData,
       primarySignals.indirectDiffuseInput, primarySignals.indirectSpecularInput,
@@ -713,8 +702,8 @@ PrimaryDemodulationSignals demodulatePrimaryPath(
   }
 
   // If separate denoisers are disabled, combine direct and indirect radiance signals here.
-  // Composite gates primary direct/indirect reads with the per-signal active masks, so skip the
-  // writes for inactive pixels — they would never be read.
+  // Composite gates primary reads with the active mask, so skip the writes for inactive
+  // pixels — they would never be read.
   if (primaryInputValid && !cb.enableSeparatedDenoisers)
   {
     primarySignals.directDiffuseOutput.xyz += primarySignals.indirectDiffuseOutput.xyz;
@@ -724,18 +713,19 @@ PrimaryDemodulationSignals demodulatePrimaryPath(
     PrimaryDirectSpecularRadiance[pixelCoordinate] = primarySignals.directSpecularOutput;
   }
 
-  // Composite gates primary direct/indirect reads with the per-signal active masks, so skip the
-  // writes for inactive pixels — they would never be read.
-    if (isDirectActive)
-    {
-      PrimaryDirectDiffuseRadiance[pixelCoordinate] = primarySignals.directDiffuseOutput;
-      PrimaryDirectSpecularRadiance[pixelCoordinate] = primarySignals.directSpecularOutput;
-    }
-    if (cb.enableSeparatedDenoisers && isIndirectActive)
+  // Composite gates primary reads with the active mask, so skip the writes for
+  // inactive pixels — they would never be read.
+  if (isPixelActive)
+  {
+    PrimaryDirectDiffuseRadiance[pixelCoordinate] = primarySignals.directDiffuseOutput;
+    PrimaryDirectSpecularRadiance[pixelCoordinate] = primarySignals.directSpecularOutput;
+
+    if (cb.enableSeparatedDenoisers)
     {
       PrimaryIndirectDiffuseRadiance[pixelCoordinate] = primarySignals.indirectDiffuseOutput;
       PrimaryIndirectSpecularRadiance[pixelCoordinate] = primarySignals.indirectSpecularOutput;
     }
+  }
 
   return primarySignals;
 }
@@ -865,14 +855,11 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   }
 
   uvec2 pixelCoordinate = threadIndex;
-  bool isDirectActive = true;
-  bool isIndirectActive = true;
+  bool isPixelActive = true;
   if (cb.sparseRenderingArgs.mode != SparseRenderingMode::Off)
   {
-    isDirectActive = isActivePixelFromMask(SparseRenderingDirectActivePixelMask, pixelCoordinate);
-    isIndirectActive = isActivePixelFromMask(SparseRenderingIndirectActivePixelMask, pixelCoordinate);
+    isPixelActive = isActivePixelFromMask(SparseRenderingActivePixelMask, pixelCoordinate);
   }
-  const bool isPixelActive = isDirectActive || isIndirectActive;
 
   const CameraDirections primaryRayDirections = cameraPixelCoordinateToDirection(cb.camera, pixelCoordinate);
   const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixelCoordinate, SharedFlags);
@@ -882,8 +869,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
 
   // Primary surface
   PrimaryDemodulationSignals primarySignals = demodulatePrimaryPath(
-    pixelCoordinate, localIndex, geometryFlags, primaryRayDirections,
-    isPixelActive, isDirectActive, isIndirectActive);
+    pixelCoordinate, localIndex, geometryFlags, primaryRayDirections, isPixelActive);
 
   // Secondary surface - runs on every PSR pixel regardless of sparse active state so the secondary signal stays dense
   SecondaryDemodulationSignals secondarySignals = demodulateSecondaryPath(

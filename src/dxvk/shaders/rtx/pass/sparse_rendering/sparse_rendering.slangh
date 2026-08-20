@@ -36,17 +36,6 @@ bool isActivePixelFromMask(Texture2D<uint> ActivePixelMask, uvec2 pixelCoordinat
   return ((maskValue >> bitIndex) & 1) != 0;
 }
 
-// Expects: input pixelCoordinate is within the ray tracing resolution
-bool isActivePixelFromMask(SparseRenderingArgs args, Texture2D<uint> ActivePixelMask, uvec2 pixelCoordinate)
-{
-  if (args.mode == SparseRenderingMode::Off)
-  {
-    return true;
-  }
-
-  return isActivePixelFromMask(ActivePixelMask, pixelCoordinate);
-}
-
 // Returns the radiance scale (inverse sampling rate) corresponding to a per-pixel
 // sampling rate sample read from the SparseRendering pixel-sampling-rate texture.
 // Storage is R8_UNORM clamped to [0, 1] at the write site, so only the lower bound

@@ -61,7 +61,7 @@ layout(rgba16f, binding = INTEGRATE_INDIRECT_BINDING_THROUGHPUT_CONE_RADIUS_INPU
 Texture2D<float4> ThroughputConeRadius;      
 
 layout(binding = INTEGRATE_INDIRECT_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)
-Texture2D<uint16_t> IndirectActiveLocalPixelCoords;
+Texture2D<uint16_t> ActiveLocalPixelCoords;
 
 // Note: Needed for RTXDI sample stealing.
 layout(rgba32f, binding = INTEGRATE_INDIRECT_BINDING_PRIMARY_WORLD_POSITION_INPUT)

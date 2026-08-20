@@ -85,17 +85,11 @@ void integrate_direct_pass(uvec2 threadIndex)
 
   uvec2 pixelCoordinate = threadIndex;
 
-  // Pixels inactive in direct sparse rendering may still need their indirect ray path
-  // sample prepared here (the indirect pass relies on data produced by
-  // sampleAndStoreIndirectRayPathSample). For those, run only the indirect-prep path
-  // and early-exit before performing direct lighting work.
-  const bool isDirectActive = loadPixelCoordinate(
-    threadIndex, DirectActiveLocalPixelCoords,
+  const bool isPixelActive = loadPixelCoordinate(
+    threadIndex, ActiveLocalPixelCoords,
     cb.camera.resolution, cb.sparseRenderingArgs, pixelCoordinate);
 
-  const bool isIndirectActive = isActivePixelFromMask(cb.sparseRenderingArgs, SparseRenderingIndirectActivePixelMask, pixelCoordinate);
-
-  if (!isDirectActive && !isIndirectActive)
+  if (!isPixelActive)
   {
     return;
   }
@@ -113,19 +107,16 @@ void integrate_direct_pass(uvec2 threadIndex)
   // Note: This should hopefully prevent any weird undefined data from bleeding into pixels actually being denoised, but
   // may not be needed depending on how the denoiser works.
 
-  if (isDirectActive)
+  if (primaryGBufferMiss)
   {
-    if (primaryGBufferMiss)
-    {
-      PrimaryDirectDiffuseLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
-      PrimaryDirectSpecularLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
-    }
+    PrimaryDirectDiffuseLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
+    PrimaryDirectSpecularLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
+  }
 
-    if (secondaryGBufferMiss)
-    {
-      SecondaryCombinedDiffuseLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
-      SecondaryCombinedSpecularLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
-    }
+  if (secondaryGBufferMiss)
+  {
+    SecondaryCombinedDiffuseLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
+    SecondaryCombinedSpecularLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
   }
 
   // Note: Early out if no more work on the primary surface is needed
@@ -203,21 +194,10 @@ void integrate_direct_pass(uvec2 threadIndex)
   // Sample an indirect ray path sample in direct integration pass since the material for the primary surface has been loaded.
   // This is faster than reloading all the material data in the indirect pass and computing a ray path sample there
   // Note: this updates geometryFlags
-  // Note: this needs to be done when indirect is active or when we're integrating a secondary surface at full rate
-  if (isIndirectActive || !geometryFlags.primarySelectedIntegrationSurface)
-  {
-    sampleAndStoreIndirectRayPathSample(
-      pixelCoordinate, primaryRay, integrationSurfacePdf,
-      minimalRayInteraction, minimalSurfaceInteraction, polymorphicSurfaceMaterialInteraction,
-      geometryFlags);
-  }
-
-  // Direct-inactive pixels only need the indirect ray path sample prepared above; skip
-  // the rest of the direct lighting work.
-  if (!isDirectActive)
-  {
-    return;
-  }
+  sampleAndStoreIndirectRayPathSample(
+    pixelCoordinate, primaryRay, integrationSurfacePdf,
+    minimalRayInteraction, minimalSurfaceInteraction, polymorphicSurfaceMaterialInteraction,
+    geometryFlags);
 
   // Integrate the Direct portion of the Path
 
