@@ -7,6 +7,8 @@
 
 #include "../../util/util_time.h"
 
+#include "../dxvk_adapter.h"
+
 #include "dxvk_hud_renderer.h"
 
 namespace dxvk::hud {
@@ -380,6 +382,9 @@ namespace dxvk::hud {
     Rc<DxvkDevice>                    m_device;
     VkPhysicalDeviceMemoryProperties  m_memory;
     DxvkMemoryStats                   m_heaps[VK_MAX_MEMORY_HEAPS];
+    // NV-DXVK start: report driver-side VRAM usage
+    DxvkAdapterMemoryInfo             m_driverMemInfo;
+    // NV-DXVK end
 
   };
 
