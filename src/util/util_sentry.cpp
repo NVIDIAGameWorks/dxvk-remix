@@ -60,7 +60,14 @@ namespace sentry {
 
   namespace {
 
-    static const char* const SENTRY_DSN = "https://24ea109fd3c0225c42518a7b1ecd636a@o4505230501543936.ingest.us.sentry.io/4510796067176448";
+    // DSN is injected at build time via -DREMIX_SENTRY_DSN="<dsn>" (supplied from a CI secret).
+    // Local and dev builds that omit the flag compile with an empty string; sentry-native treats
+    // an empty DSN as a no-op, so crash reports are silently disabled in those configurations.
+    // See meson_options.txt option 'remix_sentry_dsn'.
+#ifndef REMIX_SENTRY_DSN
+#define REMIX_SENTRY_DSN ""
+#endif
+    static constexpr const char* const SENTRY_DSN = REMIX_SENTRY_DSN;
 
     // Max time (ms) to wait for Sentry to upload a GPU crash report (a FATAL event plus the
     // multi-MB Aftermath dump attachment) before the crashed process is killed. sentry_flush()

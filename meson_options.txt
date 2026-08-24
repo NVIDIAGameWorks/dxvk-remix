@@ -56,3 +56,5 @@ option('remixsdk_local', type: 'string', value: '', description: 'Path to the lo
 option('download_apics', type : 'boolean', value : true, description : 'Download APICs for testing')
 
 option('remix_sentry_environment', type : 'string', value : '', description : 'Sentry environment tag baked in at compile time (e.g. github-production, gitlab-production). When empty or not set, the C++ code uses "development". CI should pass -Dremix_sentry_environment=$env:BUILD_SENTRY_ENVIRONMENT.')
+
+option('remix_sentry_dsn', type : 'string', value : '', description : 'Sentry DSN (Data Source Name / ingest key) baked in at compile time. Must be kept out of source; supply via a CI secret: -Dremix_sentry_dsn=$env:BUILD_SENTRY_DSN. When empty (default), crash reporting is silently disabled in that build.')
