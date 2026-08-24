@@ -33,6 +33,11 @@
 #include "../dxvk/dxvk_swapchain_blitter.h"
 
 #include "../util/sync/sync_signal.h"
+#include "../util/thread.h"
+
+// NV-DXVK start: input-queue liveness ping
+#include "../dxvk/rtx_render/rtx_options.h"
+// NV-DXVK end
 
 #include <vector>
 
@@ -123,6 +128,21 @@ namespace dxvk {
       return m_device;
     }
 
+    // NV-DXVK start: input-queue liveness ping, see RunInputQueuePing
+    RTX_OPTION("rtx", bool, enableInputQueuePing, false,
+               "When enabled, Remix posts a WM_NULL message to the game window every "
+               "rtx.inputQueuePingIntervalMs milliseconds so Windows keeps servicing the window's "
+               "input queue and does not flag the game as not responding while it presents without "
+               "focus.\n"
+               "This setting is read when the swapchain is created; changing it will not take effect at runtime.");
+
+    RTX_OPTION_ARGS("rtx", uint32_t, inputQueuePingIntervalMs, 2000,
+                    "Interval in milliseconds between WM_NULL pings when rtx.enableInputQueuePing is enabled. "
+                    "Unlike the enable flag, this is re-read by the ping thread every iteration, so changes "
+                    "take effect after at most one interval.",
+                    args.minValue = static_cast<uint32_t>(1));
+    // NV-DXVK end
+
   protected:
 
     enum BindingIds : uint32_t {
@@ -181,6 +201,13 @@ namespace dxvk {
     HWND                      m_window   = nullptr;
     HMONITOR                  m_monitor  = nullptr;
 
+    // NV-DXVK start: input-queue liveness ping, see RunInputQueuePing
+    dxvk::thread              m_inputPingThread;
+    dxvk::mutex               m_inputPingMutex;
+    dxvk::condition_variable  m_inputPingCond;
+    bool                      m_inputPingStop = false;
+    // NV-DXVK end
+
     WindowState               m_windowState;
 
     uint32_t                  m_originalWidth;
@@ -195,6 +222,10 @@ namespace dxvk {
     void SubmitPresent(const vk::PresenterSync& Sync, uint32_t FrameId, uint32_t imageIndex);
 
     void SynchronizePresent();
+
+    // NV-DXVK start: input-queue liveness ping
+    void RunInputQueuePing();
+    // NV-DXVK end
 
     void RecreateSwapChain(
         BOOL                      Vsync);
