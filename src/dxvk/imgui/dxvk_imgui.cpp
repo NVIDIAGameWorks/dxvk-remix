@@ -311,6 +311,19 @@ namespace dxvk {
     } }
   };
 
+  // Note: named 'dlssRenderPresetCombo' to avoid colliding with the user-menu 'dlssPresetCombo'
+  // (the combined On/Off/Custom preset).
+  RemixGui::ComboWithKey<DxvkDLSS::DLSSPreset> dlssRenderPresetCombo{
+    "DLSS SR Preset",
+    RemixGui::ComboWithKey<DxvkDLSS::DLSSPreset>::ComboEntries{ {
+        {DxvkDLSS::DLSSPreset::Default, "Default", "Let DLSS pick the best preset per quality mode."},
+        {DxvkDLSS::DLSSPreset::J, "J", "Similar to preset K, but may show slightly less ghosting at the cost of extra flickering. Preset K is generally recommended over J."},
+        {DxvkDLSS::DLSSPreset::K, "K", "Transformer-based default for DLAA/Balanced/Quality modes. Best image quality at a higher performance cost."},
+        {DxvkDLSS::DLSSPreset::L, "L", "Default for Ultra Performance mode."},
+        {DxvkDLSS::DLSSPreset::M, "M", "Default for Performance mode."},
+    } }
+  };
+
   RemixGui::ComboWithKey<XeSSPreset> xessPresetCombo{
     "XeSS Preset",
     RemixGui::ComboWithKey<XeSSPreset>::ComboEntries{ {
@@ -349,12 +362,15 @@ namespace dxvk {
     } }
   };
 
-  static auto rayReconstructionModelCombo = RemixGui::ComboWithKey<DxvkRayReconstruction::RayReconstructionModel>(
-    "Ray Reconstruction Model",
+  RemixGui::ComboWithKey<DxvkRayReconstruction::RayReconstructionPreset> rayReconstructionPresetCombo {
+    "DLSS RR Preset",
     { {
-      {DxvkRayReconstruction::RayReconstructionModel::Transformer, "Transformer", "Ensures highest image quality. Can be more expensive than CNN in terms of memory and performance."},
-      {DxvkRayReconstruction::RayReconstructionModel::CNN, "CNN", "Ensures great image quality"},
-  } });
+      { DxvkRayReconstruction::RayReconstructionPreset::Default, "Default", "Let DLSS pick the best preset per quality mode." },
+      { DxvkRayReconstruction::RayReconstructionPreset::D,       "D",       "Transformer model." },
+      { DxvkRayReconstruction::RayReconstructionPreset::E,       "E",       "Latest transformer model." },
+      { DxvkRayReconstruction::RayReconstructionPreset::F,       "F",       "Default RR2 model." },
+    } }
+  };
 
   RemixGui::ComboWithKey<int> dlfgMfgModeCombo {
     "DLSS Frame Generation Mode",
@@ -517,7 +533,7 @@ namespace dxvk {
       changed = RemixGui::Checkbox("Ray Reconstruction", &RtxOptions::enableRayReconstructionObject());
 
       if (RtxOptions::enableRayReconstruction()) {
-        rayReconstructionModelCombo.getKey(&DxvkRayReconstruction::modelObject());
+        rayReconstructionPresetCombo.getKey(&DxvkRayReconstruction::presetObject());
       }
       ImGui::EndDisabled();
     }
@@ -3541,6 +3557,7 @@ namespace dxvk {
         dlssProfileCombo.getKey(&RtxOptions::qualityDLSSObject());
         rayReconstruction.showRayReconstructionImguiSettings(false);
       } else if (RtxOptions::upscalerType() == UpscalerType::DLSS) {
+        dlssRenderPresetCombo.getKey(&DxvkDLSS::presetObject());
         dlssProfileCombo.getKey(&RtxOptions::qualityDLSSObject());
         dlss.showImguiSettings();
       } else if (RtxOptions::upscalerType() == UpscalerType::NIS) {

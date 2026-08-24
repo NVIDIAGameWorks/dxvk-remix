@@ -33,7 +33,7 @@
 	    <package name="rtx-remix-ngx_sdk_dlfg" version="4" />
 	</dependency>
 	<dependency name="ngx_sdk_dldn" linkPath="external/ngx_sdk_dldn">
-	    <package name="rtx-remix-ngx_sdk_dldn" version="5" />
+	    <package name="rtx-remix-ngx_sdk_dldn" version="7" />
 	</dependency>
 	<dependency name="nrd" linkPath="external/nrd">
 	    <package name="rtx-remix-nrd" version="4.13" />

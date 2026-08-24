@@ -447,6 +447,7 @@ namespace dxvk
                                   bool depthInverted,
                                   bool autoExposure,
                                   bool sharpening,
+                                  NVSDK_NGX_DLSS_Hint_Render_Preset dlssPreset,
                                   NVSDK_NGX_PerfQuality_Value perfQuality) {
     ScopedCpuProfileZone();
 
@@ -474,6 +475,12 @@ namespace dxvk
     createParams.InFeatureCreateFlags = createFlags;
 
     VkCommandBuffer vkCommandBuffer = renderContext->getCommandList()->getCmdBuffer(dxvk::DxvkCmdBuffer::ExecBuffer);
+
+    m_parameters->Set(NVSDK_NGX_Parameter_DLSS_Hint_Render_Preset_DLAA, dlssPreset);
+    m_parameters->Set(NVSDK_NGX_Parameter_DLSS_Hint_Render_Preset_Quality, dlssPreset);
+    m_parameters->Set(NVSDK_NGX_Parameter_DLSS_Hint_Render_Preset_Balanced, dlssPreset);
+    m_parameters->Set(NVSDK_NGX_Parameter_DLSS_Hint_Render_Preset_Performance, dlssPreset);
+    m_parameters->Set(NVSDK_NGX_Parameter_DLSS_Hint_Render_Preset_UltraPerformance, dlssPreset);
 
     // Release video memory when DLSS is disabled.
     m_parameters->Set(NVSDK_NGX_Parameter_FreeMemOnReleaseFeature, 1);
