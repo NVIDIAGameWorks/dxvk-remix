@@ -42,6 +42,7 @@
 #include "../../util/util_math.h"
 #include "../../util/util_vector.h"
 #include "../../util/util_string.h"
+#include "../../util/util_sentry.h"
 
 #include "../../d3d9/d3d9_swapchain.h"
 
@@ -1668,6 +1669,10 @@ namespace {
       }
       s_dxvkD3D9 = nullptr;
     }
+
+    // Make sure Sentry doesn't keep the process alive when it should be shutting down.
+    dxvk::sentry::shutdown();
+
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
 
