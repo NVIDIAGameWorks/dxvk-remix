@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -63,6 +63,17 @@ namespace dxvk {
       Relative,   ///< Motion vectors are provided in relative screen space length (pixels divided by screen width/height).
     };
 
+    // Note: Values must match NVSDK_NGX_DLSS_Hint_Render_Preset in nvsdk_ngx_defs.h.
+    // Presets A/B/C/D were removed in the SDK, E/F are deprecated, and G/H/I/N/O are unused,
+    // so only the valid presets are exposed here. Default lets DLSS pick the best preset per quality mode.
+    enum class DLSSPreset : uint32_t {
+      Default = 0,
+      J = 10,
+      K = 11,
+      L = 12,
+      M = 13,
+    };
+
     explicit DxvkDLSS(DxvkDevice* device);
     ~DxvkDLSS();
     static NVSDK_NGX_PerfQuality_Value profileToQuality(DLSSProfile profile);
@@ -90,6 +101,10 @@ namespace dxvk {
 
     void release();
 
+    RTX_OPTION_ARGS("rtx.dlss", DLSSPreset, preset, DLSSPreset::Default,
+                    "Render preset for DLSS Super Resolution. Default = 0 (DLSS picks the best preset), J = 10, K = 11, L = 12, M = 13.",
+                    args.flags = RtxOptionFlags::UserSetting);
+
   protected:
     virtual bool isEnabled() const override;
 
@@ -109,6 +124,7 @@ namespace dxvk {
     bool                        mInverseDepth = false;
 
     bool                        mRecreate = true;
+    DLSSPreset                  m_prevPreset = DLSSPreset::Default;
     uint32_t                    mInputSize[2] = {};            ///< Input size in pixels.
     uint32_t                    mDLSSOutputSize[2] = {};       ///< DLSS output size in pixels.
 

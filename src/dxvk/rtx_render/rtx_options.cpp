@@ -539,7 +539,6 @@ namespace dxvk {
       volumetrics.setQualityLevel(RtxGlobalVolumetrics::Ultra);
       enableNrcPreset(NeuralRadianceCache::QualityPreset::Ultra);
 
-      DxvkRayReconstruction::model.setDeferred(DxvkRayReconstruction::RayReconstructionModel::Transformer);
     } else if (graphicsPreset() == GraphicsPreset::High) {
       pathMinBounces.setDeferred(0);
       pathMaxBounces.setDeferred(2);
@@ -561,7 +560,6 @@ namespace dxvk {
       volumetrics.setQualityLevel(RtxGlobalVolumetrics::High);
       enableNrcPreset(NeuralRadianceCache::QualityPreset::High);
 
-      DxvkRayReconstruction::model.setDeferred(DxvkRayReconstruction::RayReconstructionModel::Transformer);
     } else if (graphicsPreset() == GraphicsPreset::Medium) {
       lowGraphicsPresetCommonSettings();
 
@@ -570,8 +568,6 @@ namespace dxvk {
 
       volumetrics.setQualityLevel(RtxGlobalVolumetrics::Medium);
       enableNrcPreset(NeuralRadianceCache::QualityPreset::Medium);
-
-      DxvkRayReconstruction::model.setDeferred(DxvkRayReconstruction::RayReconstructionModel::CNN);
     } else if (graphicsPreset() == GraphicsPreset::Low) {
       lowGraphicsPresetCommonSettings();
 
@@ -580,8 +576,7 @@ namespace dxvk {
 
       volumetrics.setQualityLevel(RtxGlobalVolumetrics::Low);
       enableNrcPreset(NeuralRadianceCache::QualityPreset::Medium);
-
-      DxvkRayReconstruction::model.setDeferred(DxvkRayReconstruction::RayReconstructionModel::CNN);
+      
     }
 
     // Ensure we are using auto DLSS profile since we will be relying on quality downgrades for Medium/Low settings
