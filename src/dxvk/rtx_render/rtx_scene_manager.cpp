@@ -2603,11 +2603,33 @@ namespace dxvk {
     }
   }
 
-  void SceneManager::destroyExternalMesh(remixapi_MeshHandle handle) {
-    if (handle) {
-      m_drawCallTracker.removeReplacementInstancesWithSpatialMapHash(
-          spatialMapHashForExternalDrawMesh(handle));
-      m_pReplacer->destroyExternalMesh(handle);
+  // Set from remixapi_dxvk_CreateD3D9() when the client is an editor/DCC host (HdRemix).
+  bool g_remixApiEditorModeEnabled = false;
+
+  void SceneManager::destroyExternalMesh(const Rc<DxvkContext>& ctx, remixapi_MeshHandle handle) {
+    if (!handle) {
+      return;
+    }
+
+    m_drawCallTracker.removeReplacementInstancesWithSpatialMapHash(
+        spatialMapHashForExternalDrawMesh(handle));
+    m_pReplacer->destroyExternalMesh(handle);
+
+    // An API-driven client (HdRemix) stops presenting the moment its scene becomes empty, so
+    // injectRTX() - and with it garbageCollection(), the sceneKeepAliveFrames-based clear() and
+    // onFrameEnd()/manageTextureVram() - never runs again, and the DXVK frame id stops advancing.
+    // The whole scene would stay committed and the next scene would be allocated on top of it
+    // (DXVK memory is a high water mark), leaking a full scene worth of VRAM per open/close
+    // cycle. The last DestroyMesh is the authoritative teardown signal and it already runs on the
+    // dxvk-cs thread with a live context, so do the teardown here.
+    if (ctx.ptr() != nullptr &&
+        g_remixApiEditorModeEnabled &&
+        RtxOptions::clearSceneOnLastExternalMeshDestroyed() &&
+        !m_pReplacer->hasExternalMeshes()) {
+      clear(ctx, /* needWfi = */ true);
+      // DXVK doesnt free chunks for us by default (its high water mark), so hand the geometry,
+      // BLAS, OMM and buffer-cache memory freed above back to the system.
+      m_device->getCommon()->memoryManager().freeUnusedChunks();
     }
   }
 
