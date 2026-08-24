@@ -43,6 +43,19 @@ jobs:
         . .\build_common.ps1
         PerformBuild -BuildFlavour ${{matrix.build-flavour}} -BuildSubDir ${{matrix.output-subdir}} -Backend ninja -EnableTracy false copy_output
 
+    - name: Upload build logs
+      if: ${{ always() }}
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: build-logs-${{github.run_number}}-${{env.GITHUB_SHA_SHORT}}-${{matrix.build-flavour}}
+        path: |
+          ${{matrix.output-subdir}}\meson-logs\meson-log.txt
+          ${{matrix.output-subdir}}\update-deps.log
+          update-deps.log
+        if-no-files-found: ignore
+        retention-days: 30
+
     - name: Copy readme
       run: copy artifacts_readme.txt _output
 

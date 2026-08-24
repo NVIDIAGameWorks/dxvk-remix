@@ -10,9 +10,12 @@ set "outputFile=%~f2"
 
 pushd %~dp0
 
-call packman\packman pull "!inputFile:\=/!"
-if errorlevel 1 (
+call packman\packman pull "!inputFile:\=/!" > "!outputFile!" 2>&1
+set "packmanExitCode=!errorlevel!"
+type "!outputFile!"
+if not "!packmanExitCode!"=="0" (
     echo packman error, aborting!
-    exit /B 1
+    echo packman error, aborting! >> "!outputFile!"
+    exit /B !packmanExitCode!
 )
-echo Successfully updated deps > "!outputFile!"
+echo Successfully updated deps >> "!outputFile!"
