@@ -43,7 +43,15 @@ Full guide: `documentation/CONTRIBUTING-style-guide.md`
 - **Includes**: Standard library first, then third-party, then local. Separate groups with blank lines.
 - **Memory**: Prefer smart pointers (`std::unique_ptr`, `std::shared_ptr`). Use `Rc<T>` for GPU resources.
 - **Profiling**: Use `ScopedCpuProfileZone()` / `ScopedGpuProfileZone(ctx, "name")` for performance-critical code.
-- **Comments**: Describe the code as it is now. Do not write comments that contrast the current state with a previous one, or that explain a change rather than the code — wording like "now shared", "no longer", "instead of", "unified" and similar reads as a changelog entry, and it goes stale as soon as the next change lands. A reader has the code in front of them, not its history; put the rationale for a change in the commit message or MR description, not in the source.
+- **Comments**:
+  - Be as concise as you reasonably can. Most comments should fit into a single line.
+  - Describe the code as it is now. Do not contrast the current state with a previous one, or explain a change.
+  - Do not explain things that can easily understood from reading class, function, or variable names.
+  - Focus on recording non-obvious interactions and pitfalls.
+  - If a long plain-english explanation of how a complicated set of systems interact is needed, that should go in a .md file in the `documentation/` folder.
+    - Documentation about how to use a feature should be clearly separated from technical documenation about how a feature works.
+    - In code comments should reference sections of that .md file, rather than repeating or trying to summarize.
+  - Rational for why a change is needed should go into commit messages or MR descriptions, not the code.
 
 ### Changes to Core DXVK Files (Applies to code files outside of `rtx_render`)
 
