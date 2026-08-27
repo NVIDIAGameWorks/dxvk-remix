@@ -573,6 +573,10 @@ namespace dxvk::hud {
   void HudMemoryStatsItem::update(dxvk::high_resolution_clock::time_point time) {
     for (uint32_t i = 0; i < m_memory.memoryHeapCount; i++)
       m_heaps[i] = m_device->getMemoryStats(i);
+    
+    // NV-DXVK start: report driver-side VRAM usage
+    m_driverMemInfo = m_device->adapter()->getMemoryHeapInfo();
+    // NV-DXVK end
   }
 
 
@@ -617,6 +621,30 @@ namespace dxvk::hud {
                             text);
           position.y += 4.0f;
         }
+
+        // NV-DXVK start: report driver-side VRAM usage alongside DXVK's own allocator stats
+        // "Vidmem heap" only counts memory that DXVK's own suballocator, this includes everything
+        // the driver attributes to this process.
+        const DxvkAdapterMemoryHeapInfo& driverHeap = m_driverMemInfo.heaps[i];
+        VkDeviceSize driverUsedMib   = driverHeap.memoryAllocated >> 20;
+        VkDeviceSize driverBudgetMib = driverHeap.memoryBudget >> 20;
+        uint64_t driverPercentage = driverBudgetMib ? (100 * driverUsedMib) / driverBudgetMib : 0;
+
+        std::string driverLabel = "Total VRAM:";
+        std::string driverText  = str::format(std::setfill(' '), std::setw(5),
+          driverUsedMib, " / ", driverBudgetMib, " MB(", driverPercentage, "%)");
+
+        position.y += 20.0f;
+        renderer.drawText(16.0f,
+          { position.x, position.y },
+          { 0.6f, 1.0f, 1.0f, 1.0f },
+          driverLabel);
+
+        renderer.drawText(16.0f,
+          { position.x + 168.0f, position.y },
+          { 1.0f, 1.0f, 1.0f, 1.0f },
+          driverText);
+        // NV-DXVK end
 
         position.y += 16.0f;
       }

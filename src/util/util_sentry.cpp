@@ -79,6 +79,9 @@ namespace sentry {
     // The upload helper may need to send a multi-MB minidump plus log attachments.
     static constexpr unsigned int kSentryUploadHelperFlushTimeoutMs = 30000;
 
+    // Max time (ms) sentry_close() may keep the process alive when it is shutting down.
+    static constexpr uint64_t kSentryShutdownTimeoutMs = 4000;
+
     // User ID constants
     // Store the user ID in local data so it stays constant over time.
     static constexpr const char* kSentryUserIdKey = "sentryUserId";
@@ -423,6 +426,7 @@ namespace sentry {
     // upload when we explicitly call sentry_user_consent_give() after confirming the
     // user's permission via LocalData.
     sentry_options_set_require_user_consent(options, 1);
+    sentry_options_set_shutdown_timeout(options, kSentryShutdownTimeoutMs);
 
     // Attachments are read at crash time by the Crashpad handler (not at init), so the logs
     // from the session that crashed are what get uploaded. Content is read when the report is

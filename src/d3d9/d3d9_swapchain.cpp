@@ -370,10 +370,28 @@ namespace dxvk {
     } else {
       HookWindowProc(m_window);
     }
+
+    // NV-DXVK start: input-queue liveness ping
+    if (m_window && enableInputQueuePing()) {
+      m_inputPingThread = dxvk::thread([this] { RunInputQueuePing(); });
+    }
+    // NV-DXVK end
   }
 
 
   D3D9SwapChainEx::~D3D9SwapChainEx() {
+    // NV-DXVK start: input-queue liveness ping
+    if (m_inputPingThread.joinable()) {
+      {
+        std::lock_guard<dxvk::mutex> lock(m_inputPingMutex);
+        m_inputPingStop = true;
+      }
+
+      m_inputPingCond.notify_one();
+      m_inputPingThread.join();
+    }
+    // NV-DXVK end
+
     DestroyBackBuffers();
 
     ResetWindowProc(m_window);
@@ -1572,6 +1590,49 @@ namespace dxvk {
     // Wait for the sync event so that we respect the maximum frame latency
     m_frameLatencySignal->wait(m_frameId - GetActualFrameLatency());
   }
+
+
+  // NV-DXVK start
+  // Generate a WM_NULL message every few seconds to keep Windows from inaccurately 
+  // declaring the host application to be not responsive
+  void D3D9SwapChainEx::RunInputQueuePing() {
+    env::setThreadName("dxvk-input-ping");
+
+#ifdef REMIX_DEVELOPMENT
+    bool wasHung = false;
+#endif
+
+    while (true) {
+      const auto interval = std::chrono::milliseconds(inputQueuePingIntervalMs());
+
+      {
+        std::unique_lock<dxvk::mutex> lock(m_inputPingMutex);
+
+        if (m_inputPingCond.wait_for(lock, interval, [this] { return m_inputPingStop; })) {
+          return;
+        }
+      }
+
+      if (!IsWindow(m_window)) {
+        continue;
+      }
+
+#ifdef REMIX_DEVELOPMENT
+      // The classifier's verdict is the validity gate for this ping: a run that
+      // never logs is a run where the ping is working.
+      const bool hung = IsHungAppWindow(m_window);
+
+      if (hung != wasHung) {
+        Logger::info(str::format("Input queue ping: window ",
+                                 hung ? "flagged as not responding" : "responding"));
+        wasHung = hung;
+      }
+#endif
+
+      PostMessageW(m_window, WM_NULL, 0, 0);
+    }
+  }
+  // NV-DXVK end
 
 
   uint32_t D3D9SwapChainEx::GetActualFrameLatency() {
