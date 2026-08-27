@@ -53,6 +53,9 @@ function SetupBuild {
 
 	If ( $BuildArch -eq "x64" ) {
 		$Arch = "x64"
+	} ElseIf ( $BuildArch -eq "arm64" -and [Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq "Arm64" ) {
+		# Native arm64 host: use the arm64 toolchain rather than the emulated x64 cross-compiler.
+		$Arch = "arm64"
 	} Else {
 		$Arch = "amd64_arm64"
 	}
