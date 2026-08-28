@@ -101,7 +101,6 @@
 #define GBUFFER_BINDING_PRIMARY_DEPTH_DLSSRR_OUTPUT                             120
 #define GBUFFER_BINDING_PRIMARY_NORMAL_DLSSRR_OUTPUT                            121
 #define GBUFFER_BINDING_PRIMARY_SCREEN_SPACE_MOTION_DLSSRR_OUTPUT               122
-#define GBUFFER_BINDING_PARTICLE_BUFFER_OUTPUT                                  123
 
 #define GBUFFER_BINDING_NRC_QUERY_PATH_INFO_OUTPUT                              130
 #define GBUFFER_BINDING_NRC_TRAINING_PATH_INFO_OUTPUT                           131

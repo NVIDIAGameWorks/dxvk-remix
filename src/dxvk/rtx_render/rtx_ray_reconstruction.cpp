@@ -108,10 +108,6 @@ namespace dxvk {
     return m_device->getCommon()->metaNGXContext().supportsRayReconstruction();
   }
 
-  DxvkRayReconstruction::RayReconstructionParticleBufferMode DxvkRayReconstruction::getParticleBufferMode() {
-    return RtxOptions::isRayReconstructionEnabled() ? particleBufferMode() : RayReconstructionParticleBufferMode::None;
-  }
-
   void DxvkRayReconstruction::release() {
     m_rayReconstructionContext = {};
     mRecreate = true;
@@ -123,10 +119,6 @@ namespace dxvk {
 
   bool DxvkRayReconstruction::useRayReconstruction() const {
     return supportsRayReconstruction() && RtxOptions::isRayReconstructionEnabled();
-  }
-
-  bool DxvkRayReconstruction::denoiseSecondarySignalWithExternalDenoiser() const {
-    return useRayReconstruction() && !enableNRDForTraining() && preprocessSecondarySignal();
   }
 
   void DxvkRayReconstruction::dispatch(
@@ -175,7 +167,6 @@ namespace dxvk {
       constants.enableDemodulateRoughness = demodulateRoughness() ? 1 : 0;
       constants.upscalerRoughnessDemodulationMultiplier = upscalerRoughnessDemodulationMultiplier();
       constants.upscalerRoughnessDemodulationOffset = upscalerRoughnessDemodulationOffset();
-      constants.particleBufferMode = (uint32_t)getParticleBufferMode();
       constants.frameIdx = rtOutput.m_raytraceArgs.frameIdx;
       constants.enableDisocclusionMaskBlur = enableDisocclusionMaskBlur();
       constants.disocclusionMaskBlurRadius = disocclusionMaskBlurRadius();
@@ -241,7 +232,6 @@ namespace dxvk {
         rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read),
         rtOutput.m_primaryAlbedo.view,
         rtOutput.m_sharedBiasCurrentColorMask.view(Resources::AccessType::Read),
-        rtOutput.m_rayReconstructionParticleBuffer.view,
         rtOutput.m_primaryWorldShadingNormalDLSSRR.view(Resources::AccessType::Read),
         rtOutput.m_primarySpecularAlbedo.view(Resources::AccessType::Read),
         rtOutput.m_primaryPerceptualRoughness.view,
@@ -319,7 +309,6 @@ namespace dxvk {
       buffers.pRoughness = &rtOutput.m_primaryPerceptualRoughness;
       buffers.pBiasCurrentColorMask = &rtOutput.m_sharedBiasCurrentColorMask.resource(Resources::AccessType::Read);
       buffers.pHitDistance = useSpecularHitDistance() ? &rtOutput.m_rayReconstructionHitDistance.resource(Resources::AccessType::Read) : nullptr;
-      buffers.pInTransparencyLayer = getParticleBufferMode() == RayReconstructionParticleBufferMode::RayReconstructionUpscaling ? &rtOutput.m_rayReconstructionParticleBuffer : nullptr;
       buffers.pDisocclusionMask = enableDisocclusionMaskBlur()
         ? &rtOutput.m_primaryDisocclusionMaskForRR.resource(Resources::AccessType::Read)
         : &rtOutput.m_primaryDisocclusionThresholdMix;
@@ -366,17 +355,13 @@ namespace dxvk {
 
       constexpr ImGuiSliderFlags sliderFlags = ImGuiSliderFlags_AlwaysClamp;
 
-      RemixGui::Combo("Particle Mode", &particleBufferModeObject(), "None\0DLSS-RR Upscaling\0");
       RemixGui::Checkbox("Use Specular Hit Distance", &useSpecularHitDistanceObject());
       RemixGui::Checkbox("Preserve Settings in Native Mode", &preserveSettingsInNativeModeObject());
       RemixGui::Checkbox("Combine Specular Albedo", &combineSpecularAlbedoObject());
-      RemixGui::Checkbox("DLSS-RR Demodulate Attenuation", &demodulateAttenuationObject());
       RemixGui::Checkbox("DLSS-RR Detail Enhancement", &enableDetailEnhancementObject());
-      RemixGui::Checkbox("Preprocess Secondary Signal", &preprocessSecondarySignalObject());
       RemixGui::Checkbox("DLSS-RR Demodulate Roughness", &demodulateRoughnessObject());
       RemixGui::DragFloat("DLSS-RR Roughness Sensitivity", &upscalerRoughnessDemodulationOffsetObject(), 0.01f, 0.0f, 2.0f, "%.3f");
       RemixGui::DragFloat("DLSS-RR Roughness Multiplier", &upscalerRoughnessDemodulationMultiplierObject(), 0.01f, 0.0f, 20.0f, "%.3f");
-      RemixGui::Checkbox("Composite Volumetric Light", &compositeVolumetricLightObject());
       rayReconstructionPresetCombo.getKey(&presetObject());
 
       if (RemixGui::CollapsingHeader("Disocclusion Mask")) {

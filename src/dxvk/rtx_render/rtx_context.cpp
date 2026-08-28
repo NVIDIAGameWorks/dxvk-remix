@@ -1132,9 +1132,6 @@ namespace dxvk {
     constants.psrrMaxBounces = RtxOptions::psrrMaxBounces();
     constants.pstrMaxBounces = RtxOptions::pstrMaxBounces();
 
-    auto& rayReconstruction = m_common->metaRayReconstruction();
-    constants.outputParticleLayer = useRR && rayReconstruction.useParticleBuffer();
-
     auto& rtxdi = m_common->metaRtxdiRayQuery();
     constants.enableEmissiveBlendEmissiveOverride = RtxOptions::enableEmissiveBlendEmissiveOverride();
     constants.enableRtxdi = RtxOptions::useRTXDI();
@@ -1596,24 +1593,19 @@ namespace dxvk {
   }
 
   void RtxContext::dispatchDenoise(const Resources::RaytracingOutput& rtOutput) {
-    auto& rayReconstruction = getCommonObjects()->metaRayReconstruction();
-
     // Primary direct denoiser used for primary direct lighting when separated, otherwise a special combined direct+indirect denoiser is used when both direct and indirect signals are combined.
     DxvkDenoise& denoiser0 = RtxOptions::denoiseDirectAndIndirectLightingSeparately() ? m_common->metaPrimaryDirectLightDenoiser() : m_common->metaPrimaryCombinedLightDenoiser();
     DxvkDenoise& referenceDenoiserSecondLobe0 = m_common->metaReferenceDenoiserSecondLobe0();
     // Primary Indirect denoiser used for primary indirect lighting when separated.
     DxvkDenoise& denoiser1 = m_common->metaPrimaryIndirectLightDenoiser();
     DxvkDenoise& referenceDenoiserSecondLobe1 = m_common->metaReferenceDenoiserSecondLobe1();
-    // Secondary combined denoiser always used for secondary lighting.
+    // Secondary combined denoiser used for secondary lighting when NRD is active.
     DxvkDenoise& denoiser2 = m_common->metaSecondaryCombinedLightDenoiser();
     DxvkDenoise& referenceDenoiserSecondLobe2 = m_common->metaReferenceDenoiserSecondLobe2();
 
-    bool shouldDenoise = false;
-    if (useRayReconstruction()) {
-      shouldDenoise = (rayReconstruction.enableNRDForTraining() && !RtxOptions::useDenoiserReferenceMode()) || rayReconstruction.preprocessSecondarySignal();
-    } else {
-      shouldDenoise = RtxOptions::useDenoiser() && !RtxOptions::useDenoiserReferenceMode();
-    }
+    const bool shouldDenoise = !useRayReconstruction()
+      && RtxOptions::useDenoiser()
+      && !RtxOptions::useDenoiserReferenceMode();
 
     if (!shouldDenoise) {
       denoiser0.releaseResources();
@@ -1655,10 +1647,7 @@ namespace dxvk {
         denoiser.dispatch(this, m_execBarriers, rtOutput, denoiseInput, denoiseOutput);
     };
 
-    const bool isSecondaryOnly = rayReconstruction.denoiseSecondarySignalWithExternalDenoiser();
-
     // Primary Direct light denoiser
-    if (!isSecondaryOnly)
     {
       ScopedGpuProfileZone(this, "Primary Direct Denoising");
       
@@ -1680,13 +1669,10 @@ namespace dxvk {
       denoiseOutput.specular_hitT = &rtOutput.m_primaryDirectSpecularRadiance.resource(Resources::AccessType::Write);
 
       runDenoising(denoiser0, referenceDenoiserSecondLobe0, denoiseInput, denoiseOutput);
-    } else {
-      denoiser0.releaseResources();
-      referenceDenoiserSecondLobe0.releaseResources();
     }
 
     // Primary Indirect light denoiser, if separate denoiser is used.
-    if (RtxOptions::denoiseDirectAndIndirectLightingSeparately() && !isSecondaryOnly)
+    if (RtxOptions::denoiseDirectAndIndirectLightingSeparately())
     {
       ScopedGpuProfileZone(this, "Primary Indirect Denoising");
 
