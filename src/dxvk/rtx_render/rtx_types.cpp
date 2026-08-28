@@ -393,7 +393,6 @@ namespace dxvk {
 
     setCategory(InstanceCategories::Particle, lookupHash(RtxOptions::particleTextures(), textureHash));
     setCategory(InstanceCategories::Beam, lookupHash(RtxOptions::beamTextures(), textureHash));
-    setCategory(InstanceCategories::IgnoreTransparencyLayer, lookupHash(RtxOptions::ignoreTransparencyLayerTextures(), textureHash));
 
     setCategory(InstanceCategories::DecalStatic, lookupHash(RtxOptions::decalTextures(), textureHash));
     setCategory(InstanceCategories::DecalDynamic, lookupHash(RtxOptions::dynamicDecalTextures(), textureHash));

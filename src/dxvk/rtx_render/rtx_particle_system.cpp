@@ -617,6 +617,8 @@ namespace dxvk {
       ctx->bindResourceView(PARTICLE_SYSTEM_BINDING_PREV_WORLD_POSITION_INPUT,
                             rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read,
                                                                                                rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().matchesWriteFrameIdx(constants.frameIdx - 1)), nullptr);
+      ctx->bindResourceView(PARTICLE_SYSTEM_BINDING_PREV_PRIMARY_SCREEN_SPACE_MOTION_INPUT,
+                            rtOutput.m_primaryScreenSpaceMotionVector.view, nullptr);
       const uint32_t frameIdx = ctx->getDevice()->getCurrentFrameId();
 
       for (auto& system : m_particleSystems) {

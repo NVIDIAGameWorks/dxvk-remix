@@ -49,10 +49,6 @@
 #define GBUFFER_FEATURE_OBJECT_PICKING 1
 #endif
 
-#ifndef GBUFFER_FEATURE_PARTICLE_LAYER
-#define GBUFFER_FEATURE_PARTICLE_LAYER 1
-#endif
-
 #ifndef GBUFFER_FEATURE_RAYTRACED_RENDER_TARGET
 #define GBUFFER_FEATURE_RAYTRACED_RENDER_TARGET 1
 #endif
@@ -160,7 +156,7 @@ void geometryResolverOutputMiss<
 
     // Note: Always write to stochastic buffers in the primary surface case.
     writeMissToGBuffer(
-      pixelCoordinate, true, cb.primaryDirectNrd.missLinearViewZ,
+      pixelCoordinate, true, true, cb.primaryDirectNrd.missLinearViewZ,
       PrimaryConeRadius, PrimaryLinearViewZ,
       PrimaryVirtualMotionVector,
       PrimaryVirtualWorldShadingNormalPerceptualRoughness,
@@ -180,7 +176,7 @@ void geometryResolverOutputMiss<
 
     // Note: Only write to stochastic buffers if this is the selected surface in the secondary surface case.
     writeMissToGBuffer(
-      pixelCoordinate, SELECTED_INTEGRATION_SURFACE, cb.secondaryCombinedNrd.missLinearViewZ,
+      pixelCoordinate, SELECTED_INTEGRATION_SURFACE, !cb.enableDLSSRR, cb.secondaryCombinedNrd.missLinearViewZ,
       SecondaryConeRadius, SecondaryLinearViewZ,
       SecondaryVirtualMotionVector,
       SecondaryVirtualWorldShadingNormalPerceptualRoughness,
@@ -400,7 +396,7 @@ void geometryResolverOutputSurface<
   {
     // Note: Always write to stochastic buffers in the primary surface case.
     polymorphicSurfaceMaterialInteractionWriteToGBuffer(
-      polymorphicSurfaceMaterialInteraction, ivec2(pixelCoordinate), true,
+      polymorphicSurfaceMaterialInteraction, ivec2(pixelCoordinate), true, true,
       surface, surfaceInteraction, rayInteraction.surfaceIndex,
       directionAltered, accumulatedRotation,
       PrimaryWorldShadingNormal, PrimaryPerceptualRoughness,
@@ -412,7 +408,7 @@ void geometryResolverOutputSurface<
   {
     // Note: Only write to stochastic buffers if this is the selected surface in the secondary surface case.
     polymorphicSurfaceMaterialInteractionWriteToGBuffer(
-      polymorphicSurfaceMaterialInteraction, ivec2(pixelCoordinate), SELECTED_INTEGRATION_SURFACE,
+      polymorphicSurfaceMaterialInteraction, ivec2(pixelCoordinate), SELECTED_INTEGRATION_SURFACE, !cb.enableDLSSRR,
       surface, surfaceInteraction, rayInteraction.surfaceIndex,
       directionAltered, accumulatedRotation,
       SecondaryWorldShadingNormal, SecondaryPerceptualRoughness,
@@ -525,15 +521,6 @@ void geometryResolverDLSSRROutputSurface(
   polymorphicSurfaceMaterialInteractionWriteToGBufferDLSSRR(
       polymorphicSurfaceMaterialInteraction, ivec2(pixelCoordinate), surface,
       PrimaryWorldShadingNormalDLSSRR);
-}
-
-void accumulateParticleBuffer(ivec2 pixelCoordinate, vec3 radiance)
-{
-  // Accumulate radiance to particle buffer, when DLSS-RR is on.
-  // Particles, glass and opaque surfaces' emissive component will be recorded in this buffer.
-  vec4 prevParticleEmissive = ParticleBuffer[pixelCoordinate];
-  prevParticleEmissive.xyz += radiance;
-  ParticleBuffer[pixelCoordinate] = prevParticleEmissive;
 }
 
 #if GBUFFER_FEATURE_DEBUG_VIEW
@@ -1743,15 +1730,6 @@ void geometryResolverVertex(
     radianceAttenuation, emissiveRadiance,
     numUnorderedInteractions, surfaceIndex);
 
-  bool ignoreTransparencyLayer = false;
-  if (surfaceIndex >= 0)
-  {
-    const Surface surface = surfaces[uint(surfaceIndex)];
-    ignoreTransparencyLayer = surface.ignoreTransparencyLayer;
-  }
-
-  vec3 particleEmissive = emissiveRadiance;
-
   if (GBUFFER_FEATURE_DEBUG_VIEW && cb.debugView == DEBUG_VIEW_PRIMARY_DECAL_ALBEDO)
   {
     MemoryDecalMaterialInteraction memory;
@@ -1780,7 +1758,6 @@ void geometryResolverVertex(
   bool isRaytracedRenderTarget = false;
   bool isStochasticAlphaBlend = false;
   uint8_t firstRayPortal = invalidRayPortalIndex;
-  vec3 transparencyLayerEmissive = vec3(0.0f);
   
   resolveVertex<GeometryResolverState>(
     resolveMode,
@@ -1789,7 +1766,6 @@ void geometryResolverVertex(
     surface, surfaceInteraction,
     polymorphicSurfaceMaterialInteraction,
     radianceAttenuation, emissiveRadiance,
-    transparencyLayerEmissive,
     decalMemory, decalEmissiveRadiance, 
     cb.screenSpacePixelSpreadHalfAngle,
     isStochasticAlphaBlend, firstRayPortal,
@@ -1821,23 +1797,6 @@ void geometryResolverVertex(
 
     geometryResolverState.attenuation *= volumeTransmittance;
 
-  }
-
-  if (GBUFFER_FEATURE_PARTICLE_LAYER && cb.outputParticleLayer && !ignoreTransparencyLayer)
-  {
-    if (polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque && geometryResolverState.continueResolving)
-    {
-      particleEmissive = emissiveRadiance;
-    }
-    // RayPortal ring contribution is routed to the particle buffer regardless of opacity
-    // so it is denoised + composited as a stable overlay (avoids silhouette shimmer in sparse modes).
-    accumulateParticleBuffer(geometryResolverState.pixelCoordinate, (particleEmissive + transparencyLayerEmissive) * geometryResolverState.attenuation);
-    emissiveRadiance -= particleEmissive;
-  }
-  else
-  {
-    // Particle layer unavailable: fall back to mixing the ring into primary emissive
-    emissiveRadiance += transparencyLayerEmissive;
   }
 
   bool isUnorderedEmissive = any(emissiveRadiance > 0.0f);
@@ -1988,16 +1947,7 @@ void geometryResolverVertex(
 
     gbufferSurfaceRadiance += materialEmissiveRadiance;
 
-    // For emissive surface that has sprite sheet animation, put emissive component to particle layer to reduce ghosting
-    if (GBUFFER_FEATURE_PARTICLE_LAYER && cb.outputParticleLayer && any(materialEmissiveRadiance > 0.0) &&
-        uint(surface.spriteSheetRows) * uint(surface.spriteSheetCols) > 1)
-    {
-      accumulateParticleBuffer(geometryResolverState.pixelCoordinate, materialEmissiveRadiance * geometryResolverState.attenuation);
-    }
-    else
-    {
-      geometryResolverState.radiance += materialEmissiveRadiance * geometryResolverState.attenuation;
-    }
+    geometryResolverState.radiance += materialEmissiveRadiance * geometryResolverState.attenuation;
 
     // Approximate the diffuse layer contribution
 
@@ -2011,15 +1961,7 @@ void geometryResolverVertex(
 
     diffuseLayerRadiance *= geometryResolverState.attenuation;
 
-    // Output diffuse component from the glass to a separate particle layer so that it won't get mixed with background noise.
-    if (GBUFFER_FEATURE_PARTICLE_LAYER && cb.outputParticleLayer && any(diffuseLayerRadiance > 0.0))
-    {
-      accumulateParticleBuffer(geometryResolverState.pixelCoordinate, diffuseLayerRadiance);
-    }
-    else
-    {
-      geometryResolverState.radiance += diffuseLayerRadiance;
-    }
+    geometryResolverState.radiance += diffuseLayerRadiance;
   }
 
   // Update NRC when a final GBuffer hit occurs.
@@ -2436,19 +2378,6 @@ void geometryPSRResolverVertex(
     numUnorderedInteractions, 
     geometryPSRResolverState.decalEncountered, decalMemory, decalEmissiveRadiance, surfaceIndex);
 
-  vec4 particleEmissive = vec4(0,0,0,1);
-  bool ignoreTransparencyLayer = false;
-  if (surfaceIndex >= 0)
-  {
-    const Surface surface = surfaces[uint(surfaceIndex)];
-    ignoreTransparencyLayer = surface.ignoreTransparencyLayer;
-  }
-  if (GBUFFER_FEATURE_PARTICLE_LAYER && cb.outputParticleLayer && any(emissiveRadiance > 0) && !ignoreTransparencyLayer)
-  {
-    particleEmissive.xyz += emissiveRadiance * geometryPSRResolverState.attenuation;
-    emissiveRadiance = 0;
-  }
-
   // Note: Add to the number of unordered interactions in the debug view based on the number of unordered interactions in resolving.
   if (GBUFFER_FEATURE_DEBUG_VIEW && (cb.debugView == DEBUG_VIEW_PRIMARY_UNORDERED_INTERACTIONS || cb.debugView == DEBUG_VIEW_PRIMARY_RAY_AND_UNORDERED_INTERACTIONS))
   {
@@ -2466,7 +2395,6 @@ void geometryPSRResolverVertex(
 
   bool isStochasticAlphaBlend = false; // note, not actually used here
   uint8_t firstRayPortal = invalidRayPortalIndex;
-  vec3 transparencyLayerEmissive = vec3(0.0f);
   
   resolveVertex<GeometryPSRResolverState>(
     resolveMode,
@@ -2475,35 +2403,11 @@ void geometryPSRResolverVertex(
     surface, surfaceInteraction,
     polymorphicSurfaceMaterialInteraction,
     radianceAttenuation, emissiveRadiance,
-    transparencyLayerEmissive,
     decalMemory, decalEmissiveRadiance, 
     cb.screenSpacePixelSpreadHalfAngle,
     isStochasticAlphaBlend, firstRayPortal,
     geometryPSRResolverState.pomOpaqueSurfaceEncountered,
     isRaytracedRenderTarget);
-
-  // Handle attenuation and emissive radiance from the Resolve function
-
-  // Note: Emissive radiance handled first so objects with opacity do not attenuate themselves.
-  if (GBUFFER_FEATURE_PARTICLE_LAYER && cb.outputParticleLayer)
-  {
-    if (polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque && geometryPSRResolverState.continueResolving)
-    {
-      particleEmissive.xyz += emissiveRadiance * geometryPSRResolverState.attenuation;
-      emissiveRadiance = 0;
-    }
-    // RayPortal ring contribution: route to particle layer for stable overlay (matches primary path).
-    particleEmissive.xyz += transparencyLayerEmissive * geometryPSRResolverState.attenuation;
-  }
-  else
-  {
-    emissiveRadiance += transparencyLayerEmissive;
-  }
-
-  if (any(particleEmissive != vec4(0,0,0,1)))
-  {
-    accumulateParticleBuffer(geometryPSRResolverState.pixelCoordinate, particleEmissive.xyz);
-  }
 
   // Handle medium attenuation if needed
   // Note: This is done here to avoid needing to accumulate the total resolved hit distance. Slightly
@@ -2636,14 +2540,7 @@ void geometryPSRResolverVertex(
 
     diffuseLayerRadiance *= geometryPSRResolverState.attenuation;
 
-    if (GBUFFER_FEATURE_PARTICLE_LAYER && cb.outputParticleLayer)
-    {
-      accumulateParticleBuffer(geometryPSRResolverState.pixelCoordinate, diffuseLayerRadiance);
-    }
-    else
-    {
-      geometryPSRResolverState.radiance += diffuseLayerRadiance;
-    }
+    geometryPSRResolverState.radiance += diffuseLayerRadiance;
   }
 
   // Update NRC when a final GBuffer hit occurs.
@@ -2947,11 +2844,6 @@ void geometryResolver(ivec2 pixelCoordinate) {
     alphaBlendSurface.randomThreshold = getNextSampleBlueNoise(randomState);
     AlphaBlendGBuffer[pixelCoordinate] = alphaBlendSurface.pack(cb.alphaBlendSurfacePackMult);
   }
-  if (GBUFFER_FEATURE_PARTICLE_LAYER && cb.outputParticleLayer)
-  {
-    ParticleBuffer[pixelCoordinate] = vec4(0,0,0,1);
-  }
-
 #ifndef GBUFFER_PSR
   if (GBUFFER_FEATURE_OBJECT_PICKING && cb.enableObjectPicking != 0)
   {
@@ -3441,14 +3333,7 @@ void geometryPSRPreparePass(ivec2 pixelCoordinate) {
     geometryFlags.portalSpace,
     diffuseLayerWeight) * attenuation;
 
-  if (GBUFFER_FEATURE_PARTICLE_LAYER && cb.outputParticleLayer && any(diffuseLayerRadiance > 0.0f))
-  {
-    accumulateParticleBuffer(pixelCoordinate, diffuseLayerRadiance);
-  }
-  else
-  {
-    radiance += diffuseLayerRadiance;
-  }
+  radiance += diffuseLayerRadiance;
 
   SharedRadianceRG[pixelCoordinate] = radiance.rg;
   SharedRadianceB[pixelCoordinate] = radiance.b;

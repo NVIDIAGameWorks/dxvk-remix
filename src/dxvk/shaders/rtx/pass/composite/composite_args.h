@@ -79,10 +79,8 @@ struct CompositeArgs {
   uint enableSeparatedDenoisers;
   uint frameIdx;
 
-  uint outputSecondarySignalToParticleLayer;
-  uint compositeVolumetricLight;
-  uint outputParticleLayer;
-  uint enableDemodulateAttenuation;
+  vec3 clearColorFinalColor;
+  uint useRayReconstruction;
 
   uint enableStochasticAlphaBlend;
   uint stochasticAlphaBlendEnableFilter;
@@ -104,11 +102,8 @@ struct CompositeArgs {
   uint enhanceAlbedo;
   float skyBrightness;
 
-  vec3 clearColorFinalColor;
-  uint timeSinceStartMS;
-
   float alphaBlendSurfacePackMult; // for packing/unpacking hitT into Float16 in AlphaBlendSurface
   float postFilterThreshold;
   uint writeRayReconstructionHitDistance;
-  float pad1;
+  uint timeSinceStartMS;
 };

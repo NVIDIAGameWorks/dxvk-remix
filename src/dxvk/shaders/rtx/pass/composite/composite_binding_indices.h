@@ -74,6 +74,5 @@
 #define COMPOSITE_LAST_FINAL_OUTPUT                                 52
 #define COMPOSITE_ALPHA_BLEND_RADIANCE_OUTPUT                       53
 
-#define COMPOSITE_RAY_RECONSTRUCTION_PARTICLE_BUFFER_OUTPUT         54
-#define COMPOSITE_DEBUG_VIEW_OUTPUT                                 55
-#define COMPOSITE_RAY_RECONSTRUCTION_HIT_DISTANCE_OUTPUT            57
+#define COMPOSITE_DEBUG_VIEW_OUTPUT                                 54
+#define COMPOSITE_RAY_RECONSTRUCTION_HIT_DISTANCE_OUTPUT            55
