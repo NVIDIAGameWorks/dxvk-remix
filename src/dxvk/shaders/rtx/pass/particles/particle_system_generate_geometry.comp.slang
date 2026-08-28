@@ -141,7 +141,7 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
   const float2 size = particle.size(particleSystem, animationDataTex) * particleCb.sceneScale;
   const float4 color = particle.color(particleSystem, animationDataTex);
   
-  if(particle.isDead() || particle.isSleeping() || color.w < particleCb.resolveTransparencyThreshold || max(size.x, size.y) < 0.1f)
+  if(particle.isDead() || particle.isSleeping() || color.w < particleCb.resolveTransparencyThreshold || max(size.x, size.y) < 0.1f * particleCb.sceneScale)
   {
     clearParticleVertices(threadIdx.x, particleSystem);
     return;
