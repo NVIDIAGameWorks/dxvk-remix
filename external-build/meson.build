@@ -90,6 +90,14 @@ if remix_sentry_environment != ''
   add_global_arguments('/DREMIX_SENTRY_ENVIRONMENT="' + remix_sentry_environment + '"', language : 'cpp')
 endif
 
+# Sentry DSN: when -Dremix_sentry_dsn= is set (CI injects from a secret), bake it in.
+# Dev/local builds omit this; the C++ fallback defines REMIX_SENTRY_DSN as "" which
+# sentry-native treats as a no-op, silently disabling crash upload.
+remix_sentry_dsn = get_option('remix_sentry_dsn')
+if remix_sentry_dsn != ''
+  add_global_arguments('/DREMIX_SENTRY_DSN="' + remix_sentry_dsn + '"', language : 'cpp')
+endif
+
 # ============================================================================
 # USD (Universal Scene Description)
 # ============================================================================
