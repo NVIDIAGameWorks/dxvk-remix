@@ -66,13 +66,13 @@ struct RayReconstructionArgs {
   float upscalerRoughnessDemodulationOffset;
   uint debugView;
 
-  uint particleBufferMode;
   uint combineSpecularAlbedo;
   uint frameIdx;
   float rcpSquaredDisocclusionMaskBlurGaussianWeightSigma;
-
   uint enableDisocclusionMaskBlur;
+
   uint disocclusionMaskBlurRadius;
   uint enableReSTIRGI;
   uint pad0;
+  uint pad1;
 };

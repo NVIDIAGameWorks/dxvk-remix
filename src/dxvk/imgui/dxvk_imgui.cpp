@@ -185,7 +185,6 @@ namespace dxvk {
     {"particletextures", "Particle Texture (optional)", &RtxOptions::particleTexturesObject()},
     {"haircardtextures", "Hair Cards Texture (optional)", &RtxOptions::hairCardTexturesObject()},
     {"beamtextures", "Beam Texture (optional)", &RtxOptions::beamTexturesObject()},
-    {"ignoretransparencytextures", "Ignore Transparency Layer Texture (optional)", &RtxOptions::ignoreTransparencyLayerTexturesObject()},
     {"lightconvertertextures", "Add Light to Textures (optional)", &RtxOptions::lightConverterObject()},
     {"decaltextures", "Decal Texture (optional)", &RtxOptions::decalTexturesObject()},
     {"terraintextures", "Terrain Texture", &RtxOptions::terrainTexturesObject()},
@@ -3875,7 +3874,7 @@ namespace dxvk {
 
     if (RemixGui::CollapsingHeader("Denoising", collapsingHeaderClosedFlags)) {
       bool isRayReconstructionEnabled = RtxOptions::isRayReconstructionEnabled();
-      bool useNRD = !isRayReconstructionEnabled || common->metaRayReconstruction().enableNRDForTraining();
+      const bool useNRD = !isRayReconstructionEnabled;
       ImGui::Indent();
       ImGui::BeginDisabled(!useNRD);
       RemixGui::Checkbox("Denoising Enabled", &RtxOptions::useDenoiserObject());
@@ -3938,17 +3937,6 @@ namespace dxvk {
           }
         }
 
-        if (RemixGui::CollapsingHeader("Secondary Direct/Indirect Light Denoiser", collapsingHeaderClosedFlags)) {
-          ImGui::Indent();
-          ImGui::PushID("Secondary Direct/Indirect Light Denoiser");
-          common->metaSecondaryCombinedLightDenoiser().showImguiSettings();
-          ImGui::PopID();
-          ImGui::Unindent();
-        }
-      }
-
-      // Show secondary denoiser settings when RR is enabled and secondary signal uses external denoiser
-      if (!useNRD && isRayReconstructionEnabled && common->metaRayReconstruction().denoiseSecondarySignalWithExternalDenoiser()) {
         if (RemixGui::CollapsingHeader("Secondary Direct/Indirect Light Denoiser", collapsingHeaderClosedFlags)) {
           ImGui::Indent();
           ImGui::PushID("Secondary Direct/Indirect Light Denoiser");

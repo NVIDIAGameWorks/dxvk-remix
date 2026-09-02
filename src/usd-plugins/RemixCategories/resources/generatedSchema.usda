@@ -90,11 +90,6 @@ class "RemixInstanceCategoryAPI" (
         displayGroup = "Remix Categories"
         displayName = "Ignore Opacity Micromap"
     )
-    bool remix_category:ignore_transparency_layer = 0 (
-        doc = "Textures on draw calls that should not be stored in the transparency layer, when DLSS-RR is on.\nThe transparency layer stores noise-free transparent objects which bypasses DLSS-RR denoising, but it has lower anti-aliasing quality.\nTransparent objects that have aliasing/flickering issues, like laser beams, can be added to this list to achieve better anti-aliasing quality."
-        displayGroup = "Remix Categories"
-        displayName = "Ignore Transparency Layer"
-    )
     bool remix_category:particle = 0 (
         doc = "Textures on draw calls that should be treated as particles.\nWhen objects are marked as particles more approximate rendering methods are leveraged allowing for more effecient and typically better looking particle rendering.\nGenerally any billboard-like blended particle objects in the original application should be classified this way."
         displayGroup = "Remix Categories"

@@ -46,7 +46,6 @@ namespace dxvk {
     "remix_category:third_person_player_model",
     "remix_category:third_person_player_body",
     "remix_category:ignore_baked_lighting",
-    "remix_category:ignore_transparency_layer",
     "remix_category:particle_emitter",
     "remix_category:smooth_normals",
     "remix_category:hair_cards",

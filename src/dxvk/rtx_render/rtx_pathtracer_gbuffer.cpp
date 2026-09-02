@@ -133,7 +133,6 @@ namespace dxvk {
         RW_TEXTURE2D(GBUFFER_BINDING_PRIMARY_DEPTH_OUTPUT)
         RW_TEXTURE2D(GBUFFER_BINDING_SHARED_BIAS_CURRENT_COLOR_MASK_OUTPUT)
         RW_TEXTURE2D(GBUFFER_BINDING_ALPHA_BLEND_GBUFFER_OUTPUT)
-        RW_TEXTURE2D(GBUFFER_BINDING_PARTICLE_BUFFER_OUTPUT)
         SAMPLER2D(GBUFFER_BINDING_SKYMATTE)
         SAMPLERCUBE(GBUFFER_BINDING_SKYPROBE)
 
@@ -191,9 +190,8 @@ namespace dxvk {
 
     constexpr uint32_t kGbufferDecalPrepareVariantDebug = 1u << 0;
 
-    constexpr uint32_t kGbufferRayQueryFeatureParticleLayer = 1u << 0;
-    constexpr uint32_t kGbufferRayQueryFeatureRaytracedRenderTarget = 1u << 1;
-    constexpr uint32_t kGbufferRayQueryFeatureStochasticAlpha = 1u << 2;
+    constexpr uint32_t kGbufferRayQueryFeatureRaytracedRenderTarget = 1u << 0;
+    constexpr uint32_t kGbufferRayQueryFeatureStochasticAlpha = 1u << 1;
     constexpr uint32_t kGbufferRayQueryFeatureVariantPass = 1u << 8;
     constexpr uint32_t kGbufferRayQueryFeatureVariantWBOIT = 1u << 9;
     constexpr uint32_t kGbufferRayQueryFeatureVariantNRC = 1u << 10;
@@ -201,9 +199,9 @@ namespace dxvk {
       RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_FEATURES_DEBUG + 1u;
 
     static_assert(RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_FEATURES_NO_PSR == 0u);
-    static_assert(RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_FEATURES_PSR_INLINE == 8u);
-    static_assert(RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_FEATURES_PSR_PREPARE == 16u);
-    static_assert(RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_FEATURES_DEBUG == 20u);
+    static_assert(RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_FEATURES_PSR_INLINE == 4u);
+    static_assert(RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_FEATURES_PSR_PREPARE == 8u);
+    static_assert(RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_FEATURES_DEBUG == 10u);
 
     constexpr uint32_t getGbufferFeatureVariantKey(
       const uint32_t features) {
@@ -273,20 +271,16 @@ namespace dxvk {
     }
 
     constexpr uint32_t getGbufferRayQueryFeatureMask(
-      const bool particleLayerEnabled,
       const bool raytracedRenderTargetEnabled,
       const bool stochasticAlphaEnabled) {
       return
-        (particleLayerEnabled ? kGbufferRayQueryFeatureParticleLayer : 0u) |
         (raytracedRenderTargetEnabled ? kGbufferRayQueryFeatureRaytracedRenderTarget : 0u) |
         (stochasticAlphaEnabled ? kGbufferRayQueryFeatureStochasticAlpha : 0u);
     }
 
     constexpr uint32_t getGbufferRayQueryPSRPrepareFeatureMask(
       const uint32_t featureMask) {
-      return
-        (featureMask & kGbufferRayQueryFeatureParticleLayer) |
-        ((featureMask & kGbufferRayQueryFeatureStochasticAlpha) >> 1u);
+      return (featureMask & kGbufferRayQueryFeatureStochasticAlpha) >> 1u;
     }
 
     constexpr uint32_t selectGbufferRayQueryFeatureVariant(
@@ -294,7 +288,6 @@ namespace dxvk {
       const bool objectPickingEnabled,
       const bool psrEnabled,
       const bool usePSRPrepare,
-      const bool particleLayerEnabled,
       const bool raytracedRenderTargetEnabled,
       const bool stochasticAlphaEnabled) {
       if (debugViewEnabled || objectPickingEnabled) {
@@ -302,7 +295,6 @@ namespace dxvk {
       }
 
       const uint32_t featureMask = getGbufferRayQueryFeatureMask(
-        particleLayerEnabled,
         raytracedRenderTargetEnabled,
         stochasticAlphaEnabled);
 
@@ -450,11 +442,11 @@ namespace dxvk {
 
       const uint32_t featureVariants[] = {
         RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_FEATURES_NO_PSR,
-        RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_FEATURES_NO_PSR + 7u,
+        RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_FEATURES_NO_PSR + 3u,
         RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_FEATURES_PSR_INLINE,
-        RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_FEATURES_PSR_INLINE + 7u,
+        RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_FEATURES_PSR_INLINE + 3u,
         RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_FEATURES_PSR_PREPARE,
-        RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_FEATURES_PSR_PREPARE + 3u,
+        RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_FEATURES_PSR_PREPARE + 1u,
         RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_FEATURES_DEBUG,
       };
 
@@ -703,7 +695,6 @@ namespace dxvk {
     ctx->bindResourceView(GBUFFER_BINDING_SECONDARY_POSITION_ERROR_OUTPUT, rtOutput.m_secondaryPositionError.view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_SECONDARY_WORLD_POSITION_OUTPUT, rtOutput.m_secondaryWorldPositionWorldTriangleNormal.view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_ALPHA_BLEND_GBUFFER_OUTPUT, rtOutput.m_alphaBlendGBuffer.view, nullptr);
-    ctx->bindResourceView(GBUFFER_BINDING_PARTICLE_BUFFER_OUTPUT, rtOutput.m_rayReconstructionParticleBuffer.view, nullptr);
 
     ctx->bindResourceView(GBUFFER_BINDING_REFLECTION_PSR_DATA_STORAGE_0, rtOutput.m_gbufferPSRData[0].view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_WORLD_POSITION_OUTPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Write), nullptr);
@@ -738,7 +729,6 @@ namespace dxvk {
     const bool debugViewEnabled = rtOutput.m_raytraceArgs.debugView != 0;
     const bool usePipelineDefaultFeatureVariant =
       rtOutput.m_raytraceArgs.enableDLSSRR ||
-      rtOutput.m_raytraceArgs.outputParticleLayer ||
       rtOutput.m_raytraceArgs.enableRaytracedRenderTarget ||
       rtOutput.m_raytraceArgs.enableStochasticAlphaBlend;
     const uint32_t pipelineFeatureVariant = selectGbufferFeatureVariant(
@@ -764,7 +754,6 @@ namespace dxvk {
       rtOutput.m_raytraceArgs.enableObjectPicking,
       psrEnabled,
       usePSRPrepare,
-      rtOutput.m_raytraceArgs.outputParticleLayer,
       rtOutput.m_raytraceArgs.enableRaytracedRenderTarget,
       rtOutput.m_raytraceArgs.enableStochasticAlphaBlend);
     const VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 16, 8, 1 });

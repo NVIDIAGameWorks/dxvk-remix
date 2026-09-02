@@ -149,6 +149,7 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   ivec2 position,
   bool writeStochastic,
+  bool writeDenoising,
   Surface surface,
   SurfaceInteraction surfaceInteraction,
   uint surfaceIndex,
@@ -201,9 +202,12 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
     virtualShadingNormal * 0.5f + 0.5f,
     gBufferMemoryPolymorphicSurfaceMaterialInteraction.perceptualRoughness);
 
-  const float4 packedNormalRoughness = NRD_FrontEnd_PackNormalAndRoughness(
-    virtualShadingNormal, gBufferMemoryPolymorphicSurfaceMaterialInteraction.perceptualRoughness, MATERIAL_ID_DEFAULT);
-  virtualWorldShadingNormalPerceptualRoughnessDenoisingTexture[position] = packedNormalRoughness;
+  if (writeDenoising)
+  {
+    const float4 packedNormalRoughness = NRD_FrontEnd_PackNormalAndRoughness(
+      virtualShadingNormal, gBufferMemoryPolymorphicSurfaceMaterialInteraction.perceptualRoughness, MATERIAL_ID_DEFAULT);
+    virtualWorldShadingNormalPerceptualRoughnessDenoisingTexture[position] = packedNormalRoughness;
+  }
 
   // Note: Write stochastic textures only when desired. Bit hacky to have this logic here rather than in the geometery resolver but
   // it's an easy enough way to do it.
@@ -262,6 +266,7 @@ bool isGBufferMiss(ivec2 position, Texture2D<float> coneRadiusTexture)
 void writeMissToGBuffer(
   ivec2 position,
   bool writeStochastic,
+  bool writeDenoising,
   float missLinearViewZ,
   RWTexture2D<float> coneRadiusTexture,
   RWTexture2D<float> linearViewZTexture,
@@ -283,7 +288,10 @@ void writeMissToGBuffer(
   linearViewZTexture[position] = missLinearViewZ;
   worldMotionTexture[position] = vec4(missMotionVector, 0);
   worldShadingNormalPerceptualRoughnessTexture[position] = vec4(missNormal * 0.5 + 0.5, missPerceptualRoughness);
-  WorldShadingNormalPerceptualRoughnessDenoisingTexture[position] = NRD_FrontEnd_PackNormalAndRoughness(missNormal, missPerceptualRoughness, MATERIAL_ID_DEFAULT);
+  if (writeDenoising)
+  {
+    WorldShadingNormalPerceptualRoughnessDenoisingTexture[position] = NRD_FrontEnd_PackNormalAndRoughness(missNormal, missPerceptualRoughness, MATERIAL_ID_DEFAULT);
+  }
   worldPositionWorldTriangleNormal[position] = missPositionNormal;
 
   if (writeStochastic)

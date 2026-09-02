@@ -243,7 +243,6 @@ namespace dxvk {
       const Resources::Resource* pRoughness;
       const Resources::Resource* pBiasCurrentColorMask;
       const Resources::Resource* pHitDistance;
-      const Resources::Resource* pInTransparencyLayer;
       const Resources::Resource* pDisocclusionMask;
     };
 

@@ -730,12 +730,9 @@ PrimaryDemodulationSignals demodulatePrimaryPath(
   return primarySignals;
 }
 
-// Demodulates the secondary (PSR) surface signal and writes it to the secondary denoiser input
-// buffers. Should only be called on PSR pixels (geometryFlags.performedAnyPSR()). Runs regardless of
-// sparse active state — the integrator produces secondary radiance for all PSR pixels, so the
-// output stays dense and the RR particle layer matches the SR-off baseline.
-// Loads secondary GBuffer data, computes and stores the secondary specular albedo (returned for
-// the dense debug view), and runs the lobe-combined demodulation.
+// Combines the secondary (PSR) surface signal and writes it to the secondary radiance buffers.
+// RR consumes the raw signal directly; other upscalers retain NRD front-end preparation. This runs
+// for every PSR pixel because the integrator produces a dense secondary signal.
 SecondaryDemodulationSignals demodulateSecondaryPath(
   uvec2 pixelCoordinate,
   GeometryFlags geometryFlags,
@@ -761,16 +758,8 @@ SecondaryDemodulationSignals demodulateSecondaryPath(
   // Note: Overwrites the base reflectivity in this buffer; composite remodulates with this value.
   aliasedData1.SecondarySpecularAlbedo[pixelCoordinate].xyz = secondarySpecularAlbedo;
 
-  const vec3 secondaryDiffuseAlbedo = SecondaryAlbedo[pixelCoordinate].xyz;
-
   if (geometryFlags.secondarySurfaceMask && !geometryFlags.primarySelectedIntegrationSurface)
   {
-    DemodulationData secondaryDemodulationData;
-    secondaryDemodulationData.diffuseAlbedo = secondaryDiffuseAlbedo;
-    secondaryDemodulationData.specularAlbedo = secondarySpecularAlbedo;
-    secondaryDemodulationData.perceptualRoughness = secondaryPerceptualRoughness;
-    secondaryDemodulationData.linearViewZ = SecondaryLinearViewZ[pixelCoordinate].x;
-
     secondarySignals.indirectRadianceHitDistanceInput = IndirectRadianceHitDistance[pixelCoordinate];
     secondarySignals.combinedDiffuseInput = SecondaryCombinedDiffuseRadiance[pixelCoordinate];
     secondarySignals.combinedSpecularInput = SecondaryCombinedSpecularRadiance[pixelCoordinate];
@@ -790,13 +779,27 @@ SecondaryDemodulationSignals demodulateSecondaryPath(
     // The secondary signal doesn't have advanced techniques like ReSTIR; a tighter clamp removes fireflies.
     secondarySignals.combinedSpecularInput.xyz = fireflyFiltering(secondarySignals.combinedSpecularInput.xyz, cb.secondarySpecularFireflyFilteringThreshold);
 
-    demodulate(
-      cb.secondaryCombinedNrd, secondaryDemodulationData,
-      secondarySignals.combinedDiffuseInput, secondarySignals.combinedSpecularInput,
-      secondarySignals.combinedDiffuseOutput, secondarySignals.combinedSpecularOutput, false);
+    if (cb.enableDLSSRR)
+    {
+      secondarySignals.combinedDiffuseOutput = secondarySignals.combinedDiffuseInput;
+      secondarySignals.combinedSpecularOutput = secondarySignals.combinedSpecularInput;
+    }
+    else
+    {
+      DemodulationData secondaryDemodulationData;
+      secondaryDemodulationData.diffuseAlbedo = SecondaryAlbedo[pixelCoordinate].xyz;
+      secondaryDemodulationData.specularAlbedo = secondarySpecularAlbedo;
+      secondaryDemodulationData.perceptualRoughness = secondaryPerceptualRoughness;
+      secondaryDemodulationData.linearViewZ = SecondaryLinearViewZ[pixelCoordinate].x;
+
+      demodulate(
+        cb.secondaryCombinedNrd, secondaryDemodulationData,
+        secondarySignals.combinedDiffuseInput, secondarySignals.combinedSpecularInput,
+        secondarySignals.combinedDiffuseOutput, secondarySignals.combinedSpecularOutput, false);
+    }
   }
 
-  // ToDo: scale secondaries  prior to being denoised by NRD when sparse secondary lighting gets added.
+  // ToDo: scale secondaries prior to NRD when sparse secondary lighting gets added.
   SecondaryCombinedDiffuseRadiance[pixelCoordinate] = secondarySignals.combinedDiffuseOutput;
   SecondaryCombinedSpecularRadiance[pixelCoordinate] = secondarySignals.combinedSpecularOutput;
 

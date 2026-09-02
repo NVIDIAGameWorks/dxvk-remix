@@ -717,7 +717,6 @@ namespace dxvk
     NVSDK_NGX_Resource_VK exposureResource = TextureToResourceVK(buffers.pExposure, false);
     NVSDK_NGX_Resource_VK biasCurrentColorMaskResource = TextureToResourceVK(buffers.pBiasCurrentColorMask, false);
     NVSDK_NGX_Resource_VK hitDistanceResource = TextureToResourceVK(buffers.pHitDistance, false);
-    NVSDK_NGX_Resource_VK inTransparencyLayerResource = TextureToResourceVK(buffers.pInTransparencyLayer, false);
 
     NVSDK_NGX_VK_DLSS_Eval_Params evalParams = {};
     evalParams.Feature.pInColor = &unresolvedColorResource;
@@ -757,8 +756,6 @@ namespace dxvk
     evalParams_DLDN.pInExposureTexture = nullptr;
     evalParams_DLDN.pInMotionVectors = &motionVectorsResource;
     evalParams_DLDN.pInBiasCurrentColorMask = nullptr;
-    evalParams_DLDN.pInTransparencyLayer = buffers.pInTransparencyLayer ? &inTransparencyLayerResource : nullptr;
-    evalParams_DLDN.pInTransparencyLayerOpacity = nullptr;
     evalParams_DLDN.InJitterOffsetX = settings.jitterOffset[0];
     evalParams_DLDN.InJitterOffsetY = settings.jitterOffset[1];
     evalParams_DLDN.InPreExposure = settings.preExposure;
