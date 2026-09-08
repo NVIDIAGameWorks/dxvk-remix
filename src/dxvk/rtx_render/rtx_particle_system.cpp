@@ -520,7 +520,7 @@ namespace dxvk {
     float lambda = spawnRate * effectiveElapsedSecs;
 
     // Poisson dist won't work well with these values (inf loop)
-    if (isnan(lambda) || lambda < 0.0f) {
+    if (isnan(lambda) || lambda <= 0.0f) {
       return 0;
     }
 
