@@ -208,10 +208,10 @@ namespace dxvk {
                   "As such, this is mostly only a development tool to hide objects during development until they are properly replaced, otherwise the objects should be ignored with rtx.ignoreTextures instead for better performance.");
     RTX_OPTION("rtx", fast_unordered_set, playerModelTextures, {},
                   "Textures on draw calls that are part of the third-person player model, such as body, head, or held equipment.\n"
-                  "Tagged instances use the player-model ray mask so their primary-ray visibility, shadows, reflections, and portal-space virtual copies can be controlled independently from regular world geometry.");
+                  "By default, tagged instances appear in shadows and reflections but are not drawn in the primary camera view.");
     RTX_OPTION("rtx", fast_unordered_set, playerModelBodyTextures, {},
-                  "Textures on draw calls that identify the player model body/root position.\n"
-                  "Remix uses the tagged body instance as the anchor for filtering nearby player-model parts and for creating or positioning virtual player-model instances through portals.");
+                  "Textures on the body/root of the third-person player model.\n"
+                  "Apply together with third_person_player_model to give the body the same visibility behavior. This category also identifies the anchor Remix uses to filter nearby player-model parts and position virtual instances through portals.");
     RTX_OPTION("rtx", fast_unordered_set, lightConverter, {},
                   "Textures on draw calls that should spawn Remix effect lights.\n"
                   "An effect light is a dynamic sphere light placed at the tagged draw call's geometry centroid; radius, intensity, color, and plasma-ball animation are controlled in the Runtime UI's Lighting > Effect Light section.");
