@@ -21,6 +21,11 @@
 */
 #pragma once
 
+#include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+
 #include "rtx_mod_usd.h"
 #include "rtx_asset_replacer.h"
 #include "../../lssusd/curve_utils.h"
@@ -60,6 +65,7 @@
 #include <pxr/base/plug/plugin.h>
 // ParticleSystemAPI accessed via codeless schema (string-based TfToken API)
 #include "../../lssusd/usd_include_end.h"
+#include "../../util/util_string.h"
 #include "../util/util_watchdog.h"
 
 #include "../../lssusd/particle_system_helpers_vec.h"
@@ -70,8 +76,6 @@
 #include "graph/rtx_graph_usd_parser.h"
 
 #include "rtx_lights_data.h"
-#include <filesystem>
-#include <algorithm>
 
 namespace fs = std::filesystem;
 
@@ -1700,5 +1704,51 @@ const ModTypeInfo& UsdMod::getTypeInfo() {
   return s_typeInfo;
 }
 
+static std::string getRemixCategoriesSchemaUsda() {
+  std::stringstream ss;
+  ss << "#usda 1.0\n";
+  ss << "(\n";
+  ss << "    \"\"\"Generated from RTX_OPTION category descriptions. Do not edit directly.\"\"\"\n";
+  ss << ")\n";
+  ss << "\n";
+  ss << "class \"RemixInstanceCategoryAPI\" (\n";
+  ss << "    customData = {\n";
+  ss << "        string userDocBrief = \"Adds Remix instance category flags to a prim.\"\n";
+  ss << "    }\n";
+  ss << ")\n";
+  ss << "{\n";
+  for (const RemixCategoryEntry& entry : kRemixCategoryEntries) {
+    const RtxOptionImpl* option = RtxOptionImpl::getOptionByFullName(entry.optionName);
+    if (option == nullptr || option->getDescription() == nullptr || option->getDescription()[0] == '\0') {
+      return {};
+    }
+
+    ss << "    bool " << entry.attr << " = 0 (\n";
+    ss << "        doc = \"" << str::escapeCStyle(option->getDescription()) << "\"\n";
+    ss << "        displayGroup = \"Remix Categories\"\n";
+    ss << "        displayName = \"" << entry.displayName << "\"\n";
+    ss << "    )\n";
+  }
+  ss << "}\n";
+  return ss.str();
+}
+
 } // namespace dxvk
+
+#ifdef _WIN32
+extern "C" __declspec(dllexport)
+#else
+extern "C" __attribute__((visibility("default")))
+#endif
+bool writeRemixCategoriesSchemaUsda(const char* outputFilePath) {
+  const std::string schema = dxvk::getRemixCategoriesSchemaUsda();
+  if (outputFilePath == nullptr || schema.empty()) {
+    return false;
+  }
+
+  std::ofstream file(outputFilePath);
+  file << schema;
+  file.close();
+  return !file.fail();
+}
 

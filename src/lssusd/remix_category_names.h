@@ -23,31 +23,39 @@
 #pragma once
 
 namespace dxvk {
-  inline constexpr const char* kRemixCategoryNames[] = {
-    "remix_category:world_ui",
-    "remix_category:world_matte",
-    "remix_category:sky",
-    "remix_category:ignore",
-    "remix_category:ignore_lights",
-    "remix_category:ignore_anti_culling",
-    "remix_category:ignore_motion_blur",
-    "remix_category:ignore_opacity_micromap",
-    "remix_category:ignore_alpha_channel",
-    "remix_category:hidden",
-    "remix_category:particle",
-    "remix_category:beam",
-    "remix_category:decal_Static",
-    "remix_category:decal_dynamic",
-    "remix_category:decal_single_offset",
-    "remix_category:decal_no_offset",
-    "remix_category:alpha_blend_to_cutout",
-    "remix_category:terrain",
-    "remix_category:animated_water",
-    "remix_category:third_person_player_model",
-    "remix_category:third_person_player_body",
-    "remix_category:ignore_baked_lighting",
-    "remix_category:particle_emitter",
-    "remix_category:smooth_normals",
-    "remix_category:hair_cards",
+  // NV-DXVK start: Associate Remix categories with their schema and RTX option metadata
+  struct RemixCategoryEntry {
+    const char* attr;
+    const char* displayName;
+    const char* optionName;
   };
+
+  inline constexpr RemixCategoryEntry kRemixCategoryEntries[] = {
+    { "remix_category:world_ui",                  "World UI",                  "rtx.worldSpaceUiTextures" },
+    { "remix_category:world_matte",               "World Matte",               "rtx.worldSpaceUiBackgroundTextures" },
+    { "remix_category:sky",                       "Sky",                       "rtx.skyBoxTextures" },
+    { "remix_category:ignore",                    "Ignore",                    "rtx.ignoreTextures" },
+    { "remix_category:ignore_lights",             "Ignore Lights",             "rtx.ignoreLights" },
+    { "remix_category:ignore_anti_culling",       "Ignore Anti Culling",       "rtx.antiCulling.antiCullingTextures" },
+    { "remix_category:ignore_motion_blur",        "Ignore Motion Blur",        "rtx.postfx.motionBlurMaskOutTextures" },
+    { "remix_category:ignore_opacity_micromap",   "Ignore Opacity Micromap",   "rtx.opacityMicromapIgnoreTextures" },
+    { "remix_category:ignore_alpha_channel",      "Ignore Alpha Channel",      "rtx.ignoreAlphaOnTextures" },
+    { "remix_category:hidden",                    "Hidden",                    "rtx.hideInstanceTextures" },
+    { "remix_category:particle",                  "Particle",                  "rtx.particleTextures" },
+    { "remix_category:beam",                      "Beam",                      "rtx.beamTextures" },
+    { "remix_category:decal_Static",              "Decal Static",              "rtx.decalTextures" },
+    { "remix_category:decal_dynamic",             "Decal Dynamic",             "rtx.dynamicDecalTextures" },
+    { "remix_category:decal_single_offset",       "Decal Single Offset",       "rtx.singleOffsetDecalTextures" },
+    { "remix_category:decal_no_offset",           "Decal No Offset",           "rtx.nonOffsetDecalTextures" },
+    { "remix_category:alpha_blend_to_cutout",     "Alpha Blend To Cutout",     "rtx.forceCutoutAlpha" },
+    { "remix_category:terrain",                   "Terrain",                   "rtx.terrainTextures" },
+    { "remix_category:animated_water",            "Animated Water",            "rtx.animatedWaterTextures" },
+    { "remix_category:third_person_player_model", "Third Person Player Model", "rtx.playerModelTextures" },
+    { "remix_category:third_person_player_body",  "Third Person Player Body",  "rtx.playerModelBodyTextures" },
+    { "remix_category:ignore_baked_lighting",     "Ignore Baked Lighting",     "rtx.ignoreBakedLightingTextures" },
+    { "remix_category:particle_emitter",          "Particle Emitter",          "rtx.particleEmitterTextures" },
+    { "remix_category:smooth_normals",            "Smooth Normals",            "rtx.smoothNormalsTextures" },
+    { "remix_category:hair_cards",                "Hair Cards",                "rtx.hairCardTextures" },
+  };
+  // NV-DXVK end
 }

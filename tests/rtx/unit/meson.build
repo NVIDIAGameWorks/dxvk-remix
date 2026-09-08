@@ -67,7 +67,7 @@ test('test_graph_documentation', exe, env: test_env, priority : -50, args: d3d9_
 tests += exe
 
 exe = executable('test_remix_categories', files('test_remix_categories.cpp'), dependencies : usd_dep, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
-test('test_remix_categories', exe, env: test_env, args: remix_categories_plugin.full_path(), depends: remix_categories_plugin)
+test('test_remix_categories', exe, env: test_env, priority : -50, args: [ d3d9_dll.full_path(), remix_categories_plugin.full_path() ], depends: [ d3d9_dll, remix_categories_plugin ])
 tests += exe
 
 exe = executable('test_particle_system_schema', files('test_particle_system_schema.cpp'), dependencies : usd_dep, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
