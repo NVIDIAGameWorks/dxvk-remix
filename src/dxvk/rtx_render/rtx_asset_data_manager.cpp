@@ -21,6 +21,7 @@
 */
 #include "rtx_asset_data_manager.h"
 #include "rtx_utils.h"
+#include <unordered_set>
 #include "rtx_options.h"
 #include "rtx_asset_package.h"
 #include "rtx_file_watch.h"
@@ -524,53 +525,93 @@ namespace dxvk {
     FileWatch::get().removeAllWatchDirs();
   }
 
-  void AssetDataManager::addSearchPath(uint32_t priority, const std::filesystem::path& path) {
-    // Make base path preferred and lowercase
-    auto searchPath = std::filesystem::absolute(path).make_preferred().string();
-    std::for_each(searchPath.begin(), searchPath.end(), [](char& c) { c = tolower(c); });
+  void AssetDataManager::setSearchPaths(const std::vector<std::filesystem::path>& paths) {
+    // Normalise paths (standardize case and trailing separator)
+    auto normalise = [](const std::filesystem::path& p) {
+      auto s = std::filesystem::absolute(p).make_preferred().string();
+      std::for_each(s.begin(), s.end(), [](char& c) { c = tolower(c); });
+      if (!s.empty() && s.back() != '\\' && s.back() != '/') {
+        s.push_back('\\');
+      }
+      return s;
+    };
 
-    if (searchPath.back() != '\\' && searchPath.back() != '/') {
-      searchPath.push_back('\\');
-    }
-
-    for (const auto& [p, curSearchPath] : m_searchPaths) {
-      if (curSearchPath == searchPath) {
-        // The file watch thread may have been recreated with the D3D device.
-        FileWatch::get().installDir(searchPath.c_str());
-        return;
+    // deduplicate keeping the last occurrence of each path (last = highest
+    // precedence within a mod). Process in reverse so earlier occurrences are the ones skipped.
+    std::unordered_set<std::string> seen;
+    seen.reserve(paths.size());
+    std::vector<std::string> normalised;
+    normalised.reserve(paths.size());
+    for (auto it = paths.rbegin(); it != paths.rend(); ++it) {
+      auto s = normalise(*it);
+      if (seen.insert(s).second) {
+        normalised.push_back(std::move(s));
       }
     }
+    std::reverse(normalised.begin(), normalised.end());
 
-    if (m_searchPaths.count(priority) > 0) {
-      Logger::warn(str::format("Overriding asset search path from: ",
-                               m_searchPaths[priority], " to: ", searchPath));
-    } else {
-      Logger::info(str::format("Adding asset search path: ", searchPath));
+    // Held across the mounting below: findAsset must never observe a path whose packages
+    // have not been attached yet, or an asset under a freshly published path resolves as
+    // missing on another mod's worker.
+    std::lock_guard<std::mutex> lock(m_searchPathMutex);
+
+    // Move existing entries into a map for O(1) carry-over lookup.
+    // Entries that survive into rebuilt keep their mounted packages; entries that
+    // fall off the end of oldEntries are destroyed here, releasing their packages.
+    std::unordered_map<std::string, SearchPathEntry> oldEntries;
+    oldEntries.reserve(m_searchPaths.size());
+    for (auto& e : m_searchPaths) {
+      oldEntries.emplace(e.path, std::move(e));
     }
+    m_searchPaths.clear();
 
-    m_searchPaths[priority] = searchPath;
+    std::vector<SearchPathEntry> rebuilt;
+    rebuilt.reserve(normalised.size());
 
-    // Find the packages
-    if (RtxIo::enabled()) {
-      PackageSet packageSet;
-      for (const auto& entry : std::filesystem::directory_iterator(path)) {
-        if (entry.path().extension() == ".pkg" || entry.path().extension() == ".rtxio") {
-          const auto packagePath = entry.path().string();
-          // Try to initialize the replacements packages
-          Rc<AssetPackage> package = new AssetPackage(packagePath);
-          if (package->initialize()) {
-            packageSet.emplace(packagePath, std::move(package));
-            Logger::info(str::format("Mounted a package at: ", entry.path()));
-          } else {
-            Logger::warn(str::format("Corrupted package discovered at: ", entry.path()));
+    for (auto& searchPath : normalised) {
+      auto it = oldEntries.find(searchPath);
+      if (it != oldEntries.end()) {
+        rebuilt.push_back(std::move(it->second));
+        oldEntries.erase(it);
+        continue;
+      }
+
+      // New path: mount packages inline so we hold a direct ref without a second search.
+      Logger::info(str::format("Adding asset search path: ", searchPath));
+      SearchPathEntry& entry = rebuilt.emplace_back(SearchPathEntry { searchPath, PackageSet {} });
+      if (RtxIo::enabled()) {
+        std::error_code ec;
+        for (const auto& fsEntry : std::filesystem::directory_iterator(searchPath, ec)) {
+          if (fsEntry.path().extension() == ".pkg" || fsEntry.path().extension() == ".rtxio") {
+            const auto packagePath = fsEntry.path().string();
+            Rc<AssetPackage> package = new AssetPackage(packagePath);
+            if (package->initialize()) {
+              entry.packages.emplace(packagePath, std::move(package));
+              Logger::info(str::format("Mounted a package at: ", fsEntry.path()));
+            } else {
+              Logger::warn(str::format("Corrupted package discovered at: ", fsEntry.path()));
+            }
           }
         }
+        // error_code overload: a mod directory that vanishes mid-reload only warns here.
+        if (ec) {
+          Logger::warn(str::format("Could not enumerate packages under: ", searchPath,
+                                   " (", ec.message(), ")"));
+        }
       }
-      m_packageSets.emplace(std::piecewise_construct, std::forward_as_tuple(priority),
-        std::forward_as_tuple(searchPath, std::move(packageSet)));
     }
 
-    FileWatch::get().installDir(searchPath.c_str());
+    for (const auto& [path, _] : oldEntries) {
+      Logger::info(str::format("Removing asset search path: ", path));
+    }
+    // oldEntries goes out of scope here, releasing the stale PackageSets.
+
+    m_searchPaths = std::move(rebuilt);
+
+    // Arm all entries, not just new ones. installDir is idempotent for already-watched dirs.
+    for (const auto& entry : m_searchPaths) {
+      FileWatch::get().installDir(entry.path.c_str());
+    }
   }
 
   Rc<AssetData> AssetDataManager::findAsset(const std::string& filename, bool allowOnlyPartialDdsLoader) {
@@ -606,16 +647,20 @@ namespace dxvk {
       return nullptr;
     }
 
-    if (RtxIo::enabled() && !m_packageSets.empty()) {
-      // Iterate package sets in search priority order
-      for (auto itBase = m_packageSets.rbegin(); itBase != m_packageSets.rend(); ++itBase) {
-        const auto& basePath = std::get<0>(itBase->second);
+    if (RtxIo::enabled()) {
+      // Held across the whole walk: a USD mod rebuild finishing on the render thread
+      // mutates m_searchPaths, and this runs on another mod's rebuild worker. The
+      // empty() early-out folded into the loop rather than read outside the lock.
+      std::lock_guard<std::mutex> lock(m_searchPathMutex);
+      // Highest precedence last, so walk the list backwards
+      for (auto itBase = m_searchPaths.rbegin(); itBase != m_searchPaths.rend(); ++itBase) {
+        const auto& basePath = itBase->path;
 
         // The base path is shorter - we can try to use it
         if (basePath.length() < filename.length()) {
           const std::string relativePath = filename.substr(basePath.length());
 
-          auto& packages = std::get<1>(itBase->second);
+          auto& packages = itBase->packages;
 
           // Iterate package set in reverse alphabetical order
           for (auto it = packages.rbegin(); it != packages.rend(); ++it) {

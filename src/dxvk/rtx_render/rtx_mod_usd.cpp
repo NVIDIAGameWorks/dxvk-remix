@@ -25,6 +25,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <cwctype>
 
 #include "rtx_mod_usd.h"
 #include "rtx_asset_replacer.h"
@@ -33,17 +34,24 @@
 #include "dxvk_device.h"
 #include "dxvk_context.h"
 #include "rtx_context.h"
+#include "rtx_initializer.h"
 #include "rtx_options.h"
 #include "rtx_utils.h"
 #include "rtx_asset_data_manager.h"
 #include "rtx_texture_manager.h"
+#include "rtx_lights_data.h"
+#include "rtx_file_watch.h"
 
 #include "../../lssusd/usd_include_begin.h"
 #include <pxr/base/gf/matrix4f.h>
 #include <pxr/base/gf/rotation.h>
+#include <pxr/base/tf/notice.h>
+#include <pxr/base/tf/weakBase.h>
+#include <pxr/base/tf/weakPtr.h>
 #include <pxr/usd/sdf/types.h>
 #include <pxr/usd/usd/tokens.h>
 #include <pxr/usd/usd/stage.h>
+#include <pxr/usd/usd/notice.h>
 #include <pxr/usd/usd/prim.h>
 #include <pxr/usd/usd/primCompositionQuery.h>
 #include <pxr/usd/usd/attribute.h>
@@ -65,8 +73,8 @@
 #include <pxr/base/plug/plugin.h>
 // ParticleSystemAPI accessed via codeless schema (string-based TfToken API)
 #include "../../lssusd/usd_include_end.h"
+
 #include "../../util/util_string.h"
-#include "../util/util_watchdog.h"
 
 #include "../../lssusd/particle_system_helpers_vec.h"
 #include "../../lssusd/game_exporter_common.h"
@@ -75,25 +83,39 @@
 #include "../../lssusd/usd_common.h"
 #include "graph/rtx_graph_usd_parser.h"
 
-#include "rtx_lights_data.h"
-
 namespace fs = std::filesystem;
 
 namespace dxvk {
-constexpr uint32_t kMaxU16Indices = 64 * 1024;
 const char* const kStatusKey = "remix_replacement_status";
 
+// Canonicalizes (resolving symlinks/junctions to real on-disk case) and lowercases a
+// path for case-insensitive, form-insensitive membership comparisons on Windows. Falls
+// back to lexically-normal + absolute when canonical() fails (e.g. path no longer exists).
+std::wstring normalizedPathKey(const std::filesystem::path& rawPath) {
+  std::error_code ec;
+  std::filesystem::path resolved = std::filesystem::canonical(rawPath, ec);
+  if (ec) {
+    resolved = std::filesystem::absolute(rawPath).lexically_normal();
+  }
+  std::wstring key = resolved.wstring();
+  std::transform(key.begin(), key.end(), key.begin(),
+                  [](wchar_t c) { return static_cast<wchar_t>(::towlower(c)); });
+  return key;
+}
 
 class UsdMod::Impl {
 public:
-  Impl(UsdMod& owner) 
+  Impl(UsdMod& owner)
     : m_owner{owner}
-    , m_usdChangeWatchdog([this] { return this->haveFilesChanged(); }, "usd-mod-watchdog")
   {}
+
+  ~Impl();
 
   void load(const Rc<DxvkContext>& context);
   void unload();
   bool checkForChanges(const Rc<DxvkContext>& context);
+  bool applyPendingRebuild(const Rc<DxvkContext>& context, AssetChanges& changes);
+  void onDestroy();
 
 private:
   UsdMod& m_owner;
@@ -105,16 +127,29 @@ private:
     pxr::UsdPrim& rootPrim;
     std::vector<AssetReplacement>& meshes;
     fast_unordered_cache<uint32_t> pathHashToIndexMap;
+    AssetReplacements* target = nullptr;
   };
 
-  bool haveFilesChanged();
 
-  void processUSD(const Rc<DxvkContext>& context);
+  // True once device teardown has begun (RtxInitializer::onDestroy raises the
+  // flag before it joins the loader threads). Polled between prims by the walks
+  // in processUSD.
+  bool isShuttingDown() const;
 
-  void TEMP_parseSecretReplacementVariants(const fast_unordered_cache<uint32_t>& variants);
+  // Returns false if the walk did not run to completion — either it was
+  // cancelled by shutdown or the stage was missing. Callers must not treat a
+  // partially populated `target` as a finished load.
+  // When filter sets are non-null, only prims whose hash is in the set are processed
+  // (hot-reload path). Pass nullptr to process all prims (initial load path).
+  bool processUSD(const Rc<DxvkContext>& context, AssetReplacements& target, std::string& outStatus,
+                  const std::unordered_set<XXH64_hash_t>* pDirtyMeshHashes = nullptr,
+                  const std::unordered_set<XXH64_hash_t>* pDirtyMatHashes  = nullptr,
+                  const std::unordered_set<XXH64_hash_t>* pDirtyLightHashes = nullptr);
+
+  void TEMP_parseSecretReplacementVariants(AssetReplacements& target, const fast_unordered_cache<uint32_t>& variants);
   Rc<ManagedTexture> getTexture(const Args& args, const pxr::UsdPrim& shader, const pxr::TfToken& textureToken, bool forcePreload = false) const;
-  MaterialData* processMaterial(Args& args, const pxr::UsdPrim& matPrim);
-  MaterialData* processMaterialUser(Args& args, const pxr::UsdPrim& prim);
+  std::pair<XXH64_hash_t, std::shared_ptr<MaterialData>> processMaterial(Args& args, const pxr::UsdPrim& matPrim);
+  std::pair<XXH64_hash_t, std::shared_ptr<MaterialData>> processMaterialUser(Args& args, const pxr::UsdPrim& prim);
   bool processMesh(const pxr::UsdPrim& prim, Args& args);
   void processPrim(Args& args, const pxr::UsdPrim& prim);
   void processPointInstancer(Args& args, const pxr::UsdPrim& prim);
@@ -129,20 +164,134 @@ private:
 
   // Returns next hash value compatible with geometry and drawcall hashing
   XXH64_hash_t getNextGeomHash() {
-    static size_t id;
-    ++id;
-    return XXH64(&id, sizeof(id), kEmptyHash);
+    // Needs to be atomic because hot-reload rebuilds call this from worker threads
+    static std::atomic<size_t> id { 0 };
+    const size_t next = ++id;
+    return XXH64(&next, sizeof(next), kEmptyHash);
   }
 
-  std::filesystem::file_time_type m_fileModificationTime;
   std::string m_openedFilePath;
 
-  Watchdog<1000> m_usdChangeWatchdog;
+  // Set by the FileWatch callback when a USD file changes in a watched directory.
+  // Heap-allocated so the lambda can own a ref.
+  std::shared_ptr<std::atomic<bool>> m_pUsdFileChanged =
+    std::make_shared<std::atomic<bool>>(false);
 
-  void addReplacementsSync(dxvk::Rc<dxvk::DxvkCommandList> cmdList, XXH64_hash_t hash, std::vector<AssetReplacement>& replacementVec);
-  std::unordered_map<dxvk::DxvkCommandList*, std::thread> m_cmdListSyncThreads;
-  // Asset replacement vector and hash to add when command list execution is complete
-  std::unordered_map<dxvk::DxvkCommandList*, std::unordered_map<XXH64_hash_t, std::vector<AssetReplacement>>> m_meshReplacementsToAdd;
+  // Id returned by addFileChangedCallback, used to remove it. 0 means not registered.
+  FileWatch::FileWatchCallbackId m_fileWatchCallbackId = 0;
+
+  // Real paths of all USDs used by this mod's stage. Updated during load/reload, consulted
+  // by the FileWatch callback to scope watchDependencies to this mod. Heap-allocated with
+  // its own mutex so the callback can hold a reference independent of this Impl's lifetime.
+  struct LayerPathSet {
+    std::mutex mutex;
+    std::unordered_set<std::wstring> paths;
+  };
+  std::shared_ptr<LayerPathSet> m_layerPaths = std::make_shared<LayerPathSet>();
+
+  // Refreshes m_layerPaths from the stage's currently composed layers. Called on the
+  // worker thread after a successful processUSD, where m_stage is safe to touch.
+  void refreshLayerPaths() {
+    if (!m_stage) {
+      return;
+    }
+    std::unordered_set<std::wstring> updated;
+    for (const auto& layer : m_stage->GetUsedLayers()) {
+      if (!layer) {
+        continue;
+      }
+      updated.insert(normalizedPathKey(layer->GetRealPath()));
+    }
+    std::lock_guard<std::mutex> lock(m_layerPaths->mutex);
+    m_layerPaths->paths = std::move(updated);
+  }
+
+  void publishMeshReplacement(Args& args, XXH64_hash_t hash, std::vector<AssetReplacement>& replacementVec);
+
+  // DxvkBarrierSet is per-context, so nothing else orders this copy against the render
+  // thread's later use of the buffer; rebuildWorkerEntry waits on it before publishing.
+  // Any one upload from the batch suffices: the worker's copies share one command list
+  // and one submit, so one resource's fence covers the whole flush.
+  Rc<DxvkBuffer> m_lastDeviceLocalUpload;
+
+  // m_rebuildInFlight gates spawning a new worker; m_rebuildReady's release/acquire
+  // pair is what publishes m_pending to the render thread.
+  std::atomic<bool> m_rebuildInFlight { false };
+  std::atomic<bool> m_rebuildReady    { false };
+  // Set when a rebuild throws, so applyPendingRebuild reclaims the thread instead of
+  // wedging hot-reload for the session.
+  std::atomic<bool> m_rebuildAborted  { false };
+
+  // Everything a rebuild produces, grouped so a new field can't be added without
+  // deciding where it gets published and dropped. No m_published counterpart: the
+  // live table and status belong to Mod, and promoting into them is what
+  // applyPendingRebuild does.
+  //
+  // `replacements` is a scratch table containing only new/updated entries for dirty
+  // prims — NOT the full replacement table. applyPendingRebuild merges its entries
+  // into the live table in-place rather than swapping the whole table.
+  struct RebuildData {
+    // Set before the try block in rebuildWorkerEntry so abort-path handling can
+    // distinguish an initial load from a hot-reload without payload fields being valid.
+    bool isInitialLoad = false;
+    // For initial loads: the path that was opened, written to m_openedFilePath by
+    // applyPendingRebuild so FileWatch registration can happen on the render thread.
+    std::string openedFilePath;
+    std::unique_ptr<AssetReplacements> replacements;
+    std::string status;
+    // What changed, forwarded to SceneManager for selective scene invalidation.
+    AssetChanges changes;
+
+    void clear() {
+      // isInitialLoad and openedFilePath are intentionally not reset: abort-path
+      // handling in applyPendingRebuild reads them to pick the right state word.
+      replacements.reset();
+      status.clear();
+      changes = AssetChanges{};
+    }
+  };
+  RebuildData m_pending;
+  dxvk::thread m_rebuildThread;
+
+  void rebuildWorkerEntry(Rc<DxvkDevice> device, bool isInitialLoad, bool isManualReload = false);
+
+  // Held across reloads, and touched only by the worker after the initial load -
+  // which is what keeps Sdf layers single-threaded.
+  pxr::UsdStageRefPtr m_stage;
+
+  // Fires on whichever thread invoked the change, so normally the worker. The mutex
+  // covers a notice arriving from elsewhere - two mods sharing an SdfLayer.
+  class StageChangeListener;
+  std::shared_ptr<StageChangeListener> m_changeListener;
+  pxr::TfNotice::Key m_noticeKey;
+
+  std::mutex m_changedPathsMutex;
+  // Dirty hashes extracted from UsdObjectsChanged notices, accumulated since
+  // the last rebuild started. Consumed by the worker via takeAndResetDirtyHashes().
+  std::unordered_set<XXH64_hash_t> m_dirtyMeshHashes;
+  std::unordered_set<XXH64_hash_t> m_dirtyMatHashes;
+  std::unordered_set<XXH64_hash_t> m_dirtyLightHashes;
+  // Set when a section folder itself is resynced (e.g. /RootNode/Looks newly created):
+  // USD reports the folder rather than individual children, so specific hashes are unknown.
+  bool m_rebuildAllMeshes = false;
+  bool m_rebuildAllMats   = false;
+  bool m_rebuildAllLights = false;
+
+  // Open the long-lived stage for the first time. Subsequent rebuilds use
+  // m_stage->Reload() instead. Returns false on parse failure.
+  bool openStage(const std::string& replacementsUsdPath);
+  // Reload the long-lived stage. Notices fire on this thread and populate
+  // the dirty hash sets.
+  void reloadStage();
+  // Subscribe / unsubscribe TfNotice. Stage must be open before subscribe.
+  void subscribeToStageChanges();
+  void unsubscribeFromStageChanges();
+  void takeAndResetDirtyHashes(std::unordered_set<XXH64_hash_t>& outMesh,
+                               std::unordered_set<XXH64_hash_t>& outMat,
+                               std::unordered_set<XXH64_hash_t>& outLight,
+                               bool& outRebuildAllMeshes,
+                               bool& outRebuildAllMats,
+                               bool& outRebuildAllLights);
 };
 
 // context and member variable arguments to pass down to anonymous functions (to avoid having USD in the header)
@@ -209,6 +358,22 @@ XXH64_hash_t getLightHash(const pxr::UsdPrim& prim) {
   return getNamedHash(prim.GetName().GetString(), prefix, len);
 }
 
+// Finds the Shader prim used by a Material prim: prefers a direct child named "Shader",
+// falling back to the first UsdShadeShader-typed child.
+pxr::UsdPrim findMaterialShader(const pxr::UsdPrim& matPrim) {
+  static const pxr::TfToken kShaderToken("Shader");
+  pxr::UsdPrim shader = matPrim.GetChild(kShaderToken);
+  if (!shader.IsValid() || !shader.IsA<pxr::UsdShadeShader>()) {
+    for (auto child : matPrim.GetFilteredChildren(pxr::UsdPrimIsActive)) {
+      if (child.IsA<pxr::UsdShadeShader>()) {
+        shader = child;
+        break;
+      }
+    }
+  }
+  return shader;
+}
+
 XXH64_hash_t getMaterialHash(const pxr::UsdPrim& prim, const pxr::UsdPrim& shader) {
   static const pxr::TfToken kMaterialType("Material");
   static const char* prefix = lss::prefix::mat.c_str();
@@ -225,12 +390,203 @@ XXH64_hash_t getMaterialHash(const pxr::UsdPrim& prim, const pxr::UsdPrim& shade
   if (!shader.IsValid()) {
     return 0;
   }
-  
+
   XXH64_hash_t usdOriginHash = getStrongestOpinionatedPathHash(shader);
 
   return usdOriginHash;
 }
+
+// Walks up from primPath looking for the nearest Material-typed ancestor (an attribute
+// edit usually lands on its child Shader prim, not the Material prim itself) and hashes
+// it the same way processMaterial does. Returns true and dirties the hash if found.
+//
+// GetPrimAtPath returns invalid for a deleted path, so a deletion falls back to
+// `replacements`' material path index, matching primPath itself or any material nested
+// under it.
+bool tryClassifyExternalMaterial(pxr::SdfPath primPath, const pxr::UsdStageWeakPtr& stage,
+                                  AssetReplacements& replacements,
+                                  std::unordered_set<XXH64_hash_t>& dirtyMatHashes) {
+  if (!stage) {
+    return false;
+  }
+  // "The whole stage" is handled elsewhere.
+  if (primPath.IsEmpty() || primPath == pxr::SdfPath::AbsoluteRootPath()) {
+    return false;
+  }
+  static const pxr::TfToken kMaterialType("Material");
+  const pxr::SdfPath originalPath = primPath;
+  while (!primPath.IsEmpty() && primPath != pxr::SdfPath::AbsoluteRootPath()) {
+    pxr::UsdPrim prim = stage->GetPrimAtPath(primPath);
+    if (prim.IsValid() && prim.GetTypeName() == kMaterialType) {
+      const XXH64_hash_t h = getMaterialHash(prim, findMaterialShader(prim));
+      if (h != 0) {
+        dirtyMatHashes.insert(h);
+        return true;
+      }
+      return false;
+    }
+    primPath = primPath.GetParentPath();
+  }
+  const size_t before = dirtyMatHashes.size();
+  replacements.collectMaterialHashesUnderPath(originalPath.GetString(), dirtyMatHashes);
+  return dirtyMatHashes.size() > before;
+}
 }  // namespace
+
+// Returns true if a FileWatch-notified file change should trigger a USD reload.
+// normalizedRootModPathKey and usedLayerPaths must already be normalizedPathKey()'d;
+// changedPath is normalized internally. A null usedLayerPaths (no dependency data yet)
+// falls back to triggering on any watched file.
+bool usdShouldTriggerReload(const std::filesystem::path& changedPath,
+                             const std::wstring& normalizedRootModPathKey,
+                             bool watchDependencies,
+                             const std::unordered_set<std::wstring>* usedLayerPaths = nullptr) {
+  std::string ext = changedPath.extension().string();
+  std::transform(ext.begin(), ext.end(), ext.begin(),
+                  [](unsigned char c) { return static_cast<char>(::tolower(c)); });
+  if (ext != ".usda" && ext != ".usdc" && ext != ".usd" && ext != ".usdz") {
+    return false;
+  }
+  // Computed once and reused below: canonical() is a filesystem call, made here on the
+  // watcher thread while holding layerPaths->mutex.
+  const std::wstring changedKey = normalizedPathKey(changedPath);
+  // The mod's own file always triggers.
+  if (changedKey == normalizedRootModPathKey) {
+    return true;
+  }
+  if (!watchDependencies) {
+    return false;
+  }
+  if (!usedLayerPaths) {
+    return true;
+  }
+  return usedLayerPaths->count(changedKey) != 0;
+}
+
+void classifyChangedPath(const pxr::SdfPath& path, bool isResync, const pxr::UsdStageWeakPtr& stage,
+                         AssetReplacements& replacements,
+                         std::unordered_set<XXH64_hash_t>& dirtyMeshHashes,
+                         std::unordered_set<XXH64_hash_t>& dirtyMatHashes,
+                         std::unordered_set<XXH64_hash_t>& dirtyLightHashes,
+                         bool& rebuildAllMeshes, bool& rebuildAllMats, bool& rebuildAllLights) {
+  static const pxr::SdfPath kRootNode("/RootNode");
+  static const pxr::SdfPath kMeshSection("/RootNode/meshes");
+  static const pxr::SdfPath kLooksSection("/RootNode/Looks");
+  static const pxr::SdfPath kLightsSection("/RootNode/lights");
+
+  static const char* kMeshPrefix  = lss::prefix::mesh.c_str();
+  static const size_t kMeshLen    = lss::prefix::mesh.size();
+  static const char* kMatPrefix   = lss::prefix::mat.c_str();
+  static const size_t kMatLen     = lss::prefix::mat.size();
+  static const char* kLightPrefix = lss::prefix::light.c_str();
+  static const size_t kLightLen   = lss::prefix::light.size();
+
+  const pxr::SdfPath primPath = path.GetPrimPath();
+
+  // "/" or "/RootNode" itself resyncing means the mod's whole tree was just added,
+  // removed, or otherwise restructured (e.g. a sublayer add/remove) - unattributable to
+  // any one section, so treat it as touching everything.
+  if (isResync && (primPath == pxr::SdfPath::AbsoluteRootPath() || primPath == kRootNode)) {
+    rebuildAllMeshes = rebuildAllMats = rebuildAllLights = true;
+    return;
+  }
+
+  // material:binding is a relationship, not a composition arc, so USD never attributes a
+  // material's change to whatever references it. Check unconditionally: cheap, and only
+  // ever touches dirtyMatHashes when primPath or an ancestor is actually a Material.
+  const bool classifiedAsMaterial = tryClassifyExternalMaterial(primPath, stage, replacements, dirtyMatHashes);
+
+  // GetPrefixes() is ascending and excludes the absolute root: [0]=/RootNode, [1]=section,
+  // [2]=replacement root.
+  const pxr::SdfPathVector prefixes = primPath.GetPrefixes();
+  const bool underRootNode = !prefixes.empty() && prefixes[0] == kRootNode;
+
+  if (!underRootNode) {
+    return;
+  }
+
+  if (prefixes.size() < 2) {
+    return;
+  }
+  const pxr::SdfPath& sectionPath = prefixes[1];
+
+  // size==2 means the section folder itself changed. For a resync (structural change)
+  // we don't know which children were affected; for an info-only change the section
+  // prim itself got an attribute edit, which doesn't affect any replacements.
+  if (prefixes.size() == 2) {
+    if (isResync) {
+      if      (sectionPath == kMeshSection)   { rebuildAllMeshes = true; }
+      else if (sectionPath == kLooksSection)  { rebuildAllMats   = true; }
+      else if (sectionPath == kLightsSection) { rebuildAllLights = true; }
+    }
+    return;
+  }
+
+  const std::string name = prefixes[2].GetName();
+
+  if (sectionPath == kMeshSection) {
+    const XXH64_hash_t h = getNamedHash(name, kMeshPrefix, kMeshLen);
+    if (h != 0) {
+      dirtyMeshHashes.insert(h);
+    } else {
+      Logger::warn(str::format("USD hot-reload: unrecognized prim name under /RootNode/meshes: ", name));
+    }
+  } else if (sectionPath == kLooksSection) {
+    const XXH64_hash_t h = getNamedHash(name, kMatPrefix, kMatLen);
+    if (h != 0) {
+      dirtyMatHashes.insert(h);
+    } else if (!classifiedAsMaterial) {
+      Logger::warn(str::format("USD hot-reload: unrecognized prim name under /RootNode/Looks: ", name));
+    }
+  } else if (sectionPath == kLightsSection) {
+    XXH64_hash_t h = getNamedHash(name, kLightPrefix, kLightLen);
+    if (h == 0) {
+      // Legacy sphereLight_<HEX> naming.
+      static const char* kLegacyPrefix = "sphereLight_";
+      static const size_t kLegacyLen   = strlen(kLegacyPrefix);
+      h = getNamedHash(name, kLegacyPrefix, kLegacyLen);
+    }
+    if (h != 0) {
+      dirtyLightHashes.insert(h);
+    } else {
+      Logger::warn(str::format("USD hot-reload: unrecognized prim name under /RootNode/lights: ", name));
+    }
+  }
+}
+
+// Impl via shared_ptr. Subscribed once at stage open; unsubscribed at
+// unload(). Notice handler buffers changed paths under the Impl mutex.
+class UsdMod::Impl::StageChangeListener : public pxr::TfWeakBase {
+public:
+  StageChangeListener(Impl& impl) : m_impl(impl) {}
+
+  void OnObjectsChanged(const pxr::UsdNotice::ObjectsChanged& notice,
+                        const pxr::UsdStageWeakPtr& sender) {
+    // Filter by stage — TfNotice::Register lets us scope to a sender, but be
+    // defensive in case the registration scope is broader than expected.
+    if (sender != m_impl.m_stage) {
+      return;
+    }
+    std::lock_guard<std::mutex> lock(m_impl.m_changedPathsMutex);
+    // Structural changes — may report a section folder or /RootNode when an
+    // entire subtree is new or removed.
+    for (const auto& path : notice.GetResyncedPaths()) {
+      classifyChangedPath(path, /*isResync=*/true, sender, *m_impl.m_owner.m_replacements,
+                          m_impl.m_dirtyMeshHashes, m_impl.m_dirtyMatHashes, m_impl.m_dirtyLightHashes,
+                          m_impl.m_rebuildAllMeshes, m_impl.m_rebuildAllMats, m_impl.m_rebuildAllLights);
+    }
+    // Attribute-only edits. A shallow path means an attribute on that specific
+    // prim changed; section-level paths here must not trigger full rebuilds.
+    for (const auto& path : notice.GetChangedInfoOnlyPaths()) {
+      classifyChangedPath(path, /*isResync=*/false, sender, *m_impl.m_owner.m_replacements,
+                          m_impl.m_dirtyMeshHashes, m_impl.m_dirtyMatHashes, m_impl.m_dirtyLightHashes,
+                          m_impl.m_rebuildAllMeshes, m_impl.m_rebuildAllMats, m_impl.m_rebuildAllLights);
+    }
+  }
+
+private:
+  Impl& m_impl;
+};
 
 // Resolves full path for a texture in a shader from texture USD asset path and source USD path.
 // This method is used when real path to a texture asset was not resolved by USD, e.g. the asset
@@ -279,7 +635,7 @@ static std::string resolveTexturePath(
 
 Rc<ManagedTexture> UsdMod::Impl::getTexture(const Args& args, const pxr::UsdPrim& shader, const pxr::TfToken& textureToken, bool forcePreload) const {
   static const pxr::TfToken kSRGBColorSpace("sRGB");
-  static pxr::SdfAssetPath path;
+  pxr::SdfAssetPath path;
   auto attr = shader.GetAttribute(textureToken);
   if (attr.Get(&path)) {
     const ColorSpace colorSpace = ColorSpace::AUTO; // Always do this, whether or not force SRGB is required or not is unclear at this time.
@@ -313,45 +669,41 @@ Rc<ManagedTexture> UsdMod::Impl::getTexture(const Args& args, const pxr::UsdPrim
   return nullptr;
 }
 
-MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matPrim) {
+// Returns the material's path-identity hash alongside its data, for stamping
+// AssetReplacement::materialPathHash without re-deriving it.
+std::pair<XXH64_hash_t, std::shared_ptr<MaterialData>> UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matPrim) {
   ScopedCpuProfileZone();
 
-  static const pxr::TfToken kShaderToken("Shader");
   static const pxr::TfToken kIgnore("inputs:ignore_material");  // Any draw call or replacement using a material with this flag will be skipped by the SceneManager
   static const pxr::TfToken kPreloadTextures("inputs:preload_textures");  // Force textures to be loaded at highest mip
   static const pxr::TfToken kLegacyRayPortalIndexToken("rayPortalIndex");
 
   std::optional<RtxParticleSystemDesc> particleSystem = processParticleSystem(args, matPrim);
 
-  pxr::UsdPrim shader = matPrim.GetChild(kShaderToken);
-  if (!shader.IsValid() || !shader.IsA<pxr::UsdShadeShader>()) {
-    auto children = matPrim.GetFilteredChildren(pxr::UsdPrimIsActive);
-    for (auto child : children) {
-      if (child.IsA<pxr::UsdShadeShader>()) {
-        shader = child;
-      }
-    }
+  pxr::UsdPrim shader = findMaterialShader(matPrim);
+
+  XXH64_hash_t materialPathHash = getMaterialHash(matPrim, shader);
+  if (materialPathHash == 0) {
+    return { kEmptyHash, nullptr };
   }
 
-  XXH64_hash_t materialHash = getMaterialHash(matPrim, shader);
-  if (materialHash == 0) {
-    return nullptr;
-  }
+  // tryClassifyExternalMaterial falls back to this for a deleted prim.
+  args.target->registerMaterialPath(matPrim.GetPath().GetString(), materialPathHash);
 
   if (!shader.IsValid()) {
     // Special case to handle material overrides which have the particle system API, but no material parameter overrides.
     // This is the case when adding a particle system API to an existing legacy material in game.
     if (particleSystem.has_value()) {
       // In this case just return an empty opaque material.
-      return &m_owner.m_replacements->storeObject(materialHash, MaterialData(OpaqueMaterialData::deserialize([](const pxr::UsdPrim& shader, const pxr::TfToken& name) { return TextureRef {}; }, shader), particleSystem));
+      return { materialPathHash, args.target->storeMaterial(materialPathHash, MaterialData(OpaqueMaterialData::deserialize([](const pxr::UsdPrim& shader, const pxr::TfToken& name) { return TextureRef {}; }, shader), particleSystem)) };
     }
-    return nullptr;
+    return { kEmptyHash, nullptr };
   }
 
   // Check if the material has already been processed
-  MaterialData* materialData;
-  if (m_owner.m_replacements->getObject(materialHash, materialData)) {
-    return materialData;
+  std::shared_ptr<MaterialData> materialData;
+  if (args.target->getMaterial(materialPathHash, materialData)) {
+    return { materialPathHash, materialData };
   }
 
   // Remix Flags:
@@ -360,7 +712,7 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
     shader.GetAttribute(kIgnore).Get(&shouldIgnore);
   }
   bool preloadTextures = false;
-  if (shader.HasAttribute(kPreloadTextures)) { 
+  if (shader.HasAttribute(kPreloadTextures)) {
     shader.GetAttribute(kPreloadTextures).Get(&preloadTextures);
   }
 
@@ -369,7 +721,7 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
   static const pxr::TfToken sourceAsset("info:mdl:sourceAsset");
   pxr::UsdAttribute sourceAssetAttr = shader.GetAttribute(sourceAsset);
   if (sourceAssetAttr.HasValue()) {
-    static pxr::SdfAssetPath assetPath;
+    pxr::SdfAssetPath assetPath;
     sourceAssetAttr.Get(&assetPath);
     std::string assetPathStr = assetPath.GetAssetPath();
     if (assetPathStr.find("AperturePBR_Portal.mdl") != std::string::npos) {
@@ -390,25 +742,25 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
 
   switch (materialType) {
   case RtSurfaceMaterialType::Opaque:
-    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(OpaqueMaterialData::deserialize(getTextureFunctor, shader), particleSystem, shouldIgnore));
+    return { materialPathHash, args.target->storeMaterial(materialPathHash, MaterialData(OpaqueMaterialData::deserialize(getTextureFunctor, shader), particleSystem, shouldIgnore)) };
   case RtSurfaceMaterialType::Translucent:
-    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(TranslucentMaterialData::deserialize(getTextureFunctor, shader), particleSystem, shouldIgnore));
+    return { materialPathHash, args.target->storeMaterial(materialPathHash, MaterialData(TranslucentMaterialData::deserialize(getTextureFunctor, shader), particleSystem, shouldIgnore)) };
   case RtSurfaceMaterialType::RayPortal:
-    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(RayPortalMaterialData::deserialize(getTextureFunctor, shader), particleSystem));
+    return { materialPathHash, args.target->storeMaterial(materialPathHash, MaterialData(RayPortalMaterialData::deserialize(getTextureFunctor, shader), particleSystem)) };
   default:
     assert(false && "Invalid materialType passed to getTextureFunctor");
   }
 
-  return nullptr;
+  return { kEmptyHash, nullptr };
 }
 
-MaterialData* UsdMod::Impl::processMaterialUser(Args& args, const pxr::UsdPrim& prim) {
+std::pair<XXH64_hash_t, std::shared_ptr<MaterialData>> UsdMod::Impl::processMaterialUser(Args& args, const pxr::UsdPrim& prim) {
   auto bindAPI = pxr::UsdShadeMaterialBindingAPI(prim);
   auto boundMaterial = bindAPI.ComputeBoundMaterial();
   if (boundMaterial) {
     return processMaterial(args, boundMaterial.GetPrim());
   }
-  return nullptr;
+  return { kEmptyHash, nullptr };
 }
 
 void UsdMod::Impl::processPrim(Args& args, const pxr::UsdPrim& prim) {
@@ -416,15 +768,15 @@ void UsdMod::Impl::processPrim(Args& args, const pxr::UsdPrim& prim) {
 
   const XXH64_hash_t usdOriginHash = getStrongestOpinionatedPathHash(prim);
 
-  MeshReplacement* pTemp;
-  if (!m_owner.m_replacements->getObject(usdOriginHash, pTemp)) {
+  std::shared_ptr<MeshReplacement> pTemp;
+  if (!args.target->getGeometry(usdOriginHash, pTemp)) {
     // First time seeing this mesh, then process it.
     if (!processMesh(prim, args)) {
       return;
     }
   }
 
-  MaterialData* materialData = processMaterialUser(args, prim);
+  const auto [materialPathHash, materialData] = processMaterialUser(args, prim);
 
   bool unused = false;
   pxr::GfMatrix4f localToRoot = pxr::GfMatrix4f(args.xformCache.ComputeRelativeTransform(prim, args.rootPrim.GetParent(), &unused));
@@ -444,21 +796,24 @@ void UsdMod::Impl::processPrim(Args& args, const pxr::UsdPrim& prim) {
   std::optional<RtxParticleSystemDesc> particleSystem = processParticleSystem(args, prim);
 
   if (geomSubsets.empty()) {
-    MeshReplacement* pGeometryData;
-    if (m_owner.m_replacements->getObject(usdOriginHash, pGeometryData)) {
-      AssetReplacement newReplacementMesh(prim.GetPrimPath().GetString(), pGeometryData, materialData, categoryFlags, replacementToObject);
+    std::shared_ptr<MeshReplacement> pGeometryData;
+    if (args.target->getGeometry(usdOriginHash, pGeometryData)) {
+      AssetReplacement newReplacementMesh(prim.GetPrimPath().GetString(), std::move(pGeometryData), materialData, categoryFlags, replacementToObject);
+      newReplacementMesh.materialPathHash = materialPathHash;
       newReplacementMesh.particleSystem = particleSystem;
       args.meshes.push_back(newReplacementMesh);
     }
   } else {
     for (auto subset : geomSubsets) {
       const XXH64_hash_t usdChildOriginHash = getStrongestOpinionatedPathHash(subset.GetPrim());
-      MeshReplacement* childGeometryData;
-      if (m_owner.m_replacements->getObject(usdChildOriginHash, childGeometryData)) {
-        AssetReplacement newReplacementMesh(prim.GetPrimPath().GetString(), childGeometryData, materialData, categoryFlags, replacementToObject);
-        MaterialData* mat = processMaterialUser(args, subset.GetPrim());
+      std::shared_ptr<MeshReplacement> childGeometryData;
+      if (args.target->getGeometry(usdChildOriginHash, childGeometryData)) {
+        AssetReplacement newReplacementMesh(prim.GetPrimPath().GetString(), std::move(childGeometryData), materialData, categoryFlags, replacementToObject);
+        newReplacementMesh.materialPathHash = materialPathHash;
+        auto [subsetMaterialPathHash, mat] = processMaterialUser(args, subset.GetPrim());
         if (mat) {
-          newReplacementMesh.materialData = mat;
+          newReplacementMesh.materialData = std::move(mat);
+          newReplacementMesh.materialPathHash = subsetMaterialPathHash;
         }
         newReplacementMesh.particleSystem = particleSystem;
         args.meshes.push_back(newReplacementMesh);
@@ -513,7 +868,7 @@ void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim, const
 
 void UsdMod::Impl::processGraph(Args& args, const uint32_t meshIndex) {
   pxr::UsdPrim graphPrim = args.rootPrim.GetStage()->GetPrimAtPath(pxr::SdfPath(args.meshes[meshIndex].primPath));
-  args.meshes[meshIndex].graphState.emplace(GraphUsdParser::parseGraph(*m_owner.m_replacements, graphPrim, args.pathHashToIndexMap));
+  args.meshes[meshIndex].graphState = std::make_shared<RtGraphState>(GraphUsdParser::parseGraph(*args.target, graphPrim, args.pathHashToIndexMap));
 }
 
 template<typename T>
@@ -1053,107 +1408,533 @@ void UsdMod::Impl::processReplacementRecursive(Args& args, const pxr::UsdPrim& p
 
 void UsdMod::Impl::load(const Rc<DxvkContext>& context) {
   ScopedCpuProfileZone();
-  if (m_owner.state().progressState == ProgressState::Unloaded) {
-    processUSD(context);
+  if (m_owner.state().progressState != ProgressState::Unloaded) {
+    return;
+  }
+  m_owner.setProgress(ProgressState::OpeningUSD);
 
-    m_usdChangeWatchdog.start();
+  const std::string replacementsUsdPath(m_owner.m_filePath.string());
+  if (!openStage(replacementsUsdPath)) {
+    m_owner.setProgress(ProgressState::Unloaded);
+    return;
+  }
+
+  m_rebuildInFlight.store(true, std::memory_order_release);
+  m_rebuildReady.store(false, std::memory_order_release);
+  m_rebuildAborted.store(false, std::memory_order_release);
+
+  // Run inline: load() is already called on the right thread in both sync and async paths.
+  rebuildWorkerEntry(context->getDevice(), /*isInitialLoad=*/true);
+
+  if (!RtxOptions::asyncAssetLoading()) {
+    AssetChanges changes;
+    applyPendingRebuild(context, changes);
   }
 }
 
 void UsdMod::Impl::unload() {
   if (m_owner.state().progressState == ProgressState::Loaded) {
-    m_usdChangeWatchdog.stop();
+    FileWatch::get().removeFileChangedCallback(m_fileWatchCallbackId);
+    m_fileWatchCallbackId = 0;
+
+    // The worker writes to m_pending for both initial loads and rebuilds;
+    // don't tear down replacement state until it's joined.
+    if (m_rebuildThread.joinable()) {
+      m_rebuildThread.join();
+    }
+    m_rebuildInFlight.store(false, std::memory_order_release);
+    m_rebuildReady.store(false, std::memory_order_release);
+    m_rebuildAborted.store(false, std::memory_order_release);
+    m_pending.clear();
+
+    // Drop the long-lived stage and unsubscribe before the listener is gone;
+    // a TfNotice firing into a freed listener would crash.
+    unsubscribeFromStageChanges();
+    m_stage.Reset();
+    {
+      std::lock_guard<std::mutex> lock(m_changedPathsMutex);
+      m_dirtyMeshHashes.clear();
+      m_dirtyMatHashes.clear();
+      m_dirtyLightHashes.clear();
+      m_rebuildAllMeshes = m_rebuildAllMats = m_rebuildAllLights = false;
+    }
 
     m_owner.m_replacements->clear();
-    AssetDataManager::get().clearSearchPaths();
+    // Only this mod's paths: ModManager republishes the flattened list, so other loaded
+    // mods keep their paths and mounted packages.
+    m_owner.setSearchPaths({});
 
-    m_owner.setState(ProgressState::Unloaded);
+    m_owner.setProgress(ProgressState::Unloaded);
   }
 }
 
-bool UsdMod::Impl::haveFilesChanged() {
-  if (m_openedFilePath.empty())
+bool UsdMod::Impl::openStage(const std::string& replacementsUsdPath) {
+  // Cleanup any prior stage (generally a result of failure to load)
+  unsubscribeFromStageChanges();
+  m_stage = pxr::UsdStage::Open(replacementsUsdPath, pxr::UsdStage::LoadAll);
+  if (!m_stage) {
+    Logger::err(str::format("USD mod file failed parsing: ",
+                            std::filesystem::weakly_canonical(replacementsUsdPath).string()));
     return false;
-
-  fs::file_time_type newModTime;
-  if (m_owner.state().progressState == ProgressState::Loaded) {
-    newModTime = fs::last_write_time(fs::path(m_openedFilePath));
-  } else {
-    bool fileFound = false;
-    const auto replacementsUsdPath = fs::path(m_openedFilePath);
-    fileFound = fs::exists(replacementsUsdPath);
-    if (fs::exists(replacementsUsdPath)) {
-      newModTime = fs::last_write_time(replacementsUsdPath);
-    } else {
-      m_owner.setState(ProgressState::Unloaded);
-      return false;
-    }
   }
-  return (newModTime > m_fileModificationTime);
+  subscribeToStageChanges();
+  return true;
+}
+
+void UsdMod::Impl::reloadStage() {
+  ScopedCpuProfileZone();
+  if (!m_stage) {
+    return;
+  }
+  // Reload re-composes the stage from disk. Notices fire synchronously on
+  // this thread before Reload returns, so by the time we walk prims, the
+  // stage already reflects the saved file.
+  m_stage->Reload();
+}
+
+void UsdMod::Impl::subscribeToStageChanges() {
+  if (!m_stage || m_changeListener) {
+    return;
+  }
+  m_changeListener = std::make_shared<StageChangeListener>(*this);
+  m_noticeKey = pxr::TfNotice::Register(
+      pxr::TfWeakPtr<StageChangeListener>(m_changeListener.get()),
+      &StageChangeListener::OnObjectsChanged,
+      m_stage);
+}
+
+void UsdMod::Impl::unsubscribeFromStageChanges() {
+  if (m_changeListener) {
+    pxr::TfNotice::Revoke(m_noticeKey);
+    m_changeListener.reset();
+  }
+}
+
+void UsdMod::Impl::takeAndResetDirtyHashes(std::unordered_set<XXH64_hash_t>& outMesh,
+                                            std::unordered_set<XXH64_hash_t>& outMat,
+                                            std::unordered_set<XXH64_hash_t>& outLight,
+                                            bool& outRebuildAllMeshes,
+                                            bool& outRebuildAllMats,
+                                            bool& outRebuildAllLights) {
+  std::lock_guard<std::mutex> lock(m_changedPathsMutex);
+  outMesh            = std::move(m_dirtyMeshHashes);
+  outMat             = std::move(m_dirtyMatHashes);
+  outLight           = std::move(m_dirtyLightHashes);
+  outRebuildAllMeshes = m_rebuildAllMeshes;
+  outRebuildAllMats   = m_rebuildAllMats;
+  outRebuildAllLights = m_rebuildAllLights;
+  m_dirtyMeshHashes.clear();
+  m_dirtyMatHashes.clear();
+  m_dirtyLightHashes.clear();
+  m_rebuildAllMeshes = m_rebuildAllMats = m_rebuildAllLights = false;
 }
 
 bool UsdMod::Impl::checkForChanges(const Rc<DxvkContext>& context) {
-  if (m_usdChangeWatchdog.hasSignaled()) {
-    unload();
-    load(context);
-    return true;
+  // Never start new load work once teardown has begun — either path below would
+  // spawn a rebuild the shutdown sequence then has to wait out. Drop any queued
+  // request too, or it latches and leaves the UI button disabled for good.
+  if (isShuttingDown()) {
+    m_owner.consumeReloadRequest();
+    return false;
   }
+
+  const bool watchForChanges = UsdMod::reloadOnChanged();
+
+  // Don't consume signals mid-load: they'd be silently dropped and cause a false-positive reload.
+  const auto progress = m_owner.state().progressState;
+  if (progress != ProgressState::Loaded && progress != ProgressState::Unloaded) {
+    return false;
+  }
+
+  // The async path needs a stage for the worker to reload; with none it would walk
+  // nothing and abort. Recovering a mod that failed to open is the manual reload's
+  // main use, so send that case to the synchronous path along with the kill-switches.
+  // asyncAssetLoading=false means reloads are also synchronous, so tests that turn
+  // it off to get blocking loads also get blocking reloads.
+  const bool canRebuildAsync =
+    RtxOptions::asyncAssetLoading() && progress == ProgressState::Loaded;
+
+  if (!canRebuildAsync) {
+    if (m_rebuildInFlight.load(std::memory_order_acquire)) {
+      return false;  // Let the in-flight rebuild land; signals stay latched for next frame.
+    }
+    // m_pUsdFileChanged->exchange needs to consume input even if watchForChanges is off
+    const bool fileChanged = m_pUsdFileChanged->exchange(false, std::memory_order_acq_rel) && watchForChanges;
+    const bool reloadRequested = m_owner.consumeReloadRequest();
+    if (fileChanged || reloadRequested) {
+      unload();
+      load(context);
+      return true;
+    }
+    return false;
+  }
+
+  // Neither signal may be consumed while a rebuild is busy — both are consuming
+  // reads, so we would drop the save or the click that arrived during it. The call
+  // after applyPendingRebuild picks it up.
+  if (m_rebuildInFlight.load(std::memory_order_acquire)) {
+    return false;
+  }
+
+  // m_pUsdFileChanged->exchange needs to consume input even if watchForChanges is off
+  const bool fileChanged = m_pUsdFileChanged->exchange(false, std::memory_order_acq_rel) && watchForChanges;
+  const bool reloadRequested = m_owner.consumeReloadRequest();
+  if (!fileChanged && !reloadRequested) {
+    return false;
+  }
+  // dxvk::thread's move-assign detaches rather than terminates, so spawning over a live
+  // worker would leave it writing this Impl's state with no handle left to join it.
+  if (m_rebuildThread.joinable()) {
+    Logger::err("USD hot-reload: previous rebuild worker was never joined; skipping this reload.");
+    assert(false && "checkForChanges: previous rebuild worker was never joined");
+    // Re-latch the signals consumed above so the save/click isn't swallowed.
+    if (fileChanged) {
+      m_pUsdFileChanged->store(true, std::memory_order_release);
+    }
+    if (reloadRequested) {
+      m_owner.requestReload();
+    }
+    return false;
+  }
+
+  m_rebuildInFlight.store(true, std::memory_order_release);
+  m_rebuildReady.store(false, std::memory_order_release);
+  m_rebuildAborted.store(false, std::memory_order_release);
+
+  // Raise the reload progress indicator here rather than in the worker so the
+  // HUD message appears on the same frame the rebuild is spawned, with no gap
+  // before the worker gets scheduled. Cleared in applyPendingRebuild.
+  m_owner.setProgress(ProgressState::OpeningUSD);
+
+  // Hold the device alive via Rc<> for the worker's lifetime.
+  Rc<DxvkDevice> device = context->getDevice();
+  m_rebuildThread = dxvk::thread([this, device, reloadRequested]() {
+    this->rebuildWorkerEntry(device, /*isInitialLoad=*/false, reloadRequested);
+  });
 
   return false;
 }
 
-void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
+void UsdMod::Impl::rebuildWorkerEntry(Rc<DxvkDevice> device, bool isInitialLoad, bool isManualReload) {
+  env::setThreadName(isInitialLoad ? "rtx-usd-mod-load" : "rtx-usd-mod-rebuild");
+  ScopedCpuProfileZone();
+
+  // Set before the try so abort-path handling in applyPendingRebuild can read it
+  // even after m_pending.clear() discards the payload.
+  m_pending.isInitialLoad = isInitialLoad;
+  if (isInitialLoad) {
+    m_pending.openedFilePath = m_owner.m_filePath.string();
+  }
+
+  // dxvk::thread swallows exceptions, and a throw here would leave
+  // m_rebuildInFlight stuck true, wedging future loads for the session. Catch and
+  // let applyPendingRebuild reclaim the worker instead.
+  try {
+    // Its own context and cmdlist, so uploads submit independently of the render
+    // thread's stream.
+    Rc<DxvkContext> ctx = device->createContext();
+    ctx->beginRecording(device->createCommandList());
+
+    auto scratch = std::make_unique<AssetReplacements>();
+    std::string pendingStatus;
+    AssetChanges pendingChanges;
+
+    if (isInitialLoad) {
+      // Stage was just opened by load(); walk all prims with no dirty-hash filtering.
+      if (!processUSD(ctx, *scratch, pendingStatus)) {
+        m_pending.clear();
+        m_rebuildAborted.store(true, std::memory_order_release);
+        return;
+      }
+    } else {
+      // Hot-reload: reload the stage so ObjectsChanged notices fire synchronously,
+      // then drain the dirty sets before walking only the changed prims.
+      reloadStage();
+
+      std::unordered_set<XXH64_hash_t> dirtyMeshHashes, dirtyMatHashes, dirtyLightHashes;
+      bool rebuildAllMeshes = false, rebuildAllMats = false, rebuildAllLights = false;
+      takeAndResetDirtyHashes(dirtyMeshHashes, dirtyMatHashes, dirtyLightHashes,
+                              rebuildAllMeshes, rebuildAllMats, rebuildAllLights);
+
+      // A manually requested reload that found nothing dirty (e.g. clicked without
+      // saving, or the change was in a dependency FileWatch wasn't watching) would
+      // otherwise walk zero prims; force a full rebuild so the button still does something.
+      const bool nothingDirty = dirtyMeshHashes.empty() && dirtyMatHashes.empty() && dirtyLightHashes.empty()
+                              && !rebuildAllMeshes && !rebuildAllMats && !rebuildAllLights;
+      if (isManualReload && nothingDirty) {
+        rebuildAllMeshes = rebuildAllMats = rebuildAllLights = true;
+      }
+
+      // Captured before the material sweep below adds mesh hashes that are dirty only by
+      // material dependency, not because their own geometry changed.
+      const bool anyMeshGeometryDirty = rebuildAllMeshes || !dirtyMeshHashes.empty();
+
+      // material:binding is a relationship, so USD's notices never name the mesh that
+      // references a changed material. Find those meshes with a materialPathHash-matching
+      // sweep over the live table — cheaper than walking every mesh in the scene.
+      if (!dirtyMatHashes.empty() && !rebuildAllMeshes) {
+        m_owner.m_replacements->collectMeshesUsingMaterials(dirtyMatHashes, dirtyMeshHashes);
+      }
+
+      const bool needFullMeshProcess = rebuildAllMeshes || rebuildAllMats;
+      // Seed the geometry cache so re-walking meshes doesn't re-upload unchanged geometry.
+      // Unsafe when a mesh's own geometry is dirty: the cache would return stale geometry
+      // for that edited mesh.
+      if (!anyMeshGeometryDirty) {
+        scratch->seedGeometriesFrom(*m_owner.m_replacements);
+      }
+      // Seed unchanged materials too, so a mesh reprocessed for an unrelated reason (its own
+      // geometry, say) reuses the existing object instead of deserializing a duplicate.
+      // Skipped on a full mat rebuild: dirtyMatHashes doesn't list every live material yet,
+      // so seeding would let stale content through as a false cache hit.
+      if (!rebuildAllMats) {
+        scratch->seedMaterialsFrom(*m_owner.m_replacements, dirtyMatHashes);
+      }
+      const std::unordered_set<XXH64_hash_t>* pMeshFilter  = needFullMeshProcess  ? nullptr : &dirtyMeshHashes;
+      const std::unordered_set<XXH64_hash_t>* pMatFilter   = rebuildAllMats       ? nullptr : &dirtyMatHashes;
+      const std::unordered_set<XXH64_hash_t>* pLightFilter = rebuildAllLights     ? nullptr : &dirtyLightHashes;
+
+      if (!processUSD(ctx, *scratch, pendingStatus,
+                      pMeshFilter, pMatFilter, pLightFilter)) {
+        m_pending.clear();
+        m_rebuildAborted.store(true, std::memory_order_release);
+        return;
+      }
+
+      pendingChanges.dirtyMeshHashes  = std::move(dirtyMeshHashes);
+      pendingChanges.dirtyLightHashes = std::move(dirtyLightHashes);
+      pendingChanges.dirtyMatHashes   = std::move(dirtyMatHashes);
+      pendingChanges.fullMeshRebuild  = rebuildAllMeshes;
+      pendingChanges.fullLightRebuild = rebuildAllLights;
+      pendingChanges.fullMatRebuild   = rebuildAllMats;
+    }
+
+    // Composed layers can change between reloads, so refresh after every successful walk.
+    refreshLayerPaths();
+
+    // The worker's own cmdlist — nothing else ever submits it.
+    ctx->flushCommandList();
+
+    // Flushing only submits; block here (worker thread, not render thread) until the GPU
+    // copy actually completes.
+    if (m_lastDeviceLocalUpload.ptr() != nullptr) {
+      device->waitForResource(m_lastDeviceLocalUpload, DxvkAccess::Write);
+      m_lastDeviceLocalUpload = nullptr;
+    }
+
+    // Release-store on m_rebuildReady pairs with the acquire-load in applyPendingRebuild.
+    m_pending.status        = std::move(pendingStatus);
+    m_pending.replacements  = std::move(scratch);
+    m_pending.changes = std::move(pendingChanges);
+    m_rebuildReady.store(true, std::memory_order_release);
+  } catch (const std::exception& e) {
+    Logger::err(str::format("USD mod worker failed; keeping current scene: ", e.what()));
+    m_pending.clear();
+    m_rebuildAborted.store(true, std::memory_order_release);
+  } catch (...) {
+    Logger::err("USD mod worker failed with an unknown exception; keeping current scene.");
+    m_pending.clear();
+    m_rebuildAborted.store(true, std::memory_order_release);
+  }
+}
+
+bool UsdMod::Impl::applyPendingRebuild(const Rc<DxvkContext>& context, AssetChanges& changes) {
+  ScopedCpuProfileZone();
+
+  // Worker threw (see rebuildWorkerEntry's catch): join it, drop any partial
+  // state, and re-arm so a later save can retry — without touching the live table.
+  if (m_rebuildAborted.load(std::memory_order_acquire)) {
+    if (m_rebuildThread.joinable()) {
+      m_rebuildThread.join();
+    }
+    m_pending.clear();
+    // m_pending.isInitialLoad is preserved across clear() so we know which state to fix.
+    // Initial load: no content ever installed — stay Unloaded.
+    // Hot-reload abort: previous content still valid — return to Loaded.
+    m_owner.setProgress(m_pending.isInitialLoad ? ProgressState::Unloaded : ProgressState::Loaded);
+    m_rebuildAborted.store(false, std::memory_order_release);
+    m_rebuildInFlight.store(false, std::memory_order_release);
+    return false;
+  }
+
+  if (!m_rebuildReady.load(std::memory_order_acquire)) {
+    return false;
+  }
+  if (!m_pending.replacements) {
+    Logger::err("USD mod: rebuild signalled ready but scratch table is missing; keeping current scene.");
+    assert(false && "applyPendingRebuild: m_rebuildReady set without a scratch table");
+    if (m_rebuildThread.joinable()) {
+      m_rebuildThread.join();
+    }
+    m_pending.clear();
+    m_owner.setProgress(m_pending.isInitialLoad ? ProgressState::Unloaded : ProgressState::Loaded);
+    m_rebuildReady.store(false, std::memory_order_release);
+    m_rebuildInFlight.store(false, std::memory_order_release);
+    return false;
+  }
+
+  assert(m_rebuildInFlight.load(std::memory_order_relaxed));
+
+  // Apply the scratch table into the live table in-place. For initial loads the
+  // live table is empty, so this is a pure insert. For hot-reloads, entries for
+  // dirty hashes not in the scratch (deleted prims) are erased from the live table,
+  // and unchanged entries are untouched so RIs that hold a shared_ptr<ReplacementBucket>
+  // remain valid. GPU resources (Rc<DxvkBuffer>) survive until in-flight commands complete.
+  m_owner.m_replacements->mergeFrom(
+      std::move(*m_pending.replacements),
+      m_pending.changes);
+
+  m_owner.m_status = std::move(m_pending.status);
+
+  // Forward what changed so SceneManager can selectively invalidate the scene.
+  changes.merge(m_pending.changes);
+
+  if (m_pending.isInitialLoad) {
+    m_openedFilePath = m_pending.openedFilePath;
+
+    // Register file-change notifications now that the initial walk is complete.
+    // reloadOnChanged is read live in checkForChanges, so toggling it at runtime
+    // works without a reload; the callback just becomes a no-op when the flag is off.
+    // FileWatch only lexically normalizes reported paths; normalizedPathKey() below adds
+    // the canonical()+lowercase resolution needed to match m_openedFilePath. Computed once
+    // since the root mod path is fixed for the mod's lifetime.
+    const std::wstring rootPathKey = normalizedPathKey(m_openedFilePath);
+    // Captured by shared_ptr rather than `this`: removeFileChangedCallback() only queues
+    // a removal request, so a callback can still fire after this Impl starts tearing down.
+    m_fileWatchCallbackId = FileWatch::get().addFileChangedCallback(
+      [flag = m_pUsdFileChanged, rootPathKey, layerPaths = m_layerPaths](const std::filesystem::path& p) {
+        std::lock_guard<std::mutex> lock(layerPaths->mutex);
+        if (usdShouldTriggerReload(p, rootPathKey, UsdMod::watchDependencies(), &layerPaths->paths)) {
+          flag->store(true, std::memory_order_release);
+        }
+      });
+
+    // The listener was active during the walk (subscribeToStageChanges was called
+    // in openStage). Drain any notices that arrived during the walk so the reload
+    // system starts from a known-empty state.
+    {
+      std::lock_guard<std::mutex> lock(m_changedPathsMutex);
+      m_dirtyMeshHashes.clear();
+      m_dirtyMatHashes.clear();
+      m_dirtyLightHashes.clear();
+      m_rebuildAllMeshes = m_rebuildAllMats = m_rebuildAllLights = false;
+    }
+
+    m_owner.setProgress(ProgressState::Loaded);
+  } else {
+    // Cleared only now: the reload isn't done from the user's perspective until
+    // the new data is actually in the live table.
+    m_owner.setProgress(ProgressState::Loaded);
+  }
+
+  // Worker may have run inline (sync load path) — only join if a thread was spawned.
+  if (m_rebuildThread.joinable()) {
+    m_rebuildThread.join();
+  }
+  m_rebuildReady.store(false, std::memory_order_release);
+  m_rebuildInFlight.store(false, std::memory_order_release);
+
+  return true;
+}
+
+void UsdMod::Impl::onDestroy() {
+  // RtxInitializer::onDestroy has already run, so the cancellation flag is up and an
+  // in-progress walk bails within a prim or two. Joining here rather than in ~Impl is
+  // what makes it safe: DxvkObjects destroys the initializer and texture manager
+  // first, and a worker still running by then would be reading through both.
+  FileWatch::get().removeFileChangedCallback(m_fileWatchCallbackId);
+  m_fileWatchCallbackId = 0;
+
+  if (m_rebuildThread.joinable()) {
+    m_rebuildThread.join();
+  }
+  m_rebuildInFlight.store(false, std::memory_order_release);
+  m_rebuildReady.store(false, std::memory_order_release);
+  m_rebuildAborted.store(false, std::memory_order_release);
+  m_pending.clear();
+}
+
+UsdMod::Impl::~Impl() {
+  // Backstop for teardown paths that never ran onDestroy().
+  FileWatch::get().removeFileChangedCallback(m_fileWatchCallbackId);
+  if (m_rebuildThread.joinable()) {
+    m_rebuildThread.join();
+  }
+  // Must unsubscribe before Impl is freed: onDestroy() only does this when the
+  // mod was in Loaded state, but teardown paths skip unload(). A notice firing
+  // into a dangling m_impl reference after this would crash.
+  unsubscribeFromStageChanges();
+}
+
+bool UsdMod::Impl::isShuttingDown() const {
+  return m_owner.isLoadingCancelled();
+}
+
+bool UsdMod::Impl::processUSD(const Rc<DxvkContext>& context, AssetReplacements& target, std::string& outStatus,
+                              const std::unordered_set<XXH64_hash_t>* pDirtyMeshHashes,
+                              const std::unordered_set<XXH64_hash_t>* pDirtyMatHashes,
+                              const std::unordered_set<XXH64_hash_t>* pDirtyLightHashes) {
   ScopedCpuProfileZone();
   std::string replacementsUsdPath(m_owner.m_filePath.string());
 
-  // Open the USD
-
-  m_owner.setState(ProgressState::OpeningUSD);
-
-  pxr::UsdStageRefPtr stage = pxr::UsdStage::Open(replacementsUsdPath, pxr::UsdStage::LoadAll);
-
-  if (!stage) {
-    Logger::err(str::format("USD mod file failed parsing: ", std::filesystem::weakly_canonical(replacementsUsdPath).string()));
-    m_openedFilePath.clear();
-    m_fileModificationTime = fs::file_time_type();
-    m_owner.setState(ProgressState::Unloaded);
-    return;
+  // Stage open / reload is the caller's responsibility: load() calls openStage();
+  // rebuildWorkerEntry() calls reloadStage() so that notices have fired and dirty
+  // hashes are set before processUSD walks the prims.
+  if (!m_stage) {
+    Logger::err(str::format("processUSD called with no open stage for: ",
+                            std::filesystem::weakly_canonical(replacementsUsdPath).string()));
+    return false;
   }
 
-  std::filesystem::path modBaseDirectory = std::filesystem::path(replacementsUsdPath).remove_filename();
-  m_openedFilePath = replacementsUsdPath;
+  pxr::UsdStageRefPtr stage = m_stage;
 
-  // Iterate sublayers in the strength order, resolve the base paths and
-  // populate asset manager search paths.
+  std::filesystem::path modBaseDirectory = std::filesystem::path(replacementsUsdPath).remove_filename();
+
+  // Sublayer base paths, in strength order. Registered with AssetDataManager immediately,
+  // before the material/texture walk that needs them.
+  // Collected in ascending precedence and published as one list, so precedence within
+  // a mod is just position here and precedence between mods is the mod order.
+  std::vector<std::filesystem::path> collectedSearchPaths;
+  auto collectSearchPath = [&](const std::filesystem::path& searchPath) {
+    collectedSearchPaths.push_back(searchPath);
+  };
   auto sublayers = stage->GetRootLayer()->GetSubLayerPaths();
   for (size_t i = 0, s = sublayers.size(); i < s; i++) {
     const std::string& identifier = sublayers[i];
     auto layerBasePath = std::filesystem::path(identifier).remove_filename();
     auto fullLayerBasePath = modBaseDirectory / layerBasePath;
-    AssetDataManager::get().addSearchPath(i, fullLayerBasePath);
+    collectSearchPath(fullLayerBasePath);
   }
 
-  // Add stage's base path last.
-  AssetDataManager::get().addSearchPath(sublayers.size(), modBaseDirectory);
+  // Add stage's base path last - highest precedence within this mod.
+  collectSearchPath(modBaseDirectory);
 
-  m_fileModificationTime = fs::last_write_time(fs::path(m_openedFilePath));
+  // Publish immediately: the material/texture walk below resolves textures through
+  // AssetDataManager, which needs these search paths registered before it runs, not
+  // after processUSD returns.
+  m_owner.setSearchPaths(std::move(collectedSearchPaths));
+
   pxr::UsdGeomXformCache xformCache;
 
   pxr::VtDictionary layerData = stage->GetRootLayer()->GetCustomLayerData();
   if (layerData.empty()) {
-    m_owner.m_status = "Layer Data Missing";
+    outStatus = "Layer Data Missing";
   } else {
     const PXR_NS::VtValue* vtExportStatus = layerData.GetValueAtPath(kStatusKey);
     if (vtExportStatus && !vtExportStatus->IsEmpty()) {
-      m_owner.m_status = vtExportStatus->Get<std::string>();
+      outStatus = vtExportStatus->Get<std::string>();
     } else {
-      m_owner.m_status = "Status Missing";
+      outStatus = "Status Missing";
     }
   }
 
+  auto setProgress = [this](ProgressState progressState, std::uint32_t progressCount) {
+    m_owner.setProgressWithCount(progressState, progressCount);
+  };
+
   // Process Materials
 
-  m_owner.setStateWithCount(ProgressState::ProcessingMaterials, 0);
+  setProgress(ProgressState::ProcessingMaterials, 0);
 
   pxr::UsdPrim materialRoot = stage->GetPrimAtPath(pxr::SdfPath("/RootNode/Looks"));
   if (materialRoot.IsValid()) {
@@ -1162,20 +1943,35 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
     std::vector<AssetReplacement> placeholder;
 
     Args args = {context, xformCache, materialRoot, placeholder};
+    args.target = &target;
 
     for (pxr::UsdPrim materialPrim : children) {
+      // Cancellation is checked per prim rather than per stage: that is fine
+      // enough granularity to keep teardown prompt without adding an atomic read
+      // to the inner per-mesh work.
+      if (isShuttingDown()) {
+        return false;
+      }
+      // Hot-reload: skip prims whose material hash is confirmed-clean.
+      if (pDirtyMatHashes != nullptr) {
+        const XXH64_hash_t h = getMaterialHash(materialPrim, findMaterialShader(materialPrim));
+        if (h != 0 && pDirtyMatHashes->count(h) == 0) {
+          ++currentMaterialCount;
+          continue;
+        }
+      }
       processMaterial(args, materialPrim);
 
       // Note: Update the state progress only every 16 materials to reduce the number of atomic writes.
       if ((++currentMaterialCount & 0b1111u) == 0u) {
-        m_owner.setStateWithCount(ProgressState::ProcessingMaterials, currentMaterialCount);
+        setProgress(ProgressState::ProcessingMaterials, currentMaterialCount);
       }
     }
   }
 
   // Process Meshes
 
-  m_owner.setStateWithCount(ProgressState::ProcessingMeshes, 0);
+  setProgress(ProgressState::ProcessingMeshes, 0);
 
   fast_unordered_cache<uint32_t> variantCounts;
   pxr::UsdPrim meshes = stage->GetPrimAtPath(pxr::SdfPath("/RootNode/meshes"));
@@ -1184,60 +1980,82 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
     std::uint32_t currentMeshCount{ 0U };
 
     for (pxr::UsdPrim child : children) {
+      if (isShuttingDown()) {
+        return false;
+      }
       const auto hash = getModelHash(child);
+
+      // Hot-reload: skip mesh prims that are not in the dirty set.
+      if (pDirtyMeshHashes != nullptr && hash != 0 && pDirtyMeshHashes->count(hash) == 0) {
+        ++currentMeshCount;
+        continue;
+      }
 
       if (hash != 0) {
         std::vector<AssetReplacement> replacementVec;
         Args args = {context, xformCache, child, replacementVec};
+        args.target = &target;
 
         if (processReplacement(args)) {
           variantCounts[hash]++;
 
-          addReplacementsSync(args.context->getCommandList(), hash, replacementVec);
+          publishMeshReplacement(args, hash, replacementVec);
         }
       }
 
       // Note: Update the state progress only every 16 meshes to reduce the number of atomic writes.
       if ((++currentMeshCount & 0b1111u) == 0u) {
-        m_owner.setStateWithCount(ProgressState::ProcessingMeshes, currentMeshCount);
+        setProgress(ProgressState::ProcessingMeshes, currentMeshCount);
       }
     }
   }
 
   // Process Secret Meshes
+  // Skipped on hot-reload: secret variants live in separate USD stages that never
+  // emit TfNotices to our listener, so they can't be filtered by dirty hashes. A
+  // hot-reload would inject new bucket pointers for all variants without any
+  // corresponding RI scrub, leaving anti-culled RIs rendering stale geometry.
+  // Initial loads (pDirtyMeshHashes == nullptr) pick them up normally.
+  if (pDirtyMeshHashes == nullptr) {
+    // TODO: enter "secrets" section of USD as exported by Kit app
+    TEMP_parseSecretReplacementVariants(target, variantCounts);
+    for (auto& [hash, secretReplacements] : target.secretReplacements()) {
+      for (auto& secretReplacement : secretReplacements) {
+        // Each variant opens its own stage, so this loop is as worth cancelling as
+        // the main walks above.
+        if (isShuttingDown()) {
+          return false;
+        }
+        const std::string variantStage(modBaseDirectory.string() + secretReplacement.replacementPath);
+        double dummy;
+        if (!pxr::ArchGetModificationTime(variantStage.c_str(),&dummy)) {
+          Logger::warn(
+            std::string("[SecretReplacement] Could not find stage: ") + variantStage);
+          continue;
+        }
+        auto pStage = pxr::UsdStage::Open(variantStage, pxr::UsdStage::LoadAll);
+        if (!pStage) {
+          Logger::err(
+            std::string("[SecretReplacement] Failed to open stage: ") + variantStage);
+          continue;
+        }
+        auto rootPrim = pStage->GetDefaultPrim();
+        auto variantHash = hash + secretReplacement.variantId;
+        std::vector<AssetReplacement> replacementVec;
 
-  // TODO: enter "secrets" section of USD as exported by Kit app
-  TEMP_parseSecretReplacementVariants(variantCounts);
-  for (auto& [hash, secretReplacements] : m_owner.m_replacements->secretReplacements()) {
-    for (auto& secretReplacement : secretReplacements) {
-      const std::string variantStage(modBaseDirectory.string() + secretReplacement.replacementPath);
-      double dummy;
-      if (!pxr::ArchGetModificationTime(variantStage.c_str(),&dummy)) {
-        Logger::warn(
-          std::string("[SecretReplacement] Could not find stage: ") + variantStage);
-        continue;
-      }
-      auto pStage = pxr::UsdStage::Open(variantStage, pxr::UsdStage::LoadAll);
-      if (!pStage) {
-        Logger::err(
-          std::string("[SecretReplacement] Failed to open stage: ") + variantStage);
-        continue;
-      }
-      auto rootPrim = pStage->GetDefaultPrim();
-      auto variantHash = hash + secretReplacement.variantId;
-      std::vector<AssetReplacement> replacementVec;
+        Args args = {context, xformCache, rootPrim, replacementVec};
+        args.target = &target;
 
-      Args args = {context, xformCache, rootPrim, replacementVec};
-
-      if (processReplacement(args)) {
-        addReplacementsSync(args.context->getCommandList(), variantHash, replacementVec);
+        if (processReplacement(args)) {
+          publishMeshReplacement(args, variantHash, replacementVec);
+        }
       }
     }
   }
 
   // Process Lights
 
-  m_owner.setStateWithCount(ProgressState::ProcessingLights, 0);
+  setProgress(ProgressState::ProcessingLights, 0);
 
   pxr::UsdPrim lights = stage->GetPrimAtPath(pxr::SdfPath("/RootNode/lights"));
   if (lights.IsValid()) {
@@ -1245,20 +2063,30 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
     std::uint32_t currentLightCount{ 0U };
 
     for (pxr::UsdPrim child : children) {
+      if (isShuttingDown()) {
+        return false;
+      }
       const auto hash = getLightHash(child);
+
+      // Hot-reload: skip light prims that are not in the dirty set.
+      if (pDirtyLightHashes != nullptr && hash != 0 && pDirtyLightHashes->count(hash) == 0) {
+        ++currentLightCount;
+        continue;
+      }
 
       if (hash != 0) {
         std::vector<AssetReplacement> replacementVec;
         Args args = {context, xformCache, child, replacementVec};
+        args.target = &target;
 
         if (processReplacement(args)) {
-          m_owner.m_replacements->set<AssetReplacement::eLight>(hash, std::move(replacementVec));
+          target.set<AssetReplacement::eLight>(hash, std::move(replacementVec));
         }
       }
 
       // Note: Update the state progress only every 16 lights to reduce the number of atomic writes.
       if ((++currentLightCount & 0b1111u) == 0u) {
-        m_owner.setStateWithCount(ProgressState::ProcessingLights, currentLightCount);
+        setProgress(ProgressState::ProcessingLights, currentLightCount);
       }
     }
   }
@@ -1270,10 +2098,17 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
     VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
     VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR);
 
-  m_owner.setState(ProgressState::Loaded);
+  return true;
 }
 
-void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cache<uint32_t>& variantCounts) {
+void UsdMod::Impl::publishMeshReplacement(Args& args, XXH64_hash_t hash, std::vector<AssetReplacement>& replacementVec) {
+  // Both initial load and hot-reload write to a scratch table that gets swapped
+  // into the live table by applyPendingRebuild on the render thread, so there is
+  // no command-list synchronisation needed here.
+  args.target->set<AssetReplacement::eMesh>(hash, std::move(replacementVec));
+}
+
+void UsdMod::Impl::TEMP_parseSecretReplacementVariants(AssetReplacements& target, const fast_unordered_cache<uint32_t>& variantCounts) {
   auto lookupCount = [&variantCounts](XXH64_hash_t hash) -> auto {
     // NOTE: If there's no default replacement make sure secret variants are not default.
     return variantCounts.count(hash) ? variantCounts.at(hash) : 1u;
@@ -1281,7 +2116,7 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
 
   static constexpr XXH64_hash_t kStorageCubeHash = 0xc728cfe75526c741;
   uint32_t numVariants = lookupCount(kStorageCubeHash);
-  m_owner.m_replacements->storeObject(kStorageCubeHash, SecretReplacement{
+  target.storeObject(kStorageCubeHash, SecretReplacement{
     "Storage Cubes","Ice","",
     0x60ead40e2269b3c5,
     kStorageCubeHash,
@@ -1289,7 +2124,7 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     true,
     true,
     numVariants++});
-  m_owner.m_replacements->storeObject(kStorageCubeHash, SecretReplacement{
+  target.storeObject(kStorageCubeHash, SecretReplacement{
     "Storage Cubes","Lens","",
     0xa8e871f4ebc52eab,
     kStorageCubeHash,
@@ -1297,7 +2132,7 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     true,
     true,
     numVariants++});
-  m_owner.m_replacements->storeObject(kStorageCubeHash, SecretReplacement{
+  target.storeObject(kStorageCubeHash, SecretReplacement{
     "Storage Cubes","Camera","",
     0xd150bdeff3f0299a,
     kStorageCubeHash,
@@ -1305,7 +2140,7 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     true,
     true,
     numVariants++});
-  m_owner.m_replacements->storeObject(kStorageCubeHash, SecretReplacement{
+  target.storeObject(kStorageCubeHash, SecretReplacement{
     "Storage Cubes","Digital Skull","",
     0xb26578451f75c11a,
     kStorageCubeHash,
@@ -1313,7 +2148,7 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     true,
     true,
     numVariants++});
-  m_owner.m_replacements->storeObject(kStorageCubeHash, SecretReplacement{
+  target.storeObject(kStorageCubeHash, SecretReplacement{
     "Storage Cubes","Iso-Wheatly","",
     0xc270f63a956c0c71,
     kStorageCubeHash,
@@ -1321,7 +2156,7 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     true,
     true,
     numVariants++});
-  m_owner.m_replacements->storeObject(kStorageCubeHash, SecretReplacement{
+  target.storeObject(kStorageCubeHash, SecretReplacement{
     "Storage Cubes","Iso-Voyager","",
     0xaaaf0cbd8c8204cd,
     kStorageCubeHash,
@@ -1329,7 +2164,7 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     true,
     true,
     numVariants++});
-  m_owner.m_replacements->storeObject(kStorageCubeHash, SecretReplacement{
+  target.storeObject(kStorageCubeHash, SecretReplacement{
     "Storage Cubes","Iso-Black-Mesa","",
     0x2f9fe4ce23a83bc2,
     kStorageCubeHash,
@@ -1337,7 +2172,7 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     true,
     true,
     numVariants++});
-  m_owner.m_replacements->storeObject(kStorageCubeHash, SecretReplacement{
+  target.storeObject(kStorageCubeHash, SecretReplacement{
     "Storage Cubes","RTX","",
     0xe361f386c03400f3,
     kStorageCubeHash,
@@ -1345,7 +2180,7 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     true,
     true,
     numVariants++});
-  m_owner.m_replacements->storeObject(kStorageCubeHash, SecretReplacement{
+  target.storeObject(kStorageCubeHash, SecretReplacement{
     "Storage Cubes","Roll Cage","",
     0x0,
     kStorageCubeHash,
@@ -1353,7 +2188,7 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     true,
     true,
     numVariants++});
-  m_owner.m_replacements->storeObject(kStorageCubeHash, SecretReplacement{
+  target.storeObject(kStorageCubeHash, SecretReplacement{
     "Storage Cubes","Health Pack","",
     0x0,
     kStorageCubeHash,
@@ -1361,7 +2196,7 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     true,
     true,
     numVariants++});
-  m_owner.m_replacements->storeObject(kStorageCubeHash, SecretReplacement{
+  target.storeObject(kStorageCubeHash, SecretReplacement{
     "Storage Cubes","Space","",
     0x0,
     kStorageCubeHash,
@@ -1372,7 +2207,7 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
 
   static constexpr XXH64_hash_t kCompanionCubeHash = 0x6ef165bb7e0b8512;
   numVariants = lookupCount(kCompanionCubeHash);
-  m_owner.m_replacements->storeObject(kCompanionCubeHash, SecretReplacement{
+  target.storeObject(kCompanionCubeHash, SecretReplacement{
     "Companion Cubes","Pillow","",
     0xc901411d90916a58,
     kCompanionCubeHash,
@@ -1380,7 +2215,7 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     true,
     true,
     numVariants++});
-  m_owner.m_replacements->storeObject(kCompanionCubeHash, SecretReplacement{
+  target.storeObject(kCompanionCubeHash, SecretReplacement{
     "Companion Cubes","Ceramic","",
     0x3495c5b9d210daa1,
     kCompanionCubeHash,
@@ -1388,7 +2223,7 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     true,
     true,
     numVariants++});
-  m_owner.m_replacements->storeObject(kCompanionCubeHash, SecretReplacement{
+  target.storeObject(kCompanionCubeHash, SecretReplacement{
     "Companion Cubes","Wood","",
     0x5e50cb7c64375acc,
     kCompanionCubeHash,
@@ -1396,7 +2231,7 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     true,
     true,
     numVariants++});
-  m_owner.m_replacements->storeObject(kCompanionCubeHash, SecretReplacement{
+  target.storeObject(kCompanionCubeHash, SecretReplacement{
     "Companion Cubes","Digital","",
     0xf2bda31c09fc42f6,
     kCompanionCubeHash,
@@ -1404,7 +2239,7 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     true,
     true,
     numVariants++});
-  m_owner.m_replacements->storeObject(kCompanionCubeHash, SecretReplacement{
+  target.storeObject(kCompanionCubeHash, SecretReplacement{
     "Companion Cubes","Steampunk","",
     0x0,
     kCompanionCubeHash,
@@ -1412,7 +2247,7 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     true,
     true,
     numVariants++});
-  m_owner.m_replacements->storeObject(kCompanionCubeHash, SecretReplacement{
+  target.storeObject(kCompanionCubeHash, SecretReplacement{
     "Companion Cubes","Arts and Crafts","",
     0x0,
     kCompanionCubeHash,
@@ -1420,7 +2255,7 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     true,
     true,
     numVariants++});
-  m_owner.m_replacements->storeObject(kCompanionCubeHash, SecretReplacement{
+  target.storeObject(kCompanionCubeHash, SecretReplacement{
     "Companion Cubes","Cubus","",
     0x0,
     kCompanionCubeHash,
@@ -1452,38 +2287,6 @@ Categorizer UsdMod::Impl::processCategoryFlags(const pxr::UsdPrim& prim) {
   }
 
   return categoryFlags;
-}
-
-void UsdMod::Impl::addReplacementsSync(dxvk::Rc<dxvk::DxvkCommandList> cmdList, XXH64_hash_t hash, std::vector<AssetReplacement>& replacementVec) {
-  m_meshReplacementsToAdd[cmdList.ptr()][hash] = std::move(replacementVec);
-
-  // If the sync thread for this command list hasn't been created then create it now
-  if (!m_cmdListSyncThreads[cmdList.ptr()].joinable()) {
-    m_cmdListSyncThreads[cmdList.ptr()] = std::thread([this, cmdList]() {
-      // Base on Vulkan Document: https://docs.vulkan.org/spec/latest/chapters/synchronization.html#synchronization-fences
-      // Host access to each member of pFences must be externally synchronized
-      // So, we must wait for the VkFence synchronization finished in queue submission thread. If we do synchronize here, it will cause VkFence multiple thread error.
-      {
-        constexpr uint64_t initialSignalValue = 0;
-        constexpr uint64_t waitSignalValue = 1;
-        Rc<sync::Fence> replacementSyncSignal = new sync::Fence(initialSignalValue);
-
-        cmdList->queueSignal(replacementSyncSignal, waitSignalValue);
-        // Note: May be possible that the command list's signal tracker can be reset before this wait call or before the signal is actually signaled, which may cause this
-        // wait to never complete. Unsure if this happens in practice, but previously a bug existed where a ref-counted pointer to the replacement signal wasn't used
-        // which resulted in a crash due to the object being freed before getting to this wait call, and the only way it would've been freed is if the command list's signal
-        // tracker was reset. it is possible that most/all the times this reset happens the signal has been properly signaled though and this may not be a concern, but
-        // something to watch out for regardless.
-        replacementSyncSignal->wait(waitSignalValue);
-      }
-
-      // Add the replacements vector to the collection of replacements for this hash
-      for (auto it : m_meshReplacementsToAdd[cmdList.ptr()]) {
-        m_owner.m_replacements->set<AssetReplacement::eMesh>(it.first, std::move(it.second));
-      }
-      m_meshReplacementsToAdd[cmdList.ptr()].clear();
-    });
-  }
 }
 
 bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
@@ -1536,6 +2339,7 @@ bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         DxvkMemoryStats::Category::RTXReplacementGeometry, prim.GetName().GetString().c_str());
     args.context->copyBuffer(vertexBuffer, 0, vertexBuffer_staging, 0, vertexDataSize);
+    m_lastDeviceLocalUpload = vertexBuffer;
   } else {
     vertexBuffer = vertexBuffer_staging;
   }
@@ -1593,10 +2397,10 @@ bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
     }
 
     XXH64_hash_t usdOriginHash = getStrongestOpinionatedPathHash(submesh.prim);
-    MeshReplacement* childGeometryData;
-    if (!m_owner.m_replacements->getObject(usdOriginHash, childGeometryData)) {
-      MeshReplacement& newReplacement = m_owner.m_replacements->storeObject(usdOriginHash, MeshReplacement(replacement));
-      RasterGeometry& newGeomData = newReplacement.data;
+    std::shared_ptr<MeshReplacement> childGeometryData;
+    if (!args.target->getGeometry(usdOriginHash, childGeometryData)) {
+      const auto newReplacement = args.target->storeGeometry(usdOriginHash, MeshReplacement(replacement));
+      RasterGeometry& newGeomData = newReplacement->data;
 
       const size_t indexDataSize = submesh.GetNumIndices() * sizeof(uint32_t);
       info.size = dxvk::align(indexDataSize, CACHE_LINE_SIZE);
@@ -1611,6 +2415,7 @@ bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
           VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
           DxvkMemoryStats::Category::RTXReplacementGeometry, submesh.prim.GetName().GetString().c_str());
         args.context->copyBuffer(indexBuffer, 0, indexBuffer_staging, 0, indexDataSize);
+        m_lastDeviceLocalUpload = indexBuffer;
       } else {
         indexBuffer = indexBuffer_staging;
       }
@@ -1679,8 +2484,16 @@ void UsdMod::unload() {
   m_impl->unload();
 }
 
+void UsdMod::onDestroy() {
+  m_impl->onDestroy();
+}
+
 bool UsdMod::checkForChanges(const Rc<DxvkContext>& context) {
   return m_impl->checkForChanges(context);
+}
+
+bool UsdMod::applyPendingRebuild(const Rc<DxvkContext>& context, AssetChanges& changes) {
+  return m_impl->applyPendingRebuild(context, changes);
 }
 
 struct UsdModTypeInfo final : public ModTypeInfo {

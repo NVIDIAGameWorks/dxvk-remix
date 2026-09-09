@@ -22,6 +22,9 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "rtx_types.h"
 #include "graph/rtx_graph_types.h"
@@ -48,11 +51,6 @@ namespace dxvk {
     RasterGeometry data;
   };
 
-  struct ParticleEmitter {
-    RasterGeometry data;
-    RtxParticleSystemDesc desc;
-  };
-
   constexpr uint32_t kInvalidPointInstanceIndex = std::numeric_limits<uint32_t>::max();
 
   struct AssetReplacement {
@@ -63,13 +61,19 @@ namespace dxvk {
       eNone,
     };
     Categorizer categories;
-    MeshReplacement* geometry = nullptr;
+    // Shared pointers because the BlasEntry / GraphInstance can outlive the AssetReplacement
+    std::shared_ptr<MeshReplacement> geometry;
+    std::shared_ptr<RtGraphState> graphState;
+
     std::optional<RtxParticleSystemDesc> particleSystem;
     std::optional<LightData> lightData;
-    std::optional<RtGraphState> graphState;
-    // Note: This is the material to use for this replacement, if any. Set to null if should use
-    // the original material instead, similar to how getReplacementMaterial works.
-    MaterialData* materialData = nullptr;
+    // Shared pointer because multiple AssetReplacements can use the same material.
+    // Set to null if the mesh should use the original material instead
+    std::shared_ptr<MaterialData> materialData;
+    // Stable identity hash of the bound material (same key as AssetReplacements::m_materials),
+    // kEmptyHash if materialData is null. collectMeshesUsingMaterials matches on this rather
+    // than materialData's pointer, which isn't a guaranteed-stable identity for a shared material.
+    XXH64_hash_t materialPathHash = kEmptyHash;
     Matrix4 replacementToObject;
     // If this replacement represents multiple instances of an object, then this will contain a
     // list of transforms from the instance's space to Object space
@@ -93,12 +97,12 @@ namespace dxvk {
     {}
     AssetReplacement(
         const std::string& primPath, 
-        MeshReplacement* geometryData,
-        MaterialData* materialData,
+        std::shared_ptr<MeshReplacement> geometryData,
+        std::shared_ptr<MaterialData> materialData,
         Categorizer categoryFlags,
         const Matrix4& replacementToObject) :
-      geometry(geometryData),
-      materialData(materialData),
+      geometry(std::move(geometryData)),
+      materialData(std::move(materialData)),
       categories(categoryFlags),
       replacementToObject(replacementToObject),
       type(eMesh),
@@ -117,6 +121,14 @@ namespace dxvk {
     {}
   };
 
+  // The replacements a mesh or light hash resolves to. Wrapped in a struct and handed
+  // out by shared_ptr so a ReplacementInstance owns what it points at:
+  struct ReplacementBucket {
+    std::vector<AssetReplacement> replacements;
+    // Indicates anything using this ReplacementBucket should stop rendering and be cleaned up
+    mutable std::atomic<bool> stale { false };
+  };
+
   struct SecretReplacement {
     const std::string header;
     const std::string name;
@@ -132,86 +144,315 @@ namespace dxvk {
 
   typedef fast_unordered_cache<std::vector<SecretReplacement>> SecretReplacements;
 
+  // What changed in a rebuild. Passed from the mod to SceneManager to minimize scene invalidation.
+  struct AssetChanges {
+    // Mesh/light hashes whose replacement buckets changed (added, removed, or modified).
+    std::unordered_set<XXH64_hash_t> dirtyMeshHashes;
+    std::unordered_set<XXH64_hash_t> dirtyLightHashes;
+    // Material hashes that changed.
+    std::unordered_set<XXH64_hash_t> dirtyMatHashes;
+
+    // When true, all existing assets of this category are dirty.
+    bool fullMeshRebuild  = false;
+    bool fullLightRebuild = false;
+    bool fullMatRebuild   = false;
+
+    bool empty() const {
+      return dirtyMeshHashes.empty() && dirtyLightHashes.empty() && dirtyMatHashes.empty()
+          && !fullMeshRebuild && !fullLightRebuild && !fullMatRebuild;
+    }
+
+    void merge(const AssetChanges& other) {
+      dirtyMeshHashes.insert(other.dirtyMeshHashes.begin(), other.dirtyMeshHashes.end());
+      dirtyLightHashes.insert(other.dirtyLightHashes.begin(), other.dirtyLightHashes.end());
+      dirtyMatHashes.insert(other.dirtyMatHashes.begin(), other.dirtyMatHashes.end());
+      fullMeshRebuild  = fullMeshRebuild  || other.fullMeshRebuild;
+      fullLightRebuild = fullLightRebuild || other.fullLightRebuild;
+      fullMatRebuild   = fullMatRebuild   || other.fullMatRebuild;
+    }
+  };
+
   // Asset replacements storage class.
   // Contains and owns the replacements, material and geometry objects.
   class AssetReplacements {
   public:
-    // Returns a pointer to replacements of type T for a given hash value,
-    // or a nullptr if no replacements found.
+    // Returns the bucket of replacements of type T for a given hash value, or a nullptr
+    // if no replacements were found. The strong ref is copied under the lock, so the
+    // caller's bucket stays alive even if another thread replaces the map entry.
     template<AssetReplacement::Type T>
-    std::vector<AssetReplacement>* get(XXH64_hash_t hash) {
+    std::shared_ptr<const ReplacementBucket> get(XXH64_hash_t hash) {
+      static_assert(T == AssetReplacement::eMesh || T == AssetReplacement::eLight,
+                    "Only mesh and light replacements are bucketed by hash.");
       std::lock_guard<sync::Spinlock> lock(m_spinlock);
       auto& map = T == AssetReplacement::eMesh ? m_meshReplacers : m_lightReplacers;
       auto it = map.find(hash);
       if (it != map.end()) {
-        return &it->second;
+        return it->second;
       }
       return nullptr;
     }
 
-    // Stores replacements of type T for a hash value.
+    // Stores replacements of type T for a hash value, replacing any existing bucket. If two
+    // prims share a hash, the one processed last wins (storeCached keeps the first instead).
     template<AssetReplacement::Type T>
     void set(XXH64_hash_t hash, std::vector<AssetReplacement>&& v) {
+      static_assert(T == AssetReplacement::eMesh || T == AssetReplacement::eLight,
+                    "Only mesh and light replacements are bucketed by hash.");
+      auto bucket = std::make_shared<ReplacementBucket>();
+      bucket->replacements = std::move(v);
+
       std::lock_guard<sync::Spinlock> lock(m_spinlock);
       auto& map = T == AssetReplacement::eMesh ? m_meshReplacers : m_lightReplacers;
-      map.emplace(hash, std::move(v));
-    }
-
-    // Returns a pointer to the stored object of type T for a given hash value.
-    // Return false if no object was found.
-    template<typename T>
-    bool getObject(XXH64_hash_t hash, T*& obj) {
-      std::lock_guard<sync::Spinlock> lock(m_spinlock);
-      fast_unordered_cache<T>* cache = nullptr;
-      if constexpr (std::is_same_v<T, MaterialData>) {
-        cache = &m_materials;
-      } else if constexpr (std::is_same_v<T, MeshReplacement>) {
-        cache = &m_geometries;
-      } else if constexpr (std::is_same_v<T, RtGraphTopology>) {
-        cache = &m_graphTopologies;
-      }
-      if (cache == nullptr) {
-        return false;
-      }
-      auto it = cache->find(hash);
-      if (it != cache->end()) {
-        obj = &it->second;
-        return true;
-      }
-      return false;
+      map.insert_or_assign(hash, std::move(bucket));
     }
 
     // Stores the object of type T for a hash value.
     template<typename T>
     T& storeObject(XXH64_hash_t hash, T&& obj) {
+      static_assert(std::is_same_v<T, SecretReplacement>,
+                    "Only secret replacements use the generic store; the cached per-prim "
+                    "objects are shared_ptr-owned - use storeGeometry/storeMaterial/storeTopology.");
       std::lock_guard<sync::Spinlock> lock(m_spinlock);
-      if constexpr (std::is_same_v<T, MaterialData>) {
-        return m_materials.try_emplace(hash, std::move(obj)).first->second;
-      } else if constexpr (std::is_same_v<T, MeshReplacement>) {
-        return m_geometries.try_emplace(hash, std::move(obj)).first->second;
-      } else if constexpr (std::is_same_v<T, RtGraphTopology>) {
-        return m_graphTopologies.try_emplace(hash, std::move(obj)).first->second;
-      } else if constexpr (std::is_same_v<T, SecretReplacement>) {
-        return m_secretReplacements[hash].emplace_back(obj);
-      } else {
-        static_assert(false, "Invalid type");
+      return m_secretReplacements[hash].emplace_back(obj);
+    }
+
+    bool getMaterial(XXH64_hash_t hash, std::shared_ptr<MaterialData>& obj) {
+      return getCached(m_materials, hash, obj);
+    }
+
+    bool getGeometry(XXH64_hash_t hash, std::shared_ptr<MeshReplacement>& obj) {
+      return getCached(m_geometries, hash, obj);
+    }
+
+    bool getTopology(XXH64_hash_t hash, std::shared_ptr<const RtGraphTopology>& obj) {
+      return getCached(m_graphTopologies, hash, obj);
+    }
+
+    std::shared_ptr<MaterialData> storeMaterial(XXH64_hash_t hash, MaterialData&& obj) {
+      return storeCached(m_materials, hash, std::move(obj));
+    }
+
+    // Records path->hash so a deleted prim (which leaves no primSpec to re-derive its hash
+    // from) can still be classified. Call on every resolution, even a cache hit, so the
+    // freshest path wins.
+    void registerMaterialPath(const std::string& path, XXH64_hash_t hash) {
+      std::lock_guard<sync::Spinlock> lock(m_spinlock);
+      m_materialPathIndex.insert_or_assign(path, hash);
+    }
+
+    // Finds registered material hashes at or under `path` - covers a subtree deletion,
+    // which resyncs an ancestor path rather than the material's own path.
+    void collectMaterialHashesUnderPath(const std::string& path,
+                                         std::unordered_set<XXH64_hash_t>& outHashes) {
+      if (path.empty() || path == "/") {
+        return;
+      }
+      std::lock_guard<sync::Spinlock> lock(m_spinlock);
+      for (const auto& [matPath, hash] : m_materialPathIndex) {
+        if (matPath == path ||
+            (matPath.size() > path.size() &&
+             matPath.compare(0, path.size(), path) == 0 &&
+             matPath[path.size()] == '/')) {
+          outHashes.insert(hash);
+        }
       }
     }
 
-    // Removes the object of type T for a hash value.
-    template<typename T>
-    void removeObject(XXH64_hash_t hash) {
+    std::shared_ptr<MeshReplacement> storeGeometry(XXH64_hash_t hash, MeshReplacement&& obj) {
+      return storeCached(m_geometries, hash, std::move(obj));
+    }
+
+    std::shared_ptr<const RtGraphTopology> storeTopology(XXH64_hash_t hash, RtGraphTopology&& obj) {
+      return storeCached(m_graphTopologies, hash, std::move(obj));
+    }
+
+    // Finds meshes bound to any of the given materials, by identity hash - materialData's
+    // pointer isn't a guaranteed-stable identity for a shared material.
+    void collectMeshesUsingMaterials(const std::unordered_set<XXH64_hash_t>& dirtyMatHashes,
+                                      std::unordered_set<XXH64_hash_t>& outMeshHashes) {
+      if (dirtyMatHashes.empty()) {
+        return;
+      }
       std::lock_guard<sync::Spinlock> lock(m_spinlock);
-      if constexpr (std::is_same_v<T, MaterialData>) {
-        m_materials.erase(hash);
-      } else if constexpr (std::is_same_v<T, MeshReplacement>) {
-        m_geometries.erase(hash);
-      } else if constexpr (std::is_same_v<T, RtGraphTopology>) {
-        m_graphTopologies.erase(hash);
-      } else if constexpr (std::is_same_v<T, SecretReplacement>) {
-        m_secretReplacements.erase(hash);
-      } else {
-        static_assert(false, "Invalid type");
+      for (const auto& [meshHash, bucket] : m_meshReplacers) {
+        if (!bucket) {
+          continue;
+        }
+        for (const auto& replacement : bucket->replacements) {
+          if (replacement.materialPathHash != kEmptyHash && dirtyMatHashes.count(replacement.materialPathHash)) {
+            outMeshHashes.insert(meshHash);
+            break;
+          }
+        }
+      }
+    }
+
+    // Seeds the geometry cache from src. Called before a material-triggered
+    // full mesh re-process so unchanged geometries hit the cache and are not
+    // re-uploaded to the GPU.
+    void seedGeometriesFrom(const AssetReplacements& src) {
+      // Copy under src's lock, then move in under ours - avoids holding both at once.
+      decltype(m_geometries) copy;
+      {
+        std::lock_guard<sync::Spinlock> lock(src.m_spinlock);
+        copy = src.m_geometries;
+      }
+      std::lock_guard<sync::Spinlock> lock(m_spinlock);
+      m_geometries = std::move(copy);
+    }
+
+    // Seeds the material cache from src, skipping dirtyHashes (includes deletions - a
+    // dirty hash is never seeded, so mergeFrom's absent-from-src cleanup still erases it).
+    // Called before processing so a mesh reprocessed for an unrelated reason (e.g. its own
+    // geometry changed) reuses an unchanged material's existing object instead of
+    // re-deserializing a content-identical duplicate.
+    void seedMaterialsFrom(const AssetReplacements& src, const std::unordered_set<XXH64_hash_t>& dirtyHashes) {
+      decltype(m_materials) copy;
+      {
+        std::lock_guard<sync::Spinlock> lock(src.m_spinlock);
+        copy = src.m_materials;
+      }
+      for (const auto hash : dirtyHashes) {
+        copy.erase(hash);
+      }
+      std::lock_guard<sync::Spinlock> lock(m_spinlock);
+      m_materials = std::move(copy);
+    }
+
+    // Merges src into this table. Dirty hashes absent from changes (deleted prims) are erased;
+    // present hashes overwrite the live entry. fullMatRebuild pre-populates changes.dirtyMatHashes.
+    void mergeFrom(AssetReplacements&& src, AssetChanges& changes) {
+      // std::scoped_lock over one non-recursive Spinlock held twice would spin forever.
+      if (this == &src) {
+        assert(false && "mergeFrom: cannot merge a table into itself");
+        return;
+      }
+
+      // Replaced/erased entries are destroyed after the lock below is released, not while
+      // other threads are busy-spinning on it.
+      std::vector<std::shared_ptr<void>> doomed;
+      {
+        std::scoped_lock lock(m_spinlock, src.m_spinlock);
+
+        const auto staleAndReplace = [&doomed](auto& map, auto& srcMap,
+                                        const std::unordered_set<XXH64_hash_t>& dirty,
+                                        bool fullRebuild) {
+          for (auto& [hash, newBucket] : srcMap) {
+            auto it = map.find(hash);
+            if (it != map.end()) {
+              it->second->stale.store(true, std::memory_order_release);
+              doomed.push_back(std::move(it->second));
+            }
+            map.insert_or_assign(hash, std::move(newBucket));
+          }
+          if (fullRebuild) {
+            // In a full rebuild for this type, mark all old entries as stale to clear live instances.
+            for (auto it = map.begin(); it != map.end(); ) {
+              if (srcMap.find(it->first) == srcMap.end()) {
+                it->second->stale.store(true, std::memory_order_release);
+                doomed.push_back(std::move(it->second));
+                it = map.erase(it);
+              } else {
+                ++it;
+              }
+            }
+          } else {
+            for (const auto hash : dirty) {
+              if (srcMap.find(hash) == srcMap.end()) {
+                auto it = map.find(hash);
+                if (it != map.end()) {
+                  it->second->stale.store(true, std::memory_order_release);
+                  doomed.push_back(std::move(it->second));
+                  map.erase(it);
+                }
+              }
+            }
+          }
+        };
+        staleAndReplace(m_meshReplacers,  src.m_meshReplacers,  changes.dirtyMeshHashes,  changes.fullMeshRebuild);
+        staleAndReplace(m_lightReplacers, src.m_lightReplacers, changes.dirtyLightHashes, changes.fullLightRebuild);
+
+        if (changes.fullMatRebuild) {
+          for (const auto& [hash, _] : m_materials) {
+            changes.dirtyMatHashes.insert(hash);
+          }
+        }
+
+        for (auto& [hash, mat] : src.m_materials) {
+          auto it = m_materials.find(hash);
+          // Only a genuine content change should invalidate RIs referencing this material;
+          // a reprocessed-but-identical material (e.g. swept up by a full mat rebuild) must
+          // not force every matching instance back onto the dynamic path.
+          if (it == m_materials.end() || !it->second || !mat ||
+              it->second->getHash() != mat->getHash()) {
+            changes.dirtyMatHashes.insert(hash);
+          }
+          if (it != m_materials.end()) {
+            doomed.push_back(std::move(it->second));
+          }
+          // Always replace with src's object: mesh replacements merged in above reference
+          // it, and collectMeshesUsingMaterials classifies by materialPathHash.
+          m_materials.insert_or_assign(hash, std::move(mat));
+        }
+        // Keyed by path, not hash: a re-registered path overwrites in place, and an entry
+        // absent from src (unprocessed this reload) is left alone, not treated as deleted.
+        for (auto& [path, hash] : src.m_materialPathIndex) {
+          m_materialPathIndex.insert_or_assign(path, hash);
+        }
+        for (auto& [hash, geom] : src.m_geometries) {
+          auto it = m_geometries.find(hash);
+          if (it != m_geometries.end()) {
+            // Same object seedGeometriesFrom already installed here; retiring it into
+            // doomed would hide it from sweepOrphans's use_count()==1 check below.
+            if (it->second == geom) {
+              continue;
+            }
+            doomed.push_back(std::move(it->second));
+          }
+          m_geometries.insert_or_assign(hash, std::move(geom));
+        }
+        for (auto& [hash, topo] : src.m_graphTopologies) {
+          auto it = m_graphTopologies.find(hash);
+          if (it != m_graphTopologies.end()) {
+            doomed.push_back(std::move(it->second));
+          }
+          m_graphTopologies.insert_or_assign(hash, std::move(topo));
+        }
+
+        for (const auto hash : changes.dirtyMatHashes) {
+          if (src.m_materials.find(hash) == src.m_materials.end()) {
+            auto it = m_materials.find(hash);
+            if (it != m_materials.end()) {
+              doomed.push_back(std::move(it->second));
+              m_materials.erase(it);
+            }
+            // Drop this hash's path-index entries too, so repeated delete/recreate cycles
+            // at different paths don't grow the index unboundedly.
+            for (auto pit = m_materialPathIndex.begin(); pit != m_materialPathIndex.end(); ) {
+              if (pit->second == hash) {
+                pit = m_materialPathIndex.erase(pit);
+              } else {
+                ++pit;
+              }
+            }
+          }
+        }
+
+        if (!changes.dirtyMeshHashes.empty() || changes.fullMeshRebuild) {
+          // Use shared pointer ref counts to clean up cached mesh data that is no longer used.
+          const auto sweepOrphans = [&doomed](auto& cache) {
+            for (auto it = cache.begin(); it != cache.end(); ) {
+              if (it->second.use_count() == 1) {
+                doomed.push_back(std::move(it->second));
+                it = cache.erase(it);
+              } else {
+                ++it;
+              }
+            }
+          };
+          sweepOrphans(m_geometries);
+          sweepOrphans(m_graphTopologies);
+        }
       }
     }
 
@@ -223,6 +464,7 @@ namespace dxvk {
       m_materials.clear();
       m_geometries.clear();
       m_graphTopologies.clear();
+      m_materialPathIndex.clear();
       m_secretReplacements.clear();
     }
 
@@ -231,29 +473,51 @@ namespace dxvk {
     }
 
   private:
+    template<typename Cache, typename Ptr>
+    bool getCached(Cache& cache, XXH64_hash_t hash, Ptr& obj) {
+      std::lock_guard<sync::Spinlock> lock(m_spinlock);
+      auto it = cache.find(hash);
+      if (it != cache.end() && it->second) {
+        obj = it->second;
+        return true;
+      }
+      return false;
+    }
+
+    template<typename Cache, typename T>
+    auto storeCached(Cache& cache, XXH64_hash_t hash, T&& obj) {
+      std::lock_guard<sync::Spinlock> lock(m_spinlock);
+      auto [it, inserted] = cache.try_emplace(hash);
+      if (inserted || !it->second) {
+        it->second = std::make_shared<std::decay_t<T>>(std::forward<T>(obj));
+      }
+      return it->second;
+    }
+
     mutable sync::Spinlock m_spinlock;
 
     // Replacements ready to be fed to the renderer
-    fast_unordered_cache<std::vector<AssetReplacement>> m_meshReplacers;
-    fast_unordered_cache<std::vector<AssetReplacement>> m_lightReplacers;
+    fast_unordered_cache<std::shared_ptr<ReplacementBucket>> m_meshReplacers;
+    fast_unordered_cache<std::shared_ptr<ReplacementBucket>> m_lightReplacers;
 
-    // Replacement geometry storage
-    fast_unordered_cache<MeshReplacement> m_geometries;
+    // Per-prim cached objects: geometry, materials, and graph topologies.
+    // Handed out by shared_ptr so consumers keep them alive past a hot-reload swap.
+    fast_unordered_cache<std::shared_ptr<MeshReplacement>> m_geometries;
+    fast_unordered_cache<std::shared_ptr<MaterialData>> m_materials;
+    fast_unordered_cache<std::shared_ptr<RtGraphTopology>> m_graphTopologies;
 
-    // Replacement material storage
-    fast_unordered_cache<MaterialData> m_materials;
-
-    // Replacement graph storage
-    fast_unordered_cache<RtGraphTopology> m_graphTopologies;
+    // Material USD path -> identity hash, kept for deletion classification. See
+    // registerMaterialPath / collectMaterialHashesUnderPath.
+    std::unordered_map<std::string, XXH64_hash_t> m_materialPathIndex;
 
     // Secret replacements if any
     SecretReplacements m_secretReplacements;
   };
 
   struct AssetReplacer {
-    std::vector<AssetReplacement>* getReplacementsForMesh(XXH64_hash_t hash);
-    std::vector<AssetReplacement>* getReplacementsForLight(XXH64_hash_t hash);
-    MaterialData* getReplacementMaterial(XXH64_hash_t hash);
+    std::shared_ptr<const ReplacementBucket> getReplacementsForMesh(XXH64_hash_t hash);
+    std::shared_ptr<const ReplacementBucket> getReplacementsForLight(XXH64_hash_t hash);
+    std::shared_ptr<MaterialData> getReplacementMaterial(XXH64_hash_t hash);
 
     // process the replacement USD and create all the m_replacements entries.
     void initialize(const Rc<DxvkContext>& context);
@@ -261,11 +525,29 @@ namespace dxvk {
     // returns true if the state of replacements has changed.
     bool checkForChanges(const Rc<DxvkContext>& context);
 
+    // Applies any ready background hot-reloads. Returns true iff at least one mod was
+    // updated this call, and merges each mod's AssetChanges into changes.
+    bool applyPendingRebuilds(const Rc<DxvkContext>& context, AssetChanges& changes);
 
-    // Returns true if all replacement mods are in the loaded state, false otherwise.
-    bool areAllReplacementsLoaded() const;
-    // Gets the states of all the current replacement mods.
+    // Device teardown hook: lets every mod join its background workers while the
+    // rest of DxvkObjects is still alive.
+    void onDestroy();
+
+    // Abandon any in-progress mod load. Called by RtxInitializer::onDestroy.
+    void cancelLoading() {
+      m_modManager.cancelLoading();
+    }
+
+
+    // Returns true if at least one mod has been discovered (regardless of load state).
+    bool hasAnyMods() const;
     std::vector<Mod::State> getReplacementStates() const;
+
+    // Queues a manual reload of every mod, picked up on the next checkForChanges.
+    void requestReload();
+    // True while any mod has a reload queued or in flight, so the UI can disable the
+    // button rather than letting clicks pile up.
+    bool isReloadPending() const;
 
     const bool hasNewSecretReplacementInfo() const {
       return m_bSecretReplacementsUpdated;
@@ -289,7 +571,9 @@ namespace dxvk {
     void destroyExternalMaterial(remixapi_MaterialHandle handle);
 
     void registerExternalMesh(remixapi_MeshHandle handle, std::vector<RasterGeometry>&& submeshes);
-    [[nodiscard]] const std::vector<RasterGeometry>& accessExternalMesh(remixapi_MeshHandle handle) const;
+    // Shared pointer because destroyExternalMesh can erase the entry while
+    // cached draw calls still point into it.
+    [[nodiscard]] std::shared_ptr<const std::vector<RasterGeometry>> accessExternalMesh(remixapi_MeshHandle handle) const;
     void destroyExternalMesh(remixapi_MeshHandle handle);
 
   private:
@@ -299,7 +583,6 @@ namespace dxvk {
 
     struct VariantInfo {
       static constexpr size_t kDefaultVariant = 0;
-      size_t numVariants = 0;
       size_t selectedVariant = kDefaultVariant;
     };
 
@@ -309,7 +592,7 @@ namespace dxvk {
     ModManager m_modManager;
 
     std::unordered_map<remixapi_MaterialHandle, std::optional<MaterialData>> m_extMaterials {};
-    std::unordered_map<remixapi_MeshHandle, std::unique_ptr<std::vector<RasterGeometry>>> m_extMeshes {};
+    std::unordered_map<remixapi_MeshHandle, std::shared_ptr<std::vector<RasterGeometry>>> m_extMeshes {};
   };
 } // namespace dxvk
 

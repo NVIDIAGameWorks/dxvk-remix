@@ -725,22 +725,22 @@ void testTwoNodeGraph() {
   }
   
   // Verify we have the correct number of component specs
-  if (graphState.topology.componentSpecs.size() != 2) {
-    throw DxvkError("testTwoNodeGraph: graphState.topology.componentSpecs should be size 2");
+  if (graphState.topology->componentSpecs.size() != 2) {
+    throw DxvkError("testTwoNodeGraph: graphState.topology->componentSpecs should be size 2");
   }
-  if (graphState.topology.componentSpecs[0]->componentType != components::TestComponent::getStaticSpec()->componentType) {
-    throw DxvkError("testTwoNodeGraph: graphState.topology.componentSpecs[0] should be TestComponent");
+  if (graphState.topology->componentSpecs[0]->componentType != components::TestComponent::getStaticSpec()->componentType) {
+    throw DxvkError("testTwoNodeGraph: graphState.topology->componentSpecs[0] should be TestComponent");
   }
-  if (graphState.topology.componentSpecs[1]->componentType != components::TestComponent::getStaticSpec()->componentType) {
-    throw DxvkError("testTwoNodeGraph: graphState.topology.componentSpecs[1] should be TestComponent");
+  if (graphState.topology->componentSpecs[1]->componentType != components::TestComponent::getStaticSpec()->componentType) {
+    throw DxvkError("testTwoNodeGraph: graphState.topology->componentSpecs[1] should be TestComponent");
   }
 
   // Verify property indices for both nodes
-  if (graphState.topology.propertyIndices[0].size() != components::TestComponent::getStaticSpec()->properties.size()) {
-    throw DxvkError("testTwoNodeGraph: graphState.topology.propertyIndices[0] should be size of TestComponent properties");
+  if (graphState.topology->propertyIndices[0].size() != components::TestComponent::getStaticSpec()->properties.size()) {
+    throw DxvkError("testTwoNodeGraph: graphState.topology->propertyIndices[0] should be size of TestComponent properties");
   }
-  if (graphState.topology.propertyIndices[1].size() != components::TestComponent::getStaticSpec()->properties.size()) {
-    throw DxvkError("testTwoNodeGraph: graphState.topology.propertyIndices[1] should be size of TestComponent properties");
+  if (graphState.topology->propertyIndices[1].size() != components::TestComponent::getStaticSpec()->properties.size()) {
+    throw DxvkError("testTwoNodeGraph: graphState.topology->propertyIndices[1] should be size of TestComponent properties");
   }
   
   // Test that connected properties share the same value index
@@ -771,10 +771,10 @@ void testTwoNodeGraph() {
     size_t outputIndex = propertyNameToIndex[outputProp];
     size_t inputIndex = propertyNameToIndex[inputProp];
     
-    if (graphState.topology.propertyIndices[0][outputIndex] != graphState.topology.propertyIndices[1][inputIndex]) {
+    if (graphState.topology->propertyIndices[0][outputIndex] != graphState.topology->propertyIndices[1][inputIndex]) {
       throw DxvkError(str::format("testTwoNodeGraph: ", outputProp, " and ", inputProp, " should share value index, but got ", 
-                                  graphState.topology.propertyIndices[0][outputIndex], " and ", 
-                                  graphState.topology.propertyIndices[1][inputIndex]));
+                                  graphState.topology->propertyIndices[0][outputIndex], " and ", 
+                                  graphState.topology->propertyIndices[1][inputIndex]));
     }
   }
   
@@ -1232,7 +1232,7 @@ void testOldPropertyNames() {
     size_t inputBoolIndex = propertyNameToIndex["inputBool"];
     
     // Get the value index for the inputBool property
-    size_t valueIndex = graphState.topology.propertyIndices[0][inputBoolIndex];
+    size_t valueIndex = graphState.topology->propertyIndices[0][inputBoolIndex];
     
     // Verify the specific property has the expected value
     if (!std::holds_alternative<uint32_t>(graphState.values[valueIndex])) {
@@ -1262,7 +1262,7 @@ void testOldPropertyNames() {
     size_t inputBoolIndex = propertyNameToIndex["inputBool"];
     
     // Get the value index for the inputBool property
-    size_t valueIndex = graphState.topology.propertyIndices[0][inputBoolIndex];
+    size_t valueIndex = graphState.topology->propertyIndices[0][inputBoolIndex];
     
     // Verify the specific property has the expected value
     if (!std::holds_alternative<uint32_t>(graphState.values[valueIndex])) {
@@ -1323,7 +1323,7 @@ void testOldPropertyNames() {
     size_t inputBoolIndex = propertyNameToIndex["inputBool"];
     
     // Get the value index for the inputBool property
-    size_t valueIndex = graphState.topology.propertyIndices[0][inputBoolIndex];
+    size_t valueIndex = graphState.topology->propertyIndices[0][inputBoolIndex];
     
     // Verify the specific property has the expected value
     if (!std::holds_alternative<uint32_t>(graphState.values[valueIndex])) {
@@ -1359,16 +1359,16 @@ void testOldPropertyNames() {
     RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
     
     // Verify we have the correct number of component specs
-    if (graphState.topology.componentSpecs.size() != 2) {
-      throw DxvkError("testOldPropertyNames: graphState.topology.componentSpecs should be size 2");
+    if (graphState.topology->componentSpecs.size() != 2) {
+      throw DxvkError("testOldPropertyNames: graphState.topology->componentSpecs should be size 2");
     }
     
     // Verify property indices for both nodes
-    if (graphState.topology.propertyIndices[0].size() != components::TestComponent::getStaticSpec()->properties.size()) {
-      throw DxvkError("testOldPropertyNames: graphState.topology.propertyIndices[0] should be size of TestComponent properties");
+    if (graphState.topology->propertyIndices[0].size() != components::TestComponent::getStaticSpec()->properties.size()) {
+      throw DxvkError("testOldPropertyNames: graphState.topology->propertyIndices[0] should be size of TestComponent properties");
     }
-    if (graphState.topology.propertyIndices[1].size() != components::TestComponent::getStaticSpec()->properties.size()) {
-      throw DxvkError("testOldPropertyNames: graphState.topology.propertyIndices[1] should be size of TestComponent properties");
+    if (graphState.topology->propertyIndices[1].size() != components::TestComponent::getStaticSpec()->properties.size()) {
+      throw DxvkError("testOldPropertyNames: graphState.topology->propertyIndices[1] should be size of TestComponent properties");
     }
     
     // Test that connected properties share the same value index
@@ -1380,10 +1380,10 @@ void testOldPropertyNames() {
     size_t inputBoolIndex = propertyNameToIndex["inputBool"];
     
     // Verify that connected properties share the same value index
-    if (graphState.topology.propertyIndices[0][outputBoolIndex] != graphState.topology.propertyIndices[1][inputBoolIndex]) {
+    if (graphState.topology->propertyIndices[0][outputBoolIndex] != graphState.topology->propertyIndices[1][inputBoolIndex]) {
       throw DxvkError(str::format("testOldPropertyNames: outputBool and inputBool should share value index, but got ", 
-                                  graphState.topology.propertyIndices[0][outputBoolIndex], " and ", 
-                                  graphState.topology.propertyIndices[1][inputBoolIndex]));
+                                  graphState.topology->propertyIndices[0][outputBoolIndex], " and ", 
+                                  graphState.topology->propertyIndices[1][inputBoolIndex]));
     }
     
     // Verify the total number of values
@@ -1417,8 +1417,8 @@ void testOldPropertyNames() {
     RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
     
     // Verify we have the correct number of component specs
-    if (graphState.topology.componentSpecs.size() != 2) {
-      throw DxvkError("testOldPropertyNames: graphState.topology.componentSpecs should be size 2");
+    if (graphState.topology->componentSpecs.size() != 2) {
+      throw DxvkError("testOldPropertyNames: graphState.topology->componentSpecs should be size 2");
     }
     
     // Test that connected properties share the same value index
@@ -1428,10 +1428,10 @@ void testOldPropertyNames() {
     size_t inputBoolIndex = propertyNameToIndex["inputBool"];
     
     // Verify that connected properties share the same value index
-    if (graphState.topology.propertyIndices[0][outputBoolIndex] != graphState.topology.propertyIndices[1][inputBoolIndex]) {
+    if (graphState.topology->propertyIndices[0][outputBoolIndex] != graphState.topology->propertyIndices[1][inputBoolIndex]) {
       throw DxvkError(str::format("testOldPropertyNames: outputBool and inputBool should share value index, but got ", 
-                                  graphState.topology.propertyIndices[0][outputBoolIndex], " and ", 
-                                  graphState.topology.propertyIndices[1][inputBoolIndex]));
+                                  graphState.topology->propertyIndices[0][outputBoolIndex], " and ", 
+                                  graphState.topology->propertyIndices[1][inputBoolIndex]));
     }
     
     // Verify the total number of values
@@ -1473,7 +1473,7 @@ void testAnyFlexibleTypeResolution() {
     RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
     
     // Verify we have one component
-    if (graphState.topology.componentSpecs.size() != 1) {
+    if (graphState.topology->componentSpecs.size() != 1) {
       throw DxvkError("testAnyFlexibleTypeResolution: should have 1 component");
     }
     
@@ -1502,7 +1502,7 @@ void testAnyFlexibleTypeResolution() {
     }
     
     // Verify the parsed component is using the Float variant
-    if (graphState.topology.componentSpecs[0]->componentType != floatVariantSpec->componentType) {
+    if (graphState.topology->componentSpecs[0]->componentType != floatVariantSpec->componentType) {
       throw DxvkError("testAnyFlexibleTypeResolution: component should use Float variant");
     }
     
@@ -1530,7 +1530,7 @@ void testAnyFlexibleTypeResolution() {
     RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
     
     // Verify we have one component
-    if (graphState.topology.componentSpecs.size() != 1) {
+    if (graphState.topology->componentSpecs.size() != 1) {
       throw DxvkError("testAnyFlexibleTypeResolution: should have 1 component");
     }
     
@@ -1555,7 +1555,7 @@ void testAnyFlexibleTypeResolution() {
     }
     
     // Verify the parsed component is using the String variant
-    if (graphState.topology.componentSpecs[0]->componentType != stringVariantSpec->componentType) {
+    if (graphState.topology->componentSpecs[0]->componentType != stringVariantSpec->componentType) {
       throw DxvkError("testAnyFlexibleTypeResolution: component should use String variant");
     }
     
@@ -1591,7 +1591,7 @@ void testNumberOrVectorFlexibleTypeResolution() {
     RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
     
     // Verify we have one component
-    if (graphState.topology.componentSpecs.size() != 1) {
+    if (graphState.topology->componentSpecs.size() != 1) {
       throw DxvkError("testNumberOrVectorFlexibleTypeResolution: should have 1 component");
     }
     
@@ -1622,7 +1622,7 @@ void testNumberOrVectorFlexibleTypeResolution() {
     }
     
     // Verify the parsed component is using the Float variant
-    if (graphState.topology.componentSpecs[0]->componentType != floatVariantSpec->componentType) {
+    if (graphState.topology->componentSpecs[0]->componentType != floatVariantSpec->componentType) {
       throw DxvkError("testNumberOrVectorFlexibleTypeResolution: component should use Float variant");
     }
     
@@ -1650,7 +1650,7 @@ void testNumberOrVectorFlexibleTypeResolution() {
     RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
     
     // Verify we have one component
-    if (graphState.topology.componentSpecs.size() != 1) {
+    if (graphState.topology->componentSpecs.size() != 1) {
       throw DxvkError("testNumberOrVectorFlexibleTypeResolution: should have 1 component");
     }
     
@@ -1677,7 +1677,7 @@ void testNumberOrVectorFlexibleTypeResolution() {
     }
     
     // Verify the parsed component is using the Vector3 variant
-    if (graphState.topology.componentSpecs[0]->componentType != vec3VariantSpec->componentType) {
+    if (graphState.topology->componentSpecs[0]->componentType != vec3VariantSpec->componentType) {
       throw DxvkError("testNumberOrVectorFlexibleTypeResolution: component should use Float3 variant");
     }
     
@@ -1712,7 +1712,7 @@ void testFlexibleTypeResolutionFromTokenStrings() {
     // Parse the graph
     RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
     
-    if (graphState.topology.componentSpecs.size() != 1) {
+    if (graphState.topology->componentSpecs.size() != 1) {
       throw DxvkError("testFlexibleTypeResolutionFromTokenStrings: should have 1 component");
     }
     
@@ -1735,7 +1735,7 @@ void testFlexibleTypeResolutionFromTokenStrings() {
       throw DxvkError("testFlexibleTypeResolutionFromTokenStrings: Float variant not found");
     }
     
-    if (graphState.topology.componentSpecs[0]->componentType != floatVariantSpec->componentType) {
+    if (graphState.topology->componentSpecs[0]->componentType != floatVariantSpec->componentType) {
       throw DxvkError("testFlexibleTypeResolutionFromTokenStrings: should use Float variant");
     }
     
@@ -1805,7 +1805,7 @@ void testFlexibleTypeResolutionFromTokenStrings() {
     // Parse the graph
     RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
     
-    if (graphState.topology.componentSpecs.size() != 1) {
+    if (graphState.topology->componentSpecs.size() != 1) {
       throw DxvkError("testFlexibleTypeResolutionFromTokenStrings: should have 1 component");
     }
     
@@ -1833,7 +1833,7 @@ void testFlexibleTypeResolutionFromTokenStrings() {
       throw DxvkError("testFlexibleTypeResolutionFromTokenStrings: Float3 variant not found");
     }
     
-    if (graphState.topology.componentSpecs[0]->componentType != vec3VariantSpec->componentType) {
+    if (graphState.topology->componentSpecs[0]->componentType != vec3VariantSpec->componentType) {
       throw DxvkError("testFlexibleTypeResolutionFromTokenStrings: should use Float3 variant");
     }
     
@@ -1860,7 +1860,7 @@ void testFlexibleTypeResolutionFromTokenStrings() {
     // Parse the graph
     RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
     
-    if (graphState.topology.componentSpecs.size() != 1) {
+    if (graphState.topology->componentSpecs.size() != 1) {
       throw DxvkError("testFlexibleTypeResolutionFromTokenStrings: should have 1 component");
     }
     
@@ -1888,7 +1888,7 @@ void testFlexibleTypeResolutionFromTokenStrings() {
       throw DxvkError("testFlexibleTypeResolutionFromTokenStrings: Float variant not found");
     }
     
-    if (graphState.topology.componentSpecs[0]->componentType != floatVariantSpec->componentType) {
+    if (graphState.topology->componentSpecs[0]->componentType != floatVariantSpec->componentType) {
       throw DxvkError("testFlexibleTypeResolutionFromTokenStrings: should use Float variant");
     }
     
@@ -1973,8 +1973,8 @@ void testFlexibleTypeResolutionViaConnections() {
     RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
     
     // Verify we have two components (TestComponent and TestFlexAny)
-    if (graphState.topology.componentSpecs.size() != 2) {
-      throw DxvkError(str::format("testFlexibleTypeResolutionViaConnections: should have 2 components, got ", graphState.topology.componentSpecs.size()));
+    if (graphState.topology->componentSpecs.size() != 2) {
+      throw DxvkError(str::format("testFlexibleTypeResolutionViaConnections: should have 2 components, got ", graphState.topology->componentSpecs.size()));
     }
     
     // Verify that TestFlexAny resolved to Float,Float variant based on the connection
@@ -1999,8 +1999,8 @@ void testFlexibleTypeResolutionViaConnections() {
     
     // Find which component is the TestFlexAny
     size_t flexAnyIndex = SIZE_MAX;
-    for (size_t i = 0; i < graphState.topology.componentSpecs.size(); i++) {
-      if (graphState.topology.componentSpecs[i]->name.find("TestFlexAny") != std::string::npos) {
+    for (size_t i = 0; i < graphState.topology->componentSpecs.size(); i++) {
+      if (graphState.topology->componentSpecs[i]->name.find("TestFlexAny") != std::string::npos) {
         flexAnyIndex = i;
         break;
       }
@@ -2011,7 +2011,7 @@ void testFlexibleTypeResolutionViaConnections() {
     }
     
     // The TestFlexAny component should be using the Float variant
-    if (graphState.topology.componentSpecs[flexAnyIndex]->componentType != floatVariantSpec->componentType) {
+    if (graphState.topology->componentSpecs[flexAnyIndex]->componentType != floatVariantSpec->componentType) {
       throw DxvkError("testFlexibleTypeResolutionViaConnections: TestFlexAny should use Float variant based on connection");
     }
     
@@ -2155,9 +2155,9 @@ void testAllPropertyTypeConnections() {
       RtGraphState graphState = GraphUsdParser::parseGraph(test.m_replacements, graphPrim, test.m_pathToOffsetMap);
       
       // Verify we have 2 components
-      if (graphState.topology.componentSpecs.size() != 2) {
+      if (graphState.topology->componentSpecs.size() != 2) {
         throw DxvkError(str::format("testAllPropertyTypeConnections: Expected 2 components, got ", 
-                                    graphState.topology.componentSpecs.size(),
+                                    graphState.topology->componentSpecs.size(),
                                     " for connection ", outputName, " (", outputType, 
                                     ") -> ", inputName, " (", inputType, ")"));
       }
@@ -2167,8 +2167,8 @@ void testAllPropertyTypeConnections() {
       size_t inputPropIdx = propertyNameToIndex[inputName];
       
       // Get the value indices for the source output and target input
-      size_t sourceOutputValueIdx = graphState.topology.propertyIndices[0][outputPropIdx];
-      size_t targetInputValueIdx = graphState.topology.propertyIndices[1][inputPropIdx];
+      size_t sourceOutputValueIdx = graphState.topology->propertyIndices[0][outputPropIdx];
+      size_t targetInputValueIdx = graphState.topology->propertyIndices[1][inputPropIdx];
       
       // Check if types match and if connection was made
       bool typesMatch = (outputType == inputType);

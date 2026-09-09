@@ -113,6 +113,7 @@ namespace dxvk {
           "Sam Bourne",
           "David Driver-Gomm",
           "Alex Dunn",
+          "Scott Fitzpatrick",
           "Nicholas Freybler",
           "Shona Gillard",
           "Mark Henderson",

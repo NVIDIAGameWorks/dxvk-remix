@@ -66,6 +66,7 @@
 #include "dxvk_imgui_splash.h"
 #include "dxvk_imgui_capture.h"
 #include "rtx_render/rtx_option_layer_gui.h"
+#include "rtx_render/rtx_mod_usd.h"
 #include "rtx_render/rtx_option_manager.h"
 #include "dxvk_scoped_annotation.h"
 #include "../../d3d9/d3d9_rtx.h"
@@ -984,13 +985,13 @@ namespace dxvk {
     };
 
     auto common = ctx->getCommonObjects();
-    static RtxQuickAction sQuickAction = common->getSceneManager().areAllReplacementsLoaded() ? RtxQuickAction::kRtxOnEnhanced : RtxQuickAction::kRtxOn;
+    static RtxQuickAction sQuickAction = common->getSceneManager().hasAnyMods() ? RtxQuickAction::kRtxOnEnhanced : RtxQuickAction::kRtxOn;
 
     if (ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_KeypadAdd))) {
       sQuickAction = (RtxQuickAction) ((sQuickAction + 1) % RtxQuickAction::kCount);
 
-      // Skip over the enhancements quick option if no replacements are loaded
-      if(!common->getSceneManager().areAllReplacementsLoaded() && sQuickAction == RtxQuickAction::kRtxOnEnhanced)
+      // Skip "RTX On Enhanced" if no mods are present — the mode would be identical to plain RTX On
+      if(!common->getSceneManager().hasAnyMods() && sQuickAction == RtxQuickAction::kRtxOnEnhanced)
         sQuickAction = (RtxQuickAction) ((sQuickAction + 1) % RtxQuickAction::kCount);
 
       switch (sQuickAction) {
@@ -2579,11 +2580,27 @@ namespace dxvk {
   }
   
   void ImGUI::showEnhancementsTab(const Rc<DxvkContext>& ctx) {
-    if (!ctx->getCommonObjects()->getSceneManager().areAllReplacementsLoaded()) {
-      ImGui::Text("No USD enhancements detected, the following options have been disabled.  See documentation for how to use enhancements with Remix.");
+    auto& replacer = ctx->getCommonObjects()->getSceneManager().getAssetReplacer();
+    const auto states = replacer->getReplacementStates();
+    if (states.empty()) {
+      ImGui::Text("No USD enhancement mods detected. See documentation for how to use enhancements with Remix.");
+    } else {
+      const bool anyLoading = std::any_of(states.begin(), states.end(),
+          [](const Mod::State& s) { return s.progressState != Mod::ProgressState::Unloaded
+                                        && s.progressState != Mod::ProgressState::Loaded; });
+      if (anyLoading) {
+        ImGui::Text("Enhancement assets are loading...");
+      } else {
+        ImGui::Text("Mods Discovered: %zu", states.size());
+      }
     }
 
-    ImGui::BeginDisabled(!ctx->getCommonObjects()->getSceneManager().areAllReplacementsLoaded());
+    ImGui::BeginDisabled(replacer->isReloadPending());
+    if (ImGui::Button("Reload Enhancements")) {
+      replacer->requestReload();
+    }
+    ImGui::EndDisabled();
+
     RemixGui::Checkbox("Enable Enhanced Assets", &RtxOptions::enableReplacementAssetsObject());
     {
       ImGui::Indent();
@@ -2596,7 +2613,12 @@ namespace dxvk {
       ImGui::EndDisabled();
       ImGui::Unindent();
     }
+
+    RemixGui::Checkbox("Reload Enhancements on mod.usda change", &UsdMod::reloadOnChangedObject());
+    ImGui::BeginDisabled(!UsdMod::reloadOnChanged());
+    RemixGui::Checkbox("  Reload on any usd file change", &UsdMod::watchDependenciesObject());
     ImGui::EndDisabled();
+
     RemixGui::Separator();
     RemixGui::Checkbox("Highlight Legacy Materials (flash red)", &RtxOptions::useHighlightLegacyModeObject());
 

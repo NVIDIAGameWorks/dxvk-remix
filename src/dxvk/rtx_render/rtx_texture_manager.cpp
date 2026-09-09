@@ -824,7 +824,7 @@ namespace dxvk {
     static_assert(SAMPLER_FEEDBACK_INVALID == UINT16_MAX, "SAMPLER_FEEDBACK_INVALID must be 0xFFFF for memset fill to be correct");
     memset(m_sf.m_related, 0xFF, SAMPLER_FEEDBACK_MAX_TEXTURE_COUNT * SAMPLER_FEEDBACK_RELATED_PER_TEX * sizeof(m_sf.m_related[0]));
 
-    FileWatch::get().beginThread(this);
+    FileWatch::get().setTextureManager(this);
   }
 
   void RtxTextureManager::startAsync() {
@@ -836,7 +836,7 @@ namespace dxvk {
   }
 
   RtxTextureManager::~RtxTextureManager() {
-    FileWatch::get().endThread(this);
+    FileWatch::get().clearTextureManager(this);
 
     delete m_sf.m_cachedGpubuf;
     delete m_sf.m_cachedAssetMipcount;

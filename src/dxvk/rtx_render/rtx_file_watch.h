@@ -46,21 +46,28 @@ namespace dxvk {
     FileWatch& operator=(const FileWatch&) = delete;
     FileWatch& operator=(FileWatch&&) = delete;
 
-    void beginThread(RtxTextureManager* textureManager);
-    void endThread(RtxTextureManager* textureManager);
+    // Called by RtxTextureManager on device creation/destruction to enable/disable
+    // texture hot-reload callbacks. The OS-level file watching runs independently.
+    void setTextureManager(RtxTextureManager* textureManager);
+    void clearTextureManager(RtxTextureManager* textureManager);
 
     void installDir(const char* dirpath);
     void removeAllWatchDirs();
 
     void watchTexture(RtxTextureManager* textureManager, const Rc<ManagedTexture>& tex);
 
+    // Register a lightweight callback invoked on the FileWatch thread whenever any file
+    // in a watched directory changes. Returns an id for removal - not a pointer, since a
+    // freed object's address could be reused and collide with a still-queued request.
+    using FileChangedFn = std::function<void(const std::filesystem::path&)>;
+    using FileWatchCallbackId = uint64_t;
+    FileWatchCallbackId addFileChangedCallback(FileChangedFn fn);
+    void removeFileChangedCallback(FileWatchCallbackId id);
+
   private:
     void endThreadLocked();
 
     std::mutex m_mutex;
-    // D3D device recreation can overlap texture manager lifetimes. Track the active owner so
-    // delayed teardown from an old manager cannot stop the new watch thread.
-    const RtxTextureManager* m_textureManager = nullptr;
     std::unique_ptr<dxvk::thread> m_fileCheckingThread;
     std::unique_ptr<FileWatchTexturesImpl> m_impl;
   };

@@ -24,15 +24,24 @@
 #include "../../util/rc/util_rc_ptr.h"
 #include "../../lssusd/game_exporter_paths.h"
 
+#include <algorithm>
 #include <string>
 #include <filesystem>
 #include <set>
 #include <cassert>
+#include <atomic>
+#include <vector>
+#include <mutex>
 
 namespace dxvk {
 
+class ModManager;
+
 class DxvkContext;
 class AssetReplacements;
+// Defined in rtx_asset_replacer.h, which includes this header. Only passed by reference
+// here, so the declaration is enough.
+struct AssetChanges;
 
 /**
  * \brief Mod base class
@@ -62,8 +71,7 @@ public:
 
   struct State {
     ProgressState progressState;
-    // Note: This progress value should only be read when the stage state is LoadingMaterials, LoadingMeshes or LoadingLights, as it will
-    // be uninitialized otherwise.
+    // Only valid during Processing* states.
     std::uint32_t progressCount;
   };
 
@@ -73,29 +81,44 @@ public:
   virtual void load(const Rc<DxvkContext>& context) = 0;
   // Unloads the mod and destroys the replacements.
   virtual void unload() = 0;
-  // Updates the replacements if mod changed.
+  // Consumes any pending file-change signal and may kick off a background rebuild.
+  // Returns true only if state changed synchronously. Background reloads land in
+  // applyPendingRebuild.
   virtual bool checkForChanges(const Rc<DxvkContext>& context) = 0;
+  // Render-thread apply step. Returns true iff a pending rebuild was applied.
+  virtual bool applyPendingRebuild(const Rc<DxvkContext>& context, AssetChanges& changes) { return false; }
+  // Teardown hook: joins any background worker while what it reads is still alive.
+  virtual void onDestroy() {}
 
-  State state() const {
-    const auto encodedState{ m_state.load() };
-    State decodedState;
-
-    decodedState.progressState = static_cast<ProgressState>((encodedState >> 29ull) & progressStateMask);
-    decodedState.progressCount = static_cast<std::uint32_t>((encodedState >> 0ull) & progressCountMask);
-
-    return decodedState;
+  // Queues a manual reload, honoured by the next checkForChanges on the render thread.
+  // Safe to call from the UI, which draws on a different thread. Repeated calls before
+  // the render thread takes it collapse into one reload.
+  void requestReload() {
+    m_reloadRequested.store(true, std::memory_order_release);
   }
 
-  const std::string& status() const {
-    return m_status;
+  bool isReloadRequested() const {
+    return m_reloadRequested.load(std::memory_order_acquire);
+  }
+
+  // True once device teardown has begun, so a load in progress can bail out promptly.
+  // Answered by the ModManager - a mod with no manager was never published and cannot
+  // be loading.
+  bool isLoadingCancelled() const;
+
+  // Replaces this mod's paths and republishes the flattened list. Call after a load,
+  // a reload, or an unload.
+  void setSearchPaths(std::vector<Path> paths);
+
+  State state() const {
+    return {
+      m_progressState.load(std::memory_order_acquire),
+      m_progressCount.load(std::memory_order_acquire),
+    };
   }
 
   AssetReplacements& replacements() {
     return *m_replacements.get();
-  }
-
-  const Path& path() const {
-    return m_filePath;
   }
 
   struct ComparePtrs {
@@ -113,55 +136,53 @@ public:
 protected:
   explicit Mod(const Path& filePath);
 
-  constexpr static std::uint32_t progressStateMask{ (1ull << 3ull) - 1ull };
-  constexpr static std::uint32_t progressCountMask{ (1ull << 29ull) - 1ull };
-
-  constexpr static std::uint32_t encodeProgressState(ProgressState progressState) {
-    return static_cast<std::uint32_t>(progressState) << 29ull;
-  }
-
-  // Sets the Mod progress state, only to be used when setting to Unloaded, OpeningUSD or Loaded. Use setStateWithProgress for other states.
-  void setState(ProgressState progressState) {
-    // Note: This set state function is only intended to be used with states that do not have progress associated with them.
+  void setProgress(ProgressState progressState) {
     assert(
       progressState == ProgressState::Unloaded ||
       progressState == ProgressState::OpeningUSD ||
       progressState == ProgressState::Loaded
     );
-
-    m_state = encodeProgressState(progressState);
+    m_progressState.store(progressState, std::memory_order_release);
   }
 
-  // Sets the Mod progress state with a progress count value, only to be used when setting to ProcessingMaterials/Meshes/Lights. Use setState for other states.
-  void setStateWithCount(ProgressState progressState, std::uint32_t progressCount) {
-    // Note: This set state function is only intended to be used with states that do not have progress associated with them.
+  void setProgressWithCount(ProgressState progressState, std::uint32_t progressCount) {
     assert(
       progressState == ProgressState::ProcessingMaterials ||
       progressState == ProgressState::ProcessingMeshes ||
       progressState == ProgressState::ProcessingLights
     );
-    // Note: Ensure the progress count falls within the expected range. The progress count isare masked during encoding for
-    // safety as it is in theory possible for values this large to be passed in at runtime, but it likely indicates a bug as there
-    // probably should not be 500 million of any sort of asset loading.
-    assert(progressCount < (1u << 29u));
+    m_progressCount.store(progressCount, std::memory_order_relaxed);
+    m_progressState.store(progressState, std::memory_order_release);
+  }
 
-    m_state =
-      encodeProgressState(progressState) |
-      (static_cast<std::uint64_t>(progressCount) & progressCountMask);
+  // Takes a queued manual reload request, clearing it. Render thread only.
+  bool consumeReloadRequest() {
+    return m_reloadRequested.exchange(false, std::memory_order_acq_rel);
+  }
+
+  // This mod's asset search paths, in ascending precedence order. Precedence between
+  // mods is decided by the mod order when ModManager flattens these, so nothing here
+  // carries a priority number. Caller must hold ModManager::m_searchPathMutex - the only
+  // caller is ModManager::publishSearchPaths, via friend access.
+  const std::vector<Path>& searchPaths() const {
+    return m_searchPaths;
   }
 
   const Path m_filePath;
-  std::string m_name;
   size_t m_priority;
 
-  // Note: This uses a 32 bit atomic so that the state as well as the progress count can all be encoded into it together. This ensures all the data
-  // can be read at the same time atomically to ensure all the values are in sync without the use of mutexes. This is somewhat important as the progress
-  // count will be updated fairly rapidly depending on how fast assets load and avoiding any sort of overhead is ideal.
-  // Current encoding: [3 bit progress state] [29 bit progress count]
-  std::atomic<std::uint32_t> m_state{ encodeProgressState(ProgressState::Unloaded) };
+  std::atomic<ProgressState> m_progressState{ ProgressState::Unloaded };
+  std::atomic<std::uint32_t> m_progressCount{ 0 };
+  // Set by the UI thread, consumed by the render thread in checkForChanges.
+  std::atomic<bool> m_reloadRequested{ false };
+  // Ascending precedence. Owned per-mod so a reload replaces only this mod's paths.
+  std::vector<Path> m_searchPaths;
+  // Set by ModManager::refreshMods so a mod can ask for a republish after it reloads.
+  ModManager* m_pManager = nullptr;
+  friend class ModManager;
   std::string m_status = "Unloaded";
 
-  static_assert(decltype(m_state)::is_always_lock_free, "Mod state atomic should be lock-free for performance.");
+  static_assert(decltype(m_progressState)::is_always_lock_free, "Mod progress state atomic should be lock-free for performance.");
 
   std::unique_ptr<AssetReplacements> m_replacements;
 };
@@ -192,6 +213,28 @@ public:
   // destroy the removed mods.
   void refreshMods();
 
+  // Concatenate every mod's search paths in mod order and hand the flattened list to
+  // the AssetDataManager. Mod order is the precedence order, so this is the only place
+  // that needs to know how mods rank against each other.
+  void publishSearchPaths() const;
+
+  // Guards m_searchPaths on each Mod against concurrent reads in publishSearchPaths
+  // (render thread) vs writes in setSearchPaths (asset-load thread during initial load,
+  // or a mod's own rebuild worker thread during a hot-reload - both publish inline so
+  // the same walk that needs the search paths already sees them).
+  mutable std::mutex m_searchPathMutex;
+
+  // Abandon any in-progress load. Raised once, at device teardown, by
+  // RtxInitializer::onDestroy before it joins the asset loading thread: a USD walk
+  // that runs to completion there blocks the quit for the whole remaining load.
+  void cancelLoading() {
+    m_loadingCancelled.store(true, std::memory_order_release);
+  }
+
+  bool isLoadingCancelled() const {
+    return m_loadingCancelled.load(std::memory_order_acquire);
+  }
+
   const Mods& mods() const {
     return m_mods;
   }
@@ -204,6 +247,7 @@ private:
   Mods enumerateModsInDir(const Path& modsDirPath);
 
   Mods m_mods;
+  std::atomic<bool> m_loadingCancelled = false;
 };
 
 }

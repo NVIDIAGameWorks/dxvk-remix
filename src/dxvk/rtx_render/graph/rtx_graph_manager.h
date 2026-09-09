@@ -60,25 +60,29 @@ public:
     });
   }
 
-  GraphInstance* addInstance(Rc<DxvkContext> context, const RtGraphState& graphState) {
+  GraphInstance* addInstance(Rc<DxvkContext> context, std::shared_ptr<const RtGraphState> graphState) {
     ScopedCpuProfileZone();
     if (!enable()) {
       return nullptr;
     }
-    auto iter = m_batches.find(graphState.topology.graphHash);
-    if (iter == m_batches.end()) {
-      iter = m_batches.emplace(graphState.topology.graphHash, RtGraphBatch()).first;
-      iter->second.Initialize(graphState.topology);
-    }
-    uint64_t instanceId = m_nextInstanceId++;
-    auto pair = m_graphInstances.try_emplace(instanceId, this, graphState.topology.graphHash, 0, instanceId, graphState);
-    if (!pair.second) {
-      Logger::err(str::format("GraphInstance already exists. Instance: ", instanceId, " Prim path: ", graphState.primPath));
+    if (!graphState || graphState->topology == nullptr) {
+      Logger::err(str::format("GraphState has no topology. Prim path: ", graphState ? graphState->primPath : "(null)"));
       return nullptr;
     }
-    if (!iter->second.addInstance(context, graphState, &pair.first->second)) {
+    auto iter = m_batches.find(graphState->topology->graphHash);
+    if (iter == m_batches.end()) {
+      iter = m_batches.emplace(graphState->topology->graphHash, RtGraphBatch()).first;
+      iter->second.Initialize(graphState->topology);
+    }
+    uint64_t instanceId = m_nextInstanceId++;
+    auto pair = m_graphInstances.try_emplace(instanceId, this, graphState->topology->graphHash, 0, instanceId, graphState);
+    if (!pair.second) {
+      Logger::err(str::format("GraphInstance already exists. Instance: ", instanceId, " Prim path: ", graphState->primPath));
+      return nullptr;
+    }
+    if (!iter->second.addInstance(context, *graphState, &pair.first->second)) {
       m_graphInstances.erase(instanceId);
-      Logger::err(str::format("Failed to add GraphInstance to GraphBatch. Instance: ", instanceId, " Prim path: ", graphState.primPath));
+      Logger::err(str::format("Failed to add GraphInstance to GraphBatch. Instance: ", instanceId, " Prim path: ", graphState->primPath));
       return nullptr;
     }
     return &pair.first->second;
@@ -88,16 +92,19 @@ public:
     auto iter = m_graphInstances.find(instanceId);
     if (iter == m_graphInstances.end()) {
       Logger::err(str::format("GraphInstance to remove not found. Instance: ", instanceId));
+      return;
     }
     auto batchIter = m_batches.find(iter->second.getGraphHash());
     if (batchIter == m_batches.end()) {
       Logger::err(str::format("Batch for GraphInstance to remove not found. Batch hash: ", iter->second.getGraphHash()));
+      m_graphInstances.erase(iter);
+      return;
     }
     batchIter->second.removeInstance(&iter->second);
     if (batchIter->second.getNumInstances() == 0) {
       m_batches.erase(batchIter);
     }
-    m_graphInstances.erase(instanceId);
+    m_graphInstances.erase(iter);
   }
 
   // Queues the graph manager to wipe all graphs in the next update.

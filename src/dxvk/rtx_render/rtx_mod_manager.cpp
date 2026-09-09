@@ -20,6 +20,7 @@
 * DEALINGS IN THE SOFTWARE.
 */
 #include "rtx_mod_manager.h"
+#include "rtx_asset_data_manager.h"
 
 #include "rtx_asset_replacer.h"
 #include "rtx_mod_usd.h"
@@ -62,6 +63,47 @@ void ModManager::refreshMods() {
 
   // Merge new mods if any
   m_mods.merge(updatedMods);
+
+  // Mods can only ask for a republish once they know who manages them.
+  for (const auto& mod : m_mods) {
+    mod->m_pManager = this;
+  }
+
+  // The set just changed, so the flattened precedence order has too.
+  publishSearchPaths();
+}
+
+void ModManager::publishSearchPaths() const {
+  // Mod order is precedence order. m_mods is sorted by ComparePtrs, so concatenating
+  // in iteration order gives ascending precedence and the last mod wins - which is
+  // what the old per-mod priority blocks were reproducing arithmetically.
+  //
+  // Lock order, three subsystems deep: ModManager::m_searchPathMutex (here) ->
+  // AssetDataManager::m_searchPathMutex -> FileWatch::m_mutex -> FileWatch::m_requestsMutex.
+  // Keep any lock taken from within this call, or setSearchPaths, consistent with that order.
+  std::vector<Mod::Path> flattened;
+  std::lock_guard<std::mutex> lock(m_searchPathMutex);
+  for (const auto& mod : m_mods) {
+    const auto& paths = mod->searchPaths();
+    flattened.insert(flattened.end(), paths.begin(), paths.end());
+  }
+  AssetDataManager::get().setSearchPaths(flattened);
+}
+
+bool Mod::isLoadingCancelled() const {
+  return m_pManager != nullptr && m_pManager->isLoadingCancelled();
+}
+
+void Mod::setSearchPaths(std::vector<Path> paths) {
+  if (m_pManager != nullptr) {
+    {
+      std::lock_guard<std::mutex> lock(m_pManager->m_searchPathMutex);
+      m_searchPaths = std::move(paths);
+    }
+    m_pManager->publishSearchPaths();
+    return;
+  }
+  m_searchPaths = std::move(paths);
 }
 
 std::string ModManager::getBaseGameModPath(std::string baseGameModRegexStr, std::string baseGameModPathRegexStr) {
@@ -142,7 +184,6 @@ ModManager::Mods ModManager::enumerateModsInDir(const Path& modsDirPath) {
 
 Mod::Mod(const Path& filePath)
   : m_filePath(filePath),
-    m_name("default"),
     m_priority(0) {
   m_replacements = std::make_unique<AssetReplacements>();
 }

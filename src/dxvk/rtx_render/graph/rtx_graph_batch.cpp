@@ -95,12 +95,13 @@ namespace {
   }
 }
 
-void RtGraphBatch::Initialize(const RtGraphTopology& topology) {
+void RtGraphBatch::Initialize(std::shared_ptr<const RtGraphTopology> pTopology) {
   // NOTE: need to do this separate from the constructor, because the address of `this` changes when it's moved.
   ScopedCpuProfileZone();
 
-  // Store pointer to topology for GUI access (safe because topology lives in stable asset storage)
-  m_topology = &topology;
+  // The batch outlives its source AssetReplacement; shared_ptr keeps the topology alive.
+  m_topology = std::move(pTopology);
+  const RtGraphTopology& topology = *m_topology;
 
   for (size_t i = 0; i < topology.propertyTypes.size(); i++) {
     m_properties.push_back(propertyVectorFromType(topology.propertyTypes[i]));
