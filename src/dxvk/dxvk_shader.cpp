@@ -5,6 +5,10 @@
 #include <unordered_set>
 #include "dxvk_scoped_annotation.h"
 
+// NV-DXVK start: Integrate Aftermath
+#include "../util/util_aftermath.h"
+// NV-DXVK end
+
 namespace dxvk {
   
   DxvkShaderConstData::DxvkShaderConstData()
@@ -80,6 +84,10 @@ namespace dxvk {
     
     if (m_vkd->vkCreateShaderModule(m_vkd->device(), &info, nullptr, &m_stage.module) != VK_SUCCESS)
       throw DxvkError("DxvkComputePipeline::DxvkComputePipeline: Failed to create shader module");
+
+    // NV-DXVK start: Integrate Aftermath
+    registerAftermathShader(code.data(), code.size(), shader->debugName());
+    // NV-DXVK end
   }
   
   

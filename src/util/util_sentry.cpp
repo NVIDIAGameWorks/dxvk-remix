@@ -31,9 +31,11 @@
 #include <mutex>
 #include <random>
 #include <string>
+#include <string_view>
 #include <windows.h>
 
 #include "log/log.h"
+#include "util_aftermath.h"
 #include "util_env.h"
 #include "util_filesys.h"
 #include "util_string.h"
@@ -53,6 +55,10 @@
 // When the build sets -Dremix_sentry_environment= (e.g. CI), that value is used. Otherwise undefined and we use "development" here.
 #ifndef REMIX_SENTRY_ENVIRONMENT
 #define REMIX_SENTRY_ENVIRONMENT "development"
+#endif
+
+#ifndef REMIX_SENTRY_FORCE_SMART_MINIDUMP
+#define REMIX_SENTRY_FORCE_SMART_MINIDUMP 0
 #endif
 
 namespace dxvk {
@@ -87,6 +93,7 @@ namespace sentry {
     static std::mutex s_sentryMutex;
     static std::mutex s_gpuCrashQueueMutex;
     static std::string s_pendingGpuCrashPath;
+    static AftermathCrashInfo s_pendingGpuCrashInfo;
 
     // Per-session correlation id, attached as the "session_id" tag on crash reports. Stored so it
     // can be restored after being temporarily removed while the usage-tracking transaction is sent
@@ -358,20 +365,110 @@ namespace sentry {
       }
     }
 
+    // Readability guard, not a Sentry limit: its event size cap is far larger than any shader list.
+    static constexpr size_t kMaxReportedActiveShaders = 64;
+
+    // Holds the parts of an Aftermath crash that are too structured to search on. The scalar,
+    // searchable parts are set as tags by the caller instead.
+    void setAftermathContext(sentry_scope_t* scope, const AftermathCrashInfo& crashInfo) {
+      if (crashInfo.activeShaders.empty() && !crashInfo.hasPageFaultResourceInfo
+          && crashInfo.pageFaultAccessType.empty()
+          && crashInfo.unregisteredShaderCount == 0 && crashInfo.driverInternalShaderCount == 0) {
+        return;
+      }
+
+      sentry_value_t context = sentry_value_new_object();
+
+      // Its distance from page_fault_resource.gpu_va separates an overrun of a live resource from
+      // an access landing in freed space.
+      if (!crashInfo.pageFaultAccessType.empty()) {
+        sentry_value_set_by_key(context, "page_faulting_gpu_va",
+            sentry_value_new_string(str::format("0x", std::hex, crashInfo.pageFaultingGpuVA).c_str()));
+      }
+
+      if (!crashInfo.activeShaders.empty()) {
+        const size_t reportedCount = std::min(crashInfo.activeShaders.size(), kMaxReportedActiveShaders);
+        sentry_value_t list = sentry_value_new_list();
+        for (size_t i = 0; i < reportedCount; ++i) {
+          const auto& shader = crashInfo.activeShaders[i];
+          sentry_value_t entry = sentry_value_new_object();
+          sentry_value_set_by_key(entry, "type", sentry_value_new_string(shader.type.c_str()));
+          sentry_value_set_by_key(entry, "name", sentry_value_new_string(shader.name.c_str()));
+          sentry_value_append(list, entry);
+        }
+        sentry_value_set_by_key(context, "active_shaders", list);
+        if (crashInfo.activeShaders.size() > reportedCount) {
+          sentry_value_set_by_key(context, "active_shaders_omitted",
+              sentry_value_new_int32(static_cast<int32_t>(crashInfo.activeShaders.size() - reportedCount)));
+        }
+      }
+
+      if (crashInfo.unregisteredShaderCount > 0) {
+        sentry_value_set_by_key(context, "unregistered_shaders",
+            sentry_value_new_int32(static_cast<int32_t>(crashInfo.unregisteredShaderCount)));
+      }
+      if (crashInfo.driverInternalShaderCount > 0) {
+        sentry_value_set_by_key(context, "driver_internal_shaders",
+            sentry_value_new_int32(static_cast<int32_t>(crashInfo.driverInternalShaderCount)));
+      }
+
+      if (crashInfo.hasPageFaultResourceInfo) {
+        const auto& res = crashInfo.pageFaultResourceInfo;
+        sentry_value_t resourceValue = sentry_value_new_object();
+        sentry_value_set_by_key(resourceValue, "gpu_va", sentry_value_new_string(str::format("0x", std::hex, res.gpuVa).c_str()));
+        sentry_value_set_by_key(resourceValue, "size", sentry_value_new_string(str::formatBytes(static_cast<size_t>(res.size)).c_str()));
+        sentry_value_set_by_key(resourceValue, "width", sentry_value_new_int32(static_cast<int32_t>(res.width)));
+        sentry_value_set_by_key(resourceValue, "height", sentry_value_new_int32(static_cast<int32_t>(res.height)));
+        sentry_value_set_by_key(resourceValue, "depth", sentry_value_new_int32(static_cast<int32_t>(res.depth)));
+        sentry_value_set_by_key(resourceValue, "mip_levels", sentry_value_new_int32(static_cast<int32_t>(res.mipLevels)));
+        sentry_value_set_by_key(resourceValue, "vk_format", sentry_value_new_int32(static_cast<int32_t>(res.format)));
+        sentry_value_set_by_key(resourceValue, "is_buffer_heap", sentry_value_new_bool(res.isBufferHeap));
+        sentry_value_set_by_key(resourceValue, "is_static_texture_heap", sentry_value_new_bool(res.isStaticTextureHeap));
+        sentry_value_set_by_key(resourceValue, "is_render_target_or_depth_stencil_heap", sentry_value_new_bool(res.isRenderTargetOrDepthStencilViewHeap));
+        sentry_value_set_by_key(resourceValue, "is_placed_resource", sentry_value_new_bool(res.isPlacedResource));
+        sentry_value_set_by_key(resourceValue, "was_destroyed", sentry_value_new_bool(res.wasDestroyed));
+        // Sentry has no unsigned integer type, and int32 goes negative past 2^31.
+        sentry_value_set_by_key(resourceValue, "create_destroy_tick_count", sentry_value_new_double(static_cast<double>(res.createDestroyTickCount)));
+        sentry_value_set_by_key(context, "page_fault_resource", resourceValue);
+      }
+
+      sentry_scope_set_context(scope, "aftermath", context);
+    }
+
     // consentGiven reflects whether crash-report upload is permitted right now. When false (e.g. a
     // bridge crash before the user has answered the bridge's consent popup) the event is still
     // captured, but require_user_consent keeps it in the offline cache instead of sending it; the
     // bridge upload helper sends it later once consent is granted.
-    void captureGpuCrashReport(const char* dumpFilePathUtf8, bool consentGiven) {
+    void captureGpuCrashReport(const char* dumpFilePathUtf8, const AftermathCrashInfo& crashInfo, bool consentGiven) {
       // The Aftermath dump is optional: it only exists when Aftermath is enabled and captured the
       // crash. Without it we still report the GPU crash (event + tags + attached logs), just without
       // the dump attachment.
       const bool hasDump = dumpFilePathUtf8 != nullptr && dumpFilePathUtf8[0] != '\0';
-      sentry_value_t event = sentry_value_new_message_event(
-          SENTRY_LEVEL_FATAL, "gpu",
-          hasDump ? "GPU crash (NVIDIA Aftermath)" : "GPU crash (no Aftermath dump)");
+      const bool hasReason = !crashInfo.reason.empty();
+      // Just the classification, e.g. "PageFault", so crashes sharing a root cause group into one
+      // Sentry issue. The access type, resource and shader go into tags and context below.
+      const std::string message = hasReason
+          ? str::format("GPU crash (", crashInfo.reason, ")")
+          : (hasDump ? "GPU crash (NVIDIA Aftermath)" : "GPU crash (no Aftermath dump)");
+      sentry_value_t event = sentry_value_new_message_event(SENTRY_LEVEL_FATAL, "gpu", message.c_str());
       sentry_scope_t* scope = sentry_local_scope_new();
+      // Sentry's ingest drops tag keys over 32 characters rather than truncating them.
       sentry_scope_set_tag(scope, "crash_type", "gpu");
+      if (hasReason) {
+        sentry_scope_set_tag(scope, "gpu_crash_reason", crashInfo.reason.c_str());
+      }
+      sentry_scope_set_tag(scope, "gpu_crash_adapter_reset", crashInfo.adapterReset ? "true" : "false");
+      sentry_scope_set_tag(scope, "gpu_crash_engine_reset", crashInfo.engineReset ? "true" : "false");
+      if (!crashInfo.pageFaultAccessType.empty()) {
+        sentry_scope_set_tag(scope, "gpu_crash_fault_access", crashInfo.pageFaultAccessType.c_str());
+        sentry_scope_set_tag(scope, "gpu_crash_fault_type", crashInfo.pageFaultType.c_str());
+        sentry_scope_set_tag(scope, "gpu_crash_fault_engine", crashInfo.pageFaultEngine.c_str());
+        sentry_scope_set_tag(scope, "gpu_crash_fault_client", crashInfo.pageFaultClient.c_str());
+        if (crashInfo.hasPageFaultResourceInfo) {
+          sentry_scope_set_tag(scope, "gpu_crash_resource_destroyed", crashInfo.pageFaultResourceInfo.wasDestroyed ? "true" : "false");
+        }
+      }
+      setAftermathContext(scope, crashInfo);
       if (hasDump) {
         const std::wstring pathW = str::tows(dumpFilePathUtf8);
         sentry_scope_attach_filew(scope, pathW.c_str());
@@ -420,6 +517,15 @@ namespace sentry {
     // user's permission via LocalData.
     sentry_options_set_require_user_consent(options, 1);
     sentry_options_set_shutdown_timeout(options, kSentryShutdownTimeoutMs);
+
+    // Sentry has no symbols for development builds, so a dump beyond the call stack buys nothing
+    // there. SMART adds the heap memory referenced from the stack and registers. There is no meson
+    // option for this; define REMIX_SENTRY_FORCE_SMART_MINIDUMP=1 in the compiler flags to force it.
+    constexpr bool kIsDevelopmentEnvironment = std::string_view(REMIX_SENTRY_ENVIRONMENT) == "development";
+    constexpr bool kForceSmartMinidump = REMIX_SENTRY_FORCE_SMART_MINIDUMP != 0;
+    sentry_options_set_minidump_mode(options,
+        (kIsDevelopmentEnvironment && !kForceSmartMinidump) ? SENTRY_MINIDUMP_MODE_STACK_ONLY
+                                                            : SENTRY_MINIDUMP_MODE_SMART);
 
     // Attachments are read at crash time by the Crashpad handler (not at init), so the logs
     // from the session that crashed are what get uploaded. Content is read when the report is
@@ -693,15 +799,12 @@ namespace sentry {
     }
   }
 
-  void queueGpuCrashReport(const char* dumpFilePathUtf8) {
-    if (dumpFilePathUtf8 == nullptr || dumpFilePathUtf8[0] == '\0') {
-      return;
-    }
-    if (!std::filesystem::exists(dumpFilePathUtf8)) {
-      return;
-    }
+  void queueGpuCrashReport(const char* dumpFilePathUtf8, const AftermathCrashInfo& crashInfo) {
+    const bool hasDump = dumpFilePathUtf8 != nullptr && dumpFilePathUtf8[0] != '\0'
+                      && std::filesystem::exists(dumpFilePathUtf8);
     std::lock_guard<std::mutex> lock(s_gpuCrashQueueMutex);
-    s_pendingGpuCrashPath = dumpFilePathUtf8;
+    s_pendingGpuCrashPath = hasDump ? dumpFilePathUtf8 : "";
+    s_pendingGpuCrashInfo = crashInfo;
   }
 
   void processPendingGpuCrashReports() {
@@ -712,10 +815,13 @@ namespace sentry {
     // The dump path may be empty: Aftermath produces it, so if Aftermath is disabled or failed there
     // is no dump. We still report the GPU crash, just without the dump attachment.
     std::string dumpPath;
+    AftermathCrashInfo crashInfo;
     {
       std::lock_guard<std::mutex> lock(s_gpuCrashQueueMutex);
       dumpPath = std::move(s_pendingGpuCrashPath);
+      crashInfo = std::move(s_pendingGpuCrashInfo);
       s_pendingGpuCrashPath.clear();
+      s_pendingGpuCrashInfo = AftermathCrashInfo();
     }
     if (!dumpPath.empty() && !std::filesystem::exists(dumpPath)) {
       dumpPath.clear();
@@ -736,7 +842,7 @@ namespace sentry {
           if (consentGranted) {
             sentry_user_consent_give();
           }
-          captureGpuCrashReport(dumpPath.empty() ? nullptr : dumpPath.c_str(), consentGranted);
+          captureGpuCrashReport(dumpPath.empty() ? nullptr : dumpPath.c_str(), crashInfo, consentGranted);
         }
       }
     }
@@ -774,7 +880,7 @@ namespace sentry {
 
   void runUploadHelper(const char*, const char*) {}
 
-  void queueGpuCrashReport(const char*) {}
+  void queueGpuCrashReport(const char*, const AftermathCrashInfo&) {}
 
   void processPendingGpuCrashReports() {}
 
