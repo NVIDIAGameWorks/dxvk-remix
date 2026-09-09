@@ -25,6 +25,8 @@
 #include <string>
 #include <vector>
 
+#include "util_aftermath.h"
+
 namespace dxvk {
 
   // Utility functions for Sentry crash reporting.
@@ -85,13 +87,13 @@ namespace dxvk {
     // multiple times; only the first call has an effect.
     void onFirstFrame();
 
-    // Queue a GPU crash report path from the Aftermath callback after writing the dump file.
-    // The path must be UTF-8. processPendingGpuCrashReports() is called from the submission
-    // queue thread once Aftermath finishes (the render thread is typically frozen by then).
-    void queueGpuCrashReport(const char* dumpFilePathUtf8);
+    // Call from the Aftermath callback once the dump file is written. The path must be UTF-8, and
+    // a default-constructed crashInfo is fine if decoding was unavailable.
+    void queueGpuCrashReport(const char* dumpFilePathUtf8, const AftermathCrashInfo& crashInfo);
 
-    // Capture and upload (or cache) any GPU crash report queued by queueGpuCrashReport(). Returns
-    // after reporting; the caller is responsible for terminating the process afterward.
+    // Uploads (or caches) whatever queueGpuCrashReport() left pending. Called from the submission
+    // queue thread, since the render thread is typically frozen by then. Terminating the process
+    // afterward is the caller's job.
     void processPendingGpuCrashReports();
 
   }

@@ -259,7 +259,15 @@ namespace {
       }
     }
 
-    std::exit(-1);
+    // Not std::exit(): its static destructors race with the game's own threads tearing down D3D9
+    // objects (e.g. D3DBase<T>::~D3DBase touches gShadowMap).
+    TerminateProcess(GetCurrentProcess(), static_cast<DWORD>(-1));
+    // TerminateProcess is asynchronous, so park here rather than returning into those same
+    // destructors. ExitProcess covers termination never landing.
+    for (int i = 0; i < 5; i++) {
+      Sleep(1000);
+    }
+    ExitProcess(static_cast<DWORD>(-1));
   }
 }
 

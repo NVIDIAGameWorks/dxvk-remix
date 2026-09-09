@@ -27,6 +27,7 @@
 #include "rtx/pass/nrd_args.h"
 #include "../../util/util_string.h"
 #include "../../util/util_global_time.h"
+#include "../../util/util_aftermath.h"
 #include <Shlwapi.h>
 #include <filesystem>
 
@@ -548,6 +549,8 @@ namespace dxvk {
 
     VkShaderModule shaderModule = VK_NULL_HANDLE;
     VK_THROW_IF_FAILED(m_vkd->vkCreateShaderModule(m_vkd->device(), &shaderInfo, nullptr, &shaderModule));
+
+    registerAftermathShader(shaderInfo.pCode, shaderInfo.codeSize, str::format("NRD ", nrdPipelineDesc.shaderFileName));
 
     VkPipelineShaderStageCreateInfo stageInfo;
     stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;

@@ -32,6 +32,7 @@
 // NV-DXVK start: Integrate Aftermath
 #include "GFSDK_Aftermath_GpuCrashDump.h"
 #include "GFSDK_Aftermath_GpuCrashDumpDecoding.h"
+#include "../util/util_aftermath.h"
 // NV-DXVK end
 
 #include <cstring>
@@ -352,16 +353,38 @@ namespace dxvk {
 
     std::string dumpFilename = str::format(path, exeName, "_", tm.tm_mday, tm.tm_mon, tm.tm_year, "-", tm.tm_hour, tm.tm_min, tm.tm_sec, "_aftermath.nv-gpudmp");
 
-    Logger::err(str::format("Aftermath detected a crash, writing dump to: ", dumpFilename));
+    const AftermathCrashInfo crashInfo = decodeAftermathCrashInfo(pGpuCrashDump, gpuCrashDumpSize);
+
+    // std::hex is sticky within one str::format() call, hence the std::dec reset.
+    Logger::err(str::format("Aftermath detected a crash (", crashInfo.reason,
+      crashInfo.pageFaultAccessType.empty() ? "" :
+        str::format(": ", crashInfo.pageFaultAccessType, " ", crashInfo.pageFaultType,
+                    " at 0x", std::hex, crashInfo.pageFaultingGpuVA, std::dec,
+                    " from ", crashInfo.pageFaultEngine, "/", crashInfo.pageFaultClient),
+      "), writing dump to: ", dumpFilename));
+    if (crashInfo.hasPageFaultResourceInfo) {
+      const auto& res = crashInfo.pageFaultResourceInfo;
+      Logger::err(str::format("  faulted resource: base 0x", std::hex, res.gpuVa, std::dec,
+        ", ", str::formatBytes(static_cast<size_t>(res.size)),
+        res.wasDestroyed ? " (already destroyed)" : ""));
+    }
+    for (const auto& shader : crashInfo.activeShaders) {
+      Logger::err(str::format("  active ", shader.type, " shader: ", shader.name));
+    }
+    if (crashInfo.unregisteredShaderCount > 0 || crashInfo.driverInternalShaderCount > 0) {
+      Logger::err(str::format("  unnamed active shaders: ", crashInfo.unregisteredShaderCount,
+        " unregistered, ", crashInfo.driverInternalShaderCount, " driver internal"));
+    }
 
     std::ofstream dumpFile = std::ofstream(str::tows(dumpFilename.c_str()).c_str(), std::ios::binary);
     if (dumpFile.is_open()) {
       dumpFile.write((char*) pGpuCrashDump, gpuCrashDumpSize);
       dumpFile.close();
-      dxvk::sentry::queueGpuCrashReport(dumpFilename.c_str());
     } else {
       Logger::warn(str::format("Aftermath was trying to write a GPU dump, but it failed, proposed filename: ", dumpFilename));
+      dumpFilename.clear();
     }
+    dxvk::sentry::queueGpuCrashReport(dumpFilename.c_str(), crashInfo);
   }
 
   void aftermathShaderDebugInfoCallback(const void* pShaderDebugInfo, const uint32_t shaderDebugInfoSize, void* pUserData) {
@@ -503,9 +526,11 @@ namespace dxvk {
         if (GFSDK_Aftermath_SUCCEED(aftermathResult)) {
           Logger::info("Aftermath enabled");
           s_aftermathEnabled = true;
+          setAftermathShaderRegistrationEnabled(true);
         } else if (aftermathResult == GFSDK_Aftermath_Result_FAIL_AlreadyInitialized) {
           Logger::info("Aftermath already initialized");
           s_aftermathEnabled = true;
+          setAftermathShaderRegistrationEnabled(true);
         } else {
           Logger::warn(str::format("User requested Aftermath enablement, but it failed.  Code: ", aftermathResult));
           m_options.enableAftermath = false;

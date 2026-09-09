@@ -1,4 +1,6 @@
 util_src = files([
+  'util_aftermath.cpp',
+  'util_aftermath.h',
   'util_env.cpp',
   'util_string.cpp',
   'util_fps_limiter.cpp',
@@ -68,10 +70,10 @@ util_src = files([
 ])
 
 util_lib = static_library('util', util_src,
-  dependencies        : [ sentry_dep ],
+  dependencies        : [ sentry_dep, aftermath_dep ],
   include_directories : [ dxvk_include_path ],
   override_options    : ['cpp_std='+dxvk_cpp_std])
 
 util_dep = declare_dependency(
   link_with           : [ util_lib ],
-  dependencies        : [ sentry_dep ])
+  dependencies        : [ sentry_dep, aftermath_dep ])
