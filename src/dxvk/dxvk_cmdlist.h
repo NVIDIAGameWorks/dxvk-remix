@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2022, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -828,7 +828,18 @@ namespace dxvk {
         uint32_t                               depth) {
         m_vkd->vkCmdTraceRaysKHR(m_execBuffer, pRaygenShaderBindingTable, pMissShaderBindingTable, pHitShaderBindingTable, pCallableShaderBindingTable, width, height, depth);
     }
-    
+
+    // NV-DXVK start: Indirect ray dispatch support
+    void cmdTraceRaysIndirectKHR(
+        const VkStridedDeviceAddressRegionKHR* pRaygenShaderBindingTable,
+        const VkStridedDeviceAddressRegionKHR* pMissShaderBindingTable,
+        const VkStridedDeviceAddressRegionKHR* pHitShaderBindingTable,
+        const VkStridedDeviceAddressRegionKHR* pCallableShaderBindingTable,
+        VkDeviceAddress                        indirectDeviceAddress) {
+        m_vkd->vkCmdTraceRaysIndirectKHR(m_execBuffer, pRaygenShaderBindingTable, pMissShaderBindingTable, pHitShaderBindingTable, pCallableShaderBindingTable, indirectDeviceAddress);
+    }
+    // NV-DXVK end
+
     void cmdWriteTimestamp(
             VkPipelineStageFlagBits pipelineStage,
             VkQueryPool             queryPool,

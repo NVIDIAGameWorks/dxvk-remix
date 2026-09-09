@@ -58,7 +58,6 @@ namespace dxvk {
         RW_STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_NEE_CACHE)
         RW_STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_TASK)
         RW_STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_SAMPLE)
-        TEXTURE2D(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_THREAD_TASK)
         STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_PRIMITIVE_ID_PREFIX_SUM)
         STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_LAST_PRIMITIVE_ID_PREFIX_SUM)
       END_PARAMETER()
@@ -179,7 +178,6 @@ namespace dxvk {
       ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_SAMPLE, DxvkBufferSlice(rtOutput.m_neeCacheSample, 0, rtOutput.m_neeCacheSample->info().size));
       ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_PRIMITIVE_ID_PREFIX_SUM, DxvkBufferSlice(primitiveIDPrefixSumBuffer, 0, primitiveIDPrefixSumBuffer->info().size));
       ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_LAST_PRIMITIVE_ID_PREFIX_SUM, DxvkBufferSlice(lastPrimitiveIDPrefixSumBuffer, 0, lastPrimitiveIDPrefixSumBuffer->info().size));
-      ctx->bindResourceView(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_THREAD_TASK, rtOutput.m_neeCacheThreadTask.view, nullptr);
 
       // NEE Cache update updates the nee cache based on last frame's record.
       // The cache is a world space hash grid storing short light and emissive triangle lists.

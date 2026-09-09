@@ -524,6 +524,8 @@ namespace dxvk {
     RTX_OPTION_ARGS("rtx", float, resolutionScale, 0.75f, "",
                     args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION("rtx", bool, forceCameraJitter, false, "Force enables camera jitter frame to frame.");
+    RTX_OPTION("rtx", bool, forceStaticSceneMotionVectors, false, "Forces primary screen-space motion vectors to assume the scene geometry is static, ignoring per-object/skinned (virtual) motion. Camera motion is still fully accounted for."
+               "This reprojects the current pixel directly into the previous frame instead of reprojecting the absolute world-space hit position. This is mainly for testing purposes to detect issues due to world space position reprojection errors vs using translated world space which would be the solution.");
     RTX_OPTION("rtx", uint32_t, cameraJitterSequenceLength, 64, "Sets a camera jitter sequence length [number of frames]. It will loop around once the length is reached.");
     RTX_OPTION("rtx", bool, enableDirectLighting, true, "Enables direct lighting (lighting directly from lights on to a surface) on surfaces when set to true, otherwise disables it.");
     RTX_OPTION("rtx", bool, enableSecondaryBounces, true, "Enables indirect lighting (lighting from diffuse/specular bounces to one or more other surfaces) on surfaces when set to true, otherwise disables it.");

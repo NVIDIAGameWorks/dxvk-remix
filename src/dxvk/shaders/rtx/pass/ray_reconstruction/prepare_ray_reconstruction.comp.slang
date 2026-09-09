@@ -64,6 +64,10 @@ Texture2D<float> InDepth;
 layout(rg16f, binding = RAY_RECONSTRUCTION_MOTION_VECTOR_INPUT)
 Texture2D<float2> InMotionVector;
 
+// Color fed into DLSS-RR (composite output); used for the input-color debug view.
+layout(binding = RAY_RECONSTRUCTION_INPUT_COLOR_INPUT)
+Texture2D<float4> InputColor;
+
 layout(r16f, binding = RAY_RECONSTRUCTION_PRIMARY_CONE_RADIUS_INPUT)
 Texture2D<float> PrimaryConeRadius;
 
@@ -200,6 +204,9 @@ void writeDebugViewOutputs(uint2 pixelCoordinate)
   case DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_SCREEN_SPACE_MOTION_VECTOR:
     storeInDebugView(pixelCoordinate, InMotionVector[pixelCoordinate]);
     break;
+  case DEBUG_VIEW_RAY_RECONSTRUCTION_INPUT_COLOR:
+    storeInDebugView(pixelCoordinate, InputColor[pixelCoordinate].rgb);
+    break;
   case DEBUG_VIEW_NAN:
     bool isValid = true;
 
@@ -222,6 +229,9 @@ void writeDebugViewOutputs(uint2 pixelCoordinate)
 
     // DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_SCREEN_SPACE_MOTION_VECTOR
     isValid &= isValidValue(InMotionVector[pixelCoordinate]);
+
+    // DEBUG_VIEW_RAY_RECONSTRUCTION_INPUT_COLOR
+    isValid &= isValidValue(InputColor[pixelCoordinate]);
 
     accumulateInDebugViewAnd(pixelCoordinate, isValid);
   }

@@ -49,6 +49,7 @@ struct Camera
   mat4 prevTranslatedWorldToView;
   mat4 prevTranslatedWorldToProjection;
 
+  mat4 projectionToPrevProjection;
   mat4 projectionToPrevProjectionJittered;
 
   uvec2 resolution;

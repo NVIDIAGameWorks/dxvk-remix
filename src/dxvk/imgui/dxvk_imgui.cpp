@@ -1674,6 +1674,7 @@ namespace dxvk {
       RemixGui::Checkbox("Break into Debugger On Press of Key 'B'", &RtxOptions::enableBreakIntoDebuggerOnPressingBObject());
       RemixGui::Checkbox("Block Input to Game in UI", &RtxOptions::blockInputToGameInUIObject());
       RemixGui::Checkbox("Force Camera Jitter", &RtxOptions::forceCameraJitterObject());
+      RemixGui::Checkbox("Force Static Scene Motion Vectors", &RtxOptions::forceStaticSceneMotionVectorsObject());
       RemixGui::DragInt("Camera Jitter Sequence Length", &RtxOptions::cameraJitterSequenceLengthObject());
       
       RemixGui::DragIntRange2("Draw Call Range Filter", &RtxOptions::drawCallRangeObject(), 1.f, 0, INT32_MAX, nullptr, nullptr, ImGuiSliderFlags_AlwaysClamp);

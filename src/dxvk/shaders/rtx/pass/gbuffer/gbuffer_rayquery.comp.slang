@@ -70,16 +70,16 @@
 
 [shader("compute")]
 [numthreads(16, 8, 1)]
-void main(uint2 ipos : SV_DispatchThreadID)
+void main(uint2 dispatchThreadId : SV_DispatchThreadID)
 {
-  if (any(ipos >= cb.camera.resolution))
+  if (any(dispatchThreadId >= cb.camera.resolution))
   {
     return;
   }
 
-  #ifdef GBUFFER_PSR
-  geometryPSRResolverPass(ipos);
-  #else
-  geometryResolver(ipos);
-  #endif
+#ifdef GBUFFER_PSR
+  geometryPSRResolverPass(dispatchThreadId);
+#else
+  geometryResolver(dispatchThreadId);
+#endif
 }

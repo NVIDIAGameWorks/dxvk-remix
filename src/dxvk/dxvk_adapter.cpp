@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -489,6 +489,9 @@ namespace dxvk {
     enabledFeatures.khrAccelerationStructureFeatures.accelerationStructure = m_deviceFeatures.khrAccelerationStructureFeatures.accelerationStructure;
     enabledFeatures.khrRayQueryFeatures.rayQuery = m_deviceFeatures.khrRayQueryFeatures.rayQuery;
     enabledFeatures.khrDeviceRayTracingPipelineFeatures.rayTracingPipeline = m_deviceFeatures.khrDeviceRayTracingPipelineFeatures.rayTracingPipeline;
+    // NV-DXVK start: Indirect ray dispatch support
+    enabledFeatures.khrDeviceRayTracingPipelineFeatures.rayTracingPipelineTraceRaysIndirect = m_deviceFeatures.khrDeviceRayTracingPipelineFeatures.rayTracingPipelineTraceRaysIndirect;
+    // NV-DXVK end
     enabledFeatures.vulkan12Features.scalarBlockLayout = m_deviceFeatures.vulkan12Features.scalarBlockLayout;
     enabledFeatures.vulkan12Features.uniformBufferStandardLayout = m_deviceFeatures.vulkan12Features.uniformBufferStandardLayout;
     

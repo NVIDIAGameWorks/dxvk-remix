@@ -105,6 +105,48 @@ ivec2 cameraNDCToPixelCoordinate(Camera camera, vec2 ndc)
   return cameraScreenUVToPixelCoordinate(camera, screenUV);
 }
 
+// Previous-frame NDC of a world position, for reprojecting a surface point the camera has moved relative to.
+vec2 cameraWorldPosToPrevNDC(Camera camera, vec3 worldPosition)
+{
+  const vec4 prevClip = mul(camera.prevWorldToProjection, vec4(worldPosition, 1.0f));
+
+  if (prevClip.w == 0.0f)
+  {
+    // Note: This is a bit of an odd case, when w = 0 the point is the same as the camera's position, and this is represented by a Z value of
+    // -infinity (as Z values are negative when behind the near plane at Z = 0 before wrapping to positive infinity for all w values less than 0).
+    // Since Z is not needed in this NDC value currently though we can just set the X/Y to be 0. This doesn't make a ton of sense as really the
+    // camera's central point should only be a single pixel on the screen rather than stretched across the whole thing, but floating point quantization
+    // will essentially cause much of the screen intersecting with geometry to map to a single point anyways, so this is probably fine.
+    return vec2(0.0f, 0.0f);
+  }
+
+  // Note: Typical perspective divide.
+  return prevClip.xy / prevClip.w;
+}
+
+// Screen-space motion vector (in pixels) between two NDC positions of the same surface point.
+vec2 cameraCalcMotionVectorPixel(Camera camera, vec2 currentNDC, vec2 prevNDC)
+{
+  const vec2 motionVectorNDC = prevNDC - currentNDC;
+  const vec2 motionVectorUVOffset = motionVectorNDC * vec2(0.5f, -0.5f);
+
+  return motionVectorUVOffset * vec2(camera.resolution);
+}
+
+// Primary screen-space motion vector (in pixels) with per-object/skinned (virtual) motion ignored, reprojecting
+// the current pixel NDC + depth into the previous frame rather than the imprecise absolute world hit position.
+vec2 cameraCalcStaticSceneMotionVectorPixel(Camera camera, vec2 currentNDC, float currentDepth)
+{
+  // Note: depth is -infinity for a hit point at the camera's position, which the reprojection below would turn
+  // into a NaN motion vector.
+  const vec4 currentClip = vec4(currentNDC, isfinite(currentDepth) ? currentDepth : 0.0f, 1.0f);
+  const vec4 prevClip = mul(camera.projectionToPrevProjection, currentClip);
+
+  const vec2 prevNDC = (prevClip.w == 0.0f) ? currentNDC : (prevClip.xy / prevClip.w);
+
+  return cameraCalcMotionVectorPixel(camera, currentNDC, prevNDC);
+}
+
 struct CameraDirections {
   // A direction in world space.
   vec3 worldDirection;
@@ -188,6 +230,15 @@ vec3 cameraGetPreviousWorldPosition(Camera camera)
 float calculateExpectedPreviousHitDistance(Camera camera, vec3 previousVirtualWorldPosition)
 {
   return length(previousVirtualWorldPosition - cameraGetPreviousWorldPosition(camera));
+}
+
+// Reconstructs a primary hit's previous-frame virtual world position from its current hit distance and the
+// world-space delta between the current and previous virtual hit positions.
+vec3 calculatePreviousVirtualWorldPosition(Camera camera, ivec2 pixelCoordinate, float currentHitDistance, vec3 virtualMotionVector, bool jitter)
+{
+  const vec3 currentCameraPosition = cameraGetWorldPosition(camera);
+  const vec3 currentRayDirection = cameraPixelCoordinateToDirection(camera, pixelCoordinate, jitter).worldDirection;
+  return currentCameraPosition + currentRayDirection * currentHitDistance + virtualMotionVector;
 }
 
 // Note: For all translated world space functions, these may not do anything if an application does not specify a world to view matrix

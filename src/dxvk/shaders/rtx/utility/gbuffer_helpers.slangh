@@ -149,7 +149,7 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   ivec2 position,
   bool writeStochastic,
-  bool writeDenoising,
+  bool writeDenoisingNormal,
   Surface surface,
   SurfaceInteraction surfaceInteraction,
   uint surfaceIndex,
@@ -202,11 +202,10 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
     virtualShadingNormal * 0.5f + 0.5f,
     gBufferMemoryPolymorphicSurfaceMaterialInteraction.perceptualRoughness);
 
-  if (writeDenoising)
+  if (writeDenoisingNormal)
   {
-    const float4 packedNormalRoughness = NRD_FrontEnd_PackNormalAndRoughness(
+    virtualWorldShadingNormalPerceptualRoughnessDenoisingTexture[position] = NRD_FrontEnd_PackNormalAndRoughness(
       virtualShadingNormal, gBufferMemoryPolymorphicSurfaceMaterialInteraction.perceptualRoughness, MATERIAL_ID_DEFAULT);
-    virtualWorldShadingNormalPerceptualRoughnessDenoisingTexture[position] = packedNormalRoughness;
   }
 
   // Note: Write stochastic textures only when desired. Bit hacky to have this logic here rather than in the geometery resolver but
@@ -266,7 +265,8 @@ bool isGBufferMiss(ivec2 position, Texture2D<float> coneRadiusTexture)
 void writeMissToGBuffer(
   ivec2 position,
   bool writeStochastic,
-  bool writeDenoising,
+  bool writeDenoisingNormal,
+  bool writeWorldMotion,
   float missLinearViewZ,
   RWTexture2D<float> coneRadiusTexture,
   RWTexture2D<float> linearViewZTexture,
@@ -286,9 +286,12 @@ void writeMissToGBuffer(
   const vec4 missPositionNormal = asfloat(0x7F800000).xxxx; // Structures that read from this data know how to interpret infinity.
 
   linearViewZTexture[position] = missLinearViewZ;
-  worldMotionTexture[position] = vec4(missMotionVector, 0);
+  if (writeWorldMotion)
+  {
+    worldMotionTexture[position] = vec4(missMotionVector, 0);
+  }
   worldShadingNormalPerceptualRoughnessTexture[position] = vec4(missNormal * 0.5 + 0.5, missPerceptualRoughness);
-  if (writeDenoising)
+  if (writeDenoisingNormal)
   {
     WorldShadingNormalPerceptualRoughnessDenoisingTexture[position] = NRD_FrontEnd_PackNormalAndRoughness(missNormal, missPerceptualRoughness, MATERIAL_ID_DEFAULT);
   }
