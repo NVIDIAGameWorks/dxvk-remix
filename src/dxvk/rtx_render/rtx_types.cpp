@@ -114,6 +114,7 @@ namespace dxvk {
     // the prim/root slots, the active-replacements tracking pointer, and the
     // cached aggregate bounding boxes so the RI is in a clean "no replacement
     // attached" state. setup() is the matching re-init.
+    pendingMaterialization = false;
     for (size_t i = 0; i < prims.size(); i++) {
       RtInstance* subInstance = prims[i].getInstance();
       if (subInstance) {
