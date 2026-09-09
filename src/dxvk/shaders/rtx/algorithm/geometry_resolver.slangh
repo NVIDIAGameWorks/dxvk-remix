@@ -125,10 +125,8 @@ vec2 calcMotionVectorForRayMiss(const uvec2 pixelCoordinate)
   prevNDC /= prevNDC.w;
 
   const vec2 ndc = cameraPixelCoordinateToNDC(cb.camera, pixelCoordinate);
-  const vec2 motionVectorNDC = prevNDC.xy - ndc.xy;
-  const vec2 motionVectorUVOffset = motionVectorNDC * vec2(0.5, -0.5);
 
-  return motionVectorUVOffset * cb.camera.resolution;
+  return cameraCalcMotionVectorPixel(cb.camera, ndc, prevNDC.xy);
 }
 
 // Geometry Resolver Vertex Functions
@@ -156,7 +154,8 @@ void geometryResolverOutputMiss<
 
     // Note: Always write to stochastic buffers in the primary surface case.
     writeMissToGBuffer(
-      pixelCoordinate, true, true, cb.primaryDirectNrd.missLinearViewZ,
+      pixelCoordinate, true,
+      cb.writePrimaryDenoisingNormal, cb.writePrimaryVirtualMotionVector, cb.primaryDirectNrd.missLinearViewZ,
       PrimaryConeRadius, PrimaryLinearViewZ,
       PrimaryVirtualMotionVector,
       PrimaryVirtualWorldShadingNormalPerceptualRoughness,
@@ -176,7 +175,8 @@ void geometryResolverOutputMiss<
 
     // Note: Only write to stochastic buffers if this is the selected surface in the secondary surface case.
     writeMissToGBuffer(
-      pixelCoordinate, SELECTED_INTEGRATION_SURFACE, !cb.enableDLSSRR, cb.secondaryCombinedNrd.missLinearViewZ,
+      pixelCoordinate, SELECTED_INTEGRATION_SURFACE,
+      cb.writeSecondaryDenoisingGuides, cb.writeSecondaryDenoisingGuides, cb.secondaryCombinedNrd.missLinearViewZ,
       SecondaryConeRadius, SecondaryLinearViewZ,
       SecondaryVirtualMotionVector,
       SecondaryVirtualWorldShadingNormalPerceptualRoughness,
@@ -250,6 +250,7 @@ void geometryResolverOutputSurface<
   // Note: Using virtual hit distance accumulated through PSR and Ray Portals used to calculate a virtual hit position
   const vec3 virtualHitPosition = rayEvaluate(originalCameraRay, virtualHitDistance);
   const float linearViewZ = cameraWorldPosToLinearViewZ(cb.camera, virtualHitPosition);
+  float primaryDepth = 0.0f;
 
   if (PRIMARY_SURFACE)
   {
@@ -257,9 +258,9 @@ void geometryResolverOutputSurface<
     // Note: This division will result in -infinity when the hit point is equal to the camera's position (z is negative assuming a non-zero near plane and w = 0).
     // This is "fine" though as in theory things should be able to handle this value properly (as it's not a NaN, though it could be if the near plane was 0). If
     // this causes problems in the future though, simply clamp this to some very negative value (e.g. negative float 16 or 32 max).
-    const float depth = projectionSpacePosition.z / projectionSpacePosition.w;
+    primaryDepth = projectionSpacePosition.z / projectionSpacePosition.w;
 
-    imageStore(PrimaryDepth, pixelCoordinate, depth);
+    imageStore(PrimaryDepth, pixelCoordinate, primaryDepth);
     imageStore(PrimaryLinearViewZ, pixelCoordinate, linearViewZ);
     imageStore(PrimaryHitDistance, pixelCoordinate, virtualHitDistance);
 
@@ -300,28 +301,23 @@ void geometryResolverOutputSurface<
   
   if (PRIMARY_SURFACE)
   {
-    imageStore(PrimaryVirtualMotionVector, ivec2(pixelCoordinate), vec4(virtualMotion, 0));
-
-    const vec4 prevWorldPosition = vec4(virtualHitPosition + virtualMotion, 1);
-    const vec4 prevClip = mul(cb.camera.prevWorldToProjection, prevWorldPosition);
-    vec2 prevNDC;
-
-    if (prevClip.w == 0.0f) {
-      // Note: This is a bit of an odd case, when w = 0 the point is the same as the camera's position, and this is represented by a Z value of
-      // -infinity (as Z values are negative when behind the near plane at Z = 0 before wrapping to positive infinity for all w values less than 0).
-      // Since Z is not needed in this NDC value currently though we can just set the X/Y to be 0. This doesn't make a ton of sense as really the
-      // camera's central point should only be a single pixel on the screen rather than stretched across the whole thing, but floating point quantization
-      // will essentially cause much of the screen intersecting with geometry to map to a single point anyways, so this is probably fine.
-      prevNDC = vec2(0.0f, 0.0f);
-    } else {
-      // Note: Typical perspective divide.
-      prevNDC = prevClip.xy / prevClip.w;
+    if (cb.writePrimaryVirtualMotionVector)
+    {
+      imageStore(PrimaryVirtualMotionVector, ivec2(pixelCoordinate), vec4(virtualMotion, 0));
     }
 
+    const vec2 prevNDC = cameraWorldPosToPrevNDC(cb.camera, virtualHitPosition + virtualMotion);
+
     const vec2 ndc = cameraPixelCoordinateToNDC(cb.camera, pixelCoordinate);
-    const vec2 motionVectorNDC = prevNDC - ndc;
-    const vec2 motionVectorUVOffset = motionVectorNDC * vec2(0.5, -0.5);
-    const vec2 motionVectorPixel = motionVectorUVOffset * cb.camera.resolution;
+    vec2 motionVectorPixel = cameraCalcMotionVectorPixel(cb.camera, ndc, prevNDC);
+
+    // When forcing static-scene motion vectors, reproject the precise current NDC + depth into the
+    // previous frame (camera motion accounted for) instead of reprojecting the imprecise absolute
+    // world position (see cameraCalcStaticSceneMotionVectorPixel).
+    if (cb.forceStaticSceneMotionVectors)
+    {
+      motionVectorPixel = cameraCalcStaticSceneMotionVectorPixel(cb.camera, ndc, primaryDepth);
+    }
 
     // Write out screen-space motion.
     PrimaryScreenSpaceMotionVector[pixelCoordinate] = motionVectorPixel;
@@ -336,7 +332,7 @@ void geometryResolverOutputSurface<
     motionBlurSurfaceFlags.isEmissive = isRadianceOutput;
     motionBlurSurfaceFlagsWriteToGBuffer(motionBlurSurfaceFlags, ivec2(pixelCoordinate), PrimarySurfaceFlags);
   }
-  else
+  else if (cb.writeSecondaryDenoisingGuides)
   {
     imageStore(SecondaryVirtualMotionVector, ivec2(pixelCoordinate), vec4(virtualMotion, 0));
   }
@@ -396,7 +392,7 @@ void geometryResolverOutputSurface<
   {
     // Note: Always write to stochastic buffers in the primary surface case.
     polymorphicSurfaceMaterialInteractionWriteToGBuffer(
-      polymorphicSurfaceMaterialInteraction, ivec2(pixelCoordinate), true, true,
+      polymorphicSurfaceMaterialInteraction, ivec2(pixelCoordinate), true, cb.writePrimaryDenoisingNormal,
       surface, surfaceInteraction, rayInteraction.surfaceIndex,
       directionAltered, accumulatedRotation,
       PrimaryWorldShadingNormal, PrimaryPerceptualRoughness,
@@ -408,7 +404,7 @@ void geometryResolverOutputSurface<
   {
     // Note: Only write to stochastic buffers if this is the selected surface in the secondary surface case.
     polymorphicSurfaceMaterialInteractionWriteToGBuffer(
-      polymorphicSurfaceMaterialInteraction, ivec2(pixelCoordinate), SELECTED_INTEGRATION_SURFACE, !cb.enableDLSSRR,
+      polymorphicSurfaceMaterialInteraction, ivec2(pixelCoordinate), SELECTED_INTEGRATION_SURFACE, cb.writeSecondaryDenoisingGuides,
       surface, surfaceInteraction, rayInteraction.surfaceIndex,
       directionAltered, accumulatedRotation,
       SecondaryWorldShadingNormal, SecondaryPerceptualRoughness,
@@ -504,14 +500,15 @@ void geometryResolverDLSSRROutputSurface(
   // Note: Virtual motion used to account for the ray traversing ray portals and through PSR interactions.
   const vec3 virtualMotion = quaternionTransformVector(accumulatedRotation, surfaceInteraction.motion, true);
   
-  vec4 prevWorldPosition = vec4(virtualHitPosition + virtualMotion, 1);
-  vec4 prevNDC = mul(cb.camera.prevWorldToProjection, prevWorldPosition);
-  prevNDC /= prevNDC.w;
+  const vec2 prevNDC = cameraWorldPosToPrevNDC(cb.camera, virtualHitPosition + virtualMotion);
 
   vec2 ndc = cameraPixelCoordinateToNDC(cb.camera, pixelCoordinate);
-  vec2 motionVectorNDC = prevNDC.xy - ndc.xy;
-  vec2 motionVectorUVOffset = motionVectorNDC * vec2(0.5, -0.5);
-  vec2 motionVectorPixel = motionVectorUVOffset * cb.camera.resolution;
+  vec2 motionVectorPixel = cameraCalcMotionVectorPixel(cb.camera, ndc, prevNDC);
+
+  if (cb.forceStaticSceneMotionVectors)
+  {
+    motionVectorPixel = cameraCalcStaticSceneMotionVectorPixel(cb.camera, ndc, depth);
+  }
 
   // Write out screen-space motion.
   PrimaryScreenSpaceMotionVectorDLSSRR[pixelCoordinate] = motionVectorPixel;
@@ -2694,14 +2691,15 @@ void geometryPSRResolverVertex(
       // Note: Virtual motion used to account for the ray traversing ray portals and through PSR interactions.
       vec3 virtualMotion = quaternionTransformVector(geometryPSRResolverState.accumulatedRotation, surfaceInteraction.motion, true);
       
-      vec4 prevWorldPosition = vec4(virtualHitPosition + virtualMotion, 1);
-      vec4 prevNDC = mul(cb.camera.prevWorldToProjection, prevWorldPosition);
-      prevNDC /= prevNDC.w;
+      const vec2 prevNDC = cameraWorldPosToPrevNDC(cb.camera, virtualHitPosition + virtualMotion);
 
       vec2 ndc = cameraPixelCoordinateToNDC(cb.camera, pixelCoordinate);
-      vec2 motionVectorNDC = prevNDC.xy - ndc.xy;
-      vec2 motionVectorUVOffset = motionVectorNDC * vec2(0.5, -0.5);
-      vec2 motionVectorPixel = motionVectorUVOffset * cb.camera.resolution;
+      vec2 motionVectorPixel = cameraCalcMotionVectorPixel(cb.camera, ndc, prevNDC);
+
+      if (cb.forceStaticSceneMotionVectors)
+      {
+        motionVectorPixel = cameraCalcStaticSceneMotionVectorPixel(cb.camera, ndc, depth);
+      }
 
       // Write out screen-space motion.
       PrimaryScreenSpaceMotionVectorDLSSRR[pixelCoordinate] = motionVectorPixel;
@@ -2958,8 +2956,11 @@ void geometryResolverWritePrimaryMaterialInteraction(ivec2 pixelCoordinate, Poly
   PrimaryVirtualWorldShadingNormalPerceptualRoughness[pixelCoordinate] = vec4(
     virtualShadingNormal * 0.5f + 0.5f,
     materialMemory.perceptualRoughness);
-  PrimaryVirtualWorldShadingNormalPerceptualRoughnessDenoising[pixelCoordinate] =
-    NRD_FrontEnd_PackNormalAndRoughness(virtualShadingNormal, materialMemory.perceptualRoughness, MATERIAL_ID_DEFAULT);
+  if (cb.writePrimaryDenoisingNormal)
+  {
+    PrimaryVirtualWorldShadingNormalPerceptualRoughnessDenoising[pixelCoordinate] =
+      NRD_FrontEnd_PackNormalAndRoughness(virtualShadingNormal, materialMemory.perceptualRoughness, MATERIAL_ID_DEFAULT);
+  }
 
   if (GBUFFER_FEATURE_DLSSRR && cb.enableDLSSRR)
   {

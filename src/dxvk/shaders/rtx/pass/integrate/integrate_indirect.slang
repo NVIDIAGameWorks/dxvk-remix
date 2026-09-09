@@ -234,8 +234,8 @@ void main()
 #else
 [shader("compute")]
 [numthreads(16, 8, 1)]
-void main(uint2 ipos : SV_DispatchThreadID)
-{ 
-  integrate_indirect_pass(ipos);
+void main(uint2 dispatchThreadId : SV_DispatchThreadID)
+{
+  integrate_indirect_pass(dispatchThreadId);
 }
 #endif

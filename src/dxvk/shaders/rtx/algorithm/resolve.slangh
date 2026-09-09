@@ -1071,13 +1071,15 @@ void resolveVertexUnorderedParticles<
 
 #ifdef RAY_TRACING_PRIMARY_RAY
 #ifndef GBUFFER_PSR
-    if (GBUFFER_FEATURE_OBJECT_PICKING && numInteractions == 0 && cb.enableObjectPicking != 0)
+#if GBUFFER_FEATURE_OBJECT_PICKING
+    if (numInteractions == 0 && cb.enableObjectPicking)
     {
       InterlockedCompareStore(
         PrimaryObjectPicking[pixelCoordinate],
         OBJECT_PICKING_INVALID,
         surface.objectPickingValue);
     }
+#endif
 #endif
 #endif
 
@@ -1522,7 +1524,8 @@ void resolveVertexUnordered<
 
 #ifdef RAY_TRACING_PRIMARY_RAY
 #ifndef GBUFFER_PSR
-    if (GBUFFER_FEATURE_OBJECT_PICKING && numInteractions == 0 && cb.enableObjectPicking != 0)
+#if GBUFFER_FEATURE_OBJECT_PICKING
+    if (numInteractions == 0 && cb.enableObjectPicking)
     {
       // Write only if was OBJECT_PICKING_INVALID, i.e. write the very first resolveVertexUnordered
       // Object picking for alpha blended
@@ -1532,6 +1535,7 @@ void resolveVertexUnordered<
         surface.objectPickingValue // value to write, if equal
       );
     }
+#endif
 #endif
 #endif
 

@@ -925,6 +925,7 @@ namespace dxvk
     camera.prevTranslatedWorldToView = prevTranslatedWorldToView;
     camera.prevTranslatedWorldToProjection = prevViewToProjection * prevTranslatedWorldToView;
 
+    camera.projectionToPrevProjection = prevViewToProjection * viewToPrevView * projectionToView;
     camera.projectionToPrevProjectionJittered = prevViewToProjectionJittered * viewToPrevView * projectionToViewJittered;
     
     camera.resolution = uvec2 { m_renderResolution[0], m_renderResolution[1] };

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -5970,6 +5970,45 @@ namespace dxvk {
     m_cmd->addStatCtr(DxvkStatCounter::CmdTraceRaysCalls, 1);
   }
 
+  // NV-DXVK start: Indirect ray dispatch support
+  void DxvkContext::traceRaysIndirect(const Rc<DxvkBuffer>& argBuffer, VkDeviceSize argOffset) {
+    ScopedCpuProfileZone();
+    auto argSlice = argBuffer->getSliceHandle(argOffset, sizeof(VkTraceRaysIndirectCommandKHR));
+
+    if (m_execBarriers.isBufferDirty(argSlice, DxvkAccess::Read)) {
+      m_execBarriers.recordCommands(m_cmd);
+    }
+
+    if (this->commitRaytracingState()) {
+      this->commitRaytracingInitBarriers();
+
+      m_cmd->trackResource<DxvkAccess::Read>(argBuffer);
+
+      m_queryManager.beginQueries(m_cmd,
+        VK_QUERY_TYPE_PIPELINE_STATISTICS);
+
+      m_cmd->cmdTraceRaysIndirectKHR(
+        &m_state.rp.pipeline->m_raygenShaderBindingTable,
+        &m_state.rp.pipeline->m_missShaderBindingTable,
+        &m_state.rp.pipeline->m_hitShaderBindingTable,
+        &m_state.rp.pipeline->m_callableShaderBindingTable,
+        argBuffer->getDeviceAddress() + argOffset);
+
+      m_queryManager.endQueries(m_cmd,
+        VK_QUERY_TYPE_PIPELINE_STATISTICS);
+
+      this->commitRaytracingPostBarriers();
+
+      m_execBarriers.accessBuffer(argSlice,
+        VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+        VK_ACCESS_INDIRECT_COMMAND_READ_BIT,
+        argBuffer->info().stages,
+        argBuffer->info().access);
+    }
+
+    m_cmd->addStatCtr(DxvkStatCounter::CmdTraceRaysCalls, 1);
+  }
+  // NV-DXVK end
 
   void DxvkContext::trackDrawBuffer() {
     ScopedCpuProfileZone();

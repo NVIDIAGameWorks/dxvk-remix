@@ -1393,6 +1393,25 @@ namespace dxvk {
     constants.setLogValueForDisocclusionMaskForDLSSRR = DxvkRayReconstruction::enableDisocclusionMaskBlur();
     constants.invalidateHistoryForAnimatedWater = DxvkRayReconstruction::invalidateHistoryForAnimatedWater();
 
+    // The denoising normals are consumed only by NRD. dispatchDenoise reads these back rather than
+    // recomputing the condition, so the GBuffer never writes a guide nothing will read.
+    {
+      // The guides are allocated exactly when NRD is the effective denoiser, and Resources::onFrameBegin has
+      // already reconciled that this frame, so the flag is the condition.
+      const bool willNrdDenoise = getResourceManager().areNrdDenoisingGuideResourcesAllocated();
+      constants.writeSecondaryDenoisingGuides = willNrdDenoise;
+      constants.writePrimaryDenoisingNormal = willNrdDenoise;
+
+      // The primary virtual motion vector is not an NRD guide alone - RTXDI temporal reuse and gradients,
+      // ReSTIR GI temporal reuse and the worldMotion debug screenshot all read it.
+      constants.writePrimaryVirtualMotionVector =
+        willNrdDenoise || RtxOptions::useRTXDI() || restirGI.isActive() || RtxOptions::captureDebugImage();
+    }
+
+    // Force static-scene primary motion vectors (camera motion still accounted for), avoiding
+    // world-space position precision drift on static geometry such as view models.
+    constants.forceStaticSceneMotionVectors = RtxOptions::forceStaticSceneMotionVectors();
+
     NrdArgs primaryDirectNrdArgs;
     NrdArgs primaryIndirectNrdArgs;
     NrdArgs secondaryNrdArgs;
@@ -1603,9 +1622,8 @@ namespace dxvk {
     DxvkDenoise& denoiser2 = m_common->metaSecondaryCombinedLightDenoiser();
     DxvkDenoise& referenceDenoiserSecondLobe2 = m_common->metaReferenceDenoiserSecondLobe2();
 
-    const bool shouldDenoise = !useRayReconstruction()
-      && RtxOptions::useDenoiser()
-      && !RtxOptions::useDenoiserReferenceMode();
+    // The same condition the GBuffer's guide writes are gated on, so the two cannot disagree.
+    const bool shouldDenoise = getResourceManager().areNrdDenoisingGuideResourcesAllocated();
 
     if (!shouldDenoise) {
       denoiser0.releaseResources();

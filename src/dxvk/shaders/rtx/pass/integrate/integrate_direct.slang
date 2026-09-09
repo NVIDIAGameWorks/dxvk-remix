@@ -53,8 +53,8 @@ void main()
 #else
 [shader("compute")]
 [numthreads(INTEGRATE_DIRECT_THREADS_DISPATCH_WIDTH, INTEGRATE_DIRECT_THREADS_DISPATCH_HEIGHT, 1)]
-void main(uint2 ipos : SV_DispatchThreadID)
+void main(uint2 dispatchThreadId : SV_DispatchThreadID)
 {
-  integrate_direct_pass(ipos);
+  integrate_direct_pass(dispatchThreadId);
 }
 #endif

@@ -267,6 +267,7 @@ struct RaytraceArgs {
   uint enableSecondaryBounces;
   uint enableSeparateUnorderedApproximations;
   uint enableStochasticAlphaBlend;
+  uint forceStaticSceneMotionVectors;
   uint16_t enableDirectTranslucentShadows;
   uint16_t enableDirectAlphaBlendShadows;
   uint16_t enableIndirectTranslucentShadows;
@@ -419,6 +420,12 @@ struct RaytraceArgs {
   float wboitEnergyLossCompensation;
   float wboitDepthWeightTuning;
   uint wboitEnabled;
+
+  // True only when NRD will actually consume these this frame; the GBuffer skips the writes otherwise.
+  uint writePrimaryDenoisingNormal;
+  // Also gate secondary normal and virtual motion vector, which NRD is the only consumer of.
+  uint writeSecondaryDenoisingGuides;
+  uint writePrimaryVirtualMotionVector;
 
   // NOTE: Add structs to the top section of RaytraceArgs, not the bottom.
   // NOTE: bool does not work in debug builds, use uint instead.

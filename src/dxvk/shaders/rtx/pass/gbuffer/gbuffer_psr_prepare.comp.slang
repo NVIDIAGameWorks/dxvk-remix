@@ -36,12 +36,12 @@
 
 [shader("compute")]
 [numthreads(16, 8, 1)]
-void main(uint2 ipos : SV_DispatchThreadID)
+void main(uint2 dispatchThreadId : SV_DispatchThreadID)
 {
-  if (any(ipos >= cb.camera.resolution))
+  if (any(dispatchThreadId >= cb.camera.resolution))
   {
     return;
   }
 
-  geometryPSRPreparePass(ipos);
+  geometryPSRPreparePass(dispatchThreadId);
 }
