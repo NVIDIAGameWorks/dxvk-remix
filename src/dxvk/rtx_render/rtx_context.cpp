@@ -2611,7 +2611,7 @@ namespace dxvk {
     if (!TerrainBaker::debugDisableBaking()) {
 
       // Retrieve the replacement material
-      MaterialData* replacementMaterial = getSceneManager().getAssetReplacer()->getReplacementMaterial(drawCallState.getMaterialData().getHash());
+      std::shared_ptr<MaterialData> replacementMaterial = getSceneManager().getAssetReplacer()->getReplacementMaterial(drawCallState.getMaterialData().getHash());
 
       if (replacementMaterial) {
         if (replacementMaterial->getType() == MaterialDataType::Opaque) {
@@ -2670,7 +2670,7 @@ namespace dxvk {
   void RtxContext::rasterizeSky(const DrawParameters& params, const DrawCallState& drawCallState) {
     // Grab and apply replacement texture if any
     // NOTE: only the original color texture will be replaced with albedo-opacity texture
-    MaterialData* replacementMaterial = getSceneManager().getAssetReplacer()->getReplacementMaterial(drawCallState.getMaterialData().getHash());
+    std::shared_ptr<MaterialData> replacementMaterial = getSceneManager().getAssetReplacer()->getReplacementMaterial(drawCallState.getMaterialData().getHash());
     bool replacemenIsLDR = false;
     Rc<DxvkImageView> replacementTexture = {};
     uint32_t replacementTextureSlot = UINT32_MAX;

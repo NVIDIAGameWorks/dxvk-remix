@@ -42,7 +42,7 @@ public:
   RtGraphBatch(RtGraphBatch&&) = default;
   RtGraphBatch& operator=(RtGraphBatch&&) = default;
 
-  void Initialize(const RtGraphTopology& topology);
+  void Initialize(std::shared_ptr<const RtGraphTopology> pTopology);
   
   bool addInstance(Rc<DxvkContext> context, const RtGraphState& graphState, GraphInstance* replacementInstance);
 
@@ -122,7 +122,7 @@ public:
 
 private:
   XXH64_hash_t m_graphHash;
-  const RtGraphTopology* m_topology = nullptr;
+  std::shared_ptr<const RtGraphTopology> m_topology;
   std::vector<std::unique_ptr<RtComponentBatch>> m_componentBatches;
   std::vector<uint32_t> m_batchesWithSceneOverrides;
   std::vector<RtComponentPropertyVector> m_properties;

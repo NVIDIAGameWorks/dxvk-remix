@@ -492,7 +492,10 @@ struct RtGraphTopology {
 
 // Stores the initial values used to when creating an instance of a graph.
 struct RtGraphState {
-  const RtGraphTopology& topology;
+  // Shared rather than a reference: a GraphInstance outlives its source AssetReplacement
+  // (cleared in the same frame-end that invalidates the bucket, GC'd the next), and the
+  // topology must survive that window. shared_ptr also keeps RtGraphState copyable.
+  std::shared_ptr<const RtGraphTopology> topology;
   std::vector<RtComponentPropertyValue> values;
   std::string primPath;
 };

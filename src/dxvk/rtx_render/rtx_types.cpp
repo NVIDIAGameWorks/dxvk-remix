@@ -131,7 +131,7 @@ namespace dxvk {
     }
     prims.clear();
     root = PrimInstance();
-    activeReplacements = nullptr;
+    activeReplacements.reset();
     legacyMaterialIdentityHash = kEmptyHash;
     geometryBoundingBox.invalidate();
     lightBoundingBox.invalidate();
@@ -156,11 +156,11 @@ namespace dxvk {
   }
 
   void ReplacementInstance::setup(PrimInstance newRoot, size_t numPrims,
-                                  const std::vector<AssetReplacement>* replacements) {
+                                  std::shared_ptr<const ReplacementBucket> replacements) {
     clear();
     prims.resize(numPrims);
     root = newRoot;
-    activeReplacements = replacements;
+    activeReplacements = std::move(replacements);
   }
 
   void ReplacementInstance::recalculateBoundingBox(
@@ -178,7 +178,7 @@ namespace dxvk {
     if (activeReplacements == nullptr) {
       geoBBox = *originalGeometryBBox;
     } else {
-      for (const auto& replacement : *activeReplacements) {
+      for (const auto& replacement : activeReplacements->replacements) {
         if (replacement.includeOriginal && originalGeometryBBox != nullptr) {
           geoBBox.unionWith(*originalGeometryBBox);
         } else if (replacement.type == AssetReplacement::eMesh && replacement.geometry != nullptr) {

@@ -276,7 +276,7 @@ RtGraphState GraphUsdParser::parseGraph(AssetReplacements& replacements, const p
     topology.graphHash = XXH3_64bits_withSeed(propertyTypes.data(), sizeof(RtComponentPropertyType) * propertyTypes.size(), topology.graphHash);
   }
 
-  return { replacements.storeObject(topology.graphHash, RtGraphTopology{topology}), initialValues, graphPrim.GetPath().GetString() };
+  return { replacements.storeTopology(topology.graphHash, RtGraphTopology{topology}), initialValues, graphPrim.GetPath().GetString() };
 }
 
 std::vector<GraphUsdParser::DAGNode> GraphUsdParser::getDAGSortedNodes(const pxr::UsdPrim& graphPrim) {

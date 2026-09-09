@@ -23,6 +23,7 @@
 
 #include <filesystem>
 #include <map>
+#include <mutex>
 #include "../util/util_singleton.h"
 #include "rtx_asset_data.h"
 #include "rtx_asset_package.h"
@@ -35,38 +36,39 @@ namespace dxvk {
   // the access to actual data.
   class AssetDataManager : public Singleton<AssetDataManager> {
     using PackageSet = std::map<std::string, Rc<AssetPackage>>;
-    std::map<uint32_t, std::tuple<std::string, PackageSet>> m_packageSets;
-    std::map<uint32_t, std::string> m_searchPaths;
+
+    struct SearchPathEntry {
+      // Absolute, lowercased, with a trailing separator.
+      std::string path;
+      // Packages mounted from this directory. Only populated when RtxIo is enabled.
+      PackageSet packages;
+    };
+
+    // Search paths in ascending precedence order: the LAST entry wins, matching the
+    // reverse traversal in findAsset.
+    std::vector<SearchPathEntry> m_searchPaths;
+    // Guards the list. A USD mod's rebuild worker resolves textures through findAsset
+    // while another mod's finished rebuild is installed on the render thread, so a
+    // write can land mid-iteration without this.
+    std::mutex m_searchPathMutex;
   public:
     AssetDataManager();
     ~AssetDataManager();
 
     /**
-     * \brief Add a search path
+     * \brief Replace the entire search path list
      *
-     * Adds a path to the search paths set, assigns priority.
-     * Every search path in the search set has a priority, and the whole set is
-     * traversed in the reverse order, i.e. paths with larger priority values
-     * have higher priority. The method will also attempt to discover and mount
-     * packages in the location specified by the path.
-     * Note: in the current implementation every search path must have a unique
-     * priority. The previous path will be overriden if the incoming path has
-     * same priority.
+     * \p paths is in ascending precedence order - the last entry wins. Callers pass
+     * the full list rather than mutating a shared set, because precedence across mods
+     * is a property of the mod ordering and only the ModManager knows it.
      *
-     * \param [in] priority Search path priority
-     * \param [in] path Search path
+     * Packages already mounted for a path are carried over rather than re-opened, so
+     * one mod reloading does not re-mount every other mod's packages. Paths that drop
+     * out of the list have their packages released here.
+     *
+     * \param [in] paths Search paths, lowest precedence first
      */
-    void addSearchPath(uint32_t priority, const std::filesystem::path& path);
-
-    /**
-     * \brief Clear the search paths set
-     *
-     * Clears the search paths set and mounted packages.
-     */
-    void clearSearchPaths() {
-      m_searchPaths.clear();
-      m_packageSets.clear();
-    }
+    void setSearchPaths(const std::vector<std::filesystem::path>& paths);
 
     /**
      * \brief Find an asset

@@ -61,8 +61,6 @@ util_src = files([
   
   'util_version.h',
 
-  'util_watchdog.h',
-  
   'util_global_time.cpp',
   'util_global_time.h',
 ])

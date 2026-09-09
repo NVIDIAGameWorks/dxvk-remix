@@ -146,7 +146,7 @@ public:
   void setExternalStartInMediumMaterial(const MaterialData& translucentMaterial);
   void clearExternalStartInMediumMaterial();
   
-  bool areAllReplacementsLoaded() const;
+  bool hasAnyMods() const;
   std::vector<Mod::State> getReplacementStates() const;
 
   RtxGlobals& getGlobals() { return m_globals; }
@@ -207,6 +207,10 @@ public:
 
   // ISceneManager but not really
   void clear(Rc<DxvkContext> ctx, bool needWfi);
+  // Clears only the ReplacementInstances whose buckets changed; unchanged RIs keep their
+  // RtInstances, RtLights and graphs. Every consumer owns what it points at, so nothing
+  // global needs clearing.
+  void invalidateChangedReplacements(const AssetChanges& changes);
   void garbageCollection();
   void prepareSceneData(Rc<RtxContext> ctx, class DxvkBarrierSet& execBarriers);
 
@@ -316,7 +320,7 @@ private:
   // Called whenever an instance has been removed from the database
   void onInstanceDestroyed(RtInstance& instance);
 
-  void drawReplacements(Rc<DxvkContext> ctx, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, MaterialData& renderMaterialData, ReplacementInstance* replacementInstance);
+  void drawReplacements(Rc<DxvkContext> ctx, const DrawCallState* input, const std::shared_ptr<const ReplacementBucket>& pReplacements, MaterialData& renderMaterialData, ReplacementInstance* replacementInstance);
 
   // Build the per-replacement DrawCallState used by both the dynamic (drawReplacements) and
   // preserve (syncPreservedReplacementMeshesState) paths so they always feed the same input
@@ -335,14 +339,14 @@ private:
       const DrawCallState* pInput = nullptr);
 
   // Lights and graph prims for mesh replacements (drawReplacements / dynamic path).
-  void processReplacementLights(const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, ReplacementInstance* replacementInstance);
-  void processReplacementGraphs(Rc<DxvkContext> ctx, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, ReplacementInstance* replacementInstance);
+  void processReplacementLights(const DrawCallState* input, const ReplacementBucket* pReplacements, ReplacementInstance* replacementInstance);
+  void processReplacementGraphs(Rc<DxvkContext> ctx, const DrawCallState* input, const ReplacementBucket* pReplacements, ReplacementInstance* replacementInstance);
 
   // Preserve path: minimal work to keep replacement meshes, lights, and graphs alive (buffer cache, textures, light touch, bbox).
   void preserveReplacementInstance(
       Rc<DxvkContext> ctx,
       const DrawCallState& input,
-      const std::vector<AssetReplacement>* pReplacements,
+      const std::shared_ptr<const ReplacementBucket>& pReplacements,
       ReplacementInstance* replacementInstance);
 
   void trackObjectPickingMeta(const DrawCallState& drawCallState, ObjectPickingValue objectPickingValue);
@@ -351,7 +355,7 @@ private:
   // DrawCallState wiring).
   void syncPreservedReplacementMeshesState(
       const DrawCallState& input,
-      const std::vector<AssetReplacement>* pReplacements,
+      const ReplacementBucket* pReplacements,
       ReplacementInstance* replacementInstance);
 
   void createEffectLight(Rc<DxvkContext> ctx, const DrawCallState& input, const RtInstance* instance);

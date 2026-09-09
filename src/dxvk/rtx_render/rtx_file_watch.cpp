@@ -98,28 +98,50 @@ namespace {
 namespace dxvk {
   struct RemoveAllRequest { };
 
+  // Clears per-file texture registrations without closing directory handles.
+  // Used when the TextureManager is replaced: old Rc<ManagedTexture> refs from
+  // the previous session are released, and the new session registers fresh ones.
+  struct ClearTextureRegistrationsRequest { };
+
   struct AddTextureRequest {
     Rc<ManagedTexture> tex;
+  };
+
+  struct AddCallbackRequest {
+    FileWatch::FileWatchCallbackId id;
+    FileWatch::FileChangedFn fn;
+  };
+
+  struct RemoveCallbackRequest {
+    FileWatch::FileWatchCallbackId id;
   };
 
   struct FileWatchTexturesImpl {
     // NOTE: non-filewatch threads only push requests
     //       filewatch thread modifies all the members
     //       this way, only a single mutex for requests is needed
-    std::vector<std::variant<std::filesystem::path, RemoveAllRequest, AddTextureRequest>> m_requests{};
+    std::vector<std::variant<std::filesystem::path, RemoveAllRequest, AddTextureRequest,
+                             AddCallbackRequest, RemoveCallbackRequest,
+                             ClearTextureRegistrationsRequest>> m_requests{};
     std::mutex m_requestsMutex{};
 
-    // NOTE: 'm_dirs' list is modified only by the filewatch thread, other threads use requests
-    //        this is needed to prevent hanging pointers while ReadDirectoryChanges is waiting for the OS
+    // NOTE: 'm_dirs' and 'm_callbacks' are modified only by the filewatch thread
     std::vector<WatchDir> m_dirs{};
+    std::unordered_map<FileWatch::FileWatchCallbackId, FileWatch::FileChangedFn> m_callbacks{};
 
+    // Callback ids handed out by addFileChangedCallback; safe to generate from any thread.
+    std::atomic<FileWatch::FileWatchCallbackId> m_nextCallbackId{ 1 };
+
+    // Written by setTextureManager/clearTextureManager, read by the filewatch thread.
+    std::atomic<dxvk::RtxTextureManager*> m_textureManager { nullptr };
     std::atomic_bool m_stop{};
   };
 } // namespace dxvk
 
 
 namespace {
-  constexpr uint32_t READ_CHANGES_BUF_SIZE = 1024;
+  // 64 KiB is the practical max for ReadDirectoryChangesW, including over network drives.
+  constexpr uint32_t READ_CHANGES_BUF_SIZE = 64 * 1024;
 
 
   BOOL readDirectoryChangesWrapper(
@@ -332,20 +354,88 @@ namespace {
         continue;
       }
 
+      if (std::get_if<dxvk::ClearTextureRegistrationsRequest>(&req)) {
+        for (auto& dir : watch.m_dirs) {
+          dir.files.clear();
+        }
+        continue;
+      }
+
+      if (auto* addCb = std::get_if<dxvk::AddCallbackRequest>(&req)) {
+        watch.m_callbacks[addCb->id] = std::move(addCb->fn);
+        continue;
+      }
+
+      if (auto* removeCb = std::get_if<dxvk::RemoveCallbackRequest>(&req)) {
+        watch.m_callbacks.erase(removeCb->id);
+        continue;
+      }
+
       assert(0 && "unknown request");
     }
     watch.m_requests.clear();
   }
 
 
-  void filewatchThreadFunc(dxvk::FileWatchTexturesImpl& watch, dxvk::RtxTextureManager* texmanager) {
-    dxvk::env::setThreadName("rtx-texture-filewatch");
+  // Notifies callbacks and reloads any managed textures referencing absFilepath. Shared
+  // between the normal per-entry parse loop and the buffer-overflow recovery path below.
+  void notifyFileChanged(dxvk::FileWatchTexturesImpl& watch, WatchDir& watchDir,
+                          const std::filesystem::path& absFilepath) {
+    for (const auto& [id, fn] : watch.m_callbacks) {
+      fn(absFilepath);
+    }
 
-    const DWORD WaitIntervalMS = std::clamp(dxvk::RtxOptions::TextureManager::hotReloadRateMs(), 10U, 10'000U);
+    auto f = watchDir.files.find(absFilepath);
+    if (f == watchDir.files.end()) {
+      return;
+    }
+    WatchFile& toreload = f->second;
+
+    dxvk::Logger::info(dxvk::str::format(
+      "filewatch: file changed, reloading ",
+      toreload.texturesReferencingFile.size(),
+      " managed textures: ",
+      absFilepath.string()
+    ));
+
+    auto* texmanager = watch.m_textureManager.load(std::memory_order_acquire);
+    if (texmanager != nullptr) {
+      for (const auto& mat : toreload.texturesReferencingFile) {
+        texmanager->requestHotReload(mat);
+      }
+    }
+  }
+
+
+  // A completion with zero bytes transferred signals a buffer overflow; contents are
+  // then unspecified, so re-notify every file under the subtree instead of guessing.
+  void notifyDirectoryOverflow(dxvk::FileWatchTexturesImpl& watch, WatchDir& watchDir) {
+    dxvk::Logger::warn(dxvk::str::format(
+      "filewatch: change notification buffer overflowed, rescanning: ", watchDir.dirpath.string()));
+
+    std::error_code ec;
+    auto it = std::filesystem::recursive_directory_iterator(
+      watchDir.dirpath, std::filesystem::directory_options::skip_permission_denied, ec);
+    const auto end = std::filesystem::recursive_directory_iterator();
+    for (; !ec && it != end; it.increment(ec)) {
+      if (!it->is_regular_file(ec)) {
+        continue;
+      }
+      notifyFileChanged(watch, watchDir, makeCanonicalPathLexical(it->path()));
+    }
+  }
+
+
+  void filewatchThreadFunc(dxvk::FileWatchTexturesImpl& watch) {
+    dxvk::env::setThreadName("rtx-texture-filewatch");
 
     uint32_t currentdir = 0;
 
     while (!watch.m_stop.load()) {
+      // Read live each iteration, so hotReloadRateMs changes at runtime take effect
+      // without restarting the watcher thread.
+      const DWORD WaitIntervalMS = std::clamp(dxvk::RtxOptions::TextureManager::hotReloadRateMs(), 10U, 10'000U);
+
       // loop through each directory watcher
       currentdir++;
 
@@ -378,15 +468,13 @@ namespace {
         }
 
         BOOL resultGetOverlapped;
-        {
-          DWORD ignoredBytesTransferred;
-          resultGetOverlapped = GetOverlappedResult(
-            watchDir->dirHandle,
-            watchDir->nextOverlapped.get(),
-            &ignoredBytesTransferred,
-            false // bWait is false, as we use WaitForSingleObject with a timeout
-          );
-        }
+        DWORD bytesTransferred = 0;
+        resultGetOverlapped = GetOverlappedResult(
+          watchDir->dirHandle,
+          watchDir->nextOverlapped.get(),
+          &bytesTransferred,
+          false // bWait is false, as we use WaitForSingleObject with a timeout
+        );
 
         BOOL resultReadDir;
         {
@@ -418,6 +506,10 @@ namespace {
           dxvk::Logger::err(
             dxvk::str::format("ReadDirectoryChangesW failed (", int(resultReadDir), "): ", watchDir->dirpath.string())
           );
+          continue;
+        }
+        if (bytesTransferred == 0) {
+          notifyDirectoryOverflow(watch, *watchDir);
           continue;
         }
       }
@@ -456,34 +548,20 @@ namespace {
           continue;
         }
 
-        // ensure that the changed file is being watched
-        auto f = watchDir->files.find(absFilepath);
-        if (f == watchDir->files.end()) {
-          dxvk::Logger::info(
-            dxvk::str::format("filewatch: file changed, but it's not linked to any managed texture: ", filename.string())
-          );
-          continue;
-        }
-        WatchFile& toreload = f->second;
-
-        dxvk::Logger::info(dxvk::str::format(
-          "filewatch: file changed, reloading ",
-          toreload.texturesReferencingFile.size(),
-          " managed textures: ",
-          filename.string()
-        ));
-
-        // file was changed, reload each ManagedTexture that references it
-        for (const auto& mat : toreload.texturesReferencingFile) {
-          texmanager->requestHotReload(mat);
-        }
+        notifyFileChanged(watch, *watchDir, absFilepath);
       }
     }
   }
 } // namespace
 
 
-dxvk::FileWatch::FileWatch() = default;
+dxvk::FileWatch::FileWatch() {
+  m_impl = std::make_unique<FileWatchTexturesImpl>();
+  m_fileCheckingThread = std::make_unique<dxvk::thread>([impl = m_impl.get()] {
+    filewatchThreadFunc(*impl);
+  });
+  m_fileCheckingThread->set_priority(ThreadPriority::Lowest);
+}
 
 
 dxvk::FileWatch::~FileWatch() {
@@ -492,37 +570,34 @@ dxvk::FileWatch::~FileWatch() {
 }
 
 
-void dxvk::FileWatch::beginThread(RtxTextureManager* textureManager) {
-  auto lock = std::unique_lock{ m_mutex };
-  endThreadLocked();
-
-  if (!RtxOptions::TextureManager::hotReload()) {
+void dxvk::FileWatch::setTextureManager(RtxTextureManager* textureManager) {
+  if (!m_impl) {
     return;
   }
-
-  m_textureManager = textureManager;
-  m_impl = std::make_unique<FileWatchTexturesImpl>();
-
-  m_fileCheckingThread = std::make_unique<dxvk::thread>([impl = m_impl.get(), textureManager] {
-    filewatchThreadFunc(*impl, textureManager);
-  });
-  m_fileCheckingThread->set_priority(ThreadPriority::Lowest);
+  m_impl->m_textureManager.store(textureManager, std::memory_order_release);
 }
 
 
-void dxvk::FileWatch::endThread(RtxTextureManager* textureManager) {
-  auto lock = std::unique_lock{ m_mutex };
-  if (m_textureManager != textureManager) {
+void dxvk::FileWatch::clearTextureManager(RtxTextureManager* textureManager) {
+  if (!m_impl) {
     return;
   }
-
-  endThreadLocked();
+  // Only clear if textureManager is still the active one; guards against a delayed
+  // teardown from an old manager clearing a pointer set by a new one.
+  RtxTextureManager* expected = textureManager;
+  if (!m_impl->m_textureManager.compare_exchange_strong(expected, nullptr, std::memory_order_acq_rel)) {
+    return;
+  }
+  // Clear per-file texture registrations so Rc<ManagedTexture> refs from this
+  // session are released. Directories remain open so the new session can register
+  // its own textures without re-installing dir handles.
+  auto lockRequests = std::unique_lock{ m_impl->m_requestsMutex };
+  m_impl->m_requests.push_back(ClearTextureRegistrationsRequest{});
 }
 
 
 void dxvk::FileWatch::endThreadLocked() {
   if (m_impl) {
-    // signal the thread to stop
     m_impl->m_stop = true;
   }
 
@@ -536,15 +611,11 @@ void dxvk::FileWatch::endThreadLocked() {
   }
 
   m_impl = {};
-  m_textureManager = nullptr;
 }
 
 
 void dxvk::FileWatch::installDir(const char* dirpath) {
   if (!dirpath) {
-    return;
-  }
-  if (!dxvk::RtxOptions::TextureManager::hotReload()) {
     return;
   }
 
@@ -571,11 +642,33 @@ void dxvk::FileWatch::watchTexture(RtxTextureManager* textureManager, const Rc<M
   }
 
   auto lock = std::unique_lock{ m_mutex };
-  if (!m_impl || m_textureManager != textureManager) {
+  if (!m_impl || m_impl->m_textureManager.load(std::memory_order_acquire) != textureManager) {
     return;
   }
   if (!tex.ptr() || !tex->m_assetData.ptr() || !tex->m_assetData->info().filename) {
     return;
   }
   filewatchAdd(*m_impl, tex);
+}
+
+
+dxvk::FileWatch::FileWatchCallbackId dxvk::FileWatch::addFileChangedCallback(FileChangedFn fn) {
+  auto lock = std::unique_lock{ m_mutex };
+  if (!m_impl) {
+    return 0;
+  }
+  const FileWatchCallbackId id = m_impl->m_nextCallbackId.fetch_add(1, std::memory_order_relaxed);
+  auto lockRequests = std::unique_lock{ m_impl->m_requestsMutex };
+  m_impl->m_requests.push_back(AddCallbackRequest{ id, std::move(fn) });
+  return id;
+}
+
+
+void dxvk::FileWatch::removeFileChangedCallback(FileWatchCallbackId id) {
+  auto lock = std::unique_lock{ m_mutex };
+  if (!m_impl || id == 0) {
+    return;
+  }
+  auto lockRequests = std::unique_lock{ m_impl->m_requestsMutex };
+  m_impl->m_requests.push_back(RemoveCallbackRequest{ id });
 }

@@ -52,9 +52,7 @@ namespace dxvk {
 
   void ImGuiCapture::show(const Rc<DxvkContext>& ctx) {
     auto capturer = ctx->getCommonObjects()->capturer();
-    const bool disableCapture =
-      ctx->getCommonObjects()->getSceneManager().areAllReplacementsLoaded() &&
-      RtxOptions::getEnableAnyReplacements();
+    const bool disableCapture = RtxOptions::getEnableAnyReplacements();
     if(RemixGui::CollapsingHeader("USD Scene Capture", ImGuiTreeNodeFlags_DefaultOpen)) {
       ImGui::Indent();
       ImGui::Text(disableCapture ? "Disable enhanced assets to enable capturing." : "Ready to capture.");

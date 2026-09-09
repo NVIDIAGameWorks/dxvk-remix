@@ -22,6 +22,8 @@
 #pragma once
 
 #include "rtx_initializer.h"
+#include "rtx_scene_manager.h"
+#include "rtx_asset_replacer.h"
 #include "rtx_options.h"
 #include "../../util/thread.h"
 #include "dxvk_context.h"
@@ -42,6 +44,24 @@
 namespace dxvk {
   RtxInitializer::RtxInitializer(DxvkDevice* device)
   : CommonDeviceObject(device) { 
+  }
+
+  void RtxInitializer::onDestroy() {
+    // Raised before the joins below so the asset loaders abandon their prim walks rather
+    // than running the stage to completion - otherwise quitting while enhancements load
+    // blocks for the whole remaining load and looks like a hang.
+    if (auto& replacer = m_device->getCommon()->getSceneManager().getAssetReplacer()) {
+      replacer->cancelLoading();
+    }
+
+    waitForShaderPrewarm();
+
+    if (m_asyncAssetLoadThread.joinable()) {
+      if (!m_assetsLoaded) {
+        Logger::warn("Async asset loading thread is running while device is being destroyed! Attempting to join...");
+      }
+      m_asyncAssetLoadThread.join();
+    }
   }
 
   void RtxInitializer::initialize() {

@@ -50,6 +50,7 @@ struct D3D9FixedFunctionVS;
 struct D3D9FixedFunctionPS;
 struct DrawCallState;
 struct AssetReplacement;
+struct ReplacementBucket;
 struct ReplacementInstance;
 
 using RasterBuffer = GeometryBuffer<Raster>;
@@ -180,13 +181,13 @@ struct ReplacementInstance {
   std::vector<PrimInstance> prims;
   PrimInstance root;
 
-  // Reset the RI and re-initialize it with the given root, prim count, and
-  // tracking pointer to the replacement vector that owns those prims (pass
-  // nullptr for non-replacement contexts -- e.g. standalone draws or external
-  // mesh submissions). The stored pointer is used by drawReplacements to
-  // detect when the underlying replacement data has changed across frames.
+  // Reset the RI and re-initialize it with the given root, prim count, and a
+  // reference to the replacement bucket that owns those prims (pass nullptr for
+  // non-replacement contexts -- e.g. standalone draws or external mesh
+  // submissions). The stored bucket is used by drawReplacements to detect when
+  // the underlying replacement data has changed across frames.
   void setup(PrimInstance newRoot, size_t numPrims,
-             const std::vector<AssetReplacement>* replacements);
+             std::shared_ptr<const ReplacementBucket> replacements);
 
   // Frame-to-frame tracking fields (used by SceneManager two-level lookup)
   uint32_t id = 0;
@@ -200,13 +201,11 @@ struct ReplacementInstance {
   uint32_t frameLastSeen = 0;
   XXH64_hash_t spatialCacheTransformHash = kEmptyHash;
 
-  // Pointer to the replacement data this RI was set up with. Used to detect when
-  // replacements change (async load, hot reload, variant toggle) and the RI needs reinitialization.
-  // Comparing this against getReplacementsForMesh's return value is sufficient for all transitions:
-  // first-time publishes go nullptr → live ptr, and variant toggles produce a different lookup key
-  // (assetHash + variantId), which returns a different vector pointer. drawReplacements clears and
-  // rebuilds prims when this mismatches.
-  const std::vector<AssetReplacement>* activeReplacements = nullptr;
+  // The replacement data this RI was set up with. Used to detect when replacements
+  // change (async load, hot reload, variant toggle) and the RI needs reinitialization.
+  // Anti-culled RIs keep this reference between submissions; recalculateBoundingBox
+  // dereferences it, and the stale flag on it is checked by invalidateChangedReplacements.
+  std::shared_ptr<const ReplacementBucket> activeReplacements;
 
   // Draw call properties that affect anti-culling GC decisions.
   // Set from the original DrawCallState each time the RI is matched.
@@ -821,8 +820,8 @@ struct DrawCallState {
 #endif
   }
 
-  void overrideGeometryData(const RasterGeometry* overriddenGeometryData) {
-    overrides.geometryData = overriddenGeometryData;
+  void overrideGeometryData(std::shared_ptr<const RasterGeometry> overriddenGeometryData) {
+    overrides.geometryData = std::move(overriddenGeometryData);
   }
 
   void overrideCullMode(VkCullModeFlags overriddenCullMode) {
@@ -857,9 +856,11 @@ private:
 
   CategoryFlags categories = 0;
 
-  // Overridden geometry (replaced or external) and states
+  // Overridden geometry (replaced or external) and states.
+  // geometryData is an aliased shared pointer, and keeps the source MeshReplacement
+  // alive until the DrawCallState is released.
   struct {
-    const RasterGeometry* geometryData = nullptr; // TBD: use a shared ptr?
+    std::shared_ptr<const RasterGeometry> geometryData;
     VkCullModeFlags cullMode = VK_CULL_MODE_FLAG_BITS_MAX_ENUM;
   } overrides;
 };

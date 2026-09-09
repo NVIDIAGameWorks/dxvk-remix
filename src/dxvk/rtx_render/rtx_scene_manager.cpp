@@ -161,8 +161,8 @@ namespace dxvk {
   SceneManager::~SceneManager() {
   }
 
-  bool SceneManager::areAllReplacementsLoaded() const {
-    return m_pReplacer->areAllReplacementsLoaded();
+  bool SceneManager::hasAnyMods() const {
+    return m_pReplacer->hasAnyMods();
   }
 
   std::vector<Mod::State> SceneManager::getReplacementStates() const {
@@ -324,6 +324,29 @@ namespace dxvk {
     m_lastUploadedStartInMediumMaterialIndexInCache = kInvalidMaterialCacheIndex;
   }
 
+  void SceneManager::invalidateChangedReplacements(const AssetChanges& changes) {
+    ScopedCpuProfileZone();
+    if (changes.empty()) {
+      return;
+    }
+
+    for (const auto& pReplacementInstance : m_drawCallTracker.getReplacementInstances()) {
+      ReplacementInstance* pInstance = pReplacementInstance.get();
+      if (pInstance == nullptr) {
+        continue;
+      }
+      const auto& bucket = pInstance->activeReplacements;
+      if (bucket && bucket->stale.load(std::memory_order_acquire)) {
+        pInstance->clear();
+        continue;
+      }
+      if (!changes.dirtyMatHashes.empty() &&
+          changes.dirtyMatHashes.count(pInstance->materialHash) != 0) {
+        pInstance->clear();
+      }
+    }
+  }
+
   void SceneManager::garbageCollection() {
     ScopedCpuProfileZone();
 
@@ -358,6 +381,11 @@ namespace dxvk {
   }
 
   void SceneManager::onDestroy() {
+    // First, because the mods' rebuild workers read through RtxInitializer and the
+    // texture manager, and DxvkObjects destroys both before it destroys us. This is
+    // the only point on the teardown path where everything they touch is still alive.
+    m_pReplacer->onDestroy();
+
     m_accelManager.onDestroy();
     if (m_opacityMicromapManager) {
       m_opacityMicromapManager->onDestroy();
@@ -548,9 +576,23 @@ namespace dxvk {
 
     manageTextureVram();
 
-    if (m_enqueueDelayedClear || m_pReplacer->checkForChanges(ctx)) {
+    // Update graphs before applying any hot-reload: invalidateChangedReplacements runs
+    // below and marks GraphInstances for GC in the same frame-end, but garbageCollection
+    // only runs at the start of the next frame (in prepareSceneData). Running update here
+    // ensures it always operates on fully valid instances with live backing data.
+    // RtxOptions will still be pending, so any changes to them will apply next frame.
+    if (raytracedThisFrame) {
+      m_graphManager.update(ctx);
+    }
+
+    AssetChanges changes;
+    const bool changedSync = m_pReplacer->checkForChanges(ctx);
+    const bool appliedRebuild = m_pReplacer->applyPendingRebuilds(ctx, changes);
+    if (m_enqueueDelayedClear || changedSync) {
       clear(ctx, true);
       m_enqueueDelayedClear = false;
+    } else if (appliedRebuild) {
+      invalidateChangedReplacements(changes);
     }
 
     m_cameraManager.onFrameEnd();
@@ -574,7 +616,7 @@ namespace dxvk {
     if (m_opacityMicromapManager) {
       m_opacityMicromapManager->onFrameEnd();
     }
-    
+
     m_startInMediumMaterialIndex = SURFACE_INDEX_INVALID;
     m_fogStartInMediumMaterialIndex_inCache = UINT32_MAX;
     m_startInMediumMaterialIndex_inCache = UINT32_MAX;
@@ -586,13 +628,6 @@ namespace dxvk {
 
     // Not currently safe to cache these across frames (due to texture indices and rtx options potentially changing)
     m_preCreationSurfaceMaterialMap.clear();
-
-
-    // execute graph updates after all garbage collection is complete (to avoid updating graphs that will just be deleted)
-    // RtxOptions will still be pending, so any changes to them will apply next frame.
-    if (raytracedThisFrame){
-      m_graphManager.update(ctx);
-    }
 
     // Clear replacement material hashes before the next frame.  These are used by components, so must clear after graphManager updates.
     clearFrameReplacementMaterialHashes();
@@ -625,7 +660,7 @@ namespace dxvk {
         // Only do anything if we haven't seen this fog before.
         m_fogStates[fogHash] = input.getFogState();
 
-        MaterialData* pFogReplacement = m_pReplacer->getReplacementMaterial(fogHash);
+        std::shared_ptr<MaterialData> pFogReplacement = m_pReplacer->getReplacementMaterial(fogHash);
         if (pFogReplacement) {
           // Track this replacement material hash for hash checking
           trackReplacementMaterialHash(fogHash);
@@ -652,7 +687,7 @@ namespace dxvk {
     // Track this mesh hash for mesh hash checking
     trackMeshHash(activeReplacementHash);
 
-    std::vector<AssetReplacement>* pReplacements = m_pReplacer->getReplacementsForMesh(activeReplacementHash);
+    std::shared_ptr<const ReplacementBucket> pReplacements = m_pReplacer->getReplacementsForMesh(activeReplacementHash);
 
     // TODO (REMIX-656): Remove this once we can transition content to new hash
     if ((RtxOptions::geometryHashGenerationRule() & rules::LegacyAssetHash0) == rules::LegacyAssetHash0) {
@@ -716,12 +751,13 @@ namespace dxvk {
     const bool overrideMaterialHasParticles = overrideMaterialData != nullptr
         && overrideMaterialData->getParticleSystemDesc() != nullptr;
 
-    // The RI's prims must already be wired up for this exact replacements vector. drawReplacements
-    // re-initializes prims when activeReplacements changes (e.g. async replacement load completes
-    // after the RI was created without replacements, or hot-reload changes the replacement set).
-    // The preserve path has no equivalent reinitialization, so fall back to dynamic for that transition.
+    // The RI's prims must already be wired up for this exact replacements bucket.
+    // drawReplacements re-initializes prims when activeReplacements changes (e.g. async
+    // replacement load completes after the RI was created without replacements, hot-reload
+    // swaps the bucket, or a variant toggle changes the lookup key). The preserve path has
+    // no equivalent reinitialization, so fall back to dynamic for that transition.
     const bool activeReplacementsMatch =
-        replacementInstance->activeReplacements == pReplacements;
+        replacementInstance->activeReplacements.get() == pReplacements.get();
 
     // Terrain draws share a per-frame override OpaqueMaterialData built from the
     // TerrainBaker cascade set. Cascade images don't carry a stable identity hash,
@@ -746,6 +782,7 @@ namespace dxvk {
 
     const bool usePreservePath =
         RtxOptions::enablePreservePath() &&
+        !replacementInstance->prims.empty() &&
         replacementInstance->dirtyFlags.isClear() &&
         !RtxOptionManager::isDrawcallTranslationInvalid() &&
         !secondSubmissionThisFrame &&
@@ -821,7 +858,8 @@ namespace dxvk {
     } 
 
     // test if any direct material replacements exist
-    MaterialData* pReplacementMaterial = m_pReplacer->getReplacementMaterial(input.getMaterialData().getHash());
+    const XXH64_hash_t legacyMaterialHash = input.getMaterialData().getHash();
+    std::shared_ptr<MaterialData> pReplacementMaterial = m_pReplacer->getReplacementMaterial(legacyMaterialHash);
     if (pReplacementMaterial != nullptr) {
       // Make a copy - dont modify the replacement data.
       MaterialData renderMaterialData = *pReplacementMaterial;
@@ -927,7 +965,11 @@ namespace dxvk {
       transforms.textureTransform = Matrix4();
       transforms.texgenMode = TexGenMode::None;
 
-      newDrawCallState->overrideGeometryData(&replacement.geometry->data);
+      // RasterGeometry is a value member of MeshReplacement, not separately allocated.
+      // The aliasing ctor makes a shared_ptr<RasterGeometry> that shares the ref-count
+      // of the MeshReplacement, keeping it alive for the BlasEntry's lifetime.
+      newDrawCallState->overrideGeometryData(
+        std::shared_ptr<const RasterGeometry>(replacement.geometry, &replacement.geometry->data));
       newDrawCallState->modifyCategoryFlags() = replacement.categories.applyCategoryFlags(newDrawCallState->getCategoryFlags());
       return newDrawCallState;
     }
@@ -935,7 +977,7 @@ namespace dxvk {
     return std::nullopt;
   }
 
-  void SceneManager::drawReplacements(Rc<DxvkContext> ctx, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, MaterialData& renderMaterialData, ReplacementInstance* replacementInstance) {
+  void SceneManager::drawReplacements(Rc<DxvkContext> ctx, const DrawCallState* input, const std::shared_ptr<const ReplacementBucket>& pReplacements, MaterialData& renderMaterialData, ReplacementInstance* replacementInstance) {
     ScopedCpuProfileZone();
     if (pReplacements == nullptr) {
       assert(false && "pReplacements should never be nullptr here");
@@ -950,8 +992,9 @@ namespace dxvk {
       return replacementInstance->prims[idx].getInstance();
     };
 
-    for (size_t i = 0; i < pReplacements->size(); i++) {
-      auto& replacement = (*pReplacements)[i];
+    const std::vector<AssetReplacement>& replacements = pReplacements->replacements;
+    for (size_t i = 0; i < replacements.size(); i++) {
+      auto& replacement = replacements[i];
       RtInstance* instance = nullptr;
 
       std::optional<DrawCallState> newDrawCallState = SceneManager::buildReplacementMeshDrawCallState(*input, replacement);
@@ -971,7 +1014,7 @@ namespace dxvk {
         if (replacementInstance->root.getUntyped() == nullptr) {
           // This is the first time this replacementInstance is used, and the first mesh drawn
           //  as part of this replacementInstance, so invoke setup and set the root.
-          replacementInstance->setup(PrimInstance(instance, PrimInstance::Type::Instance), pReplacements->size(), pReplacements);
+          replacementInstance->setup(PrimInstance(instance, PrimInstance::Type::Instance), replacements.size(), pReplacements);
           instance->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, instance, PrimInstance::Type::Instance);
         } else if (replacementInstance->prims[i].getUntyped() != instance) {
           instance->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, instance, PrimInstance::Type::Instance);
@@ -979,8 +1022,8 @@ namespace dxvk {
       }
     }
 
-    processReplacementLights(input, pReplacements, replacementInstance);
-    processReplacementGraphs(ctx, input, pReplacements, replacementInstance);
+    processReplacementLights(input, pReplacements.get(), replacementInstance);
+    processReplacementGraphs(ctx, input, pReplacements.get(), replacementInstance);
 
     replacementInstance->recalculateBoundingBox(
         input->getTransformData().objectToWorld,
@@ -988,11 +1031,11 @@ namespace dxvk {
   }
   
   void SceneManager::processReplacementLights(
-      const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements,
+      const DrawCallState* input, const ReplacementBucket* pReplacements,
       ReplacementInstance* replacementInstance) {
     ScopedCpuProfileZone();
-    for (size_t i = 0; i < pReplacements->size(); i++) {
-      auto&& replacement = (*pReplacements)[i];
+    for (size_t i = 0; i < pReplacements->replacements.size(); i++) {
+      auto&& replacement = pReplacements->replacements[i];
       if (replacement.type == AssetReplacement::eLight) {
         if (replacementInstance->root.getUntyped() == nullptr) {
           Logger::err(str::format(
@@ -1025,23 +1068,23 @@ namespace dxvk {
   }
 
   void SceneManager::processReplacementGraphs(
-      Rc<DxvkContext> ctx, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements,
+      Rc<DxvkContext> ctx, const DrawCallState* input, const ReplacementBucket* pReplacements,
       ReplacementInstance* replacementInstance) {
     ScopedCpuProfileZone();
-    for (size_t i = 0; i < pReplacements->size(); i++) {
-      auto&& replacement = (*pReplacements)[i];
+    for (size_t i = 0; i < pReplacements->replacements.size(); i++) {
+      auto&& replacement = pReplacements->replacements[i];
       if (replacement.type == AssetReplacement::eGraph) {
         bool hasGraph = (replacementInstance->prims.size() > i) &&
                         (replacementInstance->prims[i].getGraph() != nullptr);
         if (!hasGraph) {
-          if (!replacement.graphState.has_value()) {
+          if (!replacement.graphState) {
             Logger::err(str::format(
                 "Graph prims missing graph state in mesh replacement.  mesh hash: ",
                 std::hex, input->getHash(RtxOptions::geometryAssetHashRule())
             ));
             break;
           }
-          GraphInstance* graphInstance = m_graphManager.addInstance(ctx, replacement.graphState.value());
+          GraphInstance* graphInstance = m_graphManager.addInstance(ctx, replacement.graphState);
           if (graphInstance) {
             graphInstance->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, graphInstance, PrimInstance::Type::Graph);
           }
@@ -1185,7 +1228,7 @@ namespace dxvk {
 
   void SceneManager::syncPreservedReplacementMeshesState(
       const DrawCallState& input,
-      const std::vector<AssetReplacement>* pReplacements,
+      const ReplacementBucket* pReplacements,
       ReplacementInstance* replacementInstance) {
     if (pReplacements == nullptr) {
       return;
@@ -1195,7 +1238,7 @@ namespace dxvk {
     // input tracks remix state. The construction matches drawReplacements() (both share
     // buildReplacementMeshDrawCallState) so dynamic and preserve paths feed identical
     // DrawCallStates into the BlasEntry.
-    for (size_t i = 0; i < pReplacements->size(); i++) {
+    for (size_t i = 0; i < pReplacements->replacements.size(); i++) {
       if (replacementInstance->prims.size() <= i) {
         break;
       }
@@ -1208,7 +1251,7 @@ namespace dxvk {
         continue;
       }
       std::optional<DrawCallState> newDrawCallState =
-          SceneManager::buildReplacementMeshDrawCallState(input, (*pReplacements)[i]);
+          SceneManager::buildReplacementMeshDrawCallState(input, pReplacements->replacements[i]);
       if (newDrawCallState.has_value()) {
         pBlas->input = *newDrawCallState;
       }
@@ -1218,7 +1261,7 @@ namespace dxvk {
   void SceneManager::preserveReplacementInstance(
       Rc<DxvkContext> ctx,
       const DrawCallState& input,
-      const std::vector<AssetReplacement>* pReplacements,
+      const std::shared_ptr<const ReplacementBucket>& pReplacements,
       ReplacementInstance* replacementInstance) {
     ScopedCpuProfileZone();
     // Refresh BlasEntry::input with this frame's draw state BEFORE dispatching preserveInstance.
@@ -1230,8 +1273,7 @@ namespace dxvk {
     // createBeams. Refreshing here keeps the dynamic and preserve paths feeding the same
     // frame's geometry into billboard / beam creation.
     if (pReplacements != nullptr) {
-      replacementInstance->activeReplacements = pReplacements;
-      syncPreservedReplacementMeshesState(input, pReplacements, replacementInstance);
+      syncPreservedReplacementMeshesState(input, pReplacements.get(), replacementInstance);
     } else if (replacementInstance->prims.size() > 0) {
       RtInstance* inst = replacementInstance->prims[0].getInstance();
       if (inst != nullptr && inst->getBlas() != nullptr) {
@@ -2015,7 +2057,7 @@ namespace dxvk {
     }
 
     const RtLight rtLight = lightData->toRtLight();
-    const std::vector<AssetReplacement>* pReplacements = m_pReplacer->getReplacementsForLight(rtLight.getInitialHash());
+    const std::shared_ptr<const ReplacementBucket> pReplacements = m_pReplacer->getReplacementsForLight(rtLight.getInitialHash());
 
     // Build identity hash from the light's stable hash + position. Used by
     // both the replacement and the toggle-off cleanup paths below; must stay
@@ -2036,11 +2078,11 @@ namespace dxvk {
       const ReplacementInstance::LookupKey lightKey { lightIdHash, lightAssetHash, kEmptyHash, kEmptyHash, lightPos, lightTransform };
       ReplacementInstance* replacementInstance = m_drawCallTracker.findOrCreateReplacementInstance(lightKey);
 
-      // Reinitialize the RI if the prim count doesn't match the replacement count.
-      // This handles the transition from unreplaced (1 prim) to replaced (N prims)
-      // when replacements finish loading asynchronously.
+      // Reinitialize if the bucket changed. Unchanged buckets keep the same address
+      // (in-place updates), so pointer inequality is sufficient. clear() re-dirties
+      // the bounding box that lightBoundingBox below depends on.
       if (replacementInstance->root.getUntyped() != nullptr &&
-          replacementInstance->prims.size() != pReplacements->size()) {
+          replacementInstance->activeReplacements.get() != pReplacements.get()) {
         replacementInstance->clear();
       }
 
@@ -2050,8 +2092,8 @@ namespace dxvk {
       // TODO(TREX-1091) to implement meshes as light replacements, replace the below loop with a call to drawReplacements.
       const bool needsBBoxUpdate = replacementInstance->boundingBoxDirty;
       AxisAlignedBoundingBox litBBox;
-      for (size_t i = 0; i < pReplacements->size(); i++) {
-        const auto& replacement = (*pReplacements)[i];
+      for (size_t i = 0; i < pReplacements->replacements.size(); i++) {
+        const auto& replacement = pReplacements->replacements[i];
         if (replacement.type == AssetReplacement::eLight && replacement.lightData.has_value()) {
           LightData replacementLight = replacement.lightData.value();
 
@@ -2089,7 +2131,7 @@ namespace dxvk {
             RtLight* newLight = m_lightManager.createExternallyTrackedLight(rtReplacementLight);
             if (newLight != nullptr) {
               if (replacementInstance->prims.empty()) {
-                replacementInstance->setup(PrimInstance(newLight, PrimInstance::Type::Light), pReplacements->size(), pReplacements);
+                replacementInstance->setup(PrimInstance(newLight, PrimInstance::Type::Light), pReplacements->replacements.size(), pReplacements);
               }
               newLight->getPrimInstanceOwner().setReplacementInstance(replacementInstance, i, newLight, PrimInstance::Type::Light);
               if (replacementInstance->root.getUntyped() == nullptr) {
@@ -2494,7 +2536,8 @@ namespace dxvk {
         std::make_shared<const std::vector<Matrix4>>(std::move(state.gpuInstancingTransforms));
     }
 
-    const auto& submeshes = m_pReplacer->accessExternalMesh(state.mesh);
+    const auto submeshesRef = m_pReplacer->accessExternalMesh(state.mesh);
+    const auto& submeshes = *submeshesRef;
 
     const XXH64_hash_t identityHash = state.computeExternalDrawIdentityHash();
     const XXH64_hash_t spatialMapHash = spatialMapHashForExternalDrawMesh(state.mesh);
@@ -2509,7 +2552,12 @@ namespace dxvk {
     AxisAlignedBoundingBox geometryBBox;
 
     for (size_t i = 0; i < submeshes.size(); i++) {
-      state.drawCall.overrideGeometryData(&submeshes[i]);
+      // submeshes[i] is an element of the vector owned by submeshesRef, not separately
+      // allocated. The aliasing ctor shares submeshesRef's ref-count while pointing at
+      // the element, keeping the vector alive if destroyExternalMesh erases the entry
+      // while a BlasEntry still holds this pointer.
+      state.drawCall.overrideGeometryData(
+        std::shared_ptr<const RasterGeometry>(submeshesRef, &submeshes[i]));
       state.drawCall.overrideCullMode(state.doubleSided ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT);
 
       const MaterialData* material = m_pReplacer->accessExternalMaterial(submeshes[i].externalMaterial);
