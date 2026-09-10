@@ -37,9 +37,6 @@
     <dependency name="nrd_arm64" linkPath="external/nrd_arm64">
         <package name="nrd_arm64" version="1" />
     </dependency>
-    <dependency name="nvapi_arm64" linkPath="external/nvapi_arm64">
-        <package name="nvapi_arm64" version="1" />
-    </dependency>
     <dependency name="reflex_arm64" linkPath="external/reflex_arm64">
         <package name="reflex_arm64" version="1" />
     </dependency>

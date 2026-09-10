@@ -170,3 +170,21 @@ dlss_dep = declare_dependency(
   dependencies : [ dlss_lib ],
   include_directories : [ dlss_include_dir ]
 )
+
+# ============================================================================
+# NVAPI
+# ============================================================================
+nvapi_include_paths = include_directories('../submodules/nvapi')
+
+if dxvk_is_woa
+  nvapi_lib_path = join_paths(global_src_root_norm, 'submodules/nvapi/aarch64')
+  nvapi_lib = dxvk_compiler.find_library('nvapia64', dirs : nvapi_lib_path)
+else
+  nvapi_lib_path = join_paths(global_src_root_norm, 'submodules/nvapi/amd64')
+  nvapi_lib = dxvk_compiler.find_library('nvapi64', dirs : nvapi_lib_path)
+endif
+
+nvapi_dep = declare_dependency(
+  dependencies : [ nvapi_lib ],
+  include_directories : nvapi_include_paths
+)
