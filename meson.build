@@ -521,7 +521,7 @@ add_project_arguments('-DVK_ENABLE_BETA_EXTENSIONS', language : 'cpp')
 
 # External dependencies configuration
 # Configures Sentry, USD include/lib paths, MDL includes and the RTX IO dependency.
-# (NVAPI, Reflex, DLSS, DLFG, NRD, NRC and XeSS are configured below,
+# (NVAPI, Reflex, NRD, NRC and XeSS are configured below,
 #  as they carry Windows-on-Arm specific handling.)
 subdir('external-build')
 
@@ -581,22 +581,6 @@ else
 endif
 external_dll_paths += reflex_lib_path
 reflex_lib = dxvk_compiler.find_library('NvLowLatencyVk', dirs : reflex_lib_path)
-
-# this is repeated below, since we overwrite dlss_lib_path in src/dxvk/meson.build for some reason
-if dxvk_is_woa
-  dlss_root_path = 'external/ngx_sdk_dldn_arm64'
-  dlfg_root_path = 'external/ngx_sdk_dlfg_arm64'
-  dlss_lib_path = join_paths(global_src_root_norm, dlss_root_path, 'lib/Windows_arm64/rel/')
-  dlfg_lib_path = join_paths(global_src_root_norm, dlfg_root_path, 'lib/Windows_arm64/rel/')
-else
-  dlss_root_path = 'external/ngx_sdk_dldn'
-  dlfg_root_path = 'external/ngx_sdk_dlfg'
-  dlss_lib_path = join_paths(global_src_root_norm, dlss_root_path, 'lib/Windows_x86_64/rel/')
-  dlfg_lib_path = join_paths(global_src_root_norm, dlfg_root_path, 'lib/Windows_x86_64/rel/')
-endif
-
-external_dll_paths += dlss_lib_path
-external_dll_paths += dlfg_lib_path
 
 nrc_dll_name = 'NRC_Vulkan.dll'
 if dxvk_is_woa
@@ -671,19 +655,6 @@ if dxvk_is_ninja or dxvk_is_woa_ec
   fs.read('vsgen/testcase_project.vcxproj.user.template')
   fs.read('vsgen/testcase_project.args.json.template')
   fs.read('vsgen/vsutil.py')
-
-  # ... and now we do this again, because src/dxvk/meson.build overwrites this for some reason
-  if dxvk_is_woa
-    dlss_root_path = 'external/ngx_sdk_dldn_arm64'
-    dlss_lib_path = join_paths(global_src_root_norm, dlss_root_path, 'lib/Windows_arm64/rel/')
-    dlfg_root_path = 'external/ngx_sdk_dlfg_arm64'
-    dlfg_lib_path = join_paths(global_src_root_norm, dlfg_root_path, 'lib/Windows_arm64/rel/')
-  else
-    dlss_root_path = 'external/ngx_sdk_dldn'
-    dlss_lib_path = join_paths(global_src_root_norm, dlss_root_path, 'lib/Windows_x86_64/rel/')
-    dlfg_root_path = 'external/ngx_sdk_dlfg'
-    dlfg_lib_path = join_paths(global_src_root_norm, dlfg_root_path, 'lib/Windows_x86_64/rel/')
-  endif
 
   # meson seems to force / as the path separator in custom_target
   # ... except in the case where the path separators are inconsistent, in which case it does nothing
@@ -815,10 +786,9 @@ if dxvk_is_ninja or dxvk_is_woa_ec
       install_data(join_paths(xess_dll_path, 'libxess.dll'), install_dir : output_path, install_tag: target_suffix)
     endif
 
-    install_data(join_paths(dlss_lib_path, 'nvngx_dlss.dll'), install_dir : output_path, install_tag: target_suffix) 
-    install_data(join_paths(dlss_lib_path, 'nvngx_dlssd.dll'), install_dir : output_path, install_tag: target_suffix) 
-
-    install_data(join_paths(dlfg_lib_path, 'nvngx_dlssg.dll'), install_dir : output_path, install_tag: target_suffix) 
+    install_data(join_paths(dlss_bin_path, 'nvngx_dlss.dll'), install_dir : output_path, install_tag: target_suffix) 
+    install_data(join_paths(dlss_bin_path, 'nvngx_dlssd.dll'), install_dir : output_path, install_tag: target_suffix) 
+    install_data(join_paths(dlss_bin_path, 'nvngx_dlssg.dll'), install_dir : output_path, install_tag: target_suffix) 
 
     install_data(join_paths(reflex_lib_path, 'NvLowLatencyVk.dll'), install_dir : output_path, install_tag: target_suffix) 
 

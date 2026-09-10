@@ -403,7 +403,7 @@ namespace dxvk {
     // Update our requested profile
     mProfile = profile;
 
-    NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality(mActualProfile);
+    NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality<NVSDK_NGX_PerfQuality_Value>(mActualProfile);
 
     if (!m_rayReconstructionContext) {
       m_rayReconstructionContext = m_device->getCommon()->metaNGXContext().createRayReconstructionContext();
@@ -427,7 +427,7 @@ namespace dxvk {
       m_rayReconstructionContext = m_device->getCommon()->metaNGXContext().createRayReconstructionContext();
     }
 
-    NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality(mActualProfile);
+    NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality<NVSDK_NGX_PerfQuality_Value>(mActualProfile);
 
     if (m_rayReconstructionContext) {
 

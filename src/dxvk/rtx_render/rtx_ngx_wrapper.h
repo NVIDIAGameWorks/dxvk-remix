@@ -21,13 +21,13 @@
 */
 #pragma once
 
-// this gets included from other modules, so use full path to external --- ugly!
-#ifdef _M_X64
-#include "../../../external/ngx_sdk_dldn/include/nvsdk_ngx.h"
-#include "../../../external/ngx_sdk_dldn/include/nvsdk_ngx_defs_dlssd.h"
-#else
-#include "../../../external/ngx_sdk_dldn_arm64/include/nvsdk_ngx.h"
-#include "../../../external/ngx_sdk_dldn_arm64/include/nvsdk_ngx_defs_dlssd.h"
+// Note: because this header might be included in another module which does not have access
+// to the DLSS SDK do not include any SDK headers unconditionally.
+#ifdef NVSDK_NGX_H
+// Now when we have main NGX header we can include the feature headers
+#include <nvsdk_ngx_defs.h>
+#include <nvsdk_ngx_defs_dlssd.h>
+#include <nvsdk_ngx_defs_dlssg.h>
 #endif
 #include <memory>
 #include "../util/rc/util_rc_ptr.h"
@@ -143,7 +143,8 @@ namespace dxvk {
     DxvkDevice* m_device = nullptr;
     NVSDK_NGX_Parameter* m_parameters = nullptr;
   };
-
+// Note: enabling features only when we have relevant DLSS SDK headers available.
+#ifdef NVSDK_NGX_DEFS_H
   class NGXDLSSContext final : public NGXFeatureContext {
   public:
     struct OptimalSettings {
@@ -221,7 +222,8 @@ namespace dxvk {
     Matrix4 m_worldToViewMatrix;
     Matrix4 m_viewToProjectionMatrix;
   };
-
+#endif // NVSDK_NGX_DEFS_H
+#ifdef NVSDK_NGX_DEFS_DLSSD_H
   class NGXRayReconstructionContext final : public NGXFeatureContext {
   public:
     struct QuerySettings {
@@ -309,7 +311,8 @@ namespace dxvk {
     Matrix4 m_worldToViewMatrix;
     Matrix4 m_viewToProjectionMatrix;
   };
-
+#endif // NVSDK_NGX_DEFS_DLSSD_H
+#ifdef NVSDK_NGX_DEFS_DLSSG_H
   class NGXDLFGContext final : public NGXFeatureContext {
   public:
     typedef enum {
@@ -355,4 +358,5 @@ namespace dxvk {
   private:
     NVSDK_NGX_Handle* m_feature = nullptr;
   };
+#endif // NVSDK_NGX_DEFS_DLSSG_H
 }

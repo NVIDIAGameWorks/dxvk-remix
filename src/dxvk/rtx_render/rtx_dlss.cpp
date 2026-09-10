@@ -76,6 +76,7 @@ namespace dxvk {
     }
   }
 
+  template<>
   NVSDK_NGX_PerfQuality_Value DxvkDLSS::profileToQuality(DLSSProfile profile) {
     NVSDK_NGX_PerfQuality_Value perfQuality = NVSDK_NGX_PerfQuality_Value_Balanced;
     switch (profile)
@@ -151,7 +152,7 @@ namespace dxvk {
     // Update our requested profile
     mProfile = profile;
 
-    const NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality(mActualProfile);
+    const NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality<NVSDK_NGX_PerfQuality_Value>(mActualProfile);
     if (!m_dlssContext) {
       m_dlssContext = m_device->getCommon()->metaNGXContext().createDLSSContext();
     }
@@ -337,7 +338,7 @@ namespace dxvk {
 
     // Note: Use "actual profile" here not the set profile as this value should have any auto profiles resolved to an actual DLSS profile which is
     // required for initializing DLSS.
-    const NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality(mActualProfile);
+    const NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality<NVSDK_NGX_PerfQuality_Value>(mActualProfile);
 
     // DLSSPreset enum values match the NGX preset enum, so a direct cast is valid.
     // Fall back to the default preset for any unexpected/out-of-range value.

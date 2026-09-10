@@ -37,6 +37,8 @@
 #include <pxr/usd/usd/prim.h>
 #include "../../lssusd/usd_include_end.h"
 
+#include <nvsdk_ngx.h>
+
 #include "dxvk_device.h"
 #include "dxvk_objects.h"
 #include "rtx_render/rtx_options.h"
