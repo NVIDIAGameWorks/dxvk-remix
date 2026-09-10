@@ -25,13 +25,6 @@
 #include "rtx_resources.h"
 #include "dxvk_image.h"
 
-// this gets included from other modules, so use full path to external --- ugly!
-#ifdef _M_X64
-#include "../../../external/ngx_sdk_dldn/include/nvsdk_ngx.h"
-#else
-#include "../../../external/ngx_sdk_dldn_arm64/include/nvsdk_ngx.h"
-#endif
-
 namespace dxvk {
 
   class NGXDLSSContext;
@@ -76,7 +69,9 @@ namespace dxvk {
 
     explicit DxvkDLSS(DxvkDevice* device);
     ~DxvkDLSS();
-    static NVSDK_NGX_PerfQuality_Value profileToQuality(DLSSProfile profile);
+    // Note: using template to make this compilable when DLSS SDK types are not available.
+    template<typename NVSDK_NGX_T>
+    static NVSDK_NGX_T profileToQuality(DLSSProfile profile);
 
     bool supportsDLSS() const;
 

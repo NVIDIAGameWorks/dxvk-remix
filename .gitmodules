@@ -46,3 +46,6 @@
 [submodule "include/MathLib/External/sse2neon"]
 	path = include/MathLib/External/sse2neon
 	url = https://github.com/DLTcollab/sse2neon.git
+[submodule "submodules/dlss"]
+	path = submodules/dlss
+	url = https://github.com/NVIDIA/DLSS.git

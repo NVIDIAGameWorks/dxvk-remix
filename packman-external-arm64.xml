@@ -31,12 +31,6 @@
     <dependency name="aftermath" linkPath="external/aftermath">
         <package name="rtx-remix-aftermath" version="2026.3.0.26197" />
     </dependency>
-    <dependency name="ngx_sdk_dlfg_arm64" linkPath="external/ngx_sdk_dlfg_arm64">
-        <package name="ngx_sdk_dlfg_arm64" version="1" />
-    </dependency>
-    <dependency name="ngx_sdk_dldn_arm64" linkPath="external/ngx_sdk_dldn_arm64">
-        <package name="ngx_sdk_dldn_arm64" version="1" />
-    </dependency>
     <dependency name="nrc_arm64" linkPath="external/nrc_arm64">
         <package name="nrc_arm64" version="2" />
     </dependency>

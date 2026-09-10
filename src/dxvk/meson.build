@@ -445,26 +445,6 @@ nrd_dep = declare_dependency(
   include_directories : nrd_include_dir
 )
 
-target_dlss_lib_path = 'lib/Windows_x86_64/x64'
-if dxvk_is_woa
-  target_dlss_lib_path = 'lib/Windows_arm64/arm64'
-endif
-
-# Note: Include directory paths must be relative paths due to a limitation in Meson (currently at least)
-dlss_include_dir = include_directories(join_paths('../../', dlss_root_path, 'include'))
-dlss_lib_path = join_paths(global_src_root_norm, dlss_root_path, target_dlss_lib_path)
-dlfg_include_dir = include_directories(join_paths('../../', dlfg_root_path, 'include'))
-cc = meson.get_compiler('c')
-dlss_lib_name = 'nvsdk_ngx_d'
-if get_option('buildtype') == 'debug'
-  dlss_lib_name = 'nvsdk_ngx_d_dbg'
-endif
-dlss_lib = cc.find_library(dlss_lib_name, dirs : dlss_lib_path)
-dlss_dep = declare_dependency(
-  dependencies : [ dlss_lib ],
-  include_directories : [ dlss_include_dir, dlfg_include_dir ]
-)
-
 if dxvk_is_woa
   nrc_dll_path = join_paths(meson.global_source_root(), 'external/nrc_arm64/bin/')
   nrc_lib_path = join_paths(meson.global_source_root(), 'external/nrc_arm64/lib/')

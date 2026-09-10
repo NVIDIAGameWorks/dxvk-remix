@@ -144,3 +144,29 @@ aftermath_dep = declare_dependency(
   dependencies : [ aftermath_lib ],
   include_directories : aftermath_include_path
 )
+
+# ============================================================================
+# DLSS SDK
+# ============================================================================
+dlss_root_path = 'submodules/dlss'
+if dxvk_is_woa
+  dlss_lib_path = join_paths(global_src_root_norm, dlss_root_path, 'lib/Windows_aarch64/')
+  dlss_bin_path = join_paths(global_src_root_norm, dlss_root_path, 'lib/Windows_aarch64/rel/')
+else
+  dlss_lib_path = join_paths(global_src_root_norm, dlss_root_path, 'lib/Windows_x86_64/x64/')
+  dlss_bin_path = join_paths(global_src_root_norm, dlss_root_path, 'lib/Windows_x86_64/rel/')
+endif
+
+external_dll_paths += dlss_lib_path
+
+dlss_include_dir = include_directories(join_paths('..', dlss_root_path, 'include'))
+cc = meson.get_compiler('c')
+dlss_lib_name = 'nvsdk_ngx_d'
+if get_option('buildtype') == 'debug'
+  dlss_lib_name = 'nvsdk_ngx_d_dbg'
+endif
+dlss_lib = cc.find_library(dlss_lib_name, dirs : dlss_lib_path)
+dlss_dep = declare_dependency(
+  dependencies : [ dlss_lib ],
+  include_directories : [ dlss_include_dir ]
+)
