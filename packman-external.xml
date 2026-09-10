@@ -1,6 +1,6 @@
 <project toolsVersion="7.20">
     <dependency name="aftermath" linkPath="external/aftermath">
-        <package name="rtx-remix-aftermath" version="1" />
+        <package name="rtx-remix-aftermath" version="2026.3.0.26197" />
     </dependency>
     <dependency name="fonts" linkPath="external/fonts">
         <package name="rtx-remix-fonts" version="2" />

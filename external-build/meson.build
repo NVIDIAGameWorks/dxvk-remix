@@ -3,7 +3,7 @@
 # that are not managed by the version control system (external/)
 # and third-party submodules (submodules/).
 #
-# NOTE: NVAPI, Reflex, Aftermath, DLSS, DLFG, NRD, NRC and XeSS are configured
+# NOTE: NVAPI, Reflex, DLSS, DLFG, NRD, NRC and XeSS are configured
 # directly in the root meson.build, as they carry Windows-on-Arm (dxvk_is_woa)
 # specific handling that selects between x64 and arm64 binaries.
 
@@ -129,3 +129,18 @@ endif
 # Materials and Shaders
 # ============================================================================
 mdl_include_dir = include_directories('../external/omni_core_materials')
+
+# ============================================================================
+# Aftermath
+# ============================================================================
+aftermath_platform = dxvk_is_woa ? 'arm64' : 'x64'
+aftermath_lib_path = join_paths(global_src_root_norm, 'external/aftermath/lib/' + aftermath_platform)
+external_dll_paths += aftermath_lib_path
+aftermath_lib = dxvk_compiler.find_library('GFSDK_Aftermath_Lib.' + aftermath_platform, dirs : aftermath_lib_path)
+aftermath_include_path = include_directories('../external/aftermath/include')
+aftermath_binary = join_paths(aftermath_lib_path, 'GFSDK_Aftermath_Lib.' + aftermath_platform + '.dll')
+
+aftermath_dep = declare_dependency(
+  dependencies : [ aftermath_lib ],
+  include_directories : aftermath_include_path
+)

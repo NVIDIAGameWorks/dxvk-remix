@@ -366,12 +366,12 @@ namespace sentry {
     }
 
     // Readability guard, not a Sentry limit: its event size cap is far larger than any shader list.
-    static constexpr size_t kMaxReportedActiveShaders = 64;
+    static constexpr size_t kMaxReportedObjects = 64;
 
     // Holds the parts of an Aftermath crash that are too structured to search on. The scalar,
     // searchable parts are set as tags by the caller instead.
     void setAftermathContext(sentry_scope_t* scope, const AftermathCrashInfo& crashInfo) {
-      if (crashInfo.activeShaders.empty() && !crashInfo.hasPageFaultResourceInfo
+      if (crashInfo.activeShaders.empty() && crashInfo.pageFaultResourceInfo.empty()
           && crashInfo.pageFaultAccessType.empty()
           && crashInfo.unregisteredShaderCount == 0 && crashInfo.driverInternalShaderCount == 0) {
         return;
@@ -387,7 +387,7 @@ namespace sentry {
       }
 
       if (!crashInfo.activeShaders.empty()) {
-        const size_t reportedCount = std::min(crashInfo.activeShaders.size(), kMaxReportedActiveShaders);
+        const size_t reportedCount = std::min(crashInfo.activeShaders.size(), kMaxReportedObjects);
         sentry_value_t list = sentry_value_new_list();
         for (size_t i = 0; i < reportedCount; ++i) {
           const auto& shader = crashInfo.activeShaders[i];
@@ -412,24 +412,29 @@ namespace sentry {
             sentry_value_new_int32(static_cast<int32_t>(crashInfo.driverInternalShaderCount)));
       }
 
-      if (crashInfo.hasPageFaultResourceInfo) {
-        const auto& res = crashInfo.pageFaultResourceInfo;
-        sentry_value_t resourceValue = sentry_value_new_object();
-        sentry_value_set_by_key(resourceValue, "gpu_va", sentry_value_new_string(str::format("0x", std::hex, res.gpuVa).c_str()));
-        sentry_value_set_by_key(resourceValue, "size", sentry_value_new_string(str::formatBytes(static_cast<size_t>(res.size)).c_str()));
-        sentry_value_set_by_key(resourceValue, "width", sentry_value_new_int32(static_cast<int32_t>(res.width)));
-        sentry_value_set_by_key(resourceValue, "height", sentry_value_new_int32(static_cast<int32_t>(res.height)));
-        sentry_value_set_by_key(resourceValue, "depth", sentry_value_new_int32(static_cast<int32_t>(res.depth)));
-        sentry_value_set_by_key(resourceValue, "mip_levels", sentry_value_new_int32(static_cast<int32_t>(res.mipLevels)));
-        sentry_value_set_by_key(resourceValue, "vk_format", sentry_value_new_int32(static_cast<int32_t>(res.format)));
-        sentry_value_set_by_key(resourceValue, "is_buffer_heap", sentry_value_new_bool(res.isBufferHeap));
-        sentry_value_set_by_key(resourceValue, "is_static_texture_heap", sentry_value_new_bool(res.isStaticTextureHeap));
-        sentry_value_set_by_key(resourceValue, "is_render_target_or_depth_stencil_heap", sentry_value_new_bool(res.isRenderTargetOrDepthStencilViewHeap));
-        sentry_value_set_by_key(resourceValue, "is_placed_resource", sentry_value_new_bool(res.isPlacedResource));
-        sentry_value_set_by_key(resourceValue, "was_destroyed", sentry_value_new_bool(res.wasDestroyed));
-        // Sentry has no unsigned integer type, and int32 goes negative past 2^31.
-        sentry_value_set_by_key(resourceValue, "create_destroy_tick_count", sentry_value_new_double(static_cast<double>(res.createDestroyTickCount)));
-        sentry_value_set_by_key(context, "page_fault_resource", resourceValue);
+      if (!crashInfo.pageFaultResourceInfo.empty()) {
+        const size_t reportedCount = std::min(crashInfo.pageFaultResourceInfo.size(), kMaxReportedObjects);
+        sentry_value_t resList = sentry_value_new_list();
+        for (size_t i = 0; i < reportedCount; ++i) {
+          const auto& res = crashInfo.pageFaultResourceInfo[i];
+          sentry_value_t resourceValue = sentry_value_new_object();
+          sentry_value_set_by_key(resourceValue, "gpu_va", sentry_value_new_string(str::format("0x", std::hex, res.gpuVa).c_str()));
+          sentry_value_set_by_key(resourceValue, "size", sentry_value_new_string(str::formatBytes(static_cast<size_t>(res.size)).c_str()));
+          sentry_value_set_by_key(resourceValue, "width", sentry_value_new_int32(static_cast<int32_t>(res.width)));
+          sentry_value_set_by_key(resourceValue, "height", sentry_value_new_int32(static_cast<int32_t>(res.height)));
+          sentry_value_set_by_key(resourceValue, "depth", sentry_value_new_int32(static_cast<int32_t>(res.depth)));
+          sentry_value_set_by_key(resourceValue, "mip_levels", sentry_value_new_int32(static_cast<int32_t>(res.mipLevels)));
+          sentry_value_set_by_key(resourceValue, "vk_format", sentry_value_new_int32(static_cast<int32_t>(res.format)));
+          sentry_value_set_by_key(resourceValue, "is_buffer_heap", sentry_value_new_bool(res.isBufferHeap));
+          sentry_value_set_by_key(resourceValue, "is_static_texture_heap", sentry_value_new_bool(res.isStaticTextureHeap));
+          sentry_value_set_by_key(resourceValue, "is_render_target_or_depth_stencil_heap", sentry_value_new_bool(res.isRenderTargetOrDepthStencilViewHeap));
+          sentry_value_set_by_key(resourceValue, "is_placed_resource", sentry_value_new_bool(res.isPlacedResource));
+          sentry_value_set_by_key(resourceValue, "was_destroyed", sentry_value_new_bool(res.wasDestroyed));
+          // Sentry has no unsigned integer type, and int32 goes negative past 2^31.
+          sentry_value_set_by_key(resourceValue, "create_destroy_tick_count", sentry_value_new_double(static_cast<double>(res.createDestroyTickCount)));
+          sentry_value_append(resList, resourceValue);
+        }
+        sentry_value_set_by_key(context, "page_fault_resources", resList);
       }
 
       sentry_scope_set_context(scope, "aftermath", context);
@@ -464,8 +469,15 @@ namespace sentry {
         sentry_scope_set_tag(scope, "gpu_crash_fault_type", crashInfo.pageFaultType.c_str());
         sentry_scope_set_tag(scope, "gpu_crash_fault_engine", crashInfo.pageFaultEngine.c_str());
         sentry_scope_set_tag(scope, "gpu_crash_fault_client", crashInfo.pageFaultClient.c_str());
-        if (crashInfo.hasPageFaultResourceInfo) {
-          sentry_scope_set_tag(scope, "gpu_crash_resource_destroyed", crashInfo.pageFaultResourceInfo.wasDestroyed ? "true" : "false");
+        if (!crashInfo.pageFaultResourceInfo.empty()) {
+          bool wasDestroyed = false;
+          for (const auto& res : crashInfo.pageFaultResourceInfo) {
+            if (res.wasDestroyed) {
+              wasDestroyed = true;
+              break;
+            }
+          }
+          sentry_scope_set_tag(scope, "gpu_crash_any_resource_destroyed", wasDestroyed ? "true" : "false");
         }
       }
       setAftermathContext(scope, crashInfo);
