@@ -66,8 +66,7 @@ namespace dxvk {
     std::string pageFaultEngine;     // e.g. "graphics", "copy engine"
     std::string pageFaultClient;     // hardware unit, e.g. "texture processing cluster"
     uint64_t pageFaultingGpuVA = 0;
-    bool hasPageFaultResourceInfo = false;
-    AftermathPageFaultResourceInfo pageFaultResourceInfo;
+    std::vector<AftermathPageFaultResourceInfo> pageFaultResourceInfo;
 
     // Deduplicated, in Aftermath's own order, which carries no meaning. GPU work is pipelined, so
     // most of these are unrelated to the crash.

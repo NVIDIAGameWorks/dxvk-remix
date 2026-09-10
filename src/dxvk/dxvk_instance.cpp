@@ -362,9 +362,9 @@ namespace dxvk {
                     " at 0x", std::hex, crashInfo.pageFaultingGpuVA, std::dec,
                     " from ", crashInfo.pageFaultEngine, "/", crashInfo.pageFaultClient),
       "), writing dump to: ", dumpFilename));
-    if (crashInfo.hasPageFaultResourceInfo) {
-      const auto& res = crashInfo.pageFaultResourceInfo;
-      Logger::err(str::format("  faulted resource: base 0x", std::hex, res.gpuVa, std::dec,
+    for (size_t n = 0; n < crashInfo.pageFaultResourceInfo.size(); n++) {
+      const auto& res = crashInfo.pageFaultResourceInfo[n];
+      Logger::err(str::format("  faulted resource ", n, " : base 0x", std::hex, res.gpuVa, std::dec,
         ", ", str::formatBytes(static_cast<size_t>(res.size)),
         res.wasDestroyed ? " (already destroyed)" : ""));
     }
@@ -413,9 +413,12 @@ namespace dxvk {
     }
   }
 
-  void aftermathMarkerCallback(const void* pMarker, void* pUserData, void** resolvedMarkerData, uint32_t* markerSize) {
-    *resolvedMarkerData = (void*)pMarker;
-    *markerSize = strlen((const char*) pMarker);
+  void aftermathMarkerCallback(const void* pMarker, uint32_t markerDataSize, void* pUserData, PFN_GFSDK_Aftermath_ResolveMarker resolveMarker) {
+    if (pMarker == nullptr || markerDataSize != 0) {
+      return;
+    }
+
+    resolveMarker(pMarker, strlen((const char*)pMarker));
   }
 
   DxvkInstance::DxvkInstance() {

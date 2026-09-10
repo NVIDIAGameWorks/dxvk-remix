@@ -28,8 +28,8 @@
     <dependency name="usd_release" linkPath="external/usd_stock_arm64/release">
       <package name="open_usd" version="25.11+265538d9-windows-aarch64-release-nopython"/>
     </dependency>
-    <dependency name="aftermath_arm64" linkPath="external/aftermath_arm64">
-        <package name="aftermath_arm64" version="1" />
+    <dependency name="aftermath" linkPath="external/aftermath">
+        <package name="rtx-remix-aftermath" version="2026.3.0.26197" />
     </dependency>
     <dependency name="ngx_sdk_dlfg_arm64" linkPath="external/ngx_sdk_dlfg_arm64">
         <package name="ngx_sdk_dlfg_arm64" version="1" />

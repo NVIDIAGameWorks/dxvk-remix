@@ -216,23 +216,32 @@ namespace dxvk {
           info.pageFaultEngine = describeAftermathEngine(pageFaultInfo.engine);
           info.pageFaultClient = describeAftermathClient(pageFaultInfo.client);
           info.pageFaultingGpuVA = pageFaultInfo.faultingGpuVA;
-          info.hasPageFaultResourceInfo = pageFaultInfo.bHasResourceInfo;
-          if (info.hasPageFaultResourceInfo) {
-            const auto& res = pageFaultInfo.resourceInfo;
-            auto& dst = info.pageFaultResourceInfo;
-            dst.gpuVa = res.gpuVa;
-            dst.size = res.size;
-            dst.width = res.width;
-            dst.height = res.height;
-            dst.depth = res.depth;
-            dst.mipLevels = res.mipLevels;
-            dst.format = res.format;
-            dst.isBufferHeap = res.bIsBufferHeap;
-            dst.isStaticTextureHeap = res.bIsStaticTextureHeap;
-            dst.isRenderTargetOrDepthStencilViewHeap = res.bIsRenderTargetOrDepthStencilViewHeap;
-            dst.isPlacedResource = res.bPlacedResource;
-            dst.wasDestroyed = res.bWasDestroyed;
-            dst.createDestroyTickCount = res.createDestroyTickCount;
+          if (pageFaultInfo.resourceInfoCount > 0) {
+            std::vector<GFSDK_Aftermath_GpuCrashDump_ResourceInfo> resInfo(pageFaultInfo.resourceInfoCount);
+            auto result = GFSDK_Aftermath_GpuCrashDump_GetPageFaultResourceInfo(decoder,
+                pageFaultInfo.resourceInfoCount, resInfo.data());
+
+            if (GFSDK_Aftermath_SUCCEED(result) && result != GFSDK_Aftermath_Result_NotAvailable) {
+              info.pageFaultResourceInfo.resize(pageFaultInfo.resourceInfoCount);
+
+              for (uint32_t n = 0; n < pageFaultInfo.resourceInfoCount; n++) {
+                const auto& res = resInfo[n];
+                auto& dst = info.pageFaultResourceInfo[n];
+                dst.gpuVa = res.gpuVa;
+                dst.size = res.size;
+                dst.width = res.width;
+                dst.height = res.height;
+                dst.depth = res.depth;
+                dst.mipLevels = res.mipLevels;
+                dst.format = res.format;
+                dst.isBufferHeap = res.bIsBufferHeap;
+                dst.isStaticTextureHeap = res.bIsStaticTextureHeap;
+                dst.isRenderTargetOrDepthStencilViewHeap = res.bIsRenderTargetOrDepthStencilViewHeap;
+                dst.isPlacedResource = res.bPlacedResource;
+                dst.wasDestroyed = res.bWasDestroyed;
+                dst.createDestroyTickCount = res.createDestroyTickCount;
+              }
+            }
           }
         }
       }

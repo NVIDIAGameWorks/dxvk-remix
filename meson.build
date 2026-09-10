@@ -521,7 +521,7 @@ add_project_arguments('-DVK_ENABLE_BETA_EXTENSIONS', language : 'cpp')
 
 # External dependencies configuration
 # Configures Sentry, USD include/lib paths, MDL includes and the RTX IO dependency.
-# (NVAPI, Reflex, Aftermath, DLSS, DLFG, NRD, NRC and XeSS are configured below,
+# (NVAPI, Reflex, DLSS, DLFG, NRD, NRC and XeSS are configured below,
 #  as they carry Windows-on-Arm specific handling.)
 subdir('external-build')
 
@@ -582,18 +582,6 @@ endif
 external_dll_paths += reflex_lib_path
 reflex_lib = dxvk_compiler.find_library('NvLowLatencyVk', dirs : reflex_lib_path)
 
-if dxvk_is_woa
-  aftermath_lib_path = join_paths(global_src_root_norm, 'external/aftermath_arm64/lib/arm64/')
-  external_dll_paths += aftermath_lib_path
-  aftermath_lib = dxvk_compiler.find_library('GFSDK_Aftermath_Lib.arm64', dirs : aftermath_lib_path)
-  aftermath_include_path = include_directories( 'external/aftermath_arm64/include')
-else
-  aftermath_lib_path = join_paths(global_src_root_norm, 'external/aftermath/lib/x64/')
-  external_dll_paths += aftermath_lib_path
-  aftermath_lib = dxvk_compiler.find_library('GFSDK_Aftermath_Lib.x64', dirs : aftermath_lib_path)
-  aftermath_include_path = include_directories( 'external/aftermath/include')
-endif
-
 # this is repeated below, since we overwrite dlss_lib_path in src/dxvk/meson.build for some reason
 if dxvk_is_woa
   dlss_root_path = 'external/ngx_sdk_dldn_arm64'
@@ -635,11 +623,6 @@ reflex_dep = declare_dependency(
   dependencies : [ reflex_lib ],
   include_directories : reflex_include_path
 )
-
-aftermath_dep = declare_dependency(
-    dependencies : [ aftermath_lib ],
-    include_directories : aftermath_include_path
-  )
 
 nvapi_dep = declare_dependency(
     dependencies : [ nvapi_lib ],
@@ -839,11 +822,7 @@ if dxvk_is_ninja or dxvk_is_woa_ec
 
     install_data(join_paths(reflex_lib_path, 'NvLowLatencyVk.dll'), install_dir : output_path, install_tag: target_suffix) 
 
-    if dxvk_is_woa
-      install_data(join_paths(aftermath_lib_path, 'GFSDK_Aftermath_Lib.arm64.dll'), install_dir : output_path, install_tag: target_suffix) 
-    else
-      install_data(join_paths(aftermath_lib_path, 'GFSDK_Aftermath_Lib.x64.dll'), install_dir : output_path, install_tag: target_suffix)
-    endif
+    install_data(aftermath_binary, install_dir : output_path, install_tag: target_suffix)
 
     if enable_rtxio == true
       install_data(join_paths(rtxio_bin_path, 'rtxio.dll'), install_dir : output_path, install_tag: target_suffix)
