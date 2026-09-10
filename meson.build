@@ -521,23 +521,13 @@ add_project_arguments('-DVK_ENABLE_BETA_EXTENSIONS', language : 'cpp')
 
 # External dependencies configuration
 # Configures Sentry, USD include/lib paths, MDL includes and the RTX IO dependency.
-# (NVAPI, Reflex, NRD, NRC and XeSS are configured below,
-#  as they carry Windows-on-Arm specific handling.)
+# (Reflex, NRD, NRC and XeSS are configured below)
 subdir('external-build')
 
 # This will be populated by the usd plugin builder
 usd_plugins = []
 usd_plugin_deps = []
 usd_plugin_delay_load_args = []
-
-nvapi_include_paths = include_directories('submodules/nvapi')
-if dxvk_is_woa
-  nvapi_lib_path = join_paths(global_src_root_norm, 'external/nvapi_arm64/arm64')
-  nvapi_lib = dxvk_compiler.find_library('nvapia64', dirs : nvapi_lib_path)
-else
-  nvapi_lib_path = join_paths(global_src_root_norm, 'submodules/nvapi/amd64')
-  nvapi_lib = dxvk_compiler.find_library('nvapi64', dirs : nvapi_lib_path)
-endif
 
 # Cache lib locations
 external_dll_paths += usd_lib_path
@@ -607,11 +597,6 @@ reflex_dep = declare_dependency(
   dependencies : [ reflex_lib ],
   include_directories : reflex_include_path
 )
-
-nvapi_dep = declare_dependency(
-    dependencies : [ nvapi_lib ],
-    include_directories : nvapi_include_paths
-  )
 
 embedded_includes = [ mdl_include_dir ]
 
