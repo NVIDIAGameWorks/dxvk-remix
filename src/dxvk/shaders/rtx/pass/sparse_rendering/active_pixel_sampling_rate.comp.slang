@@ -24,6 +24,8 @@
 #include "rtx/pass/sparse_rendering/sparse_rendering.slangh"
 #include "rtx/pass/sparse_rendering/per_pixel_rate.slangh"
 #include "rtx/utility/geometry_flags.slangh"
+#include "rtx/utility/gbuffer_helpers.slangh"
+#include "rtx/utility/debug_view_helpers.slangh" // Resolves gbuffer_helpers.slangh's debug paths, unused here
 
 // Returns the per-pixel sampling rate in [0,1] for the active sparse rendering mode.
 float calculatePixelSamplingRate(uvec2 pixelCoordinate, SparseRenderingArgs args)
@@ -43,6 +45,17 @@ float calculatePixelSamplingRate(uvec2 pixelCoordinate, SparseRenderingArgs args
 
 layout(binding = ACTIVE_PIXEL_MASK_BINDING_SHARED_FLAGS_INPUT)
 Texture2D<uint16_t> SharedFlags;
+
+layout(binding = ACTIVE_PIXEL_MASK_BINDING_PRIMARY_CONE_RADIUS_INPUT)
+Texture2D<float> PrimaryConeRadius;
+
+layout(binding = ACTIVE_PIXEL_MASK_BINDING_SECONDARY_CONE_RADIUS_INPUT)
+Texture2D<float> SecondaryConeRadius;
+
+// Input-Outputs
+
+layout(r32ui, binding = ACTIVE_PIXEL_MASK_BINDING_NRC_TRAINING_QUERY_KEY_RESERVOIR_INPUT_OUTPUT)
+RWTexture2D<uint> NrcTrainingQueryKeyReservoir;
 
 // Outputs
 
@@ -68,12 +81,8 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
                                    geometryFlags.secondarySurfaceMask &&
                                    !geometryFlags.primarySelectedIntegrationSurface;
 
-  // Force NRC training pixels to full rate so the training network always sees a sample
-  // at this location and downstream consumers reconstruct radiance with weight 1.
-  const bool isForcedNrcTrainingPixel = isForcedNrcTrainingPixel(pixelCoordinate, cb.enableNrc, cb.sparseRenderingArgs);
-
   // Calculate sampling rate for the inactive ones
-  if (!isSecondaryFullRate && !isForcedNrcTrainingPixel)
+  if (!isSecondaryFullRate)
   {
     rate = calculatePixelSamplingRate(pixelCoordinate, cb.sparseRenderingArgs);
   }
@@ -82,6 +91,23 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
   // rounding is implementation-defined, so explicitly round-to-nearest here. This ensures the
   // value seen by every consumer is as intended, keeping the per-pixel sampling rate used for sample
   // drawing in sync with the scale used for radiance reconstruction.
-  const float kQuantum = 1.0f / 255.0f;
-  PixelSamplingRate[pixelCoordinate] = round(clamp(rate, 0.0f, 1.0f) * 255.0f) * kQuantum;
+  const uint quantizedRate255 = quantizeSamplingRate(rate);
+  // Store the dequantized value so the mask pass reads back exactly what the activity test here used.
+  const float quantizedRate = dequantizeSamplingRate(quantizedRate255);
+  PixelSamplingRate[pixelCoordinate] = quantizedRate;
+
+  // Accumulate this active candidate's key into its training cell; the mask pass picks the highest.
+  // The quantized rate keeps the active test matched to the one the mask pass runs.
+  // Disregard misses for integration selected surface to avoid wasting a training path activation there
+  if (cb.sparseRenderingArgs.resampledNrcTrainingPaths &&
+      isActivePixelFromSamplingRate(pixelCoordinate, quantizedRate, cb.sparseRenderingArgs, cb.frameIdx) &&
+      !isSelectedIntegrationSurfaceGBufferMiss(ivec2(pixelCoordinate), geometryFlags, PrimaryConeRadius, SecondaryConeRadius))
+  {
+    const uvec2 trainingPixelCoordinate = Nrc::calculateTrainingPixelCoordinate(pixelCoordinate, cb.nrcArgs);
+    if (all(trainingPixelCoordinate < uvec2(cb.nrcArgs.activeTrainingDimensions)))
+    {
+      const uint key = calculateNrcTrainingQueryKey(pixelCoordinate, cb.frameIdx, quantizedRate255);
+      InterlockedMax(NrcTrainingQueryKeyReservoir[trainingPixelCoordinate], key);
+    }
+  }
 }

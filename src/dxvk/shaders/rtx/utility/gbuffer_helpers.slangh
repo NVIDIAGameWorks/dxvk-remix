@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -258,6 +258,41 @@ void polymorphicSurfaceMaterialInteractionWriteToGBufferDLSSRR(
 bool isGBufferMiss(ivec2 position, Texture2D<float> coneRadiusTexture)
 {
   return coneRadiusTexture[position].x == 0.0f;
+}
+
+// The surface Integrate Direct shades for this pixel. NRC training-path candidacy is picked in the sparse
+// rendering prepasses but registered against this surface, so both sides must call this to agree.
+bool isSelectedIntegrationSurfaceGBufferMiss(
+  GeometryFlags geometryFlags,
+  bool primaryGBufferMiss,
+  bool secondaryGBufferMiss)
+{
+  return geometryFlags.primarySelectedIntegrationSurface ? primaryGBufferMiss : secondaryGBufferMiss;
+}
+
+// Hit distance of the surface the pass integrates off of.
+float calculateSelectedIntegrationSurfaceHitDistance(
+  ivec2 position,
+  GeometryFlags geometryFlags,
+  Texture2D<float> primaryHitDistanceTexture,
+  Texture2D<float> secondaryHitDistanceTexture)
+{
+  return geometryFlags.primarySelectedIntegrationSurface
+    ? primaryHitDistanceTexture[position]
+    : secondaryHitDistanceTexture[position];
+}
+
+// Overload for callers that have no other use for the individual surface misses. Selects before loading rather
+// than delegating above, so only the selected surface's cone radius is fetched.
+bool isSelectedIntegrationSurfaceGBufferMiss(
+  ivec2 position,
+  GeometryFlags geometryFlags,
+  Texture2D<float> primaryConeRadiusTexture,
+  Texture2D<float> secondaryConeRadiusTexture)
+{
+  return geometryFlags.primarySelectedIntegrationSurface
+    ? isGBufferMiss(position, primaryConeRadiusTexture)
+    : isGBufferMiss(position, secondaryConeRadiusTexture);
 }
 
 // Note: Used to indicate to passes that the GBuffer has no data in it, while also at least providing data to fill in denoiser-related buffers such that they do

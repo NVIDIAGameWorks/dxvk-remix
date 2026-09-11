@@ -76,6 +76,46 @@ void deserializeInteractions(
   }
 }
 
+#if ENABLE_NRC
+// Resolves the training cell this pixel won, when the GBuffer left the training-path setup to
+// this pass. Returns false when there is nothing to register for this thread.
+bool calculateDeferredNrcTrainingPath(uvec2 pixelCoordinate, out uvec2 trainingPixelCoordinateInTrainingSpace)
+{
+  trainingPixelCoordinateInTrainingSpace = uvec2(0);
+
+  if (!cb.allowNrcTraining || !shouldDeferNrcTrainingSetup(cb.sparseRenderingArgs))
+  {
+    return false;
+  }
+
+  // Resampling is on, guaranteed by the deferral check above.
+  const bool hasTrainingPath = Nrc::calculateNrcTrainingPathForQueryPixel(
+    pixelCoordinate, true,
+    NrcTrainingQueryPixel, cb.nrcArgs, trainingPixelCoordinateInTrainingSpace);
+
+  return hasTrainingPath;
+}
+
+// Registers vertex 0 from the surface this pass has already deserialized for its own work, so the deferral
+// costs no extra loads beyond the hit distance the GBuffer would have had in register.
+void registerDeferredNrcTrainingPath(
+  uvec2 trainingPixelCoordinateInTrainingSpace,
+  uvec2 pixelCoordinate,
+  GeometryFlags geometryFlags,
+  MinimalRayInteraction minimalRayInteraction,
+  MinimalSurfaceInteraction minimalSurfaceInteraction,
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction)
+{
+  const float primaryPathHitDistance = calculateSelectedIntegrationSurfaceHitDistance(
+    ivec2(pixelCoordinate), geometryFlags, PrimaryHitDistance, SecondaryHitDistance);
+
+  Nrc::registerNrcTrainingPathPrimaryHit(
+    trainingPixelCoordinateInTrainingSpace,
+    minimalSurfaceInteraction.position, polymorphicSurfaceMaterialInteraction, minimalRayInteraction.viewDirection,
+    primaryPathHitDistance, NrcQueryPathData0, NrcTrainingPathData1);
+}
+#endif
+
 void integrate_direct_pass(uvec2 threadIndex)
 {
   if (any(threadIndex >= cb.camera.resolution))
@@ -102,6 +142,8 @@ void integrate_direct_pass(uvec2 threadIndex)
 
   const bool primaryGBufferMiss = isGBufferMiss(pixelCoordinate, PrimaryConeRadius);
   const bool secondaryGBufferMiss = isGBufferMiss(pixelCoordinate, SecondaryConeRadius);
+  const bool missOfSelectedIntegrationSurface =
+    isSelectedIntegrationSurfaceGBufferMiss(geometryFlags, primaryGBufferMiss, secondaryGBufferMiss);
 
   // Write out empty data
   // Note: This should hopefully prevent any weird undefined data from bleeding into pixels actually being denoised, but
@@ -119,14 +161,28 @@ void integrate_direct_pass(uvec2 threadIndex)
     SecondaryCombinedSpecularLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
   }
 
-  // Note: Early out if no more work on the primary surface is needed
-  if (primaryGBufferMiss && geometryFlags.primarySelectedIntegrationSurface)
+#if ENABLE_NRC
+  uvec2 nrcTrainingPixelCoordinate;
+  bool hasDeferredNrcTrainingPath = calculateDeferredNrcTrainingPath(pixelCoordinate, nrcTrainingPixelCoordinate);
+
+  // A resampled pixel whose selected surface missed still has to be registered, and this pass early-outs on that
+  // miss below.
+  if (hasDeferredNrcTrainingPath && missOfSelectedIntegrationSurface)
   {
-    return;
+    Nrc::registerNrcTrainingPathPrimaryMiss(nrcTrainingPixelCoordinate);
+
+    hasDeferredNrcTrainingPath = false;
   }
 
-  // Note: Early out if no more work on the secondary surface is needed
-  if (secondaryGBufferMiss && !geometryFlags.primarySelectedIntegrationSurface)
+  // Written after the revocation above, so the view shows the paths that actually got registered.
+  if (cb.debugView == DEBUG_VIEW_NRC_UPDATE_PIXEL)
+  {
+    storeInDebugView(pixelCoordinate, hasDeferredNrcTrainingPath);
+  }
+#endif
+
+  // Note: Early out if no more work on the selected integration surface is needed
+  if (missOfSelectedIntegrationSurface)
   {
     return;
   }
@@ -159,6 +215,17 @@ void integrate_direct_pass(uvec2 threadIndex)
   deserializeInteractions(
     pixelCoordinate, geometryFlags,
     minimalRayInteraction, minimalSurfaceInteraction, polymorphicSurfaceMaterialInteraction);
+
+#if ENABLE_NRC
+  // Note: must precede the base reflectivity rewrite below, which replaces the value NRC wants with a
+  // denoiser-oriented one.
+  if (hasDeferredNrcTrainingPath)
+  {
+    registerDeferredNrcTrainingPath(
+      nrcTrainingPixelCoordinate, pixelCoordinate, geometryFlags,
+      minimalRayInteraction, minimalSurfaceInteraction, polymorphicSurfaceMaterialInteraction);
+  }
+#endif
 
   // Rewrite Material Data for Denoising
   // Note: This is done to turn the usual material data base reflectivity into something more suitable for

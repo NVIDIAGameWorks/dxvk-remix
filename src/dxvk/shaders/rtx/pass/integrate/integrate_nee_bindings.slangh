@@ -80,8 +80,11 @@ Texture2D<float> PrimaryPositionError;
 layout(rgba16f, binding = INTEGRATE_NEE_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT)
 Texture2D<float4> IndirectRadianceHitDistance;
 
-layout(binding = INTEGRATE_NEE_BINDING_PRIMITIVE_ID_PREFIX_SUM_INPUT) 
+layout(binding = INTEGRATE_NEE_BINDING_PRIMITIVE_ID_PREFIX_SUM_INPUT)
 StructuredBuffer<uint> PrimitiveIDPrefixSum;
+
+layout(binding = INTEGRATE_NEE_BINDING_NRC_TRAINING_QUERY_PIXEL_INPUT)
+Texture2D<uint> NrcTrainingQueryPixel;
 
 // Primary Inputs/Outputs
 

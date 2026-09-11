@@ -87,9 +87,6 @@ namespace dxvk {
         "This improves performance at the cost of potential sparse NRD denoising artifacts on glass.\n"
         "This option is in development and may not produce good denoised results.");
 
-      RTX_OPTION("rtx.sparseRendering", bool, forceNrcTrainingPixelsActive, true,
-        "When enabled, pixels that correspond to NRC training paths are forced active in sparse rendering.");
-
       RTX_OPTION("rtx.sparseRendering", bool, enableRtxdiReuseForInactivePixels, false,
         "Enables RTXDI reservoir reuse (temporal reprojection and spatial reuse) on inactive pixels.\n"
         "Disabling improves performance and, counterintuitively, has been observed to reduce ghosting."
@@ -114,6 +111,9 @@ namespace dxvk {
     // startup before NRC/RR have finished initialising. Use this for shader prewarming;
     // use isActive() for per-frame dispatch decisions.
     static bool isEnabledByOptions();
+
+    bool resamplesNrcTrainingPaths(bool nrcIsActive) const;
+    static bool shouldDeferNrcTrainingSetup(const SparseRenderingArgs& args);
 
     void showImguiSettings();
     void dispatch(RtxContext& ctx, const Resources::RaytracingOutput& rtOutput);

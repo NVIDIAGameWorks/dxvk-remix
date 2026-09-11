@@ -24,6 +24,28 @@
 #include "rtx/pass/sparse_rendering/sparse_rendering.h"
 #include "rtx/pass/sparse_rendering/active_pixel_mask_binding_indices.h"
 
+// Whether the NRC training path's vertex 0 registration moves from the GBuffer to Integrate Direct, since the
+// query-pixel map it needs is still the cleared sentinel when the GBuffer runs.
+bool shouldDeferNrcTrainingSetup(SparseRenderingArgs args)
+{
+  return args.resampledNrcTrainingPaths;
+}
+
+// Coordinate the GBuffer surface radiance handed to Integrate Indirect lives at. Deferred setup stores it per
+// pixel, because the GBuffer cannot know which pixel wins a training cell; otherwise it goes straight to the cell
+uvec2 nrcTrainingSurfaceRadianceCoordinate(
+  uvec2 pixelCoordinate,
+  uvec2 trainingPixelCoordinateInTrainingSpace,
+  SparseRenderingArgs args)
+{
+  if (shouldDeferNrcTrainingSetup(args))
+  {
+    return pixelCoordinate;
+  }
+
+  return trainingPixelCoordinateInTrainingSpace;
+}
+
 // Expects: input pixelCoordinate is within the ray tracing resolution
 // Expects: this is called when sparse rendering mode is enabled
 bool isActivePixelFromMask(Texture2D<uint> ActivePixelMask, uvec2 pixelCoordinate)

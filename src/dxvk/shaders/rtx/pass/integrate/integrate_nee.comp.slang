@@ -235,7 +235,11 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
 
         if (cb.enableNrc)
         {
-          hasNrcTrainingPath = Nrc::calculateIfPixelHasActiveNrcTrainingPath(pixelCoordinate, cb.nrcArgs, nrcTrainingPixelCoordinate);
+          // Resampling picks a cell's query pixel out of pixel activity, so the deterministic lattice would credit
+          // this radiance to a cell whose path was drawn from some other pixel.
+          hasNrcTrainingPath = Nrc::calculateNrcTrainingPathForQueryPixel(
+            pixelCoordinate, cb.sparseRenderingArgs.resampledNrcTrainingPaths,
+            NrcTrainingQueryPixel, cb.nrcArgs, nrcTrainingPixelCoordinate);
         }
 
         // Feed back to NEE cache hash tasks (skip when using cached samples — triangleID may be stale)

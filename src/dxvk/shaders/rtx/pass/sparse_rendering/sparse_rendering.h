@@ -21,8 +21,6 @@
 */
 #pragma once
 
-#include "rtx/pass/nrc_args.h"
-
 enum class SparseRenderingMode : uint32_t {
   Off = 0,
   Uniform = 1,
@@ -37,12 +35,10 @@ enum class PerPixelRateNoiseSource : uint32_t {
 // Note: ensure 16B alignment
 struct SparseRenderingArgs
 {
-  NrcArgs nrcArgs;
-
   SparseRenderingMode mode;
   PerPixelRateNoiseSource perPixelRateNoiseSource;
   float pixelSamplingRate;
-  uint forceNrcTrainingPixelsActive;
+  uint resampledNrcTrainingPaths;
 
   uint enableSparsePrimaryRayMissComposition;
   uint enableSparseSecondaryLighting;

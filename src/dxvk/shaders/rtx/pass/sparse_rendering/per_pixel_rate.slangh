@@ -48,6 +48,20 @@ float calculatePerPixelRateThreshold(uvec2 pixelCoordinate, SparseRenderingArgs 
   }
 }
 
+// The sampling rate lives in an R8_UNORM texture, so 0-255 is its authoritative form. Every pass that needs
+// the integer must go through these, since n * (1/255) and n / 255 disagree for 126 of the 256 values and the
+// training query key is compared for equality across two passes.
+uint quantizeSamplingRate(float samplingRate)
+{
+  return uint(round(clamp(samplingRate, 0.0f, 1.0f) * 255.0f));
+}
+
+// Matches the hardware UNORM decode, so a rate written by one pass reads back bit-identical in another.
+float dequantizeSamplingRate(uint samplingRate255)
+{
+  return float(samplingRate255) / 255.0f;
+}
+
 // Per-pixel-rate active selection given an already-computed sampling rate. Returns active==true
 // with probability ~rate via the configured per-pixel noise source.
 bool isActivePixelFromSamplingRate(
@@ -60,15 +74,25 @@ bool isActivePixelFromSamplingRate(
   return threshold <= samplingRate;
 }
 
-// Returns true when the pixel lies on the NRC training grid and should therefore be forced
-// active by the sparse prepasses (the network needs a sample at every training pixel).
-bool isForcedNrcTrainingPixel(uvec2 pixelCoordinate, bool enableNrc, SparseRenderingArgs args)
-{
-  if (!enableNrc || !args.forceNrcTrainingPixelsActive)
-  {
-    return false;
-  }
+// Decorrelates the training query-pixel selection key from the per-pixel rate thresholds.
+static const uint32_t kNrcTrainingQueryKeySampleOffset = 0x9E3779B9u;
 
-  uvec2 unusedTrainingPixelCoordinate;
-  return Nrc::calculateIfPixelHasActiveNrcTrainingPath(pixelCoordinate, args.nrcArgs, unusedTrainingPixelCoordinate);
+// Key selecting one query pixel per training cell, resolved by taking the highest key in the cell.
+// candidateProbability255 is the pixel's sampling rate quantized to 0-255, which is also its chance of competing,
+// since a pixel is a candidate exactly on the frames it is active. Quantized so both passes derive the same key.
+uint calculateNrcTrainingQueryKey(uvec2 pixelCoordinate, uint32_t frameIdx, uint candidateProbability255)
+{
+  const float candidateProbability = dequantizeSamplingRate(candidateProbability255);
+
+  // White noise, not the blue noise the activity test uses: its tiling would keep picking the same pixel per cell.
+  const float u = whiteNoise(pixelCoordinate, frameIdx, kNrcTrainingQueryKeySampleOffset);
+
+  // Efraimidis-Spirakis A-Res with weight 1/p: a pixel competes only on the p of frames it is active, and the
+  // exponent lifts its key to compensate. The compensation is partial, so selection is uniform where a cell's
+  // rates are equal and still leans towards high-rate pixels where they differ.
+  // The floor of 1 keeps 0 reserved for the cleared reservoir that InterlockedMax starts from.
+  // The scale is far below float32's exact-integer limit on purpose. The mask pass recomputes this key and compares
+  // it for equality, and pow() is not guaranteed to match across two compiled modules. At 2^24 a ULP is 1, so one
+  // ULP of divergence would strand every cell; at 2^17 it strands under 1%.
+  return max(1u, uint(pow(u, candidateProbability) * 131071.0f));
 }
