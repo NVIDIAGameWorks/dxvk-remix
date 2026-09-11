@@ -184,7 +184,7 @@ NrcProgressState updateNrcOnHit(
   const vec3 prevThroughput = pathState.throughput;
 
   nrcProgressState = Nrc::updateNrcOnHit(pathState.pixelCoordinate, pathState.isNrcUpdate,
-    surfaceInteraction, polymorphicSurfaceMaterialInteraction, -pathState.direction,
+    surfaceInteraction.position, polymorphicSurfaceMaterialInteraction, -pathState.direction,
     pathState.bounceIteration, pathState.segmentHitDistance, false, cb.nrcArgs,
     pathState.throughput, pathState.radiance, pathState.nrcPathState);
 
@@ -1106,9 +1106,14 @@ vec3 loadIntegratedRadiancePriorToIntegrateIndirect(
     directLightingRadiance = diffuseRadiance + specularRadiance;
   }
 
+  // Deferred setup stored this at the seeded query pixel rather than the training cell, which for a training
+  // thread is what gbufferPixelCoordinate holds.
+  const uvec2 surfaceRadianceCoordinate = nrcTrainingSurfaceRadianceCoordinate(
+    uvec2(gbufferPixelCoordinate), uvec2(nrcPixelCoordinate), cb.sparseRenderingArgs);
+
   const vec3 primarySurfaceRadiance = vec3(
-    NrcTrainingGBufferSurfaceRadianceRG[nrcPixelCoordinate], 
-    NrcTrainingGBufferSurfaceRadianceB[nrcPixelCoordinate]);
+    NrcTrainingGBufferSurfaceRadianceRG[surfaceRadianceCoordinate],
+    NrcTrainingGBufferSurfaceRadianceB[surfaceRadianceCoordinate]);
 
   return primarySurfaceRadiance + directLightingRadiance;
 }

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2024-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -40,6 +40,19 @@ bool isDeltaLobe(float16_t perceptualRoughness, const uint8_t materialType)
     // Remix treats translucents as perfectly smooth for the most part so treat them as a delta lobe
     materialType == surfaceMaterialTypeTranslucent;
     // Note: RayPortal material continues resolving when a ray hits inside and portal's outline should not be treated as a delta lobe (I think)
+}
+
+// Map value for training cells with no selected query pixel this frame.
+static const uint kNrcTrainingQueryPixelSentinel = 0xFFFFFFFFu;
+
+uint packNrcTrainingQueryPixel(uvec2 queryPixelCoordinate)
+{
+  return ((queryPixelCoordinate.y & 0xFFFFu) << 16) | (queryPixelCoordinate.x & 0xFFFFu);
+}
+
+uvec2 unpackNrcTrainingQueryPixel(uint packedCoordinate)
+{
+  return uvec2(packedCoordinate & 0xFFFFu, (packedCoordinate >> 16) & 0xFFFFu);
 }
 
 // Expects trainingPixelCoordinate to be within training dimensions
@@ -104,6 +117,34 @@ bool calculateIfPixelHasActiveNrcTrainingPath(
     calculateTrainingPixelCoordinateInQuerySpace(trainingPixelCoordinate, nrcArgs);
 
   return all(trainingPixelCoordinateInQuerySpace == queryPixelCoordinateInQuerySpace);
+}
+
+// Whether this query pixel provides an NRC training path, and the training-grid cell it belongs to. Resampling
+// takes each cell's winner from the resolved map, otherwise it comes from the deterministic training lattice.
+bool calculateNrcTrainingPathForQueryPixel(
+  uvec2 queryPixelCoordinate,
+  bool resampledNrcTrainingPaths,
+  Texture2D<uint> NrcTrainingQueryPixel,
+  NrcArgs nrcArgs,
+  out uvec2 trainingPixelCoordinateInTrainingSpace)
+{
+  if (resampledNrcTrainingPaths)
+  {
+    trainingPixelCoordinateInTrainingSpace = calculateTrainingPixelCoordinate(queryPixelCoordinate, nrcArgs);
+
+    if (any(trainingPixelCoordinateInTrainingSpace >= uvec2(nrcArgs.activeTrainingDimensions)))
+    {
+      return false;
+    }
+
+    // Every pixel in a training cell reads the same winner, so comparing it against this thread's own coordinate is what
+    // singles out the one pixel that has the training path. This is done this way because the winner is resampled per frame.
+    return NrcTrainingQueryPixel[trainingPixelCoordinateInTrainingSpace] ==
+      packNrcTrainingQueryPixel(queryPixelCoordinate);
+  }
+
+  return calculateIfPixelHasActiveNrcTrainingPath(
+    queryPixelCoordinate, nrcArgs, trainingPixelCoordinateInTrainingSpace);
 }
 
 void sanitizeNrcInputs(

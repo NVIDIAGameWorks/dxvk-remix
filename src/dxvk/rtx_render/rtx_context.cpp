@@ -1291,7 +1291,6 @@ namespace dxvk {
     constants.surfaceCount = getSceneManager().getAccelManager().getSurfaceCount();
 
     m_common->metaSparseRendering().setSparseRenderingArgs(*this, constants.sparseRenderingArgs);
-    constants.sparseRenderingArgs.nrcArgs = constants.nrcArgs;
 
     auto* cameraTeleportDirectionInfo = getSceneManager().getRayPortalManager().getCameraTeleportationRayPortalDirectionInfo();
     constants.teleportationPortalIndex = cameraTeleportDirectionInfo ? cameraTeleportDirectionInfo->entryPortalInfo.portalIndex + 1 : 0;

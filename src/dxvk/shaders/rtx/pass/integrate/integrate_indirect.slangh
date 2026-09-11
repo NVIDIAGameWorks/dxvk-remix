@@ -33,7 +33,8 @@
 #include "rtx/pass/sparse_rendering/sparse_rendering.slangh"
 #include "rtx/pass/sparse_rendering/compact_active_pixels.slangh"
 
-// Returns true for query pixels and training pixels that are not out of bounds
+// Returns true for query pixels and for training cells that have a path to trace this frame. A cell that has
+// none is invalidated here, since nothing downstream would write its TrainingPathInfo slot.
 bool nrcCombinedToGbufferPixelCoordinate(
   uvec2 combinedNrcCoordinate,
   out uvec2 gbufferPixelCoordinate,
@@ -55,7 +56,24 @@ bool nrcCombinedToGbufferPixelCoordinate(
       return false;
     }
 
-    gbufferPixelCoordinate = Nrc::calculateTrainingPixelCoordinateInQuerySpace(nrcUpdatePixelCoordinate, cb.nrcArgs);
+    if (cb.sparseRenderingArgs.resampledNrcTrainingPaths)
+    {
+      // Sentinel means no active pixel was selected for this training cell, so skip its training path.
+      const uint packedQueryPixel = NrcTrainingQueryPixel[nrcUpdatePixelCoordinate];
+      if (packedQueryPixel == Nrc::kNrcTrainingQueryPixelSentinel)
+      {
+        Nrc::invalidateNrcTrainingPath(nrcUpdatePixelCoordinate);
+
+        gbufferPixelCoordinate = uvec2(-1, -1);
+        return false;
+      }
+      gbufferPixelCoordinate = Nrc::unpackNrcTrainingQueryPixel(packedQueryPixel);
+    }
+    else
+    {
+      // Reached only when sparse rendering is inactive, so every lattice pixel has a current GBuffer.
+      gbufferPixelCoordinate = Nrc::calculateTrainingPixelCoordinateInQuerySpace(nrcUpdatePixelCoordinate, cb.nrcArgs);
+    }
   }
   else
   {
@@ -160,15 +178,8 @@ void integrate_indirect_pass(uvec2 threadIndex)
   const float firstSampledLobePdf = indirectSampleData.firstSampledLobePdf;
   const float firstSampledSolidAnglePdf = indirectSampleData.firstSampledSolidAnglePdf;
 
-  float gbufferSurfaceHitDistance = 0;
-  if (geometryFlags.primarySelectedIntegrationSurface)
-  {
-    gbufferSurfaceHitDistance = PrimaryHitDistance[gbufferPixelCoordinate];
-  }
-  else
-  {
-    gbufferSurfaceHitDistance = SecondaryHitDistance[gbufferPixelCoordinate];
-  }
+  const float gbufferSurfaceHitDistance = calculateSelectedIntegrationSurfaceHitDistance(
+    ivec2(gbufferPixelCoordinate), geometryFlags, PrimaryHitDistance, SecondaryHitDistance);
 
   // Integrate the Indirect portion of the Path
 

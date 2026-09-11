@@ -26,6 +26,7 @@
 #include "rtx/external/NRC.slangh"
 #include "rtx/pass/nrc/nrc_utilities.slangh"
 #include "rtx/pass/nrc/nrc_debug_view_utilities.slangh"
+#include "rtx/utility/noise.slangh"
 
 #if ENABLE_NRC
 
@@ -131,7 +132,7 @@ NrcContext createNrcContext(uvec2 pixelCoordinate)
 }
 
 NrcSurfaceAttributes createNrcSurfaceAttributes(
-  SurfaceInteraction surfaceInteraction,
+  vec3 surfacePosition,
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   // ToDo explain what viewVector is
   vec3 viewVector)
@@ -141,7 +142,7 @@ NrcSurfaceAttributes createNrcSurfaceAttributes(
           gBufferMemoryPolymorphicSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
   const uint8_t materialType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
 
-  surfaceAttributes.encodedPosition = NrcEncodePosition(surfaceInteraction.position, cb.nrcArgs.nrcConstants);
+  surfaceAttributes.encodedPosition = NrcEncodePosition(surfacePosition, cb.nrcArgs.nrcConstants);
   surfaceAttributes.roughness = gBufferMemoryPolymorphicSurfaceMaterialInteraction.perceptualRoughness;
   surfaceAttributes.specularF0 = gBufferMemoryPolymorphicSurfaceMaterialInteraction.baseReflectivity;
   surfaceAttributes.diffuseReflectance = gBufferMemoryPolymorphicSurfaceMaterialInteraction.albedo;
@@ -173,7 +174,7 @@ void setNrcMode(bool isNrcUpdate)
 NrcProgressState updateNrcOnHit(
   uvec2 pixelCoordinate,
   bool isNrcUpdate,
-  SurfaceInteraction surfaceInteraction,
+  vec3 surfacePosition,
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   vec3 viewVector,
   uint bounce,
@@ -187,7 +188,7 @@ NrcProgressState updateNrcOnHit(
   setNrcMode(isNrcUpdate);
 
   NrcSurfaceAttributes surfaceAttributes = createNrcSurfaceAttributes(
-    surfaceInteraction, polymorphicSurfaceMaterialInteraction, viewVector);
+    surfacePosition, polymorphicSurfaceMaterialInteraction, viewVector);
 
   const NrcContext nrcContext = createNrcContext(pixelCoordinate);
 
@@ -197,7 +198,7 @@ NrcProgressState updateNrcOnHit(
   // Register the radiance prior to NRC resetting it
   debugRegisterNrcRadiance(pixelCoordinate, isNrcUpdate, bounce, radiance, throughput, isPrimaryHit, cb.debugView);
 
-  debugRegisterNrcPathSegment(pixelCoordinate, surfaceInteraction.position, isNrcUpdate, isPrimaryHit, true, cb.debugView);
+  debugRegisterNrcPathSegment(pixelCoordinate, surfacePosition, isNrcUpdate, isPrimaryHit, true, cb.debugView);
 
   NrcProgressState progressStateResult;
   vec3 vec3Throughput = vec3(throughput);
@@ -213,7 +214,7 @@ NrcProgressState updateNrcOnHit(
 // Performs NRC related updates on a primary surface hit
 void updateNrcOnPrimaryHit(
   uvec2 nrcPathPixelCoordinate,
-  SurfaceInteraction surfaceInteraction,
+  vec3 surfacePosition,
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   vec3 viewVector,
   float pathSegmentHitDistance,
@@ -236,7 +237,7 @@ void updateNrcOnPrimaryHit(
   // Register a gbuffer surface hit
   // Note: NRC zeroes out radiance and throughput on updates for training paths
   NrcProgressState nrcProgressState = updateNrcOnHit(nrcPathPixelCoordinate, NrcIsUpdateMode(),
-    surfaceInteraction, polymorphicSurfaceMaterialInteraction, viewVector, bounce,
+    surfacePosition, polymorphicSurfaceMaterialInteraction, viewVector, bounce,
     pathSegmentHitDistance, true, cb.nrcArgs, dummyThroughput, dummyRadiance, nrcPathState);
 
   if (NrcIsQueryMode() && nrcProgressState == NrcProgressState::TerminateImmediately)
@@ -268,6 +269,49 @@ void updateNrcOnPrimaryMiss(
   vec3 dummyRadiance = vec3(0);
 
   NrcWriteFinalPathInfo(nrcContext, nrcPathState, dummyThroughput, dummyRadiance);
+}
+
+// Registers vertex 0 of a training path with NRC. Called by the GBuffer, or by Integrate Direct when the
+// setup is deferred - the record is position independent, its destination depends only on the training cell.
+void registerNrcTrainingPathPrimaryHit(
+  uvec2 trainingPixelCoordinateInTrainingSpace,
+  vec3 surfacePosition,
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
+  vec3 viewVector,
+  float primaryPathHitDistance,
+  RWTexture2D<uvec2> NrcQueryPathData0,
+  RWTexture2D<uvec4> NrcTrainingPathData1)
+{
+  g_nrcMode = NrcMode::Update;
+
+  // Seed from the training coordinate rather than the query pixel: the query pixels backing training paths
+  // are sparse, which distributes the samples poorly.
+  RNG randomStateNrcUpdate = createRNG(trainingPixelCoordinateInTrainingSpace, cb.frameIdx);
+  const float rand01 = getNextSampleBlueNoise(randomStateNrcUpdate);
+
+  updateNrcOnPrimaryHit(
+    trainingPixelCoordinateInTrainingSpace,
+    surfacePosition, polymorphicSurfaceMaterialInteraction, viewVector,
+    // Note: NrcQueryPathData0 is unused for the Update path
+    primaryPathHitDistance, rand01, NrcQueryPathData0, NrcTrainingPathData1);
+
+  g_nrcMode = NrcMode::Disabled;
+}
+
+void registerNrcTrainingPathPrimaryMiss(uvec2 trainingPixelCoordinateInTrainingSpace)
+{
+  g_nrcMode = NrcMode::Update;
+
+  updateNrcOnPrimaryMiss(trainingPixelCoordinateInTrainingSpace);
+
+  g_nrcMode = NrcMode::Disabled;
+}
+
+// Resets a training cell that gets no path this frame. TrainingPathInfo is a fixed slot per cell, so without
+// this the SDK trains the previous frame's vertex list against the current frame's radiance.
+void invalidateNrcTrainingPath(uvec2 trainingPixelCoordinateInTrainingSpace)
+{
+  registerNrcTrainingPathPrimaryMiss(trainingPixelCoordinateInTrainingSpace);
 }
 
 void invalidateNrcQueryData(uvec2 pixelCoordinate)

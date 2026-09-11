@@ -56,6 +56,15 @@ Texture2D<uint2> SharedSubsurfaceDiffusionProfileData;
 [[vk::binding(INTEGRATE_DIRECT_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)]]
 Texture2D<uint16_t> ActiveLocalPixelCoords;
 
+[[vk::binding(INTEGRATE_DIRECT_BINDING_NRC_TRAINING_QUERY_PIXEL_INPUT)]]
+Texture2D<uint> NrcTrainingQueryPixel;
+
+[[vk::binding(INTEGRATE_DIRECT_BINDING_PRIMARY_HIT_DISTANCE_INPUT)]]
+Texture2D<float> PrimaryHitDistance;
+
+[[vk::binding(INTEGRATE_DIRECT_BINDING_SECONDARY_HIT_DISTANCE_INPUT)]]
+Texture2D<float> SecondaryHitDistance;
+
 // Shared Inputs/Outputs
 
 [[vk::binding(INTEGRATE_DIRECT_BINDING_SHARED_FLAGS_INPUT_OUTPUT)]]
@@ -146,6 +155,27 @@ RWTexture2D<float4> SecondaryCombinedSpecularLobeRadianceHitDistance;
 
 [[vk::binding(INTEGRATE_DIRECT_BINDING_INDIRECT_THROUGHPUT_CONE_RADIUS_OUTPUT)]]
 RWTexture2D<float4> IndirectThroughputConeRadius;
+
+[[vk::binding(INTEGRATE_DIRECT_BINDING_NRC_QUERY_PATH_INFO_OUTPUT)]]
+RWStructuredBuffer<NrcPackedQueryPathInfo> QueryPathInfo;
+
+[[vk::binding(INTEGRATE_DIRECT_BINDING_NRC_TRAINING_PATH_INFO_OUTPUT)]]
+RWStructuredBuffer<NrcPackedTrainingPathInfo> TrainingPathInfo;
+
+[[vk::binding(INTEGRATE_DIRECT_BINDING_NRC_TRAINING_PATH_VERTICES_OUTPUT)]]
+RWStructuredBuffer<NrcPackedPathVertex> TrainingPathVertices;
+
+[[vk::binding(INTEGRATE_DIRECT_BINDING_NRC_QUERY_RADIANCE_PARAMS_OUTPUT)]]
+RWStructuredBuffer<NrcRadianceParams> QueryRadianceParams;
+
+[[vk::binding(INTEGRATE_DIRECT_BINDING_NRC_COUNTERS_OUTPUT)]]
+RWStructuredBuffer<uint> CountersData;
+
+[[vk::binding(INTEGRATE_DIRECT_BINDING_NRC_QUERY_PATH_DATA0_OUTPUT)]]
+RWTexture2D<uvec2> NrcQueryPathData0;
+
+[[vk::binding(INTEGRATE_DIRECT_BINDING_NRC_TRAINING_PATH_DATA1_OUTPUT)]]
+RWTexture2D<uint4> NrcTrainingPathData1;
 
 // Aliased Inputs / Outputs
 

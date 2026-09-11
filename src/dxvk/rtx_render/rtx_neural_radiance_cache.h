@@ -198,7 +198,11 @@ namespace dxvk {
     VkExtent3D calcRaytracingResolution() const;
 
     void bindGBufferPathTracingResources(RtxContext& ctx);
+    void bindIntegrateDirectPathTracingResources(RtxContext& ctx, const bool deferredNrcTrainingSetup);
     void bindIntegrateIndirectPathTracingResources(RtxContext& ctx);
+
+    const Resources::Resource& getTrainingQueryKeyReservoir() const { return m_trainingQueryKeyReservoir; }
+    const Resources::Resource& getTrainingQueryPixel() const { return m_trainingQueryPixel; }
 
     const Vector2& getNumQueryPixelsPerTrainingPixel() const;
     bool isUpdateResolveModeActive() const;
@@ -252,6 +256,9 @@ namespace dxvk {
     // is initiated at that point
     Resources::Resource    m_trainingGBufferSurfaceRadianceRG;
     Resources::Resource    m_trainingGBufferSurfaceRadianceB;
+
+    Resources::Resource    m_trainingQueryKeyReservoir;
+    Resources::Resource    m_trainingQueryPixel;
 
     // Query path data 0 is only allocated when include direct lighting is disabled,
     // which is not the default behavior, so there's no real need to have to alias it.

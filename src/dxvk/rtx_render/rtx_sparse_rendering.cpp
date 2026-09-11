@@ -62,6 +62,10 @@ namespace dxvk {
         // Inputs
         TEXTURE2D(ACTIVE_PIXEL_MASK_BINDING_PIXEL_SAMPLING_RATE_INPUT)
 
+        // Input-Outputs
+        RW_TEXTURE2D(ACTIVE_PIXEL_MASK_BINDING_NRC_TRAINING_QUERY_KEY_RESERVOIR_INPUT_OUTPUT)
+        RW_TEXTURE2D(ACTIVE_PIXEL_MASK_BINDING_NRC_TRAINING_QUERY_PIXEL_INPUT_OUTPUT)
+
         // Outputs
         RW_TEXTURE2D(ACTIVE_PIXEL_MASK_BINDING_ACTIVE_PIXEL_MASK_OUTPUT)
       END_PARAMETER()
@@ -75,6 +79,11 @@ namespace dxvk {
 
         // Inputs
         TEXTURE2D(ACTIVE_PIXEL_MASK_BINDING_SHARED_FLAGS_INPUT)
+        TEXTURE2D(ACTIVE_PIXEL_MASK_BINDING_PRIMARY_CONE_RADIUS_INPUT)
+        TEXTURE2D(ACTIVE_PIXEL_MASK_BINDING_SECONDARY_CONE_RADIUS_INPUT)
+
+        // Input-Outputs
+        RW_TEXTURE2D(ACTIVE_PIXEL_MASK_BINDING_NRC_TRAINING_QUERY_KEY_RESERVOIR_INPUT_OUTPUT)
 
         // Outputs
         RW_TEXTURE2D(ACTIVE_PIXEL_MASK_BINDING_PIXEL_SAMPLING_RATE_OUTPUT)
@@ -231,6 +240,17 @@ namespace dxvk {
     return true;
   }
 
+  bool SparseRendering::resamplesNrcTrainingPaths(const bool nrcIsActive) const {
+    // Deliberately not gated on NrcOptions::trainCache(): update rows are dispatched regardless of it, and they
+    // rely on this staying true to resolve their GBuffer pixel through the query-pixel map.
+    return nrcIsActive && isActive();
+  }
+
+  // Resampling needs the per-pixel sampling rate, which only exists after the GBuffer pass has run.
+  bool SparseRendering::shouldDeferNrcTrainingSetup(const SparseRenderingArgs& args) {
+    return args.resampledNrcTrainingPaths;
+  }
+
   void SparseRendering::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
     if (!isEnabledByOptions()) {
       return;
@@ -262,6 +282,15 @@ namespace dxvk {
 
     // Inputs
     ctx.bindResourceView(ACTIVE_PIXEL_MASK_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
+    ctx.bindResourceView(ACTIVE_PIXEL_MASK_BINDING_PRIMARY_CONE_RADIUS_INPUT, rtOutput.m_primaryConeRadius.view, nullptr);
+    ctx.bindResourceView(ACTIVE_PIXEL_MASK_BINDING_SECONDARY_CONE_RADIUS_INPUT, rtOutput.m_secondaryConeRadius.view(Resources::AccessType::Read), nullptr);
+
+    // Input-Outputs
+    Rc<DxvkImageView> trainingQueryKeyReservoirView = nullptr;
+    if (rtOutput.m_raytraceArgs.sparseRenderingArgs.resampledNrcTrainingPaths) {
+      trainingQueryKeyReservoirView = ctx.getCommonObjects()->metaNeuralRadianceCache().getTrainingQueryKeyReservoir().view;
+    }
+    ctx.bindResourceView(ACTIVE_PIXEL_MASK_BINDING_NRC_TRAINING_QUERY_KEY_RESERVOIR_INPUT_OUTPUT, trainingQueryKeyReservoirView, nullptr);
 
     // Outputs
     ctx.bindResourceView(ACTIVE_PIXEL_MASK_BINDING_PIXEL_SAMPLING_RATE_OUTPUT, rtOutput.m_sparseRenderingPixelSamplingRate.view, nullptr);
@@ -280,6 +309,17 @@ namespace dxvk {
 
     // Inputs
     ctx.bindResourceView(ACTIVE_PIXEL_MASK_BINDING_PIXEL_SAMPLING_RATE_INPUT, rtOutput.m_sparseRenderingPixelSamplingRate.view, nullptr);
+
+    // Input-Outputs
+    Rc<DxvkImageView> trainingQueryKeyReservoirView = nullptr;
+    Rc<DxvkImageView> trainingQueryPixelView = nullptr;
+    if (rtOutput.m_raytraceArgs.sparseRenderingArgs.resampledNrcTrainingPaths) {
+      NeuralRadianceCache& nrc = ctx.getCommonObjects()->metaNeuralRadianceCache();
+      trainingQueryKeyReservoirView = nrc.getTrainingQueryKeyReservoir().view;
+      trainingQueryPixelView = nrc.getTrainingQueryPixel().view;
+    }
+    ctx.bindResourceView(ACTIVE_PIXEL_MASK_BINDING_NRC_TRAINING_QUERY_KEY_RESERVOIR_INPUT_OUTPUT, trainingQueryKeyReservoirView, nullptr);
+    ctx.bindResourceView(ACTIVE_PIXEL_MASK_BINDING_NRC_TRAINING_QUERY_PIXEL_INPUT_OUTPUT, trainingQueryPixelView, nullptr);
 
     // Outputs
     ctx.bindResourceView(ACTIVE_PIXEL_MASK_BINDING_ACTIVE_PIXEL_MASK_OUTPUT, rtOutput.m_sparseRenderingActivePixelMask.view, nullptr);
@@ -321,7 +361,7 @@ namespace dxvk {
     args.enableSparsePrimarySpecularAlbedo = Options::enableSparsePrimarySpecularAlbedo();
 
     NeuralRadianceCache& nrc = ctx.getCommonObjects()->metaNeuralRadianceCache();
-    args.forceNrcTrainingPixelsActive = nrc.isActive() && Options::forceNrcTrainingPixelsActive();
+    args.resampledNrcTrainingPaths = resamplesNrcTrainingPaths(nrc.isActive());
 
     args.pixelSamplingRate = Options::samplingRate();
 
@@ -350,7 +390,6 @@ namespace dxvk {
       ImGui::BeginDisabled(true);
       RemixGui::Checkbox("Sparse Secondary Surface Lighting", &Options::enableSparseSecondaryLightingObject());
       ImGui::EndDisabled();
-      RemixGui::Checkbox("Force NRC Training Pixels Active", &Options::forceNrcTrainingPixelsActiveObject());
       RemixGui::Checkbox("Sparse Volumetrics (Primary Hit)", &Options::enableSparseVolumetricsPrimaryHitObject());
       RemixGui::Checkbox("Sparse Volumetrics (Primary Miss)", &Options::enableSparseVolumetricsPrimaryMissObject());
       RemixGui::Checkbox("Sparse Primary Specular Albedo", &Options::enableSparsePrimarySpecularAlbedoObject());
