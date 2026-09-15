@@ -39,6 +39,6 @@
         <package name="rtx-remix-sentry-native" version="0.15.3" />
     </dependency>
     <dependency name="nsight_graphics" linkPath="external/nsight_graphics">
-        <package name="rtx-remix-nsight_graphics" version="2026.1.0-sdk-0.9.0-x64" />
+        <package name="rtx-remix-nsight_graphics_sdk" version="2026.1.0-sdk-0.9.0-x64" />
     </dependency>
 </project>

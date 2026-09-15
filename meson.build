@@ -213,7 +213,7 @@ dxvk_include_dirs = [
 ]
 
 if nsight_graphics_capture_supported
-  dxvk_include_dirs += './external/nsight_graphics/SDKs/NsightGraphicsSDK/0.9.0/include'
+  dxvk_include_dirs += './external/nsight_graphics/include'
 endif
 
 dxvk_include_path = include_directories(dxvk_include_dirs)
