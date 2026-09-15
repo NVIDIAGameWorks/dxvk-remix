@@ -48,6 +48,7 @@
 #include "rtx_render/rtx_options.h"
 #include "rtx_render/rtx_terrain_baker.h"
 #include "rtx_render/rtx_neural_radiance_cache.h"
+#include "rtx_render/rtx_nsight_capture.h"
 #include "rtx_render/rtx_ray_reconstruction.h"
 #include "rtx_render/rtx_xess.h"
 #include "rtx_render/rtx_rtxdi_rayquery.h"
@@ -1460,6 +1461,37 @@ namespace dxvk {
 
     ImGui::SameLine(200.f);
     RemixGui::Checkbox("Include G-Buffer", &RtxOptions::captureDebugImageObject());
+
+    RemixGui::Separator();
+
+    if (RemixGui::CollapsingHeader("Nsight Graphics Capture", collapsingHeaderClosedFlags)) {
+      ImGui::Indent();
+
+#if DXVK_ENABLE_NSIGHT_GRAPHICS_CAPTURE
+      RemixGui::Checkbox("Enable Nsight Graphics Capture On Launch", &NsightGraphicsCapture::graphicsCaptureEnabledObject());
+      RemixGui::InputText("Nsight Graphics Install Path", &NsightGraphicsCapture::graphicsCaptureInstallPathObject());
+      RemixGui::InputText("Capture Output Directory", &NsightGraphicsCapture::graphicsCaptureOutputDirObject());
+      RemixGui::InputText("Capture Output File", &NsightGraphicsCapture::graphicsCaptureOutputFileObject());
+
+      RemixGui::DragInt("Capture Frames", &NsightGraphicsCapture::graphicsCaptureFramesToCaptureObject(), 1.0f,
+                        NsightGraphicsCapture::kMinFramesToCapture, NsightGraphicsCapture::kMaxFramesToCapture, "%d",
+                        ImGuiSliderFlags_AlwaysClamp);
+      RemixGui::Checkbox("Show Nsight HUD", &NsightGraphicsCapture::graphicsCaptureShowHudObject());
+
+      ImGui::TextWrapped("Status: %s", NsightGraphicsCapture::statusText().c_str());
+      ImGui::TextWrapped("Last Result: %s", NsightGraphicsCapture::lastResultText().c_str());
+
+      ImGui::BeginDisabled(!NsightGraphicsCapture::isAvailable());
+      if (ImGui::Button("Trigger Nsight Graphics Capture")) {
+        NsightGraphicsCapture::requestGraphicsCapture(NsightGraphicsCapture::graphicsCaptureFramesToCapture());
+      }
+      ImGui::EndDisabled();
+#else
+      ImGui::TextWrapped("Nsight Graphics capture is supported only by x64 builds. See the build instructions in README.md.");
+#endif
+
+      ImGui::Unindent();
+    }
 
     RemixGui::Separator();
         

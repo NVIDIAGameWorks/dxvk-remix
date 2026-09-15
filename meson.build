@@ -201,11 +201,20 @@ else
   nrc_include_path = 'submodules/nrc/include'
 endif
 
+nsight_graphics_capture_supported = target_machine.cpu_family() == 'x86_64'
+if nsight_graphics_capture_supported
+  add_project_arguments('-DDXVK_ENABLE_NSIGHT_GRAPHICS_CAPTURE=1', language : 'cpp')
+endif
+
 dxvk_include_dirs = [
   './include',
   './include/vulkan/include',
   nrc_include_path
 ]
+
+if nsight_graphics_capture_supported
+  dxvk_include_dirs += './external/nsight_graphics/SDKs/NsightGraphicsSDK/0.9.0/include'
+endif
 
 dxvk_include_path = include_directories(dxvk_include_dirs)
 dxvk_shader_include_path = include_directories('./src/dxvk/shaders')

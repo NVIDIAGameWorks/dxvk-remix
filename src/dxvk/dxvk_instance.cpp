@@ -28,6 +28,7 @@
 #include "rtx_render/rtx_system_info.h"
 #include "rtx_render/rtx_options.h"
 #include "rtx_render/rtx_mod_manager.h"
+#include "rtx_render/rtx_nsight_capture.h"
 
 // NV-DXVK start: Integrate Aftermath
 #include "GFSDK_Aftermath_GpuCrashDump.h"
@@ -448,6 +449,10 @@ namespace dxvk {
     // Get the merged config for DxvkOptions and other queries
     m_config = RtxOptions::getMergedConfig();
     m_options = DxvkOptions(m_config);
+    // NV-DXVK end
+
+    // NV-DXVK start: Nsight Graphics self-injection must happen before Vulkan instance creation
+    NsightGraphicsCapture::initialize();
     // NV-DXVK end
 
     // NV-DXVK start: Wait for debugger functionality

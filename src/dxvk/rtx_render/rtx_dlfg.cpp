@@ -21,6 +21,7 @@
 */
 #include "dxvk_device.h"
 #include "rtx_dlfg.h"
+#include "rtx_nsight_capture.h"
 
 namespace {
   // 6x frame generation: 1 rendered frame + up to 5 interpolated frames
@@ -537,6 +538,11 @@ namespace dxvk {
     reflex.beginOutOfBandPresent(present.present.cachedReflexFrameId);
     m_lastPresentStatus = vk::Presenter::presentImage(present.status, present.present, present.frameInterpolation, image.index, true, presentMetering);
     reflex.endOutOfBandPresent(present.present.cachedReflexFrameId);
+
+    if (m_lastPresentStatus == VK_SUCCESS) {
+      NsightGraphicsCapture::signalFrameBoundary(m_device->queues().__DLFG_QUEUE.queueHandle);
+      NsightGraphicsCapture::processPendingCaptureRequest();
+    }
 
     return m_lastPresentStatus == VK_SUCCESS;
   }
@@ -1234,6 +1240,10 @@ namespace dxvk {
   }
 
   void DxvkDLFG::onDestroy() {
+    if (m_dlfgContext) {
+      m_dlfgContext->releaseNGXFeature();
+    }
+    m_dlfgContext = nullptr;
     m_queryPoolDLFG = nullptr;
   }
 
