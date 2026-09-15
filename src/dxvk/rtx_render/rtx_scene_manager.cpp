@@ -725,10 +725,9 @@ namespace dxvk {
     // activeReplacements pointers every frame. If a path exists where replacements bind without a clear, use dynamic
     // (drawReplacements) for that transition -- drawReplacements already reconciles activeReplacements and prims.
     //
-    // Static path reuses each prim's BlasEntry::modifiedGeometryData as-is. If another draw earlier this frame
-    // already entered DrawCallCache::get and re-bound a sibling-topology BlasEntry to its own data (kUpdateBVH),
-    // the cached buffers no longer correspond to this draw -- fall back to dynamic so DrawCallCache::get's
-    // "frameLastTouched skip" allocates a fresh BlasEntry and processSceneObject re-links the instance.
+    // Static path reuses BlasEntry::modifiedGeometryData as-is, valid only if no other draw this
+    // frame rebuilt it (kUpdateBVH); frameLastUpdated tracks that, while frameLastTouched also
+    // fires for exact-match sibling draws that share a BlasEntry without rebuilding it.
     auto blasAlreadyTouchedByOtherDraw = [replacementInstance, currentFrameId]() -> bool {
       for (const auto& prim : replacementInstance->prims) {
         RtInstance* inst = prim.getInstance();
@@ -739,7 +738,7 @@ namespace dxvk {
         if (pBlas == nullptr) {
           continue;
         }
-        if (pBlas->frameLastTouched == currentFrameId) {
+        if (pBlas->frameLastUpdated == currentFrameId) {
           return true;
         }
       }
@@ -799,6 +798,8 @@ namespace dxvk {
     if (usePreservePath) {
       preserveReplacementInstance(ctx, input, pReplacements, replacementInstance);
     } else {
+      // Any RtxOption read inside the dynamic update should force a full update when changed.
+      RTX_OPTION_INVALIDATION_SCOPE(RtxOptionFlags::InvalidatesDrawcallTranslation);
       MaterialData renderMaterialData = determineMaterialData(overrideMaterialData, input);
       if (!activeReplacementsMatch) {
         replacementInstance->clear();
@@ -1176,18 +1177,21 @@ namespace dxvk {
 
     instance.setFrameLastUpdated(m_device->getCurrentFrameId());
 
-    // Preserve path: keep RtInstance surface/material/transform/mask state from the last dynamic update.
+    // One-shot cleanup for the first preserve frame after a dynamic update; isPreservePath is
+    // false on the dynamic path, so flipping it here doubles as the "first frame" signal.
+    if (!instance.surface.isPreservePath) {
+      instance.surface.isPreservePath = true;
 
-    // The last dynamic update may have left prevObjectToWorld != objectToWorld and
-    // isStatic == false (e.g. after a transform-changing move()). Re-sync on the first
-    // preserve frame after that.
-    if (!instance.surface.isStatic) {
-      instance.surface.prevObjectToWorld = instance.surface.objectToWorld;
-      instance.surface.isStatic = true;
+      // The last dynamic update may have left hasMaterialChanged == true.
+      instance.surface.hasMaterialChanged = false;
+
+      // The last dynamic update may have left prevObjectToWorld != objectToWorld and
+      // isStatic == false (e.g. after a transform-changing move()). Re-sync once.
+      if (!instance.surface.isStatic) {
+        instance.surface.prevObjectToWorld = instance.surface.objectToWorld;
+        instance.surface.isStatic = true;
+      }
     }
-
-    // The last dynamic update may have left hasMaterialChanged == true.
-    instance.surface.hasMaterialChanged = false;
 
     // On the first preserve encounter per frame, release the previousPositionBuffer slot
     // so instances don't carry a stale previous-position index forward. Subsequent preserve
@@ -1289,7 +1293,6 @@ namespace dxvk {
       replacementInstance->prims,
       input.drawCallID,
       [&](RtInstance& instance) {
-        instance.surface.isPreservePath = true;
         preserveInstance(instance, &input);
         m_instanceManager.preserveInstance(instance, input, nullptr);
       },

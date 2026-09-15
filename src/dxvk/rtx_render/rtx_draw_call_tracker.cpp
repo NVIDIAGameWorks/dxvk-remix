@@ -88,10 +88,9 @@ namespace dxvk {
       XXH64_hash_t overrideMaterialHash;
       Matrix4 xform;
       Matrix4 textureTransform;
-      uint32_t cameraType;
       uint32_t categories;
-      uint32_t texgenMode;
-      uint32_t _pad0;
+      // Packed: cameraType (bits 0-7), texgenMode (bits 8-15), isUsingRaytracedRenderTarget (bit 16).
+      uint32_t miscFlags;
     };
 
     // {} value-initializes the entire object.
@@ -105,9 +104,14 @@ namespace dxvk {
     data.xform = drawCallState.getTransformData().objectToWorld;
     data.categories = drawCallState.getCategoryFlags().raw();
     data.boneHash = drawCallState.getSkinningState().boneHash;
-    data.cameraType = static_cast<uint32_t>(drawCallState.cameraType);
     data.textureTransform = drawCallState.getTransformData().textureTransform;
-    data.texgenMode = static_cast<uint32_t>(drawCallState.getTransformData().texgenMode);
+
+    // Note: these could be packed tighter, if we have more small values that need to be included.
+    static_assert(CameraType::Count <= (1u << 8), "CameraType no longer fits in the 8 bits allocated to it in IdentityHashData::miscFlags");
+    static_assert(static_cast<uint32_t>(TexGenMode::Count) <= (1u << 8), "TexGenMode no longer fits in the 8 bits allocated to it in IdentityHashData::miscFlags");
+    data.miscFlags = static_cast<uint32_t>(drawCallState.cameraType)
+        | (static_cast<uint32_t>(drawCallState.getTransformData().texgenMode) << 8)
+        | (drawCallState.isUsingRaytracedRenderTarget ? (1u << 16) : 0u);
 
     return hashStructByMemory<IdentityHashData,
         &IdentityHashData::geoHash,
@@ -116,10 +120,8 @@ namespace dxvk {
         &IdentityHashData::overrideMaterialHash,
         &IdentityHashData::xform,
         &IdentityHashData::textureTransform,
-        &IdentityHashData::cameraType,
         &IdentityHashData::categories,
-        &IdentityHashData::texgenMode,
-        &IdentityHashData::_pad0>(data);
+        &IdentityHashData::miscFlags>(data);
   }
 
   void DrawCallTracker::eraseFromSpatialMap(

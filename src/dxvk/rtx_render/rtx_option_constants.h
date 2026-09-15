@@ -45,20 +45,50 @@ namespace dxvk {
   // - Non-UserSetting options in user.conf → should migrate to rtx.conf
   //
   // NoSave and NoReset are orthogonal to layer placement and don't affect migration.
+  //
+  // InvalidatesDrawcallTranslation indicates that a change to this option requires drawCalls
+  // to be retranslated.  Mostly automatic, but if an option changes a drawcall without changing
+  // the tracking hash or being read directly inside the RtxOptionInvalidationScope, it needs to
+  // be manually tagged.
   enum RtxOptionFlags
   {
     NoSave = 0x1,       // Runtime-only option - routed to Derived layer, never saved to config files
     NoReset = 0x2,      // Don't reset this option when layer is cleared via UI
     UserSetting = 0x4,  // End-user setting - belongs in User or Quality layers, not in mod configs
-    InvalidatesDrawcallTranslation = 0x8, // Options that invalidate preserved draw calls (forces retranslation next frame when changed)
+    InvalidatesDrawcallTranslation = 0x8, // Forces preserved draw calls to retranslate next frame when changed; see RtxOptionInvalidationScope.
   };
-  
+
   // Mask of flags that determine which layer an option belongs in.
   // Options with these flags belong in specific layers (e.g., UserSetting → User layer).
   // Options without these flags are general developer/modder options (→ rtx.conf).
   // Used by RtxOptionLayer::countDisallowedOptions() to detect options in the wrong layer.
   // Note: NoSave and NoReset are NOT included - they don't affect layer placement.
   static constexpr uint32_t kRtxOptionCategoryFlags = RtxOptionFlags::UserSetting;
+
+  // RAII scope: options read inside are auto-tagged with these flags, merged with any enclosing scope's flags.
+  class RtxOptionInvalidationScope {
+  public:
+    explicit RtxOptionInvalidationScope(uint32_t requiredFlags) noexcept
+      : m_savedFlags(s_requiredFlags) {
+      s_requiredFlags |= requiredFlags;
+    }
+    ~RtxOptionInvalidationScope() noexcept {
+      s_requiredFlags = m_savedFlags;
+    }
+
+    // Fast thread_local read; 0 when no scope is active.
+    static uint32_t getRequiredFlags() noexcept { return s_requiredFlags; }
+
+  private:
+    uint32_t m_savedFlags;
+    static thread_local uint32_t s_requiredFlags;
+  };
+
+#define RTX_OPTION_INVALIDATION_SCOPE_NAME_(line) _rtxOptionInvalidationScope_##line
+#define RTX_OPTION_INVALIDATION_SCOPE_NAME(line) RTX_OPTION_INVALIDATION_SCOPE_NAME_(line)
+#define RTX_OPTION_INVALIDATION_SCOPE(flags) \
+    [[maybe_unused]] const ::dxvk::RtxOptionInvalidationScope \
+        RTX_OPTION_INVALIDATION_SCOPE_NAME(__LINE__) { static_cast<uint32_t>(flags) }
 
   // ============================================================================
   // RtxOption Types

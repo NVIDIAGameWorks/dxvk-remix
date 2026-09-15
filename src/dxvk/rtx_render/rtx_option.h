@@ -180,7 +180,19 @@ namespace dxvk {
     const char* getDescription() const { return m_description; }
     const char* getEnvironmentVariable() const { return m_environment; }
     OptionType getType() const { return m_type; }
-    uint32_t getFlags() const { return m_flags; }
+    uint32_t getFlags() const { return m_flags.load(std::memory_order_relaxed); }
+
+    // Tags this option with the active RTX_OPTION_INVALIDATION_SCOPE's flags, if any. Call from
+    // every accessor that reads the resolved value (getValue(), containsHash(), etc.) so scope
+    // auto-tagging can't be bypassed by reading the value through a different accessor.
+    void tagInvalidationScope() const {
+      if (const uint32_t scopeFlags = RtxOptionInvalidationScope::getRequiredFlags()) {
+        // Once tagged, m_flags never clears those bits, so skip the atomic RMW when already set.
+        if ((m_flags.load(std::memory_order_relaxed) & scopeFlags) != scopeFlags) {
+          m_flags.fetch_or(scopeFlags, std::memory_order_relaxed);
+        }
+      }
+    }
     
     // Gets the layer that this option will write to if a write function is called.
     // The result depends on the EditTarget for this thread, as well as the option's flags.
@@ -193,7 +205,7 @@ namespace dxvk {
     const GenericValue* getGenericValue(const RtxOptionLayer* layer) const;
     std::string genericValueToString(const GenericValue& value) const;
     std::string getResolvedValueAsString() const;
-    const GenericValue& getResolvedValue() const { return m_resolvedValue; }
+    const GenericValue& getResolvedValue() const { tagInvalidationScope(); return m_resolvedValue; }
     
     // Min/max values - public for documentation generation
     std::optional<GenericValue> minValue;
@@ -261,7 +273,9 @@ namespace dxvk {
     const char* m_description; // Description string for the option that will get included in documentation
     OptionType m_type;
     GenericValue m_resolvedValue;
-    uint32_t m_flags = 0;
+    // Atomic: getValue() ORs in RTX_OPTION_INVALIDATION_SCOPE flags from any thread under
+    // getUpdateMutex, while getFlags() is read lock-free elsewhere (e.g. RtxOptionManager::applyPendingValues).
+    mutable std::atomic<uint32_t> m_flags{ 0 };
     std::function<void(DxvkDevice* device)> m_onChangeCallback;
     
     std::map<RtxOptionLayerKey, PrioritizedValue> m_optionLayerValueQueue;
@@ -336,6 +350,7 @@ namespace dxvk {
     // IMPORTANT: Only call this when the mutex is already held by the calling context.
     const T& getValueNoLock() const {
       assert(RtxOptionImpl::isInitialized() && "Trying to access an RtxOption before the config files have been loaded.");
+      tagInvalidationScope();
       return *getResolvedValuePtr<T>();
     }
 
@@ -452,6 +467,7 @@ namespace dxvk {
     template<typename = std::enable_if_t<std::is_same_v<T, fast_unordered_set>>>
     bool containsHash(const XXH64_hash_t& value) const {
       std::lock_guard<std::mutex> lock(RtxOptionImpl::getUpdateMutex());
+      tagInvalidationScope();
       return m_resolvedValue.hashSet->count(value) > 0;
     }
 
@@ -616,7 +632,8 @@ namespace dxvk {
 
     const T& getValue() const {
       std::lock_guard<std::mutex> lock(RtxOptionImpl::getUpdateMutex());
-      assert(RtxOptionImpl::isInitialized() && "Trying to access an RtxOption before the config files have been loaded."); 
+      assert(RtxOptionImpl::isInitialized() && "Trying to access an RtxOption before the config files have been loaded.");
+      tagInvalidationScope();
 #if RTX_OPTION_DEBUG_LOGGING
       // Print out a warning whenever a dirty value is accessed.
       if (isDirty()) {
