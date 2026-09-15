@@ -23,6 +23,10 @@
 #include "dxvk_queue.h"
 #include "dxvk_scoped_annotation.h"
 
+// NV-DXVK start: Nsight Graphics capture
+#include "rtx_render/rtx_nsight_capture.h"
+// NV-DXVK end
+
 #include "NvLowLatencyVk.h"
 #include "GFSDK_Aftermath_GpuCrashDump.h"
 
@@ -262,6 +266,13 @@ namespace dxvk {
 
             Sleep(presentThrottleDelay);
           }
+
+          // NV-DXVK start: Nsight Graphics capture
+          if (status == VK_SUCCESS) {
+            NsightGraphicsCapture::signalFrameBoundary(m_device->queues().graphics.queueHandle);
+            NsightGraphicsCapture::processPendingCaptureRequest();
+          }
+          // NV-DXVK end
         }
       } else {
         // Don't submit anything after device loss

@@ -590,5 +590,9 @@ namespace dxvk {
     m_rayReconstruction.get().onDestroy();
     m_dlss.get().onDestroy();
     m_dlfg.get().onDestroy();
+    // NV-DXVK start: Shut down NGX after releasing its features
+    m_device->waitForIdle();
+    m_ngxContext.get().shutdown();
+    // NV-DXVK end
   }
 }
