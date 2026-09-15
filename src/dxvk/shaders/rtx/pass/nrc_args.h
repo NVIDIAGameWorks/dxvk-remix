@@ -27,6 +27,14 @@
 #include "../../../../../submodules/nrc/include/NrcStructures.h"
 #include "../shaders/rtx/concept/surface/surface_shared.h"
 
+// A training query reservoir entry holds the selection key in the high bits and the winning pixel's offset
+// within its cell in the low bits. The offset limits how large a cell may be, which
+// NeuralRadianceCache::clampTrainingDimensionsToReservoirOffsetRange enforces.
+// 7 bits allows 128 query pixels per cell axis, several times the ~17 a 4K render resolution needs at default
+// training settings, and leaves the key 18 of the 32 bits. Trading either way costs the other headroom.
+#define NRC_TRAINING_QUERY_OFFSET_BITS_PER_AXIS 7
+#define NRC_MAX_QUERY_PIXELS_PER_TRAINING_PIXEL_PER_AXIS (1u << NRC_TRAINING_QUERY_OFFSET_BITS_PER_AXIS)
+
 // Note: Ensure 16B alignment
 struct NrcArgs {
   NrcConstants nrcConstants;

@@ -201,8 +201,7 @@ namespace dxvk {
     void bindIntegrateDirectPathTracingResources(RtxContext& ctx, const bool deferredNrcTrainingSetup);
     void bindIntegrateIndirectPathTracingResources(RtxContext& ctx);
 
-    const Resources::Resource& getTrainingQueryKeyReservoir() const { return m_trainingQueryKeyReservoir; }
-    const Resources::Resource& getTrainingQueryPixel() const { return m_trainingQueryPixel; }
+    const Resources::Resource& getTrainingQueryReservoir() const { return m_trainingQueryReservoir; }
 
     const Vector2& getNumQueryPixelsPerTrainingPixel() const;
     bool isUpdateResolveModeActive() const;
@@ -240,6 +239,10 @@ namespace dxvk {
     void copyNumberOfTrainingRecords(RtxContext& ctx);
     void readAndResetNumberOfTrainingRecords();
     void calculateActiveTrainingDimensions(float frameTimeMilliseconds, bool forceReset);
+    // Raises training dimensions so a training cell stays small enough for the resampling reservoir to address a
+    // query pixel within it by offset.
+    void clampTrainingDimensionsToReservoirOffsetRange(nrc_uint2& trainingDimensions) const;
+
     uint32_t calculateNumTrainingIterations();
     uint8_t calculateTrainingMaxPathBounces() const;
 
@@ -257,8 +260,7 @@ namespace dxvk {
     Resources::Resource    m_trainingGBufferSurfaceRadianceRG;
     Resources::Resource    m_trainingGBufferSurfaceRadianceB;
 
-    Resources::Resource    m_trainingQueryKeyReservoir;
-    Resources::Resource    m_trainingQueryPixel;
+    Resources::Resource    m_trainingQueryReservoir;
 
     // Query path data 0 is only allocated when include direct lighting is disabled,
     // which is not the default behavior, so there's no real need to have to alias it.

@@ -56,8 +56,8 @@ Texture2D<uint2> SharedSubsurfaceDiffusionProfileData;
 [[vk::binding(INTEGRATE_DIRECT_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)]]
 Texture2D<uint16_t> ActiveLocalPixelCoords;
 
-[[vk::binding(INTEGRATE_DIRECT_BINDING_NRC_TRAINING_QUERY_PIXEL_INPUT)]]
-Texture2D<uint> NrcTrainingQueryPixel;
+[[vk::binding(INTEGRATE_DIRECT_BINDING_NRC_TRAINING_QUERY_RESERVOIR_INPUT)]]
+Texture2D<uint> NrcTrainingQueryReservoir;
 
 [[vk::binding(INTEGRATE_DIRECT_BINDING_PRIMARY_HIT_DISTANCE_INPUT)]]
 Texture2D<float> PrimaryHitDistance;

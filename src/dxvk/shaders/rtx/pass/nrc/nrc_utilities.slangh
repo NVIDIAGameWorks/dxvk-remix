@@ -42,17 +42,34 @@ bool isDeltaLobe(float16_t perceptualRoughness, const uint8_t materialType)
     // Note: RayPortal material continues resolving when a ray hits inside and portal's outline should not be treated as a delta lobe (I think)
 }
 
-// Map value for training cells with no selected query pixel this frame.
-static const uint kNrcTrainingQueryPixelSentinel = 0xFFFFFFFFu;
+// Packing the offset alongside the key lets one InterlockedMax pick the winner and say which pixel it was, so
+// no later pass has to recompute keys to find it. Highest key wins, ties broken by offset.
+// Zero means the cell picked nothing, so keys start at 1. See NRC_TRAINING_QUERY_OFFSET_BITS_PER_AXIS.
+static const uint kNrcTrainingQueryReservoirEmpty = 0u;
+static const uint kNrcTrainingQueryOffsetBitsPerAxis = NRC_TRAINING_QUERY_OFFSET_BITS_PER_AXIS;
+static const uint kNrcTrainingQueryOffsetMask = (1u << kNrcTrainingQueryOffsetBitsPerAxis) - 1u;
+static const uint kNrcTrainingQueryKeyShift = 2u * kNrcTrainingQueryOffsetBitsPerAxis;
 
-uint packNrcTrainingQueryPixel(uvec2 queryPixelCoordinate)
+uint packNrcTrainingQueryReservoirEntry(uint key, uvec2 queryPixelOffsetInCell)
 {
-  return ((queryPixelCoordinate.y & 0xFFFFu) << 16) | (queryPixelCoordinate.x & 0xFFFFu);
+  return (key << kNrcTrainingQueryKeyShift) |
+         ((queryPixelOffsetInCell.y & kNrcTrainingQueryOffsetMask) << kNrcTrainingQueryOffsetBitsPerAxis) |
+         (queryPixelOffsetInCell.x & kNrcTrainingQueryOffsetMask);
 }
 
-uvec2 unpackNrcTrainingQueryPixel(uint packedCoordinate)
+uvec2 unpackNrcTrainingQueryPixelOffset(uint reservoirEntry)
 {
-  return uvec2(packedCoordinate & 0xFFFFu, (packedCoordinate >> 16) & 0xFFFFu);
+  return uvec2(reservoirEntry & kNrcTrainingQueryOffsetMask,
+               (reservoirEntry >> kNrcTrainingQueryOffsetBitsPerAxis) & kNrcTrainingQueryOffsetMask);
+}
+
+// Whether an intra-cell offset fits the packed field, so callers can drop candidates instead of storing a wrapped
+// offset that names another pixel. Being unsigned, this also rejects a cell origin above the query pixel, which
+// the forward and inverse coordinate scales can disagree into at a cell boundary since they are separately
+// rounded rather than exact inverses.
+bool isNrcTrainingQueryPixelOffsetRepresentable(uvec2 queryPixelOffsetInCell)
+{
+  return all(queryPixelOffsetInCell <= uvec2(kNrcTrainingQueryOffsetMask));
 }
 
 // Expects trainingPixelCoordinate to be within training dimensions
@@ -71,6 +88,13 @@ uvec2 calculateTrainingPixelCoordinate(
 {
   // Add a half texel offset to minimize straddling errors considering query dimensions are same or larger than the update dimensions
   return (queryPixelCoordinateInQuerySpace + 0.5) * nrcArgs.queryToTrainingCoordinateSpace;
+}
+
+// First query pixel of this training cell, which reservoir offsets are relative to. This is the inverse of
+// calculateTrainingPixelCoordinate. Its multiply, subtract and ceil are exact, so every pass agrees on it.
+uvec2 calculateTrainingCellOriginInQuerySpace(uvec2 trainingPixelCoordinate, NrcArgs nrcArgs)
+{
+  return uvec2(max(ceil(vec2(trainingPixelCoordinate) * nrcArgs.trainingToQueryCoordinateSpace - 0.5f), vec2(0.0f)));
 }
 
 bool isUpdatePixel(u16vec2 combinedNrcCoordinate, RaytraceArgs args)
@@ -119,12 +143,34 @@ bool calculateIfPixelHasActiveNrcTrainingPath(
   return all(trainingPixelCoordinateInQuerySpace == queryPixelCoordinateInQuerySpace);
 }
 
+// Query pixel this training cell selected. False when it selected none this frame.
+bool calculateNrcTrainingQueryPixel(
+  uvec2 trainingPixelCoordinate,
+  Texture2D<uint> NrcTrainingQueryReservoir,
+  NrcArgs nrcArgs,
+  out uvec2 queryPixelCoordinate)
+{
+  const uint reservoirEntry = NrcTrainingQueryReservoir[trainingPixelCoordinate];
+
+  queryPixelCoordinate = uvec2(0);
+
+  if (reservoirEntry == kNrcTrainingQueryReservoirEmpty)
+  {
+    return false;
+  }
+
+  queryPixelCoordinate = calculateTrainingCellOriginInQuerySpace(trainingPixelCoordinate, nrcArgs) +
+    unpackNrcTrainingQueryPixelOffset(reservoirEntry);
+
+  return true;
+}
+
 // Whether this query pixel provides an NRC training path, and the training-grid cell it belongs to. Resampling
-// takes each cell's winner from the resolved map, otherwise it comes from the deterministic training lattice.
+// takes each cell's winner from the reservoir, otherwise it comes from the deterministic training lattice.
 bool calculateNrcTrainingPathForQueryPixel(
   uvec2 queryPixelCoordinate,
   bool resampledNrcTrainingPaths,
-  Texture2D<uint> NrcTrainingQueryPixel,
+  Texture2D<uint> NrcTrainingQueryReservoir,
   NrcArgs nrcArgs,
   out uvec2 trainingPixelCoordinateInTrainingSpace)
 {
@@ -137,10 +183,19 @@ bool calculateNrcTrainingPathForQueryPixel(
       return false;
     }
 
-    // Every pixel in a training cell reads the same winner, so comparing it against this thread's own coordinate is what
+    const uint reservoirEntry = NrcTrainingQueryReservoir[trainingPixelCoordinateInTrainingSpace];
+
+    if (reservoirEntry == kNrcTrainingQueryReservoirEmpty)
+    {
+      return false;
+    }
+
+    // Every pixel in a training cell reads the same winner, so comparing it against this thread's own offset is what
     // singles out the one pixel that has the training path. This is done this way because the winner is resampled per frame.
-    return NrcTrainingQueryPixel[trainingPixelCoordinateInTrainingSpace] ==
-      packNrcTrainingQueryPixel(queryPixelCoordinate);
+    const uvec2 cellOrigin =
+      calculateTrainingCellOriginInQuerySpace(trainingPixelCoordinateInTrainingSpace, nrcArgs);
+
+    return all(unpackNrcTrainingQueryPixelOffset(reservoirEntry) == queryPixelCoordinate - cellOrigin);
   }
 
   return calculateIfPixelHasActiveNrcTrainingPath(
