@@ -91,7 +91,7 @@ bool calculateDeferredNrcTrainingPath(uvec2 pixelCoordinate, out uvec2 trainingP
   // Resampling is on, guaranteed by the deferral check above.
   const bool hasTrainingPath = Nrc::calculateNrcTrainingPathForQueryPixel(
     pixelCoordinate, true,
-    NrcTrainingQueryPixel, cb.nrcArgs, trainingPixelCoordinateInTrainingSpace);
+    NrcTrainingQueryReservoir, cb.nrcArgs, trainingPixelCoordinateInTrainingSpace);
 
   return hasTrainingPath;
 }
@@ -174,8 +174,9 @@ void integrate_direct_pass(uvec2 threadIndex)
     hasDeferredNrcTrainingPath = false;
   }
 
-  // Written after the revocation above, so the view shows the paths that actually got registered.
-  if (cb.debugView == DEBUG_VIEW_NRC_UPDATE_PIXEL)
+  // Written after the revocation above, so the view shows the paths that actually got registered. Only on the
+  // deferred path - otherwise the GBuffer knows the cell winner and writes this view itself.
+  if (cb.debugView == DEBUG_VIEW_NRC_UPDATE_PIXEL && shouldDeferNrcTrainingSetup(cb.sparseRenderingArgs))
   {
     storeInDebugView(pixelCoordinate, hasDeferredNrcTrainingPath);
   }

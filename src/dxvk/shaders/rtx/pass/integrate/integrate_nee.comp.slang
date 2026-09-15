@@ -239,7 +239,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           // this radiance to a cell whose path was drawn from some other pixel.
           hasNrcTrainingPath = Nrc::calculateNrcTrainingPathForQueryPixel(
             pixelCoordinate, cb.sparseRenderingArgs.resampledNrcTrainingPaths,
-            NrcTrainingQueryPixel, cb.nrcArgs, nrcTrainingPixelCoordinate);
+            NrcTrainingQueryReservoir, cb.nrcArgs, nrcTrainingPixelCoordinate);
         }
 
         // Feed back to NEE cache hash tasks (skip when using cached samples — triangleID may be stale)

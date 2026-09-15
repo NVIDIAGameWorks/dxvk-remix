@@ -122,8 +122,8 @@ Texture2D<float2> NrcTrainingGBufferSurfaceRadianceRG;
 layout(r16f, binding = INTEGRATE_INDIRECT_BINDING_NRC_TRAINING_GBUFFER_SURFACE_RADIANCE_B_INPUT)
 Texture2D<float> NrcTrainingGBufferSurfaceRadianceB;
 
-layout(binding = INTEGRATE_INDIRECT_BINDING_NRC_TRAINING_QUERY_PIXEL_INPUT)
-Texture2D<uint> NrcTrainingQueryPixel;
+layout(binding = INTEGRATE_INDIRECT_BINDING_NRC_TRAINING_QUERY_RESERVOIR_INPUT)
+Texture2D<uint> NrcTrainingQueryReservoir;
 
 // Inputs / Outputs
 

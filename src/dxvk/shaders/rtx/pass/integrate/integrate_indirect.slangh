@@ -58,21 +58,30 @@ bool nrcCombinedToGbufferPixelCoordinate(
 
     if (cb.sparseRenderingArgs.resampledNrcTrainingPaths)
     {
-      // Sentinel means no active pixel was selected for this training cell, so skip its training path.
-      const uint packedQueryPixel = NrcTrainingQueryPixel[nrcUpdatePixelCoordinate];
-      if (packedQueryPixel == Nrc::kNrcTrainingQueryPixelSentinel)
+      // An empty reservoir means no active pixel was selected for this training cell, so skip its training path.
+      if (!Nrc::calculateNrcTrainingQueryPixel(
+            nrcUpdatePixelCoordinate, NrcTrainingQueryReservoir, cb.nrcArgs, gbufferPixelCoordinate))
       {
         Nrc::invalidateNrcTrainingPath(nrcUpdatePixelCoordinate);
 
         gbufferPixelCoordinate = uvec2(-1, -1);
         return false;
       }
-      gbufferPixelCoordinate = Nrc::unpackNrcTrainingQueryPixel(packedQueryPixel);
     }
     else
     {
       // Reached only when sparse rendering is inactive, so every lattice pixel has a current GBuffer.
       gbufferPixelCoordinate = Nrc::calculateTrainingPixelCoordinateInQuerySpace(nrcUpdatePixelCoordinate, cb.nrcArgs);
+    }
+
+    // Update rows skip the query-space bounds check the caller runs, so a cell whose coordinate lands outside the
+    // render extent has to be invalidated here rather than read out of bounds.
+    if (any(gbufferPixelCoordinate >= cb.camera.resolution))
+    {
+      Nrc::invalidateNrcTrainingPath(nrcUpdatePixelCoordinate);
+
+      gbufferPixelCoordinate = uvec2(-1, -1);
+      return false;
     }
   }
   else

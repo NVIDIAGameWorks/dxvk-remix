@@ -54,8 +54,8 @@ Texture2D<float> SecondaryConeRadius;
 
 // Input-Outputs
 
-layout(r32ui, binding = ACTIVE_PIXEL_MASK_BINDING_NRC_TRAINING_QUERY_KEY_RESERVOIR_INPUT_OUTPUT)
-RWTexture2D<uint> NrcTrainingQueryKeyReservoir;
+layout(r32ui, binding = ACTIVE_PIXEL_MASK_BINDING_NRC_TRAINING_QUERY_RESERVOIR_INPUT_OUTPUT)
+RWTexture2D<uint> NrcTrainingQueryReservoir;
 
 // Outputs
 
@@ -91,12 +91,11 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
   // rounding is implementation-defined, so explicitly round-to-nearest here. This ensures the
   // value seen by every consumer is as intended, keeping the per-pixel sampling rate used for sample
   // drawing in sync with the scale used for radiance reconstruction.
-  const uint quantizedRate255 = quantizeSamplingRate(rate);
   // Store the dequantized value so the mask pass reads back exactly what the activity test here used.
-  const float quantizedRate = dequantizeSamplingRate(quantizedRate255);
+  const float quantizedRate = dequantizeSamplingRate(quantizeSamplingRate(rate));
   PixelSamplingRate[pixelCoordinate] = quantizedRate;
 
-  // Accumulate this active candidate's key into its training cell; the mask pass picks the highest.
+  // Enter this active candidate into its training cell's reservoir, carrying the pixel that drew the key.
   // The quantized rate keeps the active test matched to the one the mask pass runs.
   // Disregard misses for integration selected surface to avoid wasting a training path activation there
   if (cb.sparseRenderingArgs.resampledNrcTrainingPaths &&
@@ -106,8 +105,19 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     const uvec2 trainingPixelCoordinate = Nrc::calculateTrainingPixelCoordinate(pixelCoordinate, cb.nrcArgs);
     if (all(trainingPixelCoordinate < uvec2(cb.nrcArgs.activeTrainingDimensions)))
     {
-      const uint key = calculateNrcTrainingQueryKey(pixelCoordinate, cb.frameIdx, quantizedRate255);
-      InterlockedMax(NrcTrainingQueryKeyReservoir[trainingPixelCoordinate], key);
+      const uvec2 cellOrigin =
+        Nrc::calculateTrainingCellOriginInQuerySpace(trainingPixelCoordinate, cb.nrcArgs);
+      const uvec2 queryPixelOffsetInCell = pixelCoordinate - cellOrigin;
+
+      // Only enter candidates the offset field can address. Storing a wrapped offset would hand the cell's training
+      // path to a different pixel, which may not even be active this frame.
+      if (Nrc::isNrcTrainingQueryPixelOffsetRepresentable(queryPixelOffsetInCell))
+      {
+        const uint key = calculateNrcTrainingQueryKey(pixelCoordinate, cb.frameIdx, quantizedRate);
+
+        InterlockedMax(NrcTrainingQueryReservoir[trainingPixelCoordinate],
+          Nrc::packNrcTrainingQueryReservoirEntry(key, queryPixelOffsetInCell));
+      }
     }
   }
 }

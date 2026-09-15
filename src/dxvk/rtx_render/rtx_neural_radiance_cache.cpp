@@ -778,16 +778,14 @@ namespace dxvk {
         m_trainingGBufferSurfaceRadianceB = Resources::createImageResource(ctx, "NRC Training shared radiance B", surfaceRadianceExtent, VK_FORMAT_R16_SFLOAT);
       }
 
+      // Training query-pixel resampling reservoir: selection key plus the winning pixel's offset in its cell.
       if (!sparseRenderingResamplesTrainingPaths) {
-        m_trainingQueryKeyReservoir.reset();
-        m_trainingQueryPixel.reset();
-      } else if (m_trainingQueryPixel.image == nullptr
-          || m_trainingQueryKeyReservoir.image == nullptr
-          || m_trainingQueryPixel.image->info().extent.width != trainingExtent.width
-          || m_trainingQueryPixel.image->info().extent.height != trainingExtent.height) {
+        m_trainingQueryReservoir.reset();
+      } else if (m_trainingQueryReservoir.image == nullptr
+          || m_trainingQueryReservoir.image->info().extent.width != trainingExtent.width
+          || m_trainingQueryReservoir.image->info().extent.height != trainingExtent.height) {
 
-        m_trainingQueryKeyReservoir = Resources::createImageResource(ctx, "NRC Training Query Key Reservoir", trainingExtent, VK_FORMAT_R32_UINT);
-        m_trainingQueryPixel = Resources::createImageResource(ctx, "NRC Training Query Pixel", trainingExtent, VK_FORMAT_R32_UINT);
+        m_trainingQueryReservoir = Resources::createImageResource(ctx, "NRC Training Query Reservoir", trainingExtent, VK_FORMAT_R32_UINT);
       }
     }
     
@@ -813,8 +811,8 @@ namespace dxvk {
       }
     }
 
-    // Reset the resampling maps each frame: reservoir to 0 (empty), query-pixel map to the sentinel (none selected).
-    if (m_trainingQueryKeyReservoir.image != nullptr && m_trainingQueryPixel.image != nullptr) {
+    // Reset the reservoir to empty each frame.
+    if (m_trainingQueryReservoir.image != nullptr) {
       VkImageSubresourceRange subRange = {};
       subRange.layerCount = 1;
       subRange.levelCount = 1;
@@ -822,11 +820,7 @@ namespace dxvk {
 
       VkClearColorValue reservoirClear = {};
       reservoirClear.uint32[0] = 0u;
-      ctx->clearColorImage(m_trainingQueryKeyReservoir.image, reservoirClear, subRange);
-
-      VkClearColorValue queryPixelClear = {};
-      queryPixelClear.uint32[0] = 0xFFFFFFFFu;
-      ctx->clearColorImage(m_trainingQueryPixel.image, queryPixelClear, subRange);
+      ctx->clearColorImage(m_trainingQueryReservoir.image, reservoirClear, subRange);
     }
   }
 
@@ -882,8 +876,7 @@ namespace dxvk {
     m_trainingGBufferSurfaceRadianceRG.reset();
     m_trainingGBufferSurfaceRadianceB.reset();
 
-    m_trainingQueryKeyReservoir.reset();
-    m_trainingQueryPixel.reset();
+    m_trainingQueryReservoir.reset();
 
     m_queryPathData1.reset();
     m_trainingPathData1.reset();
@@ -911,7 +904,7 @@ namespace dxvk {
   }
 
   void NeuralRadianceCache::bindIntegrateDirectPathTracingResources(RtxContext& ctx, const bool deferredNrcTrainingSetup) {
-    ctx.bindResourceView(INTEGRATE_DIRECT_BINDING_NRC_TRAINING_QUERY_PIXEL_INPUT, m_trainingQueryPixel.view, nullptr);
+    ctx.bindResourceView(INTEGRATE_DIRECT_BINDING_NRC_TRAINING_QUERY_RESERVOIR_INPUT, m_trainingQueryReservoir.view, nullptr);
 
     ctx.bindResourceBuffer(INTEGRATE_DIRECT_BINDING_NRC_QUERY_PATH_INFO_OUTPUT, getBufferSlice(ctx, NeuralRadianceCache::ResourceType::QueryPathInfo));
     ctx.bindResourceBuffer(INTEGRATE_DIRECT_BINDING_NRC_TRAINING_PATH_INFO_OUTPUT, getBufferSlice(ctx, NeuralRadianceCache::ResourceType::TrainingPathInfo));
@@ -939,7 +932,7 @@ namespace dxvk {
 
     ctx.bindResourceView(INTEGRATE_INDIRECT_BINDING_NRC_TRAINING_GBUFFER_SURFACE_RADIANCE_RG_INPUT, m_trainingGBufferSurfaceRadianceRG.view, nullptr);
     ctx.bindResourceView(INTEGRATE_INDIRECT_BINDING_NRC_TRAINING_GBUFFER_SURFACE_RADIANCE_B_INPUT, m_trainingGBufferSurfaceRadianceB.view, nullptr);
-    ctx.bindResourceView(INTEGRATE_INDIRECT_BINDING_NRC_TRAINING_QUERY_PIXEL_INPUT, m_trainingQueryPixel.view, nullptr);
+    ctx.bindResourceView(INTEGRATE_INDIRECT_BINDING_NRC_TRAINING_QUERY_RESERVOIR_INPUT, m_trainingQueryReservoir.view, nullptr);
     ctx.bindResourceView(INTEGRATE_INDIRECT_BINDING_NRC_PATH_DATA0_INPUT, m_queryPathData0.view, nullptr);
 
     // Aliased resource methods must not be called when the resource is invalid
@@ -989,6 +982,10 @@ namespace dxvk {
         static_cast<uint32_t>(m_nrcCtxSettings->trainingDimensions.x),
         static_cast<uint32_t>(m_nrcCtxSettings->trainingDimensions.y) };
 
+      // Note: this is noop but called here to check and print out a warning should the NRC with sparse rendering be asking for 
+      // training resolution larger than supported.
+      clampTrainingDimensionsToReservoirOffsetRange(m_activeTrainingDimensions);
+
       m_smoothingResetFrameIdx = frameIdx;
       m_smoothedNumberOfTrainingRecords = 0;
 
@@ -1031,6 +1028,8 @@ namespace dxvk {
                     m_nrcCtxSettings->trainingDimensions.y),
         };
 
+        clampTrainingDimensionsToReservoirOffsetRange(newActiveTrainingDimensions);
+
         // Active training dimensions changed
         if (0 != memcmp(&newActiveTrainingDimensions, &m_activeTrainingDimensions, sizeof(newActiveTrainingDimensions))) {
           m_activeTrainingDimensions = newActiveTrainingDimensions;
@@ -1043,6 +1042,39 @@ namespace dxvk {
         }
       }
     }
+  }
+
+  void NeuralRadianceCache::clampTrainingDimensionsToReservoirOffsetRange(nrc_uint2& trainingDimensions) const {
+    // The reservoir stores the winning pixel as an offset in its cell, so a cell may not span more query pixels
+    // than that offset addresses. Nothing else reads it, so leave NRC's own sizing alone.
+    if (!SparseRendering::isEnabledByOptions()) {
+      return;
+    }
+
+    const nrc_uint2 minTrainingDimensions = nrc_uint2 {
+      divCeil(m_nrcCtxSettings->frameDimensions.x, NRC_MAX_QUERY_PIXELS_PER_TRAINING_PIXEL_PER_AXIS),
+      divCeil(m_nrcCtxSettings->frameDimensions.y, NRC_MAX_QUERY_PIXELS_PER_TRAINING_PIXEL_PER_AXIS) };
+
+    const nrc_uint2& maxTrainingDimensions = m_nrcCtxSettings->trainingDimensions;
+
+    if (minTrainingDimensions.x > maxTrainingDimensions.x || minTrainingDimensions.y > maxTrainingDimensions.y) {
+      ONCE(Logger::warn(str::format("[RTX Neural Radiance Cache] NRC cannot train at (", minTrainingDimensions.x,
+                                    ", ", minTrainingDimensions.y, ") for sparse rendering to address a training "
+                                    "cell, so oversized cells lose their training path. Raise "
+                                    "rtx.neuralRadianceCache.targetNumTrainingIterations or lower "
+                                    "averageTrainingBouncesPerPath.")));
+    } else if (trainingDimensions.x < minTrainingDimensions.x || trainingDimensions.y < minTrainingDimensions.y) {
+      ONCE(Logger::warn(str::format("[RTX Neural Radiance Cache] NRC training dimensions raised to (",
+                                    minTrainingDimensions.x, ", ", minTrainingDimensions.y,
+                                    ") so sparse rendering can address a training cell. NRC trains more than its "
+                                    "target as a result. Raise rtx.neuralRadianceCache.targetNumTrainingIterations "
+                                    "or lower averageTrainingBouncesPerPath to avoid it.")));
+    }
+
+    // Never above what the training buffers are sized for. Going over would index out of them, whereas a cell
+    // left too large only loses its training path.
+    trainingDimensions.x = std::min(std::max(trainingDimensions.x, minTrainingDimensions.x), maxTrainingDimensions.x);
+    trainingDimensions.y = std::min(std::max(trainingDimensions.y, minTrainingDimensions.y), maxTrainingDimensions.y);
   }
 
   uint32_t NeuralRadianceCache::calculateNumTrainingIterations() {
