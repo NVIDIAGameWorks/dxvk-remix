@@ -32,6 +32,9 @@ namespace dxvk {
   // This should only ever be modified or read on the dxvk-cs thread.
   bool RtxOptionManager::s_drawcallTranslationInvalid = false;
 
+  // Thread-local: each thread tracks its own active RtxOptionInvalidationScope independently.
+  thread_local uint32_t RtxOptionInvalidationScope::s_requiredFlags = 0;
+
   // ============================================================================
   // RtxOptionManager static method implementations
   // ============================================================================

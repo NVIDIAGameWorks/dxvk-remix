@@ -167,6 +167,12 @@ namespace rtx_option_test {
     RTX_OPTION_ARGS("rtx.test", int32_t, testIntEnvAndFlags, 99, "Test int with env and NoSave flag",
       args.environment = "RTX_TEST_INT_ENV_FLAGS",
       args.flags = RtxOptionFlags::NoSave);
+
+    // Options for RtxOptionInvalidationScope tests. Untagged at declaration so any flags
+    // observed on getFlags() can only have come from scope auto-tagging.
+    RTX_OPTION("rtx.test", int32_t, testScopeRead, 1, "Test int read inside an invalidation scope");
+    RTX_OPTION("rtx.test", int32_t, testScopeUnread, 1, "Test int never read, to verify tagging requires an actual read");
+    RTX_OPTION("rtx.test", fast_unordered_set, testScopeHashSet, {}, "Test hash set for containsHash() tagging");
     
     // Enum option (treated as int)
     enum class TestEnum { ValueA = 0, ValueB = 1, ValueC = 2 };
@@ -1916,7 +1922,110 @@ namespace rtx_option_test {
     
     // Verify options returned to defaults
     verifyOptionsAtDefaults();
-    
+
+    std::cout << "    PASSED" << std::endl;
+  }
+
+  // ============================================================================
+  // Test: RtxOptionInvalidationScope
+  // Tests that options read inside RTX_OPTION_INVALIDATION_SCOPE are auto-tagged,
+  // that untouched options are not, that nested scopes merge (not replace) the
+  // enclosing scope's flags, and that every value-reading accessor participates.
+  // ============================================================================
+
+  void test_invalidationScope() {
+    std::cout << "  Running test_invalidationScope..." << std::endl;
+
+    // Bits distinct from real RtxOptionFlags values, so this test can't accidentally
+    // trip NoSave/NoReset/UserSetting-driven behavior elsewhere.
+    constexpr uint32_t kTestFlagA = 0x1000;
+    constexpr uint32_t kTestFlagB = 0x2000;
+
+    // -------------------------------------------------------------------------
+    // Test: no active scope means no tagging
+    // -------------------------------------------------------------------------
+    TEST_ASSERT(TestOptions::testScopeReadObject().getFlags() == 0,
+                "testScopeRead should have no flags before any scope reads it");
+    TestOptions::testScopeRead();
+    TEST_ASSERT(TestOptions::testScopeReadObject().getFlags() == 0,
+                "Reading an option with no active scope should not tag it");
+
+    // -------------------------------------------------------------------------
+    // Test: reading inside a scope tags the option with the scope's flags
+    // -------------------------------------------------------------------------
+    {
+      RTX_OPTION_INVALIDATION_SCOPE(kTestFlagA);
+      TestOptions::testScopeRead();
+    }
+    TEST_ASSERT((TestOptions::testScopeReadObject().getFlags() & kTestFlagA) != 0,
+                "Reading inside a scope should tag the option with the scope's flags");
+
+    // -------------------------------------------------------------------------
+    // Test: an option that is never read inside the scope is not tagged
+    // -------------------------------------------------------------------------
+    {
+      RTX_OPTION_INVALIDATION_SCOPE(kTestFlagA);
+      // testScopeUnread deliberately not read here.
+    }
+    TEST_ASSERT(TestOptions::testScopeUnreadObject().getFlags() == 0,
+                "An option not read inside a scope should not be tagged, even while the scope is active");
+
+    // -------------------------------------------------------------------------
+    // Test: nested scopes merge flags rather than replacing them
+    // -------------------------------------------------------------------------
+    {
+      RTX_OPTION_INVALIDATION_SCOPE(kTestFlagA);
+      {
+        RTX_OPTION_INVALIDATION_SCOPE(kTestFlagB);
+        // Read while both the outer (A) and inner (B) scopes are active.
+        TestOptions::testScopeUnread();
+      }
+    }
+    TEST_ASSERT((TestOptions::testScopeUnreadObject().getFlags() & kTestFlagA) != 0 &&
+                (TestOptions::testScopeUnreadObject().getFlags() & kTestFlagB) != 0,
+                "A read inside a nested scope should be tagged with both the outer and inner scope's flags");
+
+    // -------------------------------------------------------------------------
+    // Test: scope flags are restored (not just cleared) when a nested scope exits
+    // -------------------------------------------------------------------------
+    {
+      RTX_OPTION_INVALIDATION_SCOPE(kTestFlagA);
+      TEST_ASSERT(RtxOptionInvalidationScope::getRequiredFlags() == kTestFlagA,
+                  "Scope should report only its own flags with nothing nested inside it");
+      {
+        RTX_OPTION_INVALIDATION_SCOPE(kTestFlagB);
+        TEST_ASSERT(RtxOptionInvalidationScope::getRequiredFlags() == (kTestFlagA | kTestFlagB),
+                    "Nested scope should report the merged flags while active");
+      }
+      TEST_ASSERT(RtxOptionInvalidationScope::getRequiredFlags() == kTestFlagA,
+                  "Outer scope's flags should be restored (not left merged) after the inner scope exits");
+    }
+    TEST_ASSERT(RtxOptionInvalidationScope::getRequiredFlags() == 0,
+                "No scope should be active after the outermost scope exits");
+
+    // -------------------------------------------------------------------------
+    // Test: getValueNoLock() also tags (bypasses getValue(), but is the same read)
+    // -------------------------------------------------------------------------
+    {
+      RTX_OPTION_INVALIDATION_SCOPE(kTestFlagB);
+      std::lock_guard<std::mutex> lock(RtxOptionImpl::getUpdateMutex());
+      TestOptions::testScopeRead.getValueNoLock();
+    }
+    TEST_ASSERT((TestOptions::testScopeReadObject().getFlags() & kTestFlagB) != 0,
+                "getValueNoLock() should tag the option the same way getValue() does");
+
+    // -------------------------------------------------------------------------
+    // Test: containsHash() also tags
+    // -------------------------------------------------------------------------
+    TEST_ASSERT(TestOptions::testScopeHashSetObject().getFlags() == 0,
+                "testScopeHashSet should have no flags before being read inside a scope");
+    {
+      RTX_OPTION_INVALIDATION_SCOPE(kTestFlagA);
+      TestOptions::testScopeHashSet.containsHash(12345);
+    }
+    TEST_ASSERT((TestOptions::testScopeHashSetObject().getFlags() & kTestFlagA) != 0,
+                "containsHash() should tag the option the same way getValue() does");
+
     std::cout << "    PASSED" << std::endl;
   }
 
@@ -2874,6 +2983,7 @@ namespace rtx_option_test {
     
     // Flag tests
     test_optionFlags();
+    test_invalidationScope();
     test_isDefault();
     test_resetToDefault();
     
