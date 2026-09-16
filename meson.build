@@ -762,15 +762,13 @@ if dxvk_is_ninja or dxvk_is_woa_ec
       install_tag: target_suffix 
     )
 
+    install_data(join_paths(nrc_dll_path, nrc_dll_name), install_dir : output_path, install_tag: target_suffix)
+    install_data(join_paths(nrc_dll_path, 'cudart64_13.dll'), install_dir : output_path, install_tag: target_suffix)
+    install_data(join_paths(nrc_dll_path, 'nvrtc64_130_0.dll'), install_dir : output_path, install_tag: target_suffix)
+
     if dxvk_is_woa
-      install_data(join_paths(nrc_dll_path, nrc_dll_name), install_dir : output_path, install_tag: target_suffix)
-      install_data(join_paths(nrc_dll_path, 'cudart64_13.dll'), install_dir : output_path, install_tag: target_suffix)
-      install_data(join_paths(nrc_dll_path, 'nvrtc64_130_0.dll'), install_dir : output_path, install_tag: target_suffix)
-      install_data(join_paths(nrc_dll_path, 'nvrtc-builtins64_131.dll'), install_dir : output_path, install_tag: target_suffix)
+      install_data(join_paths(nrc_dll_path, 'nvrtc-builtins64_134.dll'), install_dir : output_path, install_tag: target_suffix)
     else
-      install_data(join_paths(nrc_dll_path, nrc_dll_name), install_dir : output_path, install_tag: target_suffix)
-      install_data(join_paths(nrc_dll_path, 'cudart64_13.dll'), install_dir : output_path, install_tag: target_suffix)
-      install_data(join_paths(nrc_dll_path, 'nvrtc64_130_0.dll'), install_dir : output_path, install_tag: target_suffix)
       install_data(join_paths(nrc_dll_path, 'nvrtc-builtins64_133.dll'), install_dir : output_path, install_tag: target_suffix)
     endif
 
