@@ -32,13 +32,13 @@
         <package name="rtx-remix-aftermath" version="2026.3.0.26197" />
     </dependency>
     <dependency name="nrc_arm64" linkPath="external/nrc_arm64">
-        <package name="nrc_arm64" version="2" />
+        <package name="nrc_arm64" version="0.15" />
     </dependency>
     <dependency name="nrd_arm64" linkPath="external/nrd_arm64">
         <package name="nrd_arm64" version="1" />
     </dependency>
     <dependency name="reflex_arm64" linkPath="external/reflex_arm64">
-        <package name="reflex_arm64" version="1" />
+        <package name="reflex_arm64" version="1.8" />
     </dependency>
     <dependency name="rtxio_arm64" linkPath="external/rtxio_arm64">
         <package name="rtxio_arm64" version="1" />
