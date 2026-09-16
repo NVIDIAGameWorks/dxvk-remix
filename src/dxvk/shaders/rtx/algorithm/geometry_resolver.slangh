@@ -103,8 +103,7 @@ GeometryResolverState geometryResolverStateCreateEmpty(u16vec2 pixelCoordinate)
   geometryResolverState.accumulatedRotation = getIdentityQuaternion();
 
   geometryResolverState.continueResolving = true;
-  // Note: Inside medium assumed to start as false for the camera ray, this assumption will break down if the camera is ever intended
-  // to work properly from within a translucent object (for example, underwater).
+  // Camera medium state is applied by preprocessPrimaryRayState before tracing.
   geometryResolverState.insideMedium = false;
   geometryResolverState.performPSRR = false;
   geometryResolverState.performPSTR = false;
@@ -2103,7 +2102,8 @@ void geometryResolverVertex(
 
       vec4 vectorTransform = quaternionMultiply(geometryResolverState.accumulatedRotation, surfaceMaterialInteractionReflectionPSRSample.vectorTransform, true);
       
-      const GbufferPSRData psrData = packPSRData(sampledRay, SURFACE_INDEX_INVALID,
+      // Reflections retain the camera medium; unpackPSRData also derives insideMedium from this index.
+      const GbufferPSRData psrData = packPSRData(sampledRay, cb.startInMediumMaterialIndex,
         geometryResolverState.attenuation * surfaceMaterialInteractionReflectionPSRSample.attenuation,
         vectorTransform,
         packedGeometryFlags);
@@ -3397,8 +3397,9 @@ void geometryPSRPreparePass(ivec2 pixelCoordinate) {
       reflectionPSRSample.inputDirection, false);
     const vec4 vectorTransform =
       quaternionMultiply(accumulatedRotation, reflectionPSRSample.vectorTransform, true);
+    // Reflections retain the camera medium; unpackPSRData also derives insideMedium from this index.
     const GbufferPSRData psrData = packPSRData(
-      sampledRay, SURFACE_INDEX_INVALID,
+      sampledRay, cb.startInMediumMaterialIndex,
       attenuation * reflectionPSRSample.attenuation,
       vectorTransform,
       packedGeometryFlags);
