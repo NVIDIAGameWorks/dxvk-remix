@@ -64,6 +64,7 @@ enum class RtLightAntiCullingType {
 };
 
 constexpr uint64_t kInvalidExternallyTrackedLightId = std::numeric_limits<uint64_t>::max();
+constexpr uint32_t kInvalidLightIdentity = 0;
 
 struct RtLightShaping {
 public:
@@ -500,6 +501,14 @@ struct RtLight {
     return m_cachedInitialHash;
   }
 
+  uint32_t getStableIdentity() const {
+    return m_stableIdentity;
+  }
+
+  void setStableIdentity(uint32_t identity) {
+    m_stableIdentity = identity;
+  }
+
   XXH64_hash_t getTransformedHash() const;
 
   Vector3 getRadiance() const;
@@ -658,6 +667,7 @@ private:
   };
 
   XXH64_hash_t m_cachedInitialHash = 0;
+  uint32_t m_stableIdentity = kInvalidLightIdentity;
 
   // Used to associate parts of a replacement heirarchy.
   PrimInstanceOwner m_primInstanceOwner;

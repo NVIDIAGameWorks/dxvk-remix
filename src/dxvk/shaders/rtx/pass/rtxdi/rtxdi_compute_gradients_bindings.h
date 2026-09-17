@@ -23,7 +23,9 @@
 
 #include "rtx/pass/common_binding_indices.h"
 
-#define RTXDI_COMPUTE_GRADIENTS_BINDING_RTXDI_RESERVOIR                 20
+// Note: starts at 21 to avoid overlapping the common bindings (0..COMMON_MAX_BINDING). The
+// reservoir buffer uses a slot past this pass's other bindings so slot 20 stays free for the
+// common light identity buffer.
 #define RTXDI_COMPUTE_GRADIENTS_BINDING_CURRENT_WORLD_POSITION_INPUT    21
 #define RTXDI_COMPUTE_GRADIENTS_BINDING_PREVIOUS_WORLD_POSITION_INPUT   22
 #define RTXDI_COMPUTE_GRADIENTS_BINDING_CONE_RADIUS_INPUT               23
@@ -36,6 +38,11 @@
 #define RTXDI_COMPUTE_GRADIENTS_BINDING_SHARED_FLAGS_INPUT              30
 #define RTXDI_COMPUTE_GRADIENTS_BINDING_GRADIENTS_OUTPUT                31
 #define RTXDI_COMPUTE_GRADIENTS_BINDING_BEST_LIGHTS_OUTPUT              32
+#define RTXDI_COMPUTE_GRADIENTS_BINDING_RTXDI_RESERVOIR                 33
+
+#if RTXDI_COMPUTE_GRADIENTS_BINDING_CURRENT_WORLD_POSITION_INPUT <= COMMON_MAX_BINDING
+#error "RTXDI_COMPUTE_GRADIENTS_BINDING_CURRENT_WORLD_POSITION_INPUT must be > COMMON_MAX_BINDING to avoid overlapping the common bindings."
+#endif
 
 struct ComputeGradientsArgs
 {

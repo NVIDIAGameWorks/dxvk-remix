@@ -262,6 +262,85 @@ uint16_t RAB_TranslateLightIndex(uint16_t lightIndex, bool currentToPrevious)
   return lightMapping[lightIndex + (currentToPrevious ? 0 : cb.lightCount)];
 }
 
+// Reservoirs written while identity resolution is disabled have no stored identity. Allow
+// those reservoirs to use the legacy single-frame remap when identity resolution is enabled.
+#ifndef RTXDI_LIGHT_IDENTITY_LEGACY_FALLBACK
+#define RTXDI_LIGHT_IDENTITY_LEGACY_FALLBACK 1
+#endif
+
+bool RAB_UseLightIdentityResolution()
+{
+    return cb.sparseRenderingArgs.enableLightIdentityResolution != 0;
+}
+
+// Returns the runtime-stable 32-bit identity of the light currently at the given index.
+uint RAB_GetLightIdentity(uint currentLightIdx)
+{
+  return lightIdentities[currentLightIdx].x;
+}
+
+// Resolves an opaque light identity to its current light-buffer index via a binary search 
+uint16_t RAB_ResolveLightIndexFromIdentity(uint identity)
+{
+  uint lo = cb.lightCount;
+  uint hi = 2u * cb.lightCount; // exclusive upper bound of the sorted section
+
+  while (lo < hi)
+  {
+    const uint mid = (lo + hi) >> 1;
+
+    // Unsigned compare of the 32-bit key, matching the CPU sort.
+    if (lightIdentities[mid].x < identity)
+    {
+      lo = mid + 1;
+    }
+    else
+    {
+      hi = mid;
+    }
+  }
+
+  if (lo < 2u * cb.lightCount && lightIdentities[lo].x == identity)
+    return uint16_t(lightIdentities[lo].y);
+
+  return RTXDI_INVALID_LIGHT_INDEX;
+}
+
+// Resolves a (possibly stale) reservoir's stored light index to the current frame using its
+// stable identity. Returns false if the referenced light is no longer present this frame.
+bool RAB_ResolveReservoirLightIndex(inout RTXDI_Reservoir reservoir)
+{
+  if (!RTXDI_IsValidReservoir(reservoir))
+    return false;
+
+  // Fast path: the same light is still at the stored index (no renumber affected it).
+  if (uint(reservoir.lightIdx) < cb.lightCount &&
+      RAB_GetLightIdentity(reservoir.lightIdx) == reservoir.lightIdentity)
+  {
+    return true;
+  }
+
+  // The light was renumbered, or the reservoir is stale: recover its current index by identity.
+  const uint16_t resolvedIdx = RAB_ResolveLightIndexFromIdentity(reservoir.lightIdentity);
+  if (resolvedIdx != RTXDI_INVALID_LIGHT_INDEX)
+  {
+    reservoir.lightIdx = resolvedIdx;
+    return true;
+  }
+
+#if RTXDI_LIGHT_IDENTITY_LEGACY_FALLBACK
+  if (reservoir.lightIdentity == 0u)
+  {
+    const uint16_t mappedIdx = RAB_TranslateLightIndex(reservoir.lightIdx, /* currentToPrevious = */ false);
+    reservoir.lightIdx = mappedIdx;
+    return mappedIdx != RTXDI_INVALID_LIGHT_INDEX;
+  }
+#endif
+
+  reservoir.lightIdx = RTXDI_INVALID_LIGHT_INDEX;
+  return false;
+}
+
 RAB_Surface RAB_GetGBufferSurface(ivec2 pixel, bool previousFrame)
 {
   RAB_Surface surface = RAB_EmptySurface();

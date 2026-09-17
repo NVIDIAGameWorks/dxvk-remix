@@ -79,8 +79,16 @@ void main(uint2 GlobalIndex : SV_DispatchThreadID)
   if (bestLightPixelPos.x >= 0)
   {
     RTXDI_Reservoir selectedReservoir = RAB_LoadReservoir(bestLightPixelPos, RTXDI_GetSpatialOutputPage());
-    bestLightIndex = selectedReservoir.lightIdx;
-    bestLightPortalIdx = selectedReservoir.portalIdx;
+    bool bestLightResolved = true;
+    if (RAB_UseLightIdentityResolution())
+    {
+      bestLightResolved = RAB_ResolveReservoirLightIndex(selectedReservoir);
+    }
+    if (bestLightResolved)
+    {
+      bestLightIndex = selectedReservoir.lightIdx;
+      bestLightPortalIdx = selectedReservoir.portalIdx;
+    }
   }
   RtxdiBestLights[GlobalIndex] = uint2(bestLightIndex, bestLightPortalIdx);
 

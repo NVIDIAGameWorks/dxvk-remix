@@ -996,6 +996,7 @@ void RtLight::copyFrom(const RtLight& light) {
   }
   
   m_cachedInitialHash = light.m_cachedInitialHash;
+  m_stableIdentity = light.m_stableIdentity;
   m_frameLastTouched = light.m_frameLastTouched;
   m_isInsideFrustum = light.m_isInsideFrustum;
   m_bufferIdx = light.m_bufferIdx;
@@ -1028,7 +1029,7 @@ void RtLight::copyFrom(const RtLight& light) {
 namespace {
   template<int RtLightSize> struct CheckRtLightSize {
     // The second line of the build error should contain the new size of RtLight in the template argument, i.e. `dxvk::CheckRtLightSize<newSize>`
-    static_assert(RtLightSize == 264, "RtLight size has changed.  Fix the copyFrom function above this message, then update the expected size.");
+    static_assert(RtLightSize == 272, "RtLight size has changed.  Fix the copyFrom function above this message, then update the expected size.");
   };
   CheckRtLightSize<sizeof(RtLight)> _rtLightSizeTest;
 }
@@ -1212,4 +1213,4 @@ Vector3 RtLight::getRadiance() const {
   }
 }
 
-} // namespace dxvk 
+} // namespace dxvk

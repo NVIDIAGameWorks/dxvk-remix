@@ -98,6 +98,9 @@ StructuredBuffer<MemoryPolymorphicLight> previousLights;
 layout(binding = BINDING_LIGHT_MAPPING)
 StructuredBuffer<uint16_t> lightMapping;
 
+layout(binding = BINDING_LIGHT_IDENTITY_BUFFER)
+StructuredBuffer<uint2> lightIdentities;
+
 layout(binding = BINDING_BILLBOARDS_BUFFER) 
 StructuredBuffer<MemoryBillboard> billboards;
 
