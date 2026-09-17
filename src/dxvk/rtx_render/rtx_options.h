@@ -626,10 +626,15 @@ namespace dxvk {
     RTX_OPTION("rtx", uint32_t, numFramesToKeepInstances, 1, "");
     RTX_OPTION("rtx", uint32_t, numFramesToKeepBLAS, 1, "");
     RTX_OPTION("rtx", uint32_t, numFramesToKeepLights, 100, ""); // NOTE: This was the default we've had for a while, can probably be reduced...
-    RTX_OPTION("rtx", uint32_t, sceneKeepAliveFrames, 0, 
+    RTX_OPTION("rtx", uint32_t, sceneKeepAliveFrames, 0,
                "Number of consecutive frames without valid camera or raytracing before clearing the scene."
                " Set to 0 to clear immediately (legacy behavior). Higher values prevent scene clearing during"
                " brief shader loading delays, camera cuts, etc.");
+    RTX_OPTION("rtx", bool, clearSceneOnLastExternalMeshDestroyed, true,
+               "When the last mesh created through the Remix API is destroyed, immediately clear the scene and"
+               " release unused DXVK memory chunks, instead of waiting for frames that an API client (e.g. HdRemix)"
+               " may never submit once its scene is empty. Only applies to editor-mode (API-driven) sessions."
+               " Set to false to restore the purely frame-driven behavior.");
 
     static uint32_t numFramesToKeepGeometryData() {
       return numFramesToKeepBLAS();

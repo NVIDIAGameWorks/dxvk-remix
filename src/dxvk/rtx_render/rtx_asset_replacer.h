@@ -575,6 +575,8 @@ namespace dxvk {
     // cached draw calls still point into it.
     [[nodiscard]] std::shared_ptr<const std::vector<RasterGeometry>> accessExternalMesh(remixapi_MeshHandle handle) const;
     void destroyExternalMesh(remixapi_MeshHandle handle);
+    // True while at least one remixapi-created mesh is still registered.
+    [[nodiscard]] bool hasExternalMeshes() const { return !m_extMeshes.empty(); }
 
   private:
     void updateSecretReplacements();

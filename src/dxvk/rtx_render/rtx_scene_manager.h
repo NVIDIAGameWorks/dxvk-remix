@@ -141,7 +141,9 @@ public:
 
   // Remove an externally created mesh and all associated replacement instances.
   // Note: this is only safe to call from the dxvk-cs thread.
-  void destroyExternalMesh(remixapi_MeshHandle handle);
+  // When the last external mesh goes away, tears the scene down and releases unused
+  // DXVK chunks (see REMIX-5845) because an API client may never present again.
+  void destroyExternalMesh(const Rc<DxvkContext>& ctx, remixapi_MeshHandle handle);
   
   void setExternalStartInMediumMaterial(const MaterialData& translucentMaterial);
   void clearExternalStartInMediumMaterial();
