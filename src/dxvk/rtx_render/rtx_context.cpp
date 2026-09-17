@@ -1459,6 +1459,7 @@ namespace dxvk {
     Rc<DxvkBuffer> lightBuffer = getSceneManager().getLightManager().getLightBuffer();
     Rc<DxvkBuffer> previousLightBuffer = getSceneManager().getLightManager().getPreviousLightBuffer();
     Rc<DxvkBuffer> lightMappingBuffer = getSceneManager().getLightManager().getLightMappingBuffer();
+    Rc<DxvkBuffer> lightIdentityBuffer = getSceneManager().getLightManager().getLightIdentityBuffer();
     Rc<DxvkBuffer> gpuPrintBuffer = getResourceManager().getRaytracingOutput().m_gpuPrintBuffer;
     Rc<DxvkImageView> valueNoiseLut = getResourceManager().getValueNoiseLut(this);
     Rc<DxvkSampler> linearSampler = getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT);
@@ -1478,6 +1479,7 @@ namespace dxvk {
     bindResourceBuffer(BINDING_LIGHT_DATA_BUFFER, DxvkBufferSlice(lightBuffer, 0, lightBuffer.ptr() ? lightBuffer->info().size : 0));
     bindResourceBuffer(BINDING_PREVIOUS_LIGHT_DATA_BUFFER, DxvkBufferSlice(previousLightBuffer, 0, previousLightBuffer.ptr() ? previousLightBuffer->info().size : 0));
     bindResourceBuffer(BINDING_LIGHT_MAPPING, DxvkBufferSlice(lightMappingBuffer, 0, lightMappingBuffer.ptr() ? lightMappingBuffer->info().size : 0));
+    bindResourceBuffer(BINDING_LIGHT_IDENTITY_BUFFER, lightIdentityBuffer.ptr() ? DxvkBufferSlice(lightIdentityBuffer, 0, lightIdentityBuffer->info().size) : DxvkBufferSlice());
     bindResourceBuffer(BINDING_BILLBOARDS_BUFFER, DxvkBufferSlice(billboardsBuffer, 0, billboardsBuffer.ptr() ? billboardsBuffer->info().size : 0));
     bindResourceView(BINDING_BLUE_NOISE_TEXTURE, getResourceManager().getBlueNoiseTexture(this), nullptr);
     bindResourceBuffer(BINDING_CONSTANTS, DxvkBufferSlice(constantsBuffer, 0, constantsBuffer->info().size));

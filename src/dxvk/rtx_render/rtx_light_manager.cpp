@@ -22,6 +22,8 @@
 #include <vector>
 #include <cmath>
 #include <cassert>
+#include <algorithm>
+#include <limits>
 
 #include "rtx_light_manager.h"
 #include "rtx_context.h"
@@ -34,6 +36,7 @@
 #include "math.h"
 #include "rtx_lights.h"
 #include "rtx_intersection_test.h"
+#include "rtx_sparse_rendering.h"
 
 /*  Light Manager (blurb)
 * 
@@ -259,6 +262,7 @@ namespace dxvk {
         if (!oldFallbackLightPresent || s_fallbackLightDirty) {
           // Create the Distant Fallback Light
           const auto oldDirectionalLightBufferIndex = oldFallbackLightPresent ? m_fallbackLight->getBufferIdx() : 0;
+          const auto oldDirectionalLightIdentity = oldFallbackLightPresent ? m_fallbackLight->getStableIdentity() : kInvalidLightIdentity;
 
           s_fallbackLightDirty = false;
           m_fallbackLight.emplace(RtDistantLight(
@@ -271,6 +275,7 @@ namespace dxvk {
           if (oldFallbackLightPresent) {
             // Note: Carry buffer index over from previous frame if the fallback light was present on the last frame.
             m_fallbackLight->setBufferIdx(oldDirectionalLightBufferIndex);
+            m_fallbackLight->setStableIdentity(oldDirectionalLightIdentity);
           }
         }
       } else if (type == FallbackLightType::Sphere) {
@@ -280,6 +285,7 @@ namespace dxvk {
         s_fallbackLightDirty = false;
 
         const auto oldSphereLightBufferIndex = oldFallbackLightPresent ? m_fallbackLight->getBufferIdx() : 0;
+        const auto oldSphereLightIdentity = oldFallbackLightPresent ? m_fallbackLight->getStableIdentity() : kInvalidLightIdentity;
 
         const auto enableFallback = enableFallbackLightShaping();
 
@@ -320,6 +326,7 @@ namespace dxvk {
         if (oldFallbackLightPresent) {
           // Note: Carry buffer index over from previous frame if the fallback light was present on the last frame.
           m_fallbackLight->setBufferIdx(oldSphereLightBufferIndex);
+          m_fallbackLight->setStableIdentity(oldSphereLightIdentity);
         }
       }
     } else if (
@@ -414,11 +421,27 @@ namespace dxvk {
     // Clear all slots to new light
     memset(m_lightMappingData.data(), kNewLightIdx, sizeof(uint16_t) * m_lightMappingData.size());
 
+    const bool buildLightIdentityTable =
+      SparseRendering::isEnabledByOptions() && !SparseRendering::Options::enableRtxdiReuseForInactivePixels();
+
+    // Section A [0, N) maps current light index to light identity; 
+    // section B [N, 2N) is sorted by identity for the GPU's identity->index binary search. 
+    // Zero-initialised so any unused slot holds the "no identity" value (0).
+    if (buildLightIdentityTable) {
+      m_lightIdentityData.assign(static_cast<size_t>(m_currentActiveLightCount) * 2, LightIdentityGpuEntry {});
+    } else {
+      m_lightIdentityData.clear();
+    }
+
     // Write the light data into the previously allocated ranges
     for (auto&& linearizedLight : m_linearizedLights) {
       RtLight& light = *linearizedLight;
 
       if (light.getColorAndIntensity().w > 0 && lightsWritten < m_currentActiveLightCount) {
+        if (light.getStableIdentity() == kInvalidLightIdentity) {
+          light.setStableIdentity(allocateLightIdentity());
+        }
+
         // Find the buffer location for this light
         LightRange& range = m_lightTypeRanges[static_cast<uint32_t>(light.getType())];
         uint32_t newBufferIdx = range.offset + range.count;
@@ -430,6 +453,14 @@ namespace dxvk {
 
         // Also a mapping from current light idx to previous (for unbiased resampling)
         m_lightMappingData[newBufferIdx] = light.getBufferIdx();
+
+        // Record this light's stable identity indexed by its current buffer position (section A).
+        // This lets a reservoir recover the light after renumbering, regardless of its age or
+        // changes to the light's transform and other properties.
+        if (buildLightIdentityTable) {
+          m_lightIdentityData[newBufferIdx].identity = light.getStableIdentity();
+          m_lightIdentityData[newBufferIdx].index = newBufferIdx;
+        }
 
         // Prepare data for GPU
         size_t dataOffset = newBufferIdx * kLightGPUSize;
@@ -445,6 +476,17 @@ namespace dxvk {
         // This light is either disabled or didn't fit into the buffer, so set its buffer index to invalid.
         light.setBufferIdx(kNewLightIdx);
       }
+    }
+
+    // Build the sorted section (B) of the identity table from section (A) so the GPU can map a
+    // reservoir's stored identity back to its current index via binary search.
+    if (buildLightIdentityTable && m_currentActiveLightCount > 0) {
+      std::copy_n(m_lightIdentityData.begin(), m_currentActiveLightCount,
+                  m_lightIdentityData.begin() + m_currentActiveLightCount);
+      std::sort(m_lightIdentityData.begin() + m_currentActiveLightCount, m_lightIdentityData.end(),
+                [](const LightIdentityGpuEntry& a, const LightIdentityGpuEntry& b) {
+                  return a.identity < b.identity;
+                });
     }
 
     // Allocate the light buffer and copy its contents from host to device memory
@@ -466,6 +508,11 @@ namespace dxvk {
     if (info.size > 0 && (m_lightMappingBuffer == nullptr || info.size > m_lightMappingBuffer->info().size)) {
       m_lightMappingBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "Light Mapping Buffer");
     }
+
+    info.size = align(m_lightIdentityData.size() * sizeof(LightIdentityGpuEntry), kBufferAlignment);
+    if (info.size > 0 && (m_lightIdentityBuffer == nullptr || info.size > m_lightIdentityBuffer->info().size)) {
+      m_lightIdentityBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "Light Identity Buffer");
+    }
     
     if (!m_lightsGPUData.empty()) {
       ctx->writeToBuffer(m_lightBuffer, 0, m_lightsGPUData.size(), m_lightsGPUData.data());
@@ -473,6 +520,10 @@ namespace dxvk {
 
     if (!m_lightMappingData.empty()) {
       ctx->writeToBuffer(m_lightMappingBuffer, 0, m_lightMappingData.size() * sizeof(uint16_t), m_lightMappingData.data());
+    }
+
+    if (!m_lightIdentityData.empty()) {
+      ctx->writeToBuffer(m_lightIdentityBuffer, 0, m_lightIdentityData.size() * sizeof(LightIdentityGpuEntry), m_lightIdentityData.data());
     }
 
     // If there are no lights with >0 intensity, then clear the list...
@@ -556,6 +607,15 @@ namespace dxvk {
     // This is somewhat of a blank slate currently to allow for future improvement.
     out.isStaticCount = 0; // This light is not static anymore.
     out.setBufferIdx(in.getBufferIdx());  // We remapped this light.
+    out.setStableIdentity(in.getStableIdentity());
+  }
+
+  uint32_t LightManager::allocateLightIdentity() {
+    if (m_nextLightIdentity > std::numeric_limits<uint32_t>::max()) {
+      throw DxvkError("Light identity space exhausted");
+    }
+
+    return static_cast<uint32_t>(m_nextLightIdentity++);
   }
 
   RtLight* LightManager::addLight(const RtLight& rtLight, const DrawCallState& drawCallState, const RtLightAntiCullingType antiCullingType) {
@@ -628,16 +688,20 @@ namespace dxvk {
           // If this light hasnt moved for N frames, put it to sleep.  This is a defeat device to stop games aggressively ramping up/down intensity as lights 
           if (isStaticCount < RtxOptions::getNumFramesToPutLightsToSleep()) {
             uint32_t bufferIdx = foundLightIt->second.getBufferIdx();
+            uint32_t stableIdentity = foundLightIt->second.getStableIdentity();
             foundLightIt->second = rtLight;
             foundLightIt->second.setBufferIdx(bufferIdx);
+            foundLightIt->second.setStableIdentity(stableIdentity);
           }
 
           // Still static, so increment our counter.
           foundLightIt->second.isStaticCount = isStaticCount + 1;
         } else {
           uint32_t bufferIdx = foundLightIt->second.getBufferIdx();
+          uint32_t stableIdentity = foundLightIt->second.getStableIdentity();
           foundLightIt->second = rtLight;
           foundLightIt->second.setBufferIdx(bufferIdx);
+          foundLightIt->second.setStableIdentity(stableIdentity);
         }
 
         // We saw this light so bump its frame counter.
@@ -716,8 +780,10 @@ namespace dxvk {
     }
     assert(light->getExternallyTrackedLightId() != kInvalidExternallyTrackedLightId && " light passed to updateExternallyTrackedLight is not actually externally tracked.");
     uint16_t bufferIdx = light->getBufferIdx();
+    uint32_t stableIdentity = light->getStableIdentity();
     *light = newLight;
     light->setBufferIdx(bufferIdx);
+    light->setStableIdentity(stableIdentity);
   }
 
   void LightManager::addExternalLight(remixapi_LightHandle handle, const RtLight& rtlight) {
@@ -725,7 +791,9 @@ namespace dxvk {
     if (found != m_externalLights.end()) {
       // TODO: warn the user about id collision,
       //       or just overwriting existing one is fine?
+      uint32_t stableIdentity = found->second.getStableIdentity();
       found->second = rtlight;
+      found->second.setStableIdentity(stableIdentity);
     } else {
       m_externalLights.emplace(handle, rtlight);
     }

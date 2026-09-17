@@ -23,6 +23,8 @@
 
 #include "dxvk_device.h"
 #include "rtx_context.h"
+#include "rtx_scene_manager.h"
+#include "rtx_light_manager.h"
 #include "rtx_neural_radiance_cache.h"
 #include "rtx_ray_reconstruction.h"
 #include "rtx_options.h"
@@ -346,6 +348,7 @@ namespace dxvk {
     args.enableSparseVolumetricsPrimaryHit = Options::enableSparseVolumetricsPrimaryHit();
     args.enableSparseVolumetricsPrimaryMiss = Options::enableSparseVolumetricsPrimaryMiss();
     args.enableSparsePrimarySpecularAlbedo = Options::enableSparsePrimarySpecularAlbedo();
+    args.enableLightIdentityResolution = ctx.getSceneManager().getLightManager().isLightIdentityTableBuilt() ? 1u : 0u;
 
     NeuralRadianceCache& nrc = ctx.getCommonObjects()->metaNeuralRadianceCache();
     args.resampledNrcTrainingPaths = resamplesNrcTrainingPaths(nrc.isActive());

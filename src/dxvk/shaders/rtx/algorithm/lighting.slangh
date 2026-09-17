@@ -47,12 +47,23 @@ bool sampleLightRTXDI(
 {
   // Load the reservoir for this pixel from RTXDI
 
-  const RTXDI_Reservoir reservoir = RAB_LoadReservoir(
+  RTXDI_Reservoir reservoir = RAB_LoadReservoir(
     pixelCoordinate, RTXDI_GetSpatialOutputPage());
 
   if (!RTXDI_IsValidReservoir(reservoir))
   {
     return false;
+  }
+
+  // Under sparse rendering without inactive-pixel reuse, inactive pixels retain reservoirs whose
+  // light index can be several renumbers out of date; resolve the stored index to the current
+  // frame via the reservoir's stable identity.
+  if (RAB_UseLightIdentityResolution())
+  {
+    if (!RAB_ResolveReservoirLightIndex(reservoir))
+    {
+      return false;
+    }
   }
 
   // Get a light sample in portal space
