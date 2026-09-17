@@ -445,13 +445,15 @@ namespace dxvk {
     ~AsyncRunner() {
       if (!m_requiresShutdown.load()) {
         {
-          auto l = std::unique_lock{ m_texturesToProcess_mutex };
+          // Both worker waits re-check m_requiresShutdown under their own mutex, so the flag is
+          // published under both: a store made outside a wait mutex can land between a false
+          // predicate and the worker sleeping, and the notify would then be dropped. The
+          // ready-upload wait is otherwise only released by the render thread
+          // (submitTexturesToDeviceLocal), which no longer runs during teardown.
+          auto lProcess = std::unique_lock{ m_texturesToProcess_mutex };
+          auto lReady = std::unique_lock{ m_readyTextures_mutex };
           m_requiresShutdown.store(true);
         }
-        // Wake every wait the worker can be parked on. The ready-upload backpressure
-        // wait is only ever released by the render thread (submitTexturesToDeviceLocal),
-        // and no further frames will be rendered once teardown has begun - so signalling
-        // m_texturesToProcess_cond alone leaves the join() below blocked forever.
         m_texturesToProcess_cond.notify_all();
         m_readyTextures_cond.notify_all();
       }
@@ -638,6 +640,8 @@ namespace dxvk {
     ~AsyncRunner_RTXIO() {
       if (!m_requiresShutdown.load()) {
         {
+          // Published under the mutex of the worker's only wait, so the notify below cannot be
+          // dropped by a store that lands after the wait predicate was evaluated.
           auto l = std::unique_lock{ m_texturesToProcess_mutex };
           m_requiresShutdown.store(true);
         }
