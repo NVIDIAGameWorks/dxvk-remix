@@ -436,6 +436,7 @@ namespace dxvk {
     explicit AsyncRunner(const Rc<DxvkDevice>& device)
       : m_ringbuf{ device, stagingBufferSize_Bytes() }
       , m_synchronousAlloc{ device, 4 * Megabytes }
+      , m_requiresShutdown{ false }
       , m_thread{ dxvk::thread{ [this] { this->asyncLoop(); } } }
     {
       m_thread.set_priority(ThreadPriority::Lowest);
@@ -443,9 +444,16 @@ namespace dxvk {
 
     ~AsyncRunner() {
       if (!m_requiresShutdown.load()) {
-        auto l = std::unique_lock{ m_texturesToProcess_mutex };
-        m_requiresShutdown.store(true);
-        m_texturesToProcess_cond.notify_one();
+        {
+          auto l = std::unique_lock{ m_texturesToProcess_mutex };
+          m_requiresShutdown.store(true);
+        }
+        // Wake every wait the worker can be parked on. The ready-upload backpressure
+        // wait is only ever released by the render thread (submitTexturesToDeviceLocal),
+        // and no further frames will be rendered once teardown has begun - so signalling
+        // m_texturesToProcess_cond alone leaves the join() below blocked forever.
+        m_texturesToProcess_cond.notify_all();
+        m_readyTextures_cond.notify_all();
       }
       if (m_thread.joinable()) {
         m_thread.join();
@@ -527,7 +535,8 @@ namespace dxvk {
           auto l = std::unique_lock{ m_texturesToProcess_mutex };
 
           m_texturesToProcess_cond.wait(l, [this]() {
-            return !m_texturesToProcess.empty(); // proceed if non-empty
+            // proceed if non-empty, or if teardown has been requested
+            return !m_texturesToProcess.empty() || m_requiresShutdown.load();
           });
 
           if (m_requiresShutdown.load()) {
@@ -547,7 +556,15 @@ namespace dxvk {
         // wait a bit, to not over-commit texture uploads in a single frame
         {
           auto l = std::unique_lock{ m_readyTextures_mutex };
-          m_readyTextures_cond.wait(l, [this]() { return m_readyTextures.size() < MAX_TEXTURE_UPLOADS_PER_FRAME; });
+          m_readyTextures_cond.wait(l, [this]() {
+            return m_readyTextures.size() < MAX_TEXTURE_UPLOADS_PER_FRAME || m_requiresShutdown.load();
+          });
+        }
+
+        // Released by teardown rather than by the render thread draining uploads: drop the
+        // item, nothing will ever consume it.
+        if (m_requiresShutdown.load()) {
+          break;
         }
 
         ReadyToCopy ready;
@@ -564,6 +581,12 @@ namespace dxvk {
           }
 
           while (!ready.dstTexture.ptr()) {
+            // Ring memory is only recycled once submitted copies retire, which needs the
+            // render thread; during teardown that never happens, so bail out instead of
+            // spinning forever and wedging the join in ~AsyncRunner.
+            if (m_requiresShutdown.load()) {
+              return;
+            }
             // alloc failed, retry after wait
             this_thread::yield();
 
@@ -603,6 +626,7 @@ namespace dxvk {
     
     explicit AsyncRunner_RTXIO(const Rc<DxvkDevice>& device)
       : m_device{ device }
+      , m_requiresShutdown{ false }
       , m_thread{ dxvk::thread{ [this] { this->asyncLoop(); } } }
       , m_texturesToProcess_count{ 0 }
       , m_requiresSyncFlush{ false }
@@ -613,9 +637,11 @@ namespace dxvk {
 
     ~AsyncRunner_RTXIO() {
       if (!m_requiresShutdown.load()) {
-        auto l = std::unique_lock{ m_texturesToProcess_mutex };
-        m_requiresShutdown.store(true);
-        m_texturesToProcess_cond.notify_one();
+        {
+          auto l = std::unique_lock{ m_texturesToProcess_mutex };
+          m_requiresShutdown.store(true);
+        }
+        m_texturesToProcess_cond.notify_all();
       }
       if (m_thread.joinable()) {
         m_thread.join();
@@ -667,7 +693,7 @@ namespace dxvk {
           {
             auto l = std::unique_lock{ m_texturesToProcess_mutex };
 
-            while (m_texturesToProcess.empty()) {
+            while (m_texturesToProcess.empty() && !m_requiresShutdown.load()) {
               m_texturesToProcess_cond.wait(l);
 
               l.unlock();
