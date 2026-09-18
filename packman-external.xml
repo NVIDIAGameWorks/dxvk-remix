@@ -41,4 +41,26 @@
     <dependency name="nsight_graphics" linkPath="external/nsight_graphics">
         <package name="rtx-remix-nsight_graphics_sdk" version="2026.1.0-sdk-0.9.0-x64" />
     </dependency>
+    <!-- Windows on Arm deps -->
+    <dependency name="usd_debug_arm64" linkPath="external/usd_stock_arm64/debug" tags="non-redist">
+        <package name="open_usd" version="25.11+265538d9-windows-aarch64-debug-nopython"/>
+    </dependency>
+    <dependency name="usd_release_arm64" linkPath="external/usd_stock_arm64/release">
+        <package name="open_usd" version="25.11+265538d9-windows-aarch64-release-nopython"/>
+    </dependency>
+    <dependency name="nrc_arm64" linkPath="external/nrc_arm64">
+        <package name="rtx-remix-nrc_arm64" version="0.15" />
+    </dependency>
+    <dependency name="nrd_arm64" linkPath="external/nrd_arm64">
+        <package name="rtx-remix-nrd_arm64" version="4.13" />
+    </dependency>
+    <dependency name="reflex_arm64" linkPath="external/reflex_arm64">
+        <package name="rtx-remix-reflex_arm64" version="1.8" />
+    </dependency>
+    <dependency name="rtxio_arm64" linkPath="external/rtxio_arm64">
+        <package name="rtx-remix-rtxio_arm64" version="1" />
+    </dependency>
+    <dependency name="sentry-native_arm64" linkPath="external/sentry-native_arm64">
+        <package name="rtx-remix-sentry-native_arm64" version="0.15.3" />
+    </dependency>
 </project>

@@ -5,4 +5,11 @@
   <dependency name="usd_debug" linkPath="./_external/usd_stock_x64/debug" tags="non-redist">
     <package name="open_usd" version="25.11+07744417-windows-x86_64-debug-nopython" />
   </dependency>
+  <!-- Windows on Arm deps -->
+  <dependency name="usd_debug_arm64" linkPath="./_external/usd_stock_arm64/debug" tags="non-redist">
+    <package name="open_usd" version="25.11+265538d9-windows-aarch64-debug-nopython"/>
+  </dependency>
+  <dependency name="usd_release_arm64" linkPath="./_external/usd_stock_arm64/release">
+    <package name="open_usd" version="25.11+265538d9-windows-aarch64-release-nopython"/>
+  </dependency>
 </project>
