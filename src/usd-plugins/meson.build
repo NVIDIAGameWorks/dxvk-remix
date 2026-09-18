@@ -9,16 +9,15 @@ endif
 
 usd_schema_plugins_isdebug = get_option('buildtype') == 'debug'
 usd_schema_plugins_is_woa = target_machine.cpu() == 'armv8'
-dependencies_file = not usd_schema_plugins_is_woa ? 'packman-external.xml' : 'packman-external-arm64.xml'
 
 packman_result = run_command(
   join_paths(meson.current_source_dir(), '../../scripts-common/packman/packman.cmd'),
   'pull',
-  join_paths(meson.current_source_dir(), dependencies_file),
+  join_paths(meson.current_source_dir(), 'packman-external.xml'),
   '-p', 'windows-x86_64',
   check: true,
 )
-fs.read(join_paths(meson.current_source_dir(), dependencies_file))
+fs.read(join_paths(meson.current_source_dir(), 'packman-external.xml'))
 
 usd_schema_plugins_nvusd_dir = usd_schema_plugins_isdebug ? '_external/usd_stock_x64/debug' : '_external/usd_stock_x64/release'
 if usd_schema_plugins_is_woa

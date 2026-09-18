@@ -43,16 +43,14 @@ current_build_dir_norm = meson.current_build_dir().replace('\\', '/')
 #     early outs if everything's already fetched, so the waste is negligible + forgiveable.
 get_dependencies_script_path = join_paths(global_src_root_norm, 'scripts-common/update-deps.cmd')
 message('Downloading dependencies...')
-# Note: arm64 deps placed in a separate xml to keep x64 builds functional
-dependencies_file = target_machine.cpu() != 'armv8' ? 'packman-external.xml' : 'packman-external-arm64.xml'
-packman_out = run_command(get_dependencies_script_path, dependencies_file, 'update-deps.log', check: true)
+packman_out = run_command(get_dependencies_script_path, 'packman-external.xml', 'update-deps.log', check: true)
 message(packman_out.stdout().strip())
 if packman_out.returncode() != 0
   message(packman_out.stderr().strip())
   error('Failed to get dependencies.')
 endif
 fetch_packman_target = custom_target('fetch_packman',
-  input            : [dependencies_file, get_dependencies_script_path],
+  input            : ['packman-external.xml', get_dependencies_script_path],
   output           : 'update-deps.log',
   command          : [get_dependencies_script_path, '@INPUT0@', '@OUTPUT0@' ] )
 

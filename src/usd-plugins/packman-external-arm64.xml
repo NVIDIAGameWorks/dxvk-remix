@@ -1,9 +1,0 @@
-<project toolsVersion="7.2.2">
-  <!-- Window on Arm deps -->
-  <dependency name="usd_debug" linkPath="./_external/usd_stock_arm64/debug">
-    <package name="open_usd" version="25.11+265538d9-windows-aarch64-debug-nopython"/>
-  </dependency>
-  <dependency name="usd_release" linkPath="./_external/usd_stock_arm64/release">
-    <package name="open_usd" version="25.11+265538d9-windows-aarch64-release-nopython"/>
-  </dependency>
-</project>
