@@ -160,6 +160,15 @@ endif
 external_dll_paths += dlss_lib_path
 
 dlss_include_dir = include_directories(join_paths('..', dlss_root_path, 'include'))
+dlss_include_dirs = [ dlss_include_dir ]
+
+# DLSS-NR (ngx_sdk_dlnr) has no arm64 package yet, so it is unavailable on WoA builds.
+if not dxvk_is_woa
+  dlnr_root_path = 'external/ngx_sdk_dlnr'
+  dlnr_include_dir = include_directories(join_paths('..', dlnr_root_path, 'include'))
+  dlss_include_dirs += dlnr_include_dir
+endif
+
 cc = meson.get_compiler('c')
 dlss_lib_name = 'nvsdk_ngx_d'
 if get_option('buildtype') == 'debug'
@@ -168,7 +177,7 @@ endif
 dlss_lib = cc.find_library(dlss_lib_name, dirs : dlss_lib_path)
 dlss_dep = declare_dependency(
   dependencies : [ dlss_lib ],
-  include_directories : [ dlss_include_dir ]
+  include_directories : dlss_include_dirs
 )
 
 # ============================================================================

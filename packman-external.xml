@@ -29,6 +29,9 @@
     <dependency name="nv_xxd" linkPath="external/nv_xxd">
         <package name="rtx-remix-nv_xxd" version="1" />
     </dependency>
+    <dependency name="ngx_sdk_dlnr" linkPath="external/ngx_sdk_dlnr">
+        <package name="rtx-remix-ngx_sdk_dlnr" version="1" />
+    </dependency>
 	<dependency name="nrd" linkPath="external/nrd">
 	    <package name="rtx-remix-nrd" version="4.13" />
 	</dependency>

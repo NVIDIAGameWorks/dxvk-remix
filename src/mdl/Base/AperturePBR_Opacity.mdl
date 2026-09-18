@@ -1,5 +1,5 @@
 /*****************************************************************************
-*     Copyright 1986-2023 NVIDIA Corporation. All rights reserved.
+*     Copyright 1986-2026 NVIDIA Corporation. All rights reserved.
 ******************************************************************************
 
  MDL MATERIALS ARE PROVIDED PURSUANT TO AN END USER LICENSE  AGREEMENT,
@@ -392,6 +392,47 @@ export material AperturePBR_Opacity(
     anno::hard_range(0, 65504),
     anno::description("Max sample distance of diffusion profile for subsurface scattering."),
     anno::in_group("Subsurface"),
+    anno::unused()
+  ]],
+
+  // ------------ DLSS 3D-GUIDED NEURAL GENERATION -----------------
+  uniform bool enable_dlss_control_mask = true
+  [[
+    anno::display_name("DLSS 3D-Guided Neural Generation"),
+    anno::description("Enables per-material control of DLSS 3D-Guided Neural Generation. When enabled, the settings below determine how strongly it affects this material."),
+    anno::in_group("DLSS 3D-Guided Neural Generation [Experimental]"),
+    anno::ui_order(0),
+    anno::unused()
+  ]],
+  uniform float dlss_control_mask_intensity = 1.0f
+  [[
+    anno::enable_if("enable_dlss_control_mask == true"),
+    anno::display_name("DLSS 3D-Guided Neural Generation Intensity"),
+    anno::hard_range(0.0, 1.0),
+    anno::description("Controls the overall DLSS 3D-Guided Neural Generation effect on this material. Lower values reduce the effect; higher values increase it."),
+    anno::in_group("DLSS 3D-Guided Neural Generation [Experimental]"),
+    anno::ui_order(1),
+    anno::hidden(),
+    anno::unused()
+  ]],
+  uniform float dlss_control_mask_tone_strength = 0.3f
+  [[
+    anno::enable_if("enable_dlss_control_mask == true"),
+    anno::display_name("Tone Intensity"),
+    anno::hard_range(0.0, 1.0),
+    anno::description("Controls DLSS 3D-Guided Neural Generation adjustments to lightness, darkness, and color. Lower values preserve the original tone and color; higher values apply stronger adjustments."),
+    anno::in_group("DLSS 3D-Guided Neural Generation [Experimental]"),
+    anno::ui_order(3),
+    anno::unused()
+  ]],
+  uniform float dlss_control_mask_structural_strength = 0.7f
+  [[
+    anno::enable_if("enable_dlss_control_mask == true"),
+    anno::display_name("Structure Intensity"),
+    anno::hard_range(0.0, 1.0),
+    anno::description("Controls DLSS 3D-Guided Neural Generation adjustments to details, shadows, and materials. Lower values preserve the original structure; higher values apply stronger adjustments."),
+    anno::in_group("DLSS 3D-Guided Neural Generation [Experimental]"),
+    anno::ui_order(2),
     anno::unused()
   ]]
 )

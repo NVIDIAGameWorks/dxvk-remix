@@ -120,3 +120,5 @@ layout(binding = COMPOSITE_DEBUG_VIEW_OUTPUT)
 RWTexture2D<float4> DebugView;
 layout(r16f, binding = COMPOSITE_RAY_RECONSTRUCTION_HIT_DISTANCE_OUTPUT)
 RWTexture2D<float> RayReconstructionHitDistanceOutput;
+[[vk::binding(COMPOSITE_DLSS_NR_CONTROL_MASK_OUTPUT)]]
+RWTexture2D<float4> DlssNrControlMask;

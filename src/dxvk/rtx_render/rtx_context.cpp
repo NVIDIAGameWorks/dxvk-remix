@@ -287,11 +287,14 @@ namespace dxvk {
     // Calculate extents based on if DLSS is enabled or not
     const VkExtent3D downscaleExtent = setDownscaleExtent(upscaleExtent);
 
-    // Resize the RT screen dependant buffers (if needed)
+    // Resize the RT screen dependent buffers (if needed)
     getResourceManager().onResize(this, downscaleExtent, upscaleExtent);
 
     uint32_t renderSize[] = { downscaleExtent.width, downscaleExtent.height };
     uint32_t displaySize[] = { upscaleExtent.width, upscaleExtent.height };
+
+    DlssNeuralRendering& dlssnr = m_common->metaDlssNeuralRendering();
+    dlssnr.setDlssNeuralRenderingSettings(displaySize);
 
     // Set resolution to cameras for jittering
     for (int i = 0; i < CameraType::Count; i++) {
@@ -745,12 +748,14 @@ namespace dxvk {
         RtxDustParticles& dust = m_common->metaDustParticles();
         dust.simulateAndDraw(this, m_state, rtOutput);
 
+        const bool dlssNrEnabled = dispatchDlssNR(rtOutput);
+
         dispatchBloom(rtOutput);
 
         // Motion blur runs before tonemapping while the image is still in linear HDR space.
         dispatchPostFxMotionBlur(rtOutput);
 
-        dispatchToneMapping(rtOutput);
+        dispatchToneMapping(rtOutput, !dlssNrEnabled);
 
         // Lens effects (chromatic aberration, vignette) run AFTER tonemapping. They are
         // display-space artifacts so they operate on post-tonemap LDR data.
@@ -1311,7 +1316,13 @@ namespace dxvk {
       constants.debugView = debugView.debugViewIdx();
       constants.debugKnob = debugView.debugKnob();
       constants.forceFirstHitInGBufferPass = debugView.showFirstGBufferHit();
-      
+      constants.enableDlssNrControlMask =
+        m_common->metaDlssNeuralRendering().useDlssNeuralRendering() &&
+        !DlssNeuralRendering::useAutoMask();
+      constants.enableDlssNrVolumetricControlMask =
+        constants.enableDlssNrControlMask &&
+        DlssNeuralRendering::enableVolumetricControlMask();
+
       constants.gpuPrintThreadIndex = u16vec2 { kInvalidThreadIndex, kInvalidThreadIndex };
       constants.gpuPrintElementIndex = frameIdx % kMaxFramesInFlight;
 
@@ -1802,7 +1813,40 @@ namespace dxvk {
       rtOutput, settings);
   }
 
-  void RtxContext::dispatchToneMapping(const Resources::RaytracingOutput& rtOutput) {
+  bool RtxContext::dispatchDlssNR(const Resources::RaytracingOutput& rtOutput) {
+    ScopedCpuProfileZone();
+
+    auto& dlssNr = m_common->metaDlssNeuralRendering();
+    if (!dlssNr.useDlssNeuralRendering()) {
+      return false;
+    }
+
+    DxvkToneMapping& toneMapper = m_common->metaToneMapping();
+    DxvkAutoExposure& autoExposure = m_common->metaAutoExposure();
+    autoExposure.dispatch(this,
+      getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER),
+      rtOutput, GlobalTime::get().deltaTimeMs());
+
+    // DLSS-NR operates in SDR space; inverse tone mapping restores HDR for downstream post-processing.
+    toneMapper.dispatchFastToneMapping(
+      this,
+      autoExposure.getExposureTexture().view,
+      rtOutput,
+      autoExposure.enabled());
+
+    const bool useRayReconstructionGuides = m_currentUpscaler == InternalUpscaler::DLSS_RR;
+    if (dlssNr.dispatch(this, m_execBarriers, rtOutput, m_resetHistory, useRayReconstructionGuides)) {
+      toneMapper.dispatchInverseToneMapping(
+        this,
+        autoExposure.getExposureTexture().view,
+        rtOutput,
+        autoExposure.enabled());
+    }
+
+    return true;
+  }
+
+  void RtxContext::dispatchToneMapping(const Resources::RaytracingOutput& rtOutput, bool updateAutoExposure) {
     ScopedCpuProfileZone();
 
     if (m_common->metaDebugView().debugViewIdx() == DEBUG_VIEW_PRE_TONEMAP_OUTPUT) {
@@ -1814,9 +1858,11 @@ namespace dxvk {
     this->unbindComputePipeline();
 
     DxvkAutoExposure& autoExposure = m_common->metaAutoExposure();
-    autoExposure.dispatch(this,
-      getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER),
-      rtOutput, GlobalTime::get().deltaTimeMs());
+    if (updateAutoExposure) {
+      autoExposure.dispatch(this,
+        getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER),
+        rtOutput, GlobalTime::get().deltaTimeMs());
+    }
 
     const bool resetToneMapperHistory = m_resetHistory || getSceneManager().getCamera().isCameraCut();
     setFramePassStage(RtxFramePassStage::ToneMapping);

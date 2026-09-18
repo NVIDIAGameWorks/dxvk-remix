@@ -129,6 +129,13 @@ vec2 calcMotionVectorForRayMiss(const uvec2 pixelCoordinate)
   return cameraCalcMotionVectorPixel(cb.camera, ndc, prevNDC.xy);
 }
 
+void geometryResolverStoreDlssNrControlMask(
+  uvec2 pixelCoordinate,
+  vec4 dlssControlMask)
+{
+  DlssNrControlMask[pixelCoordinate] = dlssControlMask;
+}
+
 // Geometry Resolver Vertex Functions
 
 void geometryResolverOutputMiss<
@@ -145,6 +152,11 @@ void geometryResolverOutputMiss<
     PrimarySurfaceFlags[pixelCoordinate] = 0;
     PrimaryDisocclusionThresholdMix[pixelCoordinate] = 0;
     PrimaryDepth[pixelCoordinate] = cb.clearColorDepth;
+
+    if (cb.enableDlssNrControlMask)
+    {
+      geometryResolverStoreDlssNrControlMask(pixelCoordinate, 1.0f.rrrr);
+    }
 
     // RR requires zeroed out input guide buffers for misses
     if (GBUFFER_FEATURE_DLSSRR && cb.enableDLSSRR)
@@ -214,6 +226,23 @@ void geometryResolverOutputMissDynamic(
       geometryResolverOutputMiss<false, false>(pixelCoordinate);
     }
   }
+}
+
+void geometryResolverWriteDlssNrControlMask(
+  uvec2 pixelCoordinate,
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction)
+{
+  vec4 dlssControlMask = 1.0f.rrrr;
+
+  if (polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque)
+  {
+    const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
+      opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    dlssControlMask = unorm4x8ToFloat4x32(opaqueSurfaceMaterialInteraction.dlssControlMask);
+  }
+
+  geometryResolverStoreDlssNrControlMask(pixelCoordinate, dlssControlMask);
 }
 
 void geometryResolverOutputSurface<
@@ -390,6 +419,11 @@ void geometryResolverOutputSurface<
 
   if (PRIMARY_SURFACE)
   {
+    if (cb.enableDlssNrControlMask)
+    {
+      geometryResolverWriteDlssNrControlMask(pixelCoordinate, polymorphicSurfaceMaterialInteraction);
+    }
+
     // Note: Always write to stochastic buffers in the primary surface case.
     polymorphicSurfaceMaterialInteractionWriteToGBuffer(
       polymorphicSurfaceMaterialInteraction, ivec2(pixelCoordinate), true, cb.writePrimaryDenoisingNormal,

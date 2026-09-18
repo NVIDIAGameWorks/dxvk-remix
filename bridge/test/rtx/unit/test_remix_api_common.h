@@ -309,7 +309,11 @@ using MaterialInfoOpaque = Expected<remixapi_MaterialInfoOpaqueEXT>;
                                invertedBlend, \
                                alphaTestType, \
                                alphaReferenceValue, \
-                               displaceOut
+                               displaceOut, \
+                               enableDlssControlMask, \
+                               dlssControlMaskIntensity, \
+                               dlssControlMaskToneStrength, \
+                               dlssControlMaskStructuralStrength
 void MaterialInfoOpaque::init() {
   sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_EXT;
   pNext = nullptr;

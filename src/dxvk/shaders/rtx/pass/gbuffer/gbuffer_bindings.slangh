@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -180,6 +180,9 @@ RWTexture2D<float> SharedBiasCurrentColorMask;
 
 layout(rgba32ui, binding = GBUFFER_BINDING_ALPHA_BLEND_GBUFFER_OUTPUT)
 RWTexture2D<uint4> AlphaBlendGBuffer;
+
+[[vk::binding(GBUFFER_BINDING_DLSS_NR_CONTROL_MASK_OUTPUT)]]
+RWTexture2D<float4> DlssNrControlMask;
 
 layout(rg32f, binding = GBUFFER_BINDING_SHARED_TEXTURE_COORD_OUTPUT)
 RWTexture2D<float2> SharedTextureCoord;

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -47,6 +47,7 @@ PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionCreat
   polymorphicSurfaceMaterialInteraction.fdata5 = opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.measurementDistance;
   polymorphicSurfaceMaterialInteraction.i32data0 = opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.packedTransmittanceColor;
   polymorphicSurfaceMaterialInteraction.i32data1 = opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.packedSingleScatteringAlbedo;
+  polymorphicSurfaceMaterialInteraction.dlssControlMask = opaqueSurfaceMaterialInteraction.dlssControlMask;
   polymorphicSurfaceMaterialInteraction.bdata0 = opaqueSurfaceMaterialInteraction.flags;
   polymorphicSurfaceMaterialInteraction.bdata1 = opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.volumetricAnisotropy;
   polymorphicSurfaceMaterialInteraction.bdata2 = opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.maxSampleRadius;
@@ -74,6 +75,7 @@ PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionCreat
   polymorphicSurfaceMaterialInteraction.fdata4 = translucentSurfaceMaterialInteraction.normalDetail;
   polymorphicSurfaceMaterialInteraction.idata0 = translucentSurfaceMaterialInteraction.sourceSurfaceMaterialIndex;
   polymorphicSurfaceMaterialInteraction.idata1 = translucentSurfaceMaterialInteraction.sourcePackedGammaEmissiveColor;
+  polymorphicSurfaceMaterialInteraction.dlssControlMask = float4x32ToUnorm4x8(1.0f.rrrr);
   polymorphicSurfaceMaterialInteraction.bdata0 = translucentSurfaceMaterialInteraction.flags;
   polymorphicSurfaceMaterialInteraction.type = surfaceMaterialTypeTranslucent;
 
@@ -95,6 +97,7 @@ PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionCreat
   polymorphicSurfaceMaterialInteraction.fdata1 = 0;
   polymorphicSurfaceMaterialInteraction.fdata2 = 0;
   polymorphicSurfaceMaterialInteraction.idata0 = rayPortalSurfaceMaterialInteraction.rayPortalIndex | (uint16_t(rayPortalSurfaceMaterialInteraction.isInsidePortal) << 8);
+  polymorphicSurfaceMaterialInteraction.dlssControlMask = float4x32ToUnorm4x8(1.0f.rrrr);
 
   polymorphicSurfaceMaterialInteraction.type = surfaceMaterialTypeRayPortal;
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2024-2026, NVIDIA CORPORATION. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -324,7 +324,11 @@ void MaterialInfo::_dtor() {
                                invertedBlend, \
                                alphaTestType, \
                                alphaReferenceValue, \
-                               displaceOut
+                               displaceOut, \
+                               enableDlssControlMask, \
+                               dlssControlMaskIntensity, \
+                               dlssControlMaskToneStrength, \
+                               dlssControlMaskStructuralStrength
 uint32_t MaterialInfoOpaque::_calcSize() const {
   return fold_helper::calcSize(MaterialInfoOpaqueVars);
 }

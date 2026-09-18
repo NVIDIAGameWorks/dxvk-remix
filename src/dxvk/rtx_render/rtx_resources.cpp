@@ -350,13 +350,22 @@ namespace dxvk {
 
     assert(targetExtent.width > 0 && targetExtent.height > 0 && targetExtent.depth > 0);
 
-    if (m_downscaledExtent != downscaledExtent) {
+    const bool downscaledExtentChanged = m_downscaledExtent != downscaledExtent;
+    const bool targetExtentChanged = m_targetExtent != targetExtent;
+
+    if (downscaledExtentChanged || targetExtentChanged) {
+      m_raytracingOutput.m_neuralRenderingOutput.reset();
+      m_raytracingOutput.m_controlMask.reset();
+      m_dlssNeuralRenderingResourcesAllocated = false;
+    }
+
+    if (downscaledExtentChanged) {
       m_downscaledExtent = downscaledExtent;
 
       createDownscaledResources(ctx);
     }
 
-    if (targetExtent != m_targetExtent) {
+    if (targetExtentChanged) {
       m_targetExtent = targetExtent;
 
       createTargetResources(ctx);
@@ -391,6 +400,27 @@ namespace dxvk {
     m_nrdDenoisingGuideResourcesAllocated = resourcesAreNeeded;
   }
 
+  void Resources::updateDlssNeuralRenderingResources(Rc<DxvkContext>& ctx) {
+    const bool resourcesAreNeeded =
+      device()->getCommon()->metaDlssNeuralRendering().useDlssNeuralRendering();
+
+    if (resourcesAreNeeded == m_dlssNeuralRenderingResourcesAllocated) {
+      return;
+    }
+
+    if (resourcesAreNeeded) {
+      m_raytracingOutput.m_controlMask =
+        createImageResource(ctx, "DLSS-NR Control Mask texture", m_downscaledExtent, VK_FORMAT_R8G8B8A8_UNORM,
+        1, VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, 0, 8, { 1, 1, 1, 1 });
+      createNeuralRenderingOutput(ctx);
+    } else {
+      m_raytracingOutput.m_controlMask.reset();
+      m_raytracingOutput.m_neuralRenderingOutput.reset();
+    }
+
+    m_dlssNeuralRenderingResourcesAllocated = resourcesAreNeeded;
+  }
+
   void Resources::onFrameBegin(
     Rc<DxvkContext> ctx,
     RtxTextureManager& textureManager,
@@ -408,6 +438,8 @@ namespace dxvk {
     frameBeginCtx.isCameraCut = isCameraCut;
 
     executeFrameBeginEventList(m_onFrameBegin, ctx, frameBeginCtx);
+
+    updateDlssNeuralRenderingResources(ctx);
 
     if (ctx->isDLFGEnabled()) {
       const uint32_t currentFrameId = ctx->getDevice()->getCurrentFrameId();
@@ -1288,10 +1320,29 @@ namespace dxvk {
     m_raytracingOutput.m_finalOutputExtent = m_targetExtent;
 
     // Post Effect intermediate textures
-    m_raytracingOutput.m_postFxIntermediateTexture = createImageResource(ctx, "postfx intermediate texture", m_targetExtent, VK_FORMAT_R16G16B16A16_SFLOAT);
+    m_raytracingOutput.m_postFxIntermediateTexture = AliasedResource(ctx, m_targetExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "postfx intermediate texture");
+    m_raytracingOutput.m_neuralRenderingInput = AliasedResource(
+      m_raytracingOutput.m_postFxIntermediateTexture, ctx, m_targetExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "DLSS-NR input");
 
     // Let other systems know of the resize
     executeResizeEventList(m_onTargetResize, ctx, m_targetExtent);
+  }
+
+  void Resources::createNeuralRenderingOutput(Rc<DxvkContext>& ctx) {
+    if (m_targetExtent == m_downscaledExtent) {
+      m_raytracingOutput.m_neuralRenderingOutput = AliasedResource(
+        m_raytracingOutput.m_primaryWorldShadingNormalDLSSRR,
+        ctx,
+        m_targetExtent,
+        VK_FORMAT_R16G16B16A16_SFLOAT,
+        "DLSS-NR output");
+    } else {
+      m_raytracingOutput.m_neuralRenderingOutput = AliasedResource(
+        ctx,
+        m_targetExtent,
+        VK_FORMAT_R16G16B16A16_SFLOAT,
+        "DLSS-NR output");
+    }
   }
 
   void Resources::executeResizeEventList(

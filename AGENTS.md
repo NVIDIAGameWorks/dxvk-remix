@@ -111,6 +111,7 @@ When modifying shared headers, ensure both C++ and Slang code paths remain consi
 
 ### Slang Conventions
 
+- Declare only one variable per declaration.
 - `mat4x3` for 3x4 matrices (3 rows of 4 columns, row-major in Slang).
 - `f16vec3` / `float16_t` for half-precision where appropriate.
 - `BUFFER_ARRAY(bufferName, bufferIndex, elementIndex)` macro for bindless buffer access.
