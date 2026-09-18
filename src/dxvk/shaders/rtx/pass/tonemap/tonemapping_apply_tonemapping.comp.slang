@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -126,7 +126,7 @@ float3 applyToneMapping(float3 color, uint2 pixelPosition)
     {
       // Normal tone mapping
       color = dynamicToneMapper(color);
-      
+
       if (cb.finalizeWithACES)
       {
         color = ACESFilm(color, cb.useLegacyACES);
@@ -174,6 +174,14 @@ float3 applyToneMapping(float3 color, uint2 pixelPosition)
 [numthreads(16, 16, 1)]
 void main(uint2 threadId : SV_DispatchThreadID)
 {
+  uint width;
+  uint height;
+  OutColorBuffer.GetDimensions(width, height);
+  if (threadId.x >= width || threadId.y >= height)
+  {
+    return;
+  }
+
   float3 inputColor = imageLoad(InColorBuffer, threadId).xyz;
 
   float3 outputColor = applyToneMapping(inputColor, threadId);

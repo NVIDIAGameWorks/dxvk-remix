@@ -19,35 +19,38 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
-#include "rtx/pass/bloom/bloom.h"
+#include "rtx/pass/tonemap/tonemapping.slangh"
 
-layout(binding = BLOOM_COMPOSITE_COLOR_INPUT_OUTPUT)
-RWTexture2D<float4> InOutColorBuffer; 
+[[vk::binding(TONEMAPPING_APPLY_TONEMAPPING_COLOR_INPUT)]]
+Texture2D<float4> InColorTexture;
 
-layout(binding = BLOOM_COMPOSITE_BLOOM)
-Sampler2D InBloomBuffer;
+[[vk::binding(TONEMAPPING_APPLY_TONEMAPPING_EXPOSURE_INPUT)]]
+RWTexture1D<float> InExposure;
+
+[[vk::binding(TONEMAPPING_APPLY_TONEMAPPING_COLOR_OUTPUT)]]
+RWTexture2D<float4> OutColorTexture;
 
 layout(push_constant)
-ConstantBuffer<BloomCompositeArgs> cb;
+ConstantBuffer<FastToneMappingArgs> cb;
 
 [shader("compute")]
 [numthreads(16, 16, 1)]
-void main(uint2 ipos : SV_DispatchThreadID)
+void main(uint2 threadId : SV_DispatchThreadID)
 {
-  if (any(ipos >= cb.imageSize))
+  uint width;
+  uint height;
+  OutColorTexture.GetDimensions(width, height);
+  if (threadId.x >= width || threadId.y >= height)
   {
     return;
   }
 
-  float2 uv = saturate((float2(ipos) + float2(0.5, 0.5)) * cb.imageSizeInverse);
+  float3 inputColor = sanitizeRadiance(InColorTexture[threadId].xyz);
 
-  float4 src = InBloomBuffer.SampleLevel(uv, 0);
-  float4 dst = InOutColorBuffer[ipos];
+  const float exposure = sanitizeExposure(getExposure(InExposure, cb.enableAutoExposure, cb.exposureFactor));
+  inputColor *= exposure;
+  float3 outputColor = ACESFilmApproximation(inputColor);
 
-  if (any(isnan(dst)) || any(isinf(dst)) || any(isnan(src)) || any(isinf(src)))
-  {
-    return;
-  }
-
-  InOutColorBuffer[ipos] = dst + src * cb.intensity;
+  outputColor = linearToGamma(outputColor);
+  OutColorTexture[threadId] = vec4(outputColor.rgb, 1.0f);
 }

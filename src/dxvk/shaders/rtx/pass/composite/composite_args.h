@@ -106,4 +106,5 @@ struct CompositeArgs {
   float postFilterThreshold;
   uint writeRayReconstructionHitDistance;
   uint timeSinceStartMS;
+  uint enableDlssNrVolumetricControlMask;
 };

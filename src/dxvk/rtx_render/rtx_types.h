@@ -1057,6 +1057,7 @@ enum class RtxFramePassStage {
   Composition,
   DLSS,
   DLSSRR,
+  DLSSNR,
   NIS,
   XeSS,
   TAA,

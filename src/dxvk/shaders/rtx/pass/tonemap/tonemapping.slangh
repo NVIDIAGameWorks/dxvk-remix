@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -23,6 +23,8 @@
 
 #include "rtx/pass/tonemap/tonemapping.h"
 #include "rtx/utility/color.slangh"
+#include "rtx/utility/common.slangh"
+#include "rtx/utility/math.slangh"
 
 #include "ACES.hlsl"
 
@@ -36,6 +38,31 @@ float getExposure(RWTexture1D<float> ExposureTex, const bool enableAutoExposure,
     exposure *= ExposureTex[0].r;
   }
   return exposure;
+}
+
+float sanitizeExposure(float exposure)
+{
+  if (!isValidValue(exposure) || exposure <= 0.0f)
+  {
+    return 1.0f;
+  }
+
+  return clamp(exposure, 1.0f / float16Max, float16Max);
+}
+
+float sanitizeRadiance(float radiance)
+{
+  return isValidValue(radiance)
+    ? clamp(radiance, 0.0f, float16Max)
+    : 0.0f;
+}
+
+float3 sanitizeRadiance(float3 radiance)
+{
+  return float3(
+    sanitizeRadiance(radiance.x),
+    sanitizeRadiance(radiance.y),
+    sanitizeRadiance(radiance.z));
 }
 
 float normalizedEVToHistogramOffset(float normalizedEV)

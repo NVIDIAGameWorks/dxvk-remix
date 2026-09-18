@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -116,6 +116,19 @@ struct ToneMappingApplyToneMappingArgs {
   float toneCurveMaxStops;
   uint finalizeWithACES;
   uint useLegacyACES;
+};
+
+struct FastToneMappingArgs {
+  uint enableAutoExposure;
+  float exposureFactor;
+  uint enableHighlightRecovery;
+  uint pad0;
+
+  // Highlight recovery (inverse tonemap): substitute the original HDR back in for pixels that were
+  // very bright in HDR and land in the active curve's shoulder. Thresholds are smoothstep edges:
+  //   .x/.y = exposed HDR max-channel preserve range
+  //   .z/.w = exposed LDR max-channel shoulder range
+  vec4 highlightRecoveryThresholds;
 };
 
 

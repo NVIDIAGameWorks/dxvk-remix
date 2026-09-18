@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -28,7 +28,12 @@
 #include <nvsdk_ngx_defs.h>
 #include <nvsdk_ngx_defs_dlssd.h>
 #include <nvsdk_ngx_defs_dlssg.h>
+#ifdef _M_X64
+#include <nvsdk_ngx_defs_dlssnr.h>
 #endif
+#endif
+
+#include <cstdint>
 #include <memory>
 #include "../util/rc/util_rc_ptr.h"
 #include "rtx_semaphore.h"
@@ -71,6 +76,8 @@ namespace dxvk {
   class NGXDLSSContext;
   class NGXRayReconstructionContext;
   class NGXDLFGContext;
+  class NGXNeuralRenderingContext;
+
   class NGXContext final {
   public:
     explicit NGXContext(DxvkDevice* device);
@@ -102,6 +109,14 @@ namespace dxvk {
       return m_supportsRayReconstruction;
     }
 
+    bool supportsDlssNeuralRendering() const {
+      return m_supportsDlssNeuralRendering;
+    }
+
+    bool isDlssNeuralRenderingSupportChecked() const {
+      return m_dlssNeuralRenderingSupportChecked;
+    }
+
     const std::string& getDLFGNotSupportedReason() {
       return m_dlfgNotSupportedReason;
     }
@@ -109,6 +124,7 @@ namespace dxvk {
     std::unique_ptr<NGXDLSSContext> createDLSSContext();
     std::unique_ptr<NGXRayReconstructionContext> createRayReconstructionContext();
     std::unique_ptr<NGXDLFGContext> createDLFGContext();
+    std::unique_ptr<NGXNeuralRenderingContext> createDlssNeuralRenderingContext();
     
   private:
     bool initialize();
@@ -120,8 +136,11 @@ namespace dxvk {
     bool m_supportsDLFG = false;
     uint32_t m_dlfgMaxInterpolatedFrames = 0;
     bool m_supportsRayReconstruction = false;
+    bool m_supportsDlssNeuralRendering = false;
+    bool m_dlssNeuralRenderingSupportChecked = false;
 
     bool checkDLSSSupport(NVSDK_NGX_Parameter* params);
+    bool checkDlssNeuralRenderingSupport(NVSDK_NGX_Parameter* params);
     void checkDLFGSupport(NVSDK_NGX_Parameter* params);
 
     std::string m_dlfgNotSupportedReason;
@@ -359,4 +378,56 @@ namespace dxvk {
     NVSDK_NGX_Handle* m_feature = nullptr;
   };
 #endif // NVSDK_NGX_DEFS_DLSSG_H
+
+#ifdef NVSDK_NGX_DEFS_H
+  class NGXNeuralRenderingContext final : public NGXFeatureContext {
+  public:
+    struct NGXNeuralRenderingBuffers {
+      const Resources::Resource* pInColor;
+      const Resources::Resource* pOutColor;
+      const Resources::Resource* pMotionVectors;
+      const Resources::Resource* pDepth;
+      const Resources::Resource* pControlMask;
+    };
+
+    struct NGXNeuralRenderingSettings {
+      bool resetAccumulation;
+      float jitterOffset[2];
+      float motionVectorScale[2];
+      float intensity;
+      float toneStrength;
+      float structuralStrength;
+      uint32_t model;
+      bool useAutoMask;
+      float skinStructureStrength;
+    };
+
+    void initialize(Rc<DxvkContext> renderContext, const uint32_t displaySize[2]);
+
+    bool evaluateNeuralRendering(Rc<DxvkContext> renderContext, const NGXNeuralRenderingBuffers& buffers, const NGXNeuralRenderingSettings& settings) const;
+
+    void releaseNGXFeature() override;
+
+    bool isNeuralRenderingInitialized() const {
+      return m_initialized && m_neuralRenderingFeature != nullptr;
+    }
+
+  public:
+    // note: ctor is public due to make_unique/unique_ptr, but not intended as public --- use NGXWrapper::createDlssNeuralRenderingContext instead
+    explicit NGXNeuralRenderingContext(DxvkDevice* device);
+    ~NGXNeuralRenderingContext() override;
+
+    NGXNeuralRenderingContext(const NGXNeuralRenderingContext&) = delete;
+    NGXNeuralRenderingContext(NGXNeuralRenderingContext&&) noexcept = delete;
+    NGXNeuralRenderingContext& operator=(const NGXNeuralRenderingContext&) = delete;
+    NGXNeuralRenderingContext& operator=(NGXNeuralRenderingContext&&) noexcept = delete;
+
+  private:
+    bool m_initialized = false;
+    NVSDK_NGX_Handle* m_neuralRenderingFeature = nullptr;
+  };
+#endif // NVSDK_NGX_DEFS_H
 }
+
+// -1 while NGX support is unknown, 0 when unavailable, and 1 when available.
+extern "C" __declspec(dllexport) int remixinternal_GetDlssNeuralRenderingStatus();

@@ -301,20 +301,22 @@ namespace dxvk {
 
     ctx->setPushConstantBank(DxvkPushConstantBank::RTX);
 
+    const Resources::Resource& postFxIntermediateTexture =
+      rtOutput.m_postFxIntermediateTexture.resource(Resources::AccessType::Write);
     dispatchMotionBlurInternal(
       ctx,
       nearestSampler, linearSampler,
       postFxArgs,
       workgroups,
       rtOutput,
-      inOutColorTexture, rtOutput.m_postFxIntermediateTexture);
+      inOutColorTexture, postFxIntermediateTexture);
 
     // Copy the blurred result back into the final output so downstream passes can read it.
     ctx->copyImage(
       inOutColorTexture.image,
       { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
       { 0, 0, 0 },
-      rtOutput.m_postFxIntermediateTexture.image,
+      rtOutput.m_postFxIntermediateTexture.image(Resources::AccessType::Read),
       { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
       { 0, 0, 0 },
       inputSize);
@@ -355,8 +357,10 @@ namespace dxvk {
 
     ctx->setPushConstantBank(DxvkPushConstantBank::RTX);
 
+    const Resources::Resource& postFxIntermediateTexture =
+      rtOutput.m_postFxIntermediateTexture.resource(Resources::AccessType::Write);
     dispatchPostLensEffects(ctx, linearSampler, postFxArgs, workgroups,
-                            inOutColorTexture, rtOutput.m_postFxIntermediateTexture);
+                            inOutColorTexture, postFxIntermediateTexture);
 
     // The lens-effect shader uses a Sampler2D input and an RWTexture2D output. To keep the
     // input/output decoupled (and avoid sampling-while-writing hazards) we write into the
@@ -365,7 +369,7 @@ namespace dxvk {
       inOutColorTexture.image,
       { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
       { 0, 0, 0 },
-      rtOutput.m_postFxIntermediateTexture.image,
+      rtOutput.m_postFxIntermediateTexture.image(Resources::AccessType::Read),
       { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
       { 0, 0, 0 },
       inputSize);
@@ -474,7 +478,8 @@ namespace dxvk {
 
     ctx->pushConstants(0, sizeof(args), &args);
 
-    const Resources::Resource* lastOutput = &rtOutput.m_postFxIntermediateTexture;
+    const Resources::Resource* lastOutput =
+      &rtOutput.m_postFxIntermediateTexture.resource(Resources::AccessType::Write);
 
     ctx->bindResourceView(POST_FX_HIGHLIGHT_INPUT, inOutColorTexture.view, nullptr);
     ctx->bindResourceView(POST_FX_HIGHLIGHT_OBJECT_PICKING_INPUT, rtOutput.m_primaryObjectPicking.view, nullptr);
@@ -491,7 +496,7 @@ namespace dxvk {
         inOutColorTexture.image,
         { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
         { 0, 0, 0 },
-        rtOutput.m_postFxIntermediateTexture.image,
+        rtOutput.m_postFxIntermediateTexture.image(Resources::AccessType::Read),
         { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
         { 0, 0, 0 },
         inputSize);

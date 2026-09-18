@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -97,7 +97,7 @@ void main(uint2 threadId : SV_DispatchThreadID)
   float finalMultiplier = max(A * luminance + B, 0.0) / luminance;
   // This is a hack to prevent super dark pixels getting boosted by a lot and showing compression artifacts.
   float lerpToUnityThreshold = 0.007;
-  finalMultiplier = luminance > lerpToUnityThreshold ? finalMultiplier : 
+  finalMultiplier = luminance > lerpToUnityThreshold ? finalMultiplier :
     mix(1.0, finalMultiplier, (luminance / lerpToUnityThreshold) * (luminance / lerpToUnityThreshold));
 
   vec3 texelFinal = originalColor.xyz * finalMultiplier;

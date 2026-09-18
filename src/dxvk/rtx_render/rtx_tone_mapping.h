@@ -49,6 +49,18 @@ namespace dxvk {
       bool resetHistory = false,
       bool autoExposureEnabled = true);
 
+    void dispatchFastToneMapping(
+      Rc<RtxContext> ctx,
+      Rc<DxvkImageView> exposureView,
+      const Resources::RaytracingOutput& rtOutput,
+      bool autoExposureEnabled);
+
+    void dispatchInverseToneMapping(
+      Rc<RtxContext> ctx,
+      Rc<DxvkImageView> exposureView,
+      const Resources::RaytracingOutput& rtOutput,
+      bool autoExposureEnabled);
+
     bool isEnabled() const { return tonemappingEnabled(); }
 
     void prewarmShaders(DxvkPipelineManager& pipelineManager) const;

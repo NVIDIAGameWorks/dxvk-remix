@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -21,6 +21,7 @@
 */
 #pragma once
 
+#include <algorithm>
 #include <memory>
 #include <variant>
 
@@ -28,6 +29,8 @@
 #include "rtx_option.h"
 #include "../../util/util_color.h"
 #include "../../util/util_macro.h"
+#include "../../util/util_pack.h"
+#include "../../util/util_struct_hash.h"
 #include "rtx/utility/shared_constants.h"
 #include "rtx/concept/surface/surface_shared.h"
 #include "rtx/pass/common_binding_indices.h"
@@ -568,6 +571,8 @@ struct RtOpaqueSurfaceMaterial {
     const Vector3& emissiveColorConstant, bool enableEmission,
     bool ignoreAlphaChannel, bool enableThinFilm, bool alphaIsThinFilmThickness, float thinFilmThicknessConstant,
     uint32_t samplerIndex, float displaceIn, float displaceOut,
+    bool enableDlssControlMask, float dlssControlMaskIntensity, float dlssControlMaskToneStrength,
+    float dlssControlMaskStructuralStrength,
     uint32_t subsurfaceMaterialIndex, bool isRaytracedRenderTarget, bool isHairCard,
     uint16_t samplerFeedbackStamp,
     uint32_t secondaryTextureIndex = 0
@@ -581,7 +586,12 @@ struct RtOpaqueSurfaceMaterial {
     m_emissiveColorConstant{ emissiveColorConstant }, m_enableEmission{ enableEmission },
     m_ignoreAlphaChannel { ignoreAlphaChannel }, m_enableThinFilm { enableThinFilm }, m_alphaIsThinFilmThickness { alphaIsThinFilmThickness },
     m_thinFilmThicknessConstant { thinFilmThicknessConstant }, m_samplerIndex{ samplerIndex }, m_displaceIn{ displaceIn },
-    m_displaceOut{ displaceOut }, m_subsurfaceMaterialIndex(subsurfaceMaterialIndex), m_isRaytracedRenderTarget(isRaytracedRenderTarget),
+    m_displaceOut{ displaceOut },
+    m_enableDlssControlMask{ enableDlssControlMask },
+    m_dlssControlMaskIntensity{ dlssControlMaskIntensity },
+    m_dlssControlMaskToneStrength{ dlssControlMaskToneStrength },
+    m_dlssControlMaskStructuralStrength{ dlssControlMaskStructuralStrength },
+    m_subsurfaceMaterialIndex(subsurfaceMaterialIndex), m_isRaytracedRenderTarget(isRaytracedRenderTarget),
     m_isHairCard(isHairCard), m_samplerFeedbackStamp{ samplerFeedbackStamp }
   {
     updateCachedData();
@@ -677,8 +687,11 @@ struct RtOpaqueSurfaceMaterial {
 
     // data[26]
     writeGPUHelperExplicit<2>(data, offset, m_samplerFeedbackStamp);
+    writeGPUPadding<2>(data, offset);
 
-    writeGPUPadding<10>(data, offset);
+    writeGPUHelper(data, offset, m_cachedDLSSControlMask);
+
+    writeGPUPadding<4>(data, offset);
     assert(offset - oldOffset == kSurfaceMaterialGPUSize);
   }
 
@@ -794,7 +807,7 @@ struct RtOpaqueSurfaceMaterial {
 private:
   void updateCachedHash() {
     static_assert(
-      sizeof(*this) == 120,
+      sizeof(*this) == 144,
       "add new member for hashing if needed: add a MEMBER into the struct + add a VALUE into the list-init"
     );
     struct HashStruct {
@@ -819,6 +832,7 @@ private:
       uint32_t samplerIndex;
       float displaceIn;
       float displaceOut;
+      uint32_t cachedDLSSControlMask;
       uint32_t subsurfaceMaterialIndex;
       uint32_t isRaytracedRenderTarget;   // NOTE: uint32_t to avoid padding
       uint32_t isHairCard;                // NOTE: uint32_t to avoid padding
@@ -826,7 +840,6 @@ private:
       uint32_t secondaryTextureIndex;
       // NOTE: There must be NO padding between members, as the struct is used for hashing
     };
-    static_assert(alignof(HashStruct) == 4 && sizeof(HashStruct) % 4 == 0);
     HashStruct hashData = HashStruct{
       m_albedoOpacityTextureIndex,
       m_normalTextureIndex,
@@ -849,13 +862,41 @@ private:
       m_samplerIndex,
       m_displaceIn,
       m_displaceOut,
+      m_cachedDLSSControlMask,
       m_subsurfaceMaterialIndex,
       m_isRaytracedRenderTarget,
       m_isHairCard,
       m_samplerFeedbackStamp,
       m_secondaryTextureIndex,
     };
-    m_cachedHash = XXH3_64bits(&hashData, sizeof(hashData));
+    m_cachedHash = hashStructByMemory<HashStruct,
+      &HashStruct::albedoOpacityTextureIndex,
+      &HashStruct::normalTextureIndex,
+      &HashStruct::tangentTextureIndex,
+      &HashStruct::heightTextureIndex,
+      &HashStruct::roughnessTextureIndex,
+      &HashStruct::metallicTextureIndex,
+      &HashStruct::emissiveColorTextureIndex,
+      &HashStruct::anisotropy,
+      &HashStruct::emissiveIntensity,
+      &HashStruct::albedoOpacityConstant,
+      &HashStruct::roughnessConstant,
+      &HashStruct::metallicConstant,
+      &HashStruct::emissiveColorConstant,
+      &HashStruct::enableEmission,
+      &HashStruct::ignoreAlphaChannel,
+      &HashStruct::enableThinFilm,
+      &HashStruct::alphaIsThinFilmThickness,
+      &HashStruct::thinFilmThicknessConstant,
+      &HashStruct::samplerIndex,
+      &HashStruct::displaceIn,
+      &HashStruct::displaceOut,
+      &HashStruct::cachedDLSSControlMask,
+      &HashStruct::subsurfaceMaterialIndex,
+      &HashStruct::isRaytracedRenderTarget,
+      &HashStruct::isHairCard,
+      &HashStruct::samplerFeedbackStamp,
+      &HashStruct::secondaryTextureIndex>(hashData);
   }
 
   void updateCachedData() {
@@ -867,6 +908,11 @@ private:
     m_cachedEmissiveIntensity = std::min(m_enableEmission ? m_emissiveIntensity : 0.0f, FLOAT16_MAX);
     // Note: Pre-normalize thickness constant so that it does not need to be done on the GPU.
     m_cachedThinFilmNormalizedThicknessConstant = m_thinFilmThicknessConstant / OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS;
+    m_cachedDLSSControlMask = m_enableDlssControlMask ?
+      (uint32_t(packUnorm<8, uint8_t>(std::clamp(m_dlssControlMaskIntensity, 0.f, 1.f))) << 0) |
+      (uint32_t(packUnorm<8, uint8_t>(std::clamp(m_dlssControlMaskToneStrength, 0.f, 1.f))) << 8) |
+      (uint32_t(packUnorm<8, uint8_t>(std::clamp(m_dlssControlMaskStructuralStrength, 0.f, 1.f))) << 16) |
+      0xff000000u : 0xff000000u;
   }
 
   uint32_t m_albedoOpacityTextureIndex;
@@ -898,6 +944,10 @@ private:
   float m_displaceIn;
   // How far outwards a height_texture value of 1 maps to.
   float m_displaceOut;
+  bool m_enableDlssControlMask;
+  float m_dlssControlMaskIntensity;
+  float m_dlssControlMaskToneStrength;
+  float m_dlssControlMaskStructuralStrength;
 
   uint32_t m_subsurfaceMaterialIndex;
 
@@ -911,6 +961,7 @@ private:
   // Note: Cached values are not involved in the hash as they are derived from the input data
   float m_cachedEmissiveIntensity;
   float m_cachedThinFilmNormalizedThicknessConstant;
+  uint32_t m_cachedDLSSControlMask;
 };
 
 struct RtTranslucentSurfaceMaterial {

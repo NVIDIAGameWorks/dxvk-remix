@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -101,6 +101,7 @@
 #define GBUFFER_BINDING_PRIMARY_DEPTH_DLSSRR_OUTPUT                             120
 #define GBUFFER_BINDING_PRIMARY_NORMAL_DLSSRR_OUTPUT                            121
 #define GBUFFER_BINDING_PRIMARY_SCREEN_SPACE_MOTION_DLSSRR_OUTPUT               122
+#define GBUFFER_BINDING_DLSS_NR_CONTROL_MASK_OUTPUT                             124
 
 #define GBUFFER_BINDING_NRC_QUERY_PATH_INFO_OUTPUT                              130
 #define GBUFFER_BINDING_NRC_TRAINING_PATH_INFO_OUTPUT                           131

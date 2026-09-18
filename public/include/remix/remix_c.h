@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -58,7 +58,7 @@
 
 #define REMIXAPI_VERSION_MAJOR 0
 #define REMIXAPI_VERSION_MINOR 6
-#define REMIXAPI_VERSION_PATCH 4
+#define REMIXAPI_VERSION_PATCH 5
 
 
 // External
@@ -251,6 +251,10 @@ extern "C" {
     int                 alphaTestType;
     uint8_t             alphaReferenceValue;
     float               displaceOut;
+    remixapi_Bool       enableDlssControlMask;
+    float               dlssControlMaskIntensity;
+    float               dlssControlMaskToneStrength;
+    float               dlssControlMaskStructuralStrength;
   } remixapi_MaterialInfoOpaqueEXT;
 
   // Valid only if remixapi_MaterialInfo contains remixapi_MaterialInfoOpaqueEXT in pNext chain

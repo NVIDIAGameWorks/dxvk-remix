@@ -76,3 +76,4 @@
 
 #define COMPOSITE_DEBUG_VIEW_OUTPUT                                 54
 #define COMPOSITE_RAY_RECONSTRUCTION_HIT_DISTANCE_OUTPUT            55
+#define COMPOSITE_DLSS_NR_CONTROL_MASK_OUTPUT                       59

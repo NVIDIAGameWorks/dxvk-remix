@@ -404,6 +404,8 @@ struct RaytraceArgs {
   float hairCardRoughnessScale;
 
   uint forceFirstHitInGBufferPass;
+  uint enableDlssNrControlMask;
+  uint enableDlssNrVolumetricControlMask;
 
   uint enableRaytracedRenderTarget;
   // NRC enablement is controlled by global macros being defined.

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2024-2026, NVIDIA CORPORATION. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -20,6 +20,8 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include <cstring>
+
 #include "log/log.h"
 #include "util_bridgecommand.h"
 #include "util_devicecommand.h"
@@ -28,6 +30,30 @@
 using namespace remixapi::util;
 
 namespace remixapi {
+
+namespace {
+
+uint64_t g_appRemixApiVersion = 0;
+
+bool isRemixApiVersionCompatible(uint64_t appVersion) {
+  constexpr uint64_t kCompiledVersion = REMIXAPI_VERSION_MAKE(
+    REMIXAPI_VERSION_MAJOR,
+    REMIXAPI_VERSION_MINOR,
+    REMIXAPI_VERSION_PATCH);
+
+  const bool isDevelopment =
+    REMIXAPI_VERSION_GET_MAJOR(appVersion) == 0 &&
+    REMIXAPI_VERSION_GET_MAJOR(kCompiledVersion) == 0;
+
+  if (isDevelopment) {
+    return REMIXAPI_VERSION_GET_MINOR(appVersion) == REMIXAPI_VERSION_GET_MINOR(kCompiledVersion);
+  }
+
+  return REMIXAPI_VERSION_GET_MAJOR(appVersion) == REMIXAPI_VERSION_GET_MAJOR(kCompiledVersion) &&
+         REMIXAPI_VERSION_GET_MINOR(appVersion) <= REMIXAPI_VERSION_GET_MINOR(kCompiledVersion);
+}
+
+}
 
 bool g_bInterfaceInitialized = false;
 PFN_remixapi_BridgeCallback g_beginSceneCallback = nullptr;
@@ -106,8 +132,19 @@ remixapi_ErrorCode REMIXAPI_CALL remixapi_CreateMaterial(
         case REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_EXT:
         {
           auto* pOpaqueMat = static_cast<const remixapi_MaterialInfoOpaqueEXT* const>(infoItr);
+          remixapi_MaterialInfoOpaqueEXT opaqueMat = { };
+          if (g_appRemixApiVersion < REMIXAPI_VERSION_MAKE(0, 6, 5)) {
+            constexpr size_t kOpaqueMaterialInfoSizeAtVersion064 = 92;
+            std::memcpy(&opaqueMat, pOpaqueMat, kOpaqueMaterialInfoSizeAtVersion064);
+            opaqueMat.enableDlssControlMask = true;
+            opaqueMat.dlssControlMaskIntensity = 1.f;
+            opaqueMat.dlssControlMaskToneStrength = 1.f;
+            opaqueMat.dlssControlMaskStructuralStrength = 1.f;
+          } else {
+            opaqueMat = *pOpaqueMat;
+          }
           send(c, Bool::True); 
-          serializeAndSend<serialize::MaterialInfoOpaque>(c, *pOpaqueMat);
+          serializeAndSend<serialize::MaterialInfoOpaque>(c, opaqueMat);
           break;
         }
         case REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_SUBSURFACE_EXT:
@@ -432,6 +469,9 @@ extern "C" {
     if (!out_result) {
       return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
+    if (!isRemixApiVersionCompatible(info->version)) {
+      return REMIXAPI_ERROR_CODE_INCOMPATIBLE_VERSION;
+    }
 
     auto interf = remixapi_Interface {};
     {
@@ -459,6 +499,7 @@ extern "C" {
     }
 
     *out_result = interf;
+    remixapi::g_appRemixApiVersion = info->version;
     remixapi::g_bInterfaceInitialized = true;
 
     return REMIXAPI_ERROR_CODE_SUCCESS;

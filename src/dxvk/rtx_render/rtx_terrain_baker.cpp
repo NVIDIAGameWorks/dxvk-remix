@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -679,7 +679,11 @@ namespace dxvk {
       // NOTE: The terrain defines it's own sampler, and these are the modes it uses.
       lss::Mdl::Filter::Linear,
       lss::Mdl::WrapMode::Clamp, // U
-      lss::Mdl::WrapMode::Clamp  // V
+      lss::Mdl::WrapMode::Clamp,  // V
+      true,
+      1.f,
+      0.4f,
+      0.8f
     ));
 
     m_hasInitializedMaterialDataThisFrame = true;

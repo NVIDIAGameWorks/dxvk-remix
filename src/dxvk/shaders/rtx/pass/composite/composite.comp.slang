@@ -337,6 +337,79 @@ void loadInputRadiance(
   }
 }
 
+vec3 integrateVolumetricTransmittance(
+  inout RNG randomState,
+  const VolumeArgs volumeArgs,
+  const float timeMS,
+  const bool primaryMiss,
+  const vec3 startPosition,
+  const float hitDistance,
+  const vec3 viewDir)
+{
+  if (!volumeArgs.enable)
+  {
+    return vec3(1.0f);
+  }
+
+  const VolumeDefinitionCamera camera = volumeArgs.cameras[froxelVolumeMain];
+  float maxPathDistance = primaryMiss
+    ? volumeArgs.froxelMaxDistance
+    : hitDistance - (volumeArgs.froxelMaxDistance / volumeArgs.froxelDepthSlices) * volumeArgs.depthOffset;
+  maxPathDistance = clamp(maxPathDistance, 0.0f, volumeArgs.froxelMaxDistance);
+
+  const vec3 targetPosition = startPosition + viewDir * maxPathDistance;
+  const vec3 startPositionTranslated = worldToTranslatedWorld(camera, startPosition);
+  const vec3 targetPositionTranslated = worldToTranslatedWorld(camera, targetPosition);
+  const vec3 targetVector = targetPositionTranslated - startPositionTranslated;
+  const uint numSteps = volumeArgs.froxelDepthSlices / 4;
+
+  vec3 previousTranslatedWorldPosition = startPositionTranslated;
+  vec3 accumulatedTransmittance = vec3(1.0f);
+
+  for (uint z = 0; z < numSteps; z++)
+  {
+    const float t = (float(z + 1) + getNextSampleBlueNoise(randomState)) / float(numSteps + 1);
+    const float nonlinearT = pow(t, volumeArgs.froxelDepthSliceDistributionExponent);
+    const vec3 currentTranslatedWorldPosition = startPositionTranslated + targetVector * nonlinearT;
+    const float stepSize = length(currentTranslatedWorldPosition - previousTranslatedWorldPosition);
+    const float density = sampleDensityField(
+      volumeArgs,
+      camera,
+      previousTranslatedWorldPosition,
+      currentTranslatedWorldPosition,
+      stepSize,
+      timeMS);
+
+    accumulatedTransmittance *= calcVolumetricAttenuation(
+      volumeArgs,
+      camera,
+      false,
+      stepSize,
+      previousTranslatedWorldPosition,
+      viewDir,
+      density);
+    previousTranslatedWorldPosition = currentTranslatedWorldPosition;
+  }
+
+  if (primaryMiss)
+  {
+    accumulatedTransmittance *= calcVolumetricAttenuation(
+      volumeArgs, camera, true, 0.0f, previousTranslatedWorldPosition, viewDir);
+  }
+  else if (hitDistance > volumeArgs.froxelMaxDistance)
+  {
+    accumulatedTransmittance *= calcVolumetricAttenuation(
+      volumeArgs,
+      camera,
+      false,
+      hitDistance - volumeArgs.froxelMaxDistance,
+      previousTranslatedWorldPosition,
+      viewDir);
+  }
+
+  return accumulatedTransmittance;
+}
+
 void applyVolumetricLighting(
   uint2 pixelCoordinate,
   inout RNG randomState,
@@ -350,6 +423,7 @@ void applyVolumetricLighting(
   vec3 sharedRadiance,
   out vec3 volumetricPreintegratedRadiance,
   out vec3 volumeAttenuation,
+  out vec3 controlMaskVolumeAttenuation,
   out vec3 alphaBlendOutput,
   out float backgroundAlpha,
   out vec3 radianceOutput)
@@ -361,6 +435,7 @@ void applyVolumetricLighting(
 
   volumetricPreintegratedRadiance = vec3(0);
   volumeAttenuation = vec3(1);
+  controlMaskVolumeAttenuation = vec3(1);
   alphaBlendOutput = vec3(0);
   backgroundAlpha = 1.0f;
 
@@ -382,6 +457,20 @@ void applyVolumetricLighting(
       randomState, VolumeFilteredRadianceAge, VolumeFilteredRadianceY, VolumeFilteredRadianceCoCg,
       cb.volumeArgs, cb.timeSinceStartMS, pixelCoordinate, volumeUV, primaryMiss, cameraGetWorldPosition(cb.camera), viewDistance, primaryRayDirections.worldDirection,
       volumetricPreintegratedRadiance, volumeAttenuation);
+    controlMaskVolumeAttenuation = volumeAttenuation;
+  }
+  else if (cb.enableDlssNrVolumetricControlMask)
+  {
+    // The control mask remains dense when volumetric radiance integration uses sparse pixels.
+    RNG controlMaskRandomState = randomState;
+    controlMaskVolumeAttenuation = integrateVolumetricTransmittance(
+      controlMaskRandomState,
+      cb.volumeArgs,
+      cb.timeSinceStartMS,
+      primaryMiss,
+      cameraGetWorldPosition(cb.camera),
+      viewDistance,
+      primaryRayDirections.worldDirection);
   }
 
   // Stochastic alpha blend
@@ -519,14 +608,14 @@ void applySkyContribution(
   radianceOutput += skyContribution;
 }
 
-void applyFog(
+float applyFog(
   float viewDistance,
   float radianceScale,
   inout vec3 radianceOutput)
 {
   if (cb.volumeArgs.enable)
   {
-    return; // Volumetric fog is applied in volume integration
+    return 1.0f; // Volumetric fog is applied in volume integration
   }
 
   // Todo: Using view distance is a bit of a hack here, the primary emissive contribution will not be fully weighted correctly
@@ -540,7 +629,8 @@ void applyFog(
 
   // Blend fog over output
   radianceOutput = lerp(radianceOutput, fogColor.rgb, fogColor.a);
-  
+
+  return 1.0f - fogColor.a;
 }
 
 vec4 compositeResult(
@@ -548,7 +638,8 @@ vec4 compositeResult(
   bool pixelIsActive,
   GeometryFlags geometryFlags,
   float primaryLinearViewZ,
-  bool primaryMiss)
+  bool primaryMiss,
+  out float controlMaskTransmittance)
 {
   RNG randomState = createRNG(pixelCoordinate, cb.frameIdx, 0);
 
@@ -591,6 +682,7 @@ vec4 compositeResult(
 
   vec3 volumetricPreintegratedRadiance;
   vec3 volumeAttenuation;
+  vec3 controlMaskVolumeAttenuation;
   vec3 alphaBlendOutput;
   float backgroundAlpha;
   vec3 radianceOutput;
@@ -638,8 +730,8 @@ vec4 compositeResult(
   applyVolumetricLighting(
     pixelCoordinate, randomState, primaryRayDirections, pixelIsActive, primaryMiss, viewDistance,
     radianceScale, volumetricRadianceScale, remodulatedTotalSecondaryRadiance, sharedRadiance,
-    volumetricPreintegratedRadiance, volumeAttenuation, alphaBlendOutput, backgroundAlpha,
-    radianceOutput);
+    volumetricPreintegratedRadiance, volumeAttenuation, controlMaskVolumeAttenuation,
+    alphaBlendOutput, backgroundAlpha, radianceOutput);
 
   // Calculate final combined radiance output
   // Note: The primary hit accumulated radiance value is not affected by the throughput (rather takes attenuation into account
@@ -652,8 +744,10 @@ vec4 compositeResult(
   // Add sky radiance
   applySkyContribution(pixelCoordinate, primaryRayDirections, primaryMiss, radianceScale, volumeAttenuation, radianceOutput);
 
-  // Apply fog 
-  applyFog(viewDistance, radianceScale, radianceOutput);
+  // Apply fog
+  const float fogTransmittance = applyFog(viewDistance, radianceScale, radianceOutput);
+  controlMaskTransmittance = calcBt709Luminance(saturate(controlMaskVolumeAttenuation));
+  controlMaskTransmittance *= fogTransmittance * backgroundAlpha;
 
   // Combine the alpha-blended foreground with the background before upscaling.
   return vec4(radianceOutput * backgroundAlpha + alphaBlendOutput, 1.f);
@@ -698,7 +792,18 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     RayReconstructionHitDistanceOutput[pixelCoordinate] = hitDistance;
   }
 
-  vec4 finalOutput = compositeResult(pixelCoordinate, pixelIsActive, geometryFlags, primaryLinearViewZ, primaryMiss);
+  float controlMaskTransmittance;
+  vec4 finalOutput = compositeResult(
+    pixelCoordinate, pixelIsActive, geometryFlags, primaryLinearViewZ, primaryMiss,
+    controlMaskTransmittance);
+
+  if (cb.enableDlssNrVolumetricControlMask)
+  {
+    // Fog and alpha-blended volumetrics carry no stable surface detail for DLSS-NR to enhance.
+    // Transmittance preserves the surface controls in clear regions and suppresses them as fog becomes opaque.
+    const vec4 surfaceControlMask = DlssNrControlMask[pixelCoordinate];
+    DlssNrControlMask[pixelCoordinate] = vec4(surfaceControlMask.rgb * controlMaskTransmittance, 1.f);
+  }
 
   FinalOutput[pixelCoordinate] = accumulate(pixelCoordinate, finalOutput, cb.accumulationArgs, true, AccumulatedFinalOutput);
 

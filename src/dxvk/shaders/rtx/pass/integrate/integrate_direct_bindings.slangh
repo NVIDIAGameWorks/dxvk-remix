@@ -193,7 +193,6 @@ uniform struct AliasedData1
   RWTexture2D<float> IndirectFirstHitPerceptualRoughness;
 } aliasedData1;
 
-
 [[vk::binding(INTEGRATE_DIRECT_BINDING_ALIASED_DATA_2)]]
 uniform struct AliasedData2
 {
