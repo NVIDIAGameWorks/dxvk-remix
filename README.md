@@ -16,8 +16,9 @@ dxvk-remix also contains a subproject in the `bridge` folder, which enables 32 b
 1. Windows 10 or 11
 2. [Git](https://git-scm.com/download/win)
 3. [Visual Studio ](https://visualstudio.microsoft.com/vs/older-downloads/)
-    - VS 2019 is tested
-    - VS 2022 may also work, but it is not actively tested
+    - VS 2019 and 2022 are tested
+    - Building for Windows on Arm requires VS 2022 with the `C++ ARM64/ARM64EC build tools` individual component
+    - MSVC v14.44 or newer is preferred when building for Windows on Arm
     - Note that our build system will always use the most recent version available on the system
 4. [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/sdk-archive/)
     - 10.0.19041.0 is tested
@@ -37,7 +38,7 @@ dxvk-remix also contains a subproject in the `bridge` folder, which enables 32 b
     - May already be installed if you have D3D9 games installed
 
 #### Additional notes:
-- If dependency paths change (for example, after installing a new Vulkan SDK), reconfigure the affected build from the repository root, such as `meson setup --reconfigure _Comp64Release`.
+- If dependency paths change (for example, after installing a new Vulkan SDK), reconfigure the affected build from the repository root, such as `meson setup --reconfigure _CompRelease_x64`.
 
 ### Generate and build dxvk-remix Visual Studio project 
 1. Clone the repository with all submodules:
@@ -55,22 +56,24 @@ dxvk-remix also contains a subproject in the `bridge` folder, which enables 32 b
     - Right Click on `dxvk-remix\build_dxvk_all_ninja.ps1` and select "Run with Powershell"
     - If that fails or has problems, run the build manually in a way you can read the errors:
         - open a windows file explorer to the `dxvk-remix` folder
-        - remove only the generated configuration that failed, such as `_Comp64Debug/`; remove `_vs/` as well only if the generated Visual Studio solution must be recreated
+        - remove only the generated configuration that failed, such as `_CompDebug_x64/`; remove `_vs/` as well only if the generated Visual Studio solution must be recreated
         - type `cmd` in the address bar to open a command line window in that folder.
         - copy and paste `powershell -command "& .\build_dxvk_all_ninja.ps1"` into the command line, then press enter
     - Optional flags:
         - `-SkipApics` — skip downloading game test captures (requires auth token)
+        - `-BuildArch <x64|arm64|arm64ec>` — target architecture, default `x64`. `arm64ec` is configured with the Visual Studio backend rather than Ninja, because Meson cannot link arm64ec targets with Ninja, so the `_Comp*_arm64ec` directories hold MSBuild projects instead of Ninja files. The generated **_vs** solution always drives the `_Comp*_x64` directories; build other architectures with `meson compile -C <build directory>`.
     - Examples:
         ```powershell
         .\build_dxvk_all_ninja.ps1
         .\build_dxvk_all_ninja.ps1 -SkipApics
+        .\build_dxvk_all_ninja.ps1 -BuildArch arm64
         ```
     - This will build all 3 configurations of dxvk-remix project inside subdirectories of the build tree:
-        - **_Comp64Debug** - full debug instrumentation, runtime speed may be slow
-        - **_Comp64DebugOptimized** - partial debug instrumentation (i.e. asserts), runtime speed is generally comparable to that of release configuration
-        - **_Comp64Release** - fastest runtime
+        - **_CompDebug_x64** - full debug instrumentation, runtime speed may be slow
+        - **_CompDebugOptimized_x64** - partial debug instrumentation (i.e. asserts), runtime speed is generally comparable to that of release configuration
+        - **_CompRelease_x64** - fastest runtime
+        - Note: replace **x64** with the architecture selected via `-BuildArch`
     - This will generate a project in the **_vs** subdirectory
-    - This script builds the officially supported x64 targets. ARM64 and ARM64EC configurations are compile-tested in CI but are not part of this local build workflow.
 
 5. Open **_vs/dxvk-remix.sln** in Visual Studio (2019+). 
     - Do not convert the solution on load if prompted when using a newer version of Visual Studio 
@@ -84,8 +87,8 @@ dxvk-remix also contains a subproject in the `bridge` folder, which enables 32 b
 
 3. Reconfigure and rebuild each configuration you use so Meson reloads **gametargets.conf**. For example:
     ```powershell
-    meson setup --reconfigure _Comp64Release
-    meson compile -C _Comp64Release
+    meson setup --reconfigure _CompRelease_x64
+    meson compile -C _CompRelease_x64
     ```
     The build deploys binaries to the game directories specified in **gametargets.conf**.
 
@@ -93,7 +96,7 @@ dxvk-remix also contains a subproject in the `bridge` folder, which enables 32 b
 Remix has support for profiling using the [Tracy](https://github.com/wolfpld/tracy) tool, specifically the [v0.8 release](https://github.com/wolfpld/tracy/releases/download/v0.8/Tracy-0.8.7z)
 
 To enable Tracy profiling:
-1. Open a command line window in a build folder (i.e. `dxvk-remix/_Comp64Release/`)
+1. Open a command line window in a build folder (i.e. `dxvk-remix/_CompRelease_x64/`)
 2. Run `meson --reconfigure -D enable_tracy=true`
 3. Rebuild dxvk-remix-nv
 

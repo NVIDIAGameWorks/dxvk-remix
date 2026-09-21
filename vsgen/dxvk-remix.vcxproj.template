@@ -54,30 +54,30 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <NMakeOutput>..\_Comp64Debug\src\d3d9\d3d9.dll</NMakeOutput>
-    <NMakeBuildCommandLine>meson compile -C ..\_Comp64Debug</NMakeBuildCommandLine>
-    <NMakeReBuildCommandLine>meson compile -C ..\_Comp64Debug --clean &amp;&amp; meson compile -C ..\_Comp64Debug</NMakeReBuildCommandLine>
-    <NMakeCleanCommandLine>meson compile -C ..\_Comp64Debug --clean</NMakeCleanCommandLine>
+    <NMakeOutput>..\_CompDebug_x64\src\d3d9\d3d9.dll</NMakeOutput>
+    <NMakeBuildCommandLine>meson compile -C ..\_CompDebug_x64</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>meson compile -C ..\_CompDebug_x64 --clean &amp;&amp; meson compile -C ..\_CompDebug_x64</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>meson compile -C ..\_CompDebug_x64 --clean</NMakeCleanCommandLine>
     <NMakeOutput>dxvk-remix.dll</NMakeOutput>
     <NMakePreprocessorDefinitions>_DEBUG;$dxvk_cpp_defines;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
     <NMakeIncludeSearchPath>$include_search_path_debug</NMakeIncludeSearchPath>
     <AdditionalOptions>/std:c++17 /fpermissive-</AdditionalOptions>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugOptimized|x64'">
-    <NMakeOutput>..\_Comp64DebugOptimized\src\d3d9\d3d9.dll</NMakeOutput>
-    <NMakeBuildCommandLine>meson compile -C ..\_Comp64DebugOptimized</NMakeBuildCommandLine>
-    <NMakeReBuildCommandLine>meson compile -C ..\_Comp64DebugOptimized --clean &amp;&amp; meson compile -C ..\_Comp64DebugOptimized</NMakeReBuildCommandLine>
-    <NMakeCleanCommandLine>meson compile -C ..\_Comp64DebugOptimized --clean</NMakeCleanCommandLine>
+    <NMakeOutput>..\_CompDebugOptimized_x64\src\d3d9\d3d9.dll</NMakeOutput>
+    <NMakeBuildCommandLine>meson compile -C ..\_CompDebugOptimized_x64</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>meson compile -C ..\_CompDebugOptimized_x64 --clean &amp;&amp; meson compile -C ..\_CompDebugOptimized_x64</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>meson compile -C ..\_CompDebugOptimized_x64 --clean</NMakeCleanCommandLine>
     <NMakeOutput>dxvk-remix.dll</NMakeOutput>
     <NMakePreprocessorDefinitions>$dxvk_cpp_defines;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
     <NMakeIncludeSearchPath>$include_search_path_debugoptimized</NMakeIncludeSearchPath>
     <AdditionalOptions>/std:c++17 /fpermissive-</AdditionalOptions>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <NMakeOutput>..\_Comp64Release\src\d3d9\d3d9.dll</NMakeOutput>
-    <NMakeBuildCommandLine>meson compile -C ..\_Comp64Release</NMakeBuildCommandLine>
-    <NMakeReBuildCommandLine>meson compile -C ..\_Comp64Release --clean &amp;&amp; meson compile -C ..\_Comp64Release</NMakeReBuildCommandLine>
-    <NMakeCleanCommandLine>meson compile -C ..\_Comp64Release --clean</NMakeCleanCommandLine>
+    <NMakeOutput>..\_CompRelease_x64\src\d3d9\d3d9.dll</NMakeOutput>
+    <NMakeBuildCommandLine>meson compile -C ..\_CompRelease_x64</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>meson compile -C ..\_CompRelease_x64 --clean &amp;&amp; meson compile -C ..\_CompRelease_x64</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>meson compile -C ..\_CompRelease_x64 --clean</NMakeCleanCommandLine>
     <NMakeOutput>dxvk-remix.dll</NMakeOutput>
     <NMakePreprocessorDefinitions>NDEBUG;$dxvk_cpp_defines;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
     <NMakeIncludeSearchPath>$include_search_path_release</NMakeIncludeSearchPath>

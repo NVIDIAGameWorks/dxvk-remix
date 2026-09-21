@@ -15,9 +15,9 @@ Windows 10+, Visual Studio 2019 (2022 may work), Windows SDK 10.0.19041.0, Meson
 
 | Build Directory | Flavour | Use Case |
 |----------------|---------|----------|
-| `_Comp64Debug` | `debug` | Full debug instrumentation, slow runtime |
-| `_Comp64DebugOptimized` | `debugoptimized` | Asserts enabled, near-release speed (recommended for development) |
-| `_Comp64Release` | `release` | Fastest runtime |
+| `_CompDebug_x64` | `debug` | Full debug instrumentation, slow runtime |
+| `_CompDebugOptimized_x64` | `debugoptimized` | Asserts enabled, near-release speed (recommended for development) |
+| `_CompRelease_x64` | `release` | Fastest runtime |
 
 ## First-Time Setup
 
@@ -32,7 +32,7 @@ This also generates the Visual Studio solution at `_vs/dxvk-remix.sln`.
 ### Single configuration
 
 ```powershell
-.\build_dxvk.ps1 -BuildFlavour debugoptimized -BuildSubDir _Comp64DebugOptimized -Backend ninja -EnableTracy false
+.\build_dxvk.ps1 -BuildFlavour debugoptimized -BuildSubDir _CompDebugOptimized_x64 -Backend ninja -EnableTracy false
 ```
 
 ## Incremental Build (day-to-day)
@@ -40,7 +40,7 @@ This also generates the Visual Studio solution at `_vs/dxvk-remix.sln`.
 Once a build directory exists, rebuild only changed files:
 
 ```powershell
-meson compile -C _Comp64DebugOptimized
+meson compile -C _CompDebugOptimized_x64
 ```
 
 **Always use `meson compile`, never call `ninja` directly.** `meson compile` auto-activates the MSVC environment; calling `ninja` directly will fail because `cl.exe` is not on PATH.
@@ -52,7 +52,7 @@ This compiles all C++ targets and shaders together. Calling `meson compile` is f
 Run inside the relevant build directory when dependency paths change (e.g. new Vulkan SDK):
 
 ```powershell
-cd _Comp64DebugOptimized; meson --reconfigure
+cd _CompDebugOptimized_x64; meson --reconfigure
 ```
 
 ## Shaders Only
@@ -60,7 +60,7 @@ cd _Comp64DebugOptimized; meson --reconfigure
 Quick shader syntax check when C++ hasn't changed:
 
 ```powershell
-meson compile -C _Comp64DebugOptimized rtx_shaders
+meson compile -C _CompDebugOptimized_x64 rtx_shaders
 ```
 
-Shader compiler is `slangc.exe` (Slang language). Compiled SPIR-V output goes to `_Comp64DebugOptimized/src/dxvk/rtx_shaders/*.spv`.
+Shader compiler is `slangc.exe` (Slang language). Compiled SPIR-V output goes to `_CompDebugOptimized_x64/src/dxvk/rtx_shaders/*.spv`.

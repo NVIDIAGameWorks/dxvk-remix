@@ -26,12 +26,12 @@ This outputs `GameName,outputdir` per line.
 
 ## Build, Deploy, and Launch
 
-The recommended configuration for development is **debugoptimized** (`_Comp64DebugOptimized`).
+The recommended configuration for development is **debugoptimized** (`_CompDebugOptimized_x64`).
 
 ### Step 1: Build (incremental)
 
 ```powershell
-cd _Comp64DebugOptimized; meson compile -v
+cd _CompDebugOptimized_x64; meson compile -v
 ```
 
 ### Step 2: Deploy to a Game Target
@@ -39,7 +39,7 @@ cd _Comp64DebugOptimized; meson compile -v
 Deploy built artifacts (d3d9.dll, DLSS, NRD, USD libs, etc.) to a game's `.trex` folder:
 
 ```powershell
-meson install -C _Comp64DebugOptimized --tags <GameTarget> --only-changed
+meson install -C _CompDebugOptimized_x64 --tags <GameTarget> --only-changed
 ```
 
 The tag is the section name from `gametargets.conf` (e.g. `Portal`, `HalfLife2_RTX`). The `--only-changed` flag skips files that haven't changed.

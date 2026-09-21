@@ -2,7 +2,7 @@
 
 set ROOT=%~dp0..
 
-:: Set the DXVK_BUILD_FLAVOR environment variable to the name of your build folder, such as _Comp64DebugOptimized
+:: Set the DXVK_BUILD_FLAVOR environment variable to the name of your build folder, such as _CompDebugOptimized_x64
 if "%DXVK_BUILD_FLAVOR%" == "" set DXVK_BUILD_FLAVOR=_output
 
 python.exe %ROOT%\scripts-common\compile_shaders.py ^

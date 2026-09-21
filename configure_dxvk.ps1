@@ -23,7 +23,7 @@
 .   ".\build_common.ps1"
 
 $BuildFlavours = @("debug","debugoptimized","release")
-$BuildSubDirs = @("_Comp64Debug","_Comp64DebugOptimized","_Comp64Release")
+$BuildSubDirs = @("_CompDebug_x64","_CompDebugOptimized_x64","_CompRelease_x64")
 
 For ($i=0; $i -lt $BuildFlavours.Length; $i++) {
   PerformBuild -BuildFlavour $BuildFlavours[$i] -BuildSubDir $BuildSubDirs[$i] -Backend ninja -EnableTracy false -ConfigureOnly $True
