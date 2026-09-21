@@ -10,6 +10,7 @@ This folder contains the NVIDIA RTX Remix Bridge client and server components.  
 2. Microsoft [Visual Studio](https://visualstudio.microsoft.com/vs/older-downloads/)
     - Visual Studio 2019 is tested.
     - Visual Studio 2022 should also work with MSVC v142 build tools installed.
+    - Building the Windows on Arm server additionally requires Visual Studio 2022 with the `C++ ARM64/ARM64EC build tools` from the _Individual Components_ list. The build uses the x64 hosted ARM64 cross compiler, so an x64 development machine is sufficient.
     - The free Commmunity Edition of Visual Studio will work fine.
     > **NOTE:** Make sure to install the `MSVC v142 - VS 2019 C++ x64/x86 build tools` from the _Individual Components_ list in the Visual Studio Installer interface. NVIDIA RTX Remix has only been tested with the Visual Studio 2019 build tools, and newer compiler versions may or may not work and/or lead to unexpected results/issues.
 3. [Meson](https://mesonbuild.com/) - v0.61.4 has been tested, latest version should also work fine.
@@ -18,15 +19,19 @@ This folder contains the NVIDIA RTX Remix Bridge client and server components.  
 
 # How to build
 
-To generate the initial Visual Studio solutions and build, navigate to the `bridge/` folder and run `build_bridge_all.bat`, which will generate build directories for the debug/release configurations for both 32 and 64 bit platform.
+To generate the initial Visual Studio solutions and build, navigate to the `bridge/` folder and run `build_bridge_all.bat`. For each of the debug, debugoptimized and release configurations it builds the x64 server into `_comp<Flavour>_x64` and the 32 bit client into `_comp<Flavour>_x86`, and it stops at the first configuration that fails.
+
+The Windows on Arm server build is optional: run `build_bridge_all.bat arm64` to build the arm64 server into `_comp<Flavour>_arm64` instead of the x64 server. That requires the ARM64 build tools listed in the [prerequisites](#prerequisites).
 
 You can also open and rebuild the projects/solutions individually for different configurations from project files generated in the `bridge/_vs` subdirectory.
 
-> **NOTE:** To get a full Remix Bridge build you will need to open and compile both the x86 as well as the x64 solution, because the bridge client component is built by the x86 solution, and the bridge server component is built by the x64 solution.
+> **NOTE:** To get a full Remix Bridge build you will need to open and compile both the x86 as well as the x64/arm64 solution, because the bridge client component is built by the x86 solution, and the bridge server component is built by the x64/arm64 solution.
 
 The build output from the x86 solution goes into a folder called `_output` which is located (and will be created if it doesn't exist) in the `bridge` folder.
 
 The build output from the x64 solution goes into a folder called `.trex` which is located inside the `_output` directory in the `bridge` folder.
+
+The build output from the arm64 solution goes into a folder called `.trex_arm64` which is located inside the `_output` directory in the `bridge` folder.
 
 > **NOTE:** Technically the Remix Bridge can be used on a game by itself without the Remix Runtime components, but when used that way it will fall back onto the x64 system DirectX9 runtime that is installed in Windows and not be capable of performing any raytracing or asset replacements.
 
@@ -57,13 +62,13 @@ Run the launcher without any parameters to see the list of available options tha
 
 3. Open and re-save top-level **meson.build** file (i.e. via notepad) to update its time stamp, and rerun the build. This will trigger a full meson script run which will generate a project within the Visual Studio solution file and deploy built binaries into the games directories specified in **gametargets.conf**
 
-**NOTE:** The bridge's `gametargets.conf` is very similar to the dxvk-remix's `gametargets.conf`, but the output folder of dxvk-remix's `gametargets.conf` should end with `/.trex/`, while the bridge's output folder should be the directory that contains the `.trex` folder.  In the future, these config files may be unified.
+**NOTE:** The bridge's `gametargets.conf` is very similar to the dxvk-remix's `gametargets.conf`, but the output folder of dxvk-remix's `gametargets.conf` should end with `/.trex/`/`/.trex_arm64/`, while the bridge's output folder should be the directory that contains the `.trex`/`.trex_arm64` folder.  In the future, these config files may be unified.
 
 ## Visual Studio debugging
 
-The intended way to use these components is to use the 32-bit `d3d9.dll` output compiled by the client `d3d9` project from the x86 solution and the 64-bit server dll compiled by the server `NvRemixBridge` project in the x64 solution. If the file exists inside the `.trex` directory, the server bridge component will load the 64-bit Remix Runtime (`dxvk-remix`) `d3d9.dll` to pass the rendering commands and results to the Vulkan pathtracing renderer and back, but by default it loads the regular system DirectX9 dll that is installed in the default Windows system directory.
+The intended way to use these components is to use the 32-bit `d3d9.dll` output compiled by the client `d3d9` project from the x86 solution and the 64-bit server dll compiled by the server `NvRemixBridge` project in the x64 solution. If the file exists inside the `.trex`/`.trex_arm64` directory, the server bridge component will load the 64-bit Remix Runtime (`dxvk-remix`) `d3d9.dll` to pass the rendering commands and results to the Vulkan pathtracing renderer and back, but by default it loads the regular system DirectX9 dll that is installed in the default Windows system directory.
 
-> **NOTE:** The x86 solutions contain both the `client` and `server` projects, but not the copy job for the `server` project, because the `server` output comes from the x64 solution, which only contains the `server` project and copy job for it. The `server` project was left in the x86 solution only to make cross-process debugging easier so that Visual Studio picks up the source files correctly when doing child process debugging.
+> **NOTE:** The x86 solutions contain both the `client` and `server` projects, but not the copy job for the `server` project, because the `server` output comes from the x64/arm64 solution, which only contains the `server` project and copy job for it. The `server` project was left in the x86 solution only to make cross-process debugging easier so that Visual Studio picks up the source files correctly when doing child process debugging.
 
 If you enter the game executable in the `Command` field and the game path as the `Working Directory` property in the `d3d9` project settings on the `Debugging` property page, then it makes it easier to launch the game and debug Remix Bridge directly from Visual Studio.
 
@@ -83,7 +88,7 @@ The easiest way to get a complete binary package is by downloading one of the re
 
 # Remix Bridge Architecture & Implementation Details
 
-- The client side `d3d9` project handles intercepting all the DirectX9 API calls from the 32-bit game/app, and the server side `NvRemixBridge.exe` receives those calls and executes them in 64-bit process and memory space, passing them on to either the x64 system DirectX9 runtime or another rendering shim (if present).
+- The client side `d3d9` project handles intercepting all the DirectX9 API calls from the 32-bit game/app, and the server side `NvRemixBridge.exe` receives those calls and executes them in 64-bit process and memory space, passing them on to either the x64/arm64 system DirectX9 runtime or another rendering shim (if present).
 - The server renders directly into the client window. Any client side d3d9 runtime calls are implemented without calling into the system runtime, so only the server side bridge component creates an actual d3d9 device for the game process, which helps with game compatibility especially when running in exclusive fullscreen mode.
 - The bridge server uses the window handle for the window opened by the client and presents directly into it, which saves us having to do any shared surface copying etc.
 - The main communication channel between the client and the server is done via circular queues which are combined to form an `IpcChannel`.

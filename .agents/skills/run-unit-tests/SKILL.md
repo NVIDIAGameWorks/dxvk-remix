@@ -9,22 +9,22 @@ All commands run in PowerShell from the repo root.
 
 Unit tests live in `tests/rtx/unit/`. New test files must be added to `tests/rtx/unit/meson.build`.
 
-**IMPORTANT:** Unit tests use a **separate dedicated build directory** (`_Comp64UnitTest`) with special build flags. Do NOT run unit tests from game build directories (`_Comp64DebugOptimized`, `_Comp64Release`, etc.) — they will fail.
+**IMPORTANT:** Unit tests use a **separate dedicated build directory** (`_CompUnitTest_x64`) with special build flags. Do NOT run unit tests from game build directories (`_CompDebugOptimized_x64`, `_CompRelease_x64`, etc.) — they will fail.
 
 ## First-Time Setup
 
 Build the unit test configuration:
 
 ```powershell
-.\build_dxvk.ps1 -BuildFlavour release -BuildSubDir _Comp64UnitTest -Backend ninja -EnableTracy false -BuildTarget unit_tests -InstallTags unit
+.\build_dxvk.ps1 -BuildFlavour release -BuildSubDir _CompUnitTest_x64 -Backend ninja -EnableTracy false -BuildTarget unit_tests -InstallTags unit
 ```
 
 ## Running Tests
 
-Once `_Comp64UnitTest` exists:
+Once `_CompUnitTest_x64` exists:
 
 ```powershell
-cd _Comp64UnitTest
+cd _CompUnitTest_x64
 meson test --verbose          # run all tests
 meson test --verbose <name>   # run a specific test
 ```
@@ -34,7 +34,7 @@ meson test --verbose <name>   # run a specific test
 If test source files have changed, rebuild before running:
 
 ```powershell
-cd _Comp64UnitTest; meson compile -v; meson test --verbose <name>
+cd _CompUnitTest_x64; meson compile -v; meson test --verbose <name>
 ```
 
 ## Test Guidelines

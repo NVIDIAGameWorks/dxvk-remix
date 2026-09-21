@@ -162,7 +162,7 @@ int main(int n, const char* args[]) {
     std::cerr << error.message() << std::endl;
     std::cerr << "Please update the RtxOptions.md file by doing one of the following:\n"
                  "\t- Download the artifacts from the unit_testing job in CI, and copy the RtxOptions.md to the repo root locally.\n" 
-                 "\t- Run this test application from your local system (e.g. from _Comp64Release, run 'meson test test_documentation') and copy the resulting RtxOptions.md file from _Comp64Release to the repo root.\n" 
+                 "\t- Run this test application from your local system (e.g. from _CompUnitTest_x64, run 'meson test test_documentation') and copy the resulting RtxOptions.md file from _CompUnitTest_x64 to the repo root.\n" 
                  "\t- Running a Remix application with the following environment variable set (DXVK_DOCUMENTATION_WRITE_RTX_OPTIONS_MD=1), and copying the RtxOptions.md file from the application root to the source root of dxvk-remix." 
       << std::endl;
     throw;

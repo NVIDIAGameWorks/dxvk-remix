@@ -45,7 +45,7 @@ if not %WITH_ARM% == 0 (
   ) else (
     powershell -command "& { . .\build_bridge.ps1; Build -Platform arm64 -BuildFlavour debug -BuildSubDir _compDebug_arm64 -VcVarsVer %VCVARSVER%; exit $LastExitCode }
   )
-  IF NOT %ERRORLEVEL% == 0 GOTO :End
+  IF ERRORLEVEL 1 GOTO :End
   GOTO :BuildClient
 )
 

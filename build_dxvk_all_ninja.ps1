@@ -21,20 +21,30 @@
 #>
 
 param(
-  [switch]$SkipApics
+  [switch]$SkipApics,
+  # Unrecognized values would otherwise fall through to the arm64 cross toolchain in build_common.ps1.
+  [ValidateSet("x64","arm64","arm64ec")]
+  [string]$BuildArch = "x64"
 )
 
 .   ".\build_common.ps1"
 
 $BuildFlavours = @("debug","debugoptimized","release")
-$BuildSubDirs = @("_Comp64Debug","_Comp64DebugOptimized","_Comp64Release")
+$BuildSubDirs = @("_CompDebug","_CompDebugOptimized","_CompRelease")
+
+$Backend = "ninja"
+if ($BuildArch -eq "arm64ec") {
+  # Meson+ninja cannot do arm64ec
+  $Backend = "vs"
+}
 
 For ($i=0; $i -lt $BuildFlavours.Length; $i++) {
   $buildArgs = @{
     BuildFlavour = $BuildFlavours[$i]
-    BuildSubDir = $BuildSubDirs[$i]
-    Backend = 'ninja'
+    BuildSubDir = $BuildSubDirs[$i] + "_" + ${BuildArch}
+    Backend = ${Backend}
     EnableTracy = 'false'
+    BuildArch = ${BuildArch}
   }
   if ($SkipApics) { $buildArgs['SkipApics'] = $true }
   PerformBuild @buildArgs

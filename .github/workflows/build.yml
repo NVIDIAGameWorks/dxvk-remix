@@ -16,11 +16,11 @@ jobs:
       matrix:
         include:
           - build-flavour: debug
-            output-subdir: _Comp64Debug
+            output-subdir: _CompDebug_x64
           - build-flavour: debugoptimized
-            output-subdir: _Comp64DebugOptimized
+            output-subdir: _CompDebugOptimized_x64
           - build-flavour: release
-            output-subdir: _Comp64Release
+            output-subdir: _CompRelease_x64
 
     steps:
     - name: Setup variables

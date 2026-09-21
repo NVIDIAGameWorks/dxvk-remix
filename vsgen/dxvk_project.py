@@ -134,9 +134,9 @@ def generate_dxvk_project(output_root_path, dxvk_cpp_defines):
         # convert to string with ';' as separator
         return '$(VC_IncludePath);'+ ';'.join(p)
 
-    include_search_path_debug = build_search_path("../_Comp64Debug")
-    include_search_path_debugoptimized = build_search_path("../_Comp64DebugOptimized")
-    include_search_path_release = build_search_path("../_Comp64Release")
+    include_search_path_debug = build_search_path("../_CompDebug_x64")
+    include_search_path_debugoptimized = build_search_path("../_CompDebugOptimized_x64")
+    include_search_path_release = build_search_path("../_CompRelease_x64")
 
     file_references = ""
     for ref in vcxproj_file_references:
