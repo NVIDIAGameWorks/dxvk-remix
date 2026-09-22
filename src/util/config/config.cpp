@@ -611,8 +611,10 @@ namespace dxvk {
       },
       { "rtx.playerModelTextures",
         // Character - Chell
-        "8DD6F568BD126398,"  // Left eye
-        "EEF8EFD4B8A1B2A5,"  // Right eye
+        "8DD6F568BD126398,"  // Left eye (old)
+        "EEF8EFD4B8A1B2A5,"  // Right eye (old)
+        "D262A1108173A7C5,"  // Left eye
+        "3A1794C42393FFDF,"  // Right eye
         "4A066E5A5292D273,"  // Hair and eyelashes
         "AC869B6F32D8BBDB,"  // Something in the eyes
         "2D5AC1ADC56A42FD,"  // Body
