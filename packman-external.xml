@@ -61,7 +61,7 @@
         <package name="rtx-remix-reflex_arm64" version="1.8" />
     </dependency>
     <dependency name="rtxio_arm64" linkPath="external/rtxio_arm64">
-        <package name="rtx-remix-rtxio_arm64" version="1" />
+        <package name="rtx-remix-rtxio_arm64" version="2" />
     </dependency>
     <dependency name="sentry-native_arm64" linkPath="external/sentry-native_arm64">
         <package name="rtx-remix-sentry-native_arm64" version="0.15.3" />
