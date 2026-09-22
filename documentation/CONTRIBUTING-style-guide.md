@@ -82,6 +82,20 @@ This document outlines our project's C++ code formatting standards, commenting s
 
   Comparisons against a value other than zero, and bit tests such as `(flags & kSomeBit) != 0`, are unaffected.
 
+- **Subject First**: Put the subject (the variable being tested) on the left of the operator.
+
+  ```cpp
+  // Good
+  if (pData == nullptr) {
+    // ...
+  }
+
+  // Bad
+  if (nullptr == pData) {
+    // ...
+  }
+  ```
+
 ### Headers and Includes
 
 - **Ordering**: Standard libraries first, followed by third-party libraries, and then local project headers.
