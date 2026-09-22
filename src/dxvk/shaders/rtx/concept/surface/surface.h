@@ -490,6 +490,7 @@ struct Surface
     set { data2.x = newValue; }
   }
 
+  // See RtEyeParams::eyeballOrigin (rtx_materials.h) for what this is decoded from.
   property vec3 eyeOrigin
   {
     get { return asfloat(data15.xyz); }

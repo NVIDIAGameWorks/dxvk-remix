@@ -737,6 +737,49 @@ void geometryResolverVertexOutputDebugView(
   case DEBUG_VIEW_TEXCOORD_GENERATION_MODE:
     storeInDebugView(pixelCoordinate, uint(surface.texcoordGenerationMode));
     break;
+  case DEBUG_VIEW_EYE_REGIONS:
+  {
+    // storeInDebugView(pixelCoordinate, vec3(0.0f));
+    // See the DEBUG_VIEW_EYE_REGIONS entry in rtx_debug_view.cpp for the color legend.
+    vec3 albedo = vec3(0.0f);
+
+    if (materialType == surfaceMaterialTypeOpaque)
+    {
+      albedo = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction).albedo;
+    }
+
+    vec3 color = albedo;
+
+    if (surface.isEye)
+    {
+      const float distFromCenter = length(surfaceInteraction.textureCoordinates - 0.5f);
+      vec3 regionColor;
+
+      if (distFromCenter < cb.eyeArgs.irisRadius)
+      {
+        regionColor = vec3(1.0f, 0.0f, 0.0f); // iris
+      }
+      else if (distFromCenter < cb.eyeArgs.irisRadius + 0.04f)
+      {
+        regionColor = vec3(0.0f, 0.0f, 1.0f); // cornea
+      }
+      else
+      {
+        regionColor = vec3(0.0f, 1.0f, 0.0f); // whites
+      }
+
+      if (distFromCenter < 0.01f)
+      {
+        regionColor = vec3(1.0f); // eye center marker
+      }
+
+      const float overlayOpacity = cb.debugKnob.x > 0.0f ? cb.debugKnob.x : 0.5f;
+      color = mix(albedo, regionColor, overlayOpacity);
+    }
+
+    storeInDebugView(pixelCoordinate, color);
+    break;
+  }
   case DEBUG_VIEW_TRIANGLE_NORMAL:
     storeInDebugView(pixelCoordinate, surfaceInteraction.debugTriangleNormal);
     break;
@@ -774,6 +817,14 @@ void geometryResolverVertexOutputDebugView(
   case DEBUG_VIEW_VERTEX_ALPHA:
     storeInDebugView(pixelCoordinate, surfaceInteraction.vertexColor.w);
 
+    break;
+  }
+  // Too many cases in the DEBUG_VIEW switch statement breaks transparent shading on Intel GPUs.
+  // Splitting into two statements serves as a WAR.
+  switch(cb.debugView)
+  {
+  default:
+  case DEBUG_VIEW_DISABLED:
     break;
   case DEBUG_VIEW_PORTAL_SPACE:
   {

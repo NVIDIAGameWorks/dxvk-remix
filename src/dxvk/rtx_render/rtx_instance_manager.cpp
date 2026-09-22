@@ -301,6 +301,15 @@ namespace dxvk {
     onTransformChanged();
     m_blasDirty = true;
 
+    if (surface.eyeParams) {
+      // eyeParams are baked in world space (see RtEyeParams), so they follow the instance through the
+      // portal too. Assumes oldToNew is rigid (rotation + translation only), true for every caller today.
+      const Matrix3 oldToNewRotation(oldToNew);
+      surface.eyeParams->eyeballOrigin = (oldToNew * Vector4(surface.eyeParams->eyeballOrigin, 1.0f)).xyz();
+      surface.eyeParams->eyeRightU = oldToNewRotation * surface.eyeParams->eyeRightU;
+      surface.eyeParams->eyeUpV = oldToNewRotation * surface.eyeParams->eyeUpV;
+    }
+
     if (m_primInstanceOwner.isRoot(this)) {
       // this is the root of a replacement - need to update the transform history for all the instances in the replacement.
       for (size_t i = 0; i < m_primInstanceOwner.getReplacementInstance()->prims.size(); i++) {
@@ -1101,16 +1110,6 @@ namespace dxvk {
 
         currentInstance.surface.blendModeState = drawCall.getMaterialData().blendMode;
 
-        if (drawCall.isEye()) {
-          // assume that the texture transform has eye parameters encoded
-          const Matrix4& texTransform = drawCall.getTransformData().textureTransform;
-          RtEyeParams eyeParams{};
-          eyeParams.eyeballOrigin = Vector3{ texTransform.data[0].w, texTransform.data[1].w, texTransform.data[2].w };
-          eyeParams.eyeRightU = Vector3{ texTransform.data[0].x, texTransform.data[1].x, texTransform.data[2].x };
-          eyeParams.eyeUpV = Vector3{ texTransform.data[0].y, texTransform.data[1].y, texTransform.data[2].y };
-          currentInstance.surface.eyeParams = eyeParams;
-        }
-
         materialData->getSpriteSheetData(currentInstance.surface.spriteSheetRows, currentInstance.surface.spriteSheetCols, currentInstance.surface.spriteSheetFPS);
         currentInstance.m_isAnimated = currentInstance.surface.spriteSheetFPS != 0;
         currentInstance.surface.objectPickingValue = drawCall.drawCallID;
@@ -1142,6 +1141,51 @@ namespace dxvk {
 
           currentInstance.m_isSubsurface = materialData->getOpaqueMaterialData().getSubsurfaceDiffusionProfile();
         }
+      }
+
+      if (drawCall.isEye()) {
+        // Re-derived on every draw call this frame, since the game recomputes this data per eye pose.
+        //
+        // texTransform is the D3D9 texture-stage transform matrix, repurposed by the game as a vessel
+        // to smuggle out eye data unrelated to any real texture transform (see DrawCallState::isEye()
+        // for how this gets detected). Laid out row-major (texTransform.data[row], row 0-3; each row's
+        // .x/.y/.z/.w are its 4 columns), the rows/columns mean:
+        //  - data[0..2].x: eyeRightU, a world-space "right" basis direction for the eye's flat UV
+        //    projection (see eye.slangh). Unnormalized; magnitude is inversely related to iris size.
+        //  - data[0..2].y: eyeUpV, the corresponding "up" basis direction.
+        //  - data[0..2].z: always (0, 0, 1) - fixed padding with no eye data, never used.
+        //  - data[0..2].w: the game's own eye-origin field, expressed in this instance's local/bone
+        //    space rather than world space.
+        //  - data[3] (the whole last row): (u0, v0, 0, 1), the plane-equation constants pinning down
+        //    where the eye center (UV 0.5, 0.5) lies along eyeRightU/eyeUpV: dot(origin, eyeRightU) =
+        //    0.5 - u0, dot(origin, eyeUpV) = 0.5 - v0. This determines the eye center's position within
+        //    the eyeRightU/eyeUpV plane, but not along their shared normal (eyeAxis below); eyeCalcNormalFrame
+        //    (eye.slangh) only needs the former.
+        const Matrix4& texTransform = drawCall.getTransformData().textureTransform;
+
+        const Vector3 eyeRightU = Vector3{ texTransform.data[0].x, texTransform.data[1].x, texTransform.data[2].x };
+        const Vector3 eyeUpV = Vector3{ texTransform.data[0].y, texTransform.data[1].y, texTransform.data[2].y };
+        const Vector3 eyeAxis = cross(eyeRightU, eyeUpV);
+
+        // Guard against a degenerate (zero or parallel) basis, which would otherwise divide by zero below.
+        constexpr float kMinEyeBasisAreaSqr = 1e-8f;
+        if (lengthSqr(eyeAxis) > kMinEyeBasisAreaSqr) {
+          const Vector3 eyeAxisNormalized = eyeAxis / length(eyeAxis);
+
+          // Third component (eyeballOrigin's depth along eyeAxis) is arbitrary; see the layout comment above.
+          const Vector3 planeConstants = Vector3{ 0.5f - texTransform.data[3].x, 0.5f - texTransform.data[3].y, 0.0f };
+          const Matrix3 basis(eyeRightU, eyeUpV, eyeAxisNormalized);
+
+          RtEyeParams eyeParams{};
+          eyeParams.eyeballOrigin = transpose(inverse(basis)) * planeConstants;
+          eyeParams.eyeRightU = eyeRightU;
+          eyeParams.eyeUpV = eyeUpV;
+          currentInstance.surface.eyeParams = eyeParams;
+        } else {
+          currentInstance.surface.eyeParams.reset();
+        }
+      } else {
+        currentInstance.surface.eyeParams.reset();
       }
 
       // Update transform

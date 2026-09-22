@@ -90,12 +90,15 @@ float getDisplacementFactor();
 float getDisplacementInFactor();
 float getDisplacementOutFactor();
 
+// Decoded from the game's per-draw-call eye data; see the texTransform layout comment in
+// InstanceManager::updateInstance (rtx_instance_manager.cpp) for what the game actually sends.
 struct RtEyeParams {
-  // origin of eyeball in world space
-  // used to calculate eye normals
+  // Eye center in world space. Only its position within the eyeRightU/eyeUpV plane is meaningful; its
+  // depth along their shared normal is arbitrary (see the texTransform layout comment in
+  // InstanceManager::updateInstance).
   Vector3 eyeballOrigin = Vector3{ 0, 0, 0 };
   // right/up vectors that define an eye orientation
-  // NOTE: vectors can be unnormalized, and that scale denotes an iris size 
+  // NOTE: vectors can be unnormalized, and that scale denotes an iris size
   Vector3 eyeRightU = Vector3{ 1, 0, 0 };
   Vector3 eyeUpV = Vector3{ 0, 1, 0 };
 };

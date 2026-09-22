@@ -34,6 +34,10 @@
 //
 
 
+// eyeBasisU/eyeBasisV/eyeballOrigin below are decoded on the CPU from the game's per-draw-call eye
+// data; see the texTransform layout comment in InstanceManager::updateInstance (rtx_instance_manager.cpp)
+// for what the game actually sends and how these values are derived from it.
+
 // Calculate eye whites tex.coords from a world-space position
 float2 eyeCalcUvWhites(
   const float3 hitPosition, // world space ray hit position on an eye surface
@@ -83,16 +87,16 @@ void eyeCalcNormalFrame(
 {
   float3 eyedir = -normalize(cross(eyeBasisU, eyeBasisV));
 
-  // offset sphere center along eye direction for more bent normals
-  // use different centers for cornea and eyeball, as cornea has a different curvature
-  float3 originForNormal = mix(
-    eyeballOrigin + eyedir * cb.eyeArgs.normalBendingEyeball,
-    eyeballOrigin + eyedir * cb.eyeArgs.normalBendingCornea,
-    eyeIsIris(uvWhites, corneaRadius) //
-  );
+  // eyeballOrigin's depth along eyedir is unreliable (see the texTransform comment in
+  // InstanceManager::updateInstance, rtx_instance_manager.cpp); only its lateral position is used below.
+  float3 offsetFromOrigin = hitPosition - eyeballOrigin;
+  float3 lateralOffset = offsetFromOrigin - eyedir * dot(offsetFromOrigin, eyedir);
+
+  float radius = mix(cb.eyeArgs.normalBendingEyeball, cb.eyeArgs.normalBendingCornea, eyeIsIris(uvWhites, corneaRadius));
+  float domeHeight = sqrt(max(radius * radius - dot(lateralOffset, lateralOffset), 0.0f));
 
   // just a sphere normal
-  outNormal = normalize(hitPosition - originForNormal);
+  outNormal = normalize(lateralOffset - eyedir * domeHeight);
   // but there's a case when sphere normal can be facing away from view direction
   // so fix it up so it always produces a normal so that reflection vector would be correct
   outNormal = getBentNormal(hitTriangleNormal, outNormal, -viewDirection);
