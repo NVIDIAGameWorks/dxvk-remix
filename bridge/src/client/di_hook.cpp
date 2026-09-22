@@ -19,6 +19,8 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  */
+#include <cstddef>
+
 #define DIRECTINPUT_VERSION 0x0800
 #include <dinput.h>
 #include <strsafe.h>
@@ -839,6 +841,7 @@ API_HOOK_DECL(GetAsyncKeyState);
 API_HOOK_DECL(GetKeyState);
 API_HOOK_DECL(GetKeyboardState);
 API_HOOK_DECL(GetRawInputData);
+API_HOOK_DECL(GetRawInputBuffer);
 API_HOOK_DECL(PeekMessageA);
 API_HOOK_DECL(PeekMessageW);
 API_HOOK_DECL(GetMessageA);
@@ -993,20 +996,36 @@ static LRESULT CALLBACK HookedLowLevelKeyboardProc(int nCode, WPARAM wParam, LPA
 }
 
 namespace {
-  // Last cursor position observed while Remix UI is inactive. While UI is active
-  // GetCursorPos returns this value; on UI close it is restored to the OS cursor.
+  // Last cursor position observed while Remix UI is inactive, and whether one has been observed.
   POINT g_lastKnownCursorPos {};
+  bool g_lastKnownCursorPosValid = false;
+
+  // True once the game has supplied g_lastKnownCursorPos itself; see documentation/BridgeInputNeutralization.md.
+  bool g_gameObservesCursor = false;
+
+  // Cursor position echoed to the game while Remix UI is active.
+  POINT g_uiActiveCursorPos {};
+  bool g_uiActiveCursorPosValid = false;
 }
 
 void DI::onRemixUIActivated() {
-  if (OrigGetCursorPos) {
-    OrigGetCursorPos(&g_lastKnownCursorPos);
+  if (RemixState::isUIActive()) {
+    // Redundant activation (e.g. Basic <-> Advanced) - keep the in-session recenter target.
+    return;
   }
+
+  if (!g_gameObservesCursor && OrigGetCursorPos) {
+    g_lastKnownCursorPosValid = OrigGetCursorPos(&g_lastKnownCursorPos) != FALSE;
+  }
+
+  g_uiActiveCursorPos = g_lastKnownCursorPos;
+  g_uiActiveCursorPosValid = g_lastKnownCursorPosValid;
 }
 
 void DI::onRemixUIDeactivated() {
-  if (OrigSetCursorPos) {
-    OrigSetCursorPos(g_lastKnownCursorPos.x, g_lastKnownCursorPos.y);
+  if (g_uiActiveCursorPosValid && OrigSetCursorPos) {
+    // Restore what the game was told, not the pre-UI position, so its next delta is zero.
+    OrigSetCursorPos(g_uiActiveCursorPos.x, g_uiActiveCursorPos.y);
   }
 
   DirectInputForwarder::resetMouseState();
@@ -1023,12 +1042,14 @@ static BOOL WINAPI HookedGetCursorPos(LPPOINT lp) {
   }
 
   if (RemixState::isUIActive()) {
-    *lp = g_lastKnownCursorPos;
+    *lp = g_uiActiveCursorPos;
     return TRUE;
   }
 
   if (OrigGetCursorPos(lp)) {
     g_lastKnownCursorPos = *lp;
+    g_lastKnownCursorPosValid = true;
+    g_gameObservesCursor = true;
     return TRUE;
   }
 
@@ -1038,6 +1059,10 @@ static BOOL WINAPI HookedGetCursorPos(LPPOINT lp) {
 static BOOL WINAPI HookedSetCursorPos(int X, int Y) {
   LogStaticFunctionCall();
   if (RemixState::isUIActive()) {
+    // Track the target without moving the real OS cursor, so GetCursorPos can echo it back.
+    g_uiActiveCursorPos.x = X;
+    g_uiActiveCursorPos.y = Y;
+    g_uiActiveCursorPosValid = true;
     return TRUE;
   }
 
@@ -1045,6 +1070,8 @@ static BOOL WINAPI HookedSetCursorPos(int X, int Y) {
   if (result) {
     g_lastKnownCursorPos.x = X;
     g_lastKnownCursorPos.y = Y;
+    g_lastKnownCursorPosValid = true;
+    g_gameObservesCursor = true;
   }
   return result;
 }
@@ -1080,7 +1107,6 @@ static SHORT WINAPI HookedGetKeyboardState(PBYTE lpKeyState) {
 static UINT WINAPI HookedGetRawInputData(HRAWINPUT hRawInput,
                                          UINT uiCommand, LPVOID pData,
                                          PUINT pcbSize, UINT cbSizeHeader) {
-  static RAWMOUSE lastKnownMouseState;
   static RAWKEYBOARD lastKnownKeyboardState;
 
   LogStaticFunctionCall();
@@ -1088,34 +1114,63 @@ static UINT WINAPI HookedGetRawInputData(HRAWINPUT hRawInput,
   UINT res = OrigGetRawInputData(hRawInput, uiCommand,
                                  pData, pcbSize, cbSizeHeader);
 
-  if (gClientUsesDirectInput) {
-    // Must NOT mess with the Raw input when app actively uses DirectInput.
+  // res is bytes copied, not buffer capacity; RID_HEADER omits the union below.
+  if (pData == nullptr || pcbSize == nullptr || uiCommand != RID_INPUT ||
+      res == 0 || res == (UINT) -1) {
     return res;
   }
 
-  if (nullptr != pData && pcbSize && res == *pcbSize) {
-    // We have raw data to process
-    RAWINPUT* raw = static_cast<RAWINPUT*>(pData);
+  RAWINPUT* raw = static_cast<RAWINPUT*>(pData);
 
-    // Block if Remix UI is active
-    if (RemixState::isUIActive()) {
-      if (raw->header.dwType == RIM_TYPEKEYBOARD) {
-        raw->data.keyboard = lastKnownKeyboardState;
-      } else if (raw->header.dwType == RIM_TYPEMOUSE) {
-        raw->data.mouse = lastKnownMouseState;
-      }
-
-      return res;
-    }
-
-    // Update last known states
-    if (raw->header.dwType == RIM_TYPEKEYBOARD) {
-      lastKnownKeyboardState = raw->data.keyboard;
-    } else if (raw->header.dwType == RIM_TYPEMOUSE) {
-      lastKnownMouseState = raw->data.mouse;
-    }
+  const size_t mouseEnd = offsetof(RAWINPUT, data) + sizeof(RAWMOUSE);
+  const size_t keyboardEnd = offsetof(RAWINPUT, data) + sizeof(RAWKEYBOARD);
+  if ((raw->header.dwType == RIM_TYPEMOUSE && res < mouseEnd) ||
+      (raw->header.dwType == RIM_TYPEKEYBOARD && res < keyboardEnd)) {
+    return res;
   }
+
+  if (RemixState::isUIActive()) {
+    if (raw->header.dwType == RIM_TYPEMOUSE) {
+      // Relative deltas (lLastX/lLastY) are incremental, so zero them rather than replay a stale
+      // sample; absolute-mode position is left as-is.
+      if (!(raw->data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE)) {
+        raw->data.mouse.lLastX = 0;
+        raw->data.mouse.lLastY = 0;
+      }
+      raw->data.mouse.usButtonFlags = 0;
+      raw->data.mouse.usButtonData  = 0;
+      raw->data.mouse.ulRawButtons  = 0;
+    } else if (raw->header.dwType == RIM_TYPEKEYBOARD && !gClientUsesDirectInput) {
+      // DirectInput clients keep their raw feed untouched; see documentation/BridgeInputNeutralization.md.
+      raw->data.keyboard = lastKnownKeyboardState;
+    }
+
+    return res;
+  }
+
+  if (!gClientUsesDirectInput && raw->header.dwType == RIM_TYPEKEYBOARD) {
+    lastKnownKeyboardState = raw->data.keyboard;
+  }
+
   return res;
+}
+
+static UINT WINAPI HookedGetRawInputBuffer(PRAWINPUT pData, PUINT pcbSize, UINT cbSizeHeader) {
+  LogStaticFunctionCall();
+
+  // A NULL pData is a sizing query, not a read - forward it untouched.
+  if (pData == nullptr || !RemixState::isUIActive()) {
+    return OrigGetRawInputBuffer(pData, pcbSize, cbSizeHeader);
+  }
+
+  // Drops whole batched reports rather than sanitizing them; see documentation/BridgeInputNeutralization.md.
+  UINT res = OrigGetRawInputBuffer(pData, pcbSize, cbSizeHeader);
+  // Keep draining past the caller's buffer capacity so nothing is left queued to replay later.
+  while (res != 0 && res != (UINT) -1) {
+    res = OrigGetRawInputBuffer(pData, pcbSize, cbSizeHeader);
+  }
+
+  return (res == (UINT) -1) ? res : 0;
 }
 
 static void InputWinHooksAttach() {
@@ -1157,6 +1212,7 @@ static void AttachConventionalInput() {
   OrigGetAsyncKeyState = GetAsyncKeyState;
   OrigGetKeyboardState = GetKeyboardState;
   OrigGetRawInputData = GetRawInputData;
+  OrigGetRawInputBuffer = GetRawInputBuffer;
 
   API_ATTACH(GetCursorPos);
   API_ATTACH(SetCursorPos);
@@ -1164,6 +1220,7 @@ static void AttachConventionalInput() {
   API_ATTACH(GetAsyncKeyState);
   API_ATTACH(GetKeyboardState);
   API_ATTACH(GetRawInputData);
+  API_ATTACH(GetRawInputBuffer);
 
   if (ClientOptions::getHookMessagePump()) {
     // Attach to message pump functions
@@ -1188,6 +1245,7 @@ static void DetachConventionalInput() {
   API_DETACH(GetAsyncKeyState);
   API_DETACH(GetKeyboardState);
   API_DETACH(GetRawInputData);
+  API_DETACH(GetRawInputBuffer);
 
   if (ClientOptions::getHookMessagePump()) {
     API_DETACH(PeekMessageA);

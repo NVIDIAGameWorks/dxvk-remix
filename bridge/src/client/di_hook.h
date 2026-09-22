@@ -48,7 +48,7 @@ enum ForwardPolicy {
 extern void unsetCooperativeLevel();
 extern void resetCooperativeLevel();
 
-// Refresh the gameplay cursor snapshot when Remix UI opens; restore it on close.
+// Seed the cursor echoed to the game while Remix UI is open, and hand the OS cursor back on close.
 extern void onRemixUIActivated();
 extern void onRemixUIDeactivated();
 

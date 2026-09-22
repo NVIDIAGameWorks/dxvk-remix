@@ -304,10 +304,13 @@ foreach key : copy_targets.keys()
                     output_path,
                     'NvRemixLauncher32*'])
     else
-        platform_output_path = output_path
-        if cpu_family != 'x86_64'
-          # place non-x64 servers into dedicated folders
-          platform_output_path = output_path + '_' + cpu_family
+        # Note: dir names must match bridge/src/util/util_filesys.h's runtimeDirName()!
+        if cpu_family == 'x86_64'
+          platform_output_path = output_path + '\\.trex'
+        elif cpu_family == 'aarch64'
+          platform_output_path = output_path + '\\.trex_arm64'
+        else
+          error('Unsupported target architecture for server deploy: ' + cpu_family)
         endif
         run_target('copy_' + target_suffix + '_server',
           depends: [ server_exe ],
