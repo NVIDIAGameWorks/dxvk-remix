@@ -269,7 +269,8 @@ namespace dxvk {
             // Note: Distant light direction must be normalized, but a non-normalized direction is provided as an option.
             normalize(fallbackLightDirection()),
             fallbackLightAngle() * kDegreesToRadians / 2.0f,
-            fallbackLightRadiance()
+            fallbackLightRadiance(),
+            fallbackLightVolumetricRadianceScale()
           ));
 
           if (oldFallbackLightPresent) {
@@ -315,7 +316,8 @@ namespace dxvk {
           mainCamera.getPosition() + fallbackLightPositionOffset(),
           fallbackLightRadiance(),
           fallbackLightRadius(),
-          RtLightShaping(shapingEnabled, primaryAxis, cosConeAngle, coneSoftness, focusExponent)
+          RtLightShaping(shapingEnabled, primaryAxis, cosConeAngle, coneSoftness, focusExponent),
+          fallbackLightVolumetricRadianceScale()
         ));
 
         // Update light dynamic properties

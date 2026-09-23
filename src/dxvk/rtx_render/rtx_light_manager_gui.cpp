@@ -154,6 +154,7 @@ namespace dxvk {
         lightSettingsDirty |= fallbackLightTypeCombo.getKey(&fallbackLightTypeObject());
 
         lightSettingsDirty |= RemixGui::DragFloat3("Fallback Light Radiance", &fallbackLightRadianceObject(), 0.1f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+        lightSettingsDirty |= RemixGui::DragFloat("Fallback Light Volumetric Radiance Scale", &fallbackLightVolumetricRadianceScaleObject(), 0.01f, 0.0f, FLOAT16_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 
         if (fallbackLightType() == FallbackLightType::Distant) {
           lightSettingsDirty |= RemixGui::DragFloat3("Fallback Light Direction", &fallbackLightDirectionObject(), 0.1f, 0.0f, 0.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
