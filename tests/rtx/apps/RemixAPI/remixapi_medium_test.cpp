@@ -359,7 +359,17 @@ int main(int argc, char* argv[]) {
     exitCode = EXIT_FAILURE;
   }
 
-  DestroyWindow(hwnd);
+  if (g_remix) {
+    const auto shutdownResult = remix::lib::shutdownAndUnloadRemixDll(*g_remix);
+    if (!shutdownResult) {
+      std::printf("FAILED: shutdownAndUnloadRemixDll() failed %d\n",
+      static_cast<int>(shutdownResult.status()));
+      exitCode = EXIT_FAILURE;
+    }
+    g_remix.reset();
+  }
+
   UnregisterClass(windowClass.lpszClassName, windowClass.hInstance);
+
   return exitCode;
 }
