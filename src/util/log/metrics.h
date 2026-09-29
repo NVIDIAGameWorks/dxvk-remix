@@ -39,6 +39,7 @@ namespace dxvk {
     dxvk_gpu_idle_time_ms,           // In milliseconds
     dxvk_total_time_ms,              // In milliseconds
     dxvk_frame_count,                // Count of rendered frames
+    dxvk_warmup_time_ms,             // In milliseconds
 
     kCount
   };
@@ -78,8 +79,8 @@ namespace dxvk {
     Metrics();
     ~Metrics();
 
-    // Will log the rolling average of the past 30 frames when the app closes.
-    static void logRollingAverage(Metric metric, const float& value);
+    // Will log the average of all logged values when the app closes.
+    static void logAverage(Metric metric, const float& value);
     // Will log the passed in value when the app closes.
     static void logFloat(Metric metric, const float& value);
     static void serialize();
@@ -115,12 +116,15 @@ namespace dxvk {
       "dxvk_gpu_idle_time_ms",
       "dxvk_total_time_ms",
       "dxvk_frame_count",
+      "dxvk_warmup_time_ms",
     };
 
     static constexpr uint32_t kTestTraceMaxEvents = 16;
     static_assert(std::size(m_metricNames) == kCount, "m_metricNames must have an entry for every Metric enum value");
 
     std::array<float, Metric::kCount> m_data = {};
+    // Divisor for logAverage and "was logged" flag for serialize. logFloat sets it to 1, so a later logAverage starts a new average.
+    std::array<uint32_t, Metric::kCount> m_sampleCounts = {};
     TestTraceConfig m_testTraceConfig = {};
     bool m_testTraceFlushed = false;
     uint32_t m_testTraceEventCount = 0;

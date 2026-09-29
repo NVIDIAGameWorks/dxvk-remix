@@ -23,7 +23,6 @@
 
 #include "../util_env.h"
 #include "../util_string.h"
-#include "util_math.h"
 
 #include <algorithm>
 
@@ -37,17 +36,16 @@ namespace dxvk {
   
   Metrics::~Metrics() { }
 
-  void Metrics::logRollingAverage(Metric metric, const float& value) {
+  void Metrics::logAverage(Metric metric, const float& value) {
     std::lock_guard<dxvk::mutex> lock(s_instance.m_mutex);
-    const float& oldValue = s_instance.m_data[metric];
-
-    const uint32_t kRollingAvgWindow = 30;
-    s_instance.m_data[metric] = lerp(oldValue, value, 1.f / kRollingAvgWindow);
+    const uint32_t sampleCount = ++s_instance.m_sampleCounts[metric];
+    s_instance.m_data[metric] += (value - s_instance.m_data[metric]) / static_cast<float>(sampleCount);
   }
 
   void Metrics::logFloat(Metric metric, const float& value) {
     std::lock_guard<dxvk::mutex> lock(s_instance.m_mutex);
     s_instance.m_data[metric] = value;
+    s_instance.m_sampleCounts[metric] = 1;
   }
 
   void Metrics::configureTestTrace(const TestTraceConfig& config) {
@@ -94,8 +92,11 @@ namespace dxvk {
   void Metrics::serialize() {
     std::lock_guard<dxvk::mutex> lock(s_instance.m_mutex);
 
-    for (uint32_t i = 0; i < Metric::kCount; i++)
-      s_instance.emitMsg((Metric)i, s_instance.m_data[i]);
+    for (uint32_t i = 0; i < Metric::kCount; i++) {
+      if (s_instance.m_sampleCounts[i]) {
+        s_instance.emitMsg((Metric)i, s_instance.m_data[i]);
+      }
+    }
 
     s_instance.emitTestTraceArtifacts();
   }
