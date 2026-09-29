@@ -47,11 +47,8 @@
 #include <nvsdk_ngx_helpers_dlssg_vk.h>
 #include <nvsdk_ngx_defs_dlssg.h>
 
-// DLSS-NR (ngx_sdk_dlnr) has no arm64 package yet, so it is unavailable on WoA builds.
-#ifdef _M_X64
 #include <nvsdk_ngx_defs_dlssnr.h>
 #include <nvsdk_ngx_helpers_dlssnr_vk.h>
-#endif
 
 #include "rtx_resources.h"
 #include "rtx_semaphore.h"
@@ -70,9 +67,7 @@ namespace {
 namespace dxvk
 {
   namespace {
-#ifdef _M_X64
     constexpr float kDlssNrGlobalToneStrength = 1.0f;
-#endif
 
     std::string resultToString(NVSDK_NGX_Result result) {
       char buf[1024];
@@ -385,7 +380,6 @@ namespace dxvk
   }
 
   bool NGXContext::checkDlssNeuralRenderingSupport(NVSDK_NGX_Parameter* params) {
-#ifdef _M_X64
     int needsUpdatedDriver = 0;
     NVSDK_NGX_Result result = params->Get(NVSDK_NGX_Parameter_DLSSNR_NeedsUpdatedDriver, &needsUpdatedDriver);
     if (NVSDK_NGX_FAILED(result)) {
@@ -421,10 +415,6 @@ namespace dxvk
     }
 
     return true;
-#else
-    // DLSS-NR (ngx_sdk_dlnr) has no arm64 package yet.
-    return false;
-#endif
   }
 
   static bool checkHardwareSchedulingEnabled(DxvkDevice* device) {
@@ -1073,11 +1063,6 @@ namespace dxvk
   }
 
   void NGXNeuralRenderingContext::initialize(Rc<DxvkContext> renderContext, const uint32_t displaySize[2]) {
-#ifndef _M_X64
-    // DLSS-NR (ngx_sdk_dlnr) has no arm64 package yet; NGXContext::checkDlssNeuralRenderingSupport
-    // always reports unsupported on this platform, so this context should never be constructed.
-    m_initialized = false;
-#else
     if (m_neuralRenderingFeature) {
       renderContext->getDevice()->waitForIdle();
       releaseNGXFeature();
@@ -1099,7 +1084,6 @@ namespace dxvk
     }
 
     m_initialized = true;
-#endif
   }
 
   bool NGXNeuralRenderingContext::evaluateNeuralRendering(
@@ -1107,11 +1091,6 @@ namespace dxvk
     if (!isNeuralRenderingInitialized()) {
       return false;
     }
-
-#ifndef _M_X64
-    // DLSS-NR (ngx_sdk_dlnr) has no arm64 package yet; unreachable since isNeuralRenderingInitialized() is always false.
-    return false;
-#else
     ScopedCpuProfileZone();
 
     const uint32_t width = buffers.pInColor->image->info().extent.width;
@@ -1172,7 +1151,6 @@ namespace dxvk
     }
 
     return true;
-#endif
   }
 
   void NGXNeuralRenderingContext::releaseNGXFeature() {
