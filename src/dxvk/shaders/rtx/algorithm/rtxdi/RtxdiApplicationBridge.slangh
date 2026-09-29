@@ -40,6 +40,7 @@
 #include "rtx/algorithm/visibility.slangh"
 #include "rtx/algorithm/volume_integrator_helpers.slangh"
 #include "rtx/pass/sparse_rendering/compact_active_pixels.slangh"
+#include "rtx/algorithm/rtxdi/rtxdi_reservoir_pages.slangh"
 
 static const uint kReprojectionConfidenceHistoryLength = 16;
 
@@ -965,26 +966,6 @@ int2 RAB_GetTemporalSamplePosition(int2 pixelPos)
 #else
   return -1.0;
 #endif
-}
-
-int RTXDI_GetTemporalInputPage()
-{
-  return ~cb.frameIdx & 1;
-}
-
-int RTXDI_GetTemporalOutputPage()
-{
-  return 2;
-}
-
-int RTXDI_GetSpatialInputPage()
-{
-  return 2;
-}
-
-int RTXDI_GetSpatialOutputPage()
-{
-  return cb.frameIdx & 1;
 }
 
 int ReSTIRGI_GetInitSamplePage()

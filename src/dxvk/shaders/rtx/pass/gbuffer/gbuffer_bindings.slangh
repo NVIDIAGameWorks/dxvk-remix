@@ -25,6 +25,8 @@
 
 #include "rtx/utility/shader_types.slangh"
 
+#include "rtxdi/RtxdiParameters.h"
+
 // Inputs
 
 layout(binding = GBUFFER_BINDING_LINEAR_WRAP_SAMPLER)
@@ -223,17 +225,8 @@ RWTexture2D<uint2> ReflectionPSRData1;     // Output/Input
 layout(rg32ui, binding = GBUFFER_BINDING_REFLECTION_PSR_DATA_STORAGE_2)
 RWTexture2D<uint2> ReflectionPSRData2;
 
-layout(rg32ui, binding = GBUFFER_BINDING_TRANSMISSION_PSR_DATA_STORAGE_0)
-RWTexture2D<uint2> TransmissionPSRData0;
-
-layout(rg32ui, binding = GBUFFER_BINDING_TRANSMISSION_PSR_DATA_STORAGE_1)
-RWTexture2D<uint2> TransmissionPSRData1;
-
-layout(rg32ui, binding = GBUFFER_BINDING_TRANSMISSION_PSR_DATA_STORAGE_2)
-RWTexture2D<uint2> TransmissionPSRData2;
-
-layout(rg32ui, binding = GBUFFER_BINDING_TRANSMISSION_PSR_DATA_STORAGE_3)
-RWTexture2D<uint2> TransmissionPSRData3;
+layout(binding = GBUFFER_BINDING_TRANSMISSION_PSR_DATA_STORAGE)
+RWStructuredBuffer<RTXDI_PackedReservoir> TransmissionPSRData;
 
 layout(r32ui, binding = GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT)
 RWTexture2D<uint> PrimaryObjectPicking;

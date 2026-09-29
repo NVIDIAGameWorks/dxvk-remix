@@ -652,7 +652,8 @@ namespace dxvk {
 
         Resources::RaytracingOutput& rtOutput = getResourceManager().getRaytracingOutput();
 
-        if (common->metaNGXContext().supportsDLFG()) {
+        // The queues hold a single entry unless frame generation runs, see Resources::createDlfgResourceQueues.
+        if (rtOutput.m_primaryDepthQueue[1].isValid()) {
           rtOutput.m_primaryDepthQueue.next();
           rtOutput.m_primaryScreenSpaceMotionVectorQueue.next();
         }
@@ -1310,6 +1311,9 @@ namespace dxvk {
     constants.reSTIRGISampleValidationThreshold = restirGI.lightingValidationThreshold();
     constants.enableReSTIRGIVisibilityValidation = restirGI.validateVisibilityChange();
     constants.reSTIRGIVisibilityValidationRange = 1.0f + restirGI.visibilityValidationRange();
+
+    constants.rtxdiGradientResourcesAllocated = getResourceManager().areRtxdiGradientResourcesAllocated();
+    constants.rtxdiIlluminanceAllocated = getResourceManager().areRtxdiIlluminanceResourcesAllocated();
 
     // Neural Radiance Cache
     NeuralRadianceCache& nrc = m_common->metaNeuralRadianceCache();

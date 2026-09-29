@@ -229,7 +229,7 @@ namespace dxvk {
       return false;
     }
     // See SparseRendering::isEnabled() for explanation on why these checks are necessary.
-    if (!RtxOptions::enableRayReconstruction()) {
+    if (!RtxOptions::isRayReconstructionEnabled()) {
       return false;
     }
     if (RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::ReSTIRGI) {

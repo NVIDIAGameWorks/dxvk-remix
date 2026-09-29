@@ -98,7 +98,6 @@ void reprojectInactivePixelReservoir(int2 pixelCoordinate) {
   confidence = max(confidence - 1.0 / kReprojectionConfidenceHistoryLength, 0);
 
   ReprojectionConfidence[pixelCoordinate] = confidence;
-  TemporalPosition[pixelCoordinate] = pack32(u16vec2(-1));
   RAB_StoreReservoir(reservoir, pixelCoordinate, RTXDI_GetTemporalOutputPage());
 }
 
@@ -206,11 +205,15 @@ void main(int2 threadIndex : SV_DispatchThreadID)
 
   // Remember which pixel the temporal reservoir belongs to, if it comes from a valid reprojection.
   // Needed for the gradients pass.
-  if (!isGBufferSimilar)
+  if (cb.rtxdiGradientResourcesAllocated)
   {
-    temporalSamplePixelPos = -1;
+    if (!isGBufferSimilar)
+    {
+      temporalSamplePixelPos = -1;
+    }
+
+    TemporalPosition[pixelCoordinate] = pack32(u16vec2(temporalSamplePixelPos));
   }
-  TemporalPosition[pixelCoordinate] = pack32(u16vec2(temporalSamplePixelPos));
 
   RAB_StoreReservoir(state, pixelCoordinate, RTXDI_GetTemporalOutputPage());
 }

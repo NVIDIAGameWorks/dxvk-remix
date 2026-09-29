@@ -1237,7 +1237,8 @@ namespace dxvk {
 
     debugViewArgs.samplerType = samplerType();
 
-    debugViewArgs.isRTXDIConfidenceValid = rtOutput.getCurrentRtxdiConfidence().matchesWriteFrameIdx(frameIdx);
+    debugViewArgs.isRTXDIConfidenceValid = ctx.getResourceManager().areRtxdiGradientResourcesAllocated() &&
+                                           rtOutput.getCurrentRtxdiConfidence().matchesWriteFrameIdx(frameIdx);
 
     RayPortalManager::SceneData portalData = common.getSceneManager().getRayPortalManager().getRayPortalInfoSceneData();
     debugViewArgs.numActiveRayPortals = portalData.numActiveRayPortals;
@@ -1338,7 +1339,10 @@ namespace dxvk {
     ctx->bindResourceView(DEBUG_VIEW_BINDING_PRIMARY_LINEAR_VIEW_Z_INPUT, rtOutput.m_primaryLinearViewZ.view, nullptr);
     ctx->bindResourceView(DEBUG_VIEW_BINDING_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_PERCEPTUAL_ROUGHNESS_INPUT, rtOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughness.view, nullptr);
     ctx->bindResourceView(DEBUG_VIEW_BINDING_PRIMARY_SCREEN_SPACE_MOTION_VECTOR_INPUT, rtOutput.m_primaryScreenSpaceMotionVector.view, nullptr);
-    ctx->bindResourceView(DEBUG_VIEW_BINDING_RTXDI_CONFIDENCE_INPUT, rtOutput.getCurrentRtxdiConfidence().view(Resources::AccessType::Read, debugViewArgs.isRTXDIConfidenceValid), nullptr);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_RTXDI_CONFIDENCE_INPUT,
+      ctx->getResourceManager().areRtxdiGradientResourcesAllocated()
+        ? rtOutput.getCurrentRtxdiConfidence().view(Resources::AccessType::Read, debugViewArgs.isRTXDIConfidenceValid)
+        : nullptr, nullptr);
     Rc<DxvkImageView> renderOutput =
       shouldRunDispatchPostCompositePass()
       ? rtOutput.m_compositeOutput.view(Resources::AccessType::Read)

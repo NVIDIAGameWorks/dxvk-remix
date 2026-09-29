@@ -38,7 +38,9 @@
 #include "rtx_texture_manager.h"
 #include "rtx_debug_view.h"
 #include "rtx_xess.h"
+#include "rtx_restir_gi_rayquery.h"
 #include "rtx_ray_reconstruction.h"
+#include "rtx_rtxdi_rayquery.h"
 #include "../util/util_global_time.h"
 
 namespace dxvk {
@@ -133,6 +135,10 @@ namespace dxvk {
     : resource(std::move(_resource)) {
   }
 
+  Resources::SharedResource::SharedResource(Rc<DxvkBuffer>&& _buffer)
+    : buffer(std::move(_buffer)) {
+  }
+
   Resources::AliasedResource::AliasedResource(Rc<DxvkContext>& ctx,
                                               const VkExtent3D& extent,
                                               const VkFormat format,
@@ -215,6 +221,29 @@ namespace dxvk {
       s_resourcesViewMap[m_view.ptr()] = std::string(name);
     }
 #endif
+  }
+
+  Resources::AliasedResource::AliasedResource(const Resources::AliasedResource& other, const char* name)
+    : m_device(other.m_device)
+    , m_sharedResource(other.m_sharedResource)
+    , m_view(other.m_view)
+#ifdef REMIX_DEVELOPMENT
+    , m_thisObjectAddress(std::make_shared<const Resources::AliasedResource*>(this))
+    , m_name(name)
+#endif
+  {
+  }
+
+  Resources::AliasedResource::AliasedResource(DxvkDevice* device, Rc<DxvkBuffer>&& buffer, const char* name)
+    : m_device(device)
+    , m_sharedResource(new SharedResource(std::move(buffer)))
+#ifdef REMIX_DEVELOPMENT
+    , m_thisObjectAddress(std::make_shared<const Resources::AliasedResource*>(this))
+    , m_name(name)
+#endif
+  {
+    // A new buffer's contents are undefined, so its first handle is taken to have written it.
+    registerAccess(AccessType::Write);
   }
 
   Resources::AliasedResource& Resources::AliasedResource::operator=(Resources::AliasedResource&& other) {
@@ -342,6 +371,20 @@ namespace dxvk {
     return m_view.ptr() == other.m_view.ptr();
   }
 
+  Resources::AliasedBuffer::AliasedBuffer(DxvkDevice* device, Rc<DxvkBuffer>&& buffer, const char* name)
+    : AliasedResource(device, std::move(buffer), name) {
+  }
+
+  Resources::AliasedBuffer::AliasedBuffer(const AliasedBuffer& other, const char* name)
+    : AliasedResource(other, name) {
+  }
+
+  DxvkBufferSlice Resources::AliasedBuffer::slice(AccessType accessType, bool isAccessedByGPU) const {
+    registerAccess(accessType, isAccessedByGPU);
+
+    return DxvkBufferSlice(sharedBuffer(), 0, sharedBuffer()->info().size);
+  }
+
   Resources::Resources(DxvkDevice* device)
     : CommonDeviceObject(device) { }
 
@@ -359,7 +402,7 @@ namespace dxvk {
       m_dlssNeuralRenderingResourcesAllocated = false;
     }
 
-    if (downscaledExtentChanged) {
+    if (downscaledExtentChanged || !areDownscaledResourcesCurrent()) {
       m_downscaledExtent = downscaledExtent;
 
       createDownscaledResources(ctx);
@@ -373,7 +416,35 @@ namespace dxvk {
   }
 
   bool Resources::validateRaytracingOutput(const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent) const {
-    return m_raytracingOutput.isReady() && m_targetExtent == targetExtent && m_downscaledExtent == downscaledExtent;
+    if (!m_raytracingOutput.isReady() || m_targetExtent != targetExtent || m_downscaledExtent != downscaledExtent) {
+      return false;
+    }
+
+    return areDownscaledResourcesCurrent();
+  }
+
+  // Whether the option-dependent parts of the downscaled allocation still match the options, which can change without a resize.
+  bool Resources::areDownscaledResourcesCurrent() const {
+    return needsRtxdiGradientResources() == m_rtxdiGradientResourcesAllocated &&
+           needsRtxdiIlluminanceResources() == m_rtxdiIlluminanceResourcesAllocated;
+  }
+
+  bool Resources::needsRtxdiGradientResources() const {
+    if (!RtxOptions::useRTXDI() || !DxvkRtxdiRayQuery::enableDenoiserGradient()) {
+      return false;
+    }
+
+    const bool restirGIValidatesLighting = RtxOptions::useReSTIRGI() && DxvkReSTIRGIRayQuery::validateLightingChange();
+    return needsNrdDenoisingGuideResources() || restirGIValidatesLighting;
+  }
+
+  // Best-light sampling ranks lights by the current illuminance, so it needs the pair even without gradients.
+  bool Resources::needsRtxdiIlluminanceResources() const {
+    if (!RtxOptions::useRTXDI()) {
+      return false;
+    }
+
+    return needsRtxdiGradientResources() || DxvkRtxdiRayQuery::enableBestLightSampling();
   }
 
   bool Resources::needsNrdDenoisingGuideResources() const {
@@ -382,10 +453,58 @@ namespace dxvk {
            !RtxOptions::useDenoiserReferenceMode();
   }
 
+  bool Resources::needsPrimaryDenoisingNormal() const {
+    return needsNrdDenoisingGuideResources() || m_rtxdiGradientResourcesAllocated;
+  }
+
+  // In-flight frame generation holds its own references, so the extra entries can be dropped immediately.
+  void Resources::createDlfgResourceQueues(Rc<DxvkContext>& ctx) {
+    const bool queueIsNeeded = ctx->isDLFGEnabled();
+    const Resource& firstDepth = m_raytracingOutput.m_primaryDepthQueue[0];
+
+    // Toggling frame generation reallocates only the queues rather than every render resolution resource.
+    if (queueIsNeeded == m_dlfgResourceQueueAllocated && firstDepth.isValid() &&
+        firstDepth.image->info().extent == m_downscaledExtent) {
+      return;
+    }
+
+    m_dlfgResourceQueueAllocated = queueIsNeeded;
+
+    for (uint32_t queueIndex = 0; queueIndex < kDLFGMaxGPUFramesInFlight; ++queueIndex) {
+      Resource& primaryDepth = m_raytracingOutput.m_primaryDepthQueue[queueIndex];
+      Resource& motionVector = m_raytracingOutput.m_primaryScreenSpaceMotionVectorQueue[queueIndex];
+
+      if (queueIndex == 0 || m_dlfgResourceQueueAllocated) {
+        primaryDepth = createImageResource(ctx, std::string("primary depth " + std::to_string(queueIndex)).c_str(), m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
+        motionVector = createImageResource(ctx, std::string("primary screen space motion vector " + std::to_string(queueIndex)).c_str(), m_downscaledExtent, VK_FORMAT_R16G16_SFLOAT);
+      } else {
+        primaryDepth.reset();
+        motionVector.reset();
+      }
+    }
+
+    m_raytracingOutput.m_primaryDepthQueue.rewind();
+    m_raytracingOutput.m_primaryScreenSpaceMotionVectorQueue.rewind();
+  }
+
   // Tracks the denoiser at frame granularity rather than through a resolution reset, so toggling the denoiser
   // does not cost a waitForIdle and a full downscaled resource rebuild.
   void Resources::createNrdDenoisingGuideResources(Rc<DxvkContext>& ctx) {
     const bool resourcesAreNeeded = needsNrdDenoisingGuideResources();
+
+    const bool primaryNormalIsNeeded = needsPrimaryDenoisingNormal();
+
+    if (primaryNormalIsNeeded != m_primaryDenoisingNormalAllocated) {
+      if (primaryNormalIsNeeded) {
+        m_raytracingOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughnessDenoising = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, "primary virtual world shading normal perceptual roughness denoising", true);
+      } else {
+        m_raytracingOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughnessDenoising.reset();
+      }
+
+      // Re-aliased in onFrameBegin, so it never holds on to a host that was freed.
+      m_raytracingOutput.m_primaryRtxdiTemporalPosition.reset();
+      m_primaryDenoisingNormalAllocated = primaryNormalIsNeeded;
+    }
 
     if (resourcesAreNeeded == m_nrdDenoisingGuideResourcesAllocated) {
       return;
@@ -461,10 +580,35 @@ namespace dxvk {
 
     createNrdDenoisingGuideResources(ctx);
 
+    createDlfgResourceQueues(ctx);
+
+    // A resource with no alias host is kept across frames; constructing it allocates and clears a new image.
+    auto keepOrCreate = [&](AliasedResource& resource, const VkExtent3D& extent, const VkFormat format, const char* name) {
+      if (resource.empty() || resource.imageInfo().extent != extent || resource.imageInfo().format != format) {
+        resource = AliasedResource(ctx, extent, format, name);
+      }
+    };
+
     // Alias resources that alias to different resources frame to frame
-    m_raytracingOutput.m_secondaryConeRadius = AliasedResource(m_raytracingOutput.getCurrentRtxdiConfidence(), ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "Secondary Cone Radius");
-    m_raytracingOutput.m_sharedIntegrationSurfacePdf = AliasedResource(m_raytracingOutput.getCurrentRtxdiIlluminance(), ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "Shared Integration Surface PDF");
-    m_raytracingOutput.m_rayReconstructionHitDistance = AliasedResource(m_raytracingOutput.getCurrentRtxdiConfidence(), ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "DLSS-RR Hit Distance");
+    // Shares the confidence texture, which is idle until RTXDI computes it, unless it was never allocated.
+    if (m_rtxdiGradientResourcesAllocated) {
+      m_raytracingOutput.m_secondaryConeRadius = AliasedResource(m_raytracingOutput.getCurrentRtxdiConfidence(), ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "Secondary Cone Radius");
+    } else {
+      keepOrCreate(m_raytracingOutput.m_secondaryConeRadius, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "Secondary Cone Radius");
+    }
+    // Shares the RTXDI illuminance, unless it was never allocated.
+    if (m_rtxdiIlluminanceResourcesAllocated) {
+      m_raytracingOutput.m_sharedIntegrationSurfacePdf = AliasedResource(m_raytracingOutput.getCurrentRtxdiIlluminance(), ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "Shared Integration Surface PDF");
+    } else {
+      keepOrCreate(m_raytracingOutput.m_sharedIntegrationSurfacePdf, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "Shared Integration Surface PDF");
+    }
+    // Shares the confidence texture, which is idle by the time RR runs, unless it was never allocated.
+    if (m_rtxdiGradientResourcesAllocated) {
+      m_raytracingOutput.m_rayReconstructionHitDistance = AliasedResource(m_raytracingOutput.getCurrentRtxdiConfidence(), ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "DLSS-RR Hit Distance");
+    } else {
+      keepOrCreate(m_raytracingOutput.m_rayReconstructionHitDistance, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "DLSS-RR Hit Distance");
+    }
+    // Shares a primary world position the GBuffer writes once the PSR passes have read this scratch back.
     m_raytracingOutput.m_gbufferPSRData[0] = AliasedResource(m_raytracingOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal(), ctx, m_downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT, "GBuffer PSR Data 0");
 
     // Alias resources depends on RTX Denoising and GI Options
@@ -473,8 +617,11 @@ namespace dxvk {
     bool isConditionalAliasingsShareSameView = true;
     static bool cachedIsRayReconstructionEnabled = RtxOptions::isRayReconstructionEnabled();
     if (RtxOptions::isRayReconstructionEnabled()) {
-      // Reset aliasing for m_primaryRtxdiTemporalPosition only when the RR setting is toggled between enabled and disabled
-      if (cachedIsRayReconstructionEnabled != RtxOptions::isRayReconstructionEnabled() || m_raytracingOutput.m_primaryRtxdiTemporalPosition.empty()) {
+      // Reset aliasing for m_primaryRtxdiTemporalPosition only when the RR setting is toggled between enabled and disabled.
+      // Its host goes unallocated while nothing reads either of them, see needsPrimaryDenoisingNormal.
+      if (m_raytracingOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughnessDenoising.empty()) {
+        m_raytracingOutput.m_primaryRtxdiTemporalPosition.reset();
+      } else if (cachedIsRayReconstructionEnabled != RtxOptions::isRayReconstructionEnabled() || m_raytracingOutput.m_primaryRtxdiTemporalPosition.empty()) {
         m_raytracingOutput.m_primaryRtxdiTemporalPosition = AliasedResource(m_raytracingOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughnessDenoising, ctx, m_downscaledExtent, VK_FORMAT_R32_UINT, "primary rtxdi temporal position", true);
       }
 
@@ -499,9 +646,9 @@ namespace dxvk {
     cachedIsRayReconstructionEnabled = RtxOptions::isRayReconstructionEnabled();
 
     assert(
-      m_raytracingOutput.m_secondaryConeRadius.sharesTheSameView(m_raytracingOutput.getCurrentRtxdiConfidence()) &&
-      m_raytracingOutput.m_sharedIntegrationSurfacePdf.sharesTheSameView(m_raytracingOutput.getCurrentRtxdiIlluminance()) &&
-      m_raytracingOutput.m_rayReconstructionHitDistance.sharesTheSameView(m_raytracingOutput.getCurrentRtxdiConfidence()) &&
+      (!m_rtxdiGradientResourcesAllocated ||
+       (m_raytracingOutput.m_secondaryConeRadius.sharesTheSameView(m_raytracingOutput.getCurrentRtxdiConfidence()) &&
+        m_raytracingOutput.m_rayReconstructionHitDistance.sharesTheSameView(m_raytracingOutput.getCurrentRtxdiConfidence()))) &&
       m_raytracingOutput.m_gbufferPSRData[0].sharesTheSameView(m_raytracingOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal()) &&
       isConditionalAliasingsShareSameView &&
       "New view for an aliased resource was created on the fly. Avoid doing that or ensure it has no negative side effects.");
@@ -1102,26 +1249,11 @@ namespace dxvk {
     m_raytracingOutput.m_primaryWorldShadingNormal = createImageResource(ctx, "primary world shading normal", m_downscaledExtent, VK_FORMAT_R32_UINT);
     m_raytracingOutput.m_primaryPerceptualRoughness = createImageResource(ctx, "primary perceptual roughness", m_downscaledExtent, VK_FORMAT_R8_UNORM);
     m_raytracingOutput.m_primaryLinearViewZ = createImageResource(ctx, "primary linear view Z", m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
-    uint32_t primaryDepthIndex = 0;
-    for (auto& i : m_raytracingOutput.m_primaryDepthQueue) {
-      i = createImageResource(ctx, std::string("primary depth " + std::to_string(primaryDepthIndex++)).c_str(), m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
-      if (!ctx->getCommonObjects()->metaNGXContext().supportsDLFG()) {
-        break;
-      }
-    }
     m_raytracingOutput.m_primaryAlbedo = createImageResource(ctx, "primary albedo", m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32);
     m_raytracingOutput.m_primaryBaseReflectivity = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, "Primary Base Reflectivity");
     m_raytracingOutput.m_primarySpecularAlbedo = AliasedResource(m_raytracingOutput.m_primaryBaseReflectivity, ctx, m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, "Primary Specular Albedo");
     m_raytracingOutput.m_primaryVirtualMotionVector = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "primary virtual motion vector", allowCompatibleFormatAliasing);
-    for (auto& i : m_raytracingOutput.m_primaryScreenSpaceMotionVectorQueue) {
-      i = createImageResource(ctx, "primary screen space motion vector", m_downscaledExtent, VK_FORMAT_R16G16_SFLOAT);
-      if (!ctx->getCommonObjects()->metaNGXContext().supportsDLFG()) {
-        break;
-      }
-    }
     m_raytracingOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughness = createImageResource(ctx, "primary virtual world shading normal perceptual roughness", m_downscaledExtent, VK_FORMAT_R16G16B16A16_UNORM);
-    // Note: this is unused when RR is ON, but the resource is aliased by m_primaryRtxdiTemporalPosition which is used almost everytime, so keep this allocated for simplicity.
-    m_raytracingOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughnessDenoising = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, "primary virtual world shading normal perceptual roughness denoising", true);;
     m_raytracingOutput.m_primaryHitDistance = createImageResource(ctx, "primary hit distance", m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
     m_raytracingOutput.m_primaryViewDirection = createImageResource(ctx, "primary view direction", m_downscaledExtent, VK_FORMAT_R16G16_SNORM);
     m_raytracingOutput.m_primaryConeRadius = createImageResource(ctx, "primary cone radius", m_downscaledExtent, VK_FORMAT_R16_SFLOAT);
@@ -1130,12 +1262,31 @@ namespace dxvk {
     m_raytracingOutput.m_primaryWorldPositionWorldTriangleNormal[1] = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT, "primary world position world triangle normal 1");
     m_raytracingOutput.m_primaryPositionError = createImageResource(ctx, "primary position error", m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
     
-    m_raytracingOutput.m_primaryRtxdiIlluminance[0] = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "Primary RTXDI Illuminance [0]");
-    m_raytracingOutput.m_primaryRtxdiIlluminance[1] = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "Primary RTXDI Illuminance[1]");
+    m_rtxdiGradientResourcesAllocated = needsRtxdiGradientResources();
+    m_rtxdiIlluminanceResourcesAllocated = needsRtxdiIlluminanceResources();
+    m_primaryDenoisingNormalAllocated = needsPrimaryDenoisingNormal();
+    if (m_primaryDenoisingNormalAllocated) {
+      m_raytracingOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughnessDenoising = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, "primary virtual world shading normal perceptual roughness denoising", true);
+    } else {
+      m_raytracingOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughnessDenoising.reset();
+    }
+    // onFrameBegin keeps these across frames when they have no alias host, so drop any view of a previous host.
+    m_raytracingOutput.m_primaryRtxdiTemporalPosition.reset();
+    m_raytracingOutput.m_secondaryConeRadius.reset();
+    m_raytracingOutput.m_sharedIntegrationSurfacePdf.reset();
+    m_raytracingOutput.m_rayReconstructionHitDistance.reset();
+    if (m_rtxdiIlluminanceResourcesAllocated) {
+      m_raytracingOutput.m_primaryRtxdiIlluminance[0] = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "Primary RTXDI Illuminance 0");
+      m_raytracingOutput.m_primaryRtxdiIlluminance[1] = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "Primary RTXDI Illuminance 1");
+    } else {
+      m_raytracingOutput.m_primaryRtxdiIlluminance[0].reset();
+      m_raytracingOutput.m_primaryRtxdiIlluminance[1].reset();
+    }
 
     m_raytracingOutput.m_primarySurfaceFlags = createImageResource(ctx, "primary surface flags", m_downscaledExtent, VK_FORMAT_R8_UINT);
     m_raytracingOutput.m_primaryDisocclusionThresholdMix = createImageResource(ctx, "primary disocclusion threshold mix", m_downscaledExtent, VK_FORMAT_R16_SFLOAT);
-    m_raytracingOutput.m_primaryDisocclusionMaskForRR = AliasedResource(m_raytracingOutput.m_sharedSurfaceIndex, ctx, m_downscaledExtent, VK_FORMAT_R32_SFLOAT, "primary disocclusion mask for ray reconstruction", allowCompatibleFormatAliasing);
+    // Written at Ray Reconstruction, long after the surface index it shares is last read.
+    m_raytracingOutput.m_primaryDisocclusionMaskForRR = AliasedResource(m_raytracingOutput.m_sharedSurfaceIndex, ctx, m_downscaledExtent, VK_FORMAT_R32_SFLOAT, "primary disocclusion mask for ray reconstruction");
 
     if (m_raytracingOutput.m_primaryObjectPicking.isValid()) {
       m_raytracingOutput.m_primaryObjectPicking = createImageResource(ctx, "primary object picking", m_downscaledExtent, VK_FORMAT_R32_UINT);
@@ -1180,10 +1331,6 @@ namespace dxvk {
 
     m_raytracingOutput.m_gbufferPSRData[1] = AliasedResource(m_raytracingOutput.m_primaryIndirectDiffuseRadiance, ctx, m_downscaledExtent, VK_FORMAT_R32G32_UINT, "GBuffer PSR Data 1", allowCompatibleFormatAliasing);
     m_raytracingOutput.m_gbufferPSRData[2] = AliasedResource(m_raytracingOutput.m_primaryDirectDiffuseRadiance, ctx, m_downscaledExtent, VK_FORMAT_R32G32_UINT, "GBuffer PSR Data 2");
-    m_raytracingOutput.m_gbufferPSRData[3] = AliasedResource(m_raytracingOutput.m_primaryDirectSpecularRadiance, ctx, m_downscaledExtent, VK_FORMAT_R32G32_UINT, "GBuffer PSR Data 3");
-    m_raytracingOutput.m_gbufferPSRData[4] = AliasedResource(m_raytracingOutput.m_primaryIndirectSpecularRadiance, ctx, m_downscaledExtent, VK_FORMAT_R32G32_UINT, "GBuffer PSR Data 4");
-    m_raytracingOutput.m_gbufferPSRData[5] = AliasedResource(m_raytracingOutput.m_secondaryCombinedDiffuseRadiance, ctx, m_downscaledExtent, VK_FORMAT_R32G32_UINT, "GBuffer PSR Data 5");
-    m_raytracingOutput.m_gbufferPSRData[6] = AliasedResource(m_raytracingOutput.m_secondaryCombinedSpecularRadiance, ctx, m_downscaledExtent, VK_FORMAT_R32G32_UINT, "GBuffer PSR Data 6");
 
     m_raytracingOutput.m_indirectRayOriginDirection = AliasedResource(m_raytracingOutput.m_secondaryWorldPositionWorldTriangleNormal, ctx, m_downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT, "Indirect Ray Origin Direction");
     m_raytracingOutput.m_indirectThroughputConeRadius = AliasedResource(m_raytracingOutput.m_primaryIndirectDiffuseRadiance, ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Indirect Throughput Cone Radius", allowCompatibleFormatAliasing);
@@ -1198,8 +1345,13 @@ namespace dxvk {
     // RTXDI Data
     m_raytracingOutput.m_gbufferLast = createImageResource(ctx, "rtxdi gbuffer last", m_downscaledExtent, VK_FORMAT_R32G32_SFLOAT);
     m_raytracingOutput.m_reprojectionConfidence = createImageResource(ctx, "rtxdi reprojection confidence", m_downscaledExtent, VK_FORMAT_R16_SFLOAT);
-    m_raytracingOutput.m_rtxdiConfidence[0] = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "RTXDI Confidence 0");
-    m_raytracingOutput.m_rtxdiConfidence[1] = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "RTXDI Confidence 1");
+    if (m_rtxdiGradientResourcesAllocated) {
+      m_raytracingOutput.m_rtxdiConfidence[0] = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "RTXDI Confidence 0");
+      m_raytracingOutput.m_rtxdiConfidence[1] = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "RTXDI Confidence 1");
+    } else {
+      m_raytracingOutput.m_rtxdiConfidence[0].reset();
+      m_raytracingOutput.m_rtxdiConfidence[1].reset();
+    }
 
     // RTXDI Gradients
     const VkExtent3D rtxDiGradientExtents = { (m_downscaledExtent.width + RTXDI_GRAD_FACTOR - 1) / RTXDI_GRAD_FACTOR, (m_downscaledExtent.height + RTXDI_GRAD_FACTOR - 1) / RTXDI_GRAD_FACTOR, 1 };
@@ -1208,7 +1360,9 @@ namespace dxvk {
     // RTXDI Best Lights - using the same downscaling factor as Gradients
     m_raytracingOutput.m_rtxdiBestLights = AliasedResource(ctx, rtxDiGradientExtents, VK_FORMAT_R16G16_UINT, "RTXDI Best Lights");
 
-    int numReservoirBuffer = 3;
+    // Two history pages and a scratch page, or one history page when gradients never compare two frames, see
+    // rtxdi_reservoir_pages.slangh. The GBuffer parks the transmission PSR payload in the scratch page.
+    int numReservoirBuffer = m_rtxdiGradientResourcesAllocated ? 3 : 2;
     int reservoirSize = sizeof(RTXDI_PackedReservoir);
     int renderWidthBlocks = (m_downscaledExtent.width + RTXDI_RESERVOIR_BLOCK_SIZE - 1) / RTXDI_RESERVOIR_BLOCK_SIZE;
     int renderHeightBlocks = (m_downscaledExtent.height + RTXDI_RESERVOIR_BLOCK_SIZE - 1) / RTXDI_RESERVOIR_BLOCK_SIZE;
@@ -1218,7 +1372,11 @@ namespace dxvk {
     rtxdiBufferInfo.stages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
     rtxdiBufferInfo.access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
     rtxdiBufferInfo.size = reservoirBufferPixels * numReservoirBuffer * reservoirSize;
-    m_raytracingOutput.m_rtxdiReservoirBuffer = m_device->createBuffer(rtxdiBufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "RTXDI reservoir buffer");
+    DxvkBufferCreateInfo reservoirBufferInfo = rtxdiBufferInfo;
+    // The GBuffer can run as a ray tracing pipeline.
+    reservoirBufferInfo.stages |= VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
+    m_raytracingOutput.m_rtxdiReservoirBuffer = AliasedBuffer(m_device, m_device->createBuffer(reservoirBufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "RTXDI reservoir buffer"), "RTXDI Reservoirs");
+    m_raytracingOutput.m_transmissionPSRData = AliasedBuffer(m_raytracingOutput.m_rtxdiReservoirBuffer, "Transmission PSR Data");
     
     DxvkBufferCreateInfo neeCacheInfo = rtxdiBufferInfo;
     int cellCount = NEE_CACHE_PROBE_RESOLUTION * NEE_CACHE_PROBE_RESOLUTION * NEE_CACHE_PROBE_RESOLUTION;
@@ -1303,10 +1461,14 @@ namespace dxvk {
     // Note: We did a little bit hack here to just get the image view and WAR the check.
     s_dynamicAliasingResourcesSet.insert(m_raytracingOutput.m_primaryWorldPositionWorldTriangleNormal[0].view(Resources::AccessType::Read, false).ptr());
     s_dynamicAliasingResourcesSet.insert(m_raytracingOutput.m_primaryWorldPositionWorldTriangleNormal[1].view(Resources::AccessType::Read, false).ptr());
-    s_dynamicAliasingResourcesSet.insert(m_raytracingOutput.m_primaryRtxdiIlluminance[0].view(Resources::AccessType::Read, false).ptr());
-    s_dynamicAliasingResourcesSet.insert(m_raytracingOutput.m_primaryRtxdiIlluminance[1].view(Resources::AccessType::Read, false).ptr());
-    s_dynamicAliasingResourcesSet.insert(m_raytracingOutput.m_rtxdiConfidence[0].view(Resources::AccessType::Read, false).ptr());
-    s_dynamicAliasingResourcesSet.insert(m_raytracingOutput.m_rtxdiConfidence[1].view(Resources::AccessType::Read, false).ptr());
+    if (m_rtxdiIlluminanceResourcesAllocated) {
+      s_dynamicAliasingResourcesSet.insert(m_raytracingOutput.m_primaryRtxdiIlluminance[0].view(Resources::AccessType::Read, false).ptr());
+      s_dynamicAliasingResourcesSet.insert(m_raytracingOutput.m_primaryRtxdiIlluminance[1].view(Resources::AccessType::Read, false).ptr());
+    }
+    if (m_rtxdiGradientResourcesAllocated) {
+      s_dynamicAliasingResourcesSet.insert(m_raytracingOutput.m_rtxdiConfidence[0].view(Resources::AccessType::Read, false).ptr());
+      s_dynamicAliasingResourcesSet.insert(m_raytracingOutput.m_rtxdiConfidence[1].view(Resources::AccessType::Read, false).ptr());
+    }
 #endif
   }
 

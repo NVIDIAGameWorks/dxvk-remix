@@ -149,13 +149,14 @@ void integrate_direct_pass(uvec2 threadIndex)
   // Note: This should hopefully prevent any weird undefined data from bleeding into pixels actually being denoised, but
   // may not be needed depending on how the denoiser works.
 
-  if (primaryGBufferMiss)
+  // Composite sums both surfaces but only the selected one is written below, and not at all if it missed.
+  if (primaryGBufferMiss || !geometryFlags.primarySelectedIntegrationSurface)
   {
     PrimaryDirectDiffuseLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
     PrimaryDirectSpecularLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
   }
 
-  if (secondaryGBufferMiss)
+  if (secondaryGBufferMiss || geometryFlags.primarySelectedIntegrationSurface)
   {
     SecondaryCombinedDiffuseLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
     SecondaryCombinedSpecularLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
