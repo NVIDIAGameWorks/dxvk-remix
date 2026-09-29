@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -24,6 +24,9 @@
 #include "rtx/pass/nrc/nrc_integrator_utilities.slangh"
 #include "rtx/concept/ray_portal/ray_portal.slangh"
 #include "rtx/utility/packing.slangh"
+#include "rtx/utility/common.slangh"
+#include "rtx/algorithm/rtxdi/rtxdi_reservoir_pages.slangh"
+#include "rtxdi/RtxdiHelpers.slangh"
 
 struct GeometryResolverState : IBasePayloadState
 {
@@ -462,36 +465,39 @@ GbufferPSRData loadReflectionPSRData(uint2 pixelCoordinate)
   return psrData;
 }
 
+// The payload fills one reservoir exactly, and lives in the RTXDI scratch page from the primary rays pass to the
+// transmission PSR pass, both of which run before RTXDI initial sampling first writes that page.
+int transmissionPSRDataPointer(uint2 pixelCoordinate)
+{
+  return RTXDI_ReservoirPositionToPointer(int2(pixelCoordinate), cb.camera.resolution, rtxdiScratchPage());
+}
+
 void storeTransmissionPSRData(GbufferPSRData psrData, uint2 pixelCoordinate)
 {
-  // Note: these resources are aliased with various radiance textures, which are only used
-  // in the integrator. So it is safe to use them to pass data from the primary rays pass
-  // into the transmission PSR pass, which comes second.
-  TransmissionPSRData0[pixelCoordinate] = uint2(psrData.origin.xy);
-  TransmissionPSRData1[pixelCoordinate] = uint2(psrData.origin.z, psrData.encodedDirection);
-  TransmissionPSRData2[pixelCoordinate] = psrData.encodedAccumulatedRotation;
-  TransmissionPSRData3[pixelCoordinate] = uint2(psrData.attenuation, psrData.mediumMaterialIndexAndGeometryFlags);
+  RTXDI_PackedReservoir packedData;
+  packedData.data0 = uint4(psrData.origin, psrData.encodedDirection);
+  packedData.data1 = uint4(
+    psrData.encodedAccumulatedRotation, psrData.attenuation, psrData.mediumMaterialIndexAndGeometryFlags);
+
+  TransmissionPSRData[transmissionPSRDataPointer(pixelCoordinate)] = packedData;
 }
 
 GbufferPSRData loadTransmissionPSRData(uint2 pixelCoordinate)
 {
-  uint2 data0 = TransmissionPSRData0[pixelCoordinate];
-  uint2 data1 = TransmissionPSRData1[pixelCoordinate];
-  uint2 data2 = TransmissionPSRData2[pixelCoordinate];
-  uint2 data3 = TransmissionPSRData3[pixelCoordinate];
+  const int pointer = transmissionPSRDataPointer(pixelCoordinate);
+  const RTXDI_PackedReservoir packedData = TransmissionPSRData[pointer];
 
-  // Clear the PSR data to prevent storing NaNs in these aliased resources
-  TransmissionPSRData0[pixelCoordinate] = 0;
-  TransmissionPSRData1[pixelCoordinate] = 0;
-  TransmissionPSRData2[pixelCoordinate] = 0;
-  TransmissionPSRData3[pixelCoordinate] = 0;
+  // Leaves RTXDI_PackReservoir(RTXDI_EmptyReservoir()) behind, since spatial reuse can read this pixel as a neighbor.
+  RTXDI_PackedReservoir emptyReservoir = (RTXDI_PackedReservoir)0;
+  emptyReservoir.data1.x = 0xffffu << 16;
+  emptyReservoir.data1.y = 7u;
+  TransmissionPSRData[pointer] = emptyReservoir;
 
   GbufferPSRData psrData;
-  psrData.origin.xy = data0.xy;
-  psrData.origin.z = data1.x;
-  psrData.encodedDirection = data1.y;
-  psrData.encodedAccumulatedRotation = data2;
-  psrData.attenuation = data3.x;
-  psrData.mediumMaterialIndexAndGeometryFlags = data3.y;
+  psrData.origin = packedData.data0.xyz;
+  psrData.encodedDirection = packedData.data0.w;
+  psrData.encodedAccumulatedRotation = packedData.data1.xy;
+  psrData.attenuation = packedData.data1.z;
+  psrData.mediumMaterialIndexAndGeometryFlags = packedData.data1.w;
   return psrData;
 }

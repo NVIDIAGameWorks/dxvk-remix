@@ -87,10 +87,12 @@ namespace dxvk
     class SharedResource : public RcObject {
     public:
       SharedResource(Resource&& _resource);
+      SharedResource(Rc<DxvkBuffer>&& _buffer);
 #ifdef REMIX_DEVELOPMENT  
       std::weak_ptr<const AliasedResource*> owner;
 #endif
       Resource resource;
+      Rc<DxvkBuffer> buffer;
     };
 
     enum class AccessType {
@@ -133,7 +135,7 @@ namespace dxvk
                       const VkImageType imageType = VK_IMAGE_TYPE_2D,
                       const VkImageViewType imageViewType = VK_IMAGE_VIEW_TYPE_2D);
 
-      AliasedResource(const AliasedResource& other, const char* name = nullptr);
+      AliasedResource(const AliasedResource& other, const char* name);
       AliasedResource(AliasedResource& other) = delete;   // Prevent shallow copy
       AliasedResource& operator=(AliasedResource&& other);
 
@@ -184,6 +186,13 @@ namespace dxvk
         return m_sharedResource == nullptr || m_view == nullptr;
       }
 
+    protected:
+      AliasedResource(DxvkDevice* device, Rc<DxvkBuffer>&& buffer, const char* name);
+
+      const Rc<DxvkBuffer>& sharedBuffer() const {
+        return m_sharedResource->buffer;
+      }
+
     private:
       void takeOwnership() const;
 
@@ -211,6 +220,17 @@ namespace dxvk
 #endif
     };
 
+    class AliasedBuffer : private AliasedResource {
+    public:
+      AliasedBuffer() = default;
+      AliasedBuffer(DxvkDevice* device, Rc<DxvkBuffer>&& buffer, const char* name);
+      AliasedBuffer(const AliasedBuffer& other, const char* name);
+      AliasedBuffer(AliasedBuffer& other) = delete;   // Prevent shallow copy
+      AliasedBuffer& operator=(AliasedBuffer&& other) = default;
+
+      DxvkBufferSlice slice(AccessType accessType, bool isAccessedByGPU = true) const;
+    };
+
     // a queue of N resources used over N frames
     struct ResourceQueue : public std::array<Resource, kDLFGMaxGPUFramesInFlight> {
       Resource& get() {
@@ -223,6 +243,10 @@ namespace dxvk
 
       void next() {
         idx = (idx + 1) % size();
+      }
+
+      void rewind() {
+        idx = 0;
       }
 
     private:
@@ -309,7 +333,7 @@ namespace dxvk
       AliasedResource m_indirectFirstSampledLobeData;
       AliasedResource m_indirectFirstHitPerceptualRoughness;
 
-      AliasedResource m_gbufferPSRData[7];
+      AliasedResource m_gbufferPSRData[3];
 
       // DLSSRR data
       AliasedResource m_primaryDepthDLSSRR;
@@ -340,7 +364,8 @@ namespace dxvk
       AliasedResource m_primarySurfaceFlagsIntermediateTexture1;
       AliasedResource m_primarySurfaceFlagsIntermediateTexture2;
 
-      Rc<DxvkBuffer> m_rtxdiReservoirBuffer;
+      AliasedBuffer m_rtxdiReservoirBuffer;
+      AliasedBuffer m_transmissionPSRData;
 
       Rc<DxvkBuffer> m_neeCache;
       Rc<DxvkBuffer> m_neeCacheTask;
@@ -440,9 +465,15 @@ namespace dxvk
 
     const VkExtent3D& getTargetDimensions() const { return m_targetExtent; }
     const VkExtent3D& getDownscaleDimensions() const { return m_downscaledExtent; }
+    bool areRtxdiGradientResourcesAllocated() const { return m_rtxdiGradientResourcesAllocated; }
+    bool needsRtxdiGradientResources() const;
+    bool areRtxdiIlluminanceResourcesAllocated() const { return m_rtxdiIlluminanceResourcesAllocated; }
+    bool needsRtxdiIlluminanceResources() const;
     bool areNrdDenoisingGuideResourcesAllocated() const { return m_nrdDenoisingGuideResourcesAllocated; }
     bool needsNrdDenoisingGuideResources() const;
     void createNrdDenoisingGuideResources(Rc<DxvkContext>& ctx);
+    bool needsPrimaryDenoisingNormal() const;
+    void createDlfgResourceQueues(Rc<DxvkContext>& ctx);
 
     static RtxTextureFormatCompatibilityCategory getFormatCompatibilityCategory(const VkFormat format);
     static bool areFormatsCompatible(const VkFormat format1, const VkFormat format2);
@@ -487,7 +518,11 @@ namespace dxvk
     Tlas m_tlas[Tlas::Type::Count];
 
     VkExtent3D m_downscaledExtent = { 0, 0, 0 };
+    bool m_rtxdiGradientResourcesAllocated = true;
+    bool m_rtxdiIlluminanceResourcesAllocated = true;
     bool m_nrdDenoisingGuideResourcesAllocated = false;
+    bool m_primaryDenoisingNormalAllocated = false;
+    bool m_dlfgResourceQueueAllocated = false;
     bool m_dlssNeuralRenderingResourcesAllocated = false;
     VkExtent3D m_targetExtent = { 0, 0, 0 };
 
@@ -508,6 +543,7 @@ namespace dxvk
     void updateDlssNeuralRenderingResources(Rc<DxvkContext>& ctx);
 
     void createDownscaledResources(Rc<DxvkContext>& ctx);
+    bool areDownscaledResourcesCurrent() const;
   };
 
   // State passed to RtxPass::onFrameBegin() callbacks
