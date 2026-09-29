@@ -1314,6 +1314,9 @@ namespace dxvk {
       RTX_OPTION_FLAG_ENV("rtx.automation", bool, enableTestTrace, false, RtxOptionFlags::NoSave, "RTX_TEST_TRACE",
                           "Enables opt-in frame trace artifacts for automation-driven image tests.\n"
                           "When enabled, Remix records a bounded frame window around the configured screenshot frame, writes frame_trace.jsonl, and appends dxvk_trace_* summary fields to metrics.txt.");
+      RTX_OPTION_FLAG_ENV("rtx.automation", uint32_t, metricsWarmupFrames, 5, RtxOptionFlags::NoSave, "RTX_AUTOMATION_METRICS_WARMUP_FRAMES",
+                          "Number of frames, starting with the first ray traced frame, excluded as warmup from the averaged frame time, GPU idle time and memory usage in metrics.txt.\n"
+                          "Frames before the first ray traced frame are also excluded. 0 disables warmup, so every frame is averaged, including in runs that never ray trace. dxvk_warmup_time_ms reports the dxvk_total_time_ms clock at the last warmup sample.");
     };
 
   public:

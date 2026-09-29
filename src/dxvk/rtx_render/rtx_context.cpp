@@ -834,7 +834,7 @@ namespace dxvk {
     RtxOptionManager::applyPendingValues(m_device.ptr(), /* forceOnChange */ false);
 
     // Update stats
-    updateMetrics(gpuIdleTimeMilliseconds);
+    updateMetrics(gpuIdleTimeMilliseconds, raytracedThisFrame);
 
     m_resetHistory = false;
   }
@@ -899,10 +899,37 @@ namespace dxvk {
     GpuMemoryTracker::onFrameEnd();
   }
 
-  void RtxContext::updateMetrics(const float gpuIdleTimeMilliseconds) const {
+  void RtxContext::updateMetrics(const float gpuIdleTimeMilliseconds, const bool raytracedThisFrame) {
     ScopedCpuProfileZone();
-    Metrics::logRollingAverage(Metric::dxvk_average_frame_time_ms, GlobalTime::get().realDeltaTimeMs()); // In milliseconds
-    Metrics::logRollingAverage(Metric::dxvk_gpu_idle_time_ms, gpuIdleTimeMilliseconds); // In milliseconds
+    const uint32_t frameId = m_device->getCurrentFrameId();
+    if (raytracedThisFrame && m_firstRaytracedFrameId == kInvalidFrameIndex) {
+      m_firstRaytracedFrameId = frameId;
+    }
+
+    // injectRTX can run twice in a frame with an invalid camera, so sample once per frame. GPU idle time from a repeat call carries into the next sample.
+    m_metricsGpuIdleTimeMs += gpuIdleTimeMilliseconds;
+    if (m_lastMetricsFrameId == frameId) {
+      return;
+    }
+    m_lastMetricsFrameId = frameId;
+    const float frameGpuIdleTimeMs = m_metricsGpuIdleTimeMs;
+    m_metricsGpuIdleTimeMs = 0.0f;
+
+    const float timeSinceStartMs = static_cast<float>(GlobalTime::get().realTimeSinceStartMs());
+    Metrics::logFloat(Metric::dxvk_total_time_ms, timeSinceStartMs);
+    Metrics::logFloat(Metric::dxvk_frame_count, static_cast<float>(frameId));
+
+    // Samples taken here measure the previous frame, so warmup ends one frame later than the frame count suggests.
+    const uint32_t warmupFrames = RtxOptions::Automation::metricsWarmupFrames();
+    const bool isWarmup = warmupFrames > 0 &&
+                          (m_firstRaytracedFrameId == kInvalidFrameIndex || frameId <= m_firstRaytracedFrameId + warmupFrames);
+    if (isWarmup) {
+      Metrics::logFloat(Metric::dxvk_warmup_time_ms, timeSinceStartMs);
+      return;
+    }
+
+    Metrics::logAverage(Metric::dxvk_average_frame_time_ms, GlobalTime::get().realDeltaTimeMs()); // In milliseconds
+    Metrics::logAverage(Metric::dxvk_gpu_idle_time_ms, frameGpuIdleTimeMs); // In milliseconds
     uint64_t vidUsageMib = 0;
     uint64_t sysUsageMib = 0;
     const VkPhysicalDeviceMemoryProperties memprops = m_device->adapter()->memoryProperties();
@@ -917,10 +944,8 @@ namespace dxvk {
         sysUsageMib += m_device->getMemoryStats(i).totalUsed() >> 20;
       }
     }
-    Metrics::logRollingAverage(Metric::dxvk_vid_memory_usage_mb, static_cast<float>(vidUsageMib)); // In MB
-    Metrics::logRollingAverage(Metric::dxvk_sys_memory_usage_mb, static_cast<float>(sysUsageMib)); // In MB
-    Metrics::logFloat(Metric::dxvk_total_time_ms, static_cast<float>(GlobalTime::get().realTimeSinceStartMs()));
-    Metrics::logFloat(Metric::dxvk_frame_count, static_cast<float>(m_device->getCurrentFrameId()));
+    Metrics::logAverage(Metric::dxvk_vid_memory_usage_mb, static_cast<float>(vidUsageMib)); // In MB
+    Metrics::logAverage(Metric::dxvk_sys_memory_usage_mb, static_cast<float>(sysUsageMib)); // In MB
   }
 
   void RtxContext::setConstantBuffers(const uint32_t vsFixedFunctionConstants, const uint32_t psSharedStateConstants, Rc<DxvkBuffer> vertexCaptureCB) {

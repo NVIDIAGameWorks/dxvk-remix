@@ -208,7 +208,7 @@ namespace dxvk {
     void dispatchDebugView(Rc<DxvkImage>& srcImage, const Resources::RaytracingOutput& rtOutput, bool captureScreenImage);
     void dispatchObjectPicking(Resources::RaytracingOutput& rtOutput, const VkExtent3D& srcExtent, const VkExtent3D& targetExtent);
     void dispatchDLFG();
-    void updateMetrics(const float gpuIdleTimeMilliseconds) const;
+    void updateMetrics(const float gpuIdleTimeMilliseconds, const bool raytracedThisFrame);
     void rasterizeToSkyMatte(const DrawParameters& params, const DrawCallState& drawCallState);
     void initSkyProbe();
     void rasterizeToSkyProbe(const DrawParameters& params, const DrawCallState& drawCallState);
@@ -227,6 +227,9 @@ namespace dxvk {
     InternalUpscaler m_previousUpscaler = InternalUpscaler::None;
 
     uint32_t m_frameLastInjected = kInvalidFrameIndex;
+    uint32_t m_firstRaytracedFrameId = kInvalidFrameIndex;
+    uint32_t m_lastMetricsFrameId = kInvalidFrameIndex;
+    float m_metricsGpuIdleTimeMs = 0.0f;
     bool m_captureStateForRTX = true;
 
     Rc<DxvkImage> m_skyProbeImage;
