@@ -28,9 +28,7 @@
 #include <nvsdk_ngx_defs.h>
 #include <nvsdk_ngx_defs_dlssd.h>
 #include <nvsdk_ngx_defs_dlssg.h>
-#ifdef _M_X64
 #include <nvsdk_ngx_defs_dlssnr.h>
-#endif
 #endif
 
 #include <cstdint>
