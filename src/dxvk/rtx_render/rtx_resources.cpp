@@ -487,8 +487,7 @@ namespace dxvk {
     m_raytracingOutput.m_primaryScreenSpaceMotionVectorQueue.rewind();
   }
 
-  // Tracks the denoiser at frame granularity rather than through a resolution reset, so toggling the denoiser
-  // does not cost a waitForIdle and a full downscaled resource rebuild.
+  // Tracks the denoiser per frame, so guide-only changes skip a full rebuild; flipping the RTXDI gradient or illuminance requirement still rebuilds.
   void Resources::createNrdDenoisingGuideResources(Rc<DxvkContext>& ctx) {
     const bool resourcesAreNeeded = needsNrdDenoisingGuideResources();
 

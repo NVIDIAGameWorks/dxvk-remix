@@ -489,7 +489,9 @@ GbufferPSRData loadTransmissionPSRData(uint2 pixelCoordinate)
 
   // Leaves RTXDI_PackReservoir(RTXDI_EmptyReservoir()) behind, since spatial reuse can read this pixel as a neighbor.
   RTXDI_PackedReservoir emptyReservoir = (RTXDI_PackedReservoir)0;
+  // Invalid light index in the upper half, M = 0 in the lower half.
   emptyReservoir.data1.x = 0xffffu << 16;
+  // Invalid portal index.
   emptyReservoir.data1.y = 7u;
   TransmissionPSRData[pointer] = emptyReservoir;
 

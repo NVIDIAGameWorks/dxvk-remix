@@ -725,16 +725,6 @@ namespace dxvk
     createFlags |= autoExposure ? NVSDK_NGX_DLSS_Feature_Flags_AutoExposure : 0;
     createFlags |= sharpening ? NVSDK_NGX_DLSS_Feature_Flags_DoSharpening : 0;
 
-    NVSDK_NGX_DLSS_Create_Params createParams = {};
-
-    createParams.Feature.InWidth = maxRenderSize[0];
-    createParams.Feature.InHeight = maxRenderSize[1];
-    createParams.Feature.InTargetWidth = displayOutSize[0];
-    createParams.Feature.InTargetHeight = displayOutSize[1];
-    createParams.Feature.InPerfQualityValue = perfQuality;
-    createParams.InFeatureCreateFlags = createFlags;
-    createParams.InFeatureCreateFlags &= ~NVSDK_NGX_DLSS_Feature_Flags_AutoExposure;
-
     VkCommandBuffer vkCommandBuffer = renderContext->getCommandList()->getCmdBuffer(dxvk::DxvkCmdBuffer::ExecBuffer);
 
     NVSDK_NGX_DLSSD_Create_Params dlssdCreateParams = {};
@@ -824,32 +814,10 @@ namespace dxvk
     NVSDK_NGX_Resource_VK resolvedColorResource = TextureToResourceVK(buffers.pResolvedColor, true);
     NVSDK_NGX_Resource_VK motionVectorsResource = TextureToResourceVK(buffers.pMotionVectors, false);
     NVSDK_NGX_Resource_VK depthResource = TextureToResourceVK(buffers.pDepth, false);
-    NVSDK_NGX_Resource_VK exposureResource = TextureToResourceVK(buffers.pExposure, false);
-    NVSDK_NGX_Resource_VK biasCurrentColorMaskResource = TextureToResourceVK(buffers.pBiasCurrentColorMask, false);
     NVSDK_NGX_Resource_VK hitDistanceResource = TextureToResourceVK(buffers.pHitDistance, false);
 
-    NVSDK_NGX_VK_DLSS_Eval_Params evalParams = {};
-    evalParams.Feature.pInColor = &unresolvedColorResource;
-    evalParams.Feature.pInOutput = &resolvedColorResource;
-    evalParams.pInDepth = &depthResource;
-    // xxxnsubtil: the DLSS indicator reads the exposure texture even when DLSS autoexposure is on
-    evalParams.pInExposureTexture = &exposureResource;
-    evalParams.pInMotionVectors = &motionVectorsResource;
-    evalParams.pInBiasCurrentColorMask = settings.antiGhost ? &biasCurrentColorMaskResource : nullptr;
-    evalParams.InJitterOffsetX = settings.jitterOffset[0];
-    evalParams.InJitterOffsetY = settings.jitterOffset[1];
-    // Note: Sharpness parameter is deprecated and is not read by newer versions of DLSS, so setting it to 0 is fine here.
-    evalParams.Feature.InSharpness = 0.0f;
-    evalParams.InPreExposure = settings.preExposure;
-    evalParams.InReset = settings.resetAccumulation ? 1 : 0;
-    evalParams.InMVScaleX = settings.motionVectorScale[0];
-    evalParams.InMVScaleY = settings.motionVectorScale[1];
-    evalParams.InRenderSubrectDimensions = { inWidth, inHeight };
-
-    NVSDK_NGX_Result result;
     NVSDK_NGX_Resource_VK diffuseAlbedoResource = TextureToResourceVK(buffers.pDiffuseAlbedo, false);
     NVSDK_NGX_Resource_VK specularAlbedoResource = TextureToResourceVK(buffers.pSpecularAlbedo, false);
-    NVSDK_NGX_Resource_VK positionResource = TextureToResourceVK(buffers.pPosition, false);
     NVSDK_NGX_Resource_VK normalsResource = TextureToResourceVK(buffers.pNormals, false);
     NVSDK_NGX_Resource_VK roughnessResource = TextureToResourceVK(buffers.pRoughness, false);
     NVSDK_NGX_Resource_VK disocclusionMask = TextureToResourceVK(buffers.pDisocclusionMask, false);
@@ -879,7 +847,7 @@ namespace dxvk
     evalParams_DLDN.pInSpecularHitDistance = buffers.pHitDistance ? &hitDistanceResource : nullptr;
     evalParams_DLDN.pInDisocclusionMask = &disocclusionMask;
 
-    result = NGX_VULKAN_EVALUATE_DLSSD_EXT(vkCommandbuffer, m_featureRayReconstruction, m_parameters, &evalParams_DLDN);
+    NVSDK_NGX_Result result = NGX_VULKAN_EVALUATE_DLSSD_EXT(vkCommandbuffer, m_featureRayReconstruction, m_parameters, &evalParams_DLDN);
 
     if (NVSDK_NGX_FAILED(result)) {
       success = false;

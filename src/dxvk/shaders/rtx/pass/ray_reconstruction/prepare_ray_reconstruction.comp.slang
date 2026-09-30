@@ -31,9 +31,6 @@
 layout(binding = RAY_RECONSTRUCTION_CONSTANTS_INPUT)
 ConstantBuffer<RayReconstructionArgs> cb;
 
-layout(rgba16f, binding = RAY_RECONSTRUCTION_PRIMARY_INDIRECT_SPECULAR_INPUT)
-Texture2D<float4> PrimaryIndirectSpecular;
-
 layout(binding = RAY_RECONSTRUCTION_PRIMARY_ATTENUATION_INPUT)
 Texture2D<uint> PrimaryAttenuation;
 
@@ -67,9 +64,6 @@ Texture2D<float2> InMotionVector;
 // Color fed into DLSS-RR (composite output); used for the input-color debug view.
 layout(binding = RAY_RECONSTRUCTION_INPUT_COLOR_INPUT)
 Texture2D<float4> InputColor;
-
-layout(r16f, binding = RAY_RECONSTRUCTION_PRIMARY_CONE_RADIUS_INPUT)
-Texture2D<float> PrimaryConeRadius;
 
 layout(r16f, binding = RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_MASK_INPUT)
 Texture2D<float> DisocclusionMask;
