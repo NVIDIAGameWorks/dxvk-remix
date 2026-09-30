@@ -56,7 +56,6 @@ struct VisualizeNeeArgs
 #define INTEGRATE_NEE_BINDING_NEE_CACHE                                                 57
 #define INTEGRATE_NEE_BINDING_NEE_CACHE_TASK                                            58
 #define INTEGRATE_NEE_BINDING_NEE_CACHE_SAMPLE                                          59
-#define INTEGRATE_NEE_BINDING_NEE_CACHE_THREAD_TASK                                     60
 #define INTEGRATE_NEE_BINDING_PRIMITIVE_ID_PREFIX_SUM_INPUT                             61
 #define INTEGRATE_NEE_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT                           62
 #define INTEGRATE_NEE_BINDING_NRC_TRAINING_QUERY_RESERVOIR_INPUT                            66

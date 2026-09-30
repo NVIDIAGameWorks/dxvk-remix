@@ -135,7 +135,14 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   const Ray originalPrimaryRay = rayCreatePrimaryFromPixel(cb.camera, pixelCoordinate);
 
   RAB_RandomSamplerState rtxdiRNG = RAB_InitRandomSampler(pixelCoordinate, cb.frameIdx, 7);
-  RAB_Surface surface = RAB_GetGBufferSurface(pixelCoordinate, false);
+
+  // Only ReSTIR GI's target PDF needs the full surface, so skip the GBuffer loads otherwise.
+  RAB_Surface surface = RAB_EmptySurface();
+
+  if (cb.enableReSTIRGI)
+  {
+    surface = RAB_GetGBufferSurface(pixelCoordinate, false);
+  }
 
   // Deserialize the Ray
   GBufferMemoryMinimalRay gBufferMemoryMinimalRay;
@@ -224,8 +231,8 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
 
         bool pomOpaqueSurfaceEncountered = cb.pomEnableNEECache && opaqueSurfaceMaterialInteractionHasHeightTexture(opaqueSurfaceMaterialInteraction);
         isVisible = evalNEESecondary(
-          lightSample, invalidRayPortalIndex, surface.portalSpace, rayMask, pomOpaqueSurfaceEncountered,
-          surface.isViewModel, primaryRay,
+          lightSample, invalidRayPortalIndex, geometryFlags.portalSpace, rayMask, pomOpaqueSurfaceEncountered,
+          geometryFlags.isViewModel, primaryRay,
           minimalRayInteraction, minimalSurfaceInteraction, opaqueSurfaceMaterialInteraction,
           diffuseLight, specularLight, SharedSurfaceIndex[pixelCoordinate], SharedTextureCoord[pixelCoordinate]);
 

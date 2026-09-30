@@ -256,22 +256,17 @@ namespace dxvk {
       const Resources::Resource* pDepth;
       const Resources::Resource* pDiffuseAlbedo;
       const Resources::Resource* pSpecularAlbedo;
-      const Resources::Resource* pExposure;
-      const Resources::Resource* pPosition;
       const Resources::Resource* pNormals;
       const Resources::Resource* pRoughness;
-      const Resources::Resource* pBiasCurrentColorMask;
       const Resources::Resource* pHitDistance;
       const Resources::Resource* pDisocclusionMask;
     };
 
     struct NGXSettings {
       bool resetAccumulation;
-      bool antiGhost;
       float preExposure;
       float jitterOffset[2];
       float motionVectorScale[2];
-      bool autoExposure;
       float frameTimeMilliseconds;
     };
 

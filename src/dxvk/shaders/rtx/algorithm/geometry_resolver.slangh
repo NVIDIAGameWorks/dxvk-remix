@@ -129,6 +129,39 @@ vec2 calcMotionVectorForRayMiss(const uvec2 pixelCoordinate)
   return cameraCalcMotionVectorPixel(cb.camera, ndc, prevNDC.xy);
 }
 
+struct VirtualHitProjection
+{
+  float depth;
+  float linearViewZ;
+  vec2 screenSpaceMotion;
+};
+
+// Projects the hit along the pixel's unjittered camera ray; depth is -infinity for a hit at the camera position.
+VirtualHitProjection projectVirtualHit(uvec2 pixelCoordinate, float virtualHitDistance, vec3 virtualMotion)
+{
+  const Ray originalCameraRay = rayCreatePrimaryFromPixel(cb.camera, pixelCoordinate, false);
+  const vec3 virtualHitPosition = rayEvaluate(originalCameraRay, virtualHitDistance);
+  const vec4 projectionSpacePosition = mul(cb.camera.worldToProjectionJittered, vec4(virtualHitPosition, 1.0f));
+  const vec2 ndc = cameraPixelCoordinateToNDC(cb.camera, pixelCoordinate);
+
+  VirtualHitProjection projection;
+  projection.depth = projectionSpacePosition.z / projectionSpacePosition.w;
+  projection.linearViewZ = cameraWorldPosToLinearViewZ(cb.camera, virtualHitPosition);
+
+  // Forced static-scene motion reprojects the precise NDC and depth rather than the imprecise world position.
+  if (cb.forceStaticSceneMotionVectors)
+  {
+    projection.screenSpaceMotion = cameraCalcStaticSceneMotionVectorPixel(cb.camera, ndc, projection.depth);
+  }
+  else
+  {
+    const vec2 prevNDC = cameraWorldPosToPrevNDC(cb.camera, virtualHitPosition + virtualMotion);
+    projection.screenSpaceMotion = cameraCalcMotionVectorPixel(cb.camera, ndc, prevNDC);
+  }
+
+  return projection;
+}
+
 void geometryResolverStoreDlssNrControlMask(
   uvec2 pixelCoordinate,
   vec4 dlssControlMask)
@@ -269,28 +302,16 @@ void geometryResolverOutputSurface<
     imageStore(SecondaryAttenuation, ivec2(pixelCoordinate), encodedAttenuation);
   }
 
-  // Recreate the original primary camera ray
-  // Note: This is done to not have to pass extra information into the payload.
-
-  const Ray originalCameraRay = rayCreatePrimaryFromPixel(cb.camera, pixelCoordinate, false);
+  // Note: Virtual hit distance and motion account for the ray traversing ray portals and PSR interactions.
+  const vec3 virtualMotion = quaternionTransformVector(accumulatedRotation, surfaceInteraction.motion, true);
+  const VirtualHitProjection projection = projectVirtualHit(pixelCoordinate, virtualHitDistance, virtualMotion);
 
   // Output Linear View Z (Primary/secondary surface coherent)
 
-  // Note: Using virtual hit distance accumulated through PSR and Ray Portals used to calculate a virtual hit position
-  const vec3 virtualHitPosition = rayEvaluate(originalCameraRay, virtualHitDistance);
-  const float linearViewZ = cameraWorldPosToLinearViewZ(cb.camera, virtualHitPosition);
-  float primaryDepth = 0.0f;
-
   if (PRIMARY_SURFACE)
   {
-    const float4 projectionSpacePosition = mul(cb.camera.worldToProjectionJittered, float4(virtualHitPosition, 1.f));
-    // Note: This division will result in -infinity when the hit point is equal to the camera's position (z is negative assuming a non-zero near plane and w = 0).
-    // This is "fine" though as in theory things should be able to handle this value properly (as it's not a NaN, though it could be if the near plane was 0). If
-    // this causes problems in the future though, simply clamp this to some very negative value (e.g. negative float 16 or 32 max).
-    primaryDepth = projectionSpacePosition.z / projectionSpacePosition.w;
-
-    imageStore(PrimaryDepth, pixelCoordinate, primaryDepth);
-    imageStore(PrimaryLinearViewZ, pixelCoordinate, linearViewZ);
+    imageStore(PrimaryDepth, pixelCoordinate, projection.depth);
+    imageStore(PrimaryLinearViewZ, pixelCoordinate, projection.linearViewZ);
     imageStore(PrimaryHitDistance, pixelCoordinate, virtualHitDistance);
 
     // Set value of 10000.f that forces RR to discard history.
@@ -317,7 +338,7 @@ void geometryResolverOutputSurface<
   }
   else
   {
-    imageStore(SecondaryLinearViewZ, pixelCoordinate, linearViewZ);
+    imageStore(SecondaryLinearViewZ, pixelCoordinate, projection.linearViewZ);
     imageStore(SecondaryHitDistance, pixelCoordinate, virtualHitDistance);
   }
 
@@ -325,9 +346,6 @@ void geometryResolverOutputSurface<
   // Note: Technically part of the Surface Interaction, just not something we'd want to deserialize in other passes which would mean we'd need yet
   // another structure for this. To avoid that, just output it like this for now.
 
-  // Note: Virtual motion used to account for the ray traversing ray portals and through PSR interactions.
-  const vec3 virtualMotion = quaternionTransformVector(accumulatedRotation, surfaceInteraction.motion, true);
-  
   if (PRIMARY_SURFACE)
   {
     if (cb.writePrimaryVirtualMotionVector)
@@ -335,21 +353,8 @@ void geometryResolverOutputSurface<
       imageStore(PrimaryVirtualMotionVector, ivec2(pixelCoordinate), vec4(virtualMotion, 0));
     }
 
-    const vec2 prevNDC = cameraWorldPosToPrevNDC(cb.camera, virtualHitPosition + virtualMotion);
-
-    const vec2 ndc = cameraPixelCoordinateToNDC(cb.camera, pixelCoordinate);
-    vec2 motionVectorPixel = cameraCalcMotionVectorPixel(cb.camera, ndc, prevNDC);
-
-    // When forcing static-scene motion vectors, reproject the precise current NDC + depth into the
-    // previous frame (camera motion accounted for) instead of reprojecting the imprecise absolute
-    // world position (see cameraCalcStaticSceneMotionVectorPixel).
-    if (cb.forceStaticSceneMotionVectors)
-    {
-      motionVectorPixel = cameraCalcStaticSceneMotionVectorPixel(cb.camera, ndc, primaryDepth);
-    }
-
     // Write out screen-space motion.
-    PrimaryScreenSpaceMotionVector[pixelCoordinate] = motionVectorPixel;
+    PrimaryScreenSpaceMotionVector[pixelCoordinate] = projection.screenSpaceMotion;
 
     const float luminance = calcBt709Luminance(radiance);
     const bool isRadianceOutput = luminance > 0.0f;
@@ -514,38 +519,12 @@ void geometryResolverDLSSRROutputSurface(
     PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
     vec3 attenuation, vec4 accumulatedRotation, float virtualHitDistance)
 {
-  // Recreate the original primary camera ray
-  // Note: This is done to not have to pass extra information into the payload.
-
-  const Ray originalCameraRay = rayCreatePrimaryFromPixel(cb.camera, pixelCoordinate, false);
-
-  // Note: Using virtual hit distance accumulated through PSR and Ray Portals used to calculate a virtual hit position
-  const vec3 virtualHitPosition = rayEvaluate(originalCameraRay, virtualHitDistance);
-  const float linearViewZ = cameraWorldPosToLinearViewZ(cb.camera, virtualHitPosition);
-
-  const float4 projectionSpacePosition = mul(cb.camera.worldToProjectionJittered, float4(virtualHitPosition, 1.f));
-  const float depth = projectionSpacePosition.z / projectionSpacePosition.w;
-  imageStore(PrimaryDepthDLSSRR, pixelCoordinate, depth);
-
-  // Output Motion Vector (Primary/secondary surface coherent)
-  // Note: Technically part of the Surface Interaction, just not something we'd want to deserialize in other passes which would mean we'd need yet
-  // another structure for this. To avoid that, just output it like this for now.
-
-  // Note: Virtual motion used to account for the ray traversing ray portals and through PSR interactions.
+  // Note: Virtual hit distance and motion account for the ray traversing ray portals and PSR interactions.
   const vec3 virtualMotion = quaternionTransformVector(accumulatedRotation, surfaceInteraction.motion, true);
-  
-  const vec2 prevNDC = cameraWorldPosToPrevNDC(cb.camera, virtualHitPosition + virtualMotion);
+  const VirtualHitProjection projection = projectVirtualHit(pixelCoordinate, virtualHitDistance, virtualMotion);
 
-  vec2 ndc = cameraPixelCoordinateToNDC(cb.camera, pixelCoordinate);
-  vec2 motionVectorPixel = cameraCalcMotionVectorPixel(cb.camera, ndc, prevNDC);
-
-  if (cb.forceStaticSceneMotionVectors)
-  {
-    motionVectorPixel = cameraCalcStaticSceneMotionVectorPixel(cb.camera, ndc, depth);
-  }
-
-  // Write out screen-space motion.
-  PrimaryScreenSpaceMotionVectorDLSSRR[pixelCoordinate] = motionVectorPixel;
+  imageStore(PrimaryDepthDLSSRR, pixelCoordinate, projection.depth);
+  PrimaryScreenSpaceMotionVectorDLSSRR[pixelCoordinate] = projection.screenSpaceMotion;
 
   // Serialize out the Surface Material Interaction
   // Note: Always write to stochastic buffers in the primary surface case.
@@ -2768,31 +2747,13 @@ void geometryPSRResolverVertex(
         (!hasRefractionThis || (materialType != surfaceMaterialTypeRayPortal && hasPortalThis)) &&
         !geometryPSRResolverState.isRefractionDistorted)
     {
-      // Recreate the original primary camera ray
-      const Ray originalCameraRay = rayCreatePrimaryFromPixel(cb.camera, pixelCoordinate, false);
+      // Note: Virtual hit distance and motion account for the ray traversing ray portals and PSR interactions.
+      const vec3 virtualMotion = quaternionTransformVector(geometryPSRResolverState.accumulatedRotation, surfaceInteraction.motion, true);
+      const VirtualHitProjection projection =
+        projectVirtualHit(pixelCoordinate, geometryPSRResolverState.accumulatedHitDistance, virtualMotion);
 
-      // Note: Using virtual hit distance accumulated through PSR and Ray Portals used to calculate a virtual hit position
-      const vec3 virtualHitPosition = rayEvaluate(originalCameraRay, geometryPSRResolverState.accumulatedHitDistance);
-      const float4 projectionSpacePosition = mul(cb.camera.worldToProjectionJittered, float4(virtualHitPosition, 1.f));
-      const float depth = projectionSpacePosition.z / projectionSpacePosition.w;
-      imageStore(PrimaryDepthDLSSRR, pixelCoordinate, depth);
-
-      // Output Motion Vector (Primary/secondary surface coherent)
-      // Note: Virtual motion used to account for the ray traversing ray portals and through PSR interactions.
-      vec3 virtualMotion = quaternionTransformVector(geometryPSRResolverState.accumulatedRotation, surfaceInteraction.motion, true);
-      
-      const vec2 prevNDC = cameraWorldPosToPrevNDC(cb.camera, virtualHitPosition + virtualMotion);
-
-      vec2 ndc = cameraPixelCoordinateToNDC(cb.camera, pixelCoordinate);
-      vec2 motionVectorPixel = cameraCalcMotionVectorPixel(cb.camera, ndc, prevNDC);
-
-      if (cb.forceStaticSceneMotionVectors)
-      {
-        motionVectorPixel = cameraCalcStaticSceneMotionVectorPixel(cb.camera, ndc, depth);
-      }
-
-      // Write out screen-space motion.
-      PrimaryScreenSpaceMotionVectorDLSSRR[pixelCoordinate] = motionVectorPixel;
+      imageStore(PrimaryDepthDLSSRR, pixelCoordinate, projection.depth);
+      PrimaryScreenSpaceMotionVectorDLSSRR[pixelCoordinate] = projection.screenSpaceMotion;
 
       const GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteraction =
           gBufferMemoryPolymorphicSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
@@ -3060,8 +3021,8 @@ void geometryResolverWritePrimaryMaterialInteraction(ivec2 pixelCoordinate, Poly
 
 bool geometryResolverTryReconstructSinglePortalUnorderedRay(
   Ray primaryRay,
-  MinimalRayInteraction minimalRayInteraction,
-  MinimalSurfaceInteraction minimalSurfaceInteraction,
+  float coneRadius,
+  vec3 surfacePosition,
   float primaryHitDistance,
   PortalSpace2BitsType portalSpace,
   inout Ray unorderedResolveRay,
@@ -3098,7 +3059,7 @@ bool geometryResolverTryReconstructSinglePortalUnorderedRay(
   const vec3 portalRayDirection =
     normalize(vec3(mul(mat3(teleportMatrix), vec3(primaryRay.direction))));
 
-  localHitDistance = dot(minimalSurfaceInteraction.position - portalRayOrigin, portalRayDirection);
+  localHitDistance = dot(surfacePosition - portalRayOrigin, portalRayDirection);
   if (localHitDistance <= 0.0f)
   {
     return false;
@@ -3108,7 +3069,7 @@ bool geometryResolverTryReconstructSinglePortalUnorderedRay(
   unorderedResolveRay.direction = portalRayDirection;
   unorderedResolveRay.coneRadius = max(
     0.0f,
-    minimalRayInteraction.coneRadius - unorderedResolveRay.spreadAngle * localHitDistance);
+    coneRadius - unorderedResolveRay.spreadAngle * localHitDistance);
 
   return true;
 }
@@ -3131,89 +3092,99 @@ vec4 geometryResolverReconstructSinglePortalAccumulatedRotation(PortalSpace2Bits
   return rayPortalHitInfo.encodedPortalToOpposingPortalDirection.unpackRotation();
 }
 
-void geometryResolverApplyUnorderedDecalsPass(ivec2 pixelCoordinate) {
-  if (!cb.enableSeparateUnorderedApproximations || !cb.enableDecalMaterialBlending)
-  {
-    return;
-  }
+// Gathers the decal covering an already resolved surface, given the ray cone's radius there.
+bool resolveDecalAtSurface(
+  Ray primaryRay,
+  vec3 viewDirection,
+  vec3 surfacePosition,
+  float hitDistance,
+  float coneRadius,
+  PortalSpace2BitsType portalSpace,
+  uint8_t rayMask,
+  uvec2 pixelCoordinate,
+  out uint numUnorderedInteractions,
+  out int surfaceIndex,
+  out DecalMaterialInteraction decalMaterialInteraction)
+{
+  numUnorderedInteractions = 0;
+  surfaceIndex = -1;
 
-  const float primaryHitDistance = PrimaryHitDistance[pixelCoordinate];
-  const float encodedConeRadius = PrimaryConeRadius[pixelCoordinate];
-  if (encodedConeRadius == 0.0f || primaryHitDistance <= 0.0f)
-  {
-    return;
-  }
+  MemoryDecalMaterialInteraction decalMaterialMemory;
+  decalMaterialMemory.packed = uint4(0);
+  decalMaterialMemory.emissiveRadiance = f16vec3(0.0f);
 
-  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixelCoordinate, SharedFlags);
-  // Match the jittered primary ray used to populate the GBuffer. Non-serialized
-  // view directions are reconstructed from this ray during GBuffer decode.
-  const Ray primaryRay = rayCreatePrimaryFromPixel(cb.camera, pixelCoordinate);
-
-  GBufferMemoryMinimalRayInteraction rayInteractionMemory;
-  rayInteractionMemory.encodedViewDirection = PrimaryViewDirection[pixelCoordinate];
-  rayInteractionMemory.encodedConeRadius = encodedConeRadius;
-  const MinimalRayInteraction minimalRayInteraction =
-    minimalRayInteractionCreate(rayInteractionMemory, primaryRay);
-
-  GBufferMemoryMinimalSurfaceInteraction surfaceInteractionMemory;
-  surfaceInteractionMemory.encodedWorldPositionWorldTriangleTBN =
-    aliasedData0.PrimaryWorldPositionWorldTriangleNormal[pixelCoordinate];
-  surfaceInteractionMemory.positionError = PrimaryPositionError[pixelCoordinate];
-  const MinimalSurfaceInteraction minimalSurfaceInteraction =
-    minimalSurfaceInteractionCreate(surfaceInteractionMemory);
+  bool decalEncountered = false;
 
   Ray unorderedResolveRay;
-  unorderedResolveRay.direction = -minimalRayInteraction.viewDirection;
+  unorderedResolveRay.direction = -viewDirection;
   unorderedResolveRay.spreadAngle = cb.screenSpacePixelSpreadHalfAngle;
-  float localHitDistance = primaryHitDistance;
-  unorderedResolveRay.origin =
-    minimalSurfaceInteraction.position - vec3(unorderedResolveRay.direction) * primaryHitDistance;
-  unorderedResolveRay.coneRadius = max(
-    0.0f,
-    minimalRayInteraction.coneRadius - unorderedResolveRay.spreadAngle * primaryHitDistance);
+  unorderedResolveRay.origin = surfacePosition - vec3(unorderedResolveRay.direction) * hitDistance;
+  unorderedResolveRay.coneRadius =
+    max(0.0f, coneRadius - float(unorderedResolveRay.spreadAngle) * hitDistance);
+
+  float localHitDistance = hitDistance;
   geometryResolverTryReconstructSinglePortalUnorderedRay(
-    primaryRay,
-    minimalRayInteraction,
-    minimalSurfaceInteraction,
-    primaryHitDistance,
-    geometryFlags.portalSpace,
-    unorderedResolveRay,
-    localHitDistance);
-  unorderedResolveRay.tMax = localHitDistance * kUnorderedResolveRayLengthening;
+    primaryRay, coneRadius, surfacePosition, hitDistance,
+    portalSpace, unorderedResolveRay, localHitDistance);
 
-  uint8_t rayMask = OBJECT_MASK_ALL | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
+  // Phrased as a positive so a NaN fails it too, since nothing downstream bounds the traversal it would start.
+  const bool rayTraceable =
+    (localHitDistance > 0.0f) &&
+    !any(isnan(unorderedResolveRay.origin)) && !any(isinf(unorderedResolveRay.origin));
 
-  uint numUnorderedInteractions = 0;
-  bool decalEncountered = false;
-  uint4 decalMemory = 0;
-  vec3 decalEmissiveRadiance = vec3(0.0f);
-  vec3 radianceAttenuation = vec3(1.0f, 1.0f, 1.0f);
-  vec3 emissiveRadiance = vec3(0.0f);
-  int surfaceIndex = -1;
+  if (rayTraceable)
+  {
+    unorderedResolveRay.tMax = localHitDistance * kUnorderedResolveRayLengthening;
 
-  resolveVertexUnordered<
-    RAY_FLAG_CULL_OPAQUE | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES,
-    true,
-    false>(
-    resolveModeSeparateUnorderedApproximations | resolveModeDecalMaterialBlending,
-    unorderedResolveRay,
-    convertPrimaryRayMaskToUnordered(rayMask, OBJECT_MASK_ALL_UNORDERED),
-    geometryFlags.portalSpace,
-    false,
-    u16vec2(pixelCoordinate),
-    getIdentityQuaternion(),
-    0.0f, 1.0f,
-    radianceAttenuation, emissiveRadiance,
-    numUnorderedInteractions,
-    decalEncountered, decalMemory, decalEmissiveRadiance, surfaceIndex);
+    uint4 decalMemory = uint4(0);
+    vec3 decalEmissiveRadiance = vec3(0.0f);
+    vec3 radianceAttenuation = vec3(1.0f, 1.0f, 1.0f);
+    vec3 emissiveRadiance = vec3(0.0f);
 
+    resolveVertexUnordered<
+      RAY_FLAG_CULL_OPAQUE | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES,
+      true,
+      false>(
+      resolveModeSeparateUnorderedApproximations | resolveModeDecalMaterialBlending,
+      unorderedResolveRay,
+      convertPrimaryRayMaskToUnordered(rayMask, OBJECT_MASK_ALL_UNORDERED),
+      portalSpace,
+      false,
+      u16vec2(pixelCoordinate),
+      getIdentityQuaternion(),
+      0.0f, 1.0f,
+      radianceAttenuation, emissiveRadiance,
+      numUnorderedInteractions,
+      decalEncountered, decalMemory, decalEmissiveRadiance, surfaceIndex);
+
+    decalMaterialMemory.packed = decalMemory;
+    decalMaterialMemory.emissiveRadiance = f16vec3(decalEmissiveRadiance);
+  }
+
+  decalMaterialInteraction = decalMaterialInteractionUnpack(decalMaterialMemory);
+
+  return decalEncountered;
+}
+
+// The object mask carries the player model for primary shadows too; only a portal crossing makes it visible otherwise.
+uint8_t decalPassRayMask(uint8_t objectMask, PortalSpace2BitsType portalSpace)
+{
+  uint8_t rayMask = OBJECT_MASK_ALL | (objectMask & OBJECT_MASK_ALL_DYNAMIC);
+
+  if (portalSpace == PORTAL_SPACE_NONE && !cb.enablePlayerModelInPrimarySpace)
+  {
+    rayMask &= ~uint8_t(OBJECT_MASK_PLAYER_MODEL);
+  }
+
+  return rayMask;
+}
+
+void geometryResolverOutputDecalDebugViewAndPicking(
+  uvec2 pixelCoordinate, bool decalEncountered, DecalMaterialInteraction decalMaterialInteraction,
+  uint numUnorderedInteractions, int surfaceIndex)
+{
   if (GBUFFER_FEATURE_DEBUG_VIEW && cb.debugView == DEBUG_VIEW_PRIMARY_DECAL_ALBEDO)
   {
-    MemoryDecalMaterialInteraction memory;
-    memory.packed = decalMemory;
-    memory.emissiveRadiance = f16vec3(decalEmissiveRadiance);
-    const DecalMaterialInteraction decalMaterialInteraction =
-      decalMaterialInteractionUnpack(memory);
     storeInDebugView(pixelCoordinate, decalEncountered ? decalMaterialInteraction.albedo : vec3(0.0f));
   }
 
@@ -3222,23 +3193,24 @@ void geometryResolverApplyUnorderedDecalsPass(ivec2 pixelCoordinate) {
     accumulateInDebugViewAdd(pixelCoordinate, numUnorderedInteractions);
   }
 
-  if (!decalEncountered)
-  {
-    return;
-  }
-
-  if (GBUFFER_FEATURE_OBJECT_PICKING && cb.enableObjectPicking != 0 && surfaceIndex >= 0)
+  if (decalEncountered && GBUFFER_FEATURE_OBJECT_PICKING && cb.enableObjectPicking != 0 && surfaceIndex >= 0)
   {
     // The main GBuffer pass has already written the base surface by the time
     // deferred decals run. Publish the selected decal explicitly so picking
     // still reports the visible unordered decal rather than the surface below.
     PrimaryObjectPicking[pixelCoordinate] = surfaces[uint(surfaceIndex)].objectPickingValue;
   }
+}
 
+// `perceptualRoughness` is the surface's roughness before the decal is blended in.
+void geometryResolverBlendDecalIntoGBuffer(
+  ivec2 pixelCoordinate, float perceptualRoughness,
+  DecalMaterialInteraction decalMaterialInteraction)
+{
   GBufferMemoryPolymorphicSurfaceMaterialInteraction materialMemory;
   materialMemory.worldShadingNormal =
     signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(PrimaryWorldShadingNormal[pixelCoordinate]));
-  materialMemory.perceptualRoughness = PrimaryPerceptualRoughness[pixelCoordinate];
+  materialMemory.perceptualRoughness = perceptualRoughness;
   materialMemory.albedo = f16vec3(PrimaryAlbedo[pixelCoordinate].rgb);
   materialMemory.baseReflectivity = f16vec3(PrimaryBaseReflectivity[pixelCoordinate].rgb);
   materialMemory.data0 = SharedMaterialData0[pixelCoordinate].x;
@@ -3248,12 +3220,6 @@ void geometryResolverApplyUnorderedDecalsPass(ivec2 pixelCoordinate) {
     polymorphicSurfaceMaterialInteractionCreate(materialMemory);
   const vec3 previousEmissiveRadiance =
     polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(previousPolymorphicSurfaceMaterialInteraction);
-
-  MemoryDecalMaterialInteraction decalMaterialMemory;
-  decalMaterialMemory.packed = decalMemory;
-  decalMaterialMemory.emissiveRadiance = f16vec3(decalEmissiveRadiance);
-  const DecalMaterialInteraction decalMaterialInteraction =
-    decalMaterialInteractionUnpack(decalMaterialMemory);
 
   const uint8_t materialType = gBufferMemoryPolymorphicSurfaceMaterialInteractionGetTypeHelper(materialMemory);
   PolymorphicSurfaceMaterialInteraction blendedPolymorphicSurfaceMaterialInteraction =
@@ -3314,6 +3280,77 @@ void geometryResolverApplyUnorderedDecalsPass(ivec2 pixelCoordinate) {
     SharedRadianceRG[pixelCoordinate] = radiance.rg;
     SharedRadianceB[pixelCoordinate] = radiance.b;
   }
+}
+
+void geometryResolverApplyUnorderedDecalsPass(ivec2 pixelCoordinate)
+{
+  if (!cb.enableSeparateUnorderedApproximations || !cb.enableDecalMaterialBlending)
+  {
+    return;
+  }
+
+  const float primaryHitDistance = PrimaryHitDistance[pixelCoordinate];
+  const float encodedConeRadius = PrimaryConeRadius[pixelCoordinate];
+  if (encodedConeRadius == 0.0f || primaryHitDistance <= 0.0f)
+  {
+    return;
+  }
+
+  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixelCoordinate, SharedFlags);
+
+  // With inline PSR sampling a PSR pixel holds only the PSR payload here, not a first-hit surface.
+  // So with NRC or a raytraced render target, which disable PSR prepare, PSR surfaces get no first-hit decals.
+  if (!push.usePSRPrepare && geometryFlags.performedAnyPSR())
+  {
+    return;
+  }
+
+  // Match the jittered primary ray used to populate the GBuffer. Non-serialized
+  // view directions are reconstructed from this ray during GBuffer decode.
+  const Ray primaryRay = rayCreatePrimaryFromPixel(cb.camera, pixelCoordinate);
+
+  GBufferMemoryMinimalRayInteraction rayInteractionMemory;
+  rayInteractionMemory.encodedViewDirection = PrimaryViewDirection[pixelCoordinate];
+  rayInteractionMemory.encodedConeRadius = encodedConeRadius;
+  const MinimalRayInteraction minimalRayInteraction =
+    minimalRayInteractionCreate(rayInteractionMemory, primaryRay);
+
+  GBufferMemoryMinimalSurfaceInteraction surfaceInteractionMemory;
+  surfaceInteractionMemory.encodedWorldPositionWorldTriangleTBN =
+    aliasedData0.PrimaryWorldPositionWorldTriangleNormal[pixelCoordinate];
+  surfaceInteractionMemory.positionError = PrimaryPositionError[pixelCoordinate];
+  const MinimalSurfaceInteraction minimalSurfaceInteraction =
+    minimalSurfaceInteractionCreate(surfaceInteractionMemory);
+
+  const uint8_t rayMask = decalPassRayMask(geometryFlags.objectMask, geometryFlags.portalSpace);
+
+  uint numUnorderedInteractions;
+  int surfaceIndex;
+  DecalMaterialInteraction decalMaterialInteraction;
+
+  const bool decalEncountered = resolveDecalAtSurface(
+    primaryRay,
+    minimalRayInteraction.viewDirection,
+    minimalSurfaceInteraction.position,
+    primaryHitDistance,
+    minimalRayInteraction.coneRadius,
+    geometryFlags.portalSpace,
+    rayMask,
+    uvec2(pixelCoordinate),
+    numUnorderedInteractions,
+    surfaceIndex,
+    decalMaterialInteraction);
+
+  geometryResolverOutputDecalDebugViewAndPicking(
+    uvec2(pixelCoordinate), decalEncountered, decalMaterialInteraction, numUnorderedInteractions, surfaceIndex);
+
+  if (!decalEncountered)
+  {
+    return;
+  }
+
+  geometryResolverBlendDecalIntoGBuffer(
+    pixelCoordinate, PrimaryPerceptualRoughness[pixelCoordinate], decalMaterialInteraction);
 }
 
 void geometryPSRPreparePass(ivec2 pixelCoordinate) {

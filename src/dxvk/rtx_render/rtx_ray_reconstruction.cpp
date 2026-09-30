@@ -55,10 +55,8 @@ namespace dxvk {
         BEGIN_PARAMETER()
         CONSTANT_BUFFER(RAY_RECONSTRUCTION_CONSTANTS_INPUT)
         // Primary surface data
-        TEXTURE2D(RAY_RECONSTRUCTION_PRIMARY_INDIRECT_SPECULAR_INPUT)
         TEXTURE2D(RAY_RECONSTRUCTION_PRIMARY_ATTENUATION_INPUT)
         TEXTURE2D(RAY_RECONSTRUCTION_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT)
-        TEXTURE2D(RAY_RECONSTRUCTION_PRIMARY_CONE_RADIUS_INPUT)
         TEXTURE2D(RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_MASK_INPUT)
         // Secondary surface data
         TEXTURE2D(RAY_RECONSTRUCTION_SECONDARY_ALBEDO_INPUT)
@@ -181,7 +179,6 @@ namespace dxvk {
 
       ctx->bindResourceBuffer(RAY_RECONSTRUCTION_CONSTANTS_INPUT, DxvkBufferSlice(m_constants, 0, m_constants->info().size));
 
-      ctx->bindResourceView(RAY_RECONSTRUCTION_PRIMARY_INDIRECT_SPECULAR_INPUT, rtOutput.m_primaryIndirectSpecularRadiance.view(Resources::AccessType::Read), nullptr);
       // Primary data
       ctx->bindResourceView(RAY_RECONSTRUCTION_PRIMARY_ATTENUATION_INPUT, rtOutput.m_primaryAttenuation.view, nullptr);
       ctx->bindResourceView(RAY_RECONSTRUCTION_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughness.view, nullptr);
@@ -192,7 +189,6 @@ namespace dxvk {
       ctx->bindResourceView(RAY_RECONSTRUCTION_SECONDARY_SPECULAR_ALBEDO_INPUT, rtOutput.m_secondarySpecularAlbedo.view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(RAY_RECONSTRUCTION_SECONDARY_ATTENUATION_INPUT, rtOutput.m_secondaryAttenuation.view, nullptr);
       ctx->bindResourceView(RAY_RECONSTRUCTION_SECONDARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_secondaryVirtualWorldShadingNormalPerceptualRoughness.view, nullptr);
-      ctx->bindResourceView(RAY_RECONSTRUCTION_PRIMARY_CONE_RADIUS_INPUT, rtOutput.m_primaryConeRadius.view, nullptr);
 
       ctx->bindResourceView(RAY_RECONSTRUCTION_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
       // DLSSRR data
@@ -231,23 +227,14 @@ namespace dxvk {
         rtOutput.m_compositeOutput.view(Resources::AccessType::Read),
         motionVectorInput->view,
         depthInput->view,
-        rtOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughness.view,
-        rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read),
         rtOutput.m_primaryAlbedo.view,
-        rtOutput.m_sharedBiasCurrentColorMask.view(Resources::AccessType::Read),
         rtOutput.m_primaryWorldShadingNormalDLSSRR.view(Resources::AccessType::Read),
         rtOutput.m_primarySpecularAlbedo.view(Resources::AccessType::Read),
         rtOutput.m_primaryPerceptualRoughness.view,
         rtOutput.m_rayReconstructionHitDistance.view(Resources::AccessType::Read)
       };
 
-      const DxvkAutoExposure& autoExposure = device()->getCommon()->metaAutoExposure();
-      if (!mAutoExposure) {
-        pInputs.push_back(autoExposure.getExposureTexture().view);
-      }
-
       std::vector<Rc<DxvkImageView>> pOutputs = {
-        rtOutput.m_sharedBiasCurrentColorMask.view(Resources::AccessType::Write),
         rtOutput.m_finalOutput.view(Resources::AccessType::Write)
       };
 
@@ -306,11 +293,8 @@ namespace dxvk {
       buffers.pDepth = depthInput;
       buffers.pDiffuseAlbedo = &rtOutput.m_primaryAlbedo;
       buffers.pSpecularAlbedo = specularAlbedoInput;
-      buffers.pExposure = &autoExposure.getExposureTexture();
-      buffers.pPosition = &rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().resource(Resources::AccessType::Read);
       buffers.pNormals = normalsInput;
       buffers.pRoughness = &rtOutput.m_primaryPerceptualRoughness;
-      buffers.pBiasCurrentColorMask = &rtOutput.m_sharedBiasCurrentColorMask.resource(Resources::AccessType::Read);
       buffers.pHitDistance = useSpecularHitDistance() ? &rtOutput.m_rayReconstructionHitDistance.resource(Resources::AccessType::Read) : nullptr;
       buffers.pDisocclusionMask = enableDisocclusionMaskBlur()
         ? &rtOutput.m_primaryDisocclusionMaskForRR.resource(Resources::AccessType::Read)
@@ -318,13 +302,11 @@ namespace dxvk {
 
       NGXRayReconstructionContext::NGXSettings settings;
       settings.resetAccumulation = resetHistory;
-      settings.antiGhost = m_biasCurrentColorEnabled;
       settings.preExposure = mPreExposure;
       settings.jitterOffset[0] = jitterOffset[0];
       settings.jitterOffset[1] = jitterOffset[1];
       settings.motionVectorScale[0] = motionVectorScale[0];
       settings.motionVectorScale[1] = motionVectorScale[1];
-      settings.autoExposure = mAutoExposure;
       settings.frameTimeMilliseconds = frameTimeMilliseconds;
 
       m_rayReconstructionContext->evaluateRayReconstruction(ctx, buffers, settings);
@@ -348,8 +330,6 @@ namespace dxvk {
   }
 
   void DxvkRayReconstruction::showRayReconstructionImguiSettings(bool showAdvancedSettings) {
-    RemixGui::Checkbox("Anti-Ghost", &m_biasCurrentColorEnabled);
-
     if (showAdvancedSettings) {
       bool presetChanged = RemixGui::Combo("DLSS-RR Preset", &pathTracerPresetObject(), "Default\0ReSTIR Finetuned\0");
       if (presetChanged) {
