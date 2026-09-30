@@ -41,7 +41,7 @@ jobs:
       run: |
         Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
         . .\build_common.ps1
-        PerformBuild -BuildFlavour ${{matrix.build-flavour}} -BuildSubDir ${{matrix.output-subdir}} -Backend ninja -EnableTracy false copy_output
+        PerformBuild -BuildFlavour ${{matrix.build-flavour}} -BuildSubDir ${{matrix.output-subdir}} -Backend ninja -EnableTracy false -WithShim $true copy_output
 
     - name: Upload build logs
       if: ${{ always() }}
@@ -59,23 +59,65 @@ jobs:
     - name: Copy readme
       run: copy artifacts_readme.txt _output
 
+    - name: Build arm64ec
+      shell: pwsh
+      run: |
+        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
+        . .\build_common.ps1
+        PerformBuild -BuildFlavour ${{matrix.build-flavour}} -BuildSubDir _Comp${{matrix.build-flavour}}_arm64ec -BuildArch arm64ec -Backend vs2022 -EnableTracy false -WithShim $true -ConfigureOnly $true
+        meson compile -C _Comp${{matrix.build-flavour}}_arm64ec
+        Copy-Item -Path _Comp${{matrix.build-flavour}}_arm64ec\src\d3d9\d3d9_a64ec.dll, _Comp${{matrix.build-flavour}}_arm64ec\src\d3d9\d3d9_a64ec.pdb -Destination _output
+
     - name: Upload x64 binaries
       uses: actions/upload-artifact@v7
       with:
         name: rtx-remix-for-x64-games-${{github.run_number}}-${{env.GITHUB_SHA_SHORT}}-${{matrix.build-flavour}}
         path: |
           _output\*.dll
+          _output\*.exe
           _output\*.pdb
           _output\*.txt
           _output\usd\*
 
-    - name: Move DXVK
+    - name: Build and move x64 DXVK
       shell: pwsh
       run: |
+        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
+        . .\build_common.ps1
+        PerformBuild -BuildFlavour ${{matrix.build-flavour}} -BuildSubDir ${{matrix.output-subdir}}_trex -Backend ninja -EnableTracy false -InstallTags output
+        Remove-Item _output\d3d9_x64.*, _output\d3d9_a64ec.*
         mkdir _output\.trex
         Move-Item -Path _output\*.dll -Destination _output\.trex\
+        Move-Item -Path _output\*.exe -Destination _output\.trex\
         Move-Item -Path _output\*.pdb -Destination _output\.trex\
         Move-Item -Path _output\usd -Destination _output\.trex\usd
+
+    - name: Build arm64
+      shell: pwsh
+      run: |
+        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
+        . .\build_common.ps1
+        PerformBuild -BuildFlavour ${{matrix.build-flavour}} -BuildSubDir _Comp${{matrix.build-flavour}}_arm64 -BuildArch arm64 -Backend ninja -EnableTracy false -InstallTags output
+
+    - name: Upload arm64 binaries
+      uses: actions/upload-artifact@v7
+      with:
+        name: rtx-remix-for-arm64-games-${{github.run_number}}-${{env.GITHUB_SHA_SHORT}}-${{matrix.build-flavour}}
+        path: |
+          _output\*.dll
+          _output\*.exe
+          _output\*.pdb
+          _output\*.txt
+          _output\usd\*
+
+    - name: Move arm64 DXVK
+      shell: pwsh
+      run: |
+        mkdir _output\.trex_arm64
+        Move-Item -Path _output\*.dll -Destination _output\.trex_arm64\
+        Move-Item -Path _output\*.exe -Destination _output\.trex_arm64\
+        Move-Item -Path _output\*.pdb -Destination _output\.trex_arm64\
+        Move-Item -Path _output\usd -Destination _output\.trex_arm64\usd
 
     - name: Build Bridge
       shell: pwsh
@@ -83,6 +125,7 @@ jobs:
         Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
         pushd bridge
         . .\build_bridge_${{matrix.build-flavour}}.bat
+        . .\build_bridge_${{matrix.build-flavour}}.bat arm64
         popd
 
     - name: Copy Bridge
@@ -104,6 +147,10 @@ jobs:
           _output\.trex\*.exe
           _output\.trex\*.pdb
           _output\.trex\usd\*
+          _output\.trex_arm64\*.dll
+          _output\.trex_arm64\*.exe
+          _output\.trex_arm64\*.pdb
+          _output\.trex_arm64\usd\*
 
   notify-slack-on-failure:
     runs-on: ubuntu-latest
