@@ -27,6 +27,8 @@
 #include "dxvk_compute.h"
 #include "dxvk_graphics.h"
 
+#include "../util/util_export_macros.h"
+
 namespace dxvk {
 
   class DxvkStateCache;
@@ -186,5 +188,5 @@ namespace dxvk {
 // Returns the number of Remix shaders currently being compiled by background
 // worker threads.  0 = all shaders ready (path tracer unblocked).
 // UINT32_MAX = no Remix device registered yet (too early in initialization).
-extern "C" __declspec(dllexport) uint32_t remixinternal_GetShaderCompilationCount();
+extern "C" REMIXAPI uint32_t remixinternal_GetShaderCompilationCount();
 // NV-DXVK end

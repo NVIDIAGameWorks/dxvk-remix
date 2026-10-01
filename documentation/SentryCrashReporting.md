@@ -115,6 +115,7 @@ sentry-native enables metrics and structured logs by default (since 0.14). Remix
 ```text
 <game or .trex>/
   d3d9.dll
+  d3d9_x64.dll
   crashpad_handler.exe
   crashpad_wer.dll
 

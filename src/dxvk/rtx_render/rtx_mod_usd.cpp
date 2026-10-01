@@ -75,6 +75,7 @@
 #include "../../lssusd/usd_include_end.h"
 
 #include "../../util/util_string.h"
+#include "../../util/util_export_macros.h"
 
 #include "../../lssusd/particle_system_helpers_vec.h"
 #include "../../lssusd/game_exporter_common.h"
@@ -2548,11 +2549,7 @@ static std::string getRemixCategoriesSchemaUsda() {
 
 } // namespace dxvk
 
-#ifdef _WIN32
-extern "C" __declspec(dllexport)
-#else
-extern "C" __attribute__((visibility("default")))
-#endif
+extern "C" REMIXAPI
 bool writeRemixCategoriesSchemaUsda(const char* outputFilePath) {
   const std::string schema = dxvk::getRemixCategoriesSchemaUsda();
   if (outputFilePath == nullptr || schema.empty()) {

@@ -55,6 +55,7 @@ namespace dxvk::env {
   }
 
   // NV-DXVK start: get environment variable with a fallback
+#if !defined(RTX_NO_GETENV_FALLBACK)
   template<>
   bool getEnvVar(const char* name, bool fallback) {
     const std::string& value = getEnvVar(name);
@@ -63,6 +64,7 @@ namespace dxvk::env {
     Config::parseOptionValue(value, result);
     return result;
   }
+#endif
   // NV-DXVK end
 
   bool setEnvVar(const char* name, const char* value) {
@@ -287,7 +289,9 @@ namespace dxvk::env {
   // NV-DXVK end
 
   void setThreadName(const std::string& name) {
+#ifdef TRACY_ENABLE
     TracyCSetThreadName(name.c_str());
+#endif
 
     using SetThreadDescriptionProc = HRESULT (WINAPI *) (HANDLE, PCWSTR);
 

@@ -112,7 +112,9 @@ function PerformBuild {
 
 		[bool]$ShadersOnly = $false,
 
-		[bool]$SkipApics = $false
+		[bool]$SkipApics = $false,
+
+		[bool]$WithShim = $false
 	)
 
 	if ( [string]::IsNullOrEmpty("$BuildArch") ) {
@@ -134,7 +136,12 @@ function PerformBuild {
 		if ( $ShadersOnly -or $SkipApics ) {
 			$mesonArgs += "-Ddownload_apics=False"
 		}
+		$mesonArgs += "-Dremix_with_shim=$($WithShim.ToString().ToLower())"
 		If ( $BuildArch -eq "arm64ec" ) {
+			# The VS backend takes PDB settings from meson's debug option and ignores the /Zi and /DEBUG flags from meson.build.
+			If ( $BuildFlavour -eq "release" ) {
+				$mesonArgs += "-Ddebug=true"
+			}
 			$mesonArgs += @("--cross-file", "build-wina64ec.txt")
 		} Else { If ( $BuildArch -eq "arm64" ) {
 			$mesonArgs += @("--cross-file", "build-wina64.txt")

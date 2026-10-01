@@ -34,6 +34,7 @@
 #include <cstdint>
 #include <memory>
 #include "../util/rc/util_rc_ptr.h"
+#include "../util/util_export_macros.h"
 #include "rtx_semaphore.h"
 
 // run DLFG in graphics queue for debugging
@@ -423,4 +424,4 @@ namespace dxvk {
 }
 
 // -1 while NGX support is unknown, 0 when unavailable, and 1 when available.
-extern "C" __declspec(dllexport) int remixinternal_GetDlssNeuralRenderingStatus();
+extern "C" REMIXAPI int remixinternal_GetDlssNeuralRenderingStatus();

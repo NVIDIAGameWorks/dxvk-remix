@@ -146,15 +146,15 @@ constexpr bool strings_equal(char const * a, char const * b) {
 }
 
 extern "C" {
-  DLLEXPORT void __stdcall RtxSentryRunUploadHelper(const char* sentryDatabasePathUtf8, const char* crashType) {
+  REMIXAPI void REMIXAPI_CALL RtxSentryRunUploadHelper(const char* sentryDatabasePathUtf8, const char* crashType) {
     dxvk::sentry::runUploadHelper(sentryDatabasePathUtf8, crashType);
   }
 
-  DLLEXPORT void __stdcall RtxSentryShutdown() {
+  REMIXAPI void REMIXAPI_CALL RtxSentryShutdown() {
     dxvk::sentry::shutdown();
   }
 
-  DLLEXPORT uint64_t __stdcall QueryFeatureVersion(version::Feature feat) {
+  REMIXAPI uint64_t REMIXAPI_CALL QueryFeatureVersion(version::Feature feat) {
     static_assert(strings_equal(__func__, version::QueryFuncName));
     static_assert(std::is_same_v< decltype(&QueryFeatureVersion), version::QueryFunc >);
     switch(feat){
