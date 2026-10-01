@@ -27,6 +27,7 @@
 #include <string_view>
 
 #include "dxvk_context.h"
+#include "../util/util_export_macros.h"
 #include "../util/util_fast_cache.h"
 #include "../util/util_vector.h"
 #include "../util/xxHash/xxhash.h"
@@ -530,10 +531,5 @@ public:
 }  // namespace dxvk
 
 // Export functions for unit testing
-#ifdef _WIN32
-extern "C" __declspec(dllexport) bool writeAllOGNSchemas(const char* outputFolderPath);
-extern "C" __declspec(dllexport) bool writeAllMarkdownDocs(const char* outputFolderPath);
-#else
-extern "C" __attribute__((visibility("default"))) bool writeAllOGNSchemas(const char* outputFolderPath);
-extern "C" __attribute__((visibility("default"))) bool writeAllMarkdownDocs(const char* outputFolderPath);
-#endif
+extern "C" REMIXAPI bool writeAllOGNSchemas(const char* outputFolderPath);
+extern "C" REMIXAPI bool writeAllMarkdownDocs(const char* outputFolderPath);

@@ -20,6 +20,7 @@
 * DEALINGS IN THE SOFTWARE.
 */
 #include "util_filesys.h"
+#include "util_env.h"
 
 #include "log/log.h"
 
@@ -137,6 +138,12 @@ void RtxFileSys::print() {
   Logger::debug(format("[RtxFileSys] Mods dir:    ", s_paths[Mods]));
   Logger::debug(format("[RtxFileSys] Capture dir: ", s_paths[Captures]));
   Logger::debug(format("[RtxFileSys] Logs dir:    ", s_paths[Logs]));
+}
+
+void RtxFileSys::lazyInit() {
+  const auto exePath = env::getExePath();
+  const auto exeDir = std::filesystem::path(exePath).parent_path();
+  init(exeDir.string());
 }
 
 }

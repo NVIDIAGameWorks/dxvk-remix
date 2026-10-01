@@ -29,6 +29,7 @@
 #include <algorithm>
 
 #include "../util/xxHash/xxhash.h"
+#include "../util/util_export_macros.h"
 #include "../util/util_fast_cache.h"
 #include "rtx_option.h"  // For RtxOptionImpl static methods
 
@@ -143,4 +144,4 @@ namespace dxvk {
 }  // namespace dxvk
 
 // Export function for unit testing
-extern "C" __declspec(dllexport) bool writeMarkdownDocumentation(const char* outputMarkdownFilePath);
+extern "C" REMIXAPI bool writeMarkdownDocumentation(const char* outputMarkdownFilePath);

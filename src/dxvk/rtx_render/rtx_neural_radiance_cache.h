@@ -26,6 +26,7 @@
 
 #include "rtx_option.h"
 #include "rtx_resources.h"
+#include "../util/util_export_macros.h"
 
 namespace nrc {
   struct ContextSettings;
@@ -305,4 +306,4 @@ namespace dxvk {
 //                       context + JIT'd kernels are ready.
 // Returns:
 //   -1 = no Remix device registered, 0 = NRC not active, 1 = NRC active.
-extern "C" __declspec(dllexport) int remixinternal_GetNrcStatus(uint32_t* outTrainingRecords);
+extern "C" REMIXAPI int remixinternal_GetNrcStatus(uint32_t* outTrainingRecords);

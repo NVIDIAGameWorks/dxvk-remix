@@ -91,22 +91,59 @@ d3d9_src = [
   'd3d9_swapchain_external.cpp',
 ]
 
+remix_with_shim = get_option('remix_with_shim')
 
-d3d9_dll = shared_library('d3d9', d3d9_src, dxvk_version, glsl_generator.process(d3d9_shaders), d3d9_res,
+d3d9_arch_str = ''
+
+if remix_with_shim
+  d3d9_arch_str = dxvk_is_x64 ? '_x64' : '' 
+  d3d9_arch_str = dxvk_is_woa_ec ? '_a64ec' : d3d9_arch_str
+endif
+
+d3d9_impl_dll = shared_library('d3d9' + d3d9_arch_str, d3d9_src, dxvk_version, glsl_generator.process(d3d9_shaders), d3d9_res,
   name_prefix         : '',
 
   link_with           : [ util_lib ],
-  link_args           : [ usd_plugin_delay_load_args ],
+  link_args           : [ usd_plugin_delay_load_args, dxvk_release_link_args ],
   dependencies        : [ dxso_dep, dxvk_dep, util_dep, sentry_dep ],
   include_directories : [ dxvk_include_path, dxvk_shader_include_path, usd_include_paths, remix_api_include_path ],
   objects             : not dxvk_is_msvc ? 'd3d9' + def_spec_ext : [],
   vs_module_defs      : 'd3d9'+def_spec_ext,
   override_options    : ['cpp_std='+dxvk_cpp_std],
+  cpp_args            : ['/DREMIX_LIBRARY_EXPORTS=1'],
   cpp_pch             : ['pch/d3d9.pch.h'],
   install: true
   )
 
-d3d9_dep = declare_dependency(
+if dxvk_is_x64 and remix_with_shim
+  d3d9_shim_src = [
+    'd3d9_rtx_shim.cpp',
+
+    # Note: using Util files directly to avoid linking with Tracy
+    '../util/log/log.cpp',
+    '../util/util_filesys.cpp',
+    '../util/util_string.cpp',
+    '../util/util_env.cpp',
+  ]
+
+  d3d9_shim_dll = shared_library('d3d9', d3d9_shim_src, dxvk_version, d3d9_res,
+    dependencies        : [ lib_shlwapi ],
+    include_directories : [ dxvk_include_path, dxvk_shader_include_path, usd_include_paths, remix_api_include_path ],
+    objects             : not dxvk_is_msvc ? 'd3d9' + def_spec_ext : [],
+    vs_module_defs      : 'd3d9'+def_spec_ext,
+    override_options    : ['cpp_std='+dxvk_cpp_std],
+    cpp_args            : [ '/DRTX_NO_GETENV_FALLBACK=1', '/DREMIX_LIBRARY_EXPORTS=1', '/UTRACY_ENABLE' ],
+    install             : true
+    )
+
+  # The d3d9 dependency now points to the shim so that the libraries won't link against the implementation.
+  d3d9_dll = d3d9_shim_dll
+  d3d9_dep = declare_dependency(
+  link_with           : [ d3d9_shim_dll ],
+  include_directories : [ dxvk_include_path ])
+else
+  d3d9_dll = d3d9_impl_dll
+  d3d9_dep = declare_dependency(
   link_with           : [ d3d9_dll ],
   include_directories : [ dxvk_include_path ])
- 
+endif

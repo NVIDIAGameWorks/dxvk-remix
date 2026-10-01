@@ -38,14 +38,18 @@
 
 
 // __stdcall convention
-#define REMIXAPI_CALL __stdcall
+#ifndef REMIXAPI_CALL
+  #define REMIXAPI_CALL __stdcall
+#endif
 #define REMIXAPI_PTR  REMIXAPI_CALL
 
-#ifdef REMIX_LIBRARY_EXPORTS
-  #define REMIXAPI __declspec(dllexport)
-#else
-  #define REMIXAPI __declspec(dllimport)
-#endif // REMIX_LIBRARY_EXPORTS
+#ifndef REMIXAPI
+  #ifdef REMIX_LIBRARY_EXPORTS
+    #define REMIXAPI __declspec(dllexport)
+  #else
+    #define REMIXAPI __declspec(dllimport)
+  #endif
+#endif // REMIXAPI
 
 
 #define REMIXAPI_VERSION_MAKE(major, minor, patch) ( \

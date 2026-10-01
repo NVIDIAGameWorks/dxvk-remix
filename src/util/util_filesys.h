@@ -70,17 +70,23 @@ private:
   using PathArray = std::array<fspath, kNumIds>;
   static PathArray s_paths;
 
+  static void lazyInit();
+
 public:
   static void init(const std::string rootPath);
   static bool isInitialized() {
     return s_bInit;
   }
   static inline const fspath& rootPath() {
-    assert(s_bInit && "[RtxFileSys] Not yet init.");
+    if (!isInitialized()) {
+      lazyInit();
+    }
     return s_rootPath;
   }
   static inline const fspath path(const Id id) {
-    assert(s_bInit && "[RtxFileSys] Not yet init.");
+    if (!isInitialized()) {
+      lazyInit();
+    }
     return s_paths[id];
   }
   static void print();

@@ -71,6 +71,11 @@ Wrap diverging code in comment blocks:
 - New `.cpp` and `.h` files must be added to the `dxvk_src` list in `src/dxvk/meson.build` (alphabetically, both `.cpp` and `.h` on adjacent lines).
 - New shader files (`.comp.slang`, `.rgen.slang`, etc.) are auto-discovered from `src/dxvk/shaders/rtx/` — no build system registration needed.
 
+### Adding New Exports
+
+- Always use REMIXAPI macro for Remix exported functions, do NOT use DLLEXPORT macro.
+- Always use REMIXAPI_CALL macro for calling convention for exported function.
+- Always add new export function shims to d3d9_rtx_shim.cpp for correct shimming on WoA.
 
 ## RTX Options
 
