@@ -178,11 +178,6 @@ namespace dxvk {
       ONCE(Logger::warn("[RTX] First bounce lobe probability dithering is not supported with Sparse Rendering enabled to avoid conflicts with DLSS Ray Reconstruction. It will be automatically disabled."));
       RtxOptions::enableFirstBounceLobeProbabilityDithering.setImmediately(false);
     }
-
-    // The secondary (PSR) path runs dense: demodulate scales only the primary signals by the sampling
-    // rate, and composite reads secondary radiance regardless of the active-pixel mask, so letting
-    // secondary pixels go sparse would leave that radiance uncompensated. Force off.
-    Options::enableSparseSecondaryLighting.setImmediately(false);
   }
 
   bool SparseRendering::checkCompactActivePixelsRequirements() const {
@@ -343,11 +338,8 @@ namespace dxvk {
 
     args.perPixelRateNoiseSource = Options::perPixelRateNoiseSource();
     args.enableSparsePrimaryRayMissComposition = Options::enableSparsePrimaryRayMissComposition();
-    args.enableSparseSecondaryLighting = Options::enableSparseSecondaryLighting();
-    args.enableRtxdiReuseForInactivePixels = Options::enableRtxdiReuseForInactivePixels() || args.mode == SparseRenderingMode::Off;
     args.enableSparseVolumetricsPrimaryHit = Options::enableSparseVolumetricsPrimaryHit();
     args.enableSparseVolumetricsPrimaryMiss = Options::enableSparseVolumetricsPrimaryMiss();
-    args.enableSparsePrimarySpecularAlbedo = Options::enableSparsePrimarySpecularAlbedo();
     args.enableLightIdentityResolution = ctx.getSceneManager().getLightManager().isLightIdentityTableBuilt() ? 1u : 0u;
 
     NeuralRadianceCache& nrc = ctx.getCommonObjects()->metaNeuralRadianceCache();
@@ -374,15 +366,9 @@ namespace dxvk {
     if (RemixGui::CollapsingHeader("Experimental", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
       ImGui::TextWrapped("The following options are experimental and for development only. Toggling them may cause visual issues.");
-      RemixGui::Checkbox("Enable RTXDI Reuse For Inactive Pixels", &Options::enableRtxdiReuseForInactivePixelsObject());
       RemixGui::Checkbox("Sparse Primary Ray Miss Composition", &Options::enableSparsePrimaryRayMissCompositionObject());
-      // ToDo: Secondary
-      ImGui::BeginDisabled(true);
-      RemixGui::Checkbox("Sparse Secondary Surface Lighting", &Options::enableSparseSecondaryLightingObject());
-      ImGui::EndDisabled();
       RemixGui::Checkbox("Sparse Volumetrics (Primary Hit)", &Options::enableSparseVolumetricsPrimaryHitObject());
       RemixGui::Checkbox("Sparse Volumetrics (Primary Miss)", &Options::enableSparseVolumetricsPrimaryMissObject());
-      RemixGui::Checkbox("Sparse Primary Specular Albedo", &Options::enableSparsePrimarySpecularAlbedoObject());
       s_perPixelRateNoiseSourceCombo.getKey(&Options::perPixelRateNoiseSourceObject());
 
       ImGui::Unindent();

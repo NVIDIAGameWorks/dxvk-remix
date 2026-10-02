@@ -126,6 +126,7 @@ private:
   std::unordered_map<uint64_t, RtLight> m_externallyTrackedLights;
   uint64_t m_nextExternallyTrackedLightId = 0;
   uint64_t m_nextLightIdentity = 1;
+  bool m_sparseRenderingEnabledLastUpdate = false;
   // Note: A fallback light tracked seperately and handled specially to not be mixed up with
   // lights provided from the application.
   std::optional<RtLight> m_fallbackLight{};

@@ -423,8 +423,11 @@ namespace dxvk {
     // Clear all slots to new light
     memset(m_lightMappingData.data(), kNewLightIdx, sizeof(uint16_t) * m_lightMappingData.size());
 
-    const bool buildLightIdentityTable =
-      SparseRendering::isEnabledByOptions() && !SparseRendering::Options::enableRtxdiReuseForInactivePixels();
+    // RTXDI never reuses at inactive pixels, so their reservoirs go stale across light renumbering.
+    const bool sparseRenderingEnabled = SparseRendering::isEnabledByOptions();
+    // One extra update after sparse rendering turns off resolves those stale reservoirs before the one-frame light mapping takes over.
+    const bool buildLightIdentityTable = sparseRenderingEnabled || m_sparseRenderingEnabledLastUpdate;
+    m_sparseRenderingEnabledLastUpdate = sparseRenderingEnabled;
 
     // Section A [0, N) maps current light index to light identity; 
     // section B [N, 2N) is sorted by identity for the GPU's identity->index binary search. 

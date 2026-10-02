@@ -479,7 +479,14 @@ void applyVolumetricLighting(
   {    
     AlphaBlendSurface surface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[pixelCoordinate], cb.alphaBlendSurfacePackMult);
     vec3 cameraPosition = cameraGetWorldPosition(cb.camera);
-    vec4 centerLight = AlphaBlendRadiance[pixelCoordinate];
+
+    // composite_alpha_blend only writes the radiance where the surface is valid.
+    vec4 centerLight = vec4(0.0f);
+    if (surface.isValid())
+    {
+      centerLight = AlphaBlendRadiance[pixelCoordinate];
+    }
+
     bool discardPixel = cb.stochasticAlphaBlendDiscardBlackPixel && all(centerLight.xyz == 0);
 
     if (!discardPixel && surface.isValid())
@@ -557,7 +564,7 @@ void applyVolumetricLighting(
       }
 
       // No sparse compensation scaling: alphaBlendOutput is already a dense per-pixel signal.
-      // composite_alpha_blend writes AlphaBlendRadiance at every pixel, sampling the denoised
+      // composite_alpha_blend writes AlphaBlendRadiance at every valid surface, sampling the denoised
       // (dense) primary radiance buffers, so there are no sparse holes to compensate for.
       // Applying radianceScale here would over-count active pixels and amplify surfaces seen
       // through alpha-blended particles.
@@ -583,7 +590,8 @@ void applySkyContribution(
   vec3 volumeAttenuation,
   inout vec3 radianceOutput)
 {
-  if (!primaryMiss)
+  // A zero scale marks an inactive sparse miss, whose sky comes from ray reconstruction.
+  if (!primaryMiss || radianceScale == 0.f)
   {
     return;
   }
@@ -633,6 +641,40 @@ float applyFog(
   return 1.0f - fogColor.a;
 }
 
+// Sparse rendering scale for sky and fog in-scatter: 1 / rate at active sparse misses, 0 at inactive ones, otherwise 1.
+float calculateRadianceScale(uint2 pixelCoordinate, bool pixelIsActive, bool primaryMiss)
+{
+  // Hits blend fog at every pixel, so only sparse misses need a scale.
+  if (cb.sparseRenderingArgs.mode == SparseRenderingMode::Off ||
+      !primaryMiss ||
+      !cb.sparseRenderingArgs.enableSparsePrimaryRayMissComposition)
+  {
+    return 1.f;
+  }
+
+  if (!pixelIsActive)
+  {
+    // Inactive misses get no sky or fog in-scatter; active misses carry both at 1 / rate for ray reconstruction.
+    return 0.f;
+  }
+
+  return calculateRadianceScaleFromSamplingRate(SparseRenderingPixelSamplingRate[pixelCoordinate]);
+}
+
+// Volumetric in-scatter is integrated at active pixels independently of sparse sky composition; full-rate volumetrics need no scale.
+float calculateVolumetricRadianceScale(uint2 pixelCoordinate, bool pixelIsActive, bool primaryMiss)
+{
+  const bool sparseVolumetrics = primaryMiss
+    ? bool(cb.sparseRenderingArgs.enableSparseVolumetricsPrimaryMiss)
+    : bool(cb.sparseRenderingArgs.enableSparseVolumetricsPrimaryHit);
+  if (!pixelIsActive || cb.sparseRenderingArgs.mode == SparseRenderingMode::Off || !sparseVolumetrics)
+  {
+    return 1.f;
+  }
+
+  return calculateRadianceScaleFromSamplingRate(SparseRenderingPixelSamplingRate[pixelCoordinate]);
+}
+
 vec4 compositeResult(
   uint2 pixelCoordinate,
   bool pixelIsActive,
@@ -644,11 +686,11 @@ vec4 compositeResult(
   RNG randomState = createRNG(pixelCoordinate, cb.frameIdx, 0);
 
   // Load GBuffer Information.
-  // PrimaryAttenuation and secondary GBuffer data are needed at every PSR pixel so the secondary
+  // Secondary GBuffer data is needed at every PSR pixel so the secondary
   // composition path in loadInputRadiance produces correct results regardless of sparse active
   // state. Primary GBuffer reads stay gated since
   // loadPrimaryRadiance is skipped on sparse-inactive pixels.
-  const vec3 primaryAttenuation = r11g11b10ToColor(PrimaryAttenuation[pixelCoordinate]);
+  vec3 primaryAttenuation = vec3(0);
   vec3 primaryAlbedo = vec3(0);
   vec3 primarySpecularAlbedo = vec3(0);
   float perceptualRoughness = 0.0f;
@@ -663,6 +705,7 @@ vec4 compositeResult(
   }
   if (pixelIsActive)
   {
+    primaryAttenuation = r11g11b10ToColor(PrimaryAttenuation[pixelCoordinate]);
     primaryAlbedo = PrimaryAlbedo[pixelCoordinate].xyz;
     primarySpecularAlbedo = PrimarySpecularAlbedo[pixelCoordinate].xyz;
     perceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[pixelCoordinate].w;
@@ -688,34 +731,8 @@ vec4 compositeResult(
   vec3 radianceOutput;
   vec3 sharedFinalOutput;
 
-  // Determine radiance scales for sparse rendering. Scaling only applies at active pixels;
-  // at inactive pixels the contributions that would be scaled (alpha blend, fog, sky) come from
-  // dense buffers and should not be amplified.
-  //   Note: if we reach this point for a primary ray miss when sparse primary ray misses are disabled
-  //   then do not scale up the result (i.e. keep radianceScale = 1).
-  const bool sparseScalingActive = pixelIsActive &&
-                                   cb.sparseRenderingArgs.mode != SparseRenderingMode::Off &&
-                                   (!primaryMiss || cb.sparseRenderingArgs.enableSparsePrimaryRayMissComposition);
-
-  float radianceScale = 1.f;
-  // Volumetric in-scatter is integrated at any active pixel (independent of primaryMiss / sky
-  // sparse-composition), so its compensation scale must be computed independently of sparseScalingActive.
-  // When sparse volumetrics is disabled for this pixel's primary classification, volumetrics run at every pixel and need no compensation.
-  float volumetricRadianceScale = 1.f;
-  if (sparseScalingActive)
-  {
-    // Sky, fog, and volumetrics compensate for inactive samples at the current sampling rate.
-    radianceScale = calculateRadianceScaleFromSamplingRate(SparseRenderingPixelSamplingRate[pixelCoordinate]);
-  }
-  const bool sparseVolumetricsForThisPixel = primaryMiss
-    ? bool(cb.sparseRenderingArgs.enableSparseVolumetricsPrimaryMiss)
-    : bool(cb.sparseRenderingArgs.enableSparseVolumetricsPrimaryHit);
-  if (pixelIsActive &&
-      cb.sparseRenderingArgs.mode != SparseRenderingMode::Off &&
-      sparseVolumetricsForThisPixel)
-  {
-    volumetricRadianceScale = calculateRadianceScaleFromSamplingRate(SparseRenderingPixelSamplingRate[pixelCoordinate]);
-  }
+  const float radianceScale = calculateRadianceScale(pixelCoordinate, pixelIsActive, primaryMiss);
+  const float volumetricRadianceScale = calculateVolumetricRadianceScale(pixelCoordinate, pixelIsActive, primaryMiss);
 
   // Load Input Radiance
   loadInputRadiance(

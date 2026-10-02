@@ -74,11 +74,9 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 
   float rate = 1.f;
 
-  // When secondary surfaces are not sparsely lit, force pixels whose selected integration
-  // surface is the secondary surface to full rate when enabled
+  // Force pixels whose selected integration surface is the secondary surface to full rate.
   const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(ivec2(pixelCoordinate), SharedFlags);
-  const bool isSecondaryFullRate = !cb.sparseRenderingArgs.enableSparseSecondaryLighting &&
-                                   geometryFlags.secondarySurfaceMask &&
+  const bool isSecondaryFullRate = geometryFlags.secondarySurfaceMask &&
                                    !geometryFlags.primarySelectedIntegrationSurface;
 
   // Calculate sampling rate for the inactive ones

@@ -78,30 +78,15 @@ namespace dxvk {
         args.maxValue = 1.0f,
         args.onChangeCallback = &deprecatedSamplingRateOnChange);
 
-      RTX_OPTION("rtx.sparseRendering", bool, enableSparsePrimaryRayMissComposition, false,
+      RTX_OPTION("rtx.sparseRendering", bool, enableSparsePrimaryRayMissComposition, true,
         "When enabled, primary miss pixels (sky) use sparse rendering.\n"
         "This improves performance at the cost of sky reconstruction artifacts.");
-
-      RTX_OPTION("rtx.sparseRendering", bool, enableSparseSecondaryLighting, false,
-        "When enabled, secondary surfaces (PSR glass reflections) use sparse rendering.\n"
-        "This improves performance at the cost of potential sparse NRD denoising artifacts on glass.\n"
-        "This option is in development and may not produce good denoised results.");
-
-      RTX_OPTION("rtx.sparseRendering", bool, enableRtxdiReuseForInactivePixels, false,
-        "Enables RTXDI reservoir reuse (temporal reprojection and spatial reuse) on inactive pixels.\n"
-        "Disabling improves performance and, counterintuitively, has been observed to reduce ghosting."
-        "In theory it can increase direct lighting noise under animated lighting.");
 
       RTX_OPTION("rtx.sparseRendering", bool, enableSparseVolumetricsPrimaryHit, true,
         "When enabled, volumetric NEE integration at primary-hit pixels uses sparse rendering.");
 
-      RTX_OPTION("rtx.sparseRendering", bool, enableSparseVolumetricsPrimaryMiss, false,
+      RTX_OPTION("rtx.sparseRendering", bool, enableSparseVolumetricsPrimaryMiss, true,
         "When enabled, volumetric NEE integration at primary-miss (sky) pixels uses sparse rendering.");
-
-      RTX_OPTION("rtx.sparseRendering", bool, enableSparsePrimarySpecularAlbedo, false,
-        "When enabled, the primary specular albedo guide for DLSS Ray Reconstruction is written sparsely: active pixels get\n"
-        "the computed specular albedo, inactive primary-hit pixels are zeroed. When disabled (default), the guide is computed\n"
-        "and written densely for every primary-hit pixel so RR sees a clean dense signal.");
     };
 
     SparseRendering(dxvk::DxvkDevice* device);
