@@ -604,10 +604,7 @@ PrimaryDemodulationSignals demodulatePrimaryPath(
   const bool isPrimaryMiss = primaryLinearViewZ == cb.primaryDirectMissLinearViewZ;
 
   vec3 primarySpecularAlbedo = vec3(0);
-  // Compute specular albedo only for primary-hit pixels that need it: every active pixel, plus all
-  // primary-hit pixels in dense mode. Sparse-inactive pixels stay zero.
-  const bool needSpecularAlbedo = isPixelActive || !cb.sparseRenderingArgs.enableSparsePrimarySpecularAlbedo;
-  if (needSpecularAlbedo && !isPrimaryMiss)
+  if (!isPrimaryMiss)
   {
     const vec3 primaryBaseReflectivity = aliasedData0.PrimaryBaseReflectivity[pixelCoordinate].xyz;
     // Note: Virtual world normal used so direction does not need to be read from the GBuffer; the camera direction

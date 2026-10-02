@@ -194,5 +194,9 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
     }
   }
 
-  AlphaBlendRadiance[thread_id.xy] = vec4(surfaceLight * surface.color.a,1);
+  // Both readers only read it where the surface is valid.
+  if (surface.isValid())
+  {
+    AlphaBlendRadiance[thread_id.xy] = vec4(surfaceLight * surface.color.a,1);
+  }
 }

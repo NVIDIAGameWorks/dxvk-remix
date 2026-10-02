@@ -334,7 +334,14 @@ bool RAB_ResolveReservoirLightIndex(inout RTXDI_Reservoir reservoir)
   {
     const uint16_t mappedIdx = RAB_TranslateLightIndex(reservoir.lightIdx, /* currentToPrevious = */ false);
     reservoir.lightIdx = mappedIdx;
-    return mappedIdx != RTXDI_INVALID_LIGHT_INDEX;
+    if (mappedIdx == RTXDI_INVALID_LIGHT_INDEX)
+    {
+      return false;
+    }
+
+    // The index is current now; stamping its identity keeps a later resolve from translating it again.
+    reservoir.lightIdentity = RAB_GetLightIdentity(mappedIdx);
+    return true;
   }
 #endif
 

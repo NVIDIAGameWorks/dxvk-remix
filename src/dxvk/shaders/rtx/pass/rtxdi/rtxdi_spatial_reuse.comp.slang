@@ -84,20 +84,6 @@ void main(int2 threadIndex : SV_DispatchThreadID)
   int2 pixelCoordinate = int2(remapped);
 
   if (!isActive) {
-    if (cb.sparseRenderingArgs.enableRtxdiReuseForInactivePixels) {
-      // Write GBufferLast before early-out (needed by subsequent passes)
-      RAB_Surface surface = RAB_GetGBufferSurface(pixelCoordinate, false);
-      if (!cb.enableReSTIRGI) {
-        imageStore(GBufferLast, pixelCoordinate, RAB_PackLastFrameGBuffer(surface));
-      }
-
-      // Pass through the reservoir from temporal reuse unchanged
-      RTXDI_Reservoir reservoir = RAB_LoadReservoir(pixelCoordinate, RTXDI_GetSpatialInputPage());
-      RAB_StoreReservoir(reservoir, pixelCoordinate, RTXDI_GetSpatialOutputPage());
-
-      // Neutral BSDF factor for inactive pixels
-      BSDFFactor[pixelCoordinate] = vec2(1);
-    }
     return;
   }
 

@@ -41,17 +41,12 @@ struct SparseRenderingArgs
   uint resampledNrcTrainingPaths;
 
   uint enableSparsePrimaryRayMissComposition;
-  uint enableSparseSecondaryLighting;
-  uint enableRtxdiReuseForInactivePixels;
   uint enableSparseVolumetricsPrimaryHit;
-
   uint enableSparseVolumetricsPrimaryMiss;
-  uint enableSparsePrimarySpecularAlbedo;
+  uint enableLightIdentityResolution;
+
   // Dimensions of the active-pixel mask buffer in mask elements (ceil(resolution / blockSize)).
   uvec2 activePixelMaskExtent;
-
-  uint enableLightIdentityResolution;
   uint pad0;
   uint pad1;
-  uint pad2;
 };
