@@ -21,6 +21,7 @@
  */
 #include "pch.h"
 #include "d3d9_device.h"
+#include "di_hook.h"
 #include "d3d9_lss.h"
 #include "d3d9_util.h"
 #include "d3d9_surfacebuffer_helper.h"
@@ -310,6 +311,45 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetCursorProperties(UINT XHotSpot, UI
 
   const auto pLssSurface = bridge_cast<Direct3DSurface9_LSS*>(pCursorBitmap);
   if (pLssSurface) {
+    // Build a client-side HCURSOR from the surface bitmap so the SetCursor
+    // hook can use the game's actual cursor icon instead of a generic arrow.
+    {
+      D3DLOCKED_RECT lockedRect = {};
+      if (SUCCEEDED(pLssSurface->LockRect(&lockedRect, nullptr, D3DLOCK_READONLY))) {
+        D3DSURFACE_DESC desc = {};
+        pLssSurface->GetDesc(&desc);
+
+        const uint32_t w = std::min(desc.Width,  32u);
+        const uint32_t h = std::min(desc.Height, 32u);
+        const uint32_t cursorPitch = 32 * 4;
+        uint8_t bitmap[32 * cursorPitch] = {};
+
+        for (uint32_t row = 0; row < h; row++)
+          std::memcpy(&bitmap[row * cursorPitch],
+                      (const uint8_t*)lockedRect.pBits + row * lockedRect.Pitch,
+                      w * 4);
+
+        pLssSurface->UnlockRect();
+
+        DWORD mask[32];
+        std::memset(mask, ~0, sizeof(mask));
+
+        ICONINFO info = {};
+        info.fIcon    = FALSE;
+        info.xHotspot = XHotSpot;
+        info.yHotspot = YHotSpot;
+        info.hbmMask  = CreateBitmap(32, 32, 1, 1, mask);
+        info.hbmColor = CreateBitmap(32, 32, 1, 32, bitmap);
+
+        HCURSOR hCursor = CreateIconIndirect(&info);
+        DeleteObject(info.hbmMask);
+        DeleteObject(info.hbmColor);
+
+        if (hCursor)
+          SetGameCustomCursor(hCursor);
+      }
+    }
+
     UID currentUID = 0;
     {
       ClientMessage c(Commands::IDirect3DDevice9Ex_SetCursorProperties, getId());
@@ -336,6 +376,8 @@ template<bool EnableSync>
 BOOL Direct3DDevice9Ex_LSS<EnableSync>::ShowCursor(BOOL bShow) {
   ZoneScoped;
   LogFunctionCall();
+
+  SetGameCursorVisible(bShow != FALSE);
 
   UID currentUID = 0;
   {
