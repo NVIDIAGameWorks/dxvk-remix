@@ -564,8 +564,8 @@ void applyVolumetricLighting(
       }
 
       // No sparse compensation scaling: alphaBlendOutput is already a dense per-pixel signal.
-      // composite_alpha_blend writes AlphaBlendRadiance at every valid surface, sampling the denoised
-      // (dense) primary radiance buffers, so there are no sparse holes to compensate for.
+      // composite_alpha_blend writes AlphaBlendRadiance at every valid surface,
+      // and it undoes the sparse scale of the neighbor radiance it samples, so there are no sparse holes to compensate for.
       // Applying radianceScale here would over-count active pixels and amplify surfaces seen
       // through alpha-blended particles.
 

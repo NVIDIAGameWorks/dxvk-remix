@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -43,6 +43,8 @@
 #define RAY_TRACING_PRIMARY_RAY
 #define RT_TRACE_RAY
 #define RAY_PIPELINE
+// This shader resolves PSR surfaces, so the shared resolver code builds its PSR side, as in the PSR ray generation shaders.
+#define GBUFFER_PSR
 // Note: Opacity lighting approximation used in the GBuffer pass due to it being most visually
 // prominent on particles in primary rays and important in PSR.
 #define RESOLVE_OPACITY_LIGHTING_APPROXIMATION 1

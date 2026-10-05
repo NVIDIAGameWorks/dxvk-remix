@@ -178,8 +178,15 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
         }
         specularLight = primarySpecularAlbedo * specularLight / roughnessFactor;
 
-        
-        surfaceLight += vec3(diffuseLight + specularLight);
+        vec3 neighborLight = diffuseLight + specularLight;
+
+        // Demodulate scales active radiance by the inverse sampling rate, but the particle is lit at every pixel.
+        if (cb.sparseRenderingArgs.mode != SparseRenderingMode::Off)
+        {
+          neighborLight *= clampSamplingRateForRadianceScale(SparseRenderingPixelSamplingRate[neighborPixel]);
+        }
+
+        surfaceLight += neighborLight;
       }
     }
 

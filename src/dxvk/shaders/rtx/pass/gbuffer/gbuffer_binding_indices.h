@@ -125,6 +125,5 @@
 
 struct GbufferPushConstants
 {
-  uint isTransmissionPSR;
   uint usePSRPrepare;
 };

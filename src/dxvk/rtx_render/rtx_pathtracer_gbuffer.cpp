@@ -687,7 +687,11 @@ namespace dxvk {
     ctx->bindResourceView(GBUFFER_BINDING_SECONDARY_LINEAR_VIEW_Z_OUTPUT, rtOutput.m_secondaryLinearViewZ.view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_SECONDARY_ALBEDO_OUTPUT, rtOutput.m_secondaryAlbedo.view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_SECONDARY_BASE_REFLECTIVITY_OUTPUT, rtOutput.m_secondaryBaseReflectivity.view(Resources::AccessType::Write), nullptr);
-    ctx->bindResourceView(GBUFFER_BINDING_SECONDARY_VIRTUAL_MVEC_OUTPUT, rtOutput.m_secondaryVirtualMotionVector.view(Resources::AccessType::Write), nullptr);
+    // Only NRD reads the secondary motion vector, so it is bound only when the GBuffer writes it for NRD.
+    ctx->bindResourceView(GBUFFER_BINDING_SECONDARY_VIRTUAL_MVEC_OUTPUT,
+      rtOutput.m_raytraceArgs.writeSecondaryDenoisingGuides
+        ? rtOutput.m_secondaryVirtualMotionVector.view(Resources::AccessType::Write)
+        : nullptr, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_SECONDARY_VIRTUAL_WORLD_SHADING_NORMAL_OUTPUT, rtOutput.m_secondaryVirtualWorldShadingNormalPerceptualRoughness.view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_SECONDARY_VIRTUAL_WORLD_SHADING_NORMAL_DENOISING_OUTPUT, rtOutput.m_secondaryVirtualWorldShadingNormalPerceptualRoughnessDenoising.view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_SECONDARY_HIT_DISTANCE_OUTPUT, rtOutput.m_secondaryHitDistance.view, nullptr);
@@ -779,7 +783,6 @@ namespace dxvk {
     };
 
     GbufferPushConstants pushArgs = {};
-    pushArgs.isTransmissionPSR = 0;
     pushArgs.usePSRPrepare = usePSRPrepare;
     ctx->setPushConstantBank(DxvkPushConstantBank::RTX);
     ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
@@ -797,7 +800,6 @@ namespace dxvk {
       // the Reflection/Transmission PSR passes. This avoids running the
       // material-heavy PSR sampling path for every primary hit.
       ScopedGpuProfileZone(ctx, "PSR Prepare");
-      pushArgs.isTransmissionPSR = 0;
       pushArgs.usePSRPrepare = 0;
       ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getGbufferPSRPrepareComputeShader());
@@ -831,20 +833,12 @@ namespace dxvk {
     dispatchDeferredDecals();
     dispatchPSRPrepare();
 
+    // The reflection and transmission PSR lobes depend on each other's data only at the same pixel,
+    // so one launch resolves both in turn. See geometryPSRResolverPasses.
     {
-      // Warning: do not change the order of Reflection and Transmission PSR, that will break
-      // PSR data dependencies due to resource aliasing.
-      ScopedGpuProfileZone(ctx, "Reflection PSR");
-      ctx->setFramePassStage(RtxFramePassStage::ReflectionPSR);
+      ScopedGpuProfileZone(ctx, "PSR");
+      ctx->setFramePassStage(RtxFramePassStage::PSR);
       bindPass(true);
-      dispatchPass();
-    }
-
-    {
-      ScopedGpuProfileZone(ctx, "Transmission PSR");
-      ctx->setFramePassStage(RtxFramePassStage::TransmissionPSR);
-      pushArgs.isTransmissionPSR = 1;
-      ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
       dispatchPass();
     }
   }

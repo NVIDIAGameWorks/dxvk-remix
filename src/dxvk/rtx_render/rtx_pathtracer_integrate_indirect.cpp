@@ -117,6 +117,7 @@
 #include <rtx_shaders/integrate_indirect_miss_nrc_neeCache_wboit.h>
 
 #include <rtx_shaders/integrate_nee.h>
+#include <rtx_shaders/integrate_nee_restir_gi.h>
 #include <rtx_shaders/visualize_nee.h>
 
 #include "dxvk_scoped_annotation.h"
@@ -214,8 +215,7 @@ namespace dxvk {
     };
 
     class IntegrateNEEShader : public ManagedShader {
-      SHADER_SOURCE(IntegrateNEEShader, VK_SHADER_STAGE_COMPUTE_BIT, integrate_nee)
-
+    public:
       BINDLESS_ENABLED()
 
       BEGIN_PARAMETER()
@@ -300,6 +300,14 @@ namespace dxvk {
     };
 
     PREWARM_SHADER_PIPELINE(VisualizeNEEShader);
+
+    Rc<DxvkShader> getIntegrateNEEShader(const bool reSTIRGIActive) {
+      if (reSTIRGIActive) {
+        return GET_SHADER_VARIANT(VK_SHADER_STAGE_COMPUTE_BIT, IntegrateNEEShader, integrate_nee_restir_gi);
+      }
+
+      return GET_SHADER_VARIANT(VK_SHADER_STAGE_COMPUTE_BIT, IntegrateNEEShader, integrate_nee);
+    }
   }
 
   DxvkPathtracerIntegrateIndirect::DxvkPathtracerIntegrateIndirect(DxvkDevice* device) 
@@ -309,8 +317,6 @@ namespace dxvk {
 
   void DxvkPathtracerIntegrateIndirect::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
     ScopedCpuProfileZoneN("Indirect Integrate Shader Prewarming");
-
-    IntegrateNEEShader::getShader();
 
     const bool isNrcSupported = NeuralRadianceCache::checkIsSupported(device());
     const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device);
@@ -323,6 +329,9 @@ namespace dxvk {
     const bool portalsEnabled = RtxOptions::rayPortalModelTextureHashes().size() > 0;
 
     if (RtxOptions::Shader::prewarmAllVariants()) {
+      getIntegrateNEEShader(false);
+      getIntegrateNEEShader(true);
+
       for (int32_t nrcEnabled = isNrcSupported ? 1 : 0; nrcEnabled >= 0; nrcEnabled--) {
         for (int32_t useNeeCache = 1; useNeeCache >= 0; useNeeCache--) {
           for (int32_t wboitEnabled = 1; wboitEnabled >= 0; wboitEnabled--) {
@@ -349,6 +358,8 @@ namespace dxvk {
       const bool useNeeCache = NeeCachePass::enable();
       const bool nrcEnabled = RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::NeuralRadianceCache;
       const bool wboitEnabled = RtxOptions::wboitEnabled();
+
+      getIntegrateNEEShader(RtxOptions::useReSTIRGI());
 
       for (int32_t includesPortals = portalsEnabled; includesPortals >= 0; includesPortals--) {
         // Prewarm POM on and off, as that can change based on game content (if nothing in the frame has a height texture, then POM turns off)
@@ -579,7 +590,8 @@ namespace dxvk {
     DxvkReSTIRGIRayQuery& reSTIRGI = ctx->getCommonObjects()->metaReSTIRGIRayQuery();
     reSTIRGI.bindIntegrateIndirectNeeResources(*ctx);
 
-    ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, IntegrateNEEShader::getShader());
+    // The variant must match cb.enableReSTIRGI, which is also set from isActive().
+    ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getIntegrateNEEShader(reSTIRGI.isActive()));
     ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
 
     // Visualize the nee cache when debug view is chosen.

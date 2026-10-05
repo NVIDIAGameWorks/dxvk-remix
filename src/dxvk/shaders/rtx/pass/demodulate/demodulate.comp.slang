@@ -238,10 +238,10 @@ SecondaryDemodulationSignals makeEmptySecondaryDemodulationSignals()
 
 void outputToDebugViewAtTheEnd(
   uint2 pixelCoordinate,
+  GeometryFlags geometryFlags,
   PrimaryDemodulationSignals primarySignals,
   SecondaryDemodulationSignals secondarySignals)
 {
-  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixelCoordinate, SharedFlags);
   const bool performedAnyPSR = geometryFlags.performedAnyPSR();
   // Matches the gate inside demodulateSecondaryPath that actually populates the secondary radiance signals.
   const bool secondaryRadianceValid = performedAnyPSR
@@ -633,9 +633,8 @@ PrimaryDemodulationSignals demodulatePrimaryPath(
   // If rtxdi and restir gi are enabled, the primary surface input is dense and demodulation can always be enabled.
   const bool primaryInputValid =
     (cb.enableRtxdi && cb.enableReSTIRGI) || geometryFlags.primarySelectedIntegrationSurface;
-  const bool demodulatePrimaryInput = primaryInputValid && isPixelActive;
 
-  if (demodulatePrimaryInput)
+  if (primaryInputValid)
   {
     primarySignals.directDiffuseInput = PrimaryDirectDiffuseRadiance[pixelCoordinate];
     primarySignals.directSpecularInput = PrimaryDirectSpecularRadiance[pixelCoordinate];
@@ -659,14 +658,14 @@ PrimaryDemodulationSignals demodulatePrimaryPath(
   // mostly for calculating motion vectors for reflections; the indirect specular HitT is always
   // from rays traced in the specular lobe, while the direct HitT often reflects the distance
   // to a NEE-selected light that may not be in the specular lobe.
-  if (cb.enableReplaceDirectSpecularHitTWithIndirectSpecularHitT && cb.enableSecondaryBounces && demodulatePrimaryInput)
+  if (cb.enableReplaceDirectSpecularHitTWithIndirectSpecularHitT && cb.enableSecondaryBounces && primaryInputValid)
   {
     primarySignals.directSpecularInput.a = primarySignals.indirectSpecularInput.a;
   }
 
   // Luminance-weighted mix of direct and indirect HitT for the diffuse channel — sharper shadows
   // without losing too much spatial detail. Only relevant when separated denoisers are off.
-  if (!cb.enableSeparatedDenoisers && demodulatePrimaryInput)
+  if (!cb.enableSeparatedDenoisers && primaryInputValid)
   {
     const float primaryDirectDiffuseLuminance = calcBt709Luminance(primarySignals.directDiffuseInput.rgb);
     const float primaryIndirectDiffuseLuminance = calcBt709Luminance(primarySignals.indirectDiffuseInput.rgb);
@@ -679,7 +678,7 @@ PrimaryDemodulationSignals demodulatePrimaryPath(
     primarySignals.directDiffuseInput.a = mix(primarySignals.indirectDiffuseInput.a, primarySignals.directDiffuseInput.a, directHitTContribution);
   }
 
-  if (demodulatePrimaryInput)
+  if (primaryInputValid)
   {
     demodulate(
       cb.primaryDirectNrd, primaryDemodulationData,
@@ -699,29 +698,19 @@ PrimaryDemodulationSignals demodulatePrimaryPath(
   }
 
   // If separate denoisers are disabled, combine direct and indirect radiance signals here.
-  // Composite gates primary reads with the active mask, so skip the writes for inactive
-  // pixels — they would never be read.
   if (primaryInputValid && !cb.enableSeparatedDenoisers)
   {
     primarySignals.directDiffuseOutput.xyz += primarySignals.indirectDiffuseOutput.xyz;
     primarySignals.directSpecularOutput.xyz += primarySignals.indirectSpecularOutput.xyz;
-
-    PrimaryDirectDiffuseRadiance[pixelCoordinate] = primarySignals.directDiffuseOutput;
-    PrimaryDirectSpecularRadiance[pixelCoordinate] = primarySignals.directSpecularOutput;
   }
 
-  // Composite gates primary reads with the active mask, so skip the writes for
-  // inactive pixels — they would never be read.
-  if (isPixelActive)
-  {
-    PrimaryDirectDiffuseRadiance[pixelCoordinate] = primarySignals.directDiffuseOutput;
-    PrimaryDirectSpecularRadiance[pixelCoordinate] = primarySignals.directSpecularOutput;
+  PrimaryDirectDiffuseRadiance[pixelCoordinate] = primarySignals.directDiffuseOutput;
+  PrimaryDirectSpecularRadiance[pixelCoordinate] = primarySignals.directSpecularOutput;
 
-    if (cb.enableSeparatedDenoisers)
-    {
-      PrimaryIndirectDiffuseRadiance[pixelCoordinate] = primarySignals.indirectDiffuseOutput;
-      PrimaryIndirectSpecularRadiance[pixelCoordinate] = primarySignals.indirectSpecularOutput;
-    }
+  if (cb.enableSeparatedDenoisers)
+  {
+    PrimaryIndirectDiffuseRadiance[pixelCoordinate] = primarySignals.indirectDiffuseOutput;
+    PrimaryIndirectSpecularRadiance[pixelCoordinate] = primarySignals.indirectSpecularOutput;
   }
 
   return primarySignals;
@@ -876,5 +865,5 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     pixelCoordinate, geometryFlags, primaryRayDirections);
 
   // Output to debug view
-  outputToDebugViewAtTheEnd(pixelCoordinate, primarySignals, secondarySignals);
+  outputToDebugViewAtTheEnd(pixelCoordinate, geometryFlags, primarySignals, secondarySignals);
 }

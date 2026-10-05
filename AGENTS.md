@@ -43,11 +43,17 @@ Full guide: `documentation/CONTRIBUTING-style-guide.md`
 - **Conditions**: 
   - Test an integer flag by referencing the variable on its own, `if (flag)`, not `if (flag != 0)`. Applies to C++ and Slang, including `uint` flags in constant buffers. Bit tests like `(flags & kSomeBit) != 0` are unaffected.
   - Put subjects first. Good: `if (pData == nullptr)`, Bad: `if (nullptr == pData)`.
+  - Break long or complex ternaries after the condition, with `? A` and `: B` on the two following lines, each indented one level. Keep short ones on one line.
 - **Includes**: Standard library first, then third-party, then local. Separate groups with blank lines.
 - **Memory**: Prefer smart pointers (`std::unique_ptr`, `std::shared_ptr`). Use `Rc<T>` for GPU resources.
 - **Profiling**: Use `ScopedCpuProfileZone()` / `ScopedGpuProfileZone(ctx, "name")` for performance-critical code.
 - **Comments**:
   - Be as concise as you reasonably can. Most comments should fit into a single line.
+  - Write proper sentences, even when that costs a few words. Do not join clauses with semicolons, and do not use noun-phrase fragments or shorthand that leaves the reader to guess what is meant, such as "Flags at every pixel." or "omitted, it is looked up".
+  - A comment directly above or next to the function, variable or member it describes may leave that subject implied: "Returns the tile's active count.", not "This function returns the tile's active count."
+  - When a comment lists alternate results or cases, give each its own sentence on its own line, like a list: "Returns the slot.", then "Returns the sentinel when the pixel is inactive." on the next line.
+  - When a comment describes a group of declarations or statements inside a longer run of code, put an empty line above the comment and below the group, so the comment's scope is visible.
+  - Break comment lines at natural places whenever possible: after a period, after a comma, or where an idea is finished. Do not end a line with the first word or two of a new sentence, and never leave a single word of a sentence or clause on its own line or at the start of the next one. Prefer pulling the word up onto the previous line, even if it runs a few characters long. If that is too long, break earlier at the start of the clause.
   - Describe the code as it is now. Do not contrast the current state with a previous one, or explain a change.
   - Do not explain things that can easily understood from reading class, function, or variable names.
   - Focus on recording non-obvious interactions and pitfalls.

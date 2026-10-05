@@ -20,6 +20,14 @@
 * DEALINGS IN THE SOFTWARE.
 */
 
+//!variant integrate_nee.comp
+//!>       INTEGRATE_NEE_RESTIR_GI=0
+
+//!variant integrate_nee_restir_gi.comp
+//!>       INTEGRATE_NEE_RESTIR_GI=1
+
+//!end-variants
+
 #define RAB_HAS_CURRENT_GBUFFER 1
 #define RAB_HAS_RESTIR_GI_RESERVOIRS 1
 #define OPAQUE_MATERIAL_USE_POM 1
@@ -136,13 +144,10 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
 
   RAB_RandomSamplerState rtxdiRNG = RAB_InitRandomSampler(pixelCoordinate, cb.frameIdx, 7);
 
-  // Only ReSTIR GI's target PDF needs the full surface, so skip the GBuffer loads otherwise.
-  RAB_Surface surface = RAB_EmptySurface();
-
-  if (cb.enableReSTIRGI)
-  {
-    surface = RAB_GetGBufferSurface(pixelCoordinate, false);
-  }
+#if INTEGRATE_NEE_RESTIR_GI
+  // Only ReSTIR GI's target PDF needs the full surface.
+  const RAB_Surface surface = RAB_GetGBufferSurface(pixelCoordinate, false);
+#endif
 
   // Deserialize the Ray
   GBufferMemoryMinimalRay gBufferMemoryMinimalRay;
@@ -167,7 +172,9 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   // Perform next event estimation on cached emissive triangle list
   // Also add NEE sample to sample reservoir
   // ToDo - calculate non-Restir GI portion to secondary signal as well
+#if INTEGRATE_NEE_RESTIR_GI
   ReSTIRGI_Reservoir resultReservoir = ReSTIRGI_Reservoir.createEmpty();
+#endif
   if (cb.neeCacheArgs.enable && cb.neeCacheArgs.enableOnFirstBounce &&
       polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque)
   {
@@ -275,7 +282,8 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           addRadianceToNrcTrainingPathVertex(nrcTrainingPixelCoordinate, bounceIndex, neeRadiance);
         }
 
-        if (cb.enableReSTIRGI && isVisible)
+#if INTEGRATE_NEE_RESTIR_GI
+        if (isVisible)
         {
           ReSTIRGI_Reservoir neeSample = ReSTIRGI_Reservoir.createEmpty();
           neeSample.M = 1;
@@ -293,14 +301,14 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           float wi = RAB_GetGITargetPdfForSurface(neeSample.radiance, neeSample.position, surface);
           resultReservoir.update(wi, neeSample, 0.5);
         }
+#endif
       }
     }
   }
 
-  if (cb.enableReSTIRGI)
-  {
-    RAB_StoreGIReservoir(resultReservoir, pixelCoordinate, ReSTIRGI_GetInitSamplePage());
-  }
+#if INTEGRATE_NEE_RESTIR_GI
+  RAB_StoreGIReservoir(resultReservoir, pixelCoordinate, ReSTIRGI_GetInitSamplePage());
+#endif
 
   PrimaryIndirectDiffuseLobeRadianceHitDistance[pixelCoordinate] = indirectDiffuseOutput;
   PrimaryIndirectSpecularLobeRadianceHitDistance[pixelCoordinate] = indirectSpecularOutput;
