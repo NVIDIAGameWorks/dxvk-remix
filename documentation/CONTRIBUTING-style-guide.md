@@ -96,6 +96,20 @@ This document outlines our project's C++ code formatting standards, commenting s
   }
   ```
 
+- **Long Ternaries**: When a ternary expression is complex or long, put the condition on the first line and the `?` and `:` branches on the two lines that follow, each indented one level. Short ternaries stay on one line.
+
+  ```cpp
+  // Good
+  const Resources::Resource& worldPosition = useCurrentFrame
+    ? rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal()
+    : rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal();
+
+  const float scale = isActive ? rate : 1.0f;
+
+  // Bad
+  const Resources::Resource& worldPosition = useCurrentFrame ? rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal() : rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal();
+  ```
+
 ### Headers and Includes
 
 - **Ordering**: Standard libraries first, followed by third-party libraries, and then local project headers.
@@ -135,6 +149,56 @@ This document outlines our project's C++ code formatting standards, commenting s
   int square(int num) {
     return num * num;
   }
+  ```
+
+- **Wording**: Write comments as proper sentences. Keep them concise, but not at the cost of complete sentences. Do not join clauses with semicolons, and do not use noun-phrase fragments, `Label: fragment` prefixes, or shorthand that leaves the reader to guess what is meant. A comment directly above or next to the function, variable or member it describes may leave that subject implied.
+
+  ```cpp
+  // Good
+  // Holds the previous frame's depth, which is read at reprojected coordinates, so it stays at full resolution.
+  Resource m_previousDepth;
+
+  // Bad
+  // Previous depth; read at reprojected coords, so full res.
+  Resource m_previousDepth;
+  ```
+
+- **Alternate Results**: When a comment lists alternate results or cases, give each its own sentence on its own line, like a list.
+
+  ```cpp
+  // Good
+  // Returns the texture's index in the bindless table.
+  // Returns BINDING_INDEX_INVALID when the texture is not loaded.
+  // Returns the fallback texture's index while the texture is still streaming in.
+
+  // Bad
+  // Returns the texture's index in the bindless table, or BINDING_INDEX_INVALID when the texture is not loaded, and
+  // otherwise the fallback texture's index.
+  ```
+
+- **Group Comments**: When a comment describes a group of declarations or statements inside a longer run of code, put an empty line above the comment and below the group, so it is clear where the comment's scope ends.
+
+  ```cpp
+  const VkExtent3D& getDownscaleDimensions() const { return m_downscaledExtent; }
+
+  // These report whether the RTXDI gradient resources exist and whether the current options need them.
+  bool areRtxdiGradientResourcesAllocated() const { return m_rtxdiGradientResourcesAllocated; }
+  bool needsRtxdiGradientResources() const;
+
+  bool areRtxdiIlluminanceResourcesAllocated() const { return m_rtxdiIlluminanceResourcesAllocated; }
+  ```
+
+- **Line Breaks**: Break comment lines at natural places whenever possible: after a period, after a comma, or where an idea is finished. Do not end a line with the first word or two of a new sentence, and never leave a single word of a sentence or clause on its own line or at the start of the next one. Prefer pulling the word up onto the previous line, even if it runs a few characters past the usual width. If that is too long, break earlier at the start of the clause.
+
+  ```cpp
+  // Good
+  // Skips pixels whose primary ray missed, because a miss stores no surface.
+  // Callers that already hold the hit distance pass it in.
+
+  // Bad
+  // Skips pixels whose primary ray missed, because a miss stores no surface. Callers
+  // that already hold the hit distance pass it
+  // in.
   ```
 
 - **Block Comments**: Use `/* */` for detailed explanations or temporarily commenting out code.

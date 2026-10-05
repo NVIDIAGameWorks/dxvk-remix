@@ -205,9 +205,14 @@ void writeDebugViewOutputs(uint2 pixelCoordinate)
     bool isValid = true;
 
     // DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_MASK
-    isValid &= cb.enableDisocclusionMaskBlur
-      ? isValidValue(DisocclusionMaskOutput[pixelCoordinate])
-      : isValidValue(DisocclusionMask[pixelCoordinate]);
+    if (cb.enableDisocclusionMaskBlur)
+    {
+      isValid &= isValidValue(DisocclusionMaskOutput[pixelCoordinate]);
+    }
+    else
+    {
+      isValid &= isValidValue(DisocclusionMask[pixelCoordinate]);
+    }
 
     // DEBUG_VIEW_RAY_RECONSTRUCTION_DIFFUSE_ALBEDO
     isValid &= isValidValue(PrimaryAlbedo[pixelCoordinate]);
@@ -240,7 +245,11 @@ void preprocessInputsForRR(uint2 pixelCoordinate)
     bool hasSecondarySurface = geometryFlags.hasSecondarySurface();
 
     vec4 primaryAttenuation = vec4(r11g11b10ToColor(PrimaryAttenuation[pixelCoordinate]), 1.0);
-    vec4 secondaryAttenuation = hasSecondarySurface ? vec4(r11g11b10ToColor(SecondaryAttenuation[pixelCoordinate]), 1.0) : vec4(0,0,0,1);
+    vec4 secondaryAttenuation = vec4(0, 0, 0, 1);
+    if (hasSecondarySurface)
+    {
+      secondaryAttenuation = vec4(r11g11b10ToColor(SecondaryAttenuation[pixelCoordinate]), 1.0);
+    }
 
     // Normalize attenuation to get the color tinting without any dimmming
     const float maxPrimaryAttenuation = max3(primaryAttenuation.r, primaryAttenuation.g, primaryAttenuation.b);
@@ -278,8 +287,6 @@ void preprocessInputsForRR(uint2 pixelCoordinate)
 
     PrimarySpecularAlbedo[pixelCoordinate] = primarySpecularAlbedo;
   }
-
-  blurDisocclusionMask(pixelCoordinate);
 }
 
 [shader("compute")]
@@ -295,6 +302,8 @@ void main(uint2 threadId : SV_DispatchThreadID)
   uvec2 pixelCoordinate = threadId;
 
   preprocessInputsForRR(pixelCoordinate);
+
+  blurDisocclusionMask(pixelCoordinate);
 
   writeDebugViewOutputs(pixelCoordinate);
 }

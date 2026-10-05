@@ -61,12 +61,13 @@
 #define COMPOSITE_SKY_LIGHT_TEXTURE                                 26
 #define COMPOSITE_ACTIVE_PIXEL_MASK_INPUT                           27
 #define COMPOSITE_ACTIVE_LOCAL_PIXEL_COORDS_INPUT                   28
-#define COMPOSITE_PIXEL_SAMPLING_RATE_INPUT                         58
+
+#define COMPOSITE_PIXEL_SAMPLING_RATE_INPUT                         31
 
 // Inputs/Outputs
 
-#define COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT                       30
-#define COMPOSITE_ACCUMULATED_FINAL_OUTPUT_INPUT_OUTPUT             31
+#define COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT                       40
+#define COMPOSITE_ACCUMULATED_FINAL_OUTPUT_INPUT_OUTPUT             41
 
 // Outputs
 

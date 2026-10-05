@@ -77,7 +77,7 @@ void main()
   uvec2 pixelCoordinate = threadIndex;
 
   #ifdef GBUFFER_PSR
-  geometryPSRResolverPass(pixelCoordinate);
+  geometryPSRResolverPasses(pixelCoordinate);
   #else
   geometryResolver(pixelCoordinate);
   #endif
@@ -95,7 +95,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID)
   uvec2 pixelCoordinate = threadIndex;
 
   #ifdef GBUFFER_PSR
-  geometryPSRResolverPass(pixelCoordinate);
+  geometryPSRResolverPasses(pixelCoordinate);
   #else
   geometryResolver(pixelCoordinate);
   #endif

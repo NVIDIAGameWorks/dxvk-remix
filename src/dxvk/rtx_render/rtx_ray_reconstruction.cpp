@@ -155,6 +155,10 @@ namespace dxvk {
     auto motionVectorInput = &rtOutput.m_primaryScreenSpaceMotionVectorDLSSRR;
     auto depthInput = &rtOutput.m_primaryDepthDLSSRR.resource(Resources::AccessType::Read);
     
+    // These are the albedo guides that the prepare pass finishes and DLSS-RR reads.
+    const Resources::Resource& diffuseAlbedoGuide = rtOutput.m_primaryAlbedo;
+    const Resources::Resource& specularAlbedoGuide = rtOutput.m_primarySpecularAlbedo.resource(Resources::AccessType::ReadWrite);
+
     {
       ScopedGpuProfileZone(ctx, "Prepare DLSS");
 
@@ -200,9 +204,8 @@ namespace dxvk {
 
       // Inputs/Outputs
 
-      ctx->bindResourceView(RAY_RECONSTRUCTION_PRIMARY_ALBEDO_INPUT_OUTPUT, rtOutput.m_primaryAlbedo.view, nullptr);
-      ctx->bindResourceView(RAY_RECONSTRUCTION_PRIMARY_SPECULAR_ALBEDO_INPUT_OUTPUT,
-        rtOutput.m_primarySpecularAlbedo.view(Resources::AccessType::ReadWrite), nullptr);
+      ctx->bindResourceView(RAY_RECONSTRUCTION_PRIMARY_ALBEDO_INPUT_OUTPUT, diffuseAlbedoGuide.view, nullptr);
+      ctx->bindResourceView(RAY_RECONSTRUCTION_PRIMARY_SPECULAR_ALBEDO_INPUT_OUTPUT, specularAlbedoGuide.view, nullptr);
 
       // Outputs
 
@@ -227,9 +230,9 @@ namespace dxvk {
         rtOutput.m_compositeOutput.view(Resources::AccessType::Read),
         motionVectorInput->view,
         depthInput->view,
-        rtOutput.m_primaryAlbedo.view,
+        diffuseAlbedoGuide.view,
         rtOutput.m_primaryWorldShadingNormalDLSSRR.view(Resources::AccessType::Read),
-        rtOutput.m_primarySpecularAlbedo.view(Resources::AccessType::Read),
+        specularAlbedoGuide.view,
         rtOutput.m_primaryPerceptualRoughness.view,
         rtOutput.m_rayReconstructionHitDistance.view(Resources::AccessType::Read)
       };
@@ -281,7 +284,7 @@ namespace dxvk {
       // technical sense but this is likely what they mean).
       auto normalsInput = &rtOutput.m_primaryWorldShadingNormalDLSSRR.resource(Resources::AccessType::Read);
       // Note: Texture contains specular albedo in this case as DLSS happens after demodulation
-      auto specularAlbedoInput = &rtOutput.m_primarySpecularAlbedo.resource(Resources::AccessType::Read);
+      auto specularAlbedoInput = &specularAlbedoGuide;
       m_rayReconstructionContext->setWorldToViewMatrix(camera.getWorldToView());
       m_rayReconstructionContext->setViewToProjectionMatrix(camera.getViewToProjection());
 
@@ -291,7 +294,7 @@ namespace dxvk {
       buffers.pResolvedColor = &rtOutput.m_finalOutput.resource(Resources::AccessType::Write);
       buffers.pMotionVectors = motionVectorInput;
       buffers.pDepth = depthInput;
-      buffers.pDiffuseAlbedo = &rtOutput.m_primaryAlbedo;
+      buffers.pDiffuseAlbedo = &diffuseAlbedoGuide;
       buffers.pSpecularAlbedo = specularAlbedoInput;
       buffers.pNormals = normalsInput;
       buffers.pRoughness = &rtOutput.m_primaryPerceptualRoughness;

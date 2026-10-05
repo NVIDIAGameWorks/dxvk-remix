@@ -406,6 +406,12 @@ namespace dxvk {
       m_downscaledExtent = downscaledExtent;
 
       createDownscaledResources(ctx);
+
+      // At native resolution the DLSS-NR output aliases the Ray Reconstruction normal guide, which was just recreated.
+      // After a resize the output is still reset, and the frame-begin update recreates it.
+      if (m_dlssNeuralRenderingResourcesAllocated && m_targetExtent == m_downscaledExtent) {
+        createNeuralRenderingOutput(ctx);
+      }
     }
 
     if (targetExtentChanged) {

@@ -973,14 +973,15 @@ void resolveVertexUnorderedParticles<
 
     const Surface surface = surfaces[uint(rayInteraction.surfaceIndex)];
 
-    if (isTriangle)
-    {
-      surfaceInteraction = surfaceInteractionCreate<SurfaceGenerateTangents>(surface, rayInteraction, ray);
-    }
-
+    // Decals are skipped before their surface interaction is built, since nothing here uses it.
     if (isTriangle && surfaceIsDecal(surface))
     {
       continue;
+    }
+
+    if (isTriangle)
+    {
+      surfaceInteraction = surfaceInteractionCreate<SurfaceGenerateTangents>(surface, rayInteraction, ray);
     }
 
     if (!evalViewDistance(cb.viewDistanceArgs, cb.isZUp, cb.camera, surfaceInteraction.position) || isSurfaceClipped(surface, surfaceInteraction))
@@ -1343,7 +1344,9 @@ void resolveVertexUnordered<
     const Surface surface = surfaces[uint(rayInteraction.surfaceIndex)]; 
 
     if (isTriangle)
+    {
       surfaceInteraction = surfaceInteractionCreate<SurfaceGenerateTangents>(surface, rayInteraction, ray);
+    }
 
     // Test the hit surface against view distance and ignored surface clipping
 

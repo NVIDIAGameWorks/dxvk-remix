@@ -187,7 +187,8 @@ void debugResolve(uint2 pixelIndex, bool pixelIsActive)
 
   const uint samplesPerPixel = push.samplesPerPixel;
 
-  const uint queryPathIndexBase = NrcCalculateQueryPathIndex(frameDimensions, pixelIndex, 0, samplesPerPixel);
+  const uint queryPathIndexBase =
+    NrcCalculateQueryPathIndex(cb.nrcArgs.nrcConstants.frameDimensions, pixelIndex, 0, samplesPerPixel);
 
   // Load corresponding training path info for debug visualizations
   uint2 trainingPixelIndex = Nrc::calculateTrainingPixelCoordinate(pixelIndex, cb.nrcArgs);
@@ -361,7 +362,9 @@ void main(uint2 threadIndex: SV_DispatchThreadID)
   const uint sampleIndex = 0;
   const uint samplesPerPixel = push.samplesPerPixel;
 
-  const uint pathIndex = NrcCalculateQueryPathIndex(cb.camera.resolution, pixelCoordinate, sampleIndex, samplesPerPixel);
+  // The index uses NRC's frame dimensions, as the SDK does when it writes the query paths.
+  const uint pathIndex = NrcCalculateQueryPathIndex(
+    cb.nrcArgs.nrcConstants.frameDimensions, pixelCoordinate, sampleIndex, samplesPerPixel);
   const NrcQueryPathInfo queryPathInfo = NrcUnpackQueryPathInfo(QueryPathInfo[pathIndex]);
 
   vec3 indirectRadiance = vec3(0);

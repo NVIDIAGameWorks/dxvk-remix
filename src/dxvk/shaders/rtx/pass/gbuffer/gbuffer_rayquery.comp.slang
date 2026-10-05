@@ -78,7 +78,7 @@ void main(uint2 dispatchThreadId : SV_DispatchThreadID)
   }
 
 #ifdef GBUFFER_PSR
-  geometryPSRResolverPass(dispatchThreadId);
+  geometryPSRResolverPasses(dispatchThreadId);
 #else
   geometryResolver(dispatchThreadId);
 #endif

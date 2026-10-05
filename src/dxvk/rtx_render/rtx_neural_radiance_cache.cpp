@@ -758,7 +758,12 @@ namespace dxvk {
       // Allocate query path data only when include direct lighting option is disabled. 
       // In this case queryPathData resolved in gbuffer is needed in indirect pass (i.e. direct lighting is resolved).
       // Note: this is done here since indirect lighting option can change after createDownscaledResource() was called
-      if (!NrcOptions::includeDirectLighting() && m_queryPathData0.image == nullptr) {
+      // It is recreated when the render resolution changes, because nothing else releases it.
+      const bool hasStaleQueryPathData0 = m_queryPathData0.image != nullptr
+        && (m_queryPathData0.image->info().extent.width != downscaledExtent.width
+            || m_queryPathData0.image->info().extent.height != downscaledExtent.height);
+
+      if (!NrcOptions::includeDirectLighting() && (m_queryPathData0.image == nullptr || hasStaleQueryPathData0)) {
         m_queryPathData0 = Resources::createImageResource(ctx, "NRC Query Path Data 0", downscaledExtent, VK_FORMAT_R32G32_UINT);
       } else if (NrcOptions::includeDirectLighting() && m_queryPathData0.image != nullptr) {
         m_queryPathData0.reset();

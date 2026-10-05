@@ -603,7 +603,7 @@ void geometryResolverVertexOutputDebugView(
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   float selectedIntegrationSurfacePdf,
   bool directionAltered, PortalSpace2BitsType portalSpace, float virtualHitDistance,
-  const bool isRaytracedRenderTarget)
+  const bool isRaytracedRenderTarget, bool isUnorderedEmissive)
 {
   const uint8_t materialType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
   const uint primitiveIndex = rayInteraction.primitiveIndex;
@@ -933,7 +933,7 @@ void geometryResolverVertexOutputDebugView(
   }
   case DEBUG_VIEW_EMISSIVE_PARTICLE:
   {
-    storeInDebugView(pixelCoordinate, SharedBiasCurrentColorMask[pixelCoordinate]);
+    storeInDebugView(pixelCoordinate, isUnorderedEmissive ? 1.0f : 0.0f);
     break;
   }
   case DEBUG_VIEW_NEE_CACHE_SAMPLE_RADIANCE:
@@ -978,7 +978,8 @@ void geometryResolverVertexOutputDebugView(
 
     break;
   case DEBUG_VIEW_PRIMARY_DEPTH:
-    storeInDebugView(pixelCoordinate, PrimaryDepth[pixelCoordinate]);
+    // The depth is recomputed here, because the primary depth at a PSR pixel does not hold this hit.
+    storeInDebugView(pixelCoordinate, projectVirtualHit(pixelCoordinate, virtualHitDistance, vec3(0.0f)).depth);
 
     break;  
   case DEBUG_VIEW_PIXEL_CHECKERBOARD:
@@ -1212,9 +1213,6 @@ void geometryResolverVertexOutputDebugView(
       } 
       isValid &= isValidValue(lightIntensity);
       
-      // DEBUG_VIEW_EMISSIVE_PARTICLE:
-      isValid &= isValidValue(SharedBiasCurrentColorMask[pixelCoordinate]);
-
       // DEBUG_VIEW_NEE_CACHE_SAMPLE_RADIANCE:
       vec3 sampleRadiance = vec3(0.0f);
       if (materialType == surfaceMaterialTypeOpaque)
@@ -1246,7 +1244,7 @@ void geometryResolverVertexOutputDebugView(
       isValid &= isValidValue(virtualHitDistance);
 
       // DEBUG_VIEW_PRIMARY_DEPTH
-      isValid &= isValidValue(PrimaryDepth[pixelCoordinate]);
+      isValid &= isValidValue(projectVirtualHit(pixelCoordinate, virtualHitDistance, vec3(0.0f)).depth);
 
       // DEBUG_VIEW_PIXEL_CHECKERBOARD
       const float continueSample = float((pixelCoordinate.x & 1) ^ (pixelCoordinate.y & 1));
@@ -1390,7 +1388,11 @@ void geometryResolverOutputDebugView(uvec2 pixelCoordinate)
   default:
     break;
   case DEBUG_VIEW_SHARED_BIAS_CURRENT_COLOR_MASK:
-    storeInDebugView(pixelCoordinate, SharedBiasCurrentColorMask[pixelCoordinate]);
+    // Only DLSS-SR reads the mask, so the GBuffer does not write it under Ray Reconstruction and the view stays clear.
+    if (!cb.enableDLSSRR)
+    {
+      storeInDebugView(pixelCoordinate, SharedBiasCurrentColorMask[pixelCoordinate]);
+    }
     break;
   case DEBUG_VIEW_NAN:
     {
@@ -1591,7 +1593,7 @@ void geometryResolverVertexOutputDebugView(
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   float selectedIntegrationSurfacePdf,
   bool directionAltered, PortalSpace2BitsType portalSpace, float virtualHitDistance,
-  const bool isRaytracedRenderTarget)
+  const bool isRaytracedRenderTarget, bool isUnorderedEmissive)
 {
 }
 
@@ -2247,8 +2249,12 @@ void geometryResolverVertex(
   SharedRadianceRG[geometryResolverState.pixelCoordinate] = geometryResolverState.radiance.rg;
   SharedRadianceB[geometryResolverState.pixelCoordinate] = geometryResolverState.radiance.b;
 
-  // The particles (shared bias mask) are using opaque approximations, which only result in monochromatic attenuation, so we just need to output single channel here
-  SharedBiasCurrentColorMask[geometryResolverState.pixelCoordinate] = isUnorderedEmissive ? 1.0f : 0.0f;
+  // Only DLSS-SR consumes this mask.
+  if (!cb.enableDLSSRR)
+  {
+    // The particles (shared bias mask) are using opaque approximations, which only result in monochromatic attenuation, so we just need to output single channel here
+    SharedBiasCurrentColorMask[geometryResolverState.pixelCoordinate] = isUnorderedEmissive ? 1.0f : 0.0f;
+  }
 
   // Output the Integration Surface PDF
   // Note: This is written out so the integrator can use this as a starting point due to basing itself off this stochastic choice
@@ -2278,7 +2284,7 @@ void geometryResolverVertex(
     selectedIntegrationSurfacePdf,
     geometryResolverState.directionAltered, geometryResolverState.portalSpace,
     geometryResolverState.accumulatedHitDistance,
-    isRaytracedRenderTarget);
+    isRaytracedRenderTarget, isUnorderedEmissive);
 }
 
 
@@ -3560,17 +3566,19 @@ void geometryPSRPreparePass(ivec2 pixelCoordinate) {
   geometryFlagsWriteToGBuffer(geometryFlags, pixelCoordinate, SharedFlags);
 }
 
-void geometryPSRResolverPass(ivec2 pixelCoordinate) {
+// Resolves the transmission PSR lobe when `isTransmissionPSR` is set, and the reflection lobe otherwise.
+// The lobe is a parameter so that one thread can resolve both lobes in turn.
+void geometryPSRResolverPass(ivec2 pixelCoordinate, bool isTransmissionPSR) {
   GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixelCoordinate, SharedFlags);
 
   // Early out if the PSR pass currently executing does not handle a requested PSR type
 
   /*
-  if (!push.isTransmissionPSR && !geometryFlags.performPSRR)
+  if (!isTransmissionPSR && !geometryFlags.performPSRR)
   {
     return;
   }
-  else if (push.isTransmissionPSR && !geometryFlags.performPSTR)
+  else if (isTransmissionPSR && !geometryFlags.performPSTR)
   {
     return;
   }
@@ -3580,8 +3588,8 @@ void geometryPSRResolverPass(ivec2 pixelCoordinate) {
   // into avoiding a bug which causes this conditional to behave incorrectly. See REMIX-1637 for more info or this issue:
   // https://github.com/IGCIT/Intel-GPU-Community-Issue-Tracker-IGCIT/issues/318
   if (
-    uint(!push.isTransmissionPSR) * uint(!geometryFlags.performPSRR) +
-    uint(push.isTransmissionPSR) * uint(!geometryFlags.performPSTR)
+    uint(!isTransmissionPSR) * uint(!geometryFlags.performPSRR) +
+    uint(isTransmissionPSR) * uint(!geometryFlags.performPSTR)
   )
   {
     return;
@@ -3599,11 +3607,11 @@ void geometryPSRResolverPass(ivec2 pixelCoordinate) {
   geometryPSRResolverState.continuePSRResolving = true;
   geometryPSRResolverState.isViewModelSurface = false;
   geometryPSRResolverState.decalEncountered = false;
-  geometryPSRResolverState.isTransmissionPSR = push.isTransmissionPSR;
+  geometryPSRResolverState.isTransmissionPSR = isTransmissionPSR;
   geometryPSRResolverState.pomOpaqueSurfaceEncountered = false;
 
   GbufferPSRData psrData;
-  if (push.isTransmissionPSR)
+  if (isTransmissionPSR)
   {
     psrData = loadTransmissionPSRData(pixelCoordinate);
   }
@@ -3619,7 +3627,7 @@ void geometryPSRResolverPass(ivec2 pixelCoordinate) {
     return;
   }
   
-  if (push.isTransmissionPSR)
+  if (isTransmissionPSR)
   {
     // Note: performPSTR == true implicitly in this path, always indicate that transmission PSR is the primary surface
     // when it is in use.
@@ -3675,5 +3683,18 @@ void geometryPSRResolverPass(ivec2 pixelCoordinate) {
     geometryFlags.objectMask = primaryRayMaskToObjectMask(geometryPSRResolverState.rayMask, geometryPSRResolverState.isViewModelSurface);
 
     geometryFlagsWriteToGBuffer(geometryFlags, pixelCoordinate, SharedFlags);
+  }
+}
+
+// The reflection and transmission PSR lobes depend on each other's data only at the same pixel,
+// so one launch resolves both in turn. Reflection goes first, because its payload shares memory with outputs
+// that the transmission lobe writes.
+void geometryPSRResolverPasses(ivec2 pixelCoordinate)
+{
+  // This loop is not unrolled, so the resolve is emitted once.
+  [loop]
+  for (uint lobe = 0; lobe <= 1; ++lobe)
+  {
+    geometryPSRResolverPass(pixelCoordinate, lobe == 1);
   }
 }
