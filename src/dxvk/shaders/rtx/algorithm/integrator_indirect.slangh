@@ -183,7 +183,7 @@ NrcProgressState updateNrcOnHit(
 
   const vec3 prevThroughput = pathState.throughput;
 
-  nrcProgressState = Nrc::updateNrcOnHit(pathState.pixelCoordinate, pathState.isNrcUpdate,
+  nrcProgressState = Nrc::updateNrcOnHit(pathState.pixelCoordinate, pathState.nrcPixelIndex, pathState.isNrcUpdate,
     surfaceInteraction.position, polymorphicSurfaceMaterialInteraction, -pathState.direction,
     pathState.bounceIteration, pathState.segmentHitDistance, false, cb.nrcArgs,
     pathState.throughput, pathState.radiance, pathState.nrcPathState);
@@ -609,7 +609,7 @@ void integratePathVertex(
     
         if (isWithinGbuffer)
         {
-          MinimalSurfaceInteraction gbuffer = minimalSurfaceInteractionReadFromGBuffer(pixelCoordinate, indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal);
+          MinimalSurfaceInteraction gbuffer = minimalSurfaceInteractionReadFromGBuffer(pixelCoordinate, PrimaryWorldPositionWorldTriangleNormalDense);
           float3 relativePosition = gbuffer.position - surfaceInteraction.position;
           float relativeLength = length(relativePosition);
           float cameraDistance = length(surfaceInteraction.position - cameraGetWorldPosition(cb.camera));
@@ -1074,7 +1074,7 @@ void storeRestirGIRadiance(PathState pathState, GeometryFlags geometryFlags, flo
 // Loads radiance integrated for a path prior to indirect integrate pass for an NRC update pass
 vec3 loadIntegratedRadiancePriorToIntegrateIndirect(
   u16vec2 nrcPixelCoordinate,
-  u16vec2 gbufferPixelCoordinate,
+  u16vec2 compactedRadianceCoordinate,
   PathState pathState,
   GeometryFlags geometryFlags) 
 {
@@ -1094,26 +1094,21 @@ vec3 loadIntegratedRadiancePriorToIntegrateIndirect(
 
     if (geometryFlags.primarySelectedIntegrationSurface)
     { 
-      diffuseRadiance = PrimaryDirectDiffuseLobeRadianceHitDistance[gbufferPixelCoordinate].xyz;
-      specularRadiance = PrimaryDirectSpecularLobeRadianceHitDistance[gbufferPixelCoordinate].xyz;
+      diffuseRadiance = PrimaryDirectDiffuseLobeRadianceHitDistance[compactedRadianceCoordinate].xyz;
+      specularRadiance = PrimaryDirectSpecularLobeRadianceHitDistance[compactedRadianceCoordinate].xyz;
     }
     else
     {
-      diffuseRadiance = SecondaryCombinedDiffuseLobeRadianceHitDistance[gbufferPixelCoordinate].xyz;
-      specularRadiance = SecondaryCombinedSpecularLobeRadianceHitDistance[gbufferPixelCoordinate].xyz;
+      diffuseRadiance = SecondaryCombinedDiffuseLobeRadianceHitDistance[compactedRadianceCoordinate].xyz;
+      specularRadiance = SecondaryCombinedSpecularLobeRadianceHitDistance[compactedRadianceCoordinate].xyz;
     }
 
     directLightingRadiance = diffuseRadiance + specularRadiance;
   }
 
-  // Deferred setup stored this at the seeded query pixel rather than the training cell, which for a training
-  // thread is what gbufferPixelCoordinate holds.
-  const uvec2 surfaceRadianceCoordinate = nrcTrainingSurfaceRadianceCoordinate(
-    uvec2(gbufferPixelCoordinate), uvec2(nrcPixelCoordinate), cb.sparseRenderingArgs);
-
   const vec3 primarySurfaceRadiance = vec3(
-    NrcTrainingGBufferSurfaceRadianceRG[surfaceRadianceCoordinate],
-    NrcTrainingGBufferSurfaceRadianceB[surfaceRadianceCoordinate]);
+    NrcTrainingGBufferSurfaceRadianceRG[nrcPixelCoordinate],
+    NrcTrainingGBufferSurfaceRadianceB[nrcPixelCoordinate]);
 
   return primarySurfaceRadiance + directLightingRadiance;
 }
@@ -1123,7 +1118,7 @@ vec3 loadIntegratedRadiancePriorToIntegrateIndirect(
 // Sets pathState.continuePath to false if the path should terminate
 void initNrc(
   inout PathState pathState,
-  u16vec2 gbufferPixelCoordinate,
+  u16vec2 compactedRadianceCoordinate,
   bool isNrcUpdate,
   GeometryFlags geometryFlags,
   float firstSampledSolidAnglePdf)
@@ -1142,14 +1137,15 @@ void initNrc(
   // Reload NRC path state
   NrcProgressState prevHitNrcProgressState;
   
+  // The GBuffer stored the path state at the NRC pixel index, which for a query path is its compacted slot.
   if (isNrcUpdate)
   {
     // Note: NrcPathData0 is unused for isNrcUpdate
-    pathState.nrcPathState = Nrc::loadNrcPathState(nrcPixelCoordinate, !isNrcUpdate, prevHitNrcProgressState, NrcPathData0, NrcUpdatePathData1);
+    pathState.nrcPathState = Nrc::loadNrcPathState(pathState.nrcPixelIndex, !isNrcUpdate, prevHitNrcProgressState, NrcPathData0, NrcUpdatePathData1);
   }
   else
   {
-    pathState.nrcPathState = Nrc::loadNrcPathState(nrcPixelCoordinate, isNrcUpdate, prevHitNrcProgressState, NrcPathData0, NrcPathData1);
+    pathState.nrcPathState = Nrc::loadNrcPathState(pathState.nrcPixelIndex, isNrcUpdate, prevHitNrcProgressState, NrcPathData0, NrcPathData1);
   }
 
   // Gbuffer pass writes out final path info for query paths with NrcProgressState::TerminateImmediately on primary hit,
@@ -1174,17 +1170,17 @@ void initNrc(
         // Training paths do not use the following buffers after the indirect pass so there is no need to clear them
         pathState.isNrcQuery)
     {
-      PrimaryDirectDiffuseLobeRadianceHitDistance[gbufferPixelCoordinate] = vec4(vec3(0), kEmptyPixelHitDistance);
-      PrimaryDirectSpecularLobeRadianceHitDistance[gbufferPixelCoordinate] = vec4(vec3(0), kEmptyPixelHitDistance);
-      SecondaryCombinedDiffuseLobeRadianceHitDistance[gbufferPixelCoordinate] = vec4(vec3(0), kEmptyPixelHitDistance);
-      SecondaryCombinedSpecularLobeRadianceHitDistance[gbufferPixelCoordinate] = vec4(vec3(0), kEmptyPixelHitDistance);
+      PrimaryDirectDiffuseLobeRadianceHitDistance[compactedRadianceCoordinate] = vec4(vec3(0), kEmptyPixelHitDistance);
+      PrimaryDirectSpecularLobeRadianceHitDistance[compactedRadianceCoordinate] = vec4(vec3(0), kEmptyPixelHitDistance);
+      SecondaryCombinedDiffuseLobeRadianceHitDistance[compactedRadianceCoordinate] = vec4(vec3(0), kEmptyPixelHitDistance);
+      SecondaryCombinedSpecularLobeRadianceHitDistance[compactedRadianceCoordinate] = vec4(vec3(0), kEmptyPixelHitDistance);
     }
 
     pathState.continuePath = false;
     return;
   }
 
-  pathState.radiance += loadIntegratedRadiancePriorToIntegrateIndirect(nrcPixelCoordinate, gbufferPixelCoordinate, pathState, geometryFlags);
+  pathState.radiance += loadIntegratedRadiancePriorToIntegrateIndirect(nrcPixelCoordinate, compactedRadianceCoordinate, pathState, geometryFlags);
   
   // ToDo: obsolete comment?
   // Note: Remix PT separates throughput prior to GBuffer hit and after, so thus NRC doesn't change it on a GBuffer hit for training paths. 
@@ -1204,7 +1200,7 @@ void writeToNrcOutputsAfterIntegration(PathState pathState)
   // Cache the coordinate since it's calculated
   const u16vec2 pixelCoordinate = pathState.pixelCoordinate;
 
-  const NrcContext nrcContext = Nrc::createNrcContext(pixelCoordinate);
+  const NrcContext nrcContext = Nrc::createNrcContext(pathState.nrcPixelIndex);
     
   // Sanitize the inputs since they occasionally have NaNs
   Nrc::sanitizeNrcInputs(pathState.isNrcUpdate, cb.nrcArgs, pathState.throughput, pathState.radiance);
@@ -1249,6 +1245,10 @@ void integrateIndirectPath(
   // Note: gbuffer prefix is appended to differentiate gbufferPixelCoordinate from pathState.pixelCoordinate 
   //       which in case of an NRC update is different from gbuffer pixel coordinate.
   u16vec2 gbufferPixelCoordinate,
+  // Addresses this thread's compacted resources, and equals gbufferPixelCoordinate when sparse rendering is off.
+  u16vec2 compactedCoordinate,
+  // Addresses this thread's NRC path buffers. See PathState::nrcPixelIndex.
+  u16vec2 nrcPixelIndex,
   uint indirectSbtOffset,
   IndirectPathTextures indirectPathTextures,
   GeometryFlags geometryFlags, uint mediumMaterialIndex, vec3 rayOrigin, vec3 rayDirection,
@@ -1270,14 +1270,21 @@ void integrateIndirectPath(
   pathState.throughput = throughput;
   pathState.insideMedium = geometryFlags.insideMedium;
   pathState.accumulatedHitDistance = gbufferSurfaceHitDistance;
-  pathState.solidAnglePdf = asfloat(NeeCacheThreadTask[gbufferPixelCoordinate].x);
+  pathState.solidAnglePdf = asfloat(NeeCacheThreadTask[compactedCoordinate].x);
   pathState.coneSpreadAngle = calculateSpreadAngleFromSolidAnglePdf(pathState.coneSpreadAngle, firstSampledSolidAnglePdf);
   // Enable nee cache for PSR reflection, which cannot be handled by ReSTIR GI.
   pathState.enableNeeCacheAfterFirstBounce =
     (geometryFlags.performPSRR || NEECache.shouldUseHigherBounceNeeCache(geometryFlags.firstSampledLobeIsSpecular, calcRoughness(firstHitPerceptualRoughness)));
   pathState.gbufferPerceptualRoughness = firstHitPerceptualRoughness;
   
-  initNrc(pathState, gbufferPixelCoordinate, isNrcUpdate, geometryFlags, firstSampledSolidAnglePdf);
+#if ENABLE_NRC
+  // The index is set before initNrc, which reads it back through pathState.pixelCoordinate for training paths.
+  pathState.nrcPixelIndex = nrcPixelIndex;
+#else
+  unused(nrcPixelIndex);
+#endif
+
+  initNrc(pathState, compactedCoordinate, isNrcUpdate, geometryFlags, firstSampledSolidAnglePdf);
 
   initReSTIRGI(pathState, geometryFlags, firstHitPerceptualRoughness, firstSampledLobePdf, firstSampledSolidAnglePdf);
 
@@ -1297,7 +1304,7 @@ void integrateIndirectPath(
     {
       RAB_RandomSamplerState rtxdiRNG = RAB_InitRandomSampler(pathState.pixelCoordinate, cb.frameIdx, pathState.bounceIteration);
       uint jitter = sampleUniformIntRng(rtxdiRNG);
-      MinimalSurfaceInteraction gbuffer = minimalSurfaceInteractionReadFromGBuffer(gbufferPixelCoordinate, indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal);
+      MinimalSurfaceInteraction gbuffer = minimalSurfaceInteractionReadFromGBuffer(compactedCoordinate, indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal);
       if(gbuffer.isValid)
       {
         pathState.neeCacheCellOffset = NEECache.pointToOffset(rayOrigin, gbuffer.geometryNormal, jitter);
@@ -1308,7 +1315,7 @@ void integrateIndirectPath(
     // Set initial POM material and texcoords from textures.
     if (pathState.continuePath && cb.pomEnableIndirectLighting && geometryFlags.pomOpaqueSurfaceEncountered)
     {
-      uint primarySurfaceIndex = uint(SharedSurfaceIndex[gbufferPixelCoordinate]);
+      uint primarySurfaceIndex = uint(SharedSurfaceIndex[compactedCoordinate]);
       
       if (cb.debugView == DEBUG_VIEW_HEIGHT_MAP && TRUE_OR_CHECK_WHEN_NRC_ENABLED(pathState.isNrcQuery))
       {
@@ -1343,10 +1350,10 @@ void integrateIndirectPath(
           OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
     
           MinimalSurfaceInteraction minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBuffer(
-            gbufferPixelCoordinate, indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal);
+            compactedCoordinate, indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal);
     
           const float pomThroughput = opaqueSurfaceMaterialInteractionCalcHeightThroughput(
-            minimalSurfaceInteraction, pathState.direction, opaqueSurfaceMaterial, SharedTextureCoord[gbufferPixelCoordinate]
+            minimalSurfaceInteraction, pathState.direction, opaqueSurfaceMaterial, SharedTextureCoord[compactedCoordinate]
           );
   
           accumulateThroughput(pathState, pomThroughput);
@@ -1400,10 +1407,8 @@ void integrateIndirectPath(
 
   if (TRUE_OR_CHECK_WHEN_NRC_ENABLED(pathState.isNrcQuery))
   {
-    const u16vec2 gbufferPixelCoordinate = pathState.pixelCoordinate;
-
     // Re-load geometry flags from the resource so that they're not carried around as live state during a ray path integration
-    geometryFlags = geometryFlagsReadFromGBuffer(gbufferPixelCoordinate, SharedFlags);
+    geometryFlags = geometryFlagsReadFromGBuffer(ivec2(compactedCoordinate), SharedFlags);
 
     storeRestirGIRadiance(pathState, geometryFlags, gbufferSurfaceHitDistance);
 
@@ -1417,7 +1422,7 @@ void integrateIndirectPath(
     }
 
     // Store the integrated ray path radiance and hit distance
-    indirectPathTextures.IndirectRadianceHitDistance[gbufferPixelCoordinate] = indirectOutData;
+    indirectPathTextures.IndirectRadianceHitDistance[compactedCoordinate] = indirectOutData;
   }
   
   writeToNrcOutputsAfterIntegration(pathState);

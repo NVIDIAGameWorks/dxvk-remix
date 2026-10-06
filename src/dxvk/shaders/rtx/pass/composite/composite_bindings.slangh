@@ -101,6 +101,15 @@ Texture2D<uint> SparseRenderingActivePixelMask;
 layout(binding = COMPOSITE_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)
 Texture2D<uint16_t> ActiveLocalPixelCoords;
 
+layout(binding = COMPOSITE_COMPACTED_PIXEL_INDICES_INPUT)
+Texture2D<uint16_t> CompactedPixelIndices;
+
+layout(binding = COMPOSITE_TILE_ACTIVE_COUNTS_INPUT)
+Texture2D<uint2> TileActiveCounts;
+
+layout(binding = COMPOSITE_PRIMARY_SURFACE_FLAGS_INPUT)
+Texture2D<uint> PrimarySurfaceFlags;
+
 // Inputs/Outputs
 layout(binding = COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT)
 RWTexture2D<float4> PrimaryAlbedo;

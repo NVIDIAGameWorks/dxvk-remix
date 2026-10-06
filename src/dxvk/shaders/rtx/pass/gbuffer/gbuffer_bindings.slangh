@@ -44,6 +44,18 @@ Sampler2D<float3> SkyMatte;
 layout(binding = GBUFFER_BINDING_SKYPROBE)
 SamplerCube<float3> SkyProbe;
 
+// Maps a pixel to its slot in the compacted GBuffer. See loadGBufferStoreCoordinate.
+// The texture is bound null when sparse rendering is inactive and is only read while sparse rendering is active.
+layout(binding = GBUFFER_BINDING_COMPACTED_PIXEL_INDICES_INPUT)
+Texture2D<uint16_t> CompactedPixelIndices;
+
+// Holds the query pixel that each NRC training cell selected. The sentinel value means that the cell selected none.
+layout(binding = GBUFFER_BINDING_NRC_TRAINING_QUERY_RESERVOIR_INPUT)
+Texture2D<uint> NrcTrainingQueryReservoir;
+
+layout(binding = GBUFFER_BINDING_TILE_ACTIVE_COUNTS_INPUT)
+Texture2D<uint2> TileActiveCounts;
+
 // Shared Outputs (Combined/Stochastic)
 // Note: Most of these buffers are stochastic, meaning one of the two mutually exclusive
 // paths (PSRR or PSTR when both are in use) will be selected randomly as the output. The
@@ -82,6 +94,8 @@ RWTexture2D<uint> PrimaryWorldShadingNormal;
 layout(r8, binding = GBUFFER_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_OUTPUT)
 RWTexture2D<float> PrimaryPerceptualRoughness;
 
+// Temporarily holds a PSR pixel's continuation hit distance with the compacted GBuffer.
+// See geometryResolverStorePSRContinuation.
 layout(r32f, binding = GBUFFER_BINDING_PRIMARY_LINEAR_VIEW_Z_OUTPUT)
 RWTexture2D<float> PrimaryLinearViewZ;
 
@@ -174,6 +188,8 @@ RWTexture2D<uint> PrimarySurfaceFlags;
 layout(r16f, binding = GBUFFER_BINDING_PRIMARY_DISOCCLUSION_THRESHOLD_MIX_OUTPUT)
 RWTexture2D<float> PrimaryDisocclusionThresholdMix;
 
+// Temporarily holds a PSR pixel's continuation cone radius with the compacted GBuffer.
+// See geometryResolverStorePSRContinuation.
 layout(r32f, binding = GBUFFER_BINDING_PRIMARY_DEPTH_OUTPUT)
 RWTexture2D<float> PrimaryDepth;
 
@@ -200,6 +216,24 @@ RWTexture2D<float4> PrimaryWorldShadingNormalDLSSRR;
 
 layout(rg16f, binding = GBUFFER_BINDING_PRIMARY_SCREEN_SPACE_MOTION_DLSSRR_OUTPUT)
 RWTexture2D<float2> PrimaryScreenSpaceMotionVectorDLSSRR;
+
+// Holds the flags of every pixel under sparse rendering,
+// for the passes that read them by pixel rather than by compacted slot.
+layout(r16ui, binding = GBUFFER_BINDING_SHARED_FLAGS_DENSE_OUTPUT)
+RWTexture2D<uint16_t> SharedFlagsDense;
+
+layout(rgb10_a2, binding = GBUFFER_BINDING_PRIMARY_ALBEDO_DLSSRR_OUTPUT)
+RWTexture2D<float4> PrimaryAlbedoDLSSRR;
+
+layout(rgb10_a2, binding = GBUFFER_BINDING_PRIMARY_SPECULAR_ALBEDO_DLSSRR_OUTPUT)
+RWTexture2D<float4> PrimarySpecularAlbedoDLSSRR;
+
+layout(rgba32f, binding = GBUFFER_BINDING_PRIMARY_WORLD_POSITION_COMPACTED_OUTPUT)
+RWTexture2D<float4> PrimaryWorldPositionWorldTriangleNormalCompacted;
+
+// Holds the primary shading normal of every pixel under sparse rendering, for the Remix API.
+layout(r32ui, binding = GBUFFER_BINDING_PRIMARY_WORLD_SHADING_NORMAL_DENSE_OUTPUT)
+RWTexture2D<uint> PrimaryWorldShadingNormalDense;
 
 layout(rg16ui, binding = GBUFFER_BINDING_SHARED_SUBSURFACE_DATA_OUTPUT)
 RWTexture2D<uint2> SharedSubsurfaceData;

@@ -1624,12 +1624,12 @@ namespace dxvk {
 
   void RtxContext::dispatchPathTracing(const Resources::RaytracingOutput& rtOutput) {
 
+    // Sparse Rendering: sampling rates + active-pixel mask + compaction.
+    // Runs before the Gbuffer, which stores active pixels at their compacted coordinates.
+    m_common->metaSparseRendering().dispatch(*this, rtOutput);
+
     // Gbuffer Raytracing
     m_common->metaPathtracerGbuffer().dispatch(this, rtOutput);
-
-    // Sparse Rendering: sampling rates + active-pixel mask + compaction.
-    // Runs after Gbuffer so the active-pixel mask can read current-frame SharedFlags.
-    m_common->metaSparseRendering().dispatch(*this, rtOutput);
 
     // RTXDI
     m_common->metaRtxdiRayQuery().dispatch(this, rtOutput);

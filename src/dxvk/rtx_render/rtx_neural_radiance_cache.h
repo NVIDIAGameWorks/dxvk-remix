@@ -199,7 +199,6 @@ namespace dxvk {
     VkExtent3D calcRaytracingResolution() const;
 
     void bindGBufferPathTracingResources(RtxContext& ctx);
-    void bindIntegrateDirectPathTracingResources(RtxContext& ctx, const bool deferredNrcTrainingSetup);
     void bindIntegrateIndirectPathTracingResources(RtxContext& ctx);
 
     const Resources::Resource& getTrainingQueryReservoir() const { return m_trainingQueryReservoir; }
@@ -243,6 +242,11 @@ namespace dxvk {
     // Raises training dimensions so a training cell stays small enough for the resampling reservoir to address a
     // query pixel within it by offset.
     void clampTrainingDimensionsToReservoirOffsetRange(nrc_uint2& trainingDimensions) const;
+    // Returns the dimensions that NRC sizes its query buffers by and indexes query paths with.
+    // Returns the compacted storage extent while the query paths are compacted, which saves video memory and SDK time.
+    // Returns the render dimensions otherwise.
+    nrc_uint2 calculateQueryDimensions(
+      const Resources& resources, const nrc_uint2& renderDimensions, bool queryPathsAreCompacted) const;
 
     uint32_t calculateNumTrainingIterations();
     uint8_t calculateTrainingMaxPathBounces() const;
@@ -270,6 +274,9 @@ namespace dxvk {
     Resources::AliasedResource    m_trainingPathData1;
 
     nrc_uint2              m_activeTrainingDimensions = nrc_uint2 { UINT32_MAX, UINT32_MAX };
+    // Holds the render dimensions that NRC launches over and maps training cells to.
+    // ContextSettings::frameDimensions can be smaller, see calculateQueryDimensions.
+    nrc_uint2              m_renderDimensions = nrc_uint2 { 0, 0 };
     std::atomic<bool>       m_isActiveForStats = false;
     std::atomic<uint32_t>   m_numberOfTrainingRecords = 0;   // Number of training records reported by NRC - reported with kMaxFramesInFlight frame delay
     float                  m_smoothedNumberOfTrainingRecords = 0.f;

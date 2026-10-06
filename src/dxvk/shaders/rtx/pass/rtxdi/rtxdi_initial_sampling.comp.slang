@@ -51,26 +51,20 @@
 #include "rtx/pass/sparse_rendering/compact_active_pixels.slangh"
 
 [shader("compute")]
-[numthreads(16, 8, 1)]
-void main(int2 threadIndex : SV_DispatchThreadID)
+[numthreads(COMPACT_ACTIVE_PIXELS_CONSUMER_GROUP_SIZE_X, COMPACT_ACTIVE_PIXELS_CONSUMER_GROUP_SIZE_Y, 1)]
+void main(uint2 dispatchThreadId : SV_DispatchThreadID, uint3 groupId : SV_GroupID, uint groupIndex : SV_GroupIndex)
 {
-  if (any(threadIndex >= cb.camera.resolution))
+  uint2 threadIndex;
+  uvec2 compactedCoordinate;
+  if (!loadCompactedCoordinate(dispatchThreadId, groupId.x, groupIndex, ActivePixelCount,
+                              cb.camera.resolution, cb.sparseRenderingArgs, threadIndex, compactedCoordinate))
   {
     return;
   }
 
-  uvec2 remapped;
-  const bool isActive = loadPixelCoordinate(uint2(threadIndex), ActiveLocalPixelCoords,
-    cb.camera.resolution, cb.sparseRenderingArgs, remapped);
-  int2 pixelCoordinate = int2(remapped);
+  int2 pixelCoordinate = int2(loadLaunchPixelCoordinate(threadIndex, ActivePixelCoords, cb.sparseRenderingArgs));
 
-  // Inactive pixels are handled by the temporal reuse pass (cheap reprojection or skip).
-  if (!isActive)
-  {
-    return;
-  }
-
-  RAB_Surface surface = RAB_GetGBufferSurface(pixelCoordinate, false);
+  RAB_Surface surface = RAB_GetGBufferSurface(pixelCoordinate, false, int2(compactedCoordinate));
   if (!RAB_IsSurfaceValid(surface))
   {
     return;

@@ -85,6 +85,10 @@ namespace dxvk {
         SAMPLER3D(GBUFFER_BINDING_VOLUME_FILTERED_RADIANCE_Y_INPUT)
         SAMPLER3D(GBUFFER_BINDING_VOLUME_FILTERED_RADIANCE_CO_CG_INPUT)
 
+        TEXTURE2D(GBUFFER_BINDING_COMPACTED_PIXEL_INDICES_INPUT)
+        TEXTURE2D(GBUFFER_BINDING_NRC_TRAINING_QUERY_RESERVOIR_INPUT)
+        TEXTURE2D(GBUFFER_BINDING_TILE_ACTIVE_COUNTS_INPUT)
+
         RW_TEXTURE2D(GBUFFER_BINDING_SHARED_FLAGS_OUTPUT)
         RW_TEXTURE2D(GBUFFER_BINDING_SHARED_RADIANCE_RG_OUTPUT)
         RW_TEXTURE2D(GBUFFER_BINDING_SHARED_RADIANCE_B_OUTPUT)
@@ -148,6 +152,12 @@ namespace dxvk {
         RW_TEXTURE2D(GBUFFER_BINDING_PRIMARY_NORMAL_DLSSRR_OUTPUT)
         RW_TEXTURE2D(GBUFFER_BINDING_PRIMARY_SCREEN_SPACE_MOTION_DLSSRR_OUTPUT)
         RW_TEXTURE2D(GBUFFER_BINDING_DLSS_NR_CONTROL_MASK_OUTPUT)
+
+        RW_TEXTURE2D(GBUFFER_BINDING_SHARED_FLAGS_DENSE_OUTPUT)
+        RW_TEXTURE2D(GBUFFER_BINDING_PRIMARY_ALBEDO_DLSSRR_OUTPUT)
+        RW_TEXTURE2D(GBUFFER_BINDING_PRIMARY_SPECULAR_ALBEDO_DLSSRR_OUTPUT)
+        RW_TEXTURE2D(GBUFFER_BINDING_PRIMARY_WORLD_POSITION_COMPACTED_OUTPUT)
+        RW_TEXTURE2D(GBUFFER_BINDING_PRIMARY_WORLD_SHADING_NORMAL_DENSE_OUTPUT)
 
         RW_STRUCTURED_BUFFER(GBUFFER_BINDING_NRC_QUERY_PATH_INFO_OUTPUT)
         RW_STRUCTURED_BUFFER(GBUFFER_BINDING_NRC_TRAINING_PATH_INFO_OUTPUT)
@@ -620,6 +630,10 @@ namespace dxvk {
     ScopedGpuProfileZone(ctx, "Gbuffer Raytracing");
     ctx->setFramePassStage(RtxFramePassStage::GBufferPrimaryRays);
 
+    // With sparse rendering, inactive pixels have no compacted slot,
+    // so the PSR payload and the outputs that inactive pixels write in place of a GBuffer are dense.
+    const bool compactedGBuffer = rtOutput.m_raytraceArgs.sparseRenderingArgs.mode != SparseRenderingMode::Off;
+
     // Bind resources
 
     ctx->bindCommonRayTracingResources(rtOutput);
@@ -629,6 +643,11 @@ namespace dxvk {
     Rc<DxvkSampler> linearWrapSampler = ctx->getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT);
 
     ctx->bindResourceSampler(GBUFFER_BINDING_LINEAR_WRAP_SAMPLER, linearWrapSampler);
+
+    // These resources give each pixel's slot in the compacted GBuffer. They are null when sparse rendering is inactive,
+    // in which case DXVK substitutes a null descriptor.
+    ctx->bindResourceView(GBUFFER_BINDING_COMPACTED_PIXEL_INDICES_INPUT, rtOutput.m_sparseRenderingCompactedPixelIndices.view, nullptr);
+    ctx->bindResourceView(GBUFFER_BINDING_TILE_ACTIVE_COUNTS_INPUT, rtOutput.m_sparseRenderingTileActiveCounts.view, nullptr);
 
     const RtxGlobalVolumetrics& globalVolumetrics = ctx->getCommonObjects()->metaGlobalVolumetrics();
     ctx->bindResourceView(GBUFFER_BINDING_VOLUME_FILTERED_RADIANCE_Y_INPUT, globalVolumetrics.getCurrentVolumeAccumulatedRadianceY().view, nullptr);
@@ -661,6 +680,8 @@ namespace dxvk {
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_ATTENUATION_OUTPUT, rtOutput.m_primaryAttenuation.view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_WORLD_SHADING_NORMAL_OUTPUT, rtOutput.m_primaryWorldShadingNormal.view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_OUTPUT, rtOutput.m_primaryPerceptualRoughness.view, nullptr);
+    // Temporarily holds the PSR continuation hit distance with the compacted GBuffer.
+    // See geometryResolverStorePSRContinuation.
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_LINEAR_VIEW_Z_OUTPUT, rtOutput.m_primaryLinearViewZ.view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_ALBEDO_OUTPUT, rtOutput.m_primaryAlbedo.view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_BASE_REFLECTIVITY_OUTPUT, rtOutput.m_primaryBaseReflectivity.view(Resources::AccessType::Write), nullptr);
@@ -678,6 +699,8 @@ namespace dxvk {
     ctx->bindResourceView(GBUFFER_BINDING_SHARED_SHADOW_TERMINATOR_FIX_OUTPUT, rtOutput.getCurrentSharedTerminatorFix().view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_SURFACE_FLAGS_OUTPUT, rtOutput.m_primarySurfaceFlags.view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_DISOCCLUSION_THRESHOLD_MIX_OUTPUT, rtOutput.m_primaryDisocclusionThresholdMix.view, nullptr);
+    // Temporarily holds the PSR continuation cone radius with the compacted GBuffer.
+    // See geometryResolverStorePSRContinuation.
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_DEPTH_OUTPUT, rtOutput.m_primaryDepth.view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT, rtOutput.m_primaryObjectPicking.view, nullptr);
 
@@ -687,7 +710,8 @@ namespace dxvk {
     ctx->bindResourceView(GBUFFER_BINDING_SECONDARY_LINEAR_VIEW_Z_OUTPUT, rtOutput.m_secondaryLinearViewZ.view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_SECONDARY_ALBEDO_OUTPUT, rtOutput.m_secondaryAlbedo.view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_SECONDARY_BASE_REFLECTIVITY_OUTPUT, rtOutput.m_secondaryBaseReflectivity.view(Resources::AccessType::Write), nullptr);
-    // Only NRD reads the secondary motion vector, so it is bound only when the GBuffer writes it for NRD.
+    // The secondary motion vector is unbound when NRD will not read it,
+    // because the compacted GBuffer then puts the dense copy of PSR slot 1 in its memory.
     ctx->bindResourceView(GBUFFER_BINDING_SECONDARY_VIRTUAL_MVEC_OUTPUT,
       rtOutput.m_raytraceArgs.writeSecondaryDenoisingGuides
         ? rtOutput.m_secondaryVirtualMotionVector.view(Resources::AccessType::Write)
@@ -704,10 +728,16 @@ namespace dxvk {
     ctx->bindResourceView(GBUFFER_BINDING_REFLECTION_PSR_DATA_STORAGE_0, rtOutput.m_gbufferPSRData[0].view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_WORLD_POSITION_OUTPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Write), nullptr);
 
-    ctx->bindResourceView(GBUFFER_BINDING_REFLECTION_PSR_DATA_STORAGE_1, rtOutput.m_gbufferPSRData[1].view(Resources::AccessType::Write), nullptr);
+    ctx->bindResourceView(GBUFFER_BINDING_REFLECTION_PSR_DATA_STORAGE_1,
+      compactedGBuffer
+        ? rtOutput.m_gbufferPSRData1Dense.view(Resources::AccessType::Write)
+        : rtOutput.m_gbufferPSRData[1].view(Resources::AccessType::Write), nullptr);
 
     // Note: m_gbufferPSRData[1..2] are aliased with radiance textures that are used later as integrator outputs.
-    ctx->bindResourceView(GBUFFER_BINDING_REFLECTION_PSR_DATA_STORAGE_2, rtOutput.m_gbufferPSRData[2].view(Resources::AccessType::Write), nullptr);
+    ctx->bindResourceView(GBUFFER_BINDING_REFLECTION_PSR_DATA_STORAGE_2,
+      compactedGBuffer
+        ? rtOutput.m_gbufferPSRData2Dense.view(Resources::AccessType::Write)
+        : rtOutput.m_gbufferPSRData[2].view(Resources::AccessType::Write), nullptr);
     // The RTXDI reservoir buffer's scratch page, which is idle until RTXDI initial sampling.
     ctx->bindResourceBuffer(GBUFFER_BINDING_TRANSMISSION_PSR_DATA_STORAGE, rtOutput.m_transmissionPSRData.slice(Resources::AccessType::Write));
 
@@ -716,6 +746,25 @@ namespace dxvk {
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_DEPTH_DLSSRR_OUTPUT, rtOutput.m_primaryDepthDLSSRR.view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_NORMAL_DLSSRR_OUTPUT, rtOutput.m_primaryWorldShadingNormalDLSSRR.view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_SCREEN_SPACE_MOTION_DLSSRR_OUTPUT, rtOutput.m_primaryScreenSpaceMotionVectorDLSSRR.view, nullptr);
+
+    // With sparse rendering, the GBuffer also writes the flags densely for the passes that read them by pixel.
+    ctx->bindResourceView(GBUFFER_BINDING_SHARED_FLAGS_DENSE_OUTPUT,
+      compactedGBuffer
+        ? rtOutput.m_sharedFlagsDense.view(Resources::AccessType::Write)
+        : nullptr, nullptr);
+
+    // With sparse rendering, the GBuffer writes these dense guides at every pixel instead of the RR prepare pass.
+    ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_ALBEDO_DLSSRR_OUTPUT, rtOutput.m_primaryAlbedoDLSSRR.view, nullptr);
+    ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_SPECULAR_ALBEDO_DLSSRR_OUTPUT, rtOutput.m_primarySpecularAlbedoDLSSRR.view, nullptr);
+
+    ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_WORLD_POSITION_COMPACTED_OUTPUT,
+      compactedGBuffer
+        ? rtOutput.m_primaryWorldPositionWorldTriangleNormalCompacted.view(Resources::AccessType::Write)
+        : nullptr, nullptr);
+    ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_WORLD_SHADING_NORMAL_DENSE_OUTPUT,
+      compactedGBuffer
+        ? rtOutput.m_primaryWorldShadingNormalDense.view
+        : nullptr, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_DLSS_NR_CONTROL_MASK_OUTPUT, rtOutput.m_controlMask.view, nullptr);
 
     // Bind necessary resources for Neural Radiance Cache
@@ -749,10 +798,14 @@ namespace dxvk {
     // Keep NRC on the original inline PSR sampling path. NRC updates depend
     // on knowing whether the current GBuffer hit is the final integrated
     // surface, which PSR prepare defers to a later pass.
+    // The compacted GBuffer samples inline too, because PSR prepare reads the material back from the GBuffer,
+    // which inactive pixels do not store. Its first hits then take their decals before sampling.
+    // See geometryResolverResolvesDecalBeforePSR.
     const bool usePSRPrepare =
       psrEnabled &&
       !nrcEnabled &&
-      !rtOutput.m_raytraceArgs.enableRaytracedRenderTarget;
+      !rtOutput.m_raytraceArgs.enableRaytracedRenderTarget &&
+      rtOutput.m_raytraceArgs.sparseRenderingArgs.mode == SparseRenderingMode::Off;
     const uint32_t rayQueryFeatureVariant = selectGbufferRayQueryFeatureVariant(
       debugViewEnabled,
       rtOutput.m_raytraceArgs.enableObjectPicking,
@@ -774,6 +827,8 @@ namespace dxvk {
       }
     };
 
+    // Always launched over the screen grid,
+    // because every pixel is resolved and the compacted GBuffer only decides where each pixel stores its outputs.
     auto dispatchPass = [&]() {
       if (raytraceMode == RaytraceMode::RayQuery) {
         ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);

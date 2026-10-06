@@ -85,8 +85,35 @@ Texture2D<uint2> SharedSubsurfaceData;
 layout(rg32ui, binding = RTXDI_REUSE_BINDING_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT)
 Texture2D<uint2> SharedSubsurfaceDiffusionProfileData;
 
-layout(r16ui, binding = RTXDI_REUSE_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)
-Texture2D<uint16_t> ActiveLocalPixelCoords;
+layout(binding = RTXDI_REUSE_BINDING_COMPACTED_PIXEL_INDICES_INPUT)
+Texture2D<uint16_t> CompactedPixelIndices;
+#define RAB_HAS_COMPACTED_GBUFFER 1
+
+layout(binding = RTXDI_REUSE_BINDING_TILE_ACTIVE_COUNTS_INPUT)
+Texture2D<uint2> TileActiveCounts;
+
+layout(binding = RTXDI_REUSE_BINDING_ACTIVE_PIXEL_COORDS_INPUT)
+StructuredBuffer<uint> ActivePixelCoords;
+
+layout(binding = RTXDI_REUSE_BINDING_ACTIVE_PIXEL_COUNT_INPUT)
+StructuredBuffer<uint> ActivePixelCount;
+
+// These are written at every pixel, so spatial reuse can rebuild an inactive neighbor's surface from them.
+// See RAB_GetInactiveGBufferSurface.
+layout(rgba32f, binding = RTXDI_REUSE_BINDING_WORLD_POSITION_DENSE_INPUT)
+Texture2D<float4> PrimaryWorldPositionWorldTriangleNormalDense;
+
+layout(r16ui, binding = RTXDI_REUSE_BINDING_SHARED_FLAGS_DENSE_INPUT)
+Texture2D<uint16_t> SharedFlagsDense;
+
+layout(r32f, binding = RTXDI_REUSE_BINDING_LINEAR_VIEW_Z_INPUT)
+Texture2D<float> PrimaryLinearViewZ;
+
+layout(r32ui, binding = RTXDI_REUSE_BINDING_WORLD_SHADING_NORMAL_DENSE_INPUT)
+Texture2D<uint> PrimaryWorldShadingNormalDense;
+
+layout(binding = RTXDI_REUSE_BINDING_ALBEDO_DENSE_INPUT)
+Texture2D<float4> PrimaryAlbedoDLSSRR;
 
 // Inputs / Outputs
 

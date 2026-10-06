@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -154,8 +154,9 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
       threadIndex, PrimaryWorldPositionWorldTriangleNormal, PrimaryPositionError);
 
     // Deserialize the Surface Material Interaction
+    // Sparse rendering is off whenever ReSTIR GI runs, so the GBuffer is addressed by pixel coordinate.
     polymorphicSurfaceMaterialInteraction = polymorphicSurfaceMaterialInteractionReadFromGBuffer(
-      threadIndex, PrimaryWorldShadingNormal, PrimaryPerceptualRoughness, PrimaryAlbedo, PrimaryBaseReflectivity,
+      threadIndex, threadIndex, threadIndex, PrimaryWorldShadingNormal, PrimaryPerceptualRoughness, PrimaryAlbedo, PrimaryBaseReflectivity,
       SharedMaterialData0, SharedMaterialData1, SharedSurfaceIndex, SharedSubsurfaceData, SharedSubsurfaceDiffusionProfileData);
 
     spatialReservoir = RAB_LoadGIReservoir(threadIndex, ReSTIRGI_GetSpatialOutputPage());

@@ -38,6 +38,7 @@
 #include "rtx_texture_manager.h"
 #include "rtx_debug_view.h"
 #include "rtx_xess.h"
+#include "rtx_sparse_rendering.h"
 #include "rtx_restir_gi_rayquery.h"
 #include "rtx_ray_reconstruction.h"
 #include "rtx_rtxdi_rayquery.h"
@@ -431,7 +432,13 @@ namespace dxvk {
 
   // Whether the option-dependent parts of the downscaled allocation still match the options, which can change without a resize.
   bool Resources::areDownscaledResourcesCurrent() const {
-    return needsRtxdiGradientResources() == m_rtxdiGradientResourcesAllocated &&
+    const SparseRendering::CompactedStorageLayout compactedStorage =
+      device()->getCommon()->metaSparseRendering().calculateCompactedStorageLayout(m_downscaledExtent);
+
+    return compactedStorage.capacity == m_compactedStorageCapacity &&
+           compactedStorage.squaresPerRow == m_compactedStorageSquaresPerRow &&
+           needsDisocclusionMaskForRR(compactedStorage.capacity) == m_disocclusionMaskForRRAllocated &&
+           needsRtxdiGradientResources() == m_rtxdiGradientResourcesAllocated &&
            needsRtxdiIlluminanceResources() == m_rtxdiIlluminanceResourcesAllocated;
   }
 
@@ -451,6 +458,12 @@ namespace dxvk {
     }
 
     return needsRtxdiGradientResources() || DxvkRtxdiRayQuery::enableBestLightSampling();
+  }
+
+  // Ray Reconstruction reads the mask only when it is blurred.
+  // When it is not blurred, the compacted GBuffer leaves the mask out, and the surface index it would share stays compacted.
+  bool Resources::needsDisocclusionMaskForRR(const uint32_t compactedStorageCapacity) const {
+    return compactedStorageCapacity == 0 || DxvkRayReconstruction::enableDisocclusionMaskBlur();
   }
 
   bool Resources::needsNrdDenoisingGuideResources() const {
@@ -587,6 +600,9 @@ namespace dxvk {
 
     createDlfgResourceQueues(ctx);
 
+    // The per-frame resources use the recorded extent, so that they stay on the layout the rest of the compacted set uses.
+    const VkExtent3D compactedExtent = m_compactedStorageExtent;
+
     // A resource with no alias host is kept across frames; constructing it allocates and clears a new image.
     auto keepOrCreate = [&](AliasedResource& resource, const VkExtent3D& extent, const VkFormat format, const char* name) {
       if (resource.empty() || resource.imageInfo().extent != extent || resource.imageInfo().format != format) {
@@ -599,15 +615,17 @@ namespace dxvk {
     if (m_rtxdiGradientResourcesAllocated) {
       m_raytracingOutput.m_secondaryConeRadius = AliasedResource(m_raytracingOutput.getCurrentRtxdiConfidence(), ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "Secondary Cone Radius");
     } else {
-      keepOrCreate(m_raytracingOutput.m_secondaryConeRadius, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "Secondary Cone Radius");
+      keepOrCreate(m_raytracingOutput.m_secondaryConeRadius, compactedExtent, VK_FORMAT_R16_SFLOAT, "Secondary Cone Radius");
     }
     // Shares the RTXDI illuminance, unless it was never allocated.
-    if (m_rtxdiIlluminanceResourcesAllocated) {
+    // The compacted GBuffer addresses the surface PDF and the illuminance differently, so they are kept separate there.
+    if (m_rtxdiIlluminanceResourcesAllocated && !m_compactedGBufferResourcesAllocated) {
       m_raytracingOutput.m_sharedIntegrationSurfacePdf = AliasedResource(m_raytracingOutput.getCurrentRtxdiIlluminance(), ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "Shared Integration Surface PDF");
     } else {
-      keepOrCreate(m_raytracingOutput.m_sharedIntegrationSurfacePdf, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "Shared Integration Surface PDF");
+      keepOrCreate(m_raytracingOutput.m_sharedIntegrationSurfacePdf, compactedExtent, VK_FORMAT_R16_SFLOAT, "Shared Integration Surface PDF");
     }
     // Shares the confidence texture, which is idle by the time RR runs, unless it was never allocated.
+    // Its host must have the same format, because NGX reads the format of the image rather than of the view.
     if (m_rtxdiGradientResourcesAllocated) {
       m_raytracingOutput.m_rayReconstructionHitDistance = AliasedResource(m_raytracingOutput.getCurrentRtxdiConfidence(), ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "DLSS-RR Hit Distance");
     } else {
@@ -631,19 +649,21 @@ namespace dxvk {
       }
 
       if (RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::NeuralRadianceCache && RtxOptions::captureDebugImage() == false) {
-        m_raytracingOutput.m_indirectRadianceHitDistance = AliasedResource(m_raytracingOutput.m_primaryVirtualMotionVector, ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Indirect Radiance Hit Distance", true);
+        m_raytracingOutput.m_indirectRadianceHitDistance = AliasedResource(m_raytracingOutput.m_primaryVirtualMotionVector, ctx, compactedExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Indirect Radiance Hit Distance", true);
 
         // m_primaryRtxdiTemporalPosition and m_primaryVirtualWorldShadingNormalPerceptualRoughnessDenoising has different format, so they have different image views
         isConditionalAliasingsShareSameView = m_raytracingOutput.m_indirectRadianceHitDistance.sharesTheSameView(m_raytracingOutput.m_primaryVirtualMotionVector);
       } else {
         // Indirect Radiance HitT can't be aliased when using ReSTIR-GI and DLSS-RR is enabled, or debug view is enabled
-        m_raytracingOutput.m_indirectRadianceHitDistance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Indirect Radiance Hit Distance", true);
+        m_raytracingOutput.m_indirectRadianceHitDistance = AliasedResource(ctx, compactedExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Indirect Radiance Hit Distance", true);
       }
     } else {
       // Reset aliasing for m_primaryRtxdiTemporalPosition only when the RR setting is toggled between enabled and disabled
       if (cachedIsRayReconstructionEnabled != RtxOptions::isRayReconstructionEnabled() || m_raytracingOutput.m_primaryRtxdiTemporalPosition.empty()) {
         m_raytracingOutput.m_primaryRtxdiTemporalPosition = AliasedResource(m_raytracingOutput.m_primaryDepthDLSSRR, ctx, m_downscaledExtent, VK_FORMAT_R32_UINT, "primary rtxdi temporal position", true);
       }
+      // Both resources are dense, because sparse rendering requires Ray Reconstruction,
+      // so nothing in this branch is compacted.
       m_raytracingOutput.m_indirectRadianceHitDistance = AliasedResource(m_raytracingOutput.m_primaryWorldShadingNormalDLSSRR, ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Indirect Radiance Hit Distance", true);
 
       isConditionalAliasingsShareSameView = m_raytracingOutput.m_indirectRadianceHitDistance.sharesTheSameView(m_raytracingOutput.m_primaryWorldShadingNormalDLSSRR);
@@ -662,13 +682,13 @@ namespace dxvk {
     {
       if (sceneManager.isSssMaterialExist() || sceneManager.isThinOpaqueMaterialExist()) {
         if (!m_raytracingOutput.m_sharedSubsurfaceData.isValid() ||
-            m_raytracingOutput.m_sharedSubsurfaceData.image->info().extent != m_downscaledExtent) {
-          m_raytracingOutput.m_sharedSubsurfaceData = createImageResource(ctx, "primary subsurface material buffer", m_downscaledExtent, VK_FORMAT_R16G16_UINT);
+            m_raytracingOutput.m_sharedSubsurfaceData.image->info().extent != compactedExtent) {
+          m_raytracingOutput.m_sharedSubsurfaceData = createImageResource(ctx, "primary subsurface material buffer", compactedExtent, VK_FORMAT_R16G16_UINT);
         }
         if (!m_raytracingOutput.m_sharedSubsurfaceDiffusionProfileData.isValid() ||
-            m_raytracingOutput.m_sharedSubsurfaceDiffusionProfileData.image->info().extent != m_downscaledExtent) {
+            m_raytracingOutput.m_sharedSubsurfaceDiffusionProfileData.image->info().extent != compactedExtent) {
           // The single scattering is also stored in diffusion profile texture which is used in thin opaque. So we need to create this texture for thin opaque as well.
-          m_raytracingOutput.m_sharedSubsurfaceDiffusionProfileData = createImageResource(ctx, "primary subsurface material diffusion profile data buffer", m_downscaledExtent, VK_FORMAT_R32G32_UINT);
+          m_raytracingOutput.m_sharedSubsurfaceDiffusionProfileData = createImageResource(ctx, "primary subsurface material diffusion profile data buffer", compactedExtent, VK_FORMAT_R32G32_UINT);
         }
       } else {
         m_raytracingOutput.m_sharedSubsurfaceData.reset();
@@ -1226,6 +1246,21 @@ namespace dxvk {
   void Resources::createDownscaledResources(Rc<DxvkContext>& ctx) {
     Logger::debug("Render resolution changed, recreating rendering resources");
 
+    // Compacted resources are allocated to the active-pixel count rather than the render resolution.
+    const SparseRendering::CompactedStorageLayout compactedStorage =
+      device()->getCommon()->metaSparseRendering().calculateCompactedStorageLayout(m_downscaledExtent);
+    const VkExtent3D compactedExtent = compactedStorage.extent;
+    m_compactedStorageCapacity = compactedStorage.capacity;
+    m_compactedStorageSquaresPerRow = compactedStorage.squaresPerRow;
+    m_compactedStorageExtent = compactedExtent;
+
+    // This extent is for resources that could be compacted but are allocated dense,
+    // so that they can alias a resource that is already dense.
+    // Sharing an existing allocation beats a smaller allocation of their own.
+    // These resources are still only ever addressed at the compacted slot,
+    // so the dense extent has to contain the compacted layout.
+    const VkExtent3D compactableButAtDownscaledExtentToAlias = m_downscaledExtent;
+
     // Explicit constant to make it clear where cross format aliasing occurs. 
     // Changing it to false requires further changes below.
     const bool allowCompatibleFormatAliasing = true;
@@ -1235,37 +1270,69 @@ namespace dxvk {
 #endif
 
     // GBuffer (Primary/Secondary Surfaces)
-    m_raytracingOutput.m_sharedFlags = createImageResource(ctx, "shared flags", m_downscaledExtent, VK_FORMAT_R16_UINT);
+    m_raytracingOutput.m_sharedFlags = createImageResource(ctx, "shared flags", compactedExtent, VK_FORMAT_R16_UINT);
+
+    // The compacted GBuffer needs a dense copy of the flags, because inactive pixels have no compacted slot.
+    m_compactedGBufferResourcesAllocated = m_compactedStorageCapacity != 0;
+    if (m_compactedGBufferResourcesAllocated) {
+      m_raytracingOutput.m_sharedFlagsDense = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16_UINT, "shared flags dense", allowCompatibleFormatAliasing);
+    } else {
+      m_raytracingOutput.m_sharedFlagsDense.reset();
+    }
     // Note: Could be B10G11R11_UFLOAT_PACK32 potentially if the precision of that is acceptable for the shared radiance.
     // Otherwise we split the channels like this to reduce memory usage (as no 3 component 16 bit float formats are very well supported),
     // this is fine because we only read/write to this texture in a coherent way so bringing in 2x many cachelines is not a problem (versus
     // random access reads where they would be a problem).
+    // Addressed by pixel in every mode, so emissives refresh at every pixel each frame.
     m_raytracingOutput.m_sharedRadianceRG = createImageResource(ctx, "shared radiance RG", m_downscaledExtent, VK_FORMAT_R16G16_SFLOAT);
     m_raytracingOutput.m_sharedRadianceB = createImageResource(ctx, "shared radiance B", m_downscaledExtent, VK_FORMAT_R16_SFLOAT);
-    m_raytracingOutput.m_sharedMaterialData0 = createImageResource(ctx, "shared material data 0", m_downscaledExtent, VK_FORMAT_R32_UINT);
-    m_raytracingOutput.m_sharedMaterialData1 = createImageResource(ctx, "shared material data 1", m_downscaledExtent, VK_FORMAT_R32_UINT);
+    m_raytracingOutput.m_sharedMaterialData0 = createImageResource(ctx, "shared material data 0", compactedExtent, VK_FORMAT_R32_UINT);
+    m_raytracingOutput.m_sharedMaterialData1 = createImageResource(ctx, "shared material data 1", compactedExtent, VK_FORMAT_R32_UINT);
     // Note: This value is isolated rather than being packed with other data (such as the alpha channel combined with the Shared Radiance RGB) so that
     // reads/writes to it do not bring in extra unneeded data into the cachelines (as we don't need that shared radiance information except in compositing).
-    m_raytracingOutput.m_sharedMediumMaterialIndex = createImageResource(ctx, "shared medium material index", m_downscaledExtent, VK_FORMAT_R32_UINT);
+    m_raytracingOutput.m_sharedMediumMaterialIndex = createImageResource(ctx, "shared medium material index", compactedExtent, VK_FORMAT_R32_UINT);
     m_raytracingOutput.m_sharedBiasCurrentColorMask = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R8_UNORM, "Shared Attenuation", allowCompatibleFormatAliasing);
-    m_raytracingOutput.m_sharedSurfaceIndex = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R32_UINT, "shared surface index", allowCompatibleFormatAliasing);
+    // The shared surface index is dense only while it hosts the disocclusion mask.
+    m_disocclusionMaskForRRAllocated = needsDisocclusionMaskForRR(m_compactedStorageCapacity);
+    const VkExtent3D sharedSurfaceIndexExtent = m_disocclusionMaskForRRAllocated
+      ? compactableButAtDownscaledExtentToAlias
+      : compactedExtent;
+    m_raytracingOutput.m_sharedSurfaceIndex = AliasedResource(ctx, sharedSurfaceIndexExtent, VK_FORMAT_R32_UINT, "shared surface index", allowCompatibleFormatAliasing);
 
-    m_raytracingOutput.m_primaryAttenuation = createImageResource(ctx, "primary attenuation", m_downscaledExtent, VK_FORMAT_R32_UINT);
-    m_raytracingOutput.m_primaryWorldShadingNormal = createImageResource(ctx, "primary world shading normal", m_downscaledExtent, VK_FORMAT_R32_UINT);
+    m_raytracingOutput.m_primaryAttenuation = createImageResource(ctx, "primary attenuation", compactedExtent, VK_FORMAT_R32_UINT);
+    m_raytracingOutput.m_primaryWorldShadingNormal = createImageResource(ctx, "primary world shading normal", compactedExtent, VK_FORMAT_R32_UINT);
+    // RTXDI's spatial reuse and the Remix API read the shading normal at inactive pixels, which have no compacted slot.
+    if (m_compactedGBufferResourcesAllocated) {
+      m_raytracingOutput.m_primaryWorldShadingNormalDense = createImageResource(ctx, "primary world shading normal dense", m_downscaledExtent, VK_FORMAT_R32_UINT);
+    } else {
+      m_raytracingOutput.m_primaryWorldShadingNormalDense.reset();
+    }
     m_raytracingOutput.m_primaryPerceptualRoughness = createImageResource(ctx, "primary perceptual roughness", m_downscaledExtent, VK_FORMAT_R8_UNORM);
     m_raytracingOutput.m_primaryLinearViewZ = createImageResource(ctx, "primary linear view Z", m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
-    m_raytracingOutput.m_primaryAlbedo = createImageResource(ctx, "primary albedo", m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32);
-    m_raytracingOutput.m_primaryBaseReflectivity = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, "Primary Base Reflectivity");
-    m_raytracingOutput.m_primarySpecularAlbedo = AliasedResource(m_raytracingOutput.m_primaryBaseReflectivity, ctx, m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, "Primary Specular Albedo");
-    m_raytracingOutput.m_primaryVirtualMotionVector = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "primary virtual motion vector", allowCompatibleFormatAliasing);
-    m_raytracingOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughness = createImageResource(ctx, "primary virtual world shading normal perceptual roughness", m_downscaledExtent, VK_FORMAT_R16G16B16A16_UNORM);
-    m_raytracingOutput.m_primaryHitDistance = createImageResource(ctx, "primary hit distance", m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
-    m_raytracingOutput.m_primaryViewDirection = createImageResource(ctx, "primary view direction", m_downscaledExtent, VK_FORMAT_R16G16_SNORM);
-    m_raytracingOutput.m_primaryConeRadius = createImageResource(ctx, "primary cone radius", m_downscaledExtent, VK_FORMAT_R16_SFLOAT);
+    m_raytracingOutput.m_primaryAlbedo = createImageResource(ctx, "primary albedo", compactedExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32);
+    m_raytracingOutput.m_primaryBaseReflectivity = AliasedResource(ctx, compactedExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, "Primary Base Reflectivity");
+    m_raytracingOutput.m_primarySpecularAlbedo = AliasedResource(m_raytracingOutput.m_primaryBaseReflectivity, ctx, compactedExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, "Primary Specular Albedo");
+    if (m_compactedGBufferResourcesAllocated) {
+      m_raytracingOutput.m_primaryAlbedoDLSSRR = createImageResource(ctx, "primary albedo dlssrr", m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32);
+      m_raytracingOutput.m_primarySpecularAlbedoDLSSRR = createImageResource(ctx, "primary specular albedo dlssrr", m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32);
+    } else {
+      m_raytracingOutput.m_primaryAlbedoDLSSRR.reset();
+      m_raytracingOutput.m_primarySpecularAlbedoDLSSRR.reset();
+    }
+    m_raytracingOutput.m_primaryVirtualMotionVector = AliasedResource(ctx, compactedExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "primary virtual motion vector", allowCompatibleFormatAliasing);
+    m_raytracingOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughness = createImageResource(ctx, "primary virtual world shading normal perceptual roughness", compactedExtent, VK_FORMAT_R16G16B16A16_UNORM);
+    m_raytracingOutput.m_primaryHitDistance = createImageResource(ctx, "primary hit distance", compactedExtent, VK_FORMAT_R32_SFLOAT);
+    m_raytracingOutput.m_primaryViewDirection = createImageResource(ctx, "primary view direction", compactedExtent, VK_FORMAT_R16G16_SNORM);
+    m_raytracingOutput.m_primaryConeRadius = createImageResource(ctx, "primary cone radius", compactedExtent, VK_FORMAT_R16_SFLOAT);
 
     m_raytracingOutput.m_primaryWorldPositionWorldTriangleNormal[0] = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT, "primary world position world triangle normal 0");
     m_raytracingOutput.m_primaryWorldPositionWorldTriangleNormal[1] = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT, "primary world position world triangle normal 1");
-    m_raytracingOutput.m_primaryPositionError = createImageResource(ctx, "primary position error", m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
+    if (m_compactedGBufferResourcesAllocated) {
+      m_raytracingOutput.m_primaryWorldPositionWorldTriangleNormalCompacted = AliasedResource(ctx, compactedExtent, VK_FORMAT_R32G32B32A32_SFLOAT, "primary world position world triangle normal compacted");
+    } else {
+      m_raytracingOutput.m_primaryWorldPositionWorldTriangleNormalCompacted.reset();
+    }
+    m_raytracingOutput.m_primaryPositionError = createImageResource(ctx, "primary position error", compactedExtent, VK_FORMAT_R32_SFLOAT);
     
     m_rtxdiGradientResourcesAllocated = needsRtxdiGradientResources();
     m_rtxdiIlluminanceResourcesAllocated = needsRtxdiIlluminanceResources();
@@ -1291,7 +1358,11 @@ namespace dxvk {
     m_raytracingOutput.m_primarySurfaceFlags = createImageResource(ctx, "primary surface flags", m_downscaledExtent, VK_FORMAT_R8_UINT);
     m_raytracingOutput.m_primaryDisocclusionThresholdMix = createImageResource(ctx, "primary disocclusion threshold mix", m_downscaledExtent, VK_FORMAT_R16_SFLOAT);
     // Written at Ray Reconstruction, long after the surface index it shares is last read.
-    m_raytracingOutput.m_primaryDisocclusionMaskForRR = AliasedResource(m_raytracingOutput.m_sharedSurfaceIndex, ctx, m_downscaledExtent, VK_FORMAT_R32_SFLOAT, "primary disocclusion mask for ray reconstruction");
+    if (m_disocclusionMaskForRRAllocated) {
+      m_raytracingOutput.m_primaryDisocclusionMaskForRR = AliasedResource(m_raytracingOutput.m_sharedSurfaceIndex, ctx, m_downscaledExtent, VK_FORMAT_R32_SFLOAT, "primary disocclusion mask for ray reconstruction");
+    } else {
+      m_raytracingOutput.m_primaryDisocclusionMaskForRR.reset();
+    }
 
     if (m_raytracingOutput.m_primaryObjectPicking.isValid()) {
       m_raytracingOutput.m_primaryObjectPicking = createImageResource(ctx, "primary object picking", m_downscaledExtent, VK_FORMAT_R32_UINT);
@@ -1302,50 +1373,65 @@ namespace dxvk {
     m_raytracingOutput.m_primaryWorldShadingNormalDLSSRR = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Primary Shading Normal DLSSRR", allowCompatibleFormatAliasing);
     m_raytracingOutput.m_primaryScreenSpaceMotionVectorDLSSRR = createImageResource(ctx, "Primary Screen Space Motion Vector DLSSRR", m_downscaledExtent, VK_FORMAT_R16G16_SFLOAT);
 
-    m_raytracingOutput.m_secondaryAttenuation = createImageResource(ctx, "secondary attenuation", m_downscaledExtent, VK_FORMAT_R32_UINT);
-    m_raytracingOutput.m_secondaryWorldShadingNormal = createImageResource(ctx, "secondary world shading normal", m_downscaledExtent, VK_FORMAT_R32_UINT);
-    m_raytracingOutput.m_secondaryPerceptualRoughness = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R8_UNORM, "Secondary Perceptual Roughness", allowCompatibleFormatAliasing);
-    m_raytracingOutput.m_secondaryLinearViewZ = createImageResource(ctx, "secondary linear view z", m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
-    m_raytracingOutput.m_secondaryAlbedo = createImageResource(ctx, "secondary albedo", m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32);
-    m_raytracingOutput.m_secondaryBaseReflectivity = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, "Secondary Base Reflectivity");
+    m_raytracingOutput.m_secondaryAttenuation = createImageResource(ctx, "secondary attenuation", compactedExtent, VK_FORMAT_R32_UINT);
+    m_raytracingOutput.m_secondaryWorldShadingNormal = createImageResource(ctx, "secondary world shading normal", compactedExtent, VK_FORMAT_R32_UINT);
+    m_raytracingOutput.m_secondaryPerceptualRoughness = AliasedResource(ctx, compactableButAtDownscaledExtentToAlias, VK_FORMAT_R8_UNORM, "Secondary Perceptual Roughness", allowCompatibleFormatAliasing);
+    m_raytracingOutput.m_secondaryLinearViewZ = createImageResource(ctx, "secondary linear view z", compactedExtent, VK_FORMAT_R32_SFLOAT);
+    m_raytracingOutput.m_secondaryAlbedo = createImageResource(ctx, "secondary albedo", compactedExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32);
+    m_raytracingOutput.m_secondaryBaseReflectivity = AliasedResource(ctx, compactedExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, "Secondary Base Reflectivity");
     m_raytracingOutput.m_secondarySpecularAlbedo = AliasedResource(
-    m_raytracingOutput.m_secondaryBaseReflectivity, ctx, m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, "Secondary Specular Albedo");
-    m_raytracingOutput.m_secondaryVirtualMotionVector = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Secondary Virtual Motion Vector");
-    m_raytracingOutput.m_secondaryVirtualWorldShadingNormalPerceptualRoughness = createImageResource(ctx, "secondary virtual world shading normal perceptual roughness", m_downscaledExtent, VK_FORMAT_R16G16B16A16_UNORM);
+    m_raytracingOutput.m_secondaryBaseReflectivity, ctx, compactedExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, "Secondary Specular Albedo");
+    // Allocated even without NRD,
+    // because it also hosts the alpha blend radiance and, under the compacted GBuffer, the dense copy of PSR slot 1.
+    m_raytracingOutput.m_secondaryVirtualMotionVector = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Secondary Virtual Motion Vector", allowCompatibleFormatAliasing);
+    m_raytracingOutput.m_secondaryVirtualWorldShadingNormalPerceptualRoughness = createImageResource(ctx, "secondary virtual world shading normal perceptual roughness", compactedExtent, VK_FORMAT_R16G16B16A16_UNORM);
     m_nrdDenoisingGuideResourcesAllocated = needsNrdDenoisingGuideResources();
     if (m_nrdDenoisingGuideResourcesAllocated) {
       m_raytracingOutput.m_secondaryVirtualWorldShadingNormalPerceptualRoughnessDenoising = createImageResource(ctx, "secondary virtual world shading normal perceptual roughness denoising", m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32);
     } else {
       m_raytracingOutput.m_secondaryVirtualWorldShadingNormalPerceptualRoughnessDenoising.reset();
     }
-    m_raytracingOutput.m_secondaryHitDistance = createImageResource(ctx, "secondary hit distance", m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
-    m_raytracingOutput.m_secondaryViewDirection = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16_SNORM, "Secondary View Direction", allowCompatibleFormatAliasing);
-    m_raytracingOutput.m_secondaryWorldPositionWorldTriangleNormal = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT, "Secondary World Position World Triangle Normal", allowCompatibleFormatAliasing);
-    m_raytracingOutput.m_secondaryPositionError = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R32_SFLOAT, "Secondary Position Error", allowCompatibleFormatAliasing);
+    m_raytracingOutput.m_secondaryHitDistance = createImageResource(ctx, "secondary hit distance", compactedExtent, VK_FORMAT_R32_SFLOAT);
+    m_raytracingOutput.m_secondaryViewDirection = AliasedResource(ctx, compactedExtent, VK_FORMAT_R16G16_SNORM, "Secondary View Direction", allowCompatibleFormatAliasing);
+    m_raytracingOutput.m_secondaryWorldPositionWorldTriangleNormal = AliasedResource(ctx, compactedExtent, VK_FORMAT_R32G32B32A32_SFLOAT, "Secondary World Position World Triangle Normal", allowCompatibleFormatAliasing);
+    m_raytracingOutput.m_secondaryPositionError = AliasedResource(ctx, compactedExtent, VK_FORMAT_R32_SFLOAT, "Secondary Position Error", allowCompatibleFormatAliasing);
     m_raytracingOutput.m_alphaBlendGBuffer = createImageResource(ctx, "alpha blend gbuffer", m_downscaledExtent, VK_FORMAT_R32G32B32A32_UINT);
     m_raytracingOutput.m_alphaBlendRadiance = AliasedResource(m_raytracingOutput.m_secondaryVirtualMotionVector, ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Alpha Blend Radiance");
+    // Only NRD reads the secondary motion vector and sparse rendering rules NRD out,
+    // so its memory is free from frame start until composite writes the alpha blend radiance.
+    if (m_compactedGBufferResourcesAllocated) {
+      m_raytracingOutput.m_gbufferPSRData1Dense = AliasedResource(m_raytracingOutput.m_secondaryVirtualMotionVector, ctx, m_downscaledExtent, VK_FORMAT_R32G32_UINT, "GBuffer PSR Data 1 dense");
+    } else {
+      m_raytracingOutput.m_gbufferPSRData1Dense.reset();
+    }
 
     // Denoiser input and output (Primary/Secondary Surfaces with Direct/Indirect or Combined Radiance)
     // Note: A single texture is aliased for both the noisy output from the integration pass and the denoised result from NRD.
-    m_raytracingOutput.m_primaryDirectDiffuseRadiance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Primary Direct Diffuse Radiance", allowCompatibleFormatAliasing);
-    m_raytracingOutput.m_primaryDirectSpecularRadiance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Primary Direct Specular Radiance", allowCompatibleFormatAliasing);
-    m_raytracingOutput.m_primaryIndirectDiffuseRadiance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Primary Indirect Diffuse Radiance Hit Distance", allowCompatibleFormatAliasing);
-    m_raytracingOutput.m_primaryIndirectSpecularRadiance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Primary Indirect Specular Radiance", allowCompatibleFormatAliasing);
-    m_raytracingOutput.m_secondaryCombinedDiffuseRadiance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Secondary Combined Diffuse Radiance", allowCompatibleFormatAliasing);
-    m_raytracingOutput.m_secondaryCombinedSpecularRadiance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Secondary Combined Specular Radiance", allowCompatibleFormatAliasing);
+    m_raytracingOutput.m_primaryDirectDiffuseRadiance = AliasedResource(ctx, compactedExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Primary Direct Diffuse Radiance", allowCompatibleFormatAliasing);
+    m_raytracingOutput.m_primaryDirectSpecularRadiance = AliasedResource(ctx, compactedExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Primary Direct Specular Radiance", allowCompatibleFormatAliasing);
+    m_raytracingOutput.m_primaryIndirectDiffuseRadiance = AliasedResource(ctx, compactedExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Primary Indirect Diffuse Radiance Hit Distance", allowCompatibleFormatAliasing);
+    m_raytracingOutput.m_primaryIndirectSpecularRadiance = AliasedResource(ctx, compactedExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Primary Indirect Specular Radiance", allowCompatibleFormatAliasing);
+    m_raytracingOutput.m_secondaryCombinedDiffuseRadiance = AliasedResource(ctx, compactedExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Secondary Combined Diffuse Radiance", allowCompatibleFormatAliasing);
+    m_raytracingOutput.m_secondaryCombinedSpecularRadiance = AliasedResource(ctx, compactedExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Secondary Combined Specular Radiance", allowCompatibleFormatAliasing);
 
-    m_raytracingOutput.m_gbufferPSRData[1] = AliasedResource(m_raytracingOutput.m_primaryIndirectDiffuseRadiance, ctx, m_downscaledExtent, VK_FORMAT_R32G32_UINT, "GBuffer PSR Data 1", allowCompatibleFormatAliasing);
-    m_raytracingOutput.m_gbufferPSRData[2] = AliasedResource(m_raytracingOutput.m_primaryDirectDiffuseRadiance, ctx, m_downscaledExtent, VK_FORMAT_R32G32_UINT, "GBuffer PSR Data 2");
+    m_raytracingOutput.m_gbufferPSRData[1] = AliasedResource(m_raytracingOutput.m_primaryIndirectDiffuseRadiance, ctx, compactedExtent, VK_FORMAT_R32G32_UINT, "GBuffer PSR Data 1", allowCompatibleFormatAliasing);
+    m_raytracingOutput.m_gbufferPSRData[2] = AliasedResource(m_raytracingOutput.m_primaryDirectDiffuseRadiance, ctx, compactedExtent, VK_FORMAT_R32G32_UINT, "GBuffer PSR Data 2");
 
-    m_raytracingOutput.m_indirectRayOriginDirection = AliasedResource(m_raytracingOutput.m_secondaryWorldPositionWorldTriangleNormal, ctx, m_downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT, "Indirect Ray Origin Direction");
-    m_raytracingOutput.m_indirectThroughputConeRadius = AliasedResource(m_raytracingOutput.m_primaryIndirectDiffuseRadiance, ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Indirect Throughput Cone Radius", allowCompatibleFormatAliasing);
-    m_raytracingOutput.m_indirectFirstSampledLobeData = AliasedResource(m_raytracingOutput.m_secondaryPositionError, ctx, m_downscaledExtent, VK_FORMAT_R32_UINT, "Indirect First Sampled Lobe Data");
-    m_raytracingOutput.m_indirectFirstHitPerceptualRoughness = AliasedResource(m_raytracingOutput.m_secondaryPerceptualRoughness, ctx, m_downscaledExtent, VK_FORMAT_R8_UNORM, "Indirect First Hit Perceptual Roughness");
-    m_raytracingOutput.m_bsdfFactor = createImageResource(ctx, "bsdf factor", m_downscaledExtent, VK_FORMAT_R16G16_SFLOAT);
+    m_raytracingOutput.m_indirectRayOriginDirection = AliasedResource(m_raytracingOutput.m_secondaryWorldPositionWorldTriangleNormal, ctx, compactedExtent, VK_FORMAT_R32G32B32A32_SFLOAT, "Indirect Ray Origin Direction");
+    m_raytracingOutput.m_indirectThroughputConeRadius = AliasedResource(m_raytracingOutput.m_primaryIndirectDiffuseRadiance, ctx, compactedExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Indirect Throughput Cone Radius", allowCompatibleFormatAliasing);
+    m_raytracingOutput.m_indirectFirstSampledLobeData = AliasedResource(m_raytracingOutput.m_secondaryPositionError, ctx, compactedExtent, VK_FORMAT_R32_UINT, "Indirect First Sampled Lobe Data");
+    m_raytracingOutput.m_indirectFirstHitPerceptualRoughness = AliasedResource(m_raytracingOutput.m_secondaryPerceptualRoughness, ctx, compactableButAtDownscaledExtentToAlias, VK_FORMAT_R8_UNORM, "Indirect First Hit Perceptual Roughness");
+    m_raytracingOutput.m_bsdfFactor = createImageResource(ctx, "bsdf factor", compactedExtent, VK_FORMAT_R16G16_SFLOAT);
 
     // Final Output
     m_raytracingOutput.m_compositeOutput = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Composite Output", allowCompatibleFormatAliasing);
     m_raytracingOutput.m_compositeOutputExtent = m_downscaledExtent;
+    // The PSR passes last read the dense copy of PSR slot 2 long before composite writes the composite output.
+    if (m_compactedGBufferResourcesAllocated) {
+      m_raytracingOutput.m_gbufferPSRData2Dense = AliasedResource(m_raytracingOutput.m_compositeOutput, ctx, m_downscaledExtent, VK_FORMAT_R32G32_UINT, "GBuffer PSR Data 2 dense");
+    } else {
+      m_raytracingOutput.m_gbufferPSRData2Dense.reset();
+    }
 
     // RTXDI Data
     m_raytracingOutput.m_gbufferLast = createImageResource(ctx, "rtxdi gbuffer last", m_downscaledExtent, VK_FORMAT_R32G32_SFLOAT);
@@ -1360,7 +1446,11 @@ namespace dxvk {
 
     // RTXDI Gradients
     const VkExtent3D rtxDiGradientExtents = { (m_downscaledExtent.width + RTXDI_GRAD_FACTOR - 1) / RTXDI_GRAD_FACTOR, (m_downscaledExtent.height + RTXDI_GRAD_FACTOR - 1) / RTXDI_GRAD_FACTOR, 1 };
-    m_raytracingOutput.m_rtxdiGradients = createImageResource(ctx, "rtxdi gradients", rtxDiGradientExtents, VK_FORMAT_R16G16_SFLOAT, 2);
+    if (m_rtxdiGradientResourcesAllocated) {
+      m_raytracingOutput.m_rtxdiGradients = createImageResource(ctx, "rtxdi gradients", rtxDiGradientExtents, VK_FORMAT_R16G16_SFLOAT, 2);
+    } else {
+      m_raytracingOutput.m_rtxdiGradients.reset();
+    }
 
     // RTXDI Best Lights - using the same downscaling factor as Gradients
     m_raytracingOutput.m_rtxdiBestLights = AliasedResource(ctx, rtxDiGradientExtents, VK_FORMAT_R16G16_UINT, "RTXDI Best Lights");
@@ -1391,10 +1481,10 @@ namespace dxvk {
     m_raytracingOutput.m_neeCacheTask = m_device->createBuffer(neeCacheInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "NRR Cache Task Buffer");
     neeCacheInfo.size = cellCount * NEE_CACHE_SAMPLES * sizeof(NeeCache_PackedSample);
     m_raytracingOutput.m_neeCacheSample = m_device->createBuffer(neeCacheInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "NEE Cache Sample Buffer");
-    m_raytracingOutput.m_neeCacheThreadTask = createImageResource(ctx, "radiance cache thread task", m_downscaledExtent, VK_FORMAT_R32G32_UINT);
+    m_raytracingOutput.m_neeCacheThreadTask = createImageResource(ctx, "radiance cache thread task", compactedExtent, VK_FORMAT_R32G32_UINT);
 
     // Displacement
-    m_raytracingOutput.m_sharedTextureCoord = createImageResource(ctx, "displacement texture coordinate", m_downscaledExtent, VK_FORMAT_R32G32_SFLOAT);
+    m_raytracingOutput.m_sharedTextureCoord = createImageResource(ctx, "displacement texture coordinate", compactedExtent, VK_FORMAT_R32G32_SFLOAT);
 
     // Post Effect motion blur prefilter intermediate textures
     m_raytracingOutput.m_primarySurfaceFlagsIntermediateTexture1 = AliasedResource(m_raytracingOutput.m_secondaryPerceptualRoughness, ctx, m_downscaledExtent, VK_FORMAT_R8_UINT, "Primary Surface Flags Intermediate Texture 1");

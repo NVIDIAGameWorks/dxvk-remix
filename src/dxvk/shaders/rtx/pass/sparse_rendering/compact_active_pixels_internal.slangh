@@ -26,35 +26,9 @@
 
 #include "rtx/pass/sparse_rendering/compact_active_pixels.slangh"
 
-#if COMPACT_ACTIVE_PIXELS_TILE_SIZE_X > 256 || COMPACT_ACTIVE_PIXELS_TILE_SIZE_Y > 128
-  #error "COMPACT_ACTIVE_PIXELS_TILE_SIZE_X must be <= 256 and COMPACT_ACTIVE_PIXELS_TILE_SIZE_Y must be <= 128 to fit in uint8_t local pixel coords with a high bit active value sentinel."
-#endif
-
 #if (COMPACT_ACTIVE_PIXELS_TILE_SIZE % COMPACT_ACTIVE_PIXELS_GROUP_SIZE) != 0
   #error "COMPACT_ACTIVE_PIXELS_TILE_SIZE must be an exact multiple of COMPACT_ACTIVE_PIXELS_GROUP_SIZE."
 #endif
-
-// Decode a Morton (Z-order) code into (x, y) coordinates.
-// x occupies even bits (0, 2, 4, ...), y occupies odd bits (1, 3, 5, ...).
-uint2 mortonDecode(uint code)
-{
-  uint x = code;
-  uint y = code >> 1;
-
-  x &= 0x55555555u;
-  x = (x | (x >> 1)) & 0x33333333u;
-  x = (x | (x >> 2)) & 0x0F0F0F0Fu;
-  x = (x | (x >> 4)) & 0x00FF00FFu;
-  x = (x | (x >> 8)) & 0x0000FFFFu;
-
-  y &= 0x55555555u;
-  y = (y | (y >> 1)) & 0x33333333u;
-  y = (y | (y >> 2)) & 0x0F0F0F0Fu;
-  y = (y | (y >> 4)) & 0x00FF00FFu;
-  y = (y | (y >> 8)) & 0x0000FFFFu;
-
-  return uint2(x, y);
-}
 
 // Map a compacted linear index to 2D tile-local coordinates using Morton (Z-order) curve.
 // Handles non-square tiles by splitting into square sub-tiles along the wider dimension.
@@ -79,10 +53,16 @@ uint2 mortonIndexToTileCoord(uint index) {
   return coord;
 }
 
-uint16_t packLocalPixelCoordinate(uint2 localPixelCoordinate, bool isActive)
+// The low byte holds x and the high byte holds y. A pixel's activity comes from the tile's active count.
+uint16_t packLocalPixelCoordinate(uint2 localPixelCoordinate)
 {
   return uint16_t(
     (localPixelCoordinate.x & 0xFF) |
-    ((localPixelCoordinate.y & 0x7F) << 8) |
-    (isActive ? kPackedLocalPixelActiveFlag : 0));
+    ((localPixelCoordinate.y & 0xFF) << 8));
+}
+
+// A list entry holds only the pixel coordinate, because its list position is the global compacted index.
+uint packActivePixelCoordinate(uint2 pixelCoordinate)
+{
+  return (pixelCoordinate.x & 0xFFFF) | ((pixelCoordinate.y & 0xFFFF) << 16);
 }

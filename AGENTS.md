@@ -44,7 +44,7 @@ Full guide: `documentation/CONTRIBUTING-style-guide.md`
   - Test an integer flag by referencing the variable on its own, `if (flag)`, not `if (flag != 0)`. Applies to C++ and Slang, including `uint` flags in constant buffers. Bit tests like `(flags & kSomeBit) != 0` are unaffected.
   - Put subjects first. Good: `if (pData == nullptr)`, Bad: `if (nullptr == pData)`.
   - Break long or complex ternaries after the condition, with `? A` and `: B` on the two following lines, each indented one level. Keep short ones on one line.
-- **Includes**: Standard library first, then third-party, then local. Separate groups with blank lines.
+- **Includes**: Place them at the start of the file, after the copyright header, never partway through the code. Standard library first, then third-party, then local. Separate groups with blank lines.
 - **Memory**: Prefer smart pointers (`std::unique_ptr`, `std::shared_ptr`). Use `Rc<T>` for GPU resources.
 - **Profiling**: Use `ScopedCpuProfileZone()` / `ScopedGpuProfileZone(ctx, "name")` for performance-critical code.
 - **Comments**:

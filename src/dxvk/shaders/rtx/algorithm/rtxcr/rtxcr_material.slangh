@@ -95,6 +95,7 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
   const Ray viewRay,
   const uint primarySurfaceIndex,
   ivec2 pixelCoordinate,
+  ivec2 compactedCoordinate,
   Texture2D<uint> worldShadingNormal,
   inout RNG randomState)
 {
@@ -220,7 +221,7 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
       sssLightSample.position, rayMask,
       sampledTransportPortalIndex, geometryFlags.portalSpace, geometryFlags.pomOpaqueSurfaceEncountered,
       minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, geometryFlags.isViewModel, false,
-      primarySurfaceIndex, SharedTextureCoord[pixelCoordinate],
+      primarySurfaceIndex, SharedTextureCoord[compactedCoordinate],
       false,
       opaqueSurfaceMaterialInteraction.shadingNormal);
 
@@ -262,7 +263,7 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
     subsurfaceMaterialData, subsurfaceInteraction,
     cb.sssTransmissionBsdfSampleCount,
     cb.sssTransmissionSingleScatteringSampleCount,
-    pixelCoordinate, randomState) : 0.0f.rrr;
+    compactedCoordinate, randomState) : 0.0f.rrr;
 
   SssDiffusionProfileResult sssDiffusionProfileResult;
   sssDiffusionProfileResult.scatteringWeight = sssScatteringWeight / (float)(MAX_SSS_SAMPLE_COUNT) + singleScatteringTransmission;
@@ -284,7 +285,7 @@ float3 evalSingleScatteringTransmission(
   RTXCR_SubsurfaceInteraction subsurfaceInteraction,
   const int bsdfSampleCount,
   const int perBsdfScatteringSampleCount,
-  ivec2 pixelCoordinate,
+  ivec2 compactedCoordinate,
   inout RNG randomState)
 {
 
@@ -350,7 +351,7 @@ float3 evalSingleScatteringTransmission(
         transmissionLightSample.position, rayMask,
         sampledTransportPortalIndex, geometryFlags.portalSpace, geometryFlags.pomOpaqueSurfaceEncountered,
         minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, geometryFlags.isViewModel, false,
-        primarySurfaceIndex, SharedTextureCoord[pixelCoordinate],
+        primarySurfaceIndex, SharedTextureCoord[compactedCoordinate],
         false,
         opaqueSurfaceMaterialInteraction.shadingNormal);
 
@@ -447,7 +448,7 @@ float3 evalSingleScatteringTransmission(
         singleScatteringLightSample.position, rayMask,
         sampledTransportPortalIndex, geometryFlags.portalSpace, geometryFlags.pomOpaqueSurfaceEncountered,
         minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, geometryFlags.isViewModel, false,
-        primarySurfaceIndex, SharedTextureCoord[pixelCoordinate],
+        primarySurfaceIndex, SharedTextureCoord[compactedCoordinate],
         false,
         opaqueSurfaceMaterialInteraction.shadingNormal);
 

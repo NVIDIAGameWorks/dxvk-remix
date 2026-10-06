@@ -35,6 +35,7 @@
 #include "rtx/concept/camera/camera.slangh"
 #include "rtx/concept/surface/alpha_blend_surface.slangh"
 #include "rtx/utility/geometry_flags.slangh"
+#include "rtx/pass/post_fx/post_fx_motion_blur_geometry_flags.slangh"
 
 #include "rtx/algorithm/volume_composite_helpers.slangh"
 #include "rtx/algorithm/accumulate.slangh"
@@ -48,7 +49,7 @@ float3 sampleDomeLightTexture(Sampler2D<float3> DomeLight, float3 worldDirection
   return DomeLight.SampleLevel(sampleUV, 0).xyz;
 }
 
-void preCompositeDebugView(uint2 pixelCoordinate)
+void preCompositeDebugView(uint2 pixelCoordinate, uint2 compactedCoordinate, bool pixelIsActive)
 {
   // Debug views that need to run before the active early-out so they cover every pixel.
   switch(cb.debugViewIdx)
@@ -58,16 +59,17 @@ void preCompositeDebugView(uint2 pixelCoordinate)
     break;
   case DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_DIFFUSE_RADIANCE:
   case DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_DIFFUSE_HIT_T:
-    if (cb.enableSeparatedDenoisers)
+    // Inactive pixels have no compacted radiance and keep the cleared value.
+    if (cb.enableSeparatedDenoisers && pixelIsActive)
     {
-      storeInDebugView(pixelCoordinate, PrimaryIndirectDiffuseRadianceHitDistance[pixelCoordinate]);
+      storeInDebugView(pixelCoordinate, PrimaryIndirectDiffuseRadianceHitDistance[compactedCoordinate]);
     }
     break;
   case DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_SPECULAR_RADIANCE:
   case DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_SPECULAR_HIT_T:
-    if (cb.enableSeparatedDenoisers)
+    if (cb.enableSeparatedDenoisers && pixelIsActive)
     {
-      storeInDebugView(pixelCoordinate, PrimaryIndirectSpecularRadianceHitDistance[pixelCoordinate]);
+      storeInDebugView(pixelCoordinate, PrimaryIndirectSpecularRadianceHitDistance[compactedCoordinate]);
     }
     break;
 
@@ -167,7 +169,7 @@ void postCompositeDebugView(
 // Loads the secondary (PSR) radiance contribution. RR consumes the raw combined signal directly;
 // other upscalers retain the NRD unpack and remodulation path.
 vec3 loadSecondaryRadiance(
-  uint2 pixelCoordinate,
+  uint2 compactedCoordinate,
   GeometryFlags geometryFlags,
   vec3 secondaryAlbedo,
   vec3 secondarySpecularAlbedo,
@@ -178,8 +180,8 @@ vec3 loadSecondaryRadiance(
     return vec3(0);
   }
 
-  vec3 secondaryCombinedDiffuseRadiance = SecondaryCombinedDiffuseRadianceHitDistance[pixelCoordinate].xyz;
-  vec3 secondaryCombinedSpecularRadiance = SecondaryCombinedSpecularRadianceHitDistance[pixelCoordinate].xyz;
+  vec3 secondaryCombinedDiffuseRadiance = SecondaryCombinedDiffuseRadianceHitDistance[compactedCoordinate].xyz;
+  vec3 secondaryCombinedSpecularRadiance = SecondaryCombinedSpecularRadianceHitDistance[compactedCoordinate].xyz;
 
   if (!cb.compositeSecondaryCombinedDiffuse)
   {
@@ -206,6 +208,7 @@ vec3 loadSecondaryRadiance(
 // Caller must gate this on pixelIsActive — the radiance inputs are only valid on active pixels.
 vec3 loadPrimaryRadiance(
   uint2 pixelCoordinate,
+  uvec2 compactedCoordinate,
   vec3 primaryAlbedo,
   vec3 primarySpecularAlbedo,
   vec3 primaryAttenuation,
@@ -213,8 +216,8 @@ vec3 loadPrimaryRadiance(
   bool primaryMiss)
 {
   // In combined-denoiser mode the indirect radiance is combined in the direct buffer.
-  vec3 primaryDirectDiffuseRadiance = PrimaryDirectDiffuseRadianceHitDistance[pixelCoordinate].xyz;
-  vec3 primaryDirectSpecularRadiance = PrimaryDirectSpecularRadianceHitDistance[pixelCoordinate].xyz;
+  vec3 primaryDirectDiffuseRadiance = PrimaryDirectDiffuseRadianceHitDistance[compactedCoordinate].xyz;
+  vec3 primaryDirectSpecularRadiance = PrimaryDirectSpecularRadianceHitDistance[compactedCoordinate].xyz;
 
   unpackDenoiserRadiance(primaryDirectDiffuseRadiance, cb.primaryDirectDenoiser);
   unpackDenoiserRadiance(primaryDirectSpecularRadiance, cb.primaryDirectDenoiser);
@@ -231,8 +234,8 @@ vec3 loadPrimaryRadiance(
     }
     else
     {
-      primaryIndirectDiffuseRadiance = PrimaryIndirectDiffuseRadianceHitDistance[pixelCoordinate].xyz;
-      primaryIndirectSpecularRadiance = PrimaryIndirectSpecularRadianceHitDistance[pixelCoordinate].xyz;
+      primaryIndirectDiffuseRadiance = PrimaryIndirectDiffuseRadianceHitDistance[compactedCoordinate].xyz;
+      primaryIndirectSpecularRadiance = PrimaryIndirectSpecularRadianceHitDistance[compactedCoordinate].xyz;
 
       unpackDenoiserRadiance(primaryIndirectDiffuseRadiance, cb.primaryIndirectDenoiser);
       unpackDenoiserRadiance(primaryIndirectSpecularRadiance, cb.primaryIndirectDenoiser);
@@ -256,14 +259,23 @@ vec3 loadPrimaryRadiance(
     primaryIndirectSpecularRadiance = vec3(0);
   }
 
-  vec2 bsdfFactor = cb.enableRtxdi ? BSDFFactor[pixelCoordinate].xy : vec2(1);
-  vec2 bsdfFactor2 = cb.enableReSTIRGI ? BSDFFactor2[pixelCoordinate].xy : vec2(1);
+  vec2 bsdfFactor = vec2(1);
+  if (cb.enableRtxdi)
+  {
+    bsdfFactor = BSDFFactor[compactedCoordinate].xy;
+  }
+
+  vec2 bsdfFactor2 = vec2(1);
+  if (cb.enableReSTIRGI)
+  {
+    bsdfFactor2 = BSDFFactor2[pixelCoordinate].xy;
+  }
 
   if (cb.enhanceAlbedo && cb.enableReSTIRGI)
   {
     // Note: this is not a reachable path when Sparse Rendering is enabled (bsdfFactor2.x == 1.0f),
     // since only NRC path is supported. Otherwise, this would have to be done for inactive pixels as well.
-    PrimaryAlbedo[pixelCoordinate].xyz = primaryAlbedo * sqrt(bsdfFactor2.x);
+    PrimaryAlbedo[compactedCoordinate].xyz = primaryAlbedo * sqrt(bsdfFactor2.x);
   }
 
   vec3 primaryCombinedDiffuseRadiance;
@@ -305,6 +317,7 @@ vec3 loadPrimaryRadiance(
 
 void loadInputRadiance(
   uint2 pixelCoordinate,
+  uvec2 compactedCoordinate,
   GeometryFlags geometryFlags,
   bool pixelIsActive,
   vec3 primaryAlbedo,
@@ -319,12 +332,12 @@ void loadInputRadiance(
   out vec3 remodulatedTotalPrimaryRadiance,
   out vec3 remodulatedTotalSecondaryRadiance)
 {
+  // Shared radiance (emissive + pre-attenuated layers) is addressed by pixel in every mode.
   sharedRadiance = vec3(SharedRadianceRG[pixelCoordinate].xy, SharedRadianceB[pixelCoordinate]);
 
-  // Secondary always runs on PSR pixels (independent of active-pixel mask) so RR particle
-  // layer matches SR-off behavior.
+  // Inactive pixels take default flags with no secondary surface, so this returns zero there.
   remodulatedTotalSecondaryRadiance = loadSecondaryRadiance(
-    pixelCoordinate, geometryFlags,
+    compactedCoordinate, geometryFlags,
     secondaryAlbedo, secondarySpecularAlbedo, secondaryAttenuation);
 
   remodulatedTotalPrimaryRadiance = vec3(0);
@@ -332,6 +345,7 @@ void loadInputRadiance(
   {
     remodulatedTotalPrimaryRadiance = loadPrimaryRadiance(
       pixelCoordinate,
+      compactedCoordinate,
       primaryAlbedo, primarySpecularAlbedo, primaryAttenuation,
       perceptualRoughness, primaryMiss);
   }
@@ -677,6 +691,7 @@ float calculateVolumetricRadianceScale(uint2 pixelCoordinate, bool pixelIsActive
 
 vec4 compositeResult(
   uint2 pixelCoordinate,
+  uvec2 compactedCoordinate,
   bool pixelIsActive,
   GeometryFlags geometryFlags,
   float primaryLinearViewZ,
@@ -686,10 +701,8 @@ vec4 compositeResult(
   RNG randomState = createRNG(pixelCoordinate, cb.frameIdx, 0);
 
   // Load GBuffer Information.
-  // Secondary GBuffer data is needed at every PSR pixel so the secondary
-  // composition path in loadInputRadiance produces correct results regardless of sparse active
-  // state. Primary GBuffer reads stay gated since
-  // loadPrimaryRadiance is skipped on sparse-inactive pixels.
+  // Inactive pixels have no compacted slot.
+  // The primary reads are therefore gated on activity, and the default flags of inactive pixels skip the secondary reads.
   vec3 primaryAttenuation = vec3(0);
   vec3 primaryAlbedo = vec3(0);
   vec3 primarySpecularAlbedo = vec3(0);
@@ -699,16 +712,16 @@ vec4 compositeResult(
   vec3 secondarySpecularAlbedo = vec3(0);
   if (geometryFlags.secondarySurfaceMask)
   {
-    secondaryAttenuation = r11g11b10ToColor(imageLoad(SecondaryAttenuation, pixelCoordinate));
-    secondaryAlbedo = SecondaryAlbedo[pixelCoordinate].xyz;
-    secondarySpecularAlbedo = SecondarySpecularAlbedo[pixelCoordinate].xyz;
+    secondaryAttenuation = r11g11b10ToColor(imageLoad(SecondaryAttenuation, ivec2(compactedCoordinate)));
+    secondaryAlbedo = SecondaryAlbedo[compactedCoordinate].xyz;
+    secondarySpecularAlbedo = SecondarySpecularAlbedo[compactedCoordinate].xyz;
   }
   if (pixelIsActive)
   {
-    primaryAttenuation = r11g11b10ToColor(PrimaryAttenuation[pixelCoordinate]);
-    primaryAlbedo = PrimaryAlbedo[pixelCoordinate].xyz;
-    primarySpecularAlbedo = PrimarySpecularAlbedo[pixelCoordinate].xyz;
-    perceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[pixelCoordinate].w;
+    primaryAttenuation = r11g11b10ToColor(PrimaryAttenuation[compactedCoordinate]);
+    primaryAlbedo = PrimaryAlbedo[compactedCoordinate].xyz;
+    primarySpecularAlbedo = PrimarySpecularAlbedo[compactedCoordinate].xyz;
+    perceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[compactedCoordinate].w;
   }
 
   // Reconstruct the primary ray direction and view hit distance for the current pixel
@@ -736,7 +749,7 @@ vec4 compositeResult(
 
   // Load Input Radiance
   loadInputRadiance(
-    pixelCoordinate, geometryFlags, pixelIsActive,
+    pixelCoordinate, compactedCoordinate, geometryFlags, pixelIsActive,
     primaryAlbedo, primarySpecularAlbedo, primaryAttenuation,
     secondaryAlbedo, secondarySpecularAlbedo, secondaryAttenuation,
     perceptualRoughness, primaryMiss,
@@ -774,28 +787,43 @@ vec4 compositeResult(
 [numthreads(COMPOSITE_THREAD_GROUP_WIDTH, COMPOSITE_THREAD_GROUP_HEIGHT, 1)]
 void main(uint2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThreadID)
 {
+  // Launched over the screen grid even with sparse rendering on,
+  // because inactive pixels are still composited and the debug views below need every pixel.
   if (any(threadIndex >= cb.camera.resolution))
   {
     return;
   }
 
-  preCompositeDebugView(threadIndex);
-
   uvec2 pixelCoordinate;
+  uvec2 compactedCoordinate;
   const bool pixelIsActive = loadPixelCoordinate(
-    threadIndex, ActiveLocalPixelCoords,
-    cb.camera.resolution, cb.sparseRenderingArgs, pixelCoordinate);
+    threadIndex, ActiveLocalPixelCoords, TileActiveCounts,
+    cb.camera.resolution, cb.sparseRenderingArgs,
+    pixelCoordinate, compactedCoordinate);
+
+  // Takes the resolved coordinates rather than the dispatch index, because the compaction table permutes pixels within each tile.
+  preCompositeDebugView(pixelCoordinate, compactedCoordinate, pixelIsActive);
 
   // Load GBuffer Information.
-  // Always loaded (even at inactive pixels) because compositeResult uses primaryLinearViewZ
-  // to compute viewDistance for fog and the alpha-blend volumetric path, and consults geometryFlags
-  // for secondarySurfaceMask / firstSampledLobeIsSpecular.
-  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixelCoordinate, SharedFlags);
+  // Linear view Z is per pixel.
+  // SharedFlags is compacted, so inactive pixels take default flags,
+  // which have no PSR and no secondary surface and therefore also skip the secondary reads below.
+  GeometryFlags geometryFlags = geometryFlagsDecode(uint16_t(0));
+  if (pixelIsActive)
+  {
+    geometryFlags = geometryFlagsReadFromGBuffer(compactedCoordinate, SharedFlags);
+  }
   const float primaryLinearViewZ = PrimaryLinearViewZ[pixelCoordinate];
   // Note: Relying on the same sentinel value outputted to the linear view Z which NRD relies on, so this is safe (and lets us not have to read
   // in the cone radius texture which typically contains the flag we use to determine this).
-  const bool primaryMiss = primaryLinearViewZ == cb.primaryDirectMissLinearViewZ
-                           && !geometryFlags.performedAnyPSR();  // must not be PSR
+  bool primaryMiss = primaryLinearViewZ == cb.primaryDirectMissLinearViewZ
+                     && !geometryFlags.performedAnyPSR();  // must not be PSR
+
+  // Inactive pixels take default flags, so a PSR lobe that missed would pass the check above.
+  if (primaryMiss && !pixelIsActive && usesPrimaryRayMissFlag(cb.sparseRenderingArgs))
+  {
+    primaryMiss = packedFlagGet(PrimarySurfaceFlags[pixelCoordinate], kPrimarySurfaceFlagPrimaryRayMiss);
+  }
 
   // Written from composite (rather than the prepare RR pass) so the value is gated by sparse activity
   if (cb.writeRayReconstructionHitDistance)
@@ -804,14 +832,14 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     if (pixelIsActive && !primaryMiss &&
         (cb.enableReSTIRGI || geometryFlags.firstSampledLobeIsSpecular))
     {
-      hitDistance = PrimaryIndirectSpecularRadianceHitDistance[pixelCoordinate].a;
+      hitDistance = PrimaryIndirectSpecularRadianceHitDistance[compactedCoordinate].a;
     }
     RayReconstructionHitDistanceOutput[pixelCoordinate] = hitDistance;
   }
 
   float controlMaskTransmittance;
   vec4 finalOutput = compositeResult(
-    pixelCoordinate, pixelIsActive, geometryFlags, primaryLinearViewZ, primaryMiss,
+    pixelCoordinate, compactedCoordinate, pixelIsActive, geometryFlags, primaryLinearViewZ, primaryMiss,
     controlMaskTransmittance);
 
   if (cb.enableDlssNrVolumetricControlMask)

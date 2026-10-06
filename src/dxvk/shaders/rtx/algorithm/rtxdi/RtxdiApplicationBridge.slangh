@@ -349,7 +349,67 @@ bool RAB_ResolveReservoirLightIndex(inout RTXDI_Reservoir reservoir)
   return false;
 }
 
-RAB_Surface RAB_GetGBufferSurface(ivec2 pixel, bool previousFrame)
+#ifdef RAB_HAS_COMPACTED_GBUFFER
+// Inactive pixels store no base reflectivity, so spatial reuse lends its inactive neighbors the one of the pixel it resamples.
+static vec3 g_resampledPixelBaseReflectivity = vec3(0.0f);
+
+// Rebuilds the surface of a pixel without a compacted GBuffer slot from the outputs the GBuffer writes at every pixel.
+// Returns an empty surface for a miss.
+RAB_Surface RAB_GetInactiveGBufferSurface(ivec2 pixel)
+{
+  RAB_Surface surface = RAB_EmptySurface();
+
+  const MinimalSurfaceInteraction minimalSurfaceInteraction =
+    minimalSurfaceInteractionReadFromGBuffer(pixel, PrimaryWorldPositionWorldTriangleNormalDense);
+
+  if (!minimalSurfaceInteraction.isValid)
+  {
+    return surface;
+  }
+
+  const CameraDirections cameraDirections = cameraPixelCoordinateToDirection(cb.camera, pixel, false);
+  const float hitDistance = PrimaryLinearViewZ[pixel] / cameraDirections.viewDirection.z;
+
+  surface.minimalRayInteraction.viewDirection = -cameraDirections.worldDirection;
+  surface.minimalRayInteraction.coneRadius = cb.screenSpacePixelSpreadHalfAngle * hitDistance;
+
+  // The position error is compacted, so only its world-space term is recomputed here.
+  surface.minimalSurfaceInteraction = minimalSurfaceInteraction;
+  surface.minimalSurfaceInteraction.positionError = calculatePositionError(minimalSurfaceInteraction.position);
+#ifdef SHADOW_TERMINATOR_FIX_ALLOWED
+  if (cb.shadowTerminatorArgs.enableOffset)
+  {
+    surface.minimalSurfaceInteraction.shadowTerminatorOffset = SharedTerminatorFix[pixel];
+  }
+#endif
+
+  surface.opaqueSurfaceMaterialInteraction.shadingNormal =
+    signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(PrimaryWorldShadingNormalDense[pixel]));
+  // The DLSS-RR diffuse albedo guide is the only albedo written at every pixel.
+  surface.opaqueSurfaceMaterialInteraction.albedo = PrimaryAlbedoDLSSRR[pixel].rgb;
+  surface.opaqueSurfaceMaterialInteraction.opacity = 1.0;
+  surface.opaqueSurfaceMaterialInteraction.baseReflectivity = g_resampledPixelBaseReflectivity;
+  surface.opaqueSurfaceMaterialInteraction.emissiveRadiance = 0.0;
+
+  calcRoughness(PrimaryPerceptualRoughness[pixel], 0.0,
+    surface.opaqueSurfaceMaterialInteraction.isotropicRoughness,
+    surface.opaqueSurfaceMaterialInteraction.anisotropicRoughness);
+
+  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixel, SharedFlagsDense);
+  surface.portalSpace = geometryFlags.portalSpace;
+  surface.isViewModel = geometryFlags.isViewModel;
+  surface.objectMask = geometryFlags.objectMask;
+  surface.hitDistance = hitDistance;
+  surface.virtualWorldPosition = cameraGetWorldPosition(cb.camera) + cameraDirections.worldDirection * hitDistance;
+
+  return surface;
+}
+#endif
+
+// Callers that got `compactedPixel` from loadCompactedCoordinate pass it in.
+// Looks `compactedPixel` up from `pixel` when it is left at its default.
+// Returns a surface rebuilt by RAB_GetInactiveGBufferSurface for an inactive pixel.
+RAB_Surface RAB_GetGBufferSurface(ivec2 pixel, bool previousFrame, ivec2 compactedPixel = kInvalidCompactedCoordinate)
 {
   RAB_Surface surface = RAB_EmptySurface();
 
@@ -370,12 +430,31 @@ RAB_Surface RAB_GetGBufferSurface(ivec2 pixel, bool previousFrame)
     return surface;
   }
 
+  if (all(compactedPixel == kInvalidCompactedCoordinate))
+  {
+#ifdef RAB_HAS_COMPACTED_GBUFFER
+    // Inactive pixels have no compacted GBuffer slot, which the table's sentinel reports.
+    uvec2 resolvedCoordinate;
+    if (!compactedCoordinateFromPixelIfActive(
+          CompactedPixelIndices, TileActiveCounts, uint2(pixel), cb.sparseRenderingArgs, resolvedCoordinate))
+    {
+      return RAB_GetInactiveGBufferSurface(pixel);
+    }
+
+    compactedPixel = ivec2(resolvedCoordinate);
+#else
+    compactedPixel = pixel;
+#endif
+  }
+
 #ifdef RAB_HAS_CURRENT_GBUFFER
   // Use a custom version of polymorphicSurfaceMaterialInteractionReadFromGBuffer
   // because a) we don't have the data0 and data1 textures; b) we assume all materials are opaque.
+  // The surface is read at the compacted slot, except for the shadow terminator offset and roughness,
+  // which are written per pixel.
   const Ray originalPrimaryRay = rayCreatePrimaryFromPixel(cb.camera, pixel);
-  surface.minimalRayInteraction = minimalRayInteractionReadFromGBuffer(originalPrimaryRay, pixel, PrimaryViewDirection, PrimaryConeRadius);
-  surface.minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBufferWithError(pixel, PrimaryWorldPositionWorldTriangleNormal, PrimaryPositionError);
+  surface.minimalRayInteraction = minimalRayInteractionReadFromGBuffer(originalPrimaryRay, compactedPixel, PrimaryViewDirection, PrimaryConeRadius);
+  surface.minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBufferWithError(compactedPixel, PrimaryWorldPositionWorldTriangleNormal, PrimaryPositionError);
 #ifdef SHADOW_TERMINATOR_FIX_ALLOWED
   // NOTE: SHADOW_TERMINATOR_FIX_ALLOWED is enabled only for direct lighting passes. Terminator offset must not be present on primary, indirect, volumetrics etc.
   if (cb.shadowTerminatorArgs.enableOffset)
@@ -383,27 +462,27 @@ RAB_Surface RAB_GetGBufferSurface(ivec2 pixel, bool previousFrame)
     surface.minimalSurfaceInteraction.shadowTerminatorOffset = SharedTerminatorFix[pixel];
   }
 #endif
-  surface.opaqueSurfaceMaterialInteraction.shadingNormal = signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(PrimaryWorldShadingNormal[pixel]));
-  surface.opaqueSurfaceMaterialInteraction.albedo = PrimaryAlbedo[pixel].rgb;
+  surface.opaqueSurfaceMaterialInteraction.shadingNormal = signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(PrimaryWorldShadingNormal[compactedPixel]));
+  surface.opaqueSurfaceMaterialInteraction.albedo = PrimaryAlbedo[compactedPixel].rgb;
   surface.opaqueSurfaceMaterialInteraction.opacity = 1.0;
-  surface.opaqueSurfaceMaterialInteraction.baseReflectivity = PrimaryBaseReflectivity[pixel].rgb;
+  surface.opaqueSurfaceMaterialInteraction.baseReflectivity = PrimaryBaseReflectivity[compactedPixel].rgb;
   surface.opaqueSurfaceMaterialInteraction.emissiveRadiance = 0.0;
   
   calcRoughness(PrimaryPerceptualRoughness[pixel], 0.0,
     surface.opaqueSurfaceMaterialInteraction.isotropicRoughness,
     surface.opaqueSurfaceMaterialInteraction.anisotropicRoughness);
 
-  const uint primarySurfaceIndex = uint(SharedSurfaceIndex[pixel]);
+  const uint primarySurfaceIndex = uint(SharedSurfaceIndex[compactedPixel]);
   uint16_t samplerIndex = 0;
 
   const uint subsurfaceMaterialIndex = getSubsurfaceMaterialIndex(surfaceMaterials[primarySurfaceIndex], samplerIndex);
-  surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction = subSurfaceMaterialReadHelper(SharedSubsurfaceData[pixel], SharedSubsurfaceDiffusionProfileData[pixel]);
+  surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction = subSurfaceMaterialReadHelper(SharedSubsurfaceData[compactedPixel], SharedSubsurfaceDiffusionProfileData[compactedPixel]);
 
-  GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixel, SharedFlags);
+  GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(compactedPixel, SharedFlags);
   surface.portalSpace = geometryFlags.portalSpace;
   surface.isViewModel = geometryFlags.isViewModel;
   surface.objectMask = geometryFlags.objectMask;
-  surface.hitDistance = PrimaryHitDistance[pixel].x;
+  surface.hitDistance = PrimaryHitDistance[compactedPixel].x;
 
   const float3 cameraPositon = cameraGetWorldPosition(cb.camera);
   const float3 primaryRayDirection = cameraPixelCoordinateToDirection(cb.camera, pixel, false).worldDirection;

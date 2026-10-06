@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -38,6 +38,7 @@
 #include "rtx/utility/noise.slangh"
 #include "rtx/utility/procedural_noise.slangh"
 #include "rtx/algorithm/volume_composite_helpers.slangh"
+#include "rtx/pass/sparse_rendering/compact_active_pixels.slangh"
 
 #include "rtxdi/Reservoir.slangh"
 #include "rtx/pass/nrc/nrc_utilities.slangh"
@@ -118,6 +119,13 @@ Texture2D<float4> PreviousWorldPosition_WorldTriangleNormal;
 [[vk::binding(DEBUG_VIEW_BINDING_SHARED_TERMINATOR_FIX_INPUT)]]
 Texture2D<float4> SharedShadowTerminatorFix;
 
+// Maps a pixel to the compacted coordinate that sparse rendering wrote its GBuffer outputs at.
+[[vk::binding(DEBUG_VIEW_BINDING_SPARSE_COMPACTED_PIXEL_INDICES_INPUT)]]
+Texture2D<uint16_t> CompactedPixelIndices;
+
+[[vk::binding(DEBUG_VIEW_BINDING_SPARSE_TILE_ACTIVE_COUNTS_INPUT)]]
+Texture2D<uint2> TileActiveCounts;
+
 // Inputs / Outputs
 
 [[vk::binding(DEBUG_VIEW_BINDING_ACCUMULATED_DEBUG_VIEW_INPUT_OUTPUT)]]
@@ -181,21 +189,28 @@ float nrdGetHitT(float normalizedHitT, float primaryHitPerceptualRoughness, floa
   }
 }
 
-vec4 nrdDenoisedHitTtoColor(ivec2 threadId)
+// `threadId` addresses the dense inputs and `compactedCoordinate` the compacted ones.
+vec4 nrdDenoisedHitTtoColor(ivec2 threadId, uvec2 compactedCoordinate, bool pixelIsActive)
 {
+  // Inactive pixels have no compacted radiance or roughness to convert.
+  if (!pixelIsActive)
+  {
+    return vec4(0.0f);
+  }
+
   float normalizedHitT;
   float primaryHitPerceptualRoughness;
 
   switch (cb.debugViewIdx)
   {
   case DEBUG_VIEW_DENOISED_PRIMARY_DIRECT_DIFFUSE_HIT_T:
-    normalizedHitT = DenoisedPrimaryDirectDiffuseRadianceHitT[threadId].w;
+    normalizedHitT = DenoisedPrimaryDirectDiffuseRadianceHitT[compactedCoordinate].w;
     primaryHitPerceptualRoughness = 1.0;
     break;
-  
+
   case DEBUG_VIEW_DENOISED_PRIMARY_DIRECT_SPECULAR_HIT_T:
-    normalizedHitT = DenoisedPrimaryDirectSpecularRadianceHitT[threadId].w;
-    primaryHitPerceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[threadId].w;
+    normalizedHitT = DenoisedPrimaryDirectSpecularRadianceHitT[compactedCoordinate].w;
+    primaryHitPerceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[compactedCoordinate].w;
     break;
 
   case DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_DIFFUSE_HIT_T:
@@ -205,7 +220,7 @@ vec4 nrdDenoisedHitTtoColor(ivec2 threadId)
 
   case DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_SPECULAR_HIT_T:
     normalizedHitT = DebugView[threadId].w;
-    primaryHitPerceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[threadId].w;
+    primaryHitPerceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[compactedCoordinate].w;
     break;
   }
 
@@ -228,7 +243,16 @@ vec4 unormVectorToColor(vec3 unormVector)
 vec4 loadInput(inout RNG randomState, ivec2 threadId)
 {
   vec4 value = vec4(0);
-  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(threadId, SharedFlags);
+  // Inactive pixels have no compacted GBuffer outputs.
+  // They take default flags, and the views of compacted inputs show zero there.
+  uvec2 compactedCoordinate;
+  const bool pixelIsActive = compactedCoordinateFromPixelIfActive(
+    CompactedPixelIndices, TileActiveCounts, threadId, cb.sparseRenderingArgs, compactedCoordinate);
+  GeometryFlags geometryFlags = geometryFlagsDecode(uint16_t(0));
+  if (pixelIsActive)
+  {
+    geometryFlags = geometryFlagsReadFromGBuffer(ivec2(compactedCoordinate), SharedFlags);
+  }
 
   // Compute the coordinate with respect to the upscaled output
   // Note: This is used so textures (primarily just the final output) using the upscaled extent
@@ -274,7 +298,10 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
   switch (cb.debugViewIdx)
   {
   case DEBUG_VIEW_VIRTUAL_SHADING_NORMAL:
-    value = unormVectorToColor(PrimaryVirtualWorldNormalPerceptualRoughness[threadId].xyz);
+    if (pixelIsActive)
+    {
+      value = unormVectorToColor(PrimaryVirtualWorldNormalPerceptualRoughness[compactedCoordinate].xyz);
+    }
     break;
   case DEBUG_VIEW_SCREEN_SPACE_MOTION_VECTOR:
     value = vec4(abs(PrimaryScreenSpaceMotionVector[threadId].xy), 0, 1);
@@ -298,10 +325,16 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
     value = vec4(vec3(fractalSimplexNoiseValue), 1.0f);
     break;
   case DEBUG_VIEW_DENOISED_PRIMARY_DIRECT_DIFFUSE_RADIANCE:
-    value = vec4(DenoisedPrimaryDirectDiffuseRadianceHitT[threadId].xyz, 1);
+    if (pixelIsActive)
+    {
+      value = vec4(DenoisedPrimaryDirectDiffuseRadianceHitT[compactedCoordinate].xyz, 1);
+    }
     break;
   case DEBUG_VIEW_DENOISED_PRIMARY_DIRECT_SPECULAR_RADIANCE:
-    value = vec4(DenoisedPrimaryDirectSpecularRadianceHitT[threadId].xyz, 1);
+    if (pixelIsActive)
+    {
+      value = vec4(DenoisedPrimaryDirectSpecularRadianceHitT[compactedCoordinate].xyz, 1);
+    }
     break;
   case DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_DIFFUSE_RADIANCE:
     value = vec4(DebugView[threadId].xyz, 1);
@@ -310,16 +343,22 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
     value = vec4(DebugView[threadId].xyz, 1);
     break;
   case DEBUG_VIEW_DENOISED_SECONDARY_COMBINED_DIFFUSE_RADIANCE:
-    value = vec4(DenoisedSecondaryCombinedDiffuseRadianceHitT[threadId].xyz, 1);
+    if (pixelIsActive)
+    {
+      value = vec4(DenoisedSecondaryCombinedDiffuseRadianceHitT[compactedCoordinate].xyz, 1);
+    }
     break;
   case DEBUG_VIEW_DENOISED_SECONDARY_COMBINED_SPECULAR_RADIANCE:
-    value = vec4(DenoisedSecondaryCombinedSpecularRadianceHitT[threadId].xyz, 1);
+    if (pixelIsActive)
+    {
+      value = vec4(DenoisedSecondaryCombinedSpecularRadianceHitT[compactedCoordinate].xyz, 1);
+    }
     break;
   case DEBUG_VIEW_DENOISED_PRIMARY_DIRECT_DIFFUSE_HIT_T:
   case DEBUG_VIEW_DENOISED_PRIMARY_DIRECT_SPECULAR_HIT_T:
   case DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_DIFFUSE_HIT_T:
   case DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_SPECULAR_HIT_T:
-    value = nrdDenoisedHitTtoColor(threadId);
+    value = nrdDenoisedHitTtoColor(threadId, compactedCoordinate, pixelIsActive);
     break;
   case DEBUG_VIEW_PRIMARY_ALTERNATE_DISOCCLUSION_THRESHOLD:
     value = vec4(PrimaryDisocclusionThreshold[threadId].xxx, 1);
@@ -518,8 +557,12 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
   case DEBUG_VIEW_NAN:
     bool isValid = DebugView[threadId].x != 0.0;
 
-    // DEBUG_VIEW_VIRTUAL_SHADING_NORMAL
-    isValid &= isValidValue(unormVectorToColor(PrimaryVirtualWorldNormalPerceptualRoughness[threadId].xyz));
+    // The compacted inputs are checked only at active pixels, which are the only ones that store them.
+    if (pixelIsActive)
+    {
+      // DEBUG_VIEW_VIRTUAL_SHADING_NORMAL
+      isValid &= isValidValue(unormVectorToColor(PrimaryVirtualWorldNormalPerceptualRoughness[compactedCoordinate].xyz));
+    }
     // DEBUG_VIEW_SCREEN_SPACE_MOTION_VECTOR
     isValid &= isValidValue(PrimaryScreenSpaceMotionVector[threadId].xy);
 
@@ -535,23 +578,32 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
     // DEBUG_VIEW_SIMPLEX_NOISE
     // DEBUG_VIEW_VALUE_NOISE
 
-    // DEBUG_VIEW_DENOISED_PRIMARY_DIRECT_DIFFUSE_RADIANCE
-    isValid &= isValidValue(DenoisedPrimaryDirectDiffuseRadianceHitT[threadId].xyz);
-    // DEBUG_VIEW_DENOISED_PRIMARY_DIRECT_SPECULAR_RADIANCE
-    isValid &= isValidValue(DenoisedPrimaryDirectSpecularRadianceHitT[threadId].xyz);
+    if (pixelIsActive)
+    {
+      // DEBUG_VIEW_DENOISED_PRIMARY_DIRECT_DIFFUSE_RADIANCE
+      isValid &= isValidValue(DenoisedPrimaryDirectDiffuseRadianceHitT[compactedCoordinate].xyz);
+      // DEBUG_VIEW_DENOISED_PRIMARY_DIRECT_SPECULAR_RADIANCE
+      isValid &= isValidValue(DenoisedPrimaryDirectSpecularRadianceHitT[compactedCoordinate].xyz);
+    }
     // DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_DIFFUSE_RADIANCE
     // DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_SPECULAR_RADIANCE
     isValid &= isValidValue(DebugView[threadId].xyz);
-    // DEBUG_VIEW_DENOISED_SECONDARY_COMBINED_DIFFUSE_RADIANCE
-    isValid &= isValidValue(DenoisedSecondaryCombinedDiffuseRadianceHitT[threadId].xyz);
-    // DEBUG_VIEW_DENOISED_SECONDARY_COMBINED_SPECULAR_RADIANCE
-    isValid &= isValidValue(DenoisedSecondaryCombinedSpecularRadianceHitT[threadId].xyz);
+    if (pixelIsActive)
+    {
+      // DEBUG_VIEW_DENOISED_SECONDARY_COMBINED_DIFFUSE_RADIANCE
+      isValid &= isValidValue(DenoisedSecondaryCombinedDiffuseRadianceHitT[compactedCoordinate].xyz);
+      // DEBUG_VIEW_DENOISED_SECONDARY_COMBINED_SPECULAR_RADIANCE
+      isValid &= isValidValue(DenoisedSecondaryCombinedSpecularRadianceHitT[compactedCoordinate].xyz);
+    }
 
     float linearViewZ = PrimaryLinearViewZ[threadId].x;
-    // DEBUG_VIEW_DENOISED_PRIMARY_DIRECT_DIFFUSE_HIT_T
-    isValid &= isValidValue(nrdGetHitT(DenoisedPrimaryDirectDiffuseRadianceHitT[threadId].w, 1.0, linearViewZ));
-    // DEBUG_VIEW_DENOISED_PRIMARY_DIRECT_SPECULAR_HIT_T
-    isValid &= isValidValue(nrdGetHitT(DenoisedPrimaryDirectSpecularRadianceHitT[threadId].w, PrimaryVirtualWorldNormalPerceptualRoughness[threadId].w, linearViewZ));
+    if (pixelIsActive)
+    {
+      // DEBUG_VIEW_DENOISED_PRIMARY_DIRECT_DIFFUSE_HIT_T
+      isValid &= isValidValue(nrdGetHitT(DenoisedPrimaryDirectDiffuseRadianceHitT[compactedCoordinate].w, 1.0, linearViewZ));
+      // DEBUG_VIEW_DENOISED_PRIMARY_DIRECT_SPECULAR_HIT_T
+      isValid &= isValidValue(nrdGetHitT(DenoisedPrimaryDirectSpecularRadianceHitT[compactedCoordinate].w, PrimaryVirtualWorldNormalPerceptualRoughness[compactedCoordinate].w, linearViewZ));
+    }
     // DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_DIFFUSE_HIT_T
     // DEBUG_VIEW_DENOISED_PRIMARY_INDIRECT_SPECULAR_HIT_T
     isValid &= isValidValue(nrdGetHitT(DebugView[threadId].w, 1.0, linearViewZ));

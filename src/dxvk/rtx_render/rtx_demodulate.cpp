@@ -55,8 +55,9 @@ namespace dxvk {
         TEXTURE2D(DEMODULATE_BINDING_SECONDARY_LINEAR_VIEW_Z_INPUT)
         TEXTURE2D(DEMODULATE_BINDING_SECONDARY_ALBEDO_INPUT)
         TEXTURE2D(DEMODULATE_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT)
-        TEXTURE2D(DEMODULATE_BINDING_ACTIVE_PIXEL_MASK_INPUT)
         TEXTURE2D(DEMODULATE_BINDING_PIXEL_SAMPLING_RATE_INPUT)
+        TEXTURE2D(DEMODULATE_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)
+        TEXTURE2D(DEMODULATE_BINDING_TILE_ACTIVE_COUNTS_INPUT)
         TEXTURE2D(DEMODULATE_BINDING_PRIMARY_BASE_REFLECTIVITY_INPUT)
         TEXTURE2D(DEMODULATE_BINDING_SECONDARY_BASE_REFLECTIVITY_INPUT)
         RW_TEXTURE2D(DEMODULATE_BINDING_PRIMARY_DIRECT_DIFFUSE_RADIANCE_INPUT_OUTPUT)
@@ -125,8 +126,9 @@ namespace dxvk {
     const bool suppressIndirectRadianceAliasCheck = isPrimaryIndirectRadianceResourceRead;
 
     ctx->bindResourceView(DEMODULATE_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT, rtOutput.m_indirectRadianceHitDistance.view(Resources::AccessType::Read, !suppressIndirectRadianceAliasCheck), nullptr);
-    ctx->bindResourceView(DEMODULATE_BINDING_ACTIVE_PIXEL_MASK_INPUT, rtOutput.m_sparseRenderingActivePixelMask.view, nullptr);
     ctx->bindResourceView(DEMODULATE_BINDING_PIXEL_SAMPLING_RATE_INPUT, rtOutput.m_sparseRenderingPixelSamplingRate.view, nullptr);
+    ctx->bindResourceView(DEMODULATE_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT, rtOutput.m_sparseRenderingActiveLocalPixelCoords.view, nullptr);
+    ctx->bindResourceView(DEMODULATE_BINDING_TILE_ACTIVE_COUNTS_INPUT, rtOutput.m_sparseRenderingTileActiveCounts.view, nullptr);
     ctx->bindResourceView(DEMODULATE_BINDING_PRIMARY_BASE_REFLECTIVITY_INPUT, rtOutput.m_primaryBaseReflectivity.view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(DEMODULATE_BINDING_SECONDARY_BASE_REFLECTIVITY_INPUT, rtOutput.m_secondaryBaseReflectivity.view(Resources::AccessType::Read), nullptr);
     

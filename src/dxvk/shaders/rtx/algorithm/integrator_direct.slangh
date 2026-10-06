@@ -76,6 +76,7 @@ float softenShadowTerminator(const vec3 geometryNormal, const vec3 shadingNormal
 void evalNEEPrimary(
   vec3 throughput,
   ivec2 pixelCoordinate,
+  uvec2 compactedCoordinate,
   inout vec3 diffuseLobeRadiance,
   inout vec3 specularLobeRadiance,
   out float hitDistance, 
@@ -105,21 +106,26 @@ void evalNEEPrimary(
   //  is disabled, we must also handle that user choice gracefully.
   const bool pomOpaqueSurfaceEncountered = geometryFlags.pomOpaqueSurfaceEncountered && cb.pomEnableDirectLighting;
 
-  const uint sharedSurfaceIndex = (pomOpaqueSurfaceEncountered || isDiffusionProfileSss) ? uint(SharedSurfaceIndex[pixelCoordinate]) : SURFACE_INDEX_INVALID;
+  uint sharedSurfaceIndex = SURFACE_INDEX_INVALID;
+  if (pomOpaqueSurfaceEncountered || isDiffusionProfileSss)
+  {
+    sharedSurfaceIndex = uint(SharedSurfaceIndex[compactedCoordinate]);
+  }
 
-  VisibilityResult occludedVisibility;
-  occludedVisibility.hasOpaqueHit = true;
+  VisibilityResult visibility;
+  visibility.hasOpaqueHit = true;
 
-  VisibilityResult visibility = isValidLightSample ?
-    traceVisibilityRay<visibilityModeEnablePom | visibilityModeAccurateHitDistance | visibilityModeEnableTranslucentMaterials | visibilityModeEnableSubsurfaceMaterials>(
+  if (isValidLightSample)
+  {
+    visibility = traceVisibilityRay<visibilityModeEnablePom | visibilityModeAccurateHitDistance | visibilityModeEnableTranslucentMaterials | visibilityModeEnableSubsurfaceMaterials>(
       minimalSurfaceInteraction,
       lightSample.position, rayMask,
       sampledTransportPortalIndex, geometryFlags.portalSpace, pomOpaqueSurfaceEncountered,
       minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, geometryFlags.isViewModel, false,
-      sharedSurfaceIndex, SharedTextureCoord[pixelCoordinate],
+      sharedSurfaceIndex, SharedTextureCoord[compactedCoordinate],
       isThinOpaqueSubsurface,
-      opaqueSurfaceMaterialInteraction.shadingNormal) :
-    occludedVisibility;
+      opaqueSurfaceMaterialInteraction.shadingNormal);
+  }
 
   const bool hasNonSssOpaqueHit = visibility.hasOpaqueHit;
 
@@ -131,7 +137,7 @@ void evalNEEPrimary(
       sssDiffusionProfileResult = evalSssDiffusionProfile(
         opaqueSurfaceMaterialInteraction, minimalRayInteraction, minimalSurfaceInteraction,
         rayMask, sampledTransportPortalIndex, geometryFlags, viewRay,
-        sharedSurfaceIndex, pixelCoordinate,
+        sharedSurfaceIndex, pixelCoordinate, ivec2(compactedCoordinate),
         PrimaryWorldShadingNormal,
         randomState);
     }
@@ -140,7 +146,7 @@ void evalNEEPrimary(
       sssDiffusionProfileResult = evalSssDiffusionProfile(
         opaqueSurfaceMaterialInteraction, minimalRayInteraction, minimalSurfaceInteraction,
         rayMask, sampledTransportPortalIndex, geometryFlags, viewRay,
-        sharedSurfaceIndex, pixelCoordinate,
+        sharedSurfaceIndex, pixelCoordinate, ivec2(compactedCoordinate),
         SecondaryWorldShadingNormal,
         randomState);
     }
@@ -333,6 +339,7 @@ void sampleIndirectRayForFirstBounce(
 
 void sampleAndStoreIndirectRayPathSample(
   u16vec2 pixelCoordinate,
+  uvec2 compactedCoordinate,
   Ray primaryRay,
   float integrationSurfacePdf,
   MinimalRayInteraction primaryMinimalRayInteraction, 
@@ -340,7 +347,7 @@ void sampleAndStoreIndirectRayPathSample(
   PolymorphicSurfaceMaterialInteraction primaryPolymorphicSurfaceMaterialInteraction,
   inout GeometryFlags geometryFlags)
 {
-  uint mediumMaterialIndex = SharedMediumMaterialIndex[pixelCoordinate];
+  uint mediumMaterialIndex = SharedMediumMaterialIndex[compactedCoordinate];
   bool insideMedium = geometryFlags.insideMedium;
 
   bool mediumChanged;
@@ -364,22 +371,22 @@ void sampleAndStoreIndirectRayPathSample(
   // Serialize out the Medium Material Index if it changed
   if (mediumChanged)
   {
-    imageStore(SharedMediumMaterialIndex, pixelCoordinate, mediumMaterialIndex);
+    imageStore(SharedMediumMaterialIndex, ivec2(compactedCoordinate), mediumMaterialIndex);
   }
 
   // Output the sampled lobe information for the Indirect integration pass
-  aliasedData0.IndirectRayOriginDirection[pixelCoordinate] = vec4(
+  aliasedData0.IndirectRayOriginDirection[compactedCoordinate] = vec4(
     sampledRay.origin,
     uintBitsToFloat(float2x32ToSnorm2x16(sphereDirectionToSignedOctahedral(sampledRay.direction))));
-  IndirectThroughputConeRadius[pixelCoordinate] = vec4(throughput, sampledRay.coneRadius);
-  aliasedData1.IndirectFirstHitPerceptualRoughness[pixelCoordinate] = perceptualRoughness;
+  IndirectThroughputConeRadius[compactedCoordinate] = vec4(throughput, sampledRay.coneRadius);
+  aliasedData1.IndirectFirstHitPerceptualRoughness[compactedCoordinate] = perceptualRoughness;
 
   IndirectSampleData indirectSampleData;
   indirectSampleData.firstSampledLobeIsSpecular = firstSampledLobeIsSpecular;
   indirectSampleData.firstSampledLobePdf = firstSampledLobePdf;
   indirectSampleData.firstSampledSolidAnglePdf = firstSampledSolidAnglePdf;
   indirectSampleData.insideMedium = insideMedium;
-  indirectSampleData.store(pixelCoordinate, aliasedData2.IndirectFirstSampledLobeData);
+  indirectSampleData.store(compactedCoordinate, aliasedData2.IndirectFirstSampledLobeData);
 
   float totalPdf = 0;
   if (polymorphicSurfaceMaterialInteractionGetTypeHelper(primaryPolymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque)
@@ -388,19 +395,19 @@ void sampleAndStoreIndirectRayPathSample(
     totalPdf = NEECacheUtils.calculateBSDFSampleTotalPDF(opaqueSurfaceMaterialInteraction, primaryMinimalRayInteraction.viewDirection, sampledRay.direction, firstSampledSolidAnglePdf, firstSampledLobeIsSpecular);
   }
   
-  NeeCacheThreadTask[pixelCoordinate] = asuint(vec2(totalPdf, 0));
+  NeeCacheThreadTask[compactedCoordinate] = asuint(vec2(totalPdf, 0));
 
   // Store the Geometry Flags with the new path information if it changed
   if (insideMedium != geometryFlags.insideMedium || firstSampledLobeIsSpecular != geometryFlags.firstSampledLobeIsSpecular)
   {
     geometryFlags.insideMedium = insideMedium;
     geometryFlags.firstSampledLobeIsSpecular = firstSampledLobeIsSpecular;
-    geometryFlagsWriteToGBuffer(geometryFlags, pixelCoordinate, SharedFlags);
+    geometryFlagsWriteToGBuffer(geometryFlags, ivec2(compactedCoordinate), SharedFlags);
   }
  }
 
 void integrateDirectPath(
-  inout RNG randomState, uvec2 pixelCoordinate,
+  inout RNG randomState, uvec2 pixelCoordinate, uvec2 compactedCoordinate,
   GeometryFlags geometryFlags, float integrationSurfacePdf,
   Ray primaryRay, MinimalRayInteraction primaryMinimalRayInteraction, MinimalSurfaceInteraction primarySurfaceInteraction,
   PolymorphicSurfaceMaterialInteraction primaryPolymorphicSurfaceMaterialInteraction)
@@ -464,7 +471,7 @@ void integrateDirectPath(
       bool hasOpaqueHit = false;
       const bool isValidLightSample = (rtxdiLightSampleValid || risLightSampleValid);
       evalNEEPrimary(
-        throughput, pixelCoordinate,
+        throughput, pixelCoordinate, compactedCoordinate,
         diffuseLobeRadiance, specularLobeRadiance, lightHitDistance, hasOpaqueHit, illuminance,
         isValidLightSample, lightSample,
         inverseSelectionPdf, sampledTransportPortalIndex, geometryFlags,
@@ -486,13 +493,15 @@ void integrateDirectPath(
 
   // Output direct lighting radiance information
 
+  // The radiance buffers are compacted, but the RTXDI illuminance below is not.
+  // The gradients pass reads it next frame at a reprojected coordinate.
   if (geometryFlags.primarySelectedIntegrationSurface)
   {
     // Note: Output split direct lighting contribution only if the selected integration surface is primary,
     // the secondary surface uses a combined lighting contribution.
-    PrimaryDirectDiffuseLobeRadianceHitDistance[pixelCoordinate] =
+    PrimaryDirectDiffuseLobeRadianceHitDistance[compactedCoordinate] =
       sanitizeRadianceHitDistance(diffuseLobeRadiance, lightHitDistance);
-    PrimaryDirectSpecularLobeRadianceHitDistance[pixelCoordinate] =
+    PrimaryDirectSpecularLobeRadianceHitDistance[compactedCoordinate] =
       sanitizeRadianceHitDistance(specularLobeRadiance, lightHitDistance);
     // Store the surface illuminance for gradient computation.
     if (cb.rtxdiIlluminanceAllocated)
@@ -520,19 +529,20 @@ void integrateDirectPath(
       secondaryCombinedSpecularLobeRadianceHitDistance = sanitizeRadianceHitDistance(specularLobeRadiance, lightHitDistance); 
     }
 
-    SecondaryCombinedDiffuseLobeRadianceHitDistance[pixelCoordinate] = secondaryCombinedDiffuseLobeRadianceHitDistance;
-    SecondaryCombinedSpecularLobeRadianceHitDistance[pixelCoordinate] = secondaryCombinedSpecularLobeRadianceHitDistance;
+    SecondaryCombinedDiffuseLobeRadianceHitDistance[compactedCoordinate] = secondaryCombinedDiffuseLobeRadianceHitDistance;
+    SecondaryCombinedSpecularLobeRadianceHitDistance[compactedCoordinate] = secondaryCombinedSpecularLobeRadianceHitDistance;
     if (cb.rtxdiIlluminanceAllocated)
     {
       PrimaryRtxdiIlluminance[pixelCoordinate] = 0;
     }
   }
   
-  integratorDirectPathOutputDebugView(pixelCoordinate, geometryFlags);
+  integratorDirectPathOutputDebugView(pixelCoordinate, compactedCoordinate, geometryFlags);
 }
 
 void integratorDirectPathOutputDebugView(
   uvec2 pixelCoordinate,
+  uvec2 compactedCoordinate,
   GeometryFlags geometryFlags)
 {
   IndirectSampleData indirectSampleData;
@@ -545,7 +555,7 @@ void integratorDirectPathOutputDebugView(
   case DEBUG_VIEW_NOISY_SECONDARY_DIRECT_DIFFUSE_RADIANCE:
   {
     if (!geometryFlags.primarySelectedIntegrationSurface)  
-      storeInDebugView(pixelCoordinate, SecondaryCombinedDiffuseLobeRadianceHitDistance[pixelCoordinate].xyz);
+      storeInDebugView(pixelCoordinate, SecondaryCombinedDiffuseLobeRadianceHitDistance[compactedCoordinate].xyz);
     else
       storeInDebugView(pixelCoordinate, 0);
     break;
@@ -553,7 +563,7 @@ void integratorDirectPathOutputDebugView(
   case DEBUG_VIEW_NOISY_SECONDARY_DIRECT_SPECULAR_RADIANCE:
   {
     if (!geometryFlags.primarySelectedIntegrationSurface)  
-      storeInDebugView(pixelCoordinate, SecondaryCombinedSpecularLobeRadianceHitDistance[pixelCoordinate].xyz);
+      storeInDebugView(pixelCoordinate, SecondaryCombinedSpecularLobeRadianceHitDistance[compactedCoordinate].xyz);
     else
       storeInDebugView(pixelCoordinate, 0);
     break;
@@ -563,23 +573,23 @@ void integratorDirectPathOutputDebugView(
     if (!geometryFlags.primarySelectedIntegrationSurface)  
     {
       storeInDebugView(pixelCoordinate, 
-        SecondaryCombinedDiffuseLobeRadianceHitDistance[pixelCoordinate].xyz +
-        SecondaryCombinedSpecularLobeRadianceHitDistance[pixelCoordinate].xyz);
+        SecondaryCombinedDiffuseLobeRadianceHitDistance[compactedCoordinate].xyz +
+        SecondaryCombinedSpecularLobeRadianceHitDistance[compactedCoordinate].xyz);
     }
     break;
   }
   case DEBUG_VIEW_INDIRECT_FIRST_HIT_PERCEPTUAL_ROUGHNESS:
-    storeInDebugView(pixelCoordinate, aliasedData1.IndirectFirstHitPerceptualRoughness[pixelCoordinate]);
+    storeInDebugView(pixelCoordinate, aliasedData1.IndirectFirstHitPerceptualRoughness[compactedCoordinate]);
     break;
   case DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_RAY_THROUGHPUT:
-    storeInDebugView(pixelCoordinate, IndirectThroughputConeRadius[pixelCoordinate].xyz);
+    storeInDebugView(pixelCoordinate, IndirectThroughputConeRadius[compactedCoordinate].xyz);
     break;
   case DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_SAMPLED_LOBE_PDF:
-    indirectSampleData.load(pixelCoordinate, aliasedData2.IndirectFirstSampledLobeData);
+    indirectSampleData.load(compactedCoordinate, aliasedData2.IndirectFirstSampledLobeData);
     storeInDebugView(pixelCoordinate, indirectSampleData.firstSampledLobePdf);
     break;
   case DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_SAMPLED_SOLID_ANGLE_PDF:
-    indirectSampleData.load(pixelCoordinate, aliasedData2.IndirectFirstSampledLobeData);
+    indirectSampleData.load(compactedCoordinate, aliasedData2.IndirectFirstSampledLobeData);
     storeInDebugView(pixelCoordinate, indirectSampleData.firstSampledSolidAnglePdf);
     break;
   case DEBUG_VIEW_NAN:
@@ -590,17 +600,17 @@ void integratorDirectPathOutputDebugView(
     // DEBUG_VIEW_NOISY_SECONDARY_DIRECT_SPECULAR_RADIANCE
     if (!geometryFlags.primarySelectedIntegrationSurface)  
     {
-      isValid &= isValidValue(SecondaryCombinedDiffuseLobeRadianceHitDistance[pixelCoordinate]);
-      isValid &= isValidValue(SecondaryCombinedSpecularLobeRadianceHitDistance[pixelCoordinate]);
+      isValid &= isValidValue(SecondaryCombinedDiffuseLobeRadianceHitDistance[compactedCoordinate]);
+      isValid &= isValidValue(SecondaryCombinedSpecularLobeRadianceHitDistance[compactedCoordinate]);
     }
 
     // DEBUG_VIEW_INDIRECT_FIRST_HIT_PERCEPTUAL_ROUGHNESS
-    isValid &= isValidValue(aliasedData1.IndirectFirstHitPerceptualRoughness[pixelCoordinate]);
+    isValid &= isValidValue(aliasedData1.IndirectFirstHitPerceptualRoughness[compactedCoordinate]);
 
     // DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_RAY_THROUGHPUT
-    isValid &= isValidValue(IndirectThroughputConeRadius[pixelCoordinate].xyz);  
+    isValid &= isValidValue(IndirectThroughputConeRadius[compactedCoordinate].xyz);
 
-    indirectSampleData.load(pixelCoordinate, aliasedData2.IndirectFirstSampledLobeData);
+    indirectSampleData.load(compactedCoordinate, aliasedData2.IndirectFirstSampledLobeData);
 
     // DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_SAMPLED_LOBE_PDF
     isValid &= isValidValue(indirectSampleData.firstSampledLobePdf);

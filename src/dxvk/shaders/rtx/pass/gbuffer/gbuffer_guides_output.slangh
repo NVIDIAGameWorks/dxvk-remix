@@ -1,0 +1,301 @@
+/*
+* Copyright (c) 2026, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/utility/brdf.slangh"
+
+// This file writes the DLSS-RR albedo guides under the compacted GBuffer. The GBuffer builds them for every pixel,
+// since inactive pixels store no material for prepare_ray_reconstruction to build them from.
+
+// These constants name the kind of first hit that the primary pass leaves in the specular guide's alpha for the decal pass.
+// Misses, PSR pixels and first hits that no decal can cover get kGuideSurfaceNone, so the decal pass skips them.
+static const uint kGuideSurfaceNone = 0;
+static const uint kGuideSurfaceOpaque = 1;
+static const uint kGuideSurfaceTranslucent = 2;
+static const uint kGuideSurfaceOther = 3;
+
+// The specular guide's 2-bit alpha holds the kind, so its largest value maps to 1.
+static const float kGuideSurfaceKindScale = 3.0f;
+
+// Both surfaces of a pixel add into the albedo guides, each from at most one GBuffer pass,
+// so the guides start at zero here.
+// The diffuse guide's alpha mirrors PrimaryAlbedo after prepare RR, which is 1 for a primary hit and 0 for a miss.
+// When specular albedo is combined in, prepare RR's near-black clamp also writes 1, which covers this black seed.
+void guidesSeedPixel(uvec2 pixelCoordinate)
+{
+  float alpha = 0.0f;
+  if (cb.sparseRenderingArgs.guideCombineSpecularAlbedo)
+  {
+    alpha = 1.0f;
+  }
+
+  PrimaryAlbedoDLSSRR[pixelCoordinate] = vec4(0.0f, 0.0f, 0.0f, alpha);
+  PrimarySpecularAlbedoDLSSRR[pixelCoordinate] = vec4(0.0f);
+}
+
+// Mirrors getRoughnessFactor in prepare_ray_reconstruction.
+float guideRoughnessFactor(float perceptualRoughness)
+{
+  return cb.sparseRenderingArgs.guideRoughnessDemodulationMultiplier *
+    pow(1.0f / (perceptualRoughness + 0.1f), cb.sparseRenderingArgs.guideRoughnessDemodulationOffset);
+}
+
+// Near-black albedo reads to RR as a brightly lit pixel, so it is zeroed as preprocessInputsForRR does.
+// That pass zeroes stored 10-bit values below 0.5/255, which are the values up to 2/1023.
+// Before quantization, those are the values below 2.5/1023.
+vec3 guideCollapseNearBlackAlbedo(vec3 albedo)
+{
+  if (cb.sparseRenderingArgs.guideCombineSpecularAlbedo && all(albedo < 2.5f / 1023.0f))
+  {
+    return vec3(0.0f);
+  }
+
+  return albedo;
+}
+
+// Returns the tint of the attenuation without its dimming.
+// Both guides carry the tint when specular albedo is combined in.
+vec3 guideTint(vec3 attenuation)
+{
+  if (!cb.sparseRenderingArgs.guideCombineSpecularAlbedo)
+  {
+    return vec3(1.0f);
+  }
+
+  const float maxAttenuation = max3(attenuation.r, attenuation.g, attenuation.b);
+
+  if (maxAttenuation <= 0.0f)
+  {
+    return vec3(0.0f);
+  }
+
+  return attenuation / maxAttenuation;
+}
+
+// Returns an opaque material's opacity as the integrator decodes it from the GBuffer.
+// Returns 1 for other material types, whose base reflectivity is not adjusted.
+float guideOpacity(GBufferMemoryPolymorphicSurfaceMaterialInteraction materialMemory)
+{
+  if (gBufferMemoryPolymorphicSurfaceMaterialInteractionGetTypeHelper(materialMemory) != surfaceMaterialTypeOpaque)
+  {
+    return 1.0f;
+  }
+
+  return opaqueSurfaceMaterialInteractionCreate(materialMemory).opacity;
+}
+
+// Mirrors opaqueSurfaceMaterialGetAdjustedBaseReflectivity, whose result demodulation sees in place of the raw base reflectivity.
+vec3 guideAdjustBaseReflectivity(vec3 baseReflectivity, float opacity)
+{
+  return max(baseReflectivity, vec3(1.0f - opacity));
+}
+
+// Derives specular albedo the way demodulate does and scales it as prepare_ray_reconstruction does.
+vec3 guideSpecularAlbedo(
+  uvec2 pixelCoordinate, vec3 baseReflectivity, float perceptualRoughness, vec3 worldShadingNormal,
+  vec4 accumulatedRotation, bool directionAltered)
+{
+  vec3 virtualShadingNormal = worldShadingNormal;
+  if (directionAltered && cb.enableCalculateVirtualShadingNormals)
+  {
+    virtualShadingNormal = normalize(quaternionTransformVector(accumulatedRotation, virtualShadingNormal, true));
+  }
+
+  if (any(isnan(virtualShadingNormal)) || any(isinf(virtualShadingNormal)) || all(virtualShadingNormal == vec3(0.0f)))
+  {
+    virtualShadingNormal = vec3(0.0f, 0.0f, 1.0f);
+  }
+
+  const vec3 cameraDirection = cameraPixelCoordinateToDirection(cb.camera, ivec2(pixelCoordinate)).worldDirection;
+
+  vec3 specularAlbedo = evalSpecularAlbedoGGXSchlick(
+    baseReflectivity, calcRoughness(perceptualRoughness), dot(virtualShadingNormal, -cameraDirection));
+
+  if (cb.sparseRenderingArgs.guideCombineSpecularAlbedo)
+  {
+    specularAlbedo *= guideRoughnessFactor(perceptualRoughness);
+  }
+
+  return specularAlbedo;
+}
+
+// Adds a surface that a PSR pass resolved into the albedo guides.
+void guidesAccumulateAlbedo<let PRIMARY_SURFACE : bool>(
+  uvec2 pixelCoordinate,
+  GBufferMemoryPolymorphicSurfaceMaterialInteraction materialMemory,
+  vec3 attenuation, vec4 accumulatedRotation, bool directionAltered)
+{
+  // Unless specular albedo is combined in, the guides describe the primary surface alone.
+  if (!PRIMARY_SURFACE && !cb.sparseRenderingArgs.guideCombineSpecularAlbedo)
+  {
+    return;
+  }
+
+  const vec3 tint = guideTint(attenuation);
+  const vec3 adjustedBaseReflectivity =
+    guideAdjustBaseReflectivity(vec3(materialMemory.baseReflectivity), guideOpacity(materialMemory));
+  const vec3 specularAlbedo = guideSpecularAlbedo(
+    pixelCoordinate, adjustedBaseReflectivity, float(materialMemory.perceptualRoughness),
+    vec3(materialMemory.worldShadingNormal), accumulatedRotation, directionAltered);
+
+  const vec4 albedoGuide = PrimaryAlbedoDLSSRR[pixelCoordinate];
+  const vec3 albedo = guideCollapseNearBlackAlbedo(albedoGuide.rgb + vec3(materialMemory.albedo) * tint);
+
+  // A primary hit sets the alpha to 1. See guidesSeedPixel.
+  // The reflection lobe resolves before the transmission lobe, so a secondary surface comes before any primary hit,
+  // and the alpha it leaves is only the near-black clamp's.
+  float alpha = 1.0f;
+  if (!PRIMARY_SURFACE && any(albedo != vec3(0.0f)))
+  {
+    alpha = 0.0f;
+  }
+
+  PrimaryAlbedoDLSSRR[pixelCoordinate] = vec4(albedo, alpha);
+  PrimarySpecularAlbedoDLSSRR[pixelCoordinate] += vec4(specularAlbedo * tint, 0.0f);
+}
+
+// Writes the guides of a first hit that the primary pass resolved,
+// which is the only surface the guides describe at such a pixel.
+// Also leaves the inputs that the decal pass blends into, since an inactive pixel stores no material for that pass to read.
+void guidesWriteFirstHit(
+  uvec2 pixelCoordinate, bool decalCandidateSeen,
+  GBufferMemoryPolymorphicSurfaceMaterialInteraction materialMemory, vec3 emissiveRadiance,
+  vec3 attenuation, vec4 accumulatedRotation, bool directionAltered)
+{
+  const uint8_t materialType = gBufferMemoryPolymorphicSurfaceMaterialInteractionGetTypeHelper(materialMemory);
+  uint surfaceKind = kGuideSurfaceNone;
+
+  // Only the deferred decal pass reads the kind, so it stays none when that pass is off.
+  if (decalCandidateSeen && cb.enableSeparateUnorderedApproximations && cb.enableDecalMaterialBlending)
+  {
+    if (materialType == surfaceMaterialTypeOpaque)
+    {
+      surfaceKind = kGuideSurfaceOpaque;
+    }
+    else if (materialType == surfaceMaterialTypeTranslucent)
+    {
+      surfaceKind = kGuideSurfaceTranslucent;
+    }
+    else
+    {
+      surfaceKind = kGuideSurfaceOther;
+    }
+  }
+
+  const float opacity = guideOpacity(materialMemory);
+  const vec3 adjustedBaseReflectivity = guideAdjustBaseReflectivity(vec3(materialMemory.baseReflectivity), opacity);
+  const vec3 tint = guideTint(attenuation);
+  const vec3 specularAlbedo = guideSpecularAlbedo(
+    pixelCoordinate, adjustedBaseReflectivity, float(materialMemory.perceptualRoughness),
+    vec3(materialMemory.worldShadingNormal), accumulatedRotation, directionAltered);
+
+  PrimaryAlbedoDLSSRR[pixelCoordinate] =
+    vec4(guideCollapseNearBlackAlbedo(vec3(materialMemory.albedo) * tint), 1.0f);
+  PrimarySpecularAlbedoDLSSRR[pixelCoordinate] = vec4(specularAlbedo * tint, float(surfaceKind) / kGuideSurfaceKindScale);
+
+  // These are stored in reflection PSR slots, which a pixel whose first hit takes no PSR never uses.
+  // The emissive radiance and the full attenuation let the decal pass add a decal's emissive change at every pixel.
+  // An opaque surface also stores its raw base reflectivity and its opacity, which the decal pass blends and then adjusts.
+  // A translucent surface stores its diffuse layer color, which is black without a layer, and its base reflectivity instead.
+  if (surfaceKind != kGuideSurfaceNone)
+  {
+    vec3 blendInputColor = vec3(materialMemory.baseReflectivity);
+    float blendInputValue = opacity;
+
+    if (surfaceKind == kGuideSurfaceTranslucent)
+    {
+      blendInputColor = translucentSurfaceMaterialInteractionCreate(materialMemory).diffuseColor;
+      blendInputValue = float(materialMemory.baseReflectivity.x);
+    }
+
+    ReflectionPSRData1[pixelCoordinate] = packFloat4x16(vec4(min(emissiveRadiance, float16Max), blendInputValue));
+    ReflectionPSRData2[pixelCoordinate] = uint2(colorToR11G11B10(saturate(blendInputColor)), colorToR11G11B10(attenuation));
+  }
+}
+
+uint guideSurfaceKind(vec4 specularAlbedoGuide)
+{
+  return uint(round(specularAlbedoGuide.a * kGuideSurfaceKindScale));
+}
+
+// Blends a decal into a first hit's guides the way decalMaterialInteractionBlend blends it into the material.
+// Then derives the specular albedo once from the result, since GGX-Schlick is non-linear in what the decal changes.
+// The caller reads `perceptualRoughness` and also hands it to the compacted blend before either blend writes it.
+void guidesBlendDecal(
+  uvec2 pixelCoordinate, vec4 specularAlbedoGuide, float perceptualRoughness,
+  DecalMaterialInteraction decalMaterialInteraction, vec4 accumulatedRotation, bool directionAltered)
+{
+  const uint surfaceKind = guideSurfaceKind(specularAlbedoGuide);
+
+  if (surfaceKind != kGuideSurfaceOpaque && surfaceKind != kGuideSurfaceTranslucent)
+  {
+    return;
+  }
+
+  const float opacity = decalMaterialInteraction.opacity;
+  const uint2 blendInputs = ReflectionPSRData2[pixelCoordinate];
+  const vec3 tint = guideTint(r11g11b10ToColor(blendInputs.y));
+  const vec3 shadingNormal = normalize(mix(
+    PrimaryWorldShadingNormalDLSSRR[pixelCoordinate].xyz, decalMaterialInteraction.shadingNormal, opacity));
+  vec3 baseReflectivity;
+
+  if (surfaceKind == kGuideSurfaceOpaque)
+  {
+    // Albedo and base reflectivity carry opacity premultiplied, so they composite source-over rather than as a lerp.
+    const vec4 albedoGuide = PrimaryAlbedoDLSSRR[pixelCoordinate];
+    PrimaryAlbedoDLSSRR[pixelCoordinate] = vec4(
+      guideCollapseNearBlackAlbedo(tint * decalMaterialInteraction.albedo + albedoGuide.rgb * (1.0f - opacity)),
+      albedoGuide.a);
+
+    // The surface's opacity composites source-over too, and the blended base reflectivity is adjusted with the result.
+    const vec3 surfaceBaseReflectivity = r11g11b10ToColor(blendInputs.x);
+    const float surfaceOpacity = float(unpackFloat4x16(ReflectionPSRData1[pixelCoordinate]).w);
+    const float blendedSurfaceOpacity = opacity + surfaceOpacity * (1.0f - opacity);
+
+    baseReflectivity = guideAdjustBaseReflectivity(
+      decalMaterialInteraction.baseReflectivity + surfaceBaseReflectivity * (1.0f - opacity), blendedSurfaceOpacity);
+    perceptualRoughness = roughnessToPerceptualRoughness(
+      mix(perceptualRoughnessToRoughness(perceptualRoughness), decalMaterialInteraction.roughness, opacity));
+  }
+  else
+  {
+    // The decal blends into the glass's diffuse layer, which the deferred decal pass publishes as its albedo.
+    const vec3 surfaceDiffuseColor = r11g11b10ToColor(blendInputs.x);
+    const vec3 blendedDiffuseColor =
+      mix(surfaceDiffuseColor, decalMaterialInteraction.albedo * cb.translucentDecalAlbedoFactor, opacity);
+    const vec4 albedoGuide = PrimaryAlbedoDLSSRR[pixelCoordinate];
+    PrimaryAlbedoDLSSRR[pixelCoordinate] = vec4(guideCollapseNearBlackAlbedo(tint * blendedDiffuseColor), albedoGuide.a);
+
+    // Translucent guides take the fallback roughness, which a decal leaves alone.
+    const float surfaceBaseReflectivity = float(unpackFloat4x16(ReflectionPSRData1[pixelCoordinate]).w);
+    baseReflectivity =
+      vec3(mix(surfaceBaseReflectivity, calcBt709Luminance(decalMaterialInteraction.baseReflectivity), opacity));
+  }
+
+  const vec3 specularAlbedo = guideSpecularAlbedo(
+    pixelCoordinate, baseReflectivity, perceptualRoughness, shadingNormal, accumulatedRotation, directionAltered);
+
+  PrimarySpecularAlbedoDLSSRR[pixelCoordinate] = vec4(specularAlbedo * tint, specularAlbedoGuide.a);
+  PrimaryWorldShadingNormalDLSSRR[pixelCoordinate] = vec4(shadingNormal, 0.0f);
+  PrimaryPerceptualRoughness[pixelCoordinate] = perceptualRoughness;
+  PrimaryWorldShadingNormalDense[pixelCoordinate] = float2x32ToSnorm2x16(sphereDirectionToSignedOctahedral(shadingNormal));
+}

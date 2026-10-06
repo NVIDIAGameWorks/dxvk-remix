@@ -238,6 +238,7 @@ SecondaryDemodulationSignals makeEmptySecondaryDemodulationSignals()
 
 void outputToDebugViewAtTheEnd(
   uint2 pixelCoordinate,
+  uint2 compactedCoordinate,
   GeometryFlags geometryFlags,
   PrimaryDemodulationSignals primarySignals,
   SecondaryDemodulationSignals secondarySignals)
@@ -379,12 +380,12 @@ void outputToDebugViewAtTheEnd(
 
     break;
   case DEBUG_VIEW_PRIMARY_SPECULAR_ALBEDO:
-    storeInDebugView(pixelCoordinate, aliasedData0.PrimarySpecularAlbedo[pixelCoordinate].xyz);
+    storeInDebugView(pixelCoordinate, aliasedData0.PrimarySpecularAlbedo[compactedCoordinate].xyz);
     break;
   case DEBUG_VIEW_SECONDARY_SPECULAR_ALBEDO:
     if (performedAnyPSR)
     {
-      storeInDebugView(pixelCoordinate, aliasedData1.SecondarySpecularAlbedo[pixelCoordinate].xyz);
+      storeInDebugView(pixelCoordinate, aliasedData1.SecondarySpecularAlbedo[compactedCoordinate].xyz);
     }
     break;
   // Primary Direct Data
@@ -516,11 +517,11 @@ void outputToDebugViewAtTheEnd(
     bool isValid = true;
     
     // DEBUG_VIEW_PRIMARY_SPECULAR_ALBEDO
-    isValid &= isValidValue(aliasedData0.PrimarySpecularAlbedo[pixelCoordinate].xyz);
+    isValid &= isValidValue(aliasedData0.PrimarySpecularAlbedo[compactedCoordinate].xyz);
     // DEBUG_VIEW_SECONDARY_SPECULAR_ALBEDO
     if (performedAnyPSR)
     {
-      isValid &= isValidValue(aliasedData1.SecondarySpecularAlbedo[pixelCoordinate].xyz);
+      isValid &= isValidValue(aliasedData1.SecondarySpecularAlbedo[compactedCoordinate].xyz);
     }
     // DEBUG_VIEW_NOISY_PRIMARY_DIRECT_DIFFUSE_RADIANCE
     isValid &= isValidValue(primaryDirectDiffuseInput.xyz);
@@ -588,8 +589,10 @@ void outputToDebugViewAtTheEnd(
 // albedo (re-read for the debug view), and runs the per-lobe demodulation. The helper internally
 // gates on isPixelActive — the direct/indirect integrator does not produce valid inputs for
 // sparse-inactive pixels, so it returns empty signals on those.
+// `compactedCoordinate` addresses the compacted GBuffer and radiance buffers. Linear view Z stays dense.
 PrimaryDemodulationSignals demodulatePrimaryPath(
   uvec2 pixelCoordinate,
+  uvec2 compactedCoordinate,
   uvec2 localIndex,
   GeometryFlags geometryFlags,
   CameraDirections primaryRayDirections,
@@ -597,16 +600,22 @@ PrimaryDemodulationSignals demodulatePrimaryPath(
 {
   PrimaryDemodulationSignals primarySignals = makeEmptyPrimaryDemodulationSignals();
 
+  // Inactive pixels have no compacted slot, so there is neither material nor radiance to read.
+  if (!isPixelActive)
+  {
+    return primarySignals;
+  }
+
   // Note: Decode from unorm encoded representation.
-  const vec3 primaryVirtualWorldNormal = PrimaryVirtualWorldNormalPerceptualRoughness[pixelCoordinate].xyz * 2.0f - 1.0f;
-  const float primaryPerceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[pixelCoordinate].w;
+  const vec3 primaryVirtualWorldNormal = PrimaryVirtualWorldNormalPerceptualRoughness[compactedCoordinate].xyz * 2.0f - 1.0f;
+  const float primaryPerceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[compactedCoordinate].w;
   const float primaryLinearViewZ = PrimaryLinearViewZ[pixelCoordinate].x;
   const bool isPrimaryMiss = primaryLinearViewZ == cb.primaryDirectMissLinearViewZ;
 
   vec3 primarySpecularAlbedo = vec3(0);
   if (!isPrimaryMiss)
   {
-    const vec3 primaryBaseReflectivity = aliasedData0.PrimaryBaseReflectivity[pixelCoordinate].xyz;
+    const vec3 primaryBaseReflectivity = aliasedData0.PrimaryBaseReflectivity[compactedCoordinate].xyz;
     // Note: Virtual world normal used so direction does not need to be read from the GBuffer; the camera direction
     // can be re-derived since virtual normals are oriented with respect to the camera.
     const float primaryNormalDotViewDirection = dot(primaryVirtualWorldNormal, -primaryRayDirections.worldDirection);
@@ -615,14 +624,9 @@ PrimaryDemodulationSignals demodulatePrimaryPath(
   }
 
   // Note: Overwrites the base reflectivity in this buffer; composite remodulates with this value.
-  aliasedData0.PrimarySpecularAlbedo[pixelCoordinate].xyz = primarySpecularAlbedo;
+  aliasedData0.PrimarySpecularAlbedo[compactedCoordinate].xyz = primarySpecularAlbedo;
 
-  if (!isPixelActive)
-  {
-    return primarySignals;
-  }
-
-  const vec3 primaryDiffuseAlbedo = PrimaryAlbedo[pixelCoordinate].xyz;
+  const vec3 primaryDiffuseAlbedo = PrimaryAlbedo[compactedCoordinate].xyz;
 
   DemodulationData primaryDemodulationData;
   primaryDemodulationData.diffuseAlbedo = primaryDiffuseAlbedo;
@@ -636,10 +640,10 @@ PrimaryDemodulationSignals demodulatePrimaryPath(
 
   if (primaryInputValid)
   {
-    primarySignals.directDiffuseInput = PrimaryDirectDiffuseRadiance[pixelCoordinate];
-    primarySignals.directSpecularInput = PrimaryDirectSpecularRadiance[pixelCoordinate];
-    primarySignals.indirectDiffuseInput = PrimaryIndirectDiffuseRadiance[pixelCoordinate];
-    primarySignals.indirectSpecularInput = PrimaryIndirectSpecularRadiance[pixelCoordinate];
+    primarySignals.directDiffuseInput = PrimaryDirectDiffuseRadiance[compactedCoordinate];
+    primarySignals.directSpecularInput = PrimaryDirectSpecularRadiance[compactedCoordinate];
+    primarySignals.indirectDiffuseInput = PrimaryIndirectDiffuseRadiance[compactedCoordinate];
+    primarySignals.indirectSpecularInput = PrimaryIndirectSpecularRadiance[compactedCoordinate];
   }
 
   // Pre-scale per-lobe radiance by the inverse of the sparse-rendering sampling rate so
@@ -704,51 +708,52 @@ PrimaryDemodulationSignals demodulatePrimaryPath(
     primarySignals.directSpecularOutput.xyz += primarySignals.indirectSpecularOutput.xyz;
   }
 
-  PrimaryDirectDiffuseRadiance[pixelCoordinate] = primarySignals.directDiffuseOutput;
-  PrimaryDirectSpecularRadiance[pixelCoordinate] = primarySignals.directSpecularOutput;
+  PrimaryDirectDiffuseRadiance[compactedCoordinate] = primarySignals.directDiffuseOutput;
+  PrimaryDirectSpecularRadiance[compactedCoordinate] = primarySignals.directSpecularOutput;
 
   if (cb.enableSeparatedDenoisers)
   {
-    PrimaryIndirectDiffuseRadiance[pixelCoordinate] = primarySignals.indirectDiffuseOutput;
-    PrimaryIndirectSpecularRadiance[pixelCoordinate] = primarySignals.indirectSpecularOutput;
+    PrimaryIndirectDiffuseRadiance[compactedCoordinate] = primarySignals.indirectDiffuseOutput;
+    PrimaryIndirectSpecularRadiance[compactedCoordinate] = primarySignals.indirectSpecularOutput;
   }
 
   return primarySignals;
 }
 
 // Combines the secondary (PSR) surface signal and writes it to the secondary radiance buffers.
-// RR consumes the raw signal directly; other upscalers retain NRD front-end preparation. This runs
-// for every PSR pixel because the integrator produces a dense secondary signal.
+// RR consumes the raw signal directly; other upscalers retain NRD front-end preparation.
 SecondaryDemodulationSignals demodulateSecondaryPath(
   uvec2 pixelCoordinate,
+  uvec2 compactedCoordinate,
   GeometryFlags geometryFlags,
   CameraDirections primaryRayDirections)
 {
   SecondaryDemodulationSignals secondarySignals = makeEmptySecondaryDemodulationSignals();
 
   // Only PSR pixels carry valid secondary GBuffer data and produce secondary radiance.
+  // Inactive pixels take default flags, so they exit here.
   if (!geometryFlags.performedAnyPSR())
   {
     return secondarySignals;
   }
 
-  const vec3 secondaryBaseReflectivity = aliasedData1.SecondaryBaseReflectivity[pixelCoordinate].xyz;
+  const vec3 secondaryBaseReflectivity = aliasedData1.SecondaryBaseReflectivity[compactedCoordinate].xyz;
   // Note: Decode from unorm encoded representation.
-  const vec3 secondaryVirtualWorldNormal = SecondaryVirtualWorldNormalPerceptualRoughness[pixelCoordinate].xyz * 2.0f - 1.0f;
-  const float secondaryPerceptualRoughness = SecondaryVirtualWorldNormalPerceptualRoughness[pixelCoordinate].w;
+  const vec3 secondaryVirtualWorldNormal = SecondaryVirtualWorldNormalPerceptualRoughness[compactedCoordinate].xyz * 2.0f - 1.0f;
+  const float secondaryPerceptualRoughness = SecondaryVirtualWorldNormalPerceptualRoughness[compactedCoordinate].w;
   // Note: Virtual world normal used so direction does not need to be read from the GBuffer; the camera direction
   // can be re-derived since virtual normals are oriented with respect to the camera.
   const float secondaryNormalDotViewDirection = dot(secondaryVirtualWorldNormal, -primaryRayDirections.worldDirection);
   const vec3 secondarySpecularAlbedo = evalSpecularAlbedoGGXSchlick(
     secondaryBaseReflectivity, calcRoughness(secondaryPerceptualRoughness), secondaryNormalDotViewDirection);
   // Note: Overwrites the base reflectivity in this buffer; composite remodulates with this value.
-  aliasedData1.SecondarySpecularAlbedo[pixelCoordinate].xyz = secondarySpecularAlbedo;
+  aliasedData1.SecondarySpecularAlbedo[compactedCoordinate].xyz = secondarySpecularAlbedo;
 
   if (geometryFlags.secondarySurfaceMask && !geometryFlags.primarySelectedIntegrationSurface)
   {
-    secondarySignals.indirectRadianceHitDistanceInput = IndirectRadianceHitDistance[pixelCoordinate];
-    secondarySignals.combinedDiffuseInput = SecondaryCombinedDiffuseRadiance[pixelCoordinate];
-    secondarySignals.combinedSpecularInput = SecondaryCombinedSpecularRadiance[pixelCoordinate];
+    secondarySignals.indirectRadianceHitDistanceInput = IndirectRadianceHitDistance[compactedCoordinate];
+    secondarySignals.combinedDiffuseInput = SecondaryCombinedDiffuseRadiance[compactedCoordinate];
+    secondarySignals.combinedSpecularInput = SecondaryCombinedSpecularRadiance[compactedCoordinate];
 
     // For secondary surfaces combine direct and indirect radiance for the current lobe.
     if (geometryFlags.firstSampledLobeIsSpecular)
@@ -765,6 +770,16 @@ SecondaryDemodulationSignals demodulateSecondaryPath(
     // The secondary signal doesn't have advanced techniques like ReSTIR; a tighter clamp removes fireflies.
     secondarySignals.combinedSpecularInput.xyz = fireflyFiltering(secondarySignals.combinedSpecularInput.xyz, cb.secondarySpecularFireflyFilteringThreshold);
 
+    // The sparse estimate is scaled by the inverse sampling rate after the clamps above,
+    // so that the clamps act on the traced radiance. HitT (.w) stays unscaled.
+    if (cb.sparseRenderingArgs.mode != SparseRenderingMode::Off)
+    {
+      const float radianceScale = calculateRadianceScaleFromSamplingRate(SparseRenderingPixelSamplingRate[pixelCoordinate]);
+      secondarySignals.combinedDiffuseInput.xyz *= radianceScale;
+      secondarySignals.combinedSpecularInput.xyz *= radianceScale;
+      secondarySignals.indirectRadianceHitDistanceInput.xyz *= radianceScale;
+    }
+
     if (cb.enableDLSSRR)
     {
       secondarySignals.combinedDiffuseOutput = secondarySignals.combinedDiffuseInput;
@@ -773,10 +788,10 @@ SecondaryDemodulationSignals demodulateSecondaryPath(
     else
     {
       DemodulationData secondaryDemodulationData;
-      secondaryDemodulationData.diffuseAlbedo = SecondaryAlbedo[pixelCoordinate].xyz;
+      secondaryDemodulationData.diffuseAlbedo = SecondaryAlbedo[compactedCoordinate].xyz;
       secondaryDemodulationData.specularAlbedo = secondarySpecularAlbedo;
       secondaryDemodulationData.perceptualRoughness = secondaryPerceptualRoughness;
-      secondaryDemodulationData.linearViewZ = SecondaryLinearViewZ[pixelCoordinate].x;
+      secondaryDemodulationData.linearViewZ = SecondaryLinearViewZ[compactedCoordinate].x;
 
       demodulate(
         cb.secondaryCombinedNrd, secondaryDemodulationData,
@@ -785,15 +800,15 @@ SecondaryDemodulationSignals demodulateSecondaryPath(
     }
   }
 
-  // ToDo: scale secondaries prior to NRD when sparse secondary lighting gets added.
-  SecondaryCombinedDiffuseRadiance[pixelCoordinate] = secondarySignals.combinedDiffuseOutput;
-  SecondaryCombinedSpecularRadiance[pixelCoordinate] = secondarySignals.combinedSpecularOutput;
+  SecondaryCombinedDiffuseRadiance[compactedCoordinate] = secondarySignals.combinedDiffuseOutput;
+  SecondaryCombinedSpecularRadiance[compactedCoordinate] = secondarySignals.combinedSpecularOutput;
 
   return secondarySignals;
 }
 
 void outputToDebugViewAtTheStart(
   uint2 pixelCoordinate,
+  uint2 compactedCoordinate,
   GeometryFlags geometryFlags)
 {
   // The base reflectivity aliases hold the post-integrate adjusted value at this point; they get
@@ -808,13 +823,13 @@ void outputToDebugViewAtTheStart(
   case DEBUG_VIEW_PRIMARY_BASE_REFLECTIVITY_ADJUSTED:
     if (primaryHit)
     {
-      storeInDebugView(pixelCoordinate, aliasedData0.PrimaryBaseReflectivity[pixelCoordinate].xyz);
+      storeInDebugView(pixelCoordinate, aliasedData0.PrimaryBaseReflectivity[compactedCoordinate].xyz);
     }
     break;
   case DEBUG_VIEW_SECONDARY_BASE_REFLECTIVITY_ADJUSTED:
     if (geometryFlags.performedAnyPSR())
     {
-      storeInDebugView(pixelCoordinate, aliasedData1.SecondaryBaseReflectivity[pixelCoordinate].xyz);
+      storeInDebugView(pixelCoordinate, aliasedData1.SecondaryBaseReflectivity[compactedCoordinate].xyz);
     }
     break;
   case DEBUG_VIEW_NAN:
@@ -822,11 +837,11 @@ void outputToDebugViewAtTheStart(
     bool isValid = true;
     if (primaryHit)
     {
-      isValid &= isValidValue(aliasedData0.PrimaryBaseReflectivity[pixelCoordinate].xyz);
+      isValid &= isValidValue(aliasedData0.PrimaryBaseReflectivity[compactedCoordinate].xyz);
     }
     if (geometryFlags.performedAnyPSR())
     {
-      isValid &= isValidValue(aliasedData1.SecondaryBaseReflectivity[pixelCoordinate].xyz);
+      isValid &= isValidValue(aliasedData1.SecondaryBaseReflectivity[compactedCoordinate].xyz);
     }
     accumulateInDebugViewAnd(pixelCoordinate, isValid);
     break;
@@ -838,32 +853,39 @@ void outputToDebugViewAtTheStart(
 [numthreads(DEMODULATE_THREAD_GROUP_WIDTH, DEMODULATE_THREAD_GROUP_HEIGHT, 1)]
 void main(uint2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThreadID)
 {
+  // Launched over the screen grid even with sparse rendering on. Inactive pixels exit below.
   if (any(threadIndex >= cb.camera.resolution))
   {
     return;
   }
 
-  uvec2 pixelCoordinate = threadIndex;
-  bool isPixelActive = true;
-  if (cb.sparseRenderingArgs.mode != SparseRenderingMode::Off)
+  // From here on, compacted resources are addressed by compactedCoordinate and dense resources are addressed by pixelCoordinate.
+  uvec2 compactedCoordinate;
+  const bool isPixelActive = loadCompactedCoordinateFromDispatchIndex(
+    TileActiveCounts, threadIndex, cb.camera.resolution, cb.sparseRenderingArgs, compactedCoordinate);
+
+  // Inactive pixels have no compacted data for demodulation or for its debug views, and those views start out cleared.
+  if (!isPixelActive)
   {
-    isPixelActive = isActivePixelFromMask(SparseRenderingActivePixelMask, pixelCoordinate);
+    return;
   }
 
+  const uvec2 pixelCoordinate = loadLocalPixelCoordinate(ActiveLocalPixelCoords, threadIndex, cb.sparseRenderingArgs);
+
   const CameraDirections primaryRayDirections = cameraPixelCoordinateToDirection(cb.camera, pixelCoordinate);
-  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixelCoordinate, SharedFlags);
+  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(compactedCoordinate, SharedFlags);
 
   // Emit debug views that read from resources soon to be overwritten by this pass.
-  outputToDebugViewAtTheStart(pixelCoordinate, geometryFlags);
+  outputToDebugViewAtTheStart(pixelCoordinate, compactedCoordinate, geometryFlags);
 
   // Primary surface
   PrimaryDemodulationSignals primarySignals = demodulatePrimaryPath(
-    pixelCoordinate, localIndex, geometryFlags, primaryRayDirections, isPixelActive);
+    pixelCoordinate, compactedCoordinate, localIndex, geometryFlags, primaryRayDirections, isPixelActive);
 
-  // Secondary surface - runs on every PSR pixel regardless of sparse active state so the secondary signal stays dense
+  // The secondary surface comes from PSR, and its radiance is scaled by 1/rate.
   SecondaryDemodulationSignals secondarySignals = demodulateSecondaryPath(
-    pixelCoordinate, geometryFlags, primaryRayDirections);
+    pixelCoordinate, compactedCoordinate, geometryFlags, primaryRayDirections);
 
   // Output to debug view
-  outputToDebugViewAtTheEnd(pixelCoordinate, geometryFlags, primarySignals, secondarySignals);
+  outputToDebugViewAtTheEnd(pixelCoordinate, compactedCoordinate, geometryFlags, primarySignals, secondarySignals);
 }

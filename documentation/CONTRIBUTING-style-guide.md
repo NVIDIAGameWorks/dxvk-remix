@@ -112,6 +112,7 @@ This document outlines our project's C++ code formatting standards, commenting s
 
 ### Headers and Includes
 
+- **Location**: Place includes at the start of the file, after the copyright header and `#pragma once`. Do not place them partway through the code.
 - **Ordering**: Standard libraries first, followed by third-party libraries, and then local project headers.
 - **Separation**: Separate each group with a blank line.
 

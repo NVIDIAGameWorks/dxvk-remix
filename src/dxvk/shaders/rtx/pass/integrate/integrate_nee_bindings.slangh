@@ -48,8 +48,11 @@ Texture2D<uint2> SharedSubsurfaceData;
 layout(rg32ui, binding = INTEGRATE_NEE_BINDING_SHARED_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT)
 Texture2D<uint2> SharedSubsurfaceDiffusionProfileData;
 
-layout(binding = INTEGRATE_NEE_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)
-Texture2D<uint16_t> ActiveLocalPixelCoords;
+layout(binding = INTEGRATE_NEE_BINDING_ACTIVE_PIXEL_COORDS_INPUT)
+StructuredBuffer<uint> ActivePixelCoords;
+
+layout(binding = INTEGRATE_NEE_BINDING_ACTIVE_PIXEL_COUNT_INPUT)
+StructuredBuffer<uint> ActivePixelCount;
 
 // Primary Inputs
 

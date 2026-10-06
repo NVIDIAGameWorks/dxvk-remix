@@ -42,6 +42,7 @@
 // Deserialize the Ray Interaction, Surface Interaction, and Surface Material Interaction
 void deserializeInteractions(
   ivec2 pixelCoordinate,
+  ivec2 compactedCoordinate,
   GeometryFlags geometryFlags,
   out MinimalRayInteraction minimalRayInteraction,
   out MinimalSurfaceInteraction minimalSurfaceInteraction,
@@ -53,95 +54,49 @@ void deserializeInteractions(
   if (geometryFlags.primarySelectedIntegrationSurface)
   {
     minimalRayInteraction = minimalRayInteractionReadFromGBuffer(
-      primaryRay, pixelCoordinate, PrimaryViewDirection, PrimaryConeRadius);
+      primaryRay, compactedCoordinate, PrimaryViewDirection, PrimaryConeRadius);
 
     minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBufferWithError(
-      pixelCoordinate, PrimaryWorldPositionWorldTriangleNormal, PrimaryPositionError);
+      compactedCoordinate, PrimaryWorldPositionWorldTriangleNormal, PrimaryPositionError);
 
     polymorphicSurfaceMaterialInteraction = polymorphicSurfaceMaterialInteractionReadFromGBuffer(
-      pixelCoordinate, PrimaryWorldShadingNormal, PrimaryPerceptualRoughness, PrimaryAlbedo, PrimaryBaseReflectivity,
+      pixelCoordinate, compactedCoordinate, pixelCoordinate,
+      PrimaryWorldShadingNormal, PrimaryPerceptualRoughness, PrimaryAlbedo, PrimaryBaseReflectivity,
       SharedMaterialData0, SharedMaterialData1, SharedSurfaceIndex, SharedSubsurfaceData, SharedSubsurfaceDiffusionProfileData);
   }
   else
   {
     minimalRayInteraction = minimalRayInteractionReadFromGBuffer(
-      primaryRay, pixelCoordinate, SecondaryViewDirection, SecondaryConeRadius);
+      primaryRay, compactedCoordinate, SecondaryViewDirection, SecondaryConeRadius);
 
     minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBufferWithError(
-      pixelCoordinate, aliasedData0.SecondaryWorldPositionWorldTriangleNormal, aliasedData2.SecondaryPositionError);
+      compactedCoordinate, aliasedData0.SecondaryWorldPositionWorldTriangleNormal, aliasedData2.SecondaryPositionError);
 
     polymorphicSurfaceMaterialInteraction = polymorphicSurfaceMaterialInteractionReadFromGBuffer(
-      pixelCoordinate, SecondaryWorldShadingNormal, aliasedData1.SecondaryPerceptualRoughness, SecondaryAlbedo, SecondaryBaseReflectivity,
+      pixelCoordinate, compactedCoordinate, compactedCoordinate,
+      SecondaryWorldShadingNormal, aliasedData1.SecondaryPerceptualRoughness, SecondaryAlbedo, SecondaryBaseReflectivity,
       SharedMaterialData0, SharedMaterialData1, SharedSurfaceIndex, SharedSubsurfaceData, SharedSubsurfaceDiffusionProfileData);
   }
 }
 
-#if ENABLE_NRC
-// Resolves the training cell this pixel won, when the GBuffer left the training-path setup to
-// this pass. Returns false when there is nothing to register for this thread.
-bool calculateDeferredNrcTrainingPath(uvec2 pixelCoordinate, out uvec2 trainingPixelCoordinateInTrainingSpace)
-{
-  trainingPixelCoordinateInTrainingSpace = uvec2(0);
-
-  if (!cb.allowNrcTraining || !shouldDeferNrcTrainingSetup(cb.sparseRenderingArgs))
-  {
-    return false;
-  }
-
-  // Resampling is on, guaranteed by the deferral check above.
-  const bool hasTrainingPath = Nrc::calculateNrcTrainingPathForQueryPixel(
-    pixelCoordinate, true,
-    NrcTrainingQueryReservoir, cb.nrcArgs, trainingPixelCoordinateInTrainingSpace);
-
-  return hasTrainingPath;
-}
-
-// Registers vertex 0 from the surface this pass has already deserialized for its own work, so the deferral
-// costs no extra loads beyond the hit distance the GBuffer would have had in register.
-void registerDeferredNrcTrainingPath(
-  uvec2 trainingPixelCoordinateInTrainingSpace,
-  uvec2 pixelCoordinate,
-  GeometryFlags geometryFlags,
-  MinimalRayInteraction minimalRayInteraction,
-  MinimalSurfaceInteraction minimalSurfaceInteraction,
-  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction)
-{
-  const float primaryPathHitDistance = calculateSelectedIntegrationSurfaceHitDistance(
-    ivec2(pixelCoordinate), geometryFlags, PrimaryHitDistance, SecondaryHitDistance);
-
-  Nrc::registerNrcTrainingPathPrimaryHit(
-    trainingPixelCoordinateInTrainingSpace,
-    minimalSurfaceInteraction.position, polymorphicSurfaceMaterialInteraction, minimalRayInteraction.viewDirection,
-    primaryPathHitDistance, NrcQueryPathData0, NrcTrainingPathData1);
-}
-#endif
-
 void integrate_direct_pass(uvec2 threadIndex)
 {
-  if (any(threadIndex >= cb.camera.resolution))
+  uvec2 compactedCoordinate;
+  if (!loadCompactedCoordinate(threadIndex, ActivePixelCount, cb.camera.resolution, cb.sparseRenderingArgs, compactedCoordinate))
   {
     return;
   }
 
-  uvec2 pixelCoordinate = threadIndex;
-
-  const bool isPixelActive = loadPixelCoordinate(
-    threadIndex, ActiveLocalPixelCoords,
-    cb.camera.resolution, cb.sparseRenderingArgs, pixelCoordinate);
-
-  if (!isPixelActive)
-  {
-    return;
-  }
+  const uvec2 pixelCoordinate = loadLaunchPixelCoordinate(threadIndex, ActivePixelCoords, cb.sparseRenderingArgs);
 
   // Deserialize flags
 
-  GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixelCoordinate, SharedFlags);
+  GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(ivec2(compactedCoordinate), SharedFlags);
 
   // Check if the GBuffer was hit on the Primary and Secondary surfaces
 
-  const bool primaryGBufferMiss = isGBufferMiss(pixelCoordinate, PrimaryConeRadius);
-  const bool secondaryGBufferMiss = isGBufferMiss(pixelCoordinate, SecondaryConeRadius);
+  const bool primaryGBufferMiss = isGBufferMiss(ivec2(compactedCoordinate), PrimaryConeRadius);
+  const bool secondaryGBufferMiss = isGBufferMiss(ivec2(compactedCoordinate), SecondaryConeRadius);
   const bool missOfSelectedIntegrationSurface =
     isSelectedIntegrationSurfaceGBufferMiss(geometryFlags, primaryGBufferMiss, secondaryGBufferMiss);
 
@@ -152,36 +107,15 @@ void integrate_direct_pass(uvec2 threadIndex)
   // Composite sums both surfaces but only the selected one is written below, and not at all if it missed.
   if (primaryGBufferMiss || !geometryFlags.primarySelectedIntegrationSurface)
   {
-    PrimaryDirectDiffuseLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
-    PrimaryDirectSpecularLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
+    PrimaryDirectDiffuseLobeRadianceHitDistance[compactedCoordinate] = vec4(0);
+    PrimaryDirectSpecularLobeRadianceHitDistance[compactedCoordinate] = vec4(0);
   }
 
   if (secondaryGBufferMiss || geometryFlags.primarySelectedIntegrationSurface)
   {
-    SecondaryCombinedDiffuseLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
-    SecondaryCombinedSpecularLobeRadianceHitDistance[pixelCoordinate] = vec4(0);
+    SecondaryCombinedDiffuseLobeRadianceHitDistance[compactedCoordinate] = vec4(0);
+    SecondaryCombinedSpecularLobeRadianceHitDistance[compactedCoordinate] = vec4(0);
   }
-
-#if ENABLE_NRC
-  uvec2 nrcTrainingPixelCoordinate;
-  bool hasDeferredNrcTrainingPath = calculateDeferredNrcTrainingPath(pixelCoordinate, nrcTrainingPixelCoordinate);
-
-  // A resampled pixel whose selected surface missed still has to be registered, and this pass early-outs on that
-  // miss below.
-  if (hasDeferredNrcTrainingPath && missOfSelectedIntegrationSurface)
-  {
-    Nrc::registerNrcTrainingPathPrimaryMiss(nrcTrainingPixelCoordinate);
-
-    hasDeferredNrcTrainingPath = false;
-  }
-
-  // Written after the revocation above, so the view shows the paths that actually got registered. Only on the
-  // deferred path - otherwise the GBuffer knows the cell winner and writes this view itself.
-  if (cb.debugView == DEBUG_VIEW_NRC_UPDATE_PIXEL && shouldDeferNrcTrainingSetup(cb.sparseRenderingArgs))
-  {
-    storeInDebugView(pixelCoordinate, hasDeferredNrcTrainingPath);
-  }
-#endif
 
   // Note: Early out if no more work on the selected integration surface is needed
   if (missOfSelectedIntegrationSurface)
@@ -193,7 +127,7 @@ void integrate_direct_pass(uvec2 threadIndex)
 
   // Read the integration surface PDF
 
-  const float integrationSurfacePdf = SharedIntegrationSurfacePdf[pixelCoordinate];
+  const float integrationSurfacePdf = SharedIntegrationSurfacePdf[compactedCoordinate];
 
   // Deserialize the Ray
 
@@ -215,19 +149,8 @@ void integrate_direct_pass(uvec2 threadIndex)
 
   // Deserialize the Ray Interaction, Surface Interaction, and Surface Material Interaction
   deserializeInteractions(
-    pixelCoordinate, geometryFlags,
+    pixelCoordinate, compactedCoordinate, geometryFlags,
     minimalRayInteraction, minimalSurfaceInteraction, polymorphicSurfaceMaterialInteraction);
-
-#if ENABLE_NRC
-  // Note: must precede the base reflectivity rewrite below, which replaces the value NRC wants with a
-  // denoiser-oriented one.
-  if (hasDeferredNrcTrainingPath)
-  {
-    registerDeferredNrcTrainingPath(
-      nrcTrainingPixelCoordinate, pixelCoordinate, geometryFlags,
-      minimalRayInteraction, minimalSurfaceInteraction, polymorphicSurfaceMaterialInteraction);
-  }
-#endif
 
   // Rewrite Material Data for Denoising
   // Note: This is done to turn the usual material data base reflectivity into something more suitable for
@@ -251,12 +174,12 @@ void integrate_direct_pass(uvec2 threadIndex)
       // still. Instead, the ReSTIR GI final shading pass will do this adjustment instead before it is used by demodulation and the denoiser.
       if (!cb.enableReSTIRGI)
       {
-        PrimaryBaseReflectivity[pixelCoordinate] = vec4(adjustedBaseReflectivity, 0.0f);
+        PrimaryBaseReflectivity[compactedCoordinate] = vec4(adjustedBaseReflectivity, 0.0f);
       }
     }
     else
     {
-      SecondaryBaseReflectivity[pixelCoordinate] = vec4(adjustedBaseReflectivity, 0.0f);
+      SecondaryBaseReflectivity[compactedCoordinate] = vec4(adjustedBaseReflectivity, 0.0f);
     }
   }
 
@@ -264,7 +187,8 @@ void integrate_direct_pass(uvec2 threadIndex)
   // This is faster than reloading all the material data in the indirect pass and computing a ray path sample there
   // Note: this updates geometryFlags
   sampleAndStoreIndirectRayPathSample(
-    pixelCoordinate, primaryRay, integrationSurfacePdf,
+    pixelCoordinate, compactedCoordinate,
+    primaryRay, integrationSurfacePdf,
     minimalRayInteraction, minimalSurfaceInteraction, polymorphicSurfaceMaterialInteraction,
     geometryFlags);
 
@@ -279,7 +203,7 @@ void integrate_direct_pass(uvec2 threadIndex)
 #endif
 
   integrateDirectPath(
-    rng, pixelCoordinate,
+    rng, pixelCoordinate, compactedCoordinate,
     geometryFlags, integrationSurfacePdf,
     primaryRay, minimalRayInteraction, minimalSurfaceInteraction,
     polymorphicSurfaceMaterialInteraction);

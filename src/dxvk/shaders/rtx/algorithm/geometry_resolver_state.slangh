@@ -50,6 +50,7 @@ struct GeometryResolverState : IBasePayloadState
   f16vec3 _direction;
   f16vec3 attenuation;
   uint8_t _rayMask;
+  u16vec2 _compactedCoordinate;
 
   // Property to get pixel coordinate
   property u16vec2 pixelCoordinate
@@ -58,6 +59,13 @@ struct GeometryResolverState : IBasePayloadState
     {
       return u16vec2(getDispatchRaysIndex().xy);
     }
+  }
+
+  // Holds the compacted GBuffer slot that this pixel stores to. See loadGBufferStoreCoordinate.
+  property u16vec2 compactedCoordinate
+  {
+    get { return _compactedCoordinate; }
+    set { _compactedCoordinate = newValue; }
   }
 
   // Passthrough accessors
@@ -167,6 +175,20 @@ struct GeometryResolverState : IBasePayloadState
       set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 9, newValue); }
   }
 
+  // Is false only when the deferred decal pass is certain to find no decal on the final surface.
+  property bool decalCandidateSeen
+  {
+      get { return packedFlagGet(_encodedFlags, 1 << 10); }
+      set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 10, newValue); }
+  }
+
+  // Is set when the primary pass wrote the RR guides of a first hit, so those guides need no zero seed.
+  property bool firstHitGuidesWritten
+  {
+      get { return packedFlagGet(_encodedFlags, 1 << 11); }
+      set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 11, newValue); }
+  }
+
   // Misc packed properties
 
   // Note: Indicates portal space in which the surface was hit
@@ -227,6 +249,7 @@ struct GeometryPSRResolverState : IBasePayloadState
   uint8_t _rayMask;
   uint8_t bounceIteration;
   f16vec3 attenuation;
+  u16vec2 _compactedCoordinate;
 
   // Property to get pixel coordinate
   property u16vec2 pixelCoordinate
@@ -235,6 +258,13 @@ struct GeometryPSRResolverState : IBasePayloadState
     {
       return u16vec2(getDispatchRaysIndex().xy);
     }
+  }
+
+  // See GeometryResolverState::compactedCoordinate.
+  property u16vec2 compactedCoordinate
+  {
+    get { return _compactedCoordinate; }
+    set { _compactedCoordinate = newValue; }
   }
 
   // Surfaces created from gbuffer may not be valid (i.e. if this pixel was a ray miss)
@@ -452,9 +482,14 @@ GbufferPSRData loadReflectionPSRData(uint2 pixelCoordinate)
   uint2 data2 = ReflectionPSRData2[pixelCoordinate];
 
   // Clear the PSR data to prevent storing NaNs in these aliased resources
-  aliasedData0.ReflectionPSRData0[pixelCoordinate] = 0;
-  ReflectionPSRData1[pixelCoordinate] = 0;
-  ReflectionPSRData2[pixelCoordinate] = 0;
+  // The compacted GBuffer's slots alias the dense world position, the alpha blend radiance and the composite output,
+  // and each of those is rewritten before it is read.
+  if (cb.sparseRenderingArgs.mode == SparseRenderingMode::Off)
+  {
+    aliasedData0.ReflectionPSRData0[pixelCoordinate] = 0;
+    ReflectionPSRData1[pixelCoordinate] = 0;
+    ReflectionPSRData2[pixelCoordinate] = 0;
+  }
 
   GbufferPSRData psrData;
   psrData.origin.xyz = data0.xyz;

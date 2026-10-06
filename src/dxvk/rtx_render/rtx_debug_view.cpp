@@ -593,6 +593,8 @@ namespace dxvk {
         TEXTURE2D(DEBUG_VIEW_BINDING_ALTERNATE_DISOCCLUSION_THRESHOLD_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_PREV_WORLD_POSITION_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_SHARED_TERMINATOR_FIX_INPUT)
+        TEXTURE2D(DEBUG_VIEW_BINDING_SPARSE_COMPACTED_PIXEL_INDICES_INPUT)
+        TEXTURE2D(DEBUG_VIEW_BINDING_SPARSE_TILE_ACTIVE_COUNTS_INPUT)
 
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_ACCUMULATED_DEBUG_VIEW_INPUT_OUTPUT)
 
@@ -1184,6 +1186,7 @@ namespace dxvk {
     DebugViewArgs debugViewArgs = {};
 
     debugViewArgs.debugViewIdx = debugViewIdx();
+    debugViewArgs.sparseRenderingArgs = rtOutput.m_raytraceArgs.sparseRenderingArgs;
     debugViewArgs.colorCodeRadius = std::clamp(m_colorCodeRadius, 0, 8);
 
     debugViewArgs.enableInputQuantization = enableInputQuantization();
@@ -1404,6 +1407,8 @@ namespace dxvk {
                                                                                               rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().matchesWriteFrameIdx(frameIdx - 1)), nullptr);
 
     ctx->bindResourceView(DEBUG_VIEW_BINDING_SHARED_TERMINATOR_FIX_INPUT, rtOutput.getCurrentSharedTerminatorFix().view, nullptr);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_SPARSE_COMPACTED_PIXEL_INDICES_INPUT, rtOutput.m_sparseRenderingCompactedPixelIndices.view, nullptr);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_SPARSE_TILE_ACTIVE_COUNTS_INPUT, rtOutput.m_sparseRenderingTileActiveCounts.view, nullptr);
 
     // Inputs / Outputs
 
