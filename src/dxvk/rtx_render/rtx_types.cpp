@@ -146,6 +146,7 @@ namespace dxvk {
       , materialHash(key.materialHash)
       , vertexPositionHash(key.vertexPositionHash)
       , centroid(key.worldPos)
+      , prevCentroid(key.worldPos)
       , frameCreated(frameId)
       , textureTransform(key.textureTransform)
       , texgenMode(key.texgenMode) {

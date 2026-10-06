@@ -21,11 +21,15 @@
 */
 #include "rtx_draw_call_tracker.h"
 #include "rtx_options.h"
+#include "rtx_instance_manager.h"
 #include "rtx_ray_portal_manager.h"
 #include "rtx_intersection_test.h"
 #include "dxvk_device.h"
 #include "../util/util_struct_hash.h"
+#include "../util/log/log.h"
+#include "../util/util_string.h"
 
+#include <algorithm>
 
 namespace dxvk {
 
@@ -146,7 +150,13 @@ namespace dxvk {
     match->identityHash = key.identityHash;
     match->vertexPositionHash = key.vertexPositionHash;
     match->materialHash = key.materialHash;
+    match->prevCentroid = match->centroid;
     match->centroid = key.worldPos;
+
+    // Gather moved instances for history repair using spatial hash and source vertex buffer as keys
+    if (match->prevCentroid != match->centroid) {
+      m_movedInstanceClusters[match->spatialMapHash][key.sourceVertexBufferAddress].push_back(match);
+    }
 
     if (moveInAssetMap) {
       match->spatialCacheTransformHash = moveInAssetMap->move(
@@ -167,6 +177,45 @@ namespace dxvk {
         continue;
       }
       ++i;
+    }
+  }
+
+  void DrawCallTracker::updateInstanceClusterCount(XXH64_hash_t spatialMapHash,
+                                                   const void* sourceVertexBufferAddress,
+                                                   bool isInstanceRemoved) {
+    const XXH64_hash_t bucketKey = computeInstanceClusterBucketKey(spatialMapHash, sourceVertexBufferAddress);
+
+    auto clusterStatsIter = m_instanceClusterBucketStats.find(bucketKey);
+    if (clusterStatsIter == m_instanceClusterBucketStats.end()) {
+      // A removal from a bucket that is not yet tracked is a no-op -- the bucket is already empty.
+      if (isInstanceRemoved) {
+        return;
+      }
+      clusterStatsIter = m_instanceClusterBucketStats.emplace(bucketKey, InstanceClusterBucketStats {}).first;
+    }
+
+    InstanceClusterBucketStats& stats = clusterStatsIter->second;
+
+    // This is the first update for this bucket in the current frame, so reset the current-frame counters.
+    const uint32_t currentFrameId = m_device->getCurrentFrameId();
+    if (stats.frameLastUpdated != currentFrameId) {
+      stats.previousCount = stats.currentCount;
+      stats.currentCount = 0;
+      stats.instanceDeleteCount = 0;
+      stats.instanceDestroyedCurrentFrame = false;
+      stats.frameLastUpdated = currentFrameId;
+    }
+
+    if (!isInstanceRemoved) {
+      ++stats.currentCount;
+      return;
+    }
+
+    stats.instanceDestroyedCurrentFrame = true;
+    ++stats.instanceDeleteCount;
+    // Drop the entry conservatively to prevent map from growing too large.
+    if (std::max(stats.previousCount, stats.currentCount) <= stats.instanceDeleteCount) {
+      m_instanceClusterBucketStats.erase(clusterStatsIter);
     }
   }
 
@@ -193,6 +242,9 @@ namespace dxvk {
       ReplacementInstance* match = exactMatchIter->second;
       if (match->frameLastSeen != currentFrameId) {
         match->dirtyFlags.clr(ReplacementInstance::kLookupDriftMask);
+        match->prevCentroid = match->centroid;
+        updateInstanceClusterCount(key.spatialMapHash, key.sourceVertexBufferAddress,
+                                   false);
       }
       return match;
     }
@@ -203,7 +255,8 @@ namespace dxvk {
 
     auto l2Filter = [&](const ReplacementInstance* candidate) {
       return candidate->frameLastSeen != currentFrameId &&
-             candidate->materialHash == key.materialHash;
+             candidate->materialHash == key.materialHash &&
+             candidate->sourceVertexBufferAddress == key.sourceVertexBufferAddress;
     };
 
     auto spatialMapIter = m_assetSpatialMaps.find(key.spatialMapHash);
@@ -225,6 +278,9 @@ namespace dxvk {
         m_identityHashMap.erase(exactTransformMatch->identityHash);
         exactTransformMatch->identityHash = key.identityHash;
         m_identityHashMap[key.identityHash] = exactTransformMatch;
+        exactTransformMatch->prevCentroid = exactTransformMatch->centroid;
+        updateInstanceClusterCount(key.spatialMapHash, key.sourceVertexBufferAddress,
+                                   false);
         return exactTransformMatch;
       }
 
@@ -239,6 +295,8 @@ namespace dxvk {
         // branch above); other fields may also have changed.
         ReplacementInstance* match = const_cast<ReplacementInstance*>(nearestMatch);
         computeDirtyFlags(match, key);
+        updateInstanceClusterCount(key.spatialMapHash, key.sourceVertexBufferAddress,
+                                   false);
         return reassociateMatch(match, key, &spatialMapIter->second);
       }
     }
@@ -255,6 +313,15 @@ namespace dxvk {
         mapIter->second.insert(key.worldPos, key.transform, replacementInstance);
 
     m_replacementInstances.push_back(std::move(newReplacementInstance));
+
+    // A new RI is created when L1/L2 finds no continuation -- but a draw reorder can also make an
+    // older instance miss and look new. Add it to the moved cluster so the end-of-frame repair can
+    // recover its previous-frame state if one exists.
+    m_movedInstanceClusters[replacementInstance->spatialMapHash][key.sourceVertexBufferAddress]
+        .push_back(replacementInstance);
+
+    updateInstanceClusterCount(key.spatialMapHash, key.sourceVertexBufferAddress,
+                               false);
 
     return replacementInstance;
   }
@@ -278,7 +345,8 @@ namespace dxvk {
       drawCallState.getGeometryData().boundingBox.getTransformedCentroid(objectToWorld),
       objectToWorld,
       drawCallState.getTransformData().textureTransform,
-      drawCallState.getTransformData().texgenMode
+      drawCallState.getTransformData().texgenMode,
+      drawCallState.getGeometryData().sourceVertexBufferAddress
     };
 
     ReplacementInstance* result = findOrCreateReplacementInstance(key);
@@ -359,9 +427,31 @@ namespace dxvk {
     }
 
     m_identityHashMap.erase(replacementInstance->identityHash);
-
+    updateInstanceClusterCount(replacementInstance->spatialMapHash,
+                               replacementInstance->sourceVertexBufferAddress,
+                               true);
     eraseFromSpatialMap(m_assetSpatialMaps, replacementInstance->spatialMapHash,
         replacementInstance->spatialCacheTransformHash, replacementInstance);
+
+    auto movedClusterIter = m_movedInstanceClusters.find(replacementInstance->spatialMapHash);
+    if (movedClusterIter != m_movedInstanceClusters.end()) {
+      auto& bufferBuckets = movedClusterIter->second;
+      // The instance may live under any source-buffer bucket so we remove it from each.
+      for (auto bucketIter = bufferBuckets.begin(); bucketIter != bufferBuckets.end();) {
+        auto& movedCluster = bucketIter->second;
+        movedCluster.erase(
+            std::remove(movedCluster.begin(), movedCluster.end(), replacementInstance),
+            movedCluster.end());
+        if (movedCluster.empty()) {
+          bucketIter = bufferBuckets.erase(bucketIter);
+        } else {
+          ++bucketIter;
+        }
+      }
+      if (bufferBuckets.empty()) {
+        m_movedInstanceClusters.erase(movedClusterIter);
+      }
+    }
 
     replacementInstance->clear();
   }
@@ -459,6 +549,8 @@ namespace dxvk {
   void DrawCallTracker::clear() {
     m_identityHashMap.clear();
     m_assetSpatialMaps.clear();
+    m_movedInstanceClusters.clear();
+    m_instanceClusterBucketStats.clear();
     m_replacementInstances.clear();
   }
 
@@ -466,6 +558,219 @@ namespace dxvk {
     for (auto& [hash, spatialMap] : m_assetSpatialMaps) {
       spatialMap.rebuild(cellSize);
     }
+  }
+
+  void DrawCallTracker::repairCluster(std::vector<ReplacementInstance*>& cluster,
+      uint32_t currentFrameId) {
+    const uint32_t n = static_cast<uint32_t>(cluster.size());
+
+    // Sort by stable RI id so the assignment depends only on positions, not submission order.
+    std::sort(cluster.begin(), cluster.end(),
+        [](const ReplacementInstance* a, const ReplacementInstance* b) { return a->id < b->id; });
+
+    // Pair each current position (centroid) with the previous position (prevCentroid) it continues
+    // from. reEvaluatedIndexArray[i] == i means "new". Only instances that existed last frame are
+    // valid previous slots.
+    struct Candidate {
+      float distSqr;
+      uint32_t previousIdx;
+    };
+
+    // Step 1: rank valid previous slots per current instance by distance.
+    std::vector<std::vector<Candidate>> candidates(n);
+    for (uint32_t currentIdx = 0; currentIdx < n; ++currentIdx) {
+      std::vector<Candidate>& currentCandidates = candidates[currentIdx];
+      currentCandidates.reserve(n);
+      for (uint32_t previousIdx = 0; previousIdx < n; ++previousIdx) {
+        // Skip slots created this frame (no previous-frame history).
+        if (cluster[previousIdx]->frameCreated == currentFrameId) {
+          continue;
+        }
+        currentCandidates.push_back(
+            { lengthSqr(cluster[currentIdx]->centroid - cluster[previousIdx]->prevCentroid), previousIdx });
+      }
+      std::sort(currentCandidates.begin(), currentCandidates.end(),
+          [](const Candidate& a, const Candidate& b) {
+            if (a.distSqr != b.distSqr) {
+              return a.distSqr < b.distSqr;
+            }
+            return a.previousIdx < b.previousIdx;   // deterministic tie-break
+          });
+    }
+
+    // Step 2: greedily assign the globally closest current<->previous pair, remove the consumed
+    // previous from remaining lists, and repeat. Currents with an empty list stay new.
+    std::vector<uint32_t> reEvaluatedIndexArray(n);
+    for (uint32_t currentIdx = 0; currentIdx < n; ++currentIdx) {
+      reEvaluatedIndexArray[currentIdx] = currentIdx;   // default: new (self-mapping)
+    }
+    std::vector<bool> currentAssigned(n, false);
+    for (uint32_t round = 0; round < n; ++round) {
+      // Pick the unassigned current whose closest available previous is globally smallest.
+      uint32_t bestCurrentIdx = UINT32_MAX;
+      float bestDistSqr = FLT_MAX;
+      for (uint32_t currentIdx = 0; currentIdx < n; ++currentIdx) {
+        if (currentAssigned[currentIdx] || candidates[currentIdx].empty()) {
+          continue;
+        }
+        const float frontDistSqr = candidates[currentIdx][0].distSqr;
+        if (bestCurrentIdx == UINT32_MAX || frontDistSqr < bestDistSqr) {
+          bestDistSqr = frontDistSqr;
+          bestCurrentIdx = currentIdx;
+        }
+      }
+
+      // No more assignable currents -- the rest stay new.
+      if (bestCurrentIdx == UINT32_MAX) {
+        break;
+      }
+
+      const uint32_t chosenPreviousIdx = candidates[bestCurrentIdx][0].previousIdx;
+      reEvaluatedIndexArray[bestCurrentIdx] = chosenPreviousIdx;
+      currentAssigned[bestCurrentIdx] = true;
+
+      // Remove the consumed previous from every still-unassigned current's list.
+      for (uint32_t currentIdx = 0; currentIdx < n; ++currentIdx) {
+        if (currentAssigned[currentIdx]) {
+          continue;
+        }
+        std::vector<Candidate>& currentCandidates = candidates[currentIdx];
+        for (size_t pos = 0; pos < currentCandidates.size(); ++pos) {
+          if (currentCandidates[pos].previousIdx == chosenPreviousIdx) {
+            currentCandidates.erase(currentCandidates.begin() + pos);
+            break;
+          }
+        }
+      }
+    }
+
+    // Work is needed if any pairing changed or any instance was left new (it may hold stale previous
+    // state to reset below).
+    bool needsWork = false;
+    for (uint32_t currentIdx = 0; currentIdx < n; ++currentIdx) {
+      if (reEvaluatedIndexArray[currentIdx] != currentIdx || !currentAssigned[currentIdx]) {
+        needsWork = true;
+        break;
+      }
+    }
+    if (!needsWork) {
+      return;
+    }
+
+    // Snapshot per-prim previous-frame state before mutating, since the permutation reads values
+    // other iterations overwrite.
+    struct PrevPrimState {
+      bool isInstance = false;
+      Matrix4 prevObjectToWorld;
+      uint32_t prevSurfaceIndex = 0;
+    };
+    std::vector<std::vector<PrevPrimState>> snapshot(n);
+    for (uint32_t instanceIdx = 0; instanceIdx < n; ++instanceIdx) {
+      const std::vector<PrimInstance>& prims = cluster[instanceIdx]->prims;
+      snapshot[instanceIdx].resize(prims.size());
+      for (size_t primIdx = 0; primIdx < prims.size(); ++primIdx) {
+        RtInstance* inst = prims[primIdx].getInstance();
+        if (inst != nullptr) {
+          snapshot[instanceIdx][primIdx] = { true, inst->surface.prevObjectToWorld, inst->getPreviousSurfaceIndex() };
+        }
+      }
+    }
+
+    for (uint32_t currentIdx = 0; currentIdx < n; ++currentIdx) {
+      const uint32_t reEvaluatedIdx = reEvaluatedIndexArray[currentIdx];
+
+      // Leftover-new instance: reset previous-frame state to current (zero motion) so it is new.
+      if (!currentAssigned[currentIdx]) {
+        ReplacementInstance* ri = cluster[currentIdx];
+        ri->prevCentroid = ri->centroid;
+        for (PrimInstance& prim : ri->prims) {
+          RtInstance* inst = prim.getInstance();
+          if (inst != nullptr) {
+            // prevObjectToWorld = current => zero motion; prev surface = current surface.
+            inst->reassignPreviousFrameState(inst->surface.objectToWorld, inst->getSurfaceIndex());
+          }
+        }
+        continue;
+      }
+
+      if (reEvaluatedIdx == currentIdx) {
+        continue;
+      }
+
+      // Same spatialMapHash => same prim layout, so prim i maps to prim i. Guard against structural
+      // mismatch.
+      std::vector<PrimInstance>& prims = cluster[currentIdx]->prims;
+      const std::vector<PrevPrimState>& reEvaluatedPrims = snapshot[reEvaluatedIdx];
+      const size_t primCount = std::min(prims.size(), reEvaluatedPrims.size());
+      for (size_t primIdx = 0; primIdx < primCount; ++primIdx) {
+        RtInstance* inst = prims[primIdx].getInstance();
+        const PrevPrimState& primState = reEvaluatedPrims[primIdx];
+        if (inst != nullptr && primState.isInstance) {
+          inst->reassignPreviousFrameState(primState.prevObjectToWorld, primState.prevSurfaceIndex);
+        }
+      }
+    }
+  }
+
+  void DrawCallTracker::repairClusteredInstanceHistory(uint32_t currentFrameId) {
+    ScopedCpuProfileZone();
+
+    // repairCluster scales cubically with cluster size, so skip clusters larger than this to
+    // bound the per-frame cost. A cap below 2 disables the repair pass entirely.
+    const uint32_t maxClusterSize = RtxOptions::maxInstanceHistoryRepairClusterSize();
+    if (maxClusterSize < 2) {
+      m_movedInstanceClusters.clear();
+      return;
+    }
+
+    const bool requireClusterChange = RtxOptions::repairInstanceMatchOnlyWhenClusterChanges();
+
+    for (auto& [spatialMapHash, bufferBuckets] : m_movedInstanceClusters) {
+      // Each source-buffer bucket is repaired independently -- instances only continue from a
+      // previous sharing the same mesh and source vertex buffer.
+      for (auto& [srcVtxBuffer, movedCluster] : bufferBuckets) {
+        // Need at least 2 instances for a mix-up to be possible.
+        if (movedCluster.size() < 2) {
+          continue;
+        }
+
+        // Optionally restrict repair to clusters that have been altered since last frame. A cluster is considered altered if
+        // either the instance count differs from last frame, or the count matches but an instance
+        // was destroyed this frame (a destroy masked by an add).
+        if (requireClusterChange) {
+          auto clusterStatsIter =
+              m_instanceClusterBucketStats.find(computeInstanceClusterBucketKey(spatialMapHash, srcVtxBuffer));
+          if (clusterStatsIter != m_instanceClusterBucketStats.end()) {
+            const InstanceClusterBucketStats& stats = clusterStatsIter->second;
+            const bool clusterAltered = stats.currentCount != stats.previousCount ||
+              stats.instanceDestroyedCurrentFrame;
+            if (!clusterAltered) {
+              continue;
+            }
+          } 
+        }
+
+        std::vector<ReplacementInstance*> cluster;
+        cluster.reserve(movedCluster.size());
+        for (ReplacementInstance* ri : movedCluster) {
+          // Skip prim-less instances.
+          if (ri->prims.empty()) {
+            continue;
+          }
+          if (std::find(cluster.begin(), cluster.end(), ri) == cluster.end()) {
+            cluster.push_back(ri);
+            if (cluster.size() > maxClusterSize)
+              break;
+          }
+        }
+
+        // Repair clusters of 2+ instances, up to the configured size cap.
+        if (cluster.size() >= 2 && cluster.size() <= maxClusterSize) {
+          repairCluster(cluster, currentFrameId);
+        }
+      }
+    }
+    m_movedInstanceClusters.clear();
   }
 
 }  // namespace dxvk

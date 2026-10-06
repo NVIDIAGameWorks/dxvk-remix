@@ -834,6 +834,12 @@ namespace dxvk {
     replacementInstance->categoryFlags = input.getCategoryFlags().raw();
     replacementInstance->isSkinned = input.getSkinningState().numBones > 0;
 
+    // On the first submission of a new frame, refresh the cached source buffer from this draw. Only
+    // the first submission updates it, so the identity is deterministic (the first pass's buffer).
+    if (!secondSubmissionThisFrame) {
+      replacementInstance->sourceVertexBufferAddress = input.getGeometryData().sourceVertexBufferAddress;
+    }
+
     // Cache this submission's texture-coordinate projection so that next frame's
     // computeDirtyFlags can detect drift. Writing here (after either path has run)
     // mirrors how objectToWorld is updated downstream of the dirty-flag check.
@@ -2192,6 +2198,10 @@ namespace dxvk {
     m_lightManager.dynamicLightMatching();
 
     garbageCollection();
+
+    // Correct instance identification within clusters of interchangeable
+    // instances now that every draw call for the frame has been submitted.
+    m_drawCallTracker.repairClusteredInstanceHistory(m_device->getCurrentFrameId());
 
     // Re-register buffers, textures, and materials for anti-culled instances.
     // These instances survived GC but the game didn't submit draw calls for them
