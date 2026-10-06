@@ -267,8 +267,12 @@ namespace dxvk {
       switch (element.Usage) {
       case D3DDECLUSAGE_POSITIONT:
       case D3DDECLUSAGE_POSITION:
-        if (element.UsageIndex == 0)
+        if (element.UsageIndex == 0) {
           targetBuffer = &geoData.positionBuffer;
+          // Capture source vertex buffer for instance matching.
+          geoData.sourceVertexBufferAddress = (ctx.pVBO != nullptr)
+            ? ctx.pVBO->GetBuffer<D3D9_COMMON_BUFFER_TYPE_MAPPING>().ptr() : nullptr;
+        }
         break;
       case D3DDECLUSAGE_BLENDWEIGHT:
         if (element.UsageIndex == 0)

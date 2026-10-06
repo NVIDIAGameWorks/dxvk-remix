@@ -22,6 +22,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstring>
 #include <deque>
 #include <memory>
 #include <mutex>
@@ -156,6 +157,19 @@ public:
   }
   void setPreviousSurfaceIndex(uint32_t surfaceIndex) {
     m_previousSurfaceIndex = surfaceIndex;
+  }
+  // Reassign ONLY the previous-frame temporal state (motion-vector previous transform and
+  // previous surface index) without disturbing the current transform, geometry, or BLAS.
+  void reassignPreviousFrameState(const Matrix4& prevObjectToWorld, uint32_t previousSurfaceIndex) {
+    surface.prevObjectToWorld = prevObjectToWorld;
+    m_previousSurfaceIndex = previousSurfaceIndex;
+    // A corrected (non-identity) previous transform means the instance is actually moving,
+    // so ensure motion vectors are computed. This only ever relaxes isStatic (never forces
+    // static), so it cannot suppress needed motion vectors.
+    if (memcmp(surface.prevObjectToWorld.data, surface.objectToWorld.data, sizeof(Matrix4)) != 0 && m_materialType != MaterialDataType::RayPortal) {
+      // Ray portals are deliberately forced static by updateInstance() regardless of motion
+      surface.isStatic = false;
+    }
   }
   uint32_t getPreviousSurfaceIndex() const {
     return m_previousSurfaceIndex;

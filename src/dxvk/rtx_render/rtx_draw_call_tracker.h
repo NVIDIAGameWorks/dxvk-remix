@@ -80,6 +80,11 @@ public:
       RtCamera& camera,
       bool isAntiCullingSupported);
 
+  // Repairs draw-order-dependent instance-identity swaps within clusters of interchangeable
+  // instances (same source mesh / spatial-map hash). Must be called once per frame after all draw calls have
+  // been submitted and before the previous-frame temporal state is consumed.
+  void repairClusteredInstanceHistory(uint32_t currentFrameId);
+
   void clear();
 
   // Rebuild all spatial maps with a new cell size.
@@ -108,6 +113,27 @@ private:
   using ReplacementSpatialMap = SpatialMap<ReplacementInstance>;
   std::unordered_map<XXH64_hash_t, ReplacementSpatialMap> m_assetSpatialMaps;
 
+  // Combines a (spatialMapHash, sourceVertexBufferAddress) pair into the m_instanceClusterBucketStats key.
+  static XXH64_hash_t computeInstanceClusterBucketKey(XXH64_hash_t spatialMapHash, const void* sourceVertexBufferAddress) {
+    const uint64_t vertexBufferBits = reinterpret_cast<uint64_t>(sourceVertexBufferAddress);
+    return XXH64(&vertexBufferBits, sizeof(vertexBufferBits), spatialMapHash);
+  }
+
+  // Per (spatialMapHash, sourceVertexBufferAddress) bucket cluster, persisted across frames.
+  // This is used to detect clusters that have been altered and requires rematching of previous-frame state.
+  struct InstanceClusterBucketStats {
+    uint32_t frameLastUpdated = 0;
+    uint32_t currentCount = 0;
+    uint32_t previousCount = 0;
+    uint32_t instanceDeleteCount = 0;
+    bool instanceDestroyedCurrentFrame = false;
+  };
+  std::unordered_map<XXH64_hash_t, InstanceClusterBucketStats> m_instanceClusterBucketStats;
+
+  void updateInstanceClusterCount(XXH64_hash_t spatialMapHash,
+                                  const void* sourceVertexBufferAddress,
+                                  bool isInstanceRemoved);
+
   // Attempts to match a newly created ReplacementInstance through ray portals.
   // If a match is found, destroys the new RI and returns the reassociated match.
   // Returns nullptr if no portal match is found.
@@ -130,6 +156,13 @@ private:
       ReplacementInstance* match,
       const ReplacementInstance::LookupKey& key,
       ReplacementSpatialMap* moveInAssetMap);
+
+  // Resolves the global current/previous position assignment for a single cluster of
+  // interchangeable instances and reassigns previous-frame temporal state accordingly.
+  void repairCluster(std::vector<ReplacementInstance*>& cluster, uint32_t currentFrameId);
+
+  std::unordered_map<XXH64_hash_t,
+      std::unordered_map<const void*, std::vector<ReplacementInstance*>>> m_movedInstanceClusters;
 
   std::vector<std::unique_ptr<ReplacementInstance>> m_replacementInstances;
   uint32_t m_nextReplacementInstanceId = 0;

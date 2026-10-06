@@ -531,6 +531,14 @@ namespace dxvk {
                     "If this is too low, fast moving objects may flicker and have bad lighting.  If it's too high, repeated objects may flicker.\n"
                     "This does not account for sceneScale.", args.minValue = 0.f);
 
+    // Bounds the end-of-frame instance history repair, which scales cubically with cluster size.
+    RTX_OPTION_ARGS("rtx", uint32_t, maxInstanceHistoryRepairClusterSize, 1, "The largest cluster of interchangeable instances that end-of-frame instance history repair will process.\n"
+                   "Clusters above this size keep their as-submitted history, which may reintroduce draw-order-dependent identity swaps. Set to 0 to disable the repair pass entirely.", args.minValue = 0u);
+
+    // Restricts instance history repair to clusters whose count from its earlier count. Usually the clusters that have altered its size are the ones that are mismatched.
+    RTX_OPTION("rtx", bool, repairInstanceMatchOnlyWhenClusterChanges, true,
+               "Only run end-of-frame instance history repair on clusters whose instance count differs from its earlier count.\n");
+
     RTX_OPTION("rtx", bool, useNewGuiInputMethod, true, "Disables the previous method for getting mouse/keyboard input and enables a new method which should be more reliable.  If successful the old method will be deprecated.  This setting can't be changed at runtime, so it must be set in a .conf file.");
 
     RTX_OPTION_ARGS("rtx", UIType, showUI, UIType::None, "0 = Don't Show, 1 = Show Simple, 2 = Show Advanced, 3 = First Use Guide.",
