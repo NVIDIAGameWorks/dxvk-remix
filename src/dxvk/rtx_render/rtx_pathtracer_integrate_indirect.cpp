@@ -149,10 +149,13 @@ namespace dxvk {
         TEXTURE2D(INTEGRATE_INDIRECT_BINDING_SECONDARY_CONE_RADIUS_INPUT)
         TEXTURE2D(INTEGRATE_INDIRECT_BINDING_PRIMARY_WORLD_POSITION_INPUT)
         RW_STRUCTURED_BUFFER(INTEGRATE_INDIRECT_BINDING_PRIMARY_RTXDI_RESERVOIR)
+        TEXTURE2D(INTEGRATE_INDIRECT_BINDING_PRIMARY_WORLD_POSITION_DENSE_INPUT)
 
         TEXTURE2D(INTEGRATE_INDIRECT_BINDING_RAY_ORIGIN_DIRECTION_INPUT)
         TEXTURE2D(INTEGRATE_INDIRECT_BINDING_THROUGHPUT_CONE_RADIUS_INPUT)
         TEXTURE2D(INTEGRATE_INDIRECT_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)
+        TEXTURE2D(INTEGRATE_INDIRECT_BINDING_COMPACTED_PIXEL_INDICES_INPUT)
+        TEXTURE2D(INTEGRATE_INDIRECT_BINDING_TILE_ACTIVE_COUNTS_INPUT)
         TEXTURE2D(INTEGRATE_INDIRECT_BINDING_FIRST_HIT_PERCEPTUAL_ROUGHNESS_INPUT)
         TEXTURE2D(INTEGRATE_INDIRECT_BINDING_FIRST_SAMPLED_LOBE_DATA_INPUT)
         TEXTURE2D(INTEGRATE_INDIRECT_BINDING_LAST_GBUFFER_INPUT)
@@ -228,7 +231,8 @@ namespace dxvk {
         TEXTURE2D(INTEGRATE_NEE_BINDING_SHARED_SURFACE_INDEX_INPUT)
         TEXTURE2D(INTEGRATE_NEE_BINDING_SHARED_SUBSURFACE_DATA_INPUT)
         TEXTURE2D(INTEGRATE_NEE_BINDING_SHARED_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT)
-        TEXTURE2D(INTEGRATE_NEE_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)
+        STRUCTURED_BUFFER(INTEGRATE_NEE_BINDING_ACTIVE_PIXEL_COORDS_INPUT)
+        STRUCTURED_BUFFER(INTEGRATE_NEE_BINDING_ACTIVE_PIXEL_COUNT_INPUT)
 
         TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT)
         TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_INPUT)
@@ -435,10 +439,13 @@ namespace dxvk {
 
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_PRIMARY_CONE_RADIUS_INPUT, rtOutput.m_primaryConeRadius.view, nullptr);
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_SECONDARY_CONE_RADIUS_INPUT, rtOutput.m_secondaryConeRadius.view(Resources::AccessType::Read), nullptr);
-    ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_PRIMARY_WORLD_POSITION_INPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read), nullptr);
+    ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_PRIMARY_WORLD_POSITION_INPUT, rtOutput.getCompactedPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceBuffer(INTEGRATE_INDIRECT_BINDING_PRIMARY_RTXDI_RESERVOIR, rtOutput.m_rtxdiReservoirBuffer.slice(Resources::AccessType::Read, RtxOptions::useRTXDI()));
+    ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_PRIMARY_WORLD_POSITION_DENSE_INPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_RAY_ORIGIN_DIRECTION_INPUT, rtOutput.m_indirectRayOriginDirection.view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT, rtOutput.m_sparseRenderingActiveLocalPixelCoords.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_COMPACTED_PIXEL_INDICES_INPUT, rtOutput.m_sparseRenderingCompactedPixelIndices.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_TILE_ACTIVE_COUNTS_INPUT, rtOutput.m_sparseRenderingTileActiveCounts.view, nullptr);
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_FIRST_HIT_PERCEPTUAL_ROUGHNESS_INPUT, rtOutput.m_indirectFirstHitPerceptualRoughness.view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_LAST_GBUFFER_INPUT, rtOutput.m_gbufferLast.view, nullptr);
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_PREV_WORLD_POSITION_INPUT, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().matchesWriteFrameIdx(frameIdx - 1)), nullptr);
@@ -514,6 +521,9 @@ namespace dxvk {
       const NeeCachePass& neeCache = ctx->getCommonObjects()->metaNeeCache();
       const bool neeCacheEnabled = neeCache.isActive();
       const VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 16, 8, 1 });
+
+      // Launched over the grid rather than the compacted list,
+      // because the 1D dispatch measures as a wash here and only adds complexity.
       switch (RtxOptions::renderPassIntegrateIndirectRaytraceMode()) {
       case RaytraceMode::RayQuery:
         ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getComputeShader(neeCacheEnabled, nrcEnabled, wboitEnabled));
@@ -555,7 +565,8 @@ namespace dxvk {
     ctx->bindResourceView(INTEGRATE_NEE_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(INTEGRATE_NEE_BINDING_SHARED_SUBSURFACE_DATA_INPUT, rtOutput.m_sharedSubsurfaceData.view, nullptr);
     ctx->bindResourceView(INTEGRATE_NEE_BINDING_SHARED_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT, rtOutput.m_sharedSubsurfaceDiffusionProfileData.view, nullptr);
-    ctx->bindResourceView(INTEGRATE_NEE_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT, rtOutput.m_sparseRenderingActiveLocalPixelCoords.view, nullptr);
+    ctx->bindResourceBuffer(INTEGRATE_NEE_BINDING_ACTIVE_PIXEL_COORDS_INPUT, optionalBufferSlice(rtOutput.m_sparseRenderingActivePixelCoords));
+    ctx->bindResourceBuffer(INTEGRATE_NEE_BINDING_ACTIVE_PIXEL_COUNT_INPUT, optionalBufferSlice(rtOutput.m_sparseRenderingActivePixelCount));
     ctx->bindResourceView(INTEGRATE_NEE_BINDING_NRC_TRAINING_QUERY_RESERVOIR_INPUT, nrc.getTrainingQueryReservoir().view, nullptr);
 
     ctx->bindResourceView(INTEGRATE_NEE_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_primaryWorldShadingNormal.view, nullptr);
@@ -564,7 +575,7 @@ namespace dxvk {
     ctx->bindResourceView(INTEGRATE_NEE_BINDING_PRIMARY_ALBEDO_INPUT, rtOutput.m_primaryAlbedo.view, nullptr);
     ctx->bindResourceView(INTEGRATE_NEE_BINDING_PRIMARY_VIEW_DIRECTION_INPUT, rtOutput.m_primaryViewDirection.view, nullptr);
     ctx->bindResourceView(INTEGRATE_NEE_BINDING_PRIMARY_CONE_RADIUS_INPUT, rtOutput.m_primaryConeRadius.view, nullptr);
-    ctx->bindResourceView(INTEGRATE_NEE_BINDING_PRIMARY_WORLD_POSITION_INPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read), nullptr);
+    ctx->bindResourceView(INTEGRATE_NEE_BINDING_PRIMARY_WORLD_POSITION_INPUT, rtOutput.getCompactedPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(INTEGRATE_NEE_BINDING_PRIMARY_POSITION_ERROR_INPUT, rtOutput.m_primaryPositionError.view, nullptr);
     ctx->bindResourceView(INTEGRATE_NEE_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT, rtOutput.m_indirectRadianceHitDistance.view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceBuffer(INTEGRATE_NEE_BINDING_PRIMITIVE_ID_PREFIX_SUM_INPUT, DxvkBufferSlice(primitiveIDPrefixSumBuffer, 0, primitiveIDPrefixSumBuffer->info().size));
@@ -592,13 +603,20 @@ namespace dxvk {
 
     // The variant must match cb.enableReSTIRGI, which is also set from isActive().
     ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getIntegrateNEEShader(reSTIRGI.isActive()));
-    ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+    SparseRendering::dispatchCompactedConsumer(*ctx, rtOutput, workgroups);
 
     // Visualize the nee cache when debug view is chosen.
     uint32_t debugViewIndex = ctx->getCommonObjects()->metaDebugView().debugViewIdx();
     if (debugViewIndex == DEBUG_VIEW_NEE_CACHE_LIGHT_HISTOGRAM || debugViewIndex == DEBUG_VIEW_NEE_CACHE_HISTOGRAM ||
      debugViewIndex == DEBUG_VIEW_NEE_CACHE_ACCUMULATE_MAP || debugViewIndex == DEBUG_VIEW_NEE_CACHE_HASH_MAP || debugViewIndex == DEBUG_VIEW_NEE_CACHE_TRIANGLE_CANDIDATE)
     {
+      // The visualizer indexes the GBuffer by raw pixel coordinate throughout, so it cannot read compacted storage.
+      // It is skipped rather than left to display data from whichever pixel happens to own each slot.
+      if (rtOutput.m_raytraceArgs.sparseRenderingArgs.mode != SparseRenderingMode::Off) {
+        ONCE(Logger::warn("[RTX] NEE cache visualization is not supported with sparse rendering, which compacts the GBuffer. Skipping."));
+        return;
+      }
+
       VisualizeNeeArgs args;
       auto mousePos = ImGui::GetMousePos();
       const VkExtent3D& finalResolution = rtOutput.m_finalOutputExtent;

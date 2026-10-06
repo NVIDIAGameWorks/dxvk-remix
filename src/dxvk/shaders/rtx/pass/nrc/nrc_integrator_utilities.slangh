@@ -126,9 +126,9 @@ NrcBuffers initializeNrcBuffers()
   return buffers;
 }
 
-NrcContext createNrcContext(uvec2 pixelCoordinate)
+NrcContext createNrcContext(uvec2 nrcPixelIndex)
 {
-  return NrcCreateContext(cb.nrcArgs.nrcConstants, initializeNrcBuffers(), pixelCoordinate);
+  return NrcCreateContext(cb.nrcArgs.nrcConstants, initializeNrcBuffers(), nrcPixelIndex);
 }
 
 NrcSurfaceAttributes createNrcSurfaceAttributes(
@@ -173,6 +173,7 @@ void setNrcMode(bool isNrcUpdate)
 
 NrcProgressState updateNrcOnHit(
   uvec2 pixelCoordinate,
+  uvec2 nrcPixelIndex,
   bool isNrcUpdate,
   vec3 surfacePosition,
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
@@ -190,7 +191,7 @@ NrcProgressState updateNrcOnHit(
   NrcSurfaceAttributes surfaceAttributes = createNrcSurfaceAttributes(
     surfacePosition, polymorphicSurfaceMaterialInteraction, viewVector);
 
-  const NrcContext nrcContext = createNrcContext(pixelCoordinate);
+  const NrcContext nrcContext = createNrcContext(nrcPixelIndex);
 
   // Sanitize the inputs since they occasionally have NaNs
   sanitizeNrcInputs(isNrcUpdate, nrcArgs, throughput, radiance);
@@ -214,6 +215,7 @@ NrcProgressState updateNrcOnHit(
 // Performs NRC related updates on a primary surface hit
 void updateNrcOnPrimaryHit(
   uvec2 nrcPathPixelCoordinate,
+  uvec2 nrcPixelIndex,
   vec3 surfacePosition,
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   vec3 viewVector,
@@ -236,31 +238,32 @@ void updateNrcOnPrimaryHit(
 
   // Register a gbuffer surface hit
   // Note: NRC zeroes out radiance and throughput on updates for training paths
-  NrcProgressState nrcProgressState = updateNrcOnHit(nrcPathPixelCoordinate, NrcIsUpdateMode(),
+  NrcProgressState nrcProgressState = updateNrcOnHit(nrcPathPixelCoordinate, nrcPixelIndex, NrcIsUpdateMode(),
     surfacePosition, polymorphicSurfaceMaterialInteraction, viewVector, bounce,
     pathSegmentHitDistance, true, cb.nrcArgs, dummyThroughput, dummyRadiance, nrcPathState);
 
   if (NrcIsQueryMode() && nrcProgressState == NrcProgressState::TerminateImmediately)
   {
-    const NrcContext nrcContext = createNrcContext(nrcPathPixelCoordinate);
+    const NrcContext nrcContext = createNrcContext(nrcPixelIndex);
     NrcWriteFinalPathInfo(nrcContext, nrcPathState, dummyThroughput, dummyRadiance);
   }
 
   // Store NRC path state for subsequent path tracer passes to continue with
   storeNrcPathState(
-    nrcPathPixelCoordinate, NrcIsQueryMode(), nrcPathState, nrcProgressState, NrcPathData0, NrcPathData1);
+    nrcPixelIndex, NrcIsQueryMode(), nrcPathState, nrcProgressState, NrcPathData0, NrcPathData1);
 }
 
 // Performs NRC related updates on a primary ray miss
 void updateNrcOnPrimaryMiss(
-  uvec2 nrcPathPixelCoordinate)
+  uvec2 nrcPathPixelCoordinate,
+  uvec2 nrcPixelIndex)
 {
   // NRC needs rng to determine unbiased paths but that selection doesn't apply when a GBuffer miss occurs
   const float dummyRand01 = 0.f;
 
   // Initialize NRC state for path traced in this thread
   NrcPathState nrcPathState = NrcCreatePathState(cb.nrcArgs.nrcConstants, dummyRand01);
-  const NrcContext nrcContext = createNrcContext(nrcPathPixelCoordinate);
+  const NrcContext nrcContext = createNrcContext(nrcPixelIndex);
 
   updateNrcOnMiss(nrcPathPixelCoordinate, NrcIsUpdateMode(), nrcPathState, true);
 
@@ -271,8 +274,7 @@ void updateNrcOnPrimaryMiss(
   NrcWriteFinalPathInfo(nrcContext, nrcPathState, dummyThroughput, dummyRadiance);
 }
 
-// Registers vertex 0 of a training path with NRC. Called by the GBuffer, or by Integrate Direct when the
-// setup is deferred - the record is position independent, its destination depends only on the training cell.
+// Registers vertex 0 of a training path with NRC. Its destination depends only on the training cell.
 void registerNrcTrainingPathPrimaryHit(
   uvec2 trainingPixelCoordinateInTrainingSpace,
   vec3 surfacePosition,
@@ -290,7 +292,7 @@ void registerNrcTrainingPathPrimaryHit(
   const float rand01 = getNextSampleBlueNoise(randomStateNrcUpdate);
 
   updateNrcOnPrimaryHit(
-    trainingPixelCoordinateInTrainingSpace,
+    trainingPixelCoordinateInTrainingSpace, trainingPixelCoordinateInTrainingSpace,
     surfacePosition, polymorphicSurfaceMaterialInteraction, viewVector,
     // Note: NrcQueryPathData0 is unused for the Update path
     primaryPathHitDistance, rand01, NrcQueryPathData0, NrcTrainingPathData1);
@@ -302,7 +304,7 @@ void registerNrcTrainingPathPrimaryMiss(uvec2 trainingPixelCoordinateInTrainingS
 {
   g_nrcMode = NrcMode::Update;
 
-  updateNrcOnPrimaryMiss(trainingPixelCoordinateInTrainingSpace);
+  updateNrcOnPrimaryMiss(trainingPixelCoordinateInTrainingSpace, trainingPixelCoordinateInTrainingSpace);
 
   g_nrcMode = NrcMode::Disabled;
 }
@@ -314,11 +316,11 @@ void invalidateNrcTrainingPath(uvec2 trainingPixelCoordinateInTrainingSpace)
   registerNrcTrainingPathPrimaryMiss(trainingPixelCoordinateInTrainingSpace);
 }
 
-void invalidateNrcQueryData(uvec2 pixelCoordinate)
+void invalidateNrcQueryData(uvec2 pixelCoordinate, uvec2 nrcPixelIndex)
 {
   g_nrcMode = NrcMode::Query;
 
-  updateNrcOnPrimaryMiss(pixelCoordinate);
+  updateNrcOnPrimaryMiss(pixelCoordinate, nrcPixelIndex);
 
   g_nrcMode = NrcMode::Disabled;
 }

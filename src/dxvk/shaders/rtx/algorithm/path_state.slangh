@@ -88,6 +88,10 @@ struct PathState : IBasePayloadState
 
 #if ENABLE_NRC
 
+  // Holds NRC's path buffer index, which is the compacted coordinate for a query path.
+  // It is the training-space coordinate for a training path.
+  u16vec2 _nrcPixelIndex;
+
   uint nrcData0;  // NrcQuery:
                   //  uint packedPrefixThroughput
                   // NrcUpdate:
@@ -222,7 +226,8 @@ struct PathState : IBasePayloadState
       }
       else
       {
-        return Nrc::calculateUpdatePixelCoordinateFromCombinedCoordinate(getDispatchRaysIndex().xy, cb);
+        // A training path's own coordinate is the one NRC indexes it by, so the two coincide.
+        return _nrcPixelIndex;
       }
     }
 
@@ -230,6 +235,12 @@ struct PathState : IBasePayloadState
     { 
       _pixelCoordinate = newValue; 
     }
+  }
+
+  property u16vec2 nrcPixelIndex
+  {
+    get { return _nrcPixelIndex; }
+    set { _nrcPixelIndex = newValue; }
   }
 
   property uint8_t pathMaxBounces

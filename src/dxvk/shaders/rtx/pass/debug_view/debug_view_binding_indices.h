@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -60,6 +60,10 @@
 
 #define DEBUG_VIEW_BINDING_PREV_WORLD_POSITION_INPUT                                       33
 #define DEBUG_VIEW_BINDING_SHARED_TERMINATOR_FIX_INPUT                                     34
+
+// These bindings map a pixel to the compacted coordinate that sparse rendering wrote its GBuffer outputs at.
+#define DEBUG_VIEW_BINDING_SPARSE_COMPACTED_PIXEL_INDICES_INPUT                            35
+#define DEBUG_VIEW_BINDING_SPARSE_TILE_ACTIVE_COUNTS_INPUT                                 36
 
 // Inputs / Outputs
 

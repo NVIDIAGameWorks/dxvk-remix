@@ -35,6 +35,10 @@ enum class PerPixelRateNoiseSource : uint32_t {
 // Note: ensure 16B alignment
 struct SparseRenderingArgs
 {
+  // Every mode other than Off also compacts the GBuffer.
+  // Compaction runs ahead of the GBuffer, active pixels store their GBuffer at their compacted slot,
+  // and inactive pixels store only the per-pixel outputs.
+  // Code that holds only a pixel coordinate reaches the compacted outputs through CompactedPixelIndices.
   SparseRenderingMode mode;
   PerPixelRateNoiseSource perPixelRateNoiseSource;
   float pixelSamplingRate;
@@ -47,6 +51,14 @@ struct SparseRenderingArgs
 
   // Dimensions of the active-pixel mask buffer in mask elements (ceil(resolution / blockSize)).
   uvec2 activePixelMaskExtent;
+  // Holds the number of 64x64 Morton squares that fit across the compacted storage.
+  uint compactedStorageSquaresPerRow;
+  // Holds the number of usable compacted storage slots. Active pixels past it are clamped to inactive.
+  uint compactedStorageCapacity;
+
+  // These are the albedo guide settings of the prepare RR pass, which the compacted GBuffer applies itself.
+  uint guideCombineSpecularAlbedo;
+  float guideRoughnessDemodulationMultiplier;
+  float guideRoughnessDemodulationOffset;
   uint pad0;
-  uint pad1;
 };

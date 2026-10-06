@@ -801,7 +801,8 @@ void resolveVertexUnorderedParticles<
   float pathSelectionProbability,
   inout vec3 radianceAttenuation, inout vec3 emissiveRadiance,
   out uint numInteractions,
-  out int surfaceIndex)
+  out int surfaceIndex,
+  inout bool decalCandidateSeen)
 {
   surfaceIndex = -1;
 
@@ -854,7 +855,8 @@ void resolveVertexUnorderedParticles<
   const uint kMaxUnorderedResolveSteps = 32;
 #endif
 
-  for (uint step = 0; step < kMaxUnorderedResolveSteps && rayQuery.Proceed(); step++)
+  uint step = 0;
+  for (; step < kMaxUnorderedResolveSteps && rayQuery.Proceed(); step++)
   {
     RayHitInfo rayHitInfo;
     RayInteraction rayInteraction;
@@ -973,9 +975,10 @@ void resolveVertexUnorderedParticles<
 
     const Surface surface = surfaces[uint(rayInteraction.surfaceIndex)];
 
-    // Decals are skipped before their surface interaction is built, since nothing here uses it.
+    // Decals are left to the deferred decal pass, which only needs to know one may cover the surface.
     if (isTriangle && surfaceIsDecal(surface))
     {
+      decalCandidateSeen = true;
       continue;
     }
 
@@ -1085,6 +1088,12 @@ void resolveVertexUnorderedParticles<
 #endif
 
     numInteractions += 1;
+  }
+
+  // Candidates past the step budget went unvisited, so one of them may be a decal.
+  if (step == kMaxUnorderedResolveSteps)
+  {
+    decalCandidateSeen = true;
   }
 
   if (numInteractions == 0)

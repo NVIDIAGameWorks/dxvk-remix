@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -38,7 +38,7 @@
 
 #define POST_FX_HIGHLIGHT_INPUT                       0
 #define POST_FX_HIGHLIGHT_OBJECT_PICKING_INPUT        1
-#define POST_FX_HIGHLIGHT_PRIMARY_CONE_RADIUS_INPUT   2
+#define POST_FX_HIGHLIGHT_PRIMARY_LINEAR_VIEW_Z_INPUT 2
 #define POST_FX_HIGHLIGHT_OUTPUT                      3
 #define POST_FX_HIGHLIGHT_VALUES                      4
 
@@ -97,4 +97,5 @@ struct PostFxHighlightingArgs
   float timeSinceStartMS;
   uint  highlightColorPacked;
   uint  valuesToHighlightCountPow;
+  float missLinearViewZ;
 };

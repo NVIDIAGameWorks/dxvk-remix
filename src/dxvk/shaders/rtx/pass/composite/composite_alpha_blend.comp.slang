@@ -37,6 +37,7 @@
 #include "rtx/utility/geometry_flags.slangh"
 #include "rtx/algorithm/volume_lighting.slangh"
 #include "rtx/pass/sparse_rendering/sparse_rendering.slangh"
+#include "rtx/pass/sparse_rendering/compact_active_pixels.slangh"
 
 groupshared uint samplePixel[16 * 8];
 
@@ -78,18 +79,29 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
 
     if (cb.stochasticAlphaBlendUseNeighborSearch)
     {
+      // Holds the compacted coordinate of the neighbour that the search settles on, which is always active.
+      // It is read only once `found` is set, right after a lookup wrote it.
+      uvec2 compactedNeighborCoordinate = uvec2(kInvalidCompactedCoordinate);
+
       for (int i = 0; i < cb.stochasticAlphaBlendSearchIteration; ++i)
       {
         if (!found)
         {
-          if (cb.sparseRenderingArgs.mode != SparseRenderingMode::Off && !isActivePixelFromMask(SparseRenderingActivePixelMask, uvec2(neighborPixel)))
+          // Activity and storage slot must come from the same lookup.
+          // The active-pixel mask is built before compaction assigns slots,
+          // so it still reports a pixel dropped past the storage capacity as active,
+          // while that pixel's table entry resolves to the never-written scratch slot.
+          const bool neighborIsActive = compactedCoordinateFromPixelIfActive(
+            CompactedPixelIndices, TileActiveCounts, uint2(neighborPixel.xy), cb.sparseRenderingArgs, compactedNeighborCoordinate);
+
+          if (!neighborIsActive)
           {
             radius *= cb.stochasticAlphaBlendRadiusExpandFactor;
           }
           else
           {
             float neighborViewZ = texelFetch(PrimaryLinearViewZ, neighborPixel, 0).x;
-            const vec4 neighborNormalData = PrimaryVirtualWorldNormalPerceptualRoughness[neighborPixel.xy];
+            const vec4 neighborNormalData = PrimaryVirtualWorldNormalPerceptualRoughness[compactedNeighborCoordinate];
             const vec3 neighborNormal = neighborNormalData.xyz * 2-1;
             const CameraDirections neighborRayDirections = cameraPixelCoordinateToDirection(cb.camera, neighborPixel.xy);
             float neighborDistance = abs(neighborViewZ / neighborRayDirections.viewDirection.z);
@@ -154,15 +166,14 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
 
       if (found)
       {
-        int2 neighborPixel = centerPixel;
         vec3 diffuseLight = 0;
-        diffuseLight += PrimaryDirectDiffuseRadianceHitDistance[neighborPixel].xyz * surface.color.xyz;
+        diffuseLight += PrimaryDirectDiffuseRadianceHitDistance[compactedNeighborCoordinate].xyz * surface.color.xyz;
         if (cb.enableSeparatedDenoisers)
         {
-          diffuseLight += PrimaryIndirectDiffuseRadianceHitDistance[neighborPixel].xyz * surface.color.xyz;
+          diffuseLight += PrimaryIndirectDiffuseRadianceHitDistance[compactedNeighborCoordinate].xyz * surface.color.xyz;
         }
 
-        float perceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[neighborPixel].a;
+        float perceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[compactedNeighborCoordinate].a;
 
         float roughnessFactor = 1.0;
         if (cb.demodulateRoughness)
@@ -170,11 +181,11 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
           roughnessFactor = getRoughnessDemodulationFactor(perceptualRoughness, cb.roughnessDemodulationOffset);
         }
 
-        const vec3 primarySpecularAlbedo = PrimarySpecularAlbedo[neighborPixel].xyz;
-        vec3 specularLight = PrimaryDirectSpecularRadianceHitDistance[neighborPixel].xyz;
+        const vec3 primarySpecularAlbedo = PrimarySpecularAlbedo[compactedNeighborCoordinate].xyz;
+        vec3 specularLight = PrimaryDirectSpecularRadianceHitDistance[compactedNeighborCoordinate].xyz;
         if (cb.enableSeparatedDenoisers)
         {
-          specularLight += PrimaryIndirectSpecularRadianceHitDistance[neighborPixel].xyz;
+          specularLight += PrimaryIndirectSpecularRadianceHitDistance[compactedNeighborCoordinate].xyz;
         }
         specularLight = primarySpecularAlbedo * specularLight / roughnessFactor;
 

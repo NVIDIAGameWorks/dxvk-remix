@@ -27,57 +27,377 @@
 
 #include "rtx/pass/sparse_rendering/compact_active_pixels_binding_indices.h"
 
-static const uint kPackedLocalPixelActiveFlag = 0x8000;
-
-bool isPackedLocalPixelEntryActive(uint16_t packedCoordinate)
+// The low byte holds x and the high byte holds y.
+// A pixel's activity comes from the tile's active count in SparseTileState.
+uint2 unpackLocalPixelCoordinate(uint16_t packedCoordinate)
 {
-  return packedCoordinate & kPackedLocalPixelActiveFlag;
+  return uint2(packedCoordinate & 0xFF, (packedCoordinate >> 8) & 0xFF);
 }
 
-bool unpackLocalPixelCoordinate(uint16_t packedCoordinate, out uint2 localPixelCoordinate)
+// Inverts packActivePixelCoordinate and returns the whole-screen pixel coordinate that a global list entry owns.
+uint2 unpackActivePixelCoordinate(uint packedCoordinate)
 {
-  localPixelCoordinate = uint2(packedCoordinate & 0xFF, (packedCoordinate >> 8) & 0x7F);
+  return uint2(packedCoordinate & 0xFFFF, (packedCoordinate >> 16) & 0xFFFF);
+}
 
-  return isPackedLocalPixelEntryActive(packedCoordinate);
+// A Morton (Z-order) encode puts x into the even bits and y into the odd bits.
+uint mortonPart1By1(uint x)
+{
+  x &= 0x0000FFFFu;
+  x = (x | (x << 8)) & 0x00FF00FFu;
+  x = (x | (x << 4)) & 0x0F0F0F0Fu;
+  x = (x | (x << 2)) & 0x33333333u;
+  x = (x | (x << 1)) & 0x55555555u;
+
+  return x;
+}
+
+// Inverts mortonIndexToTileCoord and returns the compacted linear index that owns this tile-local coordinate.
+uint tileCoordToMortonIndex(uint2 coord)
+{
+#if COMPACT_ACTIVE_PIXELS_TILE_SIZE_X >= COMPACT_ACTIVE_PIXELS_TILE_SIZE_Y
+  static const uint kSquareSize = COMPACT_ACTIVE_PIXELS_TILE_SIZE_Y;
+  const uint squareIdx = coord.x / kSquareSize;
+  const uint2 local = uint2(coord.x % kSquareSize, coord.y);
+#else
+  static const uint kSquareSize = COMPACT_ACTIVE_PIXELS_TILE_SIZE_X;
+  const uint squareIdx = coord.y / kSquareSize;
+  const uint2 local = uint2(coord.x, coord.y % kSquareSize);
+#endif
+  static const uint kSquareArea = kSquareSize * kSquareSize;
+
+  return squareIdx * kSquareArea + (mortonPart1By1(local.x) | (mortonPart1By1(local.y) << 1));
+}
+
+// Decode a Morton (Z-order) code into (x, y) coordinates.
+// x occupies even bits (0, 2, 4, ...), y occupies odd bits (1, 3, 5, ...).
+uint2 mortonDecode(uint code)
+{
+  uint x = code;
+  uint y = code >> 1;
+
+  x &= 0x55555555u;
+  x = (x | (x >> 1)) & 0x33333333u;
+  x = (x | (x >> 2)) & 0x0F0F0F0Fu;
+  x = (x | (x >> 4)) & 0x00FF00FFu;
+  x = (x | (x >> 8)) & 0x0000FFFFu;
+
+  y &= 0x55555555u;
+  y = (y | (y >> 1)) & 0x33333333u;
+  y = (y | (y >> 2)) & 0x0F0F0F0Fu;
+  y = (y | (y >> 4)) & 0x00FF00FFu;
+  y = (y | (y >> 8)) & 0x0000FFFFu;
+
+  return uint2(x, y);
+}
+
+// Marks a pixel with no compacted slot this frame in CompactedPixelIndices. Lies above any tile-local index.
+static const uint kInvalidCompactedIndex = 0xFFFFu;
+
+#if COMPACT_ACTIVE_PIXELS_TILE_SIZE > 0xFFFF
+  #error "A tile-local compacted index must fit 16 bits below the kInvalidCompactedIndex sentinel."
+#endif
+
+// Marks a compacted coordinate that has not been resolved. No storage coordinate is negative.
+static const int2 kInvalidCompactedCoordinate = int2(-1, -1);
+
+// Finds the storage coordinate of a global compacted index from its Morton square,
+// then from its Morton position within that square.
+uvec2 storageCoordinateFromGlobalIndex(uint globalIndex, uint squaresPerRow)
+{
+  const uint square = globalIndex >> COMPACT_ACTIVE_PIXELS_STORAGE_SQUARE_AREA_SHIFT;
+  const uint2 local = mortonDecode(globalIndex & (COMPACT_ACTIVE_PIXELS_STORAGE_SQUARE_AREA - 1));
+  const uint squareRow = square / squaresPerRow;
+  const uint squareColumn = square - squareRow * squaresPerRow;
+
+  return uvec2(
+    (squareColumn << COMPACT_ACTIVE_PIXELS_STORAGE_SQUARE_SHIFT) + local.x,
+    (squareRow << COMPACT_ACTIVE_PIXELS_STORAGE_SQUARE_SHIFT) + local.y);
+}
+
+uvec2 storageCoordinateFromGlobalIndex(uint globalIndex, SparseRenderingArgs args)
+{
+  return storageCoordinateFromGlobalIndex(globalIndex, args.compactedStorageSquaresPerRow);
+}
+
+// A reserved square past the capacity absorbs stores from threads with no slot. Nothing ever reads it.
+uvec2 scratchStorageCoordinate(uint squaresPerRow, uint capacity)
+{
+  const uint scratchIndex = (capacity + COMPACT_ACTIVE_PIXELS_STORAGE_SQUARE_AREA - 1) &
+                            ~uint(COMPACT_ACTIVE_PIXELS_STORAGE_SQUARE_AREA - 1);
+
+  return storageCoordinateFromGlobalIndex(scratchIndex, squaresPerRow);
+}
+
+uvec2 scratchStorageCoordinate(SparseRenderingArgs args)
+{
+  return scratchStorageCoordinate(args.compactedStorageSquaresPerRow, args.compactedStorageCapacity);
+}
+
+struct SparseTileInfo
+{
+  uint2 tileId;
+  uint2 basePixel;
+  uint width;
+  uint height;
+};
+
+// Compacted and pixel coordinates share a tile, so either kind of coordinate resolves the tile.
+SparseTileInfo getSparseTileInfo(uint2 pixelCoordinate, uvec2 raytracingResolution)
+{
+  SparseTileInfo tile;
+
+  tile.tileId = uint2(pixelCoordinate.x / COMPACT_ACTIVE_PIXELS_TILE_SIZE_X,
+                      pixelCoordinate.y / COMPACT_ACTIVE_PIXELS_TILE_SIZE_Y);
+  tile.basePixel = uint2(tile.tileId.x * COMPACT_ACTIVE_PIXELS_TILE_SIZE_X,
+                         tile.tileId.y * COMPACT_ACTIVE_PIXELS_TILE_SIZE_Y);
+  tile.width = min(uint(COMPACT_ACTIVE_PIXELS_TILE_SIZE_X), raytracingResolution.x - tile.basePixel.x);
+  tile.height = min(uint(COMPACT_ACTIVE_PIXELS_TILE_SIZE_Y), raytracingResolution.y - tile.basePixel.y);
+
+  return tile;
+}
+
+// Returns the position of a tile-local compacted coordinate in its tile.
+// The order must match the compaction pass's scatter order.
+uint tileLocalCompactedIndex(uint2 localCompacted, SparseTileInfo tile)
+{
+  const bool useMorton = tile.width == COMPACT_ACTIVE_PIXELS_TILE_SIZE_X
+                      && tile.height == COMPACT_ACTIVE_PIXELS_TILE_SIZE_Y;
+
+  return useMorton
+    ? tileCoordToMortonIndex(localCompacted)
+    : localCompacted.y * tile.width + localCompacted.x;
+}
+
+// Holds a tile's compaction state. Both halves come from one RG32_UINT texel.
+struct SparseTileState
+{
+  // Compaction packs active pixels to the front, so a tile-local index below this is active.
+  uint activeCount;
+  // Holds the start of the tile's run in the compacted storage. Runs follow arrival order rather than screen order.
+  uint globalBase;
+};
+
+SparseTileState loadSparseTileState(Texture2D<uint2> TileActiveCounts, uint2 tileId)
+{
+  const uint2 packed = TileActiveCounts[tileId];
+
+  SparseTileState state;
+  state.activeCount = packed.x;
+  state.globalBase = packed.y;
+
+  return state;
+}
+
+// Returns the storage coordinate of a grid-launched thread.
+// Returns the scratch square when the thread has no slot.
+uvec2 storageCoordinateFromTileState(
+  SparseTileState tileState,
+  uint tileLocalIndex,
+  SparseRenderingArgs args)
+{
+  return tileLocalIndex < tileState.activeCount
+    ? storageCoordinateFromGlobalIndex(tileState.globalBase + tileLocalIndex, args)
+    : scratchStorageCoordinate(args);
+}
+
+// Resolves the activity and storage coordinate of a grid-launched thread from one tile read.
+// List launches must not use it.
+bool loadCompactedCoordinateFromDispatchIndex(
+  Texture2D<uint2> TileActiveCounts,
+  uint2 threadIndex,
+  uvec2 raytracingResolution,
+  SparseRenderingArgs args,
+  out uvec2 compactedCoordinate)
+{
+  compactedCoordinate = threadIndex;
+
+  // Rejects threads outside the screen, since they have no pixel.
+  if (any(threadIndex >= raytracingResolution))
+  {
+    return false;
+  }
+
+  if (args.mode == SparseRenderingMode::Off)
+  {
+    return true;
+  }
+
+  const SparseTileInfo tile = getSparseTileInfo(threadIndex, raytracingResolution);
+  const uint tileLocalIndex = tileLocalCompactedIndex(threadIndex - tile.basePixel, tile);
+  const SparseTileState tileState = loadSparseTileState(TileActiveCounts, tile.tileId);
+
+  compactedCoordinate = storageCoordinateFromTileState(tileState, tileLocalIndex, args);
+
+  return tileLocalIndex < tileState.activeCount;
 }
 
 // Retrieves a pixel coordinate from locally compacted sparse rendering maps.
-// Returns true if this is an active and false if inactive.
-bool loadLocalPixelCoordinate(
-	Texture2D<uint16_t> ActiveLocalPixelCoords,
-	uint2 pixelCoordinate,
-  out uvec2 gbufferPixelCoordinate)
+// Returns the input coordinate unchanged with sparse rendering off.
+uvec2 loadLocalPixelCoordinate(
+  Texture2D<uint16_t> ActiveLocalPixelCoords,
+  uint2 pixelCoordinate,
+  SparseRenderingArgs args)
 {
-  const uint16_t packedLocalPixelCoord = ActiveLocalPixelCoords[pixelCoordinate];
-  uint2 localPixelCoord;
-  const bool isActive = unpackLocalPixelCoordinate(packedLocalPixelCoord, localPixelCoord);
+  if (args.mode == SparseRenderingMode::Off)
+  {
+    return pixelCoordinate;
+  }
 
-  // Calculate pixel coord - works for both active and inactive pixels
-
+  const uint2 localPixelCoord = unpackLocalPixelCoordinate(ActiveLocalPixelCoords[pixelCoordinate]);
   const uint2 groupBasePixelCoord = uint2(
     pixelCoordinate.x - (pixelCoordinate.x % COMPACT_ACTIVE_PIXELS_TILE_SIZE_X),
     pixelCoordinate.y - (pixelCoordinate.y % COMPACT_ACTIVE_PIXELS_TILE_SIZE_Y));
 
-  gbufferPixelCoordinate = groupBasePixelCoord + localPixelCoord;
-
-  return isActive;
+  return groupBasePixelCoord + localPixelCoord;
 }
 
-// Loads a pixel coordinate in the GBuffer corresponding to the current thread index.
-// Returns true for active pixels and false for inactive pixels.
-// Note: this must be only called for pixels within raytracing resolution bounds.
+// Converts a pixel's CompactedPixelIndices entry, which counts from the tile's base, to a storage coordinate.
+// Inactive pixels land on the scratch square.
+uvec2 storageCoordinateFromCompactedPixelIndex(
+  uint compactedIndex,
+  uint2 pixelCoordinate,
+  Texture2D<uint2> TileActiveCounts,
+  SparseRenderingArgs args)
+{
+  if (compactedIndex == kInvalidCompactedIndex)
+  {
+    return scratchStorageCoordinate(args);
+  }
+
+  const uint2 tileId = pixelCoordinate / uint2(COMPACT_ACTIVE_PIXELS_TILE_SIZE_X, COMPACT_ACTIVE_PIXELS_TILE_SIZE_Y);
+  const SparseTileState tileState = loadSparseTileState(TileActiveCounts, tileId);
+
+  return storageCoordinateFromGlobalIndex(tileState.globalBase + compactedIndex, args);
+}
+
+// Returns the compacted coordinate of a pixel, for threads that cannot use their dispatch index.
+// Returns the pixel coordinate unchanged with sparse rendering off.
+uvec2 compactedCoordinateFromPixel(
+  Texture2D<uint16_t> CompactedPixelIndices,
+  Texture2D<uint2> TileActiveCounts,
+  uint2 pixelCoordinate,
+  SparseRenderingArgs args)
+{
+  if (args.mode == SparseRenderingMode::Off)
+  {
+    return pixelCoordinate;
+  }
+
+  return storageCoordinateFromCompactedPixelIndex(
+    uint(CompactedPixelIndices[pixelCoordinate]), pixelCoordinate, TileActiveCounts, args);
+}
+
+// Works like compactedCoordinateFromPixel and also reports whether the pixel is active,
+// which means that its slot was written.
+bool compactedCoordinateFromPixelIfActive(
+  Texture2D<uint16_t> CompactedPixelIndices,
+  Texture2D<uint2> TileActiveCounts,
+  uint2 pixelCoordinate,
+  SparseRenderingArgs args,
+  out uvec2 compactedCoordinate)
+{
+  compactedCoordinate = pixelCoordinate;
+
+  if (args.mode == SparseRenderingMode::Off)
+  {
+    return true;
+  }
+
+  const uint compactedIndex = uint(CompactedPixelIndices[pixelCoordinate]);
+
+  compactedCoordinate = storageCoordinateFromCompactedPixelIndex(compactedIndex, pixelCoordinate, TileActiveCounts, args);
+
+  return compactedIndex != kInvalidCompactedIndex;
+}
+
+// Converts a compacted launch's 2D dispatch index to its 1D list position.
+// Returns the dispatch index unchanged on the grid launch.
+uint2 calculateCompactedComputeThreadIndex(uint2 dispatchThreadId, uint groupIdX, uint groupIndex, bool compactedLaunch)
+{
+  if (!compactedLaunch)
+  {
+    return dispatchThreadId;
+  }
+
+  return uint2(groupIdX * COMPACT_ACTIVE_PIXELS_CONSUMER_GROUP_SIZE + groupIndex, 0);
+}
+
+// Under sparse rendering, a launch index's pixel coordinate comes from its list entry.
+// Otherwise the pixel coordinate is the launch index itself.
+uvec2 loadLaunchPixelCoordinate(
+  uint2 threadIndex,
+  StructuredBuffer<uint> ActivePixelCoords,
+  SparseRenderingArgs args)
+{
+  if (args.mode == SparseRenderingMode::Off)
+  {
+    return threadIndex;
+  }
+
+  return unpackActivePixelCoordinate(ActivePixelCoords[threadIndex.x]);
+}
+
+// Runs as the prologue of the list-launched passes.
+// Returns false when the thread has no work.
+// Outputs the thread's storage coordinate when it returns true.
+bool loadCompactedCoordinate(
+  uint2 threadIndex,
+  StructuredBuffer<uint> ActivePixelCount,
+  uvec2 raytracingResolution,
+  SparseRenderingArgs args,
+  out uvec2 compactedCoordinate)
+{
+  compactedCoordinate = threadIndex;
+
+  // With sparse rendering off the launch covers the screen grid and the thread index is the pixel.
+  if (args.mode == SparseRenderingMode::Off)
+  {
+    return all(threadIndex < raytracingResolution);
+  }
+
+  // A list position is the global compacted index. Only the tail of the last compute group lies past the count.
+  const uint compactedIndex = threadIndex.x;
+  if (compactedIndex >= ActivePixelCount[COMPACT_ACTIVE_PIXELS_COUNT_SLOT_ACTIVE_PIXELS])
+  {
+    compactedCoordinate = scratchStorageCoordinate(args);
+    return false;
+  }
+
+  compactedCoordinate = storageCoordinateFromGlobalIndex(compactedIndex, args);
+  return true;
+}
+
+// Does the same as the overload above for a compute pass,
+// which also gets back the launch index that loadLaunchPixelCoordinate needs.
+bool loadCompactedCoordinate(
+  uint2 dispatchThreadId,
+  uint groupIdX,
+  uint groupIndex,
+  StructuredBuffer<uint> ActivePixelCount,
+  uvec2 raytracingResolution,
+  SparseRenderingArgs args,
+  out uint2 threadIndex,
+  out uvec2 compactedCoordinate)
+{
+  threadIndex = calculateCompactedComputeThreadIndex(dispatchThreadId, groupIdX, groupIndex, args.mode != SparseRenderingMode::Off);
+
+  return loadCompactedCoordinate(threadIndex, ActivePixelCount, raytracingResolution, args, compactedCoordinate);
+}
+
+// Resolves the pixel and storage coordinates of a grid-launched thread, including an inactive one.
+// Returns true when the thread is active.
 bool loadPixelCoordinate(
   uint2 threadIndex,
   Texture2D<uint16_t> ActiveLocalPixelCoords,
+  Texture2D<uint2> TileActiveCounts,
   uvec2 raytracingResolution,
   SparseRenderingArgs args,
-  out uvec2 gbufferPixelCoordinate)
+  out uvec2 gbufferPixelCoordinate,
+  out uvec2 compactedCoordinate)
 {
-  if (args.mode != SparseRenderingMode::Off)
-  {
-    return loadLocalPixelCoordinate(ActiveLocalPixelCoords, threadIndex, gbufferPixelCoordinate);
-  }
+  gbufferPixelCoordinate = loadLocalPixelCoordinate(ActiveLocalPixelCoords, threadIndex, args);
 
-  gbufferPixelCoordinate = threadIndex;
-  return true;
+  return loadCompactedCoordinateFromDispatchIndex(
+    TileActiveCounts, threadIndex, raytracingResolution, args, compactedCoordinate);
 }

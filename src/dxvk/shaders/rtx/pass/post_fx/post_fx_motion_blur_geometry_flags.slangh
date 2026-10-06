@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -31,6 +31,10 @@ struct MotionBlurSurfaceFlags
   bool isEmissive;
   bool isMaskOut;
 };
+
+// Shares the primary surface flags texture with the motion blur bits. Marks pixels where the primary ray itself missed,
+// which a pixel without SharedFlags cannot otherwise tell from a PSR lobe that missed.
+static const uint kPrimarySurfaceFlagPrimaryRayMiss = 1 << 4;
 
 void motionBlurSurfaceFlagsWriteToGBuffer(
   MotionBlurSurfaceFlags motionBlurSurfaceFlags,

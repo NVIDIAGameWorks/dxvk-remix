@@ -85,9 +85,11 @@ MinimalSurfaceInteraction minimalSurfaceInteractionReadFromGBufferWithError(
   return minimalSurfaceInteractionCreate(memory);
 }
 
+// The primary world position is dense, so primary callers pass `position` for it. The position error is compacted.
 void minimalSurfaceInteractionWriteToGBuffer(
   MinimalSurfaceInteraction minimalSurfaceInteraction,
   ivec2 position,
+  ivec2 compactedPosition,
   RWTexture2D<float4> worldPositionWorldTriangleTBNTexture,
   RWTexture2D<float> positionErrorTexture)
 {
@@ -95,11 +97,16 @@ void minimalSurfaceInteractionWriteToGBuffer(
     gBufferMemoryMinimalSurfaceInteractionCreate(minimalSurfaceInteraction);
 
   worldPositionWorldTriangleTBNTexture[position] = vec4(gBufferMemoryMinimalSurfaceInteraction.encodedWorldPositionWorldTriangleTBN);
-  positionErrorTexture[position] = gBufferMemoryMinimalSurfaceInteraction.positionError;
+  positionErrorTexture[compactedPosition] = gBufferMemoryMinimalSurfaceInteraction.positionError;
 }
 
+// DLSS-RR guides and outputs read at neighbor or previous-frame pixels use `position`, and the rest use `compactedPosition`.
+// `perceptualRoughnessPosition` is `position` for the primary surface, whose roughness is a dense DLSS-RR guide.
+// It is `compactedPosition` for the secondary surface.
 PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionReadFromGBuffer(
   ivec2 position,
+  ivec2 compactedPosition,
+  ivec2 perceptualRoughnessPosition,
   Texture2D<uint> worldShadingNormalTexture,
   Texture2D<float> perceptualRoughnessTexture,
   Texture2D<float4> albedoTexture,
@@ -112,19 +119,19 @@ PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionReadF
 {
   GBufferMemoryPolymorphicSurfaceMaterialInteraction memory;
 
-  memory.worldShadingNormal = signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(worldShadingNormalTexture[position]));
-  memory.perceptualRoughness = perceptualRoughnessTexture[position];
-  memory.albedo = f16vec3(albedoTexture[position].rgb);
-  memory.baseReflectivity = f16vec3(baseReflectivityTexture[position].rgb);
-  memory.data0 = data0Texture[position].x;
-  memory.data1 = data1Texture[position].x;
+  memory.worldShadingNormal = signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(worldShadingNormalTexture[compactedPosition]));
+  memory.perceptualRoughness = perceptualRoughnessTexture[perceptualRoughnessPosition];
+  memory.albedo = f16vec3(albedoTexture[compactedPosition].rgb);
+  memory.baseReflectivity = f16vec3(baseReflectivityTexture[compactedPosition].rgb);
+  memory.data0 = data0Texture[compactedPosition].x;
+  memory.data1 = data1Texture[compactedPosition].x;
 
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction = polymorphicSurfaceMaterialInteractionCreate(memory);
   if (cb.sssArgs.enableThinOpaque || cb.sssArgs.enableDiffusionProfile)
   {
-    const uint primarySurfaceIndex = surfaceIndexTexture[position];
+    const uint primarySurfaceIndex = surfaceIndexTexture[compactedPosition];
     const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surfaceMaterials[primarySurfaceIndex]);
-    const SubsurfaceMaterialInteraction subsurfaceMaterialInteraction = subSurfaceMaterialReadHelper(subsurfaceData[position], subsurfaceDiffusionProfileData[position]);
+    const SubsurfaceMaterialInteraction subsurfaceMaterialInteraction = subSurfaceMaterialReadHelper(subsurfaceData[compactedPosition], subsurfaceDiffusionProfileData[compactedPosition]);
 
     polymorphicSurfaceMaterialInteraction.fdata5 = subsurfaceMaterialInteraction.measurementDistance;
     polymorphicSurfaceMaterialInteraction.i32data0 = subsurfaceMaterialInteraction.packedTransmittanceColor;
@@ -145,9 +152,12 @@ PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionReadF
   return polymorphicSurfaceMaterialInteraction;
 }
 
+// See polymorphicSurfaceMaterialInteractionReadFromGBuffer for `compactedPosition` and `perceptualRoughnessPosition`.
 void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   ivec2 position,
+  ivec2 compactedPosition,
+  ivec2 perceptualRoughnessPosition,
   bool writeStochastic,
   bool writeDenoisingNormal,
   Surface surface,
@@ -171,8 +181,8 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
   const GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteraction =
     gBufferMemoryPolymorphicSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
 
-  albedoTexture[position] = vec4(gBufferMemoryPolymorphicSurfaceMaterialInteraction.albedo, 1.0);
-  baseReflectivityTexture[position] = vec4(gBufferMemoryPolymorphicSurfaceMaterialInteraction.baseReflectivity, 1.0);
+  albedoTexture[compactedPosition] = vec4(gBufferMemoryPolymorphicSurfaceMaterialInteraction.albedo, 1.0);
+  baseReflectivityTexture[compactedPosition] = vec4(gBufferMemoryPolymorphicSurfaceMaterialInteraction.baseReflectivity, 1.0);
 
   f16vec3 virtualShadingNormal = gBufferMemoryPolymorphicSurfaceMaterialInteraction.worldShadingNormal;
 
@@ -198,7 +208,7 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
   }
 
   // Note: snorm->unorm conversion for shading normal to match what denoiser expects.
-  virtualWorldShadingNormalPerceptualRoughnessTexture[position] = vec4(
+  virtualWorldShadingNormalPerceptualRoughnessTexture[compactedPosition] = vec4(
     virtualShadingNormal * 0.5f + 0.5f,
     gBufferMemoryPolymorphicSurfaceMaterialInteraction.perceptualRoughness);
 
@@ -211,33 +221,33 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
   // Note: Write stochastic textures only when desired. Bit hacky to have this logic here rather than in the geometery resolver but
   // it's an easy enough way to do it.
   if (writeStochastic) {
-    worldShadingNormalTexture[position] =
+    worldShadingNormalTexture[compactedPosition] =
       float2x32ToSnorm2x16(sphereDirectionToSignedOctahedral(gBufferMemoryPolymorphicSurfaceMaterialInteraction.worldShadingNormal));
-    perceptualRoughnessTexture[position] = gBufferMemoryPolymorphicSurfaceMaterialInteraction.perceptualRoughness;
-    data0Texture[position] = gBufferMemoryPolymorphicSurfaceMaterialInteraction.data0;
-    data1Texture[position] = gBufferMemoryPolymorphicSurfaceMaterialInteraction.data1;
+    perceptualRoughnessTexture[perceptualRoughnessPosition] = gBufferMemoryPolymorphicSurfaceMaterialInteraction.perceptualRoughness;
+    data0Texture[compactedPosition] = gBufferMemoryPolymorphicSurfaceMaterialInteraction.data0;
+    data1Texture[compactedPosition] = gBufferMemoryPolymorphicSurfaceMaterialInteraction.data1;
 
-    surfaceIndexTexture[position] = surfaceIndex;
+    surfaceIndexTexture[compactedPosition] = surfaceIndex;
 
     // Only write sharedTextureCoords if the material has a height texture, or the material has subsurface texture(s)
     if (polymorphicSurfaceMaterialInteractionHasHeightTexture(polymorphicSurfaceMaterialInteraction))
     {
-      sharedTextureCoords[position] = surfaceInteraction.textureCoordinates;
+      sharedTextureCoords[compactedPosition] = surfaceInteraction.textureCoordinates;
     }
 
     if (polymorphicSurfaceMaterialInteractionHasSubsurface(polymorphicSurfaceMaterialInteraction))
     {
-      subsurfaceDataTexture[position] = uint2(
+      subsurfaceDataTexture[compactedPosition] = uint2(
         float16BitsToUint16(polymorphicSurfaceMaterialInteraction.fdata5), // measurementDistance
         (uint16_t(polymorphicSurfaceMaterialInteraction.bdata1) | (uint16_t(polymorphicSurfaceMaterialInteraction.bdata2) << 8)) // volumetricAnisotropy | Max Radius
       );
-      subsurfaceDiffusionProfileDataTexture[position] = uint2(
+      subsurfaceDiffusionProfileDataTexture[compactedPosition] = uint2(
         polymorphicSurfaceMaterialInteraction.i32data0, polymorphicSurfaceMaterialInteraction.i32data1);
     }
     else
     {
-      subsurfaceDataTexture[position] = uint2(0, 0);
-      subsurfaceDiffusionProfileDataTexture[position] = uint2(0, 0);
+      subsurfaceDataTexture[compactedPosition] = uint2(0, 0);
+      subsurfaceDiffusionProfileDataTexture[compactedPosition] = uint2(0, 0);
     }
   }
 }
@@ -260,8 +270,7 @@ bool isGBufferMiss(ivec2 position, Texture2D<float> coneRadiusTexture)
   return coneRadiusTexture[position].x == 0.0f;
 }
 
-// The surface Integrate Direct shades for this pixel. NRC training-path candidacy is picked in the sparse
-// rendering prepasses but registered against this surface, so both sides must call this to agree.
+// Returns whether the surface that Integrate Direct shades for this pixel is a miss.
 bool isSelectedIntegrationSurfaceGBufferMiss(
   GeometryFlags geometryFlags,
   bool primaryGBufferMiss,
@@ -277,28 +286,22 @@ float calculateSelectedIntegrationSurfaceHitDistance(
   Texture2D<float> primaryHitDistanceTexture,
   Texture2D<float> secondaryHitDistanceTexture)
 {
-  return geometryFlags.primarySelectedIntegrationSurface
-    ? primaryHitDistanceTexture[position]
-    : secondaryHitDistanceTexture[position];
-}
+  if (geometryFlags.primarySelectedIntegrationSurface)
+  {
+    return primaryHitDistanceTexture[position];
+  }
 
-// Overload for callers that have no other use for the individual surface misses. Selects before loading rather
-// than delegating above, so only the selected surface's cone radius is fetched.
-bool isSelectedIntegrationSurfaceGBufferMiss(
-  ivec2 position,
-  GeometryFlags geometryFlags,
-  Texture2D<float> primaryConeRadiusTexture,
-  Texture2D<float> secondaryConeRadiusTexture)
-{
-  return geometryFlags.primarySelectedIntegrationSurface
-    ? isGBufferMiss(position, primaryConeRadiusTexture)
-    : isGBufferMiss(position, secondaryConeRadiusTexture);
+  return secondaryHitDistanceTexture[position];
 }
 
 // Note: Used to indicate to passes that the GBuffer has no data in it, while also at least providing data to fill in denoiser-related buffers such that they do
 // not read from undefined previous-frame data.
+// `primaryDensePosition` addresses linear view Z and world position, which are dense on the primary surface.
+// Callers pass `position` for the primary surface and `compactedPosition` for the secondary surface.
 void writeMissToGBuffer(
   ivec2 position,
+  ivec2 primaryDensePosition,
+  ivec2 compactedPosition,
   bool writeStochastic,
   bool writeDenoisingNormal,
   bool writeWorldMotion,
@@ -320,27 +323,27 @@ void writeMissToGBuffer(
   const float missConeRadius = 0.0f;
   const vec4 missPositionNormal = asfloat(0x7F800000).xxxx; // Structures that read from this data know how to interpret infinity.
 
-  linearViewZTexture[position] = missLinearViewZ;
+  linearViewZTexture[primaryDensePosition] = missLinearViewZ;
   if (writeWorldMotion)
   {
-    worldMotionTexture[position] = vec4(missMotionVector, 0);
+    worldMotionTexture[compactedPosition] = vec4(missMotionVector, 0);
   }
-  worldShadingNormalPerceptualRoughnessTexture[position] = vec4(missNormal * 0.5 + 0.5, missPerceptualRoughness);
+  worldShadingNormalPerceptualRoughnessTexture[compactedPosition] = vec4(missNormal * 0.5 + 0.5, missPerceptualRoughness);
   if (writeDenoisingNormal)
   {
     WorldShadingNormalPerceptualRoughnessDenoisingTexture[position] = NRD_FrontEnd_PackNormalAndRoughness(missNormal, missPerceptualRoughness, MATERIAL_ID_DEFAULT);
   }
-  worldPositionWorldTriangleNormal[position] = missPositionNormal;
+  worldPositionWorldTriangleNormal[primaryDensePosition] = missPositionNormal;
 
   if (writeStochastic)
   {
-    albedoTexture[position] = missAlbedo;
-    baseReflectivityTexture[position] = missBaseReflectivity;
+    albedoTexture[compactedPosition] = missAlbedo;
+    baseReflectivityTexture[compactedPosition] = missBaseReflectivity;
   }
 
   /* Note: Cone radius usually not needed for denoisers, only outputted here to give a low-cost signal to */
   /* subsequent passes that a g-buffer miss occured. This was previously done by the hit distance but other */
   /* passes no longer need hit distance information unfortunately. The cone radius normally will never be */
   /* 0 so this works fine as a reliable way to signal a miss. */
-  coneRadiusTexture[position] = missConeRadius;
+  coneRadiusTexture[compactedPosition] = missConeRadius;
 }

@@ -1514,7 +1514,12 @@ namespace {
         srcImage = rtOutput.m_primaryDepth.image;
         break;
       case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_NORMALS:
-        srcImage = rtOutput.m_primaryWorldShadingNormal.image;
+        // The compacted GBuffer stores normals in compacted order, so it also writes a dense copy for this.
+        if (rtOutput.m_raytraceArgs.sparseRenderingArgs.mode != SparseRenderingMode::Off) {
+          srcImage = rtOutput.m_primaryWorldShadingNormalDense.image;
+        } else {
+          srcImage = rtOutput.m_primaryWorldShadingNormal.image;
+        }
         break;
       case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_OBJECT_PICKING:
         srcImage = rtOutput.m_primaryObjectPicking.image;

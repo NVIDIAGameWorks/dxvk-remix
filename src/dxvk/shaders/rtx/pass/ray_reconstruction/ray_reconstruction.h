@@ -22,6 +22,7 @@
 #pragma once
 
 #include "rtx/utility/shader_types.h"
+#include "rtx/pass/sparse_rendering/sparse_rendering.h"
 #ifdef __cplusplus
 #include "rtx/concept/camera/camera.h"
 #else
@@ -57,6 +58,8 @@
 // Constant buffers
 struct RayReconstructionArgs {
   Camera camera;
+
+  SparseRenderingArgs sparseRenderingArgs;
 
   vec4 debugKnob;
 

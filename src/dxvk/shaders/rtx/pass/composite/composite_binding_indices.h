@@ -62,7 +62,12 @@
 #define COMPOSITE_ACTIVE_PIXEL_MASK_INPUT                           27
 #define COMPOSITE_ACTIVE_LOCAL_PIXEL_COORDS_INPUT                   28
 
+// These bindings map a pixel to its compacted slot under sparse rendering, for reads at pixels other than the thread's own.
+#define COMPOSITE_COMPACTED_PIXEL_INDICES_INPUT                     29
+#define COMPOSITE_TILE_ACTIVE_COUNTS_INPUT                          30
+
 #define COMPOSITE_PIXEL_SAMPLING_RATE_INPUT                         31
+#define COMPOSITE_PRIMARY_SURFACE_FLAGS_INPUT                       32
 
 // Inputs/Outputs
 

@@ -58,6 +58,9 @@ Texture2D<uint16_t> SharedFlags;
 layout(binding = NRC_RESOLVE_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)
 Texture2D<uint16_t> ActiveLocalPixelCoords;
 
+layout(binding = NRC_RESOLVE_BINDING_TILE_ACTIVE_COUNTS_INPUT)
+Texture2D<uint2> TileActiveCounts;
+
 // Inputs / Outputs
 
 layout(rgba16f, binding = NRC_RESOLVE_BINDING_PRIMARY_DIFFUSE_RADIANCE_HIT_DISTANCE_INPUT_OUTPUT)
@@ -156,7 +159,9 @@ vec3 IndexToColor(uint x)
   return color;
 }
 
-void debugResolve(uint2 pixelIndex, bool pixelIsActive)
+// `compactedPixelIndex` addresses the query paths and is only meaningful for active pixels.
+// The modes that are reachable at inactive pixels are all training-pixel-backed.
+void debugResolve(uint2 pixelIndex, uint2 compactedPixelIndex, bool pixelIsActive)
 {
   // Early out on out-of-frame pixels
   const uint2 frameDimensions = cb.camera.resolution;
@@ -188,7 +193,7 @@ void debugResolve(uint2 pixelIndex, bool pixelIsActive)
   const uint samplesPerPixel = push.samplesPerPixel;
 
   const uint queryPathIndexBase =
-    NrcCalculateQueryPathIndex(cb.nrcArgs.nrcConstants.frameDimensions, pixelIndex, 0, samplesPerPixel);
+    NrcCalculateQueryPathIndex(cb.nrcArgs.nrcConstants.frameDimensions, compactedPixelIndex, 0, samplesPerPixel);
 
   // Load corresponding training path info for debug visualizations
   uint2 trainingPixelIndex = Nrc::calculateTrainingPixelCoordinate(pixelIndex, cb.nrcArgs);
@@ -285,8 +290,9 @@ void debugResolve(uint2 pixelIndex, bool pixelIsActive)
   writeToDebugView(outputMode, pixelIndex, outputColor);
 }
 
+// The split primary radiance buffers and IndirectRadianceHitDistance are all compacted.
 vec3 loadIndirectRadiance(
-  uint2 pixelCoordinate,
+  uint2 compactedCoordinate,
   GeometryFlags geometryFlags)
 {
   // Indirect NEE shader already split radiance into diffuse and specular resources for the primary surface
@@ -294,21 +300,22 @@ vec3 loadIndirectRadiance(
   {
     if (geometryFlags.firstSampledLobeIsSpecular)
     {
-      return PrimarySpecularRadianceHitDistance[pixelCoordinate].xyz;
+      return PrimarySpecularRadianceHitDistance[compactedCoordinate].xyz;
     }
     else
     {
-      return PrimaryDiffuseRadianceHitDistance[pixelCoordinate].xyz;
+      return PrimaryDiffuseRadianceHitDistance[compactedCoordinate].xyz;
     }
   }
   else
   {
-    return IndirectRadianceHitDistance[pixelCoordinate].xyz;
+    return IndirectRadianceHitDistance[compactedCoordinate].xyz;
   }
 }
 
 void storeIndirectRadiance(
   uint2 pixelCoordinate,
+  uint2 compactedCoordinate,
   GeometryFlags geometryFlags,
   vec3 indirectRadiance)
 {
@@ -316,16 +323,16 @@ void storeIndirectRadiance(
   {
     if (geometryFlags.firstSampledLobeIsSpecular)
     {
-      PrimarySpecularRadianceHitDistance[pixelCoordinate].xyz = indirectRadiance;
+      PrimarySpecularRadianceHitDistance[compactedCoordinate].xyz = indirectRadiance;
     }
     else
     {
-      PrimaryDiffuseRadianceHitDistance[pixelCoordinate].xyz = indirectRadiance;
+      PrimaryDiffuseRadianceHitDistance[compactedCoordinate].xyz = indirectRadiance;
     }
   }
   else
   {
-    IndirectRadianceHitDistance[pixelCoordinate].xyz = indirectRadiance;
+    IndirectRadianceHitDistance[compactedCoordinate].xyz = indirectRadiance;
   }
 
   if (cb.debugView == DEBUG_VIEW_NRC_RESOLVED_RADIANCE)
@@ -343,13 +350,28 @@ void main(uint2 threadIndex: SV_DispatchThreadID)
     return;
   }
 
-  uvec2 pixelCoordinate;
-  const bool pixelIsActive = loadPixelCoordinate(threadIndex, ActiveLocalPixelCoords,
-                                                 cb.camera.resolution, cb.sparseRenderingArgs, pixelCoordinate);
+  // Only the debug outputs need the screen pixel.
+  // The resolve itself uses the compacted coordinate.
+  uvec2 pixelCoordinate = threadIndex;
+  uvec2 compactedCoordinate;
+  bool pixelIsActive;
+
+  if (push.resolveMode != NrcResolveMode::AddQueryResultToOutput ||
+      cb.debugView == DEBUG_VIEW_NRC_RESOLVED_RADIANCE)
+  {
+    pixelIsActive = loadPixelCoordinate(
+      threadIndex, ActiveLocalPixelCoords, TileActiveCounts, cb.camera.resolution, cb.sparseRenderingArgs,
+      pixelCoordinate, compactedCoordinate);
+  }
+  else
+  {
+    pixelIsActive = loadCompactedCoordinateFromDispatchIndex(
+      TileActiveCounts, threadIndex, cb.camera.resolution, cb.sparseRenderingArgs, compactedCoordinate);
+  }
 
   if (push.resolveMode != NrcResolveMode::AddQueryResultToOutput)
   {
-    debugResolve(pixelCoordinate, pixelIsActive);
+    debugResolve(pixelCoordinate, compactedCoordinate, pixelIsActive);
   }
 
   if (!pixelIsActive)
@@ -357,21 +379,22 @@ void main(uint2 threadIndex: SV_DispatchThreadID)
     return;
   }
     
-  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixelCoordinate, SharedFlags);
+  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(ivec2(compactedCoordinate), SharedFlags);
 
   const uint sampleIndex = 0;
   const uint samplesPerPixel = push.samplesPerPixel;
 
-  // The index uses NRC's frame dimensions, as the SDK does when it writes the query paths.
+  // Query paths were registered at the compacted coordinate, so they are resolved there too.
+  // The index uses NRC's frame dimensions, which match the compacted storage under sparse rendering.
   const uint pathIndex = NrcCalculateQueryPathIndex(
-    cb.nrcArgs.nrcConstants.frameDimensions, pixelCoordinate, sampleIndex, samplesPerPixel);
+    cb.nrcArgs.nrcConstants.frameDimensions, compactedCoordinate, sampleIndex, samplesPerPixel);
   const NrcQueryPathInfo queryPathInfo = NrcUnpackQueryPathInfo(QueryPathInfo[pathIndex]);
 
   vec3 indirectRadiance = vec3(0);
 
   if (push.addPathtracedRadiance)
   {
-    indirectRadiance = loadIndirectRadiance(pixelCoordinate, geometryFlags);
+    indirectRadiance = loadIndirectRadiance(compactedCoordinate, geometryFlags);
   }
 
   // Resolve NRC radiance
@@ -387,5 +410,5 @@ void main(uint2 threadIndex: SV_DispatchThreadID)
     }
   }  
 
-  storeIndirectRadiance(pixelCoordinate, geometryFlags, indirectRadiance);
+  storeIndirectRadiance(pixelCoordinate, compactedCoordinate, geometryFlags, indirectRadiance);
 }

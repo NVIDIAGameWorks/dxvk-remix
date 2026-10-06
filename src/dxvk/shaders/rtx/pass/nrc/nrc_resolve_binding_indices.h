@@ -38,6 +38,7 @@
 #define NRC_RESOLVE_BINDING_SHARED_FLAGS_INPUT                                   5
 #define NRC_RESOLVE_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT                 6
 #define NRC_RESOLVE_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT                      10
+#define NRC_RESOLVE_BINDING_TILE_ACTIVE_COUNTS_INPUT                             11
 
 // Inputs / Outputs
 

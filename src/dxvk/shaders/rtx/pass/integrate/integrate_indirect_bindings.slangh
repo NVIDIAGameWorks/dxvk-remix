@@ -63,13 +63,24 @@ Texture2D<float4> ThroughputConeRadius;
 layout(binding = INTEGRATE_INDIRECT_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)
 Texture2D<uint16_t> ActiveLocalPixelCoords;
 
-// Note: Needed for RTXDI sample stealing.
+// NRC training threads hold a raw pixel coordinate, so they look its compacted slot up here and skip pixels without one.
+layout(binding = INTEGRATE_INDIRECT_BINDING_COMPACTED_PIXEL_INDICES_INPUT)
+Texture2D<uint16_t> CompactedPixelIndices;
+
+layout(binding = INTEGRATE_INDIRECT_BINDING_TILE_ACTIVE_COUNTS_INPUT)
+Texture2D<uint2> TileActiveCounts;
+
+// This is the compacted copy, which threads read only at their own compacted coordinate.
 layout(rgba32f, binding = INTEGRATE_INDIRECT_BINDING_PRIMARY_WORLD_POSITION_INPUT)
 Texture2D<float4> PrimaryWorldPositionWorldTriangleNormal;
 
 // Note: Needed for RTXDI sample stealing.
 layout(binding = INTEGRATE_INDIRECT_BINDING_PRIMARY_RTXDI_RESERVOIR)
 RWStructuredBuffer<RTXDI_PackedReservoir> RtxdiReservoirBuffer;
+
+// RTXDI sample stealing tests the surface at whichever pixel a hit projects to, including inactive pixels.
+layout(rgba32f, binding = INTEGRATE_INDIRECT_BINDING_PRIMARY_WORLD_POSITION_DENSE_INPUT)
+Texture2D<float4> PrimaryWorldPositionWorldTriangleNormalDense;
 
 layout(rgba32f, binding = INTEGRATE_INDIRECT_BINDING_RAY_ORIGIN_DIRECTION_INPUT)
 Texture2D<float4> RayOriginDirection;

@@ -155,11 +155,23 @@ namespace dxvk {
     auto motionVectorInput = &rtOutput.m_primaryScreenSpaceMotionVectorDLSSRR;
     auto depthInput = &rtOutput.m_primaryDepthDLSSRR.resource(Resources::AccessType::Read);
     
-    // These are the albedo guides that the prepare pass finishes and DLSS-RR reads.
-    const Resources::Resource& diffuseAlbedoGuide = rtOutput.m_primaryAlbedo;
-    const Resources::Resource& specularAlbedoGuide = rtOutput.m_primarySpecularAlbedo.resource(Resources::AccessType::ReadWrite);
+    // The compacted GBuffer's albedo sources are compacted, so DLSS-RR reads the dense copies instead.
+    const bool compactedGBuffer = rtOutput.m_raytraceArgs.sparseRenderingArgs.mode != SparseRenderingMode::Off;
+    const Resources::Resource& diffuseAlbedoGuide = compactedGBuffer
+      ? rtOutput.m_primaryAlbedoDLSSRR
+      : rtOutput.m_primaryAlbedo;
+    const Resources::Resource& specularAlbedoGuide = compactedGBuffer
+      ? rtOutput.m_primarySpecularAlbedoDLSSRR
+      : rtOutput.m_primarySpecularAlbedo.resource(Resources::AccessType::ReadWrite);
 
-    {
+    // The compacted GBuffer writes the guides in their final form,
+    // so this pass only has work for the disocclusion mask blur and debug views.
+    const bool preparePassHasWork =
+      rtOutput.m_raytraceArgs.sparseRenderingArgs.mode == SparseRenderingMode::Off ||
+      enableDisocclusionMaskBlur() ||
+      rtOutput.m_raytraceArgs.debugView != DEBUG_VIEW_DISABLED;
+
+    if (preparePassHasWork) {
       ScopedGpuProfileZone(ctx, "Prepare DLSS");
 
       RayReconstructionArgs constants = { };
@@ -175,6 +187,7 @@ namespace dxvk {
       constants.disocclusionMaskBlurRadius = disocclusionMaskBlurRadius();
       constants.rcpSquaredDisocclusionMaskBlurGaussianWeightSigma = 1.0f / (disocclusionMaskBlurNormalizedGaussianWeightSigma() * disocclusionMaskBlurNormalizedGaussianWeightSigma());
       constants.enableReSTIRGI = RtxOptions::useReSTIRGI();
+      constants.sparseRenderingArgs = rtOutput.m_raytraceArgs.sparseRenderingArgs;
 
       ctx->updateBuffer(m_constants, 0, sizeof(constants), &constants);
       ctx->getCommandList()->trackResource<DxvkAccess::Read>(m_constants);
@@ -210,7 +223,12 @@ namespace dxvk {
       // Outputs
 
       ctx->bindResourceView(RAY_RECONSTRUCTION_DEBUG_VIEW_OUTPUT, debugView.getDebugOutput(), nullptr);
-      ctx->bindResourceView(RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_MASK_OUTPUT, rtOutput.m_primaryDisocclusionMaskForRR.view(Resources::AccessType::Write), nullptr);
+      // The disocclusion mask is left out when Ray Reconstruction will not read it.
+      // See Resources::needsDisocclusionMaskForRR.
+      const Rc<DxvkImageView> disocclusionMaskOutput = rtOutput.m_primaryDisocclusionMaskForRR.empty()
+        ? nullptr
+        : rtOutput.m_primaryDisocclusionMaskForRR.view(Resources::AccessType::Write);
+      ctx->bindResourceView(RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_MASK_OUTPUT, disocclusionMaskOutput, nullptr);
 
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, PrepareRayReconstructionShader::getShader());
 

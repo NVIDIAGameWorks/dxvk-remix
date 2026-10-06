@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -30,8 +30,8 @@ Texture2D<float4> InColorTexture;
 layout(r16ui, binding = POST_FX_HIGHLIGHT_OBJECT_PICKING_INPUT)
 RWTexture2D<uint> ObjectPickingTexture;
 
-layout(r16f, binding = POST_FX_HIGHLIGHT_PRIMARY_CONE_RADIUS_INPUT)
-Texture2D<float> PrimaryConeRadius;
+layout(binding = POST_FX_HIGHLIGHT_PRIMARY_LINEAR_VIEW_Z_INPUT)
+Texture2D<float> PrimaryLinearViewZ;
 
 layout(binding = POST_FX_HIGHLIGHT_OUTPUT)
 RWTexture2D<float4> OutColorTexture;
@@ -126,10 +126,11 @@ uint accessObjectPickingValue(const int2 base, const int2 offset)
   return s_objectPickingValue[1 + offsetInShared.x][1 + offsetInShared.y];
 }
 
-// from #include "rtx/utility/gbuffer_helpers.slangh"
-bool isGBufferMiss(const uint2 position, Texture2D<float> coneRadiusTexture)
+// Tests linear view Z rather than the cone radius that gbuffer_helpers.slangh tests,
+// because sparse rendering compacts the cone radius while linear view Z is written at every pixel.
+bool isGBufferMiss(const uint2 position)
 {
-  return coneRadiusTexture[position].x == 0.0f;
+  return PrimaryLinearViewZ[position] == cb.missLinearViewZ;
 }
 
 bool findValueInArray(uint target)
@@ -156,7 +157,7 @@ bool findValueInArray(uint target)
 bool requiresHighlight(const int2 basePixInOutput, const int2 offsetInOutput)
 {
   const int2 outputPix = basePixInOutput + offsetInOutput;
-  if (isGBufferMiss(basePixInOutput + offsetInOutput, PrimaryConeRadius))
+  if (isGBufferMiss(basePixInOutput + offsetInOutput))
   {
     return false;
   }

@@ -54,11 +54,14 @@ Texture2D<float4> SecondaryAlbedo;
 layout(rgba16f, binding = DEMODULATE_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT)
 Texture2D<float4> IndirectRadianceHitDistance;
 
-layout(binding = DEMODULATE_BINDING_ACTIVE_PIXEL_MASK_INPUT)
-Texture2D<uint> SparseRenderingActivePixelMask;
-
 layout(binding = DEMODULATE_BINDING_PIXEL_SAMPLING_RATE_INPUT)
 Texture2D<float> SparseRenderingPixelSamplingRate;
+
+layout(binding = DEMODULATE_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)
+Texture2D<uint16_t> ActiveLocalPixelCoords;
+
+layout(binding = DEMODULATE_BINDING_TILE_ACTIVE_COUNTS_INPUT)
+Texture2D<uint2> TileActiveCounts;
 
 // Input/Outputs
 

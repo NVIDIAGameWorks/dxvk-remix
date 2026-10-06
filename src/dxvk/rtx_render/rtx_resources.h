@@ -67,6 +67,13 @@ namespace dxvk
     std::shared_ptr<FrameBeginEvent> onFrameBegin = nullptr;
   };
 
+  // Returns a slice for a buffer that may not be allocated.
+  // Sparse rendering's compaction buffers only exist while the pass is active,
+  // and DxvkBufferSlice's constructor dereferences its argument to read the size.
+  inline DxvkBufferSlice optionalBufferSlice(const Rc<DxvkBuffer>& buffer) {
+    return buffer != nullptr ? DxvkBufferSlice(buffer) : DxvkBufferSlice();
+  }
+
   struct Resources : public CommonDeviceObject {
     class AliasedResource;
 
@@ -256,6 +263,20 @@ namespace dxvk
     struct RaytracingOutput {
       // Note: resources are called 'shared' if they are written by both Primary and Secondary (PSR) passes
       Resource m_sharedFlags;
+      // Holds every pixel's geometry flags when the GBuffer is compacted, because m_sharedFlags only has slots for active pixels.
+      // The PSR and decal passes run at every pixel, and the RTXDI gradients pass reads flags at any pixel.
+      // The DLSS-RR hit distance reuses this texture's memory later in the frame.
+      AliasedResource m_sharedFlagsDense;
+
+      // These textures hold reflection PSR data slots 1 and 2 for every pixel when the GBuffer is compacted,
+      // because inactive pixels have no slot in m_gbufferPSRData.
+      // Slot 0 shares the memory of the dense world position.
+      // Slot 1 shares the secondary virtual motion vector.
+      // Slot 2 shares the composite output, and at pixels without PSR it carries the decal blend inputs instead.
+      // See guidesWriteFirstHit.
+      AliasedResource m_gbufferPSRData1Dense;
+      AliasedResource m_gbufferPSRData2Dense;
+
       Resource m_sharedRadianceRG;
       Resource m_sharedRadianceB;
       AliasedResource m_sharedIntegrationSurfacePdf;
@@ -272,6 +293,8 @@ namespace dxvk
 
       Resource m_primaryAttenuation;
       Resource m_primaryWorldShadingNormal;
+      // Holds the primary shading normal at every pixel. It is allocated only while the GBuffer is compacted.
+      Resource m_primaryWorldShadingNormalDense;
       Resource m_primaryPerceptualRoughness;
       Resource m_primaryLinearViewZ;
       ResourceQueue m_primaryDepthQueue;
@@ -279,6 +302,13 @@ namespace dxvk
       Resource m_primaryAlbedo;
       AliasedResource m_primaryBaseReflectivity;
       AliasedResource m_primarySpecularAlbedo;
+
+      // These are the DLSS-RR albedo guides, which combine the primary and PSR layers at every pixel.
+      // The GBuffer writes them because inactive pixels keep no secondary surface data.
+      // Without sparse rendering, the prepare pass combines the layers in place instead.
+      Resource m_primaryAlbedoDLSSRR;
+      Resource m_primarySpecularAlbedoDLSSRR;
+
       AliasedResource m_primaryVirtualMotionVector;
       ResourceQueue m_primaryScreenSpaceMotionVectorQueue;
       Resource m_primaryScreenSpaceMotionVector;
@@ -288,6 +318,11 @@ namespace dxvk
       Resource m_primaryViewDirection;
       Resource m_primaryConeRadius;
       AliasedResource m_primaryWorldPositionWorldTriangleNormal[2];
+      // Stores the world position in compacted order,
+      // so that the passes launched over the active-pixel list read it contiguously.
+      // The dense pair above remains the per-pixel source,
+      // because temporal passes read the previous frame's world position at any pixel.
+      AliasedResource m_primaryWorldPositionWorldTriangleNormalCompacted;
       Resource m_primaryPositionError;
       AliasedResource m_primaryRtxdiIlluminance[2];
       AliasedResource m_primaryRtxdiTemporalPosition;
@@ -320,6 +355,25 @@ namespace dxvk
       Resource m_sparseRenderingActivePixelMask;
       Resource m_sparseRenderingPixelSamplingRate;
       Resource m_sparseRenderingActiveLocalPixelCoords;
+      // Holds each pixel's compacted index counted from its tile's base.
+      // Holds kInvalidCompactedIndex for a pixel that has no slot.
+      Resource m_sparseRenderingCompactedPixelIndices;
+      // Holds one texel per 256x128 compaction tile.
+      // x is the number of active pixels in the tile.
+      // y is the compacted index of the tile's first active pixel.
+      // Compaction packs each tile's active pixels to the front, so this one read tells a thread launched over the screen grid
+      // whether it is active and where its GBuffer is stored, without a per-pixel lookup.
+      // y also lets CompactedPixelIndices count from the tile's start, which keeps that table at 16 bits per pixel.
+      Resource m_sparseRenderingTileActiveCounts;
+
+      // The first buffer holds the coordinate of every active pixel, indexed by its global compacted index.
+      // The second holds the number of active pixels.
+      Rc<DxvkBuffer> m_sparseRenderingActivePixelCoords;
+      Rc<DxvkBuffer> m_sparseRenderingActivePixelCount;
+
+      // Ray tracing counts invocations while compute counts groups, so the two launches need separate args.
+      Rc<DxvkBuffer> m_sparseRenderingTraceRaysIndirectArgs;
+      Rc<DxvkBuffer> m_sparseRenderingDispatchIndirectArgs;
 
       AliasedResource m_primaryDirectDiffuseRadiance;
       AliasedResource m_primaryDirectSpecularRadiance;
@@ -390,6 +444,13 @@ namespace dxvk
       const AliasedResource& getPreviousRtxdiConfidence() const { return m_rtxdiConfidence[!m_swapTextures]; }
       const AliasedResource& getCurrentPrimaryWorldPositionWorldTriangleNormal() const { return m_primaryWorldPositionWorldTriangleNormal[m_swapTextures]; }
       const AliasedResource& getPreviousPrimaryWorldPositionWorldTriangleNormal() const { return m_primaryWorldPositionWorldTriangleNormal[!m_swapTextures]; }
+      // Returns the world position addressed by compacted coordinate.
+      // With sparse rendering off, the compacted coordinate is the pixel itself.
+      const AliasedResource& getCompactedPrimaryWorldPositionWorldTriangleNormal() const {
+        return m_raytraceArgs.sparseRenderingArgs.mode != SparseRenderingMode::Off
+          ? m_primaryWorldPositionWorldTriangleNormalCompacted
+          : getCurrentPrimaryWorldPositionWorldTriangleNormal();
+      }
       const Resource& getCurrentSharedTerminatorFix() const { return m_sharedTerminatorFix[m_swapTextures]; }
       const Resource& getPreviousSharedTerminatorFix() const { return m_sharedTerminatorFix[!m_swapTextures]; }
 
@@ -465,10 +526,22 @@ namespace dxvk
 
     const VkExtent3D& getTargetDimensions() const { return m_targetExtent; }
     const VkExtent3D& getDownscaleDimensions() const { return m_downscaledExtent; }
+
+    // The first getter returns the capacity that the compacted resources were actually allocated with.
+    // The second returns the row length that places a global compacted index in them.
+    // The third returns the extent they were allocated at.
+    // A zero capacity means the resources stayed at the render extent.
+    // Callers read these values rather than recompute them from the options,
+    // so that changing the options cannot make the shaders address a layout that was never allocated.
+    uint32_t getCompactedStorageCapacity() const { return m_compactedStorageCapacity; }
+    uint32_t getCompactedStorageSquaresPerRow() const { return m_compactedStorageSquaresPerRow; }
+    const VkExtent3D& getCompactedStorageExtent() const { return m_compactedStorageExtent; }
+
     bool areRtxdiGradientResourcesAllocated() const { return m_rtxdiGradientResourcesAllocated; }
     bool needsRtxdiGradientResources() const;
     bool areRtxdiIlluminanceResourcesAllocated() const { return m_rtxdiIlluminanceResourcesAllocated; }
     bool needsRtxdiIlluminanceResources() const;
+    bool needsDisocclusionMaskForRR(uint32_t compactedStorageCapacity) const;
     bool areNrdDenoisingGuideResourcesAllocated() const { return m_nrdDenoisingGuideResourcesAllocated; }
     bool needsNrdDenoisingGuideResources() const;
     void createNrdDenoisingGuideResources(Rc<DxvkContext>& ctx);
@@ -518,8 +591,14 @@ namespace dxvk
     Tlas m_tlas[Tlas::Type::Count];
 
     VkExtent3D m_downscaledExtent = { 0, 0, 0 };
+    uint32_t m_compactedStorageCapacity = 0;
+    uint32_t m_compactedStorageSquaresPerRow = 1;
+    // Holds the extent that the compacted resources were allocated at, which the per-frame aliased resources reuse.
+    VkExtent3D m_compactedStorageExtent = { 0, 0, 0 };
     bool m_rtxdiGradientResourcesAllocated = true;
     bool m_rtxdiIlluminanceResourcesAllocated = true;
+    bool m_compactedGBufferResourcesAllocated = false;
+    bool m_disocclusionMaskForRRAllocated = true;
     bool m_nrdDenoisingGuideResourcesAllocated = false;
     bool m_primaryDenoisingNormalAllocated = false;
     bool m_dlfgResourceQueueAllocated = false;

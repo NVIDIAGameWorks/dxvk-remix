@@ -301,8 +301,13 @@ void main(uint2 threadId : SV_DispatchThreadID)
 
   uvec2 pixelCoordinate = threadId;
 
-  preprocessInputsForRR(pixelCoordinate);
+  // With sparse rendering on, the GBuffer writes the albedo guides instead, zeroing near-black albedo the same way.
+  if (cb.sparseRenderingArgs.mode == SparseRenderingMode::Off)
+  {
+    preprocessInputsForRR(pixelCoordinate);
+  }
 
+  // Reads only the dense disocclusion threshold mix, which every GBuffer pass writes.
   blurDisocclusionMask(pixelCoordinate);
 
   writeDebugViewOutputs(pixelCoordinate);

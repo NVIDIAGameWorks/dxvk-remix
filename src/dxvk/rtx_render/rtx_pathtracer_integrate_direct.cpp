@@ -28,14 +28,11 @@
 
 #include <rtx_shaders/integrate_direct_rayquery.h>
 #include <rtx_shaders/integrate_direct_rayquery_raygen.h>
-#include <rtx_shaders/integrate_direct_nrc_rayquery.h>
-#include <rtx_shaders/integrate_direct_nrc_rayquery_raygen.h>
 
 #include "dxvk_scoped_annotation.h"
 #include "rtx_context.h"
 #include "rtx_options.h"
 #include "rtx_sparse_rendering.h"
-#include "rtx_neural_radiance_cache.h"
 #include "rtx_opacity_micromap_manager.h"
 
 namespace dxvk {
@@ -58,11 +55,8 @@ namespace dxvk {
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_SURFACE_INDEX_INPUT)
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DATA_INPUT)
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT)
-        TEXTURE2D(INTEGRATE_DIRECT_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT)
-
-        TEXTURE2D(INTEGRATE_DIRECT_BINDING_NRC_TRAINING_QUERY_RESERVOIR_INPUT)
-        TEXTURE2D(INTEGRATE_DIRECT_BINDING_PRIMARY_HIT_DISTANCE_INPUT)
-        TEXTURE2D(INTEGRATE_DIRECT_BINDING_SECONDARY_HIT_DISTANCE_INPUT)
+        STRUCTURED_BUFFER(INTEGRATE_DIRECT_BINDING_ACTIVE_PIXEL_COORDS_INPUT)
+        STRUCTURED_BUFFER(INTEGRATE_DIRECT_BINDING_ACTIVE_PIXEL_COUNT_INPUT)
 
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT)
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_INPUT)
@@ -98,14 +92,6 @@ namespace dxvk {
         RW_STRUCTURED_BUFFER(INTEGRATE_DIRECT_BINDING_NEE_CACHE_TASK)
         RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_NEE_CACHE_THREAD_TASK)
 
-        RW_STRUCTURED_BUFFER(INTEGRATE_DIRECT_BINDING_NRC_QUERY_PATH_INFO_OUTPUT)
-        RW_STRUCTURED_BUFFER(INTEGRATE_DIRECT_BINDING_NRC_TRAINING_PATH_INFO_OUTPUT)
-        RW_STRUCTURED_BUFFER(INTEGRATE_DIRECT_BINDING_NRC_TRAINING_PATH_VERTICES_OUTPUT)
-        RW_STRUCTURED_BUFFER(INTEGRATE_DIRECT_BINDING_NRC_QUERY_RADIANCE_PARAMS_OUTPUT)
-        RW_STRUCTURED_BUFFER(INTEGRATE_DIRECT_BINDING_NRC_COUNTERS_OUTPUT)
-        RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_NRC_QUERY_PATH_DATA0_OUTPUT)
-        RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_NRC_TRAINING_PATH_DATA1_OUTPUT)
-
         RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_INDIRECT_RAY_ORIGIN_DIRECTION_OUTPUT)
         RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_INDIRECT_THROUGHPUT_CONE_RADIUS_OUTPUT)
         RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_INDIRECT_FIRST_HIT_PERCEPTUAL_ROUGHNESS_OUTPUT)
@@ -123,25 +109,21 @@ namespace dxvk {
     const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device);
 
     if (RtxOptions::Shader::prewarmAllVariants()) {
-      for (int32_t deferredNrcTrainingSetup = 1; deferredNrcTrainingSetup >= 0; deferredNrcTrainingSetup--) {
-        for (int32_t ommEnabled = isOpacityMicromapSupported; ommEnabled > 0; ommEnabled--) {
-          pipelineManager.registerRaytracingShaders(getPipelineShaders(true, ommEnabled, deferredNrcTrainingSetup));
-        }
-
-        getComputeShader(deferredNrcTrainingSetup);
+      for (int32_t ommEnabled = isOpacityMicromapSupported; ommEnabled >= 0; ommEnabled--) {
+        pipelineManager.registerRaytracingShaders(getPipelineShaders(true, ommEnabled));
       }
+
+      getComputeShader();
     } else {
       // Note: The getter for OMM enabled also checks if OMMs are supported, so we do not need to check for that manually.
       const bool ommEnabled = RtxOptions::getEnableOpacityMicromap();
-      const bool deferredNrcTrainingSetup = SparseRendering::isEnabledByOptions() &&
-        RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::NeuralRadianceCache;
 
       switch (RtxOptions::renderPassIntegrateDirectRaytraceMode()) {
       case RaytraceMode::RayQuery:
-        getComputeShader(deferredNrcTrainingSetup);
+        getComputeShader();
         break;
       case RaytraceMode::RayQueryRayGen:
-        pipelineManager.registerRaytracingShaders(getPipelineShaders(true, ommEnabled, deferredNrcTrainingSetup));
+        pipelineManager.registerRaytracingShaders(getPipelineShaders(true, ommEnabled));
         break;
       default:
         assert(false && "Invalid renderPassIntegrateDirectRaytraceMode in DxvkPathtracerIntegrateDirect::prewarmShaders");
@@ -175,14 +157,15 @@ namespace dxvk {
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DATA_INPUT, rtOutput.m_sharedSubsurfaceData.view, nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT, rtOutput.m_sharedSubsurfaceDiffusionProfileData.view, nullptr);
-    ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_INPUT, rtOutput.m_sparseRenderingActiveLocalPixelCoords.view, nullptr);
+    ctx->bindResourceBuffer(INTEGRATE_DIRECT_BINDING_ACTIVE_PIXEL_COORDS_INPUT, optionalBufferSlice(rtOutput.m_sparseRenderingActivePixelCoords));
+    ctx->bindResourceBuffer(INTEGRATE_DIRECT_BINDING_ACTIVE_PIXEL_COUNT_INPUT, optionalBufferSlice(rtOutput.m_sparseRenderingActivePixelCount));
 
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_primaryWorldShadingNormal.view, nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_INPUT, rtOutput.m_primaryPerceptualRoughness.view, nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_ALBEDO_INPUT, rtOutput.m_primaryAlbedo.view, nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_VIEW_DIRECTION_INPUT, rtOutput.m_primaryViewDirection.view, nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_CONE_RADIUS_INPUT, rtOutput.m_primaryConeRadius.view, nullptr);
-    ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_WORLD_POSITION_WORLD_TRIANGLE_NORMAL_INPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read), nullptr);
+    ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_WORLD_POSITION_WORLD_TRIANGLE_NORMAL_INPUT, rtOutput.getCompactedPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_POSITION_ERROR_INPUT, rtOutput.m_primaryPositionError.view, nullptr);
     ctx->bindResourceBuffer(INTEGRATE_DIRECT_BINDING_PRIMARY_RTXDI_RESERVOIR, rtOutput.m_rtxdiReservoirBuffer.slice(Resources::AccessType::ReadWrite, RtxOptions::useRTXDI()));
 
@@ -224,27 +207,27 @@ namespace dxvk {
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SECONDARY_POSITION_ERROR_INPUT, rtOutput.m_secondaryPositionError.view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_INDIRECT_FIRST_SAMPLED_LOBE_DATA_OUTPUT, rtOutput.m_indirectFirstSampledLobeData.view(Resources::AccessType::Write), nullptr);
 
-    NeuralRadianceCache& nrc = ctx->getCommonObjects()->metaNeuralRadianceCache();
-    const bool deferredNrcTrainingSetup = SparseRendering::shouldDeferNrcTrainingSetup(rtOutput.m_raytraceArgs.sparseRenderingArgs);
-
-    ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_HIT_DISTANCE_INPUT, rtOutput.m_primaryHitDistance.view, nullptr);
-    ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SECONDARY_HIT_DISTANCE_INPUT, rtOutput.m_secondaryHitDistance.view, nullptr);
-
-    nrc.bindIntegrateDirectPathTracingResources(*ctx, deferredNrcTrainingSetup);
-
     const VkExtent3D& rayDims = rtOutput.m_compositeOutputExtent;
 
     const bool ommEnabled = RtxOptions::getEnableOpacityMicromap();
 
     const VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { INTEGRATE_DIRECT_THREADS_DISPATCH_WIDTH, INTEGRATE_DIRECT_THREADS_DISPATCH_HEIGHT, 1 });
+
+    // Under sparse rendering the launch covers the global active-pixel list instead of the screen grid.
+    const bool compactedLaunch = rtOutput.m_raytraceArgs.sparseRenderingArgs.mode != SparseRenderingMode::Off;
+
     switch (RtxOptions::renderPassIntegrateDirectRaytraceMode()) {
     case RaytraceMode::RayQuery:
-      ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getComputeShader(deferredNrcTrainingSetup));
-      ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+      ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getComputeShader());
+      SparseRendering::dispatchCompactedConsumer(*ctx, rtOutput, workgroups);
       break;
     case RaytraceMode::RayQueryRayGen:
-      ctx->bindRaytracingPipelineShaders(getPipelineShaders(true, ommEnabled, deferredNrcTrainingSetup));
-      ctx->traceRays(rayDims.width, rayDims.height, rayDims.depth);
+      ctx->bindRaytracingPipelineShaders(getPipelineShaders(true, ommEnabled));
+      if (compactedLaunch) {
+        ctx->traceRaysIndirect(rtOutput.m_sparseRenderingTraceRaysIndirectArgs, 0);
+      } else {
+        ctx->traceRays(rayDims.width, rayDims.height, rayDims.depth);
+      }
       break;
     default:
       assert(!"Unsupported RaytraceMode");
@@ -254,17 +237,12 @@ namespace dxvk {
 
   DxvkRaytracingPipelineShaders DxvkPathtracerIntegrateDirect::getPipelineShaders(
     const bool useRayQuery,
-    const bool ommEnabled,
-    const bool deferredNrcTrainingSetup) {
+    const bool ommEnabled) {
 
     DxvkRaytracingPipelineShaders shaders;
     if (useRayQuery) {
-      shaders.debugName = deferredNrcTrainingSetup ? "Integrate Direct NRC RayQuery (RGS)" : "Integrate Direct RayQuery (RGS)";
-      if (deferredNrcTrainingSetup) {
-        shaders.addGeneralShader(GET_SHADER_VARIANT(VK_SHADER_STAGE_RAYGEN_BIT_KHR, IntegrateDirectRayGenShader, integrate_direct_nrc_rayquery_raygen));
-      } else {
-        shaders.addGeneralShader(GET_SHADER_VARIANT(VK_SHADER_STAGE_RAYGEN_BIT_KHR, IntegrateDirectRayGenShader, integrate_direct_rayquery_raygen));
-      }
+      shaders.debugName = "Integrate Direct RayQuery (RGS)";
+      shaders.addGeneralShader(GET_SHADER_VARIANT(VK_SHADER_STAGE_RAYGEN_BIT_KHR, IntegrateDirectRayGenShader, integrate_direct_rayquery_raygen));
     } else {
       assert(!"TraceRay versions of the Integrate Direct pass are not implemented.");
     }
@@ -276,11 +254,7 @@ namespace dxvk {
     return shaders;
   }
 
-  Rc<DxvkShader> DxvkPathtracerIntegrateDirect::getComputeShader(const bool deferredNrcTrainingSetup) const {
-    if (deferredNrcTrainingSetup) {
-      return GET_SHADER_VARIANT(VK_SHADER_STAGE_COMPUTE_BIT, IntegrateDirectRayGenShader, integrate_direct_nrc_rayquery);
-    }
-
+  Rc<DxvkShader> DxvkPathtracerIntegrateDirect::getComputeShader() const {
     return GET_SHADER_VARIANT(VK_SHADER_STAGE_COMPUTE_BIT, IntegrateDirectRayGenShader, integrate_direct_rayquery);
   }
 

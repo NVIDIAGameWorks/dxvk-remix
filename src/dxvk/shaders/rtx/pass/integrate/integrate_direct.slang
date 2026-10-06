@@ -25,14 +25,6 @@
 //!variant integrate_direct_rayquery_raygen.rgen
 //!>       RAY_PIPELINE
 
-// Note: these carry the deferred NRC training-path setup. It is a variant rather than a runtime branch so the
-// variants above, selected whenever the setup stays in the GBuffer, compile without any of the NRC code.
-//!variant integrate_direct_nrc_rayquery.comp
-//!>       ENABLE_NRC=1
-
-//!variant integrate_direct_nrc_rayquery_raygen.rgen
-//!>       RAY_PIPELINE ENABLE_NRC=1
-
 //!end-variants
 
 #define USE_32BIT_RAY_DIRECTION 1
@@ -47,9 +39,9 @@
 #include "rtx/pass/common_bindings.slangh"
 #include "rtx/pass/integrate/integrate_direct_binding_indices.h"
 #include "rtx/pass/integrate/integrate_direct_bindings.slangh"
+#include "rtx/pass/sparse_rendering/compact_active_pixels_binding_indices.h"
 // Note: Needed for declaration of integration ray payload structure
 #include "rtx/algorithm/integrator.slangh"
-#include "rtx/pass/nrc/nrc_integrator_utilities.slangh"
 
 #include "rtx/pass/integrate/integrate_direct.slangh"
 
@@ -60,10 +52,14 @@ void main()
   integrate_direct_pass(DispatchRaysIndex().xy);
 }
 #else
+#if (INTEGRATE_DIRECT_THREADS_DISPATCH_WIDTH * INTEGRATE_DIRECT_THREADS_DISPATCH_HEIGHT) != COMPACT_ACTIVE_PIXELS_CONSUMER_GROUP_SIZE
+#error "A compacted launch needs COMPACT_ACTIVE_PIXELS_CONSUMER_GROUP_SIZE threads per group."
+#endif
+
 [shader("compute")]
 [numthreads(INTEGRATE_DIRECT_THREADS_DISPATCH_WIDTH, INTEGRATE_DIRECT_THREADS_DISPATCH_HEIGHT, 1)]
-void main(uint2 dispatchThreadId : SV_DispatchThreadID)
+void main(uint2 dispatchThreadId : SV_DispatchThreadID, uint3 groupId : SV_GroupID, uint groupIndex : SV_GroupIndex)
 {
-  integrate_direct_pass(dispatchThreadId);
+  integrate_direct_pass(calculateCompactedComputeThreadIndex(dispatchThreadId, groupId.x, groupIndex, cb.sparseRenderingArgs.mode != SparseRenderingMode::Off));
 }
 #endif

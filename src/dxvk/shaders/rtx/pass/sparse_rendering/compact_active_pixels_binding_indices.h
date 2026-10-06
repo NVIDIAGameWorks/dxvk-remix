@@ -24,10 +24,14 @@
 #include "rtx/pass/common_binding_indices.h"
 
 // Tile size: pixel area each workgroup covers. Can exceed thread count to process multiple pixels per thread.
-// Must satisfy: TILE_SIZE_X <= 256, TILE_SIZE_Y <= 128 (uint16_t local coord packing constraint).
+// TILE_SIZE_X and TILE_SIZE_Y must each be at most 256 so that a tile-local coordinate packs into a uint16_t.
 #define COMPACT_ACTIVE_PIXELS_TILE_SIZE_X 256
 #define COMPACT_ACTIVE_PIXELS_TILE_SIZE_Y 128
 #define COMPACT_ACTIVE_PIXELS_TILE_SIZE (COMPACT_ACTIVE_PIXELS_TILE_SIZE_X * COMPACT_ACTIVE_PIXELS_TILE_SIZE_Y)
+
+#if COMPACT_ACTIVE_PIXELS_TILE_SIZE_X > 256 || COMPACT_ACTIVE_PIXELS_TILE_SIZE_Y > 256
+  #error "COMPACT_ACTIVE_PIXELS_TILE_SIZE_X and _Y must be at most 256 to pack a tile-local coordinate into 16 bits."
+#endif
 
 // Thread group dimensions (hardware limit: product must be <= 1024).
 // Using maximum 1024 threads so that at even 1/16 spp we end up with at least 2 active warps of 32 active pixels each. Shouldn't be less than 1 warp.
@@ -40,13 +44,44 @@
 #define COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_X (COMPACT_ACTIVE_PIXELS_TILE_SIZE_X / COMPACT_ACTIVE_PIXELS_THREADGROUP_SIZE_X)
 #define COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_Y (COMPACT_ACTIVE_PIXELS_TILE_SIZE_Y / COMPACT_ACTIVE_PIXELS_THREADGROUP_SIZE_Y)
 
+// Every compacted consumer declares this group size, and the host sizes compacted launches by it.
+#define COMPACT_ACTIVE_PIXELS_CONSUMER_GROUP_SIZE_X 16
+#define COMPACT_ACTIVE_PIXELS_CONSUMER_GROUP_SIZE_Y 8
+#define COMPACT_ACTIVE_PIXELS_CONSUMER_GROUP_SIZE \
+  (COMPACT_ACTIVE_PIXELS_CONSUMER_GROUP_SIZE_X * COMPACT_ACTIVE_PIXELS_CONSUMER_GROUP_SIZE_Y)
+
+// The compacted storage is a flat run of 64x64 Morton squares indexed by the global compacted index.
+#define COMPACT_ACTIVE_PIXELS_STORAGE_SQUARE_SHIFT 6
+#define COMPACT_ACTIVE_PIXELS_STORAGE_SQUARE_SIZE (1u << COMPACT_ACTIVE_PIXELS_STORAGE_SQUARE_SHIFT)
+#define COMPACT_ACTIVE_PIXELS_STORAGE_SQUARE_AREA \
+  (COMPACT_ACTIVE_PIXELS_STORAGE_SQUARE_SIZE * COMPACT_ACTIVE_PIXELS_STORAGE_SQUARE_SIZE)
+#define COMPACT_ACTIVE_PIXELS_STORAGE_SQUARE_AREA_SHIFT (COMPACT_ACTIVE_PIXELS_STORAGE_SQUARE_SHIFT * 2)
+
+// These are the slots of the count buffer.
+// The last tile to finish publishes the total, writes the indirect args and resets the other slots.
+#define COMPACT_ACTIVE_PIXELS_COUNT_SLOT_ACCUMULATOR 0
+#define COMPACT_ACTIVE_PIXELS_COUNT_SLOT_TILES_DONE 1
+#define COMPACT_ACTIVE_PIXELS_COUNT_SLOT_ACTIVE_PIXELS 2
+#define COMPACT_ACTIVE_PIXELS_COUNT_SLOT_COUNT 3
+
 // Inputs
 
 #define COMPACT_ACTIVE_PIXELS_BINDING_ACTIVE_PIXEL_MASK_INPUT                   150
 
+// Inputs/Outputs
+
+#define COMPACT_ACTIVE_PIXELS_BINDING_ACTIVE_PIXEL_COUNT_INPUT_OUTPUT           155
+
 // Outputs
 
 #define COMPACT_ACTIVE_PIXELS_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_OUTPUT          160
+#define COMPACT_ACTIVE_PIXELS_BINDING_COMPACTED_PIXEL_INDICES_OUTPUT            161
+// Holds one RG32_UINT texel per tile,
+// with the active count in x and the start of the tile's run in the compacted storage in y.
+#define COMPACT_ACTIVE_PIXELS_BINDING_TILE_ACTIVE_COUNTS_OUTPUT                 162
+#define COMPACT_ACTIVE_PIXELS_BINDING_ACTIVE_PIXEL_COORDS_OUTPUT                163
+#define COMPACT_ACTIVE_PIXELS_BINDING_TRACE_RAYS_ARGS_OUTPUT                    164
+#define COMPACT_ACTIVE_PIXELS_BINDING_DISPATCH_ARGS_OUTPUT                      165
 
 
 #define COMPACT_ACTIVE_PIXELS_MIN_BINDING  COMPACT_ACTIVE_PIXELS_BINDING_ACTIVE_PIXEL_MASK_INPUT
