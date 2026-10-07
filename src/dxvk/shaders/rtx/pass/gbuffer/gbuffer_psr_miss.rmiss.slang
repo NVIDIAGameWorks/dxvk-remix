@@ -28,6 +28,12 @@
 //!variant gbuffer_psr_nrc_miss.rmiss
 //!>       ENABLE_NRC=1
 
+// SHaRC
+// Note: Only Sharc update routines are called from Sharc header during gbuffer pass. 
+//       Remix does not support SHaRC queries at the primary hits, and all query path processing is handled in the indirect PT pass.
+
+//!variant gbuffer_psr_sharc_miss.rmiss
+//!>       SHARC_UPDATE=1
 
 //!variant gbuffer_psr_miss_wboit.rmiss
 //!>       UNORDERED_RESOLVE_WBOIT
@@ -37,6 +43,14 @@
 //!variant gbuffer_psr_nrc_miss_wboit.rmiss
 //!>       ENABLE_NRC=1
 //!>       UNORDERED_RESOLVE_WBOIT
+
+// SHaRC
+
+//!variant gbuffer_psr_sharc_miss_wboit.rmiss
+//!>       SHARC_UPDATE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+
 
 //!end-variants
 

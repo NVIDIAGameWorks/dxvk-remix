@@ -229,7 +229,9 @@ void calculateRussianRouletteOnFirstBounce(
     // and not having to specialize direct pass we disable RR for all NRC training and query paths.
     // Also NRC paths should be shorter and it results in better IQ if they end up in the cache 
     // rather than being terminated at bounce 0
-      cb.enableNrc)
+      cb.enableNrc ||
+    // Same for SHaRC paths, they are not RR'd at bounce 0
+      cb.enableSharc)
   {
     return;
   }

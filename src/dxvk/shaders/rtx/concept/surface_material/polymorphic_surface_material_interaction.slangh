@@ -82,6 +82,42 @@ PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionCreat
   return polymorphicSurfaceMaterialInteraction;
 }
 
+float16_t getIsotropicRoughness(PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction)
+{
+   const uint8_t polymorphicType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+
+  // Construct the respective Surface Material Interaction type to create the GBuffer Memory Polymorphic Surface Material Interaction
+
+  switch (uint(polymorphicType))
+  {
+  case uint(surfaceMaterialTypeOpaque):
+    return polymorphicSurfaceMaterialInteraction.fdata1;
+  default:
+    // Todo: Fill out with roughness value when the translucent material adds roughness. For now though, use fallback.
+    return surfaceMaterialInteractionSerializationDataFallbackPerceptualRoughness;
+  }
+}
+
+void setIsotropicRoughness(
+  inout PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
+  float16_t isotropicRoughness)
+{
+   const uint8_t polymorphicType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+
+  // Construct the respective Surface Material Interaction type to create the GBuffer Memory Polymorphic Surface Material Interaction
+
+  switch (uint(polymorphicType))
+  {
+  case uint(surfaceMaterialTypeOpaque):
+    polymorphicSurfaceMaterialInteraction.fdata1 = isotropicRoughness;
+    break;
+  default:
+    // Do nothing here, as the translucent material does not have roughness.
+    // Todo: Fill roughness value when the translucent material adds roughness. For now though, use fallback.
+    break;
+  }
+}
+
 PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionCreateInternal(RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction)
 {
   // Encode the Ray Portal Surface Material Interaction into its polymorphic representation

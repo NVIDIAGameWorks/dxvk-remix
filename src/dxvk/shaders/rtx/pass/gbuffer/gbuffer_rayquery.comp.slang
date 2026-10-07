@@ -37,11 +37,12 @@
 //!> axis features debug GBUFFER_FEATURE_DEBUG_VIEW=1 GBUFFER_FEATURE_OBJECT_PICKING=1
 //!> axis pass -
 //!> axis pass psr GBUFFER_PSR
-//!> axis nrc -
-//!> axis nrc nrc ENABLE_NRC=1
+//!> axis radiance_cache -
+//!> axis radiance_cache nrc ENABLE_NRC=1
+//!> axis radiance_cache sharc SHARC_UPDATE=1
 //!> axis wboit -
 //!> axis wboit wboit UNORDERED_RESOLVE_WBOIT
-//!> order features pass nrc wboit
+//!> order features pass radiance_cache wboit
 //!end-variants
 
 // Note: Opacity lighting approximation used in the GBuffer pass due to it being most visually

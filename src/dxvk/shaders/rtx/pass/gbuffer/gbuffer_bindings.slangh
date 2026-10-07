@@ -44,14 +44,24 @@ Sampler2D<float3> SkyMatte;
 layout(binding = GBUFFER_BINDING_SKYPROBE)
 SamplerCube<float3> SkyProbe;
 
+layout(binding = GBUFFER_BINDING_BINDING_SHARC_HASH_ENTRIES_INPUT_OUTPUT)
+RWStructuredBuffer<uint64_t> SharcHashEntriesBuffer;
+
+layout(binding = GBUFFER_BINDING_BINDING_SHARC_ACCUMULATION_INPUT_OUTPUT)
+RWStructuredBuffer<SharcAccumulationData> SharcAccumulationBuffer;
+
+layout(binding = GBUFFER_BINDING_BINDING_SHARC_RESOLVED_INPUT_OUTPUT)
+RWStructuredBuffer<SharcPackedData> SharcResolvedBuffer;
+
 // Maps a pixel to its slot in the compacted GBuffer. See loadGBufferStoreCoordinate.
 // The texture is bound null when sparse rendering is inactive and is only read while sparse rendering is active.
 layout(binding = GBUFFER_BINDING_COMPACTED_PIXEL_INDICES_INPUT)
 Texture2D<uint16_t> CompactedPixelIndices;
 
-// Holds the query pixel that each NRC training cell selected. The sentinel value means that the cell selected none.
-layout(binding = GBUFFER_BINDING_NRC_TRAINING_QUERY_RESERVOIR_INPUT)
-Texture2D<uint> NrcTrainingQueryReservoir;
+// Holds the query pixel that each radiance cache update cell selected.
+// The sentinel value means that the cell selected none.
+layout(binding = GBUFFER_BINDING_RADIANCE_CACHE_UPDATE_QUERY_RESERVOIR_INPUT)
+Texture2D<uint> RadianceCacheUpdateQueryReservoir;
 
 layout(binding = GBUFFER_BINDING_TILE_ACTIVE_COUNTS_INPUT)
 Texture2D<uint2> TileActiveCounts;
@@ -289,9 +299,9 @@ RWTexture2D<uint4> NrcQueryPathData1;
 layout(rgba16ui, binding = GBUFFER_BINDING_NRC_TRAINING_PATH_DATA1_OUTPUT)
 RWTexture2D<uint4> NrcTrainingPathData1;
 
-layout(rg16f, binding = GBUFFER_BINDING_NRC_TRAINING_GBUFFER_SURFACE_RADIANCE_RG_OUTPUT)
-RWTexture2D<float2> NrcTrainingGBufferSurfaceRadianceRG;
+layout(rg16f, binding = GBUFFER_BINDING_RADIANCE_CACHE_UPDATE_GBUFFER_SURFACE_RADIANCE_RG_OUTPUT)
+RWTexture2D<float2> RadianceCacheUpdateGBufferSurfaceRadianceRG;
 
-layout(r16f, binding = GBUFFER_BINDING_NRC_TRAINING_GBUFFER_SURFACE_RADIANCE_B_OUTPUT)
-RWTexture2D<float> NrcTrainingGBufferSurfaceRadianceB;
+layout(r16f, binding = GBUFFER_BINDING_RADIANCE_CACHE_UPDATE_GBUFFER_SURFACE_RADIANCE_B_OUTPUT)
+RWTexture2D<float> RadianceCacheUpdateGBufferSurfaceRadianceB;
 

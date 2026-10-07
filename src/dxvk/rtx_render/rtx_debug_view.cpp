@@ -337,6 +337,31 @@ namespace dxvk {
         {DEBUG_VIEW_NRC_IS_OUTSIDE_SCENE_AABB, "Is Primary or Secondary Hit Outside NRC's Axis Aligned Bounding Box",
                                                "Legend: Black - inside, Red - outside"},
 
+        {DEBUG_VIEW_SHARC_PRIMARY_HIT_CACHE_VIEW, "SHARC View at Primary Hit",
+                                                  "Queries cached radiance at primary hits for inspection; normal rendering queries secondary hits." },
+        {DEBUG_VIEW_SHARC_HASH_GRID_COLORED_HASH, "SHARC Query Colored Hash",
+                                                  "Colors primary hits by spatial hash to reveal cache-cell boundaries." },
+        {DEBUG_VIEW_SHARC_HASH_GRID_OCCUPANCY, "SHARC Occupancy",
+                                               "Displays cache entries as blocks. Green: occupied, Black: empty, Orange: responsive." },
+        {DEBUG_VIEW_SHARC_UPDATE_NUMBER_OF_BOUNCES, "SHARC Update: Number of Bounces",
+                                                     "White is zero; RGB channels encode the low three bits of the final bounce count." },
+        {DEBUG_VIEW_SHARC_QUERY_NUMBER_OF_BOUNCES, "SHARC Query: Number of Bounces",
+                                                    "White is zero; RGB channels encode the low three bits of the final bounce count." },
+        {DEBUG_VIEW_SHARC_QUERIED_RADIANCE, "SHARC Queried Radiance",
+                                            "Shows cached radiance multiplied by path throughput where a query terminates the path." },
+        {DEBUG_VIEW_SHARC_QUERIED_THROUGHPUT, "SHARC Queried Throughput",
+                                              "Shows path throughput where a cache query succeeds." },
+        {DEBUG_VIEW_SHARC_UPDATE_RADIANCE, "SHARC Update Radiance",
+                                           "Shows radiance submitted at the bounce selected by ROUND(Debug Knob [0])." },
+        {DEBUG_VIEW_SHARC_UPDATE_THROUGHPUT, "SHARC Update Throughput",
+                                             "Shows throughput submitted at the bounce selected by ROUND(Debug Knob [0])." },
+        {DEBUG_VIEW_SHARC_BITS_OCCUPANCY_SAMPLE_NUM, "SHARC Sample Count Bits Occupancy",
+                                                      "Resolved FP16 sample-count range occupancy at primary hits.\n"
+                                                      "Black: no entry, Green: < 12.5%, Yellow: < 50%, Red: >= 50%." },
+        {DEBUG_VIEW_SHARC_BITS_OCCUPANCY_RADIANCE, "SHARC Radiance Bits Occupancy",
+                                                    "Largest resolved FP16 radiance-component occupancy at primary hits.\n"
+                                                    "Black: no entry, Green: < 12.5%, Yellow: < 50%, Red: >= 50%." },
+
         {DEBUG_VIEW_SSS_DIFFUSION_PROFILE_SAMPLING,       "SSS Diffusion Profile Sampling" },
         {DEBUG_VIEW_NRD_INSTANCE_0_VALIDATION_LAYER,      "NRD Instance 0 Validation Layer", "Requires NRD and \"NRD/Common Settings/Validation Layer\" enabled" },
         {DEBUG_VIEW_NRD_INSTANCE_1_VALIDATION_LAYER,      "NRD Instance 1 Validation Layer", "Requires NRD and \"NRD/Common Settings/Validation Layer\" enabled" },
@@ -1282,6 +1307,7 @@ namespace dxvk {
       (debugViewArgs.debugViewResolution.x * debugViewArgs.debugViewResolution.y);
 
     debugViewArgs.nrcArgs = rtOutput.m_raytraceArgs.nrcArgs;
+    debugViewArgs.sharcArgs = rtOutput.m_raytraceArgs.sharcArgs;
 
     debugViewArgs.overlayOnTopOfRenderOutput = overlayOnTopOfRenderOutput();
     debugViewArgs.overlayOpacity = std::clamp(overlayOpacity(), 0.f, 1.f);

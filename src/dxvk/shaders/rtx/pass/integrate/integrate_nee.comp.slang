@@ -123,7 +123,7 @@ void main(uint2 dispatchThreadId : SV_DispatchThreadID, uint3 groupId : SV_Group
     if (geometryFlags.firstSampledLobeIsSpecular) 
     {
       indirectSpecularOutput = indirectRadianceHitDistance;
-      indirectSpecularOutput.xyz = clamp(indirectSpecularOutput.xyz, 0, cb.reSTIRGIFireflyThreshold);
+      indirectSpecularOutput.xyz = clamp(indirectSpecularOutput.xyz, 0, cb.primaryIndirectSpecularFireflyFilteringThreshold);
     }
     else
     {

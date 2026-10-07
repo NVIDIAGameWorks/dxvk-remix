@@ -1,0 +1,308 @@
+/*
+* Copyright (c) 2025-2026, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Defines SHaRC related utilities for integrator's usage
+
+#include "sharc.slangh"
+
+namespace Sharc
+{
+SharcParameters createSharcParameters(SharcArgs args)
+{
+  SharcParameters params;
+
+  params.hashGridParameters.cameraPosition = args.cameraPosition.xyz;
+  params.hashGridParameters.logarithmBase = SHARC_GRID_LOGARITHM_BASE;
+  params.hashGridParameters.sceneScale = args.sceneScale;
+  params.hashGridParameters.levelBias = SHARC_GRID_LEVEL_BIAS;
+
+  params.hashGridData.capacity = args.entriesNum;
+  params.hashGridData.hashEntriesBuffer = SharcHashEntriesBuffer;
+
+#if !HASH_GRID_ENABLE_64_BIT_ATOMICS
+#error Not implemented
+#endif
+
+  params.radianceScale = args.radianceScale;
+  params.accumulationBuffer = SharcAccumulationBuffer;
+  params.resolvedBuffer = SharcResolvedBuffer;
+
+  return params;
+}
+
+#if SHARC_UPDATE
+vec3 clampUpdateRadiance(SharcParameters params, HashGridIndex cacheIndex, vec3 radiance, vec3 sampleWeight, float multiplier)
+{
+  if (multiplier <= 0.0f || cacheIndex == HASH_GRID_INVALID_CACHE_INDEX)
+  {
+    return radiance;
+  }
+
+  SharcVoxelData cell = SharcGetVoxelData(params.resolvedBuffer, cacheIndex);
+  if (cell.accumulatedSampleNum <= SHARC_SAMPLE_NUM_THRESHOLD)
+  {
+    return radiance;
+  }
+
+  float meanLuminance = SharcRadianceLuma(cell.accumulatedRadiance);
+  if (meanLuminance <= 1e-6f)
+  {
+    return radiance;
+  }
+
+  float sampleLuminance = SharcLuma(radiance * sampleWeight);
+  float maxLuminance = meanLuminance * multiplier;
+  if (sampleLuminance > maxLuminance)
+  {
+    radiance *= maxLuminance / sampleLuminance;
+  }
+
+  return radiance;
+}
+#endif
+
+void onMiss(SharcState sharcState, SharcArgs args, vec3 skyRadiance)
+{
+#if SHARC_UPDATE
+  SharcParameters params = createSharcParameters(args);
+
+  if (sharcState.pathLength > 0)
+  {
+    skyRadiance = clampUpdateRadiance(params, sharcState.cacheIndices[0], skyRadiance,
+      vec3(sharcState.sampleWeights[0]), args.fireflyClampMultiplier);
+  }
+
+  SharcUpdateMiss(params, sharcState, skyRadiance);
+#endif
+
+  // Do nothing for SHARC_QUERY since we do not have any surface to query radiance for
+}
+
+#ifdef INTEGRATE_INDIRECT
+#if SHARC_UPDATE
+// Counts one update record per calling thread, with one atomic per wave like NRC's training record counter.
+// A path is counted at its primary vertex, which NRC mostly leaves out of its training records.
+void incrementUpdateCounters(bool isPrimaryVertex)
+{
+  const uint recordLaneCount = WaveActiveCountBits(true);
+  const uint pathLaneCount = WaveActiveCountBits(isPrimaryVertex);
+
+  if (WaveIsFirstLane())
+  {
+    InterlockedAdd(SharcUpdateCounters[SHARC_UPDATE_COUNTER_RECORDS], recordLaneCount);
+
+    if (pathLaneCount > 0)
+    {
+      InterlockedAdd(SharcUpdateCounters[SHARC_UPDATE_COUNTER_PATHS], pathLaneCount);
+    }
+  }
+}
+#endif
+
+// Returns true if the path should continue after the hit, false if it should terminate
+// Note: this does nothing for SHARC_QUERY on primary hit and thus should be only called for secondary hits.
+// Same for SHARC_UPDATE, since the primary hits are aliased for query and update paths and query paths' roughness shouldn't be modified.
+// Adjusts the isotropic roughness of the surface material interaction during SHARC update
+bool onHitBeforeDirectLighting(
+  inout PathState pathState,
+  inout PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction, 
+  SharcArgs args,
+  SurfaceInteraction surfaceInteraction)
+{
+#if SHARC_UPDATE
+  if (pathState.isSharcUpdate)
+  {
+    SharcParameters params = createSharcParameters(args);
+
+    // Segment emission reaches previous vertices before the destination's attenuation.
+    if (any(pathState.radiance > 0.0f)) {
+      SharcUpdateMiss(params, pathState.sharcState, pathState.radiance);
+    }
+    SharcSetThroughput(pathState.sharcState, vec3(pathState.throughput));
+    pathState.radiance = vec3(0.0f);
+    pathState.throughput = f16vec3(1.h);
+
+    float16_t isotropicRoughness = getIsotropicRoughness(polymorphicSurfaceMaterialInteraction);
+
+    // Since SHaRC works better with higher roughness values, we clamp the roughness during its updates to a minimum threshold.
+    // Note: since first bounce is aliased between update and query, this roughness adjustment is only done for secondary vertices
+    isotropicRoughness = max(args.isotropicRoughnessThreshold, isotropicRoughness);
+    setIsotropicRoughness(polymorphicSurfaceMaterialInteraction, isotropicRoughness);
+  }
+#else
+  unused(polymorphicSurfaceMaterialInteraction);
+#endif // SHARC_UPDATE
+
+#if SHARC_QUERY
+  if (!pathState.isSharcUpdate)
+  {
+    SharcParameters params = createSharcParameters(args);
+
+    // Construct SharcHitData structure needed for creating a query point at this hit location
+    SharcHitData hitData;
+    hitData.positionWorld = surfaceInteraction.position;
+    hitData.normalWorld = surfaceInteraction.geometryNormal;
+    hitData.emissive = vec3(0.0f);
+
+    uint gridLevel = HashGridGetLevel(surfaceInteraction.position, params.hashGridParameters);
+    float voxelSize = HashGridGetVoxelSize(gridLevel, params.hashGridParameters);
+    bool isValidHit = pathState.segmentHitDistance > voxelSize * sqrt(3.0f);
+
+    // Clamp the perceptual roughness to avoid numerical issues in the sqrt below
+    pathState.prevPerceptualRoughness = min(pathState.prevPerceptualRoughness, 0.99f);
+    float alpha = pathState.prevPerceptualRoughness * pathState.prevPerceptualRoughness;
+    float footprint = pathState.segmentHitDistance * sqrt(0.5f * alpha * alpha / (1.0f - alpha * alpha));
+    isValidHit &= footprint > voxelSize;
+
+    vec3 sharcRadiance;
+    if (isValidHit && SharcGetCachedRadiance(params, hitData, sharcRadiance, false))
+    {
+      pathState.radiance += sharcRadiance * pathState.throughput;
+
+      if (cb.debugView == DEBUG_VIEW_SHARC_QUERIED_RADIANCE)
+      {
+        storeInDebugView(pathState.pixelCoordinate, sharcRadiance * pathState.throughput);
+      }
+      if (cb.debugView == DEBUG_VIEW_SHARC_QUERIED_THROUGHPUT)
+      {
+        storeInDebugView(pathState.pixelCoordinate, pathState.throughput);
+      }
+
+      return false; // Terminate the path once we have looked up into the cache
+    }
+  }
+#elif !SHARC_UPDATE
+  unused(pathState);
+#endif
+
+  return true; // Continue the path
+}
+
+// Returns true if the path should continue after the hit, false if it should terminate
+bool onHitAfterDirectLighting(
+  inout PathState pathState,
+  SharcArgs args,
+  vec3 position,
+  f16vec3 triangleNormal,
+  vec3 localRadiance,
+  inout RNG randomState)
+{
+#if SHARC_UPDATE
+  if (pathState.isSharcUpdate)
+  {
+    SharcParameters params = createSharcParameters(args);
+
+    SharcHitData hitData;
+    hitData.positionWorld = position;
+    hitData.normalWorld = triangleNormal;
+    hitData.emissive = vec3(0.0f);
+
+    if (args.fireflyClampMultiplier > 0.0f)
+    {
+      HashGridKey hashGridKey = HashGridComputeSpatialHash(hitData.positionWorld, hitData.normalWorld, params.hashGridParameters);
+      uint baseSlot = HashGridGetBaseSlot(hashGridKey, params.hashGridData.capacity);
+      HashGridIndex cacheIndex;
+      uint bucketOffset;
+      if (HashGridFind(params.hashGridData, hashGridKey, baseSlot, HASH_GRID_HASH_MAP_BUCKET_SIZE, cacheIndex, bucketOffset))
+      {
+        localRadiance = clampUpdateRadiance(params, cacheIndex, localRadiance, vec3(1.0f), args.fireflyClampMultiplier);
+      }
+    }
+
+    if (cb.debugView == DEBUG_VIEW_SHARC_UPDATE_RADIANCE && (round(cb.debugKnob.x) == pathState.bounceIteration))
+    {
+      storeInDebugView(calculateUpdatePixelCoordinate(pathState.pixelCoordinate, cb.sharcArgs), localRadiance);
+    }
+
+    // initSharc processes the primary vertex as bounce 0, and the bounce loop starts at 1.
+    incrementUpdateCounters(pathState.bounceIteration == 0);
+
+    // Update SHaRC state with the hit information
+    if (!SharcUpdateHit(params, pathState.sharcState, hitData, localRadiance, getNextSampleBlueNoise(randomState)))
+    {
+      return false;
+    }
+  }
+#else
+  unused(pathState);
+  unused(randomState);
+#endif
+
+  return true; // Continue the path
+}
+
+void onBounceEnd(
+  inout PathState pathState,
+  float16_t perceptualRoughness)
+{
+#if SHARC_QUERY
+  if (!pathState.isSharcUpdate)
+  {
+    // ToDo: add a comment explaining this (SHaRC sample does it)
+    pathState.prevPerceptualRoughness += perceptualRoughness;
+  }
+#endif
+
+#if SHARC_UPDATE
+  if (pathState.isSharcUpdate)
+  {
+    if (cb.debugView == DEBUG_VIEW_SHARC_UPDATE_THROUGHPUT && (round(cb.debugKnob.x) == pathState.bounceIteration))
+    {
+      storeInDebugView(calculateUpdatePixelCoordinate(pathState.pixelCoordinate, cb.sharcArgs), pathState.throughput);
+    }
+    SharcSetThroughput(pathState.sharcState, vec3(pathState.throughput));
+
+    // Reset radiance and throughput for the next segment.
+    // When updating SHaRC, we are only interested in one path segment at a time
+    // (SHaRC handles the propagation of radiance along the path).
+    // So we do not need to track throughput along the path
+    pathState.radiance = vec3(0);
+    pathState.throughput = f16vec3(1.h);
+  }
+#endif
+
+#if !(SHARC_UPDATE || SHARC_QUERY)
+  unused(pathState);
+#endif
+}
+
+void onBounceEnd(
+  inout PathState pathState,
+  bool isDiffuseReflection,
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  bool isOpaqueMaterial)
+{
+  float16_t perceptualRoughness = surfaceMaterialInteractionSerializationDataFallbackPerceptualRoughness;
+
+#if SHARC_QUERY
+  // Perceptual roughness is only used on query
+  if (isOpaqueMaterial && !isDiffuseReflection)
+  {
+    perceptualRoughness = roughnessToPerceptualRoughness(opaqueSurfaceMaterialInteraction.isotropicRoughness);
+  }
+#endif
+
+  onBounceEnd(pathState, perceptualRoughness);
+}
+#endif // INTEGRATE_INDIRECT
+} // namespace Sharc

@@ -500,6 +500,11 @@ namespace dxvk {
     enabledFeatures.vulkan12Features.uniformAndStorageBuffer8BitAccess = VK_TRUE;
     enabledFeatures.vulkan12Features.timelineSemaphore = VK_TRUE;
 
+    // NV-DXVK start: SHaRC requires 64-bit integers and buffer atomics
+    enabledFeatures.core.features.shaderInt64 = m_deviceFeatures.core.features.shaderInt64;
+    enabledFeatures.vulkan12Features.shaderBufferInt64Atomics = m_deviceFeatures.vulkan12Features.shaderBufferInt64Atomics;
+    // NV-DXVK end
+
     // NV-DXVK start: RTXIO
 #ifdef WITH_RTXIO
     if (RtxIo::enabled()) {

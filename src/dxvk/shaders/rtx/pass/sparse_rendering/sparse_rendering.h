@@ -60,5 +60,9 @@ struct SparseRenderingArgs
   uint guideCombineSpecularAlbedo;
   float guideRoughnessDemodulationMultiplier;
   float guideRoughnessDemodulationOffset;
-  uint pad0;
+  uint resampledSharcUpdatePaths;
 };
+
+#ifdef __cplusplus
+static_assert(sizeof(SparseRenderingArgs) % 16 == 0);
+#endif

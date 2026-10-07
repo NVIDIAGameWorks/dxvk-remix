@@ -40,6 +40,18 @@
 //!>       ENABLE_NRC=1
 //!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
 
+// SHaRC
+// Note: Only Sharc update routines are called from Sharc header during gbuffer pass. 
+//       Remix does not support SHaRC queries at the primary hits, and all query path processing is handled in the indirect PT pass.
+
+//!variant gbuffer_psr_sharc_material_opaque_translucent_closestHit.rchit
+//!>       SHARC_UPDATE=1
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+
+//!variant gbuffer_psr_sharc_material_rayportal_closestHit.rchit
+//!>       SHARC_UPDATE=1
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+
 
 // WBOIT
 
@@ -62,6 +74,21 @@
 //!>       ENABLE_NRC=1
 //!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
 //!>       UNORDERED_RESOLVE_WBOIT
+
+// SHaRC
+// Note: Only Sharc update routines are called from Sharc header during gbuffer pass. 
+//       Remix does not support SHaRC queries at the primary hits, and all query path processing is handled in the indirect PT pass.
+
+//!variant gbuffer_psr_sharc_material_opaque_translucent_closestHit_wboit.rchit
+//!>       SHARC_UPDATE=1
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant gbuffer_psr_sharc_material_rayportal_closestHit_wboit.rchit
+//!>       SHARC_UPDATE=1
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+//!>       UNORDERED_RESOLVE_WBOIT
+
 
 //!end-variants
 

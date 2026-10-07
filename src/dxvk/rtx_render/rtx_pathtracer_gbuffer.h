@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -46,11 +46,12 @@ namespace dxvk {
     static const char* raytraceModeToString(RaytraceMode raytraceMode);
 
   private:
-    static DxvkRaytracingPipelineShaders getPipelineShaders(const uint32_t featureVariant, const bool isPSRPass, const bool useRayQuery, const bool serEnabled, const bool ommEnabled, const bool includePortals, const bool nrcEnabled, const bool wboitEnabled);
+    static DxvkRaytracingPipelineShaders getPipelineShaders(const uint32_t featureVariant, const bool isPSRPass, const bool useRayQuery, const bool serEnabled, const bool ommEnabled, const bool includePortals, const bool nrcEnabled, const bool sharcEnabled, const bool wboitEnabled);
     Rc<DxvkShader> getComputeShader(
       const uint32_t featureVariant,
       const bool isPSRPass,
       const bool nrcEnabled,
+      const bool sharcEnabled,
       const bool wboitEnabled) const;
   };
 }

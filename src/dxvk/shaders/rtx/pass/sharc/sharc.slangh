@@ -1,0 +1,125 @@
+/*
+* Copyright (c) 2025-2026, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Includes SHaRC utilities that don't depend on SHaRC bindings
+
+// Variants that define both macros trace update and query paths in the same dispatch. See PathState::isSharcUpdate.
+#ifndef SHARC_UPDATE
+#define SHARC_UPDATE 0
+#endif
+
+#ifndef SHARC_QUERY
+#define SHARC_QUERY 0
+#endif
+
+#define ENABLE_SHARC (SHARC_UPDATE || SHARC_QUERY)
+#define HASH_GRID_ENABLE_64_BIT_ATOMICS 1
+#define SHARC_ENABLE_GLSL 0 // We don't need extra GLSL code generation since Slang interprets HLSL
+#define SHARC_ENABLE_RESPONSIVE_LIGHTING 0
+#define SHARC_ENABLE_SH_ENCODING 0
+#define SHARC_SEPARATE_EMISSIVE 1
+
+#ifdef ENABLE_NRC
+#if ENABLE_SHARC && ENABLE_NRC
+#error Only one or none of NRC and SHaRC should be enabled at the same time
+#endif
+#endif
+
+#include "rtx/utility/math.slangh" // Needed for saturate() used in SHaRC
+
+#pragma warning(push)
+#pragma warning(disable: 41018) // SHaRC leaves radiance undefined on cache misses.
+#include "sharc/include/SharcCommon.h"
+#pragma warning(pop)
+#include "rtx/pass/sharc_args.h"
+#include "rtx/pass/sharc/sharc_update_grid.slangh"
+
+namespace Sharc
+{
+static const float kDebugBitsOccupancyThresholdLow = 0.125f;
+static const float kDebugBitsOccupancyThresholdMedium = 0.5f;
+
+float3 debugBitsOccupancyColor(float occupancy)
+{
+  occupancy = saturate(occupancy);
+
+  if (occupancy < kDebugBitsOccupancyThresholdLow)
+  {
+    return float3(0.0f, 1.0f, 0.0f) * (occupancy + kDebugBitsOccupancyThresholdLow);
+  }
+  else if (occupancy < kDebugBitsOccupancyThresholdMedium)
+  {
+    return float3(1.0f, 1.0f, 0.0f) * (occupancy + kDebugBitsOccupancyThresholdMedium);
+  }
+
+  return float3(1.0f, 0.0f, 0.0f) * occupancy;
+}
+
+float3 debugBitsOccupancySampleNum(SharcParameters params, SharcHitData hitData)
+{
+  HashGridKey hashGridKey;
+  HashGridIndex hashGridIndex = HashGridFindEntry(
+    params.hashGridData,
+    hitData.positionWorld,
+    hitData.normalWorld,
+    params.hashGridParameters,
+    hashGridKey);
+
+  if (hashGridIndex == HASH_GRID_INVALID_CACHE_INDEX)
+  {
+    return float3(0.0f);
+  }
+
+  SharcVoxelData voxelData = SharcGetVoxelData(params.resolvedBuffer, hashGridIndex);
+  return debugBitsOccupancyColor(voxelData.accumulatedSampleNum / float16Max);
+}
+
+float3 debugBitsOccupancyRadiance(SharcParameters params, SharcHitData hitData)
+{
+  HashGridKey hashGridKey;
+  HashGridIndex hashGridIndex = HashGridFindEntry(
+    params.hashGridData,
+    hitData.positionWorld,
+    hitData.normalWorld,
+    params.hashGridParameters,
+    hashGridKey);
+
+  if (hashGridIndex == HASH_GRID_INVALID_CACHE_INDEX)
+  {
+    return float3(0.0f);
+  }
+
+  SharcVoxelData voxelData = SharcGetVoxelData(params.resolvedBuffer, hashGridIndex);
+#if SHARC_ENABLE_SH_ENCODING
+  float4 luminanceSH = abs(voxelData.accumulatedRadiance.luminanceSH);
+  float2 chromaL0 = abs(voxelData.accumulatedRadiance.chromaL0);
+  float maxRadiance = max(max(luminanceSH.x, luminanceSH.y), max(luminanceSH.z, luminanceSH.w));
+  maxRadiance = max(maxRadiance, max(chromaL0.x, chromaL0.y));
+#else
+  float3 radiance = abs(voxelData.accumulatedRadiance.radiance);
+  float maxRadiance = max(radiance.x, max(radiance.y, radiance.z));
+#endif
+
+  return debugBitsOccupancyColor(maxRadiance / float16Max);
+}
+} // namespace Sharc

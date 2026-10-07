@@ -217,7 +217,6 @@ namespace dxvk {
     RemixGui::DragInt("Permutation Sampling Size", &permutationSamplingSizeObject(), 0.1f, 1, 8, "%d", ImGuiSliderFlags_AlwaysClamp);
     RemixGui::Checkbox("Discard Enlarged Pixels", &useDiscardEnlargedPixelsObject());
     RemixGui::DragFloat("History Discard Strength", &historyDiscardStrengthObject(), 0.01f, 0.f, 50.f, "%.1f");
-    RemixGui::DragFloat("Firefly Threshold", &fireflyThresholdObject(), 0.01f, 1.f, 5000.f, "%.1f");
     RemixGui::DragFloat("Roughness Clamp", &roughnessClampObject(), 0.001f, 0.f, 1.f, "%.3f");
     RemixGui::Checkbox("Validate Lighting Change", &validateLightingChangeObject());
     RemixGui::DragFloat("Lighting Change Threshold", &lightingValidationThresholdObject(), 0.001f, 0.f, 1.f, "%.3f");

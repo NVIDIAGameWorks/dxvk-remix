@@ -135,7 +135,6 @@ namespace dxvk {
     RTX_OPTION("rtx.restirGI", int, temporalAdaptiveHistoryLengthMs, 500, "Temporal history time length, when adaptive temporal history is enabled.");
     RTX_OPTION("rtx.restirGI", int, temporalFixedHistoryLength, 30, "Fixed temporal history length, when adaptive temporal history is disabled.");
     RTX_OPTION("rtx.restirGI", int, permutationSamplingSize, 2, "Permutation sampling strength.");
-    RTX_OPTION("rtx.restirGI", float, fireflyThreshold, 50.f, "Clamps specular input to suppress boiling.");
     RTX_OPTION("rtx.restirGI", float, roughnessClamp, 0.01f, "Clamps minimum roughness a sample's importance is evaluated.");
     RTX_OPTION("rtx.restirGI", bool, validateLightingChange, true, "Remove samples when direct light has changed.");
     RTX_OPTION_ENV("rtx.restirGI", bool, validateVisibilityChange, false, "DXVK_RESTIR_GI_VISIBILITY_VALIDATION", "Remove samples when visibility has changed. This feature is automatically disabled when virtual sample is enabled.");
