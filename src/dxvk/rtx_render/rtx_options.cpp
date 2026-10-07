@@ -32,6 +32,7 @@
 #include "rtx_composite.h"
 #include "rtx_demodulate.h"
 #include "rtx_neural_radiance_cache.h"
+#include "rtx_spatially_hashed_radiance_cache.h"
 #include "rtx_ray_reconstruction.h"
 #include "../util/util_global_time.h"
 
@@ -502,14 +503,24 @@ namespace dxvk {
       postFx.enable.setDeferred(false);
     };
 
-    auto enableNrcPreset = [&](NeuralRadianceCache::QualityPreset nrcPreset) {
-      NeuralRadianceCache& nrc = device->getCommon()->metaNeuralRadianceCache();
-      // TODO[REMIX-4105] trying to use NRC for a frame when it isn't supported will cause a crash, so this needs to be setImmediately.
-      // Should refactor this to use a separate global for the final state, and indicate user preference with the option. 
-      if (nrc.checkIsSupported(device)) {
-        RtxOptions::integrateIndirectMode.setImmediately(IntegrateIndirectMode::NeuralRadianceCache);
-        nrc.setQualityPreset(nrcPreset);
+    auto applyIndirectPreset = [&](NeuralRadianceCache::QualityPreset nrcPreset) {
+      // Preserve ReSTIR GI selected by a cache support fallback.
+      if (RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::ReSTIRGI) {
+        return;
+      }
+
+      if (RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::NeuralRadianceCache) {
+        if (NeuralRadianceCache::checkIsSupported(device)) {
+          RtxOptions::integrateIndirectMode.setImmediately(IntegrateIndirectMode::NeuralRadianceCache);
+          common->metaNeuralRadianceCache().setQualityPreset(nrcPreset);
+        } else {
+          Logger::warn("[RTX] Neural Radiance Cache is not supported. Switching indirect illumination mode to ReSTIR GI.");
+          RtxOptions::integrateIndirectMode.setImmediately(IntegrateIndirectMode::ReSTIRGI);
+        }
+      } else if (SpatiallyHashedRadianceCache::checkIsSupported(device)) {
+        RtxOptions::integrateIndirectMode.setImmediately(IntegrateIndirectMode::SHaRC);
       } else {
+        Logger::warn("[RTX] SHaRC requires shaderInt64 and shaderBufferInt64Atomics. Switching to ReSTIR GI.");
         RtxOptions::integrateIndirectMode.setImmediately(IntegrateIndirectMode::ReSTIRGI);
       }
     };
@@ -537,7 +548,7 @@ namespace dxvk {
       postFx.enable.setDeferred(true);
 
       volumetrics.setQualityLevel(RtxGlobalVolumetrics::Ultra);
-      enableNrcPreset(NeuralRadianceCache::QualityPreset::Ultra);
+      applyIndirectPreset(NeuralRadianceCache::QualityPreset::Ultra);
 
     } else if (graphicsPreset() == GraphicsPreset::High) {
       pathMinBounces.setDeferred(0);
@@ -558,7 +569,7 @@ namespace dxvk {
       russianRoulette1stBounceMinContinueProbability.setDeferred(0.6f);
 
       volumetrics.setQualityLevel(RtxGlobalVolumetrics::High);
-      enableNrcPreset(NeuralRadianceCache::QualityPreset::High);
+      applyIndirectPreset(NeuralRadianceCache::QualityPreset::High);
 
     } else if (graphicsPreset() == GraphicsPreset::Medium) {
       lowGraphicsPresetCommonSettings();
@@ -567,7 +578,7 @@ namespace dxvk {
       russianRoulette1stBounceMinContinueProbability.setDeferred(0.4f);
 
       volumetrics.setQualityLevel(RtxGlobalVolumetrics::Medium);
-      enableNrcPreset(NeuralRadianceCache::QualityPreset::Medium);
+      applyIndirectPreset(NeuralRadianceCache::QualityPreset::Medium);
     } else if (graphicsPreset() == GraphicsPreset::Low) {
       lowGraphicsPresetCommonSettings();
 
@@ -575,7 +586,7 @@ namespace dxvk {
       russianRoulette1stBounceMinContinueProbability.setDeferred(0.4f);
 
       volumetrics.setQualityLevel(RtxGlobalVolumetrics::Low);
-      enableNrcPreset(NeuralRadianceCache::QualityPreset::Medium);
+      applyIndirectPreset(NeuralRadianceCache::QualityPreset::Medium);
       
     }
 

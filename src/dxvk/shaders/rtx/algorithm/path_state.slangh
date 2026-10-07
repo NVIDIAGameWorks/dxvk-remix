@@ -21,6 +21,7 @@
 */
 #pragma once
 
+#include "rtx/pass/sharc/sharc.slangh"
 #include "rtx/concept/ray_portal/ray_portal.slangh"
 #include "rtx/utility/packing.slangh"
 #include "rtx/algorithm/resolve_expanded.slangh"
@@ -306,6 +307,29 @@ struct PathState : IBasePayloadState
   }
 #endif
 
+#if SHARC_QUERY
+  float prevPerceptualRoughness;
+#endif
+
+#if SHARC_UPDATE
+  SharcState sharcState;
+#endif 
+
+#if SHARC_UPDATE && SHARC_QUERY
+  // Update paths leave prevPerceptualRoughness unused, so a negative value marks them.
+  property bool isSharcUpdate
+  {
+    get { return prevPerceptualRoughness < 0.0f; }
+    set { prevPerceptualRoughness = newValue ? -1.0f : 0.0f; }
+  }
+#else
+  property bool isSharcUpdate
+  {
+    get { return SHARC_UPDATE != 0; }
+    set { }
+  }
+#endif
+
   // Passthrough accessors
   property float3 origin 
   {
@@ -476,6 +500,12 @@ struct PathState : IBasePayloadState
       useRussianRoulette = useRussianRoulette && cb.nrcArgs.updateAllowRussianRoulette;
     }
 #endif    
+#if SHARC_UPDATE
+    if (isSharcUpdate)
+    {
+      useRussianRoulette = useRussianRoulette && cb.sharcArgs.updateAllowRussianRoulette;
+    }
+#endif
 
     return useRussianRoulette;
   }
@@ -521,6 +551,9 @@ struct PathState : IBasePayloadState
 #if ENABLE_NRC
     // Note: it is slightly more performant to have the NRC mode hint second
     addCoherenceHintAsLeastImportant1Bit(isNrcUpdate, coherenceHints, numCoherenceHints);
+#endif
+#if SHARC_UPDATE && SHARC_QUERY
+    addCoherenceHintAsLeastImportant1Bit(isSharcUpdate, coherenceHints, numCoherenceHints);
 #endif
     return true;
   }

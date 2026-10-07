@@ -23,6 +23,7 @@
 #include "rtx/pass/sparse_rendering/active_pixel_mask_binding_indices.h"
 #include "rtx/pass/sparse_rendering/sparse_rendering.slangh"
 #include "rtx/pass/sparse_rendering/per_pixel_rate.slangh"
+#include "rtx/pass/sharc/sharc_update_grid.slangh"
 
 // Returns the per-pixel sampling rate in [0,1] for the active sparse rendering mode.
 float calculatePixelSamplingRate(uvec2 pixelCoordinate, SparseRenderingArgs args)
@@ -40,8 +41,8 @@ float calculatePixelSamplingRate(uvec2 pixelCoordinate, SparseRenderingArgs args
 
 // Input-Outputs
 
-layout(r32ui, binding = ACTIVE_PIXEL_MASK_BINDING_NRC_TRAINING_QUERY_RESERVOIR_INPUT_OUTPUT)
-RWTexture2D<uint> NrcTrainingQueryReservoir;
+layout(r32ui, binding = ACTIVE_PIXEL_MASK_BINDING_RADIANCE_CACHE_UPDATE_QUERY_RESERVOIR_INPUT_OUTPUT)
+RWTexture2D<uint> RadianceCacheUpdateQueryReservoir;
 
 // Outputs
 
@@ -70,8 +71,9 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 
   // Enter this active candidate into its training cell's reservoir, carrying the pixel that drew the key.
   // The quantized rate keeps the active test matched to the one the mask pass runs.
-  if (cb.sparseRenderingArgs.resampledNrcTrainingPaths &&
-      isActivePixelFromSamplingRate(pixelCoordinate, quantizedRate, cb.sparseRenderingArgs, cb.frameIdx))
+  const bool isCacheUpdateCandidate =
+    isActivePixelFromSamplingRate(pixelCoordinate, quantizedRate, cb.sparseRenderingArgs, cb.frameIdx);
+  if (cb.sparseRenderingArgs.resampledNrcTrainingPaths && isCacheUpdateCandidate)
   {
     const uvec2 trainingPixelCoordinate = Nrc::calculateTrainingPixelCoordinate(pixelCoordinate, cb.nrcArgs);
     if (all(trainingPixelCoordinate < uvec2(cb.nrcArgs.activeTrainingDimensions)))
@@ -86,8 +88,26 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
       {
         const uint key = calculateNrcTrainingQueryKey(pixelCoordinate, cb.frameIdx, quantizedRate);
 
-        InterlockedMax(NrcTrainingQueryReservoir[trainingPixelCoordinate],
+        InterlockedMax(RadianceCacheUpdateQueryReservoir[trainingPixelCoordinate],
           Nrc::packNrcTrainingQueryReservoirEntry(key, queryPixelOffsetInCell));
+      }
+    }
+  }
+
+  if (cb.sparseRenderingArgs.resampledSharcUpdatePaths && isCacheUpdateCandidate)
+  {
+    const uvec2 updatePixelCoordinate = Sharc::calculateUpdatePixelCoordinate(pixelCoordinate, cb.sharcArgs);
+    if (all(updatePixelCoordinate < uvec2(cb.sharcArgs.activeUpdateDimensions)))
+    {
+      const uvec2 cellOrigin = Sharc::calculateUpdateCellOriginInQuerySpace(updatePixelCoordinate, cb.sharcArgs);
+      const uvec2 queryPixelOffsetInCell = pixelCoordinate - cellOrigin;
+
+      // Being unsigned, the offset also fails this when the separately rounded scales put the cell origin past the pixel.
+      if (isCacheUpdateQueryPixelOffsetRepresentable(queryPixelOffsetInCell))
+      {
+        const uint key = calculateNrcTrainingQueryKey(pixelCoordinate, cb.frameIdx, quantizedRate);
+        InterlockedMax(RadianceCacheUpdateQueryReservoir[updatePixelCoordinate],
+          packCacheUpdateQueryReservoirEntry(key, queryPixelOffsetInCell));
       }
     }
   }

@@ -35,9 +35,14 @@
 #define GBUFFER_BINDING_VOLUME_FILTERED_RADIANCE_CO_CG_INPUT                    41
 // Maps a pixel to its slot in the compacted GBuffer, if the pixel has one.
 #define GBUFFER_BINDING_COMPACTED_PIXEL_INDICES_INPUT                           51
-// The GBuffer seeds NRC training paths from this resolved query-pixel map.
-#define GBUFFER_BINDING_NRC_TRAINING_QUERY_RESERVOIR_INPUT                      52
+// The GBuffer seeds radiance cache update paths from this resolved query-pixel map.
+#define GBUFFER_BINDING_RADIANCE_CACHE_UPDATE_QUERY_RESERVOIR_INPUT             52
 #define GBUFFER_BINDING_TILE_ACTIVE_COUNTS_INPUT                                53
+
+// Input / Output
+#define GBUFFER_BINDING_BINDING_SHARC_HASH_ENTRIES_INPUT_OUTPUT                 54
+#define GBUFFER_BINDING_BINDING_SHARC_ACCUMULATION_INPUT_OUTPUT                 55
+#define GBUFFER_BINDING_BINDING_SHARC_RESOLVED_INPUT_OUTPUT                     56
 
 // Outputs
 
@@ -114,8 +119,8 @@
 #define GBUFFER_BINDING_NRC_QUERY_PATH_DATA0_OUTPUT                             135
 #define GBUFFER_BINDING_NRC_QUERY_PATH_DATA1_OUTPUT                             136
 #define GBUFFER_BINDING_NRC_TRAINING_PATH_DATA1_OUTPUT                          138
-#define GBUFFER_BINDING_NRC_TRAINING_GBUFFER_SURFACE_RADIANCE_RG_OUTPUT         140
-#define GBUFFER_BINDING_NRC_TRAINING_GBUFFER_SURFACE_RADIANCE_B_OUTPUT          141
+#define GBUFFER_BINDING_RADIANCE_CACHE_UPDATE_GBUFFER_SURFACE_RADIANCE_RG_OUTPUT 140
+#define GBUFFER_BINDING_RADIANCE_CACHE_UPDATE_GBUFFER_SURFACE_RADIANCE_B_OUTPUT  141
 
 #define GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT                           150
 

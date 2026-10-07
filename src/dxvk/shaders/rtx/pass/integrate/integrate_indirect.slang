@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -103,6 +103,151 @@
 //!>       ENABLE_NRC=1
 //!>       NEE_CACHE_ENABLE=0
 
+/* SHaRC Update */
+
+//!variant integrate_indirect_raygen_sharc_update_neeCache.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       SHARC_UPDATE=1
+//!>       NEE_CACHE_ENABLE=1
+ 
+//!variant integrate_indirect_raygen_ser_sharc_update_neeCache.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       SHARC_UPDATE=1
+//!>       NEE_CACHE_ENABLE=1
+
+//!variant integrate_indirect_rayquery_sharc_update_neeCache.comp
+//!>       SHARC_UPDATE=1
+//!>       NEE_CACHE_ENABLE=1
+
+//!variant integrate_indirect_rayquery_raygen_sharc_update_neeCache.rgen
+//!>       RAY_PIPELINE
+//!>       SHARC_UPDATE=1
+//!>       NEE_CACHE_ENABLE=1
+
+//!variant integrate_indirect_rayquery_sharc_update.comp
+//!>       SHARC_UPDATE=1
+//!>       NEE_CACHE_ENABLE=0
+
+//!variant integrate_indirect_rayquery_raygen_sharc_update.rgen
+//!>       RAY_PIPELINE
+//!>       SHARC_UPDATE=1
+//!>       NEE_CACHE_ENABLE=0
+
+//!variant integrate_indirect_raygen_sharc_update.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       SHARC_UPDATE=1
+//!>       NEE_CACHE_ENABLE=0
+
+//!variant integrate_indirect_raygen_ser_sharc_update.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       SHARC_UPDATE=1
+//!>       NEE_CACHE_ENABLE=0
+
+/* SHaRC Query */
+
+//!variant integrate_indirect_raygen_sharc_query_neeCache.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=1
+ 
+//!variant integrate_indirect_raygen_ser_sharc_query_neeCache.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=1
+
+//!variant integrate_indirect_rayquery_sharc_query_neeCache.comp
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=1
+
+//!variant integrate_indirect_rayquery_raygen_sharc_query_neeCache.rgen
+//!>       RAY_PIPELINE
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=1
+
+//!variant integrate_indirect_rayquery_sharc_query.comp
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=0
+
+//!variant integrate_indirect_rayquery_raygen_sharc_query.rgen
+//!>       RAY_PIPELINE
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=0
+
+//!variant integrate_indirect_raygen_sharc_query.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=0
+
+//!variant integrate_indirect_raygen_ser_sharc_query.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=0
+
+/* SHaRC Combined Update and Query */
+
+//!variant integrate_indirect_raygen_sharc_combined_neeCache.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       SHARC_UPDATE=1
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=1
+
+//!variant integrate_indirect_raygen_ser_sharc_combined_neeCache.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       SHARC_UPDATE=1
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=1
+
+//!variant integrate_indirect_rayquery_sharc_combined_neeCache.comp
+//!>       SHARC_UPDATE=1
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=1
+
+//!variant integrate_indirect_rayquery_raygen_sharc_combined_neeCache.rgen
+//!>       RAY_PIPELINE
+//!>       SHARC_UPDATE=1
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=1
+
+//!variant integrate_indirect_rayquery_sharc_combined.comp
+//!>       SHARC_UPDATE=1
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=0
+
+//!variant integrate_indirect_rayquery_raygen_sharc_combined.rgen
+//!>       RAY_PIPELINE
+//!>       SHARC_UPDATE=1
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=0
+
+//!variant integrate_indirect_raygen_sharc_combined.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       SHARC_UPDATE=1
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=0
+
+//!variant integrate_indirect_raygen_ser_sharc_combined.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       SHARC_UPDATE=1
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=0
 
 // WBOIT
 
@@ -205,6 +350,176 @@
 //!>       NEE_CACHE_ENABLE=0
 //!>       UNORDERED_RESOLVE_WBOIT
 
+
+/* SHaRC Update */
+
+//!variant integrate_indirect_raygen_sharc_update_neeCache_wboit.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       SHARC_UPDATE=1
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+ 
+//!variant integrate_indirect_raygen_ser_sharc_update_neeCache_wboit.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       SHARC_UPDATE=1
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_rayquery_sharc_update_neeCache_wboit.comp
+//!>       SHARC_UPDATE=1
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_rayquery_raygen_sharc_update_neeCache_wboit.rgen
+//!>       RAY_PIPELINE
+//!>       SHARC_UPDATE=1
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_rayquery_sharc_update_wboit.comp
+//!>       SHARC_UPDATE=1
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_rayquery_raygen_sharc_update_wboit.rgen
+//!>       RAY_PIPELINE
+//!>       SHARC_UPDATE=1
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_raygen_sharc_update_wboit.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       SHARC_UPDATE=1
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_raygen_ser_sharc_update_wboit.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       SHARC_UPDATE=1
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+/* SHaRC Query */
+
+//!variant integrate_indirect_raygen_sharc_query_neeCache_wboit.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+ 
+//!variant integrate_indirect_raygen_ser_sharc_query_neeCache_wboit.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_rayquery_sharc_query_neeCache_wboit.comp
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_rayquery_raygen_sharc_query_neeCache_wboit.rgen
+//!>       RAY_PIPELINE
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_rayquery_sharc_query_wboit.comp
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_rayquery_raygen_sharc_query_wboit.rgen
+//!>       RAY_PIPELINE
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_raygen_sharc_query_wboit.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_raygen_ser_sharc_query_wboit.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+/* SHaRC Combined Update and Query */
+
+//!variant integrate_indirect_raygen_sharc_combined_neeCache_wboit.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       SHARC_UPDATE=1
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_raygen_ser_sharc_combined_neeCache_wboit.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       SHARC_UPDATE=1
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_rayquery_sharc_combined_neeCache_wboit.comp
+//!>       SHARC_UPDATE=1
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_rayquery_raygen_sharc_combined_neeCache_wboit.rgen
+//!>       RAY_PIPELINE
+//!>       SHARC_UPDATE=1
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_rayquery_sharc_combined_wboit.comp
+//!>       SHARC_UPDATE=1
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_rayquery_raygen_sharc_combined_wboit.rgen
+//!>       RAY_PIPELINE
+//!>       SHARC_UPDATE=1
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_raygen_sharc_combined_wboit.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       SHARC_UPDATE=1
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
+
+//!variant integrate_indirect_raygen_ser_sharc_combined_wboit.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       SHARC_UPDATE=1
+//!>       SHARC_QUERY=1
+//!>       NEE_CACHE_ENABLE=0
+//!>       UNORDERED_RESOLVE_WBOIT
 
 //!end-variants
 

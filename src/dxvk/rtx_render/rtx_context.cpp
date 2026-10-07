@@ -36,6 +36,7 @@
 #include "rtx_terrain_baker.h"
 #include "rtx_texture_manager.h"
 #include "rtx_neural_radiance_cache.h"
+#include "rtx_spatially_hashed_radiance_cache.h"
 #include "rtx_ray_reconstruction.h"
 #include "rtx_xess.h"
 #include "rtx_rtxdi_rayquery.h"
@@ -196,7 +197,7 @@ namespace dxvk {
 
     checkOpacityMicromapSupport();
     checkShaderExecutionReorderingSupport();
-    checkNeuralRadianceCacheSupport();
+    checkIndirectLightingSupport();
     reportCpuSimdSupport();
 
     GlobalTime::get().init(RtxOptions::timeDeltaBetweenFrames() * 0.001f);
@@ -403,17 +404,19 @@ namespace dxvk {
     const RtCamera& mainCamera = getSceneManager().getCamera();
     m_resetHistory = m_resetHistory || mainCamera.isViewHistoryInvalidated(m_device->getCurrentFrameId());
 
+    checkIndirectLightingSupport();
+
+    // Force history reset on integrate indirect mode change to discard incompatible history
+    if (RtxOptions::integrateIndirectMode() != m_prevIntegrateIndirectMode) {
+      m_resetHistory = true;
+      m_prevIntegrateIndirectMode = RtxOptions::integrateIndirectMode();
+    }
+
     // Call onFrameBegin callbacks for RtxPases
     // Note: this needs to be called after resetScreenResolution() call in a frame
     // since an RtxPass may alias some of its resources with the ones created in createRaytracingOutput()
     getResourceManager().onFrameBegin(this, getCommonObjects()->getTextureManager(), getSceneManager(), downscaledExtent,
                                       upscaledExtent, m_resetHistory, mainCamera.isCameraCut());
-
-    // Force history reset on integrate indirect mode change to discard incompatible history 
-    if (RtxOptions::integrateIndirectMode() != m_prevIntegrateIndirectMode) {
-      m_resetHistory = true;
-      m_prevIntegrateIndirectMode = RtxOptions::integrateIndirectMode();
-    }
 
     if (RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::NeuralRadianceCache &&
         m_common->metaNeuralRadianceCache().isResettingHistory()) {
@@ -444,6 +447,7 @@ namespace dxvk {
       Resources::RaytracingOutput& rtOutput = getResourceManager().getRaytracingOutput();
 
       m_common->metaNeuralRadianceCache().onFrameEnd(rtOutput);
+      m_common->metaSpatiallyHashedRadianceCache().onFrameEnd(rtOutput);
       rtOutput.onFrameEnd();
     }
 
@@ -1112,6 +1116,7 @@ namespace dxvk {
 
     constants.fireflyFilteringLuminanceThreshold = RtxOptions::fireflyFilteringLuminanceThreshold();
     constants.secondarySpecularFireflyFilteringThreshold = RtxOptions::secondarySpecularFireflyFilteringThreshold();
+    constants.primaryIndirectSpecularFireflyFilteringThreshold = RtxOptions::primaryIndirectSpecularFireflyFilteringThreshold();
     constants.primaryRayMaxInteractions = RtxOptions::primaryRayMaxInteractions();
     constants.psrRayMaxInteractions = RtxOptions::psrRayMaxInteractions();
     constants.secondaryRayMaxInteractions = RtxOptions::secondaryRayMaxInteractions();
@@ -1302,7 +1307,6 @@ namespace dxvk {
     constants.enableReSTIRGIDiscardEnlargedPixels = restirGI.useDiscardEnlargedPixels();
     constants.reSTIRGIHistoryDiscardStrength = restirGI.historyDiscardStrength();
     constants.enableReSTIRGITemporalJacobian = restirGI.useTemporalJacobian();
-    constants.reSTIRGIFireflyThreshold = restirGI.fireflyThreshold();
     constants.reSTIRGIRoughnessClamp = restirGI.roughnessClamp();
     constants.reSTIRGIMISRoughness = restirGI.misRoughness();
     constants.reSTIRGIMISParallaxAmount = restirGI.parallaxAmount();
@@ -1320,6 +1324,11 @@ namespace dxvk {
     constants.enableNrc = nrc.isActive();
     constants.allowNrcTraining = NeuralRadianceCache::NrcOptions::trainCache();
     nrc.setRaytraceArgs(constants);
+
+    // Spatially Hashed Radiance Cache
+    SpatiallyHashedRadianceCache& sharc = m_common->metaSpatiallyHashedRadianceCache();
+    constants.enableSharc = sharc.isActive();
+    sharc.setRaytraceArgs(*this, constants);
 
     m_common->metaNeeCache().setRaytraceArgs(constants, m_resetHistory);
     constants.surfaceCount = getSceneManager().getAccelManager().getSurfaceCount();
@@ -1577,16 +1586,26 @@ namespace dxvk {
     Logger::info(str::format("[RTX info] Shader Execution Reordering: ", isShaderExecutionReorderingEnabled ? "enabled" : "disabled"));
   }
 
-  void RtxContext::checkNeuralRadianceCacheSupport() {
-    // Update RtxOption selection if Neural Radiance Cache was selected but it's not supported
-    if (RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::NeuralRadianceCache &&
+  void RtxContext::checkIndirectLightingSupport() {
+    const IntegrateIndirectMode integrateMode = RtxOptions::integrateIndirectMode();
+    const bool sharcSupported = SpatiallyHashedRadianceCache::checkIsSupported(m_device.ptr());
+
+    if (static_cast<uint32_t>(integrateMode) >= static_cast<uint32_t>(IntegrateIndirectMode::Count)) {
+      Logger::warn("[RTX] Unsupported indirect illumination mode selected. Switching to a supported mode.");
+      RtxOptions::integrateIndirectMode.setImmediately(sharcSupported ? IntegrateIndirectMode::SHaRC : IntegrateIndirectMode::ReSTIRGI, RtxOptionLayer::getQualityLayer());
+      return;
+    }
+
+    if (integrateMode == IntegrateIndirectMode::NeuralRadianceCache &&
         !NeuralRadianceCache::checkIsSupported(m_device.ptr())) {
 
-      // Fallback to ReSTIRGI
-      Logger::warn(str::format("[RTX] Neural Radiance Cache is not supported. Switching indirect illumination mode to ReSTIR GI."));
+      Logger::warn("[RTX] Neural Radiance Cache is not supported. Switching indirect illumination mode to ReSTIR GI.");
       // TODO[REMIX-4105] trying to use NRC for a frame when it isn't supported will cause a crash, so this needs to be setImmediately.
       // Should refactor this to use a separate global for the final state, and indicate user preference with the option.
       // Use Quality layer to ensure this overrides the Environment layer (where env vars are stored).
+      RtxOptions::integrateIndirectMode.setImmediately(IntegrateIndirectMode::ReSTIRGI, RtxOptionLayer::getQualityLayer());
+    } else if (integrateMode == IntegrateIndirectMode::SHaRC && !sharcSupported) {
+      Logger::warn("[RTX] SHaRC requires shaderInt64 and shaderBufferInt64Atomics. Switching to ReSTIR GI.");
       RtxOptions::integrateIndirectMode.setImmediately(IntegrateIndirectMode::ReSTIRGI, RtxOptionLayer::getQualityLayer());
     }
   }
@@ -1613,9 +1632,36 @@ namespace dxvk {
     // Integrate indirect
     {
       ScopedGpuProfileZone(this, "Integrate Indirect Raytracing");
-      setFramePassStage(RtxFramePassStage::IndirectIntegration);
-      
-      m_common->metaPathtracerIntegrateIndirect().dispatch(this, rtOutput);
+
+      SpatiallyHashedRadianceCache& sharc = m_common->metaSpatiallyHashedRadianceCache();
+      const bool isSharcUpdateCombinedWithQuery = sharc.isUpdateCombinedWithQuery();
+
+      // SHaRC Update passes
+      if (RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::SHaRC && !isSharcUpdateCombinedWithQuery) {
+        // Indirect PT - SHaRC Update pass
+        if (SpatiallyHashedRadianceCache::SharcOptions::enableUpdate())
+        {
+          ScopedGpuProfileZone(this, "Indirect (SHaRC Update)");
+          setFramePassStage(RtxFramePassStage::IndirectIntegrationUpdate);
+
+          const bool doSharcUpdate = true;
+          m_common->metaPathtracerIntegrateIndirect().dispatch(this, rtOutput, doSharcUpdate);
+        }
+
+        sharc.dispatch(*this, rtOutput);
+      }
+
+      // Indirect PT
+      {
+        setFramePassStage(RtxFramePassStage::IndirectIntegration);
+
+        m_common->metaPathtracerIntegrateIndirect().dispatch(this, rtOutput);
+      }
+
+      // The resolve needs the combined dispatch's update samples, so the dispatch's queries read the previous frame's cache.
+      if (isSharcUpdateCombinedWithQuery) {
+        sharc.dispatch(*this, rtOutput);
+      }
     }
 
     // Integrate indirect - NEE Cache pass

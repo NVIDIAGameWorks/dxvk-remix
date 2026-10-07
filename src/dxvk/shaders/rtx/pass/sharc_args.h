@@ -21,29 +21,38 @@
 */
 #pragma once
 
-#include "rtx/pass/common_binding_indices.h"
+// The update query reservoir stores the selected pixel's offset within its update cell in this many bits per axis,
+// which limits how many query pixels an update cell may span.
+#define SHARC_UPDATE_QUERY_OFFSET_BITS_PER_AXIS 7
+#define SHARC_MAX_QUERY_PIXELS_PER_UPDATE_PIXEL_PER_AXIS (1u << SHARC_UPDATE_QUERY_OFFSET_BITS_PER_AXIS)
 
-#define ACTIVE_PIXEL_MASK_THREADGROUP_SIZE_WIDTH 8
-#define ACTIVE_PIXEL_MASK_THREADGROUP_SIZE_HEIGHT 8
+// Indices into the SHaRC update counters buffer.
+#define SHARC_UPDATE_COUNTER_RECORDS 0
+#define SHARC_UPDATE_COUNTER_PATHS 1
+#define SHARC_UPDATE_COUNTER_COUNT 2
 
-#define ACTIVE_PIXEL_MASK_BLOCK_WIDTH 4
-#define ACTIVE_PIXEL_MASK_BLOCK_HEIGHT 2
+// Note: Ensure 16B alignment
+struct SharcArgs
+{
+  vec3 cameraPosition;
+  // Number of rows at the start of a combined update and query dispatch that trace update paths.
+  uint numRowsForUpdate;
+  vec3 cameraPositionPrev;
+  uint pad1;
 
-// Inputs
+  int accumulationFrameNum;
+  int staleFrameNum;
+  float radianceScale;
+  int entriesNum;
 
-#define ACTIVE_PIXEL_MASK_BINDING_PIXEL_SAMPLING_RATE_INPUT            200
+  float sceneScale;
+  float isotropicRoughnessThreshold;
+  float fireflyClampMultiplier;
+  uint updateAllowRussianRoulette;
 
-// Input-Outputs
+  vec2 updatePixelJitter;
+  vec2 activeUpdateDimensions;
 
-#define ACTIVE_PIXEL_MASK_BINDING_RADIANCE_CACHE_UPDATE_QUERY_RESERVOIR_INPUT_OUTPUT 205
-
-// Outputs
-
-#define ACTIVE_PIXEL_MASK_BINDING_ACTIVE_PIXEL_MASK_OUTPUT             210
-#define ACTIVE_PIXEL_MASK_BINDING_PIXEL_SAMPLING_RATE_OUTPUT           211
-
-#define ACTIVE_PIXEL_MASK_MIN_BINDING ACTIVE_PIXEL_MASK_BINDING_PIXEL_SAMPLING_RATE_INPUT
-
-#if ACTIVE_PIXEL_MASK_MIN_BINDING <= COMMON_MAX_BINDING
-#error "Increase the base index of Sparse Pixel Mask bindings to avoid overlap with common bindings!"
-#endif
+  vec2 queryToUpdateCoordinateSpace;
+  vec2 updateToQueryCoordinateSpace;
+};

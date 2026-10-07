@@ -26,6 +26,7 @@
 #include "rtx_render/rtx_ray_reconstruction.h"
 #include "rtx_render/rtx_texture_manager.h"
 #include "rtx_render/rtx_neural_radiance_cache.h"
+#include "rtx_render/rtx_spatially_hashed_radiance_cache.h"
 #include "rtx_render/rtx_rtxdi_rayquery.h"
 #include "rtx_render/rtx_restir_gi_rayquery.h"
 #include "rtx_render/rtx_composite.h"
@@ -542,6 +543,7 @@ namespace dxvk {
     m_demodulate(device),
     m_neeCache(device),
     m_neuralRadianceCache(device),
+    m_spatiallyHashedRadianceCache(device),
     m_primaryDirectLightDenoiser(device, DenoiserType::DirectLight),
     m_primaryIndirectLightDenoiser(device, DenoiserType::IndirectLight),
     m_primaryCombinedLightDenoiser(device, DenoiserType::DirectAndIndirectLight),

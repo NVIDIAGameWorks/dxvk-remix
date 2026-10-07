@@ -31,11 +31,12 @@
 //!> axis pipeline raygen.rgen RT_TRACE_RAY RAY_PIPELINE
 //!> axis pipeline raygen_ser.rgen RT_TRACE_RAY RAY_PIPELINE RT_SHADER_EXECUTION_REORDERING
 //!> axis pipeline rayquery_raygen.rgen RAY_PIPELINE
-//!> axis nrc -
-//!> axis nrc nrc ENABLE_NRC=1
+//!> axis radiance_cache -
+//!> axis radiance_cache nrc ENABLE_NRC=1
+//!> axis radiance_cache sharc SHARC_UPDATE=1
 //!> axis wboit -
 //!> axis wboit wboit UNORDERED_RESOLVE_WBOIT
-//!> order features psr pipeline nrc wboit
+//!> order features psr pipeline radiance_cache wboit
 //!end-variants
 
 // Note: Opacity lighting approximation used in the GBuffer pass due to it being most visually

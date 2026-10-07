@@ -86,6 +86,7 @@ namespace dxvk {
   class RtxTextureManager;
   class NeuralRadianceCache;
   class DxvkXeSS;
+  class SpatiallyHashedRadianceCache;
   class SparseRendering;
 
   class NGXContext;
@@ -178,6 +179,10 @@ namespace dxvk {
 
     NeuralRadianceCache& metaNeuralRadianceCache() {
       return m_neuralRadianceCache.get();
+    }
+
+    SpatiallyHashedRadianceCache& metaSpatiallyHashedRadianceCache() {
+      return m_spatiallyHashedRadianceCache.get();
     }
 
     DxvkDenoise& metaPrimaryDirectLightDenoiser() {
@@ -385,6 +390,7 @@ namespace dxvk {
     Active<DemodulatePass>                  m_demodulate;
     Active<NeeCachePass>                    m_neeCache;
     Active<NeuralRadianceCache>             m_neuralRadianceCache;
+    Active<SpatiallyHashedRadianceCache>    m_spatiallyHashedRadianceCache;
     Active<DxvkDenoise>                     m_primaryDirectLightDenoiser;
     Active<DxvkDenoise>                     m_primaryIndirectLightDenoiser;
     Active<DxvkDenoise>                     m_primaryCombinedLightDenoiser;

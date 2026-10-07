@@ -24,6 +24,7 @@
 #include "rtx_shader_manager.h"
 #include "rtx_options.h"
 #include "rtx_neural_radiance_cache.h"
+#include "rtx_spatially_hashed_radiance_cache.h"
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/gbuffer/gbuffer_binding_indices.h"
@@ -36,31 +37,43 @@
 
 #include <rtx_shaders/gbuffer_miss.h>
 #include <rtx_shaders/gbuffer_nrc_miss.h>
+#include <rtx_shaders/gbuffer_sharc_miss.h>
 #include <rtx_shaders/gbuffer_psr_miss.h>
 #include <rtx_shaders/gbuffer_psr_nrc_miss.h>
+#include <rtx_shaders/gbuffer_psr_sharc_miss.h>
 
 #include <rtx_shaders/gbuffer_material_opaque_translucent_closesthit.h>
 #include <rtx_shaders/gbuffer_material_rayPortal_closesthit.h>
 #include <rtx_shaders/gbuffer_nrc_material_opaque_translucent_closesthit.h>
 #include <rtx_shaders/gbuffer_nrc_material_rayPortal_closesthit.h>
+#include <rtx_shaders/gbuffer_sharc_material_opaque_translucent_closesthit.h>
+#include <rtx_shaders/gbuffer_sharc_material_rayPortal_closesthit.h>
 #include <rtx_shaders/gbuffer_psr_material_opaque_translucent_closesthit.h>
 #include <rtx_shaders/gbuffer_psr_material_rayPortal_closesthit.h>
 #include <rtx_shaders/gbuffer_psr_nrc_material_opaque_translucent_closesthit.h>
 #include <rtx_shaders/gbuffer_psr_nrc_material_rayPortal_closesthit.h>
+#include <rtx_shaders/gbuffer_psr_sharc_material_opaque_translucent_closesthit.h>
+#include <rtx_shaders/gbuffer_psr_sharc_material_rayPortal_closesthit.h>
 
 #include <rtx_shaders/gbuffer_miss_wboit.h>
 #include <rtx_shaders/gbuffer_nrc_miss_wboit.h>
+#include <rtx_shaders/gbuffer_sharc_miss_wboit.h>
 #include <rtx_shaders/gbuffer_psr_miss_wboit.h>
 #include <rtx_shaders/gbuffer_psr_nrc_miss_wboit.h>
+#include <rtx_shaders/gbuffer_psr_sharc_miss_wboit.h>
 
 #include <rtx_shaders/gbuffer_material_opaque_translucent_closesthit_wboit.h>
 #include <rtx_shaders/gbuffer_material_rayPortal_closesthit_wboit.h>
 #include <rtx_shaders/gbuffer_nrc_material_opaque_translucent_closesthit_wboit.h>
 #include <rtx_shaders/gbuffer_nrc_material_rayPortal_closesthit_wboit.h>
+#include <rtx_shaders/gbuffer_sharc_material_opaque_translucent_closesthit_wboit.h>
+#include <rtx_shaders/gbuffer_sharc_material_rayPortal_closesthit_wboit.h>
 #include <rtx_shaders/gbuffer_psr_material_opaque_translucent_closesthit_wboit.h>
 #include <rtx_shaders/gbuffer_psr_material_rayPortal_closesthit_wboit.h>
 #include <rtx_shaders/gbuffer_psr_nrc_material_opaque_translucent_closesthit_wboit.h>
 #include <rtx_shaders/gbuffer_psr_nrc_material_rayPortal_closesthit_wboit.h>
+#include <rtx_shaders/gbuffer_psr_sharc_material_opaque_translucent_closesthit_wboit.h>
+#include <rtx_shaders/gbuffer_psr_sharc_material_rayPortal_closesthit_wboit.h>
 
 #include "dxvk_scoped_annotation.h"
 #include "rtx_context.h"
@@ -85,8 +98,11 @@ namespace dxvk {
         SAMPLER3D(GBUFFER_BINDING_VOLUME_FILTERED_RADIANCE_Y_INPUT)
         SAMPLER3D(GBUFFER_BINDING_VOLUME_FILTERED_RADIANCE_CO_CG_INPUT)
 
+        RW_STRUCTURED_BUFFER(GBUFFER_BINDING_BINDING_SHARC_HASH_ENTRIES_INPUT_OUTPUT)
+        RW_STRUCTURED_BUFFER(GBUFFER_BINDING_BINDING_SHARC_ACCUMULATION_INPUT_OUTPUT)
+        RW_STRUCTURED_BUFFER(GBUFFER_BINDING_BINDING_SHARC_RESOLVED_INPUT_OUTPUT)
         TEXTURE2D(GBUFFER_BINDING_COMPACTED_PIXEL_INDICES_INPUT)
-        TEXTURE2D(GBUFFER_BINDING_NRC_TRAINING_QUERY_RESERVOIR_INPUT)
+        TEXTURE2D(GBUFFER_BINDING_RADIANCE_CACHE_UPDATE_QUERY_RESERVOIR_INPUT)
         TEXTURE2D(GBUFFER_BINDING_TILE_ACTIVE_COUNTS_INPUT)
 
         RW_TEXTURE2D(GBUFFER_BINDING_SHARED_FLAGS_OUTPUT)
@@ -169,8 +185,8 @@ namespace dxvk {
         RW_TEXTURE2D(GBUFFER_BINDING_NRC_QUERY_PATH_DATA1_OUTPUT)
         RW_TEXTURE2D(GBUFFER_BINDING_NRC_TRAINING_PATH_DATA1_OUTPUT)
 
-        RW_TEXTURE2D(GBUFFER_BINDING_NRC_TRAINING_GBUFFER_SURFACE_RADIANCE_RG_OUTPUT)
-        RW_TEXTURE2D(GBUFFER_BINDING_NRC_TRAINING_GBUFFER_SURFACE_RADIANCE_B_OUTPUT)
+        RW_TEXTURE2D(GBUFFER_BINDING_RADIANCE_CACHE_UPDATE_GBUFFER_SURFACE_RADIANCE_RG_OUTPUT)
+        RW_TEXTURE2D(GBUFFER_BINDING_RADIANCE_CACHE_UPDATE_GBUFFER_SURFACE_RADIANCE_B_OUTPUT)
 
       END_PARAMETER()
     };
@@ -195,6 +211,7 @@ namespace dxvk {
     constexpr uint32_t kGbufferVariantLeanNoPSRFeatures = 1u << 5;
     constexpr uint32_t kGbufferVariantDebugFeatures = 1u << 6;
     constexpr uint32_t kGbufferVariantNRC = 1u << 7;
+    constexpr uint32_t kGbufferVariantSHARC = 1u << 8;
 
     constexpr uint32_t kGbufferDecalPrepareVariantDebug = 1u << 0;
 
@@ -203,6 +220,7 @@ namespace dxvk {
     constexpr uint32_t kGbufferRayQueryFeatureVariantPass = 1u << 8;
     constexpr uint32_t kGbufferRayQueryFeatureVariantWBOIT = 1u << 9;
     constexpr uint32_t kGbufferRayQueryFeatureVariantNRC = 1u << 10;
+    constexpr uint32_t kGbufferRayQueryFeatureVariantSHARC = 1u << 11;
     constexpr uint32_t kGbufferRayQueryFeatureVariantCount =
       RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_FEATURES_DEBUG + 1u;
 
@@ -228,12 +246,13 @@ namespace dxvk {
     constexpr uint32_t getGbufferMatrixVariantKey(
       const uint32_t features,
       const uint32_t psr,
-      const uint32_t nrc,
+      const uint32_t radianceCache,
       const uint32_t wboit) {
       return
         getGbufferFeatureVariantKey(features) |
         (psr == RTX_SHADER_VARIANT_MATRIX_GBUFFER_PSR_PSR ? kGbufferVariantPSR : 0u) |
-        (nrc == RTX_SHADER_VARIANT_MATRIX_GBUFFER_NRC_NRC ? kGbufferVariantNRC : 0u) |
+        (radianceCache == RTX_SHADER_VARIANT_MATRIX_GBUFFER_RADIANCE_CACHE_NRC ? kGbufferVariantNRC : 0u) |
+        (radianceCache == RTX_SHADER_VARIANT_MATRIX_GBUFFER_RADIANCE_CACHE_SHARC ? kGbufferVariantSHARC : 0u) |
         (wboit == RTX_SHADER_VARIANT_MATRIX_GBUFFER_WBOIT_WBOIT ? kGbufferVariantWBOIT : 0u);
     }
 
@@ -241,22 +260,27 @@ namespace dxvk {
       const uint32_t features,
       const bool isPSRPass,
       const bool nrcEnabled,
+      const bool sharcEnabled,
       const bool wboitEnabled) {
+      assert(!(nrcEnabled && sharcEnabled));
       return
         getGbufferFeatureVariantKey(features) |
         (isPSRPass ? kGbufferVariantPSR : 0u) |
         (nrcEnabled ? kGbufferVariantNRC : 0u) |
+        (sharcEnabled ? kGbufferVariantSHARC : 0u) |
         (wboitEnabled ? kGbufferVariantWBOIT : 0u);
     }
 
     constexpr uint32_t getGbufferPassVariantKey(
       const bool isPSRPass,
       const bool nrcEnabled,
+      const bool sharcEnabled,
       const bool wboitEnabled) {
       return getGbufferVariantKey(
         RTX_SHADER_VARIANT_MATRIX_GBUFFER_FEATURES_NONE,
         isPSRPass,
         nrcEnabled,
+        sharcEnabled,
         wboitEnabled);
     }
 
@@ -322,21 +346,22 @@ namespace dxvk {
       const uint32_t features,
       const uint32_t psr,
       const uint32_t pipeline,
-      const uint32_t nrc,
+      const uint32_t radianceCache,
       const uint32_t wboit) {
-      return getGbufferMatrixVariantKey(features, psr, nrc, wboit) |
+      return getGbufferMatrixVariantKey(features, psr, radianceCache, wboit) |
         (pipeline == RTX_SHADER_VARIANT_MATRIX_GBUFFER_PIPELINE_RAYGEN_SER ? kGbufferVariantSER : 0u);
     }
 
     constexpr uint32_t getGbufferRayQueryMatrixVariantKey(
       const uint32_t features,
       const uint32_t pass,
-      const uint32_t nrc,
+      const uint32_t radianceCache,
       const uint32_t wboit) {
       return
         features |
         (pass == RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_PASS_PSR ? kGbufferRayQueryFeatureVariantPass : 0u) |
-        (nrc == RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_NRC_NRC ? kGbufferRayQueryFeatureVariantNRC : 0u) |
+        (radianceCache == RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_RADIANCE_CACHE_NRC ? kGbufferRayQueryFeatureVariantNRC : 0u) |
+        (radianceCache == RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_RADIANCE_CACHE_SHARC ? kGbufferRayQueryFeatureVariantSHARC : 0u) |
         (wboit == RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_WBOIT_WBOIT ? kGbufferRayQueryFeatureVariantWBOIT : 0u);
     }
 
@@ -344,11 +369,14 @@ namespace dxvk {
       const uint32_t features,
       const bool isPSRPass,
       const bool nrcEnabled,
+      const bool sharcEnabled,
       const bool wboitEnabled) {
+      assert(!(nrcEnabled && sharcEnabled));
       return
         features |
         (isPSRPass ? kGbufferRayQueryFeatureVariantPass : 0u) |
         (nrcEnabled ? kGbufferRayQueryFeatureVariantNRC : 0u) |
+        (sharcEnabled ? kGbufferRayQueryFeatureVariantSHARC : 0u) |
         (wboitEnabled ? kGbufferRayQueryFeatureVariantWBOIT : 0u);
     }
 
@@ -367,8 +395,8 @@ namespace dxvk {
 
     Rc<DxvkShader> getGbufferRayQueryRayGenShader(const uint32_t key) {
       switch (key) {
-#define GBUFFER_RAYQUERY_RAYGEN_CASE(features, psr, pipeline, nrc, wboit, code) \
-        case getGbufferMatrixVariantKey(features, psr, nrc, wboit): \
+#define GBUFFER_RAYQUERY_RAYGEN_CASE(features, psr, pipeline, radianceCache, wboit, code) \
+        case getGbufferMatrixVariantKey(features, psr, radianceCache, wboit): \
           return GET_SHADER_VARIANT(VK_SHADER_STAGE_RAYGEN_BIT_KHR, GbufferRayGenShader, code);
         RTX_SHADER_VARIANT_MATRIX_GBUFFER_PIPELINE_RAYQUERY_RAYGEN_RGEN(GBUFFER_RAYQUERY_RAYGEN_CASE)
 #undef GBUFFER_RAYQUERY_RAYGEN_CASE
@@ -380,8 +408,8 @@ namespace dxvk {
 
     Rc<DxvkShader> getGbufferTraceRayGenShader(const uint32_t key) {
       switch (key) {
-#define GBUFFER_TRACE_RAYGEN_CASE(features, psr, pipeline, nrc, wboit, code) \
-        case getGbufferTraceRayGenVariantKey(features, psr, pipeline, nrc, wboit): \
+#define GBUFFER_TRACE_RAYGEN_CASE(features, psr, pipeline, radianceCache, wboit, code) \
+        case getGbufferTraceRayGenVariantKey(features, psr, pipeline, radianceCache, wboit): \
           return GET_SHADER_VARIANT(VK_SHADER_STAGE_RAYGEN_BIT_KHR, GbufferRayGenShader, code);
         RTX_SHADER_VARIANT_MATRIX_GBUFFER_PIPELINE_RAYGEN_RGEN(GBUFFER_TRACE_RAYGEN_CASE)
         RTX_SHADER_VARIANT_MATRIX_GBUFFER_PIPELINE_RAYGEN_SER_RGEN(GBUFFER_TRACE_RAYGEN_CASE)
@@ -394,8 +422,8 @@ namespace dxvk {
 
     Rc<DxvkShader> getGbufferRayQueryComputeShader(const uint32_t key) {
       switch (key) {
-#define GBUFFER_RAYQUERY_COMPUTE_CASE(features, pass, nrc, wboit, code) \
-        case getGbufferRayQueryMatrixVariantKey(features, pass, nrc, wboit): \
+#define GBUFFER_RAYQUERY_COMPUTE_CASE(features, pass, radianceCache, wboit, code) \
+        case getGbufferRayQueryMatrixVariantKey(features, pass, radianceCache, wboit): \
           return GET_SHADER_VARIANT(VK_SHADER_STAGE_COMPUTE_BIT, GbufferRayGenShader, code);
         RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_PASS_NONE_COMP(GBUFFER_RAYQUERY_COMPUTE_CASE)
         RTX_SHADER_VARIANT_MATRIX_GBUFFER_RAYQUERY_PASS_PSR_COMP(GBUFFER_RAYQUERY_COMPUTE_CASE)
@@ -433,13 +461,20 @@ namespace dxvk {
     void prewarmGbufferRayQueryComputeShaders(
       const bool allVariants,
       const bool nrcEnabled,
+      const bool sharcEnabled,
       const bool wboitEnabled) {
       if (allVariants) {
         for (uint32_t featureVariant = 0; featureVariant < kGbufferRayQueryFeatureVariantCount; featureVariant++) {
           for (int32_t isPSRPass = 1; isPSRPass >= 0; isPSRPass--) {
-            for (int32_t useNRC = nrcEnabled; useNRC >= 0; useNRC--) {
+            const int32_t radianceCacheVariantCount = nrcEnabled ? 3 : 2;
+            for (int32_t radianceCacheVariant = 0; radianceCacheVariant < radianceCacheVariantCount; radianceCacheVariant++) {
+              const bool useNRC = radianceCacheVariant == 2;
+              const bool useSHARC = radianceCacheVariant == 1;
+              if (useSHARC && !sharcEnabled) {
+                continue;
+              }
               for (int32_t useWBOIT = 1; useWBOIT >= 0; useWBOIT--) {
-                getGbufferRayQueryComputeShader(getGbufferRayQueryVariantKey(featureVariant, isPSRPass, useNRC, useWBOIT));
+                getGbufferRayQueryComputeShader(getGbufferRayQueryVariantKey(featureVariant, isPSRPass, useNRC, useSHARC, useWBOIT));
               }
             }
           }
@@ -460,8 +495,9 @@ namespace dxvk {
 
       for (const uint32_t featureVariant : featureVariants) {
         for (int32_t isPSRPass = 1; isPSRPass >= 0; isPSRPass--) {
-          for (int32_t useNRC = nrcEnabled; useNRC >= 0; useNRC--) {
-            getGbufferRayQueryComputeShader(getGbufferRayQueryVariantKey(featureVariant, isPSRPass, useNRC, wboitEnabled));
+          getGbufferRayQueryComputeShader(getGbufferRayQueryVariantKey(featureVariant, isPSRPass, false, false, wboitEnabled));
+          if (nrcEnabled || sharcEnabled) {
+            getGbufferRayQueryComputeShader(getGbufferRayQueryVariantKey(featureVariant, isPSRPass, nrcEnabled, sharcEnabled, wboitEnabled));
           }
         }
       }
@@ -477,6 +513,10 @@ namespace dxvk {
         return GET_SHADER_VARIANT(VK_SHADER_STAGE_MISS_BIT_KHR, GbufferMissShader, gbuffer_nrc_miss);
       case kGbufferVariantPSR | kGbufferVariantNRC:
         return GET_SHADER_VARIANT(VK_SHADER_STAGE_MISS_BIT_KHR, GbufferMissShader, gbuffer_psr_nrc_miss);
+      case kGbufferVariantSHARC:
+        return GET_SHADER_VARIANT(VK_SHADER_STAGE_MISS_BIT_KHR, GbufferMissShader, gbuffer_sharc_miss);
+      case kGbufferVariantPSR | kGbufferVariantSHARC:
+        return GET_SHADER_VARIANT(VK_SHADER_STAGE_MISS_BIT_KHR, GbufferMissShader, gbuffer_psr_sharc_miss);
       case kGbufferVariantWBOIT:
         return GET_SHADER_VARIANT(VK_SHADER_STAGE_MISS_BIT_KHR, GbufferMissShader, gbuffer_miss_wboit);
       case kGbufferVariantPSR | kGbufferVariantWBOIT:
@@ -485,6 +525,10 @@ namespace dxvk {
         return GET_SHADER_VARIANT(VK_SHADER_STAGE_MISS_BIT_KHR, GbufferMissShader, gbuffer_nrc_miss_wboit);
       case kGbufferVariantPSR | kGbufferVariantNRC | kGbufferVariantWBOIT:
         return GET_SHADER_VARIANT(VK_SHADER_STAGE_MISS_BIT_KHR, GbufferMissShader, gbuffer_psr_nrc_miss_wboit);
+      case kGbufferVariantSHARC | kGbufferVariantWBOIT:
+        return GET_SHADER_VARIANT(VK_SHADER_STAGE_MISS_BIT_KHR, GbufferMissShader, gbuffer_sharc_miss_wboit);
+      case kGbufferVariantPSR | kGbufferVariantSHARC | kGbufferVariantWBOIT:
+        return GET_SHADER_VARIANT(VK_SHADER_STAGE_MISS_BIT_KHR, GbufferMissShader, gbuffer_psr_sharc_miss_wboit);
       default:
         assert(false && "Invalid GBuffer miss shader variant");
         return nullptr;
@@ -501,6 +545,10 @@ namespace dxvk {
         return GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, GbufferClosestHitShader, gbuffer_nrc_material_opaque_translucent_closestHit);
       case kGbufferVariantNRC | kGbufferVariantPortals:
         return GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, GbufferClosestHitShader, gbuffer_nrc_material_rayportal_closestHit);
+      case kGbufferVariantSHARC:
+        return GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, GbufferClosestHitShader, gbuffer_sharc_material_opaque_translucent_closestHit);
+      case kGbufferVariantSHARC | kGbufferVariantPortals:
+        return GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, GbufferClosestHitShader, gbuffer_sharc_material_rayportal_closestHit);
       case kGbufferVariantPSR:
         return GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, GbufferClosestHitShader, gbuffer_psr_material_opaque_translucent_closestHit);
       case kGbufferVariantPSR | kGbufferVariantPortals:
@@ -509,6 +557,10 @@ namespace dxvk {
         return GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, GbufferClosestHitShader, gbuffer_psr_nrc_material_opaque_translucent_closestHit);
       case kGbufferVariantPSR | kGbufferVariantNRC | kGbufferVariantPortals:
         return GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, GbufferClosestHitShader, gbuffer_psr_nrc_material_rayportal_closestHit);
+      case kGbufferVariantPSR | kGbufferVariantSHARC:
+        return GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, GbufferClosestHitShader, gbuffer_psr_sharc_material_opaque_translucent_closestHit);
+      case kGbufferVariantPSR | kGbufferVariantSHARC | kGbufferVariantPortals:
+        return GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, GbufferClosestHitShader, gbuffer_psr_sharc_material_rayportal_closestHit);
       case kGbufferVariantWBOIT:
         return GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, GbufferClosestHitShader, gbuffer_material_opaque_translucent_closestHit_wboit);
       case kGbufferVariantWBOIT | kGbufferVariantPortals:
@@ -517,6 +569,10 @@ namespace dxvk {
         return GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, GbufferClosestHitShader, gbuffer_nrc_material_opaque_translucent_closestHit_wboit);
       case kGbufferVariantNRC | kGbufferVariantWBOIT | kGbufferVariantPortals:
         return GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, GbufferClosestHitShader, gbuffer_nrc_material_rayportal_closestHit_wboit);
+      case kGbufferVariantSHARC | kGbufferVariantWBOIT:
+        return GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, GbufferClosestHitShader, gbuffer_sharc_material_opaque_translucent_closestHit_wboit);
+      case kGbufferVariantSHARC | kGbufferVariantWBOIT | kGbufferVariantPortals:
+        return GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, GbufferClosestHitShader, gbuffer_sharc_material_rayportal_closestHit_wboit);
       case kGbufferVariantPSR | kGbufferVariantWBOIT:
         return GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, GbufferClosestHitShader, gbuffer_psr_material_opaque_translucent_closestHit_wboit);
       case kGbufferVariantPSR | kGbufferVariantWBOIT | kGbufferVariantPortals:
@@ -525,6 +581,10 @@ namespace dxvk {
         return GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, GbufferClosestHitShader, gbuffer_psr_nrc_material_opaque_translucent_closestHit_wboit);
       case kGbufferVariantPSR | kGbufferVariantNRC | kGbufferVariantWBOIT | kGbufferVariantPortals:
         return GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, GbufferClosestHitShader, gbuffer_psr_nrc_material_rayportal_closestHit_wboit);
+      case kGbufferVariantPSR | kGbufferVariantSHARC | kGbufferVariantWBOIT:
+        return GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, GbufferClosestHitShader, gbuffer_psr_sharc_material_opaque_translucent_closestHit_wboit);
+      case kGbufferVariantPSR | kGbufferVariantSHARC | kGbufferVariantWBOIT | kGbufferVariantPortals:
+        return GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, GbufferClosestHitShader, gbuffer_psr_sharc_material_rayportal_closestHit_wboit);
       default:
         assert(false && "Invalid GBuffer closest hit shader variant");
         return nullptr;
@@ -539,6 +599,7 @@ namespace dxvk {
     ScopedCpuProfileZoneN("Gbuffer Shader Prewarming");
 
     const bool isNrcSupported = NeuralRadianceCache::checkIsSupported(device());
+    const bool isSharcSupported = SpatiallyHashedRadianceCache::checkIsSupported(device());
     const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device);
     const bool isShaderExecutionReorderingSupported = 
       RtxContext::checkIsShaderExecutionReorderingSupported(*m_device) && 
@@ -561,7 +622,10 @@ namespace dxvk {
                 for (int32_t useRayQuery = 1; useRayQuery >= 0; useRayQuery--) {
                   for (int32_t serEnabled = isShaderExecutionReorderingSupported; serEnabled >= 0; serEnabled--) {
                     for (int32_t ommEnabled = isOpacityMicromapSupported; ommEnabled >= 0; ommEnabled--) {
-                      pipelineManager.registerRaytracingShaders(getPipelineShaders(featureVariant, isPSRPass, useRayQuery, serEnabled, ommEnabled, includePortals, nrcEnabled, wboitEnabled));
+                      pipelineManager.registerRaytracingShaders(getPipelineShaders(featureVariant, isPSRPass, useRayQuery, serEnabled, ommEnabled, includePortals, nrcEnabled, false, wboitEnabled));
+                      if (!nrcEnabled && isSharcSupported) {
+                        pipelineManager.registerRaytracingShaders(getPipelineShaders(featureVariant, isPSRPass, useRayQuery, serEnabled, ommEnabled, includePortals, false, true, wboitEnabled));
+                      }
                     }
                   }
                 }
@@ -571,7 +635,7 @@ namespace dxvk {
         }
       }
 
-      prewarmGbufferRayQueryComputeShaders(true, isNrcSupported, false);
+      prewarmGbufferRayQueryComputeShaders(true, isNrcSupported, isSharcSupported, false);
       getGbufferPSRPrepareComputeShader();
       prewarmGbufferDecalPrepareComputeShaders();
     } else {
@@ -579,6 +643,7 @@ namespace dxvk {
       const bool serEnabled = RtxOptions::isShaderExecutionReorderingInPathtracerGbufferEnabled();
       const bool ommEnabled = RtxOptions::getEnableOpacityMicromap();
       const bool nrcEnabled = RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::NeuralRadianceCache;
+      const bool sharcEnabled = isSharcSupported && RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::SHaRC;
       const bool wboitEnabled = RtxOptions::wboitEnabled();
 
       const uint32_t featureVariants[] = {
@@ -590,7 +655,7 @@ namespace dxvk {
 
       switch (RtxOptions::renderPassGBufferRaytraceMode()) {
       case RaytraceMode::RayQuery:
-        prewarmGbufferRayQueryComputeShaders(false, nrcEnabled, wboitEnabled);
+        prewarmGbufferRayQueryComputeShaders(false, nrcEnabled, sharcEnabled, wboitEnabled);
         break;
       case RaytraceMode::RayQueryRayGen:
       case RaytraceMode::TraceRay:
@@ -606,6 +671,7 @@ namespace dxvk {
                 ommEnabled,
                 includePortals,
                 nrcEnabled,
+                sharcEnabled,
                 wboitEnabled));
             }
           }
@@ -769,11 +835,16 @@ namespace dxvk {
 
     // Bind necessary resources for Neural Radiance Cache
     NeuralRadianceCache& nrc = ctx->getCommonObjects()->metaNeuralRadianceCache();
-    nrc.bindGBufferPathTracingResources(*ctx);    
+    nrc.bindGBufferPathTracingResources(*ctx);
+
+    // Bind necessary resources for Spatially Hashed Radiance Cache
+    SpatiallyHashedRadianceCache& sharc = ctx->getCommonObjects()->metaSpatiallyHashedRadianceCache();
+    sharc.bindGBufferPathTracingResources(*ctx);
   
     const VkExtent3D& rayDims = rtOutput.m_compositeOutputExtent;
 
     const bool nrcEnabled = nrc.isActive();
+    const bool sharcEnabled = sharc.isActive();
     const bool serEnabled = RtxOptions::isShaderExecutionReorderingInPathtracerGbufferEnabled();
     const bool ommEnabled = RtxOptions::getEnableOpacityMicromap();
     const bool includePortals = RtxOptions::rayPortalModelTextureHashes().size() > 0 || rtOutput.m_raytraceArgs.numActiveRayPortals > 0;
@@ -795,7 +866,7 @@ namespace dxvk {
     const uint32_t decalPrepareVariantKey = getGbufferDecalPrepareVariantKey(
       debugViewEnabled,
       rtOutput.m_raytraceArgs.enableObjectPicking);
-    // Keep NRC on the original inline PSR sampling path. NRC updates depend
+    // Keep radiance cache updates on the original inline PSR sampling path. They depend
     // on knowing whether the current GBuffer hit is the final integrated
     // surface, which PSR prepare defers to a later pass.
     // The compacted GBuffer samples inline too, because PSR prepare reads the material back from the GBuffer,
@@ -804,6 +875,7 @@ namespace dxvk {
     const bool usePSRPrepare =
       psrEnabled &&
       !nrcEnabled &&
+      !sharcEnabled &&
       !rtOutput.m_raytraceArgs.enableRaytracedRenderTarget &&
       rtOutput.m_raytraceArgs.sparseRenderingArgs.mode == SparseRenderingMode::Off;
     const uint32_t rayQueryFeatureVariant = selectGbufferRayQueryFeatureVariant(
@@ -819,11 +891,11 @@ namespace dxvk {
     // Binds the Primary Rays or PSR pass of the raytrace mode.
     auto bindPass = [&](const bool isPSRPass) {
       if (raytraceMode == RaytraceMode::RayQuery) {
-        ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getComputeShader(rayQueryFeatureVariant, isPSRPass, nrcEnabled, wboitEnabled));
+        ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getComputeShader(rayQueryFeatureVariant, isPSRPass, nrcEnabled, sharcEnabled, wboitEnabled));
       } else {
         ctx->bindRaytracingPipelineShaders(getPipelineShaders(
           pipelineFeatureVariant, isPSRPass, raytraceMode == RaytraceMode::RayQueryRayGen,
-          serEnabled, ommEnabled, includePortals, nrcEnabled, wboitEnabled));
+          serEnabled, ommEnabled, includePortals, nrcEnabled, sharcEnabled, wboitEnabled));
       }
     };
 
@@ -906,11 +978,12 @@ namespace dxvk {
     const bool ommEnabled,
     const bool includePortals,
     const bool nrcEnabled,
+    const bool sharcEnabled,
     const bool wboitEnabled) {
     ScopedCpuProfileZone();
 
-    const uint32_t rayGenBaseKey = getGbufferVariantKey(featureVariant, isPSRPass, nrcEnabled, wboitEnabled);
-    const uint32_t passKey = getGbufferPassVariantKey(isPSRPass, nrcEnabled, wboitEnabled);
+    const uint32_t rayGenBaseKey = getGbufferVariantKey(featureVariant, isPSRPass, nrcEnabled, sharcEnabled, wboitEnabled);
+    const uint32_t passKey = getGbufferPassVariantKey(isPSRPass, nrcEnabled, sharcEnabled, wboitEnabled);
     DxvkRaytracingPipelineShaders shaders;
 
     if (useRayQuery) {
@@ -937,8 +1010,9 @@ namespace dxvk {
     const uint32_t featureVariant,
     const bool isPSRPass,
     const bool nrcEnabled,
+    const bool sharcEnabled,
     const bool wboitEnabled) const {
-    return getGbufferRayQueryComputeShader(getGbufferRayQueryVariantKey(featureVariant, isPSRPass, nrcEnabled, wboitEnabled));
+    return getGbufferRayQueryComputeShader(getGbufferRayQueryVariantKey(featureVariant, isPSRPass, nrcEnabled, sharcEnabled, wboitEnabled));
   }
 
   const char* DxvkPathtracerGbuffer::raytraceModeToString(RaytraceMode raytraceMode)

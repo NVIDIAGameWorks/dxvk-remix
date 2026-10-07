@@ -170,6 +170,7 @@ namespace dxvk {
     ImportanceSampled = 0,   // Importance sampled integration - provides the noisiest output and used primarily for reference comparisons
     ReSTIRGI = 1,            // Importance Sampled + ReSTIR GI integrations
     NeuralRadianceCache = 2, // Implements a live trained neural network to provide a world space radiance cache and allow the pathtracer to terminate paths earlier into the cache.
+    SHaRC = 3,               // Implements a Spatially Hashed Radiance Cache (SHaRC) to provide a world space radiance cache and allow the pathtracer to terminate paths earlier into the cache.        
   
     Count
   };
@@ -345,6 +346,8 @@ namespace dxvk {
                     args.minValue = 0.0f);
     RTX_OPTION_ARGS("rtx", float, fireflyFilteringLuminanceThreshold, 1000.0f, "Maximum luminance threshold for the firefly filtering to clamp to.",
                     args.minValue = 0.0f);
+    RTX_OPTION_ARGS("rtx", float, primaryIndirectSpecularFireflyFilteringThreshold, 50.0f, "Maximum per-channel radiance for the primary indirect specular signal to suppress fireflies.",
+                    args.minValue = 0.0f);
     RTX_OPTION("rtx", float, secondarySpecularFireflyFilteringThreshold, 1000.0f, "Firefly luminance clamping threshold for secondary specular signal.");
     RTX_OPTION_ARGS("rtx", float, vertexColorStrength, 0.6f,
                     "A scalar to apply to how strong vertex color influence should be on materials.\n"
@@ -498,16 +501,16 @@ namespace dxvk {
     RTX_OPTION_ENV("rtx", bool, useRTXDI, true, "DXVK_USE_RTXDI",
                    "A flag indicating if RTXDI should be used, true enables RTXDI, false disables it and falls back on simpler light sampling methods.\n"
                    "RTXDI provides improved direct light sampling quality over traditional methods and should generally be enabled for improved direct lighting quality at the cost of some performance.");
-    RTX_OPTION_ARGS("rtx", IntegrateIndirectMode, integrateIndirectMode, IntegrateIndirectMode::NeuralRadianceCache,
+    RTX_OPTION_ARGS("rtx", IntegrateIndirectMode, integrateIndirectMode, IntegrateIndirectMode::SHaRC,
                    "Indirect integration mode:\n"
                    "0: Importance Sampled. Importance sampled mode uses typical GI sampling and it is not recommended for general use as it provides the noisiest output.\n"
                    "   It serves as a reference integration mode for validation of other indirect integration modes.\n"
                    "1: ReSTIR GI. ReSTIR GI provides improved indirect path sampling over \"Importance Sampled\" mode \n"
                    "   with better indirect diffuse and specular GI quality at increased performance cost.\n"
                    "2: RTX Neural Radiance Cache (NRC). NRC is an AI based world space radiance cache. It is live trained by the path tracer\n"
-                   "   and allows paths to terminate early by looking up the cached value and saving performance.\n"
-                   "   NRC supports infinite bounces and often provides results closer to that of reference than ReSTIR GI\n"
-                   "   while improving performance in scenarios where ray paths have 2 or more bounces on average.\n",
+                   "   and remains available as an alternative cache path.\n"
+                   "3: Spatially Hashed Radiance Cache (SHaRC). SHaRC is the default world-space radiance cache. It uses a spatial hash\n"
+                   "   to store radiance and allows paths to terminate early by looking up cached values.\n",
                    args.environment = "RTX_INTEGRATE_INDIRECT_MODE",
                    args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION_ARGS("rtx", UpscalerType, upscalerType, UpscalerType::DLSS, "Upscaling boosts performance with varying degrees of image quality tradeoff depending on the type of upscaler and the quality mode/preset.",

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -22,12 +22,17 @@
 
 //!variant gbuffer_miss.rmiss
 
-
 // NRC
 
 //!variant gbuffer_nrc_miss.rmiss
 //!>       ENABLE_NRC=1
 
+// SHaRC
+// Note: Only Sharc update routines are called from Sharc header during gbuffer pass. 
+//       Remix does not support SHaRC queries at the primary hits, and all query path processing is handled in the indirect PT pass.
+
+//!variant gbuffer_sharc_miss.rmiss
+//!>       SHARC_UPDATE=1
 
 // WBOIT
 
@@ -38,6 +43,12 @@
 
 //!variant gbuffer_nrc_miss_wboit.rmiss
 //!>       ENABLE_NRC=1
+//!>       UNORDERED_RESOLVE_WBOIT
+
+// SHARC
+
+//!variant gbuffer_sharc_miss_wboit.rmiss
+//!>       SHARC_UPDATE=1
 //!>       UNORDERED_RESOLVE_WBOIT
 
 //!end-variants

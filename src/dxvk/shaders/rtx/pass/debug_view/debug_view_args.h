@@ -83,6 +83,7 @@ struct DebugViewArgs {
   VolumeArgs volumeArgs;
   NrdArgs nrd;
   NrcArgs nrcArgs;
+  SharcArgs sharcArgs;
   AccumulationArgs accumulationArgs;
   SparseRenderingArgs sparseRenderingArgs;
 

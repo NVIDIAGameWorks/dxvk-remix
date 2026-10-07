@@ -127,14 +127,14 @@ Texture2D<uint4> NrcPathData1;
 layout(rgba16ui, binding = INTEGRATE_INDIRECT_BINDING_NRC_UPDATE_PATH_DATA1_INPUT)
 Texture2D<uint4> NrcUpdatePathData1;
 
-layout(rg16f, binding = INTEGRATE_INDIRECT_BINDING_NRC_TRAINING_GBUFFER_SURFACE_RADIANCE_RG_INPUT)
-Texture2D<float2> NrcTrainingGBufferSurfaceRadianceRG;
+layout(rg16f, binding = INTEGRATE_INDIRECT_BINDING_RADIANCE_CACHE_UPDATE_GBUFFER_SURFACE_RADIANCE_RG_INPUT)
+Texture2D<float2> RadianceCacheUpdateGBufferSurfaceRadianceRG;
 
-layout(r16f, binding = INTEGRATE_INDIRECT_BINDING_NRC_TRAINING_GBUFFER_SURFACE_RADIANCE_B_INPUT)
-Texture2D<float> NrcTrainingGBufferSurfaceRadianceB;
+layout(r16f, binding = INTEGRATE_INDIRECT_BINDING_RADIANCE_CACHE_UPDATE_GBUFFER_SURFACE_RADIANCE_B_INPUT)
+Texture2D<float> RadianceCacheUpdateGBufferSurfaceRadianceB;
 
-layout(binding = INTEGRATE_INDIRECT_BINDING_NRC_TRAINING_QUERY_RESERVOIR_INPUT)
-Texture2D<uint> NrcTrainingQueryReservoir;
+layout(binding = INTEGRATE_INDIRECT_BINDING_RADIANCE_CACHE_UPDATE_QUERY_RESERVOIR_INPUT)
+Texture2D<uint> RadianceCacheUpdateQueryReservoir;
 
 // Inputs / Outputs
 
@@ -164,6 +164,18 @@ REORDER_COHERENT RWStructuredBuffer<NrcRadianceParams> QueryRadianceParams;
 
 layout(binding = INTEGRATE_INDIRECT_BINDING_NRC_COUNTERS_INPUT_OUTPUT)
 REORDER_COHERENT RWStructuredBuffer<uint> CountersData;
+
+layout(binding = INTEGRATE_INDIRECT_BINDING_SHARC_HASH_ENTRIES_INPUT_OUTPUT)
+RWStructuredBuffer<uint64_t> SharcHashEntriesBuffer;
+
+layout(binding = INTEGRATE_INDIRECT_BINDING_SHARC_ACCUMULATION_INPUT_OUTPUT)
+RWStructuredBuffer<SharcAccumulationData> SharcAccumulationBuffer;
+
+layout(binding = INTEGRATE_INDIRECT_BINDING_SHARC_RESOLVED_INPUT_OUTPUT)
+RWStructuredBuffer<SharcPackedData> SharcResolvedBuffer;
+
+layout(binding = INTEGRATE_INDIRECT_BINDING_SHARC_UPDATE_COUNTERS_INPUT_OUTPUT)
+RWStructuredBuffer<uint> SharcUpdateCounters;
 
 // Outputs
 

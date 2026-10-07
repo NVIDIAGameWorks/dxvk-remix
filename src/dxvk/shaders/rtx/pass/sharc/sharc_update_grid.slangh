@@ -1,0 +1,136 @@
+/*
+* Copyright (c) 2026, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Maps between query pixels and the SHaRC update grid the same way NRC maps its training grid.
+// This header leaves out the SHaRC SDK, which needs 64-bit atomics, so passes that only place update paths can include it.
+
+#include "rtx/pass/sharc_args.h"
+#include "rtx/pass/sparse_rendering/cache_update_reservoir.slangh"
+
+namespace Sharc
+{
+// The jitter keeps the query pixel inside the update cell it maps back to.
+uint2 calculateQueryPixelCoordinate(
+  uint2 updatePixelCoordinate,
+  SharcArgs args)
+{
+  return (updatePixelCoordinate + args.updatePixelJitter) * args.updateToQueryCoordinateSpace;
+}
+
+uint2 calculateUpdatePixelCoordinate(
+  uint2 queryPixelCoordinate,
+  SharcArgs args)
+{
+  // The half pixel offset maps the query pixel's center, so it does not straddle an update cell boundary.
+  return (queryPixelCoordinate + 0.5) * args.queryToUpdateCoordinateSpace;
+}
+
+// Returns the first query pixel of the update cell, which reservoir offsets are relative to.
+// It is the inverse of calculateUpdatePixelCoordinate, and its multiply, subtract and ceil are exact,
+// so every pass agrees on it.
+uint2 calculateUpdateCellOriginInQuerySpace(
+  uint2 updatePixelCoordinate,
+  SharcArgs args)
+{
+  return uint2(max(ceil(vec2(updatePixelCoordinate) * args.updateToQueryCoordinateSpace - 0.5f), vec2(0.0f)));
+}
+
+// Returns the query pixel that the update cell selected.
+// Returns false when it selected none this frame.
+bool calculateSparseUpdateQueryPixel(
+  uint2 updatePixelCoordinate,
+  Texture2D<uint> updateQueryReservoir,
+  SharcArgs args,
+  out uint2 queryPixelCoordinate)
+{
+  const uint reservoirEntry = updateQueryReservoir[updatePixelCoordinate];
+  queryPixelCoordinate = uint2(0);
+
+  if (reservoirEntry == kCacheUpdateQueryReservoirEmpty)
+  {
+    return false;
+  }
+
+  queryPixelCoordinate = calculateUpdateCellOriginInQuerySpace(updatePixelCoordinate, args) +
+    unpackCacheUpdateQueryPixelOffset(reservoirEntry);
+  return true;
+}
+
+bool calculateIfPixelHasActiveUpdatePath(uint2 queryPixelCoordinate, SharcArgs args)
+{
+  const uint2 updatePixelCoordinate = calculateUpdatePixelCoordinate(queryPixelCoordinate, args);
+  return all(queryPixelCoordinate == calculateQueryPixelCoordinate(updatePixelCoordinate, args));
+}
+
+// Returns whether this query pixel starts a SHaRC update path, and the update cell it belongs to.
+// Resampling takes each cell's pixel from the reservoir, otherwise it comes from the jittered update lattice.
+bool calculateUpdatePathForQueryPixel(
+  uint2 queryPixelCoordinate,
+  bool resampledUpdatePaths,
+  Texture2D<uint> updateQueryReservoir,
+  SharcArgs args,
+  out uint2 updatePixelCoordinate)
+{
+  updatePixelCoordinate = calculateUpdatePixelCoordinate(queryPixelCoordinate, args);
+
+  if (resampledUpdatePaths)
+  {
+    if (any(updatePixelCoordinate >= uint2(args.activeUpdateDimensions)))
+    {
+      return false;
+    }
+
+    const uint reservoirEntry = updateQueryReservoir[updatePixelCoordinate];
+
+    if (reservoirEntry == kCacheUpdateQueryReservoirEmpty)
+    {
+      return false;
+    }
+
+    // Every pixel in an update cell reads the same selected pixel,
+    // so comparing it against this pixel's own offset singles out the one pixel that starts the update path.
+    const uint2 cellOrigin = calculateUpdateCellOriginInQuerySpace(updatePixelCoordinate, args);
+    return all(unpackCacheUpdateQueryPixelOffset(reservoirEntry) == queryPixelCoordinate - cellOrigin);
+  }
+
+  return calculateIfPixelHasActiveUpdatePath(queryPixelCoordinate, args);
+}
+
+// A combined dispatch traces update paths in its first numRowsForUpdate rows, laid out linearly, and query paths after them.
+bool isUpdatePixel(uint2 combinedPixelCoordinate, SharcArgs args)
+{
+  return combinedPixelCoordinate.y < args.numRowsForUpdate;
+}
+
+// Only valid for coordinates that isUpdatePixel accepts.
+uint2 calculateUpdatePixelCoordinateFromCombinedCoordinate(
+  uint2 combinedPixelCoordinate,
+  uint combinedDispatchWidth,
+  SharcArgs args)
+{
+  const uint updatePixelIndex = combinedPixelCoordinate.y * combinedDispatchWidth + combinedPixelCoordinate.x;
+  const uint activeUpdateWidth = uint(args.activeUpdateDimensions.x);
+
+  return uint2(updatePixelIndex % activeUpdateWidth, updatePixelIndex / activeUpdateWidth);
+}
+} // namespace Sharc

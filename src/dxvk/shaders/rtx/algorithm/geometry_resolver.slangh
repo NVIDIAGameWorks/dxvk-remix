@@ -42,6 +42,7 @@
 #include "rtx/pass/post_fx/post_fx_motion_blur_geometry_flags.slangh"
 #include "rtx/algorithm/nee_cache_light.slangh"
 #include "rtx/utility/gpu_printing.slangh"
+#include "rtx/pass/sharc/sharc_integrator_utilities.slangh"
 #include "rtx/pass/gbuffer/gbuffer_guides_output.slangh"
 
 #ifndef GBUFFER_FEATURE_DLSSRR
@@ -1867,7 +1868,7 @@ void updateNrcOnGBufferMiss(
     uvec2 trainingPixelCoordinateInTrainingSpace;
     const bool hasTrainingPath = Nrc::calculateNrcTrainingPathForQueryPixel(
       queryPixelCoordinate, cb.sparseRenderingArgs.resampledNrcTrainingPaths,
-      NrcTrainingQueryReservoir, cb.nrcArgs, trainingPixelCoordinateInTrainingSpace);
+      RadianceCacheUpdateQueryReservoir, cb.nrcArgs, trainingPixelCoordinateInTrainingSpace);
 
     // Training paths are more sparse than Query paths, so filter the updates to pixels that have a training path
     if (hasTrainingPath)
@@ -1919,7 +1920,7 @@ void updateNrcOnGBufferHitTrainingAndQueryPaths(
     uvec2 trainingPixelCoordinateInTrainingSpace;
     const bool hasTrainingPath = Nrc::calculateNrcTrainingPathForQueryPixel(
       queryPixelCoordinate, cb.sparseRenderingArgs.resampledNrcTrainingPaths,
-      NrcTrainingQueryReservoir, cb.nrcArgs, trainingPixelCoordinateInTrainingSpace);
+      RadianceCacheUpdateQueryReservoir, cb.nrcArgs, trainingPixelCoordinateInTrainingSpace);
 
     // Training paths are more sparse than Query paths, so filter the updates to pixels that have a training path
     if (hasTrainingPath)
@@ -1931,8 +1932,8 @@ void updateNrcOnGBufferHitTrainingAndQueryPaths(
 
       // Store radiance accumulated on the surface during GBuffer pass, this will be added to accumulated radiance
       // between vertex 0 and vertex 1 for training paths in the indirect integrate pass
-      NrcTrainingGBufferSurfaceRadianceRG[trainingPixelCoordinateInTrainingSpace] = gbufferSurfaceRadiance.rg;
-      NrcTrainingGBufferSurfaceRadianceB[trainingPixelCoordinateInTrainingSpace] = gbufferSurfaceRadiance.b;
+      RadianceCacheUpdateGBufferSurfaceRadianceRG[trainingPixelCoordinateInTrainingSpace] = gbufferSurfaceRadiance.rg;
+      RadianceCacheUpdateGBufferSurfaceRadianceB[trainingPixelCoordinateInTrainingSpace] = gbufferSurfaceRadiance.b;
     }
 
     if (cb.debugView == DEBUG_VIEW_NRC_UPDATE_PIXEL)
@@ -1942,6 +1943,85 @@ void updateNrcOnGBufferHitTrainingAndQueryPaths(
   }
 #else
   unused(randomState);
+#endif
+}
+
+// Performs SHaRC specific updates on a primary ray miss
+void updateSharcOnGBufferMiss(
+  uvec2 pixelCoordinate,
+  uvec2 compactedCoordinate,
+  f16vec3 direction,
+  bool isSkyRadianceValid = false,
+  vec3 skyRadiance = 0.xxx)
+{
+  // Note: Query does not need any processing on a miss
+
+#if SHARC_UPDATE
+  if (!hasGBufferSlot(compactedCoordinate))
+  {
+    return;
+  }
+
+  if (cb.sparseRenderingArgs.resampledSharcUpdatePaths)
+  {
+    return;
+  }
+
+  // First check this pixel has an active update path associated with it
+  if (!Sharc::calculateIfPixelHasActiveUpdatePath(pixelCoordinate, cb.sharcArgs))
+  {
+    return; // There's no active update path for this pixel
+  }
+
+  if (!isSkyRadianceValid)
+  {
+    // Calculate sky radiance here since non-PSRed primary rays have volume attenuated sky value applied on composition
+    // and that's incompatible with SHaRC update that completes prior to that
+    if (cb.domeLightArgs.active)
+    {
+      skyRadiance = cb.domeLightArgs.radiance * sampleDomeLightTexture(LinearWrapSampler, direction, cb.domeLightArgs.textureIndex, cb.domeLightArgs.worldToLightTransform);
+    }
+    else
+    {
+      skyRadiance = cb.skyBrightness * SkyProbe.SampleLevel(direction, 0);
+    }
+  }
+
+  SharcState sharcState;
+  SharcInit(sharcState);
+
+  Sharc::onMiss(sharcState, cb.sharcArgs, skyRadiance);
+#endif
+}
+
+// Performs SHaRC specific updates on a primary ray hit
+void updateSharcOnGBufferHit(
+  uvec2 pixelCoordinate,
+  uvec2 compactedCoordinate,
+  // GBuffer surface radiance - emissive + diffuse layer (i.e. all except Integrate Direct and Indirect Lighting)
+  vec3 gbufferSurfaceRadiance)
+{
+  // Note: Remix does not implement support for querying the SHaRC for primary hits since that is not desired in practice,
+  // as it's more likely to show limitations of SHaRC (i.e. per-pixel resolution/quality, latency, etc) 
+  // versus resolving direct lighting using RTXDI.
+  // Therefore, we do not need to do anything here for the query paths
+
+#if SHARC_UPDATE
+  if (!hasGBufferSlot(compactedCoordinate))
+  {
+    return;
+  }
+
+  uvec2 updatePixelCoordinate;
+  if (Sharc::calculateUpdatePathForQueryPixel(
+        pixelCoordinate, cb.sparseRenderingArgs.resampledSharcUpdatePaths,
+        RadianceCacheUpdateQueryReservoir, cb.sharcArgs, updatePixelCoordinate))
+  {
+    // Store radiance accumulated on the surface during GBuffer pass, this will be added to accumulated radiance
+    // between vertex 0 and vertex 1 for training paths in the indirect integrate pass
+    RadianceCacheUpdateGBufferSurfaceRadianceRG[updatePixelCoordinate] = gbufferSurfaceRadiance.rg;
+    RadianceCacheUpdateGBufferSurfaceRadianceB[updatePixelCoordinate] = gbufferSurfaceRadiance.b;
+  }
 #endif
 }
 
@@ -2141,6 +2221,9 @@ void geometryResolverVertex(
   {
     updateNrcOnGBufferMiss(geometryResolverState.pixelCoordinate, geometryResolverState.compactedCoordinate);
 
+    updateSharcOnGBufferMiss(geometryResolverState.pixelCoordinate, geometryResolverState.compactedCoordinate,
+      geometryResolverState.direction);
+
     // Note: Always write to primary surface for initial misses,
     // it always will be the selected integrated surface in this case as well.
     if (hasGBufferSlot(geometryResolverState.compactedCoordinate))
@@ -2273,6 +2356,9 @@ void geometryResolverVertex(
     updateNrcOnGBufferHitTrainingAndQueryPaths(geometryResolverState.pixelCoordinate, geometryResolverState.compactedCoordinate,
       geometryResolverState.direction, geometryResolverState.accumulatedHitDistance,
       surfaceInteraction, polymorphicSurfaceMaterialInteraction, gbufferSurfaceRadiance, randomState);
+
+    updateSharcOnGBufferHit(geometryResolverState.pixelCoordinate, geometryResolverState.compactedCoordinate,
+      gbufferSurfaceRadiance);
   }
 
   // Set the PSTR material medium index if a medium was entered
@@ -2754,6 +2840,8 @@ void geometryPSRResolverVertex(
   // Accumulate Segment Hit Distance
   // Note: Only accumulate hit distance if the current ray interaction was not a miss.
 
+  vec3 skyRadiance = vec3(0.f);
+
   if (rayInteractionHasHit(rayInteraction))
   {
     geometryPSRResolverState.accumulatedHitDistance += geometryPSRResolverState.segmentHitDistance;
@@ -2762,13 +2850,15 @@ void geometryPSRResolverVertex(
   {
     if (cb.domeLightArgs.active)
     {
-       emissiveRadiance += cb.domeLightArgs.radiance * sampleDomeLightTexture(LinearWrapSampler, ray.direction, cb.domeLightArgs.textureIndex, cb.domeLightArgs.worldToLightTransform) * radianceAttenuation;
+       skyRadiance = cb.domeLightArgs.radiance * sampleDomeLightTexture(LinearWrapSampler, ray.direction, cb.domeLightArgs.textureIndex, cb.domeLightArgs.worldToLightTransform);
     }
     else
     {
       // Output radiance from sky probe
-       emissiveRadiance += cb.skyBrightness * SkyProbe.SampleLevel(ray.direction, 0) * radianceAttenuation;
+      skyRadiance = cb.skyBrightness * SkyProbe.SampleLevel(ray.direction, 0);
     }
+
+    emissiveRadiance += skyRadiance * radianceAttenuation;
   }
 
   // Note: Emissive radiance handled first so objects with opacity do not attenuate themselves.
@@ -2794,6 +2884,8 @@ void geometryPSRResolverVertex(
     if (geometryPSRResolverState.selectedIntegrationSurface)
     {
       updateNrcOnGBufferMiss(geometryPSRResolverState.pixelCoordinate, geometryPSRResolverState.compactedCoordinate);
+      updateSharcOnGBufferMiss(geometryPSRResolverState.pixelCoordinate, geometryPSRResolverState.compactedCoordinate,
+        geometryPSRResolverState.direction, true, skyRadiance);
     }
 
     // Output Miss
@@ -2868,6 +2960,9 @@ void geometryPSRResolverVertex(
       updateNrcOnGBufferHitTrainingAndQueryPaths(geometryPSRResolverState.pixelCoordinate, geometryPSRResolverState.compactedCoordinate,
         geometryPSRResolverState.direction, geometryPSRResolverState.accumulatedHitDistance,
         surfaceInteraction, polymorphicSurfaceMaterialInteraction, gbufferSurfaceRadiance, randomState);
+
+      updateSharcOnGBufferHit(geometryPSRResolverState.pixelCoordinate, geometryPSRResolverState.compactedCoordinate,
+        gbufferSurfaceRadiance);
     }
   }
 
@@ -3460,10 +3555,10 @@ void geometryResolverOutputDecalDebugViewAndPicking(
 }
 
 // Returns whether the primary pass resolves first-hit decals before it samples PSR.
-// Elsewhere PSR prepare samples PSR after the decal pass, or PSR surfaces take no first-hit decals, as with NRC.
+// Elsewhere PSR prepare samples PSR after the decal pass, or PSR surfaces take no first-hit decals, as with the radiance caches.
 bool geometryResolverResolvesDecalBeforePSR()
 {
-#if ENABLE_NRC
+#if ENABLE_NRC || ENABLE_SHARC
   return false;
 #else
   return cb.sparseRenderingArgs.mode != SparseRenderingMode::Off &&

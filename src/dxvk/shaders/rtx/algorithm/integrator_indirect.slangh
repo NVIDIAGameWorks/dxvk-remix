@@ -34,7 +34,10 @@
 #include "rtx/algorithm/integrator.slangh"
 #include "rtx/concept/surface_material/opaque_surface_material_interaction.slangh"
 #include "rtx/pass/nrc/nrc_integrator_utilities.slangh"
+#include "rtx/pass/sharc/sharc_integrator_utilities.slangh"
 #include "rtx/pass/sparse_rendering/sparse_rendering.slangh"
+
+#define ENABLE_RESTIR_GI !(ENABLE_NRC || ENABLE_SHARC)
 
 // Input specular signal of low roughness material into restir gi
 static const uint kRestirGIAcceptLowRoughnessInput = false;
@@ -307,8 +310,8 @@ void integratePathVertex(
   // We can encounter a POM surface during resolving (as it's a shared function).  But if POM is disabled in indirect cases
   //  we must also handle that case and ensure nothing tries to use POM elsewhere.
   pomOpaqueSurfaceEncountered = pomOpaqueSurfaceEncountered && cb.pomEnableIndirectLighting;
-  
-#if !ENABLE_NRC
+
+#if ENABLE_RESTIR_GI
   // Output ReSTIR GI geometry information
 
   if (cb.enableReSTIRGI && !pathState.restirGiHasHitGeometry)
@@ -346,7 +349,7 @@ void integratePathVertex(
       ReSTIRGI_StoreHitGeometry(RestirGIHitGeometry, pathState.pixelCoordinate, hitPosition, hitNormal, pathState.indirectLightPortalID);
     }
   }
-#endif  
+#endif
 
   if (rayInteractionHasHit(rayInteraction))
   {
@@ -379,8 +382,18 @@ void integratePathVertex(
     Nrc::updateNrcOnMiss(
       pathState.pixelCoordinate, pathState.isNrcUpdate, pathState.nrcPathState, false);
 #endif
+
+#if SHARC_UPDATE
+    if (pathState.isSharcUpdate)
+    {
+      if (cb.debugView == DEBUG_VIEW_SHARC_UPDATE_RADIANCE && (round(cb.debugKnob.x) == pathState.bounceIteration))
+      {
+        storeInDebugView(Sharc::calculateUpdatePixelCoordinate(pathState.pixelCoordinate, cb.sharcArgs), emissiveRadiance);
+      }
+      Sharc::onMiss(pathState.sharcState, cb.sharcArgs, emissiveRadiance);
+    }
+#endif
   }
- 
   // Handle emissive radiance and attenuation from the Resolve function
 
   // Note: When accumulating radiance/throughput from the resolve logic, emissive takes priority
@@ -453,6 +466,16 @@ void integratePathVertex(
       storeInDebugView(pathState.pixelCoordinate, vec4(1.f));
     }
     return;
+  }
+
+  // Process SHaRC arrival transport before integrating destination-local lighting.
+  if (ENABLE_SHARC && rayInteractionHasHit(rayInteraction) && !pathState.continueResolving)
+  {
+    if (!Sharc::onHitBeforeDirectLighting(pathState, polymorphicSurfaceMaterialInteraction, cb.sharcArgs, surfaceInteraction))
+    {
+      pathState.continuePath = false;
+      return;
+    }
   }
 
   const uint materialType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
@@ -783,6 +806,14 @@ void integratePathVertex(
       return;
     }
 
+    // Update SHaRC on hit after direct lighting
+    bool sharcContinueTracing = Sharc::onHitAfterDirectLighting(pathState, cb.sharcArgs, surfaceInteraction.position, surfaceInteraction.geometryNormal, pathState.radiance, randomState);
+    if (!sharcContinueTracing)
+    {
+      pathState.continuePath = false;
+      return;
+    }
+
     // Check for path termination
     // Note: Bounce iteration refers to the index of the current vertex in the path,
     // 0 = Primary Hit, 1 = 1st Indirect Hit (1 bounce), etc. The decision to terminate here
@@ -801,7 +832,7 @@ void integratePathVertex(
       // signal for invalid direction samples or simply having all the energy reduced to 0 by albedo for instance.
       // This is done as while russian roulette will typically handle this properly (a throughput of 0 means a
       // probability of 0), the current implementation allows for non-throughput based russian roulettes, or even
-      // for it to be disabled entierly, which would allow potentially invalid direction samples to continue and
+      // for it to be disabled entirely, which would allow potentially invalid direction samples to continue and
       // generate issues for subsequent bounces. As such this case needs to be handled explicitly. In the future
       // it may even be a better idea to return a boolean from the material's direction sampling function to
       // avoid this potential mistake by forcing callers to consider the boolean separately rather than encoding
@@ -844,7 +875,7 @@ void integratePathVertex(
       }
     }
 
-#if !ENABLE_NRC
+#if !ENABLE_NRC && !ENABLE_SHARC
     // Steal samples from restir gi
     if (cb.enableReSTIRGI
       && cb.enableReSTIRGISampleStealing > 0
@@ -979,6 +1010,9 @@ void integratePathVertex(
 
     accumulateThroughput(pathState, continuationThroughput);
 
+    const bool isDiffuseReflection = continuationLobe == opaqueLobeTypeDiffuseReflection;
+    Sharc::onBounceEnd(pathState, isDiffuseReflection, opaqueSurfaceMaterialInteraction, isOpaqueMaterial);
+
 #if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL) != 0
   }
 #endif // SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL
@@ -987,7 +1021,7 @@ void integratePathVertex(
 // Update the hit distance when a significant contribution to the final result is found
 void updateReSTIRGIHitDistance(inout float oldLuminance, float newLuminance, inout float restirHitT, float newHitT)
 {
-#if !ENABLE_NRC 
+#if ENABLE_RESTIR_GI
   // If both oldLuminance and newLuminance are 0, still update hit distance
   if (newLuminance >= oldLuminance * cb.reSTIRGIVirtualSampleLuminanceThreshold)
   {
@@ -1045,7 +1079,7 @@ vec3 calculateReSTIRGIRadianceFactor(
 // multiple times as the integrator progresses through the scene, and with a texture store it's only spilled once.
 void storeRestirGIRadiance(PathState pathState, GeometryFlags geometryFlags, float gbufferSurfaceHitDistance)
 {
-#if !ENABLE_NRC  
+#if ENABLE_RESTIR_GI  
   if (!(cb.enableReSTIRGI && geometryFlags.primarySelectedIntegrationSurface))
   {
     return;
@@ -1107,8 +1141,43 @@ vec3 loadIntegratedRadiancePriorToIntegrateIndirect(
   }
 
   const vec3 primarySurfaceRadiance = vec3(
-    NrcTrainingGBufferSurfaceRadianceRG[nrcPixelCoordinate],
-    NrcTrainingGBufferSurfaceRadianceB[nrcPixelCoordinate]);
+    RadianceCacheUpdateGBufferSurfaceRadianceRG[nrcPixelCoordinate],
+    RadianceCacheUpdateGBufferSurfaceRadianceB[nrcPixelCoordinate]);
+
+  return primarySurfaceRadiance + directLightingRadiance;
+}
+#endif
+
+#if SHARC_UPDATE
+// Loads radiance integrated for a path prior to indirect integrate pass for a SHaRC update pass
+vec3 loadIntegratedRadiancePriorToIntegrateIndirect(
+  u16vec2 surfaceRadianceCoordinate,
+  u16vec2 compactedRadianceCoordinate,
+  GeometryFlags geometryFlags) 
+{
+  // Direct lighting radiance
+  vec3 directLightingRadiance;
+  {
+    vec3 diffuseRadiance;
+    vec3 specularRadiance;
+
+    if (geometryFlags.primarySelectedIntegrationSurface)
+    { 
+      diffuseRadiance = PrimaryDirectDiffuseLobeRadianceHitDistance[compactedRadianceCoordinate].xyz;
+      specularRadiance = PrimaryDirectSpecularLobeRadianceHitDistance[compactedRadianceCoordinate].xyz;
+    }
+    else
+    {
+      diffuseRadiance = SecondaryCombinedDiffuseLobeRadianceHitDistance[compactedRadianceCoordinate].xyz;
+      specularRadiance = SecondaryCombinedSpecularLobeRadianceHitDistance[compactedRadianceCoordinate].xyz;
+    }
+
+    directLightingRadiance = diffuseRadiance + specularRadiance;
+  }
+
+  const vec3 primarySurfaceRadiance = vec3(
+    RadianceCacheUpdateGBufferSurfaceRadianceRG[surfaceRadianceCoordinate],
+    RadianceCacheUpdateGBufferSurfaceRadianceB[surfaceRadianceCoordinate]);
 
   return primarySurfaceRadiance + directLightingRadiance;
 }
@@ -1192,6 +1261,128 @@ void initNrc(
 #endif
 }
 
+void initSharc(
+  inout PathState pathState,
+  u16vec2 compactedCoordinate,
+  u16vec2 sharcUpdatePixelCoordinate,
+  GeometryFlags geometryFlags,
+  vec3 primarySurfacePosition,
+  float16_t firstHitPerceptualRoughness)
+{
+  // Initialize SHaRC state stored in path state
+#if SHARC_UPDATE
+  if (pathState.isSharcUpdate)
+  {
+    SharcInit(pathState.sharcState);
+  }
+#endif
+#if SHARC_QUERY
+  if (!pathState.isSharcUpdate)
+  {
+    // Set to 0 so that we do not end up with a valid cone footprint and query SHaRC on primary hit.
+    // Note: Remix PT doesn't query the cache on primary hit regardless given the split primary and indirect
+    // integration, but still might as well set this to 0 in case it changes in the future.
+    pathState.prevPerceptualRoughness = 0.0f;
+  }
+#endif
+#if !ENABLE_SHARC
+  unused(pathState);
+#endif
+
+  // Process the primary hit for SHaRC
+  // make bounceIteration=0 to emulate primary hit
+  pathState.bounceIteration = 0;
+#if SHARC_UPDATE
+  if (pathState.isSharcUpdate)
+  {
+    pathState.radiance = loadIntegratedRadiancePriorToIntegrateIndirect(sharcUpdatePixelCoordinate, compactedCoordinate, geometryFlags);
+
+    RNG randomState = createRNG(pathState.pixelCoordinate, cb.frameIdx, pathState.calculateRNGOffsetOnFirstBounce(0));
+    MinimalSurfaceInteraction gbuffer =
+      minimalSurfaceInteractionReadFromGBuffer(compactedCoordinate, PrimaryWorldPositionWorldTriangleNormal);
+
+    if (!Sharc::onHitAfterDirectLighting(pathState, cb.sharcArgs, primarySurfacePosition, gbuffer.geometryNormal, pathState.radiance, randomState))
+    {
+      pathState.continuePath = false;
+      return;
+    }
+  }
+#endif
+
+  Sharc::onBounceEnd(pathState, firstHitPerceptualRoughness);
+  // after primary hit, increment bounce iteration
+  pathState.bounceIteration = 1;
+
+#if SHARC_QUERY
+  // The query path at the same pixel writes these debug views.
+  if (pathState.isSharcUpdate)
+  {
+    return;
+  }
+
+  if (cb.debugView == DEBUG_VIEW_SHARC_PRIMARY_HIT_CACHE_VIEW)
+  {
+    MinimalSurfaceInteraction gbuffer = 
+      minimalSurfaceInteractionReadFromGBuffer(compactedCoordinate, PrimaryWorldPositionWorldTriangleNormal);
+
+    SharcParameters params = Sharc::createSharcParameters(cb.sharcArgs); 
+    SharcHitData hitData;
+    hitData.positionWorld = primarySurfacePosition;
+    hitData.normalWorld = gbuffer.geometryNormal;
+    hitData.emissive = vec3(0.0f);
+
+    vec3 debugColor = vec3(0.0f);
+    if (!SharcGetCachedRadiance(params, hitData, debugColor, true)) {
+      debugColor = vec3(0.0f);
+    }
+    storeInDebugView(pathState.pixelCoordinate, debugColor);
+  }
+
+  if (cb.debugView == DEBUG_VIEW_SHARC_HASH_GRID_COLORED_HASH)
+  {
+    MinimalSurfaceInteraction gbuffer = 
+      minimalSurfaceInteractionReadFromGBuffer(compactedCoordinate, PrimaryWorldPositionWorldTriangleNormal);
+
+    HashGridParameters gridParameters;
+    gridParameters.cameraPosition = cb.sharcArgs.cameraPosition;
+    gridParameters.logarithmBase = SHARC_GRID_LOGARITHM_BASE;
+    gridParameters.sceneScale = cb.sharcArgs.sceneScale;
+    gridParameters.levelBias = SHARC_GRID_LEVEL_BIAS;
+
+    vec3 debugColor = HashGridDebugColoredHash(primarySurfacePosition, gbuffer.geometryNormal, gridParameters);
+    storeInDebugView(pathState.pixelCoordinate, debugColor);
+  }
+
+  if (cb.debugView == DEBUG_VIEW_SHARC_HASH_GRID_OCCUPANCY)
+  {
+    HashGridData hashGridData;
+    hashGridData.capacity = cb.sharcArgs.entriesNum;
+    hashGridData.hashEntriesBuffer = SharcHashEntriesBuffer;
+
+    vec3 debugColor = HashGridDebugOccupancy(pathState.pixelCoordinate, cb.camera.resolution, hashGridData);
+    storeInDebugView(pathState.pixelCoordinate, debugColor);
+  }
+
+  if (cb.debugView == DEBUG_VIEW_SHARC_BITS_OCCUPANCY_SAMPLE_NUM ||
+      cb.debugView == DEBUG_VIEW_SHARC_BITS_OCCUPANCY_RADIANCE)
+  {
+    MinimalSurfaceInteraction gbuffer =
+      minimalSurfaceInteractionReadFromGBuffer(compactedCoordinate, PrimaryWorldPositionWorldTriangleNormal);
+
+    SharcParameters params = Sharc::createSharcParameters(cb.sharcArgs);
+    SharcHitData hitData;
+    hitData.positionWorld = primarySurfacePosition;
+    hitData.normalWorld = gbuffer.geometryNormal;
+    hitData.emissive = vec3(0.0f);
+
+    vec3 debugColor = cb.debugView == DEBUG_VIEW_SHARC_BITS_OCCUPANCY_SAMPLE_NUM
+      ? Sharc::debugBitsOccupancySampleNum(params, hitData)
+      : Sharc::debugBitsOccupancyRadiance(params, hitData);
+    storeInDebugView(pathState.pixelCoordinate, debugColor);
+  }
+#endif
+}
+
 void writeToNrcOutputsAfterIntegration(PathState pathState)
 {
 #if ENABLE_NRC
@@ -1224,7 +1415,7 @@ void initReSTIRGI(
   float firstSampledLobePdf,
   float firstSampledSolidAnglePdf)
 {
-#if !ENABLE_NRC
+#if ENABLE_RESTIR_GI
   if (cb.enableReSTIRGI && geometryFlags.primarySelectedIntegrationSurface)
   {
     // Pre-calculate the radiance factor to reduce live state dragged over the integrator
@@ -1241,11 +1432,11 @@ void initReSTIRGI(
 }
 
 void integrateIndirectPath(
-  // Pixel coordinate corresponding to the gbuffer source data for this thread
-  // Note: gbuffer prefix is appended to differentiate gbufferPixelCoordinate from pathState.pixelCoordinate 
-  //       which in case of an NRC update is different from gbuffer pixel coordinate.
+  // Raw query pixel for RNG and screen-space outputs.
   u16vec2 gbufferPixelCoordinate,
-  // Addresses this thread's compacted resources, and equals gbufferPixelCoordinate when sparse rendering is off.
+  // Addresses a SHaRC update path's resources in update space.
+  u16vec2 cacheUpdatePixelCoordinate,
+  // Addresses compacted GBuffer and lighting resources.
   u16vec2 compactedCoordinate,
   // Addresses this thread's NRC path buffers. See PathState::nrcPixelIndex.
   u16vec2 nrcPixelIndex,
@@ -1254,7 +1445,7 @@ void integrateIndirectPath(
   GeometryFlags geometryFlags, uint mediumMaterialIndex, vec3 rayOrigin, vec3 rayDirection,
   vec3 throughput, float rayConeRadius, float firstHitPerceptualRoughness,
   float firstSampledLobePdf, float firstSampledSolidAnglePdf,
-  float gbufferSurfaceHitDistance, bool isNrcUpdate)
+  float gbufferSurfaceHitDistance, bool isCacheUpdate)
 {
   // Initialize Path State
   // Note: Not technically live state as this is only passed into the resolve call and reconstructed from its output.
@@ -1278,13 +1469,14 @@ void integrateIndirectPath(
   pathState.gbufferPerceptualRoughness = firstHitPerceptualRoughness;
   
 #if ENABLE_NRC
-  // The index is set before initNrc, which reads it back through pathState.pixelCoordinate for training paths.
   pathState.nrcPixelIndex = nrcPixelIndex;
 #else
   unused(nrcPixelIndex);
 #endif
 
-  initNrc(pathState, compactedCoordinate, isNrcUpdate, geometryFlags, firstSampledSolidAnglePdf);
+  pathState.isSharcUpdate = isCacheUpdate;
+
+  initNrc(pathState, compactedCoordinate, isCacheUpdate, geometryFlags, firstSampledSolidAnglePdf);
 
   initReSTIRGI(pathState, geometryFlags, firstHitPerceptualRoughness, firstSampledLobePdf, firstSampledSolidAnglePdf);
 
@@ -1364,6 +1556,8 @@ void integrateIndirectPath(
     }
 #endif
   }
+  // Init sharc after all throughput modifications to the primary vertex
+  initSharc(pathState, compactedCoordinate, cacheUpdatePixelCoordinate, geometryFlags, rayOrigin, firstHitPerceptualRoughness);
 
   // Integrate Secondary Vertices
 
@@ -1405,6 +1599,30 @@ void integrateIndirectPath(
       TRUE_OR_CHECK_WHEN_NRC_ENABLED(pathState.isNrcQuery));
   }
 
+  if (SHARC_QUERY && !pathState.isSharcUpdate && cb.debugView == DEBUG_VIEW_SHARC_QUERY_NUMBER_OF_BOUNCES ||
+      pathState.isSharcUpdate && cb.debugView == DEBUG_VIEW_SHARC_UPDATE_NUMBER_OF_BOUNCES)
+  {
+    float ratioMaxBounces = float(pathState.bounceIteration) / pathState.pathMaxBounces;
+    // white is zero
+    // otherwise, use RGB as a 3 bit number (0->7)
+    float red = float(pathState.bounceIteration & 1);
+    float green = float(pathState.bounceIteration & 2);
+    float blue = float(pathState.bounceIteration & 4);
+    float3 debugColor = pathState.bounceIteration == 0 ? float3(1.f,1.f,1.f) : float3(red, green, blue);
+
+    const u16vec2 debugPixelCoordinate = pathState.isSharcUpdate
+      ? cacheUpdatePixelCoordinate
+      : pathState.pixelCoordinate;
+    storeInDebugView(debugPixelCoordinate, debugColor);
+  }
+
+  // All writes for SHaRC update are done in the integratePathVertex function,
+  // so we can just return here.
+  if (pathState.isSharcUpdate)
+  {
+    return;
+  }
+
   if (TRUE_OR_CHECK_WHEN_NRC_ENABLED(pathState.isNrcQuery))
   {
     // Re-load geometry flags from the resource so that they're not carried around as live state during a ray path integration
@@ -1424,7 +1642,7 @@ void integrateIndirectPath(
     // Store the integrated ray path radiance and hit distance
     indirectPathTextures.IndirectRadianceHitDistance[compactedCoordinate] = indirectOutData;
   }
-  
+
   writeToNrcOutputsAfterIntegration(pathState);
 
   integratorIndirectPathOutputDebugView(

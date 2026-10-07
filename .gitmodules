@@ -49,3 +49,6 @@
 [submodule "submodules/dlss"]
 	path = submodules/dlss
 	url = https://github.com/NVIDIA/DLSS.git
+[submodule "submodules/sharc"]
+	path = submodules/sharc
+	url = https://github.com/NVIDIAGameWorks/Spatial-Hash-Radiance-Cache.git

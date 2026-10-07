@@ -910,9 +910,9 @@ namespace dxvk {
     ctx.bindResourceBuffer(GBUFFER_BINDING_NRC_QUERY_RADIANCE_PARAMS_OUTPUT, getBufferSlice(ctx, NeuralRadianceCache::ResourceType::QueryRadianceParams));
     ctx.bindResourceBuffer(GBUFFER_BINDING_NRC_COUNTERS_OUTPUT, getBufferSlice(ctx, NeuralRadianceCache::ResourceType::Counters));
 
-    ctx.bindResourceView(GBUFFER_BINDING_NRC_TRAINING_GBUFFER_SURFACE_RADIANCE_RG_OUTPUT, m_trainingGBufferSurfaceRadianceRG.view, nullptr);
-    ctx.bindResourceView(GBUFFER_BINDING_NRC_TRAINING_GBUFFER_SURFACE_RADIANCE_B_OUTPUT, m_trainingGBufferSurfaceRadianceB.view, nullptr);
-    ctx.bindResourceView(GBUFFER_BINDING_NRC_TRAINING_QUERY_RESERVOIR_INPUT, m_trainingQueryReservoir.view, nullptr);
+    ctx.bindResourceView(GBUFFER_BINDING_RADIANCE_CACHE_UPDATE_GBUFFER_SURFACE_RADIANCE_RG_OUTPUT, m_trainingGBufferSurfaceRadianceRG.view, nullptr);
+    ctx.bindResourceView(GBUFFER_BINDING_RADIANCE_CACHE_UPDATE_GBUFFER_SURFACE_RADIANCE_B_OUTPUT, m_trainingGBufferSurfaceRadianceB.view, nullptr);
+    ctx.bindResourceView(GBUFFER_BINDING_RADIANCE_CACHE_UPDATE_QUERY_RESERVOIR_INPUT, m_trainingQueryReservoir.view, nullptr);
     ctx.bindResourceView(GBUFFER_BINDING_NRC_QUERY_PATH_DATA0_OUTPUT, m_queryPathData0.view, nullptr);
 
     // Aliased resource methods must not be called when the resource is invalid
@@ -932,9 +932,9 @@ namespace dxvk {
     ctx.bindResourceBuffer(INTEGRATE_INDIRECT_BINDING_NRC_QUERY_RADIANCE_PARAMS_INPUT_OUTPUT, getBufferSlice(ctx, NeuralRadianceCache::ResourceType::QueryRadianceParams));
     ctx.bindResourceBuffer(INTEGRATE_INDIRECT_BINDING_NRC_COUNTERS_INPUT_OUTPUT, getBufferSlice(ctx, NeuralRadianceCache::ResourceType::Counters));
 
-    ctx.bindResourceView(INTEGRATE_INDIRECT_BINDING_NRC_TRAINING_GBUFFER_SURFACE_RADIANCE_RG_INPUT, m_trainingGBufferSurfaceRadianceRG.view, nullptr);
-    ctx.bindResourceView(INTEGRATE_INDIRECT_BINDING_NRC_TRAINING_GBUFFER_SURFACE_RADIANCE_B_INPUT, m_trainingGBufferSurfaceRadianceB.view, nullptr);
-    ctx.bindResourceView(INTEGRATE_INDIRECT_BINDING_NRC_TRAINING_QUERY_RESERVOIR_INPUT, m_trainingQueryReservoir.view, nullptr);
+    ctx.bindResourceView(INTEGRATE_INDIRECT_BINDING_RADIANCE_CACHE_UPDATE_GBUFFER_SURFACE_RADIANCE_RG_INPUT, m_trainingGBufferSurfaceRadianceRG.view, nullptr);
+    ctx.bindResourceView(INTEGRATE_INDIRECT_BINDING_RADIANCE_CACHE_UPDATE_GBUFFER_SURFACE_RADIANCE_B_INPUT, m_trainingGBufferSurfaceRadianceB.view, nullptr);
+    ctx.bindResourceView(INTEGRATE_INDIRECT_BINDING_RADIANCE_CACHE_UPDATE_QUERY_RESERVOIR_INPUT, m_trainingQueryReservoir.view, nullptr);
     ctx.bindResourceView(INTEGRATE_INDIRECT_BINDING_NRC_PATH_DATA0_INPUT, m_queryPathData0.view, nullptr);
 
     // Aliased resource methods must not be called when the resource is invalid

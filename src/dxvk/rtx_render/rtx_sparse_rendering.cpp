@@ -26,6 +26,7 @@
 #include "rtx_scene_manager.h"
 #include "rtx_light_manager.h"
 #include "rtx_neural_radiance_cache.h"
+#include "rtx_spatially_hashed_radiance_cache.h"
 #include "rtx_ray_reconstruction.h"
 #include "rtx_options.h"
 #include "rtx_shader_manager.h"
@@ -77,7 +78,7 @@ namespace dxvk {
         COMMON_RAYTRACING_BINDINGS
 
         // Input-Outputs
-        RW_TEXTURE2D(ACTIVE_PIXEL_MASK_BINDING_NRC_TRAINING_QUERY_RESERVOIR_INPUT_OUTPUT)
+        RW_TEXTURE2D(ACTIVE_PIXEL_MASK_BINDING_RADIANCE_CACHE_UPDATE_QUERY_RESERVOIR_INPUT_OUTPUT)
 
         // Outputs
         RW_TEXTURE2D(ACTIVE_PIXEL_MASK_BINDING_PIXEL_SAMPLING_RATE_OUTPUT)
@@ -507,13 +508,15 @@ namespace dxvk {
     ctx.bindShader(VK_SHADER_STAGE_COMPUTE_BIT, ActivePixelSamplingRateShader::getShader());
 
     // Input-Outputs
-    // NRC training query-pixel reservoir, accumulated over active pixels. Only allocated while training-path
+    // Radiance cache update query-pixel reservoir, accumulated over active pixels. Only allocated while update-path
     // resampling is on, which is also the only case the shader touches it.
-    Rc<DxvkImageView> trainingQueryReservoirView = nullptr;
+    Rc<DxvkImageView> updateQueryReservoirView = nullptr;
     if (rtOutput.m_raytraceArgs.sparseRenderingArgs.resampledNrcTrainingPaths) {
-      trainingQueryReservoirView = ctx.getCommonObjects()->metaNeuralRadianceCache().getTrainingQueryReservoir().view;
+      updateQueryReservoirView = ctx.getCommonObjects()->metaNeuralRadianceCache().getTrainingQueryReservoir().view;
+    } else if (rtOutput.m_raytraceArgs.sparseRenderingArgs.resampledSharcUpdatePaths) {
+      updateQueryReservoirView = ctx.getCommonObjects()->metaSpatiallyHashedRadianceCache().getUpdateQueryReservoir().view;
     }
-    ctx.bindResourceView(ACTIVE_PIXEL_MASK_BINDING_NRC_TRAINING_QUERY_RESERVOIR_INPUT_OUTPUT, trainingQueryReservoirView, nullptr);
+    ctx.bindResourceView(ACTIVE_PIXEL_MASK_BINDING_RADIANCE_CACHE_UPDATE_QUERY_RESERVOIR_INPUT_OUTPUT, updateQueryReservoirView, nullptr);
 
     // Outputs
     ctx.bindResourceView(ACTIVE_PIXEL_MASK_BINDING_PIXEL_SAMPLING_RATE_OUTPUT, rtOutput.m_sparseRenderingPixelSamplingRate.view, nullptr);
@@ -587,6 +590,9 @@ namespace dxvk {
 
     NeuralRadianceCache& nrc = ctx.getCommonObjects()->metaNeuralRadianceCache();
     args.resampledNrcTrainingPaths = resamplesNrcTrainingPaths(nrc.isActive());
+    SpatiallyHashedRadianceCache& sharc = ctx.getCommonObjects()->metaSpatiallyHashedRadianceCache();
+    args.resampledSharcUpdatePaths =
+      isActive() && sharc.isActive() && SpatiallyHashedRadianceCache::SharcOptions::enableUpdate();
 
     args.pixelSamplingRate = Options::samplingRate();
 

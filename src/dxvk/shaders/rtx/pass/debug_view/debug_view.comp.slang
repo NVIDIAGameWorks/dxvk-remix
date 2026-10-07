@@ -42,6 +42,7 @@
 
 #include "rtxdi/Reservoir.slangh"
 #include "rtx/pass/nrc/nrc_utilities.slangh"
+#include "rtx/pass/sharc/sharc_update_grid.slangh"
 #include "rtx/algorithm/accumulate.slangh"
 
 #include "rtx/concept/surface/minimal_surface_interaction.slangh"
@@ -404,7 +405,11 @@ vec4 loadInput(inout RNG randomState, ivec2 threadId)
   case DEBUG_VIEW_NRC_UPDATE_NUMBER_OF_INDIRECT_PATH_SEGMENTS:
     value = DebugView[Nrc::calculateTrainingPixelCoordinate(threadId, cb.nrcArgs)];
     break;
-
+  case DEBUG_VIEW_SHARC_UPDATE_NUMBER_OF_BOUNCES:
+  case DEBUG_VIEW_SHARC_UPDATE_RADIANCE:
+  case DEBUG_VIEW_SHARC_UPDATE_THROUGHPUT:
+    value = DebugView[Sharc::calculateUpdatePixelCoordinate(threadId, cb.sharcArgs)];
+    break;
   case DEBUG_VIEW_EXPOSURE_HISTOGRAM:
     // Show histogram or weight as a bar across the top on the screen, technically not safe, but the first handful of threads should be fine.
     if (threadId.y < 32 && threadId.x < cb.debugViewResolution.x * 0.5)
