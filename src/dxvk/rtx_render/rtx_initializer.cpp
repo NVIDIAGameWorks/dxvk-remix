@@ -78,6 +78,8 @@ namespace dxvk {
 
     const VkPhysicalDeviceProperties& gpuProperties = m_device->adapter()->devicePropertiesExt().core.properties;
     GpuOverrides::setCurrentGpu(gpuProperties.vendorID, gpuProperties.deviceID);
+    GpuProfile::detect(m_device->adapter()->devicePropertiesExt(), m_device->adapter()->memoryProperties(),
+                       m_device->adapter()->getMemoryHeapInfo());
     GpuOverrides::logInvalidEntries();
 
     // Initialize RTX settings presets

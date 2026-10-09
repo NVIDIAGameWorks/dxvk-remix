@@ -119,6 +119,16 @@ Values are case-insensitive. Unrecognized values, and values that are only set i
 
 These keys are dynamic options; see [Dynamic Option Namespaces](#dynamic-option-namespaces).
 
+### RTX Spark
+
+On RTX Spark, Auto graphics selection defaults to Medium, and Auto DLSS selection defaults to Performance. Per-GPU graphics and DLSS overrides take precedence over these defaults.
+
+When `rtx.graphicsPreset` is Auto, `rtx.lowMemoryGpu` is enabled when the Vulkan device-local memory heaps total 8 GiB or less and disabled otherwise. This memory default also applies with a per-GPU graphics override.
+
+Selecting a graphics preset other than Auto bypasses automatic graphics selection. To preserve an explicit `rtx.qualityDLSS` value, select the Custom DLSS preset (`rtx.dlssPreset = 2`). The On preset resets the DLSS mode to Auto.
+
+RTX Spark detection requires Vulkan to report an NVIDIA integrated GPU and NVAPI to identify the same adapter by LUID as an integrated Blackwell GPU. Core count does not affect detection. If the required facts are unavailable or do not match, the standard automatic heuristics apply. The log records detection results and query failures, including `RTX Spark detected` on success.
+
 ### Internal Layers
 
 | Layer | What It Does |

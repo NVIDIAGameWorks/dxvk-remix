@@ -113,6 +113,11 @@ exe = executable('test_f16tof32',  files('test_f16tof32.cpp'),  include_director
 test('test_f16tof32', exe, env: test_env)
 tests += exe
 
+exe = executable('test_gpu_profile', files('test_gpu_profile.cpp'),
+  include_directories : test_include_path, dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ d3d9_dll, dxvk_lib ], win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_gpu_profile', exe, env: test_env)
+tests += exe
+
 exe = executable('test_gpu_overrides', files('test_gpu_overrides.cpp'),
   include_directories : test_include_path, dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ d3d9_dll, dxvk_lib ], win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
 test('test_gpu_overrides', exe, env: test_env)
