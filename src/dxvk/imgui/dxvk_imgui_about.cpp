@@ -126,6 +126,7 @@ namespace dxvk {
           "Lindsay Lutz",
           "Dmitriy Marshak",
           "Luis Mendez",
+          "Pal Mezei",
           "Eugenio Naselli",
           "Yaobin Ouyang",
           "Alexey Panteleev",
