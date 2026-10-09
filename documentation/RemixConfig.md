@@ -97,6 +97,28 @@ RTX Remix includes several built-in layers, each serving a specific purpose:
 | **Remix Config** | The main `rtx.conf` file where mod developers configure game-specific settings. |
 | **baseGameMod Config** | **Deprecated** An additional `rtx.conf` that is included for legacy support, but generally shouldn't be used.  Overrides the main `rtx.conf`. |
 
+### Per-GPU Overrides
+
+Mod developers can set per-GPU defaults for the graphics preset, DLSS mode and Ray Reconstruction. Configure them in the Developer Menu under **Rendering → General → Per-GPU Overrides**, or add them to `rtx.conf`:
+
+```ini
+rtx.gpuOverride.graphicsPreset.10DE_2684 = Ultra
+rtx.gpuOverride.dlssMode.10DE_2684 = Quality
+rtx.gpuOverride.rayReconstruction.1002_744C = False
+```
+
+The last part of each key is the GPU's Vulkan vendor ID and device ID in uppercase hexadecimal, at least four digits each, joined with `_`. The Developer Menu shows the ID of the current GPU. Keys in any other form, such as lowercase hexadecimal, never match and are reported in the log.
+
+| Key prefix | Values | Applies when |
+|---|---|---|
+| `rtx.gpuOverride.graphicsPreset.` | `Ultra`, `High`, `Medium`, `Low` | `rtx.graphicsPreset` is `Auto`. The override replaces the architecture and video memory heuristics. |
+| `rtx.gpuOverride.dlssMode.` | `UltraPerformance`, `Performance`, `Balanced`, `Quality`, `FullResolution` | `rtx.qualityDLSS` is `Auto`. The override replaces the resolution-based choice and is not lowered by the Medium or Low presets. |
+| `rtx.gpuOverride.rayReconstruction.` | `True`, `False` | Always, as the default for `rtx.enableRayReconstruction`. A value in `user.conf` or the `DXVK_RAY_RECONSTRUCTION` environment variable takes precedence. |
+
+Values are case-insensitive. Unrecognized values, and values that are only set in layers below their blend threshold, are ignored; unrecognized values are also logged. Entries in `rtx.conf` that fail to parse, such as a misspelled `True`, are shown in red in the Per-GPU Overrides table so they can be replaced or removed. Overrides are read when the graphics preset is applied: at startup, when the graphics preset changes, and after **Delete All User Settings** resets the preset to Auto. Edits take effect at the next of these.
+
+These keys are dynamic options; see [Dynamic Option Namespaces](#dynamic-option-namespaces).
+
 ### Internal Layers
 
 | Layer | What It Does |

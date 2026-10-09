@@ -411,6 +411,21 @@ namespace dxvk {
       markDirty();
     }
 
+    // Removes this option's value from a layer and immediately re-resolves it.
+    void clearImmediately(const RtxOptionLayer* layer) {
+      assert(RtxOptionImpl::isInitialized() && "Trying to access an RtxOption before the config files have been loaded.");
+      std::lock_guard<std::mutex> lock(RtxOptionImpl::getUpdateMutex());
+
+      if (!layer || !hasValueInLayer(layer)) {
+        return;
+      }
+
+      disableLayerValue(layer);
+      layer->onLayerValueChanged();
+      resolveValue(m_resolvedValue);
+      markDirty();
+    }
+
     // Add a hash to a hash set option in a specific layer.
     // This layer will contribute this hash to the resolved set.
     // If layer is nullptr, uses the current target layer from RtxOptionLayerTarget.

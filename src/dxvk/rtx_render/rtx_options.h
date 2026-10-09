@@ -41,6 +41,7 @@
 #include "rtx_pathtracer_integrate_direct.h"
 #include "rtx_pathtracer_integrate_indirect.h"
 #include "rtx_dlss.h"
+#include "rtx_gpu_overrides.h"
 #include "rtx_materials.h"
 #include "rtx/pass/material_args.h"
 #include "rtx_option.h"
@@ -1376,6 +1377,9 @@ namespace dxvk {
       if (env::getEnvVar("DXVK_DOCUMENTATION_WRITE_RTX_OPTIONS_MD") == "1") {
         RtxOptionManager::writeMarkdownDocumentation("RtxOptions.md");
       }
+
+      // Registered before layers load so their keys are created as the layers are applied.
+      GpuOverrides::registerNamespaces();
 
       // Initialize all system layers (creates layers from config files)
       RtxOptionLayer::initializeSystemLayers();
