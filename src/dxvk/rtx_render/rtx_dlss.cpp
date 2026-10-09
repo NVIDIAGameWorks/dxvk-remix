@@ -101,9 +101,9 @@ namespace dxvk {
   }
 
   DLSSProfile DxvkDLSS::getAutoProfile(uint32_t displayWidth, uint32_t displayHeight) {
-    // A per-GPU override is final and skips the preset bias below.
-    if (const std::optional<DLSSProfile> overrideProfile = GpuOverrides::getDlssMode()) {
-      return *overrideProfile;
+    // A per-GPU override or the RTX Spark default is final and skips the preset bias below.
+    if (const std::optional<DLSSProfile> hardwareProfile = selectAutoDlssMode(GpuOverrides::getDlssMode(), GpuProfile::isRtxSpark())) {
+      return *hardwareProfile;
     }
 
     DLSSProfile desiredProfile = DLSSProfile::UltraPerf;

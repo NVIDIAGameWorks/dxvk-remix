@@ -434,37 +434,17 @@ namespace dxvk {
                                  GpuOverrides::graphicsPresetName(*overridePreset), "."));
       }
 
-      if (!hasMatchingOverride && vendorID == static_cast<uint32_t>(DxvkGpuVendor::Nvidia)) {
-        const NV_GPU_ARCHITECTURE_ID archId = getNvidiaArch();
+      // The NVAPI architecture query only runs when the discrete-GPU heuristics use it.
+      const bool isRtxSpark = GpuProfile::isRtxSpark();
+      const bool needsArch = !hasMatchingOverride && !isRtxSpark && vendorID == static_cast<uint32_t>(DxvkGpuVendor::Nvidia);
+      const uint32_t archId = needsArch ? static_cast<uint32_t>(getNvidiaArch()) : 0;
+      const AutoPresetDecision decision = selectAutoPreset(GpuProfile::getHardwareInfo(), overridePreset, archId);
+      for (const std::string& line : decision.log) {
+        Logger::info(line);
+      }
+      preferredDefault = decision.preset;
 
-        if (archId < NV_GPU_ARCHITECTURE_TU100) {
-          // Pre-Turing
-          Logger::info("NVIDIA architecture without HW RTX support detected, setting default graphics settings to Low, but your experience may not be optimal");
-          preferredDefault = GraphicsPreset::Low;
-        } else if (archId < NV_GPU_ARCHITECTURE_GA100) {
-          // Turing
-          Logger::info("NVIDIA Turing architecture detected, setting default graphics settings to Low");
-          preferredDefault = GraphicsPreset::Low;
-        } else if (archId < NV_GPU_ARCHITECTURE_AD100) {
-          // Ampere
-          Logger::info("NVIDIA Ampere architecture detected, setting default graphics settings to Medium");
-          preferredDefault = GraphicsPreset::Medium;
-        } else if (archId < NV_GPU_ARCHITECTURE_GB200) {
-          // Ada
-          Logger::info("NVIDIA Ada architecture detected, setting default graphics settings to High");
-          preferredDefault = GraphicsPreset::High;
-        } else {
-          // Blackwell and beyond
-          Logger::info("NVIDIA Blackwell architecture detected, setting default graphics settings to Ultra");
-          preferredDefault = GraphicsPreset::Ultra;
-        }
-      } else if (vendorID != static_cast<uint32_t>(DxvkGpuVendor::Nvidia)) {
-        // Default to low if we don't know the hardware
-        if (!hasMatchingOverride) {
-          Logger::info("Non-NVIDIA architecture detected, setting default graphics settings to Low");
-          preferredDefault = GraphicsPreset::Low;
-        }
-
+      if (decision.applyNonNvidiaDefaults) {
         // Setup some other known good defaults for other IHVs.
         RtxOptions::resolutionScale.setDeferred(0.5f);
         // Todo: Currently this code is needed to allow the the non-DLSS upscaling paths to reflect the
@@ -475,29 +455,7 @@ namespace dxvk {
         RtxOptions::nisPreset.setDeferred(NisPreset::Performance);
         RtxOptions::taauPreset.setDeferred(TaauPreset::Performance);
       }
-
-      // figure out how much vidmem we have
-      VkPhysicalDeviceMemoryProperties memProps = device->adapter()->memoryProperties();
-      VkDeviceSize vidMemSize = 0;
-      for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
-        if (memProps.memoryTypes[i].propertyFlags == VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
-          vidMemSize = memProps.memoryHeaps[memProps.memoryTypes[i].heapIndex].size;
-          break;
-        }
-      }
-
-      // for 8GB GPUs we lower the quality even further.
-      if (vidMemSize <= 8ull * 1024 * 1024 * 1024) {
-        if (hasMatchingOverride) {
-          Logger::info("8GB GPU detected; keeping the matched graphics preset override.");
-        } else {
-          Logger::info("8GB GPU detected, lowering quality setting.");
-          preferredDefault = (GraphicsPreset)std::clamp((int)preferredDefault + 1, (int) GraphicsPreset::Medium, (int) GraphicsPreset::Low);
-        }
-        RtxOptions::lowMemoryGpu.setDeferred(true);
-      } else {
-        RtxOptions::lowMemoryGpu.setDeferred(false);
-      }
+      RtxOptions::lowMemoryGpu.setDeferred(decision.lowMemoryGpu);
 
       // graphicsPreset itself should go to User layer, not Quality layer
       // (graphicsPreset controls what goes into Quality, it's not controlled BY Quality)
