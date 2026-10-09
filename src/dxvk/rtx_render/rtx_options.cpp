@@ -60,7 +60,8 @@ namespace dxvk {
       
       if (qualityLayer && userLayer) {
         // Migrate ALL options from Quality layer to User layer (not just those with the flag)
-        for (auto& [hash, optionPtr] : RtxOptionImpl::getGlobalOptionMap()) {
+        const auto globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
+        for (auto& [hash, optionPtr] : *globalRtxOptions) {
           optionPtr->moveLayerValue(qualityLayer, userLayer);
         }
         Logger::info("[Graphics Preset] Switched to Custom - Quality settings migrated to User layer");

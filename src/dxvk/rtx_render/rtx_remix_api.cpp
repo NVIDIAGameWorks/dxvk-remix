@@ -27,6 +27,7 @@
 #include "rtx_light_manager.h"
 #include "rtx_objectpicking.h"
 #include "rtx_option.h"
+#include "rtx_option_manager.h"
 #include "rtx_globals.h"
 #include "rtx_options.h"
 #include "rtx_debug_view.h"
@@ -1254,8 +1255,15 @@ namespace {
     std::string strKey = std::string{ key };
 
     dxvk::RtxOptionImpl* option = dxvk::RtxOptionImpl::getOptionByFullName(strKey);
-    if (!option) {
-      return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
+    if (!option || option->isDynamic()) {
+      switch (dxvk::RtxOptionManager::queueDynamicValue(strKey, value)) {
+      case dxvk::DynamicOptionResult::Success:
+        return REMIXAPI_ERROR_CODE_SUCCESS;
+      case dxvk::DynamicOptionResult::InvalidArgument:
+        return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+      default:
+        return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
+      }
     }
 
     dxvk::Config newSetting;

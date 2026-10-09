@@ -298,6 +298,8 @@ dxvk_src = files([
   'rtx_render/rtx_option.cpp',
   'rtx_render/rtx_option.h',
   'rtx_render/rtx_option_constants.h',
+  'rtx_render/rtx_option_dynamic.cpp',
+  'rtx_render/rtx_option_dynamic.h',
   'rtx_render/rtx_option_layer.cpp',
   'rtx_render/rtx_option_layer.h',
   'rtx_render/rtx_option_manager.cpp',
