@@ -704,6 +704,9 @@ extern "C" {
     remixapi_LightHandle      lightHandle);
 
 
+  // Writes an RtxOption value to the user layer. Keys in a registered dynamic option namespace are
+  // validated immediately and applied at the next frame's option update. Returns INVALID_ARGUMENTS for an
+  // invalid key or value, GENERAL_FAILURE for an unknown key. See documentation/RemixConfig.md.
   typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_SetConfigVariable)(
     const char*               key,
     const char*               value);

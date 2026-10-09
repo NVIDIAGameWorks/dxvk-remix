@@ -233,6 +233,7 @@ namespace dxvk {
     void showHudMessages(const Rc<DxvkContext>& ctx);
 
     void showRenderingSettings(const Rc<DxvkContext>& ctx);
+    void showGpuOverrides(const Rc<DxvkContext>& ctx);
 
     void showDLFGOptions(const Rc<DxvkContext>& ctx);
     void showReflexOptions(const Rc<DxvkContext>& ctx, bool displayStatsWindowToggle);

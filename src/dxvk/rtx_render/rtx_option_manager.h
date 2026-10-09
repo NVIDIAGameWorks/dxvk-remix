@@ -25,13 +25,16 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <algorithm>
+#include <vector>
 
 #include "../util/xxHash/xxhash.h"
 #include "../util/util_export_macros.h"
 #include "../util/util_fast_cache.h"
 #include "rtx_option.h"  // For RtxOptionImpl static methods
+#include "rtx_option_dynamic.h"
 
 namespace dxvk {
 
@@ -113,6 +116,7 @@ namespace dxvk {
     // Apply all pending set() calls, synchronize dirty option layers, and invoke onChange callbacks
     // Call at end of frame in dxvk-cs thread
     // forceOnChange causes callbacks for all dirty options, even if the resolved value is unchanged
+    // Must not be called while holding s_layerMutex or the update mutex.
     static void applyPendingValues(DxvkDevice* device, bool forceOnChange);
 
     // Log all effective (resolved) RtxOption values
@@ -133,12 +137,57 @@ namespace dxvk {
     // Call this only from the dxvk-cs thread.
     static void clearDrawcallTranslationInvalid();
 
+    // ============================================================================
+    // Dynamic options (see documentation/RemixConfig.md, "Dynamic Option Namespaces")
+    // ============================================================================
+
+    // Registers a namespace and synchronously creates and resolves options for its keys in enabled layers.
+    // Any thread, any time. Must not be called while holding s_layerMutex or the update mutex.
+    static bool registerDynamicNamespace(const DynamicOptionNamespace& ns);
+
+    // Validates a user layer value for a key in a registered namespace and queues it for the next applyPendingValues.
+    // Requests are dropped if their layer is reloaded, cleared, disabled or replaced before they apply.
+    // Must not be called while holding s_layerMutex or the update mutex.
+    static DynamicOptionResult queueDynamicValue(const std::string& key, const std::string& value);
+
+    // Validates and queues a value or removal for the next applyPendingValues. Without an explicit layer, the
+    // target follows the namespace flags and the calling thread's RtxOptionLayerTarget, like RtxOption setters.
+    // Requests are dropped if their layer is reloaded, cleared, disabled or replaced before they apply.
+    // Must not be called while holding s_layerMutex or the update mutex.
+    static DynamicOptionResult setDynamicValue(const std::string& key, const std::string& value, const RtxOptionLayer* layer = nullptr);
+    static DynamicOptionResult clearDynamicValue(const std::string& key, const RtxOptionLayer* layer = nullptr);
+
+    // Copies the resolved value of a dynamic option.
+    // withOpinionsOnly: return nullopt unless some layer other than the default layer has a value.
+    static std::optional<DynamicOptionValue> getDynamicValue(const std::string& key, bool withOpinionsOnly = false);
+
+    // Copies all dynamic options whose full name starts with prefix, sorted by full name.
+    // withOpinionsOnly: skip options that have no value outside the default layer.
+    static std::vector<DynamicOptionEntry> enumerateDynamicOptions(const std::string& prefix, bool withOpinionsOnly);
+
+    // Creates options for keys of registered namespaces present in the layer's config.
+    // Takes only leaf locks, so it is safe under whichever lock the layer's caller holds.
+    static void discoverDynamicOptions(const RtxOptionLayer& layer);
+
   private:
     static std::mutex s_layerMutex;
     static bool s_drawcallTranslationInvalid;
     
     // Remove a layer from the registry and all options (internal use only)
     static bool unregisterLayer(const RtxOptionLayer* layer);
+
+    // Applies queued dynamic value requests. Caller holds the update mutex.
+    static void applyDynamicValueRequests();
+
+    static DynamicOptionResult queueDynamicRequest(const std::string& key, const std::string* value, const RtxOptionLayer* layer);
+
+    // True if any layer other than the default layer has a value. Caller holds the update mutex.
+    static bool hasOpinion(const RtxOptionImpl& option);
+
+    // Returns the option for key, creating an unpublished one in created if needed; nullptr on an
+    // invalid suffix or hash collision. Caller holds the registry write mutex.
+    static RtxOptionImpl* findOrCreateDynamicOptionLocked(const DynamicOptionNamespace& ns, const std::string& key,
+                                                          std::vector<RtxOptionImpl*>& created);
   };
 
 }  // namespace dxvk

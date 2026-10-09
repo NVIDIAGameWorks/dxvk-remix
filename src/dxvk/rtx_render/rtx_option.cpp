@@ -20,6 +20,7 @@
 * DEALINGS IN THE SOFTWARE.
 */
 #include "rtx_options.h"
+#include "rtx_option_dynamic.h"
 
 namespace dxvk {
   void fillHashVector(const std::vector<std::string>& rawInput, std::vector<XXH64_hash_t>& hashVectorOutput) {
@@ -193,14 +194,68 @@ namespace dxvk {
   }
 
   bool RtxOptionImpl::s_isInitialized = false;
+  bool RtxOptionImpl::s_registryShared = false;
+
+  std::mutex& RtxOptionImpl::getRegistrySnapshotMutex() {
+    static std::mutex mutex;
+    return mutex;
+  }
+
+  std::mutex& RtxOptionImpl::getRegistryWriteMutex() {
+    static std::mutex mutex;
+    return mutex;
+  }
+
+  std::shared_ptr<RtxOptionImpl::RtxOptionMap>& RtxOptionImpl::getRegistryStorage() {
+    // Function-local static: RtxOption<T> statics register before file-scope statics are guaranteed to exist.
+    static std::shared_ptr<RtxOptionMap> storage = std::make_shared<RtxOptionMap>();
+    return storage;
+  }
+
+  RtxOptionImpl::RtxOptionMapSnapshot RtxOptionImpl::getGlobalOptionMap() {
+    std::lock_guard<std::mutex> lock(getRegistrySnapshotMutex());
+    s_registryShared = true;
+    return getRegistryStorage();
+  }
+
+  RtxOptionImpl* RtxOptionImpl::getOptionByFullName(const std::string& fullName) {
+    const RtxOptionMapSnapshot optionMap = getGlobalOptionMap();
+    auto it = optionMap->find(StringToXXH64(fullName, 0));
+    if (it == optionMap->end() || it->second->getFullName() != fullName) {
+      return nullptr;
+    }
+    return it->second;
+  }
 
   bool RtxOptionImpl::registerOption(XXH64_hash_t hash, RtxOptionImpl* option) {
-    auto& globalOptions = getGlobalOptionMap();
-    if (globalOptions.find(hash) != globalOptions.end()) {
-      return false;  // Option with this hash already exists
+    std::lock_guard<std::mutex> writeLock(getRegistryWriteMutex());
+    {
+      std::lock_guard<std::mutex> lock(getRegistrySnapshotMutex());
+      std::shared_ptr<RtxOptionMap>& storage = getRegistryStorage();
+      if (storage->find(hash) != storage->end()) {
+        return false;  // Option with this hash already exists
+      }
+      // Static options register during single-threaded static initialization before any snapshot exists,
+      // so they insert in place rather than copying the map once per option.
+      if (!s_registryShared) {
+        storage->emplace(hash, option);
+        return true;
+      }
     }
-    globalOptions[hash] = option;
+    publishOptionsLocked({ option });
     return true;
+  }
+
+  void RtxOptionImpl::publishOptionsLocked(const std::vector<RtxOptionImpl*>& options) {
+    if (options.empty()) {
+      return;
+    }
+    auto nextMap = std::make_shared<RtxOptionMap>(*getGlobalOptionMap());
+    for (RtxOptionImpl* option : options) {
+      nextMap->emplace(option->m_hash, option);
+    }
+    std::lock_guard<std::mutex> lock(getRegistrySnapshotMutex());
+    getRegistryStorage() = std::move(nextMap);
   }
 
   RtxOptionImpl::~RtxOptionImpl() {
@@ -584,12 +639,31 @@ namespace dxvk {
     const std::string fullName = getFullName();
     // Only insert into queue when the option can be found in the config of option layer
     if (optionLayer.getConfig().findOption(fullName.c_str())) {
+      if (m_isDynamic) {
+        readDynamicLayerValue(optionLayer, fullName, value.data);
+        return;
+      }
       readValue(optionLayer.getConfig(), fullName, value.data);
       // All layer properties (priority, blend strength, threshold) are read from the layer itself
       insertOptionLayerValue(value.data, &optionLayer);
       // When adding a new option layer, dirty current option
       markDirty();
     }
+  }
+
+  void RtxOptionImpl::readDynamicLayerValue(const RtxOptionLayer& optionLayer, const std::string& fullName, GenericValue& value) {
+    const std::string text = optionLayer.getConfig().getOption<std::string>(fullName.c_str(), "");
+    if (!parseDynamicValue(m_type, text, value)) {
+      Logger::warn(str::format("[RTX Option]: Ignoring invalid ", getTypeString(), " value '", text, "' for ", fullName,
+                               " in layer '", optionLayer.getName(), "'."));
+      optionLayer.setKeyRejected(fullName, true);
+      // Drop this layer's previous opinion so a stale value cannot mask weaker layers.
+      disableLayerValue(&optionLayer);
+      return;
+    }
+    optionLayer.setKeyRejected(fullName, false);
+    insertOptionLayerValue(value, &optionLayer);
+    markDirty();
   }
 
   void RtxOptionImpl::disableLayerValue(const RtxOptionLayer* layer) {
@@ -744,6 +818,7 @@ namespace dxvk {
     }
 
     // Notify dest layer that a value was added
+    destLayer->setKeyRejected(getFullName(), false);
     destLayer->onLayerValueChanged();
     
     // Remove source layer value and notify it changed
@@ -775,6 +850,8 @@ namespace dxvk {
       }
 
       if (transform(sourcePrioritizedValue.value, *destValue, !destIsNew)) {
+        layer->setKeyRejected(destOption->getFullName(), false);
+        layer->onLayerValueChanged();
         destOption->markDirty();
         migrated = true;
       }
@@ -811,9 +888,13 @@ namespace dxvk {
   }
 
   const RtxOptionLayer* RtxOptionImpl::getTargetLayer(const RtxOptionLayer* explicitLayer) const {
+    return getTargetLayerForFlags(getFlags(), explicitLayer);
+  }
+
+  const RtxOptionLayer* RtxOptionImpl::getTargetLayerForFlags(uint32_t flags, const RtxOptionLayer* explicitLayer) {
     // NoSave options should always go to the Derived layer, never to saved config layers
     // This overrides even explicit layer specifications
-    if ((m_flags & RtxOptionFlags::NoSave) != 0) {
+    if ((flags & RtxOptionFlags::NoSave) != 0) {
       return RtxOptionLayer::getDerivedLayer();
     }
     
@@ -823,7 +904,7 @@ namespace dxvk {
     }
     
     const RtxOptionEditTarget editTarget = RtxOptionLayerTarget::getEditTarget();
-    const bool hasUserSettingsFlag = (m_flags & RtxOptionFlags::UserSetting) != 0;
+    const bool hasUserSettingsFlag = (flags & RtxOptionFlags::UserSetting) != 0;
     
     // User-driven changes (UI edit target)
     if (editTarget == RtxOptionEditTarget::User) {
@@ -923,6 +1004,28 @@ namespace dxvk {
     return true;
   }
 
+  bool RtxOptionImpl::hasEffectiveOpinionBelow(const RtxOptionLayer* layer) const {
+    // Mirrors resolveValue(): blended types weight every layer, other types skip layers below their threshold.
+    const bool isBlended = m_type == OptionType::Float || m_type == OptionType::Vector2 ||
+                           m_type == OptionType::Vector3 || m_type == OptionType::Vector4;
+    bool passedLayer = false;
+    for (const auto& [layerKey, prioritizedValue] : m_optionLayerValueQueue) {
+      if (!passedLayer) {
+        passedLayer = layerKey == layer->getLayerKey();
+        continue;
+      }
+      if (layerKey == kRtxOptionLayerDefaultKey) {
+        continue;
+      }
+      const bool takesEffect = isBlended ? prioritizedValue.blendStrength > 0.0f
+                                         : prioritizedValue.blendStrength >= prioritizedValue.blendThreshold;
+      if (takesEffect) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   bool RtxOptionImpl::isLayerValueRedundant(const RtxOptionLayer* layer) const {
     if (!layer) {
       return true;
@@ -932,6 +1035,11 @@ namespace dxvk {
     const GenericValue* layerValue = getGenericValue(layer);
     if (!layerValue) {
       return true;
+    }
+
+    // Dynamic option consumers ignore the namespace default, so only a weaker opinion that takes effect can replace this value.
+    if (m_isDynamic && !hasEffectiveOpinionBelow(layer)) {
+      return false;
     }
 
     // Compute what the resolved value would be without this layer (and stronger layers)

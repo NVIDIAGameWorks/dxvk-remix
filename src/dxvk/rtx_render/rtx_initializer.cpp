@@ -76,6 +76,10 @@ namespace dxvk {
     pCommon->getTextureManager().startAsync();
 #endif
 
+    const VkPhysicalDeviceProperties& gpuProperties = m_device->adapter()->devicePropertiesExt().core.properties;
+    GpuOverrides::setCurrentGpu(gpuProperties.vendorID, gpuProperties.deviceID);
+    GpuOverrides::logInvalidEntries();
+
     // Initialize RTX settings presets
     // Todo: Improve this preset override functionality [REMIX-1482]
     // Currently this logic is very confusing and is intended to skip preset initialization from overriding options, but only results in weird behavior

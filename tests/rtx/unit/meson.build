@@ -94,6 +94,11 @@ exe = executable('test_rtx_option',  files('test_rtx_option.cpp'),
 test('test_rtx_option', exe, env: test_env)
 tests += exe
 
+exe = executable('test_rtx_option_dynamic',  files('test_rtx_option_dynamic.cpp'),
+  include_directories : test_include_path, dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ d3d9_dll, dxvk_lib ] , win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_rtx_option_dynamic', exe, env: test_env)
+tests += exe
+
 exe = executable('test_option_layer_export',  files('test_option_layer_export.cpp'), 
   include_directories : test_include_path, dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ dxvk_lib ] , win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
 test('test_option_layer_export', exe, env: test_env)
@@ -106,6 +111,11 @@ tests += exe
 
 exe = executable('test_f16tof32',  files('test_f16tof32.cpp'),  include_directories : test_include_path, dependencies : test_unit_deps, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
 test('test_f16tof32', exe, env: test_env)
+tests += exe
+
+exe = executable('test_gpu_overrides', files('test_gpu_overrides.cpp'),
+  include_directories : test_include_path, dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ d3d9_dll, dxvk_lib ], win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_gpu_overrides', exe, env: test_env)
 tests += exe
 
 if dxvk_is_x64 and get_option('remix_with_shim')

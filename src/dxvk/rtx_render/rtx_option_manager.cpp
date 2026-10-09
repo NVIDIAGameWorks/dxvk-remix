@@ -140,8 +140,8 @@ namespace dxvk {
       // Remove the layer values from all RtxOptions
       // Note: NoReset flag is NOT checked here - when a layer is completely removed,
       // all its values should be removed. NoReset only applies to layer reset/clear operations.
-      auto& globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
-      for (auto& rtxOptionMapEntry : globalRtxOptions) {
+      const auto globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
+      for (auto& rtxOptionMapEntry : *globalRtxOptions) {
         RtxOptionImpl& rtxOption = *rtxOptionMapEntry.second;
         rtxOption.disableLayerValue(layer);
       }
@@ -157,6 +157,8 @@ namespace dxvk {
   void RtxOptionManager::applyPendingValues(DxvkDevice* device, bool forceOnChange) {
     // First, process all pending layer changes (blend strength requests, enable/disable)
     {
+      // Layers cannot be acquired or released while queued dynamic edits are matched to them.
+      std::lock_guard<std::mutex> layerLock(s_layerMutex);
       std::unique_lock<std::mutex> lock(RtxOptionImpl::getUpdateMutex());
 
       // Resolve pending requests and apply changes for each layer
@@ -164,6 +166,8 @@ namespace dxvk {
         optionLayerPtr->resolvePendingRequests();
         optionLayerPtr->applyPendingChanges();
       }
+
+      applyDynamicValueRequests();
     }
 
     // Then resolve dirty options and invoke callbacks
@@ -201,10 +205,14 @@ namespace dxvk {
       numResolves++;
 
       // If callbacks didn't generate any dirtied options, bail
+      lock.lock();
       if (dirtyOptions.empty()) {
         break;
       }
     }
+
+    // Dynamic namespace registration can mark options dirty from other threads.
+    std::lock_guard<std::mutex> lock(RtxOptionImpl::getUpdateMutex());
 
 #if RTX_OPTION_DEBUG_LOGGING
     const bool unresolvedChanges = numResolves == maxResolves && !getDirtyOptionMap().empty();
@@ -232,8 +240,8 @@ namespace dxvk {
   void RtxOptionManager::logEffectiveValues() {
     Logger::info("Effective RtxOption values (after all config layers and migrations):");
     
-    auto& globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
-    for (const auto& [hash, optionPtr] : globalRtxOptions) {
+    const auto globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
+    for (const auto& [hash, optionPtr] : *globalRtxOptions) {
       const RtxOptionImpl& rtxOption = *optionPtr;
       if (!rtxOption.isDefault()) {
         Logger::info(str::format("  ", rtxOption.getFullName(), " = ", rtxOption.getResolvedValueAsString()));
@@ -244,8 +252,8 @@ namespace dxvk {
   void RtxOptionManager::markOptionsWithCallbacksDirty() {
     std::lock_guard<std::mutex> lock(RtxOptionImpl::getUpdateMutex());
     
-    auto& globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
-    for (auto& [hash, optionPtr] : globalRtxOptions) {
+    const auto globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
+    for (auto& [hash, optionPtr] : *globalRtxOptions) {
       RtxOptionImpl& rtxOption = *optionPtr;
       if (rtxOption.m_onChangeCallback) {
         rtxOption.markDirty();
@@ -261,9 +269,9 @@ namespace dxvk {
     std::lock_guard<std::mutex> lock(RtxOptionImpl::getUpdateMutex());
     
     size_t removedCount = 0;
-    auto& globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
+    const auto globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
     
-    for (auto& [hash, optionPtr] : globalRtxOptions) {
+    for (auto& [hash, optionPtr] : *globalRtxOptions) {
       RtxOptionImpl& rtxOption = *optionPtr;
       
       if (!rtxOption.hasValueInLayer(layer)) {
@@ -279,7 +287,7 @@ namespace dxvk {
     
     if (removedCount > 0) {
       bool hasRemainingSettings = false;
-      for (auto& [hash, optionPtr] : globalRtxOptions) {
+      for (auto& [hash, optionPtr] : *globalRtxOptions) {
         if (optionPtr->hasValueInLayer(layer)) {
           hasRemainingSettings = true;
           break;
@@ -293,8 +301,8 @@ namespace dxvk {
   }
 
   void RtxOptionManager::writeOptions(Config& options, const RtxOptionLayer* layer, bool changedOptionsOnly) {
-    auto& globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
-    for (auto& pPair : globalRtxOptions) {
+    const auto globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
+    for (auto& pPair : *globalRtxOptions) {
       auto& impl = *pPair.second;
       impl.writeOption(options, layer, changedOptionsOnly);
     }
@@ -306,11 +314,12 @@ namespace dxvk {
       Logger::warn("[RTX Option]: Failed to get environment layer for loading environment variables.");
       return;
     }
-    
-    auto& globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
+
+    std::lock_guard<std::mutex> lock(RtxOptionImpl::getUpdateMutex());
+    const auto globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
     bool headerPrinted = false;
     
-    for (auto& [hash, optionPtr] : globalRtxOptions) {
+    for (auto& [hash, optionPtr] : *globalRtxOptions) {
       RtxOptionImpl& impl = *optionPtr;
       
       // Try to load the env var; if successful, log it
@@ -356,13 +365,16 @@ This file is auto-generated by RTX Remix. To regenerate it, run Remix with `DXVK
         "| :-- | :-: | :-: | :-: | :-: | :-- |\n"; // Text alignment per column
 
       // Write out all RTX Options
-      auto& globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
+      const auto globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
 
       // Need to sort the options alphabetically by full name.
+      // Dynamic options are runtime data, documented per namespace in RemixConfig.md instead.
       std::vector<RtxOptionImpl*> sortedOptions;
-      sortedOptions.reserve(globalRtxOptions.size());
-      for (const auto& rtxOptionMapEntry : globalRtxOptions) {
-        sortedOptions.push_back(rtxOptionMapEntry.second);
+      sortedOptions.reserve(globalRtxOptions->size());
+      for (const auto& rtxOptionMapEntry : *globalRtxOptions) {
+        if (!rtxOptionMapEntry.second->isDynamic()) {
+          sortedOptions.push_back(rtxOptionMapEntry.second);
+        }
       }  
       std::sort(sortedOptions.begin(), sortedOptions.end(), [](RtxOptionImpl* a, RtxOptionImpl* b) {
         return a->getFullName() < b->getFullName();

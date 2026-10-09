@@ -32,6 +32,9 @@
 #include <optional>
 #include <initializer_list>
 #include <utility>
+#include <map>
+#include <memory>
+#include <vector>
 
 #include "../util/config/config.h"
 #include "../util/xxHash/xxhash.h"
@@ -78,6 +81,9 @@ namespace dxvk {
   // For value types (Bool, Int, Float), this is a no-op.
   void releaseGenericValue(GenericValue& value, OptionType type);
 
+  // Allocates a zero-initialized GenericValue of the given type. Release with releaseGenericValue.
+  GenericValue createGenericValue(OptionType type);
+
   // RtxOptionImpl is the base class for all RtxOption<T> instances.
   // It stores type-erased data and provides non-type-specific operations.
   // RtxOption<T> inherits from this class to add type-specific functionality.
@@ -87,6 +93,8 @@ namespace dxvk {
 
   public:
     using RtxOptionMap = std::map<XXH64_hash_t, RtxOptionImpl*>;  // Raw pointers - everything lives forever
+    // Immutable registry snapshot. Hold it for the duration of an iteration; dynamic options publish a new snapshot.
+    using RtxOptionMapSnapshot = std::shared_ptr<const RtxOptionMap>;
 
     // Static synchronization and initialization state
     // These use function-local statics to avoid static initialization order issues
@@ -100,28 +108,29 @@ namespace dxvk {
     // Register an option in the global registry (called during construction)
     // Returns true if registration succeeded, false if an option with the same hash already exists
     static bool registerOption(XXH64_hash_t hash, RtxOptionImpl* option);
-    
-    // Get the global option map (for iteration by manager)
-    // Uses function-local static to ensure map exists before any RtxOption<T> registration
-    static RtxOptionMap& getGlobalOptionMap() {
-      static RtxOptionMap map;
-      return map;
-    }
-    
+
+    // Get the current registry snapshot. Safe to call from any thread.
+    static RtxOptionMapSnapshot getGlobalOptionMap();
+
     // Look up an option by its full name (category.name)
     // Returns nullptr if the option doesn't exist
-    static RtxOptionImpl* getOptionByFullName(const std::string& fullName) {
-      const XXH64_hash_t optionHash = StringToXXH64(fullName, 0);
-      auto& optionMap = getGlobalOptionMap();
-      auto it = optionMap.find(optionHash);
-      return (it != optionMap.end()) ? it->second : nullptr;
-    }
+    static RtxOptionImpl* getOptionByFullName(const std::string& fullName);
     
     // Called by RtxOptions during initialization
     static void setInitialized(bool initialized) { s_isInitialized = initialized; }
 
   private:
     static bool s_isInitialized;
+    // Set once any reader has taken a snapshot; after that, registration must copy the map. Guarded by the snapshot mutex.
+    static bool s_registryShared;
+
+    // Guards replacement of the registry snapshot. Leaf lock.
+    static std::mutex& getRegistrySnapshotMutex();
+    // Serializes registry writers. Only the snapshot mutex may be acquired while holding it.
+    static std::mutex& getRegistryWriteMutex();
+    static std::shared_ptr<RtxOptionMap>& getRegistryStorage();
+    // Publishes options not yet in the registry as one new snapshot. Caller holds the registry write mutex.
+    static void publishOptionsLocked(const std::vector<RtxOptionImpl*>& options);
 
     // Represents a single option value along with its priority and blend strength.
     // Used in the option layer system to resolve final settings when multiple layers are active.
@@ -180,6 +189,8 @@ namespace dxvk {
     const char* getDescription() const { return m_description; }
     const char* getEnvironmentVariable() const { return m_environment; }
     OptionType getType() const { return m_type; }
+    // True for options created at runtime under a registered dynamic namespace.
+    bool isDynamic() const { return m_isDynamic; }
     uint32_t getFlags() const { return m_flags.load(std::memory_order_relaxed); }
 
     // Tags this option with the active RTX_OPTION_INVALIDATION_SCOPE's flags, if any. Call from
@@ -197,6 +208,8 @@ namespace dxvk {
     // Gets the layer that this option will write to if a write function is called.
     // The result depends on the EditTarget for this thread, as well as the option's flags.
     const RtxOptionLayer* getTargetLayer(const RtxOptionLayer* explicitLayer = nullptr) const;
+    // getTargetLayer for an option with the given flags. Caller holds the update mutex.
+    static const RtxOptionLayer* getTargetLayerForFlags(uint32_t flags, const RtxOptionLayer* explicitLayer = nullptr);
     
     bool isDefault() const;
     bool hasValueInLayer(const RtxOptionLayer* layer, std::optional<XXH64_hash_t> hash = std::nullopt) const;
@@ -277,6 +290,7 @@ namespace dxvk {
     // getUpdateMutex, while getFlags() is read lock-free elsewhere (e.g. RtxOptionManager::applyPendingValues).
     mutable std::atomic<uint32_t> m_flags{ 0 };
     std::function<void(DxvkDevice* device)> m_onChangeCallback;
+    bool m_isDynamic = false;
     
     std::map<RtxOptionLayerKey, PrioritizedValue> m_optionLayerValueQueue;
 
@@ -288,6 +302,9 @@ namespace dxvk {
     // Returns true if the weaker layers resolve to the same value that the layer contains.
     bool isLayerValueRedundant(const RtxOptionLayer* layer) const;
 
+    // Returns true if a layer weaker than the given one, other than the default layer, takes effect in resolveValue().
+    bool hasEffectiveOpinionBelow(const RtxOptionLayer* layer) const;
+
   protected:
     // Protected methods - used by derived classes and friend classes
     void copyValue(const GenericValue& source, GenericValue& target);
@@ -295,6 +312,8 @@ namespace dxvk {
     void addWeightedValue(const GenericValue& source, const float weight, GenericValue& target);
 
     void readValue(const Config& options, const std::string& fullName, GenericValue& value);
+    // Strict variant of readOptionLayer for dynamic options; invalid values are logged and not installed.
+    void readDynamicLayerValue(const RtxOptionLayer& optionLayer, const std::string& fullName, GenericValue& value);
     void writeOption(Config& options, const RtxOptionLayer* layer, bool changedOptionOnly);
 
     void insertOptionLayerValue(const GenericValue& value, const RtxOptionLayer* layer);
@@ -389,6 +408,21 @@ namespace dxvk {
       resolveValue(m_resolvedValue);
       
       // Mark the option as dirty so that the onChange callback is invoked and cleanup happens
+      markDirty();
+    }
+
+    // Removes this option's value from a layer and immediately re-resolves it.
+    void clearImmediately(const RtxOptionLayer* layer) {
+      assert(RtxOptionImpl::isInitialized() && "Trying to access an RtxOption before the config files have been loaded.");
+      std::lock_guard<std::mutex> lock(RtxOptionImpl::getUpdateMutex());
+
+      if (!layer || !hasValueInLayer(layer)) {
+        return;
+      }
+
+      disableLayerValue(layer);
+      layer->onLayerValueChanged();
+      resolveValue(m_resolvedValue);
       markDirty();
     }
 

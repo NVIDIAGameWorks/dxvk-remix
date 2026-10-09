@@ -101,6 +101,11 @@ namespace dxvk {
   }
 
   DLSSProfile DxvkDLSS::getAutoProfile(uint32_t displayWidth, uint32_t displayHeight) {
+    // A per-GPU override is final and skips the preset bias below.
+    if (const std::optional<DLSSProfile> overrideProfile = GpuOverrides::getDlssMode()) {
+      return *overrideProfile;
+    }
+
     DLSSProfile desiredProfile = DLSSProfile::UltraPerf;
 
     // Standard display resolution based DLSS config
