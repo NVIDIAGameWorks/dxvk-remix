@@ -52,7 +52,7 @@ REMIX_COMPONENT( \
 #undef LIST_OUTPUTS
 
 void RtxOptionReadColor3::updateRange(const Rc<DxvkContext>& context, const size_t start, const size_t end) {
-  auto& globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
+  const auto globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
   
   for (size_t i = start; i < end; i++) {
     Vector3 value(0.0f, 0.0f, 0.0f);
@@ -61,8 +61,8 @@ void RtxOptionReadColor3::updateRange(const Rc<DxvkContext>& context, const size
     if (!optionName.empty()) {
       const XXH64_hash_t optionHash = StringToXXH64(optionName, 0);
       
-      auto optionIt = globalRtxOptions.find(optionHash);
-      if (optionIt != globalRtxOptions.end()) {
+      auto optionIt = globalRtxOptions->find(optionHash);
+      if (optionIt != globalRtxOptions->end()) {
         RtxOptionImpl* option = optionIt->second;
         
         // Get the value if it's a Vector3 type (Color3 is stored as Vector3)

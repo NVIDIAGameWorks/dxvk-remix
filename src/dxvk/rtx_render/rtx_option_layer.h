@@ -23,9 +23,11 @@
 
 #include <atomic>
 #include <functional>
+#include <mutex>
 #include <ostream>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 #include "../util/config/config.h"
@@ -181,6 +183,26 @@ namespace dxvk {
     // Returns the number of options that were migrated.
     uint32_t migrateMiscategorizedOptions();
     
+    // Keys in this layer's config whose value failed dynamic option parsing. They are kept on save.
+    bool isKeyRejected(const std::string& key) const {
+      std::lock_guard<std::mutex> lock(m_rejectedKeysMutex);
+      return m_rejectedKeys.count(key) > 0;
+    }
+    void setKeyRejected(const std::string& key, bool rejected) const {
+      std::lock_guard<std::mutex> lock(m_rejectedKeysMutex);
+      if (rejected) {
+        m_rejectedKeys.insert(key);
+      } else {
+        m_rejectedKeys.erase(key);
+      }
+    }
+    // Rejected keys starting with prefix and their config text, sorted by key.
+    std::vector<std::pair<std::string, std::string>> getRejectedEntries(const std::string& prefix) const;
+
+    // Changes when the layer is created and whenever its values are removed (reload, clear, disable).
+    // Queued dynamic option edits for an older generation are dropped.
+    uint64_t getGeneration() const { return m_generation.load(std::memory_order_acquire); }
+
     // Returns true if the saved config has values that would be removed on save
     // (i.e., values in config file but not in the layer)
     bool hasPendingRemovals() const;
@@ -359,6 +381,10 @@ namespace dxvk {
     uint32_t m_categoryFlags = 0;  // Options must have these flags to belong here (0 = general developer options only)
     mutable uint32_t m_miscategorizedOptionCount = 0;  // Cached count of options that should migrate to another layer
     mutable bool m_miscategorizedOptionCountDirty = true;  // True if m_miscategorizedOptionCount needs recalculation
+
+    mutable std::mutex m_rejectedKeysMutex;
+    mutable std::unordered_set<std::string> m_rejectedKeys;
+    mutable std::atomic<uint64_t> m_generation;
 
     Config m_config;
 

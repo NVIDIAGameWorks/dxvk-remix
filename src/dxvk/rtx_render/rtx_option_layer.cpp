@@ -25,6 +25,7 @@
 #include "../util/util_env.h"
 #include "../util/log/log.h"
 
+#include <algorithm>
 #include <iomanip>
 #include <sstream>
 
@@ -58,6 +59,11 @@ namespace {
     oss << std::setfill('0') << std::setw(2) << index << "_" << baseName;
     return oss.str();
   }
+
+  uint64_t nextLayerGeneration() {
+    static std::atomic<uint64_t> s_nextGeneration { 1 };
+    return s_nextGeneration.fetch_add(1, std::memory_order_relaxed);
+  }
 }
 
 namespace dxvk {
@@ -78,6 +84,7 @@ namespace dxvk {
     , m_pendingEnabledRequest(EnabledRequest::NoRequest)
     , m_pendingMaxBlendStrength(kRtxOptionLayerEmptyBlendStrengthRequest)
     , m_pendingMinBlendThreshold(kRtxOptionLayerEmptyBlendThresholdRequest) {
+    m_generation.store(nextLayerGeneration(), std::memory_order_release);
 #if RTX_OPTION_DEBUG_LOGGING
     Logger::info(str::format("[RTX Option]: Added option layer: ", m_layerName,
                              "\nFile: ", m_filePath.empty() ? "(none)" : m_filePath,
@@ -137,8 +144,8 @@ namespace dxvk {
     // Handle blend strength changes (only if not already handled above)
     // This updates runtime values set via setDeferred that aren't in the config
     if (m_blendStrengthDirty) {
-      auto& globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
-      for (auto& [hash, optionPtr] : globalRtxOptions) {
+      const auto globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
+      for (auto& [hash, optionPtr] : *globalRtxOptions) {
         optionPtr->updateLayerBlendStrength(*this);
       }
       m_blendStrengthDirty = false;
@@ -152,8 +159,11 @@ namespace dxvk {
     if (!isValid()) {
       return;
     }
-    auto& globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
-    for (auto& [hash, optionPtr] : globalRtxOptions) {
+    m_rejectedKeys.clear();
+    // Create dynamic options for owned keys first so the snapshot below includes them.
+    RtxOptionManager::discoverDynamicOptions(*this);
+    const auto globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
+    for (auto& [hash, optionPtr] : *globalRtxOptions) {
       optionPtr->readOptionLayer(*this);
     }
     // Blend strength is handled by applyToAllOptions for config-loaded options
@@ -161,14 +171,29 @@ namespace dxvk {
   }
 
   void RtxOptionLayer::removeFromAllOptions() const {
-    auto& globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
-    for (auto& [hash, optionPtr] : globalRtxOptions) {
+    m_generation.store(nextLayerGeneration(), std::memory_order_release);
+    const auto globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
+    for (auto& [hash, optionPtr] : *globalRtxOptions) {
       if (optionPtr->getFlags() & (uint32_t) RtxOptionFlags::NoReset) {
         continue;
       }
       optionPtr->disableLayerValue(this);
     }
     onLayerValueChanged();
+  }
+
+  std::vector<std::pair<std::string, std::string>> RtxOptionLayer::getRejectedEntries(const std::string& prefix) const {
+    std::vector<std::pair<std::string, std::string>> entries;
+    {
+      std::lock_guard<std::mutex> lock(m_rejectedKeysMutex);
+      for (const std::string& key : m_rejectedKeys) {
+        if (key.compare(0, prefix.size(), prefix) == 0) {
+          entries.emplace_back(key, m_config.getOption<std::string>(key.c_str(), ""));
+        }
+      }
+    }
+    std::sort(entries.begin(), entries.end());
+    return entries;
   }
 
   bool RtxOptionLayer::hasValues() const {
@@ -178,7 +203,8 @@ namespace dxvk {
     }
     
     // Dynamically verify by checking if any option has a value in this layer
-    for (const auto& [hash, optionPtr] : RtxOptionImpl::getGlobalOptionMap()) {
+    const auto globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
+    for (const auto& [hash, optionPtr] : *globalRtxOptions) {
       if (optionPtr->hasValueInLayer(this)) {
         m_hasValues = true;
         return true;
@@ -214,7 +240,8 @@ namespace dxvk {
     const RtxOptionLayerKey layerKey = getLayerKey();
     
     // Check each option in this layer to see if it differs from saved config
-    for (const auto& [optionHash, optionPtr] : RtxOptionImpl::getGlobalOptionMap()) {
+    const auto globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
+    for (const auto& [optionHash, optionPtr] : *globalRtxOptions) {
       const GenericValue* layerValue = optionPtr->getGenericValue(this);
       if (!layerValue) {
         continue;  // Option not in this layer
@@ -270,16 +297,18 @@ namespace dxvk {
         continue;
       }
       
-      bool existsInRuntime = false;
-      
       RtxOptionImpl* optionPtr = RtxOptionImpl::getOptionByFullName(savedOptionName);
-      if (optionPtr) {
-        const GenericValue* layerValue = optionPtr->getGenericValue(this);
-        if (layerValue) {
-          const std::string liveValueStr = optionPtr->genericValueToString(*layerValue);
-          if (!liveValueStr.empty()) {
-            existsInRuntime = true;
-          }
+      // Unmanaged and rejected keys are preserved by save(), so they are never removals.
+      if (!optionPtr || isKeyRejected(savedOptionName)) {
+        continue;
+      }
+
+      bool existsInRuntime = false;
+      const GenericValue* layerValue = optionPtr->getGenericValue(this);
+      if (layerValue) {
+        const std::string liveValueStr = optionPtr->genericValueToString(*layerValue);
+        if (!liveValueStr.empty()) {
+          existsInRuntime = true;
         }
       }
       
@@ -302,7 +331,8 @@ namespace dxvk {
     m_miscategorizedOptionCountDirty = false;
     m_miscategorizedOptionCount = 0;
     
-    for (const auto& [hash, optionPtr] : RtxOptionImpl::getGlobalOptionMap()) {
+    const auto globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
+    for (const auto& [hash, optionPtr] : *globalRtxOptions) {
       if (optionPtr->hasValueInLayer(this)) {
         const uint32_t optionFlags = optionPtr->getFlags();
         
@@ -332,7 +362,8 @@ namespace dxvk {
   uint32_t RtxOptionLayer::migrateMiscategorizedOptions() {
     uint32_t migratedCount = 0;
     
-    for (const auto& [hash, optionPtr] : RtxOptionImpl::getGlobalOptionMap()) {
+    const auto globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
+    for (const auto& [hash, optionPtr] : *globalRtxOptions) {
       if (optionPtr->hasValueInLayer(this)) {
         const uint32_t optionFlags = optionPtr->getFlags();
         
@@ -379,8 +410,19 @@ namespace dxvk {
       return false;
     }
     
-    // Write all options from this layer into a Config (save all values, not just changed)
+    // Keep rtx keys that no option manages (e.g. a dynamic namespace registered later) and values
+    // that failed dynamic option parsing. Managed values written below take precedence.
     Config layerConfig;
+    for (const auto& [key, value] : m_config.getOptions()) {
+      if (key.find("rtx.") == std::string::npos) {
+        continue;
+      }
+      if (isKeyRejected(key) || RtxOptionImpl::getOptionByFullName(key) == nullptr) {
+        layerConfig.setOption(key, value);
+      }
+    }
+
+    // Write all options from this layer into a Config (save all values, not just changed)
     RtxOptionManager::writeOptions(layerConfig, this, false);
     setConfig(layerConfig);
     
@@ -504,7 +546,8 @@ namespace dxvk {
     
     // First pass: iterate through runtime options
     if (addedCallback || modifiedCallback || unchangedCallback) {
-      for (const auto& [optionHash, optionPtr] : RtxOptionImpl::getGlobalOptionMap()) {
+      const auto globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
+      for (const auto& [optionHash, optionPtr] : *globalRtxOptions) {
         const GenericValue* layerValue = optionPtr->getGenericValue(this);
         if (!layerValue) {
           continue;  // Option not in this layer
@@ -560,7 +603,7 @@ namespace dxvk {
         // Find the corresponding RtxOption - if none exists, this isn't an RtxOption
         // so we shouldn't consider it for removal tracking
         RtxOptionImpl* optionPtr = RtxOptionImpl::getOptionByFullName(savedOptionName);
-        if (optionPtr) {
+        if (optionPtr && !isKeyRejected(savedOptionName)) {
           const GenericValue* layerValue = optionPtr->getGenericValue(this);
           if (!layerValue) {
             // Option exists in saved config but NOT in runtime layer - it was removed

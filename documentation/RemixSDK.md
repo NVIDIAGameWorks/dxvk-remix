@@ -142,7 +142,7 @@ Push a camera, mesh instances and lights to define a scene for the *current* fra
 
 * Call `remixapi_Interface::Present` to render a frame and present to the window
 
-*Note: to set `rtx.conf` options at runtime, use `remixapi_Interface::SetConfigVariable`*
+*Note: to set `rtx.conf` options at runtime, use `remixapi_Interface::SetConfigVariable`. For keys in dynamic option namespaces, see [Dynamic Option Namespaces](RemixConfig.md#dynamic-option-namespaces).*
 
 *Note: [remixapi_example_c.c](/tests/rtx/apps/RemixAPI_C/remixapi_example_c.c) contains all the steps listed above, and should draw a triangle.*
 

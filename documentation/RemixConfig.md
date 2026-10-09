@@ -374,6 +374,50 @@ RtxOptionLayer* layer = RtxOptionManager::acquireLayer("my_layer.conf", key);
 RtxOptionManager::releaseLayer(layer);
 ```
 
+## Dynamic Option Namespaces
+
+Some systems need options whose names are only known at runtime, such as one entry per device. Such a system registers a namespace, and every key under the namespace prefix becomes an option of the namespace's type.
+
+```cpp
+DynamicOptionNamespace ns;
+ns.prefix = "rtx.example.";
+ns.type = OptionType::Float;
+ns.defaultValue = "1.0";
+ns.description = "Example values.";
+RtxOptionManager::registerDynamicNamespace(ns);
+
+// With `rtx.example.foo = 0.5` in any config layer:
+std::optional<DynamicOptionValue> value = RtxOptionManager::getDynamicValue("rtx.example.foo");
+auto entries = RtxOptionManager::enumerateDynamicOptions("rtx.example.", /* withOpinionsOnly */ true);
+```
+
+**Namespaces**
+- The prefix starts with `rtx.` and ends with `.`. It may not overlap another namespace or contain a compile-time option.
+- Types: `Bool`, `Int`, `Float`, `String`, `Vector2`, `Vector3`, `Vector4`, `Vector2i`. Flags: `UserSetting` and `NoSave` only.
+- Registering an identical namespace again succeeds without effect. Namespaces are never unregistered.
+- Registration may happen before or after config files load. When registered late, keys found in enabled layers are created and resolved before `registerDynamicNamespace` returns; keys in disabled layers appear when the layer is enabled.
+
+**Keys**
+- Keys are case-sensitive. The part after the prefix is one or more segments of letters, digits, and `_`, separated by single dots.
+- The config parser drops lines whose key contains any other character, so such lines cannot be reported.
+- Keys under a registered prefix that break these rules are logged and ignored.
+
+**Values**
+- Values are parsed strictly: numbers must use the whole string, floats must be finite, booleans are `true`, `false`, `1`, or `0` (case-insensitive), and vectors need exactly one value per component.
+- Strings have leading and trailing spaces and tabs removed. The rest must be non-empty and contain no quotes or control characters. An empty value means the layer has no opinion.
+- An invalid value in a layer is logged and ignored, so weaker layers still apply. Saving the layer keeps the original line.
+
+**Behavior**
+- Dynamic options are never deleted. `enumerateDynamicOptions(prefix, true)` and `getDynamicValue(key, true)` only report keys that have a value in some layer, including layers with zero blend strength.
+- `setDynamicValue` and `clearDynamicValue` edit a key the same way RtxOption setters do: without an explicit layer, the namespace flags and the active `RtxOptionLayerTarget` choose the layer. Changes are validated immediately and applied at the next frame's option update. Clearing a key also drops an invalid line for it from that layer, so saving removes it. Edits to a disabled layer are rejected, and an edit is dropped if its layer is reloaded, cleared, disabled, or released before the edit is applied.
+- Removing redundant values keeps a dynamic value unless a weaker layer other than the default layer resolves to the same value, because consumers can tell an explicit value from the namespace default.
+- Dynamic options are not listed in [RtxOptions.md](../RtxOptions.md).
+- `remixapi_Interface::SetConfigVariable` validates keys in a registered namespace immediately. It returns `REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS` for an invalid key or value, and `REMIXAPI_ERROR_CODE_GENERAL_FAILURE` for a key that no option or namespace owns. Accepted values are written to the user layer at the next frame's option update, or at the first update after startup if the call happens earlier. A value is dropped if the user layer is reloaded or cleared first. Through the 32-bit bridge the call always reports success, so rejections appear only in the log.
+
+Saving any layer keeps `rtx.` keys that no option manages, such as keys for a namespace that registers later.
+
+Code that iterates all options must keep the snapshot returned by `RtxOptionImpl::getGlobalOptionMap()` for the whole loop. Creating dynamic options publishes a new snapshot rather than modifying the existing one.
+
 ## Value Resolution
 
 The system maintains a **resolved value** for each option.  This represents a cached result of merging all layers. It is updated once per frame (after the render thread dispatches but before the main thread starts the next frame), ensuring thread-safe access during rendering.

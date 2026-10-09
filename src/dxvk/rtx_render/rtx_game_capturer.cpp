@@ -1066,7 +1066,10 @@ namespace dxvk {
     exportPrep.meta.bReduceMeshBuffers = true;
     exportPrep.meta.isZUp = RtxOptions::zUp();
     if (s_captureRemixConfigs) {
-      for (auto& pair : RtxOptionImpl::getGlobalOptionMap()) {
+      // Runs on the export thread; the lock keeps resolved values stable while they are serialized.
+      std::lock_guard<std::mutex> lock(RtxOptionImpl::getUpdateMutex());
+      const auto globalRtxOptions = RtxOptionImpl::getGlobalOptionMap();
+      for (auto& pair : *globalRtxOptions) {
         exportPrep.meta.renderingSettingsDict[pair.second->getFullName()] = pair.second->getResolvedValueAsString();
       }
     }
