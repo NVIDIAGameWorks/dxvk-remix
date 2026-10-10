@@ -96,6 +96,7 @@ namespace dxvk {
           "Ethan 'Xenthio' Cardwell",
           "Alexander 'xoxor4d' Engel",
           "James Horsley 'mmdanggg2'",
+          "Kevin 'HANsoA-KevinO'",
           "Kim 'Kim2091'",
           "Leonardo Leotte",
           "Enock Lubega",

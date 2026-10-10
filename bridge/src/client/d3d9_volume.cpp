@@ -134,8 +134,9 @@ bool Direct3DVolume9_LSS::lock(D3DLOCKED_BOX& lockedVolume, const D3DBOX* const 
   const auto columnStride = ((height + pixelsPerBlock - 1) / pixelsPerBlock);
   const auto size = depth * columnStride * rowStride * bytesPerPixel;
   void* const pData = new uint8_t[size];
-  lockedVolume.RowPitch = rowStride;
-  lockedVolume.SlicePitch = columnStride;
+  // D3D9 expects byte pitches. A row holds rowStride blocks and a slice holds columnStride rows.
+  lockedVolume.RowPitch = rowStride * bytesPerPixel;
+  lockedVolume.SlicePitch = lockedVolume.RowPitch * columnStride;
   lockedVolume.pBits = pData;
   m_lockInfoQueue.push({ lockedVolume, box, flags });
   return true;
@@ -153,9 +154,12 @@ void Direct3DVolume9_LSS::unlock() {
   const auto& lockedVolume = lockInfo.lockedVolume;
   const auto& box = lockInfo.box;
   const auto [width, height, depth] = getBoxDimensions(box);
+  const auto pixelsPerBlock = bridge_util::getBlockSize(m_desc.Format);
   const auto bytesPerPixel = bridge_util::getBytesFromFormat(m_desc.Format);
-  const auto rowSize = lockedVolume.RowPitch * bytesPerPixel;
-  const auto totalSize = depth * lockedVolume.SlicePitch * rowSize;
+  const auto rowStride = ((width + pixelsPerBlock - 1) / pixelsPerBlock);
+  const auto columnStride = ((height + pixelsPerBlock - 1) / pixelsPerBlock);
+  const auto rowSize = rowStride * bytesPerPixel;
+  const auto totalSize = depth * columnStride * rowSize;
 
   // Now send the box dimensions and surface handle
   if ((lockInfo.flags & D3DLOCK_READONLY) == 0) {
@@ -164,13 +168,13 @@ void Direct3DVolume9_LSS::unlock() {
     c.send_data(sizeof(D3DBOX), &box);
     c.send_data(lockInfo.flags);
 
-    // Now push actual bytes
-    c.send_many(bytesPerPixel, lockedVolume.RowPitch, lockedVolume.SlicePitch, depth);
+    // Now push actual bytes. The server reads bytes per block, blocks per row, block rows and slices.
+    c.send_many(bytesPerPixel, rowStride, columnStride, depth);
 #ifdef SEND_ALL_LOCK_DATA_AT_ONCE
     if (auto* blobPacketPtr = c.begin_data_blob(totalSize))
 #endif
       for (uint32_t z = 0; z < depth; z++) {
-        for (uint32_t y = 0; y < lockedVolume.SlicePitch; y++) {
+        for (uint32_t y = 0; y < columnStride; y++) {
           auto ptr = static_cast<uint8_t*>(lockedVolume.pBits) +
             y * lockedVolume.RowPitch + z * lockedVolume.SlicePitch;
 #ifdef SEND_ALL_LOCK_DATA_AT_ONCE
@@ -185,7 +189,7 @@ void Direct3DVolume9_LSS::unlock() {
     c.end_data_blob();
 #endif
   }
-  delete lockedVolume.pBits;
+  delete[] static_cast<uint8_t*>(lockedVolume.pBits);
 }
 
 D3DBOX Direct3DVolume9_LSS::resolveLockInfoBox(const D3DBOX* const pBox, const D3DVOLUME_DESC& desc) {
