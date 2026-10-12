@@ -288,7 +288,7 @@ void onBounceEnd(
 
 void onBounceEnd(
   inout PathState pathState,
-  bool isDiffuseReflection,
+  uint8_t sampledLobe,
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
   bool isOpaqueMaterial)
 {
@@ -296,9 +296,16 @@ void onBounceEnd(
 
 #if SHARC_QUERY
   // Perceptual roughness is only used on query
-  if (isOpaqueMaterial && !isDiffuseReflection)
+  if (isOpaqueMaterial)
   {
-    perceptualRoughness = roughnessToPerceptualRoughness(opaqueSurfaceMaterialInteraction.isotropicRoughness);
+    if (sampledLobe == opaqueLobeTypeOpacityTransmission)
+    {
+      perceptualRoughness = 0.h;
+    }
+    else if (sampledLobe != opaqueLobeTypeDiffuseReflection)
+    {
+      perceptualRoughness = roughnessToPerceptualRoughness(opaqueSurfaceMaterialInteraction.isotropicRoughness);
+    }
   }
 #endif
 

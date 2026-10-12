@@ -276,5 +276,6 @@ void integrate_indirect_pass(uvec2 threadIndex)
     INTEGRATE_INDIRECT_SBT_OFFSET_STANDARD, indirectPathTextures,
     geometryFlags, mediumMaterialIndex, rayOrigin, rayDirection,
     throughput, coneRadius, firstHitPerceptualRoughness,
-    firstSampledLobePdf, firstSampledSolidAnglePdf, gbufferSurfaceHitDistance, isCacheUpdate);
+    firstSampledLobePdf, firstSampledSolidAnglePdf, indirectSampleData.firstSampledLobeIsOpacityTransmission,
+    gbufferSurfaceHitDistance, isCacheUpdate);
 }
