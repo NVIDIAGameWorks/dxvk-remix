@@ -271,6 +271,37 @@ static void ImGui_ImplWin32_UpdateKeyModifiers()
     io.AddKeyEvent(ImGuiKey_ModSuper, IsVkDown(VK_APPS));
 }
 
+// NV-DXVK start: Synchronize modifiers for the non-activating raw-input overlay.
+static void ImGui_ImplWin32_UpdateRawKeyModifiers(int eventVk = 0, bool eventDown = false) {
+  // GetKeyState reflects this thread's legacy input queue, which is not updated
+  // by the overlay's raw keyboard input. Preserve the current event's transition
+  // and sample the other modifiers independently of that queue.
+  const int virtualKeys[] = { VK_LCONTROL, VK_RCONTROL, VK_LSHIFT, VK_RSHIFT,
+                             VK_LMENU, VK_RMENU, VK_LWIN, VK_RWIN };
+  const ImGuiKey keys[] = { ImGuiKey_LeftCtrl, ImGuiKey_RightCtrl,
+                           ImGuiKey_LeftShift, ImGuiKey_RightShift,
+                           ImGuiKey_LeftAlt, ImGuiKey_RightAlt,
+                           ImGuiKey_LeftSuper, ImGuiKey_RightSuper };
+  bool down[8];
+  for (int i = 0; i < IM_ARRAYSIZE(virtualKeys); ++i) {
+    if (virtualKeys[i] == eventVk) {
+      down[i] = eventDown;
+    } else {
+      down[i] = (::GetAsyncKeyState(virtualKeys[i]) & 0x8000) != 0;
+    }
+  }
+
+  ImGuiIO& io = ImGui::GetIO();
+  io.AddKeyEvent(ImGuiKey_ModCtrl, down[0] || down[1]);
+  io.AddKeyEvent(ImGuiKey_ModShift, down[2] || down[3]);
+  io.AddKeyEvent(ImGuiKey_ModAlt, down[4] || down[5]);
+  io.AddKeyEvent(ImGuiKey_ModSuper, down[6] || down[7]);
+  for (int i = 0; i < IM_ARRAYSIZE(virtualKeys); ++i) {
+    ImGui_ImplWin32_AddKeyEvent(keys[i], down[i], virtualKeys[i]);
+  }
+}
+// NV-DXVK end
+
 static void ImGui_ImplWin32_UpdateMouseData()
 {
     ImGui_ImplWin32_Data* bd = ImGui_ImplWin32_GetBackendData();
@@ -627,36 +658,21 @@ IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARA
         if (vk == VK_RETURN && (k.Flags & RI_KEY_E0)) // keypad enter remap (same as legacy path)
           vk = IM_VK_KEYPAD_ENTER;
 
+        // NV-DXVK start: Decode raw modifiers without consulting legacy key state.
+        if (vk == VK_SHIFT) {
+          vk = (int) MapVirtualKey(k.MakeCode, MAPVK_VSC_TO_VK_EX);
+        } else if (vk == VK_CONTROL) {
+          vk = (k.Flags & RI_KEY_E0) ? VK_RCONTROL : VK_LCONTROL;
+        } else if (vk == VK_MENU) {
+          vk = (k.Flags & RI_KEY_E0) ? VK_RMENU : VK_LMENU;
+        }
+        ImGui_ImplWin32_UpdateRawKeyModifiers(vk, is_down);
+        // NV-DXVK end
+
         const ImGuiKey key = ImGui_ImplWin32_VirtualKeyToImGuiKey(vk);
         const int scancode = (int) k.MakeCode; // Win32 scancode; backend uses scancode for workarounds
         if (key != ImGuiKey_None)
           ImGui_ImplWin32_AddKeyEvent(key, is_down, vk, scancode);
-
-        // Submit individual left/right modifier events
-        if (vk == VK_SHIFT)
-        {
-          // Important: Shift keys tend to get stuck when pressed together, missing key-up events are corrected in ImGui_ImplWin32_ProcessKeyEventsWorkarounds()
-          if (IsVkDown(VK_LSHIFT) == is_down) { ImGui_ImplWin32_AddKeyEvent(ImGuiKey_LeftShift, is_down, VK_LSHIFT, scancode); }
-          if (IsVkDown(VK_RSHIFT) == is_down) { ImGui_ImplWin32_AddKeyEvent(ImGuiKey_RightShift, is_down, VK_RSHIFT, scancode); }
-        }
-        else if (vk == VK_CONTROL)
-        {
-          if (IsVkDown(VK_LCONTROL) == is_down) {
-            ImGui_ImplWin32_AddKeyEvent(ImGuiKey_LeftCtrl, is_down, VK_LCONTROL, scancode);
-          }
-          if (IsVkDown(VK_RCONTROL) == is_down) {
-            ImGui_ImplWin32_AddKeyEvent(ImGuiKey_RightCtrl, is_down, VK_RCONTROL, scancode);
-          }
-        }
-        else if (vk == VK_MENU)
-        {
-          if (IsVkDown(VK_LMENU) == is_down) { ImGui_ImplWin32_AddKeyEvent(ImGuiKey_LeftAlt, is_down, VK_LMENU, scancode); }
-          if (IsVkDown(VK_RMENU) == is_down) { ImGui_ImplWin32_AddKeyEvent(ImGuiKey_RightAlt, is_down, VK_RMENU, scancode); }
-        }
-
-        // Modifiers (explicit L/R)
-        // Important: modifiers can miss key-up events; backend has a workaround but keep these in sync.
-        ImGui_ImplWin32_UpdateKeyModifiers();
 
         // generate text input
         if (is_down) {
@@ -679,6 +695,11 @@ IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARA
       break;
     }
     case WM_MOUSEMOVE:
+        // NV-DXVK start: Recover missed modifier releases before overlay drags.
+        if (hwnd != bd->hWnd) {
+          ImGui_ImplWin32_UpdateRawKeyModifiers();
+        }
+        // NV-DXVK end
         // We need to call TrackMouseEvent in order to receive WM_MOUSELEAVE events
         bd->MouseHwnd = hwnd;
         if (!bd->MouseTracked)
