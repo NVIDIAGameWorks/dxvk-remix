@@ -34,9 +34,30 @@ namespace dxvk {
   class SpatiallyHashedRadianceCache : public RtxPass {
   public:
 
+    enum class QualityPreset : uint32_t {
+      Medium = 0,
+      High = 1,
+      Ultra = 2,
+      Count = 3
+    };
+
     struct SharcOptions {
       friend class SpatiallyHashedRadianceCache;
       friend class ImGUI;
+
+      static void onQualityPresetChanged(DxvkDevice* pDevice);
+      RTX_OPTION_ARGS("rtx.spatiallyHashedRadianceCache", QualityPreset, qualityPreset, QualityPreset::Ultra,
+                      "Quality Preset: 0: Medium, 1: High, 2: Ultra.\n"
+                      "Scales the number of update records per frame.\n"
+                      "Ultra disables the record target and uses the fixed grid set by downscaleFactor.\n"
+                      "Lower presets reduce update tracing cost but slow cache convergence and lighting response.\n"
+                      "Medium combines update and query dispatches, adding one frame of latency to lighting changes.\n"
+                      "High and Ultra use separate update and query dispatches.\n"
+                      "Primary-vertex counting and cache-detail settings are preserved.\n"
+                      "Targets are adaptive goals, not hard caps.",
+                      args.environment = "RTX_SHARC_QUALITY_PRESET",
+                      args.onChangeCallback = &onQualityPresetChanged,
+                      args.flags = RtxOptionFlags::UserSetting);
 
       RTX_OPTION("rtx.spatiallyHashedRadianceCache", bool, resetHistory, false,
                  "Clears all SHaRC hash entries and accumulated and resolved radiance on the next frame.\n"
@@ -49,18 +70,20 @@ namespace dxvk {
       RTX_OPTION("rtx.spatiallyHashedRadianceCache", bool, enableResolve, true,
                  "Enables the pass that combines current SHaRC update samples with cache history.\n"
                  "Disabling Resolve discards new accumulation while queries may continue reading the last resolved cache.");
-      RTX_OPTION("rtx.spatiallyHashedRadianceCache", bool, combineUpdateAndQuery, false,
+      RTX_OPTION_FLAG("rtx.spatiallyHashedRadianceCache", bool, combineUpdateAndQuery, false, RtxOptionFlags::UserSetting,
                  "Traces update paths in the same dispatch as query paths, like NRC traces its training paths, instead of in a separate update pass.\n"
-                 "This removes the fixed cost of the separate pass, but queries then read the cache resolved in the previous frame, which delays lighting changes by a frame.");
+                 "This removes the fixed cost of the separate pass, but queries then read the cache resolved in the previous frame, which delays lighting changes by a frame.\n"
+                 "Medium enables this option. High and Ultra disable it. Use Custom graphics settings to override it manually.");
       RTX_OPTION("rtx.spatiallyHashedRadianceCache", uint32_t, downscaleFactor, 5,
                  "Controls SHaRC update resolution; a factor of N traces one update ray per N by N pixel block each frame.\n"
                  "Higher values reduce update cost but make cache coverage and lighting changes converge more slowly.\n"
                  "Only used when targetNumUpdateRecords is 0.");
-      RTX_OPTION("rtx.spatiallyHashedRadianceCache", uint32_t, targetNumUpdateRecords, 0,
+      RTX_OPTION_FLAG("rtx.spatiallyHashedRadianceCache", uint32_t, targetNumUpdateRecords, 0, RtxOptionFlags::UserSetting,
                  "Target number of update records per frame. A record is a path vertex that an update path adds to the cache.\n"
                  "The update grid is resized to reach it the way NRC sizes its training grid, which keeps the update cost independent of resolution.\n"
                  "Higher values make the cache converge and respond to lighting changes faster at a higher update cost.\n"
-                 "0 disables the target, and downscaleFactor sets a fixed update grid instead.");
+                 "0 disables the target, and downscaleFactor sets a fixed update grid instead.\n"
+                 "Quality presets set this target. Use Custom graphics settings to override it manually.");
       RTX_OPTION("rtx.spatiallyHashedRadianceCache", bool, excludePrimaryVerticesFromTarget, false,
                  "Leaves the record that each update path adds at its primary vertex out of the count that targetNumUpdateRecords targets.\n"
                  "NRC's training records mostly leave out primary vertices as well, so this makes the target comparable to NRC's.");

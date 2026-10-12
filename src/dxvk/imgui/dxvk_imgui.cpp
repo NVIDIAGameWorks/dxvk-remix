@@ -372,6 +372,15 @@ namespace dxvk {
     } }
   };
 
+  RemixGui::ComboWithKey<SpatiallyHashedRadianceCache::QualityPreset> sharcQualityPresetCombo {
+    "SHaRC Quality Preset",
+    RemixGui::ComboWithKey<SpatiallyHashedRadianceCache::QualityPreset>::ComboEntries { {
+        {SpatiallyHashedRadianceCache::QualityPreset::Ultra, "Ultra"},
+        {SpatiallyHashedRadianceCache::QualityPreset::High, "High"},
+        {SpatiallyHashedRadianceCache::QualityPreset::Medium, "Medium"}
+    } }
+  };
+
   RemixGui::ComboWithKey<DxvkRayReconstruction::RayReconstructionPreset> rayReconstructionPresetCombo {
     "DLSS RR Preset",
     { {
@@ -4097,6 +4106,8 @@ namespace dxvk {
             ImGui::Indent();
             ImGui::PushID("Spatially Hashed Radiance Cache");
             using SharcOptions = SpatiallyHashedRadianceCache::SharcOptions;
+
+            sharcQualityPresetCombo.getKey(&SharcOptions::qualityPresetObject());
             RemixGui::Checkbox("Reset History", &SharcOptions::resetHistoryObject());
             RemixGui::Checkbox("Enable PT Update Pass", &SharcOptions::enableUpdateObject());
             RemixGui::Checkbox("Enable Resolve", &SharcOptions::enableResolveObject());
@@ -4160,6 +4171,7 @@ namespace dxvk {
             RemixGui::DragInt("Stale Frame Number", &SharcOptions::staleFrameNumberObject(), 1.f, 8, 100, "%d", sliderFlags);
             RemixGui::DragFloat("Perceptual Roughness Threshold", &SharcOptions::perceptualRoughnessThresholdObject(), 0.01f, 0.f, 1.f, "%.3f", sliderFlags);
             RemixGui::DragFloat("Firefly Clamp Multiplier", &SharcOptions::fireflyClampMultiplierObject(), 0.1f, 0.f, 100.f, "%.1f", sliderFlags);
+            RemixGui::DragInt("Jitter Sequence Length", &SharcOptions::jitterSequenceLengthObject(), 1.f, 0, 1024, "%d", sliderFlags);
             RemixGui::DragInt("Jitter Sequence Length", &SharcOptions::jitterSequenceLengthObject(), 1.f, 0, 1024, "%d", sliderFlags);
             ImGui::PopID();
             ImGui::Unindent();
