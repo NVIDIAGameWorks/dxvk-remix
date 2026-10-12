@@ -33,6 +33,7 @@
 #include "rtx_camera.h"
 #include "rtx_debug_view.h"
 #include "rtx_sparse_rendering.h"
+#include "rtx_options.h"
 
 #include "rtx_spatially_hashed_radiance_cache.h"
 #include "rtx/pass/sharc/sharc_binding_indices.h"
@@ -58,6 +59,35 @@ namespace dxvk {
     };
 
     PREWARM_SHADER_PIPELINE(SharcResolveShader);
+  }
+
+  void SpatiallyHashedRadianceCache::SharcOptions::onQualityPresetChanged(DxvkDevice* pDevice) {
+    const QualityPreset preset = qualityPreset();
+    uint32_t target;
+    switch (preset) {
+    case QualityPreset::Medium:
+      target = 32768;
+      break;
+    case QualityPreset::High:
+      target = 65566;
+      break;
+    case QualityPreset::Ultra:
+      target = 0;
+      break;
+    default:
+      return;
+    }
+
+    const bool isCustomInitialization = pDevice == nullptr && RtxOptions::graphicsPreset() == GraphicsPreset::Custom;
+    RtxOptionLayerTarget layerTarget(RtxOptionEditTarget::Derived);
+
+    // Preserve explicitly configured Custom settings during initialization.
+    if (!isCustomInitialization || !targetNumUpdateRecordsObject().getBlockingLayer(RtxOptionLayer::getDefaultLayer())) {
+      targetNumUpdateRecords.setImmediately(target);
+    }
+    if (!isCustomInitialization || !combineUpdateAndQueryObject().getBlockingLayer(RtxOptionLayer::getDefaultLayer())) {
+      combineUpdateAndQuery.setImmediately(preset == QualityPreset::Medium);
+    }
   }
 
   SpatiallyHashedRadianceCache::SpatiallyHashedRadianceCache(dxvk::DxvkDevice* device) : RtxPass(device), m_device(device) { }

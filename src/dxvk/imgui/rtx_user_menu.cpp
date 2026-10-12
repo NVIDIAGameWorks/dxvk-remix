@@ -36,6 +36,7 @@
 #include "rtx_render/rtx_rtxdi_rayquery.h"
 #include "rtx_render/rtx_restir_gi_rayquery.h"
 #include "rtx_render/rtx_neural_radiance_cache.h"
+#include "rtx_render/rtx_spatially_hashed_radiance_cache.h"
 #include "rtx_render/rtx_global_volumetrics.h"
 #include "rtx_render/rtx_option_layer_gui.h"
 #include "rtx_render/rtx_scene_manager.h"
@@ -52,6 +53,7 @@ namespace dxvk {
   extern RemixGui::ComboWithKey<DLSSProfile> dlssProfileCombo;
   extern RemixGui::ComboWithKey<DxvkDLSS::DLSSPreset> dlssRenderPresetCombo;
   extern RemixGui::ComboWithKey<XeSSPreset> xessPresetCombo;
+  extern RemixGui::ComboWithKey<SpatiallyHashedRadianceCache::QualityPreset> sharcQualityPresetCombo;
 
   // Combo boxes used only by the user menu
   static RemixGui::ComboWithKey<DlssPreset> dlssPresetCombo{
@@ -559,6 +561,12 @@ namespace dxvk {
         
         neuralRadianceCacheQualityPresetCombo.getKey(&NeuralRadianceCache::NrcOptions::qualityPresetObject());
 
+        ImGui::EndDisabled();
+      }
+
+      if (SpatiallyHashedRadianceCache::checkIsSupported(m_device)) {
+        ImGui::BeginDisabled(RtxOptions::integrateIndirectMode() != IntegrateIndirectMode::SHaRC);
+        sharcQualityPresetCombo.getKey(&SpatiallyHashedRadianceCache::SharcOptions::qualityPresetObject());
         ImGui::EndDisabled();
       }
 
