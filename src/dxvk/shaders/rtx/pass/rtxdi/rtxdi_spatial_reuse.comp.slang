@@ -42,7 +42,11 @@
 #define RAB_HAS_CURRENT_GBUFFER 1
 #define SHADOW_TERMINATOR_FIX_ALLOWED 1
 #define RAB_HAS_RTXDI_RESERVOIRS 1
-#define RTXDI_COHERENT_SPATIAL_NEIGHBOR_OFFSETS 1
+// Wave-uniform neighbor offsets correlate spatial reuse across a whole wave (16-wide strips) and, combined with
+// clamping to the screen bounds, make entire strips reuse a single edge pixel. This shows up as horizontal
+// streaks / shimmer on hard shadow edges and along the screen border that the denoiser cannot resolve (REMIX-6192).
+// Use per-pixel random offsets instead.
+#define RTXDI_COHERENT_SPATIAL_NEIGHBOR_OFFSETS 0
 
 #ifndef RTXDI_ENABLE_BSDF_DETAIL
 #define RTXDI_ENABLE_BSDF_DETAIL 1
