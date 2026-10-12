@@ -387,7 +387,9 @@ void sampleAndStoreIndirectRayPathSample(
   indirectSampleData.firstSampledLobeIsSpecular = firstSampledLobeIsSpecular;
   indirectSampleData.firstSampledLobePdf = firstSampledLobePdf;
   indirectSampleData.firstSampledSolidAnglePdf = firstSampledSolidAnglePdf;
-  indirectSampleData.insideMedium = insideMedium;
+  indirectSampleData.firstSampledLobeIsOpacityTransmission =
+    polymorphicSurfaceMaterialInteractionGetTypeHelper(primaryPolymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque &&
+    firstRayPathSampledLobe == opaqueLobeTypeOpacityTransmission;
   indirectSampleData.store(compactedCoordinate, aliasedData2.IndirectFirstSampledLobeData);
 
   float totalPdf = 0;

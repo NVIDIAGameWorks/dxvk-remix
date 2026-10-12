@@ -43,7 +43,7 @@ struct IndirectSampleData
   float firstSampledLobePdf;
   float firstSampledSolidAnglePdf;
   bool firstSampledLobeIsSpecular;
-  bool insideMedium; 
+  bool firstSampledLobeIsOpacityTransmission;
 
   [mutating] void unpack(const uint encodedData) 
   {
@@ -51,7 +51,7 @@ struct IndirectSampleData
     firstSampledSolidAnglePdf = abs(unpackFloat2x16(encodedData)).y;
 
     firstSampledLobeIsSpecular = packedFlagGet(encodedData, 1 << 15);
-    insideMedium = packedFlagGet(encodedData, 1 << 31);
+    firstSampledLobeIsOpacityTransmission = packedFlagGet(encodedData, 1 << 31);
   } 
 
   uint pack()
@@ -61,7 +61,7 @@ struct IndirectSampleData
     // Note: Encode flags into the sign bits of each float. This must be done manually because -0 may not be properly
     // stored if the value is 0 as -0 and +0 tend to be treated the same. Assumes the pdfs are always 0 or greater
     // Lobe pdf and and solid angle pdfs are expected to be >= 0
-    encodedData = packedFlagSet(encodedData, (uint(firstSampledLobeIsSpecular) << 15) | (uint(insideMedium) << 31));
+    encodedData = packedFlagSet(encodedData, (uint(firstSampledLobeIsSpecular) << 15) | (uint(firstSampledLobeIsOpacityTransmission) << 31));
 
     return encodedData;
   }

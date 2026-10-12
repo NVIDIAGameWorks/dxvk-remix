@@ -1006,12 +1006,15 @@ void integratePathVertex(
 
 #if ENABLE_NRC
     NrcSetBrdfPdf(pathState.nrcPathState, pathState.solidAnglePdf);
+    if (isOpaqueMaterial && continuationLobe == opaqueLobeTypeOpacityTransmission)
+    {
+      NrcSetFlag(pathState.nrcPathState.packedData, nrcPathFlagPreviousHitWasDeltaLobe);
+    }
 #endif
 
     accumulateThroughput(pathState, continuationThroughput);
 
-    const bool isDiffuseReflection = continuationLobe == opaqueLobeTypeDiffuseReflection;
-    Sharc::onBounceEnd(pathState, isDiffuseReflection, opaqueSurfaceMaterialInteraction, isOpaqueMaterial);
+    Sharc::onBounceEnd(pathState, continuationLobe, opaqueSurfaceMaterialInteraction, isOpaqueMaterial);
 
 #if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL) != 0
   }
@@ -1190,7 +1193,8 @@ void initNrc(
   u16vec2 compactedRadianceCoordinate,
   bool isNrcUpdate,
   GeometryFlags geometryFlags,
-  float firstSampledSolidAnglePdf)
+  float firstSampledSolidAnglePdf,
+  bool firstSampledLobeIsOpacityTransmission)
 {
 #if ENABLE_NRC
   pathState.isNrcUpdate = isNrcUpdate;
@@ -1256,6 +1260,10 @@ void initNrc(
   // Therefore, default non-NRC behavior applies to it - we keep the one already initialized in the PathState
 
   NrcSetBrdfPdf(pathState.nrcPathState, firstSampledSolidAnglePdf);
+  if (firstSampledLobeIsOpacityTransmission)
+  {
+    NrcSetFlag(pathState.nrcPathState.packedData, nrcPathFlagPreviousHitWasDeltaLobe);
+  }
 #else
   unused(pathState);
 #endif
@@ -1267,7 +1275,8 @@ void initSharc(
   u16vec2 sharcUpdatePixelCoordinate,
   GeometryFlags geometryFlags,
   vec3 primarySurfacePosition,
-  float16_t firstHitPerceptualRoughness)
+  float16_t firstHitPerceptualRoughness,
+  bool firstSampledLobeIsOpacityTransmission)
 {
   // Initialize SHaRC state stored in path state
 #if SHARC_UPDATE
@@ -1309,7 +1318,7 @@ void initSharc(
   }
 #endif
 
-  Sharc::onBounceEnd(pathState, firstHitPerceptualRoughness);
+  Sharc::onBounceEnd(pathState, firstSampledLobeIsOpacityTransmission ? 0.h : firstHitPerceptualRoughness);
   // after primary hit, increment bounce iteration
   pathState.bounceIteration = 1;
 
@@ -1445,6 +1454,7 @@ void integrateIndirectPath(
   GeometryFlags geometryFlags, uint mediumMaterialIndex, vec3 rayOrigin, vec3 rayDirection,
   vec3 throughput, float rayConeRadius, float firstHitPerceptualRoughness,
   float firstSampledLobePdf, float firstSampledSolidAnglePdf,
+  bool firstSampledLobeIsOpacityTransmission,
   float gbufferSurfaceHitDistance, bool isCacheUpdate)
 {
   // Initialize Path State
@@ -1476,7 +1486,8 @@ void integrateIndirectPath(
 
   pathState.isSharcUpdate = isCacheUpdate;
 
-  initNrc(pathState, compactedCoordinate, isCacheUpdate, geometryFlags, firstSampledSolidAnglePdf);
+  initNrc(pathState, compactedCoordinate, isCacheUpdate, geometryFlags, firstSampledSolidAnglePdf,
+    firstSampledLobeIsOpacityTransmission);
 
   initReSTIRGI(pathState, geometryFlags, firstHitPerceptualRoughness, firstSampledLobePdf, firstSampledSolidAnglePdf);
 
@@ -1557,7 +1568,8 @@ void integrateIndirectPath(
 #endif
   }
   // Init sharc after all throughput modifications to the primary vertex
-  initSharc(pathState, compactedCoordinate, cacheUpdatePixelCoordinate, geometryFlags, rayOrigin, firstHitPerceptualRoughness);
+  initSharc(pathState, compactedCoordinate, cacheUpdatePixelCoordinate, geometryFlags, rayOrigin,
+    firstHitPerceptualRoughness, firstSampledLobeIsOpacityTransmission);
 
   // Integrate Secondary Vertices
 
