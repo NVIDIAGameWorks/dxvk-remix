@@ -285,6 +285,15 @@ namespace dxvk {
   }
 
   void RtxContext::resetScreenResolution(const VkExtent3D& upscaleExtent) {
+    // Defer NGX-dependent resolution setup until a scene needs a camera. This
+    // keeps device creation and raster loading screens independent of NGX, without
+    // temporarily choosing a fallback resolution that would alter camera jitter.
+    if (RtxOptions::isDLSSOrRayReconstructionEnabled() && !m_common->metaNGXContext().isInitializationComplete()) {
+      m_pendingScreenResolution = upscaleExtent;
+      return;
+    }
+    m_pendingScreenResolution.reset();
+
     // Calculate extents based on if DLSS is enabled or not
     const VkExtent3D downscaleExtent = setDownscaleExtent(upscaleExtent);
 
@@ -316,6 +325,14 @@ namespace dxvk {
     // Therefore reloadTextureWhenResolutionChanged is set to OFF by default to improve performance. 
     if (RtxOptions::reloadTextureWhenResolutionChanged()) {
       getSceneManager().requestTextureVramFree();
+    }
+  }
+
+  void RtxContext::prepareScreenResolution() {
+    if (m_pendingScreenResolution) {
+      const VkExtent3D upscaleExtent = *m_pendingScreenResolution;
+      m_common->metaNGXContext().waitForInitialization();
+      resetScreenResolution(upscaleExtent);
     }
   }
 
@@ -563,11 +580,22 @@ namespace dxvk {
       m_frameLastInjected = m_device->getCurrentFrameId();
     }
 
-    if (RtxOptions::upscalerType() == UpscalerType::DLSS && !common->metaDLSS().supportsDLSS()) {
+    // Loading screens can present while NGX initializes, but the first ray-traced
+    // scene must wait for its capabilities. Skipping valid scene frames here would
+    // make temporal history and frame-based screenshots/captures depend on NGX timing.
+    auto& ngxContext = common->metaNGXContext();
+    if (isRaytracingEnabled && isCameraValid && !asyncShaderCompilationActive && !ngxContext.isInitializationComplete()) {
+      ngxContext.waitForInitialization();
+    }
+    const bool ngxInitializationComplete = ngxContext.isInitializationComplete();
+
+    // Pending capabilities are not unsupported capabilities. Preserve the user's
+    // requested features while the loading screen is being rendered.
+    if (ngxInitializationComplete && RtxOptions::upscalerType() == UpscalerType::DLSS && !common->metaDLSS().supportsDLSS()) {
       RtxOptions::upscalerType.setDeferred(UpscalerType::TAAU);
     }
 
-    if (DxvkDLFG::enable() && !common->metaDLFG().supportsDLFG()) {
+    if (ngxInitializationComplete && DxvkDLFG::enable() && !common->metaDLFG().supportsDLFG()) {
       DxvkDLFG::enable.setDeferred(false);
     }
     
@@ -600,7 +628,8 @@ namespace dxvk {
     bool raytracedThisFrame = false;
 
     // Note: Only engage ray tracing when it is enabled, the camera is valid and when no shaders are currently being compiled asynchronously (as
-    // trying to render before shaders are done compiling will cause Remix to block).
+    // trying to render before shaders are done compiling will cause Remix to block). NGX capabilities are ready
+    // here because a renderable scene waits for initialization above.
     if (isRaytracingEnabled && isCameraValid && !asyncShaderCompilationActive) {
       if (targetImage == nullptr) {
         targetImage = m_state.om.renderTargets.color[0].view->image();  
@@ -1005,6 +1034,8 @@ namespace dxvk {
 
     // Sync any pending work with geometry processing threads
     if (drawCallState.finalizePendingFutures(lastCamera)) {
+      // Camera projection jitter must use the final DLSS/RR render resolution.
+      prepareScreenResolution();
       drawCallState.cameraType = cameraManager.processCameraData(drawCallState);
 
       if (drawCallState.cameraType == CameraType::Unknown) {

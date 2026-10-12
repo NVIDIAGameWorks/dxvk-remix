@@ -25,6 +25,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <thread>
 #include <cwctype>
 
 #include "rtx_mod_usd.h"
@@ -43,6 +44,7 @@
 #include "rtx_file_watch.h"
 
 #include "../../lssusd/usd_include_begin.h"
+#include <tbb/task_arena.h>
 #include <pxr/base/gf/matrix4f.h>
 #include <pxr/base/gf/rotation.h>
 #include <pxr/base/tf/notice.h>
@@ -1472,7 +1474,19 @@ void UsdMod::Impl::unload() {
 bool UsdMod::Impl::openStage(const std::string& replacementsUsdPath) {
   // Cleanup any prior stage (generally a result of failure to load)
   unsubscribeFromStageChanges();
-  m_stage = pxr::UsdStage::Open(replacementsUsdPath, pxr::UsdStage::LoadAll);
+  const auto openReplacementStage = [&] {
+    return pxr::UsdStage::Open(replacementsUsdPath, pxr::UsdStage::LoadAll);
+  };
+  const uint32_t threadCount = UsdMod::stageOpenThreadCount();
+  if (threadCount == 0) {
+    m_stage = openReplacementStage();
+  } else {
+    // Bound this stage's composition work without changing USD's process-wide
+    // concurrency limit, which may also be used by a host application or exporter.
+    const uint32_t availableThreads = std::max(1u, std::thread::hardware_concurrency());
+    tbb::task_arena stageOpenArena(static_cast<int>(std::min(threadCount, availableThreads)));
+    m_stage = stageOpenArena.execute(openReplacementStage);
+  }
   if (!m_stage) {
     Logger::err(str::format("USD mod file failed parsing: ",
                             std::filesystem::weakly_canonical(replacementsUsdPath).string()));

@@ -29,6 +29,7 @@
 
 #include <cstdint>
 #include <chrono>
+#include <optional>
 #include "rtx_options.h"
 
 struct VolumeArgs;
@@ -75,6 +76,9 @@ namespace dxvk {
       * \param [in] upscaleExtent: New desired resolution.
       */
     void resetScreenResolution(const VkExtent3D& upscaleExtent);
+
+    // Complete deferred NGX-dependent resolution setup before updating a scene camera.
+    void prepareScreenResolution();
 
     /**
       * \brief Triggers the RTX renderer.  Writes to targetImage (if specified) 
@@ -252,6 +256,7 @@ namespace dxvk {
 
     bool m_rayTracingSupported;
     bool m_dlssSupported;
+    std::optional<VkExtent3D> m_pendingScreenResolution;
     bool m_submitContainsInjectRtx = false;
     uint64_t m_cachedReflexFrameId = 0;
 

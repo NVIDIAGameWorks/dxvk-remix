@@ -50,6 +50,11 @@ namespace dxvk {
 
     static void loadUsdPlugins();
 
+    RTX_OPTION("rtx.usd", uint32_t, stageOpenThreadCount, 4,
+               "Maximum CPU threads used to open a USD replacement stage. Limiting this work keeps game startup and "
+               "presentation responsive while large mods load in the background, at the cost of a longer stage load. "
+               "0: Use the USD concurrency limit without an additional cap. Applies when a stage is opened.");
+
     RTX_OPTION("rtx.usd", bool, reloadOnChanged, true,
                "Watches for changes to USD files and reloads them in-game when saved. Uses OS file-change notifications (no polling overhead). "
                "Note: changes made during the first few seconds of initial stage load may be missed if the mod directory is not yet registered with the file watcher. "
