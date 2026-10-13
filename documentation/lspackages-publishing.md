@@ -38,11 +38,16 @@ continue to advance by ordinary fast-forward pushes. Later internal-config edits
 keep the public copy selected; no force push or post-export commit is added.
 The callback is covered by an isolated Git export test with two successive pushes.
 
+Runtime ZIPs, symbols, checksums and GitHub draft releases are prepared by
+[remix-release](https://gitlab-master.nvidia.com/dpt/devops/remix-release) using
+its `RELEASE_VERSION` input. DXVK CI provides the builds, signing trigger, source
+export, and HDRemix/core-materials publishing jobs.
+
 ## Manual publishing
 
 Create a pipeline in the GitLab web UI. The pipeline user needs read access to the
-shared include. Leave `MANUAL_SIGNING_PIPELINE` and `RELEASE_PACKAGE` at
-`false` for normal package publishing.
+shared include. Leave `MANUAL_SIGNING_PIPELINE` at `false` for normal package
+publishing.
 
 - For HDRemix, select `HDREMIX_PACKAGE_PUBLISH=internal` or `public` and
   `HDREMIX_PUBLISH_FLAVOR=release`, `debug`, or `debug_optimized`. The selected
@@ -54,6 +59,8 @@ shared include. Leave `MANUAL_SIGNING_PIPELINE` and `RELEASE_PACKAGE` at
   publishing another version of the same source. No test suffix is added and no
   overwrite is requested. Normal symbol publishing remains enabled.
 
+HDRemix and MDL package uploads use `win_build` runners. Shared job templates
+and manual publishing rules live in `tools/ci/gitlab/.extends.yml`.
 The Windows runners need `lightspeed-uploader.exe` on PATH and an inherited
 `LSPACKAGES_TOKEN` with Upload access to the selected remote, or an approved
 source-IP grant in LSPackages. No Vault S3 credentials or new GitLab variables are
