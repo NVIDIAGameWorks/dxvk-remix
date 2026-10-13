@@ -61,6 +61,11 @@ struct SparseRenderingArgs
   float guideRoughnessDemodulationMultiplier;
   float guideRoughnessDemodulationOffset;
   uint resampledSharcUpdatePaths;
+
+  uint enableSparseAwareAlphaBlendSearch;
+  uint pad0;
+  uint pad1;
+  uint pad2;
 };
 
 #ifdef __cplusplus

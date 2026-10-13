@@ -2951,6 +2951,7 @@ namespace dxvk {
         RemixGui::InputInt("First N Untextured Draw Calls", &RtxOptions::skyDrawcallIdThresholdObject(), 1, 1, 0);
         RemixGui::SliderFloat("Sky Min Z Threshold", &RtxOptions::skyMinZThresholdObject(), 0.0f, 1.0f);
         skyAutoDetectCombo.getKey(&RtxOptions::skyAutoDetectObject());
+        RemixGui::Checkbox("Use Sky Probe for Primary Rays", &CompositePass::skyUseProbeForPrimaryRaysObject());
 
         if (RemixGui::CollapsingHeader("Advanced", collapsingHeaderClosedFlags)) {
           ImGui::Indent();

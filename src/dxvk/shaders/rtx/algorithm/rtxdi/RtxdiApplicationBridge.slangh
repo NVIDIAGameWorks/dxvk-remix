@@ -747,7 +747,17 @@ void RAB_StoreGIReservoir(ReSTIRGI_Reservoir reservoir, int2 pixel, int page)
 RTXDI_Reservoir RAB_LoadReservoir(int2 pixel, int page)
 {
 #ifdef RAB_HAS_RTXDI_RESERVOIRS
-    return RTXDI_UnpackReservoir(RtxdiReservoirBuffer[RTXDI_ReservoirPositionToPointer(pixel, cb.camera.resolution, page)]);
+    const RTXDI_PackedReservoir packedReservoir = RtxdiReservoirBuffer[RTXDI_ReservoirPositionToPointer(pixel, cb.camera.resolution, page)];
+
+    // The buffer is zero-filled on creation, and a zero record would unpack as a valid reservoir for light 0.
+    // Sparse rendering reuses pixels that have not written a reservoir since then, so a zero record is treated as empty.
+    // A written reservoir for light 0 is unaffected, since holding a sample makes its M at least 1, which keeps data1 nonzero.
+    if (all((packedReservoir.data0 | packedReservoir.data1) == 0u))
+    {
+        return RTXDI_EmptyReservoir();
+    }
+
+    return RTXDI_UnpackReservoir(packedReservoir);
 #else
     return RTXDI_EmptyReservoir();
 #endif

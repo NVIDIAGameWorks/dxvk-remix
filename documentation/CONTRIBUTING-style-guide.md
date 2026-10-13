@@ -82,6 +82,16 @@ This document outlines our project's C++ code formatting standards, commenting s
 
   Comparisons against a value other than zero, and bit tests such as `(flags & kSomeBit) != 0`, are unaffected.
 
+- **Shader Argument Flags**: When setting a `uint` flag in a shader constant buffer argument struct from a `bool`, assign the `bool` directly. The conversion already yields 1 or 0, so a ternary is redundant.
+
+  ```cpp
+  // Good
+  args.enableFeature = Options::enableFeature();
+
+  // Bad
+  args.enableFeature = Options::enableFeature() ? 1u : 0u;
+  ```
+
 - **Subject First**: Put the subject (the variable being tested) on the left of the operator.
 
   ```cpp

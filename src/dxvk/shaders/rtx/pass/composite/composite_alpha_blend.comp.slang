@@ -41,6 +41,48 @@
 
 groupshared uint samplePixel[16 * 8];
 
+// Bounds the search budget that sparse rendering scales up at low sampling rates.
+static const int kMaxSparseSearchIterationCount = 32;
+// Number of matching neighbours whose lighting match averaging averages.
+static const int kMaxSearchMatchCount = 4;
+
+// Returns the lighting of an active neighbour, applied to the alpha blend surface's color.
+vec3 calculateNeighborLight(uvec2 compactedNeighborCoordinate, int2 neighborPixel, AlphaBlendSurface surface)
+{
+  vec3 diffuseLight = 0;
+  diffuseLight += PrimaryDirectDiffuseRadianceHitDistance[compactedNeighborCoordinate].xyz * surface.color.xyz;
+  if (cb.enableSeparatedDenoisers)
+  {
+    diffuseLight += PrimaryIndirectDiffuseRadianceHitDistance[compactedNeighborCoordinate].xyz * surface.color.xyz;
+  }
+
+  float perceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[compactedNeighborCoordinate].a;
+
+  float roughnessFactor = 1.0;
+  if (cb.demodulateRoughness)
+  {
+    roughnessFactor = getRoughnessDemodulationFactor(perceptualRoughness, cb.roughnessDemodulationOffset);
+  }
+
+  const vec3 primarySpecularAlbedo = PrimarySpecularAlbedo[compactedNeighborCoordinate].xyz;
+  vec3 specularLight = PrimaryDirectSpecularRadianceHitDistance[compactedNeighborCoordinate].xyz;
+  if (cb.enableSeparatedDenoisers)
+  {
+    specularLight += PrimaryIndirectSpecularRadianceHitDistance[compactedNeighborCoordinate].xyz;
+  }
+  specularLight = primarySpecularAlbedo * specularLight / roughnessFactor;
+
+  vec3 neighborLight = diffuseLight + specularLight;
+
+  // Demodulate scales active radiance by the inverse sampling rate, but the particle is lit at every pixel.
+  if (cb.sparseRenderingArgs.mode != SparseRenderingMode::Off)
+  {
+    neighborLight *= clampSamplingRateForRadianceScale(SparseRenderingPixelSamplingRate[neighborPixel]);
+  }
+
+  return neighborLight;
+}
+
 [shader("compute")]
 [numthreads(COMPOSITE_THREAD_GROUP_WIDTH, COMPOSITE_THREAD_GROUP_HEIGHT, 1)]
 void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThreadID)
@@ -83,7 +125,25 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
       // It is read only once `found` is set, right after a lookup wrote it.
       uvec2 compactedNeighborCoordinate = uvec2(kInvalidCompactedCoordinate);
 
-      for (int i = 0; i < cb.stochasticAlphaBlendSearchIteration; ++i)
+      const bool isSparseAwareSearchActive =
+        cb.sparseRenderingArgs.mode != SparseRenderingMode::Off && cb.sparseRenderingArgs.enableSparseAwareAlphaBlendSearch;
+      const bool isMatchAveragingActive = cb.stochasticAlphaBlendAverageSearchMatches;
+
+      // Only active pixels have lighting, so the sparse-aware search scales the budget to keep the number of attempts that land on one.
+      // The rate is uniform across the screen, which keeps the count, and the barrier below, the same for every thread.
+      int searchIterationCount = cb.stochasticAlphaBlendSearchIteration;
+      if (isSparseAwareSearchActive)
+      {
+        searchIterationCount = min(
+          int(ceil(searchIterationCount / clampSamplingRateForRadianceScale(cb.sparseRenderingArgs.pixelSamplingRate))),
+          kMaxSparseSearchIterationCount);
+      }
+
+      // A single matching neighbour's noisy lighting flickers, so match averaging averages several matches.
+      vec3 accumulatedNeighborLight = vec3(0.0f);
+      int matchCount = 0;
+
+      for (int i = 0; i < searchIterationCount; ++i)
       {
         if (!found)
         {
@@ -94,11 +154,13 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
           const bool neighborIsActive = compactedCoordinateFromPixelIfActive(
             CompactedPixelIndices, TileActiveCounts, uint2(neighborPixel.xy), cb.sparseRenderingArgs, compactedNeighborCoordinate);
 
-          if (!neighborIsActive)
+          // An inactive pixel has no lighting but says nothing about the area, so the sparse-aware search keeps the radius.
+          if (!neighborIsActive && !isSparseAwareSearchActive)
           {
             radius *= cb.stochasticAlphaBlendRadiusExpandFactor;
           }
-          else
+
+          if (neighborIsActive)
           {
             float neighborViewZ = texelFetch(PrimaryLinearViewZ, neighborPixel, 0).x;
             const vec4 neighborNormalData = PrimaryVirtualWorldNormalPerceptualRoughness[compactedNeighborCoordinate];
@@ -121,8 +183,18 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
             }
             if (!isMiss && (isCoplanar || isDepthSimilar) && isNormalSimilar && isSameGeometry)
             {
-              found = true;
               samplePixel[localIndex.y * 16 + localIndex.x] = (neighborPixel.x << 16) | neighborPixel.y;
+
+              if (isMatchAveragingActive)
+              {
+                accumulatedNeighborLight += calculateNeighborLight(compactedNeighborCoordinate, neighborPixel, surface);
+                ++matchCount;
+                found = matchCount >= kMaxSearchMatchCount;
+              }
+              else
+              {
+                found = true;
+              }
             }
             else
             {
@@ -164,40 +236,17 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
       }
       centerPixel = neighborPixel;
 
-      if (found)
+      if (isMatchAveragingActive)
       {
-        vec3 diffuseLight = 0;
-        diffuseLight += PrimaryDirectDiffuseRadianceHitDistance[compactedNeighborCoordinate].xyz * surface.color.xyz;
-        if (cb.enableSeparatedDenoisers)
+        found = matchCount > 0;
+        if (found)
         {
-          diffuseLight += PrimaryIndirectDiffuseRadianceHitDistance[compactedNeighborCoordinate].xyz * surface.color.xyz;
+          surfaceLight += accumulatedNeighborLight / float(matchCount);
         }
-
-        float perceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[compactedNeighborCoordinate].a;
-
-        float roughnessFactor = 1.0;
-        if (cb.demodulateRoughness)
-        {
-          roughnessFactor = getRoughnessDemodulationFactor(perceptualRoughness, cb.roughnessDemodulationOffset);
-        }
-
-        const vec3 primarySpecularAlbedo = PrimarySpecularAlbedo[compactedNeighborCoordinate].xyz;
-        vec3 specularLight = PrimaryDirectSpecularRadianceHitDistance[compactedNeighborCoordinate].xyz;
-        if (cb.enableSeparatedDenoisers)
-        {
-          specularLight += PrimaryIndirectSpecularRadianceHitDistance[compactedNeighborCoordinate].xyz;
-        }
-        specularLight = primarySpecularAlbedo * specularLight / roughnessFactor;
-
-        vec3 neighborLight = diffuseLight + specularLight;
-
-        // Demodulate scales active radiance by the inverse sampling rate, but the particle is lit at every pixel.
-        if (cb.sparseRenderingArgs.mode != SparseRenderingMode::Off)
-        {
-          neighborLight *= clampSamplingRateForRadianceScale(SparseRenderingPixelSamplingRate[neighborPixel]);
-        }
-
-        surfaceLight += neighborLight;
+      }
+      else if (found)
+      {
+        surfaceLight += calculateNeighborLight(compactedNeighborCoordinate, neighborPixel, surface);
       }
     }
 

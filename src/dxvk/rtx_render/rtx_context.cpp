@@ -412,6 +412,13 @@ namespace dxvk {
       m_prevIntegrateIndirectMode = RtxOptions::integrateIndirectMode();
     }
 
+    // Force history reset on sparse rendering sampling rate change, so the image converges at the new rate from scratch
+    const float sparseRenderingSamplingRate = m_common->metaSparseRendering().getSamplingRate();
+    if (sparseRenderingSamplingRate != m_prevSparseRenderingSamplingRate) {
+      m_resetHistory = true;
+      m_prevSparseRenderingSamplingRate = sparseRenderingSamplingRate;
+    }
+
     // Call onFrameBegin callbacks for RtxPases
     // Note: this needs to be called after resetScreenResolution() call in a frame
     // since an RtxPass may alias some of its resources with the ones created in createRaytracingOutput()

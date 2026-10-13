@@ -42,6 +42,7 @@ Full guide: `documentation/CONTRIBUTING-style-guide.md`
   - Classes and structs: `PascalCase`
 - **Conditions**: 
   - Test an integer flag by referencing the variable on its own, `if (flag)`, not `if (flag != 0)`. Applies to C++ and Slang, including `uint` flags in constant buffers. Bit tests like `(flags & kSomeBit) != 0` are unaffected.
+  - When setting a `uint` flag in a shader constant buffer argument struct from a `bool`, assign it directly, `args.flag = enable;`, not `args.flag = enable ? 1u : 0u;`.
   - Put subjects first. Good: `if (pData == nullptr)`, Bad: `if (nullptr == pData)`.
   - Break long or complex ternaries after the condition, with `? A` and `: B` on the two following lines, each indented one level. Keep short ones on one line.
 - **Includes**: Place them at the start of the file, after the copyright header, never partway through the code. Standard library first, then third-party, then local. Separate groups with blank lines.
