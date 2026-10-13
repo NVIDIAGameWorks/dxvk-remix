@@ -97,7 +97,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD dwReason, LPVOID reserved) {
   (void) hinst;
   (void) reserved;
 
-  bool InitRemixFolder(HMODULE hModule);
+  bool initFileSys(const HMODULE hModule);
 
   if (DetourIsHelperProcess()) {
     return TRUE;
@@ -106,7 +106,7 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD dwReason, LPVOID reserved) {
   if (dwReason == DLL_PROCESS_ATTACH) {
     OutputDebugStringA("Attaching Remix...\n");
 
-    if (!InitRemixFolder(hinst)) {
+    if (!initFileSys(hinst)) {
       OutputDebugStringA("Fatal: Unable to initialize Remix folder...\n");
       return FALSE;
     }

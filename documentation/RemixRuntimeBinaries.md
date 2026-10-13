@@ -10,7 +10,7 @@ Remix itself is a 64-bit program (which is a requirement for using Vulkan ray-tr
 
 The x86 Bridge client picks the server folder by the native architecture of the machine: `.trex_arm64` on ARM64, `.trex` otherwise. It launches the Bridge server from that folder, and the server loads `d3d9.dll` Remix implementation from the same folder.
 
-To run the emulated x64 Bridge server on an ARM64 machine, set `forceX64Server = True` in `.trex_arm64/bridge.conf`.
+To run the emulated x64 Bridge server on an ARM64 machine simply rename or remove ARM64 server folder.
 
 The package file layout is the following:
 

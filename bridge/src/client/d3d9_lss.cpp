@@ -125,17 +125,9 @@ std::mutex serverStartMutex;
 SceneState gSceneState = WaitBeginScene;
 std::chrono::steady_clock::time_point gTimeStart;
 bool gbBridgeRunning = true;
-std::string gRemixFolder = "";
 std::mutex gSwapChainMapMutex;
 SwapChainMap gSwapChainMap;
 const char* gServerExecutable = "NvRemixBridge.exe";
-
-static fspath GetServerExecutablePath() {
-  ONCE(Logger::info(std::string("Native arch: ") + getNativeArchString()));
-
-  auto arch = bridge_util::Config::getOption<bool>("forceX64Server", false) ? nullptr : getNativeArchString();
-  return fspath(gRemixFolder) / dxvk::util::RtxFileSys::runtimeDirName(arch) / gServerExecutable;
-}
 
 void PrintRecentCommandHistory() {
   // Log history of recent client side commands sent and received by the server
@@ -200,11 +192,8 @@ namespace {
   // Sentry only uploads when an application process restarts after a crash, so we just
   // relaunch the bridge server process with the --sentry-upload-only flag.
   void triggerSentryUpload(bool isGpuCrash) {
-    if (gRemixFolder.empty()) {
-      return;
-    }
     const auto logsDir = dxvk::util::RtxFileSys::path(dxvk::util::RtxFileSys::Logs);
-    const std::wstring exePathW = GetServerExecutablePath().wstring();
+    const std::wstring exePathW = (dxvk::util::RtxFileSys::runtimePath() / gServerExecutable).wstring();
     const std::wstring crashTypeW = isGpuCrash ? L"GPU" : L"CPU";
     // logsDir is safe for command line: RtxFileSys::init rejects env paths containing ".
     const std::wstring cmdLine = L"\"" + exePathW + L"\" --sentry-upload-only \"" + logsDir.wstring() + L"\" " + crashTypeW;
@@ -316,7 +305,7 @@ void InitServer() {
   }
   Logger::info("Launching server with GUID " + gUniqueIdentifier.toString());
   std::stringstream cmdSS;
-  cmdSS << GetServerExecutablePath().string();
+  cmdSS << (dxvk::util::RtxFileSys::runtimePath() / gServerExecutable).string();
   cmdSS << " " << gUniqueIdentifier.toString();
   cmdSS << " " << BRIDGE_VERSION;
   cmdSS << " " << std::string(GetCommandLineA());
@@ -401,39 +390,10 @@ void InitServer() {
   }
 }
 
-bool InitRemixFolder(HMODULE hinst) {
-  if (!gRemixFolder.empty()) {
-    return true;
-  }
-
-  DWORD len;
-  std::string tmp(MAX_PATH, '\0');
-  do {
-    len = GetModuleFileNameA(hinst, tmp.data(), tmp.length());
-
-    if (len > 0 && len < tmp.length()) {
-      break;
-    }
-
-    tmp.resize(tmp.length() * 2);
-  } while (true);
-
-  // Trim filename
-  while (len) {
-    if (tmp[len] == '\\' || tmp[len] == '/') {
-      tmp.resize(len + 1);
-      break;
-    }
-    --len;
-  }
-
-  gRemixFolder = tmp;
-
-  return true;
-}
-
 bool initFileSys(const HMODULE hModule) {
   const auto hModulePath = getModuleFilePath(hModule);
+  auto remixPath = hModulePath.parent_path();
+
   bool bNeedToFindExecutable = hModulePath.extension().compare(".exe") != 0;
   fspath executablePath = "";
   if (bNeedToFindExecutable) {
@@ -445,7 +405,7 @@ bool initFileSys(const HMODULE hModule) {
     executablePath = fspath(executablePathVec.data());
   }
   const auto exeDir = executablePath.parent_path();
-  dxvk::util::RtxFileSys::init(exeDir.string());
+  dxvk::util::RtxFileSys::init(exeDir.string(), remixPath.string());
   return true;
 }
 
@@ -509,24 +469,13 @@ bool RemixAttach(HMODULE hModule) {
         return false;
       }
     }
-    
-    // Initialize options
-    Config::init(Config::App::Client, hModule);
-    GlobalOptions::init();
 
-    // Find path of original executable to properly set up paths
-    if (!initFileSys(hModule)) {
-      Logger::err("Failed to initialize rtx filesystem!");
-    }
+    // Initialize options
+    Config::init(Config::App::Client);
+    GlobalOptions::init();
 
     // Initialize logger
     Logger::init();
-
-    // Setup Remix folder first hand
-    if (!InitRemixFolder(hModule)) {
-      Logger::err("Fatal: Unable to initialize Remix folder...");
-      return false;
-    }
 
     // Initialize WndProc logic
     if(!WndProc::init()) {
@@ -539,7 +488,7 @@ bool RemixAttach(HMODULE hModule) {
     Logger::info("==================\nNVIDIA RTX Remix Bridge Client\n==================");
     Logger::info(std::string("Version: ") + std::string(BRIDGE_VERSION));
     auto clientPath = getModuleFilePath();
-    Logger::info(format_string("Loaded d3d9.dll from %s", clientPath.c_str()));
+    Logger::info(format_string("Loaded d3d9.dll from %s", clientPath.string().c_str()));
 
     DInputHookAttach();
 

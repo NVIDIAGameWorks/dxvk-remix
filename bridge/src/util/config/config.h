@@ -62,10 +62,9 @@ namespace bridge_util {
      * \brief Initializes the static Config for this module
      *
      * \param [in] app [App::Client, App::Server], indicates which process in the bridge this is
-     * \param [in] hModuleConfigOwner the HMODULE in question. If NULL, defaults to parent executable.
      * \param [in] clientExecutableName
      */
-    static void init(const App app, void* hModuleConfigOwner = NULL);
+    static void init(const App app);
 
     /**
      * \brief Sets an option
@@ -173,7 +172,7 @@ namespace bridge_util {
 
     static Config getAppDefaultConfig(const char* exeFilePathIn = nullptr);
 
-    static Config getUserConfig(const App app, void* hModuleConfigOwner = NULL);
+    static Config getUserConfig(const App app);
 
     void logOptions() const;
 

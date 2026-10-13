@@ -56,7 +56,7 @@ namespace bridge_util {
       &siStartInfo,  // STARTUPINFO pointer
       &piProcInfo);  // receives PROCESS_INFORMATION
     if (bFuncRetn == 0) {
-      printf("CreateProcess failed (%d)\n", GetLastError());
+      Logger::err(format_string("CreateProcess failed (%d)\n", GetLastError()));
       return INVALID_HANDLE_VALUE;
     } else {
       processMainThreadId = GetThreadId(piProcInfo.hThread);

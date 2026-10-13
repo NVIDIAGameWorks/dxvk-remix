@@ -61,18 +61,37 @@ std::string format(const Args&... args) {
 
 bool RtxFileSys::s_bInit = false;
 RtxFileSys::fspath RtxFileSys::s_rootPath;
+RtxFileSys::fspath RtxFileSys::s_remixPath;
+RtxFileSys::fspath RtxFileSys::s_runtimePath;
 RtxFileSys::PathArray RtxFileSys::s_paths;
 
-void RtxFileSys::init(const std::string rootPath) {
+void RtxFileSys::init(const std::string rootPath, const std::string remixPath) {
   if (s_bInit) {
     Logger::err("[RtxFileSys] Already init.");
     return;
   }
-  if(!std::filesystem::exists(rootPath)) {
-    Logger::err(format("[RtxFileSys] Cannot resolve RTX filesystem, base path does exist: ", rootPath));
+
+  Logger::info(std::string("Native arch: ") + getNativeArchString());
+
+  std::error_code ec;
+  if(!std::filesystem::exists(rootPath, ec)) {
+    Logger::err(format("[RtxFileSys] Cannot resolve RTX filesystem, base path does not exist: ", rootPath));
+    return;
+  }
+  if(!std::filesystem::exists(remixPath, ec)) {
+    Logger::err(format("[RtxFileSys] Cannot resolve Remix folder, path does not exist: ", remixPath));
     return;
   }
   s_rootPath = std::filesystem::weakly_canonical(std::filesystem::absolute(fspath(rootPath)));
+  s_remixPath = std::filesystem::weakly_canonical(std::filesystem::absolute(fspath(remixPath)));
+  s_runtimePath = s_remixPath / runtimeDirName(getNativeArchString());
+  
+  if (!std::filesystem::exists(s_runtimePath, ec)) {
+    // Platform preferred runtime does not exist - fallback to x64 runtime
+    Logger::warn(format("[RtxFileSys] Remix runtime for ", getNativeArchString(), " platform does not exist. Falling back to x64."));
+    s_runtimePath = s_remixPath / runtimeDirName(bridge_util::RTX_ARCH_X64);
+  }
+
   for(const auto& pathSpec : s_pathSpecs) {
     std::string pathStr = (pathSpec.env.empty()) ? "" : getEnvVar(pathSpec.env.c_str());
     // Reject paths containing " so they cannot be used for command injection when passed to CreateProcess.

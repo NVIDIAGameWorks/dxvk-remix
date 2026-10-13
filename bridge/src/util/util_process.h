@@ -111,8 +111,7 @@ namespace bridge_util {
     auto vecModuleFilePath = createPathVec();
     vecModuleFilePath.resize(MAX_PATH + 1);
     GetModuleFileName(hModuleHandle, vecModuleFilePath.data(), MAX_PATH);
-    fspath moduleFilePath(vecModuleFilePath.data());
-    return moduleFilePath.string();
+    return fspath(vecModuleFilePath.data());
   }
 
   static DWORD getParentPID() {
