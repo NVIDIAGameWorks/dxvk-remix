@@ -78,6 +78,7 @@ namespace dxvk {
     bool isEnabled() const override;
     bool onActivation(Rc<DxvkContext>& ctx) override;
     void onDeactivation() override;
+    void createDownscaledResource(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent) override;
     void requestCacheReset() const;
 
     Rc<vk::DeviceFn> m_vkd;

@@ -1469,8 +1469,16 @@ namespace dxvk {
     rtxdiBufferInfo.size = reservoirBufferPixels * numReservoirBuffer * reservoirSize;
     DxvkBufferCreateInfo reservoirBufferInfo = rtxdiBufferInfo;
     // The GBuffer can run as a ray tracing pipeline.
-    reservoirBufferInfo.stages |= VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
-    m_raytracingOutput.m_rtxdiReservoirBuffer = AliasedBuffer(m_device, m_device->createBuffer(reservoirBufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "RTXDI reservoir buffer"), "RTXDI Reservoirs");
+    reservoirBufferInfo.stages |= VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR | VK_PIPELINE_STAGE_TRANSFER_BIT;
+    reservoirBufferInfo.usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    reservoirBufferInfo.access |= VK_ACCESS_TRANSFER_WRITE_BIT;
+    Rc<DxvkBuffer> rtxdiReservoirBuffer = m_device->createBuffer(reservoirBufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "RTXDI reservoir buffer");
+
+    // Under sparse rendering, RTXDI reuse reads the reservoirs of pixels that may not have been active since this allocation.
+    // RAB_LoadReservoir treats the zero-filled records as empty reservoirs.
+    ctx->clearBuffer(rtxdiReservoirBuffer, 0, rtxdiReservoirBuffer->info().size, 0);
+
+    m_raytracingOutput.m_rtxdiReservoirBuffer = AliasedBuffer(m_device, std::move(rtxdiReservoirBuffer), "RTXDI Reservoirs");
     m_raytracingOutput.m_transmissionPSRData = AliasedBuffer(m_raytracingOutput.m_rtxdiReservoirBuffer, "Transmission PSR Data");
     
     DxvkBufferCreateInfo neeCacheInfo = rtxdiBufferInfo;

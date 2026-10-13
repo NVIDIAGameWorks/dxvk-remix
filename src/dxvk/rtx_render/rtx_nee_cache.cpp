@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -114,6 +114,12 @@ namespace dxvk {
   }
 
   void NeeCachePass::onDeactivation() {
+  }
+
+  void NeeCachePass::createDownscaledResource(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent) {
+    // Resources recreates the cache buffers along with the other render resolution resources, without clearing them,
+    // and the cache only clears itself on its own when the camera resolution changes.
+    requestCacheReset();
   }
 
   void NeeCachePass::requestCacheReset() const {

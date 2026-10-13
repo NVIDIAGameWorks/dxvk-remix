@@ -267,6 +267,7 @@ namespace dxvk {
     uint32_t m_terminateAppFrameNum = -1;
     uint32_t m_framesWithoutValidScene = 0;
     IntegrateIndirectMode m_prevIntegrateIndirectMode = IntegrateIndirectMode::Count;
+    float m_prevSparseRenderingSamplingRate = 1.0f;
 
     DxvkRaytracingInstanceState m_rtState;
 

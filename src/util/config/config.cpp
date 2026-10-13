@@ -876,6 +876,8 @@ namespace dxvk {
       { "rtx.showLegacyACESOption",                             "True"   },
       { "rtx.eye.showOptions",              "True" },
       { "rtx.eye.enable",                   "True" },
+      { "rtx.sparseRendering.enableSparseRendering",            "True" },
+      { "rtx.sparseRendering.quality",                          "0.45" },
     }} },
     /* Kohan II                                  */
     { R"(\\k2\.exe$)", {{

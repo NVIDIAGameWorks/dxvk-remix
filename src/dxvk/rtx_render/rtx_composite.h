@@ -90,6 +90,10 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, enableFog, true, "");
     RTX_OPTION("rtx", float, fogColorScale, 0.25f, "");
     RTX_OPTION("rtx", float, maxFogDistance, 65504.f, "");
+    RTX_OPTION("rtx", bool, skyUseProbeForPrimaryRays, false,
+               "Samples the sky probe cubemap by ray direction for primary misses instead of the screen-space sky matte.\n"
+               "This orients the sky to the current camera, such as the free camera in captures.\n"
+               "Directions the game's sky draws do not cover show the clear color.");
 
     RTX_OPTION("rtx", bool, compositePrimaryDirectDiffuse, true, "Enables direct lightning's diffuse signal for primary surfaces in the final composite.");
     RTX_OPTION("rtx", bool, compositePrimaryDirectSpecular, true, "Enables direct lightning's specular signal for primary surfaces in the final composite.");
@@ -107,6 +111,8 @@ namespace dxvk {
     RTX_OPTION("rtx", float, stochasticAlphaBlendInitialSearchRadius, 10.0f, "Initial search radius.");
     RTX_OPTION("rtx", float, stochasticAlphaBlendRadiusExpandFactor, 1.6f, "Multiply radius by this factor if cannot find a good neighbor.");
     RTX_OPTION("rtx", bool, stochasticAlphaBlendShareNeighbors, true, "Share result with other pixels to accelerate search.");
+    RTX_OPTION("rtx", bool, stochasticAlphaBlendAverageSearchMatches, false,
+               "Averages the radiance of up to 4 matching neighbors instead of using the first match, which reduces flicker from per-frame noise.");
     RTX_OPTION("rtx", float, stochasticAlphaBlendNormalSimilarity, 0.9f, "Min normal similarity for a valid neighbor.");
     RTX_OPTION("rtx", float, stochasticAlphaBlendDepthDifference, 0.1f, "Max depth difference for a valid neighbor.");
     RTX_OPTION("rtx", float, stochasticAlphaBlendPlanarDifference, 0.2f, "Max planar difference for a valid neighbor.");
