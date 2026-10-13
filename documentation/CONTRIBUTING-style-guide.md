@@ -273,9 +273,22 @@ This document outlines our project's C++ code formatting standards, commenting s
   }
   ```
   
-## Changes to DXVK
+## Changes to Upstream-Derived DXVK Code
 
-- **Comment blocks**: Follow the pattern of comment blocking to define regions of code inside core DXVK files which are diverging from upstream DXVK.
+- **Scope**: Use NV-DXVK start/end blocks to mark Remix changes to upstream-derived DXVK code. This depends on the code's origin, not its directory. Mark every new change to upstream-derived code, including short changes, includes and declarations, even where older changes nearby are unmarked.
+
+- **Origin**: Check whether the file comes from the original DXVK project or a vendored library. Use the upstream source and file history when its origin is unclear. Files written for Remix, such as `src/d3d9/d3d9_rtx.cpp`, do not use NV-DXVK start/end blocks, wherever they are in the tree. An NVIDIA-only copyright header is a clue, not proof of Remix ownership: upstream-derived `src/d3d9/d3d9_device.cpp` and the vendored ImGui Win32 backend also have one.
+
+- **Existing blocks**: Keep changes inside an existing enclosing block without nesting another pair. If a change immediately next to a block belongs to the same divergence, extend that block and update its description as needed. Use a separate block for an unrelated change. Do not extend a block across unrelated upstream code just to combine regions.
+
+- **Scoped mixed-code conventions**:
+  - **Profiling instrumentation**: Keep standalone profiling macro calls unmarked where that is the local convention, as with `ScopedCpuProfileZone()` calls in `src/d3d9/d3d9_device.cpp`. This exception covers the profiling calls only, not surrounding logic, includes or declarations.
+  - **Application defaults**: Add or update entries in `g_appDefaults` in `src/util/config/config.cpp` without NV-DXVK start/end blocks. Follow the table's existing game comments and entry layout, as in the HL2 engine entry. Changes to configuration logic outside the table still use blocks.
+  - These exceptions apply only to the named instrumentation and table entries, not to other unmarked changes nearby.
+
+- **Vendored libraries**: Preserve the library's code style and use its established divergence-marker convention. For example, vendored ImGui code in `src/dxvk/imgui/imgui_impl_win32.cpp` uses NV-DXVK start/end blocks for Remix changes, such as the `DeltaTime` clamp. Use that convention for new changes to vendored ImGui code, rather than treating it as Remix-owned code.
+
+- **Block syntax**:
 
   ```cpp
   // NV-DXVK start: Diverging DXVK change to add new function
