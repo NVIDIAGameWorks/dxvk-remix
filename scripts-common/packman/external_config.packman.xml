@@ -1,0 +1,9 @@
+<!-- This config is to replace config.packman.xml when mirroring to github -->
+<config remotes="rtx-remix-external cloudfront">
+    <remote2 name="rtx-remix-external">
+        <transport actions="download" protocol="https" packageLocation="d1oqksizpb0e3d.cloudfront.net/${name}@${version}"/>
+    </remote2>
+    <remote2 name="cloudfront">
+        <transport actions="download" protocol="https" packageLocation="d4i3qtqj3r0z5.cloudfront.net/${name}@${version}" />
+    </remote2>
+</config>
