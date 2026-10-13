@@ -63,9 +63,13 @@ Full guide: `documentation/CONTRIBUTING-style-guide.md`
     - In code comments should reference sections of that .md file, rather than repeating or trying to summarize.
   - Rational for why a change is needed should go into commit messages or MR descriptions, not the code.
 
-### Changes to Core DXVK Files (Applies to code files outside of `rtx_render`)
+### Changes to Upstream-Derived DXVK Code
 
-Wrap diverging code in comment blocks:
+Use NV-DXVK start/end blocks for changes to upstream-derived DXVK code, based on origin rather than directory. Mark every new change to upstream-derived code, including short changes, includes and declarations, even where older changes nearby are unmarked.
+
+Remix-owned files do not use these blocks. Reuse an enclosing block without nesting. Extend an adjacent block for the same divergence. Use a separate block for an unrelated change.
+
+See [the full rule](documentation/CONTRIBUTING-style-guide.md#changes-to-upstream-derived-dxvk-code) for provenance checks, scoped profiling and application-defaults exceptions, and vendored-library conventions.
 
 ```cpp
 // NV-DXVK start: Brief description of change
