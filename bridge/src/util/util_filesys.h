@@ -64,18 +64,24 @@ private:
   };
 
   static bool s_bInit;
-  static fspath s_rootPath;
+  static fspath s_rootPath;    // Main game executable path
+  static fspath s_remixPath;   // A path where Bridge client is located
+  static fspath s_runtimePath; // A path where Remix runtime is located
   using PathArray = std::array<fspath, kNumIds>;
   static PathArray s_paths;
 
 public:
-  static void init(const std::string rootPath);
+  static void init(const std::string rootPath, const std::string remixPath);
   static bool isInitialized() {
     return s_bInit;
   }
   static inline const fspath& rootPath() {
     assert(s_bInit && "[RtxFileSys] Not yet init.");
     return s_rootPath;
+  }
+  static inline const fspath& remixPath() {
+    assert(s_bInit && "[RtxFileSys] Not yet init.");
+    return s_remixPath;
   }
   static inline const fspath path(const Id id) {
     assert(s_bInit && "[RtxFileSys] Not yet init.");
@@ -91,6 +97,11 @@ public:
       return ".trex_arm64";
     }
     return ".trex";
+  }
+
+  static inline fspath runtimePath() {
+    assert(s_bInit && "[RtxFileSys] Not yet init.");
+    return s_runtimePath;
   }
 };
 

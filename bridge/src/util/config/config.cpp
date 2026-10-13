@@ -138,7 +138,7 @@ namespace bridge_util {
     }}
   };
 
-  void Config::init(const App app, void* hModuleLogOwner) {
+  void Config::init(const App app) {
     if (s_bIsInit) {
       Logger::err("Config already init.");
       return;
@@ -151,7 +151,7 @@ namespace bridge_util {
     } else {
       config.merge(getAppDefaultConfig());
     }
-    config.merge(getUserConfig(app, hModuleLogOwner));
+    config.merge(getUserConfig(app));
     config.logOptions();
     s_bIsInit = true;
   }
@@ -241,20 +241,10 @@ namespace bridge_util {
   }
 
 
-  Config Config::getUserConfig(const App app, void* hModuleConfigOwner) {
+  Config Config::getUserConfig(const App app) {
     Config config;
 
-    const HMODULE _hModuleConfigOwner = reinterpret_cast<HMODULE>(hModuleConfigOwner);
-    auto moduleFilePath = getModuleFilePath(_hModuleConfigOwner);
-    const size_t finalDirPos = moduleFilePath.string().find_last_of('\\');
-    if (finalDirPos == std::string::npos) {
-      Logger::err("Error resolving module path for config setup.");
-      return config;
-    }
-    const std::string moduleDir = moduleFilePath.string().substr(0, finalDirPos + 1);
-    const std::string trexDirName = dxvk::util::RtxFileSys::runtimeDirName(getNativeArchString());
-    const std::string trexDirPath = (app == App::Client) ? moduleDir + trexDirName + "\\" : moduleDir;
-    const std::filesystem::path userConfPath = trexDirPath + "bridge.conf";
+    auto userConfPath = dxvk::util::RtxFileSys::runtimePath() / "bridge.conf";
 
     Logger::info(std::string("Trying to open config file: ") + userConfPath.string());
     if (!std::filesystem::exists(userConfPath)) {

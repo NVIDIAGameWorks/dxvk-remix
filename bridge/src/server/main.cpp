@@ -3425,7 +3425,8 @@ static inline bool initFileSys() {
     }
     const fspath executable32Path(executable32PathVec.data());
     const auto exe32Dir = executable32Path.parent_path();
-    dxvk::util::RtxFileSys::init(exe32Dir.string());
+    const auto remixDir = bridge_util::getModuleFilePath().parent_path().parent_path();
+    dxvk::util::RtxFileSys::init(exe32Dir.string(), remixDir.string());
   }
   return true;
 }
