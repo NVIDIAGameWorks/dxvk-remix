@@ -333,7 +333,7 @@ struct NEECacheUtils
   {
     vec3 offset = samplePosition - surfacePosition;
     float cellDistance = length(offset);
-    float cosTheta = lerp(1.0, abs(dot(sampleNormal, normalize(offset))), saturate(cellDistance / cellSize - 1));
+    float cosTheta = lerp(1.0, abs(dot(sampleNormal, offset)) / cellDistance, saturate(cellDistance / cellSize - 1));
     cellDistance = max(cellDistance, cellSize);
     return cosTheta / (cellDistance * cellDistance);
   }
@@ -356,7 +356,6 @@ struct NEECacheUtils
       vec3 triangleNormal;
       NEECacheUtils.calculateTriangleLightIntensity(surfaceIndex, primitiveIndex, triangleCenter, triangleNormal, lightFlux);
 
-      vec3 offset = triangleCenter - cellCenter;
       float g = 0;
       g += calculateGeometricTerm(cellCenter + vec3(halfCellSize, 0, 0), triangleCenter, triangleNormal, halfCellSize);
       g += calculateGeometricTerm(cellCenter + vec3(-halfCellSize, 0, 0), triangleCenter, triangleNormal, halfCellSize);
@@ -399,8 +398,8 @@ struct NEECacheUtils
       VolumeInteraction volumeInteraction;
       volumeInteraction.position = cellCenter + cellOffset;
 
-      LightSample sample = memoryPolymorphicLightSampleArea(
-        memoryPolymorphicLight, uv,
+      LightSample sample = decodedPolymorphicLightSampleArea(
+        decodedPolymorphicLight, uv,
         volumeInteraction);
 
       float r = sample.solidAnglePdf > 0.0f ? min(calcBt709Luminance(sample.radiance) / sample.solidAnglePdf, float16Max) : 0.0;

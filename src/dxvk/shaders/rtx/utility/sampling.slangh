@@ -339,7 +339,7 @@ vec3 calcSphericalTriangleSample(vec3 A, vec3 B, vec3 C, vec2 randomSample, inou
   const float alpha = acos(cosAlpha);
   const float beta = acos(cosBeta);
   const float gamma = acos(cosGamma);
-  const float sinAlpha = sin(alpha);
+  const float sinAlpha = sqrt(max(0.0f, 1.0f - cosAlpha * cosAlpha));
 
   // Calculate relevant side arc length information of the spherical triangle
 

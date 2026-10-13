@@ -178,8 +178,11 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
             bool isSameGeometry = true;
             if (cb.stochasticAlphaBlendSearchTheSameObject)
             {
-              uint16_t neighborGeometryHash = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[neighborPixel], cb.alphaBlendSurfacePackMult).geometryHash;
-              isSameGeometry = (i == 0) || surface.geometryHash == neighborGeometryHash;
+              if (i != 0)
+              {
+                uint16_t neighborGeometryHash = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[neighborPixel], cb.alphaBlendSurfacePackMult).geometryHash;
+                isSameGeometry = surface.geometryHash == neighborGeometryHash;
+              }
             }
             if (!isMiss && (isCoplanar || isDepthSimilar) && isNormalSimilar && isSameGeometry)
             {
@@ -210,14 +213,17 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
           vec2 offset = vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState)) * 2 - 1;
 
           uint neighborResult = -1;
-          for (int i = 0; i < 4; ++i)
+          if (cb.stochasticAlphaBlendShareNeighbors)
           {
-            int2 idx = int2(i&1, i>>1) * 2 - 1;
-            int2 neighborLocalIndex = clamp(localIndex, 1, int2(16 ,8) - 2) + idx;
-            neighborResult = samplePixel[neighborLocalIndex.y * 16 + neighborLocalIndex.x];
-            if (neighborResult != -1)
+            for (int i = 0; i < 4; ++i)
             {
-              break;
+              int2 idx = int2(i&1, i>>1) * 2 - 1;
+              int2 neighborLocalIndex = clamp(localIndex, 1, int2(16 ,8) - 2) + idx;
+              neighborResult = samplePixel[neighborLocalIndex.y * 16 + neighborLocalIndex.x];
+              if (neighborResult != -1)
+              {
+                break;
+              }
             }
           }
 

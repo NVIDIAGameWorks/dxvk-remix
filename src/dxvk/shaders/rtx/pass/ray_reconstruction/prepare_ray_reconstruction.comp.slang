@@ -261,17 +261,17 @@ void preprocessInputsForRR(uint2 pixelCoordinate)
     vec4 primaryAlbedo          = PrimaryAlbedo[pixelCoordinate] * primaryAttenuation;
     vec4 primarySpecularAlbedo  = PrimarySpecularAlbedo[pixelCoordinate] * primaryAttenuation;
 
-    vec4 secondaryAlbedo         = vec4(SecondaryAlbedo[pixelCoordinate].xyz, 0.0) * secondaryAttenuation;
-    vec4 secondarySpecularAlbedo = vec4(SecondarySpecularAlbedo[pixelCoordinate].xyz, 0.0) * secondaryAttenuation;
-
     const float primaryPerceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[pixelCoordinate].w;
-    const float secondaryPerceptualRoughness = SecondaryVirtualWorldNormalPerceptualRoughness[pixelCoordinate].w;
 
     primarySpecularAlbedo *= getRoughnessFactor(primaryPerceptualRoughness);
 
     // Combine secondary albedo to improve reflection quality.
     if (hasSecondarySurface)
     {
+      const vec4 secondaryAlbedo         = vec4(SecondaryAlbedo[pixelCoordinate].xyz, 0.0) * secondaryAttenuation;
+      const vec4 secondarySpecularAlbedo = vec4(SecondarySpecularAlbedo[pixelCoordinate].xyz, 0.0) * secondaryAttenuation;
+      const float secondaryPerceptualRoughness = SecondaryVirtualWorldNormalPerceptualRoughness[pixelCoordinate].w;
+
       primaryAlbedo += secondaryAlbedo;
       primarySpecularAlbedo += secondarySpecularAlbedo * getRoughnessFactor(secondaryPerceptualRoughness);
     }

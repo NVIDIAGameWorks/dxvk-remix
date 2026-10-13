@@ -25,7 +25,7 @@
 
 vec4 textureRead(uint16_t textureIndex, uint16_t samplerIndex, SurfaceInteraction surfaceInteraction, float lodBias = 0.0)
 {
-  const float gradBias = pow(2, lodBias);
+  const float gradBias = exp2(lodBias);
 
   // Note: The nonuniform decoration on the texture index here and returned Sampler2D does not propagate through function calls due to a rather
   // annoying exception in the specification (See: https://github.com/KhronosGroup/GLSL/blob/master/extensions/ext/GL_EXT_nonuniform_qualifier.txt).

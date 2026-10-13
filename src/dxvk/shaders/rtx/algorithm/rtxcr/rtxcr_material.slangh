@@ -61,6 +61,15 @@ SssTracingResult traceSssRay(
   // Construct hit info from the hit
   RAY_HIT_INFO_CREATE_RAY_QUERY_COMMITTED(rayHitInfo, rayQuery)
 
+  if (!rayHitInfo.hasHit)
+  {
+    SssTracingResult missResult = (SssTracingResult)0;
+    missResult.hasHit = false;
+    missResult.hitDistance = -1.0f;
+    missResult.subsurfaceMaterialIndex = SURFACE_INDEX_INVALID;
+    return missResult;
+  }
+
   // Resolve normal and TexCoord
   RayInteraction sssRayInteraction = rayInteractionCreate(sssSampleRay, rayHitInfo);
   Surface sssSampleSurface = surfaces[sssRayInteraction.surfaceIndex];

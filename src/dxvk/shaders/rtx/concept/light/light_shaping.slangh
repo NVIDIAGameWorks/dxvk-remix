@@ -95,12 +95,13 @@ float lightShapingCalcScaledRadialFalloff(LightShaping lightShaping, vec3 lightT
   }
 
   const float softenedIntensity = smoothstep(scaledConeAngle, scaledConeAngle + lightShaping.coneSoftness, cosTheta);
-  const float focusedIntensity = pow(cosTheta, lightShaping.focusExponent * ratio);
 
   if (lightShaping.focusExponent <= 0.0f)
   {
     return softenedIntensity;
   }
+
+  const float focusedIntensity = pow(cosTheta, lightShaping.focusExponent * ratio);
 
   return mix(softenedIntensity, 1.0f, focusedIntensity * softenedIntensity);
 }
