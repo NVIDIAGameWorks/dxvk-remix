@@ -473,6 +473,33 @@ extern "C" {
       return REMIXAPI_ERROR_CODE_INCOMPATIBLE_VERSION;
     }
 
+    // The server only starts in Direct3DCreate9.
+    // A request sent earlier would sit in the command queue ahead of the startup handshake and block it.
+    if (BridgeState::getServerState() != BridgeState::ProcessState::Running) {
+      Logger::err("[remixapi_InitializeLibrary] The bridge server is not running. Call Direct3DCreate9 or Direct3DCreate9Ex first.");
+      return REMIXAPI_ERROR_CODE_NOT_INITIALIZED;
+    }
+
+    // The server initializes Remix at startup. Fetch the result of that initialization.
+    remixapi_ErrorCode status = REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
+    {
+      UID currentUID = 0;
+      {
+        ClientMessage c(Commands::RemixApi_GetInitializationStatus);
+        currentUID = c.get_uid();
+      }
+      const uint32_t timeoutMs = GlobalOptions::getAckTimeout();
+      if (Result::Success != DeviceBridge::waitForCommand(Commands::Bridge_Response, timeoutMs, nullptr, true, currentUID)) {
+        Logger::err("[remixapi_InitializeLibrary] No initialization status from server.");
+        return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
+      }
+      status = static_cast<remixapi_ErrorCode>(DeviceBridge::get_data());
+      DeviceBridge::pop_front();
+    }
+    if (status != REMIXAPI_ERROR_CODE_SUCCESS) {
+      return status;
+    }
+
     auto interf = remixapi_Interface {};
     {
       // interf.Startup = remixapi_Startup;

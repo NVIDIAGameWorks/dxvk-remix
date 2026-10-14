@@ -348,7 +348,7 @@ void ProcessDeviceCommandQueue() {
         } else {
           Logger::info("Server side D3D9 DeviceEx created successfully!");
           gpD3DDevices[pHandle] = pD3DDevice;
-          if(GlobalOptions::getExposeRemixApi()) {
+          if (GlobalOptions::getExposeRemixApi() && remixapi::g_remix_initialized) {
             remixapi::g_device = pD3DDevice;
             remixapi::g_remix.dxvk_RegisterD3D9Device(remixapi::g_device);
           }
@@ -383,7 +383,7 @@ void ProcessDeviceCommandQueue() {
         } else {
           Logger::info("Server side D3D9 Device created successfully!");
           gpD3DDevices[pHandle] = (IDirect3DDevice9Ex*) pD3DDevice;
-          if(GlobalOptions::getExposeRemixApi()) {
+          if (GlobalOptions::getExposeRemixApi() && remixapi::g_remix_initialized) {
             remixapi::g_device = (IDirect3DDevice9Ex*) pD3DDevice;
             remixapi::g_remix.dxvk_RegisterD3D9Device(remixapi::g_device);
           }
@@ -3180,6 +3180,13 @@ void ProcessDeviceCommandQueue() {
                                               "most recently created by client application.");
         break;
       }
+
+      case RemixApi_GetInitializationStatus:
+      {
+        ServerMessage c(Commands::Bridge_Response, currentUID);
+        c.send_data(static_cast<uint32_t>(remixapi::g_initStatus));
+        break;
+      }
       
       default:
         break;
@@ -3294,6 +3301,7 @@ bool InitializeD3D() {
     // Initialize remixApi
     if (GlobalOptions::getExposeRemixApi()) {
       remixapi_ErrorCode status = remixapi_lib_loadRemixDllAndInitialize(L"d3d9.dll", &remixapi::g_remix, &remixapi::g_remix_dll);
+      remixapi::g_initStatus = status;
       if (status != REMIXAPI_ERROR_CODE_SUCCESS) {
         Logger::err(format_string("[RemixApi] RemixApi initialization failed: %d\n", status));
       } else {

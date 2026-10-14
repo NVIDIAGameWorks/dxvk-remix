@@ -27,6 +27,7 @@
 namespace remixapi {
   remixapi_Interface g_remix = {};
   bool g_remix_initialized = false;
+  remixapi_ErrorCode g_initStatus = REMIXAPI_ERROR_CODE_NOT_INITIALIZED;
   HMODULE g_remix_dll = nullptr;
   IDirect3DDevice9Ex* g_device = nullptr;
   std::mutex g_device_mutex;
