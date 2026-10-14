@@ -205,7 +205,7 @@ else
   nrc_include_path = 'submodules/nrc/include'
 endif
 
-nsight_graphics_capture_supported = target_machine.cpu_family() == 'x86_64'
+nsight_graphics_capture_supported = (target_machine.cpu_family() == 'x86_64') or dxvk_is_woa_ec
 if nsight_graphics_capture_supported
   add_project_arguments('-DDXVK_ENABLE_NSIGHT_GRAPHICS_CAPTURE=1', language : 'cpp')
 endif
