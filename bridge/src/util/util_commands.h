@@ -49,6 +49,7 @@ namespace Commands {
     RemixApi_SetConfigVariable,
     RemixApi_CreateD3D9,
     RemixApi_RegisterDevice,
+    RemixApi_GetInitializationStatus,
 
     Bridge_SharedHeap_AddSeg,
     Bridge_SharedHeap_Alloc,
@@ -487,6 +488,7 @@ namespace Commands {
     case RemixApi_SetConfigVariable: return "RemixApi_SetConfigVariable";
     case RemixApi_CreateD3D9: return "RemixApi_CreateD3D9";
     case RemixApi_RegisterDevice: return "RemixApi_RegisterDevice";
+    case RemixApi_GetInitializationStatus: return "RemixApi_GetInitializationStatus";
 
     case Bridge_SharedHeap_AddSeg: return "SharedHeap_AddSeg";
     case Bridge_SharedHeap_Alloc: return "SharedHeap_Alloc";

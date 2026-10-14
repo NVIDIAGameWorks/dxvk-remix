@@ -51,5 +51,29 @@ test('remix_api__' + variant,
              '--executablesDir', meson.current_build_dir(),
              '--artifactDir', remix_api_test_artifacts_dir ])
 endif
+
+# Remix API Bridge App Tests
+# Each x86 app runs against the client and server from a regular bridge build in _output.
+bridge_app_tests = [ 'remix_api_init_order', 'remix_api_device_registration' ]
+if (cpu_family == 'x86')
+foreach name : bridge_app_tests
+  tests += executable(
+      'test_' + name + '_x86',  files('test_' + name + '.cpp'),
+      include_directories : [ public_include_path ],
+      win_subsystem : 'console')
+endforeach
+endif
+if (cpu_family == 'x86_64')
+foreach name : bridge_app_tests
+  test(name,
+       python,
+       args : [join_paths(meson.current_source_dir(), 'test_remix_api_bridge_app.py'),
+               '--testExe', 'test_' + name + '_x86.exe',
+               '--executablesDir', meson.current_build_dir(),
+               '--bridgeDir', join_paths(meson.global_source_root(), '_output'),
+               '--artifactDir', join_paths(meson.global_build_root(), 'test_artifacts', name) ],
+       timeout : 300)
+endforeach
+endif
 alias_target('unit_tests', tests)
 

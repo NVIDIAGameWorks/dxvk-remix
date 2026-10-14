@@ -31,6 +31,7 @@
 namespace remixapi {
   extern remixapi_Interface g_remix;
   extern bool g_remix_initialized;
+  extern remixapi_ErrorCode g_initStatus;
   extern HMODULE g_remix_dll;
   extern IDirect3DDevice9Ex* g_device;
   extern std::mutex g_device_mutex;
