@@ -2686,14 +2686,9 @@ namespace dxvk {
         D3D9RtxVertexCaptureData& newState = allocAndMapVertexCaptureConstantBuffer();
         newState = prevCB.programmablePipeline;
 
-        // Create cube plane projection
-        Matrix4 proj = viewToProj;
-        proj[0][0] = 1.f;
-        proj[1][1] = 1.f;
-        proj[2][2] = 1.f;
-        proj[2][3] = 1.f;
-
-        newState.customWorldToProjection = proj * makeViewMatrixForCubePlane(plane, camPos);
+        newState.customWorldToProjection =
+          makeProjectionMatrixForCube(viewToProj) *
+          makeViewMatrixForCubePlane(plane, camPos);
       } else {
         // Push new state to the fixed function constants
         D3D9FixedFunctionVS& newState = allocAndMapFixedFunctionVSConstantBuffer();
@@ -2703,11 +2698,8 @@ namespace dxvk {
         // Set to identity, as we use custom matrices that transform from world to cube side projection
         newState.View      = view;
         newState.WorldView = view * prevCB.fixedFunction.World;
-        // And cube plane projection
-        newState.Projection[0][0] = 1.f;
-        newState.Projection[1][1] = 1.f;
-        newState.Projection[2][2] = 1.f;
-        newState.Projection[2][3] = 1.f;
+        newState.Projection =
+          makeProjectionMatrixForCube(prevCB.fixedFunction.Projection);
       }
 
       DxvkRenderTargets skyRt;

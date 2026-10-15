@@ -25,72 +25,9 @@
 #include "dxvk_device.h"
 #include "rtx_resources.h"
 #include "rtx_scene_manager.h"
+#include "rtx_sky_utils.h"
 
 namespace dxvk {
-
-  static Matrix4 makeViewMatrixForCubePlane(uint32_t plane, const Vector3& cameraPosition) {
-    assert(plane >= 0 && plane < 6);
-
-    constexpr static Vector3 targets[]{
-      Vector3{+1,  0,  0},
-      Vector3{-1,  0,  0},
-      Vector3{ 0, +1,  0},
-      Vector3{ 0, -1,  0},
-      Vector3{ 0,  0, +1},
-      Vector3{ 0,  0, -1},
-    };
-    constexpr static Vector3 ups[]{
-      Vector3{ 0, +1,  0},
-      Vector3{ 0, +1,  0},
-      Vector3{ 0,  0, -1},
-      Vector3{ 0,  0, +1},
-      Vector3{ 0, +1,  0},
-      Vector3{ 0, +1,  0},
-    };
-    const static Vector3 axisZ[]{
-      targets[0],
-      targets[1],
-      targets[2],
-      targets[3],
-      targets[4],
-      targets[5],
-    };
-    const static Vector3 axisX[]{
-      cross(ups[0], axisZ[0]),
-      cross(ups[1], axisZ[1]),
-      cross(ups[2], axisZ[2]),
-      cross(ups[3], axisZ[3]),
-      cross(ups[4], axisZ[4]),
-      cross(ups[5], axisZ[5]),
-    };
-    const static Vector3 axisY[]{
-      cross(axisZ[0], axisX[0]),
-      cross(axisZ[1], axisX[1]),
-      cross(axisZ[2], axisX[2]),
-      cross(axisZ[3], axisX[3]),
-      cross(axisZ[4], axisX[4]),
-      cross(axisZ[5], axisX[5]),
-    };
-    assert(isApproxNormalized(axisX[0], 0.0001f) && isApproxNormalized(axisY[0], 0.0001f) && isApproxNormalized(axisZ[0], 0.0001f));
-    assert(isApproxNormalized(axisX[1], 0.0001f) && isApproxNormalized(axisY[1], 0.0001f) && isApproxNormalized(axisZ[1], 0.0001f));
-    assert(isApproxNormalized(axisX[2], 0.0001f) && isApproxNormalized(axisY[2], 0.0001f) && isApproxNormalized(axisZ[2], 0.0001f));
-    assert(isApproxNormalized(axisX[3], 0.0001f) && isApproxNormalized(axisY[3], 0.0001f) && isApproxNormalized(axisZ[3], 0.0001f));
-    assert(isApproxNormalized(axisX[4], 0.0001f) && isApproxNormalized(axisY[4], 0.0001f) && isApproxNormalized(axisZ[4], 0.0001f));
-    assert(isApproxNormalized(axisX[5], 0.0001f) && isApproxNormalized(axisY[5], 0.0001f) && isApproxNormalized(axisZ[5], 0.0001f));
-
-    const Vector3 translation{
-      dot(axisX[plane], -cameraPosition),
-      dot(axisY[plane], -cameraPosition),
-      dot(axisZ[plane], -cameraPosition),
-    };
-
-    return Matrix4{
-      axisX[plane].x, axisY[plane].x, axisZ[plane].x, 0.f,
-      axisX[plane].y, axisY[plane].y, axisZ[plane].y, 0.f,
-      axisX[plane].z, axisY[plane].z, axisZ[plane].z, 0.f,
-      translation.x,  translation.y,  translation.z,  1.f,
-    };
-  }
 
   static bool isSkyboxQuad(const DrawCallState& state) {
     if (state.getMaterialData().blendMode.enableBlending) {
