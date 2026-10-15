@@ -141,8 +141,9 @@ GpuParticle respawn(uint particleIdx, uint spawnCtxIdx, const GpuParticleSystem 
   
   float3 worldSpawnVelocity = (worldPosition - prevWorldPosition) * particleCb.invDeltaTimeSecs;
   
-  float3 localNormal = cross(normalize(positions[1] - positions[0]), normalize(positions[2] - positions[0]));
-  float3 worldNormal = mul(spawnCtx.spawnObjectToWorld, float4(localNormal, 0.f));
+  const float3 kFallbackNormal = float3(0.f, 0.f, 1.f);
+  float3 localNormal = cross(positions[1] - positions[0], positions[2] - positions[0]);
+  float3 worldNormal = safeNormalize(mul(spawnCtx.spawnObjectToWorld, float4(localNormal, 0.f)), kFallbackNormal);
   
   float cosCone = cos(radians(particleSystem.desc.initialVelocityConeAngleDegrees));
   f16vec3 dir = sampleDirectionInCone(worldNormal, cosCone, float2(randomFloat(uint2(randomSeed++, particleCb.frameIdx)), randomFloat(uint2(randomSeed++, particleCb.frameIdx))));
