@@ -65,13 +65,13 @@ typedef Vector4  float4;
 typedef Vector4i uint4;
 
 // Strict-aliasing safe bit casts (prefer over reinterpret_cast)
-uint asuint(float f) {
+inline uint asuint(float f) {
   uint u;
   std::memcpy(&u, &f, sizeof(u));
   return u;
 }
 
-float asfloat(uint u) {
+inline float asfloat(uint u) {
   float f;
   std::memcpy(&f, &u, sizeof(f));
   return f;
@@ -83,18 +83,27 @@ float asfloat(uint u) {
 // Normal encoding — octahedral encode/decode (shared by skinning, smooth normals, etc.)
 // ---------------------------------------------------------------------------
 
+#ifdef __cplusplus
+inline
+#endif
 uint f32ToUnorm16(float x) {
   const float scalar = (1 << 16) - 1;
   const float conv = x * scalar + 0.5f;
   return uint(conv);
 }
 
+#ifdef __cplusplus
+inline
+#endif
 float unorm16ToF32(uint x) {
   const float scalar = (1 << 16) - 1;
   const float conv = float(x & ((1 << 16) - 1)) / scalar;
   return conv;
 }
 
+#ifdef __cplusplus
+inline
+#endif
 uint encodeNormal(float3 n) {
   const float maxMag = abs(n.x) + abs(n.y) + abs(n.z);
   const float inverseMag = maxMag == 0.0f ? 0.0f : (1.0f / maxMag);
@@ -118,6 +127,9 @@ uint encodeNormal(float3 n) {
   return f32ToUnorm16(x) | (f32ToUnorm16(y) << 16);
 }
 
+#ifdef __cplusplus
+inline
+#endif
 float3 decodeNormal(uint e) {
   float x = unorm16ToF32(e);
   float y = unorm16ToF32(e >> 16);

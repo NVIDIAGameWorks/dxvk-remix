@@ -4,13 +4,19 @@ This file provides context for AI coding agents working in this repository.
 
 ## Project Overview
 
-dxvk-remix is a fork of DXVK that overhauls the fixed-function D3D9 graphics pipeline for path-traced remastering of classic games. The `bridge` subfolder enables 32-bit games to communicate with the 64-bit runtime.
+dxvk-remix is a fork of DXVK that overhauls the fixed-function D3D9 graphics pipeline for path-traced remastering of classic games.
 
-Only x64 build targets are supported.
+The top-level runtime is built from the repo root and does **not** support x86 builds. Support for 32-bit games lives in `bridge/`, which contains the 32-bit bridge client plus the 64-bit bridge server/runtime handoff.
+
+The repo remains Windows-first, but the Meson build and CI now contain x64, ARM64, and ARM64EC paths. Public-facing docs and release artifacts are still mostly x64-focused.
 
 ## Shell
 
-Commands are run in **PowerShell**. Use `;` to chain commands (not `&&`).
+Most repo build/deploy scripts are written for **PowerShell** or `cmd`, but agent sessions in this repo may run in a POSIX shell such as `bash` or `zsh`.
+
+- Prefer POSIX-safe commands for repo inspection and editing.
+- When invoking `.ps1`, `.bat`, or `.cmd` entry points, use the shell they expect. In PowerShell, use `;` to chain commands (not `&&`).
+- If commands disagree across docs, trust the current Meson files and `tools/ci/gitlab/*.yml` first; use `.agents/skills/` as workflow guides, but verify exact command lines and build-dir names against CI when needed.
 
 ## Procedural Skills
 
@@ -22,7 +28,9 @@ Step-by-step workflows for common tasks are in `.agents/skills/`:
 | `deploy-and-test-game` | Deploy to a game target, launch, and debug |
 | `run-unit-tests` | Build and run unit tests |
 
-Some additional test instructions are in `tests/rtx/dxvk_rt_testing/AGENTS.md` (private NVIDIA GitLab only).
+Some additional image/capture test instructions are in `tests/rtx/dxvk_rt_testing/AGENTS.md` (private NVIDIA GitLab only).
+
+For exact current build/test command lines and build-dir names, prefer `tools/ci/gitlab/*.yml`; for example, unit-test CI currently uses `_CompUnitTest_x64`.
 
 ## C++ Coding Standards
 
@@ -31,6 +39,7 @@ Full guide: `documentation/CONTRIBUTING-style-guide.md`
 ### Key Rules
 
 - **Indentation**: 2 spaces, no tabs.
+- **Line wrapping**: Keep reasonably short lines unwrapped to minimize diff churn.
 - **Braces**: Always use braces for `if`, `else`, `for`, `while`, etc. Opening brace on the same line.
 - **Naming**:
   - Member variables: `m_` prefix (e.g. `m_value`)
@@ -79,8 +88,9 @@ See [the full rule](documentation/CONTRIBUTING-style-guide.md#changes-to-upstrea
 
 ### Adding New Source Files
 
-- New `.cpp` and `.h` files must be added to the `dxvk_src` list in `src/dxvk/meson.build` (alphabetically, both `.cpp` and `.h` on adjacent lines).
-- New shader files (`.comp.slang`, `.rgen.slang`, etc.) are auto-discovered from `src/dxvk/shaders/rtx/` — no build system registration needed.
+- New `.cpp` and `.h` files under `src/dxvk/` must be added to the `dxvk_src` list in `src/dxvk/meson.build` (alphabetically, keep related `.cpp` / `.h` entries adjacent).
+- New unit tests in `tests/rtx/unit/` must be added to `tests/rtx/unit/meson.build`.
+- The RTX shader compile pipeline is configured from the repo-root `meson.build` and scans `src/dxvk/shaders/rtx/`, so most new shader entry files do not need separate Meson registration.
 
 ### Adding New Exports
 
@@ -91,6 +101,7 @@ See [the full rule](documentation/CONTRIBUTING-style-guide.md#changes-to-upstrea
 ## RTX Options
 
 - Add new options in the relevant feature class, not in `rtx_options.h`.
+- Prefer `RTX_OPTION` / `RTX_OPTION_ENV` in the owning feature class or option struct.
 - Use categorized string names: `RTX_OPTION("rtx.category", type, name, default, "Description.")`.
 - Use `RTX_ENV_VAR` (not `DXVK_ENV_VAR`) for RTX-related environment variables.
 - Enumerate enum values in descriptions: `0: First, 1: Second, ...`.
@@ -108,7 +119,10 @@ Shaders use [Slang](https://github.com/shader-slang/slang) (GLSL-compatible). Al
 |-----------|---------|
 | `*.h` | Structure definitions shared across files (and sometimes with CPU) |
 | `*.slangh` | Implementations and helpers (this is what other files include) |
+| `*.slang` | Generic or multi-stage shader entry files |
 | `*.comp.slang` | Compute shaders |
+| `*.vert.slang` | Vertex shaders |
+| `*.frag.slang` | Fragment / pixel shaders |
 | `*.rgen.slang` | Ray generation shaders |
 | `*.rchit.slang` | Ray closest hit shaders |
 | `*.rahit.slang` | Ray any hit shaders |
@@ -120,12 +134,13 @@ Files and folders use `lower_snake_case`, named after the primary type or functi
 
 ### Shared C++/Shader Headers
 
-Files in `src/dxvk/shaders/rtx/` with `.h` extension are shared between C++ and Slang via `#ifdef __cplusplus` guards. Key examples:
-- `rtx/pass/instance_data.h` — `InstanceData` struct (per-TLAS-instance data)
+Files in `src/dxvk/shaders/rtx/` with `.h` extension are often shared between C++ and Slang/HLSL via `#ifdef __cplusplus` guards or the `cpu_gpu_compat.h` helpers. Key examples:
+- `rtx/pass/instance_definitions.h` — TLAS instance masks and custom-index encoding
 - `rtx/utility/shader_types.h` — `vec4`, `vec3`, `vec2`, `uint` types compatible in both C++ and Slang
+- `rtx/utility/cpu_gpu_compat.h` — cross-compile compatibility macros and helpers for dual-compile headers
 - `rtx/pass/common_binding_indices.h` — Binding index constants
 
-When modifying shared headers, ensure both C++ and Slang code paths remain consistent. GPU struct size constants (e.g. `kSurfaceGPUSize`, `INSTANCE_DATA_GPU_SIZE`) must match their respective struct sizes.
+When modifying shared headers, ensure both C++ and Slang code paths remain consistent. For new dual-compile headers that need shared macros/utilities, include `rtx/utility/cpu_gpu_compat.h` at the top and `rtx/utility/cpu_gpu_compat_undef.h` at the end. GPU struct size/layout constants (e.g. `kSurfaceGPUSize`) must match the actual packed buffer layouts.
 
 ### Slang Conventions
 
@@ -153,10 +168,15 @@ When modifying shared headers, ensure both C++ and Slang code paths remain consi
 
 | Path | Description |
 |------|-------------|
-| `src/dxvk/rtx_render/` | Core RTX rendering code |
-| `src/dxvk/shaders/rtx/` | RTX shader code (Slang) |
+| `src/dxvk/rtx_render/` | Core RTX rendering/runtime code |
+| `src/dxvk/rtx_render/graph/` | Remix graph system and graph components |
+| `src/dxvk/shaders/rtx/` | RTX shader code, shared CPU/GPU headers, and pass entry points |
 | `src/dxvk/imgui/` | ImGui integration and developer UI |
+| `src/usd-plugins/` | USD schema plugins built with the runtime |
 | `src/util/` | Shared utility code |
+| `public/include/` | Public Remix API / SDK headers |
 | `bridge/` | 32-bit to 64-bit bridge |
 | `tests/rtx/unit/` | Unit tests |
+| `tests/rtx/apps/` | Small runtime/API test applications |
+| `tests/rtx/dxvk_rt_testing/` | Image/capture regression tests and tooling (private NVIDIA GitLab) |
 | `documentation/` | Project documentation |
