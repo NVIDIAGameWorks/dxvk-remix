@@ -343,6 +343,7 @@ dxvk_src = files([
   'rtx_render/rtx_semaphore.h',
   'rtx_render/rtx_shader_manager.cpp',
   'rtx_render/rtx_shader_manager.h',
+  'rtx_render/rtx_sky_utils.h',
   'rtx_render/rtx_sparse_unique_cache.h',
   'rtx_render/rtx_spatially_hashed_radiance_cache.cpp',
   'rtx_render/rtx_spatially_hashed_radiance_cache.h',
