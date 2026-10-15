@@ -263,6 +263,10 @@ void* Direct3DSurface9_LSS::getBufPtr(const int pitch, const RECT& rect) {
 
 void Direct3DSurface9_LSS::sendDataToServer(const LockInfo& lockInfo) const {
   const auto dataFlag = m_bUseSharedHeap ? Commands::FlagBits::DataInSharedHeap : 0;
+  if (bridge_util::perf::enabled()) {
+    const auto [width, height] = getRectDimensions(lockInfo.rect);
+    bridge_util::perf::noteUpload(bridge_util::calcTotalSizeOfRect(width, height, m_desc.Format));
+  }
   {
     ClientMessage c(Commands::IDirect3DSurface9_UnlockRect, getId(), dataFlag);
     c.send_data(sizeof(RECT), &lockInfo.rect);

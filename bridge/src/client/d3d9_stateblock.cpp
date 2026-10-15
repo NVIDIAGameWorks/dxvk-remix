@@ -210,7 +210,10 @@ HRESULT Direct3DStateBlock9_LSS::Apply() {
   LogFunctionCall();
   StateTransfer(m_dirtyFlags, m_captureState, m_pDevice->m_state);
   {
+    // The lock keeps other threads' setters from landing between the Apply and the invalidation.
+    BRIDGE_PARENT_DEVICE_LOCKGUARD();
     ClientMessage { Commands::IDirect3DStateBlock9_Apply, getId() };
+    m_pDevice->invalidateSentState();
   }
   return S_OK;
 }

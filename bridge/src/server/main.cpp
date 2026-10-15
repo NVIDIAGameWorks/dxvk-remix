@@ -35,6 +35,7 @@
 #include "util_hack_d3d_debug.h"
 #include "util_messagechannel.h"
 #include "util_modulecommand.h"
+#include "util_perfcounters.h"
 #include "util_process.h"
 #include "util_remixapi.h"
 #include "util_seh.h"
@@ -51,6 +52,7 @@
 #include "../client/client_options.h"
 
 #include "../tracy/tracy.hpp"
+#include <algorithm>
 #include <iostream>
 #include <d3d9.h>
 #include <assert.h>
@@ -73,10 +75,13 @@ using namespace remixapi::util;
     } \
   } 
 
+// Without a response the game cannot see a failed create, so the failure is counted instead.
 #define SEND_OPTIONAL_CREATE_FUNCTION_SERVER_RESPONSE(hresult, uid) { \
     if (GlobalOptions::getSendCreateFunctionServerResponses() || GlobalOptions::getSendAllServerResponses()) { \
       ServerMessage c(Commands::Bridge_Response, uid); \
       c.send_data(hresult); \
+    } else if (FAILED(hresult)) { \
+      bridge_util::perf::noteAsyncCreateFailure((uint16_t) rpcHeader.command, (long) (hresult)); \
     } \
   } 
 
@@ -300,6 +305,8 @@ void ProcessDeviceCommandQueue() {
 #endif
 
     const Header rpcHeader = DeviceBridge::pop_front();
+    const int64_t perfStart = bridge_util::perf::enabled() ? bridge_util::perf::now() : 0;
+    const size_t perfDataStart = DeviceBridge::get_data_pos();
 
 #ifdef _DEBUG
     // If data batching is enabled and the data offset on the comamnd is different from
@@ -323,6 +330,8 @@ void ProcessDeviceCommandQueue() {
         Logger::info("Device Processing: " + toString(rpcHeader.command) + " UID: " + std::to_string(currentUID));
       }
 #endif
+      // A Bridge_StatePacket runs this once per record with the packet's device handle and UID.
+      const auto dispatch = [&](const Header& rpcHeader, const uint32_t currentUID) {
       // The mother of all switch statements - every call in the D3D9 interface is mapped here...
       switch (rpcHeader.command) {
       case IDirect3D9Ex_CreateDeviceEx:
@@ -733,6 +742,7 @@ void ProcessDeviceCommandQueue() {
           Logger::trace("Present semaphore released successfully.");
 #endif
         }
+        DeviceBridge::perfOnFrame();
         break;
       }
       case IDirect3DDevice9Ex_GetBackBuffer:
@@ -1783,6 +1793,7 @@ void ProcessDeviceCommandQueue() {
           Logger::trace("Present semaphore released successfully.");
 #endif
         }
+        DeviceBridge::perfOnFrame();
         break;
       }
       case IDirect3DSwapChain9_GetFrontBufferData:
@@ -2394,14 +2405,9 @@ void ProcessDeviceCommandQueue() {
         PULL_U(OffsetToLock);
         PULL_U(SizeToLock);
         PULL_D(Flags);
-        const auto& pVertexBuffer = (IDirect3DVertexBuffer9*) gpD3DResources[pHandle];
+        const auto pVertexBuffer = (IDirect3DVertexBuffer9*) gpD3DResources[pHandle];
 
-        // Now lock the buffer so we can copy the data into it
-        void* pbData = nullptr;
-        auto hresult = pVertexBuffer->Lock(IN OffsetToLock, IN SizeToLock, IN & pbData, IN Flags);
-        assert(S_OK == hresult);
-
-        // Copy the data over
+        // The data is read from the queue even when the upload is skipped below.
         void* data = nullptr;
         if (Commands::IsDataReserved(rpcHeader.flags)) {
           PULL_D(DataOffset);
@@ -2413,9 +2419,24 @@ void ProcessDeviceCommandQueue() {
           const auto size = DeviceBridge::get_data(&data);
           assert(SizeToLock == size);
         }
-        memcpy(pbData, data, SizeToLock);
-        hresult = pVertexBuffer->Unlock();
-        assert(SUCCEEDED(hresult));
+
+        // The buffer is null when its create failed without a response.
+        if (pVertexBuffer == nullptr) {
+          break;
+        }
+
+        // Now lock the buffer so we can copy the data into it
+        void* pbData = nullptr;
+        auto hresult = pVertexBuffer->Lock(IN OffsetToLock, IN SizeToLock, IN & pbData, IN Flags);
+        assert(S_OK == hresult);
+        if (SUCCEEDED(hresult) && pbData != nullptr) {
+          memcpy(pbData, data, SizeToLock);
+          hresult = pVertexBuffer->Unlock();
+          assert(SUCCEEDED(hresult));
+          if (bridge_util::perf::enabled()) {
+            bridge_util::perf::noteUpload(SizeToLock);
+          }
+        }
 
         break;
       }
@@ -2480,14 +2501,9 @@ void ProcessDeviceCommandQueue() {
         PULL_U(OffsetToLock);
         PULL_U(SizeToLock);
         PULL_D(Flags);
-        const auto& pIndexBuffer = (IDirect3DIndexBuffer9*) gpD3DResources[pHandle];
+        const auto pIndexBuffer = (IDirect3DIndexBuffer9*) gpD3DResources[pHandle];
 
-        // Now lock the buffer so we can copy the data into it
-        void* pbData = nullptr;
-        auto hresult = pIndexBuffer->Lock(IN OffsetToLock, IN SizeToLock, IN & pbData, IN Flags);
-        assert(S_OK == hresult);
-
-        // Copy the data over
+        // The data is read from the queue even when the upload is skipped below.
         void* data = nullptr;
         if (Commands::IsDataReserved(rpcHeader.flags)) {
           PULL_D(DataOffset);
@@ -2499,9 +2515,24 @@ void ProcessDeviceCommandQueue() {
           const auto size = DeviceBridge::get_data(&data);
           assert(SizeToLock == size);
         }
-        memcpy(pbData, data, SizeToLock);
-        hresult = pIndexBuffer->Unlock();
-        assert(SUCCEEDED(hresult));
+
+        // The buffer is null when its create failed without a response.
+        if (pIndexBuffer == nullptr) {
+          break;
+        }
+
+        // Now lock the buffer so we can copy the data into it
+        void* pbData = nullptr;
+        auto hresult = pIndexBuffer->Lock(IN OffsetToLock, IN SizeToLock, IN & pbData, IN Flags);
+        assert(S_OK == hresult);
+        if (SUCCEEDED(hresult) && pbData != nullptr) {
+          memcpy(pbData, data, SizeToLock);
+          hresult = pIndexBuffer->Unlock();
+          assert(SUCCEEDED(hresult));
+          if (bridge_util::perf::enabled()) {
+            bridge_util::perf::noteUpload(SizeToLock);
+          }
+        }
         break;
       }
       case IDirect3DIndexBuffer9_GetDesc:
@@ -2578,11 +2609,6 @@ void ProcessDeviceCommandQueue() {
         PULL_OBJ(RECT, pRect);
         PULL_D(Flags);
         const auto pSurface = (IDirect3DSurface9*) gpD3DResources[pHandle];
-        // Now lock the rect so we can copy the data into it
-        D3DLOCKED_RECT lockedRect;
-        auto hresult = pSurface->LockRect(OUT & lockedRect, IN pRect, IN Flags);
-        assert(S_OK == hresult);
-        // Copy the data over
         const uint32_t width = pRect->right - pRect->left;
         const uint32_t height = pRect->bottom - pRect->top;
         PULL_D(dFormat);
@@ -2604,11 +2630,26 @@ void ProcessDeviceCommandQueue() {
           const size_t numRows = bridge_util::calcStride(height, format);
           assert(pulledSize == numRows * IncomingPitch);
         }
-        FOR_EACH_RECT_ROW(lockedRect, height, format,
-          memcpy(ptr, (PBYTE) pData + y * IncomingPitch, rowSize);
-        )
-        hresult = pSurface->UnlockRect();
-        assert(SUCCEEDED(hresult));
+
+        // The surface is null when its create failed without a response.
+        if (pSurface == nullptr) {
+          break;
+        }
+
+        // Now lock the rect so we can copy the data into it
+        D3DLOCKED_RECT lockedRect;
+        auto hresult = pSurface->LockRect(OUT & lockedRect, IN pRect, IN Flags);
+        assert(S_OK == hresult);
+        if (SUCCEEDED(hresult)) {
+          FOR_EACH_RECT_ROW(lockedRect, height, format,
+            memcpy(ptr, (PBYTE) pData + y * IncomingPitch, rowSize);
+          )
+          hresult = pSurface->UnlockRect();
+          assert(SUCCEEDED(hresult));
+          if (bridge_util::perf::enabled()) {
+            bridge_util::perf::noteUpload(uint64_t(rowSize) * bridge_util::calcStride(height, format));
+          }
+        }
 
         break;
       }
@@ -2729,8 +2770,12 @@ void ProcessDeviceCommandQueue() {
       {
         GET_HND(pHandle);
         PULL(DWORD, dwIssueFlags);
-        const auto &pQuery = gpD3DQuery[pHandle];
-        const auto hresult = pQuery->Issue(dwIssueFlags);
+        const auto pQuery = gpD3DQuery[pHandle];
+        const HRESULT hresult = (pQuery != nullptr) ? pQuery->Issue(dwIssueFlags) : D3DERR_INVALIDCALL;
+        // Issues are processed in order, so one UID serves every event query.
+        if (auto* pQueryBlock = bridge_util::QueryResults::block()) {
+          pQueryBlock->issuedProcessedUid.store((uint32_t) currentUID, std::memory_order_release);
+        }
         SEND_OPTIONAL_SERVER_RESPONSE(hresult, currentUID);
         break;
       }
@@ -2739,12 +2784,28 @@ void ProcessDeviceCommandQueue() {
         GET_HND(pHandle);
         PULL(DWORD, dwSize);
         PULL(DWORD, dwGetDataFlags);
-        const auto& pQuery = gpD3DQuery[pHandle];
-        void* pData = NULL;
-        if (dwSize > 0) {
-          pData = new char[dwSize];
+        const auto pQuery = gpD3DQuery[pHandle];
+        std::vector<uint8_t> data(dwSize);
+        void* pData = dwSize > 0 ? data.data() : nullptr;
+        const HRESULT hresult = (pQuery != nullptr) ? pQuery->GetData(pData, dwSize, dwGetDataFlags) : D3DERR_INVALIDCALL;
+
+        if (Commands::IsAsyncResult(rpcHeader.flags)) {
+          // The sequence number is published after the result.
+          PULL_U(slotIndex);
+          PULL_U(requestSeq);
+          auto* pQueryBlock = bridge_util::QueryResults::block();
+          if (pQueryBlock != nullptr && slotIndex < bridge_util::QuerySharedBlock::kMaxSlots) {
+            bridge_util::QueryResultSlot& slot = pQueryBlock->slots[slotIndex];
+            const uint32_t size = std::min<uint32_t>(dwSize, bridge_util::QueryResultSlot::kMaxDataSize);
+            slot.hresult = (int32_t) hresult;
+            slot.size = size;
+            if (hresult == S_OK && size > 0) {
+              memcpy(slot.data, pData, size);
+            }
+            slot.answeredSeq.store(requestSeq, std::memory_order_release);
+          }
+          break;
         }
-        const auto hresult = pQuery->GetData(pData, dwSize, dwGetDataFlags);
 
         ServerMessage c(Commands::Bridge_Response, currentUID);
         c.send_data(hresult);
@@ -2753,10 +2814,6 @@ void ProcessDeviceCommandQueue() {
             memcpy(blobPacketPtr, pData, dwSize);
             c.end_data_blob();
           }
-        }
-      
-        if (dwSize > 0) {
-          delete[]pData;
         }
         break;
       }
@@ -3191,6 +3248,27 @@ void ProcessDeviceCommandQueue() {
       default:
         break;
       }
+      };
+
+      if (rpcHeader.command == Bridge_StatePacket) {
+        while (gbBridgeRunning && DeviceBridge::get_data_pos() != rpcHeader.dataOffset) {
+          PULL_U(recordCommand);
+          const auto command = (Commands::D3D9Command) recordCommand;
+          if (!Commands::IsBatchableState(command)) {
+            // A record that cannot be decoded leaves every later read out of step.
+            Logger::err(format_string("[Bridge] A state packet holds the non-state command %u (%s). Stopping the bridge.",
+                                      (unsigned) recordCommand, Commands::toString(command).c_str()));
+            gbBridgeRunning = false;
+            break;
+          }
+          if (bridge_util::perf::enabled()) {
+            bridge_util::perf::noteRecord((uint16_t) command);
+          }
+          dispatch(Header { command, 0, rpcHeader.dataOffset, rpcHeader.pHandle }, (uint32_t) currentUID);
+        }
+      } else {
+        dispatch(rpcHeader, (uint32_t) currentUID);
+      }
     }
 
     // Ensure the data position between client and server is in sync after processing the command
@@ -3215,6 +3293,14 @@ void ProcessDeviceCommandQueue() {
     }
 
     const auto count = DeviceBridge::end_read_data();
+
+    if (perfStart != 0) {
+      const size_t perfDataEnd = DeviceBridge::get_data_pos();
+      const size_t perfDataWords = perfDataEnd >= perfDataStart
+        ? perfDataEnd - perfDataStart
+        : perfDataEnd + DeviceBridge::getReaderChannel().data->get_total_size() - perfDataStart;
+      bridge_util::perf::noteCommand((uint16_t) rpcHeader.command, (uint32_t) perfDataWords, bridge_util::perf::now() - perfStart);
+    }
 
 #ifdef ENABLE_DATA_BATCHING_TRACE
     Logger::trace(format_string("Finished batch data read with %d data items.", count));
@@ -3527,7 +3613,9 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
     SharedHeap::init();
   }
 
-  gpPresent = new NamedSemaphore("Present", GlobalOptions::getPresentSemaphoreMaxFrames(), GlobalOptions::getPresentSemaphoreMaxFrames());
+  // The counts match the client's in d3d9_lss.cpp, which usually creates the semaphore first.
+  gpPresent = new NamedSemaphore("Present", GlobalOptions::getPresentSemaphoreMaxFrames(),
+                                 std::max<size_t>(GlobalOptions::getPresentSemaphoreMaxFrames(), 1));
 
   // Initialize our shared client command queue as a Reader.
   // (1) Wait for connection for client.
@@ -3585,6 +3673,9 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
   // Pulling default data sent from client to have the data queue in sync
   {
     PULL_U(uid);
+    // Both sides must agree on which calls are answered, so the client's policy wins.
+    PULL_U(clientResponsePolicy);
+    GlobalOptions::applyResponsePolicyFlags(clientResponsePolicy);
   }
   // (5) Ready to listen for incoming commands
   Logger::info("Handshake completed! Now waiting for incoming commands...");
