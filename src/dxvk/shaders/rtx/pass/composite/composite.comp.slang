@@ -39,6 +39,7 @@
 
 #include "rtx/algorithm/volume_composite_helpers.slangh"
 #include "rtx/algorithm/accumulate.slangh"
+#include "rtx/algorithm/view_distance.slangh"
 #include "rtx/pass/sparse_rendering/sparse_rendering.slangh"
 #include "rtx/pass/sparse_rendering/compact_active_pixels.slangh"
 
@@ -787,6 +788,20 @@ vec4 compositeResult(
 
   // Add sky radiance
   applySkyContribution(pixelCoordinate, primaryRayDirections, primaryMiss, radianceScale, volumeAttenuation, radianceOutput);
+
+  // Blend distant primary surfaces into the sky, keeping the volumetric inscattering in front of them
+  // WARN: 'rtx.sparseRendering.enableSparsePrimaryRayMissComposition' ON makes the fade end shimmer against the sky
+  if (cb.viewDistanceArgs.distanceMode == viewDistanceModeCoherentNoiseSmoothPrimary && !primaryMiss)
+  {
+    const vec3 worldPosition = cameraGetWorldPosition(cb.camera) + primaryRayDirections.worldDirection * viewDistance;
+    vec3 skyRadiance = volumetricPreintegratedRadiance * volumetricRadianceScale;
+    // The sky is attenuated as infinitely distant, as at primary misses.
+    const VolumeDefinitionCamera volumeCamera = cb.volumeArgs.cameras[froxelVolumeMain];
+    const vec3 skyVolumeAttenuation = volumeAttenuation * calcVolumetricAttenuation(
+      cb.volumeArgs, volumeCamera, true, 0.0f, worldToTranslatedWorld(volumeCamera, worldPosition), primaryRayDirections.worldDirection);
+    applySkyContribution(pixelCoordinate, primaryRayDirections, true, radianceScale, skyVolumeAttenuation, skyRadiance);
+    radianceOutput = lerp(radianceOutput, skyRadiance, calcViewDistanceFade(cb.viewDistanceArgs, cb.isZUp, cb.camera, worldPosition));
+  }
 
   // Apply fog
   const float fogTransmittance = applyFog(viewDistance, radianceScale, radianceOutput);

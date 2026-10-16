@@ -260,6 +260,7 @@ namespace dxvk {
         {ViewDistanceMode::None, "None"},
         {ViewDistanceMode::HardCutoff, "Hard Cutoff"},
         {ViewDistanceMode::CoherentNoise, "Coherent Noise"},
+        {ViewDistanceMode::CoherentNoiseSmoothPrimary, "Coherent Noise, Smooth Primary"},
     } }
   };
 
@@ -267,7 +268,8 @@ namespace dxvk {
     "View Distance Function",
     RemixGui::ComboWithKey<ViewDistanceFunction>::ComboEntries { {
         {ViewDistanceFunction::Euclidean, "Euclidean"},
-        {ViewDistanceFunction::PlanarEuclidean, "Planar Euclidean"},
+        {ViewDistanceFunction::PlanarEuclidean, "Horizontal"},
+        {ViewDistanceFunction::Vertical, "Vertical"},
     } }
   };
 
@@ -4606,7 +4608,8 @@ namespace dxvk {
 
         if (ViewDistanceOptions::distanceMode() == ViewDistanceMode::HardCutoff) {
           RemixGui::DragFloat("Distance Threshold", &ViewDistanceOptions::distanceThresholdObject(), 0.1f, 0.0f, 0.0f, "%.2f", sliderFlags);
-        } else if (ViewDistanceOptions::distanceMode() == ViewDistanceMode::CoherentNoise) {
+        } else if (ViewDistanceOptions::distanceMode() == ViewDistanceMode::CoherentNoise ||
+                   ViewDistanceOptions::distanceMode() == ViewDistanceMode::CoherentNoiseSmoothPrimary) {
           RemixGui::DragFloat("Distance Fade Min", &ViewDistanceOptions::distanceFadeMinObject(), 0.1f, 0.0f, ViewDistanceOptions::distanceFadeMax(), "%.2f", sliderFlags);
           RemixGui::DragFloat("Distance Fade Max", &ViewDistanceOptions::distanceFadeMaxObject(), 0.1f, ViewDistanceOptions::distanceFadeMin(), 0.0f, "%.2f", sliderFlags);
           RemixGui::DragFloat("Noise Scale", &ViewDistanceOptions::noiseScaleObject(), 0.1f, 0.0f, 0.0f, "%.2f", sliderFlags);

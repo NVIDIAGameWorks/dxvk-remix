@@ -441,6 +441,8 @@ namespace dxvk {
     compositeArgs.enhanceAlbedo = ctx->useRayReconstruction() && rayReconstruction.enableDetailEnhancement();
     compositeArgs.writeRayReconstructionHitDistance = ctx->useRayReconstruction() ? 1u : 0u;
     compositeArgs.enableDlssNrVolumetricControlMask = rtOutput.m_raytraceArgs.enableDlssNrVolumetricControlMask;
+    compositeArgs.viewDistanceArgs = rtOutput.m_raytraceArgs.viewDistanceArgs;
+    compositeArgs.isZUp = rtOutput.m_raytraceArgs.isZUp;
 
     NrdArgs primaryDirectNrdArgs;
     NrdArgs primaryIndirectNrdArgs;
