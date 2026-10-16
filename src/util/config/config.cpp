@@ -556,7 +556,7 @@ namespace dxvk {
         "A0B13F306011D748,"
         "71C560B061683B20,"
         "b1efb6a865b3082c,"
-        "aedb4949ec308638," 
+        "aedb4949ec308638,"
         "BC840D956C24C33C,"
         "010500D8F9BC71A1,"
         "65C067A6504C559E,"
@@ -566,318 +566,320 @@ namespace dxvk {
         "C0F138D79131F8C1" // cake splash screen (after beating the game)
       },
       { "rtx.ignoreTextures",
-        // Fake lighting strips present around borders of the chambers
-        "2EF850E6FBFD8C87,"  
-        // Various glowing sprites/light shafts that we want to replace with modern effects
-        "2F40734A713AABCE,"
-        "C5D5E4DC2C8B16A4,"
-        "193E96F2A664E570,"
-        "4BEE64E543B72DE8,"
-        "A73A56119D34B9A8,"
-        "CCF171A5B95F42AC,"
-        "3588CCE077177F37,"
-        "C511630F7EE7383C,"
-        "0B0B3516EC8F2672,"
-        "CA4AA3441DAA53CA,"
-        "1A82AD51BADE42C6,"
-        "525F90354488C30B,"
-        "BAD0E1288F3F5A5A,"
-        "6A7DE931F906F159,"
-        "E7AFD1A8E179429B,"
-        "C02FE462BA62838A,"
-        "EDDA43A7194B6597,"
-        "11BDB0AEC66E413A,"
-        "260EAE29EC4727F3,"
-        "6010A18E22F8CE34,"
-        "A08B874535052615,"
-        "8AA105C2149F4119,"
-        "EFAC5FE5EB531111,"
-        "A0EF42611EFCDBA5,"  // Character - Chell Checkerboard pattern used on one of the eye passes (unknown material?)
-        "8AA105C2149F4119,"  // ugly textures used for energy balls sliced by portals
-        "068E64C3DB849782,"  // ugly textures used for plasma catchers for fake bloom
-        "92e275beee2d2c12,"  // tanker detail texture
-        "ace20008ae3a0a5b,"  // barrel detail texture
-        "504697625CCD3B45,"  // building detail texture
-      },
-      { "rtx.ignoreLights",
-        // Chell atlases - associated with a light (player light?)
-        "460306E97FB2D4B5,"  // 5044883607524660405ULL
-        "2D5AC1ADC56A42FD,"  // 3268137431696294653ULL
-      },
-      // TREX-469 workaround: hide unwanted objects
-      // Used temporarily to disable meshes pending feature work, without breaking capture tests
-      { "rtx.hideInstanceTextures",
-        ""
-      },
-      { "rtx.playerModelTextures",
-        // Character - Chell
-        "8DD6F568BD126398,"  // Left eye (old)
-        "EEF8EFD4B8A1B2A5,"  // Right eye (old)
-        "D262A1108173A7C5,"  // Left eye
-        "3A1794C42393FFDF,"  // Right eye
-        "4A066E5A5292D273,"  // Hair and eyelashes
-        "AC869B6F32D8BBDB,"  // Something in the eyes
-        "2D5AC1ADC56A42FD,"  // Body
-        "E53AE01AC1FF9E03,"  // Head
-        "9FC25F8E3D685EA5,"  // Held portal gun
-        "9DED9E2A03234E95,"  // Gun particles
-        "4DEEF5C779DDC88A,"  // Gun particles
-        "3CD4F0E2A8AAD575,"  // Gun particles
-        "F2A8C629EF1809C3,"  // Gun particles
-        "4FEB275B85245FB9,"  // Gun particles
-        // Chell - Medium texture detail
-        "1BE7E510328AB010,"  // Body
-        "2AF8E51AAA752D40,"
-        "234A8CD5F00F220D,"
-        "3B21664B1B19F463,"
-        "3A349F1B5FD0B874,"
-        "1E94FE2ABE6A3777,"
-        "D2B78D811954C600,"
-        "571EE878F3238A3F,"
-        // Chell - Low texture detail
-        "DC8E4C587DF53D4C,"  // Body
-        "CBDCB2327A1BB55B,"
-        "163DCDE80551AFE2,"
-        "7957972EDFF7EECC,"
-        "17AE2077ADBE2A57,"
-        "959F1B8A7563FDBB,"
-        "126DEB020C4E0D2D,"
-        "C3F3985DC82F765E,"
-        "7D177970C35D7225,"
-      },
-      { "rtx.playerModelBodyTextures",
-        "2D5AC1ADC56A42FD," // Chell - high texture detail
-        "1BE7E510328AB010," // Chell - medium texture detail
-        "DC8E4C587DF53D4C," // Chell - low texture detail
-      },
-      { "rtx.particleTextures",
-        "C0BE016F97F55259," // steam
-        "2CB02C7BB3702A1F," // collision dust
-        "F12275CBAFC9CA75," // collision dust
-        "12A8733BBDF0FE20," // bullet hit particles
-        "3AEFA6FD5CF2DEB4," // rope/cables
-        "9F874078BE0C83FF," // rope/cables
-        "A5153B06569D6510," // glados defeat particle
-        "CD28C5A663826A6C," // glados defeat particle
-        "9C5D83E7E6B76A7A," // glados defeat swirly black particles
-        "F54E5ECA2E1504FD," // end game smoke
-        "577C6F86C18AAAA5," // portal opening flash
-        "EEEF6F901EEE1164," // glowing circle trail from portal gun fire
-        "F3DF557E6DDC103C," // underwater particles
-        "554AE68A890A90FB," // underwater particles
-        "FFC88527F4693A87," // tiny elevator particle stream component
-        "9DED9E2A03234E95," // portal gun particles
-        "4DEEF5C779DDC88A," // portal gun particles
-        "bd6fe490eca6a50f," // turret bullet particles
-        "63FF8A68ADB06117," // portal ring particles
-        "05054E94DD6BB441," // portal ring particles
-        "0C50217D8C6FDCC2," // plasma catcher electric effect
-        "49E4EC22E559AFC2," // plasma catcher electric effect
-        "280AC336CFC68401," // plasma catcher electric effect
-        "394800E61100412F," // plasma catcher electric effect
-        "285E8D0537EBEBA1," // plasma catcher electric effect
-        "7862B129760B74F0," // plasma catcher electric effect
-        "6253F3CDC90DC6FB," // plasma catcher electric effect
-        "69E5FE25984A5529," // plasma catcher electric effect
-        "FFCE11F1540354CA," // plasma catcher electric effect
-        "232AE6FEF8EEF0BD," // plasma catcher electric effect
-        "105F7D19ED93147E," // platform pillar top effect
-      },
-      { "rtx.beamTextures",
-        "ad7af1c4fca862e4," // nonstationary platform track beam
-        "f116b8e9da308ee8," // turret laser
-        "059b0044c2e2d9dd," // rocket turret laser
-      },
-      { "rtx.decalTextures",
-        "0464EB8194DD2139,"
-        "077416B246F7EBF9,"
-        "0D21C78830B9B87E,"
-        "0E0905D9231B2621,"
-        "0F4986B12FBC9B10,"
-        "1CC7CA1FD5C7CEBC,"
-        "2288A5A74C035053,"
-        "25AF94A27B585E5A,"
-        "2DBF6CC9A5652816,"
-        "2F38DA65B73883EE,"
-        "35961208D8AA165B,"
-        "37AF209A1A371D8F,"
-        "3CE13ABFA28FB599,"
-        "3DB98F1B93F4679A,"
-        "40D969C3B7B837F2,"
-        "474E1B6A2EA8F082,"
-        "4E9D342DFAD12947,"
-        "4F33C5B2342FA20B,"
-        "5073D083DAE15E8B,"
-        "508B88AC09F56141,"
-        "51BD52AFFAAD4BE7,"
-        "53841B078528D4EF,"
-        "58DFED2F17277010,"
-        "60F5B0BF449D5C5C,"
-        "6643F8FF7C42CB18,"
-        "6C9DB83C1D5A5254,"
-        "7A619D021C573F04,"
-        "7FE3253F3EC79C0D,"
-        "810643D7974355CF,"
-        "8B3FA1ED9319A08B,"
-        "8D0AACAE9911101A,"
-        "8DA1232E36B0AB4D,"
-        "90B63328CD155524,"
-        "9B35406FACCF2C8F,"
-        "A5D050857A01EE5D,"
-        "AAAB0CB0C06F9934,"
-        "AE6FC0599B192217,"
-        "B0BA2CC643F93597,"
-        "B68F559B25BF12AE,"
-        "B798B753E4B43330,"
-        "B93C3AF34B6F3980,"
-        "C045D91DACCA62EB,"
-        "C3BA8F2EC836E2B1,"
-        "C41860E9CD66844C,"
-        "C805C1C433BE9CC3,"
-        "C9603739E8F2686B,"
-        "C97FD37AF7708F22,"
-        "D466A216C1A295DA,"
-        "D51BD114D87C00BD,"
-        "E0062D64AC9BAC08,"
-        "E37B04B0085B6401,"
-        "E83D04C31FE08619,"
-        "E9FD72BAAB0C5FD0,"
-        "EF607C1AF136DF26,"
-        "F4661A1B6AA2E97B,"
-        "F600C3C5174DBF69,"
-        "F974DA687E700B25,"
-        "FAD5EEA07EE81FCA,"
-        "FBF1F662D1232979,"
-        "FCF7F7862B76C49F,"
-        "FF487E33FC613B9C,"
-        "ED9A4736E697A97B,"
-        "5585E3941BBD8A30,"
-        "27C8BA6D1FB47A6A,"
-        "6F1EAF2F9481C02F,"
-        "121AF2BCC5B5AFCA,"
-        "215BAAFC5A07B208,"
-        "739825af5ff7b600," // end game asphalt
-        "8f622d6d3b46b751," // end game asphalt
-         // Previously "rtx.dynamicDecalTextures", merged into this list
-        "f017847a501d804b," // blood and bullet holes
-        "a65293be7ea5f7b7," // plasma ball burn marks etc.
-         // Previously "rtx.nonOffsetDecalTextures", merged into this list
-        "727B75DD886D94FD," // Alyx eye irises
-        "64A2E9E0169AE37F,"
-        "C4826ABA6336F7FF," // Citizen NPC eye irises
-        "5E53185FD64EEFF2,"
-      },
-      { "rtx.worldSpaceUiTextures",
-       // Challenge map score boards
-       "2F0654813BA4509B,"
-       "E5A693D8A8BE5D34,"
-       "62902E857F4B7230,"
-       "38F233758BDF24F1,"
-       "D764F53F9492150B,"
-       "03027CD7C8492876,"
-       "20D8A0C0EF108A33,"
-       "49B4A977C4971EBC,"
-       "34EBDE3214C50C43,"
-       "FCECEDB4661B60EE,"
-       "903E97BD3086C74B,"
-       "CA8490701F86CB04,"
-       "353CEC6EDBFBE689,"
-       "28CB3CB457979BDC,"
-       "49A6D4FA0F562B5C,"
-       "1954FDFC34E8D819,"
-       "9C16F4679F33F113,"
-       "87770D9B57CED8C1,"
-       "C7E5ED72431C4A6F,"
-      },
-      { "rtx.worldSpaceUiBackgroundTextures",
-        "ece63a6d1de44f11" // Monitors with countdown timer in the GLaDOS chamber
-      },
-      { "rtx.skyBoxTextures",
-        "ED271AB781D49A9A,"
-        "3574F482B41905E8,"
-        "C5C302766FA5F91D,"
-        "B25CD04A355C45D9,"
-        "BD2CBBFAECF0168C,"
-        "9083D293A167C5B,"
-        // Trees that drawn using a different view matrix
-        "6CB534F9ACD206D5,"
-        "CA4F5DA4FBB99FFC,"
-      },
-      { "rtx.animatedWaterTextures",
-        "522E5513DB9638B6,"
-      },
-      { "rtx.raytracedRenderTargetTextures",
-        "0x3FB65838F2469C64,"
-      },
-      { "rtx.zUp",                   "True" },
-      { "rtx.uniqueObjectDistance",  "300.0" }, // Game is 1unit=1cm - picking up objects can move them very quickly, 3m should be sufficient.
-      { "rtx.rayPortalModelTextureHashes",        "5EC61BC800744B26, DFDACB6DE1C7741E" }, // Orange and Blue Portal textures
-      { "rtx.rayPortalEnabled",                   "True" },
-      { "rtx.rayPortalModelNormalAxis",           "1.0, 0.0, 0.0" },
-      { "rtx.rayPortalModelWidthAxis",            "0.0, 1.0, 0.0" },
-      { "rtx.rayPortalModelHeightAxis",           "0.0, 0.0, 1.0" },
-      { "rtx.rayPortalSamplingWeightMinDistance", "100.0" },
-      { "rtx.rayPortalSamplingWeightMaxDistance", "10000.0" },
-      { "rtx.rayPortalCameraHistoryCorrection",   "True" },
-      { "rtx.rayPortalCameraInBetweenPortalsCorrection",   "True" },
-      { "rtx.viewModel.enable",                   "True" },
-      { "rtx.viewModel.viewRelativeOffsetMeters", "0.005, -0.002, -0.055" },
-      { "rtx.viewModel.scale",                    "0.4" },
-      { "rtx.effectLightPlasmaBall",              "True" },
-      { "rtx.secondarySpecularFireflyFilteringThreshold",  "120.0" },
-      { "rtx.volumetrics.enable",                 "True" },
-      { "rtx.volumetrics.transmittanceColor",     "0.953238, 0.948409, 0.943550" }, // Slight blue tint to act more like water vapor for now
-      { "rtx.volumetrics.transmittanceMeasurementDistance", "20000.0" },
-      { "rtx.volumetrics.froxelMaxDistanceMeters",              "35.0" }, // Raised to 35 over default to better accomodate long hallways and tall rooms in Portal RTX (testchmb_a_09, escape_02).
-      // Todo: Currently these non-ReSTIR froxel grid options are overridden by volumetric presets pending some sort of refactor of how volumetric presets should
-      // be data-driven by config files. These values are still used when using a custom graphics preset however, so they are kept as reasonable defaults.
-      { "rtx.volumetrics.froxelGridResolutionScale",            "16" },
-      { "rtx.volumetrics.froxelDepthSlices",                    "48" },
-      { "rtx.volumetrics.restirGridScale",                      "4" },
-      { "rtx.volumetrics.restirFroxelDepthSlices",              "96" },
-      // 16 chosen as Portal RTX does not have a huge number of lights in most scenes thus diminishing the benefit further of high initial RIS sample counts (still
-      // helps for lights in motion though). This may need to be overridden for other Source engine-based titles for higher quality volumetrics if many lights are
-      // in use.
-      { "rtx.volumetrics.initialRISSampleCount",                "16" },
-      { "rtx.volumetrics.enableFogRemap",                       "True" },
-      { "rtx.volumetrics.fogRemapMaxDistanceMin",               "100.0" },
-      { "rtx.volumetrics.fogRemapMaxDistanceMax",               "4000.0" },
-      { "rtx.volumetrics.fogRemapTransmittanceMeasurementDistanceMin", "2000.0" },
-      { "rtx.volumetrics.fogRemapTransmittanceMeasurementDistanceMax", "12000.0" },
-      { "rtx.useObsoleteHashOnTextureUpload",                   "True" },
-      { "rtx.temporalAA.maximumRadiance",                       "10000.0" },
-      { "rtx.temporalAA.colorClampingFactor",                   "1.0"  },
-      { "rtx.temporalAA.newFrameWeight",                        "0.05" },
-      { "rtx.postfx.motionBlurSampleCount",                     "4"     },
-      { "rtx.postfx.exposureFraction",                          "0.4"   },
-      { "rtx.postfx.blurDiameterFraction",                      "0.02"  },
-      { "rtx.postfx.motionBlurMinimumVelocityThresholdInPixel", "1.5"   },
-      { "rtx.postfx.motionBlurDynamicDeduction",                "0.075" },
-      { "rtx.postfx.motionBlurJitterStrength",                  "0.6"   },
-      { "rtx.postfx.enableMotionBlurNoiseSample",               "True"  },
-      { "rtx.postfx.chromaticAberrationAmount",                 "0.0"   },
-      { "rtx.postfx.chromaticCenterAttenuationAmount",          "0.975" },
-      { "rtx.postfx.vignetteIntensity",                         "0.8"   },
-      { "rtx.postfx.vignetteRadius",                            "0.8"   },
-      { "rtx.postfx.vignetteSoftness",                          "0.1"   },
-      { "rtx.enableNearPlaneOverride",                          "True"  },
-      { "rtx.nativeMipBias",                                    "0.9"   },
-      { "rtx.upscalingMipBias",                                 "-0.4"  },
-      { "rtx.legacyMaterial.roughnessConstant",                 "0.1"   },
-      { "rtx.opacityMicromap.enable",                           "True"  },
-      { "rtx.terrain.terrainAsDecalsEnabledIfNoBaker",          "True"  },
-      { "rtx.decals.maxOffsetIndex",                            "64" },
-      { "rtx.geometryGenerationHashRuleString", "positions,"
-                                                "indices,"
-                                                "texcoords,"
-                                                "geometrydescriptor,"
-                                                "vertexlayout" },
-        { "rtx.allowCubemaps",                  "True" },
-      { "rtx.showLegacyACESOption",                             "True"   },
-      { "rtx.eye.showOptions",              "True" },
-      { "rtx.eye.enable",                   "True" },
-      { "rtx.sparseRendering.enableSparseRendering",            "True" },
-      { "rtx.sparseRendering.quality",                          "0.45" },
+    // Fake lighting strips present around borders of the chambers
+    "2EF850E6FBFD8C87,"
+    // Various glowing sprites/light shafts that we want to replace with modern effects
+    "2F40734A713AABCE,"
+    "C5D5E4DC2C8B16A4,"
+    "193E96F2A664E570,"
+    "4BEE64E543B72DE8,"
+    "A73A56119D34B9A8,"
+    "CCF171A5B95F42AC,"
+    "3588CCE077177F37,"
+    "C511630F7EE7383C,"
+    "0B0B3516EC8F2672,"
+    "CA4AA3441DAA53CA,"
+    "1A82AD51BADE42C6,"
+    "525F90354488C30B,"
+    "BAD0E1288F3F5A5A,"
+    "6A7DE931F906F159,"
+    "E7AFD1A8E179429B,"
+    "C02FE462BA62838A,"
+    "EDDA43A7194B6597,"
+    "11BDB0AEC66E413A,"
+    "260EAE29EC4727F3,"
+    "6010A18E22F8CE34,"
+    "A08B874535052615,"
+    "8AA105C2149F4119,"
+    "EFAC5FE5EB531111,"
+    "A0EF42611EFCDBA5,"  // Character - Chell Checkerboard pattern used on one of the eye passes (unknown material?)
+    "8AA105C2149F4119,"  // ugly textures used for energy balls sliced by portals
+    "068E64C3DB849782,"  // ugly textures used for plasma catchers for fake bloom
+    "92e275beee2d2c12,"  // tanker detail texture
+    "ace20008ae3a0a5b,"  // barrel detail texture
+    "504697625CCD3B45,"  // building detail texture
+  },
+  { "rtx.ignoreLights",
+    // Chell atlases - associated with a light (player light?)
+    "460306E97FB2D4B5,"  // 5044883607524660405ULL
+    "2D5AC1ADC56A42FD,"  // 3268137431696294653ULL
+  },
+    // TREX-469 workaround: hide unwanted objects
+    // Used temporarily to disable meshes pending feature work, without breaking capture tests
+    { "rtx.hideInstanceTextures",
+      ""
+    },
+    { "rtx.playerModelTextures",
+    // Character - Chell
+    "8DD6F568BD126398,"  // Left eye (old)
+    "EEF8EFD4B8A1B2A5,"  // Right eye (old)
+    "D262A1108173A7C5,"  // Left eye
+    "3A1794C42393FFDF,"  // Right eye
+    "4A066E5A5292D273,"  // Hair and eyelashes
+    "AC869B6F32D8BBDB,"  // Something in the eyes
+    "2D5AC1ADC56A42FD,"  // Body
+    "E53AE01AC1FF9E03,"  // Head
+    "9FC25F8E3D685EA5,"  // Held portal gun
+    "9DED9E2A03234E95,"  // Gun particles
+    "4DEEF5C779DDC88A,"  // Gun particles
+    "3CD4F0E2A8AAD575,"  // Gun particles
+    "F2A8C629EF1809C3,"  // Gun particles
+    "4FEB275B85245FB9,"  // Gun particles
+    // Chell - Medium texture detail
+    "1BE7E510328AB010,"  // Body
+    "2AF8E51AAA752D40,"
+    "234A8CD5F00F220D,"
+    "3B21664B1B19F463,"
+    "3A349F1B5FD0B874,"
+    "1E94FE2ABE6A3777,"
+    "D2B78D811954C600,"
+    "571EE878F3238A3F,"
+    // Chell - Low texture detail
+    "DC8E4C587DF53D4C,"  // Body
+    "CBDCB2327A1BB55B,"
+    "163DCDE80551AFE2,"
+    "7957972EDFF7EECC,"
+    "17AE2077ADBE2A57,"
+    "959F1B8A7563FDBB,"
+    "126DEB020C4E0D2D,"
+    "C3F3985DC82F765E,"
+    "7D177970C35D7225,"
+  },
+  { "rtx.playerModelBodyTextures",
+    "2D5AC1ADC56A42FD," // Chell - high texture detail
+    "1BE7E510328AB010," // Chell - medium texture detail
+    "DC8E4C587DF53D4C," // Chell - low texture detail
+  },
+  { "rtx.particleTextures",
+    "C0BE016F97F55259," // steam
+    "2CB02C7BB3702A1F," // collision dust
+    "F12275CBAFC9CA75," // collision dust
+    "12A8733BBDF0FE20," // bullet hit particles
+    "3AEFA6FD5CF2DEB4," // rope/cables
+    "9F874078BE0C83FF," // rope/cables
+    "A5153B06569D6510," // glados defeat particle
+    "CD28C5A663826A6C," // glados defeat particle
+    "9C5D83E7E6B76A7A," // glados defeat swirly black particles
+    "F54E5ECA2E1504FD," // end game smoke
+    "577C6F86C18AAAA5," // portal opening flash
+    "EEEF6F901EEE1164," // glowing circle trail from portal gun fire
+    "F3DF557E6DDC103C," // underwater particles
+    "554AE68A890A90FB," // underwater particles
+    "FFC88527F4693A87," // tiny elevator particle stream component
+    "9DED9E2A03234E95," // portal gun particles
+    "4DEEF5C779DDC88A," // portal gun particles
+    "bd6fe490eca6a50f," // turret bullet particles
+    "63FF8A68ADB06117," // portal ring particles
+    "05054E94DD6BB441," // portal ring particles
+    "0C50217D8C6FDCC2," // plasma catcher electric effect
+    "49E4EC22E559AFC2," // plasma catcher electric effect
+    "280AC336CFC68401," // plasma catcher electric effect
+    "394800E61100412F," // plasma catcher electric effect
+    "285E8D0537EBEBA1," // plasma catcher electric effect
+    "7862B129760B74F0," // plasma catcher electric effect
+    "6253F3CDC90DC6FB," // plasma catcher electric effect
+    "69E5FE25984A5529," // plasma catcher electric effect
+    "FFCE11F1540354CA," // plasma catcher electric effect
+    "232AE6FEF8EEF0BD," // plasma catcher electric effect
+    "105F7D19ED93147E," // platform pillar top effect
+  },
+  { "rtx.beamTextures",
+    "ad7af1c4fca862e4," // nonstationary platform track beam
+    "f116b8e9da308ee8," // turret laser
+    "059b0044c2e2d9dd," // rocket turret laser
+  },
+  { "rtx.decalTextures",
+    "0464EB8194DD2139,"
+    "077416B246F7EBF9,"
+    "0D21C78830B9B87E,"
+    "0E0905D9231B2621,"
+    "0F4986B12FBC9B10,"
+    "1CC7CA1FD5C7CEBC,"
+    "2288A5A74C035053,"
+    "25AF94A27B585E5A,"
+    "2DBF6CC9A5652816,"
+    "2F38DA65B73883EE,"
+    "35961208D8AA165B,"
+    "37AF209A1A371D8F,"
+    "3CE13ABFA28FB599,"
+    "3DB98F1B93F4679A,"
+    "40D969C3B7B837F2,"
+    "474E1B6A2EA8F082,"
+    "4E9D342DFAD12947,"
+    "4F33C5B2342FA20B,"
+    "5073D083DAE15E8B,"
+    "508B88AC09F56141,"
+    "51BD52AFFAAD4BE7,"
+    "53841B078528D4EF,"
+    "58DFED2F17277010,"
+    "60F5B0BF449D5C5C,"
+    "6643F8FF7C42CB18,"
+    "6C9DB83C1D5A5254,"
+    "7A619D021C573F04,"
+    "7FE3253F3EC79C0D,"
+    "810643D7974355CF,"
+    "8B3FA1ED9319A08B,"
+    "8D0AACAE9911101A,"
+    "8DA1232E36B0AB4D,"
+    "90B63328CD155524,"
+    "9B35406FACCF2C8F,"
+    "A5D050857A01EE5D,"
+    "AAAB0CB0C06F9934,"
+    "AE6FC0599B192217,"
+    "B0BA2CC643F93597,"
+    "B68F559B25BF12AE,"
+    "B798B753E4B43330,"
+    "B93C3AF34B6F3980,"
+    "C045D91DACCA62EB,"
+    "C3BA8F2EC836E2B1,"
+    "C41860E9CD66844C,"
+    "C805C1C433BE9CC3,"
+    "C9603739E8F2686B,"
+    "C97FD37AF7708F22,"
+    "D466A216C1A295DA,"
+    "D51BD114D87C00BD,"
+    "E0062D64AC9BAC08,"
+    "E37B04B0085B6401,"
+    "E83D04C31FE08619,"
+    "E9FD72BAAB0C5FD0,"
+    "EF607C1AF136DF26,"
+    "F4661A1B6AA2E97B,"
+    "F600C3C5174DBF69,"
+    "F974DA687E700B25,"
+    "FAD5EEA07EE81FCA,"
+    "FBF1F662D1232979,"
+    "FCF7F7862B76C49F,"
+    "FF487E33FC613B9C,"
+    "ED9A4736E697A97B,"
+    "5585E3941BBD8A30,"
+    "27C8BA6D1FB47A6A,"
+    "6F1EAF2F9481C02F,"
+    "121AF2BCC5B5AFCA,"
+    "215BAAFC5A07B208,"
+    "739825af5ff7b600," // end game asphalt
+    "8f622d6d3b46b751," // end game asphalt
+     // Previously "rtx.dynamicDecalTextures", merged into this list
+    "f017847a501d804b," // blood and bullet holes
+    "a65293be7ea5f7b7," // plasma ball burn marks etc.
+     // Previously "rtx.nonOffsetDecalTextures", merged into this list
+    "727B75DD886D94FD," // Alyx eye irises
+    "64A2E9E0169AE37F,"
+    "C4826ABA6336F7FF," // Citizen NPC eye irises
+    "5E53185FD64EEFF2,"
+  },
+  { "rtx.worldSpaceUiTextures",
+    // Challenge map score boards
+    "2F0654813BA4509B,"
+    "E5A693D8A8BE5D34,"
+    "62902E857F4B7230,"
+    "38F233758BDF24F1,"
+    "D764F53F9492150B,"
+    "03027CD7C8492876,"
+    "20D8A0C0EF108A33,"
+    "49B4A977C4971EBC,"
+    "34EBDE3214C50C43,"
+    "FCECEDB4661B60EE,"
+    "903E97BD3086C74B,"
+    "CA8490701F86CB04,"
+    "353CEC6EDBFBE689,"
+    "28CB3CB457979BDC,"
+    "49A6D4FA0F562B5C,"
+    "1954FDFC34E8D819,"
+    "9C16F4679F33F113,"
+    "87770D9B57CED8C1,"
+    "C7E5ED72431C4A6F,"
+   },
+   { "rtx.worldSpaceUiBackgroundTextures",
+     "ece63a6d1de44f11" // Monitors with countdown timer in the GLaDOS chamber
+   },
+   { "rtx.skyBoxTextures",
+     "ED271AB781D49A9A,"
+     "3574F482B41905E8,"
+     "C5C302766FA5F91D,"
+     "B25CD04A355C45D9,"
+     "BD2CBBFAECF0168C,"
+     "9083D293A167C5B,"
+    // Trees that drawn using a different view matrix
+    "6CB534F9ACD206D5,"
+    "CA4F5DA4FBB99FFC,"
+  },
+  { "rtx.animatedWaterTextures",
+    "522E5513DB9638B6,"
+  },
+  { "rtx.raytracedRenderTargetTextures",
+    "0x3FB65838F2469C64,"
+  },
+  { "rtx.zUp",                   "True" },
+  { "rtx.uniqueObjectDistance",  "300.0" }, // Game is 1unit=1cm - picking up objects can move them very quickly, 3m should be sufficient.
+  { "rtx.rayPortalModelTextureHashes",        "5EC61BC800744B26, DFDACB6DE1C7741E" }, // Orange and Blue Portal textures
+  { "rtx.rayPortalEnabled",                   "True" },
+  { "rtx.rayPortalModelNormalAxis",           "1.0, 0.0, 0.0" },
+  { "rtx.rayPortalModelWidthAxis",            "0.0, 1.0, 0.0" },
+  { "rtx.rayPortalModelHeightAxis",           "0.0, 0.0, 1.0" },
+  { "rtx.rayPortalSamplingWeightMinDistance", "100.0" },
+  { "rtx.rayPortalSamplingWeightMaxDistance", "10000.0" },
+  { "rtx.rayPortalCameraHistoryCorrection",   "True" },
+  { "rtx.rayPortalCameraInBetweenPortalsCorrection",   "True" },
+  { "rtx.viewModel.enable",                   "True" },
+  { "rtx.viewModel.viewRelativeOffsetMeters", "0.005, -0.002, -0.055" },
+  { "rtx.viewModel.scale",                    "0.4" },
+  { "rtx.effectLightPlasmaBall",              "True" },
+  { "rtx.secondarySpecularFireflyFilteringThreshold",  "120.0" },
+  { "rtx.volumetrics.enable",                 "True" },
+  { "rtx.volumetrics.transmittanceColor",     "0.953238, 0.948409, 0.943550" }, // Slight blue tint to act more like water vapor for now
+  { "rtx.volumetrics.transmittanceMeasurementDistance", "20000.0" },
+  { "rtx.volumetrics.froxelMaxDistanceMeters",              "35.0" }, // Raised to 35 over default to better accomodate long hallways and tall rooms in Portal RTX (testchmb_a_09, escape_02).
+    // Todo: Currently these non-ReSTIR froxel grid options are overridden by volumetric presets pending some sort of refactor of how volumetric presets should
+    // be data-driven by config files. These values are still used when using a custom graphics preset however, so they are kept as reasonable defaults.
+    { "rtx.volumetrics.froxelGridResolutionScale",            "16" },
+    { "rtx.volumetrics.froxelDepthSlices",                    "48" },
+    { "rtx.volumetrics.restirGridScale",                      "4" },
+    { "rtx.volumetrics.restirFroxelDepthSlices",              "96" },
+    // 16 chosen as Portal RTX does not have a huge number of lights in most scenes thus diminishing the benefit further of high initial RIS sample counts (still
+    // helps for lights in motion though). This may need to be overridden for other Source engine-based titles for higher quality volumetrics if many lights are
+    // in use.
+    { "rtx.volumetrics.initialRISSampleCount",                "16" },
+    { "rtx.volumetrics.enableFogRemap",                       "True" },
+    { "rtx.volumetrics.fogRemapMaxDistanceMin",               "100.0" },
+    { "rtx.volumetrics.fogRemapMaxDistanceMax",               "4000.0" },
+    { "rtx.volumetrics.fogRemapTransmittanceMeasurementDistanceMin", "2000.0" },
+    { "rtx.volumetrics.fogRemapTransmittanceMeasurementDistanceMax", "12000.0" },
+    { "rtx.useObsoleteHashOnTextureUpload",                   "True" },
+    { "rtx.temporalAA.maximumRadiance",                       "10000.0" },
+    { "rtx.temporalAA.colorClampingFactor",                   "1.0"  },
+    { "rtx.temporalAA.newFrameWeight",                        "0.05" },
+    { "rtx.postfx.motionBlurSampleCount",                     "4"     },
+    { "rtx.postfx.exposureFraction",                          "0.4"   },
+    { "rtx.postfx.blurDiameterFraction",                      "0.02"  },
+    { "rtx.postfx.motionBlurMinimumVelocityThresholdInPixel", "1.5"   },
+    { "rtx.postfx.motionBlurDynamicDeduction",                "0.075" },
+    { "rtx.postfx.motionBlurJitterStrength",                  "0.6"   },
+    { "rtx.postfx.enableMotionBlurNoiseSample",               "True"  },
+    { "rtx.postfx.chromaticAberrationAmount",                 "0.0"   },
+    { "rtx.postfx.chromaticCenterAttenuationAmount",          "0.975" },
+    { "rtx.postfx.vignetteIntensity",                         "0.8"   },
+    { "rtx.postfx.vignetteRadius",                            "0.8"   },
+    { "rtx.postfx.vignetteSoftness",                          "0.1"   },
+    { "rtx.enableNearPlaneOverride",                          "True"  },
+    { "rtx.nativeMipBias",                                    "0.9"   },
+    { "rtx.upscalingMipBias",                                 "-0.4"  },
+    { "rtx.legacyMaterial.roughnessConstant",                 "0.1"   },
+    { "rtx.opacityMicromap.enable",                           "True"  },
+    { "rtx.terrain.terrainAsDecalsEnabledIfNoBaker",          "True"  },
+    { "rtx.decals.maxOffsetIndex",                            "64" },
+    { "rtx.geometryGenerationHashRuleString", "positions,"
+                                              "indices,"
+                                              "texcoords,"
+                                              "geometrydescriptor,"
+                                              "vertexlayout" },
+      { "rtx.allowCubemaps",                  "True" },
+    { "rtx.showLegacyACESOption",                             "True"   },
+    { "rtx.eye.showOptions",              "True" },
+    { "rtx.eye.enable",                   "True" },
+    { "rtx.sparseRendering.enableSparseRendering",            "True" },
+    { "rtx.sparseRendering.quality",                          "0.45" },
+    // Improvement in indirect quality as WAR for [REMIX-6089] 
+    { "rtx.spatiallyHashedRadianceCache.voxelSize",         "0.005"}
     }} },
     /* Kohan II                                  */
     { R"(\\k2\.exe$)", {{
