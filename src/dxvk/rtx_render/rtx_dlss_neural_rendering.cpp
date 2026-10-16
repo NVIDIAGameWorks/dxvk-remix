@@ -224,6 +224,19 @@ namespace dxvk {
         { Model::Model2, "Model C" },
       } });
 
+    if (DlssNeuralRendering::showVramUsage()) {
+      if (m_dlssNeuralRenderingContext && m_dlssNeuralRenderingContext->hasVramAllocation()) {
+        constexpr double kBytesPerMiB = 1024.0 * 1024.0;
+        const double vramAllocationMiB = static_cast<double>(m_dlssNeuralRenderingContext->getVramAllocationBytes()) / kBytesPerMiB;
+        ImGui::Text("DLSS-NR SDK VRAM Allocation: %.2f MiB", vramAllocationMiB);
+      } else {
+        ImGui::TextDisabled("DLSS-NR SDK VRAM Allocation: Not Available");
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("SDK-reported aggregate allocation, queried at feature creation. Excludes Remix-managed input/output textures.");
+      }
+    }
+
     RemixGui::Checkbox("DLSS 3D-Guided Neural Generation", &DlssNeuralRendering::enableObject());
 
     constexpr ImGuiSliderFlags flags = ImGuiSliderFlags_AlwaysClamp;
@@ -242,9 +255,7 @@ namespace dxvk {
       RemixGui::Checkbox("Highlight Recovery", &DlssNeuralRendering::enableHighlightRecoveryObject());
       // Thresholds: (exposed HDR max-channel min/max, LDR max-channel min/max)
       RemixGui::DragFloat4("Highlight Recovery Thresholds", &DlssNeuralRendering::highlightRecoveryThresholdsObject(), 0.01f, 0.0f, 32.0f, "%.3f", flags);
-      ImGui::BeginDisabled(autoMaskEnabled);
       RemixGui::Checkbox("Volumetric Improvement", &DlssNeuralRendering::enableVolumetricControlMaskObject());
-      ImGui::EndDisabled();
       ImGui::Unindent();
     }
   }
@@ -267,7 +278,7 @@ namespace dxvk {
       return false;
     }
 
-    m_dlssNeuralRenderingContext->initialize(renderContext, m_displaySize);
+    m_dlssNeuralRenderingContext->initialize(renderContext, m_displaySize, DlssNeuralRendering::showVramUsage());
     return m_dlssNeuralRenderingContext->isNeuralRenderingInitialized();
   }
 

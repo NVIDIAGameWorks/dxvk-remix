@@ -785,7 +785,8 @@ if dxvk_is_ninja or dxvk_is_woa_ec
 
     install_data(join_paths(dlss_bin_path, 'nvngx_dlss.dll'), install_dir : output_path, install_tag: target_suffix) 
     install_data(join_paths(dlss_bin_path, 'nvngx_dlssd.dll'), install_dir : output_path, install_tag: target_suffix) 
-    install_data(join_paths(dlss_bin_path, 'nvngx_dlssg.dll'), install_dir : output_path, install_tag: target_suffix) 
+    install_data(join_paths(dlfg_bin_path, 'nvngx_dlssg.dll'), install_dir : output_path, install_tag: target_suffix)
+    install_data(join_paths(dlnr_bin_path, 'nvngx_dlssnr.dll'), install_dir : output_path, install_tag: target_suffix)
 
     install_data(join_paths(reflex_lib_path, 'NvLowLatencyVk.dll'), install_dir : output_path, install_tag: target_suffix) 
 

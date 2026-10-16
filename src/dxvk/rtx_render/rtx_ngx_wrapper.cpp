@@ -20,6 +20,11 @@
 * DEALINGS IN THE SOFTWARE.
 */
 
+#include <atomic>
+#include <cstdio>
+#include <cstring>
+#include <mutex>
+
 #define WIN32_NO_STATUS
 #include <windows.h>
 #include <ntstatus.h>
@@ -41,8 +46,6 @@
 #include <nvsdk_ngx_helpers_dlssd_vk.h>
 
 #include <vulkan/vulkan.h>
-#include <nvsdk_ngx_vk.h>
-#include <nvsdk_ngx_helpers_vk.h>
 #include <nvsdk_ngx_helpers_dlssg.h>
 #include <nvsdk_ngx_helpers_dlssg_vk.h>
 #include <nvsdk_ngx_defs_dlssg.h>
@@ -55,19 +58,46 @@
 
 #include <dxvk_device.h>
 
-#include <atomic>
-#include <cstdio>
-#include <cstdarg>
-#include <cstring>
+#define NGX_CALL(...) ngxCall([&] { return (__VA_ARGS__); })
 
 namespace {
   std::atomic<int> s_dlssNeuralRenderingStatus { -1 };
+  std::mutex s_ngxMutex;
+
+  // NGX requires client-enforced thread safety across render and frame-generation threads.
+  template <typename Callback>
+  auto ngxCall(Callback&& callback) {
+    std::lock_guard<std::mutex> lock(s_ngxMutex);
+    return callback();
+  }
 }
 
 namespace dxvk
 {
   namespace {
-    constexpr float kDlssNrGlobalToneStrength = 1.0f;
+    NVSDK_NGX_Result queryDlssNeuralRenderingVramAllocation(
+        NVSDK_NGX_Parameter* pParameters,
+        unsigned long long* pVramAllocationBytes) {
+      // Invoke the stats callback directly to avoid the generic helper's D3D header dependency.
+      void* pCallback = nullptr;
+      NVSDK_NGX_Result result = NVSDK_NGX_Parameter_GetVoidPointer(
+        pParameters, NVSDK_NGX_Parameter_DLSSNRGetStatsCallback, &pCallback);
+      if (NVSDK_NGX_FAILED(result)) {
+        return result;
+      }
+
+      if (pCallback == nullptr) {
+        return NVSDK_NGX_Result_FAIL_OutOfDate;
+      }
+
+      const auto pStatsCallback = reinterpret_cast<PFN_NVSDK_NGX_DLSSNR_GetStatsCallback>(pCallback);
+      result = pStatsCallback(pParameters);
+      if (NVSDK_NGX_FAILED(result)) {
+        return result;
+      }
+
+      return NVSDK_NGX_Parameter_GetULL(pParameters, NVSDK_NGX_Parameter_SizeInBytes, pVramAllocationBytes);
+    }
 
     std::string resultToString(NVSDK_NGX_Result result) {
       char buf[1024];
@@ -168,12 +198,11 @@ namespace dxvk
     featureCommonInfo.LoggingInfo.DisableOtherLoggingSinks = true;
 #endif
 
-    result = NVSDK_NGX_VULKAN_Init(
+    result = NGX_CALL(NVSDK_NGX_VULKAN_Init(
       RtxOptions::applicationId(), logFolder.c_str(),
       vkInstance, vkPhysicalDevice, vkDevice,
       nullptr, nullptr,
-      &featureCommonInfo
-    );
+      &featureCommonInfo));
 
     if (NVSDK_NGX_FAILED(result)) {
       if (result == NVSDK_NGX_Result_FAIL_FeatureNotSupported || result == NVSDK_NGX_Result_FAIL_PlatformError) {
@@ -187,7 +216,7 @@ namespace dxvk
     }
 
     NVSDK_NGX_Parameter* tempParams = nullptr;
-    result = NVSDK_NGX_VULKAN_GetCapabilityParameters(&tempParams);
+    result = NGX_CALL(NVSDK_NGX_VULKAN_GetCapabilityParameters(&tempParams));
     if (NVSDK_NGX_FAILED(result)) {
       Logger::err(str::format("NVSDK_NGX_VULKAN_GetCapabilityParameters failed: ", resultToString(result)));
       s_dlssNeuralRenderingStatus.store(0, std::memory_order_release);
@@ -259,7 +288,7 @@ namespace dxvk
     di.FeatureInfo = &ci;
     NVSDK_NGX_FeatureRequirement fr = {};
 
-    result = NVSDK_NGX_VULKAN_GetFeatureRequirements(vkInstance, vkPhysicalDevice, &di, &fr);
+    result = NGX_CALL(NVSDK_NGX_VULKAN_GetFeatureRequirements(vkInstance, vkPhysicalDevice, &di, &fr));
     if (NVSDK_NGX_FAILED(result) || fr.FeatureSupported != NVSDK_NGX_FeatureSupportResult_Supported) {
       if (result == NVSDK_NGX_Result_FAIL_OutOfDate || fr.FeatureSupported == NVSDK_NGX_FeatureSupportResult_DriverVersionUnsupported) {
         Logger::warn(str::format("NVIDIA DLSS-RR cannot be loaded due to outdated driver: ", resultToString(result)));
@@ -270,7 +299,7 @@ namespace dxvk
       m_supportsRayReconstruction = true;
     }
 
-    NVSDK_NGX_VULKAN_DestroyParameters(tempParams);
+    NGX_CALL(NVSDK_NGX_VULKAN_DestroyParameters(tempParams));
     m_initialized = true;
     return true;
   }
@@ -282,7 +311,7 @@ namespace dxvk
   void NGXContext::shutdown() {
     s_dlssNeuralRenderingStatus.store(-1, std::memory_order_release);
     if (m_initialized) {
-      NVSDK_NGX_VULKAN_Shutdown1(m_device->handle());
+      NGX_CALL(NVSDK_NGX_VULKAN_Shutdown1(m_device->handle()));
       m_initialized = false;
     }
   }
@@ -521,7 +550,7 @@ namespace dxvk
 
   NGXFeatureContext::~NGXFeatureContext() {
     if (m_parameters) {
-      NVSDK_NGX_VULKAN_DestroyParameters(m_parameters);
+      NGX_CALL(NVSDK_NGX_VULKAN_DestroyParameters(m_parameters));
       m_parameters = nullptr;
     }
   }
@@ -530,14 +559,14 @@ namespace dxvk
   {
     ScopedCpuProfileZone();
     if (m_feature) {
-      NVSDK_NGX_VULKAN_ReleaseFeature(m_feature);
+      NGX_CALL(NVSDK_NGX_VULKAN_ReleaseFeature(m_feature));
       m_feature = nullptr;
     }
   }
 
   NGXFeatureContext::NGXFeatureContext(DxvkDevice* device): m_device(device)
   {
-    NVSDK_NGX_Result result = NVSDK_NGX_VULKAN_GetCapabilityParameters(&m_parameters);
+    NVSDK_NGX_Result result = NGX_CALL(NVSDK_NGX_VULKAN_GetCapabilityParameters(&m_parameters));
     if (NVSDK_NGX_FAILED(result)) {
       Logger::err(str::format("NVSDK_NGX_VULKAN_GetCapabilityParameters failed: ", resultToString(result)));
     }
@@ -595,7 +624,8 @@ namespace dxvk
     // Release video memory when DLSS is disabled.
     m_parameters->Set(NVSDK_NGX_Parameter_FreeMemOnReleaseFeature, 1);
 
-    NVSDK_NGX_Result result = NGX_VULKAN_CREATE_DLSS_EXT1(m_device->handle(), vkCommandBuffer, CreationNodeMask, VisibilityNodeMask, &m_featureDLSS, m_parameters, &createParams);
+    NVSDK_NGX_Result result = NGX_CALL(NGX_VULKAN_CREATE_DLSS_EXT1(
+      m_device->handle(), vkCommandBuffer, CreationNodeMask, VisibilityNodeMask, &m_featureDLSS, m_parameters, &createParams));
 
     if (NVSDK_NGX_FAILED(result)) {
       Logger::warn(str::format("Failed to create DLSS feature: ", resultToString(result)));
@@ -605,7 +635,7 @@ namespace dxvk
 
   void NGXDLSSContext::releaseNGXFeature() {
     if (m_featureDLSS) {
-      NVSDK_NGX_VULKAN_ReleaseFeature(m_featureDLSS);
+      NGX_CALL(NVSDK_NGX_VULKAN_ReleaseFeature(m_featureDLSS));
       m_featureDLSS = nullptr;
     }
   }
@@ -617,12 +647,12 @@ namespace dxvk
     // Note: Deprecated, should not be used but still must be passed into the query function.
     float dummySharpness;
 
-    NVSDK_NGX_Result result = NGX_DLSS_GET_OPTIMAL_SETTINGS(m_parameters,
+    NVSDK_NGX_Result result = NGX_CALL(NGX_DLSS_GET_OPTIMAL_SETTINGS(m_parameters,
       displaySize[0], displaySize[1], perfQuality,
       &settings.optimalRenderSize[0], &settings.optimalRenderSize[1],
       &settings.maxRenderSize[0], &settings.maxRenderSize[1],
       &settings.minRenderSize[0], &settings.minRenderSize[1],
-      &dummySharpness);
+      &dummySharpness));
 
     if (NVSDK_NGX_FAILED(result)) {
       Logger::err(str::format("Querying optimal settings failed: ", resultToString(result)));
@@ -679,7 +709,7 @@ namespace dxvk
     evalParams.InRenderSubrectDimensions = { inWidth, inHeight };
 
     NVSDK_NGX_Result result;
-    result = NGX_VULKAN_EVALUATE_DLSS_EXT(vkCommandbuffer, m_featureDLSS, m_parameters, &evalParams);
+    result = NGX_CALL(NGX_VULKAN_EVALUATE_DLSS_EXT(vkCommandbuffer, m_featureDLSS, m_parameters, &evalParams));
 
     if (NVSDK_NGX_FAILED(result)) {
       success = false;
@@ -746,13 +776,13 @@ namespace dxvk
     // Release video memory when DLSS-RR is disabled.
     m_parameters->Set(NVSDK_NGX_Parameter_FreeMemOnReleaseFeature, 1);
 
-    NVSDK_NGX_Result result = NGX_VULKAN_CREATE_DLSSD_EXT1(m_device->handle(),
-                                                           vkCommandBuffer,
-                                                           CreationNodeMask,
-                                                           VisibilityNodeMask,
-                                                           &m_featureRayReconstruction,
-                                                           m_parameters,
-                                                           &dlssdCreateParams);
+    NVSDK_NGX_Result result = NGX_CALL(NGX_VULKAN_CREATE_DLSSD_EXT1(m_device->handle(),
+      vkCommandBuffer,
+      CreationNodeMask,
+      VisibilityNodeMask,
+      &m_featureRayReconstruction,
+      m_parameters,
+      &dlssdCreateParams));
 
     if (NVSDK_NGX_FAILED(result)) {
       Logger::err(str::format("Failed to create DLSS-RR feature: ", resultToString(result)));
@@ -762,7 +792,7 @@ namespace dxvk
 
   void NGXRayReconstructionContext::releaseNGXFeature() {
     if (m_featureRayReconstruction) {
-      NVSDK_NGX_VULKAN_ReleaseFeature(m_featureRayReconstruction);
+      NGX_CALL(NVSDK_NGX_VULKAN_ReleaseFeature(m_featureRayReconstruction));
       m_featureRayReconstruction = nullptr;
     }
   }
@@ -774,12 +804,12 @@ namespace dxvk
     // Note: Deprecated, should not be used but still must be passed into the query function.
     float dummySharpness;
 
-    NVSDK_NGX_Result result = NGX_DLSSD_GET_OPTIMAL_SETTINGS(m_parameters,
+    NVSDK_NGX_Result result = NGX_CALL(NGX_DLSSD_GET_OPTIMAL_SETTINGS(m_parameters,
       displaySize[0], displaySize[1], perfQuality,
       &settings.optimalRenderSize[0], &settings.optimalRenderSize[1],
       &settings.maxRenderSize[0], &settings.maxRenderSize[1],
       &settings.minRenderSize[0], &settings.minRenderSize[1],
-      &dummySharpness);
+      &dummySharpness));
 
     if (NVSDK_NGX_FAILED(result)) {
       Logger::err(str::format("Querying optimal settings failed: ", resultToString(result)));
@@ -847,7 +877,8 @@ namespace dxvk
     evalParams_DLDN.pInSpecularHitDistance = buffers.pHitDistance ? &hitDistanceResource : nullptr;
     evalParams_DLDN.pInDisocclusionMask = &disocclusionMask;
 
-    NVSDK_NGX_Result result = NGX_VULKAN_EVALUATE_DLSSD_EXT(vkCommandbuffer, m_featureRayReconstruction, m_parameters, &evalParams_DLDN);
+    NVSDK_NGX_Result result = NGX_CALL(
+      NGX_VULKAN_EVALUATE_DLSSD_EXT(vkCommandbuffer, m_featureRayReconstruction, m_parameters, &evalParams_DLDN));
 
     if (NVSDK_NGX_FAILED(result)) {
       success = false;
@@ -863,32 +894,39 @@ namespace dxvk
     releaseNGXFeature();
   }
 
-  void NGXDLFGContext::initialize(Rc<DxvkContext> renderContext,
+  bool NGXDLFGContext::initialize(Rc<DxvkContext> renderContext,
                                   VkCommandBuffer commandList,
                                   uint32_t displayOutSize[2],
-                                  VkFormat outputFormat) {
+                                  VkFormat outputFormat,
+                                  bool litePreset) {
+    if (m_parameters == nullptr || commandList == VK_NULL_HANDLE) {
+      Logger::err("Cannot create DLFG without NGX parameters and a command buffer.");
+      return false;
+    }
+
     NVSDK_NGX_DLSSG_Create_Params createParams = { };
     createParams.Width = displayOutSize[0];
     createParams.Height = displayOutSize[1];
     createParams.NativeBackbufferFormat = outputFormat;
 
-    NVSDK_NGX_Result result = NGX_VK_CREATE_DLSSG(commandList,
-                                                  1, // InCreationNodeMask
-                                                  1, // InVisibilityNodeMask,
-                                                  &m_feature,
-                                                  m_parameters,
-                                                  &createParams);
+    NVSDK_NGX_Result result = ngxCall([&] {
+      // The bundled FG headers predate this NGX parameter.
+      m_parameters->Set("DLSSG.LiteCandidateBlendingEnabled", static_cast<unsigned int>(litePreset));
+      return NGX_VK_CREATE_DLSSG(commandList,
+        1, // InCreationNodeMask
+        1, // InVisibilityNodeMask
+        &m_feature,
+        m_parameters,
+        &createParams);
+    });
 
-    if (NVSDK_NGX_FAILED(result)) {
+    if (NVSDK_NGX_FAILED(result) || m_feature == nullptr) {
       Logger::err(str::format("Failed to create DLFG feature: ", resultToString(result)));
-      return;
+      releaseNGXFeature();
+      return false;
     }
 
-    VkCommandPoolCreateInfo poolInfo;
-    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    poolInfo.pNext = nullptr;
-    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    poolInfo.queueFamilyIndex = m_device->queues().__DLFG_QUEUE.queueFamily;
+    return true;
   }
 
   void toNGX(float (&ret)[4][4], const Matrix4& mat) {
@@ -958,7 +996,12 @@ namespace dxvk
                                                           uint32_t interpolatedFrameCount,
                                                           bool resetHistory) {
     ScopedCpuProfileZone();
-    
+
+    if (m_feature == nullptr || m_parameters == nullptr || clientCommandList == VK_NULL_HANDLE
+        || interpolatedOutput == nullptr || compositedColorBuffer == nullptr || motionVectors == nullptr || depth == nullptr) {
+      return EvaluateResult::Failure;
+    }
+
     auto ngxColorBuffer = ViewToResourceVK(compositedColorBuffer, true);
     auto ngxMVec = ViewToResourceVK(motionVectors, false);
     auto ngxDepth = ViewToResourceVK(depth, false);
@@ -1013,9 +1056,10 @@ namespace dxvk
     consts.multiFrameIndex = interpolatedFrameIndex + 1;
 
     NVSDK_NGX_Result result;
-    result = NGX_VK_EVALUATE_DLSSG(clientCommandList, m_feature, m_parameters, &evalParams, &consts);
+    result = NGX_CALL(NGX_VK_EVALUATE_DLSSG(clientCommandList, m_feature, m_parameters, &evalParams, &consts));
     if (NVSDK_NGX_FAILED(result)) {
       Logger::err(str::format("NGX_VK_EVALUATE_DLSSG failed: ", resultToString(result)));
+      return EvaluateResult::Failure;
     }
     
     return EvaluateResult::Success;
@@ -1030,25 +1074,41 @@ namespace dxvk
     releaseNGXFeature();
   }
 
-  void NGXNeuralRenderingContext::initialize(Rc<DxvkContext> renderContext, const uint32_t displaySize[2]) {
+  void NGXNeuralRenderingContext::initialize(Rc<DxvkContext> renderContext, const uint32_t displaySize[2], bool queryVramAllocation) {
     if (m_neuralRenderingFeature) {
       renderContext->getDevice()->waitForIdle();
-      releaseNGXFeature();
     }
+    releaseNGXFeature();
 
-    m_initialized = false;
     NVSDK_NGX_DLSSNR_Create_Params createParams = {};
     createParams.Width = displaySize[0];
     createParams.Height = displaySize[1];
 
+    // Preset B selects the lightweight network independently of the appearance model.
+    NVSDK_NGX_Parameter_SetI(
+      m_parameters,
+      NVSDK_NGX_Parameter_DLSSNR_Hint_Render_Preset,
+      NVSDK_NGX_DLSSNR_Hint_Render_Preset_B);
+
     const VkCommandBuffer vkCommandBuffer = renderContext->getCommandList()->getCmdBuffer(dxvk::DxvkCmdBuffer::ExecBuffer);
-    const NVSDK_NGX_Result result =
-      NGX_VULKAN_CREATE_DLSSNR_EXT1(m_device->handle(), vkCommandBuffer, 1, 1, &m_neuralRenderingFeature, m_parameters, &createParams);
+    const NVSDK_NGX_Result result = NGX_CALL(NGX_VULKAN_CREATE_DLSSNR_EXT1(
+      m_device->handle(), vkCommandBuffer, 1, 1, &m_neuralRenderingFeature, m_parameters, &createParams));
 
     if (NVSDK_NGX_FAILED(result)) {
       Logger::err(str::format("Failed to create DLSS-NR feature: ", resultToString(result)));
-      m_initialized = false;
+      releaseNGXFeature();
       return;
+    }
+
+    if (queryVramAllocation) {
+      unsigned long long vramAllocationBytes = 0;
+      const NVSDK_NGX_Result statsResult = NGX_CALL(queryDlssNeuralRenderingVramAllocation(m_parameters, &vramAllocationBytes));
+      if (NVSDK_NGX_FAILED(statsResult)) {
+        Logger::warn(str::format("Failed to query DLSS-NR VRAM allocation: ", resultToString(statsResult)));
+      } else {
+        m_vramAllocationBytes = vramAllocationBytes;
+        m_hasVramAllocation = true;
+      }
     }
 
     m_initialized = true;
@@ -1085,14 +1145,16 @@ namespace dxvk
     neuralRenderingEvalParams.pInOutput = &outColorResource;
     neuralRenderingEvalParams.pInMVec = &motionVectorsResource;
     neuralRenderingEvalParams.pInDepth = &depthResource;
-    neuralRenderingEvalParams.pInControlMask = settings.useAutoMask ? nullptr : &controlMaskResource;
+    neuralRenderingEvalParams.pInControlMask = &controlMaskResource;
     neuralRenderingEvalParams.InReset = settings.resetAccumulation ? 1 : 0;
     neuralRenderingEvalParams.InDepthInverted = 0;
     neuralRenderingEvalParams.InEnabled = 1;
     neuralRenderingEvalParams.InIntensity = settings.intensity;
     neuralRenderingEvalParams.InLocalToneStrength = settings.toneStrength;
     neuralRenderingEvalParams.InLocalStructureStrength = settings.structuralStrength;
-    neuralRenderingEvalParams.InGlobalToneStrength = kDlssNrGlobalToneStrength;
+    neuralRenderingEvalParams.InMaskBlendMode = settings.useAutoMask
+      ? NVSDK_NGX_DLSSNR_Mask_Blend_Mode_Min
+      : NVSDK_NGX_DLSSNR_Mask_Blend_Mode_None;
     neuralRenderingEvalParams.InStyle = settings.model;
     neuralRenderingEvalParams.InUseAutoMask = settings.useAutoMask ? 1 : 0;
     neuralRenderingEvalParams.InSkinStructureStrength = settings.skinStructureStrength;
@@ -1112,7 +1174,8 @@ namespace dxvk
     NVSDK_NGX_Parameter_SetF(m_parameters, NVSDK_NGX_Parameter_Jitter_Offset_X, settings.jitterOffset[0]);
     NVSDK_NGX_Parameter_SetF(m_parameters, NVSDK_NGX_Parameter_Jitter_Offset_Y, settings.jitterOffset[1]);
 
-    const NVSDK_NGX_Result result = NGX_VULKAN_EVALUATE_DLSSNR_EXT(vkCommandbuffer, m_neuralRenderingFeature, m_parameters, &neuralRenderingEvalParams);
+    const NVSDK_NGX_Result result = NGX_CALL(
+      NGX_VULKAN_EVALUATE_DLSSNR_EXT(vkCommandbuffer, m_neuralRenderingFeature, m_parameters, &neuralRenderingEvalParams));
     if (NVSDK_NGX_FAILED(result)) {
       Logger::err(str::format("DLSS-NR evaluation failed: ", resultToString(result)));
       return false;
@@ -1123,9 +1186,11 @@ namespace dxvk
 
   void NGXNeuralRenderingContext::releaseNGXFeature() {
     m_initialized = false;
+    m_hasVramAllocation = false;
+    m_vramAllocationBytes = 0;
 
     if (m_neuralRenderingFeature) {
-      NVSDK_NGX_VULKAN_ReleaseFeature(m_neuralRenderingFeature);
+      NGX_CALL(NVSDK_NGX_VULKAN_ReleaseFeature(m_neuralRenderingFeature));
       m_neuralRenderingFeature = nullptr;
     }
   }
@@ -1135,3 +1200,5 @@ namespace dxvk
 int remixinternal_GetDlssNeuralRenderingStatus() {
   return s_dlssNeuralRenderingStatus.load(std::memory_order_acquire);
 }
+
+#undef NGX_CALL

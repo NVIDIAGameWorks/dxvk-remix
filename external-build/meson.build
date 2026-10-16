@@ -162,7 +162,13 @@ external_dll_paths += dlss_lib_path
 dlss_include_dir = include_directories(join_paths('..', dlss_root_path, 'include'))
 dlss_include_dirs = [ dlss_include_dir ]
 
+dlfg_root_path = 'external/ngx_sdk_dlfg'
+dlfg_bin_path = join_paths(global_src_root_norm, dlfg_root_path, 'lib', dxvk_is_woa ? 'Windows_aarch64' : 'Windows_x86_64', 'rel')
+external_dll_paths += dlfg_bin_path
+
 dlnr_root_path = 'external/ngx_sdk_dlnr'
+dlnr_bin_path = join_paths(global_src_root_norm, dlnr_root_path, 'lib', dxvk_is_woa ? 'Windows_aarch64' : 'Windows_x86_64', 'rel')
+external_dll_paths += dlnr_bin_path
 dlnr_include_dir = include_directories(join_paths('..', dlnr_root_path, 'include'))
 dlss_include_dirs += dlnr_include_dir
 

@@ -3379,7 +3379,7 @@ namespace dxvk {
       ImGui::BeginDisabled();
     }
 
-    bool dlfgChanged = RemixGui::Checkbox("Enable DLSS Frame Generation", &DxvkDLFG::enableObject());
+    const bool dlfgChanged = RemixGui::Checkbox("Enable DLSS Frame Generation", &DxvkDLFG::enableObject());
     if (supportsMultiFrame) {
       dlfgMfgModeCombo.getKey(&DxvkDLFG::maxInterpolatedFramesObject());
     }
@@ -3392,6 +3392,11 @@ namespace dxvk {
 
     if (!supportsDLFG) {
       ImGui::EndDisabled();
+    }
+
+    // Keep FG preset recovery available after a feature failure.
+    if (RtxOptions::showUI() == UIType::Advanced && ctx->getCommonObjects()->metaNGXContext().supportsDLFG()) {
+      RemixGui::Combo("DLSS Frame Generation Preset", &DxvkDLFG::litePresetObject(), "Full\0Lite\0");
     }
 
     // Need to change Reflex in sync with DLFG, not on the next frame.

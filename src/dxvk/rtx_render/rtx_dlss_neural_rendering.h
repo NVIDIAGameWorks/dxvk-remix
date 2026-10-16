@@ -70,7 +70,7 @@ namespace dxvk {
                     args.minValue = 0.0f, args.maxValue = 1.0f);
     RTX_OPTION("rtx.dlssNeuralRendering", Model, model, Model::Model0,
                "Selects among three DLSS 3D-Guided Neural Generation model variants. Their appearance is content-dependent; compare them in the target scene and choose the preferred result. 0: Model A, 1: Model B, 2: Model C.");
-    RTX_OPTION("rtx.dlssNeuralRendering", bool,  useAutoMask, false, "Use the automatic character mask instead of the material control mask.");
+    RTX_OPTION("rtx.dlssNeuralRendering", bool,  useAutoMask, true, "Combine the automatic character mask with the material control mask.");
     RTX_OPTION_ARGS("rtx.dlssNeuralRendering", float, skinStructureStrength, 0.5f,
                     "Controls DLSS 3D-Guided Neural Generation adjustments to characters when Auto Mask is enabled. Lower values preserve the original structure; higher values apply stronger structural adjustments.",
                     args.minValue = 0.0f, args.maxValue = 1.0f);
@@ -82,7 +82,10 @@ namespace dxvk {
     RTX_OPTION("rtx.dlssNeuralRendering", bool,    enableHighlightRecovery, true, "Recover highlights compressed by DLSS 3D-Guided Neural Generation's LDR-domain processing.");
     RTX_OPTION("rtx.dlssNeuralRendering", Vector4, highlightRecoveryThresholds, Vector4(1.0f, 8.0f, 0.75f, 0.99f), "Smoothstep edges for highlight recovery: (exposed HDR max-channel min, exposed HDR max-channel max, LDR max-channel min, LDR max-channel max).");
 
-    RTX_OPTION("rtx.dlssNeuralRendering", bool, enableVolumetricControlMask, true, "Modulate the DLSS 3D-Guided Neural Generation control mask with fog, volumetric, and alpha-blended transmittance. Unavailable while Auto Mask is enabled.");
+    RTX_OPTION("rtx.dlssNeuralRendering", bool, enableVolumetricControlMask, true, "Modulate the DLSS 3D-Guided Neural Generation control mask with fog, volumetric, and alpha-blended transmittance.");
+
+    RTX_OPTION("rtx.dlssNeuralRendering", bool, showVramUsage, false,
+               "Shows SDK VRAM allocation in the DLSS 3D-Guided Neural Generation settings. Queries aggregate SDK allocation at feature creation; excludes Remix textures. Enable before activating the feature.");
 
   protected:
     bool isEnabled() const override;
