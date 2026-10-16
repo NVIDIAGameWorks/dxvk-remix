@@ -82,4 +82,16 @@ namespace ClientOptions {
   inline bool getOptimizedDynamicLock() {
     return bridge_util::Config::getOption<bool>("client.optimizedDynamicLock", false);
   }
+
+  inline bool getAsyncQueries() {
+    return bridge_util::Config::getOption<bool>("client.asyncQueries", true);
+  }
+
+  inline bool getDropRedundantState() {
+    return bridge_util::Config::getOption<bool>("client.dropRedundantState", true);
+  }
+
+  inline bool getBatchState() {
+    return bridge_util::Config::getOption<bool>("client.batchState", true);
+  }
 }
