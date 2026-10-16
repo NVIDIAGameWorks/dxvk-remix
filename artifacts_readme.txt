@@ -6,6 +6,8 @@ Installation instructions:
 2. Ensure you have the correct artifact.  Most d3d9 games were compiled for x86
 computers, and will need the `rtx-remix-for-x86-games-...` package.  If you know
 your game was compiled for x64, use the `rtx-remix-for-x64-games-...` package.
+Only use `rtx-remix-for-arm64-games-...` package if you know your game was
+compiled for native arm64 platform.
 
 3. Copy and paste the files directly into your game directory.
 
