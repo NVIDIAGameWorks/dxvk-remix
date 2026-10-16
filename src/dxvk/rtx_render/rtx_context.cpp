@@ -1362,8 +1362,7 @@ namespace dxvk {
       constants.debugKnob = debugView.debugKnob();
       constants.forceFirstHitInGBufferPass = debugView.showFirstGBufferHit();
       constants.enableDlssNrControlMask =
-        m_common->metaDlssNeuralRendering().useDlssNeuralRendering() &&
-        !DlssNeuralRendering::useAutoMask();
+        m_common->metaDlssNeuralRendering().useDlssNeuralRendering();
       constants.enableDlssNrVolumetricControlMask =
         constants.enableDlssNrControlMask &&
         DlssNeuralRendering::enableVolumetricControlMask();

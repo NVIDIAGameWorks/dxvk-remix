@@ -22,6 +22,7 @@
 #include "rtx_options.h"
 
 #include <filesystem>
+#include <mutex>
 #include <nvapi.h>
 #include "../imgui/imgui.h"
 #include "rtx_bridge_message_channel.h"
@@ -32,6 +33,7 @@
 #include "rtx_restir_gi_rayquery.h"
 #include "rtx_composite.h"
 #include "rtx_demodulate.h"
+#include "rtx_dlfg.h"
 #include "rtx_neural_radiance_cache.h"
 #include "rtx_spatially_hashed_radiance_cache.h"
 #include "rtx_ray_reconstruction.h"
@@ -526,6 +528,12 @@ namespace dxvk {
 
     RtxGlobalVolumetrics& volumetrics = device->getCommon()->metaGlobalVolumetrics();
 
+    // Clear the previous graphics preset's FG override before applying opt-in defaults.
+    {
+      std::lock_guard<std::mutex> lock(RtxOptionImpl::getUpdateMutex());
+      DxvkDLFG::litePreset.disableLayerValue(RtxOptionLayer::getQualityLayer());
+    }
+
     if (graphicsPreset() == GraphicsPreset::Ultra) {
       pathMinBounces.setDeferred(1);
       pathMaxBounces.setDeferred(4);
@@ -571,6 +579,8 @@ namespace dxvk {
       applySparseRenderingPreset(0.228f, 0.83f, true);
 
     } else if (graphicsPreset() == GraphicsPreset::Medium) {
+      DxvkDLFG::litePreset.setDeferred(true);
+
       lowGraphicsPresetCommonSettings();
 
       russianRouletteMaxContinueProbability.setDeferred(0.7f);
@@ -580,6 +590,8 @@ namespace dxvk {
       applyIndirectPreset(NeuralRadianceCache::QualityPreset::Medium, SpatiallyHashedRadianceCache::QualityPreset::Medium);
       applySparseRenderingPreset(0.125f, 0.83f, false);
     } else if (graphicsPreset() == GraphicsPreset::Low) {
+      DxvkDLFG::litePreset.setDeferred(true);
+
       lowGraphicsPresetCommonSettings();
 
       russianRouletteMaxContinueProbability.setDeferred(0.7f);

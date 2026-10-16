@@ -19,11 +19,19 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
+#include <atomic>
+#include <cstdint>
+
 #include "dxvk_device.h"
 #include "rtx_dlfg.h"
 #include "rtx_nsight_capture.h"
 
 namespace {
+  constexpr uint32_t kFullPreset = 1;
+  constexpr uint32_t kLitePreset = 3;
+  std::atomic<uint32_t> s_dlfgPreset = { kFullPreset };
+  std::atomic<uint32_t> s_dlfgPresetRequest = { 0 };
+
   // 6x frame generation: 1 rendered frame + up to 5 interpolated frames
   constexpr uint32_t kDLFGMaxInterpolatedFrames = 6;
   constexpr uint64_t kPacerDoNotWait = uint64_t(-1);
@@ -33,6 +41,33 @@ namespace {
 };
 
 namespace dxvk {
+  void DxvkDLFG::onPresetChanged(DxvkDevice* device) {
+    if (device != nullptr) {
+      requestPreset(litePreset());
+    }
+  }
+
+  const char* DxvkDLFG::getPresetName() {
+    switch (s_dlfgPreset.load()) {
+    case kFullPreset:
+      return "Full";
+    case kLitePreset:
+      return "Lite";
+    default:
+      return "Unknown";
+    }
+  }
+
+  void DxvkDLFG::requestPreset(bool useLite) {
+    s_dlfgPresetRequest = useLite
+      ? kLitePreset
+      : kFullPreset;
+  }
+
+  bool DxvkDLFG::hasDLFGFailed() const {
+    return m_hasDLFGFailed && !s_dlfgPresetRequest.load();
+  }
+
   template<uint numBarriers>
   class DxvkDLFGImageBarrierSet {
   public:
@@ -391,7 +426,8 @@ namespace dxvk {
 
   void DxvkDLFGPresenter::synchronize(std::unique_lock<dxvk::mutex>& lock) {
     m_presentThread.condWorkConsumed.wait(lock, [this] { return m_presentQueue.empty(); });
-    m_pacerThread.condWorkConsumed.wait(lock, [this] { return m_pacerQueue.empty(); });
+    std::unique_lock<dxvk::mutex> pacerLock(m_pacerThread.mutex);
+    m_pacerThread.condWorkConsumed.wait(pacerLock, [this] { return m_pacerQueue.empty(); });
   }
 
   bool DxvkDLFGPresenter::swapchainAcquire(SwapchainImage& swapchainImage) {
@@ -430,16 +466,52 @@ namespace dxvk {
     commandList->addWaitSemaphore(swapchainImage.sync.acquire);
 
     // run DLFG to populate the swapchain image
-    dlfg.dispatch(m_ctx,
-                  commandList,
-                  present.frameInterpolation.camera,
-                  m_swapchainImageViews[swapchainImage.index],
-                  m_backbufferViews[present.acquiredImageIndex],
-                  present.frameInterpolation.motionVectors,
-                  present.frameInterpolation.depth,
-                  interpolatedFrameIndex,
-                  present.frameInterpolation.interpolatedFrameCount,
-                  false);
+    const bool interpolated = dlfg.dispatch(m_ctx,
+                                            commandList,
+                                            present.frameInterpolation.camera,
+                                            m_swapchainImageViews[swapchainImage.index],
+                                            m_backbufferViews[present.acquiredImageIndex],
+                                            present.frameInterpolation.motionVectors,
+                                            present.frameInterpolation.depth,
+                                            interpolatedFrameIndex,
+                                            present.frameInterpolation.interpolatedFrameCount,
+                                            false);
+
+    // The acquired image is still presented if FG fails.
+    // Copy the rendered frame to provide valid contents.
+    if (!interpolated) {
+      ScopedGpuProfileZone_Present(m_device, commandList->getCmdBuffer(), "DLFG fallback copy");
+      commandList->trackResource<DxvkAccess::Read>(m_backbufferImages[present.acquiredImageIndex]);
+      commandList->trackResource<DxvkAccess::Write>(m_swapchainImages[swapchainImage.index]);
+
+      barriers.addBarrier(m_backbufferImages[present.acquiredImageIndex]->handle(),
+                          VK_IMAGE_ASPECT_COLOR_BIT, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+      barriers.addBarrier(swapchainImage.image.image,
+                          VK_IMAGE_ASPECT_COLOR_BIT, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                          VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+      barriers.record(m_device, *commandList, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+      const VkImageCopy copy = {
+        { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 }, { 0, 0, 0 },
+        { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 }, { 0, 0, 0 },
+        { m_info.imageExtent.width, m_info.imageExtent.height, 1 }
+      };
+      m_device->vkd()->vkCmdCopyImage(commandList->getCmdBuffer(),
+                                      m_backbufferImages[present.acquiredImageIndex]->handle(),
+                                      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, swapchainImage.image.image,
+                                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+
+      barriers.addBarrier(m_backbufferImages[present.acquiredImageIndex]->handle(),
+                          VK_IMAGE_ASPECT_COLOR_BIT, VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_SHADER_READ_BIT,
+                          VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+      barriers.addBarrier(swapchainImage.image.image,
+                          VK_IMAGE_ASPECT_COLOR_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_MEMORY_READ_BIT,
+                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+      barriers.record(m_device, *commandList, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+      m_swapchainImageLayouts[swapchainImage.index] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+      return true;
+    }
 
     {
       ScopedGpuProfileZone_Present(m_device, commandList->getCmdBuffer(), "DLFG post-eval barriers");
@@ -479,7 +551,7 @@ namespace dxvk {
                         VK_IMAGE_ASPECT_COLOR_BIT,
                         VK_ACCESS_MEMORY_READ_BIT,
                         VK_ACCESS_TRANSFER_WRITE_BIT,
-                        m_swapchainImageLayouts[present.acquiredImageIndex],
+                        m_swapchainImageLayouts[renderedSwapchainImage.index],
                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
     barriers.record(m_device, *commandList, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
@@ -513,7 +585,7 @@ namespace dxvk {
                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                         VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
-    m_swapchainImageLayouts[present.acquiredImageIndex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    m_swapchainImageLayouts[renderedSwapchainImage.index] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
     barriers.record(m_device, *commandList, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
 
@@ -1231,6 +1303,7 @@ namespace dxvk {
     , m_dlfgFrameEndSemaphore(RtxSemaphore::createTimeline(device, "DLFG frame end"))
     , m_currentDisplaySize{0, 0} {
 
+    s_dlfgPreset = litePreset() ? kLitePreset : kFullPreset;
     m_queryPoolDLFG = new DxvkDLFGTimestampQueryPool(m_device, kMaxFramesInFlight);
 
     if (!supportsPresentMetering()) {
@@ -1265,7 +1338,7 @@ namespace dxvk {
   }
 
   // note: we expect that the input semaphore is already waited on by commandList
-  void DxvkDLFG::dispatch(Rc<DxvkContext> ctx,
+  bool DxvkDLFG::dispatch(Rc<DxvkContext> ctx,
                           DxvkDLFGCommandList* commandList,
                           const RtCamera& camera,
                           Rc<DxvkImageView> outputImage,                       // VK_IMAGE_LAYOUT_GENERAL
@@ -1277,9 +1350,38 @@ namespace dxvk {
                           bool resetHistory) {
     ScopedCpuProfileZone();
 
+    commandList->trackResource<DxvkAccess::Read>(primaryScreenSpaceMotionVector);
+    commandList->trackResource<DxvkAccess::Read>(primaryDepth);
+
+    // All generated frames are recorded before the batch is submitted.
+    // Recreating mid-batch could release resources used by unsubmitted commands.
+    // vkQueueWaitIdle only waits for submitted work.
+    if (interpolatedFrameIndex == 0) {
+      const uint32_t requestedPreset = s_dlfgPresetRequest.exchange(0);
+      if (requestedPreset && (requestedPreset != s_dlfgPreset.load() || m_hasDLFGFailed)) {
+        if (m_device->vkd()->vkQueueWaitIdle(m_device->queues().__DLFG_QUEUE.queueHandle) != VK_SUCCESS) {
+          Logger::err("DLFG runtime preset: failed to drain the FG queue");
+          m_hasDLFGFailed = true;
+          return false;
+        }
+        s_dlfgPreset = requestedPreset;
+        m_dlfgContext.reset();
+        m_hasDLFGFailed = false;
+        Logger::info(str::format("DLFG runtime preset: recreating FG for ", getPresetName()));
+      }
+    }
+
+    if (m_hasDLFGFailed) {
+      return false;
+    }
+
     if (!m_dlfgContext) {
       m_dlfgContext = m_device->getCommon()->metaNGXContext().createDLFGContext();
       m_contextDirty = true;
+      if (!m_dlfgContext) {
+        m_hasDLFGFailed = true;
+        return false;
+      }
     }
 
     // check if the output extents have changed
@@ -1296,22 +1398,27 @@ namespace dxvk {
 
       if (m_device->vkd()->vkQueueWaitIdle(m_device->queues().__DLFG_QUEUE.queueHandle) != VK_SUCCESS) {
         Logger::err("DxvkDLFG::dispatch: vkQueueWaitIdle failed");
+        m_hasDLFGFailed = true;
+        return false;
       }
 
       m_dlfgContext->releaseNGXFeature();
-      m_dlfgContext->initialize(ctx,
+      if (!m_dlfgContext->initialize(ctx,
                                 commandList->getCmdBuffer(),
                                 m_currentDisplaySize,
-                                outputImage->info().format);
+                                outputImage->info().format,
+                                s_dlfgPreset.load() == kLitePreset)) {
+        m_hasDLFGFailed = true;
+        return false;
+      }
       m_contextDirty = false;
+      resetHistory = true;
     }
 
     NGXDLFGContext::EvaluateResult res;
 
     commandList->trackResource<DxvkAccess::Write>(outputImage);
     commandList->trackResource<DxvkAccess::Read>(colorBuffer);
-    commandList->trackResource<DxvkAccess::Read>(primaryScreenSpaceMotionVector);
-    commandList->trackResource<DxvkAccess::Read>(primaryDepth);
 
     {
       ScopedGpuProfileZone_Present(m_device, commandList->getCmdBuffer(), "DLFG evaluate");
@@ -1334,12 +1441,13 @@ namespace dxvk {
       case NGXDLFGContext::EvaluateResult::Failure:
         Logger::err("NGX DLFG evaluate failed");
         m_hasDLFGFailed = true;
-        break;
+        return false;
 
       case NGXDLFGContext::EvaluateResult::Success:
         break;
       }
     }
+    return true;
   }
 
   bool DxvkDLFG::supportsPresentMetering() const {

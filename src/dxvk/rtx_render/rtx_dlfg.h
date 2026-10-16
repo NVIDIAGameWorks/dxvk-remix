@@ -269,12 +269,16 @@ namespace dxvk {
     explicit DxvkDLFG(DxvkDevice* device);
     virtual void onDestroy();
 
+    static void onPresetChanged(DxvkDevice* device);
+    static const char* getPresetName();
+    static void requestPreset(bool useLite);
+
     bool supportsDLFG();
     const std::string& getDLFGNotSupportedReason();
     
     void setDisplaySize(uint2 displaySize);
 
-    void dispatch(Rc<DxvkContext> ctx,
+    bool dispatch(Rc<DxvkContext> ctx,
                   DxvkDLFGCommandList* commandList,
                   const RtCamera& camera,
                   Rc<DxvkImageView> outputImage,                       // VK_IMAGE_LAYOUT_GENERAL
@@ -297,9 +301,7 @@ namespace dxvk {
       return m_queryPoolDLFG;
     }
 
-    bool hasDLFGFailed() const {
-      return m_hasDLFGFailed;
-    }
+    bool hasDLFGFailed() const;
 
     bool supportsPresentMetering() const;
 
@@ -314,6 +316,10 @@ namespace dxvk {
     RTX_OPTION_ARGS("rtx.dlfg", uint32_t, maxInterpolatedFrames, 2, "For DLSS 4.5 frame generation, controls the number of interpolated frames for each rendered frame. Ignored for DLSS 3.0.",
                     args.minValue = 1, args.maxValue = 6,
                     args.flags = RtxOptionFlags::UserSetting);
+    RTX_OPTION_ARGS("rtx.dlfg", bool, litePreset, false, "Selects the DLSS Frame Generation model. True: Lite (lightweight model). False: Full (standard model). Switching recreates Frame Generation without restarting.",
+                    args.environment = "RTX_DLFG_LITE_PRESET",
+                    args.flags = RtxOptionFlags::UserSetting,
+                    args.onChangeCallback = &onPresetChanged);
     RTX_OPTION("rtx.dlfg", bool, enablePresentMetering, true, "Use hardware present metering for DLSS 4.0 frame generation instead of CPU pacing.");
 
   private:
