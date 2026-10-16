@@ -27,26 +27,19 @@
 
 #include "rtx/external/simplex_noise.slangh"
 
-// Evaluates the view distance based on the specified mode and function as well as other parameters. Returns true if a ray should
-// continue as normal with a hit, returns false if the view distance has been reached, indicating that a ray should skip a hit and
-// continue skipping hits all the way out to the Sky.
-bool evalViewDistance(ViewDistanceArgs viewDistanceArgs, bool isZUp, Camera camera, vec3 worldPosition)
+// Distance from the camera to worldPosition: radial, horizontal-only or vertical-only function.
+float calcViewDistance(ViewDistanceArgs viewDistanceArgs, bool isZUp, Camera camera, vec3 worldPosition)
 {
-  // Early out if the view distance mode is set to none
-
-  if (viewDistanceArgs.distanceMode == viewDistanceModeNone)
-  {
-    return true;
-  }
-
-  // Calculate the distance of the position from the Camera in world space using the desired function
-
   const vec3 cameraWorldPosition = cameraGetWorldPosition(camera);
   float viewDistance;
 
   if (viewDistanceArgs.distanceFunction == viewDistanceFunctionEuclidean)
   {
     viewDistance = length(cameraWorldPosition - worldPosition);
+  }
+  else if (viewDistanceArgs.distanceFunction == viewDistanceFunctionVertical)
+  {
+    viewDistance = abs(isZUp ? cameraWorldPosition.z - worldPosition.z : cameraWorldPosition.y - worldPosition.y);
   }
   else // if (viewDistanceArgs.distanceFunction == viewDistanceFunctionPlanarEuclidean)
   {
@@ -61,6 +54,23 @@ bool evalViewDistance(ViewDistanceArgs viewDistanceArgs, bool isZUp, Camera came
       viewDistance = length(cameraWorldPosition.xz - worldPosition.xz);
     }
   }
+
+  return viewDistance;
+}
+
+// Evaluates the view distance based on the specified mode and function as well as other parameters. Returns true if a ray should
+// continue as normal with a hit, returns false if the view distance has been reached, indicating that a ray should skip a hit and
+// continue skipping hits all the way out to the Sky.
+bool evalViewDistance(ViewDistanceArgs viewDistanceArgs, bool isZUp, Camera camera, vec3 worldPosition)
+{
+  // Early out if the view distance mode is set to none
+
+  if (viewDistanceArgs.distanceMode == viewDistanceModeNone)
+  {
+    return true;
+  }
+
+  const float viewDistance = calcViewDistance(viewDistanceArgs, isZUp, camera, worldPosition);
 
   // Evaluate the distance mode based on the calculated distance
 
@@ -81,9 +91,27 @@ bool evalViewDistance(ViewDistanceArgs viewDistanceArgs, bool isZUp, Camera came
       return false;
     }
 
+#ifdef RAY_TRACING_PRIMARY_RAY
+#ifndef GBUFFER_PSR
+    // Note: With this mode, primary rays are blended into the sky in compositing instead, see calcViewDistanceFade
+    if (viewDistanceArgs.distanceMode == viewDistanceModeCoherentNoiseSmoothPrimary)
+    {
+      return true;
+    }
+#endif
+#endif
+
     const float coherentNoise = simplexNoise3D(worldPosition * viewDistanceArgs.noiseScale) * 0.5f + 0.5f;
 
     // Note: Will return true always when t is 0 to ensure no noise holes appear in objects under the minimum fade distance.
     return coherentNoise >= t;
   }
+}
+
+// Returns how far the position is into the view distance fade range, from 0 at the fade min to 1 at the fade max.
+float calcViewDistanceFade(ViewDistanceArgs viewDistanceArgs, bool isZUp, Camera camera, vec3 worldPosition)
+{
+  const float viewDistance = calcViewDistance(viewDistanceArgs, isZUp, camera, worldPosition);
+
+  return smoothstep(0.0f, 1.0f, (viewDistance - viewDistanceArgs.distanceThresholdOrFadeMin) / viewDistanceArgs.distanceFadeSpan);
 }

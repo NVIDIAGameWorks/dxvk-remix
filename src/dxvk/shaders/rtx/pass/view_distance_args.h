@@ -26,9 +26,11 @@
 static const uint viewDistanceModeNone = 0;
 static const uint viewDistanceModeHardCutoff = 1;
 static const uint viewDistanceModeCoherentNoise = 2;
+static const uint viewDistanceModeCoherentNoiseSmoothPrimary = 3;
 
 static const uint viewDistanceFunctionEuclidean = 0;
 static const uint viewDistanceFunctionPlanarEuclidean = 1;
+static const uint viewDistanceFunctionVertical = 2;
 
 // Note: Ensure 16B alignment
 struct ViewDistanceArgs {
@@ -54,20 +56,22 @@ namespace dxvk {
 enum class ViewDistanceMode : int {
   None = 0,
   HardCutoff,
-  CoherentNoise
+  CoherentNoise,
+  CoherentNoiseSmoothPrimary,
 };
 
 enum class ViewDistanceFunction : int {
   Euclidean = 0,
-  PlanarEuclidean
+  PlanarEuclidean,
+  Vertical,
 };
 
 struct ViewDistanceOptions {
   friend class ImGUI;
   friend class RtxOptions;
 
-  RTX_OPTION("rtx.viewDistance", ViewDistanceMode, distanceMode, ViewDistanceMode::None, "The view distance mode, None disables view distance, Hard Cutoff will cut off geometry past a point, and Coherent Noise will feather geometry out using a stable worldspace noise pattern (experimental).");
-  RTX_OPTION("rtx.viewDistance", ViewDistanceFunction, distanceFunction, ViewDistanceFunction::Euclidean, "The view distance function, Euclidean is a simple distance from the camera, whereas Planar Euclidean will ignore distance across the world's \"up\" direction.");
+  RTX_OPTION("rtx.viewDistance", ViewDistanceMode, distanceMode, ViewDistanceMode::None, "The view distance mode, None disables view distance, Hard Cutoff will cut off geometry past a point, Coherent Noise will feather geometry out using a stable worldspace noise pattern (experimental), and Coherent Noise Smooth Primary will do the same except for primary rays, which instead smoothly blend distant surfaces into the sky.");
+  RTX_OPTION("rtx.viewDistance", ViewDistanceFunction, distanceFunction, ViewDistanceFunction::Euclidean, "The view distance function. 0: Euclidean, a simple distance from the camera. 1: Horizontal (Planar Euclidean), which ignores distance across the world's \"up\" direction. 2: Vertical, which uses only the \"up\" direction.");
   RTX_OPTION_ARGS("rtx.viewDistance", float, distanceThreshold, 500.0f, "The view distance to draw out to based on the result of the view distance function, only used for the Hard Cutoff view distance mode.",
                   args.minValue = 0.0f);
   public: static void distanceFadeMinOnChange(DxvkDevice* device);
@@ -89,7 +93,7 @@ public:
 
     if (cachedDistanceMode == ViewDistanceMode::HardCutoff) {
       args.distanceThresholdOrFadeMin = distanceThreshold();
-    } else if (cachedDistanceMode == ViewDistanceMode::CoherentNoise) {
+    } else if (cachedDistanceMode == ViewDistanceMode::CoherentNoise || cachedDistanceMode == ViewDistanceMode::CoherentNoiseSmoothPrimary) {
       // Note: Required for the span to be calculated properly.
       assert(cachedDistanceFadeMax >= cachedDistanceFadeMin);
 

@@ -37,6 +37,7 @@ struct CompositeArgs {
   VolumeArgs volumeArgs;
   AccumulationArgs accumulationArgs;
   SparseRenderingArgs sparseRenderingArgs;
+  ViewDistanceArgs viewDistanceArgs;
 
   // -- Struct objects should go above this line to preserve alignment --
 
@@ -110,4 +111,6 @@ struct CompositeArgs {
   uint enableDlssNrVolumetricControlMask;
   uint stochasticAlphaBlendAverageSearchMatches;
   uint skyUseProbeForPrimaryRays;
+
+  uint isZUp;
 };
