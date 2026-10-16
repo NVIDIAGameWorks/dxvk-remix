@@ -118,10 +118,10 @@ namespace dxvk {
         "When enabled, primary miss pixels (sky) use sparse rendering.\n"
         "This improves performance at the cost of sky reconstruction artifacts.");
 
-      RTX_OPTION("rtx.sparseRendering", bool, enableSparseVolumetricsPrimaryHit, true,
+      RTX_OPTION("rtx.sparseRendering", bool, enableSparseVolumetricsPrimaryHit, false,
         "When enabled, volumetric NEE integration at primary-hit pixels uses sparse rendering.");
 
-      RTX_OPTION("rtx.sparseRendering", bool, enableSparseVolumetricsPrimaryMiss, true,
+      RTX_OPTION("rtx.sparseRendering", bool, enableSparseVolumetricsPrimaryMiss, false,
         "When enabled, volumetric NEE integration at primary-miss (sky) pixels uses sparse rendering.");
     };
 
