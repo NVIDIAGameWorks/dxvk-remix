@@ -21,9 +21,11 @@
  */
 #include "d3d9_device_base.h"
 
+#include "client_options.h"
 #include "d3d9_lss.h"
 #include "window.h"
 
+#include "util_devicecommand.h"
 #include "util_modulecommand.h"
 
 #include <d3d9.h>
@@ -46,6 +48,11 @@ BaseDirect3DDevice9Ex_LSS::BaseDirect3DDevice9Ex_LSS(const bool bExtended,
 
   //Setting default value
   m_maxFrameLatency = 3;
+
+  m_dropRedundantState = ClientOptions::getDropRedundantState();
+
+  // With sendAllServerResponses every setter waits for its response, so setters cannot be batched.
+  DeviceBridge::setStateBatching(ClientOptions::getBatchState() && !GlobalOptions::getSendAllServerResponses());
 
   // D3D9 seems to inialize its state to this
   memset(&m_state.renderStates[0], 0xBAADCAFE, sizeof(m_state.renderStates));
