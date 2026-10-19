@@ -30,6 +30,7 @@
 #include "d3d9_surfacebuffer_helper.h"
 #include "util_bridge_assert.h"
 #include "util_gdi.h"
+#include "util_uploadparts.h"
 
 Direct3DSurface9_LSS::Direct3DSurface9_LSS(BaseDirect3DDevice9Ex_LSS* const pDevice,
                                            const D3DSURFACE_DESC& desc, bool isBackBuffer)
@@ -262,28 +263,52 @@ void* Direct3DSurface9_LSS::getBufPtr(const int pitch, const RECT& rect) {
 }
 
 void Direct3DSurface9_LSS::sendDataToServer(const LockInfo& lockInfo) const {
-  const auto dataFlag = m_bUseSharedHeap ? Commands::FlagBits::DataInSharedHeap : 0;
-  {
-    ClientMessage c(Commands::IDirect3DSurface9_UnlockRect, getId(), dataFlag);
+  if (bridge_util::perf::enabled()) {
+    const auto [width, height] = getRectDimensions(lockInfo.rect);
+    bridge_util::perf::noteUpload(bridge_util::calcTotalSizeOfRect(width, height, m_desc.Format));
+  }
+  if (m_bUseSharedHeap) {
+    ClientMessage c(Commands::IDirect3DSurface9_UnlockRect, getId(), Commands::FlagBits::DataInSharedHeap);
     c.send_data(sizeof(RECT), &lockInfo.rect);
     c.send_data(lockInfo.flags);
     c.send_data(m_desc.Format);
-    if (m_bUseSharedHeap) {
-      c.send_data(lockInfo.lockedRect.Pitch);
-      c.send_data(lockInfo.bufId);
-    } else {
-      const auto [width, height] = getRectDimensions(lockInfo.rect);
-      const size_t totalSize = bridge_util::calcTotalSizeOfRect(width, height, m_desc.Format);
-      const size_t rowSize = bridge_util::calcRowSize(width, m_desc.Format);
-      c.send_data(rowSize);
-      if (auto* blobPacketPtr = c.begin_data_blob(totalSize)) {
-        FOR_EACH_RECT_ROW(lockInfo.lockedRect, height, m_desc.Format, {
-          memcpy(blobPacketPtr, ptr, rowSize);
-          blobPacketPtr += rowSize;
-        });
-        c.end_data_blob();
+    c.send_data(lockInfo.lockedRect.Pitch);
+    c.send_data(lockInfo.bufId);
+  } else {
+    const auto [width, height] = getRectDimensions(lockInfo.rect);
+    const size_t rowSize = bridge_util::calcRowSize(width, m_desc.Format);
+    // An empty rect sends no rows; the server skips them the same way.
+    const uint32_t numRows = rowSize != 0 ? bridge_util::calcStride((uint32_t) height, m_desc.Format) : 0;
+    const uint32_t rowsPerPart = bridge_util::rowsPerChunk(rowSize, bridge_util::kMaxUploadPartBytes);
+    const uint32_t rowsPerBlob = bridge_util::rowsPerChunk(rowSize, bridge_util::kMaxUploadBlobBytes);
+    // Each part is a command of its own, pushed before the next one is written, so the server can consume it and
+    // free its space in the data queue. A lock with no rows still sends one part.
+    uint32_t firstRow = 0;
+    do {
+      const uint32_t partRows = std::min(rowsPerPart, numRows - firstRow);
+      {
+        ClientMessage c(Commands::IDirect3DSurface9_UnlockRect, getId(), 0);
+        c.send_data(sizeof(RECT), &lockInfo.rect);
+        c.send_data(lockInfo.flags);
+        c.send_data(m_desc.Format);
+        c.send_data(rowSize);
+        c.send_many(firstRow, partRows);
+        for (uint32_t row = firstRow; row < firstRow + partRows;) {
+          const uint32_t blobRows = std::min(rowsPerBlob, firstRow + partRows - row);
+          uint8_t* blobPacketPtr = c.begin_data_blob(size_t(blobRows) * rowSize);
+          if (blobPacketPtr == nullptr) {
+            break;
+          }
+          for (uint32_t r = 0; r < blobRows; ++r) {
+            memcpy(blobPacketPtr + size_t(r) * rowSize,
+                   (const uint8_t*) lockInfo.lockedRect.pBits + size_t(row + r) * lockInfo.lockedRect.Pitch, rowSize);
+          }
+          c.end_data_blob();
+          row += blobRows;
+        }
       }
-    }
+      firstRow += partRows;
+    } while (firstRow < numRows && gbBridgeRunning);
   }
 
   if (m_bUseSharedHeap) {

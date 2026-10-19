@@ -220,6 +220,9 @@ protected:
           // Now send the buffer bytes
           c.send_data(size, ptr);
         }
+        if (bridge_util::perf::enabled()) {
+          bridge_util::perf::noteUpload(size);
+        }
       }
       if (lockInfo.discardedBufferId != SharedHeap::kInvalidId) {
         SharedHeap::deallocate(lockInfo.discardedBufferId);

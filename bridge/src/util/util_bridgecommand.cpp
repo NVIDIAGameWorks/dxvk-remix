@@ -22,7 +22,24 @@
 #include "util_bridgecommand.h"
 #include "log/log_strings.h"
 
+#include <type_traits>
+
 namespace {
+  // The performance counters only count the device bridge.
+  template<typename BridgeIdT>
+  constexpr bool kIsDeviceBridge = std::is_same_v<BridgeIdT, ::BridgeId::Device>;
+  constexpr DWORD kOverwriteWaitSliceMs = 2;
+
+  // Attributes the wait to the request that was sent last.
+  struct ResponseWaitTimer {
+    int64_t start;
+    ~ResponseWaitTimer() {
+      if (start != 0) {
+        bridge_util::perf::noteResponseWait(bridge_util::perf::now() - start);
+      }
+    }
+  };
+
   DWORD get_default_timeout() {
     const auto timeout = GlobalOptions::getCommandTimeout();
     const auto retries = GlobalOptions::getCommandRetries();
@@ -52,67 +69,54 @@ DECL_BRIDGE_FUNC(void, init,
   s_pReaderChannel = new ReaderChannel(
     baseName + kReaderChannelName,
     readerChannelMemSize, readerChannelCmdQueueSize, readerChannelDataQueueSize);
+  if constexpr (kIsDeviceBridge<BridgeId>) {
+    bridge_util::perf::init(GlobalOptions::getPerfLogIntervalFrames());
+  }
   bIsInit = true;
 }
 
+DECL_BRIDGE_FUNC(void, perfOnFrame) {
+  if constexpr (kIsDeviceBridge<BridgeId>) {
+    bridge_util::perf::onFrame(s_pWriterChannel->commands->fullWaitStats(),
+                               s_pReaderChannel->commands->emptyWaitStats());
+  }
+}
+
 DECL_BRIDGE_FUNC(void, syncDataQueue, size_t expectedMemUsage, bool posResetOnLastIndex) {
-  int serverCount = *s_pWriterChannel->serverDataPos;
-  size_t currClientDataPos = s_pWriterChannel->get_data_pos();
-  size_t expectedClientDataPos = currClientDataPos + ((expectedMemUsage != 0) ? expectedMemUsage : 1) - 1;
-  size_t totalSize = s_pWriterChannel->data->get_total_size();
-
-  auto handleOverwriteCondition = [&]() {
-    // Below variable is set to let the server know that a particular position
-    // in the queue not yet accessed by it is going to be used
-    *s_pWriterChannel->clientDataExpectedPos = s_curBatchStartPos - 1;
-    Logger::warn("Data Queue overwrite condition triggered");
-    // Check to see if there is even enough space to ever succeed in pushing all the data
-    if ((expectedMemUsage + (currClientDataPos >= s_curBatchStartPos ? currClientDataPos - s_curBatchStartPos : currClientDataPos + totalSize - s_curBatchStartPos)) > totalSize) {
-      Logger::errLogMessageBoxAndExit(std::string(logger_strings::OutOfBufferMemory) + std::string(logger_strings::OutOfBufferMemory1) + logger_strings::bufferNameToOption(s_pWriterChannel->data->getName()));
-    }
-    // Wait for the server to access the data at the above postion
-    const auto maxRetries = GlobalOptions::getCommandRetries();
-    size_t numRetries = 0;
-    Logger::warn("Waiting on server to process enough data from data queue to prevent overwrite...");
-    while (RESULT_FAILURE(s_pWriterChannel->dataSemaphore->wait()) && numRetries++ < maxRetries) {
-    }
-    if (numRetries >= maxRetries) {
+  // Overwrite protection for the data ring. Positions are words produced / consumed since start (skipped tail slots
+  // included, CircularQueue::m_absPos), so a write is safe when it ends no more than one ring behind the reader's
+  // published position; no wrap has to be tracked. The reader publishes after every command (device server, main.cpp)
+  // or every read (publishReadPos) and releases dataSemaphore once it passes the position a writer waits for.
+  const auto& data = *s_pWriterChannel->data;
+  const uint64_t ringWords = data.get_total_size();
+  const uint64_t writeEnd = data.abs_pos_after(expectedMemUsage != 0 ? expectedMemUsage : 1, posResetOnLastIndex);
+  if (writeEnd <= uint64_t(s_pWriterChannel->serverDataPos->load(std::memory_order_relaxed)) + ringWords) {
+    return;
+  }
+  // The reader gets no further than the start of the batch in progress, so a batch larger than the ring never fits.
+  const uint64_t batchStart = s_curBatchStartPos >= 0 ? s_curBatchStartAbs : data.get_abs_pos();
+  if (writeEnd - batchStart > ringWords) {
+    Logger::errLogMessageBoxAndExit(std::string(logger_strings::OutOfBufferMemory) + std::string(logger_strings::OutOfBufferMemory1) + logger_strings::bufferNameToOption(s_pWriterChannel->data->getName()));
+  }
+  const int64_t required = int64_t(writeEnd - ringWords);
+  s_pWriterChannel->clientDataExpectedPos->store(required, std::memory_order_seq_cst);
+  Logger::warn(format_string("Data Queue overwrite condition triggered: the write ends at word %llu, the reader is at word %lld of a %llu word ring. Waiting for the reader to reach word %lld...",
+                             (unsigned long long) writeEnd, (long long) s_pWriterChannel->serverDataPos->load(std::memory_order_seq_cst),
+                             (unsigned long long) ringWords, (long long) required));
+  // The reader releases the semaphore when it gets there. The slices cover a reader that got there before it saw the
+  // position (it looks after a command only) and a release that happened before this wait started.
+  const DWORD timeoutMS = GlobalOptions::getCommandTimeout();
+  const ULONGLONG budgetMS = timeoutMS != 0 ? ULONGLONG(timeoutMS) * (GlobalOptions::getCommandRetries() + 1) : 0;
+  const ULONGLONG start = GetTickCount64();
+  while (gbBridgeRunning && s_pWriterChannel->serverDataPos->load(std::memory_order_seq_cst) < required) {
+    s_pWriterChannel->dataSemaphore->wait(kOverwriteWaitSliceMs);
+    if (budgetMS != 0 && GetTickCount64() - start >= budgetMS) {
       Logger::err("Max retries reached waiting on the server to process enough data to prevent a overwrite!");
+      break;
     }
-    *s_pWriterChannel->clientDataExpectedPos = -1;
-    *s_pWriterChannel->serverResetPosRequired = false;
-    Logger::info("DataQueue overwrite condition resolved");
-  };
-
-  if (expectedClientDataPos >= totalSize) {
-    if (*s_pWriterChannel->serverResetPosRequired == true) {
-      // Double Overflow Condition Detected, mitigate by stalling and waiting for a response
-      handleOverwriteCondition();
-    }
-    if (posResetOnLastIndex) {
-      // Reset index pos to 0 if the size is larger than the remaining buffer
-      expectedClientDataPos = expectedMemUsage - 1;
-    } else {
-      // Evaluate the respective pos when the end of the queue is reached
-      expectedClientDataPos = expectedClientDataPos - totalSize;
-    }
-    // Below variable is set when the server needs to complete a loop to get to
-    // the client's expected position. When this is set on pull we check if
-    // m_pos is reset and toggle this variable if it is
-    *s_pWriterChannel->serverResetPosRequired = true;
   }
-
-  /*
-    * overwrite conditions
-    * 1. client < server, expectedClient >= server
-    * 2. client > server, expectedClient >= server, expectedClient < client
-    */
-  if (expectedClientDataPos >= serverCount &&
-      ((s_curBatchStartPos < serverCount)
-       || (s_curBatchStartPos > serverCount && expectedClientDataPos < s_curBatchStartPos)
-       || ((s_curBatchStartPos <= serverCount) && *s_pWriterChannel->serverResetPosRequired))) {
-    handleOverwriteCondition();
-  }
+  s_pWriterChannel->clientDataExpectedPos->store(-1, std::memory_order_seq_cst);
+  Logger::info("DataQueue overwrite condition resolved");
 }
 
 DECL_BRIDGE_FUNC(Header, pop_front) {
@@ -154,6 +158,12 @@ DECL_BRIDGE_FUNC(bridge_util::Result, waitForCommand, const Commands::D3D9Comman
                                                       DWORD overrideTimeoutMS,
                                                       std::atomic<bool>* const pbEarlyOutSignal, bool verifyUID, UID uidToVerify) {
   ZoneScoped;
+#ifdef REMIX_BRIDGE_CLIENT
+  const bool timeResponseWait = kIsDeviceBridge<BridgeId> && command == Commands::Bridge_Response && bridge_util::perf::enabled();
+#else
+  const bool timeResponseWait = false;
+#endif
+  const ResponseWaitTimer responseWaitTimer { timeResponseWait ? bridge_util::perf::now() : 0 };
   DWORD peekTimeoutMS = overrideTimeoutMS > 0 ? overrideTimeoutMS : GlobalOptions::getCommandTimeout();
   uint32_t maxAttempts = GlobalOptions::getCommandRetries();
 #ifdef ENABLE_WAIT_FOR_COMMAND_TRACE
@@ -249,6 +259,88 @@ DECL_BRIDGE_FUNC(bridge_util::Result, waitForCommand, const Commands::D3D9Comman
   return Result::Timeout;
 }
 
+// A wrap skips the tail of the queue, so the result can be slightly too high.
+#define DATA_WORDS_SINCE(startPos) \
+  ([&]() { \
+    const size_t endPos_ = s_pWriterChannel->data->get_pos(); \
+    const size_t startPos_ = (size_t) (startPos); \
+    return (uint32_t) (endPos_ >= startPos_ ? endPos_ - startPos_ \
+                                            : endPos_ + s_pWriterChannel->data->get_total_size() - startPos_); \
+  }())
+
+DECL_BRIDGE_FUNC(void, pushHeaderLocked, Commands::D3D9Command command, Commands::Flags flags, uint32_t handle) {
+  uint32_t numRetries = 0;
+  Result result;
+  // We check if the bridge is enabled for each loop iteration in case it
+  // was disabled externally by the server process exit callback.
+  do {
+    result = s_pWriterChannel->commands->push({ command, flags, (uint32_t) s_pWriterChannel->data->get_pos(), handle });
+#if defined(_DEBUG) || defined(DEBUGOPT)
+    if (GlobalOptions::getLogAllCommands()) {
+      Logger::info("Pushed: " + toString(command));
+    }
+#endif
+  } while (
+        RESULT_FAILURE(result)
+    && numRetries++ < GlobalOptions::getCommandRetries()
+    && gbBridgeRunning
+#ifdef REMIX_BRIDGE_CLIENT
+    && BridgeState::getServerState_NoLock() == BridgeState::ProcessState::Running
+#endif
+  );
+#ifdef REMIX_BRIDGE_CLIENT
+  if (BridgeState::getServerState_NoLock() >= BridgeState::ProcessState::DoneProcessing) {
+    Logger::warn(format_string("The command %s will not be sent; Server is in the process of or has already shut down. Turning bridge off.", Commands::toString(command).c_str()));
+    gbBridgeRunning = false;
+  } else
+#endif
+    if (RESULT_FAILURE(result) && gbBridgeRunning) {
+      Logger::err(format_string("The command %s could not be successfully sent, turning bridge off and falling back to client rendering!", Commands::toString(command).c_str()));
+      gbBridgeRunning = false;
+    } else if (RESULT_SUCCESS(result) && numRetries > 1) {
+      std::string commandStr = Commands::toString(command);
+      Logger::debug(format_string("The command %s took %d retries (%d ms)!", commandStr.c_str(), numRetries, numRetries * GlobalOptions::getCommandTimeout()));
+    }
+}
+
+DECL_BRIDGE_FUNC(void, openStatePacketLocked, uint32_t handle) {
+  s_pWriterChannel->data->begin_batch();
+  s_curBatchStartPos = (int32_t) s_pWriterChannel->data->get_pos();
+  s_curBatchStartAbs = s_pWriterChannel->data->get_abs_pos();
+  s_packetOpen = true;
+  s_packetHandle = handle;
+  s_packetRecords = 0;
+  s_packetPerfStart = bridge_util::perf::enabled() ? bridge_util::perf::now() : 0;
+  s_cmdCounter++;
+  syncDataQueue(1, false);
+  const auto result = s_pWriterChannel->data->push((UINT) s_cmdUID);
+  if (RESULT_FAILURE(result)) {
+    Logger::err("DataQueue send_data: Failed to send data!");
+  }
+}
+
+DECL_BRIDGE_FUNC(void, closeStatePacketLocked) {
+  if (!s_packetOpen) {
+    return;
+  }
+  s_packetOpen = false;
+  if (gbBridgeRunning) {
+    const uint32_t perfDataWords = (s_packetPerfStart != 0) ? DATA_WORDS_SINCE(s_curBatchStartPos) : 0;
+    s_pWriterChannel->data->end_batch();
+    s_curBatchStartPos = -1;
+    pushHeaderLocked(Commands::Bridge_StatePacket, 0, s_packetHandle);
+    if (s_packetPerfStart != 0) {
+      bridge_util::perf::noteSent((uint16_t) Commands::Bridge_StatePacket);
+      bridge_util::perf::noteCommand((uint16_t) Commands::Bridge_StatePacket, perfDataWords,
+                                     bridge_util::perf::now() - s_packetPerfStart);
+    }
+  } else {
+    s_pWriterChannel->data->end_batch();
+    s_curBatchStartPos = -1;
+  }
+  ++s_cmdUID;
+}
+
 #define DECL_COMMAND_FUNC(RETURN_T, NAME, ...) \
   template<typename BridgeId> \
   RETURN_T Bridge<BridgeId>::Command::NAME(__VA_ARGS__)
@@ -277,6 +369,8 @@ DECL_COMMAND_FUNC(,Command,const Commands::D3D9Command command,
 
 #ifdef REMIX_BRIDGE_CLIENT
   s_pWriterChannel->m_mutex.lock();
+  // Every state setter recorded so far reaches the server before this command.
+  closeStatePacketLocked();
 #endif
 
   assert(!s_pWriterChannel->pbCmdInProgress->load());
@@ -289,7 +383,15 @@ DECL_COMMAND_FUNC(,Command,const Commands::D3D9Command command,
   }
   s_pWriterChannel->pbCmdInProgress->store(true);
   s_curBatchStartPos = (int32_t) s_pWriterChannel->data->get_pos();
+  s_curBatchStartAbs = s_pWriterChannel->data->get_abs_pos();
   s_cmdCounter++;
+#ifdef REMIX_BRIDGE_CLIENT
+  if constexpr (kIsDeviceBridge<BridgeId>) {
+    if (bridge_util::perf::enabled()) {
+      m_perfStart = bridge_util::perf::now();
+    }
+  }
+#endif
   if (gbBridgeRunning) {
     // Send command id as part of data queue for everycommand from client to server
 #ifdef REMIX_BRIDGE_CLIENT
@@ -311,44 +413,64 @@ DECL_COMMAND_FUNC(,Command,const Commands::D3D9Command command,
 DECL_COMMAND_FUNC(,~Command) {
   // Only actually send the command if the bridge is enabled, otherwise this becomes a no-op
   if (gbBridgeRunning) {
+    const uint32_t perfDataWords = (m_perfStart != 0) ? DATA_WORDS_SINCE(s_curBatchStartPos) : 0;
     s_pWriterChannel->data->end_batch();
     s_curBatchStartPos = -1;
-    uint32_t numRetries = 0;
-    Result result;
-    // We check if the bridge is enabled for each loop iteration in case it
-    // was disabled externally by the server process exit callback.
-    do {
-      result = s_pWriterChannel->commands->push({ m_command, m_commandFlags, (uint32_t) s_pWriterChannel->data->get_pos(), m_handle });
-#if defined(_DEBUG) || defined(DEBUGOPT)
-      if (GlobalOptions::getLogAllCommands()) {
-        Logger::info("Pushed: " + toString(m_command));
-      }
-#endif
-    } while (
-          RESULT_FAILURE(result)
-      && numRetries++ < GlobalOptions::getCommandRetries()
-      && gbBridgeRunning
-#ifdef REMIX_BRIDGE_CLIENT
-      && BridgeState::getServerState_NoLock() == BridgeState::ProcessState::Running
-#endif
-    );
-#ifdef REMIX_BRIDGE_CLIENT
-    if (BridgeState::getServerState_NoLock() >= BridgeState::ProcessState::DoneProcessing) {
-      Logger::warn(format_string("The command %s will not be sent; Server is in the process of or has already shut down. Turning bridge off.", Commands::toString(m_command).c_str()));
-      gbBridgeRunning = false;;
-    } else
-#endif
-      if (RESULT_FAILURE(result) && gbBridgeRunning) {
-        Logger::err(format_string("The command %s could not be successfully sent, turning bridge off and falling back to client rendering!", Commands::toString(m_command).c_str()));
-        gbBridgeRunning = false;
-      } else if (RESULT_SUCCESS(result) && numRetries > 1) {
-        std::string command = Commands::toString(m_command);
-        Logger::debug(format_string("The command %s took %d retries (%d ms)!", command.c_str(), numRetries, numRetries * GlobalOptions::getCommandTimeout()));
-      }
+    pushHeaderLocked(m_command, m_commandFlags, m_handle);
+    if (m_perfStart != 0) {
+      bridge_util::perf::noteSent((uint16_t) m_command);
+      bridge_util::perf::noteCommand((uint16_t) m_command, perfDataWords, bridge_util::perf::now() - m_perfStart);
+    }
   }
   s_pWriterChannel->pbCmdInProgress->store(false);
 #ifdef REMIX_BRIDGE_CLIENT
   ++s_cmdUID;
+  s_pWriterChannel->m_mutex.unlock();
+#endif
+}
+
+#define DECL_STATE_MESSAGE_FUNC(RETURN_T, NAME, ...) \
+  template<typename BridgeId> \
+  RETURN_T Bridge<BridgeId>::StateMessage::NAME(__VA_ARGS__)
+
+DECL_STATE_MESSAGE_FUNC(,StateMessage,const Commands::D3D9Command command, uintptr_t pHandle)
+  : m_command(command) {
+#ifdef REMIX_BRIDGE_CLIENT
+  assert(Commands::IsBatchableState(command));
+  const uint32_t handle = (uint32_t) (size_t) pHandle;
+  s_pWriterChannel->m_mutex.lock();
+  if (!gbBridgeRunning) {
+    return;
+  }
+  if (s_packetOpen &&
+      (s_packetHandle != handle || s_packetRecords >= kMaxPacketRecords ||
+       DATA_WORDS_SINCE(s_curBatchStartPos) >= kMaxPacketWords)) {
+    closeStatePacketLocked();
+  }
+  if (!s_packetOpen) {
+    openStatePacketLocked(handle);
+  }
+  syncDataQueue(1, false);
+  const auto result = s_pWriterChannel->data->push((uint32_t) command);
+  if (RESULT_FAILURE(result)) {
+    Logger::err("DataQueue send_data: Failed to send data!");
+  }
+#else
+  assert(false && "StateMessage is client-only");
+#endif
+}
+
+DECL_STATE_MESSAGE_FUNC(,~StateMessage) {
+#ifdef REMIX_BRIDGE_CLIENT
+  if (s_packetOpen) {
+    ++s_packetRecords;
+    if (bridge_util::perf::enabled()) {
+      bridge_util::perf::noteRecord((uint16_t) m_command);
+    }
+    if (!s_stateBatching) {
+      closeStatePacketLocked();
+    }
+  }
   s_pWriterChannel->m_mutex.unlock();
 #endif
 }
