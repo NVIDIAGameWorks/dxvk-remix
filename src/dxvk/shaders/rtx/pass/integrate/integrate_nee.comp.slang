@@ -147,11 +147,6 @@ void main(uint2 dispatchThreadId : SV_DispatchThreadID, uint3 groupId : SV_Group
 
   RAB_RandomSamplerState rtxdiRNG = RAB_InitRandomSampler(pixelCoordinate, cb.frameIdx, 7);
 
-#if INTEGRATE_NEE_RESTIR_GI
-  // Only ReSTIR GI's target PDF needs the full surface.
-  const RAB_Surface surface = RAB_GetGBufferSurface(pixelCoordinate, false, compactedCoordinate);
-#endif
-
   // Deserialize the Ray
   GBufferMemoryMinimalRay gBufferMemoryMinimalRay;
   gBufferMemoryMinimalRay.spreadAngle = float16_t(cb.screenSpacePixelSpreadHalfAngle);
@@ -304,6 +299,8 @@ void main(uint2 dispatchThreadId : SV_DispatchThreadID, uint3 groupId : SV_Group
           neeSample.radiance = min(lightSample.radiance / lightSample.solidAnglePdf, float16Max);
           neeSample.setVirtualFraction(0.0);
 
+          // Only ReSTIR GI's target PDF needs the full surface.
+          const RAB_Surface surface = RAB_GetGBufferSurface(pixelCoordinate, false, compactedCoordinate);
           float wi = RAB_GetGITargetPdfForSurface(neeSample.radiance, neeSample.position, surface);
           resultReservoir.update(wi, neeSample, 0.5);
         }

@@ -67,10 +67,8 @@ void skinning(const uint32_t idx,
   const uint32_t baseWeightsOffset = (cb.blendWeightOffset + idx * cb.blendWeightStride) / 4;
 
   // Weights are normalized to 1, the last weight is equal to the remainder
+  // The remainder is accumulated in the bone loops below, as each weight is read.
   float lastWeight = 1.f;
-  for (uint i = 0; i < cb.numBones - 1; i++) {
-    lastWeight -= srcBlendWeight[baseWeightsOffset + i];
-  }
 
   // Read position
   const uint baseSrcPositionOffset = (cb.srcPositionOffset + idx * cb.srcPositionStride) / 4;
@@ -100,7 +98,11 @@ void skinning(const uint32_t idx,
     for (uint j = 0; j < cb.numBones; j+=4) {
       uint4 blendIndices = get(srcBlendIndices, baseIndicesOffset + j);
       for (uint i = 0; i < 4 && i + j < cb.numBones; ++i) {
-        float blendWeight = i + j == cb.numBones - 1 ? lastWeight : srcBlendWeight[baseWeightsOffset + i + j];
+        float blendWeight = lastWeight;
+        if (i + j != cb.numBones - 1) {
+          blendWeight = srcBlendWeight[baseWeightsOffset + i + j];
+          lastWeight -= blendWeight;
+        }
         if (blendWeight > 0) {
           Matrix4 bone = toMatrix4(cb.bones[blendIndices[i]]);
           positionOut += mul(bone, position) * blendWeight;
@@ -111,6 +113,7 @@ void skinning(const uint32_t idx,
   } else {
     for (uint i = 0; i < cb.numBones - 1; ++i) {
       float blendWeight = srcBlendWeight[baseWeightsOffset + i];
+      lastWeight -= blendWeight;
       if (blendWeight > 0.f) {
         Matrix4 bone = toMatrix4(cb.bones[i]);
         positionOut += mul(bone, position) * blendWeight;

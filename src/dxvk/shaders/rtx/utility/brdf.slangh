@@ -721,8 +721,8 @@ float evalHenyeyGreensteinPhaseFunction(in const float anisotropy,
                                         in const float /* l.v */ inputDirectionDotOutputDirection)
 {
   const float numerator = 1.0f - square(anisotropy);
-  const float denominator =
-    pow(1.0f + square(anisotropy) - 2 * anisotropy * inputDirectionDotOutputDirection, 3.0f / 2.0f);
+  const float base = 1.0f + square(anisotropy) - 2 * anisotropy * inputDirectionDotOutputDirection;
+  const float denominator = base * sqrt(base);
 
   // Note: Division clamped to avoid potential divisions by 0 when anisotropy is at an extreme
   return rcp(fourPi) * safePositiveDivide(numerator, denominator, materialEpsilon);

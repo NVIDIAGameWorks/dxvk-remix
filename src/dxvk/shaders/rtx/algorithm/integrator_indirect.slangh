@@ -687,7 +687,12 @@ void integratePathVertex(
       lightSample.solidAnglePdf = invSelectionPdf > 0 ? lightSample.solidAnglePdf / invSelectionPdf : 0.0;
       vec3 diffuseLight, specularLight;
       const bool isDiffusionProfileSss = (cb.sssArgs.enableDiffusionProfile && isSubsurfaceDiffusionProfileMaterial(opaqueSurfaceMaterialInteraction));
-      evaluateUnshadowedLight(lightSample, opaqueSurfaceMaterialInteraction, rayInteraction, normalize(lightSample.position - surfaceInteraction.position), diffuseLight, specularLight);
+      diffuseLight = 0;
+      specularLight = 0;
+      if (lightSampleValid)
+      {
+        evaluateUnshadowedLight(lightSample, opaqueSurfaceMaterialInteraction, rayInteraction, normalize(lightSample.position - surfaceInteraction.position), diffuseLight, specularLight);
+      }
 
       uint lightTask = lightIdx;
       if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && 
