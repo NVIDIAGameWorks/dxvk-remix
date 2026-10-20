@@ -1267,7 +1267,12 @@ namespace {
 
     dxvk::Config newSetting;
     newSetting.setOptionMove(std::move(strKey), std::string{ value });
-    option->readOption(newSetting, dxvk::RtxOptionLayer::getUserLayer());
+    {
+      // readOption() writes the option's layer values and the global dirty-option map, which the CS thread
+      // reads and clears under this mutex in RtxOptionManager::applyPendingValues(). Lock order: s_mutex first.
+      std::lock_guard<std::mutex> optionLock(dxvk::RtxOptionImpl::getUpdateMutex());
+      option->readOption(newSetting, dxvk::RtxOptionLayer::getUserLayer());
+    }
 
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
