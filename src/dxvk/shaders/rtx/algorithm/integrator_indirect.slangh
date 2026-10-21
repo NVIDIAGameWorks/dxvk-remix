@@ -1529,7 +1529,7 @@ void integrateIndirectPath(
       {
         if (primarySurfaceIndex != SURFACE_INDEX_INVALID)
         {
-          const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
+          const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surfaces[primarySurfaceIndex].surfaceMaterialIndex];
           if (memoryPolymorphicSurfaceMaterial.isOpaque())
           {
             OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
@@ -1552,7 +1552,7 @@ void integrateIndirectPath(
 
       if (primarySurfaceIndex != SURFACE_INDEX_INVALID)
       {
-        const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
+        const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surfaces[primarySurfaceIndex].surfaceMaterialIndex];
         if (memoryPolymorphicSurfaceMaterial.hasValidDisplacement())
         {
           OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);

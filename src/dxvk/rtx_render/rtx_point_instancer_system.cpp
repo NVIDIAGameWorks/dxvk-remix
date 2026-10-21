@@ -41,7 +41,6 @@ namespace dxvk {
         STRUCTURED_BUFFER(POINT_INSTANCER_CULLING_BINDING_TRANSFORMS_INPUT)
         RW_STRUCTURED_BUFFER(POINT_INSTANCER_CULLING_BINDING_INSTANCE_BUFFER)
         RW_STRUCTURED_BUFFER(POINT_INSTANCER_CULLING_BINDING_SURFACE_BUFFER)
-        RW_STRUCTURED_BUFFER(POINT_INSTANCER_CULLING_BINDING_MATERIAL_BUFFER)
       END_PARAMETER()
     };
   }
@@ -71,7 +70,6 @@ namespace dxvk {
       Rc<DxvkContext> ctx,
       const Rc<DxvkBuffer>& instanceBuffer,
       const Rc<DxvkBuffer>& surfaceBuffer,
-      const Rc<DxvkBuffer>& surfaceMaterialBuffer,
       const std::vector<PointInstancerBatch>& batches,
       const Vector3& cameraPosition) {
     ScopedGpuProfileZone(ctx, "PointInstancerCulling");
@@ -143,7 +141,6 @@ namespace dxvk {
                               DxvkBufferSlice(m_transformsGpu, 0, transformsSize));
       ctx->bindResourceBuffer(POINT_INSTANCER_CULLING_BINDING_INSTANCE_BUFFER, DxvkBufferSlice(instanceBuffer));
       ctx->bindResourceBuffer(POINT_INSTANCER_CULLING_BINDING_SURFACE_BUFFER, DxvkBufferSlice(surfaceBuffer));
-      ctx->bindResourceBuffer(POINT_INSTANCER_CULLING_BINDING_MATERIAL_BUFFER, DxvkBufferSlice(surfaceMaterialBuffer));
 
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, PointInstancerCullingShader::getShader());
 

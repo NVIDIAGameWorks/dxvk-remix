@@ -41,7 +41,3 @@ RWByteAddressBuffer instanceBuffer;
 // Output: direct write into the surface data buffer (per-instance surface copies)
 layout(binding = POINT_INSTANCER_CULLING_BINDING_SURFACE_BUFFER)
 RWStructuredBuffer<Surface> surfaceBuffer;
-
-// Output: direct write into the surface material buffer (per-instance material copies)
-layout(binding = POINT_INSTANCER_CULLING_BINDING_MATERIAL_BUFFER)
-RWStructuredBuffer<MemoryPolymorphicSurfaceMaterial> materialBuffer;

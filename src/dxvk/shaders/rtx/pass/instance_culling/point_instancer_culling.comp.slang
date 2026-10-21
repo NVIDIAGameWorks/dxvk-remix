@@ -27,12 +27,12 @@
 // culled instances get mask=0 so the TLAS builder ignores them.  This avoids
 // any divergent early-outs and guarantees no stale data in the buffer.
 //
-// Each PointInstancer instance gets its own surface AND material entry so that it
-// can have a unique surface/material ID in the customInstanceIndex field.  The CPU
-// reserves N contiguous surface and material slots and populates only the first
-// (the "template").  This shader copies the template data to each instance's slot,
-// patches per-instance objectToWorld/prevObjectToWorld/normalObjectToWorld transforms
-// in the surface buffer, and duplicates the material entry (a plain copy).
+// Each PointInstancer instance gets its own surface entry so that it can have a
+// unique surface ID in the customInstanceIndex field.  The CPU reserves N contiguous
+// surface slots and populates only the first (the "template").  This shader copies
+// the template surface to each instance's slot and patches per-instance
+// objectToWorld/prevObjectToWorld/normalObjectToWorld transforms.  The copies keep
+// the template's surfaceMaterialIndex, so material slots are not duplicated.
 
 #include "rtx/pass/instance_culling/point_instancer_culling_bindings.slangh"
 
@@ -97,11 +97,6 @@ void main(uint3 threadId : SV_DispatchThreadID) {
   surface.normalObjectToWorld = normalMat;
 
   surfaceBuffer[cb.baseSurfaceIndex + instanceIdx] = surface;
-
-  // === Per-instance material data: copy template ===
-  // Material data is identical for all instances of a PointInstancer;
-  // this is a plain struct copy from the template slot.
-  materialBuffer[cb.baseSurfaceIndex + instanceIdx] = materialBuffer[cb.baseSurfaceIndex];
 
   // === Write VkAccelerationStructureInstanceKHR unconditionally ===
 

@@ -163,4 +163,8 @@
 #define CUSTOM_INDEX_IS_VIEW_MODEL     (1u << 23)
 #define CUSTOM_INDEX_FRONT_HIT         (1u << 24)
 
+// Limits for indices into the surface material tables (e.g. Surface.surfaceMaterialIndex).
+#define MATERIAL_INDEX_MAX_VALUE       SURFACE_INDEX_MAX_VALUE
+#define MATERIAL_INDEX_INVALID         MATERIAL_INDEX_MAX_VALUE
+
 #include "common_binding_indices.h"

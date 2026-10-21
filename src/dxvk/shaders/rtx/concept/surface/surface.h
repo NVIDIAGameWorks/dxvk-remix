@@ -495,6 +495,13 @@ struct Surface
   {
     get { return asfloat(data15.xyz); }
   }
+
+  // Index into the surfaceMaterials table.
+  property uint surfaceMaterialIndex
+  {
+    get { return data15.w; }
+    set { data15.w = newValue; }
+  }
 };
 
 // Note: Minimal version of typical Surface Interaction for transmission across passes.

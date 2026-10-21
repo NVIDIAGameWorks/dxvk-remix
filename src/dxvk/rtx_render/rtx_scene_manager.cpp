@@ -2346,10 +2346,8 @@ namespace dxvk {
     m_accelManager.prepareSceneData(ctx, execBarriers, m_instanceManager);
     m_lightManager.prepareSceneData(ctx, m_cameraManager);
 
-    // Upload surface material buffer BEFORE the GPU culling dispatch so the
-    // compute shader can copy template material entries to per-instance slots.
-    // For PointInstancer duplicate entries we skip writeGPUData and advance past
-    // the gap - the GPU shader will fill those slots.
+    // PointInstancer duplicate material entries are unused because their copied
+    // surfaces reference the template material slot.
     //
     // When the scene is unchanged (fast-skip path in mergeInstancesIntoBlas),
     // the surface order and material data are normally identical to last frame.
@@ -2388,8 +2386,7 @@ namespace dxvk {
         uint32_t surfaceIndex = 0;
         std::vector<unsigned char> surfaceMaterialsGPUData(surfaceMaterialsGPUSize);
         for (auto&& pInstance : m_accelManager.getOrderedInstances()) {
-          // For PointInstancer duplicates (entries beyond the template), skip
-          // writeGPUData - the GPU culling shader copies the template material.
+          // PointInstancer duplicates reference the template material slot.
           const auto& surf = pInstance->surface;
           if (surf.instancesToObject != nullptr &&
               surf.surfaceIndexOfFirstInstance != SIZE_MAX &&
@@ -2426,10 +2423,10 @@ namespace dxvk {
     }
 
     // GPU-driven PointInstancer culling: overwrites visible instance placeholders
-    // in m_vkInstanceBuffer with proper transforms and masks, copies per-instance
-    // surface and material data from templates. Must run after prepareSceneData
+    // in m_vkInstanceBuffer with proper transforms and masks, and copies per-instance
+    // surface data from templates. Must run after prepareSceneData
     // (which uploads placeholders) and before buildTlas.
-    m_accelManager.dispatchPointInstancerCulling(ctx, m_cameraManager, m_surfaceMaterialBuffer);
+    m_accelManager.dispatchPointInstancerCulling(ctx, m_cameraManager);
 
     // Build the TLAS
     m_accelManager.buildTlas(ctx);

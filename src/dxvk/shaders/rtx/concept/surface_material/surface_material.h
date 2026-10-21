@@ -129,7 +129,7 @@ struct TranslucentSurfaceMaterial
   float16_t emissiveIntensity;
   float16_t refractiveIndex;
 
-  // 12-13: Source surface material index (21 bits).  Placed here (byte offset 24)
+  // 12-13: Source material-table index (21 bits).  Placed here (byte offset 24)
   // so the uint32_t is naturally 4-byte aligned — avoids Slang inserting padding
   // that would break reinterpret<> from the 64-byte MemoryPolymorphicSurfaceMaterial.
   uint32_t sourceSurfaceMaterialIndex;

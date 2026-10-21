@@ -153,8 +153,7 @@ public:
   // Dispatches GPU compute culling for all PointInstancer batches recorded during
   // mergeInstancesIntoBlas. Must be called after prepareSceneData (placeholders uploaded)
   // and before buildTlas.
-  void dispatchPointInstancerCulling(Rc<DxvkContext> ctx, const CameraManager& cameraManager,
-                                     const Rc<DxvkBuffer>& surfaceMaterialBuffer);
+  void dispatchPointInstancerCulling(Rc<DxvkContext> ctx, const CameraManager& cameraManager);
 
   void buildTlas(Rc<DxvkContext> ctx);
 
