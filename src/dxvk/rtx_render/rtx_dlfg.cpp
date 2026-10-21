@@ -50,11 +50,10 @@ namespace dxvk {
   const char* DxvkDLFG::getPresetName() {
     switch (s_dlfgPreset.load()) {
     case kFullPreset:
-      return "Full";
-    case kLitePreset:
-      return "Lite";
     default:
-      return "Unknown";
+      return "A";
+    case kLitePreset:
+      return "C";
     }
   }
 

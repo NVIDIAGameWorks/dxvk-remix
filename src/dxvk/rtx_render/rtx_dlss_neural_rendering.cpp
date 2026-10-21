@@ -237,7 +237,7 @@ namespace dxvk {
       }
     }
 
-    RemixGui::Checkbox("DLSS 3D-Guided Neural Generation", &DlssNeuralRendering::enableObject());
+    RemixGui::Checkbox("DLSS 3D-Guided Neural Rendering", &DlssNeuralRendering::enableObject());
 
     constexpr ImGuiSliderFlags flags = ImGuiSliderFlags_AlwaysClamp;
     modelCombo.getKey(&DlssNeuralRendering::modelObject());

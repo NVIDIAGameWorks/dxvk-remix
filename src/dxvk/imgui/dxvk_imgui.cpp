@@ -404,6 +404,14 @@ namespace dxvk {
     } }
   };
 
+  RemixGui::ComboWithKey<int> dlfgPresetCombo {
+    "DLSS Frame Generation Preset",
+    RemixGui::ComboWithKey<int>::ComboEntries { {
+        {0, "A"},
+        {1, "C"},
+    } }
+  };
+
   RemixGui::ComboWithKey<ReflexMode> reflexModeCombo{
     "Reflex",
     RemixGui::ComboWithKey<ReflexMode>::ComboEntries{ {
@@ -3396,7 +3404,7 @@ namespace dxvk {
 
     // Keep FG preset recovery available after a feature failure.
     if (RtxOptions::showUI() == UIType::Advanced && ctx->getCommonObjects()->metaNGXContext().supportsDLFG()) {
-      RemixGui::Combo("DLSS Frame Generation Preset", &DxvkDLFG::litePresetObject(), "Full\0Lite\0");
+      dlfgPresetCombo.getKey(&DxvkDLFG::litePresetObject());
     }
 
     // Need to change Reflex in sync with DLFG, not on the next frame.
@@ -3897,9 +3905,9 @@ namespace dxvk {
       if (dlssNeuralRendering.supportsDlssNeuralRendering()) {
         RemixGui::Separator();
 
-        if (RemixGui::CollapsingHeader("DLSS 3D-Guided Neural Generation [Experimental]", collapsingHeaderClosedFlags)) {
+        if (RemixGui::CollapsingHeader("DLSS 3D-Guided Neural Rendering", collapsingHeaderClosedFlags)) {
           ImGui::Indent();
-          ImGui::PushID("DLSS 3D-Guided Neural Generation");
+          ImGui::PushID("DLSS 3D-Guided Neural Rendering");
           dlssNeuralRendering.showDlssNeuralRenderingImguiSettings();
           ImGui::PopID();
           ImGui::Unindent();

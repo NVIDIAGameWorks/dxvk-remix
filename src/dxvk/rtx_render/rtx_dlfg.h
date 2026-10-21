@@ -316,7 +316,7 @@ namespace dxvk {
     RTX_OPTION_ARGS("rtx.dlfg", uint32_t, maxInterpolatedFrames, 2, "For DLSS 4.5 frame generation, controls the number of interpolated frames for each rendered frame. Ignored for DLSS 3.0.",
                     args.minValue = 1, args.maxValue = 6,
                     args.flags = RtxOptionFlags::UserSetting);
-    RTX_OPTION_ARGS("rtx.dlfg", bool, litePreset, false, "Selects the DLSS Frame Generation model. True: Lite (lightweight model). False: Full (standard model). Switching recreates Frame Generation without restarting.",
+    RTX_OPTION_ARGS("rtx.dlfg", bool, litePreset, false, "Selects the DLSS Frame Generation preset. True: Preset C (lightweight model). False: Preset A (standard model). Switching recreates Frame Generation without restarting.",
                     args.environment = "RTX_DLFG_LITE_PRESET",
                     args.flags = RtxOptionFlags::UserSetting,
                     args.onChangeCallback = &onPresetChanged);
