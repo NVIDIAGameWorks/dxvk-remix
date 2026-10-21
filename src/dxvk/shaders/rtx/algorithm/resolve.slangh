@@ -392,7 +392,7 @@ void resolveVertex<T: IBasePayloadState>(
 
   // Create a Surface Material and Surface Material Interaction from the Surface
 
-  const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[uint(rayInteraction.surfaceIndex)];
+  const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
   
   const uint8_t polymorphicType = rayInteraction.materialType;
 
@@ -574,7 +574,7 @@ void resolveVertex<T: IBasePayloadState>(
   else if ((SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL || forceEnableResolveRayPortal) &&
            polymorphicType == surfaceMaterialTypeRayPortal)
   {
-    const RayPortalSurfaceMaterial rayPortalSurfaceMaterial = rayPortalSurfaceMaterialCreate(uint(rayInteraction.surfaceIndex), memoryPolymorphicSurfaceMaterial);
+    const RayPortalSurfaceMaterial rayPortalSurfaceMaterial = rayPortalSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
 
     const RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction =
       rayPortalSurfaceMaterialInteractionCreate(rayPortalSurfaceMaterial, surface, surfaceInteraction);
@@ -992,7 +992,7 @@ void resolveVertexUnorderedParticles<
       continue;
     }
 
-    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[uint(rayInteraction.surfaceIndex)];
+    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
     const uint8_t polymorphicType = rayInteraction.materialType;
 
     float currentRadianceAttenuation = 1.0f;
@@ -1369,7 +1369,7 @@ void resolveVertexUnordered<
 
     // Create a Surface Material and Surface Material Interaction from the Surface
 
-    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[uint(rayInteraction.surfaceIndex)];
+    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
     
     const uint8_t polymorphicType = rayInteraction.materialType;
 

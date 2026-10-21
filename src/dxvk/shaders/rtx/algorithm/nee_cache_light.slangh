@@ -150,7 +150,7 @@ struct NEECacheUtils
 
   static LightSample calculateLightSample(Surface surface, SurfaceInteraction surfaceInteraction, RayInteraction rayInteracton, vec3 shadingPosition, float trianglePdf, out float triangleArea, bool useSolidAnglePdf, int footprintMode)
   {
-    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[uint(rayInteracton.surfaceIndex)];
+    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
 
     LightSample lightSample = {};
     lightSample.position = surfaceInteraction.position;
@@ -317,7 +317,7 @@ struct NEECacheUtils
     triangleNormal = surfaceInteraction.geometryNormal;
     lightIntensity = vec3(0);
 
-    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surfaceIndex];
+    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
 
     if (memoryPolymorphicSurfaceMaterial.isOpaque())
     {

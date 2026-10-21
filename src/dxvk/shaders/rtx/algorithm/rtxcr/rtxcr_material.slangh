@@ -67,7 +67,7 @@ SssTracingResult traceSssRay(
   SurfaceInteraction surfaceInteraction =
     surfaceInteractionCreate<SurfaceGenerateTangents>(sssSampleSurface, sssRayInteraction, sssSampleRay);
 
-  const OpaqueSurfaceMaterial sssOpaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surfaceMaterials[sssRayInteraction.surfaceIndex]);
+  const OpaqueSurfaceMaterial sssOpaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surfaceMaterials[sssSampleSurface.surfaceMaterialIndex]);
 
   // Construct sss tracing result
   SssTracingResult sssTracingResult;
@@ -128,7 +128,7 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
 
   uint16_t validSampleCount = 0;
 
-  const uint primarySubsurfaceMaterialIndex = opaqueSurfaceMaterialCreate(surfaceMaterials[primarySurfaceIndex]).subsurfaceMaterialIndex;
+  const uint primarySubsurfaceMaterialIndex = opaqueSurfaceMaterialCreate(surfaceMaterials[surfaces[primarySurfaceIndex].surfaceMaterialIndex]).subsurfaceMaterialIndex;
 
   // Randomly sample N positions on the surface near the center, evaluate the diffusion profile weight and BSSRDF, and do intergration to calculate the scattered radiance
   [unroll]

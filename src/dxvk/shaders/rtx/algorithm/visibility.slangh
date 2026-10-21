@@ -94,7 +94,7 @@ vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo rayHi
     return vec3(1.0f);
   }
 
-  const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[rayInteraction.surfaceIndex];
+  const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
   
   const uint8_t polymorphicType = rayInteraction.materialType;
 
@@ -454,7 +454,7 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
     {
       if (primarySurfaceIndex != SURFACE_INDEX_INVALID)
       {
-        const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
+        const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surfaces[primarySurfaceIndex].surfaceMaterialIndex];
         if (memoryPolymorphicSurfaceMaterial.isOpaque())
         {
           OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial, true);
@@ -481,7 +481,7 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
 
     if (primarySurfaceIndex != SURFACE_INDEX_INVALID)
     {
-      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
+      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surfaces[primarySurfaceIndex].surfaceMaterialIndex];
       if (memoryPolymorphicSurfaceMaterial.hasValidDisplacement())
       {
         OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial, true);

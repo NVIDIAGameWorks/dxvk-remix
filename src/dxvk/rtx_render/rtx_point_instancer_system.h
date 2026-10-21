@@ -95,7 +95,6 @@ namespace dxvk {
     void dispatchCulling(Rc<DxvkContext> ctx,
                          const Rc<DxvkBuffer>& instanceBuffer,
                          const Rc<DxvkBuffer>& surfaceBuffer,
-                         const Rc<DxvkBuffer>& surfaceMaterialBuffer,
                          const std::vector<PointInstancerBatch>& batches,
                          const Vector3& cameraPosition);
 

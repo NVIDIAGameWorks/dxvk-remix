@@ -1512,7 +1512,7 @@ void geometryResolverVertexOutputDebugView(
 #ifdef OPAQUE_MATERIAL_USE_POM
     if (materialType == surfaceMaterialTypeOpaque && cb.pomMode != DisplacementMode::Off)
     {
-      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[uint(rayInteraction.surfaceIndex)];
+      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
       OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
       float3 hitPos = float3(0.f);
       uint iterations = 0;
@@ -1532,7 +1532,7 @@ void geometryResolverVertexOutputDebugView(
 #ifdef OPAQUE_MATERIAL_USE_POM
     if (materialType == surfaceMaterialTypeOpaque && cb.pomMode != DisplacementMode::Off)
     {
-      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[uint(rayInteraction.surfaceIndex)];
+      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
       OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
       float3 hitPos = float3(0.f);
       if (opaqueSurfaceMaterial.hasValidDisplacement())
@@ -1552,7 +1552,7 @@ void geometryResolverVertexOutputDebugView(
     float heightMapValue = -1.f;
     if (materialType == surfaceMaterialTypeOpaque && cb.pomMode != DisplacementMode::Off)
     {
-      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[uint(rayInteraction.surfaceIndex)];
+      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
       OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
       if (opaqueSurfaceMaterial.hasValidDisplacement()) {
         heightMapValue = 1.f - pomSampleHeight(opaqueSurfaceMaterial.heightTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction.textureCoordinates);

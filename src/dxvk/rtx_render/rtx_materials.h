@@ -107,7 +107,9 @@ struct RtSurface {
   RtSurface() {
   }
 
-  void writeGPUData(unsigned char* data, std::size_t& offset, size_t surfaceIndex = SIZE_MAX) const {
+  void writeGPUData(unsigned char* data, std::size_t& offset,
+      size_t surfaceIndex = SIZE_MAX,
+      uint32_t gpuMaterialIndex = MATERIAL_INDEX_INVALID) const {
     [[maybe_unused]] const std::size_t oldOffset = offset;
 
     // Note: Position buffer and surface material index are required for proper
@@ -303,7 +305,8 @@ struct RtSurface {
       writeGPUHelper(data, offset, uint32_t{});
       writeGPUHelper(data, offset, uint32_t{});
     }
-    writeGPUHelper(data, offset, uint32_t{});
+    assert(gpuMaterialIndex == MATERIAL_INDEX_INVALID || gpuMaterialIndex < MATERIAL_INDEX_MAX_VALUE);
+    writeGPUHelper(data, offset, gpuMaterialIndex < MATERIAL_INDEX_MAX_VALUE ? gpuMaterialIndex : MATERIAL_INDEX_INVALID);
 
     assert(offset - oldOffset == kSurfaceGPUSize);
   }
@@ -646,7 +649,7 @@ struct RtOpaqueSurfaceMaterial {
     assert(displaceIn <= FLOAT16_MAX);
     assert(displaceOut <= FLOAT16_MAX);
 
-    assert(m_subsurfaceMaterialIndex <= SURFACE_INDEX_MAX_VALUE);
+    assert(m_subsurfaceMaterialIndex == MATERIAL_INDEX_INVALID || m_subsurfaceMaterialIndex < MATERIAL_INDEX_MAX_VALUE);
 
     // data[0 - 3]
     writeGPUHelper(data, offset, flags);
@@ -686,7 +689,7 @@ struct RtOpaqueSurfaceMaterial {
     writeGPUHelperExplicit<2>(data, offset, m_tangentTextureIndex);
 
     // data[24-25]
-    writeGPUHelper(data, offset, m_subsurfaceMaterialIndex);
+    writeGPUHelper(data, offset, m_subsurfaceMaterialIndex < MATERIAL_INDEX_MAX_VALUE ? m_subsurfaceMaterialIndex : MATERIAL_INDEX_INVALID);
 
     // data[26]
     writeGPUHelperExplicit<2>(data, offset, m_samplerFeedbackStamp);
@@ -990,7 +993,7 @@ struct RtTranslucentSurfaceMaterial {
     updateCachedHash();
   }
 
-  void writeGPUData(unsigned char* data, std::size_t& offset, uint32_t surfaceIndex) const {
+  void writeGPUData(unsigned char* data, std::size_t& offset, uint32_t materialIndex) const {
     [[maybe_unused]] const std::size_t oldOffset = offset;
 
     // For decode process, see surface_material.h
@@ -1027,9 +1030,9 @@ struct RtTranslucentSurfaceMaterial {
     assert(m_refractiveIndex >= 1.0f && m_refractiveIndex <= 3.0f);
     writeGPUHelper(data, offset, glm::packHalf1x16(m_refractiveIndex));
 
-    // data[12-13]: sourceSurfaceMaterialIndex
-    assert(surfaceIndex <= SURFACE_INDEX_MAX_VALUE && "Surface index exceeds SURFACE_INDEX_MAX_VALUE for TranslucentSurfaceMaterial");
-    writeGPUHelperExplicit<4>(data, offset, static_cast<uint32_t>(surfaceIndex));
+    // data[12-13]: source material-table index
+    assert(materialIndex < MATERIAL_INDEX_MAX_VALUE);
+    writeGPUHelperExplicit<4>(data, offset, materialIndex < MATERIAL_INDEX_MAX_VALUE ? materialIndex : MATERIAL_INDEX_INVALID);
 
     // data[14-16]: emissiveColorConstant
     writeGPUHelper(data, offset, glm::packHalf1x16(m_emissiveColorConstant.x));
@@ -1559,7 +1562,7 @@ struct RtSurfaceMaterial {
     }
   }
 
-  void writeGPUData(unsigned char* data, std::size_t& offset, uint32_t surfaceIndex) const {
+  void writeGPUData(unsigned char* data, std::size_t& offset, uint32_t materialIndex) const {
     switch (m_type) {
     default:
       assert(false);
@@ -1569,7 +1572,7 @@ struct RtSurfaceMaterial {
       m_opaqueSurfaceMaterial.writeGPUData(data, offset);
       break;
     case RtSurfaceMaterialType::Translucent:
-      m_translucentSurfaceMaterial.writeGPUData(data, offset, surfaceIndex);
+      m_translucentSurfaceMaterial.writeGPUData(data, offset, materialIndex);
       break;
     case RtSurfaceMaterialType::RayPortal:
       m_rayPortalSurfaceMaterial.writeGPUData(data, offset);

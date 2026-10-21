@@ -1507,8 +1507,7 @@ namespace dxvk {
     }
   }
 
-  void AccelManager::dispatchPointInstancerCulling(Rc<DxvkContext> ctx, const CameraManager& cameraManager,
-                                                   const Rc<DxvkBuffer>& surfaceMaterialBuffer) {
+  void AccelManager::dispatchPointInstancerCulling(Rc<DxvkContext> ctx, const CameraManager& cameraManager) {
     if (m_pointInstancerBatches.empty() || m_vkInstanceBuffer == nullptr) {
       return;
     }
@@ -1535,7 +1534,7 @@ namespace dxvk {
     RtxPointInstancerSystem& system = m_device->getCommon()->metaPointInstancerSystem();
     const Vector3 cameraPos = cameraManager.getMainCamera().getPosition();
 
-    system.dispatchCulling(ctx, m_vkInstanceBuffer, m_surfaceBuffer, surfaceMaterialBuffer, m_pointInstancerBatches, cameraPos);
+    system.dispatchCulling(ctx, m_vkInstanceBuffer, m_surfaceBuffer, m_pointInstancerBatches, cameraPos);
   }
 
   void AccelManager::buildParticleSurfaceMapping(std::vector<uint32_t>& surfaceIndexMapping) {
@@ -1663,7 +1662,8 @@ namespace dxvk {
       } else {
         // Split instance geometry need to have their first index offset set in their corresponding surface instances
         currentSurface.firstIndex += m_reorderedSurfacesFirstIndexOffset[i];
-        currentSurface.writeGPUData(surfacesGPUData.data(), dataOffset, i);
+        // The material table is laid out per surface, so the material index equals the surface index
+        currentSurface.writeGPUData(surfacesGPUData.data(), dataOffset, i, i);
         currentSurface.firstIndex -= m_reorderedSurfacesFirstIndexOffset[i];
       }
 

@@ -130,7 +130,7 @@ PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionReadF
   if (cb.sssArgs.enableThinOpaque || cb.sssArgs.enableDiffusionProfile)
   {
     const uint primarySurfaceIndex = surfaceIndexTexture[compactedPosition];
-    const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surfaceMaterials[primarySurfaceIndex]);
+    const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surfaceMaterials[surfaces[primarySurfaceIndex].surfaceMaterialIndex]);
     const SubsurfaceMaterialInteraction subsurfaceMaterialInteraction = subSurfaceMaterialReadHelper(subsurfaceData[compactedPosition], subsurfaceDiffusionProfileData[compactedPosition]);
 
     polymorphicSurfaceMaterialInteraction.fdata5 = subsurfaceMaterialInteraction.measurementDistance;
