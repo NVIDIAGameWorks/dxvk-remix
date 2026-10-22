@@ -313,7 +313,13 @@ using MaterialInfoOpaque = Expected<remixapi_MaterialInfoOpaqueEXT>;
                                enableDlssControlMask, \
                                dlssControlMaskIntensity, \
                                dlssControlMaskToneStrength, \
-                               dlssControlMaskStructuralStrength
+                               dlssControlMaskStructuralStrength, \
+                               textureScrollRate, \
+                               textureScrollAngle, \
+                               textureScale_hasvalue, \
+                               textureScale_value, \
+                               textureOffset, \
+                               textureRotation
 void MaterialInfoOpaque::init() {
   sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_EXT;
   pNext = nullptr;
@@ -349,7 +355,13 @@ using MaterialInfoTranslucent = Expected<remixapi_MaterialInfoTranslucentEXT>;
                                     transmittanceMeasurementDistance, \
                                     thinWallThickness_hasvalue, \
                                     thinWallThickness_value, \
-                                    useDiffuseLayer
+                                    useDiffuseLayer, \
+                                    textureScrollRate, \
+                                    textureScrollAngle, \
+                                    textureScale_hasvalue, \
+                                    textureScale_value, \
+                                    textureOffset, \
+                                    textureRotation
 void MaterialInfoTranslucent::init() {
   sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_TRANSLUCENT_EXT;
   pNext = nullptr;

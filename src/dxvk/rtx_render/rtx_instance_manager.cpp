@@ -35,6 +35,7 @@
 #include "rtx_terrain_baker.h"
 
 #include "../d3d9/d3d9_state.h"
+#include "../../util/util_global_time.h"
 #include "rtx_matrix_helpers.h"
 #include "dxvk_scoped_annotation.h"
 
@@ -156,7 +157,7 @@ namespace dxvk {
   namespace {
     template<int RtInstanceSize> struct CheckRtInstanceSize {
       // The second line of the build error should contain the new size of RtInstance in the template argument, i.e. `dxvk::CheckRtInstanceSize<newSize>`
-      static_assert(RtInstanceSize == 776, "RtInstance size has changed.  Fix the copy constructor above this message, then update the expected size.");
+      static_assert(RtInstanceSize == 784, "RtInstance size has changed.  Fix the copy constructor above this message, then update the expected size.");
     };
     CheckRtInstanceSize<sizeof(RtInstance)> _rtInstanceSizeTest;
   }
@@ -1070,6 +1071,18 @@ namespace dxvk {
     
     // Updates done only once a frame unless overriden due to an explicit state
     if (isFirstUpdateThisFrame || overridePreviousCameraUpdate) {
+      // Read here because the camera override path also assigns the texture transform,
+      // and the patched material copy below is out of scope by then.
+      Vector2 textureScrollSpeed(0.f);
+      Vector2 textureScale(1.f);
+      Vector2 textureOffset(0.f);
+      float textureRotation = 0.f;
+
+      // Animated water and camera-space-normal texgen use only the captured mapping.
+      if (drawCall.getTransformData().texgenMode != TexGenMode::ViewNormals &&
+          !currentInstance.testCategoryFlags(InstanceCategories::AnimatedWater)) {
+        materialData->getTextureTransformData(textureScrollSpeed, textureScale, textureOffset, textureRotation);
+      }
 
       if (isFirstUpdateThisFrame) {
         currentInstance.m_materialType = materialData->getType();
@@ -1111,7 +1124,8 @@ namespace dxvk {
         currentInstance.surface.blendModeState = drawCall.getMaterialData().blendMode;
 
         materialData->getSpriteSheetData(currentInstance.surface.spriteSheetRows, currentInstance.surface.spriteSheetCols, currentInstance.surface.spriteSheetFPS);
-        currentInstance.m_isAnimated = currentInstance.surface.spriteSheetFPS != 0;
+        currentInstance.surface.textureScrollSpeed = textureScrollSpeed;
+        currentInstance.m_isAnimated = currentInstance.surface.spriteSheetFPS != 0 || currentInstance.surface.textureScrollSpeed != Vector2(0.f);
         currentInstance.surface.objectPickingValue = drawCall.drawCallID;
 
         // Temp storage for the case we need to patch the material data
@@ -1230,7 +1244,8 @@ namespace dxvk {
           currentInstance.m_blasDirty = true;
         }
 
-        currentInstance.surface.textureTransform = drawCall.getTransformData().textureTransform;
+        currentInstance.surface.textureTransform = composeTextureTransform(drawCall.getTransformData().textureTransform,
+                                                                           textureScale, textureOffset, textureRotation);
 
         currentInstance.surface.isStatic = !(hasTransformChanged || hasPreviousPositions) || currentInstance.m_materialType == MaterialDataType::RayPortal;
 
@@ -2167,7 +2182,11 @@ namespace dxvk {
     if (!bufferData.indexData || !bufferData.positionData || !bufferData.texcoordData)
       return;
 
-    const bool hasNonIdentityTextureTransform = instance.surface.textureTransform != Matrix4();
+    // The texcoords leave out the scroll offset, so that the opacity micromap hash stays stable
+    // the same way it does for spritesheet animation. The offset is only added to the shaded UVs.
+    const Matrix4& textureTransform = instance.surface.textureTransform;
+    const bool hasNonIdentityTextureTransform = textureTransform != Matrix4();
+    const Vector2 textureScrollOffset = instance.surface.getTextureScrollOffset(GlobalTime::get().absoluteTimeUs());
     bool bSuccess = true;
     bool areAllBillboardsValidIntersectionCandidates = true;
     uint32_t billboardCount = 0;
@@ -2208,8 +2227,9 @@ namespace dxvk {
 
         texcoords[idx] = bufferData.getTexCoord(currentIndex);
 
-        if (hasNonIdentityTextureTransform)
-          texcoords[idx] = (instance.surface.textureTransform * Vector4(texcoords[idx].x, texcoords[idx].y, 0.f, 1.f)).xy();
+        if (hasNonIdentityTextureTransform) {
+          texcoords[idx] = transformTexcoord(textureTransform, texcoords[idx]);
+        }
 
         if (bufferData.vertexColorData)
           vertexOpacities8bit[idx] = bufferData.getVertexColor(indices[idx]) >> 24;
@@ -2257,7 +2277,7 @@ namespace dxvk {
 
       const Vector2 xVectorUV { texcoords[2] - texcoords[1] };
       const Vector2 yVectorUV { texcoords[1] - texcoords[0] };
-      const Vector2 centerUV { (texcoords[2] + texcoords[0]) * 0.5f };
+      const Vector2 centerUV { (texcoords[2] + texcoords[0]) * 0.5f + textureScrollOffset };
 
       // Fill in data for the quad's last/4th vertex
       texcoords[3] = bufferData.getTexCoord(indices[5]);
@@ -2325,6 +2345,9 @@ namespace dxvk {
     if (!bufferData.indexData || !bufferData.positionData || !bufferData.texcoordData)
       return;
 
+    const Matrix4 textureTransform = instance.surface.getTextureTransform(GlobalTime::get().absoluteTimeUs());
+    const bool hasNonIdentityTextureTransform = textureTransform != Matrix4();
+
     // Extract the beams from the triangle strip.
     // Start by loading the first 2 indices.
     uint16_t indices[4];
@@ -2353,6 +2376,9 @@ namespace dxvk {
       for (int i = 0; i < 4; ++i) {
         positions[i] = bufferData.getPosition(indices[i]);
         texcoords[i] = bufferData.getTexCoord(indices[i]);
+        if (hasNonIdentityTextureTransform) {
+          texcoords[i] = transformTexcoord(textureTransform, texcoords[i]);
+        }
       }
 
       // Load one vertex color - assuming that the entire beam uses the same color

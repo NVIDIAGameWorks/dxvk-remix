@@ -67,6 +67,7 @@ Full guide: `documentation/CONTRIBUTING-style-guide.md`
   - Describe the code as it is now. Do not contrast the current state with a previous one, or explain a change.
   - Do not explain things that can easily understood from reading class, function, or variable names.
   - Focus on recording non-obvious interactions and pitfalls.
+  - Keep material parameter documentation in MDL. Reserve code comments about material parameters for implementation details.
   - If a long plain-english explanation of how a complicated set of systems interact is needed, that should go in a .md file in the `documentation/` folder.
     - Documentation about how to use a feature should be clearly separated from technical documenation about how a feature works.
     - In code comments should reference sections of that .md file, rather than repeating or trying to summarize.

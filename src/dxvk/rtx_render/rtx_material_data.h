@@ -32,6 +32,13 @@
 // Note: These material ranges and defaults should be kept in sync with the MDL ranges to prevent mismatching between how data is clamped.
 
 // clang-format off
+#define LIST_TEXTURE_TRANSFORM_CONSTANTS(X) \
+  X(TextureScrollRate,  texture_scroll_rate,  float,   -65504.f,         65504.f,         0.f) \
+  X(TextureScrollAngle, texture_scroll_angle, float,   -65504.f,         65504.f,         0.f) \
+  X(TextureScale,       texture_scale,        Vector2, Vector2(-65504.f), Vector2(65504.f), Vector2(1.f)) \
+  X(TextureOffset,      texture_offset,       Vector2, Vector2(-65504.f), Vector2(65504.f), Vector2(0.f)) \
+  X(TextureRotation,    texture_rotation,     float,   -65504.f,         65504.f,         0.f)
+
 #define LIST_OPAQUE_MATERIAL_TEXTURES(X) \
   /*Parameter Name,                          USD Token String,                     Type,       UNUSED...   Default Value */ \
   X(AlbedoOpacityTexture,                    diffuse_texture,                      TextureRef, void, void, {}) \
@@ -92,7 +99,8 @@
   X(EnableDLSSControlMask,            enable_dlss_control_mask,               bool,           false,                      true,                       true) \
   X(DLSSControlMaskIntensity,         dlss_control_mask_intensity,            float,          0.f,                        1.f,                        1.f) \
   X(DLSSControlMaskToneStrength,      dlss_control_mask_tone_strength,        float,          0.f,                        1.f,                        0.3f) \
-  X(DLSSControlMaskStructuralStrength, dlss_control_mask_structural_strength, float,          0.f,                        1.f,                        0.7f)
+  X(DLSSControlMaskStructuralStrength, dlss_control_mask_structural_strength, float,          0.f,                        1.f,                        0.7f) \
+  LIST_TEXTURE_TRANSFORM_CONSTANTS(X)
 
 #define LIST_OPAQUE_MATERIAL_PARAMS(X)\
   LIST_OPAQUE_MATERIAL_TEXTURES(X) \
@@ -129,7 +137,8 @@
   /* Sampler State */ \
   X(FilterMode,                       filter_mode,                        uint8_t,  lss::Mdl::Filter::Nearest,  lss::Mdl::Filter::Linear,  lss::Mdl::Filter::Linear)  \
   X(WrapModeU,                        wrap_mode_u,                        uint8_t,  lss::Mdl::WrapMode::Clamp,  lss::Mdl::WrapMode::Clip,  lss::Mdl::WrapMode::Repeat) \
-  X(WrapModeV,                        wrap_mode_v,                        uint8_t,  lss::Mdl::WrapMode::Clamp,  lss::Mdl::WrapMode::Clip,  lss::Mdl::WrapMode::Repeat)
+  X(WrapModeV,                        wrap_mode_v,                        uint8_t,  lss::Mdl::WrapMode::Clamp,  lss::Mdl::WrapMode::Clip,  lss::Mdl::WrapMode::Repeat) \
+  LIST_TEXTURE_TRANSFORM_CONSTANTS(X)
 
 #define LIST_TRANSLUCENT_MATERIAL_PARAMS(X)\
   LIST_TRANSLUCENT_MATERIAL_TEXTURES(X) \
@@ -319,6 +328,7 @@ namespace dxvk {
   REMIX_MATERIAL(RayPortalMaterial, LIST_PORTAL_MATERIAL_CONSTANTS, LIST_PORTAL_MATERIAL_TEXTURES, LIST_PORTAL_MATERIAL_PARAMS)
 }
 
+#undef LIST_TEXTURE_TRANSFORM_CONSTANTS
 #undef LIST_OPAQUE_MATERIAL_TEXTURES
 #undef LIST_OPAQUE_MATERIAL_CONSTANTS
 #undef LIST_OPAQUE_MATERIAL_PARAMS

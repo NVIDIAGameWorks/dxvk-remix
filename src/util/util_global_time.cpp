@@ -98,6 +98,10 @@ namespace dxvk {
     return m_currentUs / 1000;
   }
 
+  float GlobalTime::animationTimeSeconds() const {
+    return (static_cast<uint32_t>(absoluteTimeMs()) & ((1U << 24U) - 1U)) / 1000.f;
+  }
+
   // whole milliseconds since startup, ignoring deterministic time settings.
   uint64_t GlobalTime::realTimeSinceStartMs() const {
     // Note: this returns the actual time since the application started.  This should be used for profiling and metrics.

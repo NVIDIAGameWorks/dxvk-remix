@@ -62,7 +62,7 @@
 
 #define REMIXAPI_VERSION_MAJOR 0
 #define REMIXAPI_VERSION_MINOR 6
-#define REMIXAPI_VERSION_PATCH 5
+#define REMIXAPI_VERSION_PATCH 6
 
 
 // External
@@ -259,6 +259,13 @@ extern "C" {
     float               dlssControlMaskIntensity;
     float               dlssControlMaskToneStrength;
     float               dlssControlMaskStructuralStrength;
+
+    float               textureScrollRate;
+    float               textureScrollAngle;
+    remixapi_Bool       textureScale_hasvalue;
+    remixapi_Float2D    textureScale_value;
+    remixapi_Float2D    textureOffset;
+    float               textureRotation;
   } remixapi_MaterialInfoOpaqueEXT;
 
   // Valid only if remixapi_MaterialInfo contains remixapi_MaterialInfoOpaqueEXT in pNext chain
@@ -289,6 +296,13 @@ extern "C" {
     remixapi_Bool       thinWallThickness_hasvalue;
     float               thinWallThickness_value;
     remixapi_Bool       useDiffuseLayer;
+
+    float               textureScrollRate;
+    float               textureScrollAngle;
+    remixapi_Bool       textureScale_hasvalue;
+    remixapi_Float2D    textureScale_value;
+    remixapi_Float2D    textureOffset;
+    float               textureRotation;
   } remixapi_MaterialInfoTranslucentEXT;
 
   typedef struct remixapi_MaterialInfoPortalEXT {

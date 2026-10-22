@@ -335,7 +335,12 @@ namespace {
           src.getEnableDLSSControlMask(),
           src.getDLSSControlMaskIntensity(),
           src.getDLSSControlMaskToneStrength(),
-          src.getDLSSControlMaskStructuralStrength()
+          src.getDLSSControlMaskStructuralStrength(),
+          src.getTextureScrollRate(),
+          src.getTextureScrollAngle(),
+          src.getTextureScale(),
+          src.getTextureOffset(),
+          src.getTextureRotation()
         } };
       }
       case MaterialDataType::Translucent: 
@@ -359,7 +364,12 @@ namespace {
           src.getEnableDiffuseLayer(),
           src.getFilterMode(),
           src.getWrapModeU(),
-          src.getWrapModeV()
+          src.getWrapModeV(),
+          src.getTextureScrollRate(),
+          src.getTextureScrollAngle(),
+          src.getTextureScale(),
+          src.getTextureOffset(),
+          src.getTextureRotation()
         } };
       }
       case MaterialDataType::RayPortal:
@@ -385,6 +395,7 @@ namespace {
     }
 
     MaterialData toRtMaterialWithoutTexturePreload(const remixapi_MaterialInfo& info) {
+      const bool hasTextureTransform = s_apiVersion >= REMIXAPI_VERSION_MAKE(0, 6, 6);
       if (auto extOpaque = pnext::find<remixapi_MaterialInfoOpaqueEXT>(&info)) {
         auto extSubsurface = pnext::find<remixapi_MaterialInfoOpaqueSubsurfaceEXT>(&info);
         const bool hasDlssControlMask = s_apiVersion >= REMIXAPI_VERSION_MAKE(0, 6, 5);
@@ -438,6 +449,11 @@ namespace {
           hasDlssControlMask ? extOpaque->dlssControlMaskIntensity : 1.f,
           hasDlssControlMask ? extOpaque->dlssControlMaskToneStrength : 1.f,
           hasDlssControlMask ? extOpaque->dlssControlMaskStructuralStrength : 1.f,
+          hasTextureTransform ? extOpaque->textureScrollRate : 0.f,
+          hasTextureTransform ? extOpaque->textureScrollAngle : 0.f,
+          hasTextureTransform && extOpaque->textureScale_hasvalue ? tovec2(extOpaque->textureScale_value) : Vector2(1.f),
+          hasTextureTransform ? tovec2(extOpaque->textureOffset) : Vector2(0.f),
+          hasTextureTransform ? extOpaque->textureRotation : 0.f,
         } };
       }
       if (auto extTranslucent = pnext::find<remixapi_MaterialInfoTranslucentEXT>(&info)) {
@@ -460,6 +476,11 @@ namespace {
           info.filterMode,
           info.wrapModeU,
           info.wrapModeV,
+          hasTextureTransform ? extTranslucent->textureScrollRate : 0.f,
+          hasTextureTransform ? extTranslucent->textureScrollAngle : 0.f,
+          hasTextureTransform && extTranslucent->textureScale_hasvalue ? tovec2(extTranslucent->textureScale_value) : Vector2(1.f),
+          hasTextureTransform ? tovec2(extTranslucent->textureOffset) : Vector2(0.f),
+          hasTextureTransform ? extTranslucent->textureRotation : 0.f,
         } };
       }
       if (auto extPortal = pnext::find<remixapi_MaterialInfoPortalEXT>(&info)) {
