@@ -328,7 +328,13 @@ void MaterialInfo::_dtor() {
                                enableDlssControlMask, \
                                dlssControlMaskIntensity, \
                                dlssControlMaskToneStrength, \
-                               dlssControlMaskStructuralStrength
+                               dlssControlMaskStructuralStrength, \
+                               textureScrollRate, \
+                               textureScrollAngle, \
+                               textureScale_hasvalue, \
+                               textureScale_value, \
+                               textureOffset, \
+                               textureRotation
 uint32_t MaterialInfoOpaque::_calcSize() const {
   return fold_helper::calcSize(MaterialInfoOpaqueVars);
 }
@@ -378,7 +384,13 @@ void MaterialInfoOpaqueSubsurface::_dtor() {
                                     transmittanceMeasurementDistance, \
                                     thinWallThickness_hasvalue, \
                                     thinWallThickness_value, \
-                                    useDiffuseLayer
+                                    useDiffuseLayer, \
+                                    textureScrollRate, \
+                                    textureScrollAngle, \
+                                    textureScale_hasvalue, \
+                                    textureScale_value, \
+                                    textureOffset, \
+                                    textureRotation
 uint32_t MaterialInfoTranslucent::_calcSize() const {
   return fold_helper::calcSize(MaterialInfoTranslucentVars);
 }

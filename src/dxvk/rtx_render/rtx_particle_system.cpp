@@ -463,6 +463,9 @@ namespace dxvk {
       if(disableMaterialSpriteSheet) {
         // Disable the material spritesheet
         particleRenderMaterial.setSpriteSheetData(1, 1, 0);
+
+        // The particle UVs already select a sprite, so a material texture transform would sample the wrong part of the atlas.
+        particleRenderMaterial.resetTextureTransform();
       }
 
       auto pNewParticleSystem = std::make_shared<ParticleSystem>(desc, particleRenderMaterial, drawCallState.getMaterialData(), drawCallState.getCategoryFlags(), m_particleSystemCounter++);

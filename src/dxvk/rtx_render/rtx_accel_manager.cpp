@@ -32,6 +32,7 @@
 #include "rtx_point_instancer_system.h"
 
 #include "../d3d9/d3d9_state.h"
+#include "../../util/util_global_time.h"
 #include "rtx_matrix_helpers.h"
 
 #include "dxvk_scoped_annotation.h"
@@ -1650,6 +1651,7 @@ namespace dxvk {
     // Write surface data
     std::size_t dataOffset = 0;
     surfacesGPUData.resize(surfacesGPUSize);
+    const uint64_t timeUs = GlobalTime::get().absoluteTimeUs();
 
     for (uint32_t i = 0; i < m_reorderedSurfaces.size(); ++i) {
       const auto& currentInstance = *m_reorderedSurfaces[i];
@@ -1663,7 +1665,7 @@ namespace dxvk {
         // Split instance geometry need to have their first index offset set in their corresponding surface instances
         currentSurface.firstIndex += m_reorderedSurfacesFirstIndexOffset[i];
         // The material table is laid out per surface, so the material index equals the surface index
-        currentSurface.writeGPUData(surfacesGPUData.data(), dataOffset, i, i);
+        currentSurface.writeGPUData(surfacesGPUData.data(), dataOffset, i, timeUs, i);
         currentSurface.firstIndex -= m_reorderedSurfacesFirstIndexOffset[i];
       }
 

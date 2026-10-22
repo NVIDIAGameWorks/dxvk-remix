@@ -843,7 +843,9 @@ namespace dxvk {
     }
 
     const GeometryBufferData bufferData(geometryData);
-    const bool hasNonIdentityTextureTransform = instance.surface.textureTransform != Matrix4();
+    // The scroll offset is left out, the same way spritesheet animation is not baked.
+    const Matrix4& textureTransform = instance.surface.textureTransform;
+    const bool hasNonIdentityTextureTransform = textureTransform != Matrix4();
     const bool usesIndices = geometryData.usesIndices();
     const bool has16bitIndices = usesIndices ? geometryData.indexBuffer.indexType() == VK_INDEX_TYPE_UINT16 : false;
     const uint32_t subdivisionLevel = OpacityMicromapOptions::Building::subdivisionLevel();
@@ -905,7 +907,7 @@ namespace dxvk {
           texcoords[i] = bufferData.getTexCoord(index);
 
           if (hasNonIdentityTextureTransform) {
-            texcoords[i] = (instance.surface.textureTransform * Vector4(texcoords[i].x, texcoords[i].y, 0.f, 1.f)).xy();
+            texcoords[i] = transformTexcoord(textureTransform, texcoords[i]);
           }
         }
 

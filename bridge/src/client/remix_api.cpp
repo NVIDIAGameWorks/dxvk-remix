@@ -20,6 +20,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include <cstddef>
 #include <cstring>
 
 #include "log/log.h"
@@ -134,12 +135,13 @@ remixapi_ErrorCode REMIXAPI_CALL remixapi_CreateMaterial(
           auto* pOpaqueMat = static_cast<const remixapi_MaterialInfoOpaqueEXT* const>(infoItr);
           remixapi_MaterialInfoOpaqueEXT opaqueMat = { };
           if (g_appRemixApiVersion < REMIXAPI_VERSION_MAKE(0, 6, 5)) {
-            constexpr size_t kOpaqueMaterialInfoSizeAtVersion064 = 92;
-            std::memcpy(&opaqueMat, pOpaqueMat, kOpaqueMaterialInfoSizeAtVersion064);
+            std::memcpy(&opaqueMat, pOpaqueMat, offsetof(remixapi_MaterialInfoOpaqueEXT, enableDlssControlMask));
             opaqueMat.enableDlssControlMask = true;
             opaqueMat.dlssControlMaskIntensity = 1.f;
             opaqueMat.dlssControlMaskToneStrength = 1.f;
             opaqueMat.dlssControlMaskStructuralStrength = 1.f;
+          } else if (g_appRemixApiVersion < REMIXAPI_VERSION_MAKE(0, 6, 6)) {
+            std::memcpy(&opaqueMat, pOpaqueMat, offsetof(remixapi_MaterialInfoOpaqueEXT, textureScrollRate));
           } else {
             opaqueMat = *pOpaqueMat;
           }
@@ -157,8 +159,14 @@ remixapi_ErrorCode REMIXAPI_CALL remixapi_CreateMaterial(
         case REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_TRANSLUCENT_EXT:
         {
           auto* pTranslucentMat = static_cast<const remixapi_MaterialInfoTranslucentEXT* const>(infoItr);
+          remixapi_MaterialInfoTranslucentEXT translucentMat = { };
+          if (g_appRemixApiVersion < REMIXAPI_VERSION_MAKE(0, 6, 6)) {
+            std::memcpy(&translucentMat, pTranslucentMat, offsetof(remixapi_MaterialInfoTranslucentEXT, textureScrollRate));
+          } else {
+            translucentMat = *pTranslucentMat;
+          }
           send(c, Bool::True);
-          serializeAndSend<serialize::MaterialInfoTranslucent>(c, *pTranslucentMat);
+          serializeAndSend<serialize::MaterialInfoTranslucent>(c, translucentMat);
           break;
         }
         case REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_PORTAL_EXT:

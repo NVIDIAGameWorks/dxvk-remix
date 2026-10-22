@@ -213,6 +213,17 @@ namespace pnext_test_app {
     }
   }
 
+  template<typename T>
+  void test_materialTextureTransforms() {
+    auto material = T {};
+    if (material.textureScrollRate != 0.f || material.textureScrollAngle != 0.f || material.textureScale_hasvalue ||
+        material.textureScale_value.x != 1.f || material.textureScale_value.y != 1.f ||
+        material.textureOffset.x != 0.f || material.textureOffset.y != 0.f ||
+        material.textureRotation != 0.f) {
+      throw dxvk::DxvkError { ERROR_INTRO "Material wrapper must default to an identity texture transform" };
+    }
+  }
+
   namespace test_apiVersionOrdering {
     static_assert(REMIXAPI_VERSION_MAKE(0, 0, 0) < REMIXAPI_VERSION_MAKE(1, 0, 0));
     static_assert(REMIXAPI_VERSION_MAKE(0, 0, 0) < REMIXAPI_VERSION_MAKE(0, 1, 0));
@@ -232,6 +243,8 @@ int main() {
     pnext_test_app::test_getPNext();
     pnext_test_app::test_memberDetection();
     pnext_test_app::test_wrapper();
+    pnext_test_app::test_materialTextureTransforms<remix::MaterialInfoOpaqueEXT>();
+    pnext_test_app::test_materialTextureTransforms<remix::MaterialInfoTranslucentEXT>();
   }
   catch (const dxvk::DxvkError& error) {
     std::cerr << error.message() << std::endl;

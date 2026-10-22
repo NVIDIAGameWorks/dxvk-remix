@@ -3,6 +3,22 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.6]
+
+### Added
+- remixapi_MaterialInfoOpaqueEXT.textureScrollRate
+- remixapi_MaterialInfoOpaqueEXT.textureScrollAngle
+- remixapi_MaterialInfoOpaqueEXT.textureScale_hasvalue
+- remixapi_MaterialInfoOpaqueEXT.textureScale_value
+- remixapi_MaterialInfoOpaqueEXT.textureOffset
+- remixapi_MaterialInfoOpaqueEXT.textureRotation
+- remixapi_MaterialInfoTranslucentEXT.textureScrollRate
+- remixapi_MaterialInfoTranslucentEXT.textureScrollAngle
+- remixapi_MaterialInfoTranslucentEXT.textureScale_hasvalue
+- remixapi_MaterialInfoTranslucentEXT.textureScale_value
+- remixapi_MaterialInfoTranslucentEXT.textureOffset
+- remixapi_MaterialInfoTranslucentEXT.textureRotation
+
 ## [0.6.5]
 
 ### Added

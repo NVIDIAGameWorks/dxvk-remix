@@ -305,7 +305,13 @@ namespace remix {
       dlssControlMaskIntensity = 1.0f;
       dlssControlMaskToneStrength = 0.3f;
       dlssControlMaskStructuralStrength = 0.7f;
-      STATIC_ASSERT_SIZEOF(remixapi_MaterialInfoOpaqueEXT, 128);
+      textureScrollRate = 0.f;
+      textureScrollAngle = 0.f;
+      textureScale_hasvalue = false;
+      textureScale_value = { 1.f, 1.f };
+      textureOffset = { 0.f, 0.f };
+      textureRotation = 0.f;
+      STATIC_ASSERT_SIZEOF(remixapi_MaterialInfoOpaqueEXT, 160);
     }
 
     MaterialInfoOpaqueEXT(const MaterialInfoOpaqueEXT& other)
@@ -369,7 +375,7 @@ namespace remix {
       roughnessTexture = cpp_roughnessTexture.c_str();
       metallicTexture = cpp_metallicTexture.c_str();
       heightTexture = cpp_heightTexture.c_str();
-      STATIC_ASSERT_SIZEOF(remixapi_MaterialInfoOpaqueEXT, 128);
+      STATIC_ASSERT_SIZEOF(remixapi_MaterialInfoOpaqueEXT, 160);
     }
 
     std::filesystem::path cpp_roughnessTexture {};
@@ -481,7 +487,13 @@ namespace remix {
       thinWallThickness_hasvalue = false;
       thinWallThickness_value = 0.001f;
       useDiffuseLayer = false;
-      STATIC_ASSERT_SIZEOF(remixapi_MaterialInfoTranslucentEXT, 56);
+      textureScrollRate = 0.f;
+      textureScrollAngle = 0.f;
+      textureScale_hasvalue = false;
+      textureScale_value = { 1.f, 1.f };
+      textureOffset = { 0.f, 0.f };
+      textureRotation = 0.f;
+      STATIC_ASSERT_SIZEOF(remixapi_MaterialInfoTranslucentEXT, 88);
     }
 
     MaterialInfoTranslucentEXT(const MaterialInfoTranslucentEXT& other)
@@ -524,7 +536,7 @@ namespace remix {
   private:
     void cpp_fixPointers() {
       transmittanceTexture = cpp_transmittanceTexture.c_str();
-      STATIC_ASSERT_SIZEOF(remixapi_MaterialInfoTranslucentEXT, 56);
+      STATIC_ASSERT_SIZEOF(remixapi_MaterialInfoTranslucentEXT, 88);
     }
 
     std::filesystem::path cpp_transmittanceTexture {};

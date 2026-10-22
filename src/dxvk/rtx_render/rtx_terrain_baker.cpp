@@ -683,7 +683,12 @@ namespace dxvk {
       true,
       1.f,
       0.4f,
-      0.8f
+      0.8f,
+      0.f, // TextureScrollRate
+      0.f, // TextureScrollAngle
+      Vector2(1.f), // TextureScale
+      Vector2(0.f), // TextureOffset
+      0.f          // TextureRotation
     ));
 
     m_hasInitializedMaterialDataThisFrame = true;

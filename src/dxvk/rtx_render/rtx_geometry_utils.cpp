@@ -509,7 +509,8 @@ namespace dxvk {
     // Fill out the arguments
     BakeOpacityMicromapArgs args {};
     size_t surfaceWriteOffset = 0;
-    instance.surface.writeGPUData(&args.surface[0], surfaceWriteOffset);
+    // Time 0 bakes without the scroll offset, the same way spritesheet animation is not baked.
+    instance.surface.writeGPUData(&args.surface[0], surfaceWriteOffset, SIZE_MAX, 0);
     args.numTriangles = desc.numTriangles;
     args.numMicroTrianglesPerTriangle = desc.numMicroTrianglesPerTriangle;
     args.is2StateOMMFormat = desc.ommFormat == VK_OPACITY_MICROMAP_FORMAT_2_STATE_EXT;

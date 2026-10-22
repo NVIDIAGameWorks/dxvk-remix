@@ -181,6 +181,52 @@ export material AperturePBR_Opacity(
     anno::description("Number of row the spritesheet across all textures is divided into."),
     anno::in_group("Animation")
   ]],
+  // -------------------- TEXTURE TRANSFORM ----------------------
+  uniform float texture_scroll_rate = 0.0f
+  [[
+    anno::display_name("Texture Scroll Rate"),
+    anno::description("UV offset speed for all textures in UV units per second. For horizontal or vertical scrolling with Repeat wrapping, 0.5 loops the texture every 2 seconds. 0 disables scrolling. Negative values reverse the direction. Visible texture features move opposite the UV offset. Used by the Runtime."),
+    anno::hard_range(-65504.0, 65504.0),
+    anno::soft_range(-1.0, 1.0),
+    anno::in_group("Texture Transform"),
+    anno::unused()
+  ]],
+  uniform float texture_scroll_angle = 0.0f
+  [[
+    anno::display_name("Texture Scroll Angle"),
+    anno::description("Direction of the scrolling UV offset in degrees: 0 is positive U, 90 is positive V, and -90 is negative V. In a normal UV setup, 0 points right and increasing angles turn clockwise. Angles repeat every 360 degrees. Positive V points down the image. Used by the Runtime."),
+    anno::hard_range(-65504.0, 65504.0),
+    anno::soft_range(0.0, 360.0),
+    anno::in_group("Texture Transform"),
+    anno::unused()
+  ]],
+  uniform float2 texture_scale = float2(1.0f)
+  [[
+    anno::display_name("Texture Scale"),
+    anno::description("Per-axis UV scale applied before rotation: X scales U, Y scales V. (1, 1) preserves scale. Magnitudes below 1 enlarge the texture, above 1 shrink it. A negative X value mirrors the texture around its left border. A negative Y value mirrors it around its top border. 0 collapses that axis before rotation. UVs outside 0-1 follow the U/V wrap modes (repeat by default). Used by the Runtime."),
+    anno::hard_range(float2(-65504.0), float2(65504.0)),
+    anno::soft_range(float2(0.0), float2(10.0)),
+    anno::in_group("Texture Transform"),
+    anno::unused()
+  ]],
+  uniform float2 texture_offset = float2(0.0f)
+  [[
+    anno::display_name("Texture Offset"),
+    anno::description("Static sampling offset for all textures in UV units, added after scale and rotation. (0, 0) adds no offset. Positive V points down the image. Visible texture features move opposite the sampling offset. Used by the Runtime."),
+    anno::hard_range(float2(-65504.0), float2(65504.0)),
+    anno::soft_range(float2(-1.0), float2(1.0)),
+    anno::in_group("Texture Transform"),
+    anno::unused()
+  ]],
+  uniform float texture_rotation = 0.0f
+  [[
+    anno::display_name("Texture Rotation"),
+    anno::description("Sampling rotation for all textures in degrees around the UV origin, which is the image's top-left corner, after scale and before offset. Positive angles rotate +U toward +V, which points down the image. Angles repeat every 360 degrees. 0 preserves orientation. Used by the Runtime."),
+    anno::hard_range(-65504.0, 65504.0),
+    anno::soft_range(-180.0, 180.0),
+    anno::in_group("Texture Transform"),
+    anno::unused()
+  ]],
   // -------------------- REMIX FLAGS ----------------------
   uniform bool preload_textures = false
   [[
