@@ -105,7 +105,7 @@ namespace dxvk {
       RTX_OPTION("rtx.spatiallyHashedRadianceCache", float, perceptualRoughnessThreshold, 0.4f,
                  "Minimum perceptual roughness applied to secondary vertices during SHaRC update tracing.\n"
                  "Higher values reduce sharp, view-dependent radiance in the cache but can lose glossy lighting detail.");
-      RTX_OPTION("rtx.spatiallyHashedRadianceCache", float, fireflyClampMultiplier, 10.f,
+      RTX_OPTION("rtx.spatiallyHashedRadianceCache", float, fireflyClampMultiplier, 100.f,
                  "Limits non-emissive lighting at SHaRC update hits and sky radiance on misses to this multiple of the resolved mean at the current or last hit cell.\n"
                  "Set to 0 to disable clamping. Cells without valid resolved radiance are not clamped.");
       RTX_OPTION("rtx.spatiallyHashedRadianceCache", uint32_t, jitterSequenceLength, 128,
