@@ -213,6 +213,29 @@ static void testOrphanSweepOnPureDeletionReload() {
   Logger::info("testOrphanSweepOnPureDeletionReload passed");
 }
 
+// Secret replacements parsed into the scratch table must reach the live table, and a
+// filtered hot-reload (which skips the secret pass) must not erase them.
+static void testSecretReplacementsSurviveMerge() {
+  constexpr XXH64_hash_t kAsset = 0xc728cfe75526c741;
+  AssetReplacements live, scratch;
+  scratch.storeObject(kAsset, SecretReplacement{ "Storage Cubes", "Ice", "", 0x1234, kAsset,
+                                                 "./SubUSDs/x.usd", true, true, 1 });
+  AssetChanges initial;
+  live.mergeFrom(std::move(scratch), initial);
+  if (live.secretReplacements().count(kAsset) == 0) {
+    throw DxvkError("secret replacements must be merged into the live table");
+  }
+
+  AssetReplacements filtered;
+  AssetChanges hot;
+  hot.dirtyMeshHashes = { 0x1111 };
+  live.mergeFrom(std::move(filtered), hot);
+  if (live.secretReplacements().count(kAsset) == 0) {
+    throw DxvkError("filtered hot-reload must not erase secret replacements");
+  }
+  Logger::info("testSecretReplacementsSurviveMerge passed");
+}
+
 // Simulates modify+undo: two hot-reloads where a standalone material was never
 // dirty — it must survive both.
 static void testModifyUndoCyclePreservesStandaloneMat() {
@@ -1217,6 +1240,7 @@ int main() {
     dxvk::testStandaloneMatSurvivesHotReload();
     dxvk::testDeletedMatErasedFromCache();
     dxvk::testOrphanSweepOnPureDeletionReload();
+    dxvk::testSecretReplacementsSurviveMerge();
     dxvk::testModifyUndoCyclePreservesStandaloneMat();
     dxvk::testSeedMaterialsFromReusesUnchangedMaterial();
     dxvk::testSeedMaterialsFromExcludesDirtyHashes();
