@@ -22,7 +22,6 @@ import time
 import hashlib
 from typing import Any, Callable, Union
 
-
 RENAME_RETRY_COUNT = 100
 RENAME_RETRY_DELAY = 0.1
 
@@ -142,7 +141,7 @@ def generate_sha256_for_file(file_path: Union[str, os.PathLike]) -> str:
 
 
 def install_common_module(package_path, install_path):
-    COMMON_SHA256 = "ec6d8f2b2583a0f63dbc1e84366e198cc875afaec29f7d36e343d8887289ed43"
+    COMMON_SHA256 = "d6c75a6112b9c341b6f024bef3e141ac24287f20746956860365df103b9a3faa"
     package_sha256 = generate_sha256_for_file(package_path)
     if package_sha256 != COMMON_SHA256:
         raise RuntimeError(
