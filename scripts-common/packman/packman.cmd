@@ -1,9 +1,13 @@
-:: RUN_PM_MODULE must always be at the same spot for packman update to work (batch reloads file during update!) 
-:: [xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx]
-:: Reset errorlevel status (don't inherit from caller) 
+:: SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+:: SPDX-License-Identifier: Apache-2.0
+:: pad [x]
 @call :ECHO_AND_RESET_ERROR
 
-:: You can remove this section if you do your own manual configuration of the dev machines
+set PM_PACKMAN_VERSION=8.7.0
+set PM_PYTHON_VERSION=3.12.15-nv1-pf-windows-x86_64
+set PM_PACKMAN_COMMON_SHA256=d6c75a6112b9c341b6f024bef3e141ac24287f20746956860365df103b9a3faa
+
+:: Optional configuration for local dev
 call :CONFIGURE
 if %errorlevel% neq 0 ( exit /b %errorlevel% )
 
@@ -21,8 +25,9 @@ if "%1"=="install" goto :SET_VAR_PATH
 if %errorlevel% neq 0 ( exit /b %errorlevel% )
 
 :: Marshall environment variables into the current environment if they have been generated and remove temporary file
+if not defined PM_VAR_PATH_ARG goto :eof
 if exist "%PM_VAR_PATH%" (
-	for /F "usebackq tokens=*" %%A in ("%PM_VAR_PATH%") do set "%%A"
+	for /F "usebackq tokens=*" %%A in (`findstr /R /X "PM_[A-Za-z0-9_]*=.*" "%PM_VAR_PATH%"`) do set "%%A"
 )
 if %errorlevel% neq 0 ( goto :VAR_ERROR )
 
@@ -36,11 +41,11 @@ goto :eof
 
 :: Subroutines below
 :PYTHON_ENV_ERROR
-@echo User environment variable PM_PYTHON is not set! Please configure machine for packman or call configure.bat.
+@echo User environment variable PM_PYTHON is not set! Please configure machine for packman or call configure.ps1.
 exit /b 1
 
 :MODULE_ENV_ERROR
-@echo User environment variable PM_MODULE is not set! Please configure machine for packman or call configure.bat.
+@echo User environment variable PM_MODULE is not set! Please configure machine for packman or call configure.ps1.
 exit /b 1
 
 :VAR_ERROR
@@ -75,11 +80,17 @@ if %errorlevel% equ 0 (
 :: trim leading space (this is safe even when PM_OLD_CODE_PAGE has not been set)
 set PM_OLD_CODE_PAGE=%PM_OLD_CODE_PAGE:~1%
 if "%PM_OLD_CODE_PAGE%" equ "65001" (
-	chcp 437 > nul
-	set PM_RESTORE_CODE_PAGE=1
+	chcp 437 > nul 2>&1 && set PM_RESTORE_CODE_PAGE=1
 )
-call "%~dp0\bootstrap\configure.bat"
-set PM_CONFIG_ERRORLEVEL=%errorlevel%
+:: Capture configure.ps1 stdout directly via `for /f` instead of a shared file since those get messy
+:: and we can run into race conditions. The trailing `&& echo PM_CONFIGURE_OK=1` sentinel lets us
+:: recover the exit status that `for /f` would otherwise swallow.
+set PM_CONFIG_ERRORLEVEL=1
+for /f "delims=" %%A in ('powershell -ExecutionPolicy ByPass -NoLogo -NoProfile -File "%~dp0\bootstrap\configure.ps1" -PackmanVersion "%PM_PACKMAN_VERSION%" -PythonVersion "%PM_PYTHON_VERSION%" -PackmanCommonSha256 "%PM_PACKMAN_COMMON_SHA256%" ^&^& echo PM_CONFIGURE_OK^=1') do set "%%A"
+if defined PM_CONFIGURE_OK (
+	set PM_CONFIG_ERRORLEVEL=0
+	set "PM_CONFIGURE_OK="
+)
 if defined PM_RESTORE_CODE_PAGE (
 	:: Restore code page
 	chcp %PM_OLD_CODE_PAGE% > nul
