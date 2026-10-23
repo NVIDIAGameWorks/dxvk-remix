@@ -70,6 +70,11 @@ namespace bridge_util {
       }
     }
 
+    static NamedSemaphore* createPresent(const size_t framesAhead) {
+      // A serialized present can complete before the client consumes its next credit.
+      return new NamedSemaphore("Present", framesAhead, framesAhead + 1);
+    }
+
     ~NamedSemaphore() {
       CloseHandle(ghSemaphore);
     }

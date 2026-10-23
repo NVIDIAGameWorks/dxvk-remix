@@ -164,6 +164,19 @@ namespace {
     check(pState->streamSource(SentState::kStreams, 3, 0, 32), "An out-of-range stream must be sent.");
     check(pState->streamSourceFreq(0, 1), "The first stream frequency must be sent.");
     check(!pState->streamSourceFreq(0, 1), "An unchanged stream frequency must be dropped.");
+
+    check(pState->streamSource(1, 4, 0, 16), "The second stream must be sent.");
+    check(pState->indices(5), "The first index buffer must be sent.");
+    pState->invalidateStreamSource(0);
+    check(pState->streamSource(0, 3, 64, 16), "Stream zero must be rebound after a UP draw.");
+    check(!pState->streamSource(1, 4, 0, 16), "A UP draw must keep other stream bindings.");
+    check(!pState->streamSourceFreq(0, 1), "A UP draw must keep the stream frequency.");
+    check(!pState->indices(5), "A non-indexed UP draw must keep the index binding.");
+    pState->invalidateStreamSource(0);
+    pState->invalidateIndices();
+    check(pState->streamSource(0, 3, 64, 16), "Stream zero must be rebound after an indexed UP draw.");
+    check(pState->indices(5), "The index buffer must be rebound after an indexed UP draw.");
+    check(!pState->indices(5), "The rebound index buffer must be cached again.");
   }
 }
 

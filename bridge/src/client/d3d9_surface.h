@@ -94,9 +94,9 @@ private:
   /*** Lock/Unlock Functionality ***/
   bool m_isBackBuffer;
   bool lock(D3DLOCKED_RECT& lockedRect, const RECT* pRect, const DWORD& flags);
-  void unlock();
+  HRESULT unlock();
   static RECT resolveLockInfoRect(const RECT* const pRect, const D3DSURFACE_DESC& desc);
   void* getBufPtr(const int pitch, const RECT& rect);
-  void sendDataToServer(const LockInfo& lockInfo) const;
+  HRESULT sendDataToServer(const LockInfo& lockInfo) const;
   static std::tuple<size_t, size_t> getRectDimensions(const RECT& box);
 };

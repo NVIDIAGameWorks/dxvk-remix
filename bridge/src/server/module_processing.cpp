@@ -335,6 +335,7 @@ void processModuleCommandQueue(std::atomic<bool>* const pbSignalEnd) {
         break;
       }
     }
+    ModuleBridge::publishReadPos();
   }
   // Check if we exited the command processing loop unexpectedly while the bridge is still enabled
   if (!destroyReceived && gbBridgeRunning) {

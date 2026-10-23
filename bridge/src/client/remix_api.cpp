@@ -502,7 +502,7 @@ extern "C" {
         return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
       }
       status = static_cast<remixapi_ErrorCode>(DeviceBridge::get_data());
-      DeviceBridge::pop_front();
+      DeviceBridge::consumeResponse();
     }
     if (status != REMIXAPI_ERROR_CODE_SUCCESS) {
       return status;

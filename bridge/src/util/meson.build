@@ -65,6 +65,7 @@ util_header = files([
 	'util_semaphore.h',
 	'util_serializable.h',
 	'util_serializer.h',
+	'util_sharedheap_allocator.h',
 	'util_sharedmemory.h',
 	'util_singleton.h',
 	'util_texture_and_volume.h',

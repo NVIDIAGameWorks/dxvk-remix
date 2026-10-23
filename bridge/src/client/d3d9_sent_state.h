@@ -107,6 +107,14 @@ public:
     m_scissor.gen = 0;
   }
 
+  void invalidateStreamSource(uint32_t stream) {
+    m_streams[stream].gen = 0;
+  }
+
+  void invalidateIndices() {
+    m_indices.gen = 0;
+  }
+
   bool renderState(uint32_t state, DWORD value) {
     // These render states carry driver hacks such as RESZ, ATOC and NVDB, so they are always sent.
     if (state >= kRenderStates || state == D3DRS_POINTSIZE ||

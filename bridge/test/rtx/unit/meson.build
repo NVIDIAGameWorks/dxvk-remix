@@ -34,7 +34,7 @@ tests += executable(
     win_subsystem : 'console')
 
 # Bridge Logic Tests
-logic_tests = [ 'sent_state', 'query_results', 'ipc_queue_wait', 'upload_parts' ]
+logic_tests = [ 'sent_state', 'query_results', 'ipc_queue_wait', 'upload_parts', 'present_semaphore', 'response_lifetime', 'shared_heap_allocator' ]
 foreach name : logic_tests
   logic_exe = executable(
       'test_' + name + '_' + name_suff,  files('test_' + name + '.cpp'),
@@ -67,7 +67,7 @@ endif
 
 # Remix API Bridge App Tests
 # Each x86 app runs against the client and server from a regular bridge build in _output.
-bridge_app_tests = [ 'remix_api_init_order', 'remix_api_device_registration' ]
+bridge_app_tests = [ 'remix_api_init_order', 'remix_api_device_registration', 'sent_state_device', 'query_event_device', 'shared_heap_upload_device' ]
 if (cpu_family == 'x86')
 foreach name : bridge_app_tests
   tests += executable(
@@ -85,6 +85,20 @@ foreach name : bridge_app_tests
                '--executablesDir', meson.current_build_dir(),
                '--bridgeDir', join_paths(meson.global_source_root(), '_output'),
                '--artifactDir', join_paths(meson.global_build_root(), 'test_artifacts', name) ],
+       is_parallel : name != 'shared_heap_upload_device',
+       timeout : 300)
+endforeach
+foreach resource : [ 'surface', 'vb', 'ib' ]
+  name = 'shared_heap_upload_device_oom_' + resource
+  test(name,
+       python,
+       args : [join_paths(meson.current_source_dir(), 'test_remix_api_bridge_app.py'),
+               '--testExe', 'test_shared_heap_upload_device_x86.exe',
+               '--executablesDir', meson.current_build_dir(),
+               '--bridgeDir', join_paths(meson.global_source_root(), '_output'),
+               '--artifactDir', join_paths(meson.global_build_root(), 'test_artifacts', name) ],
+       env : { 'REMIX_SHARED_UPLOAD_TEST_CASE' : 'oom_' + resource },
+       is_parallel : false,
        timeout : 300)
 endforeach
 endif

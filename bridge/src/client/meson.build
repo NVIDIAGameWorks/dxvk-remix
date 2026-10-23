@@ -68,6 +68,7 @@ d3d9_header = files([
   'd3d9_pixelshader.h',
   'd3d9_privatedata.h',
   'd3d9_query.h',
+  'd3d9_query_result.h',
   'd3d9_resource.h',
   'd3d9_surface.h',
   'd3d9_surfacebuffer_helper.h',

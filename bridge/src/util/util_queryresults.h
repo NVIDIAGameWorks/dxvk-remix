@@ -43,9 +43,6 @@ namespace bridge_util {
   struct QuerySharedBlock {
     static constexpr uint32_t kMaxSlots = 4096;
 
-    // Holds the UID of the last IDirect3DQuery9::Issue that the server executed.
-    std::atomic<uint32_t> issuedProcessedUid;
-    uint32_t pad[15];
     QueryResultSlot slots[kMaxSlots];
   };
 
@@ -65,8 +62,4 @@ namespace bridge_util {
     // Sequence numbers are never 0, because 0 marks an unanswered slot.
     static uint32_t nextSeq();
   };
-
-  inline bool uidReached(uint32_t a, uint32_t b) {
-    return static_cast<int32_t>(a - b) >= 0;
-  }
 }

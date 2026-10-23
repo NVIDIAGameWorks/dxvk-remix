@@ -135,8 +135,7 @@ namespace bridge_util {
   std::vector<Config::AppDefaultConfig> Config::appDefaultConfigs = {
     { "Source Engine", R"(\\hl2\.exe$)", {
       { "presentSemaphoreMaxFrames", "1" },
-      // The server logs failed creates instead.
-      { "sendCreateFunctionServerResponses", "False" }
+      { "sendCreateFunctionServerResponses", "True" }
     }}
   };
 

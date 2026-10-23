@@ -45,7 +45,7 @@ extern bool gbBridgeRunning;
 
 #define POP_BRIDGE_COMMAND_QUEUE() \
   { \
-    DeviceBridge::pop_front(); \
+    DeviceBridge::consumeResponse(); \
   }
 
 #define WAIT_FOR_OPTIONAL_SERVER_RESPONSE(func, value, uidVal) \
@@ -53,7 +53,7 @@ extern bool gbBridgeRunning;
     if (GlobalOptions::getSendAllServerResponses()) { \
       WAIT_FOR_SERVER_RESPONSE(func, value, uidVal) \
       HRESULT res = (HRESULT) DeviceBridge::get_data(); \
-      DeviceBridge::pop_front(); \
+      DeviceBridge::consumeResponse(); \
       return  res; \
     } else { \
       return D3D_OK; \
@@ -65,7 +65,7 @@ extern bool gbBridgeRunning;
     if (GlobalOptions::getSendCreateFunctionServerResponses() || GlobalOptions::getSendAllServerResponses()) { \
       WAIT_FOR_SERVER_RESPONSE(func, value, uidVal) \
       HRESULT res = (HRESULT) DeviceBridge::get_data(); \
-      DeviceBridge::pop_front(); \
+      DeviceBridge::consumeResponse(); \
       return  res; \
     } else { \
       return D3D_OK; \
@@ -108,34 +108,30 @@ public:
   //=========================//
   // Channel reading methods //
   //=========================//
-  static inline const DataT& get_data() {
+  static inline DataT get_data() {
     ZoneScoped;
-    const Bridge::DataT& retval = getReaderChannel().data->pull();
-    publishReadPos();
-    return retval;
+    return getReaderChannel().data->pull();
   }
 
-  static inline const DataT& get_data(void** obj) {
+  // The borrowed storage remains valid until consumeResponse() or post-dispatch publication.
+  static inline DataT get_data(void** obj) {
     ZoneScoped;
-    const Bridge::DataT& retval = getReaderChannel().data->pull(obj);
-    publishReadPos();
-    return retval;
+    return getReaderChannel().data->pull(obj);
   }
 
   template<typename T>
-  static inline const size_t& copy_data(T& obj, bool checkSize = true) {
+  static inline size_t copy_data(T& obj, bool checkSize = true) {
     ZoneScoped;
-    const DataT& retval = getReaderChannel().data->pull_and_copy(obj);
+    const DataT size = getReaderChannel().data->pull_and_copy(obj);
 
     if (checkSize) {
-      assert((size_t) retval == sizeof(T) && "Size of source and target object does not match!");
-      if ((size_t) retval != sizeof(T)) {
+      assert((size_t) size == sizeof(T) && "Size of source and target object does not match!");
+      if ((size_t) size != sizeof(T)) {
         Logger::err("DataQueue copy data: Size of source and target object does not match!");
       }
     }
 
-    publishReadPos();
-    return retval;
+    return size;
   }
 
   static inline size_t get_data_pos() {
@@ -147,18 +143,19 @@ public:
     return getReaderChannel().data->get_abs_pos();
   }
 
-  // Tells the writer how far this reader has consumed (syncDataQueue). The device server publishes once per command
-  // instead (main.cpp); its reads are too frequent for a shared store each.
+  // Publishes only after all borrowed data in the command has been consumed.
   static inline void publishReadPos() {
-#ifdef REMIX_BRIDGE_CLIENT
-    constexpr bool perRead = true;
-#else
-    constexpr bool perRead = !std::is_same_v<BridgeId, ::BridgeId::Device>;
-#endif
-    if constexpr (perRead) {
-      getReaderChannel().serverDataPos->store((int64_t) get_data_abs_pos(), std::memory_order_relaxed);
+    const auto& channel = getReaderChannel();
+    const int64_t readPos = (int64_t) get_data_abs_pos();
+    channel.serverDataPos->store(readPos, std::memory_order_release);
+    const int64_t expectedPos = channel.clientDataExpectedPos->load(std::memory_order_acquire);
+    if (expectedPos != -1 && readPos >= expectedPos) {
+      channel.dataSemaphore->release(1);
     }
   }
+
+  // Client responses keep their header queued until the last use of borrowed data.
+  static Header consumeResponse();
 
   static inline bridge_util::Result begin_read_data() {
     ZoneScoped;

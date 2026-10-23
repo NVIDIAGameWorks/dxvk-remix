@@ -67,7 +67,17 @@ void Direct3DDevice9Ex_LSS<EnableSync>::onDestroy() {
   // At this point the underlying d3d9 device's refcount should be 0 and device released
   assert(getRef<D3DRefCounted::Ref::Object>() == 0 &&
          "Destroying an LSS device object with underlying D3D9 object refcount > 0!");
-   ClientMessage c { Commands::IDirect3DDevice9Ex_Destroy, getId() };
+  UID currentUID = 0;
+  {
+    ClientMessage c { Commands::IDirect3DDevice9Ex_Destroy, getId() };
+    currentUID = c.get_uid();
+  }
+  // The caller can destroy its window once Release returns, so all queued presents must finish first.
+  if (gbBridgeRunning &&
+      DeviceBridge::waitForCommandAndDiscard(Commands::Bridge_Ack, GlobalOptions::getAckTimeout(),
+                                             nullptr, true, currentUID) != Result::Success) {
+    Logger::warn("Server did not acknowledge device destruction before the client released it.");
+  }
 }
 
 template<bool EnableSync>
@@ -181,7 +191,7 @@ UINT Direct3DDevice9Ex_LSS<EnableSync>::GetAvailableTextureMem() {
   WAIT_FOR_SERVER_RESPONSE("GetAvailableTextureMem()", 0, currentUID);
   // Available memory in MB
   UINT mem = (UINT) DeviceBridge::get_data();
-  DeviceBridge::pop_front();
+  DeviceBridge::consumeResponse();
 
   return mem;
 }
@@ -240,7 +250,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::internalGetDeviceCaps(D3DCAPS9* pCaps
       hresult = D3DERR_INVALIDCALL;
     }
   }
-  DeviceBridge::pop_front();
+  DeviceBridge::consumeResponse();
 
   return hresult;
 }
@@ -283,7 +293,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::GetDisplayMode(UINT iSwapChain, D3DDI
       hresult = D3DERR_INVALIDCALL;
     }
   }
-  DeviceBridge::pop_front();
+  DeviceBridge::consumeResponse();
   return hresult;
 }
 
@@ -345,7 +355,7 @@ BOOL Direct3DDevice9Ex_LSS<EnableSync>::ShowCursor(BOOL bShow) {
   }
   WAIT_FOR_SERVER_RESPONSE("ShowCursor()", false, currentUID);
   BOOL prevShow = (BOOL) DeviceBridge::get_data();
-  DeviceBridge::pop_front();
+  DeviceBridge::consumeResponse();
 
   return prevShow;
 }
@@ -442,7 +452,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::Reset(D3DPRESENT_PARAMETERS* pPresent
         Logger::err("Direct3DDevice9Ex_LSS::Reset() failed with : no response from server.");
       }
       res = (HRESULT) DeviceBridge::get_data();
-      DeviceBridge::pop_front();
+      DeviceBridge::consumeResponse();
       }
 
     // Reset swapchain and link server backbuffer/depth buffer after the server reset its swapchain, or we will link to the old backbuffer/depth resources
@@ -482,6 +492,31 @@ HRESULT syncOnPresent() {
     }
   }
   return S_OK;
+}
+
+// Requires gPresentMutex to be held by the caller.
+HRESULT waitForPendingPresents() {
+  if (!gbBridgeRunning || !GlobalOptions::getPresentSemaphoreEnabled()) {
+    return S_OK;
+  }
+
+  const size_t framesAhead = GlobalOptions::getPresentSemaphoreMaxFrames();
+  size_t acquiredCredits = 0;
+  HRESULT result = S_OK;
+  while (acquiredCredits < framesAhead) {
+    result = syncOnPresent();
+    if (result != S_OK) {
+      break;
+    }
+    ++acquiredCredits;
+  }
+
+  // Collecting every credit drains serialized presents. Restore them for other swapchains.
+  if (acquiredCredits) {
+    gpPresent->release(static_cast<LONG>(acquiredCredits));
+  }
+
+  return result;
 }
 
 template<bool EnableSync>
@@ -965,9 +1000,9 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetRenderTarget(DWORD RenderTargetInd
   auto* const pLssRenderTarget = bridge_cast<Direct3DSurface9_LSS*>(pRenderTarget);
   UID currentUID = 0;
   {
+    BRIDGE_DEVICE_LOCKGUARD();
     UID id = 0;
     {
-      BRIDGE_DEVICE_LOCKGUARD();
       if (pLssRenderTarget) {
         m_state.renderTargets[RenderTargetIndex] = MakeD3DAutoPtr(pLssRenderTarget);
         id = pLssRenderTarget->getId();
@@ -983,7 +1018,6 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetRenderTarget(DWORD RenderTargetInd
     }
     // Setting render target 0 resets the viewport and the scissor rect on the server.
     if (RenderTargetIndex == 0) {
-      BRIDGE_DEVICE_LOCKGUARD();
       m_sentState.invalidateViewportAndScissor();
     }
   }
@@ -2280,7 +2314,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetSoftwareVertexProcessing(BOOL bSof
   WAIT_FOR_SERVER_RESPONSE("SetSoftwareVertexProcessing()", D3DERR_INVALIDCALL, currentUID);
 
   HRESULT hresult = DeviceBridge::get_data();
-  DeviceBridge::pop_front();
+  DeviceBridge::consumeResponse();
 
   return hresult;
 }
@@ -2359,15 +2393,19 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::DrawPrimitiveUP(D3DPRIMITIVETYPE Prim
   LogFunctionCall();
   UID currentUID = 0;
   {
-    ClientMessage c(Commands::IDirect3DDevice9Ex_DrawPrimitiveUP, getId());
-    currentUID = c.get_uid();
-    c.send_many(PrimitiveType, PrimitiveCount);
+    BRIDGE_DEVICE_LOCKGUARD();
+    {
+      ClientMessage c(Commands::IDirect3DDevice9Ex_DrawPrimitiveUP, getId());
+      currentUID = c.get_uid();
+      c.send_many(PrimitiveType, PrimitiveCount);
 
-    uint32_t numIndices = GetIndexCount(PrimitiveType, PrimitiveCount);
-    uint32_t vertexDataSize = numIndices * VertexStreamZeroStride;
+      uint32_t numIndices = GetIndexCount(PrimitiveType, PrimitiveCount);
+      uint32_t vertexDataSize = numIndices * VertexStreamZeroStride;
 
-    c.send_data(vertexDataSize, (void*) pVertexStreamZeroData);
-    c.send_data(VertexStreamZeroStride);
+      c.send_data(vertexDataSize, (void*) pVertexStreamZeroData);
+      c.send_data(VertexStreamZeroStride);
+    }
+    m_sentState.invalidateStreamSource(0);
   }
   WAIT_FOR_OPTIONAL_SERVER_RESPONSE("DrawPrimitiveUP()", D3DERR_INVALIDCALL, currentUID);
 }
@@ -2378,17 +2416,22 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::DrawIndexedPrimitiveUP(D3DPRIMITIVETY
   LogFunctionCall();
   UID currentUID = 0;
   {
-    ClientMessage c(Commands::IDirect3DDevice9Ex_DrawIndexedPrimitiveUP, getId());
-    currentUID = c.get_uid();
-    c.send_many(PrimitiveType, MinIndex, NumVertices, PrimitiveCount, IndexDataFormat, VertexStreamZeroStride);
+    BRIDGE_DEVICE_LOCKGUARD();
+    {
+      ClientMessage c(Commands::IDirect3DDevice9Ex_DrawIndexedPrimitiveUP, getId());
+      currentUID = c.get_uid();
+      c.send_many(PrimitiveType, MinIndex, NumVertices, PrimitiveCount, IndexDataFormat, VertexStreamZeroStride);
 
-    uint32_t numIndices = GetIndexCount(PrimitiveType, PrimitiveCount);
-    uint32_t indexStride = IndexDataFormat == D3DFMT_INDEX16 ? 2 : 4;
-    uint32_t indexDataSize = numIndices * indexStride;
-    uint32_t vertexDataSize = NumVertices * VertexStreamZeroStride;
+      uint32_t numIndices = GetIndexCount(PrimitiveType, PrimitiveCount);
+      uint32_t indexStride = IndexDataFormat == D3DFMT_INDEX16 ? 2 : 4;
+      uint32_t indexDataSize = numIndices * indexStride;
+      uint32_t vertexDataSize = NumVertices * VertexStreamZeroStride;
 
-    c.send_data(indexDataSize, (void*) pIndexData);
-    c.send_data(vertexDataSize, (void*) pVertexStreamZeroData);
+      c.send_data(indexDataSize, (void*) pIndexData);
+      c.send_data(vertexDataSize, (void*) pVertexStreamZeroData);
+    }
+    m_sentState.invalidateStreamSource(0);
+    m_sentState.invalidateIndices();
   }
   WAIT_FOR_OPTIONAL_SERVER_RESPONSE("DrawIndexedPrimitiveUP()", D3DERR_INVALIDCALL, currentUID);
 }
@@ -3402,7 +3445,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::CheckDeviceState(HWND hDestinationWin
   }
   WAIT_FOR_SERVER_RESPONSE("CheckDeviceState()", E_FAIL, currentUID);
   HRESULT res = (HRESULT) DeviceBridge::get_data();
-  DeviceBridge::pop_front();
+  DeviceBridge::consumeResponse();
 
   return res;
 }
@@ -3542,7 +3585,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::ResetEx(D3DPRESENT_PARAMETERS* pPrese
         Logger::err("Direct3DDevice9Ex_LSS::ResetEx() failed with : no response from server.");
       }
       res = (HRESULT) DeviceBridge::get_data();
-      DeviceBridge::pop_front();
+      DeviceBridge::consumeResponse();
     }
 
     // Reset swapchain and link server backbuffer/depth buffer after the server reset its swapchain, or we will link to the old backbuffer/depth resources
@@ -3586,7 +3629,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::GetDisplayModeEx(UINT iSwapChain, D3D
       hresult = D3DERR_INVALIDCALL;
     }
   }
-  DeviceBridge::pop_front();
+  DeviceBridge::consumeResponse();
   return hresult;
 }
 

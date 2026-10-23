@@ -25,7 +25,6 @@
 #include "util_devicecommand.h"
 #include "util_queryresults.h"
 
-#include <algorithm>
 #include <cstring>
 
 Direct3DQuery9_LSS::Direct3DQuery9_LSS(BaseDirect3DDevice9Ex_LSS* const pDevice, D3DQUERYTYPE Type)
@@ -35,14 +34,7 @@ Direct3DQuery9_LSS::Direct3DQuery9_LSS(BaseDirect3DDevice9Ex_LSS* const pDevice,
   if (!ClientOptions::getAsyncQueries() || bridge_util::QueryResults::block() == nullptr) {
     return;
   }
-  if (m_type == D3DQUERYTYPE_EVENT) {
-    m_mode = Mode::ClientEvent;
-  } else if (GetDataSize() <= bridge_util::QueryResultSlot::kMaxDataSize) {
-    m_slot = bridge_util::QueryResults::allocSlot();
-    if (m_slot != bridge_util::QueryResults::kNoSlot) {
-      m_mode = Mode::AsyncSlot;
-    }
-  }
+  m_asyncResult.init(GetDataSize());
 }
 
 HRESULT Direct3DQuery9_LSS::QueryInterface(REFIID riid, LPVOID* ppvObj) {
@@ -77,8 +69,7 @@ void Direct3DQuery9_LSS::onDestroy() {
   LogFunctionCall();
   ClientMessage { Commands::IDirect3DQuery9_Destroy, getId() };
   // The slot can be reused at once, because a later owner waits for its own sequence number.
-  bridge_util::QueryResults::freeSlot(m_slot);
-  m_slot = bridge_util::QueryResults::kNoSlot;
+  m_asyncResult.release();
 }
 
 HRESULT Direct3DQuery9_LSS::GetDevice(IDirect3DDevice9** ppDevice) {
@@ -120,111 +111,42 @@ HRESULT Direct3DQuery9_LSS::Issue(DWORD dwIssueFlags) {
   UID currentUID = 0;
   
   {
+    BRIDGE_PARENT_DEVICE_LOCKGUARD();
     ClientMessage c(Commands::IDirect3DQuery9_Issue, getId());
     currentUID = c.get_uid();
     c.send_data(dwIssueFlags);
+    m_asyncResult.reset();
   }
-
-  m_issued = true;
-  m_issueUid = (uint32_t) currentUID;
-  m_requestSeq = 0;
-  m_haveResult = false;
 
   WAIT_FOR_OPTIONAL_SERVER_RESPONSE("Direct3DQuery9_LSS::Issue()", D3DERR_INVALIDCALL, currentUID);
 
   return S_OK;
 }
 
-void Direct3DQuery9_LSS::copyResult(void* pData, DWORD dwSize) const {
-  if (pData != nullptr && dwSize > 0) {
-    memcpy(pData, m_result, std::min<size_t>(dwSize, m_resultSize));
-  }
-}
-
 HRESULT Direct3DQuery9_LSS::GetData(void* pData, DWORD dwSize, DWORD dwGetDataFlags) {
   LogFunctionCall();
-  switch (m_mode) {
-  case Mode::ClientEvent:
-    return getDataClientEvent(pData, dwSize);
-  case Mode::AsyncSlot:
+  if (m_asyncResult.enabled()) {
     return getDataAsync(pData, dwSize, dwGetDataFlags);
-  default:
-    return getDataBlocking(pData, dwSize, dwGetDataFlags);
   }
-}
-
-HRESULT Direct3DQuery9_LSS::getDataClientEvent(void* pData, DWORD dwSize) {
-  // The runtime issues a query that the game did not issue, so the client does the same.
-  if (!m_issued) {
-    Issue(D3DISSUE_END);
-  }
-  // The event is signalled once the server has executed the Issue, and the runtime's frame pacing
-  // bounds how far the GPU runs behind.
-  const uint32_t processed = bridge_util::QueryResults::block()->issuedProcessedUid.load(std::memory_order_acquire);
-  const bool signalled = !gbBridgeRunning || bridge_util::uidReached(processed, m_issueUid);
-  if (pData != nullptr && dwSize >= sizeof(BOOL)) {
-    *static_cast<BOOL*>(pData) = signalled ? TRUE : FALSE;
-  }
-  if (bridge_util::perf::enabled()) {
-    bridge_util::perf::noteQuery(bridge_util::perf::QueryPath::ClientEvent, signalled);
-  }
-  return signalled ? S_OK : S_FALSE;
+  return getDataBlocking(pData, dwSize, dwGetDataFlags);
 }
 
 HRESULT Direct3DQuery9_LSS::getDataAsync(void* pData, DWORD dwSize, DWORD dwGetDataFlags) {
+  BRIDGE_PARENT_DEVICE_LOCKGUARD();
   using bridge_util::perf::QueryPath;
-  const bool perfOn = bridge_util::perf::enabled();
-
-  // D3D9 keeps returning the result once it is available, until the next Issue.
-  if (m_haveResult) {
-    copyResult(pData, dwSize);
-    if (perfOn) {
-      bridge_util::perf::noteQuery(QueryPath::AsyncCached, true);
-    }
-    return S_OK;
+  bool cached = false;
+  const HRESULT hresult = m_asyncResult.getData(pData, dwSize, dwGetDataFlags, gbBridgeRunning, cached,
+    [this](uint32_t size, DWORD flags, uint32_t slot, uint32_t sequence) {
+      ClientMessage c(Commands::IDirect3DQuery9_GetData, getId(), Commands::FlagBits::AsyncResult);
+      c.send_data(size);
+      c.send_data(flags);
+      c.send_data(slot);
+      c.send_data(sequence);
+    });
+  if (bridge_util::perf::enabled()) {
+    bridge_util::perf::noteQuery(cached ? QueryPath::AsyncCached : QueryPath::AsyncRequest, hresult == S_OK);
   }
-
-  if (m_requestSeq != 0) {
-    const bridge_util::QueryResultSlot& slot = bridge_util::QueryResults::block()->slots[m_slot];
-    if (slot.answeredSeq.load(std::memory_order_acquire) != m_requestSeq) {
-      if (perfOn) {
-        bridge_util::perf::noteQuery(QueryPath::AsyncRequest, false);
-      }
-      return gbBridgeRunning ? S_FALSE : D3DERR_DEVICELOST;
-    }
-    const HRESULT hresult = (HRESULT) slot.hresult;
-    m_requestSeq = 0;
-    if (hresult == S_OK) {
-      m_resultSize = std::min<uint32_t>(slot.size, bridge_util::QueryResultSlot::kMaxDataSize);
-      memcpy(m_result, slot.data, m_resultSize);
-      m_haveResult = true;
-      copyResult(pData, dwSize);
-      if (perfOn) {
-        bridge_util::perf::noteQuery(QueryPath::AsyncCached, true);
-      }
-      return S_OK;
-    }
-    if (FAILED(hresult)) {
-      if (perfOn) {
-        bridge_util::perf::noteQuery(QueryPath::AsyncCached, false);
-      }
-      return hresult;
-    }
-  }
-
-  // Each query has at most one request in flight, so a game that polls in a loop paces the requests.
-  m_requestSeq = bridge_util::QueryResults::nextSeq();
-  {
-    ClientMessage c(Commands::IDirect3DQuery9_GetData, getId(), Commands::FlagBits::AsyncResult);
-    c.send_data(GetDataSize());
-    c.send_data(dwGetDataFlags);
-    c.send_data(m_slot);
-    c.send_data(m_requestSeq);
-  }
-  if (perfOn) {
-    bridge_util::perf::noteQuery(QueryPath::AsyncRequest, false);
-  }
-  return gbBridgeRunning ? S_FALSE : D3DERR_DEVICELOST;
+  return hresult;
 }
 
 HRESULT Direct3DQuery9_LSS::getDataBlocking(void* pData, DWORD dwSize, DWORD dwGetDataFlags) {
@@ -247,7 +169,7 @@ HRESULT Direct3DQuery9_LSS::getDataBlocking(void* pData, DWORD dwSize, DWORD dwG
     }
   }
 
-  DeviceBridge::pop_front();
+  DeviceBridge::consumeResponse();
 
   if (bridge_util::perf::enabled()) {
     bridge_util::perf::noteQuery(bridge_util::perf::QueryPath::Blocking, hresult == S_OK);

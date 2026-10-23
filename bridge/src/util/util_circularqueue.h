@@ -125,9 +125,9 @@ namespace bridge_util {
       return Result::Success;
     }
 
-    // Returns a copy to the first element in queue, AND removes it
-    const T& pull() {
-      const T& retval = m_data[m_pos];
+    // Returns the first element by value and advances the queue.
+    T pull() {
+      const T retval = m_data[m_pos];
       pop();
       return retval;
     }

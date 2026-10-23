@@ -91,8 +91,8 @@ namespace bridge_util {
 
     // Returns the size of the variable size object and sets the pointer
     // to the beginning of the object.
-    const T& pull(void** obj) {
-      const T& size = pull();
+    T pull(void** obj) {
+      const T size = pull();
 
       if (const size_t ensured_space = ensure_space(size)) {
         *obj = &m_data[m_pos];
@@ -107,8 +107,8 @@ namespace bridge_util {
     // Returns the size of the variable size object and copies the
     // data into the given destination object.
     template<typename V>
-    const T& pull_and_copy(V& obj) {
-      const T& size = pull();
+    T pull_and_copy(V& obj) {
+      const T size = pull();
 
       if (const size_t ensured_space = ensure_space(size)) {
         obj = reinterpret_cast<V&>(m_data[m_pos]);

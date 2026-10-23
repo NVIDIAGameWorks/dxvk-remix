@@ -537,6 +537,7 @@ void ProcessDeviceCommandQueue() {
         GET_RES(pD3DDevice, gpD3DDevices);
         safeDestroy(pD3DDevice, pD3DDeviceHandle);
         gpD3DDevices.erase(pD3DDeviceHandle);
+        ServerMessage { Commands::Bridge_Ack, currentUID };
         break;
       }
       case IDirect3DDevice9Ex_TestCooperativeLevel:
@@ -2421,7 +2422,7 @@ void ProcessDeviceCommandQueue() {
           data = DeviceBridge::Bridge::getReaderChannel().get_data_ptr() + DataOffset;
         } else if (Commands::IsDataInSharedHeap(rpcHeader.flags)) {
           PULL_U(allocId);
-          data = SharedHeap::getBuf(allocId) + OffsetToLock;
+          data = SharedHeap::getBuf(allocId);
         } else {
           const auto size = DeviceBridge::get_data(&data);
           assert(SizeToLock == size);
@@ -2517,7 +2518,7 @@ void ProcessDeviceCommandQueue() {
           data = DeviceBridge::Bridge::getReaderChannel().get_data_ptr() + DataOffset;
         } else if (Commands::IsDataInSharedHeap(rpcHeader.flags)) {
           PULL_U(allocId);
-          data = SharedHeap::getBuf(allocId) + OffsetToLock;
+          data = SharedHeap::getBuf(allocId);
         } else {
           const auto size = DeviceBridge::get_data(&data);
           assert(SizeToLock == size);
@@ -2625,11 +2626,10 @@ void ProcessDeviceCommandQueue() {
         // An empty rect has no rows in the data queue.
         const uint32_t numRows = rowSize != 0 ? bridge_util::calcStride(height, format) : 0;
 
-        // With the shared heap, all rows are in a buffer with the surface's full pitch, and one command carries them.
+        // Shared-heap snapshots contain packed rows of the locked rectangle.
         if (Commands::IsDataInSharedHeap(rpcHeader.flags)) {
           PULL_U(allocId);
-          const size_t byteOffset = bridge_util::calcImageByteOffset(IncomingPitch, *pRect, format);
-          const uint8_t* const pHeapData = SharedHeap::getBuf(allocId) + byteOffset;
+          const uint8_t* const pHeapData = SharedHeap::getBuf(allocId);
           // The surface is null when its create failed without a response.
           if (pSurface == nullptr) {
             break;
@@ -2639,7 +2639,7 @@ void ProcessDeviceCommandQueue() {
           assert(S_OK == hresult);
           if (SUCCEEDED(hresult)) {
             FOR_EACH_RECT_ROW(lockedRect, height, format,
-              memcpy(ptr, pHeapData + y * IncomingPitch, rowSize);
+              memcpy(ptr, pHeapData + y * IncomingPitch, IncomingPitch);
             )
             hresult = pSurface->UnlockRect();
             assert(SUCCEEDED(hresult));
@@ -2829,10 +2829,6 @@ void ProcessDeviceCommandQueue() {
         PULL(DWORD, dwIssueFlags);
         const auto pQuery = gpD3DQuery[pHandle];
         const HRESULT hresult = (pQuery != nullptr) ? pQuery->Issue(dwIssueFlags) : D3DERR_INVALIDCALL;
-        // Issues are processed in order, so one UID serves every event query.
-        if (auto* pQueryBlock = bridge_util::QueryResults::block()) {
-          pQueryBlock->issuedProcessedUid.store((uint32_t) currentUID, std::memory_order_release);
-        }
         SEND_OPTIONAL_SERVER_RESPONSE(hresult, currentUID);
         break;
       }
@@ -3675,8 +3671,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
   }
 
   // The counts match the client's in d3d9_lss.cpp, which usually creates the semaphore first.
-  gpPresent = new NamedSemaphore("Present", GlobalOptions::getPresentSemaphoreMaxFrames(),
-                                 std::max<size_t>(GlobalOptions::getPresentSemaphoreMaxFrames(), 1));
+  gpPresent = NamedSemaphore::createPresent(GlobalOptions::getPresentSemaphoreMaxFrames());
 
   // Initialize our shared client command queue as a Reader.
   // (1) Wait for connection for client.

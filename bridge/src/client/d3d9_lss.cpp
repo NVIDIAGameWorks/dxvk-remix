@@ -126,6 +126,7 @@ SceneState gSceneState = WaitBeginScene;
 std::chrono::steady_clock::time_point gTimeStart;
 bool gbBridgeRunning = true;
 std::mutex gSwapChainMapMutex;
+std::mutex gPresentMutex;
 SwapChainMap gSwapChainMap;
 const char* gServerExecutable = "NvRemixBridge.exe";
 
@@ -502,8 +503,7 @@ bool RemixAttach(HMODULE hModule) {
     initDeviceBridge();
 
     // The initial count lets the client run presentSemaphoreMaxFrames frames ahead of the server.
-    gpPresent = new NamedSemaphore("Present", GlobalOptions::getPresentSemaphoreMaxFrames(),
-                                   std::max<size_t>(GlobalOptions::getPresentSemaphoreMaxFrames(), 1));
+    gpPresent = NamedSemaphore::createPresent(GlobalOptions::getPresentSemaphoreMaxFrames());
 
     BridgeState::setClientState(BridgeState::ProcessState::Init);
 

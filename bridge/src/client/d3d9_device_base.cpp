@@ -112,11 +112,11 @@ BaseDirect3DDevice9Ex_LSS::BaseDirect3DDevice9Ex_LSS(const bool bExtended,
     return;
   }
   Logger::debug("...create device response received from server...");
-  const auto header = DeviceBridge::pop_front();
-
-  // Grab hresult from server
+  // Grab hresult from server before releasing the response payload.
   hresultOut = (HRESULT) DeviceBridge::get_data();
-  assert(DeviceBridge::get_data_pos() == header.dataOffset);
+  const auto dataPos = DeviceBridge::get_data_pos();
+  const auto header = DeviceBridge::consumeResponse();
+  assert(dataPos == header.dataOffset);
 
   if (FAILED(hresultOut)) {
     Logger::err(format_string("...server-side D3D9 device creation failed with %x.", hresultOut));

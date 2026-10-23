@@ -23,6 +23,7 @@
 #include "window.h"
 
 #include "detours_common.h"
+#include "d3d9_lss.h"
 #include "di_hook.h"
 #include "message_channels.h"
 #include "remix_state.h"
@@ -152,16 +153,25 @@ static bool reattach() {
 
 // Logic for handling some window messages that often cause problems
 void windowMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-  std::scoped_lock lock(gSwapChainMapMutex);
-  if (gSwapChainMap.find(hWnd) != gSwapChainMap.end()) {
+  std::unique_lock presentLock(gPresentMutex, std::defer_lock);
+  if (msg == WM_DESTROY) {
+    presentLock.lock();
+  }
+  std::unique_lock lock(gSwapChainMapMutex);
+  const auto window = gSwapChainMap.find(hWnd);
+  if (window != gSwapChainMap.end()) {
     /*
     * The following lines are adapted from source in the DXVK repo
     * at https://github.com/doitsujin/dxvk/blob/master/src/d3d9/d3d9_window.cpp
     */
     if (msg == WM_DESTROY) {
-      gSwapChainMap.erase(hWnd);
-    } else {
-      struct WindowDisplayData data = gSwapChainMap[hWnd];
+      window->second.closing = true;
+      lock.unlock();
+      if (waitForPendingPresents() != S_OK) {
+        Logger::warn("Pending presents did not finish before the client window was destroyed.");
+      }
+    } else if (!window->second.closing) {
+      struct WindowDisplayData data = window->second;
       D3DPRESENT_PARAMETERS presParams = data.presParam;
       if (msg == WM_ACTIVATEAPP && !presParams.Windowed && !(msg == WM_NCCALCSIZE && wParam == TRUE)) {
         D3DDEVICE_CREATION_PARAMETERS create_parms = data.createParam;

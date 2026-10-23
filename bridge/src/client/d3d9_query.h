@@ -24,30 +24,16 @@
 #include "d3d9_util.h"
 #include "base.h"
 #include "d3d9_device_base.h"
+#include "d3d9_query_result.h"
 
 class Direct3DQuery9_LSS: public D3DBase<IDirect3DQuery9> {
   void onDestroy() override;
   D3DQUERYTYPE m_type;
 
-  // Selects how GetData is answered (util_queryresults.h).
-  enum class Mode { Blocking, ClientEvent, AsyncSlot };
-  Mode m_mode = Mode::Blocking;
-
-  bool m_issued = false;
-  uint32_t m_issueUid = 0;
-
-  // A sequence number of 0 means that no request was sent.
-  uint32_t m_slot = ~0u;
-  uint32_t m_requestSeq = 0;
-
-  bool m_haveResult = false;
-  uint32_t m_resultSize = 0;
-  uint8_t m_result[32] = {};
+  AsyncQueryResult m_asyncResult;
 
   HRESULT getDataBlocking(void* pData, DWORD dwSize, DWORD dwGetDataFlags);
-  HRESULT getDataClientEvent(void* pData, DWORD dwSize);
   HRESULT getDataAsync(void* pData, DWORD dwSize, DWORD dwGetDataFlags);
-  void copyResult(void* pData, DWORD dwSize) const;
 
 protected:
   BaseDirect3DDevice9Ex_LSS* const m_pDevice = nullptr;

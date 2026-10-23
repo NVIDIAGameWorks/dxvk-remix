@@ -52,7 +52,6 @@ namespace bridge_util {
 
     T* m_data;
     T m_default;
-    T m_pulled;
 
     const size_t m_queueSize;
 
@@ -159,12 +158,12 @@ namespace bridge_util {
       // Issue a membar before reading the data since it is not atomic
       std::atomic_thread_fence(std::memory_order_seq_cst);
       result = Result::Success;
-      return m_data[m_write->load(std::memory_order_relaxed)];
+      return m_data[m_write->load(std::memory_order_acquire)];
     }
 
     // Returns a copy to the first element in queue, AND removes it
     // Note: Blocks if queue is empty
-    const T& pull(Result& result, const DWORD timeoutMS = 0, std::atomic<bool>* const pbEarlyOutSignal = nullptr) {
+    T pull(Result& result, const DWORD timeoutMS = 0, std::atomic<bool>* const pbEarlyOutSignal = nullptr) {
       if (!waitForData(timeoutMS, pbEarlyOutSignal)) {
         result = Result::Timeout;
         return m_default;
@@ -173,11 +172,11 @@ namespace bridge_util {
       // Issue a membar before reading the data since it is not atomic
       std::atomic_thread_fence(std::memory_order_seq_cst);
       // The producer may overwrite the slot once the index moves, so it is copied first.
-      m_pulled = m_data[currentWrite];
+      const T pulled = m_data[currentWrite];
       m_write->store(queueIdxInc(currentWrite), std::memory_order_release);
       wakeIfSleeping(m_writerSleeping, m_hSpaceAvailable, m_emptyStats);
       result = Result::Success;
-      return m_pulled;
+      return pulled;
     }
 
     // Check for queue emptiness. The function may guarantee a correct result

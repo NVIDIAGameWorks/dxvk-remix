@@ -86,11 +86,11 @@ DECL_BRIDGE_FUNC(void, syncDataQueue, size_t expectedMemUsage, bool posResetOnLa
   // Overwrite protection for the data ring. Positions are words produced / consumed since start (skipped tail slots
   // included, CircularQueue::m_absPos), so a write is safe when it ends no more than one ring behind the reader's
   // published position; no wrap has to be tracked. The reader publishes after every command (device server, main.cpp)
-  // or every read (publishReadPos) and releases dataSemaphore once it passes the position a writer waits for.
+  // or consumed response (consumeResponse) and wakes the writer once the required position is reached.
   const auto& data = *s_pWriterChannel->data;
   const uint64_t ringWords = data.get_total_size();
   const uint64_t writeEnd = data.abs_pos_after(expectedMemUsage != 0 ? expectedMemUsage : 1, posResetOnLastIndex);
-  if (writeEnd <= uint64_t(s_pWriterChannel->serverDataPos->load(std::memory_order_relaxed)) + ringWords) {
+  if (writeEnd <= uint64_t(s_pWriterChannel->serverDataPos->load(std::memory_order_acquire)) + ringWords) {
     return;
   }
   // The reader gets no further than the start of the batch in progress, so a batch larger than the ring never fits.
@@ -117,6 +117,12 @@ DECL_BRIDGE_FUNC(void, syncDataQueue, size_t expectedMemUsage, bool posResetOnLa
   }
   s_pWriterChannel->clientDataExpectedPos->store(-1, std::memory_order_seq_cst);
   Logger::info("DataQueue overwrite condition resolved");
+}
+
+DECL_BRIDGE_FUNC(Header, consumeResponse) {
+  // Publish before exposing the next header so its reader cannot advance our cursor first.
+  publishReadPos();
+  return pop_front();
 }
 
 DECL_BRIDGE_FUNC(Header, pop_front) {

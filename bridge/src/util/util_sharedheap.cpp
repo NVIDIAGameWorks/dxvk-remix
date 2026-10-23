@@ -23,6 +23,7 @@
 
 #include "util_bytes.h"
 #include "util_devicecommand.h"
+#include "util_sharedheap_allocator.h"
 #include "config/global_options.h"
 
 #include <assert.h>
@@ -88,14 +89,18 @@ SharedHeap::Id SharedHeap::Instance::chunkIdToSegId(const ChunkId chunkId) const
 
 #ifdef REMIX_BRIDGE_CLIENT
 bool SharedHeap::Instance::addNewHeapSegment() {
+  const size_t heapSize = getTotalHeapSize();
+  if (heapSize >= kMax32BitHeapSize) {
+    return false;
+  }
   const std::string shMemName =
     std::string("SharedHeap_data_") + std::to_string(m_segments.size());
   bool bSuccess = false;
-  const size_t segmentSizeUnaligned = std::min((kMax32BitHeapSize - getTotalHeapSize()), m_defaultSegmentSize);
+  const size_t segmentSizeUnaligned = std::min(kMax32BitHeapSize - heapSize, size_t(m_defaultSegmentSize));
   // Align segment size to chunk size
   size_t segmentSize = segmentSizeUnaligned & ~(m_chunkSize - 1);
   Logger::debug("[SharedHeap][addNewHeapSegment] Attempting to create new SharedHeap segment.");
-  while (!bSuccess && (segmentSize > m_chunkSize)) {
+  while (!bSuccess && (segmentSize >= m_chunkSize)) {
     try {
       m_segments.emplace_back(shMemName, segmentSize, m_chunkSize, m_nChunks);
       bSuccess = true;
@@ -217,82 +222,53 @@ void SharedHeap::Instance::deallocate(const AllocId id) {
 #ifdef REMIX_BRIDGE_CLIENT
 SharedHeap::Instance::Allocation
 SharedHeap::Instance::findAllocation(const size_t numChunks) {
-  Allocation alloc;
-  const bool bFirstAllocation = m_allocations.size() == 0; // Trivial case
-  if (bFirstAllocation) {
-    return createAllocation(0, numChunks);
-  } else {
-    size_t nFailedIterations = 0;
-    bool bTimedOut = false;
-    const auto timeoutStart = GetTickCount64();
-    do {
-      if (isValidAllocation(alloc = findFreeInMiddle(numChunks)) ||
-          isValidAllocation(alloc = findFreeOnEnd(numChunks))) {
-        break;
-      }
-      if (nFailedIterations == 1) {
-        std::stringstream ss;
-        ss << "[SharedHeap][findAllocation] Unable to allocate ";
-        ss << bridge_util::toByteUnitString(numChunks * m_chunkSize);
-        ss << ". Will continue retrying until timeout...";
-        Logger::warn(ss.str());
-      }
-      freeDeallocations();
-      constexpr size_t kAttemptIncrease = 2;
-      if (nFailedIterations == kAttemptIncrease) {
-        Logger::info("[SharedHeap][findAllocation] Attempting to increase SharedHeap size.");
-        if (addNewHeapSegment()) {
-          const auto firstChunkNewHeap = m_segments[m_segments.size() - 1].getBaseChunkId();
-          alloc = createAllocation(firstChunkNewHeap, numChunks);
-          Logger::info("[SharedHeap][findAllocation] Allocating at beginning of new segment.");
-          break;
-        } else {
-          Logger::err("[SharedHeap][findAllocation] Failed to increase SharedHeap size.");
+  auto firstChunk = findSharedHeapAllocation(m_segments, m_allocations, numChunks);
+  if (firstChunk != kInvalidId) {
+    return createAllocation(firstChunk, numChunks);
+  }
+
+  const ULONGLONG timeoutStart = GetTickCount64();
+  const ULONGLONG timeoutMs = ULONGLONG(GlobalOptions::getSharedHeapFreeChunkWaitTimeout()) * 1000;
+  size_t retries = 0;
+  bool growthAttempted = false;
+  for (;;) {
+    // Only the server's retirement state permits pending upload storage to be reused.
+    freeDeallocations();
+    firstChunk = findSharedHeapAllocation(m_segments, m_allocations, numChunks);
+    if (firstChunk != kInvalidId) {
+      return createAllocation(firstChunk, numChunks);
+    }
+    constexpr size_t kGrowthRetry = 2;
+    if (!growthAttempted && retries >= kGrowthRetry && getTotalHeapSize() < kMax32BitHeapSize) {
+      growthAttempted = true;
+      Logger::info("[SharedHeap][findAllocation] Attempting to increase SharedHeap size.");
+      if (addNewHeapSegment()) {
+        firstChunk = findSharedHeapAllocation(m_segments, m_allocations, numChunks);
+        if (firstChunk != kInvalidId) {
+          return createAllocation(firstChunk, numChunks);
         }
+      } else {
+        Logger::err("[SharedHeap][findAllocation] Failed to increase SharedHeap size.");
       }
-      const auto dt = GetTickCount64() - timeoutStart;
-      bTimedOut =
-        dt / 1000 >= GlobalOptions::getSharedHeapFreeChunkWaitTimeout();
-      nFailedIterations++;
-    } while (!bTimedOut);
-    if (bTimedOut) {
-      Logger::err("[SharedHeap][findAllocation] Timeout!");
+    }
+    if (GetTickCount64() - timeoutStart >= timeoutMs) {
+      break;
+    }
+    if (retries == 1) {
+      std::stringstream ss;
+      ss << "[SharedHeap][findAllocation] Unable to allocate ";
+      ss << bridge_util::toByteUnitString(numChunks * m_chunkSize);
+      ss << ". Will continue retrying until timeout...";
+      Logger::warn(ss.str());
+    }
+    Sleep(1);
+    ++retries;
+  }
+  Logger::err("[SharedHeap][findAllocation] Timeout!");
 #ifdef SHARED_HEAP_DIAG
-      dumpState();
+  dumpState();
 #endif
-      return { kInvalidId, kInvalidId };
-    }
-  }
-  return alloc;
-}
-
-SharedHeap::Instance::Allocation
-SharedHeap::Instance::findFreeInMiddle(const size_t numChunks) {
-  assert(m_allocations.size() > 0);
-  // Seek for internally fragmented strip of chunks
-  ChunkId prevAllocatedFinalChunk = (ChunkId) -1;
-  for (const auto [allocatedFirstChunk, allocatedFinalChunk] : m_allocations) {
-    const auto potentiallyFreeFirstChunk = prevAllocatedFinalChunk + 1;
-    if (potentiallyFreeFirstChunk < allocatedFirstChunk) {
-      const size_t numChunksFound = allocatedFirstChunk - potentiallyFreeFirstChunk;
-      if (numChunksFound >= numChunks) {
-        const auto foundAlloc = createAllocation(potentiallyFreeFirstChunk, numChunks);
-        return foundAlloc;
-      }
-    }
-    prevAllocatedFinalChunk = allocatedFinalChunk;
-  }
-  // Sanity check that we successfully iterated through all allocations
-  assert((--m_allocations.cend())->second == prevAllocatedFinalChunk);
-  return { kInvalidId, kInvalidId };
-}
-
-SharedHeap::Instance::Allocation
-SharedHeap::Instance::findFreeOnEnd(const size_t numChunks) {
-  assert(m_allocations.size() > 0);
-  // Snag last allocated chunk + 1
-  const auto firstFreeEndChunk = (--m_allocations.cend())->second + 1;
-  return createAllocation(firstFreeEndChunk, numChunks);
+  return {};
 }
 
 void SharedHeap::Instance::freeDeallocations() {
