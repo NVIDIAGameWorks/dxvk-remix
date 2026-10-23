@@ -98,6 +98,7 @@ namespace dxvk {
           "James Horsley 'mmdanggg2'",
           "Kim 'Kim2091'",
           "Leonardo Leotte",
+          "Enock Lubega",
           "Jeffrey 'skurtyyskirts' Munoz",
           "Nico Rodrigues-McKenna",
           "Friedrich 'pixelcluster' Vock",
