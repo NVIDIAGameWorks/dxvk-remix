@@ -184,6 +184,8 @@ HRESULT Direct3DSwapChain9_LSS::Present(CONST RECT* pSourceRect, CONST RECT* pDe
     return ERROR_SEM_TIMEOUT;
   }
 
+  DeviceBridge::perfOnFrame();
+
   FrameMark;
 
   return D3D_OK;

@@ -128,6 +128,19 @@ namespace bridge_util {
       return m_pos;
     }
 
+    // m_absPos after pushing `words` more words, with the wrap rules of push(): a sized blob (push(size, obj),
+    // begin_blob_push) is one size word plus the payload, which ensure_space() moves to the ring start when it does
+    // not fit at the end.
+    uint64_t abs_pos_after(size_t words, bool sizedBlob) const {
+      if (!sizedBlob) {
+        return m_absPos + words;
+      }
+      const size_t payload = words - 1;
+      const size_t payloadPos = m_pos + 1 < m_size ? m_pos + 1 : 0;
+      const size_t skipped = payloadPos + payload >= m_size ? m_size - payloadPos : 0;
+      return m_absPos + 1 + skipped + payload;
+    }
+
   private:
     FORCEINLINE size_t ensure_space(size_t size) {
       size_t space_needed = chunk_size(size);
@@ -137,6 +150,7 @@ namespace bridge_util {
           Logger::errLogMessageBoxAndExit(std::string(logger_strings::OutOfBufferMemory) + std::string(logger_strings::OutOfBufferMemory1) + logger_strings::bufferNameToOption(m_name));
         }
         // Roll over immediately if not enough space left
+        m_absPos += m_size - m_pos;
         m_pos = 0;
       }
       return space_needed;
@@ -145,6 +159,7 @@ namespace bridge_util {
     template<bool space_ensured>
     inline void advance(size_t step) {
       m_pos += step;
+      m_absPos += step;
 
       if (!space_ensured) {
         m_pos %= m_size;

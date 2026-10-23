@@ -188,6 +188,14 @@ public:
     return get().commandBatchingEnabled;
   }
 
+  static uint32_t getPerfLogIntervalFrames() {
+    return get().perfLogIntervalFrames;
+  }
+
+  static uint32_t getIpcSpinMicroseconds() {
+    return get().ipcSpinMicroseconds;
+  }
+
   static bool getUseSharedHeap() {
     return get().useSharedHeap;
   }
@@ -240,6 +248,27 @@ public:
     bridge_util::Logger::debug(bridge_util::format_string("Global settings are being applied from flags value %d", flags));
   }
 
+  // The client sends these flags at the handshake, because both sides must agree on which calls get a response.
+  // A mismatch either fills the response queue or makes the client time out.
+  static constexpr uint32_t kResponsePolicyAll = 1;
+  static constexpr uint32_t kResponsePolicyCreates = 2;
+
+  static uint32_t getResponsePolicyFlags() {
+    uint32_t flags = 0;
+    flags |= get().sendAllServerResponses ? kResponsePolicyAll : 0;
+    flags |= get().sendCreateFunctionServerResponses ? kResponsePolicyCreates : 0;
+    return flags;
+  }
+
+  static void applyResponsePolicyFlags(uint32_t flags) {
+    get().sendAllServerResponses = (flags & kResponsePolicyAll) != 0;
+    get().sendCreateFunctionServerResponses = (flags & kResponsePolicyCreates) != 0;
+    bridge_util::Logger::info(bridge_util::format_string("Server response policy from the client: sendAllServerResponses = %s, "
+                                                         "sendCreateFunctionServerResponses = %s",
+                                                         get().sendAllServerResponses ? "True" : "False",
+                                                         get().sendCreateFunctionServerResponses ? "True" : "False"));
+  }
+
   static const bool getAlwaysCopyEntireStaticBuffer() {
     return get().alwaysCopyEntireStaticBuffer;
   }
@@ -247,10 +276,6 @@ public:
 
   static bool getExposeRemixApi() {
     return get().exposeRemixApi;
-  }
-
-  static bool getEliminateRedundantSetterCalls() {
-    return get().eliminateRedundantSetterCalls;
   }
 
 private:
@@ -381,7 +406,7 @@ private:
     // This is the maximum latency in number of frames the client can be ahead of the
     // server before it blocks and waits for the server to catch up. We want this value
     // to be rather small so the two processes don't get too far out of sync.
-    presentSemaphoreMaxFrames = bridge_util::Config::getOption<uint8_t>("presentSemaphoreMaxFrames", 3);
+    presentSemaphoreMaxFrames = bridge_util::Config::getOption<uint8_t>("presentSemaphoreMaxFrames", 1);
     presentSemaphoreEnabled = bridge_util::Config::getOption<bool>("presentSemaphoreEnabled", true);
 
     // Toggles between waiting on and triggering the command queue semaphore for each
@@ -389,6 +414,12 @@ private:
     // frame, used in conjunction with the Present semaphore above. Fewer semaphore
     // calls should give us better performance, so this is turned on by default.
     commandBatchingEnabled = bridge_util::Config::getOption<bool>("commandBatchingEnabled", false);
+
+    // If not 0, both sides log their performance counters every perfLogIntervalFrames frames.
+    perfLogIntervalFrames = bridge_util::Config::getOption<uint32_t>("perfLogIntervalFrames", 0);
+
+    // A command queue wait spins this long before it blocks on its wake event.
+    ipcSpinMicroseconds = bridge_util::Config::getOption<uint32_t>("ipcSpinMicroseconds", 100);
 
     // If this is enabled, timeouts will be set to their maximum value (INFINITE which is the max uint32_t) 
     // and retries will be set to 1 while the application is being launched with or attached to by a debugger
@@ -426,10 +457,6 @@ private:
     alwaysCopyEntireStaticBuffer = bridge_util::Config::getOption<bool>("alwaysCopyEntireStaticBuffer", false);
   
     exposeRemixApi = bridge_util::Config::getOption<bool>("exposeRemixApi", false);
-
-    // If set, the bridge client will not send certain setter calls to the bridge server if the client knows the setter is writing
-    // the the same value that is currently stored.
-    eliminateRedundantSetterCalls = bridge_util::Config::getOption<bool>("eliminateRedundantSetterCalls", false);
   }
 
   void initSharedHeapPolicy();
@@ -470,6 +497,8 @@ private:
   uint8_t presentSemaphoreMaxFrames;
   bool presentSemaphoreEnabled;
   bool commandBatchingEnabled;
+  uint32_t perfLogIntervalFrames;
+  uint32_t ipcSpinMicroseconds;
   bool disableTimeoutsWhenDebugging;
   bool disableTimeouts;
   bool useSharedHeap;
@@ -481,5 +510,4 @@ private:
   uint32_t threadSafetyPolicy;
   bool alwaysCopyEntireStaticBuffer;
   bool exposeRemixApi;
-  bool eliminateRedundantSetterCalls;
 };

@@ -28,6 +28,7 @@
 #include "util_circularbuffer.h"
 #include "util_bridge_state.h"
 #include "util_ipcchannel.h"
+#include "util_perfcounters.h"
 #include "util_singleton.h"
 #include "../tracy/tracy.hpp"
 
@@ -101,58 +102,29 @@ public:
     return *s_pReaderChannel;
   }
   
-  //=========================//
-  // Channel writing methods //
-  //=========================//
-  static inline bridge_util::Result begin_batch() {
-    ZoneScoped;
-  #ifdef USE_BLOCKING_QUEUE
-    if (gbBridgeRunning) {
-      return getWriterChannel().commands->begin_write_batch();
-    }
-  #endif
-    return bridge_util::Result::Failure;
-  }
-  static inline size_t end_batch() {
-    ZoneScoped;
-  #ifdef USE_BLOCKING_QUEUE
-    if (gbBridgeRunning) {
-      return getWriterChannel().commands->end_write_batch();
-    }
-  #endif
-    return 0;
-  }
+  // Called once per frame on the presenting thread, after Present.
+  static void perfOnFrame();
 
   //=========================//
   // Channel reading methods //
   //=========================//
   static inline const DataT& get_data() {
     ZoneScoped;
-    size_t prevPos = get_data_pos();
     const Bridge::DataT& retval = getReaderChannel().data->pull();
-    // Check if the server completed a loop
-    if (*getReaderChannel().serverResetPosRequired && get_data_pos() < prevPos) {
-      *getReaderChannel().serverResetPosRequired = false;
-    }
+    publishReadPos();
     return retval;
   }
 
   static inline const DataT& get_data(void** obj) {
     ZoneScoped;
-    size_t prevPos = get_data_pos();
     const Bridge::DataT& retval = getReaderChannel().data->pull(obj);
-    // Check if the server completed a loop
-    if ((*getReaderChannel().serverResetPosRequired) &&
-        (get_data_pos() < prevPos)) {
-      *getReaderChannel().serverResetPosRequired = false;
-    }
+    publishReadPos();
     return retval;
   }
 
   template<typename T>
   static inline const size_t& copy_data(T& obj, bool checkSize = true) {
     ZoneScoped;
-    size_t prevPos = get_data_pos();
     const DataT& retval = getReaderChannel().data->pull_and_copy(obj);
 
     if (checkSize) {
@@ -162,16 +134,30 @@ public:
       }
     }
 
-    // Check if the server completed a loop
-    if (*getReaderChannel().serverResetPosRequired && get_data_pos() < prevPos) {
-      *getReaderChannel().serverResetPosRequired = false;
-    }
+    publishReadPos();
     return retval;
   }
 
   static inline size_t get_data_pos() {
     ZoneScoped;
     return getReaderChannel().data->get_pos();
+  }
+
+  static inline uint64_t get_data_abs_pos() {
+    return getReaderChannel().data->get_abs_pos();
+  }
+
+  // Tells the writer how far this reader has consumed (syncDataQueue). The device server publishes once per command
+  // instead (main.cpp); its reads are too frequent for a shared store each.
+  static inline void publishReadPos() {
+#ifdef REMIX_BRIDGE_CLIENT
+    constexpr bool perRead = true;
+#else
+    constexpr bool perRead = !std::is_same_v<BridgeId, ::BridgeId::Device>;
+#endif
+    if constexpr (perRead) {
+      getReaderChannel().serverDataPos->store((int64_t) get_data_abs_pos(), std::memory_order_relaxed);
+    }
   }
 
   static inline bridge_util::Result begin_read_data() {
@@ -215,19 +201,8 @@ public:
     return result;
   }
   
-  class Command {
+  class DataWriter {
   public:
-    Command(const Commands::D3D9Command command) :
-      Command(command, NULL) {
-    }
-    Command(const Commands::D3D9Command command, uintptr_t pHandle) :
-      Command(command, pHandle, 0) {
-    }
-    Command(const Commands::D3D9Command command,
-            uintptr_t pHandle,
-            const Commands::Flags commandFlags);
-    ~Command();
-
     inline void send_data(const DataT obj) {
       ZoneScoped;
       if (gbBridgeRunning) {
@@ -288,13 +263,27 @@ public:
         s_pWriterChannel->data->end_blob_push();
       }
     }
-    
-    static inline size_t get_counter() {
-      return s_cmdCounter;
-    }
 
     static inline size_t get_uid() {
       return s_cmdUID;
+    }
+  };
+
+  class Command : public DataWriter {
+  public:
+    Command(const Commands::D3D9Command command) :
+      Command(command, NULL) {
+    }
+    Command(const Commands::D3D9Command command, uintptr_t pHandle) :
+      Command(command, pHandle, 0) {
+    }
+    Command(const Commands::D3D9Command command,
+            uintptr_t pHandle,
+            const Commands::Flags commandFlags);
+    ~Command();
+
+    static inline size_t get_counter() {
+      return s_cmdCounter;
     }
 
     static inline void reset_counter() {
@@ -331,18 +320,53 @@ public:
     const Commands::D3D9Command m_command;
     const uint32_t m_handle;
     const Commands::Flags m_commandFlags;
+    int64_t m_perfStart = 0;
   };
+
+  // Appends a state setter as a record to the open Bridge_StatePacket of the client device bridge.
+  // The packet's header is pushed when the next non-setter command is constructed,
+  // so the server applies all setters in order before that command.
+  class StateMessage : public DataWriter {
+  public:
+    StateMessage(const Commands::D3D9Command command, uintptr_t pHandle);
+    ~StateMessage();
+  private:
+    const Commands::D3D9Command m_command;
+  };
+
+  static void setStateBatching(bool enabled) {
+    s_stateBatching = enabled;
+  }
 
 private:
   Bridge() = delete;
   Bridge(const Bridge&) = delete;
   Bridge(const Bridge&&) = delete;
+
+  // The *Locked methods require the writer channel's mutex.
+  static void openStatePacketLocked(uint32_t handle);
+  static void closeStatePacketLocked();
+
+  // Turns the bridge off when the push fails.
+  static void pushHeaderLocked(Commands::D3D9Command command, Commands::Flags flags, uint32_t handle);
+
+  static constexpr size_t kMaxPacketWords = 64 * 1024;
+  static constexpr uint32_t kMaxPacketRecords = 4096;
+
   static inline WriterChannel* s_pWriterChannel = nullptr;
   static inline ReaderChannel* s_pReaderChannel = nullptr;
   static inline int32_t        s_curBatchStartPos = -1;
+  static inline uint64_t       s_curBatchStartAbs = 0;
   static inline size_t         s_cmdCounter = 0;
   // UIDs are assigned to commands to tag the responses from server to allow misorder responses to be handled correctly 
   static inline UID s_cmdUID = 0;
+
+  static inline bool     s_stateBatching = false;
+  static inline bool     s_packetOpen = false;
+  static inline uint32_t s_packetHandle = 0;
+  static inline uint32_t s_packetRecords = 0;
+  static inline int64_t  s_packetPerfStart = 0;
+
 #if defined(REMIX_BRIDGE_CLIENT)
   static constexpr char kWriterChannelName[] = "Client2Server";
   static constexpr char kReaderChannelName[] = "Server2Client";

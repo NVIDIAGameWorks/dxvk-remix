@@ -22,6 +22,7 @@
 #ifndef UTIL_CIRCULARQUEUE_H_
 #define UTIL_CIRCULARQUEUE_H_
 
+#include <cstdint>
 #include <cstdio>
 #include <type_traits>
 
@@ -48,6 +49,9 @@ namespace bridge_util {
     const Accessor m_access;
 
     size_t m_pos = 0;
+    // Words produced or consumed since start, skipped tail slots included. The overwrite protection of the data ring
+    // compares these between writer and reader (util_bridgecommand.cpp syncDataQueue) instead of tracking wraps.
+    uint64_t m_absPos = 0;
     size_t m_batchSize = 0;
 
     bool m_batchInProgress = false;
@@ -97,6 +101,7 @@ namespace bridge_util {
         // This is a likely condition: construct param array right in the m_data at m_pos
         new (m_data + m_pos) std::array{ static_cast<T>(objs)... };
         m_pos += count;
+        m_absPos += count;
       } else {
         // Worst case at a boundary: do fold
         (pushImpl<false>(static_cast<T>(objs)), ...);
@@ -116,6 +121,7 @@ namespace bridge_util {
     // Removes an object from the queue
     Result pop() {
       m_pos = m_pos + 1 < m_size ? m_pos + 1 : 0;
+      ++m_absPos;
       return Result::Success;
     }
 
@@ -152,6 +158,10 @@ namespace bridge_util {
 
     T* data() const {
       return m_data;
+    }
+
+    uint64_t get_abs_pos() const {
+      return m_absPos;
     }
 
   private:
