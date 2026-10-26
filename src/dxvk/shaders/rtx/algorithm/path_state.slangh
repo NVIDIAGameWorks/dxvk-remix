@@ -24,6 +24,9 @@
 #include "rtx/pass/sharc/sharc.slangh"
 #include "rtx/concept/ray_portal/ray_portal.slangh"
 #include "rtx/utility/packing.slangh"
+// NV-DXVK start: Camera visibility tracking across sampled interactions.
+#include "rtx/utility/camera_transport.slangh"
+// NV-DXVK end
 #include "rtx/algorithm/resolve_expanded.slangh"
 #include "rtx/external/NRC.slangh"
 
@@ -73,7 +76,9 @@ struct PathState : IBasePayloadState
   float16_t solidAnglePdf; // unused (1b - sign bit)
 #endif
   float16_t coneSpreadAngle; // unused (1b - sign bit)
-  float16_t _coneRadius; // unused (1b - sign bit)
+  // NV-DXVK start: The radius sign bit records specular camera visibility eligibility.
+  float16_t _coneRadius;
+  // NV-DXVK end
   
   uint mediumMaterialIndex;
   f16vec3 _direction;
@@ -365,9 +370,19 @@ struct PathState : IBasePayloadState
 
   property float coneRadius
   {
-    get { return _coneRadius; }
-    set { _coneRadius = float16_t(newValue); }
+    // NV-DXVK start: Preserve the camera path flag when updating the nonnegative radius.
+    get { return abs(_coneRadius); }
+    set { _coneRadius = uint16BitsToHalf((float16BitsToUint16(float16_t(newValue)) & 0x7fff) | (float16BitsToUint16(_coneRadius) & 0x8000)); }
+    // NV-DXVK end
   }
+
+  // NV-DXVK start: Diffuse scattering permanently disables emission-off camera visibility.
+  property bool isSpecularVisibilityPath
+  {
+    get { return (float16BitsToUint16(_coneRadius) & 0x8000) != 0; }
+    set { _coneRadius = uint16BitsToHalf((float16BitsToUint16(_coneRadius) & 0x7fff) | (newValue ? 0x8000 : 0)); }
+  }
+  // NV-DXVK end
 
   property float segmentHitDistance 
   {

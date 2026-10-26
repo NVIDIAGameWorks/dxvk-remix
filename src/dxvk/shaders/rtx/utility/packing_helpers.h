@@ -23,6 +23,9 @@
 
 // These helpers can be executed on the CPU or GPU!!
 #ifdef __cplusplus
+// NV-DXVK start: CPU coverage for HDR attenuation packing.
+#include <cmath>
+// NV-DXVK end
 #include "glm/detail/func_common.hpp"
 
 #define min(a,b) std::min(a,b)
@@ -134,3 +137,39 @@ GENERIC_FLOAT_TO_NORM(32, 16, 16)
 #ifdef __cplusplus
 #undef min
 #endif
+
+// NV-DXVK start: Preserve HDR camera gains in 32-bit attenuation storage.
+// RGB9E5 keeps attenuation in one uint while allowing camera emission to amplify radiance.
+// Ordinary UNORM color packing must remain separate: it clips values above one.
+inline uint32_t packSharedExponent(float32_t red, float32_t green, float32_t blue) {
+#ifdef __cplusplus
+  using std::exp2;
+  using std::floor;
+  using std::log2;
+#endif
+  const float32_t kMaxValue = 65408.0f;
+  red = red > 0.0f ? (red < kMaxValue ? red : kMaxValue) : 0.0f;
+  green = green > 0.0f ? (green < kMaxValue ? green : kMaxValue) : 0.0f;
+  blue = blue > 0.0f ? (blue < kMaxValue ? blue : kMaxValue) : 0.0f;
+  const float32_t maxChannel = red > green ? (red > blue ? red : blue) : (green > blue ? green : blue);
+  // The smallest exponent encodes multiples of 2^-24, including zero.
+  const float32_t maxValue = maxChannel > 0.0000152587890625f ? maxChannel : 0.0000152587890625f;
+  uint32_t exponent = uint32_t(floor(log2(maxValue)) + 16.0f);
+  float32_t inverseScale = exp2(24.0f - float32_t(exponent));
+  if (floor(maxChannel * inverseScale + 0.5f) >= 512.0f) {
+    ++exponent;
+    inverseScale *= 0.5f;
+  }
+  return uint32_t(floor(red * inverseScale + 0.5f)) |
+    (uint32_t(floor(green * inverseScale + 0.5f)) << 9) |
+    (uint32_t(floor(blue * inverseScale + 0.5f)) << 18) |
+    (exponent << 27);
+}
+
+inline float32_t unpackSharedExponentComponent(uint32_t packed, uint32_t shift) {
+#ifdef __cplusplus
+  using std::exp2;
+#endif
+  return float32_t((packed >> shift) & 0x1ffu) * exp2(float32_t(packed >> 27) - 24.0f);
+}
+// NV-DXVK end

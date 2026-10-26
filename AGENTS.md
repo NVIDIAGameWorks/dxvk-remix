@@ -162,7 +162,7 @@ When modifying shared headers, ensure both C++ and Slang code paths remain consi
 
 - Squash into a single commit before submitting.
 - Limit changes to those required for the PR goal — no drive-by style fixes.
-- Add your name to `src/dxvk/imgui/dxvk_imgui_about.cpp` under "GitHub Contributors" (A-Z by last name).
+- Credit contributors in `src/dxvk/imgui/dxvk_imgui_about.cpp` (A-Z by last name). NVIDIA employees belong in the appropriate Engineering, Art, or Production section, not "Github Contributors". Reserve "Github Contributors" for external community contributors. Check existing entries before adding a name, and move any incorrectly categorized NVIDIA employee rather than duplicating that entry.
 
 
 ## Key Directories

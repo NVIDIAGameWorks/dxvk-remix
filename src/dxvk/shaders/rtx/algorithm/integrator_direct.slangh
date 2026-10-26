@@ -404,7 +404,12 @@ void sampleAndStoreIndirectRayPathSample(
   aliasedData0.IndirectRayOriginDirection[compactedCoordinate] = vec4(
     sampledRay.origin,
     uintBitsToFloat(float2x32ToSnorm2x16(sphereDirectionToSignedOctahedral(sampledRay.direction))));
-  IndirectThroughputConeRadius[compactedCoordinate] = vec4(throughput, sampledRay.coneRadius);
+  // NV-DXVK start: Track the actual first lobe independently of its denoising classification.
+  const bool isSpecularVisibilityPath = cameraVisibilityAfterSample(true,
+    polymorphicSurfaceMaterialInteractionGetTypeHelper(primaryPolymorphicSurfaceMaterialInteraction), firstRayPathSampledLobe);
+  IndirectThroughputConeRadius[compactedCoordinate] = vec4(throughput,
+    packCameraVisibilityConeRadius(sampledRay.coneRadius, isSpecularVisibilityPath));
+  // NV-DXVK end
   aliasedData1.IndirectFirstHitPerceptualRoughness[compactedCoordinate] = perceptualRoughness;
 
   IndirectSampleData indirectSampleData;

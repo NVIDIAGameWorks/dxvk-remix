@@ -179,6 +179,13 @@ struct NEECacheUtils
     if (lightSample.solidAnglePdf > 0 && memoryPolymorphicSurfaceMaterial.isOpaque())
     {
       OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
+      // NV-DXVK start: Camera emission is evaluated by indirect ray continuation.
+      if (cb.enableRaytracedRenderTarget &&
+          (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_IS_RAYTRACED_RENDER_TARGET))
+      {
+        return lightSample;
+      }
+      // NV-DXVK end
   #if USE_SIMPLIFIED_MODEL
       // Don't override albedo textures because it may be used by some emissive objects
       // opaqueSurfaceMaterial.albedoOpacityTextureIndex = BINDING_INDEX_INVALID;

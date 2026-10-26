@@ -50,7 +50,7 @@ export material AperturePBR_Opacity(
   [[
     anno::hard_range(0.0, 1.0),
     anno::display_name("Opacity Amount"),
-    anno::description("0 for completely transparent, 1 for completely opaque.  (Used if no texture is specified)"),
+    anno::description("0 for completely transparent, 1 for completely opaque. Used if no texture is specified. For raytraced camera surfaces, multiplies the texture opacity and game animation, fading both the camera image and its emitted light."),
     anno::in_group("Base Material")
   ]],
   // Note: The diffuse texture should always be treated as sRGB.
@@ -131,7 +131,7 @@ export material AperturePBR_Opacity(
   uniform bool enable_emission = false
   [[
     anno::display_name("Enable Emission"),
-    anno::description("Enables the emission of light from the material"),
+    anno::description("Enables the emission of light from the material. Raytraced camera surfaces emit the live camera image, using Emissive Intensity as a multiplier. Emissive Color and Emissive Mask Map do not replace the camera image."),
     anno::in_group("Emission")
   ]],
   uniform color emissive_color_constant = color(1.0, 0.1, 0.1)

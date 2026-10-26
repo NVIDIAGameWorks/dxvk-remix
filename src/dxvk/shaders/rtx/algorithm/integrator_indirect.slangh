@@ -53,6 +53,9 @@ PathState pathStateCreateEmpty(GeometryFlags geometryFlags)
 
   pathState.bounceIteration = uint8_t(1);
   pathState.coneSpreadAngle = cb.screenSpacePixelSpreadHalfAngle;
+  // NV-DXVK start: Initialize radius storage before assigning its packed visibility flag.
+  pathState._coneRadius = 0.h;
+  // NV-DXVK end
 
   pathState.radiance = vec3(0.0f, 0.0f, 0.0f);
   pathState.throughput = f16vec3(1.h);
@@ -406,7 +409,9 @@ void integratePathVertex(
   
   NrcProgressState nrcProgressState = NrcProgressState::Continue;
 
-  if (ENABLE_NRC && rayInteractionHasHit(rayInteraction) && !pathState.continueResolving) 
+  // NV-DXVK start: Camera surfaces redirect transport before a cache query is created.
+  if (ENABLE_NRC && rayInteractionHasHit(rayInteraction) && !pathState.continueResolving && !isRaytracedRenderTarget)
+  // NV-DXVK end
   {  
     nrcProgressState = updateNrcOnHit(pathState, surfaceInteraction, polymorphicSurfaceMaterialInteraction);
 
@@ -448,16 +453,39 @@ void integratePathVertex(
     accumulateThroughput(pathState, volumeTransmittance);
   }
 
-  // If the camera index changed then this ray passed through a render target. Cast a ray from the new camera.
-  // Note: NRC TerminateImmediately with boostEmissives must take priority as a query record has already been created
-  if (cb.enableRaytracedRenderTarget && isRaytracedRenderTarget && pathState.bounceIteration == 1
-      && !(ENABLE_NRC && nrcProgressState == NrcProgressState::TerminateImmediately))
-  { 
-    Ray newRay = rayCreateRenderTarget(cb.renderTargetCamera, surfaceInteraction.textureCoordinates, ray);
+  // NV-DXVK start: Transport live camera radiance without caching the screen's placeholder BRDF.
+  if (cb.enableRaytracedRenderTarget && isRaytracedRenderTarget)
+  {
+    if (pathState.bounceIteration >= pathState.pathMaxBounces)
+    {
+      pathState.continuePath = false;
+      return;
+    }
+
+    const OpaqueSurfaceMaterial material = opaqueSurfaceMaterialCreate(surfaceMaterials[surface.surfaceMaterialIndex]);
+    const OpaqueSurfaceMaterialInteraction interaction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+    RNG cameraRandomState = createRNG(pathState.pixelCoordinate, cb.frameIdx,
+      pathState.calculateRNGOffset(kRNGOffsetSampleClosestHitShader));
+    const bool sampleCamera = getNextSampleBlueNoise(cameraRandomState) < interaction.opacity;
+    Ray newRay = sampleCamera
+      ? rayCreateRenderTarget(cb.renderTargetCamera, surfaceInteraction.textureCoordinates, ray)
+      : rayCreateDirection(rayInteraction, surfaceInteraction, ray, ray.direction, true);
+    if (sampleCamera)
+    {
+      const float cameraGain = pathState.isSpecularVisibilityPath
+        ? opaqueSurfaceMaterialRenderTargetGain(material) : float(material.emissiveIntensity);
+      if (cameraGain <= 0.0f)
+      {
+        pathState.continuePath = false;
+        return;
+      }
+      accumulateThroughput(pathState, vec3(cameraGain));
+      pathState.insideMedium = false;
+      pathState.mediumMaterialIndex = SURFACE_INDEX_INVALID;
+    }
     pathState.origin = newRay.origin;
     pathState.direction = newRay.direction;
-    pathState.insideMedium = false;
-    pathState.mediumMaterialIndex = SURFACE_INDEX_INVALID;
+    pathState.coneRadius = newRay.coneRadius;
     pathState.continuePath = true;
     
     if (cb.debugView == DEBUG_VIEW_RAYTRACED_RENDER_TARGET_INDIRECT
@@ -467,6 +495,7 @@ void integratePathVertex(
     }
     return;
   }
+  // NV-DXVK end
 
   // Process SHaRC arrival transport before integrating destination-local lighting.
   if (ENABLE_SHARC && rayInteractionHasHit(rayInteraction) && !pathState.continueResolving)
@@ -579,6 +608,11 @@ void integratePathVertex(
         continuationLobe, sampledLobePdf, solidAnglePdf,
         false);
       sampledContinuationThroughput = f16vec3(sampledThroughput);
+
+      // NV-DXVK start: Preserve camera visibility only along an entirely specular path.
+      pathState.isSpecularVisibilityPath = cameraVisibilityAfterSample(
+        pathState.isSpecularVisibilityPath, materialType, continuationLobe);
+      // NV-DXVK end
 
       // Stop recording hit geometry when translucent material emitting a scattering ray
       if (materialType == surfaceMaterialTypeTranslucent && dot(sampledRay.direction, pathState.direction) < 0.9)
@@ -1504,11 +1538,17 @@ void integrateIndirectPath(
   vec3 throughput, float rayConeRadius, float firstHitPerceptualRoughness,
   float firstSampledLobePdf, float firstSampledSolidAnglePdf,
   bool firstSampledLobeIsOpacityTransmission,
+  // NV-DXVK start: Camera visibility uses the actual sampled lobe, not denoising flags.
+  bool isSpecularVisibilityPath,
+  // NV-DXVK end
   float gbufferSurfaceHitDistance, bool isCacheUpdate)
 {
   // Initialize Path State
   // Note: Not technically live state as this is only passed into the resolve call and reconstructed from its output.
   PathState pathState = pathStateCreateEmpty(geometryFlags);
+  // NV-DXVK start: Seed path history with the direct pass's actual sampled interaction.
+  pathState.isSpecularVisibilityPath = isSpecularVisibilityPath;
+  // NV-DXVK end
 
   // Note: Carry over relevant state from the direct lighting integration. These are currently the only values which
   // need to be set, the rest can remain as default.

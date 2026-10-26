@@ -250,7 +250,10 @@ void integrate_indirect_pass(uvec2 threadIndex)
   const vec3 rayOrigin = rayOriginDirection.xyz;
   const vec3 rayDirection = signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(floatBitsToUint(rayOriginDirection.w)));
   const vec3 throughput = throughputConeRadius.xyz;
-  const float coneRadius = throughputConeRadius.w;
+  // NV-DXVK start: Decode camera visibility without changing the physical cone radius.
+  const float coneRadius = abs(throughputConeRadius.w);
+  const bool isSpecularVisibilityPath = unpackCameraVisibility(throughputConeRadius.w);
+  // NV-DXVK end
   const float firstHitPerceptualRoughness = FirstHitPerceptualRoughness[compactedCoordinate];
   const float firstSampledLobePdf = indirectSampleData.firstSampledLobePdf;
   const float firstSampledSolidAnglePdf = indirectSampleData.firstSampledSolidAnglePdf;
@@ -279,5 +282,8 @@ void integrate_indirect_pass(uvec2 threadIndex)
     geometryFlags, mediumMaterialIndex, rayOrigin, rayDirection,
     throughput, coneRadius, firstHitPerceptualRoughness,
     firstSampledLobePdf, firstSampledSolidAnglePdf, indirectSampleData.firstSampledLobeIsOpacityTransmission,
+    // NV-DXVK start: Pass first-sample camera visibility for query and training paths.
+    isSpecularVisibilityPath,
+    // NV-DXVK end
     gbufferSurfaceHitDistance, isCacheUpdate);
 }
