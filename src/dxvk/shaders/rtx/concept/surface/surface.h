@@ -545,6 +545,10 @@ struct SurfaceInteraction : MinimalSurfaceInteraction
   vec2 textureGradientY = 0..xx;
   vec3 rawTangent = 0.f;
   vec3 rawBitangent = 0.f;
+  // Populated only for render-target motion, before material/POM tangent adjustments.
+  vec3 previousTextureDpDu = 0.f;
+  vec3 previousTextureDpDv = 0.f;
+  bool previousTextureBasisValid = false;
   vec4 vertexColor = 0.0f;
   float triangleArea = 0.f;
 };

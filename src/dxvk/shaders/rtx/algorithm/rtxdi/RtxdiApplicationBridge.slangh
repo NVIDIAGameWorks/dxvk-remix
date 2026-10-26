@@ -132,6 +132,7 @@ struct RAB_Surface
   uint8_t objectMask;
 
   float3 virtualWorldPosition;
+  bool hasStaticObjectMotion;
 };
 
 typedef LightSample RAB_LightSample;
@@ -699,7 +700,7 @@ RAB_Surface RAB_GetSurfaceForTemporalBiasCorrection(RAB_Surface currentSurface, 
     // Without the previous TLAS, using a previous position of a moving object may result in the visibility ray
     // being occluded by the same object, even though the light sample was actually visible on the past frame.
     // This mismatch unnecessarily reduces the piSum value and results in brightening of moving objects.
-    if (cb.enablePreviousTLAS || all(virtualMotionVector == 0)) {
+    if (cb.enablePreviousTLAS || currentSurface.hasStaticObjectMotion || all(virtualMotionVector == 0)) {
       const MinimalSurfaceInteraction temporalSurfaceInteraction = minimalSurfaceInteractionReadFromGBuffer(
         prevPixelID, PreviousWorldPosition_WorldTriangleNormal);
       // Check the previous frames gbuffer data is valid.

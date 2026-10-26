@@ -327,7 +327,8 @@ float resolveVertex<T: IBasePayloadState>(
   // Needed for RayQuery paths for visibility rays from CHS as they don't run material specific hit groups
   // Visibility rays are expected not to start from RayPortal surfaces, and thus only RayPortal path is force enabled
   const bool forceEnableResolveRayPortal = false,
-  const bool useStochasticAlphaBlend = false)
+  const bool useStochasticAlphaBlend = false,
+  const bool computeRenderTargetMotion = false)
 {
   const Camera camera = cb.camera;
   bool teleport = false;
@@ -373,7 +374,14 @@ float resolveVertex<T: IBasePayloadState>(
 
   surface = surfaces[uint(rayInteraction.surfaceIndex)]; 
 
-  surfaceInteraction = surfaceInteractionCreate<SurfaceGenerateTangents>(surface, rayInteraction, ray);
+  bool computePreviousTextureBasis = false;
+  if (computeRenderTargetMotion && cb.enableRaytracedRenderTarget && rayInteraction.materialType == surfaceMaterialTypeOpaque)
+  {
+    const OpaqueSurfaceMaterial material = opaqueSurfaceMaterialCreate(surfaceMaterials[surface.surfaceMaterialIndex]);
+    computePreviousTextureBasis = (material.flags & OPAQUE_SURFACE_MATERIAL_FLAG_IS_RAYTRACED_RENDER_TARGET) != 0;
+  }
+  surfaceInteraction = surfaceInteractionCreate<SurfaceGenerateTangents>(surface, rayInteraction, ray,
+    false, kFootprintFromRayDirection, computePreviousTextureBasis);
 
   // Process user clip planes and view distance
 

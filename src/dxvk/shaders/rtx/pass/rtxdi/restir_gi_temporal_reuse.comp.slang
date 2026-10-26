@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -194,7 +194,8 @@ void main(int2 thread_id : SV_DispatchThreadID)
   // Reprojection
   // Note: Camera jittering not used for RTXDI. Also not using Ray and rayEvaluate here due to Ray using 16 bit
   // directions currently until we have a way to differentiate that on a per-instance basis (via generics).
-  const float3 virtualMotionVector = PrimaryVirtualMotionVector[thread_id].xyz;
+  const float4 virtualMotion = PrimaryVirtualMotionVector[thread_id];
+  const float3 virtualMotionVector = virtualMotion.xyz;
   const float3 prevVirtualWorldPosition = surface.virtualWorldPosition + virtualMotionVector;
 
   vec4 prevNDC = mul(camera.prevWorldToProjection, vec4(prevVirtualWorldPosition, 1.0f));
@@ -315,9 +316,13 @@ void main(int2 thread_id : SV_DispatchThreadID)
   tparams.sourceBufferIndex = ReSTIRGI_GetTemporalInputPage();
   tparams.initialSearchRadius = initialSearchRadius;
 
-  bool isGBufferSimilar;
-  bool isInitialSample;
-  ReSTIRGI_Reservoir resultReservoir = ReSTIRGI_TemporalResampling(inputReservoir, thread_id, surface, rng, tparams, isGBufferSimilar, isInitialSample);
+  bool isGBufferSimilar = false;
+  bool isInitialSample = true;
+  ReSTIRGI_Reservoir resultReservoir = inputReservoir;
+  if (virtualMotion.w >= 0.0f)
+  {
+    resultReservoir = ReSTIRGI_TemporalResampling(inputReservoir, thread_id, surface, rng, tparams, isGBufferSimilar, isInitialSample);
+  }
 
   // Update last frame's visibility mask when raytraced pairwise MIS is used. 
   if (cb.reSTIRGIBiasCorrectionMode == RTXDI_BIAS_CORRECTION_PAIRWISE_RAY_TRACED &&

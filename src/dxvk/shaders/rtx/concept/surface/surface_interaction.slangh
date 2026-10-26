@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2026, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -23,6 +23,7 @@
 
 #include "rtx/utility/common.slangh"
 #include "rtx/utility/math.slangh"
+#include "rtx/utility/render_target_motion.slangh"
 #include "rtx/utility/packing.slangh"
 #include "rtx/concept/ray/ray.h"
 #include "rtx/concept/surface/eye.slangh"
@@ -268,7 +269,7 @@ vec3 surfaceInteractionCalcVertexNormal(
 // normal be accumulated one vertex at a time instead of holding all three vertex normals live.
 SurfaceInteraction surfaceInteractionCreateImpl<let GenerateTangents : bool, let ComputeMotionAndShadowTerminator : bool>(
   Surface surface, RayInteraction rayInteraction, Ray ray,
-  bool usePreviousPositions, uint footprintMode)
+  bool usePreviousPositions, uint footprintMode, bool computePreviousTextureBasis = false)
 {
   // Compute vertex indicies
 
@@ -503,17 +504,21 @@ SurfaceInteraction surfaceInteractionCreateImpl<let GenerateTangents : bool, let
     surfaceInteraction.geometryNormal = geometryNormal;
   }
 
+  vec3 previousWorldPositions[3];
+  if (computePreviousTextureBasis)
+  {
+    previousWorldPositions = worldPositions;
+  }
+
   // Compute motion
   // Note: Ignore the motion if the caller needs previous positions, we don't know it.
 
   if (ComputeMotionAndShadowTerminator && !surface.isStatic && !usePreviousPositions)
   {
-    vec3 prevObjectPosition = interpolateHitAttribute(positions, bary);
+    vec3 prevPositions[3] = positions;
 
     if (surface.previousPositionBufferIndex != BINDING_INDEX_INVALID)
     {
-      vec3 prevPositions[3];
-
       for (uint i = 0; i < 3; i++)
       {
         const uint currentIndex = idx[i];
@@ -526,8 +531,16 @@ SurfaceInteraction surfaceInteractionCreateImpl<let GenerateTangents : bool, let
         prevPositions[i].z = BUFFER_ARRAY(geometries, previousPositionBufferIndex, previousPositionElementIndex + 2);
       }
 
-      prevObjectPosition = interpolateHitAttribute(prevPositions, bary);
     }
+
+    if (computePreviousTextureBasis)
+    {
+      for (uint i = 0; i < 3; ++i)
+      {
+        previousWorldPositions[i] = mul(surface.prevObjectToWorld, vec4(prevPositions[i], 1.0f));
+      }
+    }
+    const vec3 prevObjectPosition = interpolateHitAttribute(prevPositions, bary);
 
     const vec3 prevPosition = mul(surface.prevObjectToWorld, vec4(prevObjectPosition, 1.0f));
 
@@ -605,6 +618,35 @@ SurfaceInteraction surfaceInteractionCreateImpl<let GenerateTangents : bool, let
       // 1 component case as sampling from a 1D texture will just ignore the second coordinate, though not sure
       // what would happen with a 2D texture given only a 1D transform result...).
       texcoords[i] = transformedTextureCoordinate;
+    }
+
+    if (computePreviousTextureBasis)
+    {
+      vec2 previousTexcoords[3] = texcoords;
+      for (uint i = 0; i < 3; ++i)
+      {
+        if (surface.texcoordGenerationMode == uint(TexGenMode::ViewPositions))
+        {
+          previousTexcoords[i] = mul(surface.textureTransform,
+            mul(cb.camera.worldToView, float4(previousWorldPositions[i], 1.0f)));
+        }
+        if (cb.eyeArgs.enableEyes && surface.isEye)
+        {
+          previousTexcoords[i] = eyeCalcUvWhites(previousWorldPositions[i], surface.eyeBasisU, surface.eyeBasisV, surface.eyeOrigin);
+        }
+        previousTexcoords[i] = sanitize(previousTexcoords[i], vec2(0.0f));
+        if (!surface.skipSurfaceInteractionSpritesheetAdjustment)
+        {
+          vec2 gradientX = 0.0f;
+          vec2 gradientY = 0.0f;
+          calcSpriteSheetAdjustment(previousTexcoords[i], gradientX, gradientY, cb.timeSinceStartSeconds,
+            surface.spriteSheetRows, surface.spriteSheetCols, surface.spriteSheetFPS);
+        }
+      }
+      surfaceInteraction.previousTextureBasisValid = renderTargetTextureBasis(previousWorldPositions, previousTexcoords,
+        surfaceInteraction.previousTextureDpDu, surfaceInteraction.previousTextureDpDv);
+      // Terrain cascade selection is non-affine and does not define one screen-image basis.
+      surfaceInteraction.previousTextureBasisValid &= surface.texcoordGenerationMode != uint(TexGenMode::CascadedViewPositions);
     }
 
     const vec2 interpolatedTextureCoordinates = interpolateHitAttribute(texcoords, bary);
@@ -802,9 +844,9 @@ SurfaceInteraction surfaceInteractionCreateImpl<let GenerateTangents : bool, let
 
 SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
   Surface surface, RayInteraction rayInteraction, Ray ray,
-  bool usePreviousPositions = false, uint footprintMode = kFootprintFromRayDirection)
+  bool usePreviousPositions = false, uint footprintMode = kFootprintFromRayDirection, bool computePreviousTextureBasis = false)
 {
-  return surfaceInteractionCreateImpl<GenerateTangents, true>(surface, rayInteraction, ray, usePreviousPositions, footprintMode);
+  return surfaceInteractionCreateImpl<GenerateTangents, true>(surface, rayInteraction, ray, usePreviousPositions, footprintMode, computePreviousTextureBasis);
 }
 
 // Creates a surface interaction whose motion and shadow terminator offset are left at zero.
