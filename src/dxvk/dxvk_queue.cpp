@@ -366,16 +366,18 @@ namespace dxvk {
       // order to reduce delays as much as possible.
       entry.submit.cmdList->notifyObjects();
 
+      // NV-DXVK start: Recycle the command list before waking finish waiters
+      // A zero pending count promises that command-list references have been released.
+      entry.submit.cmdList->reset();
+      m_device->recycleCommandList(entry.submit.cmdList);
+
       lock.lock();
       m_pending -= 1;
 
       m_finishQueue.pop();
       m_finishCond.notify_all();
       lock.unlock();
-
-      // Free the command list and associated objects now
-      entry.submit.cmdList->reset();
-      m_device->recycleCommandList(entry.submit.cmdList);
+      // NV-DXVK end
     }
   }
 
