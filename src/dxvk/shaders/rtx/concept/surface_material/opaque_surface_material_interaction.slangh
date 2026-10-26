@@ -470,22 +470,12 @@ void overrideMaterialInteractionForEye(
   inout OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
   const OpaqueSurfaceMaterial            opaqueSurfaceMaterial,
   inout SurfaceInteraction               surfaceInteraction,
-  const Surface                          surface,
-  const vec3                          whitesAlbedo,
-  const f16mat3                          worldToTangent,
-  const MinimalRayInteraction            minimalRayInteraction,
+  const vec2                            irisParallaxOffset,
+  const vec3                          whitesAlbedo
 )
 {
-  float2 uvIris = eyeCalcIrisUvParallaxed(
-    surfaceInteraction.textureCoordinates,
-    surface.eyeBasisU,
-    surface.eyeBasisV,
-    surfaceInteraction.geometryNormal,
-    worldToTangent,
-    minimalRayInteraction.viewDirection,
-    cb.eyeArgs.irisRadius,
-    cb.eyeArgs.irisDepth
-  );
+  float2 uvIris = eyeCalcIrisUvParallaxed(surfaceInteraction.textureCoordinates,
+    irisParallaxOffset, cb.eyeArgs.irisRadius);
 
   bool    irisLoaded;
   vec4 irisSample;
@@ -881,14 +871,16 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   // For an eye, load a secondary texture (iris) and blend on top of primary texture (whites)
   if (cb.eyeArgs.enableEyes && surface.isEye)
   {
+    const vec2 irisParallaxOffset = eyeCalcParallaxOffset(
+      surface.eyeBasisU, surface.eyeBasisV, surfaceInteraction.geometryNormal,
+      surfaceInteraction.geometryTangent, surfaceInteraction.geometryBitangent,
+      minimalRayInteraction.viewDirection, surface.eyeCorrectionIndex);
     overrideMaterialInteractionForEye(
       opaqueSurfaceMaterialInteraction,
       opaqueSurfaceMaterial,
       surfaceInteraction,
-      surface,
-      albedo,
-      worldToTangent,
-      minimalRayInteraction
+      irisParallaxOffset,
+      albedo
     );
   }
 

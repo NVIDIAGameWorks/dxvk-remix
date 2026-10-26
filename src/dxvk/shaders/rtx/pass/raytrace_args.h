@@ -110,6 +110,13 @@ struct SssArgs {
   u16vec2 diffusionProfileDebuggingPixel;
 };
 
+// Linear transforms only: positions are relative to the transported eye origin.
+// CPU-computed matrices, consumed directly by the shader in column-vector convention.
+struct EyeCorrectionArgs {
+  mat3 shadingToWorld;
+  mat3 worldToShading;
+};
+
 struct EyeArgs {
   uint  enableEyes;
   float normalBendingEyeball;
@@ -120,6 +127,9 @@ struct EyeArgs {
   float irisDepth;
   uint  pad0;
   uint  pad1;
+
+  // One real viewmodel space and the single supported virtual portal space.
+  EyeCorrectionArgs corrections[2];
 };
 
 struct ShadowTerminatorArgs
