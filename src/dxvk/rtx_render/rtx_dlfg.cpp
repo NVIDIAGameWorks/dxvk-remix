@@ -856,7 +856,6 @@ namespace dxvk {
         commandList = m_dlfgCommandLists.nextCmdList();
         blitRenderedFrame(commandList, renderedSwapchainImage, present, true);
 
-        commandList->addWaitSemaphore(renderedSwapchainImage.sync.acquire);
         commandList->addSignalSemaphore(backbufferSignalSemaphore);
         commandList->endRecording();
         commandList->submit();
@@ -885,7 +884,6 @@ namespace dxvk {
 
         blitRenderedFrame(commandList, renderedSwapchainImage, present, false);
 
-        commandList->addWaitSemaphore(renderedSwapchainImage.sync.acquire);
         commandList->addSignalSemaphore(backbufferSignalSemaphore);
         commandList->endRecording();
         commandList->submit();

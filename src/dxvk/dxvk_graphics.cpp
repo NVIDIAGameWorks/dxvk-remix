@@ -63,23 +63,28 @@ namespace dxvk {
   VkPipeline DxvkGraphicsPipeline::getPipelineHandle(
     const DxvkGraphicsPipelineStateInfo& state,
     const DxvkRenderPass*                renderPass) {
-    DxvkGraphicsPipelineInstance* instance = nullptr;
+    // NV-DXVK start: Read the pipeline handle while holding the lock
+    VkPipeline pipeline = VK_NULL_HANDLE;
 
     { std::lock_guard<sync::Spinlock> lock(m_mutex);
     
-      instance = this->findInstance(state, renderPass);
+      DxvkGraphicsPipelineInstance* instance =
+        this->findInstance(state, renderPass);
       
       if (instance)
         return instance->pipeline();
       
       instance = this->createInstance(state, renderPass);
+      if (instance)
+        pipeline = instance->pipeline();
     }
     
-    if (!instance)
+    if (!pipeline)
       return VK_NULL_HANDLE;
 
     this->writePipelineStateToCache(state, renderPass->format());
-    return instance->pipeline();
+    return pipeline;
+    // NV-DXVK end
   }
 
 
