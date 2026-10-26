@@ -1479,6 +1479,13 @@ namespace dxvk {
     constants.eyeArgs.whitesAlbedoScale = RtxOptions::Eye::eyeWhitesAlbedoScale();
     constants.eyeArgs.irisRadius = RtxOptions::Eye::irisRadius();
     constants.eyeArgs.irisDepth = RtxOptions::Eye::irisDepth();
+    const auto& eyeShadingToWorld = getSceneManager().getInstanceManager().getEyeShadingToWorld();
+    const auto& eyeWorldToShading = getSceneManager().getInstanceManager().getEyeWorldToShading();
+
+    for (uint32_t i = 0; i < std::size(constants.eyeArgs.corrections); i++) {
+      constants.eyeArgs.corrections[i].shadingToWorld = eyeShadingToWorld[i];
+      constants.eyeArgs.corrections[i].worldToShading = eyeWorldToShading[i];
+    }
 
     constants.shadowTerminatorArgs.soften = RtxOptions::ShadowTerminator::soften();
 

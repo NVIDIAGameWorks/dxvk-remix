@@ -102,6 +102,8 @@ struct RtEyeParams {
   // NOTE: vectors can be unnormalized, and that scale denotes an iris size
   Vector3 eyeRightU = Vector3{ 1, 0, 0 };
   Vector3 eyeUpV = Vector3{ 0, 1, 0 };
+  // 0: ordinary world-space eye; 1: corrected viewmodel; 2: its portal-space clone.
+  uint32_t eyeViewModelMode = 0;
 };
 
 // Returns (cos, sin) of an angle in degrees.
@@ -306,7 +308,7 @@ struct RtSurface {
       writeGPUHelper(data, offset, eyeParams->eyeRightU[0]);
       writeGPUHelper(data, offset, eyeParams->eyeRightU[1]);
       writeGPUHelper(data, offset, eyeParams->eyeRightU[2]);
-      writeGPUHelper(data, offset, uint32_t{});
+      writeGPUHelper(data, offset, eyeParams->eyeViewModelMode);
       writeGPUHelper(data, offset, eyeParams->eyeUpV[0]);
       writeGPUHelper(data, offset, eyeParams->eyeUpV[1]);
       writeGPUHelper(data, offset, eyeParams->eyeUpV[2]);

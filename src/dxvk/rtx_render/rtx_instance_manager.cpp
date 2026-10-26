@@ -157,7 +157,7 @@ namespace dxvk {
   namespace {
     template<int RtInstanceSize> struct CheckRtInstanceSize {
       // The second line of the build error should contain the new size of RtInstance in the template argument, i.e. `dxvk::CheckRtInstanceSize<newSize>`
-      static_assert(RtInstanceSize == 784, "RtInstance size has changed.  Fix the copy constructor above this message, then update the expected size.");
+      static_assert(RtInstanceSize == 792, "RtInstance size has changed. Fix the copy constructor above this message, then update the expected size.");
     };
     CheckRtInstanceSize<sizeof(RtInstance)> _rtInstanceSizeTest;
   }
@@ -1539,6 +1539,24 @@ namespace dxvk {
       // If matrices are not convoluted, don't modify the vertex data: just set the transforms directly
       if (isOrdinary(corrected) && isOrdinary(prevCorrected)) {
         viewModelInstance->teleport(corrected, prevCorrected);
+
+        if (auto& eyeParams = viewModelInstance->surface.eyeParams) {
+          // Eye UVs are world-space plane projections, so move their origin with the geometry
+          // and transform U/V by the inverse transpose, without normalizing away iris scale.
+          // Reuse (C * M)^-T from teleport: (C * M)^-T * M^T = C^-T.
+          const Matrix3 eyeBasisCorrection = viewModelInstance->surface.normalObjectToWorld
+                                          * transpose(Matrix3(reference.getTransform()));
+          const Vector4d eyeOrigin(Vector3d(eyeParams->eyeballOrigin), 1.0);
+          eyeParams->eyeballOrigin = Vector3((perspectiveCorrection * eyeOrigin).xyz());
+          eyeParams->eyeRightU = eyeBasisCorrection * eyeParams->eyeRightU;
+          eyeParams->eyeUpV = eyeBasisCorrection * eyeParams->eyeUpV;
+          eyeParams->eyeViewModelMode = 1;
+          if (!m_hasViewModelEyeCorrection) {
+            m_eyeShadingToWorld[0] = Matrix3(perspectiveCorrection);
+            m_eyeWorldToShading[0] = transpose(eyeBasisCorrection);
+            m_hasViewModelEyeCorrection = true;
+          }
+        }
       } else {
         ONCE(Logger::info("[RTX-Compatibility-Info] Unexpected values in the perspective-corrected transform of a view model. Fallback to geometry modification"));
         // Only need to run this on BVH op (maybe this could be moved to geometry processing?)
@@ -1563,6 +1581,7 @@ namespace dxvk {
                                                  const CameraManager& cameraManager,
                                                  const RayPortalManager& rayPortalManager) {
     ScopedGpuProfileZone(ctx, "ViewModel");
+    m_hasViewModelEyeCorrection = false;
 
     auto cleanupAllPersistentViewModelInstances = [this]() {
       for (auto& [ref, inst] : m_persistentViewModelInstances) {
@@ -2064,6 +2083,12 @@ namespace dxvk {
     
     const uint32_t frameId = m_device->getCurrentFrameId();
 
+    if (m_hasViewModelEyeCorrection) {
+      const Matrix3 portalRotation(closestPortalInfo.portalToOpposingPortalDirection);
+      m_eyeShadingToWorld[1] = portalRotation * m_eyeShadingToWorld[0];
+      m_eyeWorldToShading[1] = m_eyeWorldToShading[0] * transpose(portalRotation);
+    }
+
     // Create or update virtual instances for view model instances that are close to portals
     std::unordered_set<RtInstance*> activeVirtualViewModelReferences;
     for (RtInstance* referenceInstance : viewModelReferenceInstances) {
@@ -2095,6 +2120,9 @@ namespace dxvk {
       // Update virtual instance transforms given the reference and the portal transform
       {
         virtualInstance->teleportWithHistory(closestPortalInfo.portalToOpposingPortalDirection);
+        if (virtualInstance->surface.eyeParams && virtualInstance->surface.eyeParams->eyeViewModelMode != 0) {
+          virtualInstance->surface.eyeParams->eyeViewModelMode = 2;
+        }
       }
     }
 

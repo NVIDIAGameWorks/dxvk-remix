@@ -254,6 +254,10 @@ struct Surface
   {
     get { return asfloat(data12.xyz); }
   }
+  property uint eyeCorrectionIndex
+  {
+    get { return data11.w; }
+  }
 
   // Buffers
 

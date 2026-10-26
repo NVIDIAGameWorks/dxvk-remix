@@ -675,13 +675,14 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
     vec3 enormal, etangent, ebitangent;
     eyeCalcNormalFrame(
       hitPosition,
-      surfaceInteraction.geometryNormal,
+      flippedTriangleNormal,
       rayInteraction.viewDirection,
       surface.eyeBasisU,
       surface.eyeBasisV,
       surface.eyeOrigin,
       cb.eyeArgs.irisRadius + 0.04, // cornea (lens) is slightly larger than the iris itself
       uvWhites,
+      surface.eyeCorrectionIndex,
       enormal,
       etangent,
       ebitangent

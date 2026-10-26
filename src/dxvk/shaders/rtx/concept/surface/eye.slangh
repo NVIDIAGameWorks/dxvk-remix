@@ -46,15 +46,9 @@ float2 eyeCalcUvWhites(
   const float3 eyeballOrigin
 )
 {
-  // project world position into eye UV space
-  float2 uvWhites = float2(
-    dot(hitPosition, eyeBasisU), //
-    dot(hitPosition, eyeBasisV)  //
-  );
-
-  // offset by eyeball position, so eyeball is centered at (0,0) UV
-  uvWhites.x += -dot(eyeballOrigin, eyeBasisU);
-  uvWhites.y += -dot(eyeballOrigin, eyeBasisV);
+  // Subtract nearby positions before projecting, rather than cancelling two large dots.
+  const float3 offset = hitPosition - eyeballOrigin;
+  float2 uvWhites = float2(dot(offset, eyeBasisU), dot(offset, eyeBasisV));
 
   // remap the range, as the projection gives [-1,1], but UV is [0,1]
   uvWhites = uvWhites * 0.5 + 0.5f;
@@ -71,20 +65,55 @@ float eyeIsIris(float2 uvWhites, float irisRadius, float transitionSoftness = 0.
 }
 
 
+
+void eyeCalcTangentFrame(float3 u, float3 v, float3 normal,
+  out float3 tangent, out float3 bitangent)
+{
+  const float3 projectedU = u - dot(u, normal) * normal;
+  if (dot(projectedU, projectedU) > 1e-8f)
+  {
+    tangent = normalize(projectedU);
+    bitangent = cross(normal, tangent);
+    bitangent *= dot(bitangent, v) < 0.f ? -1.f : 1.f;
+  }
+  else
+  {
+    // A valid eye projection can still have U parallel to the dome normal.
+    calcOrthonormalBasis(normal, tangent, bitangent);
+  }
+}
+
 void eyeCalcNormalFrame(
-  const float3 hitPosition,
-  const float3 hitTriangleNormal,
-  const float3 viewDirection,
-  const float3 eyeBasisU,
-  const float3 eyeBasisV,
-  const float3 eyeballOrigin,
+  float3 hitPosition,
+  float3 hitTriangleNormal,
+  float3 viewDirection,
+  float3 eyeBasisU,
+  float3 eyeBasisV,
+  float3 eyeballOrigin,
   const float  corneaRadius,
   const float2 uvWhites,
+  const uint   eyeViewModelMode,
   inout float3 outNormal,
   inout float3 outTangent,
   inout float3 outBitangent
 )
 {
+  const float3 worldTriangleNormal = hitTriangleNormal;
+  const float3 worldViewDirection = viewDirection;
+  if (eyeViewModelMode != 0)
+  {
+    const float3x3 toWorld = cb.eyeArgs.corrections[eyeViewModelMode - 1].shadingToWorld;
+    const float3x3 toShading = cb.eyeArgs.corrections[eyeViewModelMode - 1].worldToShading;
+    // Preserve the game's original-world metric, including originally scaled models.
+    // UV covectors alone do not preserve spheres, distances, or reflection angles.
+    hitPosition = mul(toShading, hitPosition - eyeballOrigin);
+    eyeballOrigin = 0.f;
+    hitTriangleNormal = normalize(mul(hitTriangleNormal, toWorld));
+    viewDirection = normalize(mul(toShading, viewDirection));
+    eyeBasisU = mul(eyeBasisU, toWorld);
+    eyeBasisV = mul(eyeBasisV, toWorld);
+  }
+
   float3 eyedir = -normalize(cross(eyeBasisU, eyeBasisV));
 
   // eyeballOrigin's depth along eyedir is unreliable (see the texTransform comment in
@@ -97,61 +126,70 @@ void eyeCalcNormalFrame(
 
   // just a sphere normal
   outNormal = normalize(lateralOffset - eyedir * domeHeight);
-  // but there's a case when sphere normal can be facing away from view direction
-  // so fix it up so it always produces a normal so that reflection vector would be correct
+
+  // Match the visible triangle's hemisphere before enforcing reflection clearance.
+  // Reflection is invariant under N -> -N, but lighting is not.
+  outNormal *= dot(outNormal, hitTriangleNormal) < 0.f ? -1.f : 1.f;
   outNormal = getBentNormal(hitTriangleNormal, outNormal, -viewDirection);
 
   // NOTE: eye whites should have a slight noise/variation on normals to look less like a glass,
   //       an approximation might be to sample whites albedo and perturb normals a bit
 
-  outTangent   = normalize(eyeBasisU);
-  outBitangent = normalize(eyeBasisV);
+  eyeCalcTangentFrame(eyeBasisU, eyeBasisV, outNormal, outTangent, outBitangent);
 
-  // orthogonalize tangent
-  outTangent = normalize(outTangent - dot(outTangent, outNormal) * outNormal);
-  // and bitangent
-  outBitangent =
-    normalize(outBitangent - dot(outBitangent, outNormal) * outNormal - dot(outBitangent, outTangent) * outTangent);
+  if (eyeViewModelMode != 0)
+  {
+    outNormal = normalize(mul(outNormal, cb.eyeArgs.corrections[eyeViewModelMode - 1].worldToShading));
+    // Reflection clearance is Euclidean too: enforce it in the final lighting space,
+    // without moving the iris projection along with this safety adjustment.
+    outNormal = getBentNormal(worldTriangleNormal, outNormal, -worldViewDirection);
+    const float3x3 toWorld = cb.eyeArgs.corrections[eyeViewModelMode - 1].shadingToWorld;
+    eyeCalcTangentFrame(mul(toWorld, outTangent), mul(toWorld, outBitangent),
+      outNormal, outTangent, outBitangent);
+  }
 }
 
 
-float2 eyeParallaxUv(
-  float3   eyeballLookDirection, // normal of a iris plane
-  float3   hitNormal,
-  float3   cameraDirection,
-  float    irisDepth,
-  float3x3 worldToTangentSpace
-)
+// Preserve the original iris projection through the curved eye tangent frame.
+float2 eyeCalcParallaxOffset(
+  float3 eyeBasisU, float3 eyeBasisV, float3 hitNormal,
+  float3 tangent, float3 bitangent, float3 viewDirection, uint eyeViewModelMode)
 {
-  float3 lensRefractDir = refract(-cameraDirection, hitNormal, 1.0);
+  if (eyeViewModelMode != 0)
+  {
+    const float3x3 toWorld = cb.eyeArgs.corrections[eyeViewModelMode - 1].shadingToWorld;
+    const float3x3 toShading = cb.eyeArgs.corrections[eyeViewModelMode - 1].worldToShading;
+    eyeBasisU = mul(eyeBasisU, toWorld);
+    eyeBasisV = mul(eyeBasisV, toWorld);
+    hitNormal = normalize(mul(hitNormal, toWorld));
+    tangent = mul(toShading, tangent);
+    bitangent = mul(toShading, bitangent);
+    eyeCalcTangentFrame(tangent, bitangent, hitNormal, tangent, bitangent);
+    viewDirection = normalize(mul(toShading, viewDirection));
+  }
+  const float3 lookDirection = -normalize(cross(eyeBasisU, eyeBasisV));
+  const float3 refractedDirection = refract(-viewDirection, hitNormal, 1.f);
+  const float heightInLookDir = abs(dot(lookDirection, -refractedDirection));
+  const float3 displacement = refractedDirection
+    * (cb.eyeArgs.irisDepth / max(heightInLookDir, 0.00001));
 
-  float heightInLookDir = abs(dot(eyeballLookDirection, -lensRefractDir));
-
-  float3 parallaxOffset = lensRefractDir * (irisDepth / max(heightInLookDir, 0.00001));
-
-  // project world space into tangent/UV space
-  return mul(worldToTangentSpace, parallaxOffset).xy;
+  // Retain the material frame's original half precision and iris-depth scale.
+  const float3x3 worldToTangent = float3x3(f16mat3(tangent, bitangent, hitNormal));
+  return mul(worldToTangent, displacement).xy;
 }
-
 
 float2 eyeCalcIrisUvParallaxed(
   const float2   uvWhites,
-  const float3   eyeBasisU,
-  const float3   eyeBasisV,
-  const float3   eyeSurfaceHitNormal,
-  const float3x3 worldToTangent, // can be calculated with eyeCalcNormalFrame
-  const float3   viewDirection,
-  const float    irisRadius,
-  const float    irisDepth
+  const float2   parallaxOffset,
+  const float    irisRadius
 )
 {
   float2 uvIris = uvWhites;
   uvIris -= 0.5; // set center to 0
 
-  float3 eyedir           = -normalize(cross(eyeBasisU, eyeBasisV));
   float  parallaxStrength = eyeIsIris(uvWhites, irisRadius, 0.02);
 
-  uvIris += parallaxStrength * eyeParallaxUv(eyedir, eyeSurfaceHitNormal, viewDirection, irisDepth, worldToTangent);
+  uvIris += parallaxStrength * parallaxOffset;
 
   // corner case: if parallax moves uv outside iris radius, clamp it back,
   //              so we don't sample whites texture from iris area

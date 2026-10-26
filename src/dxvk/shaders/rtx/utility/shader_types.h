@@ -169,6 +169,21 @@ struct u16vec4 {
 
 // Matrices
 
+// Tightly packed columns for scalar-layout shader constants.
+struct mat3 {
+  vec3 m[3];
+
+  mat3() = default;
+
+  mat3& operator=(const dxvk::Matrix3& v)
+  {
+    for (uint32_t i = 0; i < 3; i++) {
+      m[i] = v.data[i];
+    }
+    return *this;
+  }
+};
+
 struct alignas(16) mat4 {
   vec4 m[4];
 
