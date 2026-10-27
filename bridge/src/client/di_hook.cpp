@@ -22,6 +22,7 @@
 #include <cstddef>
 
 #define DIRECTINPUT_VERSION 0x0800
+#include <atomic>
 #include <dinput.h>
 #include <strsafe.h>
 
@@ -29,6 +30,7 @@
 #include "d3d9_util.h"
 #include "remix_state.h"
 #include "config/global_options.h"
+#include "client_options.h"
 #include "util_detourtools.h"
 #include "di_hook.h"
 #include "window.h"
@@ -835,8 +837,22 @@ public:
   }
 };
 
+static std::atomic<bool> g_gameCursorVisible = { false };
+static std::atomic<HCURSOR> g_gameCustomCursor = { nullptr };
+
+void SetGameCursorVisible(bool visible) {
+  g_gameCursorVisible.store(visible, std::memory_order_relaxed);
+}
+
+void SetGameCustomCursor(HCURSOR hCursor) {
+  HCURSOR old = g_gameCustomCursor.exchange(hCursor, std::memory_order_relaxed);
+  if (old != nullptr)
+    DestroyCursor(old);
+}
+
 API_HOOK_DECL(GetCursorPos);
 API_HOOK_DECL(SetCursorPos);
+API_HOOK_DECL(SetCursor);
 API_HOOK_DECL(GetAsyncKeyState);
 API_HOOK_DECL(GetKeyState);
 API_HOOK_DECL(GetKeyboardState);
@@ -1076,6 +1092,23 @@ static BOOL WINAPI HookedSetCursorPos(int X, int Y) {
   return result;
 }
 
+static HCURSOR WINAPI HookedSetCursor(HCURSOR hCursor) {
+  LogStaticFunctionCall();
+  // Games using software cursors (D3D9 sprites) call SetCursor(NULL) to hide
+  // the OS cursor.  Under Remix the sprite is dropped by the path tracer,
+  // leaving no visible cursor.  Only substitute the arrow when the game's D3D9
+  // ShowCursor state says the cursor should be visible (menus); during gameplay
+  // the game hides it intentionally for mouse-look.
+  if (ClientOptions::getForceSoftwareCursorVisibility() &&
+      hCursor == NULL &&
+      g_gameCursorVisible.load(std::memory_order_relaxed)) {
+    HCURSOR custom = g_gameCustomCursor.load(std::memory_order_relaxed);
+    static HCURSOR arrowCursor = LoadCursor(NULL, IDC_ARROW);
+    hCursor = custom ? custom : arrowCursor;
+  }
+  return OrigSetCursor(hCursor);
+}
+
 static SHORT WINAPI HookedGetAsyncKeyState(int vk) {
   LogStaticFunctionCall();
   // Block if Remix UI is active
@@ -1208,6 +1241,7 @@ static void AttachConventionalInput() {
 
   OrigGetCursorPos = GetCursorPos;
   OrigSetCursorPos = SetCursorPos;
+  OrigSetCursor = SetCursor;
   OrigGetKeyState = GetKeyState;
   OrigGetAsyncKeyState = GetAsyncKeyState;
   OrigGetKeyboardState = GetKeyboardState;
@@ -1216,6 +1250,7 @@ static void AttachConventionalInput() {
 
   API_ATTACH(GetCursorPos);
   API_ATTACH(SetCursorPos);
+  API_ATTACH(SetCursor);
   API_ATTACH(GetKeyState);
   API_ATTACH(GetAsyncKeyState);
   API_ATTACH(GetKeyboardState);
@@ -1241,6 +1276,7 @@ static void AttachConventionalInput() {
 static void DetachConventionalInput() {
   API_DETACH(GetCursorPos);
   API_DETACH(SetCursorPos);
+  API_DETACH(SetCursor);
   API_DETACH(GetKeyState);
   API_DETACH(GetAsyncKeyState);
   API_DETACH(GetKeyboardState);

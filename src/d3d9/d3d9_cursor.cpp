@@ -15,7 +15,17 @@ namespace dxvk {
 
 
   BOOL D3D9Cursor::ShowCursor(BOOL bShow) {
-    ::SetCursor(bShow ? m_hCursor : nullptr);
+    if (bShow) {
+      // Only change the cursor if a hardware cursor was configured via
+      // SetCursorProperties.  When m_hCursor is NULL (game never set one),
+      // leave the OS cursor alone so it remains visible — the game is
+      // expected to draw its own software cursor, which may not render
+      // under path-traced backends like RTX Remix.
+      if (m_hCursor != nullptr)
+        ::SetCursor(m_hCursor);
+    } else {
+      ::SetCursor(nullptr);
+    }
     return std::exchange(m_visible, bShow);
   }
 
