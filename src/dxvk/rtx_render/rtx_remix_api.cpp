@@ -1476,9 +1476,10 @@ namespace {
     return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
   }
 
-  remixapi_ErrorCode REMIXAPI_CALL remixapi_dxvk_CopyRenderingOutput(
+  remixapi_ErrorCode copyRenderingOutput(
     IDirect3DSurface9* destination,
-    remixapi_dxvk_CopyRenderingOutputType type) {
+    remixapi_dxvk_CopyRenderingOutputType type,
+    bool copyOnPresent) {
     dxvk::D3D9DeviceEx* remixDevice = tryAsDxvk();
     if (!remixDevice) {
       return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
@@ -1511,6 +1512,10 @@ namespace {
     case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_DEPTH:
     case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_NORMALS:
     case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_OBJECT_PICKING:
+    case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_WORLD_POSITION_RAW:
+    case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_TEXCOORDS_RAW:
+    case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_NORMAL_F32:
+    case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_COVERAGE:
       break;
     case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_GUI:
       if (!dxvk::ImGUI::enableExternalPresenter()) {
@@ -1529,12 +1534,10 @@ namespace {
     dxvk::D3D9Surface* backBufferSurface = static_cast<dxvk::D3D9Surface*>(pSurface);
     dxvk::Rc<dxvk::DxvkImage> backbuffer0 = backBufferSurface->GetCommonTexture()->GetImage();
 
-    remixDevice->EmitCs([cDest = std::move(destImage), 
+    auto copyTask = [cDest = std::move(destImage),
                          cDestView = std::move(destImageView),
                          cBackbuffer = std::move(backbuffer0),
-                         type = type] (dxvk::DxvkContext* dxvkCtx) {
-      auto* ctx = static_cast<dxvk::RtxContext*>(dxvkCtx);
-
+                         type = type] (dxvk::DxvkContext* ctx) {
       dxvk::Resources& resourceManager = ctx->getCommonObjects()->getResources();
       const dxvk::Resources::RaytracingOutput& rtOutput = resourceManager.getRaytracingOutput();
 
@@ -1566,6 +1569,18 @@ namespace {
 
         break;
       }
+      case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_WORLD_POSITION_RAW:
+        srcImage = rtOutput.m_primaryWorldPositionRaw.image;
+        break;
+      case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_TEXCOORDS_RAW:
+        srcImage = rtOutput.m_primaryTexcoordsRaw.image;
+        break;
+      case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_NORMAL_F32:
+        srcImage = rtOutput.m_primaryNormalF32.image;
+        break;
+      case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_COVERAGE:
+        srcImage = rtOutput.m_primaryCoverage.image;
+        break;
       default:
         assert(!"unexpected remixapi_dxvk_CopyRenderingOutputType value");
         return;
@@ -1574,11 +1589,24 @@ namespace {
       if (srcImage.ptr()) {
         dxvk::RtxContext::blitImageHelper(ctx, srcImage, cDest, VkFilter::VK_FILTER_NEAREST);
       }
-    });
+    };
+
+    auto* presenter = remixDevice->GetExternalPresenter();
+    if (copyOnPresent && presenter) {
+      presenter->queuePresentTask(std::move(copyTask));
+    } else {
+      remixDevice->EmitCs(std::move(copyTask));
+    }
 
 #pragma warning(pop)
 
     return REMIXAPI_ERROR_CODE_SUCCESS;
+  }
+
+  remixapi_ErrorCode REMIXAPI_CALL remixapi_dxvk_CopyRenderingOutput(
+    IDirect3DSurface9* destination,
+    remixapi_dxvk_CopyRenderingOutputType type) {
+    return copyRenderingOutput(destination, type, false);
   }
 
 
@@ -1696,6 +1724,9 @@ namespace {
 
   remixapi_ErrorCode REMIXAPI_CALL remixapi_Shutdown(void) {
     if (s_dxvkDevice) {
+      if (dxvk::D3D9SwapchainExternal* presenter = s_dxvkDevice->GetExternalPresenter()) {
+        presenter->clearPresentTasks();
+      }
       dxvk::g_dxvkDeviceNative = nullptr;
       while (true) {
         ULONG left = s_dxvkDevice->Release();
@@ -1792,6 +1823,30 @@ namespace {
 
 extern "C"
 {
+  // HdRemix queues its bound AOV copies before Present so the completion signal includes them.
+  REMIXAPI remixapi_ErrorCode REMIXAPI_CALL remixinternal_QueueAovCopy(
+    IDirect3DSurface9* destination, remixapi_dxvk_CopyRenderingOutputType type) {
+    return copyRenderingOutput(destination, type, true);
+  }
+
+  REMIXAPI remixapi_ErrorCode REMIXAPI_CALL remixinternal_SetAovRequests(uint32_t raw, uint32_t coverage) {
+    static_assert(kRawAovWorldPosition == (1u << REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_WORLD_POSITION_RAW));
+    static_assert(kRawAovTexcoords == (1u << REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_TEXCOORDS_RAW));
+    static_assert(kRawAovNormal == (1u << REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_NORMAL_F32));
+    if ((raw & ~kRawAovAll) || coverage > 1) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+    std::lock_guard lock { s_mutex };
+    auto* device = tryAsDxvk();
+    if (!device) {
+      return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
+    }
+    device->EmitCs([raw, coverage](dxvk::DxvkContext* ctx) {
+      ctx->getCommonObjects()->getResources().setAovRequests(raw, coverage);
+    });
+    return REMIXAPI_ERROR_CODE_SUCCESS;
+  }
+
   REMIXAPI remixapi_ErrorCode REMIXAPI_CALL remixapi_InitializeLibrary(const remixapi_InitializeLibraryInfo* info,
                                                                        remixapi_Interface* out_result) {
     if (!info || info->sType != REMIXAPI_STRUCT_TYPE_INITIALIZE_LIBRARY_INFO) {

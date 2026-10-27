@@ -870,6 +870,10 @@ namespace dxvk {
   HRESULT D3D9SwapchainExternal::Reset(D3DPRESENT_PARAMETERS* pPresentParams, D3DDISPLAYMODEEX* pFullscreenDisplayMode, bool forceWindowReset) {
     D3D9DeviceLock lock = m_parent->LockDevice();
 
+// NV-DXVK start: discard copies targeting swapchain resources being reset
+    clearPresentTasks();
+// NV-DXVK end
+
     this->SynchronizePresent();
     this->NormalizePresentParameters(pPresentParams);
 

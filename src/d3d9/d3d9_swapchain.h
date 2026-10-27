@@ -39,6 +39,10 @@
 #include "../dxvk/rtx_render/rtx_options.h"
 // NV-DXVK end
 
+// NV-DXVK start: Queue rendering-output copies for the external presenter.
+#include <functional>
+#include <mutex>
+// NV-DXVK end
 #include <vector>
 
 namespace dxvk {
@@ -304,6 +308,13 @@ namespace dxvk {
     Rc<RtxSemaphore> m_frameEndSemaphore;
     Rc<RtxSemaphore> m_frameResumeSemaphore;
 
+// NV-DXVK start: execute external rendering-output copies in Present
+    std::mutex m_presentTaskMutex;
+    std::vector<std::function<void(DxvkContext*)>> m_presentTasks;
+
+    void runPresentTasks();
+// NV-DXVK end
+
   protected:
     int NumFrontBuffers() override { return 0; };
 
@@ -327,6 +338,9 @@ namespace dxvk {
             DWORD    dwFlags) override;
 
 // NV-DXVK start: external API
+    void queuePresentTask(std::function<void(DxvkContext*)> task);
+    void clearPresentTasks();
+
     VkImage GetVkImage(uint32_t Index) const {
       D3D9DeviceLock lock = m_parent->LockDevice();
       if (Index < m_backBuffers.size()) {

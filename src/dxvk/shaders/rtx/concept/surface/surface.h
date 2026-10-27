@@ -530,9 +530,11 @@ struct MinimalSurfaceInteraction
 
 struct SurfaceInteraction : MinimalSurfaceInteraction
 {
+  // Raw AOVs retain the triangle normal before normal bending.
+  vec3 triangleNormal = 0.f;
+
 #ifdef GBUFFER_FEATURE_DEBUG_VIEW
 #if GBUFFER_FEATURE_DEBUG_VIEW
-  vec3 debugTriangleNormal = 0.f;
   vec3 debugInterpolatedVertexNormal = 0.f;
 #endif
 #endif

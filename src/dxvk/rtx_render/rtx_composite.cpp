@@ -136,6 +136,7 @@ namespace dxvk {
         RW_TEXTURE2D(COMPOSITE_DEBUG_VIEW_OUTPUT)
         RW_TEXTURE2D(COMPOSITE_RAY_RECONSTRUCTION_HIT_DISTANCE_OUTPUT)
         RW_TEXTURE2D(COMPOSITE_DLSS_NR_CONTROL_MASK_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_PRIMARY_COVERAGE_OUTPUT)
       END_PARAMETER()
     };
 
@@ -375,6 +376,7 @@ namespace dxvk {
     // Outputs
 
     ctx->bindResourceView(COMPOSITE_FINAL_OUTPUT, rtOutput.m_compositeOutput.view(Resources::AccessType::Write), nullptr);
+    ctx->bindResourceView(COMPOSITE_PRIMARY_COVERAGE_OUTPUT, rtOutput.m_primaryCoverage.view, nullptr);
     ctx->bindResourceView(COMPOSITE_ALPHA_BLEND_RADIANCE_OUTPUT, rtOutput.m_alphaBlendRadiance.view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(COMPOSITE_LAST_FINAL_OUTPUT, restirGI.isActive() ? restirGI.getLastCompositeOutput().view(Resources::AccessType::Write) : nullptr, nullptr);
     ctx->bindResourceView(COMPOSITE_BLUE_NOISE_TEXTURE, ctx->getResourceManager().getBlueNoiseTexture(ctx), nullptr);
@@ -438,6 +440,7 @@ namespace dxvk {
     compositeArgs.sparseRenderingArgs = rtOutput.m_raytraceArgs.sparseRenderingArgs;
     compositeArgs.volumeArgs = rtOutput.m_raytraceArgs.volumeArgs;
     compositeArgs.useRayReconstruction = ctx->useRayReconstruction();
+    compositeArgs.enableCoverageAov = rtOutput.m_primaryCoverage.isValid() ? 1u : 0u;
     compositeArgs.enhanceAlbedo = ctx->useRayReconstruction() && rayReconstruction.enableDetailEnhancement();
     compositeArgs.writeRayReconstructionHitDistance = ctx->useRayReconstruction() ? 1u : 0u;
     compositeArgs.enableDlssNrVolumetricControlMask = rtOutput.m_raytraceArgs.enableDlssNrVolumetricControlMask;

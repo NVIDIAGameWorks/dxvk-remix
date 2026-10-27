@@ -808,6 +808,10 @@ vec4 compositeResult(
   controlMaskTransmittance = calcBt709Luminance(saturate(controlMaskVolumeAttenuation));
   controlMaskTransmittance *= fogTransmittance * backgroundAlpha;
 
+  if (cb.enableCoverageAov != 0) {
+    PrimaryCoverage[pixelCoordinate] = saturate(1.0f - PrimaryCoverage[pixelCoordinate] * backgroundAlpha);
+  }
+
   // Combine the alpha-blended foreground with the background before upscaling.
   return vec4(radianceOutput * backgroundAlpha + alphaBlendOutput, 1.f);
 }

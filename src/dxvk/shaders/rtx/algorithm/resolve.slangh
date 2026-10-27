@@ -308,7 +308,8 @@ void resolveVertexFinalMiss<let overrideRayInteraction : bool, T : IBasePayloadS
 // Emissive radiance and attenuation may be accumulated immediately but the continueResolving flag must be checked to see if the
 // function should return and continue attempting to resolve an interaction. If false, the Ray Interaction can then be checked
 // for a hit and hit logic can be performed.
-void resolveVertex<T: IBasePayloadState>(
+// Returns only the opacity transmittance of skipped approximation hits.
+float resolveVertex<T: IBasePayloadState>(
   uint8_t resolveMode,
   RayHitInfo rayHitInfo, inout T resolveVertexState,
   inout Ray ray, inout RayInteraction rayInteraction,
@@ -353,7 +354,7 @@ void resolveVertex<T: IBasePayloadState>(
     // Note: Ray interaction is already a miss here, so no need for this function to override it.
     resolveVertexFinalMiss<false>(resolveVertexState, rayInteraction, radianceAttenuation);
 
-    return;
+    return 1.0f;
   }
 
   resolveVertexState.segmentHitDistance = rayInteraction.hitDistance;
@@ -380,7 +381,7 @@ void resolveVertex<T: IBasePayloadState>(
   {
     // Continue resolving when we hit a clipped geometry to find possible objects behind it.
     resolveVertexFinalContinue(ray, surfaceInteraction, teleport, teleportMatrix, resolveVertexState);
-    return;
+    return 1.0f;
   }
 
   if (!evalViewDistance(cb.viewDistanceArgs, cb.isZUp, camera, surfaceInteraction.position))
@@ -388,7 +389,7 @@ void resolveVertex<T: IBasePayloadState>(
     // Note: Treat view distance interactions as misses as no geometry should be processed past them
     // (since these operations essentially clip out everything beyond them in a specific direction).
     resolveVertexFinalMiss<true>(resolveVertexState, rayInteraction, radianceAttenuation);
-    return;
+    return 1.0f;
   }
 
   // Create a Surface Material and Surface Material Interaction from the Surface
@@ -436,7 +437,7 @@ void resolveVertex<T: IBasePayloadState>(
 
       resolveVertexFinalHit(resolveVertexState);
 
-      return;
+      return 1.0f;
     }
     else
     {
@@ -452,7 +453,7 @@ void resolveVertex<T: IBasePayloadState>(
 
       resolveVertexFinalHit(resolveVertexState);
 
-      return;
+      return 1.0f;
     }
 
     // Note: Backfacing hits on opaque materials for now are not considered as they have no relevant contribution for lighting. This may change however if thin opaque surfaces are added.
@@ -475,7 +476,7 @@ void resolveVertex<T: IBasePayloadState>(
       pomOpaqueSurfaceEncountered = opaqueSurfaceMaterial.hasValidDisplacement();
 
       resolveVertexFinalHit(resolveVertexState);
-      return;
+      return 1.0f;
     }
 
     // Handle opaque approximations
@@ -498,7 +499,7 @@ void resolveVertex<T: IBasePayloadState>(
         // Note: Must call resolve final on any return which expects resolving to continue.
         resolveVertexFinalContinue(ray, surfaceInteraction, teleport, teleportMatrix, resolveVertexState);
 
-        return;
+        return opaqueApproximationOutgoingAttenuation;
       }
     }
 
@@ -521,7 +522,7 @@ void resolveVertex<T: IBasePayloadState>(
       // Note: Must call resolve final on any return which expects resolving to continue.
       resolveVertexFinalContinue(ray, surfaceInteraction, teleport, teleportMatrix, resolveVertexState);
 
-      return;
+      return 1.0f;
     }
   }
   else if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_TRANSLUCENT &&
@@ -568,7 +569,7 @@ void resolveVertex<T: IBasePayloadState>(
         // Note: Must call resolve final on any return which expects resolving to continue.
         resolveVertexFinalContinue(ray, surfaceInteraction, teleport, teleportMatrix, resolveVertexState);
 
-        return;
+        return 1.0f;
       }
     }
   }
@@ -611,7 +612,7 @@ void resolveVertex<T: IBasePayloadState>(
       // Note: Must call resolve final on any return which expects resolving to continue.
       resolveVertexFinalContinue(ray, surfaceInteraction, teleport, teleportMatrix, resolveVertexState);
 
-      return;
+      return 1.0f;
     }
 
     // Find Ray Portal Hit Info
@@ -632,7 +633,7 @@ void resolveVertex<T: IBasePayloadState>(
       {
         resolveVertexFinalMiss<true>(resolveVertexState, rayInteraction, radianceAttenuation);
 
-        return;
+        return 1.0f;
       }
 
       teleportMatrix = rayPortalHitInfo.encodedPortalToOpposingPortalDirection.unpack();
@@ -663,12 +664,13 @@ void resolveVertex<T: IBasePayloadState>(
     resolveVertexFinalContinue(ray, surfaceInteraction, teleport, teleportMatrix, resolveVertexState);
 
     // Note: Continue resolving if the Ray Portal was inactive or if it was traversed.
-    return;
+    return 1.0f;
   }
 
   // Indicate resolving is finished in the absence of any need to continue
 
   resolveVertexFinalHit(resolveVertexState);
+  return 1.0f;
 }
 
 #ifndef UNORDERED_RESOLVE_WBOIT
@@ -789,7 +791,7 @@ float oitDepthWeight(float hitT, float tMax)
   return exp(-cb.wboitDepthWeightTuning * z);
 }
 
-void resolveVertexUnorderedParticles<
+float resolveVertexUnorderedParticles<
   let RAY_FLAGS : uint>(
   uint8_t resolveMode, Ray ray, uint rayMask,
   PortalSpace2BitsType portalSpace,
@@ -807,12 +809,14 @@ void resolveVertexUnorderedParticles<
 {
   surfaceIndex = -1;
 
+  float opacityTransmittance = 1.0f;
+
   const bool separateUnorderedApproximations = packedFlagGet(resolveMode, resolveModeSeparateUnorderedApproximations);
 
   if (!separateUnorderedApproximations)
   {
     numInteractions = 0;
-    return;
+    return 1.0f;
   }
 
   if (useIntersectionBillboards)
@@ -1035,6 +1039,7 @@ void resolveVertexUnorderedParticles<
     const float blendFactor = surface.isParticle ? softBlendFactor : 1.0f;
 
     currentRadianceAttenuation = mix(1.0f, currentRadianceAttenuation, blendFactor);
+    opacityTransmittance *= currentRadianceAttenuation;
     currentEmissiveRadiance = mix(vec3(0.0f), currentEmissiveRadiance, blendFactor);
 
     if (any(currentEmissiveRadiance > 0.0f))
@@ -1098,7 +1103,7 @@ void resolveVertexUnorderedParticles<
 
   if (numInteractions == 0)
   {
-    return;
+    return 1.0f;
   }
 
 #ifdef UNORDERED_RESOLVE_WBOIT
@@ -1132,6 +1137,7 @@ void resolveVertexUnorderedParticles<
 #endif
 
   emissiveRadiance *= 1.0f / pathSelectionProbability;
+  return opacityTransmittance;
 }
 
 // Handles unordered Resolve operations within the resolve loop which do not depend on the typical ordered execution

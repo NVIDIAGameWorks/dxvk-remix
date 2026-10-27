@@ -275,6 +275,20 @@ RWStructuredBuffer<RTXDI_PackedReservoir> TransmissionPSRData;
 layout(r32ui, binding = GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT)
 RWTexture2D<uint> PrimaryObjectPicking;
 
+// Raw XYZ/UV outputs use alpha 1 for hits and zero for misses.
+layout(rgba32f, binding = GBUFFER_BINDING_PRIMARY_WORLD_POSITION_RAW_OUTPUT)
+RWTexture2D<float4> PrimaryWorldPositionRaw;
+
+layout(rgba32f, binding = GBUFFER_BINDING_PRIMARY_TEXCOORDS_RAW_OUTPUT)
+RWTexture2D<float4> PrimaryTexcoordsRaw;
+
+layout(rgba32f, binding = GBUFFER_BINDING_PRIMARY_NORMAL_F32_OUTPUT)
+RWTexture2D<float4> PrimaryNormalF32;
+
+// Opacity transmittance until composite replaces it with final coverage.
+layout(r32f, binding = GBUFFER_BINDING_PRIMARY_COVERAGE_OUTPUT)
+RWTexture2D<float> PrimaryCoverage;
+
 layout(binding = GBUFFER_BINDING_NRC_QUERY_PATH_INFO_OUTPUT)
 RWStructuredBuffer<NrcPackedQueryPathInfo> QueryPathInfo;
 

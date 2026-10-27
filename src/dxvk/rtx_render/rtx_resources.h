@@ -25,6 +25,7 @@
 #include "../dxvk_image.h"
 #include "../dxvk_sampler.h"
 #include "rtx_types.h"
+#include "rtx_option.h"
 #include "vulkan/vulkan_core.h"
 #include "rtx_utils.h"
 #include "rtx/pass/raytrace_args.h"
@@ -76,6 +77,15 @@ namespace dxvk
 
   struct Resources : public CommonDeviceObject {
     class AliasedResource;
+
+    RTX_OPTION("rtx", bool, enableRawAovOutputs, false,
+               "Allocate per-pixel RGBA32F raw AOV textures for world position, texcoords, and geometric normal.");
+    RTX_OPTION("rtx", bool, enableCoverageAov, false,
+               "Allocate a per-pixel R32_SFLOAT coverage AOV for compositing and ML.");
+
+    void setAovRequests(uint32_t raw, bool coverage);
+    bool rawAovEnabled(uint32_t aov) const { return enableRawAovOutputs() || (m_rawAovRequests & aov) != 0; }
+    bool coverageAovEnabled() const { return enableCoverageAov() || m_coverageAovRequested; }
 
     struct Resource {
       Rc<DxvkImage> image = nullptr;
@@ -331,6 +341,13 @@ namespace dxvk
       AliasedResource m_primaryDisocclusionMaskForRR;
       Resource m_primaryObjectPicking;
 
+      // Unaliased AOV textures survive until the post-render copies.
+      Resource m_primaryWorldPositionRaw;   // VK_FORMAT_R32G32B32A32_SFLOAT: xyz world hit + w=1
+      Resource m_primaryTexcoordsRaw;       // VK_FORMAT_R32G32B32A32_SFLOAT: uv.xy + 0,1
+      Resource m_primaryNormalF32;          // VK_FORMAT_R32G32B32A32_SFLOAT: geometric normal
+
+      Resource m_primaryCoverage;          // VK_FORMAT_R32_SFLOAT: composite matte
+
       Resource m_secondaryAttenuation;
       Resource m_secondaryWorldShadingNormal;
       AliasedResource m_secondaryPerceptualRoughness;
@@ -571,6 +588,11 @@ namespace dxvk
   private:
     Resources(Resources const&) = delete;
     Resources& operator=(Resources const&) = delete;
+
+    void updateOptionalAovResources(Rc<DxvkContext>& ctx);
+
+    uint32_t m_rawAovRequests = 0;
+    bool m_coverageAovRequested = false;
 
     RaytracingOutput m_raytracingOutput;
 

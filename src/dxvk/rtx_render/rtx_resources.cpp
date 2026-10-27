@@ -558,6 +558,40 @@ namespace dxvk {
     m_dlssNeuralRenderingResourcesAllocated = resourcesAreNeeded;
   }
 
+  void Resources::setAovRequests(uint32_t raw, bool coverage) {
+    m_rawAovRequests = raw;
+    m_coverageAovRequested = coverage;
+  }
+
+  void Resources::updateOptionalAovResources(Rc<DxvkContext>& ctx) {
+    struct OptionalAov {
+      Resource& resource;
+      const char* name;
+      VkFormat format;
+      bool enabled;
+    };
+    OptionalAov aovs[] = {
+      { m_raytracingOutput.m_primaryWorldPositionRaw, "primary world position raw", VK_FORMAT_R32G32B32A32_SFLOAT, rawAovEnabled(kRawAovWorldPosition) },
+      { m_raytracingOutput.m_primaryTexcoordsRaw, "primary texcoords raw", VK_FORMAT_R32G32B32A32_SFLOAT, rawAovEnabled(kRawAovTexcoords) },
+      { m_raytracingOutput.m_primaryNormalF32, "primary normal F32", VK_FORMAT_R32G32B32A32_SFLOAT, rawAovEnabled(kRawAovNormal) },
+      { m_raytracingOutput.m_primaryCoverage, "primary coverage", VK_FORMAT_R32_SFLOAT, coverageAovEnabled() },
+    };
+    const auto needsUpdate = [&](const OptionalAov& aov) {
+      return aov.enabled ? !aov.resource.isValid() || aov.resource.image->info().extent != m_downscaledExtent
+                         : aov.resource.isValid();
+    };
+    if (std::none_of(std::begin(aovs), std::end(aovs), needsUpdate)) {
+      return;
+    }
+
+    ctx->getDevice()->waitForIdle();
+    for (auto& aov : aovs) {
+      if (needsUpdate(aov)) {
+        aov.resource = aov.enabled ? createImageResource(ctx, aov.name, m_downscaledExtent, aov.format) : Resource{};
+      }
+    }
+  }
+
   void Resources::onFrameBegin(
     Rc<DxvkContext> ctx,
     RtxTextureManager& textureManager,
@@ -566,6 +600,7 @@ namespace dxvk {
     const VkExtent3D& targetExtent,
     bool resetHistory,
     bool isCameraCut) {
+    updateOptionalAovResources(ctx);
 
     FrameBeginContext frameBeginCtx;
     frameBeginCtx.downscaledExtent = downscaledExtent;

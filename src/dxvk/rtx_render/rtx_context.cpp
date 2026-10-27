@@ -1355,6 +1355,11 @@ namespace dxvk {
     // TODO: should be a spec.const
     constants.enableObjectPicking = bool { rtOutput.m_primaryObjectPicking.isValid() };
 
+    constants.rawAovMask = (rtOutput.m_primaryWorldPositionRaw.isValid() ? kRawAovWorldPosition : 0u)
+                        | (rtOutput.m_primaryTexcoordsRaw.isValid() ? kRawAovTexcoords : 0u)
+                        | (rtOutput.m_primaryNormalF32.isValid() ? kRawAovNormal : 0u);
+    constants.enableCoverageAov = rtOutput.m_primaryCoverage.isValid() ? 1u : 0u;
+
     // Debug View
     {
       const DebugView& debugView = m_common->metaDebugView();

@@ -128,6 +128,9 @@ RWTexture2D<float4> LastFinalOutput;
 layout(binding = COMPOSITE_ALPHA_BLEND_RADIANCE_OUTPUT)
 RWTexture2D<float4> AlphaBlendRadiance;
 
+layout(r32f, binding = COMPOSITE_PRIMARY_COVERAGE_OUTPUT)
+RWTexture2D<float> PrimaryCoverage;
+
 layout(binding = COMPOSITE_DEBUG_VIEW_OUTPUT)
 RWTexture2D<float4> DebugView;
 layout(r16f, binding = COMPOSITE_RAY_RECONSTRUCTION_HIT_DISTANCE_OUTPUT)
