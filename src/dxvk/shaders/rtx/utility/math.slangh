@@ -69,10 +69,10 @@ GENERIC_CUBE(float16_t)
 GENERIC_CUBE(float)
 
 // Raises a value to the fifth power
-#define GENERIC_POW5(type)    \
-type pow5(type x)             \
-{                             \
-  return square(x) * cube(x); \
+#define GENERIC_POW5(type)        \
+type pow5(type x)                 \
+{                                 \
+  return square(square(x)) * x;   \
 }
 
 GENERIC_POW5(float16_t)

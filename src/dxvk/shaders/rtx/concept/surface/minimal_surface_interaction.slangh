@@ -41,6 +41,15 @@ MinimalSurfaceInteraction minimalSurfaceInteractionCreate(GBufferMemoryMinimalSu
   return minimalSurfaceInteraction;
 }
 
+// Sets the tangent and bitangent from the packed geometry TBN that minimalSurfaceInteractionCreate decodes them from.
+void minimalSurfaceInteractionRestoreTangents(inout MinimalSurfaceInteraction minimalSurfaceInteraction, uint32_t packedGeometryTBN)
+{
+  const vec4 quaternion = uint32ToQuaternion(packedGeometryTBN);
+
+  minimalSurfaceInteraction.geometryTangent = quaternionToTangent(quaternion);
+  minimalSurfaceInteraction.geometryBitangent = quaternionToBitangent(quaternion);
+}
+
 MinimalSurfaceInteraction minimalSurfaceInteractionAffineTransform(MinimalSurfaceInteraction minimalSurfaceInteraction, mat4 transformMatrix)
 {
   minimalSurfaceInteraction.position = (mul(transformMatrix, vec4(minimalSurfaceInteraction.position, 1))).xyz;

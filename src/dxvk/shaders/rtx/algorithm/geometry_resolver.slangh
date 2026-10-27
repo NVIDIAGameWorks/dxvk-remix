@@ -117,6 +117,7 @@ GeometryResolverState geometryResolverStateCreateEmpty(u16vec2 pixelCoordinate, 
   geometryResolverState.pomOpaqueSurfaceEncountered = false;
   geometryResolverState.decalCandidateSeen = false;
   geometryResolverState.firstHitGuidesWritten = false;
+  geometryResolverState.alphaBlendSurfaceStored = false;
 
   return geometryResolverState;
 }
@@ -276,6 +277,33 @@ void geometryResolverStoreDlssNrControlMask(
   DlssNrControlMask[pixelCoordinate] = dlssControlMask;
 }
 
+// Returns the packed alpha blend surface that the primary pass starts every pixel with.
+uint4 geometryResolverCreateInitialAlphaBlendSurface(uvec2 pixelCoordinate)
+{
+  RNG randomState = createRNG(pixelCoordinate, cb.frameIdx);
+  AlphaBlendSurface alphaBlendSurface = AlphaBlendSurface.createEmpty();
+  alphaBlendSurface.randomThreshold = getNextSampleBlueNoise(randomState);
+  return alphaBlendSurface.pack(cb.alphaBlendSurfacePackMult);
+}
+
+// Returns the alpha blend surface stored at the pixel.
+// Returns the initial surface while the primary pass has stored none.
+// The initial surface goes through pack() too, because update and finalize compare its quantized random threshold.
+AlphaBlendSurface geometryResolverLoadAlphaBlendSurface(uvec2 pixelCoordinate, bool alphaBlendSurfaceStored)
+{
+  uint4 packedAlphaBlendSurface;
+  if (alphaBlendSurfaceStored)
+  {
+    packedAlphaBlendSurface = AlphaBlendGBuffer[pixelCoordinate];
+  }
+  else
+  {
+    packedAlphaBlendSurface = geometryResolverCreateInitialAlphaBlendSurface(pixelCoordinate);
+  }
+
+  return AlphaBlendSurface.createFromPacked(packedAlphaBlendSurface, cb.alphaBlendSurfacePackMult);
+}
+
 // Geometry Resolver Vertex Functions
 
 void geometryResolverOutputRawAovs(uvec2 pixelCoordinate, vec4 worldPosition, vec4 texcoords, vec4 normal) {
@@ -293,7 +321,7 @@ void geometryResolverOutputRawAovs(uvec2 pixelCoordinate, vec4 worldPosition, ve
 void geometryResolverOutputMiss<
   let PRIMARY_SURFACE : bool,
   let SELECTED_INTEGRATION_SURFACE : bool>(
-  uvec2 pixelCoordinate, uvec2 compactedCoordinate)
+  uvec2 pixelCoordinate, uvec2 compactedCoordinate, bool alphaBlendSurfaceStored = true)
 {
   // Every pixel writes its per-pixel outputs. Only a pixel with a slot also stores a GBuffer.
   const bool storesGBuffer = hasGBufferSlot(compactedCoordinate);
@@ -348,7 +376,7 @@ void geometryResolverOutputMiss<
 
     if (GBUFFER_FEATURE_STOCHASTIC_ALPHA && cb.enableStochasticAlphaBlend)
     {
-      AlphaBlendSurface alphaBlendSurface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[pixelCoordinate], cb.alphaBlendSurfacePackMult);
+      AlphaBlendSurface alphaBlendSurface = geometryResolverLoadAlphaBlendSurface(pixelCoordinate, alphaBlendSurfaceStored);
       alphaBlendSurface.finalize(0);
       AlphaBlendGBuffer[pixelCoordinate] = alphaBlendSurface.pack(cb.alphaBlendSurfacePackMult);
     }
@@ -420,6 +448,7 @@ void geometryResolverWriteDlssNrControlMask(
   geometryResolverStoreDlssNrControlMask(pixelCoordinate, dlssControlMask);
 }
 
+// `projection` is projectVirtualHit(pixelCoordinate, virtualHitDistance, virtualMotion).
 void geometryResolverOutputSurface<
   let PRIMARY_SURFACE : bool,
   let SELECTED_INTEGRATION_SURFACE : bool>(
@@ -430,7 +459,9 @@ void geometryResolverOutputSurface<
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   vec3 radiance, vec3 attenuation, vec4 accumulatedRotation,
   uint mediumMaterialIndex, float virtualHitDistance, bool directionAltered,
-  bool useAlternateDisocclusionThreshold, bool isViewModel, bool decalCandidateSeen = true)
+  vec3 virtualMotion, VirtualHitProjection projection,
+  bool useAlternateDisocclusionThreshold, bool isViewModel, bool decalCandidateSeen = true,
+  bool alphaBlendSurfaceStored = true)
 {
   // Every pixel writes its per-pixel outputs. Only a pixel with a slot also stores a GBuffer.
   const bool storesGBuffer = hasGBufferSlot(compactedCoordinate);
@@ -450,10 +481,6 @@ void geometryResolverOutputSurface<
       imageStore(SecondaryAttenuation, compactedCoordinate, encodedAttenuation);
     }
   }
-
-  // Note: Virtual hit distance and motion account for the ray traversing ray portals and PSR interactions.
-  const vec3 virtualMotion = quaternionTransformVector(accumulatedRotation, surfaceInteraction.motion, true);
-  const VirtualHitProjection projection = projectVirtualHit(pixelCoordinate, virtualHitDistance, virtualMotion);
 
   // Output Linear View Z (Primary/secondary surface coherent)
 
@@ -552,7 +579,7 @@ void geometryResolverOutputSurface<
   if (GBUFFER_FEATURE_STOCHASTIC_ALPHA && cb.enableStochasticAlphaBlend && PRIMARY_SURFACE)
   {
     //Write opaque objects' geometry hash
-    AlphaBlendSurface alphaBlendSurface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[pixelCoordinate], cb.alphaBlendSurfacePackMult);
+    AlphaBlendSurface alphaBlendSurface = geometryResolverLoadAlphaBlendSurface(pixelCoordinate, alphaBlendSurfaceStored);
     alphaBlendSurface.finalize(surface.hashPacked);
     AlphaBlendGBuffer[pixelCoordinate] = alphaBlendSurface.pack(cb.alphaBlendSurfacePackMult);
   }
@@ -685,6 +712,10 @@ void geometryResolverOutputSurfaceDynamic(
   uint mediumMaterialIndex, float virtualHitDistance, bool directionAltered,
   bool useAlternateDisocclusionThreshold, bool isViewModel)
 {
+  // Note: Virtual hit distance and motion account for the ray traversing ray portals and PSR interactions.
+  const vec3 virtualMotion = quaternionTransformVector(accumulatedRotation, surfaceInteraction.motion, true);
+  const VirtualHitProjection projection = projectVirtualHit(pixelCoordinate, virtualHitDistance, virtualMotion);
+
   if (primarySurface)
   {
     if (selectedIntegrationSurface)
@@ -693,6 +724,7 @@ void geometryResolverOutputSurfaceDynamic(
         pixelCoordinate, compactedCoordinate, ray, rayInteraction, surface, surfaceInteraction,
         polymorphicSurfaceMaterialInteraction, radiance, attenuation, accumulatedRotation,
         mediumMaterialIndex, virtualHitDistance, directionAltered,
+        virtualMotion, projection,
         useAlternateDisocclusionThreshold, isViewModel);
     }
     else
@@ -701,6 +733,7 @@ void geometryResolverOutputSurfaceDynamic(
         pixelCoordinate, compactedCoordinate, ray, rayInteraction, surface, surfaceInteraction,
         polymorphicSurfaceMaterialInteraction, radiance, attenuation, accumulatedRotation,
         mediumMaterialIndex, virtualHitDistance, directionAltered,
+        virtualMotion, projection,
         useAlternateDisocclusionThreshold, isViewModel);
     }
   }
@@ -712,6 +745,7 @@ void geometryResolverOutputSurfaceDynamic(
         pixelCoordinate, compactedCoordinate, ray, rayInteraction, surface, surfaceInteraction,
         polymorphicSurfaceMaterialInteraction, radiance, attenuation, accumulatedRotation,
         mediumMaterialIndex, virtualHitDistance, directionAltered,
+        virtualMotion, projection,
         useAlternateDisocclusionThreshold, isViewModel);
     }
     else
@@ -720,6 +754,7 @@ void geometryResolverOutputSurfaceDynamic(
         pixelCoordinate, compactedCoordinate, ray, rayInteraction, surface, surfaceInteraction,
         polymorphicSurfaceMaterialInteraction, radiance, attenuation, accumulatedRotation,
         mediumMaterialIndex, virtualHitDistance, directionAltered,
+        virtualMotion, projection,
         useAlternateDisocclusionThreshold, isViewModel);
     }
   }
@@ -728,14 +763,10 @@ void geometryResolverOutputSurfaceDynamic(
 void geometryResolverDLSSRROutputSurface(
     uvec2 pixelCoordinate,
     Ray ray,
-    Surface surface, SurfaceInteraction surfaceInteraction,
+    Surface surface,
     PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
-    vec3 attenuation, vec4 accumulatedRotation, float virtualHitDistance)
+    vec3 attenuation, VirtualHitProjection projection)
 {
-  // Note: Virtual hit distance and motion account for the ray traversing ray portals and PSR interactions.
-  const vec3 virtualMotion = quaternionTransformVector(accumulatedRotation, surfaceInteraction.motion, true);
-  const VirtualHitProjection projection = projectVirtualHit(pixelCoordinate, virtualHitDistance, virtualMotion);
-
   imageStore(PrimaryDepthDLSSRR, pixelCoordinate, projection.depth);
   PrimaryScreenSpaceMotionVectorDLSSRR[pixelCoordinate] = projection.screenSpaceMotion;
 
@@ -2089,7 +2120,7 @@ void geometryResolverVertex(
 #endif
   
   uint4 decalMemory = 0;
-  vec3 decalEmissiveRadiance = vec3(0.0f);
+  f16vec3 decalEmissiveRadiance = f16vec3(0.0h);
   int surfaceIndex = -1;
 
   // The decal pass traces the whole camera-to-surface span,
@@ -2113,8 +2144,8 @@ void geometryResolverVertex(
   if (GBUFFER_FEATURE_DEBUG_VIEW && cb.debugView == DEBUG_VIEW_PRIMARY_DECAL_ALBEDO)
   {
     MemoryDecalMaterialInteraction memory;
-    memory.packed = decalMemory; 
-    memory.emissiveRadiance = f16vec3(decalEmissiveRadiance);
+    memory.packed = decalMemory;
+    memory.emissiveRadiance = decalEmissiveRadiance;
     DecalMaterialInteraction decalMaterialInteraction = decalMaterialInteractionUnpack(memory);
     storeInDebugView(geometryResolverState.pixelCoordinate, decalMaterialInteraction.albedo);
   }
@@ -2219,10 +2250,12 @@ void geometryResolverVertex(
     vec4 alphaBlendColor = AlphaBlendSurface::getAlphaBlendSurface(polymorphicSurfaceMaterialInteraction);
     bool hasEmissive = any(geometryResolverState.radiance > 0);
     
-    AlphaBlendSurface alphaBlendSurface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[geometryResolverState.pixelCoordinate], cb.alphaBlendSurfacePackMult);
+    AlphaBlendSurface alphaBlendSurface =
+      geometryResolverLoadAlphaBlendSurface(geometryResolverState.pixelCoordinate, geometryResolverState.alphaBlendSurfaceStored);
     alphaBlendSurface.update(
       alphaBlendColor, polymorphicSurfaceMaterialInteraction.shadingNormal, geometryResolverState.accumulatedHitDistance, surface.hashPacked, hasEmissive);
     AlphaBlendGBuffer[geometryResolverState.pixelCoordinate] = alphaBlendSurface.pack(cb.alphaBlendSurfacePackMult);
+    geometryResolverState.alphaBlendSurfaceStored = true;
 
     if (alphaBlendSurface.backgroundTransparency < 1.0 / 255.0)
     {
@@ -2258,7 +2291,8 @@ void geometryResolverVertex(
     }
 
     geometryResolverOutputMiss<true, true>(geometryResolverState.pixelCoordinate,
-      geometryResolverState.compactedCoordinate);
+      geometryResolverState.compactedCoordinate, geometryResolverState.alphaBlendSurfaceStored);
+    geometryResolverState.alphaBlendSurfaceStored = true;
 
     if (usesPrimaryRayMissFlag(cb.sparseRenderingArgs))
     {
@@ -2420,6 +2454,11 @@ void geometryResolverVertex(
     geometryResolverState.isViewModelSurface = true;
   }
 
+  // Note: Virtual hit distance and motion account for the ray traversing ray portals and PSR interactions.
+  const vec3 virtualMotion = quaternionTransformVector(geometryResolverState.accumulatedRotation, surfaceInteraction.motion, true);
+  const VirtualHitProjection projection =
+    projectVirtualHit(geometryResolverState.pixelCoordinate, geometryResolverState.accumulatedHitDistance, virtualMotion);
+
   const bool writeFirstHitForPSRPrepare =
 #if GBUFFER_FEATURE_INLINE_PSR_SAMPLING
     push.usePSRPrepare &&
@@ -2441,8 +2480,11 @@ void geometryResolverVertex(
       geometryResolverState.radiance, geometryResolverState.attenuation,
       geometryResolverState.accumulatedRotation, cb.startInMediumMaterialIndex,
       geometryResolverState.accumulatedHitDistance, geometryResolverState.directionAltered,
+      virtualMotion, projection,
       geometryResolverState.useAlternateDisocclusionThreshold,
-      geometryResolverState.isViewModelSurface);
+      geometryResolverState.isViewModelSurface, /* decalCandidateSeen = */ true,
+      geometryResolverState.alphaBlendSurfaceStored);
+    geometryResolverState.alphaBlendSurfaceStored = true;
   }
   else if (GBUFFER_FEATURE_RAYTRACED_RENDER_TARGET && cb.enableRaytracedRenderTarget && isRaytracedRenderTarget)
   {
@@ -2587,10 +2629,13 @@ void geometryResolverVertex(
       geometryResolverState.radiance, geometryResolverState.attenuation,
       geometryResolverState.accumulatedRotation, cb.startInMediumMaterialIndex,
       geometryResolverState.accumulatedHitDistance, geometryResolverState.directionAltered,
+      virtualMotion, projection,
       geometryResolverState.useAlternateDisocclusionThreshold,
-      geometryResolverState.isViewModelSurface, geometryResolverState.decalCandidateSeen);
+      geometryResolverState.isViewModelSurface, geometryResolverState.decalCandidateSeen,
+      geometryResolverState.alphaBlendSurfaceStored);
 
     geometryResolverState.firstHitGuidesWritten = true;
+    geometryResolverState.alphaBlendSurfaceStored = true;
   }
 
   if (hasGBufferSlot(geometryResolverState.compactedCoordinate) &&
@@ -2625,8 +2670,8 @@ void geometryResolverVertex(
   if (GBUFFER_FEATURE_DLSSRR && cb.enableDLSSRR)
   {
     geometryResolverDLSSRROutputSurface(
-        geometryResolverState.pixelCoordinate, ray, surface, surfaceInteraction, polymorphicSurfaceMaterialInteraction,
-        geometryResolverState.attenuation, geometryResolverState.accumulatedRotation, geometryResolverState.accumulatedHitDistance
+        geometryResolverState.pixelCoordinate, ray, surface, polymorphicSurfaceMaterialInteraction,
+        geometryResolverState.attenuation, projection
     );
   }
 
@@ -2795,7 +2840,7 @@ void geometryPSRResolverVertex(
   geometryPSRResolverState.decalEncountered = false;
   
   uint4 decalMemory = 0;
-  vec3 decalEmissiveRadiance = vec3(0.0f);
+  f16vec3 decalEmissiveRadiance = f16vec3(0.0h);
   int surfaceIndex;
   resolveVertexUnordered<RAY_FLAG_CULL_OPAQUE, true, true>(
     resolveMode, unorderedResolveRay,
@@ -3107,7 +3152,9 @@ void geometryPSRResolverVertex(
   // Replace DLSS-RR motion vectors for transparent objects if screen-space refraction error is not too large.
   // This means that we replace the motion vectors (and depth + normals) until error is too large, giving us the
   // last interaction that's usable for motion vectors.
-  if (GBUFFER_FEATURE_DLSSRR && cb.enableDLSSRR && psrType == psrTypeTransmission)
+  // A path that is already distorted replaces nothing here and keeps its flag.
+  if (GBUFFER_FEATURE_DLSSRR && cb.enableDLSSRR && psrType == psrTypeTransmission &&
+      !geometryPSRResolverState.isRefractionDistorted)
   {
     // Compute the pixel error compared to a direct ray from camera
     const uvec2 pixelCoordinate = geometryPSRResolverState.pixelCoordinate;
@@ -3117,8 +3164,7 @@ void geometryPSRResolverVertex(
     const float minAttenuation = 0.2f;
 
     if (calcBt709Luminance(geometryPSRResolverState.attenuation) > minAttenuation &&
-        (!hasRefractionThis || (materialType != surfaceMaterialTypeRayPortal && hasPortalThis)) &&
-        !geometryPSRResolverState.isRefractionDistorted)
+        (!hasRefractionThis || (materialType != surfaceMaterialTypeRayPortal && hasPortalThis)))
     {
       // Note: Virtual hit distance and motion account for the ray traversing ray portals and PSR interactions.
       const vec3 virtualMotion = quaternionTransformVector(geometryPSRResolverState.accumulatedRotation, surfaceInteraction.motion, true);
@@ -3267,13 +3313,6 @@ void geometryResolver(ivec2 pixelCoordinate) {
     PrimaryCoverage[pixelCoordinate] = 1.0f;
   }
 
-  if (GBUFFER_FEATURE_STOCHASTIC_ALPHA && cb.enableStochasticAlphaBlend)
-  {
-    RNG randomState = createRNG(geometryResolverState.pixelCoordinate, cb.frameIdx);
-    AlphaBlendSurface alphaBlendSurface = AlphaBlendSurface.createEmpty();
-    alphaBlendSurface.randomThreshold = getNextSampleBlueNoise(randomState);
-    AlphaBlendGBuffer[pixelCoordinate] = alphaBlendSurface.pack(cb.alphaBlendSurfacePackMult);
-  }
 #ifndef GBUFFER_PSR
   if (GBUFFER_FEATURE_OBJECT_PICKING && cb.enableObjectPicking != 0)
   {
@@ -3309,6 +3348,13 @@ void geometryResolver(ivec2 pixelCoordinate) {
     {
       accumulateInDebugViewAdd(geometryResolverState.pixelCoordinate, 1);
     }
+  }
+
+  // Inline PSR pixels, raytraced render targets and resolves that ran out of interactions stored no alpha blend surface,
+  // but the PSR pass and composite read one.
+  if (GBUFFER_FEATURE_STOCHASTIC_ALPHA && cb.enableStochasticAlphaBlend && !geometryResolverState.alphaBlendSurfaceStored)
+  {
+    AlphaBlendGBuffer[pixelCoordinate] = geometryResolverCreateInitialAlphaBlendSurface(geometryResolverState.pixelCoordinate);
   }
 
   // Misses, PSR pixels and resolves that ran out of interactions wrote no guides, so they start from zero here.
@@ -3527,7 +3573,7 @@ bool resolveDecalAtSurface(
     unorderedResolveRay.tMax = localHitDistance * kUnorderedResolveRayLengthening;
 
     uint4 decalMemory = uint4(0);
-    vec3 decalEmissiveRadiance = vec3(0.0f);
+    f16vec3 decalEmissiveRadiance = f16vec3(0.0h);
     vec3 radianceAttenuation = vec3(1.0f, 1.0f, 1.0f);
     vec3 emissiveRadiance = vec3(0.0f);
 
@@ -3548,7 +3594,7 @@ bool resolveDecalAtSurface(
       decalEncountered, decalMemory, decalEmissiveRadiance, surfaceIndex);
 
     decalMaterialMemory.packed = decalMemory;
-    decalMaterialMemory.emissiveRadiance = f16vec3(decalEmissiveRadiance);
+    decalMaterialMemory.emissiveRadiance = decalEmissiveRadiance;
   }
 
   decalMaterialInteraction = decalMaterialInteractionUnpack(decalMaterialMemory);
@@ -3862,6 +3908,23 @@ void geometryResolverApplyUnorderedDecalsCompacted(uvec2 pixelCoordinate)
   }
 }
 
+// Mirrors minimalRayInteractionReadFromGBuffer for the writable primary GBuffer textures.
+MinimalRayInteraction geometryResolverReadPrimaryMinimalRayInteraction(
+  ivec2 pixelCoordinate, float encodedConeRadius, Ray primaryRay)
+{
+  GBufferMemoryMinimalRayInteraction memory;
+  memory.encodedViewDirection = float2(0.0f, 0.0f);
+  memory.encodedConeRadius = float16_t(encodedConeRadius);
+
+  // Only a negative cone radius marks a stored view direction, see minimalRayInteractionCreate.
+  if (memory.encodedConeRadius < float16_t(0.0f))
+  {
+    memory.encodedViewDirection = PrimaryViewDirection[pixelCoordinate];
+  }
+
+  return minimalRayInteractionCreate(memory, primaryRay);
+}
+
 void geometryResolverApplyUnorderedDecalsPass(ivec2 pixelCoordinate)
 {
   if (!cb.enableSeparateUnorderedApproximations || !cb.enableDecalMaterialBlending)
@@ -3895,11 +3958,8 @@ void geometryResolverApplyUnorderedDecalsPass(ivec2 pixelCoordinate)
   // view directions are reconstructed from this ray during GBuffer decode.
   const Ray primaryRay = rayCreatePrimaryFromPixel(cb.camera, pixelCoordinate);
 
-  GBufferMemoryMinimalRayInteraction rayInteractionMemory;
-  rayInteractionMemory.encodedViewDirection = PrimaryViewDirection[pixelCoordinate];
-  rayInteractionMemory.encodedConeRadius = encodedConeRadius;
   const MinimalRayInteraction minimalRayInteraction =
-    minimalRayInteractionCreate(rayInteractionMemory, primaryRay);
+    geometryResolverReadPrimaryMinimalRayInteraction(pixelCoordinate, encodedConeRadius, primaryRay);
 
   GBufferMemoryMinimalSurfaceInteraction surfaceInteractionMemory;
   surfaceInteractionMemory.encodedWorldPositionWorldTriangleTBN =
@@ -3964,26 +4024,8 @@ void geometryPSRPreparePass(ivec2 pixelCoordinate) {
   // view directions are reconstructed from this ray during GBuffer decode.
   const Ray primaryRay = rayCreatePrimaryFromPixel(cb.camera, pixelCoordinate);
 
-  GBufferMemoryMinimalRayInteraction rayInteractionMemory;
-  rayInteractionMemory.encodedViewDirection = PrimaryViewDirection[pixelCoordinate];
-  rayInteractionMemory.encodedConeRadius = float16_t(PrimaryConeRadius[pixelCoordinate]);
   const MinimalRayInteraction minimalRayInteraction =
-    minimalRayInteractionCreate(rayInteractionMemory, primaryRay);
-
-  GBufferMemoryMinimalSurfaceInteraction surfaceInteractionMemory;
-  surfaceInteractionMemory.encodedWorldPositionWorldTriangleTBN =
-    aliasedData0.PrimaryWorldPositionWorldTriangleNormal[pixelCoordinate];
-  surfaceInteractionMemory.positionError = PrimaryPositionError[pixelCoordinate];
-  const MinimalSurfaceInteraction minimalSurfaceInteraction =
-    minimalSurfaceInteractionCreate(surfaceInteractionMemory);
-
-  SurfaceInteraction surfaceInteraction;
-  surfaceInteraction.position = minimalSurfaceInteraction.position;
-  surfaceInteraction.positionError = minimalSurfaceInteraction.positionError;
-  surfaceInteraction.shadowTerminatorOffset = minimalSurfaceInteraction.shadowTerminatorOffset;
-  surfaceInteraction.geometryNormal = minimalSurfaceInteraction.geometryNormal;
-  surfaceInteraction.geometryTangent = minimalSurfaceInteraction.geometryTangent;
-  surfaceInteraction.geometryBitangent = minimalSurfaceInteraction.geometryBitangent;
+    geometryResolverReadPrimaryMinimalRayInteraction(pixelCoordinate, PrimaryConeRadius[pixelCoordinate], primaryRay);
 
   GBufferMemoryPolymorphicSurfaceMaterialInteraction surfaceMaterialInteractionMemory;
   surfaceMaterialInteractionMemory.worldShadingNormal =
@@ -4039,19 +4081,53 @@ void geometryPSRPreparePass(ivec2 pixelCoordinate) {
   const bool performPSRR = candidatePSRR && reflectionPSRSample.performPSR;
   const bool performPSTR = candidatePSTR && transmissionPSRSample.performPSR;
 
-  vec3 radiance = vec3(SharedRadianceRG[pixelCoordinate], SharedRadianceB[pixelCoordinate]);
-  const vec3 attenuation = r11g11b10ToColor(PrimaryAttenuation[pixelCoordinate]);
-  const vec3 diffuseLayerRadiance = approximateDiffuseLayerRadiance(
-    surfaceInteraction,
-    polymorphicSurfaceMaterialInteraction.shadingNormal,
-    geometryFlags.portalSpace,
-    diffuseLayerWeight) * attenuation;
+  // Matches the early out in approximateDiffuseLayerRadiance.
+  const bool hasDiffuseLayer = !all(diffuseLayerWeight <= 0.0f);
 
-  radiance += diffuseLayerRadiance;
+  MinimalSurfaceInteraction minimalSurfaceInteraction;
+  vec3 attenuation;
 
-  SharedRadianceRG[pixelCoordinate] = radiance.rg;
-  SharedRadianceB[pixelCoordinate] = radiance.b;
-  SharedIntegrationSurfacePdf[pixelCoordinate] = selectedIntegrationSurfacePdf;
+  // Loaded before storeReflectionPSRData, which aliases the world position.
+  if (hasDiffuseLayer || performPSRR || performPSTR)
+  {
+    GBufferMemoryMinimalSurfaceInteraction surfaceInteractionMemory;
+    surfaceInteractionMemory.encodedWorldPositionWorldTriangleTBN =
+      aliasedData0.PrimaryWorldPositionWorldTriangleNormal[pixelCoordinate];
+    surfaceInteractionMemory.positionError = PrimaryPositionError[pixelCoordinate];
+    minimalSurfaceInteraction = minimalSurfaceInteractionCreate(surfaceInteractionMemory);
+
+    attenuation = r11g11b10ToColor(PrimaryAttenuation[pixelCoordinate]);
+  }
+
+  // Without a diffuse layer the radiance would be stored back unchanged.
+  if (hasDiffuseLayer)
+  {
+    SurfaceInteraction surfaceInteraction;
+    surfaceInteraction.position = minimalSurfaceInteraction.position;
+    surfaceInteraction.positionError = minimalSurfaceInteraction.positionError;
+    surfaceInteraction.shadowTerminatorOffset = minimalSurfaceInteraction.shadowTerminatorOffset;
+    surfaceInteraction.geometryNormal = minimalSurfaceInteraction.geometryNormal;
+    surfaceInteraction.geometryTangent = minimalSurfaceInteraction.geometryTangent;
+    surfaceInteraction.geometryBitangent = minimalSurfaceInteraction.geometryBitangent;
+
+    vec3 radiance = vec3(SharedRadianceRG[pixelCoordinate], SharedRadianceB[pixelCoordinate]);
+    const vec3 diffuseLayerRadiance = approximateDiffuseLayerRadiance(
+      surfaceInteraction,
+      polymorphicSurfaceMaterialInteraction.shadingNormal,
+      geometryFlags.portalSpace,
+      diffuseLayerWeight) * attenuation;
+
+    radiance += diffuseLayerRadiance;
+
+    SharedRadianceRG[pixelCoordinate] = radiance.rg;
+    SharedRadianceB[pixelCoordinate] = radiance.b;
+  }
+
+  // The primary pass already stored a PDF of 1 for every pixel that reaches this pass.
+  if (selectedIntegrationSurfacePdf != 1.0f)
+  {
+    SharedIntegrationSurfacePdf[pixelCoordinate] = selectedIntegrationSurfacePdf;
+  }
 
   geometryFlags.performPSRR = performPSRR;
   geometryFlags.performPSTR = performPSTR;

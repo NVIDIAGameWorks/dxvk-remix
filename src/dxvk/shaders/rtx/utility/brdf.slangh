@@ -322,9 +322,9 @@ float evalGGXShadowing(vec2 anisotropicRoughness,
                            float k = 1.0f)
 {
   const vec3 directionDenominatorVector =
-    vec3(normalDotDirection,
-            anisotropicRoughness.x * tangentDotDirection,
-            anisotropicRoughness.y * bitangentDotDirection);
+    vec3(anisotropicRoughness.x * tangentDotDirection,
+            anisotropicRoughness.y * bitangentDotDirection,
+            normalDotDirection);
   const float sqrtDirectionDenominator = length(directionDenominatorVector);
 
   // Note: This is part of the conditional logic for Listing 2 in "Bounded VNDF Sampling for Smith-GGX Reflections"

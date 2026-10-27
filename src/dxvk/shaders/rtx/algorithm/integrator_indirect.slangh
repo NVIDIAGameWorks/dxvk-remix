@@ -236,7 +236,7 @@ void integratePathVertex(
   pathState.decalEncountered = false;
   
   uint4 decalMemory = 0;
-  vec3 decalEmissiveRadiance = vec3(0.0f);
+  f16vec3 decalEmissiveRadiance = f16vec3(0.0h);
   int unorderedSurfaceIndex = -1;  
   bool isNeeEnabledOnBounce = useNeeCacheOnThisBounce(pathState.bounceIteration, pathState.enableNeeCacheAfterFirstBounce);
   if (separateUnorderedApproximations)
@@ -301,7 +301,7 @@ void integratePathVertex(
     surface, surfaceInteraction,
     polymorphicSurfaceMaterialInteraction,
     radianceAttenuation, emissiveRadiance,
-    decalMemory, decalEmissiveRadiance, 
+    decalMemory, decalEmissiveRadiance,
     pathState.coneSpreadAngle,
     isStochasticAlphaBlend, firstRayPortal,
     pomOpaqueSurfaceEncountered,
@@ -563,20 +563,22 @@ void integratePathVertex(
     updateReSTIRGIHitDistance(oldLuminance, calcBt709Luminance(pathState.radiance), restirHitT, pathState.accumulatedHitDistance);
     
     const bool oldInsideMedium = pathState.insideMedium;
-    vec3 continuationThroughput = vec3(1.0);
+    // Held in half precision across the light sampling. sampleDirection clamps it below float16Max.
+    f16vec3 sampledContinuationThroughput;
     uint8_t continuationLobe = 0;
-    vec3 incomingDirection = pathState.direction;
     {
       // Sample a new direction
       float sampledLobePdf, solidAnglePdf;
 
       // Note: If this sample is invalid the throughput and solid angle pdf will be set to 0.
+      vec3 sampledThroughput = vec3(1.0);
       const Ray sampledRay = sampleDirection(
-        randomState, pathState.insideMedium, continuationThroughput,
+        randomState, pathState.insideMedium, sampledThroughput,
         ray, rayInteraction, surfaceInteraction,
         polymorphicSurfaceMaterialInteraction,
         continuationLobe, sampledLobePdf, solidAnglePdf,
         false);
+      sampledContinuationThroughput = f16vec3(sampledThroughput);
 
       // Stop recording hit geometry when translucent material emitting a scattering ray
       if (materialType == surfaceMaterialTypeTranslucent && dot(sampledRay.direction, pathState.direction) < 0.9)
@@ -685,69 +687,106 @@ void integratePathVertex(
 
 
       lightSample.solidAnglePdf = invSelectionPdf > 0 ? lightSample.solidAnglePdf / invSelectionPdf : 0.0;
-      vec3 diffuseLight, specularLight;
+      vec3 diffuseLight = vec3(0.0f, 0.0f, 0.0f);
+      vec3 specularLight = vec3(0.0f, 0.0f, 0.0f);
       const bool isDiffusionProfileSss = (cb.sssArgs.enableDiffusionProfile && isSubsurfaceDiffusionProfileMaterial(opaqueSurfaceMaterialInteraction));
-      diffuseLight = 0;
-      specularLight = 0;
-      if (lightSampleValid)
-      {
-        evaluateUnshadowedLight(lightSample, opaqueSurfaceMaterialInteraction, rayInteraction, normalize(lightSample.position - surfaceInteraction.position), diffuseLight, specularLight);
-      }
 
       uint lightTask = lightIdx;
-      if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && 
-          cb.neeCacheArgs.enableModeAfterFirstBounce != NeeEnableMode::None && 
+      NEECell cell = NEECache.getCell(pathState.neeCacheCellOffset);
+      const bool reshuffleResilience = cb.neeCacheArgs.enableReshuffleResilience;
+      bool sampleCachedTriangle = false;
+      if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable &&
+          cb.neeCacheArgs.enableModeAfterFirstBounce != NeeEnableMode::None &&
           pathState.enableNeeCacheAfterFirstBounce)
       {
-        NEECell cell = NEECache.getCell(pathState.neeCacheCellOffset);
-        bool reshuffleResilience = cb.neeCacheArgs.enableReshuffleResilience;
-        if (cell.isValid() && (reshuffleResilience || cell.getCandidateCount() > 0))
-        {
-          float randomNumber = RAB_GetNextRandom(rtxdiRNG);
-          uint triangleID;
-          LightSample lightSampleTriangle = cell.getCachedLightSample(randomNumber, surfaceInteraction.position, rayInteraction.coneRadius, pathState.coneSpreadAngle, triangleID);
+        sampleCachedTriangle = cell.isValid() && (reshuffleResilience || cell.getCandidateCount() > 0);
+      }
 
-          // When candidates are reshuffled (BLAS rebuild), the cached samples are preserved
-          // but their triangleIDs are stale prefix sum IDs from the previous frame.
-          // Don't feed stale IDs back into the cache.
-          const bool hasFreshCandidates = cell.getCandidateCount() > 0;
-          
-          // Calculate cached triangle NEE sample's MIS light contribution
-          vec3 diffuseLightTriangle, specularLightTriangle;
-          vec3 inputDirection = normalize(lightSampleTriangle.position - surfaceInteraction.position);
-          evaluateUnshadowedLight(lightSampleTriangle, opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection, diffuseLightTriangle, specularLightTriangle);
-          vec2 misWeight = NEECacheUtils.calculateLightSampleMISWeight(opaqueSurfaceMaterialInteraction, inputDirection, rayInteraction.viewDirection, lightSampleTriangle.solidAnglePdf);
-          diffuseLightTriangle *= misWeight.x;
-          specularLightTriangle *= misWeight.y;
-  
-          // Use RIS to choose between the light NEE sample and the cached triangle NEE sample
-          float weightLight = lightSampleValid && lightSample.solidAnglePdf > 0 ? calcBt709Luminance(diffuseLight + specularLight) / lightSample.solidAnglePdf : 0;
-          float weightTriangle = lightSampleTriangle.solidAnglePdf > 0 ? calcBt709Luminance(diffuseLightTriangle + specularLightTriangle) / lightSampleTriangle.solidAnglePdf : 0;
-          float r = RAB_GetNextRandom(rtxdiRNG);
-          if (r * (weightLight + weightTriangle) > weightLight)
+      // Candidate 0 is the light sample. Candidate 1 is the NEE cache's cached triangle sample, which RIS weighs against it.
+      // Both are evaluated by one loop body, so the BSDF evaluation is instantiated once.
+      [loop]
+      for (uint candidateIndex = 0; candidateIndex < 2; ++candidateIndex)
+      {
+        LightSample candidateSample;
+        uint triangleID = 0;
+
+        if (candidateIndex == 0)
+        {
+          if (!lightSampleValid)
           {
-            // Only switch feedback to triangle task when candidates are fresh,
-            // otherwise keep the analytical light index for correct task typing.
-            // Without this guard, the analytical light index would be inserted
-            // as a triangle prefix sum ID, corrupting the cache.
-            if (hasFreshCandidates || !reshuffleResilience)
-            {
-              lightIdx = kInvalidLightIdx;
-              lightTask = triangleID;
-            }
-            lightSample = lightSampleTriangle;
-            diffuseLight = diffuseLightTriangle;
-            specularLight = specularLightTriangle;
+            continue;
           }
-  
-          // Finalize the chosen sample
-          float totalWeight = weightLight + weightTriangle;
-          if (totalWeight > 0)
+
+          candidateSample = lightSample;
+        }
+        else
+        {
+          if (!sampleCachedTriangle)
           {
-            float targetPdf = calcBt709Luminance(diffuseLight + specularLight);
-            lightSample.solidAnglePdf = targetPdf / totalWeight;
-            lightSampleValid = true;
+            break;
           }
+
+          const float randomNumber = RAB_GetNextRandom(rtxdiRNG);
+          candidateSample = cell.getCachedLightSample(randomNumber, surfaceInteraction.position, rayInteraction.coneRadius, pathState.coneSpreadAngle, triangleID);
+        }
+
+        const vec3 inputDirection = normalize(candidateSample.position - surfaceInteraction.position);
+
+        // The MIS weight of the cached triangle sample needs the tangent frame even when the BSDF evaluation exits early.
+        OpaqueTangentFrame tangentFrame = (OpaqueTangentFrame)0;
+        if (candidateIndex == 1 || !isUnshadowedLightBackFacing(opaqueSurfaceMaterialInteraction, inputDirection))
+        {
+          tangentFrame = opaqueSurfaceMaterialInteractionCalcTangentFrame(opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
+        }
+
+        vec3 candidateDiffuseLight;
+        vec3 candidateSpecularLight;
+        evaluateUnshadowedLight(candidateSample, opaqueSurfaceMaterialInteraction, inputDirection, tangentFrame, candidateDiffuseLight, candidateSpecularLight);
+
+        if (candidateIndex == 0)
+        {
+          diffuseLight = candidateDiffuseLight;
+          specularLight = candidateSpecularLight;
+          continue;
+        }
+
+        // When candidates are reshuffled (BLAS rebuild), the cached samples are preserved
+        // but their triangleIDs are stale prefix sum IDs from the previous frame.
+        // Don't feed stale IDs back into the cache.
+        const bool hasFreshCandidates = cell.getCandidateCount() > 0;
+
+        // Calculate cached triangle NEE sample's MIS light contribution
+        const vec2 misWeight = NEECacheUtils.calculateLightSampleMISWeight(opaqueSurfaceMaterialInteraction, inputDirection, rayInteraction.viewDirection, candidateSample.solidAnglePdf, tangentFrame);
+        candidateDiffuseLight *= misWeight.x;
+        candidateSpecularLight *= misWeight.y;
+
+        // Use RIS to choose between the light NEE sample and the cached triangle NEE sample
+        const float weightLight = lightSampleValid && lightSample.solidAnglePdf > 0 ? calcBt709Luminance(diffuseLight + specularLight) / lightSample.solidAnglePdf : 0;
+        const float weightTriangle = candidateSample.solidAnglePdf > 0 ? calcBt709Luminance(candidateDiffuseLight + candidateSpecularLight) / candidateSample.solidAnglePdf : 0;
+        const float r = RAB_GetNextRandom(rtxdiRNG);
+        if (r * (weightLight + weightTriangle) > weightLight)
+        {
+          // Only switch feedback to triangle task when candidates are fresh,
+          // otherwise keep the analytical light index for correct task typing.
+          // Without this guard, the analytical light index would be inserted
+          // as a triangle prefix sum ID, corrupting the cache.
+          if (hasFreshCandidates || !reshuffleResilience)
+          {
+            lightIdx = kInvalidLightIdx;
+            lightTask = triangleID;
+          }
+          lightSample = candidateSample;
+          diffuseLight = candidateDiffuseLight;
+          specularLight = candidateSpecularLight;
+        }
+
+        // Finalize the chosen sample
+        const float totalWeight = weightLight + weightTriangle;
+        if (totalWeight > 0)
+        {
+          const float targetPdf = calcBt709Luminance(diffuseLight + specularLight);
+          lightSample.solidAnglePdf = targetPdf / totalWeight;
+          lightSampleValid = true;
         }
       }
     
@@ -818,6 +857,8 @@ void integratePathVertex(
       pathState.continuePath = false;
       return;
     }
+
+    vec3 continuationThroughput = vec3(sampledContinuationThroughput);
 
     // Check for path termination
     // Note: Bounce iteration refers to the index of the current vertex in the path,
@@ -958,7 +999,7 @@ void integratePathVertex(
           {
             MinimalRayInteraction minimalRayInteraction2;
             minimalRayInteraction2.coneRadius = 0.0;
-            minimalRayInteraction2.viewDirection = -incomingDirection;
+            minimalRayInteraction2.viewDirection = rayInteraction.viewDirection;
             vec3 L2 = normalize(spatialReservoir.position - surfaceInteraction.position);
             SurfaceMaterialInteractionSplitWeight brdf2 = opaqueSurfaceMaterialInteractionCalcProjectedWeight(opaqueSurfaceMaterialInteraction, minimalRayInteraction2, L2);
             indirectLight += spatialReservoir.radiance * (brdf2.diffuseReflectionWeight + brdf2.diffuseTransmissionWeight) * spatialReservoir.avgWeight;        
@@ -1085,13 +1126,16 @@ vec3 calculateReSTIRGIRadianceFactor(
 // This looks kind of stupid because we just wrote this radiance factor to a texture earlier in this function,
 // but it's actually better than storing the factor in a variable. That would result in the factor being spilled and filled
 // multiple times as the integrator progresses through the scene, and with a texture store it's only spilled once.
-void storeRestirGIRadiance(PathState pathState, GeometryFlags geometryFlags, float gbufferSurfaceHitDistance)
+void storeRestirGIRadiance(PathState pathState, GeometryFlags geometryFlags, u16vec2 compactedCoordinate)
 {
-#if ENABLE_RESTIR_GI  
+#if ENABLE_RESTIR_GI
   if (!(cb.enableReSTIRGI && geometryFlags.primarySelectedIntegrationSurface))
   {
     return;
   }
+
+  // Reloaded here so that it is not live state across the integrator loop.
+  const float gbufferSurfaceHitDistance = PrimaryHitDistance[compactedCoordinate];
 
   vec4 restirGIRadianceFactorHitDistance = RestirGIRadiance[pathState.pixelCoordinate];
   vec3 restirGIRadiance = restirGIRadianceFactorHitDistance.rgb * pathState.radiance;
@@ -1645,7 +1689,7 @@ void integrateIndirectPath(
     // Re-load geometry flags from the resource so that they're not carried around as live state during a ray path integration
     geometryFlags = geometryFlagsReadFromGBuffer(ivec2(compactedCoordinate), SharedFlags);
 
-    storeRestirGIRadiance(pathState, geometryFlags, gbufferSurfaceHitDistance);
+    storeRestirGIRadiance(pathState, geometryFlags, compactedCoordinate);
 
     vec4 indirectOutData = vec4(pathState.radiance, pathState.firstBounceHitDistance);
 

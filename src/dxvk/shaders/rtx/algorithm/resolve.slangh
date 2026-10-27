@@ -317,7 +317,7 @@ float resolveVertex<T: IBasePayloadState>(
   inout PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   inout vec3 radianceAttenuation, inout vec3 emissiveRadiance,
   uint4 decalMemory,
-  vec3 decalEmissiveRadiance,
+  f16vec3 decalEmissiveRadiance,
   float coneSpreadAngle,
   inout bool isStochasticAlphaBlend,
   inout uint8_t firstRayPortal,
@@ -416,11 +416,11 @@ float resolveVertex<T: IBasePayloadState>(
     {
       MemoryDecalMaterialInteraction memory;
       memory.packed = decalMemory;
-      memory.emissiveRadiance = f16vec3(decalEmissiveRadiance);
+      memory.emissiveRadiance = decalEmissiveRadiance;
       DecalMaterialInteraction decalMaterialInteraction = decalMaterialInteractionUnpack(memory);
 
       decalMaterialInteractionBlend(decalMaterialInteraction, opaqueSurfaceMaterialInteraction);
-      
+
       resolveVertexState.decalEncountered = false;
     }
 
@@ -538,7 +538,7 @@ float resolveVertex<T: IBasePayloadState>(
     {
       MemoryDecalMaterialInteraction memory;
       memory.packed = decalMemory;
-      memory.emissiveRadiance = f16vec3(decalEmissiveRadiance);
+      memory.emissiveRadiance = decalEmissiveRadiance;
       DecalMaterialInteraction decalMaterialInteraction = decalMaterialInteractionUnpack(memory);
 
       decalMaterialInteractionBlend(decalMaterialInteraction, translucentSurfaceMaterialInteraction);
@@ -1159,7 +1159,7 @@ void resolveVertexUnordered<
   out uint numInteractions,
   inout bool decalEncountered,
   inout uint4 decalMemory,
-  inout vec3 decalEmissiveRadiance,
+  inout f16vec3 decalEmissiveRadiance,
   inout int surfaceIndex)
 {
   // Early out if approximations are not desired to be separated out
@@ -1355,7 +1355,18 @@ void resolveVertexUnordered<
       surfaceInteraction.vertexColor = vertexColor;
     }
 
-    const Surface surface = surfaces[uint(rayInteraction.surfaceIndex)]; 
+    const Surface surface = surfaces[uint(rayInteraction.surfaceIndex)];
+
+    const bool isDecal = isTriangle && surfaceIsDecal(surface);
+
+#ifndef RAY_TRACING_PRIMARY_RAY
+    // Back-facing opaque decals never contribute.
+    // Primary rays still create their materials, because material creation writes sampler feedback and debug views.
+    if (ENABLE_DECALS && isDecal && rayInteraction.materialType == surfaceMaterialTypeOpaque && !rayInteraction.frontHit)
+    {
+      continue;
+    }
+#endif
 
     if (isTriangle)
     {
@@ -1384,7 +1395,6 @@ void resolveVertexUnordered<
     float currentRadianceAttenuation = 1.0f;
     vec3 currentEmissiveRadiance = vec3(0.0f);
 
-    const bool isDecal = isTriangle && surfaceIsDecal(surface);
     bool handledInteraction = false;
 
     if (polymorphicType == surfaceMaterialTypeOpaque)
@@ -1430,7 +1440,7 @@ void resolveVertexUnordered<
             // use this decal
             MemoryDecalMaterialInteraction memory = decalMaterialInteractionPack(decalMaterialInteraction);
             decalMemory = memory.packed;
-            decalEmissiveRadiance = vec3(memory.emissiveRadiance);
+            decalEmissiveRadiance = memory.emissiveRadiance;
             surfaceIndex = rayInteraction.surfaceIndex;
             sampledSortOrder = decalSortKey;
             minDecalSample = rngValue;
@@ -1660,12 +1670,13 @@ void resolveVertexUnordered<
     // write it to output values
     MemoryDecalMaterialInteraction memory = decalMaterialInteractionPack(decalMaterialInteractionComposited);
     decalMemory = memory.packed;
-    decalEmissiveRadiance = vec3(memory.emissiveRadiance);
+    decalEmissiveRadiance = memory.emissiveRadiance;
   }
 #endif
 
   emissiveRadiance *= 1.0f / pathSelectionProbability;
-  decalEmissiveRadiance *= 1.0f / pathSelectionProbability;
+  // Scaled in full precision. Every reader rounds it to half precision anyway.
+  decalEmissiveRadiance = f16vec3(vec3(decalEmissiveRadiance) * (1.0f / pathSelectionProbability));
 }
 
 #if 0

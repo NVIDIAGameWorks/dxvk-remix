@@ -104,7 +104,6 @@ RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteractionCreate(
   // Sample from each Ray Portal Surface Material texture
 
   vec4 maskSample;
-  vec4 maskSample2;
 
   const bool maskLoaded = rayPortalSurfaceMaterialInteractionSpriteSheetReadHelper(
     rayPortalSurfaceMaterial.maskTextureIndex,
@@ -118,11 +117,8 @@ RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteractionCreate(
     rayPortalSurfaceMaterial.rotationSpeed,
     maskSample);
   // Note: Only load the second mask if the texture coordinates are in a valid range (they often go out of this range
-  // when opening a Portal). To be sure the texture is not being loaded it would be good to short circut the evaluation of the texture read helper,
-  // but this complicates the determination of the default mask color a bit (without moving the invalid texture check out at least), so we instead just
-  // hope the optimizer will remove the texture load when any code referencing it is behind a conditional.
+  // when opening a Portal).
   const bool shouldUseMask2Texture = all(surfaceInteraction.textureCoordinates >= vec2(0.0f)) && all(surfaceInteraction.textureCoordinates <= vec2(1.0f));
-  const bool maskLoaded2 = surfaceMaterialInteractionTextureReadHelper(rayPortalSurfaceMaterial.maskTextureIndex2, rayPortalSurfaceMaterial.samplerIndex2, surfaceInteraction, maskSample2);
 
   // Load Color
 
@@ -139,11 +135,11 @@ RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteractionCreate(
 
   // Load Portal mask
 
-  float mask2 = maskLoaded2 ? 0.0f : 1.0f;
+  float mask2;
 
-  if (shouldUseMask2Texture && maskLoaded2)
+  if (shouldUseMask2Texture && rayPortalSurfaceMaterial.maskTextureIndex2 != BINDING_INDEX_INVALID)
   {
-    mask2 = maskSample2.r;
+    mask2 = textureRead(rayPortalSurfaceMaterial.maskTextureIndex2, rayPortalSurfaceMaterial.samplerIndex2, surfaceInteraction).r;
   }
   else
   {

@@ -46,6 +46,7 @@ void deserializeInteractions(
   GeometryFlags geometryFlags,
   out MinimalRayInteraction minimalRayInteraction,
   out MinimalSurfaceInteraction minimalSurfaceInteraction,
+  out uint32_t packedGeometryTBN,
   out PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction)
 {
   // Re-derive the original primary ray direction
@@ -56,8 +57,8 @@ void deserializeInteractions(
     minimalRayInteraction = minimalRayInteractionReadFromGBuffer(
       primaryRay, compactedCoordinate, PrimaryViewDirection, PrimaryConeRadius);
 
-    minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBufferWithError(
-      compactedCoordinate, PrimaryWorldPositionWorldTriangleNormal, PrimaryPositionError);
+    minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBufferWithErrorDeferTangents(
+      compactedCoordinate, PrimaryWorldPositionWorldTriangleNormal, PrimaryPositionError, packedGeometryTBN);
 
     polymorphicSurfaceMaterialInteraction = polymorphicSurfaceMaterialInteractionReadFromGBuffer(
       pixelCoordinate, compactedCoordinate, pixelCoordinate,
@@ -69,8 +70,8 @@ void deserializeInteractions(
     minimalRayInteraction = minimalRayInteractionReadFromGBuffer(
       primaryRay, compactedCoordinate, SecondaryViewDirection, SecondaryConeRadius);
 
-    minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBufferWithError(
-      compactedCoordinate, aliasedData0.SecondaryWorldPositionWorldTriangleNormal, aliasedData2.SecondaryPositionError);
+    minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBufferWithErrorDeferTangents(
+      compactedCoordinate, aliasedData0.SecondaryWorldPositionWorldTriangleNormal, aliasedData2.SecondaryPositionError, packedGeometryTBN);
 
     polymorphicSurfaceMaterialInteraction = polymorphicSurfaceMaterialInteractionReadFromGBuffer(
       pixelCoordinate, compactedCoordinate, compactedCoordinate,
@@ -145,12 +146,14 @@ void integrate_direct_pass(uvec2 threadIndex)
 
   MinimalRayInteraction minimalRayInteraction;
   MinimalSurfaceInteraction minimalSurfaceInteraction;
+  uint32_t packedGeometryTBN;
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction;
 
   // Deserialize the Ray Interaction, Surface Interaction, and Surface Material Interaction
+  // Note: The tangent frame stays packed in packedGeometryTBN until the subsurface scattering and POM visibility code needs it.
   deserializeInteractions(
     pixelCoordinate, compactedCoordinate, geometryFlags,
-    minimalRayInteraction, minimalSurfaceInteraction, polymorphicSurfaceMaterialInteraction);
+    minimalRayInteraction, minimalSurfaceInteraction, packedGeometryTBN, polymorphicSurfaceMaterialInteraction);
 
   // Rewrite Material Data for Denoising
   // Note: This is done to turn the usual material data base reflectivity into something more suitable for
@@ -205,6 +208,6 @@ void integrate_direct_pass(uvec2 threadIndex)
   integrateDirectPath(
     rng, pixelCoordinate, compactedCoordinate,
     geometryFlags, integrationSurfacePdf,
-    primaryRay, minimalRayInteraction, minimalSurfaceInteraction,
+    primaryRay, minimalRayInteraction, minimalSurfaceInteraction, packedGeometryTBN,
     polymorphicSurfaceMaterialInteraction);
 }

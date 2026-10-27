@@ -61,6 +61,7 @@ SssTracingResult traceSssRay(
   // Construct hit info from the hit
   RAY_HIT_INFO_CREATE_RAY_QUERY_COMMITTED(rayHitInfo, rayQuery)
 
+  // Note: Callers discard a miss without reading its surface fields.
   if (!rayHitInfo.hasHit)
   {
     SssTracingResult missResult = (SssTracingResult)0;
@@ -73,8 +74,9 @@ SssTracingResult traceSssRay(
   // Resolve normal and TexCoord
   RayInteraction sssRayInteraction = rayInteractionCreate(sssSampleRay, rayHitInfo);
   Surface sssSampleSurface = surfaces[sssRayInteraction.surfaceIndex];
-  SurfaceInteraction surfaceInteraction =
-    surfaceInteractionCreate<SurfaceGenerateTangents>(sssSampleSurface, sssRayInteraction, sssSampleRay);
+  // Note: The result only carries the position, normal, tangents and texture coordinates, so motion and the shadow terminator offset are skipped.
+  SurfaceInteraction surfaceInteraction = surfaceInteractionCreateWithoutMotion<SurfaceGenerateTangents>(
+    sssSampleSurface, sssRayInteraction, sssSampleRay);
 
   const OpaqueSurfaceMaterial sssOpaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surfaceMaterials[sssSampleSurface.surfaceMaterialIndex]);
 
@@ -105,7 +107,6 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
   const uint primarySurfaceIndex,
   ivec2 pixelCoordinate,
   ivec2 compactedCoordinate,
-  Texture2D<uint> worldShadingNormal,
   inout RNG randomState)
 {
 
@@ -224,6 +225,16 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
     // Create surface interaction for the sample position
     MinimalSurfaceInteraction sssMinimalSurfaceInteraction = sssTracingResult.sssMinimalSurfaceInteraction;
 
+    // The BSSRDF term is evaluated before the visibility trace, so that the light sample and the tracing result
+    // are not live across it. It is only used if the trace finds the light visible.
+    const vec3 sssInputDirection = createVisibilityRay(
+      sssMinimalSurfaceInteraction, sssLightSample.position,
+      minimalRayInteraction.coneRadius, viewRay.spreadAngle,
+      false, opaqueSurfaceMaterialInteraction.shadingNormal).direction;
+    const float lightSampleThroughput = inverseSelectionPdf / sssLightSample.solidAnglePdf;
+    const float /* n.l */ normalDotInputDirection = max(dot(sssInputDirection, sssTracingResult.normal), 0.0f);
+    const float3 sssBssrdf = RTXCR_EvalBssrdf(subsurfaceSample, float3(sssLightSample.radiance), float(normalDotInputDirection));
+
     // Trace Visibilty Ray
     const VisibilityResult visibility = traceVisibilityRay<visibilityModeEnablePom | visibilityModeAccurateHitDistance | visibilityModeEnableTranslucentMaterials | visibilityModeEnableSubsurfaceMaterials>(
       sssMinimalSurfaceInteraction,
@@ -240,16 +251,9 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
       continue;
     }
 
-    const float lightSampleThroughput = inverseSelectionPdf / sssLightSample.solidAnglePdf;
     const vec3 commonLightThroughput = lightSampleThroughput.rrr * vec3(visibility.attenuation);
 
-    /// Evaluate BSSRDF
-
-    const vec3 shadingNormal = sssTracingResult.normal;
-    const vec3 inputDirection = visibility.rayDirection;
-    const float /* n.l */ normalDotInputDirection = max(dot(inputDirection, shadingNormal), 0.0f);
-
-    sssScatteringWeight += RTXCR_EvalBssrdf(subsurfaceSample, float3(sssLightSample.radiance), float(normalDotInputDirection)) * commonLightThroughput;
+    sssScatteringWeight += sssBssrdf * commonLightThroughput;
 
     ++validSampleCount;
   }
@@ -352,6 +356,25 @@ float3 evalSingleScatteringTransmission(
         continue;
       }
 
+      // The transmission term is evaluated before the visibility trace, so that the light sample and the tracing result
+      // are not live across it. It is only used if the trace finds the light visible.
+      const vec3 transmissionLightDirection = createVisibilityRay(
+        transmissionTracingResult.sssMinimalSurfaceInteraction, transmissionLightSample.position,
+        minimalRayInteraction.coneRadius, viewRay.spreadAngle,
+        false, opaqueSurfaceMaterialInteraction.shadingNormal).direction;
+      const float lightSampleThroughput = inverseSelectionPdf / transmissionLightSample.solidAnglePdf;
+
+      const float3 transmissionBsdf =
+        RTXCR_EvaluateBoundaryTerm(opaqueSurfaceMaterialInteraction.shadingNormal, // Front face normal
+                                   transmissionLightDirection,                     // Vector to light from back surface
+                                   refractedRayDirection,                          // Refracted ray direction
+                                   transmissionTracingResult.normal,               // Backface normal
+                                   thickness,                                      // The thickness between front and back surface of current sample ray
+                                   sssMaterialCoefficients);
+
+      // Li * bsdf * cosTheta / CosineLobePDF = Li * bsdf * cosTheta / (cosTheta / pi) = Li * bsdf * pi
+      const float3 transmissionRadianceTerm = transmissionLightSample.radiance * transmissionBsdf * pi;
+
       /// Visibility Check
 
       // Trace Visibilty Ray
@@ -370,19 +393,9 @@ float3 evalSingleScatteringTransmission(
         continue;
       }
 
-      const float lightSampleThroughput = inverseSelectionPdf / transmissionLightSample.solidAnglePdf;
       const vec3 commonLightThroughput = lightSampleThroughput.rrr * vec3(visibility.attenuation);
 
-      const float3 transmissionBsdf =
-        RTXCR_EvaluateBoundaryTerm(opaqueSurfaceMaterialInteraction.shadingNormal, // Front face normal
-                                   visibility.rayDirection,                        // Vector to light from back surface
-                                   refractedRayDirection,                          // Refracted ray direction
-                                   transmissionTracingResult.normal,               // Backface normal
-                                   thickness,                                      // The thickness between front and back surface of current sample ray
-                                   sssMaterialCoefficients);
-
-      // Accumulate: Li * bsdf * cosTheta / CosineLobePDF = Li * bsdf * cosTheta / (cosTheta / pi) = Li * bsdf * pi
-      radiance += transmissionLightSample.radiance * transmissionBsdf * pi * commonLightThroughput;
+      radiance += transmissionRadianceTerm * commonLightThroughput;
     }
 
     if (!cb.enableSssTransmissionSingleScattering)
@@ -449,6 +462,23 @@ float3 evalSingleScatteringTransmission(
         continue;
       }
 
+      // The scattering term is evaluated before the visibility trace, so that the light sample and the tracing result
+      // are not live across it. It is only used if the trace finds the light visible.
+      const vec3 singleScatteringLightDirection = createVisibilityRay(
+        singleScatteringTracingResult.sssMinimalSurfaceInteraction, singleScatteringLightSample.position,
+        minimalRayInteraction.coneRadius, viewRay.spreadAngle,
+        false, opaqueSurfaceMaterialInteraction.shadingNormal).direction;
+      const float lightSampleThroughput = singleScatteringInverseSelectionPdf / singleScatteringLightSample.solidAnglePdf;
+
+      const float3 singleScatteringTransmissionBsdf =
+        RTXCR_EvaluateSingleScattering(-singleScatteringLightDirection,
+                                       singleScatteringTracingResult.normal,
+                                       totalScatteringDistance,
+                                       sssMaterialCoefficients);
+
+      // Li * BSDF / PDF
+      const float3 scatteringRadianceTerm = singleScatteringLightSample.radiance * singleScatteringTransmissionBsdf * stepSize;
+
       /// Visibility Check
 
       // Trace Visibilty Ray
@@ -467,16 +497,9 @@ float3 evalSingleScatteringTransmission(
         continue;
       }
 
-      const float lightSampleThroughput = singleScatteringInverseSelectionPdf / singleScatteringLightSample.solidAnglePdf;
       const vec3 commonLightThroughput = lightSampleThroughput.rrr * vec3(singleScatteringVisibility.attenuation);
 
-      const float3 singleScatteringTransmissionBsdf =
-        RTXCR_EvaluateSingleScattering(-singleScatteringVisibility.rayDirection,
-                                       singleScatteringTracingResult.normal,
-                                       totalScatteringDistance,
-                                       sssMaterialCoefficients);
-
-      scatteringThroughput += singleScatteringLightSample.radiance * singleScatteringTransmissionBsdf * stepSize * commonLightThroughput; // Li * BSDF / PDF
+      scatteringThroughput += scatteringRadianceTerm * commonLightThroughput;
     }
     radiance += scatteringThroughput / perBsdfScatteringSampleCount;
   }
