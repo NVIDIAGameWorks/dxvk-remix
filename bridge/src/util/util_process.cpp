@@ -50,7 +50,7 @@ namespace bridge_util {
       NULL,          // process security attributes
       NULL,          // primary thread security attributes
       TRUE,          // handles are inherited
-      HIGH_PRIORITY_CLASS,             // creation flags
+      NORMAL_PRIORITY_CLASS, // creation flags
       NULL,          // use parent's environment
       NULL,          // use parent's current directory
       &siStartInfo,  // STARTUPINFO pointer

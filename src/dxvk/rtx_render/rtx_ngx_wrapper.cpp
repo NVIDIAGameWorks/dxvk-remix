@@ -23,6 +23,7 @@
 #include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <exception>
 #include <mutex>
 
 #define WIN32_NO_STATUS
@@ -147,7 +148,6 @@ namespace dxvk
     m_supportsDLSS = false;
     m_supportsRayReconstruction = false;
     m_supportsDlssNeuralRendering = false;
-    m_dlssNeuralRenderingSupportChecked = false;
 
     const std::string exePath = env::getExePath();
     const std::string exeFolder = exePath.substr(0, exePath.find_last_of("\\/"));
@@ -224,7 +224,6 @@ namespace dxvk
     }
 
     m_supportsDlssNeuralRendering = checkDlssNeuralRenderingSupport(tempParams);
-    m_dlssNeuralRenderingSupportChecked = true;
     
 #if defined(NVSDK_NGX_Parameter_SuperSampling_NeedsUpdatedDriver)        \
     && defined (NVSDK_NGX_Parameter_SuperSampling_MinDriverVersionMajor) \
@@ -306,9 +305,32 @@ namespace dxvk
 
   NGXContext::NGXContext(DxvkDevice* device)
     : m_device(device) {
+    // NGX loads and initializes every available feature library. Keep this work off
+    // device creation so the game can present its loading screen while it completes.
+    m_initializationTask = std::async(std::launch::async, [this] {
+      env::setThreadName("rtx-initialize-ngx");
+      try {
+        initialize();
+      } catch (const std::exception& error) {
+        Logger::err(str::format("NGX initialization failed: ", error.what()));
+        s_dlssNeuralRenderingStatus.store(0, std::memory_order_release);
+      } catch (...) {
+        Logger::err("NGX initialization failed with an unknown exception.");
+        s_dlssNeuralRenderingStatus.store(0, std::memory_order_release);
+      }
+      m_initializationComplete.store(true, std::memory_order_release);
+    });
+  }
+
+  void NGXContext::waitForInitialization() const {
+    if (m_initializationTask.valid()) {
+      m_initializationTask.wait();
+    }
   }
 
   void NGXContext::shutdown() {
+    // The worker uses the Vulkan device; join it before either NGX or the device is destroyed.
+    waitForInitialization();
     s_dlssNeuralRenderingStatus.store(-1, std::memory_order_release);
     if (m_initialized) {
       NGX_CALL(NVSDK_NGX_VULKAN_Shutdown1(m_device->handle()));
@@ -317,10 +339,9 @@ namespace dxvk
   }
 
   std::unique_ptr<NGXDLSSContext> NGXContext::createDLSSContext() {
+    waitForInitialization();
     if (!m_initialized) {
-      if (!initialize()) {
-        return nullptr;
-      }
+      return nullptr;
     }
 
     if (!supportsDLSS()) {
@@ -332,10 +353,9 @@ namespace dxvk
   }
 
   std::unique_ptr<NGXRayReconstructionContext> NGXContext::createRayReconstructionContext() {
+    waitForInitialization();
     if (!m_initialized) {
-      if (!initialize()) {
-        return nullptr;
-      }
+      return nullptr;
     }
 
     if (!supportsRayReconstruction()) {
@@ -347,10 +367,9 @@ namespace dxvk
   }
 
   std::unique_ptr<NGXDLFGContext> NGXContext::createDLFGContext() {
+    waitForInitialization();
     if (!m_initialized) {
-      if (!initialize()) {
-        return nullptr;
-      }
+      return nullptr;
     }
 
     if (!supportsDLFG()) {
@@ -362,10 +381,9 @@ namespace dxvk
   }
 
   std::unique_ptr<NGXNeuralRenderingContext> NGXContext::createDlssNeuralRenderingContext() {
+    waitForInitialization();
     if (!m_initialized) {
-      if (!initialize()) {
-        return nullptr;
-      }
+      return nullptr;
     }
 
     if (!supportsDlssNeuralRendering()) {

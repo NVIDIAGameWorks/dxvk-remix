@@ -21,6 +21,12 @@
 */
 #pragma once
 
+#include <atomic>
+#include <cstdint>
+#include <future>
+#include <memory>
+#include <string>
+
 // Note: because this header might be included in another module which does not have access
 // to the DLSS SDK do not include any SDK headers unconditionally.
 #ifdef NVSDK_NGX_H
@@ -31,8 +37,6 @@
 #include <nvsdk_ngx_defs_dlssnr.h>
 #endif
 
-#include <cstdint>
-#include <memory>
 #include "../util/rc/util_rc_ptr.h"
 #include "../util/util_export_macros.h"
 #include "rtx_semaphore.h"
@@ -91,32 +95,41 @@ namespace dxvk {
     NGXContext& operator=(NGXContext&&) noexcept = delete;
 
     void shutdown();
+    void waitForInitialization() const;
+
+    bool isInitializationComplete() const {
+      return m_initializationComplete.load(std::memory_order_acquire);
+    }
 
     bool supportsDLSS() {
-      return m_supportsDLSS;
+      return isInitializationComplete() && m_initialized && m_supportsDLSS;
     }
 
     bool supportsDLFG() {
-      return m_supportsDLFG;
+      return isInitializationComplete() && m_initialized && m_supportsDLFG;
     }
 
     uint32_t dlfgMaxInterpolatedFrames() {
-      return m_dlfgMaxInterpolatedFrames;
+      return isInitializationComplete() && m_initialized ? m_dlfgMaxInterpolatedFrames : 0;
     }
 
     bool supportsRayReconstruction() {
-      return m_supportsRayReconstruction;
+      return isInitializationComplete() && m_initialized && m_supportsRayReconstruction;
     }
 
     bool supportsDlssNeuralRendering() const {
-      return m_supportsDlssNeuralRendering;
+      return isInitializationComplete() && m_initialized && m_supportsDlssNeuralRendering;
     }
 
     bool isDlssNeuralRenderingSupportChecked() const {
-      return m_dlssNeuralRenderingSupportChecked;
+      return isInitializationComplete();
     }
 
     const std::string& getDLFGNotSupportedReason() {
+      static const std::string kInitializingReason = "DLSS is initializing.";
+      if (!isInitializationComplete()) {
+        return kInitializingReason;
+      }
       return m_dlfgNotSupportedReason;
     }
     
@@ -136,13 +149,15 @@ namespace dxvk {
     uint32_t m_dlfgMaxInterpolatedFrames = 0;
     bool m_supportsRayReconstruction = false;
     bool m_supportsDlssNeuralRendering = false;
-    bool m_dlssNeuralRenderingSupportChecked = false;
 
     bool checkDLSSSupport(NVSDK_NGX_Parameter* params);
     bool checkDlssNeuralRenderingSupport(NVSDK_NGX_Parameter* params);
     void checkDLFGSupport(NVSDK_NGX_Parameter* params);
 
     std::string m_dlfgNotSupportedReason;
+    // Publish the capability fields together after the worker finishes writing them.
+    std::atomic<bool> m_initializationComplete = false;
+    std::future<void> m_initializationTask;
   };
 
   class NGXFeatureContext {

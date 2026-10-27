@@ -545,7 +545,7 @@ namespace dxvk {
   constexpr ImGuiWindowFlags popupWindowFlags = ImGuiWindowFlags_NoSavedSettings;
 
   RemixGui::ComboWithKey<UpscalerType>& getUpscalerCombo(DxvkDLSS& dlss, DxvkRayReconstruction& rayReconstruction) {
-    if (dlss.supportsDLSS()) {
+    if (!dlss.isSupportChecked() || dlss.supportsDLSS()) {
       return upscalerDLSSCombo;
     } else {
       // Drop DLSS item if unsupported.
@@ -3863,7 +3863,7 @@ namespace dxvk {
 
       RtxOptions::updatePresetFromUpscaler();
 
-      if (RtxOptions::upscalerType() == UpscalerType::DLSS && !ctx->getCommonObjects()->metaDLSS().supportsDLSS()) {
+      if (dlss.isSupportChecked() && RtxOptions::upscalerType() == UpscalerType::DLSS && !dlss.supportsDLSS()) {
         RtxOptions::upscalerType.setDeferred(UpscalerType::TAAU);
       }
 

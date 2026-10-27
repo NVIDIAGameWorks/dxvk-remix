@@ -50,8 +50,6 @@ namespace dxvk {
     // Update window handle with other systems
     m_context->getCommonObjects()->setWindowHandle(m_window);
 
-    auto srcImage = m_context->getCommonObjects()->getResources().getRaytracingOutput().m_finalOutput.resource(dxvk::Resources::AccessType::ReadWrite).image;
-
     auto targetImage = m_backBuffers[0]->GetCommonTexture()->GetImage();
     auto swapImageView = m_backBuffers[0]->GetImageView(false);
 
@@ -59,8 +57,14 @@ namespace dxvk {
 
     m_parent->m_rtx.EndFrame(targetImage);
 
-    m_parent->EmitCs([this, cTargetImage = targetImage, cSrcImage = srcImage](DxvkContext* ctx) {
-      dxvk::RtxContext::blitImageHelper(ctx, cSrcImage, cTargetImage, VkFilter::VK_FILTER_NEAREST);
+    m_parent->EmitCs([cTargetImage = targetImage](DxvkContext* ctx) {
+      const auto& finalOutput =
+        ctx->getCommonObjects()->getResources().getRaytracingOutput().m_finalOutput;
+
+      if (!finalOutput.empty()) {
+        const auto srcImage = finalOutput.resource(Resources::AccessType::ReadWrite).image;
+        RtxContext::blitImageHelper(ctx, srcImage, cTargetImage, VK_FILTER_NEAREST);
+      }
     });
 
     m_parent->Flush();

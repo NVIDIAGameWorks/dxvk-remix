@@ -30,8 +30,14 @@ namespace dxvk {
   D3D9Rtx::D3D9Rtx(D3D9DeviceEx* d3d9Device, bool enableDrawCallConversion)
     : m_rtStagingData(d3d9Device->GetDXVKDevice(), "RtxStagingDataAlloc: D3D9", (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_HOST_CACHED_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT))
     , m_parent(d3d9Device)
-    , m_enableDrawCallConversion(enableDrawCallConversion)
-    , m_pGeometryWorkers(enableDrawCallConversion ? std::make_unique<GeometryProcessor>(numGeometryProcessingThreads(), "geometry-processing") : nullptr) {
+    , m_enableDrawCallConversion(enableDrawCallConversion) {
+  }
+
+  D3D9Rtx::GeometryProcessor& D3D9Rtx::getGeometryWorkers() {
+    if (!m_pGeometryWorkers) {
+      m_pGeometryWorkers = std::make_unique<GeometryProcessor>(numGeometryProcessingThreads(), "geometry-processing");
+    }
+    return *m_pGeometryWorkers;
   }
 
   void D3D9Rtx::SkinningMatrixPool::clear() {
@@ -878,7 +884,8 @@ namespace dxvk {
     const Matrix4* const boneMatrices = m_stagedBones.stageBones(
         d3d9State().transforms.data() + startBoneTransform, nMat);
 
-    return m_pGeometryWorkers->Schedule([boneMatrices, blendIndices, numBonesPerVertex, vertexCount]()->SkinningData {
+    auto& geometryWorkers = getGeometryWorkers();
+    return geometryWorkers.Schedule([boneMatrices, blendIndices, numBonesPerVertex, vertexCount]()->SkinningData {
       ScopedCpuProfileZone();
       uint32_t numBones = numBonesPerVertex;
 

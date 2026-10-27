@@ -94,6 +94,7 @@ namespace dxvk {
           "Samuel 'CR' Bowman'",
           "Alexis 'Sortifal' Bruneteau",
           "Ethan 'Xenthio' Cardwell",
+          "David Driver-Gomm",
           "Alexander 'xoxor4d' Engel",
           "James Horsley 'mmdanggg2'",
           "Kim 'Kim2091'",

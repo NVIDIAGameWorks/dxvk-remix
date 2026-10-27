@@ -115,7 +115,9 @@ namespace dxvk {
 
   void DxvkToneMapping::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
     const auto& dlssNeuralRendering = m_device->getCommon()->metaDlssNeuralRendering();
-    if (DlssNeuralRendering::enable() && dlssNeuralRendering.supportsDlssNeuralRendering()) {
+    // Prewarm requested neural-rendering shaders while NGX checks support in the background.
+    if (DlssNeuralRendering::enable() &&
+        (!dlssNeuralRendering.isSupportChecked() || dlssNeuralRendering.supportsDlssNeuralRendering())) {
       FastTonemappingShader::getShader();
       InverseTonemappingShader::getShader();
     }

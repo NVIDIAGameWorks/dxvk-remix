@@ -195,7 +195,8 @@ namespace dxvk {
 
     inline static const uint32_t kMaxConcurrentDraws = 6 * 1024; // some games issuing >3000 draw calls per frame...  account for some consumer thread lag with x2
     using GeometryProcessor = WorkerThreadPool<kMaxConcurrentDraws>;
-    const std::unique_ptr<GeometryProcessor> m_pGeometryWorkers;
+    GeometryProcessor& getGeometryWorkers();
+    std::unique_ptr<GeometryProcessor> m_pGeometryWorkers;
     AtomicQueue<DrawCallState, kMaxConcurrentDraws> m_drawCallStateQueue;
 
     DrawCallState m_activeDrawCallState;

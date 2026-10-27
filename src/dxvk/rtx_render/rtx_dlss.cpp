@@ -53,10 +53,7 @@ namespace dxvk {
   }
 
   DxvkDLSS::DxvkDLSS(DxvkDevice* device) : CommonDeviceObject(device), RtxPass(device) {
-    // Trigger DLSS context creation
-    if (!m_dlssContext) {
-      m_dlssContext = device->getCommon()->metaNGXContext().createDLSSContext();
-    };
+    // Feature contexts are created on first use, after asynchronous NGX initialization.
   }
 
   DxvkDLSS::~DxvkDLSS() { }
@@ -94,6 +91,10 @@ namespace dxvk {
 
   bool DxvkDLSS::supportsDLSS() const {
     return m_device->getCommon()->metaNGXContext().supportsDLSS();
+  }
+
+  bool DxvkDLSS::isSupportChecked() const {
+    return m_device->getCommon()->metaNGXContext().isInitializationComplete();
   }
 
   bool DxvkDLSS::isEnabled() const {

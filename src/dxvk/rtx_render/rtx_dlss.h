@@ -74,6 +74,7 @@ namespace dxvk {
     static NVSDK_NGX_T profileToQuality(DLSSProfile profile);
 
     bool supportsDLSS() const;
+    bool isSupportChecked() const;
 
     void setSetting(const uint32_t displaySize[2], const DLSSProfile profile, uint32_t outRenderSize[2]);
     // Gets the profile DLSS is currently using (the actual profile, not the settings-based one
