@@ -111,8 +111,6 @@ namespace bridge_util {
         return { firstChunk, firstChunk + numChunks - 1 };
       }
       Allocation findAllocation(const size_t numChunks);
-      Allocation findFreeInMiddle(const size_t numChunks);
-      Allocation findFreeOnEnd(const size_t numChunks);
       void freeDeallocations();
       bool isValidAllocation(const Allocation& alloc);
       bool allocationCrossesHeapSegBound(const Allocation& alloc);

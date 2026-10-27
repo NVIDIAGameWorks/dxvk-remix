@@ -52,7 +52,7 @@
 
 #define SetShaderConst(func, StartRegister, pConstantData, Count, size, currentUID) \
   { \
-    ClientMessage c(Commands::IDirect3DDevice9Ex_##func, getId()); \
+    StateMessage c(Commands::IDirect3DDevice9Ex_##func, getId()); \
     currentUID = c.get_uid(); \
     c.send_many(StartRegister, Count); \
     c.send_data(size, (void*)pConstantData); \
@@ -67,7 +67,17 @@ void Direct3DDevice9Ex_LSS<EnableSync>::onDestroy() {
   // At this point the underlying d3d9 device's refcount should be 0 and device released
   assert(getRef<D3DRefCounted::Ref::Object>() == 0 &&
          "Destroying an LSS device object with underlying D3D9 object refcount > 0!");
-   ClientMessage c { Commands::IDirect3DDevice9Ex_Destroy, getId() };
+  UID currentUID = 0;
+  {
+    ClientMessage c { Commands::IDirect3DDevice9Ex_Destroy, getId() };
+    currentUID = c.get_uid();
+  }
+  // The caller can destroy its window once Release returns, so all queued presents must finish first.
+  if (gbBridgeRunning &&
+      DeviceBridge::waitForCommandAndDiscard(Commands::Bridge_Ack, GlobalOptions::getAckTimeout(),
+                                             nullptr, true, currentUID) != Result::Success) {
+    Logger::warn("Server did not acknowledge device destruction before the client released it.");
+  }
 }
 
 template<bool EnableSync>
@@ -181,7 +191,7 @@ UINT Direct3DDevice9Ex_LSS<EnableSync>::GetAvailableTextureMem() {
   WAIT_FOR_SERVER_RESPONSE("GetAvailableTextureMem()", 0, currentUID);
   // Available memory in MB
   UINT mem = (UINT) DeviceBridge::get_data();
-  DeviceBridge::pop_front();
+  DeviceBridge::consumeResponse();
 
   return mem;
 }
@@ -240,7 +250,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::internalGetDeviceCaps(D3DCAPS9* pCaps
       hresult = D3DERR_INVALIDCALL;
     }
   }
-  DeviceBridge::pop_front();
+  DeviceBridge::consumeResponse();
 
   return hresult;
 }
@@ -283,7 +293,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::GetDisplayMode(UINT iSwapChain, D3DDI
       hresult = D3DERR_INVALIDCALL;
     }
   }
-  DeviceBridge::pop_front();
+  DeviceBridge::consumeResponse();
   return hresult;
 }
 
@@ -345,7 +355,7 @@ BOOL Direct3DDevice9Ex_LSS<EnableSync>::ShowCursor(BOOL bShow) {
   }
   WAIT_FOR_SERVER_RESPONSE("ShowCursor()", false, currentUID);
   BOOL prevShow = (BOOL) DeviceBridge::get_data();
-  DeviceBridge::pop_front();
+  DeviceBridge::consumeResponse();
 
   return prevShow;
 }
@@ -422,6 +432,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::Reset(D3DPRESENT_PARAMETERS* pPresent
     releaseInternalObjects();
     // Reset all device state to default values and init implicit/internal objects
     ResetState();
+    invalidateSentState();
     const auto presParam = Direct3DSwapChain9_LSS::sanitizePresentationParameters(*pPresentationParameters, getCreateParams());
     m_presParams = presParam;
     WndProc::unset();
@@ -441,7 +452,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::Reset(D3DPRESENT_PARAMETERS* pPresent
         Logger::err("Direct3DDevice9Ex_LSS::Reset() failed with : no response from server.");
       }
       res = (HRESULT) DeviceBridge::get_data();
-      DeviceBridge::pop_front();
+      DeviceBridge::consumeResponse();
       }
 
     // Reset swapchain and link server backbuffer/depth buffer after the server reset its swapchain, or we will link to the old backbuffer/depth resources
@@ -461,8 +472,12 @@ HRESULT syncOnPresent() {
   if (GlobalOptions::getPresentSemaphoreEnabled()) {
     const auto maxRetries = GlobalOptions::getCommandRetries();
     size_t numRetries = 0;
+    const int64_t perfStart = bridge_util::perf::enabled() ? bridge_util::perf::now() : 0;
     while (gbBridgeRunning && RESULT_FAILURE(gpPresent->wait()) && numRetries++ < maxRetries) {
       Logger::warn("Still waiting on the Present semaphore to be released...");
+    }
+    if (perfStart != 0) {
+      bridge_util::perf::notePresentWait(bridge_util::perf::now() - perfStart);
     }
     if (numRetries >= maxRetries) {
       Logger::err("Max retries reached waiting on the Present semaphore!");
@@ -477,6 +492,31 @@ HRESULT syncOnPresent() {
     }
   }
   return S_OK;
+}
+
+// Requires gPresentMutex to be held by the caller.
+HRESULT waitForPendingPresents() {
+  if (!gbBridgeRunning || !GlobalOptions::getPresentSemaphoreEnabled()) {
+    return S_OK;
+  }
+
+  const size_t framesAhead = GlobalOptions::getPresentSemaphoreMaxFrames();
+  size_t acquiredCredits = 0;
+  HRESULT result = S_OK;
+  while (acquiredCredits < framesAhead) {
+    result = syncOnPresent();
+    if (result != S_OK) {
+      break;
+    }
+    ++acquiredCredits;
+  }
+
+  // Collecting every credit drains serialized presents. Restore them for other swapchains.
+  if (acquiredCredits) {
+    gpPresent->release(static_cast<LONG>(acquiredCredits));
+  }
+
+  return result;
 }
 
 template<bool EnableSync>
@@ -960,9 +1000,9 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetRenderTarget(DWORD RenderTargetInd
   auto* const pLssRenderTarget = bridge_cast<Direct3DSurface9_LSS*>(pRenderTarget);
   UID currentUID = 0;
   {
+    BRIDGE_DEVICE_LOCKGUARD();
     UID id = 0;
     {
-      BRIDGE_DEVICE_LOCKGUARD();
       if (pLssRenderTarget) {
         m_state.renderTargets[RenderTargetIndex] = MakeD3DAutoPtr(pLssRenderTarget);
         id = pLssRenderTarget->getId();
@@ -975,6 +1015,10 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetRenderTarget(DWORD RenderTargetInd
       ClientMessage c(Commands::IDirect3DDevice9Ex_SetRenderTarget, getId());
       currentUID = c.get_uid();
       c.send_many(RenderTargetIndex, id);
+    }
+    // Setting render target 0 resets the viewport and the scissor rect on the server.
+    if (RenderTargetIndex == 0) {
+      m_sentState.invalidateViewportAndScissor();
     }
   }
   WAIT_FOR_OPTIONAL_SERVER_RESPONSE("SetRenderTarget()", D3DERR_INVALIDCALL, currentUID);
@@ -1180,23 +1224,18 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetTransform(D3DTRANSFORMSTATETYPE St
     {
       BRIDGE_DEVICE_LOCKGUARD();
       if (m_stateRecording) {
-        if (GlobalOptions::getEliminateRedundantSetterCalls() &&
-            m_stateRecording->m_dirtyFlags.transforms[idx] &&
-            memcmp(&m_stateRecording->m_captureState.transforms[idx], pMatrix, sizeof(D3DMATRIX)) == 0) {
-          return S_OK;
-        }
         m_stateRecording->m_captureState.transforms[idx] = *pMatrix;
         m_stateRecording->m_dirtyFlags.transforms[idx] = true;
       } else {
-        if (GlobalOptions::getEliminateRedundantSetterCalls() &&
-            memcmp(&m_state.transforms[idx], pMatrix, sizeof(D3DMATRIX)) == 0) {
-          return S_OK;
-        }
         m_state.transforms[idx] = *pMatrix;
       }
     }
     {
-      ClientMessage c(Commands::IDirect3DDevice9Ex_SetTransform, getId());
+      BRIDGE_DEVICE_LOCKGUARD();
+      if (!mustSend(Commands::IDirect3DDevice9Ex_SetTransform, [&](SentState& s) { return s.transform(State, *pMatrix); })) {
+        return S_OK;
+      }
+      StateMessage c(Commands::IDirect3DDevice9Ex_SetTransform, getId());
       currentUID = c.get_uid();
       c.send_data(State);
       c.send_data(sizeof(D3DMATRIX), (void*) pMatrix);
@@ -1277,7 +1316,11 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetViewport(CONST D3DVIEWPORT9* pView
       }
     }
     {
-      ClientMessage c(Commands::IDirect3DDevice9Ex_SetViewport, getId());
+      BRIDGE_DEVICE_LOCKGUARD();
+      if (!mustSend(Commands::IDirect3DDevice9Ex_SetViewport, [&](SentState& s) { return s.viewport(*pViewport); })) {
+        return S_OK;
+      }
+      StateMessage c(Commands::IDirect3DDevice9Ex_SetViewport, getId());
       currentUID = c.get_uid();
       c.send_data(sizeof(D3DVIEWPORT9), (void*) pViewport);
     }
@@ -1322,7 +1365,11 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetMaterial(CONST D3DMATERIAL9* pMate
       }
     }
     {
-      ClientMessage c(Commands::IDirect3DDevice9Ex_SetMaterial, getId());
+      BRIDGE_DEVICE_LOCKGUARD();
+      if (!mustSend(Commands::IDirect3DDevice9Ex_SetMaterial, [&](SentState& s) { return s.material(*pMaterial); })) {
+        return S_OK;
+      }
+      StateMessage c(Commands::IDirect3DDevice9Ex_SetMaterial, getId());
       currentUID = c.get_uid();
       c.send_data(sizeof(D3DMATERIAL9), (void*) pMaterial);
     }
@@ -1360,23 +1407,15 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetLight(DWORD Index, CONST D3DLIGHT9
     {
       BRIDGE_DEVICE_LOCKGUARD();
       if (m_stateRecording) {
-        if (GlobalOptions::getEliminateRedundantSetterCalls() &&
-            m_stateRecording->m_dirtyFlags.lights[Index] &&
-            memcmp(&m_stateRecording->m_captureState.lights[Index], pLight, sizeof(D3DLIGHT9)) == 0) {
-          return S_OK;
-        }
         m_stateRecording->m_captureState.lights[Index] = *pLight;
         m_stateRecording->m_dirtyFlags.lights[Index] = true;
       } else {
-        if (GlobalOptions::getEliminateRedundantSetterCalls() &&
-            memcmp(&m_state.lights[Index], pLight, sizeof(D3DLIGHT9)) == 0) {
-          return S_OK;
-        }
         m_state.lights[Index] = *pLight;
       }
     }
+    // SetLight is always sent, because each call keeps the runtime's game lights from aging out.
     {
-      ClientMessage c(Commands::IDirect3DDevice9Ex_SetLight, getId());
+      StateMessage c(Commands::IDirect3DDevice9Ex_SetLight, getId());
       currentUID = c.get_uid();
       c.send_data(Index);
       c.send_data(sizeof(D3DLIGHT9), (void*) pLight);
@@ -1411,23 +1450,15 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::LightEnable(DWORD LightIndex, BOOL bE
     {
       BRIDGE_DEVICE_LOCKGUARD();
       if (m_stateRecording) {
-        if (GlobalOptions::getEliminateRedundantSetterCalls() &&
-            m_stateRecording->m_dirtyFlags.bLightEnables[LightIndex] &&
-            (m_stateRecording->m_captureState.bLightEnables[LightIndex] == (bool)bEnable)) {
-          return S_OK;
-        }
         m_stateRecording->m_captureState.bLightEnables[LightIndex] = bEnable;
         m_stateRecording->m_dirtyFlags.bLightEnables[LightIndex] = true;
       } else {
-        if (GlobalOptions::getEliminateRedundantSetterCalls() &&
-            m_state.bLightEnables[LightIndex] == (bool)bEnable) {
-          return S_OK;
-        }
         m_state.bLightEnables[LightIndex] = bEnable;
       }
     }
+    // LightEnable is always sent, for the same reason as SetLight.
     {
-      ClientMessage c(Commands::IDirect3DDevice9Ex_LightEnable, getId());
+      StateMessage c(Commands::IDirect3DDevice9Ex_LightEnable, getId());
       currentUID = c.get_uid();
       c.send_many(LightIndex, (uint32_t) bEnable);
     }
@@ -1478,7 +1509,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetClipPlane(DWORD Index, CONST float
     }
     {
       // pPlane is a four-element array with the clipping plane coefficients
-      ClientMessage c(Commands::IDirect3DDevice9Ex_SetClipPlane, getId());
+      StateMessage c(Commands::IDirect3DDevice9Ex_SetClipPlane, getId());
       currentUID = c.get_uid();
       c.send_data(Index);
       c.send_data(sizeof(float) * 4, (void*) pPlane);
@@ -1515,22 +1546,18 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetRenderState(D3DRENDERSTATETYPE Sta
     {
       BRIDGE_DEVICE_LOCKGUARD();
       if (m_stateRecording) {
-        if (GlobalOptions::getEliminateRedundantSetterCalls() &&
-            m_stateRecording->m_dirtyFlags.renderStates[State] && m_stateRecording->m_captureState.renderStates[State] == Value) {
-          return S_OK;
-        }
         m_stateRecording->m_captureState.renderStates[State] = Value;
         m_stateRecording->m_dirtyFlags.renderStates[State] = true;
       } else {
-        if (GlobalOptions::getEliminateRedundantSetterCalls() &&
-            m_state.renderStates[State] == Value) {
-          return S_OK;
-        }
         m_state.renderStates[State] = Value;
       }
     }
     {
-      ClientMessage c(Commands::IDirect3DDevice9Ex_SetRenderState, getId());
+      BRIDGE_DEVICE_LOCKGUARD();
+      if (!mustSend(Commands::IDirect3DDevice9Ex_SetRenderState, [&](SentState& s) { return s.renderState(State, Value); })) {
+        return S_OK;
+      }
+      StateMessage c(Commands::IDirect3DDevice9Ex_SetRenderState, getId());
       currentUID = c.get_uid();
       c.send_many(State, Value);
     }
@@ -1972,7 +1999,12 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetTexture(DWORD Stage, IDirect3DBase
   }
   UID currentUID = 0;
   {
-    ClientMessage c(Commands::IDirect3DDevice9Ex_SetTexture, getId());
+    BRIDGE_DEVICE_LOCKGUARD();
+    if (!mustSend(Commands::IDirect3DDevice9Ex_SetTexture,
+                  [&](SentState& s) { return s.texture(Stage, (uint32_t) pD3DObject); })) {
+      return S_OK;
+    }
+    StateMessage c(Commands::IDirect3DDevice9Ex_SetTexture, getId());
     currentUID = c.get_uid();
     c.send_many(Stage, (uint32_t) pD3DObject);
   }
@@ -2063,22 +2095,19 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetTextureStageState(DWORD Stage, D3D
     {
       BRIDGE_DEVICE_LOCKGUARD();
       if (m_stateRecording) {
-        if (GlobalOptions::getEliminateRedundantSetterCalls() &&
-            m_stateRecording->m_dirtyFlags.textureStageStates[stageIdx][typeIdx] && m_stateRecording->m_captureState.textureStageStates[stageIdx][typeIdx] == Value) {
-          return S_OK;
-        }
         m_stateRecording->m_captureState.textureStageStates[stageIdx][typeIdx] = Value;
         m_stateRecording->m_dirtyFlags.textureStageStates[stageIdx][typeIdx] = true;
       } else {
-        if (GlobalOptions::getEliminateRedundantSetterCalls() &&
-            m_state.textureStageStates[stageIdx][typeIdx] == Value) {
-          return S_OK;
-        }
         m_state.textureStageStates[stageIdx][typeIdx] = Value;
       }
     }
     {
-      ClientMessage c(Commands::IDirect3DDevice9Ex_SetTextureStageState, getId());
+      BRIDGE_DEVICE_LOCKGUARD();
+      if (!mustSend(Commands::IDirect3DDevice9Ex_SetTextureStageState,
+                    [&](SentState& s) { return s.textureStageState(Stage, (uint32_t) Type, Value); })) {
+        return S_OK;
+      }
+      StateMessage c(Commands::IDirect3DDevice9Ex_SetTextureStageState, getId());
       currentUID = c.get_uid();
       c.send_many(Stage, Type, Value);
     }
@@ -2122,23 +2151,19 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetSamplerState(DWORD Sampler, D3DSAM
     {
       BRIDGE_DEVICE_LOCKGUARD();
       if (m_stateRecording) {
-        if (GlobalOptions::getEliminateRedundantSetterCalls() &&
-            m_stateRecording->m_dirtyFlags.samplerStates[samplerIdx][typeIdx] &&
-            m_stateRecording->m_captureState.samplerStates[samplerIdx][typeIdx] == Value) {
-          return S_OK;
-        }
         m_stateRecording->m_captureState.samplerStates[samplerIdx][typeIdx] = Value;
         m_stateRecording->m_dirtyFlags.samplerStates[samplerIdx][typeIdx] = true;
       } else {
-        if (GlobalOptions::getEliminateRedundantSetterCalls() && 
-            m_state.samplerStates[samplerIdx][typeIdx] == Value) {
-          return S_OK;
-        }
         m_state.samplerStates[samplerIdx][typeIdx] = Value;
       }
     }
     {
-      ClientMessage c(Commands::IDirect3DDevice9Ex_SetSamplerState, getId());
+      BRIDGE_DEVICE_LOCKGUARD();
+      if (!mustSend(Commands::IDirect3DDevice9Ex_SetSamplerState,
+                    [&](SentState& s) { return s.samplerState(Sampler, (uint32_t) Type, Value); })) {
+        return S_OK;
+      }
+      StateMessage c(Commands::IDirect3DDevice9Ex_SetSamplerState, getId());
       currentUID = c.get_uid();
       c.send_many(Sampler, Type, Value);
     }
@@ -2242,7 +2267,11 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetScissorRect(CONST RECT* pRect) {
       }
     }
     {
-      ClientMessage c(Commands::IDirect3DDevice9Ex_SetScissorRect, getId());
+      BRIDGE_DEVICE_LOCKGUARD();
+      if (!mustSend(Commands::IDirect3DDevice9Ex_SetScissorRect, [&](SentState& s) { return s.scissor(*pRect); })) {
+        return S_OK;
+      }
+      StateMessage c(Commands::IDirect3DDevice9Ex_SetScissorRect, getId());
       currentUID = c.get_uid();
       c.send_data(sizeof(RECT), (void*) pRect);
     }
@@ -2285,7 +2314,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetSoftwareVertexProcessing(BOOL bSof
   WAIT_FOR_SERVER_RESPONSE("SetSoftwareVertexProcessing()", D3DERR_INVALIDCALL, currentUID);
 
   HRESULT hresult = DeviceBridge::get_data();
-  DeviceBridge::pop_front();
+  DeviceBridge::consumeResponse();
 
   return hresult;
 }
@@ -2364,15 +2393,19 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::DrawPrimitiveUP(D3DPRIMITIVETYPE Prim
   LogFunctionCall();
   UID currentUID = 0;
   {
-    ClientMessage c(Commands::IDirect3DDevice9Ex_DrawPrimitiveUP, getId());
-    currentUID = c.get_uid();
-    c.send_many(PrimitiveType, PrimitiveCount);
+    BRIDGE_DEVICE_LOCKGUARD();
+    {
+      ClientMessage c(Commands::IDirect3DDevice9Ex_DrawPrimitiveUP, getId());
+      currentUID = c.get_uid();
+      c.send_many(PrimitiveType, PrimitiveCount);
 
-    uint32_t numIndices = GetIndexCount(PrimitiveType, PrimitiveCount);
-    uint32_t vertexDataSize = numIndices * VertexStreamZeroStride;
+      uint32_t numIndices = GetIndexCount(PrimitiveType, PrimitiveCount);
+      uint32_t vertexDataSize = numIndices * VertexStreamZeroStride;
 
-    c.send_data(vertexDataSize, (void*) pVertexStreamZeroData);
-    c.send_data(VertexStreamZeroStride);
+      c.send_data(vertexDataSize, (void*) pVertexStreamZeroData);
+      c.send_data(VertexStreamZeroStride);
+    }
+    m_sentState.invalidateStreamSource(0);
   }
   WAIT_FOR_OPTIONAL_SERVER_RESPONSE("DrawPrimitiveUP()", D3DERR_INVALIDCALL, currentUID);
 }
@@ -2383,17 +2416,22 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::DrawIndexedPrimitiveUP(D3DPRIMITIVETY
   LogFunctionCall();
   UID currentUID = 0;
   {
-    ClientMessage c(Commands::IDirect3DDevice9Ex_DrawIndexedPrimitiveUP, getId());
-    currentUID = c.get_uid();
-    c.send_many(PrimitiveType, MinIndex, NumVertices, PrimitiveCount, IndexDataFormat, VertexStreamZeroStride);
+    BRIDGE_DEVICE_LOCKGUARD();
+    {
+      ClientMessage c(Commands::IDirect3DDevice9Ex_DrawIndexedPrimitiveUP, getId());
+      currentUID = c.get_uid();
+      c.send_many(PrimitiveType, MinIndex, NumVertices, PrimitiveCount, IndexDataFormat, VertexStreamZeroStride);
 
-    uint32_t numIndices = GetIndexCount(PrimitiveType, PrimitiveCount);
-    uint32_t indexStride = IndexDataFormat == D3DFMT_INDEX16 ? 2 : 4;
-    uint32_t indexDataSize = numIndices * indexStride;
-    uint32_t vertexDataSize = NumVertices * VertexStreamZeroStride;
+      uint32_t numIndices = GetIndexCount(PrimitiveType, PrimitiveCount);
+      uint32_t indexStride = IndexDataFormat == D3DFMT_INDEX16 ? 2 : 4;
+      uint32_t indexDataSize = numIndices * indexStride;
+      uint32_t vertexDataSize = NumVertices * VertexStreamZeroStride;
 
-    c.send_data(indexDataSize, (void*) pIndexData);
-    c.send_data(vertexDataSize, (void*) pVertexStreamZeroData);
+      c.send_data(indexDataSize, (void*) pIndexData);
+      c.send_data(vertexDataSize, (void*) pVertexStreamZeroData);
+    }
+    m_sentState.invalidateStreamSource(0);
+    m_sentState.invalidateIndices();
   }
   WAIT_FOR_OPTIONAL_SERVER_RESPONSE("DrawIndexedPrimitiveUP()", D3DERR_INVALIDCALL, currentUID);
 }
@@ -2471,7 +2509,12 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetVertexDeclaration(IDirect3DVertexD
       m_state.vertexDecl = MakeD3DAutoPtr(pLssVtxDecl);
     }
     {
-      ClientMessage c(Commands::IDirect3DDevice9Ex_SetVertexDeclaration, getId());
+      BRIDGE_DEVICE_LOCKGUARD();
+      if (!mustSend(Commands::IDirect3DDevice9Ex_SetVertexDeclaration,
+                    [&](SentState& s) { return s.vertexDeclaration((uint32_t) id); })) {
+        return S_OK;
+      }
+      StateMessage c(Commands::IDirect3DDevice9Ex_SetVertexDeclaration, getId());
       currentUID = c.get_uid();
       c.send_data(id);
     }
@@ -2510,7 +2553,11 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetFVF(DWORD FVF) {
       m_FVF = FVF;
     }
     {
-      ClientMessage c(Commands::IDirect3DDevice9Ex_SetFVF, getId());
+      BRIDGE_DEVICE_LOCKGUARD();
+      if (!mustSend(Commands::IDirect3DDevice9Ex_SetFVF, [&](SentState& s) { return s.fvf(FVF); })) {
+        return S_OK;
+      }
+      StateMessage c(Commands::IDirect3DDevice9Ex_SetFVF, getId());
       currentUID = c.get_uid();
       c.send_data(FVF);
     }
@@ -2588,7 +2635,11 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetVertexShader(IDirect3DVertexShader
       }
     }
     {
-      ClientMessage c(Commands::IDirect3DDevice9Ex_SetVertexShader, getId());
+      BRIDGE_DEVICE_LOCKGUARD();
+      if (!mustSend(Commands::IDirect3DDevice9Ex_SetVertexShader, [&](SentState& s) { return s.vertexShader(id); })) {
+        return S_OK;
+      }
+      StateMessage c(Commands::IDirect3DDevice9Ex_SetVertexShader, getId());
       currentUID = c.get_uid();
       c.send_data(id);
     }
@@ -2640,12 +2691,22 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetVertexShaderConstantF(UINT StartRe
         Vector4fCount);
   }
   if (SUCCEEDED(hresult)) {
+    uint32_t start = StartRegister;
+    uint32_t count = Vector4fCount;
+    const float* pData = pConstantData;
     UID currentUID = 0;
-    SetShaderConst(SetVertexShaderConstantF,
-                   StartRegister,
-                   pConstantData,
-                   Vector4fCount,
-                   Vector4fCount * 4 * sizeof(float), currentUID);
+    {
+      BRIDGE_DEVICE_LOCKGUARD();
+      if (!mustSend(Commands::IDirect3DDevice9Ex_SetVertexShaderConstantF,
+                    [&](SentState& s) { return s.vsConstantsF(start, pData, count); })) {
+        return hresult;
+      }
+      SetShaderConst(SetVertexShaderConstantF,
+                     start,
+                     pData,
+                     count,
+                     count * 4 * sizeof(float), currentUID);
+    }
     WAIT_FOR_OPTIONAL_SERVER_RESPONSE("SetVertexShaderConstantF()", D3DERR_INVALIDCALL, currentUID);
   }
   return hresult;
@@ -2693,12 +2754,22 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetVertexShaderConstantI(UINT StartRe
         Vector4iCount);
   }
   if (SUCCEEDED(hresult)) {
+    uint32_t start = StartRegister;
+    uint32_t count = Vector4iCount;
+    const int* pData = pConstantData;
     UID currentUID = 0;
-    SetShaderConst(SetVertexShaderConstantI,
-                   StartRegister,
-                   pConstantData,
-                   Vector4iCount,
-                   Vector4iCount * 4 * sizeof(UINT), currentUID);
+    {
+      BRIDGE_DEVICE_LOCKGUARD();
+      if (!mustSend(Commands::IDirect3DDevice9Ex_SetVertexShaderConstantI,
+                    [&](SentState& s) { return s.vsConstantsI(start, pData, count); })) {
+        return hresult;
+      }
+      SetShaderConst(SetVertexShaderConstantI,
+                     start,
+                     pData,
+                     count,
+                     count * 4 * sizeof(UINT), currentUID);
+    }
     WAIT_FOR_OPTIONAL_SERVER_RESPONSE("SetVertexShaderConstantI()", D3DERR_INVALIDCALL, currentUID);
   }
   return hresult;
@@ -2748,12 +2819,22 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetVertexShaderConstantB(UINT StartRe
   }
 
   if (SUCCEEDED(hresult)) {
+    uint32_t start = StartRegister;
+    uint32_t count = BoolCount;
+    const BOOL* pData = pConstantData;
     UID currentUID = 0;
-    SetShaderConst(SetVertexShaderConstantB,
-                   StartRegister,
-                   pConstantData,
-                   BoolCount,
-                   BoolCount * sizeof(BOOL), currentUID);
+    {
+      BRIDGE_DEVICE_LOCKGUARD();
+      if (!mustSend(Commands::IDirect3DDevice9Ex_SetVertexShaderConstantB,
+                    [&](SentState& s) { return s.vsConstantsB(start, pData, count); })) {
+        return hresult;
+      }
+      SetShaderConst(SetVertexShaderConstantB,
+                     start,
+                     pData,
+                     count,
+                     count * sizeof(BOOL), currentUID);
+    }
     WAIT_FOR_OPTIONAL_SERVER_RESPONSE("SetVertexShaderConstantB()", D3DERR_INVALIDCALL, currentUID);
   }
   return hresult;
@@ -2808,7 +2889,12 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetStreamSource(UINT StreamNumber, ID
       }
     }
     {
-      ClientMessage c(Commands::IDirect3DDevice9Ex_SetStreamSource, getId());
+      BRIDGE_DEVICE_LOCKGUARD();
+      if (!mustSend(Commands::IDirect3DDevice9Ex_SetStreamSource,
+                    [&](SentState& s) { return s.streamSource(StreamNumber, (uint32_t) id, OffsetInBytes, Stride); })) {
+        return S_OK;
+      }
+      StateMessage c(Commands::IDirect3DDevice9Ex_SetStreamSource, getId());
       currentUID = c.get_uid();
       c.send_many(StreamNumber, id, OffsetInBytes, Stride);
     }
@@ -2854,7 +2940,12 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetStreamSourceFreq(UINT StreamNumber
       }
     }
     {
-      ClientMessage c(Commands::IDirect3DDevice9Ex_SetStreamSourceFreq, getId());
+      BRIDGE_DEVICE_LOCKGUARD();
+      if (!mustSend(Commands::IDirect3DDevice9Ex_SetStreamSourceFreq,
+                    [&](SentState& s) { return s.streamSourceFreq(StreamNumber, Divider); })) {
+        return S_OK;
+      }
+      StateMessage c(Commands::IDirect3DDevice9Ex_SetStreamSourceFreq, getId());
       currentUID = c.get_uid();
       c.send_many(StreamNumber, Divider);
     }
@@ -2894,7 +2985,11 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetIndices(IDirect3DIndexBuffer9* pIn
       }
     }
     {
-      ClientMessage c(Commands::IDirect3DDevice9Ex_SetIndices, getId());
+      BRIDGE_DEVICE_LOCKGUARD();
+      if (!mustSend(Commands::IDirect3DDevice9Ex_SetIndices, [&](SentState& s) { return s.indices((uint32_t) id); })) {
+        return S_OK;
+      }
+      StateMessage c(Commands::IDirect3DDevice9Ex_SetIndices, getId());
       currentUID = c.get_uid();
       c.send_data(id);
     }
@@ -2977,7 +3072,11 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetPixelShader(IDirect3DPixelShader9*
   }
   UID currentUID = 0;
   {
-    ClientMessage c(Commands::IDirect3DDevice9Ex_SetPixelShader, getId());
+    BRIDGE_DEVICE_LOCKGUARD();
+    if (!mustSend(Commands::IDirect3DDevice9Ex_SetPixelShader, [&](SentState& s) { return s.pixelShader(id); })) {
+      return S_OK;
+    }
+    StateMessage c(Commands::IDirect3DDevice9Ex_SetPixelShader, getId());
     currentUID = c.get_uid();
     c.send_data(id);
   }
@@ -3020,12 +3119,22 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetPixelShaderConstantF(UINT StartReg
   }
 
   if (SUCCEEDED(hresult)) {
+    uint32_t start = StartRegister;
+    uint32_t count = Vector4fCount;
+    const float* pData = pConstantData;
     UID currentUID = 0;
-    SetShaderConst(SetPixelShaderConstantF,
-                   StartRegister,
-                   pConstantData,
-                   Vector4fCount,
-                   Vector4fCount * 4 * sizeof(float), currentUID);
+    {
+      BRIDGE_DEVICE_LOCKGUARD();
+      if (!mustSend(Commands::IDirect3DDevice9Ex_SetPixelShaderConstantF,
+                    [&](SentState& s) { return s.psConstantsF(start, pData, count); })) {
+        return hresult;
+      }
+      SetShaderConst(SetPixelShaderConstantF,
+                     start,
+                     pData,
+                     count,
+                     count * 4 * sizeof(float), currentUID);
+    }
     WAIT_FOR_OPTIONAL_SERVER_RESPONSE("SetPixelShaderConstantF()", D3DERR_INVALIDCALL, currentUID);
   }
   return hresult;
@@ -3063,12 +3172,22 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetPixelShaderConstantI(UINT StartReg
     hresult = setShaderConstants<ShaderType::Pixel, ConstantType::Int>(StartRegister, pConstantData, Vector4iCount);
   }
   if (SUCCEEDED(hresult)) {
+    uint32_t start = StartRegister;
+    uint32_t count = Vector4iCount;
+    const int* pData = pConstantData;
     UID currentUID = 0;
-    SetShaderConst(SetPixelShaderConstantI,
-                   StartRegister,
-                   pConstantData,
-                   Vector4iCount,
-                   Vector4iCount * 4 * sizeof(UINT), currentUID);
+    {
+      BRIDGE_DEVICE_LOCKGUARD();
+      if (!mustSend(Commands::IDirect3DDevice9Ex_SetPixelShaderConstantI,
+                    [&](SentState& s) { return s.psConstantsI(start, pData, count); })) {
+        return hresult;
+      }
+      SetShaderConst(SetPixelShaderConstantI,
+                     start,
+                     pData,
+                     count,
+                     count * 4 * sizeof(UINT), currentUID);
+    }
     WAIT_FOR_OPTIONAL_SERVER_RESPONSE("SetPixelShaderConstantI()", D3DERR_INVALIDCALL, currentUID);
   }
   return hresult;
@@ -3101,12 +3220,22 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetPixelShaderConstantB(UINT StartReg
     hresult = setShaderConstants<ShaderType::Pixel, ConstantType::Bool>(StartRegister, pConstantData, BoolCount);
   }
   if (SUCCEEDED(hresult)) {
+    uint32_t start = StartRegister;
+    uint32_t count = BoolCount;
+    const BOOL* pData = pConstantData;
     UID currentUID = 0;
-    SetShaderConst(SetPixelShaderConstantB,
-                   StartRegister,
-                   pConstantData,
-                   BoolCount,
-                   BoolCount * sizeof(BOOL), currentUID);
+    {
+      BRIDGE_DEVICE_LOCKGUARD();
+      if (!mustSend(Commands::IDirect3DDevice9Ex_SetPixelShaderConstantB,
+                    [&](SentState& s) { return s.psConstantsB(start, pData, count); })) {
+        return hresult;
+      }
+      SetShaderConst(SetPixelShaderConstantB,
+                     start,
+                     pData,
+                     count,
+                     count * sizeof(BOOL), currentUID);
+    }
     WAIT_FOR_OPTIONAL_SERVER_RESPONSE("SetPixelShaderConstantB()", D3DERR_INVALIDCALL, currentUID);
   }
   return hresult;
@@ -3316,7 +3445,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::CheckDeviceState(HWND hDestinationWin
   }
   WAIT_FOR_SERVER_RESPONSE("CheckDeviceState()", E_FAIL, currentUID);
   HRESULT res = (HRESULT) DeviceBridge::get_data();
-  DeviceBridge::pop_front();
+  DeviceBridge::consumeResponse();
 
   return res;
 }
@@ -3434,6 +3563,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::ResetEx(D3DPRESENT_PARAMETERS* pPrese
     BRIDGE_DEVICE_LOCKGUARD();
     // Clear all device state and release implicit/internal objects
     releaseInternalObjects(false);
+    invalidateSentState();
     
     const auto presParam = Direct3DSwapChain9_LSS::sanitizePresentationParameters(*pPresentationParameters, getCreateParams());
     m_presParams = presParam;
@@ -3455,7 +3585,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::ResetEx(D3DPRESENT_PARAMETERS* pPrese
         Logger::err("Direct3DDevice9Ex_LSS::ResetEx() failed with : no response from server.");
       }
       res = (HRESULT) DeviceBridge::get_data();
-      DeviceBridge::pop_front();
+      DeviceBridge::consumeResponse();
     }
 
     // Reset swapchain and link server backbuffer/depth buffer after the server reset its swapchain, or we will link to the old backbuffer/depth resources
@@ -3499,7 +3629,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::GetDisplayModeEx(UINT iSwapChain, D3D
       hresult = D3DERR_INVALIDCALL;
     }
   }
-  DeviceBridge::pop_front();
+  DeviceBridge::consumeResponse();
   return hresult;
 }
 

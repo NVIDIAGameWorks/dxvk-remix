@@ -55,12 +55,6 @@
 // on performance and should only be used if needed!
 //#define ENABLE_WAIT_FOR_COMMAND_TRACE
 
-// This enables the alternate circular queue implementation that uses semaphores
-// for synchronization, and performed slower in testing than the implementation
-// using atomic counters. There shouldn't be any need to use this, but leaving
-// it in the code for now just in case.
-//#define USE_BLOCKING_QUEUE
-
 #ifdef WIN32 
 #ifdef _DEBUG
 // Enable our hack to get D3D error messages from the runtime.

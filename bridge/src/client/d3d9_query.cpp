@@ -21,7 +21,21 @@
  */
 #include "pch.h"
 #include "d3d9_query.h"
+#include "client_options.h"
 #include "util_devicecommand.h"
+#include "util_queryresults.h"
+
+#include <cstring>
+
+Direct3DQuery9_LSS::Direct3DQuery9_LSS(BaseDirect3DDevice9Ex_LSS* const pDevice, D3DQUERYTYPE Type)
+  : D3DBase<IDirect3DQuery9>((IDirect3DQuery9*) nullptr, pDevice)
+  , m_type(Type)
+  , m_pDevice(pDevice) {
+  if (!ClientOptions::getAsyncQueries() || bridge_util::QueryResults::block() == nullptr) {
+    return;
+  }
+  m_asyncResult.init(GetDataSize());
+}
 
 HRESULT Direct3DQuery9_LSS::QueryInterface(REFIID riid, LPVOID* ppvObj) {
   LogFunctionCall();
@@ -54,6 +68,8 @@ ULONG Direct3DQuery9_LSS::Release() {
 void Direct3DQuery9_LSS::onDestroy() {
   LogFunctionCall();
   ClientMessage { Commands::IDirect3DQuery9_Destroy, getId() };
+  // The slot can be reused at once, because a later owner waits for its own sequence number.
+  m_asyncResult.release();
 }
 
 HRESULT Direct3DQuery9_LSS::GetDevice(IDirect3DDevice9** ppDevice) {
@@ -95,10 +111,13 @@ HRESULT Direct3DQuery9_LSS::Issue(DWORD dwIssueFlags) {
   UID currentUID = 0;
   
   {
+    BRIDGE_PARENT_DEVICE_LOCKGUARD();
     ClientMessage c(Commands::IDirect3DQuery9_Issue, getId());
     currentUID = c.get_uid();
     c.send_data(dwIssueFlags);
+    m_asyncResult.reset();
   }
+
   WAIT_FOR_OPTIONAL_SERVER_RESPONSE("Direct3DQuery9_LSS::Issue()", D3DERR_INVALIDCALL, currentUID);
 
   return S_OK;
@@ -106,7 +125,31 @@ HRESULT Direct3DQuery9_LSS::Issue(DWORD dwIssueFlags) {
 
 HRESULT Direct3DQuery9_LSS::GetData(void* pData, DWORD dwSize, DWORD dwGetDataFlags) {
   LogFunctionCall();
+  if (m_asyncResult.enabled()) {
+    return getDataAsync(pData, dwSize, dwGetDataFlags);
+  }
+  return getDataBlocking(pData, dwSize, dwGetDataFlags);
+}
 
+HRESULT Direct3DQuery9_LSS::getDataAsync(void* pData, DWORD dwSize, DWORD dwGetDataFlags) {
+  BRIDGE_PARENT_DEVICE_LOCKGUARD();
+  using bridge_util::perf::QueryPath;
+  bool cached = false;
+  const HRESULT hresult = m_asyncResult.getData(pData, dwSize, dwGetDataFlags, gbBridgeRunning, cached,
+    [this](uint32_t size, DWORD flags, uint32_t slot, uint32_t sequence) {
+      ClientMessage c(Commands::IDirect3DQuery9_GetData, getId(), Commands::FlagBits::AsyncResult);
+      c.send_data(size);
+      c.send_data(flags);
+      c.send_data(slot);
+      c.send_data(sequence);
+    });
+  if (bridge_util::perf::enabled()) {
+    bridge_util::perf::noteQuery(cached ? QueryPath::AsyncCached : QueryPath::AsyncRequest, hresult == S_OK);
+  }
+  return hresult;
+}
+
+HRESULT Direct3DQuery9_LSS::getDataBlocking(void* pData, DWORD dwSize, DWORD dwGetDataFlags) {
   UID currentUID = 0;
   {
     ClientMessage c(Commands::IDirect3DQuery9_GetData, getId());
@@ -117,13 +160,19 @@ HRESULT Direct3DQuery9_LSS::GetData(void* pData, DWORD dwSize, DWORD dwGetDataFl
 
   WAIT_FOR_SERVER_RESPONSE("Direct3DQuery9_LSS::GetData()", D3DERR_INVALIDCALL, currentUID);
   HRESULT hresult = DeviceBridge::get_data();
-  if (SUCCEEDED(hresult) && dwSize > 0 && pData != NULL) {
+  // The blob is read even when pData is null, so the response queue stays in step.
+  if (SUCCEEDED(hresult) && dwSize > 0) {
     void* pDataReturned = NULL;
     DeviceBridge::get_data(&pDataReturned);
-    memcpy(pData, pDataReturned, dwSize);
+    if (pData != NULL && pDataReturned != NULL) {
+      memcpy(pData, pDataReturned, dwSize);
+    }
   }
 
-  DeviceBridge::pop_front();
+  DeviceBridge::consumeResponse();
 
+  if (bridge_util::perf::enabled()) {
+    bridge_util::perf::noteQuery(bridge_util::perf::QueryPath::Blocking, hresult == S_OK);
+  }
   return hresult;
 }

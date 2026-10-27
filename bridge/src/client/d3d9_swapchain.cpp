@@ -155,6 +155,15 @@ HRESULT Direct3DSwapChain9_LSS::Present(CONST RECT* pSourceRect, CONST RECT* pDe
                                         DWORD dwFlags) {
   ZoneScoped;
   LogFunctionCall();
+  std::lock_guard presentLock(gPresentMutex);
+  {
+    std::lock_guard mapLock(gSwapChainMapMutex);
+    const HWND targetWindow = hDestWindowOverride != nullptr ? hDestWindowOverride : m_window;
+    const auto window = gSwapChainMap.find(targetWindow);
+    if (window != gSwapChainMap.end() && window->second.closing) {
+      return D3DERR_DEVICELOST;
+    }
+  }
 #ifdef ENABLE_PRESENT_SEMAPHORE_TRACE
   Logger::trace(format_string("Present(): ClientMessage counter is at %d.", ClientMessage::get_counter()));
 #endif
@@ -183,6 +192,8 @@ HRESULT Direct3DSwapChain9_LSS::Present(CONST RECT* pSourceRect, CONST RECT* pDe
   if (syncResult == ERROR_SEM_TIMEOUT) {
     return ERROR_SEM_TIMEOUT;
   }
+
+  DeviceBridge::perfOnFrame();
 
   FrameMark;
 

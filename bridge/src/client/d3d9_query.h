@@ -24,19 +24,21 @@
 #include "d3d9_util.h"
 #include "base.h"
 #include "d3d9_device_base.h"
+#include "d3d9_query_result.h"
 
 class Direct3DQuery9_LSS: public D3DBase<IDirect3DQuery9> {
   void onDestroy() override;
   D3DQUERYTYPE m_type;
 
+  AsyncQueryResult m_asyncResult;
+
+  HRESULT getDataBlocking(void* pData, DWORD dwSize, DWORD dwGetDataFlags);
+  HRESULT getDataAsync(void* pData, DWORD dwSize, DWORD dwGetDataFlags);
+
 protected:
   BaseDirect3DDevice9Ex_LSS* const m_pDevice = nullptr;
 public:
-  Direct3DQuery9_LSS(BaseDirect3DDevice9Ex_LSS* const pDevice, D3DQUERYTYPE Type)
-    : D3DBase<IDirect3DQuery9>((IDirect3DQuery9*) nullptr, pDevice)
-    , m_pDevice(pDevice)
-    , m_type(Type) {
-  }
+  Direct3DQuery9_LSS(BaseDirect3DDevice9Ex_LSS* const pDevice, D3DQUERYTYPE Type);
 
   /*** IUnknown methods ***/
   STDMETHOD(QueryInterface)(THIS_ REFIID riid, void** ppvObj);

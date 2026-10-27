@@ -22,10 +22,13 @@
 #pragma once
 
 #include "util_common.h"
+#include "util_commands.h"
+#include "util_perfcounters.h"
 #include "util_scopedlock.h"
 
 #include "d3d9.h"
 #include "base.h"
+#include "d3d9_sent_state.h"
 #include "shadow_map.h"
 
 #include <array>
@@ -292,4 +295,28 @@ protected:
 
   State m_state;
   Direct3DStateBlock9_LSS* m_stateRecording = nullptr;
+
+  SentState m_sentState;
+  bool m_dropRedundantState = false;
+
+  // Callers must hold the device lock until the setter is sent, so the sent state matches the server's order.
+  // While a state block is recorded every setter is sent, because the server's device state does not change.
+  template<typename Check>
+  bool mustSend(const Commands::D3D9Command command, Check&& check) {
+    if (m_stateRecording != nullptr || !m_dropRedundantState) {
+      return true;
+    }
+    if (check(m_sentState)) {
+      return true;
+    }
+    if (bridge_util::perf::enabled()) {
+      bridge_util::perf::noteDropped((uint16_t) command);
+    }
+    return false;
+  }
+
+public:
+  void invalidateSentState() {
+    m_sentState.invalidateAll();
+  }
 };

@@ -170,13 +170,19 @@ protected:
     return S_OK;
   }
 
-  void unlock() {
+  HRESULT unlock() {
     // Some engines may attempt to Unlock a non-locked resource "just in case"
     if (m_lockInfos.empty()) {
-      return;
+      return S_OK;
     }
-    // Get most recent locked buffer and grab data before we unlock
-    const auto& lockInfo = m_lockInfos.front();
+    const auto lockInfo = m_lockInfos.front();
+    m_lockInfos.pop();
+
+    // Earlier uploads retain their own snapshots, so the discarded buffer can be retired here.
+    if (lockInfo.discardedBufferId != SharedHeap::kInvalidId) {
+      SharedHeap::deallocate(lockInfo.discardedBufferId);
+    }
+
     uint32_t offset = lockInfo.offsetToLock;
     // Clamp the size since some applications can request unreasonably large lock sizes that are not actually used
     size_t size = (lockInfo.sizeToLock == 0) ? m_desc.Size - offset : std::min(lockInfo.sizeToLock, m_desc.Size - offset);
@@ -190,6 +196,14 @@ protected:
 
     // If this is a read only access then don't bother sending
     if ((lockInfo.flags & D3DLOCK_READONLY) == 0) {
+      auto snapshotId = SharedHeap::kInvalidId;
+      if (m_bUseSharedHeap) {
+        snapshotId = SharedHeap::allocate(std::max<size_t>(size, 1));
+        if (snapshotId == SharedHeap::kInvalidId) {
+          return E_OUTOFMEMORY;
+        }
+        memcpy(SharedHeap::getBuf(snapshotId), SharedHeap::getBuf(lockInfo.bufferId) + offset, size);
+      }
       {
         Commands::Flags cmdFlags = 0;
 
@@ -210,7 +224,7 @@ protected:
         c.send_many(offset, size, lockInfo.flags);
 
         if (m_bUseSharedHeap) {
-          c.send_data(lockInfo.bufferId);
+          c.send_data(snapshotId);
         } else if (m_optimizedLock) {
           // Now send data offset in the channel
           const uint32_t dataOffset = static_cast<uint32_t*>(ptr) -
@@ -220,11 +234,15 @@ protected:
           // Now send the buffer bytes
           c.send_data(size, ptr);
         }
+        if (bridge_util::perf::enabled()) {
+          bridge_util::perf::noteUpload(size);
+        }
       }
-      if (lockInfo.discardedBufferId != SharedHeap::kInvalidId) {
-        SharedHeap::deallocate(lockInfo.discardedBufferId);
+      if (snapshotId != SharedHeap::kInvalidId) {
+        // Server-ordered deallocation keeps the snapshot immutable until the upload has consumed it.
+        SharedHeap::deallocate(snapshotId);
       }
     }
-    m_lockInfos.pop();
+    return S_OK;
   }
 };

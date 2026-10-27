@@ -21,15 +21,19 @@
  */
 #pragma once
 
+#include <mutex>
 #include <unordered_map>
+
 #include "d3d9.h"
 
 struct WindowDisplayData {
   D3DPRESENT_PARAMETERS presParam;
   D3DDEVICE_CREATION_PARAMETERS createParam;
   size_t swapChainId;
+  bool closing = false;
 };
 using SwapChainMap = std::unordered_map<HWND, WindowDisplayData>;
 
 extern SwapChainMap gSwapChainMap;
 extern std::mutex gSwapChainMapMutex;
+extern std::mutex gPresentMutex;

@@ -76,7 +76,7 @@ public:
           Logger::err("Direct3DSwapChain9_LSS() failed with : no response from server.");
         }
         HRESULT res = (HRESULT) DeviceBridge::get_data();
-        DeviceBridge::pop_front();
+        DeviceBridge::consumeResponse();
       }
     }
   }

@@ -117,7 +117,7 @@ UINT Direct3D9Ex_LSS::GetAdapterCount() {
   WAIT_FOR_SERVER_RESPONSE("GetAdapterCount()", 1, currentUID);
 
   m_adapterCount = (UINT) ModuleBridge::get_data();
-  ModuleBridge::pop_front();
+  ModuleBridge::consumeResponse();
   return m_adapterCount;
 }
 
@@ -159,7 +159,7 @@ HRESULT Direct3D9Ex_LSS::GetAdapterIdentifier(UINT Adapter, DWORD Flags, D3DADAP
     }
     *pIdentifier = adapterIdentifier;
   }
-  ModuleBridge::pop_front();
+  ModuleBridge::consumeResponse();
   return hresult;
 }
 
@@ -186,7 +186,7 @@ UINT Direct3D9Ex_LSS::GetAdapterModeCount(UINT Adapter, D3DFORMAT Format) {
   WAIT_FOR_SERVER_RESPONSE("GetAdapterModeCount()", 0, currentUID);
 
   m_adapterModeCount[key] = (UINT) ModuleBridge::get_data();
-  ModuleBridge::pop_front();
+  ModuleBridge::consumeResponse();
   return m_adapterModeCount[key];
 }
 
@@ -223,7 +223,7 @@ HRESULT Direct3D9Ex_LSS::EnumAdapterModes(UINT Adapter, D3DFORMAT Format, UINT M
     }
     *pMode = adapterMode;
   }
-  ModuleBridge::pop_front();
+  ModuleBridge::consumeResponse();
   return hresult;
 }
 
@@ -259,7 +259,7 @@ HRESULT Direct3D9Ex_LSS::GetAdapterDisplayMode(UINT Adapter, D3DDISPLAYMODE* pMo
     }
     *pMode = displayMode;
   }
-  ModuleBridge::pop_front();
+  ModuleBridge::consumeResponse();
   return hresult;
 }
 
@@ -281,7 +281,7 @@ HRESULT Direct3D9Ex_LSS::CheckDeviceType(UINT Adapter, D3DDEVTYPE CheckType, D3D
   WAIT_FOR_SERVER_RESPONSE("CheckDeviceType()", E_FAIL, currentUID);
 
   HRESULT res = (HRESULT) ModuleBridge::get_data();
-  ModuleBridge::pop_front();
+  ModuleBridge::consumeResponse();
   return res;
 }
 
@@ -303,7 +303,7 @@ HRESULT Direct3D9Ex_LSS::CheckDeviceFormat(UINT Adapter, D3DDEVTYPE DeviceType, 
   WAIT_FOR_SERVER_RESPONSE("CheckDeviceFormat()", D3DERR_NOTAVAILABLE, currentUID);
 
   HRESULT res = (HRESULT) ModuleBridge::get_data();
-  ModuleBridge::pop_front();
+  ModuleBridge::consumeResponse();
   return res;
 }
 
@@ -334,7 +334,7 @@ HRESULT Direct3D9Ex_LSS::CheckDeviceMultiSampleType(UINT Adapter, D3DDEVTYPE Dev
   if (pQualityLevels != NULL) {
     *pQualityLevels = QualityLevelsLocal;
   }
-  ModuleBridge::pop_front();
+  ModuleBridge::consumeResponse();
 
   return res;
 }
@@ -357,7 +357,7 @@ HRESULT Direct3D9Ex_LSS::CheckDepthStencilMatch(UINT Adapter, D3DDEVTYPE DeviceT
   WAIT_FOR_SERVER_RESPONSE("CheckDepthStencilMatch()", E_FAIL, currentUID);
 
   HRESULT res = (HRESULT) ModuleBridge::get_data();
-  ModuleBridge::pop_front();
+  ModuleBridge::consumeResponse();
   return res;
 }
 
@@ -379,7 +379,7 @@ HRESULT Direct3D9Ex_LSS::CheckDeviceFormatConversion(UINT Adapter, D3DDEVTYPE De
   WAIT_FOR_SERVER_RESPONSE("CheckDeviceFormatConversion()", E_FAIL, currentUID);
 
   HRESULT res = (HRESULT) ModuleBridge::get_data();
-  ModuleBridge::pop_front();
+  ModuleBridge::consumeResponse();
   return res;
 }
 
@@ -420,7 +420,7 @@ HRESULT Direct3D9Ex_LSS::GetDeviceCaps(UINT Adapter, D3DDEVTYPE DeviceType, D3DC
     }
     *pCaps = deviceCaps;
   }
-  ModuleBridge::pop_front();
+  ModuleBridge::consumeResponse();
   return hresult;
 }
 
@@ -437,7 +437,7 @@ HMONITOR Direct3D9Ex_LSS::GetAdapterMonitor(UINT Adapter) {
   WAIT_FOR_SERVER_RESPONSE("GetAdapterMonitor()", 0, currentUID);
 
   HMONITOR monitor = (HMONITOR) ModuleBridge::get_data();
-  ModuleBridge::pop_front();
+  ModuleBridge::consumeResponse();
   return monitor;
 }
 
@@ -477,7 +477,7 @@ UINT Direct3D9Ex_LSS::GetAdapterModeCountEx(UINT Adapter, CONST D3DDISPLAYMODEFI
   WAIT_FOR_SERVER_RESPONSE("GetAdapterModeCountEx()", cnt, currentUID);
 
   cnt = (UINT) ModuleBridge::get_data();
-  ModuleBridge::pop_front();
+  ModuleBridge::consumeResponse();
   return cnt;
 }
 
@@ -513,7 +513,7 @@ HRESULT Direct3D9Ex_LSS::EnumAdapterModesEx(UINT Adapter, CONST D3DDISPLAYMODEFI
       hresult = D3DERR_INVALIDCALL;
     }
   }
-  ModuleBridge::pop_front();
+  ModuleBridge::consumeResponse();
   return hresult;
 }
 
@@ -555,7 +555,7 @@ HRESULT Direct3D9Ex_LSS::GetAdapterDisplayModeEx(UINT Adapter, D3DDISPLAYMODEEX*
       hresult = D3DERR_INVALIDCALL;
     }
   }
-  ModuleBridge::pop_front();
+  ModuleBridge::consumeResponse();
   return hresult;
 }
 
@@ -603,7 +603,7 @@ HRESULT Direct3D9Ex_LSS::GetAdapterLUID(UINT Adapter, LUID* pLUID) {
       hresult = D3DERR_INVALIDCALL;
     }
   }
-  ModuleBridge::pop_front();
+  ModuleBridge::consumeResponse();
   return hresult;
 }
 

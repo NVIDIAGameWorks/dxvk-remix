@@ -61,9 +61,10 @@ static HRESULT copyServerSurfaceRawData(Direct3DSurface9_LSS* const pLssSurface,
       FOR_EACH_RECT_ROW(lockedRect, height, format,
         memcpy(ptr, (PBYTE) pData + y * rowSize, rowSize);
       );
-      res = pLssSurface->UnlockRect();
+      DeviceBridge::consumeResponse();
+      return pLssSurface->UnlockRect();
     }
   }
-  DeviceBridge::pop_front();
+  DeviceBridge::consumeResponse();
   return res;
 }

@@ -47,6 +47,7 @@ extern Process* gpServer;
 extern bool gbBridgeRunning;
 
 void SetupExceptionHandler();
+HRESULT waitForPendingPresents();
 
 // Some games do not use Begin-/EndScene which is required by some d3d9 API calls such as D3DXFont::DrawText()
 // This state will be used to track whether we need to spoof it in games

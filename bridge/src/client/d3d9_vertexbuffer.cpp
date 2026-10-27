@@ -93,9 +93,8 @@ HRESULT Direct3DVertexBuffer9_LSS::Unlock() {
   LogFunctionCall();
   {
     BRIDGE_PARENT_DEVICE_LOCKGUARD();
-    unlock();
+    return unlock();
   }
-  return S_OK;
 }
 
 HRESULT Direct3DVertexBuffer9_LSS::GetDesc(D3DVERTEXBUFFER_DESC* pDesc) {
