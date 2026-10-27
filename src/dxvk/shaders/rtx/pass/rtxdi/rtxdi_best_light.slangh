@@ -1,0 +1,55 @@
+/*
+* Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Returns the previous frame's best light near prevPixelCenter, mapped to the current frame.
+// Initial sampling and temporal reuse must call this with the same RNG state
+// so that temporal reuse skips the same random numbers.
+void loadPreviousBestLight(
+  inout RAB_RandomSamplerState rng,
+  ivec2 prevPixelCenter,
+  out uint16_t previousBestLightIndex,
+  out uint8_t previousBestLightPortalIdx) {
+  previousBestLightIndex = RTXDI_INVALID_LIGHT_INDEX;
+  previousBestLightPortalIdx = RTXDI_INVALID_PORTAL_INDEX;
+
+  if (all(prevPixelCenter >= 0) && all(prevPixelCenter < cb.camera.resolution) && cb.enableRtxdiBestLightSampling) {
+    // Jitters the lookup by up to one pixel, so edge pixels sometimes use a neighbouring block's best light.
+    ivec2 bestLightPixel = prevPixelCenter;
+    if (cb.enableRtxdiBestLightJitter) {
+      const ivec2 bestLightOffset = ivec2(vec2(RAB_GetNextRandom(rng), RAB_GetNextRandom(rng)) * 3) - 1;
+      bestLightPixel = clamp(prevPixelCenter + bestLightOffset, ivec2(0), ivec2(cb.camera.resolution) - 1);
+    }
+
+    const uint2 previousBestLight = RtxdiBestLights[bestLightPixel / RTXDI_GRAD_FACTOR];
+
+    // A cross-portal light is only kept if its portal still exists.
+#if RTXDI_NO_PORTALS
+    if (previousBestLight.x != RTXDI_INVALID_LIGHT_INDEX && previousBestLight.y == RTXDI_INVALID_PORTAL_INDEX) {
+#else
+    if (previousBestLight.x != RTXDI_INVALID_LIGHT_INDEX && (previousBestLight.y == RTXDI_INVALID_PORTAL_INDEX || previousBestLight.y < cb.numActiveRayPortals)) {
+#endif
+      previousBestLightIndex = RAB_TranslateLightIndex(previousBestLight.x, /* currentToPrevious = */ false);
+      previousBestLightPortalIdx = previousBestLight.y;
+    }
+  }
+}
