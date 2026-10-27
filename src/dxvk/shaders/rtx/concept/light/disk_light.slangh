@@ -137,13 +137,16 @@ LightSample diskLightSampleArea(DiskLight diskLight, vec2 sampleCoordinates, vec
 
   const float areaPdf = float(1.0f / diskLightCalcSurfaceArea(diskLight));
   const vec3 sampleVector = diskPositionSample - position;
-  const float sampleDistance = length(sampleVector);
-  const float sampleCosTheta = dot(vec3(normalize(sampleVector)), -diskNormalSample);
+  const float sampleDistance2 = squareLength(sampleVector);
+  const float inverseSampleDistance = rsqrt(sampleDistance2);
+  const float sampleDistance = sampleDistance2 * inverseSampleDistance;
+  const vec3 sampleDirection = sampleVector * inverseSampleDistance;
+  const float sampleCosTheta = dot(sampleDirection, -diskNormalSample);
   const float solidAnglePdf = areaPdftoSolidAnglePdf(areaPdf, sampleDistance, abs(sampleCosTheta));
 
   // Calculate light shaping
 
-  const vec3 lightToViewDirection = vec3(normalize(position - diskPositionSample));
+  const vec3 lightToViewDirection = -sampleDirection;
   const float lightShaping = diskLightCalcShaping(diskLight, lightToViewDirection);
 
   // Create the light sample

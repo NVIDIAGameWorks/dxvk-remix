@@ -297,32 +297,6 @@ vec3 calcGGXBoundedVisibleNormalDistributionSample(vec2 anisotropicRoughness, ve
   return calcGGXVisibleNormalDistributionSphericalCapSample(anisotropicRoughness, outputDirection, u, k);
 }
 
-// Calculates the cosine of the angle CAB between spherical triangle points on the surface of a unit sphere A, B and C.
-float sphericalTriangleCosineAngle(vec3 A, vec3 B, vec3 C)
-{
-  // Derived from: https://math.stackexchange.com/a/66731
-  // Mathematics Stack Exchange posts licensed under CC BY-SA 3.0
-
-  const vec3 CA = cross(C, A);
-  const vec3 BA = cross(B, A);
-  const float lengthCA = length(CA);
-  const float lengthBA = length(BA);
-
-  // Note: Handle cases when normalization may be NaN (in these cases two of the points
-  // are colinear which can be interpreted as having an angle of 0 in the spherical triangle,
-  // or in the case of the cosine of the angle, 1).
-  if (lengthCA == 0.0f || lengthBA == 0.0f)
-  {
-    return 1.0f;
-  }
-
-  // Note: Normalize the vectors with the previously calculated lengths.
-  const vec3 unitCA = CA / lengthCA;
-  const vec3 unitBA = BA / lengthBA;
-
-  return clamp(dot(unitCA, unitBA), -1.0f, 1.0f);
-}
-
 // Samples a point uniformly over the area of a spherical triangle given a set of vertices on the surface of the unit sphere.
 // [Arvo 1995, "Stratified Sampling of Spherical Triangles"]
 vec3 calcSphericalTriangleSample(vec3 A, vec3 B, vec3 C, vec2 randomSample, inout float pdf)
@@ -331,11 +305,24 @@ vec3 calcSphericalTriangleSample(vec3 A, vec3 B, vec3 C, vec2 randomSample, inou
   // division, etc), but some may still appear and this code may need to be modified a bit in the future.
 
   // Calculate spherical triangle angles from the vertices
+  // Derived from: https://math.stackexchange.com/a/66731
+  // Mathematics Stack Exchange posts licensed under CC BY-SA 3.0
 
-  // Todo: Try to share normalization length divides
-  const float cosAlpha = sphericalTriangleCosineAngle(A, C, B);
-  const float cosBeta = sphericalTriangleCosineAngle(B, A, C);
-  const float cosGamma = sphericalTriangleCosineAngle(C, A, B);
+  const vec3 crossAB = cross(A, B);
+  const vec3 crossBC = cross(B, C);
+  const vec3 crossCA = cross(C, A);
+  const float lengthAB = length(crossAB);
+  const float lengthBC = length(crossBC);
+  const float lengthCA = length(crossCA);
+  const vec3 unitAB = crossAB / lengthAB;
+  const vec3 unitBC = crossBC / lengthBC;
+  const vec3 unitCA = crossCA / lengthCA;
+
+  // Note: Each angle uses one reversed cross product, hence the negated dot products.
+  // Colinear points give a zero length and NaN unit vectors, and are treated as an angle of 0 (a cosine of 1).
+  const float cosAlpha = (lengthAB == 0.0f || lengthCA == 0.0f) ? 1.0f : clamp(-dot(unitAB, unitCA), -1.0f, 1.0f);
+  const float cosBeta = (lengthBC == 0.0f || lengthAB == 0.0f) ? 1.0f : clamp(-dot(unitBC, unitAB), -1.0f, 1.0f);
+  const float cosGamma = (lengthBC == 0.0f || lengthCA == 0.0f) ? 1.0f : clamp(-dot(unitBC, unitCA), -1.0f, 1.0f);
   const float alpha = acos(cosAlpha);
   const float beta = acos(cosBeta);
   const float gamma = acos(cosGamma);

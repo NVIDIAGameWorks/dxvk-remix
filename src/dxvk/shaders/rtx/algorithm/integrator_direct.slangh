@@ -90,6 +90,7 @@ void evalNEEPrimary(
   Ray viewRay,
   MinimalRayInteraction minimalRayInteraction,
   MinimalSurfaceInteraction minimalSurfaceInteraction,
+  uint32_t packedGeometryTBN,
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
   inout RNG randomState)
 {
@@ -112,45 +113,90 @@ void evalNEEPrimary(
     sharedSurfaceIndex = uint(SharedSurfaceIndex[compactedCoordinate]);
   }
 
-  VisibilityResult visibility;
-  visibility.hasOpaqueHit = true;
+  // The diffusion profile is evaluated before the visibility trace so that the surface interaction
+  // is not kept live across the trace by this path.
+  SssDiffusionProfileResult sssDiffusionProfileResult = createEmptySssDiffusionProfileResult();
+  if (isDiffusionProfileSss)
+  {
+    MinimalSurfaceInteraction sssSurfaceInteraction = minimalSurfaceInteraction;
+    minimalSurfaceInteractionRestoreTangents(sssSurfaceInteraction, packedGeometryTBN);
+
+    sssDiffusionProfileResult = evalSssDiffusionProfile(
+      opaqueSurfaceMaterialInteraction, minimalRayInteraction, sssSurfaceInteraction,
+      rayMask, sampledTransportPortalIndex, geometryFlags, viewRay,
+      sharedSurfaceIndex, pixelCoordinate, ivec2(compactedCoordinate),
+      randomState);
+  }
+
+  const float lightSampleThroughput = isValidLightSample ? invSelectionPdf / lightSample.solidAnglePdf : 0.0f;
+
+  // The lobe weights are evaluated before the visibility trace so that the material and surface interactions
+  // are not kept live across it. They are zeroed after the trace if the light is occluded.
+  vec3 diffuseLobeWeight = vec3(0.0f, 0.0f, 0.0f);
+  vec3 specularLobeWeight = vec3(0.0f, 0.0f, 0.0f);
+  vec3 diffuseTransmissionLobeWeight = vec3(0.0f, 0.0f, 0.0f);
 
   if (isValidLightSample)
   {
-    visibility = traceVisibilityRay<visibilityModeEnablePom | visibilityModeAccurateHitDistance | visibilityModeEnableTranslucentMaterials | visibilityModeEnableSubsurfaceMaterials>(
-      minimalSurfaceInteraction,
+    const vec3 lightDirection = createVisibilityRay(
+      minimalSurfaceInteraction, lightSample.position,
+      minimalRayInteraction.coneRadius, viewRay.spreadAngle,
+      isThinOpaqueSubsurface, opaqueSurfaceMaterialInteraction.shadingNormal).direction;
+
+    SurfaceMaterialInteractionSplitWeight splitWeight =
+      opaqueSurfaceMaterialInteractionCalcProjectedWeight(opaqueSurfaceMaterialInteraction, minimalRayInteraction, lightDirection);
+
+    if (cb.shadowTerminatorArgs.soften)
+    {
+      // soften the abrupt edge between light and shadow, see function description
+      splitWeight.diffuseReflectionWeight *= softenShadowTerminator(
+        minimalSurfaceInteraction.geometryNormal,
+        opaqueSurfaceMaterialInteraction.shadingNormal,
+        lightDirection
+      );
+    }
+
+    // SSS is a generic version for diffuse, remove the diffuse lobe when SSS is enabled to avoid duplication.
+    diffuseLobeWeight = !isDiffusionProfileSss ? splitWeight.diffuseReflectionWeight : vec3(0.0f, 0.0f, 0.0f);
+    specularLobeWeight = splitWeight.specularReflectionWeight;
+    diffuseTransmissionLobeWeight = splitWeight.diffuseTransmissionWeight;
+  }
+
+  VisibilityResult visibility;
+  visibility.hasOpaqueHit = true;
+
+  // Note: Only the POM visibility evaluation inside the trace reads the texture coordinates and the tangent frame.
+  const bool needsPomVisibilityInputs = isValidLightSample && pomOpaqueSurfaceEncountered && cb.pomMode != DisplacementMode::Off;
+
+  float2 textureCoordinates = float2(0.0f, 0.0f);
+  if (needsPomVisibilityInputs)
+  {
+    textureCoordinates = SharedTextureCoord[compactedCoordinate];
+  }
+
+  if (isValidLightSample)
+  {
+    MinimalSurfaceInteraction traceSurfaceInteraction = minimalSurfaceInteraction;
+
+    if (needsPomVisibilityInputs)
+    {
+      minimalSurfaceInteractionRestoreTangents(traceSurfaceInteraction, packedGeometryTBN);
+    }
+
+    visibility = traceVisibilityRay<visibilityModeEnablePom | visibilityModeAccurateHitDistance | visibilityModeEnableTranslucentMaterials | visibilityModeEnableSubsurfaceMaterials | visibilityModeLeanOpaqueHits>(
+      traceSurfaceInteraction,
       lightSample.position, rayMask,
       sampledTransportPortalIndex, geometryFlags.portalSpace, pomOpaqueSurfaceEncountered,
       minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, geometryFlags.isViewModel, false,
-      sharedSurfaceIndex, SharedTextureCoord[compactedCoordinate],
+      sharedSurfaceIndex, textureCoordinates,
       isThinOpaqueSubsurface,
       opaqueSurfaceMaterialInteraction.shadingNormal);
   }
 
   const bool hasNonSssOpaqueHit = visibility.hasOpaqueHit;
 
-  SssDiffusionProfileResult sssDiffusionProfileResult = createEmptySssDiffusionProfileResult();
   if (isDiffusionProfileSss)
   {
-    if (geometryFlags.primarySelectedIntegrationSurface)
-    {
-      sssDiffusionProfileResult = evalSssDiffusionProfile(
-        opaqueSurfaceMaterialInteraction, minimalRayInteraction, minimalSurfaceInteraction,
-        rayMask, sampledTransportPortalIndex, geometryFlags, viewRay,
-        sharedSurfaceIndex, pixelCoordinate, ivec2(compactedCoordinate),
-        PrimaryWorldShadingNormal,
-        randomState);
-    }
-    else
-    {
-      sssDiffusionProfileResult = evalSssDiffusionProfile(
-        opaqueSurfaceMaterialInteraction, minimalRayInteraction, minimalSurfaceInteraction,
-        rayMask, sampledTransportPortalIndex, geometryFlags, viewRay,
-        sharedSurfaceIndex, pixelCoordinate, ivec2(compactedCoordinate),
-        SecondaryWorldShadingNormal,
-        randomState);
-    }
-
     visibility.hasOpaqueHit = (hasNonSssOpaqueHit && sssDiffusionProfileResult.allSamplesHaveHit);
   }
 
@@ -163,36 +209,13 @@ void evalNEEPrimary(
     return;
   }
   
-  // Evaluate the material and accumulate throughput and hit distance
-
-  SurfaceMaterialInteractionSplitWeight emptyWeight;
-  emptyWeight.diffuseReflectionWeight   = vec3(0.0f, 0.0f, 0.0f);
-  emptyWeight.specularReflectionWeight  = vec3(0.0f, 0.0f, 0.0f);
-  emptyWeight.diffuseTransmissionWeight = vec3(0.0f, 0.0f, 0.0f);
-
-  SurfaceMaterialInteractionSplitWeight splitWeight =
-    !hasNonSssOpaqueHit ?
-    opaqueSurfaceMaterialInteractionCalcProjectedWeight(opaqueSurfaceMaterialInteraction, minimalRayInteraction, visibility.rayDirection) :
-    emptyWeight;
-
-  const float lightSampleThroughput = isValidLightSample ? invSelectionPdf / lightSample.solidAnglePdf : 0.0f;
-
-  if (cb.shadowTerminatorArgs.soften)
+  // Only the subsurface scattering contributes when the non-subsurface ray hit an opaque surface.
+  if (hasNonSssOpaqueHit)
   {
-    // soften the abrupt edge between light and shadow, see function description
-    splitWeight.diffuseReflectionWeight *= softenShadowTerminator(
-      minimalSurfaceInteraction.geometryNormal,
-      opaqueSurfaceMaterialInteraction.shadingNormal,
-      visibility.rayDirection
-    );
+    diffuseLobeWeight = vec3(0.0f, 0.0f, 0.0f);
+    specularLobeWeight = vec3(0.0f, 0.0f, 0.0f);
+    diffuseTransmissionLobeWeight = vec3(0.0f, 0.0f, 0.0f);
   }
-
-  // Determine the weight for the lobes lobe
-
-  // SSS is a generic version for diffuse, remove the diffuse lobe when SSS is enabled to avoid duplication.
-  const vec3 diffuseLobeWeight = !isDiffusionProfileSss ? splitWeight.diffuseReflectionWeight : vec3(0.0f, 0.0f, 0.0f);
-  const vec3 specularLobeWeight = splitWeight.specularReflectionWeight;
-  const vec3 diffuseTransmissionLobeWeight = splitWeight.diffuseTransmissionWeight;
 
   // TODO: Handle Transmission Weight
 
@@ -349,7 +372,8 @@ void sampleAndStoreIndirectRayPathSample(
   PolymorphicSurfaceMaterialInteraction primaryPolymorphicSurfaceMaterialInteraction,
   inout GeometryFlags geometryFlags)
 {
-  uint mediumMaterialIndex = SharedMediumMaterialIndex[compactedCoordinate];
+  // Only stored back when the medium changes, in which case evalMediumChange overwrites it.
+  uint mediumMaterialIndex = SURFACE_INDEX_INVALID;
   bool insideMedium = geometryFlags.insideMedium;
 
   bool mediumChanged;
@@ -414,6 +438,7 @@ void integrateDirectPath(
   inout RNG randomState, uvec2 pixelCoordinate, uvec2 compactedCoordinate,
   GeometryFlags geometryFlags, float integrationSurfacePdf,
   Ray primaryRay, MinimalRayInteraction primaryMinimalRayInteraction, MinimalSurfaceInteraction primarySurfaceInteraction,
+  uint32_t primaryPackedGeometryTBN,
   PolymorphicSurfaceMaterialInteraction primaryPolymorphicSurfaceMaterialInteraction)
 {
 
@@ -479,7 +504,7 @@ void integrateDirectPath(
         diffuseLobeRadiance, specularLobeRadiance, lightHitDistance, hasOpaqueHit, illuminance,
         isValidLightSample, lightSample,
         inverseSelectionPdf, sampledTransportPortalIndex, geometryFlags,
-        primaryRay, primaryMinimalRayInteraction, primarySurfaceInteraction,
+        primaryRay, primaryMinimalRayInteraction, primarySurfaceInteraction, primaryPackedGeometryTBN,
         opaqueSurfaceMaterialInteraction,
         randomState);
 

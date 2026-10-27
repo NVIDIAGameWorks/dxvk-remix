@@ -140,8 +140,10 @@ LightSample cylinderLightSampleArea(CylinderLight cylinderLight, vec2 sampleCoor
 
   const float areaPdf = float(1.0f / cylinderLightCalcSurfaceArea(cylinderLight));
   const vec3 sampleVector = cylinderPositionSample - position;
-  const float sampleDistance = length(sampleVector);
-  const float sampleCosTheta = dot(vec3(normalize(sampleVector)), -cylinderNormalSample);
+  const float sampleDistance2 = squareLength(sampleVector);
+  const float inverseSampleDistance = rsqrt(sampleDistance2);
+  const float sampleDistance = sampleDistance2 * inverseSampleDistance;
+  const float sampleCosTheta = dot(sampleVector * inverseSampleDistance, -cylinderNormalSample);
   const float solidAnglePdf = areaPdftoSolidAnglePdf(areaPdf, sampleDistance, abs(sampleCosTheta));
 
   // Create the light sample

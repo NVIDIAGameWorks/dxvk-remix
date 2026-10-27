@@ -78,9 +78,17 @@ float lightShapingCalcScaledRadialFalloff(LightShaping lightShaping, vec3 lightT
     //
     // Note: The tangent grows without bound as theta_x -> pi/2, so cos(theta_x) -> 0 and the cone naturally
     // saturates at a hemisphere as ratio -> infinity. No clamp or wrap-around handling needed.
-    const float sinConeAngle = sqrt(max(0.0f, 1.0f - cosConeAngle * cosConeAngle));
-    const float tanScaled = (sinConeAngle * ratio) / max(cosConeAngle, 1e-6f);
-    scaledConeAngle = 1.0f / sqrt(1.0f + tanScaled * tanScaled);
+    if (ratio == 1.0f && cosConeAngle >= 1e-6f)
+    {
+      // The tangent form reduces to the unscaled cone angle, up to rounding.
+      scaledConeAngle = cosConeAngle;
+    }
+    else
+    {
+      const float sinConeAngle = sqrt(max(0.0f, 1.0f - cosConeAngle * cosConeAngle));
+      const float tanScaled = (sinConeAngle * ratio) / max(cosConeAngle, 1e-6f);
+      scaledConeAngle = 1.0f / sqrt(1.0f + tanScaled * tanScaled);
+    }
   }
   else
   {

@@ -128,13 +128,13 @@ LightSample sphereLightSampleArea(SphereLight sphereLight, vec2 sampleCoordinate
   const float cosThetaMax = sqrt(max(lightSamplingEpsilon, 1.0f - sinThetaMax2));
   const float phi = float(twoPi) * sampleCoordinates.x;
   const float cosTheta = mix(float(cosThetaMax), float(1.0f), float(sampleCoordinates.y));
-  const float sinTheta = float(sqrt(max(0.0f, 1.0f - square(cosTheta))));
+  const float sinTheta2 = max(0.0f, 1.0f - square(cosTheta));
 
   // Calculate the alpha value representing the spherical coordinates of the sample point
 
   const float dc = lightDistance;
   const float dc2 = lightDistance2;
-  const float ds = dc * cosTheta - sqrt(max(lightSamplingEpsilon, radius2 - dc2 * sinTheta * sinTheta));
+  const float ds = dc * cosTheta - sqrt(max(lightSamplingEpsilon, radius2 - dc2 * sinTheta2));
   const float cosAlpha = float((dc2 + radius2 - square(ds)) / (2.0f * dc * sphereLight.radius));
   const float sinAlpha = sqrt(max(float(0.0f), float(1.0f) - square(cosAlpha)));
 

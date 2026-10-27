@@ -36,8 +36,14 @@ MinimalRayInteraction minimalRayInteractionReadFromGBuffer(
 {
   GBufferMemoryMinimalRayInteraction memory;
 
-  memory.encodedViewDirection = viewDirectionTexture[position];
+  memory.encodedViewDirection = float2(0.0f, 0.0f);
   memory.encodedConeRadius = float16_t(coneRadiusTexture[position].x);
+
+  // Only a negative cone radius marks a stored view direction, see minimalRayInteractionCreate.
+  if (memory.encodedConeRadius < float16_t(0.0f))
+  {
+    memory.encodedViewDirection = viewDirectionTexture[position];
+  }
 
   return minimalRayInteractionCreate(memory, originalRay);
 }
@@ -83,6 +89,29 @@ MinimalSurfaceInteraction minimalSurfaceInteractionReadFromGBufferWithError(
   memory.positionError = positionErrorTexture[position];
 
   return minimalSurfaceInteractionCreate(memory);
+}
+
+// Reads the surface without decoding its tangent and bitangent, which are left as zero.
+// The packed geometry TBN is returned instead so that callers can carry a single value and call
+// minimalSurfaceInteractionRestoreTangents when the tangent frame is needed.
+MinimalSurfaceInteraction minimalSurfaceInteractionReadFromGBufferWithErrorDeferTangents(
+  ivec2 position,
+  Texture2D<float4> worldPositionWorldTriangleTBNTexture,
+  Texture2D<float> positionErrorTexture,
+  out uint32_t packedGeometryTBN)
+{
+  GBufferMemoryMinimalSurfaceInteraction memory;
+
+  memory.encodedWorldPositionWorldTriangleTBN = worldPositionWorldTriangleTBNTexture[position];
+  memory.positionError = positionErrorTexture[position];
+
+  packedGeometryTBN = floatBitsToUint(memory.encodedWorldPositionWorldTriangleTBN.w);
+
+  MinimalSurfaceInteraction minimalSurfaceInteraction = minimalSurfaceInteractionCreate(memory);
+  minimalSurfaceInteraction.geometryTangent = vec3(0.0f);
+  minimalSurfaceInteraction.geometryBitangent = vec3(0.0f);
+
+  return minimalSurfaceInteraction;
 }
 
 // The primary world position is dense, so primary callers pass `position` for it. The position error is compacted.

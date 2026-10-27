@@ -206,7 +206,7 @@ void integrate_indirect_pass(uvec2 threadIndex)
 
   const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(ivec2(compactedCoordinate), SharedFlags);
 
-  // Check if the GBuffer was hit on the Primary and Secondary surfaces
+  // Check if the GBuffer was hit on the selected integration surface
 
   // Write out empty data
   // Note: This should hopefully prevent any weird undefined data from bleeding into pixels actually being denoised, but

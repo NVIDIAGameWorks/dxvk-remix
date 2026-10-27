@@ -283,15 +283,43 @@ void evaluateUnshadowedLight(
   out vec3 diffuseLight,
   out vec3 specularLight)
 {
-  if (dot(inputDirection, opaqueSurfaceMaterialInteraction.shadingNormal) < 0.0 &&
-      (!cb.sssArgs.enableThinOpaque || !isThinOpaqueSubsurfaceMaterial(opaqueSurfaceMaterialInteraction)))
+  if (isUnshadowedLightBackFacing(opaqueSurfaceMaterialInteraction, inputDirection))
+  {
+    diffuseLight = specularLight = 0;
+    return;
+  }
+
+  evaluateUnshadowedLight(
+    lightSample, opaqueSurfaceMaterialInteraction, inputDirection,
+    opaqueSurfaceMaterialInteractionCalcTangentFrame(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection),
+    diffuseLight, specularLight);
+}
+
+bool isUnshadowedLightBackFacing(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  vec3 inputDirection)
+{
+  return dot(inputDirection, opaqueSurfaceMaterialInteraction.shadingNormal) < 0.0 &&
+    (!cb.sssArgs.enableThinOpaque || !isThinOpaqueSubsurfaceMaterial(opaqueSurfaceMaterialInteraction));
+}
+
+// The tangent frame must be the one of inputDirection and the view direction.
+void evaluateUnshadowedLight(
+  LightSample lightSample,
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  vec3 inputDirection,
+  OpaqueTangentFrame tangentFrame,
+  out vec3 diffuseLight,
+  out vec3 specularLight)
+{
+  if (isUnshadowedLightBackFacing(opaqueSurfaceMaterialInteraction, inputDirection))
   {
     diffuseLight = specularLight = 0;
     return;
   }
 
   const SurfaceMaterialInteractionSplitWeight splitWeight = opaqueSurfaceMaterialInteractionCalcProjectedWeight(
-    opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+    opaqueSurfaceMaterialInteraction, tangentFrame);
 
   diffuseLight = lightSample.radiance * (splitWeight.diffuseReflectionWeight + splitWeight.diffuseTransmissionWeight);
   specularLight = lightSample.radiance * splitWeight.specularReflectionWeight;

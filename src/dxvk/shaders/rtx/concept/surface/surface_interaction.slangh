@@ -225,9 +225,50 @@ void calcSpritesheetValues(
   uvBias = vec2(frame % spriteSheetCols, frame / spriteSheetCols) * uvSize;
 }
 
-SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
+// Reads and processes the normal of one vertex of a triangle for surfaceInteractionCreate.
+vec3 surfaceInteractionCalcVertexNormal(
+  Surface surface, uint vertexIndex, vec3 triangleNormal, vec3 flippedTriangleNormal)
+{
+  const uint normalBufferIndex = surface.normalBufferIndex;
+  const uint normalElementIndex = (vertexIndex * uint(surface.normalStride) + surface.normalOffset) / 4;
+
+  vec3 normal;
+
+  if (surface.normalsEncoded)
+  {
+    const uint encodedNormal = floatBitsToUint(BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex));
+
+    // Note: The decoded normal is always finite and normalized, so only the transformed normal is normalized.
+    normal = unsignedOctahedralToSphereDirection(vec2(
+      unorm16ToF32(uint16_t(encodedNormal >> 0)),
+      unorm16ToF32(uint16_t(encodedNormal >> 16))
+    ));
+  }
+  else
+  {
+    normal.x = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 0);
+    normal.y = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 1);
+    normal.z = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 2);
+
+    normal = safeNormalize(normal, triangleNormal);
+    normal = sanitize(normal, triangleNormal);
+  }
+
+  // Note: Second normalization required as vector may be scaled through a normal transformation
+  normal = safeNormalize(mul(surface.normalObjectToWorld, normal), triangleNormal);
+
+  // Really the only reason to flip this normal is for double-sided geometry.  Do not flip based on view vector!
+  normal *= dot(normal, flippedTriangleNormal) >= float16_t(0.0) ? 1 : -1;
+
+  return normal;
+}
+
+// Note: ComputeMotionAndShadowTerminator is false for callers that never read the motion or the shadow terminator offset of
+// the result, see surfaceInteractionCreateWithoutMotion. That avoids the previous position loads, and lets the interpolated
+// normal be accumulated one vertex at a time instead of holding all three vertex normals live.
+SurfaceInteraction surfaceInteractionCreateImpl<let GenerateTangents : bool, let ComputeMotionAndShadowTerminator : bool>(
   Surface surface, RayInteraction rayInteraction, Ray ray,
-  bool usePreviousPositions = false, uint footprintMode = kFootprintFromRayDirection)
+  bool usePreviousPositions, uint footprintMode)
 {
   // Compute vertex indicies
 
@@ -373,6 +414,24 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
   {
     surfaceInteraction.geometryNormal = flippedTriangleNormal;
   }
+  else if (!ComputeMotionAndShadowTerminator)
+  {
+    // Note: Same arithmetic as interpolateHitAttribute over the processed vertex normals, accumulated one vertex at a time.
+    vec3 summedNormal = vec3(0.0f);
+
+    [loop]
+    for (uint i = 0; i < 3; i++)
+    {
+      const vec3 vertexNormal = surfaceInteractionCalcVertexNormal(surface, idx[i], triangleNormal, flippedTriangleNormal);
+      const float vertexWeight = i == 0 ? bary.x : (i == 1 ? bary.y : bary.z);
+
+      summedNormal = i == 0 ? vertexNormal * vertexWeight : summedNormal + vertexNormal * vertexWeight;
+    }
+
+    const vec3 interpolatedNormal = safeNormalize(summedNormal, triangleNormal);
+
+    surfaceInteraction.geometryNormal = getBentNormal(flippedTriangleNormal, interpolatedNormal, ray.direction);
+  }
   else
   {
     vec3 normals[3];
@@ -387,35 +446,24 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
       if (surface.normalsEncoded)
       {
         const uint encodedNormal = floatBitsToUint(BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex));
-        const vec3 decodedNormal = unsignedOctahedralToSphereDirection(vec2(
+
+        // Note: The decoded normal is always finite and normalized, so only the transformed normal is normalized.
+        normals[i] = unsignedOctahedralToSphereDirection(vec2(
           unorm16ToF32(uint16_t(encodedNormal >> 0)),
           unorm16ToF32(uint16_t(encodedNormal >> 16))
         ));
-
-        normals[i] = decodedNormal;
       }
       else
       {
         normals[i].x = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 0);
         normals[i].y = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 1);
         normals[i].z = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 2);
+
+        // Note: Source applications may provide degenerate, NaN or Inf normals, which fall back to the triangle normal.
+        normals[i] = safeNormalize(normals[i], triangleNormal);
+        normals[i] = sanitize(normals[i], triangleNormal);
       }
     }
-
-    // Note: Fall back to the triangle normal when an interpolated normal cannot be derived. Note this will not produce a
-    // valid normal for cases where the positional data itself is NaN/Inf, but these cases likely indicate corruption in
-    // the original data to begin with.
-    normals[0] = safeNormalize(normals[0], triangleNormal);
-    normals[1] = safeNormalize(normals[1], triangleNormal);
-    normals[2] = safeNormalize(normals[2], triangleNormal);
-
-    // Note: This is done due to input data from source applications potentially containing NaNs/Infs and thus needing to be sanitized before being
-    // used in Remix. This is done here rather than earlier when normals are read from the buffer to only sanitize once rather than for
-    // each of the 3 vertex normals. Do note however that keeping this as close to the interpolation step as possible is important to avoid
-    // hiding invalid values from other logic in Remix.
-    normals[0] = sanitize(normals[0], triangleNormal);
-    normals[1] = sanitize(normals[1], triangleNormal);
-    normals[2] = sanitize(normals[2], triangleNormal);
 
     // Note: Second normalization required as vector may be scaled through a normal transformation
     normals[0] = safeNormalize(mul(surface.normalObjectToWorld, normals[0]), triangleNormal);
@@ -458,7 +506,7 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
   // Compute motion
   // Note: Ignore the motion if the caller needs previous positions, we don't know it.
 
-  if (!surface.isStatic && !usePreviousPositions)
+  if (ComputeMotionAndShadowTerminator && !surface.isStatic && !usePreviousPositions)
   {
     vec3 prevObjectPosition = interpolateHitAttribute(positions, bary);
 
@@ -750,6 +798,22 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
   }
 
   return surfaceInteraction;
+}
+
+SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
+  Surface surface, RayInteraction rayInteraction, Ray ray,
+  bool usePreviousPositions = false, uint footprintMode = kFootprintFromRayDirection)
+{
+  return surfaceInteractionCreateImpl<GenerateTangents, true>(surface, rayInteraction, ray, usePreviousPositions, footprintMode);
+}
+
+// Creates a surface interaction whose motion and shadow terminator offset are left at zero.
+// Only for callers that never read them, such as visibility rays.
+SurfaceInteraction surfaceInteractionCreateWithoutMotion<let GenerateTangents : bool>(
+  Surface surface, RayInteraction rayInteraction, Ray ray,
+  bool usePreviousPositions = false, uint footprintMode = kFootprintFromRayDirection)
+{
+  return surfaceInteractionCreateImpl<GenerateTangents, false>(surface, rayInteraction, ray, usePreviousPositions, footprintMode);
 }
 
 // Todo: Surface interaction construction function from sampled position

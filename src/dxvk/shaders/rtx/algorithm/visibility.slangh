@@ -35,6 +35,7 @@ static const uint visibilityModeDisableCulling = (1 << 2);             // Disabl
 static const uint visibilityModeEnableSubsurfaceMaterials = (1 << 3);  // Enable subsurface materials or skip them
 static const uint visibilityModeEnablePom = (1 << 4);                  // Enable parallax occlusion mapping visibility
 static const uint visibilityModeOpaqueOnly = (1 << 5);                 // Only query visibility for opaque only, no alphatest/blend
+static const uint visibilityModeLeanOpaqueHits = (1 << 6);             // Evaluate only the opacity of opaque hits, without generating their normals and tangents
 
 // Visibility Helper Functions
 
@@ -86,7 +87,53 @@ vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo rayHi
     }
   }
 
-  SurfaceInteraction surfaceInteraction = surfaceInteractionCreate<requiresNormalsAndTangents ? SurfaceGenerateTangents : SurfaceIgnoreTangents>(surface, rayInteraction, ray, usePreviousTLAS);
+  const uint8_t polymorphicType = rayInteraction.materialType;
+
+  // Opaque hits that cannot be thin opaque subsurface or an eye only need their opacity.
+  // The opacity does not depend on interpolated normals or tangents, so they are not generated for these hits.
+  // Note: The material is only read here for the one field of the decision, and again after the surface interaction
+  // for the full path, so that the material data is not live across the surface interaction creation.
+  if ((VisibilityMode & visibilityModeLeanOpaqueHits) && polymorphicType == surfaceMaterialTypeOpaque)
+  {
+    const bool mayBeThinOpaqueSubsurface =
+      (VisibilityMode & visibilityModeEnableSubsurfaceMaterials) &&
+      (cb.sssArgs.enableThinOpaque || cb.sssArgs.enableDiffusionProfile) &&
+      opaqueSurfaceMaterialCreate(surfaceMaterials[surface.surfaceMaterialIndex], true).subsurfaceMaterialIndex != SURFACE_INDEX_INVALID;
+
+    if (!mayBeThinOpaqueSubsurface && !(cb.eyeArgs.enableEyes && surface.isEye))
+    {
+      const OpaqueSurfaceMaterial opacityMaterial = opaqueSurfaceMaterialCreate(surfaceMaterials[surface.surfaceMaterialIndex], true);
+
+      Surface opacitySurface = surface;
+      opacitySurface.normalBufferIndex = BINDING_INDEX_INVALID;
+      opacitySurface.normalObjectToWorld = getIdentityMatrix();
+
+      SurfaceInteraction opacityInteraction = surfaceInteractionCreateWithoutMotion<SurfaceIgnoreTangents>(
+        opacitySurface, rayInteraction, ray, usePreviousTLAS);
+
+      if (isSurfaceClipped(opacitySurface, opacityInteraction))
+      {
+        return vec3(1.0f);
+      }
+
+      const OpaqueSurfaceMaterialInteraction opacityMaterialInteraction =
+        opaqueSurfaceMaterialInteractionCreateImpl<false>(opacityMaterial, opacitySurface, opacityInteraction, rayInteraction);
+
+      return vec3(1.0f - opacityMaterialInteraction.opacity);
+    }
+  }
+
+  // Without subsurface materials, an opaque hit only needs its opacity, which does not read the interpolated normal.
+  // Dropping the normal buffer here skips that work at runtime without a second surface interaction instance.
+  if (!(VisibilityMode & visibilityModeEnableSubsurfaceMaterials) &&
+      polymorphicType == surfaceMaterialTypeOpaque && !(cb.eyeArgs.enableEyes && surface.isEye))
+  {
+    surface.normalBufferIndex = BINDING_INDEX_INVALID;
+  }
+
+  // Note: Nothing below reads the motion or the shadow terminator offset of the surface interaction.
+  SurfaceInteraction surfaceInteraction = surfaceInteractionCreateWithoutMotion<requiresNormalsAndTangents ? SurfaceGenerateTangents : SurfaceIgnoreTangents>(
+    surface, rayInteraction, ray, usePreviousTLAS);
 
   if (isSurfaceClipped(surface, surfaceInteraction))
   {
@@ -95,15 +142,14 @@ vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo rayHi
   }
 
   const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
-  
-  const uint8_t polymorphicType = rayInteraction.materialType;
 
   if (polymorphicType == surfaceMaterialTypeOpaque)
   {
     const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial, true);
 
+    // Note: Parallax displacement of the hit surface is not needed to evaluate its opacity for visibility.
     const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
-      opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
+      opaqueSurfaceMaterialInteractionCreateImpl<false>(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
 
     const bool isThinOpaqueSubsurface = (VisibilityMode & visibilityModeEnableSubsurfaceMaterials) && isThinOpaqueSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
@@ -414,6 +460,25 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
   return result;
 }
 
+Ray createVisibilityRay(
+  MinimalSurfaceInteraction minimalSurfaceInteraction, float3 targetPosition,
+  float coneRadius, float spreadAngle, bool isThinOpaqueSubsurface, vec3 shadingNormal)
+{
+  MinimalRayInteraction minimalRayInteraction = (MinimalRayInteraction) 0;
+  minimalRayInteraction.coneRadius = coneRadius;
+
+  Ray viewRay = (Ray) 0;
+  viewRay.spreadAngle = spreadAngle;
+
+  if (!isThinOpaqueSubsurface)
+  {
+    return rayCreatePosition( minimalRayInteraction, minimalSurfaceInteraction, viewRay, targetPosition, false);
+  }
+
+  return rayCreatePositionSubsurface(
+    minimalRayInteraction, minimalSurfaceInteraction, viewRay, targetPosition, shadingNormal);
+}
+
 VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
   MinimalSurfaceInteraction minimalSurfaceInteraction, float3 targetPosition,
   uint8_t rayMask, uint8_t expectedRayPortalIndex, PortalSpace2BitsType rayOriginPortalSpace, bool pomOpaqueSurfaceEncountered,
@@ -425,22 +490,8 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
   bool isThinOpaqueSubsurface = false,
   vec3 shadingNormal = vec3(0.0f), bool clearOpaqueHitAttenuation = true)
 {
-  MinimalRayInteraction minimalRayInteraction = (MinimalRayInteraction) 0;
-  minimalRayInteraction.coneRadius = coneRadius;
-  
-  Ray viewRay = (Ray) 0;
-  viewRay.spreadAngle = spreadAngle;
-
-  Ray visibilityRay;
-  if (!isThinOpaqueSubsurface)
-  {
-    visibilityRay = rayCreatePosition( minimalRayInteraction, minimalSurfaceInteraction, viewRay, targetPosition, false);
-  }
-  else
-  {
-    visibilityRay = rayCreatePositionSubsurface(
-      minimalRayInteraction, minimalSurfaceInteraction, viewRay, targetPosition, shadingNormal);
-  }
+  Ray visibilityRay = createVisibilityRay(
+    minimalSurfaceInteraction, targetPosition, coneRadius, spreadAngle, isThinOpaqueSubsurface, shadingNormal);
 
   visibilityRay.tMax *= tMaxFactor;
 

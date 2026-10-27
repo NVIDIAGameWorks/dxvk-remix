@@ -47,6 +47,10 @@ static const float kThroughputClampedDivisionMaximum = 65000.0f;
 #define NEE_CACHE_STATE_LAST_ENABLED 1
 #define NEE_CACHE_STATE_ENABLED 2
 
+// Backs PathState::segmentHitDistance outside the payload.
+// It is only valid within the invocation that resolved the segment, because no caller reads it after the trace.
+static float pathStateSegmentHitDistance;
+
 // Path state to be passed to functions (or the CHS) handling a path vertex.
 struct PathState : IBasePayloadState
 {
@@ -59,30 +63,35 @@ struct PathState : IBasePayloadState
   // Note: Radiance, throughput and hit distances are passed in and then written back out
   // so they can be accumulated into in the path tracing loop.
   vec3 radiance;
-  float _segmentHitDistance;
 
   f16vec3 throughput;
   float16_t firstBounceHitDistance; // Note: The total hit distance of the resolve for the first bounce.
+#if NEE_CACHE_ENABLE
   uint16_t neeCacheCellOffset;
+#endif
+#if NEE_CACHE_ENABLE || ENABLE_NRC
   float16_t solidAnglePdf; // unused (1b - sign bit)
+#endif
   float16_t coneSpreadAngle; // unused (1b - sign bit)
   float16_t _coneRadius; // unused (1b - sign bit)
   
   uint mediumMaterialIndex;
   f16vec3 _direction;
-  uint8_t _flags; // continueResolving(bool:1b) 
-                  // continuePath(bool:1b) 
-                  // insideMedium(bool:1b) 
-                  // decalEncountered(bool:1b) 
-                  // restirGiHasHitGeometry(bool:1b)
-                  // restirGiHasHitOpaque(bool:1b)
-                  // enableNeeCacheAfterFirstBounce(bool:1b) 
-                  // restirGiHasFoundRoughSurface(bool:1b) 
-  uint8_t _rayMask;
-  uint8_t _data; // PortalSpace(uint:2b), 
-                 // indirectLightPortalID(uint:2b), 
-                 // bounceIteration(uint:4b)
-  uint8_t _roughness;
+  // Four packed bytes, so that they occupy one register instead of four.
+  uint _packedBytes; // [0-7]: flags
+                     //   continueResolving(bool:1b)
+                     //   continuePath(bool:1b)
+                     //   insideMedium(bool:1b)
+                     //   decalEncountered(bool:1b)
+                     //   restirGiHasHitGeometry(bool:1b)
+                     //   restirGiHasHitOpaque(bool:1b)
+                     //   enableNeeCacheAfterFirstBounce(bool:1b)
+                     //   restirGiHasFoundRoughSurface(bool:1b)
+                     // [8-15]: rayMask
+                     // [16-23]: PortalSpace(uint:2b),
+                     //          indirectLightPortalID(uint:2b),
+                     //          bounceIteration(uint:4b)
+                     // [24-31]: roughness (unorm8)
 
   // Need to track pixel coordinate for sparse rendering where threads can remap to different pixels
   u16vec2 _pixelCoordinate;
@@ -330,6 +339,23 @@ struct PathState : IBasePayloadState
   }
 #endif
 
+  // Variants without a reader keep these out of the payload.
+#if !NEE_CACHE_ENABLE
+  property uint16_t neeCacheCellOffset
+  {
+    get { return 0; }
+    set { }
+  }
+#endif
+
+#if !(NEE_CACHE_ENABLE || ENABLE_NRC)
+  property float16_t solidAnglePdf
+  {
+    get { return 0.0h; }
+    set { }
+  }
+#endif
+
   // Passthrough accessors
   property float3 origin 
   {
@@ -345,14 +371,14 @@ struct PathState : IBasePayloadState
 
   property float segmentHitDistance 
   {
-    get { return _segmentHitDistance; }
-    set { _segmentHitDistance = newValue; }
+    get { return pathStateSegmentHitDistance; }
+    set { pathStateSegmentHitDistance = newValue; }
   }
 
-  property uint8_t rayMask 
+  property uint8_t rayMask
   {
-    get { return _rayMask; }
-    set { _rayMask = newValue; }
+    get { return uint8_t((_packedBytes >> 8) & 0xffu); }
+    set { _packedBytes = (_packedBytes & 0xffff00ffu) | (uint(newValue) << 8); }
   }
 
   // Flags
@@ -361,54 +387,54 @@ struct PathState : IBasePayloadState
   // if extra flag space is needed, but kept there for now for simplicity.
   property bool continueResolving
   {
-      get { return packedFlagGet(_flags, 1 << 0); }
-      set { _flags = packedFlagAssign(_flags, 1 << 0, newValue); }
+      get { return packedFlagGet(_packedBytes, 1u << 0); }
+      set { _packedBytes = packedFlagAssign(_packedBytes, 1u << 0, newValue); }
   }
 
   // Note: Used as an input and output to indicate when the path should finish. Set to true either
   // when the max bounce count is hit or when terminated due to a russian roulette style heuristic.
   property bool continuePath
   {
-      get { return packedFlagGet(_flags, 1 << 1); }
-      set { _flags = packedFlagAssign(_flags, 1 << 1, newValue); }
+      get { return packedFlagGet(_packedBytes, 1u << 1); }
+      set { _packedBytes = packedFlagAssign(_packedBytes, 1u << 1, newValue); }
   }
 
   // Note: Used to keep track of if a ray is inside a translucent medium or not, used as both an
   // input and an output to keep a persistent state across calls.
   property bool insideMedium
   {
-      get { return packedFlagGet(_flags, 1 << 2); }
-      set { _flags = packedFlagAssign(_flags, 1 << 2, newValue); }
+      get { return packedFlagGet(_packedBytes, 1u << 2); }
+      set { _packedBytes = packedFlagAssign(_packedBytes, 1u << 2, newValue); }
   }
 
   property bool decalEncountered
   {
-      get { return packedFlagGet(_flags, 1 << 3); }
-      set { _flags = packedFlagAssign(_flags, 1 << 3, newValue); }
+      get { return packedFlagGet(_packedBytes, 1u << 3); }
+      set { _packedBytes = packedFlagAssign(_packedBytes, 1u << 3, newValue); }
   }
 
   property bool restirGiHasHitGeometry
   {
-      get { return packedFlagGet(_flags, 1 << 4); }
-      set { _flags = packedFlagAssign(_flags, 1 << 4, newValue); }
+      get { return packedFlagGet(_packedBytes, 1u << 4); }
+      set { _packedBytes = packedFlagAssign(_packedBytes, 1u << 4, newValue); }
   }
 
   property bool restirGiHasHitOpaque
   {
-      get { return packedFlagGet(_flags, 1 << 5); }
-      set { _flags = packedFlagAssign(_flags, 1 << 5, newValue); }
+      get { return packedFlagGet(_packedBytes, 1u << 5); }
+      set { _packedBytes = packedFlagAssign(_packedBytes, 1u << 5, newValue); }
   }
 
   property bool enableNeeCacheAfterFirstBounce
   {
-      get { return packedFlagGet(_flags, 1 << 6); }
-      set { _flags = packedFlagAssign(_flags, 1 << 6, newValue); }
+      get { return packedFlagGet(_packedBytes, 1u << 6); }
+      set { _packedBytes = packedFlagAssign(_packedBytes, 1u << 6, newValue); }
   }
 
   property bool restirGiHasFoundRoughSurface
   {
-      get { return packedFlagGet(_flags, 1 << 7); }
-      set { _flags = packedFlagAssign(_flags, 1 << 7, newValue); }
+      get { return packedFlagGet(_packedBytes, 1u << 7); }
+      set { _packedBytes = packedFlagAssign(_packedBytes, 1u << 7, newValue); }
   }
 
   property bool directionAltered
@@ -428,20 +454,20 @@ struct PathState : IBasePayloadState
   // Track the portal ID that an indirect ray crosses
   property PortalSpace2BitsType portalSpace
   {
-      get { return (PortalSpace2BitsType)(_data & 0b11); }
-      set { _data = (_data & (~0b11)) | ((uint)newValue); }
+      get { return (PortalSpace2BitsType)((_packedBytes >> 16) & 0b11u); }
+      set { _packedBytes = (_packedBytes & ~(0b11u << 16)) | ((uint)newValue << 16); }
   }
 
   property uint8_t indirectLightPortalID
   {
-      get { return (uint8_t)((_data >> 2) & 0b11); }
-      set { _data = (_data & (~(0b11 << 2))) | ((newValue & 0b11) << 2); }
+      get { return (uint8_t)((_packedBytes >> 18) & 0b11u); }
+      set { _packedBytes = (_packedBytes & ~(0b11u << 18)) | ((uint(newValue) & 0b11u) << 18); }
   }
 
   property uint8_t bounceIteration
   {
-      get { return (_data >> 4) & 0xf; }
-      set { _data = (_data & (~(0xf << 4))) | ((newValue & 0xf) << 4); }
+      get { return (uint8_t)((_packedBytes >> 20) & 0xfu); }
+      set { _packedBytes = (_packedBytes & ~(0xfu << 20)) | ((uint(newValue) & 0xfu) << 20); }
   }
 
   property vec4 accumulatedRotation
@@ -452,8 +478,8 @@ struct PathState : IBasePayloadState
 
   property float gbufferPerceptualRoughness
   {
-      get { return unorm8ToF32(_roughness); }
-      set { _roughness = f32ToUnorm8(newValue); }
+      get { return unorm8ToF32(uint8_t(_packedBytes >> 24)); }
+      set { _packedBytes = (_packedBytes & 0x00ffffffu) | (uint(f32ToUnorm8(newValue)) << 24); }
   }
 
   // Methods

@@ -129,7 +129,7 @@ struct NEELightCandidate
     return result;
   }
 
-  static vec3 decodeOffset(uint encodedOffset)
+  static vec3 decodeOffset(uint encodedOffset, out float offsetLength)
   {
     // Decode light position offset to the camera center.
     // Put the encoding/decoding functions here because it's specific to NEE Cache.
@@ -137,7 +137,7 @@ struct NEELightCandidate
     vec2 uv = vec2(encodedOffset >> 24, (encodedOffset >> 16) & 0xff) / 255.0;
     uv = uv * 2.0 - 1.0;
     vec3 offset = signedOctahedralToSphereDirection(uv);
-    float offsetLength = uint16BitsToF32(encodedOffset & 0xffff) * range;
+    offsetLength = uint16BitsToF32(encodedOffset & 0xffff) * range;
     return offset * offsetLength;
   }
 
@@ -174,7 +174,13 @@ struct NEELightCandidate
 
   vec3 getOffset()
   {
-    return decodeOffset(m_data.y);
+    float offsetLength;
+    return decodeOffset(m_data.y, offsetLength);
+  }
+
+  vec3 getOffset(out float offsetLength)
+  {
+    return decodeOffset(m_data.y, offsetLength);
   }
 
   [mutating] void setOffset(vec3 offset)
@@ -467,8 +473,9 @@ struct NEECell
 
   float calculateLightCandidateWeight(NEELightCandidate candidate, vec3 cellCenter, vec3 surfacePoint, vec3 viewDirection, vec3 normal, float specularRatio, float roughness, bool isThinOpaqueSubsurface)
   {
-    vec3 candidateOffset = candidate.getOffset();
-    vec3 inputDirection = normalize(candidateOffset + cellCenter + normal * length(candidateOffset) * 0.01f - surfacePoint);
+    float candidateOffsetLength;
+    vec3 candidateOffset = candidate.getOffset(candidateOffsetLength);
+    vec3 inputDirection = normalize(candidateOffset + cellCenter + normal * candidateOffsetLength * 0.01f - surfacePoint);
 
     // Use a simplified GGX model to calculate light contribution
     float ndoti = dot(inputDirection, normal);

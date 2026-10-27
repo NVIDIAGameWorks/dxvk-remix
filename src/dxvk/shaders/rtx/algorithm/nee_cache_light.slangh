@@ -410,7 +410,8 @@ struct NEECacheUtils
     offset = totalPosition / 8 - cellCenter;
   }
 
-  static vec2 calculateLightSampleMISWeight(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction, vec3 inputDirection, vec3 viewDirection, float lightSampleSolidAnglePDF)
+  // The tangent frame must be the one of inputDirection and viewDirection.
+  static vec2 calculateLightSampleMISWeight(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction, vec3 inputDirection, vec3 viewDirection, float lightSampleSolidAnglePDF, OpaqueTangentFrame tangentFrame)
   {
     if (!cb.neeCacheArgs.enableMIS)
     {
@@ -422,7 +423,7 @@ struct NEECacheUtils
     rayInteraction.viewDirection = viewDirection;
 
     float diffuseSolidAnglePdf  = opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
-    float specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
+    float specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, tangentFrame);
     float diffuseTransmissionSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSolidAnglePdf(opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
 
     vec2 misWeight;

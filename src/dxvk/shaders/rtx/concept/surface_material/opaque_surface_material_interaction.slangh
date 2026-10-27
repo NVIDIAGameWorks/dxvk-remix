@@ -107,7 +107,7 @@ float3 pomTraceRay(
   const float2 ddx_tex = textureGradientX * fullBoxSize;
   const float2 ddy_tex = textureGradientY * fullBoxSize;
   const float dd_max_sq = max(dot(ddx_tex, ddx_tex), dot(ddy_tex, ddy_tex));
-  uint minMipLevel = max(0, min(numMipLevels, log2(sqrt(dd_max_sq)) + cb.totalMipBias));
+  uint minMipLevel = max(0, min(numMipLevels, 0.5f * log2(dd_max_sq) + cb.totalMipBias));
 
   origin.xy = origin.xy + (direction.xy * (1.f - neutralHeight)) / direction.z;
 
@@ -451,7 +451,7 @@ uint8_t calcMipLevelAccessedForSamplerFeedback(SurfaceInteraction surfaceInterac
   ddy_tex *= fullBoxSize;
   const float ddSq = max(dot(ddx_tex, ddx_tex), dot(ddy_tex, ddy_tex));
 
-  return uint8_t(clamp(log2(sqrt(ddSq)), 0, 255));
+  return uint8_t(clamp(0.5f * log2(ddSq), 0, 255));
 }
 
 void storeSamplerFeedback(uint32_t samplerFeedbackStamp, SurfaceInteraction surfaceInteraction)
@@ -533,7 +533,8 @@ void overrideMaterialInteractionForEye(
 
 // Opaque Surface Material Interaction Functions
 
-OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
+// Note: EnablePom can be set to false by callers that do not need the parallax-displaced texture coordinates, such as visibility rays.
+OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreateImpl<let EnablePom : bool>(
   OpaqueSurfaceMaterial opaqueSurfaceMaterial,
   Surface surface,
   inout SurfaceInteraction surfaceInteraction,
@@ -556,14 +557,22 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   opaqueSurfaceMaterialInteraction.flags |= thinFilmEnabled ? OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_USE_THIN_FILM_LAYER : 0;
 
 #ifdef OPAQUE_MATERIAL_USE_POM
-  if (cb.pomMode != DisplacementMode::Off && opaqueSurfaceMaterial.hasValidDisplacement())
+  if (EnablePom && cb.pomMode != DisplacementMode::Off && opaqueSurfaceMaterial.hasValidDisplacement())
   {
-    const mat3 worldToTexture = inverse(transpose(mat3(surfaceInteraction.rawTangent, surfaceInteraction.rawBitangent, surfaceInteraction.geometryNormal)));
+    // Note: The rows of the inverse of the matrix with columns T, B and N are these cross products divided by its determinant.
+    // The division is needed because normalize does not remove the sign of a negative determinant.
+    const vec3 bitangentCrossNormal = cross(surfaceInteraction.rawBitangent, surfaceInteraction.geometryNormal);
+    const vec3 normalCrossTangent = cross(surfaceInteraction.geometryNormal, surfaceInteraction.rawTangent);
+    const vec3 tangentCrossBitangent = cross(surfaceInteraction.rawTangent, surfaceInteraction.rawBitangent);
+    const float basisDeterminant = dot(surfaceInteraction.rawTangent, bitangentCrossNormal);
     // TextureGradient x might be along the same direction as the view ray?  make a debug view that shows the dot product between textureGradient.x and viewDirTangentSpace?
 
-    vec3 viewDirTextureSpace = normalize(mul(worldToTexture, minimalRayInteraction.viewDirection));
+    const vec3 viewDirection = minimalRayInteraction.viewDirection;
+    vec3 viewDirTextureSpace = normalize(
+      vec3(dot(bitangentCrossNormal, viewDirection), dot(normalCrossTangent, viewDirection), dot(tangentCrossBitangent, viewDirection)) /
+      basisDeterminant);
     // Note: -1.f * TextureGradientX has the same x,y direction as viewDirTextureSpace, but calculating the correct z value is non-obvious.
-    // Could potentially remove the need for the worldToTexture transform if a faster way to calculate that z value is found.
+    // Could potentially remove the need for the world to texture space transform if a faster way to calculate that z value is found.
     
     uint iterations = 0; // unused
     const vec2 pomTextureCoordinates = pomCalculateTexcoord(
@@ -587,7 +596,6 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   vec4 tangentSample;
   vec4 roughnessSample;
   vec4 metallicSample;
-  vec4 emissiveColorSample;
 
   const bool albedoOpacityLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.albedoOpacityTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, albedoOpacitySample, materialLodBias);
   const bool normalLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.normalTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, normalSample, materialLodBias);
@@ -612,17 +620,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   const bool tangentLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.tangentTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, tangentSample, materialLodBias);
   const bool roughnessLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.roughnessTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, roughnessSample, materialLodBias);
   const bool metallicLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.metallicTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, metallicSample, materialLodBias);
-  const bool emissiveColorLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.emissiveColorTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, emissiveColorSample, materialLodBias);
-  
-  // Load Emissive Color
 
-  vec3 emissiveColor = opaqueSurfaceMaterial.emissiveColorConstant;
-
-  if (emissiveColorLoaded)
-  {
-    emissiveColor = emissiveColorSample.xyz;
-  }
-  
   // Load Albedo/Opacity
 
   vec3 albedo = opaqueSurfaceMaterial.albedoOpacityConstant.rgb;
@@ -711,14 +709,6 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
       albedo *= tFactor.rgb;
     }
 
-    // Fixed function texture stage setting (emissive)
-    chooseTextureArgument(textureArg1, surface.textureColorArg1Source, emissiveColor, surfaceInteraction.vertexColor.rgb, tFactor.rgb, vec3(1.0));
-    chooseTextureArgument(textureArg2, surface.textureColorArg2Source, emissiveColor, surfaceInteraction.vertexColor.rgb, tFactor.rgb, vec3(1.0));
-    chooseTextureOperationColor(emissiveColor, surface.textureColorOperation, textureArg1, textureArg2);
-    if (surface.isTextureFactorBlend) {
-      emissiveColor *= tFactor.rgb;
-    }
-    
     // Adjust opacity via texture operations.
     // Fixed function texture stage state for alpha channel
 
@@ -741,12 +731,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   // automatically do this conversion.
   // Todo: Disable this for when a sRGB texture is the source of the albedo.
   albedo = gammaToLinear(albedo);
-  
-  // Note: Gamma correct emissive color input (be it from a constant or a texture). Currently assuming all textures are not using sRGB formats which
-  // automatically do this conversion.
-  // Todo: Disable this for when a sRGB texture is the source of the emissive color.
-  emissiveColor = gammaToLinear(emissiveColor);
-  
+
   // Apply material modifiers/overrides
   albedo = saturate(albedo * cb.opaqueMaterialArgs.albedoScale + cb.opaqueMaterialArgs.albedoBias);
   
@@ -862,7 +847,42 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     opaqueSurfaceMaterialInteraction.isotropicRoughness,
     opaqueSurfaceMaterialInteraction.anisotropicRoughness);
 
-  opaqueSurfaceMaterialInteraction.emissiveRadiance = emissiveBlendOverrideInfluence * emissiveColor * opaqueSurfaceMaterial.emissiveIntensity;
+  // Load Emissive Color
+  // Note: Surfaces without an emissive intensity do not read their emissive texture or apply its texture stage operations.
+
+  vec3 emissiveRadiance = vec3(0.0f);
+
+  if (opaqueSurfaceMaterial.emissiveIntensity != 0.0)
+  {
+    vec4 emissiveColorSample;
+    const bool emissiveColorLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.emissiveColorTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, emissiveColorSample, materialLodBias);
+
+    vec3 emissiveColor = opaqueSurfaceMaterial.emissiveColorConstant;
+
+    if (emissiveColorLoaded)
+    {
+      emissiveColor = emissiveColorSample.xyz;
+    }
+
+    // Fixed function texture stage setting (emissive)
+    vec3 textureArg1 = vec3(1.0);
+    vec3 textureArg2 = vec3(1.0);
+    chooseTextureArgument(textureArg1, surface.textureColorArg1Source, emissiveColor, surfaceInteraction.vertexColor.rgb, tFactor.rgb, vec3(1.0));
+    chooseTextureArgument(textureArg2, surface.textureColorArg2Source, emissiveColor, surfaceInteraction.vertexColor.rgb, tFactor.rgb, vec3(1.0));
+    chooseTextureOperationColor(emissiveColor, surface.textureColorOperation, textureArg1, textureArg2);
+    if (surface.isTextureFactorBlend) {
+      emissiveColor *= tFactor.rgb;
+    }
+
+    // Note: Gamma correct emissive color input (be it from a constant or a texture). Currently assuming all textures are not using sRGB formats which
+    // automatically do this conversion.
+    // Todo: Disable this for when a sRGB texture is the source of the emissive color.
+    emissiveColor = gammaToLinear(emissiveColor);
+
+    emissiveRadiance = emissiveBlendOverrideInfluence * emissiveColor * opaqueSurfaceMaterial.emissiveIntensity;
+  }
+
+  opaqueSurfaceMaterialInteraction.emissiveRadiance = emissiveRadiance;
 
   opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction =
     subSurfaceMaterialReadHelper(opaqueSurfaceMaterial.subsurfaceMaterialIndex, surfaceInteraction, opaqueSurfaceMaterial.samplerIndex);
@@ -885,6 +905,15 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   }
 
   return opaqueSurfaceMaterialInteraction;
+}
+
+OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
+  OpaqueSurfaceMaterial opaqueSurfaceMaterial,
+  Surface surface,
+  inout SurfaceInteraction surfaceInteraction,
+  MinimalRayInteraction minimalRayInteraction)
+{
+  return opaqueSurfaceMaterialInteractionCreateImpl<true>(opaqueSurfaceMaterial, surface, surfaceInteraction, minimalRayInteraction);
 }
 
 OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction)
@@ -1307,16 +1336,18 @@ SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcSpecularRef
 #ifdef OPAQUE_MATERIAL_USE_THIN_FILM
   // Note: Compute an approximate refractive index for the material for the thin film math, currently assuming the opaque material is always
   // surrounded by a vacuum (not true in all cases but good enough for this approximation).
-  const float refractiveIndex = baseReflectivityToIoR(
-    materialIoRVacuum, calcBt709Luminance(opaqueSurfaceMaterialInteraction.baseReflectivity));
-  const bool useThinFilm = opaqueSurfaceMaterialInteraction.thinFilmThickness > 0.0;
-  const float thinFilmThickness = opaqueSurfaceMaterialInteraction.thinFilmThickness * OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS; // convert [0,1] range to nm
-  // Note: Matching the refractive index calculation, compute the thin film assuming the material is surrounded by a vacuum and with a fixed layer IoR.
-  const vec3 thinFilmFresnel = evalThinFilmFresnel(
-    materialIoRVacuum, materialIoRThinFilmLayer, refractiveIndex,
-    thinFilmThickness, outputDirectionDotMicrofacetNormal);
+  vec3 finalFresnel = fresnel;
 
-  const vec3 finalFresnel = useThinFilm ? thinFilmFresnel : fresnel;
+  if (opaqueSurfaceMaterialInteraction.thinFilmThickness > 0.0)
+  {
+    const float refractiveIndex = baseReflectivityToIoR(
+      materialIoRVacuum, calcBt709Luminance(opaqueSurfaceMaterialInteraction.baseReflectivity));
+    const float thinFilmThickness = opaqueSurfaceMaterialInteraction.thinFilmThickness * OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS; // convert [0,1] range to nm
+    // Note: Matching the refractive index calculation, compute the thin film assuming the material is surrounded by a vacuum and with a fixed layer IoR.
+    finalFresnel = evalThinFilmFresnel(
+      materialIoRVacuum, materialIoRThinFilmLayer, refractiveIndex,
+      thinFilmThickness, outputDirectionDotMicrofacetNormal);
+  }
 #else
   const vec3 finalFresnel = fresnel;
 #endif
@@ -1625,16 +1656,18 @@ SurfaceMaterialInteractionPSRSample opaqueSurfaceMaterialInteractionCalcPSRRefle
 #ifdef OPAQUE_MATERIAL_USE_THIN_FILM
   // Note: Compute an approximate refractive index for the material for the thin film math, currently assuming the opaque material is always
   // surrounded by a vacuum (not true in all cases but good enough for this approximation).
-  const float refractiveIndex = baseReflectivityToIoR(
-    materialIoRVacuum, calcBt709Luminance(opaqueSurfaceMaterialInteraction.baseReflectivity));
-  const bool useThinFilm = opaqueSurfaceMaterialInteraction.thinFilmThickness > 0.0;
-  const float thinFilmThickness = opaqueSurfaceMaterialInteraction.thinFilmThickness * OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS; // convert [0,1] range to nm
-  // Note: Matching the refractive index calculation, compute the thin film assuming the material is surrounded by a vacuum and with a fixed layer IoR.
-  const vec3 thinFilmFresnel = evalThinFilmFresnel(
-    materialIoRVacuum, materialIoRThinFilmLayer, refractiveIndex,
-    thinFilmThickness, outputDirectionDotMicrofacetNormal);
+  vec3 finalFresnel = fresnel;
 
-  const vec3 finalFresnel = useThinFilm ? thinFilmFresnel : fresnel;
+  if (opaqueSurfaceMaterialInteraction.thinFilmThickness > 0.0)
+  {
+    const float refractiveIndex = baseReflectivityToIoR(
+      materialIoRVacuum, calcBt709Luminance(opaqueSurfaceMaterialInteraction.baseReflectivity));
+    const float thinFilmThickness = opaqueSurfaceMaterialInteraction.thinFilmThickness * OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS; // convert [0,1] range to nm
+    // Note: Matching the refractive index calculation, compute the thin film assuming the material is surrounded by a vacuum and with a fixed layer IoR.
+    finalFresnel = evalThinFilmFresnel(
+      materialIoRVacuum, materialIoRThinFilmLayer, refractiveIndex,
+      thinFilmThickness, outputDirectionDotMicrofacetNormal);
+  }
 #else
   const vec3 finalFresnel = fresnel;
 #endif
@@ -1718,7 +1751,16 @@ float opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(
   return solidAnglePdf;
 }
 
-float opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
+// The tangent space view and input directions and the microfacet normal of one input direction.
+// Callers that need both the specular PDF and the projected weight of a direction compute it once.
+struct OpaqueTangentFrame
+{
+  vec3 outputDirection;
+  vec3 inputDirection;
+  vec3 microfacetNormal;
+};
+
+OpaqueTangentFrame opaqueSurfaceMaterialInteractionCalcTangentFrame(
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
   MinimalRayInteraction minimalRayInteraction,
   vec3 worldInputDirection)
@@ -1727,14 +1769,31 @@ float opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
     quaternionCreateOrientation(materialTangentSpaceNormal, opaqueSurfaceMaterialInteraction.shadingNormal);
   const vec4 worldToTangentSpaceQuaternion = quaternionInverse(tangentToWorldSpaceQuaternion);
 
-  // Set up relevant input vectors in tangent space
+  OpaqueTangentFrame tangentFrame;
+  tangentFrame.outputDirection = quaternionTransformVector(worldToTangentSpaceQuaternion, minimalRayInteraction.viewDirection);
+  tangentFrame.inputDirection = quaternionTransformVector(worldToTangentSpaceQuaternion, worldInputDirection);
+  tangentFrame.microfacetNormal = normalize(tangentFrame.inputDirection + tangentFrame.outputDirection);
 
-  const vec3 outputDirection = quaternionTransformVector(worldToTangentSpaceQuaternion, minimalRayInteraction.viewDirection);
-  const vec3 inputDirection = quaternionTransformVector(worldToTangentSpaceQuaternion, worldInputDirection);
+  return tangentFrame;
+}
 
-  // Calculate the microfacet normal
+float opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  vec3 worldInputDirection)
+{
+  return opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
+    opaqueSurfaceMaterialInteraction,
+    opaqueSurfaceMaterialInteractionCalcTangentFrame(opaqueSurfaceMaterialInteraction, minimalRayInteraction, worldInputDirection));
+}
 
-  const vec3 microfacetNormal = normalize(inputDirection + outputDirection);
+float opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  OpaqueTangentFrame tangentFrame)
+{
+  const vec3 outputDirection = tangentFrame.outputDirection;
+  const vec3 inputDirection = tangentFrame.inputDirection;
+  const vec3 microfacetNormal = tangentFrame.microfacetNormal;
 
   // Calculate dot products used for evaluation
   // Note: Dot products against tangent space basis vectors are single components of the other vector
@@ -1825,14 +1884,15 @@ SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcApprox
   const float /* n.l */ normalDotInputDirection = dot(inputDirection, opaqueSurfaceMaterialInteraction.shadingNormal);
   const float /* n.v */ normalDotOutputDirection = dot(minimalRayInteraction.viewDirection, opaqueSurfaceMaterialInteraction.shadingNormal);
 
-  // Load Subsurface Material
-  const SubsurfaceMaterial subsurfaceMaterial = subsurfaceMaterialCreate(opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction);
   const bool isThinOpaqueSubsurface = isThinOpaqueSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
   const bool isSss = isSubsurfaceDiffusionProfileMaterial(opaqueSurfaceMaterialInteraction);
 
   vec3 diffuseTransmissionWeight = vec3(0.0, 0.0, 0.0);
   if (isThinOpaqueSubsurface || isSss)
   {
+    // Load Subsurface Material
+    const SubsurfaceMaterial subsurfaceMaterial = subsurfaceMaterialCreate(opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction);
+
     diffuseTransmissionWeight = subsurfaceMaterial.singleScatteringAlbedo;
   }
 
@@ -1886,19 +1946,18 @@ SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcProjec
   MinimalRayInteraction minimalRayInteraction,
   vec3 inputDirection)
 {
-  const vec4 tangentToWorldSpaceQuaternion =
-    quaternionCreateOrientation(materialTangentSpaceNormal, opaqueSurfaceMaterialInteraction.shadingNormal);
-  const vec4 worldToTangentSpaceQuaternion = quaternionInverse(tangentToWorldSpaceQuaternion);
+  return opaqueSurfaceMaterialInteractionCalcProjectedWeight(
+    opaqueSurfaceMaterialInteraction,
+    opaqueSurfaceMaterialInteractionCalcTangentFrame(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection));
+}
 
-  // Set up relevant input vectors in tangent space
-
-  const vec3 tangentOutputDirection =
-    quaternionTransformVector(worldToTangentSpaceQuaternion, minimalRayInteraction.viewDirection);
-  const vec3 tangentInputDirection = quaternionTransformVector(worldToTangentSpaceQuaternion, inputDirection);
-
-  // Calculate the microfacet normal from the input and output directions
-
-  const vec3 microfacetNormal = normalize(tangentInputDirection + tangentOutputDirection);
+SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcProjectedWeight(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  OpaqueTangentFrame tangentFrame)
+{
+  const vec3 tangentOutputDirection = tangentFrame.outputDirection;
+  const vec3 tangentInputDirection = tangentFrame.inputDirection;
+  const vec3 microfacetNormal = tangentFrame.microfacetNormal;
 
   // Calculate dot products used for evaluation
 
@@ -1915,12 +1974,13 @@ SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcProjec
   const float /* n.h */ normalDotMicrofacetNormal = microfacetNormal.z;
   const float /*-n.l */ transmissionNormalDotInputDirection = -tangentInputDirection.z;
 
-  // Load Subsurface Material
-  const SubsurfaceMaterial subsurfaceMaterial = subsurfaceMaterialCreate(opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction);
   const bool isThinOpaqueSubsurface = isThinOpaqueSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
   vec3 diffuseTransmissionWeight = vec3(0.0f, 0.0f, 0.0f);
   if (isThinOpaqueSubsurface && normalDotOutputDirection > 0.0f) {
+    // Load Subsurface Material
+    const SubsurfaceMaterial subsurfaceMaterial = subsurfaceMaterialCreate(opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction);
+
     diffuseTransmissionWeight = evalHanrahanSingleScatteringDiffuseTransmission(
       opaqueSurfaceMaterialInteraction.baseReflectivity,
       subsurfaceMaterial.volumetricAttenuationCoefficient, subsurfaceMaterial.measurementDistance,
@@ -1950,16 +2010,18 @@ SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcProjec
 #ifdef OPAQUE_MATERIAL_USE_THIN_FILM
   // Note: Compute an approximate refractive index for the material for the thin film math, currently assuming the opaque material is always
   // surrounded by a vacuum (not true in all cases but good enough for this approximation).
-  const float refractiveIndex = baseReflectivityToIoR(
-    materialIoRVacuum, calcBt709Luminance(opaqueSurfaceMaterialInteraction.baseReflectivity));
-  const bool useThinFilm = opaqueSurfaceMaterialInteraction.thinFilmThickness > 0.0;
-  const float thinFilmThickness = opaqueSurfaceMaterialInteraction.thinFilmThickness * OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS; // convert [0,1] range to nm
-  // Note: Matching the refractive index calculation, compute the thin film assuming the material is surrounded by a vacuum and with a fixed layer IoR.
-  const vec3 thinFilmFresnel = evalThinFilmFresnel(
-    materialIoRVacuum, materialIoRThinFilmLayer, refractiveIndex,
-    thinFilmThickness, outputDirectionDotMicrofacetNormal);
+  vec3 finalFresnel = fresnel;
 
-  const vec3 finalFresnel = useThinFilm ? thinFilmFresnel : fresnel;
+  if (opaqueSurfaceMaterialInteraction.thinFilmThickness > 0.0)
+  {
+    const float refractiveIndex = baseReflectivityToIoR(
+      materialIoRVacuum, calcBt709Luminance(opaqueSurfaceMaterialInteraction.baseReflectivity));
+    const float thinFilmThickness = opaqueSurfaceMaterialInteraction.thinFilmThickness * OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS; // convert [0,1] range to nm
+    // Note: Matching the refractive index calculation, compute the thin film assuming the material is surrounded by a vacuum and with a fixed layer IoR.
+    finalFresnel = evalThinFilmFresnel(
+      materialIoRVacuum, materialIoRThinFilmLayer, refractiveIndex,
+      thinFilmThickness, outputDirectionDotMicrofacetNormal);
+  }
 #else
   const vec3 finalFresnel = fresnel;
 #endif
