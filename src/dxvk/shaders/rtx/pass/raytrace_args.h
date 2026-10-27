@@ -446,6 +446,8 @@ struct RaytraceArgs {
   uint writeSecondaryDenoisingGuides;
   uint writePrimaryVirtualMotionVector;
 
+  uint enableRtxdiBestLightJitter;
+
   // NOTE: Add structs to the top section of RaytraceArgs, not the bottom.
   // NOTE: bool does not work in debug builds, use uint instead.
 };

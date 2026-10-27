@@ -49,6 +49,7 @@
 #include "rtx/concept/light/light.slangh"
 #include "rtx/algorithm/resolve.slangh"
 #include "rtx/algorithm/rtxdi/rtxdi.slangh"
+#include "rtx/pass/rtxdi/rtxdi_best_light.slangh"
 #include "rtx/pass/sparse_rendering/compact_active_pixels.slangh"
 
 [shader("compute")]
@@ -76,24 +77,9 @@ void main(uint2 dispatchThreadId : SV_DispatchThreadID, uint3 groupId : SV_Group
   vec2 screenSpaceMotion = PrimaryScreenSpaceMotionVector[pixelCoordinate];
   ivec2 prevPixelCenter = pixelCoordinate + ivec2(screenSpaceMotion.xy);
 
-  uint16_t previousBestLightIndex = RTXDI_INVALID_LIGHT_INDEX;
-  uint8_t previousBestLightPortalIdx = RTXDI_INVALID_PORTAL_INDEX;
-  if (all(prevPixelCenter >= 0) && all(prevPixelCenter < cb.camera.resolution) && cb.enableRtxdiBestLightSampling)
-  {
-    uint2 previousBestLight = RtxdiBestLights[prevPixelCenter / RTXDI_GRAD_FACTOR];
-
-    // Map the previous light index to the current frame, make sure the portal still exists if that light was a cross-portal one
-#if RTXDI_NO_PORTALS
-    if (previousBestLight.x != RTXDI_INVALID_LIGHT_INDEX && previousBestLight.y == RTXDI_INVALID_PORTAL_INDEX)
-#else
-    if (previousBestLight.x != RTXDI_INVALID_LIGHT_INDEX && (previousBestLight.y == RTXDI_INVALID_PORTAL_INDEX || previousBestLight.y < cb.numActiveRayPortals))
-#endif
-    {
-      previousBestLightIndex = RAB_TranslateLightIndex(previousBestLight.x, /* currentToPrevious = */ false);
-      previousBestLightPortalIdx = previousBestLight.y;
-    }
-  }
-
+  uint16_t previousBestLightIndex;
+  uint8_t previousBestLightPortalIdx;
+  loadPreviousBestLight(rng, prevPixelCenter, previousBestLightIndex, previousBestLightPortalIdx);
 
   RTXDI_Reservoir state = RAB_LoadReservoir(pixelCoordinate, RTXDI_GetTemporalOutputPage());
   if (cb.lightCount != 0)

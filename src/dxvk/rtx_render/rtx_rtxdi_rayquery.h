@@ -52,6 +52,8 @@ namespace dxvk {
     RTX_OPTION("rtx.di", bool, enableInitialVisibility, true, "Whether to trace a visibility ray for the light sample selected in the initial sampling pass.");
     RTX_OPTION_ARGS("rtx.di", bool, enableBestLightSampling, true, "Whether to include a single best light from the previous frame's pixel neighborhood into initial sampling.",
                     args.flags = RtxOptionFlags::UserSetting);
+    RTX_OPTION_ARGS("rtx.di", bool, enableBestLightJitter, true, "Whether to jitter the previous frame's best light lookup by up to one pixel in each direction to reduce correlation artifacts.",
+                    args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION_ARGS("rtx.di", bool, enableRayTracedBiasCorrection, true, "Whether to use ray traced bias correction in the spatial reuse pass.",
                     args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION_ARGS("rtx.di", bool, enableSampleStealing, true, "No visibile IQ gains, but exhibits considerable perf drop (8% in integrate pass).",

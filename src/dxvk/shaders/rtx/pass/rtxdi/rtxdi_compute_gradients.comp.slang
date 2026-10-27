@@ -69,7 +69,7 @@ void main(uint2 GlobalIndex : SV_DispatchThreadID)
   int2 selectedPrevPixelPos;
   int2 bestLightPixelPos;
 
-  RTXDI_FindGradientSampleAndBestLight(rng, GlobalIndex, cb.camera.resolution, push.usePreviousIlluminance,
+  RTXDI_FindGradientSampleAndBestLight(rng, GlobalIndex, cb.camera.resolution, push.usePreviousIlluminance, RTXDI_GetSpatialOutputPage(),
     usePrevSample, selectedIlluminance, selectedPixelPos, selectedPrevPixelPos, bestLightPixelPos);
 
 

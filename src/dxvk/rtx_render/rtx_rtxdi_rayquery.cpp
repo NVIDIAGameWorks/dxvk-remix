@@ -319,6 +319,9 @@ namespace dxvk {
   void DxvkRtxdiRayQuery::showImguiSettings() {
     RemixGui::SliderInt("Initial Sample Count", &initialSampleCountObject(), 1, 64);
     RemixGui::Checkbox("Sample Best Lights", &enableBestLightSamplingObject());
+    if (enableBestLightSampling()) {
+      RemixGui::Checkbox("Jitter Best Light Lookup", &enableBestLightJitterObject());
+    }
     RemixGui::Checkbox("Initial Visibility", &enableInitialVisibilityObject());
     RemixGui::Separator();
     RemixGui::Checkbox("Temporal Reuse", &enableTemporalReuseObject());
@@ -382,6 +385,7 @@ namespace dxvk {
     const bool isRtxdiBestLightsValid = rtOutput.m_rtxdiBestLights.matchesWriteFrameIdx(rtOutput.m_raytraceArgs.frameIdx - 1);
 
     rtOutput.m_raytraceArgs.enableRtxdiBestLightSampling = enableBestLightSampling() && isRtxdiBestLightsValid;
+    rtOutput.m_raytraceArgs.enableRtxdiBestLightJitter = enableBestLightJitter();
     // Note: initialSamples is not written here, it's used in LightManager::setRaytraceArgs
     // to derive the per-light-type sample counts
   }
