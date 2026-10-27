@@ -278,6 +278,18 @@ void geometryResolverStoreDlssNrControlMask(
 
 // Geometry Resolver Vertex Functions
 
+void geometryResolverOutputRawAovs(uvec2 pixelCoordinate, vec4 worldPosition, vec4 texcoords, vec4 normal) {
+  if (cb.rawAovMask & kRawAovWorldPosition) {
+    PrimaryWorldPositionRaw[pixelCoordinate] = worldPosition;
+  }
+  if (cb.rawAovMask & kRawAovTexcoords) {
+    PrimaryTexcoordsRaw[pixelCoordinate] = texcoords;
+  }
+  if (cb.rawAovMask & kRawAovNormal) {
+    PrimaryNormalF32[pixelCoordinate] = normal;
+  }
+}
+
 void geometryResolverOutputMiss<
   let PRIMARY_SURFACE : bool,
   let SELECTED_INTEGRATION_SURFACE : bool>(
@@ -293,6 +305,9 @@ void geometryResolverOutputMiss<
     PrimarySurfaceFlags[pixelCoordinate] = 0;
     PrimaryDisocclusionThresholdMix[pixelCoordinate] = 0;
     PrimaryDepth[pixelCoordinate] = cb.clearColorDepth;
+
+    // PSR misses clear the initial hit's raw AOV values.
+    geometryResolverOutputRawAovs(pixelCoordinate, vec4(0.0f), vec4(0.0f), vec4(0.0f));
 
     if (cb.enableDlssNrControlMask)
     {
@@ -558,6 +573,13 @@ void geometryResolverOutputSurface<
       gBufferMemoryPolymorphicSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
     PrimaryWorldShadingNormalDense[pixelCoordinate] =
       float2x32ToSnorm2x16(sphereDirectionToSignedOctahedral(materialMemory.worldShadingNormal));
+  }
+
+  // Raw AOVs use dense coordinates even when the lighting GBuffer is compacted.
+  if (PRIMARY_SURFACE && cb.rawAovMask) {
+    geometryResolverOutputRawAovs(pixelCoordinate,
+      vec4(surfaceInteraction.position, 1.0f), vec4(surfaceInteraction.textureCoordinates, 0.0f, 1.0f),
+      vec4(surfaceInteraction.triangleNormal, 1.0f));
   }
 
   if (!storesGBuffer)
@@ -955,7 +977,7 @@ void geometryResolverVertexOutputDebugView(
     break;
   }
   case DEBUG_VIEW_TRIANGLE_NORMAL:
-    storeInDebugView(pixelCoordinate, surfaceInteraction.debugTriangleNormal);
+    storeInDebugView(pixelCoordinate, surfaceInteraction.triangleNormal);
     break;
   case DEBUG_VIEW_INTERPOLATED_VERTEX_NORMAL:
     storeInDebugView(pixelCoordinate, surfaceInteraction.debugInterpolatedVertexNormal);
@@ -1311,7 +1333,7 @@ void geometryResolverVertexOutputDebugView(
       isValid &= isValidValue(surface.texcoordGenerationMode);
 
       // DEBUG_VIEW_TRIANGLE_NORMAL
-      isValid &= isValidValue(surfaceInteraction.debugTriangleNormal);
+      isValid &= isValidValue(surfaceInteraction.triangleNormal);
 
       // DEBUG_VIEW_INTERPOLATED_VERTEX_NORMAL
       isValid &= isValidValue(surfaceInteraction.debugInterpolatedVertexNormal);
@@ -2076,7 +2098,7 @@ void geometryResolverVertex(
     geometryResolverState.decalCandidateSeen ||
     geometryResolverState.accumulatedHitDistance > 0.0f;
 
-  resolveVertexUnorderedParticles<
+  float opacityTransmittance = resolveVertexUnorderedParticles<
     GBUFFER_RAY_FLAGS>(
     resolveMode, unorderedResolveRay,
     unorderedRayMask, geometryResolverState.portalSpace,
@@ -2117,7 +2139,7 @@ void geometryResolverVertex(
   bool isStochasticAlphaBlend = false;
   uint8_t firstRayPortal = invalidRayPortalIndex;
   
-  resolveVertex<GeometryResolverState>(
+  opacityTransmittance *= resolveVertex<GeometryResolverState>(
     resolveMode,
     rayHitInfo, geometryResolverState,
     ray, rayInteraction,
@@ -2130,6 +2152,10 @@ void geometryResolverVertex(
     geometryResolverState.pomOpaqueSurfaceEncountered,
     isRaytracedRenderTarget,
     false, true);
+
+  if (cb.enableCoverageAov != 0) {
+    PrimaryCoverage[geometryResolverState.pixelCoordinate] *= opacityTransmittance;
+  }
   
   if (cb.startInMediumMaterialIndex != SURFACE_INDEX_INVALID)
   {
@@ -2248,6 +2274,11 @@ void geometryResolverVertex(
     }
 
     return;
+  }
+
+  // Coverage follows the initial camera hit, before PSR replaces its geometry.
+  if (cb.enableCoverageAov != 0) {
+    PrimaryCoverage[geometryResolverState.pixelCoordinate] = 0.0f;
   }
 
   // Construct RNG
@@ -3231,6 +3262,11 @@ void geometryResolver(ivec2 pixelCoordinate) {
   GeometryResolverState geometryResolverState =
     geometryResolverStateCreateEmpty(u16vec2(pixelCoordinate), u16vec2(compactedCoordinate));
 
+  // Keep opacity dense; compacted lighting attenuation also includes fog and transmission.
+  if (cb.enableCoverageAov != 0) {
+    PrimaryCoverage[pixelCoordinate] = 1.0f;
+  }
+
   if (GBUFFER_FEATURE_STOCHASTIC_ALPHA && cb.enableStochasticAlphaBlend)
   {
     RNG randomState = createRNG(geometryResolverState.pixelCoordinate, cb.frameIdx);
@@ -3244,6 +3280,8 @@ void geometryResolver(ivec2 pixelCoordinate) {
     // In ray generation, clean up object picking buffer before writing
     PrimaryObjectPicking[pixelCoordinate] = OBJECT_PICKING_INVALID;
   }
+  // Clear raw AOVs so misses cannot retain prior-frame values.
+  geometryResolverOutputRawAovs(pixelCoordinate, vec4(0.0f), vec4(0.0f), vec4(0.0f));
 #endif
 
   // Resolve First Hit Geometry

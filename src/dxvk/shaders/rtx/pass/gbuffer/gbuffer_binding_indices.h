@@ -110,6 +110,12 @@
 #define GBUFFER_BINDING_PRIMARY_SCREEN_SPACE_MOTION_DLSSRR_OUTPUT               122
 #define GBUFFER_BINDING_DLSS_NR_CONTROL_MASK_OUTPUT                             124
 
+// Raw AOV writes are gated by g_constants.rawAovMask.
+#define GBUFFER_BINDING_PRIMARY_WORLD_POSITION_RAW_OUTPUT                       125
+#define GBUFFER_BINDING_PRIMARY_TEXCOORDS_RAW_OUTPUT                            126
+#define GBUFFER_BINDING_PRIMARY_NORMAL_F32_OUTPUT                               127
+#define GBUFFER_BINDING_PRIMARY_COVERAGE_OUTPUT                                 128
+
 #define GBUFFER_BINDING_NRC_QUERY_PATH_INFO_OUTPUT                              130
 #define GBUFFER_BINDING_NRC_TRAINING_PATH_INFO_OUTPUT                           131
 #define GBUFFER_BINDING_NRC_TRAINING_PATH_VERTICES_OUTPUT                       132

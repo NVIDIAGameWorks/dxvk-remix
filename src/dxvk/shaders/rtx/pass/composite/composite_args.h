@@ -113,4 +113,5 @@ struct CompositeArgs {
   uint skyUseProbeForPrimaryRays;
 
   uint isZUp;
+  uint enableCoverageAov;
 };

@@ -361,9 +361,10 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
   const bool triangleNormalSameDirection = dot(triangleNormal, rayInteraction.viewDirection) >= 0.0f;
   const vec3 flippedTriangleNormal = triangleNormalSameDirection ? triangleNormal : -triangleNormal;
 
+  surfaceInteraction.triangleNormal = flippedTriangleNormal;
+
 #ifdef GBUFFER_FEATURE_DEBUG_VIEW
 #if GBUFFER_FEATURE_DEBUG_VIEW
-  surfaceInteraction.debugTriangleNormal = flippedTriangleNormal;
   surfaceInteraction.debugInterpolatedVertexNormal = flippedTriangleNormal;
 #endif
 #endif

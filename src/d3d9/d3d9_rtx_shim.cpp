@@ -69,6 +69,7 @@ namespace {
   using PFN_writeMarkdownDocumentation               = bool(*)(const char*);
   using PFN_writeRemixCategoriesSchemaUsda           = bool(*)(const char*);
   using PFN_remixinternal_GetDlssNeuralRenderingStatus = int(*)();
+  using PFN_remixinternal_SetAovRequests = remixapi_ErrorCode(REMIXAPI_CALL*)(uint32_t, uint32_t);
 
   struct ShimExports {
     PFN_D3DPERF_BeginEvent                       D3DPERF_BeginEvent = nullptr;
@@ -98,6 +99,8 @@ namespace {
     PFN_writeMarkdownDocumentation               writeMarkdownDocumentation = nullptr;
     PFN_writeRemixCategoriesSchemaUsda           writeRemixCategoriesSchemaUsda = nullptr;
     PFN_remixinternal_GetDlssNeuralRenderingStatus remixinternal_GetDlssNeuralRenderingStatus = nullptr;
+    PFN_remixinternal_SetAovRequests remixinternal_SetAovRequests = nullptr;
+    PFN_remixapi_dxvk_CopyRenderingOutput remixinternal_QueueAovCopy = nullptr;
   };
 
   std::once_flag g_shimInitFlag;
@@ -180,6 +183,10 @@ namespace {
     LOAD_SHIM_EXPORT(writeMarkdownDocumentation);
     LOAD_SHIM_EXPORT(writeRemixCategoriesSchemaUsda);
     LOAD_SHIM_EXPORT(remixinternal_GetDlssNeuralRenderingStatus);
+    g_shimExports.remixinternal_SetAovRequests = reinterpret_cast<PFN_remixinternal_SetAovRequests>(
+      GetProcAddress(g_shimModule, "remixinternal_SetAovRequests"));
+    g_shimExports.remixinternal_QueueAovCopy = reinterpret_cast<PFN_remixapi_dxvk_CopyRenderingOutput>(
+      GetProcAddress(g_shimModule, "remixinternal_QueueAovCopy"));
 #undef LOAD_SHIM_EXPORT
   }
 
@@ -293,6 +300,19 @@ extern "C" {
       remixapi_Interface*                   out_result) {
     return shim().remixapi_InitializeLibrary
       ? shim().remixapi_InitializeLibrary(info, out_result)
+      : REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
+  }
+
+  REMIXAPI remixapi_ErrorCode REMIXAPI_CALL remixinternal_SetAovRequests(uint32_t raw, uint32_t coverage) {
+    return shim().remixinternal_SetAovRequests
+      ? shim().remixinternal_SetAovRequests(raw, coverage)
+      : REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
+  }
+
+  REMIXAPI remixapi_ErrorCode REMIXAPI_CALL remixinternal_QueueAovCopy(
+      IDirect3DSurface9* destination, remixapi_dxvk_CopyRenderingOutputType type) {
+    return shim().remixinternal_QueueAovCopy
+      ? shim().remixinternal_QueueAovCopy(destination, type)
       : REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
   }
 

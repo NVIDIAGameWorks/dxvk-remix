@@ -134,6 +134,11 @@ namespace dxvk {
         RW_TEXTURE2D(GBUFFER_BINDING_SHARED_SHADOW_TERMINATOR_FIX_OUTPUT)
         RW_TEXTURE2D(GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT)
 
+        RW_TEXTURE2D(GBUFFER_BINDING_PRIMARY_WORLD_POSITION_RAW_OUTPUT)
+        RW_TEXTURE2D(GBUFFER_BINDING_PRIMARY_TEXCOORDS_RAW_OUTPUT)
+        RW_TEXTURE2D(GBUFFER_BINDING_PRIMARY_NORMAL_F32_OUTPUT)
+        RW_TEXTURE2D(GBUFFER_BINDING_PRIMARY_COVERAGE_OUTPUT)
+
         RW_TEXTURE2D(GBUFFER_BINDING_SECONDARY_ATTENUATION_OUTPUT)
         RW_TEXTURE2D(GBUFFER_BINDING_SECONDARY_WORLD_SHADING_NORMAL_OUTPUT)
         RW_TEXTURE2D(GBUFFER_BINDING_SECONDARY_PERCEPTUAL_ROUGHNESS_OUTPUT)
@@ -769,6 +774,11 @@ namespace dxvk {
     // See geometryResolverStorePSRContinuation.
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_DEPTH_OUTPUT, rtOutput.m_primaryDepth.view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT, rtOutput.m_primaryObjectPicking.view, nullptr);
+
+    ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_WORLD_POSITION_RAW_OUTPUT, rtOutput.m_primaryWorldPositionRaw.view, nullptr);
+    ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_TEXCOORDS_RAW_OUTPUT,     rtOutput.m_primaryTexcoordsRaw.view,     nullptr);
+    ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_NORMAL_F32_OUTPUT,        rtOutput.m_primaryNormalF32.view,        nullptr);
+    ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_COVERAGE_OUTPUT,          rtOutput.m_primaryCoverage.view,         nullptr);
 
     ctx->bindResourceView(GBUFFER_BINDING_SECONDARY_ATTENUATION_OUTPUT, rtOutput.m_secondaryAttenuation.view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_SECONDARY_WORLD_SHADING_NORMAL_OUTPUT, rtOutput.m_secondaryWorldShadingNormal.view, nullptr);

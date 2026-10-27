@@ -89,6 +89,11 @@ exe = executable('test_transform_components',  files('test_transform_components.
 test('test_transform_components', exe, env: test_env)
 tests += exe
 
+exe = executable('test_rtx_feature_options', files('test_rtx_feature_options.cpp'),
+  include_directories : test_include_path, dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ dxvk_lib ], win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_rtx_feature_options', exe, env: test_env)
+tests += exe
+
 exe = executable('test_rtx_option',  files('test_rtx_option.cpp'), 
   include_directories : test_include_path, dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ dxvk_lib ] , win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
 test('test_rtx_option', exe, env: test_env)
