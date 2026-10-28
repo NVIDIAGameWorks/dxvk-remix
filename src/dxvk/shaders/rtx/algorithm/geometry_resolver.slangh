@@ -118,6 +118,7 @@ GeometryResolverState geometryResolverStateCreateEmpty(u16vec2 pixelCoordinate, 
   geometryResolverState.decalCandidateSeen = false;
   geometryResolverState.firstHitGuidesWritten = false;
   geometryResolverState.alphaBlendSurfaceStored = false;
+  geometryResolverState.firstHitDecalsResolved = false;
 
   return geometryResolverState;
 }
@@ -2339,10 +2340,11 @@ void geometryResolverVertex(
     if (geometryResolverResolveDecalBeforePSR(
           geometryResolverState.pixelCoordinate, rayInteraction, surfaceInteraction,
           geometryResolverState.accumulatedHitDistance, geometryResolverState.portalSpace,
-          geometryResolverState.rayMask, geometryResolverState.isViewModelSurface,
+          geometryResolverState.rayMask, rayInteraction.isViewModel,
           polymorphicSurfaceMaterialInteraction))
     {
       geometryResolverState.decalCandidateSeen = false;
+      geometryResolverState.firstHitDecalsResolved = true;
     }
   }
 
@@ -3399,6 +3401,7 @@ void geometryResolver(ivec2 pixelCoordinate) {
   geometryFlags.performPSTR = geometryResolverState.performPSTR;
   geometryFlags.performPSRR = geometryResolverState.performPSRR;
   geometryFlags.pomOpaqueSurfaceEncountered = geometryResolverState.pomOpaqueSurfaceEncountered;
+  geometryFlags.firstHitDecalsResolved = geometryResolverState.firstHitDecalsResolved;
 
   // Output miss data for the secondary surface if it is not present
   // Note: Known to not be the selected surface in this case, hence why false is passed for this.
@@ -3638,18 +3641,14 @@ void geometryResolverOutputDecalDebugViewAndPicking(
   }
 }
 
-// Returns whether the primary pass resolves first-hit decals before it samples PSR.
-// Elsewhere PSR prepare samples PSR after the decal pass, or PSR surfaces take no first-hit decals, as with the radiance caches.
+// Returns whether the primary pass resolves first-hit decals before inline PSR sampling.
+// PSR prepare takes its first-hit decals in the deferred pass.
 bool geometryResolverResolvesDecalBeforePSR()
 {
-#if ENABLE_NRC || ENABLE_SHARC
-  return false;
-#else
-  return cb.sparseRenderingArgs.mode != SparseRenderingMode::Off &&
+  return !push.usePSRPrepare &&
          !cb.enableRaytracedRenderTarget &&
          cb.enableSeparateUnorderedApproximations &&
          cb.enableDecalMaterialBlending;
-#endif
 }
 
 // Blends the decal covering a first hit into its material, the way the decal pass blends it into the GBuffer.
@@ -3947,9 +3946,10 @@ void geometryResolverApplyUnorderedDecalsPass(ivec2 pixelCoordinate)
 
   const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixelCoordinate, SharedFlags);
 
-  // With inline PSR sampling a PSR pixel holds only the PSR payload here, not a first-hit surface.
-  // So with NRC or a raytraced render target, which disable PSR prepare, PSR surfaces get no first-hit decals.
-  if (!push.usePSRPrepare && geometryFlags.performedAnyPSR())
+  // Inline gathering can consume first-hit decals even when the blend prevents PSR.
+  // Other inline PSR pixels hold a PSR payload here rather than a first-hit surface.
+  if (geometryFlags.firstHitDecalsResolved ||
+      (!push.usePSRPrepare && geometryFlags.performedAnyPSR()))
   {
     return;
   }

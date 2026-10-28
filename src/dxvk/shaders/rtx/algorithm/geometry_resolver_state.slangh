@@ -196,6 +196,13 @@ struct GeometryResolverState : IBasePayloadState
       set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 12, newValue); }
   }
 
+  // Is set after the primary pass gathers first-hit decals before sampling PSR.
+  property bool firstHitDecalsResolved
+  {
+      get { return packedFlagGet(_encodedFlags, 1 << 13); }
+      set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 13, newValue); }
+  }
+
   // Misc packed properties
 
   // Note: Indicates portal space in which the surface was hit
