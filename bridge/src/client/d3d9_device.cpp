@@ -2594,6 +2594,9 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::CreateVertexShader(CONST DWORD* pFunc
     return D3DERR_INVALIDCALL;
 
   CommonShader shader(pFunction);
+  if (!shader.isValid())
+    return D3DERR_INVALIDCALL;
+
   if (D3DSHADER_VERSION_MAJOR(m_caps.VertexShaderVersion) < shader.getMajorVersion())
     return D3DERR_INVALIDCALL;
 
@@ -3035,6 +3038,9 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::CreatePixelShader(CONST DWORD* pFunct
     return D3DERR_INVALIDCALL;
 
   CommonShader shader(pFunction);
+  if (!shader.isValid())
+    return D3DERR_INVALIDCALL;
+
   if (D3DSHADER_VERSION_MAJOR(m_caps.PixelShaderVersion) < shader.getMajorVersion())
     return D3DERR_INVALIDCALL;
 

@@ -313,7 +313,8 @@ namespace dxvk {
     // At some point, its more efficient to do these calculations on the GPU, this limit is somewhat arbitrary however, and might require better tuning...
     const uint32_t kNumVerticesToProcessOnCPU = 256;
 
-    // Check we have appropriate CPU access
+    // The early return above guarantees blendWeightBuffer is defined.
+    // blendIndicesBuffer is optional, so it still needs its own check.
     const bool pendingGpuWrite = drawCallState.getGeometryData().positionBuffer.isPendingGpuWrite() ||
                                  drawCallState.getGeometryData().normalBuffer.isPendingGpuWrite() ||
                                  drawCallState.getGeometryData().blendWeightBuffer.isPendingGpuWrite() ||

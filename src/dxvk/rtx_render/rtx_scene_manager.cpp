@@ -1552,8 +1552,14 @@ namespace dxvk {
       m_instanceManager.notifySceneChanged();
     }
 
+    // A non-zero bone count does not imply the weight buffer is defined.
+    // processSkinning derives the count from D3DRS_VERTEXBLEND and the vertex
+    // declaration, while the buffer is populated only when the stream had a
+    // valid mapped slice. A fixed-function indexed-blend draw may legally
+    // leave the weight stream unbound while still reporting a bone count.
     if (drawCallState.getSkinningState().numBones > 0 &&
         drawCallState.getGeometryData().numBonesPerVertex > 0 &&
+        drawCallState.getGeometryData().blendWeightBuffer.defined() &&
         (result == ObjectCacheState::KBuildBVH || result == ObjectCacheState::kUpdateBVH)) {
       m_device->getCommon()->metaGeometryUtils().dispatchSkinning(drawCallState, pBlas->modifiedGeometryData);
       pBlas->frameLastUpdated = pBlas->frameLastTouched;
