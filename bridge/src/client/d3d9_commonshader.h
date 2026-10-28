@@ -30,13 +30,28 @@ class CommonShader {
   DWORD getShaderInstructionSize(const DWORD* pTokens) {
     const DWORD* pStart = pTokens;
     const DWORD opcode = ((*pTokens) & D3DSI_OPCODE_MASK);
-    
+
     if (opcode == D3DSIO_COMMENT) {
       return (((*pTokens) & D3DSI_COMMENTSIZE_MASK) >> D3DSI_COMMENTSIZE_SHIFT) + 1;
     }
     if (m_majorVersion >= 2) {
       return (((*pTokens) & D3DSI_INSTLENGTH_MASK) >> D3DSI_INSTLENGTH_SHIFT) + 1;
     }
+
+    // PS 1.4 reuses opcodes 0x40 and 0x42 as D3DSIO_TEXCRD and D3DSIO_TEXLD,
+    // which carry explicit destination and source tokens and so occupy three
+    // dwords. The table below covers PS 1.0 to 1.3 and VS 1.x, where those
+    // opcodes derive the source from the destination register and occupy two.
+    if (m_majorVersion == 1 && m_minorVersion == 4) {
+      switch (opcode) {
+        case 0x40: return 3;  // D3DSIO_TEXCRD (PS 1.4)
+        case 0x42: return 3;  // D3DSIO_TEXLD  (PS 1.4)
+        // D3DSIO_TEXKILL (0x41) occupies two dwords in every pixel shader
+        // version, so it uses the table below. Opcodes 0x43 to 0x4F are
+        // reserved in PS 1.4.
+      }
+    }
+
     switch (opcode) {
       case 0x0: return 1;
       case 0x1: return 3;
@@ -125,12 +140,33 @@ class CommonShader {
 
   }
 
+  // Returns the shader's size in bytes, or zero if the walk could not reach
+  // D3DSIO_END, which means the bytecode is malformed or carries a token this
+  // table does not recognise. A single D3DSIO_COMMENT may legally carry a
+  // 15-bit payload length, so the bound has to leave room for several of them.
+  static constexpr size_t kMaxShaderDwords = 256 * 1024;
+
   size_t getShaderByteSize(const DWORD* pTokens) {
     // Set starting pointer and increment past the header.
     const DWORD* pStart = pTokens++;
+
+    size_t walked = 0;
     while (((*pTokens) & D3DSI_OPCODE_MASK) != D3DSIO_END) {
-      pTokens += getShaderInstructionSize(pTokens);
+      const DWORD step = getShaderInstructionSize(pTokens);
+
+      // Tested before advancing, so the walk never reads past the bound.
+      if (step > kMaxShaderDwords - walked) {
+        bridge_util::Logger::err(
+          "CommonShader::getShaderByteSize: reached the token bound without "
+          "finding D3DSIO_END. The bytecode is malformed or uses an "
+          "unsupported shader version. Rejecting the shader.");
+        return 0;
+      }
+
+      pTokens += step;
+      walked += step;
     }
+
     return ((pTokens - pStart) + 1) * sizeof(DWORD);
   }
 
@@ -149,9 +185,18 @@ class CommonShader {
 public:
   CommonShader(const DWORD* pFunction) {
     const size_t size = analyze(pFunction);
+    if (size == 0) {
+      return;
+    }
 
     m_code.resize(size);
     memcpy(m_code.data(), pFunction, m_code.size());
+  }
+
+  // False when the bytecode could not be scanned. The caller must reject the
+  // shader rather than publish a wrapper or send it to the server.
+  bool isValid() const {
+    return !m_code.empty();
   }
 
   const DWORD* getCode() const {

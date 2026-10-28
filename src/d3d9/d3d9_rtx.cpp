@@ -15,6 +15,7 @@
 #include "d3d9_texture.h"
 #include "../dxvk/rtx_render/rtx_terrain_baker.h"
 
+#include <atomic>
 #include <cassert>
 #include <cstring>
 
@@ -876,16 +877,23 @@ namespace dxvk {
       blendIndices.ref = nullptr;
     }
 
-    // Copy bones up to the max bone we have registered so far.
-    const uint32_t maxBone = m_maxBone > 0 ? m_maxBone : 255;
+    // The snapshot covers the full D3D9 WORLDMATRIX range rather than the
+    // highest index seen through SetTransform. A draw's blendIndices may
+    // reference a bone above that mark, and the worker would then read
+    // neighbouring draws' bones or uninitialised memory from the staging
+    // buffer. The fixed 256 slots cost at most 16KB per draw, well within
+    // the staging buffer's capacity.
+    static constexpr uint32_t kMaxSupportedBones = 255; // D3D9 WORLDMATRIX(0..255)
+    const uint32_t maxBone = kMaxSupportedBones;
     const uint32_t startBoneTransform = GetTransformIndex(D3DTS_WORLDMATRIX(0));
+    const uint32_t observedMaxBone = m_maxBone; // captured for worker diagnostic
 
     const uint32_t nMat = maxBone + 1;
     const Matrix4* const boneMatrices = m_stagedBones.stageBones(
         d3d9State().transforms.data() + startBoneTransform, nMat);
 
     auto& geometryWorkers = getGeometryWorkers();
-    return geometryWorkers.Schedule([boneMatrices, blendIndices, numBonesPerVertex, vertexCount]()->SkinningData {
+    return geometryWorkers.Schedule([boneMatrices, blendIndices, numBonesPerVertex, vertexCount, observedMaxBone]()->SkinningData {
       ScopedCpuProfileZone();
       uint32_t numBones = numBonesPerVertex;
 
@@ -898,6 +906,22 @@ namespace dxvk {
         if (!getMinMaxBoneIndices(pBlendIndices, blendIndices.stride, vertexCount, numBonesPerVertex, minBoneIndex, maxBoneIndex)) {
           minBoneIndex = 0;
           maxBoneIndex = 0;
+        }
+        // Surfaces unusual bone upload orderings. The snapshot covers the
+        // full range, so the read itself is in bounds.
+        if (static_cast<uint32_t>(maxBoneIndex) > observedMaxBone && observedMaxBone > 0) {
+          // Several geometry workers can reach this concurrently, so the flag
+          // is an atomic exchange rather than ONCE, which is not thread safe.
+          static std::atomic<bool> s_warned = false;
+          if (!s_warned.exchange(true)) {
+            Logger::warn(str::format(
+              "[RTX-Compatibility-Warn] Skinned mesh references bone index ",
+              maxBoneIndex,
+              " but only ",
+              observedMaxBone,
+              " bone slots have been seen via SetTransform tracking. ",
+              "Vertex data is authoritative. Matrices are read from the full D3DTS_WORLDMATRIX(0..255) range."));
+          }
         }
         numBones = maxBoneIndex + 1;
 
