@@ -1073,7 +1073,8 @@ namespace dxvk {
       // Note: TerrainBaking already applies this transform for TexGenMode::CascadedViewPositions 
       if ((transformData.texgenMode == TexGenMode::ViewPositions
            || transformData.texgenMode == TexGenMode::ViewNormals)
-          && RtCamera::enableFreeCamera()) {
+          && RtCamera::enableFreeCamera()
+          && !drawCallState.isEye()) {
         if (cameraManager.isCameraValid(CameraType::Main)) {
           const RtCamera& camera = cameraManager.getMainCamera();
           // Revert the main camera's viewToWorld transform and then apply the free camera's one
