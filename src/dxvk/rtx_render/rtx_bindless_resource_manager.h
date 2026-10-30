@@ -20,8 +20,13 @@
 * DEALINGS IN THE SOFTWARE.
 */
 #pragma once
+
+#include <utility>
+#include <vector>
+
 #include "rtx_utils.h"
 #include "rtx_common_object.h"
+#include "rtx_bindless_buffer_mirror.h"
 
 namespace dxvk {
   class DxvkDevice;
@@ -45,7 +50,20 @@ namespace dxvk {
 
     explicit BindlessResourceManager(DxvkDevice* device);
 
-    void prepareSceneData(const Rc<DxvkContext> ctx, const std::vector<TextureRef>& rtTextures, const std::vector<RaytraceBuffer>& rtBuffers, const std::vector<Rc<DxvkSampler>>& samplers);
+    // Returns false when the tables were already updated this frame.
+    // The updated buffer slots are then left unconsumed, and the caller has to pass them again.
+    bool prepareSceneData(
+      const Rc<DxvkContext> ctx,
+      const std::vector<TextureRef>& rtTextures,
+      const std::vector<RaytraceBuffer>& rtBuffers,
+      const std::vector<uint32_t>& updatedBufferSlots,
+      const std::vector<Rc<DxvkSampler>>& samplers);
+
+    // Drops the CPU mirror of the buffer table, so the next update rewrites every slot.
+    // The buffers the table kept alive are released right away when the GPU is idle.
+    // Otherwise they are released once the context's current command list has finished.
+    // Without a context, they are released with the command list of the next update.
+    void releaseBufferDescriptors(const Rc<DxvkContext>& ctx, bool gpuIdle);
 
     VkDescriptorSet getGlobalBindlessTableSet(Table type) const;
 
@@ -67,6 +85,7 @@ namespace dxvk {
 
       void createLayout(const VkDescriptorType type);
       void updateDescriptors(VkWriteDescriptorSet set);
+      void updateDescriptors(uint32_t writeCount, VkWriteDescriptorSet* pWrites);
 
     private:
       const Rc<vk::DeviceFn> vkd() const;
@@ -78,6 +97,30 @@ namespace dxvk {
     Rc<DxvkDescriptorPool> m_globalBindlessPool[kMaxFramesInFlight];
     
     std::unique_ptr<BindlessTable> m_tables[Table::Count][kMaxFramesInFlight];
+
+    // Keeps replaced buffers alive until the command lists that may still read them have finished.
+    struct BufferResourceSnapshot : public DxvkResource {
+      explicit BufferResourceSnapshot(std::vector<Rc<DxvkResource>>&& resources)
+        : m_resources(std::move(resources)) { }
+
+      const std::vector<Rc<DxvkResource>> m_resources;
+    };
+
+    struct BufferMirrorTraits {
+      using Buffer = RaytraceBuffer;
+      using Descriptor = VkDescriptorBufferInfo;
+      using Resource = Rc<DxvkResource>;
+
+      static Descriptor descriptor(const Buffer& buffer) { return buffer.getDescriptor().buffer; }
+      static Resource resource(const Buffer& buffer) { return Resource(buffer.buffer().ptr()); }
+      static bool isSameResource(const Resource& stored, const Buffer& buffer) { return stored.ptr() == buffer.buffer().ptr(); }
+    };
+
+    using BufferMirror = BindlessBufferMirror<BufferMirrorTraits>;
+
+    // Each frame in flight owns a descriptor set, so the mirror queues every changed slot for each of them.
+    BufferMirror m_bufferMirror { kMaxFramesInFlight, kMaxBindlessResources };
+    std::vector<VkWriteDescriptorSet> m_bufferWrites;
 
     uint32_t m_globalBindlessDescSetIdx = 0;
     uint32_t m_frameLastUpdated = UINT_MAX;
@@ -95,5 +138,9 @@ namespace dxvk {
 
     template<VkDescriptorType Type, typename T, typename U>
     void createDescriptorSet(const Rc<DxvkContext>& ctx, const std::vector<U>& engineObjects, const T& dummyDescriptor);
+
+    void trackRetiredBufferResources(const Rc<DxvkContext>& ctx);
+
+    void writeBufferDescriptorSet();
   };
 } // namespace dxvk 
