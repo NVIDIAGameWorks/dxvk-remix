@@ -1325,6 +1325,13 @@ namespace dxvk {
   SceneManager::ObjectCacheState SceneManager::onSceneObjectUpdated(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, BlasEntry* pBlas) {
     if (pBlas->frameLastTouched == m_device->getCurrentFrameId()) {
       pBlas->cacheMaterial(drawCallState.getMaterialData());
+      // Refresh the cached bone matrices for a mesh drawn repeatedly in one frame.
+      // An entry is only reused here when boneHash matches, and that hash covers just
+      // [minBoneIndex, numBones), so this updates the matrices below that range.
+      if (pBlas->input.getSkinningStateMutable().numBones > 0 &&
+          drawCallState.getSkinningState().numBones == pBlas->input.getSkinningState().numBones) {
+        pBlas->input.getSkinningStateMutable().pBoneMatrices = drawCallState.getSkinningState().pBoneMatrices;
+      }
       return SceneManager::ObjectCacheState::kUpdateInstance;
     }
 

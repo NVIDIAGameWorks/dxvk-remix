@@ -457,6 +457,7 @@ namespace dxvk {
     RTX_OPTION_FLAG("rtx", bool, minimizeBlasMerging, false, RtxOptionFlags::NoSave, "Minimize BLAS merging to the minimum possible, this option tries to give all meshes their own BLAS.  This is generally not desirable forperformance, but can be a useful debugging tool.");
 
     RTX_OPTION_ENV("rtx", bool, enableAlwaysCalculateAABB, false, "RTX_ALWAYS_CALCULATE_AABB", "Calculate an Axis Aligned Bounding Box for every draw call.\n This may improve instance tracking across frames for skinned and vertex shaded calls.");
+    RTX_OPTION("rtx", bool, assumeWorldSpaceSkinnedBones, false, "Treat skinned draw calls as having WORLD-SPACE bone matrices (world placement baked into the bones), as produced by a fixed-function indexed-blend skinning path. When enabled: (1) objectToWorld for skinned draws collapses to identity instead of being reconstructed from the last-set camera, and (2) the draw-call cache pairs same-mesh instances across frames by a representative bone's world position instead of the bind-pose centroid (which is identical for every instance under identity objectToWorld, so the default tiebreaker cannot disambiguate a crowd of same-type meshes). Leave off for games that upload object-space bones.");
 
     // Camera
     struct FreeCam{
