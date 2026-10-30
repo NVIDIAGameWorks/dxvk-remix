@@ -2921,6 +2921,7 @@ namespace dxvk {
         RemixGui::Checkbox("Pre-Transformed Vertices Is UI", &D3D9Rtx::preTransformedVerticesIsUIObject());
         RemixGui::Checkbox("Allow Cubemaps", &D3D9Rtx::allowCubemapsObject());
         RemixGui::Checkbox("Always Calculate AABB (For Instance Matching)", &RtxOptions::enableAlwaysCalculateAABBObject());
+        RemixGui::Checkbox("Assume World-Space Skinned Bones", &RtxOptions::assumeWorldSpaceSkinnedBonesObject());
         RemixGui::Checkbox("Skip Sky Fog Values", &RtxOptions::fogIgnoreSkyObject());
         RemixGui::Checkbox("Recompute Texture Hash On Write", &RtxOptions::recomputeTextureHashOnWriteObject());
         ImGui::Unindent();

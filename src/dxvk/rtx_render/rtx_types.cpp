@@ -334,8 +334,16 @@ namespace dxvk {
       assert(geometryData.blendWeightBuffer.defined());
       assert(skinningData.numBonesPerVertex <= 4);
 
-      if (pLastCamera != nullptr) {
-        const auto fusedMode = RtxOptions::fusedWorldViewMode();
+      const auto fusedMode = RtxOptions::fusedWorldViewMode();
+      if (RtxOptions::assumeWorldSpaceSkinnedBones()) {
+        // Bones already carry world placement, so objectToWorld collapses to identity.
+        if (likely(fusedMode == FusedWorldViewMode::None)) {
+          transformData.objectToView = transformData.worldToView;
+          transformData.objectToWorld = Matrix4();
+        } else {
+          transformData.objectToWorld = transformData.objectToView;
+        }
+      } else if (pLastCamera != nullptr) {
         if (likely(fusedMode == FusedWorldViewMode::None)) {
           transformData.objectToView = transformData.worldToView;
           // Do not bother when transform is fused. Camera matrices are identity and so is worldToView.
@@ -354,6 +362,8 @@ namespace dxvk {
         transformData.objectToWorld = transformData.objectToWorld * skinningMatrix;
         transformData.objectToView = transformData.objectToView * skinningMatrix;
 
+        // boneHash stays stable across frames so DrawCallCache keeps pairing a draw with its own entry.
+        // FullGeometryHash still separates submeshes, so a zero hash shares no BVH.
         skinningData.boneHash = 0;
         skinningData.numBones = 0;
         skinningData.numBonesPerVertex = 0;
