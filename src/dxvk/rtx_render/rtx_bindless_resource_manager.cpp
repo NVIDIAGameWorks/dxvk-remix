@@ -119,11 +119,16 @@ namespace dxvk {
     }
   }
 
-  void BindlessResourceManager::prepareSceneData(const Rc<DxvkContext> ctx, const std::vector<TextureRef>& rtTextures, const std::vector<RaytraceBuffer>& rtBuffers, const std::vector<Rc<DxvkSampler>>& samplers) {
+  bool BindlessResourceManager::prepareSceneData(
+      const Rc<DxvkContext> ctx,
+      const std::vector<TextureRef>& rtTextures,
+      const std::vector<RaytraceBuffer>& rtBuffers,
+      const std::vector<uint32_t>& updatedBufferSlots,
+      const std::vector<Rc<DxvkSampler>>& samplers) {
     ScopedCpuProfileZone();
     if (m_frameLastUpdated == m_device->getCurrentFrameId()) {
       Logger::debug("Updating bindless tables multiple times per frame...");
-      return;
+      return false;
     }
 
     // Increment
@@ -133,11 +138,59 @@ namespace dxvk {
     const VkDescriptorBufferInfo dummyBuffer = m_device->getCommon()->dummyResources().bufferDescriptor();
     const VkDescriptorImageInfo dummySampler = m_device->getCommon()->dummyResources().samplerDescriptor();
 
-    createDescriptorSet<VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE>(ctx, rtTextures, dummyImage);
-    createDescriptorSet<VK_DESCRIPTOR_TYPE_STORAGE_BUFFER>(ctx, rtBuffers, dummyBuffer);
-    createDescriptorSet<VK_DESCRIPTOR_TYPE_SAMPLER>(ctx, samplers, dummySampler);
+    {
+      ScopedCpuProfileZoneN("Bindless Textures");
+      createDescriptorSet<VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE>(ctx, rtTextures, dummyImage);
+    }
+    {
+      ScopedCpuProfileZoneN("Bindless Buffers");
+      m_bufferMirror.update(rtBuffers, updatedBufferSlots, dummyBuffer);
+      trackRetiredBufferResources(ctx);
+      writeBufferDescriptorSet();
+    }
+    {
+      ScopedCpuProfileZoneN("Bindless Samplers");
+      createDescriptorSet<VK_DESCRIPTOR_TYPE_SAMPLER>(ctx, samplers, dummySampler);
+    }
 
     m_frameLastUpdated = m_device->getCurrentFrameId();
+    return true;
+  }
+
+  void BindlessResourceManager::trackRetiredBufferResources(const Rc<DxvkContext>& ctx) {
+    std::vector<Rc<DxvkResource>> retired = m_bufferMirror.takeRetired();
+    if (retired.empty()) {
+      return;
+    }
+
+    ctx->getCommandList()->trackResource<DxvkAccess::None>(Rc<DxvkResource>(new BufferResourceSnapshot(std::move(retired))));
+  }
+
+  void BindlessResourceManager::writeBufferDescriptorSet() {
+    m_bufferWrites.clear();
+    m_bufferMirror.takeWrites(currentIdx(), [this](uint32_t firstSlot, uint32_t count, const VkDescriptorBufferInfo* pDescriptors) {
+      VkWriteDescriptorSet write = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+      write.dstArrayElement = firstSlot;
+      write.descriptorCount = count;
+      write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+      write.pBufferInfo = pDescriptors;
+      m_bufferWrites.push_back(write);
+    });
+    if (m_bufferWrites.empty()) {
+      return;
+    }
+
+    m_tables[Table::Buffers][currentIdx()]->updateDescriptors(static_cast<uint32_t>(m_bufferWrites.size()), m_bufferWrites.data());
+  }
+
+  void BindlessResourceManager::releaseBufferDescriptors(const Rc<DxvkContext>& ctx, bool gpuIdle) {
+    m_bufferMirror.release();
+
+    if (gpuIdle) {
+      m_bufferMirror.takeRetired();
+    } else if (ctx != nullptr) {
+      trackRetiredBufferResources(ctx);
+    }
   }
 
   BindlessResourceManager::BindlessTable::~BindlessTable() {
@@ -180,21 +233,28 @@ namespace dxvk {
   }
 
   void BindlessResourceManager::BindlessTable::updateDescriptors(VkWriteDescriptorSet set) {
+    updateDescriptors(1, &set);
+  }
+
+  void BindlessResourceManager::BindlessTable::updateDescriptors(uint32_t writeCount, VkWriteDescriptorSet* pWrites) {
+    if (writeCount == 0 || pWrites == nullptr) {
+      assert(false);
+      return;
+    }
     if (bindlessDescSet == nullptr) {
       // Allocate the descriptor set
       bindlessDescSet = m_pManager->m_globalBindlessPool[m_pManager->currentIdx()]->alloc(layout, "bindless descriptor set");
       if (bindlessDescSet == nullptr) {
-        Logger::err(str::format("BindlessTable: failed to allocate a descriptor set for ", set.descriptorCount, " ",
-                                (set.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) ? "buffers" : "textures"));
-        return;
+        throw DxvkError(str::format("BindlessTable: failed to allocate a descriptor set for ", pWrites[0].descriptorCount, " ",
+                                    (pWrites[0].descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) ? "buffers" : "textures"));
       }
     }
 
-    // Update the write descriptor with our set
-    set.dstSet = bindlessDescSet;
+    for (uint32_t i = 0; i < writeCount; ++i) {
+      pWrites[i].dstSet = bindlessDescSet;
+    }
 
-    // Do the write
-    vkd()->vkUpdateDescriptorSets(vkd()->device(), 1, &set, 0, nullptr);
+    vkd()->vkUpdateDescriptorSets(vkd()->device(), writeCount, pWrites, 0, nullptr);
   }
 
   void BindlessResourceManager::createGlobalBindlessDescPool() {

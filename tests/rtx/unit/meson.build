@@ -58,6 +58,18 @@ exe = executable('test_spatial_map',  files('test_spatial_map.cpp'), include_dir
 test('test_spatial_map', exe, env: test_env)
 tests += exe
 
+exe = executable('test_retained_buffer_table',  files('test_retained_buffer_table.cpp'), include_directories : test_include_path, dependencies : test_unit_deps, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_retained_buffer_table', exe, env: test_env)
+tests += exe
+
+exe = executable('test_pending_slot_queues',  files('test_pending_slot_queues.cpp'), include_directories : test_include_path, dependencies : test_unit_deps, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_pending_slot_queues', exe, env: test_env)
+tests += exe
+
+exe = executable('test_bindless_buffer_mirror',  files('test_bindless_buffer_mirror.cpp'), include_directories : test_include_path, dependencies : test_unit_deps, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_bindless_buffer_mirror', exe, env: test_env)
+tests += exe
+
 exe = executable('test_documentation',  files('test_documentation.cpp'), include_directories : test_include_path, dependencies : [ d3d9_dep, test_unit_deps ], win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
 test('test_documentation', exe, env: test_env, priority : -50, args: d3d9_dll.full_path())
 tests += exe

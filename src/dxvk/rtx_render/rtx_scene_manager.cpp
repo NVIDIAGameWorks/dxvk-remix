@@ -259,6 +259,7 @@ namespace dxvk {
     verifyAndReleaseBufferCache();
 
     // We still need to clear caches even if the scene wasn't rendered
+    m_bindlessResourceManager.releaseBufferDescriptors(ctx, needWfi);
     m_bufferCache.clear();
     m_preCreationSurfaceMaterialMap.clear();
     m_volumeMaterialCache.clear();
@@ -2233,7 +2234,11 @@ namespace dxvk {
     m_terrainBaker->prepareSceneData(ctx);
 
     auto& textureManager = m_device->getCommon()->getTextureManager();
-    m_bindlessResourceManager.prepareSceneData(ctx, textureManager.getTextureTable(), getBufferTable(), getSamplerTable());
+    if (m_bindlessResourceManager.prepareSceneData(
+          ctx, textureManager.getTextureTable(), getBufferTable(),
+          m_bufferCache.getUpdatedSlots(), getSamplerTable())) {
+      m_bufferCache.clearUpdatedSlots();
+    }
 
     // If there are no instances, we should do nothing!
     if (m_instanceManager.getActiveCount() == 0) {
