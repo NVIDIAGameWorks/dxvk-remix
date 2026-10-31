@@ -51,19 +51,24 @@ void collideParticleWithScene(inout GpuParticle p)
 {
   // Reproject current world-space pos into last frame's clip
   float4 prevClip = mul(particleCb.prevWorldToProjection, float4(p.position, 1.0f));
-  float2 prevNdc  = prevClip.xy / prevClip.w;
-  float2 prevUv   = prevNdc * float2(0.5f, -0.5f) + float2(0.5f, 0.5f);
-
-  // early-out if outside [0,1] UV
-  if (prevUv.x < 0.0f || prevUv.x > 1.0f || prevUv.y < 0.0f || prevUv.y > 1.0f)
+  if (prevClip.w <= 0.0f)
   {
     return;
   }
 
-  // compute pixel coords in your depth/normal buffer
+  float2 prevNdc  = prevClip.xy / prevClip.w;
+  float2 prevUv   = prevNdc * float2(0.5f, -0.5f) + float2(0.5f, 0.5f);
+
+  // Reject invalid projections and UVs outside the texture.
+  if (any(isnan(prevUv)) || any(prevUv < 0.0f) || any(prevUv >= 1.0f))
+  {
+    return;
+  }
+
+  // Use the containing pixel so valid UVs cannot round beyond the texture.
   uint2 pixel = uint2(
-    prevUv.x * particleCb.renderingWidth  + 0.5f,
-    prevUv.y * particleCb.renderingHeight + 0.5f
+    prevUv.x * particleCb.renderingWidth,
+    prevUv.y * particleCb.renderingHeight
   );
 
   // fetch the MinimalSurfaceInteraction from last frame
@@ -77,20 +82,8 @@ void collideParticleWithScene(inout GpuParticle p)
   // unpack, normalize
   float3 n = normalize(float3(si.geometryNormal));
   
-  float2 screenVelocity = PreviousPrimaryScreenSpaceMotionVector[pixel];
-  
-  // fetch the MinimalSurfaceInteraction from 2 frames ago
-  MinimalSurfaceInteraction si2 = minimalSurfaceInteractionReadFromGBuffer(pixel + screenVelocity, PreviousWorldPosition_WorldTriangleNormal);
-
-  float3 sceneVel = 0..xxx;
-  if (si2.isValid)
-  {
-    float3 relativePos = (si.position - si2.position);
-    sceneVel = relativePos;
-  }
-  
-  float3 relVel = p.velocity - sceneVel;
-  if (dot(relVel, n) >= 0.0f)
+  // Assume zero world-space surface velocity because this G-buffer contains only one frame of surface positions.
+  if (dot(p.velocity, n) >= 0.0f)
   {
     return;
   }
@@ -107,8 +100,8 @@ void collideParticleWithScene(inout GpuParticle p)
       case ParticleCollisionMode::Bounce:
       {
         // reflect & apply restitution
-        float3 vRef = reflect(relVel, n);
-        p.velocity = vRef * particleCb.particleSystem.desc.collisionRestitution + sceneVel;
+        float3 vRef = reflect(p.velocity, n);
+        p.velocity = vRef * particleCb.particleSystem.desc.collisionRestitution;
       } break;
       case ParticleCollisionMode::Stop:
       {
