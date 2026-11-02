@@ -1136,7 +1136,16 @@ void ProcessDeviceCommandQueue() {
       case IDirect3DDevice9Ex_GetTransform:
         break;
       case IDirect3DDevice9Ex_MultiplyTransform:
+      {
+        GET_RES(pD3DDevice, gpD3DDevices);
+        PULL(D3DTRANSFORMSTATETYPE, State);
+        D3DMATRIX* pMatrix = nullptr;
+        PULL_DATA(sizeof(D3DMATRIX), pMatrix);
+        const auto hresult = pD3DDevice->MultiplyTransform(State, pMatrix);
+        assert(SUCCEEDED(hresult));
+        SEND_OPTIONAL_SERVER_RESPONSE(hresult, currentUID);
         break;
+      }
       case IDirect3DDevice9Ex_SetViewport:
       {
         GET_RES(pD3DDevice, gpD3DDevices);
