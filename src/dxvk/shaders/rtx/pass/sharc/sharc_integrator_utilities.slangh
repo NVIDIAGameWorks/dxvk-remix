@@ -142,12 +142,9 @@ bool onHitBeforeDirectLighting(
     pathState.radiance = vec3(0.0f);
     pathState.throughput = f16vec3(1.h);
 
-    float16_t isotropicRoughness = getIsotropicRoughness(polymorphicSurfaceMaterialInteraction);
-
     // Since SHaRC works better with higher roughness values, we clamp the roughness during its updates to a minimum threshold.
     // Note: since first bounce is aliased between update and query, this roughness adjustment is only done for secondary vertices
-    isotropicRoughness = max(args.isotropicRoughnessThreshold, isotropicRoughness);
-    setIsotropicRoughness(polymorphicSurfaceMaterialInteraction, isotropicRoughness);
+    clampMinimumRoughness(polymorphicSurfaceMaterialInteraction, float16_t(args.isotropicRoughnessThreshold));
   }
 #else
   unused(polymorphicSurfaceMaterialInteraction);
