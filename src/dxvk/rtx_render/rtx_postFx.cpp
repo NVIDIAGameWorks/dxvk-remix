@@ -116,7 +116,10 @@ namespace dxvk {
 
   void DxvkPostFx::showImguiSettings()
   {
-    RemixGui::Checkbox("Post Effect Enabled", &enableObject());
+    RemixGui::Checkbox("Motion / Lens Effects Enabled", &enableObject());
+    RemixGui::SliderFloat("Color Inversion", &inversionAmountObject(), 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+    RemixGui::Combo("Color Inversion Mode", &inversionModeObject(), "Invert\0Threshold Invert\0");
+    RemixGui::SliderFloat("Color Inversion Threshold", &inversionThresholdObject(), 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     if (enable())
     {
       RemixGui::Checkbox("Motion Blur Enabled", &enableMotionBlurObject());

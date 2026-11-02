@@ -31,8 +31,8 @@ namespace dxvk {
   class DxvkDevice;
   class RtxContext;
 
-  // sRGB + dither pass: converts the linear post-tonemap LDR buffer to sRGB and
-  // applies dithering. Runs as the very last step of the post-process pipeline.
+  // Final output pass: applies display-value inversion, selects output encoding,
+  // and dithers the post-tonemap LDR buffer.
   class DxvkSRGBDither : public CommonDeviceObject {
   public:
     explicit DxvkSRGBDither(DxvkDevice* device);

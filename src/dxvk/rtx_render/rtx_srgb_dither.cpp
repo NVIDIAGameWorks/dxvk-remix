@@ -19,11 +19,14 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
+#include <algorithm>
+
 #include "rtx_srgb_dither.h"
 #include "rtx_context.h"
 #include "dxvk_device.h"
 #include "dxvk_scoped_annotation.h"
 #include "rtx_render/rtx_shader_manager.h"
+#include "rtx_postFx.h"
 #include "rtx/pass/srgb_dither/srgb_dither.h"
 #include "rtx/pass/tonemap/tonemapping.h"
 #include "rtx_imgui.h"
@@ -32,6 +35,8 @@
 
 namespace dxvk {
   namespace {
+    static_assert(sizeof(SRGBDitherArgs) == 32);
+
     class SRGBDitherShader : public ManagedShader {
       SHADER_SOURCE(SRGBDitherShader, VK_SHADER_STAGE_COMPUTE_BIT, srgb_dither)
 
@@ -73,6 +78,11 @@ namespace dxvk {
     case DitherMode::SpatialTemporal: pushArgs.ditherMode = ditherModeSpatialTemporal; break;
     }
     pushArgs.frameIndex = RtxOptions::rngSeedWithFrameIndex() ? ctx->getDevice()->getCurrentFrameId() : 0;
+    pushArgs.inversionAmount = std::clamp(DxvkPostFx::inversionAmount(), 0.0f, 1.0f);
+    pushArgs.inversionMode = DxvkPostFx::inversionMode() == DxvkPostFx::InversionMode::ThresholdInvert
+      ? inversionModeThresholdInvert
+      : inversionModeInvert;
+    pushArgs.inversionThreshold = DxvkPostFx::inversionThreshold();
 
     ctx->bindResourceView(SRGB_DITHER_BLUE_NOISE_TEXTURE_INPUT, ctx->getResourceManager().getBlueNoiseTexture(ctx), nullptr);
     ctx->bindResourceView(SRGB_DITHER_COLOR_INPUT_OUTPUT, inoutColorBuffer.view, nullptr);

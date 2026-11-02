@@ -26,9 +26,17 @@
 #define SRGB_DITHER_BLUE_NOISE_TEXTURE_INPUT 0
 #define SRGB_DITHER_COLOR_INPUT_OUTPUT       1
 
+static const uint32_t inversionModeInvert = 0;
+static const uint32_t inversionModeThresholdInvert = 1;
+
 struct SRGBDitherArgs {
   uint performSRGBConversion;
   uint ditherMode;
   uint frameIndex;
+  float inversionAmount;
+
+  uint inversionMode;
+  float inversionThreshold;
   uint pad0;
+  uint pad1;
 };
