@@ -1757,10 +1757,14 @@ namespace dxvk {
     ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
-    if (unlikely(ShouldRecord()))
-      return m_recorder->MultiplyStateTransform(TransformState, pMatrix);
+    bool validState = (TransformState >= D3DTS_VIEW && TransformState <= D3DTS_PROJECTION) || (TransformState >= D3DTS_TEXTURE0 && TransformState <= D3DTS_TEXTURE7) || (TransformState >= D3DTS_WORLDMATRIX(0) && TransformState <= D3DTS_WORLDMATRIX(255));
+    if (!validState)
+      return D3DERR_INVALIDCALL;
 
     uint32_t idx = GetTransformIndex(TransformState);
+
+    if (unlikely(ShouldRecord()))
+      return m_recorder->MultiplyStateTransform(idx, pMatrix);
 
     m_state.transforms[idx] = m_state.transforms[idx] * ConvertMatrix(pMatrix);
 
@@ -1768,6 +1772,10 @@ namespace dxvk {
 
     if (idx == GetTransformIndex(D3DTS_VIEW) || idx >= GetTransformIndex(D3DTS_WORLD))
       m_flags.set(D3D9DeviceFlag::DirtyFFVertexBlend);
+
+    // NV-DXVK start: signal that a transform has updated
+    m_rtx.SetTransformDirty(idx);
+    // NV-DXVK end
 
     return D3D_OK;
   }

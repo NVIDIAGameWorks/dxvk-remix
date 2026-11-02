@@ -48,7 +48,7 @@ public:
   static constexpr uint32_t kNumRenderStates = 256;
   static constexpr size_t kNumStageSamplers = caps::MaxTexturesPS + caps::MaxTexturesVS + 1;
   static constexpr size_t kMaxTexStageStateTypes = 18;
-  static constexpr size_t kMaxStageSamplerStateTypes = D3DSAMP_DMAPOFFSET + 1;
+  static constexpr size_t kMaxStageSamplerStateTypes = D3DSAMP_DMAPOFFSET;
   static constexpr uint32_t NumControlPoints = 256;
 
   /*

@@ -430,11 +430,11 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::Reset(D3DPRESENT_PARAMETERS* pPresent
     BRIDGE_DEVICE_LOCKGUARD();
     // Clear all device state and release implicit/internal objects
     releaseInternalObjects();
+    const auto presParam = Direct3DSwapChain9_LSS::sanitizePresentationParameters(*pPresentationParameters, getCreateParams());
+    m_presParams = presParam;
     // Reset all device state to default values and init implicit/internal objects
     ResetState();
     invalidateSentState();
-    const auto presParam = Direct3DSwapChain9_LSS::sanitizePresentationParameters(*pPresentationParameters, getCreateParams());
-    m_presParams = presParam;
     WndProc::unset();
     WndProc::set(getWinProcHwnd());
     // Tell Server to do the Reset
@@ -1193,7 +1193,7 @@ namespace {
   }
 }
 
-bool isValidD3drtansformstatetype(D3DTRANSFORMSTATETYPE Type) {
+bool isValidD3dTransformstatetype(D3DTRANSFORMSTATETYPE Type) {
   if (Type == D3DTS_VIEW) {
     return true;
   }
@@ -1214,7 +1214,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::SetTransform(D3DTRANSFORMSTATETYPE St
   ZoneScoped;
   LogFunctionCall();
 
-  if (pMatrix == nullptr || !isValidD3drtansformstatetype(State)) {
+  if (pMatrix == nullptr || !isValidD3dTransformstatetype(State)) {
     return D3DERR_INVALIDCALL;
   }
 
@@ -1249,7 +1249,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::GetTransform(D3DTRANSFORMSTATETYPE St
   ZoneScoped;
   LogFunctionCall();
 
-  if (pMatrix == nullptr) {
+  if (pMatrix == nullptr || !isValidD3dTransformstatetype(State)) {
     return D3DERR_INVALIDCALL;
   }
 
@@ -1266,33 +1266,52 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::MultiplyTransform(D3DTRANSFORMSTATETY
   ZoneScoped;
   LogFunctionCall();
 
-  if (pMatrix == nullptr) {
+  if (pMatrix == nullptr || !isValidD3dTransformstatetype(State)) {
     return D3DERR_INVALIDCALL;
   }
 
-  BRIDGE_DEVICE_LOCKGUARD();
   const auto idx = mapXformStateTypeToIdx(State);
-  D3DMATRIX result = { 0 };
-  D3DMATRIX current = (m_stateRecording && m_stateRecording->m_dirtyFlags.transforms[idx]) ? m_stateRecording->m_captureState.transforms[idx] : m_state.transforms[idx];
+  UID currentUID = 0;
+  {
+    {
+      BRIDGE_DEVICE_LOCKGUARD();
 
-  for (int i = 0; i < 4; i++) {
-    for (int j = 0; j < 4; j++) {
-      float value = 0.0f;
-      for (int k = 0; k < 4; k++) {
-        value += current.m[i][k] * pMatrix->m[k][j];
+      // The server's state block recorder starts every transform at identity rather than at the
+      // device's current matrix, so a recorded multiply must start there too.
+      D3DMATRIX* pCurrent = &m_state.transforms[idx];
+      if (m_stateRecording) {
+        pCurrent = &m_stateRecording->m_captureState.transforms[idx];
+        if (!m_stateRecording->m_dirtyFlags.transforms[idx]) {
+          *pCurrent = D3DMATRIX {};
+          pCurrent->m[0][0] = 1.f;
+          pCurrent->m[1][1] = 1.f;
+          pCurrent->m[2][2] = 1.f;
+          pCurrent->m[3][3] = 1.f;
+          m_stateRecording->m_dirtyFlags.transforms[idx] = true;
+        }
       }
-      result.m[i][j] = value;
+
+      // Computes pMatrix * current, the same product as the server's Matrix4 multiplication.
+      D3DMATRIX result;
+      for (int row = 0; row < 4; row++) {
+        for (int col = 0; col < 4; col++) {
+          float value = 0.0f;
+          for (int k = 0; k < 4; k++) {
+            value += pMatrix->m[row][k] * pCurrent->m[k][col];
+          }
+          result.m[row][col] = value;
+        }
+      }
+      *pCurrent = result;
+    }
+    {
+      ClientMessage c(Commands::IDirect3DDevice9Ex_MultiplyTransform, getId());
+      currentUID = c.get_uid();
+      c.send_data(State);
+      c.send_data(sizeof(D3DMATRIX), (void*) pMatrix);
     }
   }
-
-  if (m_stateRecording) {
-    m_stateRecording->m_captureState.transforms[idx] = result;
-    m_stateRecording->m_dirtyFlags.transforms[idx] = true;
-  } else {
-    m_state.transforms[idx] = result;
-  }
-  
-  return S_OK;
+  WAIT_FOR_OPTIONAL_SERVER_RESPONSE("MultiplyTransform()", D3DERR_INVALIDCALL, currentUID);
 }
 
 template<bool EnableSync>
@@ -1645,19 +1664,20 @@ void Direct3DDevice9Ex_LSS<EnableSync>::StateBlockSetPixelCaptureFlags(BaseDirec
   flags.renderStates[D3DRS_DESTBLENDALPHA] = true;
   flags.renderStates[D3DRS_BLENDOPALPHA] = true;
 
+  // Sampler states are stored at their D3DSAMPLERSTATETYPE minus one, matching SetSamplerState().
   for (uint32_t i = 0; i < caps::MaxTexturesPS + 1; i++) {
-    flags.samplerStates[i][D3DSAMP_ADDRESSU] = true;
-    flags.samplerStates[i][D3DSAMP_ADDRESSV] = true;
-    flags.samplerStates[i][D3DSAMP_ADDRESSW] = true;
-    flags.samplerStates[i][D3DSAMP_BORDERCOLOR] = true;
-    flags.samplerStates[i][D3DSAMP_MAGFILTER] = true;
-    flags.samplerStates[i][D3DSAMP_MINFILTER] = true;
-    flags.samplerStates[i][D3DSAMP_MIPFILTER] = true;
-    flags.samplerStates[i][D3DSAMP_MIPMAPLODBIAS] = true;
-    flags.samplerStates[i][D3DSAMP_MAXMIPLEVEL] = true;
-    flags.samplerStates[i][D3DSAMP_MAXANISOTROPY] = true;
-    flags.samplerStates[i][D3DSAMP_SRGBTEXTURE] = true;
-    flags.samplerStates[i][D3DSAMP_ELEMENTINDEX] = true;
+    flags.samplerStates[i][D3DSAMP_ADDRESSU - 1] = true;
+    flags.samplerStates[i][D3DSAMP_ADDRESSV - 1] = true;
+    flags.samplerStates[i][D3DSAMP_ADDRESSW - 1] = true;
+    flags.samplerStates[i][D3DSAMP_BORDERCOLOR - 1] = true;
+    flags.samplerStates[i][D3DSAMP_MAGFILTER - 1] = true;
+    flags.samplerStates[i][D3DSAMP_MINFILTER - 1] = true;
+    flags.samplerStates[i][D3DSAMP_MIPFILTER - 1] = true;
+    flags.samplerStates[i][D3DSAMP_MIPMAPLODBIAS - 1] = true;
+    flags.samplerStates[i][D3DSAMP_MAXMIPLEVEL - 1] = true;
+    flags.samplerStates[i][D3DSAMP_MAXANISOTROPY - 1] = true;
+    flags.samplerStates[i][D3DSAMP_SRGBTEXTURE - 1] = true;
+    flags.samplerStates[i][D3DSAMP_ELEMENTINDEX - 1] = true;
   }
   for (auto& fConst : flags.pixelConstants.fConsts) {
     fConst = true;
@@ -1725,8 +1745,8 @@ void Direct3DDevice9Ex_LSS<EnableSync>::StateBlockSetVertexCaptureFlags(BaseDire
   std::fill(std::begin(flags.streamFreqs), std::end(flags.streamFreqs), true);
   // Lights in the map are always transferred if they exist 
   // LightEnables in the map are always transferred if they exist 
-  for (uint32_t i = caps::MaxTexturesPS + 1; i < BaseDirect3DDevice9Ex_LSS::kMaxStageSamplerStateTypes; i++) {
-    flags.samplerStates[i][D3DSAMP_DMAPOFFSET] = true;
+  for (uint32_t i = caps::MaxTexturesPS + 1; i < BaseDirect3DDevice9Ex_LSS::kNumStageSamplers; i++) {
+    flags.samplerStates[i][D3DSAMP_DMAPOFFSET - 1] = true;
   }
 
   for (auto& fConst : flags.vertexConstants.fConsts) {
@@ -3817,7 +3837,8 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::ResetState() {
   }
 
   // Referencing defaults from: https://learn.microsoft.com/en-us/windows/win32/direct3d9/d3drenderstatetype
-  m_state.renderStates[D3DRS_ZENABLE] = m_pSwapchain && m_pSwapchain->getPresentationParameters().EnableAutoDepthStencil;
+  // The implicit swapchain is already released during Reset(), so this must read m_presParams.
+  m_state.renderStates[D3DRS_ZENABLE] = m_presParams.EnableAutoDepthStencil ? D3DZB_TRUE : D3DZB_FALSE;
   m_state.renderStates[D3DRS_FILLMODE] = D3DFILL_SOLID;
   m_state.renderStates[D3DRS_SHADEMODE] = D3DSHADE_GOURAUD;
   m_state.renderStates[D3DRS_ZWRITEENABLE] = TRUE;
@@ -3874,7 +3895,7 @@ HRESULT Direct3DDevice9Ex_LSS<EnableSync>::ResetState() {
   m_state.renderStates[D3DRS_MULTISAMPLEMASK] = 0xFFFFffff;
   m_state.renderStates[D3DRS_PATCHEDGESTYLE] = D3DPATCHEDGE_DISCRETE;
   m_state.renderStates[D3DRS_DEBUGMONITORTOKEN] = D3DDMT_ENABLE;
-  m_state.renderStates[D3DRS_POINTSIZE_MAX] = bit_cast<DWORD>(8192.f);
+  m_state.renderStates[D3DRS_POINTSIZE_MAX] = bit_cast<DWORD>(64.f);
   m_state.renderStates[D3DRS_INDEXEDVERTEXBLENDENABLE] = FALSE;
   m_state.renderStates[D3DRS_COLORWRITEENABLE] = 0x0000000F;
   m_state.renderStates[D3DRS_TWEENFACTOR] = bit_cast<DWORD>(0.f);
