@@ -2469,7 +2469,10 @@ namespace dxvk {
 
       // Lazily create the tex ID ImGUI wants
       if (texImgui.texID == VK_NULL_HANDLE) {
-        texImgui.texID = ImGui_ImplDxvk::AddTexture(nullptr, texImgui.imageView);
+        // Nearest magnification keeps small textures legible, and linear minification keeps large textures smooth.
+        const Rc<DxvkSampler> thumbnailSampler = common->getResources().getSampler(VK_FILTER_NEAREST, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST,
+          VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+        texImgui.texID = ImGui_ImplDxvk::AddTexture(thumbnailSampler, texImgui.imageView);
 
         if (texImgui.texID == VK_NULL_HANDLE) {
           ONCE(Logger::err("Failed to allocate ImGUI handle for texture, likely because we're trying to render more textures than VkDescriptorPoolCreateInfo::maxSets.  As such, we will truncate the texture list to show only what we can."));

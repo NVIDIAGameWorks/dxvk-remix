@@ -516,6 +516,12 @@ namespace dxvk
                                const VkSamplerAddressMode addressModeW,
                                const VkClearColorValue borderColor = VkClearColorValue(),
                                const float mipBias = 0, const bool useAnisotropy = false);
+    Rc<DxvkSampler> getSampler(const VkFilter magFilter, const VkFilter minFilter, const VkSamplerMipmapMode mipFilter,
+                               const VkSamplerAddressMode addressModeU,
+                               const VkSamplerAddressMode addressModeV,
+                               const VkSamplerAddressMode addressModeW,
+                               const VkClearColorValue borderColor = VkClearColorValue(),
+                               const float mipBias = 0, const bool useAnisotropy = false);
     Rc<DxvkSampler> getSampler(const VkFilter filter, const VkSamplerMipmapMode mipFilter, 
                                const VkSamplerAddressMode addrMode, 
                                const float mipBias = 0, const bool useAnisotropy = false);

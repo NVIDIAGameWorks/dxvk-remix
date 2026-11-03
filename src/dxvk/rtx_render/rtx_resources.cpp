@@ -889,13 +889,26 @@ namespace dxvk {
     const VkClearColorValue borderColor/* = VkClearColorValue()*/,
     const float mipBias/* = 0*/,
     const bool useAnisotropy/* = false*/) {
+    return getSampler(filter, filter, mipFilter, addressModeU, addressModeV, addressModeW, borderColor, mipBias, useAnisotropy);
+  }
+
+  Rc<DxvkSampler> dxvk::Resources::getSampler(
+    const VkFilter magFilter,
+    const VkFilter minFilter,
+    const VkSamplerMipmapMode mipFilter,
+    const VkSamplerAddressMode addressModeU,
+    const VkSamplerAddressMode addressModeV,
+    const VkSamplerAddressMode addressModeW,
+    const VkClearColorValue borderColor/* = VkClearColorValue()*/,
+    const float mipBias/* = 0*/,
+    const bool useAnisotropy/* = false*/) {
     const VkPhysicalDeviceLimits& limits = m_device->properties().core.properties.limits;
     const float maxAniso = std::min(limits.maxSamplerAnisotropy, RtxOptions::maxAnisotropySamples());
 
     // Fill out the rest of the sample create info
     DxvkSamplerCreateInfo samplerInfo;
-    samplerInfo.magFilter = filter;
-    samplerInfo.minFilter = filter;
+    samplerInfo.magFilter = magFilter;
+    samplerInfo.minFilter = minFilter;
     samplerInfo.mipmapMode = mipFilter;
     samplerInfo.mipmapLodBias = mipBias;
     samplerInfo.mipmapLodMin = 0.0f;
