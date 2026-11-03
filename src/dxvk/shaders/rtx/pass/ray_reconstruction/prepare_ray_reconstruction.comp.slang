@@ -244,11 +244,15 @@ void preprocessInputsForRR(uint2 pixelCoordinate)
   {
     bool hasSecondarySurface = geometryFlags.hasSecondarySurface();
 
-    vec4 primaryAttenuation = vec4(r11g11b10ToColor(PrimaryAttenuation[pixelCoordinate]), 1.0);
+    // NV-DXVK start: Decode HDR attenuation before deriving RR color guides.
+    vec4 primaryAttenuation = vec4(unpackAttenuation(PrimaryAttenuation[pixelCoordinate]), 1.0);
+    // NV-DXVK end
     vec4 secondaryAttenuation = vec4(0, 0, 0, 1);
     if (hasSecondarySurface)
     {
-      secondaryAttenuation = vec4(r11g11b10ToColor(SecondaryAttenuation[pixelCoordinate]), 1.0);
+      // NV-DXVK start: Decode HDR attenuation before deriving RR color guides.
+      secondaryAttenuation = vec4(unpackAttenuation(SecondaryAttenuation[pixelCoordinate]), 1.0);
+      // NV-DXVK end
     }
 
     // Normalize attenuation to get the color tinting without any dimmming

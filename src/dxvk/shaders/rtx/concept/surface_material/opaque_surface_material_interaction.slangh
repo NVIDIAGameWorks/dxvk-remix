@@ -597,7 +597,13 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreateImpl<let 
   vec4 roughnessSample;
   vec4 metallicSample;
 
-  const bool albedoOpacityLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.albedoOpacityTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, albedoOpacitySample, materialLodBias);
+  // NV-DXVK start: Trace the camera image while preserving the raster fallback and authored masks.
+  const bool isRaytracedRenderTarget = cb.enableRaytracedRenderTarget &&
+    (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_IS_RAYTRACED_RENDER_TARGET);
+  const bool useCameraTexture = isRaytracedRenderTarget &&
+    (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_ALBEDO_IS_RENDER_TARGET);
+  const bool albedoOpacityLoaded = !useCameraTexture && surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.albedoOpacityTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, albedoOpacitySample, materialLodBias);
+  // NV-DXVK end
   const bool normalLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.normalTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, normalSample, materialLodBias);
 
   bool secondNormalLoaded = false;
@@ -625,6 +631,14 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreateImpl<let 
 
   vec3 albedo = opaqueSurfaceMaterial.albedoOpacityConstant.rgb;
   float opacity = opaqueSurfaceMaterial.albedoOpacityConstant.a;
+  // NV-DXVK start: Raytraced camera material opacity.
+  float cameraOpacityMask = 1.0f;
+  if (isRaytracedRenderTarget)
+  {
+    // Authored coverage multiplies the game's animated fade after texture operations.
+    opacity = 1.0f;
+  }
+  // NV-DXVK end
   float emissiveBlendOverrideInfluence = float(1.0f);
   float thinFilmThickness = float(0.0f);
 
@@ -661,6 +675,13 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreateImpl<let 
     {
       opacity = albedoOpacitySample.a;
       thinFilmThickness = float(0.0f);
+      // NV-DXVK start: Camera masks apply even when legacy blending is disabled.
+      if (isRaytracedRenderTarget)
+      {
+        cameraOpacityMask = opacity;
+        opacity = 1.0f;
+      }
+      // NV-DXVK end
     }
   }
 
@@ -718,14 +739,43 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreateImpl<let 
     chooseTextureOperationAlpha(opacity, surface.textureAlphaOperation, textureAlphaArg1, textureAlphaArg2);
     
     // Ensure we perform these opacity calculations after the texture operations have been applied to abledo and alpha.
+    // NV-DXVK start: Camera coverage must not use the placeholder texture's emissive approximation.
+    Surface opacitySurface = surface;
+    if (isRaytracedRenderTarget)
+    {
+      switch (uint(surface.blendType))
+      {
+      case uint(BlendType::kAlphaEmissive):
+      case uint(BlendType::kColor):
+      case uint(BlendType::kColorEmissive):
+      case uint(BlendType::kEmissive):
+        opacitySurface.blendType = uint8_t(BlendType::kAlpha);
+        break;
+      case uint(BlendType::kReverseAlphaEmissive):
+      case uint(BlendType::kReverseColor):
+      case uint(BlendType::kReverseColorEmissive):
+        opacitySurface.blendType = uint8_t(BlendType::kReverseAlpha);
+        break;
+      }
+    }
     calcOpaqueSurfaceMaterialOpacity(
-      albedo, opacity, surface, opacity, emissiveBlendOverrideInfluence, cb.wboitEnabled);
+      albedo, opacity, opacitySurface, opacity, emissiveBlendOverrideInfluence, cb.wboitEnabled);
+    // NV-DXVK end
   }
 
   if (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_IGNORE_ALPHA_CHANNEL)
   {
     opacity = 1.f;
+    // NV-DXVK start: Preserve the explicit alpha-channel override for camera masks.
+    cameraOpacityMask = 1.0f;
+    // NV-DXVK end
   }
+  // NV-DXVK start: Raytraced camera material opacity.
+  if (isRaytracedRenderTarget)
+  {
+    opacity = saturate(opacity * cameraOpacityMask * float(opaqueSurfaceMaterial.albedoOpacityConstant.a));
+  }
+  // NV-DXVK end
   
   // Note: Gamma correct albedo input (be it from a constant or a texture). Currently assuming all textures are not using sRGB formats which
   // automatically do this conversion.
@@ -883,6 +933,13 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreateImpl<let 
   }
 
   opaqueSurfaceMaterialInteraction.emissiveRadiance = emissiveRadiance;
+
+  // NV-DXVK start: Camera radiance is evaluated by ray continuation.
+  if (isRaytracedRenderTarget)
+  {
+    opaqueSurfaceMaterialInteraction.emissiveRadiance = vec3(0.0f);
+  }
+  // NV-DXVK end
 
   opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction =
     subSurfaceMaterialReadHelper(opaqueSurfaceMaterial.subsurfaceMaterialIndex, surfaceInteraction, opaqueSurfaceMaterial.samplerIndex);

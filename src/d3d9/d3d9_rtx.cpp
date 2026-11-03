@@ -418,7 +418,9 @@ namespace dxvk {
     // Track the drawcall index so we can use it in rtx_context
     m_activeDrawCallState.drawCallID = m_drawCallID++;
     m_activeDrawCallState.isDrawingToRaytracedRenderTarget = false;
-    m_activeDrawCallState.isUsingRaytracedRenderTarget = false;
+    // NV-DXVK start: Reset the categorized camera resource for each draw.
+    m_activeDrawCallState.setRaytracedRenderTarget(nullptr);
+    // NV-DXVK end
 
     if (m_drawCallID < (uint32_t)RtxOptions::drawCallRange().x ||
         m_drawCallID > (uint32_t)RtxOptions::drawCallRange().y) {
@@ -431,7 +433,10 @@ namespace dxvk {
       for (uint32_t i : bit::BitMask(m_parent->GetActiveRTTextures())) {
         D3D9CommonTexture* texture = GetCommonTexture(d3d9State().textures[i]);
         if (lookupHash(RtxOptions::raytracedRenderTargetTextures(), texture->GetImage()->getDescriptorHash())) {
-          m_activeDrawCallState.isUsingRaytracedRenderTarget = true;
+          // NV-DXVK start: Preserve the first categorized camera independently of material slots.
+          m_activeDrawCallState.setRaytracedRenderTarget(texture->GetImage());
+          break;
+          // NV-DXVK end
         }
       }
     }
@@ -682,14 +687,19 @@ namespace dxvk {
       // If this draw call has an RT texture bound
       if (m_activeDrawCallState.isUsingRaytracedRenderTarget) {
         // We validate this state below
-        m_activeDrawCallState.isUsingRaytracedRenderTarget = false;
+        // NV-DXVK start: Reset camera identity together with classification during revalidation.
+        m_activeDrawCallState.setRaytracedRenderTarget(nullptr);
+        // NV-DXVK end
         // Try and find the has of the positions
         for (uint32_t i : bit::BitMask(m_parent->GetActiveRTTextures())) {
           D3D9CommonTexture* texture = GetCommonTexture(d3d9State().textures[i]);
           auto hash = texture->GetImage()->getDescriptorHash();
           if (lookupHash(RtxOptions::raytracedRenderTargetTextures(), hash)) {
             // Mark this as a valid Raytraced Render Target draw call
-            m_activeDrawCallState.isUsingRaytracedRenderTarget = true;
+            // NV-DXVK start: Retain the resource that actually matched the camera category.
+            m_activeDrawCallState.setRaytracedRenderTarget(texture->GetImage());
+            break;
+            // NV-DXVK end
           }
         }
       }

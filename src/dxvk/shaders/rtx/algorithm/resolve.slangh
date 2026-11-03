@@ -433,6 +433,14 @@ float resolveVertex<T: IBasePayloadState>(
     // the texture coordinates of the surface we hit
     if (cb.enableRaytracedRenderTarget && opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_IS_RAYTRACED_RENDER_TARGET)
     {
+      // NV-DXVK start: Transparent camera surfaces contribute neither image nor light.
+      if (opaqueSurfaceMaterialInteraction.opacity <= 0.0f)
+      {
+        isRaytracedRenderTarget = false;
+        resolveVertexFinalContinue(ray, surfaceInteraction, teleport, teleportMatrix, resolveVertexState);
+        return 1.0f;
+      }
+      // NV-DXVK end
       isRaytracedRenderTarget = true;
 
       resolveVertexFinalHit(resolveVertexState);

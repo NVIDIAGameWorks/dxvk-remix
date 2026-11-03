@@ -756,6 +756,41 @@ struct DrawCallState {
   bool isDrawingToRaytracedRenderTarget = false;
   bool isUsingRaytracedRenderTarget = false;
 
+  void setRaytracedRenderTarget(const Rc<DxvkImage>& pImage) {
+    raytracedRenderTargetImage = pImage;
+    raytracedRenderTargetDescriptorHash = pImage != nullptr ? pImage->getDescriptorHash() : kEmptyHash;
+    isUsingRaytracedRenderTarget = pImage != nullptr;
+  }
+
+  XXH64_hash_t getCapturedMaterialHash(XXH64_hash_t legacyMaterialHash) const {
+    return isUsingRaytracedRenderTarget && raytracedRenderTargetDescriptorHash != kEmptyHash
+      ? raytracedRenderTargetDescriptorHash : legacyMaterialHash;
+  }
+
+  template<typename LookupMaterial>
+  std::shared_ptr<MaterialData> findMaterialReplacement(LookupMaterial&& lookupMaterial) const {
+    auto pMaterial = lookupMaterial(getMaterialData().getHash());
+    if (pMaterial == nullptr && isUsingRaytracedRenderTarget && raytracedRenderTargetDescriptorHash != kEmptyHash) {
+      pMaterial = lookupMaterial(raytracedRenderTargetDescriptorHash);
+    }
+    return pMaterial;
+  }
+
+  bool isCameraMaterialDirty(const std::unordered_set<XXH64_hash_t>& dirtyMaterialHashes) const {
+    return isUsingRaytracedRenderTarget && raytracedRenderTargetDescriptorHash != kEmptyHash &&
+      dirtyMaterialHashes.count(raytracedRenderTargetDescriptorHash) != 0;
+  }
+
+  bool isRaytracedRenderTargetTexture(const TextureRef& texture) const {
+    const auto* pImageView = texture.getImageView();
+    return isUsingRaytracedRenderTarget && raytracedRenderTargetImage != nullptr &&
+      pImageView != nullptr && pImageView->image() == raytracedRenderTargetImage;
+  }
+
+  // Retain the categorized resource independently of the primary albedo/opacity input.
+  Rc<DxvkImage> raytracedRenderTargetImage;
+  XXH64_hash_t raytracedRenderTargetDescriptorHash = kEmptyHash;
+
   // Set when the Sky category was assigned by skyAutoDetect heuristic
   // (as opposed to explicit methods like skyBoxTextures/skyBoxGeometries/skyMinZThreshold).
   // Used by tryHandleSky to optionally bypass cubemap rasterization for autoDetected sky,

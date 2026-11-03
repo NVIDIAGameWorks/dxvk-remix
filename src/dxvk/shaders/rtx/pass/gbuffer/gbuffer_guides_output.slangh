@@ -228,7 +228,9 @@ void guidesWriteFirstHit(
     }
 
     ReflectionPSRData1[pixelCoordinate] = packFloat4x16(vec4(min(emissiveRadiance, float16Max), blendInputValue));
-    ReflectionPSRData2[pixelCoordinate] = uint2(colorToR11G11B10(saturate(blendInputColor)), colorToR11G11B10(attenuation));
+    // NV-DXVK start: Preserve HDR attenuation while leaving material colors in UNORM.
+    ReflectionPSRData2[pixelCoordinate] = uint2(colorToR11G11B10(saturate(blendInputColor)), packAttenuation(attenuation));
+    // NV-DXVK end
   }
 }
 
@@ -253,7 +255,9 @@ void guidesBlendDecal(
 
   const float opacity = decalMaterialInteraction.opacity;
   const uint2 blendInputs = ReflectionPSRData2[pixelCoordinate];
-  const vec3 tint = guideTint(r11g11b10ToColor(blendInputs.y));
+  // NV-DXVK start: Decode HDR attenuation consistently with guide storage.
+  const vec3 tint = guideTint(unpackAttenuation(blendInputs.y));
+  // NV-DXVK end
   const vec3 shadingNormal = normalize(mix(
     PrimaryWorldShadingNormalDLSSRR[pixelCoordinate].xyz, decalMaterialInteraction.shadingNormal, opacity));
   vec3 baseReflectivity;

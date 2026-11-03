@@ -727,13 +727,17 @@ vec4 compositeResult(
   vec3 secondarySpecularAlbedo = vec3(0);
   if (geometryFlags.secondarySurfaceMask)
   {
-    secondaryAttenuation = r11g11b10ToColor(imageLoad(SecondaryAttenuation, ivec2(compactedCoordinate)));
+    // NV-DXVK start: Preserve emissive camera gain in composite.
+    secondaryAttenuation = unpackAttenuation(imageLoad(SecondaryAttenuation, ivec2(compactedCoordinate)));
+    // NV-DXVK end
     secondaryAlbedo = SecondaryAlbedo[compactedCoordinate].xyz;
     secondarySpecularAlbedo = SecondarySpecularAlbedo[compactedCoordinate].xyz;
   }
   if (pixelIsActive)
   {
-    primaryAttenuation = r11g11b10ToColor(PrimaryAttenuation[compactedCoordinate]);
+    // NV-DXVK start: Preserve emissive camera gain in composite.
+    primaryAttenuation = unpackAttenuation(PrimaryAttenuation[compactedCoordinate]);
+    // NV-DXVK end
     primaryAlbedo = PrimaryAlbedo[compactedCoordinate].xyz;
     primarySpecularAlbedo = PrimarySpecularAlbedo[compactedCoordinate].xyz;
     perceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[compactedCoordinate].w;
