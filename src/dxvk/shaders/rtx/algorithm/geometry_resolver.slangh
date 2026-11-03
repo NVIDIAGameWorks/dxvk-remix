@@ -2335,7 +2335,7 @@ void geometryResolverVertex(
 
 #if GBUFFER_FEATURE_INLINE_PSR_SAMPLING
   // A decal can decide whether PSR happens, so the first hit takes it before sampling, and the decal pass then skips the pixel.
-  if (samplePSR && geometryResolverState.decalCandidateSeen && geometryResolverResolvesDecalBeforePSR())
+  if (samplePSR && geometryResolverState.decalCandidateSeen && geometryResolverResolvesDecalBeforePSR(isRaytracedRenderTarget))
   {
     if (geometryResolverResolveDecalBeforePSR(
           geometryResolverState.pixelCoordinate, rayInteraction, surfaceInteraction,
@@ -3643,10 +3643,11 @@ void geometryResolverOutputDecalDebugViewAndPicking(
 
 // Returns whether the primary pass resolves first-hit decals before inline PSR sampling.
 // PSR prepare takes its first-hit decals in the deferred pass.
-bool geometryResolverResolvesDecalBeforePSR()
+// Raytraced render target receivers use their separate PSR payload path.
+bool geometryResolverResolvesDecalBeforePSR(bool isRaytracedRenderTarget)
 {
   return !push.usePSRPrepare &&
-         !cb.enableRaytracedRenderTarget &&
+         !isRaytracedRenderTarget &&
          cb.enableSeparateUnorderedApproximations &&
          cb.enableDecalMaterialBlending;
 }
