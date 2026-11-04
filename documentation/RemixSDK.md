@@ -83,9 +83,13 @@ initialiazation, resource registration (meshes, materials, lights), and submitti
     That way, the target app is compatible only with specific versions of Remix Renderer binaries (`d3d9.dll`). 
     
     * The Renderer binaries loosely follows the [Semantic Versioning](https://semver.org/), with the main difference on the development `0.y.z` versions:
-    `0.a.b` and `0.c.d` are not compatible if `a != c`.
+    an app built against `0.a.b` is compatible only with `0.a.d` binaries where `b <= d`.
 
     * If a target app is not compatible with a given Remix Renderer binaries, initialization will return `REMIXAPI_ERROR_CODE_INCOMPATIBLE_VERSION` error code.
+
+    * Initialization writes only the part of `remixapi_Interface` that the target app's version knows.
+
+    * The version in `remixapi_InitializeLibraryInfo` is process-global, so the most recent initialization wins.
 
     </details>
 
@@ -176,9 +180,15 @@ to turn on/off the fallback light programmatically.
 
 Remix API is designed to be extensible and backward compatible.
 
-To add new struct types, add a type and corresponding entry to `remixapi_StructType` enum. Then follow the instructions in `src/dxvk/rtx_render/rtx_remix_specialization.inl`. Add handling code to the `src/dxvk/rtx_render/rtx_remix_api.cpp` to tie the API with an internal implementation. If a change is not compatible with previous versions, increase `REMIXAPI_VERSION_MAJOR`; or other macros, according to versioning.
+To add new struct types, add a type and corresponding entry to `remixapi_StructType` enum. Then follow the instructions in `src/dxvk/rtx_render/rtx_remix_specialization.inl`. Add handling code to the `src/dxvk/rtx_render/rtx_remix_api.cpp` to tie the API with an internal implementation.
 
-If adding a function, append the entry to `remixapi_Interface`, but specififcally at the end of that struct, to preserve the compatibility with previous versions.
+Every change to `public/include/remix/remix_c.h` follows these rules:
+* Every change to an interface pointer, struct field, sType, enum value or flag bit bumps `REMIXAPI_VERSION_PATCH`.
+* Interface pointers and struct fields are only appended, at the end of `remixapi_Interface` or of their struct. A zero-initialized new field must leave behavior unchanged.
+* An appended interface pointer also adds a branch to `remixapi_version::clientInterfaceSize` in `src/util/util_remix_api_version.h`.
+* The change gets an entry in [RemixApiChangelog.md](RemixApiChangelog.md).
+
+A change that cannot follow these rules is not compatible with previous versions. It increases `REMIXAPI_VERSION_MAJOR`, or `REMIXAPI_VERSION_MINOR` while the major version is 0.
 
 
 

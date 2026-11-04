@@ -27,6 +27,7 @@
 #include "util_bridgecommand.h"
 #include "util_devicecommand.h"
 #include "util_remixapi.h"
+#include "../../../src/util/util_remix_api_version.h"
 
 using namespace remixapi::util;
 
@@ -42,16 +43,7 @@ bool isRemixApiVersionCompatible(uint64_t appVersion) {
     REMIXAPI_VERSION_MINOR,
     REMIXAPI_VERSION_PATCH);
 
-  const bool isDevelopment =
-    REMIXAPI_VERSION_GET_MAJOR(appVersion) == 0 &&
-    REMIXAPI_VERSION_GET_MAJOR(kCompiledVersion) == 0;
-
-  if (isDevelopment) {
-    return REMIXAPI_VERSION_GET_MINOR(appVersion) == REMIXAPI_VERSION_GET_MINOR(kCompiledVersion);
-  }
-
-  return REMIXAPI_VERSION_GET_MAJOR(appVersion) == REMIXAPI_VERSION_GET_MAJOR(kCompiledVersion) &&
-         REMIXAPI_VERSION_GET_MINOR(appVersion) <= REMIXAPI_VERSION_GET_MINOR(kCompiledVersion);
+  return remixapi_version::isClientVersionCompatible(appVersion, kCompiledVersion);
 }
 
 }
@@ -533,7 +525,8 @@ extern "C" {
       // interf.pick_HighlightObjects = remixapi_pick_HighlightObjects;
     }
 
-    *out_result = interf;
+    // Older apps allocate a shorter interface, so only the prefix they know is written.
+    std::memcpy(out_result, &interf, remixapi_version::clientInterfaceSize(info->version));
     remixapi::g_appRemixApiVersion = info->version;
     remixapi::g_bInterfaceInitialized = true;
 

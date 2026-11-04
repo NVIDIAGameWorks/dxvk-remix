@@ -145,6 +145,11 @@ exe = executable('test_texture_transform', files('test_texture_transform.cpp'),
 test('test_texture_transform', exe, env: test_env)
 tests += exe
 
+exe = executable('test_remix_api_version', files('test_remix_api_version.cpp'),
+  include_directories : [ test_include_path, remix_api_include_path ], dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ d3d9_dll, dxvk_lib ], win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_remix_api_version', exe, env: test_env)
+tests += exe
+
 if dxvk_is_x64 and get_option('remix_with_shim')
   exe = executable('test_remix_shim', files('test_remix_shim.cpp'), include_directories : test_include_path, dependencies : test_unit_deps, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
   test('test_remix_shim', exe, env: test_env, args: d3d9_shim_dll.full_path(), depends: [ d3d9_shim_dll, d3d9_impl_dll ])

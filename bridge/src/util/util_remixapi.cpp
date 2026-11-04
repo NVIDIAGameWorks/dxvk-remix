@@ -273,6 +273,8 @@ REMIX_API_HANDLE_FUNCS(remixapi_LightHandle)
 // MaterialInfo //
 //////////////////
 
+static_assert(sizeof(void*) != 8 || sizeof remixapi_MaterialInfo == 80, "recheck Bridge member list here");
+static_assert(sizeof(void*) != 4 || sizeof remixapi_MaterialInfo == 56, "recheck Bridge member list here");
 #define MaterialInfoVars sType, \
                          hash, \
                          albedoTexture, \
@@ -305,6 +307,8 @@ void MaterialInfo::_dtor() {
 }
 
 
+static_assert(sizeof(void*) != 8 || sizeof remixapi_MaterialInfoOpaqueEXT == 160, "recheck Bridge member list here");
+static_assert(sizeof(void*) != 4 || sizeof remixapi_MaterialInfoOpaqueEXT == 140, "recheck Bridge member list here");
 #define MaterialInfoOpaqueVars sType, \
                                roughnessTexture, \
                                metallicTexture, \
@@ -352,6 +356,8 @@ void MaterialInfoOpaque::_dtor() {
 }
 
 
+static_assert(sizeof(void*) != 8 || sizeof remixapi_MaterialInfoOpaqueSubsurfaceEXT == 104, "recheck Bridge member list here");
+static_assert(sizeof(void*) != 4 || sizeof remixapi_MaterialInfoOpaqueSubsurfaceEXT == 80, "recheck Bridge member list here");
 #define MaterialInfoOpaqueSubsurfaceVars sType, \
                                          subsurfaceTransmittanceTexture, \
                                          subsurfaceThicknessTexture, \
@@ -377,6 +383,8 @@ void MaterialInfoOpaqueSubsurface::_dtor() {
 }
 
 
+static_assert(sizeof(void*) != 8 || sizeof remixapi_MaterialInfoTranslucentEXT == 88, "recheck Bridge member list here");
+static_assert(sizeof(void*) != 4 || sizeof remixapi_MaterialInfoTranslucentEXT == 76, "recheck Bridge member list here");
 #define MaterialInfoTranslucentVars sType, \
                                     transmittanceTexture, \
                                     refractiveIndex, \
@@ -406,6 +414,8 @@ void MaterialInfoTranslucent::_dtor() {
 }
 
 
+static_assert(sizeof(void*) != 8 || sizeof remixapi_MaterialInfoPortalEXT == 24, "recheck Bridge member list here");
+static_assert(sizeof(void*) != 4 || sizeof remixapi_MaterialInfoPortalEXT == 16, "recheck Bridge member list here");
 #define MaterialInfoPortalVars sType, \
                                rayPortalIndex, \
                                rotationSpeed
@@ -425,6 +435,9 @@ void MaterialInfoPortal::_dtor() {
 //////////////
 // MeshInfo //
 //////////////
+
+static_assert(sizeof(void*) != 8 || sizeof remixapi_MeshInfo == 40, "recheck Bridge member list here");
+static_assert(sizeof(void*) != 4 || sizeof remixapi_MeshInfo == 24, "recheck Bridge member list here");
 
 uint32_t MeshInfo::_calcSize() const;
 template<>
