@@ -411,6 +411,11 @@ namespace dxvk {
       }
       assert(instanceId != UINT64_MAX);
 
+      // Remix API draws are mod content with per-session geometry hashes and no legacy game material, so they are not captured.
+      if (pRtInstance->getBlas()->input.isExternalDraw) {
+        continue;
+      }
+
       if (pRtInstance->getBlas()->input.cameraType == CameraType::Sky) {
         if (!m_pCap->bSkyProbeBaked) {
           const std::string skyProbeFilename = getBakedSkyProbeName(m_pCap->instance.stageName);

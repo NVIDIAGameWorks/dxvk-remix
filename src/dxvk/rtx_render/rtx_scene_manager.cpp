@@ -2566,6 +2566,7 @@ namespace dxvk {
     Rc<DxvkSampler> externalSampler = getOrCreateExternalSampler();
 
     auto& state = *pstate;
+    state.drawCall.isExternalDraw = true;
 
     {
       state.drawCall.modifyMaterialData().samplers[0] = externalSampler;

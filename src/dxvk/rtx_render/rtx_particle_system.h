@@ -90,6 +90,7 @@ namespace dxvk {
       const MaterialData materialData;
       const LegacyMaterialData legacyMaterialData;
       const CategoryFlags categories;
+      const bool isExternalDraw;
 
       uint64_t lastSpawnTimeMs;
 
@@ -113,7 +114,7 @@ namespace dxvk {
       uint32_t generationIdx = 0;
 
       ParticleSystem() = delete;
-      ParticleSystem(const RtxParticleSystemDesc& desc, const MaterialData& matData, const LegacyMaterialData& legacyMatData, const CategoryFlags& cats, const uint32_t seed);
+      ParticleSystem(const RtxParticleSystemDesc& desc, const MaterialData& matData, const LegacyMaterialData& legacyMatData, const CategoryFlags& cats, const bool isExternal, const uint32_t seed);
 
       XXH64_hash_t getHash() const {
         return m_cachedHash;
