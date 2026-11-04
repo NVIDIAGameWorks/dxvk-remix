@@ -753,6 +753,9 @@ struct DrawCallState {
 
   uint32_t drawCallID = 0;
 
+  // Set for draws submitted through the Remix API rather than by the game.
+  bool isExternalDraw = false;
+
   bool isDrawingToRaytracedRenderTarget = false;
   bool isUsingRaytracedRenderTarget = false;
 

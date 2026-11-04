@@ -452,7 +452,9 @@ namespace dxvk {
       disableMaterialSpriteSheet = true;
     }
 
-    const XXH64_hash_t particleSystemHash = drawCallState.getMaterialData().getHash() ^ desc.calcHash();
+    // Game and Remix API emitters get separate systems because the particle draw inherits the emitter's isExternalDraw.
+    const XXH64_hash_t particleSystemHash = XXH3_64bits_withSeed(&drawCallState.isExternalDraw, sizeof(drawCallState.isExternalDraw),
+                                                                 drawCallState.getMaterialData().getHash() ^ desc.calcHash());
 
     auto materialSystemIt = m_particleSystems.find(particleSystemHash);
     if (materialSystemIt == m_particleSystems.end()) {
@@ -468,7 +470,7 @@ namespace dxvk {
         particleRenderMaterial.resetTextureTransform();
       }
 
-      auto pNewParticleSystem = std::make_shared<ParticleSystem>(desc, particleRenderMaterial, drawCallState.getMaterialData(), drawCallState.getCategoryFlags(), m_particleSystemCounter++);
+      auto pNewParticleSystem = std::make_shared<ParticleSystem>(desc, particleRenderMaterial, drawCallState.getMaterialData(), drawCallState.getCategoryFlags(), drawCallState.isExternalDraw, m_particleSystemCounter++);
 
       pNewParticleSystem->allocStaticBuffers(ctx);
       auto insertResult = m_particleSystems.insert({ particleSystemHash, pNewParticleSystem });
@@ -898,6 +900,7 @@ namespace dxvk {
       newDrawCallState.modifyTransformData().viewToProjection = camera.getViewToProjection();
       newDrawCallState.modifyTransformData().worldToView = camera.getWorldToView();
       newDrawCallState.modifyMaterialData() = particleSystem.legacyMaterialData;
+      newDrawCallState.isExternalDraw = particleSystem.isExternalDraw;
 
       // We want to always have particles support vertex colour for now.
       newDrawCallState.modifyMaterialData().textureColorArg1Source = RtTextureArgSource::Texture;
@@ -912,16 +915,18 @@ namespace dxvk {
     }
   }
 
-  RtxParticleSystemManager::ParticleSystem::ParticleSystem(const RtxParticleSystemDesc& desc, const MaterialData& matData, const LegacyMaterialData& legacyMatData, const CategoryFlags& cats, const uint32_t seed) : context(desc)
+  RtxParticleSystemManager::ParticleSystem::ParticleSystem(const RtxParticleSystemDesc& desc, const MaterialData& matData, const LegacyMaterialData& legacyMatData, const CategoryFlags& cats, const bool isExternal, const uint32_t seed) : context(desc)
     , materialData(matData)
     , legacyMaterialData(legacyMatData)
     , categories(cats)
+    , isExternalDraw(isExternal)
     , lastSpawnTimeMs(GlobalTime::get().absoluteTimeMs()) {
     // Seed the RNG with a parameter from the manager, so we get unique random values for each particle system
     generator = std::default_random_engine(seed);
     // Store this hash since it cannot change now.
     // NOTE: This material data hash is stable within a run, but since hash depends on VK handles, it is not reliable across runs.
-    m_cachedHash = materialData.getHash() ^ desc.calcHash();
+    // Seeded like the m_particleSystems key, so Remix API systems stay findable by this hash and game and API systems get distinct particle geometry hashes.
+    m_cachedHash = XXH3_64bits_withSeed(&isExternalDraw, sizeof(isExternalDraw), materialData.getHash() ^ desc.calcHash());
     context.numVerticesPerParticle = getVerticesPerParticle();
 
     // Copy CPU-only animation data from RtxParticleSystemDesc
