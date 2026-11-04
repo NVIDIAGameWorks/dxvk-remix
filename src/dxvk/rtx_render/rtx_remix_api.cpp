@@ -41,6 +41,7 @@
 #include "../dxvk_image.h"
 
 #include "../../util/util_math.h"
+#include "../../util/util_remix_api_version.h"
 #include "../../util/util_vector.h"
 #include "../../util/util_string.h"
 #include "../../util/util_sentry.h"
@@ -49,6 +50,7 @@
 
 #include <windows.h>
 
+#include <cstring>
 #include <optional>
 
 namespace dxvk {
@@ -1018,8 +1020,11 @@ namespace {
     dst.color0Buffer = dxvk::RasterBuffer { vertexSlice, offsetof(remixapi_HardcodedVertex, color), sizeof(remixapi_HardcodedVertex), VK_FORMAT_B8G8R8A8_UNORM };
     if (src.skinning_hasvalue) {
       dst.numBonesPerVertex = src.skinning_value.bonesPerVertex;
-      dst.blendWeightBuffer = dxvk::RasterBuffer { blendWeightsSlice, 0, sizeof(float), VK_FORMAT_R32_SFLOAT };
-      dst.blendIndicesBuffer = dxvk::RasterBuffer { blendIndicesSlice, 0, sizeof(uint32_t), VK_FORMAT_R8G8B8A8_USCALED };
+      // Skinning advances by the stride per vertex, so it spans the whole tuple of each vertex.
+      const uint32_t weightStride = src.skinning_value.bonesPerVertex * sizeof(float);
+      const uint32_t indexStride = dxvk::divCeil(src.skinning_value.bonesPerVertex, 4u) * sizeof(uint32_t);
+      dst.blendWeightBuffer = dxvk::RasterBuffer { blendWeightsSlice, 0, weightStride, VK_FORMAT_R32_SFLOAT };
+      dst.blendIndicesBuffer = dxvk::RasterBuffer { blendIndicesSlice, 0, indexStride, VK_FORMAT_R8G8B8A8_USCALED };
     }
 
     dst.indexCount = src.indices_count;
@@ -1801,24 +1806,7 @@ namespace {
   bool isVersionCompatible(uint64_t userVersion) {
     constexpr uint64_t compiledVersion = REMIXAPI_VERSION_MAKE(REMIXAPI_VERSION_MAJOR, REMIXAPI_VERSION_MINOR, REMIXAPI_VERSION_PATCH);
 
-    bool isDevelopment = 
-      REMIXAPI_VERSION_GET_MAJOR(userVersion) == 0 &&
-      REMIXAPI_VERSION_GET_MAJOR(compiledVersion) == 0;
-
-    if (isDevelopment) {
-      // each minor change is breaking
-      return REMIXAPI_VERSION_GET_MINOR(userVersion) == REMIXAPI_VERSION_GET_MINOR(compiledVersion);
-    }
-
-    if (REMIXAPI_VERSION_GET_MAJOR(userVersion) == REMIXAPI_VERSION_GET_MAJOR(compiledVersion)) {
-      // user version must be before the currently compiled version:
-      // features that are requested by a user must be available in the current binary
-      if (REMIXAPI_VERSION_GET_MINOR(userVersion) <= REMIXAPI_VERSION_GET_MINOR(compiledVersion)) {
-        return true;
-      }
-    }
-
-    return false;
+    return remixapi_version::isClientVersionCompatible(userVersion, compiledVersion);
   }
 }
 
@@ -1859,6 +1847,7 @@ extern "C"
     if (!isVersionCompatible(info->version)) {
       return REMIXAPI_ERROR_CODE_INCOMPATIBLE_VERSION;
     }
+    // The version is process-global, so the most recent initialize wins.
     s_apiVersion = info->version;
 
     auto interf = remixapi_Interface {};
@@ -1888,7 +1877,8 @@ extern "C"
     }
     static_assert(sizeof(interf) == 176, "Add/remove function registration");
 
-    *out_result = interf;
+    // Older clients allocate a shorter interface, so only the prefix they know is written.
+    std::memcpy(out_result, &interf, remixapi_version::clientInterfaceSize(info->version));
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
 

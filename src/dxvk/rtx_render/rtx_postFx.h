@@ -37,6 +37,11 @@ namespace dxvk {
 
   class DxvkPostFx {
   public:
+    enum class InversionMode : uint32_t {
+      Invert = 0,
+      ThresholdInvert,
+    };
+
     DxvkPostFx(DxvkDevice* device);
     ~DxvkPostFx();
 
@@ -75,9 +80,25 @@ namespace dxvk {
     inline bool isChromaticAberrationEnabled() const { return enable() && enableChromaticAberration() && chromaticAberrationAmount() > 0.0f; }
     inline bool isVignetteEnabled() const { return enable() && enableVignette() && vignetteIntensity() > 0.0f; }
 
-    RTX_OPTION_ARGS("rtx.postfx", bool, enable, true, "Enables post-processing effects.",
+    RTX_OPTION_ARGS("rtx.postfx", bool, enable, true, "Enables motion blur, chromatic aberration, and vignette. Color inversion is controlled independently.",
                     args.environment = "RTX_POST_FX_ENABLE",
                     args.flags = RtxOptionFlags::UserSetting);
+    RTX_OPTION_ARGS("rtx.postfx", float, inversionAmount, 0.0f,
+                    "Blends the final post-tonemap image with its display-value negative. "
+                    "0 disables inversion, 0.5 produces uniform gray, and 1 produces a full negative. "
+                    "Clamped to [0, 1]. Independent of the motion/lens effects master and graphics quality presets. "
+                    "Runtime-only: values set from the UI or the Remix API are not saved to config files.",
+                    args.minValue = 0.0f, args.maxValue = 1.0f,
+                    args.flags = RtxOptionFlags::NoSave);
+    RTX_OPTION_ARGS("rtx.postfx", InversionMode, inversionMode, InversionMode::Invert,
+                    "Selects the color that rtx.postfx.inversionAmount blends toward.\n"
+                    "Supported enum values are 0 = Invert (display-value negative), "
+                    "1 = ThresholdInvert (negative where the average display value is below rtx.postfx.inversionThreshold, black elsewhere).\n"
+                    "Runtime-only: values set from the UI or the Remix API are not saved to config files.",
+                    args.flags = RtxOptionFlags::NoSave);
+    RTX_OPTION_ARGS("rtx.postfx", float, inversionThreshold, 0.3f,
+                    "Average display value at or above which the ThresholdInvert inversion mode outputs black instead of the negative.",
+                    args.minValue = 0.0f, args.maxValue = 1.0f);
     RTX_OPTION_ARGS("rtx.postfx", bool, enableMotionBlur, true, "Enables motion blur post-processing effect.",
                     args.environment = "RTX_POST_FX_MOTION_BLUR_ENABLE",
                     args.flags = RtxOptionFlags::UserSetting);

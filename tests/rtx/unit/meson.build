@@ -145,10 +145,38 @@ exe = executable('test_texture_transform', files('test_texture_transform.cpp'),
 test('test_texture_transform', exe, env: test_env)
 tests += exe
 
+exe = executable('test_remix_api_version', files('test_remix_api_version.cpp'),
+  include_directories : [ test_include_path, remix_api_include_path ], dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ d3d9_dll, dxvk_lib ], win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_remix_api_version', exe, env: test_env)
+tests += exe
+
 if dxvk_is_x64 and get_option('remix_with_shim')
   exe = executable('test_remix_shim', files('test_remix_shim.cpp'), include_directories : test_include_path, dependencies : test_unit_deps, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
   test('test_remix_shim', exe, env: test_env, args: d3d9_shim_dll.full_path(), depends: [ d3d9_shim_dll, d3d9_impl_dll ])
   tests += exe
 endif
+
+# NV-DXVK start: Raytraced camera material packing coverage.
+exe = executable('test_attenuation', files('test_attenuation.cpp'),
+  include_directories : test_include_path, dependencies : test_unit_deps, win_subsystem : 'console', override_options : ['cpp_std='+dxvk_cpp_std])
+test('test_attenuation', exe, env: test_env)
+
+tests += exe
+
+exe = executable('test_camera_material', files('test_camera_material.cpp'),
+  include_directories : test_include_path, dependencies : [ d3d9_dep, test_unit_deps ], link_with : [ d3d9_dll, dxvk_lib ], win_subsystem : 'console', override_options : ['cpp_std='+dxvk_cpp_std])
+test('test_camera_material', exe, env: test_env)
+tests += exe
+# NV-DXVK end
+
+# NV-DXVK start: Optional Vulkan execution of camera transport shader helpers.
+if get_option('camera_gpu_tests')
+  test('camera_resource_identity_gpu', exe, args : ['--gpu-resource-identity'],
+    env : test_env, suite : 'gpu', timeout : 120)
+  test('camera_transport_gpu', python_interpreter,
+    args : files('test_camera_transport_gpu.py'),
+    suite : 'gpu', timeout : 120)
+endif
+# NV-DXVK end
 
 alias_target('unit_tests', tests)

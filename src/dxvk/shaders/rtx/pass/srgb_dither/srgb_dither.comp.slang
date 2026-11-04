@@ -43,7 +43,32 @@ void main(uint2 threadId : SV_DispatchThreadID)
   }
 
   const float3 inputColor = imageLoad(InOutColorBuffer, threadId).xyz;
-  const float3 gammaColor = (cb.performSRGBConversion > 0) ? linearToGamma(inputColor) : inputColor;
+  float3 gammaColor = 0;
+  if (cb.inversionAmount > 0.0f)
+  {
+    // Keep the legacy negative in display values, including for linear captures.
+    // Note for future HDR addition: linear should be normalized to 1.0 being paperwhite and then the inversion proceeds as already done here, in SDR
+    // The final linear color should be mix( inputColor, invertedColor, cb.inversionAmount ); so you get HDR values in the transition values
+    // At the end, multiply your linearColor by the number of nits for paperwhite before converting from linearNits to displayReferred space
+    const float3 displayColor = linearToGamma(saturate(inputColor));
+    float3 modeColor = 1.0f - displayColor;
+    if (cb.inversionMode == inversionModeThresholdInvert)
+    {
+      // Pixels whose average display value reaches the threshold become black.
+      const float averageDisplayValue = (displayColor.r + displayColor.g + displayColor.b) / 3.0f;
+      if (averageDisplayValue >= cb.inversionThreshold)
+      {
+        modeColor = float3(0.0f);
+      }
+    }
+
+    const float3 invertedColor = mix(displayColor, modeColor, cb.inversionAmount);
+    gammaColor = cb.performSRGBConversion ? invertedColor : gammaToLinear(invertedColor);
+  }
+  else
+  {
+    gammaColor = (cb.performSRGBConversion > 0) ? linearToGamma(inputColor) : inputColor;
+  }
 
   // Apply dithering as the last step before output to break up banding artifacts.
   // Dithering is performed in gamma space (when SRGB conversion is enabled) so the

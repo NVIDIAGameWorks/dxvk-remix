@@ -341,9 +341,22 @@ namespace dxvk {
         pInstance->clear();
         continue;
       }
-      if (!changes.dirtyMatHashes.empty() &&
-          changes.dirtyMatHashes.count(pInstance->materialHash) != 0) {
-        pInstance->clear();
+      if (!changes.dirtyMatHashes.empty()) {
+        bool materialChanged = changes.dirtyMatHashes.count(pInstance->materialHash) != 0;
+        for (const auto& prim : pInstance->prims) {
+          if (materialChanged) {
+            break;
+          }
+          const auto* pRtInstance = prim.getInstance();
+          if (pRtInstance == nullptr || pRtInstance->getBlas() == nullptr) {
+            continue;
+          }
+          const auto& drawCall = pRtInstance->getBlas()->input;
+          materialChanged = drawCall.isCameraMaterialDirty(changes.dirtyMatHashes);
+        }
+        if (materialChanged) {
+          pInstance->clear();
+        }
       }
     }
   }
@@ -866,8 +879,8 @@ namespace dxvk {
     } 
 
     // test if any direct material replacements exist
-    const XXH64_hash_t legacyMaterialHash = input.getMaterialData().getHash();
-    std::shared_ptr<MaterialData> pReplacementMaterial = m_pReplacer->getReplacementMaterial(legacyMaterialHash);
+    const auto pReplacementMaterial = input.findMaterialReplacement(
+      [this](XXH64_hash_t hash) { return m_pReplacer->getReplacementMaterial(hash); });
     if (pReplacementMaterial != nullptr) {
       // Make a copy - dont modify the replacement data.
       MaterialData renderMaterialData = *pReplacementMaterial;
@@ -1681,6 +1694,9 @@ namespace dxvk {
     preCreationHash = XXH64(&samplerIndex2, sizeof(samplerIndex2), preCreationHash);
     preCreationHash = XXH64(&hasTexcoords, sizeof(hasTexcoords), preCreationHash);
     preCreationHash = XXH64(&drawCallState.isUsingRaytracedRenderTarget, sizeof(drawCallState.isUsingRaytracedRenderTarget), preCreationHash);
+    const bool albedoOpacityIsRenderTarget = renderMaterialDataType == MaterialDataType::Opaque &&
+      drawCallState.isRaytracedRenderTargetTexture(renderMaterialData.getOpaqueMaterialData().getAlbedoOpacityTexture());
+    preCreationHash = XXH64(&albedoOpacityIsRenderTarget, sizeof(albedoOpacityIsRenderTarget), preCreationHash);
     const bool isHairCard = drawCallState.testCategoryFlags(InstanceCategories::HairCards);
     preCreationHash = XXH64(&isHairCard, sizeof(isHairCard), preCreationHash);
 
@@ -1864,7 +1880,7 @@ namespace dxvk {
         opaqueMaterialData.getDLSSControlMaskStructuralStrength(),
         subsurfaceMaterialIndex, isUsingRaytracedRenderTarget, isHairCard,
         samplerFeedbackStamp,
-        secondaryTextureIndex
+        secondaryTextureIndex, albedoOpacityIsRenderTarget
       };
 
       surfaceMaterial.emplace(opaqueSurfaceMaterial);
@@ -2550,6 +2566,7 @@ namespace dxvk {
     Rc<DxvkSampler> externalSampler = getOrCreateExternalSampler();
 
     auto& state = *pstate;
+    state.drawCall.isExternalDraw = true;
 
     {
       state.drawCall.modifyMaterialData().samplers[0] = externalSampler;

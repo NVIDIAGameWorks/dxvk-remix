@@ -411,6 +411,11 @@ namespace dxvk {
       }
       assert(instanceId != UINT64_MAX);
 
+      // Remix API draws are mod content with per-session geometry hashes and no legacy game material, so they are not captured.
+      if (pRtInstance->getBlas()->input.isExternalDraw) {
+        continue;
+      }
+
       if (pRtInstance->getBlas()->input.cameraType == CameraType::Sky) {
         if (!m_pCap->bSkyProbeBaked) {
           const std::string skyProbeFilename = getBakedSkyProbeName(m_pCap->instance.stageName);
@@ -465,15 +470,16 @@ namespace dxvk {
   void GameCapturer::newInstance(const Rc<DxvkContext> ctx, const RtInstance& rtInstance) {
     const BlasEntry* pBlas = rtInstance.getBlas();
     assert(pBlas != nullptr);
-    const XXH64_hash_t matHash = rtInstance.getMaterialDataHash();
+    const XXH64_hash_t legacyMatHash = rtInstance.getMaterialDataHash();
     const XXH64_hash_t meshHash = pBlas->input.getHash(RtxOptions::geometryAssetHashRule());
     assert(meshHash != 0);
 
-    const LegacyMaterialData& material = pBlas->getMaterialData(matHash);
+    const LegacyMaterialData& material = pBlas->getMaterialData(legacyMatHash);
+    const XXH64_hash_t matHash = pBlas->input.getCapturedMaterialHash(legacyMatHash);
 
     const bool bIsNewMat = (matHash != 0x0) && (m_pCap->materials.count(matHash) == 0);
     if (bIsNewMat) {
-      captureMaterial(ctx, material, !rtInstance.surface.alphaState.isFullyOpaque);
+      captureMaterial(ctx, material, matHash, !rtInstance.surface.alphaState.isFullyOpaque);
     }
 
     bool bIsNewMesh = false;
@@ -502,11 +508,12 @@ namespace dxvk {
     Logger::debug("[GameCapturer][" + m_pCap->idStr + "][Inst:" + hashToString(instanceId) + "] New");
   }
 
-  void GameCapturer::captureMaterial(const Rc<DxvkContext> ctx, const LegacyMaterialData& materialData, const bool bEnableOpacity) {
+  void GameCapturer::captureMaterial(const Rc<DxvkContext> ctx, const LegacyMaterialData& materialData,
+                                   const XXH64_hash_t materialHash, const bool bEnableOpacity) {
     lss::Material lssMat; // to be populated
 
     // Resolve material name
-    const std::string matName = dxvk::hashToString(materialData.getHash());
+    const std::string matName = dxvk::hashToString(materialHash);
     lssMat.matName = matName;
     // Export Textures
     const std::string albedoTexFilename(matName + lss::ext::dds);
@@ -525,7 +532,7 @@ namespace dxvk {
     lssMat.sampler.borderColor = samplerCreateInfo.borderColor;
 
     // Set populated LSS Material in our cache
-    m_pCap->materials[materialData.getHash()].lssData = lssMat;
+    m_pCap->materials[materialHash].lssData = lssMat;
     Logger::debug("[GameCapturer][" + m_pCap->idStr + "][Mat:" + matName + "] New");
   }
 

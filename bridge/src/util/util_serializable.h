@@ -45,8 +45,10 @@ public:
     , BaseT(serializeMe)
     , m_kSize(initSize()) {}
   // Deserializing ctor
+  // Value-initializes BaseT, so fields that the client does not forward arrive as zero.
   Serializable(void* pDeserializeMe)
     : kType(Deserialize)
+    , BaseT()
     , m_pDeserializeMe(pDeserializeMe)
     , m_kSize(initSize(pDeserializeMe)) {}
 

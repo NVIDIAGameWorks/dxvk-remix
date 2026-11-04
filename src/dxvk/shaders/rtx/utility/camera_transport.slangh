@@ -1,0 +1,32 @@
+// Copyright (c) 2026, NVIDIA CORPORATION. All rights reserved.
+// SPDX-License-Identifier: MIT
+#pragma once
+
+#include "rtx/concept/surface_material/surface_material.h"
+
+// NV-DXVK start: Bounded camera transport and specular visibility tracking.
+f16vec3 accumulateCameraAttenuation(f16vec3 attenuation, float gain)
+{
+  // Clamp before narrowing to FP16. RGB9E5 stores finite values up to 65408.
+  return f16vec3(min(vec3(attenuation) * gain, vec3(65408.0f)));
+}
+
+bool cameraVisibilityAfterSample(bool wasSpecularVisibility, uint materialType, uint sampledLobe)
+{
+  const bool isDiffuse = materialType == surfaceMaterialTypeOpaque &&
+    (sampledLobe == opaqueLobeTypeDiffuseReflection || sampledLobe == opaqueLobeTypeDiffuseTransmission);
+  return wasSpecularVisibility && !isDiffuse;
+}
+
+// Carry first-bounce visibility separately from the denoiser's lobe classification.
+// The sign of the nonnegative cone radius is unused in the direct-to-indirect handoff.
+float packCameraVisibilityConeRadius(float radius, bool isSpecularVisibility)
+{
+  return uintBitsToFloat((floatBitsToUint(radius) & 0x7fffffffu) | (isSpecularVisibility ? 0x80000000u : 0u));
+}
+
+bool unpackCameraVisibility(float packedRadius)
+{
+  return (floatBitsToUint(packedRadius) & 0x80000000u) != 0;
+}
+// NV-DXVK end

@@ -194,6 +194,22 @@ vec3 r11g11b10ToColor(uint32_t packedColor)
   );
 }
 
+// NV-DXVK start: Preserve HDR camera gains in attenuation payloads and buffers.
+// Attenuation can exceed one for emissive camera images. Use RGB9E5 rather than UNORM.
+uint32_t packAttenuation(vec3 attenuation)
+{
+  return packSharedExponent(attenuation.r, attenuation.g, attenuation.b);
+}
+
+vec3 unpackAttenuation(uint32_t packedAttenuation)
+{
+  return vec3(
+    unpackSharedExponentComponent(packedAttenuation, 0),
+    unpackSharedExponentComponent(packedAttenuation, 9),
+    unpackSharedExponentComponent(packedAttenuation, 18));
+}
+// NV-DXVK end
+
 // Special Integer/Float Conversion Helpers
 
 // Converts the lower 23 bits of an integer to a floating point value in the range [0, 1).

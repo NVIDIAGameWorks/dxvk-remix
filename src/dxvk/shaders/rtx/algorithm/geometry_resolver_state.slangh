@@ -460,7 +460,9 @@ GbufferPSRData packPSRData(Ray sampledRay, uint mediumMaterialIndex, f16vec3 att
     (mediumMaterialIndex & SURFACE_INDEX_MAX_VALUE) |
     (portalSpaceBits << SURFACE_INDEX_BIT_COUNT) |
     (objectMaskDynBits << (SURFACE_INDEX_BIT_COUNT + 2));
-  psrData.attenuation = colorToR11G11B10(attenuation);
+  // NV-DXVK start: Preserve emissive camera gain in PSR storage.
+  psrData.attenuation = packAttenuation(attenuation);
+  // NV-DXVK end
   psrData.encodedAccumulatedRotation = packFloat4x16(accumulatedRotation);
   return psrData;
 }
@@ -470,7 +472,9 @@ void unpackPSRData(GbufferPSRData psrData, inout GeometryPSRResolverState geomet
 {
   geometryPSRResolverState.origin = uintBitsToFloat(psrData.origin);
   geometryPSRResolverState.direction = snorm2x16ToSphereDirection(psrData.encodedDirection);
-  geometryPSRResolverState.attenuation = r11g11b10ToColor(psrData.attenuation);
+  // NV-DXVK start: Decode HDR attenuation consistently with PSR storage.
+  geometryPSRResolverState.attenuation = unpackAttenuation(psrData.attenuation);
+  // NV-DXVK end
   geometryPSRResolverState.accumulatedRotation = unpackFloat4x16(psrData.encodedAccumulatedRotation);
   geometryPSRResolverState.mediumMaterialIndex = psrData.mediumMaterialIndexAndGeometryFlags & SURFACE_INDEX_MAX_VALUE;
   geometryPSRResolverState.insideMedium = geometryPSRResolverState.mediumMaterialIndex != SURFACE_INDEX_INVALID;

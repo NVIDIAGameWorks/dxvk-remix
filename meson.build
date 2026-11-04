@@ -855,6 +855,7 @@ if dxvk_is_ninja or dxvk_is_woa_ec
   endif
 endif # dxvk_is_ninja
 
-if fs.is_dir('nv-private')
+# Installing hdremix outputs creates nv-private, so public checkouts can have the directory without meson.build.
+if fs.is_file('nv-private/meson.build')
   subdir('nv-private')
 endif

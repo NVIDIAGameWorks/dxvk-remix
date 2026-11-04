@@ -800,8 +800,9 @@ extern "C" {
     uint64_t            version;
   } remixapi_InitializeLibraryInfo;
 
-  // NOTE: If adding a new function, append at the end of the struct.
-  //       Reordering breaks backwards compatibility.
+  // NOTE: If adding a new function, append at the end of the struct and bump REMIXAPI_VERSION_PATCH.
+  //       Never insert, reorder, remove or reuse a slot: a client only knows the prefix of the struct
+  //       that existed at its own version, and the runtime writes only that prefix.
   typedef struct remixapi_Interface {
     PFN_remixapi_Shutdown           Shutdown;
     PFN_remixapi_CreateMaterial     CreateMaterial;

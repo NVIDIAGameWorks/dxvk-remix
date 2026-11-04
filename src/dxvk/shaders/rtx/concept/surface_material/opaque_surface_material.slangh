@@ -47,6 +47,14 @@ OpaqueSurfaceMaterial opaqueSurfaceMaterialCreate(MemoryPolymorphicSurfaceMateri
   }
 }
 
+// NV-DXVK start: Raytraced camera material emission.
+float opaqueSurfaceMaterialRenderTargetGain(OpaqueSurfaceMaterial material)
+{
+  return (material.flags & OPAQUE_SURFACE_MATERIAL_FLAG_ENABLE_RENDER_TARGET_EMISSION)
+    ? float(material.emissiveIntensity) : 1.0f;
+}
+// NV-DXVK end
+
 // Subsurface Material Functions
 SubsurfaceMaterial subsurfaceMaterialCreate(MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial)
 {
