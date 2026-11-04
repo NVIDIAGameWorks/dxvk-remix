@@ -4,7 +4,9 @@ subdir('unit')
 if target_machine.cpu() != 'armv8'
 
 dxvkrt_test_root = meson.global_source_root().replace('\\', '/') + '/tests/rtx/dxvk_rt_testing/'
-if fs.is_dir('dxvk_rt_testing')
+
+# Installing apics outputs creates dxvk_rt_testing, so public checkouts can have the directory without meson.build.
+if fs.is_file('dxvk_rt_testing/meson.build')
   subdir('dxvk_rt_testing')
 endif
 
