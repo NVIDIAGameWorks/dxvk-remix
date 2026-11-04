@@ -1018,8 +1018,11 @@ namespace {
     dst.color0Buffer = dxvk::RasterBuffer { vertexSlice, offsetof(remixapi_HardcodedVertex, color), sizeof(remixapi_HardcodedVertex), VK_FORMAT_B8G8R8A8_UNORM };
     if (src.skinning_hasvalue) {
       dst.numBonesPerVertex = src.skinning_value.bonesPerVertex;
-      dst.blendWeightBuffer = dxvk::RasterBuffer { blendWeightsSlice, 0, sizeof(float), VK_FORMAT_R32_SFLOAT };
-      dst.blendIndicesBuffer = dxvk::RasterBuffer { blendIndicesSlice, 0, sizeof(uint32_t), VK_FORMAT_R8G8B8A8_USCALED };
+      // Skinning advances by the stride per vertex, so it spans the whole tuple of each vertex.
+      const uint32_t weightStride = src.skinning_value.bonesPerVertex * sizeof(float);
+      const uint32_t indexStride = dxvk::divCeil(src.skinning_value.bonesPerVertex, 4u) * sizeof(uint32_t);
+      dst.blendWeightBuffer = dxvk::RasterBuffer { blendWeightsSlice, 0, weightStride, VK_FORMAT_R32_SFLOAT };
+      dst.blendIndicesBuffer = dxvk::RasterBuffer { blendIndicesSlice, 0, indexStride, VK_FORMAT_R8G8B8A8_USCALED };
     }
 
     dst.indexCount = src.indices_count;
