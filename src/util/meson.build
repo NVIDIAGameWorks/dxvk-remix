@@ -62,6 +62,7 @@ util_src = files([
   'util_renderprocessor.h',
   
   'util_version.h',
+  'util_remix_api_version.h',
 
   'util_global_time.cpp',
   'util_global_time.h',

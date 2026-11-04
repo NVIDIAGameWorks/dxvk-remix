@@ -99,6 +99,10 @@ See [the full rule](documentation/CONTRIBUTING-style-guide.md#changes-to-upstrea
 - Always use REMIXAPI_CALL macro for calling convention for exported function.
 - Always add new export function shims to d3d9_rtx_shim.cpp for correct shimming on WoA.
 
+### Changing the Remix API
+
+- Follow the rules in the Extensibility section of `documentation/RemixSDK.md` for every change to `public/include/remix/remix_c.h`: bump `REMIXAPI_VERSION_PATCH`, only append interface pointers and struct fields, ensure a zero-initialized new field leaves behavior unchanged, and add a changelog entry.
+
 ## RTX Options
 
 - Add new options in the relevant feature class, not in `rtx_options.h`.
