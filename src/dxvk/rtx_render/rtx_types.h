@@ -925,6 +925,8 @@ struct PooledBlas : public RcObject {
   // Hash of a bound opacity micromap
   // Note: only used for tracking of OMMs for static BLASes
   XXH64_hash_t opacityMicromapSourceHash = kEmptyHash;
+  // Attachment presence from the actual last build, including dynamic BLASes returned to the pool.
+  bool hasOmmAttachments = false;
 
   // Keep a copy of the build info so we can validate BLAS update compatibility
   VkAccelerationStructureBuildGeometryInfoKHR buildInfo = {};
