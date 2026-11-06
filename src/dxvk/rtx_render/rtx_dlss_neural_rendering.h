@@ -57,7 +57,7 @@ namespace dxvk {
       Model2 = 2,
     };
 
-    RTX_OPTION("rtx.dlssNeuralRendering", bool, enable, false, "Enable DLSS 3D-Guided Neural Rendering.\n");
+    RTX_OPTION_ENV("rtx.dlssNeuralRendering", bool, enable, false, "RTX_DLSS_NR_ENABLE", "Enable DLSS 3D-Guided Neural Rendering.\n");
 
     RTX_OPTION_ARGS("rtx.dlssNeuralRendering", float, intensity, 1.0f,
                     "Controls the overall DLSS 3D-Guided Neural Rendering effect. Lower values reduce the effect; higher values increase it.",
@@ -68,7 +68,7 @@ namespace dxvk {
     RTX_OPTION_ARGS("rtx.dlssNeuralRendering", float, toneStrength, 0.3f,
                     "Controls DLSS 3D-Guided Neural Rendering adjustments to lightness, darkness, and color. Lower values preserve the original tone and color; higher values apply stronger adjustments.",
                     args.minValue = 0.0f, args.maxValue = 1.0f);
-    RTX_OPTION("rtx.dlssNeuralRendering", Model, model, Model::Model0,
+    RTX_OPTION_ENV("rtx.dlssNeuralRendering", Model, model, Model::Model0, "RTX_DLSS_NR_MODEL",
                "Selects among three DLSS 3D-Guided Neural Rendering model variants. Their appearance is content-dependent; compare them in the target scene and choose the preferred result. 0: Model A, 1: Model B, 2: Model C.");
     RTX_OPTION("rtx.dlssNeuralRendering", bool,  useAutoMask, true, "Combine the automatic character mask with the material control mask.");
     RTX_OPTION_ARGS("rtx.dlssNeuralRendering", float, skinStructureStrength, 0.5f,
