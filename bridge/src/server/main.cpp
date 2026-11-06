@@ -3681,6 +3681,17 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
   }
   LocalFree(argList);
 
+  // Windows gives the highest QoS to the process that owns the foreground window, which is the game, not this server.
+  // The server's threads then run at a lower QoS, often on efficiency cores, while the game's frames wait on them.
+  // Opting out of execution speed throttling gives this process HighQoS.
+  PROCESS_POWER_THROTTLING_STATE powerThrottling = {};
+  powerThrottling.Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
+  powerThrottling.ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
+  powerThrottling.StateMask = 0;
+  if (!SetProcessInformation(GetCurrentProcess(), ProcessPowerThrottling, &powerThrottling, sizeof(powerThrottling))) {
+    Logger::warn(format_string("Could not opt out of power throttling, error %u", GetLastError()));
+  }
+
   initModuleBridge();
   initDeviceBridge();
 
