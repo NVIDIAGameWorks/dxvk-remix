@@ -409,6 +409,12 @@ private:
   Rc<DxvkBuffer> m_surfaceMaterialExtensionBuffer;
   Rc<DxvkBuffer> m_volumeMaterialBuffer;
 
+  // CPU-side buffers to avoid per-frame allocations and page-faults in fresh pages. For performance.
+  // NOTE: not zeroed, like AccelManager's surface data: the GPU never reads padding, which release builds leave unwritten.
+  std::vector<unsigned char> m_scratchSurfaceMaterialsGPUData;
+  std::vector<unsigned char> m_scratchSurfaceMaterialExtensionsGPUData;
+  std::vector<unsigned char> m_scratchVolumeMaterialsGPUData;
+
   uint32_t m_activePOMCount = 0;
   
   float m_uniqueObjectSearchDistance = 1.f;
