@@ -21,33 +21,9 @@
 */
 #pragma once
 
-#include "rtx/algorithm/geometry_resolver_state.slangh"
-#include "rtx/pass/sparse_rendering/compact_active_pixels.slangh"
-#include "rtx/pass/sparse_rendering/sparse_rendering.slangh"
-#include "rtx/utility/noise.slangh"
-#include "rtx/utility/procedural_noise.slangh"
-#include "rtx/utility/packing.slangh"
-// NV-DXVK start: Bounded camera gain accumulation.
-#include "rtx/utility/camera_transport.slangh"
-// NV-DXVK end
-#include "rtx/utility/froxel.slangh"
-#include "rtx/utility/gbuffer_helpers.slangh"
-#include "rtx/utility/debug_view_helpers.slangh"
-#include "rtx/concept/camera/camera.slangh"
-#include "rtx/concept/ray/ray.slangh"
-#include "rtx/concept/surface/surface.slangh"
-#include "rtx/concept/surface_material/surface_material.slangh"
-#include "rtx/concept/surface_material/opaque_surface_material_interaction.slangh"
-#include "rtx/concept/surface/alpha_blend_surface.slangh"
-#include "rtx/concept/light/light.slangh"
-#include "rtx/algorithm/resolve.slangh"
-#include "rtx/algorithm/volume_lighting.slangh"
-#include "rtx/pass/post_fx/post_fx_motion_blur_geometry_flags.slangh"
-#include "rtx/algorithm/nee_cache_light.slangh"
-#include "rtx/utility/gpu_printing.slangh"
-#include "rtx/pass/sharc/sharc_integrator_utilities.slangh"
-#include "rtx/pass/gbuffer/gbuffer_guides_output.slangh"
-
+// These defaults must precede the includes because render_target_motion_output.slangh
+// uses GBUFFER_FEATURE_DLSSRR and GBUFFER_FEATURE_DEBUG_VIEW during preprocessing.
+// The guards preserve feature overrides supplied by the shader entry point or compiler.
 #ifndef GBUFFER_FEATURE_DLSSRR
 #define GBUFFER_FEATURE_DLSSRR 1
 #endif
@@ -79,6 +55,34 @@
 #ifndef GBUFFER_FEATURE_INLINE_UNORDERED_DECALS
 #define GBUFFER_FEATURE_INLINE_UNORDERED_DECALS false
 #endif
+
+#include "rtx/algorithm/geometry_resolver_state.slangh"
+#include "rtx/pass/sparse_rendering/compact_active_pixels.slangh"
+#include "rtx/pass/sparse_rendering/sparse_rendering.slangh"
+#include "rtx/utility/noise.slangh"
+#include "rtx/utility/procedural_noise.slangh"
+#include "rtx/utility/packing.slangh"
+#include "rtx/utility/camera_transport.slangh"
+#include "rtx/utility/froxel.slangh"
+#include "rtx/utility/gbuffer_helpers.slangh"
+#include "rtx/utility/debug_view_helpers.slangh"
+#include "rtx/concept/camera/camera.slangh"
+#include "rtx/concept/ray/ray.slangh"
+#include "rtx/concept/surface/surface.slangh"
+#include "rtx/concept/surface_material/surface_material.slangh"
+#include "rtx/concept/surface_material/opaque_surface_material_interaction.slangh"
+#include "rtx/concept/surface/alpha_blend_surface.slangh"
+#include "rtx/concept/light/light.slangh"
+#include "rtx/algorithm/resolve.slangh"
+#include "rtx/algorithm/volume_lighting.slangh"
+#include "rtx/pass/post_fx/post_fx_motion_blur_geometry_flags.slangh"
+#include "rtx/algorithm/nee_cache_light.slangh"
+#include "rtx/utility/gpu_printing.slangh"
+#include "rtx/pass/sharc/sharc_integrator_utilities.slangh"
+#include "rtx/pass/gbuffer/gbuffer_guides_output.slangh"
+#include "rtx/utility/render_target_motion.slangh"
+#include "rtx/utility/virtual_hit_projection.slangh"
+#include "rtx/algorithm/render_target_motion_output.slangh"
 
 // Geometry Resolver Helper Constants
 
@@ -138,39 +142,6 @@ vec2 calcMotionVectorForRayMiss(const uvec2 pixelCoordinate)
   const vec2 ndc = cameraPixelCoordinateToNDC(cb.camera, pixelCoordinate);
 
   return cameraCalcMotionVectorPixel(cb.camera, ndc, prevNDC.xy);
-}
-
-struct VirtualHitProjection
-{
-  float depth;
-  float linearViewZ;
-  vec2 screenSpaceMotion;
-};
-
-// Projects the hit along the pixel's unjittered camera ray; depth is -infinity for a hit at the camera position.
-VirtualHitProjection projectVirtualHit(uvec2 pixelCoordinate, float virtualHitDistance, vec3 virtualMotion)
-{
-  const Ray originalCameraRay = rayCreatePrimaryFromPixel(cb.camera, pixelCoordinate, false);
-  const vec3 virtualHitPosition = rayEvaluate(originalCameraRay, virtualHitDistance);
-  const vec4 projectionSpacePosition = mul(cb.camera.worldToProjectionJittered, vec4(virtualHitPosition, 1.0f));
-  const vec2 ndc = cameraPixelCoordinateToNDC(cb.camera, pixelCoordinate);
-
-  VirtualHitProjection projection;
-  projection.depth = projectionSpacePosition.z / projectionSpacePosition.w;
-  projection.linearViewZ = cameraWorldPosToLinearViewZ(cb.camera, virtualHitPosition);
-
-  // Forced static-scene motion reprojects the precise NDC and depth rather than the imprecise world position.
-  if (cb.forceStaticSceneMotionVectors)
-  {
-    projection.screenSpaceMotion = cameraCalcStaticSceneMotionVectorPixel(cb.camera, ndc, projection.depth);
-  }
-  else
-  {
-    const vec2 prevNDC = cameraWorldPosToPrevNDC(cb.camera, virtualHitPosition + virtualMotion);
-    projection.screenSpaceMotion = cameraCalcMotionVectorPixel(cb.camera, ndc, prevNDC);
-  }
-
-  return projection;
 }
 
 // Every pixel is resolved. Under the compacted GBuffer only active pixels have a slot to store a GBuffer at.
@@ -2536,10 +2507,9 @@ void geometryResolverVertex(
     {
       Ray newRay = rayCreateRenderTarget(cb.renderTargetCamera, surfaceInteraction.textureCoordinates, ray);
 
-      const GbufferPSRData psrData = packPSRData(newRay, SURFACE_INDEX_INVALID,
+      const GbufferPSRData psrData = packRenderTargetPSRData(packPSRData(newRay, SURFACE_INDEX_INVALID,
         geometryResolverState.attenuation * cameraWeight,
-        getIdentityQuaternion(), // TODO[REMIX-3500] this will lead to incorrect motion vectors. It needs to be a full perspective matrix, which won't fit into PSR
-        packedGeometryFlags);
+        getIdentityQuaternion(), packedGeometryFlags), rayInteraction, geometryResolverState.accumulatedRotation);
         
       storeTransmissionPSRData(psrData, geometryResolverState.pixelCoordinate);
       geometryResolverStorePSRContinuation(geometryResolverState.pixelCoordinate, geometryResolverState.compactedCoordinate,
@@ -2912,7 +2882,7 @@ void geometryPSRResolverVertex(
     cb.screenSpacePixelSpreadHalfAngle,
     isStochasticAlphaBlend, firstRayPortal,
     geometryPSRResolverState.pomOpaqueSurfaceEncountered,
-    isRaytracedRenderTarget);
+    isRaytracedRenderTarget, false, false, GBUFFER_FEATURE_RAYTRACED_RENDER_TARGET);
 
   // Handle medium attenuation if needed
   // Note: This is done here to avoid needing to accumulate the total resolved hit distance. Slightly
@@ -3003,6 +2973,11 @@ void geometryPSRResolverVertex(
       geometryPSRResolverState.primarySurface, geometryPSRResolverState.selectedIntegrationSurface,
       geometryPSRResolverState.pixelCoordinate, geometryPSRResolverState.compactedCoordinate);
 
+    if (GBUFFER_FEATURE_RAYTRACED_RENDER_TARGET)
+    {
+      outputRenderTargetMotion(geometryPSRResolverState, float3(0.0f), true);
+    }
+
     return;
   }
 
@@ -3076,6 +3051,10 @@ void geometryPSRResolverVertex(
       geometryPSRResolverState.primarySurface, geometryPSRResolverState.selectedIntegrationSurface,
       geometryPSRResolverState.pixelCoordinate, geometryPSRResolverState.compactedCoordinate);
 
+    // Truncated camera paths have no previous remote-surface correspondence.
+    geometryPSRResolverState.renderTargetHistoryInvalid = true;
+    outputRenderTargetMotion(geometryPSRResolverState, float3(0.0f), true);
+
     // The PSR state already includes the radiance accumulated before this pass.
     SharedRadianceRG[geometryPSRResolverState.pixelCoordinate] = geometryPSRResolverState.radiance.rg;
     SharedRadianceB[geometryPSRResolverState.pixelCoordinate] = geometryPSRResolverState.radiance.b;
@@ -3143,6 +3122,8 @@ void geometryPSRResolverVertex(
       : rayCreateDirection(rayInteraction, surfaceInteraction, ray, ray.direction, true);
     if (sampleCamera)
     {
+      // Capture the screen mapping before resetting the accumulated rotation.
+      beginRenderTargetMotion(geometryPSRResolverState, surfaceInteraction, newRay);
       geometryPSRResolverState.attenuation = accumulateCameraAttenuation(
         geometryPSRResolverState.attenuation, opaqueSurfaceMaterialRenderTargetGain(material));
       geometryPSRResolverState.insideMedium = false;
@@ -3217,6 +3198,18 @@ void geometryPSRResolverVertex(
       geometryPSRResolverState.useAlternateDisocclusionThreshold,
       geometryPSRResolverState.isViewModelSurface);
 
+    if (GBUFFER_FEATURE_RAYTRACED_RENDER_TARGET)
+    {
+      outputRenderTargetMotion(geometryPSRResolverState, surfaceInteraction.motion, false);
+      if (GBUFFER_FEATURE_DLSSRR && cb.enableDLSSRR && geometryPSRResolverState.primarySurface &&
+          geometryPSRResolverState.renderTargetScreenDistance > 0.0f)
+      {
+        polymorphicSurfaceMaterialInteractionWriteToGBufferDLSSRR(
+          polymorphicSurfaceMaterialInteraction, ivec2(geometryPSRResolverState.pixelCoordinate), surface,
+          PrimaryWorldShadingNormalDLSSRR);
+      }
+    }
+
     // Output Emissive Radiance
 
     SharedRadianceRG[geometryPSRResolverState.pixelCoordinate] = geometryPSRResolverState.radiance.rg;
@@ -3231,9 +3224,10 @@ void geometryPSRResolverVertex(
   // Replace DLSS-RR motion vectors for transparent objects if screen-space refraction error is not too large.
   // This means that we replace the motion vectors (and depth + normals) until error is too large, giving us the
   // last interaction that's usable for motion vectors.
+  const bool hasRenderTargetMotion = GBUFFER_FEATURE_RAYTRACED_RENDER_TARGET && geometryPSRResolverState.renderTargetScreenDistance > 0.0f;
   // A path that is already distorted replaces nothing here and keeps its flag.
   if (GBUFFER_FEATURE_DLSSRR && cb.enableDLSSRR && psrType == psrTypeTransmission &&
-      !geometryPSRResolverState.isRefractionDistorted)
+      !geometryPSRResolverState.isRefractionDistorted && !hasRenderTargetMotion)
   {
     // Compute the pixel error compared to a direct ray from camera
     const uvec2 pixelCoordinate = geometryPSRResolverState.pixelCoordinate;
@@ -4344,6 +4338,12 @@ void geometryPSRResolverPass(ivec2 pixelCoordinate, bool isTransmissionPSR) {
 
   GeometryPSRResolverState geometryPSRResolverState;
 
+  geometryPSRResolverState.renderTargetHistoryInvalid = false;
+  geometryPSRResolverState.renderTargetScreenDistance = 0.0f;
+  geometryPSRResolverState.renderTargetPathStartDistance = 0.0f;
+  geometryPSRResolverState.renderTargetDirection = float3(0.0f);
+  geometryPSRResolverState.renderTargetPreviousWorld = float4x4(0.0f);
+
   geometryPSRResolverState.compactedCoordinate = u16vec2(compactedCoordinate);
   geometryPSRResolverState.bounceIteration = 0;
   geometryPSRResolverState.coneRadius = geometryResolverLoadPSRConeRadius(uvec2(pixelCoordinate));
@@ -4423,6 +4423,27 @@ void geometryPSRResolverPass(ivec2 pixelCoordinate, bool isTransmissionPSR) {
   }
 
   geometryPSRResolverState.radiance = vec3(SharedRadianceRG[pixelCoordinate], SharedRadianceB[pixelCoordinate]);
+
+  if (GBUFFER_FEATURE_RAYTRACED_RENDER_TARGET && (psrData.mediumMaterialIndexAndGeometryFlags & kRenderTargetPSRData) != 0)
+  {
+    const Ray incomingRay = rayCreatePrimaryFromPixel(cb.camera, pixelCoordinate, false);
+    RayInteraction screenHit;
+    screenHit.hitDistance = geometryPSRResolverState.accumulatedHitDistance;
+    screenHit.coneRadius = 0.0f;
+    screenHit.materialType = surfaceMaterialTypeOpaque;
+    screenHit.isViewModel = false;
+    screenHit.surfaceIndex = psrData.encodedAccumulatedRotation.x;
+    screenHit.primitiveIndex = psrData.encodedAccumulatedRotation.y;
+    screenHit.barycentricCoordinates = psrData.origin.x;
+    screenHit.viewDirection = -incomingRay.direction;
+    screenHit.frontHit = true;
+    const Surface screen = surfaces[screenHit.surfaceIndex];
+    const SurfaceInteraction screenInteraction = surfaceInteractionCreate<SurfaceIgnoreTangents>(screen, screenHit, incomingRay, false, kFootprintFromRayDirection, true);
+    const Ray cameraRay = restoreRenderTargetCameraRay(cb.renderTargetCamera, psrData.encodedDirection, incomingRay);
+    geometryPSRResolverState.accumulatedRotation = unpackFloat4x16(psrData.origin.yz);
+    beginRenderTargetMotion(geometryPSRResolverState, screenInteraction, cameraRay);
+    geometryPSRResolverState.accumulatedRotation = getIdentityQuaternion();
+  }
 
   // Invoke the Geometry PSR Resolver
   

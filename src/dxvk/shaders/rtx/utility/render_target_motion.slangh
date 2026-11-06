@@ -1,0 +1,104 @@
+/*
+* Copyright (c) 2026, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Retains scale and skew, including deformation in the supplied previous-frame vertices.
+bool renderTargetTextureBasis(float3 positions[3], float2 uv[3], out float3 dpdu, out float3 dpdv)
+{
+  const float2 uv1 = uv[1] - uv[0];
+  const float2 uv2 = uv[2] - uv[0];
+  const float determinant = uv1.x * uv2.y - uv1.y * uv2.x;
+  const bool valid = isfinite(determinant) && abs(determinant) > 1.0e-10f;
+  if (!valid)
+  {
+    dpdu = 0.0f;
+    dpdv = 0.0f;
+    return false;
+  }
+  const float inverseDeterminant = 1.0f / determinant;
+  const float3 edge1 = positions[1] - positions[0];
+  const float3 edge2 = positions[2] - positions[0];
+  dpdu = (edge1 * uv2.y - edge2 * uv1.y) * inverseDeterminant;
+  dpdv = (edge2 * uv1.x - edge1 * uv2.x) * inverseDeterminant;
+  return valid && all(isfinite(dpdu)) && all(isfinite(dpdv));
+}
+
+
+// The three columns map image UVs back onto the previous screen plane. They may already
+// include an outer screen projection, so keep w until the very last perspective divide.
+float4x4 renderTargetPreviousWorldTransform(
+  float4 previousAnchor, float4 previousDpDu, float4 previousDpDv,
+  float2 screenUV, float4x4 previousWorldToProjection)
+{
+  // The caller supplies image UVs recovered from the sampled camera ray, including POM.
+  // Do not wrap again: direction quantization can place an edge sample just outside [0, 1].
+  const float2 uv = screenUV;
+  const float4 center = previousAnchor
+    + previousDpDu * (0.5f - uv.x) + previousDpDv * (0.5f - uv.y);
+  float4x4 result;
+  for (uint row = 0; row < 4; ++row)
+  {
+    result[row] = previousDpDu[row] * 0.5f * previousWorldToProjection[0]
+      - previousDpDv[row] * 0.5f * previousWorldToProjection[1]
+      + center[row] * previousWorldToProjection[3];
+  }
+  return result;
+}
+
+bool renderTargetPreviousPosition(float4x4 transform, float4 position, out float3 previousPosition)
+{
+  const float4 projected = mul(transform, position);
+  // A point at/behind the previous camera plane has no usable history.
+  bool valid = all(isfinite(projected)) && projected.w > 1.0e-6f;
+  previousPosition = valid ? projected.xyz / projected.w : float3(0.0f);
+  valid = valid && all(isfinite(previousPosition));
+  if (!valid)
+  {
+    previousPosition = float3(0.0f);
+  }
+  return valid;
+}
+// Recover the image sample from the actual (possibly packed/quantized) traced direction.
+// Translation is excluded because this is a direction from the remote camera origin.
+float2 renderTargetSampleUV(float3 direction, float4x4 worldToView, float4x4 viewToProjection)
+{
+  const float4 clip = mul(viewToProjection, mul(worldToView, float4(direction, 0.0f)));
+  return float2(0.5f + 0.5f * clip.x / clip.w, 0.5f - 0.5f * clip.y / clip.w);
+}
+
+// Keep projective mapping and visibility separate. Until every intermediate camera
+// plane can be carried through PSR, nested mappings cannot establish correspondence.
+bool renderTargetHistoryIsValid(bool projectionValid, bool invalidChain)
+{
+  return projectionValid && !invalidChain;
+}
+
+// NRD consumes world-space motion for both lobes. Send rejected correspondence well
+// outside the previous image, rather than substituting stationary-object motion.
+float3 renderTargetRejectedHistoryPosition(
+  float4x4 previousProjectionToView, float4x4 previousViewToWorld, float screenDistance)
+{
+  const float4 view = mul(previousProjectionToView, float4(4.0f, 4.0f, 1.0f, 1.0f));
+  const float3 direction = normalize(view.xyz);
+  const float3 previousCameraPosition = float3(previousViewToWorld[0].w, previousViewToWorld[1].w, previousViewToWorld[2].w);
+  return previousCameraPosition + mul((float3x3)previousViewToWorld, direction) * max(screenDistance, 1.0f);
+}

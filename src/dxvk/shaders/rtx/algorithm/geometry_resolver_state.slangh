@@ -243,6 +243,12 @@ struct GeometryResolverState : IBasePayloadState
 
 struct GeometryPSRResolverState : IBasePayloadState
 {
+  // Payload layout must match between all ray-generation, closest-hit and miss variants.
+  // A zero screen distance disables the projective mapping.
+  float4x4 renderTargetPreviousWorld;
+  float3 renderTargetDirection;
+  float renderTargetPathStartDistance;
+  float renderTargetScreenDistance;
   // Note: These ray properties are passed into the function with the state of the
   // ray being cast as an input, and then set to the new state of the sampled ray
   // (if applicable) as an output.
@@ -398,6 +404,12 @@ struct GeometryPSRResolverState : IBasePayloadState
     set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 10, newValue); }
   }
 
+  property bool renderTargetHistoryInvalid
+  {
+    get { return packedFlagGet(_encodedFlags, 1 << 11); }
+    set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 11, newValue); }
+  }
+
   property bool directionAltered
   {
       get { return false; }
@@ -443,6 +455,19 @@ struct GbufferPSRData
   uint mediumMaterialIndexAndGeometryFlags;
 };
 
+// Bits 0..26 contain the medium index, portal space and dynamic object mask.
+static const uint kRenderTargetPSRData = 1u << 27;
+
+GbufferPSRData packRenderTargetPSRData(GbufferPSRData data, RayInteraction screenHit, vec4 screenRotation)
+{
+  // The new origin is the render-target camera and its initial rotation is identity, so those
+  // fields can carry the screen triangle, barycentrics and rotation before the camera jump.
+  data.origin = uint3(screenHit.barycentricCoordinates, packFloat4x16(screenRotation));
+  data.encodedAccumulatedRotation = uint2(screenHit.surfaceIndex, screenHit.primitiveIndex);
+  data.mediumMaterialIndexAndGeometryFlags |= kRenderTargetPSRData;
+  return data;
+}
+
 // Encodes various PSR data into storage formats
 // Note: mediumMaterialIndex occupies 21 bits (SURFACE_INDEX_BIT_COUNT), leaving 11 bits for
 // geometry flag data.  Only portalSpace (2 bits) and objectMask dynamic bits (4 bits) are
@@ -476,6 +501,11 @@ void unpackPSRData(GbufferPSRData psrData, inout GeometryPSRResolverState geomet
   geometryPSRResolverState.attenuation = unpackAttenuation(psrData.attenuation);
   // NV-DXVK end
   geometryPSRResolverState.accumulatedRotation = unpackFloat4x16(psrData.encodedAccumulatedRotation);
+  if ((psrData.mediumMaterialIndexAndGeometryFlags & kRenderTargetPSRData) != 0)
+  {
+    geometryPSRResolverState.origin = transpose(cb.renderTargetCamera.viewToWorld)[3].xyz;
+    geometryPSRResolverState.accumulatedRotation = getIdentityQuaternion();
+  }
   geometryPSRResolverState.mediumMaterialIndex = psrData.mediumMaterialIndexAndGeometryFlags & SURFACE_INDEX_MAX_VALUE;
   geometryPSRResolverState.insideMedium = geometryPSRResolverState.mediumMaterialIndex != SURFACE_INDEX_INVALID;
 

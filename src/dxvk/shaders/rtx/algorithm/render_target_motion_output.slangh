@@ -1,0 +1,145 @@
+/*
+* Copyright (c) 2026, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Restore exactly the primary pass's sample, including material/POM UV adjustments.
+// Match unpackPSRData's PSR state precision even when Ray uses a 32-bit direction.
+Ray restoreRenderTargetCameraRay(Camera camera, uint encodedDirection, Ray incomingRay)
+{
+  Ray cameraRay = incomingRay;
+  cameraRay.origin = cameraGetWorldPosition(camera);
+  cameraRay.direction = f16vec3(snorm2x16ToSphereDirection(encodedDirection));
+  return cameraRay;
+}
+
+void beginRenderTargetMotion(
+  inout GeometryPSRResolverState state, SurfaceInteraction screenInteraction, Ray cameraRay)
+{
+  const float3 dpdu = screenInteraction.previousTextureDpDu;
+  const float3 dpdv = screenInteraction.previousTextureDpDv;
+  const bool validUV = screenInteraction.previousTextureBasisValid;
+
+  const bool nested = state.renderTargetScreenDistance > 0.0f;
+  const Ray primaryRay = rayCreatePrimaryFromPixel(cb.camera, state.pixelCoordinate, false);
+  const float3 anchor = nested
+    ? cameraGetWorldPosition(cb.renderTargetCamera) + state.renderTargetDirection *
+        (state.accumulatedHitDistance - state.renderTargetPathStartDistance)
+    : rayEvaluate(primaryRay, state.accumulatedHitDistance);
+  float4 previousAnchor = float4(anchor + quaternionTransformVector(state.accumulatedRotation, screenInteraction.motion, true), 1.0f);
+  float4 previousDpDu = float4(quaternionTransformVector(state.accumulatedRotation, dpdu, true), 0.0f);
+  float4 previousDpDv = float4(quaternionTransformVector(state.accumulatedRotation, dpdv, true), 0.0f);
+  if (nested)
+  {
+    previousAnchor = mul(state.renderTargetPreviousWorld, previousAnchor);
+    previousDpDu = mul(state.renderTargetPreviousWorld, previousDpDu);
+    previousDpDv = mul(state.renderTargetPreviousWorld, previousDpDv);
+  }
+  else
+  {
+    state.renderTargetScreenDistance = state.accumulatedHitDistance;
+  }
+
+  state.renderTargetPreviousWorld = renderTargetPreviousWorldTransform(
+    previousAnchor, previousDpDu, previousDpDv,
+    renderTargetSampleUV(cameraRay.direction, cb.renderTargetCamera.worldToView, cb.renderTargetCamera.viewToProjection),
+    cb.renderTargetCamera.prevWorldToProjection);
+  state.renderTargetDirection = cameraRay.direction;
+  state.renderTargetPathStartDistance = state.accumulatedHitDistance;
+  state.renderTargetHistoryInvalid |= nested || !validUV;
+}
+
+void outputRenderTargetMotion(GeometryPSRResolverState state, float3 objectMotion, bool miss)
+{
+  if (state.renderTargetScreenDistance <= 0.0f)
+  {
+    return;
+  }
+
+  const float3 remotePosition = cameraGetWorldPosition(cb.renderTargetCamera)
+    + state.renderTargetDirection * (state.accumulatedHitDistance - state.renderTargetPathStartDistance)
+    + quaternionTransformVector(state.accumulatedRotation, objectMotion, true);
+  float3 previousPosition;
+  const bool valid = renderTargetHistoryIsValid(renderTargetPreviousPosition(state.renderTargetPreviousWorld,
+    miss ? float4(state.renderTargetDirection, 0.0f) : float4(remotePosition, 1.0f), previousPosition), state.renderTargetHistoryInvalid);
+  const Ray primaryRay = rayCreatePrimaryFromPixel(cb.camera, state.pixelCoordinate, false);
+  const float3 virtualPosition = rayEvaluate(primaryRay, state.renderTargetScreenDistance);
+  if (!valid)
+  {
+    previousPosition = renderTargetRejectedHistoryPosition(
+      cb.camera.prevProjectionToView, cb.camera.prevViewToWorld, state.renderTargetScreenDistance);
+  }
+  const float3 motion = previousPosition - virtualPosition;
+  VirtualHitProjection projection = projectVirtualHit(state.pixelCoordinate, state.renderTargetScreenDistance, motion);
+  if (!valid)
+  {
+    // Also reject with the static-motion debugging override enabled.
+    projection.screenSpaceMotion = -float2(cb.camera.resolution) * 2.0f - float2(state.pixelCoordinate);
+  }
+
+  if (state.primarySurface)
+  {
+    PrimaryScreenSpaceMotionVector[state.pixelCoordinate] = projection.screenSpaceMotion;
+    PrimaryDepth[state.pixelCoordinate] = projection.depth;
+    PrimaryLinearViewZ[state.pixelCoordinate] = projection.linearViewZ;
+    if (state.compactedCoordinate.x != uint16_t(0xFFFF))
+    {
+      // RTXDI reconstructs the same virtual position from this distance.
+      if (!miss)
+      {
+        PrimaryHitDistance[state.compactedCoordinate] = state.renderTargetScreenDistance;
+      }
+      if (cb.writePrimaryVirtualMotionVector)
+      {
+        // Projected camera/screen motion does not imply that the shaded remote object moved.
+        // w: -1 rejects correspondence, 0 is ordinary motion, 1 marks a stationary remote object.
+        PrimaryVirtualMotionVector[state.compactedCoordinate] = float4(motion, !valid ? -1.0f : (all(objectMotion == 0.0f) ? 1.0f : 0.0f));
+      }
+    }
+    if (!valid && cb.enableDLSSRR)
+    {
+      PrimaryDisocclusionThresholdMix[state.pixelCoordinate] = cb.setLogValueForDisocclusionMaskForDLSSRR ? 9.2103403719762f : 10000.0f;
+    }
+  }
+  else if (state.compactedCoordinate.x != uint16_t(0xFFFF))
+  {
+    SecondaryLinearViewZ[state.compactedCoordinate] = projection.linearViewZ;
+    if (!miss)
+    {
+      SecondaryHitDistance[state.compactedCoordinate] = state.renderTargetScreenDistance;
+    }
+    if (cb.writeSecondaryDenoisingGuides)
+    {
+      SecondaryVirtualMotionVector[state.compactedCoordinate] = float4(motion, valid ? 0.0f : -1.0f);
+    }
+  }
+  if (GBUFFER_FEATURE_DLSSRR && cb.enableDLSSRR && state.primarySurface)
+  {
+    PrimaryDepthDLSSRR[state.pixelCoordinate] = projection.depth;
+    PrimaryScreenSpaceMotionVectorDLSSRR[state.pixelCoordinate] = projection.screenSpaceMotion;
+  }
+#if GBUFFER_FEATURE_DEBUG_VIEW
+  if (state.primarySurface && cb.debugView == DEBUG_VIEW_VIRTUAL_MOTION_VECTOR)
+  {
+    storeInDebugView(state.pixelCoordinate, motion);
+  }
+#endif
+}

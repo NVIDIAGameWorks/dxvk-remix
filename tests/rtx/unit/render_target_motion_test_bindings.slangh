@@ -1,0 +1,184 @@
+/*
+* Copyright (c) 2026, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/utility/shader_types.h"
+#include "rtx/utility/packing.slangh"
+#include "rtx/concept/camera/camera.slangh"
+#include "rtx/utility/render_target_motion.slangh"
+
+RWStructuredBuffer<float4> results;
+static uint resultBase;
+// Slang's CPU backend promotes native half types; explicitly emulate texture/ray FP16 storage.
+float quantizeHalf(float value) { return f16tof32(f32tof16(value)); }
+float3 quantizeHalf(float3 value) { return float3(quantizeHalf(value.x), quantizeHalf(value.y), quantizeHalf(value.z)); }
+float4 quantizeHalf(float4 value) { return float4(quantizeHalf(value.xyz), quantizeHalf(value.w)); }
+
+struct FloatTexture
+{
+  uint slot;
+  __init(uint index) { slot = index; }
+  __subscript(uint2 coordinate) -> float
+  {
+    get { return results[resultBase + slot].x; }
+    set { const float value = newValue; results[resultBase + slot] = float4(value, 0, 0, 0); }
+  }
+};
+
+struct Float2Texture
+{
+  uint slot;
+  __init(uint index) { slot = index; }
+  __subscript(uint2 coordinate) -> float2
+  {
+    get { return results[resultBase + slot].xy; }
+    set { const float2 value = newValue; results[resultBase + slot] = float4(value, 0, 0); }
+  }
+};
+
+struct Float4Texture
+{
+  uint slot;
+  __init(uint index) { slot = index; }
+  __subscript(uint2 coordinate) -> float4
+  {
+    get { return results[resultBase + slot]; }
+    set { const float4 value = newValue; results[resultBase + slot] = quantizeHalf(value); }
+  }
+};
+
+struct UintTexture
+{
+  uint slot;
+  __init(uint index) { slot = index; }
+  __subscript(uint2 coordinate) -> uint
+  {
+    get { return asuint(results[resultBase + slot].x); }
+    set { const uint value = newValue; results[resultBase + slot] = float4(asfloat(value), 0, 0, 0); }
+  }
+};
+static Float2Texture PrimaryScreenSpaceMotionVector = Float2Texture(0);
+static Float4Texture PrimaryVirtualMotionVector = Float4Texture(1);
+static FloatTexture PrimaryDepth = FloatTexture(2);
+static FloatTexture PrimaryLinearViewZ = FloatTexture(3);
+static FloatTexture PrimaryHitDistance = FloatTexture(4);
+static FloatTexture PrimaryDisocclusionThresholdMix = FloatTexture(5);
+static FloatTexture SecondaryLinearViewZ = FloatTexture(6);
+static Float4Texture SecondaryVirtualMotionVector = Float4Texture(7);
+static FloatTexture SecondaryHitDistance = FloatTexture(8);
+static FloatTexture PrimaryDepthDLSSRR = FloatTexture(9);
+static Float2Texture PrimaryScreenSpaceMotionVectorDLSSRR = Float2Texture(10);
+static FloatTexture ReprojectionConfidence = FloatTexture(11);
+static UintTexture TemporalPosition = UintTexture(12);
+
+struct TestConstants
+{
+  Camera camera;
+  Camera renderTargetCamera;
+  bool forceStaticSceneMotionVectors;
+  bool writePrimaryVirtualMotionVector;
+  bool writeSecondaryDenoisingGuides;
+  bool enableDLSSRR;
+  bool setLogValueForDisocclusionMaskForDLSSRR;
+};
+static TestConstants cb;
+struct Ray
+{
+  float3 origin;
+  float3 storedDirection;
+  property float3 direction
+  {
+    get { return storedDirection; }
+    set { storedDirection = quantizeHalf(newValue); }
+  }
+};
+Ray rayCreatePrimaryFromPixel(Camera camera, uint2 pixel, bool jitter)
+{
+  Ray ray;
+  ray.origin = cameraGetWorldPosition(camera);
+  ray.direction = quantizeHalf(cameraPixelCoordinateToDirection(camera, int2(pixel), jitter).worldDirection);
+  return ray;
+}
+float3 rayEvaluate(Ray ray, float distance) { return ray.origin + ray.direction * distance; }
+struct GeometryPSRResolverState
+{
+  float4x4 renderTargetPreviousWorld;
+  float3 renderTargetDirection;
+  float renderTargetPathStartDistance;
+  float renderTargetScreenDistance;
+  float accumulatedHitDistance;
+  float4 accumulatedRotation;
+  uint2 pixelCoordinate;
+  uint2 compactedCoordinate;
+  bool primarySurface;
+  bool renderTargetHistoryInvalid;
+};
+#define GBUFFER_FEATURE_DLSSRR 1
+#define GBUFFER_FEATURE_DEBUG_VIEW 0
+struct Surface
+{
+  float3 previousPositions[3];
+  float2 uv[3];
+};
+struct SurfaceInteraction
+{
+  float2 textureCoordinates;
+  float3 motion;
+  float3 previousTextureDpDu;
+  float3 previousTextureDpDv;
+  bool previousTextureBasisValid;
+};
+SurfaceInteraction makeScreenInteraction(Surface screen)
+{
+  SurfaceInteraction result = (SurfaceInteraction)0;
+  result.previousTextureBasisValid = renderTargetTextureBasis(screen.previousPositions, screen.uv,
+    result.previousTextureDpDu, result.previousTextureDpDv);
+  return result;
+}
+Surface makeScreen(float3 anchor)
+{
+  Surface screen;
+  screen.previousPositions[0] = anchor + float3(-1,1,0);
+  screen.previousPositions[1] = anchor + float3(1,1,0);
+  screen.previousPositions[2] = anchor + float3(-1,-1,0);
+  screen.uv[0] = float2(0,0);
+  screen.uv[1] = float2(1,0);
+  screen.uv[2] = float2(0,1);
+  return screen;
+}
+
+// The fallback is deliberately eligible even at an out-of-bounds reprojection.
+// The production wrapper must not call it at all when correspondence is invalid.
+struct RTXDI_Reservoir { float sample; };
+struct RAB_Surface { uint unused; };
+struct RAB_RandomSamplerState { uint calls; };
+struct RTXDI_TemporalResamplingParameters { uint unused; };
+static const float kReprojectionConfidenceHistoryLength = 8;
+void RTXDI_TemporalResampling(inout RTXDI_Reservoir state, uint2 pixel,
+  RAB_Surface surface, inout RAB_RandomSamplerState rng, RTXDI_TemporalResamplingParameters parameters,
+  out int2 previousPixel, out bool similar)
+{
+  rng.calls++;
+  state.sample = 99;
+  previousPixel = int2(pixel);
+  similar = true;
+}

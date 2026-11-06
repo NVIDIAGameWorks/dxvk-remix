@@ -51,6 +51,7 @@
 #include "rtx/algorithm/rtxdi/rtxdi.slangh"
 #include "rtx/pass/rtxdi/rtxdi_best_light.slangh"
 #include "rtx/pass/sparse_rendering/compact_active_pixels.slangh"
+#include "rtx/algorithm/rtxdi/rtxdi_temporal_history.slangh"
 
 [shader("compute")]
 [numthreads(COMPACT_ACTIVE_PIXELS_CONSUMER_GROUP_SIZE_X, COMPACT_ACTIVE_PIXELS_CONSUMER_GROUP_SIZE_Y, 1)]
@@ -89,7 +90,10 @@ void main(uint2 dispatchThreadId : SV_DispatchThreadID, uint3 groupId : SV_Group
     RAB_SkipRandoms(rng, 1);
   }
 
-  const float3 virtualMotionVector = PrimaryVirtualMotionVector[compactedCoordinate].xyz;
+  const float4 virtualMotion = PrimaryVirtualMotionVector[compactedCoordinate];
+  const float3 virtualMotionVector = virtualMotion.xyz;
+  // RT-camera motion stores whether the remote object is stationary separately from image motion.
+  surface.hasStaticObjectMotion = virtualMotion.w > 0.0f;
   const float3 prevVirtualWorldPosition = surface.virtualWorldPosition + virtualMotionVector;
 
   float viewDirectionDotGeometryNormal = abs(dot(surface.minimalRayInteraction.viewDirection, surface.minimalSurfaceInteraction.geometryNormal));
@@ -119,28 +123,10 @@ void main(uint2 dispatchThreadId : SV_DispatchThreadID, uint3 groupId : SV_Group
 
   int2 temporalSamplePixelPos;
   bool isGBufferSimilar;
-  RTXDI_TemporalResampling(state, pixelCoordinate, surface, rng, tparams, temporalSamplePixelPos, isGBufferSimilar);
+  rtxdiTemporalResamplingWithHistoryValidity(virtualMotion.w >= 0.0f, state, pixelCoordinate, surface, rng, tparams, temporalSamplePixelPos, isGBufferSimilar);
 
-  float currentReprojectionConfidence = 0;
-  if (isGBufferSimilar)
-  {
-    currentReprojectionConfidence = ReprojectionConfidence[temporalSamplePixelPos];
-  }
-
-  currentReprojectionConfidence = min(currentReprojectionConfidence + 1.f / kReprojectionConfidenceHistoryLength, 1.f);
-  ReprojectionConfidence[pixelCoordinate] = currentReprojectionConfidence;
-
-  // Remember which pixel the temporal reservoir belongs to, if it comes from a valid reprojection.
-  // Needed for the gradients pass.
-  if (cb.rtxdiGradientResourcesAllocated)
-  {
-    if (!isGBufferSimilar)
-    {
-      temporalSamplePixelPos = -1;
-    }
-
-    TemporalPosition[pixelCoordinate] = pack32(u16vec2(temporalSamplePixelPos));
-  }
+  rtxdiStoreTemporalReprojection(virtualMotion.w >= 0.0f, pixelCoordinate, temporalSamplePixelPos,
+    isGBufferSimilar, cb.rtxdiGradientResourcesAllocated);
 
   RAB_StoreReservoir(state, pixelCoordinate, RTXDI_GetTemporalOutputPage());
 }
