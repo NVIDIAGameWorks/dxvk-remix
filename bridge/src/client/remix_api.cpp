@@ -286,6 +286,13 @@ remixapi_ErrorCode REMIXAPI_CALL remixapi_DrawInstance(const remixapi_InstanceIn
           serializeAndSend<serialize::InstanceInfoParticleSystem>(c, *pParticle);
           break;
         }
+        case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SPAWN_DISTRIBUTION_EXT:
+        {
+          auto* pDistribution = static_cast<const remixapi_InstanceInfoParticleSpawnDistributionEXT* const>(infoItr);
+          send(c, Bool::True);
+          serializeAndSend<serialize::InstanceInfoParticleSpawnDistribution>(c, *pDistribution);
+          break;
+        }
         default:
         {
           Logger::warn("[remixapi_DrawInstance] Unknown sType. Skipping.");

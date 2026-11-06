@@ -827,6 +827,14 @@ namespace remix {
     }
   };
 
+  struct InstanceInfoParticleSpawnDistributionEXT : remixapi_InstanceInfoParticleSpawnDistributionEXT {
+    InstanceInfoParticleSpawnDistributionEXT() {
+      sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SPAWN_DISTRIBUTION_EXT;
+      pNext = nullptr;
+      spawnDistribution = REMIXAPI_PARTICLE_SPAWN_DISTRIBUTION_BY_TRIANGLE;
+    }
+  };
+
   struct InstanceInfoGpuInstancingEXT : remixapi_InstanceInfoGpuInstancingEXT {
     InstanceInfoGpuInstancingEXT() {
       sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_GPU_INSTANCING_EXT;

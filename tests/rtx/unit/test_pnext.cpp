@@ -224,6 +224,30 @@ namespace pnext_test_app {
     }
   }
 
+  void test_particleSpawnDistribution() {
+    remixapi_InstanceInfo instance = remix::InstanceInfo {};
+    auto particles = remix::InstanceInfoParticleSystemEXT {};
+    auto distribution = remix::InstanceInfoParticleSpawnDistributionEXT {};
+    if (distribution.sType != REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SPAWN_DISTRIBUTION_EXT
+        || distribution.pNext != nullptr
+        || distribution.spawnDistribution != REMIXAPI_PARTICLE_SPAWN_DISTRIBUTION_BY_TRIANGLE) {
+      throw dxvk::DxvkError { ERROR_INTRO "Particle spawn distribution wrapper must default to ByTriangle" };
+    }
+    if (pnext::find<remixapi_InstanceInfoParticleSpawnDistributionEXT>(&instance) != nullptr) {
+      throw dxvk::DxvkError { ERROR_INTRO "An absent distribution extension must remain absent" };
+    }
+
+    distribution.spawnDistribution = REMIXAPI_PARTICLE_SPAWN_DISTRIBUTION_BY_SURFACE_AREA;
+    particles.pNext = &distribution;
+    instance.pNext = &particles;
+    const auto* found = pnext::find<remixapi_InstanceInfoParticleSpawnDistributionEXT>(&instance);
+    if (found != &distribution
+        || found->spawnDistribution != REMIXAPI_PARTICLE_SPAWN_DISTRIBUTION_BY_SURFACE_AREA
+        || pnext::find<remixapi_InstanceInfoParticleSystemEXT>(&instance) != &particles) {
+      throw dxvk::DxvkError { ERROR_INTRO "Particle distribution must coexist with the particle system extension" };
+    }
+  }
+
   namespace test_apiVersionOrdering {
     static_assert(REMIXAPI_VERSION_MAKE(0, 0, 0) < REMIXAPI_VERSION_MAKE(1, 0, 0));
     static_assert(REMIXAPI_VERSION_MAKE(0, 0, 0) < REMIXAPI_VERSION_MAKE(0, 1, 0));
@@ -243,6 +267,7 @@ int main() {
     pnext_test_app::test_getPNext();
     pnext_test_app::test_memberDetection();
     pnext_test_app::test_wrapper();
+    pnext_test_app::test_particleSpawnDistribution();
     pnext_test_app::test_materialTextureTransforms<remix::MaterialInfoOpaqueEXT>();
     pnext_test_app::test_materialTextureTransforms<remix::MaterialInfoTranslucentEXT>();
   }

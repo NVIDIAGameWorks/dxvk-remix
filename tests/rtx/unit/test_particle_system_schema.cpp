@@ -27,6 +27,7 @@
 
 #include "../../../src/lssusd/usd_include_begin.h"
 #include <pxr/base/plug/registry.h>
+#include <pxr/base/vt/array.h>
 #include <pxr/usd/usd/primDefinition.h>
 #include <pxr/usd/usd/schemaRegistry.h>
 #include "../../../src/lssusd/usd_include_end.h"
@@ -57,6 +58,7 @@ namespace {
       "primvars:particle:turbulenceForce",
       "primvars:particle:motionTrailMultiplier",
       "primvars:particle:spawnRatePerSecond",
+      "primvars:particle:spawnDistribution",
       "primvars:particle:collisionThickness",
       "primvars:particle:collisionRestitution",
       "primvars:particle:initialRotationDeviationDegrees",
@@ -136,6 +138,22 @@ int main(int argc, char* argv[]) {
         std::cerr << "Unexpected schema property: " << property << "\n";
       }
     }
+    return -1;
+  }
+
+  const pxr::TfToken distributionProperty("primvars:particle:spawnDistribution");
+  pxr::TfToken distributionDefault;
+  if (!primDef->GetAttributeFallbackValue(distributionProperty, &distributionDefault)
+      || distributionDefault != pxr::TfToken("ByTriangle")) {
+    std::cerr << "Spawn distribution must default to ByTriangle.\n";
+    return -1;
+  }
+  pxr::VtArray<pxr::TfToken> allowedDistributions;
+  if (!primDef->GetPropertyMetadata(distributionProperty, pxr::TfToken("allowedTokens"), &allowedDistributions)
+      || allowedDistributions.size() != 2
+      || allowedDistributions[0] != pxr::TfToken("ByTriangle")
+      || allowedDistributions[1] != pxr::TfToken("BySurfaceArea")) {
+    std::cerr << "Spawn distribution must expose ByTriangle and BySurfaceArea.\n";
     return -1;
   }
 

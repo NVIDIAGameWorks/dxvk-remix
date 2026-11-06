@@ -936,6 +936,13 @@ class "ParticleSystemAPI" (
             displayName = "Hide Emitter"
         )
 
+    uniform token primvars:particle:spawnDistribution = "ByTriangle" (
+            doc = "ByTriangle gives every emitter triangle equal spawn probability. BySurfaceArea weights triangles by their current world-space area for even surface coverage. Surface-area weighting requires additional GPU work when emitter geometry deforms."
+            displayGroup = "Spawn"
+            displayName = "Spawn Distribution"
+            allowedTokens = ["ByTriangle", "BySurfaceArea"]
+        )
+
     bool primvars:particle:useSpawnTexcoords = false (
             doc = "Use the texture coordinates of the emitter mesh when sampling spawn positions or velocities."
             displayGroup = "Spawn"

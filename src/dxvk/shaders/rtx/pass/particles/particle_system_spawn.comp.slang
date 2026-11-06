@@ -29,12 +29,16 @@
 #include "rtx/utility/gbuffer_helpers.slangh"
 #include "rtx/utility/debug_view_helpers.slangh"
 #include "rtx/concept/camera/camera.slangh"
+#include "rtx/pass/particles/particle_spawn_distribution.h"
     
 layout(binding = PARTICLE_SYSTEM_BINDING_SPAWN_CONTEXT_PARTICLE_MAPPING_INPUT)
 StructuredBuffer<uint16_t> SpawnContextParticleMapping;
 
 layout(binding = PARTICLE_SYSTEM_BINDING_SPAWN_CONTEXTS_INPUT)
 StructuredBuffer<GpuSpawnContext> SpawnContexts;
+
+layout(binding = PARTICLE_SYSTEM_BINDING_SPAWN_DISTRIBUTION_INPUT)
+StructuredBuffer<float> SpawnDistribution;
 
 // Outputs
 
@@ -58,7 +62,7 @@ f16vec3 sampleDirectionInCone(f16vec3 axis, float cosConeHalfAngle, float2 rndUV
 // Generate a new particle in-place with random properties
 GpuParticle respawn(uint particleIdx, uint spawnCtxIdx, const GpuParticleSystem particleSystem)
 {
-  GpuParticle newParticle;
+  GpuParticle newParticle = (GpuParticle)0;
   
   // Get spawn context
   GpuSpawnContext spawnCtx = SpawnContexts[spawnCtxIdx];
@@ -72,10 +76,20 @@ GpuParticle respawn(uint particleIdx, uint spawnCtxIdx, const GpuParticleSystem 
   
   uint randomSeed = particleIdx;
     
-  float3 random01 = float3(randomFloat(uint2(randomSeed++, particleCb.frameIdx)), randomFloat(uint2(randomSeed++, particleCb.frameIdx)), randomFloat(uint2(randomSeed++, particleCb.frameIdx)));
-  float3 randomBary = saturate(random01 / dot(random01, 1..xxx));
-  
-  uint triIdx = randomFloat(uint2(randomSeed++, particleCb.frameIdx)) * spawnCtx.numTriangles;
+  const float u = randomFloat(uint2(randomSeed++, particleCb.frameIdx));
+  const float v = randomFloat(uint2(randomSeed++, particleCb.frameIdx));
+  const float3 randomBary = particleTriangleBarycentrics(u, v);
+
+  const float triangleSample = randomFloat(uint2(randomSeed++, particleCb.frameIdx));
+  const uint triIdx = particleSystem.desc.spawnDistribution == ParticleSpawnDistribution::BySurfaceArea
+    ? sampleParticleTriangle(SpawnDistribution, 0, spawnCtx.numTriangles, triangleSample)
+    : (spawnCtx.numTriangles > 0 ? min(uint(triangleSample * spawnCtx.numTriangles), spawnCtx.numTriangles - 1) : kInvalidParticleTriangle);
+  if (triIdx == kInvalidParticleTriangle) {
+    // Rejected slots retain their normal age so the conservative ring cannot skip older live particles.
+    newParticle.reset(particleSystem, float3(0.0f), float3(0.0f), float4(0.0f), float4(0.0f), triangleSample);
+    newParticle.flags = GpuParticle::kRejectedSpawnFlag;
+    return newParticle;
+  }
   
   for (uint i=0 ; i<3 ; i++)
   {
@@ -171,10 +185,11 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
   }
   
   const uint particleIdx = (threadIdx.x + particleSystem.spawnParticleOffset) % particleSystem.desc.maxNumParticles;
-  const uint spawnCtxIdx = SpawnContextParticleMapping[threadIdx.x];
+  const uint spawnCtxIdx = SpawnContextParticleMapping[threadIdx.x + particleCb.spawnContextMapOffset];
   const bool shouldRespawn = Particles[particleIdx].isDead() || Particles[particleIdx].isSleeping();
   if (shouldRespawn)
   {
-    Particles[particleIdx] = respawn(particleIdx, spawnCtxIdx, particleSystem);
+    const GpuParticle particle = respawn(particleIdx, spawnCtxIdx, particleSystem);
+    Particles[particleIdx] = particle;
   }
 }

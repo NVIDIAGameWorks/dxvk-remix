@@ -875,6 +875,11 @@ std::unique_ptr<dxvk::ExternalDrawState> dxvk::RemixAPIPrivateAccessor::toRtDraw
   if (auto extParticles = pnext::find<remixapi_InstanceInfoParticleSystemLegacyEXT>(&info)) {
     state->optionalParticleDesc.emplace(convert::toRtParticleDesc(*extParticles));
   }
+  if (auto distribution = pnext::find<remixapi_InstanceInfoParticleSpawnDistributionEXT>(&info)) {
+    if (state->optionalParticleDesc) {
+      state->optionalParticleDesc->spawnDistribution = distribution->spawnDistribution == REMIXAPI_PARTICLE_SPAWN_DISTRIBUTION_BY_SURFACE_AREA;
+    }
+  }
 
   if (auto extInstancing = pnext::find<remixapi_InstanceInfoGpuInstancingEXT>(&info)) {
     if (extInstancing->instanceTransforms_count > 0 && extInstancing->instanceTransforms_values) {
@@ -1152,6 +1157,13 @@ namespace {
       return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
     }
     ScopedCpuProfileZone();
+
+    if (auto distribution = pnext::find<remixapi_InstanceInfoParticleSpawnDistributionEXT>(info)) {
+      if (distribution->spawnDistribution != REMIXAPI_PARTICLE_SPAWN_DISTRIBUTION_BY_TRIANGLE
+          && distribution->spawnDistribution != REMIXAPI_PARTICLE_SPAWN_DISTRIBUTION_BY_SURFACE_AREA) {
+        return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+      }
+    }
 
     // Hoist conversion outside of mutex
     auto drawState = convert::toRtDrawState(*info);

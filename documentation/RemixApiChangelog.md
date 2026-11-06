@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The bridge zero-initializes struct fields that it does not forward.
 - The versioning rules for API changes are clarified in [RemixSDK.md](RemixSDK.md#extensibility).
 
+## [0.6.8]
+
+### Added
+
+- `remixapi_InstanceInfoParticleSpawnDistributionEXT` (struct type 29), chained from `remixapi_InstanceInfo` alongside the particle-system extension, selects equal probability per triangle or probability proportional to surface area. Omitting it preserves the By Triangle default and existing public struct layouts. See [Particle Spawn Distribution](particle-spawn-distribution.md#api-and-serialization).
+
 ## [0.6.6]
 
 ### Added

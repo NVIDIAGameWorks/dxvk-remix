@@ -118,6 +118,7 @@ Alternatively, Remix API can be used to programmatically pass the game data to t
 - [Foliage System](/documentation/FoliageSystem.md)
 - [GPU Print](/documentation/GpuPrint.md)
 - [Opacity Micromap](/documentation/OpacityMicromap.md)
+- [Particle Spawn Distribution](/documentation/particle-spawn-distribution.md)
 - [Remix API](/documentation/RemixSDK.md)
 - [Remix Runtime Binaries](/documentation/RemixRuntimeBinaries.md)
 - [Rtx Options](/RtxOptions.md)

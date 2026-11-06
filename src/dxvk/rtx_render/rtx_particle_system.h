@@ -26,6 +26,7 @@
 #include "../dxvk_include.h"
 
 #include "rtx_resources.h"
+#include "rtx_particle_spawn_cache.h"
 #include "rtx/pass/particles/particle_system_binding_indices.h"
 #include <random>
 #include <unordered_map>
@@ -45,12 +46,14 @@ namespace dxvk {
     * - Rendering the particle geometry (vertex and index buffers).
     */
   class RtxParticleSystemManager : public CommonDeviceObject {
+    friend struct ParticleSystemLookupTestAccess;
 
     struct SpawnContext {
       uint32_t numberOfParticles;
       uint32_t instanceId;
       XXH64_hash_t particleSystemHash;
       uint32_t particleOffset;
+      uint32_t particleMapOffset;
     };
 
     class ConservativeCounter : public RcObject {
@@ -85,6 +88,8 @@ namespace dxvk {
       Resources::Resource m_animationState;
 
       XXH64_hash_t m_cachedHash = kEmptyHash;
+      // Container identity uses the original material; rendering identity can use a replacement.
+      const XXH64_hash_t m_lookupHash;
 
     public:
       const MaterialData materialData;
@@ -108,6 +113,7 @@ namespace dxvk {
       } animationData;
 
       std::vector<uint16_t> spawnContextParticleMap;
+      std::vector<uint32_t> areaSpawnContexts;
 
       std::mt19937 generator;
 
@@ -118,6 +124,10 @@ namespace dxvk {
 
       XXH64_hash_t getHash() const {
         return m_cachedHash;
+      }
+
+      XXH64_hash_t getLookupHash() const {
+        return m_lookupHash;
       }
 
       const Rc<ConservativeCounter>& getCounter() const {
@@ -171,6 +181,25 @@ namespace dxvk {
 
     fast_unordered_cache<std::shared_ptr<ParticleSystem>> m_particleSystems;
     Rc<DxvkBuffer> m_spawnContextsBuffer;
+    Rc<DxvkBuffer> m_spawnDistributionConstants;
+
+    struct SpawnDistribution {
+      Rc<DxvkBuffer> buffer;
+      const BlasEntry* geometry = nullptr;
+      VkDescriptorBufferInfo positions = {};
+      VkDescriptorBufferInfo indices = {};
+      ParticleSpawnAreaMetric metric = {};
+      uint32_t geometryCreated = kInvalidFrameIndex;
+      uint32_t geometryUpdated = kInvalidFrameIndex;
+      uint32_t triangleCount = 0;
+      uint32_t positionOffset = 0;
+      uint16_t positionStride = 0;
+      uint16_t indices32bit = 0;
+      uint32_t frameLastUsed = 0;
+    };
+
+    std::unordered_map<uint64_t, SpawnDistribution> m_spawnDistributionCache;
+    std::vector<Rc<DxvkBuffer>> m_spawnDistributions;
 
     // Monotonically increases as new particle systems are created.  Never decrements.
     uint32_t m_particleSystemCounter = 0;
@@ -217,6 +246,7 @@ namespace dxvk {
     RTX_OPTION("rtx.particles.globalPreset", Vector3, maxSpawnVelocity, Vector3(-1.f), "Maximum velocity of a particle in world space (in centimeters per second) to be used at spawn time.  Negative values imply unlimited.");
     RTX_OPTION("rtx.particles.globalPreset", Vector3, maxTargetVelocity, Vector3(-1.f), "Maximum velocity of a particle in world space (in centimeters per second) at a particles end of life.  Negative values imply unlimited.");
     RTX_OPTION("rtx.particles.globalPreset", bool, useSpawnTexcoords, false, "Use the texture coordinates of the emitter mesh when spawning particles.");
+    RTX_OPTION("rtx.particles.globalPreset", ParticleSpawnDistribution, spawnDistribution, ParticleSpawnDistribution::ByTriangle, "Emitter triangle selection. 0: Equal probability per triangle. 1: Probability proportional to current world-space surface area.");
     RTX_OPTION("rtx.particles.globalPreset", bool, alignParticlesToVelocity, false, "Rotates the particles such that they are always aligned with their direction of travel, in this mode we ignore rotation speed.");
     RTX_OPTION("rtx.particles.globalPreset", bool, enableCollisionDetection, false, "Enables particle collisions with the world.");
     RTX_OPTION("rtx.particles.globalPreset", float, collisionRestitution, .5, "The fraction of velocity retained after a collision with scene geometry. 1.0 = perfectly elastic (no speed loss), 0.0 = completely inelastic (velocity zeroed). Values outside [0,1] will be clamped to this range.");
@@ -244,6 +274,7 @@ namespace dxvk {
 
     void allocStaticBuffers(DxvkContext* ctx);
     void writeSpawnContextsToGpu(RtxContext* ctx);
+    Rc<DxvkBuffer> prepareSpawnDistribution(RtxContext* ctx, const RtInstance& instance, const GpuSpawnContext& spawnContext);
 
     // Returns the spawn prev transform, collapsing it to currTransform on a motion discontinuity.
     Matrix4 resolveSpawnPrevTransform(const RtInstance& instance, const Matrix4& currTransform, const Matrix4& prevTransform, uint32_t currentFrameId);

@@ -48,7 +48,7 @@
 #include "../dxvk/shaders/rtx/pass/particles/particle_system_enums.h"
 
 namespace lss {
-  inline constexpr std::size_t kParticleSystemSchemaPropertyCount = 129;
+  inline constexpr std::size_t kParticleSystemSchemaPropertyCount = 130;
 
   template<typename TDest, typename TSrc>
   inline TDest AssignFromPrimvar(const TSrc& src) {
@@ -128,6 +128,12 @@ namespace lss {
       return ParticleRandomFlipAxis::Both;
     }
     return ParticleRandomFlipAxis::None;
+  }
+
+  template<>
+  inline ParticleSpawnDistribution AssignFromPrimvar<ParticleSpawnDistribution, pxr::TfToken>(const pxr::TfToken& token) {
+    static const pxr::TfToken kBySurfaceArea("BySurfaceArea");
+    return token == kBySurfaceArea ? ParticleSpawnDistribution::BySurfaceArea : ParticleSpawnDistribution::ByTriangle;
   }
 
   template<typename T>
