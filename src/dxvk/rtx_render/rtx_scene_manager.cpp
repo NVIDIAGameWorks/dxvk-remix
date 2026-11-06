@@ -2413,7 +2413,8 @@ namespace dxvk {
         }
 
         matInfo.size = align(surfaceMaterialsGPUSize, kBufferAlignment);
-        if (m_surfaceMaterialBuffer == nullptr || matInfo.size > m_surfaceMaterialBuffer->info().size) {
+        // Hidden emitters can populate the material cache before any particle surfaces exist.
+        if (matInfo.size > 0 && (m_surfaceMaterialBuffer == nullptr || matInfo.size > m_surfaceMaterialBuffer->info().size)) {
           m_surfaceMaterialBuffer = m_device->createBuffer(matInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "Surface Material Buffer");
         }
 
@@ -2451,7 +2452,7 @@ namespace dxvk {
         m_lastUploadedStartInMediumMaterialIndexInCache = m_startInMediumMaterialIndex_inCache;
 
         // PointInstancer copies use the template material slot, so leave theirs out
-        {
+        if (!surfaceMaterialsGPUData.empty()) {
           SkippingWriter writer = SkippingWriter(*ctx, m_surfaceMaterialBuffer, surfaceMaterialsGPUData.data());
           for (const PointInstancerBatch& batch : m_accelManager.getPointInstancerBatches()) {
             writer.writeThenSkipGap((batch.baseSurfaceIndex + 1) * kSurfaceMaterialGPUSize, (batch.baseSurfaceIndex + batch.instanceCount) * kSurfaceMaterialGPUSize);

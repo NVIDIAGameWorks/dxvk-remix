@@ -103,6 +103,7 @@ namespace dxvk {
           "Nico Rodrigues-McKenna",
           "Friedrich 'pixelcluster' Vock",
           "James 'jdswebb' Webb",
+          "Jasper Wilson",
           "David 'King David' Wiltos",
           "Dayton 'watbulb'",
           "Basil 'EliteCombineSoldier'"}},

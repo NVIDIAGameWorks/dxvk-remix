@@ -3076,6 +3076,7 @@ void ProcessDeviceCommandQueue() {
           serialize::InstanceInfoBlend blend;
           serialize::InstanceInfoTransforms boneXforms;
           serialize::InstanceInfoParticleSystem particleSystem;
+          serialize::InstanceInfoParticleSpawnDistribution particleSpawnDistribution;
         } exts;
         memset(&exts, 0, sizeof(InstanceExtensions));
 
@@ -3128,6 +3129,14 @@ void ProcessDeviceCommandQueue() {
               deserializeFromQueue(exts.particleSystem);
               pInfoProto->pNext = &(exts.particleSystem);
               pInfoProto = &getInfoProto(exts.particleSystem);
+              break;
+            }
+            case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SPAWN_DISTRIBUTION_EXT:
+            {
+              assert(!exts.particleSpawnDistribution.pNext);
+              deserializeFromQueue(exts.particleSpawnDistribution);
+              pInfoProto->pNext = &exts.particleSpawnDistribution;
+              pInfoProto = &getInfoProto(exts.particleSpawnDistribution);
               break;
             }
             default:

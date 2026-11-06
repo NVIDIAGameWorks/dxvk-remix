@@ -607,6 +607,20 @@ void InstanceInfoObjectPicking::_deserialize(void*& pDeserialize) {
 void InstanceInfoObjectPicking::_dtor() {
 }
 
+#define InstanceInfoParticleSpawnDistributionVars sType, spawnDistribution
+uint32_t InstanceInfoParticleSpawnDistribution::_calcSize() const {
+  return fold_helper::calcSize(InstanceInfoParticleSpawnDistributionVars);
+}
+void InstanceInfoParticleSpawnDistribution::_serialize(void*& pSerialize) const {
+  fold_helper::serialize(pSerialize, InstanceInfoParticleSpawnDistributionVars);
+}
+void InstanceInfoParticleSpawnDistribution::_deserialize(void*& pDeserialize) {
+  pNext = nullptr;
+  fold_helper::deserialize(pDeserialize, InstanceInfoParticleSpawnDistributionVars);
+}
+void InstanceInfoParticleSpawnDistribution::_dtor() {
+}
+
 
 #define InstanceInfoBlendVars sType, \
                               alphaTestEnabled, \

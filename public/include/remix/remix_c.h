@@ -62,7 +62,7 @@
 
 #define REMIXAPI_VERSION_MAJOR 0
 #define REMIXAPI_VERSION_MINOR 6
-#define REMIXAPI_VERSION_PATCH 6
+#define REMIXAPI_VERSION_PATCH 8
 
 
 // External
@@ -134,7 +134,9 @@ extern "C" {
     REMIXAPI_STRUCT_TYPE_DEPRECATED_LEGACY_PARTICLE_SYSTEM    = 24,
     REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT    = 25,
     REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_GPU_INSTANCING_EXT     = 26,
-    REMIXAPI_STRUCT_TYPE_CAMERA_MEDIUM_INFO                   = 27
+    REMIXAPI_STRUCT_TYPE_CAMERA_MEDIUM_INFO                   = 27,
+    // 28 is reserved for the particle emitter picking extension.
+    REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SPAWN_DISTRIBUTION_EXT = 29
     // NOTE: if adding a new struct, register it in 'rtx_remix_specialization.inl'
     //       and only extend this enum by appending, never adjust the order of these 
     //       as that will break backwards compatibility.
@@ -572,6 +574,19 @@ extern "C" {
     uint8_t             collisionMode;
     uint8_t             randomFlipAxis;
   } remixapi_InstanceInfoParticleSystemEXT;
+
+  typedef enum remixapi_ParticleSpawnDistribution {
+    REMIXAPI_PARTICLE_SPAWN_DISTRIBUTION_BY_TRIANGLE = 0,
+    REMIXAPI_PARTICLE_SPAWN_DISTRIBUTION_BY_SURFACE_AREA = 1,
+  } remixapi_ParticleSpawnDistribution;
+
+  // Extends InstanceInfo alongside its particle system extension.
+  // Omitting this extension preserves equal probability per emitter triangle.
+  typedef struct remixapi_InstanceInfoParticleSpawnDistributionEXT {
+    remixapi_StructType sType;
+    void* pNext;
+    remixapi_ParticleSpawnDistribution spawnDistribution;
+  } remixapi_InstanceInfoParticleSpawnDistributionEXT;
 
   typedef struct remixapi_InstanceInfoGpuInstancingEXT {
     remixapi_StructType       sType;

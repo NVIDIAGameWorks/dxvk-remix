@@ -62,6 +62,14 @@ struct GpuSpawnContext {
   uint16_t spawnMeshTexcoordsIdx;
 };
 
+struct ParticleSpawnDistributionConstants {
+  GpuSpawnContext spawnContext;
+  uint pass; // Measure areas, choose a common exponent, build prefixes, finalize block prefixes.
+  uint pad0;
+  uint pad1;
+  uint pad2;
+};
+
 // GPU-compatible particle system description - this struct is uploaded to the GPU
 // and must contain only POD types with no CPU-specific members like std::vector.
 struct GpuParticleSystemDesc { 
@@ -105,6 +113,7 @@ struct GpuParticleSystemDesc {
   uint8_t restrictVelocityX : 1;
   uint8_t restrictVelocityY : 1;
   uint8_t restrictVelocityZ : 1;
+  uint8_t spawnDistribution : 1;
 
 // Note: Spatial fields (collisionThickness, attractorRadius, gravityForce,
   // initialVelocityFromNormal, attractorForce, turbulenceForce, turbulenceFrequency)
@@ -164,6 +173,7 @@ struct RtxParticleSystemDesc : GpuParticleSystemDesc {
     restrictVelocityX = 0;
     restrictVelocityY = 0;
     restrictVelocityZ = 0;
+    spawnDistribution = ParticleSpawnDistribution::ByTriangle;
   }
 
   XXH64_hash_t calcHash() const {
@@ -239,5 +249,5 @@ struct ParticleSystemConstants {
   float resolveTransparencyThreshold;
   float minParticleSize;
   float sceneScale;
-  uint pad1;
+  uint spawnContextMapOffset;
 };

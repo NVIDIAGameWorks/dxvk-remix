@@ -1112,6 +1112,9 @@ std::optional<RtxParticleSystemDesc> UsdMod::Impl::processParticleSystem(Args& a
   _SafeGetParticlePrimvar(TfToken, id, spriteSheetMode, particleInfo.);
   _SafeGetParticlePrimvar(TfToken, id, collisionMode, particleInfo.);
   _SafeGetParticlePrimvar(TfToken, id, randomFlipAxis, particleInfo.);
+  ParticleSpawnDistribution spawnDistribution = ParticleSpawnDistribution::ByTriangle;
+  _SafeGetParticlePrimvar(TfToken, id, spawnDistribution, );
+  particleInfo.spawnDistribution = spawnDistribution;
   _SafeGetParticlePrimvar(bool, id, hideEmitter, particleInfo.);
   _SafeGetParticlePrimvar(bool, id, enableMotionTrail, particleInfo.);
   _SafeGetParticlePrimvar(bool, id, useTurbulence, particleInfo.);

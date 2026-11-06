@@ -22,6 +22,7 @@
 
 option('enable_tests', type : 'boolean', value : false)
 option('camera_gpu_tests', type : 'boolean', value : false, description : 'Run camera transport Vulkan tests (requires slangpy and numpy in the build Python environment)')
+option('particle_distribution_gpu_tests', type : 'boolean', value : false, description: 'Run particle distribution regressions on a Vulkan GPU')
 option('enable_dxgi',  type : 'boolean', value : false, description: 'Build DXGI')
 option('enable_d3d9',  type : 'boolean', value : true, description: 'Build D3D9')
 option('enable_d3d10', type : 'boolean', value : false, description: 'Build D3D10')

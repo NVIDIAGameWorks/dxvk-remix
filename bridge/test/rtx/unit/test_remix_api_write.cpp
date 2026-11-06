@@ -85,6 +85,8 @@ int main(int argc, char * argv[]) {
   INIT_SERIALIZE_WRITE(LightInfoDome, lightDome, file);
   INIT_SERIALIZE_WRITE(LightInfoUSD, lightUSD, file);
   INIT_SERIALIZE_WRITE(InstanceInfoParticleSystem, instParticle, file);
+  INIT_SERIALIZE_WRITE(InstanceInfoParticleSpawnDistribution, instParticleDistribution, file);
+  INIT_SERIALIZE_WRITE(InstanceInfoParticleSpawnDistribution, instParticleDistributionArea, file);
 
   file.close();
   return 0;

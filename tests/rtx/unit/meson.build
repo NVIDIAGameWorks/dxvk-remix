@@ -117,6 +117,33 @@ exe = executable('test_remix_categories', files('test_remix_categories.cpp'), de
 test('test_remix_categories', exe, env: test_env, priority : -50, args: [ d3d9_dll.full_path(), remix_categories_plugin.full_path() ], depends: [ d3d9_dll, remix_categories_plugin ])
 tests += exe
 
+exe = executable('test_particle_spawn_distribution', files('test_particle_spawn_distribution.cpp'), include_directories : test_include_path, dependencies : test_unit_deps, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_particle_spawn_distribution', exe, env: test_env)
+tests += exe
+
+if get_option('particle_distribution_gpu_tests')
+  particle_gpu_shaders = []
+  foreach shader : [
+    join_paths(shader_directory, 'rtx/pass/particles/particle_system_build_spawn_distribution.comp.slang'),
+    join_paths(meson.current_source_dir(), 'particle_spawn_distribution_sample.comp.slang'),
+  ]
+    particle_gpu_shaders += custom_target(fs.name(shader),
+      input: shader,
+      output: fs.stem(shader) + '.spv',
+      depfile: fs.stem(shader) + '.d',
+      command: [slang_compiler, '-entry', 'main', '-target', 'spirv', '-zero-initialize',
+        '-emit-spirv-directly', '-D__SLANG__', '-matrix-layout-column-major', '-Wno-30081', '-fvk-use-scalar-layout',
+        '-I', shader_directory, '-I', rtxdi_include_path_string, '-I', rtxcr_include_path_string,
+        '-I', submodules_include_path_string, '-I', volumetrics_include_path_string,
+        '-depfile', '@DEPFILE@', '@INPUT@', '-o', '@OUTPUT@'])
+  endforeach
+  exe = executable('test_particle_spawn_distribution_gpu', files('test_particle_spawn_distribution_gpu.cpp'),
+    include_directories: test_include_path, dependencies: lib_vulkan, win_subsystem: 'console',
+    override_options: ['cpp_std=' + dxvk_cpp_std])
+  test('test_particle_spawn_distribution_gpu', exe, args: particle_gpu_shaders, env: test_env, timeout: 120)
+  tests += [exe] + particle_gpu_shaders
+endif
+
 exe = executable('test_particle_system_schema', files('test_particle_system_schema.cpp'), dependencies : usd_dep, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
 test('test_particle_system_schema', exe, env: test_env, args: remix_particle_system_plugin.full_path(), depends: remix_particle_system_plugin)
 tests += exe
@@ -213,5 +240,10 @@ if get_option('camera_gpu_tests')
     suite : 'gpu', timeout : 120)
 endif
 # NV-DXVK end
+
+exe = executable('test_particle_system_lookup', files('test_particle_system_lookup.cpp'),
+  include_directories : test_include_path, dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ d3d9_dll, dxvk_lib ], win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_particle_system_lookup', exe, env: test_env)
+tests += exe
 
 alias_target('unit_tests', tests)

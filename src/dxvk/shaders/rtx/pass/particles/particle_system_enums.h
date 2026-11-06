@@ -46,3 +46,8 @@ enum ParticleRandomFlipAxis : uint8_t {
   Vertical,
   Both
 };
+
+enum ParticleSpawnDistribution : uint8_t {
+  ByTriangle = 0,
+  BySurfaceArea = 1,
+};
