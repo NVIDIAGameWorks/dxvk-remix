@@ -34,6 +34,7 @@
 #include "../d3d9/d3d9_state.h"
 #include "../../util/util_global_time.h"
 #include "rtx_matrix_helpers.h"
+#include "rtx_skipping_writer.h"
 
 #include "dxvk_scoped_annotation.h"
 #include "rtx_options.h"
@@ -1692,7 +1693,14 @@ namespace dxvk {
     assert(dataOffset == surfacesGPUSize);
     assert(surfacesGPUData.size() == surfacesGPUSize);
 
-    ctx->writeToBuffer(m_surfaceBuffer, 0, surfacesGPUData.size(), surfacesGPUData.data());
+    // PointInstancer copies are written by the GPU culling pass, so leave them out
+    {
+      SkippingWriter writer = SkippingWriter(*ctx, m_surfaceBuffer, surfacesGPUData.data());
+      for (const PointInstancerBatch& batch : m_pointInstancerBatches) {
+        writer.writeThenSkipGap((batch.baseSurfaceIndex + 1) * kSurfaceGPUSize, (batch.baseSurfaceIndex + batch.instanceCount) * kSurfaceGPUSize);
+      }
+      writer.writeUntil(surfacesGPUData.size());
+    }
 
     // Allocate and initialize the surface mapping buffer
     surfaceIndexMapping.resize(maxPreviousSurfaceIndex + 1);

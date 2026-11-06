@@ -44,6 +44,7 @@
 
 #include "rtx_game_capturer.h"
 #include "rtx_matrix_helpers.h"
+#include "rtx_skipping_writer.h"
 #include "dxvk_scoped_annotation.h"
 #include "rtx_lights_data.h"
 #include "rtx_light_utils.h"
@@ -2418,7 +2419,8 @@ namespace dxvk {
 
         std::size_t dataOffset = 0;
         uint32_t surfaceIndex = 0;
-        std::vector<unsigned char> surfaceMaterialsGPUData(surfaceMaterialsGPUSize);
+        std::vector<unsigned char>& surfaceMaterialsGPUData = m_scratchSurfaceMaterialsGPUData;
+        surfaceMaterialsGPUData.resize(surfaceMaterialsGPUSize);
         for (auto&& pInstance : m_accelManager.getOrderedInstances()) {
           // PointInstancer duplicates reference the template material slot.
           const auto& surf = pInstance->surface;
@@ -2448,7 +2450,14 @@ namespace dxvk {
         assert(surfaceMaterialsGPUData.size() == surfaceMaterialsGPUSize);
         m_lastUploadedStartInMediumMaterialIndexInCache = m_startInMediumMaterialIndex_inCache;
 
-        ctx->writeToBuffer(m_surfaceMaterialBuffer, 0, surfaceMaterialsGPUData.size(), surfaceMaterialsGPUData.data());
+        // PointInstancer copies use the template material slot, so leave theirs out
+        {
+          SkippingWriter writer = SkippingWriter(*ctx, m_surfaceMaterialBuffer, surfaceMaterialsGPUData.data());
+          for (const PointInstancerBatch& batch : m_accelManager.getPointInstancerBatches()) {
+            writer.writeThenSkipGap((batch.baseSurfaceIndex + 1) * kSurfaceMaterialGPUSize, (batch.baseSurfaceIndex + batch.instanceCount) * kSurfaceMaterialGPUSize);
+          }
+          writer.writeUntil(surfaceMaterialsGPUData.size());
+        }
       }
     } else {
       m_startInMediumMaterialIndex = m_startInMediumMaterialIndex_inCache != kInvalidMaterialCacheIndex
@@ -2487,7 +2496,8 @@ namespace dxvk {
         }
 
         std::size_t dataOffset = 0;
-        std::vector<unsigned char> surfaceMaterialExtensionsGPUData(surfaceMaterialExtensionsGPUSize);
+        std::vector<unsigned char>& surfaceMaterialExtensionsGPUData = m_scratchSurfaceMaterialExtensionsGPUData;
+        surfaceMaterialExtensionsGPUData.resize(surfaceMaterialExtensionsGPUSize);
 
         uint32_t surfaceIndex = 0;
         for (auto&& surfaceMaterialExtension : m_surfaceMaterialExtensionCache.getObjectTable()) {
@@ -2513,7 +2523,8 @@ namespace dxvk {
         }
 
         std::size_t dataOffset = 0;
-        std::vector<unsigned char> volumeMaterialsGPUData(volumeMaterialsGPUSize);
+        std::vector<unsigned char>& volumeMaterialsGPUData = m_scratchVolumeMaterialsGPUData;
+        volumeMaterialsGPUData.resize(volumeMaterialsGPUSize);
 
         for (auto&& volumeMaterial : m_volumeMaterialCache.getObjectTable()) {
           volumeMaterial.writeGPUData(volumeMaterialsGPUData.data(), dataOffset);
