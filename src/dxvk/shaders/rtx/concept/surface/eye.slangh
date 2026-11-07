@@ -122,10 +122,14 @@ void eyeCalcNormalFrame(
   float3 lateralOffset = offsetFromOrigin - eyedir * dot(offsetFromOrigin, eyedir);
 
   float radius = mix(cb.eyeArgs.normalBendingEyeball, cb.eyeArgs.normalBendingCornea, eyeIsIris(uvWhites, corneaRadius));
-  float domeHeight = sqrt(max(radius * radius - dot(lateralOffset, lateralOffset), 0.0f));
+  // Past the dome's edge the normal keeps tilting slowly instead of turning fully sideways,
+  // which gave grazing, over-bright reflections and dark whites toward the eye corners.
+  float domeHeight = sqrt(max(radius * radius - dot(lateralOffset, lateralOffset), 0.2f * radius * radius));
+  // A turned eye shows the eyeball past its equator, which faces back along the eye's axis, as its triangle does.
+  domeHeight *= dot(hitTriangleNormal, eyedir) < 0.f ? -1.f : 1.f;
 
-  // just a sphere normal
-  outNormal = normalize(lateralOffset - eyedir * domeHeight);
+  // just a sphere normal: eyedir is the eye's forward axis, so the dome bulges along it
+  outNormal = normalize(lateralOffset + eyedir * domeHeight);
 
   // Match the visible triangle's hemisphere before enforcing reflection clearance.
   // Reflection is invariant under N -> -N, but lighting is not.
@@ -150,58 +154,124 @@ void eyeCalcNormalFrame(
 }
 
 
-// Preserve the original iris projection through the curved eye tangent frame.
-float2 eyeCalcParallaxOffset(
-  float3 eyeBasisU, float3 eyeBasisV, float3 hitNormal,
-  float3 tangent, float3 bitangent, float3 viewDirection, uint eyeViewModelMode)
+// Returns whether the view ray reaches the iris through the cornea.
+// Outputs the hit-to-iris shift in whites texture coordinates.
+// Eye radii: eyeball 12 mm, limbus 6 mm, cornea sphere 7.8 mm; the iris is 3.78 mm under the cornea apex.
+// The limbus maps to corneaRadius in whites texture coordinates, which sets the eye's scale.
+bool eyeCalcParallaxOffset(
+  float3 eyeBasisU, float3 eyeBasisV, float3 eyeballOrigin, float3 hitPosition,
+  float3 viewDirection, const float corneaRadius, uint eyeViewModelMode, out float2 parallaxOffset)
 {
+  parallaxOffset = 0.f;
+
   if (eyeViewModelMode != 0)
   {
     const float3x3 toWorld = cb.eyeArgs.corrections[eyeViewModelMode - 1].shadingToWorld;
     const float3x3 toShading = cb.eyeArgs.corrections[eyeViewModelMode - 1].worldToShading;
+    hitPosition = mul(toShading, hitPosition - eyeballOrigin);
+    eyeballOrigin = 0.f;
     eyeBasisU = mul(eyeBasisU, toWorld);
     eyeBasisV = mul(eyeBasisV, toWorld);
-    hitNormal = normalize(mul(hitNormal, toWorld));
-    tangent = mul(toShading, tangent);
-    bitangent = mul(toShading, bitangent);
-    eyeCalcTangentFrame(tangent, bitangent, hitNormal, tangent, bitangent);
     viewDirection = normalize(mul(toShading, viewDirection));
   }
-  const float3 lookDirection = -normalize(cross(eyeBasisU, eyeBasisV));
-  const float3 refractedDirection = refract(-viewDirection, hitNormal, 1.f);
-  const float heightInLookDir = abs(dot(lookDirection, -refractedDirection));
-  const float3 displacement = refractedDirection
-    * (cb.eyeArgs.irisDepth / max(heightInLookDir, 0.00001));
 
-  // Retain the material frame's original half precision and iris-depth scale.
-  const float3x3 worldToTangent = float3x3(f16mat3(tangent, bitangent, hitNormal));
-  return mul(worldToTangent, displacement).xy;
+  // Eye space in millimetres, +z along the eye's forward axis (see eyeCalcNormalFrame).
+  const float eyeballRadius = 12.f;
+  const float limbusRadius = 6.f;
+  const float corneaSphereRadius = 1.3f * limbusRadius;
+  const float limbusZ = sqrt(eyeballRadius * eyeballRadius - limbusRadius * limbusRadius);
+  const float corneaZ = limbusZ - sqrt(corneaSphereRadius * corneaSphereRadius - limbusRadius * limbusRadius);
+  const float irisZ = corneaZ + corneaSphereRadius - 3.78f * cb.eyeArgs.irisDepthScale;
+  const float3 axisZ = -normalize(cross(eyeBasisU, eyeBasisV));
+  const float3 axisX = normalize(eyeBasisU);
+  const float3 axisY = cross(axisZ, axisX);
+  // corneaRadius in whites texture coordinates is 2 * corneaRadius / |U| world units (see eyeCalcUvWhites).
+  const float scale = 2.f * corneaRadius / (length(eyeBasisU) * limbusRadius);
+
+  // The depth of the eye's centre is unknown, so the eye is placed so that its surface passes through the hit at the
+  // hit's distance from the axis: on the cornea within the limbus, on the eyeball outside it.
+  const float3 offset = hitPosition - eyeballOrigin;
+  const float2 lateral = float2(dot(offset, axisX), dot(offset, axisY)) / scale;
+  const float hitRho = length(lateral);
+  const float3 hit = float3(lateral, hitRho < limbusRadius ?
+    corneaZ + sqrt(corneaSphereRadius * corneaSphereRadius - hitRho * hitRho) :
+    sqrt(max(eyeballRadius * eyeballRadius - hitRho * hitRho, 0.f)));
+  const float3 direction = -float3(dot(viewDirection, axisX), dot(viewDirection, axisY), dot(viewDirection, axisZ));
+
+  // The view ray's first entry into the eyeball or the cornea sphere, from a little before the hit.
+  // Note: the nearer entry is chosen with branches, not min() of two ternaries, which Slang miscompiles.
+  const float3 origin = hit - direction * 2.f;
+  const float3 corneaOffset = origin - float3(0.f, 0.f, corneaZ);
+  const float corneaB = dot(corneaOffset, direction);
+  const float corneaDiscriminant = corneaB * corneaB - dot(corneaOffset, corneaOffset) + corneaSphereRadius * corneaSphereRadius;
+  const float eyeballB = dot(origin, direction);
+  const float eyeballDiscriminant = eyeballB * eyeballB - dot(origin, origin) + eyeballRadius * eyeballRadius;
+  float t = -eyeballB - sqrt(max(eyeballDiscriminant, 0.f));
+  if (corneaDiscriminant >= 0.f && (eyeballDiscriminant < 0.f || -corneaB - sqrt(corneaDiscriminant) < t))
+  {
+    t = -corneaB - sqrt(corneaDiscriminant);
+  }
+  if (corneaDiscriminant < 0.f && eyeballDiscriminant < 0.f)
+  {
+    return false;
+  }
+  const float3 entry = origin + direction * t;
+
+  // Refraction at the eye's normal, the eyeball's and the cornea's blended across the limbus.
+  const float corneaWeight = entry.z < 0.f ? 0.f :
+    1.f - smoothstep(limbusRadius - 0.6f, limbusRadius + 0.6f, length(entry.xy));
+  const float3 normal = normalize(lerp(normalize(entry), normalize(entry - float3(0.f, 0.f, corneaZ)), corneaWeight));
+  const float3 refracted = refract(direction, normal, 1.f / 1.376f);
+  if (dot(refracted, refracted) < 1e-6f || refracted.z > -1e-4f)
+  {
+    return false;
+  }
+
+  // The iris recedes by 0.06 per millimetre past the pupil margin (1.6 mm).
+  const float3 irisDirection = normalize(refracted);
+  float irisT = 0.f;
+  for (uint i = 0; i < 3; ++i)
+  {
+    irisT = (irisZ - 0.06f * max(length(entry.xy + irisDirection.xy * irisT) - 1.6f, 0.f) - entry.z) / irisDirection.z;
+  }
+  const float3 iris = entry + irisDirection * irisT;
+  if (length(iris.xy) > limbusRadius + 0.5f)
+  {
+    return false;
+  }
+
+  // The iris point is projected like the whites (eyeCalcUvWhites).
+  const float3 shift = (axisX * (iris.x - hit.x) + axisY * (iris.y - hit.y) + axisZ * (iris.z - hit.z)) * scale;
+  parallaxOffset = 0.5f * float2(dot(shift, eyeBasisU), dot(shift, eyeBasisV));
+  return true;
 }
 
 float2 eyeCalcIrisUvParallaxed(
   const float2   uvWhites,
-  const float2   parallaxOffset,
-  const float    irisRadius
+  const float2   parallaxOffset
 )
 {
   float2 uvIris = uvWhites;
   uvIris -= 0.5; // set center to 0
 
-  float  parallaxStrength = eyeIsIris(uvWhites, irisRadius, 0.02);
-
-  uvIris += parallaxStrength * parallaxOffset;
-
-  // corner case: if parallax moves uv outside iris radius, clamp it back,
-  //              so we don't sample whites texture from iris area
-  float len = length(uvIris);
-  if (parallaxStrength > 0.000001 && len > irisRadius)
-  {
-    uvIris = (uvIris / len) * irisRadius;
-  }
+  uvIris += parallaxOffset;
 
   // NOTE: an eye dilation can be simulated by scaling uvIris
 
   uvIris *= 2;   // iris needs to be 2 times smaller compared to whites in world space
   uvIris += 0.5; // back to center at 0.5
   return uvIris;
+}
+
+// Limbal ring: the iris darkens toward the limbus, to about half at 0.86 of its radius in real eyes.
+// Seen at an angle, the view crosses more of the semi-clear limbus, so the ring darkens and widens.
+// viewCosine is the cosine between the view and the eye's axis.
+float eyeCalcLimbalRing(const float2 uvIris, const float viewCosine)
+{
+  // The limbus is at the cornea edge: irisRadius + 0.04 in whites coordinates, twice that in iris coordinates.
+  const float r = length(uvIris - 0.5f) / (2.f * (cb.eyeArgs.irisRadius + 0.04f));
+  // Light through the limbus falls off with the path length, 1 / cosine: half of it at a head-on view.
+  const float cosine = max(viewCosine, 0.5f);
+  const float strength = (1.f - pow(0.5f, 1.f / cosine)) * cb.eyeArgs.limbalRingScale;
+  return 1.f - strength * smoothstep(mix(0.45f, 0.65f, cosine), 0.92f, r);
 }

@@ -124,9 +124,9 @@ struct EyeArgs {
   float whitesAlbedoScale;
 
   float irisRadius;
-  float irisDepth;
-  uint  pad0;
-  uint  pad1;
+  float irisDepthScale;
+  float limbalRingScale;
+  float roughness;
 
   // One real viewmodel space and the single supported virtual portal space.
   EyeCorrectionArgs corrections[2];
