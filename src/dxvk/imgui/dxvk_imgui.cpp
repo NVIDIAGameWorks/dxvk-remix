@@ -3003,10 +3003,12 @@ namespace dxvk {
         ImGui::BeginDisabled(!RtxOptions::Eye::enable());
         RemixGui::Checkbox("Detect texture-generation draw call as Eye", &RtxOptions::Eye::assumeViewTexgenModeAsEyeObject());
         RemixGui::DragFloat("Eye Whites Albedo Scale", &RtxOptions::Eye::eyeWhitesAlbedoScaleObject(), 0.01F);
+        RemixGui::DragFloat("Roughness", &RtxOptions::Eye::roughnessObject(), 0.01F, 0.F, 1.F);
         RemixGui::DragFloat("Normals: Eyeball Offset", &RtxOptions::Eye::eyeballSphereOffsetObject(), 0.001F);
         RemixGui::DragFloat("Normals: Cornea Offset", &RtxOptions::Eye::corneaSphereOffsetObject(), 0.001F);
         RemixGui::DragFloat("Iris Radius", &RtxOptions::Eye::irisRadiusObject(), 0.001F);
-        RemixGui::DragFloat("Iris Depth", &RtxOptions::Eye::irisDepthObject(), 0.001F);
+        RemixGui::DragFloat("Iris Depth Scale", &RtxOptions::Eye::irisDepthScaleObject(), 0.01F);
+        RemixGui::DragFloat("Limbal Ring Scale", &RtxOptions::Eye::limbalRingScaleObject(), 0.01F, 0.F, 1.F);
         ImGui::EndDisabled();
         ImGui::Unindent();
       }

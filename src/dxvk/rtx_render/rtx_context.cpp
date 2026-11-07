@@ -1515,7 +1515,9 @@ namespace dxvk {
     constants.eyeArgs.normalBendingCornea = RtxOptions::Eye::corneaSphereOffset();
     constants.eyeArgs.whitesAlbedoScale = RtxOptions::Eye::eyeWhitesAlbedoScale();
     constants.eyeArgs.irisRadius = RtxOptions::Eye::irisRadius();
-    constants.eyeArgs.irisDepth = RtxOptions::Eye::irisDepth();
+    constants.eyeArgs.irisDepthScale = RtxOptions::Eye::irisDepthScale();
+    constants.eyeArgs.limbalRingScale = RtxOptions::Eye::limbalRingScale();
+    constants.eyeArgs.roughness = RtxOptions::Eye::roughness();
     const auto& eyeShadingToWorld = getSceneManager().getInstanceManager().getEyeShadingToWorld();
     const auto& eyeWorldToShading = getSceneManager().getInstanceManager().getEyeWorldToShading();
 
