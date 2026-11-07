@@ -1401,7 +1401,19 @@ void initSharc(
   }
 #endif
 
-  Sharc::onBounceEnd(pathState, firstSampledLobeIsOpacityTransmission ? 0.h : firstHitPerceptualRoughness);
+  // The first segment adds to the footprint the same way later segments do in Sharc::onBounceEnd: a diffuse lobe
+  // is as wide as lobes get whatever the surface's roughness, and a specular lobe is as wide as the surface is rough.
+  float16_t firstLobePerceptualRoughness = firstHitPerceptualRoughness;
+  if (firstSampledLobeIsOpacityTransmission)
+  {
+    firstLobePerceptualRoughness = 0.h;
+  }
+  else if (!geometryFlags.firstSampledLobeIsSpecular)
+  {
+    firstLobePerceptualRoughness = surfaceMaterialInteractionSerializationDataFallbackPerceptualRoughness;
+  }
+
+  Sharc::onBounceEnd(pathState, firstLobePerceptualRoughness);
   // after primary hit, increment bounce iteration
   pathState.bounceIteration = 1;
 
