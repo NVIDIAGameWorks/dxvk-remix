@@ -45,11 +45,11 @@ namespace dxvk {
       }
     }
 
-    remixapi_ErrorCode initialize(uint64_t version, std::vector<uint8_t>& buffer) {
+    remixapi_ErrorCode initialize(uint64_t version, void* pOut) {
       remixapi_InitializeLibraryInfo info = {};
       info.sType = REMIXAPI_STRUCT_TYPE_INITIALIZE_LIBRARY_INFO;
       info.version = version;
-      return remixapi_InitializeLibrary(&info, reinterpret_cast<remixapi_Interface*>(buffer.data()));
+      return remixapi_InitializeLibrary(&info, static_cast<remixapi_Interface*>(pOut));
     }
 
     // A client allocates only the interface it knows, so the bytes behind it must stay untouched.
@@ -57,7 +57,7 @@ namespace dxvk {
     void testClientInterfaceSize(uint64_t version, size_t clientBytes, const char* pMessage) {
       std::vector<uint8_t> buffer(sizeof(remixapi_Interface) + kCanaryBytes, kCanary);
       std::memset(buffer.data(), 0, clientBytes);
-      require(initialize(version, buffer) == REMIXAPI_ERROR_CODE_SUCCESS, pMessage);
+      require(initialize(version, buffer.data()) == REMIXAPI_ERROR_CODE_SUCCESS, pMessage);
 
       for (size_t i = clientBytes; i < buffer.size(); ++i) {
         require(buffer[i] == kCanary, pMessage);
@@ -72,29 +72,82 @@ namespace dxvk {
 
     void testRejectedVersion(uint64_t version, const char* pMessage) {
       std::vector<uint8_t> buffer(sizeof(remixapi_Interface) + kCanaryBytes, kCanary);
-      require(initialize(version, buffer) == REMIXAPI_ERROR_CODE_INCOMPATIBLE_VERSION, pMessage);
+      require(initialize(version, buffer.data()) == REMIXAPI_ERROR_CODE_INCOMPATIBLE_VERSION, pMessage);
 
       for (const uint8_t byte : buffer) {
         require(byte == kCanary, pMessage);
       }
     }
 
+    constexpr uint64_t kRuntimeVersion = REMIXAPI_VERSION_MAKE(REMIXAPI_VERSION_MAJOR, REMIXAPI_VERSION_MINOR, REMIXAPI_VERSION_PATCH);
     constexpr size_t kCurrentInterfaceBytes = sizeof(remixapi_Interface);
     constexpr size_t kOldInterfaceBytes = offsetof(remixapi_Interface, SetCameraMediumMaterial);
+
+    // The functions around the slot that 0.6.4 moved must be in their 0.6.3 order.
+    void testInterface063() {
+      remixapi_Interface interf = {};
+      remixapi_version::remixapi_Interface_063 interf063 = {};
+      require(initialize(kRuntimeVersion, &interf) == REMIXAPI_ERROR_CODE_SUCCESS, "current client");
+      require(initialize(REMIXAPI_VERSION_MAKE(0, 6, 3), &interf063) == REMIXAPI_ERROR_CODE_SUCCESS, "0.6.3 client");
+
+      require(interf063.SetupCamera == interf.SetupCamera, "0.6.3 SetupCamera");
+      require(interf063.SetCameraMediumMaterial == interf.SetCameraMediumMaterial, "0.6.3 SetCameraMediumMaterial");
+      require(interf063.DrawInstance == interf.DrawInstance, "0.6.3 DrawInstance");
+      require(interf063.Present == interf.Present, "0.6.3 Present");
+    }
+
+    void testCompatibilityRule() {
+      using remixapi_version::isClientVersionCompatible;
+
+      for (uint64_t clientPatch = 0; clientPatch < 10; ++clientPatch) {
+        for (uint64_t runtimePatch = 0; runtimePatch < 10; ++runtimePatch) {
+          require(isClientVersionCompatible(REMIXAPI_VERSION_MAKE(0, 6, clientPatch), REMIXAPI_VERSION_MAKE(0, 6, runtimePatch)),
+                  "0.6.x clients work with any 0.6.x runtime");
+          require(!isClientVersionCompatible(REMIXAPI_VERSION_MAKE(0, 5, clientPatch), REMIXAPI_VERSION_MAKE(0, 6, runtimePatch)),
+                  "0.5.x clients are rejected by 0.6.x runtimes");
+          require(!isClientVersionCompatible(REMIXAPI_VERSION_MAKE(0, 7, clientPatch), REMIXAPI_VERSION_MAKE(0, 6, runtimePatch)),
+                  "0.7.x clients are rejected by 0.6.x runtimes");
+          require(isClientVersionCompatible(REMIXAPI_VERSION_MAKE(1, 1, clientPatch), REMIXAPI_VERSION_MAKE(1, 2, runtimePatch)),
+                  "1.1.x clients work with 1.2.x runtimes");
+          require(!isClientVersionCompatible(REMIXAPI_VERSION_MAKE(1, 3, clientPatch), REMIXAPI_VERSION_MAKE(1, 2, runtimePatch)),
+                  "1.3.x clients are rejected by 1.2.x runtimes");
+          require(!isClientVersionCompatible(REMIXAPI_VERSION_MAKE(0, 6, clientPatch), REMIXAPI_VERSION_MAKE(1, 6, runtimePatch)),
+                  "0.x clients are rejected by 1.x runtimes");
+        }
+      }
+    }
+
+    void testClientInterfaceSizes() {
+      using remixapi_version::clientInterfaceSize;
+
+      for (uint64_t patch = 0; patch < 10; ++patch) {
+        const uint64_t version = REMIXAPI_VERSION_MAKE(0, 6, patch);
+        size_t expected = kCurrentInterfaceBytes;
+        if (patch < 3) {
+          expected = kOldInterfaceBytes;
+        } else if (patch == 3) {
+          expected = sizeof(remixapi_version::remixapi_Interface_063);
+        }
+        require(clientInterfaceSize(version) == expected, "clientInterfaceSize matches the client's patch");
+      }
+    }
 
   }
 
   void testVersions() {
+    testCompatibilityRule();
+    testClientInterfaceSizes();
+
     testClientInterfaceSize(REMIXAPI_VERSION_MAKE(0, 6, 0), kOldInterfaceBytes, "0.6.0 client keeps its canary");
     testClientInterfaceSize(REMIXAPI_VERSION_MAKE(0, 6, 4), kCurrentInterfaceBytes, "0.6.4 client");
     testClientInterfaceSize(REMIXAPI_VERSION_MAKE(0, 6, 5), kCurrentInterfaceBytes, "0.6.5 client");
     testClientInterfaceSize(REMIXAPI_VERSION_MAKE(0, 6, 6), kCurrentInterfaceBytes, "0.6.6 client");
-    testClientInterfaceSize(REMIXAPI_VERSION_MAKE(REMIXAPI_VERSION_MAJOR, REMIXAPI_VERSION_MINOR, REMIXAPI_VERSION_PATCH),
-                            kCurrentInterfaceBytes, "client at the runtime's version");
+    testClientInterfaceSize(kRuntimeVersion, kCurrentInterfaceBytes, "client at the runtime's version");
+    testClientInterfaceSize(kRuntimeVersion + 1, kCurrentInterfaceBytes, "client with a newer patch");
+    testClientInterfaceSize(REMIXAPI_VERSION_MAKE(0, 6, 3), sizeof(remixapi_version::remixapi_Interface_063), "0.6.3 client keeps its canary");
+    testInterface063();
 
-    testRejectedVersion(REMIXAPI_VERSION_MAKE(0, REMIXAPI_VERSION_MINOR, REMIXAPI_VERSION_PATCH + 1), "newer patch is rejected");
     testRejectedVersion(REMIXAPI_VERSION_MAKE(0, REMIXAPI_VERSION_MINOR + 1, 0), "next minor is rejected");
-    testRejectedVersion(REMIXAPI_VERSION_MAKE(0, 6, 3), "0.6.3 interface order is rejected");
     testRejectedVersion(REMIXAPI_VERSION_MAKE(0, 5, 0), "older minor is rejected");
   }
 

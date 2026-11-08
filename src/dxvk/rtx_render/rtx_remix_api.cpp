@@ -1889,8 +1889,7 @@ extern "C"
     }
     static_assert(sizeof(interf) == 176, "Add/remove function registration");
 
-    // Older clients allocate a shorter interface, so only the prefix they know is written.
-    std::memcpy(out_result, &interf, remixapi_version::clientInterfaceSize(info->version));
+    remixapi_version::writeClientInterface(interf, info->version, out_result);
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
 

@@ -83,7 +83,10 @@ initialiazation, resource registration (meshes, materials, lights), and submitti
     That way, the target app is compatible only with specific versions of Remix Renderer binaries (`d3d9.dll`). 
     
     * The Renderer binaries loosely follows the [Semantic Versioning](https://semver.org/), with the main difference on the development `0.y.z` versions:
-    an app built against `0.a.b` is compatible only with `0.a.d` binaries where `b <= d`.
+    an app built against `0.a.b` is compatible only with `0.a.d` binaries, whatever the patch versions.
+    A binary older than the app writes only the functions it knows and ignores the newer struct fields.
+    So that the newer functions stay null, zero-initialize `remixapi_Interface` before calling `remixapi_InitializeLibrary`, and check them for null before calling them.
+    `remixapi_lib_loadRemixDllAndInitialize` already zero-initializes it.
 
     * If a target app is not compatible with a given Remix Renderer binaries, initialization will return `REMIXAPI_ERROR_CODE_INCOMPATIBLE_VERSION` error code.
 

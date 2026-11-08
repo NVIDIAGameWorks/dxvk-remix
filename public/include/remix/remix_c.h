@@ -848,6 +848,8 @@ extern "C" {
     PFN_remixapi_SetCameraMediumMaterial SetCameraMediumMaterial;
   } remixapi_Interface;
 
+  // NOTE: Zero-initialize out_result before the call. A runtime older than this header writes
+  //       only the functions it knows, so the newer ones stay null only if they start null.
   REMIXAPI remixapi_ErrorCode REMIXAPI_CALL remixapi_InitializeLibrary(
     const remixapi_InitializeLibraryInfo* info,
     remixapi_Interface*                   out_result);
