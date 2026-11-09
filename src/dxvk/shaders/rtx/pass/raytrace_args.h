@@ -400,6 +400,7 @@ struct RaytraceArgs {
   uint isLastCompositeOutputValid;
   uint isZUp; // Note: Indicates if the Z axis is the "up" axis in world space if true, otherwise the Y axis if false.
   uint enableCullingSecondaryRays;
+  uint enablePointSampledOpacityInSecondaryRays;
 
   u16vec2 gpuPrintThreadIndex;
   uint gpuPrintElementIndex;

@@ -99,6 +99,7 @@ namespace dxvk {
           "Kevin 'HANsoA-KevinO'",
           "Kim 'Kim2091'",
           "Leonardo Leotte",
+          "Liam 'softsoundd'",
           "Enock Lubega",
           "Jeffrey 'skurtyyskirts' Munoz",
           "Nico Rodrigues-McKenna",
