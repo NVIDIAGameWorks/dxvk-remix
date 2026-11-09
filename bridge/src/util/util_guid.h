@@ -52,13 +52,26 @@ namespace bridge_util {
         return false;
       }
 
+      // scanf field widths are maximums, so check the canonical 8-4-4-4-12 layout explicitly.
+      for (size_t i = 0; i < GUID_LENGTH; ++i) {
+        const wchar_t c = (*szGuid)[i];
+        if (i == 8 || i == 13 || i == 18 || i == 23) {
+          if (c != L'-') {
+            return false;
+          }
+        } else if (!isAsciiHexDigit(c)) {
+          return false;
+        }
+      }
+
       auto result = swscanf_s(*szGuid,
         L"%8x-%4hx-%4hx-%2hhx%2hhx-%2hhx%2hhx%2hhx%2hhx%2hhx%2hhx",
         &m_guid.Data1, &m_guid.Data2, &m_guid.Data3,
         &m_guid.Data4[0], &m_guid.Data4[1], &m_guid.Data4[2], &m_guid.Data4[3],
         &m_guid.Data4[4], &m_guid.Data4[5], &m_guid.Data4[6], &m_guid.Data4[7]);
 
-      return result != EOF;
+      // Accept the string only when all 11 GUID fields were converted.
+      return result == 11;
     }
 
     std::string toString(const std::string& baseName) {
@@ -79,6 +92,10 @@ namespace bridge_util {
 
   private:
     GUID m_guid;
+
+    static bool isAsciiHexDigit(const wchar_t c) {
+      return (c >= L'0' && c <= L'9') || (c >= L'a' && c <= L'f') || (c >= L'A' && c <= L'F');
+    }
   };
 }
 
