@@ -70,9 +70,12 @@ Full guide: `documentation/CONTRIBUTING-style-guide.md`
   - Focus on recording non-obvious interactions and pitfalls.
   - Keep material parameter documentation in MDL. Reserve code comments about material parameters for implementation details.
   - If a long plain-english explanation of how a complicated set of systems interact is needed, that should go in a .md file in the `documentation/` folder.
-    - Documentation about how to use a feature should be clearly separated from technical documenation about how a feature works.
     - In code comments should reference sections of that .md file, rather than repeating or trying to summarize.
   - Rational for why a change is needed should go into commit messages or MR descriptions, not the code.
+- **Documentation**:
+  - .md files in the `documentation/` folder should have two clear focuses:
+    - What modders need to know to use the system in question.  This section should be concise and human readable.
+    - What agents and developers need to know to properly debug, fix, and extend the system.  This may include architecture design explanations, how the system works technically, how it interacts with other systems, and info on how to avoid re-introducing bugs.
 
 ### Changes to Upstream-Derived DXVK Code
 
