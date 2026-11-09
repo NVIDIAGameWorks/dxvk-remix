@@ -50,6 +50,7 @@
 
 #include <windows.h>
 
+#include <cmath>
 #include <cstring>
 #include <optional>
 
@@ -881,6 +882,14 @@ std::unique_ptr<dxvk::ExternalDrawState> dxvk::RemixAPIPrivateAccessor::toRtDraw
     }
   }
 
+  if (auto screenSize = pnext::find<remixapi_InstanceInfoParticleScreenSizeEXT>(&info)) {
+    if (state->optionalParticleDesc) {
+      state->optionalParticleDesc->minScreenSize = screenSize->minScreenSize;
+      state->optionalParticleDesc->maxScreenSize = screenSize->maxScreenSize;
+      state->optionalParticleDesc->screenSizeCoverage = screenSize->screenSizeCoverage;
+    }
+  }
+
   if (auto extInstancing = pnext::find<remixapi_InstanceInfoGpuInstancingEXT>(&info)) {
     if (extInstancing->instanceTransforms_count > 0 && extInstancing->instanceTransforms_values) {
       auto& gpuInstancingTransforms = state->gpuInstancingTransforms;
@@ -1161,6 +1170,15 @@ namespace {
     if (auto distribution = pnext::find<remixapi_InstanceInfoParticleSpawnDistributionEXT>(info)) {
       if (distribution->spawnDistribution != REMIXAPI_PARTICLE_SPAWN_DISTRIBUTION_BY_TRIANGLE
           && distribution->spawnDistribution != REMIXAPI_PARTICLE_SPAWN_DISTRIBUTION_BY_SURFACE_AREA) {
+        return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+      }
+    }
+    if (auto screenSize = pnext::find<remixapi_InstanceInfoParticleScreenSizeEXT>(info)) {
+      if (!std::isfinite(screenSize->minScreenSize) || screenSize->minScreenSize < 0.f
+          || !std::isfinite(screenSize->maxScreenSize) || screenSize->maxScreenSize < 0.f
+          || (screenSize->maxScreenSize > 0.f && screenSize->maxScreenSize < screenSize->minScreenSize)
+          || !std::isfinite(screenSize->screenSizeCoverage)
+          || screenSize->screenSizeCoverage < 0.f || screenSize->screenSizeCoverage > 1.f) {
         return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
       }
     }

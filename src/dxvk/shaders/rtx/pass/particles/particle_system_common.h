@@ -115,6 +115,11 @@ struct GpuParticleSystemDesc {
   uint8_t restrictVelocityZ : 1;
   uint8_t spawnDistribution : 1;
 
+  float minScreenSize;
+  float maxScreenSize;
+  float screenSizeCoverage;
+  uint screenSizePad;
+
 // Note: Spatial fields (collisionThickness, attractorRadius, gravityForce,
   // initialVelocityFromNormal, attractorForce, turbulenceForce, turbulenceFrequency)
   // are authored in centimeters and scaled by ParticleSystemConstants::sceneScale
@@ -174,6 +179,9 @@ struct RtxParticleSystemDesc : GpuParticleSystemDesc {
     restrictVelocityY = 0;
     restrictVelocityZ = 0;
     spawnDistribution = ParticleSpawnDistribution::ByTriangle;
+    minScreenSize = 0.f;
+    maxScreenSize = 0.f;
+    screenSizeCoverage = 1.f;
   }
 
   XXH64_hash_t calcHash() const {
@@ -236,6 +244,7 @@ struct ParticleSystemConstants {
   mat4 viewToWorld;
 
   mat4 prevWorldToProjection;
+  mat4 worldToProjection;
 
   vec3 upDirection;
   float deltaTimeSecs;

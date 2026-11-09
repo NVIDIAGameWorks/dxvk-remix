@@ -29,6 +29,7 @@
 #include "rtx/utility/gbuffer_helpers.slangh"
 #include "rtx/utility/debug_view_helpers.slangh"
 #include "rtx/concept/camera/camera.slangh"
+#include "rtx/pass/particles/particle_screen_size.h"
 
 layout(binding = PARTICLE_SYSTEM_BINDING_PARTICLES_BUFFER_INPUT)
 StructuredBuffer<GpuParticle> Particles;
@@ -138,10 +139,14 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
   const GpuParticle particle = Particles[particleIdx];
   
   // precache some values
-  const float2 size = particle.size(particleSystem, animationDataTex) * particleCb.sceneScale;
-  const float4 color = particle.color(particleSystem, animationDataTex);
+  float2 size = particle.size(particleSystem, animationDataTex) * particleCb.sceneScale;
+  float4 color = particle.color(particleSystem, animationDataTex);
+  const float3 screenSizeSettings = float3(particleSystem.desc.minScreenSize, particleSystem.desc.maxScreenSize, particleSystem.desc.screenSizeCoverage);
+  const bool screenSizeEnabled = particleScreenSizeEnabled(screenSizeSettings.x, screenSizeSettings.y);
   
-  if(particle.isDead() || particle.isSleeping() || color.w < particleCb.resolveTransparencyThreshold || max(size.x, size.y) < 0.1f * particleCb.sceneScale)
+  if (particle.isDead() || particle.isSleeping() || color.w < particleCb.resolveTransparencyThreshold
+      || (!screenSizeEnabled && max(size.x, size.y) < 0.1f * particleCb.sceneScale)
+      || !all(isfinite(size)) || max(abs(size.x), abs(size.y)) == 0.f)
   {
     clearParticleVertices(threadIdx.x, particleSystem);
     return;
@@ -194,24 +199,6 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
     } break;
   }
   
-  // Screen-space size culling
-  {
-    float4 centerClip = mul(particleCb.prevWorldToProjection, float4(particle.position, 1.0f));
-    float4 offsetClip = mul(particleCb.prevWorldToProjection, float4(particle.position + basisRight * size.x + basisUp * size.y, 1.0f));
-    
-    float2 centerNdc = centerClip.xy / centerClip.w;
-    float2 offsetNdc = offsetClip.xy / offsetClip.w;
-    
-    float2 ndcDelta    = offsetNdc - centerNdc;
-    float2 screenDelta = ndcDelta * float2(particleCb.renderingWidth, particleCb.renderingHeight);
-
-    if (dot(screenDelta, screenDelta) <= particleCb.minParticleSize * particleCb.minParticleSize)
-    {
-      clearParticleVertices(threadIdx.x, particleSystem);
-      return;
-    }
-  }
-  
   float2x2 rot2D = float2x2(1.f, 0.f, 0.f, 1.f);
   if (particleSystem.desc.alignParticlesToVelocity)
   {
@@ -223,6 +210,48 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
     float s, c;
     sincos(particle.rotation, s, c);
     rot2D = float2x2(c, -s, s, c);
+  }
+
+  if (screenSizeEnabled) {
+    const float4 centerClip = mul(particleCb.worldToProjection, float4(particle.position, 1.f));
+    float3 rotatedRight = basisRight * rot2D[0][0] + basisUp * rot2D[1][0];
+    float3 rotatedUp = basisRight * rot2D[0][1] + basisUp * rot2D[1][1];
+    float trailLength = 0.f;
+    if (particleSystem.desc.enableMotionTrail) {
+      const float2 motionPlane = -float2(dot(particle.velocity, basisRight), dot(particle.velocity, basisUp));
+      const float speed = length(motionPlane);
+      const float2 motionDir = speed > 0.f ? motionPlane / speed : float2(0.f, 1.f);
+      const float2 orthoDir = float2(-motionDir.y, motionDir.x);
+      rotatedRight = basisRight * orthoDir.x + basisUp * orthoDir.y;
+      rotatedUp = basisRight * motionDir.x + basisUp * motionDir.y;
+      trailLength = max(0.f, speed * particleSystem.desc.motionTrailMultiplier * particleCb.deltaTimeSecs);
+    }
+    const float4 rightClip = mul(particleCb.worldToProjection, float4(rotatedRight * size.x, 0.f));
+    const float4 upClip = mul(particleCb.worldToProjection, float4(rotatedUp * size.y, 0.f));
+    // NV-DXVK start: Share projection decisions with CPU regression tests.
+    const ParticleScreenSizeMeasurement measurement = measureParticleScreenSize(
+      centerClip, rightClip, upClip, vec2(particleCb.renderingWidth, particleCb.renderingHeight));
+    if (measurement.action == ParticleScreenSizeAction::Clear) {
+      clearParticleVertices(threadIdx.x, particleSystem);
+      return;
+    }
+    if (measurement.action == ParticleScreenSizeAction::Adjust) {
+      const ParticleScreenSizeAdjustment adjustment = adjustParticleScreenSize(measurement.projectedSize,
+        screenSizeSettings.x, screenSizeSettings.y, screenSizeSettings.z);
+      color.w *= particleScreenSizeOpacity(adjustment.scale, screenSizeSettings.z, abs(size.y), trailLength);
+      size *= adjustment.scale;
+    }
+    // NV-DXVK end
+  } else {
+    float4 centerClip = mul(particleCb.prevWorldToProjection, float4(particle.position, 1.0f));
+    float4 offsetClip = mul(particleCb.prevWorldToProjection, float4(particle.position + basisRight * size.x + basisUp * size.y, 1.0f));
+    float2 centerNdc = centerClip.xy / centerClip.w;
+    float2 offsetNdc = offsetClip.xy / offsetClip.w;
+    float2 screenDelta = (offsetNdc - centerNdc) * float2(particleCb.renderingWidth, particleCb.renderingHeight);
+    if (dot(screenDelta, screenDelta) <= particleCb.minParticleSize * particleCb.minParticleSize) {
+      clearParticleVertices(threadIdx.x, particleSystem);
+      return;
+    }
   }
   
   

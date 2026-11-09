@@ -248,6 +248,44 @@ namespace pnext_test_app {
     }
   }
 
+  void test_particleScreenSize() {
+    remixapi_InstanceInfo instance = remix::InstanceInfo {};
+    auto particles = remix::InstanceInfoParticleSystemEXT {};
+    auto screenSize = remix::InstanceInfoParticleScreenSizeEXT {};
+    if (screenSize.sType != REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SCREEN_SIZE_EXT
+        || screenSize.pNext != nullptr || screenSize.minScreenSize != 0.f
+        || screenSize.maxScreenSize != 0.f || screenSize.screenSizeCoverage != 1.f) {
+      throw dxvk::DxvkError { ERROR_INTRO "Particle screen-size wrapper must default to disabled bounds and full compensation" };
+    }
+    if (pnext::find<remixapi_InstanceInfoParticleScreenSizeEXT>(&instance) != nullptr) {
+      throw dxvk::DxvkError { ERROR_INTRO "An absent screen-size extension must remain absent" };
+    }
+
+    screenSize.minScreenSize = 0.8f;
+    screenSize.maxScreenSize = 1.2f;
+    screenSize.screenSizeCoverage = 0.25f;
+    auto distribution = remix::InstanceInfoParticleSpawnDistributionEXT {};
+    screenSize.pNext = &distribution;
+    particles.pNext = &screenSize;
+    instance.pNext = &particles;
+    const auto* found = pnext::find<remixapi_InstanceInfoParticleScreenSizeEXT>(&instance);
+    if (pnext::find<remixapi_InstanceInfoParticleSpawnDistributionEXT>(&instance) != &distribution
+        || found != &screenSize || found->minScreenSize != 0.8f || found->maxScreenSize != 1.2f
+        || found->screenSizeCoverage != 0.25f
+        || pnext::find<remixapi_InstanceInfoParticleSystemEXT>(&instance) != &particles) {
+      throw dxvk::DxvkError { ERROR_INTRO "Particle screen-size extension must coexist with the particle system extension" };
+    }
+
+    particles.pNext = &distribution;
+    screenSize.pNext = &particles;
+    instance.pNext = &screenSize;
+    if (pnext::find<remixapi_InstanceInfoParticleSpawnDistributionEXT>(&instance) != &distribution
+        || pnext::find<remixapi_InstanceInfoParticleScreenSizeEXT>(&instance) != &screenSize
+        || pnext::find<remixapi_InstanceInfoParticleSystemEXT>(&instance) != &particles) {
+      throw dxvk::DxvkError { ERROR_INTRO "Particle screen-size lookup must support either chain order" };
+    }
+  }
+
   namespace test_apiVersionOrdering {
     static_assert(REMIXAPI_VERSION_MAKE(0, 0, 0) < REMIXAPI_VERSION_MAKE(1, 0, 0));
     static_assert(REMIXAPI_VERSION_MAKE(0, 0, 0) < REMIXAPI_VERSION_MAKE(0, 1, 0));
@@ -268,6 +306,7 @@ int main() {
     pnext_test_app::test_memberDetection();
     pnext_test_app::test_wrapper();
     pnext_test_app::test_particleSpawnDistribution();
+    pnext_test_app::test_particleScreenSize();
     pnext_test_app::test_materialTextureTransforms<remix::MaterialInfoOpaqueEXT>();
     pnext_test_app::test_materialTextureTransforms<remix::MaterialInfoTranslucentEXT>();
   }

@@ -144,6 +144,10 @@ if get_option('particle_distribution_gpu_tests')
   tests += [exe] + particle_gpu_shaders
 endif
 
+exe = executable('test_particle_screen_size', files('test_particle_screen_size.cpp'), include_directories : test_include_path, dependencies : test_unit_deps, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_particle_screen_size', exe, env: test_env)
+tests += exe
+
 exe = executable('test_particle_system_schema', files('test_particle_system_schema.cpp'), dependencies : usd_dep, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
 test('test_particle_system_schema', exe, env: test_env, args: remix_particle_system_plugin.full_path(), depends: remix_particle_system_plugin)
 tests += exe

@@ -87,6 +87,11 @@ int main(int argc, char * argv[]) {
   INIT_SERIALIZE_WRITE(InstanceInfoParticleSystem, instParticle, file);
   INIT_SERIALIZE_WRITE(InstanceInfoParticleSpawnDistribution, instParticleDistribution, file);
   INIT_SERIALIZE_WRITE(InstanceInfoParticleSpawnDistribution, instParticleDistributionArea, file);
+  INIT_SERIALIZE_WRITE(InstanceInfoParticleScreenSize, instParticleScreenSize, file);
+  INIT_SERIALIZE_WRITE(InstanceInfoParticleScreenSize, instParticleScreenSizeMinimum, file);
+  INIT_SERIALIZE_WRITE(InstanceInfoParticleScreenSize, instParticleScreenSizeMaximum, file);
+  INIT_SERIALIZE_WRITE(InstanceInfoParticleScreenSize, instParticleScreenSizeRange, file);
+  INIT_SERIALIZE_WRITE(InstanceInfoParticleScreenSize, instParticleScreenSizeFixed, file);
 
   file.close();
   return 0;

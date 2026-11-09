@@ -374,6 +374,7 @@ namespace dxvk {
     const RtCamera& camera = ctx->getSceneManager().getCamera();
     constants.viewToWorld = camera.getViewToWorld();
     constants.prevWorldToProjection = camera.getPreviousViewToProjection() * camera.getPreviousWorldToView();
+    constants.worldToProjection = camera.getViewToProjection() * camera.getWorldToView();
 
     constants.renderingWidth = ctx->getSceneManager().getCamera().m_renderResolution[0];
     constants.renderingHeight = ctx->getSceneManager().getCamera().m_renderResolution[1];
@@ -395,6 +396,8 @@ namespace dxvk {
   // Please re-profile performance if any of these structures change in size.  As a minimum performance requirement, always preserve a 16 byte alignment.
   static_assert(sizeof(GpuParticle) == 12 * 4, "Unexpected, please check perf");
   static_assert(sizeof(GpuParticleSystemDesc) % (4 * 4) == 0, "Unexpected, please check perf");
+  static_assert(sizeof(GpuParticleSystemDesc) == 112 && offsetof(GpuParticleSystemDesc, minScreenSize) == 96, "Particle descriptor layout must match shaders");
+  static_assert(offsetof(ParticleSystemConstants, worldToProjection) == 336 && sizeof(ParticleSystemConstants) == 448, "Particle constants layout must match shaders");
 
   RtxParticleSystemDesc RtxParticleSystemManager::createGlobalParticleSystemDesc() {
     RtxParticleSystemDesc desc;

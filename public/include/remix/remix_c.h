@@ -62,7 +62,7 @@
 
 #define REMIXAPI_VERSION_MAJOR 0
 #define REMIXAPI_VERSION_MINOR 6
-#define REMIXAPI_VERSION_PATCH 8
+#define REMIXAPI_VERSION_PATCH 9
 
 
 // External
@@ -136,7 +136,8 @@ extern "C" {
     REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_GPU_INSTANCING_EXT     = 26,
     REMIXAPI_STRUCT_TYPE_CAMERA_MEDIUM_INFO                   = 27,
     // 28 is reserved for the particle emitter picking extension.
-    REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SPAWN_DISTRIBUTION_EXT = 29
+    REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SPAWN_DISTRIBUTION_EXT = 29,
+    REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SCREEN_SIZE_EXT = 32
     // NOTE: if adding a new struct, register it in 'rtx_remix_specialization.inl'
     //       and only extend this enum by appending, never adjust the order of these 
     //       as that will break backwards compatibility.
@@ -587,6 +588,14 @@ extern "C" {
     void* pNext;
     remixapi_ParticleSpawnDistribution spawnDistribution;
   } remixapi_InstanceInfoParticleSpawnDistributionEXT;
+  // Bounds are in internal render-resolution pixels, before upscaling.
+  typedef struct remixapi_InstanceInfoParticleScreenSizeEXT {
+    remixapi_StructType sType;
+    void* pNext;
+    float minScreenSize;
+    float maxScreenSize;
+    float screenSizeCoverage;
+  } remixapi_InstanceInfoParticleScreenSizeEXT;
 
   typedef struct remixapi_InstanceInfoGpuInstancingEXT {
     remixapi_StructType       sType;

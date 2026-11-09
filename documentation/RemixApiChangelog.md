@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Clients built against 0.6.3 get `remixapi_Interface` in the 0.6.3 order, with `SetCameraMediumMaterial` after `SetupCamera`.
 
+### Added
+- `remixapi_InstanceInfoParticleScreenSizeEXT` provides optional per-emitter screen-size bounds and opacity coverage compensation, including bridge transport.
+
 ### Changed
 - `remixapi_InitializeLibrary` writes only the part of `remixapi_Interface` that the client's version knows.
 - The bridge zero-initializes struct fields that it does not forward.

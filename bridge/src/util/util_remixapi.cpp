@@ -622,6 +622,20 @@ void InstanceInfoParticleSpawnDistribution::_dtor() {
 }
 
 
+#define InstanceInfoParticleScreenSizeVars sType, minScreenSize, maxScreenSize, screenSizeCoverage
+uint32_t InstanceInfoParticleScreenSize::_calcSize() const {
+  return fold_helper::calcSize(InstanceInfoParticleScreenSizeVars);
+}
+void InstanceInfoParticleScreenSize::_serialize(void*& pSerialize) const {
+  fold_helper::serialize(pSerialize, InstanceInfoParticleScreenSizeVars);
+}
+void InstanceInfoParticleScreenSize::_deserialize(void*& pDeserialize) {
+  pNext = nullptr;
+  fold_helper::deserialize(pDeserialize, InstanceInfoParticleScreenSizeVars);
+}
+void InstanceInfoParticleScreenSize::_dtor() {
+}
+
 #define InstanceInfoBlendVars sType, \
                               alphaTestEnabled, \
                               alphaTestReferenceValue, \

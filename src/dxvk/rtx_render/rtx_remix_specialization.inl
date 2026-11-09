@@ -94,6 +94,7 @@ namespace pnext::detail {
     remixapi_InstanceInfoParticleSystemEXT,
     remixapi_InstanceInfoParticleSpawnDistributionEXT,
     remixapi_InstanceInfoParticleSystemLegacyEXT,
+    remixapi_InstanceInfoParticleScreenSizeEXT,
     remixapi_InstanceInfoGpuInstancingEXT,
     remixapi_CameraInfo,
     remixapi_CameraInfoParameterizedEXT,
@@ -122,6 +123,7 @@ namespace pnext::detail {
   template<> constexpr auto ToEnum< remixapi_InstanceInfoParticleSystemLegacyEXT > = REMIXAPI_STRUCT_TYPE_DEPRECATED_LEGACY_PARTICLE_SYSTEM;
   template<> constexpr auto ToEnum< remixapi_InstanceInfoParticleSystemEXT  > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT;
   template<> constexpr auto ToEnum< remixapi_InstanceInfoParticleSpawnDistributionEXT > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SPAWN_DISTRIBUTION_EXT;
+  template<> constexpr auto ToEnum< remixapi_InstanceInfoParticleScreenSizeEXT > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SCREEN_SIZE_EXT;
   template<> constexpr auto ToEnum< remixapi_InstanceInfoGpuInstancingEXT   > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_GPU_INSTANCING_EXT;
   template<> constexpr auto ToEnum< remixapi_CameraInfo                     > = REMIXAPI_STRUCT_TYPE_CAMERA_INFO;
   template<> constexpr auto ToEnum< remixapi_CameraInfoParameterizedEXT     > = REMIXAPI_STRUCT_TYPE_CAMERA_INFO_PARAMETERIZED_EXT;
@@ -145,6 +147,7 @@ namespace pnext::detail {
   template<>           struct Root< remixapi_InstanceInfoParticleSystemEXT  >{ using Type = remixapi_InstanceInfo;              };
   template<>           struct Root< remixapi_InstanceInfoParticleSpawnDistributionEXT >{ using Type = remixapi_InstanceInfo;    };
   template<>           struct Root< remixapi_InstanceInfoParticleSystemLegacyEXT >{ using Type = remixapi_InstanceInfo;         };
+  template<>           struct Root< remixapi_InstanceInfoParticleScreenSizeEXT >{ using Type = remixapi_InstanceInfo;    };
   template<>           struct Root< remixapi_InstanceInfoGpuInstancingEXT   >{ using Type = remixapi_InstanceInfo;              };
   template<>           struct Root< remixapi_CameraInfoParameterizedEXT     >{ using Type = remixapi_CameraInfo;                };
   // clang-format on

@@ -541,6 +541,20 @@ bool InstanceInfoParticleSpawnDistribution::compare(const RemixApiT& me, const R
 }
 
 
+using InstanceInfoParticleScreenSize = Expected<remixapi_InstanceInfoParticleScreenSizeEXT>;
+static_assert(remixapi::util::ToRemixApiStructEnum<remixapi_InstanceInfoParticleScreenSizeEXT> ==
+              REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SCREEN_SIZE_EXT);
+void InstanceInfoParticleScreenSize::init() {
+  sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SCREEN_SIZE_EXT;
+  pNext = nullptr;
+  minScreenSize = 0.f;
+  maxScreenSize = 0.f;
+  screenSizeCoverage = 1.f;
+}
+bool InstanceInfoParticleScreenSize::compare(const RemixApiT& me, const RemixApiT& other) const {
+  return compareVals(me, other, sType, minScreenSize, maxScreenSize, screenSizeCoverage);
+}
+
 #define InstanceInfoBlendVars alphaTestEnabled, \
                               alphaTestReferenceValue, \
                               alphaTestCompareOp, \
@@ -883,5 +897,31 @@ LightInfoUSD lightUSD;
 InstanceInfoParticleSystem instParticle;
 InstanceInfoParticleSpawnDistribution instParticleDistribution;
 InstanceInfoParticleSpawnDistribution instParticleDistributionArea;
+InstanceInfoParticleScreenSize instParticleScreenSize;
+InstanceInfoParticleScreenSize instParticleScreenSizeMinimum = [] {
+  InstanceInfoParticleScreenSize value;
+  value.minScreenSize = 0.8f;
+  value.screenSizeCoverage = 0.25f;
+  return value;
+}();
+InstanceInfoParticleScreenSize instParticleScreenSizeMaximum = [] {
+  InstanceInfoParticleScreenSize value;
+  value.maxScreenSize = 1.2f;
+  value.screenSizeCoverage = 0.f;
+  return value;
+}();
+InstanceInfoParticleScreenSize instParticleScreenSizeRange = [] {
+  InstanceInfoParticleScreenSize value;
+  value.minScreenSize = 0.8f;
+  value.maxScreenSize = 1.2f;
+  return value;
+}();
+InstanceInfoParticleScreenSize instParticleScreenSizeFixed = [] {
+  InstanceInfoParticleScreenSize value;
+  value.minScreenSize = 0.9f;
+  value.maxScreenSize = 0.9f;
+  value.screenSizeCoverage = 0.5f;
+  return value;
+}();
 
 }
