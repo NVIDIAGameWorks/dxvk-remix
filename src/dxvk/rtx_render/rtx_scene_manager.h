@@ -368,7 +368,6 @@ private:
   MaterialData determineMaterialData(const MaterialData* overrideMaterialData, const DrawCallState& input);
   
   const uint32_t kInvalidMaterialCacheIndex = UINT32_MAX;
-  uint32_t m_beginUsdExportFrameNum = -1;
   bool m_enqueueDelayedClear = false;
   bool m_previousFrameSceneAvailable = false;
 

@@ -52,6 +52,7 @@
 
 #include "../util/util_global_time.h"
 
+#include <cstring>
 #include <filesystem>
 
 #define BASE_DIR (util::RtxFileSys::path(util::RtxFileSys::Captures).string())
@@ -121,8 +122,10 @@ namespace dxvk {
     , m_exporter(exporter)
     , m_options{ getOptions() } {
 
-    if(!env::getEnvVar("DXVK_RTX_CAPTURE_ENABLE_ON_FRAME").empty()) {
-      Logger::info(str::format("[GameCapturer] DXVK_RTX_CAPTURE_ENABLE_ON_FRAME: ", env::getEnvVar("DXVK_RTX_CAPTURE_ENABLE_ON_FRAME")));
+    const std::string captureOnFrame = env::getEnvVar("DXVK_RTX_CAPTURE_ENABLE_ON_FRAME");
+    if (!captureOnFrame.empty()) {
+      Logger::info(str::format("[GameCapturer] DXVK_RTX_CAPTURE_ENABLE_ON_FRAME: ", captureOnFrame));
+      m_scheduledCaptureFrameId = static_cast<uint32_t>(std::stoul(captureOnFrame));
     }
     env::createDirectory(BASE_DIR);
     env::createDirectory(BASE_DIR + lss::commonDirName::texDir);
@@ -153,18 +156,61 @@ namespace dxvk {
     m_pCap->instanceFlags[rtInstance.getId()] |= (1 << uint8_t(flag));
   }
 
-  void GameCapturer::trigger(const Rc<DxvkContext> ctx) {
-    if (m_bTriggerCapture) {
-      m_bTriggerCapture = false;
-      if(isIdle()) {
-        if (RtxOptions::getEnableAnyReplacements()) {
-          Logger::warn("[GameCapturer] Cannot begin capture while replacement assets are enabled.");
-        } else if (m_state.has<State::Capturing>()) {
-          Logger::warn("[GameCapturer] Cannot begin new capture, one currently in progress.");
-        } else {
-          m_state.set<State::Initializing, true>();
-        }
+  void GameCapturer::triggerNewCapture() {
+    if (RtxOptions::getEnableAnyReplacements()) {
+      Logger::warn("[GameCapturer] Cannot begin capture while replacement assets are enabled.");
+      return;
+    }
+    if (!m_bTriggerCapture.exchange(true)) {
+      Logger::info("[GameCapturer] Capture requested.");
+    }
+  }
+
+  void GameCapturer::triggerScheduledCapture(const uint32_t frameId) {
+    if (m_scheduledCaptureFrameId.has_value() && frameId >= *m_scheduledCaptureFrameId) {
+      m_scheduledCaptureFrameId.reset();
+      triggerNewCapture();
+    }
+  }
+
+  void GameCapturer::reportPendingCaptureBlocked(const char* reason) {
+    if (!m_bTriggerCapture) {
+      return;
+    }
+    for (const char* loggedReason : m_loggedCaptureBlockedReasons) {
+      if (std::strcmp(loggedReason, reason) == 0) {
+        return;
       }
+    }
+    m_loggedCaptureBlockedReasons.push_back(reason);
+    Logger::warn(str::format("[GameCapturer] Capture request is pending and cannot start yet: ", reason, "."));
+  }
+
+  void GameCapturer::cancelPendingCapture(const std::string& cause) {
+    if (!m_bTriggerCapture.exchange(false)) {
+      return;
+    }
+    std::string blockedReasons;
+    for (const char* loggedReason : m_loggedCaptureBlockedReasons) {
+      blockedReasons += blockedReasons.empty() ? loggedReason : str::format("; ", loggedReason);
+    }
+    m_loggedCaptureBlockedReasons.clear();
+    Logger::warn(str::format("[GameCapturer] Pending capture request cancelled: ", cause, ". Blocking reasons: ",
+                             blockedReasons.empty() ? "none reported" : blockedReasons, "."));
+  }
+
+  void GameCapturer::trigger(const Rc<DxvkContext> ctx) {
+    if (!m_bTriggerCapture.exchange(false)) {
+      return;
+    }
+    m_loggedCaptureBlockedReasons.clear();
+
+    if (!isIdle()) {
+      Logger::warn("[GameCapturer] Cannot begin new capture, one currently in progress.");
+    } else if (RtxOptions::getEnableAnyReplacements()) {
+      Logger::warn("[GameCapturer] Cannot begin capture while replacement assets are enabled.");
+    } else {
+      m_state.set<State::Initializing, true>();
     }
   }
 

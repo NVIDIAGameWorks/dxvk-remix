@@ -102,6 +102,10 @@ exe = executable('test_pending_slot_queues',  files('test_pending_slot_queues.cp
 test('test_pending_slot_queues', exe, env: test_env)
 tests += exe
 
+exe = executable('test_capture_termination_guard',  files('test_capture_termination_guard.cpp'), include_directories : test_include_path, dependencies : test_unit_deps, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_capture_termination_guard', exe, env: test_env)
+tests += exe
+
 exe = executable('test_bindless_buffer_mirror',  files('test_bindless_buffer_mirror.cpp'), include_directories : test_include_path, dependencies : test_unit_deps, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
 test('test_bindless_buffer_mirror', exe, env: test_env)
 tests += exe

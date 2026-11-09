@@ -153,10 +153,6 @@ namespace dxvk {
     instanceEvents.onInstanceUpdatedCallback = [this](RtInstance& instance, const DrawCallState& drawCall, const MaterialData* material, bool hasTransformChanged, bool hasVerticesChanged, bool isFirstUpdateThisFrame) { onInstanceUpdated(instance, drawCall, material, hasTransformChanged, hasVerticesChanged, isFirstUpdateThisFrame); };
     instanceEvents.onInstanceDestroyedCallback = [this](RtInstance& instance) { onInstanceDestroyed(instance); };
     m_instanceManager.addEventHandler(instanceEvents);
-    
-    if (env::getEnvVar("DXVK_RTX_CAPTURE_ENABLE_ON_FRAME") != "") {
-      m_beginUsdExportFrameNum = stoul(env::getEnvVar("DXVK_RTX_CAPTURE_ENABLE_ON_FRAME"));
-    }
   }
 
   SceneManager::~SceneManager() {
@@ -2273,6 +2269,8 @@ namespace dxvk {
 
     // If there are no instances, we should do nothing!
     if (m_instanceManager.getActiveCount() == 0) {
+      m_device->getCommon()->capturer()->reportPendingCaptureBlocked("there are no active instances in the scene");
+
       // Clear the ray portal data before the next frame
       m_rayPortalManager.clear();
       return;
@@ -2563,11 +2561,7 @@ namespace dxvk {
     m_device->statCounters().setCtr(DxvkStatCounter::RtxLightCount, m_lightManager.getActiveCount());
     m_device->statCounters().setCtr(DxvkStatCounter::RtxSamplers, m_samplerCache.getActiveCount());
 
-    auto capturer = m_device->getCommon()->capturer();
-    if (m_device->getCurrentFrameId() == m_beginUsdExportFrameNum) {
-      capturer->triggerNewCapture();
-    }
-    capturer->step(ctx, ctx->getCommonObjects()->getLastKnownWindowHandle());
+    m_device->getCommon()->capturer()->step(ctx, ctx->getCommonObjects()->getLastKnownWindowHandle());
 
     // Clear the ray portal data before the next frame
     m_rayPortalManager.clear();
