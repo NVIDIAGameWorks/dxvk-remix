@@ -781,6 +781,15 @@ namespace remix {
     }
   };
 
+  struct InstanceInfoParticleObjectPickingEXT : remixapi_InstanceInfoParticleObjectPickingEXT {
+    InstanceInfoParticleObjectPickingEXT() {
+      sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_OBJECT_PICKING_EXT;
+      pNext = nullptr;
+      objectPickingValue = 0;
+      STATIC_ASSERT_SIZEOF(remixapi_InstanceInfoParticleObjectPickingEXT, 24);
+    }
+  };
+
   struct InstanceInfoParticleSystemEXT : remixapi_InstanceInfoParticleSystemEXT {
     InstanceInfoParticleSystemEXT() {
       sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT;

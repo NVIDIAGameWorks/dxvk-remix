@@ -125,6 +125,7 @@ template<> constexpr auto ToRemixApiStructEnum< remixapi_InstanceInfo           
 template<> constexpr auto ToRemixApiStructEnum< remixapi_InstanceInfoBoneTransformsEXT  > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BONE_TRANSFORMS_EXT;
 template<> constexpr auto ToRemixApiStructEnum< remixapi_InstanceInfoBlendEXT           > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
 template<> constexpr auto ToRemixApiStructEnum< remixapi_InstanceInfoObjectPickingEXT   > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_OBJECT_PICKING_EXT;
+template<> constexpr auto ToRemixApiStructEnum< remixapi_InstanceInfoParticleObjectPickingEXT > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_OBJECT_PICKING_EXT;
 template<> constexpr auto ToRemixApiStructEnum< remixapi_InstanceInfoParticleSystemEXT  > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT;
 template<> constexpr auto ToRemixApiStructEnum< remixapi_InstanceInfoParticleSpawnDistributionEXT > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SPAWN_DISTRIBUTION_EXT;
 template<> constexpr auto ToRemixApiStructEnum< remixapi_InstanceInfoParticleScreenSizeEXT > = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SCREEN_SIZE_EXT;
@@ -150,6 +151,7 @@ using MeshInfo = bridge_util::Serializable<remixapi_MeshInfo,false>;
 using InstanceInfo = bridge_util::Serializable<remixapi_InstanceInfo,true>;
 using InstanceInfoObjectPicking = bridge_util::Serializable<remixapi_InstanceInfoObjectPickingEXT,true>;
 using InstanceInfoParticleScreenSize = bridge_util::Serializable<remixapi_InstanceInfoParticleScreenSizeEXT, true>;
+using InstanceInfoParticleObjectPicking = bridge_util::Serializable<remixapi_InstanceInfoParticleObjectPickingEXT,true>;
 using InstanceInfoBlend = bridge_util::Serializable<remixapi_InstanceInfoBlendEXT,true>;
 using InstanceInfoTransforms = bridge_util::Serializable<remixapi_InstanceInfoBoneTransformsEXT,false>;
 using InstanceInfoParticleSystem = bridge_util::Serializable<remixapi_InstanceInfoParticleSystemEXT, false>;

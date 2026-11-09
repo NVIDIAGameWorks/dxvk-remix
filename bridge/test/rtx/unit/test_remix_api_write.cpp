@@ -73,6 +73,8 @@ int main(int argc, char * argv[]) {
   INIT_SERIALIZE_WRITE(MeshInfo, mesh, file);
   INIT_SERIALIZE_WRITE(InstanceInfo, inst, file);
   INIT_SERIALIZE_WRITE(InstanceInfoObjectPicking, instObjPick, file);
+  INIT_SERIALIZE_WRITE(InstanceInfoParticleObjectPicking, instParticleObjPick, file);
+  INIT_SERIALIZE_WRITE(InstanceInfoParticleObjectPicking, instParticleObjPickZero, file);
   INIT_SERIALIZE_WRITE(InstanceInfoBlend, instBlend, file);
   INIT_SERIALIZE_WRITE(InstanceInfoTransforms, instBoneXform, file);
   INIT_SERIALIZE_WRITE(InstanceInfoGpuInstancing, instGpuInstancing, file);

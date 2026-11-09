@@ -601,6 +601,7 @@ void InstanceInfoObjectPicking::_serialize(void*& pSerialize) const {
   fold_helper::serialize(pSerialize, InstanceInfoObjectPickingVars);
 }
 void InstanceInfoObjectPicking::_deserialize(void*& pDeserialize) {
+  sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_OBJECT_PICKING_EXT;
   pNext = nullptr;
   fold_helper::deserialize(pDeserialize, InstanceInfoObjectPickingVars);
 }
@@ -635,6 +636,22 @@ void InstanceInfoParticleScreenSize::_deserialize(void*& pDeserialize) {
 }
 void InstanceInfoParticleScreenSize::_dtor() {
 }
+
+#define InstanceInfoParticleObjectPickingVars objectPickingValue
+uint32_t InstanceInfoParticleObjectPicking::_calcSize() const {
+  return fold_helper::calcSize(InstanceInfoParticleObjectPickingVars);
+}
+void InstanceInfoParticleObjectPicking::_serialize(void*& pSerialize) const {
+  fold_helper::serialize(pSerialize, InstanceInfoParticleObjectPickingVars);
+}
+void InstanceInfoParticleObjectPicking::_deserialize(void*& pDeserialize) {
+  sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_OBJECT_PICKING_EXT;
+  pNext = nullptr;
+  fold_helper::deserialize(pDeserialize, InstanceInfoParticleObjectPickingVars);
+}
+void InstanceInfoParticleObjectPicking::_dtor() {
+}
+
 
 #define InstanceInfoBlendVars sType, \
                               alphaTestEnabled, \

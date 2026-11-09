@@ -128,6 +128,66 @@ namespace pnext_test_app {
     }
   }
 
+  void test_particlePickingChainOrder() {
+    auto info = remixapi_InstanceInfo {};
+    info.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
+
+    auto meshPicking = remix::InstanceInfoObjectPickingEXT {};
+    meshPicking.objectPickingValue = 0x00abcdefu;
+    auto particlePicking = remix::InstanceInfoParticleObjectPickingEXT {};
+    if (particlePicking.sType != REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_OBJECT_PICKING_EXT ||
+        particlePicking.pNext != nullptr || particlePicking.objectPickingValue != 0) {
+      throw dxvk::DxvkError { ERROR_INTRO "Particle picking wrapper has invalid defaults" };
+    }
+
+    for (const uint32_t particleValue : { 0u, 0x80000000u, 0xfeabcdefu, 0xffffffffu }) {
+      particlePicking.objectPickingValue = particleValue;
+      for (const bool particleFirst : { false, true }) {
+        info.pNext = particleFirst ? static_cast<void*>(&particlePicking) : static_cast<void*>(&meshPicking);
+        particlePicking.pNext = particleFirst ? &meshPicking : nullptr;
+        meshPicking.pNext = particleFirst ? nullptr : &particlePicking;
+
+        const auto* meshResult = pnext::find<remixapi_InstanceInfoObjectPickingEXT>(&info);
+        const auto* particleResult = pnext::find<remixapi_InstanceInfoParticleObjectPickingEXT>(&info);
+        if (meshResult != &meshPicking || particleResult != &particlePicking ||
+            meshResult->objectPickingValue != 0x00abcdefu || particleResult->objectPickingValue != particleValue) {
+          throw dxvk::DxvkError { ERROR_INTRO "Mesh and particle picking extensions must coexist in either chain order" };
+        }
+
+        const auto& constInfo = info;
+        auto constResult = pnext::find<remixapi_InstanceInfoParticleObjectPickingEXT>(&constInfo);
+        static_assert(std::is_const_v<std::remove_pointer_t<decltype(constResult)>>);
+        if (constResult != &particlePicking) {
+          throw dxvk::DxvkError { ERROR_INTRO "Const instance chain must retain the particle picking extension" };
+        }
+      }
+    }
+  }
+
+  void test_particlePickingOptional() {
+    auto info = remixapi_InstanceInfo {};
+    info.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
+    if (pnext::find<remixapi_InstanceInfoParticleObjectPickingEXT>(&info) != nullptr) {
+      throw dxvk::DxvkError { ERROR_INTRO "Instances without extensions must not have a particle picking override" };
+    }
+
+    auto meshPicking = remix::InstanceInfoObjectPickingEXT {};
+    meshPicking.objectPickingValue = 83;
+    info.pNext = &meshPicking;
+    if (pnext::find<remixapi_InstanceInfoParticleObjectPickingEXT>(&info) != nullptr ||
+        pnext::find<remixapi_InstanceInfoObjectPickingEXT>(&info) != &meshPicking || meshPicking.objectPickingValue != 83) {
+      throw dxvk::DxvkError { ERROR_INTRO "Legacy picking chains must work without a particle picking override" };
+    }
+
+    auto particlePicking = remix::InstanceInfoParticleObjectPickingEXT {};
+    particlePicking.objectPickingValue = 0x80000001u;
+    info.pNext = &particlePicking;
+    if (pnext::find<remixapi_InstanceInfoParticleObjectPickingEXT>(&info) != &particlePicking ||
+        pnext::find<remixapi_InstanceInfoObjectPickingEXT>(&info) != nullptr) {
+      throw dxvk::DxvkError { ERROR_INTRO "Particle picking must not require or synthesize an ordinary picking extension" };
+    }
+  }
+
   void test_getPNext() {
     auto ext = remixapi_LightInfoDistantEXT {};
     {
@@ -302,6 +362,8 @@ int main() {
   try {
     pnext_test_app::test_find();
     pnext_test_app::test_const();
+    pnext_test_app::test_particlePickingChainOrder();
+    pnext_test_app::test_particlePickingOptional();
     pnext_test_app::test_getPNext();
     pnext_test_app::test_memberDetection();
     pnext_test_app::test_wrapper();

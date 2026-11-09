@@ -33,6 +33,7 @@
 
 #include <inttypes.h>
 #include <memory>
+#include <optional>
 #include <vector>
 #include <unordered_set>
 #include <future>
@@ -333,6 +334,8 @@ struct RaytraceGeometry {
   RaytraceBuffer texcoordBuffer;
   RaytraceBuffer color0Buffer;
   RaytraceBuffer indexBuffer;
+  RaytraceBuffer particlePickingBuffer;
+  uint16_t particlePickingPrimitivesPerParticle = 0;
 
   uint32_t positionBufferIndex = kSurfaceInvalidBufferIndex;
   uint32_t previousPositionBufferIndex = kSurfaceInvalidBufferIndex;
@@ -340,6 +343,7 @@ struct RaytraceGeometry {
   uint32_t texcoordBufferIndex = kSurfaceInvalidBufferIndex;
   uint32_t color0BufferIndex = kSurfaceInvalidBufferIndex;
   uint32_t indexBufferIndex = kSurfaceInvalidBufferIndex;
+  uint32_t particlePickingBufferIndex = kSurfaceInvalidBufferIndex;
 
   Rc<DxvkBuffer> historyBuffer[2] = {nullptr};
   Rc<DxvkBuffer> indexCacheBuffer = nullptr;
@@ -379,6 +383,10 @@ struct RasterGeometry {
 
   // Used by replacements mostly, to force the cull bit to that set by the geometry data
   bool forceCullBit = false;
+
+  // One emitter picking ID per generated particle, in triangle draw order.
+  RasterBuffer particlePickingBuffer;
+  uint16_t particlePickingPrimitivesPerParticle = 0;
 
   RasterBuffer positionBuffer;
   RasterBuffer normalBuffer;
@@ -752,6 +760,11 @@ struct DrawCallState {
   bool zEnable = false;
 
   uint32_t drawCallID = 0;
+  std::optional<uint32_t> particleObjectPickingValue;
+
+  uint32_t getParticleObjectPickingValue() const {
+    return particleObjectPickingValue.value_or(drawCallID);
+  }
 
   // Set for draws submitted through the Remix API rather than by the game.
   bool isExternalDraw = false;

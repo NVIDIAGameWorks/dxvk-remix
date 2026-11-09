@@ -196,6 +196,8 @@ struct RtSurface {
     uint16_t flags0 = 0;
     flags0 |= normalFormat == VK_FORMAT_R32_UINT ? 1 : 0;
     flags0 |= isVertexColorBakedLighting ? (1 << 1) : 0;
+    const bool hasParticleObjectPickingValues = particlePickingBufferIndex != kSurfaceInvalidBufferIndex;
+    flags0 |= hasParticleObjectPickingValues ? (1 << 2) : 0;
     // NOTE: Spare flags bits here
 
     writeGPUHelper(data, offset, flags0);
@@ -212,7 +214,11 @@ struct RtSurface {
     writeGPUHelper(data, offset, normalOffset);
     writeGPUHelper(data, offset, texcoordOffset);
     writeGPUHelper(data, offset, color0Offset);
-    writeGPUHelper(data, offset, objectPickingValue);
+    assert(!hasParticleObjectPickingValues || particlePickingPrimitivesPerParticle > 0);
+    const uint32_t pickingData = hasParticleObjectPickingValues
+      ? uint32_t(particlePickingBufferIndex) | (uint32_t(particlePickingPrimitivesPerParticle) << 16)
+      : objectPickingValue;
+    writeGPUHelper(data, offset, pickingData);
 
     writeGPUHelperExplicit<1>(data, offset, positionStride);
     writeGPUHelperExplicit<1>(data, offset, normalStride);
@@ -406,6 +412,9 @@ struct RtSurface {
 
   uint32_t surfaceMaterialIndex = kSurfaceInvalidSurfaceMaterialIndex;
 
+  uint16_t particlePickingBufferIndex = kSurfaceInvalidBufferIndex;
+  uint16_t particlePickingPrimitivesPerParticle = 0;
+
   bool isEmissive = false;
   bool isMatte = false;
   bool isStatic = false;
@@ -439,6 +448,8 @@ struct RtSurface {
         && texcoordOffset == surface.texcoordOffset
         && color0BufferIndex == surface.color0BufferIndex
         && color0Offset == surface.color0Offset
+        && particlePickingBufferIndex == surface.particlePickingBufferIndex
+        && particlePickingPrimitivesPerParticle == surface.particlePickingPrimitivesPerParticle
         && firstIndex == surface.firstIndex;
   }
 

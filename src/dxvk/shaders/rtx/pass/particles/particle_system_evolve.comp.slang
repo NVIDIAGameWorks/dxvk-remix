@@ -133,7 +133,7 @@ float3 attractorAcceleration(const GpuParticleSystem particleSystem, float3 part
 // Updates a particles state for one time step
 void evolve(inout GpuParticle particle, const GpuParticleSystem particleSystem)
 {
-  if (particle.flags & GpuParticle::kRejectedSpawnFlag) {
+  if (particle.isSpawnRejected()) {
     return;
   }
   if (particleSystem.desc.useTurbulence)

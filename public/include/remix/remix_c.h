@@ -62,7 +62,7 @@
 
 #define REMIXAPI_VERSION_MAJOR 0
 #define REMIXAPI_VERSION_MINOR 6
-#define REMIXAPI_VERSION_PATCH 9
+#define REMIXAPI_VERSION_PATCH 10
 
 
 // External
@@ -135,7 +135,7 @@ extern "C" {
     REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT    = 25,
     REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_GPU_INSTANCING_EXT     = 26,
     REMIXAPI_STRUCT_TYPE_CAMERA_MEDIUM_INFO                   = 27,
-    // 28 is reserved for the particle emitter picking extension.
+    REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_OBJECT_PICKING_EXT = 28,
     REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SPAWN_DISTRIBUTION_EXT = 29,
     REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SCREEN_SIZE_EXT = 32
     // NOTE: if adding a new struct, register it in 'rtx_remix_specialization.inl'
@@ -475,6 +475,14 @@ extern "C" {
     // A value to write for 'RequestObjectPicking'
     uint32_t                       objectPickingValue;
   } remixapi_InstanceInfoObjectPickingEXT;
+
+  typedef struct remixapi_InstanceInfoParticleObjectPickingEXT {
+    remixapi_StructType            sType;
+    void*                         pNext;
+    // Overrides picking for generated particles without changing their emitter mesh's picking value.
+    // When absent, generated particles use remixapi_InstanceInfoObjectPickingEXT::objectPickingValue.
+    uint32_t                      objectPickingValue;
+  } remixapi_InstanceInfoParticleObjectPickingEXT;
 
   typedef enum remixapi_InstanceCategoryBit {
     REMIXAPI_INSTANCE_CATEGORY_BIT_WORLD_UI                  = 1 << 0,

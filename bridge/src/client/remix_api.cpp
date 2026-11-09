@@ -265,6 +265,13 @@ remixapi_ErrorCode REMIXAPI_CALL remixapi_DrawInstance(const remixapi_InstanceIn
           serializeAndSend<serialize::InstanceInfoObjectPicking>(c, *pObjectPicking);
           break;
         }
+        case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_OBJECT_PICKING_EXT:
+        {
+          auto* pParticlePicking = static_cast<const remixapi_InstanceInfoParticleObjectPickingEXT* const>(infoItr);
+          send(c, Bool::True);
+          serializeAndSend<serialize::InstanceInfoParticleObjectPicking>(c, *pParticlePicking);
+          break;
+        }
         case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT:
         {
           auto* pBlend = static_cast<const remixapi_InstanceInfoBlendEXT* const>(infoItr);

@@ -540,6 +540,20 @@ bool InstanceInfoParticleSpawnDistribution::compare(const RemixApiT& me, const R
   return compareVals(me, other, spawnDistribution);
 }
 
+using InstanceInfoParticleObjectPicking = Expected<remixapi_InstanceInfoParticleObjectPickingEXT>;
+static_assert(remixapi::util::ToRemixApiStructEnum<remixapi_InstanceInfoParticleObjectPickingEXT> ==
+              REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_OBJECT_PICKING_EXT);
+static_assert(REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_OBJECT_PICKING_EXT !=
+              REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_OBJECT_PICKING_EXT);
+void InstanceInfoParticleObjectPicking::init() {
+  sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_OBJECT_PICKING_EXT;
+  pNext = nullptr;
+  objectPickingValue = 0xfeabcdefu;
+}
+bool InstanceInfoParticleObjectPicking::compare(const RemixApiT& me, const RemixApiT& other) const {
+  return compareVals(me, other, sType, objectPickingValue);
+}
+
 
 using InstanceInfoParticleScreenSize = Expected<remixapi_InstanceInfoParticleScreenSizeEXT>;
 static_assert(remixapi::util::ToRemixApiStructEnum<remixapi_InstanceInfoParticleScreenSizeEXT> ==
@@ -883,6 +897,12 @@ MaterialInfoPortal matPortal;
 MeshInfo mesh;
 InstanceInfo inst;
 InstanceInfoObjectPicking instObjPick;
+InstanceInfoParticleObjectPicking instParticleObjPick;
+InstanceInfoParticleObjectPicking instParticleObjPickZero = [] {
+  InstanceInfoParticleObjectPicking value;
+  value.objectPickingValue = 0;
+  return value;
+}();
 InstanceInfoBlend instBlend;
 InstanceInfoTransforms instBoneXform;
 InstanceInfoGpuInstancing instGpuInstancing;

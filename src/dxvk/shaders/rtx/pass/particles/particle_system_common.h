@@ -60,6 +60,10 @@ struct GpuSpawnContext {
   uint16_t spawnMeshColorsIdx;
   uint16_t spawnMeshIndexIdx;
   uint16_t spawnMeshTexcoordsIdx;
+  uint emitterObjectPickingValue;
+  uint pad0;
+  uint pad1;
+  uint pad2;
 };
 
 struct ParticleSpawnDistributionConstants {
@@ -223,7 +227,7 @@ struct GpuParticleSystem {
   uint simulateParticleCount = 0;
   uint particleHeadOffset = 0;
   uint particleCount = 0;
-  uint pad = 0;
+  uint enableObjectPicking = 0;
 
 #ifndef __cplusplus
   float16_t varyTimeToLive(float rand) {
