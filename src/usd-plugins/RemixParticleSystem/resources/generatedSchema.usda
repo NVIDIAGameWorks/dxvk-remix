@@ -930,6 +930,51 @@ class "ParticleSystemAPI" (
             }
         )
 
+    float primvars:particle:minScreenSize = 0.0 (
+            doc = "Minimum longest-edge size of the base billboard in internal render-resolution pixels. Zero disables this bound. Both size bounds at zero preserve world sizing and existing culling. Aspect ratio is preserved. Internal render pixels differ from final output pixels when upscaling is enabled."
+            displayGroup = "Visual"
+            displayName = "Min Screen Size (Pixels)"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 100000
+                        float step = 0.05
+                    }
+                }
+            }
+        )
+
+    float primvars:particle:maxScreenSize = 0.0 (
+            doc = "Maximum longest-edge size of the base billboard in internal render-resolution pixels. Zero disables this bound. Aspect ratio is preserved. This bounds the base billboard size and does not limit added motion-trail length."
+            displayGroup = "Visual"
+            displayName = "Max Screen Size (Pixels)"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 100000
+                        float step = 0.05
+                    }
+                }
+            }
+        )
+
+    float primvars:particle:screenSizeCoverage = 1.0 (
+            doc = "Opacity compensation when the billboard is enlarged by screen-size limits. 0 preserves authored opacity. 1 approximately preserves integrated coverage by compensating for the larger projected area. Intermediate values blend these behaviors. Shrinking never increases opacity. Ignored when both screen-size bounds are zero."
+            displayGroup = "Visual"
+            displayName = "Coverage Compensation"
+            customData = {
+                dictionary limits = {
+                    dictionary hard = {
+                        float minimum = 0
+                        float maximum = 1
+                        float step = 0.05
+                    }
+                }
+            }
+        )
+
     bool primvars:particle:hideEmitter = false (
             doc = "Hide or show the particle emitter in the rendered output."
             displayGroup = "Spawn"

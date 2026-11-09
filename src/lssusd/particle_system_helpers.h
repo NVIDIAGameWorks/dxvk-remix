@@ -47,8 +47,13 @@
 #include "../../public/include/remix/remix_c.h"
 #include "../dxvk/shaders/rtx/pass/particles/particle_system_enums.h"
 
+#define LIST_PARTICLE_SCREEN_SIZE_PROPERTIES(FLOAT) \
+  FLOAT(minScreenSize, 0.0f) \
+  FLOAT(maxScreenSize, 0.0f) \
+  FLOAT(screenSizeCoverage, 1.0f)
+
 namespace lss {
-  inline constexpr std::size_t kParticleSystemSchemaPropertyCount = 130;
+  inline constexpr std::size_t kParticleSystemSchemaPropertyCount = 133;
 
   template<typename TDest, typename TSrc>
   inline TDest AssignFromPrimvar(const TSrc& src) {

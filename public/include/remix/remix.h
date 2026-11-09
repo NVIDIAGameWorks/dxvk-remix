@@ -835,6 +835,16 @@ namespace remix {
     }
   };
 
+  struct InstanceInfoParticleScreenSizeEXT : remixapi_InstanceInfoParticleScreenSizeEXT {
+    InstanceInfoParticleScreenSizeEXT() {
+      sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SCREEN_SIZE_EXT;
+      pNext = nullptr;
+      minScreenSize = 0.f;
+      maxScreenSize = 0.f;
+      screenSizeCoverage = 1.f;
+    }
+  };
+
   struct InstanceInfoGpuInstancingEXT : remixapi_InstanceInfoGpuInstancingEXT {
     InstanceInfoGpuInstancingEXT() {
       sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_GPU_INSTANCING_EXT;

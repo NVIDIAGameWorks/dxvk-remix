@@ -1115,6 +1115,13 @@ std::optional<RtxParticleSystemDesc> UsdMod::Impl::processParticleSystem(Args& a
   ParticleSpawnDistribution spawnDistribution = ParticleSpawnDistribution::ByTriangle;
   _SafeGetParticlePrimvar(TfToken, id, spawnDistribution, );
   particleInfo.spawnDistribution = spawnDistribution;
+
+#define READ_PARTICLE_SCREEN_SIZE_PROPERTY(name, fallback) \
+  particleInfo.name = fallback; \
+  _SafeGetParticlePrimvar(float, id, name, particleInfo.);
+  LIST_PARTICLE_SCREEN_SIZE_PROPERTIES(READ_PARTICLE_SCREEN_SIZE_PROPERTY)
+#undef READ_PARTICLE_SCREEN_SIZE_PROPERTY
+
   _SafeGetParticlePrimvar(bool, id, hideEmitter, particleInfo.);
   _SafeGetParticlePrimvar(bool, id, enableMotionTrail, particleInfo.);
   _SafeGetParticlePrimvar(bool, id, useTurbulence, particleInfo.);

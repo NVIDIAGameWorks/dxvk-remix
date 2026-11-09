@@ -3077,6 +3077,7 @@ void ProcessDeviceCommandQueue() {
           serialize::InstanceInfoTransforms boneXforms;
           serialize::InstanceInfoParticleSystem particleSystem;
           serialize::InstanceInfoParticleSpawnDistribution particleSpawnDistribution;
+          serialize::InstanceInfoParticleScreenSize particleScreenSize;
         } exts;
         memset(&exts, 0, sizeof(InstanceExtensions));
 
@@ -3137,6 +3138,14 @@ void ProcessDeviceCommandQueue() {
               deserializeFromQueue(exts.particleSpawnDistribution);
               pInfoProto->pNext = &exts.particleSpawnDistribution;
               pInfoProto = &getInfoProto(exts.particleSpawnDistribution);
+              break;
+            }
+            case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SCREEN_SIZE_EXT:
+            {
+              assert(!exts.particleScreenSize.pNext);
+              deserializeFromQueue(exts.particleScreenSize);
+              pInfoProto->pNext = &exts.particleScreenSize;
+              pInfoProto = &getInfoProto(exts.particleScreenSize);
               break;
             }
             default:

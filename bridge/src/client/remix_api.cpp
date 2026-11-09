@@ -293,6 +293,13 @@ remixapi_ErrorCode REMIXAPI_CALL remixapi_DrawInstance(const remixapi_InstanceIn
           serializeAndSend<serialize::InstanceInfoParticleSpawnDistribution>(c, *pDistribution);
           break;
         }
+        case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SCREEN_SIZE_EXT:
+        {
+          auto* pScreenSize = static_cast<const remixapi_InstanceInfoParticleScreenSizeEXT* const>(infoItr);
+          send(c, Bool::True);
+          serializeAndSend<serialize::InstanceInfoParticleScreenSize>(c, *pScreenSize);
+          break;
+        }
         default:
         {
           Logger::warn("[remixapi_DrawInstance] Unknown sType. Skipping.");
