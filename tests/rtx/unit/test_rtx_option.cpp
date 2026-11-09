@@ -1773,6 +1773,90 @@ namespace rtx_option_test {
   }
 
   // ============================================================================
+  // Test: Saving a layer keeps hand-authored NoSave values
+  // NoSave values typed into a layer's file must survive a save of that layer,
+  // while runtime edits to NoSave options must still never reach the file.
+  // ============================================================================
+
+  void test_saveKeepsHandAuthoredNoSaveValues() {
+    std::cout << "  Running test_saveKeepsHandAuthoredNoSaveValues..." << std::endl;
+
+    const std::string tempConfigPath = "test_rtx_option_nosave.conf";
+    {
+      std::ofstream file(tempConfigPath, std::ios::trunc);
+      file << "rtx.test.testIntNoSave = 7\n";
+      file << "rtx.test.testInt = 555\n";
+    }
+
+    RtxOptionLayer* fileLayer = RtxOptionManager::acquireLayer(
+      tempConfigPath, RtxOptionLayerKey{28000, "NoSaveFileTestLayer"}, 1.0f, 0.1f, false, nullptr);
+    TEST_ASSERT(fileLayer != nullptr, "Failed to create NoSave file test layer");
+    RtxOptionManager::applyPendingValues(nullptr, false);
+
+    RtxOptionImpl& noSaveOption = TestOptions::testIntNoSaveObject();
+    TEST_ASSERT(noSaveOption.hasValueInLayer(fileLayer), "Hand-authored NoSave value should be loaded into the file layer");
+    TEST_ASSERT(TestOptions::testIntNoSave() == 7, "Hand-authored NoSave value should be applied");
+
+    // Runtime edits are routed to the Derived layer, so the file layer keeps its value.
+    const RtxOptionLayer* derivedLayer = RtxOptionLayer::getDerivedLayer();
+    TEST_ASSERT(derivedLayer != nullptr, "Derived layer should exist");
+    TestOptions::testIntNoSave.setDeferred(9, fileLayer);
+    TestOptions::testInt.setDeferred(556, fileLayer);
+    RtxOptionManager::applyPendingValues(nullptr, false);
+    TEST_ASSERT(noSaveOption.hasValueInLayer(derivedLayer), "Runtime NoSave edit should go to the Derived layer");
+    TEST_ASSERT(noSaveOption.getGenericValue(fileLayer)->i == 7, "Runtime NoSave edit should not change the file layer");
+
+    TEST_ASSERT(fileLayer->save(), "Saving the file layer should succeed");
+    Config savedConfig = Config::getOptionLayerConfig(tempConfigPath);
+    TEST_ASSERT(savedConfig.findOption("rtx.test.testIntNoSave"), "Save should keep the hand-authored NoSave line");
+    TEST_ASSERT(savedConfig.getOption<int>("rtx.test.testIntNoSave", 0) == 7,
+                "Save should keep the hand-authored NoSave value, not the runtime value");
+    TEST_ASSERT(savedConfig.getOption<int>("rtx.test.testInt", 0) == 556, "Save should write the regular option's layer value");
+    fileLayer->onLayerValueChanged();
+    TEST_ASSERT(!fileLayer->hasUnsavedChanges(), "Layer should have no unsaved changes after saving");
+
+    // The value must survive a reload from disk and a second save.
+    TEST_ASSERT(fileLayer->reload(), "Reloading the file layer should succeed");
+    TEST_ASSERT(noSaveOption.hasValueInLayer(fileLayer), "NoSave value should be read back after reload");
+    TEST_ASSERT(fileLayer->save(), "Second save should succeed");
+    savedConfig = Config::getOptionLayerConfig(tempConfigPath);
+    TEST_ASSERT(savedConfig.getOption<int>("rtx.test.testIntNoSave", 0) == 7, "Second save should keep the NoSave value");
+
+    // remixapi_SetConfigVariable writes compile-time options straight into the user layer with readOption,
+    // bypassing NoSave routing. Such values must not be saved, whether or not the file has the key.
+    Config apiConfig;
+    apiConfig.setOption("rtx.test.testIntNoSave", 11);
+    apiConfig.setOption("rtx.test.testIntEnvAndFlags", 12);
+    noSaveOption.readOption(apiConfig, fileLayer);
+    TestOptions::testIntEnvAndFlagsObject().readOption(apiConfig, fileLayer);
+    TEST_ASSERT(noSaveOption.getGenericValue(fileLayer)->i == 11, "Direct layer write should change the file layer value");
+    TEST_ASSERT(fileLayer->save(), "Save after direct layer write should succeed");
+    savedConfig = Config::getOptionLayerConfig(tempConfigPath);
+    TEST_ASSERT(savedConfig.getOption<int>("rtx.test.testIntNoSave", 0) == 7,
+                "Save should keep the file's NoSave value, not a value written directly into the layer");
+    TEST_ASSERT(!savedConfig.findOption("rtx.test.testIntEnvAndFlags"),
+                "Save should not write a NoSave value that is not in the file");
+
+    // A NoSave value that was removed from the layer stays removed on save.
+    noSaveOption.disableLayerValue(fileLayer);
+    TEST_ASSERT(fileLayer->save(), "Save after removal should succeed");
+    savedConfig = Config::getOptionLayerConfig(tempConfigPath);
+    TEST_ASSERT(!savedConfig.findOption("rtx.test.testIntNoSave"), "Removed NoSave value should not be saved");
+    TEST_ASSERT(savedConfig.getOption<int>("rtx.test.testInt", 0) == 556, "Regular value should still be saved");
+
+    // Clean up.
+    noSaveOption.disableLayerValue(derivedLayer);
+    RtxOptionManager::releaseLayer(fileLayer);
+    RtxOptionManager::applyPendingValues(nullptr, false);
+    std::filesystem::remove(tempConfigPath);
+
+    TEST_ASSERT(TestOptions::testIntNoSave() == 42, "testIntNoSave should return to default (42) after cleanup");
+    verifyOptionsAtDefaults();
+
+    std::cout << "    PASSED" << std::endl;
+  }
+
+  // ============================================================================
   // Test: HashSetLayer Direct Operations
   // Tests HashSetLayer class operations directly
   // ============================================================================
@@ -2990,6 +3074,7 @@ namespace rtx_option_test {
     // Serialization tests
     test_configSerialization();
     test_configFileIO();
+    test_saveKeepsHandAuthoredNoSaveValues();
     test_configParsing();
     test_configScalarToVectorPromotion();
     

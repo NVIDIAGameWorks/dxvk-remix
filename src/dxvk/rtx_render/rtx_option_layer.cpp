@@ -412,12 +412,16 @@ namespace dxvk {
     
     // Keep rtx keys that no option manages (e.g. a dynamic namespace registered later) and values
     // that failed dynamic option parsing. Managed values written below take precedence.
+    // writeOptions skips NoSave options, so their text from the file is kept while this layer still holds a value.
+    // The layer value is not written, because remixapi_SetConfigVariable can put NoSave values into the user layer.
     Config layerConfig;
     for (const auto& [key, value] : m_config.getOptions()) {
       if (key.find("rtx.") == std::string::npos) {
         continue;
       }
-      if (isKeyRejected(key) || RtxOptionImpl::getOptionByFullName(key) == nullptr) {
+      const RtxOptionImpl* option = RtxOptionImpl::getOptionByFullName(key);
+      const bool isLoadedNoSaveValue = option != nullptr && (option->getFlags() & RtxOptionFlags::NoSave) != 0 && option->hasValueInLayer(this);
+      if (isKeyRejected(key) || option == nullptr || isLoadedNoSaveValue) {
         layerConfig.setOption(key, value);
       }
     }

@@ -307,7 +307,7 @@ Flags control how options behave and which layer they belong to:
 
 | Flag | When to Use |
 |------|-------------|
-| `NoSave` | For runtime-only options that should never be written to config files. Examples: debug toggles, temporary state, values computed from other settings. These options are routed to the Derived layer. |
+| `NoSave` | For runtime-only options that should never be written to config files. Examples: debug toggles, temporary state, values computed from other settings. These options are routed to the Derived layer. A value typed into a config file by hand is still loaded, and saving that file keeps it. |
 | `NoReset` | For options that should persist when the user clicks "Reset" in the UI. Use sparingly, as most options should be resettable. |
 | `UserSetting` | For end-user preferences that belong in `user.conf`, not `rtx.conf`. Examples: graphics quality settings, UI preferences, keybindings. Without this flag, options are treated as mod/developer settings and saved to `rtx.conf`. |
 
