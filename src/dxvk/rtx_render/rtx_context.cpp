@@ -560,10 +560,15 @@ namespace dxvk {
 
     m_device->setPresentThrottleDelay(computedPresentThrottleDelay);
 
+    // Scheduled capture requests are queued before the early outs below so they stay pending until a ray traced frame services them.
+    const Rc<GameCapturer> capturer = common->capturer();
+    capturer->triggerScheduledCapture(m_device->getCurrentFrameId());
+
     // Early out if ray tracing is not supported or if Remix has already been injected
 
     if (!m_rayTracingSupported) {
       ONCE(Logger::info(str::format("[RTX-Compatibility-Info] Raytracing doesn't appear to be supported on this HW.")));
+      capturer->reportPendingCaptureBlocked("ray tracing is not supported on this hardware");
       return;
     }
 
@@ -639,11 +644,6 @@ namespace dxvk {
       const bool captureScreenImage = s_triggerScreenshot || (captureTestScreenshot && !s_capturePrePresentTestScreenshot);
       const bool captureDebugImage = RtxOptions::captureDebugImage();
       
-      if (s_triggerUsdCapture) {
-        s_triggerUsdCapture = false;
-        m_common->capturer()->triggerNewCapture();
-      }
-
       if (captureTestScreenshot) {
         Logger::info(str::format("RTX: Test screenshot capture triggered"));
         Logger::info(str::format("RTX: Use separate denoiser ", RtxOptions::denoiseDirectAndIndirectLightingSeparately()));
@@ -850,6 +850,14 @@ namespace dxvk {
 
       m_framesWithoutValidScene = 0;
     } else {
+      if (!isRaytracingEnabled) {
+        capturer->reportPendingCaptureBlocked("ray tracing is disabled");
+      } else if (!isCameraValid) {
+        capturer->reportPendingCaptureBlocked("no valid camera is detected");
+      } else {
+        capturer->reportPendingCaptureBlocked("shaders are still compiling");
+      }
+
       // If raytracing is only disabled because we don't have shaders available, we don't want to clear the scene.
       // This frequently happens for a single frame when a cached shader is being fetched, and causes the Logic 
       // graph state to be reset - which is problematic since Logic graphs often trigger shader fetches.
@@ -925,15 +933,26 @@ namespace dxvk {
     }
     s_triggerScreenshot = false;
 
-    // Some time in the future kill process
-    if (m_triggerDelayedTerminate &&
-        (m_device->getCurrentFrameId() > m_terminateAppFrameNum) &&
-        m_common->capturer()->isIdle()) {
-      Logger::info(str::format("RTX: Terminating application"));
-      Metrics::serialize();
-      getCommonObjects()->metaExporter().waitForAllExportsToComplete();
+    // Some time in the future kill process.
+    // Captures only advance on frames that can ray trace a scene, so pending requests are cancelled after a timeout.
+    if (m_triggerDelayedTerminate && (m_device->getCurrentFrameId() > m_terminateAppFrameNum)) {
+      const Rc<GameCapturer> capturer = m_common->capturer();
+      const float timeoutSeconds = GameCapturer::pendingRequestTerminateTimeoutSeconds();
+      const auto timeout = std::chrono::duration_cast<CaptureTerminationGuard::Clock::duration>(std::chrono::duration<float>(timeoutSeconds));
+      const CaptureTerminationGuard::Action action =
+        m_captureTerminationGuard.update(!capturer->isIdle(), capturer->hasPendingCapture(), CaptureTerminationGuard::Clock::now(), timeout);
 
-      env::killProcess();
+      if (action == CaptureTerminationGuard::Action::CancelPendingRequest) {
+        capturer->cancelPendingCapture(str::format("DXVK_TERMINATE_APP_FRAME waited ", timeoutSeconds, " seconds for it to start"));
+      }
+
+      if (action != CaptureTerminationGuard::Action::Wait) {
+        Logger::info(str::format("RTX: Terminating application"));
+        Metrics::serialize();
+        getCommonObjects()->metaExporter().waitForAllExportsToComplete();
+
+        env::killProcess();
+      }
     }
 
     // This needs to happen at the end of frame, after ImGUI rendering

@@ -85,6 +85,8 @@
 #include <vector>
 #include <unordered_map>
 #include <mutex>
+#include <atomic>
+#include <optional>
 
 namespace dxvk 
 {
@@ -114,14 +116,24 @@ public:
                 "to all have identity xform matrices, enabling will attempt to correct this and\n"
                 "improve stage + mesh viewability in tools.\n"
                 "Hashes are unaffected.");
+  RTX_OPTION("rtx.capture", float, pendingRequestTerminateTimeoutSeconds, 300.0f,
+             "Seconds that DXVK_TERMINATE_APP_FRAME waits for a pending capture request to start before cancelling it and terminating.\n"
+             "A capture that has already started always finishes before termination.");
 
   GameCapturer(DxvkDevice* const pDevice, SceneManager& sceneManager, AssetExporter& exporter);
   ~GameCapturer();
 
   void step(const Rc<DxvkContext> ctx, const HWND hwnd);
-  void triggerNewCapture() {
-    m_bTriggerCapture = true;
-  }
+  // Requests a new capture. The request stays pending until step() services it, which can be many frames later.
+  // Rejects the request immediately when replacement assets are enabled.
+  void triggerNewCapture();
+  // Requests the capture scheduled with DXVK_RTX_CAPTURE_ENABLE_ON_FRAME once frameId reaches or passes the scheduled frame.
+  void triggerScheduledCapture(const uint32_t frameId);
+  // Logs why a pending capture request cannot be serviced this frame, once per reason for each request.
+  // The reason must be a string literal because only the pointer is stored.
+  void reportPendingCaptureBlocked(const char* reason);
+  // Drops a pending capture request and logs why, along with the reasons that blocked it.
+  void cancelPendingCapture(const std::string& cause);
   
   // Instance Flags
   enum class InstFlag : uint8_t {
@@ -147,6 +159,10 @@ public:
   }
   bool isIdle() const {
     return m_state.isClear() || m_state.has<State::Complete>() || m_state.has<State::Failed>();
+  }
+  // Returns true while a capture request is waiting for a frame that can service it.
+  bool hasPendingCapture() const {
+    return m_bTriggerCapture;
   }
 
   struct CompletedCapture {
@@ -310,7 +326,9 @@ private:
   }
 
   // State
-  bool m_bTriggerCapture = false;
+  std::atomic<bool> m_bTriggerCapture { false };
+  std::optional<uint32_t> m_scheduledCaptureFrameId;
+  std::vector<const char*> m_loggedCaptureBlockedReasons;
   State m_state;
 
   // Handles

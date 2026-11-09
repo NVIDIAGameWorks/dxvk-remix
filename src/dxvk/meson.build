@@ -201,6 +201,7 @@ dxvk_src = files([
   'rtx_render/rtx_camera.h',
   'rtx_render/rtx_camera_manager.cpp',
   'rtx_render/rtx_camera_manager.h',
+  'rtx_render/rtx_capture_termination_guard.h',
   'rtx_render/rtx_composite.cpp',
   'rtx_render/rtx_composite.h',
   'rtx_render/rtx_context.cpp',
