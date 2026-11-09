@@ -698,8 +698,9 @@ namespace {
       if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_PARTICLE_EMITTER)         { result.set(InstanceCategories::ParticleEmitter); }
       if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_SMOOTH_NORMALS)            { result.set(InstanceCategories::SmoothNormals); }
       if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_HAIR_CARDS)                { result.set(InstanceCategories::HairCards); }
+      if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_SLUDGE)                    { result.set(InstanceCategories::Sludge); }
       
-      static_assert((int)InstanceCategories::Count == 25, "Instance categories changed, please update Remix SDK");
+      static_assert((int)InstanceCategories::Count == 26, "Instance categories changed, please update Remix SDK");
       return result;
     }
 
@@ -1158,6 +1159,43 @@ namespace {
       }
 
       sceneManager.setExternalStartInMediumMaterial(*material);
+    });
+    return REMIXAPI_ERROR_CODE_SUCCESS;
+  }
+
+  remixapi_ErrorCode REMIXAPI_CALL remixapi_SetWaterSim(
+    const remixapi_WaterSimInfo* info) {
+    if (!info || info->sType != REMIXAPI_STRUCT_TYPE_WATER_SIM_INFO) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+    dxvk::D3D9DeviceEx* remixDevice = tryAsDxvk();
+    if (!remixDevice) {
+      return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
+    }
+    std::lock_guard lock { s_mutex };
+    remixDevice->EmitCs([cInfo = *info](dxvk::DxvkContext* ctx) {
+      ctx->getCommonObjects()->metaWaterSim().setState(cInfo);
+    });
+    return REMIXAPI_ERROR_CODE_SUCCESS;
+  }
+
+  remixapi_ErrorCode REMIXAPI_CALL remixapi_AddWaterDisturbance(
+    const remixapi_WaterDisturbanceInfo* info) {
+    if (!info || info->sType != REMIXAPI_STRUCT_TYPE_WATER_DISTURBANCE_INFO) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+    // A NaN or infinity in the height field would never decay.
+    if (!std::isfinite(info->position.x) || !std::isfinite(info->position.y) || !std::isfinite(info->position.z) ||
+        !std::isfinite(info->radius) || !std::isfinite(info->strength)) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+    dxvk::D3D9DeviceEx* remixDevice = tryAsDxvk();
+    if (!remixDevice) {
+      return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
+    }
+    std::lock_guard lock { s_mutex };
+    remixDevice->EmitCs([cInfo = *info](dxvk::DxvkContext* ctx) {
+      ctx->getCommonObjects()->metaWaterSim().addDisturbance(cInfo);
     });
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
@@ -1894,6 +1932,8 @@ extern "C"
       interf.DestroyMesh = remixapi_DestroyMesh;
       interf.SetupCamera = remixapi_SetupCamera;
       interf.SetCameraMediumMaterial = remixapi_SetCameraMediumMaterial;
+      interf.SetWaterSim = remixapi_SetWaterSim;
+      interf.AddWaterDisturbance = remixapi_AddWaterDisturbance;
       interf.DrawInstance = remixapi_DrawInstance;
       interf.CreateLight = remixapi_CreateLight;
       interf.DestroyLight = remixapi_DestroyLight;
@@ -1908,7 +1948,7 @@ extern "C"
       interf.pick_RequestObjectPicking = remixapi_pick_RequestObjectPicking;
       interf.pick_HighlightObjects = remixapi_pick_HighlightObjects;
     }
-    static_assert(sizeof(interf) == 176, "Add/remove function registration");
+    static_assert(sizeof(interf) == 192, "Add/remove function registration");
 
     remixapi_version::writeClientInterface(interf, info->version, out_result);
     return REMIXAPI_ERROR_CODE_SUCCESS;

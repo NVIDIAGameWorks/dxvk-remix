@@ -661,11 +661,59 @@ enum class InstanceCategories : uint32_t {
   ParticleEmitter,
   SmoothNormals,
   HairCards,
+  Sludge,
 
   Count,
 };
 
 using CategoryFlags = Flags<InstanceCategories>;
+
+// A capture saves a category as TRUE, FALSE or EMPTY (no override, nothing written into a capture).
+// This function checks if we need to explicitly save 'FALSE' when the instance category is not set in a mask.
+// Otherwise, it's saved as 'EMPTY'.
+inline bool isCategoryCapturedWhenFalse(InstanceCategories category) {
+  #ifdef _MSC_VER
+    #pragma warning(push)
+    #pragma warning(error: 4062) // compile error if enum is not explicitly handled
+  #endif
+  switch (category) {
+  case InstanceCategories::WorldUI:
+  case InstanceCategories::WorldMatte:
+  case InstanceCategories::Sky:
+  case InstanceCategories::Ignore:
+  case InstanceCategories::IgnoreLights:
+  case InstanceCategories::IgnoreAntiCulling:
+  case InstanceCategories::IgnoreMotionBlur:
+  case InstanceCategories::IgnoreOpacityMicromap:
+  case InstanceCategories::IgnoreAlphaChannel:
+  case InstanceCategories::Hidden:
+  case InstanceCategories::Particle:
+  case InstanceCategories::Beam:
+  case InstanceCategories::DecalStatic:
+  case InstanceCategories::DecalDynamic:
+  case InstanceCategories::DecalSingleOffset:
+  case InstanceCategories::DecalNoOffset:
+  case InstanceCategories::AlphaBlendToCutout:
+  case InstanceCategories::Terrain:
+  case InstanceCategories::AnimatedWater:
+  case InstanceCategories::ThirdPersonPlayerModel:
+  case InstanceCategories::ThirdPersonPlayerBody:
+  case InstanceCategories::IgnoreBakedLighting:
+  case InstanceCategories::ParticleEmitter:
+  case InstanceCategories::SmoothNormals:
+    return true; // Category is saved as 'FALSE' if not set
+  case InstanceCategories::HairCards:
+  case InstanceCategories::Sludge:
+  case InstanceCategories::Count:
+    return false; // Category is saved as 'EMPTY' if not set. Add new categories here, so existing captures stay unchanged.
+  }
+  assert( 0 && "isCategoryCapturedWhenFalse: invalid category value" );
+  return false;
+  #ifdef _MSC_VER
+    #pragma warning(pop)
+  #endif
+}
+
 
 #define DECAL_CATEGORY_FLAGS InstanceCategories::DecalStatic, InstanceCategories::DecalDynamic, InstanceCategories::DecalSingleOffset, InstanceCategories::DecalNoOffset
 

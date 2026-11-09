@@ -418,7 +418,8 @@ void genTangSpace(vec2 uvs[3],
                   out vec3 tangent,
                   out vec3 bitangent,
                   out vec3 rawTangentOut,
-                  out vec3 rawBitangentOut)
+                  out vec3 rawBitangentOut,
+                  out float rawScaleOut)
 {
   // Compute triangle partial derivatives
 
@@ -435,8 +436,8 @@ void genTangSpace(vec2 uvs[3],
   // causes overflows for 16 bit floats when calculating the length for normalization (due to needing to get their squared length first).
   // Having them 32 bit floats all the way through is slightly more expensive but should benefit from the greater precision and
   // not need as many conversions back and forth.
-  vec3 rawTangent;
-  vec3 rawBitangent;
+  vec3 rawTangent = vec3(0.0f);
+  vec3 rawBitangent = vec3(0.0f);
 
   const bool degenerateUV = abs(determinant) < 1e-8f;
 
@@ -451,6 +452,8 @@ void genTangSpace(vec2 uvs[3],
   // Here, we scale both down by the length of the larger vector.
   float largerRawLength = sqrt(max(squareLength(rawTangent), squareLength(rawBitangent)));
   
+  // The length that was divided out, in world units per texture coordinate unit. It is 0 when the UVs are degenerate.
+  rawScaleOut = largerRawLength;
   rawTangentOut = rawTangent / largerRawLength;
   rawBitangentOut = rawBitangent / largerRawLength;
 

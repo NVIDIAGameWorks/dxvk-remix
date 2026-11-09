@@ -143,6 +143,8 @@
 // Holds the dense copy of the primary shading normal, which only the compacted GBuffer writes for the Remix API.
 #define GBUFFER_BINDING_PRIMARY_WORLD_SHADING_NORMAL_DENSE_OUTPUT               156
 
+#define GBUFFER_BINDING_WATER_SIM_HEIGHT                                        157
+
 #define GBUFFER_MIN_BINDING                         GBUFFER_BINDING_LINEAR_WRAP_SAMPLER
 
 #if GBUFFER_MIN_BINDING <= COMMON_MAX_BINDING

@@ -35,6 +35,7 @@
 #include "rtx/pass/sharc_args.h"
 #include "rtx/pass/volume_args.h"
 #include "rtx/pass/material_args.h"
+#include "rtx/pass/water_sim/water_sim_args.h"
 #include "rtx/pass/view_distance_args.h"
 #include "rtx/concept/light/light_types.h"
 #include "rtx/concept/surface/surface_shared.h"
@@ -169,6 +170,7 @@ struct RaytraceArgs {
   VolumeArgs volumeArgs;
   OpaqueMaterialArgs opaqueMaterialArgs;
   TranslucentMaterialArgs translucentMaterialArgs;
+  WaterSimArgs waterSimArgs;
   ViewDistanceArgs viewDistanceArgs;
 
   LightRangeInfo lightRanges[lightTypeCount];

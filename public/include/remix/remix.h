@@ -184,6 +184,8 @@ namespace remix {
     Result< void >                    DestroyMesh(remixapi_MeshHandle handle);
     Result< void >                    SetupCamera(const remixapi_CameraInfo& info);
     Result< void >                    SetCameraMediumMaterial(remixapi_MaterialHandle medium);
+    Result< void >                    SetWaterSim(const remixapi_WaterSimInfo& info);
+    Result< void >                    AddWaterDisturbance(const remixapi_WaterDisturbanceInfo& info);
     Result< void >                    DrawInstance(const remixapi_InstanceInfo& info);
     Result< remixapi_LightHandle >    CreateLight(const remixapi_LightInfo& info);
     Result< void >                    DestroyLight(remixapi_LightHandle handle);
@@ -225,7 +227,7 @@ namespace remix {
         return status;
       }
 
-      static_assert(sizeof(remixapi_Interface) == 176,
+      static_assert(sizeof(remixapi_Interface) == 192,
                     "Change version, update C++ wrapper when adding new functions");
 
       remix::Interface interfaceInCpp = {};
@@ -731,6 +733,40 @@ namespace remix {
     info.pNext = nullptr;
     info.medium = medium;
     return m_CInterface.SetCameraMediumMaterial(&info);
+  }
+
+  struct WaterSimInfo : remixapi_WaterSimInfo {
+    WaterSimInfo() {
+      sType = REMIXAPI_STRUCT_TYPE_WATER_SIM_INFO;
+      pNext = nullptr;
+      clearAllDisturbances = false;
+      STATIC_ASSERT_SIZEOF(remixapi_WaterSimInfo, 24);
+    }
+  };
+
+  inline Result< void > Interface::SetWaterSim(const remixapi_WaterSimInfo& info) {
+    if (!m_CInterface.SetWaterSim) {
+      return REMIXAPI_ERROR_CODE_NOT_INITIALIZED;
+    }
+    return m_CInterface.SetWaterSim(&info);
+  }
+
+  struct WaterDisturbanceInfo : remixapi_WaterDisturbanceInfo {
+    WaterDisturbanceInfo() {
+      sType = REMIXAPI_STRUCT_TYPE_WATER_DISTURBANCE_INFO;
+      pNext = nullptr;
+      position = { 0.f, 0.f, 0.f };
+      radius = 0.f;
+      strength = 0.f;
+      STATIC_ASSERT_SIZEOF(remixapi_WaterDisturbanceInfo, 40);
+    }
+  };
+
+  inline Result< void > Interface::AddWaterDisturbance(const remixapi_WaterDisturbanceInfo& info) {
+    if (!m_CInterface.AddWaterDisturbance) {
+      return REMIXAPI_ERROR_CODE_NOT_INITIALIZED;
+    }
+    return m_CInterface.AddWaterDisturbance(&info);
   }
 
 

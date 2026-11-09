@@ -90,10 +90,13 @@ constexpr size_t clientInterfaceSize(uint64_t clientVersion) {
   if (clientVersion < REMIXAPI_VERSION_MAKE(0, 6, 4)) {
     return offsetof(remixapi_Interface, SetCameraMediumMaterial);
   }
+  if (clientVersion < REMIXAPI_VERSION_MAKE(0, 6, 11)) {
+    return offsetof(remixapi_Interface, SetWaterSim);
+  }
   return sizeof(remixapi_Interface);
 }
 
-static_assert(sizeof(remixapi_Interface) == 22 * sizeof(void*), "Add a branch to clientInterfaceSize for the new interface");
+static_assert(sizeof(remixapi_Interface) == 24 * sizeof(void*), "Add a branch to clientInterfaceSize for the new interface");
 
 // Writes only the part of the interface that the client's version knows, in that version's order.
 inline void writeClientInterface(const remixapi_Interface& interf, uint64_t clientVersion, remixapi_Interface* pOut) {

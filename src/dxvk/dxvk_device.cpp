@@ -577,6 +577,14 @@ namespace dxvk {
     return *m_textureManager;
   }
 
+  RtxDustParticles& DxvkObjects::metaDustParticles() {
+    return m_dustParticles.get(m_device);
+  }
+
+  RtxWaterSim& DxvkObjects::metaWaterSim() {
+    return m_waterSim.get(m_device);
+  }
+
   void DxvkObjects::onDestroy() {
     getRtxInitializer().onDestroy();
 

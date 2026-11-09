@@ -21,6 +21,8 @@
 */
 #pragma once
 
+#include "rtx/concept/surface_material/water_sim_surface.slangh"
+
 // Translucent Surface Material Interaction Helper Functions
 
 bool translucentSurfaceMaterialInteractionIsThinWalled(
@@ -47,9 +49,12 @@ TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreat
   TranslucentSurfaceMaterial translucentSurfaceMaterial,
   Surface surface,
   inout SurfaceInteraction surfaceInteraction,
-  MinimalRayInteraction minimalRayInteraction)
+  MinimalRayInteraction minimalRayInteraction,
+  // Distance from the ray origin to the hit, 0 when unknown, see waterSimEvaluate.
+  float rayHitDistance = 0.0f)
 {
   TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction;
+  translucentSurfaceMaterialInteraction.waterSimRayOffset = 0.0f;
 
   // Sample from each Translucent Surface Material texture
 
@@ -57,6 +62,33 @@ TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreat
   vec4 secondNormalSample;
   vec4 transmittanceOrDiffuseSample;
   vec4 emissiveColorSample;
+
+  // The water simulation's parallax shifts the texture coordinates, and its slopes tilt the normal.
+  vec2 waterSimTextureShift = vec2(0.0);
+  vec3 waterSimNormal = surfaceInteraction.geometryNormal;
+  float waterSimWeight = 0.0;
+  // With the detail, horizontal water takes its normal from it instead of the material's normal maps.
+  bool waterSimDetail = false;
+  vec2 waterSimDetailSlope = vec2(0.0);
+  if (cb.waterSimArgs.enable && surface.isAnimatedWater)
+  {
+    vec3 waterSimDisplacement;
+    float waterSimRayOffset;
+    float waterSimSpray;
+    if (waterSimEvaluate(surfaceInteraction.position, surfaceInteraction.geometryNormal, minimalRayInteraction.viewDirection, rayHitDistance,
+                         waterSimDisplacement, waterSimRayOffset, waterSimNormal, waterSimWeight, waterSimSpray))
+    {
+      waterSimTextureShift = waterSimCalcTextureShift(surfaceInteraction, waterSimDisplacement);
+      translucentSurfaceMaterialInteraction.waterSimRayOffset = waterSimRayOffset;
+    }
+    if (cb.waterSimArgs.detailFlags & WATER_SIM_DETAIL_FLAG_ACTIVE)
+    {
+      // The detail is read at the displaced hit, where the long waves have the height that the parallax found.
+      waterSimDetailSlope = waterSimEvalDetail(surfaceInteraction.position + waterSimDisplacement, minimalRayInteraction.viewDirection,
+                                               minimalRayInteraction.coneRadius, waterSimSpray);
+      waterSimDetail = waterSimIsHorizontal(surfaceInteraction.geometryNormal);
+    }
+  }
 
   bool secondNormalLoaded = false;
   if (cb.translucentMaterialArgs.animatedWaterEnable && surface.isAnimatedWater)
@@ -71,7 +103,7 @@ TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreat
       uvBias);
 
     // The UV as it was before applying a spritesheet (in 0-1 space).
-    const vec2 uvPreSpritesheet = frac(surfaceInteraction.textureCoordinates * vec2(surface.spriteSheetCols, surface.spriteSheetRows));
+    const vec2 uvPreSpritesheet = frac(frac(surfaceInteraction.textureCoordinates * vec2(surface.spriteSheetCols, surface.spriteSheetRows)) + waterSimTextureShift);
 
     // The texcoords with primary motion applied, put back into spritesheet space.
     const vec2 primaryUV = uvBias + uvSize *(frac(uvPreSpritesheet + cb.timeSinceStartSeconds * cb.translucentMaterialArgs.animatedWaterPrimaryNormalMotion));
@@ -82,11 +114,16 @@ TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreat
     const float lodBias = cb.translucentMaterialArgs.animatedWaterSecondaryNormalLodBias;
 
     surfaceInteraction.textureCoordinates = secondaryUV;;
-    secondNormalLoaded = surfaceMaterialInteractionTextureReadHelper(translucentSurfaceMaterial.normalTextureIndex, translucentSurfaceMaterial.samplerIndex, surfaceInteraction, secondNormalSample, lodBias);
+    secondNormalLoaded = !waterSimDetail && surfaceMaterialInteractionTextureReadHelper(translucentSurfaceMaterial.normalTextureIndex, translucentSurfaceMaterial.samplerIndex, surfaceInteraction, secondNormalSample, lodBias);
     surfaceInteraction.textureCoordinates = primaryUV;
   }
+  else
+  {
+    // The shift is in mesh texture coordinates, scaled into the sprite sheet cell.
+    surfaceInteraction.textureCoordinates += waterSimTextureShift / vec2(surface.spriteSheetCols, surface.spriteSheetRows);
+  }
 
-  const bool normalLoaded = surfaceMaterialInteractionTextureReadHelper(translucentSurfaceMaterial.normalTextureIndex, translucentSurfaceMaterial.samplerIndex, surfaceInteraction, normalSample);
+  const bool normalLoaded = !waterSimDetail && surfaceMaterialInteractionTextureReadHelper(translucentSurfaceMaterial.normalTextureIndex, translucentSurfaceMaterial.samplerIndex, surfaceInteraction, normalSample);
   // Note: Premultiplied alpha should really be used here for the transmittance or diffuse color as without it "transparent" regions of the texture in the diffuse color case for
   // example may cause incorrect coloration on the edges of more opaque regions due to texture filtering. This is hard to ensure on the art pipeline side of things however.
   const bool transmittanceOrDiffuseLoaded = surfaceMaterialInteractionTextureReadHelper(translucentSurfaceMaterial.transmittanceOrDiffuseTextureIndex, translucentSurfaceMaterial.samplerIndex, surfaceInteraction, transmittanceOrDiffuseSample);
@@ -112,6 +149,13 @@ TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreat
     }
     normal = normalize(mul(tangentToWorld, tangentNormal));
   }
+  if (waterSimDetail)
+  {
+    normal = waterSimSlopeToNormal(waterSimDetailSlope, surfaceInteraction.geometryNormal);
+  }
+
+  // The simulated waves tilt the normal on top of the texture normals.
+  normal = normalize(normal + waterSimWeight * (waterSimNormal - surfaceInteraction.geometryNormal));
 
   // Note: Diffuse layer override encapsulated in if the diffuse layer flag is set or not as this override is able to be done on the CPU.
   const bool useDiffuseLayer = translucentSurfaceMaterial.flags & TRANSLUCENT_SURFACE_MATERIAL_FLAG_USE_DIFFUSE_LAYER;
@@ -212,6 +256,7 @@ TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreat
   translucentSurfaceMaterialInteraction.flags = polymorphicSurfaceMaterialInteraction.bdata0;
   translucentSurfaceMaterialInteraction.sourceSurfaceMaterialIndex = polymorphicSurfaceMaterialInteraction.idata0;
   translucentSurfaceMaterialInteraction.sourcePackedGammaEmissiveColor = polymorphicSurfaceMaterialInteraction.idata1;
+  translucentSurfaceMaterialInteraction.waterSimRayOffset = 0.0f;
 
   return translucentSurfaceMaterialInteraction;
 }
@@ -291,6 +336,7 @@ TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreat
 
   translucentSurfaceMaterialInteraction.flags =
     (useDiffuseLayer ? TRANSLUCENT_SURFACE_MATERIAL_FLAG_USE_DIFFUSE_LAYER : 0);
+  translucentSurfaceMaterialInteraction.waterSimRayOffset = 0.0f;
 
   return translucentSurfaceMaterialInteraction;
 }

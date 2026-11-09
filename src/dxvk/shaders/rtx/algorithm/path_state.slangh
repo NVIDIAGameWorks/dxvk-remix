@@ -458,6 +458,19 @@ struct PathState : IBasePayloadState
       set { }
   }
 
+  // Water silhouettes are only tested in the primary G-buffer pass.
+  property float waterSurfaceDistance
+  {
+      get { return 0.0f; }
+      set { }
+  }
+
+  property bool skipWaterSilhouette
+  {
+      get { return false; }
+      set { }
+  }
+
   // Packed members
 
   property vec3 direction

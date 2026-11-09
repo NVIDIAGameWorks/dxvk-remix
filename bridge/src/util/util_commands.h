@@ -52,6 +52,8 @@ namespace Commands {
     RemixApi_CreateD3D9,
     RemixApi_RegisterDevice,
     RemixApi_GetInitializationStatus,
+    RemixApi_SetWaterSim,
+    RemixApi_AddWaterDisturbance,
 
     Bridge_SharedHeap_AddSeg,
     Bridge_SharedHeap_Alloc,
@@ -492,6 +494,8 @@ namespace Commands {
     case RemixApi_CreateD3D9: return "RemixApi_CreateD3D9";
     case RemixApi_RegisterDevice: return "RemixApi_RegisterDevice";
     case RemixApi_GetInitializationStatus: return "RemixApi_GetInitializationStatus";
+    case RemixApi_SetWaterSim: return "RemixApi_SetWaterSim";
+    case RemixApi_AddWaterDisturbance: return "RemixApi_AddWaterDisturbance";
 
     case Bridge_SharedHeap_AddSeg: return "SharedHeap_AddSeg";
     case Bridge_SharedHeap_Alloc: return "SharedHeap_Alloc";

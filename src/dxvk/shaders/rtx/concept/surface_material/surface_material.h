@@ -258,6 +258,10 @@ struct TranslucentSurfaceMaterialInteraction
   uint8_t flags;
 
   bool isAnimatedWater;
+
+  // Distance along the view ray from the flat hit to the parallax hit of the water simulation, positive behind the flat hit.
+  // Only set where the material is created from a hit (0 when decoded).
+  float waterSimRayOffset;
 };
 
 struct RayPortalSurfaceMaterialInteraction

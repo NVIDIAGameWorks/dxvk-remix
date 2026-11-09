@@ -1,0 +1,105 @@
+/*
+* Copyright (c) 2026, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Sludge on the simulated water (rtx.sludgeTextures): the simulation clears it around every disturbance, and a ray that hits
+// cleared sludge finds open water instead, a translucent material of its own. See documentation/WaterSimulation.md.
+
+#include "rtx/concept/surface_material/water_sim_surface.slangh"
+
+// Returns a random value from 0 to 1 at a corner of the noise lattice.
+float waterSimSludgeLatticeValue(int2 corner)
+{
+  uint h = (uint(corner.x) * 0x8da6b343u) ^ (uint(corner.y) * 0xd8163841u);
+  h ^= h >> 15;
+  h *= 0x2c1b3c6du;
+  h ^= h >> 12;
+  return float(h & 0xffffu) / 65535.0;
+}
+
+float waterSimSludgeNoiseOctave(vec2 position)
+{
+  const vec2 lattice = floor(position);
+  const vec2 f = position - lattice;
+  const vec2 u = f * f * (3.0 - 2.0 * f);
+  const int2 corner = int2(lattice);
+  const float a = waterSimSludgeLatticeValue(corner);
+  const float b = waterSimSludgeLatticeValue(corner + int2(1, 0));
+  const float c = waterSimSludgeLatticeValue(corner + int2(0, 1));
+  const float d = waterSimSludgeLatticeValue(corner + int2(1, 1));
+  return lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y);
+}
+
+// Returns a value noise from 0 to 1 anchored to the world, in blobs of about blobSize units, that cuts the edges of the holes.
+float waterSimSludgeNoise(vec2 planePosition, float blobSize)
+{
+  return 0.7 * waterSimSludgeNoiseOctave(planePosition / blobSize) + 0.3 * waterSimSludgeNoiseOctave(planePosition / (0.4 * blobSize));
+}
+
+// Returns how strongly the simulation acts on sludge at the hit, 0 on sloped surfaces and outside the window.
+float waterSimSludgeWeight(SurfaceInteraction surfaceInteraction)
+{
+  if (!cb.waterSimArgs.enable || !waterSimIsHorizontal(surfaceInteraction.geometryNormal))
+  {
+    return 0.0;
+  }
+
+  const vec2 planePosition = cb.isZUp ? surfaceInteraction.position.xy : surfaceInteraction.position.xz;
+  const vec2 cellOffset = abs(planePosition / cb.waterSimArgs.cellSize - cb.waterSimArgs.centerCell);
+  const float gridSize = cb.waterSimArgs.gridSize;
+  return 1.0 - smoothstep(0.3 * gridSize, 0.44 * gridSize, max(cellOffset.x, cellOffset.y));
+}
+
+// Returns whether the simulation has cleared the sludge at the hit, past a threshold that the noise moves.
+// Returns false where the simulation cannot be read (without WATER_SIM_SAMPLE).
+bool waterSimSludgeIsOpen(Surface surface, SurfaceInteraction surfaceInteraction)
+{
+  if (!surface.isSludge || cb.waterSimArgs.sludgeWaterMaterialIndex == SURFACE_INDEX_INVALID)
+  {
+    return false;
+  }
+  const float weight = waterSimSludgeWeight(surfaceInteraction);
+  if (weight <= 0.0)
+  {
+    return false;
+  }
+
+  const vec2 planePosition = cb.isZUp ? surfaceInteraction.position.xy : surfaceInteraction.position.xz;
+  const float cleared = waterSimSample(surfaceInteraction.position).w * weight;
+  // The noise blobs are 1.5 cells wide.
+  const float threshold = 0.5 + cb.waterSimArgs.sludgeEdgeNoise * (waterSimSludgeNoise(planePosition / cb.waterSimArgs.cellSize, 1.5) - 0.5);
+  return cleared > threshold;
+}
+
+// Returns the shading normal of sludge tilted by the slopes of the simulated waves, so that it rides them.
+vec3 waterSimSludgeTiltNormal(SurfaceInteraction surfaceInteraction, vec3 shadingNormal)
+{
+  const float weight = waterSimSludgeWeight(surfaceInteraction);
+  if (weight <= 0.0)
+  {
+    return shadingNormal;
+  }
+
+  const vec3 simNormal = waterSimSlopeToNormal(cb.waterSimArgs.normalStrength * waterSimSlopes(surfaceInteraction.position),
+                                               surfaceInteraction.geometryNormal);
+  return normalize(shadingNormal + weight * (simNormal - surfaceInteraction.geometryNormal));
+}

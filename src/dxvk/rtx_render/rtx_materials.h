@@ -255,6 +255,7 @@ struct RtSurface {
     flags1 |= isMotionBlurMaskOut ?           (1 << 28) : 0;
     flags1 |= skipSurfaceInteractionSpritesheetAdjustment ? (1 << 29) : 0;
     flags1 |= isPreservePath ?                (1u << 30) : 0;
+    flags1 |= isSludge ?                      (1u << 31) : 0;
 
     writeGPUHelper(data, offset, flags1);
 
@@ -422,6 +423,7 @@ struct RtSurface {
   bool isPreservePath = false;
   bool hasMaterialChanged = false;
   bool isAnimatedWater = false;
+  bool isSludge = false; // Sludge floats and opens as water where disturbed (see rtx.sludgeTextures)
   bool isClipPlaneEnabled = false;
   bool isTextureFactorBlend = false;
   bool isVertexColorBakedLighting = true;
@@ -493,6 +495,7 @@ struct RtSurface {
       "  isPreservePath: ", isPreservePath, "\n",
       "  hasMaterialChanged: ", hasMaterialChanged, "\n",
       "  isAnimatedWater: ", isAnimatedWater, "\n",
+      "  isSludge: ", isSludge, "\n",
       "  isClipPlaneEnabled: ", isClipPlaneEnabled, "\n",
       "  isTextureFactorBlend: ", isTextureFactorBlend, "\n",
       "  isMotionBlurMaskOut: ", isMotionBlurMaskOut, "\n",

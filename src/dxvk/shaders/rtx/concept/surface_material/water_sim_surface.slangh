@@ -1,0 +1,249 @@
+/*
+* Copyright (c) 2026, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Helpers for animated water that follows the water simulation. See documentation/WaterSimulation.md.
+
+#include "rtx/pass/water_sim/water_sim_detail.slangh"
+
+// Only passes that define WATER_SIM_SAMPLE read the simulation, the others see flat water.
+// Closest hit and miss shaders must not define it: reading the binding there faulted the GPU.
+
+// Returns, at the world position: the height with the long wind waves, the height of the simulated waves only, the landed
+// spray and the sludge clearing.
+float4 waterSimSample(vec3 worldPosition)
+{
+  const vec2 planePosition = cb.isZUp ? worldPosition.xy : worldPosition.xz;
+  const vec2 uv = frac(planePosition / (cb.waterSimArgs.cellSize * cb.waterSimArgs.gridSize));
+#ifdef WATER_SIM_SAMPLE
+  return WaterSimHeight.SampleLevel(uv, 0);
+#else
+  return float4(0.0, 0.0, 0.0, 0.0) + uv.xyxy * 0.0;
+#endif
+}
+
+// Returns the slopes of the simulated waves along the two plane axes. The slopes of the wind waves come from waterSimEvalDetail.
+vec2 waterSimSlopes(vec3 worldPosition)
+{
+  const float cellSize = cb.waterSimArgs.cellSize;
+  const vec3 axisU = vec3(cellSize, 0.0, 0.0);
+  const vec3 axisV = cb.isZUp ? vec3(0.0, cellSize, 0.0) : vec3(0.0, 0.0, cellSize);
+  const float left = waterSimSample(worldPosition - axisU).y;
+  const float right = waterSimSample(worldPosition + axisU).y;
+  const float down = waterSimSample(worldPosition - axisV).y;
+  const float up = waterSimSample(worldPosition + axisV).y;
+  return vec2(right - left, up - down) * (0.5 / cellSize);
+}
+
+// Returns how far the height field is below the view ray at height s above the rest level, from the side the ray comes from.
+// The value is positive while the ray is above the surface.
+float waterSimRayDepth(vec3 position, vec3 rayDirection, float cosUp, float side, float restDepth, float s)
+{
+  return side * (s - waterSimSample(position + rayDirection * ((s - restDepth) / cosUp)).x);
+}
+
+bool waterSimIsHorizontal(vec3 geometryNormal)
+{
+  const vec3 up = cb.isZUp ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
+  return abs(dot(geometryNormal, up)) >= 0.8;
+}
+
+// Returns the normal of horizontal water with a slope along the two plane axes, on the side of the geometry normal.
+vec3 waterSimSlopeToNormal(vec2 slope, vec3 geometryNormal)
+{
+  const vec3 up = cb.isZUp ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
+  const vec3 planeAxisV = cb.isZUp ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+  return normalize(up - slope.x * vec3(1.0, 0.0, 0.0) - slope.y * planeAxisV) * sign(dot(geometryNormal, up));
+}
+
+// Finds where the view ray hits the simulated surface.
+// Returns false when the position is not on water that the simulation moves.
+// The displacement goes from the flat hit to the displaced hit along the ray, faded out towards the border of the window. The
+// ray offset is the same as a signed distance along the ray, positive when the displaced hit lies behind the flat hit. The ray
+// hit distance is the distance from the ray origin to the flat hit, 0 when unknown: the walk never starts behind the origin.
+bool waterSimEvaluate(vec3 position, vec3 geometryNormal, vec3 viewDirection, float rayHitDistance,
+                      out vec3 displacement, out float rayOffset, out vec3 simNormal, out float weight, out float spray)
+{
+  displacement = vec3(0.0);
+  rayOffset = 0.0;
+  simNormal = geometryNormal;
+  weight = 0.0;
+  spray = 0.0;
+
+  const vec3 up = cb.isZUp ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
+  if (!waterSimIsHorizontal(geometryNormal))
+  {
+    return false;
+  }
+
+  const vec2 planePosition = cb.isZUp ? position.xy : position.xz;
+  const float gridSize = cb.waterSimArgs.gridSize;
+  const vec2 cellOffset = abs(planePosition / cb.waterSimArgs.cellSize - cb.waterSimArgs.centerCell);
+  weight = 1.0 - smoothstep(0.3 * gridSize, 0.44 * gridSize, max(cellOffset.x, cellOffset.y));
+  if (weight <= 0.0)
+  {
+    return false;
+  }
+
+  // Parallax: the view ray walks through the slab of possible wave heights and stops below the height field.
+  const vec3 rayDirection = -viewDirection;
+  const float cosUp = dot(rayDirection, up);
+  const float absCosUp = abs(cosUp);
+  vec3 surfacePosition = position;
+  if (cb.waterSimArgs.pomSteps > 0 && absCosUp > 0.02)
+  {
+    const float side = cosUp < 0.0 ? 1.0 : -1.0;
+    const float slabHeight = cb.waterSimArgs.walkBound;
+    // Heights s are measured from the rest level, restDepth below the flat hit.
+    const float restDepth = cb.waterSimArgs.restDepth;
+    const float originDistance = rayHitDistance > 0.0 ? absCosUp * rayHitDistance + side * restDepth : slabHeight;
+    const float startHeight = clamp(originDistance, 0.0, slabHeight);
+
+    // About 3/4 of a cell per step, so that the steps cannot skip a crest at grazing angles.
+    const float cellsTravelled = (startHeight + slabHeight) * sqrt(1.0 - cosUp * cosUp) / (absCosUp * cb.waterSimArgs.cellSize);
+    const uint stepCount = clamp(uint(ceil(cellsTravelled / 0.75)), cb.waterSimArgs.pomSteps, max(cb.waterSimArgs.pomMaxSteps, cb.waterSimArgs.pomSteps));
+
+    float aboveS = side * startHeight;
+    float aboveDepth = waterSimRayDepth(position, rayDirection, cosUp, side, restDepth, aboveS);
+    // Without a crossing the ray leaves the slab below the surface.
+    float hitS = -side * slabHeight;
+    if (aboveDepth <= 0.0)
+    {
+      // The walk starts below the surface: at the slab entry that is the crossing, inside a wave the water stays flat.
+      hitS = startHeight < slabHeight ? 0.0 : aboveS;
+    }
+    else
+    {
+      for (uint i = 1; i <= stepCount; ++i)
+      {
+        float belowS = side * (startHeight - (startHeight + slabHeight) * float(i) / float(stepCount));
+        float belowDepth = waterSimRayDepth(position, rayDirection, cosUp, side, restDepth, belowS);
+        if (belowDepth <= 0.0)
+        {
+          // Bisect the crossing, then interpolate.
+          for (uint k = 0; k < 2; ++k)
+          {
+            const float middleS = 0.5 * (aboveS + belowS);
+            const float middleDepth = waterSimRayDepth(position, rayDirection, cosUp, side, restDepth, middleS);
+            if (middleDepth > 0.0)
+            {
+              aboveS = middleS;
+              aboveDepth = middleDepth;
+            }
+            else
+            {
+              belowS = middleS;
+              belowDepth = middleDepth;
+            }
+          }
+          hitS = lerp(aboveS, belowS, aboveDepth / (aboveDepth - belowDepth));
+          break;
+        }
+        aboveS = belowS;
+        aboveDepth = belowDepth;
+      }
+    }
+
+    // The waves fade out for rays almost parallel to the surface, and towards the border of the window.
+    rayOffset = (hitS * smoothstep(0.02, 0.08, absCosUp) - restDepth) / cosUp * weight;
+    displacement = rayDirection * rayOffset;
+    surfacePosition = position + displacement;
+  }
+
+  simNormal = waterSimSlopeToNormal(cb.waterSimArgs.normalStrength * waterSimSlopes(surfacePosition), geometryNormal);
+  spray = waterSimSample(surfacePosition).z * weight;
+  return true;
+}
+
+// Returns the slope of the detail along the two plane axes: the wind waves of the two cascades and the droplet rings.
+// The short waves fade out where the pixel footprint grows larger than they are. The textures are read unconditionally: a fetch
+// in divergent control flow broke the G-buffer kernel.
+vec2 waterSimEvalDetail(vec3 position, vec3 viewDirection, float coneRadius, float spray)
+{
+  const vec3 up = cb.isZUp ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
+  const vec2 planePosition = cb.isZUp ? position.xy : position.xz;
+
+  // Axes of the footprint ellipse on the plane, as in computeAnisotropicEllipseAxes.
+  const vec2 viewOnPlane = cb.isZUp ? viewDirection.xy : viewDirection.xz;
+  const float viewOnPlaneLength = length(viewOnPlane);
+  const vec2 alongView = viewOnPlaneLength > 1e-4 ? viewOnPlane / viewOnPlaneLength : vec2(1.0, 0.0);
+  const float footprint = coneRadius / max(abs(dot(viewDirection, up)), 0.05);
+  const vec2 footprintAlong = alongView * footprint;
+  const vec2 footprintAcross = vec2(-alongView.y, alongView.x) * coneRadius;
+
+  const float gust = waterSimGust(planePosition, cb.waterSimArgs.gustInvSize, cb.waterSimArgs.gustTime, cb.waterSimArgs.gustMin);
+  const SamplerState detailSampler = samplers[cb.waterSimArgs.detailSamplerIndex];
+
+  // Wind waves: height and slopes in world units, the slopes along the axes of the tile.
+  const float scale0 = cb.waterSimArgs.wave0InvTileSize;
+  const vec4 wave0 = textures[cb.waterSimArgs.wave0TextureIndex].SampleGrad(detailSampler,
+    waterSimDetailUv(planePosition, scale0, cb.waterSimArgs.wave0Rotation),
+    waterSimDetailRotate(footprintAlong * scale0, cb.waterSimArgs.wave0Rotation),
+    waterSimDetailRotate(footprintAcross * scale0, cb.waterSimArgs.wave0Rotation));
+  const float scale1 = cb.waterSimArgs.wave1InvTileSize;
+  const vec4 wave1 = textures[cb.waterSimArgs.wave1TextureIndex].SampleGrad(detailSampler,
+    waterSimDetailUv(planePosition, scale1, cb.waterSimArgs.wave1Rotation),
+    waterSimDetailRotate(footprintAlong * scale1, cb.waterSimArgs.wave1Rotation),
+    waterSimDetailRotate(footprintAcross * scale1, cb.waterSimArgs.wave1Rotation));
+
+  vec2 slope = waterSimDetailUnrotate(wave0.yz, cb.waterSimArgs.wave0Rotation) * gust;
+  const float fade1 = 1.0 - smoothstep(4.0, 16.0, footprint);
+  slope += waterSimDetailUnrotate(wave1.yz, cb.waterSimArgs.wave1Rotation) * (gust * fade1);
+
+  if ((cb.waterSimArgs.detailFlags & WATER_SIM_DETAIL_FLAG_RINGS) != 0)
+  {
+    // Texel: distance from the drop center over the drop radius (1 outside drops), direction from the center, phase.
+    // The texture has no mips, because the encoding does not average.
+    const vec4 ring = textures[cb.waterSimArgs.ringTextureIndex].SampleLevel(detailSampler,
+      planePosition * cb.waterSimArgs.ringInvTileSize, 0.0);
+
+    // A drop's front runs out over its cycle with a short train of ripples behind it, weaker as it grows. Late in their cycle
+    // drops stay calm where little spray drives them, so the rings thin out with the spray.
+    const float activity = saturate(spray + cb.waterSimArgs.ringRain);
+    const float cycle = frac(cb.waterSimArgs.ringPhase + ring.w);
+    const float behind = cycle - ring.x;
+    const float envelope = behind < 0.0 ? saturate(1.0 + behind * 10.0) : exp(-behind * 5.0);
+    const float wave = sin(behind * (2.0 * pi * 5.0)) * envelope * (1.0 - ring.x) * saturate(0.2 + 0.8 * activity - cycle);
+    const float ringFade = 1.0 - smoothstep(0.15, 0.6, footprint);
+    slope += (ring.yz * 2.0 - 1.0) * (cb.waterSimArgs.ringSlope * wave * activity * ringFade);
+  }
+
+  return slope;
+}
+
+// Returns the shift of the mesh texture coordinates for a world space displacement of the hit, so that the water textures
+// show the parallax too. Returns no shift when the texture coordinates are degenerate.
+vec2 waterSimCalcTextureShift(SurfaceInteraction surfaceInteraction, vec3 displacement)
+{
+  const vec3 normal = surfaceInteraction.geometryNormal;
+  const vec3 tangent = surfaceInteraction.rawTangent;
+  const vec3 bitangent = surfaceInteraction.rawBitangent;
+
+  const float determinant = dot(normal, cross(tangent, bitangent));
+  if (abs(determinant) < 1e-6 || !(surfaceInteraction.rawTangentScale > 0.0))
+  {
+    return vec2(0.0);
+  }
+
+  const vec2 shift = vec2(dot(displacement, cross(bitangent, normal)), dot(displacement, cross(normal, tangent))) / (determinant * surfaceInteraction.rawTangentScale);
+  return sanitize(shift, vec2(0.0));
+}

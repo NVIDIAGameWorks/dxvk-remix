@@ -51,6 +51,7 @@
 // Note: Use thin film in the GBuffer pass for its usage in PSR on mirrorlike surfaces.
 #define OPAQUE_MATERIAL_USE_THIN_FILM 1
 #define OPAQUE_MATERIAL_USE_POM 1
+#define WATER_SIM_SAMPLE 1
 
 #ifdef GBUFFER_PSR
 // Note: This is done in primary rays only currently so that attenuation from volumetrics can be factored in

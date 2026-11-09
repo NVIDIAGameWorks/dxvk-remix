@@ -197,6 +197,7 @@ namespace dxvk {
     {"decaltextures", "Decal Texture (optional)", &RtxOptions::decalTexturesObject()},
     {"terraintextures", "Terrain Texture", &RtxOptions::terrainTexturesObject()},
     {"watertextures", "Water Texture (optional)", &RtxOptions::animatedWaterTexturesObject()},
+    {"sludgetextures", "Sludge Texture (optional)", &RtxOptions::sludgeTexturesObject()},
     {"antiCullingTextures", "Anti-Culling Texture (optional)", &RtxOptions::antiCullingTexturesObject()},
     {"motionBlurMaskOutTextures", "Motion Blur Mask-Out Textures (optional)", &RtxOptions::motionBlurMaskOutTexturesObject()},
     {"playermodeltextures", "Player Model Texture (optional)", &RtxOptions::playerModelTexturesObject()},
@@ -4602,10 +4603,17 @@ namespace dxvk {
       RemixGui::Checkbox("Enable NEE Cache", &RtxOptions::Displacement::enableNEECacheObject());
       RemixGui::Checkbox("Enable ReSTIR_GI", &RtxOptions::Displacement::enableReSTIRGIObject());
       RemixGui::Checkbox("Enable PSR", &RtxOptions::Displacement::enablePSRObject());
+      RemixGui::Checkbox("Silhouettes Behind Translucency", &RtxOptions::Displacement::silhouettesBehindTranslucencyObject());
       RemixGui::DragFloat("Global Displacement Factor", &RtxOptions::Displacement::displacementFactorObject(), 0.01f, 0.0f, 20.0f);
       RemixGui::DragFloat("Displacement In Factor", &RtxOptions::Displacement::displacementInFactorObject(), 0.01f, 0.0f, 20.0f);
       RemixGui::DragFloat("Displacement Out Factor", &RtxOptions::Displacement::displacementOutFactorObject(), 0.01f, 0.0f, 20.0f);
       RemixGui::DragInt("Max Iterations", &RtxOptions::Displacement::maxIterationsObject(), 1.f, 1, 256, "%d", sliderFlags);
+      ImGui::Unindent();
+    }
+
+    if (RemixGui::CollapsingHeader("Water Simulation [Experimental]", collapsingHeaderClosedFlags)) {
+      ImGui::Indent();
+      common->metaWaterSim().showImguiSettings();
       ImGui::Unindent();
     }
 

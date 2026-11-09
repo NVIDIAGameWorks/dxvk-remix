@@ -134,4 +134,9 @@ class "RemixInstanceCategoryAPI" (
         displayGroup = "Remix Categories"
         displayName = "Hair Cards"
     )
+    bool remix_category:sludge = 0 (
+        doc = "Sludge textures: opaque until the water simulation clears them into water where disturbed (rtx.waterSim.sludge.enable).\nNeeds geometry beneath the layer; without it, the holes show empty space."
+        displayGroup = "Remix Categories"
+        displayName = "Sludge"
+    )
 }
