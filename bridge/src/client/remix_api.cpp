@@ -532,8 +532,7 @@ extern "C" {
       // interf.pick_HighlightObjects = remixapi_pick_HighlightObjects;
     }
 
-    // Older apps allocate a shorter interface, so only the prefix they know is written.
-    std::memcpy(out_result, &interf, remixapi_version::clientInterfaceSize(info->version));
+    remixapi_version::writeClientInterface(interf, info->version, out_result);
     remixapi::g_appRemixApiVersion = info->version;
     remixapi::g_bInterfaceInitialized = true;
 
