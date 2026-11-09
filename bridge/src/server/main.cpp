@@ -3313,6 +3313,32 @@ void ProcessDeviceCommandQueue() {
         break;
       }
 
+      case RemixApi_SetWaterSim:
+      {
+        remixapi_WaterSimInfo info = {};
+        info.sType = REMIXAPI_STRUCT_TYPE_WATER_SIM_INFO;
+        DeviceBridge::copy_data(info.clearAllDisturbances);
+        if (remixapi::g_remix.SetWaterSim) {
+          remixapi::g_remix.SetWaterSim(&info);
+        }
+        break;
+      }
+
+      case RemixApi_AddWaterDisturbance:
+      {
+        remixapi_WaterDisturbanceInfo info = {};
+        info.sType = REMIXAPI_STRUCT_TYPE_WATER_DISTURBANCE_INFO;
+        DeviceBridge::copy_data(info.position.x);
+        DeviceBridge::copy_data(info.position.y);
+        DeviceBridge::copy_data(info.position.z);
+        DeviceBridge::copy_data(info.radius);
+        DeviceBridge::copy_data(info.strength);
+        if (remixapi::g_remix.AddWaterDisturbance) {
+          remixapi::g_remix.AddWaterDisturbance(&info);
+        }
+        break;
+      }
+
       case RemixApi_CreateD3D9:
       {
         Logger::err("[RemixApi_CreateD3D9] Not yet supported. Device used by Remix API defaults to "

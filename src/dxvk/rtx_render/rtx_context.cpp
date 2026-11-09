@@ -1466,6 +1466,8 @@ namespace dxvk {
     constants.startInMediumMaterialIndex = getSceneManager().getStartInMediumMaterialIndex();
     OpaqueMaterialOptions::fillShaderParams(constants.opaqueMaterialArgs);
     TranslucentMaterialOptions::fillShaderParams(constants.translucentMaterialArgs);
+    m_common->metaWaterSim().fillShaderParams(constants.waterSimArgs);
+    constants.waterSimArgs.sludgeWaterMaterialIndex = getSceneManager().getSludgeWaterMaterialIndex();
     ViewDistanceOptions::fillShaderParams(constants.viewDistanceArgs, RtxOptions::getMeterToWorldUnitScale());
     constants.alphaBlendSurfacePackMult = RtxOptions::getMeterToWorldUnitScale();
 

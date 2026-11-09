@@ -411,6 +411,7 @@ namespace dxvk {
     setCategory(InstanceCategories::DecalNoOffset, lookupHash(RtxOptions::nonOffsetDecalTextures(), textureHash));
 
     setCategory(InstanceCategories::AnimatedWater, lookupHash(RtxOptions::animatedWaterTextures(), textureHash));
+    setCategory(InstanceCategories::Sludge, lookupHash(RtxOptions::sludgeTextures(), textureHash));
 
     setCategory(InstanceCategories::ThirdPersonPlayerModel, lookupHash(RtxOptions::playerModelTextures(), textureHash));
     setCategory(InstanceCategories::ThirdPersonPlayerBody, lookupHash(RtxOptions::playerModelBodyTextures(), textureHash));

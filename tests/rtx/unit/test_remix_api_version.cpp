@@ -82,6 +82,7 @@ namespace dxvk {
     constexpr uint64_t kRuntimeVersion = REMIXAPI_VERSION_MAKE(REMIXAPI_VERSION_MAJOR, REMIXAPI_VERSION_MINOR, REMIXAPI_VERSION_PATCH);
     constexpr size_t kCurrentInterfaceBytes = sizeof(remixapi_Interface);
     constexpr size_t kOldInterfaceBytes = offsetof(remixapi_Interface, SetCameraMediumMaterial);
+    constexpr size_t kNoWaterInterfaceBytes = offsetof(remixapi_Interface, SetWaterSim);
 
     // The functions around the slot that 0.6.4 moved must be in their 0.6.3 order.
     void testInterface063() {
@@ -99,8 +100,8 @@ namespace dxvk {
     void testCompatibilityRule() {
       using remixapi_version::isClientVersionCompatible;
 
-      for (uint64_t clientPatch = 0; clientPatch < 10; ++clientPatch) {
-        for (uint64_t runtimePatch = 0; runtimePatch < 10; ++runtimePatch) {
+      for (uint64_t clientPatch = 0; clientPatch < 12; ++clientPatch) {
+        for (uint64_t runtimePatch = 0; runtimePatch < 12; ++runtimePatch) {
           require(isClientVersionCompatible(REMIXAPI_VERSION_MAKE(0, 6, clientPatch), REMIXAPI_VERSION_MAKE(0, 6, runtimePatch)),
                   "0.6.x clients work with any 0.6.x runtime");
           require(!isClientVersionCompatible(REMIXAPI_VERSION_MAKE(0, 5, clientPatch), REMIXAPI_VERSION_MAKE(0, 6, runtimePatch)),
@@ -120,13 +121,15 @@ namespace dxvk {
     void testClientInterfaceSizes() {
       using remixapi_version::clientInterfaceSize;
 
-      for (uint64_t patch = 0; patch < 10; ++patch) {
+      for (uint64_t patch = 0; patch < 12; ++patch) {
         const uint64_t version = REMIXAPI_VERSION_MAKE(0, 6, patch);
         size_t expected = kCurrentInterfaceBytes;
         if (patch < 3) {
           expected = kOldInterfaceBytes;
         } else if (patch == 3) {
           expected = sizeof(remixapi_version::remixapi_Interface_063);
+        } else if (patch < 11) {
+          expected = kNoWaterInterfaceBytes;
         }
         require(clientInterfaceSize(version) == expected, "clientInterfaceSize matches the client's patch");
       }
@@ -139,9 +142,11 @@ namespace dxvk {
     testClientInterfaceSizes();
 
     testClientInterfaceSize(REMIXAPI_VERSION_MAKE(0, 6, 0), kOldInterfaceBytes, "0.6.0 client keeps its canary");
-    testClientInterfaceSize(REMIXAPI_VERSION_MAKE(0, 6, 4), kCurrentInterfaceBytes, "0.6.4 client");
-    testClientInterfaceSize(REMIXAPI_VERSION_MAKE(0, 6, 5), kCurrentInterfaceBytes, "0.6.5 client");
-    testClientInterfaceSize(REMIXAPI_VERSION_MAKE(0, 6, 6), kCurrentInterfaceBytes, "0.6.6 client");
+    testClientInterfaceSize(REMIXAPI_VERSION_MAKE(0, 6, 4), kNoWaterInterfaceBytes, "0.6.4 client");
+    testClientInterfaceSize(REMIXAPI_VERSION_MAKE(0, 6, 5), kNoWaterInterfaceBytes, "0.6.5 client");
+    testClientInterfaceSize(REMIXAPI_VERSION_MAKE(0, 6, 6), kNoWaterInterfaceBytes, "0.6.6 client");
+    testClientInterfaceSize(REMIXAPI_VERSION_MAKE(0, 6, 8), kNoWaterInterfaceBytes, "0.6.8 client");
+    testClientInterfaceSize(REMIXAPI_VERSION_MAKE(0, 6, 10), kNoWaterInterfaceBytes, "0.6.10 client");
     testClientInterfaceSize(kRuntimeVersion, kCurrentInterfaceBytes, "client at the runtime's version");
     testClientInterfaceSize(kRuntimeVersion + 1, kCurrentInterfaceBytes, "client with a newer patch");
     testClientInterfaceSize(REMIXAPI_VERSION_MAKE(0, 6, 3), sizeof(remixapi_version::remixapi_Interface_063), "0.6.3 client keeps its canary");

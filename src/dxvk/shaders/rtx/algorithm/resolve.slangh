@@ -31,6 +31,7 @@
 #include "rtx/concept/ray/ray.slangh"
 #include "rtx/concept/surface/surface.slangh"
 #include "rtx/concept/surface_material/surface_material.slangh"
+#include "rtx/concept/surface_material/water_sim_sludge.slangh"
 #include "rtx/concept/volume/volume.slangh"
 #include "rtx/concept/volume_material/volume_material.slangh"
 #include "rtx/concept/ray_portal/ray_portal.slangh"
@@ -402,6 +403,16 @@ float resolveVertex<T: IBasePayloadState>(
 
   // Create a Surface Material and Surface Material Interaction from the Surface
 
+  // Sludge that the water simulation cleared at the hit is open water, see water_sim_sludge.slangh.
+  bool sludgeRidesWaves = surface.isSludge && cb.waterSimArgs.sludgeWaterMaterialIndex != SURFACE_INDEX_INVALID;
+  if (rayInteraction.materialType == surfaceMaterialTypeOpaque && waterSimSludgeIsOpen(surface, surfaceInteraction))
+  {
+    rayInteraction.materialType = surfaceMaterialTypeTranslucent;
+    surface.surfaceMaterialIndex = cb.waterSimArgs.sludgeWaterMaterialIndex;
+    surface.isAnimatedWater = true;
+    sludgeRidesWaves = false;
+  }
+
   const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
   
   const uint8_t polymorphicType = rayInteraction.materialType;
@@ -418,6 +429,13 @@ float resolveVertex<T: IBasePayloadState>(
 
     OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
       opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
+
+    // Sludge rides the waves of the water simulation.
+    if (sludgeRidesWaves)
+    {
+      opaqueSurfaceMaterialInteraction.shadingNormal =
+        waterSimSludgeTiltNormal(surfaceInteraction, opaqueSurfaceMaterialInteraction.shadingNormal);
+    }
 
     // Blend any decal(s) that happened before this interaction
     if (decalMaterialBlending && resolveVertexState.decalEncountered)
@@ -547,7 +565,7 @@ float resolveVertex<T: IBasePayloadState>(
     const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
 
     TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction =
-      translucentSurfaceMaterialInteractionCreate(translucentSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
+      translucentSurfaceMaterialInteractionCreate(translucentSurfaceMaterial, surface, surfaceInteraction, rayInteraction, rayInteraction.hitDistance);
 
     // Blend any decal(s) that happened before this interaction
     if (decalMaterialBlending && resolveVertexState.decalEncountered)
@@ -564,6 +582,61 @@ float resolveVertex<T: IBasePayloadState>(
 
     polymorphicSurfaceMaterialInteraction =
       polymorphicSurfaceMaterialInteractionCreateInternal(translucentSurfaceMaterialInteraction);
+
+#if defined(RAY_TRACING_PRIMARY_RAY) && !defined(GBUFFER_PSR) && defined(WATER_SIM_SAMPLE)
+    // Water silhouettes: when something stands between the flat water and the parallax hit of a wave trough, resolving
+    // continues past the water, and the geometry resolver decides once that surface's POM is known. See documentation/WaterSimulation.md.
+    const float waterSimRayOffset = translucentSurfaceMaterialInteraction.waterSimRayOffset;
+    const float rayUp = cb.isZUp ? ray.direction.z : ray.direction.y;
+    const bool skipWaterSilhouette = resolveVertexState.skipWaterSilhouette;
+    const float shoreRefractionLimit = -resolveVertexState.waterSurfaceDistance;
+    resolveVertexState.skipWaterSilhouette = false;
+    resolveVertexState.waterSurfaceDistance = 0.0f;
+    if ((cb.waterSimArgs.silhouetteFlags & WATER_SIM_SILHOUETTE_FLAG_WAVES) && !skipWaterSilhouette &&
+        waterSimRayOffset > cb.waterSimArgs.silhouetteMinOffset &&
+        rayUp < 0.0f && resolveVertexState.continueResolving)
+    {
+      RayDesc silhouetteRay;
+      silhouetteRay.Origin = rayOffsetSurfaceOriginHelper(surfaceInteraction, true);
+      silhouetteRay.Direction = ray.direction;
+      silhouetteRay.TMin = 0.0f;
+      silhouetteRay.TMax = waterSimRayOffset + cb.waterSimArgs.silhouettePomMargin / -rayUp;
+
+      RayQuery<RAY_FLAG_CULL_BACK_FACING_TRIANGLES | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES |
+               RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> silhouetteQuery;
+      silhouetteQuery.TraceRayInline(topLevelAS, 0,
+        resolveVertexState.rayMask & ~(OBJECT_MASK_PORTAL | OBJECT_MASK_ALPHA_BLEND), silhouetteRay);
+      while (silhouetteQuery.Proceed())
+      {
+        // Translucent surfaces such as glass stand in the way too, but not water.
+        // Alpha tested surfaces are left out, they would need the alpha test.
+        RayHitInfo candidate;
+        RAY_HIT_INFO_CREATE_RAY_QUERY_CANDIDATE(candidate, silhouetteQuery)
+        if (calculateMaterialType(candidate) == surfaceMaterialTypeTranslucent)
+        {
+          const Surface candidateSurface = surfaces[calculateSurfaceIndex(candidate)];
+          if (!candidateSurface.isAnimatedWater)
+          {
+            silhouetteQuery.CommitNonOpaqueTriangleHit();
+          }
+        }
+      }
+
+      if (silhouetteQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT)
+      {
+        resolveVertexState.waterSurfaceDistance = waterSimRayOffset;
+
+        // Note: Must call resolve final on any return which expects resolving to continue.
+        resolveVertexFinalContinue(ray, surfaceInteraction, teleport, teleportMatrix, resolveVertexState);
+
+        return 1.0f;
+      }
+    }
+
+    // The refraction starts at the simulated surface. After a shore sent resolving back here, it starts just in front of that
+    // shore's mesh at the latest, so that the refracted ray cannot start behind it.
+    surfaceInteraction.pomRayDistance = skipWaterSilhouette ? min(waterSimRayOffset, shoreRefractionLimit) : waterSimRayOffset;
+#endif
 
     // Handle translucent approximations
 

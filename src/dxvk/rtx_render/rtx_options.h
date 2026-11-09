@@ -260,6 +260,9 @@ namespace dxvk {
                   "Textures on draw calls to be treated as \"animated water\".\n"
                   "Objects with this flag applied will animate their normals to fake a basic water effect based on the layered water material parameters, and only when rtx.opaqueMaterial.layeredWaterNormalEnable is set to true.\n"
                   "Should typically be used on static water planes that the original application may have relied on shaders to animate water on.");
+    RTX_OPTION("rtx", fast_unordered_set, sludgeTextures, {},
+                  "Sludge textures: opaque until the water simulation clears them into water where disturbed (rtx.waterSim.sludge.enable).\n"
+                  "Needs geometry beneath the layer; without it, the holes show empty space.");
     RTX_OPTION("rtx", fast_unordered_set, ignoreBakedLightingTextures, {},
                   "Textures for which to ignore two types of baked lighting, Texture Factors and Vertex Color.\n\n"
                   "Texture Factor disablement:\n"
@@ -443,6 +446,7 @@ namespace dxvk {
       RTX_OPTION("rtx.displacement", bool, enableReSTIRGI, true, "Whether ReSTIR GI accounts for displacement mapping");
       RTX_OPTION("rtx.displacement", bool, enableIndirectHit, false, "Whether indirect ray hits account for displacement mapping (Enabling this is expensive.  Without it, non-perfect reflections of displaced objects will not show displacement.)");
       RTX_OPTION("rtx.displacement", bool, enablePSR, false, "Enable PSR (perfect reflections) for materials with displacement.  Rays that have been perfectly reflected off a POM surface will not collide correctly with other parts of that same surface.");
+      RTX_OPTION("rtx.displacement", bool, silhouettesBehindTranslucency, true, "POM surfaces seen through water or other thick translucency get their POM silhouette instead of the low poly one.");
       RTX_OPTION("rtx.displacement", float, displacementFactor, 1.0f, "Scaling factor for all displacement maps");
       RTX_OPTION("rtx.displacement", float, displacementInFactor, 1.0f, "Scale factor for inwards displacement");
       RTX_OPTION("rtx.displacement", float, displacementOutFactor, 1.0f, "Scale factor for outwards displacement");

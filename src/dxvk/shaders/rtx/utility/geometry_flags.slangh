@@ -113,6 +113,13 @@ struct GeometryFlags
     }
   }
 
+  // The primary hit lies under a water mesh but above the simulated water surface (water silhouettes, resolve.slangh).
+  property bool dryUnderWater
+  {
+    get { return (_encodedFlags & (1 << 15)) != 0; }
+    set { _encodedFlags = (_encodedFlags & ~(1 << 15)) | (newValue ? (1 << 15) : 0); }
+  }
+
   // True if any PSR (reflection or transmission) was performed for this pixel.
   // Does NOT imply a distinct secondary surface exists — single-PSR pixels become the primary surface.
   bool performedAnyPSR()

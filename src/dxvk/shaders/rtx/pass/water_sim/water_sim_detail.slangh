@@ -1,0 +1,63 @@
+/*
+* Copyright (c) 2026, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Detail of the water simulation, shared by the simulation pass and the ray tracing shaders: the wind waves are tiles of
+// the wave generator (water_sim_waves.comp.slang) laid on the water plane at their own size and angle (see WaterSimArgs).
+
+// Rotates a vector of the water plane into a tile's texture space. rotation is (cos, sin).
+vec2 waterSimDetailRotate(vec2 v, vec2 rotation)
+{
+  return vec2(rotation.x * v.x - rotation.y * v.y, rotation.y * v.x + rotation.x * v.y);
+}
+
+// Rotates a vector of a tile's texture space back onto the water plane.
+vec2 waterSimDetailUnrotate(vec2 v, vec2 rotation)
+{
+  return vec2(rotation.x * v.x + rotation.y * v.y, -rotation.y * v.x + rotation.x * v.y);
+}
+
+// Texture coordinates of a point of the water plane in a tile.
+vec2 waterSimDetailUv(vec2 planePosition, float invTileSize, vec2 rotation)
+{
+  return waterSimDetailRotate(planePosition * invTileSize, rotation);
+}
+
+float waterSimDetailHash(vec3 p)
+{
+  return frac(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
+}
+
+// Strength of the waves in slow gusts, between gustMin and 1: smooth value noise over the plane and time, so that calmer and
+// rougher patches come and go where they are instead of sliding over the water.
+float waterSimGust(vec2 planePosition, float invSize, float time, float gustMin)
+{
+  const vec3 p = vec3(planePosition * invSize, time);
+  const vec3 i = floor(p);
+  const vec3 f = p - i;
+  const vec3 u = f * f * (3.0 - 2.0 * f);
+  const float bottom = lerp(lerp(waterSimDetailHash(i), waterSimDetailHash(i + vec3(1.0, 0.0, 0.0)), u.x),
+                            lerp(waterSimDetailHash(i + vec3(0.0, 1.0, 0.0)), waterSimDetailHash(i + vec3(1.0, 1.0, 0.0)), u.x), u.y);
+  const float top = lerp(lerp(waterSimDetailHash(i + vec3(0.0, 0.0, 1.0)), waterSimDetailHash(i + vec3(1.0, 0.0, 1.0)), u.x),
+                         lerp(waterSimDetailHash(i + vec3(0.0, 1.0, 1.0)), waterSimDetailHash(i + vec3(1.0, 1.0, 1.0)), u.x), u.y);
+  return lerp(gustMin, 1.0, lerp(bottom, top, u.z));
+}

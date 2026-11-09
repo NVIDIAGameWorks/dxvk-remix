@@ -76,6 +76,13 @@ PathState pathStateCreateEmpty(GeometryFlags geometryFlags)
 
   pathState.rayMask = OBJECT_MASK_ALL | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
 
+  // A surface in air under a water mesh (water silhouettes, resolve.slangh) must not get its light through that water mesh.
+  // Its whole path skips translucent surfaces, which also skips glass, rarely near a shore.
+  if (geometryFlags.dryUnderWater)
+  {
+    pathState.rayMask &= uint8_t(~OBJECT_MASK_TRANSLUCENT);
+  }
+
   if (geometryFlags.isViewModel)
   {
     updateRayMaskForRayOriginFromViewModelSurface(pathState.rayMask, pathState.portalSpace);

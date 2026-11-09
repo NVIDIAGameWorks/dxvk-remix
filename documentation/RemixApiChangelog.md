@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `remixapi_InstanceInfoParticleScreenSizeEXT` provides optional per-emitter screen-size bounds and opacity coverage compensation, including bridge transport.
+- remixapi_Interface.SetWaterSim, remixapi_WaterSimInfo, REMIXAPI_STRUCT_TYPE_WATER_SIM_INFO: the state of the GPU water simulation (0.6.11)
+- remixapi_Interface.AddWaterDisturbance, remixapi_WaterDisturbanceInfo, REMIXAPI_STRUCT_TYPE_WATER_DISTURBANCE_INFO: a dent in the simulated water (0.6.11)
+- REMIXAPI_INSTANCE_CATEGORY_BIT_SLUDGE: sludge floating on top of the water surface (see rtx.sludgeTextures)
 
 ### Changed
 - `remixapi_InitializeLibrary` writes only the part of `remixapi_Interface` that the client's version knows.

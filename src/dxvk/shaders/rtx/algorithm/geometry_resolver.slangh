@@ -126,6 +126,9 @@ GeometryResolverState geometryResolverStateCreateEmpty(u16vec2 pixelCoordinate, 
   geometryResolverState.firstHitGuidesWritten = false;
   geometryResolverState.alphaBlendSurfaceStored = false;
   geometryResolverState.firstHitDecalsResolved = false;
+  geometryResolverState.waterSurfaceDistance = 0.0f;
+  geometryResolverState.skipWaterSilhouette = false;
+  geometryResolverState.dryUnderWater = false;
 
   return geometryResolverState;
 }
@@ -2147,6 +2150,11 @@ void geometryResolverVertex(
   bool isStochasticAlphaBlend = false;
   uint8_t firstRayPortal = invalidRayPortalIndex;
   
+  // The water silhouette test of the previous vertex leaves the distance to the water surface it continued past.
+  // A negative one is the refraction limit that the shore side below leaves for the next water hit.
+  const float pendingWaterSurfaceDistance = geometryResolverState.waterSurfaceDistance;
+  geometryResolverState.waterSurfaceDistance = min(pendingWaterSurfaceDistance, 0.0f);
+
   opacityTransmittance *= resolveVertex<GeometryResolverState>(
     resolveMode,
     rayHitInfo, geometryResolverState,
@@ -2165,6 +2173,32 @@ void geometryResolverVertex(
     PrimaryCoverage[geometryResolverState.pixelCoordinate] *= opacityTransmittance;
   }
   
+#if !defined(GBUFFER_PSR) && defined(WATER_SIM_SAMPLE)
+  // Water silhouettes, shore side: this is what stood between the flat water and the water surface (see resolve.slangh).
+  // A POM surface deeper than the water surface is under water after all: step back and resolve the water again.
+  // Otherwise it lies in air under the water mesh, and lighting ignores that water mesh.
+  if (pendingWaterSurfaceDistance > 0.0f)
+  {
+    if (rayInteractionHasHit(rayInteraction) && !geometryResolverState.continueResolving)
+    {
+      if (rayInteraction.hitDistance + surfaceInteraction.pomRayDistance > pendingWaterSurfaceDistance && originalContinueResolving)
+      {
+        // The negative segment is accumulated below, the next segment adds it back. Never back behind the camera.
+        const float stepBack = min(cb.waterSimArgs.shoreStepBack, 0.5f * geometryResolverState.accumulatedHitDistance);
+        geometryResolverState.origin = ray.origin - ray.direction * stepBack;
+        geometryResolverState.segmentHitDistance = -stepBack;
+        geometryResolverState.skipWaterSilhouette = true;
+        geometryResolverState.waterSurfaceDistance = -max(rayInteraction.hitDistance - cb.waterSimArgs.shoreRefractionGap, 0.0f);
+        geometryResolverState.continueResolving = true;
+      }
+      else
+      {
+        geometryResolverState.dryUnderWater = true;
+      }
+    }
+  }
+#endif
+
   if (cb.startInMediumMaterialIndex != SURFACE_INDEX_INVALID)
   {
     const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[cb.startInMediumMaterialIndex];
@@ -2583,8 +2617,14 @@ void geometryResolverVertex(
     {
       // Create a ray from the Transmission PSR material sample
 
-      const Ray sampledRay = rayCreateDirection(
+      Ray sampledRay = rayCreateDirection(
         rayInteraction, surfaceInteraction, ray, surfaceMaterialInteractionTransmissionPSRSample.inputDirection, pstrPenetrateSurface);
+
+#ifdef WATER_SIM_SAMPLE
+      // Water refracts at its simulated surface where that lies behind the flat hit (pomRayDistance, see resolve.slangh).
+      // Crests in front of the flat hit keep the flat origin: the simulation has no mask, so a crest can lie over a prop.
+      sampledRay.origin += ray.direction * max(surfaceInteraction.pomRayDistance, 0.0f);
+#endif
 
       vec4 vectorTransform = quaternionMultiply(geometryResolverState.accumulatedRotation, surfaceMaterialInteractionTransmissionPSRSample.vectorTransform, true);
       
@@ -2870,6 +2910,8 @@ void geometryPSRResolverVertex(
 
   bool isStochasticAlphaBlend = false; // note, not actually used here
   uint8_t firstRayPortal = invalidRayPortalIndex;
+  // The resolve loop sets this before each trace, false on its last allowed interaction.
+  const bool canContinueResolving = geometryPSRResolverState.continueResolving;
   
   resolveVertex<GeometryPSRResolverState>(
     resolveMode,
@@ -2883,6 +2925,44 @@ void geometryPSRResolverVertex(
     isStochasticAlphaBlend, firstRayPortal,
     geometryPSRResolverState.pomOpaqueSurfaceEncountered,
     isRaytracedRenderTarget, false, false, GBUFFER_FEATURE_RAYTRACED_RENDER_TARGET);
+
+  // POM silhouettes behind translucency: a short ray from the low poly hit to the POM hit finds where the view leaves the
+  // solid through its side (a back face), or what stands in its carved out part (a front face). Resolving continues there.
+  // The world position stays at the low poly hit, so lighting rays never start inside the solid. See WaterSimulation.md.
+  float pomSilhouetteExtraDistance = 0.0f;
+#ifdef WATER_SIM_SAMPLE
+  if ((cb.waterSimArgs.silhouetteFlags & WATER_SIM_SILHOUETTE_FLAG_POM_BEHIND_TRANSLUCENCY) && canContinueResolving &&
+      !geometryPSRResolverState.continueResolving && rayInteractionHasHit(rayInteraction) &&
+      geometryPSRResolverState.isTransmissionPSR && geometryPSRResolverState.insideMedium &&
+      geometryPSRResolverState.pomOpaqueSurfaceEncountered && !geometryPSRResolverState.pomSilhouetteTested &&
+      surfaceInteraction.pomRayDistance > rayInteraction.coneRadius)
+  {
+    geometryPSRResolverState.pomSilhouetteTested = true;
+
+    RayDesc silhouetteRay;
+    silhouetteRay.Origin = rayOffsetSurfaceOriginHelper(surfaceInteraction, true);
+    silhouetteRay.Direction = ray.direction;
+    silhouetteRay.TMin = 0.0f;
+    silhouetteRay.TMax = surfaceInteraction.pomRayDistance;
+
+    // Back faces must be found. Alpha tested geometry is culled: its transparent texels would end the silhouette in thin air.
+    RayQuery<RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> silhouetteQuery;
+    silhouetteQuery.TraceRayInline(topLevelAS, 0,
+      geometryPSRResolverState.rayMask & (OBJECT_MASK_OPAQUE | OBJECT_MASK_ALL_DYNAMIC), silhouetteRay);
+    while (silhouetteQuery.Proceed()) {}
+
+    if (silhouetteQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT)
+    {
+      // Just past the back face: the offset is small against the few units deep POM.
+      const float continueDistance = silhouetteQuery.CommittedTriangleFrontFace() ? 0.0f : silhouetteQuery.CommittedRayT() + 0.1f;
+
+      geometryPSRResolverState.origin = silhouetteRay.Origin + ray.direction * continueDistance;
+      geometryPSRResolverState.segmentHitDistance = rayInteraction.hitDistance + continueDistance;
+      geometryPSRResolverState.continueResolving = true;
+      pomSilhouetteExtraDistance = continueDistance;
+    }
+  }
+#endif
 
   // Handle medium attenuation if needed
   // Note: This is done here to avoid needing to accumulate the total resolved hit distance. Slightly
@@ -2901,7 +2981,7 @@ void geometryPSRResolverVertex(
     if (rayInteractionHasHit(rayInteraction))
     {
       volumeTransmittance = translucentSurfaceMaterialEvalVolumeTransmittance(
-        translucentSurfaceMaterial, rayInteraction.hitDistance);
+        translucentSurfaceMaterial, rayInteraction.hitDistance + pomSilhouetteExtraDistance);
     }
     else
     {
@@ -3473,6 +3553,7 @@ void geometryResolver(ivec2 pixelCoordinate) {
   geometryFlags.performPSRR = geometryResolverState.performPSRR;
   geometryFlags.pomOpaqueSurfaceEncountered = geometryResolverState.pomOpaqueSurfaceEncountered;
   geometryFlags.firstHitDecalsResolved = geometryResolverState.firstHitDecalsResolved;
+  geometryFlags.dryUnderWater = geometryResolverState.dryUnderWater;
 
   // Output miss data for the secondary surface if it is not present
   // Note: Known to not be the selected surface in this case, hence why false is passed for this.

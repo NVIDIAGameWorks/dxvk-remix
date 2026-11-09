@@ -201,6 +201,9 @@ public:
   const fast_unordered_cache<FogState>& getFogStates() const { return m_fogStates; }
 
   uint32_t getStartInMediumMaterialIndex() { return m_startInMediumMaterialIndex; }
+  // Returns the index into the surface materials of the water that sludge opens into, see RtxWaterSim::Sludge.
+  // Returns SURFACE_INDEX_INVALID while sludge is off.
+  uint32_t getSludgeWaterMaterialIndex() const { return m_sludgeWaterMaterialIndex; }
   
   uint32_t getActivePOMCount() {return m_activePOMCount;}
 
@@ -402,6 +405,10 @@ private:
   uint32_t m_startInMediumMaterialIndex_inCache = kInvalidMaterialCacheIndex;
   uint32_t m_lastResolvedStartInMediumMaterialIndexInCache = kInvalidMaterialCacheIndex;
   uint32_t m_lastUploadedStartInMediumMaterialIndexInCache = kInvalidMaterialCacheIndex;
+  // The water that sludge opens into, uploaded after the camera medium.
+  uint32_t m_sludgeWaterMaterialIndex = SURFACE_INDEX_INVALID;
+  uint32_t m_sludgeWaterMaterialIndex_inCache = kInvalidMaterialCacheIndex;
+  uint32_t m_lastUploadedSludgeWaterMaterialIndexInCache = kInvalidMaterialCacheIndex;
 
   // TODO: Move the following resources and getters to RtResources class
   Rc<DxvkBuffer> m_surfaceMaterialBuffer;

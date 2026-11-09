@@ -41,6 +41,11 @@ Sampler3D<float2> VolumeFilteredRadianceCoCg;
 layout(binding = GBUFFER_BINDING_SKYMATTE)
 Sampler2D<float3> SkyMatte;
 
+#ifdef WATER_SIM_SAMPLE
+layout(binding = GBUFFER_BINDING_WATER_SIM_HEIGHT)
+Sampler2D<float4> WaterSimHeight;
+#endif
+
 layout(binding = GBUFFER_BINDING_SKYPROBE)
 SamplerCube<float3> SkyProbe;
 

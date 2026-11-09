@@ -159,6 +159,7 @@ namespace dxvk {
         RW_TEXTURE2D(GBUFFER_BINDING_SHARED_BIAS_CURRENT_COLOR_MASK_OUTPUT)
         RW_TEXTURE2D(GBUFFER_BINDING_ALPHA_BLEND_GBUFFER_OUTPUT)
         SAMPLER2D(GBUFFER_BINDING_SKYMATTE)
+        SAMPLER2D(GBUFFER_BINDING_WATER_SIM_HEIGHT)
         SAMPLERCUBE(GBUFFER_BINDING_SKYPROBE)
 
         RW_TEXTURE2D(GBUFFER_BINDING_REFLECTION_PSR_DATA_STORAGE_0)
@@ -728,6 +729,8 @@ namespace dxvk {
 
     ctx->bindResourceView(GBUFFER_BINDING_SKYMATTE, ctx->getResourceManager().getSkyMatte(ctx).view, nullptr);
     ctx->bindResourceSampler(GBUFFER_BINDING_SKYMATTE, linearClampSampler);
+    ctx->bindResourceView(GBUFFER_BINDING_WATER_SIM_HEIGHT, ctx->getCommonObjects()->metaWaterSim().getHeightView(ctx), nullptr);
+    ctx->bindResourceSampler(GBUFFER_BINDING_WATER_SIM_HEIGHT, linearWrapSampler);
 
     // Requires the probe too for PSRR/T miss
     ctx->bindResourceView(GBUFFER_BINDING_SKYPROBE, ctx->getResourceManager().getSkyProbe(ctx).view, nullptr);
@@ -882,8 +885,10 @@ namespace dxvk {
     // The compacted GBuffer samples inline too, because PSR prepare reads the material back from the GBuffer,
     // which inactive pixels do not store. Its first hits then take their decals before sampling.
     // See geometryResolverResolvesDecalBeforePSR.
+    // Simulated water samples inline too: only the inline path starts its refraction at the simulated surface (pomRayDistance, see geometry_resolver.slangh).
     const bool usePSRPrepare =
       psrEnabled &&
+      !rtOutput.m_raytraceArgs.waterSimArgs.enable &&
       !nrcEnabled &&
       !sharcEnabled &&
       !rtOutput.m_raytraceArgs.enableRaytracedRenderTarget &&

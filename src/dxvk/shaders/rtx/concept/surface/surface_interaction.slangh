@@ -665,7 +665,7 @@ SurfaceInteraction surfaceInteractionCreateImpl<let GenerateTangents : bool, let
       // it removes the need to keep the object space positions around which should ideally reduce register pressure.
       genTangSpace(
       texcoords, worldPositions, surfaceInteraction.geometryNormal,
-      surfaceInteraction.geometryTangent, surfaceInteraction.geometryBitangent, surfaceInteraction.rawTangent, surfaceInteraction.rawBitangent);
+      surfaceInteraction.geometryTangent, surfaceInteraction.geometryBitangent, surfaceInteraction.rawTangent, surfaceInteraction.rawBitangent, surfaceInteraction.rawTangentScale);
     }
 
     // Convert texcoords from the 1st cascade to a corresponding cascade in a combined tiled cascades texture space

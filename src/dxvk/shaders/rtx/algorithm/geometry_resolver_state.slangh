@@ -51,6 +51,8 @@ struct GeometryResolverState : IBasePayloadState
   f16vec3 attenuation;
   uint8_t _rayMask;
   u16vec2 _compactedCoordinate;
+  float _waterSurfaceDistance;
+  uint8_t _waterFlags;
 
   // Property to get pixel coordinate
   property u16vec2 pixelCoordinate
@@ -59,6 +61,26 @@ struct GeometryResolverState : IBasePayloadState
     {
       return u16vec2(getDispatchRaysIndex().xy);
     }
+  }
+
+  property float waterSurfaceDistance
+  {
+    get { return _waterSurfaceDistance; }
+    set { _waterSurfaceDistance = newValue; }
+  }
+
+  // Is set to resolve the next water hit without the silhouette test, see resolve.slangh.
+  property bool skipWaterSilhouette
+  {
+    get { return packedFlagGet(_waterFlags, 1 << 0); }
+    set { _waterFlags = packedFlagAssign(_waterFlags, 1 << 0, newValue); }
+  }
+
+  // Is set when the resolved surface lies under the water mesh but above the water surface, at a shore or a wave trough.
+  property bool dryUnderWater
+  {
+    get { return packedFlagGet(_waterFlags, 1 << 1); }
+    set { _waterFlags = packedFlagAssign(_waterFlags, 1 << 1, newValue); }
   }
 
   // Holds the compacted GBuffer slot that this pixel stores to. See loadGBufferStoreCoordinate.
@@ -408,6 +430,26 @@ struct GeometryPSRResolverState : IBasePayloadState
   {
     get { return packedFlagGet(_encodedFlags, 1 << 11); }
     set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 11, newValue); }
+  }
+
+  // Is set once the POM silhouette of a hit behind translucency was tested: once per PSR ray.
+  property bool pomSilhouetteTested
+  {
+    get { return packedFlagGet(_encodedFlags, 1 << 12); }
+    set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 12, newValue); }
+  }
+
+  // Water silhouettes are only tested in the primary pass.
+  property float waterSurfaceDistance
+  {
+      get { return 0.0f; }
+      set { }
+  }
+
+  property bool skipWaterSilhouette
+  {
+      get { return false; }
+      set { }
   }
 
   property bool directionAltered

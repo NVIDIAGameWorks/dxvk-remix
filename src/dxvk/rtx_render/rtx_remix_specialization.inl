@@ -130,6 +130,8 @@ namespace pnext::detail {
   template<> constexpr auto ToEnum< remixapi_CameraInfo                     > = REMIXAPI_STRUCT_TYPE_CAMERA_INFO;
   template<> constexpr auto ToEnum< remixapi_CameraInfoParameterizedEXT     > = REMIXAPI_STRUCT_TYPE_CAMERA_INFO_PARAMETERIZED_EXT;
   template<> constexpr auto ToEnum< remixapi_CameraMediumInfo               > = REMIXAPI_STRUCT_TYPE_CAMERA_MEDIUM_INFO;
+  template<> constexpr auto ToEnum< remixapi_WaterSimInfo                   > = REMIXAPI_STRUCT_TYPE_WATER_SIM_INFO;
+  template<> constexpr auto ToEnum< remixapi_WaterDisturbanceInfo           > = REMIXAPI_STRUCT_TYPE_WATER_DISTURBANCE_INFO;
 
   template< typename T > struct Root                                         { using Type = T; /* by default, a root is self */ };
   template<>           struct Root< remixapi_MaterialInfoPortalEXT          >{ using Type = remixapi_MaterialInfo;              };

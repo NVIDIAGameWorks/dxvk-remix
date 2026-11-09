@@ -75,6 +75,11 @@ interface IBasePayloadState
   property bool continueResolving { get; set; }
   property bool directionAltered { get; set; }
   property vec4 accumulatedRotation { get; set; }
+  // Water silhouettes, primary G-buffer pass only (resolve.slangh).
+  // The distance to the water surface that resolving continued past, or minus the refraction limit of the next water hit.
+  property float waterSurfaceDistance { get; set; }
+  // Whether the next water hit skips the silhouette test.
+  property bool skipWaterSilhouette { get; set; }
 
 #ifdef RAY_PIPELINE
   // Returns if the caller should reorder before invokeHitObject, along with coherence hints to use

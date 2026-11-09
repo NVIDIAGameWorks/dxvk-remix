@@ -445,6 +445,32 @@ remixapi_ErrorCode REMIXAPI_CALL remixapi_SetConfigVariable(const char* var, con
   return REMIXAPI_ERROR_CODE_SUCCESS;
 }
 
+remixapi_ErrorCode REMIXAPI_CALL remixapi_SetWaterSim(const remixapi_WaterSimInfo* info) {
+  ASSERT_REMIXAPI_PFN_TYPE(remixapi_SetWaterSim);
+  if (!info || info->sType != REMIXAPI_STRUCT_TYPE_WATER_SIM_INFO) {
+    return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+  }
+  {
+    ClientMessage c(Commands::RemixApi_SetWaterSim);
+    send(c, info->clearAllDisturbances);
+  }
+  return REMIXAPI_ERROR_CODE_SUCCESS;
+}
+
+remixapi_ErrorCode REMIXAPI_CALL remixapi_AddWaterDisturbance(const remixapi_WaterDisturbanceInfo* info) {
+  ASSERT_REMIXAPI_PFN_TYPE(remixapi_AddWaterDisturbance);
+  if (!info || info->sType != REMIXAPI_STRUCT_TYPE_WATER_DISTURBANCE_INFO) {
+    return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+  }
+  {
+    ClientMessage c(Commands::RemixApi_AddWaterDisturbance);
+    send(c, info->position);
+    send(c, info->radius);
+    send(c, info->strength);
+  }
+  return REMIXAPI_ERROR_CODE_SUCCESS;
+}
+
 remixapi_ErrorCode REMIXAPI_CALL remixapi_dxvk_CreateD3D9(
   remixapi_Bool       editorModeEnabled,
   IDirect3D9Ex**      out_pD3D9) {
@@ -536,6 +562,8 @@ extern "C" {
       interf.DestroyLight = remixapi_DestroyLight;
       interf.DrawLightInstance = remixapi_DrawLightInstance;
       interf.SetConfigVariable = remixapi_SetConfigVariable;
+      interf.SetWaterSim = remixapi_SetWaterSim;
+      interf.AddWaterDisturbance = remixapi_AddWaterDisturbance;
       interf.dxvk_CreateD3D9 = remixapi_dxvk_CreateD3D9;
       interf.dxvk_RegisterD3D9Device = remixapi_dxvk_RegisterD3D9Device;
       // interf.dxvk_GetExternalSwapchain = remixapi_dxvk_GetExternalSwapchain;

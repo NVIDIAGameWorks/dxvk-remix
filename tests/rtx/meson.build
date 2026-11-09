@@ -21,6 +21,7 @@ if dxvk_is_ninja
     'apics/RemixAPI_C'            : RemixAPI_C_exepath,
     'apics/RemixAPI_MediumTest'   : RemixAPI_MediumTest_exepath,
     'apics/RemixAPI_SkinningTest' : RemixAPI_SkinningTest_exepath,
+    'apics/RemixAPI_WaterTest'    : RemixAPI_WaterTest_exepath,
     'apics/HydraTestRender'       : HydraTestRender_exepath
   }
 endif
