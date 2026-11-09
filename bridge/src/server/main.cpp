@@ -3684,7 +3684,11 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
   Logger::warn("Running in x86 mode! Are you sure this is what you want? RTX will not work this way, please run the 64-bit server instead!");
 #endif
 
-  BRIDGE_ASSERT_LOG((argCount >= 2), "Command line argument count received to launch server is not as expected");
+  if (argList == nullptr || argCount < 2) {
+    Logger::err("Server was invoked without the required GUID and version arguments. Unable to establish bridge, exiting...");
+    LocalFree(argList);
+    return 1;
+  }
   if (gUniqueIdentifier.setGuid(&argList[0])) {
     Logger::info("Launched server with GUID " + gUniqueIdentifier.toString());
   } else {
