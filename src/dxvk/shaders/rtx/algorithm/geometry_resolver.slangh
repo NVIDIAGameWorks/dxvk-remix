@@ -2209,7 +2209,7 @@ void geometryResolverVertex(
       InterlockedCompareStore(
         PrimaryObjectPicking[geometryResolverState.pixelCoordinate],
         OBJECT_PICKING_INVALID,    // compare to
-        surface.objectPickingValue // value to write, if equal
+        surfaceObjectPickingValue(surface, rayInteraction.primitiveIndex) // value to write, if equal
       );
     }
 #endif

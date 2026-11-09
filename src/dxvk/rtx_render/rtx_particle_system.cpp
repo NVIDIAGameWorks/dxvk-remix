@@ -107,6 +107,7 @@ namespace dxvk {
         SAMPLER2D(PARTICLE_SYSTEM_BINDING_ANIMATION_DATA_INPUT)
 
         RW_STRUCTURED_BUFFER(PARTICLE_SYSTEM_BINDING_VERTEX_BUFFER_OUTPUT)
+        RW_STRUCTURED_BUFFER(PARTICLE_SYSTEM_BINDING_OBJECT_PICKING_OUTPUT)
         END_PARAMETER()
     };
   }
@@ -395,6 +396,9 @@ namespace dxvk {
 
   // Please re-profile performance if any of these structures change in size.  As a minimum performance requirement, always preserve a 16 byte alignment.
   static_assert(sizeof(GpuParticle) == 12 * 4, "Unexpected, please check perf");
+  static_assert(offsetof(GpuParticle, emitterObjectPickingValue) == 44, "Particle picking ID must reuse existing padding");
+  static_assert(sizeof(ParticleVertex) == 24, "Particle picking must not grow the vertex buffer");
+  static_assert(sizeof(GpuSpawnContext) == 144 && offsetof(GpuSpawnContext, emitterObjectPickingValue) == 128, "Spawn context layout must match shaders");
   static_assert(sizeof(GpuParticleSystemDesc) % (4 * 4) == 0, "Unexpected, please check perf");
   static_assert(sizeof(GpuParticleSystemDesc) == 112 && offsetof(GpuParticleSystemDesc, minScreenSize) == 96, "Particle descriptor layout must match shaders");
   static_assert(offsetof(ParticleSystemConstants, worldToProjection) == 336 && sizeof(ParticleSystemConstants) == 448, "Particle constants layout must match shaders");
@@ -607,6 +611,7 @@ namespace dxvk {
     spawnCtx.particleMapOffset = uint32_t(particleSystem->spawnContextParticleMap.size());
     spawnCtx.instanceId = instanceId;
     spawnCtx.particleSystemHash = particleSystem->getLookupHash();
+    spawnCtx.emitterObjectPickingValue = drawCallState.getParticleObjectPickingValue();
 
     // Update material specific counters
     particleSystem->context.particleHeadOffset += numParticles;
@@ -693,6 +698,7 @@ namespace dxvk {
         }
 
         // Finalize some constants to the GPU data
+        particleSystem.enableObjectPicking = system.second->getObjectPickingBuffer() != nullptr;
         constants.particleSystem = particleSystem;
         constants.spawnContextMapOffset = 0;
 
@@ -774,6 +780,9 @@ namespace dxvk {
 
           ctx->bindResourceBuffer(PARTICLE_SYSTEM_BINDING_PARTICLES_BUFFER_INPUT, DxvkBufferSlice(system.second->getParticlesBuffer()));
           ctx->bindResourceBuffer(PARTICLE_SYSTEM_BINDING_VERTEX_BUFFER_OUTPUT, DxvkBufferSlice(system.second->getVertexBuffer()));
+          const auto& pickingBuffer = system.second->getObjectPickingBuffer();
+          ctx->bindResourceBuffer(PARTICLE_SYSTEM_BINDING_OBJECT_PICKING_OUTPUT,
+            pickingBuffer != nullptr ? DxvkBufferSlice(pickingBuffer) : DxvkBufferSlice());
 
           ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, ParticleSystemGenerateGeometry::getShader());
 
@@ -902,6 +911,7 @@ namespace dxvk {
           gpuCtx.numTriangles = 0;
         }
       }
+      gpuCtx.emitterObjectPickingValue = spawnCtx.emitterObjectPickingValue;
     }
 
     // Send data to GPU
@@ -1000,8 +1010,10 @@ namespace dxvk {
       return;
     }
 
+    const bool pickingEnabled = ctx->getResourceManager().getRaytracingOutput().m_primaryObjectPicking.isValid();
     for (const auto& keyPair : m_particleSystems) {
-      const ParticleSystem& particleSystem = *(keyPair.second.get());
+      ParticleSystem& particleSystem = *(keyPair.second.get());
+      particleSystem.prepareObjectPickingBuffer(ctx, pickingEnabled);
 
       // Here we create a fake draw call, and send it through the regular scene manager pipeline
       //   which has the advantage of supporting replacement materials.
@@ -1028,6 +1040,10 @@ namespace dxvk {
       particleGeometry.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
       particleGeometry.cullMode = VK_CULL_MODE_NONE;
       particleGeometry.frontFace = VK_FRONT_FACE_CLOCKWISE;
+      if (particleSystem.getObjectPickingBuffer() != nullptr) {
+        particleGeometry.particlePickingBuffer = RasterBuffer(DxvkBufferSlice(particleSystem.getObjectPickingBuffer()), 0, sizeof(uint32_t), VK_FORMAT_R32_UINT);
+        particleGeometry.particlePickingPrimitivesPerParticle = particleSystem.getIndicesPerParticle() / 3;
+      }
       particleGeometry.hashes[HashComponents::Indices] = particleHashConstant ^ particleSystem.getGeneration();
       particleGeometry.hashes[HashComponents::VertexPosition] = particleHashConstant ^ particleSystem.getGeneration();
       particleGeometry.hashes.precombine();
@@ -1040,6 +1056,8 @@ namespace dxvk {
       newDrawCallState.modifyCategoryFlags().set(InstanceCategories::Particle); // ?
       newDrawCallState.modifyCategoryFlags().clr(InstanceCategories::ParticleEmitter);
       newDrawCallState.modifyCategoryFlags().clr(InstanceCategories::Hidden);
+      // Generated billboard normals come from their triangles.
+      newDrawCallState.modifyCategoryFlags().clr(InstanceCategories::SmoothNormals);
       newDrawCallState.modifyTransformData().viewToProjection = camera.getViewToProjection();
       newDrawCallState.modifyTransformData().worldToView = camera.getWorldToView();
       newDrawCallState.modifyMaterialData() = particleSystem.legacyMaterialData;
@@ -1113,6 +1131,23 @@ namespace dxvk {
     }
 
 
+  }
+
+  void RtxParticleSystemManager::ParticleSystem::prepareObjectPickingBuffer(DxvkContext* pCtx, bool enabled) {
+    if (!enabled) {
+      m_objectPicking = nullptr;
+      return;
+    }
+
+    const VkDeviceSize size = sizeof(uint32_t) * context.desc.maxNumParticles;
+    if (m_objectPicking == nullptr || m_objectPicking->info().size != size) {
+      DxvkBufferCreateInfo info;
+      info.size = size;
+      info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+      info.stages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
+      info.access = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+      m_objectPicking = pCtx->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "RTX Particles - Object Picking Buffer");
+    }
   }
 
   void RtxParticleSystemManager::ParticleSystem::allocStaticBuffers(DxvkContext* ctx) {

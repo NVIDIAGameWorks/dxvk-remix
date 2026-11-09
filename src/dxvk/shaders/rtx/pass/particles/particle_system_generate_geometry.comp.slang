@@ -37,6 +37,9 @@ StructuredBuffer<GpuParticle> Particles;
 layout(binding = PARTICLE_SYSTEM_BINDING_VERTEX_BUFFER_OUTPUT)
 RWStructuredBuffer<ParticleVertex> Vertices;
 
+layout(binding = PARTICLE_SYSTEM_BINDING_OBJECT_PICKING_OUTPUT)
+RWStructuredBuffer<uint> ObjectPickingValues;
+
 void clearParticleVertices(uint particleIdx, const GpuParticleSystem particleSystem)
 {
   [unroll]
@@ -137,6 +140,12 @@ void main(uint2 threadIdx : SV_DispatchThreadID)
   const uint particleIdx = (threadIdx.x + particleSystem.particleTailOffset) % particleSystem.desc.maxNumParticles;
   
   const GpuParticle particle = Particles[particleIdx];
+
+  if (particleSystem.enableObjectPicking)
+  {
+    // Geometry is linearized from the simulation ring into draw order.
+    ObjectPickingValues[threadIdx.x] = particle.emitterObjectPickingValue;
+  }
   
   // precache some values
   float2 size = particle.size(particleSystem, animationDataTex) * particleCb.sceneScale;

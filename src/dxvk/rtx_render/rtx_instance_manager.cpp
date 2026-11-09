@@ -176,6 +176,8 @@ namespace dxvk {
     surface.positionBufferIndex = geo.positionBufferIndex;
     surface.positionOffset      = geo.positionBuffer.offsetFromSlice();
     surface.positionStride      = geo.positionBuffer.stride();
+    surface.particlePickingBufferIndex = static_cast<uint16_t>(geo.particlePickingBufferIndex);
+    surface.particlePickingPrimitivesPerParticle = geo.particlePickingPrimitivesPerParticle;
     surface.normalBufferIndex   = geo.normalBufferIndex;
     surface.normalOffset        = geo.normalBuffer.offsetFromSlice();
     surface.normalStride        = geo.normalBuffer.stride();

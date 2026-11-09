@@ -832,6 +832,9 @@ std::unique_ptr<dxvk::ExternalDrawState> dxvk::RemixAPIPrivateAccessor::toRtDraw
   if (auto objectPicking = pnext::find<remixapi_InstanceInfoObjectPickingEXT>(&info)) {
     prototype.drawCallID = objectPicking->objectPickingValue;
   }
+  if (auto particlePicking = pnext::find<remixapi_InstanceInfoParticleObjectPickingEXT>(&info)) {
+    prototype.particleObjectPickingValue = particlePicking->objectPickingValue;
+  }
 
   if (auto extBones = pnext::find<remixapi_InstanceInfoBoneTransformsEXT>(&info)) {
     const uint32_t boneCount =

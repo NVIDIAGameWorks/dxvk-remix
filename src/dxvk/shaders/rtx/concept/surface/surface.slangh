@@ -34,3 +34,14 @@ bool surfaceIsDecal(Surface surface)
 {
   return cb.enableDecalMaterialBlending && surface.isDecal;
 }
+
+uint surfaceObjectPickingValue(Surface surface, uint primitiveIndex)
+{
+  if (!surface.hasParticleObjectPickingValues)
+  {
+    return surface.objectPickingValue;
+  }
+
+  const uint particleIndex = (primitiveIndex + surface.firstIndex / 3) / uint(surface.particlePickingPrimitivesPerParticle);
+  return asuint(BUFFER_ARRAY(geometries, uint(surface.particlePickingBufferIndex), particleIndex));
+}

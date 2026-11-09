@@ -54,6 +54,7 @@ namespace dxvk {
       XXH64_hash_t particleSystemHash;
       uint32_t particleOffset;
       uint32_t particleMapOffset;
+      uint32_t emitterObjectPickingValue;
     };
 
     class ConservativeCounter : public RcObject {
@@ -84,6 +85,7 @@ namespace dxvk {
       Rc<DxvkBuffer> m_spawnContextParticleMapBuffer;
       Rc<DxvkBuffer> m_vb;
       Rc<DxvkBuffer> m_ib;
+      Rc<DxvkBuffer> m_objectPicking;
       Rc<ConservativeCounter> m_count;
       Resources::Resource m_animationState;
 
@@ -150,6 +152,10 @@ namespace dxvk {
         return m_ib;
       }
 
+      const Rc<DxvkBuffer>& getObjectPickingBuffer() const {
+        return m_objectPicking;
+      }
+
       const Rc<DxvkImageView>& getAnimationDataTexture() const {
         return m_animationState.view;
       }
@@ -175,6 +181,7 @@ namespace dxvk {
       }
 
       void allocStaticBuffers(DxvkContext* pCtx);
+      void prepareObjectPickingBuffer(DxvkContext* pCtx, bool enabled);
     };
 
     Rc<DxvkBuffer> m_cb;

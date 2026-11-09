@@ -1102,7 +1102,7 @@ float resolveVertexUnorderedParticles<
       InterlockedCompareStore(
         PrimaryObjectPicking[pixelCoordinate],
         OBJECT_PICKING_INVALID,
-        surface.objectPickingValue);
+        surfaceObjectPickingValue(surface, rayInteraction.primitiveIndex));
     }
 #endif
 #endif
@@ -1575,7 +1575,7 @@ void resolveVertexUnordered<
       InterlockedCompareStore(
         PrimaryObjectPicking[pixelCoordinate],
         OBJECT_PICKING_INVALID,    // compare to
-        surface.objectPickingValue // value to write, if equal
+        surfaceObjectPickingValue(surface, rayInteraction.primitiveIndex) // value to write, if equal
       );
     }
 #endif

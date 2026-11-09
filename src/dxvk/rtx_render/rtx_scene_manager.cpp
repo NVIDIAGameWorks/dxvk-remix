@@ -440,6 +440,11 @@ namespace dxvk {
 
     RaytraceGeometry& output = inOutGeometry;
 
+    output.particlePickingBuffer = input.particlePickingBuffer.defined()
+      ? RaytraceBuffer(input.particlePickingBuffer, 0, sizeof(uint32_t), VK_FORMAT_R32_UINT)
+      : RaytraceBuffer();
+    output.particlePickingPrimitivesPerParticle = input.particlePickingPrimitivesPerParticle;
+
     output.lastBoneHash = drawCallState.getSkinningState().boneHash;
 
     // Update draw parameters
@@ -1149,6 +1154,7 @@ namespace dxvk {
     updateSlot(geo.texcoordBuffer,         geo.texcoordBufferIndex);
     updateSlot(geo.positionBuffer,         geo.positionBufferIndex);
     updateSlot(geo.previousPositionBuffer, geo.previousPositionBufferIndex);
+    updateSlot(geo.particlePickingBuffer,  geo.particlePickingBufferIndex);
 
     if (changed) {
       syncLinkedInstances(pBlas);
@@ -1174,6 +1180,7 @@ namespace dxvk {
     releaseSlot(geo.texcoordBufferIndex);
     releaseSlot(geo.positionBufferIndex);
     releaseSlot(geo.previousPositionBufferIndex);
+    releaseSlot(geo.particlePickingBufferIndex);
   }
 
   void SceneManager::verifyAndReleaseBufferCache() {

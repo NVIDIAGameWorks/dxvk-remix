@@ -28,6 +28,7 @@ test_env = environment({'MALLOC_PERTURB_': '0'})
 foreach external_dll : external_dll_paths
   test_env.append('PATH', external_dll)
 endforeach
+test_env.append('PATH', nrc_dll_path, nrd_lib_path, join_paths(usd_lib_path, 'bin'))
 
 tests = []
 
@@ -249,5 +250,17 @@ exe = executable('test_particle_system_lookup', files('test_particle_system_look
   include_directories : test_include_path, dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ d3d9_dll, dxvk_lib ], win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
 test('test_particle_system_lookup', exe, env: test_env)
 tests += exe
+
+exe = executable('test_particle_object_picking', files('test_particle_object_picking.cpp'),
+  include_directories : test_include_path, dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ d3d9_dll, dxvk_lib ], win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_particle_object_picking', exe, env: test_env)
+tests += exe
+
+if fs.is_file('../../../nv-private/hdremix/particlePicking.h')
+  exe = executable('test_material_particle_picking', files('test_material_particle_picking.cpp'),
+    include_directories : [ test_include_path, include_directories('../../../src/lssusd') ], dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ d3d9_dll, dxvk_lib ], win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+  test('test_material_particle_picking', exe, env: test_env)
+  tests += exe
+endif
 
 alias_target('unit_tests', tests)

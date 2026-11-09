@@ -3073,6 +3073,7 @@ void ProcessDeviceCommandQueue() {
         // supported at a time
         struct InstanceExtensions {
           serialize::InstanceInfoObjectPicking objectPicking;
+          serialize::InstanceInfoParticleObjectPicking particlePicking;
           serialize::InstanceInfoBlend blend;
           serialize::InstanceInfoTransforms boneXforms;
           serialize::InstanceInfoParticleSystem particleSystem;
@@ -3106,6 +3107,14 @@ void ProcessDeviceCommandQueue() {
               deserializeFromQueue(exts.objectPicking);
               pInfoProto->pNext = &(exts.objectPicking);
               pInfoProto = &getInfoProto(exts.objectPicking);
+              break;
+            }
+            case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_OBJECT_PICKING_EXT:
+            {
+              assert(!exts.particlePicking.pNext);
+              deserializeFromQueue(exts.particlePicking);
+              pInfoProto->pNext = &(exts.particlePicking);
+              pInfoProto = &getInfoProto(exts.particlePicking);
               break;
             }
             case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT:

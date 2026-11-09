@@ -87,7 +87,7 @@ GpuParticle respawn(uint particleIdx, uint spawnCtxIdx, const GpuParticleSystem 
   if (triIdx == kInvalidParticleTriangle) {
     // Rejected slots retain their normal age so the conservative ring cannot skip older live particles.
     newParticle.reset(particleSystem, float3(0.0f), float3(0.0f), float4(0.0f), float4(0.0f), triangleSample);
-    newParticle.flags = GpuParticle::kRejectedSpawnFlag;
+    newParticle.rejectSpawn();
     return newParticle;
   }
   
@@ -168,6 +168,7 @@ GpuParticle respawn(uint particleIdx, uint spawnCtxIdx, const GpuParticleSystem 
   
   // Spawn a particle
   newParticle.reset(particleSystem, spawnPosition, initialVelocity, uvMinMax, color, randSeed);
+  newParticle.emitterObjectPickingValue = spawnCtx.emitterObjectPickingValue;
   
   return newParticle;
 }

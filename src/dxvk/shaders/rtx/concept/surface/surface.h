@@ -315,6 +315,12 @@ struct Surface
     set { data0b.w = newValue; }
   }
 
+  property bool hasParticleObjectPickingValues
+  {
+    get { return packedFlagGet(data0b.z, 1 << 2); }
+    set { data0b.z = newValue ? packedFlagSet(data0b.z, 1 << 2) : packedFlagUnset(data0b.z, 1 << 2); }
+  }
+
   property uint positionOffset
   {
     get { return data1.x; }
@@ -490,8 +496,20 @@ struct Surface
 
   property uint objectPickingValue
   {
-    get { return data2.x; }
+    // A particle batch has no single owner without a primitive index.
+    get { return hasParticleObjectPickingValues ? 0 : data2.x; }
     set { data2.x = newValue; }
+  }
+
+  // Generated particles use the picking word for their buffer index and triangle count.
+  property uint16_t particlePickingBufferIndex
+  {
+    get { return uint16_t(data2.x); }
+  }
+
+  property uint16_t particlePickingPrimitivesPerParticle
+  {
+    get { return uint16_t(data2.x >> 16); }
   }
 
   // See RtEyeParams::eyeballOrigin (rtx_materials.h) for what this is decoded from.
