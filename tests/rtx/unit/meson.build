@@ -122,6 +122,10 @@ exe = executable('test_remix_categories', files('test_remix_categories.cpp'), de
 test('test_remix_categories', exe, env: test_env, priority : -50, args: [ d3d9_dll.full_path(), remix_categories_plugin.full_path() ], depends: [ d3d9_dll, remix_categories_plugin ])
 tests += exe
 
+exe = executable('test_particle_drag', files('test_particle_drag.cpp'), include_directories : test_include_path, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_particle_drag', exe, env: test_env)
+tests += exe
+
 exe = executable('test_particle_spawn_distribution', files('test_particle_spawn_distribution.cpp'), include_directories : test_include_path, dependencies : test_unit_deps, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
 test('test_particle_spawn_distribution', exe, env: test_env)
 tests += exe
