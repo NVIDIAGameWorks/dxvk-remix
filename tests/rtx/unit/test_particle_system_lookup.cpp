@@ -25,6 +25,7 @@
 
 #include "../../../src/dxvk/rtx_render/rtx_particle_system.h"
 #include "../../../src/dxvk/rtx_render/rtx_types.h"
+#include "../../../src/dxvk/rtx_render/rtx_instance_manager.h"
 
 namespace dxvk {
   Logger Logger::s_instance("test_particle_system_lookup.log");
@@ -38,6 +39,29 @@ namespace dxvk {
   }
 
   struct ParticleSystemLookupTestAccess {
+    static void testEmitterSurvivesCompaction() {
+      RtInstance removed(1, 0);
+      RtInstance other(2, 1);
+      RtInstance emitter(kInvalidInstanceId, 2);
+      RtxParticleSystemManager::SpawnContext spawn{};
+      spawn.instanceId = 2;
+      spawn.instanceIdentity = emitter.getCacheIdentity();
+      std::vector<RtInstance*> instances{ &removed, &other, &emitter };
+      std::unordered_map<uint64_t, const RtInstance*> lookup;
+      bool built = false;
+      auto resolve = [&]() { return RtxParticleSystemManager::resolveSpawnInstance(spawn, instances, lookup, built); };
+      require(resolve() == &emitter && !built, "Unmoved emitters must use the index fast path.");
+      instances = { &emitter, &other };
+      require(resolve() == &emitter, "A queued emitter must survive swap-and-pop compaction before simulation.");
+      lookup.clear(); built = false;
+      instances = { &other, &emitter, &removed };
+      require(resolve() == &emitter, "A reused old slot must not redirect births onto another object.");
+      lookup.clear(); built = false;
+      RtInstance replacement(kInvalidInstanceId, 2);
+      instances = { &other, &replacement };
+      require(resolve() == nullptr, "Retired emitters must not bind to a replacement allocation with the same public ID.");
+    }
+
     static void testSpawnContextFindsSystem(bool matchingMaterialHashes, bool isExternal) {
       OpaqueMaterialData opaque;
       opaque.setRoughnessConstant(0.375f);
@@ -96,6 +120,7 @@ namespace dxvk {
 
 int main() {
   try {
+    dxvk::ParticleSystemLookupTestAccess::testEmitterSurvivesCompaction();
     for (const bool isExternal : { false, true }) {
       dxvk::ParticleSystemLookupTestAccess::testSpawnContextFindsSystem(false, isExternal);
       dxvk::ParticleSystemLookupTestAccess::testSpawnContextFindsSystem(true, isExternal);
