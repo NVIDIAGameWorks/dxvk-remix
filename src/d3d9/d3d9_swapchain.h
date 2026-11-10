@@ -225,6 +225,10 @@ namespace dxvk {
     
     void SubmitPresent(const vk::PresenterSync& Sync, uint32_t FrameId, uint32_t imageIndex);
 
+    // NV-DXVK start: DLFG integration
+    void SubmitSkippedFrame();
+    // NV-DXVK end
+
     void SynchronizePresent();
 
     // NV-DXVK start: input-queue liveness ping
