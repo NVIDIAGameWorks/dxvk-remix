@@ -723,8 +723,13 @@ namespace dxvk {
         
         if (captureScreenImage && captureDebugImage) {
           takeScreenshot("baseReflectivity", rtOutput.m_primaryBaseReflectivity.image(Resources::AccessType::Read));
-          takeScreenshot("sharedSubsurfaceData", rtOutput.m_sharedSubsurfaceData.image);
-          takeScreenshot("sharedSubsurfaceDiffusionProfileData", rtOutput.m_sharedSubsurfaceDiffusionProfileData.image);
+          // The subsurface buffers only exist while the scene has subsurface or thin opaque materials, see Resources::onFrameBegin.
+          if (rtOutput.m_sharedSubsurfaceData.isValid()) {
+            takeScreenshot("sharedSubsurfaceData", rtOutput.m_sharedSubsurfaceData.image);
+          }
+          if (rtOutput.m_sharedSubsurfaceDiffusionProfileData.isValid()) {
+            takeScreenshot("sharedSubsurfaceDiffusionProfileData", rtOutput.m_sharedSubsurfaceDiffusionProfileData.image);
+          }
         }
 
         // Demodulation
