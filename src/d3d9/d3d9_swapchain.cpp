@@ -1185,11 +1185,21 @@ namespace dxvk {
     ++m_frameId;
     SyncFrameLatency();
 
+    // NV-DXVK start: DLFG integration
+    bool skipped = false;
+    // NV-DXVK end
+
     for (uint32_t i = 0; i < SyncInterval || i < 1; i++) {
       SynchronizePresent();
 
       // NV-DXVK start: DLFG integration
       vk::Presenter* presenter = GetPresenter();
+
+      // Recreating the swapchain creates none while the window client area is empty.
+      if (!presenter->hasSwapChain()) {
+        skipped = true;
+        break;
+      }
       // NV-DXVK end
       
       // Presentation semaphores and WSI swap chain image
@@ -1208,6 +1218,11 @@ namespace dxvk {
         RecreateSwapChain(m_vsync);
         
         // NV-DXVK start: DLFG integration
+        if (!presenter->hasSwapChain()) {
+          skipped = true;
+          break;
+        }
+
         info = presenter->info();
         status = presenter->acquireNextImage(sync, imageIndex);
         // NV-DXVK end
@@ -1215,6 +1230,12 @@ namespace dxvk {
         if (status == VK_SUBOPTIMAL_KHR)
           break;
       }
+
+      // NV-DXVK start: DLFG integration
+      if (skipped) {
+        break;
+      }
+      // NV-DXVK end
 
       m_context->beginRecording(
         m_device->createCommandList());
@@ -1247,6 +1268,13 @@ namespace dxvk {
 
       SubmitPresent(sync, i, imageIndex);
     }
+
+    // NV-DXVK start: DLFG integration
+    // A skipped frame still signals its frame latency fence, otherwise the next frame would wait for it forever.
+    if (skipped) {
+      SubmitSkippedFrame();
+    }
+    // NV-DXVK end
 
     // Rotate swap chain buffers so that the back
     // buffer at index 0 becomes the front buffer.
@@ -1323,6 +1351,26 @@ namespace dxvk {
 
     m_parent->FlushCsChunk();
   }
+
+  // NV-DXVK start: DLFG integration
+  void D3D9SwapChainEx::SubmitSkippedFrame() {
+    ScopedCpuProfileZone();
+
+    // Signal from a submission, so the fence still advances in order behind earlier frames.
+    m_context->beginRecording(m_device->createCommandList());
+    m_context->signal(m_frameLatencySignal, m_frameId);
+
+    // The callback holds its own device reference, because the swapchain can be released before the CS thread runs it.
+    m_parent->EmitCs([
+      cDevice      = m_device,
+      cCommandList = m_context->endRecording()
+    ] (DxvkContext* ctx) {
+      cDevice->submitCommandList(cCommandList, VK_NULL_HANDLE, VK_NULL_HANDLE);
+    });
+
+    m_parent->FlushCsChunk();
+  }
+  // NV-DXVK end
 
   void D3D9SwapChainEx::SynchronizePresent() {
     ScopedCpuProfileZone();

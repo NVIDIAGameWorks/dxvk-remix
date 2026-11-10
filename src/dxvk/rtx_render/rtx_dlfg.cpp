@@ -243,6 +243,11 @@ namespace dxvk {
       return lastStatus;
     }
 
+    // There are no backbuffers to hand out while the presenter has no swapchain.
+    if (!hasSwapChain()) {
+      return VK_ERROR_OUT_OF_DATE_KHR;
+    }
+
     m_backbufferIndex = (m_backbufferIndex + 1) % m_appRequestedImageCount;
 
     // stall until the image is available
@@ -320,13 +325,30 @@ namespace dxvk {
 
   vk::PresenterInfo DxvkDLFGPresenter::info() const {
     vk::PresenterInfo ret = vk::Presenter::info();
-    ret.imageCount = m_appRequestedImageCount;
+    // Like the base presenter, report no images while there is no swapchain.
+    ret.imageCount = hasSwapChain() ? m_appRequestedImageCount : 0;
     return ret;
   }
 
   void DxvkDLFGPresenter::createBackbuffers() {
     // note: assumes queue is idle and m_presentThread.mutex is locked
     assert(m_presentQueue.empty());
+
+    // The base presenter creates no swapchain while the window client area is empty (e.g. minimized),
+    // leaving a zero extent and VK_FORMAT_UNDEFINED. Hold no backbuffers until a swapchain exists.
+    if (!hasSwapChain()) {
+      m_backbufferImages.clear();
+      m_backbufferViews.clear();
+      m_backbufferAcquireSemaphores.clear();
+      m_backbufferPresentSemaphores.clear();
+      m_backbufferInFlight.clear();
+      m_backbufferIndex = 0;
+
+      m_swapchainImages.clear();
+      m_swapchainImageViews.clear();
+      m_swapchainImageLayouts.clear();
+      return;
+    }
 
     DxvkImageCreateInfo info;
     info.type             = VK_IMAGE_TYPE_2D;
