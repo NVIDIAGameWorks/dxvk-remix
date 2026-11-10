@@ -51,11 +51,15 @@ namespace dxvk {
     struct SpawnContext {
       uint32_t numberOfParticles;
       uint32_t instanceId;
+      uint64_t instanceIdentity;
       XXH64_hash_t particleSystemHash;
       uint32_t particleOffset;
       uint32_t particleMapOffset;
       uint32_t emitterObjectPickingValue;
     };
+
+    static const RtInstance* resolveSpawnInstance(const SpawnContext& spawn, const std::vector<RtInstance*>& instances,
+      std::unordered_map<uint64_t, const RtInstance*>& identities, bool& identitiesBuilt);
 
     class ConservativeCounter : public RcObject {
       const uint32_t m_framesInFlight;
@@ -315,11 +319,11 @@ namespace dxvk {
       *
       * \param ctx                Command list to perform any potential allocation clears with.
       * \param desc               Description for the particle system.
-      * \param instanceIdx        This is the index into the vector of instances held by instance manager.
+      * \param instance           Emitter whose stable identity survives scene compaction.
       * \param drawCallState      The current draw call state referencing material info.
       * \param renderMaterialData The material preference to apply to particle system
       */
-    void spawnParticles(DxvkContext* ctx, const RtxParticleSystemDesc& desc, const uint32_t instanceIdx, const DrawCallState& drawCallState, const MaterialData& overrideMaterial);
+    void spawnParticles(DxvkContext* ctx, const RtxParticleSystemDesc& desc, const RtInstance& instance, const DrawCallState& drawCallState, const MaterialData& overrideMaterial);
 
     /**
       * Issues the draw state (vertex buffer, index buffer) for rendering particles

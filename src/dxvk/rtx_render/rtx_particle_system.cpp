@@ -576,7 +576,7 @@ namespace dxvk {
     return numParticles;
   }
 
-  void RtxParticleSystemManager::spawnParticles(DxvkContext* ctx, const RtxParticleSystemDesc& desc, const uint32_t instanceId, const DrawCallState& drawCallState, const MaterialData& renderMaterialData) {
+  void RtxParticleSystemManager::spawnParticles(DxvkContext* ctx, const RtxParticleSystemDesc& desc, const RtInstance& instance, const DrawCallState& drawCallState, const MaterialData& renderMaterialData) {
     ScopedCpuProfileZone();
     if (!enable() || !enableSpawning()) {
       return;
@@ -609,7 +609,8 @@ namespace dxvk {
     spawnCtx.numberOfParticles = numParticles;
     spawnCtx.particleOffset = particleSystem->context.particleHeadOffset;
     spawnCtx.particleMapOffset = uint32_t(particleSystem->spawnContextParticleMap.size());
-    spawnCtx.instanceId = instanceId;
+    spawnCtx.instanceId = instance.getVectorIdx();
+    spawnCtx.instanceIdentity = instance.getCacheIdentity();
     spawnCtx.particleSystemHash = particleSystem->getLookupHash();
     spawnCtx.emitterObjectPickingValue = drawCallState.getParticleObjectPickingValue();
 
@@ -853,6 +854,31 @@ namespace dxvk {
     return motion.discontinuity ? currTransform : prevTransform;
   }
 
+  const RtInstance* RtxParticleSystemManager::resolveSpawnInstance(const SpawnContext& spawn,
+      const std::vector<RtInstance*>& instances, std::unordered_map<uint64_t, const RtInstance*>& identities, bool& identitiesBuilt) {
+    if (spawn.instanceId < instances.size()) {
+      const auto* pCandidate = instances[spawn.instanceId];
+      if (pCandidate != nullptr && pCandidate->getCacheIdentity() == spawn.instanceIdentity) {
+        return pCandidate;
+      }
+    }
+
+    // Scene GC can swap the last instance into an earlier slot after births are queued.
+    // Resolve moved emitters once per frame, without dereferencing retired allocations.
+    if (!identitiesBuilt) {
+      identities.reserve(instances.size());
+      for (const auto* pInstance : instances) {
+        if (pInstance != nullptr) {
+          identities.emplace(pInstance->getCacheIdentity(), pInstance);
+        }
+      }
+      identitiesBuilt = true;
+    }
+
+    const auto found = identities.find(spawn.instanceIdentity);
+    return found != identities.end() ? found->second : nullptr;
+  }
+
   void RtxParticleSystemManager::writeSpawnContextsToGpu(RtxContext* ctx) {
     if (!m_spawnContexts.size()) {
       return;
@@ -867,6 +893,10 @@ namespace dxvk {
       m_spawnDistributions.resize(m_spawnContexts.size());
     }
 
+    const auto& instances = ctx->getSceneManager().getInstanceTable();
+    std::unordered_map<uint64_t, const RtInstance*> identities;
+    bool identitiesBuilt = false;
+
     // Align the data
     std::vector<GpuSpawnContext> gpuSpawnContexts(m_spawnContexts.size());
     for (auto spawnCtxIt = m_spawnContexts.begin(); spawnCtxIt != m_spawnContexts.end(); spawnCtxIt++) {
@@ -874,7 +904,7 @@ namespace dxvk {
       const uint32_t contextIdx = spawnCtxIt - m_spawnContexts.begin();
       GpuSpawnContext& gpuCtx = gpuSpawnContexts[contextIdx];
 
-      const RtInstance* pTargetInstance = spawnCtx.instanceId < ctx->getSceneManager().getInstanceTable().size() ? ctx->getSceneManager().getInstanceTable()[spawnCtx.instanceId] : nullptr;
+      const RtInstance* pTargetInstance = resolveSpawnInstance(spawnCtx, instances, identities, identitiesBuilt);
 
       if (pTargetInstance == nullptr) {
         // Reserved births must stay in sync with the ring head and spawn-context mapping.
