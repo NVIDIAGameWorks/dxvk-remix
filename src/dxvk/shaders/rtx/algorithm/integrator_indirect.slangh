@@ -256,7 +256,7 @@ void integratePathVertex(
     unorderedResolveRay.coneRadius = pathState.coneRadius;
     unorderedResolveRay.spreadAngle = cb.screenSpacePixelSpreadHalfAngle;
     unorderedResolveRay.direction = pathState.direction;
-    unorderedResolveRay.tMax = rayHitInfo.hasHit ? rayHitInfo.hitDistance * kUnorderedResolveRayLengthening : floatMax;
+    unorderedResolveRay.tMax = getUnorderedRayMaxDistance(rayHitInfo);
 
     uint numUnorderedInteractions = 0;
     uint8_t unorderedRayMask = OBJECT_MASK_UNORDERED_ALL_BLENDED

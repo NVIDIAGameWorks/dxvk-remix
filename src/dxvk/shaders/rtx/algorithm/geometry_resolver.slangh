@@ -2083,7 +2083,7 @@ void geometryResolverVertex(
   unorderedResolveRay.coneRadius = geometryResolverState.coneRadius;
   unorderedResolveRay.spreadAngle = cb.screenSpacePixelSpreadHalfAngle;
   unorderedResolveRay.direction = geometryResolverState.direction;
-  unorderedResolveRay.tMax = rayHitInfo.hasHit ? rayHitInfo.hitDistance * kUnorderedResolveRayLengthening : floatMax;
+  unorderedResolveRay.tMax = getUnorderedRayMaxDistance(rayHitInfo);
 
   uint numUnorderedInteractions = 0;
   uint8_t unorderedRayMask = convertPrimaryRayMaskToUnordered(geometryResolverState.rayMask, OBJECT_MASK_ALL_UNORDERED);
@@ -2873,7 +2873,7 @@ void geometryPSRResolverVertex(
   unorderedResolveRay.coneRadius = geometryPSRResolverState.coneRadius;
   unorderedResolveRay.spreadAngle = cb.screenSpacePixelSpreadHalfAngle;
   unorderedResolveRay.direction = geometryPSRResolverState.direction;
-  unorderedResolveRay.tMax = rayHitInfo.hasHit ? rayHitInfo.hitDistance * kUnorderedResolveRayLengthening : floatMax;
+  unorderedResolveRay.tMax = getUnorderedRayMaxDistance(rayHitInfo);
 
   uint numUnorderedInteractions = 0;
   uint8_t unorderedRayMask = convertPrimaryRayMaskToUnordered(geometryPSRResolverState.rayMask, OBJECT_MASK_ALL_UNORDERED);
@@ -3689,6 +3689,7 @@ bool resolveDecalAtSurface(
   vec3 viewDirection,
   vec3 surfacePosition,
   float hitDistance,
+  bool isTranslucentSurface,
   float coneRadius,
   PortalSpace2BitsType portalSpace,
   uint8_t rayMask,
@@ -3725,7 +3726,7 @@ bool resolveDecalAtSurface(
 
   if (rayTraceable)
   {
-    unorderedResolveRay.tMax = localHitDistance * kUnorderedResolveRayLengthening;
+    unorderedResolveRay.tMax = getUnorderedRayMaxDistance(localHitDistance, isTranslucentSurface);
 
     uint4 decalMemory = uint4(0);
     f16vec3 decalEmissiveRadiance = f16vec3(0.0h);
@@ -3835,6 +3836,7 @@ bool geometryResolverResolveDecalBeforePSR(
     rayInteraction.viewDirection,
     surfaceInteraction.position,
     hitDistance,
+    materialType == surfaceMaterialTypeTranslucent,
     rayInteraction.coneRadius,
     portalSpace,
     rayMask,
@@ -4024,6 +4026,7 @@ void geometryResolverApplyUnorderedDecalsCompacted(uvec2 pixelCoordinate)
     -vec3(primaryRay.direction),
     aliasedData0.PrimaryWorldPositionWorldTriangleNormal[pixelCoordinate].xyz,
     hitDistance,
+    guideSurfaceKind(specularAlbedoGuide) == kGuideSurfaceTranslucent,
     coneRadius,
     geometryFlags.portalSpace,
     rayMask,
@@ -4127,6 +4130,9 @@ void geometryResolverApplyUnorderedDecalsPass(ivec2 pixelCoordinate)
 
   const uint8_t rayMask = decalPassRayMask(geometryFlags.objectMask, geometryFlags.portalSpace);
 
+  const bool isTranslucentSurface =
+    getGBufferMaterialType(SharedMaterialData0[pixelCoordinate].x) == surfaceMaterialTypeTranslucent;
+
   uint numUnorderedInteractions;
   int surfaceIndex;
   DecalMaterialInteraction decalMaterialInteraction;
@@ -4136,6 +4142,7 @@ void geometryResolverApplyUnorderedDecalsPass(ivec2 pixelCoordinate)
     minimalRayInteraction.viewDirection,
     minimalSurfaceInteraction.position,
     primaryHitDistance,
+    isTranslucentSurface,
     minimalRayInteraction.coneRadius,
     geometryFlags.portalSpace,
     rayMask,
