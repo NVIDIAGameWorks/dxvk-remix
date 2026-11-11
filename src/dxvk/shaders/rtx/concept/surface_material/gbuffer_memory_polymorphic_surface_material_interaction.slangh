@@ -23,11 +23,16 @@
 
 // GBuffer Memory Polymorphic Surface Material Interaction Functions
 
+uint8_t getGBufferMaterialType(uint data0)
+{
+  // The high two bits of data0 store the material type.
+  return uint8_t((data0 >> 30) & surfaceMaterialTypeMask);
+}
+
 uint8_t gBufferMemoryPolymorphicSurfaceMaterialInteractionGetTypeHelper(
   GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteraction)
 {
-  // Note: High 2 bits of data0 reserved for common polymorphic type
-  return uint8_t((gBufferMemoryPolymorphicSurfaceMaterialInteraction.data0 >> 30) & surfaceMaterialTypeMask);
+  return getGBufferMaterialType(gBufferMemoryPolymorphicSurfaceMaterialInteraction.data0);
 }
 
 GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteractionCreateInternal(

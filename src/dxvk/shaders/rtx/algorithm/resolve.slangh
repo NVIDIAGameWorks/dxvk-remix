@@ -865,6 +865,23 @@ void conditionallyStoreDecal(
 // The value has been determined experimentally.
 static const float kUnorderedResolveRayLengthening = 1.001;
 
+float getUnorderedRayMaxDistance(float hitDistance, bool isTranslucentSurface)
+{
+  return isTranslucentSurface ? hitDistance : hitDistance * kUnorderedResolveRayLengthening;
+}
+
+float getUnorderedRayMaxDistance(RayHitInfo rayHitInfo)
+{
+  if (!rayHitInfo.hasHit)
+  {
+    return floatMax;
+  }
+
+  return getUnorderedRayMaxDistance(
+    rayHitInfo.hitDistance,
+    calculateMaterialType(rayHitInfo) == surfaceMaterialTypeTranslucent);
+}
+
 // Translates the ray mask for the main TLAS into the ray mask for the unordered TLAS.
 uint8_t convertPrimaryRayMaskToUnordered(uint8_t primaryRayMask, uint8_t unorderedRayMask)
 {
