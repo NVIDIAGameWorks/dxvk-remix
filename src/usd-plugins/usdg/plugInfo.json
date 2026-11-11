@@ -1,0 +1,33 @@
+{
+    "Plugins": [
+        {
+            "Info": {
+                "Types": {
+                    "UsdUsdgFileFormat": {
+                        "bases": [
+                            "SdfFileFormat"
+                        ], 
+                        "displayName": "USDG File Format", 
+                        "extensions": [
+                            "usdg"
+                        ], 
+                        "formatId": "usdg", 
+                        "primary": true, 
+                        "target": "usd"
+                    }, 
+                    "Usd_UsdgResolver": {
+                        "bases": [
+                            "ArPackageResolver"
+                        ], 
+                        "extensions": [
+                            "usdg"
+                        ]
+                    }
+                }
+            },
+            "LibraryPath": "",
+            "Name": "USDGFileFormat",
+            "Type": "library"
+        }
+    ]
+}

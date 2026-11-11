@@ -625,6 +625,8 @@ if enable_tests
   subdir('tests')
 endif
 
+subdir('tools/usdg-converter')
+
 hdremix_arch_outdir = dxvk_is_woa_ec ? 'bin_a64ec' : 'bin'
 hdremix_outdir = join_paths(meson.current_source_dir(), 'nv-private', 'hdremix', hdremix_arch_outdir, get_option('buildtype'))
 
@@ -814,6 +816,16 @@ if dxvk_is_ninja or dxvk_is_woa_ec
       meson.add_install_script(
         join_paths(global_src_root_norm, 'scripts-common/install_file_in_dir.bat'),
         src_exe, output_path,
+        install_tag: target_suffix
+      )
+    endif
+
+    # install usdg-converter for sdk and output only
+    if target_suffix == 'output' or target_suffix == 'sdk'
+      filesToInstall = requires_pdb ? '*.*' : '*.exe'
+      meson.add_install_script(
+        join_paths(global_src_root_norm, 'scripts-common/install_file_in_dir.bat'),
+        join_paths(current_build_dir_norm, 'tools/usdg-converter', filesToInstall), output_path,
         install_tag: target_suffix
       )
     endif

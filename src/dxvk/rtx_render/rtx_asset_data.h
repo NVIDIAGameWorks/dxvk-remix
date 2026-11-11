@@ -74,6 +74,10 @@ namespace dxvk {
              other.numLayers == numLayers &&
              other.lastWriteTime == lastWriteTime;
     }
+
+    uint32_t tailStartLevel() const {
+      return mipLevels - mininumLevelsToUpload;
+    }
   };
 
   class AssetData : public RcObject {

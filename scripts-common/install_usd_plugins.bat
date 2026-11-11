@@ -29,17 +29,28 @@ for /D %%D in ("%SRC_BASE%\*") do (
         mkdir "!DST!\resources"
     )
 
-    REM Copy plugInfo.json into resources (required)
-    copy /y "!PLUGDIR!\plugInfo.json" "!DST!\resources\" >nul
+    REM USDG is special since it does not have generated plugInfo.json and goes to Remix root
+    if /I "!NAME!" == "usdg" (
+        REM Copy plugInfo.json
+        copy /y "%MESON_SOURCE_ROOT%\src\usd-plugins\usdg\plugInfo.json" "!DST!\resources\" >nul
 
-    REM Copy plugin binaries	
-    for %%L in ("!PLUGDIR!\*.dll") do (
-        copy /y "%%~L" "!DST!\" >nul
-    )
+        REM Copy USDG plugin binaries to Remix root
+        for %%L in ("!PLUGDIR!\*.dll") do (
+            copy /y "%%~L" "%INSTALL_ROOT%\" >nul
+        )
+    ) else (
+        REM Copy plugInfo.json into resources - required
+        copy /y "!PLUGDIR!\plugInfo.json" "!DST!\resources\" >nul
 
-    REM generatedSchema.usda lives at the plugin root (ResourcePath ".").
-    if exist "!PLUGDIR!\generatedSchema.usda" (
-        copy /y "!PLUGDIR!\generatedSchema.usda" "!DST!\" >nul
+        REM Copy plugin binaries
+        for %%L in ("!PLUGDIR!\*.dll") do (
+            copy /y "%%~L" "!DST!\" >nul
+        )
+
+        REM generatedSchema.usda lives at the plugin root, ResourcePath is the dot.
+        if exist "!PLUGDIR!\generatedSchema.usda" (
+            copy /y "!PLUGDIR!\generatedSchema.usda" "!DST!\" >nul
+        )
     )
 )
 

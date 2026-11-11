@@ -28,11 +28,23 @@
 #include "rtx_io.h"
 #include "dxvk_scoped_annotation.h"
 #include <gli/gli.hpp>
+#ifdef WITH_RTXIO
+#include <rtxio/rtxioCompression.h>
+#endif
+#include <shlwapi.h>
 
 namespace dxvk {
 
   // TODO: cache texture mips in CPU-RAM that are less than 32x32 (2^5) to reduce disk-access
   static constexpr uint8_t kMipLevelsToCache = 5;
+
+  inline size_t getImageLayerSize(VkFormat format, const VkExtent3D& extent0, uint32_t level) {
+    const DxvkFormatInfo* formatInfo = imageFormatInfo(format);
+    const VkExtent3D levelExtent = util::computeMipLevelExtent(extent0, level);
+    const VkExtent3D elementCount = util::computeBlockCount(levelExtent, formatInfo->blockSize);
+    const size_t rowPitch = elementCount.width * formatInfo->elementSize;
+    return rowPitch * elementCount.height;
+  }
 
   class GliTextureData : public AssetData {
     AssetType type() const {
@@ -376,6 +388,12 @@ namespace dxvk {
         throw DxvkError("Asset description was not found in the package!");
       }
 
+      auto dataBlobDesc = package->getDataBlobDesc(m_assetDesc->baseBlobIdx);
+
+      if (dataBlobDesc == nullptr) {
+        throw DxvkError("Asset data blob was not found in the package!");
+      }
+
       m_info.type = type();
       m_info.compression = compression();
       m_info.format = static_cast<VkFormat>(m_assetDesc->format);
@@ -386,7 +404,7 @@ namespace dxvk {
       m_info.mininumLevelsToUpload = std::clamp<uint16_t>(m_assetDesc->numTailMips, 1, m_assetDesc->numMips);
       m_info.numLayers = m_assetDesc->arraySize;
       m_info.lastWriteTime = std::filesystem::last_write_time(m_package->getFilename());
-      m_info.filename = m_package->getFilename().c_str();
+      m_info.filename = m_package->getVolumeFilename(dataBlobDesc->volume);
 
       m_hash = XXH64_std_hash<std::string> {}(m_package->getFilename());
       m_hash ^= XXH3_64bits(&m_assetIdx, sizeof(m_assetIdx));
@@ -404,6 +422,7 @@ namespace dxvk {
       case AssetPackage::AssetDesc::Type::IMAGE_3D:
         return AssetType::Image3D;
       case AssetPackage::AssetDesc::Type::UNKNOWN:
+      default:
         break;
       }
 
@@ -423,7 +442,7 @@ namespace dxvk {
 
     VkExtent3D extent(int level) const {
       if (type() == AssetType::Buffer) {
-        return VkExtent3D { m_assetDesc->size, 0, 1 };
+        return VkExtent3D { m_assetDesc->size, 1, 1 };
       }
 
       return VkExtent3D{
@@ -435,19 +454,61 @@ namespace dxvk {
 
     const void* data(int layer, int level) override {
       const uint32_t blobIdx = getBlobIndex(layer, 0, level);
+      const bool isTail = isTailLevel(level);
 
-      const auto& it = m_data.find(blobIdx);
-      if (it != m_data.end()) {
-        return it->second.data();
+      const auto it = m_data.find(blobIdx);
+      if (it != m_data.end() && !it->second.empty()) {
+        const uint8_t* data = it->second.data();
+
+        if (type() == AssetType::Buffer || !isTail) {
+          return data;
+        }
+
+        // For images we need to handle the tail
+        return data + getTailOffset(level);
       }
 
       if (auto blobDesc = m_package->getDataBlobDesc(blobIdx)) {
-        if (blobDesc->compression != 0) {
-          throw DxvkError("Compressed data blobs are not supported for CPU readback.");
+#ifdef WITH_RTXIO
+        if (blobDesc->compression != RTXIO_COMPRESSION_NONE &&
+          blobDesc->compression != RTXIO_COMPRESSION_GDEFLATE_1_0) {
+          throw DxvkError("Unsupported asset data compression method discovered.");
         }
+#else
+        if (blobDesc->compression != 0) {
+          throw DxvkError("Compressed data blobs cannot be read without RTX IO.");
+        }
+#endif
 
         std::vector<uint8_t> data(blobDesc->size);
         m_package->readDataBlob(blobIdx, data.data(), data.size());
+
+#ifdef WITH_RTXIO
+        if (blobDesc->compression == RTXIO_COMPRESSION_GDEFLATE_1_0) {
+          size_t uncompressedSize;
+
+          if (type() != AssetType::Buffer) {
+            if (!isTail) {
+              // Calculate loose image layer uncompressed size
+              uncompressedSize = getImageLayerSize(m_info.format, m_info.extent, level);
+            } else {
+              // Handle tail images
+              buildTailLayout();
+              uncompressedSize = getTailOffset(m_assetDesc->numMips);
+            }
+          } else {
+            uncompressedSize = m_info.extent.width;
+          }
+
+          std::vector<uint8_t> uncompressed(uncompressedSize);
+
+          if (!rtxioDecompress(uncompressed.data(), uncompressedSize, data.data(), data.size(), 8)) {
+            throw DxvkError("Unable to decompress asset data.");
+          }
+
+          data = std::move(uncompressed);
+        }
+#endif
 
         const auto [insertedIterator, insertionSuccessful] = m_data.try_emplace(blobIdx, std::move(data));
 
@@ -456,7 +517,14 @@ namespace dxvk {
         // (due to using clear rather than freeing the memory fully) then this logic will have to change.
         assert(insertionSuccessful);
 
-        return insertedIterator->second.data();
+        const uint8_t* rawData = insertedIterator->second.data();
+
+        if (type() == AssetType::Buffer || !isTail) {
+          return rawData;
+        }
+
+        buildTailLayout();
+        return rawData + getTailOffset(level);
       }
 
       return nullptr;
@@ -491,6 +559,35 @@ namespace dxvk {
     }
 
   private:
+    // Returns the byte offset of the given level inside a layer's tail blob.
+    // Passing numMips returns the size of the whole tail blob.
+    // Each layer has its own tail blob that holds the tail mips tightly packed,
+    // so the layout is the same for all layers.
+    size_t getTailOffset(uint32_t level) const {
+      return m_tailLayout[level - m_info.tailStartLevel()];
+    }
+
+    void buildTailLayout() {
+      if (!m_tailLayout.empty()) {
+        return;
+      }
+
+      m_tailLayout.reserve(m_assetDesc->numTailMips + 1);
+
+      uint32_t tailImageOffset = 0;
+      for (uint32_t n = m_info.tailStartLevel(); n < m_assetDesc->numMips; n++) {
+        m_tailLayout.push_back(tailImageOffset);
+        tailImageOffset += getImageLayerSize(m_info.format, m_info.extent, n);
+      }
+
+      // The last entry is the total size of the tail blob.
+      m_tailLayout.push_back(tailImageOffset);
+    }
+
+    bool isTailLevel(int level) const {
+      return type() != AssetType::Buffer && level >= m_assetDesc->numMips - m_assetDesc->numTailMips;
+    }
+
     uint32_t getBlobIndex(int       layer,
                           int       face,
                           int       level) const {
@@ -504,11 +601,13 @@ namespace dxvk {
 
       const uint32_t numLooseMips =
         m_assetDesc->numMips - m_assetDesc->numTailMips;
-      const uint32_t baseBlobIdx =
-        level >= numLooseMips ? m_assetDesc->tailBlobIdx :
-        level + m_assetDesc->baseBlobIdx;
 
-      return baseBlobIdx + layer * numLooseMips;
+      // Loose blobs are stored layer-major and followed by one tail blob per layer.
+      if (level >= numLooseMips) {
+        return m_assetDesc->tailBlobIdx + layer;
+      }
+
+      return m_assetDesc->baseBlobIdx + level + layer * numLooseMips;
     }
 
     Rc<AssetPackage> m_package;
@@ -516,6 +615,7 @@ namespace dxvk {
     uint32_t m_assetIdx;
 
     std::unordered_map<uint32_t, std::vector<uint8_t>> m_data;
+    std::vector<uint32_t> m_tailLayout;
   };
 
   AssetDataManager::AssetDataManager() {
@@ -579,24 +679,36 @@ namespace dxvk {
       // New path: mount packages inline so we hold a direct ref without a second search.
       Logger::info(str::format("Adding asset search path: ", searchPath));
       SearchPathEntry& entry = rebuilt.emplace_back(SearchPathEntry { searchPath, PackageSet {} });
-      if (RtxIo::enabled()) {
-        std::error_code ec;
-        for (const auto& fsEntry : std::filesystem::directory_iterator(searchPath, ec)) {
-          if (fsEntry.path().extension() == ".pkg" || fsEntry.path().extension() == ".rtxio") {
-            const auto packagePath = fsEntry.path().string();
-            Rc<AssetPackage> package = new AssetPackage(packagePath);
-            if (package->initialize()) {
-              entry.packages.emplace(packagePath, std::move(package));
-              Logger::info(str::format("Mounted a package at: ", fsEntry.path()));
-            } else {
-              Logger::warn(str::format("Corrupted package discovered at: ", fsEntry.path()));
-            }
-          }
+
+      // Find the packages
+      std::error_code ec;
+      std::vector<std::filesystem::directory_entry> packages;
+      for (const auto& entry : std::filesystem::directory_iterator(searchPath, ec)) {
+        if (entry.path().extension() == ".pkg" || entry.path().extension() == ".rtxio") {
+          packages.push_back(entry);
         }
-        // error_code overload: a mod directory that vanishes mid-reload only warns here.
-        if (ec) {
-          Logger::warn(str::format("Could not enumerate packages under: ", searchPath,
-                                   " (", ec.message(), ")"));
+      }
+
+      // error_code overload: a mod directory that vanishes mid-reload only warns here.
+      if (ec) {
+        Logger::warn(str::format("Could not enumerate packages under: ", searchPath,
+                                 " (", ec.message(), ")"));
+      }
+
+      // Sort packages in natural order
+      std::sort(packages.begin(), packages.end(), [](const auto& a, const auto& b) {
+        return ::StrCmpLogicalW(a.path().filename().wstring().c_str(),
+                                b.path().filename().wstring().c_str()) < 0;
+      });
+
+      for (const auto& fsEntry : packages) {
+        const auto packagePath = fsEntry.path().string();
+        Rc<AssetPackage> package = new AssetPackage(packagePath);
+        if (package->initialize()) {
+          entry.packages.emplace_back(std::move(package));
+          Logger::info(str::format("Mounted a package at: ", fsEntry.path()));
+        } else {
+          Logger::warn(str::format("Corrupted package discovered at: ", fsEntry.path()));
         }
       }
     }
@@ -614,28 +726,98 @@ namespace dxvk {
     }
   }
 
+  void AssetDataManager::mountPackage(const std::string& path, SearchPathPlacement placement) {
+    // Make path preferred and lowercase
+    auto packagePath = std::filesystem::absolute(path).make_preferred().string();
+    std::for_each(packagePath.begin(), packagePath.end(), [](char& c) { c = tolower(c); });
+
+    auto packageSearchPath = std::filesystem::path(packagePath).remove_filename().string();
+
+    SearchPathEntry* entry = nullptr;
+
+    std::lock_guard<std::mutex> lock(m_searchPathMutex);
+
+    for (auto& searchPathEntry : m_searchPaths) {
+      if (searchPathEntry.path == packageSearchPath) {
+        for (const auto& package : searchPathEntry.packages) {
+          if (package->getFilename() == packagePath) {
+            // already mounted
+            return;
+          }
+        }
+        entry = &searchPathEntry;
+        break;
+      }
+    }
+
+    const bool isNewEntry = entry == nullptr;
+
+    if (entry == nullptr) {
+      m_searchPaths.push_back({});
+      entry = &m_searchPaths.back();
+    }
+
+    entry->path = packageSearchPath;
+
+    Rc<AssetPackage> package = new AssetPackage(packagePath);
+    if (package->initialize()) {
+      if (placement == SearchPathPlacement::Bottom) {
+        entry->packages.emplace_front(std::move(package));
+      } else {
+        entry->packages.emplace_back(std::move(package));
+      }
+      Logger::info(str::format("Mounted a package at: ", packagePath));
+    } else {
+      Logger::warn(str::format("Corrupted package discovered at: ", packagePath));
+      if (isNewEntry) {
+        m_searchPaths.pop_back();
+        return;
+      }
+    }
+
+    FileWatch::get().installDir(packageSearchPath.c_str());
+  }
+
   Rc<AssetData> AssetDataManager::findAsset(const std::string& filename, bool allowOnlyPartialDdsLoader) {
     ScopedCpuProfileZone();
 
+    if (filename.empty()) {
+      return {};
+    }
+
     const char* extension = strrchr(filename.c_str(), '.');
     const bool isDDS = extension ? _stricmp(extension, ".dds") == 0 : false;
-    // Only allow DDS even though GLI supports KTX and KMG formats as well: we haven't tested those.
-    const bool isSupported = isDDS;
-
-    if (!isSupported) {
-      const char* message = "Unsupported image file format, use the RTX-Remix toolkit and ingest the following asset: ";
-      if (RtxOptions::Automation::suppressAssetLoadingErrors()) {
-        Logger::warn(str::format(message, filename));
-      } else {
-        Logger::err(str::format(message, filename));
-      }
-      return nullptr;
-    }
 
     if (isDDS && RtxOptions::usePartialDdsLoader()) {
       Rc<DdsTextureData> dds = new DdsTextureData;
       if (dds->load(filename)) {
         return dds;
+      }
+    }
+
+    // Held across the whole walk: a USD mod rebuild finishing on the render thread
+    // mutates m_searchPaths, and this runs on another mod's rebuild worker. The
+    // empty() early-out folded into the loop rather than read outside the lock.
+    std::lock_guard<std::mutex> lock(m_searchPathMutex);
+    // Highest precedence last, so walk the list backwards
+    for (auto itBase = m_searchPaths.rbegin(); itBase != m_searchPaths.rend(); ++itBase) {
+      const auto& basePath = itBase->path;
+
+      std::string relativePath = filename;
+
+      // Check for absolute path and trim the base part
+      if ((filename[1] == ':' || filename[0] == '\\') && basePath.length() < filename.length()) {
+        relativePath = filename.substr(basePath.length());
+      }
+
+      auto& packages = itBase->packages;
+
+      // Iterate package set in reverse alphabetical order
+      for (auto it = packages.rbegin(); it != packages.rend(); ++it) {
+        uint32_t assetIdx = (*it)->findAsset(relativePath);
+        if (AssetPackage::kNoAssetIdx != assetIdx) {
+          return new PackagedAssetData(*it, assetIdx);
+        }
       }
     }
 
@@ -645,32 +827,6 @@ namespace dxvk {
     //       so it's better to avoid it for texture streaming
     if (allowOnlyPartialDdsLoader) {
       return nullptr;
-    }
-
-    if (RtxIo::enabled()) {
-      // Held across the whole walk: a USD mod rebuild finishing on the render thread
-      // mutates m_searchPaths, and this runs on another mod's rebuild worker. The
-      // empty() early-out folded into the loop rather than read outside the lock.
-      std::lock_guard<std::mutex> lock(m_searchPathMutex);
-      // Highest precedence last, so walk the list backwards
-      for (auto itBase = m_searchPaths.rbegin(); itBase != m_searchPaths.rend(); ++itBase) {
-        const auto& basePath = itBase->path;
-
-        // The base path is shorter - we can try to use it
-        if (basePath.length() < filename.length()) {
-          const std::string relativePath = filename.substr(basePath.length());
-
-          auto& packages = itBase->packages;
-
-          // Iterate package set in reverse alphabetical order
-          for (auto it = packages.rbegin(); it != packages.rend(); ++it) {
-            uint32_t assetIdx = it->second->findAsset(relativePath);
-            if (AssetPackage::kNoAssetIdx != assetIdx) {
-              return new PackagedAssetData(it->second, assetIdx);
-            }
-          }
-        }
-      }
     }
 
     // Fallback to GLI

@@ -31,6 +31,8 @@
 #include "../util/util_bounding_box.h"
 #include "../util/util_vector.h"
 
+#include "../util/log/log.h"
+
 namespace lss {
   class UsdMeshUtil;
   class GeomPrimvarSampler;
@@ -38,6 +40,7 @@ namespace lss {
   class UsdMeshImporter {
   public:
     UsdMeshImporter(const pxr::UsdPrim& meshPrim, const uint32_t limitedNumBonesPerVertex);
+    virtual ~UsdMeshImporter() = default;
 
     enum Attributes : uint32_t {
       VertexPositions = 0,
@@ -52,15 +55,22 @@ namespace lss {
     };
 
     struct SubMesh {
-      SubMesh(const std::vector<uint32_t>&& ib, const pxr::UsdPrim& _prim)
-        : indexBuffer(std::move(ib))
+      explicit SubMesh(std::vector<uint32_t>&& ib, const pxr::UsdPrim& _prim)
+        : indexBuffer(std::forward<decltype(ib)>(ib))
+        , prim(_prim) {
+        numIndices = indexBuffer.size();
+      }
+
+      explicit SubMesh(size_t _numIndices, const pxr::UsdPrim& _prim)
+        : numIndices(_numIndices)
         , prim(_prim) { }
 
       std::vector<uint32_t> indexBuffer;
-      pxr::UsdPrim prim;
+      size_t numIndices;
+      const pxr::UsdPrim prim;
 
       size_t GetNumIndices() const {
-        return indexBuffer.size();
+        return numIndices;
       }
     };
 
@@ -112,7 +122,40 @@ namespace lss {
       return m_boundingBox;
     }
 
-  private:
+    virtual void CopyVertexData(void* out, size_t capacity) const {
+      const size_t vertexDataSize = GetNumVertices() * GetVertexStride();
+
+      if (vertexDataSize > capacity || out == nullptr) {
+        dxvk::Logger::err("Unable to copy vertex data: destination buffer is too small or null");
+        return;
+      }
+
+      memcpy(out, GetVertexData().data(), vertexDataSize);
+    }
+
+    virtual void CopySubmeshIndexData(uint32_t idx, void* out, size_t capacity) const {
+      if (idx >= m_meshes.size()) {
+        dxvk::Logger::err("Submesh data not found");
+        return;
+      }
+
+      const auto& submesh = m_meshes[idx];
+
+      const size_t indexDataSize = submesh.GetNumIndices() * sizeof(uint32_t);
+
+      if (indexDataSize > capacity || out == nullptr) {
+        dxvk::Logger::err("Unable to copy index data: destination buffer is too small or null");
+        return;
+      }
+
+      memcpy(out, submesh.indexBuffer.data(), indexDataSize);
+    }
+
+  protected:
+    UsdMeshImporter(const pxr::UsdPrim& meshPrim, bool inherited)
+      : m_meshPrim(pxr::UsdGeomMesh(meshPrim)) {
+    }
+
     inline static const uint32_t MaxSupportedNumBones = 256;
 
     struct IndexRange {
@@ -128,9 +171,10 @@ namespace lss {
                      std::vector<uint32_t>& indicesOut,
                      FaceToTriangleMap& triangleMapOut);
 
-    static const std::vector<uint32_t> generateSubsetIndices(const pxr::UsdGeomSubset& subset, const std::vector<uint32_t>& indices, const FaceToTriangleMap& triangleMap);
+    static std::vector<uint32_t> generateSubsetIndices(const pxr::UsdGeomSubset& subset, const std::vector<uint32_t>& indices, const FaceToTriangleMap& triangleMap);
     void generateTriangleSamplers(UsdMeshUtil& meshUtil, const pxr::VtVec3iArray& usdIndices, const pxr::VtIntArray& trianglePrimitiveParams, std::unique_ptr<GeomPrimvarSampler>* ppMeshSamplers);
     uint32_t generateVertexDeclaration(std::unique_ptr<GeomPrimvarSampler>* ppMeshSamplers);
+    void processState(const pxr::UsdPrim& meshPrim);
 
     // This class does not support copying.
     UsdMeshImporter(const UsdMeshImporter&) = delete;

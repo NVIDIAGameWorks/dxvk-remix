@@ -134,7 +134,12 @@ namespace dxvk {
     Future<ResultType> capture(LambdaType&& lambda) {
       if constexpr (sizeof(LambdaType) > sizeof(lambdaStorage)) {
         char(*__type_size)[sizeof(LambdaType)] = 1;
+#if _MSC_VER < 1900 || _MSC_VER > 1938
+        // Note: this static assert may fire for no reason on MSVC2022 <= v19.38.xxxxx.
+        // It is safe to remove since the compilation will be stopped anyway
+        // by the diagnostic type size line above.
         static_assert(false, "Task object storage space overrun!");
+#endif
       }
 
       // Create lambda in-place
@@ -341,13 +346,20 @@ namespace dxvk {
     }
 
     // Schedule a task to be executed by the thread pool
-    template <uint8_t Affinity = 0xFF, typename F, typename R = std::invoke_result_t<std::decay_t<F>>>
+    template <uint16_t Affinity = 0xFFFF, typename F, typename R = std::invoke_result_t<std::decay_t<F>>>
     Future<R> Schedule(F&& f) {
-      // Is the affinity mask valid?
-      const uint8_t affinityMask = std::min(popcnt_uint8(Affinity), m_numThread);
+      uint32_t thread;
 
-      // Schedule work on the appropriate thread
-      const uint32_t thread = fast::findNthBit(Affinity, (uint8_t) (m_schedulerIndex++ % affinityMask));
+      if constexpr (Affinity == 0xFFFF) {
+        thread = m_schedulerIndex++ % m_numThread;
+      } else {
+        // Is the affinity mask valid?
+        const uint8_t affinityMask = std::min<uint8_t>(__popcnt16(Affinity), m_numThread);
+
+        // Schedule work on the appropriate thread
+        thread = fast::findNthBit(Affinity, (uint16_t) (m_schedulerIndex++ % affinityMask));
+      }
+
       assert(thread < m_numThread);
 
       // Atomic queue is SPSC, so we don't need to take a lock here
@@ -379,6 +391,14 @@ namespace dxvk {
       }
 
       return future;
+    }
+
+    uint32_t numTasksApprox() const {
+      return m_numTasks;
+    }
+
+    bool isFullApprox() const {
+      return static_cast<uint32_t>(NumTasksPerThread * m_numThread) == numTasksApprox();
     }
 
   private:

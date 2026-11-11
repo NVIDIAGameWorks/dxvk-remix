@@ -23,7 +23,9 @@
 // If `_DEBUG` is defined but empty (which is how Tracy defines it), the USD headers have errors.
 // This breaks debug builds, but we can predefine TBB_USE_DEBUG to 1 to avoid this issue.
 #ifdef _DEBUG
+#ifndef TBB_USE_DEBUG
 #define TBB_USE_DEBUG 1
+#endif
 #endif
 
 #ifdef _MSC_VER

@@ -185,9 +185,6 @@ namespace dxvk {
           pitchPerLayer);
         levelByteOffset += levelByteSize;
 
-
-        asset.evictCache(0, level);
-
         readyMips.push_back(ReadyToCopyMip{
           /* .srcBuffer = */ dstSlice,
           /* .mipExtent = */ levelExtent,
@@ -227,6 +224,12 @@ namespace dxvk {
         /* .mip_end    = */ mip_end,
         /* .stagingbuf = */ (RtxStagingRing*)(std::is_same_v<Allocator, RtxStagingRing> ? (void*)&allocator : nullptr),
       };
+
+      // Evict all but the tail
+      for (uint32_t level = mip_begin;
+        level < std::clamp<uint32_t>(mip_end, 0, tex->m_assetData->info().tailStartLevel()); ++level) {
+        tex->m_assetData->evictCache(0, level);
+      }
 
       // Release asset source to keep the number of open file low
       tex->m_assetData->releaseSource();
