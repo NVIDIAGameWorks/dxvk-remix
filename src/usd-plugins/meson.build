@@ -1,4 +1,4 @@
-# Minimal RemixParticleSystem.dll — only registers TfType for HasAPI() support.
+# Minimal RemixParticleSystem.dll - only registers TfType for HasAPI() support.
 # Property definitions come from the codeless schema (generatedSchema.usda + plugInfo.json)
 # deployed alongside the DLL by scripts-common/install_usd_plugins.bat.
 
@@ -24,13 +24,19 @@ if usd_schema_plugins_is_woa
   usd_schema_plugins_nvusd_dir = usd_schema_plugins_isdebug ? '_external/usd_stock_arm64/debug' : '_external/usd_stock_arm64/release'
 endif
 usd_schema_plugins_nvusd_libdir = join_paths(meson.current_source_dir(), usd_schema_plugins_nvusd_dir, 'lib')
+usd_schema_plugins_nvusd_include = include_directories(usd_schema_plugins_nvusd_dir + '/include')
 
 usd_schema_plugins_deplibs = [
   'usd_arch',
   'usd_tf',
   'usd_usd',
   'usd_sdf',
+  'usd_ar',
+  'usd_trace',
+  'usd_vt',
   'usd_plug',
+  'usd_usdGeom',
+  'usd_gf' ,
   get_option('buildtype') == 'debug' ? 'tbb12_debug' : 'tbb12',
 ]
 usd_schema_plugins_linklibs = []
@@ -41,3 +47,5 @@ endforeach
 # Each plugin lives in a subdir; install_usd_plugins.bat walks those subdirs at install time.
 subdir('RemixParticleSystem')
 subdir('RemixCategories')
+subdir('usdg')
+

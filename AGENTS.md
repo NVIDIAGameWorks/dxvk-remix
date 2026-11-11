@@ -27,6 +27,7 @@ Step-by-step workflows for common tasks are in `.agents/skills/`:
 | `build-remix` | Build the project (first-time setup, incremental builds, reconfigure) |
 | `deploy-and-test-game` | Deploy to a game target, launch, and debug |
 | `run-unit-tests` | Build and run unit tests |
+| `package-mod` | Package a mod |
 
 Some additional image/capture test instructions are in `tests/rtx/dxvk_rt_testing/AGENTS.md` (private NVIDIA GitLab only).
 

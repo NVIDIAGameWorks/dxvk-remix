@@ -38,6 +38,7 @@ namespace ext {
   static const std::string usd(".usd");
   static const std::string usda(".usda");
   static const std::string usdc(".usdc");
+  static const std::string usdg(".usdg");
   static const std::string png(".png");
   static const std::string dds(".dds");
 }
@@ -46,6 +47,7 @@ enum class UsdVariant : uint8_t {
   USD               = 0,
   USDA              = 1,
   USDC              = 2,
+  USDG              = 3,
   invalidUsdVariant = 0xff
 };
 
@@ -55,7 +57,8 @@ static const struct {
 } usdExts[] = {
   { UsdVariant::USD, ext::usd },
   { UsdVariant::USDA, ext::usda },
-  { UsdVariant::USDC, ext::usdc }
+  { UsdVariant::USDC, ext::usdc },
+  { UsdVariant::USDG, ext::usdg }
 };
 
 namespace prefix {

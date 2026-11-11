@@ -71,6 +71,7 @@
 #include <pxr/usd/usdSkel/bindingAPI.h>
 #include <pxr/usd/usdShade/materialBindingAPI.h>
 #include <pxr/base/arch/fileSystem.h>
+#include <pxr/usd/ar/resolverScopedCache.h>
 #include <pxr/base/plug/registry.h>
 #include <pxr/base/plug/plugin.h>
 // ParticleSystemAPI accessed via codeless schema (string-based TfToken API)
@@ -78,6 +79,7 @@
 
 #include "../../util/util_string.h"
 #include "../../util/util_export_macros.h"
+#include "../../util/util_atomic.h"
 
 #include "../../lssusd/particle_system_helpers_vec.h"
 #include "../../lssusd/game_exporter_common.h"
@@ -85,8 +87,256 @@
 #include "../../lssusd/usd_mesh_importer.h"
 #include "../../lssusd/usd_common.h"
 #include "graph/rtx_graph_usd_parser.h"
+#include "usdg.h"
+#include "rtx_io.h"
+#include "rtx_geometry_asset.h"
+
+// Force the original path with syncronous geometry data update
+#define FORCE_SYNC_UPDATE (false)
 
 namespace fs = std::filesystem;
+
+using namespace dxvk;
+
+// Todo: move from here
+static uint64_t ScheduleBufferDataUpdate(const Rc<AssetData>& assetData,
+  const Rc<DxvkBuffer>& buffer, uint32_t offset) {
+#ifdef WITH_RTXIO
+  const auto& info = assetData->info();
+
+  RtxIo::Handle file;
+  if (!RtxIo::get().openFile(info.filename, &file)) {
+    Logger::warn(str::format("Unable to open RTX IO file ", info.filename));
+    return 0;
+  }
+
+  uint64_t assetOffset;
+  size_t assetSize;
+  assetData->placement(0, 0, 0, assetOffset, assetSize);
+
+  RtxIo::FileSource src { file, assetOffset, assetSize, info.compression != AssetCompression::None };
+  RtxIo::BufferDest dst { buffer, offset, info.extent.width };
+
+  return RtxIo::get().enqueueRead(dst, src);
+#else
+  Logger::err("Cannot schedule asset update. RTX IO build must be enabled.");
+  return 0;
+#endif
+}
+
+static inline std::string Canonize(const std::string& path) {
+  std::string canonPath;
+  for (auto it = path.begin(); it != path.end(); ++it) {
+    auto c = *it;
+
+    if (canonPath.empty() && (c == '/' || c == '\\' || c == '.')) {
+      continue;
+    }
+
+    switch (c) {
+    case '[':
+      // Start over
+      canonPath.clear();
+      break;
+    case ']':
+      // Skip it
+      break;
+    case '/':
+      c = '\\';
+    default:
+      canonPath.push_back(c);
+    }
+  }
+
+  return canonPath;
+}
+
+class UsdgMeshReader : public lss::UsdMeshImporter {
+  Rc<AssetData> m_vertexDataAsset;
+  std::vector<Rc<AssetData>> m_submeshIndexDataAssets;
+public:
+  explicit UsdgMeshReader(const pxr::UsdPrim& prim)
+  : UsdMeshImporter(prim, true) {
+    if (!usdg::IsBaked(prim)) {
+      throw DxvkError(str::format("Primitive ",
+        prim.GetName(), " is not baked to USDG!"));
+    }
+
+    processState(prim);
+
+    usdg::AABB usdgAabb;
+    usdgAabb.deserialize(prim);
+
+    m_boundingBox.minPos = Vector3(usdgAabb.value()[0].data());
+    m_boundingBox.maxPos = Vector3(usdgAabb.value()[1].data());
+
+    readVertexData(prim);
+    readSubmeshes(prim);
+  }
+
+  ~UsdgMeshReader() override = default;
+
+  void CopyVertexData(void* out, size_t capacity) const override {
+    const size_t assetDataSize = m_vertexDataAsset->info().extent.width;
+
+    if (assetDataSize > capacity || out == nullptr) {
+      Logger::err("Unable to copy vertex data: destination buffer is too small or null");
+      return;
+    }
+
+    memcpy(out, m_vertexDataAsset->data(0, 0), assetDataSize);
+  }
+
+  void CopySubmeshIndexData(uint32_t submesh, void* out, size_t capacity) const override {
+    if (submesh >= m_submeshIndexDataAssets.size()) {
+      Logger::err("Submesh data not found");
+      return;
+    }
+
+    const auto& asset = m_submeshIndexDataAssets[submesh];
+    const size_t assetDataSize = asset->info().extent.width;
+
+    if (assetDataSize > capacity || out == nullptr) {
+      Logger::err("Unable to copy index data: destination buffer is too small or null");
+      return;
+    }
+
+    memcpy(out, asset->data(0, 0), assetDataSize);
+  }
+
+  Rc<GeometryDataAsset> GetGeometryAssetFor(uint32_t submesh) const {
+    if (submesh >= m_submeshIndexDataAssets.size()) {
+      Logger::err("Submesh data not found");
+      return {};
+    }
+
+    return new GeometryDataAsset(m_vertexDataAsset, m_submeshIndexDataAssets[submesh]);
+  }
+
+private:
+  void readVertexData(const pxr::UsdPrim& prim) {
+    usdg::GpuDataDecl vertexDecl(usdg::kVerticesName);
+    vertexDecl.deserialize(prim);
+
+    m_vertexStride = 0;
+    m_vertexDecl.resize(vertexDecl.elements().size());
+    auto pVertexDecl = m_vertexDecl.begin();
+
+    for (auto& element : vertexDecl.elements()) {
+      pVertexDecl->offset = element.offset;
+
+      switch (element.attribute) {
+      case usdg::Attribute::Position:
+        pVertexDecl->attribute = Attributes::VertexPositions;
+        break;
+      case usdg::Attribute::Normal:
+        pVertexDecl->attribute = Attributes::Normals;
+        break;
+      case usdg::Attribute::Uv:
+        pVertexDecl->attribute = Attributes::Texcoords;
+        break;
+      case usdg::Attribute::Color:
+        pVertexDecl->attribute = Attributes::Colors;
+        break;
+      case usdg::Attribute::BlendIndices:
+        pVertexDecl->attribute = Attributes::BlendIndices;
+        break;
+      case usdg::Attribute::BlendWeight:
+        pVertexDecl->attribute = Attributes::BlendWeights;
+
+        usdg::GetCustomMetadata(prim, usdg::kNumBones, m_actualNumBonesPerVertex);
+        m_limitedNumBonesPerVertex = m_actualNumBonesPerVertex;
+        break;
+      default:
+        break;
+      }
+
+      pVertexDecl->size = usdg::GetPackedSize(element.type, element.channels);
+      m_vertexStride += pVertexDecl->size;
+
+      ++pVertexDecl;
+    }
+
+    static const pxr::TfToken kPoints("points");
+
+    auto path = usdg::ResolvePath(prim, kPoints);
+    auto vertices = AssetDataManager::get().findAsset(
+      Canonize(path + "/" + usdg::kVerticesName));
+
+    if (vertices == nullptr) {
+      throw DxvkError(str::format("USDG mesh primitive ",
+        prim.GetName(), " has no baked vertices!"));
+    }
+
+    assert(vertices->info().extent.width % m_vertexStride == 0);
+
+    m_numVertices = vertices->info().extent.width / m_vertexStride;
+    m_vertexDataAsset = std::move(vertices);
+  }
+
+  void readSubmeshes(const pxr::UsdPrim& prim) {
+    auto loadSubsetIndices = [this](const pxr::UsdPrim& prim) {
+#if 0
+      usdg::GpuDataDecl indexDecl(usdg::kIndicesName);
+      indexDecl.deserialize(prim);
+#endif
+
+      static const pxr::TfToken kIndices("triangleIndices");
+      static const pxr::TfToken kIndices2("indices");
+      static const pxr::TfToken kFaceVertexCounts("faceVertexCounts");
+      static const pxr::TfToken kFaceVertexIndices("faceVertexIndices");
+
+      // Find the source prim spec of face indices or submesh indices
+      auto primSpec = usdg::GetPrimSpecForAttrib(prim, kFaceVertexIndices);
+      if (primSpec == nullptr) {
+        primSpec = usdg::GetPrimSpecForAttrib(prim, kIndices);
+        if (primSpec == nullptr) {
+          primSpec = usdg::GetPrimSpecForAttrib(prim, kIndices2);
+        }
+      }
+
+      if (primSpec == nullptr) {
+        Logger::err(str::format("Unable to find indices primSpec for USDG mesh primitive ", prim.GetName()));
+        return;
+      }
+
+      auto path = primSpec->GetLayer()->GetRealPath() + primSpec->GetPath().GetString();
+
+      auto indices = AssetDataManager::get().findAsset(
+        Canonize(path + "/" + usdg::kIndicesName));
+
+      if (indices == nullptr) {
+        Logger::err(str::format("USDG mesh primitive ", prim.GetName(), " has no baked indices!"));
+        return;
+      }
+
+      using IndexType = uint32_t;
+      constexpr size_t unitSize = sizeof(IndexType);
+
+      assert(indices->info().extent.width % unitSize == 0);
+
+      const size_t numIndices = indices->info().extent.width / unitSize;
+
+      m_meshes.emplace_back(numIndices, prim);
+
+      m_submeshIndexDataAssets.emplace_back(std::move(indices));
+    };
+
+    bool hasGeomSubsets = false;
+
+    auto children = prim.GetFilteredChildren(pxr::UsdPrimIsActive);
+    for (const auto& child : children) {
+      if (child.IsA<pxr::UsdGeomSubset>()) {
+        loadSubsetIndices(child);
+        hasGeomSubsets = true;
+      }
+    }
+
+    if (!hasGeomSubsets) {
+      loadSubsetIndices(prim);
+    }
+  }
+};
 
 namespace dxvk {
 const char* const kStatusKey = "remix_replacement_status";
@@ -139,7 +389,7 @@ private:
   // in processUSD.
   bool isShuttingDown() const;
 
-  // Returns false if the walk did not run to completion — either it was
+  // Returns false if the walk did not run to completion - either it was
   // cancelled by shutdown or the stage was missing. Callers must not treat a
   // partially populated `target` as a finished load.
   // When filter sets are non-null, only prims whose hash is in the set are processed
@@ -211,6 +461,8 @@ private:
 
   void publishMeshReplacement(Args& args, XXH64_hash_t hash, std::vector<AssetReplacement>& replacementVec);
 
+  std::atomic_uint64_t m_completionSyncpoint { 0 };
+
   // DxvkBarrierSet is per-context, so nothing else orders this copy against the render
   // thread's later use of the buffer; rebuildWorkerEntry waits on it before publishing.
   // Any one upload from the batch suffices: the worker's copies share one command list
@@ -231,7 +483,7 @@ private:
   // applyPendingRebuild does.
   //
   // `replacements` is a scratch table containing only new/updated entries for dirty
-  // prims — NOT the full replacement table. applyPendingRebuild merges its entries
+  // prims - NOT the full replacement table. applyPendingRebuild merges its entries
   // into the live table in-place rather than swapping the whole table.
   struct RebuildData {
     // Set before the try block in rebuildWorkerEntry so abort-path handling can
@@ -436,6 +688,32 @@ bool tryClassifyExternalMaterial(pxr::SdfPath primPath, const pxr::UsdStageWeakP
 }
 }  // namespace
 
+// Returns the SdfLayerHandle that has the strongest opinion on asset path
+// of an attribute.
+static pxr::SdfLayerHandle getStrongestAssetPathOpinionLayer(const pxr::UsdPrim& prim,
+  const pxr::TfToken& attrToken) {
+  const auto attr = prim.GetAttribute(attrToken);
+  if (!attr.IsValid()) {
+    return nullptr;
+  }
+
+  for (const auto& propSpec : attr.GetPropertyStack()) {
+    const auto attrSpec = pxr::TfDynamic_cast<pxr::SdfAttributeSpecHandle>(propSpec);
+    if (!attrSpec) {
+      continue;
+    }
+
+    const pxr::VtValue defaultVal = attrSpec->GetDefaultValue();
+    if (defaultVal.IsEmpty() || !defaultVal.IsHolding<pxr::SdfAssetPath>()) {
+      continue;
+    }
+
+    return attrSpec->GetLayer();
+  }
+
+  return nullptr;
+}
+
 // Returns true if a FileWatch-notified file change should trigger a USD reload.
 // normalizedRootModPathKey and usedLayerPaths must already be normalizedPathKey()'d;
 // changedPath is normalized internally. A null usedLayerPaths (no dependency data yet)
@@ -565,13 +843,13 @@ public:
 
   void OnObjectsChanged(const pxr::UsdNotice::ObjectsChanged& notice,
                         const pxr::UsdStageWeakPtr& sender) {
-    // Filter by stage — TfNotice::Register lets us scope to a sender, but be
+    // Filter by stage - TfNotice::Register lets us scope to a sender, but be
     // defensive in case the registration scope is broader than expected.
     if (sender != m_impl.m_stage) {
       return;
     }
     std::lock_guard<std::mutex> lock(m_impl.m_changedPathsMutex);
-    // Structural changes — may report a section folder or /RootNode when an
+    // Structural changes - may report a section folder or /RootNode when an
     // entire subtree is new or removed.
     for (const auto& path : notice.GetResyncedPaths()) {
       classifyChangedPath(path, /*isResync=*/true, sender, *m_impl.m_owner.m_replacements,
@@ -598,39 +876,40 @@ static std::string resolveTexturePath(
   const pxr::UsdPrim& shader,
   const pxr::TfToken& textureToken,
   const std::string& textureAssetPath) {
-  for (auto spec : shader.GetPrimStack()) {
-    auto attribs = spec->GetAttributes();
-    if (attribs.find(textureToken) != attribs.end()) {
-      std::filesystem::path sourcePath(spec->GetLayer()->GetRealPath());
-      std::filesystem::path resolvedPath = sourcePath.parent_path();
+  if (auto specLayer = getStrongestAssetPathOpinionLayer(shader, textureToken)) {
+    auto realPathStr = specLayer->GetRealPath();
 
-      // Process special path symbols.
-      // Note: we could use filesystem::weakly_canonical() to make the resulting path
-      // canonical but unfortunately it is extremly expensive.
-      size_t pathStartPos = 0;
-      while (pathStartPos < textureAssetPath.size()) {
-        // Check for current folder symbol
+    usdg::MakeFullPathFromPackageRelativePath(realPathStr);
+
+    std::filesystem::path resolvedPath(realPathStr);
+    resolvedPath = resolvedPath.parent_path();
+
+    // Process special path symbols.
+    // Note: we could use filesystem::weakly_canonical() to make the resulting path
+    // canonical but unfortunately it is extremly expensive.
+    size_t pathStartPos = 0;
+    while (pathStartPos < textureAssetPath.size()) {
+      // Check for current folder symbol
+      if (textureAssetPath[pathStartPos] == '.') {
+        // Skip it
+        ++pathStartPos;
+        // Check for parent folder symbol
         if (textureAssetPath[pathStartPos] == '.') {
-          // Skip it
+          resolvedPath = resolvedPath.parent_path();
           ++pathStartPos;
-          // Check for parent folder symbol
-          if (textureAssetPath[pathStartPos] == '.') {
-            resolvedPath = resolvedPath.parent_path();
-            ++pathStartPos;
-          }
-        } else if (textureAssetPath[pathStartPos] == '\\' || textureAssetPath[pathStartPos] == '/') {
-          // Skip path separator
-          ++pathStartPos;
-        } else {
-          break;
         }
+      } else if (usdg::IsPathSeparator(textureAssetPath[pathStartPos])) {
+        // Skip path separator
+        ++pathStartPos;
+      } else {
+        break;
       }
-
-      resolvedPath /= textureAssetPath.data() + pathStartPos;
-      resolvedPath.make_preferred();
-
-      return resolvedPath.string();
     }
+
+    resolvedPath /= textureAssetPath.data() + pathStartPos;
+    resolvedPath.make_preferred();
+
+    return resolvedPath.string();
   }
   Logger::warn(str::format("Unable to resolve full path for ", textureAssetPath));
   return textureAssetPath;
@@ -647,6 +926,9 @@ Rc<ManagedTexture> UsdMod::Impl::getTexture(const Args& args, const pxr::UsdPrim
     if (!path.GetResolvedPath().empty()) {
       // We have a resolved path - texture file exists on disk
       resolvedTexturePath = path.GetResolvedPath();
+
+      // Check if texture is packaged and get the packaged path
+     resolvedTexturePath = usdg::GetPackageRelativePath(resolvedTexturePath);
     } else if (!path.GetAssetPath().empty()) {
       // We do NOT have a resolved path - this could be a packaged texture
       // Resolve full path from the asset path and source USD path
@@ -1426,6 +1708,8 @@ void UsdMod::Impl::load(const Rc<DxvkContext>& context) {
   }
   m_owner.setProgress(ProgressState::OpeningUSD);
 
+  pxr::ArResolverScopedCache scopedCache;
+
   const std::string replacementsUsdPath(m_owner.m_filePath.string());
   if (!openStage(replacementsUsdPath)) {
     m_owner.setProgress(ProgressState::Unloaded);
@@ -1555,7 +1839,7 @@ void UsdMod::Impl::takeAndResetDirtyHashes(std::unordered_set<XXH64_hash_t>& out
 }
 
 bool UsdMod::Impl::checkForChanges(const Rc<DxvkContext>& context) {
-  // Never start new load work once teardown has begun — either path below would
+  // Never start new load work once teardown has begun - either path below would
   // spawn a rebuild the shutdown sequence then has to wait out. Drop any queued
   // request too, or it latches and leaves the UI button disabled for good.
   if (isShuttingDown()) {
@@ -1594,7 +1878,7 @@ bool UsdMod::Impl::checkForChanges(const Rc<DxvkContext>& context) {
     return false;
   }
 
-  // Neither signal may be consumed while a rebuild is busy — both are consuming
+  // Neither signal may be consumed while a rebuild is busy - both are consuming
   // reads, so we would drop the save or the click that arrived during it. The call
   // after applyPendingRebuild picks it up.
   if (m_rebuildInFlight.load(std::memory_order_acquire)) {
@@ -1650,6 +1934,7 @@ void UsdMod::Impl::rebuildWorkerEntry(Rc<DxvkDevice> device, bool isInitialLoad,
   if (isInitialLoad) {
     m_pending.openedFilePath = m_owner.m_filePath.string();
   }
+  pxr::ArResolverScopedCache scopedCache;
 
   // dxvk::thread swallows exceptions, and a throw here would leave
   // m_rebuildInFlight stuck true, wedging future loads for the session. Catch and
@@ -1696,7 +1981,7 @@ void UsdMod::Impl::rebuildWorkerEntry(Rc<DxvkDevice> device, bool isInitialLoad,
 
       // material:binding is a relationship, so USD's notices never name the mesh that
       // references a changed material. Find those meshes with a materialPathHash-matching
-      // sweep over the live table — cheaper than walking every mesh in the scene.
+      // sweep over the live table - cheaper than walking every mesh in the scene.
       if (!dirtyMatHashes.empty() && !rebuildAllMeshes) {
         m_owner.m_replacements->collectMeshesUsingMaterials(dirtyMatHashes, dirtyMeshHashes);
       }
@@ -1737,7 +2022,7 @@ void UsdMod::Impl::rebuildWorkerEntry(Rc<DxvkDevice> device, bool isInitialLoad,
     // Composed layers can change between reloads, so refresh after every successful walk.
     refreshLayerPaths();
 
-    // The worker's own cmdlist — nothing else ever submits it.
+    // The worker's own cmdlist - nothing else ever submits it.
     ctx->flushCommandList();
 
     // Flushing only submits; block here (worker thread, not render thread) until the GPU
@@ -1746,6 +2031,16 @@ void UsdMod::Impl::rebuildWorkerEntry(Rc<DxvkDevice> device, bool isInitialLoad,
       device->waitForResource(m_lastDeviceLocalUpload, DxvkAccess::Write);
       m_lastDeviceLocalUpload = nullptr;
     }
+
+#ifdef WITH_RTXIO
+    auto& rtxio = RtxIo::get();
+    if (rtxio.enabled() && !rtxio.isComplete(m_completionSyncpoint)) {
+      // Flush synchronously to ensure full completion
+      if (!rtxio.flush(false)) {
+        throw "RTX IO flush failed";
+      }
+    }
+#endif
 
     // Release-store on m_rebuildReady pairs with the acquire-load in applyPendingRebuild.
     m_pending.status        = std::move(pendingStatus);
@@ -1767,15 +2062,15 @@ bool UsdMod::Impl::applyPendingRebuild(const Rc<DxvkContext>& context, AssetChan
   ScopedCpuProfileZone();
 
   // Worker threw (see rebuildWorkerEntry's catch): join it, drop any partial
-  // state, and re-arm so a later save can retry — without touching the live table.
+  // state, and re-arm so a later save can retry - without touching the live table.
   if (m_rebuildAborted.load(std::memory_order_acquire)) {
     if (m_rebuildThread.joinable()) {
       m_rebuildThread.join();
     }
     m_pending.clear();
     // m_pending.isInitialLoad is preserved across clear() so we know which state to fix.
-    // Initial load: no content ever installed — stay Unloaded.
-    // Hot-reload abort: previous content still valid — return to Loaded.
+    // Initial load: no content ever installed - stay Unloaded.
+    // Hot-reload abort: previous content still valid - return to Loaded.
     m_owner.setProgress(m_pending.isInitialLoad ? ProgressState::Unloaded : ProgressState::Loaded);
     m_rebuildAborted.store(false, std::memory_order_release);
     m_rebuildInFlight.store(false, std::memory_order_release);
@@ -1852,7 +2147,7 @@ bool UsdMod::Impl::applyPendingRebuild(const Rc<DxvkContext>& context, AssetChan
     m_owner.setProgress(ProgressState::Loaded);
   }
 
-  // Worker may have run inline (sync load path) — only join if a thread was spawned.
+  // Worker may have run inline (sync load path) - only join if a thread was spawned.
   if (m_rebuildThread.joinable()) {
     m_rebuildThread.join();
   }
@@ -1915,29 +2210,68 @@ bool UsdMod::Impl::processUSD(const Rc<DxvkContext>& context, AssetReplacements&
 
   std::filesystem::path modBaseDirectory = std::filesystem::path(replacementsUsdPath).remove_filename();
 
-  // Sublayer base paths, in strength order. Registered with AssetDataManager immediately,
-  // before the material/texture walk that needs them.
-  // Collected in ascending precedence and published as one list, so precedence within
-  // a mod is just position here and precedence between mods is the mod order.
+  // Build search paths for the mod. The basic mod structure is:
+  //
+  // <modBaseDirectory>
+  // |--------- mod.usd(g)
+  // |--------- sublayer0.usd(g)
+  // |--------- ...
+  // |--------- sublayerN.usd(g)
+  // |--------- package00.pkg
+  // |--------- ...
+  // |--------- package0M.pkg
+  // |--------- <sublayerA_directory>
+  // |          |--------- sublayer.usd(g)
+  // |          |--------- ...
+  // |          |--------- subpackage00.pkg
+  // |          |--------- ...
+  // |          +--------- subpackage0N.pkg
+  // |--------- ...
+  // +--------- <sublayerZ_directory>
+  //            +--------- ...
+  //
+  // The search order is: modBaseDirectory -> sublayer directories in the strength order
+  // In every directory the search order is: loose files -> packages -> USDGs
+  // The packages are sorted in natural order and traversed in reverse.
+  // The USDGs are traversed in the strength order.
+
+  // Build sublayer base paths in reverse strength order so that the strongest
+  // layer has highest precedence.
   std::vector<std::filesystem::path> collectedSearchPaths;
-  auto collectSearchPath = [&](const std::filesystem::path& searchPath) {
-    collectedSearchPaths.push_back(searchPath);
-  };
   auto sublayers = stage->GetRootLayer()->GetSubLayerPaths();
-  for (size_t i = 0, s = sublayers.size(); i < s; i++) {
-    const std::string& identifier = sublayers[i];
-    auto layerBasePath = std::filesystem::path(identifier).remove_filename();
-    auto fullLayerBasePath = modBaseDirectory / layerBasePath;
-    collectSearchPath(fullLayerBasePath);
+  for (int i = sublayers.size() - 1; i >= 0; i--) {
+    const std::string& layerPath = sublayers[i];
+    auto layerBasePath = std::filesystem::path(layerPath).remove_filename();
+
+    // Note: not adding mod's root path at lower priorities
+    if (!layerBasePath.empty() && layerBasePath != ".\\" && layerBasePath != "./") {
+      auto fullLayerBasePath = modBaseDirectory / layerBasePath;
+      collectedSearchPaths.push_back(fullLayerBasePath);
+    }
   }
 
   // Add stage's base path last - highest precedence within this mod.
-  collectSearchPath(modBaseDirectory);
+  collectedSearchPaths.push_back(modBaseDirectory);
 
   // Publish immediately: the material/texture walk below resolves textures through
   // AssetDataManager, which needs these search paths registered before it runs, not
   // after processUSD returns.
   m_owner.setSearchPaths(std::move(collectedSearchPaths));
+
+  // Mount main USDG package at the bottom of search path
+  if (stage->GetRootLayer()->GetFileFormat()->IsPackage()) {
+    AssetDataManager::get().mountPackage(replacementsUsdPath, SearchPathPlacement::Bottom);
+  }
+
+  // Now mount the USDG layer packages in strength order at the bottom of search path
+  // so that the weakest layer package has the lowest precedence.
+  for (size_t i = 0; i < sublayers.size(); i++) {
+    const std::string& layerPath = sublayers[i];
+    if (usdg::IsUsdg(layerPath)) {
+      auto fullLayerPath = modBaseDirectory / layerPath;
+      AssetDataManager::get().mountPackage(fullLayerPath.string(), SearchPathPlacement::Bottom);
+    }
+  }
 
   pxr::UsdGeomXformCache xformCache;
 
@@ -2320,13 +2654,20 @@ bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
 
   std::unique_ptr<lss::UsdMeshImporter> processedMesh;
 
+  const bool isBaked = usdg::IsBaked(prim);
   try {
-    processedMesh = std::make_unique<lss::UsdMeshImporter>(prim, RtxOptions::limitedBonesPerVertex());
+    if (isBaked) {
+      processedMesh = std::make_unique<UsdgMeshReader>(prim);
+    } else {
+      processedMesh = std::make_unique<lss::UsdMeshImporter>(prim, RtxOptions::limitedBonesPerVertex());
+    }
   }
   catch (DxvkError e) {
     Logger::err(e.message());
     return false;
   }
+
+  const bool doAsyncUpdate = RtxIo::enabled() && isBaked && !FORCE_SYNC_UPDATE;
 
   geometryData.vertexCount = processedMesh->GetNumVertices();
 
@@ -2354,7 +2695,10 @@ bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
   // Buffer contains:
   // |---POSITIONS---|---NORMALS---|---UVS---| ... (VERTEX DATA INTERLEAVED)
   Rc<DxvkBuffer> vertexBuffer_staging = args.context->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT, DxvkMemoryStats::Category::RTXReplacementGeometry, "Mesh Staging Buffer");
-  memcpy(vertexBuffer_staging->mapPtr(0), processedMesh->GetVertexData().data(), vertexDataSize);
+
+  if (!doAsyncUpdate) {
+    processedMesh->CopyVertexData(vertexBuffer_staging->mapPtr(0), vertexDataSize);
+  }
 
   // Dynamic meshes should have their vertex data in device memory, static meshes should reside in host memory and allow geometry streaming to handle host/device memory management
   Rc<DxvkBuffer> vertexBuffer;
@@ -2363,8 +2707,11 @@ bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
         info,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         DxvkMemoryStats::Category::RTXReplacementGeometry, prim.GetName().GetString().c_str());
-    args.context->copyBuffer(vertexBuffer, 0, vertexBuffer_staging, 0, vertexDataSize);
-    m_lastDeviceLocalUpload = vertexBuffer;
+
+    if (!doAsyncUpdate) {
+      args.context->copyBuffer(vertexBuffer, 0, vertexBuffer_staging, 0, vertexDataSize);
+      m_lastDeviceLocalUpload = vertexBuffer;
+    }
   } else {
     vertexBuffer = vertexBuffer_staging;
   }
@@ -2415,7 +2762,16 @@ bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
   // Get bounding box from the USD mesh importer
   geometryData.boundingBox = processedMesh->GetBoundingBox();
 
-  for (const lss::UsdMeshImporter::SubMesh& submesh : processedMesh->GetSubMeshes()) {
+  // Note: only upload vertices on the first active submesh. There might be geometry
+  // without active submeshes which will never be promoted to replacement geo and which 
+  // vertex buffer will be deleted here on the spot causing rtxio to crash.
+  // Alternative solution woule be to add buffer tracking to rtxio backend but these
+  // buffers are not needed anyway so there's no reason to process them anyway.
+  bool uploadVertices = true;
+
+  const auto& submeshes = processedMesh->GetSubMeshes();
+  for (size_t n = 0; n < submeshes.size(); ++n) {
+    const auto& submesh = submeshes[n];
     if (submesh.GetNumIndices() == 0) {
       Logger::err(str::format("Prim: ", submesh.prim.GetPath().GetString(), ", does not have indices, this is currently a requirement."));
       continue;
@@ -2432,17 +2788,41 @@ bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
 
       // Buffer contains: indices
       Rc<DxvkBuffer> indexBuffer_staging = args.context->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT, DxvkMemoryStats::Category::RTXReplacementGeometry, "Mesh index buffer staging");
-      memcpy(indexBuffer_staging->mapPtr(0), submesh.indexBuffer.data(), indexDataSize);
+      if (!doAsyncUpdate) {
+        processedMesh->CopySubmeshIndexData(n, indexBuffer_staging->mapPtr(0), indexDataSize);
+      }
       Rc<DxvkBuffer> indexBuffer;
       if (isDynamicMesh) {
         indexBuffer = args.context->getDevice()->createBuffer(
           info,
           VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
           DxvkMemoryStats::Category::RTXReplacementGeometry, submesh.prim.GetName().GetString().c_str());
-        args.context->copyBuffer(indexBuffer, 0, indexBuffer_staging, 0, indexDataSize);
-        m_lastDeviceLocalUpload = indexBuffer;
+        if (!doAsyncUpdate) {
+          args.context->copyBuffer(indexBuffer, 0, indexBuffer_staging, 0, indexDataSize);
+          m_lastDeviceLocalUpload = indexBuffer;
+        }
       } else {
         indexBuffer = indexBuffer_staging;
+      }
+
+      // Schedule async update
+      if (doAsyncUpdate) {
+        // Grab geometry data asset
+        auto asset = static_cast<UsdgMeshReader*>(processedMesh.get())->GetGeometryAssetFor(n);
+
+        if (uploadVertices) {
+          ScheduleBufferDataUpdate(asset->vertexDataAsset(), vertexBuffer, 0);
+          uploadVertices = false;
+        }
+
+        // Schedule index data update and get the completion syncpoint.
+        // Note: vertex data always precedes index data so the latter syncpoint
+        // also guarantees vertex data completion.
+        newReplacement->completionSyncpoint = ScheduleBufferDataUpdate(asset->indexDataAsset(), indexBuffer, 0);
+        newReplacement->asset = std::move(asset);
+
+        // Update global completion syncpoint
+        dxvk::atomic_max(m_completionSyncpoint, newReplacement->completionSyncpoint);
       }
 
       const DxvkBufferSlice& indexSlice = DxvkBufferSlice(indexBuffer);

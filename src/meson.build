@@ -1,6 +1,6 @@
-subdir('usd-plugins')
 subdir('tracy')
 subdir('util')
+subdir('usd-plugins')
 subdir('spirv')
 subdir('vulkan')
 subdir('lssusd')

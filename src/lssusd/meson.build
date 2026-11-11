@@ -32,4 +32,6 @@ lssUsd_lib = static_library('lssUsd', lssUsd_src,[libusd_generated_embedded_file
   cpp_args            : lss_Usd_args)
 
 lssUsd_dep = declare_dependency(
-  link_with           : [ lssUsd_lib ])
+  link_with           : [ lssUsd_lib ],
+  include_directories: [ '.' ]
+)

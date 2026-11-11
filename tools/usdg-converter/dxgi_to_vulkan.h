@@ -1,0 +1,153 @@
+/*
+* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+#include <stdint.h>
+#include <vulkan/vulkan.h>
+
+struct VkFormatDesc
+{
+    VkFormat format;
+    uint32_t bytesPerTexel;
+    uint32_t blockWidth;
+    uint32_t blockHeight;
+    uint32_t bytesPerBlock;
+};
+
+static const VkFormatDesc s_dxgiFormat2VkFormatDesc[] =
+{
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_R32G32B32A32_SFLOAT, 16, 1, 1, 1},
+    {VK_FORMAT_R32G32B32A32_SFLOAT, 16, 1, 1, 1},
+    {VK_FORMAT_R32G32B32A32_UINT, 16, 1, 1, 1},
+    {VK_FORMAT_R32G32B32A32_SINT, 16, 1, 1, 1},
+    {VK_FORMAT_R32G32B32_SFLOAT, 12, 1, 1, 1},
+    {VK_FORMAT_R32G32B32_SFLOAT, 12, 1, 1, 1},
+    {VK_FORMAT_R32G32B32_UINT, 12, 1, 1, 1},
+    {VK_FORMAT_R32G32B32_SINT, 12, 1, 1, 1},
+    {VK_FORMAT_R16G16B16A16_SFLOAT, 8, 1, 1, 1},
+    {VK_FORMAT_R16G16B16A16_SFLOAT, 8, 1, 1, 1},
+    {VK_FORMAT_R16G16B16A16_UNORM, 8, 1, 1, 1},
+    {VK_FORMAT_R16G16B16A16_UINT, 8, 1, 1, 1},
+    {VK_FORMAT_R16G16B16A16_SNORM, 8, 1, 1, 1},
+    {VK_FORMAT_R16G16B16A16_SINT, 8, 1, 1, 1},
+    {VK_FORMAT_R32G32_SFLOAT, 8, 1, 1, 1},
+    {VK_FORMAT_R32G32_SFLOAT, 8, 1, 1, 1},
+    {VK_FORMAT_R32G32_UINT, 8, 1, 1, 1},
+    {VK_FORMAT_R32G32_SINT, 8, 1, 1, 1},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_A2B10G10R10_UNORM_PACK32, 4, 1, 1, 1},
+    {VK_FORMAT_A2B10G10R10_UNORM_PACK32, 4, 1, 1, 1},
+    {VK_FORMAT_A2B10G10R10_UINT_PACK32, 4, 1, 1, 1},
+    {VK_FORMAT_B10G11R11_UFLOAT_PACK32, 4, 1, 1, 1},
+    {VK_FORMAT_R8G8B8A8_UNORM, 4, 1, 1, 1},
+    {VK_FORMAT_R8G8B8A8_UNORM, 4, 1, 1, 1},
+    {VK_FORMAT_R8G8B8A8_SRGB, 4, 1, 1, 1},
+    {VK_FORMAT_R8G8B8A8_UINT, 4, 1, 1, 1},
+    {VK_FORMAT_R8G8B8A8_SNORM, 4, 1, 1, 1},
+    {VK_FORMAT_R8G8B8A8_SINT, 4, 1, 1, 1},
+    {VK_FORMAT_R16G16_SFLOAT, 4, 1, 1, 1},
+    {VK_FORMAT_R16G16_SFLOAT, 4, 1, 1, 1},
+    {VK_FORMAT_R16G16_UNORM, 4, 1, 1, 1},
+    {VK_FORMAT_R16G16_UINT, 4, 1, 1, 1},
+    {VK_FORMAT_R16G16_SNORM, 4, 1, 1, 1},
+    {VK_FORMAT_R16G16_SINT, 4, 1, 1, 1},
+    {VK_FORMAT_R32_UINT, 4, 1, 1, 1},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_R32_SFLOAT, 4, 1, 1, 1},
+    {VK_FORMAT_R32_UINT, 4, 1, 1, 1},
+    {VK_FORMAT_R32_SINT, 4, 1, 1, 1},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_R8G8_UNORM, 2, 1, 1, 1},
+    {VK_FORMAT_R8G8_UNORM, 2, 1, 1, 1},
+    {VK_FORMAT_R8G8_UINT, 2, 1, 1, 1},
+    {VK_FORMAT_R8G8_SNORM, 2, 1, 1, 1},
+    {VK_FORMAT_R8G8_SINT, 2, 1, 1, 1},
+    {VK_FORMAT_R16_UINT, 2, 1, 1, 1},
+    {VK_FORMAT_R16_SFLOAT, 2, 1, 1, 1},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_R16_UNORM, 2, 1, 1, 1},
+    {VK_FORMAT_R16_UINT, 2, 1, 1, 1},
+    {VK_FORMAT_R16_SNORM, 2, 1, 1, 1},
+    {VK_FORMAT_R16_SINT, 2, 1, 1, 1},
+    {VK_FORMAT_R8_UNORM, 1, 1, 1, 1},
+    {VK_FORMAT_R8_UNORM, 1, 1, 1, 1},
+    {VK_FORMAT_R8_UINT, 1, 1, 1, 1},
+    {VK_FORMAT_R8_SNORM, 1, 1, 1, 1},
+    {VK_FORMAT_R8_SINT, 1, 1, 1, 1},
+    {VK_FORMAT_R8_UNORM, 1, 1, 1, 1},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_E5B9G9R9_UFLOAT_PACK32, 4, 1, 1, 1},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_BC1_RGBA_UNORM_BLOCK, 1, 4, 4, 8},
+    {VK_FORMAT_BC1_RGBA_UNORM_BLOCK, 1, 4, 4, 8},
+    {VK_FORMAT_BC1_RGBA_SRGB_BLOCK, 1, 4, 4, 8},
+    {VK_FORMAT_BC2_UNORM_BLOCK, 1, 4, 4, 16},
+    {VK_FORMAT_BC2_UNORM_BLOCK, 1, 4, 4, 16},
+    {VK_FORMAT_BC2_SRGB_BLOCK, 1, 4, 4, 16},
+    {VK_FORMAT_BC3_UNORM_BLOCK, 1, 4, 4, 16},
+    {VK_FORMAT_BC3_UNORM_BLOCK, 1, 4, 4, 16},
+    {VK_FORMAT_BC3_SRGB_BLOCK, 1, 4, 4, 16},
+    {VK_FORMAT_BC4_UNORM_BLOCK, 1, 4, 4, 8},
+    {VK_FORMAT_BC4_UNORM_BLOCK, 1, 4, 4, 8},
+    {VK_FORMAT_BC4_SNORM_BLOCK, 1, 4, 4, 8},
+    {VK_FORMAT_BC5_UNORM_BLOCK, 1, 4, 4, 16},
+    {VK_FORMAT_BC5_UNORM_BLOCK, 1, 4, 4, 16},
+    {VK_FORMAT_BC5_SNORM_BLOCK, 1, 4, 4, 16},
+    {VK_FORMAT_R5G6B5_UNORM_PACK16, 2, 1, 1, 1},
+    {VK_FORMAT_A1R5G5B5_UNORM_PACK16, 2, 1, 1, 1},
+    {VK_FORMAT_B8G8R8A8_UNORM, 4, 1, 1, 1},
+    {VK_FORMAT_B8G8R8A8_UNORM, 4, 1, 1, 1},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_B8G8R8A8_UNORM, 4, 1, 1, 1},
+    {VK_FORMAT_B8G8R8A8_SRGB, 4, 1, 1, 1},
+    {VK_FORMAT_B8G8R8A8_UNORM, 4, 1, 1, 1},
+    {VK_FORMAT_B8G8R8A8_SRGB, 4, 1, 1, 1},
+    {VK_FORMAT_BC6H_UFLOAT_BLOCK, 1, 4, 4, 16},
+    {VK_FORMAT_BC6H_UFLOAT_BLOCK, 1, 4, 4, 16},
+    {VK_FORMAT_BC6H_SFLOAT_BLOCK, 1, 4, 4, 16},
+    {VK_FORMAT_BC7_UNORM_BLOCK, 1, 4, 4, 16},
+    {VK_FORMAT_BC7_UNORM_BLOCK, 1, 4, 4, 16},
+    {VK_FORMAT_BC7_SRGB_BLOCK, 1, 4, 4, 16},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_UNDEFINED, 0, 0, 0, 0},
+    {VK_FORMAT_A4R4G4B4_UNORM_PACK16_EXT, 2, 1, 1, 1},
+};

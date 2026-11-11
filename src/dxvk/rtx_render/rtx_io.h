@@ -84,6 +84,12 @@ namespace dxvk {
       uint16_t count;
     };
 
+    struct BufferDest {
+      Rc<DxvkBuffer> buffer;
+      uint32_t offset;
+      size_t size;
+    };
+
     struct QueueGuard {
       explicit QueueGuard(const DxvkDeviceQueue& queue)
       : queue(queue) {
@@ -105,6 +111,7 @@ namespace dxvk {
 
     bool enqueueWait(const Rc<RtxSemaphore>& sema, uint64_t value);
     uint64_t enqueueRead(const ImageDest& dst, const FileSource& src);
+    uint64_t enqueueRead(const BufferDest& dst, const FileSource& src);
     bool enqueueSignal(const Rc<RtxSemaphore>& sema, uint64_t value);
 
     bool isComplete(uint64_t syncpt) const;

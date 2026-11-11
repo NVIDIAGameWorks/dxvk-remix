@@ -32,6 +32,7 @@
 #include "rtx_mod_manager.h"
 #include "rtx_utils.h"
 #include "rtx_lights_data.h"
+#include "rtx_geometry_asset.h"
 
 namespace dxvk {
   class DxvkContext;
@@ -49,6 +50,9 @@ namespace dxvk {
 
   struct MeshReplacement {
     RasterGeometry data;
+
+    Rc<GeometryDataAsset> asset;
+    uint64_t completionSyncpoint = 0;
   };
 
   constexpr uint32_t kInvalidPointInstanceIndex = std::numeric_limits<uint32_t>::max();

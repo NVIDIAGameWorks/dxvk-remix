@@ -89,7 +89,7 @@ namespace lss {
   }
 
 
-  const std::vector<uint32_t> UsdMeshImporter::generateSubsetIndices(const UsdGeomSubset& subset, const std::vector<uint32_t>& indices, const UsdMeshImporter::FaceToTriangleMap& triangleMap) {
+  std::vector<uint32_t> UsdMeshImporter::generateSubsetIndices(const UsdGeomSubset& subset, const std::vector<uint32_t>& indices, const UsdMeshImporter::FaceToTriangleMap& triangleMap) {
     ZoneScoped;
     std::vector<uint32_t> subsetIndices;
 
@@ -104,6 +104,19 @@ namespace lss {
     return subsetIndices;
   }
 
+  void UsdMeshImporter::processState(const UsdPrim& meshPrim) {
+    TfToken orientation;
+    const bool orientationAuthored = UsdGeomMesh(meshPrim).GetOrientationAttr().Get(&orientation);
+
+    UsdAttribute doubleSidedAttribute;
+    if ((doubleSidedAttribute = meshPrim.GetAttribute(kDoubleSided)).HasAuthoredValue()) {
+      bool doubleSided = true;
+      doubleSidedAttribute.Get(&doubleSided);
+      m_doubleSided = doubleSided ? IsDoubleSided : IsSingleSided;
+    }
+
+    m_isRightHanded = orientationAuthored && orientation == kRightHanded;
+  }
 
   UsdMeshImporter::UsdMeshImporter(const UsdPrim& meshPrim, const uint32_t limitedNumBonesPerVertex)
     : m_meshPrim(UsdGeomMesh(meshPrim))

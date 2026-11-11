@@ -359,6 +359,57 @@ namespace dxvk {
     return currentTopPt + 1;
   }
 
+  uint64_t RtxIo::enqueueRead(const BufferDest& dst, const FileSource& src) {
+    assert(dst.buffer != nullptr && "Buffer is a nullptr");
+    assert(dst.buffer->getSliceHandle().handle != VK_NULL_HANDLE && "Buffer handle is null");
+
+    RTXIOUpdateRequest req;
+
+    req.source.type = RTXIO_SRC_FILE;
+    req.source.compression = src.isCompressed ?
+      RTXIO_COMPRESSION_GDEFLATE_1_0 : RTXIO_COMPRESSION_NONE;
+    req.source.flags = 0;
+    req.source.encryptionContext = 0;
+    req.source.file = src.file;
+    req.source.offset = src.offset;
+    req.source.size = src.size;
+
+    // Add slack to account for disk sector overread and alignment
+    const size_t sizeWithSlack = src.size + 4096 + kRtxIoDataAlignment;
+
+    RTXIOVkBuffer vkBuffer;
+    vkBuffer.buffer = dst.buffer->getSliceHandle().handle;
+    vkBuffer.size = dst.buffer->info().size;
+
+    if (dst.offset + dst.size > vkBuffer.size) {
+      Logger::err("RTX IO destination buffer region overrun.");
+      return 0;
+    }
+
+    req.destination.type = RTXIO_DST_LINEAR_REGION;
+    req.destination.flags = RTXIO_DST_STATE_READ_OPTIMAL;
+    req.destination.resource = &vkBuffer;
+    req.destination.linearRegion.offset = dst.offset + dst.buffer->getSliceHandle().offset;
+    req.destination.linearRegion.size = dst.size;
+
+    // Although RTXIO enqueue API is thread-safe, it may interfere
+    // with RTXIO flushes which at the moment are not guaranteed to happen
+    // serially with the enqueues. Hold flush lock.
+    std::lock_guard<dxvk::mutex> _(m_flushMutex);
+
+    if (auto result = rtxioEnqueueUpdateRequests(m_rtxio, 0, 1, &req)) {
+      Logger::err(str::format("RTX IO request enqueue failed with ", result));
+      return 0;
+    }
+
+    uint64_t currentTopPt;
+    rtxioGetTimelineValue(m_rtxio, RTXIO_PIPELINE_STAGE_TOP, &currentTopPt);
+
+    m_sizeInFlight += sizeWithSlack;
+
+    return currentTopPt + 1;
+  }
+
   bool RtxIo::isComplete(uint64_t syncpt) const {
     uint64_t currentBottomPt;
     rtxioGetTimelineValue(m_rtxio, RTXIO_PIPELINE_STAGE_BOTTOM, &currentBottomPt);
@@ -393,7 +444,7 @@ namespace dxvk {
     // locations in dxvk environment. Hold a lock.
     std::lock_guard<dxvk::mutex> _(m_flushMutex);
 
-    if (m_sizeInFlight == 0) {
+    if (async && m_sizeInFlight == 0) {
       return true;
     }
 

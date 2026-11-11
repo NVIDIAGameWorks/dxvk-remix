@@ -29,18 +29,23 @@
 #include "rtx_asset_package.h"
 
 namespace dxvk {
+  enum class SearchPathPlacement {
+    Top,
+    Bottom
+  };
+
   // Asset Data Manager class is responsible for asset data discovery
   // and parsing.
   // Upon a successful asset discovery and (pre)parsing, Asset Data Manager
   // wraps the asset in an AssetData implementation that help to abstract
   // the access to actual data.
   class AssetDataManager : public Singleton<AssetDataManager> {
-    using PackageSet = std::map<std::string, Rc<AssetPackage>>;
+    using PackageSet = std::list<Rc<AssetPackage>>;
 
     struct SearchPathEntry {
       // Absolute, lowercased, with a trailing separator.
       std::string path;
-      // Packages mounted from this directory. Only populated when RtxIo is enabled.
+      // Packages mounted from this directory.
       PackageSet packages;
     };
 
@@ -51,6 +56,7 @@ namespace dxvk {
     // while another mod's finished rebuild is installed on the render thread, so a
     // write can land mid-iteration without this.
     std::mutex m_searchPathMutex;
+
   public:
     AssetDataManager();
     ~AssetDataManager();
@@ -69,6 +75,14 @@ namespace dxvk {
      * \param [in] paths Search paths, lowest precedence first
      */
     void setSearchPaths(const std::vector<std::filesystem::path>& paths);
+
+    /**
+     * \brief Mounts a package
+     *
+     * \param [in] path Full path to package
+     * \param [in] placement Where to place the package within the search path
+     */
+    void mountPackage(const std::string& path, SearchPathPlacement placement);
 
     /**
      * \brief Find an asset
