@@ -12,6 +12,7 @@
 #include "../util/util_fastops.h"
 #include "../util/util_math.h"
 #include "d3d9_rtx_utils.h"
+#include "d3d9_rtx_texture_factor_fade.h"
 #include "d3d9_texture.h"
 #include "../dxvk/rtx_render/rtx_terrain_baker.h"
 
@@ -1157,6 +1158,11 @@ namespace dxvk {
     // Update the drawcall state with texture stage info
     setTextureStageState(d3d9State(), firstStage, useStageTextureFactorBlending, useMultipleStageTextureFactorBlending,
                          m_activeDrawCallState.materialData, m_activeDrawCallState.transformData);
+    // rtx.enableAlphaBlendDissolve converts only the texture factor fades of getTextureFactorFade, matched while Remix emulates stage 0.
+    // rtx.ignoreBakedLightingTextures disables it like other texture factor use.
+    m_activeDrawCallState.materialData.textureFactorFade = FixedFunction && useStageTextureFactorBlending && firstStage == 0
+      ? getTextureFactorFade(d3d9State().textureStages)
+      : TextureFactorFade::None;
 
     if (d3d9State().textures[firstStage]) {
       m_activeDrawCallState.setupCategoriesForTexture();

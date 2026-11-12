@@ -210,6 +210,16 @@ exe = executable('test_gpu_profile', files('test_gpu_profile.cpp'),
 test('test_gpu_profile', exe, env: test_env)
 tests += exe
 
+exe = executable('test_alpha_blend_dissolve', files('test_alpha_blend_dissolve.cpp'),
+  include_directories : test_include_path, dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ dxvk_lib ], win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_alpha_blend_dissolve', exe, env: test_env)
+tests += exe
+
+exe = executable('test_texture_factor_fade', files('test_texture_factor_fade.cpp'),
+  include_directories : test_include_path, dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ dxvk_lib ], win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_texture_factor_fade', exe, env: test_env)
+tests += exe
+
 exe = executable('test_gpu_overrides', files('test_gpu_overrides.cpp'),
   include_directories : test_include_path, dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ d3d9_dll, dxvk_lib ], win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
 test('test_gpu_overrides', exe, env: test_env)

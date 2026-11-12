@@ -1411,6 +1411,13 @@ namespace dxvk {
       }
       ommInstanceData.ommBuildRequested = false;
 
+      // A dissolving surface picks a new cutout every frame, so no baked OMM can represent it.
+      // It does not use the per-frame candidate budget, and its eligibility is evaluated once it stops dissolving.
+      if (inst->surface.alphaBlendDissolve != AlphaBlendDissolve::None) {
+        keepCandidateForRetry(inst);
+        continue;
+      }
+
       // Deferred — skip until retry frame is reached.
       if (currentFrameIndex < ommInstanceData.ommRetryAfterFrame) {
         keepCandidateForRetry(inst);
@@ -1599,6 +1606,11 @@ namespace dxvk {
     }
 
     if (!usesOpacityMicromap(instance)) {
+      return kEmptyHash;
+    }
+
+    // Dissolving surfaces are never bound to an OMM baked for their alpha state, see processOmmCandidates.
+    if (instance.surface.alphaBlendDissolve != AlphaBlendDissolve::None) {
       return kEmptyHash;
     }
 
