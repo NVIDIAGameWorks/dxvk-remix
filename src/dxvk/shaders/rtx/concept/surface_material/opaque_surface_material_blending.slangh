@@ -23,6 +23,31 @@
 
 #include "rtx/concept/surface/surface_shared.h"
 
+// Returns whether a value passes an alpha test comparison against a reference value.
+bool alphaTestPasses(uint alphaTestType, float value, float reference)
+{
+  switch (alphaTestType)
+  {
+  default:
+  case uint(AlphaTestType::kAlways):
+    return true;
+  case uint(AlphaTestType::kNever):
+    return false;
+  case uint(AlphaTestType::kLess):
+    return value < reference;
+  case uint(AlphaTestType::kEqual):
+    return value == reference;
+  case uint(AlphaTestType::kLessOrEqual):
+    return value <= reference;
+  case uint(AlphaTestType::kGreater):
+    return value > reference;
+  case uint(AlphaTestType::kNotEqual):
+    return value != reference;
+  case uint(AlphaTestType::kGreaterOrEqual):
+    return value >= reference;
+  }
+}
+
 // Todo: Move this all once separate Surface Materials for D3D9 compatability and normal usage are created.
 void calcOpaqueSurfaceMaterialOpacity(
   vec3 originalAlbedo, float originalAlpha, Surface surface,
@@ -46,44 +71,7 @@ void calcOpaqueSurfaceMaterialOpacity(
   // Handle Alpha Testing
 
   const float comparisonAlpha = surface.alphaTestReferenceValue;
-  float newAlpha;
-
-  switch (uint(surface.alphaTestType))
-  {
-  default:
-  case uint(AlphaTestType::kAlways):
-    newAlpha = originalAlpha;
-
-    break;
-  case uint(AlphaTestType::kNever):
-    newAlpha = float(0.0f);
-
-    break;
-  case uint(AlphaTestType::kLess):
-    newAlpha = originalAlpha < comparisonAlpha ? originalAlpha : float(0.0f);
-
-    break;
-  case uint(AlphaTestType::kEqual):
-    newAlpha = originalAlpha == comparisonAlpha ? originalAlpha : float(0.0f);
-
-    break;
-  case uint(AlphaTestType::kLessOrEqual):
-    newAlpha = originalAlpha <= comparisonAlpha ? originalAlpha : float(0.0f);
-
-    break;
-  case uint(AlphaTestType::kGreater):
-    newAlpha = originalAlpha > comparisonAlpha ? originalAlpha : float(0.0f);
-
-    break;
-  case uint(AlphaTestType::kNotEqual):
-    newAlpha = originalAlpha != comparisonAlpha ? originalAlpha : float(0.0f);
-
-    break;
-  case uint(AlphaTestType::kGreaterOrEqual):
-    newAlpha = originalAlpha >= comparisonAlpha ? originalAlpha : float(0.0f);
-
-    break;
-  }
+  const float newAlpha = alphaTestPasses(uint(surface.alphaTestType), originalAlpha, comparisonAlpha) ? originalAlpha : float(0.0f);
 
   // When alpha-testing is used, but blending is disabled, the target alpha is 100%
 

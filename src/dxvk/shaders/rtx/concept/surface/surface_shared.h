@@ -59,6 +59,33 @@ enum class AlphaTestType : uint8_t {
 
 static const uint32_t alphaTestTypeMask = 0x7u;
 
+// How a surface converted by rtx.enableAlphaBlendDissolve decides which pixels to keep.
+// See calculateAlphaBlendDissolve for which draw calls are converted, and in which mode.
+enum class AlphaBlendDissolve : uint8_t {
+  None = 0,
+  // The game's opacity is its texture factor alpha (TextureFactorFade::Select). Keeps a pixel where that alpha exceeds blue noise.
+  TextureFactor = 1,
+  // The game's opacity is the material's alpha times its texture factor alpha (TextureFactorFade::ModulateTexture).
+  // Keeps a pixel where that product exceeds blue noise.
+  TextureAlphaTimesTextureFactor = 2,
+  // Keeps a pixel where its vertex alpha exceeds blue noise.
+  VertexAlpha = 3,
+  // Keeps a pixel where the game's texture factor alpha exceeds blue noise and the replacement's alpha passes its own alpha test.
+  Fade = 4
+};
+
+static const uint32_t alphaBlendDissolveMask = 0x7u;
+// Position of the mode in the surface's texture flags.
+static const uint32_t alphaBlendDissolveShift = 19u;
+
+// How a surface converted by rtx.enableAlphaBlendDissolve chooses the pixels it keeps as it fades, see rtx.alphaBlendDissolvePattern.
+enum class AlphaBlendDissolvePattern : uint32_t {
+  // Keeps a pixel where its coverage exceeds blue noise.
+  BlueNoise = 0,
+  // Keeps a pixel while the material's albedo alpha, an authored dissolve ramp, is at most the game's fade alpha.
+  AlbedoAlpha = 1
+};
+
 enum class RtTextureArgSource : uint8_t {
   None = 0,
   Texture,

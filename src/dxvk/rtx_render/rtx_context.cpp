@@ -1535,6 +1535,7 @@ namespace dxvk {
     constants.wboitEnergyLossCompensation = RtxOptions::wboitEnergyLossCompensation();
     constants.wboitDepthWeightTuning = RtxOptions::wboitDepthWeightTuning();
     constants.wboitEnabled = RtxOptions::wboitEnabled();
+    constants.alphaBlendDissolvePattern = RtxOptions::alphaBlendDissolvePattern();
 
     constants.eyeArgs.enableEyes = RtxOptions::Eye::enable();
     constants.eyeArgs.normalBendingEyeball = RtxOptions::Eye::eyeballSphereOffset();

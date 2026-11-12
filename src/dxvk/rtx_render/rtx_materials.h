@@ -364,7 +364,8 @@ struct RtSurface {
 
     static_assert(static_cast<uint32_t>(TexGenMode::Count) <= 4);
     textureFlags |= ((static_cast<uint32_t>(texgenMode) & 0x3) << 17);
-    // textureFlags bits 19-30 unused
+    textureFlags |= (static_cast<uint32_t>(alphaBlendDissolve) & alphaBlendDissolveMask) << alphaBlendDissolveShift;
+    // textureFlags bits 22-30 unused
 
     writeGPUHelper(data, offset, textureFlags);
 
@@ -429,6 +430,7 @@ struct RtSurface {
   bool isVertexColorBakedLighting = true;
   bool isMotionBlurMaskOut = false;
   bool skipSurfaceInteractionSpritesheetAdjustment = false;
+  AlphaBlendDissolve alphaBlendDissolve = AlphaBlendDissolve::None;
 
   RtTextureArgSource textureColorArg1Source = RtTextureArgSource::Texture;
   RtTextureArgSource textureColorArg2Source = RtTextureArgSource::None;
@@ -1880,6 +1882,17 @@ enum class MaterialDataType {
   Invalid
 };
 
+// How a fixed-function draw call fades its alpha by the texture factor, see getTextureFactorFade.
+// Only rtx.enableAlphaBlendDissolve uses it, as the game's fade.
+enum class TextureFactorFade : uint8_t {
+  None = 0,
+  // The first stage selects the texture factor alpha as the alpha: opacity = tFactor alpha.
+  Select = 1,
+  // The first stage selects the texture alpha and the second multiplies it by the texture factor alpha:
+  // opacity = texture alpha * tFactor alpha.
+  ModulateTexture = 2
+};
+
 // Note: For use with "Legacy" D3D9 material information
 struct LegacyMaterialData {
   static OpaqueMaterialData createDefault();
@@ -1987,6 +2000,8 @@ struct LegacyMaterialData {
   uint32_t tFactor = 0xffffffff;  // Value for D3DRS_TEXTUREFACTOR, default value of is opaque white
   D3DMATERIAL9 d3dMaterial = {};
   bool isTextureFactorBlend = false;
+  // Set when the game fades the alpha by the texture factor in one of the stage setups of TextureFactorFade.
+  TextureFactorFade textureFactorFade = TextureFactorFade::None;
   bool isVertexColorBakedLighting = true;
 
   void setHashOverride(XXH64_hash_t hash) {

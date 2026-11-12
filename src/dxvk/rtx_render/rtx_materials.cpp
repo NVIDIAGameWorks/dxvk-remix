@@ -54,8 +54,9 @@ XXH64_hash_t LegacyMaterialData::computeIdentityHash() const {
     uint8_t textureAlphaArg2Source;
     uint8_t textureAlphaOperation;
     uint8_t isTextureFactorBlend;
+    uint8_t textureFactorFade;
     uint8_t isVertexColorBakedLighting;
-    uint8_t padding[7];
+    uint8_t padding[6];
   };
 
   LegacyMaterialIdentityHashData data{};
@@ -81,6 +82,7 @@ XXH64_hash_t LegacyMaterialData::computeIdentityHash() const {
   data.textureAlphaArg2Source = static_cast<uint8_t>(textureAlphaArg2Source);
   data.textureAlphaOperation = static_cast<uint8_t>(textureAlphaOperation);
   data.isTextureFactorBlend = isTextureFactorBlend ? 1u : 0u;
+  data.textureFactorFade = static_cast<uint8_t>(textureFactorFade);
   data.isVertexColorBakedLighting = isVertexColorBakedLighting ? 1u : 0u;
 
   return hashStructByMemory<LegacyMaterialIdentityHashData,
@@ -106,6 +108,7 @@ XXH64_hash_t LegacyMaterialData::computeIdentityHash() const {
       &LegacyMaterialIdentityHashData::textureAlphaArg2Source,
       &LegacyMaterialIdentityHashData::textureAlphaOperation,
       &LegacyMaterialIdentityHashData::isTextureFactorBlend,
+      &LegacyMaterialIdentityHashData::textureFactorFade,
       &LegacyMaterialIdentityHashData::isVertexColorBakedLighting,
       &LegacyMaterialIdentityHashData::padding>(data);
 }

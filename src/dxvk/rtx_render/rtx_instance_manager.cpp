@@ -28,6 +28,7 @@
 #include "rtx_context.h"
 #include "rtx_scene_manager.h"
 #include "rtx_instance_manager.h"
+#include "rtx_alpha_blend_dissolve.h"
 #include "rtx_camera_manager.h"
 #include "rtx_options.h"
 #include "rtx_materials.h"
@@ -114,6 +115,13 @@ namespace dxvk {
     case VkCullModeFlagBits::VK_CULL_MODE_FRONT_AND_BACK:
       assert(0); // this should already be filtered out up stack
       break;
+    }
+
+    // A dissolving surface is cut per pixel, so every hit must reach its material, including candidates on visibility rays.
+    // The geometry flags alone cannot guarantee this: a BLAS built while the surface was fully opaque, or shared with other
+    // instances, keeps VK_GEOMETRY_OPAQUE_BIT_KHR until its geometry is rebuilt.
+    if (surface.alphaBlendDissolve != AlphaBlendDissolve::None) {
+      flags |= VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR;
     }
 
     return flags;
@@ -695,7 +703,8 @@ namespace dxvk {
     return currentInstance;
   }
 
-  RtSurface::AlphaState InstanceManager::calculateAlphaState(const DrawCallState& drawCall, const MaterialData& materialData) {
+  RtSurface::AlphaState InstanceManager::calculateAlphaState(const DrawCallState& drawCall, const MaterialData& materialData,
+                                                             AlphaBlendDissolve alphaBlendDissolve) {
     RtSurface::AlphaState out{};
 
     // Handle Alpha State for non-Opaque materials
@@ -878,6 +887,13 @@ namespace dxvk {
       blendEnabled = false;
     }
 
+    // Dissolved draw calls are alpha tested against blue noise instead of blended or fully opaque.
+    const bool isDissolved = alphaBlendDissolve != AlphaBlendDissolve::None;
+
+    if (isDissolved) {
+      blendEnabled = false;
+    }
+
     if (blendEnabled) {
       out.blendType = blendType;
       out.invertedBlend = invertedBlend;
@@ -900,7 +916,7 @@ namespace dxvk {
     // Note: Fully opaque surfaces can only be signaled when no blending or alpha testing is done as well as no translucency material wise is used.
     // This is important for signaling when to not use the opacity channel in materials when it is not being used for anything.
 
-    out.isFullyOpaque = !blendEnabled && out.alphaTestType == AlphaTestType::kAlways; // use the blend/test type from the output, rather than legacy for this so replacements can override
+    out.isFullyOpaque = !isDissolved && !blendEnabled && out.alphaTestType == AlphaTestType::kAlways; // use the blend/test type from the output, rather than legacy for this so replacements can override
     out.isBlendingDisabled = !blendEnabled;
 
     return out;
@@ -1062,7 +1078,10 @@ namespace dxvk {
        // Don't overwrite transform from when the instance was seen with the main camera
        !currentInstance.isCameraRegistered(CameraType::Main));
 
-    const RtSurface::AlphaState alphaState = calculateAlphaState(drawCall, *materialData);
+    const AlphaBlendDissolve alphaBlendDissolve = RtxOptions::enableAlphaBlendDissolve()
+      ? calculateAlphaBlendDissolve(drawCall, drawCall.isEye(), *materialData)
+      : AlphaBlendDissolve::None;
+    const RtSurface::AlphaState alphaState = calculateAlphaState(drawCall, *materialData, alphaBlendDissolve);
     // The patched material must remain alive until preserveInstance invokes material binding callbacks.
     std::optional<MaterialData> patchedMaterialData;
     bool hasTransformChanged = false;
@@ -1125,6 +1144,7 @@ namespace dxvk {
         // Note: Skip the spritesheet adjustment logic in the surface interaction when using Ray Portal materials as this logic
         // is done later in the Surface Material Interaction (and doing it in both places will just double up the animation).
         currentInstance.surface.skipSurfaceInteractionSpritesheetAdjustment = (currentInstance.m_materialType == MaterialDataType::RayPortal);
+        currentInstance.surface.alphaBlendDissolve = alphaBlendDissolve;
 
         currentInstance.surface.blendModeState = drawCall.getMaterialData().blendMode;
 

@@ -501,7 +501,8 @@ private:
 
   void removeInstance(RtInstance* instance);
 
-  static RtSurface::AlphaState calculateAlphaState(const DrawCallState& drawCall, const MaterialData& materialData);
+  static RtSurface::AlphaState calculateAlphaState(const DrawCallState& drawCall, const MaterialData& materialData,
+                                                   AlphaBlendDissolve alphaBlendDissolve);
 
   // Modifies an instance given active developer options. Returns true if the instance was modified
   bool applyDeveloperOptions(RtInstance& currentInstance, const DrawCallState& drawCall);

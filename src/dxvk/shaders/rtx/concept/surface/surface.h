@@ -481,6 +481,13 @@ struct Surface
     set { data13.z = newValue ? packedFlagSet(data13.z, 1 << 14) : packedFlagUnset(data13.z, 1 << 14); }
   }
 
+  // Set on surfaces converted by rtx.enableAlphaBlendDissolve, see calculateAlphaBlendDissolve.
+  property uint8_t alphaBlendDissolve
+  {
+    get { return uint8_t((data13.z >> alphaBlendDissolveShift) & alphaBlendDissolveMask); }
+    set { data13.z = (data13.z & ~(alphaBlendDissolveMask << alphaBlendDissolveShift)) | (uint32_t(newValue & alphaBlendDissolveMask) << alphaBlendDissolveShift); }
+  }
+
   property uint tFactor
   {
     get { return data13.y; }

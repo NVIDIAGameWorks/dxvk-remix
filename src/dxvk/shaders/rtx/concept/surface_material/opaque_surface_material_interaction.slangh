@@ -716,6 +716,10 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreateImpl<let 
 #endif
 
   vec4 tFactor = unorm4x8ToFloat4x32(surface.tFactor).bgra;
+  bool isAlphaBlendDissolveCut = false;
+  // The material's own alpha, before texture stage operations, is alpha tested by AlphaBlendDissolve::Fade and is the ramp of
+  // AlphaBlendDissolvePattern::AlbedoAlpha, unless the material ignores it.
+  const float alphaBlendDissolveMaterialAlpha = opacity;
 
   // WAR for REMIX-1573: texture ops for opacity should happen during baking and be skipped here for baked terrain,
   // but right now the opacity is not 1 in the baked texture where it is expected to be and thus texture ops
@@ -752,30 +756,73 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreateImpl<let 
     chooseTextureArgument(textureAlphaArg1, surface.textureAlphaArg1Source, opacity, surfaceInteraction.vertexColor.a, tFactor.a, opacity);
     chooseTextureArgument(textureAlphaArg2, surface.textureAlphaArg2Source, opacity, surfaceInteraction.vertexColor.a, tFactor.a, float(1.0f));
     chooseTextureOperationAlpha(opacity, surface.textureAlphaOperation, textureAlphaArg1, textureAlphaArg2);
-    
-    // Ensure we perform these opacity calculations after the texture operations have been applied to abledo and alpha.
-    // NV-DXVK start: Camera coverage must not use the placeholder texture's emissive approximation.
-    Surface opacitySurface = surface;
-    if (isRaytracedRenderTarget)
+
+    // A dissolving surface keeps only the pixels that pass its dissolve test, see AlphaBlendDissolve.
+    const uint alphaBlendDissolve = surface.isFullyOpaque ? uint(AlphaBlendDissolve::None) : uint(surface.alphaBlendDissolve);
+    bool isOpacityResolved = false;
+
+    if (alphaBlendDissolve != uint(AlphaBlendDissolve::None))
     {
-      switch (uint(surface.blendType))
+      // A material that ignores its alpha channel (OPAQUE_SURFACE_MATERIAL_FLAG_IGNORE_ALPHA_CHANNEL) dissolves by the game's fade alone.
+      const bool isAlphaChannelIgnored = (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_IGNORE_ALPHA_CHANNEL) != 0;
+      const float materialAlpha = isAlphaChannelIgnored ? float(1.0f) : alphaBlendDissolveMaterialAlpha;
+      // The game's fade: the texture factor alpha of TextureFactorFade, or the vertex alpha.
+      const float fade = alphaBlendDissolve == uint(AlphaBlendDissolve::VertexAlpha) ? surfaceInteraction.vertexColor.a : tFactor.a;
+      const bool isTextureAlphaFaded = alphaBlendDissolve == uint(AlphaBlendDissolve::TextureAlphaTimesTextureFactor);
+      const bool isFade = alphaBlendDissolve == uint(AlphaBlendDissolve::Fade);
+      // AlbedoAlpha uses the material's alpha as an authored ramp; eyes keep the noise.
+      const bool isPattern = cb.alphaBlendDissolvePattern == AlphaBlendDissolvePattern::AlbedoAlpha && !isAlphaChannelIgnored &&
+        alphaBlendDissolve != uint(AlphaBlendDissolve::VertexAlpha);
+
+      opacity *= isTextureAlphaFaded ? tFactor.a : float(1.0f);
+
+      // Pattern keeps a pixel while its ramp alpha is at most the fade; noise keeps it while its coverage exceeds blue noise.
+      // One blue-noise value per pixel and frame is shared by every layer and pass at this dispatch index, so a surface fades as a whole.
+      RNG rng = createRNGAnywhere(cb.frameIdx, 1033);
+      if (isPattern)
       {
-      case uint(BlendType::kAlphaEmissive):
-      case uint(BlendType::kColor):
-      case uint(BlendType::kColorEmissive):
-      case uint(BlendType::kEmissive):
-        opacitySurface.blendType = uint8_t(BlendType::kAlpha);
-        break;
-      case uint(BlendType::kReverseAlphaEmissive):
-      case uint(BlendType::kReverseColor):
-      case uint(BlendType::kReverseColorEmissive):
-        opacitySurface.blendType = uint8_t(BlendType::kReverseAlpha);
-        break;
+          isAlphaBlendDissolveCut = !alphaTestPasses( uint(AlphaTestType::kLessOrEqual), materialAlpha, fade);
       }
+      else
+      {
+          isAlphaBlendDissolveCut = !((isTextureAlphaFaded ? materialAlpha * fade : fade) > getNextSampleBlueNoise(rng));
+      }
+
+      // A replacement dissolved by the game's fade also keeps its own alpha test on its own alpha, in either pattern.
+      bool cutFromAuthoredAlphaTest = isFade && !isAlphaChannelIgnored && !alphaTestPasses(uint(surface.alphaTestType), alphaBlendDissolveMaterialAlpha, surface.alphaTestReferenceValue);
+      isAlphaBlendDissolveCut = isAlphaBlendDissolveCut || cutFromAuthoredAlphaTest;
+
+      // Pattern and fade dissolves decide the whole opacity, so kept pixels are fully opaque.
+      isOpacityResolved = isPattern || isFade;
+      opacity = isOpacityResolved ? (isAlphaBlendDissolveCut ? float(0.0f) : float(1.0f)) : opacity;
     }
-    calcOpaqueSurfaceMaterialOpacity(
-      albedo, opacity, opacitySurface, opacity, emissiveBlendOverrideInfluence, cb.wboitEnabled);
-    // NV-DXVK end
+
+    if (!isOpacityResolved)
+    {
+      // Ensure we perform these opacity calculations after the texture operations have been applied to abledo and alpha.
+      // NV-DXVK start: Camera coverage must not use the placeholder texture's emissive approximation.
+      Surface opacitySurface = surface;
+      if (isRaytracedRenderTarget)
+      {
+        switch (uint(surface.blendType))
+        {
+        case uint(BlendType::kAlphaEmissive):
+        case uint(BlendType::kColor):
+        case uint(BlendType::kColorEmissive):
+        case uint(BlendType::kEmissive):
+          opacitySurface.blendType = uint8_t(BlendType::kAlpha);
+          break;
+        case uint(BlendType::kReverseAlphaEmissive):
+        case uint(BlendType::kReverseColor):
+        case uint(BlendType::kReverseColorEmissive):
+          opacitySurface.blendType = uint8_t(BlendType::kReverseAlpha);
+          break;
+        }
+      }
+      calcOpaqueSurfaceMaterialOpacity(
+        albedo, opacity, opacitySurface, opacity, emissiveBlendOverrideInfluence, cb.wboitEnabled);
+      // NV-DXVK end
+    }
   }
 
   if (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_IGNORE_ALPHA_CHANNEL)
@@ -984,6 +1031,12 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreateImpl<let 
       viewCosine,
       albedo
     );
+  }
+
+  // The dissolve cut follows every material override, including eye shading, which makes eyes fully opaque.
+  if (isAlphaBlendDissolveCut)
+  {
+    opaqueSurfaceMaterialInteraction.opacity = float(0.0f);
   }
 
   return opaqueSurfaceMaterialInteraction;
