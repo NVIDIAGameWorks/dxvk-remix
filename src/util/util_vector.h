@@ -25,10 +25,17 @@
 #include <iostream>
 #include <algorithm>
 #include <type_traits>
+// NV-DXVK start: JSON values
+#include <string>
+#include <vector>
+// NV-DXVK end
 
 #include "xxHash/xxhash.h"
 #include "util_bit.h"
 #include "util_math.h"
+// NV-DXVK start: JSON values
+#include "util_string.h"
+// NV-DXVK end
 
 namespace dxvk {
   template <typename T>
@@ -251,6 +258,13 @@ namespace dxvk {
   std::ostream& operator<<(std::ostream& os, const Vector4Base<T>& v) {
     return os << "Vector4(" << v[0] << ", " << v[1] << ", " << v[2] << ", " << v[3] << ")";
   }
+
+  // NV-DXVK start: JSON values
+  template <typename T>
+  std::string asJson(const Vector4Base<T>& v, int indentLevel = str::kJsonCompact, int decimalPlaces = str::kJsonShortestFloat) {
+    return str::asJson(std::vector<T> { v.x, v.y, v.z, v.w }, indentLevel, decimalPlaces);
+  }
+  // NV-DXVK end
 
   using Vector4d = Vector4Base<double>;
   using Vector4  = Vector4Base<float>;
@@ -517,6 +531,13 @@ namespace dxvk {
     return os << "Vector3(" << v[0] << ", " << v[1] << ", " << v[2] << ")";
   }
 
+  // NV-DXVK start: JSON values
+  template <typename T>
+  std::string asJson(const Vector3Base<T>& v, int indentLevel = str::kJsonCompact, int decimalPlaces = str::kJsonShortestFloat) {
+    return str::asJson(std::vector<T> { v.x, v.y, v.z }, indentLevel, decimalPlaces);
+  }
+  // NV-DXVK end
+
   using Vector3  = Vector3Base<float>;
   using Vector3d = Vector3Base<double>;
   using Vector3i = Vector3Base<int>;
@@ -698,6 +719,13 @@ namespace dxvk {
   std::ostream& operator<<(std::ostream& os, const Vector2Base<T>& v) {
     return os << "Vector2(" << v[0] << ", " << v[1] << ")";
   }
+
+  // NV-DXVK start: JSON values
+  template <typename T>
+  std::string asJson(const Vector2Base<T>& v, int indentLevel = str::kJsonCompact, int decimalPlaces = str::kJsonShortestFloat) {
+    return str::asJson(std::vector<T> { v.x, v.y }, indentLevel, decimalPlaces);
+  }
+  // NV-DXVK end
 
   using Vector2  = Vector2Base<float>;
   using Vector2i = Vector2Base<int>;

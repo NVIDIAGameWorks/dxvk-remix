@@ -280,6 +280,48 @@ RWStructuredBuffer<RTXDI_PackedReservoir> TransmissionPSRData;
 layout(r32ui, binding = GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT)
 RWTexture2D<uint> PrimaryObjectPicking;
 
+layout(r32ui, binding = GBUFFER_BINDING_PRIMARY_FIRST_HIT_SURFACE_INDEX_OUTPUT)
+RWTexture2D<uint> PrimaryFirstHitSurfaceIndex;
+
+// Marks a pixel as having no hit, in each first-hit image that exists this frame.
+void clearObjectPickingHit(uvec2 pixelCoordinate)
+{
+  if (cb.enableObjectPicking)
+  {
+    PrimaryObjectPicking[pixelCoordinate] = OBJECT_PICKING_INVALID;
+  }
+  if (cb.enableFirstHitSurfaceIndex)
+  {
+    PrimaryFirstHitSurfaceIndex[pixelCoordinate] = SURFACE_INDEX_INVALID;
+  }
+}
+
+// Writes the first hit at a pixel, and leaves later hits out, in each first-hit image that exists this frame.
+void storeFirstObjectPickingHit(uvec2 pixelCoordinate, uint objectPickingValue, uint surfaceIndex)
+{
+  if (cb.enableObjectPicking)
+  {
+    InterlockedCompareStore(PrimaryObjectPicking[pixelCoordinate], OBJECT_PICKING_INVALID, objectPickingValue);
+  }
+  if (cb.enableFirstHitSurfaceIndex)
+  {
+    InterlockedCompareStore(PrimaryFirstHitSurfaceIndex[pixelCoordinate], SURFACE_INDEX_INVALID, surfaceIndex);
+  }
+}
+
+// Replaces the hit at a pixel, in each first-hit image that exists this frame.
+void storeObjectPickingHit(uvec2 pixelCoordinate, uint objectPickingValue, uint surfaceIndex)
+{
+  if (cb.enableObjectPicking)
+  {
+    PrimaryObjectPicking[pixelCoordinate] = objectPickingValue;
+  }
+  if (cb.enableFirstHitSurfaceIndex)
+  {
+    PrimaryFirstHitSurfaceIndex[pixelCoordinate] = surfaceIndex;
+  }
+}
+
 // Raw XYZ/UV outputs use alpha 1 for hits and zero for misses.
 layout(rgba32f, binding = GBUFFER_BINDING_PRIMARY_WORLD_POSITION_RAW_OUTPUT)
 RWTexture2D<float4> PrimaryWorldPositionRaw;

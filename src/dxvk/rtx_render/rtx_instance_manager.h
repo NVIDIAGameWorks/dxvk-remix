@@ -46,6 +46,21 @@ class DxvkDevice;
 class ResourceCache;
 class CameraManager;
 
+// Selects how much of an instance RtInstance::asJson writes.
+// Each level includes the members of the levels below it.
+enum class InstanceDetailLevel : uint32_t {
+  // Identifies the instance: its ids, original hashes, replacement, and whether it is hidden or traced.
+  Summary = 0,
+  // Adds what a consumer outside the renderer can act on, such as transforms, geometry and cameras.
+  Standard,
+  // Adds the renderer's own bookkeeping, such as TLAS instance fields and bindless slots.
+  Full,
+
+  Count
+};
+
+struct AssetReplacer;
+
 // RtInstance defines a SceneObjects placement/parameterization within the current scene.
 class RtInstance {
 public:
@@ -128,6 +143,10 @@ public:
   uint32_t getFrameAge() const { return m_frameLastUpdated - m_frameCreated; }
   // Signal this object should be collected on the next GC pass
   void markForGarbageCollection() const;
+  // Records that AccelManager submitted billboards of this instance to the ray-traced scene this frame.
+  // Rays can then hit the instance even when its geometric mask is 0.
+  // setFrameLastUpdated clears it on the next frame.
+  void markTracedThroughBillboards() const { m_isTracedThroughBillboards = true; }
   // Returns true if a new camera type was registered
   bool registerCamera(CameraType::Enum cameraType, uint32_t frameIndex);
   bool isCameraRegistered(CameraType::Enum cameraType) const;
@@ -205,7 +224,13 @@ uint32_t getFirstBillboardIndex() const { return m_firstBillboard; }
 
   PrimInstanceOwner& getPrimInstanceOwner() { return m_primInstanceOwner; }
   
-  void printDebugInfo() const;
+  // Returns whether the instance is in the ray-traced scene, so primary rays can hit it.
+  bool isTraced() const;
+  // Returns the instance as a JSON object, which printDebugInfo and the visible-set dump share.
+  // Leaves out the replacement members when pReplacer is null.
+  std::string asJson(InstanceDetailLevel detail, AssetReplacer* pReplacer, int indentLevel) const;
+  // Prints the instance at a detail level, then the BLAS, draw call and surface the instance uses.
+  void printDebugInfo(AssetReplacer* pReplacer = nullptr, InstanceDetailLevel detail = InstanceDetailLevel::Standard) const;
 
 private:
 
@@ -254,6 +279,7 @@ private:
   bool m_isAnimated = false;
 
   mutable bool m_isMarkedForGC = false;
+  mutable bool m_isTracedThroughBillboards = false;
 
   bool m_isHidden = false;
   bool m_isPlayerModel = false;
@@ -267,6 +293,13 @@ private:
   BlasEntry* m_linkedBlas = nullptr;
   XXH64_hash_t m_materialHash = kEmptyHash;
   XXH64_hash_t m_materialDataHash = kEmptyHash;
+
+  // These hold the original mesh hash, replacement index and mesh replacements drawn for renderer-created clones,
+  // which have no ReplacementInstance.
+  XXH64_hash_t m_originalMeshHash = kEmptyHash;
+  uint32_t m_originalReplacementIndex = ReplacementInstance::kInvalidReplacementIndex;
+  std::shared_ptr<const ReplacementBucket> m_originalMeshReplacements;
+
   XXH64_hash_t m_texcoordHash = kEmptyHash;
   XXH64_hash_t m_indexHash = kEmptyHash;
   VkAccelerationStructureInstanceKHR m_vkInstance;

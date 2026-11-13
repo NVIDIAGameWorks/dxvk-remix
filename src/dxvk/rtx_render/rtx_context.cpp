@@ -1410,6 +1410,7 @@ namespace dxvk {
     // Enable object picking only when resource was created
     // TODO: should be a spec.const
     constants.enableObjectPicking = bool { rtOutput.m_primaryObjectPicking.isValid() };
+    constants.enableFirstHitSurfaceIndex = rtOutput.m_primaryFirstHitSurfaceIndex.isValid();
 
     constants.rawAovMask = (rtOutput.m_primaryWorldPositionRaw.isValid() ? kRawAovWorldPosition : 0u)
                         | (rtOutput.m_primaryTexcoordsRaw.isValid() ? kRawAovTexcoords : 0u)
@@ -2231,6 +2232,72 @@ namespace dxvk {
     }
   }
 
+  void RtxContext::dispatchFirstHitSurfaceIndexReadback(Resources::RaytracingOutput& rtOutput, const VkExtent3D& srcExtent) {
+    ObjectPicking& picking = m_common->metaDebugView().ObjectPicking;
+    Resources::Resource& surfaceIndexSrc = rtOutput.m_primaryFirstHitSurfaceIndex;
+
+    erase_if(m_objectPickingReadback.surfaceIndexTasks, [](std::future<void>& f) {
+      return !f.valid() || f.wait_for(std::chrono::duration<int> { 0 }) == std::future_status::ready;
+    });
+
+    if (!picking.containsSurfaceIndexImageRequests()) {
+      surfaceIndexSrc = {};
+      return;
+    }
+
+    // An image created here is first written by the next frame's GBuffer, so it is copied no earlier than then.
+    if (!surfaceIndexSrc.isValid() || !(surfaceIndexSrc.image->info().extent == srcExtent)) {
+      auto thisRef = Rc<DxvkContext> { this };
+      surfaceIndexSrc = Resources::createImageResource(thisRef, "primary first hit surface index", srcExtent, VK_FORMAT_R32_UINT);
+      return;
+    }
+
+    // Reads back one request per frame.
+    std::optional<ObjectPicking::SurfaceIndexImageRequest> request = picking.popSurfaceIndexImageRequest();
+    if (!request.has_value()) {
+      return;
+    }
+
+    constexpr static VkDeviceSize onePixelInBytes = sizeof(uint32_t);
+    assert(surfaceIndexSrc.image->formatInfo()->elementSize == onePixelInBytes);
+
+    auto info = DxvkBufferCreateInfo {};
+    info.size = onePixelInBytes * srcExtent.width * srcExtent.height;
+    info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_HOST_BIT;
+    info.access = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_HOST_READ_BIT;
+    Rc<DxvkBuffer> readbackDst = m_device->createBuffer(info,
+      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+      DxvkMemoryStats::Category::RTXBuffer, "First Hit Surface Index Readback Buffer");
+
+    auto subres = VkImageSubresourceLayers {};
+    subres.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    subres.layerCount = 1;
+    copyImageToBuffer(readbackDst, 0, onePixelInBytes, onePixelInBytes,
+      surfaceIndexSrc.image, subres, VkOffset3D { 0, 0, 0 }, srcExtent);
+    this->emitMemoryBarrier(0,
+      VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+      VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+
+    const uint64_t syncValue = ++m_objectPickingReadback.signalValue;
+    this->signal(m_objectPickingReadback.signal, syncValue);
+    request->onCopied(m_device->getCurrentFrameId());
+
+    m_objectPickingReadback.surfaceIndexTasks.push_back(std::async(
+      std::launch::async,
+      [this, cReadbackDst = std::move(readbackDst), cSyncValueToWait = syncValue,
+       cWidth = srcExtent.width, cHeight = srcExtent.height,
+       cOnResult = std::move(request->onResult)]() {
+        this->m_objectPickingReadback.signal->wait(cSyncValueToWait);
+        const uint32_t* readback = mapAs<const uint32_t*>(cReadbackDst);
+        if (readback == nullptr) {
+          cOnResult(std::nullopt);
+          return;
+        }
+        cOnResult(ObjectPicking::SurfaceIndexImage { readback, cWidth, cHeight });
+      }));
+  }
+
   void RtxContext::dispatchObjectPicking(Resources::RaytracingOutput& rtOutput,
                                          const VkExtent3D& srcExtent,
                                          const VkExtent3D& targetExtent) {
@@ -2252,6 +2319,8 @@ namespace dxvk {
       }
       return true;
     };
+
+    dispatchFirstHitSurfaceIndexReadback(rtOutput, srcExtent);
 
     if (rtOutput.m_primaryObjectPicking.isValid()) {
       if (enoughTimeHasPassedToDestroy()) {

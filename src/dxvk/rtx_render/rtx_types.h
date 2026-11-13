@@ -138,6 +138,11 @@ struct ReplacementInstance {
     Matrix4 textureTransform = Matrix4();
     TexGenMode texgenMode = TexGenMode::None;
     const void* sourceVertexBufferAddress = nullptr;
+    // Holds the original draw call's combined asset hash under geometryAssetHashRule.
+    // Capture prims (mesh_<HASH>), tags and replacement lookups all key on this hash.
+    // Only the DrawCallState overload of findOrCreateReplacementInstance sets it.
+    // It is declared last with a default, so positional aggregate initializers elsewhere stay valid.
+    XXH64_hash_t originalMeshHash = kEmptyHash;
   };
 
   ReplacementInstance() = delete;
@@ -196,6 +201,9 @@ struct ReplacementInstance {
   XXH64_hash_t identityHash = kEmptyHash;
   XXH64_hash_t spatialMapHash = kEmptyHash;
   XXH64_hash_t materialHash = kEmptyHash;
+  // See LookupKey::originalMeshHash. It lets consumers report the game's identity for a replacement prim,
+  // whose own BLAS carries the replacement geometry.
+  XXH64_hash_t originalMeshHash = kEmptyHash;
   XXH64_hash_t legacyMaterialIdentityHash = kEmptyHash;
   XXH64_hash_t vertexPositionHash = kEmptyHash;
   Vector3 centroid = Vector3(0.f);

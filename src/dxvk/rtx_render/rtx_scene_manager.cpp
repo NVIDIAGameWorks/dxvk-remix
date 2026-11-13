@@ -30,6 +30,7 @@
 #include "dxvk_context.h"
 #include "dxvk_buffer.h"
 #include "rtx_context.h"
+#include "rtx_debug_view.h"
 #include "rtx_water_sim.h"
 #include "rtx_options.h"
 #include "rtx_preserved_object_picking.h"
@@ -608,7 +609,8 @@ namespace dxvk {
     AssetChanges changes;
     const bool changedSync = m_pReplacer->checkForChanges(ctx);
     const bool appliedRebuild = m_pReplacer->applyPendingRebuilds(ctx, changes);
-    if (m_enqueueDelayedClear || changedSync) {
+    const bool sceneCleared = m_enqueueDelayedClear || changedSync;
+    if (sceneCleared) {
       clear(ctx, true);
       m_enqueueDelayedClear = false;
     } else if (appliedRebuild) {
@@ -616,6 +618,15 @@ namespace dxvk {
     }
 
     m_cameraManager.onFrameEnd();
+    // The exporter is skipped on a cleared frame, because clear() emptied the instance table
+    // and an empty snapshot would look like a camera that sees nothing.
+    // A request left queued gets a real answer on the next frame.
+    // It runs before InstanceManager::onFrameEnd, which resets the surface indices it reports.
+    if (raytracedThisFrame && !sceneCleared) {
+      m_visibleSetExporter.onFrameEnd(m_cameraManager, m_instanceManager.getInstanceTable(), m_accelManager.getOrderedInstances(),
+                                      *getAssetReplacer(), m_device->getCommon()->metaDebugView().ObjectPicking,
+                                      m_device->getCurrentFrameId());
+    }
     m_instanceManager.onFrameEnd();
     m_previousFrameSceneAvailable = raytracedThisFrame && RtxOptions::enablePreviousTLAS();
 
@@ -2810,7 +2821,7 @@ namespace dxvk {
       const RtInstance* instance = instances[i];
       if (instance != nullptr) {
         Logger::info(str::format("Instance ", i, ":"));
-        instance->printDebugInfo();
+        instance->printDebugInfo(m_pReplacer.get(), static_cast<InstanceDetailLevel>(VisibleSetExporter::detailLevel()));
       } else {
         Logger::warn(str::format("Instance ", i, ": nullptr"));
       }

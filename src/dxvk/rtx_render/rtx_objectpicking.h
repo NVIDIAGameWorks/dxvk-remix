@@ -100,14 +100,58 @@ namespace dxvk {
       return {};
     }
 
+    // Holds a read-back image of the surface index of each pixel's first hit, at render resolution.
+    // values holds width * height indices into the frame's surfaces, stored row by row from the top left.
+    // A pixel without a hit holds SURFACE_INDEX_INVALID.
+    // values is valid only during the callback that receives it.
+    struct SurfaceIndexImage {
+      const uint32_t* values = nullptr;
+      uint32_t width = 0;
+      uint32_t height = 0;
+    };
+
+    // Reads back the first-hit surface-index image of one frame.
+    // That image exists, and the GBuffer writes it, only while such a request waits.
+    // It does not need the object-picking image, and does not create it.
+    // onCopied runs on the render thread when the image is copied, with the frame it comes from.
+    // Surface indices are per frame, so a caller resolves them against that frame's instances.
+    // onResult runs later on a worker thread.
+    // It receives nullopt when the copy could not be mapped.
+    struct SurfaceIndexImageRequest {
+      std::function<void(uint32_t /* frameId */)> onCopied {};
+      std::function<void(std::optional<SurfaceIndexImage>)> onResult {};
+    };
+
+    void requestSurfaceIndexImage(std::function<void(uint32_t)> onCopied,
+                                  std::function<void(std::optional<SurfaceIndexImage>)> onResult) {
+      std::lock_guard lock { m_mutex };
+      m_surfaceIndexImageRequests.push(SurfaceIndexImageRequest { std::move(onCopied), std::move(onResult) });
+    }
+
+    std::optional<SurfaceIndexImageRequest> popSurfaceIndexImageRequest() {
+      std::lock_guard lock { m_mutex };
+      if (m_surfaceIndexImageRequests.empty()) {
+        return {};
+      }
+      SurfaceIndexImageRequest r = std::move(m_surfaceIndexImageRequests.front());
+      m_surfaceIndexImageRequests.pop();
+      return r;
+    }
+
     bool containsRequests() const {
       std::lock_guard lock { m_mutex };
       return !m_requests.empty();
     }
 
+    bool containsSurfaceIndexImageRequests() const {
+      std::lock_guard lock { m_mutex };
+      return !m_surfaceIndexImageRequests.empty();
+    }
+
   private:
     mutable dxvk::mutex m_mutex {};
     std::queue<Request> m_requests {};
+    std::queue<SurfaceIndexImageRequest> m_surfaceIndexImageRequests {};
   };
 
 

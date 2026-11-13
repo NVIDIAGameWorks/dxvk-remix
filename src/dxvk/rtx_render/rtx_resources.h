@@ -340,6 +340,9 @@ namespace dxvk
       Resource m_primaryDisocclusionThresholdMix;
       AliasedResource m_primaryDisocclusionMaskForRR;
       Resource m_primaryObjectPicking;
+      // Holds the surface index of each pixel's first hit, and SURFACE_INDEX_INVALID where there is none.
+      // Exists only while a visible-set request waits for it.
+      Resource m_primaryFirstHitSurfaceIndex;
 
       // Unaliased AOV textures survive until the post-render copies.
       Resource m_primaryWorldPositionRaw;   // VK_FORMAT_R32G32B32A32_SFLOAT: xyz world hit + w=1

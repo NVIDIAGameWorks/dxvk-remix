@@ -669,7 +669,8 @@ namespace dxvk {
            AntiCulling::isLightAntiCullingEnabled() ||
            TerrainBaker::needsTerrainBaking() ||
            enableAlwaysCalculateAABB() ||
-           NeeCachePass::enable();
+           NeeCachePass::enable() ||
+           VisibleSetExporter::enable();
   }
 
   void RtxOptions::resolveTransparencyThresholdOnChange(DxvkDevice* device) {

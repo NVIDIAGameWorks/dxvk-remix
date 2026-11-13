@@ -133,6 +133,7 @@ namespace dxvk {
         RW_TEXTURE2D(GBUFFER_BINDING_PRIMARY_POSITION_ERROR_OUTPUT)
         RW_TEXTURE2D(GBUFFER_BINDING_SHARED_SHADOW_TERMINATOR_FIX_OUTPUT)
         RW_TEXTURE2D(GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT)
+        RW_TEXTURE2D(GBUFFER_BINDING_PRIMARY_FIRST_HIT_SURFACE_INDEX_OUTPUT)
 
         RW_TEXTURE2D(GBUFFER_BINDING_PRIMARY_WORLD_POSITION_RAW_OUTPUT)
         RW_TEXTURE2D(GBUFFER_BINDING_PRIMARY_TEXCOORDS_RAW_OUTPUT)
@@ -777,6 +778,7 @@ namespace dxvk {
     // See geometryResolverStorePSRContinuation.
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_DEPTH_OUTPUT, rtOutput.m_primaryDepth.view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT, rtOutput.m_primaryObjectPicking.view, nullptr);
+    ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_FIRST_HIT_SURFACE_INDEX_OUTPUT, rtOutput.m_primaryFirstHitSurfaceIndex.view, nullptr);
 
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_WORLD_POSITION_RAW_OUTPUT, rtOutput.m_primaryWorldPositionRaw.view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_TEXCOORDS_RAW_OUTPUT,     rtOutput.m_primaryTexcoordsRaw.view,     nullptr);
@@ -864,13 +866,15 @@ namespace dxvk {
     const bool wboitEnabled = RtxOptions::wboitEnabled();
     const bool psrEnabled = rtOutput.m_raytraceArgs.enablePSRR || rtOutput.m_raytraceArgs.enablePSTR;
     const bool debugViewEnabled = rtOutput.m_raytraceArgs.debugView != 0;
+    // Either first-hit image needs the shader variant that compiles the first-hit writes in.
+    const bool firstHitImageEnabled = rtOutput.m_raytraceArgs.enableObjectPicking || rtOutput.m_raytraceArgs.enableFirstHitSurfaceIndex;
     const bool usePipelineDefaultFeatureVariant =
       rtOutput.m_raytraceArgs.enableDLSSRR ||
       rtOutput.m_raytraceArgs.enableRaytracedRenderTarget ||
       rtOutput.m_raytraceArgs.enableStochasticAlphaBlend;
     const uint32_t pipelineFeatureVariant = selectGbufferFeatureVariant(
       debugViewEnabled,
-      rtOutput.m_raytraceArgs.enableObjectPicking,
+      firstHitImageEnabled,
       psrEnabled,
       usePipelineDefaultFeatureVariant);
     const bool deferUnorderedDecals =
@@ -878,7 +882,7 @@ namespace dxvk {
       rtOutput.m_raytraceArgs.enableDecalMaterialBlending;
     const uint32_t decalPrepareVariantKey = getGbufferDecalPrepareVariantKey(
       debugViewEnabled,
-      rtOutput.m_raytraceArgs.enableObjectPicking);
+      firstHitImageEnabled);
     // Keep radiance cache updates on the original inline PSR sampling path. They depend
     // on knowing whether the current GBuffer hit is the final integrated
     // surface, which PSR prepare defers to a later pass.
@@ -895,7 +899,7 @@ namespace dxvk {
       rtOutput.m_raytraceArgs.sparseRenderingArgs.mode == SparseRenderingMode::Off;
     const uint32_t rayQueryFeatureVariant = selectGbufferRayQueryFeatureVariant(
       debugViewEnabled,
-      rtOutput.m_raytraceArgs.enableObjectPicking,
+      firstHitImageEnabled,
       psrEnabled,
       usePSRPrepare,
       rtOutput.m_raytraceArgs.enableRaytracedRenderTarget,

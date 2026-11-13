@@ -211,6 +211,8 @@ namespace dxvk {
     void dispatchSRGBDither(const Resources::RaytracingOutput& rtOutput, bool performSRGBConversion);
     void dispatchDebugView(Rc<DxvkImage>& srcImage, const Resources::RaytracingOutput& rtOutput, bool captureScreenImage);
     void dispatchObjectPicking(Resources::RaytracingOutput& rtOutput, const VkExtent3D& srcExtent, const VkExtent3D& targetExtent);
+    // Keeps the first-hit surface-index image alive while a request waits for it, and reads it back.
+    void dispatchFirstHitSurfaceIndexReadback(Resources::RaytracingOutput& rtOutput, const VkExtent3D& srcExtent);
     void dispatchDLFG();
     void updateMetrics(const float gpuIdleTimeMilliseconds, const bool raytracedThisFrame);
     void rasterizeToSkyMatte(const DrawParameters& params, const DrawCallState& drawCallState);
@@ -280,6 +282,8 @@ namespace dxvk {
       std::atomic<uint64_t>           signalValue = 1;
       Rc<sync::Fence>                 signal = new sync::Fence{};
       std::vector<std::future<void>>  asyncTasks = {};
+      // Holds the readbacks of the first-hit surface-index image, which do not keep the object-picking image alive.
+      std::vector<std::future<void>>  surfaceIndexTasks = {};
     } m_objectPickingReadback {};
 
     std::vector<DrawCallState> m_delayedRayTracedSky;

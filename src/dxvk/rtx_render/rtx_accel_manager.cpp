@@ -1458,6 +1458,7 @@ namespace dxvk {
         memcpy(instance.transform.matrix, &transform, sizeof(VkTransformMatrixKHR));
 
         m_mergedInstances[Tlas::Unordered].push_back(instance);
+        billboard.instance->markTracedThroughBillboards();
 
         ++index;
       }

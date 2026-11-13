@@ -52,6 +52,7 @@
 #include "rtx_mod_manager.h"
 #include "graph/rtx_graph_manager.h"
 #include "rtx_particle_system.h"
+#include "rtx_visible_set_exporter.h"
 #include <d3d9types.h>
 
 namespace dxvk 
@@ -388,6 +389,8 @@ private:
   DrawCallCache m_drawCallCache;
 
   CameraManager m_cameraManager;
+
+  VisibleSetExporter m_visibleSetExporter;
 
   std::unique_ptr<AssetReplacer> m_pReplacer;
 
