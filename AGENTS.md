@@ -50,6 +50,7 @@ Full guide: `documentation/CONTRIBUTING-style-guide.md`
   - Constants: `k` prefix and camelCase, i.e. `kConstantName`
   - Macros and defines: `UPPER_CASE`
   - Classes and structs: `PascalCase`
+- **Struct member ordering**: Place embedded struct members at the top of the containing struct, before scalar and vector fields, to make alignment and padding easier to manage. Follow the pattern in `RaytraceArgs`.
 - **Conditions**: 
   - Prefer direct comparisons and positive predicates when they make a condition easier to read. For example, prefer `any(uv < 0.0f)` over `!all(uv >= 0.0f)` when equivalent. Preserve floating-point edge-case handling, including explicit NaN rejection when needed.
   - Test an integer flag by referencing the variable on its own, `if (flag)`, not `if (flag != 0)`. Applies to C++ and Slang, including `uint` flags in constant buffers. Bit tests like `(flags & kSomeBit) != 0` are unaffected.

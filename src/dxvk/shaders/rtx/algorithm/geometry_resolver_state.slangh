@@ -594,7 +594,8 @@ GbufferPSRData loadReflectionPSRData(uint2 pixelCoordinate)
 // transmission PSR pass, both of which run before RTXDI initial sampling first writes that page.
 int transmissionPSRDataPointer(uint2 pixelCoordinate)
 {
-  return RTXDI_ReservoirPositionToPointer(int2(pixelCoordinate), cb.camera.resolution, rtxdiScratchPage());
+  return int(rtxdiReservoirPageOffset(rtxdiScratchPage())) +
+    RTXDI_ReservoirPositionToPointer(int2(pixelCoordinate), cb.camera.resolution, 0);
 }
 
 void storeTransmissionPSRData(GbufferPSRData psrData, uint2 pixelCoordinate)

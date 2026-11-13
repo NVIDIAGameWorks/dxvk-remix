@@ -53,6 +53,28 @@ uint2 mortonIndexToTileCoord(uint index) {
   return coord;
 }
 
+// Expands an 8-pixel row into the x-bit positions of an 8x4 Morton block.
+uint mortonBlockRowMask(uint mask)
+{
+  mask = (mask | (mask << 12)) & 0x000F000Fu;
+  return (mask | (mask << 2)) & 0x00330033u;
+}
+
+// Returns the valid Morton bits of a clipped 8x4 block.
+uint mortonBlockBoundsMask(uint width, uint height)
+{
+  const uint rowMask = mortonBlockRowMask((1u << width) - 1u);
+  uint mask = height > 0 ? rowMask : 0u;
+  mask |= height > 1 ? rowMask << 2 : 0u;
+  mask |= height > 2 ? rowMask << 8 : 0u;
+  mask |= height > 3 ? rowMask << 10 : 0u;
+  return mask;
+}
+
+#if COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_X != 8 || COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_Y != 4
+  #error "Morton block masks require 8x4 pixel blocks."
+#endif
+
 // The low byte holds x and the high byte holds y. A pixel's activity comes from the tile's active count.
 uint16_t packLocalPixelCoordinate(uint2 localPixelCoordinate)
 {

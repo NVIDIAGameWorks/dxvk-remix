@@ -205,6 +205,8 @@ else
   nrc_include_path = 'submodules/nrc/include'
 endif
 
+rtxdi_include_path = 'submodules/rtxdi/rtxdi-sdk/include'
+
 nsight_graphics_capture_supported = (target_machine.cpu_family() == 'x86_64') or dxvk_is_woa_ec
 if nsight_graphics_capture_supported
   add_project_arguments('-DDXVK_ENABLE_NSIGHT_GRAPHICS_CAPTURE=1', language : 'cpp')
@@ -213,6 +215,7 @@ endif
 dxvk_include_dirs = [
   './include',
   './include/vulkan/include',
+  rtxdi_include_path,
   nrc_include_path
 ]
 
@@ -352,10 +355,7 @@ rtx_shader_source_directory = join_paths(global_src_root_norm, 'src/dxvk/shaders
 # directory, this is just the best way currently for organizing it into the respective project it is outputting data for.
 rtx_shader_output_directory = join_paths(current_build_dir_norm, 'src/dxvk/rtx_shaders')
 
-rtxdi_include_path = include_directories('submodules/rtxdi/rtxdi-sdk/include')
-# Need to use the include path as an argument to the shader build string,
-# and I couldn't find how to convert the IncludeDirs thing to a string... Meson.
-rtxdi_include_path_string = join_paths(global_src_root_norm, 'submodules/rtxdi/rtxdi-sdk/include')
+rtxdi_include_path_string = join_paths(global_src_root_norm, rtxdi_include_path)
 volumetrics_include_path_string = join_paths(global_src_root_norm, 'submodules/rtxdi/rtxdi-sdk/include/volumetrics')
 
 rtxcr_include_path = include_directories('submodules/rtxcr/shaders/include')

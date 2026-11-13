@@ -21,6 +21,16 @@
 */
 #pragma once
 
+#include "rtxdi/RtxdiParameters.h"
+#include "rtxdi/RtxdiHelpers.slangh"
+
+uint rtxdiReservoirPageOffset(int page)
+{
+  return cb.sparseRenderingArgs.mode != SparseRenderingMode::Off
+    ? uint(page) * cb.sparseRenderingArgs.compactedStorageCapacity
+    : uint(RTXDI_ReservoirPositionToPointer(int2(0), cb.camera.resolution, page));
+}
+
 // Idle until initial sampling, so the GBuffer parks the transmission PSR payload here.
 int rtxdiScratchPage()
 {

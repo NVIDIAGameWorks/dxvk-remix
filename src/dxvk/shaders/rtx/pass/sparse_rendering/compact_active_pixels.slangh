@@ -91,6 +91,35 @@ uint2 mortonDecode(uint code)
   return uint2(x, y);
 }
 
+#if COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_X != 8 || COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_Y != 4
+  #error "Morton block masks require 8x4 pixel blocks."
+#endif
+
+// Returns the offset within its 8x4 block of the pixel at a bit of the block's Morton-ordered mask.
+uint2 mortonBlockBitToPixelOffset(uint bit)
+{
+  return uint2((bit & 1u) | ((bit >> 1) & 2u) | ((bit >> 2) & 4u), ((bit >> 1) & 1u) | ((bit >> 2) & 2u));
+}
+
+// Returns the position of the mask's set bit that has `n` set bits below it.
+// `n` must be less than the number of set bits.
+uint findNthSetBit(uint mask, uint n)
+{
+  uint position = 0;
+  [unroll]
+  for (uint width = 16; width; width >>= 1)
+  {
+    const uint lowCount = countbits(mask & ((1u << width) - 1u));
+    if (n >= lowCount)
+    {
+      n -= lowCount;
+      mask >>= width;
+      position += width;
+    }
+  }
+  return position;
+}
+
 // Marks a pixel with no compacted slot this frame in CompactedPixelIndices. Lies above any tile-local index.
 static const uint kInvalidCompactedIndex = 0xFFFFu;
 

@@ -187,7 +187,8 @@ SssDiffusionProfileResult evalSssDiffusionProfile(
     bool risLightSampleValid = false;
     uint8_t sampledTransportPortalIndex = invalidRayPortalIndex;
     uint16_t lightIdx = kInvalidLightIdx;
-    if (cb.enableRtxdi && geometryFlags.primarySelectedIntegrationSurface && sampleInsideScreen)
+    if (cb.enableRtxdi && geometryFlags.primarySelectedIntegrationSurface && sampleInsideScreen &&
+        RAB_IsReservoirAvailable(samplePixelCoordinate, RTXDI_GetSpatialOutputPage()))
     {
       // Select and sample a light for NEE via RTXDI
       rtxdiLightSampleValid = sampleLightRTXDI(

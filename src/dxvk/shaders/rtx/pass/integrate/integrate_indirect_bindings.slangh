@@ -23,6 +23,7 @@
 
 #include "rtx/pass/integrate/integrate_indirect_binding_indices.h"
 
+#define RAB_HAS_COMPACTED_RESERVOIR_MAPPING 1
 #include "rtx/algorithm/rtxdi/rtxdi.slangh"
 #include "rtx/utility/shader_types.slangh"
 

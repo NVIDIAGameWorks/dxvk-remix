@@ -375,6 +375,7 @@ namespace dxvk
       // Holds each pixel's compacted index counted from its tile's base.
       // Holds kInvalidCompactedIndex for a pixel that has no slot.
       Resource m_sparseRenderingCompactedPixelIndices;
+      Resource m_sparseRenderingPreviousCompactedPixelIndices;
       // Holds one texel per 256x128 compaction tile.
       // x is the number of active pixels in the tile.
       // y is the compacted index of the tile's first active pixel.
@@ -382,6 +383,11 @@ namespace dxvk
       // whether it is active and where its GBuffer is stored, without a per-pixel lookup.
       // y also lets CompactedPixelIndices count from the tile's start, which keeps that table at 16 bits per pixel.
       Resource m_sparseRenderingTileActiveCounts;
+      Resource m_sparseRenderingPreviousTileActiveCounts;
+
+      // Stores each 8x4 block's global active-list base and retained-pixel Morton mask.
+      Resource m_sparseRenderingBlockRankOffsets;
+      Resource m_sparseRenderingPreviousBlockRankOffsets;
 
       // The first buffer holds the coordinate of every active pixel, indexed by its global compacted index.
       // The second holds the number of active pixels.

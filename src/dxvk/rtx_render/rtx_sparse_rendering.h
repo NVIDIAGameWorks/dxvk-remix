@@ -185,6 +185,8 @@ namespace dxvk {
     bool checkCompactedLaunchLimits(uint32_t maxLaunchPixels) const;
     void allocateActivePixelListBuffers(Rc<DxvkContext>& ctx, Resources::RaytracingOutput& rtOutput) const;
 
+    uint32_t m_compactedHistoryFrameIndex = ~0u;
+
     VkExtent3D m_activePixelMaskExtent = { 0u, 0u, 0u };
   };
 

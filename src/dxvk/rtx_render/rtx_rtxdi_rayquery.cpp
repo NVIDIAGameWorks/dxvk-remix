@@ -19,6 +19,8 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
+#include <algorithm>
+
 #include "rtx_rtxdi_rayquery.h"
 #include "dxvk_device.h"
 #include "rtx_shader_manager.h"
@@ -46,8 +48,12 @@
 #include <rtx_shaders/rtxdi_spatial_reuse_no_bsdf_detail.h>
 #include <rtx_shaders/rtxdi_spatial_reuse_no_portals.h>
 #include <rtx_shaders/rtxdi_spatial_reuse_no_portals_no_bsdf_detail.h>
+#include <rtx_shaders/rtxdi_spatial_select.h>
+#include <rtx_shaders/rtxdi_spatial_select_no_portals.h>
 #include <rtx_shaders/rtxdi_temporal_reuse.h>
 #include <rtx_shaders/rtxdi_temporal_reuse_no_portals.h>
+#include <rtx_shaders/rtxdi_temporal_select.h>
+#include <rtx_shaders/rtxdi_temporal_select_no_portals.h>
 #include <rtx_shaders/rtxdi_compute_gradients.h>
 #include <rtx_shaders/rtxdi_filter_gradients.h>
 #include <rtx_shaders/rtxdi_compute_confidence.h>
@@ -57,6 +63,8 @@ namespace dxvk {
 
   // Defined within an unnamed namespace to ensure unique definition across binary
   namespace {
+    constexpr uint32_t kMaxSparseSpatialSamples = RTXDI_MAX_ACTIVE_NEIGHBORS;
+
     bool useRtxdiPortalShaderVariants() {
       // Portal enablement is controlled by configuration, so this avoids switching RTXDI shader
       // variants when portals are merely absent from the current frame.
@@ -101,7 +109,8 @@ namespace dxvk {
 
         // Inputs / Outputs
         RW_STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_RTXDI_RESERVOIR_INPUT_OUTPUT)
-        RW_TEXTURE2D(RTXDI_REUSE_BINDING_LAST_GBUFFER_INPUT_OUTPUT)
+        RW_STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_SELECTION_GUIDE_INPUT_OUTPUT)
+        // GBufferLast stays undeclared, since a declared write would order temporal selection after this pass.
 
         // Outputs
         RW_TEXTURE2D(RTXDI_REUSE_BINDING_REPROJECTION_CONFIDENCE_OUTPUT)
@@ -144,6 +153,8 @@ namespace dxvk {
         TEXTURE2D(RTXDI_REUSE_BINDING_TILE_ACTIVE_COUNTS_INPUT)
         STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_ACTIVE_PIXEL_COORDS_INPUT)
         STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_ACTIVE_PIXEL_COUNT_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_PREVIOUS_TILE_ACTIVE_COUNTS_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_PREVIOUS_COMPACTED_PIXEL_INDICES_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_WORLD_POSITION_DENSE_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_SHARED_FLAGS_DENSE_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_LINEAR_VIEW_Z_INPUT)
@@ -151,8 +162,9 @@ namespace dxvk {
         TEXTURE2D(RTXDI_REUSE_BINDING_ALBEDO_DENSE_INPUT)
         
         // Inputs / Outputs
-        RW_STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_RTXDI_RESERVOIR_INPUT_OUTPUT)
+        RW_STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_RTXDI_RESERVOIR_INPUT_OUTPUT)        
         RW_TEXTURE2D(RTXDI_REUSE_BINDING_LAST_GBUFFER_INPUT_OUTPUT)
+        RW_STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_NEIGHBOR_CACHE_INPUT_OUTPUT)
 
         // Outputs
         RW_TEXTURE2D(RTXDI_REUSE_BINDING_REPROJECTION_CONFIDENCE_OUTPUT)
@@ -195,6 +207,8 @@ namespace dxvk {
         TEXTURE2D(RTXDI_REUSE_BINDING_TILE_ACTIVE_COUNTS_INPUT)
         STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_ACTIVE_PIXEL_COORDS_INPUT)
         STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_ACTIVE_PIXEL_COUNT_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_PREVIOUS_TILE_ACTIVE_COUNTS_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_PREVIOUS_COMPACTED_PIXEL_INDICES_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_WORLD_POSITION_DENSE_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_SHARED_FLAGS_DENSE_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_LINEAR_VIEW_Z_INPUT)
@@ -204,6 +218,7 @@ namespace dxvk {
         // Inputs / Outputs
         RW_STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_RTXDI_RESERVOIR_INPUT_OUTPUT)
         RW_TEXTURE2D(RTXDI_REUSE_BINDING_LAST_GBUFFER_INPUT_OUTPUT)
+        RW_STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_NEIGHBOR_CACHE_INPUT_OUTPUT)
 
         // Outputs
         RW_TEXTURE2D(RTXDI_REUSE_BINDING_REPROJECTION_CONFIDENCE_OUTPUT)
@@ -214,6 +229,67 @@ namespace dxvk {
     };
 
     PREWARM_SHADER_PIPELINE(RTXDISpatialReuseShader);
+
+    // Selection reads only these and writes only its own cache, so it can overlap the initial sampling dispatch before it.
+    class RTXDITemporalSelectionShader : public ManagedShader {
+      SHADER_SOURCE(RTXDITemporalSelectionShader, VK_SHADER_STAGE_COMPUTE_BIT, rtxdi_temporal_select)
+
+      BEGIN_PARAMETER()
+        STRUCTURED_BUFFER(BINDING_LIGHT_MAPPING)
+        CONSTANT_BUFFER(BINDING_CONSTANTS)
+        TEXTURE2D(RTXDI_REUSE_BINDING_WORLD_SHADING_NORMAL_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_HIT_DISTANCE_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_WORLD_POSITION_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_PREV_WORLD_POSITION_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_VIEW_DIRECTION_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_CONE_RADIUS_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_WS_MVEC_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_SS_MVEC_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_SHARED_FLAGS_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_BEST_LIGHTS_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_COMPACTED_PIXEL_INDICES_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_TILE_ACTIVE_COUNTS_INPUT)
+        STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_ACTIVE_PIXEL_COORDS_INPUT)
+        STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_ACTIVE_PIXEL_COUNT_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_PREVIOUS_TILE_ACTIVE_COUNTS_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_PREVIOUS_COMPACTED_PIXEL_INDICES_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_BLOCK_RANK_OFFSETS_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_PREVIOUS_BLOCK_RANK_OFFSETS_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_WORLD_POSITION_DENSE_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_SHARED_FLAGS_DENSE_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_LINEAR_VIEW_Z_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_WORLD_SHADING_NORMAL_DENSE_INPUT)
+        RW_TEXTURE2D_READONLY(RTXDI_REUSE_BINDING_LAST_GBUFFER_INPUT_OUTPUT)
+        RW_STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_NEIGHBOR_CACHE_INPUT_OUTPUT)
+      END_PARAMETER()
+    };
+
+    // Selection reads only these and writes only its own cache, so it can overlap the temporal reuse dispatch before it.
+    class RTXDISpatialSelectionShader : public ManagedShader {
+      SHADER_SOURCE(RTXDISpatialSelectionShader, VK_SHADER_STAGE_COMPUTE_BIT, rtxdi_spatial_select)
+
+      BEGIN_PARAMETER()
+        CONSTANT_BUFFER(BINDING_CONSTANTS)
+        TEXTURE2D(RTXDI_REUSE_BINDING_WORLD_SHADING_NORMAL_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_HIT_DISTANCE_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_WORLD_POSITION_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_SHARED_FLAGS_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_COMPACTED_PIXEL_INDICES_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_TILE_ACTIVE_COUNTS_INPUT)
+        STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_ACTIVE_PIXEL_COORDS_INPUT)
+        STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_ACTIVE_PIXEL_COUNT_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_BLOCK_RANK_OFFSETS_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_PREVIOUS_BLOCK_RANK_OFFSETS_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_WORLD_POSITION_DENSE_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_SHARED_FLAGS_DENSE_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_LINEAR_VIEW_Z_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_WORLD_SHADING_NORMAL_DENSE_INPUT)
+        STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_SELECTION_GUIDE_INPUT_OUTPUT)
+        RW_STRUCTURED_BUFFER(RTXDI_REUSE_BINDING_NEIGHBOR_CACHE_INPUT_OUTPUT)
+        // Unequal spatial and disocclusion sample counts read the confidence that temporal reuse writes.
+        RW_TEXTURE2D_READONLY(RTXDI_REUSE_BINDING_REPROJECTION_CONFIDENCE_OUTPUT)
+      END_PARAMETER()
+    };
 
     class RTXDIComputeGradientsShader : public ManagedShader {
       SHADER_SOURCE(RTXDIComputeGradientsShader, VK_SHADER_STAGE_COMPUTE_BIT, rtxdi_compute_gradients)
@@ -286,6 +362,22 @@ namespace dxvk {
         : GET_SHADER_VARIANT(VK_SHADER_STAGE_COMPUTE_BIT, RTXDISpatialReuseShader, rtxdi_spatial_reuse_no_portals_no_bsdf_detail);
     }
 
+    Rc<DxvkShader> getRtxdiTemporalSelectionShader(bool usePortalShaderVariants) {
+      if (usePortalShaderVariants) {
+        return RTXDITemporalSelectionShader::getShader();
+      }
+
+      return GET_SHADER_VARIANT(VK_SHADER_STAGE_COMPUTE_BIT, RTXDITemporalSelectionShader, rtxdi_temporal_select_no_portals);
+    }
+
+    Rc<DxvkShader> getRtxdiSpatialSelectionShader(bool usePortalShaderVariants) {
+      if (usePortalShaderVariants) {
+        return RTXDISpatialSelectionShader::getShader();
+      }
+
+      return GET_SHADER_VARIANT(VK_SHADER_STAGE_COMPUTE_BIT, RTXDISpatialSelectionShader, rtxdi_spatial_select_no_portals);
+    }
+
     struct RTXDIReuseShaderVariantPrewarmer {
       RTXDIReuseShaderVariantPrewarmer() {
         AutoShaderPipelinePrewarmer::registerComputeShaderForPrewarm([] {
@@ -307,6 +399,19 @@ namespace dxvk {
         AutoShaderPipelinePrewarmer::registerComputeShaderForPrewarm([] {
           return getRtxdiSpatialReuseShader(false, false);
         });
+
+        // Selection passes only run with sparse rendering.
+        AutoShaderPipelinePrewarmer::registerComputeShaderForPrewarm([] {
+          for (const bool portals : { true, false }) {
+            if (RtxOptions::Shader::prewarmAllVariants() || (SparseRendering::isEnabledByOptions() && portals == useRtxdiPortalShaderVariants())) {
+              getRtxdiTemporalSelectionShader(portals);
+              getRtxdiSpatialSelectionShader(portals);
+            }
+          }
+
+          // The prewarmer needs a shader to return, and the lambdas above already prewarm this one.
+          return getRtxdiTemporalReuseShader(false);
+        });
       }
     };
 
@@ -314,6 +419,16 @@ namespace dxvk {
   }
 
   DxvkRtxdiRayQuery::DxvkRtxdiRayQuery(DxvkDevice* device) {
+  }
+
+  uint32_t DxvkRtxdiRayQuery::getSparseTemporalNeighborCandidateCount() {
+    const uint32_t count = sparseTemporalNeighborCandidateCount();
+    return count ? count : sparseNeighborCandidateCount();
+  }
+
+  uint32_t DxvkRtxdiRayQuery::getSparseSpatialNeighborCandidateCount() {
+    const uint32_t count = sparseSpatialNeighborCandidateCount();
+    return count ? count : sparseNeighborCandidateCount();
   }
 
   void DxvkRtxdiRayQuery::showImguiSettings() {
@@ -333,6 +448,13 @@ namespace dxvk {
     }
     RemixGui::Separator();
     RemixGui::Checkbox("Spatial Reuse", &enableSpatialReuseObject());
+    if (SparseRendering::isEnabledByOptions()) {
+      RemixGui::SliderInt("Shared Neighbor Candidates", &sparseNeighborCandidateCountObject(), 1, 128);
+      RemixGui::SliderInt("Temporal Candidates (0: Shared)", &sparseTemporalNeighborCandidateCountObject(), 0, 128);
+      RemixGui::SliderInt("Spatial Candidates (0: Shared)", &sparseSpatialNeighborCandidateCountObject(), 0, 128);
+      RemixGui::SliderFloat("Spatial Neighbor Search Radius", &sparseSpatialNeighborSearchRadiusObject(), 1.f, 128.f);
+      RemixGui::SliderFloat("Temporal Neighbor Search Radius", &sparseTemporalNeighborSearchRadiusObject(), 1.f, 128.f);
+    }
     if (enableSpatialReuse()) {
       RemixGui::SliderInt("Spatial Sample Count", &spatialSamplesObject(), 1, 16);
       RemixGui::SliderInt("Disocclusion Sample Count", &disocclusionSamplesObject(), 1, 16);
@@ -379,6 +501,12 @@ namespace dxvk {
     rtOutput.m_raytraceArgs.rtxdiDisocclusionFrames = float(disocclusionFrames());
     rtOutput.m_raytraceArgs.rtxdiSpatialSamples = spatialSamples();
     rtOutput.m_raytraceArgs.rtxdiMaxHistoryLength = maxHistoryLength();
+
+    // The sparse spatial selection cache holds at most four neighbors per active pixel.
+    if (rtOutput.m_raytraceArgs.sparseRenderingArgs.mode != SparseRenderingMode::Off) {
+      rtOutput.m_raytraceArgs.rtxdiSpatialSamples = std::min(spatialSamples(), kMaxSparseSpatialSamples);
+      rtOutput.m_raytraceArgs.rtxdiDisocclusionSamples = std::min(disocclusionSamples(), kMaxSparseSpatialSamples);
+    }
 
     // Note: best light sampling uses data written into the RtxdiBestLights texture by the confidence pass on the previous frame.
     // We need to make sure that the data is there and valid: light indices from more than one frame ago are not mappable to the current frame.
@@ -441,6 +569,9 @@ namespace dxvk {
     ScopedGpuProfileZone(ctx, "RTXDI");
 
     if (!RtxOptions::useRTXDI()) {
+      m_neighborCache = nullptr;
+      m_spatialNeighborCache = nullptr;
+      m_neighborGuide = nullptr;
       return;
     }
 
@@ -450,6 +581,30 @@ namespace dxvk {
     VkExtent3D workgroups = util::computeBlockCount(numRaysExtent,
       VkExtent3D{ COMPACT_ACTIVE_PIXELS_CONSUMER_GROUP_SIZE_X, COMPACT_ACTIVE_PIXELS_CONSUMER_GROUP_SIZE_Y, 1 });
     const bool usePortalShaderVariants = useRtxdiPortalShaderVariants();
+
+    const uint32_t cacheCapacity = ctx->getCommonObjects()->getResources().getCompactedStorageCapacity();
+    const VkDeviceSize cacheSize = VkDeviceSize(std::max(1u, cacheCapacity)) * kMaxSparseSpatialSamples * sizeof(uint32_t);
+    const VkDeviceSize guideSize = VkDeviceSize(std::max(1u, cacheCapacity)) * 4 * sizeof(uint32_t);
+    const bool useSelectionPrepass = rtOutput.m_raytraceArgs.enableRtxdiSpatialReuse &&
+      rtOutput.m_raytraceArgs.sparseRenderingArgs.mode != SparseRenderingMode::Off;
+    const bool useTemporalSelectionPrepass = rtOutput.m_raytraceArgs.enableRtxdiTemporalReuse &&
+      rtOutput.m_raytraceArgs.rtxdiMaxHistoryLength > 0 &&
+      rtOutput.m_raytraceArgs.sparseRenderingArgs.mode != SparseRenderingMode::Off;
+    const auto updateSelectionBuffer = [&](Rc<DxvkBuffer>& buffer, bool enable, VkDeviceSize size, const char* name) {
+      if (!enable) {
+        buffer = nullptr;
+      } else if (buffer == nullptr || buffer->info().size != size) {
+        DxvkBufferCreateInfo info = {};
+        info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        info.stages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        info.access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        info.size = size;
+        buffer = ctx->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, name);
+      }
+    };
+    updateSelectionBuffer(m_neighborCache, useTemporalSelectionPrepass, cacheSize, "RTXDI Neighbor Cache");
+    updateSelectionBuffer(m_spatialNeighborCache, useSelectionPrepass, cacheSize, "RTXDI Spatial Neighbor Cache");
+    updateSelectionBuffer(m_neighborGuide, useSelectionPrepass, guideSize, "RTXDI Neighbor Selection Guide");
 
     ctx->bindCommonRayTracingResources(rtOutput);
     
@@ -483,6 +638,10 @@ namespace dxvk {
       ctx->bindResourceView(RTXDI_REUSE_BINDING_TILE_ACTIVE_COUNTS_INPUT, rtOutput.m_sparseRenderingTileActiveCounts.view, nullptr);
       ctx->bindResourceBuffer(RTXDI_REUSE_BINDING_ACTIVE_PIXEL_COORDS_INPUT, optionalBufferSlice(rtOutput.m_sparseRenderingActivePixelCoords));
       ctx->bindResourceBuffer(RTXDI_REUSE_BINDING_ACTIVE_PIXEL_COUNT_INPUT, optionalBufferSlice(rtOutput.m_sparseRenderingActivePixelCount));
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_PREVIOUS_TILE_ACTIVE_COUNTS_INPUT, rtOutput.m_sparseRenderingPreviousTileActiveCounts.view, nullptr);
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_PREVIOUS_COMPACTED_PIXEL_INDICES_INPUT, rtOutput.m_sparseRenderingPreviousCompactedPixelIndices.view, nullptr);
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_BLOCK_RANK_OFFSETS_INPUT, rtOutput.m_sparseRenderingBlockRankOffsets.view, nullptr);
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_PREVIOUS_BLOCK_RANK_OFFSETS_INPUT, rtOutput.m_sparseRenderingPreviousBlockRankOffsets.view, nullptr);
 
       // Spatial reuse rebuilds inactive neighbors from these. See RAB_GetInactiveGBufferSurface.
       const bool compactedGBuffer = rtOutput.m_raytraceArgs.sparseRenderingArgs.mode != SparseRenderingMode::Off;
@@ -518,12 +677,20 @@ namespace dxvk {
 
       {
         ScopedGpuProfileZone(ctx, "RTXDI Initial Sampling");
+        ctx->bindResourceBuffer(RTXDI_REUSE_BINDING_SELECTION_GUIDE_INPUT_OUTPUT, optionalBufferSlice(m_neighborGuide));
         ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getRtxdiInitialSamplingShader(usePortalShaderVariants));
         SparseRendering::dispatchCompactedConsumer(*ctx, rtOutput, workgroups);
       }
 
       {
         ScopedGpuProfileZone(ctx, "RTXDI Temporal Reuse");
+        ctx->bindResourceBuffer(RTXDI_REUSE_BINDING_NEIGHBOR_CACHE_INPUT_OUTPUT,
+          optionalBufferSlice(m_neighborCache));
+        if (useTemporalSelectionPrepass) {
+          ScopedGpuProfileZone(ctx, "RTXDI Temporal Neighbor Selection");
+          ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getRtxdiTemporalSelectionShader(usePortalShaderVariants));
+          SparseRendering::dispatchCompactedConsumer(*ctx, rtOutput, workgroups);
+        }
         ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getRtxdiTemporalReuseShader(usePortalShaderVariants));
         SparseRendering::dispatchCompactedConsumer(*ctx, rtOutput, workgroups);
       }
@@ -558,6 +725,10 @@ namespace dxvk {
       ctx->bindResourceView(RTXDI_REUSE_BINDING_TILE_ACTIVE_COUNTS_INPUT, rtOutput.m_sparseRenderingTileActiveCounts.view, nullptr);
       ctx->bindResourceBuffer(RTXDI_REUSE_BINDING_ACTIVE_PIXEL_COORDS_INPUT, optionalBufferSlice(rtOutput.m_sparseRenderingActivePixelCoords));
       ctx->bindResourceBuffer(RTXDI_REUSE_BINDING_ACTIVE_PIXEL_COUNT_INPUT, optionalBufferSlice(rtOutput.m_sparseRenderingActivePixelCount));
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_PREVIOUS_TILE_ACTIVE_COUNTS_INPUT, rtOutput.m_sparseRenderingPreviousTileActiveCounts.view, nullptr);
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_PREVIOUS_COMPACTED_PIXEL_INDICES_INPUT, rtOutput.m_sparseRenderingPreviousCompactedPixelIndices.view, nullptr);
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_BLOCK_RANK_OFFSETS_INPUT, rtOutput.m_sparseRenderingBlockRankOffsets.view, nullptr);
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_PREVIOUS_BLOCK_RANK_OFFSETS_INPUT, rtOutput.m_sparseRenderingPreviousBlockRankOffsets.view, nullptr);
 
       // Spatial reuse rebuilds inactive neighbors from these. See RAB_GetInactiveGBufferSurface.
       const bool compactedGBuffer = rtOutput.m_raytraceArgs.sparseRenderingArgs.mode != SparseRenderingMode::Off;
@@ -591,6 +762,20 @@ namespace dxvk {
           : rtOutput.m_primaryRtxdiTemporalPosition.view(Resources::AccessType::Write), nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_BEST_LIGHTS_INPUT, rtOutput.m_rtxdiBestLights.view(Resources::AccessType::Read, rtOutput.m_raytraceArgs.enableRtxdiBestLightSampling), nullptr);
 
+      ctx->bindResourceBuffer(RTXDI_REUSE_BINDING_SELECTION_GUIDE_INPUT_OUTPUT, optionalBufferSlice(m_neighborGuide));
+      // Its own cache keeps spatial selection from waiting for temporal reuse, which reads the temporal cache.
+      ctx->bindResourceBuffer(RTXDI_REUSE_BINDING_NEIGHBOR_CACHE_INPUT_OUTPUT,
+        optionalBufferSlice(m_spatialNeighborCache));
+      if (useSelectionPrepass) {
+        ScopedGpuProfileZone(ctx, "RTXDI Spatial Neighbor Selection");
+        // Equal sample counts skip the confidence read, so the confidence that temporal reuse writes stays unbound.
+        const bool readsConfidence = rtOutput.m_raytraceArgs.rtxdiSpatialSamples != rtOutput.m_raytraceArgs.rtxdiDisocclusionSamples;
+        ctx->bindResourceView(RTXDI_REUSE_BINDING_REPROJECTION_CONFIDENCE_OUTPUT,
+          readsConfidence ? rtOutput.m_reprojectionConfidence.view : nullptr, nullptr);
+        ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getRtxdiSpatialSelectionShader(usePortalShaderVariants));
+        SparseRendering::dispatchCompactedConsumer(*ctx, rtOutput, workgroups);
+        ctx->bindResourceView(RTXDI_REUSE_BINDING_REPROJECTION_CONFIDENCE_OUTPUT, rtOutput.m_reprojectionConfidence.view, nullptr);
+      }
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getRtxdiSpatialReuseShader(
         usePortalShaderVariants,
         useRtxdiSpatialBsdfDetailShaderVariant(rtOutput)));
@@ -625,6 +810,10 @@ namespace dxvk {
       // Inputs
 
       ctx->bindResourceBuffer(RTXDI_COMPUTE_GRADIENTS_BINDING_RTXDI_RESERVOIR, rtOutput.m_rtxdiReservoirBuffer.slice(Resources::AccessType::Read));
+      ctx->bindResourceView(RTXDI_COMPUTE_GRADIENTS_BINDING_COMPACTED_PIXEL_INDICES_INPUT, rtOutput.m_sparseRenderingCompactedPixelIndices.view, nullptr);
+      ctx->bindResourceView(RTXDI_COMPUTE_GRADIENTS_BINDING_TILE_ACTIVE_COUNTS_INPUT, rtOutput.m_sparseRenderingTileActiveCounts.view, nullptr);
+      ctx->bindResourceView(RTXDI_COMPUTE_GRADIENTS_BINDING_PREVIOUS_COMPACTED_PIXEL_INDICES_INPUT, rtOutput.m_sparseRenderingPreviousCompactedPixelIndices.view, nullptr);
+      ctx->bindResourceView(RTXDI_COMPUTE_GRADIENTS_BINDING_PREVIOUS_TILE_ACTIVE_COUNTS_INPUT, rtOutput.m_sparseRenderingPreviousTileActiveCounts.view, nullptr);
       ctx->bindResourceView(RTXDI_COMPUTE_GRADIENTS_BINDING_CURRENT_WORLD_POSITION_INPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(RTXDI_COMPUTE_GRADIENTS_BINDING_PREVIOUS_WORLD_POSITION_INPUT, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().matchesWriteFrameIdx(frameIdx - 1)), nullptr);
       ctx->bindResourceView(RTXDI_COMPUTE_GRADIENTS_BINDING_CONE_RADIUS_INPUT, rtOutput.m_primaryConeRadius.view, nullptr);

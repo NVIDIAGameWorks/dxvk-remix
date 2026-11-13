@@ -23,6 +23,7 @@
 
 #include "rtx/pass/integrate/integrate_direct_binding_indices.h"
 
+#define RAB_HAS_COMPACTED_RESERVOIR_MAPPING 1
 #include "rtx/algorithm/rtxdi/rtxdi.slangh"
 
 // Shared Inputs
@@ -58,6 +59,12 @@ StructuredBuffer<uint> ActivePixelCoords;
 
 [[vk::binding(INTEGRATE_DIRECT_BINDING_ACTIVE_PIXEL_COUNT_INPUT)]]
 StructuredBuffer<uint> ActivePixelCount;
+
+[[vk::binding(INTEGRATE_DIRECT_BINDING_COMPACTED_PIXEL_INDICES_INPUT)]]
+Texture2D<uint16_t> CompactedPixelIndices;
+
+[[vk::binding(INTEGRATE_DIRECT_BINDING_TILE_ACTIVE_COUNTS_INPUT)]]
+Texture2D<uint2> TileActiveCounts;
 
 // Shared Inputs/Outputs
 

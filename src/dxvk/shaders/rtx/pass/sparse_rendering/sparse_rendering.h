@@ -21,6 +21,8 @@
 */
 #pragma once
 
+#include "rtxdi/SparseNeighborSearchParameters.h"
+
 enum class SparseRenderingMode : uint32_t {
   Off = 0,
   Uniform = 1,
@@ -35,6 +37,11 @@ enum class PerPixelRateNoiseSource : uint32_t {
 // Note: ensure 16B alignment
 struct SparseRenderingArgs
 {
+  // uint4 size
+  RTXDI_SparseNeighborSearchParameters rtxdiSparseNeighborSearch;
+
+  // ------------------------- Structs above this line, non structs below this line -----------------------------------
+
   // Every mode other than Off also compacts the GBuffer.
   // Compaction runs ahead of the GBuffer, active pixels store their GBuffer at their compacted slot,
   // and inactive pixels store only the per-pixel outputs.
@@ -63,11 +70,12 @@ struct SparseRenderingArgs
   uint resampledSharcUpdatePaths;
 
   uint enableSparseAwareAlphaBlendSearch;
-  uint pad0;
-  uint pad1;
-  uint pad2;
+  uint rtxdiCompactedHistoryValid;
+  uvec2 padding;
 };
 
 #ifdef __cplusplus
+static_assert(sizeof(RTXDI_SparseNeighborSearchParameters) == 16);
 static_assert(sizeof(SparseRenderingArgs) % 16 == 0);
+static_assert(sizeof(SparseRenderingArgs) == 96);
 #endif

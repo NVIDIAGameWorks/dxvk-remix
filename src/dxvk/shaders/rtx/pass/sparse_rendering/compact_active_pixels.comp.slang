@@ -56,6 +56,9 @@ RWStructuredBuffer<uint> TraceRaysIndirectArgs;
 layout(binding = COMPACT_ACTIVE_PIXELS_BINDING_DISPATCH_ARGS_OUTPUT)
 RWStructuredBuffer<uint> DispatchIndirectArgs;
 
+layout(binding = COMPACT_ACTIVE_PIXELS_BINDING_BLOCK_RANK_OFFSETS_OUTPUT)
+RWTexture2D<uint2> BlockRankOffsets;
+
 // The two APIs count different things: VkTraceRaysIndirectCommandKHR takes invocations
 // while VkDispatchIndirectCommand takes workgroups, so they cannot share one buffer.
 void writeIndirectArgs(uint activePixelCount)
@@ -99,7 +102,7 @@ groupshared uint s_globalBaseOffset;
 #endif
 
 // These arrays hold one entry per thread block, indexed by the groupIndex of the thread that owns the block.
-// The mask array holds the block's active bits in block order.
+// The blocks and their active bits follow screen-space Morton order.
 // The prefix arrays hold the numbers of active and in-bounds inactive tile pixels that precede the block.
 groupshared uint s_blockActiveMask[COMPACT_ACTIVE_PIXELS_GROUP_SIZE];
 groupshared uint s_blockActivePrefix[COMPACT_ACTIVE_PIXELS_GROUP_SIZE];
@@ -145,7 +148,6 @@ uint inclusivePrefixSum(uint value, uint groupIndex)
 
 // Run the prefix-sum + scatter pipeline, splitting each tile into [active | inactive].
 void scatterActivePixels(
-  uint3 groupThreadId,
   uint3 groupId,
   uint groupIndex,
   uint2 tileBasePixel,
@@ -156,13 +158,14 @@ void scatterActivePixels(
   static const uint kBlockMask = (1u << COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_X) - 1u;
   static const uint kUintsPerRow = COMPACT_ACTIVE_PIXELS_TILE_SIZE_X / 32;
 
-  // Holds this thread's active pixels as a bitmask, with pixel (dx, dy) at bit (dy * BLOCK_SIZE_X + dx).
+  // Holds this thread's active pixels as a bitmask in Morton order.
   uint activeMask = 0;
   uint myActiveCount = 0;
   uint myInactiveCount = 0;
 
   uint laneIdx = WaveGetLaneIndex();
-  const uint colStart = groupThreadId.x * COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_X;
+  const uint2 blockBasePixel = mortonIndexToTileCoord(groupIndex * COMPACT_ACTIVE_PIXELS_PIXELS_PER_THREAD);
+  const uint colStart = blockBasePixel.x;
   // Out-of-bounds pixels never ballot active, so activeBits is already a subset of boundsBits.
   const uint validX = colStart < tileWidth
     ? min(tileWidth - colStart, uint(COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_X))
@@ -174,7 +177,7 @@ void scatterActivePixels(
   {
     // Stagger row: adjacent lanes start at different rows → different banks.
     uint dy = (laneIdx + iter) % COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_Y;
-    uint row = groupThreadId.y * COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_Y + dy;
+    uint row = blockBasePixel.y + dy;
     uint uintIdx = row * kUintsPerRow + colStart / 32;
     uint bitOff = colStart % 32;
 
@@ -184,8 +187,7 @@ void scatterActivePixels(
     myActiveCount += countbits(activeBits);
     myInactiveCount += countbits(boundsBits & ~activeBits);
 
-    // Indexed by dy rather than iter, so the bits are in block order.
-    activeMask |= activeBits << (dy * COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_X);
+    activeMask |= mortonBlockRowMask(activeBits) << (mortonPart1By1(dy) << 1);
   }
 
   s_blockActiveMask[groupIndex] = activeMask;
@@ -275,10 +277,36 @@ void scatterActivePixels(
     inclusiveInactivePrefix = inclusivePrefixSum(myInactiveCount, groupIndex);
   }
 
-  // Slots follow natural block order, which is spatially coherent for downstream passes.
-  // Thread blocks come in group order, each block is row-major, and active pixels come first.
+  // Active list entries follow screen-space Morton order within each tile.
   s_blockActivePrefix[groupIndex] = inclusiveActivePrefix - myActiveCount;
   s_blockInactivePrefix[groupIndex] = inclusiveInactivePrefix - myInactiveCount;
+
+  // Store each block's first global list index and its retained pixels for RTXDI neighbor searches.
+  // A tile over its storage capacity retains the pixels that the scatter below gives a slot.
+  if (blockBasePixel.x < tileWidth && blockBasePixel.y < tileHeight)
+  {
+    const uint activePrefix = inclusiveActivePrefix - myActiveCount;
+    uint storedPrefix = activePrefix;
+    uint retainedMask = activeMask;
+    if (storedActiveCount != groupActiveCount)
+    {
+      storedPrefix = (activePrefix * storedActiveCount) / groupActiveCount;
+      retainedMask = 0;
+      uint remainingMask = activeMask;
+      for (uint activeRank = activePrefix; remainingMask; activeRank++)
+      {
+        const uint bit = firstbitlow(remainingMask);
+        remainingMask &= remainingMask - 1u;
+        if (((activeRank + 1u) * storedActiveCount) / groupActiveCount > (activeRank * storedActiveCount) / groupActiveCount)
+        {
+          retainedMask |= 1u << bit;
+        }
+      }
+    }
+    const uint2 blockCoordinate = (tileBasePixel + blockBasePixel) /
+      uint2(COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_X, COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_Y);
+    BlockRankOffsets[blockCoordinate] = uint2(globalBaseOffset + storedPrefix, retainedMask);
+  }
 
   GroupMemoryBarrierWithGroupSync();
 
@@ -296,9 +324,9 @@ void scatterActivePixels(
     }
 
     const uint2 blockCoord = localPixel / uint2(COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_X, COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_Y);
-    const uint2 blockLocalPixel = localPixel % uint2(COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_X, COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_Y);
-    const uint blockIndex = blockCoord.y * COMPACT_ACTIVE_PIXELS_THREADGROUP_SIZE_X + blockCoord.x;
-    const uint blockBit = blockLocalPixel.y * COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_X + blockLocalPixel.x;
+    const uint pixelMortonIndex = tileCoordToMortonIndex(localPixel);
+    const uint blockIndex = pixelMortonIndex / COMPACT_ACTIVE_PIXELS_PIXELS_PER_THREAD;
+    const uint blockBit = pixelMortonIndex % COMPACT_ACTIVE_PIXELS_PIXELS_PER_THREAD;
 
     const uint blockActiveMask = s_blockActiveMask[blockIndex];
     const bool isActive = ((blockActiveMask >> blockBit) & 1u) != 0u;
@@ -333,10 +361,16 @@ void scatterActivePixels(
     }
     else
     {
-      // The block's rows above this one are in bounds too, each holding as many pixels as this row.
-      const uint blockWidth = min(tileWidth - blockCoord.x * COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_X,
-                                  uint(COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_X));
-      const uint inBoundsBefore = blockLocalPixel.y * blockWidth + blockLocalPixel.x;
+      uint inBoundsBefore = blockBit;
+      if (!useMorton)
+      {
+        const uint blockWidth = min(tileWidth - blockCoord.x * COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_X,
+                                    uint(COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_X));
+        const uint blockHeight = min(tileHeight - blockCoord.y * COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_Y,
+                                     uint(COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_Y));
+        const uint boundsMask = mortonBlockBoundsMask(blockWidth, blockHeight);
+        inBoundsBefore = countbits(boundsMask & ((1u << blockBit) - 1u));
+      }
 
       compactedLocalIndex = groupActiveCount + s_blockInactivePrefix[blockIndex] + (inBoundsBefore - activeBefore);
     }
@@ -418,7 +452,7 @@ void computeActiveLocalPixelCoordinates(
                       && tileHeight == COMPACT_ACTIVE_PIXELS_TILE_SIZE_Y;
 
   // Phase 2: Inclusive prefix sum + scatter to compacted output.
-  scatterActivePixels(groupThreadId, groupId, groupIndex,
+  scatterActivePixels(groupId, groupIndex,
                       tileBasePixel, tileWidth, tileHeight, useMorton);
 }
 

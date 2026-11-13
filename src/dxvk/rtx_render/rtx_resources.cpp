@@ -1514,7 +1514,9 @@ namespace dxvk {
     rtxdiBufferInfo.usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
     rtxdiBufferInfo.stages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
     rtxdiBufferInfo.access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-    rtxdiBufferInfo.size = reservoirBufferPixels * numReservoirBuffer * reservoirSize;
+    // History pages hold compacted slots. The scratch page also holds a dense transmission PSR payload.
+    int reservoirPagePixels = m_compactedStorageCapacity ? int(m_compactedStorageCapacity) : reservoirBufferPixels;
+    rtxdiBufferInfo.size = ((numReservoirBuffer - 1) * reservoirPagePixels + std::max(reservoirPagePixels, reservoirBufferPixels)) * reservoirSize;
     DxvkBufferCreateInfo reservoirBufferInfo = rtxdiBufferInfo;
     // The GBuffer can run as a ray tracing pipeline.
     reservoirBufferInfo.stages |= VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR | VK_PIPELINE_STAGE_TRANSFER_BIT;

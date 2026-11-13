@@ -22,10 +22,8 @@
 
 //!variant rtxdi_temporal_reuse.comp
 //!>       RTXDI_NO_PORTALS=0
-
 //!variant rtxdi_temporal_reuse_no_portals.comp
 //!>       RTXDI_NO_PORTALS=1
-
 //!end-variants
 
 #define USE_32BIT_RAY_DIRECTION 1
@@ -57,38 +55,37 @@
 [numthreads(COMPACT_ACTIVE_PIXELS_CONSUMER_GROUP_SIZE_X, COMPACT_ACTIVE_PIXELS_CONSUMER_GROUP_SIZE_Y, 1)]
 void main(uint2 dispatchThreadId : SV_DispatchThreadID, uint3 groupId : SV_GroupID, uint groupIndex : SV_GroupIndex)
 {
-  uint2 threadIndex;
+  int2 pixelCoordinate;
   uvec2 compactedCoordinate;
-  if (!loadCompactedCoordinate(dispatchThreadId, groupId.x, groupIndex, ActivePixelCount,
-                              cb.camera.resolution, cb.sparseRenderingArgs, threadIndex, compactedCoordinate))
+  uint launchIndex;
+  RAB_Surface surface;
+  if (!RAB_LoadLaunchSurface(dispatchThreadId, groupId.x, groupIndex, pixelCoordinate, compactedCoordinate, launchIndex, surface))
   {
     return;
   }
 
-  int2 pixelCoordinate = int2(loadLaunchPixelCoordinate(threadIndex, ActivePixelCoords, cb.sparseRenderingArgs));
-
-  RAB_Surface surface = RAB_GetGBufferSurface(pixelCoordinate, false, int2(compactedCoordinate));
   if (!RAB_IsSurfaceValid(surface))
   {
     return;
   }
   
-  RAB_RandomSamplerState rng = RAB_InitRandomSampler(pixelCoordinate, cb.frameIdx, 2);
-
   vec2 screenSpaceMotion = PrimaryScreenSpaceMotionVector[pixelCoordinate];
   ivec2 prevPixelCenter = pixelCoordinate + ivec2(screenSpaceMotion.xy);
 
+#if !RTXDI_TEMPORAL_SELECTION_PASS
+  RAB_RandomSamplerState rng = RAB_InitRandomSampler(pixelCoordinate, cb.frameIdx, 2);
   uint16_t previousBestLightIndex;
   uint8_t previousBestLightPortalIdx;
   loadPreviousBestLight(rng, prevPixelCenter, previousBestLightIndex, previousBestLightPortalIdx);
 
-  RTXDI_Reservoir state = RAB_LoadReservoir(pixelCoordinate, RTXDI_GetTemporalOutputPage());
+  RTXDI_Reservoir state = RAB_LoadReservoirAtIndex(pixelCoordinate, RTXDI_GetTemporalOutputPage(), launchIndex);
   if (cb.lightCount != 0)
   {
     RTXDI_SkipRandomLightsRng(rng);
     RTXDI_SkipSingleLightRng(rng, previousBestLightIndex);
     RAB_SkipRandoms(rng, 1);
   }
+#endif
 
   const float4 virtualMotion = PrimaryVirtualMotionVector[compactedCoordinate];
   const float3 virtualMotionVector = virtualMotion.xyz;
@@ -121,6 +118,20 @@ void main(uint2 dispatchThreadId : SV_DispatchThreadID, uint3 groupId : SV_Group
 #endif
   tparams.uniformRandomNumber = cb.uniformRandomNumber;
 
+#if RTXDI_TEMPORAL_SELECTION_PASS
+  RAB_RandomSamplerState rng = RAB_InitRandomSampler(pixelCoordinate, cb.frameIdx, 8);
+  float16_t3 previousNormal;
+  const int2 selectedPixel = RTXDI_SelectActiveTemporalNeighbor(
+    surface, rng, tparams,
+    cb.sparseRenderingArgs.rtxdiSparseNeighborSearch, previousNormal);
+  const uint cacheIndex = launchIndex;
+  const uint cacheStride = cb.sparseRenderingArgs.compactedStorageCapacity;
+  NeighborCache[cacheIndex] = selectedPixel.x >= 0 ? pack32(u16vec2(selectedPixel)) : ~0u;
+  NeighborCache[cacheIndex + 1 * cacheStride] = asuint(float(previousNormal.x));
+  NeighborCache[cacheIndex + 2 * cacheStride] = asuint(float(previousNormal.y));
+  NeighborCache[cacheIndex + 3 * cacheStride] = asuint(float(previousNormal.z));
+#else
+  g_rtxdiTemporalNeighborCacheIndex = launchIndex;
   int2 temporalSamplePixelPos;
   bool isGBufferSimilar;
   rtxdiTemporalResamplingWithHistoryValidity(virtualMotion.w >= 0.0f, state, pixelCoordinate, surface, rng, tparams, temporalSamplePixelPos, isGBufferSimilar);
@@ -128,5 +139,6 @@ void main(uint2 dispatchThreadId : SV_DispatchThreadID, uint3 groupId : SV_Group
   rtxdiStoreTemporalReprojection(virtualMotion.w >= 0.0f, pixelCoordinate, temporalSamplePixelPos,
     isGBufferSimilar, cb.rtxdiGradientResourcesAllocated);
 
-  RAB_StoreReservoir(state, pixelCoordinate, RTXDI_GetTemporalOutputPage());
+  RAB_StoreReservoir(state, pixelCoordinate, RTXDI_GetTemporalOutputPage(), launchIndex);
+#endif
 }
