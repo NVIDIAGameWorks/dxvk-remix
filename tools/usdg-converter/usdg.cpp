@@ -248,6 +248,7 @@ public:
     bool update = false;
   };
 
+  virtual ~UsdProcessor() = default;
   virtual void process(const std::string& stagePath) = 0;
 };
 
@@ -455,7 +456,7 @@ class UsdgConverter : public UsdProcessor {
           std::vector<uint8_t> uncompressed(uncompressedSize);
 
           if (!rtxioDecompress(uncompressed.data(), uncompressedSize, buffer.data(), buffer.size())) {
-            throw DxvkError("Unable to decompress asset data.");
+            throw std::runtime_error("Unable to decompress asset data.");
           }
 
           buffer = std::move(uncompressed);
@@ -1250,6 +1251,7 @@ class UsdgConverter : public UsdProcessor {
 public:
   UsdgConverter() = delete;
   UsdgConverter(const std::string& dstUsdgFilename, const Config& config);
+  ~UsdgConverter() override = default;
 
   void process(const std::string& stageFile) override {
     uint64_t startUs = NowCountUs();
@@ -1392,7 +1394,6 @@ UsdgConverter<true>::UsdgConverter(const std::string& dstUsdgFilename, const Con
   m_package = m_writer->createPackage(dstUsdgFilename);
 
   if (!m_package) {
-    Logger::err(str::format("Fatal: unable to create USDG package at ", dstUsdgFilename));
     throw std::runtime_error("Unable to create USDG package at " + dstUsdgFilename);
   }
 }
@@ -1545,13 +1546,24 @@ int main(int argc, char* argv[]) {
   }
 
   std::unique_ptr<UsdProcessor> processor;
-  if (mode != 2) {
-    processor = std::make_unique<UsdgConverter<true>>(dstFilename, config);
-  } else {
-    processor = std::make_unique<UsdgConverter<false>>(dstFilename, config);
-  }
+  try {
+    if (mode != 2) {
+      processor = std::make_unique<UsdgConverter<true>>(dstFilename, config);
+    } else {
+      processor = std::make_unique<UsdgConverter<false>>(dstFilename, config);
+    }
 
-  processor->process(srcFilename);
+    processor->process(srcFilename);
+  } catch (const dxvk::DxvkError& e) {
+    Logger::err(str::format("Fatal exception: ", e.message()));
+    return -1;
+  } catch (const std::runtime_error& e) {
+    Logger::err(str::format("Fatal exception: ", e.what()));
+    return -1;
+  } catch (...) {
+    Logger::err("Got an unknown fatal exception.");
+    return -1;
+  }
 
   return 0;
 }
