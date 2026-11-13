@@ -12,13 +12,15 @@ bool read_deserialize_compare(char*& pDeserialize,
                               SerializableT& serializable,
                               const expected::Expected<BaseT>& expected,
                               const char* const typeName) {
-  if constexpr (std::is_same_v<BaseT, remixapi_InstanceInfoParticleScreenSizeEXT>) {
+  if constexpr (std::is_same_v<BaseT, remixapi_InstanceInfoParticleScreenSizeEXT> ||
+                std::is_same_v<BaseT, remixapi_InstanceInfoParticleSpawnMaskEXT>) {
     serializable.pNext = reinterpret_cast<void*>(uintptr_t(0xfeed));
   }
   serializable.deserialize();
   if constexpr (std::is_same_v<BaseT, remixapi_InstanceInfoParticleScreenSizeEXT> ||
                 std::is_same_v<BaseT, remixapi_InstanceInfoObjectPickingEXT> ||
-                std::is_same_v<BaseT, remixapi_InstanceInfoParticleObjectPickingEXT>) {
+                std::is_same_v<BaseT, remixapi_InstanceInfoParticleObjectPickingEXT> ||
+                std::is_same_v<BaseT, remixapi_InstanceInfoParticleSpawnMaskEXT>) {
     if (serializable.sType != expected.sType || serializable.pNext != nullptr) {
       std::cout << typeName << " failed to reconstruct the extension header!" << std::endl;
       return false;
@@ -87,6 +89,10 @@ int main(int argc, char * argv[]) {
   READ_DESERIALIZE_COMPARE(pDeserialize, InstanceInfoParticleScreenSize, instParticleScreenSizeMaximum);
   READ_DESERIALIZE_COMPARE(pDeserialize, InstanceInfoParticleScreenSize, instParticleScreenSizeRange);
   READ_DESERIALIZE_COMPARE(pDeserialize, InstanceInfoParticleScreenSize, instParticleScreenSizeFixed);
+  READ_DESERIALIZE_COMPARE(pDeserialize, InstanceInfoParticleSpawnMask, instParticleMask);
+  READ_DESERIALIZE_COMPARE(pDeserialize, InstanceInfoParticleSpawnMask, instParticleMaskAlpha);
+  READ_DESERIALIZE_COMPARE(pDeserialize, InstanceInfoParticleSpawnMask, instParticleMaskLuminance);
+  READ_DESERIALIZE_COMPARE(pDeserialize, InstanceInfoParticleSpawnMask, instParticleMaskCombined);
 
   delete pDataBegin;
 

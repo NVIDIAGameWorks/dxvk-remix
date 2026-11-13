@@ -569,6 +569,20 @@ bool InstanceInfoParticleScreenSize::compare(const RemixApiT& me, const RemixApi
   return compareVals(me, other, sType, minScreenSize, maxScreenSize, screenSizeCoverage);
 }
 
+using InstanceInfoParticleSpawnMask = Expected<remixapi_InstanceInfoParticleSpawnMaskEXT>;
+static_assert(remixapi::util::ToRemixApiStructEnum<remixapi_InstanceInfoParticleSpawnMaskEXT> ==
+              REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SPAWN_MASK_EXT);
+void InstanceInfoParticleSpawnMask::init() {
+  sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SPAWN_MASK_EXT;
+  pNext = nullptr;
+  maskSource = REMIXAPI_PARTICLE_SPAWN_MASK_SOURCE_OFF;
+  maskResponse = REMIXAPI_PARTICLE_SPAWN_MASK_RESPONSE_GRAYSCALE;
+  maskThreshold = 0.5f;
+}
+bool InstanceInfoParticleSpawnMask::compare(const RemixApiT& me, const RemixApiT& other) const {
+  return compareVals(me, other, sType, maskSource, maskResponse, maskThreshold);
+}
+
 #define InstanceInfoBlendVars alphaTestEnabled, \
                               alphaTestReferenceValue, \
                               alphaTestCompareOp, \
@@ -941,6 +955,27 @@ InstanceInfoParticleScreenSize instParticleScreenSizeFixed = [] {
   value.minScreenSize = 0.9f;
   value.maxScreenSize = 0.9f;
   value.screenSizeCoverage = 0.5f;
+  return value;
+}();
+InstanceInfoParticleSpawnMask instParticleMask;
+InstanceInfoParticleSpawnMask instParticleMaskAlpha = [] {
+  InstanceInfoParticleSpawnMask value;
+  value.maskSource = REMIXAPI_PARTICLE_SPAWN_MASK_SOURCE_ALPHA;
+  value.maskThreshold = 0.f;
+  return value;
+}();
+InstanceInfoParticleSpawnMask instParticleMaskLuminance = [] {
+  InstanceInfoParticleSpawnMask value;
+  value.maskSource = REMIXAPI_PARTICLE_SPAWN_MASK_SOURCE_LUMINANCE;
+  value.maskResponse = REMIXAPI_PARTICLE_SPAWN_MASK_RESPONSE_CUTOUT;
+  value.maskThreshold = 1.f;
+  return value;
+}();
+InstanceInfoParticleSpawnMask instParticleMaskCombined = [] {
+  InstanceInfoParticleSpawnMask value;
+  value.maskSource = REMIXAPI_PARTICLE_SPAWN_MASK_SOURCE_ALPHA_TIMES_LUMINANCE;
+  value.maskResponse = REMIXAPI_PARTICLE_SPAWN_MASK_RESPONSE_CUTOUT;
+  value.maskThreshold = 0.375f;
   return value;
 }();
 

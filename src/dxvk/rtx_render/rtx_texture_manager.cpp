@@ -869,6 +869,7 @@ namespace dxvk {
   }
 
   RtxTextureManager::~RtxTextureManager() {
+    releaseFullDetailFeedback();
     FileWatch::get().clearTextureManager(this);
 
     delete m_sf.m_cachedGpubuf;
@@ -1062,6 +1063,7 @@ namespace dxvk {
 
   void RtxTextureManager::clear() {
     ScopedCpuProfileZone();
+    releaseFullDetailFeedback();
 
     // Only demote textures when we're actually over budget.
     // If we're under budget, there's no reason to demote - keep textures in VRAM
@@ -1176,6 +1178,21 @@ namespace dxvk {
     }
   }
 
+  void RtxTextureManager::requestFullDetailFeedback(uint32_t textureIndex, uint16_t stamp) {
+    if (textureIndex < m_textureCache.getTotalCount()
+        && m_textureCache.at(textureIndex).getManagedTexture() != nullptr
+        && m_fullDetailFeedbackTextures.emplace(textureIndex, stamp).second) {
+      retainTexture(textureIndex);
+    }
+  }
+
+  void RtxTextureManager::releaseFullDetailFeedback() {
+    for (const auto& entry : m_fullDetailFeedbackTextures) {
+      releaseTexture(entry.first);
+    }
+    m_fullDetailFeedbackTextures.clear();
+  }
+
   void RtxTextureManager::prepareSamplerFeedback(DxvkContext* ctx) {
     auto& res = ctx->getCommonObjects()->getResources().getRaytracingOutput();
 
@@ -1191,6 +1208,13 @@ namespace dxvk {
         bytesToClear,
         UINT32_MAX  // to find min during the rendering
       );
+    }
+    // Particle masks run before this reset, so seed their demand here rather than in the spawn shader.
+    for (const auto& entry : m_fullDetailFeedbackTextures) {
+      const VkDeviceSize offset = VkDeviceSize(entry.second) * sizeof(uint32_t);
+      if (entry.second != SAMPLER_FEEDBACK_INVALID && offset < bytesToClear) {
+        ctx->clearBuffer(res.m_samplerFeedbackDevice, offset, sizeof(uint32_t), 0);
+      }
     }
   }
 
@@ -1421,6 +1445,8 @@ namespace dxvk {
       g_streamedTextures_budgetBytes = budgetBytes;
       g_streamedTextures_usedBytes   = usedBytes;
     }
+    // Mask consumers must remain retained until all collection decisions and load requests are complete.
+    releaseFullDetailFeedback();
   }
 
   void RtxTextureManager::manageBudgetWithPriority() {

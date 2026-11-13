@@ -890,6 +890,16 @@ namespace remix {
     }
   };
 
+  struct InstanceInfoParticleSpawnMaskEXT : remixapi_InstanceInfoParticleSpawnMaskEXT {
+    InstanceInfoParticleSpawnMaskEXT() {
+      sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SPAWN_MASK_EXT;
+      pNext = nullptr;
+      maskSource = REMIXAPI_PARTICLE_SPAWN_MASK_SOURCE_OFF;
+      maskResponse = REMIXAPI_PARTICLE_SPAWN_MASK_RESPONSE_GRAYSCALE;
+      maskThreshold = 0.5f;
+    }
+  };
+
   struct InstanceInfoParticleSpawnDistributionEXT : remixapi_InstanceInfoParticleSpawnDistributionEXT {
     InstanceInfoParticleSpawnDistributionEXT() {
       sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SPAWN_DISTRIBUTION_EXT;

@@ -254,6 +254,7 @@ struct InstanceExtensions {
   serialize::InstanceInfoParticleSystem particleSystem;
   serialize::InstanceInfoParticleSpawnDistribution particleSpawnDistribution;
   serialize::InstanceInfoParticleScreenSize particleScreenSize;
+  serialize::InstanceInfoParticleSpawnMask particleSpawnMask;
 };
 
 // Reads an instance info and its extensions from the queue, chains the extensions to the info,
@@ -333,6 +334,14 @@ void pullInstanceInfo(serialize::InstanceInfo& instInfo, InstanceExtensions& ext
         deserializeFromQueue(exts.particleScreenSize);
         pInfoProto->pNext = &exts.particleScreenSize;
         pInfoProto = &getInfoProto(exts.particleScreenSize);
+        break;
+      }
+      case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SPAWN_MASK_EXT:
+      {
+        assert(!exts.particleSpawnMask.pNext);
+        deserializeFromQueue(exts.particleSpawnMask);
+        pInfoProto->pNext = &exts.particleSpawnMask;
+        pInfoProto = &getInfoProto(exts.particleSpawnMask);
         break;
       }
       default:

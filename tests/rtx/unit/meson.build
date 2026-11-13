@@ -309,4 +309,9 @@ if fs.is_file('../../../nv-private/hdremix/particlePicking.h')
   tests += exe
 endif
 
+exe = executable('test_particle_spawn_mask', files('test_particle_spawn_mask.cpp'),
+  include_directories : [ test_include_path, remix_api_include_path ], dependencies : [ d3d9_dep, test_unit_deps ], link_with: [ d3d9_dll, dxvk_lib ], win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_particle_spawn_mask', exe, env: test_env)
+tests += exe
+
 alias_target('unit_tests', tests)

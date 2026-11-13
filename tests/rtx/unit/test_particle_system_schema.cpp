@@ -66,6 +66,9 @@ namespace {
       "primvars:particle:motionTrailMultiplier",
       "primvars:particle:spawnRatePerSecond",
       "primvars:particle:spawnDistribution",
+      "primvars:particle:spawnMaskSource",
+      "primvars:particle:spawnMaskResponse",
+      "primvars:particle:spawnMaskThreshold",
       "primvars:particle:minScreenSize",
       "primvars:particle:maxScreenSize",
       "primvars:particle:screenSizeCoverage",
@@ -227,6 +230,98 @@ namespace {
     }
     return true;
   }
+
+  bool testMaskSchemaAndAuthoredValues(const pxr::UsdPrimDefinition& definition) {
+    const pxr::TfToken sourceName("primvars:particle:spawnMaskSource");
+    const pxr::TfToken responseName("primvars:particle:spawnMaskResponse");
+    const pxr::TfToken thresholdName("primvars:particle:spawnMaskThreshold");
+    pxr::VtArray<pxr::TfToken> allowedSources;
+    pxr::VtArray<pxr::TfToken> allowedResponses;
+    if (!definition.GetPropertyMetadata(sourceName, pxr::TfToken("allowedTokens"), &allowedSources)
+        || allowedSources != pxr::VtArray<pxr::TfToken>({ pxr::TfToken("Off"), pxr::TfToken("Alpha"), pxr::TfToken("Luminance"), pxr::TfToken("AlphaTimesLuminance") })
+        || !definition.GetPropertyMetadata(responseName, pxr::TfToken("allowedTokens"), &allowedResponses)
+        || allowedResponses != pxr::VtArray<pxr::TfToken>({ pxr::TfToken("Grayscale"), pxr::TfToken("Cutout") })) {
+      std::cerr << "Mask schema must expose every source and response token.\n";
+      return false;
+    }
+
+    const ParticleSpawnMaskSource expectedSources[] = {
+      ParticleSpawnMaskSource::Off, ParticleSpawnMaskSource::Alpha,
+      ParticleSpawnMaskSource::Luminance, ParticleSpawnMaskSource::AlphaTimesLuminance
+    };
+    const ParticleSpawnMaskResponse expectedResponses[] = { ParticleSpawnMaskResponse::Grayscale, ParticleSpawnMaskResponse::Cutout };
+    const auto stage = pxr::UsdStage::CreateInMemory();
+    for (const char* type : { "Mesh", "Material" }) {
+      auto prim = stage->DefinePrim(pxr::SdfPath(std::string("/") + type + "Emitter"), pxr::TfToken(type));
+      prim.AddAppliedSchema(pxr::TfToken("ParticleSystemAPI"));
+      const auto source = prim.GetAttribute(sourceName);
+      const auto response = prim.GetAttribute(responseName);
+      const auto threshold = prim.GetAttribute(thresholdName);
+      pxr::TfToken sourceValue;
+      pxr::TfToken responseValue;
+      float thresholdValue = -1.f;
+      if (source.GetTypeName() != pxr::SdfValueTypeNames->Token
+          || response.GetTypeName() != pxr::SdfValueTypeNames->Token
+          || threshold.GetTypeName() != pxr::SdfValueTypeNames->Float
+          || !source.Get(&sourceValue) || sourceValue != pxr::TfToken("Off")
+          || !response.Get(&responseValue) || responseValue != pxr::TfToken("Grayscale")
+          || !threshold.Get(&thresholdValue) || thresholdValue != 0.5f) {
+        std::cerr << "A " << type << " emitter must default to mask Off, Grayscale, and threshold 0.5.\n";
+        return false;
+      }
+
+      for (size_t i = 0; i < allowedSources.size(); ++i) {
+        if (!source.Set(allowedSources[i]) || !source.Get(&sourceValue)
+            || lss::AssignFromPrimvar<ParticleSpawnMaskSource>(sourceValue) != expectedSources[i]) {
+          std::cerr << "Authored mask sources must convert through the production primvar reader.\n";
+          return false;
+        }
+      }
+      for (size_t i = 0; i < allowedResponses.size(); ++i) {
+        if (!response.Set(allowedResponses[i]) || !response.Get(&responseValue)
+            || lss::AssignFromPrimvar<ParticleSpawnMaskResponse>(responseValue) != expectedResponses[i]) {
+          std::cerr << "Authored mask responses must convert through the production primvar reader.\n";
+          return false;
+        }
+      }
+      for (const float authoredThreshold : { 0.f, 0.375f, 1.f }) {
+        if (!threshold.Set(authoredThreshold) || !threshold.Get(&thresholdValue) || thresholdValue != authoredThreshold) {
+          std::cerr << "Authored mask thresholds must round-trip without changing their value.\n";
+          return false;
+        }
+      }
+    }
+
+    std::string serialized;
+    const auto layer = pxr::SdfLayer::CreateAnonymous();
+    if (!stage->GetRootLayer()->ExportToString(&serialized) || !layer->ImportFromString(serialized)) {
+      std::cerr << "Mask authoring must serialize successfully.\n";
+      return false;
+    }
+    const auto reopened = pxr::UsdStage::Open(layer);
+    if (!reopened) {
+      std::cerr << "Mask authoring must reopen successfully.\n";
+      return false;
+    }
+    for (const char* type : { "Mesh", "Material" }) {
+      const auto prim = reopened->GetPrimAtPath(pxr::SdfPath(std::string("/") + type + "Emitter"));
+      pxr::TfToken sourceValue;
+      pxr::TfToken responseValue;
+      float thresholdValue = -1.f;
+      if (!prim.GetAttribute(sourceName).Get(&sourceValue) || sourceValue != pxr::TfToken("AlphaTimesLuminance")
+          || !prim.GetAttribute(responseName).Get(&responseValue) || responseValue != pxr::TfToken("Cutout")
+          || !prim.GetAttribute(thresholdName).Get(&thresholdValue) || thresholdValue != 1.f) {
+        std::cerr << "Mask values changed across save/reload for " << type << ".\n";
+        return false;
+      }
+    }
+    if (lss::AssignFromPrimvar<ParticleSpawnMaskSource>(pxr::TfToken("Unknown")) != ParticleSpawnMaskSource::Off
+        || lss::AssignFromPrimvar<ParticleSpawnMaskResponse>(pxr::TfToken("Unknown")) != ParticleSpawnMaskResponse::Grayscale) {
+      std::cerr << "Unknown mask tokens must retain safe production conversion defaults.\n";
+      return false;
+    }
+    return true;
+  }
 }
 
 int main(int argc, char* argv[]) {
@@ -291,5 +386,6 @@ int main(int argc, char* argv[]) {
     std::cerr << "ParticleSystemAPI schema layer could not be opened.\n";
     return -1;
   }
-  return testScreenSizeSchemaAndAuthoredValues(*primDef, schemaLayer) ? 0 : -1;
+  return testScreenSizeSchemaAndAuthoredValues(*primDef, schemaLayer)
+    && testMaskSchemaAndAuthoredValues(*primDef) ? 0 : -1;
 }

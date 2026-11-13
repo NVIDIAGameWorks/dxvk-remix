@@ -914,6 +914,14 @@ std::unique_ptr<dxvk::ExternalDrawState> dxvk::RemixAPIPrivateAccessor::toRtDraw
     }
   }
 
+  if (auto mask = pnext::find<remixapi_InstanceInfoParticleSpawnMaskEXT>(&info)) {
+    if (state->optionalParticleDesc) {
+      state->optionalParticleDesc->spawnMaskSource = uint32_t(mask->maskSource);
+      state->optionalParticleDesc->spawnMaskResponse = uint32_t(mask->maskResponse);
+      state->optionalParticleDesc->spawnMaskThreshold = mask->maskThreshold;
+    }
+  }
+
   if (auto extInstancing = pnext::find<remixapi_InstanceInfoGpuInstancingEXT>(&info)) {
     if (extInstancing->instanceTransforms_count > 0 && extInstancing->instanceTransforms_values) {
       auto& gpuInstancingTransforms = state->gpuInstancingTransforms;
@@ -1378,6 +1386,14 @@ namespace {
           || (screenSize->maxScreenSize > 0.f && screenSize->maxScreenSize < screenSize->minScreenSize)
           || !std::isfinite(screenSize->screenSizeCoverage)
           || screenSize->screenSizeCoverage < 0.f || screenSize->screenSizeCoverage > 1.f) {
+        return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+      }
+    }
+
+    if (auto mask = pnext::find<remixapi_InstanceInfoParticleSpawnMaskEXT>(info)) {
+      if (uint32_t(mask->maskSource) > REMIXAPI_PARTICLE_SPAWN_MASK_SOURCE_ALPHA_TIMES_LUMINANCE
+          || uint32_t(mask->maskResponse) > REMIXAPI_PARTICLE_SPAWN_MASK_RESPONSE_CUTOUT
+          || !std::isfinite(mask->maskThreshold) || mask->maskThreshold < 0.f || mask->maskThreshold > 1.f) {
         return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
       }
     }

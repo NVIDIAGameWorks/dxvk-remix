@@ -623,6 +623,20 @@ void InstanceInfoParticleSpawnDistribution::_deserialize(void*& pDeserialize) {
 void InstanceInfoParticleSpawnDistribution::_dtor() {
 }
 
+#define InstanceInfoParticleSpawnMaskVars sType, maskSource, maskResponse, maskThreshold
+uint32_t InstanceInfoParticleSpawnMask::_calcSize() const {
+  return fold_helper::calcSize(InstanceInfoParticleSpawnMaskVars);
+}
+void InstanceInfoParticleSpawnMask::_serialize(void*& pSerialize) const {
+  fold_helper::serialize(pSerialize, InstanceInfoParticleSpawnMaskVars);
+}
+void InstanceInfoParticleSpawnMask::_deserialize(void*& pDeserialize) {
+  pNext = nullptr;
+  fold_helper::deserialize(pDeserialize, InstanceInfoParticleSpawnMaskVars);
+}
+void InstanceInfoParticleSpawnMask::_dtor() {
+}
+
 
 #define InstanceInfoParticleScreenSizeVars sType, minScreenSize, maxScreenSize, screenSizeCoverage
 uint32_t InstanceInfoParticleScreenSize::_calcSize() const {

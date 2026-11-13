@@ -386,6 +386,7 @@ dxvk_src = files([
   'rtx_render/rtx_system_info.h',
   
   'rtx_render/rtx_particle_spawn_cache.h',
+  'shaders/rtx/pass/particles/particle_spawn_mask.h',
   'rtx_render/rtx_particle_system.cpp',
   'rtx_render/rtx_particle_system.h',
   'shaders/rtx/pass/particles/particle_screen_size.h',

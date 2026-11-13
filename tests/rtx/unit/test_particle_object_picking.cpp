@@ -38,7 +38,7 @@ static_assert(offsetof(GpuParticle, rotation) == 40);
 static_assert(PARTICLE_SYSTEM_BINDING_OBJECT_PICKING_OUTPUT != PARTICLE_SYSTEM_BINDING_SPAWN_DISTRIBUTION_OUTPUT);
 static_assert(offsetof(GpuParticle, timeToLive) == 42);
 static_assert(offsetof(GpuParticle, emitterObjectPickingValue) == 44);
-static_assert(sizeof(GpuSpawnContext) == 144);
+static_assert(sizeof(GpuSpawnContext) == 224);
 static_assert(offsetof(GpuSpawnContext, emitterObjectPickingValue) == 128);
 static_assert(sizeof(ParticleVertex) == 24);
 static_assert(offsetof(ParticleVertex, color) == 12);
