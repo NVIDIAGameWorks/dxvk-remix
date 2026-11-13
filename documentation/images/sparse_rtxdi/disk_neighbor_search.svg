@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="628" viewBox="0 0 1200 628" role="img" aria-labelledby="title desc">
+  <title id="title">Disk-based sparse RTXDI neighbor search</title>
+  <desc id="desc">A proposal point P selects its 8 by 4 pixel block. The block stores a first global slot and a retained-pixel Morton mask. Rank 2 selects pixel Q and global slot 42. A final radius check rejects outside candidates. Empty blocks return no candidate.</desc>
+  <defs>
+    <pattern id="pixels" x="56" y="150" width="16" height="16" patternUnits="userSpaceOnUse">
+      <path d="M16 0H0V16" fill="none" stroke="#dce4ee" stroke-width="0.8"/>
+    </pattern>
+    <pattern id="blocks" x="56" y="150" width="128" height="64" patternUnits="userSpaceOnUse">
+      <path d="M128 0H0V64" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+    </pattern>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0 0L8 4L0 8Z" fill="#2563eb"/>
+    </marker>
+    <style>
+      text { font-family: 'Segoe UI', Arial, sans-serif; fill: #172b4d; }
+      .title { font-size: 28px; font-weight: 700; }
+      .subtitle { font-size: 16px; fill: #52647d; }
+      .step { font-size: 19px; font-weight: 650; }
+      .body { font-size: 16px; }
+      .small { font-size: 14px; fill: #52647d; }
+      .mono { font-family: Consolas, monospace; font-size: 16px; }
+      .active { fill: #8da0b8; stroke: white; stroke-width: 1.5; }
+      .kept { fill: #16794c; stroke: white; stroke-width: 2; }
+      .point { fill: #2563eb; stroke: white; stroke-width: 1.8; }
+      .label { font-size: 17px; font-weight: 700; paint-order: stroke; stroke: white; stroke-width: 4px; stroke-linejoin: round; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="628" rx="16" fill="#f5f7fb"/>
+  <text x="32" y="45" class="title">Disk-based active-neighbor proposal</text>
+  <text x="32" y="75" class="subtitle">One attempt draws a point, reads one block, and returns a retained pixel or no candidate.</text>
+
+  <rect x="24" y="106" width="576" height="498" rx="12" fill="white" stroke="#dbe3ed"/>
+  <text x="56" y="133" class="small">Screen pixels grouped into 8 × 4 blocks</text>
+  <rect x="56" y="150" width="512" height="384" fill="#fbfcfe"/>
+  <circle cx="304" cy="334" r="160" fill="#dbeafe" fill-opacity="0.65" stroke="#5682d5" stroke-width="2.5"/>
+  <rect x="312" y="214" width="128" height="64" fill="#bfdbfe" stroke="#2563eb" stroke-width="2.5"/>
+  <rect x="184" y="406" width="128" height="64" fill="#fef3df" stroke="#bf8a31" stroke-width="1.5"/>
+  <rect x="56" y="150" width="512" height="384" fill="url(#pixels)"/>
+  <rect x="56" y="150" width="512" height="384" fill="url(#blocks)" stroke="#94a3b8"/>
+
+  <g class="active">
+    <circle cx="96" cy="174" r="4.5"/><circle cx="176" cy="190" r="4.5"/>
+    <circle cx="240" cy="174" r="4.5"/><circle cx="288" cy="206" r="4.5"/>
+    <circle cx="352" cy="174" r="4.5"/><circle cx="496" cy="190" r="4.5"/>
+    <circle cx="144" cy="238" r="4.5"/><circle cx="224" cy="254" r="4.5"/>
+    <circle cx="288" cy="222" r="4.5"/><circle cx="496" cy="254" r="4.5"/>
+    <circle cx="112" cy="302" r="4.5"/><circle cx="176" cy="334" r="4.5"/>
+    <circle cx="240" cy="318" r="4.5"/><circle cx="336" cy="302" r="4.5"/>
+    <circle cx="400" cy="318" r="4.5"/><circle cx="544" cy="302" r="4.5"/>
+    <circle cx="80" cy="366" r="4.5"/><circle cx="144" cy="398" r="4.5"/>
+    <circle cx="224" cy="382" r="4.5"/><circle cx="288" cy="366" r="4.5"/>
+    <circle cx="368" cy="398" r="4.5"/><circle cx="432" cy="366" r="4.5"/>
+    <circle cx="480" cy="382" r="4.5"/><circle cx="544" cy="398" r="4.5"/>
+    <circle cx="112" cy="430" r="4.5"/><circle cx="176" cy="446" r="4.5"/>
+    <circle cx="336" cy="430" r="4.5"/><circle cx="400" cy="462" r="4.5"/>
+    <circle cx="496" cy="446" r="4.5"/><circle cx="96" cy="510" r="4.5"/>
+    <circle cx="240" cy="494" r="4.5"/><circle cx="352" cy="510" r="4.5"/>
+    <circle cx="432" cy="494" r="4.5"/><circle cx="528" cy="526" r="4.5"/>
+  </g>
+
+  <path d="M304 334L400 254" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M400 254L416 238" fill="none" stroke="#16794c" stroke-width="2.5"/>
+  <circle cx="336" cy="222" r="5" class="active"/>
+  <circle cx="384" cy="238" r="5" class="active"/>
+  <circle cx="400" cy="270" r="5" class="active"/>
+  <circle cx="416" cy="238" r="7" class="kept"/>
+  <path d="M400 247L407 254L400 261L393 254Z" class="point"/>
+  <circle cx="304" cy="334" r="7" fill="#7545b8" stroke="white" stroke-width="2"/>
+  <text x="312" y="355" class="label" style="fill:#7545b8">C</text>
+  <text x="382" y="250" class="label" style="fill:#2563eb">P</text>
+  <text x="420" y="231" class="label" style="fill:#16794c">Q</text>
+  <path d="M304 334L208 462" stroke="#52647d" stroke-width="1.5" stroke-dasharray="5 5"/>
+  <text x="237" y="393" class="label" style="fill:#52647d">R</text>
+  <text x="327" y="199" class="small" style="fill:#2563eb">P's block</text>
+
+  <path d="M304 334H448" fill="none" stroke="#c24141" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <path d="M448 334H480" fill="none" stroke="#c24141" stroke-width="1.5"/>
+  <path d="M448 328L454 334L448 340L442 334Z" class="point"/>
+  <path d="M474 328L486 340M486 328L474 340" stroke="#c24141" stroke-width="3" stroke-linecap="round"/>
+  <text x="472" y="361" class="small" style="fill:#a52f36">outside R</text>
+  <rect x="210" y="426" width="76" height="24" rx="4" fill="#fff8eb"/>
+  <text x="248" y="443" text-anchor="middle" class="small" style="fill:#91611e">mask = 0</text>
+
+  <circle cx="65" cy="558" r="5" fill="#7545b8"/>
+  <text x="78" y="563" class="small">center C</text>
+  <path d="M195 552L201 558L195 564L189 558Z" class="point"/>
+  <text x="209" y="563" class="small">disk target P</text>
+  <circle cx="362" cy="558" r="6" class="kept"/>
+  <text x="376" y="563" class="small">returned pixel Q</text>
+  <text x="56" y="588" class="small">P may be inactive. Gray dots are other retained active pixels.</text>
+
+  <rect x="624" y="106" width="552" height="498" rx="12" fill="white" stroke="#dbe3ed"/>
+  <text x="648" y="140" class="step">1  Draw a disk point around C</text>
+  <text x="672" y="169" class="mono">angle = 2π·u; radius = R·sqrt(v)</text>
+  <text x="672" y="194" class="small">Round to pixel P. Reject if off-screen.</text>
+
+  <text x="648" y="232" class="step">2  Read P's block entry</text>
+  <text x="672" y="259" class="mono">first = 40; mask bits = {1, 18, 22, 27}</text>
+  <g transform="translate(672 277)">
+    <rect width="256" height="128" fill="#f4f8fe" stroke="#94a3b8"/>
+    <path d="M32 0V128M64 0V128M96 0V128M128 0V128M160 0V128M192 0V128M224 0V128M0 32H256M0 64H256M0 96H256" stroke="#cfdae8" fill="none"/>
+    <rect x="32" y="0" width="32" height="32" fill="#d0dbe8"/>
+    <rect x="128" y="32" width="32" height="32" fill="#d0dbe8"/>
+    <rect x="192" y="32" width="32" height="32" fill="#16794c"/>
+    <rect x="160" y="96" width="32" height="32" fill="#d0dbe8"/>
+    <text x="48" y="22" text-anchor="middle" class="small">1</text>
+    <text x="144" y="54" text-anchor="middle" class="small">18</text>
+    <text x="208" y="54" text-anchor="middle" class="small" style="fill:white;font-weight:700">22</text>
+    <text x="176" y="118" text-anchor="middle" class="small">27</text>
+    <path d="M176 72L184 80L176 88L168 80Z" class="point"/>
+  </g>
+  <text x="951" y="305" class="body">8 × 4 pixels</text>
+  <text x="951" y="333" class="small">Numbers are</text>
+  <text x="951" y="355" class="small">Morton bit IDs.</text>
+  <text x="951" y="387" class="small">P need not be set.</text>
+
+  <text x="648" y="442" class="step">3  Choose a retained bit by rank</text>
+  <text x="672" y="470" class="mono">count = 4; rank = 2 → bit 22 → Q</text>
+  <text x="672" y="497" class="mono">global slot = first + rank = 42</text>
+
+  <text x="648" y="535" class="step">4  Validate the decoded pixel</text>
+  <text x="672" y="563" class="mono">distance(C, Q) ≤ R</text>
+  <text x="672" y="588" class="small">Then apply surface, portal, normal, and distance gates.</text>
+
+</svg>

@@ -525,6 +525,7 @@
 
 #define INTEGRATE_INDIRECT
 #define RAB_HAS_PREVIOUS_GBUFFER 1
+#define RAB_HAS_RTXDI_RESERVOIRS 1
 #define OPAQUE_MATERIAL_USE_POM 1
 // Note: Opacity lighting approximation used in the indirect integration pass due to particle lighting being somewhat
 // important in reflections off shiny surfaces (as without this it can make areas with many particles look weird in reflections).

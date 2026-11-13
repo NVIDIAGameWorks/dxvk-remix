@@ -47,6 +47,8 @@ namespace dxvk {
     // Returns true if denoiser gradient calculation is enabled and actually consumed downstream
     // (NRD primary denoiser or ReSTIR GI lighting validation).
     bool getEnableDenoiserGradient(RtxContext& ctx) const;
+    static uint32_t getSparseTemporalNeighborCandidateCount();
+    static uint32_t getSparseSpatialNeighborCandidateCount();
     
     RTX_OPTION("rtx.di", bool, enableCrossPortalLight, true, "");
     RTX_OPTION("rtx.di", bool, enableInitialVisibility, true, "Whether to trace a visibility ray for the light sample selected in the initial sampling pass.");
@@ -61,6 +63,18 @@ namespace dxvk {
     RTX_OPTION_ARGS("rtx.di", bool, stealBoundaryPixelSamplesWhenOutsideOfScreen, true, "Steal screen boundary samples when a hit point is outside the screen.",
                     args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION("rtx.di", bool, enableSpatialReuse, true, "Whether to apply spatial reuse.");
+    RTX_OPTION_ARGS("rtx.di", uint32_t, sparseNeighborCandidateCount, 8, "Shared default candidate budget for sparse RTXDI temporal and spatial neighbor searches.",
+                    args.minValue = 1, args.maxValue = 128);
+    RTX_OPTION_ARGS("rtx.di", uint32_t, sparseTemporalNeighborCandidateCount, 0,
+                    "Temporal sparse RTXDI fallback candidate budget after the initial reprojection check. 0: Use sparseNeighborCandidateCount. 1-128: Override the shared budget. Search can stop early after finding a suitable candidate.",
+                    args.minValue = 0, args.maxValue = 128);
+    RTX_OPTION_ARGS("rtx.di", uint32_t, sparseSpatialNeighborCandidateCount, 0,
+                    "Spatial sparse RTXDI candidate budget. 0: Use sparseNeighborCandidateCount. 1-128: Override the shared budget. The effective budget is at least the spatial sample count. Search can stop early after finding enough suitable candidates.",
+                    args.minValue = 0, args.maxValue = 128);
+    RTX_OPTION_ARGS("rtx.di", float, sparseSpatialNeighborSearchRadius, 50.f, "Spatial neighbor search disk radius in render pixels. Candidates outside this radius are rejected.",
+                    args.minValue = 1.f, args.maxValue = 128.f);
+    RTX_OPTION_ARGS("rtx.di", float, sparseTemporalNeighborSearchRadius, 10.f, "Temporal neighbor search disk radius in render pixels around reprojection. Candidates outside this radius are rejected.",
+                    args.minValue = 1.f, args.maxValue = 128.f);
     RTX_OPTION("rtx.di", bool, enableTemporalBiasCorrection, true, "");
     RTX_OPTION("rtx.di", bool, enableTemporalReuse, true, "Whether to apply temporal reuse.");
     RTX_OPTION("rtx.di", bool, enableDiscardInvisibleSamples, true, "Whether to discard reservoirs that are determined to be invisible in final shading.");
@@ -70,9 +84,9 @@ namespace dxvk {
     RTX_OPTION("rtx.di", bool, enableDenoiserGradient, true, "Enable gradient calculation, which is used by confidence calculation and GI sample validation.");
     RTX_OPTION_ARGS("rtx.di", uint32_t, initialSampleCount, 4, "The number of lights randomly selected from the global pool to consider when selecting a light with RTXDI.",
                     args.flags = RtxOptionFlags::UserSetting);
-    RTX_OPTION_ARGS("rtx.di", uint32_t, spatialSamples, 2, "The number of spatial reuse samples in converged areas.",
+    RTX_OPTION_ARGS("rtx.di", uint32_t, spatialSamples, 2, "The number of spatial reuse samples in converged areas. Capped at 4 while sparse reservoir storage is active.",
                     args.flags = RtxOptionFlags::UserSetting);
-    RTX_OPTION_ARGS("rtx.di", uint32_t, disocclusionSamples, 4, "The number of spatial reuse samples in disocclusion areas.",
+    RTX_OPTION_ARGS("rtx.di", uint32_t, disocclusionSamples, 4, "The number of spatial reuse samples in disocclusion areas. Capped at 4 while sparse reservoir storage is active.",
                     args.flags = RtxOptionFlags::UserSetting);
     RTX_OPTION("rtx.di", uint32_t, disocclusionFrames, 8, "");
     RTX_OPTION("rtx.di", uint32_t, gradientFilterPasses, 4, "");
@@ -85,5 +99,10 @@ namespace dxvk {
     RTX_OPTION("rtx.di", float, confidenceGradientScale, 6.f, "");
     RTX_OPTION("rtx.di", float, minimumConfidence, 0.1f, "");
     RTX_OPTION("rtx.di", float, confidenceHitDistanceSensitivity, 300.0f, "");
+
+  private:
+    Rc<DxvkBuffer> m_neighborCache;
+    Rc<DxvkBuffer> m_spatialNeighborCache;
+    Rc<DxvkBuffer> m_neighborGuide;
   };
 }

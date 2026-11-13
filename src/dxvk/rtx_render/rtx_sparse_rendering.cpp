@@ -28,12 +28,14 @@
 #include "rtx_neural_radiance_cache.h"
 #include "rtx_spatially_hashed_radiance_cache.h"
 #include "rtx_ray_reconstruction.h"
+#include "rtx_rtxdi_rayquery.h"
 #include "rtx_options.h"
 #include "rtx_shader_manager.h"
 #include "rtx_imgui.h"
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 #include "rtx/pass/sparse_rendering/active_pixel_mask_binding_indices.h"
 #include "rtx/pass/sparse_rendering/compact_active_pixels_binding_indices.h"
@@ -101,6 +103,7 @@ namespace dxvk {
         RW_TEXTURE2D(COMPACT_ACTIVE_PIXELS_BINDING_ACTIVE_LOCAL_PIXEL_COORDS_OUTPUT)
         RW_TEXTURE2D(COMPACT_ACTIVE_PIXELS_BINDING_COMPACTED_PIXEL_INDICES_OUTPUT)
         RW_TEXTURE2D(COMPACT_ACTIVE_PIXELS_BINDING_TILE_ACTIVE_COUNTS_OUTPUT)
+        RW_TEXTURE2D(COMPACT_ACTIVE_PIXELS_BINDING_BLOCK_RANK_OFFSETS_OUTPUT)
         RW_STRUCTURED_BUFFER(COMPACT_ACTIVE_PIXELS_BINDING_ACTIVE_PIXEL_COORDS_OUTPUT)
         RW_STRUCTURED_BUFFER(COMPACT_ACTIVE_PIXELS_BINDING_TRACE_RAYS_ARGS_OUTPUT)
         RW_STRUCTURED_BUFFER(COMPACT_ACTIVE_PIXELS_BINDING_DISPATCH_ARGS_OUTPUT)
@@ -178,10 +181,10 @@ namespace dxvk {
       return false;
     }
 
-    // The capacity is zero when the compacted storage cannot be packed into the render extent
-    // or exceeds the device's launch limits. See calculateCompactedStorageLayout.
+    // The capacity is zero when the compacted storage exceeds the render extent or device limits.
+    // See calculateCompactedStorageLayout.
     if (device()->getCommon()->getResources().getCompactedStorageCapacity() == 0) {
-      ONCE(Logger::warn("[RTX Sparse Rendering] The compacted GBuffer does not fit the render resolution at this sampling rate; sparse rendering will not run. "
+      ONCE(Logger::warn("[RTX Sparse Rendering] The compacted resources exceed the render extent or device limits; sparse rendering will not run. "
                         "It will resume automatically at a lower sampling rate or a higher render resolution."));
       return false;
     }
@@ -201,6 +204,16 @@ namespace dxvk {
       ONCE(Logger::warn("[RTX] First bounce lobe probability dithering is not supported with Sparse Rendering enabled to avoid conflicts with DLSS Ray Reconstruction. It will be automatically disabled."));
       RtxOptions::enableFirstBounceLobeProbabilityDithering.setImmediately(false);
     }
+
+    if (frameBeginCtx.resetHistory) {
+      m_compactedHistoryFrameIndex = ~0u;
+    }
+
+    // Compact RTXDI reservoirs preserve the previous frame's sparse pixel mapping and reuse the older buffers for this frame.
+    auto& rtOutput = device()->getCommon()->getResources().getRaytracingOutput();
+    std::swap(rtOutput.m_sparseRenderingCompactedPixelIndices, rtOutput.m_sparseRenderingPreviousCompactedPixelIndices);
+    std::swap(rtOutput.m_sparseRenderingTileActiveCounts, rtOutput.m_sparseRenderingPreviousTileActiveCounts);
+    std::swap(rtOutput.m_sparseRenderingBlockRankOffsets, rtOutput.m_sparseRenderingPreviousBlockRankOffsets);
   }
 
   bool SparseRendering::checkCompactActivePixelsRequirements() const {
@@ -372,6 +385,16 @@ namespace dxvk {
     // The last square is the scratch one, and the padding before it is capacity like any other slot.
     const uint32_t capacity = std::min(pixelCount, (squaresPerRow * squareRows - 1u) * kSquareArea);
 
+    // Neighbor caches and selection guides each store four uints per compacted slot.
+    const VkDeviceSize selectionBufferSize = VkDeviceSize(capacity) * 4 * sizeof(uint32_t);
+    const VkDeviceSize maxRange = device()->properties().core.properties.limits.maxStorageBufferRange;
+    if (capacity > std::numeric_limits<uint32_t>::max() / 4 || selectionBufferSize > maxRange) {
+      ONCE(Logger::warn(str::format("[RTX Sparse Rendering] RTXDI selection buffers exceed the device range or shader index limits at capacity ",
+        capacity, ": buffer size ", selectionBufferSize, " bytes, maxStorageBufferRange ", maxRange,
+        " bytes. Sparse rendering will not run.")));
+      return layout;
+    }
+
     // The compacted launches never exceed the capacity, so it bounds what the device has to dispatch.
     if (!checkCompactedLaunchLimits(capacity)) {
       return layout;
@@ -398,6 +421,30 @@ namespace dxvk {
     // Consumers need both values and already pay for one tile-uniform read.
     rtOutput.m_sparseRenderingTileActiveCounts =
       Resources::createImageResource(ctx, "Sparse Rendering Tile Active Counts", tileExtent, VK_FORMAT_R32G32_UINT);
+
+    if (device()->getCommon()->getResources().getCompactedStorageCapacity()) {
+      rtOutput.m_sparseRenderingPreviousCompactedPixelIndices =
+        Resources::createImageResource(ctx, "Sparse Rendering Previous Compacted Pixel Indices", downscaledExtent, VK_FORMAT_R16_UINT);
+      rtOutput.m_sparseRenderingPreviousTileActiveCounts =
+        Resources::createImageResource(ctx, "Sparse Rendering Previous Tile Active Counts", tileExtent, VK_FORMAT_R32G32_UINT);
+
+      // Each texel describes an 8x4 screen block for RTXDI neighbor searches, including at inactive pixels.
+      // The x channel holds the global list index of the block's first retained active pixel.
+      // The y channel holds the block's retained active pixels as a Morton-ordered mask, so a search reaches them without the list.
+      const VkExtent3D blockExtent = util::computeBlockCount(
+        downscaledExtent, VkExtent3D { COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_X, COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_Y, 1 });
+      rtOutput.m_sparseRenderingBlockRankOffsets =
+        Resources::createImageResource(ctx, "Sparse Rendering Block Rank Offsets", blockExtent, VK_FORMAT_R32G32_UINT);
+      rtOutput.m_sparseRenderingPreviousBlockRankOffsets =
+        Resources::createImageResource(ctx, "Sparse Rendering Previous Block Rank Offsets", blockExtent, VK_FORMAT_R32G32_UINT);
+    } else {
+      rtOutput.m_sparseRenderingPreviousCompactedPixelIndices.reset();
+      rtOutput.m_sparseRenderingPreviousTileActiveCounts.reset();
+      rtOutput.m_sparseRenderingBlockRankOffsets.reset();
+      rtOutput.m_sparseRenderingPreviousBlockRankOffsets.reset();
+    }
+
+    m_compactedHistoryFrameIndex = ~0u;
     rtOutput.m_sparseRenderingPixelSamplingRate =
       Resources::createImageResource(ctx, "Sparse Rendering Pixel Sampling Rate", downscaledExtent, VK_FORMAT_R8_UNORM);
 
@@ -468,6 +515,12 @@ namespace dxvk {
     rtOutput.m_sparseRenderingTraceRaysIndirectArgs = nullptr;
     rtOutput.m_sparseRenderingDispatchIndirectArgs = nullptr;
     m_activePixelMaskExtent = { 0u, 0u, 0u };
+
+    rtOutput.m_sparseRenderingPreviousCompactedPixelIndices.reset();
+    rtOutput.m_sparseRenderingPreviousTileActiveCounts.reset();
+    rtOutput.m_sparseRenderingBlockRankOffsets.reset();
+    rtOutput.m_sparseRenderingPreviousBlockRankOffsets.reset();
+    m_compactedHistoryFrameIndex = ~0u;
   }
 
   // The compacted launches are sized from a GPU-side count, so the limits have to hold for the largest count possible.
@@ -616,6 +669,8 @@ namespace dxvk {
                          rtOutput.m_sparseRenderingCompactedPixelIndices.view, nullptr);
     ctx.bindResourceView(COMPACT_ACTIVE_PIXELS_BINDING_TILE_ACTIVE_COUNTS_OUTPUT,
                          rtOutput.m_sparseRenderingTileActiveCounts.view, nullptr);
+    ctx.bindResourceView(COMPACT_ACTIVE_PIXELS_BINDING_BLOCK_RANK_OFFSETS_OUTPUT,
+                         rtOutput.m_sparseRenderingBlockRankOffsets.view, nullptr);
 
     ctx.bindResourceBuffer(COMPACT_ACTIVE_PIXELS_BINDING_ACTIVE_PIXEL_COORDS_OUTPUT,
                            optionalBufferSlice(rtOutput.m_sparseRenderingActivePixelCoords));
@@ -629,6 +684,7 @@ namespace dxvk {
     const VkExtent3D workgroups = util::computeBlockCount(extent, tileSize);
 
     ctx.dispatch(workgroups.width, workgroups.height, workgroups.depth);
+    m_compactedHistoryFrameIndex = device()->getCurrentFrameId();
   }
 
   void SparseRendering::setSparseRenderingArgs(RtxContext& ctx, SparseRenderingArgs& args) const {
@@ -640,6 +696,15 @@ namespace dxvk {
     args.enableSparseVolumetricsPrimaryMiss = Options::enableSparseVolumetricsPrimaryMiss();
     args.enableLightIdentityResolution = ctx.getSceneManager().getLightManager().isLightIdentityTableBuilt() ? 1u : 0u;
     args.enableSparseAwareAlphaBlendSearch = Options::enableSparseAwareAlphaBlendSearch();
+
+    auto& sparseNeighborSearch = args.rtxdiSparseNeighborSearch;
+    sparseNeighborSearch.temporalCandidateCount = DxvkRtxdiRayQuery::getSparseTemporalNeighborCandidateCount();
+    sparseNeighborSearch.spatialCandidateCount = DxvkRtxdiRayQuery::getSparseSpatialNeighborCandidateCount();
+    sparseNeighborSearch.temporalSearchRadius = DxvkRtxdiRayQuery::sparseTemporalNeighborSearchRadius();
+    sparseNeighborSearch.spatialSearchRadius = DxvkRtxdiRayQuery::sparseSpatialNeighborSearchRadius();
+
+    args.rtxdiCompactedHistoryValid = m_compactedHistoryFrameIndex != ~0u &&
+      m_compactedHistoryFrameIndex == ctx.getDevice()->getCurrentFrameId() - 1;
     NeuralRadianceCache& nrc = ctx.getCommonObjects()->metaNeuralRadianceCache();
     args.resampledNrcTrainingPaths = resamplesNrcTrainingPaths(nrc.isActive());
     SpatiallyHashedRadianceCache& sharc = ctx.getCommonObjects()->metaSpatiallyHashedRadianceCache();

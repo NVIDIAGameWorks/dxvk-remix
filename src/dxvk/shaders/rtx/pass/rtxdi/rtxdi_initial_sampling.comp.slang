@@ -22,10 +22,8 @@
 
 //!variant rtxdi_initial_sampling.comp
 //!>       RTXDI_NO_PORTALS=0
-
 //!variant rtxdi_initial_sampling_no_portals.comp
 //!>       RTXDI_NO_PORTALS=1
-
 //!end-variants
 
 #define USE_32BIT_RAY_DIRECTION 1
@@ -55,17 +53,30 @@
 [numthreads(COMPACT_ACTIVE_PIXELS_CONSUMER_GROUP_SIZE_X, COMPACT_ACTIVE_PIXELS_CONSUMER_GROUP_SIZE_Y, 1)]
 void main(uint2 dispatchThreadId : SV_DispatchThreadID, uint3 groupId : SV_GroupID, uint groupIndex : SV_GroupIndex)
 {
-  uint2 threadIndex;
+  int2 pixelCoordinate;
   uvec2 compactedCoordinate;
-  if (!loadCompactedCoordinate(dispatchThreadId, groupId.x, groupIndex, ActivePixelCount,
-                              cb.camera.resolution, cb.sparseRenderingArgs, threadIndex, compactedCoordinate))
+  uint launchIndex;
+  RAB_Surface surface;
+  if (!RAB_LoadLaunchSurface(dispatchThreadId, groupId.x, groupIndex, pixelCoordinate, compactedCoordinate, launchIndex, surface))
   {
     return;
   }
 
-  int2 pixelCoordinate = int2(loadLaunchPixelCoordinate(threadIndex, ActivePixelCoords, cb.sparseRenderingArgs));
+  // The host allocates the guide and runs spatial selection under the same condition.
+  if (cb.sparseRenderingArgs.mode != SparseRenderingMode::Off && cb.enableRtxdiSpatialReuse)
+  {
+    uint4 guide = uint4(0u, 0u, 0u, asuint(surface.hitDistance));
+    if (RAB_IsSurfaceValid(surface))
+    {
+      const uint3 normalBits = asuint(RAB_GetSurfaceNormal(surface));
+      guide.xy = normalBits.xy;
 
-  RAB_Surface surface = RAB_GetGBufferSurface(pixelCoordinate, false, int2(compactedCoordinate));
+      // Reserve two low mantissa bits of normal Z for portal space.
+      guide.z = (normalBits.z & ~3u) | uint(surface.portalSpace);
+    }
+    // See RAB_GetSpatialCandidateSurface for the layout.
+    SelectionGuide[launchIndex] = guide;
+  }
   if (!RAB_IsSurfaceValid(surface))
   {
     return;
@@ -102,5 +113,5 @@ void main(uint2 dispatchThreadId : SV_DispatchThreadID, uint3 groupId : SV_Group
     state.M = 1;
   }
 
-  RAB_StoreReservoir(state, pixelCoordinate, RTXDI_GetTemporalOutputPage());
+  RAB_StoreReservoir(state, pixelCoordinate, RTXDI_GetTemporalOutputPage(), launchIndex);
 }

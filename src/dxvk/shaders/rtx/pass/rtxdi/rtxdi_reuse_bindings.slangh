@@ -88,6 +88,7 @@ Texture2D<uint2> SharedSubsurfaceDiffusionProfileData;
 layout(binding = RTXDI_REUSE_BINDING_COMPACTED_PIXEL_INDICES_INPUT)
 Texture2D<uint16_t> CompactedPixelIndices;
 #define RAB_HAS_COMPACTED_GBUFFER 1
+#define RAB_HAS_COMPACTED_RESERVOIR_MAPPING 1
 
 layout(binding = RTXDI_REUSE_BINDING_TILE_ACTIVE_COUNTS_INPUT)
 Texture2D<uint2> TileActiveCounts;
@@ -97,6 +98,37 @@ StructuredBuffer<uint> ActivePixelCoords;
 
 layout(binding = RTXDI_REUSE_BINDING_ACTIVE_PIXEL_COUNT_INPUT)
 StructuredBuffer<uint> ActivePixelCount;
+
+layout(binding = RTXDI_REUSE_BINDING_PREVIOUS_TILE_ACTIVE_COUNTS_INPUT)
+Texture2D<uint2> PreviousTileActiveCounts;
+
+layout(binding = RTXDI_REUSE_BINDING_PREVIOUS_COMPACTED_PIXEL_INDICES_INPUT)
+Texture2D<uint16_t> PreviousCompactedPixelIndices;
+#define RAB_HAS_PREVIOUS_COMPACTED_RESERVOIR_MAPPING 1
+
+layout(binding = RTXDI_REUSE_BINDING_BLOCK_RANK_OFFSETS_INPUT)
+Texture2D<uint2> BlockRankOffsets;
+
+layout(binding = RTXDI_REUSE_BINDING_PREVIOUS_BLOCK_RANK_OFFSETS_INPUT)
+Texture2D<uint2> PreviousBlockRankOffsets;
+
+// Each field occupies a capacity-sized plane indexed by the compacted thread.
+layout(binding = RTXDI_REUSE_BINDING_NEIGHBOR_CACHE_INPUT_OUTPUT)
+RWStructuredBuffer<uint> NeighborCache;
+#define RAB_HAS_NEIGHBOR_CACHE 1
+
+#ifndef RTXDI_SPATIAL_SELECTION_PASS
+#define RTXDI_SPATIAL_SELECTION_PASS 0
+#endif
+
+// Initial sampling writes the guide, and spatial selection reads it.
+#if RTXDI_SPATIAL_SELECTION_PASS
+layout(binding = RTXDI_REUSE_BINDING_SELECTION_GUIDE_INPUT_OUTPUT)
+StructuredBuffer<uint4> SelectionGuide;
+#else
+layout(binding = RTXDI_REUSE_BINDING_SELECTION_GUIDE_INPUT_OUTPUT)
+RWStructuredBuffer<uint4> SelectionGuide;
+#endif
 
 // These are written at every pixel, so spatial reuse can rebuild an inactive neighbor's surface from them.
 // See RAB_GetInactiveGBufferSurface.

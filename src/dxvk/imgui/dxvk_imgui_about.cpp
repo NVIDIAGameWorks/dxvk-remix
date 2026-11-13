@@ -126,6 +126,7 @@ namespace dxvk {
           "Peter Kristof",
           "Zachary Kupu",
           "Ed Leafe",
+          "Daqi Lin",
           "Lindsay Lutz",
           "Dmitriy Marshak",
           "Luis Mendez",

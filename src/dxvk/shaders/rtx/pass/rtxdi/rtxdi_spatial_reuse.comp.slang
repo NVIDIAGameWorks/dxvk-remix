@@ -23,19 +23,15 @@
 //!variant rtxdi_spatial_reuse.comp
 //!>       RTXDI_NO_PORTALS=0
 //!>       RTXDI_ENABLE_BSDF_DETAIL=1
-
 //!variant rtxdi_spatial_reuse_no_portals.comp
 //!>       RTXDI_NO_PORTALS=1
 //!>       RTXDI_ENABLE_BSDF_DETAIL=1
-
 //!variant rtxdi_spatial_reuse_no_bsdf_detail.comp
 //!>       RTXDI_NO_PORTALS=0
 //!>       RTXDI_ENABLE_BSDF_DETAIL=0
-
 //!variant rtxdi_spatial_reuse_no_portals_no_bsdf_detail.comp
 //!>       RTXDI_NO_PORTALS=1
 //!>       RTXDI_ENABLE_BSDF_DETAIL=0
-
 //!end-variants
 
 #define USE_32BIT_RAY_DIRECTION 1
@@ -77,47 +73,60 @@
 [numthreads(COMPACT_ACTIVE_PIXELS_CONSUMER_GROUP_SIZE_X, COMPACT_ACTIVE_PIXELS_CONSUMER_GROUP_SIZE_Y, 1)]
 void main(uint2 dispatchThreadId : SV_DispatchThreadID, uint3 groupId : SV_GroupID, uint groupIndex : SV_GroupIndex)
 {
-  uint2 threadIndex;
+  int2 pixelCoordinate;
   uvec2 compactedCoordinate;
-  if (!loadCompactedCoordinate(dispatchThreadId, groupId.x, groupIndex, ActivePixelCount,
-                              cb.camera.resolution, cb.sparseRenderingArgs, threadIndex, compactedCoordinate))
+  uint launchIndex;
+  RAB_Surface surface;
+  if (!RAB_LoadLaunchSurface(dispatchThreadId, groupId.x, groupIndex, pixelCoordinate, compactedCoordinate, launchIndex, surface))
   {
     return;
   }
 
-  int2 pixelCoordinate = int2(loadLaunchPixelCoordinate(threadIndex, ActivePixelCoords, cb.sparseRenderingArgs));
-
-  RAB_Surface surface = RAB_GetGBufferSurface(pixelCoordinate, false, int2(compactedCoordinate));
+#if !RTXDI_SPATIAL_SELECTION_PASS
   if (!cb.enableReSTIRGI)
   {
     imageStore(GBufferLast, pixelCoordinate, RAB_PackLastFrameGBuffer(surface));
   }
+#endif
 
+  // Temporal selection relies on this being the only exit before the reservoir store. See RAB_IsReservoirWritten.
   if (!RAB_IsSurfaceValid(surface))
   {
     return;
   }
 
-  RAB_RandomSamplerState rtxdiRNG = RAB_InitRandomSampler(pixelCoordinate, cb.frameIdx, 3);
+  const uint kRandomPass = RTXDI_SPATIAL_SELECTION_PASS ? 9u : 3u;
+  RAB_RandomSamplerState rtxdiRNG = RAB_InitRandomSampler(pixelCoordinate, cb.frameIdx, kRandomPass);
   
-  RTXDI_Reservoir reservoir = RAB_LoadReservoir(pixelCoordinate, RTXDI_GetSpatialInputPage());
+#if !RTXDI_SPATIAL_SELECTION_PASS
+  RTXDI_Reservoir reservoir = RAB_LoadReservoirAtIndex(pixelCoordinate, RTXDI_GetSpatialInputPage(), launchIndex);
+#endif
 
-  // Calculate the average reprojection confidence in the neighborhood to reject individual pixels that failed to reproject
-  const int filterRadius = 1;
-  const int filterArea = (filterRadius * 2 + 1) * (filterRadius * 2 + 1);
-  float sumConfidence = 0;
-  for (int xx = -filterRadius; xx <= filterRadius; ++xx)
-  for (int yy = -filterRadius; yy <= filterRadius; ++yy)
+  int numSpatialSamples = cb.rtxdiSpatialSamples;
+  if (!RTXDI_SPATIAL_SELECTION_PASS && RAB_UseSparseReservoirs())
   {
-    sumConfidence += ReprojectionConfidence[pixelCoordinate + int2(xx, yy)].r;
+    // Unused slots are sentinel IDs and consume neither merge randomness nor reservoir mass.
+    numSpatialSamples = int(RAB_GetSpatialNeighborSlotCount());
   }
+  else if (cb.rtxdiSpatialSamples != cb.rtxdiDisocclusionSamples)
+  {
+    // Average confidence to reduce sensitivity to isolated reprojection failures.
+    const int kFilterRadius = 1;
+    const int kFilterArea = (kFilterRadius * 2 + 1) * (kFilterRadius * 2 + 1);
+    float sumConfidence = 0;
+    for (int xx = -kFilterRadius; xx <= kFilterRadius; ++xx)
+    {
+      for (int yy = -kFilterRadius; yy <= kFilterRadius; ++yy)
+      {
+        sumConfidence += ReprojectionConfidence[pixelCoordinate + int2(xx, yy)].r;
+      }
+    }
 
-  const float historyLength = sumConfidence * (float(kReprojectionConfidenceHistoryLength) / float(filterArea));
-
-  // Use the average history length to decide if we need to apply disocclusion boost.
-  int numSpatialSamples = historyLength < cb.rtxdiDisocclusionFrames
-    ? cb.rtxdiDisocclusionSamples
-    : cb.rtxdiSpatialSamples;
+    const float historyLength = sumConfidence * (float(kReprojectionConfidenceHistoryLength) / float(kFilterArea));
+    numSpatialSamples = historyLength < cb.rtxdiDisocclusionFrames
+      ? cb.rtxdiDisocclusionSamples
+      : cb.rtxdiSpatialSamples;
+  }
 
   RTXDI_SpatialResamplingParameters sparams;
   sparams.numSamples = cb.enableRtxdiSpatialReuse ? clamp(numSpatialSamples, 1, 16) : 0;
@@ -130,6 +139,29 @@ void main(uint2 dispatchThreadId : SV_DispatchThreadID, uint3 groupId : SV_Group
   sparams.depthThreshold = 0.1;
   sparams.screenResolution = cb.camera.resolution;
 
+#if RTXDI_SPATIAL_SELECTION_PASS
+  uint selectedPixels[RTXDI_MAX_ACTIVE_NEIGHBORS];
+  RTXDI_SelectActiveSpatialNeighbors(
+    pixelCoordinate, surface, rtxdiRNG, sparams,
+    cb.sparseRenderingArgs.rtxdiSparseNeighborSearch, selectedPixels);
+  const uint cacheIndex = launchIndex;
+  const uint cacheStride = cb.sparseRenderingArgs.compactedStorageCapacity;
+  const uint slotCount = RAB_GetSpatialNeighborSlotCount();
+  NeighborCache[cacheIndex + 0 * cacheStride] = selectedPixels[0];
+  if (slotCount > 1)
+  {
+    NeighborCache[cacheIndex + 1 * cacheStride] = selectedPixels[1];
+  }
+  if (slotCount > 2)
+  {
+    NeighborCache[cacheIndex + 2 * cacheStride] = selectedPixels[2];
+  }
+  if (slotCount > 3)
+  {
+    NeighborCache[cacheIndex + 3 * cacheStride] = selectedPixels[3];
+  }
+#else
+  g_rtxdiSpatialNeighborCacheIndex = launchIndex;
   // See RAB_GetInactiveGBufferSurface.
   g_resampledPixelBaseReflectivity = surface.opaqueSurfaceMaterialInteraction.baseReflectivity;
 
@@ -140,7 +172,7 @@ void main(uint2 dispatchThreadId : SV_DispatchThreadID, uint3 groupId : SV_Group
     rtxdiRNG,
     sparams);
 
-  RAB_StoreReservoir(result, pixelCoordinate, RTXDI_GetSpatialOutputPage());
+  RAB_StoreReservoir(result, pixelCoordinate, RTXDI_GetSpatialOutputPage(), launchIndex);
 
   vec2 factor = vec2(1);
 #if RTXDI_ENABLE_BSDF_DETAIL
@@ -161,4 +193,5 @@ void main(uint2 dispatchThreadId : SV_DispatchThreadID, uint3 groupId : SV_Group
   }
 #endif
   BSDFFactor[compactedCoordinate] = vec2(factor);
+#endif
 }

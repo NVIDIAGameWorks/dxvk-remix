@@ -673,6 +673,9 @@ void integratePathVertex(
           isWithinGbuffer = true;
         }
     
+        // if reservoir doesn't exist, must use the fallback below.
+        isWithinGbuffer = isWithinGbuffer && RAB_IsReservoirAvailable(pixelCoordinate, RTXDI_GetSpatialOutputPage());
+
         if (isWithinGbuffer)
         {
           MinimalSurfaceInteraction gbuffer = minimalSurfaceInteractionReadFromGBuffer(pixelCoordinate, PrimaryWorldPositionWorldTriangleNormalDense);

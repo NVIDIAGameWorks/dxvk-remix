@@ -29,6 +29,7 @@
 #pragma once
 
 #include "rtx/utility/common.slangh"
+#include "rtx/utility/math.slangh"
 #include "rtx/utility/color.slangh"
 #include "rtx/utility/brdf.slangh"
 #include "rtx/utility/gbuffer_helpers.slangh"
@@ -41,6 +42,7 @@
 #include "rtx/algorithm/volume_integrator_helpers.slangh"
 #include "rtx/pass/sparse_rendering/compact_active_pixels.slangh"
 #include "rtx/algorithm/rtxdi/rtxdi_reservoir_pages.slangh"
+#include "rtxdi/SparseNeighborSearchParameters.h"
 
 static const uint kReprojectionConfidenceHistoryLength = 16;
 
@@ -60,6 +62,16 @@ static const uint kReprojectionConfidenceHistoryLength = 16;
 
 #ifndef RTXDI_NO_PORTALS
 #define RTXDI_NO_PORTALS 0
+#endif
+
+// The selection prepasses set RTXDI_TEMPORAL_SELECTION_PASS or RTXDI_SPATIAL_SELECTION_PASS and fill the neighbor caches.
+// With compact reservoirs, the reuse passes merge the cached neighbors. See RAB_UseSparseReservoirs.
+#ifndef RTXDI_TEMPORAL_SELECTION_PASS
+#define RTXDI_TEMPORAL_SELECTION_PASS 0
+#endif
+
+#ifndef RTXDI_SPATIAL_SELECTION_PASS
+#define RTXDI_SPATIAL_SELECTION_PASS 0
 #endif
 
 struct RAB_RandomSamplerState
@@ -368,10 +380,31 @@ RAB_Surface RAB_GetInactiveGBufferSurface(ivec2 pixel)
     return surface;
   }
 
+  // PSR reflections and repeated portal crossings turn the view ray in ways that cannot be redone here, so those surfaces are left out.
+  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixel, SharedFlagsDense);
+  if (geometryFlags.performPSRR || geometryFlags.portalSpace == PORTAL_SPACE_PORTAL_COMBINED)
+  {
+    return surface;
+  }
+
   const CameraDirections cameraDirections = cameraPixelCoordinateToDirection(cb.camera, pixel, false);
   const float hitDistance = PrimaryLinearViewZ[pixel] / cameraDirections.viewDirection.z;
 
-  surface.minimalRayInteraction.viewDirection = -cameraDirections.worldDirection;
+  // A portal turns the view ray by the transform of the portal the ray entered.
+  vec3 viewDirection = -cameraDirections.worldDirection;
+  if (geometryFlags.portalSpace == PORTAL_SPACE_PORTAL_0 || geometryFlags.portalSpace == PORTAL_SPACE_PORTAL_1)
+  {
+    const uint8_t entryPortalIndex = uint8_t(geometryFlags.portalSpace - PORTAL_SPACE_PORTAL_0);
+    viewDirection = normalize(mul(mat3(RAB_GetPortalTransform(entryPortalIndex)), viewDirection));
+  }
+
+  // A view direction behind the triangle zeroes every light's target, and the active pixel's reuse would count that empty history.
+  if (dot(viewDirection, minimalSurfaceInteraction.geometryNormal) <= 0.0f)
+  {
+    return surface;
+  }
+
+  surface.minimalRayInteraction.viewDirection = viewDirection;
   surface.minimalRayInteraction.coneRadius = cb.screenSpacePixelSpreadHalfAngle * hitDistance;
 
   // The position error is compacted, so only its world-space term is recomputed here.
@@ -396,7 +429,6 @@ RAB_Surface RAB_GetInactiveGBufferSurface(ivec2 pixel)
     surface.opaqueSurfaceMaterialInteraction.isotropicRoughness,
     surface.opaqueSurfaceMaterialInteraction.anisotropicRoughness);
 
-  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixel, SharedFlagsDense);
   surface.portalSpace = geometryFlags.portalSpace;
   surface.isViewModel = geometryFlags.isViewModel;
   surface.objectMask = geometryFlags.objectMask;
@@ -410,7 +442,9 @@ RAB_Surface RAB_GetInactiveGBufferSurface(ivec2 pixel)
 // Callers that got `compactedPixel` from loadCompactedCoordinate pass it in.
 // Looks `compactedPixel` up from `pixel` when it is left at its default.
 // Returns a surface rebuilt by RAB_GetInactiveGBufferSurface for an inactive pixel.
-RAB_Surface RAB_GetGBufferSurface(ivec2 pixel, bool previousFrame, ivec2 compactedPixel = kInvalidCompactedCoordinate)
+// knownActiveCompacted requires a resolved storage coordinate for an active pixel.
+RAB_Surface RAB_GetGBufferSurface(ivec2 pixel, bool previousFrame, ivec2 compactedPixel = kInvalidCompactedCoordinate,
+    bool knownActiveCompacted = false)
 {
   RAB_Surface surface = RAB_EmptySurface();
 
@@ -431,7 +465,7 @@ RAB_Surface RAB_GetGBufferSurface(ivec2 pixel, bool previousFrame, ivec2 compact
     return surface;
   }
 
-  if (all(compactedPixel == kInvalidCompactedCoordinate))
+  if (!knownActiveCompacted && all(compactedPixel == kInvalidCompactedCoordinate))
   {
 #ifdef RAB_HAS_COMPACTED_GBUFFER
     // Inactive pixels have no compacted GBuffer slot, which the table's sentinel reports.
@@ -493,6 +527,46 @@ RAB_Surface RAB_GetGBufferSurface(ivec2 pixel, bool previousFrame, ivec2 compact
   return surface;
 }
 
+#ifdef RAB_HAS_COMPACTED_GBUFFER
+// Resolves the pixel and surface of a thread of an RTXDI reuse pass.
+// Returns false for a thread without a pixel.
+// `launchIndex` is the pixel's slot in the active-pixel list, which indexes compacted reservoirs and neighbor caches.
+bool RAB_LoadLaunchSurface(
+  uint2 dispatchThreadId,
+  uint groupIdX,
+  uint groupIndex,
+  out int2 pixelCoordinate,
+  out uvec2 compactedCoordinate,
+  out uint launchIndex,
+  out RAB_Surface surface)
+{
+  pixelCoordinate = int2(dispatchThreadId);
+  compactedCoordinate = dispatchThreadId;
+  launchIndex = ~0u;
+  surface = RAB_EmptySurface();
+
+  uint2 threadIndex;
+  if (!loadCompactedCoordinate(dispatchThreadId, groupIdX, groupIndex, ActivePixelCount,
+                               cb.camera.resolution, cb.sparseRenderingArgs, threadIndex, compactedCoordinate))
+  {
+    return false;
+  }
+
+  pixelCoordinate = int2(loadLaunchPixelCoordinate(threadIndex, ActivePixelCoords, cb.sparseRenderingArgs));
+  launchIndex = threadIndex.x;
+
+#if RTXDI_SPATIAL_SELECTION_PASS
+  surface = RAB_GetNeighborSelectionSurface(pixelCoordinate, false, launchIndex);
+#elif RTXDI_TEMPORAL_SELECTION_PASS
+  surface = RAB_GetGBufferSurface(pixelCoordinate, false, int2(compactedCoordinate), true);
+#else
+  surface = RAB_GetGBufferSurface(pixelCoordinate, false, int2(compactedCoordinate));
+#endif
+
+  return true;
+}
+#endif
+
 struct RAB_VolumeVisibilityContext
 {
   Ray ray;
@@ -526,6 +600,241 @@ float RAB_GetNextRandom(inout RAB_RandomSamplerState rng)
 {
   return sampleUniformRng(rng);
 }
+
+// Only the RTXDI reuse passes bind the neighbor caches and the active list.
+// Other passes compile the resampling functions without taking their compact branches, so these return nothing there.
+static uint g_rtxdiTemporalNeighborCacheIndex;
+
+int2 RAB_LoadTemporalNeighbor(out float16_t3 previousNormal)
+{
+  previousNormal = float16_t3(0.0);
+#ifdef RAB_HAS_NEIGHBOR_CACHE
+  // Temporal selection leaves the cache unbound when reuse is disabled or the history length is zero.
+  if (!cb.enableRtxdiTemporalReuse || !cb.rtxdiMaxHistoryLength)
+  {
+    return int2(-1);
+  }
+
+  const uint cacheStride = cb.sparseRenderingArgs.compactedStorageCapacity;
+  const uint packedPixel = NeighborCache[g_rtxdiTemporalNeighborCacheIndex];
+  previousNormal = float16_t3(
+    asfloat(NeighborCache[g_rtxdiTemporalNeighborCacheIndex + 1 * cacheStride]),
+    asfloat(NeighborCache[g_rtxdiTemporalNeighborCacheIndex + 2 * cacheStride]),
+    asfloat(NeighborCache[g_rtxdiTemporalNeighborCacheIndex + 3 * cacheStride]));
+  return packedPixel == ~0u ? int2(-1) : int2(packedPixel & 0xFFFFu, packedPixel >> 16);
+#else
+  return int2(-1);
+#endif
+}
+
+static uint g_rtxdiSpatialNeighborCacheIndex;
+
+// Spatial selection fills at most this many slots, and only these slots are stored and loaded.
+uint RAB_GetSpatialNeighborSlotCount()
+{
+  return min(max(uint(cb.rtxdiSpatialSamples), uint(cb.rtxdiDisocclusionSamples)), uint(RTXDI_MAX_ACTIVE_NEIGHBORS));
+}
+
+void RAB_LoadSpatialNeighbors(out uint selectedPixels[RTXDI_MAX_ACTIVE_NEIGHBORS])
+{
+  selectedPixels[0] = ~0u;
+  selectedPixels[1] = ~0u;
+  selectedPixels[2] = ~0u;
+  selectedPixels[3] = ~0u;
+#ifdef RAB_HAS_NEIGHBOR_CACHE
+  const uint slotCount = RAB_GetSpatialNeighborSlotCount();
+  const uint cacheStride = cb.sparseRenderingArgs.compactedStorageCapacity;
+  selectedPixels[0] = NeighborCache[g_rtxdiSpatialNeighborCacheIndex];
+  if (slotCount > 1)
+  {
+    selectedPixels[1] = NeighborCache[g_rtxdiSpatialNeighborCacheIndex + 1 * cacheStride];
+  }
+  if (slotCount > 2)
+  {
+    selectedPixels[2] = NeighborCache[g_rtxdiSpatialNeighborCacheIndex + 2 * cacheStride];
+  }
+  if (slotCount > 3)
+  {
+    selectedPixels[3] = NeighborCache[g_rtxdiSpatialNeighborCacheIndex + 3 * cacheStride];
+  }
+#endif
+}
+
+RAB_Surface RAB_GetActiveNeighborSurface(int2 pixel, uint globalIndex)
+{
+#ifdef RAB_HAS_NEIGHBOR_CACHE
+  if (any(pixel < 0) || any(pixel >= int2(cb.camera.resolution)))
+  {
+    return RAB_EmptySurface();
+  }
+
+  uint2 compactedPixel;
+  if (globalIndex != ~0u)
+  {
+    compactedPixel = storageCoordinateFromGlobalIndex(globalIndex, cb.sparseRenderingArgs);
+  }
+  else if (!compactedCoordinateFromPixelIfActive(CompactedPixelIndices, TileActiveCounts,
+      uint2(pixel), cb.sparseRenderingArgs, compactedPixel))
+  {
+    return RAB_EmptySurface();
+  }
+  return RAB_GetGBufferSurface(pixel, false, int2(compactedPixel), true);
+#else
+  return RAB_EmptySurface();
+#endif
+}
+
+int2 RAB_GetActiveNeighborPixel(uint globalIndex)
+{
+#ifdef RAB_HAS_NEIGHBOR_CACHE
+  if (globalIndex >= cb.sparseRenderingArgs.compactedStorageCapacity)
+  {
+    return int2(-1);
+  }
+
+  const uint2 pixel = unpackActivePixelCoordinate(ActivePixelCoords[globalIndex]);
+  return any(pixel >= cb.camera.resolution) ? int2(-1) : int2(pixel);
+#else
+  return int2(-1);
+#endif
+}
+
+#if RTXDI_TEMPORAL_SELECTION_PASS || RTXDI_SPATIAL_SELECTION_PASS
+// Selection needs only the surface geometry. Material data is fetched after selecting a neighbor.
+RAB_Surface RAB_GetNeighborSelectionSurface(int2 pixel, bool previousFrame, uint globalIndex, out uint2 compactedPixel)
+{
+  compactedPixel = uint2(0);
+  if (previousFrame)
+  {
+    return RAB_GetGBufferSurface(pixel, true);
+  }
+
+  RAB_Surface surface = RAB_EmptySurface();
+  if (any(pixel < 0) || any(pixel >= int2(cb.camera.resolution)))
+  {
+    return surface;
+  }
+
+  if (globalIndex != ~0u)
+  {
+    compactedPixel = storageCoordinateFromGlobalIndex(globalIndex, cb.sparseRenderingArgs);
+  }
+  else if (!compactedCoordinateFromPixelIfActive(CompactedPixelIndices, TileActiveCounts,
+      uint2(pixel), cb.sparseRenderingArgs, compactedPixel))
+  {
+    return surface;
+  }
+
+  surface.hitDistance = PrimaryHitDistance[compactedPixel];
+  surface.opaqueSurfaceMaterialInteraction.shadingNormal =
+    signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(PrimaryWorldShadingNormal[compactedPixel]));
+  surface.portalSpace = geometryFlagsReadFromGBuffer(compactedPixel, SharedFlags).portalSpace;
+  return surface;
+}
+
+RAB_Surface RAB_GetNeighborSelectionSurface(int2 pixel, bool previousFrame, uint globalIndex = ~0u)
+{
+  uint2 compactedPixel;
+  return RAB_GetNeighborSelectionSurface(pixel, previousFrame, globalIndex, compactedPixel);
+}
+
+#if RTXDI_SPATIAL_SELECTION_PASS
+// Returns the selection surface of a current-frame spatial candidate at its active-list slot.
+// The spatial selection pass reads it from the guide that initial sampling writes.
+// Each record holds normal XY, normal Z with portal space in its low two bits, and hit distance.
+RAB_Surface RAB_GetSpatialCandidateSurface(int2 pixel, uint globalIndex)
+{
+  RAB_Surface surface = RAB_EmptySurface();
+  if (any(pixel < 0) || any(pixel >= int2(cb.camera.resolution)))
+  {
+    return surface;
+  }
+  const uint4 guide = SelectionGuide[globalIndex];
+  surface.hitDistance = asfloat(guide.w);
+  surface.opaqueSurfaceMaterialInteraction.shadingNormal = asfloat(uint3(guide.xy, guide.z & ~3u));
+  surface.portalSpace = PortalSpace2BitsType(guide.z & 3u);
+  return surface;
+}
+#endif
+
+struct RAB_NeighborBasis
+{
+  float3 ray;
+  float2 pixelStep;
+  float3 centerPositionScaled;
+};
+
+// Precomputes view-space ray data and the virtual center position divided by the scoring sigma.
+RAB_NeighborBasis RAB_InitNeighborBasis(int2 pixel, bool previousFrame, float scaledCenterDepth)
+{
+  const mat4 projectionToView = previousFrame ? cb.camera.prevProjectionToView : cb.camera.projectionToView;
+  const float2 ndc = cameraPixelCoordinateToNDC(cb.camera, pixel);
+  RAB_NeighborBasis neighborBasis;
+  neighborBasis.ray = mul(projectionToView, float4(ndc, 1.0, 1.0)).xyz;
+  neighborBasis.pixelStep = float2(projectionToView[0][0], projectionToView[1][1]) *
+    float2(2.0, -2.0) / float2(cb.camera.resolution);
+  neighborBasis.centerPositionScaled = neighborBasis.ray *
+    (scaledCenterDepth * rsqrt(max(dot(neighborBasis.ray, neighborBasis.ray), 1e-12)));
+  return neighborBasis;
+}
+
+// Returns the global list index of the first retained pixel in the pixel's 8x4 block,
+// and the block's retained pixels as a Morton-ordered mask.
+uint2 RAB_GetSearchBlock(uint2 pixel, bool previousFrame)
+{
+  const uint2 block = pixel / uint2(COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_X, COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_Y);
+  return previousFrame ? PreviousBlockRankOffsets[block] : BlockRankOffsets[block];
+}
+
+int2 RAB_GetActiveNeighborCandidate(
+    int2 centerPixel,
+    bool previousFrame,
+    float searchRadius,
+    inout RAB_RandomSamplerState rng,
+    out uint candidateGlobalIndex)
+{
+  candidateGlobalIndex = ~0u;
+  if (any(centerPixel < 0) || any(centerPixel >= int2(cb.camera.resolution)) ||
+      (previousFrame && !cb.sparseRenderingArgs.rtxdiCompactedHistoryValid))
+  {
+    return int2(-1);
+  }
+
+  // One hash supplies the angle, radius and block rank, so each attempt costs a single random draw.
+  const uint proposalBits = sampleUniformIntRng(rng);
+  const float angle = float(twoPi) * float(proposalBits & 0x7FFu) * (1.0 / 2048.0);
+  const float radius = sqrt(float((proposalBits >> 11) & 0x7FFu) * (1.0 / 2048.0)) * searchRadius;
+  float sine;
+  float cosine;
+  sincos(angle, sine, cosine);
+  const float2 offset = radius * float2(cosine, sine);
+  const int2 targetPixel = int2(floor(float2(centerPixel) + offset + 0.5));
+  if (any(targetPixel < 0) || any(targetPixel >= int2(cb.camera.resolution)))
+  {
+    return int2(-1);
+  }
+
+  // The block's retained pixels occupy consecutive list entries in mask order, so the mask locates the candidate.
+  const uint2 block = RAB_GetSearchBlock(uint2(targetPixel), previousFrame);
+  const uint count = countbits(block.y);
+  if (!count)
+  {
+    return int2(-1);
+  }
+
+  const uint rank = (((proposalBits >> 22) & 0x3FFu) * count) >> 10;
+  const uint2 blockSize = uint2(COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_X, COMPACT_ACTIVE_PIXELS_BLOCK_SIZE_Y);
+  const int2 pixel = int2((uint2(targetPixel) / blockSize) * blockSize +
+    mortonBlockBitToPixelOffset(findNthSetBit(block.y, rank)));
+  const float2 separation = float2(pixel - centerPixel);
+  if (dot(separation, separation) > searchRadius * searchRadius)
+  {
+    return int2(-1);
+  }
+  candidateGlobalIndex = block.x + rank;
+  return pixel;
+}
+#endif
 
 void RAB_SkipRandoms(inout RAB_RandomSamplerState rng, uint count)
 {
@@ -731,11 +1040,154 @@ RAB_Surface RAB_GetSurfaceForTemporalBiasCorrection(RAB_Surface currentSurface, 
     return temporalSurface;
 }
 
-void RAB_StoreReservoir(RTXDI_Reservoir reservoir, int2 pixel, int page)
+bool RAB_UseSparseReservoirs()
+{
+  return cb.sparseRenderingArgs.mode != SparseRenderingMode::Off;
+}
+
+bool RAB_GetReservoirPointer(int2 pixel, int page, bool previousFrame, out uint pointer)
+{
+  pointer = 0;
+  if (any(pixel < 0) || any(pixel >= int2(cb.camera.resolution)))
+  {
+    return false;
+  }
+
+  if (!RAB_UseSparseReservoirs())
+  {
+    pointer = uint(RTXDI_ReservoirPositionToPointer(pixel, cb.camera.resolution, page));
+    return true;
+  }
+
+#ifdef RAB_HAS_RTXDI_RESERVOIRS
+  const uint2 tile = uint2(pixel) / uint2(COMPACT_ACTIVE_PIXELS_TILE_SIZE_X, COMPACT_ACTIVE_PIXELS_TILE_SIZE_Y);
+  uint localIndex;
+  uint2 tileState;
+  if (previousFrame)
+  {
+#ifdef RAB_HAS_PREVIOUS_COMPACTED_RESERVOIR_MAPPING
+    if (!cb.sparseRenderingArgs.rtxdiCompactedHistoryValid)
+    {
+      return false;
+    }
+    localIndex = uint(PreviousCompactedPixelIndices[pixel]);
+    tileState = PreviousTileActiveCounts[tile];
+#else
+    return false;
+#endif
+  }
+  else
+  {
+    localIndex = uint(CompactedPixelIndices[pixel]);
+    tileState = TileActiveCounts[tile];
+  }
+
+  const uint capacity = cb.sparseRenderingArgs.compactedStorageCapacity;
+  if (localIndex == kInvalidCompactedIndex || localIndex >= tileState.x ||
+      tileState.y >= capacity || localIndex >= capacity - tileState.y)
+  {
+    return false;
+  }
+
+  pointer = uint(page) * capacity + tileState.y + localIndex;
+  return true;
+#else
+  return false;
+#endif
+}
+
+// The caller has already checked the current pixel or compacted launch index.
+bool RAB_GetCurrentReservoirPointer(int2 pixel, int page, uint globalIndex, out uint pointer)
+{
+  pointer = 0;
+  if (!RAB_UseSparseReservoirs())
+  {
+    pointer = uint(RTXDI_ReservoirPositionToPointer(pixel, cb.camera.resolution, page));
+    return true;
+  }
+
+  const uint capacity = cb.sparseRenderingArgs.compactedStorageCapacity;
+  if (globalIndex >= capacity)
+  {
+    return false;
+  }
+  pointer = uint(page) * capacity + globalIndex;
+  return true;
+}
+
+#ifdef RAB_HAS_RTXDI_RESERVOIRS
+// Returns whether the current or previous frame wrote the reservoir at the pointer.
+bool RAB_IsReservoirWritten(uint pointer, bool previousFrame)
+{
+  const uint frameStamp = RtxdiReservoirBuffer[pointer].data1.w;
+  const uint expectedStamp = cb.frameIdx + (previousFrame ? 0u : 1u);
+  return frameStamp != 0u && frameStamp == expectedStamp;
+}
+#endif
+
+bool RAB_IsReservoirAvailable(int2 pixel, int page)
+{
+  if (any(pixel < 0) || any(pixel >= int2(cb.camera.resolution)))
+  {
+    return false;
+  }
+
+  if (!RAB_UseSparseReservoirs())
+  {
+    return true;
+  }
+
+#ifdef RAB_HAS_RTXDI_RESERVOIRS
+  uint pointer;
+  if (!RAB_GetReservoirPointer(pixel, page, false, pointer))
+  {
+    return false;
+  }
+  return RAB_IsReservoirWritten(pointer, false);
+#else
+  return false;
+#endif
+}
+
+#if RTXDI_TEMPORAL_SELECTION_PASS
+bool RAB_IsPreviousPixelActive(int2 pixel, int page, uint globalIndex = ~0u)
+{
+  // has fetched compact list index.
+  if (globalIndex != ~0u)
+  {
+    return true;
+  }
+  uint pointer;
+  return RAB_GetReservoirPointer(pixel, page, true, pointer);
+}
+#endif
+
+void RAB_StoreReservoirAtPointer(RTXDI_Reservoir reservoir, uint pointer)
 {
 #ifdef RAB_HAS_RTXDI_RESERVOIRS
-    RtxdiReservoirBuffer[RTXDI_ReservoirPositionToPointer(pixel, cb.camera.resolution, page)] = RTXDI_PackReservoir(reservoir);
+  RTXDI_PackedReservoir packedReservoir = RTXDI_PackReservoir(reservoir);
+  // Active background pixels can skip writes, so compacted slots still need frame stamps.
+  packedReservoir.data1.w = cb.frameIdx + 1u;
+  RtxdiReservoirBuffer[pointer] = packedReservoir;
 #endif
+}
+
+void RAB_StoreReservoir(RTXDI_Reservoir reservoir, int2 pixel, int page)
+{
+  uint pointer;
+  if (RAB_GetReservoirPointer(pixel, page, false, pointer))
+  {
+    RAB_StoreReservoirAtPointer(reservoir, pointer);
+  }
+}
+
+void RAB_StoreReservoir(RTXDI_Reservoir reservoir, int2 pixel, int page, uint globalIndex)
+{
+  uint pointer;
+  if (RAB_GetCurrentReservoirPointer(pixel, page, globalIndex, pointer))
+  {
+    RAB_StoreReservoirAtPointer(reservoir, pointer);
+  }
 }
 
 void RAB_StoreGIReservoir(ReSTIRGI_Reservoir reservoir, int2 pixel, int page)
@@ -745,10 +1197,18 @@ void RAB_StoreGIReservoir(ReSTIRGI_Reservoir reservoir, int2 pixel, int page)
 #endif
 }
 
-RTXDI_Reservoir RAB_LoadReservoir(int2 pixel, int page)
+RTXDI_Reservoir RAB_LoadReservoirAtPointer(uint pointer, bool previousFrame)
 {
 #ifdef RAB_HAS_RTXDI_RESERVOIRS
-    const RTXDI_PackedReservoir packedReservoir = RtxdiReservoirBuffer[RTXDI_ReservoirPositionToPointer(pixel, cb.camera.resolution, page)];
+    const RTXDI_PackedReservoir packedReservoir = RtxdiReservoirBuffer[pointer];
+    if (RAB_UseSparseReservoirs())
+    {
+      const uint expectedStamp = cb.frameIdx + (previousFrame ? 0u : 1u);
+      if (packedReservoir.data1.w == 0u || packedReservoir.data1.w != expectedStamp)
+      {
+        return RTXDI_EmptyReservoir();
+      }
+    }
 
     // The buffer is zero-filled on creation, and a zero record would unpack as a valid reservoir for light 0.
     // Sparse rendering reuses pixels that have not written a reservoir since then, so a zero record is treated as empty.
@@ -762,6 +1222,26 @@ RTXDI_Reservoir RAB_LoadReservoir(int2 pixel, int page)
 #else
     return RTXDI_EmptyReservoir();
 #endif
+}
+
+RTXDI_Reservoir RAB_LoadReservoir(int2 pixel, int page, bool previousFrame = false)
+{
+  uint pointer;
+  if (!RAB_GetReservoirPointer(pixel, page, previousFrame, pointer))
+  {
+    return RTXDI_EmptyReservoir();
+  }
+  return RAB_LoadReservoirAtPointer(pointer, previousFrame);
+}
+
+RTXDI_Reservoir RAB_LoadReservoirAtIndex(int2 pixel, int page, uint globalIndex)
+{
+  uint pointer;
+  if (!RAB_GetCurrentReservoirPointer(pixel, page, globalIndex, pointer))
+  {
+    return RTXDI_EmptyReservoir();
+  }
+  return RAB_LoadReservoirAtPointer(pointer, false);
 }
 
 ReSTIRGI_Reservoir RAB_LoadGIReservoir(int2 pixel, int page)

@@ -106,7 +106,7 @@ void main(uint2 GlobalIndex : SV_DispatchThreadID)
 
     // Load the reservoir that was selected for gradient evaluation, either from the current or the previous frame.
     RTXDI_Reservoir selectedReservoir = RAB_LoadReservoir(selectedCurrentOrPrevPixelPos, 
-      usePrevSample ? RTXDI_GetTemporalInputPage() : RTXDI_GetSpatialOutputPage());
+      usePrevSample ? RTXDI_GetTemporalInputPage() : RTXDI_GetSpatialOutputPage(), usePrevSample);
 
     // Map the reservoir's light index into the other frame (previous or current)
     uint16_t selectedMappedLightIndex = RAB_TranslateLightIndex(selectedReservoir.lightIdx, !usePrevSample);
