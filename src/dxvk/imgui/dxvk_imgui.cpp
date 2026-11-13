@@ -3056,6 +3056,7 @@ namespace dxvk {
 
         RemixGui::SliderFloat("Resolve Transparency Threshold", &RtxOptions::resolveTransparencyThresholdObject(), 0.0f, 1.0f);
         RemixGui::SliderFloat("Resolve Opaqueness Threshold", &RtxOptions::resolveOpaquenessThresholdObject(), 0.0f, 1.0f);
+        RemixGui::Checkbox("Point Sampled Opacity in Secondary Rays", &RtxOptions::enablePointSampledOpacityInSecondaryRaysObject());
 
         ImGui::Unindent();
       }

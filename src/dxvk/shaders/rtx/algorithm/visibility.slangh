@@ -89,6 +89,11 @@ vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo rayHi
 
   const uint8_t polymorphicType = rayInteraction.materialType;
 
+  // Note: Visibility rays sample opaque surface materials at full texture resolution, as resolveVertex does.
+  const uint opaqueFootprintMode = cb.enablePointSampledOpacityInSecondaryRays
+    ? kFootprintPoint
+    : kFootprintFromRayDirection;
+
   // Opaque hits that cannot be thin opaque subsurface or an eye only need their opacity.
   // The opacity does not depend on interpolated normals or tangents, so they are not generated for these hits.
   // Note: The material is only read here for the one field of the decision, and again after the surface interaction
@@ -109,7 +114,7 @@ vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo rayHi
       opacitySurface.normalObjectToWorld = getIdentityMatrix();
 
       SurfaceInteraction opacityInteraction = surfaceInteractionCreateWithoutMotion<SurfaceIgnoreTangents>(
-        opacitySurface, rayInteraction, ray, usePreviousTLAS);
+        opacitySurface, rayInteraction, ray, usePreviousTLAS, opaqueFootprintMode);
 
       if (isSurfaceClipped(opacitySurface, opacityInteraction))
       {
@@ -133,7 +138,8 @@ vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo rayHi
 
   // Note: Nothing below reads the motion or the shadow terminator offset of the surface interaction.
   SurfaceInteraction surfaceInteraction = surfaceInteractionCreateWithoutMotion<requiresNormalsAndTangents ? SurfaceGenerateTangents : SurfaceIgnoreTangents>(
-    surface, rayInteraction, ray, usePreviousTLAS);
+    surface, rayInteraction, ray, usePreviousTLAS,
+    polymorphicType == surfaceMaterialTypeOpaque ? opaqueFootprintMode : kFootprintFromRayDirection);
 
   if (isSurfaceClipped(surface, surfaceInteraction))
   {
