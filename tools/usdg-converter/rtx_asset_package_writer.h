@@ -73,8 +73,6 @@ private:
   bool writeBuffer(const PackageJobDesc& jobDesc);
   bool writeFile(const PackageJobDesc& jobDesc);
 
-  void releasePackager(AsyncAssetPackager& packager);
-
   std::unique_lock<std::recursive_mutex> lockPackage(const PackageHandle& package) const;
 
   std::unordered_map<std::string, std::unique_ptr<AsyncAssetPackager>> m_asyncPackagers;

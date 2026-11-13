@@ -136,11 +136,6 @@ static std::vector<uint8_t> compressBuffer(const void* data, size_t dataSize,
 #endif
 }
 
-AssetPackageWriter::AssetPackageWriter() { }
-
-AssetPackageWriter::~AssetPackageWriter() {
-}
-
 class AsyncAssetPackager {
   typedef dxvk::WorkerThreadPool<1024, true, false> ThreadPoolType;
 
@@ -159,9 +154,10 @@ class AsyncAssetPackager {
   std::atomic_uint32_t m_numQueued;
   std::atomic_uint32_t m_numFinished;
 
-  void release() {
-    m_writer.releasePackager(*this);
-  }
+  static constexpr uint32_t kFinalizeQueued = 1;
+  static constexpr uint32_t kFinalized = 2;
+
+  std::atomic_uint32_t m_finalizeState{0};
 
 public:
   AsyncAssetPackager() = delete;
@@ -195,8 +191,8 @@ public:
 
       Logger::info(str::format("[", desc.package->getBaseFilename(), "] completed."));
 
-      // Schedule release
-      dxvk::thread([this]() { release(); }).detach();
+      // Nothing may touch this object after this point, since the waiter releases it.
+      m_finalizeState.fetch_or(kFinalized, std::memory_order_release);
 
       return result;
     }
@@ -208,6 +204,17 @@ public:
       m_numFinished.load(), " / ", m_numQueued.load()));
 
     return true;
+  }
+
+  bool isFinalized() const {
+    return (m_finalizeState.load(std::memory_order_acquire) & kFinalized) != 0;
+  }
+
+  // Returns true when no job can touch this object anymore.
+  bool isSettled() const {
+    const uint32_t state = m_finalizeState.load(std::memory_order_acquire);
+    const bool finalizeDone = (state & kFinalizeQueued) == 0 || (state & kFinalized) != 0;
+    return finalizeDone && m_numFinished.load() == m_numQueued.load();
   }
 
   float getProgressApprox() const {
@@ -228,13 +235,27 @@ public:
       std::this_thread::sleep_for(50ms);
     }
 
+    const bool isFinalizeJob = jobDesc.assetIndex == AssetPackage::kNoAssetIdx;
+
+    if (isFinalizeJob) {
+      m_finalizeState.fetch_or(kFinalizeQueued);
+    }
+
+    ++m_numQueued;
+
     dxvk::Future<bool> future = m_threadPool->Schedule([jobDesc = std::move(jobDesc), this]() -> bool {
       return packageJob(jobDesc);
     });
 
     if (future.valid()) {
-      ++m_numQueued;
       return future;
+    }
+
+    --m_numQueued;
+
+    if (isFinalizeJob) {
+      // Mark as finalized so waiters do not spin forever on a job that never ran.
+      m_finalizeState.fetch_or(kFinalized, std::memory_order_release);
     }
 
     Logger::err("Fatal: unable to schedule a package job.");
@@ -246,6 +267,18 @@ public:
     return std::unique_lock<std::recursive_mutex>(m_accessMutex);
   }
 };
+
+AssetPackageWriter::AssetPackageWriter() { }
+
+AssetPackageWriter::~AssetPackageWriter() {
+  using namespace std::chrono_literals;
+
+  for (auto& [name, packager] : m_asyncPackagers) {
+    while (packager && !packager->isSettled()) {
+      std::this_thread::sleep_for(50ms);
+    }
+  }
+}
 
 bool AssetPackageWriter::writeFile(const PackageJobDesc& jobDesc) {
   // Package a raw file
@@ -720,19 +753,23 @@ void AssetPackageWriter::finalizePackage(const PackageHandle& package) {
 
 void AssetPackageWriter::waitPackageCompletion(const PackageHandle& package) {
   using namespace std::chrono_literals;
-  while (package->getVolumeHandle(0) != nullptr) {
-    std::this_thread::sleep_for(500ms);
-  }
-}
 
-void AssetPackageWriter::releasePackager(AsyncAssetPackager& packager) {
-  std::lock_guard<std::recursive_mutex> lock(m_mutex);
-  for (auto it = m_asyncPackagers.begin(); it != m_asyncPackagers.end(); ++it) {
-    if (it->second.get() == &packager) {
-      m_asyncPackagers.erase(it);
+  AsyncAssetPackager* packager = nullptr;
+  {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    auto it = m_asyncPackagers.find(package->getBaseFilename());
+    if (it == m_asyncPackagers.end()) {
       return;
     }
+    packager = it->second.get();
   }
+
+  while (packager && !packager->isFinalized()) {
+    std::this_thread::sleep_for(50ms);
+  }
+
+  std::lock_guard<std::recursive_mutex> lock(m_mutex);
+  m_asyncPackagers.erase(package->getBaseFilename());
 }
 
 std::unique_lock<std::recursive_mutex> AssetPackageWriter::lockPackage(const PackageHandle& package) const {
