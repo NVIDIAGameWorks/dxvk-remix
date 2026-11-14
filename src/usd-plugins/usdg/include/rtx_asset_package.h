@@ -55,6 +55,7 @@ namespace dxvk {
     static constexpr uint32_t kVersion = 2;
     static constexpr uint32_t kNoAssetIdx = ~0;
     static constexpr uint32_t kMaxVolumes = 1 << 4;
+    static constexpr uint32_t kMaxIndex = (1 << 16) - 1;
 
     struct Header {
       uint32_t magic;
@@ -284,6 +285,10 @@ namespace dxvk {
       return invalidName;
     }
 
+    uint32_t getBlobCount() const {
+      return static_cast<uint32_t>(m_blobDescs.size());
+    }
+
     const BlobDesc* getDataBlobDesc(uint32_t idx) const {
       if (idx >= m_blobDescs.size())
         return nullptr;
@@ -372,6 +377,11 @@ namespace dxvk {
       if (!name.empty() && m_nameHash.count(name) > 0) {
         index = m_nameHash[name];
         return true;
+      }
+
+      if (m_assetDescs.size() >= kMaxIndex) {
+        index = kNoAssetIdx;
+        return false;
       }
 
       index = static_cast<uint32_t>(m_assetDescs.size());
