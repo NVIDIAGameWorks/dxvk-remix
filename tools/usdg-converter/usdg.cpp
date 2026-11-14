@@ -246,6 +246,7 @@ public:
     bool clearBakedData = false;
     bool convertToBinary = false;
     bool update = false;
+    bool processAllMaterials = true;
   };
 
   virtual ~UsdProcessor() = default;
@@ -266,10 +267,14 @@ class UsdgConverter : public UsdProcessor {
   size_t m_geometryDataSize = 0;
   int32_t m_auxPackageIndex = 0;
 
+  // Resource volume for USDG with embedded assets
+  uint32_t m_resourceVolume = 1;
+
   std::string m_basePath;
   std::filesystem::path m_outputPackagePath;
 
   std::unordered_set<uint64_t> m_processedPrimSet;
+  std::unordered_set<uint64_t> m_processedAssetSet;
   std::list<std::string> m_tmpFilesToRemove;
 
   int32_t m_imageCompressionLevel = 8;
@@ -283,6 +288,7 @@ class UsdgConverter : public UsdProcessor {
   bool m_convertToBinary = false;
   bool m_extractImages = true;
   bool m_update = false;
+  bool m_processAllMaterials = true;
 
   bool shouldProcessImages() const {
     return m_imageCompressionLevel >= 0;
@@ -314,7 +320,17 @@ class UsdgConverter : public UsdProcessor {
     if (m_imagePkgSplit == 0)
       return m_package;
 
-    if (m_imagePackage && m_imageDataSize > m_imagePkgSplit) {
+    advanceImagePackage(false);
+
+    return m_imagePackage;
+  }
+
+  void advanceImagePackage(bool force) {
+    if (m_imagePkgSplit == 0) {
+      return;
+    }
+
+    if (m_imagePackage && (m_imageDataSize > m_imagePkgSplit || force)) {
       m_writer->finalizePackage(m_imagePackage);
 
       m_auxPackages.emplace_back(std::move(m_imagePackage));
@@ -330,15 +346,23 @@ class UsdgConverter : public UsdProcessor {
 
       m_imageDataSize = 0;
     }
-
-    return m_imagePackage;
   }
 
   std::shared_ptr<dxvk::AssetPackage> getGeometryPackage() {
     if (m_geometryPkgSplit == 0)
       return m_package;
 
-    if (m_geometryPackage && m_geometryDataSize > m_geometryPkgSplit) {
+    advanceGeometryPackage(false);
+
+    return m_geometryPackage;
+  }
+
+  void advanceGeometryPackage(bool force) {
+    if (m_geometryPkgSplit == 0) {
+      return;
+    }
+
+    if (m_geometryPackage && (m_geometryDataSize > m_geometryPkgSplit || force)) {
       m_writer->finalizePackage(m_geometryPackage);
 
       m_auxPackages.emplace_back(std::move(m_geometryPackage));
@@ -354,8 +378,6 @@ class UsdgConverter : public UsdProcessor {
 
       m_geometryDataSize = 0;
     }
-
-    return m_geometryPackage;
   }
 
   template<typename T>
@@ -373,6 +395,18 @@ class UsdgConverter : public UsdProcessor {
     }
 
     return false;
+  }
+
+  bool shouldProcessAsset(const std::string& name) {
+    uint64_t hash = std::hash<std::string>{}(name);
+
+    if (m_processedAssetSet.count(hash)) {
+      return false;
+    }
+
+    m_processedAssetSet.insert(hash);
+
+    return true;
   }
 
   template<typename T>
@@ -394,10 +428,23 @@ class UsdgConverter : public UsdProcessor {
       return;
     }
 
+    if (!shouldProcessAsset(name)) {
+      return;
+    }
+
     if (auto package = getGeometryPackage()) {
-      const uint32_t volume = package == m_package ? 1 : 0;
-      m_writer->addBufferAsset(package, volume, name, m_geometryCompressionLevel,
-          buffer.data(), buffer.size() * sizeof(T));
+      const uint32_t volume = package == m_package ? m_resourceVolume : 0;
+      if (m_writer->addBufferAsset(package, volume, name, m_geometryCompressionLevel,
+          buffer.data(), buffer.size() * sizeof(T)) == AssetPackage::kNoAssetIdx) {
+        // Buffer add failed. Force advance the package.
+        advanceGeometryPackage(true);
+        // Retry
+        if (m_writer->addBufferAsset(getGeometryPackage(), volume, name, m_geometryCompressionLevel,
+            buffer.data(), buffer.size() * sizeof(T)) == AssetPackage::kNoAssetIdx) {
+          throw std::runtime_error("Fatal: unable to add buffer asset. Try reducing geometry package size.");
+        }
+      }
+
       m_geometryDataSize += buffer.size() * sizeof(T);
     } else {
       auto absPath = std::filesystem::current_path();
@@ -504,16 +551,28 @@ class UsdgConverter : public UsdProcessor {
         if (m_update) {
           std::shared_ptr<dxvk::AssetPackage> package;
           const uint32_t assetIdx = findAsset(name, package);
-          if (AssetPackageWriter::isImageAssetChanged(strPath, package, assetIdx)) {
+          if (AssetPackageWriter::isImageAssetUnchanged(strPath, package, assetIdx)) {
             Logger::info(str::format("\tSkipping unchanged image: ", name));
             return;
           }
         }
 
+        if (!shouldProcessAsset(name)) {
+          return;
+        }
+
         Logger::info(str::format("\tProcessing image: ", name));
 
-        const int volume = m_imagePkgSplit > 0 ? 0 : 1;
-        m_writer->addImageAsset(getImagePackage(), volume, name, m_imageCompressionLevel, strPath);
+        const int volume = m_imagePkgSplit > 0 ? 0 : m_resourceVolume;
+        if (m_writer->addImageAsset(getImagePackage(), volume, name, m_imageCompressionLevel, strPath) == AssetPackage::kNoAssetIdx) {
+          // Image add failed. Force advance the image package.
+          advanceImagePackage(true);
+          // Retry
+          if (m_writer->addImageAsset(getImagePackage(), volume, name, m_imageCompressionLevel, strPath) == AssetPackage::kNoAssetIdx) {
+            throw std::runtime_error("Fatal: unable to add image asset. Try reducing image package size.");
+          }
+        }
+
         m_imageDataSize += std::filesystem::file_size(strPath);
       } else if (!path.GetAssetPath().empty()) {
         Logger::warn(str::format("rtx_asset_replacer found a texture with an invalid path: ", path.GetAssetPath()));
@@ -583,10 +642,30 @@ class UsdgConverter : public UsdProcessor {
 
   // Process a material bound to a primitive.
   void processMaterialUser(const pxr::UsdPrim& prim) {
-    auto bindAPI = pxr::UsdShadeMaterialBindingAPI(prim);
-    auto boundMaterial = bindAPI.ComputeBoundMaterial();
-    if (boundMaterial) {
-      processMaterial(boundMaterial.GetPrim());
+    if (m_processAllMaterials) {
+      // The fast path. No need for ComputeBoundMaterial() since we check every node.
+      static const pxr::TfToken kMaterialBinding("material:binding");
+
+      // Check if the prim has a material:
+      auto relationship = prim.GetRelationship(kMaterialBinding);
+
+      if (!relationship) {
+        return;
+      }
+
+      pxr::UsdShadeMaterialBindingAPI::DirectBinding direct(relationship);
+      auto material = direct.GetMaterial();
+
+      if (material) {
+        processMaterial(material.GetPrim());
+      }
+    } else {
+      // The slow path. Use the ComputeBoundMaterial() to capture the inherited materials.
+      auto bindAPI = pxr::UsdShadeMaterialBindingAPI(prim);
+      auto boundMaterial = bindAPI.ComputeBoundMaterial();
+      if (boundMaterial) {
+        processMaterial(boundMaterial.GetPrim());
+      }
     }
   }
 
@@ -717,7 +796,9 @@ class UsdgConverter : public UsdProcessor {
       }
     }
 
-    processMaterialUser(prim);
+    if (!m_processAllMaterials) {
+      processMaterialUser(prim);
+    }
 
     for (const lss::UsdMeshImporter::SubMesh& submesh : processedMesh->GetSubMeshes()) {
       if (submesh.GetNumIndices() == 0) {
@@ -726,7 +807,9 @@ class UsdgConverter : public UsdProcessor {
         continue;
       }
 
-      processMaterialUser(submesh.prim);
+      if (!m_processAllMaterials) {
+        processMaterialUser(submesh.prim);
+      }
 
       if (!shouldProcessGeometry()) {
         continue;
@@ -1040,11 +1123,17 @@ class UsdgConverter : public UsdProcessor {
   void processRootPrim(pxr::UsdPrim& rootPrim) {
     if (rootPrim.IsA<pxr::UsdGeomMesh>()) {
       processMesh(rootPrim);
+
+      if (!m_processAllMaterials) {
+        processMaterialUser(rootPrim);
+      }
     }
 
-    // Always processing all possible material users to capture 
-    // particle system materials and other unordinary cases
-    processMaterialUser(rootPrim);
+    if (m_processAllMaterials) {
+      // Always processing all possible material users to capture 
+      // particle system materials and other unordinary cases
+      processMaterialUser(rootPrim);
+    }
 
     auto descendents = rootPrim.GetFilteredDescendants(pxr::UsdPrimIsActive);
     for (auto desc : descendents) {
@@ -1156,15 +1245,56 @@ class UsdgConverter : public UsdProcessor {
 
           m_tmpFilesToRemove.push_back(tmp);
         } else {
-          Logger::err(str::format("Fatal: unable to export layer: ", realPath, " to ", tmp));
+          throw std::runtime_error(str::format("Fatal: unable to export layer: ", realPath, " to ", tmp));
         }
       }
 
       // Put layer to the package
-      m_writer->addUsdAsset(m_package, name, realPath);
+      if (m_writer->addUsdAsset(m_package, name, realPath) == AssetPackage::kNoAssetIdx) {
+        throw std::runtime_error("Fatal: unable to add USD layer. The package is full.");
+      }
     };
 
     processLayer(rootLayer);
+  }
+
+  // Carries the descriptors of the unchanged assets of the original package into the new one.
+  // The data stays in the original resource volumes. Assets that were re-added are not carried over.
+  void transferBaseAssets() {
+    if (!m_update) {
+      return;
+    }
+
+    auto basePackage = m_auxPackages.front();
+
+    auto isOverridden = [this, basePackage](const std::string& name) {
+      for (const auto& package : m_auxPackages) {
+        if (package == basePackage) {
+          continue;
+        }
+
+        if (package->findAsset(name) != dxvk::AssetPackage::kNoAssetIdx) {
+          return true;
+        }
+      }
+
+      for (const auto& package : { m_imagePackage, m_geometryPackage }) {
+        if (package && package->findAsset(name) != dxvk::AssetPackage::kNoAssetIdx) {
+          return true;
+        }
+      }
+
+      return false;
+    };
+
+    const uint32_t numTransferred =
+      m_writer->transferAssetDescriptors(m_package, basePackage, isOverridden);
+
+    Logger::info(str::format("Carried over ", numTransferred,
+      " unchanged assets from ", basePackage->getBaseFilename()));
+
+    // Release the files so the original package can be deleted.
+    basePackage->closeAllFiles();
   }
 
   void exportStageLayers(const pxr::UsdStageRefPtr& stage) {
@@ -1184,7 +1314,7 @@ class UsdgConverter : public UsdProcessor {
       }
 
       if (!layer->Export(path)) {
-        Logger::err(str::format("Fatal: unable to export layer to ", path));
+        throw std::runtime_error(str::format("Fatal: unable to export layer to ", path));
       }
     }
   }
@@ -1308,6 +1438,9 @@ public:
     if (kConvertingToUsdg) {
       processStageLayers(stage);
 
+      // Carry over the unchanged assets of the original package
+      transferBaseAssets();
+
       // Finalize package
       m_writer->finalizePackage(m_package);
 
@@ -1365,24 +1498,57 @@ UsdgConverter<true>::UsdgConverter(const std::string& dstUsdgFilename, const Con
   m_geometryPkgSplit = size_t(config.geometryPkgSplitMB) * 1024 * 1024;
   m_maxBones = std::clamp(config.maxBoneCount, 2, 16);
   m_update = config.update;
+  m_processAllMaterials = config.processAllMaterials;
 
   if (m_update) {
     m_extractor = std::make_unique<AssetPackageExtractor>();
 
     if (auto inPackage = m_extractor->openPackage(dstUsdgFilename)) {
-      m_auxPackages.push_back(std::move(inPackage));
+      // New resources go to the volume after the last one of the original package.
+      m_resourceVolume = std::max<uint32_t>(1, AssetPackageWriter::getLastVolume(inPackage) + 1);
 
-      std::filesystem::path path = dstUsdgFilename;
-      m_outputPackagePath = std::filesystem::absolute(path).remove_filename();
+      if (m_resourceVolume >= dxvk::AssetPackage::kMaxVolumes) {
+        throw std::runtime_error("The USDG package has no free resource volumes left. Repack it with the pack command.");
+      }
+
+      // The original volumes keep their names and are referenced by the new package in place.
+      // Only the main file is renamed, since the new package takes its name.
+      inPackage.reset();
+
+      m_outputPackagePath = std::filesystem::absolute(dstUsdgFilename).remove_filename();
+
+      bool havePackages = false;
+      for (const auto& entry : std::filesystem::directory_iterator(m_outputPackagePath)) {
+        if (entry.path().extension() == ".pkg" || entry.path().extension() == ".rtxio") {
+          havePackages = true;
+          break;
+        }
+      }
+
       m_outputPackagePath /= "update";
 
       // Rename original usdg to tmp
-      m_tmpFilesToRemove.push_back(std::filesystem::path(dstUsdgFilename).replace_extension("tmp").string());
-      std::filesystem::rename(dstUsdgFilename, m_tmpFilesToRemove.back());
+      const std::string tmpFilename = std::filesystem::path(dstUsdgFilename).replace_extension("tmp").string();
+      m_tmpFilesToRemove.push_back(tmpFilename);
+      std::filesystem::rename(dstUsdgFilename, tmpFilename);
 
-      // Force package splits for update
-      if (m_imagePkgSplit == 0) m_imagePkgSplit = 2048llu * 1024 * 1024;
-      if (m_geometryPkgSplit == 0) m_geometryPkgSplit = 1024llu * 1024 * 1024;
+      // Reopen the renamed package as a source of original assets.
+      m_auxPackages.emplace_back(m_extractor->openPackage(tmpFilename));
+
+      if (m_resourceVolume == 1 || havePackages) {
+        // Force package splits for updates of non-embedded USDGs
+        if (m_imagePkgSplit == 0) {
+          m_imagePkgSplit = 2048llu * 1024 * 1024;
+          Logger::warn(str::format("Image package size must be specified before updating a USDG with packages. "
+                                   "Forcing image package size to ", m_imagePkgSplit));
+        }
+
+        if (m_geometryPkgSplit == 0) {
+          m_geometryPkgSplit = 1024llu * 1024 * 1024;
+          Logger::warn(str::format("Geometry package size must be specified before updating a USDG with packages. "
+                                   "Forcing geometry package size to ", m_geometryPkgSplit));
+        }
+      }
     } else {
       Logger::warn(str::format("Warning: unable to open USDG package for update at ",
         dstUsdgFilename, ". New USDG package will be created."));
@@ -1424,7 +1590,7 @@ int main(int argc, char* argv[]) {
         "commands:\n"
         "    pack    package a USD stage into USDG.\n"
         "    unpack  unpackage a USDG stage back into USD.\n"
-        "    update  make an incremental update for a USDG stage.\n"
+        "    update  make an incremental update of a USDG stage.\n"
         "    prune   prune packaged mod assets. \n"
         "\n"
         "pack command options:\n"
@@ -1435,6 +1601,7 @@ int main(int argc, char* argv[]) {
         "    -gp MB  : Place geometry into separate packages with approximately [MB] uncompressed size.\n"
         "    -b N    : Maximum bone influence count per vertex. Default - 4.\n"
         "    -binary : Convert USDA into binary USD. Default - false.\n"
+        "    -gm     : Process materials only in geometry nodes. Default - false.\n"
         "\n"
         "unpack command options:\n"
         "    -ni     : Do not extract images.\n"
@@ -1493,6 +1660,9 @@ int main(int argc, char* argv[]) {
       nextInt(config.imageCompressionLevel);
     } else if (0 == strcmp(argv[arg], "-g")) {
       nextInt(config.geometryCompressionLevel);
+    } else if (0 == strcmp(argv[arg], "-gm")) {
+      config.processAllMaterials = false;
+      ++arg;
     } else if (0 == strcmp(argv[arg], "-c")) {
       config.clearBakedData = true;
       ++arg;

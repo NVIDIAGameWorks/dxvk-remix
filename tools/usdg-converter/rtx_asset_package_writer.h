@@ -25,16 +25,25 @@
 #include <stdio.h>
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <mutex>
 #include <vector>
+#include <tuple>
 
 #include "rtx_asset_package.h"
 
 struct PackageJobDesc;
 class AsyncAssetPackager;
+
+enum class AssetSourceType {
+  None,
+  File,
+  Image,
+  Buffer
+};
 
 class AssetPackageWriter {
   friend class AsyncAssetPackager;
@@ -61,7 +70,18 @@ public:
     const std::string& name, uint32_t compressionLevel,
     const void* data, size_t size);
 
-  static bool isImageAssetChanged(const std::string& path,
+  // Transfers descriptors of unmodified asset from the source package to the destination package.
+  // The blob descriptors keep pointing at the source's resource volumes, so no data is copied.
+  // Assets for which shouldSkip returns true, or that already exist in the destination,
+  // are not transferred.
+  // Returns the number of added assets.
+  uint32_t transferAssetDescriptors(const PackageHandle& dst, const PackageHandle& src,
+    const std::function<bool(const std::string&)>& shouldSkip);
+
+  // Returns the highest volume index referenced in the package.
+  static uint32_t getLastVolume(const PackageHandle& package);
+
+  static bool isImageAssetUnchanged(const std::string& path,
     const PackageHandle& package, uint32_t assetIdx);
 
 private:
@@ -73,6 +93,10 @@ private:
   bool writeBuffer(const PackageJobDesc& jobDesc);
   bool writeFile(const PackageJobDesc& jobDesc);
 
+  std::tuple<uint32_t, bool> reserveAsset(const PackageHandle& package,
+    const std::string& name, AssetSourceType type);
+
+  const std::unique_ptr<AsyncAssetPackager>& getPackager(const PackageHandle& package) const;
   std::unique_lock<std::recursive_mutex> lockPackage(const PackageHandle& package) const;
 
   std::unordered_map<std::string, std::unique_ptr<AsyncAssetPackager>> m_asyncPackagers;
