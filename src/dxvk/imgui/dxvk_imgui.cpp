@@ -3295,7 +3295,6 @@ namespace dxvk {
             RemixGui::DragFloat("Perceptual Roughness Threshold", &SharcOptions::perceptualRoughnessThresholdObject(), 0.01f, 0.f, 1.f, "%.3f", sliderFlags);
             RemixGui::DragFloat("Firefly Clamp Multiplier", &SharcOptions::fireflyClampMultiplierObject(), 0.1f, 0.f, 100.f, "%.1f", sliderFlags);
             RemixGui::DragInt("Jitter Sequence Length", &SharcOptions::jitterSequenceLengthObject(), 1.f, 0, 1024, "%d", sliderFlags);
-            RemixGui::DragInt("Jitter Sequence Length", &SharcOptions::jitterSequenceLengthObject(), 1.f, 0, 1024, "%d", sliderFlags);
             ImGui::PopID();
             ImGui::Unindent();
           }
