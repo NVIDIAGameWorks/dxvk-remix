@@ -22,6 +22,9 @@
 #include <cstring>
 
 #include "../util/util_time.h"
+// NV-DXVK start: Metric to track shader compile times
+#include "../util/log/metrics.h"
+// NV-DXVK end
 
 #include "dxvk_compute.h"
 #include "dxvk_device.h"
@@ -180,8 +183,14 @@ namespace dxvk {
       t0 = dxvk::high_resolution_clock::now();
     
     VkPipeline pipeline = VK_NULL_HANDLE;
-    if (m_vkd->vkCreateComputePipelines(m_vkd->device(),
-          m_pipeMgr->m_cache->handle(), 1, &info, nullptr, &pipeline) != VK_SUCCESS) {
+    // NV-DXVK start: Metric to track shader compile times
+    VkResult result;
+    {
+      Metrics::ShaderCompileScope compileScope(m_shaders.cs->debugName());
+      result = m_vkd->vkCreateComputePipelines(m_vkd->device(), m_pipeMgr->m_cache->handle(), 1, &info, nullptr, &pipeline);
+    }
+    // NV-DXVK end
+    if (result != VK_SUCCESS) {
       Logger::err("DxvkComputePipeline: Failed to compile pipeline");
       Logger::err(str::format("  cs  : ", m_shaders.cs->debugName()));
       return VK_NULL_HANDLE;

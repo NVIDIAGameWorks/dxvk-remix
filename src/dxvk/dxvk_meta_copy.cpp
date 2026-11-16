@@ -1,5 +1,8 @@
 #include "dxvk_device.h"
 #include "dxvk_meta_copy.h"
+// NV-DXVK start: Metric to track shader compile times
+#include "../util/log/metrics.h"
+// NV-DXVK end
 
 #include <dxvk_fullscreen_geom.h>
 #include <dxvk_fullscreen_vert.h>
@@ -361,8 +364,14 @@ namespace dxvk {
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
     pipelineInfo.basePipelineIndex = -1;
 
-    if (m_vkd->vkCreateComputePipelines(m_vkd->device(), VK_NULL_HANDLE,
-        1, &pipelineInfo, nullptr, &pipeline.pipeHandle) != VK_SUCCESS)
+    // NV-DXVK start: Metric to track shader compile times
+    VkResult status;
+    {
+      Metrics::ShaderCompileScope compileScope("dxvk_copy_buffer_image");
+      status = m_vkd->vkCreateComputePipelines(m_vkd->device(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline.pipeHandle);
+    }
+    if (status != VK_SUCCESS)
+    // NV-DXVK end
       throw DxvkError("DxvkMetaCopyObjects: Failed to create compute pipeline");
 
     m_vkd->vkDestroyShaderModule(m_vkd->device(), shaderModule, nullptr);
@@ -687,7 +696,14 @@ namespace dxvk {
     info.basePipelineIndex      = -1;
     
     VkPipeline result = VK_NULL_HANDLE;
-    if (m_vkd->vkCreateGraphicsPipelines(m_vkd->device(), VK_NULL_HANDLE, 1, &info, nullptr, &result) != VK_SUCCESS)
+    // NV-DXVK start: Metric to track shader compile times
+    VkResult status;
+    {
+      Metrics::ShaderCompileScope compileScope(str::format("meta copy ", key.viewType, " ", key.format, " ", uint32_t(key.samples), "x"));
+      status = m_vkd->vkCreateGraphicsPipelines(m_vkd->device(), VK_NULL_HANDLE, 1, &info, nullptr, &result);
+    }
+    if (status != VK_SUCCESS)
+    // NV-DXVK end
       throw DxvkError("DxvkMetaCopyObjects: Failed to create graphics pipeline");
     return result;
   }

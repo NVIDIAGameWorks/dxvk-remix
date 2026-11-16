@@ -1,5 +1,8 @@
 #include "dxvk_device.h"
 #include "dxvk_meta_blit.h"
+// NV-DXVK start: Metric to track shader compile times
+#include "../util/log/metrics.h"
+// NV-DXVK end
 
 #include <dxvk_fullscreen_geom.h>
 #include <dxvk_fullscreen_vert.h>
@@ -337,6 +340,9 @@ namespace dxvk {
     DxvkMetaBlitPipeline pipe;
     pipe.dsetLayout = this->createDescriptorSetLayout(key.viewType);
     pipe.pipeLayout = this->createPipelineLayout(pipe.dsetLayout);
+    // NV-DXVK start: Metric to track shader compile times
+    Metrics::ShaderCompileScope compileScope(str::format("meta blit ", key.viewType, " ", key.viewFormat, " ", uint32_t(key.samples), "x"));
+    // NV-DXVK end
     pipe.pipeHandle = this->createPipeline(key.viewType, pipe.pipeLayout,
       this->getRenderPass(key.viewFormat, key.samples), key.samples);
     return pipe;

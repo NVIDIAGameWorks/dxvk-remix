@@ -126,7 +126,10 @@ namespace dxvk {
     
     VkPipeline createPipeline(
             VkPipelineLayout      pipeLayout,
-      const SpirvCodeBuffer&      code);
+      const SpirvCodeBuffer&      code,
+      // NV-DXVK start: Metric to track shader compile times
+      const char*                 name);
+      // NV-DXVK end
     
   };
   

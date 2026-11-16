@@ -22,12 +22,15 @@
 #pragma once
 
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "../thread.h"
 
@@ -40,6 +43,7 @@ namespace dxvk {
     dxvk_total_time_ms,              // In milliseconds
     dxvk_frame_count,                // Count of rendered frames
     dxvk_warmup_time_ms,             // In milliseconds
+    dxvk_shader_compile_time_ms,     // In milliseconds
 
     kCount
   };
@@ -89,6 +93,38 @@ namespace dxvk {
     static void setTestTraceScreenshotFrameEnabled(bool enabled);
     static void recordTestTrace(const TestTraceSample& sample);
 
+    // Created for each shader/pipeline compilation.
+    class ShaderCompileScope {
+    public:
+      explicit ShaderCompileScope(const std::string& name);
+      ~ShaderCompileScope();
+
+      ShaderCompileScope(const ShaderCompileScope&) = delete;
+      ShaderCompileScope& operator=(const ShaderCompileScope&) = delete;
+
+      static void setProgressPath(const std::string& path);
+
+      static double totalMs();
+
+    private:
+      struct SharedState {
+        dxvk::mutex mutex;
+        uint64_t nextId = 0;
+        std::chrono::steady_clock::time_point activeStart;
+        int64_t activeStartEpochMs = 0;
+        double totalMs = 0.0;
+        std::string progressPath;
+        std::unordered_map<uint64_t, const ShaderCompileScope*> activeCompiles;
+      };
+
+      static SharedState& state();
+      static void writeProgress(const SharedState& s);
+
+      uint64_t m_id;
+      std::string m_name;
+      int64_t m_startEpochMs;
+    };
+
   private:
     struct TestTraceEvent {
       uint32_t frameId = 0;
@@ -117,6 +153,7 @@ namespace dxvk {
       "dxvk_total_time_ms",
       "dxvk_frame_count",
       "dxvk_warmup_time_ms",
+      "dxvk_shader_compile_time_ms",
     };
 
     static constexpr uint32_t kTestTraceMaxEvents = 16;

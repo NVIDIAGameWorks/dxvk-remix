@@ -1,5 +1,8 @@
 #include "dxvk_device.h"
 #include "dxvk_meta_resolve.h"
+// NV-DXVK start: Metric to track shader compile times
+#include "../util/log/metrics.h"
+// NV-DXVK end
 
 #include <dxvk_fullscreen_geom.h>
 #include <dxvk_fullscreen_vert.h>
@@ -706,7 +709,14 @@ namespace dxvk {
     info.basePipelineIndex      = -1;
     
     VkPipeline result = VK_NULL_HANDLE;
-    if (m_vkd->vkCreateGraphicsPipelines(m_vkd->device(), VK_NULL_HANDLE, 1, &info, nullptr, &result) != VK_SUCCESS)
+    // NV-DXVK start: Metric to track shader compile times
+    VkResult status;
+    {
+      Metrics::ShaderCompileScope compileScope(str::format("meta resolve ", key.format, " ", uint32_t(key.samples), "x depth ", uint32_t(key.modeD), " stencil ", uint32_t(key.modeS)));
+      status = m_vkd->vkCreateGraphicsPipelines(m_vkd->device(), VK_NULL_HANDLE, 1, &info, nullptr, &result);
+    }
+    if (status != VK_SUCCESS)
+    // NV-DXVK end
       throw DxvkError("DxvkMetaCopyObjects: Failed to create graphics pipeline");
     return result;
   }
