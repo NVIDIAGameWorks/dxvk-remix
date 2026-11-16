@@ -2,6 +2,8 @@
 
 #include <future>
 
+#include "../util/log/metrics.h"
+
 #include "dxvk_device.h"
 #include "dxvk_pipemanager.h"
 #include "rtx_render/rtx.h"
@@ -300,6 +302,9 @@ namespace dxvk {
     Logger::debug(str::format("Compiling raytracing pipeline: ", m_shaders.debugName ? m_shaders.debugName : "<debug name missing>"));
 
     assert(m_layout != nullptr);
+
+    // Capture the whole pipeline so we include any deferred ops
+    Metrics::ShaderCompileScope compileScope(m_shaders.debugName ? m_shaders.debugName : "<rt pipeline debug name missing>");
 
     // Assemble the shader stages and recursion depth info into the ray tracing pipeline
     VkRayTracingPipelineCreateInfoKHR rayPipelineInfo{ VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR };

@@ -28,6 +28,7 @@
 #include "../../util/util_string.h"
 #include "../../util/util_global_time.h"
 #include "../../util/util_aftermath.h"
+#include "../../util/log/metrics.h"
 #include <Shlwapi.h>
 #include <filesystem>
 
@@ -571,7 +572,11 @@ namespace dxvk {
     pipeInfo.basePipelineIndex = -1;
 
     VkPipeline result = VK_NULL_HANDLE;
-    const VkResult status = m_vkd->vkCreateComputePipelines(m_vkd->device(), VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &result);
+    VkResult status;
+    {
+      Metrics::ShaderCompileScope compileScope(nrdPipelineDesc.shaderFileName);
+      status = m_vkd->vkCreateComputePipelines(m_vkd->device(), VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &result);
+    }
 
     m_vkd->vkDestroyShaderModule(m_vkd->device(), shaderModule, nullptr);
 

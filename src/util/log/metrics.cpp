@@ -32,6 +32,11 @@ namespace dxvk {
 
     if (!path.empty())
       m_fileStream = std::ofstream(str::tows(path.c_str()).c_str());
+
+    const std::string metricsFolder = env::getEnvVar("DXVK_METRICS_PATH");
+    if (!metricsFolder.empty() && metricsFolder != "none") {
+      ShaderCompileScope::setProgressPath(getOutputPath("shader_compile_progress.txt"));
+    }
   }
   
   Metrics::~Metrics() { }
@@ -91,6 +96,9 @@ namespace dxvk {
   
   void Metrics::serialize() {
     std::lock_guard<dxvk::mutex> lock(s_instance.m_mutex);
+
+    s_instance.m_data[Metric::dxvk_shader_compile_time_ms] = static_cast<float>(ShaderCompileScope::totalMs());
+    s_instance.m_sampleCounts[Metric::dxvk_shader_compile_time_ms] = 1;
 
     for (uint32_t i = 0; i < Metric::kCount; i++) {
       if (s_instance.m_sampleCounts[i]) {
@@ -207,6 +215,79 @@ namespace dxvk {
     }
 
     m_testTraceFlushed = true;
+  }
+
+  Metrics::ShaderCompileScope::SharedState& Metrics::ShaderCompileScope::state() {
+    static SharedState s;
+    return s;
+  }
+
+  void Metrics::ShaderCompileScope::setProgressPath(const std::string& path) {
+    SharedState& s = state();
+    std::lock_guard<dxvk::mutex> lock(s.mutex);
+    s.progressPath = path;
+    writeProgress(s);
+  }
+
+  double Metrics::ShaderCompileScope::totalMs() {
+    SharedState& s = state();
+    std::lock_guard<dxvk::mutex> lock(s.mutex);
+    double total = s.totalMs;
+    if (!s.activeCompiles.empty()) {
+      total += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - s.activeStart).count();
+    }
+    return total;
+  }
+
+  Metrics::ShaderCompileScope::ShaderCompileScope(const std::string& name)
+    : m_name(name) {
+    std::replace(m_name.begin(), m_name.end(), '\n', ' ');
+    std::replace(m_name.begin(), m_name.end(), '\r', ' ');
+
+    m_startEpochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
+    SharedState& s = state();
+    std::lock_guard<dxvk::mutex> lock(s.mutex);
+    m_id = s.nextId++;
+
+    if (s.activeCompiles.empty()) {
+      s.activeStart = std::chrono::steady_clock::now();
+      s.activeStartEpochMs = m_startEpochMs;
+    }
+
+    s.activeCompiles.emplace(m_id, this);
+    writeProgress(s);
+  }
+
+  Metrics::ShaderCompileScope::~ShaderCompileScope() {
+    SharedState& s = state();
+    std::lock_guard<dxvk::mutex> lock(s.mutex);
+    s.activeCompiles.erase(m_id);
+
+    if (s.activeCompiles.empty()) {
+      s.totalMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - s.activeStart).count();
+      s.activeStartEpochMs = 0;
+    }
+
+    writeProgress(s);
+  }
+
+  void Metrics::ShaderCompileScope::writeProgress(const SharedState& s) {
+    if (s.progressPath.empty()) {
+      return;
+    }
+
+    std::ofstream out(str::tows(s.progressPath.c_str()).c_str(), std::ios::out | std::ios::trunc);
+    if (!out.is_open()) {
+      return;
+    }
+
+    out << "shader_compile_total_ms " << static_cast<int64_t>(s.totalMs) << "\n";
+    out << "shader_compile_active_since_epoch_ms " << s.activeStartEpochMs << "\n";
+    for (const auto& [id, pScope] : s.activeCompiles) {
+      out << "shader_compile_active " << pScope->m_startEpochMs << " " << pScope->m_name << "\n";
+    }
+    out << "end\n";
   }
 
   bool Metrics::shouldCaptureTestTrace(uint32_t frameId) const {

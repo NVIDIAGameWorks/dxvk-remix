@@ -1,5 +1,8 @@
 #include "dxvk_meta_clear.h"
 #include "dxvk_device.h"
+// NV-DXVK start: Metric to track shader compile times
+#include "../util/log/metrics.h"
+// NV-DXVK end
 
 #include <dxvk_clear_buffer_f.h>
 #include <dxvk_clear_buffer_u.h>
@@ -27,20 +30,22 @@ namespace dxvk {
     m_clearImgPipeLayout = createPipelineLayout(m_clearImgDsetLayout);
     
     // Create the actual compute pipelines
-    m_clearPipesF32.clearBuf = createPipeline(dxvk_clear_buffer_f, m_clearBufPipeLayout);
-    m_clearPipesU32.clearBuf = createPipeline(dxvk_clear_buffer_u, m_clearBufPipeLayout);
+    // NV-DXVK start: Metric to track shader compile times
+    m_clearPipesF32.clearBuf = createPipeline(dxvk_clear_buffer_f, m_clearBufPipeLayout, "dxvk_clear_buffer_f");
+    m_clearPipesU32.clearBuf = createPipeline(dxvk_clear_buffer_u, m_clearBufPipeLayout, "dxvk_clear_buffer_u");
     
-    m_clearPipesF32.clearImg1D = createPipeline(dxvk_clear_image1d_f, m_clearImgPipeLayout);
-    m_clearPipesU32.clearImg1D = createPipeline(dxvk_clear_image1d_u, m_clearImgPipeLayout);
-    m_clearPipesF32.clearImg2D = createPipeline(dxvk_clear_image2d_f, m_clearImgPipeLayout);
-    m_clearPipesU32.clearImg2D = createPipeline(dxvk_clear_image2d_u, m_clearImgPipeLayout);
-    m_clearPipesF32.clearImg3D = createPipeline(dxvk_clear_image3d_f, m_clearImgPipeLayout);
-    m_clearPipesU32.clearImg3D = createPipeline(dxvk_clear_image3d_u, m_clearImgPipeLayout);
+    m_clearPipesF32.clearImg1D = createPipeline(dxvk_clear_image1d_f, m_clearImgPipeLayout, "dxvk_clear_image1d_f");
+    m_clearPipesU32.clearImg1D = createPipeline(dxvk_clear_image1d_u, m_clearImgPipeLayout, "dxvk_clear_image1d_u");
+    m_clearPipesF32.clearImg2D = createPipeline(dxvk_clear_image2d_f, m_clearImgPipeLayout, "dxvk_clear_image2d_f");
+    m_clearPipesU32.clearImg2D = createPipeline(dxvk_clear_image2d_u, m_clearImgPipeLayout, "dxvk_clear_image2d_u");
+    m_clearPipesF32.clearImg3D = createPipeline(dxvk_clear_image3d_f, m_clearImgPipeLayout, "dxvk_clear_image3d_f");
+    m_clearPipesU32.clearImg3D = createPipeline(dxvk_clear_image3d_u, m_clearImgPipeLayout, "dxvk_clear_image3d_u");
     
-    m_clearPipesF32.clearImg1DArray = createPipeline(dxvk_clear_image1darr_f, m_clearImgPipeLayout);
-    m_clearPipesU32.clearImg1DArray = createPipeline(dxvk_clear_image1darr_u, m_clearImgPipeLayout);
-    m_clearPipesF32.clearImg2DArray = createPipeline(dxvk_clear_image2darr_f, m_clearImgPipeLayout);
-    m_clearPipesU32.clearImg2DArray = createPipeline(dxvk_clear_image2darr_u, m_clearImgPipeLayout);
+    m_clearPipesF32.clearImg1DArray = createPipeline(dxvk_clear_image1darr_f, m_clearImgPipeLayout, "dxvk_clear_image1darr_f");
+    m_clearPipesU32.clearImg1DArray = createPipeline(dxvk_clear_image1darr_u, m_clearImgPipeLayout, "dxvk_clear_image1darr_u");
+    m_clearPipesF32.clearImg2DArray = createPipeline(dxvk_clear_image2darr_f, m_clearImgPipeLayout, "dxvk_clear_image2darr_f");
+    m_clearPipesU32.clearImg2DArray = createPipeline(dxvk_clear_image2darr_u, m_clearImgPipeLayout, "dxvk_clear_image2darr_u");
+    // NV-DXVK end
   }
   
   
@@ -164,7 +169,10 @@ namespace dxvk {
   
   VkPipeline DxvkMetaClearObjects::createPipeline(
     const SpirvCodeBuffer&        spirvCode,
-          VkPipelineLayout        pipeLayout) {
+          VkPipelineLayout        pipeLayout,
+    // NV-DXVK start: Metric to track shader compile times
+    const char*                   name) {
+    // NV-DXVK end
     VkShaderModuleCreateInfo shaderInfo;
     shaderInfo.sType              = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     shaderInfo.pNext              = nullptr;
@@ -197,8 +205,13 @@ namespace dxvk {
     
     VkPipeline result = VK_NULL_HANDLE;
     
-    const VkResult status = m_vkd->vkCreateComputePipelines(
-      m_vkd->device(), VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &result);
+    // NV-DXVK start: Metric to track shader compile times
+    VkResult status;
+    {
+      Metrics::ShaderCompileScope compileScope(name);
+      status = m_vkd->vkCreateComputePipelines(m_vkd->device(), VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &result);
+    }
+    // NV-DXVK end
     
     m_vkd->vkDestroyShaderModule(m_vkd->device(), shaderModule, nullptr);
     

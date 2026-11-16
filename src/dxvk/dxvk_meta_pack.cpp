@@ -1,5 +1,8 @@
 #include "dxvk_meta_pack.h"
 #include "dxvk_device.h"
+// NV-DXVK start: Metric to track shader compile times
+#include "../util/log/metrics.h"
+// NV-DXVK end
 
 #include <dxvk_pack_d24s8.h>
 #include <dxvk_pack_d32s8.h>
@@ -19,11 +22,13 @@ namespace dxvk {
     m_pipeLayoutUnpack(createPipelineLayout(m_dsetLayoutUnpack, sizeof(DxvkMetaPackArgs))),
     m_templatePack    (createPackDescriptorUpdateTemplate()),
     m_templateUnpack  (createUnpackDescriptorUpdateTemplate()),
-    m_pipePackD24S8   (createPipeline(m_pipeLayoutPack, dxvk_pack_d24s8)),
-    m_pipePackD32S8   (createPipeline(m_pipeLayoutPack, dxvk_pack_d32s8)),
-    m_pipeUnpackD24S8AsD32S8(createPipeline(m_pipeLayoutUnpack, dxvk_unpack_d24s8_as_d32s8)),
-    m_pipeUnpackD24S8 (createPipeline(m_pipeLayoutUnpack, dxvk_unpack_d24s8)),
-    m_pipeUnpackD32S8 (createPipeline(m_pipeLayoutUnpack, dxvk_unpack_d32s8)) {
+    // NV-DXVK start: Metric to track shader compile times
+    m_pipePackD24S8   (createPipeline(m_pipeLayoutPack, dxvk_pack_d24s8, "dxvk_pack_d24s8")),
+    m_pipePackD32S8   (createPipeline(m_pipeLayoutPack, dxvk_pack_d32s8, "dxvk_pack_d32s8")),
+    m_pipeUnpackD24S8AsD32S8(createPipeline(m_pipeLayoutUnpack, dxvk_unpack_d24s8_as_d32s8, "dxvk_unpack_d24s8_as_d32s8")),
+    m_pipeUnpackD24S8 (createPipeline(m_pipeLayoutUnpack, dxvk_unpack_d24s8, "dxvk_unpack_d24s8")),
+    m_pipeUnpackD32S8 (createPipeline(m_pipeLayoutUnpack, dxvk_unpack_d32s8, "dxvk_unpack_d32s8")) {
+    // NV-DXVK end
     
   }
 
@@ -241,7 +246,10 @@ namespace dxvk {
 
   VkPipeline DxvkMetaPackObjects::createPipeline(
           VkPipelineLayout      pipeLayout,
-    const SpirvCodeBuffer&      code) {
+    const SpirvCodeBuffer&      code,
+    // NV-DXVK start: Metric to track shader compile times
+    const char*                 name) {
+    // NV-DXVK end
     VkShaderModuleCreateInfo shaderInfo;
     shaderInfo.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     shaderInfo.pNext    = nullptr;
@@ -274,8 +282,13 @@ namespace dxvk {
 
     VkPipeline result = VK_NULL_HANDLE;
 
-    VkResult status = m_vkd->vkCreateComputePipelines(
-      m_vkd->device(), VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &result);
+    // NV-DXVK start: Metric to track shader compile times
+    VkResult status;
+    {
+      Metrics::ShaderCompileScope compileScope(name);
+      status = m_vkd->vkCreateComputePipelines(m_vkd->device(), VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &result);
+    }
+    // NV-DXVK end
     
     m_vkd->vkDestroyShaderModule(m_vkd->device(), module, nullptr);
 

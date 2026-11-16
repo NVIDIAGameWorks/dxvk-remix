@@ -1,4 +1,7 @@
 #include "../util/util_time.h"
+// NV-DXVK start: Metric to track shader compile times
+#include "../util/log/metrics.h"
+// NV-DXVK end
 
 #include "dxvk_device.h"
 #include "dxvk_graphics.h"
@@ -415,8 +418,22 @@ namespace dxvk {
       t0 = dxvk::high_resolution_clock::now();
     
     VkPipeline pipeline = VK_NULL_HANDLE;
-    if (m_vkd->vkCreateGraphicsPipelines(m_vkd->device(),
-          m_pipeMgr->m_cache->handle(), 1, &info, nullptr, &pipeline) != VK_SUCCESS) {
+    // NV-DXVK start: Metric to track shader compile times
+    VkResult result;
+    {
+      std::string compileName;
+      std::vector<Rc<DxvkShader>> shaders = { m_shaders.vs, m_shaders.tcs, m_shaders.tes, m_shaders.gs, m_shaders.fs };
+      // Append shader debug names
+      for (const auto& shader : shaders) {
+        if (shader != nullptr) {
+          compileName += (compileName.empty() ? "" : " + ") + shader->debugName();
+        }
+      }
+      Metrics::ShaderCompileScope compileScope(compileName);
+      result = m_vkd->vkCreateGraphicsPipelines(m_vkd->device(), m_pipeMgr->m_cache->handle(), 1, &info, nullptr, &pipeline);
+    }
+    // NV-DXVK end
+    if (result != VK_SUCCESS) {
       Logger::err("DxvkGraphicsPipeline: Failed to compile pipeline");
       this->logPipelineState(LogLevel::Error, state);
       return VK_NULL_HANDLE;
