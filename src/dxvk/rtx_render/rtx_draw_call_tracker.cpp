@@ -156,6 +156,7 @@ namespace dxvk {
     match->identityHash = key.identityHash;
     match->vertexPositionHash = key.vertexPositionHash;
     match->materialHash = key.materialHash;
+    match->originalMeshHash = key.originalMeshHash;
     match->prevCentroid = match->centroid;
     match->centroid = key.worldPos;
 
@@ -283,6 +284,7 @@ namespace dxvk {
         computeDirtyFlags(exactTransformMatch, key);
         m_identityHashMap.erase(exactTransformMatch->identityHash);
         exactTransformMatch->identityHash = key.identityHash;
+        exactTransformMatch->originalMeshHash = key.originalMeshHash;
         m_identityHashMap[key.identityHash] = exactTransformMatch;
         exactTransformMatch->prevCentroid = exactTransformMatch->centroid;
         updateInstanceClusterCount(key.spatialMapHash, key.sourceVertexBufferAddress,
@@ -352,7 +354,9 @@ namespace dxvk {
       objectToWorld,
       drawCallState.getTransformData().textureTransform,
       drawCallState.getTransformData().texgenMode,
-      drawCallState.getGeometryData().sourceVertexBufferAddress
+      drawCallState.getGeometryData().sourceVertexBufferAddress,
+      // This is the original combined asset hash, which replacement lookups and mesh_<HASH> prims key on.
+      drawCallState.getHash(RtxOptions::geometryAssetHashRule())
     };
 
     ReplacementInstance* result = findOrCreateReplacementInstance(key);

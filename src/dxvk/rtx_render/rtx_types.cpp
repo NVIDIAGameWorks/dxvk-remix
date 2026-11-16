@@ -144,6 +144,7 @@ namespace dxvk {
       , identityHash(key.identityHash)
       , spatialMapHash(key.spatialMapHash)
       , materialHash(key.materialHash)
+      , originalMeshHash(key.originalMeshHash)
       , vertexPositionHash(key.vertexPositionHash)
       , centroid(key.worldPos)
       , prevCentroid(key.worldPos)

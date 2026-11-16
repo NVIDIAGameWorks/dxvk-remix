@@ -48,6 +48,10 @@ namespace dxvk
     };
   }
 
+  // Holds the names of CameraType values, indexed by value.
+  constexpr const char* kCameraTypeNames[] = { "Main", "ViewModel", "Portal0", "Portal1", "Sky", "RenderToTexture", "Unknown" };
+  static_assert(sizeof(kCameraTypeNames) / sizeof(kCameraTypeNames[0]) == CameraType::Count, "kCameraTypeNames must name every CameraType value.");
+
   class HaltonSamplePattern
   {
   public:
@@ -322,6 +326,9 @@ namespace dxvk
     const Matrix4d& getPreviousProjectionToViewJittered() const { return m_matCache[MatrixType::PreviousProjectionToViewJittered]; }
 
     void setResolution(const uint32_t renderResolution[2], const uint32_t finalResolution[2]);
+    // Returns the final output resolution in pixels, after upscaling.
+    // Returns {0,0} until setResolution runs.
+    const uint32_t* getFinalResolution() const { return m_finalResolution; }
     bool update(
       uint32_t frameIdx, const Matrix4& newWorldToView, const Matrix4& newViewToProjection,
       float fov, float aspectRatio, float nearPlane, float farPlane, bool isLHS, uint32_t flags = (uint32_t)UpdateFlag::UpdateNormal

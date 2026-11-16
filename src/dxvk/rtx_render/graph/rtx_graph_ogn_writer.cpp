@@ -99,64 +99,43 @@ std::string getFlexiblePropertyTypeUnion(const ComponentSpecVariantMap& variants
   }
 
   if (uniqueTypes.size() == 1) {
-    return "\"" + *uniqueTypes.begin() + "\"";
+    return str::asJson(*uniqueTypes.begin());
   }
 
   if (uniqueTypes.find("target") != uniqueTypes.end()) {
     // Target is special, and cannot be contained in a union type - so just output `any`.
     return "\"any\"";
   }
-  
-  std::string result = "[";
-  bool first = true;
-  for (const auto& type : uniqueTypes) {
-    if (!first) {
-      result += ", ";
-    }
-    result += "\"" + type + "\"";
-    first = false;
-  }
-  result += "]";
-  
-  return result;
+
+  return str::asJson(std::vector<std::string>(uniqueTypes.begin(), uniqueTypes.end()), 0);
 }
+
+// Matches the six decimal places of std::to_string, which the checked-in schemas were written with.
+constexpr int kOgnFloatDecimalPlaces = 6;
 
 // Helper function to get default value as JSON string
 std::string getDefaultValueAsJson(const RtComponentPropertyValue& value, RtComponentPropertyType type) {
   switch (type) {
     case RtComponentPropertyType::Bool:
-      return std::get<uint32_t>(value) ? "true" : "false";
+      return str::asJson(std::get<uint32_t>(value) != 0);
     case RtComponentPropertyType::Float:
-      return std::to_string(std::get<float>(value));
-    case RtComponentPropertyType::Float2: {
-      const auto& vec = std::get<Vector2>(value);
-      return str::format("[", std::to_string(vec.x), ", ",
-                          std::to_string(vec.y), "]");
-    }
-    case RtComponentPropertyType::Float3: {
-      const auto& vec = std::get<Vector3>(value);
-      return str::format("[", std::to_string(vec.x), ", ",
-                          std::to_string(vec.y), ", ",
-                          std::to_string(vec.z), "]");
-    }
-    case RtComponentPropertyType::Float4: {
-      const auto& vec = std::get<Vector4>(value);
-      return str::format("[", std::to_string(vec.x), ", ",
-                          std::to_string(vec.y), ", ",
-                          std::to_string(vec.z), ", ",
-                          std::to_string(vec.w), "]");
-    }
+      return str::asJson(std::get<float>(value), str::kJsonCompact, kOgnFloatDecimalPlaces);
+    case RtComponentPropertyType::Float2:
+      return asJson(std::get<Vector2>(value), 0, kOgnFloatDecimalPlaces);
+    case RtComponentPropertyType::Float3:
+      return asJson(std::get<Vector3>(value), 0, kOgnFloatDecimalPlaces);
+    case RtComponentPropertyType::Float4:
+      return asJson(std::get<Vector4>(value), 0, kOgnFloatDecimalPlaces);
     case RtComponentPropertyType::Enum:
-      return std::to_string(std::get<uint32_t>(value));
+      return str::asJson(std::get<uint32_t>(value));
     case RtComponentPropertyType::String:
-      return "\"" + str::escapeCStyle(std::get<std::string>(value)) + "\"";
     case RtComponentPropertyType::AssetPath:
-      return "\"" + str::escapeCStyle(std::get<std::string>(value)) + "\"";
+      return str::asJson(std::get<std::string>(value));
     case RtComponentPropertyType::Hash: {
       // Hash is stored as uint64_t but output as a hex string token in OGN
       std::ostringstream ss;
-      ss << "\"0x" << std::hex << std::get<uint64_t>(value) << "\"";
-      return ss.str();
+      ss << "0x" << std::hex << std::get<uint64_t>(value);
+      return str::asJson(ss.str());
     }
     case RtComponentPropertyType::Prim:
       // Target relationships don't typically have default values in OGN
@@ -177,7 +156,7 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentSpec& spec, 
   const std::string_view ognType = propertyTypeToOgnType(prop.type);
   const bool isTokenType = ognType == "token";
   
-  outputFile << "      \"" << str::escapeCStyle(prop.name) << "\": {" << std::endl;
+  outputFile << "      " << str::asJson(prop.name) << ": {" << std::endl;
   if (!prop.enumValues.empty()) {
     // For enum documentation, we need to combine everything into the property docstring.
     outputFile << "        \"description\": [\"" << str::escapeCStyle(prop.docString) << "\\n" << "Allowed values:\\n";
@@ -194,7 +173,7 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentSpec& spec, 
 
     outputFile << "        \"default\": \"" << defaultEnumValueString << "\"," << std::endl;
   } else {
-    outputFile << "        \"description\": [\"" << str::escapeCStyle(prop.docString) << "\"]," << std::endl;
+    outputFile << "        \"description\": [" << str::asJson(prop.docString) << "]," << std::endl;
     
     // Check if this is a flexible type property
     // If type != declaredType, it means a flexible type was resolved to a concrete type
@@ -256,7 +235,7 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentSpec& spec, 
         if (!first) {
           outputFile << ", ";
         }
-        outputFile << "\"" << str::escapeCStyle(enumValue.first) << "\"";
+        outputFile << str::asJson(enumValue.first);
         first = false;
       }
       outputFile << "]";
@@ -283,8 +262,7 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentSpec& spec, 
         if (!first) {
           outputFile << ", ";
         }
-        std::string primTypeName = primTypeToString(primType);
-        outputFile << "\"" << str::escapeCStyle(primTypeName) << "\"";
+        outputFile << str::asJson(primTypeToString(primType));
         first = false;
       }
       outputFile << "]";
@@ -346,7 +324,7 @@ void writePropertyToOGN(std::ofstream& outputFile, const RtComponentSpec& spec, 
     outputFile << "        \"optional\": true," << std::endl;
   }
 
-  outputFile << "        \"uiName\": \"" << str::escapeCStyle(prop.uiName) << "\"" << std::endl;
+  outputFile << "        \"uiName\": " << str::asJson(prop.uiName) << std::endl;
 
 
   outputFile << "      }";
@@ -376,15 +354,15 @@ bool writeOGNSchema(const RtComponentSpec* spec, RtComponentType componentType, 
   outputFile << "{" << std::endl;
   
   // Start the node definition
-  outputFile << "  \"" << str::escapeCStyle(spec->name) << "\": {" << std::endl;
+  outputFile << "  " << str::asJson(spec->name) << ": {" << std::endl;
 
   // Write the node properties
-  outputFile << "    \"description\": [\"" << str::escapeCStyle(spec->docString) << "\"]," << std::endl;
+  outputFile << "    \"description\": [" << str::asJson(spec->docString) << "]," << std::endl;
   outputFile << "    \"version\": " << spec->version << "," << std::endl;
-  outputFile << "    \"uiName\": \"" << str::escapeCStyle(spec->uiName) << "\"," << std::endl;
+  outputFile << "    \"uiName\": " << str::asJson(spec->uiName) << "," << std::endl;
   outputFile << "    \"language\": \"python\"," << std::endl;
   outputFile << "    \"categoryDefinitions\": \"config/CategoryDefinition.json\"," << std::endl;
-  outputFile << "    \"categories\": \"" << str::escapeCStyle(spec->categories) << "\"," << std::endl;
+  outputFile << "    \"categories\": " << str::asJson(spec->categories) << "," << std::endl;
 
   // Separate properties by IO type
   std::vector<const RtComponentPropertySpec*> inputs, states, outputs;

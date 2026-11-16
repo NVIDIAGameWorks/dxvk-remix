@@ -28,15 +28,16 @@
 
 // Robust BoundingBox-Frustum intersection check with Separation Axis Theorem (SAT)
 static inline bool boundingBoxIntersectsFrustumSAT(
-  dxvk::RtCamera& camera,            // The main camera
+  dxvk::RtFrustum& frustum,          // Frustum with calculateFrustumGeometry() already applied
+  const float nearPlane,             // Near plane the frustum was built with
+  const bool isLHS,                  // Whether the frustum is left-handed
   const dxvk::Vector3& minPos,       // The minimum position of AABB bounding box of the object
   const dxvk::Vector3& maxPos,       // The maximum position of AABB bounding box of the object
   const dxvk::Matrix4& objectToView, // Object to viewspace transform matrix
-  const bool isInfFrustum) {         // Is the camera frustum has infinity far plane
+  const bool isInfFrustum) {         // Whether the frustum has an infinite far plane
 
   ScopedCpuProfileZone();
 
-  dxvk::RtFrustum& frustum = camera.getFrustum();
   const dxvk::Vector3 (&frustumEdgeVectors)[4] = {
     frustum.getFrustumEdgeVector(0),
     frustum.getFrustumEdgeVector(1),
@@ -46,11 +47,22 @@ static inline bool boundingBoxIntersectsFrustumSAT(
   return boundingBoxIntersectsFrustumSATInternal(minPos, maxPos,
                                                  objectToView,
                                                  frustum,
-                                                 camera.getNearPlane(),
+                                                 nearPlane,
                                                  frustum.GetPlane(ePlaneType::PLANE_FAR).w,
                                                  frustum.getNearPlaneRightExtent(),
                                                  frustum.getNearPlaneUpExtent(),
                                                  frustumEdgeVectors,
-                                                 camera.isLHS(),
+                                                 isLHS,
                                                  isInfFrustum);
+}
+
+// Runs the same test against the camera's anti-culling frustum.
+static inline bool boundingBoxIntersectsFrustumSAT(
+  dxvk::RtCamera& camera,            // The main camera
+  const dxvk::Vector3& minPos,       // The minimum position of AABB bounding box of the object
+  const dxvk::Vector3& maxPos,       // The maximum position of AABB bounding box of the object
+  const dxvk::Matrix4& objectToView, // Object to viewspace transform matrix
+  const bool isInfFrustum) {         // Whether the camera frustum has an infinite far plane
+  return boundingBoxIntersectsFrustumSAT(camera.getFrustum(), camera.getNearPlane(), camera.isLHS(),
+                                         minPos, maxPos, objectToView, isInfFrustum);
 }

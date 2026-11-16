@@ -129,6 +129,8 @@
 #define GBUFFER_BINDING_RADIANCE_CACHE_UPDATE_GBUFFER_SURFACE_RADIANCE_B_OUTPUT  141
 
 #define GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT                           150
+// Holds the surface index of each pixel's first hit, so a readback can name the exact instance there.
+#define GBUFFER_BINDING_PRIMARY_FIRST_HIT_SURFACE_INDEX_OUTPUT                  151
 
 // Holds the dense copy of the flags, which only the compacted GBuffer uses.
 #define GBUFFER_BINDING_SHARED_FLAGS_DENSE_OUTPUT                               152

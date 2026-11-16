@@ -406,6 +406,8 @@ struct RaytraceArgs {
   u16vec2 gpuPrintThreadIndex;
   uint gpuPrintElementIndex;
   uint enableObjectPicking;
+  // True only while the PrimaryFirstHitSurfaceIndex image exists, which is for a visible-set request's frame.
+  uint enableFirstHitSurfaceIndex;
   uint rawAovMask;
   uint enableCoverageAov;
 

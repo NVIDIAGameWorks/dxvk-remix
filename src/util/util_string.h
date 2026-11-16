@@ -24,6 +24,12 @@
 #include <string>
 #include <string_view>
 #include <sstream>
+// NV-DXVK start: JSON values
+#include <cstdint>
+#include <initializer_list>
+#include <type_traits>
+#include <utility>
+// NV-DXVK end
 #include <vector>
 
 #include "./com/com_include.h"
@@ -76,6 +82,81 @@ namespace dxvk::str {
   // Escape a string into a single-line, double-quoted string literal using
   // C-style backslash escapes. Suitable for JSON and USD string values.
   std::string escapeCStyle(std::string_view input);
+
+  // NV-DXVK start: JSON values
+  // Every asJson function returns a value as JSON text and takes an indent level.
+  // kJsonCompact writes the value on one line without spaces.
+  // A level of 0 or more writes objects and matrices across lines, indented for a value that sits at that depth.
+  constexpr int kJsonCompact = -1;
+
+  // Makes asJson write a float as the shortest text that reads back as the same float.
+  constexpr int kJsonShortestFloat = -1;
+
+  // Returns the line break and indentation that precede a line at the given depth.
+  std::string jsonNewLine(int indentLevel);
+
+  inline std::string asJson(bool value, int indentLevel = kJsonCompact) {
+    return value ? "true" : "false";
+  }
+
+  template<typename T, std::enable_if_t<std::is_integral_v<T> && !std::is_same_v<T, bool>, int> = 0>
+  std::string asJson(T value, int indentLevel = kJsonCompact) {
+    return std::to_string(value);
+  }
+
+  // Returns null for NaN and infinities, which JSON cannot hold.
+  // Writes a period as the decimal separator in any locale.
+  // A decimalPlaces of 0 or more writes that many digits after the period, as std::to_string does with 6.
+  std::string asJson(float value, int indentLevel = kJsonCompact, int decimalPlaces = kJsonShortestFloat);
+
+  // Quotes and escapes a string, including every control character, so it cannot end early or split a log line.
+  std::string asJson(std::string_view value, int indentLevel = kJsonCompact);
+
+  // Takes a string literal, which would otherwise convert to bool.
+  inline std::string asJson(const char* value, int indentLevel = kJsonCompact) {
+    return asJson(std::string_view(value), indentLevel);
+  }
+
+  inline std::string asJson(const std::string& value, int indentLevel = kJsonCompact) {
+    return asJson(std::string_view(value), indentLevel);
+  }
+
+  // Returns a 64-bit hash as a string of 16 lowercase hex digits,
+  // because a JSON number cannot hold every 64-bit value exactly.
+  std::string asJsonHash(uint64_t hash);
+
+  // Returns an array of basic values on one line.
+  // Arguments after indentLevel are passed on to each element's asJson.
+  template<typename T, typename... ElementArgs>
+  std::string asJson(const std::vector<T>& values, int indentLevel = kJsonCompact, ElementArgs... elementArgs) {
+    const char* pSeparator = indentLevel == kJsonCompact ? "," : ", ";
+    std::string text = "[";
+    for (const T& value : values) {
+      if (text.size() > 1) {
+        text += pSeparator;
+      }
+      text += asJson(value, indentLevel, elementArgs...);
+    }
+    text += ']';
+    return text;
+  }
+
+  // Holds a member's name and its value as JSON text.
+  using JsonMember = std::pair<std::string_view, std::string>;
+
+  // Returns an object built from members whose values are already JSON text.
+  // A member with an empty value is left out, which is how optional members are omitted.
+  // A nested value must be written at indentLevel + 1.
+  std::string asJsonObject(const JsonMember* pMembers, size_t memberCount, int indentLevel = kJsonCompact);
+
+  inline std::string asJsonObject(std::initializer_list<JsonMember> members, int indentLevel = kJsonCompact) {
+    return asJsonObject(members.begin(), members.size(), indentLevel);
+  }
+
+  inline std::string asJsonObject(const std::vector<JsonMember>& members, int indentLevel = kJsonCompact) {
+    return asJsonObject(members.data(), members.size(), indentLevel);
+  }
+  // NV-DXVK end
 
   std::string sanitizeUtf8(const std::string& input);
 

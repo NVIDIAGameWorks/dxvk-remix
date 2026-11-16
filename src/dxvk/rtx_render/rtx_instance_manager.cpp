@@ -27,6 +27,7 @@
 
 #include "rtx_context.h"
 #include "rtx_scene_manager.h"
+#include "rtx_asset_replacer.h"
 #include "rtx_instance_manager.h"
 #include "rtx_alpha_blend_dissolve.h"
 #include "rtx_camera_manager.h"
@@ -165,7 +166,7 @@ namespace dxvk {
   namespace {
     template<int RtInstanceSize> struct CheckRtInstanceSize {
       // The second line of the build error should contain the new size of RtInstance in the template argument, i.e. `dxvk::CheckRtInstanceSize<newSize>`
-      static_assert(RtInstanceSize == 792, "RtInstance size has changed. Fix the copy constructor above this message, then update the expected size.");
+      static_assert(RtInstanceSize == 824,"RtInstance size has changed. Fix the copy constructor above this message, then update the expected size.");
     };
     CheckRtInstanceSize<sizeof(RtInstance)> _rtInstanceSizeTest;
   }
@@ -224,6 +225,17 @@ namespace dxvk {
     m_linkedBlas = src.m_linkedBlas;
     m_materialHash = src.m_materialHash;
     m_materialDataHash = src.m_materialDataHash;
+
+    // Clones have no ReplacementInstance of their own,
+    // so they carry the reference's original mesh hash, replacement index and mesh replacements.
+    const ReplacementInstance* pSrcReplacement = src.m_primInstanceOwner.getReplacementInstance();
+    const bool srcHasOriginal = pSrcReplacement != nullptr && pSrcReplacement->originalMeshHash != kEmptyHash;
+    m_originalMeshHash = srcHasOriginal ? pSrcReplacement->originalMeshHash : src.m_originalMeshHash;
+    m_originalReplacementIndex = srcHasOriginal
+      ? static_cast<uint32_t>(src.m_primInstanceOwner.getReplacementIndex())
+      : src.m_originalReplacementIndex;
+    m_originalMeshReplacements = pSrcReplacement != nullptr ? pSrcReplacement->activeReplacements : src.m_originalMeshReplacements;
+
     m_texcoordHash = src.m_texcoordHash;
     m_indexHash = src.m_indexHash;
     m_vkInstance = src.m_vkInstance;
@@ -233,7 +245,7 @@ namespace dxvk {
     m_categoryFlags = src.m_categoryFlags;
 
     // Intentionally NOT synced (identity / lifecycle / per-build state):
-    //   m_id, m_instanceVectorId, m_cacheIdentity, m_isMarkedForGC, m_isUnlinkedForGC,
+    //   m_id, m_instanceVectorId, m_cacheIdentity, m_isMarkedForGC, m_isTracedThroughBillboards, m_isUnlinkedForGC,
     //   m_isInsideFrustum, m_frameLastUpdated, m_frameCreated,
     //   m_isCreatedByRenderer, m_spatialCacheHash,
     //   OMM request registration state,
@@ -366,6 +378,7 @@ namespace dxvk {
   bool RtInstance::setFrameLastUpdated(const uint32_t frameIndex) {
     if (m_frameLastUpdated != frameIndex) {
       m_seenCameraTypes.clrAll();
+      m_isTracedThroughBillboards = false;
 
       m_frameLastUpdated = frameIndex;
 
@@ -421,28 +434,194 @@ namespace dxvk {
     return m_vkInstance.mask & OBJECT_MASK_VIEWMODEL_VIRTUAL;
   }
 
-  void RtInstance::printDebugInfo() const {
+  bool RtInstance::isTraced() const {
+    // Player-model instances with billboards have a geometric mask of 0, and rays hit only their billboards.
+    return !m_isHidden && (m_vkInstance.mask != 0 || m_isTracedThroughBillboards);
+  }
+
+  std::string RtInstance::asJson(InstanceDetailLevel detail, AssetReplacer* pReplacer, int indentLevel) const {
+    const bool standard = detail >= InstanceDetailLevel::Standard;
+    const bool full = detail >= InstanceDetailLevel::Full;
+    // Nested values sit one level deeper, and stay compact when the instance is.
+    const int nested = indentLevel == str::kJsonCompact ? str::kJsonCompact : indentLevel + 1;
+    const int nestedValue = nested == str::kJsonCompact ? str::kJsonCompact : nested + 1;
+
+    // Returns a nested object, or the empty text that asJsonObject leaves out when the object has no members.
+    const auto group = [nested](std::initializer_list<str::JsonMember> members) {
+      std::string text = str::asJsonObject(members, nested);
+      return text == "{}" ? std::string() : text;
+    };
+
+    // A replaced draw's BLAS carries the replacement's hashes, which match nothing outside the renderer.
+    // The original identity recorded by the tracker is reported instead.
+    // Renderer-created clones carry their reference's original mesh hash.
+    // Untracked draws fall back to the BLAS hashes.
+    const ReplacementInstance* pReplacement = m_primInstanceOwner.getReplacementInstance();
+    const bool hasOriginal = pReplacement != nullptr && pReplacement->originalMeshHash != kEmptyHash;
+    XXH64_hash_t meshHash = kEmptyHash;
+    if (hasOriginal) {
+      meshHash = pReplacement->originalMeshHash;
+    } else if (m_originalMeshHash != kEmptyHash) {
+      meshHash = m_originalMeshHash;
+    } else if (m_linkedBlas != nullptr) {
+      meshHash = m_linkedBlas->input.getHash(RtxOptions::geometryAssetHashRule());
+    }
+    const XXH64_hash_t materialHash = hasOriginal ? pReplacement->materialHash : m_materialDataHash;
+
+    std::string replacement;
+    if (pReplacer != nullptr) {
+      // These are the mesh replacements the renderer drew, which a legacy hash or a variant may have selected,
+      // so they are not looked up again by meshHash.
+      const ReplacementBucket* pMeshReplacements = pReplacement != nullptr
+        ? pReplacement->activeReplacements.get()
+        : m_originalMeshReplacements.get();
+      const bool replaced = pMeshReplacements != nullptr || pReplacer->getReplacementMaterial(materialHash) != nullptr;
+      // The replacement index selects the entry of the mesh's replacement list that this instance draws.
+      const uint32_t replacementIndex = hasOriginal
+        ? static_cast<uint32_t>(m_primInstanceOwner.getReplacementIndex())
+        : m_originalReplacementIndex;
+      std::string primPath;
+      if (pMeshReplacements != nullptr && replacementIndex < pMeshReplacements->replacements.size()
+          && !pMeshReplacements->replacements[replacementIndex].primPath.empty()) {
+        primPath = str::asJson(pMeshReplacements->replacements[replacementIndex].primPath);
+      }
+      replacement = group({
+        { "replaced", str::asJson(replaced) },
+        { "primPath", primPath },
+      });
+    }
+
+    // An instance without geometry leaves out the texture hash and the counts.
+    const bool hasGeometry = standard && m_linkedBlas != nullptr;
+
+    // Lists the camera types that drew the instance this frame, in enum order.
+    std::vector<const char*> cameras;
+    for (uint32_t type = 0; type < CameraType::Count; ++type) {
+      if (m_seenCameraTypes.test(static_cast<CameraType::Enum>(type))) {
+        cameras.push_back(kCameraTypeNames[type]);
+      }
+    }
+
+    // Lists only the first few entries, because a particle system can hold thousands.
+    const auto firstEntries = [](const std::vector<uint32_t>& values) {
+      constexpr size_t kMaxListed = 5;
+      return std::vector<uint32_t>(values.begin(), values.begin() + std::min(values.size(), kMaxListed));
+    };
+
+    // asJsonObject leaves out a member whose value is this empty text.
+    const std::string omitted;
+
+    return str::asJsonObject({
+      // Renderer-created instances carry kInvalidInstanceId, and the member is then omitted.
+      // These include view models, player-model clones and ray-portal virtual instances.
+      { "instanceId", m_id != kInvalidInstanceId ? str::asJson(m_id) : omitted },
+      { "drawCallId", str::asJson(surface.objectPickingValue) },
+      { "ageFrames", standard ? str::asJson(getFrameAge()) : omitted },
+      { "vectorIndex", full ? str::asJson(m_instanceVectorId) : omitted },
+      { "frames", full
+        ? group({
+            { "created", str::asJson(m_frameCreated) },
+            { "lastUpdated", str::asJson(m_frameLastUpdated) },
+          })
+        : omitted },
+      // The previous values differ from the current ones when the game moved the instance since its previous update.
+      // Skinned and vertex-shader animation leave them unchanged.
+      { "transform", standard
+        ? group({
+            { "worldPosition", dxvk::asJson(getWorldPosition(), nestedValue) },
+            { "prevWorldPosition", dxvk::asJson(getPrevTransform()[3].xyz(), nestedValue) },
+            { "world", dxvk::asJson(getTransform(), nestedValue) },
+            { "prevWorld", full ? dxvk::asJson(getPrevTransform(), nestedValue) : omitted },
+          })
+        : omitted },
+      { "hashInfo", group({
+          { "meshHash", str::asJsonHash(meshHash) },
+          { "materialHash", str::asJsonHash(materialHash) },
+          { "instanceMaterialHash", full ? str::asJsonHash(m_materialHash) : omitted },
+          { "materialDataHash", full ? str::asJsonHash(m_materialDataHash) : omitted },
+          { "texcoordHash", full ? str::asJsonHash(m_texcoordHash) : omitted },
+          { "indexHash", full ? str::asJsonHash(m_indexHash) : omitted },
+        }) },
+      { "replacement", replacement },
+      { "vulkan", full
+        ? group({
+            { "mask", str::asJson(static_cast<uint32_t>(m_vkInstance.mask)) },
+            { "flags", str::asJson(static_cast<uint32_t>(m_vkInstance.flags)) },
+            { "customIndex", str::asJson(static_cast<uint32_t>(m_vkInstance.instanceCustomIndex)) },
+            { "sbtRecordOffset", str::asJson(static_cast<uint32_t>(m_vkInstance.instanceShaderBindingTableRecordOffset)) },
+          })
+        : omitted },
+      { "material", standard
+        ? group({
+            { "alphaBlend", str::asJson(!surface.alphaState.isBlendingDisabled) },
+            { "alphaTest", str::asJson(surface.alphaState.alphaTestType != AlphaTestType::kAlways) },
+            { "type", full ? str::asJson(static_cast<uint32_t>(m_materialType)) : omitted },
+            { "albedoOpacityTextureIndex", full ? str::asJson(m_albedoOpacityTextureIndex) : omitted },
+            { "samplerIndex", full ? str::asJson(m_samplerIndex) : omitted },
+            { "secondaryOpacityTextureIndex", full ? str::asJson(m_secondaryOpacityTextureIndex) : omitted },
+            { "secondarySamplerIndex", full ? str::asJson(m_secondarySamplerIndex) : omitted },
+          })
+        : omitted },
+      { "surface", full
+        ? group({
+            // An instance that is not in the frame's surfaces has no index.
+            { "index", m_surfaceIndex != SURFACE_INDEX_INVALID ? str::asJson(m_surfaceIndex) : omitted },
+            { "previousIndex", str::asJson(m_previousSurfaceIndex) },
+          })
+        : omitted },
+      { "geometry", group({
+          { "linkedBlas", standard ? str::asJson(m_linkedBlas != nullptr) : omitted },
+          { "albedoTextureHash", hasGeometry
+            ? str::asJsonHash(m_linkedBlas->input.getMaterialData().getColorTexture().getImageHash())
+            : omitted },
+          { "vertexCount", hasGeometry ? str::asJson(m_linkedBlas->modifiedGeometryData.vertexCount) : omitted },
+          { "indexCount", hasGeometry ? str::asJson(m_linkedBlas->modifiedGeometryData.indexCount) : omitted },
+          { "flags", full ? str::asJson(static_cast<uint32_t>(m_geometryFlags)) : omitted },
+        }) },
+      { "flags", group({
+          { "hidden", str::asJson(m_isHidden) },
+          { "traced", str::asJson(isTraced()) },
+          { "isPlayerModel", standard ? str::asJson(m_isPlayerModel) : omitted },
+          { "createdByRenderer", standard ? str::asJson(m_isCreatedByRenderer) : omitted },
+          { "animated", standard ? str::asJson(isAnimated()) : omitted },
+          { "isWorldSpaceUI", full ? str::asJson(m_isWorldSpaceUI) : omitted },
+          { "isUnordered", full ? str::asJson(m_isUnordered) : omitted },
+          { "isObjectToWorldMirrored", full ? str::asJson(m_isObjectToWorldMirrored) : omitted },
+          { "isFrontFaceFlipped", full ? str::asJson(isFrontFaceFlipped) : omitted },
+          { "isMarkedForGC", full ? str::asJson(m_isMarkedForGC) : omitted },
+        }) },
+      { "viewModel", standard
+        ? group({
+            { "isViewModel", str::asJson(isViewModel()) },
+            { "isNonReference", full ? str::asJson(isViewModelNonReference()) : omitted },
+            { "isReference", full ? str::asJson(isViewModelReference()) : omitted },
+            { "isVirtual", full ? str::asJson(isViewModelVirtual()) : omitted },
+          })
+        : omitted },
+      { "categoryFlags", standard ? str::asJson(m_categoryFlags.raw()) : omitted },
+      { "cameras", standard ? str::asJson(cameras, nested) : omitted },
+      { "billboards", full
+        ? group({
+            { "first", str::asJson(m_firstBillboard) },
+            { "count", str::asJson(m_billboardCount) },
+            { "indicesCount", str::asJson(billboardIndices.size()) },
+            { "firstIndices", str::asJson(firstEntries(billboardIndices), nested) },
+          })
+        : omitted },
+      { "indexOffsets", full
+        ? group({
+            { "count", str::asJson(indexOffsets.size()) },
+            { "first", str::asJson(firstEntries(indexOffsets), nested) },
+          })
+        : omitted },
+    }, indentLevel);
+  }
+
+  void RtInstance::printDebugInfo(AssetReplacer* pReplacer, InstanceDetailLevel detail) const {
 #ifdef REMIX_DEVELOPMENT
-    Logger::warn(str::format(
-      "=== RtInstance Debug Info ===\n",
-      "ID: ", m_id, "\n",
-      "Vector Index: ", m_instanceVectorId, "\n",
-      "Frame Created: ", m_frameCreated, "\n",
-      "Frame Last Updated: ", m_frameLastUpdated, "\n",
-      "Frame Age: ", getFrameAge(), "\n",
-      "\n",
-      "=== Transform Info ===\n",
-      "World Position: (", getWorldPosition().x, ", ", getWorldPosition().y, ", ", getWorldPosition().z, ")\n",
-      "Transform Matrix:\n",
-      "  [", getTransform()[0][0], ", ", getTransform()[0][1], ", ", getTransform()[0][2], ", ", getTransform()[0][3], "]\n",
-      "  [", getTransform()[1][0], ", ", getTransform()[1][1], ", ", getTransform()[1][2], ", ", getTransform()[1][3], "]\n",
-      "  [", getTransform()[2][0], ", ", getTransform()[2][1], ", ", getTransform()[2][2], ", ", getTransform()[2][3], "]\n",
-      "  [", getTransform()[3][0], ", ", getTransform()[3][1], ", ", getTransform()[3][2], ", ", getTransform()[3][3], "]\n",
-      "Previous World Position: (", getPrevWorldPosition().x, ", ", getPrevWorldPosition().y, ", ", getPrevWorldPosition().z, ")\n",
-      "\n",
-      "=== BLAS Info ===\n",
-      "Linked BLAS: ", m_linkedBlas ? "Valid" : "Null"));
-    
+    Logger::warn(asJson(detail, pReplacer, 0));
+
+    // The BLAS, its draw call and the surface describe other objects, and print themselves.
     if (m_linkedBlas) {
       Logger::warn("=== BLAS Entry Debug Info ===");
       m_linkedBlas->printDebugInfo("(from RtInstance)");
@@ -458,91 +637,7 @@ namespace dxvk {
     Logger::warn("=== RtSurface Debug Info ===");
     surface.printDebugInfo("(from RtInstance)");
     Logger::warn("=== End RtSurface Debug Info ===");
-    
-    Logger::warn(str::format(
-      "=== Hash Info ===\n",
-      "Material Hash: 0x", std::hex, m_materialHash, std::dec, "\n",
-      "Material Data Hash: 0x", std::hex, m_materialDataHash, std::dec, "\n",
-      "Texcoord Hash: 0x", std::hex, m_texcoordHash, std::dec, "\n",
-      "Index Hash: 0x", std::hex, m_indexHash, std::dec, "\n",
-      "\n",
-      "=== Vulkan Instance Info ===\n",
-      "VK Instance Mask: ", m_vkInstance.mask, "\n",
-      "VK Instance Flags: ", m_vkInstance.flags, "\n",
-      "VK Instance Custom Index: ", m_vkInstance.instanceCustomIndex, "\n",
-      "VK Instance SBT Record Offset: ", m_vkInstance.instanceShaderBindingTableRecordOffset, "\n",
-      "\n",
-      "=== Material Info ===\n",
-      "Material Type: ", static_cast<int>(m_materialType), "\n",
-      "Albedo Opacity Texture Index: ", m_albedoOpacityTextureIndex, "\n",
-      "Sampler Index: ", m_samplerIndex, "\n",
-      "Secondary Opacity Texture Index: ", m_secondaryOpacityTextureIndex, "\n",
-      "Secondary Sampler Index: ", m_secondarySamplerIndex, "\n",
-      "\n",
-      "=== Surface Info ===\n",
-      "Surface Index: ", m_surfaceIndex, "\n",
-      "Previous Surface Index: ", m_previousSurfaceIndex, "\n",
-      "\n",
-      "=== Billboard Info ===\n",
-      "First Billboard Index: ", m_firstBillboard, "\n",
-      "Billboard Count: ", m_billboardCount, "\n",
-      "\n",
-      "=== Geometry Info ===\n",
-      "Geometry Flags: ", m_geometryFlags, "\n",
-      "\n",
-      "=== Boolean Flags ===\n",
-      "Is Hidden: ", m_isHidden ? "true" : "false", "\n",
-      "Is Player Model: ", m_isPlayerModel ? "true" : "false", "\n",
-      "Is World Space UI: ", m_isWorldSpaceUI ? "true" : "false", "\n",
-      "Is Unordered: ", m_isUnordered ? "true" : "false", "\n",
-      "Is Object To World Mirrored: ", m_isObjectToWorldMirrored ? "true" : "false", "\n",
-      "Is Created By Renderer: ", m_isCreatedByRenderer ? "true" : "false", "\n",
-      "Is Animated: ", m_isAnimated ? "true" : "false", "\n",
-      "Is Front Face Flipped: ", isFrontFaceFlipped ? "true" : "false", "\n",
-      "\n",
-      "=== Garbage Collection Flags ===\n",
-      "Is Marked For GC: ", m_isMarkedForGC ? "true" : "false", "\n",
-      "\n",
-      "=== View Model Flags ===\n",
-      "Is View Model: ", isViewModel() ? "true" : "false", "\n",
-      "Is View Model Non Reference: ", isViewModelNonReference() ? "true" : "false", "\n",
-      "Is View Model Reference: ", isViewModelReference() ? "true" : "false", "\n",
-      "Is View Model Virtual: ", isViewModelVirtual() ? "true" : "false", "\n",
-      "\n",
-      "=== Category Info ===\n",
-      "Category Flags: ", m_categoryFlags.raw(), "\n",
-      "\n",
-      "=== Camera Types ===\n",
-      "Seen Camera Types Mask: ", m_seenCameraTypes.raw()));
 
-    for (uint32_t type = 0; type < CameraType::Count; ++type) {
-      if (m_seenCameraTypes.test(static_cast<CameraType::Enum>(type))) {
-        Logger::warn(str::format("  Camera Type: ", type));
-      }
-    }
-    
-    Logger::warn(str::format(
-      "\n=== Billboard Indices ===\n",
-      "Billboard Indices Count: ", billboardIndices.size()));
-    
-    for (size_t i = 0; i < std::min(billboardIndices.size(), size_t(5)); ++i) {
-      Logger::warn(str::format("  Billboard Index ", i, ": ", billboardIndices[i]));
-    }
-    if (billboardIndices.size() > 5) {
-      Logger::warn(str::format("  ... and ", billboardIndices.size() - 5, " more"));
-    }
-    
-    Logger::warn(str::format(
-      "\n=== Index Offsets ===\n",
-      "Index Offsets Count: ", indexOffsets.size()));
-    
-    for (size_t i = 0; i < std::min(indexOffsets.size(), size_t(5)); ++i) {
-      Logger::warn(str::format("  Index Offset ", i, ": ", indexOffsets[i]));
-    }
-    if (indexOffsets.size() > 5) {
-      Logger::warn(str::format("  ... and ", indexOffsets.size() - 5, " more"));
-    }
-    
     Logger::warn("=== End RtInstance Debug Info ===");
 #endif
 }

@@ -2236,15 +2236,14 @@ void geometryResolverVertex(
 
 #ifndef GBUFFER_PSR
     // Object picking for first resolveVertex hit
-    if (numUnorderedInteractions == 0 && GBUFFER_FEATURE_OBJECT_PICKING && cb.enableObjectPicking != 0)
+    if (numUnorderedInteractions == 0 && GBUFFER_FEATURE_OBJECT_PICKING && (cb.enableObjectPicking != 0 || cb.enableFirstHitSurfaceIndex))
     {
       // Write only if was OBJECT_PICKING_INVALID, i.e. write the very first resolveVertex
       // Object picking for decals
-      InterlockedCompareStore(
-        PrimaryObjectPicking[geometryResolverState.pixelCoordinate],
-        OBJECT_PICKING_INVALID,    // compare to
-        surfaceObjectPickingValue(surface, rayInteraction.primitiveIndex) // value to write, if equal
-      );
+      storeFirstObjectPickingHit(
+        geometryResolverState.pixelCoordinate,
+        surfaceObjectPickingValue(surface, rayInteraction.primitiveIndex),
+        rayInteraction.surfaceIndex);
     }
 #endif
   }
@@ -3467,10 +3466,10 @@ void geometryResolver(ivec2 pixelCoordinate) {
   }
 
 #ifndef GBUFFER_PSR
-  if (GBUFFER_FEATURE_OBJECT_PICKING && cb.enableObjectPicking != 0)
+  if (GBUFFER_FEATURE_OBJECT_PICKING && (cb.enableObjectPicking != 0 || cb.enableFirstHitSurfaceIndex))
   {
     // In ray generation, clean up object picking buffer before writing
-    PrimaryObjectPicking[pixelCoordinate] = OBJECT_PICKING_INVALID;
+    clearObjectPickingHit(uvec2(pixelCoordinate));
   }
   // Clear raw AOVs so misses cannot retain prior-frame values.
   geometryResolverOutputRawAovs(pixelCoordinate, vec4(0.0f), vec4(0.0f), vec4(0.0f));
@@ -3784,12 +3783,12 @@ void geometryResolverOutputDecalDebugViewAndPicking(
     accumulateInDebugViewAdd(pixelCoordinate, numUnorderedInteractions);
   }
 
-  if (decalEncountered && GBUFFER_FEATURE_OBJECT_PICKING && cb.enableObjectPicking != 0 && surfaceIndex >= 0)
+  if (decalEncountered && GBUFFER_FEATURE_OBJECT_PICKING && (cb.enableObjectPicking != 0 || cb.enableFirstHitSurfaceIndex) && surfaceIndex >= 0)
   {
     // The main GBuffer pass has already written the base surface by the time
     // deferred decals run. Publish the selected decal explicitly so picking
     // still reports the visible unordered decal rather than the surface below.
-    PrimaryObjectPicking[pixelCoordinate] = surfaces[uint(surfaceIndex)].objectPickingValue;
+    storeObjectPickingHit(pixelCoordinate, surfaces[uint(surfaceIndex)].objectPickingValue, uint(surfaceIndex));
   }
 }
 

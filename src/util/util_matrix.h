@@ -459,6 +459,30 @@ namespace dxvk {
     return os;
   }
 
+  // NV-DXVK start: JSON values
+  // Returns the columns of a matrix as one flat array, so the translation is elements 12 to 14.
+  // An indent level of 0 or more writes one column per line.
+  template<typename T>
+  std::string asJson(const Matrix4Base<T>& m, int indentLevel = str::kJsonCompact) {
+    constexpr uint32_t columnCount = 4;
+    const bool compact = indentLevel == str::kJsonCompact;
+    std::string text = "[";
+    for (uint32_t column = 0; column < columnCount; column++) {
+      text += compact ? "" : str::jsonNewLine(indentLevel + 1);
+      for (uint32_t row = 0; row < columnCount; row++) {
+        const bool isLast = column + 1 == columnCount && row + 1 == columnCount;
+        text += str::asJson(m[column][row]);
+        if (!isLast) {
+          text += compact || row + 1 == columnCount ? "," : ", ";
+        }
+      }
+    }
+    text += compact ? "" : str::jsonNewLine(indentLevel);
+    text += ']';
+    return text;
+  }
+  // NV-DXVK end
+
   using Matrix4 = Matrix4Base<float>;
   using Matrix4d = Matrix4Base<double>;
 

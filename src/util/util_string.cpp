@@ -21,6 +21,11 @@
 */
 #include "util_string.h"
 #include <iomanip>
+// NV-DXVK start: JSON values
+#include <charconv>
+#include <cmath>
+#include <cstdio>
+// NV-DXVK end
 
 namespace dxvk::str {
   std::string fromws(const WCHAR *ws) {
@@ -89,6 +94,81 @@ namespace dxvk::str {
     }
     return output;
   }
+
+  // NV-DXVK start: JSON values
+  std::string jsonNewLine(int indentLevel) {
+    return "\n" + std::string(2 * static_cast<size_t>(indentLevel), ' ');
+  }
+
+  std::string asJsonHash(uint64_t hash) {
+    char buffer[24];
+    std::snprintf(buffer, sizeof(buffer), "\"%016llx\"", static_cast<unsigned long long>(hash));
+    return buffer;
+  }
+
+  std::string asJsonObject(const JsonMember* pMembers, size_t memberCount, int indentLevel) {
+    const bool compact = indentLevel == kJsonCompact;
+    const std::string memberLine = compact ? std::string() : jsonNewLine(indentLevel + 1);
+    std::string text = "{";
+    bool hasMember = false;
+    for (size_t i = 0; i < memberCount; i++) {
+      const JsonMember& member = pMembers[i];
+      if (member.second.empty()) {
+        continue;
+      }
+      if (hasMember) {
+        text += ',';
+      }
+      hasMember = true;
+      text += memberLine;
+      text += '"';
+      text += member.first;
+      text += compact ? "\":" : "\": ";
+      text += member.second;
+    }
+    if (hasMember && !compact) {
+      text += jsonNewLine(indentLevel);
+    }
+    text += '}';
+    return text;
+  }
+
+  std::string asJson(float value, int indentLevel, int decimalPlaces) {
+    if (!std::isfinite(value)) {
+      return "null";
+    }
+    // to_chars ignores the C locale, unlike snprintf, and is several times faster.
+    // The buffer holds the largest float in fixed notation with a few decimal places.
+    char buffer[64];
+    std::to_chars_result result = decimalPlaces >= 0
+      ? std::to_chars(buffer, buffer + sizeof(buffer), value, std::chars_format::fixed, decimalPlaces)
+      : std::to_chars(buffer, buffer + sizeof(buffer), value);
+    if (result.ec != std::errc()) {
+      // The shortest text always fits.
+      result = std::to_chars(buffer, buffer + sizeof(buffer), value);
+    }
+    return std::string(buffer, result.ptr);
+  }
+
+  std::string asJson(std::string_view value, int indentLevel) {
+    // escapeCStyle leaves the control characters that have no short escape, which JSON does not allow raw.
+    const std::string escaped = escapeCStyle(value);
+    std::string text;
+    text.reserve(escaped.size() + 2);
+    text += '"';
+    for (const char ch : escaped) {
+      if (static_cast<unsigned char>(ch) < 0x20) {
+        char buffer[8];
+        std::snprintf(buffer, sizeof(buffer), "\\u%04x", static_cast<unsigned char>(ch));
+        text += buffer;
+      } else {
+        text += ch;
+      }
+    }
+    text += '"';
+    return text;
+  }
+  // NV-DXVK end
 
   bool isInvalidAscii(const unsigned char ch) {
     // Single-byte character (ASCII)
