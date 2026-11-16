@@ -122,7 +122,7 @@ void incrementUpdateCounters(bool isPrimaryVertex)
 // Returns true if the path should continue after the hit, false if it should terminate
 // Note: this does nothing for SHARC_QUERY on primary hit and thus should be only called for secondary hits.
 // Same for SHARC_UPDATE, since the primary hits are aliased for query and update paths and query paths' roughness shouldn't be modified.
-// Adjusts the isotropic roughness of the surface material interaction during SHARC update
+// Clamps the roughness of the surface material interaction to a minimum during SHaRC updates.
 bool onHitBeforeDirectLighting(
   inout PathState pathState,
   inout PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction, 
@@ -142,12 +142,9 @@ bool onHitBeforeDirectLighting(
     pathState.radiance = vec3(0.0f);
     pathState.throughput = f16vec3(1.h);
 
-    float16_t isotropicRoughness = getIsotropicRoughness(polymorphicSurfaceMaterialInteraction);
-
     // Since SHaRC works better with higher roughness values, we clamp the roughness during its updates to a minimum threshold.
     // Note: since first bounce is aliased between update and query, this roughness adjustment is only done for secondary vertices
-    isotropicRoughness = max(args.isotropicRoughnessThreshold, isotropicRoughness);
-    setIsotropicRoughness(polymorphicSurfaceMaterialInteraction, isotropicRoughness);
+    clampMinimumRoughness(polymorphicSurfaceMaterialInteraction, float16_t(args.isotropicRoughnessThreshold));
   }
 #else
   unused(polymorphicSurfaceMaterialInteraction);
