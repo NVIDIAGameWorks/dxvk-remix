@@ -88,7 +88,7 @@ void clampMinimumRoughness(
   inout PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   float16_t minimumRoughness)
 {
-   const uint8_t polymorphicType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+  const uint8_t polymorphicType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
 
   switch (uint(polymorphicType))
   {
@@ -98,8 +98,7 @@ void clampMinimumRoughness(
     polymorphicSurfaceMaterialInteraction.fdata3 = max(polymorphicSurfaceMaterialInteraction.fdata3, minimumRoughness);
     break;
   default:
-    // Do nothing here, as the translucent material does not have roughness.
-    // Todo: Fill roughness value when the translucent material adds roughness. For now though, use fallback.
+    // Translucent and ray portal materials have no roughness to clamp.
     break;
   }
 }
