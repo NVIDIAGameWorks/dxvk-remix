@@ -77,6 +77,7 @@ void Direct3DStateBlock9_LSS::StateTransfer(const BaseDirect3DDevice9Ex_LSS::Sta
   }
   if (flags.vertexDecl) {
     dst.vertexDecl = src.vertexDecl;
+    dst.fvf = src.fvf;
   }
   if (flags.indices) {
     dst.indices = src.indices;
