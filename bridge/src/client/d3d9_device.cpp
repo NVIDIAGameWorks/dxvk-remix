@@ -3977,30 +3977,19 @@ void Direct3DDevice9Ex_LSS<EnableSync>::initImplicitSwapchain(const D3DPRESENT_P
 
 template<bool EnableSync>
 void Direct3DDevice9Ex_LSS<EnableSync>::initImplicitRenderTarget() {
+  // Render target 0 is the implicit swapchain's back buffer 0 object, as in d3d9,
+  // so GetRenderTarget(0) and GetBackBuffer(0, 0) return the same surface.
+  // The swapchain already maps its id to the server's back buffer.
   IDirect3DSurface9* pRenderTarget = nullptr;
-
-  // Creating a place-holder surface
-  D3DSURFACE_DESC desc;
-  desc.Width = GET_PRES_PARAM().BackBufferWidth;
-  desc.Height = GET_PRES_PARAM().BackBufferHeight;
-  desc.Format = GET_PRES_PARAM().BackBufferFormat;
-  desc.MultiSampleType = GET_PRES_PARAM().MultiSampleType;
-  desc.MultiSampleQuality = GET_PRES_PARAM().MultiSampleQuality;
-  desc.Usage = D3DUSAGE_RENDERTARGET;
-  desc.Pool = D3DPOOL_DEFAULT;
-  desc.Type = D3DRTYPE_SURFACE;
-
-  // Insert our own IDirect3DSurface9 interface implementation
-  Direct3DSurface9_LSS* pLssSurface = trackWrapper(new Direct3DSurface9_LSS(this, desc));
-  pRenderTarget = (IDirect3DSurface9*) pLssSurface;
-
-  m_pImplicitRenderTarget = bridge_cast<Direct3DSurface9_LSS*>(pRenderTarget);
-  {
-    ClientMessage c(Commands::IDirect3DDevice9Ex_LinkBackBuffer, getId());
-    c.send_many(0, m_pImplicitRenderTarget->getId());
+  if (FAILED(m_pSwapchain->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, &pRenderTarget)) || pRenderTarget == nullptr) {
+    Logger::err("initImplicitRenderTarget: the implicit swapchain gave no back buffer 0");
+    return;
   }
+
+  // Holds the reference GetBackBuffer took.
+  m_pImplicitRenderTarget = bridge_cast<Direct3DSurface9_LSS*>(pRenderTarget);
   m_state.renderTargets[0] = MakeD3DAutoPtr(m_pImplicitRenderTarget);
-  m_implicitRefCnt++;
+  // m_implicitRefCnt does not count it, because a back buffer references its swapchain, not the device.
 }
 
 template<bool EnableSync>
@@ -4034,10 +4023,11 @@ void Direct3DDevice9Ex_LSS<EnableSync>::initImplicitDepthStencil() {
 template<bool EnableSync>
 void Direct3DDevice9Ex_LSS<EnableSync>::destroyImplicitObjects() {
   // Release implicit RenderTarget
-  const auto rtRefCnt = m_pImplicitRenderTarget->Release();
-  assert(rtRefCnt == 0 && "Implicit RenderTarget has not been released!");
-  m_pImplicitRenderTarget = nullptr;
-  --m_implicitRefCnt;
+  // Drops the reference GetBackBuffer took. The swapchain, released below, frees the surface.
+  if (m_pImplicitRenderTarget) {
+    m_pImplicitRenderTarget->Release();
+    m_pImplicitRenderTarget = nullptr;
+  }
   m_state.renderTargets[0].reset(nullptr);
 
   // Release implicit DepthStencil
