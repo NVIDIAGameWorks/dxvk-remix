@@ -887,7 +887,7 @@ namespace dxvk {
       blendEnabled = false;
     }
 
-    // Dissolved draw calls are alpha tested against blue noise instead of blended or fully opaque.
+    // Dissolved draw calls are alpha tested against noise, see AlphaBlendDissolvePattern, instead of blended or fully opaque.
     const bool isDissolved = alphaBlendDissolve != AlphaBlendDissolve::None;
 
     if (isDissolved) {

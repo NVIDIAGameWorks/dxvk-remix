@@ -1536,6 +1536,9 @@ namespace dxvk {
     constants.wboitDepthWeightTuning = RtxOptions::wboitDepthWeightTuning();
     constants.wboitEnabled = RtxOptions::wboitEnabled();
     constants.alphaBlendDissolvePattern = RtxOptions::alphaBlendDissolvePattern();
+    constants.alphaBlendDissolvePatternNoiseScale = RtxOptions::alphaBlendDissolvePatternNoiseScale();
+    // Per world unit, as rtx.viewDistance.noiseScale.
+    constants.alphaBlendDissolvePatternSpatialScale = RtxOptions::alphaBlendDissolvePatternSpatialScale() / RtxOptions::getMeterToWorldUnitScale();
 
     constants.eyeArgs.enableEyes = RtxOptions::Eye::enable();
     constants.eyeArgs.normalBendingEyeball = RtxOptions::Eye::eyeballSphereOffset();

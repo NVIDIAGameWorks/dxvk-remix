@@ -135,7 +135,7 @@ namespace dxvk {
         InstanceCategories::Particle, InstanceCategories::Beam,
         InstanceCategories::DecalStatic, InstanceCategories::DecalDynamic,
         InstanceCategories::DecalSingleOffset, InstanceCategories::DecalNoOffset,
-        InstanceCategories::AlphaBlendToCutout, InstanceCategories::HairCards,
+        InstanceCategories::AlphaBlendToCutout,
         InstanceCategories::Terrain, InstanceCategories::AnimatedWater,
         InstanceCategories::WorldUI, InstanceCategories::WorldMatte, InstanceCategories::Sky,
       };
@@ -231,6 +231,26 @@ namespace dxvk {
         }
       }
     }
+
+    // Faded hair cards dissolve by the same rules as other draws. Their alpha test is forced on, so the shader keeps their cutout
+    // in both dissolve patterns while they fade.
+    void testHairCards() {
+      auto modulateTexture = makeGameDraw(GameState::ModulateTextureFade);
+      modulateTexture.modifyCategoryFlags().set(InstanceCategories::HairCards);
+      require(calculateAlphaBlendDissolve(modulateTexture, false, makeMaterial(true)) == AlphaBlendDissolve::TextureAlphaTimesTextureFactor,
+              "A hair card faded by its texture alpha times the texture factor alpha must dissolve by the product.");
+
+      auto select = makeGameDraw(GameState::SelectFade);
+      select.modifyCategoryFlags().set(InstanceCategories::HairCards);
+      require(calculateAlphaBlendDissolve(select, false, makeMaterial(true)) == AlphaBlendDissolve::TextureFactor,
+              "A hair card faded by a selected texture factor alpha must dissolve by that alpha.");
+      require(calculateAlphaBlendDissolve(select, false, makeMaterial(false, false, AlphaTestType::kGreater)) == AlphaBlendDissolve::Fade,
+              "A hair card replacement with its own alpha state must dissolve by the game's fade.");
+
+      auto notFading = makeGameDraw(GameState::BlendedNoFade);
+      notFading.modifyCategoryFlags().set(InstanceCategories::HairCards);
+      requireNotConverted(notFading, makeMaterial(true), "A hair card that the game does not fade must keep its alpha handling.");
+    }
   }
 }
 
@@ -244,6 +264,7 @@ int main() {
     { "Exclusions", dxvk::testExclusions },
     { "Eyes", dxvk::testEyes },
     { "ReplacementMatrix", dxvk::testReplacementMatrix },
+    { "HairCards", dxvk::testHairCards },
   };
 
   uint32_t failures = 0;
