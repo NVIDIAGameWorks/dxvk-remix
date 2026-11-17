@@ -34,7 +34,7 @@ namespace dxvk {
 
     if (drawCall.isUsingRaytracedRenderTarget ||
         drawCall.testCategoryFlags(InstanceCategories::Particle, InstanceCategories::Beam, DECAL_CATEGORY_FLAGS,
-                                   InstanceCategories::AlphaBlendToCutout, InstanceCategories::HairCards,
+                                   InstanceCategories::AlphaBlendToCutout,
                                    InstanceCategories::Terrain, InstanceCategories::AnimatedWater,
                                    InstanceCategories::WorldUI, InstanceCategories::WorldMatte, InstanceCategories::Sky)) {
       return AlphaBlendDissolve::None;

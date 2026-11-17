@@ -952,7 +952,15 @@ namespace dxvk {
     RTX_OPTION("rtx", AlphaBlendDissolvePattern, alphaBlendDissolvePattern, AlphaBlendDissolvePattern::BlueNoise,
                "How rtx.enableAlphaBlendDissolve picks the pixels it keeps.\n"
                "0 = BlueNoise: blue noise.\n"
-               "1 = AlbedoAlpha: pixels whose albedo alpha is at most the fade, for authored dissolve ramps.");
+               "1 = SpatialNoise: pixels where a coherent 3D noise of their world space position is at most the fade, so all draws of a model fade by one pattern. Alpha-tested surfaces also keep their alpha test.");
+    RTX_OPTION_ARGS("rtx", float, alphaBlendDissolvePatternNoiseScale, 0.05f,
+                    "Blue noise added to the spatial noise of rtx.alphaBlendDissolvePattern SpatialNoise, as a fraction of the noise's range.\n"
+                    "0 cuts each pixel exactly when the fade passes its spatial noise; larger values spread the cut over a wider band of the noise.",
+                    args.minValue = 0.f, args.maxValue = 1.f);
+    RTX_OPTION_ARGS("rtx", float, alphaBlendDissolvePatternSpatialScale, 10.f,
+                    "The scale per meter applied to the position fed into the spatial noise of rtx.alphaBlendDissolvePattern SpatialNoise.\n"
+                    "The noise varies over about 1/scale meters, so larger values dissolve in smaller patches.",
+                    args.minValue = 0.f);
     RTX_OPTION("rtx", float, wboitEnergyLossCompensation, 4.f, "Multiplier for the coverage term in the weighted blended OIT imlementation - allows for some configuration to recover energy loss from the technique.  This is non physical, be careful overtuning ");
     RTX_OPTION("rtx", float, wboitDepthWeightTuning, 2.f, "Allows for tuning the weighted blended OIT depth weight - which can be used to fine tune blending for various circumstances.  This control has a side effect, larger numbers here can adversely affect brightness of emissive blended materials.");
     RTX_OPTION("rtx", bool, wboitEnabled, true, "Enables the new rendering mode for handling alpha blended objects.  Changing this will trigger a shader recompile.  The new mode improves rendering accuracy, especially in cases where there are many layers of transparent things being rendered.");

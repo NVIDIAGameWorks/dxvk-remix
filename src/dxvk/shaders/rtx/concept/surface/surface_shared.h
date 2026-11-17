@@ -61,12 +61,14 @@ static const uint32_t alphaTestTypeMask = 0x7u;
 
 // How a surface converted by rtx.enableAlphaBlendDissolve decides which pixels to keep.
 // See calculateAlphaBlendDissolve for which draw calls are converted, and in which mode.
+// The comments below describe AlphaBlendDissolvePattern::BlueNoise; SpatialNoise compares the game's fade against a spatial noise instead.
 enum class AlphaBlendDissolve : uint8_t {
   None = 0,
   // The game's opacity is its texture factor alpha (TextureFactorFade::Select). Keeps a pixel where that alpha exceeds blue noise.
+  // An alpha test sees full coverage, since the fade is the whole of that alpha.
   TextureFactor = 1,
   // The game's opacity is the material's alpha times its texture factor alpha (TextureFactorFade::ModulateTexture).
-  // Keeps a pixel where that product exceeds blue noise.
+  // Keeps a pixel where that product exceeds blue noise. An alpha test sees the material's alpha without the fade.
   TextureAlphaTimesTextureFactor = 2,
   // Keeps a pixel where its vertex alpha exceeds blue noise.
   VertexAlpha = 3,
@@ -82,8 +84,9 @@ static const uint32_t alphaBlendDissolveShift = 19u;
 enum class AlphaBlendDissolvePattern : uint32_t {
   // Keeps a pixel where its coverage exceeds blue noise.
   BlueNoise = 0,
-  // Keeps a pixel while the material's albedo alpha, an authored dissolve ramp, is at most the game's fade alpha.
-  AlbedoAlpha = 1
+  // Keeps a pixel while a coherent 3D noise of its world space position is at most the game's fade, so every draw
+  // of a model fades on one spatial schedule. Alpha-tested surfaces also keep their alpha test on their coverage without the fade.
+  SpatialNoise = 1
 };
 
 enum class RtTextureArgSource : uint8_t {

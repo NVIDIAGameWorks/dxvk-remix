@@ -460,8 +460,11 @@ struct RaytraceArgs {
 
   uint enableRtxdiBestLightJitter;
 
-  // rtx.alphaBlendDissolvePattern. Note: This uses the tail padding of the last 16 byte row, so the size is unchanged.
+  // rtx.alphaBlendDissolvePattern, rtx.alphaBlendDissolvePatternNoiseScale and rtx.alphaBlendDissolvePatternSpatialScale, the
+  // latter per world unit.
   AlphaBlendDissolvePattern alphaBlendDissolvePattern;
+  float alphaBlendDissolvePatternNoiseScale;
+  float alphaBlendDissolvePatternSpatialScale;
 
   // NOTE: Add structs to the top section of RaytraceArgs, not the bottom.
   // NOTE: bool does not work in debug builds, use uint instead.

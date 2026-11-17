@@ -273,7 +273,7 @@ namespace dxvk {
     "Dissolve Pattern",
     RemixGui::ComboWithKey<AlphaBlendDissolvePattern>::ComboEntries{ {
       {AlphaBlendDissolvePattern::BlueNoise, "Blue Noise"},
-      {AlphaBlendDissolvePattern::AlbedoAlpha, "Albedo Alpha Ramp"}
+      {AlphaBlendDissolvePattern::SpatialNoise, "Spatial Noise"}
   } });
 
   static auto upscalerNoDLSSCombo = RemixGui::ComboWithKey<UpscalerType>(
@@ -3367,6 +3367,10 @@ namespace dxvk {
       RemixGui::Checkbox("Render Alpha Tested", &RtxOptions::enableAlphaTestObject());
       RemixGui::Checkbox("Dissolve Alpha Blended (Opaque Stochastic Cutout)", &RtxOptions::enableAlphaBlendDissolveObject());
       alphaBlendDissolvePatternCombo.getKey(&RtxOptions::alphaBlendDissolvePatternObject());
+      ImGui::BeginDisabled(RtxOptions::alphaBlendDissolvePattern() != AlphaBlendDissolvePattern::SpatialNoise);
+      RemixGui::DragFloat("Dissolve Pattern Noise Scale", &RtxOptions::alphaBlendDissolvePatternNoiseScaleObject(), 0.01f, 0.0f, 1.0f, "%.2f", sliderFlags);
+      RemixGui::DragFloat("Dissolve Pattern Spatial Scale (per meter)", &RtxOptions::alphaBlendDissolvePatternSpatialScaleObject(), 0.1f, 0.0f, 0.0f, "%.1f", sliderFlags);
+      ImGui::EndDisabled();
       RemixGui::Separator();
 
       RemixGui::Checkbox("Emissive Blend Translation", &RtxOptions::enableEmissiveBlendModeTranslationObject());
