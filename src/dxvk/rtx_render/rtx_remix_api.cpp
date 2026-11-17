@@ -29,6 +29,7 @@
 #include "rtx_option.h"
 #include "rtx_option_manager.h"
 #include "rtx_globals.h"
+#include "rtx_gpu_resident_scene.h"
 #include "rtx_options.h"
 #include "rtx_debug_view.h"
 
@@ -285,11 +286,30 @@ namespace {
         return TextureRef { uploadedTexture };
       };
 
+      // The GPU-resident scene creates surface materials without a draw call to take a sampler from,
+      // so its materials carry their own sampler.
+      auto finalize = [&ctx](MaterialData material) {
+        if (!ctx.getCommonObjects()->getSceneManager().tryGpuResidentScene()) {
+          return material;
+        }
+        DxvkSamplerCreateInfo info {};
+        material.populateSamplerInfo(info);
+        Rc<DxvkSampler> sampler = ctx.getCommonObjects()->getResources().getSampler(
+          info.magFilter,
+          VK_SAMPLER_MIPMAP_MODE_LINEAR,
+          info.addressModeU,
+          info.addressModeV,
+          VK_SAMPLER_ADDRESS_MODE_REPEAT,
+          info.borderColor);
+        std::visit([&](auto& value) { value.setSamplerOverride(sampler); }, material.m_data);
+        return material;
+      };
+
       switch (materialWithoutPreload.getType()) {
       case MaterialDataType::Opaque:
       {
         const auto& src = materialWithoutPreload.getOpaqueMaterialData();
-        return MaterialData { OpaqueMaterialData{
+        return finalize(MaterialData { OpaqueMaterialData{
           preloadTexture(preload.albedoTexture),
           preloadTexture(preload.normalTexture),
           preloadTexture(preload.tangentTexture),
@@ -344,12 +364,12 @@ namespace {
           src.getTextureScale(),
           src.getTextureOffset(),
           src.getTextureRotation()
-        } };
+        } });
       }
       case MaterialDataType::Translucent: 
       {
         const auto& src = materialWithoutPreload.getTranslucentMaterialData();
-        return MaterialData { TranslucentMaterialData {
+        return finalize(MaterialData { TranslucentMaterialData {
           preloadTexture(preload.normalTexture),
           preloadTexture(preload.transmittanceTexture),
           preloadTexture(preload.emissiveTexture),
@@ -373,12 +393,12 @@ namespace {
           src.getTextureScale(),
           src.getTextureOffset(),
           src.getTextureRotation()
-        } };
+        } });
       }
       case MaterialDataType::RayPortal:
       {
         const auto& src = materialWithoutPreload.getRayPortalMaterialData();
-        return MaterialData { RayPortalMaterialData {
+        return finalize(MaterialData { RayPortalMaterialData {
           preloadTexture(preload.emissiveTexture),
           {}, // unused
           src.getRayPortalIndex(),
@@ -391,7 +411,7 @@ namespace {
           src.getFilterMode(),
           src.getWrapModeU(),
           src.getWrapModeV()
-        } };
+        } });
       }
       default: assert(0); return materialWithoutPreload;
       }
@@ -913,6 +933,71 @@ std::unique_ptr<dxvk::ExternalDrawState> dxvk::RemixAPIPrivateAccessor::toRtDraw
 }
 
 namespace {
+  dxvk::GpuResidentScene* tryGpuResidentScene(dxvk::D3D9DeviceEx* remixDevice) {
+    return remixDevice->GetDXVKDevice()->getCommon()->getSceneManager().tryGpuResidentScene();
+  }
+
+  // Clients older than 0.5.2 pass a shorter struct without isVertexColorBakedLighting,
+  // so only the fields before it are copied, and the value comes from rtx.vertexColorIsBakedLighting, as in toRtDrawState.
+  std::optional<remixapi_InstanceInfoBlendEXT> copyInstanceBlend(const remixapi_InstanceInfo& info) {
+    const auto* source = pnext::find<remixapi_InstanceInfoBlendEXT>(&info);
+    if (source == nullptr) {
+      return std::nullopt;
+    }
+    remixapi_InstanceInfoBlendEXT blend {};
+    if (s_apiVersion >= REMIXAPI_VERSION_MAKE(0, 5, 2)) {
+      blend = *source;
+    } else {
+      std::memcpy(&blend, source, offsetof(remixapi_InstanceInfoBlendEXT, isVertexColorBakedLighting));
+      blend.isVertexColorBakedLighting = dxvk::RtxOptions::vertexColorIsBakedLighting();
+    }
+    blend.pNext = nullptr;
+    return blend;
+  }
+
+  remixapi_ErrorCode createGpuResidentMaterial(
+    dxvk::D3D9DeviceEx* remixDevice,
+    dxvk::GpuResidentScene& scene,
+    const remixapi_MaterialInfo& info,
+    remixapi_MaterialHandle* out_handle) {
+    const dxvk::MaterialId id = dxvk::gpuResidentSceneAllocMaterialId(scene);
+    if (!id) {
+      return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
+    }
+    std::lock_guard lock { s_mutex };
+    remixDevice->EmitCs([pScene = &scene,
+                         id,
+                         cMaterialData = convert::toRtMaterialWithoutTexturePreload(info),
+                         cPreloadSrc = convert::makePreloadSource(info)](dxvk::DxvkContext* ctx) {
+      dxvk::gpuResidentSceneSetMaterial(
+        *pScene,
+        ctx->getCommonObjects()->getSceneManager(),
+        id,
+        convert::toRtMaterialFinalized(*ctx, cMaterialData, cPreloadSrc));
+    });
+    *out_handle = dxvk::packGenerationArrayId<remixapi_MaterialHandle>(id);
+    return REMIXAPI_ERROR_CODE_SUCCESS;
+  }
+
+  remixapi_ErrorCode destroyGpuResidentMaterial(
+    dxvk::D3D9DeviceEx* remixDevice,
+    dxvk::GpuResidentScene& scene,
+    remixapi_MaterialHandle handle) {
+    const dxvk::MaterialId id = dxvk::unpackGenerationArrayId<dxvk::MaterialId>(handle);
+    if (!dxvk::gpuResidentSceneFreeMaterialId(scene, id)) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+    std::lock_guard lock { s_mutex };
+    remixDevice->EmitCs([pScene = &scene, id](dxvk::DxvkContext* ctx) {
+      bool cameraMediumDestroyed = false;
+      dxvk::gpuResidentSceneReleaseMaterial(*pScene, id, cameraMediumDestroyed);
+      if (cameraMediumDestroyed) {
+        ctx->getCommonObjects()->getSceneManager().getCamera().invalidateViewHistory(ctx->getDevice()->getCurrentFrameId());
+      }
+    });
+    return REMIXAPI_ERROR_CODE_SUCCESS;
+  }
+
   remixapi_ErrorCode REMIXAPI_CALL remixapi_CreateMaterial(
     const remixapi_MaterialInfo* info,
     remixapi_MaterialHandle* out_handle) {
@@ -922,6 +1007,9 @@ namespace {
     }
     if (!out_handle || !info || info->sType != REMIXAPI_STRUCT_TYPE_MATERIAL_INFO) {
       return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+    if (dxvk::GpuResidentScene* scene = tryGpuResidentScene(remixDevice)) {
+      return createGpuResidentMaterial(remixDevice, *scene, *info, out_handle);
     }
     static_assert(sizeof(remixapi_MaterialHandle) == sizeof(info->hash));
     auto handle = reinterpret_cast<remixapi_MaterialHandle>(info->hash);
@@ -948,6 +1036,9 @@ namespace {
   remixapi_ErrorCode REMIXAPI_CALL remixapi_DestroyMaterial(
     remixapi_MaterialHandle handle) {
     if (auto remixDevice = tryAsDxvk()) {
+      if (dxvk::GpuResidentScene* scene = tryGpuResidentScene(remixDevice)) {
+        return destroyGpuResidentMaterial(remixDevice, *scene, handle);
+      }
       std::lock_guard lock { s_mutex };
       remixDevice->EmitCs([cHandle = handle](dxvk::DxvkContext* ctx) {
         auto& assets = ctx->getCommonObjects()->getSceneManager().getAssetReplacer();
@@ -1057,6 +1148,49 @@ namespace {
     return dst;
   }
 
+  // Unlike the hash-keyed path, the GPU-resident scene rejects meshes without surfaces.
+  remixapi_ErrorCode createGpuResidentMesh(
+    dxvk::D3D9DeviceEx* remixDevice,
+    dxvk::GpuResidentScene& scene,
+    const remixapi_MeshInfo& info,
+    remixapi_MeshHandle* out_handle) {
+    if (info.surfaces_count == 0 || info.surfaces_values == nullptr) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+    std::vector<dxvk::RasterGeometry> surfaces;
+    surfaces.reserve(info.surfaces_count);
+    for (size_t i = 0; i < info.surfaces_count; i++) {
+      surfaces.push_back(allocateSurfaceGeometry(remixDevice, info.surfaces_values[i]));
+    }
+
+    // The slot is reserved only after the buffer allocations, which can throw.
+    const dxvk::BlasId id = dxvk::gpuResidentSceneAllocMeshId(scene);
+    if (!id) {
+      return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
+    }
+    std::lock_guard lock { s_mutex };
+    remixDevice->EmitCs([pScene = &scene, id, cSurfaces = std::move(surfaces)](dxvk::DxvkContext* ctx) mutable {
+      dxvk::gpuResidentSceneSetMesh(*pScene, ctx->getCommonObjects()->getSceneManager(), ctx, id, std::move(cSurfaces));
+    });
+    *out_handle = dxvk::packGenerationArrayId<remixapi_MeshHandle>(id);
+    return REMIXAPI_ERROR_CODE_SUCCESS;
+  }
+
+  remixapi_ErrorCode destroyGpuResidentMesh(
+    dxvk::D3D9DeviceEx* remixDevice,
+    dxvk::GpuResidentScene& scene,
+    remixapi_MeshHandle handle) {
+    const dxvk::BlasId id = dxvk::unpackGenerationArrayId<dxvk::BlasId>(handle);
+    if (!dxvk::gpuResidentSceneFreeMeshId(scene, id)) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+    std::lock_guard lock { s_mutex };
+    remixDevice->EmitCs([pScene = &scene, id](dxvk::DxvkContext*) {
+      dxvk::gpuResidentSceneReleaseMesh(*pScene, id);
+    });
+    return REMIXAPI_ERROR_CODE_SUCCESS;
+  }
+
   remixapi_ErrorCode REMIXAPI_CALL remixapi_CreateMesh(
     const remixapi_MeshInfo* info,
     remixapi_MeshHandle* out_handle) {
@@ -1066,6 +1200,9 @@ namespace {
     }
     if (!out_handle || !info || info->sType != REMIXAPI_STRUCT_TYPE_MESH_INFO) {
       return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+    if (dxvk::GpuResidentScene* scene = tryGpuResidentScene(remixDevice)) {
+      return createGpuResidentMesh(remixDevice, *scene, *info, out_handle);
     }
     static_assert(sizeof(remixapi_MeshHandle) == sizeof(info->hash));
     auto handle = reinterpret_cast<remixapi_MeshHandle>(info->hash);
@@ -1094,6 +1231,9 @@ namespace {
     dxvk::D3D9DeviceEx* remixDevice = tryAsDxvk();
     if (!remixDevice) {
       return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
+    }
+    if (dxvk::GpuResidentScene* scene = tryGpuResidentScene(remixDevice)) {
+      return destroyGpuResidentMesh(remixDevice, *scene, handle);
     }
     std::lock_guard lock { s_mutex };
     remixDevice->EmitCs([cHandle = handle](dxvk::DxvkContext* ctx) {
@@ -1140,6 +1280,16 @@ namespace {
 
     const remixapi_MaterialHandle handle = info->medium;
 
+    if (dxvk::GpuResidentScene* scene = tryGpuResidentScene(remixDevice)) {
+      std::lock_guard lock { s_mutex };
+      remixDevice->EmitCs([pScene = scene, id = dxvk::unpackGenerationArrayId<dxvk::MaterialId>(handle)](dxvk::DxvkContext* ctx) {
+        if (dxvk::gpuResidentSceneSetCameraMediumMaterial(*pScene, id)) {
+          ctx->getCommonObjects()->getSceneManager().getCamera().invalidateViewHistory(ctx->getDevice()->getCurrentFrameId());
+        }
+      });
+      return REMIXAPI_ERROR_CODE_SUCCESS;
+    }
+
     std::lock_guard lock { s_mutex };
     remixDevice->EmitCs([handle](dxvk::DxvkContext* ctx) {
       auto& sceneManager = ctx->getCommonObjects()->getSceneManager();
@@ -1172,6 +1322,10 @@ namespace {
     if (!remixDevice) {
       return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
     }
+    if (tryGpuResidentScene(remixDevice)) {
+      using namespace dxvk;
+      ONCE(Logger::warn("[RTX] GPU-resident scene does not run the water simulation."));
+    }
     std::lock_guard lock { s_mutex };
     remixDevice->EmitCs([cInfo = *info](dxvk::DxvkContext* ctx) {
       ctx->getCommonObjects()->metaWaterSim().setState(cInfo);
@@ -1192,6 +1346,10 @@ namespace {
     dxvk::D3D9DeviceEx* remixDevice = tryAsDxvk();
     if (!remixDevice) {
       return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
+    }
+    if (tryGpuResidentScene(remixDevice)) {
+      using namespace dxvk;
+      ONCE(Logger::warn("[RTX] GPU-resident scene does not run the water simulation."));
     }
     std::lock_guard lock { s_mutex };
     remixDevice->EmitCs([cInfo = *info](dxvk::DxvkContext* ctx) {
@@ -1227,10 +1385,137 @@ namespace {
     // Hoist conversion outside of mutex
     auto drawState = convert::toRtDrawState(*info);
 
+    // On the GPU-resident scene, a drawn instance is a frame-local instance.
+    if (dxvk::GpuResidentScene* scene = tryGpuResidentScene(remixDevice)) {
+      std::optional<remixapi_InstanceInfoBlendEXT> blend = copyInstanceBlend(*info);
+      std::lock_guard lock { s_mutex };
+      remixDevice->EmitCs<false>([pScene = scene, cState = std::move(drawState), blend](dxvk::DxvkContext*) mutable {
+        dxvk::gpuResidentSceneAddFrameLocalInstance(*pScene, std::move(*cState), blend ? &*blend : nullptr);
+      });
+      return REMIXAPI_ERROR_CODE_SUCCESS;
+    }
+
     std::lock_guard lock { s_mutex };
     remixDevice->EmitCs<false>([cRtDrawState = std::move(drawState)](dxvk::DxvkContext* dxvkCtx) mutable {
       auto* ctx = static_cast<dxvk::RtxContext*>(dxvkCtx);
       ctx->commitExternalGeometryToRT(std::move(cRtDrawState));
+    });
+    return REMIXAPI_ERROR_CODE_SUCCESS;
+  }
+
+  remixapi_ErrorCode REMIXAPI_CALL remixapi_UpdateMaterial(
+    remixapi_MaterialHandle handle,
+    const remixapi_MaterialInfo* info) {
+    dxvk::D3D9DeviceEx* remixDevice = tryAsDxvk();
+    if (!remixDevice) {
+      return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
+    }
+    if (!handle || !info || info->sType != REMIXAPI_STRUCT_TYPE_MATERIAL_INFO) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+    dxvk::GpuResidentScene* scene = tryGpuResidentScene(remixDevice);
+    if (!scene) {
+      using namespace dxvk;
+      ONCE(Logger::warn("[RTX] UpdateMaterial requires rtx.gpuResidentScene."));
+      return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
+    }
+    const dxvk::MaterialId id = dxvk::unpackGenerationArrayId<dxvk::MaterialId>(handle);
+    std::lock_guard lock { s_mutex };
+    remixDevice->EmitCs([pScene = scene,
+                         id,
+                         cMaterialData = convert::toRtMaterialWithoutTexturePreload(*info),
+                         cPreloadSrc = convert::makePreloadSource(*info)](dxvk::DxvkContext* ctx) {
+      bool cameraMediumUpdated = false;
+      dxvk::gpuResidentSceneUpdateMaterial(
+        *pScene,
+        id,
+        convert::toRtMaterialFinalized(*ctx, cMaterialData, cPreloadSrc),
+        cameraMediumUpdated);
+      if (cameraMediumUpdated) {
+        ctx->getCommonObjects()->getSceneManager().getCamera().invalidateViewHistory(ctx->getDevice()->getCurrentFrameId());
+      }
+    });
+    return REMIXAPI_ERROR_CODE_SUCCESS;
+  }
+
+  remixapi_ErrorCode REMIXAPI_CALL remixapi_SceneInstanceAdd(
+    const remixapi_InstanceInfo* info,
+    remixapi_SceneInstanceHandle* out_handle) {
+    dxvk::D3D9DeviceEx* remixDevice = tryAsDxvk();
+    if (!remixDevice) {
+      return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
+    }
+    if (!info || !out_handle || info->sType != REMIXAPI_STRUCT_TYPE_INSTANCE_INFO || !info->mesh) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+    dxvk::GpuResidentScene* scene = tryGpuResidentScene(remixDevice);
+    if (!scene) {
+      using namespace dxvk;
+      ONCE(Logger::warn("[RTX] SceneInstanceAdd requires rtx.gpuResidentScene."));
+      return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
+    }
+    auto state = convert::toRtDrawState(*info);
+    std::optional<remixapi_InstanceInfoBlendEXT> blend = copyInstanceBlend(*info);
+    const dxvk::SurfaceId id = dxvk::gpuResidentSceneAllocInstanceId(*scene);
+    if (!id) {
+      return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
+    }
+    std::lock_guard lock { s_mutex };
+    remixDevice->EmitCs([pScene = scene, id, cState = std::move(state), blend](dxvk::DxvkContext*) mutable {
+      dxvk::gpuResidentSceneSetInstance(*pScene, id, std::move(*cState), blend ? &*blend : nullptr);
+    });
+    *out_handle = dxvk::packGenerationArrayId<remixapi_SceneInstanceHandle>(id);
+    return REMIXAPI_ERROR_CODE_SUCCESS;
+  }
+
+  remixapi_ErrorCode REMIXAPI_CALL remixapi_SceneInstanceUpdate(
+    remixapi_SceneInstanceHandle handle,
+    const remixapi_InstanceInfo* info) {
+    dxvk::D3D9DeviceEx* remixDevice = tryAsDxvk();
+    if (!remixDevice) {
+      return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
+    }
+    if (!handle || !info || info->sType != REMIXAPI_STRUCT_TYPE_INSTANCE_INFO || !info->mesh) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+    dxvk::GpuResidentScene* scene = tryGpuResidentScene(remixDevice);
+    if (!scene) {
+      using namespace dxvk;
+      ONCE(Logger::warn("[RTX] SceneInstanceUpdate requires rtx.gpuResidentScene."));
+      return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
+    }
+    auto state = convert::toRtDrawState(*info);
+    std::optional<remixapi_InstanceInfoBlendEXT> blend = copyInstanceBlend(*info);
+    const dxvk::SurfaceId id = dxvk::unpackGenerationArrayId<dxvk::SurfaceId>(handle);
+    std::lock_guard lock { s_mutex };
+    remixDevice->EmitCs([pScene = scene, id, cState = std::move(state), blend](dxvk::DxvkContext*) mutable {
+      dxvk::gpuResidentSceneUpdateInstance(*pScene, id, std::move(*cState), blend ? &*blend : nullptr);
+    });
+    return REMIXAPI_ERROR_CODE_SUCCESS;
+  }
+
+  remixapi_ErrorCode REMIXAPI_CALL remixapi_SceneInstanceRemove(
+    remixapi_SceneInstanceHandle handle) {
+    dxvk::D3D9DeviceEx* remixDevice = tryAsDxvk();
+    if (!remixDevice) {
+      return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
+    }
+    if (!handle) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+    dxvk::GpuResidentScene* scene = tryGpuResidentScene(remixDevice);
+    if (!scene) {
+      using namespace dxvk;
+      ONCE(Logger::warn("[RTX] SceneInstanceRemove requires rtx.gpuResidentScene."));
+      return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
+    }
+    const dxvk::SurfaceId id = dxvk::unpackGenerationArrayId<dxvk::SurfaceId>(handle);
+    if (!dxvk::gpuResidentSceneFreeInstanceId(*scene, id)) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+    std::lock_guard lock { s_mutex };
+    remixDevice->EmitCs([pScene = scene, id](dxvk::DxvkContext*) {
+      dxvk::gpuResidentSceneReleaseInstance(*pScene, id);
     });
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
@@ -1947,8 +2232,12 @@ extern "C"
       interf.dxvk_SetDefaultOutput = remixapi_dxvk_SetDefaultOutput;
       interf.pick_RequestObjectPicking = remixapi_pick_RequestObjectPicking;
       interf.pick_HighlightObjects = remixapi_pick_HighlightObjects;
+      interf.SceneInstanceAdd = remixapi_SceneInstanceAdd;
+      interf.SceneInstanceUpdate = remixapi_SceneInstanceUpdate;
+      interf.SceneInstanceRemove = remixapi_SceneInstanceRemove;
+      interf.UpdateMaterial = remixapi_UpdateMaterial;
     }
-    static_assert(sizeof(interf) == 192, "Add/remove function registration");
+    static_assert(sizeof(interf) == 224, "Add/remove function registration");
 
     remixapi_version::writeClientInterface(interf, info->version, out_result);
     return REMIXAPI_ERROR_CODE_SUCCESS;

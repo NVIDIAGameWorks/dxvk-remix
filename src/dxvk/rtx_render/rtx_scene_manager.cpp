@@ -148,6 +148,7 @@ namespace dxvk {
     , m_bindlessResourceManager(device)
     , m_pReplacer(new AssetReplacer())
     , m_terrainBaker(new TerrainBaker())
+    , m_gpuResidentScene(gpuResidentScene() ? std::make_unique<GpuResidentScene>(device) : nullptr)
     , m_cameraManager(device)
     , m_uniqueObjectSearchDistance(RtxOptions::uniqueObjectDistance()) {
     InstanceEventHandler instanceEvents(this);
@@ -162,6 +163,122 @@ namespace dxvk {
 
   bool SceneManager::hasAnyMods() const {
     return m_pReplacer->hasAnyMods();
+  }
+
+  Rc<DxvkBuffer> SceneManager::getSurfaceMaterialBuffer() const {
+    return m_gpuResidentScene != nullptr
+      ? gpuResidentSceneGetMaterialBuffer(*m_gpuResidentScene)
+      : m_surfaceMaterialBuffer;
+  }
+
+  Rc<DxvkBuffer> SceneManager::getSurfaceMaterialExtensionBuffer() const {
+    return m_gpuResidentScene != nullptr
+      ? gpuResidentSceneGetMaterialExtensionBuffer(*m_gpuResidentScene)
+      : m_surfaceMaterialExtensionBuffer;
+  }
+
+  Rc<DxvkBuffer> SceneManager::getVolumeMaterialBuffer() const {
+    return m_gpuResidentScene != nullptr
+      ? gpuResidentSceneGetEmptyBuffer(*m_gpuResidentScene)
+      : m_volumeMaterialBuffer;
+  }
+
+  Rc<DxvkBuffer> SceneManager::getSurfaceBuffer() const {
+    return m_gpuResidentScene != nullptr
+      ? gpuResidentSceneGetSurfaceBuffer(*m_gpuResidentScene)
+      : m_accelManager.getSurfaceBuffer();
+  }
+
+  Rc<DxvkBuffer> SceneManager::getSurfaceMappingBuffer() const {
+    return m_gpuResidentScene != nullptr
+      ? gpuResidentSceneGetSurfaceMappingBuffer(*m_gpuResidentScene)
+      : m_accelManager.getSurfaceMappingBuffer();
+  }
+
+  Rc<DxvkBuffer> SceneManager::getCurrentFramePrimitiveIDPrefixSumBuffer() const {
+    return m_gpuResidentScene != nullptr
+      ? gpuResidentSceneGetCurrentPrimitiveIDPrefixSumBuffer(*m_gpuResidentScene)
+      : m_accelManager.getCurrentFramePrimitiveIDPrefixSumBuffer();
+  }
+
+  Rc<DxvkBuffer> SceneManager::getLastFramePrimitiveIDPrefixSumBuffer() const {
+    return m_gpuResidentScene != nullptr
+      ? gpuResidentSceneGetPreviousPrimitiveIDPrefixSumBuffer(*m_gpuResidentScene)
+      : m_accelManager.getLastFramePrimitiveIDPrefixSumBuffer();
+  }
+
+  Rc<DxvkBuffer> SceneManager::getBillboardsBuffer() const {
+    return m_gpuResidentScene != nullptr
+      ? gpuResidentSceneGetEmptyBuffer(*m_gpuResidentScene)
+      : m_accelManager.getBillboardsBuffer();
+  }
+
+  uint32_t SceneManager::getSurfaceCount() const {
+    return m_gpuResidentScene != nullptr
+      ? gpuResidentSceneGetSurfaceCount(*m_gpuResidentScene)
+      : m_accelManager.getSurfaceCount();
+  }
+
+  bool SceneManager::hasRenderableScene() const {
+    return m_gpuResidentScene != nullptr
+      ? gpuResidentSceneHasRenderableSurfaces(*m_gpuResidentScene)
+      : m_accelManager.getSurfaceBuffer() != nullptr;
+  }
+
+  bool SceneManager::isPreviousFrameSceneAvailable() const {
+    return m_gpuResidentScene != nullptr
+      ? gpuResidentSceneHasPreviousScene(*m_gpuResidentScene)
+      : m_previousFrameSceneAvailable && getSurfaceMappingBuffer().ptr() != nullptr;
+  }
+
+  uint32_t SceneManager::getStartInMediumMaterialIndex() const {
+    return m_gpuResidentScene != nullptr
+      ? gpuResidentSceneGetCameraMediumMaterialIndex(*m_gpuResidentScene)
+      : m_startInMediumMaterialIndex;
+  }
+
+  // The GPU-resident scene does not count POM materials, so it keeps POM enabled.
+  uint32_t SceneManager::getActivePOMCount() const {
+    return m_gpuResidentScene != nullptr ? 1 : m_activePOMCount;
+  }
+
+  // The GPU-resident scene does not count thin-opaque materials, so their resources are always allocated.
+  bool SceneManager::isThinOpaqueMaterialExist() const {
+    return m_gpuResidentScene != nullptr || m_thinOpaqueCount > 0;
+  }
+
+  // The GPU-resident scene does not count SSS materials, so their resources are always allocated.
+  bool SceneManager::isSssMaterialExist() const {
+    return m_gpuResidentScene != nullptr || m_sssCount > 0;
+  }
+
+  bool SceneManager::prepareRemixApiGeometry(DxvkContext* ctx, RasterGeometry&& input, RaytraceGeometry& output) {
+    if (m_bufferCache.getTotalCount() >= kBufferCacheLimit && m_bufferCache.getActiveCount() >= kBufferCacheLimit) {
+      ONCE(Logger::warn("[RTX] GPU-resident scene exceeded the bindless buffer capacity. Some meshes will not be ray traced."));
+      return false;
+    }
+
+    DrawCallState drawCall;
+    drawCall.modifyGeometryData() = std::move(input);
+    BlasEntry blas(drawCall);
+    if (processGeometryInfo<true>(Rc<DxvkContext>(ctx), drawCall, &blas) == ObjectCacheState::kInvalid) {
+      unregisterGeometryBuffers(blas.modifiedGeometryData);
+      return false;
+    }
+    output = std::move(blas.modifiedGeometryData);
+    return true;
+  }
+
+  void SceneManager::releaseRemixApiGeometry(RaytraceGeometry& geometry) {
+    unregisterGeometryBuffers(geometry);
+    geometry = RaytraceGeometry {};
+  }
+
+  RtSurfaceMaterial SceneManager::createRemixApiSurfaceMaterial(const MaterialData& material,
+                                                                uint32_t subsurfaceMaterialIndex,
+                                                                std::optional<RtSubsurfaceMaterial>& subsurfaceMaterial) {
+    const DrawCallState drawCall;
+    return createSurfaceMaterial(material, drawCall, nullptr, false, true, subsurfaceMaterialIndex, &subsurfaceMaterial);
   }
 
   std::vector<Mod::State> SceneManager::getReplacementStates() const {
@@ -243,6 +360,12 @@ namespace dxvk {
 
   void SceneManager::clear(Rc<DxvkContext> ctx, bool needWfi) {
     ScopedCpuProfileZone();
+
+    // The GPU-resident scene's resources live until the API destroys them,
+    // so a missing camera or an asset change must not invalidate its buffer and texture indices.
+    if (m_gpuResidentScene != nullptr) {
+      return;
+    }
 
     auto& textureManager = m_device->getCommon()->getTextureManager();
 
@@ -397,6 +520,10 @@ namespace dxvk {
   }
 
   void SceneManager::onDestroy() {
+    if (m_gpuResidentScene != nullptr) {
+      gpuResidentSceneOnDestroy(*m_gpuResidentScene);
+    }
+
     // First, because the mods' rebuild workers read through RtxInitializer and the
     // texture manager, and DxvkObjects destroys both before it destroys us. This is
     // the only point on the teardown path where everything they touch is still alive.
@@ -589,6 +716,16 @@ namespace dxvk {
   void SceneManager::onFrameEnd(Rc<DxvkContext> ctx, bool raytracedThisFrame) {
     ScopedCpuProfileZone();
 
+    if (m_gpuResidentScene != nullptr) {
+      manageTextureVram();
+      gpuResidentSceneEndFrame(*m_gpuResidentScene, *this);
+      m_cameraManager.onFrameEnd();
+      if (raytracedThisFrame) {
+        m_graphManager.update(ctx);
+      }
+      return;
+    }
+
     // Commit this frame's texture registrations for preserve next frame. Must run before
     // manageTextureVram(), which may clear the cache and bump the generation so the
     // following frame takes the dynamic path for every draw call.
@@ -682,6 +819,10 @@ namespace dxvk {
 
   void SceneManager::submitDrawState(Rc<DxvkContext> ctx, const DrawCallState& input, const MaterialData* overrideMaterialData) {
     ScopedCpuProfileZone();
+    if (m_gpuResidentScene != nullptr) {
+      ONCE(Logger::warn("[RTX] D3D9 geometry is not ray traced while rtx.gpuResidentScene is enabled."));
+      return;
+    }
     if (m_bufferCache.getTotalCount() >= kBufferCacheLimit && m_bufferCache.getActiveCount() >= kBufferCacheLimit) {
       ONCE(Logger::info("[RTX-Compatibility-Info] This application is pushing more unique buffers than is currently supported - some objects may not raytrace."));
       return;
@@ -1671,11 +1812,18 @@ namespace dxvk {
       "Ignoring further MetaInfo-s, some objects might be not be available through object picking"));
   }
 
-  const RtSurfaceMaterial& SceneManager::createSurfaceMaterial(const MaterialData& renderMaterialData,
-                                                               const DrawCallState& drawCallState,
-                                                               uint32_t* out_indexInCache) {
+  RtSurfaceMaterial SceneManager::createSurfaceMaterial(const MaterialData& renderMaterialData,
+                                                        const DrawCallState& drawCallState,
+                                                        uint32_t* out_indexInCache,
+                                                        bool cacheResult,
+                                                        bool hasTexcoordsOverride,
+                                                        uint32_t subsurfaceMaterialIndexOverride,
+                                                        std::optional<RtSubsurfaceMaterial>* pOutSubsurfaceMaterial) {
     ScopedCpuProfileZone();
-    const bool hasTexcoords = drawCallState.hasTextureCoordinates();
+    if (pOutSubsurfaceMaterial != nullptr) {
+      pOutSubsurfaceMaterial->reset();
+    }
+    const bool hasTexcoords = hasTexcoordsOverride || drawCallState.hasTextureCoordinates();
     const auto renderMaterialDataType = renderMaterialData.getType();
 
     // We're going to use this to create a modified sampler for replacement textures.
@@ -1746,7 +1894,7 @@ namespace dxvk {
     }
 
     auto iter = m_preCreationSurfaceMaterialMap.find(preCreationHash);
-    if (iter != m_preCreationSurfaceMaterialMap.end()) {
+    if (cacheResult && iter != m_preCreationSurfaceMaterialMap.end()) {
       if (out_indexInCache) {
         *out_indexInCache = iter->second;
       }
@@ -1836,8 +1984,9 @@ namespace dxvk {
 
       const bool isSubsurfaceScatteringDiffusionProfile = opaqueMaterialData.getSubsurfaceDiffusionProfile();
 
-      if ((RtxOptions::SubsurfaceScattering::enableThinOpaque()       && subsurfaceMeasurementDistance > 0.0f) ||
-          (RtxOptions::SubsurfaceScattering::enableDiffusionProfile() && isSubsurfaceScatteringDiffusionProfile)) {
+      if ((cacheResult || pOutSubsurfaceMaterial != nullptr) &&
+          ((RtxOptions::SubsurfaceScattering::enableThinOpaque()       && subsurfaceMeasurementDistance > 0.0f) ||
+           (RtxOptions::SubsurfaceScattering::enableDiffusionProfile() && isSubsurfaceScatteringDiffusionProfile))) {
 
         subsurfaceTransmittanceColor = opaqueMaterialData.getSubsurfaceTransmittanceColor();
         subsurfaceVolumetricAnisotropy = opaqueMaterialData.getSubsurfaceVolumetricAnisotropy();
@@ -1871,7 +2020,7 @@ namespace dxvk {
           }
         }
 
-        const auto subsurfaceMaterial = RtSubsurfaceMaterial{
+        auto subsurfaceMaterial = RtSubsurfaceMaterial{
           subsurfaceTransmittanceTextureIndex,
           subsurfaceThicknessTextureIndex,
           subsurfaceSingleScatteringAlbedoTextureIndex,
@@ -1882,7 +2031,14 @@ namespace dxvk {
           subsurfaceRadiusScale,
           subsurfaceMaxSampleRadius,
         };
-        subsurfaceMaterialIndex = m_surfaceMaterialExtensionCache.track(subsurfaceMaterial);
+        if (pOutSubsurfaceMaterial == nullptr) {
+          subsurfaceMaterialIndex = m_surfaceMaterialExtensionCache.track(subsurfaceMaterial);
+        } else if (subsurfaceMaterialIndexOverride < SURFACE_INDEX_INVALID) {
+          subsurfaceMaterialIndex = subsurfaceMaterialIndexOverride;
+          pOutSubsurfaceMaterial->emplace(std::move(subsurfaceMaterial));
+        } else {
+          assert(false);
+        }
       }
 
       const RtOpaqueSurfaceMaterial opaqueSurfaceMaterial{
@@ -1930,6 +2086,10 @@ namespace dxvk {
 
     assert(surfaceMaterial.has_value());
     assert(surfaceMaterial->validate());
+
+    if (!cacheResult) {
+      return *surfaceMaterial;
+    }
 
     // Cache this
     const uint32_t index = m_surfaceMaterialCache.track(*surfaceMaterial);
@@ -2235,8 +2395,36 @@ namespace dxvk {
     }
   }
 
+  void SceneManager::prepareSceneResources() {
+    if (m_gpuResidentScene != nullptr) {
+      gpuResidentScenePrepareResources(*m_gpuResidentScene, *this);
+    }
+  }
+
   void SceneManager::prepareSceneData(Rc<RtxContext> ctx, DxvkBarrierSet& execBarriers) {
     ScopedGpuProfileZone(ctx, "Build Scene");
+
+    if (m_gpuResidentScene != nullptr) {
+      {
+        ScopedCpuProfileZoneN("GPU Resident Scene Graph Overrides");
+        m_graphManager.applySceneOverrides(ctx);
+      }
+      {
+        ScopedCpuProfileZoneN("GPU Resident Scene Bindless Resources");
+        auto& textureManager = m_device->getCommon()->getTextureManager();
+        if (m_bindlessResourceManager.prepareSceneData(
+              ctx, textureManager.getTextureTable(), getBufferTable(),
+              m_bufferCache.getUpdatedSlots(), getSamplerTable())) {
+          m_bufferCache.clearUpdatedSlots();
+        }
+      }
+      {
+        ScopedCpuProfileZoneN("GPU Resident Scene Light Buffers");
+        m_lightManager.prepareSceneData(ctx, m_cameraManager);
+      }
+      gpuResidentScenePrepare(*m_gpuResidentScene, ctx, execBarriers);
+      return;
+    }
 
   #ifdef REMIX_DEVELOPMENT
     if (m_device->getCurrentFrameId() == RtxOptions::dumpAllInstancesOnFrame()) {
@@ -2798,6 +2986,9 @@ namespace dxvk {
     }
 
     if (freeTextures) {
+      if (m_gpuResidentScene != nullptr) {
+        gpuResidentScenePrepareTextureCacheClear(*m_gpuResidentScene);
+      }
       m_device->getCommon()->getTextureManager().clear();
 
       if (m_opacityMicromapManager) {

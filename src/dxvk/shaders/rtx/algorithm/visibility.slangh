@@ -53,9 +53,16 @@ vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo rayHi
     }
 
     // Map the surface index from the previous frame to the current frame
+    uint mappingCount;
+    uint mappingStride;
+    surfaceMapping.GetDimensions(mappingCount, mappingStride);
+    if (rayInteraction.surfaceIndex >= mappingCount)
+    {
+      return vec3(1.0f);
+    }
     rayInteraction.surfaceIndex = surfaceMapping[rayInteraction.surfaceIndex];
 
-    if (rayInteraction.surfaceIndex == SURFACE_INDEX_INVALID)
+    if (rayInteraction.surfaceIndex >= cb.surfaceCount)
     {
       // Surface no longer exists - assume it was transparent, which is safer than
       // assuming an opaque surface, because that would introduce more bias in ReSTIR

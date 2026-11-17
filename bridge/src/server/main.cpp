@@ -180,6 +180,170 @@ static void deserializeFromQueue(SerializableT& serializableT) {
   dslz.deserialize();
   serializableT = std::move(dslz);
 }
+
+// Holds the deserialized extensions of a material info, so they need no heap allocations.
+struct MaterialExtensions {
+  serialize::MaterialInfoOpaque opaque;
+  serialize::MaterialInfoOpaqueSubsurface opaqueSubsurface;
+  serialize::MaterialInfoTranslucent translucent;
+  serialize::MaterialInfoPortal portal;
+};
+
+// Reads a material info and its extensions from the queue, and chains the extensions to the info.
+void pullMaterialInfo(serialize::MaterialInfo& matInfo, MaterialExtensions& exts, const char* pCommand) {
+  memset(&exts, 0, sizeof(MaterialExtensions));
+
+  const auto matInfoSType = remixapi::pullSType();
+  assert(matInfoSType == REMIXAPI_STRUCT_TYPE_MATERIAL_INFO);
+  deserializeFromQueue(matInfo);
+  matInfo.pNext = nullptr;
+
+  bool bMatExtExists = remixapi::pullBool();
+  auto* pInfoProto = &getInfoProto(matInfo);
+  while (bMatExtExists) {
+    const auto extSType = remixapi::pullSType();
+    switch (extSType) {
+      case REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_EXT:
+      {
+        assert(!exts.opaque.pNext);
+        deserializeFromQueue(exts.opaque);
+        pInfoProto->pNext = &(exts.opaque);
+        pInfoProto = &getInfoProto(exts.opaque);
+        break;
+      }
+      case REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_SUBSURFACE_EXT:
+      {
+        assert(!exts.opaqueSubsurface.pNext);
+        deserializeFromQueue(exts.opaqueSubsurface);
+        pInfoProto->pNext = &(exts.opaqueSubsurface);
+        pInfoProto = &getInfoProto(exts.opaqueSubsurface);
+        break;
+      }
+      case REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_TRANSLUCENT_EXT:
+      {
+        assert(!exts.translucent.pNext);
+        deserializeFromQueue(exts.translucent);
+        pInfoProto->pNext = &(exts.translucent);
+        pInfoProto = &getInfoProto(exts.translucent);
+        break;
+      }
+      case REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_PORTAL_EXT:
+      {
+        assert(!exts.portal.pNext);
+        deserializeFromQueue(exts.portal);
+        pInfoProto->pNext = &(exts.portal);
+        pInfoProto = &getInfoProto(exts.portal);
+        break;
+      }
+      default:
+      {
+        Logger::warn(format_string("[%s] Unknown sType. Skipping.", pCommand));
+        break;
+      }
+    }
+    bMatExtExists = remixapi::pullBool();
+  }
+}
+
+// Holds the deserialized extensions of an instance info, so they need no heap allocations.
+struct InstanceExtensions {
+  serialize::InstanceInfoObjectPicking objectPicking;
+  serialize::InstanceInfoParticleObjectPicking particlePicking;
+  serialize::InstanceInfoBlend blend;
+  serialize::InstanceInfoTransforms boneXforms;
+  serialize::InstanceInfoParticleSystem particleSystem;
+  serialize::InstanceInfoParticleSpawnDistribution particleSpawnDistribution;
+  serialize::InstanceInfoParticleScreenSize particleScreenSize;
+};
+
+// Reads an instance info and its extensions from the queue, chains the extensions to the info,
+// and replaces the bridge mesh handle with the Remix one.
+void pullInstanceInfo(serialize::InstanceInfo& instInfo, InstanceExtensions& exts, const char* pCommand) {
+  memset(&exts, 0, sizeof(InstanceExtensions));
+
+  const auto instSType = remixapi::pullSType();
+  assert(instSType == REMIXAPI_STRUCT_TYPE_INSTANCE_INFO);
+  deserializeFromQueue(instInfo);
+
+  MeshHandle meshHandle(instInfo.mesh);
+  if (meshHandle.isValid()) {
+    instInfo.mesh = meshHandle;
+  } else {
+    Logger::err(format_string("[%s] Invalid mesh handle!", pCommand));
+  }
+
+  instInfo.pNext = nullptr;
+
+  bool bInstExtExists = remixapi::pullBool();
+  auto* pInfoProto = &getInfoProto(instInfo);
+  while (bInstExtExists) {
+    const auto extSType = remixapi::pullSType();
+    switch (extSType) {
+      case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_OBJECT_PICKING_EXT:
+      {
+        assert(!exts.objectPicking.pNext);
+        deserializeFromQueue(exts.objectPicking);
+        pInfoProto->pNext = &(exts.objectPicking);
+        pInfoProto = &getInfoProto(exts.objectPicking);
+        break;
+      }
+      case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_OBJECT_PICKING_EXT:
+      {
+        assert(!exts.particlePicking.pNext);
+        deserializeFromQueue(exts.particlePicking);
+        pInfoProto->pNext = &(exts.particlePicking);
+        pInfoProto = &getInfoProto(exts.particlePicking);
+        break;
+      }
+      case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT:
+      {
+        assert(!exts.blend.pNext);
+        deserializeFromQueue(exts.blend);
+        pInfoProto->pNext = &(exts.blend);
+        pInfoProto = &getInfoProto(exts.blend);
+        break;
+      }
+      case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BONE_TRANSFORMS_EXT:
+      {
+        assert(!exts.boneXforms.pNext);
+        deserializeFromQueue(exts.boneXforms);
+        pInfoProto->pNext = &(exts.boneXforms);
+        pInfoProto = &getInfoProto(exts.boneXforms);
+        break;
+      }
+      case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT:
+      {
+        assert(!exts.particleSystem.pNext);
+        deserializeFromQueue(exts.particleSystem);
+        pInfoProto->pNext = &(exts.particleSystem);
+        pInfoProto = &getInfoProto(exts.particleSystem);
+        break;
+      }
+      case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SPAWN_DISTRIBUTION_EXT:
+      {
+        assert(!exts.particleSpawnDistribution.pNext);
+        deserializeFromQueue(exts.particleSpawnDistribution);
+        pInfoProto->pNext = &exts.particleSpawnDistribution;
+        pInfoProto = &getInfoProto(exts.particleSpawnDistribution);
+        break;
+      }
+      case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SCREEN_SIZE_EXT:
+      {
+        assert(!exts.particleScreenSize.pNext);
+        deserializeFromQueue(exts.particleScreenSize);
+        pInfoProto->pNext = &exts.particleScreenSize;
+        pInfoProto = &getInfoProto(exts.particleScreenSize);
+        break;
+      }
+      default:
+      {
+        Logger::warn(format_string("[%s] Unknown sType. Skipping.", pCommand));
+        break;
+      }
+    }
+    bInstExtExists = remixapi::pullBool();
+  }
+}
 }
 
 static inline void safeDestroy(IUnknown* obj, uint32_t x86handle) {
@@ -2938,69 +3102,9 @@ void ProcessDeviceCommandQueue() {
        */
       case RemixApi_CreateMaterial:
       {
-        // Rather than allocate deserialized struct extensions on the heap,
-        // allocate them locally, since we know only one instance will be
-        // supported at a time
-        struct MaterialExtensions {
-          serialize::MaterialInfoOpaque opaque;
-          serialize::MaterialInfoOpaqueSubsurface opaqueSubsurface;
-          serialize::MaterialInfoTranslucent translucent;
-          serialize::MaterialInfoPortal portal;
-        } exts;
-        memset(&exts, 0, sizeof(MaterialExtensions));
-
-        const auto matInfoSType = remixapi::pullSType();
-        assert(matInfoSType == REMIXAPI_STRUCT_TYPE_MATERIAL_INFO);
+        MaterialExtensions exts;
         serialize::MaterialInfo matInfo;
-        deserializeFromQueue(matInfo);
-        
-        matInfo.pNext = nullptr;
-
-        bool bMatExtExists = remixapi::pullBool();
-        auto* pInfoProto = &getInfoProto(matInfo);
-        while(bMatExtExists) {
-          const auto extSType = remixapi::pullSType();
-          switch (extSType) {
-            case REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_EXT:
-            {
-              assert(!exts.opaque.pNext);
-              deserializeFromQueue(exts.opaque);
-              pInfoProto->pNext = &(exts.opaque);
-              pInfoProto = &getInfoProto(exts.opaque);
-              break;
-            }
-            case REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_SUBSURFACE_EXT:
-            {
-              assert(!exts.opaqueSubsurface.pNext);
-              deserializeFromQueue(exts.opaqueSubsurface);
-              pInfoProto->pNext = &(exts.opaqueSubsurface);
-              pInfoProto = &getInfoProto(exts.opaqueSubsurface);
-              break;
-            }
-            case REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_TRANSLUCENT_EXT:
-            {
-              assert(!exts.translucent.pNext);
-              deserializeFromQueue(exts.translucent);
-              pInfoProto->pNext = &(exts.translucent);
-              pInfoProto = &getInfoProto(exts.translucent);
-              break;
-            }
-            case REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_PORTAL_EXT:
-            {
-              assert(!exts.portal.pNext);
-              deserializeFromQueue(exts.portal);
-              pInfoProto->pNext = &(exts.portal);
-              pInfoProto = &getInfoProto(exts.portal);
-              break;
-            }
-            default:
-            {
-              Logger::warn("[Api_CreateMaterial] Unknown sType. Skipping.");
-              break;
-            }
-          }
-          bMatExtExists = remixapi::pullBool();
-        }
+        pullMaterialInfo(matInfo, exts, "RemixApi_CreateMaterial");
 
         auto bridgeHandle = DeviceBridge::get_data();
         remixapi_MaterialHandle remixApiHandle = nullptr;
@@ -3068,103 +3172,9 @@ void ProcessDeviceCommandQueue() {
 
       case RemixApi_DrawInstance:
       {
-        // Rather than allocate deserialized struct extensions on the heap,
-        // allocate them locally, since we know only one instance will be
-        // supported at a time
-        struct InstanceExtensions {
-          serialize::InstanceInfoObjectPicking objectPicking;
-          serialize::InstanceInfoParticleObjectPicking particlePicking;
-          serialize::InstanceInfoBlend blend;
-          serialize::InstanceInfoTransforms boneXforms;
-          serialize::InstanceInfoParticleSystem particleSystem;
-          serialize::InstanceInfoParticleSpawnDistribution particleSpawnDistribution;
-          serialize::InstanceInfoParticleScreenSize particleScreenSize;
-        } exts;
-        memset(&exts, 0, sizeof(InstanceExtensions));
-
-        const auto instSType = remixapi::pullSType();
-        assert(instSType == REMIXAPI_STRUCT_TYPE_INSTANCE_INFO);
+        InstanceExtensions exts;
         serialize::InstanceInfo instInfo;
-        deserializeFromQueue(instInfo);
-        
-        MeshHandle meshHandle(instInfo.mesh);
-        if(meshHandle.isValid()) {
-          instInfo.mesh = meshHandle;
-        } else {
-          Logger::err("[RemixApi_DrawInstance] Invalid mesh handle!" );
-        }
-
-        instInfo.pNext = nullptr;
-        
-        bool bInstExtExists = remixapi::pullBool();
-        auto* pInfoProto = &getInfoProto(instInfo);
-        while(bInstExtExists) {
-          const auto extSType = remixapi::pullSType();
-          switch (extSType) {
-            case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_OBJECT_PICKING_EXT:
-            {
-              assert(!exts.objectPicking.pNext);
-              deserializeFromQueue(exts.objectPicking);
-              pInfoProto->pNext = &(exts.objectPicking);
-              pInfoProto = &getInfoProto(exts.objectPicking);
-              break;
-            }
-            case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_OBJECT_PICKING_EXT:
-            {
-              assert(!exts.particlePicking.pNext);
-              deserializeFromQueue(exts.particlePicking);
-              pInfoProto->pNext = &(exts.particlePicking);
-              pInfoProto = &getInfoProto(exts.particlePicking);
-              break;
-            }
-            case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT:
-            {
-              assert(!exts.blend.pNext);
-              deserializeFromQueue(exts.blend);
-              pInfoProto->pNext = &(exts.blend);
-              pInfoProto = &getInfoProto(exts.blend);
-              break;
-            }
-            case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BONE_TRANSFORMS_EXT:
-            {
-              assert(!exts.boneXforms.pNext);
-              deserializeFromQueue(exts.boneXforms);
-              pInfoProto->pNext = &(exts.boneXforms);
-              pInfoProto = &getInfoProto(exts.boneXforms);
-              break;
-            }
-            case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT:
-            {
-              assert(!exts.particleSystem.pNext);
-              deserializeFromQueue(exts.particleSystem);
-              pInfoProto->pNext = &(exts.particleSystem);
-              pInfoProto = &getInfoProto(exts.particleSystem);
-              break;
-            }
-            case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SPAWN_DISTRIBUTION_EXT:
-            {
-              assert(!exts.particleSpawnDistribution.pNext);
-              deserializeFromQueue(exts.particleSpawnDistribution);
-              pInfoProto->pNext = &exts.particleSpawnDistribution;
-              pInfoProto = &getInfoProto(exts.particleSpawnDistribution);
-              break;
-            }
-            case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SCREEN_SIZE_EXT:
-            {
-              assert(!exts.particleScreenSize.pNext);
-              deserializeFromQueue(exts.particleScreenSize);
-              pInfoProto->pNext = &exts.particleScreenSize;
-              pInfoProto = &getInfoProto(exts.particleScreenSize);
-              break;
-            }
-            default:
-            {
-              Logger::warn("[RemixApi_DrawInstance] Unknown sType. Skipping.");
-              break;
-            }
-          }
-          bInstExtExists = remixapi::pullBool();
-        }
+        pullInstanceInfo(instInfo, exts, "RemixApi_DrawInstance");
 
         if(remixapi::g_remix.DrawInstance(&instInfo) != REMIXAPI_ERROR_CODE_SUCCESS) {
           Logger::err("[RemixApi_DrawInstance] Remix API call failed!");
@@ -3335,6 +3345,69 @@ void ProcessDeviceCommandQueue() {
         DeviceBridge::copy_data(info.strength);
         if (remixapi::g_remix.AddWaterDisturbance) {
           remixapi::g_remix.AddWaterDisturbance(&info);
+        }
+        break;
+      }
+
+      case RemixApi_UpdateMaterial:
+      {
+        MaterialHandle handle(DeviceBridge::get_data());
+        MaterialExtensions exts;
+        serialize::MaterialInfo matInfo;
+        pullMaterialInfo(matInfo, exts, "RemixApi_UpdateMaterial");
+        if (!handle.isValid()) {
+          Logger::err("[RemixApi_UpdateMaterial] Invalid material handle!");
+        } else if (remixapi::g_remix.UpdateMaterial) {
+          if (remixapi::g_remix.UpdateMaterial(handle, &matInfo) != REMIXAPI_ERROR_CODE_SUCCESS) {
+            Logger::err("[RemixApi_UpdateMaterial] Remix API call failed!");
+          }
+        }
+        break;
+      }
+
+      case RemixApi_SceneInstanceAdd:
+      {
+        InstanceExtensions exts;
+        serialize::InstanceInfo instInfo;
+        pullInstanceInfo(instInfo, exts, "RemixApi_SceneInstanceAdd");
+
+        auto bridgeHandle = DeviceBridge::get_data();
+        remixapi_SceneInstanceHandle remixApiHandle = nullptr;
+        if (remixapi::g_remix.SceneInstanceAdd &&
+            remixapi::g_remix.SceneInstanceAdd(&instInfo, &remixApiHandle) == REMIXAPI_ERROR_CODE_SUCCESS) {
+          SceneInstanceHandle(bridgeHandle, remixApiHandle);
+        } else {
+          Logger::err("[RemixApi_SceneInstanceAdd] Remix API call failed!");
+        }
+        break;
+      }
+
+      case RemixApi_SceneInstanceUpdate:
+      {
+        SceneInstanceHandle handle(DeviceBridge::get_data());
+        InstanceExtensions exts;
+        serialize::InstanceInfo instInfo;
+        pullInstanceInfo(instInfo, exts, "RemixApi_SceneInstanceUpdate");
+        if (!handle.isValid()) {
+          Logger::err("[RemixApi_SceneInstanceUpdate] Invalid scene instance handle!");
+        } else if (remixapi::g_remix.SceneInstanceUpdate) {
+          if (remixapi::g_remix.SceneInstanceUpdate(handle, &instInfo) != REMIXAPI_ERROR_CODE_SUCCESS) {
+            Logger::err("[RemixApi_SceneInstanceUpdate] Remix API call failed!");
+          }
+        }
+        break;
+      }
+
+      case RemixApi_SceneInstanceRemove:
+      {
+        SceneInstanceHandle handle(DeviceBridge::get_data());
+        if (!handle.isValid()) {
+          Logger::err("[RemixApi_SceneInstanceRemove] Invalid scene instance handle!");
+        } else {
+          if (remixapi::g_remix.SceneInstanceRemove) {
+            remixapi::g_remix.SceneInstanceRemove(handle);
+          }
+          handle.invalidate();
         }
         break;
       }

@@ -57,6 +57,14 @@ void main()
 [numthreads(16, 8, 1)]
 void main(uint3 ipos : SV_DispatchThreadID)
 { 
+  // The dispatch is rounded up to whole workgroups.
+  // Padding threads past the last active froxel volume would index outside the camera array and the packed X dimension of VolumeReservoirs.
+  const uint activeFroxelWidth = cb.volumeArgs.restirFroxelGridDimensions.x * cb.volumeArgs.numActiveFroxelVolumes;
+  if (ipos.x >= activeFroxelWidth)
+  {
+    return;
+  }
+
   volume_restir_pass(ipos);
 }
 #endif

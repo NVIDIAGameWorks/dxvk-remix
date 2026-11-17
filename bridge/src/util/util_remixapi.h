@@ -81,6 +81,7 @@ struct Handle {
 using MaterialHandle = Handle<remixapi_MaterialHandle>;
 using MeshHandle = Handle<remixapi_MeshHandle>;
 using LightHandle = Handle<remixapi_LightHandle>;
+using SceneInstanceHandle = Handle<remixapi_SceneInstanceHandle>;
 
 struct AnyInfoPrototype {
   remixapi_StructType sType;

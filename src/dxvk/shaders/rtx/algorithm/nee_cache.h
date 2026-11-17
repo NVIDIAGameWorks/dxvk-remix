@@ -212,7 +212,10 @@ struct NEECandidate
 
   bool isValid()
   {
-    return m_data.y != 0xffffffff;
+    // setSurfaceID truncates NEE_CACHE_INVALID_ID to the 24-bit surface field.
+    return m_data.y != 0xffffffff &&
+      getSurfaceID() != (NEE_CACHE_INVALID_ID & 0xffffff) &&
+      getPrimitiveID() != NEE_CACHE_INVALID_ID;
   }
 
   [mutating] void setInvalid()

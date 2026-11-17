@@ -619,6 +619,15 @@ namespace dxvk {
      * used by the GPU can be safely destroyed.
      */
     void waitForIdle();
+
+    // NV-DXVK start: Wait for idle and for released command-list references
+    /**
+     * \brief Waits for idle and releases completed command-list references
+     *
+     * Must not be called from the submission queue's worker threads.
+     */
+    void waitForIdleAndReleaseResources();
+    // NV-DXVK end
     
     /**
      * \brief Adds a CPU delay to present calls.

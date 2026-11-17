@@ -68,8 +68,10 @@ endif
 # Remix API Bridge App Tests
 # Each x86 app runs against the client and server from a regular bridge build in _output.
 bridge_app_tests = [ 'remix_api_init_order', 'remix_api_device_registration', 'sent_state_device', 'query_event_device', 'shared_heap_upload_device' ]
+# Runs against the Remix runtime, through test_remix_api_runtime_app.py.
+runtime_app_tests = [ 'remix_api_gpu_resident_scene_device' ]
 if (cpu_family == 'x86')
-foreach name : bridge_app_tests
+foreach name : bridge_app_tests + runtime_app_tests
   tests += executable(
       'test_' + name + '_x86',  files('test_' + name + '.cpp'),
       include_directories : [ public_include_path ],
@@ -88,6 +90,16 @@ foreach name : bridge_app_tests
        is_parallel : name != 'shared_heap_upload_device',
        timeout : 300)
 endforeach
+test('remix_api_gpu_resident_scene',
+     python,
+     args : [join_paths(meson.current_source_dir(), 'test_remix_api_runtime_app.py'),
+             '--testExe', 'test_remix_api_gpu_resident_scene_device_x86.exe',
+             '--executablesDir', meson.current_build_dir(),
+             '--bridgeDir', join_paths(meson.global_source_root(), '_output'),
+             '--runtimeDir', join_paths(meson.global_source_root(), '..', '_output'),
+             '--artifactDir', join_paths(meson.global_build_root(), 'test_artifacts', 'remix_api_gpu_resident_scene') ],
+     is_parallel : false,
+     timeout : 900)
 foreach resource : [ 'surface', 'vb', 'ib' ]
   name = 'shared_heap_upload_device_oom_' + resource
   test(name,

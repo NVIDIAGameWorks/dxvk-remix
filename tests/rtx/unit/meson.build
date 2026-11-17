@@ -110,6 +110,10 @@ exe = executable('test_bindless_buffer_mirror',  files('test_bindless_buffer_mir
 test('test_bindless_buffer_mirror', exe, env: test_env)
 tests += exe
 
+exe = executable('test_gpu_resident_scene',  files('test_gpu_resident_scene.cpp'), include_directories : test_include_path, dependencies : test_unit_deps, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_gpu_resident_scene', exe, env: test_env)
+tests += exe
+
 exe = executable('test_documentation',  files('test_documentation.cpp'), include_directories : test_include_path, dependencies : [ d3d9_dep, test_unit_deps ], win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
 test('test_documentation', exe, env: test_env, priority : -50, args: d3d9_dll.full_path())
 tests += exe

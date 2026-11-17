@@ -99,6 +99,140 @@ auto serializeAndSend(ClientMessage& msg, const SerializableT& serializable) {
   delete pSlzd;
 }
 
+// Sends a material info and the extensions that the bridge supports.
+// Each extension is preceded by a true Bool, and a false Bool ends the list.
+void sendMaterialInfo(ClientMessage& c, const remixapi_MaterialInfo& info, const char* pCaller) {
+  serializeAndSend<serialize::MaterialInfo>(c, info);
+
+  const void* infoItr = &info;
+  while (auto* const pNext = getPNext(infoItr)) {
+    infoItr = pNext;
+    switch (getSType(pNext)) {
+      case REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_EXT:
+      {
+        auto* pOpaqueMat = static_cast<const remixapi_MaterialInfoOpaqueEXT* const>(infoItr);
+        remixapi_MaterialInfoOpaqueEXT opaqueMat = { };
+        if (g_appRemixApiVersion < REMIXAPI_VERSION_MAKE(0, 6, 5)) {
+          std::memcpy(&opaqueMat, pOpaqueMat, offsetof(remixapi_MaterialInfoOpaqueEXT, enableDlssControlMask));
+          opaqueMat.enableDlssControlMask = true;
+          opaqueMat.dlssControlMaskIntensity = 1.f;
+          opaqueMat.dlssControlMaskToneStrength = 1.f;
+          opaqueMat.dlssControlMaskStructuralStrength = 1.f;
+        } else if (g_appRemixApiVersion < REMIXAPI_VERSION_MAKE(0, 6, 6)) {
+          std::memcpy(&opaqueMat, pOpaqueMat, offsetof(remixapi_MaterialInfoOpaqueEXT, textureScrollRate));
+        } else {
+          opaqueMat = *pOpaqueMat;
+        }
+        send(c, Bool::True); 
+        serializeAndSend<serialize::MaterialInfoOpaque>(c, opaqueMat);
+        break;
+      }
+      case REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_SUBSURFACE_EXT:
+      {
+        auto* pOpaqueSubsurfaceMat = static_cast<const remixapi_MaterialInfoOpaqueSubsurfaceEXT* const>(infoItr);
+        send(c, Bool::True);
+        serializeAndSend<serialize::MaterialInfoOpaqueSubsurface>(c, *pOpaqueSubsurfaceMat);
+        break;
+      }
+      case REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_TRANSLUCENT_EXT:
+      {
+        auto* pTranslucentMat = static_cast<const remixapi_MaterialInfoTranslucentEXT* const>(infoItr);
+        remixapi_MaterialInfoTranslucentEXT translucentMat = { };
+        if (g_appRemixApiVersion < REMIXAPI_VERSION_MAKE(0, 6, 6)) {
+          std::memcpy(&translucentMat, pTranslucentMat, offsetof(remixapi_MaterialInfoTranslucentEXT, textureScrollRate));
+        } else {
+          translucentMat = *pTranslucentMat;
+        }
+        send(c, Bool::True);
+        serializeAndSend<serialize::MaterialInfoTranslucent>(c, translucentMat);
+        break;
+      }
+      case REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_PORTAL_EXT:
+      {
+        auto* pPortalMat = static_cast<const remixapi_MaterialInfoPortalEXT* const>(infoItr);
+        send(c, Bool::True);
+        serializeAndSend<serialize::MaterialInfoPortal>(c, *pPortalMat);
+        break;
+      }
+      default:
+      {
+        Logger::warn(format_string("[%s] Unknown sType. Skipping.", pCaller));
+        break;
+      }
+    }
+    infoItr = pNext;
+  }
+  send(c, Bool::False);
+}
+
+// Sends an instance info and the extensions that the bridge supports.
+// Each extension is preceded by a true Bool, and a false Bool ends the list.
+void sendInstanceInfo(ClientMessage& c, const remixapi_InstanceInfo& info, const char* pCaller) {
+  serializeAndSend<serialize::InstanceInfo>(c, info);
+
+  const void* infoItr = &info;
+  while (auto* const pNext = getPNext(infoItr)) {
+    infoItr = pNext;
+    switch (getSType(pNext)) {
+      case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_OBJECT_PICKING_EXT:
+      {
+        auto* pObjectPicking = static_cast<const remixapi_InstanceInfoObjectPickingEXT* const>(infoItr);
+        send(c, Bool::True);
+        serializeAndSend<serialize::InstanceInfoObjectPicking>(c, *pObjectPicking);
+        break;
+      }
+      case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_OBJECT_PICKING_EXT:
+      {
+        auto* pParticlePicking = static_cast<const remixapi_InstanceInfoParticleObjectPickingEXT* const>(infoItr);
+        send(c, Bool::True);
+        serializeAndSend<serialize::InstanceInfoParticleObjectPicking>(c, *pParticlePicking);
+        break;
+      }
+      case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT:
+      {
+        auto* pBlend = static_cast<const remixapi_InstanceInfoBlendEXT* const>(infoItr);
+        send(c, Bool::True);
+        serializeAndSend<serialize::InstanceInfoBlend>(c, *pBlend);
+        break;
+      }
+      case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BONE_TRANSFORMS_EXT:
+      {
+        auto* pXforms = static_cast<const remixapi_InstanceInfoBoneTransformsEXT* const>(infoItr);
+        send(c, Bool::True);
+        serializeAndSend<serialize::InstanceInfoTransforms>(c, *pXforms);
+        break;
+      }
+      case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT:
+      {
+        auto* pParticle = static_cast<const remixapi_InstanceInfoParticleSystemEXT* const>(infoItr);
+        send(c, Bool::True);
+        serializeAndSend<serialize::InstanceInfoParticleSystem>(c, *pParticle);
+        break;
+      }
+      case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SPAWN_DISTRIBUTION_EXT:
+      {
+        auto* pDistribution = static_cast<const remixapi_InstanceInfoParticleSpawnDistributionEXT* const>(infoItr);
+        send(c, Bool::True);
+        serializeAndSend<serialize::InstanceInfoParticleSpawnDistribution>(c, *pDistribution);
+        break;
+      }
+      case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SCREEN_SIZE_EXT:
+      {
+        auto* pScreenSize = static_cast<const remixapi_InstanceInfoParticleScreenSizeEXT* const>(infoItr);
+        send(c, Bool::True);
+        serializeAndSend<serialize::InstanceInfoParticleScreenSize>(c, *pScreenSize);
+        break;
+      }
+      default:
+      {
+        Logger::warn(format_string("[%s] Unknown sType. Skipping.", pCaller));
+        break;
+      }
+    }
+  }
+  send(c, Bool::False);
+}
+
 
 remixapi_ErrorCode REMIXAPI_CALL remixapi_CreateMaterial(
   const remixapi_MaterialInfo* info,
@@ -111,72 +245,7 @@ remixapi_ErrorCode REMIXAPI_CALL remixapi_CreateMaterial(
   {
     ClientMessage c(Commands::RemixApi_CreateMaterial);
 
-    serializeAndSend<serialize::MaterialInfo>(c, *info);
-
-    // For each valid pNext, we will send a true-valued bool to indicate that
-    // server must read another extension. If it reads false, it knows that it
-    // is done reading.
-    // send(c, Bool::True); -> CONTINUE
-    // send(c, Bool::False); -> STOP
-    const void* infoItr = info;
-    while (auto* const pNext = getPNext(infoItr)) {
-      infoItr = pNext;
-      switch (getSType(pNext)) {
-        case REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_EXT:
-        {
-          auto* pOpaqueMat = static_cast<const remixapi_MaterialInfoOpaqueEXT* const>(infoItr);
-          remixapi_MaterialInfoOpaqueEXT opaqueMat = { };
-          if (g_appRemixApiVersion < REMIXAPI_VERSION_MAKE(0, 6, 5)) {
-            std::memcpy(&opaqueMat, pOpaqueMat, offsetof(remixapi_MaterialInfoOpaqueEXT, enableDlssControlMask));
-            opaqueMat.enableDlssControlMask = true;
-            opaqueMat.dlssControlMaskIntensity = 1.f;
-            opaqueMat.dlssControlMaskToneStrength = 1.f;
-            opaqueMat.dlssControlMaskStructuralStrength = 1.f;
-          } else if (g_appRemixApiVersion < REMIXAPI_VERSION_MAKE(0, 6, 6)) {
-            std::memcpy(&opaqueMat, pOpaqueMat, offsetof(remixapi_MaterialInfoOpaqueEXT, textureScrollRate));
-          } else {
-            opaqueMat = *pOpaqueMat;
-          }
-          send(c, Bool::True); 
-          serializeAndSend<serialize::MaterialInfoOpaque>(c, opaqueMat);
-          break;
-        }
-        case REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_SUBSURFACE_EXT:
-        {
-          auto* pOpaqueSubsurfaceMat = static_cast<const remixapi_MaterialInfoOpaqueSubsurfaceEXT* const>(infoItr);
-          send(c, Bool::True);
-          serializeAndSend<serialize::MaterialInfoOpaqueSubsurface>(c, *pOpaqueSubsurfaceMat);
-          break;
-        }
-        case REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_TRANSLUCENT_EXT:
-        {
-          auto* pTranslucentMat = static_cast<const remixapi_MaterialInfoTranslucentEXT* const>(infoItr);
-          remixapi_MaterialInfoTranslucentEXT translucentMat = { };
-          if (g_appRemixApiVersion < REMIXAPI_VERSION_MAKE(0, 6, 6)) {
-            std::memcpy(&translucentMat, pTranslucentMat, offsetof(remixapi_MaterialInfoTranslucentEXT, textureScrollRate));
-          } else {
-            translucentMat = *pTranslucentMat;
-          }
-          send(c, Bool::True);
-          serializeAndSend<serialize::MaterialInfoTranslucent>(c, translucentMat);
-          break;
-        }
-        case REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_PORTAL_EXT:
-        {
-          auto* pPortalMat = static_cast<const remixapi_MaterialInfoPortalEXT* const>(infoItr);
-          send(c, Bool::True);
-          serializeAndSend<serialize::MaterialInfoPortal>(c, *pPortalMat);
-          break;
-        }
-        default:
-        {
-          Logger::warn("[remixapi_CreateMaterial] Unknown sType. Skipping.");
-          break;
-        }
-      }
-      infoItr = pNext;
-    }
-    send(c, Bool::False);
+    sendMaterialInfo(c, *info, "remixapi_CreateMaterial");
     sendHandle(c, newHandle);
   }
 
@@ -194,6 +263,23 @@ remixapi_ErrorCode REMIXAPI_CALL remixapi_DestroyMaterial(remixapi_MaterialHandl
   {
     ClientMessage c(Commands::RemixApi_DestroyMaterial);
     sendHandle(c, materialHandle);
+  }
+  return REMIXAPI_ERROR_CODE_SUCCESS;
+}
+
+remixapi_ErrorCode REMIXAPI_CALL remixapi_UpdateMaterial(
+  remixapi_MaterialHandle      handle,
+  const remixapi_MaterialInfo* info) {
+
+  ASSERT_REMIXAPI_PFN_TYPE(remixapi_UpdateMaterial);
+  MaterialHandle materialHandle(handle);
+  if (!materialHandle.isValid() || !info || info->sType != REMIXAPI_STRUCT_TYPE_MATERIAL_INFO) {
+    return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+  }
+  {
+    ClientMessage c(Commands::RemixApi_UpdateMaterial);
+    sendHandle(c, materialHandle);
+    sendMaterialInfo(c, *info, "remixapi_UpdateMaterial");
   }
   return REMIXAPI_ERROR_CODE_SUCCESS;
 }
@@ -247,74 +333,58 @@ remixapi_ErrorCode REMIXAPI_CALL remixapi_DrawInstance(const remixapi_InstanceIn
   {
     ClientMessage c(Commands::RemixApi_DrawInstance);
 
-    serializeAndSend<serialize::InstanceInfo>(c, *info);
+    sendInstanceInfo(c, *info, "remixapi_DrawInstance");
+  }
+  return REMIXAPI_ERROR_CODE_SUCCESS;
+}
 
-    // For each valid pNext, we will send a true-valued bool to indicate that
-    // server must read another extension. If it reads false, it knows that it
-    // is done reading.
-    // send(c, Bool::True); -> CONTINUE
-    // send(c, Bool::False); -> STOP
-    const void* infoItr = info;
-    while (auto* const pNext = getPNext(infoItr)) {
-      infoItr = pNext;
-      switch (getSType(pNext)) {
-        case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_OBJECT_PICKING_EXT:
-        {
-          auto* pObjectPicking = static_cast<const remixapi_InstanceInfoObjectPickingEXT* const>(infoItr);
-          send(c, Bool::True);
-          serializeAndSend<serialize::InstanceInfoObjectPicking>(c, *pObjectPicking);
-          break;
-        }
-        case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_OBJECT_PICKING_EXT:
-        {
-          auto* pParticlePicking = static_cast<const remixapi_InstanceInfoParticleObjectPickingEXT* const>(infoItr);
-          send(c, Bool::True);
-          serializeAndSend<serialize::InstanceInfoParticleObjectPicking>(c, *pParticlePicking);
-          break;
-        }
-        case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT:
-        {
-          auto* pBlend = static_cast<const remixapi_InstanceInfoBlendEXT* const>(infoItr);
-          send(c, Bool::True);
-          serializeAndSend<serialize::InstanceInfoBlend>(c, *pBlend);
-          break;
-        }
-        case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BONE_TRANSFORMS_EXT:
-        {
-          auto* pXforms = static_cast<const remixapi_InstanceInfoBoneTransformsEXT* const>(infoItr);
-          send(c, Bool::True);
-          serializeAndSend<serialize::InstanceInfoTransforms>(c, *pXforms);
-          break;
-        }
-        case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SYSTEM_EXT:
-        {
-          auto* pParticle = static_cast<const remixapi_InstanceInfoParticleSystemEXT* const>(infoItr);
-          send(c, Bool::True);
-          serializeAndSend<serialize::InstanceInfoParticleSystem>(c, *pParticle);
-          break;
-        }
-        case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SPAWN_DISTRIBUTION_EXT:
-        {
-          auto* pDistribution = static_cast<const remixapi_InstanceInfoParticleSpawnDistributionEXT* const>(infoItr);
-          send(c, Bool::True);
-          serializeAndSend<serialize::InstanceInfoParticleSpawnDistribution>(c, *pDistribution);
-          break;
-        }
-        case REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_PARTICLE_SCREEN_SIZE_EXT:
-        {
-          auto* pScreenSize = static_cast<const remixapi_InstanceInfoParticleScreenSizeEXT* const>(infoItr);
-          send(c, Bool::True);
-          serializeAndSend<serialize::InstanceInfoParticleScreenSize>(c, *pScreenSize);
-          break;
-        }
-        default:
-        {
-          Logger::warn("[remixapi_DrawInstance] Unknown sType. Skipping.");
-          break;
-        }
-      }
-    }
-    send(c, Bool::False);
+remixapi_ErrorCode REMIXAPI_CALL remixapi_SceneInstanceAdd(
+  const remixapi_InstanceInfo*  info,
+  remixapi_SceneInstanceHandle* out_handle) {
+
+  ASSERT_REMIXAPI_PFN_TYPE(remixapi_SceneInstanceAdd);
+  if (!info || info->sType != REMIXAPI_STRUCT_TYPE_INSTANCE_INFO || !out_handle) {
+    return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+  }
+
+  SceneInstanceHandle newHandle;
+  {
+    ClientMessage c(Commands::RemixApi_SceneInstanceAdd);
+    sendInstanceInfo(c, *info, "remixapi_SceneInstanceAdd");
+    sendHandle(c, newHandle);
+  }
+
+  *out_handle = newHandle;
+
+  return REMIXAPI_ERROR_CODE_SUCCESS;
+}
+
+remixapi_ErrorCode REMIXAPI_CALL remixapi_SceneInstanceUpdate(
+  remixapi_SceneInstanceHandle handle,
+  const remixapi_InstanceInfo* info) {
+
+  ASSERT_REMIXAPI_PFN_TYPE(remixapi_SceneInstanceUpdate);
+  SceneInstanceHandle instanceHandle(handle);
+  if (!instanceHandle.isValid() || !info || info->sType != REMIXAPI_STRUCT_TYPE_INSTANCE_INFO) {
+    return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+  }
+  {
+    ClientMessage c(Commands::RemixApi_SceneInstanceUpdate);
+    sendHandle(c, instanceHandle);
+    sendInstanceInfo(c, *info, "remixapi_SceneInstanceUpdate");
+  }
+  return REMIXAPI_ERROR_CODE_SUCCESS;
+}
+
+remixapi_ErrorCode REMIXAPI_CALL remixapi_SceneInstanceRemove(remixapi_SceneInstanceHandle handle) {
+  ASSERT_REMIXAPI_PFN_TYPE(remixapi_SceneInstanceRemove);
+  SceneInstanceHandle instanceHandle(handle);
+  if (!instanceHandle.isValid()) {
+    return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+  }
+  {
+    ClientMessage c(Commands::RemixApi_SceneInstanceRemove);
+    sendHandle(c, instanceHandle);
   }
   return REMIXAPI_ERROR_CODE_SUCCESS;
 }
@@ -564,6 +634,10 @@ extern "C" {
       interf.SetConfigVariable = remixapi_SetConfigVariable;
       interf.SetWaterSim = remixapi_SetWaterSim;
       interf.AddWaterDisturbance = remixapi_AddWaterDisturbance;
+      interf.SceneInstanceAdd = remixapi_SceneInstanceAdd;
+      interf.SceneInstanceUpdate = remixapi_SceneInstanceUpdate;
+      interf.SceneInstanceRemove = remixapi_SceneInstanceRemove;
+      interf.UpdateMaterial = remixapi_UpdateMaterial;
       interf.dxvk_CreateD3D9 = remixapi_dxvk_CreateD3D9;
       interf.dxvk_RegisterD3D9Device = remixapi_dxvk_RegisterD3D9Device;
       // interf.dxvk_GetExternalSwapchain = remixapi_dxvk_GetExternalSwapchain;
